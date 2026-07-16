@@ -47,13 +47,25 @@ import type { ComponentType } from 'react'
  * the list).
  */
 
+/**
+ * EVERY LABEL IS ABOUT THE USER, NEVER A CHARACTER.
+ *
+ * The rule is user-level: a user is eligible if ANY of their non-deleted
+ * characters is in a member corporation. Alts in NPC or non-member corps are
+ * irrelevant — one qualifying character is enough.
+ *
+ * The subcodes therefore describe the user's WHOLE character set, and the labels
+ * have to say so. "Corporation is not a member corp" (the previous wording of
+ * `unmanaged_corp`) reads as a verdict on one character and made a correct
+ * user-level count look like a bug.
+ */
 const REASON_LABELS: Record<ServiceEligibilityReasonCode, string> = {
-	member_corp: 'In a member corporation',
-	admin_exempt: 'Admin (exempt)',
-	no_characters: 'No characters',
-	null_corp: 'No corporation on record',
-	only_deleted_member_char: 'Only deleted member characters',
-	unmanaged_corp: 'Corporation is not a member corp',
+	member_corp: 'Has a character in a member corporation',
+	admin_exempt: 'Site admin (exempt)',
+	no_characters: 'Has no characters at all',
+	null_corp: 'No character has a corporation on record',
+	only_deleted_member_char: 'Their only member-corp character was removed',
+	unmanaged_corp: 'No character in any member corporation',
 	no_user_row: 'No user row',
 }
 
@@ -359,7 +371,7 @@ export default function AdminServicesAuditPage() {
 		<div className="space-y-6">
 			<PageHeader
 				title="Services Audit"
-				description="Read-only scan of who is eligible for Mumble and Discord access, based on membership of a member corporation."
+				description="Read-only scan of who is eligible for Mumble and Discord access. A user is eligible if ANY one of their characters is in a member corporation — alts in NPC or non-member corps do not count against them."
 				action={
 					<Button
 						onClick={() => startScan.mutate()}
@@ -566,8 +578,10 @@ export default function AdminServicesAuditPage() {
 								<div>
 									<h3 className="text-sm font-medium">Ineligible by reason</h3>
 									<p className="text-xs text-muted-foreground">
-										Subcodes, not a single total. A large <code>null_corp</code> or{' '}
-										<code>no_characters</code> group points at a data problem, not at people.
+										Counted per user, not per character: everyone below has{' '}
+										<strong>no character at all</strong> in any member corporation. Subcodes, not a
+										single total — a large <code>null_corp</code> or <code>no_characters</code>{' '}
+										group points at a data problem, not at people.
 									</p>
 								</div>
 								{ineligibleBreakdown.length === 0 ? (
