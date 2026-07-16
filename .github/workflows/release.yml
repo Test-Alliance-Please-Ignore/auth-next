@@ -41,6 +41,73 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
+  notify-discord:
+    # Post a deploy status card to Discord whether the deploy passed or failed.
+    # `if: always()` is required — without it this job is skipped when
+    # test-and-deploy fails, which is exactly when we most want the alert.
+    name: Notify Discord
+    needs: test-and-deploy
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send deploy status to Discord
+        env:
+          # Discord channel webhook URL (Server Settings → Integrations → Webhooks).
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_DEPLOY_WEBHOOK_URL }}
+          DEPLOY_RESULT: ${{ needs.test-and-deploy.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          ACTOR: ${{ github.actor }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # Skip silently on forks / when the webhook isn't configured, rather
+          # than failing the run with a curl error.
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo 'DISCORD_DEPLOY_WEBHOOK_URL is not set — skipping notification.'
+            exit 0
+          fi
+
+          if [ "$DEPLOY_RESULT" = 'success' ]; then
+            title='✅ Deploy succeeded'
+            color=3066993   # green
+          else
+            title="❌ Deploy ${DEPLOY_RESULT}"   # failure / cancelled
+            color=15158332  # red
+          fi
+
+          # First line of the commit message, trimmed for the embed.
+          summary="$(printf '%s' "$COMMIT_MSG" | head -n1)"
+
+          # Build the payload with jq so message text is safely JSON-escaped.
+          payload="$(jq -n \
+            --arg title "$title" \
+            --arg url "$RUN_URL" \
+            --argjson color "$color" \
+            --arg summary "$summary" \
+            --arg actor "$ACTOR" \
+            --arg commit_url "$COMMIT_URL" \
+            --arg sha "${SHA:0:7}" \
+            '{
+              embeds: [{
+                title: $title,
+                url: $url,
+                color: $color,
+                fields: [
+                  { name: "Commit", value: "[\($sha)](\($commit_url)) \($summary)" },
+                  { name: "Triggered by", value: $actor, inline: true }
+                ]
+              }]
+            }')"
+
+          curl -sf -X POST \
+            -H 'Content-Type: application/json' \
+            -d "$payload" \
+            "$DISCORD_WEBHOOK_URL"
+
   create-release-pr:
     # For Workers, we always deploy on commits to main.
     # Release PRs are for adding changelogs only (for convenience)
