@@ -63,6 +63,7 @@ import { handleOAuthDevProxyRequest, isOAuthDevProxyPath } from './routes/oauth-
 import pastesRoutes, { publicPasteRoutes } from './routes/pastes'
 import predictionMarketsRoutes from './routes/prediction-markets'
 import predictionMarketsAdminRoutes from './routes/prediction-markets-admin'
+import servicesAuditRoutes from './routes/services-audit'
 import sessionRoutes from './routes/session'
 import skillPlansRoutes from './routes/skill-plans'
 import skillsRoutes from './routes/skills'
@@ -163,6 +164,7 @@ const app = new Hono<App>()
 	.route('/api/corporation-tax', corporationTaxRoutes)
 	.route('/api/corporations', corporationsRoutes)
 	.route('/api/discord-servers', discordServersRoutes)
+	.route('/api/services-audit', servicesAuditRoutes) // Read-only service access audit (admin)
 	.route('/api/discord-commands', discordCommandsRoutes)
 	.route('/api/dkp', dkpRoutes)
 	.route('/api/doctrines', doctrinesRoutes)
@@ -1185,3 +1187,4 @@ export { UserDiscordRefreshWorkflow } from './workflows/user-discord-refresh.wor
 export { DiscordMemberAuditWorkflow } from './workflows/discord-member-audit.workflow'
 export { UserMumbleRefreshWorkflow } from './workflows/user-mumble-refresh.workflow'
 export { CsvExportWorkflow } from './workflows/csv-export.workflow'
+export { ServiceAccessAuditWorkflow } from './workflows/service-access-audit.workflow'

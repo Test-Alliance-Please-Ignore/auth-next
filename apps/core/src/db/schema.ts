@@ -1364,6 +1364,276 @@ export const mumbleTempopGuestsRelations = relations(mumbleTempopGuests, ({ one 
 }))
 
 /**
+ * Why a user landed on the eligible/ineligible side of the services rule.
+ *
+ * Declared here rather than in lib/service-eligibility.ts so the Postgres enum
+ * and the TypeScript union are literally the same list and cannot drift — the
+ * rule module imports this. (The dependency only runs this direction:
+ * service-eligibility.ts already imports this schema, so the reverse would be a
+ * cycle.)
+ *
+ * Diagnostic only: a subcode never changes the outcome. "3,900 null_corp" is a
+ * recognisably broken ESI sync; "3,900 ineligible" is unreviewable at 04:00.
+ */
+export const SERVICE_ELIGIBILITY_REASONS = [
+	/** Eligible: a non-deleted character sits in a member corporation. */
+	'member_corp',
+	/** Eligible: no member-corp attachment, but `users.is_admin`. */
+	'admin_exempt',
+	/** Ineligible: no non-deleted characters at all. */
+	'no_characters',
+	/** Ineligible: characters exist, every one has a NULL corporation. */
+	'null_corp',
+	/** Ineligible: the qualifying character(s) are soft-deleted. */
+	'only_deleted_member_char',
+	/** Ineligible: has corporations, none flagged `is_member_corporation`. */
+	'unmanaged_corp',
+	/** Ineligible: no `users` row exists. */
+	'no_user_row',
+] as const
+
+/**
+ * Service Access Audit Runs
+ *
+ * Break-glass tool: scan every user against the member-corporation rule, review
+ * the blast radius, then on explicit confirmation revoke the ineligible.
+ *
+ * NOT a reuse of discord_member_audit_runs/rows. That pair is guild-scoped
+ * (discord_server_id NOT NULL cascade) and keyed unique(run_id, discord_user_id)
+ * with discord_user_id NOT NULL. This audit is user-keyed and MUST include users
+ * with no Discord account at all, so reuse would mean nullable-ing five NOT NULL
+ * columns and rekeying a live table.
+ */
+export const serviceAccessAuditRuns = pgTable(
+	'service_access_audit_runs',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		scanWorkflowInstanceId: text('scan_workflow_instance_id').unique(),
+		enforceWorkflowInstanceId: text('enforce_workflow_instance_id').unique(),
+		status: text('status', {
+			enum: [
+				/** Scan in flight. */
+				'scanning',
+				/** A basis assertion tripped. Terminal, and NOT overridable. */
+				'blocked',
+				/** Scan done, ineligible users found, waiting on a human. */
+				'awaiting_confirmation',
+				/** Enforcement in flight. */
+				'enforcing',
+				'completed',
+				/** Enforced, but some rows failed. Distinct so it cannot read as clean. */
+				'completed_with_errors',
+				'failed',
+				'cancelled',
+			],
+		})
+			.notNull()
+			.default('scanning'),
+		/**
+		 * Holds a constant while the run is non-terminal, NULL once terminal.
+		 * Postgres ignores NULLs in unique indexes, so this permits exactly one
+		 * live run and a concurrent insert 23505s. No DO, no distributed lock.
+		 */
+		activeLock: text('active_lock'),
+		/** 'set null', NOT the precedent's cascade: deleting the admin must not
+		 * erase the record of what they did. */
+		initiatedByUserId: uuid('initiated_by_user_id').references(() => users.id, {
+			onDelete: 'set null',
+		}),
+		enforcedByUserId: uuid('enforced_by_user_id').references(() => users.id, {
+			onDelete: 'set null',
+		}),
+		/** Free-text justification captured at confirmation time. */
+		enforceReason: text('enforce_reason'),
+		/**
+		 * THE ELIGIBILITY BASIS, snapshotted. `is_member_corporation` is
+		 * `.default(false).notNull()` — the basis defaults to the REVOKING value, so
+		 * an empty or half-restored managed_corporations does not degrade the rule,
+		 * it inverts it. Snapshotted so a run can be audited after the fact and so
+		 * the next run can assert the basis did not shrink.
+		 */
+		memberCorporationIds: text('member_corporation_ids').array().notNull().default([]),
+		memberCorpCount: integer('member_corp_count').notNull().default(0),
+		/**
+		 * The basis shrank against the recent high-water mark. INFORMATIONAL for a
+		 * scan — a scan is read-only and blocking it would refuse the tool's primary
+		 * use case, since de-flagging corps is how a corp legitimately stops being a
+		 * member corp AND it shrinks the basis by construction.
+		 * ENFORCEMENT MUST HARD-REFUSE on a suspect, unacknowledged basis.
+		 */
+		basisSuspect: boolean('basis_suspect').notNull().default(false),
+		/** The high-water count this run's basis was compared against; null on the
+		 * bootstrap run, where nothing has validated the basis. */
+		basisComparedToCount: integer('basis_compared_to_count'),
+		/**
+		 * Exactly which corporations left the basis since the high-water run. A
+		 * count ratio cannot distinguish "an operator de-flagged 13 corps" from "the
+		 * table got truncated"; this list lets a human do it in seconds.
+		 */
+		basisRemovedCorporationIds: text('basis_removed_corporation_ids').array(),
+		/** Operator-facing explanation of the diff; null unless basisSuspect. */
+		basisNote: text('basis_note'),
+		/** Every user row walked, including eligible ones. */
+		scanned: integer('scanned').notNull().default(0),
+		/** Users holding a Mumble account or a Discord link — reported alongside
+		 * `scanned` and never instead of it: an emergency tool must not silently
+		 * narrow its own denominator. */
+		inPopulation: integer('in_population').notNull().default(0),
+		eligibleCount: integer('eligible_count').notNull().default(0),
+		ineligibleCount: integer('ineligible_count').notNull().default(0),
+		/** Set when the >20% heuristic trips; overridable by the typed phrase,
+		 * unlike a basis assertion. */
+		blastRadiusTripped: boolean('blast_radius_tripped').notNull().default(false),
+		errorMessage: text('error_message'),
+		startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+		completedAt: timestamp('completed_at', { withTimezone: true }),
+		enforceStartedAt: timestamp('enforce_started_at', { withTimezone: true }),
+		enforceCompletedAt: timestamp('enforce_completed_at', { withTimezone: true }),
+		/** Retention horizon. Swept by a FILTERED branch that must never touch a
+		 * live run — unlike the discord-audit cleanup, which truncates
+		 * unconditionally at midnight. */
+		expiresAt: timestamp('expires_at', { withTimezone: true }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('service_access_audit_runs_status_started_idx').on(table.status, table.startedAt),
+		index('service_access_audit_runs_expires_at_idx').on(table.expiresAt),
+		unique('service_access_audit_runs_active_lock_unique').on(table.activeLock),
+	]
+)
+
+/**
+ * Service Access Audit Rows — one per user per run.
+ *
+ * Unlike the discord-audit rows (write-once inserts, wiped wholesale), these are
+ * mutated by enforcement, hence `updatedAt` and the per-service statuses.
+ */
+export const serviceAccessAuditRows = pgTable(
+	'service_access_audit_rows',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		runId: uuid('run_id')
+			.notNull()
+			.references(() => serviceAccessAuditRuns.id, { onDelete: 'cascade' }),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		/** Snapshotted so the row stays readable when the character is renamed or
+		 * unlinked. Counts are abstract; names are not. */
+		mainCharacterId: text('main_character_id'),
+		mainCharacterName: text('main_character_name'),
+		eligible: boolean('eligible').notNull(),
+		reason: text('reason', { enum: SERVICE_ELIGIBILITY_REASONS }).notNull(),
+		/** Corporations held at scan time — the evidence for the verdict. */
+		corporationIds: text('corporation_ids').array().notNull().default([]),
+		hasDiscordLink: boolean('has_discord_link').notNull().default(false),
+
+		/**
+		 * Mumble enforcement outcome.
+		 * `queued` is NOT `deleted`: the DO persists control-plane failures and
+		 * retries by alarm, so the account is live until observed absent.
+		 * `confirmed_absent` is the ONLY value that may count toward the number
+		 * shown to an operator — a mutation's own return value must never be the
+		 * evidence of its success.
+		 */
+		mumbleStatus: text('mumble_status', {
+			enum: [
+				'pending',
+				'skipped',
+				'not_provisioned',
+				'queued',
+				'confirmed_absent',
+				'verify_failed',
+				'failed',
+				'unknown',
+			],
+		})
+			.notNull()
+			.default('pending'),
+		mumbleErrorMessage: text('mumble_error_message'),
+		/**
+		 * Discord enforcement outcome.
+		 * `not_in_guild` is a terminal SUCCESS (access is definitionally revoked),
+		 * not a failure. `no_op_unverified` is the amber case where the primitive
+		 * returned no per-guild results at all — indistinguishable from "did
+		 * nothing", so it is never counted as stripped.
+		 */
+		discordStatus: text('discord_status', {
+			enum: [
+				'pending',
+				'skipped',
+				'not_linked',
+				'stripped',
+				'no_change',
+				'not_in_guild',
+				'no_op_unverified',
+				'failed',
+				'unknown',
+			],
+		})
+			.notNull()
+			.default('pending'),
+		discordErrorMessage: text('discord_error_message'),
+
+		/**
+		 * RECONSTRUCTION SNAPSHOT — captured BEFORE the mutation, by the worker
+		 * that mutates. Mumble deletion is irreversible and there is no bulk
+		 * re-provision, so this is the only record of what existed. Do not cut it.
+		 */
+		mumbleLoginName: text('mumble_login_name'),
+		mumbleDisplayName: text('mumble_display_name'),
+		mumbleGroups: text('mumble_groups').array(),
+		mumbleWasEnabled: boolean('mumble_was_enabled'),
+		/** Written by the enforcement child from its own return value. */
+		discordRolesRemoved: text('discord_roles_removed').array(),
+
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index('service_access_audit_rows_run_eligible_idx').on(table.runId, table.eligible),
+		index('service_access_audit_rows_run_reason_idx').on(table.runId, table.reason),
+		index('service_access_audit_rows_run_mumble_status_idx').on(table.runId, table.mumbleStatus),
+		index('service_access_audit_rows_run_discord_status_idx').on(table.runId, table.discordStatus),
+		unique('service_access_audit_rows_run_user_unique').on(table.runId, table.userId),
+	]
+)
+
+export const serviceAccessAuditRunsRelations = relations(
+	serviceAccessAuditRuns,
+	({ one, many }) => ({
+		// Both FKs point at `users`. relationName is not strictly required while
+		// usersRelations declares no back-reference to this table (fields/references
+		// are explicit, so drizzle can already tell them apart) — it is set so that
+		// adding a `many(serviceAccessAuditRuns)` there later cannot make the pair
+		// ambiguous.
+		initiatedByUser: one(users, {
+			fields: [serviceAccessAuditRuns.initiatedByUserId],
+			references: [users.id],
+			relationName: 'serviceAccessAuditRunInitiatedBy',
+		}),
+		enforcedByUser: one(users, {
+			fields: [serviceAccessAuditRuns.enforcedByUserId],
+			references: [users.id],
+			relationName: 'serviceAccessAuditRunEnforcedBy',
+		}),
+		rows: many(serviceAccessAuditRows),
+	})
+)
+
+export const serviceAccessAuditRowsRelations = relations(serviceAccessAuditRows, ({ one }) => ({
+	run: one(serviceAccessAuditRuns, {
+		fields: [serviceAccessAuditRows.runId],
+		references: [serviceAccessAuditRuns.id],
+	}),
+	user: one(users, {
+		fields: [serviceAccessAuditRows.userId],
+		references: [users.id],
+	}),
+}))
+
+/**
  * Export schema for db client
  */
 export const schema = {
@@ -1396,6 +1666,8 @@ export const schema = {
 	mumbleTempops,
 	mumbleTempopGuests,
 	mumbleTempopCredentialHandoffs,
+	serviceAccessAuditRuns,
+	serviceAccessAuditRows,
 	usersRelations,
 	userCharactersRelations,
 	userSessionsRelations,
@@ -1421,6 +1693,8 @@ export const schema = {
 	dkpDecayConfigRelations,
 	mumbleTempopsRelations,
 	mumbleTempopGuestsRelations,
+	serviceAccessAuditRunsRelations,
+	serviceAccessAuditRowsRelations,
 }
 
 /**

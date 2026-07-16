@@ -12,6 +12,7 @@ import type { CsvExportWorkflowParams } from './workflows/csv-export.workflow'
 import type { UserDiscordRefreshWorkflowParams } from './workflows/user-discord-refresh.workflow'
 import type { UserMumbleRefreshWorkflowParams } from './workflows/user-mumble-refresh.workflow'
 import type { DiscordMemberAuditWorkflowParams } from './workflows/discord-member-audit.workflow'
+import type { ServiceAccessAuditWorkflowParams } from './workflows/service-access-audit.workflow'
 import type { UserRefreshWorkflowParams } from './workflows/user-refresh.workflow'
 
 export type Env = SharedHonoEnv & {
@@ -68,6 +69,8 @@ export type Env = SharedHonoEnv & {
 	USER_DISCORD_REFRESH_WORKFLOW: Workflow<UserDiscordRefreshWorkflowParams>
 	/** Discord Member Audit Workflow binding */
 	DISCORD_MEMBER_AUDIT_WORKFLOW: Workflow<DiscordMemberAuditWorkflowParams>
+	/** Service Access Audit Workflow binding (read-only eligibility scan) */
+	SERVICE_ACCESS_AUDIT_WORKFLOW: Workflow<ServiceAccessAuditWorkflowParams>
 	/** User Mumble Refresh Workflow binding */
 	USER_MUMBLE_REFRESH_WORKFLOW: Workflow<UserMumbleRefreshWorkflowParams>
 	/** CSV Export Workflow binding */

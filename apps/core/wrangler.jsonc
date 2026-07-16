@@ -248,6 +248,11 @@
 			"name": "user-mumble-refresh-workflow",
 			"binding": "USER_MUMBLE_REFRESH_WORKFLOW",
 			"class_name": "UserMumbleRefreshWorkflow"
+		},
+		{
+			"name": "service-access-audit-workflow",
+			"binding": "SERVICE_ACCESS_AUDIT_WORKFLOW",
+			"class_name": "ServiceAccessAuditWorkflow"
 		}
 	]
 }
