@@ -1,5 +1,6 @@
 import { AlertTriangle, Ban, Play, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -620,9 +621,12 @@ export default function AdminServicesAuditPage() {
 									</div>
 									<div className="flex flex-wrap gap-2">
 										{run.sample.map((sampleRow) => (
-											<div
+											// The copy above tells the operator to investigate anyone here they
+											// recognise, so the name has to be the way in.
+											<Link
 												key={sampleRow.userId}
-												className="flex items-center gap-2 rounded-md border border-border px-2 py-1"
+												to={`/admin/users/${sampleRow.userId}`}
+												className="flex items-center gap-2 rounded-md border border-border px-2 py-1 hover:border-primary hover:bg-muted/50"
 											>
 												{sampleRow.mainCharacterId && (
 													<img
@@ -631,13 +635,13 @@ export default function AdminServicesAuditPage() {
 														className="h-6 w-6 rounded-full"
 													/>
 												)}
-												<span className="text-sm">
+												<span className="text-sm text-primary">
 													{sampleRow.mainCharacterName ?? sampleRow.userId}
 												</span>
 												<Badge variant={reasonBadgeVariant(sampleRow.reason)}>
 													{REASON_LABELS[sampleRow.reason]}
 												</Badge>
-											</div>
+											</Link>
 										))}
 									</div>
 								</div>
@@ -723,7 +727,13 @@ export default function AdminServicesAuditPage() {
 										rowsQuery.data?.rows.map((row) => (
 											<TableRow key={row.id}>
 												<TableCell>
-													<div className="flex items-center gap-2">
+													{/* Straight to the user's admin page: this list exists to be
+													    investigated, and the next question about anyone on it is always
+													    "what does this person actually look like?". */}
+													<Link
+														to={`/admin/users/${row.userId}`}
+														className="flex items-center gap-2 text-primary hover:underline"
+													>
 														{row.mainCharacterId && (
 															<img
 																src={characterPortraitUrl(row.mainCharacterId, 32)}
@@ -732,7 +742,7 @@ export default function AdminServicesAuditPage() {
 															/>
 														)}
 														<span>{row.mainCharacterName ?? row.userId}</span>
-													</div>
+													</Link>
 												</TableCell>
 												<TableCell>
 													<Badge variant={row.eligible ? 'success' : 'destructive'}>
