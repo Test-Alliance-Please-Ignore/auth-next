@@ -45,6 +45,8 @@ export function formatSrpRequest(request: any): SRPRequestResponse {
 		srpFinalValue: request.srpFinalValue ?? undefined,
 		srpPriceSnapshotTime: request.srpPriceSnapshotTime?.toISOString() ?? undefined,
 		srpItemPrices: (request.srpItemPrices as any) ?? undefined,
+		killmailItemNames: (request.killmailItemNames as any) ?? undefined,
+		killmailItemGroupIds: (request.killmailItemGroupIds as any) ?? undefined,
 		killmailItems: (request.killmailData as any)?.victim?.items ?? undefined,
 		createdAt: request.createdAt.toISOString(),
 		updatedAt: request.updatedAt.toISOString(),

@@ -105,6 +105,11 @@ function makeSrpStub() {
 		getComments: vi.fn().mockResolvedValue([]),
 		addComment: vi.fn(),
 		approveRequest: vi.fn(),
+		backfillRecentLossesFromCache: vi.fn().mockResolvedValue({
+			characterId: '7001',
+			cachedLosses: 0,
+			persistedLosses: 0,
+		}),
 		startRecentLossRefresh: vi.fn().mockResolvedValue({
 			allowed: true,
 			retryAfterMs: 0,
@@ -156,7 +161,15 @@ function mockDbPrimaryCharacterRows(
 	const where = vi.fn().mockResolvedValue(rows)
 	const from = vi.fn(() => ({ where }))
 	const select = vi.fn(() => ({ from }))
-	createDbMock.mockReturnValue({ select } as any)
+	createDbMock.mockReturnValue({
+		select,
+		execute: vi.fn().mockResolvedValue({ rows: [] }),
+		query: {
+			userCharacters: {
+				findMany: vi.fn().mockResolvedValue([]),
+			},
+		},
+	} as any)
 }
 
 describe('srp routes - permissions', () => {
@@ -662,6 +675,53 @@ describe('srp routes - permissions', () => {
 				totalCharacters: 2,
 			},
 		})
+	})
+
+	it('backfills cached losses for all users with SRP request history', async () => {
+		const app = createApp(makeUser({ id: 'srp-backfill-admin', is_admin: true }))
+		const execute = vi.fn().mockResolvedValue({
+			rows: [{ userId: 'user-1' }, { userId: 'user-2' }],
+		})
+		const findMany = vi.fn().mockResolvedValue([
+			{ userId: 'user-1', characterId: '7001', characterName: 'Pilot One' },
+			{ userId: 'user-1', characterId: '7002', characterName: 'Pilot Two' },
+			{ userId: 'user-2', characterId: '8001', characterName: 'Other Pilot' },
+		])
+		createDbMock.mockReturnValue({
+			execute,
+			query: {
+				userCharacters: {
+					findMany,
+				},
+			},
+		} as any)
+
+		const response = await app.request('/api/srp/losses/refresh/backfill', { method: 'POST' }, env)
+		const body = await response.json<any>()
+
+		expect(response.status).toBe(202)
+		expect(body).toMatchObject({
+			success: true,
+			usersWithHistory: 2,
+			usersQueued: 2,
+			totalCharacters: 3,
+		})
+		expect(srpStub.backfillRecentLossesFromCache).toHaveBeenCalledTimes(3)
+		expect(srpStub.backfillRecentLossesFromCache).toHaveBeenCalledWith('7001')
+		expect(srpStub.backfillRecentLossesFromCache).toHaveBeenCalledWith('7002')
+		expect(srpStub.backfillRecentLossesFromCache).toHaveBeenCalledWith('8001')
+		expect(execute).toHaveBeenCalled()
+		expect(findMany).toHaveBeenCalled()
+	})
+
+	it('denies backfill refresh without manager access', async () => {
+		const app = createApp(makeUser({ id: 'srp-backfill-denied' }))
+
+		const response = await app.request('/api/srp/losses/refresh/backfill', { method: 'POST' }, env)
+
+		expect(response.status).toBe(403)
+		expect(await response.json()).toEqual({ error: 'Requires manager-or-higher permissions' })
+		expect(srpStub.backfillRecentLossesFromCache).not.toHaveBeenCalled()
 	})
 
 	it('denies non-owner non-staff from viewing another request', async () => {

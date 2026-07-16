@@ -30,21 +30,17 @@ export interface WorkflowRetentionPolicy {
  * The account plan sets only the ceiling (30 days on Paid); per-instance retention can
  * shorten it, never extend it.
  *
- * `successRetention: '1 hour'` clears the longest read-back window in this repo by ~4x:
- * apps/core persists a USER_REFRESH_WORKFLOW instance id and a later cron tick reads its
- * status back, bounded by that Durable Object's 15 minute pending TTL. Not lower: no
- * minimum is documented, the REST schema declares no floor, and miniflare ignores
- * `retention` entirely — so `wrangler dev` and every vitest-pool-workers test here are
- * blind to this field, and a shorter value cannot be validated before deploy.
+ * Cloudflare's docs expose durations in seconds/minutes/hours/etc and do not document a
+ * lower floor for retention. We keep the default at `1 day` for both success and error
+ * retention so finished workflow state remains available briefly without lingering long
+ * enough to add unnecessary storage cost.
  *
- * `errorRetention: '7 days'` matches the Workers Logs window. Retained error state is
- * currently the only per-step failure attribution that exists, because no workflow in this
- * repo reports to Sentry (`withSentry` wraps the Hono app; workflow classes are exported
- * outside it). Shorten only once workflow errors reach Sentry.
+ * Miniflare ignores `retention` entirely, so `wrangler dev` and every vitest-pool-workers
+ * test here are blind to this field.
  */
 export const DEFAULT_WORKFLOW_RETENTION = {
-	successRetention: '1 hour',
-	errorRetention: '7 days',
+	successRetention: '1 day',
+	errorRetention: '1 day',
 } as const satisfies WorkflowRetentionPolicy
 
 /**

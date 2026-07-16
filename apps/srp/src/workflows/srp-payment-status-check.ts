@@ -12,7 +12,7 @@ import {
 
 import type { MessageContent } from '@repo/discord'
 import type { EsiTypeResolver } from '@repo/esi'
-import type { Srp } from '@repo/srp'
+import type { SRPRequestResponse, Srp } from '@repo/srp'
 import type { Env } from '../context'
 import { logger } from '@repo/hono-helpers'
 
@@ -246,6 +246,633 @@ async function resolveCharacterName(input: {
 	return fromEsi || null
 }
 
+type PaymentWorkflowOutcome =
+	| {
+			status: 'matched'
+			journalId: string
+	  }
+	| {
+			status: 'mismatch'
+			journalId: string
+			discordAlertSent: boolean
+			deduped: boolean
+	  }
+	| {
+			status: 'missing'
+			candidateCount: number
+			discordAlertSent: boolean
+			deduped: boolean
+	  }
+	| {
+			status: 'none'
+			candidateCount: number
+	  }
+
+async function processPaymentStatus(input: {
+	db: ReturnType<typeof createDb>
+	env: Env
+	request: SRPRequestResponse
+	approvedAmount: bigint
+	processorCorporationId: string
+	reasonNeedle: string
+	srpGroupId: string
+	srpStub: Pick<Srp, 'updateReviewState'>
+	workflowInstanceId: string
+}): Promise<PaymentWorkflowOutcome> {
+	const { db, env, request, approvedAmount, processorCorporationId, reasonNeedle, srpGroupId, srpStub, workflowInstanceId } =
+		input
+	const [existingCursor] = (
+		await db.execute<ExistingScanCursorRow>(
+			sql`select
+				payment_scan_cursor_date::text as "cursorDate"
+			from srp_requests
+			where id = ${request.id}
+			limit 1`
+		)
+	).rows
+	const existingCursorDate =
+		existingCursor?.cursorDate && !Number.isNaN(Date.parse(existingCursor.cursorDate))
+			? new Date(existingCursor.cursorDate)
+			: null
+
+	const paymentDate = request.paymentDate ? new Date(request.paymentDate) : null
+	const paymentDateMs = paymentDate?.getTime()
+	const fallbackFromDate =
+		typeof paymentDateMs === 'number' && Number.isFinite(paymentDateMs)
+			? new Date(paymentDateMs - MS_PER_DAY)
+			: new Date(request.createdAt)
+	const fromDate = fallbackFromDate
+
+	const walletMatches = (
+		await db.execute<WalletJournalMatchRow>(
+			sql`select
+				journal_id::text as "journalId",
+				amount as "amount",
+				reason as "reason",
+				first_party_id as "firstPartyId",
+				second_party_id as "secondPartyId",
+				date as "entryDate"
+			from corporation_wallet_journal
+			where corporation_id = ${processorCorporationId}
+				and date >= ${fromDate}
+				and amount::numeric <> 0
+				and ref_type = 'corporation_account_withdrawal'
+				and reason is not null
+				and reason ilike ${`%${reasonNeedle}%`}
+			order by date desc
+			limit 250`
+		)
+	).rows ?? []
+
+	const scannedEntryDates = walletMatches
+		.map((row) => parseDateOrNull(row.entryDate))
+		.filter((date): date is Date => date !== null)
+	const maxScannedEntryDate =
+		scannedEntryDates.length > 0
+			? scannedEntryDates.reduce((latest, date) => (date.getTime() > latest.getTime() ? date : latest))
+			: null
+	const nextCursorDate: Date = maxScannedEntryDate ?? new Date()
+	if (!existingCursorDate || nextCursorDate.getTime() > existingCursorDate.getTime()) {
+		await db.execute(
+			sql`update srp_requests
+				set
+					payment_scan_cursor_date = ${nextCursorDate},
+					updated_at = now()
+				where id = ${request.id}`
+		)
+	}
+
+	const rowsWithAmounts = walletMatches
+		.map((entry) => ({
+			entry,
+			parsedAmount: parseAmountToBigInt(entry.amount),
+		}))
+		.filter((row): row is { entry: WalletJournalMatchRow; parsedAmount: bigint } => row.parsedAmount !== null)
+
+	const matchingRecipientRows = rowsWithAmounts.filter(
+		(row) => row.entry.secondPartyId === request.characterId
+	)
+
+	let matchedEntry = matchingRecipientRows.find(
+		(row) => absBigInt(row.parsedAmount) === absBigInt(approvedAmount)
+	)?.entry
+
+	if (!matchedEntry && request.paymentDate) {
+		const fromDate = new Date(paymentDate!.getTime() - EMPTY_REASON_MATCH_WINDOW_MS)
+		const toDate = new Date(paymentDate!.getTime() + EMPTY_REASON_MATCH_WINDOW_MS)
+		const fallbackRows = await db.execute<WalletJournalMatchRow>(
+			sql`select
+				journal_id::text as "journalId",
+				amount as "amount",
+				reason as "reason",
+				first_party_id as "firstPartyId",
+				second_party_id as "secondPartyId",
+				date as "entryDate"
+			from corporation_wallet_journal
+			where corporation_id = ${processorCorporationId}
+				and ref_type = 'corporation_account_withdrawal'
+				and amount::numeric <> 0
+				and second_party_id = ${request.characterId}
+				and date >= ${fromDate}
+				and date <= ${toDate}
+			order by date desc
+			limit 25`
+		)
+		const fallbackMatches = (fallbackRows.rows ?? []).filter((entry) => {
+			const parsed = parseAmountToBigInt(entry.amount)
+			if (parsed === null) return false
+			return absBigInt(parsed) === absBigInt(approvedAmount) && isReasonEmpty(entry.reason)
+		})
+		if (fallbackMatches.length === 1) {
+			matchedEntry = fallbackMatches[0]
+		}
+	}
+
+	const recipientMismatchEntry = rowsWithAmounts.find(
+		(row) => row.entry.secondPartyId !== request.characterId && absBigInt(row.parsedAmount) === absBigInt(approvedAmount)
+	)?.entry
+
+	const amountMismatchEntry = matchingRecipientRows.find(
+		(row) => absBigInt(row.parsedAmount) !== absBigInt(approvedAmount)
+	)?.entry
+
+	const anomalyEntry = amountMismatchEntry ?? recipientMismatchEntry
+
+	if (matchedEntry) {
+		await db.execute(
+			sql`update srp_payment_alerts
+				set
+					state = 'acknowledged',
+					acknowledged_at = now(),
+					acknowledged_by_user_id = ${SYSTEM_ACTOR_USER_ID}::uuid,
+					acknowledged_by_character_name = ${SYSTEM_ACTOR_CHARACTER_NAME}
+				where request_id = ${request.id}
+					and state = 'open'`
+		)
+
+		await srpStub.updateReviewState(
+			request.id,
+			SYSTEM_ACTOR_USER_ID,
+			SYSTEM_ACTOR_CHARACTER_NAME,
+			'paid',
+			`Auto-confirmed by wallet transaction ${matchedEntry.journalId} (${matchedEntry.reason ?? reasonNeedle})`
+		)
+
+		logger.info('[SRP Payment Workflow] Marked request as paid', {
+			requestId: request.id,
+			workflowInstanceId,
+			processorCorporationId,
+			journalId: matchedEntry.journalId,
+			amount: matchedEntry.amount,
+			reason: matchedEntry.reason,
+		})
+
+		return {
+			status: 'matched',
+			journalId: matchedEntry.journalId,
+		}
+	}
+
+	if (anomalyEntry) {
+		const mismatchReason = anomalyEntry.reason ?? reasonNeedle
+		const anomalyEntryAmount = parseAmountToBigInt(anomalyEntry.amount)
+		const isRecipientMismatch = anomalyEntry.secondPartyId !== request.characterId
+		const isAmountMismatch =
+			anomalyEntryAmount !== null && absBigInt(anomalyEntryAmount) !== absBigInt(approvedAmount)
+		const resolvedIds = [anomalyEntry.firstPartyId, anomalyEntry.secondPartyId, request.characterId].filter(
+			(id): id is string => Boolean(id)
+		)
+		const uniqueResolvedIds = [...new Set(resolvedIds)]
+		let resolvedNames: Record<string, string> = {}
+		if (uniqueResolvedIds.length > 0) {
+			const resolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
+			resolvedNames = await resolver.resolveIds(uniqueResolvedIds).catch(() => ({}))
+		}
+
+		const [existingAlert] = (
+			await db.execute<ExistingPaymentAlertRow>(
+				sql`select id::text as "id"
+					from srp_payment_alerts
+					where request_id = ${request.id}
+						and journal_id = ${anomalyEntry.journalId}
+						and observed_amount = ${anomalyEntry.amount}
+					limit 1`
+			)
+		).rows
+		const [existingOpenAlertForRequest] = (
+			await db.execute<ExistingPaymentAlertByRequestRow>(
+				sql`select id::text as "id"
+					from srp_payment_alerts
+					where request_id = ${request.id}
+						and kind = 'payment_mismatch'
+						and state = 'open'
+					order by detected_at desc
+					limit 1`
+			)
+		).rows
+
+		let paymentAlertId: string
+		const mismatchAlertMetadata = JSON.stringify({
+			isRecipientMismatch,
+			isAmountMismatch,
+			expectedRecipientCharacterId: request.characterId,
+			actualRecipientCharacterId: anomalyEntry.secondPartyId ?? null,
+		})
+		if (existingAlert || existingOpenAlertForRequest) {
+			const targetAlertId = existingAlert?.id ?? existingOpenAlertForRequest?.id
+			if (!targetAlertId) throw new Error('Failed to determine target SRP payment mismatch alert id')
+			paymentAlertId = targetAlertId
+		} else {
+			const [insertedAlert] = (
+				await db.execute<ExistingPaymentAlertRow>(
+					sql`insert into srp_payment_alerts (
+						request_id,
+						kind,
+						state,
+						journal_id,
+						expected_amount,
+						observed_amount,
+						expected_recipient_character_id,
+						expected_recipient_character_name,
+						actual_recipient_character_id,
+						actual_recipient_character_name,
+						actual_payer_id,
+						actual_payer_name,
+						reason,
+						payment_processor_corporation_id,
+						metadata
+					) values (
+						${request.id},
+						'payment_mismatch',
+						'open',
+						${anomalyEntry.journalId},
+						${request.approvedAmount ?? '0'},
+						${anomalyEntry.amount},
+						${request.characterId},
+						${request.characterName},
+						${anomalyEntry.secondPartyId},
+						${anomalyEntry.secondPartyId ? (resolvedNames[anomalyEntry.secondPartyId] ?? null) : null},
+						${anomalyEntry.firstPartyId},
+						${anomalyEntry.firstPartyId ? (resolvedNames[anomalyEntry.firstPartyId] ?? null) : null},
+						${mismatchReason},
+						${processorCorporationId},
+						${mismatchAlertMetadata}::jsonb
+					)
+					returning id::text as "id"`
+				)
+			).rows
+			if (!insertedAlert) throw new Error('Failed to persist SRP payment mismatch alert')
+			paymentAlertId = insertedAlert.id
+		}
+
+		const [existingEvent] = (
+			await db.execute<ExistingMismatchHistoryRow>(
+				sql`select id::text as "id"
+					from srp_request_history
+					where request_id = ${request.id}
+					and action = ${PAYMENT_MISMATCH_HISTORY_ACTION}
+					limit 1`
+			)
+		).rows
+
+		let discordAlertSent = false
+		let discordAlertError: string | null = null
+		let srpGroupOwnerUserId: string | null = null
+		let srpGroupName: string | null = null
+
+		if (!existingEvent && srpGroupId) {
+			const [groupOwner] = (
+				await db.execute<GroupOwnerRow>(
+					sql`select
+						id::text as "groupId",
+						name as "groupName",
+						owner_id as "ownerUserId"
+					from groups
+					where id = ${srpGroupId}::uuid
+					limit 1`
+				)
+			).rows
+			if (groupOwner) {
+				srpGroupOwnerUserId = groupOwner.ownerUserId
+				srpGroupName = groupOwner.groupName
+				try {
+					const discord = getStub<DiscordDirectMessenger>(env.DISCORD, 'default')
+					const result = await discord.sendDirectMessage(
+						groupOwner.ownerUserId,
+						buildMismatchDiscordAlertContent({
+							requestId: request.id,
+							requestCharacterId: request.characterId,
+							requestCharacterName: request.characterName,
+							expectedAmount: request.approvedAmount ?? '0',
+							observedAmount: anomalyEntry.amount,
+							journalId: anomalyEntry.journalId,
+							payerId: anomalyEntry.firstPartyId,
+							payerName: anomalyEntry.firstPartyId
+								? (resolvedNames[anomalyEntry.firstPartyId] ?? null)
+								: null,
+							payeeId: anomalyEntry.secondPartyId,
+							payeeName: anomalyEntry.secondPartyId
+								? (resolvedNames[anomalyEntry.secondPartyId] ?? null)
+								: null,
+							isRecipientMismatch,
+						})
+					)
+					discordAlertSent = result.success
+					discordAlertError = result.success ? null : (result.error ?? 'Failed to send Discord DM')
+				} catch (error) {
+					discordAlertSent = false
+					discordAlertError = error instanceof Error ? error.message : String(error)
+				}
+			} else {
+				discordAlertError = 'Configured SRP group not found'
+			}
+		} else if (!srpGroupId) {
+			discordAlertError = 'No SRP group configured'
+		}
+
+		if (!existingEvent) {
+			await db.execute(
+				sql`insert into srp_request_history (
+					request_id,
+					actor_user_id,
+					actor_character_name,
+					action,
+					visibility,
+					metadata
+				) values (
+					${request.id},
+					${SYSTEM_ACTOR_USER_ID}::uuid,
+					${SYSTEM_ACTOR_CHARACTER_NAME},
+					${PAYMENT_MISMATCH_HISTORY_ACTION},
+					'internal',
+					${JSON.stringify({
+						journalId: anomalyEntry.journalId,
+						reason: mismatchReason,
+						expectedAmount: request.approvedAmount ?? '0',
+						observedAmount: anomalyEntry.amount,
+						expectedRecipientCharacterId: request.characterId,
+						expectedRecipientCharacterName: request.characterName,
+						actualRecipientCharacterId: anomalyEntry.secondPartyId,
+						actualRecipientCharacterName: anomalyEntry.secondPartyId
+							? (resolvedNames[anomalyEntry.secondPartyId] ?? null)
+							: null,
+						actualPayerId: anomalyEntry.firstPartyId,
+						actualPayerName: anomalyEntry.firstPartyId
+							? (resolvedNames[anomalyEntry.firstPartyId] ?? null)
+							: null,
+						isRecipientMismatch,
+						isAmountMismatch,
+						paymentProcessorCorporationId: processorCorporationId,
+						srpGroupId: srpGroupId || null,
+						srpGroupName,
+						srpGroupOwnerUserId,
+						discordAlertSent,
+						discordAlertError,
+						paymentAlertId,
+						detectedAt: new Date().toISOString(),
+					})}::jsonb
+				)`
+			)
+		}
+
+		logger.warn('[SRP Payment Workflow] Reason matched but amount mismatched', {
+			requestId: request.id,
+			workflowInstanceId,
+			processorCorporationId,
+			srpGroupId: null,
+			journalId: anomalyEntry.journalId,
+			expectedAmount: request.approvedAmount,
+			observedAmount: anomalyEntry.amount,
+			expectedRecipientCharacterId: request.characterId,
+			actualRecipientCharacterId: anomalyEntry.secondPartyId,
+			isRecipientMismatch,
+			isAmountMismatch,
+			discordAlertSent,
+			discordAlertError,
+			deduped: Boolean(existingEvent),
+		})
+
+		return {
+			status: 'mismatch',
+			journalId: anomalyEntry.journalId,
+			discordAlertSent,
+			deduped: Boolean(existingEvent),
+		}
+	}
+
+	const isOverdueMissingPayment =
+		typeof paymentDateMs === 'number' &&
+		Number.isFinite(paymentDateMs) &&
+		Date.now() - paymentDateMs > MS_PER_DAY
+
+	if (isOverdueMissingPayment) {
+		const syntheticJournalId = `missing-payment-${request.id}`
+		const [existingMissingAlert] = (
+			await db.execute<ExistingPaymentAlertRow>(
+				sql`select id::text as "id"
+					from srp_payment_alerts
+					where request_id = ${request.id}
+						and kind = 'payment_missing'
+						and journal_id = ${syntheticJournalId}
+					limit 1`
+			)
+		).rows
+
+		let paymentAlertId: string
+		const [latestPaymentSubmittedActor] = (
+			await db.execute<LatestPaymentSubmittedActorRow>(
+				sql`select
+					actor_user_id::text as "actorUserId",
+					actor_character_name as "actorCharacterName"
+				from srp_request_history
+				where request_id = ${request.id}
+					and action = 'payment_submitted'
+				order by timestamp desc
+				limit 1`
+				)
+			).rows
+		const resolvedExpectedRecipientName =
+			(await resolveCharacterName({
+				db,
+				env,
+				characterId: request.characterId,
+			})) ?? request.characterName
+		if (existingMissingAlert) {
+			paymentAlertId = existingMissingAlert.id
+		} else {
+			const [insertedMissingAlert] = (
+				await db.execute<ExistingPaymentAlertRow>(
+					sql`insert into srp_payment_alerts (
+						request_id,
+						kind,
+						state,
+						journal_id,
+						expected_amount,
+						observed_amount,
+						expected_recipient_character_id,
+						expected_recipient_character_name,
+						actual_recipient_character_id,
+						actual_recipient_character_name,
+						actual_payer_id,
+						actual_payer_name,
+						reason,
+						payment_processor_corporation_id,
+						metadata
+					) values (
+						${request.id},
+						'payment_missing',
+						'open',
+						${syntheticJournalId},
+						${request.approvedAmount ?? '0'},
+						'0',
+						${request.characterId},
+						${resolvedExpectedRecipientName},
+						${request.characterId},
+						${resolvedExpectedRecipientName},
+						${latestPaymentSubmittedActor?.actorUserId ?? null},
+						${latestPaymentSubmittedActor?.actorCharacterName ?? request.paymentCharacterName ?? null},
+						${`No matching wallet transaction found within 24 hours of payment_pending for ${reasonNeedle}`},
+						${processorCorporationId},
+						${JSON.stringify({
+							alertType: 'payment_missing',
+							paymentDate: request.paymentDate ?? null,
+							expectedReason: reasonNeedle,
+							thresholdHours: 24,
+							matchedTransactionCount: walletMatches.length,
+							intendedPayerUserId: latestPaymentSubmittedActor?.actorUserId ?? null,
+							intendedPayerCharacterName:
+								latestPaymentSubmittedActor?.actorCharacterName ??
+								request.paymentCharacterName ??
+								null,
+						})}::jsonb
+					)
+					returning id::text as "id"`
+				)
+			).rows
+			if (!insertedMissingAlert) throw new Error('Failed to persist SRP missing payment alert')
+			paymentAlertId = insertedMissingAlert.id
+		}
+
+		const [existingMissingEvent] = (
+			await db.execute<ExistingMismatchHistoryRow>(
+				sql`select id::text as "id"
+					from srp_request_history
+					where request_id = ${request.id}
+						and action = ${PAYMENT_MISSING_HISTORY_ACTION}
+					limit 1`
+			)
+		).rows
+
+		let missingDiscordAlertSent = false
+		let missingDiscordAlertError: string | null = null
+		let missingSrpGroupOwnerUserId: string | null = null
+		let missingSrpGroupName: string | null = null
+
+		if (!existingMissingEvent && srpGroupId) {
+			const [groupOwner] = (
+				await db.execute<GroupOwnerRow>(
+					sql`select
+						id::text as "groupId",
+						name as "groupName",
+						owner_id as "ownerUserId"
+					from groups
+					where id = ${srpGroupId}::uuid
+					limit 1`
+				)
+			).rows
+			if (groupOwner) {
+				missingSrpGroupOwnerUserId = groupOwner.ownerUserId
+				missingSrpGroupName = groupOwner.groupName
+				try {
+					const discord = getStub<DiscordDirectMessenger>(env.DISCORD, 'default')
+					const result = await discord.sendDirectMessage(
+						groupOwner.ownerUserId,
+						buildMissingDiscordAlertContent({
+							requestId: request.id,
+							requestCharacterId: request.characterId,
+							requestCharacterName: request.characterName,
+							expectedAmount: request.approvedAmount ?? '0',
+							expectedReason: reasonNeedle,
+							thresholdHours: 24,
+						})
+					)
+					missingDiscordAlertSent = result.success
+					missingDiscordAlertError = result.success ? null : (result.error ?? 'Failed to send Discord DM')
+				} catch (error) {
+					missingDiscordAlertSent = false
+					missingDiscordAlertError = error instanceof Error ? error.message : String(error)
+				}
+			} else {
+				missingDiscordAlertError = 'Configured SRP group not found'
+			}
+		}
+
+		if (!existingMissingEvent) {
+			await db.execute(
+				sql`insert into srp_request_history (
+					request_id,
+					actor_user_id,
+					actor_character_name,
+					action,
+					visibility,
+					metadata
+				) values (
+					${request.id},
+					${SYSTEM_ACTOR_USER_ID}::uuid,
+					${SYSTEM_ACTOR_CHARACTER_NAME},
+					${PAYMENT_MISSING_HISTORY_ACTION},
+					'internal',
+					${JSON.stringify({
+						paymentAlertId,
+						expectedAmount: request.approvedAmount ?? '0',
+						expectedRecipientCharacterId: request.characterId,
+						expectedRecipientCharacterName: request.characterName,
+						expectedReason: reasonNeedle,
+						paymentDate: request.paymentDate ?? null,
+						thresholdHours: 24,
+						matchedTransactionCount: walletMatches.length,
+						srpGroupId: srpGroupId || null,
+						srpGroupName: missingSrpGroupName,
+						srpGroupOwnerUserId: missingSrpGroupOwnerUserId,
+						discordAlertSent: missingDiscordAlertSent,
+						discordAlertError: missingDiscordAlertError,
+					})}::jsonb
+				)`
+			)
+		}
+
+		logger.info('[SRP Payment Workflow] No matching wallet transaction found', {
+			requestId: request.id,
+			workflowInstanceId,
+			processorCorporationId,
+			lossId: request.id,
+			expectedReason: reasonNeedle,
+			expectedAmount: request.approvedAmount,
+			candidateCount: walletMatches.length,
+		})
+		return {
+			status: 'missing',
+			candidateCount: walletMatches.length,
+			discordAlertSent: missingDiscordAlertSent,
+			deduped: Boolean(existingMissingEvent),
+		}
+	}
+
+	logger.info('[SRP Payment Workflow] No matching wallet transaction found', {
+		requestId: request.id,
+		workflowInstanceId,
+		processorCorporationId,
+		lossId: request.id,
+		expectedReason: reasonNeedle,
+		expectedAmount: request.approvedAmount,
+		candidateCount: walletMatches.length,
+	})
+	return {
+		status: 'none',
+		candidateCount: walletMatches.length,
+	}
+}
+
 export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 	Env,
 	SrpPaymentStatusCheckWorkflowParams
@@ -291,622 +918,53 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 			return { success: true, skipped: 'processor_not_configured' as const }
 		}
 
-			const approvedAmount = parseAmountToBigInt(request.approvedAmount)
-			const reasonNeedle = buildKillmailReasonNeedle(request.id)
-			const db = createDb(this.env.DATABASE_URL)
-			const [existingCursor] = (
-				await db.execute<ExistingScanCursorRow>(
-					sql`select
-						payment_scan_cursor_date::text as "cursorDate"
-					from srp_requests
-					where id = ${request.id}
-					limit 1`
-			)
-		).rows
-			const existingCursorDate =
-				existingCursor?.cursorDate && !Number.isNaN(Date.parse(existingCursor.cursorDate))
-					? new Date(existingCursor.cursorDate)
-					: null
-
-			const walletMatches = await step.do(
-				'find-wallet-journal-matches',
+		const approvedAmount = parseAmountToBigInt(request.approvedAmount)!
+		const reasonNeedle = buildKillmailReasonNeedle(request.id)
+		const db = createDb(this.env.DATABASE_URL)
+		const outcome = await step.do(
+			'find-and-apply-wallet-journal-state',
 			{
 				retries: { limit: 3, delay: 1000, backoff: 'exponential' },
 				timeout: '30 seconds',
 			},
-			async () => {
-				const paymentDate = request.paymentDate ? new Date(request.paymentDate) : null
-				const paymentDateMs = paymentDate?.getTime()
-				const fallbackFromDate =
-					typeof paymentDateMs === 'number' && Number.isFinite(paymentDateMs)
-						? new Date(paymentDateMs - MS_PER_DAY)
-						: new Date(request.createdAt)
-				const fromDate = fallbackFromDate
-				const result = await db.execute<WalletJournalMatchRow>(
-					sql`select
-						journal_id::text as "journalId",
-						amount as "amount",
-						reason as "reason",
-						first_party_id as "firstPartyId",
-						second_party_id as "secondPartyId",
-						date as "entryDate"
-					from corporation_wallet_journal
-					where corporation_id = ${processorCorporationId}
-						and date >= ${fromDate}
-						and amount::numeric <> 0
-						and ref_type = 'corporation_account_withdrawal'
-						and reason is not null
-						and reason ilike ${`%${reasonNeedle}%`}
-					order by date desc
-					limit 250`
-				)
-					return result.rows ?? []
-				}
-			)
-			const scannedEntryDates = walletMatches
-				.map((row) => parseDateOrNull(row.entryDate))
-				.filter((date): date is Date => date !== null)
-			const maxScannedEntryDate =
-				scannedEntryDates.length > 0
-					? scannedEntryDates.reduce((latest, date) =>
-						date.getTime() > latest.getTime() ? date : latest
-					)
-					: null
-			const nextCursorDate: Date = maxScannedEntryDate ?? new Date()
-		if (!existingCursorDate || nextCursorDate.getTime() > existingCursorDate.getTime()) {
-			await db.execute(
-				sql`update srp_requests
-					set
-						payment_scan_cursor_date = ${nextCursorDate},
-							updated_at = now()
-						where id = ${request.id}`
-				)
-			}
-
-			const rowsWithAmounts = walletMatches
-				.map((entry) => ({
-				entry,
-				parsedAmount: parseAmountToBigInt(entry.amount),
-			}))
-			.filter((row): row is { entry: WalletJournalMatchRow; parsedAmount: bigint } => row.parsedAmount !== null)
-
-		const matchingRecipientRows = rowsWithAmounts.filter(
-			(row) => row.entry.secondPartyId === request.characterId
+			async () =>
+				processPaymentStatus({
+					db,
+					env: this.env,
+					request,
+					approvedAmount,
+					processorCorporationId,
+					reasonNeedle,
+					srpGroupId: config?.srpGroupId?.trim() ?? '',
+					srpStub: {
+						updateReviewState: srpStub.updateReviewState.bind(srpStub),
+					},
+					workflowInstanceId,
+				})
 		)
 
-		let matchedEntry = matchingRecipientRows.find(
-			(row) => approvedAmount !== null && absBigInt(row.parsedAmount) === absBigInt(approvedAmount)
-		)?.entry
-		if (!matchedEntry && approvedAmount !== null && request.paymentDate) {
-			const paymentDate = new Date(request.paymentDate)
-			const fromDate = new Date(paymentDate.getTime() - EMPTY_REASON_MATCH_WINDOW_MS)
-			const toDate = new Date(paymentDate.getTime() + EMPTY_REASON_MATCH_WINDOW_MS)
-			const fallbackRows = await db.execute<WalletJournalMatchRow>(
-				sql`select
-						journal_id::text as "journalId",
-						amount as "amount",
-						reason as "reason",
-						first_party_id as "firstPartyId",
-						second_party_id as "secondPartyId",
-						date as "entryDate"
-					from corporation_wallet_journal
-					where corporation_id = ${processorCorporationId}
-						and ref_type = 'corporation_account_withdrawal'
-						and amount::numeric <> 0
-						and second_party_id = ${request.characterId}
-						and date >= ${fromDate}
-						and date <= ${toDate}
-					order by date desc
-					limit 25`
-			)
-			const fallbackMatches = (fallbackRows.rows ?? []).filter((entry) => {
-				const parsed = parseAmountToBigInt(entry.amount)
-				if (parsed === null) return false
-				return absBigInt(parsed) === absBigInt(approvedAmount) && isReasonEmpty(entry.reason)
-			})
-			if (fallbackMatches.length === 1) {
-				matchedEntry = fallbackMatches[0]
+		if (outcome.status === 'matched') {
+			return {
+				success: true,
+				matched: true,
+				journalId: outcome.journalId,
 			}
 		}
 
-			const recipientMismatchEntry = rowsWithAmounts.find(
-				(row) =>
-					row.entry.secondPartyId !== request.characterId &&
-				approvedAmount !== null &&
-				absBigInt(row.parsedAmount) === absBigInt(approvedAmount)
-		)?.entry
-
-			const amountMismatchEntry = matchingRecipientRows.find(
-				(row) => approvedAmount !== null && absBigInt(row.parsedAmount) !== absBigInt(approvedAmount)
-			)?.entry
-
-			const anomalyEntry = amountMismatchEntry ?? recipientMismatchEntry
-			const srpGroupId = config?.srpGroupId?.trim() ?? ''
-
-			if (!matchedEntry && anomalyEntry) {
-				const mismatchReason = anomalyEntry.reason ?? reasonNeedle
-				const anomalyEntryAmount = parseAmountToBigInt(anomalyEntry.amount)
-			const isRecipientMismatch = anomalyEntry.secondPartyId !== request.characterId
-			const isAmountMismatch =
-				approvedAmount !== null &&
-				anomalyEntryAmount !== null &&
-				absBigInt(anomalyEntryAmount) !== absBigInt(approvedAmount)
-			const resolvedIds = [
-				anomalyEntry.firstPartyId,
-				anomalyEntry.secondPartyId,
-				request.characterId,
-			].filter((id): id is string => Boolean(id))
-			const uniqueResolvedIds = [...new Set(resolvedIds)]
-			let resolvedNames: Record<string, string> = {}
-			if (uniqueResolvedIds.length > 0) {
-				const resolver = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
-				resolvedNames = await resolver.resolveIds(uniqueResolvedIds).catch(() => ({}))
-			}
-
-			const [existingAlert] = (
-				await db.execute<ExistingPaymentAlertRow>(
-					sql`select id::text as "id"
-						from srp_payment_alerts
-						where request_id = ${request.id}
-							and journal_id = ${anomalyEntry.journalId}
-							and observed_amount = ${anomalyEntry.amount}
-						limit 1`
-				)
-			).rows
-			const [existingOpenAlertForRequest] = (
-				await db.execute<ExistingPaymentAlertByRequestRow>(
-					sql`select id::text as "id"
-						from srp_payment_alerts
-						where request_id = ${request.id}
-							and kind = 'payment_mismatch'
-							and state = 'open'
-						order by detected_at desc
-						limit 1`
-				)
-			).rows
-
-				let paymentAlertId: string
-				const mismatchAlertMetadata = JSON.stringify({
-					isRecipientMismatch,
-					isAmountMismatch,
-					expectedRecipientCharacterId: request.characterId,
-					actualRecipientCharacterId: anomalyEntry.secondPartyId ?? null,
-				})
-				if (existingAlert || existingOpenAlertForRequest) {
-					const targetAlertId = existingAlert?.id ?? existingOpenAlertForRequest?.id
-					if (!targetAlertId) throw new Error('Failed to determine target SRP payment mismatch alert id')
-					paymentAlertId = targetAlertId
-				} else {
-					const [insertedAlert] = (
-						await db.execute<ExistingPaymentAlertRow>(
-						sql`insert into srp_payment_alerts (
-								request_id,
-								kind,
-								state,
-								journal_id,
-								expected_amount,
-								observed_amount,
-								expected_recipient_character_id,
-								expected_recipient_character_name,
-								actual_recipient_character_id,
-								actual_recipient_character_name,
-								actual_payer_id,
-								actual_payer_name,
-								reason,
-								payment_processor_corporation_id,
-								metadata
-							) values (
-								${request.id},
-								'payment_mismatch',
-								'open',
-								${anomalyEntry.journalId},
-								${request.approvedAmount ?? '0'},
-								${anomalyEntry.amount},
-								${request.characterId},
-								${request.characterName},
-								${anomalyEntry.secondPartyId},
-								${anomalyEntry.secondPartyId ? (resolvedNames[anomalyEntry.secondPartyId] ?? null) : null},
-								${anomalyEntry.firstPartyId},
-								${anomalyEntry.firstPartyId ? (resolvedNames[anomalyEntry.firstPartyId] ?? null) : null},
-									${mismatchReason},
-									${processorCorporationId},
-									${mismatchAlertMetadata}::jsonb
-								)
-								returning id::text as "id"`
-						)
-				).rows
-				if (!insertedAlert) throw new Error('Failed to persist SRP payment mismatch alert')
-				paymentAlertId = insertedAlert.id
-			}
-
-			const [existingEvent] = (
-				await db.execute<ExistingMismatchHistoryRow>(
-					sql`select id::text as "id"
-						from srp_request_history
-						where request_id = ${request.id}
-							and action = ${PAYMENT_MISMATCH_HISTORY_ACTION}
-						limit 1`
-				)
-			).rows
-
-			let discordAlertSent = false
-			let discordAlertError: string | null = null
-			let srpGroupOwnerUserId: string | null = null
-			let srpGroupName: string | null = null
-
-			if (!existingEvent && srpGroupId) {
-				const [groupOwner] = (
-					await db.execute<GroupOwnerRow>(
-						sql`select
-								id::text as "groupId",
-								name as "groupName",
-								owner_id as "ownerUserId"
-							from groups
-							where id = ${srpGroupId}::uuid
-							limit 1`
-					)
-				).rows
-				if (groupOwner) {
-					srpGroupOwnerUserId = groupOwner.ownerUserId
-					srpGroupName = groupOwner.groupName
-						try {
-							const discord = getStub<DiscordDirectMessenger>(this.env.DISCORD, 'default')
-							const result = await discord.sendDirectMessage(
-								groupOwner.ownerUserId,
-								buildMismatchDiscordAlertContent({
-									requestId: request.id,
-									requestCharacterId: request.characterId,
-									requestCharacterName: request.characterName,
-									expectedAmount: request.approvedAmount ?? '0',
-									observedAmount: anomalyEntry.amount,
-									journalId: anomalyEntry.journalId,
-									payerId: anomalyEntry.firstPartyId,
-									payerName: anomalyEntry.firstPartyId
-										? (resolvedNames[anomalyEntry.firstPartyId] ?? null)
-										: null,
-									payeeId: anomalyEntry.secondPartyId,
-									payeeName: anomalyEntry.secondPartyId
-										? (resolvedNames[anomalyEntry.secondPartyId] ?? null)
-										: null,
-									isRecipientMismatch,
-								})
-							)
-						discordAlertSent = result.success
-						discordAlertError = result.success ? null : (result.error ?? 'Failed to send Discord DM')
-					} catch (error) {
-						discordAlertSent = false
-						discordAlertError = error instanceof Error ? error.message : String(error)
-					}
-				} else {
-					discordAlertError = 'Configured SRP group not found'
-				}
-			} else if (!srpGroupId) {
-				discordAlertError = 'No SRP group configured'
-			}
-
-			const metadata = {
-				journalId: anomalyEntry.journalId,
-				reason: mismatchReason,
-				expectedAmount: request.approvedAmount ?? '0',
-				observedAmount: anomalyEntry.amount,
-				expectedRecipientCharacterId: request.characterId,
-				expectedRecipientCharacterName: request.characterName,
-				actualRecipientCharacterId: anomalyEntry.secondPartyId,
-				actualRecipientCharacterName: anomalyEntry.secondPartyId
-					? (resolvedNames[anomalyEntry.secondPartyId] ?? null)
-					: null,
-				actualPayerId: anomalyEntry.firstPartyId,
-				actualPayerName: anomalyEntry.firstPartyId
-					? (resolvedNames[anomalyEntry.firstPartyId] ?? null)
-					: null,
-				isRecipientMismatch,
-				isAmountMismatch,
-				paymentProcessorCorporationId: processorCorporationId,
-				srpGroupId: srpGroupId || null,
-				srpGroupName,
-				srpGroupOwnerUserId,
-				discordAlertSent,
-				discordAlertError,
-				paymentAlertId,
-				detectedAt: new Date().toISOString(),
-			}
-			if (!existingEvent) {
-				await db.execute(
-					sql`insert into srp_request_history (
-							request_id,
-							actor_user_id,
-							actor_character_name,
-							action,
-							visibility,
-							metadata
-						) values (
-							${request.id},
-							${SYSTEM_ACTOR_USER_ID}::uuid,
-							${SYSTEM_ACTOR_CHARACTER_NAME},
-							${PAYMENT_MISMATCH_HISTORY_ACTION},
-							'internal',
-							${JSON.stringify(metadata)}::jsonb
-						)`
-				)
-			} else {
-				await db.execute(
-					sql`update srp_request_history
-						set
-							metadata = ${JSON.stringify(metadata)}::jsonb,
-							timestamp = now()
-						where id = ${existingEvent.id}::uuid`
-				)
-			}
-
-			logger.warn('[SRP Payment Workflow] Reason matched but amount mismatched', {
-				requestId,
-				workflowInstanceId,
-				processorCorporationId,
-				srpGroupId: srpGroupId || null,
-				journalId: anomalyEntry.journalId,
-				expectedAmount: request.approvedAmount,
-				observedAmount: anomalyEntry.amount,
-				expectedRecipientCharacterId: request.characterId,
-				actualRecipientCharacterId: anomalyEntry.secondPartyId,
-				isRecipientMismatch,
-				isAmountMismatch,
-				discordAlertSent,
-				discordAlertError,
-				deduped: Boolean(existingEvent),
-			})
-
+		if (outcome.status === 'mismatch') {
 			return {
 				success: true,
 				matched: false,
 				mismatchDetected: true,
-				journalId: anomalyEntry.journalId,
-				discordAlertSent,
-				deduped: Boolean(existingEvent),
+				journalId: outcome.journalId,
+				discordAlertSent: outcome.discordAlertSent,
+				deduped: outcome.deduped,
 			}
 		}
-
-		if (!matchedEntry) {
-			const paymentDate = request.paymentDate ? new Date(request.paymentDate) : null
-			const paymentDateMs = paymentDate?.getTime()
-			const nowMs = Date.now()
-			const isOverdueMissingPayment =
-				typeof paymentDateMs === 'number' &&
-				Number.isFinite(paymentDateMs) &&
-				nowMs - paymentDateMs > MS_PER_DAY
-
-			if (isOverdueMissingPayment) {
-				const syntheticJournalId = `missing-payment-${request.id}`
-				const [existingMissingAlert] = (
-					await db.execute<ExistingPaymentAlertRow>(
-						sql`select id::text as "id"
-							from srp_payment_alerts
-							where request_id = ${request.id}
-								and kind = 'payment_missing'
-								and journal_id = ${syntheticJournalId}
-							limit 1`
-					)
-				).rows
-
-				let paymentAlertId: string
-				const [latestPaymentSubmittedActor] = (
-					await db.execute<LatestPaymentSubmittedActorRow>(
-						sql`select
-								actor_user_id::text as "actorUserId",
-								actor_character_name as "actorCharacterName"
-							from srp_request_history
-							where request_id = ${request.id}
-								and action = 'payment_submitted'
-							order by timestamp desc
-							limit 1`
-					)
-				).rows
-				const resolvedExpectedRecipientName =
-					(await resolveCharacterName({
-						db,
-						env: this.env,
-						characterId: request.characterId,
-					})) ?? request.characterName
-					if (existingMissingAlert) {
-						paymentAlertId = existingMissingAlert.id
-					} else {
-					const [insertedMissingAlert] = (
-						await db.execute<ExistingPaymentAlertRow>(
-							sql`insert into srp_payment_alerts (
-									request_id,
-									kind,
-									state,
-									journal_id,
-									expected_amount,
-									observed_amount,
-									expected_recipient_character_id,
-									expected_recipient_character_name,
-									actual_recipient_character_id,
-									actual_recipient_character_name,
-									actual_payer_id,
-									actual_payer_name,
-									reason,
-									payment_processor_corporation_id,
-									metadata
-								) values (
-									${request.id},
-									'payment_missing',
-									'open',
-									${syntheticJournalId},
-									${request.approvedAmount ?? '0'},
-									'0',
-									${request.characterId},
-									${resolvedExpectedRecipientName},
-									${request.characterId},
-									${resolvedExpectedRecipientName},
-									${latestPaymentSubmittedActor?.actorUserId ?? null},
-									${latestPaymentSubmittedActor?.actorCharacterName ?? request.paymentCharacterName ?? null},
-									${`No matching wallet transaction found within 24 hours of payment_pending for ${reasonNeedle}`},
-									${processorCorporationId},
-									${JSON.stringify({
-										alertType: 'payment_missing',
-										paymentDate: request.paymentDate ?? null,
-										expectedReason: reasonNeedle,
-										thresholdHours: 24,
-										matchedTransactionCount: walletMatches.length,
-										intendedPayerUserId: latestPaymentSubmittedActor?.actorUserId ?? null,
-										intendedPayerCharacterName:
-											latestPaymentSubmittedActor?.actorCharacterName ??
-											request.paymentCharacterName ??
-											null,
-									})}::jsonb
-								)
-								returning id::text as "id"`
-						)
-					).rows
-						if (!insertedMissingAlert) throw new Error('Failed to persist SRP missing payment alert')
-						paymentAlertId = insertedMissingAlert.id
-					}
-					const [existingMissingEvent] = (
-						await db.execute<ExistingMismatchHistoryRow>(
-						sql`select id::text as "id"
-							from srp_request_history
-							where request_id = ${request.id}
-								and action = ${PAYMENT_MISSING_HISTORY_ACTION}
-							limit 1`
-					)
-					).rows
-
-					let missingDiscordAlertSent = false
-					let missingDiscordAlertError: string | null = null
-					let missingSrpGroupOwnerUserId: string | null = null
-					let missingSrpGroupName: string | null = null
-
-					if (!existingMissingEvent && srpGroupId) {
-						const [groupOwner] = (
-							await db.execute<GroupOwnerRow>(
-								sql`select
-										id::text as "groupId",
-										name as "groupName",
-										owner_id as "ownerUserId"
-									from groups
-									where id = ${srpGroupId}::uuid
-									limit 1`
-							)
-						).rows
-						if (groupOwner) {
-							missingSrpGroupOwnerUserId = groupOwner.ownerUserId
-							missingSrpGroupName = groupOwner.groupName
-							try {
-								const discord = getStub<DiscordDirectMessenger>(this.env.DISCORD, 'default')
-								const result = await discord.sendDirectMessage(
-									groupOwner.ownerUserId,
-									buildMissingDiscordAlertContent({
-										requestId: request.id,
-										requestCharacterId: request.characterId,
-										requestCharacterName: request.characterName,
-										expectedAmount: request.approvedAmount ?? '0',
-										expectedReason: reasonNeedle,
-										thresholdHours: 24,
-									})
-								)
-								missingDiscordAlertSent = result.success
-								missingDiscordAlertError = result.success
-									? null
-									: (result.error ?? 'Failed to send Discord DM')
-							} catch (error) {
-								missingDiscordAlertSent = false
-								missingDiscordAlertError = error instanceof Error ? error.message : String(error)
-							}
-						} else {
-							missingDiscordAlertError = 'Configured SRP group not found'
-						}
-					} else if (!srpGroupId) {
-						missingDiscordAlertError = 'No SRP group configured'
-					}
-
-						const missingMetadata = {
-							paymentAlertId,
-							expectedAmount: request.approvedAmount ?? '0',
-						expectedRecipientCharacterId: request.characterId,
-						expectedRecipientCharacterName: request.characterName,
-						expectedReason: reasonNeedle,
-						paymentDate: request.paymentDate ?? null,
-						thresholdHours: 24,
-						matchedTransactionCount: walletMatches.length,
-						srpGroupId: srpGroupId || null,
-						srpGroupName: missingSrpGroupName,
-						srpGroupOwnerUserId: missingSrpGroupOwnerUserId,
-						discordAlertSent: missingDiscordAlertSent,
-						discordAlertError: missingDiscordAlertError,
-					}
-				if (!existingMissingEvent) {
-					await db.execute(
-						sql`insert into srp_request_history (
-								request_id,
-								actor_user_id,
-								actor_character_name,
-								action,
-								visibility,
-								metadata
-							) values (
-								${request.id},
-								${SYSTEM_ACTOR_USER_ID}::uuid,
-								${SYSTEM_ACTOR_CHARACTER_NAME},
-								${PAYMENT_MISSING_HISTORY_ACTION},
-								'internal',
-								${JSON.stringify(missingMetadata)}::jsonb
-							)`
-					)
-				} else {
-					await db.execute(
-						sql`update srp_request_history
-							set
-								metadata = ${JSON.stringify(missingMetadata)}::jsonb,
-								timestamp = now()
-							where id = ${existingMissingEvent.id}::uuid`
-					)
-				}
-			}
-
-			logger.info('[SRP Payment Workflow] No matching wallet transaction found', {
-				requestId,
-				workflowInstanceId,
-				processorCorporationId,
-				lossId: request.id,
-				expectedReason: reasonNeedle,
-				expectedAmount: request.approvedAmount,
-				candidateCount: walletMatches.length,
-			})
-			return { success: true, matched: false }
-		}
-
-		await db.execute(
-			sql`update srp_payment_alerts
-				set
-					state = 'acknowledged',
-					acknowledged_at = now(),
-					acknowledged_by_user_id = ${SYSTEM_ACTOR_USER_ID}::uuid,
-					acknowledged_by_character_name = ${SYSTEM_ACTOR_CHARACTER_NAME}
-				where request_id = ${request.id}
-					and state = 'open'`
-		)
-
-		await srpStub.updateReviewState(
-			request.id,
-			SYSTEM_ACTOR_USER_ID,
-			SYSTEM_ACTOR_CHARACTER_NAME,
-			'paid',
-			`Auto-confirmed by wallet transaction ${matchedEntry.journalId} (${matchedEntry.reason ?? reasonNeedle})`
-		)
-
-		logger.info('[SRP Payment Workflow] Marked request as paid', {
-			requestId,
-			workflowInstanceId,
-			processorCorporationId,
-			journalId: matchedEntry.journalId,
-			amount: matchedEntry.amount,
-			reason: matchedEntry.reason,
-		})
 
 		return {
 			success: true,
-			matched: true,
-			journalId: matchedEntry.journalId,
+			matched: false,
 		}
 	}
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatSrpRequest } from '../lib/format-request'
+import { formatSrpRequest } from '../../lib/format-request'
 
 describe('formatSrpRequest', () => {
 	it('handles review/status mutation payloads without history preloaded', () => {
@@ -18,6 +18,8 @@ describe('formatSrpRequest', () => {
 			shipValue: '1000000',
 			requestStatus: 'approved',
 			approvedAmount: '1000000',
+			killmailItemNames: { '29618': 'Scourge Rage XL Torpedo' },
+			killmailItemGroupIds: { '29618': '592' },
 			createdAt: new Date('2026-01-01T00:00:00.000Z'),
 			updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 		})
@@ -26,5 +28,7 @@ describe('formatSrpRequest', () => {
 		expect(formatted.requestStatus).toBe('approved')
 		expect(formatted.history).toEqual([])
 		expect(formatted.comments).toBeUndefined()
+		expect(formatted.killmailItemNames).toEqual({ '29618': 'Scourge Rage XL Torpedo' })
+		expect(formatted.killmailItemGroupIds).toEqual({ '29618': '592' })
 	})
 })

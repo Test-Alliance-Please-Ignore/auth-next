@@ -41,11 +41,6 @@ export interface RequestListResponse {
 	offset: number
 }
 
-export type SRPRequestWithKillmailItemNames = SRPRequestResponse & {
-	killmailItemNames?: Record<string, string>
-	killmailItemGroupIds?: Record<string, string>
-}
-
 export type DoctrineSlot = 'high' | 'mid' | 'low' | 'rig' | 'sub'
 export type MilitarySrpFindingCode =
 	| 'missing_rigs'
@@ -77,4 +72,13 @@ export interface MilitarySrpAssessment {
 
 export type SRPRequestWithMilitary = SRPRequestResponse & {
 	militarySrp?: MilitarySrpAssessment
+}
+
+export interface SRPRecentLossRefreshBackfillResponse {
+	success: boolean
+	message: string
+	usersWithHistory: number
+	usersQueued: number
+	totalCharacters: number
+	skippedUsers: number
 }

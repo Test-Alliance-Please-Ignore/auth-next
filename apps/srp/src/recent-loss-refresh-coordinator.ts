@@ -89,7 +89,8 @@ export class RecentLossRefreshCoordinatorDO extends DurableObject<Env> implement
 	async startRecentLossRefresh(
 		userId: string,
 		characters: RecentLossRefreshCharacterInput[],
-		maxLossAgeDays: number
+		maxLossAgeDays: number,
+		bypassCooldown = false
 	): Promise<RecentLossRefreshStartResult> {
 		const now = Date.now()
 		const cooldownMs = RecentLossRefreshCoordinatorDO.COOLDOWN_MS
@@ -116,7 +117,7 @@ export class RecentLossRefreshCoordinatorDO extends DurableObject<Env> implement
 			}
 		}
 
-		if (existingTriggeredAtMs !== null && now - existingTriggeredAtMs < cooldownMs) {
+		if (!bypassCooldown && existingTriggeredAtMs !== null && now - existingTriggeredAtMs < cooldownMs) {
 			const retryAfterMs = Math.max(0, cooldownMs - (now - existingTriggeredAtMs))
 			return {
 				allowed: false,

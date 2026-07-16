@@ -85,6 +85,13 @@
       "when": 1779843053061,
       "tag": "0011_keen_pixie",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784231721736,
+      "tag": "0012_closed_zodiak",
+      "breakpoints": true
     }
   ]
 }

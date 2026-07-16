@@ -186,6 +186,10 @@ export const srpRequests = pgTable(
 				isConsumable?: boolean // true for charges/ammo not factored into reimbursement
 			}>
 		>(),
+		/** Resolved killmail item names for display and durable request hydration */
+		killmailItemNames: jsonb('killmail_item_names').$type<Record<string, string>>(),
+		/** Resolved killmail item group IDs for doctrine/conformity checks */
+		killmailItemGroupIds: jsonb('killmail_item_group_ids').$type<Record<string, string>>(),
 
 		// -----------------------------------------------------------------------
 		// Review / Policy Fields
