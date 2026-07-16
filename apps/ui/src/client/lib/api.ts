@@ -1354,6 +1354,11 @@ export interface ServicesAuditRunSummary {
 	 * looking at a list of runs has to see which ones not to believe.
 	 */
 	basisSuspect: boolean
+	/**
+	 * When a human confirmed this run's basis is correct. null = nobody has.
+	 * ENFORCEMENT MUST REFUSE to act on a run that is basisSuspect with this null.
+	 */
+	basisAcknowledgedAt: string | null
 	errorMessage: string | null
 	startedAt: string | null
 	completedAt: string | null
@@ -1387,6 +1392,8 @@ export interface ServicesAuditRunDetail extends ServicesAuditRunSummary {
 	basisRemovedCorporationIds: string[] | null
 	/** Operator-facing explanation of the diff; null unless basisSuspect. */
 	basisNote: string | null
+	basisAcknowledgedByUserId: string | null
+	basisAcknowledgedReason: string | null
 	/** Grouped by (reason, eligible) in SQL — NOT one "ineligible" total. */
 	reasonBreakdown: Array<{
 		reason: ServiceEligibilityReasonCode
@@ -3864,6 +3871,18 @@ export class ApiClient {
 
 	async startServicesAuditScan(): Promise<StartServicesAuditScanResponse> {
 		return this.post('/services-audit/runs')
+	}
+
+	/**
+	 * Vouch for a run's member-corporation basis. The acknowledged run becomes the
+	 * baseline anchor, so later runs are compared against it rather than against
+	 * unvouched history. Requires a reason: it is a judgement someone signs.
+	 */
+	async acknowledgeServicesAuditBasis(
+		runId: string,
+		reason: string
+	): Promise<{ runId: string; basisAcknowledgedAt: string; memberCorpCount: number }> {
+		return this.post(`/services-audit/runs/${runId}/acknowledge-basis`, { reason })
 	}
 
 	async cancelServicesAuditScan(runId: string): Promise<{ runId: string; status: string }> {

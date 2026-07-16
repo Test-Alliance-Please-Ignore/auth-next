@@ -103,22 +103,35 @@ function makeDb(options: {
 				),
 			},
 			serviceAccessAuditRuns: {
-				// getBasisBaseline takes the MAX over recent good runs, so it reads a
-				// list rather than the single latest row.
-				findMany: vi.fn(async () =>
-					options.lastGoodMemberCorpCount === null ||
-					options.lastGoodMemberCorpCount === undefined
-						? []
-						: [
-								{
-									memberCorpCount: options.lastGoodMemberCorpCount,
-									memberCorporationIds: Array.from(
-										{ length: options.lastGoodMemberCorpCount },
-										(_, i) => `baseline-corp-${i + 1}`
-									),
-								},
-							]
-				),
+				/**
+				 * getBasisBaseline issues TWO findFirst reads: the acknowledgement
+				 * anchor, then the high-water run since it (the max is `ORDER BY
+				 * member_corp_count DESC LIMIT 1`, computed by Postgres).
+				 *
+				 * These fixtures never acknowledge, so the anchor is always undefined
+				 * and the baseline searches all history — which is the scenario every
+				 * test below actually cares about.
+				 */
+				findFirst: vi.fn(async (opts: Record<string, unknown>) => {
+					// The anchor query is the one filtering on basisAcknowledgedAt.
+					const isAnchorQuery = 'columns' in opts &&
+						Boolean((opts.columns as Record<string, unknown> | undefined)?.basisAcknowledgedAt)
+					if (isAnchorQuery) return undefined
+
+					if (
+						options.lastGoodMemberCorpCount === null ||
+						options.lastGoodMemberCorpCount === undefined
+					) {
+						return undefined
+					}
+					return {
+						memberCorpCount: options.lastGoodMemberCorpCount,
+						memberCorporationIds: Array.from(
+							{ length: options.lastGoodMemberCorpCount },
+							(_, i) => `baseline-corp-${i + 1}`
+						),
+					}
+				}),
 			},
 		},
 		execute: vi.fn(async (query: unknown) => {

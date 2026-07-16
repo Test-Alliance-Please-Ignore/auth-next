@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { and, asc, desc, eq, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, isNull, sql } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
 import { createWorkflow } from '@repo/workflow-utils'
 
@@ -29,6 +29,15 @@ const app = new Hono<App>()
 /** Non-terminal statuses: a run in one of these still holds the active lock. */
 const LIVE_STATUSES = ['scanning', 'enforcing'] as const
 
+/**
+ * Statuses whose scan actually completed, and are therefore the only ones whose
+ * basis is meaningful enough to confirm. Mirrors BASELINE_STATUSES in
+ * lib/service-eligibility-basis.ts — a run that cannot inform the baseline must
+ * not be acknowledgeable either, or acking it would be a no-op that looks like an
+ * action.
+ */
+const BASELINE_STATUSES = ['completed', 'awaiting_confirmation', 'completed_with_errors'] as const
+
 const ALL_REASONS: ServiceEligibilityReason[] = [
 	'member_corp',
 	'admin_exempt',
@@ -38,6 +47,11 @@ const ALL_REASONS: ServiceEligibilityReason[] = [
 	'unmanaged_corp',
 	'no_user_row',
 ]
+
+/** Required so the confirmation is a judgement someone signed, not a click. */
+const acknowledgeBasisSchema = z.object({
+	reason: z.string().min(10),
+})
 
 /** House style: local z.object + safeParse in the handler. There is ZERO
  * zValidator in apps/core/src — do not introduce it here. */
@@ -177,6 +191,8 @@ app.get('/runs', requireAuth(), requireAdmin(), async (c) => {
 				// must reach the list, not just the detail view — an operator scanning
 				// a list of runs has to see which ones not to believe.
 				basisSuspect: true,
+				// So the picker can distinguish "suspect" from "suspect but confirmed".
+				basisAcknowledgedAt: true,
 				errorMessage: true,
 				startedAt: true,
 				completedAt: true,
@@ -332,6 +348,95 @@ app.get('/runs/:id/rows', requireAuth(), requireAdmin(), async (c) => {
 	} catch (error) {
 		logger.error('[ServicesAudit] Failed to read audit rows', { runId, error: String(error) })
 		return c.json({ error: 'Failed to read audit rows' }, 500)
+	}
+})
+
+/**
+ * POST /services-audit/runs/:id/acknowledge-basis
+ *
+ * A human vouches for this run's member-corporation basis: "these corporations
+ * really did leave, and this basis is correct."
+ *
+ * THIS IS THE ONLY THING THAT CAN LOWER THE BAR, and it is the piece the guard is
+ * built around. A count cannot distinguish "an operator de-flagged 13 corps" from
+ * "the table is half-restored" — only a human reading WHICH corps left can.
+ * Acknowledging records that judgement, and the acknowledged run becomes the
+ * baseline anchor: later runs are compared against the highest basis seen since
+ * it, not against history before it.
+ *
+ * It also clears an upward-poisoned baseline. A bad migration that flags corps
+ * true inflates the basis (200 -> 600); that run is not suspect, so it enters the
+ * max, and every later CORRECT run flags against it. Confirming a correct run
+ * resets the floor. Without this there would be no way out.
+ *
+ * Deliberately requires a reason. "13 corps left" is only safe if someone can say
+ * which and why it was expected — and the note is what a future operator reads
+ * when deciding whether to trust this run.
+ */
+app.post('/runs/:id/acknowledge-basis', requireAuth(), requireAdmin(), async (c) => {
+	const runId = c.req.param('id')
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database not available' }, 500)
+
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+
+	const parsed = acknowledgeBasisSchema.safeParse(await c.req.json().catch(() => ({})))
+	if (!parsed.success) {
+		return c.json({ error: 'A reason of at least 10 characters is required' }, 400)
+	}
+
+	try {
+		// Conditional UPDATE, not read-then-write: two admins confirming at once
+		// resolve in Postgres, and a blocked run can never be confirmed (its basis
+		// is empty by definition — there is nothing to vouch for).
+		const acknowledged = await db
+			.update(serviceAccessAuditRuns)
+			.set({
+				basisAcknowledgedAt: new Date(),
+				basisAcknowledgedByUserId: user.id,
+				basisAcknowledgedReason: parsed.data.reason,
+				updatedAt: new Date(),
+			})
+			.where(
+				and(
+					eq(serviceAccessAuditRuns.id, runId),
+					isNull(serviceAccessAuditRuns.basisAcknowledgedAt),
+					sql`${serviceAccessAuditRuns.status} IN (${sql.join(
+						BASELINE_STATUSES.map((status) => sql`${status}`),
+						sql`, `
+					)})`
+				)
+			)
+			.returning({
+				id: serviceAccessAuditRuns.id,
+				memberCorpCount: serviceAccessAuditRuns.memberCorpCount,
+			})
+
+		if (acknowledged.length === 0) {
+			return c.json(
+				{
+					error:
+						'No un-acknowledged audit run with that id and a completed scan. A blocked or failed run cannot have its basis confirmed.',
+				},
+				404
+			)
+		}
+
+		logger.info('[ServicesAudit] Basis acknowledged', {
+			runId,
+			userId: user.id,
+			memberCorpCount: acknowledged[0].memberCorpCount,
+		})
+
+		return c.json({
+			runId,
+			basisAcknowledgedAt: new Date().toISOString(),
+			memberCorpCount: acknowledged[0].memberCorpCount,
+		})
+	} catch (error) {
+		logger.error('[ServicesAudit] Failed to acknowledge basis', { runId, error: String(error) })
+		return c.json({ error: 'Failed to acknowledge basis' }, 500)
 	}
 })
 

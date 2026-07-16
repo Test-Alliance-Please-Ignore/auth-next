@@ -1,4 +1,6 @@
-import { gte, inArray, sql } from '@repo/db-utils'
+import { and, desc, gte, inArray, isNotNull } from '@repo/db-utils'
+
+import { serviceAccessAuditRuns } from '../db/schema'
 
 import type { DbClient, schema } from '../db'
 
@@ -37,11 +39,20 @@ import type { DbClient, schema } from '../db'
  *
  * ── WHERE THE TEETH ACTUALLY BELONG ──
  *
- * A SCAN IS READ-ONLY AND CANNOT HURT ANYONE. Blocking it is pure downside: it
+ * A scan does not WRITE to any service, so blocking it is mostly downside: it
  * prevents the legitimate workflow AND prevents diagnosis, since a scan's output
  * is precisely what reveals a broken basis. The catastrophe this guard exists to
  * prevent is MASS REVOCATION on a corrupt basis, and revocation happens at
- * ENFORCE, not at scan.
+ * ENFORCE.
+ *
+ * But do not mistake that for "a scan cannot hurt anyone" — an earlier version of
+ * this comment said exactly that, and it conflates the write with the ARTIFACT. A
+ * scan's output IS the revocation list: it terminates in
+ * `status: 'awaiting_confirmation'`, and every row carries `mumbleStatus` /
+ * `discordStatus` columns that exist for no reason except for enforcement to
+ * mutate. A scan is harmless; a scan's CONCLUSION is not. That is why a suspect
+ * basis must be carried on the run and honoured downstream rather than merely
+ * logged.
  *
  * Therefore:
  *   - count < 1        -> BLOCK the scan. Genuinely unambiguous; see below.
@@ -50,8 +61,10 @@ import type { DbClient, schema } from '../db'
  *   - ineligible ratio -> DO NOT BLOCK. Record `blastRadiusTripped`.
  *
  * >>> ENFORCEMENT (increment 7, NOT YET BUILT) MUST HARD-REFUSE to act on a run
- * >>> whose `basisSuspect` is true and unacknowledged. That refusal is the real
- * >>> circuit breaker. This module only ever informs. <<<
+ * >>> whose `basisSuspect` is true and whose `basisAcknowledgedAt` is null.
+ * >>> That refusal is the real circuit breaker. This module only ever informs.
+ * >>> The acknowledgement column and route exist as of this change — when that
+ * >>> promise was first written, they did not, which made it a lie. <<<
  */
 
 /**
@@ -66,16 +79,10 @@ import type { DbClient, schema } from '../db'
 const MIN_MEMBER_CORP_COUNT = 1
 
 /**
- * A basis retaining less than this fraction of the recent high-water mark is
- * flagged `basisSuspect` — reported, never blocked.
+ * A basis retaining less than this fraction of the high-water mark is flagged
+ * `basisSuspect` — reported, never blocked.
  */
 const BASIS_SHRINK_SUSPECT_RATIO = 0.8
-
-/** Trailing window for the high-water baseline. Wide enough that a corrupt run
- * cannot outlive the good runs around it; narrow enough that a LEGITIMATE
- * permanent shrink stops being flagged once it has settled, instead of crying
- * wolf forever. */
-const BASIS_BASELINE_WINDOW_DAYS = 30
 
 /** Blast-radius heuristic. Soft: flags, never blocks. */
 const BLAST_RADIUS_RATIO = 0.2
@@ -93,72 +100,120 @@ const BLAST_RADIUS_ABSOLUTE_FLOOR = 25
 const BASELINE_STATUSES = ['completed', 'awaiting_confirmation', 'completed_with_errors'] as const
 
 export interface BasisBaseline {
-	/** High-water member-corp count across recent good runs; null on bootstrap. */
+	/** High-water member-corp count since the last acknowledged run; null only
+	 * when no scan has ever completed. */
 	memberCorpCount: number | null
 	/** The basis snapshot of the run that set the high-water mark, for the set
 	 * difference. Empty when there is no baseline. */
 	corporationIds: string[]
+	/** When an operator last vouched for a basis. null = never; the guard is
+	 * comparing against unvouched history. */
+	acknowledgedAt: Date | null
 }
 
 /**
- * The baseline is the MAXIMUM member-corp count over recent good runs — NOT the
- * most recent one.
+ * The baseline is the HIGHEST member-corp count seen since the last
+ * ACKNOWLEDGED run — never the most recent run, and never bounded by a timer.
  *
- * This single choice kills two bugs at once, and both are worth stating because
- * "most recent" is the intuitive implementation:
+ * ── WHY MAX, NOT "MOST RECENT" ──
  *
- *  1. THE RATCHET. If each run baselines against its predecessor, a sequence of
- *     individually-legal drops (50 -> 41 -> 34 -> 28 -> 23, each >80% of the last)
- *     walks the floor to nothing and never trips. Against a maximum, the floor
- *     cannot be walked down.
- *  2. BASELINE POISONING. A bootstrap or corrupt run must never become the
- *     trusted reference. It cannot: corruption SHRINKS the basis, and a small
- *     value can never raise a maximum. The guard is monotonic against precisely
- *     the failure mode it fears.
+ * THE RATCHET. If each run baselines against its predecessor, a sequence of
+ * individually-legal drops (50 -> 41 -> 34 -> 28 -> 23, each >80% of the last)
+ * walks the floor to nothing and never trips. Against a maximum it cannot.
  *
- * The trailing window is what lets a legitimate, permanent shrink stop being
- * flagged once it ages out — without it, de-flagging 13 corps would flag every
- * scan forever.
+ * ── WHY AN ACK, NOT A TRAILING WINDOW ──
+ *
+ * A previous version took the max over a trailing 30-day window and excluded
+ * suspect runs from the candidate set. Both were wrong, and together they made
+ * the guard SILENTLY GO DARK on exactly the corruption it exists to catch:
+ *
+ *   Day 0:    200 corps, good run.                        baseline = 200
+ *   Day 1-30: basis corrupted to 5. Every run flags suspect
+ *             — and every suspect run is excluded.
+ *   Day 31:   the day-0 run ages out of the window. Every
+ *             remaining candidate is suspect => excluded =>
+ *             candidate set EMPTY => baseline null =>
+ *             "bootstrap" => basisSuspect: FALSE.
+ *
+ * The corrupt basis is then reported as fine. The old comment claimed excluding
+ * suspect runs "costs nothing, because a suspect run could not have won the max
+ * anyway" — that is true of the MAX and false of the guard: exclusion did not
+ * cost the maximum, it cost the EXISTENCE of a baseline. The same failure fires
+ * immediately, not in 30 days, wherever scans are less frequent than the window.
+ *
+ * The window existed only to stop a LEGITIMATE permanent shrink (an operator
+ * de-flags 13 corps) from crying wolf forever. An acknowledgement does that job
+ * correctly: it is a human saying "this basis is right", which is the one signal
+ * a count can never contain. Time is not evidence. A human is.
+ *
+ * ── WHY SUSPECT RUNS ARE NO LONGER EXCLUDED ──
+ *
+ * They never needed to be. A shrink-corrupted run's count is BELOW the mark by
+ * construction, so it cannot win a max — the exclusion was belt-and-braces that
+ * bought nothing and cost the dark-guard bug above.
+ *
+ * ── THE CASE THIS DOES NOT CATCH ALONE ──
+ *
+ * "Corruption only ever shrinks" is FALSE, and an earlier version of this file
+ * asserted it. A bad restore or migration that sets is_member_corporation = true
+ * broadly INFLATES the basis (200 -> 600). That run grows, so it is not suspect,
+ * so it enters the max and poisons the baseline upward — and every later correct
+ * run then flags against it. The ack is what clears that too: an operator
+ * confirms the correct 200-corp run and the floor resets. Without an ack there
+ * would be no way out, which is the strongest argument for having one.
  */
-export async function getBasisBaseline(
-	db: DbClient<typeof schema>,
-	options?: { now?: Date }
-): Promise<BasisBaseline> {
-	const now = options?.now ?? new Date()
-	const windowStart = new Date(now.getTime() - BASIS_BASELINE_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+export async function getBasisBaseline(db: DbClient<typeof schema>): Promise<BasisBaseline> {
+	// The anchor: the most recently acknowledged run. Everything before it is
+	// history a human has already superseded.
+	const anchor = await db.query.serviceAccessAuditRuns.findFirst({
+		where: isNotNull(serviceAccessAuditRuns.basisAcknowledgedAt),
+		orderBy: desc(serviceAccessAuditRuns.basisAcknowledgedAt),
+		columns: { startedAt: true, basisAcknowledgedAt: true },
+	})
 
-	const candidates = await db.query.serviceAccessAuditRuns.findMany({
-		where: (runs, { and }) =>
-			and(
-				inArray(runs.status, [...BASELINE_STATUSES]),
-				gte(runs.startedAt, windowStart),
-				// A run that was itself flagged suspect is a poor reference: its basis
-				// is the one nobody has vouched for. Excluding it costs nothing,
-				// because a suspect run's count is by definition BELOW the high-water
-				// mark it was compared against, so it could not have won the max anyway.
-				sql`${runs.basisSuspect} = false`
-			),
+	// ORDER BY member_corp_count DESC LIMIT 1 *is* the max, computed by Postgres
+	// over one row rather than by dragging every run's corporation_ids array
+	// through the driver to reduce() in JS.
+	const best = await db.query.serviceAccessAuditRuns.findFirst({
+		where: anchor
+			? and(
+					inArray(serviceAccessAuditRuns.status, [...BASELINE_STATUSES]),
+					gte(serviceAccessAuditRuns.startedAt, anchor.startedAt)
+				)
+			: inArray(serviceAccessAuditRuns.status, [...BASELINE_STATUSES]),
+		orderBy: desc(serviceAccessAuditRuns.memberCorpCount),
 		columns: { memberCorpCount: true, memberCorporationIds: true },
 	})
 
-	if (candidates.length === 0) {
-		return { memberCorpCount: null, corporationIds: [] }
+	if (!best) {
+		// No scan has ever completed. Genuinely nothing to compare against — the
+		// only path to a null baseline, and it cannot be reached by corruption.
+		return { memberCorpCount: null, corporationIds: [], acknowledgedAt: null }
 	}
 
-	const best = candidates.reduce((winner, candidate) =>
-		candidate.memberCorpCount > winner.memberCorpCount ? candidate : winner
-	)
-
-	return { memberCorpCount: best.memberCorpCount, corporationIds: best.memberCorporationIds ?? [] }
+	return {
+		memberCorpCount: best.memberCorpCount,
+		corporationIds: best.memberCorporationIds ?? [],
+		acknowledgedAt: anchor?.basisAcknowledgedAt ?? null,
+	}
 }
 
 export interface BasisVerdictOk {
 	blocked: false
-	/** True when no baseline exists. The UI must surface the corp count
-	 * prominently — on this path nothing has validated it. */
+	/**
+	 * No scan has ever completed, so there is nothing to compare against. The UI
+	 * must surface the corp count prominently — on this path nothing has validated
+	 * it.
+	 *
+	 * Reachable ONLY on a genuinely empty history. It is deliberately NOT
+	 * reachable by corruption: the previous design could arrive here by aging its
+	 * only good run out of a trailing window, which silently reported a corrupt
+	 * basis as `basisSuspect: false`.
+	 */
 	bootstrap: boolean
-	/** The basis shrank against the recent high-water mark. INFORMATIONAL for a
-	 * scan; enforcement must refuse on it. */
+	/** The basis shrank against the high-water mark since the last acknowledged
+	 * run. INFORMATIONAL for a scan; ENFORCEMENT MUST REFUSE on it unless
+	 * acknowledged. */
 	basisSuspect: boolean
 	corporationIds: string[]
 	memberCorpCount: number
@@ -238,10 +293,12 @@ export function evaluateBasis(options: {
 		removedCorporationIds,
 		basisNote: suspect
 			? `The member-corporation basis shrank from ${baselineCount} to ${memberCorpCount} ` +
-				`(${((memberCorpCount / (baselineCount || 1)) * 100).toFixed(1)}% retained) versus the highest basis seen in the last ` +
-				`${BASIS_BASELINE_WINDOW_DAYS} days. ${removedCorporationIds.length} corporation(s) left the basis. ` +
-				`If you de-flagged them, this is expected and the scan below is correct. If you do not recognise them, ` +
-				`managed_corporations may be half-restored or mid-sync and THIS SCAN'S RESULTS ARE NOT TRUSTWORTHY. ` +
+				`(${((memberCorpCount / (baselineCount || 1)) * 100).toFixed(1)}% retained) versus the highest basis seen since the last ` +
+				`confirmed basis${baseline.acknowledgedAt ? '' : ' (none has ever been confirmed)'}. ` +
+				`${removedCorporationIds.length} corporation(s) left the basis. ` +
+				`If you de-flagged them, this is expected: confirm the basis and this run becomes the new reference. ` +
+				`If you do not recognise them, managed_corporations may be half-restored or mid-sync and ` +
+				`THIS SCAN'S RESULTS ARE NOT TRUSTWORTHY — fix the data and re-scan rather than confirming. ` +
 				`Enforcement will refuse to act on this run until the basis is confirmed.`
 			: null,
 	}
