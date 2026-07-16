@@ -8,8 +8,35 @@ env:
   FORCE_COLOR: 1
 
 jobs:
+  # Skip the check/test/deploy pipeline when a push only touched docs or config.
+  # Shares scripts/ci/detect-code-changes.mjs with branches.yml so the ignore
+  # list is defined in exactly one place.
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v6
+      - name: Check for non-doc changes
+        id: filter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: node scripts/ci/detect-code-changes.mjs
+
   test-and-deploy:
     name: Test and Deploy
+    needs: changes
+    # Fail safe: only an explicit 'false' skips. An empty output (changes job
+    # errored) still deploys rather than silently skipping a real code change.
+    if: needs.changes.outputs.code != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency: ${{ github.workflow }}
@@ -47,7 +74,9 @@ jobs:
     # test-and-deploy fails, which is exactly when we most want the alert.
     name: Notify Discord
     needs: test-and-deploy
-    if: always()
+    # Fire on success and failure, but stay silent when the deploy was skipped
+    # (docs-only push) — there's nothing to announce.
+    if: always() && needs.test-and-deploy.result != 'skipped'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
