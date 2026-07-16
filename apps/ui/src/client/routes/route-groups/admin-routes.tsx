@@ -46,6 +46,7 @@ import AdminLegacyMigrationsPage from '@/routes/admin/legacy-migrations'
 import AdminPastesPage from '@/routes/admin/pastes'
 import AdminPermissionCategoriesPage from '@/routes/admin/permissions/categories'
 import AdminGlobalPermissionsPage from '@/routes/admin/permissions/global'
+import AdminServicesAuditPage from '@/routes/admin/services-audit'
 import AdminStructuresPage from '@/routes/admin/structures'
 import AdminThirdPartyAppsPage from '@/routes/admin/third-party-apps'
 import AdminUserActivityPage from '@/routes/admin/user-activity'
@@ -93,6 +94,7 @@ export const adminRouteElements = (
 		<Route path="structures" element={<AdminStructuresPage />} />
 		<Route path="discord-servers" element={<AdminDiscordServersPage />} />
 		<Route path="discord-audit" element={<AdminDiscordAuditPage />} />
+		<Route path="services-audit" element={<AdminServicesAuditPage />} />
 		<Route path="eve-character-sync" element={<AdminEveCharacterSyncPage />} />
 		<Route path="discord-servers/:serverId/roles" element={<AdminDiscordServerRolesPage />} />
 		<Route path="discord-servers/:serverId/commands" element={<AdminDiscordServerCommandsPage />} />

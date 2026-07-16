@@ -1310,6 +1310,124 @@ export interface CleanupDiscordGuildAuditResponse {
 	deletedRuns: number
 }
 
+// ---------------------------------------------------------------------------
+// Service access audit (READ-ONLY).
+//
+// Mirrors apps/core/src/routes/services-audit.ts. There is deliberately no
+// enforce/confirm shape here: enforcement is not built, and a client method that
+// exists is a client method that gets called.
+// ---------------------------------------------------------------------------
+
+export type ServiceEligibilityReasonCode =
+	| 'member_corp'
+	| 'admin_exempt'
+	| 'no_characters'
+	| 'null_corp'
+	| 'only_deleted_member_char'
+	| 'unmanaged_corp'
+	| 'no_user_row'
+
+export type ServicesAuditRunStatus =
+	| 'scanning'
+	| 'blocked'
+	| 'awaiting_confirmation'
+	| 'enforcing'
+	| 'completed'
+	| 'completed_with_errors'
+	| 'failed'
+	| 'cancelled'
+
+export interface ServicesAuditRunSummary {
+	id: string
+	status: ServicesAuditRunStatus
+	/** The eligibility BASIS. Reported as prominently as the ineligible count:
+	 * an inverted basis is what makes an ineligible count wrong. */
+	memberCorpCount: number
+	scanned: number
+	inPopulation: number
+	eligibleCount: number
+	ineligibleCount: number
+	blastRadiusTripped: boolean
+	/**
+	 * The basis shrank against the recent high-water mark, so THIS RUN'S NUMBERS
+	 * MAY BE WRONG. Present on the summary (not just the detail) because someone
+	 * looking at a list of runs has to see which ones not to believe.
+	 */
+	basisSuspect: boolean
+	errorMessage: string | null
+	startedAt: string | null
+	completedAt: string | null
+}
+
+/** Discriminated union: "off" and "we could not tell" are different answers. */
+export type ServicesAuditMumbleFeature =
+	| { enabled: true; state: 'enabled' }
+	| { enabled: false; state: 'flag_off' | 'binding_missing' | 'unreachable'; message: string }
+
+export interface ServicesAuditSampleRow {
+	userId: string
+	mainCharacterId: string | null
+	mainCharacterName: string | null
+	reason: ServiceEligibilityReasonCode
+	hasDiscordLink: boolean
+}
+
+export interface ServicesAuditRunDetail extends ServicesAuditRunSummary {
+	memberCorporationIds: string[]
+	initiatedByUserId: string | null
+	scanWorkflowInstanceId: string | null
+	/** The high-water basis count this run was compared against; null on the very
+	 * first run, where nothing has validated the basis. */
+	basisComparedToCount: number | null
+	/**
+	 * Exactly which corporations left the basis since the high-water run. THIS IS
+	 * THE POINT: a count ratio cannot tell "an operator de-flagged 13 corps" from
+	 * "the table got truncated", but a human reading 13 familiar names can.
+	 */
+	basisRemovedCorporationIds: string[] | null
+	/** Operator-facing explanation of the diff; null unless basisSuspect. */
+	basisNote: string | null
+	/** Grouped by (reason, eligible) in SQL — NOT one "ineligible" total. */
+	reasonBreakdown: Array<{
+		reason: ServiceEligibilityReasonCode
+		eligible: boolean
+		count: number
+	}>
+	sample: ServicesAuditSampleRow[]
+	mumbleFeature: ServicesAuditMumbleFeature
+	/** false => `inPopulation` counts Discord-linked users only. The UI must say
+	 * so rather than imply the denominator is complete. */
+	mumblePopulationKnown: boolean
+	inPopulationBasis: 'discord_link_only'
+}
+
+export interface ServicesAuditRow {
+	id: string
+	userId: string
+	mainCharacterId: string | null
+	mainCharacterName: string | null
+	eligible: boolean
+	reason: ServiceEligibilityReasonCode
+	corporationIds: string[]
+	hasDiscordLink: boolean
+}
+
+export interface ServicesAuditRowsResponse {
+	rows: ServicesAuditRow[]
+	pagination: {
+		page: number
+		pageSize: number
+		totalCount: number
+		totalPages: number
+	}
+}
+
+export interface StartServicesAuditScanResponse {
+	runId: string
+	workflowInstanceId: string
+	status: ServicesAuditRunStatus
+}
+
 export interface DiscordGuildAuditStripRolesResponse {
 	guildId: string
 	guildName: string
@@ -3715,6 +3833,41 @@ export class ApiClient {
 
 	async cleanupDiscordGuildAudit(serverId: string): Promise<CleanupDiscordGuildAuditResponse> {
 		return this.post(`/discord-servers/${serverId}/audit/cleanup`)
+	}
+
+	// --- Service access audit (READ-ONLY; no enforce method exists on purpose) ---
+
+	async getServicesAuditRuns(): Promise<{ items: ServicesAuditRunSummary[] }> {
+		return this.get('/services-audit/runs')
+	}
+
+	async getServicesAuditRun(runId: string): Promise<ServicesAuditRunDetail> {
+		return this.get(`/services-audit/runs/${runId}`)
+	}
+
+	async getServicesAuditRunRows(
+		runId: string,
+		params: {
+			reason?: ServiceEligibilityReasonCode
+			eligible?: boolean
+			page?: number
+			pageSize?: number
+		} = {}
+	): Promise<ServicesAuditRowsResponse> {
+		const query = new URLSearchParams()
+		if (params.reason) query.set('reason', params.reason)
+		if (typeof params.eligible === 'boolean') query.set('eligible', String(params.eligible))
+		if (params.page) query.set('page', String(params.page))
+		if (params.pageSize) query.set('pageSize', String(params.pageSize))
+		return this.get(`/services-audit/runs/${runId}/rows?${query.toString()}`)
+	}
+
+	async startServicesAuditScan(): Promise<StartServicesAuditScanResponse> {
+		return this.post('/services-audit/runs')
+	}
+
+	async cancelServicesAuditScan(runId: string): Promise<{ runId: string; status: string }> {
+		return this.post(`/services-audit/runs/${runId}/cancel`)
 	}
 
 	async stripDiscordGuildRoles(

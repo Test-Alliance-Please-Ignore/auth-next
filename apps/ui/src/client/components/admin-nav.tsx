@@ -15,6 +15,7 @@ import {
 	Radio,
 	Receipt,
 	ScrollText,
+	ShieldAlert,
 	ShieldBan,
 	UserCircle,
 	Users,
@@ -155,6 +156,14 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 			label: 'External Links',
 			href: '/admin/external-links',
 			icon: Link2,
+		},
+		{
+			// Top-level, NOT nested under Discord: this audit covers Mumble as well,
+			// and `isDiscordRoute` only auto-opens that menu for /admin/discord-*.
+			// An emergency tool nobody can find at 04:00 is not shipped.
+			label: 'Services Audit',
+			href: '/admin/services-audit',
+			icon: ShieldAlert,
 		},
 		{
 			label: 'Blacklist',
