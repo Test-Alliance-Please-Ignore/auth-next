@@ -1,5 +1,6 @@
 import { AlertTriangle, Ban, Play, ShieldAlert, ShieldCheck } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,6 +10,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import {
 	isTerminalRunStatus,
@@ -18,7 +20,7 @@ import {
 	useServicesAuditRuns,
 	useStartServicesAuditScan,
 } from '@/hooks/useServicesAudit'
-import { characterPortraitUrl } from '@/lib/eve-images'
+import { characterPortraitUrl, corporationLogoUrl } from '@/lib/eve-images'
 
 import type { BadgeVariant } from '@/components/ui/badge'
 import type {
@@ -46,13 +48,25 @@ import type { ComponentType } from 'react'
  * the list).
  */
 
+/**
+ * EVERY LABEL IS ABOUT THE USER, NEVER A CHARACTER.
+ *
+ * The rule is user-level: a user is eligible if ANY of their non-deleted
+ * characters is in a member corporation. Alts in NPC or non-member corps are
+ * irrelevant — one qualifying character is enough.
+ *
+ * The subcodes therefore describe the user's WHOLE character set, and the labels
+ * have to say so. "Corporation is not a member corp" (the previous wording of
+ * `unmanaged_corp`) reads as a verdict on one character and made a correct
+ * user-level count look like a bug.
+ */
 const REASON_LABELS: Record<ServiceEligibilityReasonCode, string> = {
-	member_corp: 'In a member corporation',
-	admin_exempt: 'Admin (exempt)',
-	no_characters: 'No characters',
-	null_corp: 'No corporation on record',
-	only_deleted_member_char: 'Only deleted member characters',
-	unmanaged_corp: 'Corporation is not a member corp',
+	member_corp: 'Has a character in a member corporation',
+	admin_exempt: 'Site admin (exempt)',
+	no_characters: 'Has no characters at all',
+	null_corp: 'No character has a corporation on record',
+	only_deleted_member_char: 'Their only member-corp character was removed',
+	unmanaged_corp: 'No character in any member corporation',
 	no_user_row: 'No user row',
 }
 
@@ -141,6 +155,61 @@ function StatTile({
 }
 
 /**
+ * A list of corporations, by NAME.
+ *
+ * The audit rows store corporation IDs, because the eligibility rule is defined
+ * over ids and most of these corps are unmanaged by definition — being in an
+ * unmanaged corp is the usual reason someone is on this list, so
+ * `managed_corporations` cannot supply their names. `useEntityNames` resolves any
+ * id through the shared batched/cached lookup, which is how tax-rules,
+ * tax-alerts and the HR recommendations list already do this.
+ *
+ * Ids are the fallback, never the presentation: "1000077, 98803465" is not
+ * something a human can audit, and auditing is this page's only job.
+ */
+function CorporationNameList({
+	corporationIds,
+	names,
+	withLogos = false,
+	className,
+}: {
+	corporationIds: string[]
+	/** Resolved id -> name. Looked up ONCE at page level and passed in: this
+	 * component renders per table row, so calling useEntityNames here would issue
+	 * one request per row (a different id set is a different cache key) and defeat
+	 * the batching the hook exists for. */
+	names: Record<string, string>
+	withLogos?: boolean
+	className?: string
+}) {
+	if (corporationIds.length === 0) return <span className="text-muted-foreground">—</span>
+
+	if (!withLogos) {
+		return (
+			<span className={className}>
+				{corporationIds.map((id) => names[id] ?? id).join(', ')}
+			</span>
+		)
+	}
+
+	return (
+		<div className={`flex flex-wrap gap-x-3 gap-y-1 ${className ?? ''}`}>
+			{corporationIds.map((id) => (
+				<span key={id} className="inline-flex items-center gap-1.5">
+					<img
+						src={corporationLogoUrl(id, 32)}
+						alt=""
+						className="h-4 w-4 rounded-sm"
+						loading="lazy"
+					/>
+					<span>{names[id] ?? id}</span>
+				</span>
+			))}
+		</div>
+	)
+}
+
+/**
  * The blocked banner. Rendered before anything else and visually unmistakable —
  * a blocked run's counts are meaningless and must never be read as a result.
  *
@@ -182,7 +251,13 @@ function BlockedBanner({ run }: { run: ServicesAuditRunDetail }) {
  * de-flagged those 13" from "the table is half-restored", and a human reading the
  * names can do it in seconds.
  */
-function BasisSuspectBanner({ run }: { run: ServicesAuditRunDetail }) {
+function BasisSuspectBanner({
+	run,
+	corporationNames,
+}: {
+	run: ServicesAuditRunDetail
+	corporationNames: Record<string, string>
+}) {
 	const removed = run.basisRemovedCorporationIds ?? []
 	return (
 		<Card className="border-amber-500 bg-amber-500/10">
@@ -203,9 +278,15 @@ function BasisSuspectBanner({ run }: { run: ServicesAuditRunDetail }) {
 						<p className="text-xs font-medium mb-1">
 							{removed.length} corporation{removed.length === 1 ? '' : 's'} left the basis:
 						</p>
-						<p className="text-xs font-mono text-muted-foreground break-all">
-							{removed.join(', ')}
-						</p>
+						{/* By name and logo, not id. This banner asks the operator to recognise
+						    these corporations — which is impossible from a list of numbers, and
+						    recognition is the entire safety mechanism here. */}
+						<CorporationNameList
+							corporationIds={removed}
+							names={corporationNames}
+							withLogos
+							className="text-xs"
+						/>
 						<p className="text-xs text-muted-foreground mt-2">
 							Recognise them? Then you de-flagged them and this scan is correct. Don’t recognise
 							them? <code>managed_corporations</code> may be half-restored or mid-sync, and the
@@ -245,6 +326,25 @@ export default function AdminServicesAuditPage() {
 	const startScan = useStartServicesAuditScan()
 	const cancelScan = useCancelServicesAuditScan()
 
+	/**
+	 * Resolve every corporation id on the page in ONE batched lookup — the rows
+	 * table plus the suspect-basis banner. Done here rather than inside the row
+	 * component because a per-row lookup is a per-row cache key, i.e. one request
+	 * per row.
+	 */
+	const corporationIdsOnPage = useMemo(() => {
+		const ids = new Set<string>()
+		for (const row of rowsQuery.data?.rows ?? []) {
+			for (const id of row.corporationIds) ids.add(id)
+		}
+		for (const id of run?.basisRemovedCorporationIds ?? []) ids.add(id)
+		return [...ids]
+	}, [rowsQuery.data, run?.basisRemovedCorporationIds])
+
+	const { data: corporationNames = {} } = useEntityNames(corporationIdsOnPage, {
+		enabled: corporationIdsOnPage.length > 0,
+	})
+
 	const anyRunLive = runs.some((item) => !isTerminalRunStatus(item.status))
 
 	const ineligibleBreakdown = (run?.reasonBreakdown ?? [])
@@ -272,7 +372,7 @@ export default function AdminServicesAuditPage() {
 		<div className="space-y-6">
 			<PageHeader
 				title="Services Audit"
-				description="Read-only scan of who is eligible for Mumble and Discord access, based on membership of a member corporation."
+				description="Read-only scan of who is eligible for Mumble and Discord access. A user is eligible if ANY one of their characters is in a member corporation — alts in NPC or non-member corps do not count against them."
 				action={
 					<Button
 						onClick={() => startScan.mutate()}
@@ -353,7 +453,7 @@ export default function AdminServicesAuditPage() {
 			{run && (
 				<>
 					{run.status === 'blocked' && <BlockedBanner run={run} />}
-					{run.basisSuspect && run.status !== 'blocked' && <BasisSuspectBanner run={run} />}
+					{run.basisSuspect && run.status !== 'blocked' && <BasisSuspectBanner run={run} corporationNames={corporationNames} />}
 
 					{run.status === 'failed' && (
 						<Card className="border-destructive">
@@ -479,8 +579,10 @@ export default function AdminServicesAuditPage() {
 								<div>
 									<h3 className="text-sm font-medium">Ineligible by reason</h3>
 									<p className="text-xs text-muted-foreground">
-										Subcodes, not a single total. A large <code>null_corp</code> or{' '}
-										<code>no_characters</code> group points at a data problem, not at people.
+										Counted per user, not per character: everyone below has{' '}
+										<strong>no character at all</strong> in any member corporation. Subcodes, not a
+										single total — a large <code>null_corp</code> or <code>no_characters</code>{' '}
+										group points at a data problem, not at people.
 									</p>
 								</div>
 								{ineligibleBreakdown.length === 0 ? (
@@ -519,9 +621,12 @@ export default function AdminServicesAuditPage() {
 									</div>
 									<div className="flex flex-wrap gap-2">
 										{run.sample.map((sampleRow) => (
-											<div
+											// The copy above tells the operator to investigate anyone here they
+											// recognise, so the name has to be the way in.
+											<Link
 												key={sampleRow.userId}
-												className="flex items-center gap-2 rounded-md border border-border px-2 py-1"
+												to={`/admin/users/${sampleRow.userId}`}
+												className="flex items-center gap-2 rounded-md border border-border px-2 py-1 hover:border-primary hover:bg-muted/50"
 											>
 												{sampleRow.mainCharacterId && (
 													<img
@@ -530,13 +635,13 @@ export default function AdminServicesAuditPage() {
 														className="h-6 w-6 rounded-full"
 													/>
 												)}
-												<span className="text-sm">
+												<span className="text-sm text-primary">
 													{sampleRow.mainCharacterName ?? sampleRow.userId}
 												</span>
 												<Badge variant={reasonBadgeVariant(sampleRow.reason)}>
 													{REASON_LABELS[sampleRow.reason]}
 												</Badge>
-											</div>
+											</Link>
 										))}
 									</div>
 								</div>
@@ -622,7 +727,13 @@ export default function AdminServicesAuditPage() {
 										rowsQuery.data?.rows.map((row) => (
 											<TableRow key={row.id}>
 												<TableCell>
-													<div className="flex items-center gap-2">
+													{/* Straight to the user's admin page: this list exists to be
+													    investigated, and the next question about anyone on it is always
+													    "what does this person actually look like?". */}
+													<Link
+														to={`/admin/users/${row.userId}`}
+														className="flex items-center gap-2 text-primary hover:underline"
+													>
 														{row.mainCharacterId && (
 															<img
 																src={characterPortraitUrl(row.mainCharacterId, 32)}
@@ -631,7 +742,7 @@ export default function AdminServicesAuditPage() {
 															/>
 														)}
 														<span>{row.mainCharacterName ?? row.userId}</span>
-													</div>
+													</Link>
 												</TableCell>
 												<TableCell>
 													<Badge variant={row.eligible ? 'success' : 'destructive'}>
@@ -651,7 +762,7 @@ export default function AdminServicesAuditPage() {
 													)}
 												</TableCell>
 												<TableCell className="text-muted-foreground">
-													{row.corporationIds.length > 0 ? row.corporationIds.join(', ') : '—'}
+													<CorporationNameList corporationIds={row.corporationIds} names={corporationNames} />
 												</TableCell>
 											</TableRow>
 										))
