@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { logger } from '@repo/hono-helpers'
 
 import { getDiscordStatus } from '../lib/discord-helpers'
+import { requireServiceEligibility } from '../middleware/service-eligibility'
 import { requireAuth } from '../middleware/session'
 import * as discordService from '../services/discord.service'
 
@@ -181,7 +182,7 @@ discord.post('/refresh', requireAuth(), async (c) => {
  *   totalFailed: number
  * }
  */
-discord.post('/join-servers', requireAuth(), async (c) => {
+discord.post('/join-servers', requireAuth(), requireServiceEligibility(), async (c) => {
 	const user = c.get('user')!
 
 	try {

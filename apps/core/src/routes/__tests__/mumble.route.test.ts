@@ -64,14 +64,33 @@ function makeUser(): SessionUser {
 	}
 }
 
-function makeApp(user?: SessionUser) {
-	const app = new Hono<App>()
-	if (user) {
-		app.use('*', async (c, next) => {
-			c.set('user', user)
-			await next()
-		})
+/**
+ * The provision/reset routes are gated on services eligibility, which reads the
+ * db directly. Default the fixture to ELIGIBLE so the existing tests keep testing
+ * what they were written to test (mumble error mapping), and let the gate's own
+ * behaviour be pinned explicitly below.
+ */
+function makeDb(options: { eligible: boolean } = { eligible: true }) {
+	return {
+		query: {
+			users: { findFirst: vi.fn().mockResolvedValue({ is_admin: false }) },
+			userCharacters: {
+				findMany: vi
+					.fn()
+					.mockResolvedValue(options.eligible ? [{ corporationId: 'corp-1' }] : []),
+			},
+			managedCorporations: { findMany: vi.fn().mockResolvedValue([{ corporationId: 'corp-1' }]) },
+		},
 	}
+}
+
+function makeApp(user?: SessionUser, db: unknown = makeDb()) {
+	const app = new Hono<App>()
+	app.use('*', async (c, next) => {
+		if (user) c.set('user', user)
+		c.set('db', db as never)
+		await next()
+	})
 	return app.route('/api/mumble', mumbleRoutes)
 }
 
@@ -216,5 +235,68 @@ describe('POST /api/mumble/account/reset-password', () => {
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as any
 		expect(body.password).toBe('new-password')
+	})
+})
+
+/**
+ * THE SELF-HEAL GATE.
+ *
+ * Deleting someone's Mumble account is pointless if they can re-create it in one
+ * click, and provisioning had no eligibility check at all — the router's
+ * requireAllianceMember() only checks ROLE_CORE_ALLIANCE_MEMBER, which is granted
+ * for ANY character in ANY alliance and is not the member-corp rule.
+ */
+describe('services eligibility gate on the grant paths', () => {
+	it('403s provisioning for a user with no character in a member corporation', async () => {
+		const res = await makeApp(makeUser(), makeDb({ eligible: false })).request(
+			'/api/mumble/account',
+			{ method: 'POST' },
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect((await res.json()) as any).toMatchObject({ code: 'not_member_corp' })
+		// The load-bearing part: the account must not be created anyway.
+		expect(provisionMumbleAccountMock).not.toHaveBeenCalled()
+	})
+
+	it('403s password reset for an ineligible user, and issues no credentials', async () => {
+		const res = await makeApp(makeUser(), makeDb({ eligible: false })).request(
+			'/api/mumble/account/reset-password',
+			{ method: 'POST' },
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(resetMumblePasswordMock).not.toHaveBeenCalled()
+	})
+
+	it('still lets an ineligible user READ their own account', async () => {
+		// Reads are deliberately not gated: someone must be able to see the state of
+		// their own account, and the page needs `eligible` to decide what to offer.
+		getMumbleAccountMock.mockResolvedValue({ loginName: 'Pilot', enabled: true, groups: [] })
+
+		const res = await makeApp(makeUser(), makeDb({ eligible: false })).request(
+			'/api/mumble/account',
+			{},
+			env
+		)
+
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as any
+		expect(body.account).not.toBeNull()
+		expect(body.eligible).toBe(false)
+	})
+
+	it('reports eligible: true for a user with a member-corp character', async () => {
+		getMumbleAccountMock.mockResolvedValue(null)
+
+		const res = await makeApp(makeUser(), makeDb({ eligible: true })).request(
+			'/api/mumble/account',
+			{},
+			env
+		)
+
+		expect(((await res.json()) as any).eligible).toBe(true)
 	})
 })

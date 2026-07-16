@@ -1,6 +1,6 @@
 import { and, eq, sql } from '@repo/db-utils'
 
-import { managedCorporations, userCharacters } from '../db/schema'
+import { managedCorporations, userCharacters, users } from '../db/schema'
 
 import type { DbClient, schema } from '../db'
 import type { SERVICE_ELIGIBILITY_REASONS } from '../db/schema'
@@ -130,6 +130,44 @@ export async function hasMemberCorporationAttachment(
 	return characters.some(
 		(character) => !!character.corporationId && memberCorporationIds.has(character.corporationId)
 	)
+}
+
+/**
+ * Is this user eligible for services right now?
+ *
+ * Mirrors the hard cut in `getUserGroupNames` exactly
+ * (`if (!hasAttachment && !user?.is_admin) return []` — services/mumble.service.ts):
+ * a member-corp attachment, OR site admin.
+ *
+ * This exists to GATE THE SELF-SERVICE GRANT PATHS. Eligibility is derived state,
+ * not stored state — it is recomputed from `is_member_corporation` on every read —
+ * so revoking access is not a one-shot act: without the same predicate on the
+ * grant paths, a user simply re-grants themselves and the revocation was theatre.
+ *
+ * Gate the ROUTES with this, never the service functions. Two of those service
+ * functions are also called by enforcement itself:
+ * `enforceBlacklistedMumbleAccess` calls `resetMumblePassword` to rotate a
+ * blacklisted user's password *as the lockout*, and a blacklisted user is
+ * ineligible — so a gate inside the service would throw there, be swallowed by
+ * that call's `.catch()`, and leave the blacklisted user's credentials working.
+ * `syncUserDiscordAccess` is likewise shared with the refresh workflow, the admin
+ * route and two RPC surfaces.
+ */
+export async function isUserEligibleForServices(
+	db: DbClient<typeof schema>,
+	userId: string
+): Promise<boolean> {
+	const [user, hasAttachment] = await Promise.all([
+		db.query.users.findFirst({
+			where: eq(users.id, userId),
+			columns: { is_admin: true },
+		}),
+		hasMemberCorporationAttachment(db, userId),
+	])
+
+	// `user?.is_admin` is optional-chained deliberately: a missing users row is
+	// falsy, i.e. ineligible, which matches getUserGroupNames.
+	return hasAttachment || user?.is_admin === true
 }
 
 /** One row of the set-based scan. `eligible`/`reason` are derived, never selected. */
