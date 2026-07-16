@@ -11,6 +11,8 @@ interface CallbackResponse {
 		requiresClaimMain?: boolean
 	}
 	requiresClaimMain?: boolean
+	/** Single-use ticket naming the character SSO just verified; redeemed at /auth/claim-main. */
+	claimTicket?: string
 	characterInfo?: {
 		characterOwnerHash: string
 		characterId: number
@@ -50,13 +52,20 @@ export default function AuthCallbackPage() {
 				return
 			}
 
+			// The server requires a state parameter and rejects the callback without one, so
+			// surface a real error here rather than sending an empty string it will refuse.
+			if (!state) {
+				setError('No state parameter received')
+				return
+			}
+
 			// Mark as called before making the request
 			hasCalledCallback.current = true
 
 			try {
 				// Call the callback endpoint
 				const response = await apiClient.get<CallbackResponse>(
-					`/auth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state || '')}`
+					`/auth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`
 				)
 
 				if (response.characterLinked) {
@@ -65,11 +74,13 @@ export default function AuthCallbackPage() {
 					// and token state are reflected without waiting for stale cache expiry.
 					const destination = '/dashboard?tokenUpdated=1'
 					void navigate(destination)
-				} else if (response.requiresClaimMain && response.characterInfo) {
-					// New user - redirect to claim-main page
+				} else if (response.requiresClaimMain && response.characterInfo && response.claimTicket) {
+					// New user - redirect to claim-main page. characterInfo is for display; the
+					// ticket is the only thing that actually authorizes the claim.
 					void navigate('/claim-main', {
 						state: {
 							characterInfo: response.characterInfo,
+							claimTicket: response.claimTicket,
 						},
 					})
 				} else if (response.success) {

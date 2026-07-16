@@ -29,8 +29,9 @@ export default function ClaimMainPage() {
 	const [error, setError] = useState<string | null>(null)
 
 	const characterInfo = location.state?.characterInfo as CharacterInfo | undefined
+	const claimTicket = location.state?.claimTicket as string | undefined
 
-	if (!characterInfo) {
+	if (!characterInfo || !claimTicket) {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
 				<div className="text-center">
@@ -51,9 +52,10 @@ export default function ClaimMainPage() {
 		setError(null)
 
 		try {
-			// Only send characterId - server will fetch verified data from token store
+			// Send only the ticket. It names the character server-side, so the client never
+			// gets to choose which character is being claimed.
 			await apiClient.post<ClaimMainResponse>('/auth/claim-main', {
-				characterId: characterInfo.characterId,
+				claimTicket,
 			})
 
 			// Session cookie set by server, redirect to dashboard

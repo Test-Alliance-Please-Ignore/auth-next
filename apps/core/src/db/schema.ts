@@ -314,8 +314,8 @@ export const oauthStates = pgTable(
 		userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
 		/** Optional redirect URL after successful authentication */
 		redirectUrl: varchar('redirect_url', { length: 500 }),
-		/** Flow-specific context (e.g. mumble temp-op key/id for the guest SSO flow) */
-		metadata: jsonb('metadata').$type<TempopOAuthMetadata | null>(),
+		/** Flow-specific context (e.g. mumble temp-op key/id, or the character bound to a claim-main ticket) */
+		metadata: jsonb('metadata').$type<OAuthStateMetadata | null>(),
 		/** When this state was created */
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		/** When this state expires (15 minutes from creation) */
@@ -328,6 +328,26 @@ export interface TempopOAuthMetadata {
 	key: string
 	tempopId: string
 }
+
+/**
+ * Binds a claim-main ticket to the character EVE SSO just proved the caller controls.
+ *
+ * The claim endpoint reads the character from this row rather than from its request body:
+ * a caller can only ever claim the character they personally authenticated as, because the
+ * only way to obtain a ticket is to complete the SSO round-trip for that character.
+ */
+export interface ClaimMainOAuthMetadata {
+	characterId: string
+	characterName: string
+	/**
+	 * The owner hash observed when the ticket was minted. Re-checked at redemption so a
+	 * character transferred during the ticket's lifetime cannot have the new owner's hash
+	 * written onto the account the previous owner is in the middle of creating.
+	 */
+	characterOwnerHash: string
+}
+
+export type OAuthStateMetadata = TempopOAuthMetadata | ClaimMainOAuthMetadata
 
 /**
  * Managed Corporations table - Global corporation registry for admin management

@@ -13,6 +13,19 @@ import type { createDb } from '../db'
 import { logger } from '@repo/hono-helpers'
 
 /**
+ * Thrown when a character cannot be claimed because it is already attached to an account.
+ *
+ * Distinct from a generic failure so callers can answer a losing race with a 409 while still
+ * letting real faults (a database outage, say) surface as 5xx and reach error reporting.
+ */
+export class CharacterAlreadyClaimedError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'CharacterAlreadyClaimedError'
+	}
+}
+
+/**
  * User Service
  *
  * Handles user CRUD operations, character linking, and user profile management.
@@ -32,7 +45,7 @@ export class UserService {
 		})
 
 		if (existingUser) {
-			throw new Error('User already exists with this character as main')
+			throw new CharacterAlreadyClaimedError('User already exists with this character as main')
 		}
 
 		// Check if character is already linked to another user
@@ -41,7 +54,7 @@ export class UserService {
 		})
 
 		if (existingCharacter) {
-			throw new Error('Character is already linked to another user')
+			throw new CharacterAlreadyClaimedError('Character is already linked to another user')
 		}
 
 		// Create user
@@ -104,6 +117,39 @@ export class UserService {
 		}
 
 		return this.getUserProfile(character.userId)
+	}
+
+	/**
+	 * Fetch the raw ownership record for a linked character.
+	 *
+	 * Deliberately does not go through getUserProfile(): that hides soft-deleted characters,
+	 * and a character that was unlinked and later transferred must still be recognisable as
+	 * transferred. Returns the stored owner hash so callers can compare it against the one
+	 * EVE SSO just handed us.
+	 */
+	async getCharacterOwnership(
+		characterId: string
+	): Promise<{ userId: string; characterOwnerHash: string } | null> {
+		const character = await this.db.query.userCharacters.findFirst({
+			where: eq(userCharacters.characterId, characterId),
+			columns: { userId: true, characterOwnerHash: true },
+		})
+
+		return character ?? null
+	}
+
+	/**
+	 * Record the real CCP owner hash for a character that does not have one yet.
+	 *
+	 * Only for adopting a placeholder written by an admin-driven import, where no real hash was
+	 * ever known. Callers must confirm the stored value is a placeholder first — overwriting a
+	 * genuine hash would erase the only evidence that a character changed hands.
+	 */
+	async adoptCharacterOwnerHash(characterId: string, characterOwnerHash: string): Promise<void> {
+		await this.db
+			.update(userCharacters)
+			.set({ characterOwnerHash, updatedAt: new Date() })
+			.where(eq(userCharacters.characterId, characterId))
 	}
 
 	/**
