@@ -1,5 +1,5 @@
 import { AlertTriangle, Ban, Play, ShieldAlert, ShieldCheck } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import {
 	isTerminalRunStatus,
@@ -18,7 +19,7 @@ import {
 	useServicesAuditRuns,
 	useStartServicesAuditScan,
 } from '@/hooks/useServicesAudit'
-import { characterPortraitUrl } from '@/lib/eve-images'
+import { characterPortraitUrl, corporationLogoUrl } from '@/lib/eve-images'
 
 import type { BadgeVariant } from '@/components/ui/badge'
 import type {
@@ -141,6 +142,61 @@ function StatTile({
 }
 
 /**
+ * A list of corporations, by NAME.
+ *
+ * The audit rows store corporation IDs, because the eligibility rule is defined
+ * over ids and most of these corps are unmanaged by definition — being in an
+ * unmanaged corp is the usual reason someone is on this list, so
+ * `managed_corporations` cannot supply their names. `useEntityNames` resolves any
+ * id through the shared batched/cached lookup, which is how tax-rules,
+ * tax-alerts and the HR recommendations list already do this.
+ *
+ * Ids are the fallback, never the presentation: "1000077, 98803465" is not
+ * something a human can audit, and auditing is this page's only job.
+ */
+function CorporationNameList({
+	corporationIds,
+	names,
+	withLogos = false,
+	className,
+}: {
+	corporationIds: string[]
+	/** Resolved id -> name. Looked up ONCE at page level and passed in: this
+	 * component renders per table row, so calling useEntityNames here would issue
+	 * one request per row (a different id set is a different cache key) and defeat
+	 * the batching the hook exists for. */
+	names: Record<string, string>
+	withLogos?: boolean
+	className?: string
+}) {
+	if (corporationIds.length === 0) return <span className="text-muted-foreground">—</span>
+
+	if (!withLogos) {
+		return (
+			<span className={className}>
+				{corporationIds.map((id) => names[id] ?? id).join(', ')}
+			</span>
+		)
+	}
+
+	return (
+		<div className={`flex flex-wrap gap-x-3 gap-y-1 ${className ?? ''}`}>
+			{corporationIds.map((id) => (
+				<span key={id} className="inline-flex items-center gap-1.5">
+					<img
+						src={corporationLogoUrl(id, 32)}
+						alt=""
+						className="h-4 w-4 rounded-sm"
+						loading="lazy"
+					/>
+					<span>{names[id] ?? id}</span>
+				</span>
+			))}
+		</div>
+	)
+}
+
+/**
  * The blocked banner. Rendered before anything else and visually unmistakable —
  * a blocked run's counts are meaningless and must never be read as a result.
  *
@@ -182,7 +238,13 @@ function BlockedBanner({ run }: { run: ServicesAuditRunDetail }) {
  * de-flagged those 13" from "the table is half-restored", and a human reading the
  * names can do it in seconds.
  */
-function BasisSuspectBanner({ run }: { run: ServicesAuditRunDetail }) {
+function BasisSuspectBanner({
+	run,
+	corporationNames,
+}: {
+	run: ServicesAuditRunDetail
+	corporationNames: Record<string, string>
+}) {
 	const removed = run.basisRemovedCorporationIds ?? []
 	return (
 		<Card className="border-amber-500 bg-amber-500/10">
@@ -203,9 +265,15 @@ function BasisSuspectBanner({ run }: { run: ServicesAuditRunDetail }) {
 						<p className="text-xs font-medium mb-1">
 							{removed.length} corporation{removed.length === 1 ? '' : 's'} left the basis:
 						</p>
-						<p className="text-xs font-mono text-muted-foreground break-all">
-							{removed.join(', ')}
-						</p>
+						{/* By name and logo, not id. This banner asks the operator to recognise
+						    these corporations — which is impossible from a list of numbers, and
+						    recognition is the entire safety mechanism here. */}
+						<CorporationNameList
+							corporationIds={removed}
+							names={corporationNames}
+							withLogos
+							className="text-xs"
+						/>
 						<p className="text-xs text-muted-foreground mt-2">
 							Recognise them? Then you de-flagged them and this scan is correct. Don’t recognise
 							them? <code>managed_corporations</code> may be half-restored or mid-sync, and the
@@ -244,6 +312,25 @@ export default function AdminServicesAuditPage() {
 
 	const startScan = useStartServicesAuditScan()
 	const cancelScan = useCancelServicesAuditScan()
+
+	/**
+	 * Resolve every corporation id on the page in ONE batched lookup — the rows
+	 * table plus the suspect-basis banner. Done here rather than inside the row
+	 * component because a per-row lookup is a per-row cache key, i.e. one request
+	 * per row.
+	 */
+	const corporationIdsOnPage = useMemo(() => {
+		const ids = new Set<string>()
+		for (const row of rowsQuery.data?.rows ?? []) {
+			for (const id of row.corporationIds) ids.add(id)
+		}
+		for (const id of run?.basisRemovedCorporationIds ?? []) ids.add(id)
+		return [...ids]
+	}, [rowsQuery.data, run?.basisRemovedCorporationIds])
+
+	const { data: corporationNames = {} } = useEntityNames(corporationIdsOnPage, {
+		enabled: corporationIdsOnPage.length > 0,
+	})
 
 	const anyRunLive = runs.some((item) => !isTerminalRunStatus(item.status))
 
@@ -353,7 +440,7 @@ export default function AdminServicesAuditPage() {
 			{run && (
 				<>
 					{run.status === 'blocked' && <BlockedBanner run={run} />}
-					{run.basisSuspect && run.status !== 'blocked' && <BasisSuspectBanner run={run} />}
+					{run.basisSuspect && run.status !== 'blocked' && <BasisSuspectBanner run={run} corporationNames={corporationNames} />}
 
 					{run.status === 'failed' && (
 						<Card className="border-destructive">
@@ -651,7 +738,7 @@ export default function AdminServicesAuditPage() {
 													)}
 												</TableCell>
 												<TableCell className="text-muted-foreground">
-													{row.corporationIds.length > 0 ? row.corporationIds.join(', ') : '—'}
+													<CorporationNameList corporationIds={row.corporationIds} names={corporationNames} />
 												</TableCell>
 											</TableRow>
 										))
