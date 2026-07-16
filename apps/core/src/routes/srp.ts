@@ -1,9 +1,8 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { and, desc, eq, ilike, inArray, or, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, ilike, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { TimeCache } from '@repo/hono-helpers'
 import {
 	CreateCommentSchema,
 	CreateSRPPolicySchema,
@@ -19,6 +18,7 @@ import { createWorkflow } from '@repo/workflow-utils'
 
 import { createDb } from '../db'
 import { managedCorporations, userCharacters } from '../db/schema'
+import { waitUntilWithTelemetry } from '../lib/background-task'
 import { isExportArtifactExpired } from '../lib/export-retention'
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { normalizeWorkflowStatus } from '../lib/workflow-status'
@@ -30,6 +30,7 @@ import type {
 	LossWithSRPStatus,
 	SRPCommentResponse,
 	SRPRequestResponse,
+	RecentLossRefreshCharacterInput,
 	RecentLossRefreshCoordinator,
 	Srp,
 } from '@repo/srp'
@@ -65,12 +66,6 @@ const RequestSearchFieldQuerySchema = z.enum(['character', 'ship', 'system'])
 const WalletHistorySearchFieldQuerySchema = z.enum(['reason', 'recipient'])
 const SRP_REQUEST_ID_IN_REASON_REGEX = /KM#(\d+)/i
 
-/**
- * Permission check cache - 15 second TTL
- * Caches the boolean result of permission checks
- */
-const permissionCache = new TimeCache<boolean>(15000)
-
 /** Get the primary character name for the session user */
 function getPrimaryCharacterName(user: any): string {
 	return user.characters.find((c: any) => c.is_primary)?.characterName ?? 'Unknown'
@@ -86,6 +81,55 @@ function getExecutionContextOrNull(c: { executionCtx?: ExecutionContext }): Exec
 	} catch {
 		return null
 	}
+}
+
+type SrpBackfillRefreshCandidate = {
+	userId: string
+	characters: RecentLossRefreshCharacterInput[]
+}
+
+async function loadSrpBackfillRefreshCandidates(db: ReturnType<typeof createDb>): Promise<SrpBackfillRefreshCandidate[]> {
+	const historyUsers = await db.execute<{ userId: string }>(
+		sql`select user_id::text as "userId"
+			from srp_requests
+			group by user_id
+			order by "userId" asc`
+	)
+
+	const userIds = [...new Set((historyUsers.rows ?? []).map((row) => row.userId).filter(Boolean))]
+	if (userIds.length === 0) return []
+
+	const rows = await db.query.userCharacters.findMany({
+		where: and(
+			inArray(userCharacters.userId, userIds),
+			eq(userCharacters.isDeleted, false),
+			eq(userCharacters.status, 'active')
+		),
+		orderBy: [asc(userCharacters.userId), desc(userCharacters.is_primary), asc(userCharacters.characterName)],
+		columns: {
+			userId: true,
+			characterId: true,
+			characterName: true,
+		},
+	})
+
+	const charactersByUser = new Map<string, RecentLossRefreshCharacterInput[]>()
+	for (const row of rows) {
+		const userId = String(row.userId)
+		const nextCharacters = charactersByUser.get(userId) ?? []
+		nextCharacters.push({
+			characterId: String(row.characterId),
+			characterName: row.characterName,
+		})
+		charactersByUser.set(userId, nextCharacters)
+	}
+
+	return userIds
+		.map((userId) => ({
+			userId,
+			characters: charactersByUser.get(userId) ?? [],
+		}))
+		.filter((candidate) => candidate.characters.length > 0)
 }
 
 function isValidSrpRequestId(requestId: string): boolean {
@@ -297,10 +341,6 @@ interface MilitarySrpAssessment {
 }
 
 type RequestWithMilitarySrp = RequestWithCharacterRole & { militarySrp?: MilitarySrpAssessment }
-type RequestWithKillmailItemNames = RequestWithMilitarySrp & {
-	killmailItemNames?: Record<string, string>
-	killmailItemGroupIds?: Record<string, string>
-}
 
 const MISSING_RIG_PENALTY_PERCENT = 10
 
@@ -599,43 +639,6 @@ async function enrichRequestsWithMilitarySrp(
 	)
 }
 
-async function enrichRequestWithKillmailItemNames(
-	request: RequestWithMilitarySrp,
-	env: { UNIVERSE: DurableObjectNamespace }
-): Promise<RequestWithKillmailItemNames> {
-	const killmailItems = (request.killmailItems as any[] | undefined) ?? []
-	if (killmailItems.length === 0) return request
-
-	const typeIds = [
-		...new Set(
-			killmailItems
-				.map((item) => item?.item_type_id)
-				.filter((itemTypeId): itemTypeId is number => typeof itemTypeId === 'number')
-				.map(String)
-		),
-	]
-	if (typeIds.length === 0) return request
-
-	const universeStub = getStub<Universe>(env.UNIVERSE, 'default')
-	const typeMap = await universeStub
-		.resolveTypeNamesByIds(typeIds)
-		.catch(() => ({} as Record<string, null>))
-	const killmailItemNames: Record<string, string> = {}
-	const killmailItemGroupIds: Record<string, string> = {}
-	for (const typeId of typeIds) {
-		const type = typeMap[typeId]
-		const typeName = type?.typeName
-		if (typeName) killmailItemNames[typeId] = typeName
-		if (type?.groupId) killmailItemGroupIds[typeId] = type.groupId
-	}
-
-	return {
-		...request,
-		killmailItemNames,
-		killmailItemGroupIds,
-	}
-}
-
 async function hydrateRequestCharacterRoles(
 	requests: RequestWithCharacterRole[],
 	databaseUrl: string
@@ -666,27 +669,6 @@ async function hydrateRequestCharacterRoles(
 			mainCharacterId: mainCharacter.characterId,
 			mainCharacterName: mainCharacter.characterName,
 		}
-	})
-}
-
-/**
- * Helper function to check if a user has a specific permission
- * Results are cached for 15 seconds to reduce load on Groups DO
- */
-async function hasPermission(
-	env: { GROUPS: DurableObjectNamespace },
-	userId: string,
-	permissionUrn: string,
-	isAdmin: boolean
-): Promise<boolean> {
-	// Admins bypass permission checks
-	if (isAdmin) return true
-
-	// Check cache or fetch user permissions
-	const cacheKey = `${userId}:${permissionUrn}`
-	return permissionCache.getOrSet(cacheKey, async () => {
-		const permissions = await getCachedUserPermissions(env, userId)
-		return permissions.some((p) => p.urn === permissionUrn)
 	})
 }
 
@@ -848,6 +830,61 @@ srp.get('/losses/refresh/status', async (c) => {
 	)
 	const status = await statusStub.getRecentLossRefreshStatus(user.id)
 	return c.json(status)
+})
+
+/**
+ * Backfill the canonical SRP killmail table from the existing SRP DO cache
+ * for all known users with SRP request history.
+ * POST /api/srp/losses/refresh/backfill
+ */
+srp.post('/losses/refresh/backfill', async (c) => {
+	const user = c.get('user')!
+	const canManage = await hasSrpTierPermission(c.env, user.id, 'manager', user.is_admin)
+	if (!canManage) return c.json({ error: 'Requires manager-or-higher permissions' }, 403)
+
+	const db = c.get('db') || createDb(c.env.DATABASE_URL)
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
+	const candidates = await loadSrpBackfillRefreshCandidates(db)
+	const totalCharacters = candidates.reduce((total, candidate) => total + candidate.characters.length, 0)
+	const executionCtx = getExecutionContextOrNull(c)
+
+	const launchBackfill = async () => {
+		for (const candidate of candidates) {
+			for (const character of candidate.characters) {
+				await srpStub.backfillRecentLossesFromCache(character.characterId)
+			}
+		}
+	}
+
+	if (executionCtx) {
+		waitUntilWithTelemetry(
+			executionCtx,
+			'srp.recent-loss-cache.backfill',
+			launchBackfill,
+			{
+				adminUserId: user.id,
+				usersWithHistory: candidates.length,
+				totalCharacters,
+			}
+		)
+	} else {
+		await launchBackfill()
+	}
+
+	return c.json(
+		{
+			success: true,
+			message:
+				candidates.length > 0
+					? 'SRP cached-loss backfill started'
+					: 'No SRP cached losses found to backfill',
+			usersWithHistory: candidates.length,
+			usersQueued: candidates.length,
+			totalCharacters,
+			skippedUsers: 0,
+		},
+		202
+	)
 })
 
 // =============================================================================
@@ -1087,11 +1124,7 @@ srp.get('/requests/:id', async (c) => {
 		[requestWithSystemRegion],
 		c.env
 	)
-	const requestWithKillmailNames = await enrichRequestWithKillmailItemNames(
-		militaryEnrichedRequest,
-		c.env
-	)
-	return c.json(requestWithKillmailNames)
+	return c.json(militaryEnrichedRequest)
 })
 
 // =============================================================================

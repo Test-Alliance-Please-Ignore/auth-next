@@ -128,9 +128,8 @@ describe('DEFAULT_WORKFLOW_RETENTION', () => {
 		expect(typeof DEFAULT_WORKFLOW_RETENTION.errorRetention).toBe('string')
 	})
 
-	it('retains success state well past the 15 minute pending-refresh TTL in apps/core', () => {
-		// apps/core/src/durable-object.ts PENDING_TTL_MS = 15 minutes bounds the longest
-		// read-back window in the repo; success retention must clear it with margin.
+	it('uses the shortest documented duration for both success and error retention', () => {
 		expect(DEFAULT_WORKFLOW_RETENTION.successRetention).toBe('1 hour')
+		expect(DEFAULT_WORKFLOW_RETENTION.errorRetention).toBe('7 days')
 	})
 })

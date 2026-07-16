@@ -346,11 +346,27 @@ export interface CharacterKillmailData {
 	// Detailed killmail fields for SRP
 	isLoss?: boolean | null // True if character was the victim
 	shipTypeId?: string | null // Ship type that was destroyed
+	shipTypeName?: string | null // Resolved ship type name
 	totalValue?: string | null // ISK value as text
 	solarSystemId?: string | null // Solar system where kill occurred
+	solarSystemName?: string | null // Resolved solar system name
 	victimCharacterId?: string | null // Character ID of the victim
 	killmailData?: unknown | null // Full killmail JSON data
 	updatedAt: Date
+}
+
+export interface CharacterKillmailUpsertData {
+	killmailId: string
+	killmailHash: string
+	killmailTime: Date
+	isLoss?: boolean | null
+	shipTypeId?: string | null
+	shipTypeName?: string | null
+	totalValue?: string | null
+	solarSystemId?: string | null
+	solarSystemName?: string | null
+	victimCharacterId?: string | null
+	killmailData?: unknown | null
 }
 
 /**
@@ -677,6 +693,25 @@ export interface EveCharacterData {
 	 */
 	getMarketOrders(characterId: string): Promise<CharacterMarketOrderData[]>
 
+	upsertCharacterKillmails(
+		characterId: string,
+		killmails: CharacterKillmailUpsertData[]
+	): Promise<void>
+
+	getCharacterKillmail(
+		characterId: string,
+		killmailId: string,
+		killmailHash: string
+	): Promise<CharacterKillmailData | null>
+
+	getMostRecentLoss(characterId: string): Promise<CharacterKillmailData | null>
+
+	getRecentLosses(
+		characterId: string,
+		limit?: number,
+		cutoff?: Date
+	): Promise<CharacterLossData[]>
+
 	/**
 	 * Get instance of EveCharacterData Durable Object
 	 * @param characterId - EVE character ID
@@ -816,6 +851,29 @@ export class EveCharacterDataInstance extends RpcTarget {
 
 	async getMarketOrders(): Promise<CharacterMarketOrderData[]> {
 		return await this.characterDataObject.getMarketOrders(this.characterId)
+	}
+
+	async upsertCharacterKillmails(killmails: CharacterKillmailUpsertData[]): Promise<void> {
+		await this.characterDataObject.upsertCharacterKillmails(this.characterId, killmails)
+	}
+
+	async getCharacterKillmail(
+		killmailId: string,
+		killmailHash: string
+	): Promise<CharacterKillmailData | null> {
+		return await this.characterDataObject.getCharacterKillmail(
+			this.characterId,
+			killmailId,
+			killmailHash
+		)
+	}
+
+	async getMostRecentLoss(): Promise<CharacterKillmailData | null> {
+		return await this.characterDataObject.getMostRecentLoss(this.characterId)
+	}
+
+	async getRecentLosses(limit?: number, cutoff?: Date): Promise<CharacterLossData[]> {
+		return await this.characterDataObject.getRecentLosses(this.characterId, limit, cutoff)
 	}
 
 	[Symbol.dispose](): void {

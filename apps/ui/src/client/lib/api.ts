@@ -37,6 +37,7 @@ import type {
 	StructureSovereigntyTransportState,
 } from '@repo/structures'
 import type { TrackingSession } from '../features/fleet-tracking/types'
+import type { SRPRecentLossRefreshBackfillResponse } from '../features/srp/types'
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 const API_REQUEST_TIMEOUT_MS = 30_000
@@ -5041,6 +5042,10 @@ export class ApiClient {
 		totalCharacters?: number
 	}> {
 		return this.post('/srp/losses/refresh', {})
+	}
+
+	async refreshSrpRecentLossesForAllKnownUsers(): Promise<SRPRecentLossRefreshBackfillResponse> {
+		return this.post('/srp/losses/refresh/backfill', {})
 	}
 
 	async getRecentLossRefreshStatus(): Promise<{

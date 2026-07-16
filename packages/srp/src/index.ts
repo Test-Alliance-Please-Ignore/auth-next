@@ -6,6 +6,13 @@
 
 import { z } from 'zod'
 
+export {
+	buildKillmailItemMetadata,
+	collectKillmailItemTypeIds,
+	type KillmailItemNode,
+	type KillmailItemTypeMeta,
+} from './lib/killmail-item-names'
+
 export const MAX_SRP_LOSS_AGE_DAYS = 90
 
 /**
@@ -46,6 +53,12 @@ export interface RecentLossRefreshCharacterResult {
 	success: boolean
 	reason?: 'invalid_token' | 'fetch_failed'
 	error?: string
+}
+
+export interface RecentLossCacheBackfillResult {
+	characterId: string
+	cachedLosses: number
+	persistedLosses: number
 }
 
 export type RecentLossRefreshStatus =
@@ -91,7 +104,8 @@ export interface RecentLossRefreshCoordinator {
 	startRecentLossRefresh(
 		userId: string,
 		characters: RecentLossRefreshCharacterInput[],
-		maxLossAgeDays: number
+		maxLossAgeDays: number,
+		bypassCooldown?: boolean
 	): Promise<RecentLossRefreshStartResult>
 	getRecentLossRefreshStatus(userId: string): Promise<RecentLossRefreshStatusResponse>
 	updateRecentLossRefreshStatus(
@@ -137,6 +151,7 @@ export interface Srp {
 		characterName: string,
 		maxLossAgeDays: number
 	): Promise<RecentLossRefreshCharacterResult>
+	backfillRecentLossesFromCache(characterId: string): Promise<RecentLossCacheBackfillResult>
 
 	// Legacy review methods (kept for backward compat)
 	getPendingRequests(
@@ -532,6 +547,8 @@ export interface SRPRequestResponse {
 		lineTotal: string
 		isConsumable?: boolean
 	}>
+	killmailItemNames?: Record<string, string>
+	killmailItemGroupIds?: Record<string, string>
 	killmailItems?: Array<{
 		item_type_id: number
 		flag: number

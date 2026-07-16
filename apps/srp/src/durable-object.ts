@@ -5,10 +5,16 @@ import { getStub } from '@repo/do-utils'
 import type { CharacterKillmailBasic } from '@repo/esi'
 import { buildPublicEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
-import { roundToMillion, MAX_SRP_LOSS_AGE_DAYS } from '@repo/srp'
+import {
+	buildKillmailItemMetadata,
+	collectKillmailItemTypeIds,
+	roundToMillion,
+	MAX_SRP_LOSS_AGE_DAYS,
+} from '@repo/srp'
 import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
+import { buildKillmailDetailFromCachedLoss } from './lib/cached-killmail'
 import {
 	srpComments,
 	srpConfig,
@@ -41,7 +47,13 @@ import type { srpRequests as srpRequestsTable } from './db/schema'
 
 type KillmailDataJson = NonNullable<typeof srpRequestsTable.$inferInsert.killmailData>
 
-import type { CharacterLossData, CharacterLossItemData, EveCharacterData } from '@repo/eve-character-data'
+import type {
+	CharacterKillmailData,
+	CharacterKillmailUpsertData,
+	CharacterLossData,
+	CharacterLossItemData,
+	EveCharacterData,
+} from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { LatestMarketPrice, Markets } from '@repo/markets'
@@ -50,6 +62,7 @@ import type {
 	CreateSRPPolicy,
 	RecentLossRefreshCharacterFailure,
 	RecentLossRefreshCharacterInput,
+	RecentLossCacheBackfillResult,
 	RecentLossRefreshCharacterResult,
 	RecentLossesResponse,
 	LossWithSRPStatus,
@@ -82,6 +95,11 @@ function serializeLossItems(items?: KillmailDetail['victim']['items']): Characte
 		quantity_dropped: item.quantity_dropped,
 		items: serializeLossItems(item.items),
 	}))
+}
+
+type HydratedRecentLoss = {
+	loss: CharacterLossData
+	killmailData: KillmailDetail & { killmail_hash?: string }
 }
 
 /**
@@ -181,30 +199,166 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 	}
 
-	private async writeRecentLossCache(
+	private async getCharacterDataInstance(characterId: string) {
+		const charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
+		return await charStub.getInstance(characterId)
+	}
+
+	private async readStoredKillmail(
 		characterId: string,
-		losses: CharacterLossData[],
-		cutoffMs: number,
-		maxLossAgeDays: number
+		killmailId: string,
+		killmailHash: string
+	): Promise<CharacterKillmailData | null> {
+		const charInstance = await this.getCharacterDataInstance(characterId)
+		return await charInstance.getCharacterKillmail(killmailId, killmailHash).catch(() => null)
+	}
+
+	private async readMostRecentLoss(characterId: string): Promise<CharacterKillmailData | null> {
+		const charInstance = await this.getCharacterDataInstance(characterId)
+		return await charInstance.getMostRecentLoss().catch(() => null)
+	}
+
+	private async persistRecentLossesToCharacterData(
+		characterId: string,
+		hydratedLosses: HydratedRecentLoss[],
+		cutoffMs?: number
 	): Promise<void> {
-		const trimmedLosses = mergeRecentLosses([], losses, cutoffMs)
-		const record: RecentLossCacheStorageRecord = {
-			losses: trimmedLosses.map((loss) => ({
-				...loss,
-				killmailTime: loss.killmailTime.toISOString(),
-			})),
-			refreshedAtMs: Date.now(),
-			complete: true,
-			maxLossAgeDays,
+		const persistable = [...hydratedLosses]
+			.filter((entry) =>
+				typeof cutoffMs === 'number'
+					? new Date(entry.loss.killmailTime).getTime() >= cutoffMs
+					: true
+			)
+			.sort((a, b) => new Date(b.loss.killmailTime).getTime() - new Date(a.loss.killmailTime).getTime())
+
+		if (persistable.length === 0) return
+
+		const charInstance = await this.getCharacterDataInstance(characterId)
+		await charInstance.upsertCharacterKillmails(
+			persistable.map((entry) => ({
+				killmailId: entry.loss.killmailId,
+				killmailHash: entry.loss.killmailHash,
+				killmailTime: entry.loss.killmailTime,
+				isLoss: true,
+				shipTypeId: entry.loss.shipTypeId,
+				totalValue: entry.loss.totalValue,
+				solarSystemId: entry.loss.solarSystemId,
+				victimCharacterId: entry.loss.victimCharacterId,
+				killmailData: entry.killmailData,
+			}))
+		)
+	}
+
+	private async selfHealRequestItemMetadata(request: any): Promise<void> {
+		const itemPrices: Array<{ typeId?: string; typeName?: string | null; [key: string]: unknown }> =
+			Array.isArray(request?.srpItemPrices) ? request.srpItemPrices : []
+		const killmailItems = Array.isArray((request?.killmailData as any)?.victim?.items)
+			? ((request.killmailData as any)?.victim?.items as Array<{
+					item_type_id?: number | string
+					type_id?: number | string
+					typeId?: number | string
+					items?: Array<any>
+			  }>)
+			: []
+		if (itemPrices.length === 0 && killmailItems.length === 0) return
+		if (!request?.id) return
+
+		const existingKillmailItemNames = (request.killmailItemNames ?? {}) as Record<string, string>
+		const existingKillmailItemGroupIds = (request.killmailItemGroupIds ?? {}) as Record<string, string>
+		const missingPriceTypeIds = itemPrices
+			.filter((item) => Boolean(item.typeId) && (!item.typeName || item.typeName === item.typeId))
+			.map((item) => String(item.typeId))
+			.filter((typeId): typeId is string => Boolean(typeId))
+		const killmailTypeIds = collectKillmailItemTypeIds(killmailItems)
+		const missingKillmailTypeIds = killmailTypeIds.filter(
+			(typeId) => !existingKillmailItemNames[typeId] || !existingKillmailItemGroupIds[typeId]
+		)
+		const typeIds = [...new Set([...missingPriceTypeIds, ...missingKillmailTypeIds])]
+		if (typeIds.length === 0) return
+
+		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const typeMap = await universeStub
+			.resolveTypeNamesByIds(typeIds)
+			.catch(() => ({}) as Record<string, null>)
+		const resolvedNames = new Map<string, string>()
+		for (const [typeId, type] of Object.entries(typeMap)) {
+			if (type?.typeName && type.typeName !== typeId) {
+				resolvedNames.set(typeId, type.typeName)
+			}
 		}
-		await this.storage.put(this.buildRecentLossCacheKey(characterId), record)
+
+		let changed = false
+		const nextItemPrices = itemPrices.map((item: { typeId?: string; typeName?: string | null }) => {
+			const typeId = item?.typeId ? String(item.typeId) : ''
+			const resolvedName = typeId ? resolvedNames.get(typeId) : undefined
+			if (!resolvedName || item.typeName === resolvedName) return item
+			changed = true
+			return {
+				...item,
+				typeName: resolvedName,
+			}
+		})
+
+		const resolvedKillmailItemMetadata =
+			missingKillmailTypeIds.length > 0
+				? buildKillmailItemMetadata(
+						killmailItems,
+						typeMap as Record<string, { typeName?: string | null; groupId?: string | null }>
+					)
+				: null
+		const nextKillmailItemNames = resolvedKillmailItemMetadata
+			? {
+					...existingKillmailItemNames,
+					...resolvedKillmailItemMetadata.killmailItemNames,
+				}
+			: existingKillmailItemNames
+		const nextKillmailItemGroupIds = resolvedKillmailItemMetadata
+			? {
+					...existingKillmailItemGroupIds,
+					...resolvedKillmailItemMetadata.killmailItemGroupIds,
+				}
+			: existingKillmailItemGroupIds
+		const isSameStringMap = (left?: Record<string, string> | null, right?: Record<string, string>) => {
+			const leftEntries = Object.entries(left ?? {})
+			const rightEntries = Object.entries(right ?? {})
+			if (leftEntries.length !== rightEntries.length) return false
+			for (const [key, value] of rightEntries) {
+				if (left?.[key] !== value) return false
+			}
+			return true
+		}
+
+		if (
+			!isSameStringMap(request.killmailItemNames, nextKillmailItemNames) ||
+			!isSameStringMap(request.killmailItemGroupIds, nextKillmailItemGroupIds)
+		) {
+			changed = true
+		}
+
+		if (!changed) return
+
+		await this.db
+			.update(srpRequests)
+			.set({
+				srpItemPrices: nextItemPrices as any,
+				killmailItemNames:
+					Object.keys(nextKillmailItemNames).length > 0 ? (nextKillmailItemNames as any) : null,
+				killmailItemGroupIds:
+					Object.keys(nextKillmailItemGroupIds).length > 0 ? (nextKillmailItemGroupIds as any) : null,
+				updatedAt: new Date(),
+			})
+			.where(eq(srpRequests.id, request.id))
+
+		request.srpItemPrices = nextItemPrices
+		request.killmailItemNames = nextKillmailItemNames
+		request.killmailItemGroupIds = nextKillmailItemGroupIds
 	}
 
 	private async fetchRecentLossesFromEsi(
 		characterId: string,
 		knownKillmailIds: ReadonlySet<string>
-	): Promise<CharacterLossData[]> {
-		const losses: CharacterLossData[] = []
+	): Promise<HydratedRecentLoss[]> {
+		const losses: HydratedRecentLoss[] = []
 		let page = 1
 		let totalPages = 1
 
@@ -312,12 +466,12 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	private async fetchLossDetailsForKillmails(
 		characterId: string,
 		killmails: CharacterKillmailBasic[]
-	): Promise<CharacterLossData[]> {
+	): Promise<HydratedRecentLoss[]> {
 		if (killmails.length === 0) {
 			return []
 		}
 
-		const losses: CharacterLossData[] = []
+		const losses: HydratedRecentLoss[] = []
 		const concurrency = Math.min(
 			SrpDO.RECENT_LOSS_DETAIL_CONCURRENCY,
 			killmails.length
@@ -343,12 +497,18 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				if (!loss) {
 					continue
 				}
-				losses[currentIndex] = loss
+				losses[currentIndex] = {
+					loss,
+					killmailData: {
+						...detail,
+						killmail_hash: killmail.killmail_hash,
+					},
+				}
 			}
 		}
 
 		await Promise.all(Array.from({ length: concurrency }, () => worker()))
-		return losses.filter((loss): loss is CharacterLossData => Boolean(loss))
+		return losses.filter((loss): loss is HydratedRecentLoss => Boolean(loss))
 	}
 
 	/**
@@ -420,16 +580,53 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			return await this.formatRequestWithShipSlotCapacities(reactivated[0])
 		}
 
-		// Fetch killmail details directly through the shared ESI request client.
-		const charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
-		const charInstance = await charStub.getInstance(characterId)
-		const killmailData = await this.killmailEsi.fetchCharacterKillmailDetail(
+		const charInstance = await this.getCharacterDataInstance(characterId)
+		const storedKillmail = await this.readStoredKillmail(
 			characterId,
 			normalizedKillmailId,
 			killmailHash
 		)
 
-		if (!killmailData || killmailData.victim.character_id !== characterId) {
+		let killmailData: KillmailDataJson | null = storedKillmail?.killmailData
+			? (storedKillmail.killmailData as KillmailDataJson)
+			: null
+
+		if (!killmailData) {
+			const cachedLoss = await this.findCachedRecentLoss(
+				characterId,
+				normalizedKillmailId,
+				killmailHash
+			)
+			if (cachedLoss) {
+				killmailData = buildKillmailDetailFromCachedLoss(
+					characterId,
+					normalizedKillmailId,
+					killmailHash,
+					cachedLoss
+				) as KillmailDataJson
+				void charInstance.upsertCharacterKillmails([
+					{
+						killmailId: normalizedKillmailId,
+						killmailHash,
+						killmailTime: cachedLoss.killmailTime,
+						isLoss: true,
+						shipTypeId: cachedLoss.shipTypeId,
+						totalValue: cachedLoss.totalValue,
+						solarSystemId: cachedLoss.solarSystemId,
+						victimCharacterId: cachedLoss.victimCharacterId,
+						killmailData,
+					},
+				]).catch((error) => {
+					logger.warn('[createRequest] Failed to backfill cached killmail into character data', {
+						characterId,
+						killmailId: normalizedKillmailId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				})
+			}
+		}
+
+		if (!killmailData || String((killmailData as any).victim?.character_id) !== characterId) {
 			throw new Error('Killmail not found or is not a loss')
 		}
 
@@ -447,10 +644,19 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		const solarSystemId = killmailData.solar_system_id ? String(killmailData.solar_system_id) : null
 
+		const victim = killmailData.victim as any
 		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const killmailItemTypeIds = collectKillmailItemTypeIds((victim.items ?? []) as Array<{
+			item_type_id?: number | string
+			type_id?: number | string
+			typeId?: number | string
+			items?: Array<any>
+		}>)
 		const [typeMap, systemMap] = await Promise.all([
 			universeStub
-				.resolveTypeNamesByIds([String(killmailData.victim.ship_type_id)])
+				.resolveTypeNamesByIds(
+					[...new Set([String(victim.ship_type_id), ...killmailItemTypeIds])]
+				)
 				.catch(() => ({}) as Record<string, null>),
 			solarSystemId
 				? universeStub
@@ -459,15 +665,28 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				: Promise.resolve({} as Record<string, null>),
 		])
 		const shipTypeName =
-			typeMap[String(killmailData.victim.ship_type_id)]?.typeName ??
-			`Ship ${killmailData.victim.ship_type_id}`
+			typeMap[String(victim.ship_type_id)]?.typeName ?? `Ship ${victim.ship_type_id}`
+		const { killmailItemNames, killmailItemGroupIds } = buildKillmailItemMetadata(
+			(victim.items ?? []) as Array<{
+				item_type_id?: number | string
+				type_id?: number | string
+				typeId?: number | string
+				items?: Array<any>
+			}>,
+			typeMap as Record<string, { typeName?: string | null; groupId?: string | null }>
+		)
 		const solarSystemName = solarSystemId
 			? (systemMap[solarSystemId]?.solarSystemName ?? null)
 			: null
 
 		// Calculate SRP valuation from Jita prices at time of loss
+		const killmailTime = killmailData.killmail_time
+		if (typeof killmailTime !== 'string') {
+			throw new Error('Killmail time is missing')
+		}
+
 		const config = await this.getConfig()
-		const lossDate = new Date(killmailData.killmail_time)
+		const lossDate = new Date(killmailTime)
 		const maxLossAgeDays = config?.maxLossAgeDays ?? 30
 		const maxLossAgeMs = maxLossAgeDays * SrpDO.MS_PER_DAY
 		if (Date.now() - lossDate.getTime() > maxLossAgeMs) {
@@ -475,12 +694,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 		let valuation: Awaited<ReturnType<typeof this.calculateSrpValuation>> = null
 		try {
-			valuation = await this.calculateSrpValuation(
-				killmailData as any,
-				lossDate,
-				String(killmailData.victim.ship_type_id),
-				config
-			)
+			valuation = await this.calculateSrpValuation(killmailData as any, lossDate, String(victim.ship_type_id), config)
 		} catch (err) {
 			// Non-fatal — request is still created, valuation fields will be null
 			logger.error('[createRequest] SRP valuation failed:', err)
@@ -497,7 +711,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				corporationId: characterInfo.corporationId,
 				corporationName: resolvedCorporationName,
 				killmailHash,
-				shipTypeId: killmailData.victim.ship_type_id,
+				shipTypeId: victim.ship_type_id,
 				shipTypeName,
 				shipValue: valuation?.finalValue ?? valuation?.calculatedValue ?? '0',
 				solarSystemId,
@@ -505,6 +719,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				contextText,
 				lossDate,
 				killmailData: killmailData as any,
+				killmailItemNames: Object.keys(killmailItemNames).length > 0 ? killmailItemNames : null,
+				killmailItemGroupIds:
+					Object.keys(killmailItemGroupIds).length > 0 ? killmailItemGroupIds : null,
 				srpEquipmentValue: valuation?.equipmentValue ?? null,
 				srpInsurancePremium: valuation?.insurancePremium ?? null,
 				srpInsurancePayout: valuation?.insurancePayout ?? null,
@@ -541,34 +758,38 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		killmailId: string,
 		killmailHash: string
 	): Promise<SRPValuationPreview | null> {
-		const cachedLoss = await this.findCachedRecentLoss(characterId, killmailId, killmailHash)
-		const cachedVictimItems = cachedLoss?.victimItems ?? []
-		const canUseCachedLoss = cachedLoss !== null && cachedVictimItems.length > 0
+		const storedKillmail = await this.readStoredKillmail(characterId, killmailId, killmailHash)
+		let killmailData: any = storedKillmail?.killmailData ?? null
+		if (!killmailData) {
+			const cachedLoss = await this.findCachedRecentLoss(characterId, killmailId, killmailHash)
+			const cachedVictimItems = cachedLoss?.victimItems ?? []
+			const canUseCachedLoss = cachedLoss !== null && cachedVictimItems.length > 0
 
-		const killmailData = canUseCachedLoss
-			? ({
-					killmail_time: cachedLoss.killmailTime.toISOString(),
-					solar_system_id: Number(cachedLoss.solarSystemId),
-					victim: {
-						character_id: Number(characterId),
-						ship_type_id: Number(cachedLoss.shipTypeId),
-						items: cachedVictimItems,
-					},
-				} as unknown as KillmailDataJson)
-			: await this.killmailEsi.fetchCharacterKillmailDetail(
-					characterId,
-					killmailId,
-					killmailHash
-				)
+			killmailData = canUseCachedLoss
+				? ({
+						killmail_time: cachedLoss.killmailTime.toISOString(),
+						solar_system_id: Number(cachedLoss.solarSystemId),
+						victim: {
+							character_id: Number(characterId),
+							ship_type_id: Number(cachedLoss.shipTypeId),
+							items: cachedVictimItems as any,
+						},
+					} as any)
+				: await this.killmailEsi.fetchCharacterKillmailDetail(
+						characterId,
+						killmailId,
+						killmailHash
+					)
+		}
 
-		const victim = killmailData?.victim
-		const killmailTime = killmailData?.killmail_time
+		const victim = killmailData.victim as any
+		const killmailTime = killmailData.killmail_time as string | undefined
 		if (!killmailData || !victim || !killmailTime || String(victim.character_id) !== characterId) {
 			throw new Error('Killmail not found or is not a loss')
 		}
 
 		const config = await this.getConfig()
-		const lossDate = new Date(killmailTime)
+		const lossDate = new Date(killmailTime as string)
 		const valuation = await this.calculateSrpValuation(
 			killmailData as any,
 			lossDate,
@@ -685,7 +906,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			offset,
 		})
 
-		return requests.map((r) => this.formatRequest(r))
+		return await Promise.all(requests.map((r) => this.formatRequest(r)))
 	}
 
 	// private async getLossesForCharacter(
@@ -716,8 +937,19 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const failedCharacters: RecentLossRefreshCharacterFailure[] = []
 
 		for (const character of characters) {
+			const charInstance = await this.getCharacterDataInstance(character.characterId)
+			const storedLosses = await charInstance.getRecentLosses(
+				1000,
+				new Date(cutoffMs)
+			).catch(() => [])
 			const cached = await this.readRecentLossCache(character.characterId)
-			if (!cached) {
+			const mergedCharacterLosses = mergeRecentLosses(
+				storedLosses,
+				cached?.losses ?? [],
+				cutoffMs
+			)
+
+			if (mergedCharacterLosses.length === 0) {
 				const tokenValidation = await tokenStore.validateToken(
 					character.characterId,
 					SRP_REQUIRED_KILLMAIL_SCOPES
@@ -740,7 +972,10 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				continue
 			}
 
-			if (cached.losses.length > 0 && !doesRecentLossCacheCoverCutoff(cached, cacheCutoffMs, maxLossAgeDays)) {
+			if (
+				(cached?.losses?.length ?? 0) > 0 &&
+				!doesRecentLossCacheCoverCutoff(cached, cacheCutoffMs, maxLossAgeDays)
+			) {
 				failedCharacters.push({
 					characterId: character.characterId,
 					characterName: character.characterName,
@@ -750,7 +985,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				})
 			}
 
-			for (const loss of cached.losses) {
+			for (const loss of mergedCharacterLosses) {
 				if (_excludeNonSrpEligible && !isRecentLossRequestable(loss)) {
 					continue
 				}
@@ -899,26 +1134,45 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		_characterName: string,
 		maxLossAgeDays: number
 	): Promise<RecentLossRefreshCharacterResult> {
-		const cached = await this.readRecentLossCache(characterId)
 		const cacheCutoffMs = Date.now() - maxLossAgeDays * SrpDO.MS_PER_DAY
-		const cacheCoversRequestedWindow = doesRecentLossCacheCoverCutoff(
-			cached,
-			cacheCutoffMs,
-			maxLossAgeDays
-		)
-		const knownKillmailIds = cacheCoversRequestedWindow
-			? new Set((cached?.losses ?? []).map((loss) => String(loss.killmailId)))
-			: new Set<string>()
+		const mostRecentLoss = await this.readMostRecentLoss(characterId)
+		const knownKillmailIds = new Set<string>()
+		if (mostRecentLoss) {
+			knownKillmailIds.add(mostRecentLoss.killmailId)
+		}
 
 		const freshLosses = await this.fetchRecentLossesFromEsi(characterId, knownKillmailIds)
-		const cachedLosses = cached?.losses ?? []
-		const mergedLosses = mergeRecentLosses(cachedLosses, freshLosses, cacheCutoffMs)
-		await this.writeRecentLossCache(characterId, mergedLosses, cacheCutoffMs, maxLossAgeDays)
+		await this.persistRecentLossesToCharacterData(characterId, freshLosses, cacheCutoffMs)
 
 		return {
 			characterId,
 			characterName: _characterName,
 			success: true,
+		}
+	}
+
+	async backfillRecentLossesFromCache(characterId: string): Promise<RecentLossCacheBackfillResult> {
+		const cached = await this.readRecentLossCache(characterId)
+		const cachedLosses = cached?.losses ?? []
+		if (cachedLosses.length === 0) {
+			return {
+				characterId,
+				cachedLosses: 0,
+				persistedLosses: 0,
+			}
+		}
+
+		const hydratedLosses = cachedLosses.map((loss) => ({
+			loss,
+			killmailData: buildKillmailDetailFromCachedLoss(characterId, loss.killmailId, loss.killmailHash, loss),
+		}))
+
+		await this.persistRecentLossesToCharacterData(characterId, hydratedLosses)
+
+		return {
+			characterId,
+			cachedLosses: cachedLosses.length,
+			persistedLosses: hydratedLosses.length,
 		}
 	}
 
@@ -952,7 +1206,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			offset,
 		})
 
-		return requests.map((r) => this.formatRequest(r))
+		return await Promise.all(requests.map((r) => this.formatRequest(r)))
 	}
 
 	/**
@@ -1250,7 +1504,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			offset,
 		})
 
-		return requests.map((r) => this.formatRequest(r))
+		return await Promise.all(requests.map((r) => this.formatRequest(r)))
 	}
 
 	async getPendingPayoutTotal(corporationId?: string): Promise<string> {
@@ -1702,12 +1956,13 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	/**
 	 * Helper: Format request for response
 	 */
-	private formatRequest(request: any): SRPRequestResponse {
+	private async formatRequest(request: any): Promise<SRPRequestResponse> {
+		await this.selfHealRequestItemMetadata(request)
 		return formatSrpRequest(request)
 	}
 
 	private async formatRequestWithShipSlotCapacities(request: any): Promise<SRPRequestResponse> {
-		const formatted = this.formatRequest(request)
+		const formatted = await this.formatRequest(request)
 		formatted.shipSlotCapacities = await this.resolveShipSlotCapacities(formatted.shipTypeId)
 		return formatted
 	}
@@ -1900,7 +2155,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			})(),
 		])
 
-		return { requests: requests.map((r) => this.formatRequest(r)), total: count }
+		return { requests: await Promise.all(requests.map((r) => this.formatRequest(r))), total: count }
 	}
 
 	async getSearchValues(

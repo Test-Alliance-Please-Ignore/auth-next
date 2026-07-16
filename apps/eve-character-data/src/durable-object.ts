@@ -11,6 +11,7 @@ import {
 	characterAssets,
 	characterAttributes,
 	characterCorporationHistory,
+	characterKillmails,
 	characterLocation,
 	characterMarketOrders,
 	characterMarketTransactions,
@@ -26,12 +27,16 @@ import { buildUserSyncWorkflowOptions } from './workflows/build-user-sync-workfl
 
 import type {
 	CharacterAttributesData,
+	CharacterKillmailData,
+	CharacterKillmailUpsertData,
 	CharacterCorporationHistoryData,
 	CharacterMarketOrderData,
 	CharacterMarketTransactionData,
 	CharacterMarketTransactionsWindowFilters,
 	CharacterPublicData,
 	CharacterPublicRefreshResult,
+	CharacterLossData,
+	CharacterLossItemData,
 	CharacterSensitiveData,
 	CharacterSkillsData,
 	CharacterSkillsResponse,
@@ -52,6 +57,23 @@ import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
 import { logger } from '@repo/hono-helpers'
 import { createWorkflowBatch } from '@repo/workflow-utils'
+
+type KillmailItemLike = {
+	flag: number
+	item_type_id: number | string
+	quantity_destroyed?: number
+	quantity_dropped?: number
+	items?: KillmailItemLike[]
+}
+
+type KillmailPayloadLike = {
+	solar_system_id?: number | string
+	victim?: {
+		character_id?: number | string
+		ship_type_id?: number | string
+		items?: KillmailItemLike[]
+	}
+}
 
 /**
  * EveCharacterData Durable Object
@@ -118,6 +140,67 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			...context,
 			error: this.extractDbErrorDetails(error),
 		})
+	}
+
+	private serializeKillmailItems(items?: KillmailItemLike[]): CharacterLossItemData[] | undefined {
+		if (!items || items.length === 0) return undefined
+		return items.map((item: KillmailItemLike) => ({
+			flag: item.flag,
+			item_type_id: String(item.item_type_id),
+			quantity_destroyed: item.quantity_destroyed,
+			quantity_dropped: item.quantity_dropped,
+			items: this.serializeKillmailItems(item.items),
+		}))
+	}
+
+	private extractKillmailData(row: typeof characterKillmails.$inferSelect): KillmailPayloadLike | null {
+		const raw = row.killmailData
+		if (!raw || typeof raw !== 'object') return null
+		return raw as KillmailPayloadLike
+	}
+
+	private mapKillmailRowToData(row: typeof characterKillmails.$inferSelect): CharacterKillmailData {
+		return {
+			id: row.id,
+			characterId: createEveCharacterId(row.characterId),
+			killmailId: row.killmailId,
+			killmailHash: row.killmailHash,
+			killmailTime: row.killmailTime,
+			isLoss: row.isLoss ?? null,
+			shipTypeId: row.shipTypeId ?? null,
+			shipTypeName: row.shipTypeName ?? null,
+			totalValue: row.totalValue ?? null,
+			solarSystemId: row.solarSystemId ?? null,
+			solarSystemName: row.solarSystemName ?? null,
+			victimCharacterId: row.victimCharacterId ?? null,
+			killmailData: row.killmailData ?? null,
+			updatedAt: row.updatedAt,
+		}
+	}
+
+	private mapKillmailRowToLoss(row: typeof characterKillmails.$inferSelect): CharacterLossData | null {
+		const killmailData = this.extractKillmailData(row)
+		const victim = killmailData?.victim
+		const shipTypeId = row.shipTypeId ?? victim?.ship_type_id
+		const solarSystemId = row.solarSystemId ?? killmailData?.solar_system_id
+		const victimCharacterId = row.victimCharacterId ?? victim?.character_id
+
+		if (!shipTypeId || !solarSystemId || !victimCharacterId) {
+			return null
+		}
+
+		return {
+			killmailId: row.killmailId,
+			killmailHash: row.killmailHash,
+			killmailTime: row.killmailTime,
+			shipTypeId: String(shipTypeId),
+			totalValue: row.totalValue ?? '0',
+			solarSystemId: String(solarSystemId),
+			victimCharacterId: String(victimCharacterId),
+			victimItems: this.serializeKillmailItems(victim?.items),
+			shipTypeName: row.shipTypeName ?? undefined,
+			solarSystemName: row.solarSystemName ?? undefined,
+		}
 	}
 	/**
 	 * Initialize the Durable Object
@@ -343,6 +426,102 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 */
 	async fetchMarketOrders(characterId: string, forceRefresh = false): Promise<void> {
 		await this.fetchAndStoreMarketOrders(characterId, forceRefresh)
+	}
+
+	async upsertCharacterKillmails(
+		characterId: string,
+		killmails: CharacterKillmailUpsertData[]
+	): Promise<void> {
+		if (killmails.length === 0) return
+
+		for (const killmail of killmails) {
+			try {
+				await this.db
+					.insert(characterKillmails)
+					.values({
+						characterId,
+						killmailId: killmail.killmailId,
+						killmailHash: killmail.killmailHash,
+						killmailTime: killmail.killmailTime,
+						isLoss: killmail.isLoss ?? true,
+						shipTypeId: killmail.shipTypeId ?? null,
+						shipTypeName: killmail.shipTypeName ?? null,
+						totalValue: killmail.totalValue ?? null,
+						solarSystemId: killmail.solarSystemId ?? null,
+						solarSystemName: killmail.solarSystemName ?? null,
+						victimCharacterId: killmail.victimCharacterId ?? null,
+						killmailData: killmail.killmailData ?? null,
+						updatedAt: new Date(),
+					})
+					.onConflictDoUpdate({
+						target: [characterKillmails.characterId, characterKillmails.killmailId],
+						set: {
+							killmailHash: killmail.killmailHash,
+							killmailTime: killmail.killmailTime,
+							isLoss: killmail.isLoss ?? true,
+							shipTypeId: killmail.shipTypeId ?? null,
+							shipTypeName: killmail.shipTypeName ?? null,
+							totalValue: killmail.totalValue ?? null,
+							solarSystemId: killmail.solarSystemId ?? null,
+							solarSystemName: killmail.solarSystemName ?? null,
+							victimCharacterId: killmail.victimCharacterId ?? null,
+							killmailData: killmail.killmailData ?? null,
+							updatedAt: new Date(),
+						},
+					})
+			} catch (error) {
+				this.logDbOperationError('upsertCharacterKillmails.upsert', characterId, error, {
+					killmailId: killmail.killmailId,
+				})
+				throw error
+			}
+		}
+	}
+
+	async getCharacterKillmail(
+		characterId: string,
+		killmailId: string,
+		killmailHash: string
+	): Promise<CharacterKillmailData | null> {
+		const result = await this.db.query.characterKillmails.findFirst({
+			where: and(
+				eq(characterKillmails.characterId, characterId),
+				eq(characterKillmails.killmailId, killmailId),
+				eq(characterKillmails.killmailHash, killmailHash)
+			),
+		})
+
+		return result ? this.mapKillmailRowToData(result) : null
+	}
+
+	async getMostRecentLoss(characterId: string): Promise<CharacterKillmailData | null> {
+		const result = await this.db.query.characterKillmails.findFirst({
+			where: and(eq(characterKillmails.characterId, characterId), eq(characterKillmails.isLoss, true)),
+			orderBy: [desc(characterKillmails.killmailTime), desc(characterKillmails.killmailId)],
+		})
+
+		return result ? this.mapKillmailRowToData(result) : null
+	}
+
+	async getRecentLosses(
+		characterId: string,
+		limit = 1000,
+		cutoff?: Date
+	): Promise<CharacterLossData[]> {
+		const conditions = [eq(characterKillmails.characterId, characterId), eq(characterKillmails.isLoss, true)]
+		if (cutoff) {
+			conditions.push(gte(characterKillmails.killmailTime, cutoff))
+		}
+
+		const rows = await this.db.query.characterKillmails.findMany({
+			where: and(...conditions),
+			orderBy: [desc(characterKillmails.killmailTime), desc(characterKillmails.killmailId)],
+			limit,
+		})
+
+		return rows
+			.map((row) => this.mapKillmailRowToLoss(row))
+			.filter((loss): loss is CharacterLossData => loss !== null)
 	}
 
 	/**

@@ -28,7 +28,7 @@ import type {
 	AppliedModifier,
 	SRPPolicy,
 	SRPPredefinedAdhocModifier,
-	SRPRequestWithKillmailItemNames,
+	SRPRequestResponse,
 } from '../types'
 import type {
 	SRPFittingItem,
@@ -38,7 +38,7 @@ import type {
 } from '../utils/fitting'
 
 interface ReviewRequestFormProps {
-	request: SRPRequestWithKillmailItemNames
+	request: SRPRequestResponse
 	onSuccess: () => void
 	commentSlot?: ReactNode
 	rightAppend?: ReactNode
