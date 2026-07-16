@@ -95,6 +95,57 @@ async function cacheJson(cacheKey: string, data: unknown, ttl: number): Promise<
 	}
 }
 
+type CorporationMemberStats = {
+	memberCount: number
+	linkedMemberCount: number
+	unlinkedMemberCount: number
+	validEsiKeyMemberCount: number
+}
+
+function buildCorporationMemberStats(
+	members: Array<{ characterId: string }>,
+	linkedCharacters: Array<{
+		characterId: string
+		userId?: string | null
+		hasValidToken?: boolean | null
+	}>,
+	emeritusCharacterIds: Set<string> = new Set()
+): CorporationMemberStats {
+	const linkedCharacterById = new Map(
+		linkedCharacters.map((character) => [String(character.characterId), character])
+	)
+	const linkedUserIds = new Set<string>()
+
+	let memberCount = 0
+	let unlinkedMemberCount = 0
+	let validEsiKeyMemberCount = 0
+
+	for (const member of members) {
+		const characterId = String(member.characterId)
+		if (emeritusCharacterIds.has(characterId)) continue
+
+		memberCount += 1
+
+		const linkedCharacter = linkedCharacterById.get(characterId)
+		if (linkedCharacter) {
+			linkedUserIds.add(String(linkedCharacter.userId ?? linkedCharacter.characterId))
+		} else {
+			unlinkedMemberCount += 1
+		}
+
+		if (linkedCharacter?.hasValidToken === true) {
+			validEsiKeyMemberCount += 1
+		}
+	}
+
+	return {
+		memberCount,
+		linkedMemberCount: linkedUserIds.size,
+		unlinkedMemberCount,
+		validEsiKeyMemberCount,
+	}
+}
+
 /**
  * User management routes
  *
@@ -467,6 +518,10 @@ users.get('/corporation-access', async (c) => {
 				isMemberCorporation: boolean
 				isAltCorp: boolean
 				isSpecialPurpose: boolean
+				memberCount: number
+				linkedMemberCount: number
+				unlinkedMemberCount: number
+				validEsiKeyMemberCount: number
 			}>
 		}>(cacheKey)
 		if (cached) {
@@ -513,6 +568,10 @@ users.get('/corporation-access', async (c) => {
 			isMemberCorporation: boolean
 			isAltCorp: boolean
 			isSpecialPurpose: boolean
+			memberCount: number
+			linkedMemberCount: number
+			unlinkedMemberCount: number
+			validEsiKeyMemberCount: number
 		}> = []
 
 		if (characters.length > 0 && managedCorps.length > 0) {
@@ -633,6 +692,10 @@ users.get('/corporation-access', async (c) => {
 							isMemberCorporation: corp.isMemberCorporation,
 							isAltCorp: corp.isAltCorp,
 							isSpecialPurpose: corp.isSpecialPurpose,
+							memberCount: 0,
+							linkedMemberCount: 0,
+							unlinkedMemberCount: 0,
+							validEsiKeyMemberCount: 0,
 						}
 					}
 				} catch (error) {
@@ -665,6 +728,10 @@ users.get('/corporation-access', async (c) => {
 					isMemberCorporation: corp.isMemberCorporation,
 					isAltCorp: corp.isAltCorp,
 					isSpecialPurpose: corp.isSpecialPurpose,
+					memberCount: 0,
+					linkedMemberCount: 0,
+					unlinkedMemberCount: 0,
+					validEsiKeyMemberCount: 0,
 				})
 			}
 		}
@@ -716,6 +783,10 @@ users.get('/corporation-access', async (c) => {
 						isMemberCorporation: corp.isMemberCorporation,
 						isAltCorp: corp.isAltCorp,
 						isSpecialPurpose: corp.isSpecialPurpose,
+						memberCount: 0,
+						linkedMemberCount: 0,
+						unlinkedMemberCount: 0,
+						validEsiKeyMemberCount: 0,
 					}
 				})
 
@@ -725,16 +796,81 @@ users.get('/corporation-access', async (c) => {
 			}
 		}
 
+		const accessibleCorpData = await Promise.all(
+			accessibleCorporations.map(async (corp) => {
+				try {
+					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
+					const coreData = await corpStub.getCoreData(corp.corporationId)
+					return {
+						corporationId: corp.corporationId,
+						members: coreData?.members ?? [],
+					}
+				} catch (error) {
+					logger.warn('[Corporation Access] Failed to hydrate corporation stats', {
+						corporationId: corp.corporationId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+					return {
+						corporationId: corp.corporationId,
+						members: [],
+					}
+				}
+			})
+		)
+
+		const accessibleMemberCharIds = new Set<string>()
+		for (const corpData of accessibleCorpData) {
+			for (const member of corpData.members) {
+				accessibleMemberCharIds.add(String(member.characterId))
+			}
+		}
+
+		const accessibleLinkedCharacters =
+			accessibleMemberCharIds.size > 0
+				? await db.query.userCharacters.findMany({
+						where: inArray(userCharacters.characterId, Array.from(accessibleMemberCharIds)),
+						columns: {
+							characterId: true,
+							userId: true,
+							status: true,
+							hasValidToken: true,
+						},
+					})
+				: []
+
+		const accessibleEmeritusCharacterIds = new Set(
+			accessibleLinkedCharacters
+				.filter((character) => character.status === 'emeritus')
+				.map((character) => character.characterId)
+		)
+
+		const accessibleCorporationsWithStats = accessibleCorporations.map((corp) => {
+			const corpData = accessibleCorpData.find((item) => item.corporationId === corp.corporationId)
+			const stats = buildCorporationMemberStats(
+				corpData?.members ?? [],
+				accessibleLinkedCharacters,
+				accessibleEmeritusCharacterIds
+			)
+
+			return {
+				...corp,
+				memberCount: stats.memberCount,
+				linkedMemberCount: stats.linkedMemberCount,
+				unlinkedMemberCount: stats.unlinkedMemberCount,
+				validEsiKeyMemberCount: stats.validEsiKeyMemberCount,
+			}
+		})
+
 		const result = {
-			hasAccess: accessibleCorporations.length > 0,
-			corporations: accessibleCorporations,
+			hasAccess: accessibleCorporationsWithStats.length > 0,
+			corporations: accessibleCorporationsWithStats,
 		}
 
 		logger.info('[Corporation Access] Access check complete', {
 			userId: user.id,
 			hasAccess: result.hasAccess,
-			corporationCount: accessibleCorporations.length,
-			corporations: accessibleCorporations.map((c) => ({
+			corporationCount: accessibleCorporationsWithStats.length,
+			corporations: accessibleCorporationsWithStats.map((c) => ({
 				corporationId: c.corporationId,
 				name: c.name,
 				userRole: c.userRole,
@@ -773,6 +909,7 @@ users.get('/my-corporations', async (c) => {
 				memberCount: number
 				linkedMemberCount: number
 				unlinkedMemberCount: number
+				validEsiKeyMemberCount: number
 				allianceId?: string
 				isMemberCorporation: boolean
 			}>
@@ -804,28 +941,26 @@ users.get('/my-corporations', async (c) => {
 						corp.corporationId
 					)
 					const coreData = await corpStub.getCoreData(corp.corporationId)
-
-					// Count linked/unlinked members
-					let linkedMemberCount = 0
-					let unlinkedMemberCount = 0
-
-					if (coreData?.members) {
-						const memberCharIds = coreData.members.map((m) => String(m.characterId))
-						const linkedChars = await db.query.userCharacters.findMany({
-							where: inArray(userCharacters.characterId, memberCharIds),
-							columns: { characterId: true },
-						})
-						const linkedSet = new Set(linkedChars.map((c) => c.characterId))
-
-						for (const member of coreData.members) {
-							const memberCharId = String(member.characterId)
-							if (linkedSet.has(memberCharId)) {
-								linkedMemberCount++
-							} else {
-								unlinkedMemberCount++
-							}
-						}
-					}
+					const linkedChars =
+						coreData?.members && coreData.members.length > 0
+							? await db.query.userCharacters.findMany({
+									where: inArray(
+										userCharacters.characterId,
+										coreData.members.map((m) => String(m.characterId))
+									),
+									columns: {
+										characterId: true,
+										userId: true,
+										hasValidToken: true,
+										status: true,
+									},
+								})
+							: []
+					const stats = buildCorporationMemberStats(
+						coreData?.members ?? [],
+						linkedChars,
+						new Set(linkedChars.filter((c) => c.status === 'emeritus').map((c) => c.characterId))
+					)
 
 					return {
 						corporationId: corp.corporationId,
@@ -833,9 +968,10 @@ users.get('/my-corporations', async (c) => {
 						ticker: corp.ticker,
 						isMemberCorporation: corp.isMemberCorporation,
 						userRole: 'admin' as const,
-						memberCount: coreData?.members?.length || 0,
-						linkedMemberCount,
-						unlinkedMemberCount,
+						memberCount: stats.memberCount,
+						linkedMemberCount: stats.linkedMemberCount,
+						unlinkedMemberCount: stats.unlinkedMemberCount,
+						validEsiKeyMemberCount: stats.validEsiKeyMemberCount,
 						allianceId: coreData?.publicInfo?.allianceId || undefined,
 					}
 				} catch (error) {
@@ -960,15 +1096,12 @@ users.get('/my-corporations', async (c) => {
 						where: inArray(userCharacters.characterId, Array.from(allMemberCharIds)),
 						columns: {
 							characterId: true,
+							userId: true,
 							status: true,
+							hasValidToken: true,
 						},
 					})
 				: []
-
-		// Create fast lookup set (excluding emeritus characters from statistics)
-		const linkedCharSet = new Set(
-			linkedCharacters.filter((c) => c.status !== 'emeritus').map((c) => c.characterId)
-		)
 
 		// Also create a set of emeritus character IDs to exclude from total count
 		const emeritusCharSet = new Set(
@@ -985,6 +1118,7 @@ users.get('/my-corporations', async (c) => {
 			memberCount: number
 			linkedMemberCount: number
 			unlinkedMemberCount: number
+			validEsiKeyMemberCount: number
 			allianceId?: string
 		}> = []
 
@@ -1014,28 +1148,11 @@ users.get('/my-corporations', async (c) => {
 			if (!role) continue // User has no leadership role
 
 			// Count linked/unlinked members using the pre-built set (excluding emeritus)
-			let linkedMemberCount = 0
-			let unlinkedMemberCount = 0
-			let totalActiveMemberCount = 0
-
-			if (coreData?.members) {
-				for (const member of coreData.members) {
-					const memberCharId = String(member.characterId)
-
-					// Skip emeritus characters from all statistics
-					if (emeritusCharSet.has(memberCharId)) {
-						continue
-					}
-
-					totalActiveMemberCount++
-
-					if (linkedCharSet.has(memberCharId)) {
-						linkedMemberCount++
-					} else {
-						unlinkedMemberCount++
-					}
-				}
-			}
+			const stats = buildCorporationMemberStats(
+				coreData?.members ?? [],
+				linkedCharacters,
+				emeritusCharSet
+			)
 
 			myCorporations.push({
 				corporationId: corp.corporationId,
@@ -1043,9 +1160,10 @@ users.get('/my-corporations', async (c) => {
 				ticker: corp.ticker,
 				isMemberCorporation: corp.isMemberCorporation,
 				userRole: role,
-				memberCount: totalActiveMemberCount, // Only count active members (excludes emeritus)
-				linkedMemberCount,
-				unlinkedMemberCount,
+				memberCount: stats.memberCount, // Only count active members (excludes emeritus)
+				linkedMemberCount: stats.linkedMemberCount,
+				unlinkedMemberCount: stats.unlinkedMemberCount,
+				validEsiKeyMemberCount: stats.validEsiKeyMemberCount,
 				allianceId: corpInfo?.allianceId ? String(corpInfo.allianceId) : undefined,
 			})
 		}
