@@ -291,7 +291,7 @@ describe('character detail access for HR page viewers', () => {
 		hoisted.core.getUserCorporations.mockResolvedValue([])
 		hoisted.hr.listApplications.mockImplementation(async (_filters: any, _userId: string, access: any) => {
 			if (access.isAdmin || access.isAuditor) return []
-			return [{ corporationId: '2001', status: 'pending' }]
+			return [{ corporationId: '2001', status: 'accepted' }]
 		})
 		hoisted.hr.checkPermission.mockResolvedValue(true)
 

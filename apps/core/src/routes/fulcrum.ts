@@ -15,7 +15,7 @@ import type { Core } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Fulcrum, ReportRequestSource, ReportSectionName } from '@repo/fulcrum'
-import { ACTIVE_APPLICATION_STATUSES } from '@repo/hr'
+import { isOpenApplicationStatus } from '@repo/hr'
 import type { Hr } from '@repo/hr'
 import type { App } from '../context'
 import type { SessionUser } from '../context'
@@ -116,7 +116,7 @@ async function resolveApplicationFulcrumCorporationForTargetUser(
 			continue
 		}
 		sawPermission = true
-		if (ACTIVE_APPLICATION_STATUSES.includes(application.status)) {
+		if (isOpenApplicationStatus(application.status)) {
 			sawOpenApplication = true
 			return {
 				corporationId: application.corporationId,

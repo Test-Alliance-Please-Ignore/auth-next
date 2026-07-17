@@ -1,6 +1,6 @@
 # HR Permissions Matrix
 
-Last updated: 2026-06-21
+Last updated: 2026-07-17
 
 Scope notes:
 - Corporation-scoped unless explicitly marked global.
@@ -69,10 +69,10 @@ Scope notes:
 
 | Scenario | HR Reviewer | HR Admin | HR Auditor | Site Admin | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Target user has an active application (`pending` / `under_review`) in a corp where the requester has HR permission | ✅ | ✅ | ✅ | ✅ | The allowance is user-scoped and applies to all of that user's characters. |
-| No active application, but the target user has any character in a corp shared with the requester | ✅ | ✅ | ✅ | ✅ | The fallback is also user-scoped; the requested character does not need to be in the shared corp. |
+| Target user has an open application (`pending` / `under_review` / `accepted`) in a corp where the requester has HR permission | ✅ | ✅ | ✅ | ✅ | The allowance is user-scoped and applies to all of that user's characters. |
+| No open application, but the target user has any character in a corp shared with the requester | ✅ | ✅ | ✅ | ✅ | The fallback is also user-scoped; the requested character does not need to be in the shared corp. |
 | Target is a member-corp CEO | ❌ | ❌ | ✅ | ✅ | CEO gating supersedes the normal HR allowance path. |
-| No active application and no shared corp | ❌ | ❌ | ✅ | ✅ | Auditors and site admins bypass the corp-match requirement; HR staff do not. |
+| No open application and no shared corp | ❌ | ❌ | ✅ | ✅ | Auditors and site admins bypass the corp-match requirement; HR staff do not. |
 
 ## API Access Matrix (Core routes)
 
@@ -94,7 +94,7 @@ Scope notes:
 | `POST /api/corporations/:corpId/members/refresh` | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | `PATCH /api/corporations/:corpId/members/:charId/status` (emeritus/active) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 
-\* `HR Viewer` access depends on application state constraints from HR service logic (viewer-only corp access is restricted to active review states where enforced).
+\* `HR Viewer` access depends on application state constraints from HR service logic (viewer-only corp access is restricted to open application states where enforced).
 
 ## UI Action Matrix (by surface)
 

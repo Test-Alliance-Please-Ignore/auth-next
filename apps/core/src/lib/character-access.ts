@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
+import { isOpenApplicationStatus } from '@repo/hr'
 
 import { userCharacters, users } from '../db/schema'
 import { hasHrAuditorPermission } from './hr-access'
@@ -105,17 +106,17 @@ async function resolveSharedCorporationCandidates(
 ): Promise<SharedCorporationCandidate[]> {
 	const core = getStub<CoreRpc>(c.env.CORE, 'default')
 	const hr = getStub<Hr>(c.env.HR, 'default')
-	const [viewerCorporations, targetCorporations, pendingApplications, underReviewApplications] = await Promise.all([
+	const [viewerCorporations, targetCorporations, targetApplications] = await Promise.all([
 		core.getUserCorporations(user.id),
 		core.getUserCorporations(targetOwner.userId),
-		hr.listApplications({ userId: targetOwner.userId, status: 'pending' }, user.id, {
-			isAdmin: user.is_admin,
-			isAuditor: false,
-		}),
-		hr.listApplications({ userId: targetOwner.userId, status: 'under_review' }, user.id, {
-			isAdmin: user.is_admin,
-			isAuditor: false,
-		}),
+		hr.listApplications(
+			{ userId: targetOwner.userId },
+			user.id,
+			{
+				isAdmin: user.is_admin,
+				isAuditor: false,
+			}
+		),
 	])
 
 	const candidateCorporationIds = new Map<string, SharedCorporationCandidate>()
@@ -130,7 +131,8 @@ async function resolveSharedCorporationCandidates(
 		})
 	}
 
-	for (const application of [...pendingApplications, ...underReviewApplications]) {
+	for (const application of targetApplications) {
+		if (!isOpenApplicationStatus(application.status)) continue
 		if (!candidateCorporationIds.has(application.corporationId)) {
 			candidateCorporationIds.set(application.corporationId, {
 				corporationId: application.corporationId,
