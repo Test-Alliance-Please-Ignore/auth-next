@@ -4,6 +4,7 @@ import { freightApi } from '@/lib/freight-api'
 import toast from '@/lib/toast'
 
 import type {
+	FreightLeaderboardPeriod,
 	FreightContractSortDirection,
 	FreightContractSortKey,
 } from '@/lib/freight-api'
@@ -60,7 +61,7 @@ export function useOpenContractInGame() {
 /**
  * Fetch courier contract leaderboard
  */
-export function useFreightLeaderboard(period?: '30d' | 'all') {
+export function useFreightLeaderboard(period?: FreightLeaderboardPeriod) {
 	return useQuery({
 		queryKey: [...freightContractKeys.leaderboard(), period],
 		queryFn: () => freightApi.getLeaderboard(period),

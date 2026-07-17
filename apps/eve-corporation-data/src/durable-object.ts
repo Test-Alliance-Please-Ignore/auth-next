@@ -1,6 +1,20 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, asc, desc, eq, gt, gte, inArray, lte, notInArray, sql } from '@repo/db-utils'
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	gt,
+	gte,
+	inArray,
+	isNotNull,
+	lt,
+	lte,
+	notInArray,
+	or,
+	sql,
+} from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { parseDateOrNull } from '@repo/worker-utils'
@@ -562,7 +576,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	): CorporationContractData {
 		return {
 			id: row.id,
-			corporationId: row.corporationId,
 			contractId: row.contractId,
 			acceptorId: row.acceptorId,
 			assigneeId: row.assigneeId,
@@ -2735,49 +2748,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Store contracts (workflow-friendly)
 	 */
 	async storeContracts(corporationId: string, contracts: any[]): Promise<void> {
-		const BATCH_SIZE = 20
-		for (let i = 0; i < contracts.length; i += BATCH_SIZE) {
-			const batch = contracts.slice(i, i + BATCH_SIZE)
-			const valuesToInsert = batch.map((contract) => ({
-				corporationId: String(corporationId),
-				contractId: contract.contract_id,
-				acceptorId: contract.acceptor_id || null,
-				assigneeId: contract.assignee_id,
-				availability: contract.availability,
-				buyout: contract.buyout?.toString() || null,
-				collateral: contract.collateral?.toString() || null,
-				dateAccepted: contract.date_accepted ? new Date(contract.date_accepted) : null,
-				dateCompleted: contract.date_completed ? new Date(contract.date_completed) : null,
-				dateExpired: new Date(contract.date_expired),
-				dateIssued: new Date(contract.date_issued),
-				daysToComplete: contract.days_to_complete ?? null,
-				endLocationId: contract.end_location_id || null,
-				forCorporation: contract.for_corporation,
-				issuerCorporationId: contract.issuer_corporation_id,
-				issuerId: contract.issuer_id,
-				price: contract.price?.toString() || null,
-				reward: contract.reward?.toString() || null,
-				startLocationId: contract.start_location_id || null,
-				status: contract.status,
-				title: contract.title || null,
-				type: contract.type,
-				volume: contract.volume?.toString() || null,
-				updatedAt: new Date(),
-			}))
-
-			await this.getDb()
-				.insert(corporationContracts)
-				.values(valuesToInsert)
-				.onConflictDoUpdate({
-					target: [corporationContracts.corporationId, corporationContracts.contractId],
-					set: {
-						status: sql`excluded.status`,
-						dateAccepted: sql`excluded.date_accepted`,
-						dateCompleted: sql`excluded.date_completed`,
-						updatedAt: sql`excluded.updated_at`,
-					},
-				})
-		}
+		await this.replaceContractsSnapshot(corporationId, contracts as EsiCorporationContract[])
 	}
 
 	/**
@@ -4431,16 +4402,22 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			corporationId,
 			characterId
 		)
+		await this.replaceContractsSnapshot(corporationId, contracts)
+	}
 
-		// Batch insert to prevent timeouts
-		const BATCH_SIZE = 20 // Contracts have many fields, use smaller batch
-		for (let i = 0; i < contracts.length; i += BATCH_SIZE) {
-			const batch = contracts.slice(i, i + BATCH_SIZE)
+	private async replaceContractsSnapshot(
+		_corporationId: string,
+		contracts: EsiCorporationContract[]
+	): Promise<void> {
+		const normalizedContracts = this.dedupeContractsByContractId(contracts)
+		const BATCH_SIZE = 20
+
+		for (let i = 0; i < normalizedContracts.length; i += BATCH_SIZE) {
+			const batch = normalizedContracts.slice(i, i + BATCH_SIZE)
 			const valuesToInsert = batch.map((contract) => ({
-				corporationId: String(corporationId),
-				contractId: contract.contract_id,
-				acceptorId: contract.acceptor_id || null,
-				assigneeId: contract.assignee_id,
+				contractId: String(contract.contract_id),
+				acceptorId: contract.acceptor_id?.toString() || null,
+				assigneeId: contract.assignee_id.toString(),
 				availability: contract.availability,
 				buyout: contract.buyout?.toString() || null,
 				collateral: contract.collateral?.toString() || null,
@@ -4449,13 +4426,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				dateExpired: new Date(contract.date_expired),
 				dateIssued: new Date(contract.date_issued),
 				daysToComplete: contract.days_to_complete ?? null,
-				endLocationId: contract.end_location_id || null,
+				endLocationId: contract.end_location_id?.toString() || null,
 				forCorporation: contract.for_corporation,
-				issuerCorporationId: contract.issuer_corporation_id,
-				issuerId: contract.issuer_id,
+				issuerCorporationId: contract.issuer_corporation_id.toString(),
+				issuerId: contract.issuer_id.toString(),
 				price: contract.price?.toString() || null,
 				reward: contract.reward?.toString() || null,
-				startLocationId: contract.start_location_id || null,
+				startLocationId: contract.start_location_id?.toString() || null,
 				status: contract.status,
 				title: contract.title || null,
 				type: contract.type,
@@ -4467,15 +4444,25 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				.insert(corporationContracts)
 				.values(valuesToInsert)
 				.onConflictDoUpdate({
-					target: [corporationContracts.corporationId, corporationContracts.contractId],
+					target: [corporationContracts.contractId],
 					set: {
-						status: sql`excluded.status`,
+						acceptorId: sql`excluded.acceptor_id`,
 						dateAccepted: sql`excluded.date_accepted`,
 						dateCompleted: sql`excluded.date_completed`,
+						status: sql`excluded.status`,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
 		}
+	}
+
+	private dedupeContractsByContractId(contracts: EsiCorporationContract[]): EsiCorporationContract[] {
+		const byContractId = new Map<string, EsiCorporationContract>()
+		for (const contract of contracts) {
+			byContractId.set(String(contract.contract_id), contract)
+		}
+
+		return [...byContractId.values()]
 	}
 
 	/**
@@ -5843,20 +5830,21 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Get corporation contracts
 	 */
 	async getContracts(corporationId: string, status?: string): Promise<CorporationContractData[]> {
+		const baseWhere = or(
+			eq(corporationContracts.assigneeId, corporationId),
+			eq(corporationContracts.issuerId, corporationId)
+		)
+
 		const results = status
 			? await this.getDb().query.corporationContracts.findMany({
-					where: and(
-						eq(corporationContracts.corporationId, corporationId),
-						eq(corporationContracts.status, status)
-					),
+					where: and(baseWhere, eq(corporationContracts.status, status)),
 				})
 			: await this.getDb().query.corporationContracts.findMany({
-					where: eq(corporationContracts.corporationId, corporationId),
+					where: baseWhere,
 				})
 
 		return results.map((r) => ({
 			id: r.id,
-			corporationId: r.corporationId,
 			contractId: r.contractId,
 			acceptorId: r.acceptorId,
 			assigneeId: r.assigneeId,
@@ -5953,17 +5941,27 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Get leaderboard for completed courier contracts assigned to an alliance
 	 */
-	async getCourierLeaderboard(allianceId: string, since?: Date): Promise<CourierLeaderboard> {
+	async getCourierLeaderboard(
+		allianceId: string,
+		options?: {
+			since?: Date
+			before?: Date
+		}
+	): Promise<CourierLeaderboard> {
 		const conditions: SQL[] = [
 			eq(corporationContracts.assigneeId, allianceId),
 			eq(corporationContracts.type, 'courier'),
 			eq(corporationContracts.status, 'finished'),
+			isNotNull(corporationContracts.acceptorId),
 		]
-		if (since) {
-			conditions.push(gt(corporationContracts.dateCompleted, since))
+		if (options?.since) {
+			conditions.push(gte(corporationContracts.dateCompleted, options.since))
+		}
+		if (options?.before) {
+			conditions.push(lt(corporationContracts.dateCompleted, options.before))
 		}
 
-		const distinct = this.getDb()
+		const distinctContracts = this.getDb()
 			.selectDistinctOn([corporationContracts.contractId], {
 				contractId: corporationContracts.contractId,
 				acceptorId: corporationContracts.acceptorId,
@@ -5977,28 +5975,28 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const results = await this.getDb()
 			.select({
-				acceptorId: distinct.acceptorId,
+				acceptorId: distinctContracts.acceptorId,
 				contractsCompleted: sql<number>`count(*)`.as('contracts_completed'),
-				totalVolume: sql<number>`coalesce(sum(cast(${distinct.volume} as numeric)), 0)`.as(
+				totalVolume: sql<number>`coalesce(sum(cast(${distinctContracts.volume} as numeric)), 0)`.as(
 					'total_volume'
 				),
-				totalReward: sql<number>`coalesce(sum(cast(${distinct.reward} as numeric)), 0)`.as(
+				totalReward: sql<number>`coalesce(sum(cast(${distinctContracts.reward} as numeric)), 0)`.as(
 					'total_reward'
 				),
-				oldestContract: sql<Date | null>`min(${distinct.dateCompleted})`.as('oldest_contract'),
+				oldestContract: sql<Date | null>`min(${distinctContracts.dateCompleted})`.as(
+					'oldest_contract'
+				),
 			})
-			.from(distinct)
-			.groupBy(distinct.acceptorId)
+			.from(distinctContracts)
+			.groupBy(distinctContracts.acceptorId)
 			.orderBy(sql`count(*) desc`)
 
-		const entries = results
-			.filter((r) => r.acceptorId !== null)
-			.map((r) => ({
-				acceptorId: r.acceptorId!,
-				contractsCompleted: Number(r.contractsCompleted),
-				totalVolume: Number(r.totalVolume),
-				totalReward: Number(r.totalReward),
-			}))
+		const entries = results.map((r) => ({
+			acceptorId: r.acceptorId!,
+			contractsCompleted: Number(r.contractsCompleted),
+			totalVolume: Number(r.totalVolume),
+			totalReward: Number(r.totalReward),
+		}))
 
 		const oldestContractDate = results.reduce<Date | null>((min, r) => {
 			if (!r.oldestContract) return min

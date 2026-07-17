@@ -13,8 +13,7 @@ import {
 } from '@/components/ui/table'
 import { useFreightLeaderboard } from '@/hooks/useFreightContracts'
 import { usePageTitle } from '@/hooks/usePageTitle'
-
-import { formatNumber } from '../utils'
+import type { FreightLeaderboardPeriod } from '@/lib/freight-api'
 
 function getRankDisplay(rank: number): React.ReactNode {
     switch (rank) {
@@ -32,7 +31,7 @@ function getRankDisplay(rank: number): React.ReactNode {
 export default function FreightLeaderboardPage() {
     usePageTitle('Freight Leaderboard')
 
-    const [period, setPeriod] = useState<'30d' | 'all'>('30d')
+    const [period, setPeriod] = useState<FreightLeaderboardPeriod>('month')
     const { data: entries, isLoading } = useFreightLeaderboard(period)
 
     const byContracts = useMemo(
@@ -57,26 +56,32 @@ export default function FreightLeaderboardPage() {
 
     const isEmpty = !entries || entries.entries.length === 0
 
-    const oldestDate = entries?.oldestContractDate
-        ? new Date(entries.oldestContractDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
-        : null
+    const periodLabel =
+        period === 'month' ? 'Current month' : period === 'previous-month' ? 'Previous month' : 'All time'
+    const formatWholeNumber = (value: string | number): string =>
+        new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(
+            typeof value === 'string' ? Number(value) : value
+        )
 
     return (
         <Container size="wide">
             <div className="mb-section md:mb-10 flex items-end justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold gradient-text">Freight Leaderboard</h1>
-                    <p className="text-muted-foreground mt-1">
-                        Top haulers by completed courier contracts
-                        {oldestDate && <span className="ml-2 text-xs">· since {oldestDate}</span>}
-                    </p>
+                    <p className="text-muted-foreground mt-1">Top haulers by completed courier contracts · {periodLabel}</p>
                 </div>
                 <div className="flex rounded-md border overflow-hidden shrink-0">
                     <button
-                        onClick={() => setPeriod('30d')}
-                        className={`px-4 py-1.5 text-sm font-medium transition-colors ${period === '30d' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                        onClick={() => setPeriod('month')}
+                        className={`px-4 py-1.5 text-sm font-medium transition-colors ${period === 'month' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
                     >
-                        Last 30 Days
+                        Current Month
+                    </button>
+                    <button
+                        onClick={() => setPeriod('previous-month')}
+                        className={`px-4 py-1.5 text-sm font-medium transition-colors ${period === 'previous-month' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                    >
+                        Previous Month
                     </button>
                     <button
                         onClick={() => setPeriod('all')}
@@ -180,7 +185,7 @@ export default function FreightLeaderboardPage() {
                                                     {entry.acceptorName ?? entry.acceptorId}
                                                 </TableCell>
                                                 <TableCell className="text-right font-mono">
-                                                    {formatNumber(entry.totalVolume)}
+                                                    {formatWholeNumber(entry.totalVolume)}
                                                 </TableCell>
                                             </TableRow>
                                         ))}

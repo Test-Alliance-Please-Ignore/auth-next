@@ -18,9 +18,12 @@ import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Freight } from '@repo/freight'
 import type { App } from '../context'
 import type { CorporationContractSortBy } from '@repo/eve-corporation-data'
+import {
+	resolveFreightLeaderboardWindow,
+	type FreightLeaderboardPeriod,
+} from './freight-leaderboard-period'
 
 const FREIGHT_MANAGER_URN = 'urn:freight:manager'
-const MS_PER_DAY = 86_400_000
 
 /**
  * Hardcoded TEST Alliance Please Ignore alliance ID
@@ -537,9 +540,9 @@ app.get('/leaderboard', requireAuth(), requireAllianceMember(), async (c) => {
 			'alliance-queries'
 		)
 
-		const period = c.req.query('period')
-		const since = period === '30d' ? new Date(Date.now() - 30 * MS_PER_DAY) : undefined
-		const leaderboard = await corpDataStub.getCourierLeaderboard(ALLIANCE_ID, since)
+		const period = c.req.query('period') as FreightLeaderboardPeriod | '30d' | undefined
+		const window = resolveFreightLeaderboardWindow(period)
+		const leaderboard = await corpDataStub.getCourierLeaderboard(ALLIANCE_ID, window)
 
 		// Resolve acceptor names
 		const idsToResolve = leaderboard.entries.map((entry) => entry.acceptorId)
