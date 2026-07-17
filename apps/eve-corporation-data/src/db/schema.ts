@@ -499,9 +499,6 @@ export const corporationContracts = pgTable(
 	'corporation_contracts',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: text('corporation_id')
-			.notNull()
-			.references(() => corporationConfig.corporationId),
 		contractId: text('contract_id').notNull(),
 		acceptorId: text('acceptor_id'),
 		assigneeId: text('assignee_id').notNull(),
@@ -526,7 +523,22 @@ export const corporationContracts = pgTable(
 		volume: text('volume'),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.contractId)]
+	(table) => [
+		unique().on(table.contractId),
+		index('corporation_contracts_leaderboard_all_time_idx').on(
+			table.assigneeId,
+			table.type,
+			table.status,
+			table.acceptorId
+		),
+		index('corporation_contracts_leaderboard_period_idx').on(
+			table.assigneeId,
+			table.type,
+			table.status,
+			table.dateCompleted,
+			table.acceptorId
+		),
+	]
 )
 
 /**

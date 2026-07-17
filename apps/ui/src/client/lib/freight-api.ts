@@ -14,6 +14,8 @@ import type {
 
 const FREIGHT_API_BASE = '/freight'
 
+export type FreightLeaderboardPeriod = 'month' | 'previous-month' | 'all'
+
 /**
  * Enriched contract data returned by the API (with resolved names)
  */
@@ -176,7 +178,7 @@ export class FreightApiClient extends ApiClient {
 	/**
 	 * Get courier contract leaderboard
 	 */
-	async getLeaderboard(period?: '30d' | 'all'): Promise<FreightLeaderboard> {
+	async getLeaderboard(period?: FreightLeaderboardPeriod): Promise<FreightLeaderboard> {
 		const params = period && period !== 'all' ? `?period=${period}` : ''
 		return this.get(`${FREIGHT_API_BASE}/leaderboard${params}`)
 	}

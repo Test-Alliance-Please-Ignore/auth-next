@@ -727,7 +727,6 @@ export interface CorporationOrderData {
  */
 export interface CorporationContractData {
 	id: string
-	corporationId: string
 	contractId: string
 	acceptorId: string | null
 	assigneeId: string
@@ -1698,9 +1697,16 @@ export interface EveCorporationData {
 	/**
 	 * Get leaderboard for completed courier contracts assigned to an alliance
 	 * @param allianceId - The alliance ID
+	 * @param options - Optional date window filters
 	 * @returns Leaderboard entries sorted by contracts completed descending
 	 */
-	getCourierLeaderboard(allianceId: string, since?: Date): Promise<CourierLeaderboard>
+	getCourierLeaderboard(
+		allianceId: string,
+		options?: {
+			since?: Date
+			before?: Date
+		}
+	): Promise<CourierLeaderboard>
 
 	/**
 	 * Get corporation industry jobs
