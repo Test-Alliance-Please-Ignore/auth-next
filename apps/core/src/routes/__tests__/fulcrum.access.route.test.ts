@@ -233,7 +233,7 @@ describe('fulcrum route access matrix', () => {
 				characterId: '3001',
 				characterName: 'Alt Pilot',
 				corporationId: '2001',
-				status: 'under_review',
+				status: 'accepted',
 			},
 		] as any)
 		hrStub.checkPermission.mockImplementation(async (_userId, corporationId, role) => {
@@ -624,7 +624,7 @@ describe('fulcrum route access matrix', () => {
 							characterId: '3001',
 							characterName: 'Target Pilot',
 							applicationText: 'app',
-							status: 'under_review',
+							status: 'accepted',
 							reviewedBy: null,
 							reviewedByCharacterName: null,
 							reviewedAt: null,
@@ -1304,7 +1304,7 @@ describe('fulcrum route access matrix', () => {
 							characterId: '3001',
 							characterName: 'Alt Pilot',
 							applicationText: 'app',
-							status: 'under_review',
+							status: 'accepted',
 							reviewedBy: null,
 							reviewedByCharacterName: null,
 							reviewedAt: null,

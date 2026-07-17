@@ -297,7 +297,7 @@ app.post('/ownership', requireAuth(), async (c) => {
  * Fetch private profile data and skills for intentional profile-detail hydration only.
  * This route shares the same visibility matrix as the overview route, with the
  * additional immunitas gate for non-owner access. The backend derives HR scope
- * from viewer/target corp attachments and active applications; no frontend corp
+ * from viewer/target corp attachments and open applications; no frontend corp
  * scope is accepted. It is the only character profile route that queues
  * profile-data immunitas access alerts.
  */

@@ -43,6 +43,7 @@ export interface SharedProfileCharacter {
 	skillPoints?: number | null
 	walletBalance?: string | null
 	isMetricsLoading?: boolean
+	privateDataUnavailableNote?: string | null
 	isExternal?: boolean
 	latestReport?: CharacterReportMetadata | null
 	hasPendingReport?: boolean
@@ -145,7 +146,7 @@ export function ProfileCharactersSection({
 											</Button>
 										</div>
 									)}
-							<CharacterIdentitySummary
+									<CharacterIdentitySummary
 								characterId={character.characterId}
 								characterName={character.characterName}
 								hasValidToken={character.hasValidToken}

@@ -1,6 +1,7 @@
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { AlertCircle } from 'lucide-react'
 
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
@@ -24,6 +25,7 @@ import {
 	UserProfileStatsSeparator,
 } from '../components/user-profile-page-shell'
 import { useRequestFulcrumReport, useRequestFulcrumReportBatch } from '../hooks'
+import { getPrivateDataUnavailableMessage } from '../utils/private-data'
 import {
 	applicationsApi,
 	type Application,
@@ -175,6 +177,7 @@ export default function HrUserProfilePage() {
 	const spByCharacterId = new Map<string, number | null>()
 	const walletByCharacterId = new Map<string, string | null>()
 	const metricsLoadingByCharacterId = new Map<string, boolean>()
+	const privateDataUnavailableNoteByCharacterId = new Map<string, string | null>()
 	rows.forEach((character, index) => {
 		const query = characterDetailQueries[index]
 		const detail = query?.data
@@ -184,7 +187,13 @@ export default function HrUserProfilePage() {
 			character.characterId,
 			(query?.isPending ?? false) && detail == null
 		)
+		privateDataUnavailableNoteByCharacterId.set(
+			character.characterId,
+			getPrivateDataUnavailableMessage(query?.error)
+		)
 	})
+	const privateDataUnavailableMessage =
+		[...privateDataUnavailableNoteByCharacterId.values()].find((note) => Boolean(note)) ?? null
 
 	const accountName =
 		sortedApplications[0]?.characterName ?? rows.find((row) => row.isPrimary)?.characterName ?? rows[0]?.characterName ?? userId ?? 'Unknown'
@@ -369,6 +378,19 @@ export default function HrUserProfilePage() {
 				</>
 			}
 		>
+					{privateDataUnavailableMessage && (
+						<div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+							<div className="flex items-start gap-3">
+								<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+								<div className="space-y-1">
+									<p className="font-medium">Private ESI data is hidden for some characters</p>
+									<p className="text-sm text-amber-800 dark:text-amber-200">
+										{privateDataUnavailableMessage}
+									</p>
+								</div>
+							</div>
+						</div>
+					)}
 					<ProfileCharactersSection
 						characters={rows.map((character) => ({
 							characterId: character.characterId,
@@ -386,6 +408,7 @@ export default function HrUserProfilePage() {
 							skillPoints: spByCharacterId.get(character.characterId),
 							walletBalance: walletByCharacterId.get(character.characterId),
 							isMetricsLoading: metricsLoadingByCharacterId.get(character.characterId),
+							privateDataUnavailableNote: privateDataUnavailableNoteByCharacterId.get(character.characterId),
 						}))}
 						fulcrumLoading={fulcrumQuery.isLoading && rows.length === 0}
 						showViewDetailsButton

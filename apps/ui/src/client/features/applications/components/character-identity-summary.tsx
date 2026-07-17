@@ -15,6 +15,7 @@ interface CharacterSpWalletLineProps {
 	skillPoints: number | null | undefined
 	walletBalance: string | null | undefined
 	isLoading?: boolean
+	unavailableReason?: string | null
 	className?: string
 }
 
@@ -31,6 +32,7 @@ interface CharacterIdentitySummaryProps {
 	walletBalance?: string | null | undefined
 	showMetrics?: boolean
 	isMetricsLoading?: boolean
+	privateDataUnavailableNote?: string | null
 	portraitSize?: 'sm' | 'md' | 'lg' | 'xl' | 'auto'
 	nameBadges?: ReactNode
 	enableCopyName?: boolean

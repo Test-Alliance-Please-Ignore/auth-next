@@ -22,6 +22,13 @@ export const APPLICATION_STATUSES = [
 /** Application statuses where the application is still being actively processed */
 export const ACTIVE_APPLICATION_STATUSES: readonly ApplicationStatus[] = ['pending', 'under_review']
 
+/** Application statuses where access should still be treated as open */
+export const OPEN_APPLICATION_STATUSES: readonly ApplicationStatus[] = [
+	'pending',
+	'under_review',
+	'accepted',
+]
+
 /**
  * Application status type
  */
@@ -39,6 +46,13 @@ export function isApplicationStatus(value: string): value is ApplicationStatus {
  */
 export function isActiveApplicationStatus(status: string): boolean {
 	return ACTIVE_APPLICATION_STATUSES.includes(status as ApplicationStatus)
+}
+
+/**
+ * Check if an application status is considered open for access gating
+ */
+export function isOpenApplicationStatus(status: string): boolean {
+	return OPEN_APPLICATION_STATUSES.includes(status as ApplicationStatus)
 }
 
 export interface HrAccessState {

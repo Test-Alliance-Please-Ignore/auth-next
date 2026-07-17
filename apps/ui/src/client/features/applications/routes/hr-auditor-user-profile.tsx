@@ -1,6 +1,6 @@
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { Scan, Shield, Users } from 'lucide-react'
+import { AlertCircle, Scan, Shield, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
@@ -35,6 +35,7 @@ import {
 	useFulcrumScanDmPreference,
 } from '../components/fulcrum-scan-dialogs'
 import { useApplications, useHRNotes, useRequestFulcrumReport, useRequestFulcrumReportBatch } from '../hooks'
+import { getPrivateDataUnavailableMessage } from '../utils/private-data'
 import {
 	auditorUserKeys,
 	useAuditorFulcrum,
@@ -214,6 +215,7 @@ export default function HrAuditorUserProfilePage() {
 	const spByCharacterId = new Map<string, number | null>()
 	const walletByCharacterId = new Map<string, string | null>()
 	const metricsLoadingByCharacterId = new Map<string, boolean>()
+	const privateDataUnavailableNoteByCharacterId = new Map<string, string | null>()
 	rows.forEach((character, index) => {
 		const query = characterDetailQueries[index]
 		const detail = query?.data
@@ -223,7 +225,13 @@ export default function HrAuditorUserProfilePage() {
 			character.characterId,
 			!!character.corporationId && (query?.isPending ?? false) && detail == null
 		)
+		privateDataUnavailableNoteByCharacterId.set(
+			character.characterId,
+			getPrivateDataUnavailableMessage(query?.error)
+		)
 	})
+	const privateDataUnavailableMessage =
+		[...privateDataUnavailableNoteByCharacterId.values()].find((note) => Boolean(note)) ?? null
 
 	if (!authLoading && !isAuthenticated) {
 		return <Navigate to="/login" replace />
@@ -458,9 +466,22 @@ export default function HrAuditorUserProfilePage() {
 					</Link>
 				</Button>
 			}
-		>
+			>
 			<>
 				<div className="space-y-6">
+					{privateDataUnavailableMessage && (
+						<div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+							<div className="flex items-start gap-3">
+								<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+								<div className="space-y-1">
+									<p className="font-medium">Private ESI data is hidden for some characters</p>
+									<p className="text-sm text-amber-800 dark:text-amber-200">
+										{privateDataUnavailableMessage}
+									</p>
+								</div>
+							</div>
+						</div>
+					)}
 					<ProfileCharactersSection
 						characters={rows.map((character) => ({
 							characterId: character.characterId,
@@ -478,6 +499,7 @@ export default function HrAuditorUserProfilePage() {
 							skillPoints: spByCharacterId.get(character.characterId),
 							walletBalance: walletByCharacterId.get(character.characterId),
 							isMetricsLoading: metricsLoadingByCharacterId.get(character.characterId),
+							privateDataUnavailableNote: privateDataUnavailableNoteByCharacterId.get(character.characterId),
 							joinDate: memberMetaByCharacterId.get(character.characterId)?.joinDate,
 							lastLogin: memberMetaByCharacterId.get(character.characterId)?.lastLogin,
 							locationSystem: memberMetaByCharacterId.get(character.characterId)?.locationSystem,
