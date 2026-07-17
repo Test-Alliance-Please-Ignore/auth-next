@@ -16,7 +16,7 @@ import {
 	sql,
 } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
+import { logger, TimeCache } from '@repo/hono-helpers'
 import { parseDateOrNull } from '@repo/worker-utils'
 import { retryWithBackoff } from '@repo/workflow-utils'
 import { getStructureTabForTypeId } from '@repo/structures'
@@ -484,6 +484,7 @@ function hoursBetween(start: Date, end: Date): number {
  */
 export class EveCorporationDataDO extends DurableObject<Env> implements EveCorporationData {
 	private readonly DIRECTORS_CACHE_TTL = 30 * 60 // 30 minutes in seconds (KV expirationTtl)
+	private readonly courierLeaderboardCache = new TimeCache<CourierLeaderboard>(5 * 60 * 1000)
 
 	private isNpcCorporationId(corporationId: string): boolean {
 		const parsed = Number(corporationId)
@@ -4454,6 +4455,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					},
 				})
 		}
+
+		this.courierLeaderboardCache.clear()
 	}
 
 	private dedupeContractsByContractId(contracts: EsiCorporationContract[]): EsiCorporationContract[] {
@@ -4463,6 +4466,21 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		return [...byContractId.values()]
+	}
+
+	private getCourierLeaderboardCacheKey(
+		allianceId: string,
+		options?: {
+			since?: Date
+			before?: Date
+		}
+	): string {
+		return [
+			'alliance',
+			allianceId,
+			options?.since?.toISOString() ?? 'all',
+			options?.before?.toISOString() ?? 'all',
+		].join(':')
 	}
 
 	/**
@@ -5948,63 +5966,66 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			before?: Date
 		}
 	): Promise<CourierLeaderboard> {
-		const conditions: SQL[] = [
-			eq(corporationContracts.assigneeId, allianceId),
-			eq(corporationContracts.type, 'courier'),
-			eq(corporationContracts.status, 'finished'),
-			isNotNull(corporationContracts.acceptorId),
-		]
-		if (options?.since) {
-			conditions.push(gte(corporationContracts.dateCompleted, options.since))
-		}
-		if (options?.before) {
-			conditions.push(lt(corporationContracts.dateCompleted, options.before))
-		}
+		const cacheKey = this.getCourierLeaderboardCacheKey(allianceId, options)
+		return this.courierLeaderboardCache.getOrSet(cacheKey, async () => {
+			const conditions: SQL[] = [
+				eq(corporationContracts.assigneeId, allianceId),
+				eq(corporationContracts.type, 'courier'),
+				eq(corporationContracts.status, 'finished'),
+				isNotNull(corporationContracts.acceptorId),
+			]
+			if (options?.since) {
+				conditions.push(gte(corporationContracts.dateCompleted, options.since))
+			}
+			if (options?.before) {
+				conditions.push(lt(corporationContracts.dateCompleted, options.before))
+			}
 
-		const distinctContracts = this.getDb()
-			.selectDistinctOn([corporationContracts.contractId], {
-				contractId: corporationContracts.contractId,
-				acceptorId: corporationContracts.acceptorId,
-				volume: corporationContracts.volume,
-				reward: corporationContracts.reward,
-				dateCompleted: corporationContracts.dateCompleted,
-			})
-			.from(corporationContracts)
-			.where(and(...conditions))
-			.as('distinct_contracts')
+			const distinctContracts = this.getDb()
+				.selectDistinctOn([corporationContracts.contractId], {
+					contractId: corporationContracts.contractId,
+					acceptorId: corporationContracts.acceptorId,
+					volume: corporationContracts.volume,
+					reward: corporationContracts.reward,
+					dateCompleted: corporationContracts.dateCompleted,
+				})
+				.from(corporationContracts)
+				.where(and(...conditions))
+				.as('distinct_contracts')
 
-		const results = await this.getDb()
-			.select({
-				acceptorId: distinctContracts.acceptorId,
-				contractsCompleted: sql<number>`count(*)`.as('contracts_completed'),
-				totalVolume: sql<number>`coalesce(sum(cast(${distinctContracts.volume} as numeric)), 0)`.as(
-					'total_volume'
-				),
-				totalReward: sql<number>`coalesce(sum(cast(${distinctContracts.reward} as numeric)), 0)`.as(
-					'total_reward'
-				),
-				oldestContract: sql<Date | null>`min(${distinctContracts.dateCompleted})`.as(
-					'oldest_contract'
-				),
-			})
-			.from(distinctContracts)
-			.groupBy(distinctContracts.acceptorId)
-			.orderBy(sql`count(*) desc`)
+			const results = await this.getDb()
+				.select({
+					acceptorId: distinctContracts.acceptorId,
+					contractsCompleted: sql<number>`count(*)`.as('contracts_completed'),
+					totalVolume: sql<number>`coalesce(sum(cast(${distinctContracts.volume} as numeric)), 0)`.as(
+						'total_volume'
+					),
+					totalReward: sql<number>`coalesce(sum(cast(${distinctContracts.reward} as numeric)), 0)`.as(
+						'total_reward'
+					),
+					oldestContract: sql<Date | null>`min(${distinctContracts.dateCompleted})`.as(
+						'oldest_contract'
+					),
+				})
+				.from(distinctContracts)
+				.groupBy(distinctContracts.acceptorId)
+				.orderBy(sql`count(*) desc`)
 
-		const entries = results.map((r) => ({
-			acceptorId: r.acceptorId!,
-			contractsCompleted: Number(r.contractsCompleted),
-			totalVolume: Number(r.totalVolume),
-			totalReward: Number(r.totalReward),
-		}))
+			const entries = results.map((r) => ({
+				acceptorId: r.acceptorId!,
+				contractsCompleted: Number(r.contractsCompleted),
+				totalVolume: Number(r.totalVolume),
+				totalReward: Number(r.totalReward),
+			}))
 
-		const oldestContractDate = results.reduce<Date | null>((min, r) => {
-			if (!r.oldestContract) return min
-			const d = new Date(r.oldestContract)
-			return min === null || d < min ? d : min
-		}, null)
+			const oldestContractDate = results.reduce<Date | null>((min, r) => {
+				if (!r.oldestContract) return min
+				const d = new Date(r.oldestContract)
+				return min === null || d < min ? d : min
+			}, null)
 
-		return { entries, oldestContractDate }
+			return { entries, oldestContractDate }
+		})
 	}
 
 	/**
