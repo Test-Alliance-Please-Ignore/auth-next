@@ -16,6 +16,7 @@ import type {
 	CorporationMembersResponse,
 	CorporationUserSearchResult,
 	MyCorporation,
+	CorporationScopedAccessResult,
 } from './api'
 
 // ============================================================================
@@ -36,6 +37,7 @@ export const corporationKeys = {
 	userSearch: (corpId: string, query: { search?: string; limit?: number; offset?: number }) =>
 		[...corporationKeys.all, 'user-search', corpId, query] as const,
 	access: () => [...corporationKeys.all, 'access'] as const,
+	accessForCorporation: (corpId: string) => [...corporationKeys.all, 'access', corpId] as const,
 }
 
 // ============================================================================
@@ -281,22 +283,27 @@ export function useCorporationMemberStats(corporationId: string) {
 }
 
 /**
- * Hook to check if user can access a specific corporation
+ * Hook to check access for a specific corporation.
  */
 export function useCanAccessCorporation(corporationId: string) {
-	const { data: access, isLoading, isFetching } = useCorporationAccess()
+	const {
+		data: access,
+		isLoading,
+		isFetching,
+	} = useQuery<CorporationScopedAccessResult>({
+		queryKey: corporationKeys.accessForCorporation(corporationId),
+		queryFn: () => myCorporationsApi.getCorporationAccess(corporationId),
+		enabled: Boolean(corporationId),
+		staleTime: 1000 * 60 * 5,
+		gcTime: 1000 * 60 * 10,
+		meta: {
+			suppressErrorToast: true,
+		},
+	})
 
-	const canAccess = useMemo(() => {
-		if (!access) return false
-		return access.corporations.some((corp) => corp.corporationId === corporationId)
-	}, [access, corporationId])
-
-	const corporation = useMemo(() => {
-		if (!access) return undefined
-		return access.corporations.find((c) => c.corporationId === corporationId)
-	}, [access, corporationId])
-
-	const userRole = corporation?.userRole
+	const canAccess = access?.hasAccess ?? false
+	const corporation = access?.corporation ?? undefined
+	const userRole = access?.userRole ?? undefined
 
 	return { canAccess, userRole, corporation, isLoading, isFetching }
 }

@@ -76,7 +76,7 @@ describe('users corporation access', () => {
 	let corpStub: {
 		getCorporationInfo: ReturnType<typeof vi.fn>
 		getDirectors: ReturnType<typeof vi.fn>
-		getCoreData: ReturnType<typeof vi.fn>
+		getMembers: ReturnType<typeof vi.fn>
 	}
 
 	beforeEach(() => {
@@ -141,9 +141,9 @@ describe('users corporation access', () => {
 			getCharacterInfo: vi.fn(),
 		}
 		corpStub = {
-			getCorporationInfo: vi.fn(),
-			getDirectors: vi.fn(),
-			getCoreData: vi.fn(),
+			getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: '9999' } as any),
+			getDirectors: vi.fn().mockResolvedValue([]),
+			getMembers: vi.fn(),
 		}
 
 		getStubMock.mockImplementation((binding: unknown) => {
@@ -155,19 +155,41 @@ describe('users corporation access', () => {
 	})
 
 	it('returns only member corporation HR access for non-admin users', async () => {
-		dbStub.query.userCharacters.findMany.mockResolvedValue([
-			{ characterId: '2001', userId: 'user-a', status: 'active', hasValidToken: true },
-			{ characterId: '2002', userId: 'user-a', status: 'active', hasValidToken: true },
-			{ characterId: '2003', userId: 'user-b', status: 'active', hasValidToken: true },
+		dbStub.query.userCharacters.findMany
+			.mockResolvedValueOnce([
+				{
+					characterId: '2001',
+					characterName: 'Alpha One',
+					corporationId: '1001',
+					status: 'active',
+					hasValidToken: true,
+				},
+				{
+					characterId: '2002',
+					characterName: 'Alpha Two',
+					corporationId: '1001',
+					status: 'active',
+					hasValidToken: true,
+				},
+				{
+					characterId: '2003',
+					characterName: 'Bravo One',
+					corporationId: '2001',
+					status: 'active',
+					hasValidToken: true,
+				},
+			] as any)
+			.mockResolvedValueOnce([
+				{ characterId: '2001', userId: 'user-a', status: 'active', hasValidToken: true },
+				{ characterId: '2002', userId: 'user-a', status: 'active', hasValidToken: true },
+				{ characterId: '2003', userId: 'user-b', status: 'active', hasValidToken: true },
+			] as any)
+		corpStub.getMembers.mockResolvedValue([
+			{ characterId: '2001' },
+			{ characterId: '2002' },
+			{ characterId: '2003' },
+			{ characterId: '2004' },
 		] as any)
-		corpStub.getCoreData.mockResolvedValue({
-			members: [
-				{ characterId: '2001' },
-				{ characterId: '2002' },
-				{ characterId: '2003' },
-				{ characterId: '2004' },
-			],
-		} as any)
 
 		const app = createApp({ user: makeUser(), db: dbStub })
 		const res = await app.request('/api/users/corporation-access', {}, env)
@@ -195,5 +217,74 @@ describe('users corporation access', () => {
 		})
 		expect(hrStub.getUserHrCorporations).toHaveBeenCalledWith('user-1')
 		expect(hrStub.getUserRoles).toHaveBeenCalledWith('user-1')
+		expect(corpStub.getMembers).toHaveBeenCalledWith('1001')
+		expect(charStub.getCharacterInfo).not.toHaveBeenCalled()
+	})
+
+	it('returns all managed corporations for site admins without character lookups', async () => {
+		dbStub.query.userCharacters.findMany.mockResolvedValue([] as any)
+		corpStub.getMembers
+			.mockResolvedValueOnce([{ characterId: '1001' }] as any)
+			.mockResolvedValueOnce([{ characterId: '2001' }] as any)
+			.mockResolvedValueOnce([{ characterId: '3001' }] as any)
+
+		const app = createApp({ user: makeUser({ is_admin: true }), db: dbStub })
+		const res = await app.request('/api/users/corporation-access', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({
+			hasAccess: true,
+			corporations: [
+				{
+					corporationId: '1001',
+					name: 'Alpha Corp',
+					ticker: 'ALP',
+					userRole: 'admin',
+					characterId: null,
+					characterName: null,
+					isMemberCorporation: true,
+					isAltCorp: false,
+					isSpecialPurpose: false,
+					memberCount: 1,
+					linkedMemberCount: 0,
+					unlinkedMemberCount: 1,
+					validEsiKeyMemberCount: 0,
+				},
+				{
+					corporationId: '2001',
+					name: 'Bravo Corp',
+					ticker: 'BRV',
+					userRole: 'admin',
+					characterId: null,
+					characterName: null,
+					isMemberCorporation: false,
+					isAltCorp: true,
+					isSpecialPurpose: false,
+					memberCount: 1,
+					linkedMemberCount: 0,
+					unlinkedMemberCount: 1,
+					validEsiKeyMemberCount: 0,
+				},
+				{
+					corporationId: '3001',
+					name: 'Charlie Corp',
+					ticker: 'CHR',
+					userRole: 'admin',
+					characterId: null,
+					characterName: null,
+					isMemberCorporation: false,
+					isAltCorp: false,
+					isSpecialPurpose: true,
+					memberCount: 1,
+					linkedMemberCount: 0,
+					unlinkedMemberCount: 1,
+					validEsiKeyMemberCount: 0,
+				},
+			],
+		})
+		expect(charStub.getCharacterInfo).not.toHaveBeenCalled()
+		expect(corpStub.getCorporationInfo).not.toHaveBeenCalled()
+		expect(corpStub.getDirectors).not.toHaveBeenCalled()
+		expect(corpStub.getMembers).toHaveBeenCalledTimes(3)
 	})
 })
