@@ -8,7 +8,7 @@
 
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, Clock, ExternalLink, FileText, Loader2, RefreshCw, Users } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
@@ -26,9 +26,14 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { CharacterIdentitySummary } from './character-identity-summary'
 
-import { useApplicationFulcrum, useRequestFulcrumReport, useRequestFulcrumReportBatch } from '../hooks'
+import {
+	useFulcrumUserReports,
+	useHrUserCharacters,
+	useRequestFulcrumReport,
+	useRequestFulcrumReportBatch,
+} from '../hooks'
 
-import type { CharacterReportMetadata, FulcrumCharacterData } from '../api'
+import type { CharacterReportMetadata } from '../api'
 
 const SEND_DM_PREF_KEY = 'fulcrum:scan-all:send-dm'
 
@@ -76,7 +81,7 @@ function canRequestNewReport(reports: CharacterReportMetadata[]): boolean {
 // ============================================================================
 
 interface CharacterReportCardProps {
-	character: FulcrumCharacterData
+	character: PanelCharacterRow
 	onRequest: () => void
 	getReportTarget: (reportId: string, characterName: string) => {
 		pathname: string
@@ -93,6 +98,19 @@ interface CharacterReportCardProps {
 	isRequesting: boolean
 	requestingCharacterId: string | null
 	canRequest: boolean
+}
+
+interface PanelCharacterRow {
+	characterId: string
+	characterName: string
+	corporationId: string | null
+	corporationName: string | null
+	allianceId: string | null
+	allianceName: string | null
+	hasValidToken: boolean | null
+	role: 'CEO' | 'Director' | 'Member' | null
+	activityStatus: 'active' | 'inactive' | 'unknown' | null
+	reports: CharacterReportMetadata[]
 }
 
 function CharacterReportCard({
@@ -201,7 +219,8 @@ interface FulcrumPanelProps {
 	applicationId?: string
 	mainCharacterId?: string
 	altCharacterIds?: string[]
-	canRequestCharacterReport?: (character: FulcrumCharacterData) => boolean
+	canRequestCharacterReport?: (character: PanelCharacterRow) => boolean
+	enabled?: boolean
 }
 
 export function FulcrumPanel({
@@ -211,15 +230,53 @@ export function FulcrumPanel({
 	mainCharacterId,
 	altCharacterIds = [],
 	canRequestCharacterReport,
+	enabled = true,
 }: FulcrumPanelProps) {
 	const { corporationId: routeCorporationId } = useParams<{ corporationId: string }>()
-	const { data: characters, isLoading, error } = useApplicationFulcrum(userId, corporationId)
+	const { data: reportCharacters = [], isLoading, error } = useFulcrumUserReports(userId, enabled)
+	const { data: hrCharacters = [] } = useHrUserCharacters(userId, {
+		enabled: !!userId && enabled,
+	})
+	const hrCharacterById = useMemo(
+		() => new Map(hrCharacters.map((character) => [character.characterId, character])),
+		[hrCharacters]
+	)
+	const reportCharacterById = useMemo(
+		() => new Map(reportCharacters.map((character) => [character.characterId, character])),
+		[reportCharacters]
+	)
+	const characters = useMemo<PanelCharacterRow[]>(() => {
+		const combinedCharacterIds = new Set<string>([
+			...reportCharacters.map((character) => character.characterId),
+			...hrCharacters.map((character) => character.characterId),
+		])
+		return [...combinedCharacterIds].map((characterId) => {
+			const reportCharacter = reportCharacterById.get(characterId)
+			const hrCharacter = hrCharacterById.get(characterId)
+			return {
+				characterId,
+				characterName: hrCharacter?.characterName ?? characterId,
+				corporationId: hrCharacter?.corporationId ?? null,
+				corporationName: hrCharacter?.corporationName ?? null,
+				allianceId: hrCharacter?.allianceId ?? null,
+				allianceName: hrCharacter?.allianceName ?? null,
+				hasValidToken: hrCharacter?.hasValidToken ?? null,
+				role: reportCharacter?.role ?? null,
+				activityStatus: reportCharacter?.activityStatus ?? null,
+				reports: reportCharacter?.reports ?? [],
+			}
+		})
+	}, [hrCharacterById, hrCharacters, reportCharacterById, reportCharacters])
 	const requestReport = useRequestFulcrumReport()
 	const requestReportBatch = useRequestFulcrumReportBatch()
 	const [sendDmForScanRequests, setSendDmForScanRequests] = useState(getInitialSendDmPreference)
 	const [scanAllDialogOpen, setScanAllDialogOpen] = useState(false)
-	const [scanSingleDialogCharacter, setScanSingleDialogCharacter] = useState<FulcrumCharacterData | null>(null)
+	const [scanSingleDialogCharacter, setScanSingleDialogCharacter] = useState<PanelCharacterRow | null>(null)
 	const [isRequestingAll, setIsRequestingAll] = useState(false)
+
+	if (!enabled) {
+		return null
+	}
 
 	const persistSendDmPreference = (enabled: boolean) => {
 		if (typeof window !== 'undefined') {
@@ -286,7 +343,7 @@ export function FulcrumPanel({
 		)
 	}
 
-	if (!characters || characters.length === 0) {
+	if (characters.length === 0) {
 		return (
 			<p className="text-center text-muted-foreground py-8">
 				No linked characters found for this applicant
@@ -327,7 +384,7 @@ export function FulcrumPanel({
 		}
 	}
 
-	const handleOpenSingleDialog = (character: FulcrumCharacterData) => {
+	const handleOpenSingleDialog = (character: PanelCharacterRow) => {
 		if (
 			isRequestingAll ||
 			requestReport.isPending ||
@@ -365,7 +422,7 @@ export function FulcrumPanel({
 		? characters.filter((c) => !applicationCharacterIds.has(c.characterId))
 		: characters
 
-	const renderCharacterCards = (chars: FulcrumCharacterData[]) =>
+	const renderCharacterCards = (chars: PanelCharacterRow[]) =>
 		chars.map((character) => (
 			<CharacterReportCard
 				key={character.characterId}

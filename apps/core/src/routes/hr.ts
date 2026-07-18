@@ -2418,6 +2418,36 @@ app.get('/audit/users/:userId/ip-history', requireAuth(), async (c) => {
 })
 
 /**
+ * GET /api/hr/users/:userId/characters
+ * Return HR-owned character summary data for profile pages and application ESI overlays.
+ */
+app.get('/users/:userId/characters', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	if (!user.is_admin && !(await hasAnyHrAccess(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const targetUserId = c.req.param('userId')
+
+	try {
+		const core = getCoreStub(c)
+		const characters = await core.getUserCharacters(targetUserId, false)
+
+		return c.json(characters)
+	} catch (error) {
+		logger.error('[HR] Failed to get user characters', {
+			userId: user.id,
+			targetUserId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to get user characters' },
+			500
+		)
+	}
+})
+
+/**
  * GET /api/hr/audit/ip-history/:ipAddressHash/matches
  * Hashed-only user matches for a shared IP hash.
  */

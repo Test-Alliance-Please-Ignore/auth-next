@@ -233,6 +233,7 @@ describe('character detail access for HR page viewers', () => {
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as any
 		expect(body.viewedAsHrViewer).toBe(true)
+		expect(body.canViewPrivateData).toBe(true)
 		expect(body.public.skills).toBeUndefined()
 		expect(body.private).toBeUndefined()
 	})

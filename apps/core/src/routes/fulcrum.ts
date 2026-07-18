@@ -143,6 +143,13 @@ type FulcrumReportAccessResolution = {
 	error: 'open_application_required' | 'unauthorized' | null
 }
 
+type FulcrumCharacterReportRow = {
+	characterId: string
+	reports: Awaited<ReturnType<Fulcrum['listReports']>>
+	role: 'CEO' | 'Director' | 'Member' | null
+	activityStatus: 'active' | 'inactive' | 'unknown' | null
+}
+
 async function resolveSharedFulcrumCorporationForTargetUser(
 	c: Context<App>,
 	hr: Hr,
@@ -216,6 +223,93 @@ async function resolveFulcrumReportAccessForTargetUser(
 		corporationId: null,
 		error: 'unauthorized',
 	}
+}
+
+async function buildFulcrumCharacterReportRows(
+	c: Context<App>,
+	userId: string,
+	characters: Array<{
+		characterId: string
+		corporationId?: string | null
+	}>
+): Promise<FulcrumCharacterReportRow[]> {
+	const corporationSnapshotCache = new Map<
+		string,
+		Promise<{
+			ceoId: string | null
+			directorIds: Set<string>
+			lastLogonByCharacterId: Map<string, Date | null>
+		}>
+	>()
+
+	const getCorporationSnapshot = async (corpId: string) => {
+		if (!corporationSnapshotCache.has(corpId)) {
+			const snapshotPromise = (async () => {
+				const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corpId)
+				const [corpInfo, directors, memberTracking] = await Promise.all([
+					corpStub.getCorporationInfo(corpId),
+					corpStub.getDirectors(corpId),
+					corpStub.getMemberTracking(corpId),
+				])
+
+				return {
+					ceoId: corpInfo ? String(corpInfo.ceoId) : null,
+					directorIds: new Set(directors.map((d) => d.characterId)),
+					lastLogonByCharacterId: new Map(
+						memberTracking.map((tracking) => [tracking.characterId, tracking.logonDate])
+					),
+				}
+			})()
+			corporationSnapshotCache.set(corpId, snapshotPromise)
+		}
+		return corporationSnapshotCache.get(corpId)!
+	}
+
+	const fulcrum = getFulcrumStub(c)
+	return await Promise.all(
+		characters.map(async (char) => {
+			let reports: Awaited<ReturnType<Fulcrum['listReports']>> = []
+			try {
+				reports = await fulcrum.listReports({ characterId: char.characterId }, 50)
+			} catch (error) {
+				logger.warn('[Fulcrum] Failed to list reports for character while building user data', {
+					userId,
+					characterId: char.characterId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+
+			let role: 'CEO' | 'Director' | 'Member' | null = null
+			let activityStatus: 'active' | 'inactive' | 'unknown' | null = null
+
+			if (char.corporationId) {
+				const snapshot = await getCorporationSnapshot(String(char.corporationId))
+				if (snapshot.ceoId === char.characterId) {
+					role = 'CEO'
+				} else if (snapshot.directorIds.has(char.characterId)) {
+					role = 'Director'
+				} else {
+					role = 'Member'
+				}
+
+				const lastLogon = snapshot.lastLogonByCharacterId.get(char.characterId)
+				if (!lastLogon) {
+					activityStatus = 'unknown'
+				} else {
+					const activeThresholdMs = 7 * MS_PER_DAY
+					activityStatus =
+						new Date().getTime() - lastLogon.getTime() < activeThresholdMs ? 'active' : 'inactive'
+				}
+			}
+
+			return {
+				characterId: char.characterId,
+				reports,
+				role,
+				activityStatus,
+			}
+		})
+	)
 }
 
 async function resolveFallbackFulcrumCorporationId(
@@ -336,94 +430,24 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 			// do not rely on it for authorization decisions.
 		}
 
-		// Get all linked characters from Core DO
 		const core = getCoreStub(c)
 		const characters = await core.getUserCharacters(userId, false)
-		const corporationSnapshotCache = new Map<
-			string,
-			Promise<{
-				ceoId: string | null
-				directorIds: Set<string>
-				lastLogonByCharacterId: Map<string, Date | null>
-			}>
-		>()
-
-		const getCorporationSnapshot = async (corpId: string) => {
-			if (!corporationSnapshotCache.has(corpId)) {
-				const snapshotPromise = (async () => {
-					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corpId)
-					const [corpInfo, directors, memberTracking] = await Promise.all([
-						corpStub.getCorporationInfo(corpId),
-						corpStub.getDirectors(corpId),
-						corpStub.getMemberTracking(corpId),
-					])
-
-					return {
-						ceoId: corpInfo ? String(corpInfo.ceoId) : null,
-						directorIds: new Set(directors.map((d) => d.characterId)),
-						lastLogonByCharacterId: new Map(
-							memberTracking.map((tracking) => [tracking.characterId, tracking.logonDate])
-						),
-					}
-				})()
-				corporationSnapshotCache.set(corpId, snapshotPromise)
+		const reportRows = await buildFulcrumCharacterReportRows(c, userId, characters)
+		const results = reportRows.map((row, index) => {
+			const char = characters[index]
+			return {
+				characterId: char.characterId,
+				characterName: char.characterName,
+				corporationId: char.corporationId ?? null,
+				corporationName: char.corporationName ?? null,
+				allianceId: char.allianceId ?? null,
+				allianceName: char.allianceName ?? null,
+				hasValidToken: char.hasValidToken,
+				role: row.role,
+				activityStatus: row.activityStatus,
+				reports: row.reports,
 			}
-			return corporationSnapshotCache.get(corpId)!
-		}
-
-		// For each character, fetch their Fulcrum reports
-		const fulcrum = getFulcrumStub(c)
-		const results = await Promise.all(
-			characters.map(async (char) => {
-				let reports: Awaited<ReturnType<Fulcrum['listReports']>> = []
-				try {
-					reports = await fulcrum.listReports({ characterId: char.characterId }, 50)
-				} catch (error) {
-					logger.warn('[Fulcrum] Failed to list reports for character while building user list', {
-						userId,
-						characterId: char.characterId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-				}
-				let role: 'CEO' | 'Director' | 'Member' | null = null
-				let activityStatus: 'active' | 'inactive' | 'unknown' | null = null
-
-				if (char.corporationId) {
-					const snapshot = await getCorporationSnapshot(String(char.corporationId))
-					if (snapshot.ceoId === char.characterId) {
-						role = 'CEO'
-					} else if (snapshot.directorIds.has(char.characterId)) {
-						role = 'Director'
-					} else {
-						role = 'Member'
-					}
-
-					const lastLogon = snapshot.lastLogonByCharacterId.get(char.characterId)
-					if (!lastLogon) {
-						activityStatus = 'unknown'
-					} else {
-						const activeThresholdMs = 7 * MS_PER_DAY
-						activityStatus =
-							new Date().getTime() - lastLogon.getTime() < activeThresholdMs
-								? 'active'
-								: 'inactive'
-					}
-				}
-
-				return {
-					characterId: char.characterId,
-					characterName: char.characterName,
-					corporationId: char.corporationId ?? null,
-					corporationName: char.corporationName ?? null,
-					allianceId: char.allianceId ?? null,
-					allianceName: char.allianceName ?? null,
-					hasValidToken: char.hasValidToken,
-					role,
-					activityStatus,
-					reports,
-				}
-			}),
-		)
+		})
 
 		return c.json(results)
 	} catch (error) {
@@ -433,6 +457,49 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 		})
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to list characters' },
+			500,
+		)
+	}
+})
+
+/**
+ * GET /api/fulcrum/users/:userId/reports
+ * List report metadata for all linked characters on a user.
+ */
+app.get('/users/:userId/reports', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const userId = c.req.param('userId')
+	const corporationId = c.req.query('corporationId')
+
+	try {
+		const auditor = await isHrAuditorUser(c, user)
+
+		if (!auditor) {
+			const hr = getHrStub(c)
+			const accessResolution = await resolveFulcrumReportAccessForTargetUser(c, hr, user, userId)
+			if (!accessResolution.corporationId) {
+				return c.json(
+					{ error: 'HR staff access requires a shared corporation or an open application' },
+					403,
+				)
+			}
+		} else if (corporationId) {
+			// Keep the old query parameter accepted for auditor-driven callers, but
+			// do not rely on it for authorization decisions.
+		}
+
+		const core = getCoreStub(c)
+		const characters = await core.getUserCharacters(userId, false)
+		const reportRows = await buildFulcrumCharacterReportRows(c, userId, characters)
+
+		return c.json(reportRows)
+	} catch (error) {
+		logger.error('[Fulcrum] Failed to list user character reports', {
+			userId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to list character reports' },
 			500,
 		)
 	}
@@ -450,23 +517,44 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 app.get('/characters/:characterId/reports', requireAuth(), async (c) => {
 	const user = c.get('user')!
 	const characterId = c.req.param('characterId')
-	const corporationId = c.req.query('corporationId')
 
 	try {
-		const auditor = await isHrAuditorUser(c, user)
-
-		// Require corporationId for scoping permission checks unless auditor
-		if (!corporationId && !auditor) {
-			return c.json({ error: 'corporationId query parameter is required' }, 400)
+		const db = c.get('db')
+		if (!db) {
+			return c.json({ error: 'Database not available' }, 500)
 		}
 
-		// Check HR permission for the corporation (auditors bypass)
-		if (!auditor && corporationId) {
+		const auditor = await isHrAuditorUser(c, user)
+
+		if (!auditor) {
 			const hr = getHrStub(c)
-			const hasPermission = await hr.checkPermission(user.id, corporationId, 'hr_viewer')
-			if (!hasPermission) {
-				return c.json({ error: 'HR role required' }, 403)
+			const target = await getImmunitasReportTarget(c, db, characterId)
+			if (!target) {
+				return c.json({ error: 'Fulcrum reports are not allowed for this character' }, 403)
 			}
+			const accessResolution = await resolveFulcrumReportAccessForTargetUser(
+				c,
+				hr,
+				user,
+				target.userId
+			)
+			if (accessResolution.corporationId) {
+				// Access is established by the backend user/corp resolution.
+			} else if (accessResolution.error === 'open_application_required') {
+				return c.json(
+					{ error: 'An open application is required to view Fulcrum reports for this user' },
+					403,
+				)
+			} else {
+				return c.json(
+					{ error: 'HR staff access requires a shared corporation or an open application' },
+					403,
+				)
+			}
+		}
+
+		if (auditor) {
+			// Auditors bypass HR scope checks.
 		}
 
 		const fulcrum = getFulcrumStub(c)

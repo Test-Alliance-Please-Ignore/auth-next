@@ -3,6 +3,9 @@ import type { ApplicationStatus, ReportSectionName } from './api'
 /** Application statuses where the application is still being actively processed */
 export const ACTIVE_APPLICATION_STATUSES: ApplicationStatus[] = ['pending', 'under_review']
 
+/** Application statuses where private application data access should still be treated as open */
+export const OPEN_APPLICATION_STATUSES: ApplicationStatus[] = ['pending', 'under_review', 'accepted']
+
 // ============================================================================
 // Fulcrum Report Section Metadata
 // ============================================================================

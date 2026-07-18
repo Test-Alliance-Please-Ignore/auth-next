@@ -93,6 +93,10 @@ export function canViewCharacterPrivateDetails(access: CharacterAccessContext): 
 	return canViewCharacterSharedDetails(access)
 }
 
+export function canAccessCharacterPrivateData(access: CharacterAccessContext): boolean {
+	return canViewCharacterPrivateDetails(access) && !shouldBlockCharacterPrivateAccess(access)
+}
+
 export function shouldBlockCharacterPrivateAccess(
 	access: Pick<CharacterAccessContext, 'isActualOwner' | 'targetOwner'>
 ): boolean {

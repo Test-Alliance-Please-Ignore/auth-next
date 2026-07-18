@@ -731,7 +731,8 @@ export interface CharacterReportMetadata {
 }
 
 /**
- * A character with their associated Fulcrum reports
+ * A character with their associated Fulcrum reports and identity fields.
+ * Legacy list endpoint payload retained for compatibility in older callers.
  */
 export interface FulcrumCharacterData {
 	characterId: string
@@ -741,6 +742,17 @@ export interface FulcrumCharacterData {
 	allianceId?: string | null
 	allianceName?: string | null
 	hasValidToken?: boolean | null
+	role?: 'CEO' | 'Director' | 'Member' | null
+	activityStatus?: 'active' | 'inactive' | 'unknown' | null
+	reports: CharacterReportMetadata[]
+}
+
+/**
+ * A character's Fulcrum report metadata without identity fields.
+ * This is the preferred payload for report-only consumers.
+ */
+export interface FulcrumCharacterReportData {
+	characterId: string
 	role?: 'CEO' | 'Director' | 'Member' | null
 	activityStatus?: 'active' | 'inactive' | 'unknown' | null
 	reports: CharacterReportMetadata[]
@@ -791,7 +803,8 @@ export interface ReportManifest {
  */
 export const fulcrumApi = {
 	/**
-	 * Get all linked characters for a user with their Fulcrum reports
+	 * Get all linked characters for a user with their Fulcrum reports and identity fields.
+	 * Legacy endpoint, retained for compatibility.
 	 */
 	async getUserCharactersWithReports(
 		userId: string,
@@ -803,15 +816,17 @@ export const fulcrumApi = {
 	},
 
 	/**
+	 * Get all linked characters for a user with Fulcrum report metadata only.
+	 */
+	async getUserCharacterReports(userId: string): Promise<FulcrumCharacterReportData[]> {
+		return apiClient.get(`/fulcrum/users/${userId}/reports`)
+	},
+
+	/**
 	 * List reports for a character
 	 */
-	async getCharacterReports(
-		characterId: string,
-		corporationId: string,
-	): Promise<CharacterReportMetadata[]> {
-		return apiClient.get(
-			`/fulcrum/characters/${characterId}/reports?corporationId=${encodeURIComponent(corporationId)}`,
-		)
+	async getCharacterReports(characterId: string): Promise<CharacterReportMetadata[]> {
+		return apiClient.get(`/fulcrum/characters/${characterId}/reports`)
 	},
 
 	/**
