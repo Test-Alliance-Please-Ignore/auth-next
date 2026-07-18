@@ -67,8 +67,9 @@ function makeFulcrumStub() {
 		createCharacterReport: vi.fn().mockResolvedValue('report-1'),
 		createBulkCharacterReports: vi.fn().mockResolvedValue({ batchId: 'batch-1' }),
 		getReportStatus: vi.fn(),
-		getSectionManifest: vi.fn(),
-		getSectionData: vi.fn(),
+		getReportSections: vi.fn(),
+		getReportSectionData: vi.fn(),
+		fetchMailContent: vi.fn(),
 	}
 }
 
@@ -274,6 +275,99 @@ describe('fulcrum route access matrix', () => {
 		expect(fulcrumStub.listReports).toHaveBeenCalledWith({ characterId: '3001' }, 50)
 		const body = (await res.json()) as Array<{ characterId: string; hasValidToken?: boolean | null }>
 		expect(body[0]).toMatchObject({ characterId: '3001', hasValidToken: true })
+	})
+
+	it('allows site admins to read completed report sections without HR role checks', async () => {
+		hrStub.getUserRoles.mockResolvedValue([])
+		hrStub.checkPermission.mockResolvedValue(false)
+		fulcrumStub.getReportStatus.mockResolvedValue({
+			reportId: 'report-1',
+			status: 'completed',
+			requestorCorporationId: '1001',
+		} as any)
+		fulcrumStub.getReportSections.mockResolvedValue({
+			sections: ['public-info'],
+		} as any)
+
+		const app = createApp(makeUser({ is_admin: true }))
+		const res = await app.request('/api/fulcrum/reports/report-1/sections', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ sections: ['public-info'] })
+		expect(hrStub.checkPermission).not.toHaveBeenCalled()
+		expect(fulcrumStub.getReportSections).toHaveBeenCalledWith('report-1')
+	})
+
+	it('denies unauthorized report section access before revealing readiness state', async () => {
+		hrStub.getUserRoles.mockResolvedValue([])
+		hrStub.checkPermission.mockResolvedValue(false)
+		fulcrumStub.getReportStatus.mockResolvedValue({
+			reportId: 'report-1',
+			status: 'pending',
+			requestorCorporationId: '1001',
+		} as any)
+
+		const app = createApp(makeUser())
+		const res = await app.request('/api/fulcrum/reports/report-1/sections', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({ error: 'HR role required' })
+		expect(fulcrumStub.getReportSections).not.toHaveBeenCalled()
+		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '1001', 'hr_viewer')
+	})
+
+	it('allows hr_viewer staff to read completed report section data', async () => {
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				id: 'role-1',
+				corporationId: '1001',
+				userId: 'user-1',
+				characterId: 'user-1',
+				characterName: 'Main Pilot',
+				role: 'hr_viewer',
+				grantedBy: 'granted-by',
+				grantedAt: new Date(),
+				expiresAt: null,
+				isActive: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		] as any)
+		hrStub.checkPermission.mockResolvedValue(true)
+		fulcrumStub.getReportStatus.mockResolvedValue({
+			reportId: 'report-1',
+			status: 'completed',
+			requestorCorporationId: '1001',
+		} as any)
+		fulcrumStub.getReportSectionData.mockResolvedValue({
+			rows: [{ section: 'public-info' }],
+		} as any)
+
+		const app = createApp(makeUser())
+		const res = await app.request('/api/fulcrum/reports/report-1/sections/public-info', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ rows: [{ section: 'public-info' }] })
+		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '1001', 'hr_viewer')
+		expect(fulcrumStub.getReportSectionData).toHaveBeenCalledWith('report-1', 'public-info')
+	})
+
+	it('denies unauthorized mail content access before revealing readiness state', async () => {
+		hrStub.getUserRoles.mockResolvedValue([])
+		hrStub.checkPermission.mockResolvedValue(false)
+		fulcrumStub.getReportStatus.mockResolvedValue({
+			reportId: 'report-1',
+			status: 'pending',
+			requestorCorporationId: '1001',
+		} as any)
+
+		const app = createApp(makeUser())
+		const res = await app.request('/api/fulcrum/reports/report-1/mails/mail-1/content', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({ error: 'HR role required' })
+		expect(fulcrumStub.fetchMailContent).not.toHaveBeenCalled()
+		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '1001', 'hr_viewer')
 	})
 
 	it('denies character report listing when backend access scope does not exist', async () => {
