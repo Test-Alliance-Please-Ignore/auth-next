@@ -60,6 +60,7 @@ import {
 	useMessageCount,
 	useRecommendations,
 } from '../hooks'
+import { canViewFulcrumTab } from '../utils/fulcrum-access'
 import { FORBIDDEN_PRIVATE_DATA_MESSAGE } from '../utils/private-data'
 
 // ============================================================================
@@ -142,6 +143,11 @@ export default function HrApplicationReview() {
 		!!application &&
 		canViewCorporationApplications &&
 		(user?.is_admin === true || isAuditor || isMemberCorporation || OPEN_APPLICATION_STATUSES.includes(application.status))
+	const canShowFulcrumTab = canViewFulcrumTab({
+		applicationStatus: application?.status,
+		currentRole: permission?.currentRole,
+		isAdmin: user?.is_admin === true,
+	})
 
 	// Fetch selected HR note for edit/delete
 	const { data: selectedNote } = useHRNote(selectedNoteId)
@@ -519,7 +525,7 @@ export default function HrApplicationReview() {
 					>
 						Prior Apps
 					</TabsTrigger>
-					{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && application && OPEN_APPLICATION_STATUSES.includes(application.status) && (
+					{canShowFulcrumTab && (
 						<TabsTrigger
 							value="fulcrum"
 							className={reviewTabTriggerClassName}
@@ -816,7 +822,7 @@ export default function HrApplicationReview() {
 				</TabsContent>
 
 				{/* Fulcrum (Character Reports) Tab */}
-				{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && application && OPEN_APPLICATION_STATUSES.includes(application.status) && (
+				{canShowFulcrumTab && (
 					<TabsContent value="fulcrum">
 						<Card>
 							<CardHeader>
