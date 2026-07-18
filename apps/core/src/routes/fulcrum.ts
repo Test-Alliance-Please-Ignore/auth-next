@@ -1030,10 +1030,6 @@ app.get('/reports/:reportId/sections', requireAuth(), async (c) => {
 			return c.json({ error: 'Report not found' }, 404)
 		}
 
-		if (report.status !== 'completed') {
-			return c.json({ error: 'Report not ready', status: report.status }, 400)
-		}
-
 		if (!(await isHrAuditorUser(c, user))) {
 			const hr = getHrStub(c)
 			const hasPermission = await hr.checkPermission(
@@ -1044,6 +1040,10 @@ app.get('/reports/:reportId/sections', requireAuth(), async (c) => {
 			if (!hasPermission) {
 				return c.json({ error: 'HR role required' }, 403)
 			}
+		}
+
+		if (report.status !== 'completed') {
+			return c.json({ error: 'Report not ready', status: report.status }, 400)
 		}
 
 		const manifest = await fulcrum.getReportSections(reportId)
@@ -1083,10 +1083,6 @@ app.get('/reports/:reportId/sections/:section', requireAuth(), async (c) => {
 			return c.json({ error: 'Report not found' }, 404)
 		}
 
-		if (report.status !== 'completed') {
-			return c.json({ error: 'Report not ready', status: report.status }, 400)
-		}
-
 		if (!(await isHrAuditorUser(c, user))) {
 			const hr = getHrStub(c)
 			const hasPermission = await hr.checkPermission(
@@ -1097,6 +1093,10 @@ app.get('/reports/:reportId/sections/:section', requireAuth(), async (c) => {
 			if (!hasPermission) {
 				return c.json({ error: 'HR role required' }, 403)
 			}
+		}
+
+		if (report.status !== 'completed') {
+			return c.json({ error: 'Report not ready', status: report.status }, 400)
 		}
 
 		const data = await fulcrum.getReportSectionData(reportId, section)
@@ -1131,10 +1131,6 @@ app.get('/reports/:reportId/mails/:mailId/content', requireAuth(), async (c) => 
 			return c.json({ error: 'Report not found' }, 404)
 		}
 
-		if (report.status !== 'completed') {
-			return c.json({ error: 'Report not ready', status: report.status }, 400)
-		}
-
 		if (!(await isHrAuditorUser(c, user))) {
 			const hr = getHrStub(c)
 			const hasPermission = await hr.checkPermission(
@@ -1145,6 +1141,10 @@ app.get('/reports/:reportId/mails/:mailId/content', requireAuth(), async (c) => 
 			if (!hasPermission) {
 				return c.json({ error: 'HR role required' }, 403)
 			}
+		}
+
+		if (report.status !== 'completed') {
+			return c.json({ error: 'Report not ready', status: report.status }, 400)
 		}
 
 		const body = await fulcrum.fetchMailContent(reportId, mailId)
