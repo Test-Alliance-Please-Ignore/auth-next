@@ -24,13 +24,18 @@ import {
 	UserProfileStatusBadge,
 	UserProfileStatsSeparator,
 } from '../components/user-profile-page-shell'
-import { useRequestFulcrumReport, useRequestFulcrumReportBatch } from '../hooks'
+import {
+	useHrUserCharacters,
+	useFulcrumUserReports,
+	useRequestFulcrumReport,
+	useRequestFulcrumReportBatch,
+} from '../hooks'
 import { getPrivateDataUnavailableMessage } from '../utils/private-data'
 import {
 	applicationsApi,
 	type Application,
 	type CharacterReportMetadata,
-	type FulcrumCharacterData,
+	type FulcrumCharacterReportData,
 } from '../api'
 
 interface ReviewerProfileNavigationState {
@@ -54,7 +59,7 @@ interface ReviewerCharacterRow {
 	hasPendingReport: boolean
 }
 
-function getLatestReport(character: FulcrumCharacterData): CharacterReportMetadata | null {
+function getLatestReport(character: FulcrumCharacterReportData): CharacterReportMetadata | null {
 	if (character.reports.length === 0) return null
 	return character.reports.reduce((latest, report) =>
 		new Date(report.createdAt) > new Date(latest.createdAt) ? report : latest
@@ -103,24 +108,28 @@ export default function HrUserProfilePage() {
 		},
 	})
 
-	const fulcrumQuery = useQuery<FulcrumCharacterData[]>({
-		queryKey: ['hr', 'user-profile', userId, 'fulcrum'],
-		queryFn: () => apiClient.get(`/fulcrum/users/${userId}/characters`),
+	const characterQuery = useHrUserCharacters(userId ?? '', {
 		enabled: !!userId,
-		retry: false,
-		staleTime: 1000 * 30,
-		gcTime: 1000 * 60 * 3,
-		refetchInterval: (query) => {
-			const data = query.state.data
-			const hasInProgress = data?.some((ch) =>
-				ch.reports.some((r) => r.status === 'pending' || r.status === 'processing')
-			)
-			return hasInProgress ? 10_000 : false
-		},
-		meta: {
-			suppressErrorToast: true,
-		},
 	})
+
+	const {
+		data: reportCharacters = [],
+		isLoading: reportLoading,
+		isSuccess: reportLoaded,
+		error: reportError,
+	} = useFulcrumUserReports(userId ?? '', { enabled: !!userId })
+	const reportCharacterById = useMemo(
+		() => new Map(reportCharacters.map((character) => [character.characterId, character])),
+		[reportCharacters]
+	)
+	const reportAccessDenied = isForbiddenError(reportError)
+	const fulcrumAccessDeniedMessage = reportAccessDenied
+		? 'Fulcrum data is hidden because this user does not have an open application or shared corporation access.'
+		: null
+	const fulcrumUnavailableMessage =
+		reportError && !reportAccessDenied ? 'Fulcrum data is unavailable right now.' : null
+	const canViewFulcrumReports = reportLoaded
+	const canRequestFulcrumReports = canViewFulcrumReports && (accessibleCorporations?.length ?? 0) > 0
 
 	const sortedApplications = useMemo(() => {
 		if (!applicationsQuery.data) return []
@@ -130,13 +139,14 @@ export default function HrUserProfilePage() {
 	}, [applicationsQuery.data])
 
 	const rows = useMemo<ReviewerCharacterRow[]>(() => {
-		if (!fulcrumQuery.data) return []
+		if (!characterQuery.data) return []
 
-		return fulcrumQuery.data
+		return characterQuery.data
 			.map((character, index) => {
-				const latestReport = getLatestReport(character)
+				const report = reportCharacterById.get(character.characterId)
+				const latestReport = report ? getLatestReport(report) : null
 				const hasPendingReport =
-					character.reports.some((report) => report.status === 'pending' || report.status === 'processing')
+					report?.reports.some((entry) => entry.status === 'pending' || entry.status === 'processing') ?? false
 				const isPrimary = index === 0 || sortedApplications[0]?.characterId === character.characterId
 
 				return {
@@ -147,9 +157,9 @@ export default function HrUserProfilePage() {
 					corporationName: character.corporationName ?? null,
 					allianceId: character.allianceId ?? null,
 					allianceName: character.allianceName ?? null,
-					role: character.role ?? null,
-					activityStatus: character.activityStatus ?? null,
-					hasValidToken: character.hasValidToken ?? null,
+					role: report?.role ?? null,
+					activityStatus: report?.activityStatus ?? null,
+					hasValidToken: character.hasValidToken,
 					latestReport,
 					hasPendingReport,
 				}
@@ -159,7 +169,7 @@ export default function HrUserProfilePage() {
 				if (!a.isPrimary && b.isPrimary) return 1
 				return a.characterName.localeCompare(b.characterName)
 			})
-	}, [fulcrumQuery.data, sortedApplications])
+	}, [characterQuery.data, reportCharacterById, sortedApplications])
 
 	const characterDetailQueries = useQueries({
 		queries: rows.map((character) => ({
@@ -200,7 +210,6 @@ export default function HrUserProfilePage() {
 
 	usePageTitle(accountName ? `${accountName} | HR User Details` : 'HR User Details')
 
-	const canRequestFulcrumReports = (accessibleCorporations?.length ?? 0) > 0
 	const canRequestCharacterReport = (character: { corporationId?: string | null }) =>
 		Boolean(character.corporationId)
 	const scanEligibleCharacters = rows.filter(
@@ -225,7 +234,7 @@ export default function HrUserProfilePage() {
 		)
 	}
 
-	if (isForbiddenError(fulcrumQuery.error) && !fulcrumQuery.data) {
+	if (isForbiddenError(characterQuery.error) && !characterQuery.data) {
 		return (
 			<UserProfilePageShell
 				rootLabel="Users"
@@ -249,7 +258,7 @@ export default function HrUserProfilePage() {
 		)
 	}
 
-	if (fulcrumQuery.isLoading && rows.length === 0) {
+	if (characterQuery.isLoading && rows.length === 0) {
 		return <div className="flex items-center justify-center min-h-[400px]"><LoadingSpinner size="lg" /></div>
 	}
 
@@ -360,11 +369,6 @@ export default function HrUserProfilePage() {
 			userId={userId}
 			mainCharacterId={mainCharacter?.characterId}
 			mainCharacterName={mainCharacter?.characterName}
-			sidebarBadges={
-				<UserProfileStatusBadge variant={canRequestFulcrumReports ? 'success' : 'secondary'}>
-					{canRequestFulcrumReports ? 'HR Accessible' : 'HR Unavailable'}
-				</UserProfileStatusBadge>
-			}
 			sidebarStats={
 				<>
 					<UserProfileStatRow label="Characters" value={rows.length} />
@@ -391,6 +395,32 @@ export default function HrUserProfilePage() {
 							</div>
 						</div>
 					)}
+					{fulcrumAccessDeniedMessage && (
+						<div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+							<div className="flex items-start gap-3">
+								<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+								<div className="space-y-1">
+									<p className="font-medium">Fulcrum reports are hidden for this user</p>
+									<p className="text-sm text-amber-800 dark:text-amber-200">
+										{fulcrumAccessDeniedMessage}
+									</p>
+								</div>
+							</div>
+						</div>
+					)}
+					{fulcrumUnavailableMessage && (
+						<div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
+							<div className="flex items-start gap-3">
+								<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+								<div className="space-y-1">
+									<p className="font-medium">Fulcrum data is temporarily unavailable</p>
+									<p className="text-sm text-sky-800 dark:text-sky-200">
+										{fulcrumUnavailableMessage}
+									</p>
+								</div>
+							</div>
+						</div>
+					)}
 					<ProfileCharactersSection
 						characters={rows.map((character) => ({
 							characterId: character.characterId,
@@ -410,7 +440,8 @@ export default function HrUserProfilePage() {
 							isMetricsLoading: metricsLoadingByCharacterId.get(character.characterId),
 							privateDataUnavailableNote: privateDataUnavailableNoteByCharacterId.get(character.characterId),
 						}))}
-						fulcrumLoading={fulcrumQuery.isLoading && rows.length === 0}
+						fulcrumLoading={canViewFulcrumReports && reportLoading && rows.length === 0}
+						showFulcrumReports={canViewFulcrumReports}
 						showViewDetailsButton
 						isScanAllVisible
 						isScanningAll={isScanningAll}
@@ -477,22 +508,26 @@ export default function HrUserProfilePage() {
 						}
 					/>
 
-			<FulcrumBulkScanDialog
-				open={scanAllDialogOpen}
-				onOpenChange={setScanAllDialogOpen}
-				eligibleCount={scanEligibleCharacters.length}
-				sendDmForScanRequests={sendDmForScanRequests}
-				setSendDmForScanRequests={setSendDmForScanRequests}
-				onConfirm={handleConfirmScanAll}
-			/>
-			<FulcrumSingleScanDialog
-				open={singleScanDialogCharacter !== null}
-				onOpenChange={(open) => !open && setSingleScanDialogCharacter(null)}
-				characterName={singleScanDialogCharacter?.characterName ?? 'Character'}
-				sendDmForScanRequests={sendDmForScanRequests}
-				setSendDmForScanRequests={setSendDmForScanRequests}
-				onConfirm={handleConfirmSingleScan}
-			/>
+				{canViewFulcrumReports && (
+					<>
+						<FulcrumBulkScanDialog
+							open={scanAllDialogOpen}
+							onOpenChange={setScanAllDialogOpen}
+							eligibleCount={scanEligibleCharacters.length}
+							sendDmForScanRequests={sendDmForScanRequests}
+							setSendDmForScanRequests={setSendDmForScanRequests}
+							onConfirm={handleConfirmScanAll}
+						/>
+						<FulcrumSingleScanDialog
+							open={singleScanDialogCharacter !== null}
+							onOpenChange={(open) => !open && setSingleScanDialogCharacter(null)}
+							characterName={singleScanDialogCharacter?.characterName ?? 'Character'}
+							sendDmForScanRequests={sendDmForScanRequests}
+							setSendDmForScanRequests={setSendDmForScanRequests}
+							onConfirm={handleConfirmSingleScan}
+						/>
+					</>
+				)}
 		</UserProfilePageShell>
 	)
 }

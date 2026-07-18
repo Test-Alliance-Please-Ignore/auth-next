@@ -2887,6 +2887,7 @@ export class ApiClient {
 		viewedAsCeoOrDirector: boolean
 		viewedAsHrViewer: boolean
 		viewerRole: 'CEO' | 'Director' | null
+		canViewPrivateData: boolean
 		public: {
 			info: any
 			corporationHistory: any[]

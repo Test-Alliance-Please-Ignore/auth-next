@@ -54,7 +54,7 @@ describe('resolveEsiBadgeState', () => {
 	it('shows badge for external character and uses fulcrum token validity', () => {
 		const result = resolveEsiBadgeState({
 			isInCorp: false,
-			fulcrum: {
+			hr: {
 				hasValidToken: false,
 			} as any,
 		})
@@ -79,4 +79,3 @@ describe('resolveEsiBadgeState', () => {
 		expect(result.label).toBe('ESI Unknown')
 	})
 })
-

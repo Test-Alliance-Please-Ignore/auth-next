@@ -55,14 +55,16 @@ import {
 	useFulcrumScanDmPreference,
 } from '../components/fulcrum-scan-dialogs'
 import {
-	useApplicationFulcrum,
 	useApplications,
 	useHRNotes,
 	useRequestFulcrumReport,
 	useRequestFulcrumReportBatch,
+	useFulcrumUserReports,
+	useHrUserCharacters,
 } from '../hooks'
 import type { CorporationMember } from '../../corporations/api'
-import type { FulcrumCharacterData } from '../api'
+import type { FulcrumCharacterReportData } from '../api'
+import { getPrivateDataUnavailableMessage } from '../utils/private-data'
 
 // ============================================================================
 // Types & Sub-Components
@@ -74,26 +76,37 @@ interface UnifiedCharacter {
 	isInCorp: boolean
 	role?: 'CEO' | 'Director' | 'Member' | null
 	member?: CorporationMember
-	fulcrum?: FulcrumCharacterData
+	hr?: {
+		characterId: string
+		characterName: string
+		hasValidToken: boolean
+		corporationId?: string | null
+		corporationName?: string | null
+		allianceId?: string | null
+		allianceName?: string | null
+	}
+	report?: FulcrumCharacterReportData
 }
 
 
 // Test compatibility helper retained after section-component extraction.
 export function resolveEsiBadgeState({
 	member,
-	fulcrum,
+	hr,
 	isInCorp,
 }: {
 	member?: CorporationMember
-	fulcrum?: FulcrumCharacterData
+	hr?: {
+		hasValidToken?: boolean | null
+	}
 	isInCorp: boolean
 }): {
 	show: boolean
 	label: 'ESI Valid' | 'ESI Invalid' | 'ESI Unknown'
 	variant: 'success' | 'destructive' | 'warning'
 } {
-	const tokenState = member?.hasValidToken ?? fulcrum?.hasValidToken ?? null
-	const show = Boolean(member?.hasAuthAccount) || (!isInCorp && !!fulcrum)
+	const tokenState = member?.hasValidToken ?? hr?.hasValidToken ?? null
+	const show = Boolean(member?.hasAuthAccount) || (!!hr && !isInCorp)
 	const shared = getEsiStatusBadgeState({
 		hasAuthAccount: show,
 		hasValidToken: tokenState,
@@ -156,10 +169,11 @@ export default function HrMemberProfile() {
 		(isAdmin || isAuditor) && authUserId ? { subjectUserId: authUserId } : undefined,
 	)
 
-	// Fulcrum data is visible to the current HR scope; report creation is gated separately below.
-	const { data: fulcrumCharacters, isLoading: fulcrumLoading } = useApplicationFulcrum(
+	const { data: hrCharacters = [] } = useHrUserCharacters(authUserId ?? '', {
+		enabled: account?.isLinked && !!authUserId,
+	})
+	const { data: reportCharacters = [], isLoading: fulcrumLoading } = useFulcrumUserReports(
 		authUserId ?? '',
-		corporationId ?? '',
 		account?.isLinked && !!authUserId,
 	)
 
@@ -177,35 +191,42 @@ export default function HrMemberProfile() {
 			(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
 		)
 	}, [applications])
+	const reportCharacterById = useMemo(
+		() => new Map((reportCharacters ?? []).map((character) => [character.characterId, character])),
+		[reportCharacters]
+	)
+	const hrCharacterById = useMemo(
+		() => new Map(hrCharacters.map((character) => [character.characterId, character])),
+		[hrCharacters]
+	)
 	// Build a unified character list: in-corp members first, then external alts
 	const unifiedCharacters = useMemo(() => {
 		if (!account) return []
-		const fulcrumByCharId = new Map(
-			(fulcrumCharacters ?? []).map((fc) => [fc.characterId, fc]),
-		)
 		const corpCharIds = new Set(account.characters.map((c) => c.characterId))
 
-		// In-corp characters, enriched with fulcrum data when available
+		// In-corp characters, enriched with HR/report data when available
 		const inCorp: UnifiedCharacter[] = account.characters.map((m) => ({
 			characterId: m.characterId,
 			characterName: m.characterName,
 			isInCorp: true,
 			member: m,
-			fulcrum: fulcrumByCharId.get(m.characterId),
+			hr: hrCharacterById.get(m.characterId),
+			report: reportCharacterById.get(m.characterId),
 		}))
 
-		// External characters (on other corps) from fulcrum data
-		const external: UnifiedCharacter[] = (fulcrumCharacters ?? [])
-			.filter((fc) => !corpCharIds.has(fc.characterId))
-			.map((fc) => ({
-				characterId: fc.characterId,
-				characterName: fc.characterName,
-				isInCorp: fc.corporationId === corporationId,
-				fulcrum: fc,
+		// External characters come from HR-linked characters, with report metadata joined in.
+		const external: UnifiedCharacter[] = hrCharacters
+			.filter((character) => !corpCharIds.has(character.characterId))
+			.map((character) => ({
+				characterId: character.characterId,
+				characterName: character.characterName,
+				isInCorp: false,
+				hr: character,
+				report: reportCharacterById.get(character.characterId),
 			}))
 
 		return [...inCorp, ...external]
-	}, [account, fulcrumCharacters])
+	}, [account, hrCharacters, hrCharacterById, reportCharacterById])
 	const characterDetailQueries = useQueries({
 		queries: unifiedCharacters.map((character) => ({
 			queryKey: ['character', character.characterId, 'hr-member-profile-private'],
@@ -220,6 +241,7 @@ export default function HrMemberProfile() {
 	const spByCharacterId = new Map<string, number | null>()
 	const walletByCharacterId = new Map<string, string | null>()
 	const metricsLoadingByCharacterId = new Map<string, boolean>()
+	const privateDataUnavailableNoteByCharacterId = new Map<string, string | null>()
 	unifiedCharacters.forEach((character, index) => {
 		const query = characterDetailQueries[index]
 		const detail = query?.data
@@ -229,7 +251,13 @@ export default function HrMemberProfile() {
 			character.characterId,
 			(query?.isPending ?? false) && detail == null
 		)
+		privateDataUnavailableNoteByCharacterId.set(
+			character.characterId,
+			getPrivateDataUnavailableMessage(query?.error)
+		)
 	})
+	const privateDataUnavailableMessage =
+		[...privateDataUnavailableNoteByCharacterId.values()].find((note) => Boolean(note)) ?? null
 
 	const totalCharacters = unifiedCharacters.length
 	const inCorpCharacterCount = useMemo(() => {
@@ -244,11 +272,11 @@ export default function HrMemberProfile() {
 		() =>
 			unifiedCharacters.filter((character) => {
 				const hasPending =
-					character.fulcrum?.reports.some(
+					character.report?.reports.some(
 						(report) => report.status === 'pending' || report.status === 'processing'
 					) ?? false
 				return (
-					Boolean(character.fulcrum?.corporationId) &&
+					Boolean(character.member?.corporationId ?? character.hr?.corporationId) &&
 					!hasPending &&
 					((user?.is_admin || isAuditor) || character.role !== 'CEO')
 				)
@@ -269,7 +297,7 @@ export default function HrMemberProfile() {
 		try {
 			const groups = new Map<string, string[]>()
 			for (const character of scanEligibleCharacters) {
-				const groupCorporationId = character.fulcrum?.corporationId
+				const groupCorporationId = character.member?.corporationId ?? character.hr?.corporationId
 				if (!groupCorporationId) continue
 				const existing = groups.get(groupCorporationId)
 				if (existing) {
@@ -546,17 +574,30 @@ export default function HrMemberProfile() {
 
 				{/* ── Main Content ── */}
 				<div className="space-y-6">
+					{privateDataUnavailableMessage && (
+						<div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+							<div className="flex items-start gap-3">
+								<ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+								<div className="space-y-1">
+									<p className="font-medium">Private ESI data is hidden for some characters</p>
+									<p className="text-sm text-amber-800 dark:text-amber-200">
+										{privateDataUnavailableMessage}
+									</p>
+								</div>
+							</div>
+						</div>
+					)}
 					<ProfileCharactersSection
 						characters={unifiedCharacters.map((char) => ({
 							characterId: char.characterId,
 							characterName: char.characterName,
-							hasValidToken: char.member?.hasValidToken ?? char.fulcrum?.hasValidToken ?? null,
-							corporationId: char.member?.corporationId ?? char.fulcrum?.corporationId ?? null,
-							corporationName: char.member?.corporationName ?? char.fulcrum?.corporationName ?? null,
-							allianceId: char.member?.allianceId ?? char.fulcrum?.allianceId ?? null,
-							allianceName: char.member?.allianceName ?? char.fulcrum?.allianceName ?? null,
-							role: char.member?.role ?? char.fulcrum?.role ?? null,
-							activityStatus: char.member?.activityStatus ?? char.fulcrum?.activityStatus ?? null,
+							hasValidToken: char.member?.hasValidToken ?? char.hr?.hasValidToken ?? null,
+							corporationId: char.member?.corporationId ?? char.hr?.corporationId ?? null,
+							corporationName: char.member?.corporationName ?? char.hr?.corporationName ?? null,
+							allianceId: char.member?.allianceId ?? char.hr?.allianceId ?? null,
+							allianceName: char.member?.allianceName ?? char.hr?.allianceName ?? null,
+							role: char.member?.role ?? char.report?.role ?? null,
+							activityStatus: char.member?.activityStatus ?? char.report?.activityStatus ?? null,
 							isExternal: !char.isInCorp,
 							isBlacklisted: char.member?.isBlacklisted,
 							lastLogin: char.member?.lastLogin,
@@ -564,9 +605,9 @@ export default function HrMemberProfile() {
 							skillPoints: spByCharacterId.get(char.characterId),
 							walletBalance: walletByCharacterId.get(char.characterId),
 							isMetricsLoading: metricsLoadingByCharacterId.get(char.characterId),
-							latestReport: char.fulcrum?.reports[0] ?? null,
+							latestReport: char.report?.reports[0] ?? null,
 							hasPendingReport:
-								char.fulcrum?.reports.some((r) => r.status === 'pending' || r.status === 'processing') ??
+								char.report?.reports.some((r) => r.status === 'pending' || r.status === 'processing') ??
 								false,
 						}))}
 						fulcrumLoading={

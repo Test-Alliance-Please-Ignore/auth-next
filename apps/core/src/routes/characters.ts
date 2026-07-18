@@ -8,7 +8,7 @@ import { logger } from '@repo/hono-helpers'
 import { userCharacters } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
 import {
-	canViewCharacterPrivateDetails,
+	canAccessCharacterPrivateData,
 	resolveCharacterAccessContext,
 	shouldBlockCharacterPrivateAccess,
 } from '../lib/character-access'
@@ -348,7 +348,7 @@ app.get('/:characterId/private', requireAuth(), async (c) => {
 			return c.json({ error: 'You do not have permission to view this character' }, 403)
 		}
 
-		const canViewSensitiveData = canViewCharacterPrivateDetails(access)
+		const canViewSensitiveData = canAccessCharacterPrivateData(access)
 
 		if (!canViewSensitiveData) {
 			return c.json({ error: 'You do not have permission to view this character' }, 403)
@@ -378,6 +378,7 @@ app.get('/:characterId/private', requireAuth(), async (c) => {
 			viewedAsCeoOrDirector: access.viewedAsCeoOrDirector,
 			viewedAsHrViewer: access.viewedAsHrViewer,
 			viewerRole: access.viewerRole,
+			canViewPrivateData: canAccessCharacterPrivateData(access),
 			skills: enrichedSkills,
 			allSkills,
 		}
@@ -622,6 +623,7 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			viewedAsCeoOrDirector: access.viewedAsCeoOrDirector,
 			viewedAsHrViewer: access.viewedAsHrViewer,
 			viewerRole: access.viewerRole,
+			canViewPrivateData: canAccessCharacterPrivateData(access),
 			public: {
 				info: {
 					...info,

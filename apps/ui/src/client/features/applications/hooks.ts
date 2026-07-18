@@ -7,8 +7,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { apiClient } from '@/lib/api'
 import { applicationsApi, fulcrumApi } from './api'
-import { auditorUserKeys } from '@/hooks/useAuditorUsers'
 import { useApiMutation } from '@/hooks/useApiMutation'
 
 import type {
@@ -33,6 +33,7 @@ import type {
 	ReportManifest,
 	ReportRequestSource,
 	ReportSectionName,
+	FulcrumCharacterReportData,
 	SendMessageRequest,
 	SubmitApplicationRequest,
 	UpsertApplicationStaffNoteRequest,
@@ -73,8 +74,10 @@ export const applicationKeys = {
 	// Fulcrum (Character Reports)
 	fulcrumUserCharacters: (userId: string, corporationId: string) =>
 		[...applicationKeys.all, 'fulcrum', 'user-characters', userId, corporationId] as const,
-	fulcrumCharacterReports: (characterId: string, corporationId: string) =>
-		[...applicationKeys.all, 'fulcrum', 'character', characterId, corporationId] as const,
+	fulcrumUserReports: (userId: string) =>
+		[...applicationKeys.all, 'fulcrum', 'user-reports', userId] as const,
+	fulcrumCharacterReports: (characterId: string) =>
+		[...applicationKeys.all, 'fulcrum', 'character', characterId] as const,
 	fulcrumReportSections: (reportId: string) =>
 		[...applicationKeys.all, 'fulcrum-report', reportId, 'sections'] as const,
 	fulcrumReportSection: (reportId: string, section: ReportSectionName) =>
@@ -88,6 +91,22 @@ export const applicationKeys = {
 		[...applicationKeys.all, 'character-history', characterId] as const,
 	userHistory: (userId: string) =>
 		[...applicationKeys.all, 'user-history', userId] as const,
+}
+
+export const hrUserKeys = {
+	all: ['hr', 'users'] as const,
+	characters: (userId: string) => [...hrUserKeys.all, userId, 'characters'] as const,
+}
+
+export interface HrUserCharacterData {
+	characterId: string
+	characterName: string
+	hasValidToken: boolean
+	isDeleted: boolean
+	corporationId?: string | null
+	corporationName?: string | null
+	allianceId?: string | null
+	allianceName?: string | null
 }
 
 // ============================================================================
@@ -248,6 +267,20 @@ export function useApplicationForRecommender(applicationId: string, options?: { 
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
 		enabled: options?.enabled ?? !!applicationId,
+	})
+}
+
+
+export function useHrUserCharacters(userId: string, options?: { enabled?: boolean }) {
+	return useQuery<HrUserCharacterData[]>({
+		queryKey: hrUserKeys.characters(userId),
+		queryFn: () => apiClient.get(`/hr/users/${userId}/characters`),
+		staleTime: 1000 * 30,
+		gcTime: 1000 * 60 * 3,
+		enabled: options?.enabled ?? !!userId,
+		meta: {
+			suppressErrorToast: true,
+		},
 	})
 }
 
@@ -981,16 +1014,43 @@ export function useApplicationFulcrum(userId: string, corporationId: string, ena
 	})
 }
 
+export function useFulcrumUserReports(
+	userId: string,
+	options?: boolean | { enabled?: boolean; suppressErrorToast?: boolean }
+) {
+	const enabled = typeof options === 'boolean' ? options : options?.enabled ?? true
+	const suppressErrorToast =
+		typeof options === 'boolean' ? true : options?.suppressErrorToast ?? true
+
+	return useQuery<FulcrumCharacterReportData[]>({
+		queryKey: applicationKeys.fulcrumUserReports(userId),
+		queryFn: () => fulcrumApi.getUserCharacterReports(userId),
+		staleTime: 1000 * 30,
+		gcTime: 1000 * 60 * 3,
+		enabled: !!userId && enabled,
+		refetchInterval: (query) => {
+			const data = query.state.data
+			const hasInProgress = data?.some((ch) =>
+				ch.reports.some((r) => r.status === 'pending' || r.status === 'processing'),
+			)
+			return hasInProgress ? 10_000 : false
+		},
+		meta: {
+			suppressErrorToast,
+		},
+	})
+}
+
 /**
  * Hook to fetch Fulcrum reports for a specific character
  */
-export function useCharacterReports(characterId: string, corporationId: string, enabled = true) {
+export function useCharacterReports(characterId: string, enabled = true) {
 	return useQuery<CharacterReportMetadata[]>({
-		queryKey: applicationKeys.fulcrumCharacterReports(characterId, corporationId),
-		queryFn: () => fulcrumApi.getCharacterReports(characterId, corporationId),
+		queryKey: applicationKeys.fulcrumCharacterReports(characterId),
+		queryFn: () => fulcrumApi.getCharacterReports(characterId),
 		staleTime: 1000 * 30,
 		gcTime: 1000 * 60 * 3,
-		enabled: !!characterId && !!corporationId && enabled,
+		enabled: !!characterId && enabled,
 		refetchInterval: (query) => {
 			const data = query.state.data
 			const hasInProgress = data?.some((r) => r.status === 'pending' || r.status === 'processing')
@@ -1037,6 +1097,19 @@ export function useRequestFulcrumReport() {
 				createdAt: new Date().toISOString(),
 				updatedAt: new Date().toISOString(),
 			}
+			const applyOptimisticPendingToReportRows = (old: FulcrumCharacterReportData[] | undefined) =>
+				old?.map((character) =>
+					character.characterId !== characterId
+						? character
+						: {
+							...character,
+							reports: character.reports.some(
+								(report) => report.status === 'pending' || report.status === 'processing',
+							)
+								? character.reports
+								: [optimisticPendingReport, ...character.reports],
+						},
+				)
 
 			queryClient.setQueryData<FulcrumCharacterData[]>(
 				applicationKeys.fulcrumUserCharacters(userId, corporationId),
@@ -1052,33 +1125,23 @@ export function useRequestFulcrumReport() {
 									? character.reports
 									: [optimisticPendingReport, ...character.reports],
 							},
-					),
+						),
+			)
+			queryClient.setQueryData<FulcrumCharacterReportData[]>(
+				applicationKeys.fulcrumUserReports(userId),
+				applyOptimisticPendingToReportRows,
 			)
 
-			queryClient.setQueryData<FulcrumCharacterData[]>(auditorUserKeys.fulcrum(userId), (old) =>
-				old?.map((character) =>
-					character.characterId !== characterId
-						? character
-						: {
-							...character,
-							reports: character.reports.some(
-								(report) => report.status === 'pending' || report.status === 'processing',
-							)
-								? character.reports
-								: [optimisticPendingReport, ...character.reports],
-						},
-				),
-			)
 		},
 		onSettled: (_, __, variables) => {
 			queryClient.invalidateQueries({
-				queryKey: applicationKeys.fulcrumCharacterReports(
-					variables.characterId,
-					variables.corporationId,
-				),
+				queryKey: applicationKeys.fulcrumCharacterReports(variables.characterId),
 			})
 			// Also invalidate user-characters query if userId is provided
 			if (variables.userId) {
+				queryClient.invalidateQueries({
+					queryKey: applicationKeys.fulcrumUserReports(variables.userId),
+				})
 				queryClient.invalidateQueries({
 					queryKey: applicationKeys.fulcrumUserCharacters(
 						variables.userId,
@@ -1141,23 +1204,52 @@ export function useRequestFulcrumReportBatch() {
 						reports: [optimisticPendingReport, ...character.reports],
 					}
 				})
+			const applyOptimisticPendingToReportRows = (old: FulcrumCharacterReportData[] | undefined) =>
+				old?.map((character) => {
+					if (!characterIds.includes(character.characterId)) return character
+					if (
+						character.reports.some(
+							(report) => report.status === 'pending' || report.status === 'processing',
+						)
+					) {
+						return character
+					}
+					const optimisticPendingReport: CharacterReportMetadata = {
+						id: `pending-local-${character.characterId}-${Date.now()}`,
+						characterId: character.characterId,
+						status: 'pending',
+						requestorUserId: '',
+						requestorCorporationId: corporationId,
+						requestSource: 'hr',
+						retentionDays: 7,
+						createdAt: now,
+						updatedAt: now,
+					}
+					return {
+						...character,
+						reports: [optimisticPendingReport, ...character.reports],
+					}
+				})
 
 			queryClient.setQueryData<FulcrumCharacterData[]>(
 				applicationKeys.fulcrumUserCharacters(userId, corporationId),
 				applyOptimisticPendingToCharacters,
 			)
-			queryClient.setQueryData<FulcrumCharacterData[]>(
-				auditorUserKeys.fulcrum(userId),
-				applyOptimisticPendingToCharacters,
+			queryClient.setQueryData<FulcrumCharacterReportData[]>(
+				applicationKeys.fulcrumUserReports(userId),
+				applyOptimisticPendingToReportRows,
 			)
 		},
 		onSettled: (_, __, variables) => {
 			for (const characterId of variables.characterIds) {
 				queryClient.invalidateQueries({
-					queryKey: applicationKeys.fulcrumCharacterReports(characterId, variables.corporationId),
+					queryKey: applicationKeys.fulcrumCharacterReports(characterId),
 				})
 			}
 			if (variables.userId) {
+				queryClient.invalidateQueries({
+					queryKey: applicationKeys.fulcrumUserReports(variables.userId),
+				})
 				queryClient.invalidateQueries({
 					queryKey: applicationKeys.fulcrumUserCharacters(
 						variables.userId,

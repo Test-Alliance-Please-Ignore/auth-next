@@ -276,6 +276,57 @@ describe('fulcrum route access matrix', () => {
 		expect(body[0]).toMatchObject({ characterId: '3001', hasValidToken: true })
 	})
 
+	it('denies character report listing when backend access scope does not exist', async () => {
+		dbStub.query.userCharacters.findFirst.mockResolvedValue({
+			userId: 'target-1',
+			characterName: 'Alt Pilot',
+		} as any)
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request('/api/fulcrum/characters/3001/reports', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'HR staff access requires a shared corporation or an open application',
+		})
+		expect(hrStub.listApplications).toHaveBeenCalledWith(
+			{ userId: 'target-1' },
+			'user-1',
+			{
+				isAdmin: false,
+				isAuditor: false,
+			}
+		)
+		expect(coreStub.getUserCorporations).toHaveBeenCalledWith('target-1')
+	})
+
+	it('allows character report listing without corporationId when the target has an open application', async () => {
+		dbStub.query.userCharacters.findFirst.mockResolvedValue({
+			userId: 'target-1',
+			characterName: 'Alt Pilot',
+		} as any)
+		hrStub.listApplications.mockResolvedValue([
+			{
+				id: 'app-1',
+				userId: 'target-1',
+				characterId: '3001',
+				characterName: 'Alt Pilot',
+				corporationId: '2001',
+				status: 'accepted',
+			},
+		] as any)
+		hrStub.checkPermission.mockImplementation(async (_userId, corporationId, role) => {
+			return corporationId === '2001' && role === 'hr_reviewer'
+		})
+
+		const app = createApp(makeUser(), dbStub)
+		const res = await app.request('/api/fulcrum/characters/3001/reports', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '2001', 'hr_reviewer')
+		expect(fulcrumStub.listReports).toHaveBeenCalledWith({ characterId: '3001' }, 50)
+	})
+
 	it('blocks report creation for immunitas targets and queues an alert', async () => {
 		dbStub.query.userCharacters.findFirst.mockResolvedValue({
 			userId: 'target-user',

@@ -34,17 +34,22 @@ import {
 	FulcrumSingleScanDialog,
 	useFulcrumScanDmPreference,
 } from '../components/fulcrum-scan-dialogs'
-import { useApplications, useHRNotes, useRequestFulcrumReport, useRequestFulcrumReportBatch } from '../hooks'
+import {
+	useApplications,
+	useHRNotes,
+	useFulcrumUserReports,
+	useHrUserCharacters,
+	useRequestFulcrumReport,
+	useRequestFulcrumReportBatch,
+} from '../hooks'
 import { getPrivateDataUnavailableMessage } from '../utils/private-data'
 import {
-	auditorUserKeys,
-	useAuditorFulcrum,
 	useAuditorUser,
 	useAuditorUserIpHistory,
 } from '../../../hooks/useAuditorUsers'
 import { myCorporationsApi } from '../../corporations/api'
 
-import type { CharacterReportMetadata, FulcrumCharacterData } from '../api'
+import type { CharacterReportMetadata, FulcrumCharacterReportData } from '../api'
 
 interface AuditorProfileNavigationState {
 	source?: 'applications' | 'members'
@@ -67,7 +72,7 @@ interface AuditorCharacterRow {
 	hasPendingReport: boolean
 }
 
-function getLatestReport(character: FulcrumCharacterData): CharacterReportMetadata | null {
+function getLatestReport(character: FulcrumCharacterReportData): CharacterReportMetadata | null {
 	if (character.reports.length === 0) return null
 	return character.reports.reduce((latest, report) =>
 		new Date(report.createdAt) > new Date(latest.createdAt) ? report : latest
@@ -94,7 +99,21 @@ export default function HrAuditorUserProfilePage() {
 	} = useFulcrumScanDmPreference()
 
 	const { data: userDetails, isLoading: userLoading } = useAuditorUser(userId ?? '')
-	const { data: fulcrumCharacters, isLoading: fulcrumLoading } = useAuditorFulcrum(userId ?? '', !!userId)
+	const { data: hrCharacters = [], isLoading: hrLoading } = useHrUserCharacters(userId ?? '', {
+		enabled: !!userId,
+	})
+	const { data: reportCharacters = [], isLoading: fulcrumLoading } = useFulcrumUserReports(
+		userId ?? '',
+		!!userId
+	)
+	const hrCharacterById = useMemo(
+		() => new Map(hrCharacters.map((character) => [character.characterId, character])),
+		[hrCharacters]
+	)
+	const reportCharacterById = useMemo(
+		() => new Map(reportCharacters.map((character) => [character.characterId, character])),
+		[reportCharacters]
+	)
 	const { data: notes, isLoading: notesLoading } = useHRNotes(
 		userId ? { subjectUserId: userId } : undefined
 	)
@@ -140,26 +159,34 @@ export default function HrAuditorUserProfilePage() {
 	const rows = useMemo<AuditorCharacterRow[]>(() => {
 		if (!userDetails) return []
 
-		const fulcrumMap = new Map((fulcrumCharacters ?? []).map((c) => [c.characterId, c]))
-		return userDetails.characters
-			.map((character) => {
-				const fulcrum = fulcrumMap.get(character.characterId)
-				const latestReport = fulcrum ? getLatestReport(fulcrum) : null
+		const userCharacterById = new Map(userDetails.characters.map((character) => [character.characterId, character]))
+		const allCharacterIds = new Set<string>([
+			...userDetails.characters.map((character) => character.characterId),
+			...hrCharacters.map((character) => character.characterId),
+		])
+
+		return [...allCharacterIds]
+			.map((characterId) => {
+				const userCharacter = userCharacterById.get(characterId)
+				const hrCharacter = hrCharacterById.get(characterId)
+				const reportCharacter = reportCharacterById.get(characterId)
+				const latestReport = reportCharacter ? getLatestReport(reportCharacter) : null
 				const hasPendingReport =
-					fulcrum?.reports.some((r) => r.status === 'pending' || r.status === 'processing') ?? false
+					reportCharacter?.reports.some((r) => r.status === 'pending' || r.status === 'processing') ?? false
+
 				return {
-					characterId: character.characterId,
-					characterName: character.characterName,
-					isPrimary: character.is_primary,
-					corporationId: fulcrum?.corporationId ?? null,
-					corporationName: fulcrum?.corporationName ?? null,
-					allianceId: fulcrum?.allianceId ?? null,
-					allianceName: fulcrum?.allianceName ?? null,
-					role: fulcrum?.role ?? null,
-					activityStatus: fulcrum?.activityStatus ?? null,
+					characterId,
+					characterName: userCharacter?.characterName ?? hrCharacter?.characterName ?? characterId,
+					isPrimary: userCharacter?.is_primary ?? characterId === userDetails.mainCharacterId,
+					corporationId: hrCharacter?.corporationId ?? null,
+					corporationName: hrCharacter?.corporationName ?? null,
+					allianceId: hrCharacter?.allianceId ?? null,
+					allianceName: hrCharacter?.allianceName ?? null,
+					role: reportCharacter?.role ?? null,
+					activityStatus: reportCharacter?.activityStatus ?? null,
 					latestReport,
 					hasPendingReport,
-					hasValidToken: fulcrum?.hasValidToken ?? null,
+					hasValidToken: userCharacter?.hasValidToken ?? hrCharacter?.hasValidToken ?? null,
 				}
 			})
 			.sort((a, b) => {
@@ -167,7 +194,7 @@ export default function HrAuditorUserProfilePage() {
 				if (!a.isPrimary && b.isPrimary) return 1
 				return a.characterName.localeCompare(b.characterName)
 			})
-	}, [fulcrumCharacters, userDetails])
+	}, [hrCharacterById, hrCharacters, reportCharacterById, userDetails])
 
 	const characterDetailQueries = useQueries({
 		queries: rows.map((character) => ({
@@ -237,7 +264,7 @@ export default function HrAuditorUserProfilePage() {
 		return <Navigate to="/login" replace />
 	}
 
-	if (authLoading || userLoading) {
+	if ((authLoading || userLoading || hrLoading || fulcrumLoading) && rows.length === 0) {
 		return (
 			<Container>
 				<div className="flex items-center justify-center min-h-[320px]">
@@ -300,9 +327,6 @@ export default function HrAuditorUserProfilePage() {
 			},
 			{
 				onSettled: () => {
-					void queryClient.invalidateQueries({
-						queryKey: auditorUserKeys.fulcrum(userId),
-					})
 					setRequestingCharacterId(null)
 				},
 			}
@@ -371,9 +395,6 @@ export default function HrAuditorUserProfilePage() {
 				}
 			}
 		} finally {
-			void queryClient.invalidateQueries({
-				queryKey: auditorUserKeys.fulcrum(userId),
-			})
 			setIsScanningAll(false)
 		}
 	}
@@ -505,7 +526,7 @@ export default function HrAuditorUserProfilePage() {
 							locationSystem: memberMetaByCharacterId.get(character.characterId)?.locationSystem,
 							locationRegion: memberMetaByCharacterId.get(character.characterId)?.locationRegion,
 						}))}
-						fulcrumLoading={fulcrumLoading}
+						fulcrumLoading={fulcrumLoading && rows.length === 0}
 						showViewDetailsButton
 						isScanAllVisible
 						isScanningAll={isScanningAll}

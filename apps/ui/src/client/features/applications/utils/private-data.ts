@@ -1,7 +1,7 @@
-const FORBIDDEN_PRIVATE_DATA_MESSAGE =
+export const FORBIDDEN_PRIVATE_DATA_MESSAGE =
 	'Private ESI data is hidden because this user does not have an open application or shared corporation access for this character.'
 
-const GENERIC_PRIVATE_DATA_MESSAGE = 'Private ESI data is unavailable right now.'
+export const GENERIC_PRIVATE_DATA_MESSAGE = 'Private ESI data is unavailable right now.'
 
 function isForbiddenError(error: unknown): boolean {
 	return Boolean(

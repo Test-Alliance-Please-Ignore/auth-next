@@ -6,9 +6,8 @@
  * Requires HR Viewer role minimum.
  */
 
-import { useQueries } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { ArrowLeft, Briefcase, Lock } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
 import toast from '@/lib/toast'
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -31,11 +30,9 @@ import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { apiClient } from '@/lib/api'
 
 import { useHrPermissionCheck } from '../../hr/hooks'
 import { useCanAccessCorporation } from '../../corporations/hooks'
-import { ACTIVE_APPLICATION_STATUSES } from '../constants'
 import { AccessDeniedCard } from '../components/access-denied-card'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
 import { ApplicationActionPanel } from '../components/application-action-panel'
@@ -51,17 +48,19 @@ import { MessagesPanel } from '../components/messages-panel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { RecommendationList } from '../components/recommendation-list'
+import { OPEN_APPLICATION_STATUSES } from '../constants'
 import {
 	useApplication,
-	useApplicationFulcrum,
 	useApplicationActivity,
 	useApplicationStaffNotes,
 	useDeleteHRNote,
 	useHRNotes,
 	useHRNote,
+	useHrUserCharacters,
 	useMessageCount,
 	useRecommendations,
 } from '../hooks'
+import { FORBIDDEN_PRIVATE_DATA_MESSAGE } from '../utils/private-data'
 
 // ============================================================================
 // Component
@@ -133,11 +132,16 @@ export default function HrApplicationReview() {
 		}
 	)
 	const globalUserNotesCount = globalUserNotes.length
-	const { data: fulcrumCharacters = [] } = useApplicationFulcrum(
+	const { data: hrCharacters = [] } = useHrUserCharacters(
 		application?.userId ?? '',
-		corporationId ?? '',
-		!!application?.userId && !!corporationId && canViewCorporationApplications,
+		{
+			enabled: !!application?.userId && canViewCorporationApplications,
+		},
 	)
+	const canViewApplicationPrivateData =
+		!!application &&
+		canViewCorporationApplications &&
+		(user?.is_admin === true || isAuditor || isMemberCorporation || OPEN_APPLICATION_STATUSES.includes(application.status))
 
 	// Fetch selected HR note for edit/delete
 	const { data: selectedNote } = useHRNote(selectedNoteId)
@@ -166,32 +170,23 @@ export default function HrApplicationReview() {
 			toast.error('Failed to copy character name')
 		}
 	}
-	const spQueries = useQueries({
-		queries: allCharacterIds.map((charId) => ({
-			queryKey: ['character', charId, 'hr-review-private'],
-			queryFn: () => apiClient.getCharacterPrivateDetail(charId),
-			meta: {
-				suppressErrorToast: true,
-			},
-			enabled: !!application && canViewCorporationApplications,
-			staleTime: 5 * 60 * 1000,
-		})),
-	})
 	const spByCharacterId: Record<string, number | null> = {}
 	const walletByCharacterId: Record<string, string | null> = {}
 	const metricsLoadingByCharacterId: Record<string, boolean> = {}
 	for (let i = 0; i < allCharacterIds.length; i++) {
-		const query = spQueries[i]
-		spByCharacterId[allCharacterIds[i]] = query?.data?.skills?.totalSp ?? null
-		walletByCharacterId[allCharacterIds[i]] = query?.data?.private?.wallet?.balance ?? null
-		metricsLoadingByCharacterId[allCharacterIds[i]] =
-			(query?.isPending ?? false) && query?.data == null
+		spByCharacterId[allCharacterIds[i]] = null
+		walletByCharacterId[allCharacterIds[i]] = null
+		metricsLoadingByCharacterId[allCharacterIds[i]] = false
 	}
+	const privateDataUnavailableMessage = !canViewApplicationPrivateData ? FORBIDDEN_PRIVATE_DATA_MESSAGE : null
+	const hrCharacterTokenStateById = new Map(
+		hrCharacters.map((character) => [character.characterId, character.hasValidToken])
+	)
+	const hrCharacterById = new Map(hrCharacters.map((character) => [character.characterId, character]))
 	const esiStateByCharacterId: Record<string, boolean | null> = {}
-	for (const character of fulcrumCharacters) {
-		esiStateByCharacterId[character.characterId] = character.hasValidToken ?? null
+	for (const characterId of allCharacterIds) {
+		esiStateByCharacterId[characterId] = hrCharacterTokenStateById.get(characterId) ?? null
 	}
-	const fulcrumCharacterById = new Map(fulcrumCharacters.map((character) => [character.characterId, character]))
 
 	// Set page title
 	usePageTitle(
@@ -524,7 +519,7 @@ export default function HrApplicationReview() {
 					>
 						Prior Apps
 					</TabsTrigger>
-					{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && application && ACTIVE_APPLICATION_STATUSES.includes(application.status) && (
+					{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && application && OPEN_APPLICATION_STATUSES.includes(application.status) && (
 						<TabsTrigger
 							value="fulcrum"
 							className={reviewTabTriggerClassName}
@@ -601,6 +596,19 @@ export default function HrApplicationReview() {
 
 				{/* Alt Characters Tab */}
 				<TabsContent value="alts" className="space-y-6">
+					{privateDataUnavailableMessage && (
+						<div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+							<div className="flex items-start gap-3">
+								<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+								<div className="space-y-1">
+									<p className="font-medium">Private ESI data is hidden for some characters</p>
+									<p className="text-sm text-amber-800 dark:text-amber-200">
+										{privateDataUnavailableMessage}
+									</p>
+								</div>
+							</div>
+						</div>
+					)}
 					{/* Main Character */}
 					<Card>
 						<CardHeader>
@@ -615,10 +623,10 @@ export default function HrApplicationReview() {
 							characterId={application.characterId}
 							characterName={application.characterName}
 							hasValidToken={esiStateByCharacterId[application.characterId]}
-							corporationId={fulcrumCharacterById.get(application.characterId)?.corporationId ?? null}
-							corporationName={fulcrumCharacterById.get(application.characterId)?.corporationName ?? null}
-							allianceId={fulcrumCharacterById.get(application.characterId)?.allianceId ?? null}
-							allianceName={fulcrumCharacterById.get(application.characterId)?.allianceName ?? null}
+							corporationId={hrCharacterById.get(application.characterId)?.corporationId ?? null}
+							corporationName={hrCharacterById.get(application.characterId)?.corporationName ?? null}
+							allianceId={hrCharacterById.get(application.characterId)?.allianceId ?? null}
+							allianceName={hrCharacterById.get(application.characterId)?.allianceName ?? null}
 							skillPoints={spByCharacterId[application.characterId]}
 							walletBalance={walletByCharacterId[application.characterId]}
 							isMetricsLoading={metricsLoadingByCharacterId[application.characterId]}
@@ -652,19 +660,19 @@ export default function HrApplicationReview() {
 							characterId={charId}
 							characterName={altCharacterNames[charId] ?? charId}
 							hasValidToken={esiStateByCharacterId[charId]}
-												corporationId={fulcrumCharacterById.get(charId)?.corporationId ?? null}
-												corporationName={fulcrumCharacterById.get(charId)?.corporationName ?? null}
-												allianceId={fulcrumCharacterById.get(charId)?.allianceId ?? null}
-												allianceName={fulcrumCharacterById.get(charId)?.allianceName ?? null}
-												skillPoints={spByCharacterId[charId]}
-												walletBalance={walletByCharacterId[charId]}
-												isMetricsLoading={metricsLoadingByCharacterId[charId]}
-												enableCopyName
-												isNameCopied={copiedCharacterIds.has(charId)}
-												onCopyName={() =>
-													void markCharacterNameCopied(charId, altCharacterNames[charId] ?? charId)
-												}
-											/>
+							corporationId={hrCharacterById.get(charId)?.corporationId ?? null}
+							corporationName={hrCharacterById.get(charId)?.corporationName ?? null}
+							allianceId={hrCharacterById.get(charId)?.allianceId ?? null}
+							allianceName={hrCharacterById.get(charId)?.allianceName ?? null}
+							skillPoints={spByCharacterId[charId]}
+							walletBalance={walletByCharacterId[charId]}
+							isMetricsLoading={metricsLoadingByCharacterId[charId]}
+							enableCopyName
+							isNameCopied={copiedCharacterIds.has(charId)}
+							onCopyName={() =>
+								void markCharacterNameCopied(charId, altCharacterNames[charId] ?? charId)
+							}
+						/>
 										</div>
 									))}
 								</div>
@@ -808,7 +816,7 @@ export default function HrApplicationReview() {
 				</TabsContent>
 
 				{/* Fulcrum (Character Reports) Tab */}
-				{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && application && ACTIVE_APPLICATION_STATUSES.includes(application.status) && (
+				{permission?.currentRole && ['hr_admin', 'hr_reviewer'].includes(permission.currentRole) && application && OPEN_APPLICATION_STATUSES.includes(application.status) && (
 					<TabsContent value="fulcrum">
 						<Card>
 							<CardHeader>
@@ -824,6 +832,7 @@ export default function HrApplicationReview() {
 									applicationId={applicationId!}
 									mainCharacterId={application.characterId}
 									altCharacterIds={altCharacterIds}
+									enabled={OPEN_APPLICATION_STATUSES.includes(application.status)}
 									canRequestCharacterReport={(character) =>
 										user?.is_admin || character.role !== 'CEO'
 									}
