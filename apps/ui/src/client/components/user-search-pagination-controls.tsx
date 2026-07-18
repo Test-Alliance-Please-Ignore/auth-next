@@ -44,7 +44,7 @@ export function UserSearchPaginationControls({
 	)
 
 	return (
-		<div className="flex items-center justify-between gap-3">
+		<div className="flex flex-wrap items-center justify-between gap-3">
 			<div className="flex items-center gap-2 text-sm text-muted-foreground">
 				<div>
 					{totalCount > 0
@@ -53,7 +53,7 @@ export function UserSearchPaginationControls({
 				</div>
 				{summaryAction ? <div className="shrink-0">{summaryAction}</div> : null}
 			</div>
-			<div className="flex items-center gap-2 justify-end">
+			<div className="flex flex-wrap items-center gap-2 justify-end">
 				<div className="flex items-center gap-2">
 					<span className="text-sm text-muted-foreground">Per page:</span>
 					<Select

@@ -82,7 +82,7 @@ function AdminLayoutContent() {
 			{/* Sidebar */}
 			<aside
 				className={cn(
-					'fixed lg:sticky top-0 left-0 h-screen w-64 z-50 border-r border-border/50 bg-background/52 backdrop-blur-sm transition-transform duration-300 ease-in-out',
+					'fixed lg:sticky top-0 left-0 h-dvh w-64 z-50 border-r border-border/50 bg-background/52 backdrop-blur-sm transition-transform duration-300 ease-in-out',
 					sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
 				)}
 			>
@@ -90,7 +90,7 @@ function AdminLayoutContent() {
 			</aside>
 
 			{/* Main Content Area */}
-			<div className="relative z-10 flex-1 flex flex-col min-w-0 overflow-auto">
+			<div className="relative z-10 flex-1 flex flex-col min-w-0">
 				{/* Top Bar (Mobile) */}
 				<header className="sticky top-0 z-30 lg:hidden border-b border-border/30 bg-background/95 backdrop-blur-sm shadow-sm">
 					<div className="flex items-center justify-between">
@@ -110,10 +110,10 @@ function AdminLayoutContent() {
 				{/* Header with Breadcrumbs (kept as requested) */}
 				<header className="border-b border-border/30 bg-background/72 z-20 shadow-[0_4px_20px_rgba(0,0,0,0.3)] flex-shrink-0 backdrop-blur-sm">
 					<div className="px-4 md:px-6 lg:px-8 py-4">
-						<div className="flex items-center justify-between gap-4">
+						<div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 							<h1 className="text-2xl font-bold gradient-text">Admin Panel</h1>
 
-							<nav className="flex items-center gap-2 text-sm" aria-label="Breadcrumb">
+							<nav className="flex flex-wrap items-center gap-2 text-sm" aria-label="Breadcrumb">
 								{breadcrumbs.map((crumb, index) => (
 									<Fragment key={crumb.path}>
 										{index > 0 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
@@ -136,7 +136,7 @@ function AdminLayoutContent() {
 					</div>
 				</header>
 
-				<main className="flex-1 relative z-10 p-4 md:p-6 lg:p-8">
+				<main className="flex-1 relative z-10 p-4 md:p-6 lg:p-8 overflow-x-hidden">
 					<div className="w-full mx-auto max-w-[120rem]">
 						<Outlet />
 					</div>

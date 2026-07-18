@@ -190,7 +190,7 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 				<p className="text-xs text-muted-foreground mt-1">System Management</p>
 			</div>
 
-			<div className="flex-1 p-4 space-y-1 overflow-y-auto">
+			<div className="flex-1 p-4 space-y-1 overflow-y-auto overscroll-contain">
 				{navItems.map((item) => {
 					const childActive = (item.children ?? []).some((child) =>
 						isRouteActive(location.pathname, child.href)
