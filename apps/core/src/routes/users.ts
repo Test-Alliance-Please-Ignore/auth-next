@@ -404,6 +404,13 @@ users.get('/has-corporation-access', async (c) => {
 		// Get all user's characters
 		const characters = await db.query.userCharacters.findMany({
 			where: eq(userCharacters.userId, user.id),
+			columns: {
+				characterId: true,
+				characterName: true,
+				corporationId: true,
+				hasValidToken: true,
+				status: true,
+			},
 		})
 
 		if (!characters.length) {
@@ -575,33 +582,40 @@ users.get('/corporation-access', async (c) => {
 		}> = []
 
 		if (characters.length > 0 && managedCorps.length > 0) {
-			// OPTIMIZATION: First, fetch all character corporation IDs to reduce checks
+			// Prefer the corporation ID already cached on the user character row.
+			// Only fall back to the corporation-data worker for rows that are missing it.
 			const characterCorpMap = new Map<string, string>() // characterId -> corporationId
+			const missingCharacterIds: string[] = []
+			const charactersById = new Map(characters.map((character) => [character.characterId, character]))
 
-			logger.info('[Corporation Access] Fetching character corporation IDs...')
+			for (const character of characters) {
+				if (character.corporationId) {
+					characterCorpMap.set(character.characterId, character.corporationId)
+				} else {
+					missingCharacterIds.push(character.characterId)
+				}
+			}
 
-			// Create single character stub (reuse for all calls)
-			const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+			if (missingCharacterIds.length > 0) {
+				logger.info('[Corporation Access] Fetching missing character corporation IDs', {
+					missingCount: missingCharacterIds.length,
+				})
 
-			// Fetch character data in parallel to get corporation IDs
-			const charDataPromises = characters.map(async (character) => {
 				try {
-					const charData = await charStub.getCharacterInfo(character.characterId)
-					if (charData?.corporationId) {
-						const corpId = String(charData.corporationId)
-						characterCorpMap.set(character.characterId, corpId)
-						return { characterId: character.characterId, corporationId: corpId }
+					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, 'default')
+					const missingCorpMap = await corpStub.getCorporationIdsByCharacterIds(
+						missingCharacterIds
+					)
+
+					for (const [characterId, corporationId] of Object.entries(missingCorpMap)) {
+						characterCorpMap.set(characterId, corporationId)
 					}
 				} catch (error) {
-					logger.warn('[Corporation Access] Error fetching character data', {
-						characterId: character.characterId,
+					logger.warn('[Corporation Access] Error fetching missing character corporation IDs', {
 						error: error instanceof Error ? error.message : String(error),
 					})
 				}
-				return null
-			})
-
-			await Promise.all(charDataPromises)
+			}
 
 			logger.info('[Corporation Access] Character corporations mapped', {
 				mappedCount: characterCorpMap.size,
@@ -623,7 +637,7 @@ users.get('/corporation-access', async (c) => {
 				if (!charactersByCorpId.has(corpId)) {
 					charactersByCorpId.set(corpId, [])
 				}
-				const char = characters.find((c) => c.characterId === charId)
+				const char = charactersById.get(charId)
 				if (char) {
 					charactersByCorpId.get(corpId)!.push(char)
 				}
@@ -800,10 +814,10 @@ users.get('/corporation-access', async (c) => {
 			accessibleCorporations.map(async (corp) => {
 				try {
 					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
-					const coreData = await corpStub.getCoreData(corp.corporationId)
+					const members = await corpStub.getMembers(corp.corporationId)
 					return {
 						corporationId: corp.corporationId,
-						members: coreData?.members ?? [],
+						members,
 					}
 				} catch (error) {
 					logger.warn('[Corporation Access] Failed to hydrate corporation stats', {

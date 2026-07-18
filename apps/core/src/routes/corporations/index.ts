@@ -55,6 +55,21 @@ type MemberCorpHrAccess = {
 	isMemberCorporation: boolean
 }
 
+type CorporationAccessScope = {
+	corporationId: string
+	name: string
+	ticker: string
+	isMemberCorporation: boolean
+	isAltCorp: boolean
+	isSpecialPurpose: boolean
+}
+
+type CorporationAccessScopeResponse = {
+	hasAccess: boolean
+	userRole: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer' | null
+	corporation: CorporationAccessScope | null
+}
+
 async function hasMemberCorpHrPermission(
 	c: Context<App>,
 	userId: string,
@@ -99,6 +114,78 @@ async function resolveCorporationMembersAccess(
 		return isHrAdmin ? 'hr_admin' : isHrReviewer ? 'hr_reviewer' : 'hr_viewer'
 	}
 }
+
+/**
+ * GET /corporations/:corporationId/access
+ * Corp-scoped access check used by single-corporation screens.
+ * Returns the corporation metadata needed for page-level gating plus the access role.
+ */
+app.get('/:corporationId/access', requireAuth(), async (c) => {
+	const corporationId = c.req.param('corporationId')
+	const user = c.get('user')!
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		const managedCorp = await db.query.managedCorporations.findFirst({
+			where: and(
+				eq(managedCorporations.corporationId, corporationId),
+				eq(managedCorporations.isActive, true)
+			),
+			columns: {
+				corporationId: true,
+				name: true,
+				ticker: true,
+				isMemberCorporation: true,
+				isAltCorp: true,
+				isSpecialPurpose: true,
+			},
+		})
+
+		if (!managedCorp) {
+			const response: CorporationAccessScopeResponse = {
+				hasAccess: false,
+				userRole: null,
+				corporation: null,
+			}
+			return c.json(response)
+		}
+
+		try {
+			const userRole = await resolveCorporationMembersAccess(c, corporationId, {
+				isMemberCorporation: managedCorp.isMemberCorporation,
+			})
+
+			const response: CorporationAccessScopeResponse = {
+				hasAccess: true,
+				userRole,
+				corporation: managedCorp,
+			}
+			return c.json(response)
+		} catch {
+			logger.info('[Corporations] Corp-scoped access denied', {
+				corporationId,
+				userId: user.id,
+			})
+			const response: CorporationAccessScopeResponse = {
+				hasAccess: false,
+				userRole: null,
+				corporation: managedCorp,
+			}
+			return c.json(response)
+		}
+	} catch (error) {
+		logger.error('[Corporations] Failed to resolve corp-scoped access', {
+			corporationId,
+			userId: user.id,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to resolve corporation access' }, 500)
+	}
+})
 
 type CorporationMemberListItem = {
 	characterId: string

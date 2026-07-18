@@ -5,7 +5,7 @@
  * functionality, including member lists and access control.
  */
 
-import { API_BASE_URL, apiClient } from '../../lib/api'
+import { API_BASE_URL, apiClient, type ManagedCorporation } from '../../lib/api'
 
 // ============================================================================
 // Type Definitions
@@ -243,6 +243,15 @@ export interface CorporationAccessResult {
 	}>
 }
 
+export interface CorporationScopedAccessResult {
+	hasAccess: boolean
+	userRole: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer' | null
+	corporation: Pick<
+		ManagedCorporation,
+		'corporationId' | 'name' | 'ticker' | 'isMemberCorporation' | 'isAltCorp' | 'isSpecialPurpose'
+	> | null
+}
+
 /**
  * Quick access check result (for UI navigation)
  */
@@ -271,6 +280,14 @@ export const myCorporationsApi = {
 	 */
 	async checkAccess(): Promise<CorporationAccessResult> {
 		return apiClient.get('/users/corporation-access')
+	},
+
+	/**
+	 * Check access for a single corporation.
+	 * Used by corp-scoped screens and does not depend on query params.
+	 */
+	async getCorporationAccess(corporationId: string): Promise<CorporationScopedAccessResult> {
+		return apiClient.get(`/corporations/${encodeURIComponent(corporationId)}/access`)
 	},
 
 	/**
