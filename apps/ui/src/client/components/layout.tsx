@@ -103,7 +103,7 @@ export default function Layout() {
 			{/* Sidebar */}
 			<aside
 				className={`
-					fixed top-0 left-0 h-screen w-64 z-50
+					fixed top-0 left-0 h-dvh w-64 z-50
 					border-r border-border/50
 					bg-background/52 backdrop-blur-sm
 					transition-transform duration-300 ease-in-out
