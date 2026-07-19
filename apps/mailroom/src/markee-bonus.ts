@@ -41,6 +41,28 @@ export const BONUS_HEADINGS: readonly string[] = [
 		'Get your own at <https://etc.pleaseignore.com> — use code **tapi** for a discount.\n',
 ]
 
+/**
+ * Plain sale notices for when no bonus was awarded (no eligible wallet / empty house / a failure).
+ * One is chosen at random and posted with {@link FALLBACK_FOOTER} appended on its own line (see
+ * {@link pickFallbackMessage}). Standalone by design — no winner name is appended. Same
+ * content-rendering rules as {@link BONUS_MESSAGES} — unicode emoji and custom `<:name:id>` emotes
+ * both render.
+ */
+export const FALLBACK_MESSAGES: readonly string[] = [
+	'📣 A Markee Dragon referral sale just came in!',
+	'💸 Cha-ching — a Markee Dragon referral sale just landed!',
+	'🛒 Someone just bought through our Markee Dragon referral link!',
+	'📈 Another Markee Dragon referral sale is in the books!',
+	'🎊 Our Markee Dragon referral code just got used again!',
+	'🪙 A referral commission just rolled in from Markee Dragon!',
+]
+
+/**
+ * Footer line appended to every fallback post. The URL is wrapped in `<…>` so Discord suppresses the
+ * link-preview embed, same as in {@link BONUS_HEADINGS}.
+ */
+export const FALLBACK_FOOTER = '<https://etc.pleaseignore.com> - use code `tapi` for 3% off'
+
 /** Pick a random predefined opener. */
 function pickBonusMessage(): string {
 	return BONUS_MESSAGES[Math.floor(Math.random() * BONUS_MESSAGES.length)]
@@ -50,6 +72,15 @@ function pickBonusMessage(): string {
 function pickBonusHeading(): string | null {
 	if (BONUS_HEADINGS.length === 0) return null
 	return BONUS_HEADINGS[Math.floor(Math.random() * BONUS_HEADINGS.length)]
+}
+
+/**
+ * Build the no-award fallback post: a random {@link FALLBACK_MESSAGES} notice with
+ * {@link FALLBACK_FOOTER} on its own line below.
+ */
+export function pickFallbackMessage(): string {
+	const notice = FALLBACK_MESSAGES[Math.floor(Math.random() * FALLBACK_MESSAGES.length)]
+	return `${notice}\n${FALLBACK_FOOTER}`
 }
 
 /**

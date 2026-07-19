@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { createEmailContext } from '../email'
+import { FALLBACK_FOOTER, FALLBACK_MESSAGES } from '../markee-bonus'
 import { notifyDiscord } from '../notify-discord'
 import { emailRouter } from '../routes'
 import { fakeExecutionCtx, makeMessage } from './make-message'
@@ -13,6 +14,10 @@ const log: EmailLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 /** A skipped-award mock (no one bonused) — the default so the post falls back to the plain sale notice. */
 const skippedAward = () =>
 	vi.fn().mockResolvedValue({ awarded: false, reason: 'NO_ELIGIBLE_WALLETS' })
+
+/** True when `content` is a fallback post: some pool notice with the footer on its own line below. */
+const isFallbackPost = (content: string) =>
+	FALLBACK_MESSAGES.some((m) => content === `${m}\n${FALLBACK_FOOTER}`)
 
 /**
  * Build an Env whose DISCORD binding resolves (via forDO().singleton() → getByName) to a stub with the
@@ -50,7 +55,7 @@ describe('notifyDiscord', () => {
 		const [guildId, channelId, message] = sendMessage.mock.calls[0]
 		expect(guildId).toBe('guild-1')
 		expect(channelId).toBe('chan-1')
-		expect(message.content).toBe('📣 A Markee Dragon referral sale just came in!')
+		expect(isFallbackPost(message.content)).toBe(true)
 		expect(message.embeds).toBeUndefined() // the email body/embed was debug-only and is gone
 		// The award is actually wired in (guards against silently disconnecting the feature).
 		expect(award).toHaveBeenCalledTimes(1)
@@ -59,6 +64,27 @@ describe('notifyDiscord', () => {
 			reason: 'markeedragon@ inbound email from sender@example.com',
 		})
 		expect(disposition).toEqual({ type: 'consume' })
+	})
+
+	it('draws the fallback notice uniformly at random from the pool', async () => {
+		const randomSpy = vi.spyOn(Math, 'random')
+		try {
+			// Pin the roll to both ends of the range: 0 selects the first pool entry (the original
+			// static notice), just-under-1 selects the last — proving the whole pool is reachable.
+			randomSpy.mockReturnValue(0)
+			const first = vi.fn().mockResolvedValue({ success: true, messageId: 'm1' })
+			await notifyDiscord(ctxFor(envWith(first)))
+			expect(first.mock.calls[0][2].content).toBe(`${FALLBACK_MESSAGES[0]}\n${FALLBACK_FOOTER}`)
+
+			randomSpy.mockReturnValue(0.999999)
+			const last = vi.fn().mockResolvedValue({ success: true, messageId: 'm2' })
+			await notifyDiscord(ctxFor(envWith(last)))
+			expect(last.mock.calls[0][2].content).toBe(
+				`${FALLBACK_MESSAGES[FALLBACK_MESSAGES.length - 1]}\n${FALLBACK_FOOTER}`
+			)
+		} finally {
+			randomSpy.mockRestore()
+		}
 	})
 
 	it('posts a random bonus announcement naming the winner when a bonus is awarded', async () => {
@@ -74,7 +100,8 @@ describe('notifyDiscord', () => {
 
 		const [, , message] = sendMessage.mock.calls[0]
 		expect(message.content).toContain('<@999>') // winner mention → renders as their display name + pings
-		expect(message.content).not.toContain('sale just came in') // the announcement, not the fallback notice
+		expect(isFallbackPost(message.content)).toBe(false) // the announcement, not the fallback notice
+		expect(message.content).not.toContain(FALLBACK_FOOTER) // the footer is fallback-only
 		expect(message.embeds).toBeUndefined() // no email embed
 		expect(getProfile).toHaveBeenCalledWith('core-1') // resolved by the winner's core user id
 		expect(disposition).toEqual({ type: 'consume' })
