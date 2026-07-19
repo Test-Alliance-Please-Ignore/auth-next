@@ -95,7 +95,7 @@ function mockDb(oauthState: unknown) {
 		insert: vi.fn(() => ({ values: insertValues })),
 	} as any)
 
-	return { deleteWhere, insertValues }
+	return { deleteWhere, updateWhere, insertValues }
 }
 
 const cleanHrStub = {
@@ -563,6 +563,62 @@ describe('GET /api/auth/callback - character owner hash is enforced on login', (
 
 		expect(res.status).toBe(200)
 		expect(res.headers.get('set-cookie')).toContain('session=')
+	})
+
+	it('marks an already-linked character token valid when it is reauthorized', async () => {
+		const { updateWhere } = mockDb({
+			state: 'state-1',
+			flowType: 'character',
+			userId: 'user-1',
+			redirectUrl: null,
+			metadata: null,
+			expiresAt: FUTURE,
+		})
+		mockStubs({ handleCallback: vi.fn().mockResolvedValue(callbackResult('SAME-HASH')) })
+
+		vi.mocked(UserService).mockImplementation(
+			() =>
+				({
+					getUserById: vi.fn().mockResolvedValue({
+						id: 'user-1',
+						characters: [
+							{
+								characterId: 'char-1',
+								characterName: 'Pilot',
+								hasValidToken: false,
+							},
+						],
+					}),
+					getUserByCharacterId: vi.fn().mockResolvedValue({
+						id: 'user-1',
+						characters: [
+							{
+								characterId: 'char-1',
+								characterName: 'Pilot',
+								hasValidToken: false,
+							},
+						],
+					}),
+					getCharacterOwnership: vi.fn().mockResolvedValue({
+						userId: 'user-1',
+						characterOwnerHash: 'SAME-HASH',
+					}),
+				}) as any
+		)
+
+		const res = await callbackRequest({ state: 'state-1' })
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({
+			characterLinked: true,
+			tokenUpdated: true,
+			character: {
+				characterId: 'char-1',
+				characterName: 'Pilot',
+				hasValidToken: true,
+			},
+		})
+		expect(updateWhere).toHaveBeenCalled()
 	})
 
 	it('adopts the real hash for a legacy-imported character instead of locking the user out', async () => {
