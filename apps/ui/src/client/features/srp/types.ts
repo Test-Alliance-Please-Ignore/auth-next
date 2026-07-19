@@ -11,6 +11,8 @@ export type {
 	RecentLossRefreshCharacterFailure,
 	RecentLossRefreshStatusRecord,
 	RecentLossRefreshStatusResponse,
+	RecentLossesResponse,
+	RecentLossVictimItem,
 	SRPCommentResponse,
 	SRPConfigResponse,
 	SRPHistoryResponse,

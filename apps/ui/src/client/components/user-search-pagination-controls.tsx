@@ -13,7 +13,8 @@ interface UserSearchPaginationControlsProps {
 	pageSizeOptions?: number[]
 	itemLabel?: string
 	nextButtonLoading?: boolean
-	summaryAction?: ReactNode
+	leadingAction?: ReactNode
+	trailingAction?: ReactNode
 }
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [25, 50, 100]
@@ -27,7 +28,8 @@ export function UserSearchPaginationControls({
 	pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
 	itemLabel = 'users',
 	nextButtonLoading = false,
-	summaryAction,
+	leadingAction,
+	trailingAction,
 }: UserSearchPaginationControlsProps) {
 	const totalPages = Math.ceil(totalCount / pageSize)
 	const start = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
@@ -46,12 +48,9 @@ export function UserSearchPaginationControls({
 	return (
 		<div className="flex flex-wrap items-center justify-between gap-3">
 			<div className="flex items-center gap-2 text-sm text-muted-foreground">
-				<div>
-					{totalCount > 0
-						? `${start}-${end} of ${totalCount} ${itemLabel}`
-						: `0 ${itemLabel}`}
-				</div>
-				{summaryAction ? <div className="shrink-0">{summaryAction}</div> : null}
+				{leadingAction ? <div className="shrink-0">{leadingAction}</div> : null}
+				<div>{totalCount > 0 ? `${start}-${end} of ${totalCount} ${itemLabel}` : `0 ${itemLabel}`}</div>
+				{trailingAction ? <div className="shrink-0">{trailingAction}</div> : null}
 			</div>
 			<div className="flex flex-wrap items-center gap-2 justify-end">
 				<div className="flex items-center gap-2">

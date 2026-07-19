@@ -41,7 +41,7 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
-import type { Srp } from '@repo/srp'
+import type { SRPRequestResponse, Srp } from '@repo/srp'
 import type { App } from '../context'
 import thirdPartyAppsRoutes from './admin/third-party-apps'
 
@@ -170,10 +170,11 @@ async function rejectUnpaidSrpRequestsForBlacklistedUser(
 	const srpStub = getStub<Srp>(c.env.SRP, `admin-blacklist-${targetUserId}`)
 	const limit = 200
 	let offset = 0
-	const allRequests: Awaited<ReturnType<Srp['getUserRequests']>> = []
+	const allRequests: SRPRequestResponse[] = []
 
 	while (true) {
-		const batch = await srpStub.getUserRequests(targetUserId, limit, offset)
+		const batchResult = await srpStub.getUserRequests(targetUserId, limit, offset)
+		const batch = Array.isArray(batchResult) ? batchResult : batchResult.requests
 		if (batch.length === 0) break
 		allRequests.push(...batch)
 		if (batch.length < limit) break

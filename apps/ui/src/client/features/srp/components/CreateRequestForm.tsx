@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 
 import { useCreateRequest } from '../hooks'
+import type { RecentLossVictimItem } from '../types'
 import { getKillmailUrl } from '../utils'
 import { transformKillmailToCargoItems, transformKillmailToFittingItems } from '../utils/fitting'
 import { SRPFittingDisplay } from './SRPFittingDisplay'
@@ -48,28 +49,36 @@ interface CreateRequestFormProps {
 	shipTypeId: string
 	shipTypeName: string
 	lossDate: string
-	lossVictimItems?: Array<{
-		flag: number
-		item_type_id: string
-		quantity_destroyed?: number
-		quantity_dropped?: number
-		items?: Array<{
-			flag: number
-			item_type_id: string
-			quantity_destroyed?: number
-			quantity_dropped?: number
-			items?: never
-		}>
-	}>
+	lossVictimItems?: RecentLossVictimItem[]
 	preview: KillmailPreview | null
 	previewLoading: boolean
 }
 
 type NormalizedVictimItem = {
-	item_type_id: string
+	item_type_id: number
 	flag: number
 	quantity_destroyed?: number
 	quantity_dropped?: number
+	items?: NormalizedVictimItem[]
+}
+
+function normalizeVictimItems(items: RecentLossVictimItem[]): NormalizedVictimItem[] {
+	return items.map((item) => ({
+		item_type_id: Number(item.item_type_id),
+		flag: item.flag,
+		quantity_destroyed: item.quantity_destroyed,
+		quantity_dropped: item.quantity_dropped,
+		items: item.items?.length ? normalizeVictimItems(item.items) : undefined,
+	}))
+}
+
+function normalizePreviewVictimItems(items: KillmailPreview['victimItems']): NormalizedVictimItem[] {
+	return items.map((item) => ({
+		item_type_id: Number(item.typeId),
+		flag: item.flag,
+		quantity_destroyed: item.quantityDestroyed,
+		quantity_dropped: item.quantityDropped,
+	}))
 }
 
 export function CreateRequestForm({
@@ -91,27 +100,14 @@ export function CreateRequestForm({
 		defaultValues: { killmailId, killmailHash, characterId, contextText: '' },
 	})
 
-	const displayVictimItems: NormalizedVictimItem[] =
-		lossVictimItems?.map((i) => ({
-			item_type_id: i.item_type_id,
-			flag: i.flag,
-			quantity_destroyed: i.quantity_destroyed,
-			quantity_dropped: i.quantity_dropped,
-		})) ??
-		preview?.victimItems?.map((i) => ({
-			item_type_id: i.typeId,
-			flag: i.flag,
-			quantity_destroyed: i.quantityDestroyed,
-			quantity_dropped: i.quantityDropped,
-		})) ??
-		[]
+	const displayVictimItems =
+		lossVictimItems?.length
+			? normalizeVictimItems(lossVictimItems)
+			: preview?.victimItems?.length
+				? normalizePreviewVictimItems(preview.victimItems)
+				: []
 	const fittingItems = transformKillmailToFittingItems(
-		displayVictimItems.map((i) => ({
-			item_type_id: Number(i.item_type_id),
-			flag: i.flag,
-			quantity_destroyed: i.quantity_destroyed,
-			quantity_dropped: i.quantity_dropped,
-		})),
+		displayVictimItems,
 		preview?.itemPrices?.map((p) => ({
 			typeId: p.typeId,
 			price: p.unitPrice,
@@ -120,12 +116,7 @@ export function CreateRequestForm({
 		preview?.itemNames ?? {}
 	)
 	const cargoItems = transformKillmailToCargoItems(
-		displayVictimItems.map((i) => ({
-			item_type_id: Number(i.item_type_id),
-			flag: i.flag,
-			quantity_destroyed: i.quantity_destroyed,
-			quantity_dropped: i.quantity_dropped,
-		})),
+		displayVictimItems,
 		preview?.itemNames ?? {}
 	)
 

@@ -8,6 +8,7 @@ import {
 	CreateSRPPolicySchema,
 	CreateSRPRequestSchema,
 	EditCommentSchema,
+	REQUEST_STATUSES,
 	SRPReviewSubmissionSchema,
 	UpdateReviewStateSchema,
 	UpdateSRPConfigSchema,
@@ -22,6 +23,7 @@ import { waitUntilWithTelemetry } from '../lib/background-task'
 import { isExportArtifactExpired } from '../lib/export-retention'
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { normalizeWorkflowStatus } from '../lib/workflow-status'
+import { validatePagination } from '../lib/validation'
 import { requireAllianceMember } from '../middleware/session'
 
 import type { Doctrines, FittingWithItems } from '@repo/doctrines'
@@ -32,6 +34,7 @@ import type {
 	SRPRequestResponse,
 	RecentLossRefreshCharacterInput,
 	RecentLossRefreshCoordinator,
+	RequestStatus,
 	Srp,
 } from '@repo/srp'
 import type { Universe } from '@repo/universe'
@@ -81,6 +84,25 @@ function getExecutionContextOrNull(c: { executionCtx?: ExecutionContext }): Exec
 	} catch {
 		return null
 	}
+}
+
+type UserRequestListResult = Awaited<ReturnType<Srp['getUserRequests']>>
+type NormalizedUserRequestListResult = {
+	requests: SRPRequestResponse[]
+	total: number
+}
+
+function normalizeUserRequestListResult(
+	result: UserRequestListResult | SRPRequestResponse[]
+): NormalizedUserRequestListResult {
+	if (Array.isArray(result)) {
+		return {
+			requests: result,
+			total: result.length,
+		}
+	}
+
+	return result
 }
 
 type SrpBackfillRefreshCandidate = {
@@ -733,6 +755,15 @@ srp.get('/losses', async (c) => {
 	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const config = await srpStub.getConfig()
 	const configuredLookbackDays = config?.maxLossAgeDays ?? 30
+	const limitRaw = c.req.query('limit')
+	const offsetRaw = c.req.query('offset')
+	const pagination =
+		limitRaw !== undefined || offsetRaw !== undefined
+			? validatePagination(limitRaw, offsetRaw)
+			: null
+	if (pagination && !pagination.success) {
+		return c.json({ error: pagination.error }, pagination.status)
+	}
 
 	// Get all character IDs for the user
 	const characters = user.characters.map((char) => ({
@@ -741,10 +772,23 @@ srp.get('/losses', async (c) => {
 	}))
 
 	if (characters.length === 0) {
-		return c.json({ losses: [], failedCharacters: [] })
+		return c.json({
+			losses: [],
+			failedCharacters: [],
+			total: 0,
+			limit: 0,
+			offset: 0,
+		})
 	}
 
-	const result = await srpStub.getRecentLosses(characters, user.id, configuredLookbackDays)
+	const result = await srpStub.getRecentLosses(
+		characters,
+		user.id,
+		configuredLookbackDays,
+		true,
+		pagination?.data.limit,
+		pagination?.data.offset
+	)
 	const losses = result.losses
 		.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
 	const failedCharacters = result.failedCharacters
@@ -760,6 +804,9 @@ srp.get('/losses', async (c) => {
 	return c.json({
 		losses: lossesWithRegions,
 		failedCharacters,
+		total: result.total,
+		limit: result.limit,
+		offset: result.offset,
 	})
 })
 
@@ -970,13 +1017,26 @@ srp.post('/requests', async (c) => {
  */
 srp.get('/requests', async (c) => {
 	const user = c.get('user')!
-	const limit = c.req.query('limit') ? Number.parseInt(c.req.query('limit')!, 10) : 50
-	const offset = c.req.query('offset') ? Number.parseInt(c.req.query('offset')!, 10) : 0
+	const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
+	if (!pagination.success) {
+		return c.json({ error: pagination.error }, pagination.status)
+	}
+	const statusQuery = c.req.query('status')?.trim()
+	if (statusQuery && !REQUEST_STATUSES.includes(statusQuery as RequestStatus)) {
+		return c.json({ error: 'Invalid status' }, 400)
+	}
 
 	const srpStub = getStub<Srp>(c.env.SRP, 'default')
-	const requestsRaw = await srpStub.getUserRequests(user.id, limit, offset)
+	const requestsRaw = normalizeUserRequestListResult(
+		await srpStub.getUserRequests(
+			user.id,
+			pagination.data.limit,
+			pagination.data.offset,
+			statusQuery ? (statusQuery as RequestStatus) : undefined
+		)
+	)
 	const withCharacterRoles = await hydrateRequestCharacterRoles(
-		requestsRaw as RequestWithCharacterRole[],
+		requestsRaw.requests as RequestWithCharacterRole[],
 		c.env.DATABASE_URL
 	)
 	const withSystemRegions = await enrichRequestsWithSystemRegions(withCharacterRoles, c.env)
@@ -984,9 +1044,9 @@ srp.get('/requests', async (c) => {
 
 	return c.json({
 		requests,
-		total: requests.length,
-		limit,
-		offset,
+		total: requestsRaw.total,
+		limit: pagination.data.limit,
+		offset: pagination.data.offset,
 	})
 })
 

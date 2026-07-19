@@ -898,15 +898,35 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	/**
 	 * Get all requests for a user
 	 */
-	async getUserRequests(userId: string, limit = 50, offset = 0): Promise<SRPRequestResponse[]> {
-		const requests = await this.db.query.srpRequests.findMany({
-			where: eq(srpRequests.userId, userId),
-			orderBy: desc(srpRequests.createdAt),
-			limit,
-			offset,
-		})
+	async getUserRequests(
+		userId: string,
+		limit = 50,
+		offset = 0,
+		status?: RequestStatus
+	): Promise<{ requests: SRPRequestResponse[]; total: number }> {
+		const conditions = [eq(srpRequests.userId, userId)]
+		if (status) {
+			conditions.push(eq(srpRequests.requestStatus, status))
+		}
 
-		return await Promise.all(requests.map((r) => this.formatRequest(r)))
+		const where = and(...conditions)
+		const [requests, countRows] = await Promise.all([
+			this.db.query.srpRequests.findMany({
+				where,
+				orderBy: desc(srpRequests.createdAt),
+				limit,
+				offset,
+			}),
+			this.db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(srpRequests)
+				.where(where),
+		])
+
+		return {
+			requests: await Promise.all(requests.map((r) => this.formatRequest(r))),
+			total: countRows[0]?.count ?? 0,
+		}
 	}
 
 	// private async getLossesForCharacter(
@@ -924,7 +944,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		characters: RecentLossRefreshCharacterInput[],
 		userId: string,
 		daysBack = 30,
-		_excludeNonSrpEligible = true
+		_excludeNonSrpEligible = true,
+		limit?: number,
+		offset?: number
 	): Promise<RecentLossesResponse> {
 		const config = await this.getConfig()
 		const maxLossAgeDays = config?.maxLossAgeDays ?? daysBack
@@ -996,6 +1018,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const mergedLosses = [...allLosses.values()]
 			.filter((loss) => new Date(loss.killmailTime).getTime() >= cutoffMs)
 			.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
+		const total = mergedLosses.length
+		const effectiveLimit = typeof limit === 'number' ? Math.max(1, limit) : total
+		const effectiveOffset = typeof offset === 'number' ? Math.max(0, offset) : 0
 
 		const shipTypeIds = [...new Set(mergedLosses.map((l) => String(l.shipTypeId)))]
 		const systemIds = [...new Set(mergedLosses.map((l) => String(l.solarSystemId)))]
@@ -1028,6 +1053,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			return {
 				losses: [],
 				failedCharacters,
+				total,
+				limit: effectiveLimit,
+				offset: effectiveOffset,
 			}
 		}
 
@@ -1076,8 +1104,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 
 		// Annotate losses with SRP status and sort by time descending
-		return {
-			losses: mergedLosses
+		const annotatedLosses = mergedLosses
 				.filter((loss) => !dismissedKillmailIds.has(String(loss.killmailId)))
 				.filter((loss) => !legacyPaidKillmailIds.has(String(loss.killmailId)))
 				.filter((loss) => {
@@ -1106,8 +1133,14 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 						srpRequestStatus: request?.status,
 					}
 				})
-				.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime()),
+				.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
+
+		return {
+			losses: annotatedLosses.slice(effectiveOffset, effectiveOffset + effectiveLimit),
 			failedCharacters,
+			total: annotatedLosses.length,
+			limit: effectiveLimit,
+			offset: effectiveOffset,
 		}
 	}
 

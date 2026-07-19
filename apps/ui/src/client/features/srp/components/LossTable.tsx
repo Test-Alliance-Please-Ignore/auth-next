@@ -28,11 +28,14 @@ import type { LossWithSRPStatus, RecentLossRefreshStatusRecord, SRPConfigRespons
 interface LossTableProps {
 	losses: LossWithSRPStatus[]
 	isLoading?: boolean
-	isRefreshing?: boolean
-	onRefresh?: () => void
 	config?: SRPConfigResponse | null
+	onDismissLoss?: (killmailId: string) => Promise<void> | void
+	dismissingKillmailId?: string | null
+}
+
+interface RecentLossesStatusAlertsProps {
 	refreshStatus?: RecentLossRefreshStatusRecord | null
-	refreshCooldownUntil?: string | null
+	refreshErrorMessage?: string | null
 	loadFailures?: Array<{
 		characterId: string
 		characterName: string
@@ -40,77 +43,17 @@ interface LossTableProps {
 		message?: string
 		error?: string
 	}>
-	onDismissLoss?: (killmailId: string) => Promise<void> | void
-	dismissingKillmailId?: string | null
 }
 
 export function LossTable({
 	losses,
 	isLoading,
-	isRefreshing,
-	onRefresh,
 	config,
-	refreshStatus,
-	refreshCooldownUntil,
-	loadFailures,
 	onDismissLoss,
 	dismissingKillmailId,
 }: LossTableProps) {
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const maxLossAgeDays = config?.maxLossAgeDays ?? 30
-	const [nowMs, setNowMs] = useState(() => Date.now())
-	const [cooldownUntilMs, setCooldownUntilMs] = useState(() => {
-		if (typeof window === 'undefined') return 0
-		return readRefreshCooldownUntilMs(window.localStorage)
-	})
-
-	useEffect(() => {
-		if (cooldownUntilMs <= Date.now()) return
-		const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000)
-		return () => window.clearInterval(intervalId)
-	}, [cooldownUntilMs])
-
-	useEffect(() => {
-		if (typeof window === 'undefined') return
-		persistRefreshCooldownUntilMs(window.localStorage, cooldownUntilMs)
-	}, [cooldownUntilMs])
-
-	useEffect(() => {
-		if (!refreshCooldownUntil) return
-		const serverCooldownUntilMs = Date.parse(refreshCooldownUntil)
-		if (!Number.isFinite(serverCooldownUntilMs)) return
-		setCooldownUntilMs((current) => {
-			const next = Math.max(current, serverCooldownUntilMs)
-			if (typeof window !== 'undefined') {
-				persistRefreshCooldownUntilMs(window.localStorage, next)
-			}
-			return next
-		})
-	}, [refreshCooldownUntil])
-
-	const cooldownRemainingMs = Math.max(0, cooldownUntilMs - nowMs)
-	const isCooldownActive = cooldownRemainingMs > 0
-	const isWorkflowRefreshing =
-		refreshStatus?.status === 'queued' || refreshStatus?.status === 'running'
-	const refreshDisabled = Boolean(isRefreshing || isCooldownActive || isWorkflowRefreshing)
-	const remainingSeconds = Math.ceil(cooldownRemainingMs / 1000)
-	const remainingMinutesPart = String(Math.floor(remainingSeconds / 60)).padStart(2, '0')
-	const remainingSecondsPart = String(remainingSeconds % 60).padStart(2, '0')
-
-	const handleRefreshClick = () => {
-		if (!onRefresh || refreshDisabled) return
-		const nextCooldownUntilMs = Date.now() + REFRESH_COOLDOWN_MS
-		if (typeof window !== 'undefined') {
-			// Persist immediately so a hard refresh right after click cannot bypass cooldown.
-			persistRefreshCooldownUntilMs(window.localStorage, nextCooldownUntilMs)
-		}
-		setCooldownUntilMs(nextCooldownUntilMs)
-		onRefresh()
-	}
-
-	const actionableLoadFailures =
-		loadFailures?.filter((failure) => failure.reason === 'invalid_token' || failure.reason === 'fetch_failed') ?? []
-	const hasLoadFailures = actionableLoadFailures.length > 0
 
 	if (isLoading) {
 		return (
@@ -131,116 +74,11 @@ export function LossTable({
 	return (
 		<div className="space-y-3">
 			{confirmationDialog}
-			{onRefresh && (
-				<div className="flex justify-end">
-					<Button
-						size="sm"
-						onClick={handleRefreshClick}
-						disabled={refreshDisabled}
-						title={
-							isCooldownActive
-								? `Refresh available in ${remainingMinutesPart}:${remainingSecondsPart}`
-								: isWorkflowRefreshing
-									? 'Recent loss refresh is already in progress'
-								: undefined
-						}
-					>
-						<RefreshCw
-							className={`mr-2 h-4 w-4 ${isRefreshing || isWorkflowRefreshing ? 'animate-spin' : ''}`}
-						/>
-						{isRefreshing
-							? 'Starting…'
-							: isWorkflowRefreshing
-								? `Fetching… ${refreshStatus.processedCharacters}/${refreshStatus.totalCharacters}`
-							: isCooldownActive
-								? `Refresh in ${remainingMinutesPart}:${remainingSecondsPart}`
-								: 'Refresh Losses'}
-					</Button>
-				</div>
-			)}
-
-			{isWorkflowRefreshing && (
-				<div className="rounded-md border border-sky-500/40 bg-sky-500/10 px-4 py-3 text-sm">
-					<p className="mb-1 font-medium text-sky-400">
-						Refreshing recent losses for {refreshStatus.processedCharacters}/{refreshStatus.totalCharacters}{' '}
-						characters
-					</p>
-					<p className="text-xs text-muted-foreground">
-						{refreshStatus.currentCharacterName
-							? `Currently fetching ${refreshStatus.currentCharacterName}.`
-							: 'Starting background refresh workflow.'}
-					</p>
-				</div>
-			)}
-
-			{refreshStatus?.status === 'completed' && (
-				<div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm">
-					<p className="mb-1 font-medium text-emerald-400">Recent losses refreshed</p>
-					<p className="text-xs text-muted-foreground">
-						{refreshStatus.successfulCharacters} characters refreshed, {refreshStatus.failedCharacters}{' '}
-						characters reported warnings.
-					</p>
-				</div>
-			)}
-
-			{refreshStatus?.status === 'failed' && (
-				<div className="rounded-md border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm">
-					<p className="mb-1 font-medium text-red-400">Recent loss refresh failed</p>
-					<p className="text-xs text-muted-foreground">{refreshStatus.lastError ?? 'Unknown error'}</p>
-				</div>
-			)}
-
-			{refreshStatus && refreshStatus.failures.length > 0 && (
-				<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
-					<p className="mb-1 font-medium text-amber-400">Some characters could not be refreshed</p>
-					<ul className="space-y-0.5">
-						{refreshStatus.failures.map((failure) => (
-							<li key={failure.characterId} className="flex items-center gap-2 text-xs text-muted-foreground">
-								<span className="font-medium text-foreground">{failure.characterName}</span>
-								{failure.reason === 'invalid_token'
-									? '— token expired or invalid (re-auth required)'
-									: failure.reason === 'cache_incomplete'
-										? '— recent losses need a refresh to cover the full lookback window'
-										: failure.reason === 'cache_missing'
-											? '— recent losses have not been loaded yet'
-											: failure.error
-												? `— ${failure.error}`
-												: `— ${failure.message}`}
-							</li>
-						))}
-					</ul>
-				</div>
-			)}
-
-			{hasLoadFailures && (
-				<div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
-					<p className="mb-1 font-medium text-amber-400">
-						Some character losses could not be fetched
-					</p>
-					<ul className="space-y-0.5">
-						{actionableLoadFailures.map((failure) => (
-							<li
-								key={failure.characterId}
-								className="flex items-center gap-2 text-xs text-muted-foreground"
-							>
-								<span className="font-medium text-foreground">{failure.characterName}</span>
-								{failure.message
-									? `— ${failure.message}`
-									: failure.reason === 'invalid_token'
-										? '— ESI token is invalid or expired. Please re-authenticate this character.'
-											: '— Could not load losses right now. Please try again shortly.'}
-							</li>
-						))}
-					</ul>
-				</div>
-			)}
 
 			{losses.length === 0 ? (
 				<div className="rounded-lg border border-dashed p-8 text-center">
 					<p className="text-sm text-muted-foreground">
-						{hasLoadFailures
-							? 'No requestable losses loaded from available characters right now. Some character fetches failed above.'
-							: `No requestable losses found in the last ${maxLossAgeDays} days.`}
+						{`No requestable losses found in the last ${maxLossAgeDays} days.`}
 					</p>
 				</div>
 			) : (
@@ -389,5 +227,187 @@ export function LossTable({
 				</div>
 			)}
 		</div>
+	)
+}
+
+export function RecentLossesStatusAlerts({
+	refreshStatus,
+	refreshErrorMessage,
+	loadFailures,
+}: RecentLossesStatusAlertsProps) {
+	const actionableLoadFailures =
+		loadFailures?.filter((failure) => failure.reason === 'invalid_token' || failure.reason === 'fetch_failed') ?? []
+	const hasLoadFailures = actionableLoadFailures.length > 0
+	const isWorkflowRefreshing =
+		refreshStatus?.status === 'queued' || refreshStatus?.status === 'running'
+
+	if (!isWorkflowRefreshing && !refreshStatus && !refreshErrorMessage && !hasLoadFailures) {
+		return null
+	}
+
+	const warningBanner = isWorkflowRefreshing
+		? null
+		: refreshStatus?.status === 'failed'
+			? {
+					title: 'Recent loss refresh failed',
+					body: refreshStatus?.lastError ?? refreshErrorMessage ?? 'Unknown error',
+					className: 'border-red-500/40 bg-red-500/10 text-red-400',
+				}
+			: refreshErrorMessage
+				? {
+						title: 'Recent loss refresh failed',
+						body: refreshErrorMessage,
+						className: 'border-red-500/40 bg-red-500/10 text-red-400',
+					}
+				: hasLoadFailures
+					? {
+							title: 'Some character losses could not be fetched',
+							body: actionableLoadFailures,
+							className: 'border-amber-500/40 bg-amber-500/10 text-amber-400',
+						}
+					: null
+
+	return (
+		<div className="space-y-3">
+			{isWorkflowRefreshing ? (
+				<div className="rounded-md border border-sky-500/40 bg-sky-500/10 px-4 py-3 text-sm text-sky-400">
+					<p className="mb-1 font-medium">
+						Refreshing recent losses for {refreshStatus?.processedCharacters ?? 0}/{refreshStatus?.totalCharacters ?? 0}{' '}
+						characters
+					</p>
+					<p className="text-xs text-muted-foreground">
+						{refreshStatus?.currentCharacterName
+							? `Currently fetching ${refreshStatus.currentCharacterName}.`
+							: 'Starting background refresh workflow.'}
+					</p>
+				</div>
+			) : null}
+
+			{refreshStatus?.status === 'completed' ? (
+				<div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
+					<p className="mb-1 font-medium">Recent losses refreshed</p>
+					<p className="text-xs text-muted-foreground">
+						{refreshStatus?.successfulCharacters ?? 0} characters refreshed, {refreshStatus?.failedCharacters ?? 0}{' '}
+						characters reported warnings.
+					</p>
+				</div>
+			) : null}
+
+			{warningBanner ? (
+				<div className={`rounded-md border px-4 py-3 text-sm ${warningBanner.className}`}>
+					<p className="mb-1 font-medium">{warningBanner.title}</p>
+					{Array.isArray(warningBanner.body) ? (
+						<ul className="space-y-0.5">
+							{warningBanner.body.map((failure) => (
+								<li key={failure.characterId} className="flex items-center gap-2 text-xs text-muted-foreground">
+									<span className="font-medium text-foreground">{failure.characterName}</span>
+									{failure.message
+										? `— ${failure.message}`
+										: failure.reason === 'invalid_token'
+											? '— ESI token is invalid or expired. Please re-authenticate this character.'
+												: '— Could not load losses right now. Please try again shortly.'}
+								</li>
+							))}
+						</ul>
+					) : (
+						<p className="text-xs text-muted-foreground">{warningBanner.body}</p>
+					)}
+				</div>
+			) : null}
+		</div>
+	)
+}
+
+interface RecentLossRefreshButtonProps {
+	isRefreshing?: boolean
+	refreshStatus?: RecentLossRefreshStatusRecord | null
+	refreshCooldownUntil?: string | null
+	onRefresh?: () => void
+}
+
+export function RecentLossRefreshButton({
+	isRefreshing,
+	refreshStatus,
+	refreshCooldownUntil,
+	onRefresh,
+}: RecentLossRefreshButtonProps) {
+	const [nowMs, setNowMs] = useState(() => Date.now())
+	const [cooldownUntilMs, setCooldownUntilMs] = useState(() => {
+		if (typeof window === 'undefined') return 0
+		return readRefreshCooldownUntilMs(window.localStorage)
+	})
+
+	useEffect(() => {
+		if (cooldownUntilMs <= Date.now()) return
+		const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000)
+		return () => window.clearInterval(intervalId)
+	}, [cooldownUntilMs])
+
+	useEffect(() => {
+		if (typeof window === 'undefined') return
+		persistRefreshCooldownUntilMs(window.localStorage, cooldownUntilMs)
+	}, [cooldownUntilMs])
+
+	useEffect(() => {
+		if (!refreshCooldownUntil) return
+		const serverCooldownUntilMs = Date.parse(refreshCooldownUntil)
+		if (!Number.isFinite(serverCooldownUntilMs)) return
+		setCooldownUntilMs((current) => {
+			const next = Math.max(current, serverCooldownUntilMs)
+			if (typeof window !== 'undefined') {
+				persistRefreshCooldownUntilMs(window.localStorage, next)
+			}
+			return next
+		})
+	}, [refreshCooldownUntil])
+
+	if (!onRefresh) return null
+
+	const cooldownRemainingMs = Math.max(0, cooldownUntilMs - nowMs)
+	const isCooldownActive = cooldownRemainingMs > 0
+	const isWorkflowRefreshing =
+		refreshStatus?.status === 'queued' || refreshStatus?.status === 'running'
+	const refreshDisabled = Boolean(isRefreshing || isCooldownActive || isWorkflowRefreshing)
+	const remainingSeconds = Math.ceil(cooldownRemainingMs / 1000)
+	const remainingMinutesPart = String(Math.floor(remainingSeconds / 60)).padStart(2, '0')
+	const remainingSecondsPart = String(remainingSeconds % 60).padStart(2, '0')
+
+	const handleRefreshClick = () => {
+		if (refreshDisabled) return
+		const nextCooldownUntilMs = Date.now() + REFRESH_COOLDOWN_MS
+		if (typeof window !== 'undefined') {
+			// Persist immediately so a hard refresh right after click cannot bypass cooldown.
+			persistRefreshCooldownUntilMs(window.localStorage, nextCooldownUntilMs)
+		}
+		setCooldownUntilMs(nextCooldownUntilMs)
+		onRefresh()
+	}
+
+	return (
+		<Button
+			size="sm"
+			className="whitespace-nowrap"
+			onClick={handleRefreshClick}
+			disabled={refreshDisabled}
+			title={
+				isCooldownActive
+					? `Refresh available in ${remainingMinutesPart}:${remainingSecondsPart}`
+					: isWorkflowRefreshing
+						? 'Recent loss refresh is already in progress'
+						: 'Refresh losses'
+			}
+		>
+			<RefreshCw
+				aria-hidden
+				className={`mr-2 h-4 w-4 ${isRefreshing || isWorkflowRefreshing ? 'animate-spin' : ''}`}
+			/>
+			{isRefreshing
+				? 'Starting…'
+				: isWorkflowRefreshing
+					? `Fetching… ${refreshStatus?.processedCharacters ?? 0}/${refreshStatus?.totalCharacters ?? 0}`
+					: isCooldownActive
+						? `Refresh in ${remainingMinutesPart}:${remainingSecondsPart}`
+						: 'Refresh Losses'}
+		</Button>
 	)
 }

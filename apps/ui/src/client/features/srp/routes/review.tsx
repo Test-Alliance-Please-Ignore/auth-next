@@ -559,7 +559,7 @@ function ReviewTabContent({
 						pageSizeOptions={[10, 25, 50, 100]}
 						itemLabel="requests"
 						nextButtonLoading={isFetching}
-						summaryAction={actionButtons}
+						trailingAction={actionButtons}
 					/>
 				</div>
 				<div className="rounded-md border">

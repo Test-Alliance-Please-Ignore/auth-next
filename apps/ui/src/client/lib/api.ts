@@ -37,7 +37,11 @@ import type {
 	StructureSovereigntyTransportState,
 } from '@repo/structures'
 import type { TrackingSession } from '../features/fleet-tracking/types'
-import type { SRPRecentLossRefreshBackfillResponse } from '../features/srp/types'
+import type {
+	RecentLossesResponse,
+	RequestListResponse,
+	SRPRecentLossRefreshBackfillResponse,
+} from '../features/srp/types'
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 const API_REQUEST_TIMEOUT_MS = 30_000
@@ -4536,44 +4540,12 @@ export class ApiClient {
 	/**
 	 * Get recent losses for all user's characters with SRP status
 	 */
-	async getRecentLosses(): Promise<{
-		losses: Array<{
-			killmailId: string
-			killmailHash: string
-			killmailTime: string
-			shipTypeId: string
-			shipTypeName?: string
-			totalValue: string
-			solarSystemId: string
-			solarSystemName?: string
-			victimCharacterId: string
-			victimCharacterName?: string
-			victimItems?: Array<{
-				flag: number
-				item_type_id: string
-				quantity_destroyed?: number
-				quantity_dropped?: number
-				items?: Array<{
-					flag: number
-					item_type_id: string
-					quantity_destroyed?: number
-					quantity_dropped?: number
-					items?: never
-				}>
-			}>
-			hasSRPRequest: boolean
-			srpRequestId?: string
-			srpRequestStatus?: string
-		}>
-		failedCharacters: Array<{
-			characterId: string
-			characterName: string
-			reason: 'invalid_token' | 'cache_missing' | 'cache_incomplete' | 'fetch_failed'
-			message?: string
-			error?: string
-		}>
-	}> {
-		return this.get('/srp/losses')
+	async getRecentLosses(params?: { limit?: number; offset?: number }): Promise<RecentLossesResponse> {
+		const searchParams = new URLSearchParams()
+		if (params?.limit !== undefined) searchParams.set('limit', String(params.limit))
+		if (params?.offset !== undefined) searchParams.set('offset', String(params.offset))
+		const query = searchParams.toString()
+		return this.get(`/srp/losses${query ? `?${query}` : ''}`)
 	}
 
 	async dismissRecentLoss(killmailId: string): Promise<{ success: true }> {
@@ -4604,12 +4576,7 @@ export class ApiClient {
 	/**
 	 * Get user's own SRP requests (paginated)
 	 */
-	async getMyRequests(params?: { limit?: number; offset?: number; status?: string }): Promise<{
-		requests: any[]
-		total: number
-		limit: number
-		offset: number
-	}> {
+	async getMyRequests(params?: { limit?: number; offset?: number; status?: string }): Promise<RequestListResponse> {
 		const searchParams = new URLSearchParams()
 		if (params?.limit) searchParams.set('limit', String(params.limit))
 		if (params?.offset) searchParams.set('offset', String(params.offset))
