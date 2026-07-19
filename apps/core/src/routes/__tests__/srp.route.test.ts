@@ -91,12 +91,18 @@ function createApp(user?: SessionUser, db?: any) {
 	return app
 }
 
-function makeSrpStub() {
-	return {
-		getConfig: vi.fn().mockResolvedValue({ maxLossAgeDays: 30 }),
-		getUserRequests: vi.fn().mockResolvedValue([]),
-		getRecentLosses: vi.fn().mockResolvedValue({ losses: [], failedCharacters: [] }),
-		getRecentLossRefreshStatus: vi.fn().mockResolvedValue({ status: null, cooldownUntil: null }),
+	function makeSrpStub() {
+		return {
+			getConfig: vi.fn().mockResolvedValue({ maxLossAgeDays: 30 }),
+			getUserRequests: vi.fn().mockResolvedValue({ requests: [], total: 0 }),
+			getRecentLosses: vi.fn().mockResolvedValue({
+				losses: [],
+				failedCharacters: [],
+				total: 0,
+				limit: 0,
+				offset: 0,
+			}),
+			getRecentLossRefreshStatus: vi.fn().mockResolvedValue({ status: null, cooldownUntil: null }),
 		getRequest: vi.fn(),
 		getRequestsByStatus: vi.fn().mockResolvedValue({ requests: [], total: 0 }),
 		getPendingPayments: vi.fn().mockResolvedValue([]),
@@ -414,7 +420,13 @@ describe('srp routes - permissions', () => {
 		const response = await app.request('/api/srp/requests', {}, env)
 
 		expect(response.status).toBe(200)
-		expect(srpStub.getUserRequests).toHaveBeenCalledWith('request-list-user', 50, 0)
+		expect(await response.json()).toEqual({
+			requests: [],
+			total: 0,
+			limit: 50,
+			offset: 0,
+		})
+		expect(srpStub.getUserRequests).toHaveBeenCalledWith('request-list-user', 50, 0, undefined)
 	})
 
 	it('returns partial losses with failedCharacters when one character fetch fails', async () => {
@@ -465,20 +477,26 @@ describe('srp routes - permissions', () => {
 					message: 'Recent losses have not been refreshed yet. Use Refresh to fetch them.',
 				},
 			],
+			total: 1,
+			limit: 50,
+			offset: 0,
 		})
 
 		const response = await app.request('/api/srp/losses?daysBack=60', {}, env)
 		const body = await response.json<any>()
 
 		expect(response.status).toBe(200)
-		expect(srpStub.getRecentLosses).toHaveBeenCalledWith(
-			[
-				{ characterId: '7001', characterName: 'Pilot One' },
-				{ characterId: '7002', characterName: 'Pilot Two' },
-			],
-			'loss-user',
-			30
-		)
+			expect(srpStub.getRecentLosses).toHaveBeenCalledWith(
+				[
+					{ characterId: '7001', characterName: 'Pilot One' },
+					{ characterId: '7002', characterName: 'Pilot Two' },
+				],
+				'loss-user',
+				30,
+				true,
+				undefined,
+				undefined
+			)
 		expect(body.losses).toHaveLength(1)
 		expect(body.losses[0]).toMatchObject({
 			killmailId: '123',
@@ -553,20 +571,26 @@ describe('srp routes - permissions', () => {
 					message: 'ESI token is invalid or expired. Please re-authenticate this character.',
 				},
 			],
+			total: 1,
+			limit: 50,
+			offset: 0,
 		})
 
 		const response = await app.request('/api/srp/losses?daysBack=60', {}, env)
 		const body = await response.json<any>()
 
 		expect(response.status).toBe(200)
-		expect(srpStub.getRecentLosses).toHaveBeenCalledWith(
-			[
-				{ characterId: '7001', characterName: 'Pilot One' },
-				{ characterId: '7002', characterName: 'Pilot Two' },
-			],
-			'loss-user-invalid-token',
-			30
-		)
+			expect(srpStub.getRecentLosses).toHaveBeenCalledWith(
+				[
+					{ characterId: '7001', characterName: 'Pilot One' },
+					{ characterId: '7002', characterName: 'Pilot Two' },
+				],
+				'loss-user-invalid-token',
+				30,
+				true,
+				undefined,
+				undefined
+			)
 		expect(body.losses).toHaveLength(1)
 		expect(body.failedCharacters).toEqual([
 			{

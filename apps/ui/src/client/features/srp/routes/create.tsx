@@ -17,7 +17,7 @@ export default function CreateRequest() {
 	const killmailHash = searchParams.get('killmailHash')
 
 	const { data: losses, isLoading: lossesLoading } = useRecentLosses()
-	const loss = losses?.find((l: any) => l.killmailId === killmailId)
+	const loss = losses?.losses?.find((l) => l.killmailId === killmailId)
 
 	const { data: preview, isLoading: previewLoading } = useKillmailPreview(
 		killmailId,

@@ -4,7 +4,7 @@ export const srpKeys = {
 	all: ['srp'] as const,
 
 	// Losses
-	losses: () => [...srpKeys.all, 'losses'] as const,
+	losses: (params?: { limit?: number; offset?: number }) => [...srpKeys.all, 'losses', params] as const,
 	lossRefreshStatus: () => [...srpKeys.losses(), 'refresh-status'] as const,
 
 	// Requests

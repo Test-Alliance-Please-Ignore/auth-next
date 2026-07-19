@@ -37,6 +37,9 @@ export interface RecentLossRefreshCharacterFailure {
 export interface RecentLossesResponse {
 	losses: LossWithSRPStatus[]
 	failedCharacters: RecentLossRefreshCharacterFailure[]
+	total: number
+	limit: number
+	offset: number
 }
 
 export interface RecentLossVictimItem {
@@ -137,12 +140,19 @@ export interface Srp {
 	): Promise<SRPRequestResponse>
 	getRequest(requestId: string, userId: string): Promise<SRPRequestResponse | null>
 	getPublicRequestSummary(requestId: string): Promise<SRPPublicRequestSummaryResponse | null>
-	getUserRequests(userId: string, limit?: number, offset?: number): Promise<SRPRequestResponse[]>
+	getUserRequests(
+		userId: string,
+		limit?: number,
+		offset?: number,
+		status?: RequestStatus
+	): Promise<SRPRequestListResponse>
 	getRecentLosses(
 		characters: RecentLossRefreshCharacterInput[],
 		userId: string,
 		daysBack?: number,
-		excludeNonSrpEligible?: boolean
+		excludeNonSrpEligible?: boolean,
+		limit?: number,
+		offset?: number
 	): Promise<RecentLossesResponse>
 	dismissLoss(userId: string, killmailId: string): Promise<void>
 	refreshRecentLossesForCharacter(
@@ -576,6 +586,11 @@ export interface SRPRequestResponse {
 	// Populated relations
 	comments?: SRPCommentResponse[]
 	history?: SRPHistoryResponse[]
+}
+
+export interface SRPRequestListResponse {
+	requests: SRPRequestResponse[]
+	total: number
 }
 
 /**

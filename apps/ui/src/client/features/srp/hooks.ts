@@ -31,7 +31,9 @@ import {
 
 import type {
 	CommentVisibility,
+	RequestListResponse,
 	RequestStatus,
+	RecentLossesResponse,
 	SRPCommentResponse,
 	SRPConfigResponse,
 	SRPRequestResponse,
@@ -169,18 +171,28 @@ function adjustPendingPayoutTotalCaches(
 
 // ===== Query Hooks =====
 
-export function useRecentLosses() {
+export function useRecentLosses(
+	params: { limit?: number; offset?: number } = {},
+	options: { enabled?: boolean } = {}
+) {
 	const overlay = useLossRequestOverlaySnapshot()
-	const query = useQuery({
-		queryKey: srpKeys.losses(),
-		queryFn: () => api.getRecentLosses(),
+	const query = useQuery<RecentLossesResponse>({
+		queryKey: srpKeys.losses(params),
+		queryFn: () => api.getRecentLosses(params),
 		staleTime: 1000 * 60 * 5,
+		enabled: options.enabled ?? true,
 	})
 	useEffect(() => {
 		if (!query.data?.losses) return
 		reconcileOverlayFromServerLosses(query.data.losses)
 	}, [query.data])
-	const mergedData = useMemo(() => mergeLossesWithOverlay(query.data?.losses), [query.data, overlay])
+	const mergedData = useMemo(() => {
+		if (!query.data) return query.data
+		return {
+			...query.data,
+			losses: mergeLossesWithOverlay(query.data.losses ?? []),
+		}
+	}, [query.data, overlay])
 	return {
 		...query,
 		data: mergedData,
@@ -214,13 +226,15 @@ export function useRecentLossRefreshStatus() {
 }
 
 export function useMyRequests(
-	params: { limit?: number; offset?: number; status?: RequestStatus } = {}
+	params: { limit?: number; offset?: number; status?: RequestStatus } = {},
+	options: { enabled?: boolean } = {}
 ) {
 	const overlay = useLossRequestOverlaySnapshot()
-	const query = useQuery({
+	const query = useQuery<RequestListResponse>({
 		queryKey: srpKeys.myRequests(params),
 		queryFn: () => api.getMyRequests(params),
 		staleTime: 1000 * 60,
+		enabled: options.enabled ?? true,
 	})
 	const mergedData = useMemo(() => {
 		if (!query.data) return query.data

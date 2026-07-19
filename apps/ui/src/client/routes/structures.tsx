@@ -1627,7 +1627,7 @@ export default function StructuresPage() {
 								pageSizeOptions={[25, 50, 100]}
 								itemLabel="structures"
 								nextButtonLoading={isFetching}
-								summaryAction={refreshButton}
+								trailingAction={refreshButton}
 							/>
 						</div>
 						<TableRefreshFrame
