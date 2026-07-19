@@ -740,12 +740,23 @@ auth.get('/callback', async (c) => {
 		if (existingUser) {
 			if (existingUser.id === stateUserId) {
 				await hydrateAndReconcileUserRoles(c, db, stateUserId, characterId)
-				// Character already linked to this user - token has been updated, just return success
 				const existingCharacter = user.characters.find((char) => char.characterId === characterId)
+				await db
+					.update(userCharacters)
+					.set({ hasValidToken: true, updatedAt: new Date() })
+					.where(eq(userCharacters.characterId, characterId))
+				triggerDirectorHealthRecheckAfterTokenReauth(
+					c,
+					db,
+					characterId,
+					characterInfo.characterName
+				)
+
+				// Character already linked to this user - token has been updated, just return success
 				return c.json({
 					characterLinked: true,
 					tokenUpdated: true,
-					character: existingCharacter,
+					character: existingCharacter ? { ...existingCharacter, hasValidToken: true } : existingCharacter,
 				})
 			} else {
 				return c.json({ error: 'Character is already linked to another account' }, 400)
