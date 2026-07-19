@@ -1,7 +1,7 @@
 import { forDO } from '@repo/do-utils'
 
 import { consume } from './email'
-import { awardAndAnnounce } from './markee-bonus'
+import { awardAndAnnounce, pickFallbackMessage } from './markee-bonus'
 
 import type { Discord, MessageContent } from '@repo/discord'
 import type { Env } from './context'
@@ -29,12 +29,13 @@ export const notifyDiscord: EmailHandler<Env> = async (ctx) => {
 
 	// Award a random prediction-market wallet a house-funded bonus and build the announcement naming
 	// the winner. Best-effort (never throws); returns null when no one was bonused (empty house / no
-	// wallets / a failure), in which case we post a plain sale notice. As Discord message content, the
-	// announcement renders emoji + custom emotes and the winner mention resolves to their display name.
+	// wallets / a failure), in which case we post a plain sale notice picked at random from the
+	// fallback pool. As Discord message content, the announcement renders emoji + custom emotes and
+	// the winner mention resolves to their display name.
 	const announcement = await awardAndAnnounce(ctx)
 
 	const message: MessageContent = {
-		content: announcement ?? '📣 A Markee Dragon referral sale just came in!',
+		content: announcement ?? pickFallbackMessage(),
 		allowEveryone: false,
 	}
 
