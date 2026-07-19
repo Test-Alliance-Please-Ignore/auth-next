@@ -43,7 +43,7 @@ describe('refreshRecentLossesForCharacter', () => {
 			complete: true,
 			maxLossAgeDays: 30,
 		})
-		srp.readMostRecentStoredLoss = vi.fn().mockResolvedValue(storedLoss)
+		srp.readMostRecentLoss = vi.fn().mockResolvedValue(storedLoss)
 		srp.fetchRecentLossesFromEsi = vi.fn().mockImplementation(async (_characterId: string, ids: Set<string>) => {
 			for (const id of ids) {
 				knownKillmailIds.add(id)
@@ -66,7 +66,7 @@ describe('refreshRecentLossesForCharacter', () => {
 			characterName: 'Character One',
 			success: true,
 		})
-		expect(srp.readMostRecentStoredLoss).toHaveBeenCalledWith('character-1')
+		expect(srp.readMostRecentLoss).toHaveBeenCalledWith('character-1')
 		expect(srp.fetchRecentLossesFromEsi).toHaveBeenCalledTimes(1)
 		expect(knownKillmailIds).toEqual(new Set(['200']))
 		expect(srp.persistRecentLossesToCharacterData).toHaveBeenCalledWith(
@@ -74,5 +74,32 @@ describe('refreshRecentLossesForCharacter', () => {
 			[{ loss: refreshedLoss, killmailData: { killmail_id: refreshedLoss.killmailId } }],
 			expect.any(Number)
 		)
+		expect(srp.writeRecentLossCache).toHaveBeenCalledWith('character-1', [refreshedLoss], 30)
+	})
+
+	it('treats an empty refresh as a successful complete cache write', async () => {
+		const srp = Object.create(SrpDO.prototype) as Record<string, any>
+
+		srp.readRecentLossCache = vi.fn().mockResolvedValue(null)
+		srp.readMostRecentLoss = vi.fn().mockResolvedValue(null)
+		srp.fetchRecentLossesFromEsi = vi.fn().mockResolvedValue([])
+		srp.persistRecentLossesToCharacterData = vi.fn().mockResolvedValue(undefined)
+		srp.writeRecentLossCache = vi.fn().mockResolvedValue(undefined)
+		srp.getConfig = vi.fn().mockResolvedValue({ maxLossAgeDays: 30 })
+
+		const result = await srp.refreshRecentLossesForCharacter(
+			'user-1',
+			'character-1',
+			'Character One',
+			30
+		)
+
+		expect(result).toEqual({
+			characterId: 'character-1',
+			characterName: 'Character One',
+			success: true,
+		})
+		expect(srp.persistRecentLossesToCharacterData).toHaveBeenCalledWith('character-1', [], expect.any(Number))
+		expect(srp.writeRecentLossCache).toHaveBeenCalledWith('character-1', [], 30)
 	})
 })
