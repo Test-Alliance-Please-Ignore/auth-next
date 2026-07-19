@@ -177,7 +177,7 @@ class SrpKillmailCache implements EsiCacheAdapter {
 	}
 }
 
-class SrpKillmailNotFoundError extends Error {
+export class SrpKillmailNotFoundError extends Error {
 	constructor(public readonly path: string) {
 		super(`Killmail not found for ${path}`)
 		this.name = 'SrpKillmailNotFoundError'

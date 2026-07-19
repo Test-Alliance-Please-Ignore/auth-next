@@ -94,6 +94,18 @@ describe('recent-loss cache helpers', () => {
 				30
 			)
 		).toBe(false)
+		expect(
+			doesRecentLossCacheCoverCutoff(
+				{
+					losses: [],
+					refreshedAtMs: Date.parse('2026-06-02T04:00:00.000Z'),
+					complete: true,
+					maxLossAgeDays: 30,
+				},
+				Date.parse('2026-05-01T00:00:00.000Z'),
+				30
+			)
+		).toBe(true)
 	})
 
 	it('invalidates cached recent losses when the configured max age increases', () => {

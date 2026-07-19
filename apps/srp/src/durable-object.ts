@@ -25,7 +25,7 @@ import {
 	srpRequests,
 } from './db/schema'
 import { buildEquippedByType } from './lib/equipment'
-import { SrpKillmailEsiClient } from './lib/killmail-esi'
+import { SrpKillmailEsiClient, SrpKillmailNotFoundError } from './lib/killmail-esi'
 import { computeSrpPayout } from './lib/payout'
 import {
 	doesRecentLossCacheCoverCutoff,
@@ -249,6 +249,24 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		)
 	}
 
+	private async writeRecentLossCache(
+		characterId: string,
+		losses: CharacterLossData[],
+		maxLossAgeDays: number
+	): Promise<void> {
+		const record: RecentLossCacheStorageRecord = {
+			losses: losses.map((loss) => ({
+				...loss,
+				killmailTime: loss.killmailTime.toISOString(),
+			})),
+			refreshedAtMs: Date.now(),
+			complete: true,
+			maxLossAgeDays,
+		}
+
+		await this.storage.put(this.buildRecentLossCacheKey(characterId), record)
+	}
+
 	private async selfHealRequestItemMetadata(request: any): Promise<void> {
 		const itemPrices: Array<{ typeId?: string; typeName?: string | null; [key: string]: unknown }> =
 			Array.isArray(request?.srpItemPrices) ? request.srpItemPrices : []
@@ -363,7 +381,15 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		let totalPages = 1
 
 		while (page <= totalPages) {
-			const pageResult = await this.killmailEsi.fetchCharacterKillmailPage(characterId, page)
+			let pageResult
+			try {
+				pageResult = await this.killmailEsi.fetchCharacterKillmailPage(characterId, page)
+			} catch (error) {
+				if (error instanceof SrpKillmailNotFoundError) {
+					break
+				}
+				throw error
+			}
 			totalPages = Math.max(1, pageResult.pages)
 			const selection = selectRecentKillmailsUntilKnown(pageResult.data, knownKillmailIds)
 			const pageLosses = await this.fetchLossDetailsForKillmails(characterId, selection.killmails)
@@ -972,6 +998,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			)
 
 			if (mergedCharacterLosses.length === 0) {
+				if (cached?.complete === true) {
+					continue
+				}
 				const tokenValidation = await tokenStore.validateToken(
 					character.characterId,
 					SRP_REQUIRED_KILLMAIL_SCOPES
@@ -1176,6 +1205,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		const freshLosses = await this.fetchRecentLossesFromEsi(characterId, knownKillmailIds)
 		await this.persistRecentLossesToCharacterData(characterId, freshLosses, cacheCutoffMs)
+		await this.writeRecentLossCache(characterId, freshLosses.map((entry) => entry.loss), maxLossAgeDays)
 
 		return {
 			characterId,

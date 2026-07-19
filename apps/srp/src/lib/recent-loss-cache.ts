@@ -43,8 +43,12 @@ export function doesRecentLossCacheCoverCutoff(
 	cutoffMs: number,
 	currentMaxLossAgeDays: number
 ): boolean {
-	if (!record || record.complete !== true || record.losses.length === 0) {
+	if (!record || record.complete !== true) {
 		return false
+	}
+
+	if (record.losses.length === 0) {
+		return true
 	}
 
 	if (!Number.isFinite(record.maxLossAgeDays) || record.maxLossAgeDays < currentMaxLossAgeDays) {
