@@ -170,6 +170,15 @@ export class FleetsDO extends DurableObject implements Fleets {
 		})
 	}
 
+	private getEffectiveSessionStatus(
+		session: {
+			status: string
+			endedAt: Date | null
+		},
+	): TrackingSession['status'] {
+		return session.status === 'active' && session.endedAt === null ? 'active' : 'ended'
+	}
+
 	async getCharacterFleetInformation(characterId: EveCharacterId): Promise<FleetInformation> {
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
@@ -308,7 +317,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 			.values({
 				fleetId,
 				fleetBossId,
-				isActive: true,
 				memberCount: 0,
 				motd: fleetData.motd || null,
 				isFreeMove: fleetData.is_free_move,
@@ -319,7 +327,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				target: fleetStateCache.fleetId,
 				set: {
 					fleetBossId,
-					isActive: true,
 					motd: fleetData.motd || null,
 					isFreeMove: fleetData.is_free_move,
 					isRegistered: fleetData.is_registered,
@@ -457,7 +464,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				.values({
 					fleetId,
 					fleetBossId: characterId,
-					isActive: true,
 					memberCount: 0,
 					motd: fleetInfo.motd || null,
 					isFreeMove: fleetInfo.is_free_move,
@@ -470,7 +476,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				.onConflictDoUpdate({
 					target: fleetStateCache.fleetId,
 					set: {
-						isActive: true,
 						motd: fleetInfo.motd || null,
 						isFreeMove: fleetInfo.is_free_move,
 						isRegistered: fleetInfo.is_registered,
@@ -494,25 +499,23 @@ export class FleetsDO extends DurableObject implements Fleets {
 				// Mark fleet as not found
 				await this.db
 					.insert(fleetStateCache)
-					.values({
-						fleetId,
-						fleetBossId: characterId,
-						isActive: false,
-						memberCount: 0,
+				.values({
+					fleetId,
+					fleetBossId: characterId,
+					memberCount: 0,
+					notFound: true,
+					notFoundAt: new Date(),
+					lastChecked: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: fleetStateCache.fleetId,
+					set: {
 						notFound: true,
 						notFoundAt: new Date(),
 						lastChecked: new Date(),
-					})
-					.onConflictDoUpdate({
-						target: fleetStateCache.fleetId,
-						set: {
-							notFound: true,
-							notFoundAt: new Date(),
-							isActive: false,
-							lastChecked: new Date(),
-							updatedAt: new Date(),
-						},
-					})
+						updatedAt: new Date(),
+					},
+				})
 			}
 			throw error
 		}
@@ -780,7 +783,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 					return false
 				}
 			}
-			return cached.isActive
+			return !cached.notFound
 		}
 
 		// Check with ESI
@@ -818,7 +821,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				.values({
 					fleetId,
 					fleetBossId: characterId,
-					isActive: true,
 					memberCount: 0,
 					motd: fleetInfo.motd || null,
 					isFreeMove: fleetInfo.is_free_move,
@@ -831,7 +833,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				.onConflictDoUpdate({
 					target: fleetStateCache.fleetId,
 					set: {
-						isActive: true,
 						motd: fleetInfo.motd || null,
 						isFreeMove: fleetInfo.is_free_move,
 						isRegistered: fleetInfo.is_registered,
@@ -849,7 +850,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				.values({
 					fleetId,
 					fleetBossId: characterId,
-					isActive: false,
 					memberCount: 0,
 					notFound: isNotFound,
 					notFoundAt: isNotFound ? new Date() : null,
@@ -858,7 +858,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				.onConflictDoUpdate({
 					target: fleetStateCache.fleetId,
 					set: {
-						isActive: false,
 						notFound: isNotFound,
 						notFoundAt: isNotFound ? new Date() : null,
 						lastChecked: new Date(),
@@ -872,12 +871,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 	async getFleetCacheStatus(
 		fleetId: string
-	): Promise<{ isActive: boolean; notFound: boolean; endedAt: Date | null } | null> {
+	): Promise<{ notFound: boolean; notFoundAt: Date | null; lastChecked: Date } | null> {
 		const [cached] = await this.db
 			.select({
-				isActive: fleetStateCache.isActive,
 				notFound: fleetStateCache.notFound,
-				endedAt: fleetStateCache.endedAt,
+				notFoundAt: fleetStateCache.notFoundAt,
+				lastChecked: fleetStateCache.lastChecked,
 			})
 			.from(fleetStateCache)
 			.where(eq(fleetStateCache.fleetId, fleetId))
@@ -888,9 +887,9 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 
 		return {
-			isActive: cached.isActive,
 			notFound: cached.notFound,
-			endedAt: cached.endedAt,
+			notFoundAt: cached.notFoundAt,
+			lastChecked: cached.lastChecked,
 		}
 	}
 
@@ -949,7 +948,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				.values({
 					fleetId,
 					fleetBossId: characterId,
-					isActive: true,
 					memberCount: 0,
 					motd: fleetInfo.motd || null,
 					isFreeMove: fleetInfo.is_free_move,
@@ -962,7 +960,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				.onConflictDoUpdate({
 					target: fleetStateCache.fleetId,
 					set: {
-						isActive: true,
 						motd: fleetInfo.motd || null,
 						isFreeMove: fleetInfo.is_free_move,
 						isRegistered: fleetInfo.is_registered,
@@ -983,7 +980,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 			.values({
 				fleetId,
 				fleetBossId: characterId,
-				isActive: false,
 				memberCount: 0,
 				notFound: isNotFound,
 				notFoundAt: isNotFound ? new Date() : null,
@@ -992,7 +988,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 			.onConflictDoUpdate({
 				target: fleetStateCache.fleetId,
 				set: {
-					isActive: false,
 					notFound: isNotFound,
 					notFoundAt: isNotFound ? new Date() : null,
 					lastChecked: new Date(),
@@ -1074,9 +1069,11 @@ export class FleetsDO extends DurableObject implements Fleets {
 			.select({
 				id: fleetTrackingSessions.id,
 				status: fleetTrackingSessions.status,
+				endedAt: fleetTrackingSessions.endedAt,
 				characterId: fleetTrackingSessions.characterId,
 			})
 			.from(fleetTrackingSessions)
+			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(eq(fleetTrackingSessions.fleetId, fleetId))
 			.orderBy(desc(fleetTrackingSessions.startedAt))
 			.limit(1)
@@ -1085,6 +1082,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 		let sessionId: string
 		let previousFleetBossCharacterId: string | null = null
 		let resumedExistingSession = false
+		const mostRecentStatus = mostRecentByFleet
+			? this.getEffectiveSessionStatus({
+					status: mostRecentByFleet.status,
+					endedAt: mostRecentByFleet.endedAt,
+				})
+			: null
 
 		if (action === 'take_over' && mostRecentByFleet) {
 			previousFleetBossCharacterId = mostRecentByFleet.characterId
@@ -1107,9 +1110,9 @@ export class FleetsDO extends DurableObject implements Fleets {
 			}
 
 			sessionId = resumed.id
-			resumedExistingSession = mostRecentByFleet.status === 'ended'
+			resumedExistingSession = mostRecentStatus === 'ended'
 
-			if (mostRecentByFleet.status === 'ended') {
+			if (mostRecentStatus === 'ended') {
 				await this.recordSessionLifecycleEvent({
 					fleetId,
 					trackingSessionId: sessionId,
@@ -1123,7 +1126,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 					.where(eq(fleetSummaries.trackingSessionId, sessionId))
 			}
 		} else {
-			if (action === 'new' && mostRecentByFleet?.status === 'active') {
+			if (action === 'new' && mostRecentStatus === 'active') {
 				throw new StartTrackingSessionError('fleet_session_active')
 			}
 
@@ -1206,16 +1209,33 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const { sessionId, endedReason, endedByUserId } = args
 
 		const [session] = await this.db
-			.select()
+			.select({
+				id: fleetTrackingSessions.id,
+				status: fleetTrackingSessions.status,
+				endedAt: fleetTrackingSessions.endedAt,
+				fleetId: fleetTrackingSessions.fleetId,
+			})
 			.from(fleetTrackingSessions)
+			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(eq(fleetTrackingSessions.id, sessionId))
 			.limit(1)
 
 		if (!session) {
-			throw new Error(`Session not found: ${sessionId}`)
+			logger.info('[FleetsDO stopTrackingSession] Session already missing; treating as closed', {
+				sessionId,
+			})
+			return
 		}
-		if (session.status !== 'active') {
-			throw new Error(`Session is not active: ${sessionId}`)
+		const effectiveStatus = this.getEffectiveSessionStatus({
+			status: session.status,
+			endedAt: session.endedAt,
+		})
+		if (effectiveStatus !== 'active') {
+			logger.info('[FleetsDO stopTrackingSession] Session already ended; treating as closed', {
+				sessionId,
+				status: effectiveStatus,
+			})
+			return
 		}
 		if (!session.fleetId) {
 			// Defensive — shouldn't happen because startTrackingSession only
@@ -1244,6 +1264,14 @@ export class FleetsDO extends DurableObject implements Fleets {
 			filter.fleetBossCharacterIds ?? filter.commanderCharacterIds ?? []
 
 		const conditions = []
+		const activeSessionCondition = and(
+			eq(fleetTrackingSessions.status, 'active'),
+			isNull(fleetTrackingSessions.endedAt)
+		)
+		const closedSessionCondition = and(
+			eq(fleetTrackingSessions.status, 'ended'),
+			isNotNull(fleetTrackingSessions.endedAt)
+		)
 		if (filter.characterId) {
 			conditions.push(eq(fleetTrackingSessions.characterId, filter.characterId))
 		}
@@ -1273,7 +1301,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			conditions.push(or(...accessConditions))
 		}
 		if (filter.status) {
-			conditions.push(eq(fleetTrackingSessions.status, filter.status))
+			conditions.push(filter.status === 'active' ? activeSessionCondition : closedSessionCondition)
 		}
 		if (filter.from) {
 			conditions.push(gte(fleetTrackingSessions.startedAt, new Date(filter.from)))
@@ -1304,7 +1332,15 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 		return {
 			items: items.map((row) =>
-				this.serializeSession(row.session, row.currentCommanderCharacterId ?? null)
+				this.serializeSession(
+					row.session,
+					row.currentCommanderCharacterId ?? null,
+					[],
+					this.getEffectiveSessionStatus({
+						status: row.session.status,
+						endedAt: row.session.endedAt,
+					})
+				)
 			),
 			total,
 			limit,
@@ -1339,11 +1375,16 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const commanderCharacterIds = Array.from(
 			new Set(commanderRows.map((r) => r.commanderCharacterId))
 		)
+		const effectiveStatus = this.getEffectiveSessionStatus({
+			status: row.session.status,
+			endedAt: row.session.endedAt,
+		})
 
 		return this.serializeSession(
 			row.session,
 			row.currentCommanderCharacterId ?? null,
-			commanderCharacterIds
+			commanderCharacterIds,
+			effectiveStatus
 		)
 	}
 
@@ -1358,7 +1399,13 @@ export class FleetsDO extends DurableObject implements Fleets {
 			})
 			.from(fleetTrackingSessions)
 			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
-			.where(and(eq(fleetTrackingSessions.fleetId, fleetId), eq(fleetTrackingSessions.status, 'active')))
+			.where(
+				and(
+					eq(fleetTrackingSessions.fleetId, fleetId),
+					eq(fleetTrackingSessions.status, 'active'),
+					isNull(fleetTrackingSessions.endedAt)
+				)
+			)
 			.orderBy(desc(fleetTrackingSessions.startedAt))
 			.limit(1)
 		if (!row) return null
@@ -1373,11 +1420,16 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const commanderCharacterIds = Array.from(
 			new Set(commanderRows.map((r) => r.commanderCharacterId))
 		)
+		const effectiveStatus = this.getEffectiveSessionStatus({
+			status: row.session.status,
+			endedAt: row.session.endedAt,
+		})
 
 		return this.serializeSession(
 			row.session,
 			row.currentCommanderCharacterId ?? null,
-			commanderCharacterIds
+			commanderCharacterIds,
+			effectiveStatus
 		)
 	}
 
@@ -1407,11 +1459,16 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const commanderCharacterIds = Array.from(
 			new Set(commanderRows.map((r) => r.commanderCharacterId))
 		)
+		const effectiveStatus = this.getEffectiveSessionStatus({
+			status: row.session.status,
+			endedAt: row.session.endedAt,
+		})
 
 		return this.serializeSession(
 			row.session,
 			row.currentCommanderCharacterId ?? null,
-			commanderCharacterIds
+			commanderCharacterIds,
+			effectiveStatus
 		)
 	}
 
@@ -1421,18 +1478,25 @@ export class FleetsDO extends DurableObject implements Fleets {
 	 */
 	async getSessionLiveSnapshot(sessionId: string): Promise<SessionLiveSnapshot | null> {
 		const [session] = await this.db
-			.select({ fleetId: fleetTrackingSessions.fleetId })
+			.select({
+				fleetId: fleetTrackingSessions.fleetId,
+				status: fleetTrackingSessions.status,
+				endedAt: fleetTrackingSessions.endedAt,
+			})
 			.from(fleetTrackingSessions)
 			.where(eq(fleetTrackingSessions.id, sessionId))
 			.limit(1)
 		if (!session || !session.fleetId) return null
+		if (this.getEffectiveSessionStatus({ status: session.status, endedAt: session.endedAt }) !== 'active') {
+			return null
+		}
 
 		const [cache] = await this.db
 			.select()
 			.from(fleetStateCache)
 			.where(eq(fleetStateCache.fleetId, session.fleetId))
 			.limit(1)
-		if (!cache) return null
+		if (!cache || cache.notFound) return null
 
 		// Pull peak member count from the FleetMonitor DO's SQLite state.
 		let peakMemberCount = cache.memberCount
@@ -1745,14 +1809,13 @@ export class FleetsDO extends DurableObject implements Fleets {
 				characterId: fleetTrackingSessions.characterId,
 				startedAt: fleetTrackingSessions.startedAt,
 				endedAt: fleetTrackingSessions.endedAt,
-				status: fleetTrackingSessions.status,
 			})
 			.from(fleetTrackingSessions)
 			.where(
 				and(
 					lt(fleetTrackingSessions.startedAt, to),
 					or(
-						eq(fleetTrackingSessions.status, 'active'),
+						and(eq(fleetTrackingSessions.status, 'active'), isNull(fleetTrackingSessions.endedAt)),
 						and(isNotNull(fleetTrackingSessions.endedAt), gt(fleetTrackingSessions.endedAt, from))
 					)
 				)
@@ -1963,12 +2026,21 @@ export class FleetsDO extends DurableObject implements Fleets {
 			.select({
 				fleetId: fleetTrackingSessions.fleetId,
 				status: fleetTrackingSessions.status,
+				endedAt: fleetTrackingSessions.endedAt,
 			})
 			.from(fleetTrackingSessions)
+			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(eq(fleetTrackingSessions.id, sessionId))
 			.limit(1)
 
-		if (!session?.fleetId || session.status !== 'active') {
+		const effectiveStatus = session
+			? this.getEffectiveSessionStatus({
+					status: session.status,
+					endedAt: session.endedAt,
+				})
+			: 'ended'
+
+		if (!session?.fleetId || effectiveStatus !== 'active') {
 			return []
 		}
 
@@ -2143,10 +2215,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 			.select({
 				id: fleetTrackingSessions.id,
 				status: fleetTrackingSessions.status,
+				endedAt: fleetTrackingSessions.endedAt,
 				fleetId: fleetTrackingSessions.fleetId,
 				characterId: fleetTrackingSessions.characterId,
 			})
 			.from(fleetTrackingSessions)
+			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(eq(fleetTrackingSessions.id, args.sessionId))
 			.limit(1)
 
@@ -2157,7 +2231,11 @@ export class FleetsDO extends DurableObject implements Fleets {
 				error: 'Session not found',
 			}))
 		}
-		if (session.status !== 'active') {
+		const effectiveStatus = this.getEffectiveSessionStatus({
+			status: session.status,
+			endedAt: session.endedAt,
+		})
+		if (effectiveStatus !== 'active') {
 			return uniqueMemberIds.map((characterId) => ({
 				characterId,
 				success: false,
@@ -2250,6 +2328,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			.where(
 				and(
 					eq(fleetTrackingSessions.status, 'active'),
+					isNull(fleetTrackingSessions.endedAt),
 					gte(fleetTrackingSessions.startedAt, from),
 					lt(fleetTrackingSessions.startedAt, to)
 				)
@@ -2792,7 +2871,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 	private serializeSession = (
 		row: typeof fleetTrackingSessions.$inferSelect,
 		currentFleetBossCharacterId: string | null,
-		fleetBossCharacterIds: string[] = []
+		fleetBossCharacterIds: string[] = [],
+		effectiveStatus?: TrackingSession['status']
 	): TrackingSession => ({
 		id: row.id,
 		name: row.name,
@@ -2805,7 +2885,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		commanderCharacterIds: fleetBossCharacterIds,
 		startedByUserId: row.startedByUserId,
 		fleetId: row.fleetId,
-		status: row.status as TrackingSession['status'],
+		status: effectiveStatus ?? (row.status as TrackingSession['status']),
 		startedAt: row.startedAt.toISOString(),
 		endedAt: row.endedAt ? row.endedAt.toISOString() : null,
 		endedReason: (row.endedReason as TrackingSession['endedReason']) ?? null,
@@ -2874,216 +2954,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 	}
 
 	/**
-	 * Alarm handler - Watchdog for FleetMonitor instances
-	 * Checks all active FleetMonitor instances to ensure they're updating regularly
-	 * Runs every 2 minutes to detect stale monitors
-	 */
-	async alarm(): Promise<void> {
-		logger.info('[FleetsDO Watchdog] Starting FleetMonitor health check', {
-			timestamp: new Date().toISOString(),
-		})
-
-		try {
-			// Get all active fleets from cache (excluding not found fleets)
-			const activeFleets = await this.db
-				.select({
-					fleetId: fleetStateCache.fleetId,
-					fleetBossId: fleetStateCache.fleetBossId,
-					lastChecked: fleetStateCache.lastChecked,
-				})
-				.from(fleetStateCache)
-				.where(and(eq(fleetStateCache.notFound, false), eq(fleetStateCache.isActive, true)))
-
-			logger.info('[FleetsDO Watchdog] Found active fleets to check', {
-				count: activeFleets.length,
-			})
-
-			if (activeFleets.length === 0) {
-				logger.info('[FleetsDO Watchdog] No active fleets to monitor')
-				await this.scheduleNextWatchdog()
-				return
-			}
-
-			// Check each FleetMonitor instance
-			const now = Date.now()
-			const staleThreshold = 2 * 60 * 1000 // 2 minutes in milliseconds
-			const staleFleets: Array<{ fleetId: string; lastChecked: Date | null; ageMs: number }> = []
-			let recoveredCount = 0
-
-			for (const fleet of activeFleets) {
-				try {
-					// Get the FleetMonitor DO stub for this fleet
-					const fleetMonitorStub = getStub<FleetMonitor>(
-						this.env.FLEET_MONITOR,
-						`fleet-${fleet.fleetId}`
-					)
-
-					// Get the monitor's internal state
-					const monitorState = await fleetMonitorStub.getMonitorState()
-
-					if (!monitorState || !monitorState.isInitialized) {
-						logger.warn('[FleetsDO Watchdog] FleetMonitor not initialized', {
-							fleetId: fleet.fleetId,
-						})
-						const recovered = await this.recoverFleetMonitorSession(fleet.fleetId)
-						if (recovered) {
-							recoveredCount += 1
-						}
-						continue
-					}
-
-					// Check if lastChecked is stale
-					if (monitorState.lastChecked) {
-						const lastCheckedTime = new Date(monitorState.lastChecked).getTime()
-						const ageMs = now - lastCheckedTime
-
-						if (ageMs > staleThreshold) {
-							staleFleets.push({
-								fleetId: fleet.fleetId,
-								lastChecked: new Date(monitorState.lastChecked),
-								ageMs,
-							})
-
-							logger.error('[FleetsDO Watchdog] Stale FleetMonitor detected', {
-								fleetId: fleet.fleetId,
-								lastChecked: monitorState.lastChecked,
-								ageMs,
-								ageSeconds: Math.round(ageMs / 1000),
-								thresholdMs: staleThreshold,
-							})
-
-							const recovered = await this.recoverFleetMonitorSession(fleet.fleetId)
-							if (recovered) {
-								recoveredCount += 1
-							}
-						} else {
-							logger.debug('[FleetsDO Watchdog] FleetMonitor is healthy', {
-								fleetId: fleet.fleetId,
-								lastChecked: monitorState.lastChecked,
-								ageMs,
-								ageSeconds: Math.round(ageMs / 1000),
-							})
-						}
-					} else {
-						logger.warn('[FleetsDO Watchdog] FleetMonitor has no lastChecked timestamp', {
-							fleetId: fleet.fleetId,
-						})
-						const recovered = await this.recoverFleetMonitorSession(fleet.fleetId)
-						if (recovered) {
-							recoveredCount += 1
-						}
-					}
-				} catch (error) {
-					logger.error('[FleetsDO Watchdog] Failed to check FleetMonitor', {
-						fleetId: fleet.fleetId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-				}
-			}
-
-			// Log summary
-			if (staleFleets.length > 0) {
-				logger.error('[FleetsDO Watchdog] Watchdog check completed with stale monitors', {
-					totalChecked: activeFleets.length,
-					staleCount: staleFleets.length,
-					recoveredCount,
-					staleFleets: staleFleets.map((f) => ({
-						fleetId: f.fleetId,
-						ageSeconds: Math.round(f.ageMs / 1000),
-					})),
-				})
-			} else {
-				logger.info('[FleetsDO Watchdog] All FleetMonitors are healthy', {
-					totalChecked: activeFleets.length,
-					recoveredCount,
-				})
-			}
-		} catch (error) {
-			logger.error('[FleetsDO Watchdog] Watchdog check failed', {
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-			})
-		} finally {
-			// Always reschedule the watchdog
-			await this.scheduleNextWatchdog()
-		}
-	}
-
-	/**
-	 * Attempt to self-heal a FleetMonitor by re-initializing it from the active
-	 * tracking session for the fleet.
-	 */
-	private async recoverFleetMonitorSession(fleetId: string): Promise<boolean> {
-		try {
-			const [activeSession] = await this.db
-				.select({
-					id: fleetTrackingSessions.id,
-					characterId: fleetTrackingSessions.characterId,
-				})
-				.from(fleetTrackingSessions)
-				.where(
-					and(
-						eq(fleetTrackingSessions.fleetId, fleetId),
-						eq(fleetTrackingSessions.status, 'active')
-					)
-				)
-				.orderBy(desc(fleetTrackingSessions.startedAt))
-				.limit(1)
-
-			if (!activeSession) {
-				logger.warn('[FleetsDO Watchdog] Cannot recover monitor - no active session', {
-					fleetId,
-				})
-				return false
-			}
-
-			const fleetMonitorStub = getStub<FleetMonitor>(this.env.FLEET_MONITOR, `fleet-${fleetId}`)
-			await fleetMonitorStub.initializeMonitoring(
-				fleetId,
-				activeSession.characterId,
-				activeSession.id,
-				{ force: true }
-			)
-
-			logger.info('[FleetsDO Watchdog] Recovered FleetMonitor via forced re-initialize', {
-				fleetId,
-				sessionId: activeSession.id,
-				characterId: activeSession.characterId,
-			})
-			return true
-		} catch (error) {
-			logger.error('[FleetsDO Watchdog] Failed to recover FleetMonitor', {
-				fleetId,
-				error: error instanceof Error ? error.message : String(error),
-			})
-			return false
-		}
-	}
-
-	/**
-	 * Schedule the next watchdog alarm to run 2 minutes from now
-	 */
-	private async scheduleNextWatchdog(): Promise<void> {
-		const twoMinutes = 2 * 60 * 1000 // 2 minutes in milliseconds
-		const nextAlarmTime = Date.now() + twoMinutes
-
-		await this.state.storage.setAlarm(nextAlarmTime)
-
-		logger.debug('[FleetsDO Watchdog] Next watchdog scheduled', {
-			nextAlarmTime: new Date(nextAlarmTime).toISOString(),
-		})
-	}
-
-	/**
-	 * Start the watchdog (schedules the first alarm)
-	 * Can be called manually or will start automatically
-	 */
-	async startWatchdog(): Promise<void> {
-		logger.info('[FleetsDO Watchdog] Starting watchdog')
-		await this.scheduleNextWatchdog()
-	}
-
-	/**
 	 * Fetch handler for HTTP requests to the Durable Object
 	 */
 	async fetch(request: Request): Promise<Response> {
@@ -3100,17 +2970,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 			return new Response(null, {
 				status: 101,
 				webSocket: client,
-			})
-		}
-
-		// Start watchdog on first access if not already running
-		// This ensures the watchdog starts automatically
-		try {
-			await this.startWatchdog()
-		} catch (error) {
-			// Ignore errors if alarm is already scheduled
-			logger.debug('[FleetsDO] Watchdog may already be running', {
-				error: error instanceof Error ? error.message : String(error),
 			})
 		}
 

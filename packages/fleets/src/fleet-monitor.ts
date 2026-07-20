@@ -34,6 +34,7 @@ export interface FleetMonitorStateRow extends Record<string, string | number | n
 	is_initialized: number
 	last_checked: string | null
 	peak_member_count: number
+	expires_at: string | null
 }
 
 /**
@@ -48,6 +49,7 @@ export interface FleetMonitorState {
 	isInitialized: boolean
 	lastChecked: string | null
 	peakMemberCount: number
+	expiresAt: string | null
 }
 
 /**
@@ -93,7 +95,7 @@ export interface FleetMonitor extends DurableObject {
 	getFleetStatus(): Promise<FleetDetailsResponse | null>
 
 	/**
-	 * Get monitor state (for watchdog checks)
+	 * Get monitor state for diagnostics and liveness inspection.
 	 * @returns Monitor state including lastChecked timestamp, or null if not initialized
 	 */
 	getMonitorState(): Promise<FleetMonitorState | null>

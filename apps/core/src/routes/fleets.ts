@@ -547,7 +547,7 @@ app.delete('/tracking/:sessionId', async (c) => {
 	const session = await fleetsStub.getTrackingSession(sessionId)
 	if (!session) return c.json({ error: 'Session not found' }, 404)
 	if (session.status !== 'active') {
-		return c.json({ error: 'Session is not active' }, 409)
+		return c.json({ ok: true, status: session.status })
 	}
 
 	const { isAdmin } = await resolveTrackingPerms(c)
@@ -569,6 +569,10 @@ app.delete('/tracking/:sessionId', async (c) => {
 			userId: user.id,
 			error: error instanceof Error ? error.message : String(error),
 		})
+		const refreshedSession = await fleetsStub.getTrackingSession(sessionId)
+		if (!refreshedSession || refreshedSession.status !== 'active') {
+			return c.json({ ok: true, status: refreshedSession?.status ?? 'ended' })
+		}
 		return c.json({ error: 'Failed to stop tracking session' }, 500)
 	}
 })

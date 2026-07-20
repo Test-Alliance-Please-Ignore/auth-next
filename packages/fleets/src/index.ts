@@ -161,9 +161,9 @@ export interface Fleets extends DurableObject {
 	/**
 	 * Get fleet cache status from database
 	 * @param fleetId - ESI fleet ID
-	 * @returns Cache status with isActive, notFound, and endedAt, or null if not in cache
+	 * @returns Cache snapshot with notFound markers, or null if not in cache
 	 */
-	getFleetCacheStatus(fleetId: string): Promise<{ isActive: boolean; notFound: boolean; endedAt: Date | null } | null>
+	getFleetCacheStatus(fleetId: string): Promise<{ notFound: boolean; notFoundAt: Date | null; lastChecked: Date } | null>
 
 	/**
 	 * Get fleet registration status (is_registered) with cache-first approach
