@@ -538,7 +538,7 @@ export default function CorporationMembersTable({
 											<Badge variant="special" icon={Heart}>Emeritus</Badge>
 										)}
 										{member.isBlacklisted && (
-											<Badge variant="destructive" icon={ShieldBan}>Blacklisted</Badge>
+											<Badge variant="destructive" icon={ShieldBan}>Blocklisted</Badge>
 										)}
 									</div>
 								</TableCell>

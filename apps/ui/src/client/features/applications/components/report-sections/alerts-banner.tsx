@@ -208,7 +208,7 @@ function LegacyAssociationDetails({
 						<div className="flex flex-wrap items-center gap-2">
 							<span className="font-medium">Legacy User {item.legacyAuthUserId}</span>
 							<Badge variant="secondary">{item.status}</Badge>
-							{hasBlacklistSignal ? <Badge variant="destructive">Blacklist Alert</Badge> : null}
+							{hasBlacklistSignal ? <Badge variant="destructive">Blocklist Alert</Badge> : null}
 						</div>
 						<div className="mt-1 text-xs text-muted-foreground">
 							{characterCount} character(s), {noteCount} note(s), {ipAddressCount} IP address(es)
@@ -242,7 +242,7 @@ function LegacyAssociationDetails({
 						) : null}
 						{alertType === 'legacy-blacklist-association' && matchedTargets.length > 0 ? (
 							<div className="mt-2 space-y-1.5">
-								<div className="text-xs font-semibold text-muted-foreground">Matched Blacklist Items</div>
+								<div className="text-xs font-semibold text-muted-foreground">Matched Blocklist Items</div>
 								<LegacyBlacklistTargetList targets={matchedTargets} alertItemId={item.id} />
 							</div>
 						) : null}

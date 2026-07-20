@@ -100,7 +100,7 @@ function LegacyDataSection({ data }: { data: unknown }) {
 								<h3 className="text-sm font-semibold">Legacy User {item.legacyAuthUserId}</h3>
 								<Badge variant="secondary">{item.status}</Badge>
 								{blacklistSignals.hasAnyBlacklistSignal ? (
-									<Badge variant="destructive">Blacklist Alert</Badge>
+									<Badge variant="destructive">Blocklist Alert</Badge>
 								) : null}
 							</div>
 

@@ -166,7 +166,7 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 			icon: ShieldAlert,
 		},
 		{
-			label: 'Blacklist',
+			label: 'Blocklist',
 			href: '/admin/blacklist',
 			icon: ShieldBan,
 		},

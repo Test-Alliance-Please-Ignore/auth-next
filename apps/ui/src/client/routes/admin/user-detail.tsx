@@ -462,7 +462,7 @@ export default function UserDetailPage() {
 		if (!blacklistReason.trim()) {
 			setMessage({
 				type: 'error',
-				text: 'Please provide a reason for blacklisting',
+				text: 'Please provide a reason for blocklisting',
 			})
 			setTimeout(() => setMessage(null), 3000)
 			return
@@ -474,13 +474,13 @@ export default function UserDetailPage() {
 			setBlacklistReason('')
 			setMessage({
 				type: 'success',
-				text: 'User has been blacklisted successfully',
+				text: 'User has been blocklisted successfully',
 			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to blacklist user',
+				text: error instanceof Error ? error.message : 'Failed to blocklist user',
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -494,13 +494,13 @@ export default function UserDetailPage() {
 			setRemoveBlacklistDialogOpen(false)
 			setMessage({
 				type: 'success',
-				text: 'User has been removed from blacklist',
+				text: 'User has been removed from blocklist',
 			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to remove blacklist',
+				text: error instanceof Error ? error.message : 'Failed to remove blocklist',
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -617,7 +617,7 @@ export default function UserDetailPage() {
 									{activeBlacklist && (
 										<Badge variant="destructive">
 											<ShieldBan className="h-3 w-3 mr-1" />
-											Blacklisted
+											Blocklisted
 										</Badge>
 									)}
 									{user.is_admin ? (
@@ -648,7 +648,7 @@ export default function UserDetailPage() {
 											onClick={() => setRemoveBlacklistDialogOpen(true)}
 											disabled={removeBlacklist.isPending}
 										>
-											Remove from Blacklist
+											Remove from Blocklist
 										</Button>
 									) : (
 										<Button variant="destructive"
@@ -673,7 +673,7 @@ export default function UserDetailPage() {
 														'0 1px 8px rgba(220, 38, 38, 1), 0 1px 3px rgba(248, 113, 113, 0.95)',
 												}}
 											>
-												💩 Blacklist User
+												💩 Blocklist User
 											</span>
 										</Button>
 									)}
@@ -854,7 +854,7 @@ export default function UserDetailPage() {
 										{activeDiscordBlacklist && (
 											<Badge variant="destructive" className="gap-1">
 												<ShieldBan className="h-3 w-3" />
-												Blacklisted
+												Blocklisted
 											</Badge>
 										)}
 									</div>
@@ -867,11 +867,11 @@ export default function UserDetailPage() {
 									<div className="flex items-start gap-2">
 										<ShieldBan className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
 										<div>
-											<p className="text-sm text-destructive font-medium">Discord Account Blacklisted</p>
+											<p className="text-sm text-destructive font-medium">Discord Account Blocklisted</p>
 											<p className="text-sm text-destructive/90 mt-1">
 												This Discord account is blocked from accessing the platform.
 												{activeDiscordBlacklist.isAutoBlacklist && (
-													<span> Auto-blocked due to associated user blacklist.</span>
+													<span> Auto-blocked due to associated user blocklist.</span>
 												)}
 											</p>
 										</div>
@@ -1043,8 +1043,8 @@ export default function UserDetailPage() {
 			{activeBlacklist && (
 				<Card className="border-red-500/20 bg-red-500/5">
 					<CardHeader>
-						<CardTitle className="text-red-500">Blacklist Status</CardTitle>
-						<CardDescription>This user has been blacklisted</CardDescription>
+						<CardTitle className="text-red-500">Blocklist Status</CardTitle>
+						<CardDescription>This user has been blocklisted</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<div className="space-y-4">
@@ -1060,7 +1060,7 @@ export default function UserDetailPage() {
 
 							<div className="grid grid-cols-2 gap-4">
 								<div>
-									<div className="text-sm text-muted-foreground">Blacklisted On</div>
+									<div className="text-sm text-muted-foreground">Blocklisted On</div>
 									<div className="text-sm font-medium">
 										{formatDateTime(activeBlacklist.createdAt)}
 									</div>
@@ -1073,11 +1073,11 @@ export default function UserDetailPage() {
 									<div className="text-sm font-medium">
 										{activeBlacklist.isAutoBlacklist ? (
 											<Badge variant="default" className="bg-orange-500/20 text-orange-500">
-												Auto-Blacklisted
+												Auto-Blocklisted
 											</Badge>
 										) : (
 											<Badge variant="destructive">
-												Manual Blacklist
+												Manual Blocklist
 											</Badge>
 										)}
 									</div>
@@ -1090,7 +1090,7 @@ export default function UserDetailPage() {
 										<AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
 										<div className="space-y-1">
 											<p className="text-sm text-orange-500 font-medium">
-												Automatically Blacklisted
+												Automatically Blocklisted
 											</p>
 											{triggeringEntry ? (
 												<p className="text-sm text-orange-500/90">
@@ -1098,20 +1098,20 @@ export default function UserDetailPage() {
 													<span className="font-medium">
 														{TARGET_TYPE_LABELS[triggeringEntry.targetType]}
 													</span>{' '}
-													blacklist on{' '}
+													blocklist on{' '}
 													<span className="font-mono">
 														{triggeringEntry.targetValue}
 													</span>
 													.{' '}
 													<Link to="/admin/blacklist" className="underline hover:text-orange-400">
-														View blacklist
+														View blocklist
 													</Link>
 												</p>
 											) : (
 												<p className="text-sm text-orange-500/90">
-													This user was automatically blacklisted due to a linked blacklist entry.{' '}
+													This user was automatically blocklisted due to a linked blocklist entry.{' '}
 													<Link to="/admin/blacklist" className="underline hover:text-orange-400">
-														View blacklist
+														View blocklist
 													</Link>
 												</p>
 											)}
@@ -1173,7 +1173,7 @@ export default function UserDetailPage() {
 														{character.isBlacklisted && (
 															<Badge variant="destructive">
 																<ShieldBan className="h-3 w-3 mr-1" />
-																Blacklisted
+																Blocklisted
 															</Badge>
 														)}
 													</div>
@@ -1668,9 +1668,9 @@ export default function UserDetailPage() {
 			<Dialog open={blacklistDialogOpen} onOpenChange={setBlacklistDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Blacklist User</DialogTitle>
+						<DialogTitle>Blocklist User</DialogTitle>
 						<DialogDescription>
-							Blacklist {primaryCharacterName}.
+							Blocklist {primaryCharacterName}.
 							This will immediately disable all services and prevent login. This action can be
 							reversed.
 						</DialogDescription>
@@ -1680,7 +1680,7 @@ export default function UserDetailPage() {
 							<Label htmlFor="blacklist-reason">Reason *</Label>
 							<Textarea
 								id="blacklist-reason"
-								placeholder="Enter the reason for blacklisting this user..."
+								placeholder="Enter the reason for blocklisting this user..."
 								value={blacklistReason}
 								onChange={(e) => setBlacklistReason(e.target.value)}
 								rows={4}
@@ -1703,11 +1703,11 @@ export default function UserDetailPage() {
 						<Button variant="destructive"
 							onClick={handleBlacklistConfirm}
 							loading={createBlacklist.isPending}
-							loadingText="Blacklisting..."
+							loadingText="Blocklisting..."
 							showIcon={false}
 						>
 							<ShieldBan className="h-4 w-4" />
-							Blacklist User
+							Blocklist User
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -1717,16 +1717,16 @@ export default function UserDetailPage() {
 			<Dialog open={removeBlacklistDialogOpen} onOpenChange={setRemoveBlacklistDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Remove from Blacklist</DialogTitle>
+						<DialogTitle>Remove from Blocklist</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to remove{' '}
 							{primaryCharacterName} from the
-							blacklist? They will regain access to all services immediately.
+							blocklist? They will regain access to all services immediately.
 						</DialogDescription>
 					</DialogHeader>
 					{activeBlacklist && (
 						<div className="bg-muted/50 border rounded-lg p-3 my-2">
-							<p className="text-sm text-muted-foreground mb-1">Current blacklist reason:</p>
+							<p className="text-sm text-muted-foreground mb-1">Current blocklist reason:</p>
 							<p className="text-sm">{activeBlacklist.reason}</p>
 						</div>
 					)}
@@ -1744,7 +1744,7 @@ export default function UserDetailPage() {
 							showIcon={false}
 						>
 							<ShieldBan className="h-4 w-4" />
-							Remove from Blacklist
+							Remove from Blocklist
 						</Button>
 					</DialogFooter>
 				</DialogContent>
