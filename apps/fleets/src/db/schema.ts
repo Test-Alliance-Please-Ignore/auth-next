@@ -208,7 +208,6 @@ export const fleetStateCache = pgTable(
 		trackingSessionId: uuid('tracking_session_id').references(() => fleetTrackingSessions.id, {
 			onDelete: 'set null',
 		}),
-		isActive: boolean('is_active').default(true).notNull(),
 		memberCount: integer('member_count').default(0).notNull(),
 		motd: text('motd'),
 		isFreeMove: boolean('is_free_move').default(false).notNull(),
@@ -216,22 +215,20 @@ export const fleetStateCache = pgTable(
 		isVoiceEnabled: boolean('is_voice_enabled').default(false).notNull(),
 		notFound: boolean('not_found').default(false).notNull(),
 		notFoundAt: timestamp('not_found_at'),
-		endedAt: timestamp('ended_at'),
 		lastChecked: timestamp('last_checked').defaultNow().notNull(),
 		createdAt: timestamp('created_at').defaultNow().notNull(),
 		updatedAt: timestamp('updated_at').defaultNow().notNull(),
-	},
-	(table) => ({
-		fleetIdIdx: index('fleet_state_cache_fleet_id_idx').on(table.fleetId),
-		fleetBossIdIdx: index('fleet_state_cache_fleet_boss_id_idx').on(table.fleetBossId),
-		trackingSessionIdIdx: index('fleet_state_cache_tracking_session_id_idx').on(
-			table.trackingSessionId
-		),
-		lastCheckedIdx: index('fleet_state_cache_last_checked_idx').on(table.lastChecked),
-		notFoundIdx: index('fleet_state_cache_not_found_idx').on(table.notFound),
-		endedAtIdx: index('fleet_state_cache_ended_at_idx').on(table.endedAt),
-	})
-)
+		},
+		(table) => ({
+			fleetIdIdx: index('fleet_state_cache_fleet_id_idx').on(table.fleetId),
+			fleetBossIdIdx: index('fleet_state_cache_fleet_boss_id_idx').on(table.fleetBossId),
+			trackingSessionIdIdx: index('fleet_state_cache_tracking_session_id_idx').on(
+				table.trackingSessionId
+			),
+			lastCheckedIdx: index('fleet_state_cache_last_checked_idx').on(table.lastChecked),
+			notFoundIdx: index('fleet_state_cache_not_found_idx').on(table.notFound),
+		})
+	)
 
 /**
  * Fleet summaries table

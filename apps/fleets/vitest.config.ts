@@ -1,20 +1,8 @@
-import { defineWorkersProject } from '@cloudflare/vitest-pool-workers/config'
+import { defineConfig } from 'vitest/config'
 
-export default defineWorkersProject({
+export default defineConfig({
 	test: {
-		poolOptions: {
-			workers: {
-				wrangler: { configPath: `${__dirname}/wrangler.jsonc` },
-				miniflare: {
-					bindings: {
-						ENVIRONMENT: 'VITEST',
-						CORE_API_URL: 'https://pleaseignore.app',
-					},
-					durableObjects: {
-						FLEETS: 'Fleets',
-					},
-				},
-			},
-		},
+		environment: 'node',
+		include: ['src/test/**/*.test.ts'],
 	},
 })

@@ -102,6 +102,7 @@ describe('fleets tracking routes', () => {
 
 	let fleetsStub: {
 		startTrackingSession: ReturnType<typeof vi.fn>
+		stopTrackingSession: ReturnType<typeof vi.fn>
 		getCharacterFleetInformation: ReturnType<typeof vi.fn>
 		getActiveTrackingSessionByFleetId: ReturnType<typeof vi.fn>
 		getLatestTrackingSessionByFleetId: ReturnType<typeof vi.fn>
@@ -132,6 +133,7 @@ describe('fleets tracking routes', () => {
 
 		fleetsStub = {
 			startTrackingSession: vi.fn(),
+			stopTrackingSession: vi.fn(),
 			getCharacterFleetInformation: vi.fn(),
 			getActiveTrackingSessionByFleetId: vi.fn(),
 			getLatestTrackingSessionByFleetId: vi.fn(),
@@ -222,6 +224,79 @@ describe('fleets tracking routes', () => {
 			name: 'Op Fleet',
 			action: 'new',
 		})
+	})
+
+	it('treats already-ended tracking sessions as an idempotent delete', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:create' }] as any)
+		fleetsStub.getTrackingSession.mockResolvedValue({
+			id: 'session-ended',
+			name: 'Ended Fleet',
+			characterId: '1001',
+			currentCommanderCharacterId: '1001',
+			commanderCharacterIds: ['1001'],
+			startedByUserId: 'user-1',
+			fleetId: 'fleet-1',
+			status: 'ended',
+			startedAt: '2026-05-25T10:00:00.000Z',
+			endedAt: '2026-05-25T10:30:00.000Z',
+			endedReason: 'fleet_disbanded',
+			endedByUserId: null,
+			createdAt: '2026-05-25T10:00:00.000Z',
+			updatedAt: '2026-05-25T10:30:00.000Z',
+		} as any)
+		const app = createApp(makeUser())
+
+		const res = await app.request('/api/fleets/tracking/session-ended', { method: 'DELETE' }, env)
+
+		expect(res.status).toBe(200)
+		await expect(res.json()).resolves.toEqual({ ok: true, status: 'ended' })
+		expect(fleetsStub.stopTrackingSession).not.toHaveBeenCalled()
+	})
+
+	it('treats a stop race as success when the session is no longer active after a failure', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:create' }] as any)
+		fleetsStub.getTrackingSession
+			.mockResolvedValueOnce({
+				id: 'session-race',
+				name: 'Race Fleet',
+				characterId: '1001',
+				currentCommanderCharacterId: '1001',
+				commanderCharacterIds: ['1001'],
+				startedByUserId: 'user-1',
+				fleetId: 'fleet-1',
+				status: 'active',
+				startedAt: '2026-05-25T10:00:00.000Z',
+				endedAt: null,
+				endedReason: null,
+				endedByUserId: null,
+				createdAt: '2026-05-25T10:00:00.000Z',
+				updatedAt: '2026-05-25T10:00:00.000Z',
+			} as any)
+			.mockResolvedValueOnce({
+				id: 'session-race',
+				name: 'Race Fleet',
+				characterId: '1001',
+				currentCommanderCharacterId: '1001',
+				commanderCharacterIds: ['1001'],
+				startedByUserId: 'user-1',
+				fleetId: 'fleet-1',
+				status: 'ended',
+				startedAt: '2026-05-25T10:00:00.000Z',
+				endedAt: '2026-05-25T10:30:00.000Z',
+				endedReason: 'fleet_disbanded',
+				endedByUserId: null,
+				createdAt: '2026-05-25T10:00:00.000Z',
+				updatedAt: '2026-05-25T10:30:00.000Z',
+			} as any)
+		fleetsStub.stopTrackingSession.mockRejectedValueOnce(new Error('Failed query'))
+		const app = createApp(makeUser())
+
+		const res = await app.request('/api/fleets/tracking/session-race', { method: 'DELETE' }, env)
+
+		expect(res.status).toBe(200)
+		await expect(res.json()).resolves.toEqual({ ok: true, status: 'ended' })
+		expect(fleetsStub.stopTrackingSession).toHaveBeenCalledTimes(1)
+		expect(fleetsStub.getTrackingSession).toHaveBeenCalledTimes(2)
 	})
 
 	it('takes over an existing tracked fleet when requested', async () => {
