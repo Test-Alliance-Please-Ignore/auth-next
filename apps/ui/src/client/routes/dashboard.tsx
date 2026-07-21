@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { DiscordCard } from '@/components/discord-card'
-import { LegacyCharacterCard } from '@/components/legacy-character-card'
 import { ServicesCard } from '@/components/services-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,7 +12,6 @@ import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { useAuth } from '@/hooks/useAuth'
-import { useLegacyCharacters } from '@/hooks/useLegacyCharacters'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
 import { characterPortraitUrl } from '@/lib/eve-images'
@@ -25,14 +23,10 @@ export default function DashboardPage() {
 	const [searchParams, setSearchParams] = useSearchParams()
 	const [isLinkingCharacter, setIsLinkingCharacter] = useState(false)
 	const [isLinkingLegacyAuth, setIsLinkingLegacyAuth] = useState(false)
-	const [linkingLegacyCharacters, setLinkingLegacyCharacters] = useState<Set<string>>(new Set())
 	const [reauthorizingCharacters, setReauthorizingCharacters] = useState<Set<string>>(new Set())
 	const [refreshingCharacters, setRefreshingCharacters] = useState<Set<string>>(new Set())
 	const [mainCharacterDetails, setMainCharacterDetails] = useState<any>(null)
 	const [creatingInvites, setCreatingInvites] = useState<Set<string>>(new Set())
-
-	// Fetch legacy characters when legacy auth is linked
-	const { data: legacyCharacters } = useLegacyCharacters(user?.legacyAuth?.isLinked ?? false)
 
 	// Calculate the "growth factor" for the legacy card prank (December 1-31)
 	const legacyCardGrowth = useMemo(() => {
@@ -147,32 +141,6 @@ export default function DashboardPage() {
 		} catch (error) {
 			console.error('Failed to start legacy auth linking flow:', error)
 			setIsLinkingLegacyAuth(false)
-			// TODO: Show error toast
-		}
-	}
-
-	const handleLinkLegacyCharacter = async (characterId: string) => {
-		// Prevent multiple linking attempts for the same character
-		if (linkingLegacyCharacters.has(characterId)) return
-
-		setLinkingLegacyCharacters((prev) => new Set(prev).add(characterId))
-
-		try {
-			// Start character linking flow with the specific character ID as a hint
-			const response = await apiClient.post<{ authorizationUrl: string; state: string }>(
-				'/auth/character/start',
-				{ characterId }
-			)
-
-			// Redirect to EVE SSO for character authorization
-			window.location.href = response.authorizationUrl
-		} catch (error) {
-			console.error('Failed to start legacy character linking flow:', error)
-			setLinkingLegacyCharacters((prev) => {
-				const next = new Set(prev)
-				next.delete(characterId)
-				return next
-			})
 			// TODO: Show error toast
 		}
 	}
@@ -633,21 +601,6 @@ export default function DashboardPage() {
 									</CardContent>
 								</Card>
 							))}
-							{/* Legacy characters that need linking */}
-							{legacyCharacters
-								?.filter(
-									(legacy) =>
-										// Only show legacy characters not already linked
-										!user.characters.some((c) => c.characterId === legacy.characterId)
-								)
-								.map((character) => (
-									<LegacyCharacterCard
-										key={`legacy-${character.characterId}`}
-										character={character}
-										onLink={handleLinkLegacyCharacter}
-										isLinking={linkingLegacyCharacters.has(character.characterId)}
-									/>
-								))}
 						</div>
 					</CardContent>
 				</Card>

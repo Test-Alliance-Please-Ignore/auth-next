@@ -788,20 +788,17 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			where: eq(userCharacters.userId, userId),
 		})
 
-		const alliances = await Promise.all(
-			characters.map(async (c) => {
+		const characterAlliances = await Promise.all(
+			characters.map(async (character) => {
 				try {
-					const allianceInfo = await this.getCharacterAllianceInfo(c.characterId)
-					if (!allianceInfo) {
-						return null
-					}
-					return allianceInfo
+					const characterInfo = await this.getCharacterInfo(character.characterId)
+					return characterInfo?.alliance_id ? String(characterInfo.alliance_id) : null
 				} catch (error) {
 					// Same safety rule as corporation resolution: avoid cascading failure
 					// from one invalid character token, while never elevating access.
 					this.logger.warn('Skipping character during alliance resolution', {
 						userId,
-						characterId: c.characterId,
+						characterId: character.characterId,
 						error: error instanceof Error ? error.message : String(error),
 					})
 					return null
@@ -809,7 +806,46 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			})
 		)
 
-		return alliances.filter((a): a is NonNullable<typeof a> => a !== null)
+		const uniqueAllianceIds: string[] = []
+		const seenAllianceIds = new Set<string>()
+		for (const allianceId of characterAlliances) {
+			if (!allianceId || seenAllianceIds.has(allianceId)) {
+				continue
+			}
+			seenAllianceIds.add(allianceId)
+			uniqueAllianceIds.push(allianceId)
+		}
+
+		const allianceNameById = new Map<string, string>()
+		await Promise.all(
+			uniqueAllianceIds.map(async (allianceId) => {
+				try {
+					const allianceName = await this.getAllianceName(allianceId)
+					if (allianceName) {
+						allianceNameById.set(allianceId, allianceName)
+					}
+				} catch (error) {
+					this.logger.warn('Skipping alliance during alliance resolution', {
+						userId,
+						allianceId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				}
+			})
+		)
+
+		return uniqueAllianceIds
+			.map((allianceId) => {
+				const allianceName = allianceNameById.get(allianceId)
+				if (!allianceName) {
+					return null
+				}
+				return {
+					allianceId,
+					allianceName,
+				}
+			})
+			.filter((a): a is NonNullable<typeof a> => a !== null)
 	}
 
 	async getUserDiscordUserId(userId: string): Promise<string | null> {

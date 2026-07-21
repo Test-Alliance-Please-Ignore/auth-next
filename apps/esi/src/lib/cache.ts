@@ -1,4 +1,3 @@
-import { isNull } from 'drizzle-orm'
 import { logger } from '@repo/hono-helpers'
 
 import { createEsiDb, eq } from '../storage'
@@ -154,53 +153,6 @@ export class EsiCache {
 			return null
 		}
 		return Math.max(1, Math.floor(ttlMs / 1000))
-	}
-
-	async purgeLegacyCacheEntries(): Promise<void> {
-		this.logger.info('Purging legacy ESI cache entries without expiry')
-
-		let cursor: string | undefined
-		do {
-			const listing = await this.globalCache.list({
-				prefix: 'esi:',
-				cursor,
-			})
-
-			for (const entry of listing.keys) {
-				try {
-					const raw = await this.globalCache.get<string>(entry.name)
-					if (!raw) {
-						continue
-					}
-
-					const parsed = JSON.parse(raw) as Partial<SerializedCacheEntry<unknown>>
-					if (!parsed.expiresAt) {
-						continue
-					}
-
-					const expiresAt = new Date(parsed.expiresAt)
-					if (!Number.isNaN(expiresAt.getTime())) {
-						continue
-					}
-
-					this.logger.debug('Deleting legacy global cache entry without expiry', {
-						cacheKey: entry.name,
-					})
-					await this.deleteGlobalCache(entry.name)
-				} catch (error) {
-					this.logger.warn('Failed to inspect global cache entry during legacy purge', {
-						cacheKey: entry.name,
-						error: error instanceof Error ? error.message : String(error),
-					})
-					await this.deleteGlobalCache(entry.name)
-				}
-			}
-
-			if (listing.list_complete) {
-				break
-			}
-			cursor = listing.cursor
-		} while (cursor)
 	}
 
 	async getCachedResponse<T>(
