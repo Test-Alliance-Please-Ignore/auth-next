@@ -1,4 +1,3 @@
-import { isNull } from 'drizzle-orm'
 import { logger } from '@repo/hono-helpers'
 
 import { createEsiDb, eq } from '../storage'
@@ -13,6 +12,8 @@ export type CacheScopeContext = {
 	scope: CacheScope
 	scopeId: string
 }
+
+const DEFAULT_GLOBAL_CACHE_TTL_SECONDS = 5 * 60
 
 /** Maximum cache age: 12 hours (in milliseconds) - applies retroactively to all cached data */
 const MAX_CACHE_AGE_MS = 12 * 60 * 60 * 1000
@@ -96,14 +97,6 @@ export class EsiCache {
 			return null
 		}
 
-		if (!cachedResponse.expiresAt) {
-			this.logger.debug('Cached response is missing an expiry. Deleting legacy entry.', {
-				cacheKey,
-			})
-			await this.storage.delete(esiCache).where(eq(esiCache.cacheKey, cacheKey))
-			return null
-		}
-
 		return {
 			data: cachedResponse.data as T,
 			expiresAt: cachedResponse.expiresAt ?? null,
@@ -133,27 +126,9 @@ export class EsiCache {
 			}
 
 			const parsed = JSON.parse(cached) as SerializedCacheEntry<T>
-			if (!parsed.expiresAt) {
-				this.logger.debug('Global cached response is missing an expiry. Deleting legacy entry.', {
-					cacheKey,
-				})
-				await this.deleteGlobalCache(cacheKey)
-				return null
-			}
-
-			const expiresAt = new Date(parsed.expiresAt)
-			if (Number.isNaN(expiresAt.getTime())) {
-				this.logger.debug('Global cached response has an invalid expiry. Deleting legacy entry.', {
-					cacheKey,
-					expiresAt: parsed.expiresAt,
-				})
-				await this.deleteGlobalCache(cacheKey)
-				return null
-			}
-
 			return {
 				data: parsed.data,
-				expiresAt,
+				expiresAt: parsed.expiresAt ? new Date(parsed.expiresAt) : null,
 				etag: parsed.etag,
 				pages: parsed.pages,
 				page: parsed.page,
@@ -171,59 +146,13 @@ export class EsiCache {
 
 	private calculateGlobalTtlSeconds(expiresAt: Date | null): number | null {
 		if (!expiresAt) {
-			return null
+			return DEFAULT_GLOBAL_CACHE_TTL_SECONDS
 		}
 		const ttlMs = expiresAt.getTime() - Date.now()
 		if (ttlMs <= 0) {
 			return null
 		}
 		return Math.max(1, Math.floor(ttlMs / 1000))
-	}
-
-	async purgeLegacyCacheEntries(): Promise<void> {
-		this.logger.info('Purging legacy ESI cache entries without expiry')
-		await this.storage.delete(esiCache).where(isNull(esiCache.expiresAt))
-
-		let cursor: string | undefined
-		do {
-			const listing = await this.globalCache.list({
-				prefix: 'esi:',
-				cursor,
-			})
-
-			for (const entry of listing.keys) {
-				try {
-					const raw = await this.globalCache.get<string>(entry.name)
-					if (!raw) {
-						continue
-					}
-
-					const parsed = JSON.parse(raw) as Partial<SerializedCacheEntry<unknown>>
-					if (parsed.expiresAt) {
-						const expiresAt = new Date(parsed.expiresAt)
-						if (!Number.isNaN(expiresAt.getTime())) {
-							continue
-						}
-					}
-
-					this.logger.debug('Deleting legacy global cache entry without expiry', {
-						cacheKey: entry.name,
-					})
-					await this.deleteGlobalCache(entry.name)
-				} catch (error) {
-					this.logger.warn('Failed to inspect global cache entry during legacy purge', {
-						cacheKey: entry.name,
-						error: error instanceof Error ? error.message : String(error),
-					})
-					await this.deleteGlobalCache(entry.name)
-				}
-			}
-
-			if (listing.list_complete) {
-				break
-			}
-			cursor = listing.cursor
-		} while (cursor)
 	}
 
 	async getCachedResponse<T>(
@@ -317,18 +246,6 @@ export class EsiCache {
 		const cacheKey = this.getCacheKey(scope, path, page)
 		const lastModified = new Date()
 		const persistGlobal = options?.persistGlobal ?? true
-
-		if (!response.expiresAt) {
-			this.logger.warn('Skipping cache write for response without expiry', {
-				cacheKey,
-				scope,
-			})
-			await this.storage.delete(esiCache).where(eq(esiCache.cacheKey, cacheKey))
-			if (persistGlobal) {
-				await this.deleteGlobalCache(cacheKey)
-			}
-			return
-		}
 
 		this.logger.debug('Setting cached response', {
 			cacheKey,

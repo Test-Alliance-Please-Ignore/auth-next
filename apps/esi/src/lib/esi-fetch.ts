@@ -89,10 +89,6 @@ export class EsiFetcher {
 		this.defaultCacheMode = mode
 	}
 
-	async purgeLegacyCacheEntries(): Promise<void> {
-		await this.cache.purgeLegacyCacheEntries()
-	}
-
 	async clearAuthentication(): Promise<void> {
 		this.characterId = null
 		this.cacheScope = null

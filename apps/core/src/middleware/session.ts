@@ -110,6 +110,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 
 			// Attach to context
 			c.set('user', sessionUser)
+			c.set('userProfile', userProfile)
 			c.set('db', db)
 			c.set('eveTokenStore', eveTokenStoreStub)
 

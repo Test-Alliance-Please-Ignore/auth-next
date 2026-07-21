@@ -2,11 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient, type UserPermission } from '@/lib/api'
 
-export interface LegacyCharacter {
-	characterId: string
-	characterName: string
-}
-
 export interface User {
 	id: string
 	mainCharacterId: string
