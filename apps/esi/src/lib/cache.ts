@@ -219,10 +219,10 @@ export class EsiCache {
 				}
 			}
 
-			cursor = listing.cursor
 			if (listing.list_complete) {
 				break
 			}
+			cursor = listing.cursor
 		} while (cursor)
 	}
 
