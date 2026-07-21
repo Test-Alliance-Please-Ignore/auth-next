@@ -928,11 +928,11 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				})
 				assetsSync = await step.do(
 					'sync-assets',
-					{ ...STEP_RETRY_OPTIONS, timeout: '10 minutes' },
+					{ ...STEP_RETRY_OPTIONS, timeout: '20 minutes' },
 					async () => {
 						const result = await runDirectorStepWithFailover({
 							stepName: 'sync-assets',
-							timeout: '10 minutes',
+							timeout: '20 minutes',
 							requiredRoles: ['Director'],
 							run: (directorCharacterId) =>
 								syncAssets(

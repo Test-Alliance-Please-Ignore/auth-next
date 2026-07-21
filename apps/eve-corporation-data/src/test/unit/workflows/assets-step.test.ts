@@ -18,7 +18,7 @@ describe('assets workflow step', () => {
 		const env = {} as any
 		const result = await syncAssets(env, '98000001', '90000001')
 
-		expect(syncAssetsWithDirector).toHaveBeenCalledWith('98000001', '90000001')
+		expect(syncAssetsWithDirector).toHaveBeenCalledWith('98000001', '90000001', undefined)
 		expect(result).toEqual({ assetsCount: 4321 })
 	})
 
