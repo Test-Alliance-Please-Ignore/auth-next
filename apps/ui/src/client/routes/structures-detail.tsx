@@ -1047,6 +1047,8 @@ export default function StructuresDetailPage() {
 											<Badge variant={sovereigntyVulnerabilityState.variant}>
 												{sovereigntyVulnerabilityState.label}
 											</Badge>
+										) : structure.skyhook ? (
+											<SkyhookStateBadge state={structure.skyhook.state} />
 										) : (
 											<StructureStateBadge state={structure.state} />
 										)}

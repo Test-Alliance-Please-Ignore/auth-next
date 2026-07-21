@@ -25,6 +25,7 @@ import {
 	TOKEN_INVALID_ALERT_COOLDOWN_MS,
 	TOKEN_INVALID_ALERT_RETRY_MS,
 	TOKEN_INVALID_ALERT_TTL_MS,
+	shouldRetryTokenInvalidationAlertDelivery,
 } from './lib/token-invalid-alerts'
 import {
 	validateAndSyncCharacterTokenValidityBatchTransitions,
@@ -2737,6 +2738,19 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			const message = this.buildPendingTokenInvalidationMessage(invalidCharacterNames)
 			const result = await discordStub.sendDirectMessage(userId, message)
 			if (!result.success) {
+				if (!shouldRetryTokenInvalidationAlertDelivery(result)) {
+					await this.evictPendingTokenInvalidationAlert(
+						userId,
+						result.error ?? 'fatal Discord delivery failure'
+					)
+					failed++
+					this.logger.warn('[CoreDO] Dropped token invalidation alert due to fatal Discord delivery failure', {
+						userId,
+						error: result.error ?? 'Unknown Discord delivery error',
+					})
+					continue
+				}
+
 				const retryAfterMs =
 					typeof result.retryAfter === 'number' && result.retryAfter > 0
 						? result.retryAfter * 1000

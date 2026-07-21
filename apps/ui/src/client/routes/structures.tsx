@@ -902,7 +902,7 @@ export default function StructuresPage() {
 			return (
 				<TableRow key={structure.structureId}>
 					<TableCell>
-						<StructureStateBadge state={structure.state} />
+						<SkyhookStateBadge state={structure.state} />
 					</TableCell>
 					<TableCell className="font-medium">
 						{structure.regionName ?? structure.regionId ?? '-'}
