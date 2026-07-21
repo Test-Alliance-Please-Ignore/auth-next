@@ -313,7 +313,7 @@ export default function AdminLegacyMigrationsPage() {
 												{crossUserCount > 0 ? (
 													<Badge variant="destructive">Cross-user ({crossUserCount})</Badge>
 												) : null}
-												{hasBlacklist ? <Badge variant="destructive">Blacklist</Badge> : null}
+												{hasBlacklist ? <Badge variant="destructive">Blocklist</Badge> : null}
 												{!hasMultiMatch && crossUserCount === 0 && !hasBlacklist ? (
 													<Badge variant="ghost">None</Badge>
 												) : null}

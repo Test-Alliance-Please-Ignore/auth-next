@@ -57,12 +57,12 @@ const BLACKLIST_CREATE_TARGET_OPTIONS: SelectOption[] = [
 	{
 		value: 'character_id',
 		label: 'Character ID',
-		description: 'Block a specific EVE character and auto-blacklist linked users.',
+		description: 'Block a specific EVE character and auto-blocklist linked users.',
 	},
 	{
 		value: 'character_name',
 		label: 'Character Name',
-		description: 'Block a character name and auto-blacklist currently linked users.',
+		description: 'Block a character name and auto-blocklist currently linked users.',
 	},
 	{
 		value: 'discord_id',
@@ -83,12 +83,12 @@ const BLACKLIST_CREATE_FIELD_CONFIG: Record<
 	character_id: {
 		label: 'Character ID',
 		placeholder: 'Enter EVE character ID',
-		helperText: 'This will also auto-blacklist users currently linked to that character.',
+		helperText: 'This will also auto-blocklist users currently linked to that character.',
 	},
 	character_name: {
 		label: 'Character Name',
 		placeholder: 'Enter EVE character name',
-		helperText: 'This will auto-blacklist users currently linked to that character name.',
+		helperText: 'This will auto-blocklist users currently linked to that character name.',
 	},
 	discord_id: {
 		label: 'Discord ID',
@@ -98,7 +98,7 @@ const BLACKLIST_CREATE_FIELD_CONFIG: Record<
 }
 
 export default function BlacklistPage() {
-	usePageTitle('Blacklist Management')
+	usePageTitle('Blocklist Management')
 
 	const queryClient = useQueryClient()
 
@@ -200,19 +200,19 @@ export default function BlacklistPage() {
 			setAddDialogOpen(false)
 			resetAddForm()
 
-			let successMessage = `${TARGET_TYPE_LABELS[targetType]} blacklisted successfully.`
+			let successMessage = `${TARGET_TYPE_LABELS[targetType]} blocklisted successfully.`
 			if (targetType === 'user') {
 				const autoBlacklisted = result as {
 					autoBlacklisted: { characters: string[]; users: string[]; totalCount: number }
 				}
 				const cascadeMsg =
 					autoBlacklisted.autoBlacklisted.totalCount > 0
-						? ` Auto-blacklisted ${autoBlacklisted.autoBlacklisted.characters.length} character(s) and ${autoBlacklisted.autoBlacklisted.users.length} user(s).`
+						? ` Auto-blocklisted ${autoBlacklisted.autoBlacklisted.characters.length} character(s) and ${autoBlacklisted.autoBlacklisted.users.length} user(s).`
 						: ''
 				successMessage += cascadeMsg
 			} else if (targetType === 'character_id' || targetType === 'character_name') {
 				const characterResult = result as { autoBlacklistedCount: number }
-				successMessage += ` ${characterResult.autoBlacklistedCount} user(s) auto-blacklisted.`
+				successMessage += ` ${characterResult.autoBlacklistedCount} user(s) auto-blocklisted.`
 			}
 
 			setMessage({ type: 'success', text: successMessage })
@@ -221,7 +221,7 @@ export default function BlacklistPage() {
 		onError: (error: any) => {
 			setMessage({
 				type: 'error',
-				text: error.message || 'Failed to create blacklist entry',
+				text: error.message || 'Failed to create blocklist entry',
 			})
 			setTimeout(() => setMessage(null), 5000)
 		},
@@ -236,15 +236,15 @@ export default function BlacklistPage() {
 			setSelectedEntry(null)
 			const cascadeMsg =
 				result.removedCount > 1
-					? ` Also removed ${result.removedCount - 1} triggered blacklist(s).`
+					? ` Also removed ${result.removedCount - 1} triggered blocklist(s).`
 					: ''
-			setMessage({ type: 'success', text: `Blacklist entry removed successfully.${cascadeMsg}` })
+			setMessage({ type: 'success', text: `Blocklist entry removed successfully.${cascadeMsg}` })
 			setTimeout(() => setMessage(null), 5000)
 		},
 		onError: (error: any) => {
 			setMessage({
 				type: 'error',
-				text: error.message || 'Failed to remove blacklist entry',
+				text: error.message || 'Failed to remove blocklist entry',
 			})
 			setTimeout(() => setMessage(null), 5000)
 		},
@@ -306,14 +306,14 @@ export default function BlacklistPage() {
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-3xl font-bold gradient-text">Blacklist Management</h1>
+					<h1 className="text-3xl font-bold gradient-text">Blocklist Management</h1>
 					<p className="text-muted-foreground mt-1">
-						Manage global blacklist for users and characters
+						Manage global blocklist for users and characters
 					</p>
 				</div>
 				<Button onClick={() => setAddDialogOpen(true)}>
 					<Plus className="h-4 w-4" />
-					Add to Blacklist
+					Add to Blocklist
 				</Button>
 			</div>
 
@@ -379,7 +379,7 @@ export default function BlacklistPage() {
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor="autoBlacklist">Auto-Blacklist</Label>
+							<Label htmlFor="autoBlacklist">Auto-Blocklist</Label>
 							<Select
 								value={autoBlacklistFilter}
 								onValueChange={(v) => setAutoBlacklistFilter(v as 'all' | 'true' | 'false')}
@@ -422,7 +422,7 @@ export default function BlacklistPage() {
 				<CardHeader>
 					<div className="space-y-4">
 						<div>
-							<CardTitle>Blacklist Entries</CardTitle>
+							<CardTitle>Blocklist Entries</CardTitle>
 							<CardDescription>
 								{isLoading ? (
 									<Skeleton className="h-4 w-32" />
@@ -450,19 +450,19 @@ export default function BlacklistPage() {
 					) : error ? (
 						<div className="flex flex-col items-center justify-center py-8 text-center">
 							<AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-							<h3 className="text-lg font-semibold">Error Loading Blacklist</h3>
+							<h3 className="text-lg font-semibold">Error Loading Blocklist</h3>
 							<p className="text-muted-foreground mt-1">
-								{error instanceof Error ? error.message : 'Failed to load blacklist entries'}
+								{error instanceof Error ? error.message : 'Failed to load blocklist entries'}
 							</p>
 						</div>
 					) : filteredData.length === 0 ? (
 						<div className="flex flex-col items-center justify-center py-8 text-center">
 							<ShieldBan className="h-12 w-12 text-muted-foreground mb-4" />
-							<h3 className="text-lg font-semibold">No Blacklist Entries</h3>
+							<h3 className="text-lg font-semibold">No Blocklist Entries</h3>
 							<p className="text-muted-foreground mt-1">
 								{hasActiveFilters
 									? 'No entries match your filters'
-									: 'No users or characters have been blacklisted yet'}
+									: 'No users or characters have been blocklisted yet'}
 							</p>
 							{!hasActiveFilters && (
 								<Button className="mt-4" onClick={() => setAddDialogOpen(true)}>
@@ -584,7 +584,7 @@ export default function BlacklistPage() {
 			>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Add to Blacklist</DialogTitle>
+						<DialogTitle>Add to Blocklist</DialogTitle>
 						<DialogDescription>
 							Block a user account, character, or Discord account from accessing the platform
 						</DialogDescription>
@@ -623,7 +623,7 @@ export default function BlacklistPage() {
 								<Label htmlFor="reason">Reason</Label>
 								<Textarea
 									id="reason"
-									placeholder="Explain why this user/character is being blacklisted"
+									placeholder="Explain why this user/character is being blocklisted"
 									value={formData.reason}
 									onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
 									rows={3}
@@ -647,7 +647,7 @@ export default function BlacklistPage() {
 								loading={createBlacklist.isPending}
 								loadingText="Adding..."
 							>
-								Add to Blacklist
+								Add to Blocklist
 							</Button>
 						</DialogFooter>
 					</form>
@@ -658,14 +658,14 @@ export default function BlacklistPage() {
 			<Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Remove from Blacklist</DialogTitle>
+						<DialogTitle>Remove from Blocklist</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to remove this{' '}
-					{selectedEntry ? TARGET_TYPE_LABELS[selectedEntry.targetType] : ''} from the blacklist?
+					{selectedEntry ? TARGET_TYPE_LABELS[selectedEntry.targetType] : ''} from the blocklist?
 							{selectedEntry?.isAutoBlacklist && (
 								<span className="block mt-2 text-orange-500">
-									Warning: This is an auto-blacklist entry. The user may still be blocked if the
-									triggering character is still blacklisted.
+									Warning: This is an auto-blocklist entry. The user may still be blocked if the
+									triggering character is still blocklisted.
 								</span>
 							)}
 						</DialogDescription>
@@ -673,7 +673,7 @@ export default function BlacklistPage() {
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
 						<Button variant="destructive" onClick={handleDelete} loading={removeBlacklist.isPending}>
-							Remove from Blacklist
+							Remove from Blocklist
 						</Button>
 					</DialogFooter>
 				</DialogContent>

@@ -116,7 +116,7 @@ export function BlacklistHighlight({
 		>
 			<div className="space-y-2 text-xs">
 				<div className="font-semibold uppercase tracking-wide text-muted-foreground">
-					Blacklist context
+					Blocklist context
 				</div>
 				{contexts.length > 0 ? (
 					<ul className="space-y-1">

@@ -96,7 +96,7 @@ export function EmeritusConfirmationDialog({
 								<li>This status is designed for characters whose owners have passed away</li>
 								<li>
 									<strong>Important:</strong> If the character logs in (in-game or to the app), they
-									should be immediately blacklisted
+									should be immediately blocklisted
 								</li>
 							</ul>
 						</div>

@@ -578,7 +578,7 @@ export default function AdminLegacyMigrationDetailPage() {
 									{item.legacyAuthUserId}
 								</Badge>
 								<Badge variant={accountStatusVariant(item.status)}>{item.status}</Badge>
-								{conflictSummary.hasBlacklist ? <Badge variant="destructive">Blacklist</Badge> : null}
+								{conflictSummary.hasBlacklist ? <Badge variant="destructive">Blocklist</Badge> : null}
 								{conflictSummary.multiMatch ? <Badge variant="warning">Multi-match</Badge> : null}
 								{conflictSummary.crossUserCount > 0 ? (
 									<Badge variant="destructive">Cross-user ({conflictSummary.crossUserCount})</Badge>
@@ -589,16 +589,16 @@ export default function AdminLegacyMigrationDetailPage() {
 							{blacklistAlerts.hasAnyBlacklistSignal ? (
 								<Card className="border-destructive/60">
 									<CardHeader>
-										<CardTitle className="text-destructive">Blacklist Alerts</CardTitle>
+										<CardTitle className="text-destructive">Blocklist Alerts</CardTitle>
 									</CardHeader>
 									<CardContent className="space-y-2">
-										{blacklistAlerts.modernUserBlacklisted ? <Badge variant="destructive">Modern user is blacklisted</Badge> : null}
+										{blacklistAlerts.modernUserBlacklisted ? <Badge variant="destructive">Modern user is blocklisted</Badge> : null}
 										{blacklistAlerts.discordMatches.length > 0 ? (
-											<Badge variant="destructive">Discord ID blacklist match ({blacklistAlerts.discordMatches.length})</Badge>
+											<Badge variant="destructive">Discord ID blocklist match ({blacklistAlerts.discordMatches.length})</Badge>
 										) : null}
 										{blacklistAlerts.ipAssociatedMatches.length > 0 ? (
 											<Badge variant="destructive">
-												IP-associated blacklist matches ({blacklistAlerts.ipAssociatedMatches.length})
+												IP-associated blocklist matches ({blacklistAlerts.ipAssociatedMatches.length})
 											</Badge>
 										) : null}
 										{blacklistAlerts.matches.map((match) => (
@@ -810,7 +810,7 @@ export default function AdminLegacyMigrationDetailPage() {
 												}))
 											}
 										/>
-										<span className="text-sm">Apply blacklist to user</span>
+										<span className="text-sm">Apply blocklist to user</span>
 									</label>
 								) : null}
 								<label className="flex items-center gap-2 cursor-pointer">

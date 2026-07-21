@@ -201,7 +201,7 @@ export function ProfileCharactersSection({
 												)}
 												{character.isBlacklisted && (
 													<Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
-														Blacklisted
+														Blocklisted
 													</Badge>
 												)}
 											</>

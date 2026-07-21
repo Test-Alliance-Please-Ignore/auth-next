@@ -491,7 +491,7 @@ export default function HrMemberProfile() {
 									{account.hasBlacklisted && (
 										<Badge variant="destructive" className="gap-1">
 											<ShieldAlert className="h-3 w-3" />
-											Blacklisted
+											Blocklisted
 										</Badge>
 									)}
 								</div>
