@@ -3061,6 +3061,19 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		})
 	}
 
+	async clearSharedSovereigntySystems(): Promise<void> {
+		await this.state.storage.transaction(async (txn) => {
+			const existing = await txn.list<EsiSovereigntySystem>({
+				prefix: SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX,
+			})
+			if (existing.size > 0) {
+				await txn.delete([...existing.keys()])
+			}
+			await txn.delete(SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY)
+			await txn.delete(SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_KEY)
+		})
+	}
+
 	async acquireSharedSovereigntySystemsRefreshLease(
 		leaseSeconds = SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_SECONDS
 	): Promise<string | null> {

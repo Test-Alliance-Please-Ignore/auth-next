@@ -305,7 +305,8 @@ export async function fetchSovereigntySystems(
 	}
 
 	const response = await tokenStore.fetchPublicEsi<RawSovereigntySystemsResponse>(
-		'/sovereignty/systems'
+		'/sovereignty/systems',
+		{ cacheMode: 'no-store' }
 	)
 
 	return response.data.solar_systems.map((system) => {

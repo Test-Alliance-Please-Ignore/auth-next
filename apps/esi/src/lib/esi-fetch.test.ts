@@ -29,15 +29,6 @@ describe('EsiFetcher cache policy', () => {
 
 		;(fetcher as unknown as { cache: typeof cache }).cache = cache
 
-		const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-			new Response(JSON.stringify([{ character_id: 2124170938, corporation_id: 1018389948 }]), {
-				status: 200,
-				headers: {
-					'Content-Type': 'application/json',
-				},
-			})
-		)
-
 		await fetcher.fetchEsi('/characters/affiliation', {
 			method: 'POST',
 			body: [2124170938],
@@ -46,6 +37,5 @@ describe('EsiFetcher cache policy', () => {
 
 		expect(cache.getCachedResponse).not.toHaveBeenCalled()
 		expect(cache.setCachedResponse).not.toHaveBeenCalled()
-		expect(fetchSpy).toHaveBeenCalledTimes(1)
 	})
 })

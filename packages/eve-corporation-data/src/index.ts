@@ -1315,6 +1315,11 @@ export interface EveCorporationData {
 	storeSharedSovereigntySystems(systems: EsiSovereigntySystem[]): Promise<void>
 
 	/**
+	 * Remove the shared sovereignty system snapshot before rebuilding it.
+	 */
+	clearSharedSovereigntySystems(): Promise<void>
+
+	/**
 	 * Acquire a short-lived refresh lease for the shared sovereignty snapshot.
 	 * Returns a token when acquired, or null when another refresh is already in progress.
 	 */

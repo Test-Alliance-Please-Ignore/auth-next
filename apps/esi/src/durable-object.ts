@@ -226,6 +226,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 		state.blockConcurrencyWhile(async () => {
 			await runEsiMigrations(this.storage)
+			await this.esiFetcher.purgeLegacyCacheEntries()
 		})
 	}
 

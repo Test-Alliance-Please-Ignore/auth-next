@@ -203,7 +203,7 @@ function getSovereigntyVulnerabilityState(
 	const end = new Date(sovereignty.vulnerabilityWindowEnd).getTime()
 	const now = Date.now()
 	if (Number.isFinite(start) && Number.isFinite(end) && now >= start && now <= end) {
-		return { label: 'Vulnerable', variant: 'warning' }
+		return { label: 'Vulnerable', variant: 'success' }
 	}
 
 	return { label: 'Invulnerable', variant: 'success' }
@@ -1054,7 +1054,13 @@ export default function StructuresDetailPage() {
 								</div>
 								<div>
 									<div className="text-muted-foreground">
-										{hasSovereigntySummary ? 'Theft Window' : isReinforced ? 'Reinforced until' : 'Next State'}
+										{hasSovereigntySummary ? (
+											'Theft Window'
+										) : isReinforced ? (
+											<Badge variant="destructive">Reinforced until</Badge>
+										) : (
+											'Next State'
+										)}
 									</div>
 									<div className="font-medium">
 										{hasSovereigntySummary ? (
