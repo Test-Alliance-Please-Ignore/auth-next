@@ -101,4 +101,51 @@ describe('syncAssetsPaged', () => {
 		expect(onProgress).toHaveBeenCalledWith({ page: 1, totalPages: 1, totalAssets: 2 })
 		expect(result).toEqual({ assetsCount: 2 })
 	})
+
+	it('deduplicates duplicate asset rows within a page by item id before storing', async () => {
+		const fetchPage = vi.fn().mockResolvedValue({
+			data: [
+				{
+					item_id: 42,
+					is_singleton: false,
+					location_flag: 'Hangar',
+					location_id: 6001,
+					location_type: 'station',
+					quantity: 1,
+					type_id: 34,
+				},
+				{
+					item_id: 42,
+					is_singleton: true,
+					location_flag: 'CorpSAG2',
+					location_id: 6002,
+					location_type: 'station',
+					quantity: 7,
+					type_id: 35,
+				},
+			],
+			pages: 1,
+		})
+		const storeAssets = vi.fn().mockResolvedValue(undefined)
+
+		const result = await syncAssetsPaged({
+			fetchPage,
+			storeAssets,
+		})
+
+		expect(storeAssets).toHaveBeenCalledTimes(1)
+		expect(storeAssets).toHaveBeenCalledWith([
+			{
+				item_id: '42',
+				is_singleton: true,
+				location_flag: 'CorpSAG2',
+				location_id: '6002',
+				location_type: 'station',
+				quantity: 7,
+				type_id: '35',
+				is_blueprint_copy: undefined,
+			},
+		])
+		expect(result).toEqual({ assetsCount: 1 })
+	})
 })

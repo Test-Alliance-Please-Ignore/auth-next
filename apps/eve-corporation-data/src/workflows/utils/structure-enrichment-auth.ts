@@ -4,6 +4,18 @@ const STRUCTURE_ENRICHMENT_SCOPE_401_PATH_MARKERS = [
 	'/structures/mercenary-dens',
 ] as const
 
+export type StructureEnrichmentSyncTarget = 'sovereignty-hubs' | 'skyhooks'
+
+export class StructureEnrichmentScopeMismatchError extends Error {
+	readonly target: StructureEnrichmentSyncTarget
+
+	constructor(target: StructureEnrichmentSyncTarget, message: string) {
+		super(message)
+		this.name = 'StructureEnrichmentScopeMismatchError'
+		this.target = target
+	}
+}
+
 function parseEsiErrorMetadata(message: string): Record<string, unknown> | null {
 	const marker = ' | metadata='
 	const idx = message.lastIndexOf(marker)
@@ -37,4 +49,20 @@ export function shouldSuppressDirectorUnhealthyOnStructureEnrichmentAuthFailure(
 
 	const path = typeof metadata.path === 'string' ? metadata.path : ''
 	return STRUCTURE_ENRICHMENT_SCOPE_401_PATH_MARKERS.some((marker) => path.includes(marker))
+}
+
+export function createStructureEnrichmentScopeMismatchError(
+	target: StructureEnrichmentSyncTarget
+): StructureEnrichmentScopeMismatchError {
+	const label = target === 'sovereignty-hubs' ? 'Sovereignty hub' : 'Skyhook'
+	return new StructureEnrichmentScopeMismatchError(
+		target,
+		`${label} enrichment requires updated director scopes.`
+	)
+}
+
+export function isStructureEnrichmentScopeMismatchError(
+	error: unknown
+): error is StructureEnrichmentScopeMismatchError {
+	return error instanceof StructureEnrichmentScopeMismatchError
 }

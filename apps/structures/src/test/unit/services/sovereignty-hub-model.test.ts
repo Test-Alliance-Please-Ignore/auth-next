@@ -274,6 +274,190 @@ describe('sovereignty hub model', () => {
 		}
 	})
 
+	it('marks sovereignty hub snapshots as warning after 12 hours and error after 24 hours', async () => {
+		const db = makeDb()
+		mocks.getStubMock.mockReturnValue(db.universeStub)
+		const now = new Date('2026-07-21T12:00:00Z').getTime()
+		const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now)
+
+		const makeRows = (lastSyncedAt: Date) => [
+			{
+				structureId: 'hub-1',
+				corporationId: 'corp-1',
+				systemId: '30000142',
+				systemName: 'Jita',
+				name: 'Jita Hub',
+				typeId: '32458',
+				fuelAccessListId: null,
+				controllerAllianceId: 'alliance-1',
+				reagentBayLastUpdated: lastSyncedAt,
+				reagentBay: {
+					lastUpdated: lastSyncedAt.toISOString(),
+					reagents: [],
+				},
+				resources: {
+					power: { allocated: 100, available: 200 },
+					workforce: { allocated: 300, available: 400 },
+				},
+				upgrades: [],
+				vulnerabilityWindowStart: null,
+				vulnerabilityWindowEnd: null,
+				workforceTransport: {
+					configuration: { mode: 'unknown', systems: [] },
+					state: { mode: 'unknown', systems: [] },
+				},
+				sourceSyncAt: lastSyncedAt,
+				lastSyncedAt,
+				updatedAt: lastSyncedAt,
+			},
+		]
+
+		const makeSystems = (lastSyncedAt: Date) => [
+			{
+				systemId: '30000142',
+				systemName: 'Jita',
+				corporationId: 'corp-1',
+				claimType: 'alliance',
+				allianceId: 'alliance-1',
+				corporationClaimantId: null,
+				factionId: null,
+				claimedSince: new Date('2026-07-12T18:00:00Z'),
+				sovereigntyHubStructureId: 'hub-1',
+				isCapitalSystem: false,
+				vulnerabilityWindowStart: null,
+				vulnerabilityWindowEnd: null,
+				activityDefenseMultiplier: '1.2',
+				militaryLevel: 2,
+				industrialLevel: 3,
+				strategicLevel: 4,
+				sourceSyncAt: lastSyncedAt,
+				lastSyncedAt,
+				updatedAt: lastSyncedAt,
+			},
+		]
+
+		try {
+			db.query.structureSovereigntyHubs.findMany.mockResolvedValue(makeRows(new Date(now - 13 * 60 * 60 * 1000)))
+			db.query.structureSovereigntySystems.findMany.mockResolvedValue(
+				makeSystems(new Date(now - 13 * 60 * 60 * 1000))
+			)
+
+			const warningResult = await listSovereigntyStructures(
+				{
+					UNIVERSE: {} as never,
+				} as never,
+				db as never,
+				{
+					id: 'user-1',
+					is_admin: true,
+					roles: [],
+				}
+			)
+
+			expect(warningResult.items[0]?.syncStatus).toBe('warning')
+
+			db.query.structureSovereigntyHubs.findMany.mockResolvedValue(makeRows(new Date(now - 25 * 60 * 60 * 1000)))
+			db.query.structureSovereigntySystems.findMany.mockResolvedValue(
+				makeSystems(new Date(now - 25 * 60 * 60 * 1000))
+			)
+
+			const errorResult = await listSovereigntyStructures(
+				{
+					UNIVERSE: {} as never,
+				} as never,
+				db as never,
+				{
+					id: 'user-1',
+					is_admin: true,
+					roles: [],
+				}
+			)
+
+			expect(errorResult.items[0]?.syncStatus).toBe('error')
+		} finally {
+			nowSpy.mockRestore()
+		}
+	})
+
+	it('prefers an explicit sync error over freshness when the hub snapshot records a failure', async () => {
+		const db = makeDb()
+		mocks.getStubMock.mockReturnValue(db.universeStub)
+
+		db.query.structureSovereigntyHubs.findMany.mockResolvedValue([
+			{
+				structureId: 'hub-1',
+				corporationId: 'corp-1',
+				systemId: '30000142',
+				systemName: 'Jita',
+				name: 'Jita Hub',
+				typeId: '32458',
+				fuelAccessListId: null,
+				controllerAllianceId: 'alliance-1',
+				reagentBayLastUpdated: new Date('2026-07-12T19:36:46.834Z'),
+				reagentBay: {
+					lastUpdated: '2026-07-12T19:36:46.834Z',
+					reagents: [],
+				},
+				resources: {
+					power: { allocated: 100, available: 200 },
+					workforce: { allocated: 300, available: 400 },
+				},
+				upgrades: [],
+				vulnerabilityWindowStart: null,
+				vulnerabilityWindowEnd: null,
+				workforceTransport: {
+					configuration: { mode: 'unknown', systems: [] },
+					state: { mode: 'unknown', systems: [] },
+				},
+				syncStatus: 'error',
+				syncFailureReason: 'Sovereignty hub enrichment requires updated director scopes.',
+				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+		])
+		db.query.structureSovereigntySystems.findMany.mockResolvedValue([
+			{
+				systemId: '30000142',
+				systemName: 'Jita',
+				corporationId: 'corp-1',
+				claimType: 'alliance',
+				allianceId: 'alliance-1',
+				corporationClaimantId: null,
+				factionId: null,
+				claimedSince: new Date('2026-07-12T18:00:00Z'),
+				sovereigntyHubStructureId: 'hub-1',
+				isCapitalSystem: false,
+				vulnerabilityWindowStart: null,
+				vulnerabilityWindowEnd: null,
+				activityDefenseMultiplier: '1.2',
+				militaryLevel: 2,
+				industrialLevel: 3,
+				strategicLevel: 4,
+				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+		])
+
+		const result = await listSovereigntyStructures(
+			{
+				UNIVERSE: {} as never,
+			} as never,
+			db as never,
+			{
+				id: 'user-1',
+				is_admin: true,
+				roles: [],
+			}
+		)
+
+		expect(result.items[0]?.syncStatus).toBe('error')
+		expect(result.items[0]?.syncFailureReason).toBe(
+			'Sovereignty hub enrichment requires updated director scopes.'
+		)
+	})
+
 	it('filters sovereignty hubs by region using universe geography', async () => {
 		const db = makeDb()
 		mocks.getStubMock.mockReturnValue(db.universeStub)

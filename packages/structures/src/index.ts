@@ -219,6 +219,9 @@ export interface StructureSovereigntyTransportState {
 
 export type StructureSyncStatus = 'ok' | 'warning' | 'error'
 
+export const STRUCTURE_SYNC_WARNING_STALE_MS = 12 * 60 * 60 * 1000
+export const STRUCTURE_SYNC_ERROR_STALE_MS = 24 * 60 * 60 * 1000
+
 export interface StructureIdentity {
 	structureId: string
 	corporationId: string

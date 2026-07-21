@@ -14,7 +14,12 @@ import {
 } from '@repo/groups'
 import { logger } from '@repo/hono-helpers'
 import { summarizeInventoryRows } from '@repo/inventory-display'
-import { getStructureTabForTypeId, isReinforcedStructureState } from '@repo/structures'
+import {
+	getStructureTabForTypeId,
+	isReinforcedStructureState,
+	STRUCTURE_SYNC_ERROR_STALE_MS,
+	STRUCTURE_SYNC_WARNING_STALE_MS,
+} from '@repo/structures'
 import {
 	structureMoonDrills,
 	structureMoonGeographies,
@@ -2297,7 +2302,10 @@ function emptyStructureListSummary(): StructureListSummary {
 async function buildStructureSummary(
 	db: DbClient<DbSchema>,
 	items: Array<
-		Pick<StructureFilterableItemBase, 'state' | 'lowPower' | 'lowPowerAllowed' | 'fuelAmount' | 'fuelExpires'>
+		Pick<
+			StructureFilterableItemBase,
+			'structureId' | 'state' | 'lowPower' | 'lowPowerAllowed' | 'fuelAmount' | 'fuelExpires'
+		>
 	>,
 	moduleConfig: Pick<
 		StructureModuleConfigResult,
@@ -2907,7 +2915,14 @@ export async function listMoonDrillStructures(
 }
 
 function getSnapshotSyncStatus(lastSyncedAt: Date | null | undefined): 'ok' | 'warning' | 'error' {
-	return lastSyncedAt ? 'ok' : 'warning'
+	if (!lastSyncedAt) {
+		return 'warning'
+	}
+
+	const ageMs = Math.max(0, Date.now() - lastSyncedAt.getTime())
+	if (ageMs >= STRUCTURE_SYNC_ERROR_STALE_MS) return 'error'
+	if (ageMs >= STRUCTURE_SYNC_WARNING_STALE_MS) return 'warning'
+	return 'ok'
 }
 
 function buildStructureRowIdentity(
@@ -2951,6 +2966,14 @@ function buildSovereigntyListItem(input: {
 	} = buildStructureListItem(context)
 
 	const hubSummary = hubRow ? summarizeStructureSovereigntyHub(hubRow) : null
+	const explicitSyncFailure = hubRow?.syncStatus === 'error'
+		? (hubRow.syncFailureReason ?? 'Sovereignty hub sync failed.')
+		: null
+	const syncStatus = explicitSyncFailure
+		? 'error'
+		: hasHubSnapshot
+			? getSnapshotSyncStatus(lastSyncedAt)
+			: 'warning'
 	const structureIdentity = buildStructureRowIdentity(
 		structureRow.corporationId,
 		corporationName,
@@ -3002,14 +3025,16 @@ function buildSovereigntyListItem(input: {
 		resourceWorkforceAllocated: hubSummary?.resourceWorkforceAllocated ?? 0,
 		resourceWorkforceAvailable: hubSummary?.resourceWorkforceAvailable ?? 0,
 		upgradeCount: hubSummary?.upgradeCount ?? 0,
-			syncStatus: hasHubSnapshot ? getSnapshotSyncStatus(lastSyncedAt) : 'warning',
-			syncFailureReason: hasHubSnapshot
+		syncStatus,
+		syncFailureReason: explicitSyncFailure
+			? explicitSyncFailure
+			: hasHubSnapshot
 				? null
 				: 'Sovereignty hub snapshot has not been ingested yet for this structure.',
-			lastSyncedAt: toIso(lastSyncedAt),
-			updatedAt: sourceUpdatedAt.toISOString(),
-		}
+		lastSyncedAt: toIso(lastSyncedAt),
+		updatedAt: sourceUpdatedAt.toISOString(),
 	}
+}
 
 function buildSkyhookListItem(input: {
 	context: VisibleStructureContext
@@ -3050,6 +3075,14 @@ function buildSkyhookListItem(input: {
 				skyhookRow.reinforcementTimerEnd ? skyhookRow.reinforcementTimerEnd.toISOString() : null
 			)
 		: 'invulnerable'
+	const explicitSyncFailure = skyhookRow?.syncStatus === 'error'
+		? (skyhookRow.syncFailureReason ?? 'Skyhook sync failed.')
+		: null
+	const syncStatus = explicitSyncFailure
+		? 'error'
+		: hasSkyhookSnapshot
+			? getSnapshotSyncStatus(skyhookRow.lastSyncedAt)
+			: 'warning'
 
 	return {
 		...structureBase,
@@ -3108,10 +3141,12 @@ function buildSkyhookListItem(input: {
 		becomesRaidableAt: toIso(skyhookRow?.becomesRaidableAt ?? null),
 		vulnerableAt: toIso(skyhookRow?.vulnerableAt ?? null),
 		state: normalizedState,
-		syncStatus: hasSkyhookSnapshot ? getSnapshotSyncStatus(skyhookRow.lastSyncedAt) : 'warning',
-		syncFailureReason: hasSkyhookSnapshot
-			? null
-			: 'Skyhook snapshot has not been ingested yet for this structure.',
+		syncStatus,
+		syncFailureReason: explicitSyncFailure
+			? explicitSyncFailure
+			: hasSkyhookSnapshot
+				? null
+				: 'Skyhook snapshot has not been ingested yet for this structure.',
 		lastSyncedAt: toIso(skyhookRow?.lastSyncedAt ?? structureRow.lastSyncedAt),
 		updatedAt: (skyhookRow?.updatedAt ?? structureRow.updatedAt).toISOString(),
 	}
@@ -3196,13 +3231,7 @@ export async function listSovereigntyStructures(
 				hasPreviousPage: false,
 			},
 			filterOptions: emptySovereigntyFilterOptions(),
-			summary: {
-				total: 0,
-				vulnerable: 0,
-				invulnerable: 0,
-				reinforced: 0,
-				unknown: 0,
-			},
+			summary: emptySovereigntySummary(),
 		}
 	}
 
@@ -3411,12 +3440,7 @@ export async function listMiningCitadelStructures(
 				hasPreviousPage: false,
 			},
 			filterOptions: emptyStructureFilterOptions(),
-			summary: {
-				total: 0,
-				lowFuel: 0,
-				lowPower: 0,
-				reinforced: 0,
-			},
+			summary: emptyStructureListSummary(),
 		}
 	}
 

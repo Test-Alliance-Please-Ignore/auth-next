@@ -92,4 +92,27 @@ describe('fetchSovereigntyEnrichment', () => {
 			system_name: 'Jita',
 		})
 	})
+
+	it('bubbles sovereignty scope mismatches so the workflow can surface sync failure state', async () => {
+		mocks.createTokenStoreMock.mockReturnValue({})
+		mocks.fetchSovereigntyHubsMock.mockRejectedValue(
+			new Error(
+				'ESI request failed: 401 Unauthorized - {"error":"missing scope"} | metadata={"status":401,"path":"/corporations/123/structures/sovereignty-hubs/"}'
+			)
+		)
+
+		const promise = fetchSovereigntyEnrichment(
+			{
+				UNIVERSE: {} as never,
+			} as never,
+			'corp-1',
+			'character-1'
+		)
+
+		await expect(promise).rejects.toThrow('Sovereignty hub enrichment requires updated director scopes.')
+		await promise.catch((error) => {
+			expect(error).toBeInstanceOf(Error)
+			expect((error as { target?: string }).target).toBe('sovereignty-hubs')
+		})
+	})
 })

@@ -2,7 +2,11 @@ import { logger } from '@repo/hono-helpers'
 import { getStub } from '@repo/do-utils'
 
 import * as esiFetch from '../../../services/esi-fetch'
-import { shouldSuppressDirectorUnhealthyOnStructureEnrichmentAuthFailure } from '../../utils/structure-enrichment-auth'
+import {
+	createStructureEnrichmentScopeMismatchError,
+	shouldSuppressDirectorUnhealthyOnStructureEnrichmentAuthFailure,
+	type StructureEnrichmentSyncTarget,
+} from '../../utils/structure-enrichment-auth'
 import { createTokenStore, getCorporationDataStub } from '../../utils/services'
 import { readSharedSovereigntySystemsByIds } from '../../utils/sovereignty-systems-cache'
 import type { Universe } from '@repo/universe'
@@ -112,12 +116,7 @@ export async function fetchSovereigntyEnrichment(
 		}
 	} catch (error) {
 		if (shouldSuppressDirectorUnhealthyOnStructureEnrichmentAuthFailure(error)) {
-			logger.warn('[StructuresStep] Skipping sovereignty enrichment after scope-gated auth failure', {
-				corporationId,
-				error: error instanceof Error ? error.message : String(error),
-			})
-			// TODO: once the new structure scopes are fully deployed, treat these as director failures again.
-			return null
+			throw createStructureEnrichmentScopeMismatchError('sovereignty-hubs')
 		}
 		throw error
 	}
@@ -147,15 +146,26 @@ export async function fetchSkyhookEnrichment(
 		}
 	} catch (error) {
 		if (shouldSuppressDirectorUnhealthyOnStructureEnrichmentAuthFailure(error)) {
-			logger.warn('[StructuresStep] Skipping skyhook enrichment after scope-gated auth failure', {
-				corporationId,
-				error: error instanceof Error ? error.message : String(error),
-			})
-			// TODO: once the new structure scopes are fully deployed, treat these as director failures again.
-			return null
+			throw createStructureEnrichmentScopeMismatchError('skyhooks')
 		}
 		throw error
 	}
+}
+
+export async function markStructureEnrichmentSyncFailure(
+	env: Env,
+	corporationId: string,
+	target: StructureEnrichmentSyncTarget,
+	failureReason: string
+): Promise<void> {
+	const corpData = getCorporationDataStub(env, corporationId)
+	await corpData.markStructureEnrichmentSyncFailure(corporationId, target, failureReason)
+
+	logger.warn('[StructuresStep] Marked structure enrichment sync failure', {
+		corporationId,
+		target,
+		failureReason,
+	})
 }
 
 export async function storeSovereigntyEnrichment(

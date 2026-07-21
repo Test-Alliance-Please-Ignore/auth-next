@@ -55,6 +55,7 @@ import {
 	summarizeFuelBlockUnitsByStructure,
 	projectStructureInventoryFromStoredAssets,
 } from './services/structure-inventory'
+import { dedupeByItemId } from './services/assets-paging-sync'
 import type { SQL } from 'drizzle-orm'
 import type {
 	CharacterCorporationRolesData,
@@ -258,6 +259,8 @@ type SkyhookStorageRow = {
 	isRaidable: boolean
 	becomesRaidableAt: Date | null
 	vulnerableAt: Date | null
+	syncStatus: 'ok' | 'warning' | 'error'
+	syncFailureReason: string | null
 	lastObservedAt: Date
 	sourceSyncAt: Date
 	lastSyncedAt: Date
@@ -399,6 +402,8 @@ export function buildSkyhookStorageRow(input: {
 		isRaidable: skyhook.is_raidable ?? false,
 		becomesRaidableAt: parseDateOrNull(skyhook.becomes_raidable_at) ?? null,
 		vulnerableAt: parseDateOrNull(skyhook.vulnerable_at) ?? null,
+		syncStatus: 'ok',
+		syncFailureReason: null,
 		lastObservedAt: observedAt,
 		sourceSyncAt: observedAt,
 		lastSyncedAt: observedAt,
@@ -1963,9 +1968,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Store assets (workflow-friendly)
 	 */
 	async storeAssets(corporationId: string, assets: any[]): Promise<void> {
+		const dedupedAssets = dedupeByItemId(assets, (asset) => String(asset.item_id))
 		const BATCH_SIZE = 25
-		for (let i = 0; i < assets.length; i += BATCH_SIZE) {
-			const batch = assets.slice(i, i + BATCH_SIZE)
+		for (let i = 0; i < dedupedAssets.length; i += BATCH_SIZE) {
+			const batch = dedupedAssets.slice(i, i + BATCH_SIZE)
 			const valuesToInsert = batch.map((asset) => ({
 				corporationId: String(corporationId),
 				itemId: asset.item_id,
@@ -3182,6 +3188,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				vulnerabilityWindowStart: parseDateOrNull(hub.vulnerability_window?.start) ?? null,
 				vulnerabilityWindowEnd: parseDateOrNull(hub.vulnerability_window?.end) ?? null,
 				workforceTransport: normalizeSovereigntyWorkforceTransport(hub.workforce_transport),
+				syncStatus: 'ok',
+				syncFailureReason: null,
 				sourceSyncAt: now,
 				lastSyncedAt: now,
 				updatedAt: now,
@@ -3222,6 +3230,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						vulnerabilityWindowStart: sql`excluded.vulnerability_window_start`,
 						vulnerabilityWindowEnd: sql`excluded.vulnerability_window_end`,
 						workforceTransport: sql`excluded.workforce_transport`,
+						syncStatus: sql`excluded.sync_status`,
+						syncFailureReason: sql`excluded.sync_failure_reason`,
 						sourceSyncAt: sql`excluded.source_sync_at`,
 						lastSyncedAt: sql`excluded.last_synced_at`,
 						updatedAt: sql`excluded.updated_at`,
@@ -3239,6 +3249,32 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					)
 				)
 		})
+	}
+
+	async markStructureEnrichmentSyncFailure(
+		corporationId: string,
+		target: 'sovereignty-hubs' | 'skyhooks',
+		failureReason: string
+	): Promise<void> {
+		const now = new Date()
+		const set = {
+			syncStatus: 'error' as const,
+			syncFailureReason: failureReason,
+			updatedAt: now,
+		}
+
+		if (target === 'sovereignty-hubs') {
+			await this.getDb()
+				.update(structureSovereigntyHubs)
+				.set(set)
+				.where(eq(structureSovereigntyHubs.corporationId, corporationId))
+			return
+		}
+
+		await this.getDb()
+			.update(structureSkyhooks)
+			.set(set)
+			.where(eq(structureSkyhooks.corporationId, corporationId))
 	}
 
 	/**
@@ -3370,6 +3406,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					baseStructure,
 					storageRow: {
 						...storageRow,
+						syncStatus: 'ok',
+						syncFailureReason: null,
 						updatedAt: now,
 					},
 				}
@@ -3492,6 +3530,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						isRaidable: sql`excluded.is_raidable`,
 						becomesRaidableAt: sql`excluded.becomes_raidable_at`,
 						vulnerableAt: sql`excluded.vulnerable_at`,
+						syncStatus: sql`excluded.sync_status`,
+						syncFailureReason: sql`excluded.sync_failure_reason`,
 						lastObservedAt: sql`excluded.last_observed_at`,
 						sourceSyncAt: sql`excluded.source_sync_at`,
 						lastSyncedAt: sql`excluded.last_synced_at`,

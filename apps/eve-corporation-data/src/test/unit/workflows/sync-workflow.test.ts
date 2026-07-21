@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { EveCorporationSyncWorkflow } from '../../../workflows/sync-workflow'
+import { StructureEnrichmentScopeMismatchError } from '../../../workflows/utils/structure-enrichment-auth'
 
 import type { WorkflowStep } from 'cloudflare:workers'
 
@@ -14,6 +15,7 @@ const storeStructuresMock = vi.fn()
 const storeSovereigntyEnrichmentMock = vi.fn()
 const storeSkyhookEnrichmentMock = vi.fn()
 const storeMiningExtractionEnrichmentMock = vi.fn()
+const markStructureEnrichmentSyncFailureMock = vi.fn()
 const selectDirectorMock = vi.fn()
 const verifyAllDirectorsHealthMock = vi.fn()
 const reconcileDirectorsFromCorporationRolesMock = vi.fn()
@@ -89,6 +91,8 @@ vi.mock('../../../workflows/steps/structures', () => ({
 	fetchSkyhookEnrichment: (...args: unknown[]) => fetchSkyhookEnrichmentMock(...args),
 	fetchMiningExtractionEnrichment: (...args: unknown[]) =>
 		fetchMiningExtractionEnrichmentMock(...args),
+	markStructureEnrichmentSyncFailure: (...args: unknown[]) =>
+		markStructureEnrichmentSyncFailureMock(...args),
 	storeStructures: (...args: unknown[]) => storeStructuresMock(...args),
 	storeSovereigntyEnrichment: (...args: unknown[]) => storeSovereigntyEnrichmentMock(...args),
 	storeSkyhookEnrichment: (...args: unknown[]) => storeSkyhookEnrichmentMock(...args),
@@ -136,8 +140,6 @@ function createWorkflowEnv() {
 	return {
 		env: {
 			DATABASE_URL: 'postgres://test',
-			ASSETS_SYNC_ENABLED: true,
-			STRUCTURE_ENRICHMENT_ENABLED: false,
 			EVE_TOKEN_STORE: {},
 			CORPORATION_TAX: {},
 			EVE_CORPORATION_DATA: corpDataNamespace,
@@ -294,8 +296,6 @@ describe('EveCorporationSyncWorkflow', () => {
 	it('includes skyhook listing and prune metrics in the structures sync stats', async () => {
 		vi.clearAllMocks()
 		const { env, updateCorporationAuthHealth } = createWorkflowEnv()
-		const workflowEnv = env as any
-		workflowEnv.STRUCTURE_ENRICHMENT_ENABLED = true
 
 		verifyAllDirectorsHealthMock.mockResolvedValue({
 			verified: 1,
@@ -343,7 +343,7 @@ describe('EveCorporationSyncWorkflow', () => {
 			reason: 'not-needed',
 		})
 
-		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, workflowEnv)
+		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, env)
 		const { step } = createStep()
 
 		await expect(
@@ -374,11 +374,92 @@ describe('EveCorporationSyncWorkflow', () => {
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
 
+	it('marks sovereignty enrichment sync failure state when scope-mismatched auth is suppressed', async () => {
+		vi.clearAllMocks()
+		const { env, updateCorporationAuthHealth } = createWorkflowEnv()
+
+		verifyAllDirectorsHealthMock.mockResolvedValue({
+			verified: 1,
+			failed: 0,
+		})
+		selectDirectorMock.mockResolvedValue({
+			directorId: 'director-1',
+			characterId: '900000001',
+			characterName: 'Director One',
+		})
+		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue(undefined)
+		fetchStructuresMock.mockResolvedValue([
+			{
+				structure_id: 'structure-1',
+				type_id: '32458',
+			},
+		])
+		fetchSovereigntyEnrichmentMock.mockRejectedValue(
+			new StructureEnrichmentScopeMismatchError(
+				'sovereignty-hubs',
+				'Sovereignty hub enrichment requires updated director scopes.'
+			)
+		)
+		fetchSkyhookEnrichmentMock.mockResolvedValue(null)
+		storeStructuresMock.mockResolvedValue(undefined)
+		storeSovereigntyEnrichmentMock.mockResolvedValue(undefined)
+		storeSkyhookEnrichmentMock.mockResolvedValue(undefined)
+		storeMiningExtractionEnrichmentMock.mockResolvedValue(undefined)
+		markStructureEnrichmentSyncFailureMock.mockResolvedValue(undefined)
+		syncAssetsMock.mockResolvedValue({ assetsCount: 0 })
+		updateSyncTimestampsMock.mockResolvedValue(undefined)
+		updateCoreLastSyncMock.mockResolvedValue(undefined)
+		recordDirectorSuccessMock.mockResolvedValue(undefined)
+		replayTaxProjectionRetryIntentMock.mockResolvedValue({
+			replayed: false,
+			succeeded: false,
+			retryCount: 0,
+			reason: 'none',
+		})
+		clearTaxProjectionRetryIntentMock.mockResolvedValue(undefined)
+		recordTaxProjectionRetryIntentMock.mockResolvedValue(undefined)
+		sendHrDepartedMessagesMock.mockResolvedValue(undefined)
+		triggerTaxProjectionRefreshMock.mockResolvedValue({
+			triggered: false,
+			reason: 'not-needed',
+		})
+
+		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, env)
+		const { step, executedStepNames } = createStep()
+
+		await expect(
+			workflow.run(
+				{
+					payload: {
+						corporationId: '693378155',
+						dataTypes: ['structures'],
+						trigger: 'cron',
+					},
+					instanceId: 'wf-structures-failure',
+					timestamp: new Date('2026-07-12T19:36:47.369Z'),
+				} as never,
+				step
+			)
+		).resolves.toMatchObject({
+			success: true,
+			corporationId: '693378155',
+			trigger: 'cron',
+		})
+
+		expect(markStructureEnrichmentSyncFailureMock).toHaveBeenCalledWith(
+			env,
+			'693378155',
+			'sovereignty-hubs',
+			'Sovereignty hub enrichment requires updated director scopes.'
+		)
+		expect(selectDirectorMock).toHaveBeenCalledTimes(1)
+		expect(executedStepNames).toContain('store-structure-sovereignty-enrichment-failure')
+		expect(updateCorporationAuthHealth).toHaveBeenCalled()
+	})
+
 	it('runs mining enrichment for mining citadels and still continues to asset sync', async () => {
 		vi.clearAllMocks()
 		const { env, updateCorporationAuthHealth } = createWorkflowEnv()
-		const workflowEnv = env as any
-		workflowEnv.STRUCTURE_ENRICHMENT_ENABLED = true
 
 		verifyAllDirectorsHealthMock.mockResolvedValue({
 			verified: 1,
@@ -428,7 +509,7 @@ describe('EveCorporationSyncWorkflow', () => {
 			reason: 'not-needed',
 		})
 
-		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, workflowEnv)
+		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, env)
 		const { step, executedStepNames } = createStep()
 
 		await expect(
@@ -452,21 +533,19 @@ describe('EveCorporationSyncWorkflow', () => {
 
 		expect(fetchMiningExtractionEnrichmentMock).toHaveBeenCalledTimes(1)
 		expect(storeMiningExtractionEnrichmentMock).toHaveBeenCalledTimes(1)
-		expect(storeMiningExtractionEnrichmentMock).toHaveBeenCalledWith(workflowEnv, '693378155', [
+		expect(storeMiningExtractionEnrichmentMock).toHaveBeenCalledWith(env, '693378155', [
 			{
 				structure_id: '1000001',
 			},
 		])
 		expect(executedStepNames).toContain('sync-assets')
-		expect(syncAssetsMock).toHaveBeenCalledWith(workflowEnv, '693378155', '900000001', ['1000001'])
+		expect(syncAssetsMock).toHaveBeenCalledWith(env, '693378155', '900000001', ['1000001'])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
 
 	it('keeps asset sync running when mining enrichment fails for a mining citadel run', async () => {
 		vi.clearAllMocks()
 		const { env, updateCorporationAuthHealth } = createWorkflowEnv()
-		const workflowEnv = env as any
-		workflowEnv.STRUCTURE_ENRICHMENT_ENABLED = true
 
 		verifyAllDirectorsHealthMock.mockResolvedValue({
 			verified: 1,
@@ -509,7 +588,7 @@ describe('EveCorporationSyncWorkflow', () => {
 			reason: 'not-needed',
 		})
 
-		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, workflowEnv)
+		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, env)
 		const { step, executedStepNames } = createStep()
 
 		await expect(
@@ -534,15 +613,13 @@ describe('EveCorporationSyncWorkflow', () => {
 		expect(fetchMiningExtractionEnrichmentMock).toHaveBeenCalledTimes(1)
 		expect(storeMiningExtractionEnrichmentMock).not.toHaveBeenCalled()
 		expect(executedStepNames).toContain('sync-assets')
-		expect(syncAssetsMock).toHaveBeenCalledWith(workflowEnv, '693378155', '900000001', ['2000001'])
+		expect(syncAssetsMock).toHaveBeenCalledWith(env, '693378155', '900000001', ['2000001'])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
 
 	it('skips sovereignty and mining enrichment when the structure sync is within the cooldown window but still refreshes skyhooks', async () => {
 		vi.clearAllMocks()
 		const { env, corpDataStub, updateCorporationAuthHealth } = createWorkflowEnv()
-		const workflowEnv = env as any
-		workflowEnv.STRUCTURE_ENRICHMENT_ENABLED = true
 		corpDataStub.getCorporationSyncConfig.mockResolvedValue({
 			includeInBackgroundRefresh: true,
 			includeInStructureAssetSync: true,
@@ -590,7 +667,7 @@ describe('EveCorporationSyncWorkflow', () => {
 			reason: 'not-needed',
 		})
 
-		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, workflowEnv)
+		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, env)
 		const { step, executedStepNames } = createStep()
 
 		await expect(
