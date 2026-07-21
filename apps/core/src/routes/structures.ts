@@ -161,9 +161,7 @@ async function enrichStructureDetailTypeNames(
 ): Promise<StructureDetailResult> {
 	const sovereignty = structure.sovereignty ?? null
 	const sovereigntyHub = sovereignty?.hub ?? null
-	const allianceIds = sovereigntyHub?.controllerAllianceId
-		? [sovereigntyHub.controllerAllianceId]
-		: []
+	const allianceIds = sovereignty?.allianceId ? [sovereignty.allianceId] : []
 	const structureTypeIds = new Set<string>([
 		...(structure.inventoryBays?.flatMap((bay: StructureInventoryBay) =>
 			bay.items.map((item: StructureInventoryItem) => item.typeId)
@@ -187,14 +185,12 @@ async function enrichStructureDetailTypeNames(
 		const nextSovereignty = sovereignty
 			? {
 					...sovereignty,
-					hub: sovereigntyHub
-						? {
-								...sovereigntyHub,
-								controllerAllianceName: sovereigntyHub.controllerAllianceId
-									? (allianceNameMap.get(sovereigntyHub.controllerAllianceId) ?? null)
-									: null,
-							}
-						: sovereigntyHub,
+					allianceName: sovereignty.allianceId
+						? (allianceNameMap.get(sovereignty.allianceId) ??
+							sovereignty.allianceName ??
+							sovereignty.allianceId)
+						: null,
+					hub: sovereigntyHub,
 				}
 			: sovereignty
 
@@ -257,12 +253,14 @@ async function enrichStructureDetailTypeNames(
 		sovereignty: sovereignty
 			? {
 					...sovereignty,
+					allianceName: sovereignty.allianceId
+						? (allianceNameMap.get(sovereignty.allianceId) ??
+							sovereignty.allianceName ??
+							sovereignty.allianceId)
+						: null,
 					hub: sovereigntyHub
 						? {
 								...sovereigntyHub,
-							controllerAllianceName: sovereigntyHub.controllerAllianceId
-								? (allianceNameMap.get(sovereigntyHub.controllerAllianceId) ?? null)
-								: null,
 								reagentBay: sovereigntyHub.reagentBay
 									? {
 											...sovereigntyHub.reagentBay,

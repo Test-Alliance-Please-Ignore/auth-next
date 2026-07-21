@@ -27,6 +27,7 @@ import {
 
 import { CorporationLogo } from '@/components/corporation-logo'
 import { StructureFuelUsageChart } from '@/components/structure-fuel-usage-chart'
+import { SkyhookStateBadge } from '@/components/skyhook-state-badge'
 import { StructureStateBadge } from '@/components/structure-state-badge'
 import { StructureSyncStatusBadge } from '@/components/structure-sync-status-badge'
 import { Badge } from '@/components/ui/badge'
@@ -780,6 +781,8 @@ export default function StructuresDetailPage() {
 	const moonDrill = structure?.moonDrill ?? null
 	const miningExtraction = structure?.miningExtraction ?? null
 	const sovereigntyHub = structure?.sovereignty?.hub ?? null
+	const sovereigntyAllianceId = structure?.sovereignty?.allianceId ?? null
+	const sovereigntyAllianceName = structure?.sovereignty?.allianceName ?? null
 	const sovereigntyVulnerabilityState = getSovereigntyVulnerabilityState(structure?.sovereignty)
 	const { data: sovereigntyStructures = [] } = useQuery({
 		queryKey: ['structures', 'sovereignty', corporationId],
@@ -956,15 +959,14 @@ export default function StructuresDetailPage() {
 									</div>
 									<div className="font-medium">
 										{hasSovereigntySummary
-											? sovereigntyHub?.controllerAllianceId ? (
+											? sovereigntyAllianceId ? (
 													<div className="flex items-center gap-2">
 														<AllianceLogo
-															allianceId={sovereigntyHub.controllerAllianceId}
-															allianceName={sovereigntyHub.controllerAllianceName}
+															allianceId={sovereigntyAllianceId}
+															allianceName={sovereigntyAllianceName}
 														/>
 														<span>
-															{sovereigntyHub.controllerAllianceName ??
-																sovereigntyHub.controllerAllianceId}
+															{sovereigntyAllianceName ?? sovereigntyAllianceId}
 														</span>
 													</div>
 												) : (
@@ -1052,7 +1054,7 @@ export default function StructuresDetailPage() {
 								</div>
 								<div>
 									<div className="text-muted-foreground">
-										{hasSovereigntySummary ? 'Vulnerability Window' : isReinforced ? 'Reinforced until' : 'Next State'}
+										{hasSovereigntySummary ? 'Theft Window' : isReinforced ? 'Reinforced until' : 'Next State'}
 									</div>
 									<div className="font-medium">
 										{hasSovereigntySummary ? (
@@ -1430,7 +1432,7 @@ export default function StructuresDetailPage() {
 							<div className="text-muted-foreground">State</div>
 							<div className="font-medium">
 								{structure.skyhook ? (
-									<StructureStateBadge state={structure.skyhook.state} />
+									<SkyhookStateBadge state={structure.skyhook.state} />
 								) : (
 									'-'
 								)}

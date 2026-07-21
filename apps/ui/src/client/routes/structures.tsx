@@ -27,6 +27,7 @@ import {
 
 import { TableRefreshFrame } from '@/components/table-refresh-frame'
 import { CorporationLogo } from '@/components/corporation-logo'
+import { SkyhookStateBadge } from '@/components/skyhook-state-badge'
 import { StructureSyncStatusBadge } from '@/components/structure-sync-status-badge'
 import { StructureStateBadge } from '@/components/structure-state-badge'
 import { DurationDisplay } from '@/components/ui/duration-display'
@@ -711,7 +712,7 @@ export default function StructuresPage() {
 			return (
 				<TableRow key={structure.structureId}>
 					<TableCell>
-						<StructureStateBadge state={structure.state} />
+						<SkyhookStateBadge state={structure.state} />
 					</TableCell>
 					<TableCell className="font-medium">
 						{structure.regionName ?? structure.regionId ?? '-'}
@@ -925,7 +926,7 @@ export default function StructuresPage() {
 					</TableCell>
 					<TableCell>{formatNullableNumber(structure.effectiveWorkforce)}</TableCell>
 					<TableCell>
-						<Badge variant={structure.isRaidable ? 'warning' : 'ghost'}>
+						<Badge variant={structure.isRaidable ? 'warning' : 'success'}>
 							{structure.isRaidable ? 'Yes' : 'No'}
 						</Badge>
 					</TableCell>
@@ -1741,7 +1742,7 @@ export default function StructuresPage() {
 												<SortableHead field="skyhookSurplusFullness" label="Fullness (Surplus)" />
 												<SortableHead field="workforce" label="Workforce" />
 												<SortableHead field="raidable" label="Raidable" />
-												<SortableHead field="theftVulnerabilityStart" label="Vulnerability Window" />
+												<SortableHead field="theftVulnerabilityStart" label="Theft Window" />
 												<SortableHead field="nextStateAt" label="Next State In" />
 												<SortableHead field="group" label="Group" />
 												<SortableHead field="syncStatus" label="Sync" />

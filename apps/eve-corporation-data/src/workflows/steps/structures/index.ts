@@ -8,7 +8,10 @@ import {
 	type StructureEnrichmentSyncTarget,
 } from '../../utils/structure-enrichment-auth'
 import { createTokenStore, getCorporationDataStub } from '../../utils/services'
-import { readSharedSovereigntySystemsByIds } from '../../utils/sovereignty-systems-cache'
+import {
+	readSharedSovereigntySystemsByIds,
+	refreshSharedSovereigntySystems,
+} from '../../utils/sovereignty-systems-cache'
 import type { Universe } from '@repo/universe'
 import type { SkyhookStoreResult } from '@repo/eve-corporation-data'
 
@@ -81,19 +84,19 @@ export async function fetchSovereigntyEnrichment(
 						[...new Set(sovereigntyHubs.map((hub) => hub.system_id))]
 					)
 				: {}
-		const sovereigntySystems = await readSharedSovereigntySystemsByIds(
+		let sovereigntySystems = await readSharedSovereigntySystemsByIds(
 			env,
 			sovereigntyHubs.map((hub) => hub.system_id)
 		)
 		if (!sovereigntySystems) {
-			logger.warn(
-				'[StructuresStep] Shared sovereignty snapshot missing or stale; skipping system enrichment',
-				{ corporationId }
-			)
+			logger.warn('[StructuresStep] Shared sovereignty snapshot missing or stale; rewarming cache', {
+				corporationId,
+			})
+			sovereigntySystems = await refreshSharedSovereigntySystems(env)
 		}
 
 		const allianceBySystemId = new Map(
-			(sovereigntySystems ?? [])
+			sovereigntySystems
 				.filter((system) => system.claim_type === 'alliance' && system.alliance_id !== undefined)
 				.map((system) => [system.system_id, system.alliance_id ?? null])
 		)

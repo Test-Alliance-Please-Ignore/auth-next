@@ -881,6 +881,7 @@ export interface StructureSovereigntyHubSummary {
 export interface StructureSovereigntySummary {
 	claimType: 'alliance' | 'faction' | 'unclaimed'
 	allianceId: string | null
+	allianceName?: string | null
 	corporationClaimantId: string | null
 	factionId: string | null
 	claimedSince: string | null
