@@ -1,5 +1,5 @@
 import type { Core } from '@repo/core'
-import type { DiscordEmbed, MessageContent } from '@repo/discord'
+import type { DiscordEmbed, MessageContent, SendMessageResult } from '@repo/discord'
 
 export const TOKEN_INVALID_ALERT_COOLDOWN_MS = 12 * 60 * 60 * 1000
 export const TOKEN_INVALID_ALERT_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -11,6 +11,20 @@ export function didTokenTransitionFromValidToInvalid(
 	nextHasValidToken: boolean | null | undefined
 ): boolean {
 	return previousHasValidToken === true && nextHasValidToken === false
+}
+
+export function shouldRetryTokenInvalidationAlertDelivery(
+	result: Pick<SendMessageResult, 'error' | 'retryable'>
+): boolean {
+	if (result.retryable === false) {
+		return false
+	}
+
+	if (result.error === 'Missing permissions to send DM to this user') {
+		return false
+	}
+
+	return true
 }
 
 export async function queueTokenInvalidationAlertsForUser(

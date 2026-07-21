@@ -1716,6 +1716,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					return {
 						success: false,
 						error: 'Missing permissions to send DM to this user',
+						retryable: false,
 					}
 				}
 
@@ -1724,6 +1725,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 					return {
 						success: false,
 						error: 'DM channel not found',
+						retryable: false,
 					}
 				}
 

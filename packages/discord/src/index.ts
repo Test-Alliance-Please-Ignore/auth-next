@@ -259,6 +259,8 @@ export interface SendMessageResult {
 	error?: string
 	/** Retry after seconds if rate limited */
 	retryAfter?: number
+	/** Whether the caller should retry this delivery */
+	retryable?: boolean
 }
 
 export interface DiscordGuildRoleDetail {
