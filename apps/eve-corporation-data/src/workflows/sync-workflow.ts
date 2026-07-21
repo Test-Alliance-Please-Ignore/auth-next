@@ -357,7 +357,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 			const runDirectorStepWithFailover = async <T>(params: {
 				stepName: string
-				timeout: '1 minute' | '5 minutes' | '10 minutes'
+				timeout: '1 minute' | '5 minutes' | '10 minutes' | '20 minutes'
 				requiredRoles?: string[]
 				run: (directorCharacterId: string) => Promise<T>
 			}): Promise<T> => {
@@ -930,7 +930,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					'sync-assets',
 					{ ...STEP_RETRY_OPTIONS, timeout: '20 minutes' },
 					async () => {
-						const result = await runDirectorStepWithFailover({
+						const result: { assetsCount: number } = await runDirectorStepWithFailover({
 							stepName: 'sync-assets',
 							timeout: '20 minutes',
 							requiredRoles: ['Director'],

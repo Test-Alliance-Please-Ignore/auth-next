@@ -233,8 +233,9 @@ function parseNumberOrNull(value: unknown): number | null {
 	return Number.isFinite(parsed) ? parsed : null
 }
 
-type CorporationStructureRow = typeof corporationStructures.$inferSelect
 type SkyhookStateRow = typeof structureSkyhooks.$inferSelect
+type SovereigntyHubInsertRow = typeof structureSovereigntyHubs.$inferInsert
+type SkyhookInsertRow = typeof structureSkyhooks.$inferInsert
 type SkyhookStorageRow = {
 	structureId: string
 	corporationId: string
@@ -3159,7 +3160,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			},
 		})
 		const existingByStructureId = new Map(existingRows.map((row) => [row.structureId, row]))
-		const values = hubs.map((hub) => {
+		const values: SovereigntyHubInsertRow[] = hubs.map((hub) => {
 			const existing = existingByStructureId.get(hub.structure_id) ?? null
 			return {
 				structureId: hub.structure_id,
@@ -3188,7 +3189,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				vulnerabilityWindowStart: parseDateOrNull(hub.vulnerability_window?.start) ?? null,
 				vulnerabilityWindowEnd: parseDateOrNull(hub.vulnerability_window?.end) ?? null,
 				workforceTransport: normalizeSovereigntyWorkforceTransport(hub.workforce_transport),
-				syncStatus: 'ok',
+				syncStatus: 'ok' as const,
 				syncFailureReason: null,
 				sourceSyncAt: now,
 				lastSyncedAt: now,
@@ -3378,7 +3379,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					)
 					return null
 				}
-				const storageRow = buildSkyhookStorageRow({
+				const storageRowData = buildSkyhookStorageRow({
 					corporationId,
 					skyhook,
 					baseStructure,
@@ -3398,18 +3399,20 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						: null,
 					observedAt: now,
 				})
-				if (!storageRow) {
+				if (!storageRowData) {
 					return null
+				}
+
+				const storageRow: SkyhookInsertRow = {
+					...storageRowData,
+					syncStatus: 'ok' as const,
+					syncFailureReason: null,
+					updatedAt: now,
 				}
 
 				return {
 					baseStructure,
-					storageRow: {
-						...storageRow,
-						syncStatus: 'ok',
-						syncFailureReason: null,
-						updatedAt: now,
-					},
+					storageRow,
 				}
 			})
 			.filter(
@@ -3417,7 +3420,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					row
 				): row is {
 					baseStructure: SkyhookBaseStructureRow
-					storageRow: SkyhookStorageInsertRow
+					storageRow: SkyhookInsertRow
 				} => row !== null
 			)
 
