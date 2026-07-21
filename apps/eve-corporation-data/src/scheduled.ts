@@ -99,7 +99,7 @@ async function runScheduledRefresh(event: ScheduledEvent, env: Env): Promise<voi
 				count: sovereigntySystems.length,
 			})
 		} catch (error) {
-			logger.warn('[BackgroundRefresh] Failed to warm shared sovereignty systems cache', {
+			logger.error('[BackgroundRefresh] Failed to warm shared sovereignty systems cache', {
 				error: error instanceof Error ? error.message : String(error),
 			})
 		}

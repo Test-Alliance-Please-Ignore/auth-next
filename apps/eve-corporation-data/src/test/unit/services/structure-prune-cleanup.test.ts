@@ -64,6 +64,9 @@ function makeDb() {
 	const structureMoonDrillsFindMany = vi
 		.fn()
 		.mockResolvedValue([{ structureId: 'stale-structure' }])
+	const structureSovereigntySystemsFindMany = vi
+		.fn()
+		.mockResolvedValue([{ systemId: 'stale-system', systemName: 'Stale Name' }])
 	const structureSovereigntyHubsFindMany = vi.fn().mockResolvedValue([])
 
 	return {
@@ -82,6 +85,9 @@ function makeDb() {
 			},
 			structureMoonDrills: {
 				findMany: structureMoonDrillsFindMany,
+			},
+			structureSovereigntySystems: {
+				findMany: structureSovereigntySystemsFindMany,
 			},
 			structureSovereigntyHubs: {
 				findMany: structureSovereigntyHubsFindMany,
@@ -259,6 +265,14 @@ describe('structure prune cleanup', () => {
 		const db = makeDb()
 		const instance = createDoInstance(db)
 
+		mocks.getStub.mockReturnValueOnce({
+			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({
+				'30000142': {
+					solarSystemName: 'Jita',
+				},
+			}),
+		} as never)
+
 		await instance.storeSovereigntyHubs('corp-1', [
 			{
 				structure_id: 'hub-1',
@@ -320,6 +334,109 @@ describe('structure prune cleanup', () => {
 			},
 		})
 		expect(db.delete).not.toHaveBeenCalled()
+	})
+
+	it('rebuilds sovereignty systems without preserving stale system names', async () => {
+		const db = makeDb()
+		db.query.structureSovereigntySystems.findMany = vi.fn().mockResolvedValue([
+			{
+				systemId: '30000142',
+				systemName: 'Stale Name',
+			},
+		])
+		const instance = createDoInstance(db)
+
+		mocks.getStub.mockReturnValueOnce({
+			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({
+				'30000142': {
+					solarSystemName: 'Jita',
+				},
+			}),
+		} as never)
+
+		await instance.storeSovereigntySystems('corp-1', [
+			{
+				system_id: '30000142',
+				claim_type: 'alliance',
+				alliance_id: '123456789',
+				corporation_id: '987654321',
+				claimed_since: '2026-07-12T19:36:46.834Z',
+				is_capital_system: false,
+				sovereignty_hub_structure_id: 'hub-1',
+				vulnerability_window: null,
+				activity_defense_multiplier: '1.0000',
+				military_level: 1,
+				industrial_level: 1,
+				strategic_level: 1,
+			},
+		])
+
+		expect(db._values).toHaveBeenCalled()
+		expect(db._values.mock.calls[0][0][0]).toMatchObject({
+			systemName: 'Jita',
+		})
+	})
+
+	it('rebuilds sovereignty hubs without preserving stale hub names', async () => {
+		const db = makeDb()
+		db.query.structureSovereigntyHubs.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'hub-1',
+				systemName: 'Stale Name',
+				name: 'Stale Hub',
+			},
+		])
+		const instance = createDoInstance(db)
+
+		mocks.getStub.mockReturnValueOnce({
+			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({
+				'30000142': {
+					solarSystemName: 'Jita',
+				},
+			}),
+		} as never)
+
+		await instance.storeSovereigntyHubs('corp-1', [
+			{
+				structure_id: 'hub-1',
+				corporation_id: 'corp-1',
+				system_id: '30000142',
+				system_name: null,
+				type_id: SOVEREIGNTY_HUB_TYPE_ID,
+				name: null,
+				fuel_access_list_id: null,
+				controller_alliance_id: null,
+				reagent_bay: {
+					last_updated: '2026-07-12T19:36:46.834Z',
+					reagents: [],
+				},
+				resources: {
+					power: { allocated: 0, available: 0 },
+					workforce: { allocated: 0, available: 0 },
+				},
+				upgrades: [],
+				vulnerability_window: null,
+				workforce_transport: {
+					configuration: {
+						import: {
+							sources: [{ solar_system_id: 30000142 }],
+						},
+					},
+					state: {
+						import: {
+							sources: [{ solar_system_id: 30000142, amount: 0 }],
+						},
+					},
+				},
+				raw: { detail: { id: 1 } },
+			} as never,
+		])
+
+		expect(db._values).toHaveBeenCalled()
+		expect(db._values.mock.calls[0][0][0]).toMatchObject({
+			systemName: 'Jita',
+			name: null,
+		})
 	})
 
 	it('preserves existing skyhook snapshots when upstream skyhooks cannot be synthesized', async () => {
