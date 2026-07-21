@@ -2939,10 +2939,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			where: eq(structureSovereigntySystems.corporationId, corporationId),
 			columns: {
 				systemId: true,
-				systemName: true,
 			},
 		})
-		const existingBySystemId = new Map(existingRows.map((row) => [row.systemId, row]))
 		const systemGeography: Awaited<ReturnType<Universe['resolveSolarSystemsByIds']>> =
 			systems.length > 0
 				? await universe.resolveSolarSystemsByIds([
@@ -2953,14 +2951,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			const claimedSince = parseDateOrNull(system.claimed_since) ?? null
 			const vulnerabilityWindowStart = parseDateOrNull(system.vulnerability_window?.start) ?? null
 			const vulnerabilityWindowEnd = parseDateOrNull(system.vulnerability_window?.end) ?? null
-			const existing = existingBySystemId.get(system.system_id) ?? null
 			const resolvedSystemName =
 				systemGeography[system.system_id]?.solarSystemName ?? system.system_name ?? null
 
 			return {
 				systemId: system.system_id,
 				corporationId,
-				systemName: resolvedSystemName ?? existing?.systemName ?? null,
+				systemName: resolvedSystemName,
 				claimType: system.claim_type,
 				allianceId: system.alliance_id ?? null,
 				corporationClaimantId: system.corporation_id ?? null,
@@ -3240,19 +3237,22 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			where: eq(structureSovereigntyHubs.corporationId, corporationId),
 			columns: {
 				structureId: true,
-				systemName: true,
-				name: true,
 			},
 		})
-		const existingByStructureId = new Map(existingRows.map((row) => [row.structureId, row]))
+		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const systemGeography: Awaited<ReturnType<Universe['resolveSolarSystemsByIds']>> =
+			hubs.length > 0
+				? await universe.resolveSolarSystemsByIds([...new Set(hubs.map((hub) => hub.system_id))])
+				: {}
 		const values: SovereigntyHubInsertRow[] = hubs.map((hub) => {
-			const existing = existingByStructureId.get(hub.structure_id) ?? null
+			const resolvedSystemName =
+				systemGeography[hub.system_id]?.solarSystemName ?? hub.system_name ?? null
 			return {
 				structureId: hub.structure_id,
 				corporationId,
 				systemId: hub.system_id,
-				systemName: hub.system_name ?? existing?.systemName ?? null,
-				name: hub.name ?? existing?.name ?? null,
+				systemName: resolvedSystemName,
+				name: hub.name ?? null,
 				typeId: hub.type_id,
 				fuelAccessListId: hub.fuel_access_list_id ?? null,
 				controllerAllianceId: hub.controller_alliance_id ?? null,

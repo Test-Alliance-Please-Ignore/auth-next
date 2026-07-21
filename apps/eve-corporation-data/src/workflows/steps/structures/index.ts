@@ -34,6 +34,16 @@ export interface SkyhookEnrichmentData {
 	skyhooks: CorporationSkyhooksData
 }
 
+function buildSovereigntyAllianceBySystemId(
+	sovereigntySystems: SovereigntySystemsData
+): Map<string, string | null> {
+	return new Map(
+		sovereigntySystems
+			.filter((system) => system.claim_type === 'alliance')
+			.map((system) => [system.system_id, system.alliance_id ?? null])
+	)
+}
+
 export async function fetchStructures(
 	env: Env,
 	corporationId: string,
@@ -95,11 +105,7 @@ export async function fetchSovereigntyEnrichment(
 			sovereigntySystems = await refreshSharedSovereigntySystems(env)
 		}
 
-		const allianceBySystemId = new Map(
-			sovereigntySystems
-				.filter((system) => system.claim_type === 'alliance' && system.alliance_id !== undefined)
-				.map((system) => [system.system_id, system.alliance_id ?? null])
-		)
+		const allianceBySystemId = buildSovereigntyAllianceBySystemId(sovereigntySystems)
 		const enrichedSovereigntyHubs = sovereigntyHubs.map((hub) => ({
 			...hub,
 			name: systemGeography[hub.system_id]?.solarSystemName ?? hub.name ?? null,

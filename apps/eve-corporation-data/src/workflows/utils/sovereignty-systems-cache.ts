@@ -34,13 +34,6 @@ export async function refreshSharedSovereigntySystems(
 	env: Env
 ): Promise<EsiSovereigntySystem[]> {
 	const globalCorpData = getGlobalCorporationDataStub(env)
-	const freshSnapshot = await globalCorpData.getSharedSovereigntySystemsSnapshot(
-		SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
-	)
-	if (freshSnapshot) {
-		return freshSnapshot
-	}
-
 	const leaseToken = await globalCorpData.acquireSharedSovereigntySystemsRefreshLease()
 
 	if (leaseToken) {
@@ -65,9 +58,12 @@ export async function refreshSharedSovereigntySystems(
 		await sleep(delayMs)
 	}
 
-	return (
-		(await globalCorpData.getSharedSovereigntySystemsSnapshot(
-			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
-		)) ?? []
+	const snapshot = await globalCorpData.getSharedSovereigntySystemsSnapshot(
+		SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
 	)
+	if (snapshot) {
+		return snapshot
+	}
+
+	throw new Error('Failed to refresh shared sovereignty systems snapshot')
 }
