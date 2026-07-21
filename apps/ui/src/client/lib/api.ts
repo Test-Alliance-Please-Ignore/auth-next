@@ -22,6 +22,7 @@ import type {
 	StructureMiningCitadelListResponse as RepoStructureMiningCitadelListResponse,
 	StructureNavigationListQuery as RepoStructureNavigationListQuery,
 	StructureOverviewMetrics as RepoStructureOverviewMetrics,
+	StructureListSummary as RepoStructureListSummary,
 	StructureSkyhookListItem as RepoStructureSkyhookListItem,
 	StructureSkyhookListResponse as RepoStructureSkyhookListResponse,
 	StructureSkyhookListQuery as RepoStructureSkyhookListQuery,
@@ -744,8 +745,13 @@ export type StructureListSortBy =
 	| 'activityDefenseMultiplier'
 	| 'magmaticGasEstimatedDepletionAt'
 	| 'superionicIceEstimatedDepletionAt'
+	| 'theftVulnerabilityStart'
 	| 'skyhookSecureFullness'
 	| 'skyhookSurplusFullness'
+	| 'raidable'
+	| 'workforce'
+	| 'group'
+	| 'syncStatus'
 	| 'name'
 	| 'corporation'
 	| 'region'
@@ -798,12 +804,7 @@ export type StructureSovereigntyListFilterOption = RepoStructureSovereigntyListF
 export type StructureSovereigntyListFilterOptions = RepoStructureSovereigntyListFilterOptions
 export type StructureSovereigntyListSummary = RepoStructureSovereigntyListSummary
 
-export interface StructureListSummary {
-	total: number
-	lowFuel: number
-	lowPower: number
-	reinforced: number
-}
+export interface StructureListSummary extends RepoStructureListSummary {}
 
 export interface StructureOverviewMetrics extends RepoStructureOverviewMetrics {}
 

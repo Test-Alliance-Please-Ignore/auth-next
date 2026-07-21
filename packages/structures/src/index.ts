@@ -14,8 +14,13 @@ export type StructureListSortBy =
 	| 'activityDefenseMultiplier'
 	| 'magmaticGasEstimatedDepletionAt'
 	| 'superionicIceEstimatedDepletionAt'
+	| 'theftVulnerabilityStart'
 	| 'skyhookSecureFullness'
 	| 'skyhookSurplusFullness'
+	| 'raidable'
+	| 'workforce'
+	| 'group'
+	| 'syncStatus'
 	| 'name'
 	| 'corporation'
 	| 'region'
@@ -180,8 +185,7 @@ export interface StructureSovereigntyListFilterOptions {
 	vulnerabilityStates: StructureSovereigntyListFilterOption[]
 }
 
-export interface StructureSovereigntyListSummary {
-	total: number
+export interface StructureSovereigntyListSummary extends StructureListSummary {
 	vulnerable: number
 	invulnerable: number
 	reinforced: number
@@ -271,6 +275,8 @@ export interface StructureListSummary {
 	lowFuel: number
 	lowPower: number
 	reinforced: number
+	estimatedFuelBurnRatePerHour: string | null
+	fuelBurnRateSampleCount: number
 }
 
 export interface StructureListBaseItem
@@ -704,14 +710,7 @@ export interface StructureCitadelListResponse extends StructureListResponse<Stru
 export interface StructureNavigationListResponse
 	extends StructureListResponse<StructureNavigationListItem> {}
 
-export interface StructureOverviewMetrics {
-	total: number
-	lowFuel: number
-	lowPower: number
-	reinforced: number
-	estimatedFuelBurnRatePerHour: string | null
-	fuelBurnRateSampleCount: number
-}
+export interface StructureOverviewMetrics extends StructureListSummary {}
 
 export interface StructureSkyhookListQuery extends StructureCommonListQuery {
 	corporationId?: string

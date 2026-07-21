@@ -128,6 +128,12 @@ function getSkyhookState(
 	return 'invulnerable'
 }
 
+function getSkyhookVulnerabilityWindowStart(
+	structure: Pick<StructureSkyhookFilterableItem, 'theftVulnerabilityStart' | 'vulnerableAt'>
+): string | null {
+	return structure.theftVulnerabilityStart ?? structure.vulnerableAt ?? null
+}
+
 function getSkyhookFullness(volumeM3: number, capacityM3: number): number {
 	if (!Number.isFinite(volumeM3) || !Number.isFinite(capacityM3) || capacityM3 <= 0) {
 		return 0
@@ -142,8 +148,13 @@ export type StructureListSortField =
 	| 'activityDefenseMultiplier'
 	| 'magmaticGasEstimatedDepletionAt'
 	| 'superionicIceEstimatedDepletionAt'
+	| 'theftVulnerabilityStart'
 	| 'skyhookSecureFullness'
 	| 'skyhookSurplusFullness'
+	| 'raidable'
+	| 'workforce'
+	| 'group'
+	| 'syncStatus'
 	| 'name'
 	| 'corporation'
 	| 'region'
@@ -176,6 +187,8 @@ export interface StructureListSummary {
 	lowFuel: number
 	lowPower: number
 	reinforced: number
+	estimatedFuelBurnRatePerHour: string | null
+	fuelBurnRateSampleCount: number
 }
 
 export type StructureListQuery = StructureCitadelListQuery
@@ -1853,6 +1866,7 @@ function getStructureSortValue(
 	field: StructureListSortField
 ): string | number | null {
 	const sovereigntyStructure = structure as Partial<StructureSovereigntyFilterableItem>
+	const skyhookStructure = structure as Partial<StructureSkyhookFilterableItem>
 	switch (field) {
 		case 'updatedAt':
 			return new Date(structure.updatedAt).getTime()
@@ -1870,10 +1884,31 @@ function getStructureSortValue(
 			return sovereigntyStructure.magmaticGasEstimatedDepletionAt ?? null
 		case 'superionicIceEstimatedDepletionAt':
 			return sovereigntyStructure.superionicIceEstimatedDepletionAt ?? null
+		case 'theftVulnerabilityStart':
+			return getSkyhookVulnerabilityWindowStart(
+				structure as Partial<StructureSkyhookFilterableItem> as Pick<
+					StructureSkyhookFilterableItem,
+					'theftVulnerabilityStart' | 'vulnerableAt'
+				>
+			)
 		case 'skyhookSecureFullness':
 			return (structure as Partial<StructureSkyhookFilterableItem>).securedFillPercent ?? null
 		case 'skyhookSurplusFullness':
 			return (structure as Partial<StructureSkyhookFilterableItem>).unsecuredFillPercent ?? null
+		case 'raidable':
+			return skyhookStructure.isRaidable ? 1 : 0
+		case 'workforce':
+			return skyhookStructure.effectiveWorkforce ?? null
+		case 'group':
+			return structure.assignedGroupId ?? null
+		case 'syncStatus':
+			return skyhookStructure.syncStatus === 'error'
+				? 0
+				: skyhookStructure.syncStatus === 'warning'
+					? 1
+					: skyhookStructure.syncStatus === 'ok'
+						? 2
+						: null
 		case 'name':
 			return structure.structureId
 		case 'corporation':
@@ -1934,6 +1969,7 @@ function sortStructures<TItem extends StructureFilterableItemBase>(
 				break
 			case 'magmaticGasEstimatedDepletionAt':
 			case 'superionicIceEstimatedDepletionAt':
+			case 'theftVulnerabilityStart':
 				comparison = compareNullableDates(
 					getStructureSortValue(left, sortBy) as string | null | undefined,
 					getStructureSortValue(right, sortBy) as string | null | undefined
@@ -1947,6 +1983,20 @@ function sortStructures<TItem extends StructureFilterableItemBase>(
 				comparison = compareNullableNumbers(
 					getStructureSortValue(left, sortBy) as number | null | undefined,
 					getStructureSortValue(right, sortBy) as number | null | undefined
+				)
+				break
+			case 'raidable':
+			case 'workforce':
+			case 'syncStatus':
+				comparison = compareNullableNumbers(
+					getStructureSortValue(left, sortBy) as number | null | undefined,
+					getStructureSortValue(right, sortBy) as number | null | undefined
+				)
+				break
+			case 'group':
+				comparison = compareNullableStrings(
+					getStructureSortValue(left, sortBy) as string | null | undefined,
+					getStructureSortValue(right, sortBy) as string | null | undefined
 				)
 				break
 			case 'name':
@@ -2169,11 +2219,20 @@ function buildSovereigntyFilterOptions(
 	}
 }
 
-function buildSovereigntySummary(
-	items: RepoStructureSovereigntyListItem[]
-): RepoStructureSovereigntyListSummary {
-	const summary = {
-		total: items.length,
+async function buildSovereigntySummary(
+	db: DbClient<DbSchema>,
+	items: RepoStructureSovereigntyListItem[],
+	moduleConfig: Pick<
+		StructureModuleConfigResult,
+		| 'lowFuelTimeThresholdHours'
+		| 'criticalFuelTimeThresholdHours'
+		| 'lowFuelAmountThreshold'
+		| 'criticalFuelAmountThreshold'
+	>
+): Promise<RepoStructureSovereigntyListSummary> {
+	const baseSummary = await buildStructureSummary(db, items, moduleConfig)
+	const summary: RepoStructureSovereigntyListSummary = {
+		...baseSummary,
 		vulnerable: 0,
 		invulnerable: 0,
 		reinforced: 0,
@@ -2194,9 +2253,8 @@ function buildSovereigntySummary(
 			case 'unknown':
 				summary.unknown += 1
 				break
-		}
+			}
 	}
-
 	return summary
 }
 
@@ -2214,14 +2272,30 @@ function emptySovereigntyFilterOptions(): RepoStructureSovereigntyListFilterOpti
 function emptySovereigntySummary(): RepoStructureSovereigntyListSummary {
 	return {
 		total: 0,
+		lowFuel: 0,
+		lowPower: 0,
+		reinforced: 0,
+		estimatedFuelBurnRatePerHour: null,
+		fuelBurnRateSampleCount: 0,
 		vulnerable: 0,
 		invulnerable: 0,
-		reinforced: 0,
 		unknown: 0,
 	}
 }
 
-function buildStructureSummary(
+function emptyStructureListSummary(): StructureListSummary {
+	return {
+		total: 0,
+		lowFuel: 0,
+		lowPower: 0,
+		reinforced: 0,
+		estimatedFuelBurnRatePerHour: null,
+		fuelBurnRateSampleCount: 0,
+	}
+}
+
+async function buildStructureSummary(
+	db: DbClient<DbSchema>,
 	items: Array<
 		Pick<StructureFilterableItemBase, 'state' | 'lowPower' | 'lowPowerAllowed' | 'fuelAmount' | 'fuelExpires'>
 	>,
@@ -2232,12 +2306,25 @@ function buildStructureSummary(
 		| 'lowFuelAmountThreshold'
 		| 'criticalFuelAmountThreshold'
 	>
-): StructureListSummary {
-	return {
+): Promise<StructureListSummary> {
+	const summary: StructureListSummary = {
 		total: items.length,
 		lowFuel: items.filter((structure) => isFuelBelowThreshold(structure, moduleConfig)).length,
 		lowPower: items.filter((structure) => structure.lowPower && !structure.lowPowerAllowed).length,
 		reinforced: items.filter((structure) => isReinforcedStructureState(structure.state)).length,
+		estimatedFuelBurnRatePerHour: null,
+		fuelBurnRateSampleCount: 0,
+	}
+
+	const fuelHistorySamplesByStructure = await loadFuelHistorySamplesByStructure(
+		db,
+		items.map((item) => item.structureId)
+	)
+	const burnRate = aggregateFuelBurnRatePerHour(fuelHistorySamplesByStructure)
+
+	return {
+		...summary,
+		...burnRate,
 	}
 }
 
@@ -2314,14 +2401,7 @@ function emptyStructureFilterOptions(): StructureListFilterOptions {
 }
 
 function emptyStructureOverviewMetrics(): StructureOverviewMetrics {
-	return {
-		total: 0,
-		lowFuel: 0,
-		lowPower: 0,
-		reinforced: 0,
-		estimatedFuelBurnRatePerHour: null,
-		fuelBurnRateSampleCount: 0,
-	}
+	return emptyStructureListSummary()
 }
 
 interface StructureBaseFilterQuery {
@@ -2633,12 +2713,7 @@ async function listVisibleOperationalStructures(
 				hasPreviousPage: false,
 			},
 			filterOptions: emptyStructureFilterOptions(),
-			summary: {
-				total: 0,
-				lowFuel: 0,
-				lowPower: 0,
-				reinforced: 0,
-			},
+			summary: emptyStructureListSummary(),
 		}
 	}
 
@@ -2651,7 +2726,7 @@ async function listVisibleOperationalStructures(
 	const sortBy = query.sortBy ?? 'skyhookSecureFullness'
 	const sortDirection = query.sortDirection ?? 'asc'
 	const sortedItems = sortStructures(filteredItems, sortBy, sortDirection)
-	const summary = buildStructureSummary(filteredItems, moduleConfig)
+	const summary = await buildStructureSummary(db, filteredItems, moduleConfig)
 	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
 	const totalCount = sortedItems.length
 	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
@@ -2692,17 +2767,7 @@ export async function getStructureOverviewMetrics(
 	}
 
 	const items = visibleContexts.map((context) => buildStructureListItem(context))
-	const summary = buildStructureSummary(items, moduleConfig)
-	const fuelHistorySamplesByStructure = await loadFuelHistorySamplesByStructure(
-		db,
-		visibleContexts.map((context) => context.structure.structureId)
-	)
-	const burnRate = aggregateFuelBurnRatePerHour(fuelHistorySamplesByStructure)
-
-	return {
-		...summary,
-		...burnRate,
-	}
+	return buildStructureSummary(db, items, moduleConfig)
 }
 
 export async function listVisibleStructures(
@@ -2758,12 +2823,7 @@ export async function listMoonDrillStructures(
 				hasPreviousPage: false,
 			},
 			filterOptions: emptyStructureFilterOptions(),
-			summary: {
-				total: 0,
-				lowFuel: 0,
-				lowPower: 0,
-				reinforced: 0,
-			},
+			summary: emptyStructureListSummary(),
 		}
 	}
 
@@ -2782,12 +2842,7 @@ export async function listMoonDrillStructures(
 				hasPreviousPage: false,
 			},
 			filterOptions: emptyStructureFilterOptions(),
-			summary: {
-				total: 0,
-				lowFuel: 0,
-				lowPower: 0,
-				reinforced: 0,
-			},
+			summary: emptyStructureListSummary(),
 		}
 	}
 
@@ -2847,7 +2902,7 @@ export async function listMoonDrillStructures(
 			hasPreviousPage: page > 1,
 		},
 		filterOptions: buildMoonGeographyFilterOptions(items),
-		summary: buildStructureSummary(items, moduleConfig),
+		summary: await buildStructureSummary(db, items, moduleConfig),
 	}
 }
 
@@ -3188,7 +3243,7 @@ export async function listSovereigntyStructures(
 			hasPreviousPage: page > 1,
 		},
 		filterOptions: buildSovereigntyFilterOptions(filteredItems),
-		summary: buildSovereigntySummary(filteredItems),
+		summary: await buildSovereigntySummary(db, filteredItems, moduleConfig),
 	}
 }
 
@@ -3221,12 +3276,7 @@ export async function listSkyhookStructures(
 				hasPreviousPage: false,
 			},
 			filterOptions: emptyStructureFilterOptions(),
-			summary: {
-				total: 0,
-				lowFuel: 0,
-				lowPower: 0,
-				reinforced: 0,
-			},
+			summary: emptyStructureListSummary(),
 		}
 	}
 
@@ -3247,12 +3297,7 @@ export async function listSkyhookStructures(
 				hasPreviousPage: false,
 			},
 			filterOptions: emptyStructureFilterOptions(),
-			summary: {
-				total: 0,
-				lowFuel: 0,
-				lowPower: 0,
-				reinforced: 0,
-			},
+			summary: emptyStructureListSummary(),
 		}
 	}
 
@@ -3314,7 +3359,7 @@ export async function listSkyhookStructures(
 			hasPreviousPage: page > 1,
 		},
 		filterOptions: buildSkyhookFilterOptions(items),
-		summary: buildStructureSummary(items, moduleConfig),
+		summary: await buildStructureSummary(db, items, moduleConfig),
 	}
 }
 
@@ -3347,12 +3392,7 @@ export async function listMiningCitadelStructures(
 				hasPreviousPage: false,
 			},
 			filterOptions: emptyStructureFilterOptions(),
-			summary: {
-				total: 0,
-				lowFuel: 0,
-				lowPower: 0,
-				reinforced: 0,
-			},
+			summary: emptyStructureListSummary(),
 		}
 	}
 
@@ -3441,7 +3481,7 @@ export async function listMiningCitadelStructures(
 			hasPreviousPage: page > 1,
 		},
 		filterOptions: buildMoonGeographyFilterOptions(items),
-		summary: buildStructureSummary(items, moduleConfig),
+		summary: await buildStructureSummary(db, items, moduleConfig),
 	}
 }
 
