@@ -7,6 +7,7 @@ import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/
 import type { StructuresWorker } from '@repo/structures'
 import type { Skills } from '@repo/skills'
 import type { PasteWorker } from '@repo/paste'
+import type { UserProfileDTO } from '@repo/core'
 import type { createDb } from './db'
 import type { CsvExportWorkflowParams } from './workflows/csv-export.workflow'
 import type { UserDiscordRefreshWorkflowParams } from './workflows/user-discord-refresh.workflow'
@@ -153,6 +154,8 @@ export type Variables = SharedHonoVariables & {
 	db?: ReturnType<typeof createDb>
 	/** Current authenticated user (set by session middleware) */
 	user?: SessionUser
+	/** Full authenticated user profile loaded by session middleware for hot-path reuse */
+	userProfile?: UserProfileDTO
 	/** EVE Token Store Durable Object stub */
 	eveTokenStore?: EveTokenStore
 	/** EVE Character Data Durable Object stub */

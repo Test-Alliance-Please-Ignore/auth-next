@@ -1390,20 +1390,23 @@ auth.get('/session', async (c) => {
 	// Lazy-load Discord status if needed
 	const discordStatus = await getDiscordStatus(c)
 
-	// Get user profile to include legacy auth info
-	const db = c.get('db') || createDb(c.env.DATABASE_URL)
-	const userService = new UserService(db)
+	// Reuse the full profile already loaded by session middleware.
+	// Fall back to a direct DB lookup only if something unexpected bypassed the middleware.
+	let profile = c.get('userProfile')
+	if (!profile) {
+		const db = c.get('db') || createDb(c.env.DATABASE_URL)
+		const userService = new UserService(db)
 
-	let profile: Awaited<ReturnType<typeof userService.getUserProfile>>
-	try {
-		profile = await userService.getUserProfile(user.id)
-	} catch (error) {
-		logger.error('[Auth Session] Failed to fetch user profile', {
-			userId: user.id,
-			error: error instanceof Error ? error.message : String(error),
-			stack: error instanceof Error ? error.stack : undefined,
-		})
-		throw error
+		try {
+			profile = await userService.getUserProfile(user.id)
+		} catch (error) {
+			logger.error('[Auth Session] Failed to fetch user profile', {
+				userId: user.id,
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+			})
+			throw error
+		}
 	}
 
 	// Build legacy auth status
