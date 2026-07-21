@@ -616,7 +616,10 @@ export interface EveTokenStore {
 	 * )
 	 * ```
 	 */
-	fetchPublicEsi<T>(path: string): Promise<EsiResponse<T>>
+	fetchPublicEsi<T>(
+		path: string,
+		options?: { cacheMode?: 'default' | 'no-store' }
+	): Promise<EsiResponse<T>>
 
 	/**
 	 * Fetch character affiliation data from ESI.

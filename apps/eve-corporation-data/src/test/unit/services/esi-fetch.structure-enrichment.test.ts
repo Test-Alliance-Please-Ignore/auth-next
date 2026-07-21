@@ -4,6 +4,7 @@ import { buildSkyhookBaseStructureRow, buildSkyhookStorageRow } from '../../../d
 import {
 	fetchCorporationSkyhooks,
 	fetchSovereigntyHubs,
+	fetchSovereigntySystems,
 	fetchStructures,
 } from '../../../services/esi-fetch'
 
@@ -41,6 +42,23 @@ describe('esi structure enrichment ownership handling', () => {
 			profile_id: '60012345',
 			state: 'shield_vulnerable',
 		})
+	})
+
+	it('bypasses the public cache when fetching sovereignty systems', async () => {
+		const tokenStore = {
+			fetchPublicEsi: vi.fn().mockResolvedValue({
+				data: {
+					solar_systems: [],
+				},
+			}),
+		}
+
+		const systems = await fetchSovereigntySystems(tokenStore as never)
+
+		expect(tokenStore.fetchPublicEsi).toHaveBeenCalledWith('/sovereignty/systems', {
+			cacheMode: 'no-store',
+		})
+		expect(systems).toEqual([])
 	})
 
 	it('fetches skyhook detail from the corp skyhook endpoints and maps the requesting corporation id', async () => {

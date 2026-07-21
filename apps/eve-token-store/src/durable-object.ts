@@ -1899,9 +1899,13 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * For public endpoints that don't require authentication
 	 * Caches responses according to ESI cache headers
 	 */
-	async fetchPublicEsi<T>(path: string): Promise<EsiResponse<T>> {
+	async fetchPublicEsi<T>(
+		path: string,
+		options?: { cacheMode?: 'default' | 'no-store' }
+	): Promise<EsiResponse<T>> {
 		const scope = EveTokenStoreDO.PUBLIC_CACHE_SCOPE
-		const cached = await this.getCachedResponse<T>(scope, path, undefined, true)
+		const cacheMode = options?.cacheMode ?? 'default'
+		const cached = cacheMode === 'no-store' ? null : await this.getCachedResponse<T>(scope, path, undefined, true)
 		if (cached) {
 			const now = Date.now()
 			const lastModified = cached.lastModified?.getTime()
@@ -1928,7 +1932,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			path,
 			userKey: buildPublicEsiUserKey(),
 			cacheScope: scope,
-			cacheMode: 'default',
+			cacheMode,
 			cachedResponse: cached,
 			onResponse: async ({ response: esiResponse }) => {
 				if (shouldOpenRouteCircuitForResponse(esiResponse.status)) {

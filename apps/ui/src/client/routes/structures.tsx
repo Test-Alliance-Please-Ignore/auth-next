@@ -247,7 +247,7 @@ function getSovereigntyVulnerabilityState(
 		  >
 		| null
 		| undefined
-): { label: string; variant: 'ghost' | 'warning' | 'success' } {
+): { label: string; variant: 'ghost' | 'success' } {
 	if (!sovereignty?.vulnerabilityWindowStart || !sovereignty?.vulnerabilityWindowEnd) {
 		return { label: 'Unknown', variant: 'ghost' }
 	}
@@ -256,7 +256,7 @@ function getSovereigntyVulnerabilityState(
 	const end = new Date(sovereignty.vulnerabilityWindowEnd).getTime()
 	const now = Date.now()
 	if (Number.isFinite(start) && Number.isFinite(end) && now >= start && now <= end) {
-		return { label: 'Vulnerable', variant: 'warning' }
+		return { label: 'Vulnerable', variant: 'success' }
 	}
 
 	return { label: 'Invulnerable', variant: 'success' }
@@ -801,7 +801,9 @@ export default function StructuresPage() {
 						<div className="space-y-1">
 							<Badge variant={vulnerabilityState.variant}>{vulnerabilityState.label}</Badge>
 							{isReinforcedStructureState(structure.state) && (
-								<div className="text-xs text-muted-foreground">Reinforced</div>
+								<Badge variant="destructive" className="text-xs">
+									Reinforced
+								</Badge>
 							)}
 						</div>
 					</TableCell>

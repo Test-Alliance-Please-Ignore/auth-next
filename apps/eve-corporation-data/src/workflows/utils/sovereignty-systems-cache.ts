@@ -45,13 +45,7 @@ export async function refreshSharedSovereigntySystems(
 
 	if (leaseToken) {
 		try {
-			const refreshedSnapshot = await globalCorpData.getSharedSovereigntySystemsSnapshot(
-				SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
-			)
-			if (refreshedSnapshot) {
-				return refreshedSnapshot
-			}
-
+			await globalCorpData.clearSharedSovereigntySystems()
 			const tokenStore = createTokenStore(env)
 			const sovereigntySystems = await esiFetch.fetchSovereigntySystems(tokenStore)
 			await globalCorpData.storeSharedSovereigntySystems(sovereigntySystems)
