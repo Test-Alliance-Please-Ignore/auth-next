@@ -290,6 +290,11 @@ describe('EveCorporationSyncWorkflow', () => {
 			},
 		])
 		expect(syncAssetsMock).toHaveBeenCalledWith(env, '693378155', '900000001', ['structure-1'])
+		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(
+			env,
+			'693378155',
+			['assets', 'structures']
+		)
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
 
@@ -454,6 +459,7 @@ describe('EveCorporationSyncWorkflow', () => {
 		)
 		expect(selectDirectorMock).toHaveBeenCalledTimes(1)
 		expect(executedStepNames).toContain('store-structure-sovereignty-enrichment-failure')
+		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', [])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
 
@@ -617,7 +623,7 @@ describe('EveCorporationSyncWorkflow', () => {
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
 
-	it('skips sovereignty and mining enrichment when the structure sync is within the cooldown window but still refreshes skyhooks', async () => {
+	it('skips structure enrichment work when the structure sync is within the cooldown window', async () => {
 		vi.clearAllMocks()
 		const { env, corpDataStub, updateCorporationAuthHealth } = createWorkflowEnv()
 		corpDataStub.getCorporationSyncConfig.mockResolvedValue({
@@ -689,13 +695,16 @@ describe('EveCorporationSyncWorkflow', () => {
 			trigger: 'cron',
 		})
 
+		expect(fetchStructuresMock).not.toHaveBeenCalled()
+		expect(storeStructuresMock).not.toHaveBeenCalled()
 		expect(fetchSovereigntyEnrichmentMock).not.toHaveBeenCalled()
-		expect(fetchSkyhookEnrichmentMock).toHaveBeenCalledTimes(1)
-		expect(storeSkyhookEnrichmentMock).toHaveBeenCalledTimes(1)
+		expect(fetchSkyhookEnrichmentMock).not.toHaveBeenCalled()
+		expect(storeSkyhookEnrichmentMock).not.toHaveBeenCalled()
 		expect(fetchMiningExtractionEnrichmentMock).not.toHaveBeenCalled()
 		expect(executedStepNames).not.toContain('store-structure-sovereignty-enrichment')
-		expect(executedStepNames).toContain('store-structure-skyhook-enrichment')
+		expect(executedStepNames).not.toContain('store-structure-skyhook-enrichment')
 		expect(executedStepNames).not.toContain('store-structure-mining-extraction-enrichment')
+		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', ['assets'])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
 })

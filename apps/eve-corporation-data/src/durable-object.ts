@@ -896,6 +896,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async getCorporationsNeedingRefresh(): Promise<string[]> {
 		const tooOld = minutesAgo(20)
 		const assetsTooOld = minutesAgo(60)
+		const structuresTooOld = minutesAgo(60)
 
 		const configs = await this.getDb().query.corporationConfig.findMany({
 			where: and(eq(corporationConfig.includeInBackgroundRefresh, true)),
@@ -908,7 +909,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			{ field: 'walletJournalLastSync' as const, cutoff: tooOld },
 			{ field: 'walletTransactionsLastSync' as const, cutoff: tooOld },
 			{ field: 'assetsLastSync' as const, cutoff: assetsTooOld },
-			{ field: 'structuresLastSync' as const, cutoff: tooOld },
+			{ field: 'structuresLastSync' as const, cutoff: structuresTooOld },
 			{ field: 'ordersLastSync' as const, cutoff: tooOld },
 			{ field: 'contractsLastSync' as const, cutoff: tooOld },
 			{ field: 'industryJobsLastSync' as const, cutoff: tooOld },
