@@ -55,8 +55,6 @@ export interface CoreWorker {
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
-	ASSETS_SYNC_ENABLED?: boolean | string
-	STRUCTURE_ENRICHMENT_ENABLED?: boolean | string
 	/** Core worker service binding for RPC calls */
 	CORE: CoreWorker
 	EVE_CORPORATION_DATA: DurableObjectNamespace

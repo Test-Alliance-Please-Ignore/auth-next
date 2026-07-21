@@ -190,6 +190,13 @@
       "when": 1784260492391,
       "tag": "0026_shiny_revanche",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1784616356949,
+      "tag": "0027_unusual_korath",
+      "breakpoints": true
     }
   ]
 }

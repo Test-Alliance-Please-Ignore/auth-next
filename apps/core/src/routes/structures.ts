@@ -46,11 +46,19 @@ const structureListSortFields = [
 	'name',
 	'corporation',
 	'region',
+	'planet',
 	'system',
 	'type',
 	'state',
 	'magmaticGasEstimatedDepletionAt',
 	'superionicIceEstimatedDepletionAt',
+	'theftVulnerabilityStart',
+	'skyhookSecureFullness',
+	'skyhookSurplusFullness',
+	'raidable',
+	'workforce',
+	'group',
+	'syncStatus',
 ] as const
 
 const structureListPagingSchema = z.object({

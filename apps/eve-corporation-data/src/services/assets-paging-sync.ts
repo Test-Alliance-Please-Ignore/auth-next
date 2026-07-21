@@ -20,6 +20,15 @@ export interface AssetsPagingSyncDeps {
 	onProgress?: (progress: { page: number; totalPages: number; totalAssets: number }) => void
 }
 
+export function dedupeByItemId<T>(items: T[], getItemId: (item: T) => string): T[] {
+	const deduped = new Map<string, T>()
+	for (const item of items) {
+		deduped.set(getItemId(item), item)
+	}
+
+	return [...deduped.values()]
+}
+
 /**
  * Fetches corporation assets page-by-page and persists each page immediately.
  * This prevents large in-memory arrays or large RPC payloads.
@@ -30,7 +39,8 @@ export async function syncAssetsPaged(deps: AssetsPagingSyncDeps): Promise<{ ass
 	let totalAssets = 0
 
 	const processPage = async (rawAssets: RawEsiAsset[]): Promise<void> => {
-		const assets = transformAssets(rawAssets)
+		const dedupedRawAssets = dedupeByItemId(rawAssets, (asset) => String(asset.item_id))
+		const assets = transformAssets(dedupedRawAssets)
 		await deps.storeAssets(assets)
 		totalAssets += assets.length
 	}

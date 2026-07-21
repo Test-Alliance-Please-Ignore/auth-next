@@ -38,11 +38,15 @@ import {
 	fetchSkyhookEnrichment,
 	fetchSovereigntyEnrichment,
 	fetchStructures,
+	markStructureEnrichmentSyncFailure,
 	storeMiningExtractionEnrichment,
 	storeSkyhookEnrichment,
 	storeSovereigntyEnrichment,
 	storeStructures,
 } from './steps/structures'
+import {
+	StructureEnrichmentScopeMismatchError,
+} from './utils/structure-enrichment-auth'
 import { syncWalletJournal } from './steps/wallet-journal'
 import { syncWalletTransactions } from './steps/wallet-transactions'
 import { fetchWallets, storeWallets } from './steps/wallets'
@@ -78,16 +82,6 @@ function isMiningCitadelStructure(structure: Pick<EsiCorporationStructure, 'type
 
 function addHours(date: Date, hours: number): Date {
 	return new Date(date.getTime() + hours * 60 * 60 * 1000)
-}
-
-function readEnvFlag(value: boolean | string | undefined, defaultValue: boolean): boolean {
-	if (typeof value === 'boolean') return value
-	if (typeof value === 'string') {
-		const normalized = value.trim().toLowerCase()
-		if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true
-		if (normalized === 'false' || normalized === '0' || normalized === 'no') return false
-	}
-	return defaultValue
 }
 
 const ROLE_REQUIREMENTS_BY_DATA_TYPE: Partial<
@@ -163,8 +157,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 		return await withWorkerLogContext('EveCorporationSyncWorkflow', this.env, async () => {
 			const { corporationId, dataTypes, trigger } = event.payload
 			const workflowInstanceId = event.instanceId
-			const assetsSyncEnabled = readEnvFlag(this.env.ASSETS_SYNC_ENABLED, true)
-			const structureEnrichmentEnabled = readEnvFlag(this.env.STRUCTURE_ENRICHMENT_ENABLED, false)
 
 			logger.info('[EveCorporationSyncWorkflow] Starting sync', {
 				corporationId,
@@ -204,29 +196,18 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				structureEnrichmentNextAllowedAt !== null &&
 				structureEnrichmentNextAllowedAt > workflowObservedAt
 			const shouldSync = createShouldSyncPredicate(dataTypes, {
-				disabledDataTypes: assetsSyncEnabled && structureAssetSyncEnabled ? [] : ['assets'],
+				disabledDataTypes: structureAssetSyncEnabled ? [] : ['assets'],
 			})
 			const requiredRoleSets = getRequiredRoleSets(shouldSync)
 
 			const wantsAssets = !dataTypes || dataTypes.length === 0 || dataTypes.includes('assets')
-			if (wantsAssets && (!assetsSyncEnabled || !structureAssetSyncEnabled)) {
+			if (wantsAssets && !structureAssetSyncEnabled) {
 				const assetSyncLog = {
 					corporationId,
 					requestedDataTypes: dataTypes ?? 'all',
-					assetsSyncEnabled,
 					structureAssetSyncEnabled,
 				}
-				if (assetsSyncEnabled) {
-					logger.info(
-						'[EveCorporationSyncWorkflow] Asset sync skipped by configuration',
-						assetSyncLog
-					)
-				} else {
-					logger.warn(
-						'[EveCorporationSyncWorkflow] Asset sync skipped by configuration',
-						assetSyncLog
-					)
-				}
+				logger.info('[EveCorporationSyncWorkflow] Asset sync skipped by corporation configuration', assetSyncLog)
 			}
 
 			await step.do(
@@ -376,7 +357,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 			const runDirectorStepWithFailover = async <T>(params: {
 				stepName: string
-				timeout: '1 minute' | '5 minutes' | '10 minutes'
+				timeout: '1 minute' | '5 minutes' | '10 minutes' | '20 minutes'
 				requiredRoles?: string[]
 				run: (directorCharacterId: string) => Promise<T>
 			}): Promise<T> => {
@@ -751,7 +732,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					| null = null
 
 				if (structures) {
-					if (structureEnrichmentEnabled && !structureEnrichmentCooldownActive) {
+					if (!structureEnrichmentCooldownActive) {
 						try {
 							sovereigntyEnrichment = await runDirectorStepWithFailover({
 								stepName: 'fetch-structure-sovereignty-enrichment',
@@ -761,13 +742,44 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 									fetchSovereigntyEnrichment(this.env, corporationId, directorCharacterId),
 							})
 						} catch (error) {
-							logger.warn(
-								'[EveCorporationSyncWorkflow] Sovereignty enrichment failed; continuing without it',
-								{
-									corporationId,
-									error: error instanceof Error ? error.message : String(error),
+							if (error instanceof StructureEnrichmentScopeMismatchError) {
+								try {
+									await step.do(
+										'store-structure-sovereignty-enrichment-failure',
+										{},
+										async () =>
+											await markStructureEnrichmentSyncFailure(
+												this.env,
+												corporationId,
+												error.target,
+												error.message
+											)
+									)
+								} catch (markError) {
+									logger.warn(
+										'[EveCorporationSyncWorkflow] Sovereignty enrichment scope mismatch could not be persisted',
+										{
+											corporationId,
+											error: markError instanceof Error ? markError.message : String(markError),
+										}
+									)
 								}
-							)
+								logger.warn(
+									'[EveCorporationSyncWorkflow] Sovereignty enrichment scope mismatch; marking sync failure',
+									{
+										corporationId,
+										error: error.message,
+									}
+								)
+							} else {
+								logger.warn(
+									'[EveCorporationSyncWorkflow] Sovereignty enrichment failed; continuing without it',
+									{
+										corporationId,
+										error: error instanceof Error ? error.message : String(error),
+									}
+								)
+							}
 						}
 
 						if (miningCitadelStructureIds.size > 0) {
@@ -821,7 +833,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 								)
 							})
 						}
-					} else if (structureEnrichmentEnabled && structureEnrichmentCooldownActive) {
+					} else {
 						logger.info('[EveCorporationSyncWorkflow] Skipping structure enrichment due to cooldown', {
 							corporationId,
 							nextAllowedAt: structureEnrichmentNextAllowedAt?.toISOString() ?? null,
@@ -837,13 +849,44 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 								fetchSkyhookEnrichment(this.env, corporationId, directorCharacterId),
 						})
 					} catch (error) {
-						logger.warn(
-							'[EveCorporationSyncWorkflow] Skyhook enrichment failed; continuing without it',
-							{
-								corporationId,
-								error: error instanceof Error ? error.message : String(error),
+						if (error instanceof StructureEnrichmentScopeMismatchError) {
+							try {
+								await step.do(
+									'store-structure-skyhook-enrichment-failure',
+									{},
+									async () =>
+										await markStructureEnrichmentSyncFailure(
+											this.env,
+											corporationId,
+											error.target,
+											error.message
+										)
+								)
+							} catch (markError) {
+								logger.warn(
+									'[EveCorporationSyncWorkflow] Skyhook enrichment scope mismatch could not be persisted',
+									{
+										corporationId,
+										error: markError instanceof Error ? markError.message : String(markError),
+									}
+								)
 							}
-						)
+							logger.warn(
+								'[EveCorporationSyncWorkflow] Skyhook enrichment scope mismatch; marking sync failure',
+								{
+									corporationId,
+									error: error.message,
+								}
+							)
+						} else {
+							logger.warn(
+								'[EveCorporationSyncWorkflow] Skyhook enrichment failed; continuing without it',
+								{
+									corporationId,
+									error: error instanceof Error ? error.message : String(error),
+								}
+							)
+						}
 					}
 
 					if (skyhookEnrichment) {
@@ -885,11 +928,11 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				})
 				assetsSync = await step.do(
 					'sync-assets',
-					{ ...STEP_RETRY_OPTIONS, timeout: '10 minutes' },
+					{ ...STEP_RETRY_OPTIONS, timeout: '20 minutes' },
 					async () => {
-						const result = await runDirectorStepWithFailover({
+						const result: { assetsCount: number } = await runDirectorStepWithFailover({
 							stepName: 'sync-assets',
-							timeout: '10 minutes',
+							timeout: '20 minutes',
 							requiredRoles: ['Director'],
 							run: (directorCharacterId) =>
 								syncAssets(

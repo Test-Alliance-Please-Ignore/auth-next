@@ -7,7 +7,7 @@ import {
 	RefreshCcw,
 	Shield,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
 import {
@@ -21,6 +21,8 @@ import {
 	isReinforcedStructureState,
 	isStructureTab,
 	isStructureVulnerabilityState,
+	STRUCTURE_SYNC_ERROR_STALE_MS,
+	STRUCTURE_SYNC_WARNING_STALE_MS,
 } from '@repo/structures'
 
 import { TableRefreshFrame } from '@/components/table-refresh-frame'
@@ -40,6 +42,7 @@ import { Select } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDateTimeLong } from '@/lib/date-utils'
 import { allianceLogoUrl } from '@/lib/eve-images'
+import { getSkyhookVulnerabilityWindowDisplay } from '@/lib/skyhook-vulnerability-window'
 import { stripLeadingContextName } from '@/lib/structure-name-utils'
 import {
 	Table,
@@ -81,7 +84,6 @@ import {
 	useSkyhookStructures,
 	useSovereigntyStructures,
 	useStructureModuleConfig,
-	useStructureOverviewMetrics,
 } from '../features/structures/hooks'
 import {
 	clearStructureTableFilters,
@@ -104,6 +106,18 @@ const BOOLEAN_FILTER_OPTIONS: SelectOption[] = [
 function structureSyncStatusDescription(
 	structure: Pick<StructureListBaseItem, 'syncStatus' | 'syncFailureReason' | 'lastSyncedAt'>
 ) {
+	const getStalenessNote = () => {
+		if (!structure.lastSyncedAt) return null
+		const ageMs = Math.max(0, Date.now() - new Date(structure.lastSyncedAt).getTime())
+		if (ageMs >= STRUCTURE_SYNC_ERROR_STALE_MS) {
+			return 'This snapshot is more than 24 hours old and should be treated as stale.'
+		}
+		if (ageMs >= STRUCTURE_SYNC_WARNING_STALE_MS) {
+			return 'This snapshot is more than 12 hours old and may be stale.'
+		}
+		return null
+	}
+
 	if (structure.syncFailureReason) {
 		return structure.lastSyncedAt
 			? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}. ${structure.syncFailureReason}`
@@ -117,14 +131,16 @@ function structureSyncStatusDescription(
 	}
 
 	if (structure.syncStatus === 'warning') {
+		const stalenessNote = getStalenessNote()
 		return structure.lastSyncedAt
-			? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}. The latest corporation-data sync completed with warnings, so some snapshot fields may be stale or incomplete.`
+			? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}. ${stalenessNote ?? 'The latest corporation-data sync completed with warnings, so some snapshot fields may be stale or incomplete.'}`
 			: 'The latest corporation-data sync completed with warnings, so some snapshot fields may be stale or incomplete.'
 	}
 
 	if (structure.syncStatus === 'error') {
+		const stalenessNote = getStalenessNote()
 		return structure.lastSyncedAt
-			? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}. The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.`
+			? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}. ${stalenessNote ?? 'The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.'}`
 			: 'The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.'
 	}
 
@@ -294,14 +310,8 @@ export default function StructuresPage() {
 		: visibleTabs[0]?.tab ?? tableState.tab
 	const [nowMs, setNowMs] = useState(() => Date.now())
 	const { data: moduleConfig } = useStructureModuleConfig()
-	const {
-		data: overviewMetrics,
-		isLoading: isOverviewLoading,
-		isFetching: isOverviewFetching,
-		refetch: refetchOverview,
-	} = useStructureOverviewMetrics({
-		enabled: !authLoading && !permissionsLoading && canViewStructures,
-	})
+	const tableScrollContainerRef = useRef<HTMLDivElement | null>(null)
+	const tableScrollLeftByTabRef = useRef<Record<string, number>>({})
 	const sharedQuery = useMemo(
 		() => ({
 			page: tableState.page,
@@ -447,7 +457,7 @@ export default function StructuresPage() {
 	const error = structuresError
 	const isFetching = isStructuresFetching
 	const refreshAll = () => {
-		void Promise.all([activeResponse.refetch(), refetchOverview()])
+		void activeResponse.refetch()
 	}
 
 	useEffect(() => {
@@ -616,8 +626,23 @@ export default function StructuresPage() {
 							tableState.filters.lowPower ?? '',
 							tableState.filters.lowPowerAllowed ?? '',
 							tableState.filters.typeId ?? '',
-						]),
+		]),
 	].join(':')
+
+	useLayoutEffect(() => {
+		const container = tableScrollContainerRef.current
+		if (!container) {
+			return
+		}
+
+		const savedScrollLeft = tableScrollLeftByTabRef.current[activeTab] ?? 0
+		const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth)
+		container.scrollLeft = Math.min(savedScrollLeft, maxScrollLeft)
+	}, [activeTab, structuresContentKey, activeResponse.dataUpdatedAt])
+
+	const handleTableScroll = (event: UIEvent<HTMLDivElement>) => {
+		tableScrollLeftByTabRef.current[activeTab] = event.currentTarget.scrollLeft
+	}
 
 	const activeFilterCount = (
 		isSovereigntyTab
@@ -863,9 +888,13 @@ export default function StructuresPage() {
 
 	const renderSkyhookRows = (items: StructureSkyhookListItem[]) =>
 		items.map((structure) => {
-			const skyhookVulnerabilityCountdownTarget = structure.isRaidable
-				? structure.theftVulnerabilityEnd
-				: structure.theftVulnerabilityStart ?? structure.theftVulnerabilityEnd ?? structure.vulnerableAt
+			const vulnerabilityWindow = getSkyhookVulnerabilityWindowDisplay({
+				theftVulnerabilityStart: structure.theftVulnerabilityStart,
+				theftVulnerabilityEnd: structure.theftVulnerabilityEnd,
+				vulnerableAt: structure.vulnerableAt,
+				isRaidable: structure.isRaidable,
+				nowMs,
+			})
 
 			return (
 				<TableRow key={structure.structureId}>
@@ -931,10 +960,10 @@ export default function StructuresPage() {
 							structure.theftVulnerabilityEnd ||
 							structure.vulnerableAt ? (
 								<div className="text-xs text-muted-foreground">
-									{structure.isRaidable ? 'Ends in ' : 'Starts in '}
-									{skyhookVulnerabilityCountdownTarget ? (
+									{vulnerabilityWindow.label}{" "}
+									{vulnerabilityWindow.countdownTarget ? (
 										<DurationDisplay
-											endDate={skyhookVulnerabilityCountdownTarget}
+											endDate={vulnerabilityWindow.countdownTarget}
 											referenceTimeMs={nowMs}
 											maxUnits={2}
 											durationStyle="compact"
@@ -1189,9 +1218,9 @@ export default function StructuresPage() {
 			size="sm"
 			className="h-8"
 			onClick={() => refreshAll()}
-			disabled={isFetching || isOverviewFetching || isInitialLoading || isOverviewLoading}
+			disabled={isFetching || isInitialLoading}
 		>
-			<RefreshCcw className={cn('h-4 w-4', (isFetching || isOverviewFetching) && 'animate-spin')} />
+			<RefreshCcw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
 			<span className="ml-2">Refresh</span>
 		</Button>
 	)
@@ -1491,9 +1520,9 @@ export default function StructuresPage() {
 							variant="ghost"
 							size="sm"
 							onClick={() => refreshAll()}
-							disabled={isFetching || isOverviewFetching || isInitialLoading || isOverviewLoading}
+							disabled={isFetching || isInitialLoading}
 						>
-							<RefreshCcw className={cn('h-4 w-4', (isFetching || isOverviewFetching) && 'animate-spin')} />
+							<RefreshCcw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
 							Refresh
 						</Button>
 					</div>
@@ -1504,12 +1533,10 @@ export default function StructuresPage() {
 				<Card>
 					<CardHeader>
 						<CardTitle className="text-base">Total Structures</CardTitle>
-						<CardDescription>
-							All structures visible to your current permission scope.
-						</CardDescription>
+						<CardDescription>Matches the active tab and filters.</CardDescription>
 					</CardHeader>
 					<CardContent className="text-3xl font-semibold">
-						{overviewMetrics ? overviewMetrics.total : '-'}
+						{activeResponse.data?.summary.total ?? '-'}
 					</CardContent>
 				</Card>
 				<Card>
@@ -1522,7 +1549,7 @@ export default function StructuresPage() {
 					</CardHeader>
 					<CardContent>
 						<div className="text-3xl font-semibold">
-							{overviewMetrics ? overviewMetrics.lowFuel : '-'}
+							{activeResponse.data?.summary.lowFuel ?? '-'}
 						</div>
 					</CardContent>
 				</Card>
@@ -1532,7 +1559,7 @@ export default function StructuresPage() {
 						<CardDescription>Structures in low power without suppression enabled.</CardDescription>
 					</CardHeader>
 					<CardContent className="text-3xl font-semibold">
-						{overviewMetrics ? overviewMetrics.lowPower : '-'}
+						{activeResponse.data?.summary.lowPower ?? '-'}
 					</CardContent>
 				</Card>
 				<Card>
@@ -1543,27 +1570,27 @@ export default function StructuresPage() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-3xl font-semibold">
-						{overviewMetrics ? overviewMetrics.reinforced : '-'}
+						{activeResponse.data?.summary.reinforced ?? '-'}
 					</CardContent>
 				</Card>
 				<Card>
-						<CardHeader>
-							<CardTitle className="text-base">Fuel Burn Rate</CardTitle>
-							<CardDescription>
-								Estimated aggregate burn rate from structure fuel history.
-							</CardDescription>
-						</CardHeader>
-						<CardContent className="space-y-1">
+					<CardHeader>
+						<CardTitle className="text-base">Fuel Burn Rate</CardTitle>
+						<CardDescription>
+							Estimated aggregate burn rate from the filtered structure set.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-1">
 						<div className="text-3xl font-semibold">
-							{overviewMetrics?.estimatedFuelBurnRatePerHour
-								? `${Number(overviewMetrics.estimatedFuelBurnRatePerHour).toLocaleString(undefined, {
+							{activeResponse.data?.summary.estimatedFuelBurnRatePerHour
+								? `${Number(activeResponse.data.summary.estimatedFuelBurnRatePerHour).toLocaleString(undefined, {
 										maximumFractionDigits: 2,
 									})}/hr`
 								: '-'}
 						</div>
-						{overviewMetrics && (
+						{activeResponse.data?.summary && (
 							<p className="text-xs text-muted-foreground">
-								Estimated from {overviewMetrics.fuelBurnRateSampleCount} structures with usable fuel
+								Estimated from {activeResponse.data.summary.fuelBurnRateSampleCount} structures with usable fuel
 								history.
 							</p>
 						)}
@@ -1642,7 +1669,7 @@ export default function StructuresPage() {
 									: null
 							}
 							onRetry={error && structuresResponse ? () => refreshAll() : undefined}
-							retryDisabled={isFetching || isOverviewFetching}
+							retryDisabled={isFetching}
 						>
 							{error && !structuresResponse ? (
 								<div className="rounded-lg border border-destructive/40 bg-destructive/10 p-8 text-center text-sm text-destructive">
@@ -1655,7 +1682,7 @@ export default function StructuresPage() {
 											variant="secondary"
 											size="sm"
 											onClick={() => refreshAll()}
-											disabled={isFetching || isOverviewFetching}
+											disabled={isFetching}
 										>
 											Retry
 										</Button>
@@ -1671,6 +1698,8 @@ export default function StructuresPage() {
 								</div>
 							) : (
 							<Table
+								containerRef={tableScrollContainerRef}
+								onContainerScroll={handleTableScroll}
 								className={cn(
 									'min-w-[118rem]',
 									isSovereigntyTab && 'min-w-[136rem]',
@@ -1706,16 +1735,16 @@ export default function StructuresPage() {
 												<SortableHead field="state" label="State" />
 												<SortableHead field="region" label="Region" />
 												<SortableHead field="system" label="System" />
-												<TableHead>Planet</TableHead>
+												<SortableHead field="planet" label="Planet" />
 												<SortableHead field="corporation" label="Corporation" />
 												<SortableHead field="skyhookSecureFullness" label="Fullness (Secure)" />
 												<SortableHead field="skyhookSurplusFullness" label="Fullness (Surplus)" />
-												<TableHead>Workforce</TableHead>
-												<TableHead>Raidable</TableHead>
-												<TableHead>Vulnerability Window</TableHead>
+												<SortableHead field="workforce" label="Workforce" />
+												<SortableHead field="raidable" label="Raidable" />
+												<SortableHead field="theftVulnerabilityStart" label="Vulnerability Window" />
 												<SortableHead field="nextStateAt" label="Next State In" />
-												<TableHead>Group</TableHead>
-												<TableHead>Sync</TableHead>
+												<SortableHead field="group" label="Group" />
+												<SortableHead field="syncStatus" label="Sync" />
 											</>
 										) : isMoonDrillsTab ? (
 											<>

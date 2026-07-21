@@ -21,6 +21,8 @@ import {
 	getStructureTabForTypeId,
 	isReinforcedStructureState,
 	type StructureSovereigntyTransportSection,
+	STRUCTURE_SYNC_ERROR_STALE_MS,
+	STRUCTURE_SYNC_WARNING_STALE_MS,
 } from '@repo/structures'
 
 import { CorporationLogo } from '@/components/corporation-logo'
@@ -76,6 +78,18 @@ function structureSyncStatusDescription(
 	syncFailureReason: string | null,
 	lastSyncedAt: string | null
 ) {
+	const getStalenessNote = () => {
+		if (!lastSyncedAt) return null
+		const ageMs = Math.max(0, Date.now() - new Date(lastSyncedAt).getTime())
+		if (ageMs >= STRUCTURE_SYNC_ERROR_STALE_MS) {
+			return 'This snapshot is more than 24 hours old and should be treated as stale.'
+		}
+		if (ageMs >= STRUCTURE_SYNC_WARNING_STALE_MS) {
+			return 'This snapshot is more than 12 hours old and may be stale.'
+		}
+		return null
+	}
+
 	if (syncFailureReason) {
 		return lastSyncedAt
 			? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. ${syncFailureReason}`
@@ -89,14 +103,16 @@ function structureSyncStatusDescription(
 	}
 
 	if (syncStatus === 'warning') {
+		const stalenessNote = getStalenessNote()
 		return lastSyncedAt
-			? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. The latest corporation-data sync completed with warnings, so some fields may be incomplete or stale.`
+			? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. ${stalenessNote ?? 'The latest corporation-data sync completed with warnings, so some fields may be incomplete or stale.'}`
 			: 'The latest corporation-data sync completed with warnings, so some fields may be incomplete or stale.'
 	}
 
 	if (syncStatus === 'error') {
+		const stalenessNote = getStalenessNote()
 		return lastSyncedAt
-			? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.`
+			? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. ${stalenessNote ?? 'The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.'}`
 			: 'The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.'
 	}
 

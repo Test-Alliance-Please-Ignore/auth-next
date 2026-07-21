@@ -688,6 +688,11 @@ export interface CorporationStructureData {
 }
 
 /**
+ * Targets for structure-enrichment sync status updates.
+ */
+export type StructureEnrichmentSyncTarget = 'sovereignty-hubs' | 'skyhooks'
+
+/**
  * Filters supported by corporation structure snapshot reads.
  */
 export interface CorporationStructureQuery {
@@ -1333,6 +1338,15 @@ export interface EveCorporationData {
 	 * Store sovereignty hub snapshots (workflow-friendly)
 	 */
 	storeSovereigntyHubs(corporationId: string, hubs: EsiSovereigntyHub[]): Promise<void>
+
+	/**
+	 * Mark a structure-enrichment snapshot as failed without discarding the last good data.
+	 */
+	markStructureEnrichmentSyncFailure(
+		corporationId: string,
+		target: StructureEnrichmentSyncTarget,
+		failureReason: string
+	): Promise<void>
 
 	/**
 	 * Store skyhook snapshots (workflow-friendly)

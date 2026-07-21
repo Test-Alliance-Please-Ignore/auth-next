@@ -10,6 +10,7 @@ import type { SessionUser } from '../../context'
 
 const structuresMocks = vi.hoisted(() => ({
 	listCitadelStructures: vi.fn(),
+	listSkyhookStructures: vi.fn(),
 	getVisibleStructureDetail: vi.fn(),
 }))
 const corpDataMocks = vi.hoisted(() => ({
@@ -123,6 +124,134 @@ describe('structures routes', () => {
 				reinforced: 0,
 			},
 		})
+		structuresMocks.listSkyhookStructures.mockResolvedValue({
+			items: [
+				{
+					structureId: 'skyhook-1',
+					corporationId: 'corp-1',
+					corporationName: 'Test Corp',
+					name: 'Skyhook One',
+					typeId: '81080',
+					typeName: 'Orbital Skyhook',
+					systemId: '30000142',
+					systemName: 'Jita',
+					regionId: '10000002',
+					regionName: 'The Forge',
+					state: 'online',
+					nextStateAt: null,
+					fuelExpires: null,
+					fuelAmount: null,
+					lowPower: false,
+					hidden: false,
+					lowPowerAllowed: false,
+					assignedGroupId: null,
+					isRaidable: false,
+					syncStatus: 'ok',
+					syncFailureReason: null,
+					lastSyncedAt: '2026-01-01T00:00:00.000Z',
+					canViewDetails: false,
+					updatedAt: '2026-01-02T00:00:00.000Z',
+				},
+			],
+			pagination: {
+				page: 1,
+				pageSize: 25,
+				totalCount: 1,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			filterOptions: {
+				corporations: [],
+				regions: [],
+				systems: [],
+				states: [],
+				types: [],
+				assignedGroups: [],
+				alliances: [],
+				planets: [],
+				raidableStates: [],
+			},
+			summary: {
+				total: 1,
+				lowFuel: 0,
+				lowPower: 0,
+				reinforced: 0,
+			},
+		})
+		structuresMocks.listSkyhookStructures.mockResolvedValue({
+			items: [
+				{
+					structureId: 'skyhook-1',
+					corporationId: 'corp-1',
+					corporationName: 'Test Corp',
+					name: 'Skyhook One',
+					typeId: '81080',
+					typeName: 'Orbital Skyhook',
+					systemId: '30000142',
+					systemName: 'Jita',
+					regionId: '10000002',
+					regionName: 'The Forge',
+					state: 'online',
+					nextStateAt: null,
+					fuelExpires: null,
+					fuelAmount: null,
+					lowPower: false,
+					hidden: false,
+					lowPowerAllowed: false,
+					assignedGroupId: null,
+					syncStatus: 'ok',
+					syncFailureReason: null,
+					lastSyncedAt: '2026-01-01T00:00:00.000Z',
+					canViewDetails: false,
+					updatedAt: '2026-01-02T00:00:00.000Z',
+					planetId: 'planet-1',
+					planetName: 'Planet One',
+					effectiveWorkforce: 10,
+					totalReagents: 0,
+					totalSecuredStock: 0,
+					totalUnsecuredStock: 0,
+					totalSecuredVolumeM3: 0,
+					totalUnsecuredVolumeM3: 0,
+					securedCapacityM3: 70080,
+					unsecuredCapacityM3: 70080,
+					securedFillPercent: 0,
+					unsecuredFillPercent: 0,
+					reagents: [],
+					reinforcementTimerEnd: null,
+					theftVulnerabilityStart: '2026-07-21T06:00:00.000Z',
+					theftVulnerabilityEnd: '2026-07-21T08:00:00.000Z',
+					isRaidable: false,
+					becomesRaidableAt: null,
+					vulnerableAt: '2026-07-21T06:00:00.000Z',
+				},
+			],
+			pagination: {
+				page: 1,
+				pageSize: 25,
+				totalCount: 1,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			filterOptions: {
+				corporations: [],
+				regions: [],
+				systems: [],
+				states: [],
+				types: [],
+				assignedGroups: [],
+				alliances: [],
+				planets: [],
+				raidableStates: [],
+			},
+			summary: {
+				total: 1,
+				lowFuel: 0,
+				lowPower: 0,
+				reinforced: 0,
+			},
+		})
 	})
 
 	it('strips updatedAt from list responses before sending them to the browser', async () => {
@@ -142,6 +271,37 @@ describe('structures routes', () => {
 			items: Array<Record<string, unknown>>
 		}
 		expect(body.items[0]).not.toHaveProperty('updatedAt')
+	})
+
+	it.each([
+		'theftVulnerabilityStart',
+		'planet',
+		'raidable',
+		'workforce',
+		'group',
+		'syncStatus',
+		'skyhookSecureFullness',
+		'skyhookSurplusFullness',
+	] as const)('accepts %s sorting on the skyhooks list', async (sortBy) => {
+		const app = createApp(makeUser())
+		const response = await app.request(
+			`/api/structures/skyhooks?sortBy=${sortBy}&sortDirection=desc`,
+			{},
+			{
+				STRUCTURES: {
+					listSkyhookStructures: structuresMocks.listSkyhookStructures,
+				},
+			} as any
+		)
+
+		expect(response.status).toBe(200)
+		expect(structuresMocks.listSkyhookStructures).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.objectContaining({
+				sortBy,
+				sortDirection: 'desc',
+			})
+		)
 	})
 
 	it('queues structure asset debug as a workflow and exposes status/download endpoints', async () => {
