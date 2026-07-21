@@ -1315,12 +1315,30 @@ export interface EveCorporationData {
 	storeSharedSovereigntySystems(systems: EsiSovereigntySystem[]): Promise<void>
 
 	/**
+	 * Acquire a short-lived refresh lease for the shared sovereignty snapshot.
+	 * Returns a token when acquired, or null when another refresh is already in progress.
+	 */
+	acquireSharedSovereigntySystemsRefreshLease(
+		leaseSeconds?: number
+	): Promise<string | null>
+
+	/**
+	 * Release a previously acquired shared sovereignty refresh lease.
+	 */
+	releaseSharedSovereigntySystemsRefreshLease(leaseToken: string): Promise<void>
+
+	/**
 	 * Read a subset of the shared sovereignty system snapshot by system ID if it is still fresh.
 	 */
 	getSharedSovereigntySystemsByIds(
 		systemIds: string[],
 		maxAgeSeconds?: number
 	): Promise<EsiSovereigntySystem[] | null>
+
+	/**
+	 * Read the entire shared sovereignty system snapshot if it is still fresh.
+	 */
+	getSharedSovereigntySystemsSnapshot(maxAgeSeconds?: number): Promise<EsiSovereigntySystem[] | null>
 
 	/**
 	 * Get a cached sovereignty system snapshot if it is still fresh enough.

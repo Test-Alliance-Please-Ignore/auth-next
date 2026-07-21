@@ -4,6 +4,7 @@ const SOVEREIGNTY_HUB_TYPE_ID = '32458'
 const mocks = vi.hoisted(() => {
 	const fetchSovereigntyHubsMock = vi.fn()
 	const readSharedSovereigntySystemsByIdsMock = vi.fn()
+	const refreshSharedSovereigntySystemsMock = vi.fn()
 	const resolveSolarSystemsByIdsMock = vi.fn()
 	const getStubMock = vi.fn(() => ({
 		resolveSolarSystemsByIds: resolveSolarSystemsByIdsMock,
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => {
 	return {
 		fetchSovereigntyHubsMock,
 		readSharedSovereigntySystemsByIdsMock,
+		refreshSharedSovereigntySystemsMock,
 		resolveSolarSystemsByIdsMock,
 		getStubMock,
 		createTokenStoreMock,
@@ -35,6 +37,8 @@ vi.mock('../../../workflows/utils/services', () => ({
 vi.mock('../../../workflows/utils/sovereignty-systems-cache', () => ({
 	readSharedSovereigntySystemsByIds: (...args: unknown[]) =>
 		mocks.readSharedSovereigntySystemsByIdsMock(...args),
+	refreshSharedSovereigntySystems: (...args: unknown[]) =>
+		mocks.refreshSharedSovereigntySystemsMock(...args),
 }))
 
 import { fetchSovereigntyEnrichment } from '../../../workflows/steps/structures'
@@ -42,6 +46,23 @@ import { fetchSovereigntyEnrichment } from '../../../workflows/steps/structures'
 describe('fetchSovereigntyEnrichment', () => {
 	it('enriches sovereignty hub names from resolved solar systems before persistence', async () => {
 		mocks.createTokenStoreMock.mockReturnValue({})
+		mocks.readSharedSovereigntySystemsByIdsMock.mockResolvedValue([
+			{
+				system_id: '30000142',
+				claim_type: 'alliance',
+				alliance_id: '123456789',
+				corporation_id: '987654321',
+				claimed_since: '2026-07-12T19:36:46.834Z',
+				is_capital_system: false,
+				sovereignty_hub_structure_id: 'hub-1',
+				vulnerability_window: null,
+				activity_defense_multiplier: '1.0000',
+				military_level: 1,
+				industrial_level: 1,
+				strategic_level: 1,
+				raw: { claim: {} },
+			},
+		])
 		mocks.fetchSovereigntyHubsMock.mockResolvedValue([
 			{
 				structure_id: 'hub-1',
@@ -69,7 +90,6 @@ describe('fetchSovereigntyEnrichment', () => {
 				raw: { detail: { id: 1 } },
 			},
 		])
-		mocks.readSharedSovereigntySystemsByIdsMock.mockResolvedValue([])
 		mocks.resolveSolarSystemsByIdsMock.mockResolvedValue({
 			'30000142': {
 				solarSystemName: 'Jita',
@@ -85,11 +105,18 @@ describe('fetchSovereigntyEnrichment', () => {
 		)
 
 		expect(mocks.fetchSovereigntyHubsMock).toHaveBeenCalledWith({}, 'corp-1', 'character-1')
+		expect(mocks.readSharedSovereigntySystemsByIdsMock).toHaveBeenCalledWith(
+			{
+				UNIVERSE: {},
+			},
+			['30000142']
+		)
 		expect(mocks.getStubMock).toHaveBeenCalledWith({}, 'default')
 		expect(mocks.resolveSolarSystemsByIdsMock).toHaveBeenCalledWith(['30000142'])
 		expect(result?.sovereigntyHubs[0]).toMatchObject({
 			name: 'Jita',
 			system_name: 'Jita',
+			controller_alliance_id: '123456789',
 		})
 	})
 

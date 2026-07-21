@@ -199,7 +199,9 @@ const NPC_CORPORATION_ID_MIN = 1_000_000
 const NPC_CORPORATION_ID_MAX = 1_999_999
 const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY = 'shared:sovereignty-systems:observed-at'
 const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX = 'shared:sovereignty-systems:row:'
-const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_MAX_AGE_SECONDS = 300
+const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_MAX_AGE_SECONDS = 60 * 60
+const SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_KEY = 'shared:sovereignty-systems:refresh-lease'
+const SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_SECONDS = 2 * 60
 const ORBITAL_SKYHOOK_TYPE_ID = '81080'
 const STRUCTURE_SNAPSHOT_BATCH_SIZE = 10
 const STRUCTURE_CLEANUP_BATCH_SIZE = 250
@@ -236,6 +238,11 @@ function parseNumberOrNull(value: unknown): number | null {
 type SkyhookStateRow = typeof structureSkyhooks.$inferSelect
 type SovereigntyHubInsertRow = typeof structureSovereigntyHubs.$inferInsert
 type SkyhookInsertRow = typeof structureSkyhooks.$inferInsert
+type SharedSovereigntySystemsRefreshLease = {
+	token: string
+	expiresAtMs: number
+	acquiredAtMs: number
+}
 type SkyhookStorageRow = {
 	structureId: string
 	corporationId: string
@@ -3054,6 +3061,44 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		})
 	}
 
+	async acquireSharedSovereigntySystemsRefreshLease(
+		leaseSeconds = SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_SECONDS
+	): Promise<string | null> {
+		const now = Date.now()
+		const lease: SharedSovereigntySystemsRefreshLease = {
+			token: crypto.randomUUID(),
+			acquiredAtMs: now,
+			expiresAtMs: now + leaseSeconds * 1000,
+		}
+		let acquired = false
+
+		await this.state.storage.transaction(async (txn) => {
+			const existing = await txn.get<SharedSovereigntySystemsRefreshLease>(
+				SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_KEY
+			)
+			if (existing && existing.expiresAtMs > now) {
+				return
+			}
+
+			await txn.put(SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_KEY, lease)
+			acquired = true
+		})
+
+		return acquired ? lease.token : null
+	}
+
+	async releaseSharedSovereigntySystemsRefreshLease(leaseToken: string): Promise<void> {
+		await this.state.storage.transaction(async (txn) => {
+			const existing = await txn.get<SharedSovereigntySystemsRefreshLease>(
+				SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_KEY
+			)
+			if (!existing || existing.token !== leaseToken) {
+				return
+			}
+			await txn.delete(SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_KEY)
+		})
+	}
+
 	/**
 	 * Get shared sovereignty system snapshots for the requested system IDs if they are still within TTL.
 	 */
@@ -3087,6 +3132,32 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			uniqueSystemIds.map((systemId) => `${SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX}${systemId}`)
 		)
 
+		return [...rows.values()]
+	}
+
+	async getSharedSovereigntySystemsSnapshot(
+		maxAgeSeconds = SHARED_SOVEREIGNTY_SYSTEMS_CACHE_MAX_AGE_SECONDS
+	): Promise<EsiSovereigntySystem[] | null> {
+		const observedAtRaw = await this.state.storage.get<string>(
+			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY
+		)
+		if (!observedAtRaw) {
+			return null
+		}
+
+		const observedAt = parseDateOrNull(observedAtRaw)
+		if (!observedAt) {
+			return null
+		}
+
+		const ageMs = Date.now() - observedAt.getTime()
+		if (ageMs > maxAgeSeconds * 1000) {
+			return null
+		}
+
+		const rows = await this.state.storage.list<EsiSovereigntySystem>({
+			prefix: SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX,
+		})
 		return [...rows.values()]
 	}
 

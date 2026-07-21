@@ -4,7 +4,14 @@ import { createTokenStore, getGlobalCorporationDataStub } from './services'
 import type { EsiSovereigntySystem } from '@repo/eve-corporation-data'
 import type { Env } from '../../context'
 
-const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS = 300
+const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS = 60 * 60
+const SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_RETRY_DELAYS_MS = [250, 500, 1000]
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => {
+		setTimeout(resolve, ms)
+	})
+}
 
 /**
  * Read the shared sovereignty snapshot subset for the requested system IDs if it is still fresh enough.
@@ -26,9 +33,47 @@ export async function readSharedSovereigntySystemsByIds(
 export async function refreshSharedSovereigntySystems(
 	env: Env
 ): Promise<EsiSovereigntySystem[]> {
-	const tokenStore = createTokenStore(env)
-	const sovereigntySystems = await esiFetch.fetchSovereigntySystems(tokenStore)
 	const globalCorpData = getGlobalCorporationDataStub(env)
-	await globalCorpData.storeSharedSovereigntySystems(sovereigntySystems)
-	return sovereigntySystems
+	const freshSnapshot = await globalCorpData.getSharedSovereigntySystemsSnapshot(
+		SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
+	)
+	if (freshSnapshot) {
+		return freshSnapshot
+	}
+
+	const leaseToken = await globalCorpData.acquireSharedSovereigntySystemsRefreshLease()
+
+	if (leaseToken) {
+		try {
+			const refreshedSnapshot = await globalCorpData.getSharedSovereigntySystemsSnapshot(
+				SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
+			)
+			if (refreshedSnapshot) {
+				return refreshedSnapshot
+			}
+
+			const tokenStore = createTokenStore(env)
+			const sovereigntySystems = await esiFetch.fetchSovereigntySystems(tokenStore)
+			await globalCorpData.storeSharedSovereigntySystems(sovereigntySystems)
+			return sovereigntySystems
+		} finally {
+			await globalCorpData.releaseSharedSovereigntySystemsRefreshLease(leaseToken)
+		}
+	}
+
+	for (const delayMs of SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_RETRY_DELAYS_MS) {
+		const snapshot = await globalCorpData.getSharedSovereigntySystemsSnapshot(
+			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
+		)
+		if (snapshot) {
+			return snapshot
+		}
+		await sleep(delayMs)
+	}
+
+	return (
+		(await globalCorpData.getSharedSovereigntySystemsSnapshot(
+			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
+		)) ?? []
+	)
 }
