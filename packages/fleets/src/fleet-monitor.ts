@@ -35,6 +35,13 @@ export interface FleetMonitorStateRow extends Record<string, string | number | n
 	last_checked: string | null
 	peak_member_count: number
 	expires_at: string | null
+	member_count: number
+	motd: string | null
+	is_free_move: number
+	is_registered: number
+	is_voice_enabled: number
+	not_found: number
+	not_found_at: string | null
 }
 
 /**
@@ -50,6 +57,13 @@ export interface FleetMonitorState {
 	lastChecked: string | null
 	peakMemberCount: number
 	expiresAt: string | null
+	memberCount: number
+	motd: string | null
+	isFreeMove: boolean
+	isRegistered: boolean
+	isVoiceEnabled: boolean
+	notFound: boolean
+	notFoundAt: string | null
 }
 
 /**

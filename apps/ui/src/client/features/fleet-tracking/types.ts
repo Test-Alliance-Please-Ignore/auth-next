@@ -64,6 +64,14 @@ export interface SessionLiveSnapshot {
 	updatedAt: string
 }
 
+export type SessionLiveSnapshotState = 'ready' | 'inactive' | 'unavailable'
+
+export interface SessionLiveSnapshotResult {
+	state: SessionLiveSnapshotState
+	message: string | null
+	snapshot: SessionLiveSnapshot | null
+}
+
 export interface SessionTimelineRow {
 	id: string
 	characterId: string

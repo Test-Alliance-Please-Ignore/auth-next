@@ -1,4 +1,4 @@
-import { ArrowLeft, Clock, Lock, Square } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Clock, Lock, Square } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 
@@ -450,6 +450,18 @@ function DetailView({
 
 	return (
 		<div className="space-y-6">
+			{isLive && liveResp && liveResp.state !== 'ready' && (
+				<div className="rounded-lg border border-warning/40 bg-warning/10 p-4">
+					<div className="flex items-start gap-3">
+						<AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+						<div className="space-y-1 text-sm">
+							<p className="font-medium text-warning">Live fleet snapshot unavailable</p>
+							<p className="text-muted-foreground">{liveResp.message}</p>
+						</div>
+					</div>
+				</div>
+			)}
+
 			{stats.length > 0 && <SessionStatsGrid stats={stats} />}
 			{(isLive || broadcastLink) && (
 				<div className="grid gap-4 lg:grid-cols-2">

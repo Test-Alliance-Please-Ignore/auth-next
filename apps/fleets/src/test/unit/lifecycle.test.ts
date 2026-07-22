@@ -55,6 +55,9 @@ vi.mock('@repo/hono-helpers', () => ({
 		log: vi.fn(),
 		warn: vi.fn(),
 	},
+	withNotFound: vi.fn(() => vi.fn()),
+	withOnError: vi.fn(() => vi.fn()),
+	withWorkersLogger: vi.fn(() => vi.fn((_c: unknown, next: () => Promise<void>) => next())),
 }))
 
 import {
@@ -63,6 +66,7 @@ import {
 	fleetTrackingSessionEvents,
 	fleetTrackingSessions,
 } from '../../db/schema'
+import { sweepStaleFleetMonitors } from '../../index'
 import { FleetMonitorDO } from '../../fleet-monitor'
 import { FleetsDO } from '../../durable-object'
 
@@ -155,6 +159,11 @@ function createDbMock(options: {
 	return {
 		select: vi.fn((selection: unknown) => {
 			const capture: Record<string, unknown> = { selection }
+			captures.selects.push(capture)
+			return makeChain(queues.select, capture)
+		}),
+		selectDistinct: vi.fn((selection: unknown) => {
+			const capture: Record<string, unknown> = { selection, distinct: true }
 			captures.selects.push(capture)
 			return makeChain(queues.select, capture)
 		}),
@@ -464,21 +473,35 @@ describe('fleet lifecycle management', () => {
 		const activeSnapshotDo = createFleetsDo(activeSnapshotDb)
 		const activeSnapshotEnv = createBaseEnv()
 		const monitorStub = {
-			getMonitorState: vi.fn().mockResolvedValue({ peakMemberCount: 8 }),
+			getFleetStatus: vi.fn().mockResolvedValue({
+				fleetInfo: {
+					motd: 'Test motd',
+					is_free_move: true,
+					is_registered: false,
+					is_voice_enabled: true,
+				},
+				memberCount: 3,
+				members: [],
+			}),
+			getMonitorState: vi.fn().mockResolvedValue({ peakMemberCount: 8, lastChecked: '2026-07-20T00:00:00.000Z' }),
 		}
 		registerStub(activeSnapshotEnv.FLEET_MONITOR, 'fleet-123', monitorStub)
 		;(activeSnapshotDo as any).env = activeSnapshotEnv
 
 		await expect(activeSnapshotDo.getSessionLiveSnapshot('session-1')).resolves.toEqual({
-			fleetId: '123',
-			memberCount: 3,
-			peakMemberCount: 8,
-			motd: 'Test motd',
-			isFreeMove: true,
-			isRegistered: false,
-			isVoiceEnabled: true,
-			lastChecked: '2026-07-20T00:00:00.000Z',
-			updatedAt: '2026-07-20T00:00:00.000Z',
+			state: 'ready',
+			message: null,
+			snapshot: {
+				fleetId: '123',
+				memberCount: 3,
+				peakMemberCount: 8,
+				motd: 'Test motd',
+				isFreeMove: true,
+				isRegistered: false,
+				isVoiceEnabled: true,
+				lastChecked: '2026-07-20T00:00:00.000Z',
+				updatedAt: '2026-07-20T00:00:00.000Z',
+			},
 		})
 		expect(monitorStub.getMonitorState).toHaveBeenCalledTimes(1)
 
@@ -495,6 +518,57 @@ describe('fleet lifecycle management', () => {
 
 		await expect(endedLocationsDo.getSessionLiveMemberLocations('session-2')).resolves.toEqual([])
 		expect(liveMonitorStub.getFleetStatus).not.toHaveBeenCalled()
+	})
+
+	it('returns null instead of throwing when the live snapshot monitor hits a fleet 404', async () => {
+		const liveSnapshotDb = createDbMock({
+			selectResults: [
+				[
+					{
+						fleetId: '123',
+						status: 'active',
+						endedAt: null,
+					},
+				],
+			],
+		})
+		const liveSnapshotDo = createFleetsDo(liveSnapshotDb)
+		const liveSnapshotEnv = createBaseEnv()
+		const monitorStub = {
+			getFleetStatus: vi.fn().mockRejectedValue(
+				new Error(
+					'ESI request failed: 404 Not Found - {"error":"The fleet does not exist or you don\'t have access to it!"}'
+				)
+			),
+			getMonitorState: vi.fn().mockResolvedValue({
+				fleetId: '123',
+				characterId: '42',
+				trackingSessionId: 'session-1',
+				lastSyncedFleetBossId: '42',
+				isInitialized: true,
+				lastChecked: '2026-07-22T00:00:00.000Z',
+				peakMemberCount: 8,
+				expiresAt: '2026-07-23T00:00:00.000Z',
+				memberCount: 3,
+				motd: null,
+				isFreeMove: false,
+				isRegistered: false,
+				isVoiceEnabled: false,
+				notFound: false,
+				notFoundAt: null,
+			}),
+		}
+		registerStub(liveSnapshotEnv.FLEET_MONITOR, 'fleet-123', monitorStub)
+		;(liveSnapshotDo as any).env = liveSnapshotEnv
+
+		await expect(liveSnapshotDo.getSessionLiveSnapshot('session-1')).resolves.toEqual({
+			state: 'unavailable',
+			message:
+				'The latest live fleet snapshot could not be read. The fleet may have ended or the monitor may still be recovering.',
+			snapshot: null,
+		})
+		expect(monitorStub.getFleetStatus).toHaveBeenCalledTimes(1)
+		expect(monitorStub.getMonitorState).toHaveBeenCalledTimes(1)
 	})
 
 	it('treats inconsistent session rows as closed when stopping tracking', async () => {
@@ -530,29 +604,40 @@ describe('fleet lifecycle management', () => {
 	it('finalizes a fleet monitor session once and ignores mismatches', async () => {
 		const db = createDbMock({
 			selectResults: [
-				[
-					{
-						id: 'cache-row',
-						fleetId: '123',
-						fleetBossId: '42',
-						memberCount: 4,
-						motd: 'Test motd',
-						isFreeMove: true,
-						isRegistered: false,
-						isVoiceEnabled: true,
-						notFound: false,
-						notFoundAt: null,
-						lastChecked: new Date('2026-07-20T00:00:00.000Z'),
-						createdAt: new Date('2026-07-20T00:00:00.000Z'),
-						updatedAt: new Date('2026-07-20T00:00:00.000Z'),
-					},
-				],
+				[],
 				[],
 			],
 			insertResults: [undefined, undefined],
 			updateResults: [undefined, undefined],
 		})
 		const monitor = createFleetMonitorDo(db)
+		;(monitor as any).state.storage.sql.exec = vi.fn((query: string) => ({
+			toArray: () => {
+				if (query.includes('SELECT version')) return [{ version: 6 }]
+				if (query.includes('FROM monitor_state')) {
+					return [
+						{
+							fleet_id: '123',
+							character_id: '42',
+							tracking_session_id: 'session-2',
+							last_synced_fleet_boss_id: '42',
+							is_initialized: 1,
+							last_checked: '2026-07-20T00:00:00.000Z',
+							peak_member_count: 4,
+							expires_at: '2026-07-23T00:00:00.000Z',
+							member_count: 4,
+							motd: 'Test motd',
+							is_free_move: 1,
+							is_registered: 0,
+							is_voice_enabled: 1,
+							not_found: 0,
+							not_found_at: null,
+						},
+					]
+				}
+				return []
+			},
+		}))
 		const finalize = (monitor as any).finalizeSession.bind(monitor)
 
 		await Promise.all([
@@ -580,5 +665,95 @@ describe('fleet lifecycle management', () => {
 		expect(db.captures.updates.filter((entry) => entry.table === fleetMemberShipEvents)).toHaveLength(1)
 		expect(db.captures.updates.filter((entry) => entry.table === fleetTrackingSessions)).toHaveLength(1)
 		expect(db.captures.inserts.filter((entry) => entry.table === fleetSummaries)).toHaveLength(1)
+	})
+
+	it('sweeps stale fleet monitors discovered through ended sessions and historical fleet refs', async () => {
+		const db = createDbMock({
+			selectResults: [
+				[{ fleetId: '100' }],
+				[{ fleetId: '200' }, { fleetId: '300' }],
+				[{ fleetId: '400' }],
+				[{ fleetId: '500' }],
+			],
+		})
+		const env = createBaseEnv()
+		;(env as any).DATABASE_URL = 'postgres://example'
+		harness.currentDb = db
+
+		const terminated200 = vi.fn().mockResolvedValue(undefined)
+		const terminated400 = vi.fn().mockResolvedValue(undefined)
+		const terminated500 = vi.fn().mockResolvedValue(undefined)
+		registerStub(env.FLEET_MONITOR, 'fleet-200', {
+			getMonitorState: vi.fn().mockResolvedValue({
+				fleetId: '200',
+				characterId: '42',
+				trackingSessionId: 'session-200',
+				lastSyncedFleetBossId: '42',
+				isInitialized: true,
+				lastChecked: '2026-07-22T00:00:00.000Z',
+				peakMemberCount: 4,
+				expiresAt: '2026-07-23T00:00:00.000Z',
+				memberCount: 2,
+				motd: null,
+				isFreeMove: false,
+				isRegistered: false,
+				isVoiceEnabled: false,
+				notFound: false,
+				notFoundAt: null,
+			}),
+			terminate: terminated200,
+		})
+		registerStub(env.FLEET_MONITOR, 'fleet-300', {
+			getMonitorState: vi.fn().mockResolvedValue(null),
+			terminate: vi.fn(),
+		})
+		registerStub(env.FLEET_MONITOR, 'fleet-400', {
+			getMonitorState: vi.fn().mockResolvedValue({
+				fleetId: '400',
+				characterId: '99',
+				trackingSessionId: null,
+				lastSyncedFleetBossId: '99',
+				isInitialized: true,
+				lastChecked: '2026-07-22T00:00:00.000Z',
+				peakMemberCount: 1,
+				expiresAt: '2026-07-23T00:00:00.000Z',
+				memberCount: 1,
+				motd: null,
+				isFreeMove: false,
+				isRegistered: false,
+				isVoiceEnabled: false,
+				notFound: false,
+				notFoundAt: null,
+			}),
+			terminate: terminated400,
+		})
+		registerStub(env.FLEET_MONITOR, 'fleet-500', {
+			getMonitorState: vi.fn().mockResolvedValue({
+				fleetId: '500',
+				characterId: '88',
+				trackingSessionId: 'session-500',
+				lastSyncedFleetBossId: '88',
+				isInitialized: true,
+				lastChecked: '2026-07-22T00:00:00.000Z',
+				peakMemberCount: 3,
+				expiresAt: '2026-07-23T00:00:00.000Z',
+				memberCount: 1,
+				motd: null,
+				isFreeMove: false,
+				isRegistered: false,
+				isVoiceEnabled: false,
+				notFound: false,
+				notFoundAt: null,
+			}),
+			terminate: terminated500,
+		})
+
+		await expect(sweepStaleFleetMonitors(env as never)).resolves.toEqual({
+			scanned: 4,
+			terminated: 3,
+		})
+		expect(terminated200).toHaveBeenCalledTimes(1)
+		expect(terminated400).toHaveBeenCalledTimes(1)
+		expect(terminated500).toHaveBeenCalledTimes(1)
 	})
 })

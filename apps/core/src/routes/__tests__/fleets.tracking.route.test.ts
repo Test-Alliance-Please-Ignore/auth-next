@@ -664,13 +664,22 @@ describe('fleets tracking routes', () => {
 			startedByUserId: 'other-user',
 			characterId: '1001',
 		})
-		fleetsStub.getSessionLiveSnapshot.mockResolvedValue({ memberCount: 5 })
+		fleetsStub.getSessionLiveSnapshot.mockResolvedValue({
+			state: 'ready',
+			message: null,
+			snapshot: { memberCount: 5 } as any,
+		})
 
 		const app = createApp(makeUser({ id: 'user-1' }))
 		const res = await app.request('/api/fleets/tracking/s1/live', {}, env)
 
 		expect(res.status).toBe(200)
 		expect(fleetsStub.getSessionLiveSnapshot).toHaveBeenCalledWith('s1')
+		await expect(res.json()).resolves.toMatchObject({
+			state: 'ready',
+			message: null,
+			snapshot: { memberCount: 5 },
+		})
 	})
 
 	it('allows active owner live detail access', async () => {
@@ -681,13 +690,22 @@ describe('fleets tracking routes', () => {
 			startedByUserId: 'user-1',
 			characterId: '1001',
 		})
-		fleetsStub.getSessionLiveSnapshot.mockResolvedValue({ memberCount: 10 })
+		fleetsStub.getSessionLiveSnapshot.mockResolvedValue({
+			state: 'ready',
+			message: null,
+			snapshot: { memberCount: 10 } as any,
+		})
 
 		const app = createApp(makeUser({ id: 'user-1' }))
 		const res = await app.request('/api/fleets/tracking/s-active/live', {}, env)
 
 		expect(res.status).toBe(200)
 		expect(fleetsStub.getSessionLiveSnapshot).toHaveBeenCalledWith('s-active')
+		await expect(res.json()).resolves.toMatchObject({
+			state: 'ready',
+			message: null,
+			snapshot: { memberCount: 10 },
+		})
 	})
 
 	it('returns live member locations for detailed viewers without mutating ship events', async () => {

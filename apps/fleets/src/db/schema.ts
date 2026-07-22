@@ -192,47 +192,8 @@ export const fleetCommanderAccessAnchors = pgTable(
 )
 
 /**
- * Fleet state cache table
- *
- * Live snapshot of an actively-tracked fleet, upserted each tick by the
- * FleetMonitor DO. Holds the current state from ESI plus a back-reference
- * to the tracking session.
- */
-export const fleetStateCache = pgTable(
-	'fleet_state_cache',
-	{
-		id: uuid('id').defaultRandom().primaryKey(),
-		fleetId: text('fleet_id').notNull().unique(),
-		fleetBossId: text('fleet_boss_id').notNull(),
-		/** The tracking session this cache row belongs to */
-		trackingSessionId: uuid('tracking_session_id').references(() => fleetTrackingSessions.id, {
-			onDelete: 'set null',
-		}),
-		memberCount: integer('member_count').default(0).notNull(),
-		motd: text('motd'),
-		isFreeMove: boolean('is_free_move').default(false).notNull(),
-		isRegistered: boolean('is_registered').default(false).notNull(),
-		isVoiceEnabled: boolean('is_voice_enabled').default(false).notNull(),
-		notFound: boolean('not_found').default(false).notNull(),
-		notFoundAt: timestamp('not_found_at'),
-		lastChecked: timestamp('last_checked').defaultNow().notNull(),
-		createdAt: timestamp('created_at').defaultNow().notNull(),
-		updatedAt: timestamp('updated_at').defaultNow().notNull(),
-		},
-		(table) => ({
-			fleetIdIdx: index('fleet_state_cache_fleet_id_idx').on(table.fleetId),
-			fleetBossIdIdx: index('fleet_state_cache_fleet_boss_id_idx').on(table.fleetBossId),
-			trackingSessionIdIdx: index('fleet_state_cache_tracking_session_id_idx').on(
-				table.trackingSessionId
-			),
-			lastCheckedIdx: index('fleet_state_cache_last_checked_idx').on(table.lastChecked),
-			notFoundIdx: index('fleet_state_cache_not_found_idx').on(table.notFound),
-		})
-	)
-
-/**
  * Fleet summaries table
- * Stores historical fleet data before deletion from fleet_state_cache
+ * Stores historical fleet data after a fleet session ends.
  * This allows us to maintain a permanent record of past fleets
  */
 export const fleetSummaries = pgTable(
@@ -370,7 +331,6 @@ export const schema = {
 	fleetTrackingSessions,
 	fleetCommanderEvents,
 	fleetCommanderAccessAnchors,
-	fleetStateCache,
 	fleetSummaries,
 	fleetMemberHistory,
 	fleetMemberShipEvents,

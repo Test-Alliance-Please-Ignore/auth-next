@@ -9,7 +9,6 @@ import type {
 	SessionCommanderHistoryResponse,
 	SessionRosterResponse,
 	SessionLiveMemberLocation,
-	SessionLiveSnapshot,
 	SessionMemberShipHistoryResponse,
 	SessionSummary,
 	SessionTimelineResult,
@@ -21,6 +20,7 @@ import type {
 	TrackingSessionListResult,
 	UserStatsResponse,
 	SessionBroadcastLink,
+	SessionLiveSnapshotResult,
 } from './types'
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -92,7 +92,7 @@ export const fleetTrackingApi = {
 					: null,
 			})),
 
-	getLiveSnapshot: (sessionId: string): Promise<{ snapshot: SessionLiveSnapshot | null }> =>
+	getLiveSnapshot: (sessionId: string): Promise<SessionLiveSnapshotResult> =>
 		apiClient.get(`/fleets/tracking/${encodeURIComponent(sessionId)}/live`),
 
 	getCurrentMembers: (sessionId: string): Promise<SessionCurrentMembersResponse> =>

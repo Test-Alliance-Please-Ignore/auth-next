@@ -24,7 +24,6 @@ import {
 	fleetCommanderAccessAnchors,
 	fleetCommanderEvents,
 	fleetTrackingSessionEvents,
-	fleetStateCache,
 	fleetSummaries,
 	fleetTrackingSessions,
 	schema,
@@ -159,7 +158,7 @@ async function syncFleetBossAccess(
  * - Alarm handler for periodic fleet status updates (10s baseline cadence, header-aware)
  * - WebSocket hibernation API for real-time updates
  * - SQLite-backed state for instance-specific data (fleetId, characterId)
- * - PostgreSQL for cross-instance data (fleetStateCache)
+ * - Persistent SQLite-backed live state and historical fleet/session tables
  */
 export class FleetMonitorDO extends DurableObject {
 	private static readonly BASE_POLL_INTERVAL_MS = 10 * 1000
@@ -205,7 +204,7 @@ export class FleetMonitorDO extends DurableObject {
 			.toArray()
 
 		const currentVersion = versionResult.length > 0 ? versionResult[0].version : 0
-		const targetVersion = 5 // Current schema version
+		const targetVersion = 6 // Current schema version
 
 		// Run migrations if needed
 		if (currentVersion < targetVersion) {
@@ -365,7 +364,7 @@ export class FleetMonitorDO extends DurableObject {
 		}
 
 		// Migration 3 -> 4: Persist the last synced boss separately so boss-change
-		// detection does not depend on cache rows that other helpers can rewrite.
+		// detection does not depend on state rows that other helpers can rewrite.
 		if (currentVersion < 4) {
 			try {
 				this.state.storage.sql.exec(
@@ -433,6 +432,39 @@ export class FleetMonitorDO extends DurableObject {
 			logger.info('[FleetMonitor] Migration 4 -> 5 completed (added expires_at)')
 		}
 
+		// Migration 5 -> 6: store the live fleet snapshot directly in monitor_state
+		// so the FleetMonitor DO owns the live-state cache instead of Postgres.
+		if (currentVersion < 6) {
+			const addColumn = (sqlStatement: string, columnName: string) => {
+				try {
+					this.state.storage.sql.exec(sqlStatement)
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error)
+					if (!message.includes('duplicate column')) {
+						logger.warn(`[FleetMonitor] Could not add ${columnName} column`, {
+							error: message,
+						})
+					}
+				}
+			}
+
+			addColumn(`ALTER TABLE monitor_state ADD COLUMN member_count INTEGER NOT NULL DEFAULT 0`, 'member_count')
+			addColumn(`ALTER TABLE monitor_state ADD COLUMN motd TEXT`, 'motd')
+			addColumn(`ALTER TABLE monitor_state ADD COLUMN is_free_move INTEGER NOT NULL DEFAULT 0`, 'is_free_move')
+			addColumn(`ALTER TABLE monitor_state ADD COLUMN is_registered INTEGER NOT NULL DEFAULT 0`, 'is_registered')
+			addColumn(`ALTER TABLE monitor_state ADD COLUMN is_voice_enabled INTEGER NOT NULL DEFAULT 0`, 'is_voice_enabled')
+			addColumn(`ALTER TABLE monitor_state ADD COLUMN not_found INTEGER NOT NULL DEFAULT 0`, 'not_found')
+			addColumn(`ALTER TABLE monitor_state ADD COLUMN not_found_at TEXT`, 'not_found_at')
+
+			this.state.storage.sql.exec(`
+				INSERT INTO schema_version (id, version)
+				VALUES (1, 6)
+				ON CONFLICT(id) DO UPDATE SET version = 6
+			`)
+
+			logger.info('[FleetMonitor] Migration 5 -> 6 completed (added live snapshot fields)')
+		}
+
 		logger.info('[FleetMonitor] Schema migrations completed', {
 			finalVersion: targetVersion,
 		})
@@ -493,29 +525,16 @@ export class FleetMonitorDO extends DurableObject {
 			// Same — fine to ignore.
 		}
 
-			// Store initialization state in SQLite (peak starts at 0 — bumped on first tick)
-			const now = new Date().toISOString()
-			const expiresAt = this.getMonitorStateExpiresAt(new Date()).toISOString()
-			await this.state.storage.sql.exec(
-				`
-				INSERT INTO monitor_state (id, fleet_id, character_id, tracking_session_id, last_synced_fleet_boss_id, is_initialized, last_checked, peak_member_count, expires_at)
-				VALUES (1, ?, ?, ?, NULL, 1, ?, 0, ?)
-				ON CONFLICT(id) DO UPDATE SET
-					fleet_id = excluded.fleet_id,
-					character_id = excluded.character_id,
-					tracking_session_id = excluded.tracking_session_id,
-					last_synced_fleet_boss_id = excluded.last_synced_fleet_boss_id,
-					is_initialized = excluded.is_initialized,
-					last_checked = excluded.last_checked,
-					peak_member_count = 0,
-					expires_at = excluded.expires_at
-			`,
+		// Store initialization state in SQLite (peak starts at 0 — bumped on first tick)
+		const now = new Date()
+		await this.persistMonitorState({
 			fleetId,
 			characterId,
 			trackingSessionId,
-			now,
-			expiresAt
-			)
+			lastSyncedFleetBossId: null,
+			lastChecked: now,
+			peakMemberCount: 0,
+		})
 
 		// Get initial fleet status to create baseline snapshot
 		try {
@@ -557,52 +576,23 @@ export class FleetMonitorDO extends DurableObject {
 					currentFleetBossCharacterId: currentFleetBossId,
 					observedAt,
 				})
-				this.state.storage.sql.exec(
-					`UPDATE monitor_state SET last_synced_fleet_boss_id = ?, expires_at = ? WHERE id = 1`,
-					currentFleetBossId,
-					this.getMonitorStateExpiresAtIso()
-				)
-				// Update fleet cache immediately to clear inactive/ended state
-				await this.db
-					.insert(fleetStateCache)
-					.values({
-						fleetId,
-						fleetBossId: currentFleetBossId,
-						trackingSessionId,
-						memberCount: initialStatus.memberCount,
-						motd: initialStatus.fleetInfo.motd || null,
-						isFreeMove: initialStatus.fleetInfo.is_free_move,
-						isRegistered: initialStatus.fleetInfo.is_registered,
-						isVoiceEnabled: initialStatus.fleetInfo.is_voice_enabled,
-						notFound: false,
-						notFoundAt: null,
-						lastChecked: observedAt,
-					})
-					.onConflictDoUpdate({
-						target: fleetStateCache.fleetId,
-						set: {
-							fleetBossId: currentFleetBossId,
-							trackingSessionId,
-							memberCount: initialStatus.memberCount,
-							motd: initialStatus.fleetInfo.motd || null,
-							isFreeMove: initialStatus.fleetInfo.is_free_move,
-							isRegistered: initialStatus.fleetInfo.is_registered,
-							isVoiceEnabled: initialStatus.fleetInfo.is_voice_enabled,
-							notFound: false,
-							notFoundAt: null,
-							lastChecked: observedAt,
-							updatedAt: observedAt,
-						},
-					})
+				await this.persistMonitorState({
+					fleetId,
+					characterId: currentFleetBossId,
+					trackingSessionId,
+					lastSyncedFleetBossId: currentFleetBossId,
+					lastChecked: observedAt,
+					peakMemberCount: initialStatus.memberCount,
+					memberCount: initialStatus.memberCount,
+					motd: initialStatus.fleetInfo.motd || null,
+					isFreeMove: initialStatus.fleetInfo.is_free_move,
+					isRegistered: initialStatus.fleetInfo.is_registered,
+					isVoiceEnabled: initialStatus.fleetInfo.is_voice_enabled,
+					notFound: false,
+					notFoundAt: null,
+				})
 
-				// Seed peak member count with the initial roster size
-				this.state.storage.sql.exec(
-					`UPDATE monitor_state SET peak_member_count = ?, expires_at = ? WHERE id = 1`,
-					initialStatus.memberCount,
-					this.getMonitorStateExpiresAtIso()
-				)
-
-				logger.info(`[FleetMonitor ${fleetId}] Updated fleet cache during initialization`, {
+				logger.info(`[FleetMonitor ${fleetId}] Updated monitor state during initialization`, {
 					fleetId,
 					memberCount: initialStatus.memberCount,
 				})
@@ -981,6 +971,91 @@ export class FleetMonitorDO extends DurableObject {
 		return await this.getState()
 	}
 
+	private async persistMonitorState(args: {
+		fleetId: string
+		characterId: string
+		trackingSessionId: string | null
+		lastSyncedFleetBossId: string | null
+		lastChecked: Date
+		peakMemberCount?: number
+		memberCount?: number
+		motd?: string | null
+		isFreeMove?: boolean
+		isRegistered?: boolean
+		isVoiceEnabled?: boolean
+		notFound?: boolean
+		notFoundAt?: Date | null
+	}): Promise<void> {
+		const {
+			fleetId,
+			characterId,
+			trackingSessionId,
+			lastSyncedFleetBossId,
+			lastChecked,
+			peakMemberCount = 0,
+			memberCount = 0,
+			motd = null,
+			isFreeMove = false,
+			isRegistered = false,
+			isVoiceEnabled = false,
+			notFound = false,
+			notFoundAt = null,
+		} = args
+		await this.state.storage.sql.exec(
+			`
+			INSERT INTO monitor_state (
+				id,
+				fleet_id,
+				character_id,
+				tracking_session_id,
+				last_synced_fleet_boss_id,
+				is_initialized,
+				last_checked,
+				peak_member_count,
+				expires_at,
+				member_count,
+				motd,
+				is_free_move,
+				is_registered,
+				is_voice_enabled,
+				not_found,
+				not_found_at
+			)
+			VALUES (1, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				fleet_id = excluded.fleet_id,
+				character_id = excluded.character_id,
+				tracking_session_id = excluded.tracking_session_id,
+				last_synced_fleet_boss_id = excluded.last_synced_fleet_boss_id,
+				is_initialized = excluded.is_initialized,
+				last_checked = excluded.last_checked,
+				peak_member_count = excluded.peak_member_count,
+				expires_at = excluded.expires_at,
+				member_count = excluded.member_count,
+				motd = excluded.motd,
+				is_free_move = excluded.is_free_move,
+				is_registered = excluded.is_registered,
+				is_voice_enabled = excluded.is_voice_enabled,
+				not_found = excluded.not_found,
+				not_found_at = excluded.not_found_at
+		`,
+			fleetId,
+			characterId,
+			trackingSessionId,
+			lastSyncedFleetBossId,
+			lastChecked.toISOString(),
+			peakMemberCount,
+			this.getMonitorStateExpiresAt(lastChecked).toISOString(),
+			memberCount,
+			motd,
+			isFreeMove ? 1 : 0,
+			isRegistered ? 1 : 0,
+			isVoiceEnabled ? 1 : 0,
+			notFound ? 1 : 0,
+			notFoundAt ? notFoundAt.toISOString() : null
+		)
+	}
+
 	private getMonitorStateExpiresAt(base = new Date()): Date {
 		return new Date(base.getTime() + FleetMonitorDO.MONITOR_STATE_TTL_MS)
 	}
@@ -1070,12 +1145,7 @@ export class FleetMonitorDO extends DurableObject {
 		}
 
 		const endedAt = new Date()
-		const [cachedState] = await this.db
-			.select({ fleetBossId: fleetStateCache.fleetBossId })
-			.from(fleetStateCache)
-			.where(eq(fleetStateCache.fleetId, fleetId))
-			.limit(1)
-		const currentFleetBossId = cachedState?.fleetBossId ?? characterId
+		const currentFleetBossId = state.lastSyncedFleetBossId ?? characterId
 
 		await this.finalizeSession({
 			fleetId,
@@ -1137,7 +1207,7 @@ export class FleetMonitorDO extends DurableObject {
 		const result = this.state.storage.sql
 			.exec<FleetMonitorStateRow>(
 				`
-				SELECT fleet_id, character_id, tracking_session_id, last_synced_fleet_boss_id, is_initialized, last_checked, peak_member_count, expires_at
+				SELECT fleet_id, character_id, tracking_session_id, last_synced_fleet_boss_id, is_initialized, last_checked, peak_member_count, expires_at, member_count, motd, is_free_move, is_registered, is_voice_enabled, not_found, not_found_at
 				FROM monitor_state
 				WHERE id = 1
 			`
@@ -1168,17 +1238,16 @@ export class FleetMonitorDO extends DurableObject {
 			lastChecked: row.last_checked,
 			peakMemberCount: row.peak_member_count ?? 0,
 			expiresAt: row.expires_at,
+			memberCount: row.member_count ?? 0,
+			motd: row.motd,
+			isFreeMove: row.is_free_move === 1,
+			isRegistered: row.is_registered === 1,
+			isVoiceEnabled: row.is_voice_enabled === 1,
+			notFound: row.not_found === 1,
+			notFoundAt: row.not_found_at,
 		}
 	}
 
-	/**
-	 * Archive a fleet to fleet_summaries before deletion from fleet_state_cache
-	 * Uses createdAt from fleet_state_cache as startedAt (for existing fleets)
-	 *
-	 * @param fleetId - Fleet ID to archive
-	 * @param characterId - Fleet boss character ID
-	 * @param endedAt - When the fleet ended
-	 */
 	/**
 	 * Finalize a tracking session: close all open ship-event rows, mark the session
 	 * row ended, and archive the fleet to fleet_summaries with the real peak member count.
@@ -1303,24 +1372,16 @@ export class FleetMonitorDO extends DurableObject {
 		}
 	): Promise<void> {
 		try {
-			// Get current fleet state from cache
-			const [cached] = await this.db
-				.select()
-				.from(fleetStateCache)
-				.where(eq(fleetStateCache.fleetId, fleetId))
-				.limit(1)
-
-			if (!cached) {
-				logger.warn(`[FleetMonitor ${fleetId}] No cache entry found to archive`, {
+			const state = await this.getState()
+			if (!state) {
+				logger.warn(`[FleetMonitor ${fleetId}] No monitor state found to archive`, {
 					fleetId,
 					fleetBossId,
 				})
 				return
 			}
 
-			// Use createdAt as startedAt (for existing fleets when migration runs)
-			// For new fleets, this will be accurate
-			const startedAt = cached.createdAt || new Date()
+			const startedAt = state.lastChecked ? new Date(state.lastChecked) : new Date()
 
 			// Calculate duration in minutes
 			const durationMs = endedAt.getTime() - startedAt.getTime()
@@ -1328,8 +1389,8 @@ export class FleetMonitorDO extends DurableObject {
 
 			// Prefer the real peak from the monitor's SQLite, falling back to the
 			// last-known cached member count for the legacy/pre-session path.
-			const peakMemberCount = options?.peakMemberCount ?? cached.memberCount
-			const finalMemberCount = cached.memberCount
+			const peakMemberCount = options?.peakMemberCount ?? state.peakMemberCount ?? state.memberCount
+			const finalMemberCount = state.memberCount
 
 			// Check if summary already exists (idempotent)
 			const [existing] = await this.db
@@ -1354,10 +1415,10 @@ export class FleetMonitorDO extends DurableObject {
 				endedAt,
 				peakMemberCount,
 				finalMemberCount,
-				motd: cached.motd || null,
-				isFreeMove: cached.isFreeMove,
-				isRegistered: cached.isRegistered,
-				isVoiceEnabled: cached.isVoiceEnabled,
+				motd: state.motd || null,
+				isFreeMove: state.isFreeMove,
+				isRegistered: state.isRegistered,
+				isVoiceEnabled: state.isVoiceEnabled,
 				durationMinutes,
 			})
 
@@ -2244,9 +2305,54 @@ export class FleetMonitorDO extends DurableObject {
 				'[FleetMonitor] Alarm triggered but no tracking session is associated, stopping',
 				{ fleetId, characterId }
 			)
-			// Reschedule anyway so the DO keeps trying — DB row may appear if a
-			// new session is started for this fleet.
-			await this.scheduleNextAlarm()
+			await this.clearMonitorStorage(fleetId)
+			return
+		}
+
+		const [sessionRow] = await this.db
+			.select({
+				id: fleetTrackingSessions.id,
+				status: fleetTrackingSessions.status,
+				endedAt: fleetTrackingSessions.endedAt,
+				endedReason: fleetTrackingSessions.endedReason,
+				endedByUserId: fleetTrackingSessions.endedByUserId,
+				fleetId: fleetTrackingSessions.fleetId,
+			})
+			.from(fleetTrackingSessions)
+			.where(eq(fleetTrackingSessions.id, trackingSessionId))
+			.limit(1)
+
+		if (!sessionRow || sessionRow.fleetId !== fleetId) {
+			logger.warn('[FleetMonitor] Tracking session missing or mismatched; clearing monitor state', {
+				fleetId,
+				trackingSessionId,
+			})
+			await this.clearMonitorStorage(fleetId)
+			return
+		}
+
+		const effectiveSessionStatus = sessionRow.status === 'active' && !sessionRow.endedAt ? 'active' : 'ended'
+		if (effectiveSessionStatus !== 'active') {
+			logger.info('[FleetMonitor] Session is no longer active; finalizing and stopping monitor', {
+				fleetId,
+				trackingSessionId,
+				sessionStatus: effectiveSessionStatus,
+			})
+			await this.finalizeSession({
+				fleetId,
+				fleetBossId: characterId,
+				trackingSessionId,
+				endedAt: sessionRow.endedAt ?? new Date(),
+				endedReason: (sessionRow.endedReason as
+					| 'user_stopped'
+					| 'admin_stopped'
+					| 'fleet_disbanded'
+					| 'esi_error'
+					| 'token_expired') ?? 'fleet_disbanded',
+				endedByUserId: sessionRow.endedByUserId ?? null,
+				peakMemberCount,
+			})
+			await this.clearMonitorStorage(fleetId)
 			return
 		}
 
@@ -2337,7 +2443,7 @@ export class FleetMonitorDO extends DurableObject {
 
 			const observedAt = new Date()
 			const previousFleetBossCharacterId = lastKnownFleetBossId
-			// Update fleet cache in PostgreSQL (cross-instance data)
+			// Persist the live monitor snapshot in Durable Object storage.
 			const liveFleetBossId = fleetStatus.fleetBossId ?? characterId
 			await syncFleetBossAccess(this.db, {
 				fleetId,
@@ -2347,49 +2453,23 @@ export class FleetMonitorDO extends DurableObject {
 				observedAt,
 			})
 			if (liveFleetBossId !== characterId) {
-				this.state.storage.sql.exec(
-					`UPDATE monitor_state SET character_id = ?, expires_at = ? WHERE id = 1`,
-					liveFleetBossId,
-					this.getMonitorStateExpiresAtIso()
-				)
 				characterId = liveFleetBossId
 			}
-			this.state.storage.sql.exec(
-				`UPDATE monitor_state SET last_synced_fleet_boss_id = ?, expires_at = ? WHERE id = 1`,
-				liveFleetBossId,
-				this.getMonitorStateExpiresAtIso()
-			)
-				await this.db
-					.insert(fleetStateCache)
-					.values({
-						fleetId,
-						fleetBossId: liveFleetBossId,
-						trackingSessionId,
-						memberCount: fleetStatus.memberCount,
-						motd: fleetStatus.fleetInfo.motd || null,
-						isFreeMove: fleetStatus.fleetInfo.is_free_move,
-						isRegistered: fleetStatus.fleetInfo.is_registered,
-						isVoiceEnabled: fleetStatus.fleetInfo.is_voice_enabled,
-						notFound: false,
-						notFoundAt: null,
-						lastChecked: observedAt,
-					})
-				.onConflictDoUpdate({
-					target: fleetStateCache.fleetId,
-					set: {
-						fleetBossId: liveFleetBossId,
-						trackingSessionId,
-						memberCount: fleetStatus.memberCount,
-						motd: fleetStatus.fleetInfo.motd || null,
-						isFreeMove: fleetStatus.fleetInfo.is_free_move,
-						isRegistered: fleetStatus.fleetInfo.is_registered,
-						isVoiceEnabled: fleetStatus.fleetInfo.is_voice_enabled,
-						notFound: false,
-						notFoundAt: null,
-						lastChecked: observedAt,
-						updatedAt: observedAt,
-					},
-				})
+			await this.persistMonitorState({
+				fleetId,
+				characterId: liveFleetBossId,
+				trackingSessionId,
+				lastSyncedFleetBossId: liveFleetBossId,
+				lastChecked: observedAt,
+				peakMemberCount,
+				memberCount: fleetStatus.memberCount,
+				motd: fleetStatus.fleetInfo.motd || null,
+				isFreeMove: fleetStatus.fleetInfo.is_free_move,
+				isRegistered: fleetStatus.fleetInfo.is_registered,
+				isVoiceEnabled: fleetStatus.fleetInfo.is_voice_enabled,
+				notFound: false,
+				notFoundAt: null,
+			})
 
 			// Broadcast update to connected WebSocket clients
 			const connections = this.ctx.getWebSockets()
@@ -2542,7 +2622,7 @@ export class FleetMonitorDO extends DurableObject {
 						}
 					)
 
-					// Mark fleet as not found in PostgreSQL cache
+					// Mark fleet as not found in monitor state and stop tracking.
 					const endedAt = new Date()
 					const liveFleetBossId = lastKnownFleetBossId
 
@@ -2562,26 +2642,17 @@ export class FleetMonitorDO extends DurableObject {
 						await this.archiveFleetToSummary(fleetId, liveFleetBossId, endedAt)
 					}
 
-					await this.db
-						.insert(fleetStateCache)
-						.values({
-							fleetId,
-							fleetBossId: liveFleetBossId,
-							memberCount: 0,
-							notFound: true,
-							notFoundAt: endedAt,
-							lastChecked: endedAt,
-						})
-						.onConflictDoUpdate({
-							target: fleetStateCache.fleetId,
-							set: {
-								fleetBossId: liveFleetBossId,
-								notFound: true,
-								notFoundAt: endedAt,
-								lastChecked: endedAt,
-								updatedAt: endedAt,
-							},
-						})
+					await this.persistMonitorState({
+						fleetId,
+						characterId: liveFleetBossId,
+						trackingSessionId,
+						lastSyncedFleetBossId: liveFleetBossId,
+						lastChecked: endedAt,
+						peakMemberCount,
+						memberCount: 0,
+						notFound: true,
+						notFoundAt: endedAt,
+					})
 
 					// Clean up old error tracking data (keep last 24 hours)
 					const cleanupTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
