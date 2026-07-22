@@ -219,9 +219,10 @@ export interface Fleets extends DurableObject {
 
 	/**
 	 * Get the live cache snapshot for a session's fleet.
-	 * Returns null if the session has not started ticking yet.
+	 * Returns a status envelope so callers can distinguish a ready snapshot
+	 * from an inactive session or a monitor read failure.
 	 */
-	getSessionLiveSnapshot(sessionId: string): Promise<SessionLiveSnapshot | null>
+	getSessionLiveSnapshot(sessionId: string): Promise<SessionLiveSnapshotResult>
 
 	/**
 	 * Get the join/leave event log for a session, paginated.
@@ -442,6 +443,14 @@ export interface SessionLiveSnapshot {
 	isVoiceEnabled: boolean
 	lastChecked: string
 	updatedAt: string
+}
+
+export type SessionLiveSnapshotState = 'ready' | 'inactive' | 'unavailable'
+
+export interface SessionLiveSnapshotResult {
+	state: SessionLiveSnapshotState
+	message: string | null
+	snapshot: SessionLiveSnapshot | null
 }
 
 export interface SessionTimelineRow {

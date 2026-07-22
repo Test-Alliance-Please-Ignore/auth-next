@@ -62,5 +62,8 @@
 			"tag": "v2",
 			"new_sqlite_classes": ["FleetMonitor"]
 		}
-	]
+	],
+	"triggers": {
+		"crons": ["0 */6 * * *"]
+	}
 }

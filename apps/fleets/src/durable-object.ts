@@ -39,7 +39,7 @@ import {
 	CorpRollupRow,
 	SessionCurrentMemberRow,
 	SessionLiveMemberLocation,
-	SessionLiveSnapshot,
+	SessionLiveSnapshotResult,
 	SessionMemberShipHistoryRow,
 	SessionRosterRow,
 	SessionSummary,
@@ -65,7 +65,6 @@ import {
 	fleetMemberships,
 	fleetMemberShipEvents,
 	fleetTrackingSessionEvents,
-	fleetStateCache,
 	fleetSummaries,
 	fleetTrackingSessions,
 	schema,
@@ -168,6 +167,49 @@ export class FleetsDO extends DurableObject implements Fleets {
 			observedAt,
 			createdAt: observedAt,
 		})
+	}
+
+	private async getMonitorStateForFleet(
+		fleetId: string
+	): Promise<import('@repo/fleets').FleetMonitorState | null> {
+		try {
+			const monitorStub = getStub<FleetMonitor>(this.env.FLEET_MONITOR, `fleet-${fleetId}`)
+			const state = await monitorStub.getMonitorState()
+			if (!state || state.fleetId !== fleetId || !state.isInitialized) {
+				return null
+			}
+			return state
+		} catch (error) {
+			logger.warn('[FleetsDO] Failed to read FleetMonitor state', {
+				fleetId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return null
+		}
+	}
+
+	private async getLatestCommanderBySessionIds(
+		sessionIds: string[]
+	): Promise<Map<string, string>> {
+		if (sessionIds.length === 0) return new Map()
+
+		const rows = await this.db
+			.select({
+				trackingSessionId: fleetCommanderEvents.trackingSessionId,
+				commanderCharacterId: fleetCommanderEvents.commanderCharacterId,
+			})
+			.from(fleetCommanderEvents)
+			.where(inArray(fleetCommanderEvents.trackingSessionId, sessionIds))
+			.orderBy(desc(fleetCommanderEvents.observedAt))
+
+		const latestBySession = new Map<string, string>()
+		for (const row of rows) {
+			if (!row.trackingSessionId) continue
+			if (!latestBySession.has(row.trackingSessionId)) {
+				latestBySession.set(row.trackingSessionId, row.commanderCharacterId)
+			}
+		}
+		return latestBySession
 	}
 
 	private getEffectiveSessionStatus(
@@ -311,31 +353,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 			})
 			.returning()
 
-		// Update fleet cache
-		await this.db
-			.insert(fleetStateCache)
-			.values({
-				fleetId,
-				fleetBossId,
-				memberCount: 0,
-				motd: fleetData.motd || null,
-				isFreeMove: fleetData.is_free_move,
-				isRegistered: fleetData.is_registered,
-				isVoiceEnabled: fleetData.is_voice_enabled,
-			})
-			.onConflictDoUpdate({
-				target: fleetStateCache.fleetId,
-				set: {
-					fleetBossId,
-					motd: fleetData.motd || null,
-					isFreeMove: fleetData.is_free_move,
-					isRegistered: fleetData.is_registered,
-					isVoiceEnabled: fleetData.is_voice_enabled,
-					lastChecked: new Date(),
-					updatedAt: new Date(),
-				},
-			})
-
 		return {
 			token,
 			url: `https://pleaseignore.app/fleets/join/${token}`,
@@ -428,27 +445,28 @@ export class FleetsDO extends DurableObject implements Fleets {
 	}
 
 	async getFleetDetails(fleetId: string, characterId: string): Promise<FleetDetailsResponse> {
-		// Check if fleet is marked as not found in cache
-		const [cached] = await this.db
-			.select()
-			.from(fleetStateCache)
-			.where(eq(fleetStateCache.fleetId, fleetId))
-			.limit(1)
-
-		if (cached?.notFound && cached.notFoundAt) {
-			const notFoundAge = Date.now() - cached.notFoundAt.getTime()
+		const liveMonitorState = await this.getMonitorStateForFleet(fleetId)
+		if (liveMonitorState?.notFound && liveMonitorState.notFoundAt) {
+			const notFoundAge = Date.now() - new Date(liveMonitorState.notFoundAt).getTime()
 			const twentyFourHours = 24 * 60 * 60 * 1000
 			if (notFoundAge < twentyFourHours) {
 				logger.log(
-					`[Fleet ${fleetId}] Marked as 404, skipping ESI query (age: ${Math.round(notFoundAge / 1000 / 60)} minutes)`
+					`[Fleet ${fleetId}] Marked as 404 in monitor state, skipping ESI query (age: ${Math.round(notFoundAge / 1000 / 60)} minutes)`
 				)
 				throw new Error('Fleet not found (404)')
 			}
 		}
 
+		if (liveMonitorState) {
+			const monitorStub = getStub<FleetMonitor>(this.env.FLEET_MONITOR, `fleet-${fleetId}`)
+			const liveStatus = await monitorStub.getFleetStatus()
+			if (liveStatus) {
+				return liveStatus
+			}
+		}
+
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
-		// Fetch fleet info
 		let fleetInfo: EsiGetFleetInformation
 		try {
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
@@ -457,70 +475,10 @@ export class FleetsDO extends DurableObject implements Fleets {
 				LIVE_FLEET_ESI_OPTIONS
 			)
 			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
-
-			// Update cache with all fleet properties
-			await this.db
-				.insert(fleetStateCache)
-				.values({
-					fleetId,
-					fleetBossId: characterId,
-					memberCount: 0,
-					motd: fleetInfo.motd || null,
-					isFreeMove: fleetInfo.is_free_move,
-					isRegistered: fleetInfo.is_registered,
-					isVoiceEnabled: fleetInfo.is_voice_enabled,
-					notFound: false,
-					notFoundAt: null,
-					lastChecked: new Date(),
-				})
-				.onConflictDoUpdate({
-					target: fleetStateCache.fleetId,
-					set: {
-						motd: fleetInfo.motd || null,
-						isFreeMove: fleetInfo.is_free_move,
-						isRegistered: fleetInfo.is_registered,
-						isVoiceEnabled: fleetInfo.is_voice_enabled,
-						notFound: false,
-						notFoundAt: null,
-						lastChecked: new Date(),
-						updatedAt: new Date(),
-					},
-				})
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : String(error)
-			// Check if it's a 404 error
-			if (
-				errorMessage.includes('404') ||
-				errorMessage.includes('Not found') ||
-				errorMessage.includes('Not Found')
-			) {
-				logger.log(`[Fleet ${fleetId}] Received 404 from ESI, marking as not found`)
-
-				// Mark fleet as not found
-				await this.db
-					.insert(fleetStateCache)
-				.values({
-					fleetId,
-					fleetBossId: characterId,
-					memberCount: 0,
-					notFound: true,
-					notFoundAt: new Date(),
-					lastChecked: new Date(),
-				})
-				.onConflictDoUpdate({
-					target: fleetStateCache.fleetId,
-					set: {
-						notFound: true,
-						notFoundAt: new Date(),
-						lastChecked: new Date(),
-						updatedAt: new Date(),
-					},
-				})
-			}
 			throw error
 		}
 
-		// Fetch fleet members
 		let members: EsiGetFleetMembers | undefined
 		let memberCount = 0
 		try {
@@ -529,30 +487,13 @@ export class FleetsDO extends DurableObject implements Fleets {
 				characterId,
 				LIVE_FLEET_ESI_OPTIONS
 			)
-
-			// Debug logging to see raw ESI response
-			logger.log(
-				'[Fleet Members] Raw ESI response sample (first member):',
-				JSON.stringify(membersResponse.data[0], null, 2)
-			)
-			logger.log(
-				'[Fleet Members] First member station_id type:',
-				typeof membersResponse.data[0]?.station_id
-			)
-			logger.log(
-				'[Fleet Members] First member station_id value:',
-				membersResponse.data[0]?.station_id
-			)
-
 			members = esiGetFleetMembersSchema.parse(membersResponse.data)
 			memberCount = members.length
 		} catch (error) {
-			// Members fetch failed, but continue
 			logger.error('[Fleet Members] Failed to parse or fetch:', error)
 			members = undefined
 		}
 
-		// Get fleet boss name
 		const characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
 		const characterInfo = await characterStub.getCharacterInfo(characterId)
 
@@ -758,39 +699,33 @@ export class FleetsDO extends DurableObject implements Fleets {
 	}
 
 	async isFleetActive(fleetId: string, characterId: string): Promise<boolean> {
-		// Check cache first
-		const [cached] = await this.db
-			.select()
-			.from(fleetStateCache)
-			.where(
-				and(
-					eq(fleetStateCache.fleetId, fleetId),
-					// Cache valid for 4 minutes 30 seconds (to eliminate race conditions)
-					gt(fleetStateCache.lastChecked, new Date(Date.now() - (4 * 60 + 30) * 1000))
+		const monitorState = await this.getMonitorStateForFleet(fleetId)
+		if (monitorState?.notFound && monitorState.notFoundAt) {
+			const notFoundAge = Date.now() - new Date(monitorState.notFoundAt).getTime()
+			const twentyFourHours = 24 * 60 * 60 * 1000
+			if (notFoundAge < twentyFourHours) {
+				logger.log(
+					`[Fleet ${fleetId}] Marked as 404 in monitor state, skipping ESI query (age: ${Math.round(notFoundAge / 1000 / 60)} minutes)`
 				)
-			)
-			.limit(1)
-
-		if (cached) {
-			// If fleet was marked as not found within last 24 hours, don't query ESI again
-			if (cached.notFound && cached.notFoundAt) {
-				const notFoundAge = Date.now() - cached.notFoundAt.getTime()
-				const twentyFourHours = 24 * 60 * 60 * 1000
-				if (notFoundAge < twentyFourHours) {
-					logger.log(
-						`[Fleet ${fleetId}] Marked as 404, skipping ESI query (age: ${Math.round(notFoundAge / 1000 / 60)} minutes)`
-					)
-					return false
-				}
+				return false
 			}
-			return !cached.notFound
+		}
+
+		if (monitorState) {
+			try {
+				const monitorStub = getStub<FleetMonitor>(this.env.FLEET_MONITOR, `fleet-${fleetId}`)
+				return (await monitorStub.getFleetStatus()) !== null
+			} catch (error) {
+				logger.warn('[FleetsDO] Fleet monitor lookup failed while checking active state', {
+					fleetId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
 		}
 
 		// Check with ESI
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		let isActive = false
-		let isNotFound = false
-		let fleetInfo: EsiGetFleetInformation | null = null
 		try {
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
 				`/fleets/${fleetId}/`,
@@ -798,7 +733,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				LIVE_FLEET_ESI_OPTIONS
 			)
 			// Validate the response to ensure it's valid fleet data
-			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
+			esiGetFleetInformationSchema.parse(fleetResponse.data)
 			isActive = true
 		} catch (error) {
 			// Check if it's a 404 error
@@ -809,61 +744,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 				errorMessage.includes('Not Found')
 			) {
 				logger.log(`[Fleet ${fleetId}] Received 404 from ESI, marking as not found`)
-				isNotFound = true
 			}
 			isActive = false
-		}
-
-		// Update cache with all fleet properties
-		if (fleetInfo) {
-			await this.db
-				.insert(fleetStateCache)
-				.values({
-					fleetId,
-					fleetBossId: characterId,
-					memberCount: 0,
-					motd: fleetInfo.motd || null,
-					isFreeMove: fleetInfo.is_free_move,
-					isRegistered: fleetInfo.is_registered,
-					isVoiceEnabled: fleetInfo.is_voice_enabled,
-					notFound: false,
-					notFoundAt: null,
-					lastChecked: new Date(),
-				})
-				.onConflictDoUpdate({
-					target: fleetStateCache.fleetId,
-					set: {
-						motd: fleetInfo.motd || null,
-						isFreeMove: fleetInfo.is_free_move,
-						isRegistered: fleetInfo.is_registered,
-						isVoiceEnabled: fleetInfo.is_voice_enabled,
-						notFound: false,
-						notFoundAt: null,
-						lastChecked: new Date(),
-						updatedAt: new Date(),
-					},
-				})
-		} else {
-			// Fleet not found or error - update cache with not found status
-			await this.db
-				.insert(fleetStateCache)
-				.values({
-					fleetId,
-					fleetBossId: characterId,
-					memberCount: 0,
-					notFound: isNotFound,
-					notFoundAt: isNotFound ? new Date() : null,
-					lastChecked: new Date(),
-				})
-				.onConflictDoUpdate({
-					target: fleetStateCache.fleetId,
-					set: {
-						notFound: isNotFound,
-						notFoundAt: isNotFound ? new Date() : null,
-						lastChecked: new Date(),
-						updatedAt: new Date(),
-					},
-				})
 		}
 
 		return isActive
@@ -872,53 +754,37 @@ export class FleetsDO extends DurableObject implements Fleets {
 	async getFleetCacheStatus(
 		fleetId: string
 	): Promise<{ notFound: boolean; notFoundAt: Date | null; lastChecked: Date } | null> {
-		const [cached] = await this.db
-			.select({
-				notFound: fleetStateCache.notFound,
-				notFoundAt: fleetStateCache.notFoundAt,
-				lastChecked: fleetStateCache.lastChecked,
-			})
-			.from(fleetStateCache)
-			.where(eq(fleetStateCache.fleetId, fleetId))
-			.limit(1)
-
-		if (!cached) {
+		const state = await this.getMonitorStateForFleet(fleetId)
+		if (!state) {
 			return null
 		}
 
 		return {
-			notFound: cached.notFound,
-			notFoundAt: cached.notFoundAt,
-			lastChecked: cached.lastChecked,
+			notFound: state.notFound,
+			notFoundAt: state.notFoundAt ? new Date(state.notFoundAt) : null,
+			lastChecked: new Date(state.lastChecked ?? new Date().toISOString()),
 		}
 	}
 
 	async getFleetIsRegistered(fleetId: string, characterId: string): Promise<boolean> {
-		// Check cache first with 4 minutes 30 seconds validity (same as isFleetActive)
-		const [cached] = await this.db
-			.select({
-				isRegistered: fleetStateCache.isRegistered,
-				lastChecked: fleetStateCache.lastChecked,
-			})
-			.from(fleetStateCache)
-			.where(
-				and(
-					eq(fleetStateCache.fleetId, fleetId),
-					// Cache valid for 4 minutes 30 seconds (to eliminate race conditions)
-					gt(fleetStateCache.lastChecked, new Date(Date.now() - (4 * 60 + 30) * 1000))
-				)
-			)
-			.limit(1)
-
-		if (cached) {
-			// Use cached value if fresh
-			return cached.isRegistered
+		const monitorState = await this.getMonitorStateForFleet(fleetId)
+		if (monitorState) {
+			try {
+				const monitorStub = getStub<FleetMonitor>(this.env.FLEET_MONITOR, `fleet-${fleetId}`)
+				const liveStatus = await monitorStub.getFleetStatus()
+				if (liveStatus) {
+					return liveStatus.fleetInfo.is_registered
+				}
+			} catch (error) {
+				logger.warn('[FleetsDO] Fleet monitor lookup failed while checking registration', {
+					fleetId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
 		}
 
-		// Cache is missing or stale, fetch from ESI
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		let fleetInfo: EsiGetFleetInformation | null = null
-		let isNotFound = false
 
 		try {
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
@@ -928,72 +794,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 			)
 			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
 		} catch (error) {
-			// Check if it's a 404 error
-			const errorMessage = error instanceof Error ? error.message : String(error)
-			if (
-				errorMessage.includes('404') ||
-				errorMessage.includes('Not found') ||
-				errorMessage.includes('Not Found')
-			) {
-				isNotFound = true
-			}
-			// If fleet not found, return false for isRegistered
 			fleetInfo = null
 		}
 
-		// Update cache with all fleet properties
 		if (fleetInfo) {
-			await this.db
-				.insert(fleetStateCache)
-				.values({
-					fleetId,
-					fleetBossId: characterId,
-					memberCount: 0,
-					motd: fleetInfo.motd || null,
-					isFreeMove: fleetInfo.is_free_move,
-					isRegistered: fleetInfo.is_registered,
-					isVoiceEnabled: fleetInfo.is_voice_enabled,
-					notFound: false,
-					notFoundAt: null,
-					lastChecked: new Date(),
-				})
-				.onConflictDoUpdate({
-					target: fleetStateCache.fleetId,
-					set: {
-						motd: fleetInfo.motd || null,
-						isFreeMove: fleetInfo.is_free_move,
-						isRegistered: fleetInfo.is_registered,
-						isVoiceEnabled: fleetInfo.is_voice_enabled,
-						notFound: false,
-						notFoundAt: null,
-						lastChecked: new Date(),
-						updatedAt: new Date(),
-					},
-				})
-
 			return fleetInfo.is_registered
 		}
-
-		// Fleet not found or error - update cache with not found status
-		await this.db
-			.insert(fleetStateCache)
-			.values({
-				fleetId,
-				fleetBossId: characterId,
-				memberCount: 0,
-				notFound: isNotFound,
-				notFoundAt: isNotFound ? new Date() : null,
-				lastChecked: new Date(),
-			})
-			.onConflictDoUpdate({
-				target: fleetStateCache.fleetId,
-				set: {
-					notFound: isNotFound,
-					notFoundAt: isNotFound ? new Date() : null,
-					lastChecked: new Date(),
-					updatedAt: new Date(),
-				},
-			})
 
 		return false
 	}
@@ -1073,7 +879,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				characterId: fleetTrackingSessions.characterId,
 			})
 			.from(fleetTrackingSessions)
-			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(eq(fleetTrackingSessions.fleetId, fleetId))
 			.orderBy(desc(fleetTrackingSessions.startedAt))
 			.limit(1)
@@ -1216,7 +1021,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				fleetId: fleetTrackingSessions.fleetId,
 			})
 			.from(fleetTrackingSessions)
-			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(eq(fleetTrackingSessions.id, sessionId))
 			.limit(1)
 
@@ -1281,7 +1085,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 		if (fleetBossCharacterIds.length > 0) {
 			const commanderMatches = or(
-				inArray(fleetStateCache.fleetBossId, fleetBossCharacterIds),
 				sql<boolean>`exists (
 					select 1
 					from fleet_commander_access_anchors
@@ -1314,10 +1117,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const items = await this.db
 			.select({
 				session: fleetTrackingSessions,
-				currentCommanderCharacterId: fleetStateCache.fleetBossId,
 			})
 			.from(fleetTrackingSessions)
-			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(where)
 			.orderBy(desc(fleetTrackingSessions.startedAt))
 			.limit(limit)
@@ -1326,15 +1127,15 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const totalResult = await this.db
 			.select({ count: sql<number>`count(*)::int` })
 			.from(fleetTrackingSessions)
-			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(where)
 		const total = totalResult[0]?.count ?? 0
+		const commanderMap = await this.getLatestCommanderBySessionIds(items.map((row) => row.session.id))
 
 		return {
 			items: items.map((row) =>
 				this.serializeSession(
 					row.session,
-					row.currentCommanderCharacterId ?? null,
+					commanderMap.get(row.session.id) ?? null,
 					[],
 					this.getEffectiveSessionStatus({
 						status: row.session.status,
@@ -1355,26 +1156,15 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const [row] = await this.db
 			.select({
 				session: fleetTrackingSessions,
-				currentCommanderCharacterId: fleetStateCache.fleetBossId,
 			})
 			.from(fleetTrackingSessions)
-			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(eq(fleetTrackingSessions.id, sessionId))
 			.limit(1)
 		if (!row) return null
 
-		const commanderRows = row.session.fleetId
-			? await this.db
-				.select({
-					commanderCharacterId: fleetCommanderAccessAnchors.commanderCharacterId,
-				})
-				.from(fleetCommanderAccessAnchors)
-				.where(eq(fleetCommanderAccessAnchors.fleetId, row.session.fleetId))
-				.orderBy(asc(fleetCommanderAccessAnchors.firstSeenAt))
+		const commanderCharacterIds = row.session.fleetId
+			? Array.from((await this.getLatestCommanderBySessionIds([row.session.id])).values())
 			: []
-		const commanderCharacterIds = Array.from(
-			new Set(commanderRows.map((r) => r.commanderCharacterId))
-		)
 		const effectiveStatus = this.getEffectiveSessionStatus({
 			status: row.session.status,
 			endedAt: row.session.endedAt,
@@ -1382,7 +1172,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 		return this.serializeSession(
 			row.session,
-			row.currentCommanderCharacterId ?? null,
+			commanderCharacterIds[0] ?? null,
 			commanderCharacterIds,
 			effectiveStatus
 		)
@@ -1395,10 +1185,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const [row] = await this.db
 			.select({
 				session: fleetTrackingSessions,
-				currentCommanderCharacterId: fleetStateCache.fleetBossId,
 			})
 			.from(fleetTrackingSessions)
-			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(
 				and(
 					eq(fleetTrackingSessions.fleetId, fleetId),
@@ -1410,15 +1198,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 			.limit(1)
 		if (!row) return null
 
-		const commanderRows = await this.db
-			.select({
-				commanderCharacterId: fleetCommanderAccessAnchors.commanderCharacterId,
-			})
-			.from(fleetCommanderAccessAnchors)
-			.where(eq(fleetCommanderAccessAnchors.fleetId, fleetId))
-			.orderBy(asc(fleetCommanderAccessAnchors.firstSeenAt))
 		const commanderCharacterIds = Array.from(
-			new Set(commanderRows.map((r) => r.commanderCharacterId))
+			(await this.getLatestCommanderBySessionIds([row.session.id])).values()
 		)
 		const effectiveStatus = this.getEffectiveSessionStatus({
 			status: row.session.status,
@@ -1427,7 +1208,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 		return this.serializeSession(
 			row.session,
-			row.currentCommanderCharacterId ?? null,
+			commanderCharacterIds[0] ?? null,
 			commanderCharacterIds,
 			effectiveStatus
 		)
@@ -1440,24 +1221,15 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const [row] = await this.db
 			.select({
 				session: fleetTrackingSessions,
-				currentCommanderCharacterId: fleetStateCache.fleetBossId,
 			})
 			.from(fleetTrackingSessions)
-			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(eq(fleetTrackingSessions.fleetId, fleetId))
 			.orderBy(desc(fleetTrackingSessions.startedAt))
 			.limit(1)
 		if (!row) return null
 
-		const commanderRows = await this.db
-			.select({
-				commanderCharacterId: fleetCommanderAccessAnchors.commanderCharacterId,
-			})
-			.from(fleetCommanderAccessAnchors)
-			.where(eq(fleetCommanderAccessAnchors.fleetId, fleetId))
-			.orderBy(asc(fleetCommanderAccessAnchors.firstSeenAt))
 		const commanderCharacterIds = Array.from(
-			new Set(commanderRows.map((r) => r.commanderCharacterId))
+			(await this.getLatestCommanderBySessionIds([row.session.id])).values()
 		)
 		const effectiveStatus = this.getEffectiveSessionStatus({
 			status: row.session.status,
@@ -1466,17 +1238,18 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 		return this.serializeSession(
 			row.session,
-			row.currentCommanderCharacterId ?? null,
+			commanderCharacterIds[0] ?? null,
 			commanderCharacterIds,
 			effectiveStatus
 		)
 	}
 
 	/**
-	 * Get the live snapshot (last cache row) for an active session's fleet.
-	 * Returns null if the session has not started ticking yet.
+	 * Get the live snapshot from the FleetMonitor DO for an active session's fleet.
+	 * Returns a status envelope so callers can distinguish a ready snapshot
+	 * from an inactive session or a monitor read failure.
 	 */
-	async getSessionLiveSnapshot(sessionId: string): Promise<SessionLiveSnapshot | null> {
+	async getSessionLiveSnapshot(sessionId: string): Promise<SessionLiveSnapshotResult> {
 		const [session] = await this.db
 			.select({
 				fleetId: fleetTrackingSessions.fleetId,
@@ -1486,46 +1259,92 @@ export class FleetsDO extends DurableObject implements Fleets {
 			.from(fleetTrackingSessions)
 			.where(eq(fleetTrackingSessions.id, sessionId))
 			.limit(1)
-		if (!session || !session.fleetId) return null
-		if (this.getEffectiveSessionStatus({ status: session.status, endedAt: session.endedAt }) !== 'active') {
-			return null
+		if (!session || !session.fleetId) {
+			return {
+				state: 'inactive',
+				message: 'This fleet tracking session is no longer active.',
+				snapshot: null,
+			}
 		}
-
-		const [cache] = await this.db
-			.select()
-			.from(fleetStateCache)
-			.where(eq(fleetStateCache.fleetId, session.fleetId))
-			.limit(1)
-		if (!cache || cache.notFound) return null
-
-		// Pull peak member count from the FleetMonitor DO's SQLite state.
-		let peakMemberCount = cache.memberCount
+		if (this.getEffectiveSessionStatus({ status: session.status, endedAt: session.endedAt }) !== 'active') {
+			return {
+				state: 'inactive',
+				message: 'This fleet tracking session is no longer active.',
+				snapshot: null,
+			}
+		}
 		try {
-			const monitorStub = getStub<FleetMonitor>(
-				this.env.FLEET_MONITOR,
-				`fleet-${session.fleetId}`
-			)
-			const state = await monitorStub.getMonitorState()
-			if (state && typeof state.peakMemberCount === 'number') {
-				peakMemberCount = Math.max(state.peakMemberCount, cache.memberCount)
+			const monitorStub = getStub<FleetMonitor>(this.env.FLEET_MONITOR, `fleet-${session.fleetId}`)
+			const [status, monitorState] = await Promise.all([
+				monitorStub.getFleetStatus(),
+				monitorStub.getMonitorState(),
+			])
+			if (!status) {
+				return {
+					state: 'unavailable',
+					message:
+						'The latest live fleet snapshot could not be read. The fleet may have ended or the monitor may still be recovering.',
+					snapshot: null,
+				}
+			}
+			if (monitorState?.notFound) {
+				return {
+					state: 'unavailable',
+					message:
+						'The tracked fleet could not be found, so the latest live snapshot is unavailable.',
+					snapshot: null,
+				}
+			}
+
+			const peakMemberCount = Math.max(monitorState?.peakMemberCount ?? 0, status.memberCount)
+			const lastChecked = monitorState?.lastChecked ?? new Date().toISOString()
+
+			return {
+				state: 'ready',
+				message: null,
+				snapshot: {
+					fleetId: session.fleetId,
+					memberCount: status.memberCount,
+					peakMemberCount,
+					motd: status.fleetInfo.motd || null,
+					isFreeMove: status.fleetInfo.is_free_move,
+					isRegistered: status.fleetInfo.is_registered,
+					isVoiceEnabled: status.fleetInfo.is_voice_enabled,
+					lastChecked,
+					updatedAt: lastChecked,
+				},
 			}
 		} catch (error) {
-			logger.warn('[FleetsDO] Could not read FleetMonitor state for peak', {
-				fleetId: session.fleetId,
-				error: error instanceof Error ? error.message : String(error),
-			})
-		}
+			const message = error instanceof Error ? error.message : String(error)
+			if (
+				message.includes('ESI request failed: 404') ||
+				message.includes('404 Not Found') ||
+				message.includes('not found')
+			) {
+				logger.warn('[FleetsDO] Live snapshot unavailable because fleet no longer exists', {
+					sessionId,
+					fleetId: session.fleetId,
+					error: message,
+				})
+				return {
+					state: 'unavailable',
+					message:
+						'The latest live fleet snapshot could not be read. The fleet may have ended or the monitor may still be recovering.',
+					snapshot: null,
+				}
+			}
 
-		return {
-			fleetId: cache.fleetId,
-			memberCount: cache.memberCount,
-			peakMemberCount,
-			motd: cache.motd,
-			isFreeMove: cache.isFreeMove,
-			isRegistered: cache.isRegistered,
-			isVoiceEnabled: cache.isVoiceEnabled,
-			lastChecked: cache.lastChecked.toISOString(),
-			updatedAt: cache.updatedAt.toISOString(),
+			logger.warn('[FleetsDO] Failed to read live snapshot from FleetMonitor', {
+				sessionId,
+				fleetId: session.fleetId,
+				error: message,
+			})
+			return {
+				state: 'unavailable',
+				message:
+					'The latest live fleet snapshot could not be read. The fleet may have ended or the monitor may still be recovering.',
+				snapshot: null,
+			}
 		}
 	}
 
@@ -2029,7 +1848,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				endedAt: fleetTrackingSessions.endedAt,
 			})
 			.from(fleetTrackingSessions)
-			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(eq(fleetTrackingSessions.id, sessionId))
 			.limit(1)
 
@@ -2220,7 +2038,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 				characterId: fleetTrackingSessions.characterId,
 			})
 			.from(fleetTrackingSessions)
-			.leftJoin(fleetStateCache, eq(fleetTrackingSessions.fleetId, fleetStateCache.fleetId))
 			.where(eq(fleetTrackingSessions.id, args.sessionId))
 			.limit(1)
 

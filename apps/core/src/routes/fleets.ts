@@ -818,7 +818,8 @@ app.get('/tracking/:sessionId', async (c) => {
 
 /**
  * GET /fleets/tracking/:sessionId/live
- * Live snapshot from fleet_state_cache. Useful while the session is active.
+ * Live snapshot from the FleetMonitor DO plus a status envelope explaining
+ * whether the snapshot is ready, inactive, or temporarily unavailable.
  */
 app.get('/tracking/:sessionId/live', async (c) => {
 	const result = await resolveSessionAccess(c, c.req.param('sessionId'))
@@ -828,9 +829,8 @@ app.get('/tracking/:sessionId/live', async (c) => {
 	}
 
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
-	const snapshot = await fleetsStub.getSessionLiveSnapshot(c.req.param('sessionId'))
-	if (!snapshot) return c.json({ snapshot: null })
-	return c.json({ snapshot })
+	const liveSnapshot = await fleetsStub.getSessionLiveSnapshot(c.req.param('sessionId'))
+	return c.json(liveSnapshot)
 })
 
 /**
