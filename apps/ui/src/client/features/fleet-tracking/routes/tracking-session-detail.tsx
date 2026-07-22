@@ -450,7 +450,7 @@ function DetailView({
 
 	return (
 		<div className="space-y-6">
-			{liveResp && liveResp.state !== 'ready' && (
+			{isLive && liveResp && liveResp.state !== 'ready' && (
 				<div className="rounded-lg border border-warning/40 bg-warning/10 p-4">
 					<div className="flex items-start gap-3">
 						<AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
