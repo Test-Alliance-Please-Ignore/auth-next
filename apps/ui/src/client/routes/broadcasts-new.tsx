@@ -650,10 +650,10 @@ export default function NewBroadcastPage() {
 						<CardDescription>Configure your broadcast message</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<form onSubmit={handleSend} className="space-y-6">
-							<div className="grid gap-4 lg:grid-cols-3">
+						<form onSubmit={handleSend} className="min-w-0 space-y-6">
+							<div className="grid min-w-0 gap-4 lg:grid-cols-3">
 								{/* Target Selection */}
-								<div className="space-y-2">
+								<div className="min-w-0 space-y-2">
 									<Label htmlFor="target">Target *</Label>
 									<Select
 										inputId="target"
@@ -677,7 +677,7 @@ export default function NewBroadcastPage() {
 								</div>
 
 								{/* Template Selection */}
-								<div className="space-y-2">
+								<div className="min-w-0 space-y-2">
 									<Label htmlFor="template">Template</Label>
 									<Select
 										value={selectedTemplateId}
@@ -701,7 +701,7 @@ export default function NewBroadcastPage() {
 								</div>
 
 								{/* Mention Level Selection */}
-								<div className="space-y-2">
+								<div className="min-w-0 space-y-2">
 									<Label htmlFor="mentions">Mentions</Label>
 									<Select
 										inputId="mentions"
@@ -732,9 +732,9 @@ export default function NewBroadcastPage() {
 
 							{/* Custom Message or Template Fields */}
 							{selectedTemplateId === 'custom' ? (
-								<div className="grid gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-2 lg:items-stretch">
+								<div className="grid min-w-0 gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch">
 									<BroadcastPreviewPane message={customMessage} />
-									<div className="[grid-area:form] space-y-2">
+									<div className="[grid-area:form] min-w-0 space-y-2">
 										<Label htmlFor="message">Message *</Label>
 										<Textarea
 											id="message"
@@ -743,7 +743,7 @@ export default function NewBroadcastPage() {
 											rows={10}
 											placeholder="Enter your broadcast message..."
 											required
-											className="resize-none h-[16rem]"
+											className="h-[16rem] resize-none"
 										/>
 										<p className="text-xs text-muted-foreground">
 											Write your custom message. Supports Discord markdown formatting.
@@ -751,23 +751,23 @@ export default function NewBroadcastPage() {
 									</div>
 								</div>
 							) : selectedTemplate ? (
-								<div className="grid gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-2 lg:items-stretch">
+								<div className="grid min-w-0 gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch">
 									<BroadcastPreviewPane message={renderedOutboundMessage} />
-									<div className="[grid-area:form] space-y-4">
+									<div className="[grid-area:form] min-w-0 space-y-4">
 										<TemplateFieldsEditor
 											fields={selectedTemplate.fieldSchema}
 											templateFields={templateFields}
 											templateFieldSelections={templateFieldSelections}
 											doctrines={doctrines}
 											stagingSystems={stagingSystems}
-										userCharacters={user?.characters ?? []}
-										mainCharacterId={user?.mainCharacterId}
-										canCreateFleetTracking={canCreateFleetTracking}
-										messageParts={messageParts}
-										onMessagePartsChange={setMessageParts}
-										onUpdateTemplateField={updateTemplateField}
-										onUpdateTemplateFieldSelection={updateTemplateFieldSelection}
-									/>
+											userCharacters={user?.characters ?? []}
+											mainCharacterId={user?.mainCharacterId}
+											canCreateFleetTracking={canCreateFleetTracking}
+											messageParts={messageParts}
+											onMessagePartsChange={setMessageParts}
+											onUpdateTemplateField={updateTemplateField}
+											onUpdateTemplateFieldSelection={updateTemplateFieldSelection}
+										/>
 									</div>
 								</div>
 							) : null}
@@ -784,8 +784,14 @@ export default function NewBroadcastPage() {
 									Rendered length: {renderedOutboundLength}/{DISCORD_MESSAGE_MAX_LENGTH}
 								</span>
 							</div>
-							<div className="flex justify-end gap-3 pt-4">
-								<Button variant="cancel" type="button" onClick={() => navigate('/broadcasts')} disabled={isSubmitting}>
+							<div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-end">
+								<Button
+									variant="cancel"
+									type="button"
+									onClick={() => navigate('/broadcasts')}
+									disabled={isSubmitting}
+									className="w-full sm:w-auto"
+								>
 									Cancel
 								</Button>
 								<Button
@@ -796,6 +802,7 @@ export default function NewBroadcastPage() {
 									loadingText="Saving..."
 									showIcon={false}
 									onClick={handleSaveAsDraft}
+									className="w-full sm:w-auto"
 								>
 									Save as Draft
 								</Button>
@@ -806,6 +813,7 @@ export default function NewBroadcastPage() {
 									loading={isSending}
 									loadingText="Sending..."
 									showIcon={false}
+									className="w-full sm:w-auto"
 								>
 									Send Broadcast
 								</Button>
