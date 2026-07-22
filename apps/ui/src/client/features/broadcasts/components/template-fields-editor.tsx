@@ -110,6 +110,7 @@ export function TemplateFieldsEditor({
 						autoResizeTextarea(e.currentTarget)
 						onMessagePartsChange({ ...messageParts, prefix: e.target.value })
 					}}
+					onBlur={(e) => autoResizeTextarea(e.currentTarget, { forceShrink: true })}
 					rows={1}
 					placeholder="Optional text prepended before the template message"
 					className="resize-none overflow-hidden"
@@ -216,6 +217,7 @@ export function TemplateFieldsEditor({
 											autoResizeTextarea(e.currentTarget)
 											onUpdateTemplateField(field.name, e.target.value)
 										}}
+										onBlur={(e) => autoResizeTextarea(e.currentTarget, { forceShrink: true })}
 										rows={1}
 										required={field.required}
 										className="resize-none overflow-hidden"
@@ -244,6 +246,7 @@ export function TemplateFieldsEditor({
 						autoResizeTextarea(e.currentTarget)
 						onMessagePartsChange({ ...messageParts, suffix: e.target.value })
 					}}
+					onBlur={(e) => autoResizeTextarea(e.currentTarget, { forceShrink: true })}
 					rows={1}
 					placeholder="Optional text appended after the template message"
 					className="resize-none overflow-hidden"

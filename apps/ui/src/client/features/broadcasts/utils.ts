@@ -74,7 +74,29 @@ export function resolveFleetCommanderSelectionFromFields(args: {
 	}
 }
 
-export function autoResizeTextarea(element: HTMLTextAreaElement): void {
+interface AutoResizeTextareaOptions {
+	forceShrink?: boolean
+}
+
+function isCoarsePointerViewport(): boolean {
+	if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+	return window.matchMedia('(pointer: coarse)').matches
+}
+
+export function autoResizeTextarea(
+	element: HTMLTextAreaElement,
+	options: AutoResizeTextareaOptions = {}
+): void {
+	const isFocused = typeof document !== 'undefined' && document.activeElement === element
+	if (isCoarsePointerViewport() && isFocused && !options.forceShrink) {
+		const currentHeight =
+			Number.parseFloat(element.style.height) || element.getBoundingClientRect().height
+		if (element.scrollHeight > currentHeight) {
+			element.style.height = `${element.scrollHeight}px`
+		}
+		return
+	}
+
 	element.style.height = '0px'
 	element.style.height = `${element.scrollHeight}px`
 }
