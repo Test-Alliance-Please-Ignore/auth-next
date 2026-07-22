@@ -732,8 +732,7 @@ export default function NewBroadcastPage() {
 
 							{/* Custom Message or Template Fields */}
 							{selectedTemplateId === 'custom' ? (
-								<div className="grid min-w-0 gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch">
-									<BroadcastPreviewPane message={customMessage} />
+								<div className="grid min-w-0 gap-4 [grid-template-areas:'form''preview'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch">
 									<div className="[grid-area:form] min-w-0 space-y-2">
 										<Label htmlFor="message">Message *</Label>
 										<Textarea
@@ -749,10 +748,10 @@ export default function NewBroadcastPage() {
 											Write your custom message. Supports Discord markdown formatting.
 										</p>
 									</div>
+									<BroadcastPreviewPane message={customMessage} />
 								</div>
 							) : selectedTemplate ? (
-								<div className="grid min-w-0 gap-4 [grid-template-areas:'preview''form'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch">
-									<BroadcastPreviewPane message={renderedOutboundMessage} />
+								<div className="grid min-w-0 gap-4 [grid-template-areas:'form''preview'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch">
 									<div className="[grid-area:form] min-w-0 space-y-4">
 										<TemplateFieldsEditor
 											fields={selectedTemplate.fieldSchema}
@@ -769,6 +768,7 @@ export default function NewBroadcastPage() {
 											onUpdateTemplateFieldSelection={updateTemplateFieldSelection}
 										/>
 									</div>
+									<BroadcastPreviewPane message={renderedOutboundMessage} />
 								</div>
 							) : null}
 
