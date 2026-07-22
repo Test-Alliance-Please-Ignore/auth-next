@@ -62,6 +62,7 @@ import { api } from '@/lib/api'
 import { formatDateTimeLong } from '@/lib/date-utils'
 import { formatDurationMs } from '@/lib/duration-utils'
 import { allianceLogoUrl, typeIconUrl, typeImageUrl, typeRenderUrl } from '@/lib/eve-images'
+import { getSovereigntyVulnerabilityWindowDisplay } from '@/lib/sovereignty-vulnerability-window'
 import { stripLeadingContextName } from '@/lib/structure-name-utils'
 import toast from '@/lib/toast'
 
@@ -783,7 +784,13 @@ export default function StructuresDetailPage() {
 	const sovereigntyHub = structure?.sovereignty?.hub ?? null
 	const sovereigntyAllianceId = structure?.sovereignty?.allianceId ?? null
 	const sovereigntyAllianceName = structure?.sovereignty?.allianceName ?? null
+	const nowMs = Date.now()
 	const sovereigntyVulnerabilityState = getSovereigntyVulnerabilityState(structure?.sovereignty)
+	const sovereigntyVulnerabilityWindow = getSovereigntyVulnerabilityWindowDisplay({
+		vulnerabilityWindowStart: structure?.sovereignty?.vulnerabilityWindowStart ?? null,
+		vulnerabilityWindowEnd: structure?.sovereignty?.vulnerabilityWindowEnd ?? null,
+		nowMs,
+	})
 	const { data: sovereigntyStructures = [] } = useQuery({
 		queryKey: ['structures', 'sovereignty', corporationId],
 		queryFn: async () => {
@@ -1055,12 +1062,12 @@ export default function StructuresDetailPage() {
 									</div>
 								</div>
 								<div>
-									<div className="text-muted-foreground">
-										{hasSovereigntySummary ? (
-											'Theft Window'
-										) : isReinforced ? (
-											<Badge variant="destructive">Reinforced until</Badge>
-										) : (
+								<div className="text-muted-foreground">
+									{hasSovereigntySummary ? (
+										'Vulnerability Window'
+									) : isReinforced ? (
+										<Badge variant="destructive">Reinforced until</Badge>
+									) : (
 											'Next State'
 										)}
 									</div>
@@ -1096,6 +1103,22 @@ export default function StructuresDetailPage() {
 											'-'
 										)}
 									</div>
+									{hasSovereigntySummary &&
+									(structure.sovereignty?.vulnerabilityWindowStart ||
+										structure.sovereignty?.vulnerabilityWindowEnd) ? (
+										<div className="mt-1 text-xs text-muted-foreground">
+											{sovereigntyVulnerabilityWindow.label}{' '}
+											{sovereigntyVulnerabilityWindow.countdownTarget ? (
+												<DurationDisplay
+													endDate={sovereigntyVulnerabilityWindow.countdownTarget}
+													referenceTimeMs={nowMs}
+													maxUnits={2}
+													durationStyle="compact"
+													format="compact"
+												/>
+											) : null}
+										</div>
+									) : null}
 								</div>
 							</div>
 							<div className="flex flex-wrap gap-2 pt-2">
