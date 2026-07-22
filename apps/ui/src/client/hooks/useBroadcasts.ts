@@ -237,10 +237,11 @@ export function useBroadcasts(
 /**
  * Fetch a single broadcast by ID with full details
  */
-export function useBroadcast(id: string) {
+export function useBroadcast(id: string, enabled = true) {
 	return useQuery({
 		queryKey: broadcastKeys.broadcast(id),
 		queryFn: () => api.getBroadcast(id),
+		enabled: enabled && id.length > 0,
 		staleTime: 1000 * 30,
 	})
 }
