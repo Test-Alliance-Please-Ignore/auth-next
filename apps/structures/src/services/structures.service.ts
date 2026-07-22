@@ -1,5 +1,5 @@
 import { managedCorporations } from '@repo/core-db-schema'
-import { and, desc, eq, inArray, isNotNull } from '@repo/db-utils'
+import { and, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import {
 	corporationStructureInventory,
@@ -15,6 +15,12 @@ import {
 import { logger } from '@repo/hono-helpers'
 import { summarizeInventoryRows } from '@repo/inventory-display'
 import {
+	METENOX_MOON_DRILL_TYPE_NAME,
+	MINING_CITADEL_TYPE_NAMES,
+	MOON_DRILL_STRUCTURE_TYPE_IDS,
+	NAVIGATION_STRUCTURE_TYPE_IDS,
+	SKYHOOK_STRUCTURE_TYPE_IDS,
+	SOVEREIGNTY_STRUCTURE_TYPE_IDS,
 	getStructureTabForTypeId,
 	isReinforcedStructureState,
 	STRUCTURE_SYNC_ERROR_STALE_MS,
@@ -795,6 +801,15 @@ function parseNullableNumber(value: string | number | null | undefined): number 
 
 type StructureWhereCondition = NonNullable<Parameters<typeof and>[number]>
 
+const NON_CITADEL_TYPE_IDS = [
+	...SOVEREIGNTY_STRUCTURE_TYPE_IDS,
+	...SKYHOOK_STRUCTURE_TYPE_IDS,
+	...NAVIGATION_STRUCTURE_TYPE_IDS,
+	...MOON_DRILL_STRUCTURE_TYPE_IDS,
+]
+
+const NON_CITADEL_TYPE_NAMES = [...MINING_CITADEL_TYPE_NAMES, METENOX_MOON_DRILL_TYPE_NAME]
+
 type SovereigntyHubUniverseStub = {
 	resolveSolarSystemsByIds(
 		systemIds: string[]
@@ -809,6 +824,67 @@ function combineWhereConditions(conditions: Array<StructureWhereCondition | unde
 	if (defined.length === 0) return undefined
 	if (defined.length === 1) return defined[0]
 	return and(...defined)
+}
+
+function buildStructureFamilyWhere(tab: StructureTab): StructureWhereCondition | undefined {
+	switch (tab) {
+		case 'citadels':
+			return and(
+				notInArray(corporationStructures.typeId, NON_CITADEL_TYPE_IDS),
+				or(
+					isNull(corporationStructures.typeName),
+					notInArray(corporationStructures.typeName, NON_CITADEL_TYPE_NAMES)
+				)
+			)
+		case 'sovereignty':
+			return inArray(corporationStructures.typeId, [...SOVEREIGNTY_STRUCTURE_TYPE_IDS])
+		case 'skyhooks':
+			return inArray(corporationStructures.typeId, [...SKYHOOK_STRUCTURE_TYPE_IDS])
+		case 'navigation':
+			return inArray(corporationStructures.typeId, [...NAVIGATION_STRUCTURE_TYPE_IDS])
+		case 'mining-citadels':
+			return inArray(corporationStructures.typeName, [...MINING_CITADEL_TYPE_NAMES])
+		case 'moon-drills':
+			return or(
+				inArray(corporationStructures.typeId, [...MOON_DRILL_STRUCTURE_TYPE_IDS]),
+				eq(corporationStructures.typeName, METENOX_MOON_DRILL_TYPE_NAME)
+			)
+	}
+}
+
+function buildHiddenVisibilityWhere(
+	access: StructureAccessScope,
+	tabFilter?: StructureTab
+): StructureWhereCondition | undefined {
+	const tabs = tabFilter ? [tabFilter] : STRUCTURE_ACCESS_TABS
+	const branches = tabs.flatMap((tab) => {
+		const target = getStructureAccessTarget(access, tab)
+		const familyWhere = buildStructureFamilyWhere(tab)
+
+		if (!familyWhere) {
+			return []
+		}
+
+		if (target.sensitiveAll || target.managerAll) {
+			return [familyWhere]
+		}
+
+		const hiddenCorporationIds = [
+			...target.sensitiveCorporationIds,
+			...target.managerCorporationIds,
+		]
+		if (hiddenCorporationIds.length === 0) {
+			return []
+		}
+
+		return [and(familyWhere, inArray(corporationStructures.corporationId, hiddenCorporationIds))]
+	})
+
+	if (branches.length === 0) {
+		return undefined
+	}
+
+	return or(...branches)
 }
 
 function isFuelBelowThreshold(
@@ -2451,10 +2527,11 @@ function buildStructureSummaryCounts(
 		| 'criticalFuelTimeThresholdHours'
 		| 'lowFuelAmountThreshold'
 		| 'criticalFuelAmountThreshold'
-	>
+	>,
+	totalCountOverride?: number
 ): StructureListSummary {
 	return {
-		total: items.length,
+		total: totalCountOverride ?? items.length,
 		lowFuel: items.filter((structure) => isFuelBelowThreshold(structure, moduleConfig)).length,
 		lowPower: items.filter((structure) => structure.lowPower && !structure.lowPowerAllowed).length,
 		reinforced: items.filter((structure) => isReinforcedStructureState(structure.state)).length,
@@ -2477,9 +2554,10 @@ async function buildStructureSummary(
 		| 'criticalFuelTimeThresholdHours'
 		| 'lowFuelAmountThreshold'
 		| 'criticalFuelAmountThreshold'
-	>
+	>,
+	totalCountOverride?: number
 ): Promise<StructureListSummary> {
-	const summary = buildStructureSummaryCounts(items, moduleConfig)
+	const summary = buildStructureSummaryCounts(items, moduleConfig, totalCountOverride)
 
 	const fuelHistorySamplesByStructure = await loadFuelHistorySamplesByStructure(
 		db,
@@ -2583,21 +2661,24 @@ interface StructureBaseFilterQuery {
 async function loadVisibleStructureContexts(
 	db: DbClient<DbSchema>,
 	user: SessionUser,
-	query: StructureBaseFilterQuery
+	query: StructureBaseFilterQuery,
+	tabFilter?: StructureTab
 ): Promise<{
 	moduleConfig: StructureModuleConfigResult
 	access: StructureAccessScope
 	contexts: VisibleStructureContext[]
+	totalCount: number
 }> {
 	const moduleConfig = await getStructureModuleConfig(db)
 	const access = computeStructureAccess(user.roles, user.is_admin)
-	const accessibleCorporations = getAccessibleCorporationIds(access)
+	const accessibleCorporations = getAccessibleCorporationIds(access, tabFilter)
 
 	if (!accessibleCorporations.hasGlobalAccess && accessibleCorporations.corporationIds.size === 0) {
 		return {
 			moduleConfig,
 			access,
 			contexts: [],
+			totalCount: 0,
 		}
 	}
 
@@ -2631,21 +2712,63 @@ async function loadVisibleStructureContexts(
 		if (query.typeId) {
 			conditions.push(eq(corporationStructures.typeId, query.typeId))
 		}
+		if (tabFilter) {
+			const tabWhere = buildStructureFamilyWhere(tabFilter)
+			if (tabWhere) {
+				conditions.push(tabWhere)
+			}
+		}
+		if (query.assignedGroupId === '__unassigned__') {
+			conditions.push(isNotNull(structureConfigs.structureId))
+			conditions.push(isNull(structureConfigs.assignedGroupId))
+		} else if (query.assignedGroupId) {
+			conditions.push(eq(structureConfigs.assignedGroupId, query.assignedGroupId))
+		}
+		if (query.lowPowerAllowed === 'true') {
+			conditions.push(eq(structureConfigs.lowPowerAllowed, true))
+		} else if (query.lowPowerAllowed === 'false') {
+			conditions.push(
+				or(eq(structureConfigs.lowPowerAllowed, false), isNull(structureConfigs.structureId)) ??
+					sql`false`
+			)
+		}
+		const hiddenVisibilityWhere = buildHiddenVisibilityWhere(access, tabFilter)
+		const hiddenVisibilityConditions: StructureWhereCondition[] = [
+			eq(structureConfigs.hidden, false),
+			isNull(structureConfigs.structureId),
+		]
+		if (hiddenVisibilityWhere !== undefined) {
+			hiddenVisibilityConditions.push(hiddenVisibilityWhere)
+		}
+		conditions.push(or(...hiddenVisibilityConditions) ?? sql`false`)
 		return combineWhereConditions(conditions)
 	})()
 
-	const corpStructures = await db.query.corporationStructures.findMany({
-		columns: CORPORATION_STRUCTURE_SELECT_COLUMNS,
-		where: corpWhere,
-	})
+	const corpRows = await db
+		.select({
+			structure: corporationStructures,
+			config: structureConfigs,
+		})
+		.from(corporationStructures)
+		.leftJoin(structureConfigs, eq(structureConfigs.structureId, corporationStructures.structureId))
+		.where(corpWhere ?? sql`true`)
+	const [{ totalCount }] = await db
+		.select({
+			totalCount: sql<number>`count(*)::int`,
+		})
+		.from(corporationStructures)
+		.leftJoin(structureConfigs, eq(structureConfigs.structureId, corporationStructures.structureId))
+		.where(corpWhere ?? sql`true`)
 
-	const structureIds = corpStructures.map((structure) => structure.structureId)
-	const configRows = structureIds.length
-		? await db.query.structureConfigs.findMany({
-				where: inArray(structureConfigs.structureId, structureIds),
-			})
-		: []
-	const configsByStructureId = new Map(configRows.map((row) => [row.structureId, row]))
+	const corpStructures = corpRows.map((row) => row.structure)
+	const configsByStructureId = new Map(
+		corpRows
+			.filter(
+				(row): row is (typeof corpRows)[number] & { config: typeof structureConfigs.$inferSelect } =>
+					row.config !== null
+			)
+			.map((row) => [row.structure.structureId, row.config] as const)
+	)
 	const corporationIds = [...new Set(corpStructures.map((structure) => structure.corporationId))]
 	const corporationRows = corporationIds.length
 		? await db.query.managedCorporations.findMany({
@@ -2662,6 +2785,7 @@ async function loadVisibleStructureContexts(
 	return {
 		moduleConfig,
 		access,
+		totalCount,
 		contexts: corpStructures
 			.map<VisibleStructureContext | null>((structure) => {
 				const config = configsByStructureId.get(structure.structureId) ?? null
@@ -2693,24 +2817,6 @@ async function loadVisibleStructureContexts(
 				}
 			})
 			.filter((item): item is VisibleStructureContext => item !== null)
-			.filter((context) => {
-				if (
-					query.assignedGroupId === '__unassigned__' &&
-					context.config?.assignedGroupId !== null
-				) {
-					return false
-				}
-				if (
-					query.assignedGroupId &&
-					query.assignedGroupId !== '__unassigned__' &&
-					context.config?.assignedGroupId !== query.assignedGroupId
-				) {
-					return false
-				}
-				if (query.lowPowerAllowed === 'true' && !context.config?.lowPowerAllowed) return false
-				if (query.lowPowerAllowed === 'false' && context.config?.lowPowerAllowed) return false
-				return true
-			}),
 	}
 }
 
@@ -2866,7 +2972,12 @@ async function listVisibleOperationalStructures(
 	query: StructureListQuery = {},
 	activeTab: StructureTab
 ): Promise<StructureListResponse> {
-	const { moduleConfig, access, contexts } = await loadVisibleStructureContexts(db, user, query)
+	const { moduleConfig, access, contexts, totalCount: totalCountFromDb } = await loadVisibleStructureContexts(
+		db,
+		user,
+		query,
+		activeTab
+	)
 	const tabAccess = getStructureAccessTarget(access, activeTab)
 	if (!hasAnyStructureAccess(tabAccess)) {
 		return {
@@ -2893,9 +3004,9 @@ async function listVisibleOperationalStructures(
 	const sortBy = query.sortBy ?? 'skyhookSecureFullness'
 	const sortDirection = query.sortDirection ?? 'asc'
 	const sortedItems = sortStructures(filteredItems, sortBy, sortDirection)
-	const summary = await buildStructureSummary(db, filteredItems, moduleConfig)
+	const summary = await buildStructureSummary(db, filteredItems, moduleConfig, totalCountFromDb)
 	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
-	const totalCount = sortedItems.length
+	const totalCount = totalCountFromDb
 	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 	const page = Math.min(Math.max(query.page ?? 1, 1), totalPages)
 	const start = (page - 1) * pageSize
@@ -2966,16 +3077,21 @@ export async function listMoonDrillStructures(
 	user: SessionUser,
 	query: StructureMoonDrillListQuery = {}
 ): Promise<RepoStructureMoonDrillListResponse> {
-	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(db, user, {
-		corporationId: query.corporationId,
-		assignedGroupId: query.assignedGroupId,
-		lowPower: query.lowPower,
-		lowPowerAllowed: query.lowPowerAllowed,
-		regionId: query.regionId,
-		systemId: query.systemId,
-		state: query.state,
-		typeId: query.typeId,
-	})
+	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(
+		db,
+		user,
+		{
+			corporationId: query.corporationId,
+			assignedGroupId: query.assignedGroupId,
+			lowPower: query.lowPower,
+			lowPowerAllowed: query.lowPowerAllowed,
+			regionId: query.regionId,
+			systemId: query.systemId,
+			state: query.state,
+			typeId: query.typeId,
+		},
+		'moon-drills'
+	)
 
 	const accessForTab = getStructureAccessTarget(access, 'moon-drills')
 	if (!hasAnyStructureAccess(accessForTab)) {
@@ -2994,7 +3110,7 @@ export async function listMoonDrillStructures(
 		}
 	}
 
-	const moonDrillContexts = contexts.filter((context) => getStructureTab(context.structure) === 'moon-drills')
+	const moonDrillContexts = contexts.filter((context) => matchesStructureTab(context.structure, 'moon-drills'))
 	const structureIds = moonDrillContexts.map((context) => context.structure.structureId)
 
 	if (structureIds.length === 0) {
@@ -3454,16 +3570,21 @@ export async function listSkyhookStructures(
 	user: SessionUser,
 	query: StructureSkyhookListQuery = {}
 ): Promise<RepoStructureSkyhookListResponse> {
-	const { contexts, access } = await loadVisibleStructureContexts(db, user, {
-		corporationId: query.corporationId,
-		assignedGroupId: query.assignedGroupId,
-		lowPower: query.lowPower,
-		lowPowerAllowed: query.lowPowerAllowed,
-		regionId: query.regionId,
-		systemId: query.systemId,
-		state: query.state,
-		typeId: query.typeId,
-	})
+	const { contexts, access } = await loadVisibleStructureContexts(
+		db,
+		user,
+		{
+			corporationId: query.corporationId,
+			assignedGroupId: query.assignedGroupId,
+			lowPower: query.lowPower,
+			lowPowerAllowed: query.lowPowerAllowed,
+			regionId: query.regionId,
+			systemId: query.systemId,
+			state: query.state,
+			typeId: query.typeId,
+		},
+		'skyhooks'
+	)
 
 	const accessForTab = getStructureAccessTarget(access, 'skyhooks')
 	if (!hasAnyStructureAccess(accessForTab)) {
@@ -3482,9 +3603,7 @@ export async function listSkyhookStructures(
 		}
 	}
 
-	const skyhookContexts = contexts.filter(
-		(context) => getStructureTab(context.structure) === 'skyhooks'
-	)
+	const skyhookContexts = contexts.filter((context) => matchesStructureTab(context.structure, 'skyhooks'))
 	const structureIds = skyhookContexts.map((context) => context.structure.structureId)
 
 	if (structureIds.length === 0) {
@@ -3526,6 +3645,17 @@ export async function listSkyhookStructures(
 		]),
 		orderBy: desc(structureSkyhooks.updatedAt),
 	})
+	const [{ skyhookTotalWorkforce }] = await db
+		.select({
+			skyhookTotalWorkforce: sql<number>`coalesce(sum(${structureSkyhooks.effectiveWorkforce}), 0)::int`,
+		})
+		.from(structureSkyhooks)
+		.where(
+			combineWhereConditions([
+				inArray(structureSkyhooks.structureId, structureIds),
+				skyhookWhere,
+			]) ?? sql`true`
+		)
 	const skyhookByStructureId = new Map(skyhookRows.map((row) => [row.structureId, row]))
 
 	const items = skyhookContexts.map((context) => {
@@ -3561,7 +3691,7 @@ export async function listSkyhookStructures(
 			hasPreviousPage: page > 1,
 		},
 		filterOptions: buildSkyhookFilterOptions(items),
-		summary: buildSkyhookStructureSummary(items),
+		summary: buildSkyhookStructureSummary(items, { skyhookTotalWorkforce }),
 	}
 }
 
@@ -3570,16 +3700,21 @@ export async function listMiningCitadelStructures(
 	user: SessionUser,
 	query: StructureMiningCitadelListQuery = {}
 ): Promise<RepoStructureMiningCitadelListResponse> {
-	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(db, user, {
-		corporationId: query.corporationId,
-		assignedGroupId: query.assignedGroupId,
-		lowPower: query.lowPower,
-		lowPowerAllowed: query.lowPowerAllowed,
-		regionId: query.regionId,
-		systemId: query.systemId,
-		state: query.state,
-		typeId: query.typeId,
-	})
+	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(
+		db,
+		user,
+		{
+			corporationId: query.corporationId,
+			assignedGroupId: query.assignedGroupId,
+			lowPower: query.lowPower,
+			lowPowerAllowed: query.lowPowerAllowed,
+			regionId: query.regionId,
+			systemId: query.systemId,
+			state: query.state,
+			typeId: query.typeId,
+		},
+		'mining-citadels'
+	)
 
 	const accessForTab = getStructureAccessTarget(access, 'mining-citadels')
 	if (!hasAnyStructureAccess(accessForTab)) {
@@ -3598,7 +3733,9 @@ export async function listMiningCitadelStructures(
 		}
 	}
 
-	const matchingContexts = contexts.filter((context) => getStructureTab(context.structure) === 'mining-citadels')
+	const matchingContexts = contexts.filter((context) =>
+		matchesStructureTab(context.structure, 'mining-citadels')
+	)
 	const structureIds = matchingContexts.map((context) => context.structure.structureId)
 
 	if (structureIds.length === 0) {

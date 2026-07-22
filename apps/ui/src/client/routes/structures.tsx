@@ -595,12 +595,6 @@ export default function StructuresPage() {
 		? (structuresResponse?.summary as StructureListSummary | undefined)
 		: undefined
 	const structures = structuresResponse?.items ?? []
-	const skyhookDisplayedWorkforce = isSkyhooksTab
-		? (structures as StructureSkyhookListItem[]).reduce(
-				(total, structure) => total + (structure.effectiveWorkforce ?? 0),
-				0
-			)
-		: null
 	const pagination = structuresResponse?.pagination
 	const operationalFilterOptions: StructureListFilterOptions | undefined =
 		activeTab === 'citadels'
@@ -1723,10 +1717,10 @@ export default function StructuresPage() {
 				) : isSkyhooksTab ? (
 					<StatCard
 						title="Total Workforce"
-						description="Total effective workforce across the currently displayed skyhooks."
+						description="Total effective workforce across the filtered skyhooks."
 					>
 						<div className="text-3xl font-semibold">
-							{structuresResponse ? formatNullableNumber(skyhookDisplayedWorkforce) : '-'}
+							{structuresResponse ? formatNullableNumber(skyhookSummary?.skyhookTotalWorkforce) : '-'}
 						</div>
 					</StatCard>
 				) : (

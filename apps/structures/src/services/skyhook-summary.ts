@@ -83,7 +83,10 @@ export function summarizeSkyhooks(
 	}
 }
 
-export function buildSkyhookStructureSummary(items: StructureSkyhookListItem[]): StructureListSummary {
+export function buildSkyhookStructureSummary(
+	items: StructureSkyhookListItem[],
+	options: { skyhookTotalWorkforce?: number | null } = {}
+): StructureListSummary {
 	return {
 		total: items.length,
 		lowFuel: 0,
@@ -91,6 +94,8 @@ export function buildSkyhookStructureSummary(items: StructureSkyhookListItem[]):
 		reinforced: 0,
 		estimatedFuelBurnRatePerHour: null,
 		fuelBurnRateSampleCount: 0,
+		skyhookTotalWorkforce:
+			options.skyhookTotalWorkforce ?? items.reduce((total, item) => total + (item.effectiveWorkforce ?? 0), 0),
 		...summarizeSkyhooks(items),
 	}
 }

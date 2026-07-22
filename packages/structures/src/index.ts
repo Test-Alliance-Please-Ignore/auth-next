@@ -288,6 +288,7 @@ export interface StructureListSummary {
 	skyhookNextRaidableAt?: string | null
 	skyhookNextRaidablePlanetName?: string | null
 	skyhookCurrentRaidableCount?: number | null
+	skyhookTotalWorkforce?: number | null
 }
 
 export interface StructureListBaseItem
