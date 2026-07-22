@@ -60,6 +60,7 @@ import { UserSearchPaginationControls } from '@/components/user-search-paginatio
 import { useAuth } from '@/hooks/useAuth'
 import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useNowMs } from '@/hooks/useNowMs'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import {
 	type StructureCitadelListItem,
@@ -188,14 +189,31 @@ function formatPercent(value: number | null | undefined): string {
 	return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
 }
 
-function formatNullableDurationUntil(
-	value: string | null | undefined,
-	referenceTimeMs: number,
-	expiredLabel = 'Now'
-): string {
-	if (!value) return '-'
-	return formatDurationUntil(value, {
-		referenceTimeMs,
+function LiveDurationUntilText({
+	endDate,
+	expiredLabel = 'Now',
+}: {
+	endDate: string | null | undefined
+	expiredLabel?: string
+}) {
+	if (!endDate) {
+		return '-'
+	}
+
+	return <LiveDurationUntilTextValue endDate={endDate} expiredLabel={expiredLabel} />
+}
+
+function LiveDurationUntilTextValue({
+	endDate,
+	expiredLabel,
+}: {
+	endDate: string
+	expiredLabel: string
+}) {
+	const nowMs = useNowMs()
+
+	return formatDurationUntil(endDate, {
+		referenceTimeMs: nowMs,
 		expiredLabel,
 		maxUnits: 2,
 		style: 'compact',
@@ -286,12 +304,10 @@ function SovereigntyReagentCell({
 	quantity,
 	burningPerHour,
 	estimatedDepletionAt,
-	nowMs,
 }: {
 	quantity: number
 	burningPerHour: number
 	estimatedDepletionAt: string | null
-	nowMs: number
 }) {
 	return (
 		<div className="space-y-1.5">
@@ -305,7 +321,6 @@ function SovereigntyReagentCell({
 						<span className="mr-1">Remaining</span>
 						<DurationDisplay
 							endDate={estimatedDepletionAt}
-							referenceTimeMs={nowMs}
 							maxUnits={3}
 							durationStyle="compact"
 							format="compact"
@@ -315,6 +330,65 @@ function SovereigntyReagentCell({
 					'-'
 				)}
 			</div>
+		</div>
+	)
+}
+
+function SkyhookVulnerabilityWindowCell({
+	structure,
+}: {
+	structure: StructureSkyhookListItem
+}) {
+	const vulnerabilityWindow = getSkyhookVulnerabilityWindowDisplay({
+		theftVulnerabilityStart: structure.theftVulnerabilityStart,
+		theftVulnerabilityEnd: structure.theftVulnerabilityEnd,
+		vulnerableAt: structure.vulnerableAt,
+		isRaidable: structure.isRaidable,
+		nowMs: useNowMs(),
+	})
+
+	return (
+		<div className="space-y-1">
+			<div>
+				{structure.theftVulnerabilityStart && structure.theftVulnerabilityEnd ? (
+					<span className="inline-flex flex-wrap items-center gap-1">
+						<EveTimeDisplay
+							dateStr={structure.theftVulnerabilityStart}
+							format="window"
+							className="whitespace-nowrap"
+						/>
+						<span>-</span>
+						<EveTimeDisplay
+							dateStr={structure.theftVulnerabilityEnd}
+							format="window"
+							className="whitespace-nowrap"
+						/>
+					</span>
+				) : structure.vulnerableAt ? (
+					<EveTimeDisplay
+						dateStr={structure.vulnerableAt}
+						format="window"
+						className="whitespace-nowrap"
+					/>
+				) : (
+					'-'
+				)}
+			</div>
+			{structure.theftVulnerabilityStart ||
+			structure.theftVulnerabilityEnd ||
+			structure.vulnerableAt ? (
+				<div className="text-xs text-muted-foreground">
+					{vulnerabilityWindow.label}{' '}
+					{vulnerabilityWindow.countdownTarget ? (
+						<DurationDisplay
+							endDate={vulnerabilityWindow.countdownTarget}
+							maxUnits={2}
+							durationStyle="compact"
+							format="compact"
+						/>
+					) : null}
+				</div>
+			) : null}
 		</div>
 	)
 }
@@ -389,7 +463,6 @@ export default function StructuresPage() {
 	const activeTab = visibleTabs.some((tab) => tab.tab === tableState.tab)
 		? tableState.tab
 		: visibleTabs[0]?.tab ?? tableState.tab
-	const [nowMs, setNowMs] = useState(() => Date.now())
 	const { data: moduleConfig } = useStructureModuleConfig()
 	const tableScrollContainerRef = useRef<HTMLDivElement | null>(null)
 	const tableScrollLeftByTabRef = useRef<Record<string, number>>({})
@@ -552,13 +625,6 @@ export default function StructuresPage() {
 	const refreshAll = () => {
 		void activeResponse.refetch()
 	}
-
-	useEffect(() => {
-		const timer = window.setInterval(() => {
-			setNowMs(Date.now())
-		}, 60_000)
-		return () => window.clearInterval(timer)
-	}, [])
 
 	useEffect(() => {
 		if (visibleTabs.length === 0) {
@@ -788,7 +854,6 @@ export default function StructuresPage() {
 			const fuelLabel = structure.fuelExpires ? (
 				<DurationDisplay
 					endDate={structure.fuelExpires}
-					referenceTimeMs={nowMs}
 					maxUnits={3}
 					durationStyle="compact"
 				/>
@@ -846,7 +911,6 @@ export default function StructuresPage() {
 						{structure.nextStateAt ? (
 							<DurationDisplay
 								endDate={structure.nextStateAt}
-								referenceTimeMs={nowMs}
 								maxUnits={3}
 								durationStyle="compact"
 								format="compact"
@@ -938,7 +1002,6 @@ export default function StructuresPage() {
 							quantity={structure.magmaticGasQuantity}
 							burningPerHour={structure.magmaticGasBurningPerHour}
 							estimatedDepletionAt={structure.magmaticGasEstimatedDepletionAt}
-							nowMs={nowMs}
 						/>
 					</TableCell>
 					<TableCell>
@@ -946,7 +1009,6 @@ export default function StructuresPage() {
 							quantity={structure.superionicIceQuantity}
 							burningPerHour={structure.superionicIceBurningPerHour}
 							estimatedDepletionAt={structure.superionicIceEstimatedDepletionAt}
-							nowMs={nowMs}
 						/>
 					</TableCell>
 					<TableCell>
@@ -983,14 +1045,6 @@ export default function StructuresPage() {
 
 	const renderSkyhookRows = (items: StructureSkyhookListItem[]) =>
 		items.map((structure) => {
-			const vulnerabilityWindow = getSkyhookVulnerabilityWindowDisplay({
-				theftVulnerabilityStart: structure.theftVulnerabilityStart,
-				theftVulnerabilityEnd: structure.theftVulnerabilityEnd,
-				vulnerableAt: structure.vulnerableAt,
-				isRaidable: structure.isRaidable,
-				nowMs,
-			})
-
 			return (
 				<TableRow key={structure.structureId}>
 					<TableCell>
@@ -1025,55 +1079,12 @@ export default function StructuresPage() {
 						</Badge>
 					</TableCell>
 					<TableCell>
-						<div className="space-y-1">
-							<div>
-								{structure.theftVulnerabilityStart && structure.theftVulnerabilityEnd ? (
-									<span className="inline-flex flex-wrap items-center gap-1">
-										<EveTimeDisplay
-											dateStr={structure.theftVulnerabilityStart}
-											format="window"
-											className="whitespace-nowrap"
-										/>
-										<span>-</span>
-										<EveTimeDisplay
-											dateStr={structure.theftVulnerabilityEnd}
-											format="window"
-											className="whitespace-nowrap"
-										/>
-									</span>
-								) : structure.vulnerableAt ? (
-									<EveTimeDisplay
-										dateStr={structure.vulnerableAt}
-										format="window"
-										className="whitespace-nowrap"
-									/>
-								) : (
-									'-'
-								)}
-							</div>
-							{structure.theftVulnerabilityStart ||
-							structure.theftVulnerabilityEnd ||
-							structure.vulnerableAt ? (
-								<div className="text-xs text-muted-foreground">
-									{vulnerabilityWindow.label}{" "}
-									{vulnerabilityWindow.countdownTarget ? (
-										<DurationDisplay
-											endDate={vulnerabilityWindow.countdownTarget}
-											referenceTimeMs={nowMs}
-											maxUnits={2}
-											durationStyle="compact"
-											format="compact"
-										/>
-									) : null}
-								</div>
-							) : null}
-						</div>
+						<SkyhookVulnerabilityWindowCell structure={structure} />
 					</TableCell>
 					<TableCell>
 						{structure.nextStateAt ? (
 							<DurationDisplay
 								endDate={structure.nextStateAt}
-								referenceTimeMs={nowMs}
 								maxUnits={3}
 								durationStyle="compact"
 								format="compact"
@@ -1142,7 +1153,6 @@ export default function StructuresPage() {
 						{structure.fuelExpires ? (
 							<DurationDisplay
 								endDate={structure.fuelExpires}
-								referenceTimeMs={nowMs}
 								maxUnits={3}
 								durationStyle="compact"
 							/>
@@ -1166,7 +1176,6 @@ export default function StructuresPage() {
 						{structure.nextStateAt ? (
 							<DurationDisplay
 								endDate={structure.nextStateAt}
-								referenceTimeMs={nowMs}
 								maxUnits={3}
 								durationStyle="compact"
 								format="compact"
@@ -1211,7 +1220,6 @@ export default function StructuresPage() {
 			const fuelLabel = structure.fuelExpires ? (
 				<DurationDisplay
 					endDate={structure.fuelExpires}
-					referenceTimeMs={nowMs}
 					maxUnits={3}
 					durationStyle="compact"
 				/>
@@ -1254,7 +1262,6 @@ export default function StructuresPage() {
 						{structure.nextStateAt ? (
 							<DurationDisplay
 								endDate={structure.nextStateAt}
-								referenceTimeMs={nowMs}
 								maxUnits={3}
 								durationStyle="compact"
 								format="compact"
@@ -1639,15 +1646,15 @@ export default function StructuresPage() {
 						>
 							<div className="text-3xl font-semibold">{formatPercent(skyhookSummary?.skyhookHighestFillPercent)}</div>
 						</StatCard>
-						<StatCard
-							title="Next Raidable"
-							description="Time until the next skyhook becomes theft vulnerable or raidable."
-						>
-							<div className="text-3xl font-semibold">
-								{formatNullableDurationUntil(skyhookSummary?.skyhookNextRaidableAt, nowMs)}
-							</div>
-							{skyhookSummary?.skyhookNextRaidableAt ? (
-								<div className="mt-1 text-xs text-muted-foreground">
+				<StatCard
+					title="Next Raidable"
+					description="Time until the next skyhook becomes theft vulnerable or raidable."
+				>
+					<div className="text-3xl font-semibold">
+						<LiveDurationUntilText endDate={skyhookSummary?.skyhookNextRaidableAt} />
+					</div>
+					{skyhookSummary?.skyhookNextRaidableAt ? (
+						<div className="mt-1 text-xs text-muted-foreground">
 									{formatSkyhookNextRaidableSubtext(
 										skyhookSummary.skyhookNextRaidablePlanetName,
 										skyhookSummary.skyhookCurrentRaidableCount

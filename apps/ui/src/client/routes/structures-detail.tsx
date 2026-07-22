@@ -57,6 +57,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useGroups } from '@/hooks/useGroups'
 import { useSystemDetails } from '@/hooks/useLocationSearch'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useNowMs } from '@/hooks/useNowMs'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { api } from '@/lib/api'
 import { formatDateTimeLong } from '@/lib/date-utils'
@@ -208,6 +209,35 @@ function getSovereigntyVulnerabilityState(
 	}
 
 	return { label: 'Invulnerable', variant: 'success' }
+}
+
+function LiveSovereigntyVulnerabilityWindow({
+	vulnerabilityWindowStart,
+	vulnerabilityWindowEnd,
+}: {
+	vulnerabilityWindowStart: string | null | undefined
+	vulnerabilityWindowEnd: string | null | undefined
+}) {
+	const nowMs = useNowMs()
+	const sovereigntyVulnerabilityWindow = getSovereigntyVulnerabilityWindowDisplay({
+		vulnerabilityWindowStart: vulnerabilityWindowStart ?? null,
+		vulnerabilityWindowEnd: vulnerabilityWindowEnd ?? null,
+		nowMs,
+	})
+
+	return (
+		<>
+			{sovereigntyVulnerabilityWindow.label}{' '}
+			{sovereigntyVulnerabilityWindow.countdownTarget ? (
+				<DurationDisplay
+					endDate={sovereigntyVulnerabilityWindow.countdownTarget}
+					maxUnits={2}
+					durationStyle="compact"
+					format="compact"
+				/>
+			) : null}
+		</>
+	)
 }
 
 function toFiniteNumber(value: unknown): number {
@@ -784,13 +814,7 @@ export default function StructuresDetailPage() {
 	const sovereigntyHub = structure?.sovereignty?.hub ?? null
 	const sovereigntyAllianceId = structure?.sovereignty?.allianceId ?? null
 	const sovereigntyAllianceName = structure?.sovereignty?.allianceName ?? null
-	const nowMs = Date.now()
 	const sovereigntyVulnerabilityState = getSovereigntyVulnerabilityState(structure?.sovereignty)
-	const sovereigntyVulnerabilityWindow = getSovereigntyVulnerabilityWindowDisplay({
-		vulnerabilityWindowStart: structure?.sovereignty?.vulnerabilityWindowStart ?? null,
-		vulnerabilityWindowEnd: structure?.sovereignty?.vulnerabilityWindowEnd ?? null,
-		nowMs,
-	})
 	const { data: sovereigntyStructures = [] } = useQuery({
 		queryKey: ['structures', 'sovereignty', corporationId],
 		queryFn: async () => {
@@ -1107,16 +1131,10 @@ export default function StructuresDetailPage() {
 									(structure.sovereignty?.vulnerabilityWindowStart ||
 										structure.sovereignty?.vulnerabilityWindowEnd) ? (
 										<div className="mt-1 text-xs text-muted-foreground">
-											{sovereigntyVulnerabilityWindow.label}{' '}
-											{sovereigntyVulnerabilityWindow.countdownTarget ? (
-												<DurationDisplay
-													endDate={sovereigntyVulnerabilityWindow.countdownTarget}
-													referenceTimeMs={nowMs}
-													maxUnits={2}
-													durationStyle="compact"
-													format="compact"
-												/>
-											) : null}
+											<LiveSovereigntyVulnerabilityWindow
+												vulnerabilityWindowStart={structure.sovereignty?.vulnerabilityWindowStart}
+												vulnerabilityWindowEnd={structure.sovereignty?.vulnerabilityWindowEnd}
+											/>
 										</div>
 									) : null}
 								</div>
