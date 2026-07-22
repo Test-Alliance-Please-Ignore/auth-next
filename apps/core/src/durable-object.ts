@@ -18,6 +18,7 @@ import {
 	IMMUNITAS_ALERT_COOLDOWN_MS,
 	IMMUNITAS_ALERT_RETRY_MS,
 	IMMUNITAS_ALERT_TTL_MS,
+	shouldRetryImmunitasAccessAlertDelivery,
 } from './lib/immunitas-alerts'
 import { recordUserIpAddress } from './lib/ip-tracking'
 import {
@@ -2595,6 +2596,21 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			})
 			const result = await discordStub.sendDirectMessage(entry.targetUserId, message)
 			if (!result.success) {
+				if (!shouldRetryImmunitasAccessAlertDelivery(result)) {
+					await this.evictPendingImmunitasAccessAlert(
+						queueKey,
+						result.error ?? 'fatal Discord delivery failure'
+					)
+					failed++
+					this.logger.warn('[CoreDO] Dropped immunitas access alert due to fatal Discord delivery failure', {
+						queueKey,
+						targetUserId: entry.targetUserId,
+						accessType: entry.accessType,
+						error: result.error ?? 'Unknown Discord delivery error',
+					})
+					continue
+				}
+
 				const retryAfterMs =
 					typeof result.retryAfter === 'number' && result.retryAfter > 0
 						? result.retryAfter * 1000

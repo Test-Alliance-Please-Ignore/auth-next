@@ -1,9 +1,9 @@
 import type { Core } from '@repo/core'
-import type { DiscordEmbed, MessageContent } from '@repo/discord'
+import type { DiscordEmbed, MessageContent, SendMessageResult } from '@repo/discord'
 
 export const IMMUNITAS_ALERT_COOLDOWN_MS = 15 * 60 * 1000
 export const IMMUNITAS_ALERT_INITIAL_DELAY_MS = 30 * 1000
-export const IMMUNITAS_ALERT_TTL_MS = 7 * 24 * 60 * 60 * 1000
+export const IMMUNITAS_ALERT_TTL_MS = 60 * 60 * 1000
 export const IMMUNITAS_ALERT_RETRY_MS = 15 * 60 * 1000
 export const IMMUNITAS_ALERT_DRAIN_CRON = '0,15,30,45 * * * *'
 
@@ -12,6 +12,30 @@ export type ImmunitasAccessRequestorGroup = {
 	requestorUserId: string
 	requestorLabels: string[]
 	attemptCount: number
+}
+
+export function shouldRetryImmunitasAccessAlertDelivery(
+	result: Pick<SendMessageResult, 'error' | 'retryable'>
+): boolean {
+	if (result.retryable === false) {
+		return false
+	}
+
+	const error = result.error?.trim() ?? ''
+	if (!error) {
+		return true
+	}
+
+	if (
+		error === 'Missing permissions to send DM to this user' ||
+		error === 'DM channel not found' ||
+		error.startsWith('Discord API error: 401') ||
+		error.startsWith('Discord API error: 403')
+	) {
+		return false
+	}
+
+	return true
 }
 
 function formatLabelList(labels: string[], maxItems = 8): string {
