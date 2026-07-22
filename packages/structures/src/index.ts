@@ -190,6 +190,10 @@ export interface StructureSovereigntyListSummary extends StructureListSummary {
 	invulnerable: number
 	reinforced: number
 	unknown: number
+	magmaticGasBurningPerHour: string | null
+	superionicIceBurningPerHour: string | null
+	magmaticGasBurningSampleCount: number
+	superionicIceBurningSampleCount: number
 }
 
 export interface StructureSovereigntyReagent {
@@ -280,6 +284,10 @@ export interface StructureListSummary {
 	reinforced: number
 	estimatedFuelBurnRatePerHour: string | null
 	fuelBurnRateSampleCount: number
+	skyhookHighestFillPercent?: number | null
+	skyhookNextRaidableAt?: string | null
+	skyhookNextRaidablePlanetName?: string | null
+	skyhookCurrentRaidableCount?: number | null
 }
 
 export interface StructureListBaseItem

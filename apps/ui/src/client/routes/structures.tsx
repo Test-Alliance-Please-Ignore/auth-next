@@ -3,11 +3,12 @@ import {
 	ArrowRight,
 	ArrowUp,
 	ArrowUpDown,
+	CircleHelp,
 	Filter,
 	RefreshCcw,
 	Shield,
 } from 'lucide-react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
 import {
@@ -36,12 +37,14 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { FilterField } from '@/components/ui/filter-field'
+import { HoverPopover } from '@/components/ui/hover-popover'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDateTimeLong } from '@/lib/date-utils'
+import { formatDurationUntil } from '@/lib/duration-utils'
 import { allianceLogoUrl } from '@/lib/eve-images'
 import { getSkyhookVulnerabilityWindowDisplay } from '@/lib/skyhook-vulnerability-window'
 import { stripLeadingContextName } from '@/lib/structure-name-utils'
@@ -63,6 +66,7 @@ import {
 	type StructureCitadelListQuery,
 	type StructureListBaseItem,
 	type StructureListFilterOptions,
+	type StructureListSummary,
 	type StructureListSortBy,
 	type StructureMoonDrillListItem,
 	type StructureMoonDrillListQuery,
@@ -73,6 +77,7 @@ import {
 	type StructureSkyhookListQuery,
 	type StructureSovereigntyListFilterOptions,
 	type StructureSovereigntyListItem,
+	type StructureSovereigntyListSummary,
 	type StructureSovereigntyListQuery,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -181,6 +186,81 @@ function formatNullableDecimal(
 function formatPercent(value: number | null | undefined): string {
 	if (value === null || value === undefined || !Number.isFinite(value)) return '-'
 	return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
+}
+
+function formatNullableDurationUntil(
+	value: string | null | undefined,
+	referenceTimeMs: number,
+	expiredLabel = 'Now'
+): string {
+	if (!value) return '-'
+	return formatDurationUntil(value, {
+		referenceTimeMs,
+		expiredLabel,
+		maxUnits: 2,
+		style: 'compact',
+	})
+}
+
+function formatSkyhookNextRaidableSubtext(
+	planetName: string | null | undefined,
+	currentRaidableCount: number | null | undefined
+): string | null {
+	if (!planetName) return null
+	if (currentRaidableCount === null || currentRaidableCount === undefined || currentRaidableCount <= 1) {
+		return planetName
+	}
+	const otherCount = currentRaidableCount - 1
+	return `${planetName} and ${otherCount} other${otherCount === 1 ? '' : 's'}`
+}
+
+function StatCardHelp({
+	description,
+}: {
+	description: string
+}) {
+	return (
+		<HoverPopover
+			trigger={
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					showIcon={false}
+					className="h-8 w-8 cursor-help rounded-full border border-border/60 bg-background/80 text-muted-foreground shadow-none hover:bg-muted/60"
+					aria-label="More information"
+				>
+					<CircleHelp className="h-4 w-4" />
+				</Button>
+			}
+			triggerClassName="absolute right-2 top-2 z-10"
+			side="bottom"
+			align="end"
+			className="max-w-sm border border-border bg-popover p-3 text-popover-foreground shadow-lg"
+		>
+			<p className="text-sm leading-relaxed text-popover-foreground">{description}</p>
+		</HoverPopover>
+	)
+}
+
+function StatCard({
+	title,
+	description,
+	children,
+}: {
+	title: string
+	description: string
+	children: ReactNode
+}) {
+	return (
+		<Card>
+			<CardHeader className="relative pb-3 pr-10">
+				<CardTitle className="text-base">{title}</CardTitle>
+				<StatCardHelp description={description} />
+			</CardHeader>
+			<CardContent>{children}</CardContent>
+		</Card>
+	)
 }
 
 function SkyhookFillBar({ value }: { value: number }) {
@@ -435,7 +515,19 @@ export default function StructuresPage() {
 		}
 	})()
 	const structuresResponse = activeResponse.data
+	const sovereigntySummary = isSovereigntyTab
+		? (structuresResponse?.summary as StructureSovereigntyListSummary | undefined)
+		: undefined
+	const skyhookSummary = isSkyhooksTab
+		? (structuresResponse?.summary as StructureListSummary | undefined)
+		: undefined
 	const structures = structuresResponse?.items ?? []
+	const skyhookDisplayedWorkforce = isSkyhooksTab
+		? (structures as StructureSkyhookListItem[]).reduce(
+				(total, structure) => total + (structure.effectiveWorkforce ?? 0),
+				0
+			)
+		: null
 	const pagination = structuresResponse?.pagination
 	const operationalFilterOptions: StructureListFilterOptions | undefined =
 		activeTab === 'citadels'
@@ -1533,57 +1625,108 @@ export default function StructuresPage() {
 			/>
 
 			<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">Total Structures</CardTitle>
-						<CardDescription>Matches the active tab and filters.</CardDescription>
-					</CardHeader>
-					<CardContent className="text-3xl font-semibold">
-						{activeResponse.data?.summary.total ?? '-'}
-					</CardContent>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">Low Fuel</CardTitle>
-						<CardDescription>
-							Low fuel: {moduleConfig?.lowFuelTimeThresholdHours ?? '-'}h or{' '}
-							{moduleConfig?.lowFuelAmountThreshold ?? '-'} units remaining.
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
+				<StatCard
+					title="Total Structures"
+					description="Matches the active tab and filters."
+				>
+					<div className="text-3xl font-semibold">{activeResponse.data?.summary.total ?? '-'}</div>
+				</StatCard>
+				{isSkyhooksTab ? (
+					<>
+						<StatCard
+							title="Highest Fill"
+							description="Highest secured or surplus bay fullness among the filtered skyhooks."
+						>
+							<div className="text-3xl font-semibold">{formatPercent(skyhookSummary?.skyhookHighestFillPercent)}</div>
+						</StatCard>
+						<StatCard
+							title="Next Raidable"
+							description="Time until the next skyhook becomes theft vulnerable or raidable."
+						>
+							<div className="text-3xl font-semibold">
+								{formatNullableDurationUntil(skyhookSummary?.skyhookNextRaidableAt, nowMs)}
+							</div>
+							{skyhookSummary?.skyhookNextRaidableAt ? (
+								<div className="mt-1 text-xs text-muted-foreground">
+									{formatSkyhookNextRaidableSubtext(
+										skyhookSummary.skyhookNextRaidablePlanetName,
+										skyhookSummary.skyhookCurrentRaidableCount
+									) ?? '-'}
+								</div>
+							) : null}
+						</StatCard>
+					</>
+				) : (
+					<>
+						<StatCard
+							title="Low Fuel"
+							description={
+								isSovereigntyTab
+									? `Sovereignty hubs with either reagent below ${moduleConfig?.lowFuelTimeThresholdHours ?? '-'}h remaining. Zero-quantity reagents are ignored.`
+									: `Low fuel: ${moduleConfig?.lowFuelTimeThresholdHours ?? '-'}h or ${moduleConfig?.lowFuelAmountThreshold ?? '-'} units remaining.`
+							}
+						>
+							<div className="text-3xl font-semibold">{activeResponse.data?.summary.lowFuel ?? '-'}</div>
+						</StatCard>
+						{!isSovereigntyTab ? (
+							<StatCard
+								title="Low Power"
+								description="Structures in low power without suppression enabled."
+							>
+								<div className="text-3xl font-semibold">{activeResponse.data?.summary.lowPower ?? '-'}</div>
+							</StatCard>
+						) : null}
+					</>
+				)}
+				<StatCard
+					title="Reinforced"
+					description="Structures currently in a reinforced or transition state."
+				>
+					<div className="text-3xl font-semibold">{activeResponse.data?.summary.reinforced ?? '-'}</div>
+				</StatCard>
+				{isSovereigntyTab ? (
+					<>
+						<StatCard
+							title="Magmatic Gas Burn"
+							description="Aggregate hourly magmatic gas burn across the filtered sovereignty hubs with positive stock and valid burn data."
+						>
+							<div className="text-3xl font-semibold">
+								{formatNullableDecimal(sovereigntySummary?.magmaticGasBurningPerHour, 2)}/hr
+							</div>
+							<div className="mt-1 text-xs text-muted-foreground">
+								{sovereigntySummary
+									? `${sovereigntySummary.magmaticGasBurningSampleCount} hubs contributing`
+									: '-'}
+							</div>
+						</StatCard>
+						<StatCard
+							title="Superionic Ice Burn"
+							description="Aggregate hourly superionic ice burn across the filtered sovereignty hubs with positive stock and valid burn data."
+						>
+							<div className="text-3xl font-semibold">
+								{formatNullableDecimal(sovereigntySummary?.superionicIceBurningPerHour, 2)}/hr
+							</div>
+							<div className="mt-1 text-xs text-muted-foreground">
+								{sovereigntySummary
+									? `${sovereigntySummary.superionicIceBurningSampleCount} hubs contributing`
+									: '-'}
+							</div>
+						</StatCard>
+					</>
+				) : isSkyhooksTab ? (
+					<StatCard
+						title="Total Workforce"
+						description="Total effective workforce across the currently displayed skyhooks."
+					>
 						<div className="text-3xl font-semibold">
-							{activeResponse.data?.summary.lowFuel ?? '-'}
+							{structuresResponse ? formatNullableNumber(skyhookDisplayedWorkforce) : '-'}
 						</div>
-					</CardContent>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">Low Power</CardTitle>
-						<CardDescription>Structures in low power without suppression enabled.</CardDescription>
-					</CardHeader>
-					<CardContent className="text-3xl font-semibold">
-						{activeResponse.data?.summary.lowPower ?? '-'}
-					</CardContent>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">Reinforced</CardTitle>
-						<CardDescription>
-							Structures currently in a reinforced or transition state.
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="text-3xl font-semibold">
-						{activeResponse.data?.summary.reinforced ?? '-'}
-					</CardContent>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">Fuel Burn Rate</CardTitle>
-						<CardDescription>
-							Estimated aggregate burn rate from the filtered structure set.
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-1">
+					</StatCard>
+				) : (
+					<StatCard
+						title="Fuel Burn Rate"
+						description="Estimated aggregate burn rate from the filtered structure set."
+					>
 						<div className="text-3xl font-semibold">
 							{activeResponse.data?.summary.estimatedFuelBurnRatePerHour
 								? `${Number(activeResponse.data.summary.estimatedFuelBurnRatePerHour).toLocaleString(undefined, {
@@ -1592,13 +1735,13 @@ export default function StructuresPage() {
 								: '-'}
 						</div>
 						{activeResponse.data?.summary && (
-							<p className="text-xs text-muted-foreground">
+							<p className="mt-1 text-xs text-muted-foreground">
 								Estimated from {activeResponse.data.summary.fuelBurnRateSampleCount} structures with usable fuel
 								history.
 							</p>
 						)}
-					</CardContent>
-				</Card>
+					</StatCard>
+				)}
 			</div>
 
 			<Card>

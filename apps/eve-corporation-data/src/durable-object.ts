@@ -302,8 +302,7 @@ type SkyhookBaseStructureRow = {
 	services: Array<{ name: string; state: string }> | null
 	updatedAt: Date
 }
-const SKYHOOK_SECURED_BAY_CAPACITY_M3 = 70080
-const SKYHOOK_SURPLUS_BAY_CAPACITY_M3 = 70080
+const STRUCTURE_PRUNE_GRACE_MS = 72 * 60 * 60 * 1000
 const MAGMATIC_GAS_TYPE_ID = '81143'
 const SUPERIONIC_ICE_TYPE_ID = '81144'
 
@@ -331,6 +330,25 @@ function normalizeSkyhookState(
 		return 'vulnerable'
 	}
 	return 'invulnerable'
+}
+
+function isBeyondStructurePruneGrace(updatedAt: Date | null | undefined, now: Date): boolean {
+	if (!updatedAt) {
+		return true
+	}
+
+	return now.getTime() - updatedAt.getTime() >= STRUCTURE_PRUNE_GRACE_MS
+}
+
+function filterPrunableStructureIds<T extends { structureId: string; updatedAt?: Date | null }>(
+	rows: T[],
+	currentStructureIds: Set<string>,
+	now: Date
+): string[] {
+	return rows
+		.filter((row) => !currentStructureIds.has(row.structureId))
+		.filter((row) => isBeyondStructurePruneGrace(row.updatedAt, now))
+		.map((row) => row.structureId)
 }
 
 type SkyhookPlanetGeography = Pick<
@@ -2394,13 +2412,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			columns: {
 				structureId: true,
 				typeId: true,
+				updatedAt: true,
 			},
 		})
 		const currentStructureIds = new Set(structureIds)
-		const departedStructureIds = existingStructureRows
-			.filter((row) => row.typeId !== ORBITAL_SKYHOOK_TYPE_ID)
-			.map((row) => row.structureId)
-			.filter((structureId) => !currentStructureIds.has(structureId))
+		const departedStructureIds = filterPrunableStructureIds(
+			existingStructureRows.filter((row) => row.typeId !== ORBITAL_SKYHOOK_TYPE_ID),
+			currentStructureIds,
+			new Date()
+		)
 		const BATCH_SIZE = STRUCTURE_SNAPSHOT_BATCH_SIZE
 
 		for (let i = 0; i < hydratedStructures.length; i += BATCH_SIZE) {
@@ -2470,13 +2490,24 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			where: eq(structureMoonDrills.corporationId, corporationId),
 			columns: {
 				structureId: true,
+				updatedAt: true,
 			},
 		})
 
 		if (moonDrillStructures.length === 0) {
-			await this.getDb()
-				.delete(structureMoonDrills)
-				.where(eq(structureMoonDrills.corporationId, corporationId))
+			const currentStructureIds = new Set<string>()
+			const departedStructureIds = filterPrunableStructureIds(existingRows, currentStructureIds, now)
+
+			await deleteIdsInBatches(departedStructureIds, STRUCTURE_CLEANUP_BATCH_SIZE, async (batch) => {
+				await this.getDb()
+					.delete(structureMoonDrills)
+					.where(
+						and(
+							eq(structureMoonDrills.corporationId, corporationId),
+							inArray(structureMoonDrills.structureId, batch)
+						)
+					)
+			})
 			return
 		}
 
@@ -2527,9 +2558,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		const currentStructureIds = new Set(synthesizedRows.map((row) => row.structureId))
-		const departedStructureIds = existingRows
-			.map((row) => row.structureId)
-			.filter((structureId) => !currentStructureIds.has(structureId))
+		const departedStructureIds = filterPrunableStructureIds(existingRows, currentStructureIds, now)
 
 		await deleteIdsInBatches(departedStructureIds, STRUCTURE_CLEANUP_BATCH_SIZE, async (batch) => {
 			await this.getDb()
@@ -2566,6 +2595,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			where: eq(structureMoonGeographies.corporationId, corporationId),
 			columns: {
 				structureId: true,
+				updatedAt: true,
 			},
 		})
 		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
@@ -2602,9 +2632,19 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		).filter((row): row is MoonGeographyStorageRow => row !== null)
 
 		if (moonGeographyStructures.length === 0) {
-			await this.getDb()
-				.delete(structureMoonGeographies)
-				.where(eq(structureMoonGeographies.corporationId, corporationId))
+			const currentStructureIds = new Set<string>()
+			const departedStructureIds = filterPrunableStructureIds(existingRows, currentStructureIds, now)
+
+			await deleteIdsInBatches(departedStructureIds, STRUCTURE_CLEANUP_BATCH_SIZE, async (batch) => {
+				await this.getDb()
+					.delete(structureMoonGeographies)
+					.where(
+						and(
+							eq(structureMoonGeographies.corporationId, corporationId),
+							inArray(structureMoonGeographies.structureId, batch)
+						)
+					)
+			})
 			return
 		}
 
@@ -2651,9 +2691,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		const currentStructureIds = new Set(synthesizedRows.map((row) => row.structureId))
-		const departedStructureIds = existingRows
-			.map((row) => row.structureId)
-			.filter((structureId) => !currentStructureIds.has(structureId))
+		const departedStructureIds = filterPrunableStructureIds(existingRows, currentStructureIds, now)
 
 		await deleteIdsInBatches(departedStructureIds, STRUCTURE_CLEANUP_BATCH_SIZE, async (batch) => {
 			await this.getDb()
@@ -3237,6 +3275,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			where: eq(structureSovereigntyHubs.corporationId, corporationId),
 			columns: {
 				structureId: true,
+				updatedAt: true,
 			},
 		})
 		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
@@ -3283,16 +3322,24 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		})
 
 		if (values.length === 0) {
-			await this.getDb()
-				.delete(structureSovereigntyHubs)
-				.where(eq(structureSovereigntyHubs.corporationId, corporationId))
+			const currentStructureIds = new Set<string>()
+			const departedStructureIds = filterPrunableStructureIds(existingRows, currentStructureIds, now)
+
+			await deleteIdsInBatches(departedStructureIds, STRUCTURE_CLEANUP_BATCH_SIZE, async (batch) => {
+				await this.getDb()
+					.delete(structureSovereigntyHubs)
+					.where(
+						and(
+							eq(structureSovereigntyHubs.corporationId, corporationId),
+							inArray(structureSovereigntyHubs.structureId, batch)
+						)
+					)
+			})
 			return
 		}
 
 		const currentStructureIds = new Set(values.map((row) => row.structureId))
-		const departedStructureIds = existingRows
-			.map((row) => row.structureId)
-			.filter((structureId) => !currentStructureIds.has(structureId))
+		const departedStructureIds = filterPrunableStructureIds(existingRows, currentStructureIds, now)
 		const BATCH_SIZE = STRUCTURE_SNAPSHOT_BATCH_SIZE
 		for (let i = 0; i < values.length; i += BATCH_SIZE) {
 			const batch = values.slice(i, i + BATCH_SIZE)
@@ -3379,6 +3426,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				planetName: true,
 				systemName: true,
 				name: true,
+				updatedAt: true,
 			},
 		})
 		const existingByStructureId = new Map(existingRows.map((row) => [row.structureId, row]))
@@ -3517,30 +3565,46 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				})
 				return { prunedCount: 0 }
 			}
-			await this.getDb()
-				.delete(structureSkyhooks)
-				.where(eq(structureSkyhooks.corporationId, corporationId))
-			await this.getDb()
-				.delete(corporationStructures)
-				.where(
-					and(
-						eq(corporationStructures.corporationId, corporationId),
-						eq(corporationStructures.typeId, ORBITAL_SKYHOOK_TYPE_ID)
+			const prunableStateIds = filterPrunableStructureIds(existingRows, new Set<string>(), now)
+			const prunableBaseStructureIds = filterPrunableStructureIds(
+				existingBaseStructures,
+				new Set<string>(),
+				now
+			)
+
+			await deleteIdsInBatches(prunableStateIds, STRUCTURE_CLEANUP_BATCH_SIZE, async (batch) => {
+				await this.getDb()
+					.delete(structureSkyhooks)
+					.where(
+						and(
+							eq(structureSkyhooks.corporationId, corporationId),
+							inArray(structureSkyhooks.structureId, batch)
+						)
 					)
-				)
-			return { prunedCount: existingRows.length }
+			})
+			await deleteIdsInBatches(
+				prunableBaseStructureIds,
+				STRUCTURE_CLEANUP_BATCH_SIZE,
+				async (batch) => {
+					await this.getDb()
+						.delete(corporationStructures)
+						.where(
+							and(
+								eq(corporationStructures.corporationId, corporationId),
+								inArray(corporationStructures.structureId, batch)
+							)
+						)
+				}
+			)
+			return { prunedCount: prunableStateIds.length + prunableBaseStructureIds.length }
 		}
 
 		const baseValues = synthesizedRows.map((row) => row.baseStructure)
 		const values = synthesizedRows.map((row) => row.storageRow)
 
 		const currentStructureIds = new Set(baseValues.map((row) => row.structureId))
-		const departedBaseStructureIds = existingBaseStructures
-			.map((row) => row.structureId)
-			.filter((structureId) => !currentStructureIds.has(structureId))
-		const departedStateIds = existingRows
-			.map((row) => row.structureId)
-			.filter((structureId) => !currentStructureIds.has(structureId))
+		const departedBaseStructureIds = filterPrunableStructureIds(existingBaseStructures, currentStructureIds, now)
+		const departedStateIds = filterPrunableStructureIds(existingRows, currentStructureIds, now)
 		const BASE_BATCH_SIZE = STRUCTURE_SNAPSHOT_BATCH_SIZE
 		for (let i = 0; i < baseValues.length; i += BASE_BATCH_SIZE) {
 			const batch = baseValues.slice(i, i + BASE_BATCH_SIZE)
@@ -3654,6 +3718,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			where: eq(structureMiningExtractions.corporationId, corporationId),
 			columns: {
 				structureId: true,
+				updatedAt: true,
 			},
 		})
 
@@ -3675,9 +3740,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		const currentStructureIds = new Set(values.map((row) => row.structureId))
-		const departedStructureIds = existingRows
-			.map((row) => row.structureId)
-			.filter((structureId) => !currentStructureIds.has(structureId))
+		const departedStructureIds = filterPrunableStructureIds(existingRows, currentStructureIds, now)
 		const BATCH_SIZE = STRUCTURE_SNAPSHOT_BATCH_SIZE
 		for (let i = 0; i < values.length; i += BATCH_SIZE) {
 			const batch = values.slice(i, i + BATCH_SIZE)

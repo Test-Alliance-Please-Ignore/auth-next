@@ -33,6 +33,10 @@ type StructureTabQuery =
 	| StructureMiningCitadelListQuery
 	| StructureMoonDrillListQuery
 
+const STRUCTURE_LIST_STALE_TIME = 1000 * 60 * 15
+const STRUCTURE_LIST_GC_TIME = 1000 * 60 * 60
+const STRUCTURE_CONFIG_STALE_TIME = 1000 * 60 * 30
+
 function createStructureListQueryOptions<TResponse>(
 	queryKey: readonly unknown[],
 	queryFn: () => Promise<TResponse>,
@@ -42,8 +46,8 @@ function createStructureListQueryOptions<TResponse>(
 		queryKey,
 		queryFn,
 		placeholderData: keepPreviousData,
-		staleTime: 1000 * 30,
-		gcTime: 1000 * 60 * 5,
+		staleTime: STRUCTURE_LIST_STALE_TIME,
+		gcTime: STRUCTURE_LIST_GC_TIME,
 		enabled: options.enabled ?? true,
 	} satisfies UseQueryOptions<TResponse>
 }
@@ -120,8 +124,8 @@ export function useStructureOverviewMetrics(
 	return useQuery<StructureOverviewMetrics>({
 		queryKey: structureKeys.overview(),
 		queryFn: () => api.getStructureOverviewMetrics(),
-		staleTime: 1000 * 30,
-		gcTime: 1000 * 60 * 5,
+		staleTime: STRUCTURE_LIST_STALE_TIME,
+		gcTime: STRUCTURE_LIST_GC_TIME,
 		enabled: options.enabled ?? true,
 	})
 }
@@ -178,8 +182,8 @@ export function useStructuresForTab(
 			throw new Error(`Unknown structures tab: ${tab}`)
 		},
 		placeholderData: keepPreviousData,
-		staleTime: 1000 * 30,
-		gcTime: 1000 * 60 * 5,
+		staleTime: STRUCTURE_LIST_STALE_TIME,
+		gcTime: STRUCTURE_LIST_GC_TIME,
 		enabled: options.enabled ?? true,
 	})
 }
@@ -201,7 +205,8 @@ export function useStructureModuleConfig(
 	return useQuery<StructureModuleConfig>({
 		queryKey: structureKeys.config(),
 		queryFn: () => api.getStructureModuleConfig(),
-		staleTime: 1000 * 30,
+		staleTime: STRUCTURE_CONFIG_STALE_TIME,
+		gcTime: STRUCTURE_LIST_GC_TIME,
 		enabled: options.enabled ?? true,
 	})
 }

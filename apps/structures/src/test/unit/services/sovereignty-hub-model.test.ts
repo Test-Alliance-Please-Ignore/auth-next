@@ -74,6 +74,9 @@ function makeDb() {
 	const corporationStructureInventory = {
 		findMany: vi.fn().mockResolvedValue([]),
 	}
+	const structureFuelLog = {
+		findMany: vi.fn().mockResolvedValue([]),
+	}
 	const structureSovereigntyHubs = {
 		findMany: vi.fn().mockResolvedValue([
 			{
@@ -136,15 +139,33 @@ function makeDb() {
 			reagentBayLastUpdated: new Date('2026-07-12T19:36:46.834Z'),
 			reagentBay: {
 				lastUpdated: '2026-07-12T19:36:46.834Z',
-				reagents: [],
+				reagents: [
+					{
+						typeId: '81143',
+						amount: 10,
+						burningPerHour: 4,
+						lastCycle: '2026-07-12T18:30:00Z',
+					},
+					{
+						typeId: '81144',
+						amount: 15,
+						burningPerHour: 6,
+						lastCycle: '2026-07-12T19:00:00Z',
+					},
+				],
 			},
 			resources: {
-				power: { allocated: 0, available: 0 },
-				workforce: { allocated: 0, available: 0 },
+				power: { allocated: 100, available: 200 },
+				workforce: { allocated: 300, available: 400 },
 			},
-			upgrades: [],
-			vulnerabilityWindowStart: null,
-			vulnerabilityWindowEnd: null,
+			upgrades: [
+				{
+					typeId: '87710',
+					powerState: 'Online',
+				},
+			],
+			vulnerabilityWindowStart: new Date('2026-07-13T08:40:00Z'),
+			vulnerabilityWindowEnd: new Date('2026-07-13T15:20:00Z'),
 			workforceTransport: {
 				configuration: { mode: 'unknown', systems: [] },
 				state: { mode: 'unknown', systems: [] },
@@ -209,6 +230,7 @@ function makeDb() {
 			structureConfigs,
 			managedCorporations,
 			corporationStructureInventory,
+			structureFuelLog,
 			structureSovereigntyHubs,
 			structureSovereigntySystems,
 		},
@@ -268,6 +290,113 @@ describe('sovereignty hub model', () => {
 				resourceWorkforceAvailable: 400,
 				resourcePowerAllocated: 100,
 				resourcePowerAvailable: 200,
+			})
+			expect(result.summary).toMatchObject({
+				lowFuel: 1,
+				magmaticGasBurningPerHour: '4.0000',
+				superionicIceBurningPerHour: '6.0000',
+				magmaticGasBurningSampleCount: 1,
+				superionicIceBurningSampleCount: 1,
+			})
+		} finally {
+			nowSpy.mockRestore()
+		}
+	})
+
+	it('ignores zero-quantity sovereignty reagents when determining low fuel and burn totals', async () => {
+		const db = makeDb()
+		mocks.getStubMock.mockReturnValue(db.universeStub)
+		const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(
+			new Date('2026-07-12T00:00:00Z').getTime()
+		)
+
+		db.query.structureSovereigntyHubs.findMany.mockResolvedValue([
+			{
+				structureId: 'hub-1',
+				corporationId: 'corp-1',
+				systemId: '30000142',
+				systemName: 'Jita',
+				name: 'Jita Hub',
+				typeId: '32458',
+				fuelAccessListId: null,
+				controllerAllianceId: 'alliance-1',
+				reagentBayLastUpdated: new Date('2026-07-12T19:36:46.834Z'),
+				reagentBay: {
+					lastUpdated: '2026-07-12T19:36:46.834Z',
+					reagents: [
+						{
+							typeId: '81143',
+							amount: 0,
+							burningPerHour: 4,
+							lastCycle: '2026-07-12T18:30:00Z',
+						},
+						{
+							typeId: '81144',
+							amount: 0,
+							burningPerHour: 6,
+							lastCycle: '2026-07-12T19:00:00Z',
+						},
+					],
+				},
+				resources: {
+					power: { allocated: 100, available: 200 },
+					workforce: { allocated: 300, available: 400 },
+				},
+				upgrades: [],
+				vulnerabilityWindowStart: null,
+				vulnerabilityWindowEnd: null,
+				workforceTransport: {
+					configuration: { mode: 'unknown', systems: [] },
+					state: { mode: 'unknown', systems: [] },
+				},
+				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+		])
+		db.query.structureSovereigntySystems.findMany.mockResolvedValue([
+			{
+				systemId: '30000142',
+				systemName: 'Jita',
+				corporationId: 'corp-1',
+				claimType: 'alliance',
+				allianceId: 'alliance-1',
+				corporationClaimantId: null,
+				factionId: null,
+				claimedSince: new Date('2026-07-12T18:00:00Z'),
+				sovereigntyHubStructureId: 'hub-1',
+				isCapitalSystem: false,
+				vulnerabilityWindowStart: null,
+				vulnerabilityWindowEnd: null,
+				activityDefenseMultiplier: '1.2',
+				militaryLevel: 2,
+				industrialLevel: 3,
+				strategicLevel: 4,
+				sourceSyncAt: new Date('2026-07-12T19:36:47.369Z'),
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+		])
+
+		try {
+			const result = await listSovereigntyStructures(
+				{
+					UNIVERSE: {} as never,
+				} as never,
+				db as never,
+				{
+					id: 'user-1',
+					is_admin: true,
+					roles: [],
+				}
+			)
+
+			expect(result.summary).toMatchObject({
+				lowFuel: 0,
+				magmaticGasBurningPerHour: null,
+				superionicIceBurningPerHour: null,
+				magmaticGasBurningSampleCount: 0,
+				superionicIceBurningSampleCount: 0,
 			})
 		} finally {
 			nowSpy.mockRestore()
@@ -806,10 +935,9 @@ describe('sovereignty hub model', () => {
 		expect(result?.sovereignty).toMatchObject({
 			claimType: 'alliance',
 			sovereigntyHubStructureId: 'hub-1',
-			controllerAllianceId: 'alliance-1',
 		})
 		expect(result?.sovereignty?.hub).toMatchObject({
-			reagentCount: 1,
+			reagentCount: 2,
 			resourcePowerAllocated: 100,
 			resourceWorkforceAllocated: 300,
 			upgradeCount: 1,

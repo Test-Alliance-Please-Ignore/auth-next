@@ -41,6 +41,9 @@ import {
 	aggregateFuelBurnRatePerHour,
 	buildStructureFuelUsageHistory,
 } from './structure-fuel-history'
+import {
+	buildSkyhookStructureSummary,
+} from './skyhook-summary'
 
 import type { DbClient } from '@repo/db-utils'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -100,8 +103,7 @@ type StructureMiningCitadelFilterableItem = RepoStructureMiningCitadelListItem
 
 const MAGMATIC_GAS_TYPE_ID = '81143'
 const SUPERIONIC_ICE_TYPE_ID = '81144'
-const SKYHOOK_SECURED_BAY_CAPACITY_M3 = 70080
-const SKYHOOK_SURPLUS_BAY_CAPACITY_M3 = 70080
+const SKYHOOK_BAY_CAPACITY_M3 = 70080
 const HOURS_TO_MS = 60 * 60 * 1000
 const STRUCTURE_LIST_PAGE_SIZE_MAX = 100
 
@@ -194,6 +196,10 @@ export interface StructureListSummary {
 	reinforced: number
 	estimatedFuelBurnRatePerHour: string | null
 	fuelBurnRateSampleCount: number
+	skyhookHighestFillPercent?: number | null
+	skyhookNextRaidableAt?: string | null
+	skyhookNextRaidablePlanetName?: string | null
+	skyhookCurrentRaidableCount?: number | null
 }
 
 export type StructureListQuery = StructureCitadelListQuery
@@ -992,15 +998,15 @@ function summarizeStructureSkyhook(
 		totalUnsecuredStock: reagentTotals.unsecuredStock,
 		totalSecuredVolumeM3: reagentTotals.securedVolumeM3,
 		totalUnsecuredVolumeM3: reagentTotals.unsecuredVolumeM3,
-		securedCapacityM3: SKYHOOK_SECURED_BAY_CAPACITY_M3,
-		unsecuredCapacityM3: SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
+		securedCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
+		unsecuredCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
 		securedFillPercent: getSkyhookFullness(
 			reagentTotals.securedVolumeM3,
-			SKYHOOK_SECURED_BAY_CAPACITY_M3
+			SKYHOOK_BAY_CAPACITY_M3
 		),
 		unsecuredFillPercent: getSkyhookFullness(
 			reagentTotals.unsecuredVolumeM3,
-			SKYHOOK_SURPLUS_BAY_CAPACITY_M3
+			SKYHOOK_BAY_CAPACITY_M3
 		),
 		reagents: skyhook.reagents.map((reagent) => ({
 			typeId: reagent.typeId,
@@ -1015,15 +1021,15 @@ function summarizeStructureSkyhook(
 			unsecuredStock: reagent.unsecuredStock,
 			securedVolumeM3: reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
 			unsecuredVolumeM3: reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-			securedCapacityM3: SKYHOOK_SECURED_BAY_CAPACITY_M3,
-			unsecuredCapacityM3: SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
+			securedCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
+			unsecuredCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
 			securedFillPercent: getSkyhookFullness(
 				reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-				SKYHOOK_SECURED_BAY_CAPACITY_M3
+				SKYHOOK_BAY_CAPACITY_M3
 			),
 			unsecuredFillPercent: getSkyhookFullness(
 				reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-				SKYHOOK_SURPLUS_BAY_CAPACITY_M3
+				SKYHOOK_BAY_CAPACITY_M3
 			),
 			lastCycle: reagent.lastCycle,
 		})),
@@ -1111,7 +1117,7 @@ function buildStructureListItem(context: VisibleStructureContext): StructureList
 		hidden: config?.hidden ?? false,
 		lowPowerAllowed: config?.lowPowerAllowed ?? false,
 		assignedGroupId: config?.assignedGroupId ?? null,
-		syncStatus: structure.syncStatus,
+		syncStatus: getStructureSyncStatus(structure.syncStatus, structure.lastSyncedAt),
 		syncFailureReason: structure.syncFailureReason,
 		lastSyncedAt: toIso(structure.lastSyncedAt),
 		updatedAt: structure.updatedAt.toISOString(),
@@ -1637,7 +1643,64 @@ export async function deleteStructureGroupAlertConfig(
 }
 
 type DirectCorporationStructureRecord = typeof corporationStructures.$inferSelect
-type StructureSourceRecord = Omit<DirectCorporationStructureRecord, 'profileId'>
+type StructureSourceRecord = Pick<
+	DirectCorporationStructureRecord,
+	| 'id'
+	| 'corporationId'
+	| 'structureId'
+	| 'name'
+	| 'typeId'
+	| 'typeName'
+	| 'systemId'
+	| 'systemName'
+	| 'regionId'
+	| 'regionName'
+	| 'fuelExpires'
+	| 'fuelAmount'
+	| 'lastRefilledAt'
+	| 'nextReinforceApply'
+	| 'nextReinforceHour'
+	| 'reinforceHour'
+	| 'state'
+	| 'stateTimerEnd'
+	| 'stateTimerStart'
+	| 'unanchorsAt'
+	| 'lowPower'
+	| 'syncStatus'
+	| 'syncFailureReason'
+	| 'lastSyncedAt'
+	| 'services'
+	| 'updatedAt'
+>
+
+const CORPORATION_STRUCTURE_SELECT_COLUMNS = {
+	id: true,
+	corporationId: true,
+	structureId: true,
+	name: true,
+	typeId: true,
+	typeName: true,
+	systemId: true,
+	systemName: true,
+	regionId: true,
+	regionName: true,
+	fuelExpires: true,
+	fuelAmount: true,
+	lastRefilledAt: true,
+	nextReinforceApply: true,
+	nextReinforceHour: true,
+	reinforceHour: true,
+	state: true,
+	stateTimerEnd: true,
+	stateTimerStart: true,
+	unanchorsAt: true,
+	lowPower: true,
+	syncStatus: true,
+	syncFailureReason: true,
+	lastSyncedAt: true,
+	services: true,
+	updatedAt: true,
+} as const
 
 interface VisibleStructureContext {
 	structure: StructureSourceRecord
@@ -1722,6 +1785,7 @@ async function getVisibleStructureContext(
 	const access = computeStructureAccess(user.roles, user.is_admin)
 	const accessibleCorporations = getAccessibleCorporationIds(access)
 	const structure = await db.query.corporationStructures.findFirst({
+		columns: CORPORATION_STRUCTURE_SELECT_COLUMNS,
 		where: (() => {
 			const conditions = [eq(corporationStructures.structureId, structureId)]
 			if (!accessibleCorporations.hasGlobalAccess) {
@@ -2236,16 +2300,21 @@ async function buildSovereigntySummary(
 		| 'criticalFuelAmountThreshold'
 	>
 ): Promise<RepoStructureSovereigntyListSummary> {
-	const baseSummary = await buildStructureSummary(db, items, moduleConfig)
+	const baseSummary = buildStructureSummaryCounts(items, moduleConfig)
+	const hubBurnRates = summarizeSovereigntyHubBurnRates(items)
 	const summary: RepoStructureSovereigntyListSummary = {
 		...baseSummary,
 		vulnerable: 0,
 		invulnerable: 0,
 		reinforced: 0,
 		unknown: 0,
+		...hubBurnRates,
 	}
 
 	for (const item of items) {
+		if (isSovereigntyHubLowFuel(item, moduleConfig)) {
+			summary.lowFuel += 1
+		}
 		switch (getSovereigntyVulnerabilityState(item)) {
 			case 'vulnerable':
 				summary.vulnerable += 1
@@ -2262,6 +2331,71 @@ async function buildSovereigntySummary(
 			}
 	}
 	return summary
+}
+
+function summarizeSovereigntyHubBurnRates(items: RepoStructureSovereigntyListItem[]): Pick<
+	RepoStructureSovereigntyListSummary,
+		| 'magmaticGasBurningPerHour'
+		| 'superionicIceBurningPerHour'
+		| 'magmaticGasBurningSampleCount'
+		| 'superionicIceBurningSampleCount'
+> {
+	let magmaticGasBurningPerHour = 0
+	let superionicIceBurningPerHour = 0
+	let magmaticGasBurningSampleCount = 0
+	let superionicIceBurningSampleCount = 0
+
+	for (const item of items) {
+		if (
+			item.magmaticGasQuantity > 0 &&
+			Number.isFinite(item.magmaticGasBurningPerHour) &&
+			item.magmaticGasBurningPerHour > 0
+		) {
+			magmaticGasBurningPerHour += item.magmaticGasBurningPerHour
+			magmaticGasBurningSampleCount += 1
+		}
+		if (
+			item.superionicIceQuantity > 0 &&
+			Number.isFinite(item.superionicIceBurningPerHour) &&
+			item.superionicIceBurningPerHour > 0
+		) {
+			superionicIceBurningPerHour += item.superionicIceBurningPerHour
+			superionicIceBurningSampleCount += 1
+		}
+	}
+
+	return {
+		magmaticGasBurningPerHour:
+			magmaticGasBurningSampleCount > 0 ? magmaticGasBurningPerHour.toFixed(4) : null,
+		superionicIceBurningPerHour:
+			superionicIceBurningSampleCount > 0 ? superionicIceBurningPerHour.toFixed(4) : null,
+		magmaticGasBurningSampleCount,
+		superionicIceBurningSampleCount,
+	}
+}
+
+function isSovereigntyHubLowFuel(
+	item: RepoStructureSovereigntyListItem,
+	moduleConfig: Pick<
+		StructureModuleConfigResult,
+		| 'lowFuelTimeThresholdHours'
+		| 'criticalFuelTimeThresholdHours'
+		| 'lowFuelAmountThreshold'
+		| 'criticalFuelAmountThreshold'
+	>
+): boolean {
+	const thresholdMs = moduleConfig.lowFuelTimeThresholdHours * 60 * 60 * 1000
+	const now = Date.now()
+	const magmaticGasLow =
+		item.magmaticGasQuantity > 0 &&
+		item.magmaticGasEstimatedDepletionAt !== null &&
+		new Date(item.magmaticGasEstimatedDepletionAt).getTime() - now <= thresholdMs
+	const superionicIceLow =
+		item.superionicIceQuantity > 0 &&
+		item.superionicIceEstimatedDepletionAt !== null &&
+		new Date(item.superionicIceEstimatedDepletionAt).getTime() - now <= thresholdMs
+
+	return magmaticGasLow || superionicIceLow
 }
 
 function emptySovereigntyFilterOptions(): RepoStructureSovereigntyListFilterOptions {
@@ -2286,6 +2420,10 @@ function emptySovereigntySummary(): RepoStructureSovereigntyListSummary {
 		vulnerable: 0,
 		invulnerable: 0,
 		unknown: 0,
+		magmaticGasBurningPerHour: null,
+		superionicIceBurningPerHour: null,
+		magmaticGasBurningSampleCount: 0,
+		superionicIceBurningSampleCount: 0,
 	}
 }
 
@@ -2295,6 +2433,31 @@ function emptyStructureListSummary(): StructureListSummary {
 		lowFuel: 0,
 		lowPower: 0,
 		reinforced: 0,
+		estimatedFuelBurnRatePerHour: null,
+		fuelBurnRateSampleCount: 0,
+	}
+}
+
+function buildStructureSummaryCounts(
+	items: Array<
+		Pick<
+			StructureFilterableItemBase,
+			'state' | 'lowPower' | 'lowPowerAllowed' | 'fuelAmount' | 'fuelExpires'
+		>
+	>,
+	moduleConfig: Pick<
+		StructureModuleConfigResult,
+		| 'lowFuelTimeThresholdHours'
+		| 'criticalFuelTimeThresholdHours'
+		| 'lowFuelAmountThreshold'
+		| 'criticalFuelAmountThreshold'
+	>
+): StructureListSummary {
+	return {
+		total: items.length,
+		lowFuel: items.filter((structure) => isFuelBelowThreshold(structure, moduleConfig)).length,
+		lowPower: items.filter((structure) => structure.lowPower && !structure.lowPowerAllowed).length,
+		reinforced: items.filter((structure) => isReinforcedStructureState(structure.state)).length,
 		estimatedFuelBurnRatePerHour: null,
 		fuelBurnRateSampleCount: 0,
 	}
@@ -2316,14 +2479,7 @@ async function buildStructureSummary(
 		| 'criticalFuelAmountThreshold'
 	>
 ): Promise<StructureListSummary> {
-	const summary: StructureListSummary = {
-		total: items.length,
-		lowFuel: items.filter((structure) => isFuelBelowThreshold(structure, moduleConfig)).length,
-		lowPower: items.filter((structure) => structure.lowPower && !structure.lowPowerAllowed).length,
-		reinforced: items.filter((structure) => isReinforcedStructureState(structure.state)).length,
-		estimatedFuelBurnRatePerHour: null,
-		fuelBurnRateSampleCount: 0,
-	}
+	const summary = buildStructureSummaryCounts(items, moduleConfig)
 
 	const fuelHistorySamplesByStructure = await loadFuelHistorySamplesByStructure(
 		db,
@@ -2479,6 +2635,7 @@ async function loadVisibleStructureContexts(
 	})()
 
 	const corpStructures = await db.query.corporationStructures.findMany({
+		columns: CORPORATION_STRUCTURE_SELECT_COLUMNS,
 		where: corpWhere,
 	})
 
@@ -2606,6 +2763,9 @@ async function loadVisibleSovereigntyHubContexts(
 		if (query.systemId) {
 			conditions.push(eq(structureSovereigntyHubs.systemId, query.systemId))
 		}
+		if (query.controllerAllianceId) {
+			conditions.push(eq(structureSovereigntyHubs.controllerAllianceId, query.controllerAllianceId))
+		}
 		return combineWhereConditions(conditions)
 	})()
 
@@ -2623,9 +2783,7 @@ async function loadVisibleSovereigntyHubContexts(
 		}
 	}
 
-	const filteredHubRows = query.controllerAllianceId
-		? hubRows.filter((hub) => hub.controllerAllianceId === query.controllerAllianceId)
-		: hubRows
+	const filteredHubRows = hubRows
 	const geographyBySystemId = await resolveSovereigntyHubGeographies(env, [
 		...new Set(filteredHubRows.map((hub) => hub.systemId)),
 	])
@@ -2911,7 +3069,7 @@ export async function listMoonDrillStructures(
 			hasPreviousPage: page > 1,
 		},
 		filterOptions: buildMoonGeographyFilterOptions(items),
-		summary: await buildStructureSummary(db, items, moduleConfig),
+		summary: buildStructureSummaryCounts(items, moduleConfig),
 	}
 }
 
@@ -2923,6 +3081,20 @@ function getSnapshotSyncStatus(lastSyncedAt: Date | null | undefined): 'ok' | 'w
 	const ageMs = Math.max(0, Date.now() - lastSyncedAt.getTime())
 	if (ageMs >= STRUCTURE_SYNC_ERROR_STALE_MS) return 'error'
 	if (ageMs >= STRUCTURE_SYNC_WARNING_STALE_MS) return 'warning'
+	return 'ok'
+}
+
+function getStructureSyncStatus(
+	syncStatus: 'ok' | 'warning' | 'error',
+	lastSyncedAt: Date | null | undefined
+): 'ok' | 'warning' | 'error' {
+	const stalenessStatus = getSnapshotSyncStatus(lastSyncedAt)
+	if (syncStatus === 'error' || stalenessStatus === 'error') {
+		return 'error'
+	}
+	if (syncStatus === 'warning' || stalenessStatus === 'warning') {
+		return 'warning'
+	}
 	return 'ok'
 }
 
@@ -3099,15 +3271,15 @@ function buildSkyhookListItem(input: {
 		totalUnsecuredStock: reagentTotals.unsecuredStock,
 		totalSecuredVolumeM3: reagentTotals.securedVolumeM3,
 		totalUnsecuredVolumeM3: reagentTotals.unsecuredVolumeM3,
-		securedCapacityM3: SKYHOOK_SECURED_BAY_CAPACITY_M3,
-		unsecuredCapacityM3: SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
+		securedCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
+		unsecuredCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
 		securedFillPercent: getSkyhookFullness(
 			reagentTotals.securedVolumeM3,
-			SKYHOOK_SECURED_BAY_CAPACITY_M3
+			SKYHOOK_BAY_CAPACITY_M3
 		),
 		unsecuredFillPercent: getSkyhookFullness(
 			reagentTotals.unsecuredVolumeM3,
-			SKYHOOK_SURPLUS_BAY_CAPACITY_M3
+			SKYHOOK_BAY_CAPACITY_M3
 		),
 		reagents:
 			skyhookRow?.reagents.map((reagent) => ({
@@ -3123,15 +3295,15 @@ function buildSkyhookListItem(input: {
 				unsecuredStock: reagent.unsecuredStock,
 				securedVolumeM3: reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
 				unsecuredVolumeM3: reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-				securedCapacityM3: SKYHOOK_SECURED_BAY_CAPACITY_M3,
-				unsecuredCapacityM3: SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
+				securedCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
+				unsecuredCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
 				securedFillPercent: getSkyhookFullness(
 					reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-					SKYHOOK_SECURED_BAY_CAPACITY_M3
+					SKYHOOK_BAY_CAPACITY_M3
 				),
 				unsecuredFillPercent: getSkyhookFullness(
 					reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-					SKYHOOK_SURPLUS_BAY_CAPACITY_M3
+					SKYHOOK_BAY_CAPACITY_M3
 				),
 				lastCycle: reagent.lastCycle,
 			})) ?? [],
@@ -3282,7 +3454,7 @@ export async function listSkyhookStructures(
 	user: SessionUser,
 	query: StructureSkyhookListQuery = {}
 ): Promise<RepoStructureSkyhookListResponse> {
-	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(db, user, {
+	const { contexts, access } = await loadVisibleStructureContexts(db, user, {
 		corporationId: query.corporationId,
 		assignedGroupId: query.assignedGroupId,
 		lowPower: query.lowPower,
@@ -3389,7 +3561,7 @@ export async function listSkyhookStructures(
 			hasPreviousPage: page > 1,
 		},
 		filterOptions: buildSkyhookFilterOptions(items),
-		summary: await buildStructureSummary(db, items, moduleConfig),
+		summary: buildSkyhookStructureSummary(items),
 	}
 }
 
@@ -3506,7 +3678,7 @@ export async function listMiningCitadelStructures(
 			hasPreviousPage: page > 1,
 		},
 		filterOptions: buildMoonGeographyFilterOptions(items),
-		summary: await buildStructureSummary(db, items, moduleConfig),
+		summary: buildStructureSummaryCounts(items, moduleConfig),
 	}
 }
 
