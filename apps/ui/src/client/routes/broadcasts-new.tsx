@@ -80,7 +80,7 @@ export default function NewBroadcastPage() {
 	const { user } = useAuth()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const { hasPermission, isAdmin } = useUserPermissions()
-	const { data: draftBroadcast, isLoading: draftLoading } = useBroadcast(draftId)
+	const { data: draftBroadcast, isLoading: draftLoading } = useBroadcast(draftId, isEditMode)
 
 	// Form state
 	const [selectedTargetId, setSelectedTargetId] = useState<string>('')
@@ -732,8 +732,8 @@ export default function NewBroadcastPage() {
 
 							{/* Custom Message or Template Fields */}
 							{selectedTemplateId === 'custom' ? (
-								<div className="grid min-w-0 gap-4 [grid-template-areas:'form''preview'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch">
-									<div className="[grid-area:form] min-w-0 space-y-2">
+								<div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch">
+									<div className="min-w-0 space-y-2">
 										<Label htmlFor="message">Message *</Label>
 										<Textarea
 											id="message"
@@ -751,8 +751,8 @@ export default function NewBroadcastPage() {
 									<BroadcastPreviewPane message={customMessage} />
 								</div>
 							) : selectedTemplate ? (
-								<div className="grid min-w-0 gap-4 [grid-template-areas:'form''preview'] lg:[grid-template-areas:'form_preview'] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch">
-									<div className="[grid-area:form] min-w-0 space-y-4">
+								<div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch">
+									<div className="min-w-0 space-y-4">
 										<TemplateFieldsEditor
 											fields={selectedTemplate.fieldSchema}
 											templateFields={templateFields}
