@@ -29,8 +29,8 @@ import {
 	SKYHOOK_SUPERIONIC_ICE_TYPE_NAME,
 	SOVEREIGNTY_HUB_TYPE_ID,
 	getSkyhookFullness,
-	getSkyhookReagentEntries,
-	getSkyhookReagentSummary,
+	getSkyhookReagentEntriesFromStorageState,
+	getSkyhookReagentSummaryFromStorageState,
 	getSkyhookReagentUnitVolumeM3,
 	getSovereigntyReagentBayReagents,
 	getSovereigntyReagentBaySummary,
@@ -62,11 +62,13 @@ import {
 	type StructureSkyhookListQuery,
 	type StructureSovereigntyListQuery,
 	type StructureTab,
+	type SkyhookReagentStorageState,
 } from '@repo/structures'
 import {
 	structureMoonDrills,
 	structureMoonGeographies,
 	structureMiningExtractions,
+	structureSkyhookReagents,
 	structureSkyhooks,
 	structureSovereigntyHubs,
 	structureSovereigntySystems,
@@ -557,7 +559,7 @@ function buildStructureAccessTargetSummary(
 	}
 }
 
-function getStructureAccessTarget(
+export function getStructureAccessTarget(
 	access: StructureAccessScope,
 	tab: StructureTab
 ): StructurePermissionAccessTarget {
@@ -585,7 +587,7 @@ function getStructureAccessTarget(
 	}
 }
 
-function hasAnyStructureAccess(target: StructurePermissionAccessTarget): boolean {
+export function hasAnyStructureAccess(target: StructurePermissionAccessTarget): boolean {
 	return (
 		target.viewAll ||
 		target.detailsAll ||
@@ -598,7 +600,7 @@ function hasAnyStructureAccess(target: StructurePermissionAccessTarget): boolean
 	)
 }
 
-function hasStructureAccessForTab(
+export function hasStructureAccessForTab(
 	access: StructureAccessScope,
 	corporationId: string,
 	tab: StructureTab
@@ -607,7 +609,7 @@ function hasStructureAccessForTab(
 	return buildStructureAccessTargetSummary(target, corporationId).canView
 }
 
-function canViewDetailsStructure(
+export function canViewDetailsStructure(
 	access: StructureAccessScope,
 	corporationId: string,
 	tab: StructureTab
@@ -616,7 +618,7 @@ function canViewDetailsStructure(
 	return buildStructureAccessTargetSummary(target, corporationId).canViewDetails
 }
 
-function canViewSensitiveStructure(
+export function canViewSensitiveStructure(
 	access: StructureAccessScope,
 	corporationId: string,
 	tab: StructureTab
@@ -625,7 +627,7 @@ function canViewSensitiveStructure(
 	return buildStructureAccessTargetSummary(target, corporationId).canViewSensitive
 }
 
-function canEditStructure(
+export function canEditStructure(
 	access: StructureAccessScope,
 	corporationId: string,
 	tab: StructureTab
@@ -665,7 +667,7 @@ function getAccessibleCorporationIds(
 	return { hasGlobalAccess, corporationIds }
 }
 
-function computeStructureAccess(roles: string[], isAdmin: boolean): StructureAccessScope {
+export function computeStructureAccess(roles: string[], isAdmin: boolean): StructureAccessScope {
 	if (isAdmin) {
 		return {
 			all: {
@@ -889,14 +891,14 @@ function summarizeStructureSovereignty(
 }
 
 function summarizeStructureSkyhook(
-	skyhook: typeof structureSkyhooks.$inferSelect | null
+	skyhook: (typeof structureSkyhooks.$inferSelect & SkyhookReagentStorageState) | null
 ): StructureSkyhookSummary | null {
 	if (!skyhook) {
 		return null
 	}
 
-	const reagentTotals = getSkyhookReagentSummary(skyhook.reagents)
-	const reagents = getSkyhookReagentEntries(skyhook.reagents)
+	const reagentTotals = getSkyhookReagentSummaryFromStorageState(skyhook)
+	const reagents = getSkyhookReagentEntriesFromStorageState(skyhook)
 	const isRaidable = isSkyhookCurrentlyRaidable(skyhook)
 	const normalizedState = getSkyhookState(
 		skyhook.state,
@@ -1004,7 +1006,7 @@ function summarizeStructureMiningCitadel(
 	}
 }
 
-function buildStructureListItem(context: VisibleStructureContext): StructureListItem {
+function buildStructureListItem(context: StructureContext): StructureListItem {
 	const { structure, corporationName, config, canViewDetails } = context
 	const nextStateAt =
 		structure.stateTimerEnd ?? structure.nextReinforceApply ?? structure.unanchorsAt
@@ -1099,11 +1101,21 @@ async function loadStructureTabDetailData(
 	}
 
 	if (tab === 'skyhooks') {
-		const skyhookRow = await db.query.structureSkyhooks.findFirst({
-			where: eq(structureSkyhooks.structureId, structure.structureId),
-		})
+		const [skyhookRow, reagentRow] = await Promise.all([
+			db.query.structureSkyhooks.findFirst({
+				where: eq(structureSkyhooks.structureId, structure.structureId),
+			}),
+			db.query.structureSkyhookReagents.findFirst({
+				where: eq(structureSkyhookReagents.structureId, structure.structureId),
+			}),
+		])
 		return {
-			skyhook: skyhookRow ? summarizeStructureSkyhook(skyhookRow) : null,
+			skyhook: skyhookRow
+				? summarizeStructureSkyhook({
+						...skyhookRow,
+						...reagentRow,
+					} as typeof structureSkyhooks.$inferSelect)
+				: null,
 		}
 	}
 
@@ -1275,12 +1287,12 @@ export async function upsertStructureGroupSetting(
 			})
 			.where(eq(structureGroupSettings.groupId, input.groupId))
 			.returning()
-		invalidateVisibleStructureContextCache()
+		invalidateStructureContextCache()
 		return updated
 	}
 
 	const [created] = await db.insert(structureGroupSettings).values(values).returning()
-	invalidateVisibleStructureContextCache()
+	invalidateStructureContextCache()
 	return created
 }
 
@@ -1292,7 +1304,7 @@ export async function deleteStructureGroupSetting(
 		.delete(structureGroupSettings)
 		.where(eq(structureGroupSettings.groupId, input.groupId))
 		.returning()
-	invalidateVisibleStructureContextCache()
+	invalidateStructureContextCache()
 	return deleted ?? null
 }
 
@@ -1403,7 +1415,7 @@ export async function updateStructureModuleConfig(
 			},
 		})
 		.returning()
-	invalidateVisibleStructureContextCache()
+	invalidateStructureContextCache()
 	return updated
 }
 
@@ -1430,7 +1442,7 @@ export async function upsertStructureCorporationGroupDefault(
 			})
 			.where(eq(structureCorporationGroupDefaults.corporationId, input.corporationId))
 			.returning()
-		invalidateVisibleStructureContextCache()
+		invalidateStructureContextCache()
 		return updated
 	}
 
@@ -1444,7 +1456,7 @@ export async function upsertStructureCorporationGroupDefault(
 			updatedAt: now,
 		})
 		.returning()
-	invalidateVisibleStructureContextCache()
+	invalidateStructureContextCache()
 	return created
 }
 
@@ -1486,7 +1498,7 @@ export async function upsertStructureGroupAlertConfig(
 			})
 			.where(eq(structureGroupAlertConfigs.id, existing.id))
 			.returning()
-		invalidateVisibleStructureContextCache()
+		invalidateStructureContextCache()
 		return updated
 	}
 
@@ -1502,7 +1514,7 @@ export async function upsertStructureGroupAlertConfig(
 			updatedAt: now,
 		})
 		.returning()
-	invalidateVisibleStructureContextCache()
+	invalidateStructureContextCache()
 	return created
 }
 
@@ -1516,7 +1528,7 @@ export async function deleteStructureGroupAlertConfig(
 		.where(
 			and(eq(structureGroupAlertConfigs.groupId, groupId), eq(structureGroupAlertConfigs.id, id))
 		)
-	invalidateVisibleStructureContextCache()
+	invalidateStructureContextCache()
 }
 
 type DirectCorporationStructureRecord = typeof corporationStructures.$inferSelect
@@ -1581,7 +1593,7 @@ const CORPORATION_STRUCTURE_SELECT_COLUMNS = {
 	updatedAt: true,
 } as const
 
-interface VisibleStructureContext {
+interface StructureContext {
 	structure: StructureSourceRecord
 	corporationName: string
 	includeInStructureAssetSync: boolean
@@ -1608,7 +1620,7 @@ export function getStructureTab(
 	return getStructureTabForTypeId(structure.typeId, structure.typeName)
 }
 
-function buildStructureDetailResult(context: VisibleStructureContext): StructureDetailResult {
+function buildStructureDetailResult(context: StructureContext): StructureDetailResult {
 	const { canViewDetails: _canViewDetails, ...structure } = buildStructureListItem(context)
 	return {
 		...structure,
@@ -1644,7 +1656,7 @@ function buildStructureDetailResult(context: VisibleStructureContext): Structure
 	}
 }
 
-async function getVisibleStructureContext(
+async function getStructureContext(
 	env: Env,
 	db: DbClient<DbSchema>,
 	user: SessionUser,
@@ -1652,7 +1664,7 @@ async function getVisibleStructureContext(
 	options: {
 		requireDetailsPermission?: boolean
 	} = {}
-): Promise<VisibleStructureContext | null> {
+): Promise<StructureContext | null> {
 	const requireDetailsPermission = options.requireDetailsPermission ?? false
 	const access = computeStructureAccess(user.roles, user.is_admin)
 	const accessibleCorporations = getAccessibleCorporationIds(access)
@@ -1922,7 +1934,7 @@ interface StructureBaseFilterQuery {
 	typeId?: string
 }
 
-type VisibleOperationalStructureRow = {
+type OperationalStructureRow = {
 	structureId: string
 	corporationId: string
 	corporationName: string | null
@@ -1950,20 +1962,19 @@ type VisibleOperationalStructureRow = {
 	updatedAt: Date
 }
 
-type VisibleSkyhookStructureRow = VisibleOperationalStructureRow & {
+type SkyhookStructureRow = OperationalStructureRow & {
 	planetId: string | null
 	planetName: string | null
 	isActive: boolean | null
 	effectiveWorkforce: number | null
-	reagents: typeof structureSkyhooks.$inferSelect['reagents'] | null
 	reinforcementTimerEnd: Date | null
 	theftVulnerabilityStart: Date | null
 	theftVulnerabilityEnd: Date | null
 	isRaidable: boolean | null
-}
+} & SkyhookReagentStorageState
 
 function buildOperationalStructureListItem(
-	row: VisibleOperationalStructureRow,
+	row: OperationalStructureRow,
 	canViewDetails: boolean
 ): StructureListItem {
 	const nextStateAt = row.stateTimerEnd ?? row.nextReinforceApply ?? row.unanchorsAt
@@ -1996,7 +2007,7 @@ function buildOperationalStructureListItem(
 	}
 }
 
-function invalidateVisibleStructureContextCache(): void {}
+function invalidateStructureContextCache(): void {}
 
 function buildStructureContextsWhere(
 	access: StructureAccessScope,
@@ -2105,55 +2116,97 @@ function buildSkyhookStructuresCte(db: DbClient<DbSchema>, corpWhere: any) {
 	return db.$with('skyhook_structures').as(
 		db
 			.select({
-				structureId: corporationStructures.structureId,
-				corporationId: corporationStructures.corporationId,
+				structureId: sql<string>`${corporationStructures.structureId}`.as('structureId'),
+				corporationId: sql<string>`${corporationStructures.corporationId}`.as('corporationId'),
 				corporationName: sql<string>`coalesce(${managedCorporations.name}, '')`.as('corporationName'),
 				structureName: sql<string | null>`${corporationStructures.name}`.as('structureName'),
-				typeId: corporationStructures.typeId,
-				typeName: corporationStructures.typeName,
-				systemId: corporationStructures.systemId,
-				systemName: corporationStructures.systemName,
-				regionId: corporationStructures.regionId,
-				regionName: corporationStructures.regionName,
-				state: corporationStructures.state,
-				stateTimerEnd: corporationStructures.stateTimerEnd,
-				nextReinforceApply: corporationStructures.nextReinforceApply,
-				unanchorsAt: corporationStructures.unanchorsAt,
-				fuelExpires: corporationStructures.fuelExpires,
-				fuelAmount: corporationStructures.fuelAmount,
-				fuelBurnRate: corporationStructures.fuelBurnRate,
-				lowPower: corporationStructures.lowPower,
-				hidden: structureConfigs.hidden,
-				lowPowerAllowed: structureConfigs.lowPowerAllowed,
-				assignedGroupId: structureConfigs.assignedGroupId,
-				syncStatus: corporationStructures.syncStatus,
-				syncFailureReason: corporationStructures.syncFailureReason,
-				lastSyncedAt: corporationStructures.lastSyncedAt,
-				updatedAt: corporationStructures.updatedAt,
-				planetId: structureSkyhooks.planetId,
-				planetName: structureSkyhooks.planetName,
-				isActive: structureSkyhooks.isActive,
-				effectiveWorkforce: structureSkyhooks.effectiveWorkforce,
-				reagents: structureSkyhooks.reagents,
-				reinforcementTimerEnd: structureSkyhooks.reinforcementTimerEnd,
-				theftVulnerabilityStart: structureSkyhooks.theftVulnerabilityStart,
-				theftVulnerabilityEnd: structureSkyhooks.theftVulnerabilityEnd,
-				isRaidable: getSkyhookCurrentRaidableExpression(structureSkyhooks).as('isRaidable'),
+				typeId: sql<string>`${corporationStructures.typeId}`.as('typeId'),
+				typeName: sql<string | null>`${corporationStructures.typeName}`.as('typeName'),
+				systemId: sql<string>`${corporationStructures.systemId}`.as('systemId'),
+				systemName: sql<string | null>`${corporationStructures.systemName}`.as('systemName'),
+				regionId: sql<string | null>`${corporationStructures.regionId}`.as('regionId'),
+				regionName: sql<string | null>`${corporationStructures.regionName}`.as('regionName'),
+				state: sql<string>`${corporationStructures.state}`.as('state'),
+				stateTimerEnd: sql<Date | null>`${corporationStructures.stateTimerEnd}`.as('stateTimerEnd'),
+				nextReinforceApply: sql<Date | null>`${corporationStructures.nextReinforceApply}`.as('nextReinforceApply'),
+				unanchorsAt: sql<Date | null>`${corporationStructures.unanchorsAt}`.as('unanchorsAt'),
+				fuelExpires: sql<Date | null>`${corporationStructures.fuelExpires}`.as('fuelExpires'),
+				fuelAmount: sql<number | null>`${corporationStructures.fuelAmount}`.as('fuelAmount'),
+				fuelBurnRate: sql<string | null>`${corporationStructures.fuelBurnRate}`.as('fuelBurnRate'),
+				lowPower: sql<boolean>`${corporationStructures.lowPower}`.as('lowPower'),
+				hidden: sql<boolean | null>`${structureConfigs.hidden}`.as('hidden'),
+				lowPowerAllowed: sql<boolean | null>`${structureConfigs.lowPowerAllowed}`.as('lowPowerAllowed'),
+				assignedGroupId: sql<string | null>`${structureConfigs.assignedGroupId}`.as('assignedGroupId'),
+				syncStatus: sql<string>`${corporationStructures.syncStatus}`.as('syncStatus'),
+				syncFailureReason: sql<string | null>`${corporationStructures.syncFailureReason}`.as('syncFailureReason'),
+				lastSyncedAt: sql<Date | null>`${corporationStructures.lastSyncedAt}`.as('lastSyncedAt'),
+				updatedAt: sql<Date>`${corporationStructures.updatedAt}`.as('updatedAt'),
+				planetId: sql<string | null>`${structureSkyhooks.planetId}`.as('planetId'),
+				planetName: sql<string | null>`${structureSkyhooks.planetName}`.as('planetName'),
+				isActive: sql<boolean | null>`${structureSkyhooks.isActive}`.as('isActive'),
+				effectiveWorkforce: sql<number | null>`${structureSkyhooks.effectiveWorkforce}`.as('effectiveWorkforce'),
+				magmaticGasSecuredStock: sql<number>`
+					coalesce(${structureSkyhookReagents.magmaticGasSecuredStock}, 0)
+				`.as('magmaticGasSecuredStock'),
+				magmaticGasUnsecuredStock: sql<number>`
+					coalesce(${structureSkyhookReagents.magmaticGasUnsecuredStock}, 0)
+				`.as('magmaticGasUnsecuredStock'),
+				magmaticGasLastCycle: sql<Date | null>`${structureSkyhookReagents.magmaticGasLastCycle}`.as(
+					'magmaticGasLastCycle'
+				),
+				superionicIceSecuredStock: sql<number>`
+					coalesce(${structureSkyhookReagents.superionicIceSecuredStock}, 0)
+				`.as('superionicIceSecuredStock'),
+				superionicIceUnsecuredStock: sql<number>`
+					coalesce(${structureSkyhookReagents.superionicIceUnsecuredStock}, 0)
+				`.as('superionicIceUnsecuredStock'),
+				superionicIceLastCycle: sql<Date | null>`${structureSkyhookReagents.superionicIceLastCycle}`.as(
+					'superionicIceLastCycle'
+				),
+				reinforcementTimerEnd: sql<Date | null>`${structureSkyhooks.reinforcementTimerEnd}`.as(
+					'reinforcementTimerEnd'
+				),
+				theftVulnerabilityStart: sql<Date | null>`${structureSkyhooks.theftVulnerabilityStart}`.as(
+					'theftVulnerabilityStart'
+				),
+				theftVulnerabilityEnd: sql<Date | null>`${structureSkyhooks.theftVulnerabilityEnd}`.as(
+					'theftVulnerabilityEnd'
+				),
 			})
 			.from(corporationStructures)
 			.leftJoin(structureConfigs, eq(structureConfigs.structureId, corporationStructures.structureId))
 			.leftJoin(structureSkyhooks, eq(structureSkyhooks.structureId, corporationStructures.structureId))
 			.leftJoin(
-				managedCorporations,
-				eq(managedCorporations.corporationId, corporationStructures.corporationId)
+				structureSkyhookReagents,
+				eq(structureSkyhookReagents.structureId, corporationStructures.structureId)
 			)
+			.leftJoin(managedCorporations, eq(managedCorporations.corporationId, corporationStructures.corporationId))
 			.where(corpWhere ?? sql`true`)
 	)
 }
 
-function extractSkyhookSummaryFillPercentSql(source: any, field: 'securedFillPercent' | 'unsecuredFillPercent') {
-	const key = field === 'securedFillPercent' ? 'securedFillPercent' : 'unsecuredFillPercent'
-	return sql<number | null>`nullif(((${source.reagents} -> 'summary' ->> ${key})::numeric), 'NaN'::numeric)`
+function buildSkyhookReagentFillPercentExpression(
+	source: any,
+	stockType: 'secured' | 'unsecured'
+) {
+	const magmaticGasStock =
+		stockType === 'secured' ? source.magmaticGasSecuredStock : source.magmaticGasUnsecuredStock
+	const superionicIceStock =
+		stockType === 'secured' ? source.superionicIceSecuredStock : source.superionicIceUnsecuredStock
+	const capacity =
+		stockType === 'secured' ? SKYHOOK_SECURED_BAY_CAPACITY_M3 : SKYHOOK_SURPLUS_BAY_CAPACITY_M3
+
+	return sql<number>`
+		(
+			(
+				coalesce(${magmaticGasStock}, 0)::numeric
+					* ${getSkyhookReagentUnitVolumeM3(SKYHOOK_MAGMATIC_GAS_TYPE_ID)}::numeric
+				+ coalesce(${superionicIceStock}, 0)::numeric
+					* ${getSkyhookReagentUnitVolumeM3(SKYHOOK_SUPERIONIC_ICE_TYPE_ID)}::numeric
+			)
+			/ ${capacity}::numeric
+		) * 100
+	`
 }
 
 function buildSkyhookSortOrder(
@@ -2192,16 +2245,19 @@ function buildSkyhookSortOrder(
 			return [sortExpression(source.theftVulnerabilityStart), sortExpression(source.structureId)]
 		case 'skyhookSecureFullness':
 			return [
-				sortExpression(extractSkyhookSummaryFillPercentSql(source, 'securedFillPercent')),
+				sortExpression(buildSkyhookReagentFillPercentExpression(source, 'secured')),
 				sortExpression(source.structureId),
 			]
 		case 'skyhookSurplusFullness':
 			return [
-				sortExpression(extractSkyhookSummaryFillPercentSql(source, 'unsecuredFillPercent')),
+				sortExpression(buildSkyhookReagentFillPercentExpression(source, 'unsecured')),
 				sortExpression(source.structureId),
 			]
 		case 'raidable':
-			return [sortExpression(source.isRaidable), sortExpression(source.structureId)]
+			return [
+				sortExpression(getSkyhookCurrentRaidableExpression(source)),
+				sortExpression(source.structureId),
+			]
 		case 'workforce':
 			return [sortExpression(source.effectiveWorkforce), sortExpression(source.structureId)]
 		case 'name':
@@ -2248,12 +2304,11 @@ function buildSkyhookVisibilityWhere(access: StructureAccessScope, query: Struct
 }
 
 function buildSkyhookListItemFromRow(
-	row: VisibleSkyhookStructureRow,
+	row: SkyhookStructureRow,
 	canViewDetails: boolean
 ): RepoStructureSkyhookListItem {
-	const reagentSnapshot = row.reagents ?? []
-	const reagentSummary = getSkyhookReagentSummary(reagentSnapshot)
-	const reagentEntries = getSkyhookReagentEntries(reagentSnapshot)
+	const reagentSummary = getSkyhookReagentSummaryFromStorageState(row)
+	const reagentEntries = getSkyhookReagentEntriesFromStorageState(row)
 	const normalizedState = getSkyhookState(
 		row.state,
 		row.isRaidable ?? false,
@@ -2387,47 +2442,72 @@ async function buildSkyhookStructureFilterOptionsFromSql(
 	])
 
 	return {
-		corporations: corporations
+		corporations: (corporations as Array<{ corporationId?: unknown; corporationName?: unknown }>)
 			.map((row) => ({
-				value: row.corporationId,
-				label: row.corporationName ?? row.corporationId,
-			}))
+				value: typeof row.corporationId === 'string' ? row.corporationId : '',
+				label:
+					typeof row.corporationName === 'string' && row.corporationName.length > 0
+						? row.corporationName
+						: typeof row.corporationId === 'string'
+							? row.corporationId
+							: '',
+				}))
 			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
-		assignedGroups: assignedGroups
+		assignedGroups: (assignedGroups as Array<{ assignedGroupId?: unknown }>)
 			.map((row) => ({
-				value: row.assignedGroupId ?? '',
-				label: row.assignedGroupId ?? '',
+				value: typeof row.assignedGroupId === 'string' ? row.assignedGroupId : '',
+				label: typeof row.assignedGroupId === 'string' ? row.assignedGroupId : '',
 			}))
 			.filter((option) => option.value.length > 0),
-		regions: regions
+		regions: (regions as Array<{ regionId?: unknown; regionName?: unknown }>)
 			.map((row) => ({
-				value: row.regionId ?? '',
-				label: row.regionName ?? row.regionId ?? '',
+				value: typeof row.regionId === 'string' ? row.regionId : '',
+				label:
+					typeof row.regionName === 'string' && row.regionName.length > 0
+						? row.regionName
+						: typeof row.regionId === 'string'
+							? row.regionId
+						: '',
 			}))
 			.filter((option) => option.value.length > 0),
-		systems: systems
+		systems: (systems as Array<{ systemId?: unknown; systemName?: unknown }>)
 			.map((row) => ({
-				value: row.systemId,
-				label: row.systemName ?? row.systemId,
+				value: typeof row.systemId === 'string' ? row.systemId : '',
+				label:
+					typeof row.systemName === 'string' && row.systemName.length > 0
+						? row.systemName
+						: typeof row.systemId === 'string'
+							? row.systemId
+							: '',
+				}))
+			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+		states: (states as Array<{ state?: unknown }>)
+			.map((row) => ({
+				value: typeof row.state === 'string' ? row.state : '',
+				label: typeof row.state === 'string' ? row.state : '',
 			}))
 			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
-		states: states
+		types: (types as Array<{ typeId?: unknown; typeName?: unknown }>)
 			.map((row) => ({
-				value: row.state,
-				label: row.state,
-			}))
-			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
-		types: types
-			.map((row) => ({
-				value: row.typeId,
-				label: row.typeName ?? row.typeId,
-			}))
+				value: typeof row.typeId === 'string' ? row.typeId : '',
+				label:
+					typeof row.typeName === 'string' && row.typeName.length > 0
+						? row.typeName
+						: typeof row.typeId === 'string'
+							? row.typeId
+							: '',
+				}))
 			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
 		alliances: [],
-		planets: planets
+		planets: (planets as Array<{ planetId?: unknown; planetName?: unknown }>)
 			.map((row) => ({
-				value: row.planetId ?? '',
-				label: row.planetName ?? row.planetId ?? '',
+				value: typeof row.planetId === 'string' ? row.planetId : '',
+				label:
+					typeof row.planetName === 'string' && row.planetName.length > 0
+						? row.planetName
+						: typeof row.planetId === 'string'
+							? row.planetId
+							: '',
 			}))
 			.filter((option) => option.value.length > 0),
 		raidableStates: [
@@ -2456,15 +2536,9 @@ async function buildSkyhookStructureSummaryFromSql(
 ): Promise<StructureListSummary> {
 	const rowsDb = db.with(skyhookStructures)
 	const currentRaidableExpression = getSkyhookCurrentRaidableExpression(skyhookStructures)
-	const highestFillExpression = sql<number | null>`
-		greatest(
-			coalesce(((${skyhookStructures.reagents} -> 'summary' ->> 'securedFillPercent')::numeric), 0),
-			coalesce(((${skyhookStructures.reagents} -> 'summary' ->> 'unsecuredFillPercent')::numeric), 0)
-		)
-	`
-	const candidateStartExpression = sql<Date | null>`
-		${skyhookStructures.theftVulnerabilityStart}
-	`
+	const securedFillPercent = buildSkyhookReagentFillPercentExpression(skyhookStructures, 'secured')
+	const unsecuredFillPercent = buildSkyhookReagentFillPercentExpression(skyhookStructures, 'unsecured')
+	const highestFillPercent = sql<number>`greatest(${securedFillPercent}, ${unsecuredFillPercent})`
 	const [totalResult, highestFillResult, workforceResult, raidableCountResult, nextRaidableResult] =
 		await Promise.all([
 			rowsDb
@@ -2474,7 +2548,9 @@ async function buildSkyhookStructureSummaryFromSql(
 				.from(skyhookStructures),
 			rowsDb
 				.select({
-					skyhookHighestFillPercent: sql<number | null>`max(${highestFillExpression})`,
+					skyhookHighestFillPercent: sql<number | null>`max(${highestFillPercent})::double precision`.as(
+						'skyhookHighestFillPercent'
+					),
 				})
 				.from(skyhookStructures),
 			rowsDb
@@ -2491,16 +2567,16 @@ async function buildSkyhookStructureSummaryFromSql(
 				.select({
 					structureId: skyhookStructures.structureId,
 					planetName: skyhookStructures.planetName,
-					candidateStart: sql<string | null>`${candidateStartExpression}`,
+					candidateStart: sql<Date | null>`${skyhookStructures.theftVulnerabilityStart}`,
 					currentRaidable: currentRaidableExpression,
 				})
 				.from(skyhookStructures)
 				.where(
-					sql`(${candidateStartExpression}) is not null and (${skyhookStructures.theftVulnerabilityEnd} is null or now() <= ${skyhookStructures.theftVulnerabilityEnd})`
+					sql`${skyhookStructures.theftVulnerabilityStart} is not null and (${skyhookStructures.theftVulnerabilityEnd} is null or now() <= ${skyhookStructures.theftVulnerabilityEnd})`
 				)
-				.orderBy(asc(candidateStartExpression), asc(skyhookStructures.structureId))
+				.orderBy(asc(skyhookStructures.theftVulnerabilityStart), asc(skyhookStructures.structureId))
 				.limit(1),
-	])
+		])
 
 	const nextRaidableRow = nextRaidableResult[0] ?? null
 	const nextRaidableAt = nextRaidableRow
@@ -3116,7 +3192,7 @@ async function loadSovereigntyPageItems(
 		const canViewSensitive =
 			user.is_admin || canViewSensitiveStructure(access, row.corporationId, structureTab)
 		const canEdit = user.is_admin || canEditStructure(access, row.corporationId, structureTab)
-		const context: VisibleStructureContext = {
+		const context: StructureContext = {
 			structure,
 			corporationName: row.corporationName ?? row.corporationId,
 			includeInStructureAssetSync: row.includeInStructureAssetSync ?? false,
@@ -3187,11 +3263,16 @@ async function loadSkyhookPageItems(
 			planetName: skyhookStructures.planetName,
 			isActive: skyhookStructures.isActive,
 			effectiveWorkforce: skyhookStructures.effectiveWorkforce,
-			reagents: skyhookStructures.reagents,
+			magmaticGasSecuredStock: skyhookStructures.magmaticGasSecuredStock,
+			magmaticGasUnsecuredStock: skyhookStructures.magmaticGasUnsecuredStock,
+			magmaticGasLastCycle: skyhookStructures.magmaticGasLastCycle,
+			superionicIceSecuredStock: skyhookStructures.superionicIceSecuredStock,
+			superionicIceUnsecuredStock: skyhookStructures.superionicIceUnsecuredStock,
+			superionicIceLastCycle: skyhookStructures.superionicIceLastCycle,
 			reinforcementTimerEnd: skyhookStructures.reinforcementTimerEnd,
 			theftVulnerabilityStart: skyhookStructures.theftVulnerabilityStart,
 			theftVulnerabilityEnd: skyhookStructures.theftVulnerabilityEnd,
-			isRaidable: skyhookStructures.isRaidable,
+			isRaidable: getSkyhookCurrentRaidableExpression(skyhookStructures).as('isRaidable'),
 		})
 		.from(skyhookStructures)
 		.orderBy(...sortOrder)
@@ -4175,7 +4256,7 @@ function buildStructureRowIdentity(
 }
 
 function buildSovereigntyListItem(input: {
-	context: VisibleStructureContext
+	context: StructureContext
 	systemRow: typeof structureSovereigntySystems.$inferSelect | null
 	hubRow: typeof structureSovereigntyHubs.$inferSelect | null
 }): StructureSovereigntyFilterableItem {
@@ -4418,13 +4499,13 @@ export async function listMiningCitadelStructures(
 	}
 }
 
-export async function getVisibleStructureDetail(
+export async function getStructureDetail(
 	env: Env,
 	db: DbClient<DbSchema>,
 	user: SessionUser,
 	structureId: string
 ): Promise<StructureDetailResult | null> {
-	const context = await getVisibleStructureContext(env, db, user, structureId, {
+	const context = await getStructureContext(env, db, user, structureId, {
 		requireDetailsPermission: true,
 	})
 	if (!context) {
@@ -4446,7 +4527,7 @@ export async function updateStructureConfig(
 	structureId: string,
 	input: UpdateStructureConfigInput
 ): Promise<StructureDetailResult | null> {
-	const context = await getVisibleStructureContext(env, db, user, structureId)
+	const context = await getStructureContext(env, db, user, structureId)
 	if (!context) {
 		return null
 	}
@@ -4487,7 +4568,7 @@ export async function updateStructureConfig(
 			},
 		})
 
-	invalidateVisibleStructureContextCache()
+	invalidateStructureContextCache()
 	return buildStructureDetailResult({
 		...context,
 		config: {
@@ -4547,7 +4628,7 @@ export async function syncCorporationStructures(
 		stateChangeCount,
 	})
 
-	invalidateVisibleStructureContextCache()
+	invalidateStructureContextCache()
 	return {
 		structureCount: corpStructures.length,
 		stateChangeCount,

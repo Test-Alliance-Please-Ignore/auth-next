@@ -11,7 +11,6 @@ import {
 	isNotNull,
 	lt,
 	lte,
-	notInArray,
 	or,
 	sql,
 } from '@repo/db-utils'
@@ -25,10 +24,8 @@ import {
 	SKYHOOK_SUPERIONIC_ICE_TYPE_ID,
 	SKYHOOK_SUPERIONIC_ICE_TYPE_NAME,
 	getStructureTabForTypeId,
-	summarizeSkyhookReagents,
 	summarizeSovereigntyReagentBay,
-	type SkyhookReagentEntry,
-	type SkyhookReagentSnapshot,
+	type StructureSovereigntyTransportState,
 	type SovereigntyReagentEntry,
 } from '@repo/structures'
 
@@ -54,11 +51,12 @@ import {
 	structureMoonGeographies,
 	structureMoonDrills,
 	structureMiningExtractions,
+	structureSkyhookReagents,
 	structureSkyhooks,
 	structureSovereigntyHubs,
 	structureSovereigntySystems,
 } from './db/schema'
-import { syncAssetsPaged } from './services/assets-paging-sync'
+import { syncAssetsPaged, dedupeByItemId, type RawEsiAsset } from './services/assets-paging-sync'
 import { DirectorManager } from './services/director-manager'
 import * as esiFetch from './services/esi-fetch'
 import { preserveStructureHydrationFields } from './services/structure-hydration'
@@ -66,7 +64,6 @@ import {
 	summarizeFuelBlockUnitsByStructure,
 	projectStructureInventoryFromStoredAssets,
 } from './services/structure-inventory'
-import { dedupeByItemId } from './services/assets-paging-sync'
 import {
 	deriveStructureFuelHistoryMetrics,
 	type StructureFuelHistorySample,
@@ -105,7 +102,6 @@ import type {
 	CourierLeaderboard,
 	DirectorHealth,
 	EsiCharacterRoles,
-	EsiCorporationAsset,
 	EsiCorporationContract,
 	EsiCorporationIndustryJob,
 	EsiCorporationKillmail,
@@ -115,8 +111,6 @@ import type {
 	EsiCorporationOrder,
 	EsiCorporationSkyhook,
 	EsiCorporationStructure,
-	EsiCorporationWallet,
-	EsiCorporationWalletJournalEntry,
 	EsiCorporationWalletTransaction,
 	EsiSovereigntyHub,
 	EsiSovereigntySystem,
@@ -126,7 +120,6 @@ import type {
 	WalletJournalWindowFilters,
 	WalletTransactionWindowFilters,
 } from '@repo/eve-corporation-data'
-import type { StructureSovereigntyTransportState } from '@repo/structures'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { EveCharacterId, EveStructureId } from '@repo/eve-types'
 import type {
@@ -137,10 +130,7 @@ import type {
 	UniverseSolarSystem,
 } from '@repo/universe'
 import type { Env } from './context'
-import type { RawEsiAsset } from './services/assets-paging-sync'
 import type { StructureInventoryRowInput } from './services/structure-inventory'
-
-type CorporationConfigRow = typeof corporationConfig.$inferSelect
 
 function isSpecialStructureTab(
 	tab: ReturnType<typeof getStructureTabForTypeId>
@@ -299,7 +289,6 @@ type SkyhookStorageRow = {
 	state: string
 	isActive: boolean
 	effectiveWorkforce: number | null
-	reagents: SkyhookReagentSnapshot
 	reinforcementTimerEnd: Date | null
 	theftVulnerabilityStart: Date | null
 	theftVulnerabilityEnd: Date | null
@@ -309,7 +298,19 @@ type SkyhookStorageRow = {
 	sourceSyncAt: Date
 	lastSyncedAt: Date
 }
-type SkyhookStorageInsertRow = SkyhookStorageRow & { updatedAt: Date }
+type SkyhookReagentStorageRow = {
+	structureId: string
+	corporationId: string
+	magmaticGasSecuredStock: number
+	magmaticGasUnsecuredStock: number
+	magmaticGasLastCycle: Date | null
+	superionicIceSecuredStock: number
+	superionicIceUnsecuredStock: number
+	superionicIceLastCycle: Date | null
+}
+type SkyhookReagentStorageInsertRow = SkyhookReagentStorageRow & {
+	updatedAt: Date
+}
 type SkyhookBaseStructureRow = {
 	structureId: string
 	corporationId: string
@@ -432,19 +433,6 @@ export function buildSkyhookStorageRow(input: {
 		),
 		isActive: skyhook.is_active,
 		effectiveWorkforce: skyhook.effective_workforce ?? null,
-		reagents: (() => {
-			const reagents = skyhook.reagents.map((reagent) => ({
-				typeId: reagent.type_id,
-				securedStock: reagent.secured_stock,
-				unsecuredStock: reagent.unsecured_stock,
-				lastCycle: reagent.last_cycle,
-			})) satisfies SkyhookReagentEntry[]
-			return {
-				lastUpdated: observedAt.toISOString(),
-				summary: summarizeSkyhookReagents(reagents),
-				reagents,
-			}
-		})(),
 		reinforcementTimerEnd: parseDateOrNull(skyhook.reinforcement_timer?.end) ?? null,
 		theftVulnerabilityStart: parseDateOrNull(skyhook.theft_vulnerability?.start) ?? null,
 		theftVulnerabilityEnd: parseDateOrNull(skyhook.theft_vulnerability?.end) ?? null,
@@ -454,6 +442,32 @@ export function buildSkyhookStorageRow(input: {
 		sourceSyncAt: observedAt,
 		lastSyncedAt: observedAt,
 	} satisfies SkyhookStorageRow
+}
+
+function buildSkyhookReagentStorageRow(input: {
+	corporationId: string
+	skyhook: EsiCorporationSkyhook
+	observedAt: Date
+}): SkyhookReagentStorageInsertRow {
+	const { corporationId, skyhook, observedAt } = input
+	const magmaticGasReagent = skyhook.reagents.find(
+		(reagent) => reagent.type_id === SKYHOOK_MAGMATIC_GAS_TYPE_ID
+	)
+	const superionicIceReagent = skyhook.reagents.find(
+		(reagent) => reagent.type_id === SKYHOOK_SUPERIONIC_ICE_TYPE_ID
+	)
+
+	return {
+		structureId: skyhook.structure_id,
+		corporationId,
+		magmaticGasSecuredStock: magmaticGasReagent?.secured_stock ?? 0,
+		magmaticGasUnsecuredStock: magmaticGasReagent?.unsecured_stock ?? 0,
+		magmaticGasLastCycle: parseDateOrNull(magmaticGasReagent?.last_cycle) ?? null,
+		superionicIceSecuredStock: superionicIceReagent?.secured_stock ?? 0,
+		superionicIceUnsecuredStock: superionicIceReagent?.unsecured_stock ?? 0,
+		superionicIceLastCycle: parseDateOrNull(superionicIceReagent?.last_cycle) ?? null,
+		updatedAt: observedAt,
+	}
 }
 
 function buildMoonDrillStorageRow(input: {
@@ -518,10 +532,6 @@ function buildMoonGeographyStorageRow(input: {
 
 function addHours(date: Date, hours: number): Date {
 	return new Date(date.getTime() + hours * 60 * 60 * 1000)
-}
-
-function hoursBetween(start: Date, end: Date): number {
-	return (end.getTime() - start.getTime()) / (60 * 60 * 1000)
 }
 
 /**
@@ -2109,10 +2119,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		return projectedRows
 	}
 
-	async storeStructureInventory(
-		corporationId: string,
-		inventory: Array<StructureInventoryRowInput>
-	): Promise<void> {
+	async storeStructureInventory(corporationId: string, inventory: StructureInventoryRowInput[]): Promise<void> {
 		const observedAt = new Date()
 		const ownedStructureIds = await this.getOwnedStructureIds(corporationId)
 		const fuelBlockUnitsByStructure = summarizeFuelBlockUnitsByStructure(
@@ -3645,16 +3652,22 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					return null
 				}
 
-				const storageRow: SkyhookInsertRow = {
+					const storageRow: SkyhookInsertRow = {
 					...storageRowData,
 					syncStatus: 'ok' as const,
 					syncFailureReason: null,
 					updatedAt: now,
 				}
+				const reagentStorageRow = buildSkyhookReagentStorageRow({
+					corporationId,
+					skyhook,
+					observedAt: now,
+				})
 
 				return {
 					baseStructure,
 					storageRow,
+					reagentStorageRow,
 				}
 			})
 			.filter(
@@ -3663,6 +3676,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				): row is {
 					baseStructure: SkyhookBaseStructureRow
 					storageRow: SkyhookInsertRow
+					reagentStorageRow: SkyhookReagentStorageInsertRow
 				} => row !== null
 			)
 
@@ -3686,10 +3700,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					.delete(structureSkyhooks)
 					.where(
 						and(
-							eq(structureSkyhooks.corporationId, corporationId),
-							inArray(structureSkyhooks.structureId, batch)
-						)
+						eq(structureSkyhooks.corporationId, corporationId),
+						inArray(structureSkyhooks.structureId, batch)
 					)
+				)
 			})
 			await deleteIdsInBatches(
 				prunableBaseStructureIds,
@@ -3710,6 +3724,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const baseValues = synthesizedRows.map((row) => row.baseStructure)
 		const values = synthesizedRows.map((row) => row.storageRow)
+		const reagentValues = synthesizedRows.map((row) => row.reagentStorageRow)
 
 		const currentStructureIds = new Set(baseValues.map((row) => row.structureId))
 		const departedBaseStructureIds = filterPrunableStructureIds(existingBaseStructures, currentStructureIds, now)
@@ -3782,7 +3797,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						state: sql`excluded.state`,
 						isActive: sql`excluded.is_active`,
 						effectiveWorkforce: sql`excluded.effective_workforce`,
-						reagents: sql`excluded.reagents`,
 						reinforcementTimerEnd: sql`excluded.reinforcement_timer_end`,
 						theftVulnerabilityStart: sql`excluded.theft_vulnerability_start`,
 						theftVulnerabilityEnd: sql`excluded.theft_vulnerability_end`,
@@ -3795,6 +3809,25 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					},
 				})
 		}
+		for (let i = 0; i < reagentValues.length; i += STATE_BATCH_SIZE) {
+			const batch = reagentValues.slice(i, i + STATE_BATCH_SIZE)
+			await this.getDb()
+				.insert(structureSkyhookReagents)
+				.values(batch)
+				.onConflictDoUpdate({
+					target: structureSkyhookReagents.structureId,
+					set: {
+						corporationId: sql`excluded.corporation_id`,
+						magmaticGasSecuredStock: sql`excluded.magmatic_gas_secured_stock`,
+						magmaticGasUnsecuredStock: sql`excluded.magmatic_gas_unsecured_stock`,
+						magmaticGasLastCycle: sql`excluded.magmatic_gas_last_cycle`,
+						superionicIceSecuredStock: sql`excluded.superionic_ice_secured_stock`,
+						superionicIceUnsecuredStock: sql`excluded.superionic_ice_unsecured_stock`,
+						superionicIceLastCycle: sql`excluded.superionic_ice_last_cycle`,
+						updatedAt: sql`excluded.updated_at`,
+					},
+				})
+		}
 
 		await deleteIdsInBatches(departedStateIds, STRUCTURE_CLEANUP_BATCH_SIZE, async (batch) => {
 			await this.getDb()
@@ -3803,6 +3836,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					and(
 						eq(structureSkyhooks.corporationId, corporationId),
 						inArray(structureSkyhooks.structureId, batch)
+					)
+				)
+			await this.getDb()
+				.delete(structureSkyhookReagents)
+				.where(
+					and(
+						eq(structureSkyhookReagents.corporationId, corporationId),
+						inArray(structureSkyhookReagents.structureId, batch)
 					)
 				)
 		})
@@ -4559,7 +4600,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const basePath = `/corporations/${corporationId}/assets`
 		try {
 			logger.info(
 				'[EveCorporationData] fetchAndStoreStructureInventoryByCharacter: Refreshing raw assets and rebuilding structure inventory',

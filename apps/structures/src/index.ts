@@ -12,7 +12,7 @@ import {
 	deleteStructureGroupAlertConfig,
 	deleteStructureGroupSetting,
 	getStructureModuleConfig,
-	getVisibleStructureDetail,
+	getStructureDetail,
 	listCitadelStructures,
 	listMoonDrillStructures,
 	listNavigationStructures,
@@ -125,11 +125,11 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		return listMiningCitadelStructures(this.getDb(), actor, query)
 	}
 
-	async getVisibleStructureDetail(
+	async getStructureDetail(
 		actor: StructureActor,
 		structureId: string
 	): Promise<StructureDetailResult | null> {
-		return getVisibleStructureDetail(this.env, this.getDb(), actor, structureId)
+		return getStructureDetail(this.env, this.getDb(), actor, structureId)
 	}
 
 	async updateStructureConfig(

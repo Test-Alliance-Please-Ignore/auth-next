@@ -14,10 +14,7 @@ import {
 import { managedCorporations, users } from '@repo/core-db-schema'
 import { corporationStructures } from '@repo/eve-corporation-data-db-schema'
 import type {
-	StructureSovereigntyReagent,
 	StructureSovereigntyTransportState,
-	SkyhookReagentEntry,
-	SkyhookReagentSnapshot,
 	SovereigntyReagentBaySnapshot,
 } from '@repo/structures'
 
@@ -224,10 +221,6 @@ export const structureSkyhooks = pgTable(
 		state: text('state').notNull(),
 		isActive: boolean('is_active').notNull().default(false),
 		effectiveWorkforce: integer('effective_workforce'),
-		reagents: jsonb('reagents')
-			.$type<SkyhookReagentSnapshot | SkyhookReagentEntry[]>()
-			.notNull()
-			.default([]),
 		reinforcementTimerEnd: timestamp('reinforcement_timer_end', { withTimezone: true }),
 		theftVulnerabilityStart: timestamp('theft_vulnerability_start', { withTimezone: true }),
 		theftVulnerabilityEnd: timestamp('theft_vulnerability_end', { withTimezone: true }),
@@ -245,6 +238,26 @@ export const structureSkyhooks = pgTable(
 		index('structure_skyhooks_type_id_idx').on(table.typeId),
 		index('structure_skyhooks_last_synced_at_idx').on(table.lastSyncedAt),
 	]
+)
+
+export const structureSkyhookReagents = pgTable(
+	'structure_skyhook_reagents',
+	{
+		structureId: text('structure_id')
+			.primaryKey()
+			.references(() => corporationStructures.structureId, { onDelete: 'cascade' }),
+		corporationId: text('corporation_id')
+			.notNull()
+			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
+		magmaticGasSecuredStock: integer('magmatic_gas_secured_stock').notNull().default(0),
+		magmaticGasUnsecuredStock: integer('magmatic_gas_unsecured_stock').notNull().default(0),
+		magmaticGasLastCycle: timestamp('magmatic_gas_last_cycle', { withTimezone: true }),
+		superionicIceSecuredStock: integer('superionic_ice_secured_stock').notNull().default(0),
+		superionicIceUnsecuredStock: integer('superionic_ice_unsecured_stock').notNull().default(0),
+		superionicIceLastCycle: timestamp('superionic_ice_last_cycle', { withTimezone: true }),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [index('structure_skyhook_reagents_corporation_id_idx').on(table.corporationId)]
 )
 
 export const structureMoonDrills = pgTable(
@@ -347,6 +360,7 @@ export const schema = {
 	structureSovereigntySystems,
 	structureSovereigntyHubs,
 	structureSkyhooks,
+	structureSkyhookReagents,
 	structureMoonDrills,
 	structureMoonGeographies,
 	structureMiningExtractions,

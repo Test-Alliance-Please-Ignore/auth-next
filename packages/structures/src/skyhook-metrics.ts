@@ -21,14 +21,14 @@ export interface SkyhookReagentSummary {
 	securedFillPercent: number
 	unsecuredFillPercent: number
 }
-
-export interface SkyhookReagentSnapshot {
-	lastUpdated: string
-	summary?: SkyhookReagentSummary
-	reagents: SkyhookReagentEntry[]
+export interface SkyhookReagentStorageState {
+	magmaticGasSecuredStock?: number | null
+	magmaticGasUnsecuredStock?: number | null
+	magmaticGasLastCycle?: string | Date | null
+	superionicIceSecuredStock?: number | null
+	superionicIceUnsecuredStock?: number | null
+	superionicIceLastCycle?: string | Date | null
 }
-
-export type SkyhookReagentSnapshotValue = SkyhookReagentEntry[] | SkyhookReagentSnapshot
 
 export function getSkyhookReagentUnitVolumeM3(typeId: string): number {
 	switch (typeId) {
@@ -93,20 +93,49 @@ export function summarizeSkyhookReagents(reagents: readonly SkyhookReagentEntry[
 	}
 }
 
-export function isSkyhookReagentSnapshot(
-	value: SkyhookReagentSnapshotValue
-): value is SkyhookReagentSnapshot {
-	return !Array.isArray(value)
+function hasMaterializedSkyhookReagentState(value: SkyhookReagentStorageState): boolean {
+	return (
+		value.magmaticGasSecuredStock !== null ||
+		value.magmaticGasUnsecuredStock !== null ||
+		value.magmaticGasLastCycle !== null ||
+		value.superionicIceSecuredStock !== null ||
+		value.superionicIceUnsecuredStock !== null ||
+		value.superionicIceLastCycle !== null
+	)
 }
 
-export function getSkyhookReagentEntries(value: SkyhookReagentSnapshotValue): SkyhookReagentEntry[] {
-	return Array.isArray(value) ? value : value.reagents
-}
-
-export function getSkyhookReagentSummary(value: SkyhookReagentSnapshotValue): SkyhookReagentSummary | null {
-	if (Array.isArray(value)) {
-		return summarizeSkyhookReagents(value)
+function toSkyhookReagentLastCycle(value: string | Date | null | undefined): string {
+	if (value instanceof Date) {
+		return value.toISOString()
 	}
+	return value ?? ''
+}
 
-	return value.summary ?? summarizeSkyhookReagents(value.reagents)
+export function getSkyhookReagentEntriesFromStorageState(
+	value: SkyhookReagentStorageState
+): SkyhookReagentEntry[] {
+	if (hasMaterializedSkyhookReagentState(value)) {
+		return [
+			{
+				typeId: SKYHOOK_MAGMATIC_GAS_TYPE_ID,
+				securedStock: value.magmaticGasSecuredStock ?? 0,
+				unsecuredStock: value.magmaticGasUnsecuredStock ?? 0,
+				lastCycle: toSkyhookReagentLastCycle(value.magmaticGasLastCycle),
+			},
+			{
+				typeId: SKYHOOK_SUPERIONIC_ICE_TYPE_ID,
+				securedStock: value.superionicIceSecuredStock ?? 0,
+				unsecuredStock: value.superionicIceUnsecuredStock ?? 0,
+				lastCycle: toSkyhookReagentLastCycle(value.superionicIceLastCycle),
+			},
+		]
+	}
+	return []
+}
+
+export function getSkyhookReagentSummaryFromStorageState(
+	value: SkyhookReagentStorageState
+): SkyhookReagentSummary | null {
+	const entries = getSkyhookReagentEntriesFromStorageState(value)
+	return entries.length > 0 ? summarizeSkyhookReagents(entries) : null
 }

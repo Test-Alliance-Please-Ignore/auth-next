@@ -11,7 +11,7 @@ import type { SessionUser } from '../../context'
 const structuresMocks = vi.hoisted(() => ({
 	listCitadelStructures: vi.fn(),
 	listSkyhookStructures: vi.fn(),
-	getVisibleStructureDetail: vi.fn(),
+	getStructureDetail: vi.fn(),
 }))
 const corpDataMocks = vi.hoisted(() => ({
 	rebuildStructureInventorySnapshot: vi.fn(),
@@ -64,7 +64,7 @@ describe('structures routes', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		vi.mocked(getCachedUserPermissions).mockResolvedValue([])
-		structuresMocks.getVisibleStructureDetail.mockResolvedValue({
+		structuresMocks.getStructureDetail.mockResolvedValue({
 			corporationId: 'corp-1',
 			corporationName: 'Test Corp',
 			structureId: 'structure-1',
@@ -341,7 +341,7 @@ describe('structures routes', () => {
 		const app = createApp(makeUser({ is_admin: true }))
 		const env = {
 			STRUCTURES: {
-				getVisibleStructureDetail: structuresMocks.getVisibleStructureDetail,
+				getStructureDetail: structuresMocks.getStructureDetail,
 			},
 			EXPORT_WORKFLOW: exportWorkflow,
 			STRUCTURE_ASSETS_DEBUG_EXPORTS: debugBucket,
@@ -415,7 +415,7 @@ describe('structures routes', () => {
 		const app = createApp(makeUser({ is_admin: true }))
 		const env = {
 			STRUCTURES: {
-				getVisibleStructureDetail: structuresMocks.getVisibleStructureDetail,
+				getStructureDetail: structuresMocks.getStructureDetail,
 			},
 			EVE_CORPORATION_DATA: corpDataNamespace,
 		} as any
@@ -427,7 +427,7 @@ describe('structures routes', () => {
 		)
 
 		expect(response.status).toBe(200)
-		expect(structuresMocks.getVisibleStructureDetail).toHaveBeenCalled()
+		expect(structuresMocks.getStructureDetail).toHaveBeenCalled()
 		expect(corpDataMocks.rebuildStructureInventorySnapshot).toHaveBeenCalledWith(
 			'corp-1',
 			'structure-1'
