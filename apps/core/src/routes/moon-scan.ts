@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import { getStub } from '@repo/do-utils'
-import { TimeCache } from '@repo/hono-helpers'
+import { logger, TimeCache } from '@repo/hono-helpers'
 import {
 	FUEL_BLOCK_TYPE_ID,
 	MAGMATIC_GAS_TYPE_ID,
@@ -35,7 +35,6 @@ import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
 import type { Markets } from '@repo/markets'
 import type { Universe } from '@repo/universe'
 import type { App } from '../context'
-import { logger } from '@repo/hono-helpers'
 import { createWorkflow } from '@repo/workflow-utils'
 
 // ─── Permission URNs ─────────────────────────────────────────────────────────
@@ -71,9 +70,12 @@ const MAX_SCAN_RAW_BYTES = 1_000_000
 // ─── Caches ──────────────────────────────────────────────────────────────────
 
 const permissionCache = new TimeCache<boolean>(15_000)
-const verifiedMoonSummaryBackfillCache = new TimeCache<boolean>(5 * 60_000)
 const MOON_PRICING_INPUTS_CACHE_TTL_MS = 60_000
 const VERIFIED_MOONS_RESPONSE_CACHE_TTL_MS = 30_000
+const MOON_REGIONS_RESPONSE_CACHE_TTL_MS = 5 * 60_000
+const MOON_REGION_RESPONSE_CACHE_TTL_MS = 60_000
+const MOON_SYSTEM_RESPONSE_CACHE_TTL_MS = 60_000
+const MOON_LEADERBOARD_CACHE_TTL_MS = 60_000
 const VERIFIED_MOON_SUMMARY_BACKFILL_BATCH_SIZE = 250
 const VERIFIED_MOONS_EXPORT_PAGE_SIZE = 100
 const VERIFIED_MOONS_EXPORT_BUCKET_PREFIX = 'moon-scan/verified-moons-exports'
@@ -385,11 +387,58 @@ type VerifiedMoonsListResponse = {
 	updatedAt: string
 }
 
+type MoonRegionsResponse = {
+	regions: Array<{
+		regionId: string
+		regionName: string
+		systemCount: number
+		moonCount: number
+		scannedCount: number
+		verifiedCount: number
+	}>
+	connections: Awaited<ReturnType<Universe['getRegionConnections']>>
+}
+
+type MoonRegionResponse = {
+	regionId: string
+	systems: Array<{
+		solarSystemId: string
+		solarSystemName: string
+		securityStatus: string | null
+		moonCount: number
+		scannedCount: number
+		verifiedCount: number
+	}>
+	jumpLinks: Array<{ from: string; to: string }>
+	borderRegions: Awaited<ReturnType<Universe['getRegionsBySystemIds']>>
+}
+
+type MoonSystemResponse = {
+	system: {
+		solarSystemId: string
+		solarSystemName: string
+		securityStatus: string | null
+	}
+	moons: Array<{
+		moonId: string
+		moonName: string
+		hasScans: boolean
+		isVerified: boolean
+		composition: VerifiedComposition | null
+	}>
+}
+
+type MoonLeaderboardResponse = Awaited<ReturnType<MoonScanDO['getLeaderboard']>>
+
 const moonPricingInputsCache = new TimeCache<MoonPricingInputs>(MOON_PRICING_INPUTS_CACHE_TTL_MS, 100)
 const verifiedMoonsResponseCache = new TimeCache<VerifiedMoonsListResponse>(
 	VERIFIED_MOONS_RESPONSE_CACHE_TTL_MS,
 	200
 )
+const moonRegionsResponseCache = new TimeCache<MoonRegionsResponse>(MOON_REGIONS_RESPONSE_CACHE_TTL_MS, 10)
+const moonRegionResponseCache = new TimeCache<MoonRegionResponse>(MOON_REGION_RESPONSE_CACHE_TTL_MS, 100)
+const moonSystemResponseCache = new TimeCache<MoonSystemResponse>(MOON_SYSTEM_RESPONSE_CACHE_TTL_MS, 500)
+const moonLeaderboardCache = new TimeCache<MoonLeaderboardResponse>(MOON_LEADERBOARD_CACHE_TTL_MS, 10)
 
 type MoonExportEntry = {
 	moon: {
@@ -511,8 +560,11 @@ function getMoonProfitabilityInputsFromComposition(
 }
 
 function clearMoonScanReadCaches(): void {
-	verifiedMoonSummaryBackfillCache.clear()
 	verifiedMoonsResponseCache.clear()
+	moonRegionsResponseCache.clear()
+	moonRegionResponseCache.clear()
+	moonSystemResponseCache.clear()
+	moonLeaderboardCache.clear()
 }
 
 function clearMoonScanPricingCaches(): void {
@@ -818,6 +870,9 @@ moonScanRoutes.get('/moons/regions', async (c) => {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
+	const cachedResponse = moonRegionsResponseCache.get('k-space')
+	if (cachedResponse) return c.json(cachedResponse)
+
 	const universe = getUniverseStub(c.env)
 	const moonScan = getMoonScanStub(c.env)
 	const K_SPACE_REGIONS = getKSpaceRegionIds()
@@ -858,7 +913,9 @@ moonScanRoutes.get('/moons/regions', async (c) => {
 			verifiedCount: verifiedByRegion.get(r.regionId) ?? 0,
 		}))
 
-	return c.json({ regions, connections })
+	const response: MoonRegionsResponse = { regions, connections }
+	moonRegionsResponseCache.set('k-space', response)
+	return c.json(response)
 })
 
 // ─── Region detail (for SVG map) ─────────────────────────────────────────────
@@ -872,15 +929,14 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 	const regionId = c.req.param('regionId')
 	if (!isKSpaceRegion(regionId)) return c.json({ error: 'Region not in k-space' }, 400)
 
+	const cachedResponse = moonRegionResponseCache.get(regionId)
+	if (cachedResponse) return c.json(cachedResponse)
+
 	const universe = getUniverseStub(c.env)
 	const moonScan = getMoonScanStub(c.env)
 
 	// Get all systems and stargates for the region
 	const systems = await universe.getSystemsByRegionId(regionId)
-
-	const eligibleSystemIds = systems
-		.filter((s) => isMoonMiningEligibleSecurity(s.securityStatus))
-		.map((s) => s.solarSystemId)
 
 	const [stargates, moonsBySystem] = await Promise.all([
 		universe.getStargatesBySystemIds(systems.map((s) => s.solarSystemId)),
@@ -925,7 +981,7 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 		systemMoonCoverage.set(systemId, { total, verified })
 	}
 
-	return c.json({
+	const response: MoonRegionResponse = {
 		regionId,
 		systems: systems.map((s) => ({
 				solarSystemId: s.solarSystemId,
@@ -937,7 +993,9 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 			})),
 		jumpLinks,
 		borderRegions,
-	})
+	}
+	moonRegionResponseCache.set(regionId, response)
+	return c.json(response)
 })
 
 // ─── System detail ───────────────────────────────────────────────────────────
@@ -949,6 +1007,9 @@ moonScanRoutes.get('/moons/system/:systemId', async (c) => {
 	}
 
 	const systemId = c.req.param('systemId')
+	const cachedResponse = moonSystemResponseCache.get(systemId)
+	if (cachedResponse) return c.json(cachedResponse)
+
 	const universe = getUniverseStub(c.env)
 	const moonScan = getMoonScanStub(c.env)
 
@@ -973,7 +1034,7 @@ moonScanRoutes.get('/moons/system/:systemId', async (c) => {
 			.map((v) => [v.moonId, v])
 	)
 
-	return c.json({
+	const response: MoonSystemResponse = {
 		system: {
 			solarSystemId: system.solarSystemId,
 			solarSystemName: system.solarSystemName,
@@ -986,7 +1047,9 @@ moonScanRoutes.get('/moons/system/:systemId', async (c) => {
 			isVerified: compositionMap.get(m.moonId)?.isVerified ?? false,
 			composition: verifiedCompMap.get(m.moonId) ?? null,
 		})),
-	})
+	}
+	moonSystemResponseCache.set(systemId, response)
+	return c.json(response)
 })
 
 // ─── Verified moons list ─────────────────────────────────────────────────────
@@ -1021,11 +1084,6 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 	if (!usesProfitSort) {
 		let summary: Awaited<ReturnType<MoonScanDO['getVerifiedMoonPage']>> | null = null
 		try {
-			await verifiedMoonSummaryBackfillCache.getOrSet('default', async () => {
-				await backfillMissingVerifiedMoonSummaries(moonScan, universe)
-				return true
-			})
-
 			summary = await moonScan.getVerifiedMoonPage({
 				...query.data,
 				sortBy: query.data.sortBy as VerifiedMoonsSortBy,
@@ -1615,8 +1673,8 @@ moonScanRoutes.post('/scans/submit', async (c) => {
 		primaryChar?.characterId ?? null,
 		canValidate
 	)
+	clearMoonScanReadCaches()
 	if (canValidate) {
-		clearMoonScanReadCaches()
 		queueVerifiedMoonSummaryUpsert(c, moonScan, universe, submittedScans)
 	}
 
@@ -1827,8 +1885,13 @@ moonScanRoutes.get('/leaderboard', async (c) => {
 		return c.json({ error: 'Invalid window (all|7d|30d)' }, 400)
 	}
 
+	const cacheKey = `leaderboard:${window}`
+	const cachedResponse = moonLeaderboardCache.get(cacheKey)
+	if (cachedResponse) return c.json(cachedResponse)
+
 	const moonScan = getMoonScanStub(c.env)
 	const entries = await moonScan.getLeaderboard(window)
+	moonLeaderboardCache.set(cacheKey, entries)
 	return c.json(entries)
 })
 
@@ -1882,6 +1945,33 @@ moonScanRoutes.post('/admin/settings/profiles/:id', async (c) => {
 	const updated = await moonScan.updateStructureProfile(id as 'tatara' | 'metenox', body.data)
 	clearMoonScanPricingCaches()
 	return c.json(updated)
+})
+
+moonScanRoutes.post('/admin/verified-moon-summaries/backfill', async (c) => {
+	const user = c.get('user')!
+	if (!await hasMoonPerm(c.env, user.id, MOON_URNS.admin, user.is_admin)) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	clearMoonScanReadCaches()
+	const moonScan = getMoonScanStub(c.env)
+	const universe = getUniverseStub(c.env)
+	const task = backfillMissingVerifiedMoonSummaries(moonScan, universe)
+		.then(() => {
+			clearMoonScanReadCaches()
+		})
+		.catch((error) => {
+			logger.error('[moon-scan] failed to backfill verified moon summaries', { error })
+		})
+
+	const executionCtx = getExecutionContextOrNull(c)
+	if (executionCtx) {
+		executionCtx.waitUntil(task)
+		return c.json({ status: 'queued' }, 202)
+	}
+
+	await task
+	return c.json({ status: 'completed' })
 })
 
 export { moonScanRoutes }
