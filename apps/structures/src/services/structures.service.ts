@@ -1,5 +1,5 @@
 import { managedCorporations } from '@repo/core-db-schema'
-import { and, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, notInArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import {
 	corporationStructureInventory,
@@ -21,6 +21,7 @@ import {
 	NAVIGATION_STRUCTURE_TYPE_IDS,
 	SKYHOOK_STRUCTURE_TYPE_IDS,
 	SOVEREIGNTY_STRUCTURE_TYPE_IDS,
+	STRUCTURE_REINFORCED_STATES,
 	getStructureTabForTypeId,
 	isReinforcedStructureState,
 	STRUCTURE_SYNC_ERROR_STALE_MS,
@@ -43,10 +44,7 @@ import {
 	structureModuleConfig,
 	structureStateEvents,
 } from '../db/schema'
-import {
-	aggregateFuelBurnRatePerHour,
-	buildStructureFuelUsageHistory,
-} from './structure-fuel-history'
+import { buildStructureFuelUsageHistory } from './structure-fuel-history'
 import {
 	buildSkyhookStructureSummary,
 } from './skyhook-summary'
@@ -264,6 +262,7 @@ export interface StructureListItem {
 	syncStatus: 'ok' | 'warning' | 'error'
 	syncFailureReason: string | null
 	lastSyncedAt: string | null
+	estimatedFuelBurnRatePerHour?: string | null
 	updatedAt: string
 	canViewDetails: boolean
 }
@@ -425,13 +424,13 @@ export interface StructureDetailResult extends Omit<StructureListItem, 'canViewD
 	nextReinforceHour: number | null
 	reinforceHour: number | null
 	lastRefilledAt: string | null
+	fuelBurnRate: string | null
 	fuelUsage: {
 		points: Array<{
 			observedAt: string
 			fuelBlockUnits: number | null
 			fuelBurnRatePerHour: number | null
 		}>
-		fuelBurnRatePerHour: number | null
 		lastRefilledAt: string | null
 		sampleCount: number
 	} | null
@@ -1189,6 +1188,7 @@ function buildStructureListItem(context: VisibleStructureContext): StructureList
 		nextStateAt: toIso(nextStateAt),
 		fuelExpires: toIso(structure.fuelExpires),
 		fuelAmount: structure.fuelAmount,
+		estimatedFuelBurnRatePerHour: structure.fuelBurnRate ?? null,
 		lowPower: structure.lowPower,
 		hidden: config?.hidden ?? false,
 		lowPowerAllowed: config?.lowPowerAllowed ?? false,
@@ -1265,6 +1265,7 @@ function buildSyntheticSovereigntyStructureRow(
 		regionName: geography?.regionName ?? null,
 		fuelExpires: null,
 		fuelAmount: null,
+		fuelBurnRate: null,
 		lastRefilledAt: null,
 		nextReinforceApply: null,
 		nextReinforceHour: null,
@@ -1483,10 +1484,12 @@ export async function upsertStructureGroupSetting(
 			})
 			.where(eq(structureGroupSettings.groupId, input.groupId))
 			.returning()
+		invalidateVisibleStructureContextCache()
 		return updated
 	}
 
 	const [created] = await db.insert(structureGroupSettings).values(values).returning()
+	invalidateVisibleStructureContextCache()
 	return created
 }
 
@@ -1498,6 +1501,7 @@ export async function deleteStructureGroupSetting(
 		.delete(structureGroupSettings)
 		.where(eq(structureGroupSettings.groupId, input.groupId))
 		.returning()
+	invalidateVisibleStructureContextCache()
 	return deleted ?? null
 }
 
@@ -1608,6 +1612,7 @@ export async function updateStructureModuleConfig(
 			},
 		})
 		.returning()
+	invalidateVisibleStructureContextCache()
 	return updated
 }
 
@@ -1634,6 +1639,7 @@ export async function upsertStructureCorporationGroupDefault(
 			})
 			.where(eq(structureCorporationGroupDefaults.corporationId, input.corporationId))
 			.returning()
+		invalidateVisibleStructureContextCache()
 		return updated
 	}
 
@@ -1647,6 +1653,7 @@ export async function upsertStructureCorporationGroupDefault(
 			updatedAt: now,
 		})
 		.returning()
+	invalidateVisibleStructureContextCache()
 	return created
 }
 
@@ -1688,6 +1695,7 @@ export async function upsertStructureGroupAlertConfig(
 			})
 			.where(eq(structureGroupAlertConfigs.id, existing.id))
 			.returning()
+		invalidateVisibleStructureContextCache()
 		return updated
 	}
 
@@ -1703,6 +1711,7 @@ export async function upsertStructureGroupAlertConfig(
 			updatedAt: now,
 		})
 		.returning()
+	invalidateVisibleStructureContextCache()
 	return created
 }
 
@@ -1716,6 +1725,7 @@ export async function deleteStructureGroupAlertConfig(
 		.where(
 			and(eq(structureGroupAlertConfigs.groupId, groupId), eq(structureGroupAlertConfigs.id, id))
 		)
+	invalidateVisibleStructureContextCache()
 }
 
 type DirectCorporationStructureRecord = typeof corporationStructures.$inferSelect
@@ -1733,6 +1743,7 @@ type StructureSourceRecord = Pick<
 	| 'regionName'
 	| 'fuelExpires'
 	| 'fuelAmount'
+	| 'fuelBurnRate'
 	| 'lastRefilledAt'
 	| 'nextReinforceApply'
 	| 'nextReinforceHour'
@@ -1762,6 +1773,7 @@ const CORPORATION_STRUCTURE_SELECT_COLUMNS = {
 	regionName: true,
 	fuelExpires: true,
 	fuelAmount: true,
+	fuelBurnRate: true,
 	lastRefilledAt: true,
 	nextReinforceApply: true,
 	nextReinforceHour: true,
@@ -1819,6 +1831,7 @@ function buildStructureDetailResult(context: VisibleStructureContext): Structure
 		includeInStructureAssetSync: context.includeInStructureAssetSync,
 		canViewSensitive: context.canViewSensitive,
 		canEdit: context.canEdit,
+		fuelBurnRate: context.structure.fuelBurnRate ?? null,
 		services: context.structure.services ?? [],
 		stateTimerStart: toIso(context.structure.stateTimerStart),
 		stateTimerEnd: toIso(context.structure.stateTimerEnd),
@@ -1827,20 +1840,19 @@ function buildStructureDetailResult(context: VisibleStructureContext): Structure
 		nextReinforceHour: context.structure.nextReinforceHour,
 		reinforceHour: context.structure.reinforceHour,
 		lastRefilledAt: toIso(context.lastRefilledAt),
-			fuelUsage: context.fuelUsage
-				? {
-						points: context.fuelUsage.points.map((point) => ({
-							observedAt: point.observedAt.toISOString(),
+		fuelUsage: context.fuelUsage
+			? {
+					points: context.fuelUsage.points.map((point) => ({
+						observedAt: point.observedAt.toISOString(),
 						fuelBlockUnits: point.fuelBlockUnits,
 						fuelBurnRatePerHour: point.fuelBurnRatePerHour,
 					})),
-					fuelBurnRatePerHour: context.fuelUsage.fuelBurnRatePerHour,
 					lastRefilledAt: context.fuelUsage.lastRefilledAt
 						? context.fuelUsage.lastRefilledAt.toISOString()
 						: null,
 					sampleCount: context.fuelUsage.sampleCount,
-						}
-				: null,
+				}
+			: null,
 		...(context.tabData ?? {}),
 		moonDrill: context.tabData?.moonDrill ?? null,
 		miningExtraction: context.tabData?.miningExtraction ?? null,
@@ -2519,7 +2531,7 @@ function buildStructureSummaryCounts(
 		Pick<
 			StructureFilterableItemBase,
 			'state' | 'lowPower' | 'lowPowerAllowed' | 'fuelAmount' | 'fuelExpires'
-		>
+		> & { estimatedFuelBurnRatePerHour?: string | null }
 	>,
 	moduleConfig: Pick<
 		StructureModuleConfigResult,
@@ -2530,23 +2542,39 @@ function buildStructureSummaryCounts(
 	>,
 	totalCountOverride?: number
 ): StructureListSummary {
+	let totalEstimatedFuelBurnRatePerHour = 0
+	let fuelBurnRateSampleCount = 0
+	for (const structure of items) {
+		if (structure.estimatedFuelBurnRatePerHour === null || structure.estimatedFuelBurnRatePerHour === undefined) {
+			continue
+		}
+
+		const burnRate = Number.parseFloat(structure.estimatedFuelBurnRatePerHour)
+		if (!Number.isFinite(burnRate)) {
+			continue
+		}
+
+		totalEstimatedFuelBurnRatePerHour += burnRate
+		fuelBurnRateSampleCount += 1
+	}
+
 	return {
 		total: totalCountOverride ?? items.length,
 		lowFuel: items.filter((structure) => isFuelBelowThreshold(structure, moduleConfig)).length,
 		lowPower: items.filter((structure) => structure.lowPower && !structure.lowPowerAllowed).length,
 		reinforced: items.filter((structure) => isReinforcedStructureState(structure.state)).length,
-		estimatedFuelBurnRatePerHour: null,
-		fuelBurnRateSampleCount: 0,
+		estimatedFuelBurnRatePerHour:
+			fuelBurnRateSampleCount > 0 ? totalEstimatedFuelBurnRatePerHour.toFixed(4) : null,
+		fuelBurnRateSampleCount,
 	}
 }
 
 async function buildStructureSummary(
-	db: DbClient<DbSchema>,
 	items: Array<
 		Pick<
 			StructureFilterableItemBase,
 			'structureId' | 'state' | 'lowPower' | 'lowPowerAllowed' | 'fuelAmount' | 'fuelExpires'
-		>
+		> & { estimatedFuelBurnRatePerHour?: string | null }
 	>,
 	moduleConfig: Pick<
 		StructureModuleConfigResult,
@@ -2557,49 +2585,7 @@ async function buildStructureSummary(
 	>,
 	totalCountOverride?: number
 ): Promise<StructureListSummary> {
-	const summary = buildStructureSummaryCounts(items, moduleConfig, totalCountOverride)
-
-	const fuelHistorySamplesByStructure = await loadFuelHistorySamplesByStructure(
-		db,
-		items.map((item) => item.structureId)
-	)
-	const burnRate = aggregateFuelBurnRatePerHour(fuelHistorySamplesByStructure)
-
-	return {
-		...summary,
-		...burnRate,
-	}
-}
-
-async function loadFuelHistorySamplesByStructure(
-	db: DbClient<DbSchema>,
-	structureIds: string[]
-): Promise<Map<string, StructureFuelHistorySample[]>> {
-	const samplesByStructure = new Map<string, StructureFuelHistorySample[]>()
-	if (structureIds.length === 0) {
-		return samplesByStructure
-	}
-
-	const rows = await db.query.structureFuelLog.findMany({
-		where: inArray(structureFuelLog.structureId, structureIds),
-	})
-
-	for (const row of rows) {
-		const sample: StructureFuelHistorySample = {
-			structureId: row.structureId,
-			fuelBlockUnits: row.fuelBlockUnits,
-			observedAt: row.observedAt,
-			updatedAt: row.updatedAt,
-		}
-		const existing = samplesByStructure.get(row.structureId)
-		if (existing) {
-			existing.push(sample)
-		} else {
-			samplesByStructure.set(row.structureId, [sample])
-		}
-	}
-
-	return samplesByStructure
+	return buildStructureSummaryCounts(items, moduleConfig, totalCountOverride)
 }
 
 async function loadFuelUsageForStructure(
@@ -2658,22 +2644,117 @@ interface StructureBaseFilterQuery {
 	typeId?: string
 }
 
-async function loadVisibleStructureContexts(
-	db: DbClient<DbSchema>,
-	user: SessionUser,
-	query: StructureBaseFilterQuery,
-	tabFilter?: StructureTab
-): Promise<{
+type VisibleStructureContextsResult = {
 	moduleConfig: StructureModuleConfigResult
 	access: StructureAccessScope
 	contexts: VisibleStructureContext[]
 	totalCount: number
-}> {
+}
+
+type VisibleOperationalStructureRow = {
+	structureId: string
+	corporationId: string
+	corporationName: string | null
+	name: string | null
+	typeId: string
+	typeName: string | null
+	systemId: string
+	systemName: string | null
+	regionId: string | null
+	regionName: string | null
+	state: string
+	stateTimerEnd: Date | null
+	nextReinforceApply: Date | null
+	unanchorsAt: Date | null
+	fuelExpires: Date | null
+	fuelAmount: number | null
+	fuelBurnRate: string | null
+	lowPower: boolean
+	hidden: boolean | null
+	lowPowerAllowed: boolean | null
+	assignedGroupId: string | null
+	syncStatus: string
+	syncFailureReason: string | null
+	lastSyncedAt: Date | null
+	updatedAt: Date
+}
+
+type VisibleStructureContextCacheEntry = {
+	value: Promise<VisibleStructureContextsResult>
+}
+
+// Dedupes concurrent loads only; settled entries are cleared immediately.
+const visibleStructureContextCache = new Map<string, VisibleStructureContextCacheEntry>()
+
+function buildVisibleStructureContextCacheKey(
+	user: SessionUser,
+	query: StructureBaseFilterQuery,
+	tabFilter?: StructureTab
+): string {
+	return JSON.stringify({
+		userId: user.id,
+		isAdmin: user.is_admin,
+		roles: [...user.roles].sort(),
+		tabFilter: tabFilter ?? null,
+		corporationId: query.corporationId ?? null,
+		assignedGroupId: query.assignedGroupId ?? null,
+		lowPower: query.lowPower ?? null,
+		lowPowerAllowed: query.lowPowerAllowed ?? null,
+		regionId: query.regionId ?? null,
+		systemId: query.systemId ?? null,
+		state: query.state ?? null,
+		typeId: query.typeId ?? null,
+	})
+}
+
+function invalidateVisibleStructureContextCache(): void {
+	visibleStructureContextCache.clear()
+}
+
+function buildOperationalStructureListItem(
+	row: VisibleOperationalStructureRow,
+	canViewDetails: boolean
+): StructureListItem {
+	const nextStateAt = row.stateTimerEnd ?? row.nextReinforceApply ?? row.unanchorsAt
+
+	return {
+		structureId: row.structureId,
+		corporationId: row.corporationId,
+		corporationName: row.corporationName ?? row.corporationId,
+		name: row.name ?? row.structureId,
+		typeId: row.typeId,
+		typeName: row.typeName,
+		systemId: row.systemId,
+		systemName: row.systemName,
+		regionId: row.regionId,
+		regionName: row.regionName,
+		state: row.state,
+		nextStateAt: toIso(nextStateAt),
+		fuelExpires: toIso(row.fuelExpires),
+		fuelAmount: row.fuelAmount,
+		estimatedFuelBurnRatePerHour: row.fuelBurnRate ?? null,
+		lowPower: row.lowPower,
+		hidden: row.hidden ?? false,
+		lowPowerAllowed: row.lowPowerAllowed ?? false,
+		assignedGroupId: row.assignedGroupId,
+		syncStatus: getStructureSyncStatus(row.syncStatus as StructureListItem['syncStatus'], row.lastSyncedAt),
+		syncFailureReason: row.syncFailureReason,
+		lastSyncedAt: toIso(row.lastSyncedAt),
+		updatedAt: row.updatedAt.toISOString(),
+		canViewDetails,
+	}
+}
+
+async function loadVisibleStructureContextsUncached(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureBaseFilterQuery,
+	tabFilter?: StructureTab
+): Promise<VisibleStructureContextsResult> {
 	const moduleConfig = await getStructureModuleConfig(db)
 	const access = computeStructureAccess(user.roles, user.is_admin)
-	const accessibleCorporations = getAccessibleCorporationIds(access, tabFilter)
-
-	if (!accessibleCorporations.hasGlobalAccess && accessibleCorporations.corporationIds.size === 0) {
+	const corpWhere = buildVisibleStructureContextsWhere(access, query, tabFilter)
+	if (!corpWhere) {
 		return {
 			moduleConfig,
 			access,
@@ -2681,68 +2762,6 @@ async function loadVisibleStructureContexts(
 			totalCount: 0,
 		}
 	}
-
-	const corpWhere = (() => {
-		const conditions: StructureWhereCondition[] = []
-		if (query.corporationId) {
-			conditions.push(eq(corporationStructures.corporationId, query.corporationId))
-		}
-		if (!accessibleCorporations.hasGlobalAccess) {
-			if (accessibleCorporations.corporationIds.size === 0) {
-				return combineWhereConditions([eq(corporationStructures.corporationId, '__no_access__')])
-			}
-			conditions.push(
-				inArray(corporationStructures.corporationId, [...accessibleCorporations.corporationIds])
-			)
-		}
-		if (query.lowPower === 'true') {
-			conditions.push(eq(corporationStructures.lowPower, true))
-		} else if (query.lowPower === 'false') {
-			conditions.push(eq(corporationStructures.lowPower, false))
-		}
-		if (query.regionId) {
-			conditions.push(eq(corporationStructures.regionId, query.regionId))
-		}
-		if (query.systemId) {
-			conditions.push(eq(corporationStructures.systemId, query.systemId))
-		}
-		if (query.state) {
-			conditions.push(eq(corporationStructures.state, query.state))
-		}
-		if (query.typeId) {
-			conditions.push(eq(corporationStructures.typeId, query.typeId))
-		}
-		if (tabFilter) {
-			const tabWhere = buildStructureFamilyWhere(tabFilter)
-			if (tabWhere) {
-				conditions.push(tabWhere)
-			}
-		}
-		if (query.assignedGroupId === '__unassigned__') {
-			conditions.push(isNotNull(structureConfigs.structureId))
-			conditions.push(isNull(structureConfigs.assignedGroupId))
-		} else if (query.assignedGroupId) {
-			conditions.push(eq(structureConfigs.assignedGroupId, query.assignedGroupId))
-		}
-		if (query.lowPowerAllowed === 'true') {
-			conditions.push(eq(structureConfigs.lowPowerAllowed, true))
-		} else if (query.lowPowerAllowed === 'false') {
-			conditions.push(
-				or(eq(structureConfigs.lowPowerAllowed, false), isNull(structureConfigs.structureId)) ??
-					sql`false`
-			)
-		}
-		const hiddenVisibilityWhere = buildHiddenVisibilityWhere(access, tabFilter)
-		const hiddenVisibilityConditions: StructureWhereCondition[] = [
-			eq(structureConfigs.hidden, false),
-			isNull(structureConfigs.structureId),
-		]
-		if (hiddenVisibilityWhere !== undefined) {
-			hiddenVisibilityConditions.push(hiddenVisibilityWhere)
-		}
-		conditions.push(or(...hiddenVisibilityConditions) ?? sql`false`)
-		return combineWhereConditions(conditions)
-	})()
 
 	const corpRows = await db
 		.select({
@@ -2820,6 +2839,510 @@ async function loadVisibleStructureContexts(
 	}
 }
 
+function buildVisibleStructureContextsWhere(
+	access: StructureAccessScope,
+	query: StructureBaseFilterQuery,
+	tabFilter?: StructureTab
+): any {
+	const accessibleCorporations = getAccessibleCorporationIds(access, tabFilter)
+
+	if (!accessibleCorporations.hasGlobalAccess && accessibleCorporations.corporationIds.size === 0) {
+		return eq(corporationStructures.corporationId, '__no_access__')
+	}
+
+	const conditions: StructureWhereCondition[] = []
+	if (query.corporationId) {
+		conditions.push(eq(corporationStructures.corporationId, query.corporationId))
+	}
+	if (!accessibleCorporations.hasGlobalAccess) {
+		conditions.push(inArray(corporationStructures.corporationId, [...accessibleCorporations.corporationIds]))
+	}
+	if (query.lowPower === 'true') {
+		conditions.push(eq(corporationStructures.lowPower, true))
+	} else if (query.lowPower === 'false') {
+		conditions.push(eq(corporationStructures.lowPower, false))
+	}
+	if (query.regionId) {
+		conditions.push(eq(corporationStructures.regionId, query.regionId))
+	}
+	if (query.systemId) {
+		conditions.push(eq(corporationStructures.systemId, query.systemId))
+	}
+	if (query.state) {
+		conditions.push(eq(corporationStructures.state, query.state))
+	}
+	if (query.typeId) {
+		conditions.push(eq(corporationStructures.typeId, query.typeId))
+	}
+	if (tabFilter) {
+		const tabWhere = buildStructureFamilyWhere(tabFilter)
+		if (tabWhere) {
+			conditions.push(tabWhere)
+		}
+	}
+	if (query.assignedGroupId === '__unassigned__') {
+		conditions.push(isNotNull(structureConfigs.structureId))
+		conditions.push(isNull(structureConfigs.assignedGroupId))
+	} else if (query.assignedGroupId) {
+		conditions.push(eq(structureConfigs.assignedGroupId, query.assignedGroupId))
+	}
+	if (query.lowPowerAllowed === 'true') {
+		conditions.push(eq(structureConfigs.lowPowerAllowed, true))
+	} else if (query.lowPowerAllowed === 'false') {
+		conditions.push(or(eq(structureConfigs.lowPowerAllowed, false), isNull(structureConfigs.structureId)) ?? sql`false`)
+	}
+	const hiddenVisibilityWhere = buildHiddenVisibilityWhere(access, tabFilter)
+	const hiddenVisibilityConditions: StructureWhereCondition[] = [
+		eq(structureConfigs.hidden, false),
+		isNull(structureConfigs.structureId),
+	]
+	if (hiddenVisibilityWhere !== undefined) {
+		hiddenVisibilityConditions.push(hiddenVisibilityWhere)
+	}
+	conditions.push(or(...hiddenVisibilityConditions) ?? sql`false`)
+	return combineWhereConditions(conditions)
+}
+
+function buildCommonStructureFilterOptionsFromRows(
+	rows: Array<{
+		corporationId: string
+		corporationName: string | null
+		assignedGroupId: string | null
+		regionId: string | null
+		regionName: string | null
+		systemId: string
+		systemName: string | null
+		state: string
+		typeId: string
+		typeName: string | null
+	}>
+): StructureListFilterOptions {
+	const corporations = new Map<string, string>()
+	const assignedGroups = new Map<string, string>()
+	const regions = new Map<string, string>()
+	const systems = new Map<string, string>()
+	const states = new Set<string>()
+	const types = new Map<string, string>()
+
+	for (const row of rows) {
+		corporations.set(row.corporationId, row.corporationName ?? row.corporationId)
+		if (row.assignedGroupId) {
+			assignedGroups.set(row.assignedGroupId, row.assignedGroupId)
+		}
+		if (row.regionId) {
+			regions.set(row.regionId, row.regionName ?? row.regionId)
+		}
+		systems.set(row.systemId, row.systemName ?? row.systemId)
+		states.add(row.state)
+		types.set(row.typeId, row.typeName ?? row.typeId)
+	}
+
+	return {
+		corporations: [...corporations.entries()]
+			.sort((left, right) => left[1].localeCompare(right[1]))
+			.map(([value, label]) => ({ value, label })),
+		assignedGroups: [...assignedGroups.entries()]
+			.sort((left, right) => left[1].localeCompare(right[1]))
+			.map(([value, label]) => ({ value, label })),
+		regions: [...regions.entries()]
+			.sort((left, right) => left[1].localeCompare(right[1]))
+			.map(([value, label]) => ({ value, label })),
+		systems: [...systems.entries()]
+			.sort((left, right) => left[1].localeCompare(right[1]))
+			.map(([value, label]) => ({ value, label })),
+		states: [...states.values()]
+			.sort((left, right) => left.localeCompare(right))
+			.map((value) => ({ value, label: value })),
+		types: [...types.entries()]
+			.sort((left, right) => left[1].localeCompare(right[1]))
+			.map(([value, label]) => ({ value, label })),
+		alliances: [],
+		planets: [],
+		raidableStates: [],
+	}
+}
+
+function buildVisibleOperationalStructuresCte(db: DbClient<DbSchema>, corpWhere: any) {
+	return db.$with('visible_operational_structures').as(
+		db
+			.select({
+				structureId: corporationStructures.structureId,
+				corporationId: corporationStructures.corporationId,
+				corporationName: managedCorporations.name,
+				name: corporationStructures.name,
+				typeId: corporationStructures.typeId,
+				typeName: corporationStructures.typeName,
+				systemId: corporationStructures.systemId,
+				systemName: corporationStructures.systemName,
+				regionId: corporationStructures.regionId,
+				regionName: corporationStructures.regionName,
+				state: corporationStructures.state,
+				stateTimerEnd: corporationStructures.stateTimerEnd,
+				nextReinforceApply: corporationStructures.nextReinforceApply,
+				unanchorsAt: corporationStructures.unanchorsAt,
+				fuelExpires: corporationStructures.fuelExpires,
+				fuelAmount: corporationStructures.fuelAmount,
+				fuelBurnRate: corporationStructures.fuelBurnRate,
+				lowPower: corporationStructures.lowPower,
+				hidden: structureConfigs.hidden,
+				lowPowerAllowed: structureConfigs.lowPowerAllowed,
+				assignedGroupId: structureConfigs.assignedGroupId,
+				syncStatus: corporationStructures.syncStatus,
+				syncFailureReason: corporationStructures.syncFailureReason,
+				lastSyncedAt: corporationStructures.lastSyncedAt,
+				updatedAt: corporationStructures.updatedAt,
+			})
+			.from(corporationStructures)
+			.leftJoin(structureConfigs, eq(structureConfigs.structureId, corporationStructures.structureId))
+			.leftJoin(managedCorporations, eq(managedCorporations.corporationId, corporationStructures.corporationId))
+			.where(corpWhere ?? sql`true`)
+	)
+}
+
+async function buildOperationalStructureFilterOptions(
+	db: DbClient<DbSchema>,
+	visibleOperationalStructures: any
+): Promise<StructureListFilterOptions> {
+	const visibleRowsDb = db.with(visibleOperationalStructures)
+	const [corporations, assignedGroups, regions, systems, states, types] = await Promise.all([
+		visibleRowsDb
+			.selectDistinct({
+				corporationId: visibleOperationalStructures.corporationId,
+				corporationName: visibleOperationalStructures.corporationName,
+			})
+			.from(visibleOperationalStructures)
+			.orderBy(asc(visibleOperationalStructures.corporationName)),
+		visibleRowsDb
+			.selectDistinct({
+				assignedGroupId: visibleOperationalStructures.assignedGroupId,
+			})
+			.from(visibleOperationalStructures)
+			.where(isNotNull(visibleOperationalStructures.assignedGroupId))
+			.orderBy(asc(visibleOperationalStructures.assignedGroupId)),
+		visibleRowsDb
+			.selectDistinct({
+				regionId: visibleOperationalStructures.regionId,
+				regionName: visibleOperationalStructures.regionName,
+			})
+			.from(visibleOperationalStructures)
+			.orderBy(asc(visibleOperationalStructures.regionName)),
+		visibleRowsDb
+			.selectDistinct({
+				systemId: visibleOperationalStructures.systemId,
+				systemName: visibleOperationalStructures.systemName,
+			})
+			.from(visibleOperationalStructures)
+			.orderBy(asc(visibleOperationalStructures.systemName)),
+		visibleRowsDb
+			.selectDistinct({
+				state: visibleOperationalStructures.state,
+			})
+			.from(visibleOperationalStructures)
+			.orderBy(asc(visibleOperationalStructures.state)),
+		visibleRowsDb
+			.selectDistinct({
+				typeId: visibleOperationalStructures.typeId,
+				typeName: visibleOperationalStructures.typeName,
+			})
+			.from(visibleOperationalStructures)
+			.orderBy(asc(visibleOperationalStructures.typeName)),
+	])
+
+	return {
+		corporations: corporations
+			.map((row) => ({
+				value: row.corporationId,
+				label: row.corporationName ?? row.corporationId,
+			}))
+			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+		assignedGroups: assignedGroups
+			.map((row) => ({
+				value: row.assignedGroupId ?? '',
+				label: row.assignedGroupId ?? '',
+			}))
+			.filter((option) => option.value.length > 0),
+		regions: regions
+			.map((row) => ({
+				value: row.regionId ?? '',
+				label: row.regionName ?? row.regionId ?? '',
+			}))
+			.filter((option) => option.value.length > 0),
+		systems: systems
+			.map((row) => ({
+				value: row.systemId,
+				label: row.systemName ?? row.systemId,
+			}))
+			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+		states: states
+			.map((row) => ({
+				value: row.state,
+				label: row.state,
+			}))
+			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+		types: types
+			.map((row) => ({
+				value: row.typeId,
+				label: row.typeName ?? row.typeId,
+			}))
+			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+		alliances: [],
+		planets: [],
+		raidableStates: [],
+	}
+}
+
+function buildOperationalLowFuelWhere(
+	moduleConfig: Pick<
+		StructureModuleConfigResult,
+		| 'lowFuelTimeThresholdHours'
+		| 'criticalFuelTimeThresholdHours'
+		| 'lowFuelAmountThreshold'
+		| 'criticalFuelAmountThreshold'
+	>,
+	structureSource: { fuelAmount: any; fuelExpires: any } = corporationStructures
+) {
+	const lowFuelExpiresAt = new Date(Date.now() + moduleConfig.lowFuelTimeThresholdHours * HOURS_TO_MS)
+	return or(
+		and(isNotNull(structureSource.fuelAmount), lte(structureSource.fuelAmount, moduleConfig.lowFuelAmountThreshold)),
+		and(
+			isNull(structureSource.fuelAmount),
+			isNotNull(structureSource.fuelExpires),
+			lte(structureSource.fuelExpires, lowFuelExpiresAt)
+		)
+	)
+}
+
+async function buildOperationalStructureSummary(
+	db: DbClient<DbSchema>,
+	visibleOperationalStructures: any,
+	moduleConfig: StructureModuleConfigResult
+): Promise<StructureListSummary> {
+	const visibleRowsDb = db.with(visibleOperationalStructures)
+	const lowFuelWhere = buildOperationalLowFuelWhere(moduleConfig, visibleOperationalStructures)
+	const reinforcedStates = [...STRUCTURE_REINFORCED_STATES]
+	const [totalResult, lowFuelResult, lowPowerResult, reinforcedResult, fuelBurnRateResult] =
+		await Promise.all([
+		visibleRowsDb
+			.select({
+				total: sql<number>`count(*)::int`,
+			})
+			.from(visibleOperationalStructures),
+		visibleRowsDb
+			.select({
+				count: sql<number>`count(*)::int`,
+			})
+			.from(visibleOperationalStructures)
+			.where(lowFuelWhere),
+		visibleRowsDb
+			.select({
+				count: sql<number>`count(*)::int`,
+			})
+			.from(visibleOperationalStructures)
+			.where(
+				and(
+					eq(visibleOperationalStructures.lowPower, true),
+					or(
+						eq(visibleOperationalStructures.lowPowerAllowed, false),
+						isNull(visibleOperationalStructures.lowPowerAllowed)
+					)
+				)
+			),
+		visibleRowsDb
+			.select({
+				count: sql<number>`count(*)::int`,
+			})
+			.from(visibleOperationalStructures)
+			.where(inArray(visibleOperationalStructures.state, reinforcedStates)),
+		visibleRowsDb
+			.select({
+				estimatedFuelBurnRatePerHour: sql<string | null>`sum(${visibleOperationalStructures.fuelBurnRate})::text`,
+				fuelBurnRateSampleCount: sql<number>`count(${visibleOperationalStructures.fuelBurnRate})::int`,
+			})
+			.from(visibleOperationalStructures),
+	])
+
+	return {
+		total: totalResult[0]?.total ?? 0,
+		lowFuel: lowFuelResult[0]?.count ?? 0,
+		lowPower: lowPowerResult[0]?.count ?? 0,
+		reinforced: reinforcedResult[0]?.count ?? 0,
+		estimatedFuelBurnRatePerHour: fuelBurnRateResult[0]?.estimatedFuelBurnRatePerHour ?? null,
+		fuelBurnRateSampleCount: fuelBurnRateResult[0]?.fuelBurnRateSampleCount ?? 0,
+	}
+}
+
+async function loadVisibleStructureContexts(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureBaseFilterQuery,
+	tabFilter?: StructureTab
+): Promise<VisibleStructureContextsResult> {
+	const cacheKey = buildVisibleStructureContextCacheKey(user, query, tabFilter)
+	const cached = visibleStructureContextCache.get(cacheKey)
+	if (cached) {
+		return cached.value
+	}
+
+	const value = loadVisibleStructureContextsUncached(db, user, query, tabFilter)
+	visibleStructureContextCache.set(cacheKey, { value })
+	value.then(
+		() => {
+			const current = visibleStructureContextCache.get(cacheKey)
+			if (current?.value === value) {
+				visibleStructureContextCache.delete(cacheKey)
+			}
+		},
+		() => {
+			const current = visibleStructureContextCache.get(cacheKey)
+			if (current?.value === value) {
+				visibleStructureContextCache.delete(cacheKey)
+			}
+		}
+	)
+	return value
+}
+
+function buildOperationalSortOrder(
+	sortBy: StructureListSortField,
+	sortDirection: StructureListSortDirection,
+	source: any
+) {
+	const descending = sortDirection === 'desc'
+	const sortExpression = (expression: any) => (descending ? desc(expression) : asc(expression))
+
+	switch (sortBy) {
+		case 'fuel':
+			return descending
+				? [
+						asc(sql`case when ${source.fuelExpires} is null then 0 else 1 end`),
+						desc(source.fuelExpires),
+						desc(source.fuelAmount),
+						desc(source.structureId),
+					]
+				: [
+						asc(sql`case when ${source.fuelExpires} is null then 1 else 0 end`),
+						asc(source.fuelExpires),
+						asc(source.fuelAmount),
+						asc(source.structureId),
+					]
+		case 'updatedAt':
+			return [sortExpression(source.updatedAt), sortExpression(source.structureId)]
+		case 'nextStateAt':
+			return [
+				sortExpression(
+					sql`coalesce(${source.stateTimerEnd}, ${source.nextReinforceApply}, ${source.unanchorsAt})`
+				),
+				sortExpression(source.structureId),
+			]
+		case 'name':
+			return [sortExpression(source.structureId), sortExpression(source.structureId)]
+		case 'corporation':
+			return [sortExpression(sql`coalesce(${source.corporationName}, '')`), sortExpression(source.structureId)]
+		case 'region':
+			return [sortExpression(sql`coalesce(${source.regionName}, '')`), sortExpression(source.structureId)]
+		case 'system':
+			return [sortExpression(sql`coalesce(${source.systemName}, '')`), sortExpression(source.structureId)]
+		case 'type':
+			return [sortExpression(sql`coalesce(${source.typeName}, '')`), sortExpression(source.structureId)]
+		case 'state':
+			return [sortExpression(source.state), sortExpression(source.structureId)]
+		case 'group':
+			return [sortExpression(sql`coalesce(${source.assignedGroupId}, '')`), sortExpression(source.structureId)]
+		case 'syncStatus':
+			return [
+				sortExpression(
+					sql`case ${source.syncStatus} when 'error' then 0 when 'warning' then 1 when 'ok' then 2 else null end`
+				),
+				sortExpression(source.structureId),
+			]
+		default:
+			return null
+	}
+}
+
+function isSqlPagedOperationalSort(sortBy: StructureListSortField): boolean {
+	switch (sortBy) {
+		case 'fuel':
+		case 'updatedAt':
+		case 'nextStateAt':
+		case 'name':
+		case 'corporation':
+		case 'region':
+		case 'system':
+		case 'type':
+		case 'state':
+		case 'group':
+		case 'syncStatus':
+			return true
+		default:
+			return false
+	}
+}
+
+async function loadVisibleOperationalStructurePageItems(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	access: StructureAccessScope,
+	query: StructureListQuery,
+	visibleOperationalStructures: ReturnType<typeof buildVisibleOperationalStructuresCte>,
+	pageOverride?: number
+): Promise<StructureListItem[]> {
+	const sortBy = query.sortBy ?? 'fuel'
+	const sortDirection = query.sortDirection ?? 'asc'
+	const sortOrder = buildOperationalSortOrder(sortBy, sortDirection, visibleOperationalStructures)
+	if (!sortOrder) {
+		return []
+	}
+
+	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
+	const page = Math.max(pageOverride ?? query.page ?? 1, 1)
+	const offset = (page - 1) * pageSize
+
+	const rows = await db
+		.with(visibleOperationalStructures)
+		.select({
+			structureId: visibleOperationalStructures.structureId,
+			corporationId: visibleOperationalStructures.corporationId,
+			corporationName: visibleOperationalStructures.corporationName,
+			name: visibleOperationalStructures.name,
+			typeId: visibleOperationalStructures.typeId,
+			typeName: visibleOperationalStructures.typeName,
+			systemId: visibleOperationalStructures.systemId,
+			systemName: visibleOperationalStructures.systemName,
+			regionId: visibleOperationalStructures.regionId,
+			regionName: visibleOperationalStructures.regionName,
+			state: visibleOperationalStructures.state,
+			stateTimerEnd: visibleOperationalStructures.stateTimerEnd,
+			nextReinforceApply: visibleOperationalStructures.nextReinforceApply,
+			unanchorsAt: visibleOperationalStructures.unanchorsAt,
+			fuelExpires: visibleOperationalStructures.fuelExpires,
+			fuelAmount: visibleOperationalStructures.fuelAmount,
+			fuelBurnRate: visibleOperationalStructures.fuelBurnRate,
+			lowPower: visibleOperationalStructures.lowPower,
+			hidden: visibleOperationalStructures.hidden,
+			lowPowerAllowed: visibleOperationalStructures.lowPowerAllowed,
+			assignedGroupId: visibleOperationalStructures.assignedGroupId,
+			syncStatus: visibleOperationalStructures.syncStatus,
+			syncFailureReason: visibleOperationalStructures.syncFailureReason,
+			lastSyncedAt: visibleOperationalStructures.lastSyncedAt,
+			updatedAt: visibleOperationalStructures.updatedAt,
+		})
+		.from(visibleOperationalStructures)
+		.orderBy(...sortOrder)
+		.limit(pageSize)
+		.offset(offset)
+
+	return rows.map((row) => {
+		const structureTab = getStructureTab({
+			typeId: row.typeId,
+			typeName: row.typeName,
+		})
+		const canViewDetails =
+			user.is_admin || canViewDetailsStructure(access, row.corporationId, structureTab)
+		return buildOperationalStructureListItem(row, canViewDetails)
+	})
+}
+
 async function loadVisibleSovereigntyHubContexts(
 	env: Env,
 	db: DbClient<DbSchema>,
@@ -2875,75 +3398,59 @@ async function loadVisibleSovereigntyHubContexts(
 		return combineWhereConditions(conditions)
 	})()
 
-	const hubRows = await db.query.structureSovereigntyHubs.findMany({
-		where: corpWhere,
-		orderBy: desc(structureSovereigntyHubs.updatedAt),
-	})
-	if (hubRows.length === 0) {
+	const joinedRows = await db
+		.select({
+			hub: structureSovereigntyHubs,
+			system: structureSovereigntySystems,
+			corporation: {
+				corporationId: managedCorporations.corporationId,
+				name: managedCorporations.name,
+				includeInStructureAssetSync: managedCorporations.includeInStructureAssetSync,
+			},
+		})
+		.from(structureSovereigntyHubs)
+		.leftJoin(
+			structureSovereigntySystems,
+			eq(structureSovereigntySystems.systemId, structureSovereigntyHubs.systemId)
+		)
+		.leftJoin(managedCorporations, eq(managedCorporations.corporationId, structureSovereigntyHubs.corporationId))
+		.where(corpWhere ?? sql`true`)
+		.orderBy(desc(structureSovereigntyHubs.updatedAt))
+	if (joinedRows.length === 0) {
 		return {
 			moduleConfig,
 			access,
 			contexts: [],
-			hubRows,
+			hubRows: [],
 			systemRows: [],
 		}
 	}
 
-	const filteredHubRows = hubRows
 	const geographyBySystemId = await resolveSovereigntyHubGeographies(env, [
-		...new Set(filteredHubRows.map((hub) => hub.systemId)),
+		...new Set(joinedRows.map((row) => row.hub.systemId)),
 	])
-
-	if (filteredHubRows.length === 0) {
-		return {
-			moduleConfig,
-			access,
-			contexts: [],
-			hubRows: filteredHubRows,
-			systemRows: [],
-		}
-	}
-
-	const filteredSystemIds = filteredHubRows.map((hub) => hub.systemId)
-	const systemRows = await db.query.structureSovereigntySystems.findMany({
-		where: inArray(structureSovereigntySystems.systemId, filteredSystemIds),
-		orderBy: desc(structureSovereigntySystems.updatedAt),
-	})
-	const systemBySystemId = new Map(
-		systemRows.map((row) => [row.systemId, row] as const)
-	)
-	const corporationIds = [...new Set(filteredHubRows.map((hub) => hub.corporationId))]
-	const corporationRows = corporationIds.length
-		? await db.query.managedCorporations.findMany({
-				where: inArray(managedCorporations.corporationId, corporationIds),
-				columns: {
-					corporationId: true,
-					name: true,
-					includeInStructureAssetSync: true,
-				},
-			})
-		: []
-	const corporationById = new Map(corporationRows.map((row) => [row.corporationId, row] as const))
+	const systemRows = joinedRows
+		.map((row) => row.system)
+		.filter((row): row is typeof structureSovereigntySystems.$inferSelect => row !== null)
 
 	return {
 		moduleConfig,
 		access,
-		contexts: filteredHubRows
-			.map<VisibleStructureContext | null>((hub) => {
-				const systemRow = systemBySystemId.get(hub.systemId) ?? null
-				const geography = geographyBySystemId[hub.systemId] ?? null
-				const structure = buildSyntheticSovereigntyStructureRow(hub, systemRow, geography)
+		contexts: joinedRows
+			.map<VisibleStructureContext | null>((row) => {
+				const geography = geographyBySystemId[row.hub.systemId] ?? null
+				const structure = buildSyntheticSovereigntyStructureRow(row.hub, row.system ?? null, geography)
 				const structureTab = getStructureTab(structure)
 				const canViewDetails =
-					user.is_admin || canViewDetailsStructure(access, hub.corporationId, structureTab)
+					user.is_admin || canViewDetailsStructure(access, row.hub.corporationId, structureTab)
 				const canViewSensitive =
-					user.is_admin || canViewSensitiveStructure(access, hub.corporationId, structureTab)
-				const canEdit = user.is_admin || canEditStructure(access, hub.corporationId, structureTab)
-				const corporation = corporationById.get(hub.corporationId)
+					user.is_admin || canViewSensitiveStructure(access, row.hub.corporationId, structureTab)
+				const canEdit = user.is_admin || canEditStructure(access, row.hub.corporationId, structureTab)
+				const corporation = row.corporation
 
 				return {
 					structure,
-					corporationName: corporation?.name ?? hub.corporationId,
+					corporationName: corporation?.name ?? row.hub.corporationId,
 					includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
 					config: null,
 					canViewDetails,
@@ -2961,7 +3468,7 @@ async function loadVisibleSovereigntyHubContexts(
 				if (query.systemId && context.structure.systemId !== query.systemId) return false
 				return true
 			}),
-		hubRows: filteredHubRows,
+		hubRows: joinedRows.map((row) => row.hub),
 		systemRows,
 	}
 }
@@ -2972,12 +3479,7 @@ async function listVisibleOperationalStructures(
 	query: StructureListQuery = {},
 	activeTab: StructureTab
 ): Promise<StructureListResponse> {
-	const { moduleConfig, access, contexts, totalCount: totalCountFromDb } = await loadVisibleStructureContexts(
-		db,
-		user,
-		query,
-		activeTab
-	)
+	const access = computeStructureAccess(user.roles, user.is_admin)
 	const tabAccess = getStructureAccessTarget(access, activeTab)
 	if (!hasAnyStructureAccess(tabAccess)) {
 		return {
@@ -2995,20 +3497,89 @@ async function listVisibleOperationalStructures(
 		}
 	}
 
+	const sortBy = query.sortBy ?? 'skyhookSecureFullness'
+	const sortDirection = query.sortDirection ?? 'asc'
+	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
+	const requestedPage = Math.max(query.page ?? 1, 1)
+
+	if (isSqlPagedOperationalSort(sortBy) && (activeTab === 'citadels' || activeTab === 'navigation')) {
+		const moduleConfig = await getStructureModuleConfig(db)
+		const corpWhere = buildVisibleStructureContextsWhere(access, query, activeTab)
+		if (!corpWhere) {
+				return {
+					items: [],
+				pagination: {
+					page: 1,
+					pageSize,
+					totalCount: 0,
+					totalPages: 1,
+					hasNextPage: false,
+					hasPreviousPage: false,
+				},
+				filterOptions: emptyStructureFilterOptions(),
+				summary: emptyStructureListSummary(),
+			}
+		}
+		const visibleOperationalStructures = buildVisibleOperationalStructuresCte(db, corpWhere)
+
+		const [filterOptions, summary, pageItems] = await Promise.all([
+			buildOperationalStructureFilterOptions(db, visibleOperationalStructures),
+			buildOperationalStructureSummary(db, visibleOperationalStructures, moduleConfig),
+			loadVisibleOperationalStructurePageItems(
+				db,
+				user,
+				access,
+				query,
+				visibleOperationalStructures
+			),
+		])
+		const totalCount = summary.total
+		const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+		const page = Math.min(requestedPage, totalPages)
+		const items =
+			page === requestedPage
+			? pageItems
+			: await loadVisibleOperationalStructurePageItems(
+					db,
+					user,
+					access,
+					query,
+					visibleOperationalStructures,
+					page
+				)
+
+		return {
+			items,
+			pagination: {
+				page,
+				pageSize,
+				totalCount,
+				totalPages,
+				hasNextPage: page < totalPages,
+				hasPreviousPage: page > 1,
+			},
+			filterOptions,
+			summary,
+		}
+	}
+
+	const { moduleConfig, contexts, totalCount: totalCountFromDb } = await loadVisibleStructureContexts(
+		db,
+		user,
+		query,
+		activeTab
+	)
 	const baseItems = contexts
 		.map((context) => buildStructureListItem(context))
 		.filter((item) => matchesStructureTab(item, activeTab))
 		.filter((item) => hasStructureAccessForTab(access, item.corporationId, activeTab))
 	const filterOptions = buildStructureFilterOptions(baseItems)
 	const filteredItems = baseItems
-	const sortBy = query.sortBy ?? 'skyhookSecureFullness'
-	const sortDirection = query.sortDirection ?? 'asc'
 	const sortedItems = sortStructures(filteredItems, sortBy, sortDirection)
-	const summary = await buildStructureSummary(db, filteredItems, moduleConfig, totalCountFromDb)
-	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
+		const summary = await buildStructureSummary(filteredItems, moduleConfig, totalCountFromDb)
 	const totalCount = totalCountFromDb
 	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
-	const page = Math.min(Math.max(query.page ?? 1, 1), totalPages)
+	const page = Math.min(requestedPage, totalPages)
 	const start = (page - 1) * pageSize
 	const end = start + pageSize
 	const pageItems = sortedItems.slice(start, end)
@@ -3045,7 +3616,7 @@ export async function getStructureOverviewMetrics(
 	}
 
 	const items = visibleContexts.map((context) => buildStructureListItem(context))
-	return buildStructureSummary(db, items, moduleConfig)
+	return buildStructureSummary(items, moduleConfig)
 }
 
 export async function listVisibleStructures(
@@ -3137,30 +3708,33 @@ export async function listMoonDrillStructures(
 		return combineWhereConditions(conditions)
 	})()
 
-	const [moonDrillRows, moonGeographyRows] = await Promise.all([
-		db.query.structureMoonDrills.findMany({
-			where: inArray(structureMoonDrills.structureId, structureIds),
-			orderBy: desc(structureMoonDrills.updatedAt),
-		}),
-		db.query.structureMoonGeographies.findMany({
-			where: combineWhereConditions([
-				inArray(structureMoonGeographies.structureId, structureIds),
-				moonDrillWhere,
-			]),
-			orderBy: desc(structureMoonGeographies.updatedAt),
-		}),
-	])
-	const moonDrillByStructureId = new Map(moonDrillRows.map((row) => [row.structureId, row]))
-	const moonGeographyByStructureId = new Map(
-		moonGeographyRows.map((row) => [row.structureId, row])
-	)
-	const items = moonDrillContexts.map((context) =>
-		buildMoonDrillListItem({
-			context,
-			moonDrillRow: moonDrillByStructureId.get(context.structure.structureId) ?? null,
-			moonGeographyRow: moonGeographyByStructureId.get(context.structure.structureId) ?? null,
-		})
-	)
+		const moonDrillRows = await db
+			.select({
+				moonDrill: structureMoonDrills,
+				moonGeography: structureMoonGeographies,
+			})
+			.from(structureMoonDrills)
+			.leftJoin(
+				structureMoonGeographies,
+				eq(structureMoonGeographies.structureId, structureMoonDrills.structureId)
+			)
+			.where(
+				combineWhereConditions([
+					inArray(structureMoonDrills.structureId, structureIds),
+					moonDrillWhere,
+				]) ?? sql`true`
+			)
+			.orderBy(desc(structureMoonDrills.updatedAt))
+		const moonDrillByStructureId = new Map(
+			moonDrillRows.map((row) => [row.moonDrill.structureId, row] as const)
+		)
+		const items = moonDrillContexts.map((context) =>
+			buildMoonDrillListItem({
+				context,
+				moonDrillRow: moonDrillByStructureId.get(context.structure.structureId)?.moonDrill ?? null,
+				moonGeographyRow: moonDrillByStructureId.get(context.structure.structureId)?.moonGeography ?? null,
+			})
+		)
 
 	const sortBy = query.sortBy ?? 'fuel'
 	const sortDirection = query.sortDirection ?? 'asc'
@@ -3762,33 +4336,35 @@ export async function listMiningCitadelStructures(
 		return combineWhereConditions(conditions)
 	})()
 
-	const [miningExtractionRows, moonGeographyRows] = await Promise.all([
-		db.query.structureMiningExtractions.findMany({
-			where: inArray(structureMiningExtractions.structureId, structureIds),
-			orderBy: desc(structureMiningExtractions.updatedAt),
-		}),
-		db.query.structureMoonGeographies.findMany({
-			where: combineWhereConditions([
-				inArray(structureMoonGeographies.structureId, structureIds),
-				miningExtractionWhere,
-			]),
-			orderBy: desc(structureMoonGeographies.updatedAt),
-		}),
-	])
-	const miningExtractionByStructureId = new Map(
-		miningExtractionRows.map((row) => [row.structureId, row])
-	)
-	const moonGeographyByStructureId = new Map(
-		moonGeographyRows.map((row) => [row.structureId, row])
-	)
-	const items = matchingContexts.map((context) =>
-		buildMiningCitadelListItem({
-			context,
-			miningExtractionRow:
-				miningExtractionByStructureId.get(context.structure.structureId) ?? null,
-			moonGeographyRow: moonGeographyByStructureId.get(context.structure.structureId) ?? null,
-		})
-	)
+		const miningExtractionRows = await db
+			.select({
+				miningExtraction: structureMiningExtractions,
+				moonGeography: structureMoonGeographies,
+			})
+			.from(structureMiningExtractions)
+			.leftJoin(
+				structureMoonGeographies,
+				eq(structureMoonGeographies.structureId, structureMiningExtractions.structureId)
+			)
+			.where(
+				combineWhereConditions([
+					inArray(structureMiningExtractions.structureId, structureIds),
+					miningExtractionWhere,
+				]) ?? sql`true`
+			)
+			.orderBy(desc(structureMiningExtractions.updatedAt))
+		const miningExtractionByStructureId = new Map(
+			miningExtractionRows.map((row) => [row.miningExtraction.structureId, row] as const)
+		)
+		const items = matchingContexts.map((context) =>
+			buildMiningCitadelListItem({
+				context,
+				miningExtractionRow:
+					miningExtractionByStructureId.get(context.structure.structureId)?.miningExtraction ?? null,
+				moonGeographyRow:
+					miningExtractionByStructureId.get(context.structure.structureId)?.moonGeography ?? null,
+			})
+		)
 
 	const sortBy = query.sortBy ?? 'fuel'
 	const sortDirection = query.sortDirection ?? 'asc'
@@ -3888,6 +4464,7 @@ export async function updateStructureConfig(
 			},
 		})
 
+	invalidateVisibleStructureContextCache()
 	return buildStructureDetailResult({
 		...context,
 		config: {
@@ -3947,6 +4524,7 @@ export async function syncCorporationStructures(
 		stateChangeCount,
 	})
 
+	invalidateVisibleStructureContextCache()
 	return {
 		structureCount: corpStructures.length,
 		stateChangeCount,

@@ -1,0 +1,1 @@
+ALTER TABLE "corporation_structures" ADD COLUMN "fuel_burn_rate" numeric(12, 4);

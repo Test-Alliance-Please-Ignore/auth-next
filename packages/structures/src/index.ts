@@ -686,13 +686,13 @@ export interface StructureDetailResult extends Omit<StructureCitadelListItem, 'c
 	nextReinforceHour: number | null
 	reinforceHour: number | null
 	lastRefilledAt: string | null
+	fuelBurnRate: string | null
 	fuelUsage: {
 		points: Array<{
 			observedAt: string
 			fuelBlockUnits: number | null
 			fuelBurnRatePerHour: number | null
 		}>
-		fuelBurnRatePerHour: number | null
 		lastRefilledAt: string | null
 		sampleCount: number
 	} | null

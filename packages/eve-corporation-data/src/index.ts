@@ -672,6 +672,7 @@ export interface CorporationStructureData {
 	profileId: string
 	fuelExpires: Date | null
 	fuelAmount: number | null
+	fuelBurnRate: string | null
 	nextReinforceApply: Date | null
 	nextReinforceHour: number | null
 	reinforceHour: number | null

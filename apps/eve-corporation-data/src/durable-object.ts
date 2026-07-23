@@ -56,6 +56,10 @@ import {
 	projectStructureInventoryFromStoredAssets,
 } from './services/structure-inventory'
 import { dedupeByItemId } from './services/assets-paging-sync'
+import {
+	deriveStructureFuelHistoryMetrics,
+	type StructureFuelHistorySample,
+} from './services/structure-fuel-history'
 import type { SQL } from 'drizzle-orm'
 import type {
 	CharacterCorporationRolesData,
@@ -2172,6 +2176,60 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				insertedFuelLogRows: fuelHistoryRows.length,
 				observedAt: observedAt.toISOString(),
 			})
+
+			const fuelHistorySamplesByStructure = new Map<string, StructureFuelHistorySample[]>()
+			for (const row of previousFuelRows) {
+				const samples = fuelHistorySamplesByStructure.get(row.structureId) ?? []
+				samples.push({
+					structureId: row.structureId,
+					fuelBlockUnits: row.fuelBlockUnits,
+					observedAt: row.observedAt,
+					updatedAt: row.updatedAt,
+				})
+				fuelHistorySamplesByStructure.set(row.structureId, samples)
+			}
+			for (const row of fuelHistoryRows) {
+				const samples = fuelHistorySamplesByStructure.get(row.structureId) ?? []
+				samples.push({
+					structureId: row.structureId,
+					fuelBlockUnits: row.fuelBlockUnits,
+					observedAt: row.observedAt,
+					updatedAt: row.updatedAt,
+				})
+				fuelHistorySamplesByStructure.set(row.structureId, samples)
+			}
+
+			const estimatedFuelBurnRateByStructure = new Map<string, string | null>()
+			for (const [structureId, samples] of fuelHistorySamplesByStructure.entries()) {
+				const metrics = deriveStructureFuelHistoryMetrics(samples)
+				estimatedFuelBurnRateByStructure.set(
+					structureId,
+					metrics.fuelBurnRatePerHour === null ? null : metrics.fuelBurnRatePerHour.toFixed(4)
+				)
+			}
+
+			const estimatedFuelBurnRateRows = [...estimatedFuelBurnRateByStructure.entries()]
+			const UPDATE_BATCH_SIZE = STRUCTURE_SNAPSHOT_BATCH_SIZE
+			for (let i = 0; i < estimatedFuelBurnRateRows.length; i += UPDATE_BATCH_SIZE) {
+				const batch = estimatedFuelBurnRateRows.slice(i, i + UPDATE_BATCH_SIZE)
+				await db
+					.update(corporationStructures)
+					.set({
+						fuelBurnRate: sql`case ${corporationStructures.structureId} ${sql.join(
+							batch.map(([structureId, burnRate]) => sql`when ${structureId} then ${burnRate}`),
+							sql` `
+						)} else null end`,
+					})
+					.where(
+						and(
+							eq(corporationStructures.corporationId, corporationId),
+							inArray(
+								corporationStructures.structureId,
+								batch.map(([structureId]) => structureId)
+							)
+						)
+					)
+			}
 		}
 
 		if (refilledStructureIds.length > 0) {
@@ -5920,6 +5978,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			profileId: r.profileId,
 			fuelExpires: r.fuelExpires,
 			fuelAmount: r.fuelAmount,
+			fuelBurnRate: r.fuelBurnRate,
 			nextReinforceApply: r.nextReinforceApply,
 			nextReinforceHour: r.nextReinforceHour,
 			reinforceHour: r.reinforceHour,
@@ -5968,6 +6027,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			profileId: structure.profileId,
 			fuelExpires: structure.fuelExpires,
 			fuelAmount: structure.fuelAmount,
+			fuelBurnRate: structure.fuelBurnRate,
 			nextReinforceApply: structure.nextReinforceApply,
 			nextReinforceHour: structure.nextReinforceHour,
 			reinforceHour: structure.reinforceHour,
@@ -5980,9 +6040,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			syncFailureReason: structure.syncFailureReason,
 			lastSyncedAt: structure.lastSyncedAt,
 			services: structure.services,
-			updatedAt: structure.updatedAt,
-		}
+		updatedAt: structure.updatedAt,
 	}
+}
 
 	/**
 	 * Get complete assets data

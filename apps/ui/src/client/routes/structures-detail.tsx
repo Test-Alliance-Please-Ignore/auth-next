@@ -1784,7 +1784,9 @@ export default function StructuresDetailPage() {
 								<div>
 									<div className="text-muted-foreground">Current Burn Rate</div>
 									<div className="font-medium">
-										{formatBurnRate(structure.fuelUsage?.fuelBurnRatePerHour)}
+										{formatBurnRate(
+											structure.fuelBurnRate === null ? null : Number.parseFloat(structure.fuelBurnRate)
+										)}
 									</div>
 								</div>
 								<div>

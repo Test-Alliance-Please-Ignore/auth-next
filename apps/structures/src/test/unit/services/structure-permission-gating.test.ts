@@ -163,6 +163,7 @@ describe('structure permission gating', () => {
 		expect(result.items[0]?.structureId).toBe('structure-1')
 		expect(result.items[0]?.canViewDetails).toBe(false)
 		expect(result.summary.total).toBe(1)
+		expect(db.query.structureFuelLog.findMany).not.toHaveBeenCalled()
 	})
 
 	it('returns visible structures for all-scope details permissions', async () => {
