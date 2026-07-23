@@ -21,6 +21,7 @@ export interface RecentKillmailSelection {
 }
 
 const POD_TYPE_IDS = new Set(['670', '33328'])
+export const ROOKIE_SHIP_TYPE_IDS = new Set(['588', '596', '601', '606'])
 
 function hasFittedImplants(loss: CharacterLossData): boolean {
 	return (
@@ -31,6 +32,10 @@ function hasFittedImplants(loss: CharacterLossData): boolean {
 }
 
 export function isRecentLossRequestable(loss: CharacterLossData): boolean {
+	if (ROOKIE_SHIP_TYPE_IDS.has(String(loss.shipTypeId))) {
+		return false
+	}
+
 	if (!POD_TYPE_IDS.has(String(loss.shipTypeId))) {
 		return true
 	}

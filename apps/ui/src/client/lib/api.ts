@@ -48,7 +48,6 @@ import type { TrackingSession } from '../features/fleet-tracking/types'
 import type {
 	RecentLossesResponse,
 	RequestListResponse,
-	SRPRecentLossRefreshBackfillResponse,
 } from '../features/srp/types'
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
@@ -4997,10 +4996,6 @@ export class ApiClient {
 		totalCharacters?: number
 	}> {
 		return this.post('/srp/losses/refresh', {})
-	}
-
-	async refreshSrpRecentLossesForAllKnownUsers(): Promise<SRPRecentLossRefreshBackfillResponse> {
-		return this.post('/srp/losses/refresh/backfill', {})
 	}
 
 	async getRecentLossRefreshStatus(): Promise<{

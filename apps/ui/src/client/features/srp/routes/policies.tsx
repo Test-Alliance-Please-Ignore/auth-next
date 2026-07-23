@@ -23,7 +23,6 @@ import {
 	useDeletePolicy,
 	useSRPConfig,
 	useSRPPolicies,
-	useRefreshSrpRecentLossesForAllKnownUsers,
 	useUpdatePolicy,
 	useUpdateSRPConfig,
 } from '../hooks'
@@ -32,12 +31,7 @@ import { formatISK } from '../utils'
 import { MAX_SRP_LOSS_AGE_DAYS } from '@repo/srp'
 import type { CapConfig, PayoutModifierConfig } from '@repo/srp'
 import type { SelectOption } from '@/components/ui/select'
-import type {
-	SRPConfigResponse,
-	SRPPolicy,
-	SRPPredefinedAdhocModifier,
-	SRPRecentLossRefreshBackfillResponse,
-} from '../types'
+import type { SRPConfigResponse, SRPPolicy, SRPPredefinedAdhocModifier } from '../types'
 
 function isPayoutModifierConfig(c: unknown): c is PayoutModifierConfig {
 	return typeof c === 'object' && c !== null && 'rate' in c
@@ -68,10 +62,6 @@ export default function PoliciesPage() {
 	usePageTitle('SRP - Policies')
 
 	const { hasPermission, isAdmin } = useUserPermissions()
-	const refreshAllRecentLosses = useRefreshSrpRecentLossesForAllKnownUsers()
-	const [backfillSummary, setBackfillSummary] =
-		useState<SRPRecentLossRefreshBackfillResponse | null>(null)
-	const canLaunchBackfill = isAdmin || hasPermission('urn:srp:manager')
 
 	if (!(isAdmin || hasPermission('urn:srp:manager'))) {
 		return <Navigate to="/srp" replace />
@@ -101,62 +91,6 @@ export default function PoliciesPage() {
 			<PageHeader
 				title="SRP Policies"
 				description="Manage payout modifier and cap policies used during reviews"
-				action={
-					canLaunchBackfill ? (
-						<div className="flex flex-col items-end gap-2">
-							<div className="flex items-center gap-3">
-								{refreshAllRecentLosses.isPending ? (
-									<Badge variant="secondary" className="uppercase tracking-wide">
-										Launching backfill...
-									</Badge>
-								) : backfillSummary ? (
-									<Badge
-										variant={backfillSummary.usersQueued > 0 ? 'success' : 'secondary'}
-										className="uppercase tracking-wide"
-									>
-										{backfillSummary.usersQueued > 0 ? 'Backfill queued' : 'No history found'}
-									</Badge>
-								) : null}
-								<Button
-									variant="secondary"
-									onClick={async () => {
-										setBackfillSummary(null)
-										try {
-											const result = await refreshAllRecentLosses.mutateAsync()
-											setBackfillSummary(result)
-											toast.success(result.message, {
-												description:
-													result.usersQueued > 0
-														? `${result.usersQueued} users with ${result.totalCharacters} linked characters were queued.`
-														: 'No cached SRP losses were found.',
-											})
-										} catch (error: any) {
-											toast.error('Failed to launch SRP cache backfill', {
-												description: error.message,
-											})
-										}
-									}}
-									loading={refreshAllRecentLosses.isPending}
-									loadingText="Launching..."
-									showIcon={false}
-								>
-									Backfill cached SRP losses
-								</Button>
-							</div>
-							{refreshAllRecentLosses.isPending ? (
-								<p className="text-xs text-muted-foreground">
-									Waiting for the cache backfill jobs to queue...
-								</p>
-							) : backfillSummary ? (
-								<p className="text-xs text-muted-foreground">
-									{backfillSummary.usersQueued > 0
-										? `Queued ${backfillSummary.usersQueued} users covering ${backfillSummary.totalCharacters} linked characters from cache.`
-										: backfillSummary.message}
-								</p>
-							) : null}
-						</div>
-					) : undefined
-				}
 			/>
 
 			<div className="space-y-8">

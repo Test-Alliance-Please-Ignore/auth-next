@@ -26,12 +26,12 @@ import {
 } from './db/schema'
 import { buildEquippedByType } from './lib/equipment'
 import { SrpKillmailEsiClient, SrpKillmailNotFoundError } from './lib/killmail-esi'
-import { computeSrpPayout } from './lib/payout'
 import {
 	doesRecentLossCacheCoverCutoff,
 	mergeRecentLosses,
 	isRecentLossRequestable,
 	selectRecentKillmailsUntilKnown,
+	ROOKIE_SHIP_TYPE_IDS,
 	type RecentLossCacheRecord,
 	type RecentLossCacheStorageRecord,
 } from './lib/recent-loss-cache'
@@ -86,11 +86,19 @@ import { logger } from '@repo/hono-helpers'
 
 const SRP_REQUIRED_KILLMAIL_SCOPES = ['esi-killmails.read_killmails.v1']
 
-function serializeLossItems(items?: KillmailDetail['victim']['items']): CharacterLossItemData[] | undefined {
+type LossItemLike = {
+	flag: number
+	item_type_id: number | string
+	quantity_destroyed?: number
+	quantity_dropped?: number
+	items?: LossItemLike[]
+}
+
+function serializeLossItems(items?: LossItemLike[]): CharacterLossItemData[] | undefined {
 	if (!items || items.length === 0) return undefined
 	return items.map((item) => ({
 		flag: item.flag,
-		item_type_id: item.item_type_id,
+		item_type_id: String(item.item_type_id),
 		quantity_destroyed: item.quantity_destroyed,
 		quantity_dropped: item.quantity_dropped,
 		items: serializeLossItems(item.items),
@@ -100,6 +108,21 @@ function serializeLossItems(items?: KillmailDetail['victim']['items']): Characte
 type HydratedRecentLoss = {
 	loss: CharacterLossData
 	killmailData: KillmailDetail & { killmail_hash?: string }
+}
+
+type RecentLossDbRow = {
+	characterId: string
+	killmailId: string
+	killmailHash: string
+	killmailTime: Date
+	isLoss: boolean | null
+	shipTypeId: string | null
+	shipTypeName: string | null
+	totalValue: string | null
+	solarSystemId: string | null
+	solarSystemName: string | null
+	victimCharacterId: string | null
+	killmailData: unknown | null
 }
 
 /**
@@ -216,6 +239,75 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	private async readMostRecentLoss(characterId: string): Promise<CharacterKillmailData | null> {
 		const charInstance = await this.getCharacterDataInstance(characterId)
 		return await charInstance.getMostRecentLoss().catch(() => null)
+	}
+
+	private mapRecentLossDbRowToLoss(row: RecentLossDbRow): CharacterLossData | null {
+		const killmailData =
+			row.killmailData && typeof row.killmailData === 'object'
+				? (row.killmailData as {
+						victim?: {
+							character_id?: number | string
+							ship_type_id?: number | string
+							items?: CharacterLossItemData[]
+						}
+						solar_system_id?: number | string
+				  })
+				: null
+		const victim = killmailData?.victim
+		const shipTypeId = row.shipTypeId ?? victim?.ship_type_id
+		const solarSystemId = row.solarSystemId ?? killmailData?.solar_system_id
+		const victimCharacterId = row.victimCharacterId ?? victim?.character_id
+
+		if (!shipTypeId || !solarSystemId || !victimCharacterId) {
+			return null
+		}
+
+		return {
+			killmailId: row.killmailId,
+			killmailHash: row.killmailHash,
+			killmailTime: row.killmailTime,
+			shipTypeId: String(shipTypeId),
+			totalValue: row.totalValue ?? '0',
+			solarSystemId: String(solarSystemId),
+			victimCharacterId: String(victimCharacterId),
+			victimItems: serializeLossItems(victim?.items),
+			shipTypeName: row.shipTypeName ?? undefined,
+			solarSystemName: row.solarSystemName ?? undefined,
+		}
+	}
+
+	private async readRecentLossRows(characterIds: string[], cutoffMs: number): Promise<RecentLossDbRow[]> {
+		if (characterIds.length === 0) return []
+
+		const characterIdList = sql.join(characterIds.map((id) => sql`${id}`), sql`, `)
+		const cutoff = new Date(cutoffMs)
+
+		const result = await this.db.execute<RecentLossDbRow>(sql`
+			select
+				character_id as "characterId",
+				killmail_id as "killmailId",
+				killmail_hash as "killmailHash",
+				killmail_time as "killmailTime",
+				is_loss as "isLoss",
+				ship_type_id as "shipTypeId",
+				ship_type_name as "shipTypeName",
+				total_value as "totalValue",
+				solar_system_id as "solarSystemId",
+				solar_system_name as "solarSystemName",
+				victim_character_id as "victimCharacterId",
+				killmail_data as "killmailData"
+			from character_killmails
+			where character_id in (${characterIdList})
+				and is_loss is true
+				and ship_type_id not in (${sql.join(
+					[...ROOKIE_SHIP_TYPE_IDS].map((shipTypeId) => sql`${shipTypeId}`),
+					sql`, `
+				)})
+				and killmail_time >= ${cutoff}
+			order by character_id asc, killmail_time desc, killmail_id desc
+		`)
+
+		return result.rows ?? []
 	}
 
 	private async persistRecentLossesToCharacterData(
@@ -983,14 +1075,23 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
 		const allLosses = new Map<string, CharacterLossData>()
 		const failedCharacters: RecentLossRefreshCharacterFailure[] = []
+		const characterIds = characters.map((character) => character.characterId)
+		const [recentLossRows, cachedRecords] = await Promise.all([
+			this.readRecentLossRows(characterIds, cutoffMs),
+			Promise.all(characters.map((character) => this.readRecentLossCache(character.characterId))),
+		])
+		const recentLossesByCharacter = new Map<string, CharacterLossData[]>()
+		for (const row of recentLossRows) {
+			const loss = this.mapRecentLossDbRowToLoss(row)
+			if (!loss) continue
+			const existing = recentLossesByCharacter.get(row.characterId) ?? []
+			existing.push(loss)
+			recentLossesByCharacter.set(row.characterId, existing)
+		}
 
-		for (const character of characters) {
-			const charInstance = await this.getCharacterDataInstance(character.characterId)
-			const storedLosses = await charInstance.getRecentLosses(
-				1000,
-				new Date(cutoffMs)
-			).catch(() => [])
-			const cached = await this.readRecentLossCache(character.characterId)
+		for (const [index, character] of characters.entries()) {
+			const storedLosses = recentLossesByCharacter.get(character.characterId) ?? []
+			const cached = cachedRecords[index]
 			const mergedCharacterLosses = mergeRecentLosses(
 				storedLosses,
 				cached?.losses ?? [],
@@ -1045,7 +1146,6 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 
 		const mergedLosses = [...allLosses.values()]
-			.filter((loss) => new Date(loss.killmailTime).getTime() >= cutoffMs)
 			.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
 		const total = mergedLosses.length
 		const effectiveLimit = typeof limit === 'number' ? Math.max(1, limit) : total
@@ -1204,38 +1304,18 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 
 		const freshLosses = await this.fetchRecentLossesFromEsi(characterId, knownKillmailIds)
-		await this.persistRecentLossesToCharacterData(characterId, freshLosses, cacheCutoffMs)
-		await this.writeRecentLossCache(characterId, freshLosses.map((entry) => entry.loss), maxLossAgeDays)
+		const eligibleLosses = freshLosses.filter((entry) => isRecentLossRequestable(entry.loss))
+		await this.persistRecentLossesToCharacterData(characterId, eligibleLosses, cacheCutoffMs)
+		await this.writeRecentLossCache(
+			characterId,
+			eligibleLosses.map((entry) => entry.loss),
+			maxLossAgeDays
+		)
 
 		return {
 			characterId,
 			characterName: _characterName,
 			success: true,
-		}
-	}
-
-	async backfillRecentLossesFromCache(characterId: string): Promise<RecentLossCacheBackfillResult> {
-		const cached = await this.readRecentLossCache(characterId)
-		const cachedLosses = cached?.losses ?? []
-		if (cachedLosses.length === 0) {
-			return {
-				characterId,
-				cachedLosses: 0,
-				persistedLosses: 0,
-			}
-		}
-
-		const hydratedLosses = cachedLosses.map((loss) => ({
-			loss,
-			killmailData: buildKillmailDetailFromCachedLoss(characterId, loss.killmailId, loss.killmailHash, loss),
-		}))
-
-		await this.persistRecentLossesToCharacterData(characterId, hydratedLosses)
-
-		return {
-			characterId,
-			cachedLosses: cachedLosses.length,
-			persistedLosses: hydratedLosses.length,
 		}
 	}
 

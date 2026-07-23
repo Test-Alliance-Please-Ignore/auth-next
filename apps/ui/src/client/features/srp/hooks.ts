@@ -364,12 +364,6 @@ export function useRefreshKillmails() {
 	})
 }
 
-export function useRefreshSrpRecentLossesForAllKnownUsers() {
-	return useMutation({
-		mutationFn: () => api.refreshSrpRecentLossesForAllKnownUsers(),
-	})
-}
-
 export function useKillmailPreview(
 	killmailId: string | null,
 	killmailHash: string | null,
