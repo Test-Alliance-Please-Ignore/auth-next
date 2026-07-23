@@ -110,15 +110,10 @@ function createApp(user?: SessionUser, db?: any) {
 		withdrawRequest: vi.fn(),
 		getComments: vi.fn().mockResolvedValue([]),
 		addComment: vi.fn(),
-		approveRequest: vi.fn(),
-		backfillRecentLossesFromCache: vi.fn().mockResolvedValue({
-			characterId: '7001',
-			cachedLosses: 0,
-			persistedLosses: 0,
-		}),
-		startRecentLossRefresh: vi.fn().mockResolvedValue({
-			allowed: true,
-			retryAfterMs: 0,
+	approveRequest: vi.fn(),
+	startRecentLossRefresh: vi.fn().mockResolvedValue({
+		allowed: true,
+		retryAfterMs: 0,
 			cooldownUntil: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
 			workflowInstanceId: 'workflow-1',
 			status: 'queued',
@@ -161,6 +156,18 @@ function makeRequest(overrides: Record<string, unknown> = {}) {
 	}
 }
 
+function sqlText(query: unknown): string {
+	if (typeof query === 'string') return query
+	if (query === null || typeof query !== 'object') return ''
+
+	const node = query as { queryChunks?: unknown[]; value?: unknown }
+	if (Array.isArray(node.queryChunks)) {
+		return node.queryChunks.map(sqlText).join('')
+	}
+	if (Array.isArray(node.value)) return node.value.join('')
+	return ''
+}
+
 function mockDbPrimaryCharacterRows(
 	rows: Array<{ userId: string; characterId: string; characterName?: string }>
 ) {
@@ -176,6 +183,58 @@ function mockDbPrimaryCharacterRows(
 			},
 		},
 	} as any)
+}
+
+function makeWalletHistoryDbMock(options: {
+	rows: Array<{
+		journalId: string
+		refType: string | null
+		amount: string
+		reason: string | null
+		recipientId: string | null
+		entryDate: Date | string | number | null
+		requestIdFromReason: string | null
+		linkedRequestId: string | null
+		expectedRequestCharacterId: string | null
+		hasRecipientMismatch: boolean
+		hasMissingReasonWarning: boolean
+		hasOpenAlert: boolean
+	}>
+	total: number
+	alerts: Array<{
+		journalId: string
+		kind: string
+		state: string
+		expectedAmount: string | null
+		observedAmount: string | null
+		expectedRecipientCharacterId: string | null
+		expectedRecipientCharacterName: string | null
+		actualRecipientCharacterId: string | null
+		actualRecipientCharacterName: string | null
+	}>
+}) {
+	const capturedQueries: string[] = []
+	const execute = vi.fn(async (query: unknown) => {
+		const text = sqlText(query).replace(/\s+/g, ' ').trim().toLowerCase()
+		capturedQueries.push(text)
+
+		if (text.includes('cast(count(*) as integer) as "total"')) {
+			return { rows: [{ total: options.total }] }
+		}
+		if (text.includes('from srp_payment_alerts')) {
+			return { rows: options.alerts }
+		}
+		if (text.includes('from wallet_history_base')) {
+			return { rows: options.rows }
+		}
+		return { rows: [] }
+	})
+
+	return {
+		db: { execute } as any,
+		execute,
+		capturedQueries,
+	}
 }
 
 describe('srp routes - permissions', () => {
@@ -299,6 +358,74 @@ describe('srp routes - permissions', () => {
 				}),
 			})
 		)
+	})
+
+	it('queries wallet history alerts-only pages in SQL', async () => {
+		const walletHistoryDb = makeWalletHistoryDbMock({
+			rows: [
+				{
+					journalId: '9001',
+					refType: 'corporation_account_withdrawal',
+					amount: '1000000',
+					reason: 'KM#12345 reimbursement',
+					recipientId: '7002',
+					entryDate: '2026-07-15T12:00:00.000Z',
+					requestIdFromReason: '12345',
+					linkedRequestId: '12345',
+					expectedRequestCharacterId: '7001',
+					hasRecipientMismatch: true,
+					hasMissingReasonWarning: false,
+					hasOpenAlert: true,
+				},
+			],
+			total: 1,
+			alerts: [
+				{
+					journalId: '9001',
+					kind: 'recipient_mismatch',
+					state: 'open',
+					expectedAmount: '1000000',
+					observedAmount: '1000000',
+					expectedRecipientCharacterId: '7001',
+					expectedRecipientCharacterName: 'Pilot One',
+					actualRecipientCharacterId: '7002',
+					actualRecipientCharacterName: 'Pilot Two',
+				},
+			],
+		})
+		const app = createApp(makeUser({ id: 'wallet-history-user', is_admin: true }), walletHistoryDb.db)
+		srpStub.getConfig.mockResolvedValue({ paymentProcessorCorporationId: '9000' })
+		resolverStub.resolveIds.mockResolvedValue({
+			'7001': 'Pilot One',
+			'7002': 'Pilot Two',
+		})
+
+		const response = await app.request(
+			'/api/srp/payments/wallet-history?alertsOnly=true&limit=1&offset=0',
+			{},
+			env
+		)
+		const body = await response.json<any>()
+
+		expect(response.status).toBe(200)
+		expect(body.total).toBe(1)
+		expect(body.limit).toBe(1)
+		expect(body.offset).toBe(0)
+		expect(body.items).toHaveLength(1)
+		expect(body.items[0]).toEqual(expect.objectContaining({ journalId: '9001' }))
+
+		expect(walletHistoryDb.execute).toHaveBeenCalledTimes(3)
+		const [rowsQuery, countQuery, alertsQuery] = walletHistoryDb.capturedQueries
+		expect(rowsQuery).toContain('from wallet_history_base')
+		expect(rowsQuery).toContain('where "hasopenalert" or "hasmissingreasonwarning"')
+		expect(rowsQuery).toContain('order by "entrydate" desc, "journalid" desc')
+		expect(rowsQuery).toContain('limit')
+		expect(rowsQuery).toContain('offset')
+		expect(countQuery).toContain('from wallet_history_base')
+		expect(countQuery).toContain('where "hasopenalert" or "hasmissingreasonwarning"')
+		expect(countQuery).toContain('cast(count(*) as integer) as "total"')
+		expect(alertsQuery).toContain('from srp_payment_alerts')
+		expect(alertsQuery).toContain('journal_id in')
 	})
 
 	it('exports paid SRP requests as CSV for reviewer users', async () => {
@@ -699,53 +826,6 @@ describe('srp routes - permissions', () => {
 				totalCharacters: 2,
 			},
 		})
-	})
-
-	it('backfills cached losses for all users with SRP request history', async () => {
-		const app = createApp(makeUser({ id: 'srp-backfill-admin', is_admin: true }))
-		const execute = vi.fn().mockResolvedValue({
-			rows: [{ userId: 'user-1' }, { userId: 'user-2' }],
-		})
-		const findMany = vi.fn().mockResolvedValue([
-			{ userId: 'user-1', characterId: '7001', characterName: 'Pilot One' },
-			{ userId: 'user-1', characterId: '7002', characterName: 'Pilot Two' },
-			{ userId: 'user-2', characterId: '8001', characterName: 'Other Pilot' },
-		])
-		createDbMock.mockReturnValue({
-			execute,
-			query: {
-				userCharacters: {
-					findMany,
-				},
-			},
-		} as any)
-
-		const response = await app.request('/api/srp/losses/refresh/backfill', { method: 'POST' }, env)
-		const body = await response.json<any>()
-
-		expect(response.status).toBe(202)
-		expect(body).toMatchObject({
-			success: true,
-			usersWithHistory: 2,
-			usersQueued: 2,
-			totalCharacters: 3,
-		})
-		expect(srpStub.backfillRecentLossesFromCache).toHaveBeenCalledTimes(3)
-		expect(srpStub.backfillRecentLossesFromCache).toHaveBeenCalledWith('7001')
-		expect(srpStub.backfillRecentLossesFromCache).toHaveBeenCalledWith('7002')
-		expect(srpStub.backfillRecentLossesFromCache).toHaveBeenCalledWith('8001')
-		expect(execute).toHaveBeenCalled()
-		expect(findMany).toHaveBeenCalled()
-	})
-
-	it('denies backfill refresh without manager access', async () => {
-		const app = createApp(makeUser({ id: 'srp-backfill-denied' }))
-
-		const response = await app.request('/api/srp/losses/refresh/backfill', { method: 'POST' }, env)
-
-		expect(response.status).toBe(403)
-		expect(await response.json()).toEqual({ error: 'Requires manager-or-higher permissions' })
-		expect(srpStub.backfillRecentLossesFromCache).not.toHaveBeenCalled()
 	})
 
 	it('denies non-owner non-staff from viewing another request', async () => {

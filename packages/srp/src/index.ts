@@ -161,7 +161,6 @@ export interface Srp {
 		characterName: string,
 		maxLossAgeDays: number
 	): Promise<RecentLossRefreshCharacterResult>
-	backfillRecentLossesFromCache(characterId: string): Promise<RecentLossCacheBackfillResult>
 
 	// Legacy review methods (kept for backward compat)
 	getPendingRequests(

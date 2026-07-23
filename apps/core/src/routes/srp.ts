@@ -32,7 +32,6 @@ import type {
 	LossWithSRPStatus,
 	SRPCommentResponse,
 	SRPRequestResponse,
-	RecentLossRefreshCharacterInput,
 	RecentLossRefreshCoordinator,
 	RequestStatus,
 	Srp,
@@ -103,55 +102,6 @@ function normalizeUserRequestListResult(
 	}
 
 	return result
-}
-
-type SrpBackfillRefreshCandidate = {
-	userId: string
-	characters: RecentLossRefreshCharacterInput[]
-}
-
-async function loadSrpBackfillRefreshCandidates(db: ReturnType<typeof createDb>): Promise<SrpBackfillRefreshCandidate[]> {
-	const historyUsers = await db.execute<{ userId: string }>(
-		sql`select user_id::text as "userId"
-			from srp_requests
-			group by user_id
-			order by "userId" asc`
-	)
-
-	const userIds = [...new Set((historyUsers.rows ?? []).map((row) => row.userId).filter(Boolean))]
-	if (userIds.length === 0) return []
-
-	const rows = await db.query.userCharacters.findMany({
-		where: and(
-			inArray(userCharacters.userId, userIds),
-			eq(userCharacters.isDeleted, false),
-			eq(userCharacters.status, 'active')
-		),
-		orderBy: [asc(userCharacters.userId), desc(userCharacters.is_primary), asc(userCharacters.characterName)],
-		columns: {
-			userId: true,
-			characterId: true,
-			characterName: true,
-		},
-	})
-
-	const charactersByUser = new Map<string, RecentLossRefreshCharacterInput[]>()
-	for (const row of rows) {
-		const userId = String(row.userId)
-		const nextCharacters = charactersByUser.get(userId) ?? []
-		nextCharacters.push({
-			characterId: String(row.characterId),
-			characterName: row.characterName,
-		})
-		charactersByUser.set(userId, nextCharacters)
-	}
-
-	return userIds
-		.map((userId) => ({
-			userId,
-			characters: charactersByUser.get(userId) ?? [],
-		}))
-		.filter((candidate) => candidate.characters.length > 0)
 }
 
 function isValidSrpRequestId(requestId: string): boolean {
@@ -877,61 +827,6 @@ srp.get('/losses/refresh/status', async (c) => {
 	)
 	const status = await statusStub.getRecentLossRefreshStatus(user.id)
 	return c.json(status)
-})
-
-/**
- * Backfill the canonical SRP killmail table from the existing SRP DO cache
- * for all known users with SRP request history.
- * POST /api/srp/losses/refresh/backfill
- */
-srp.post('/losses/refresh/backfill', async (c) => {
-	const user = c.get('user')!
-	const canManage = await hasSrpTierPermission(c.env, user.id, 'manager', user.is_admin)
-	if (!canManage) return c.json({ error: 'Requires manager-or-higher permissions' }, 403)
-
-	const db = c.get('db') || createDb(c.env.DATABASE_URL)
-	const srpStub = getStub<Srp>(c.env.SRP, 'default')
-	const candidates = await loadSrpBackfillRefreshCandidates(db)
-	const totalCharacters = candidates.reduce((total, candidate) => total + candidate.characters.length, 0)
-	const executionCtx = getExecutionContextOrNull(c)
-
-	const launchBackfill = async () => {
-		for (const candidate of candidates) {
-			for (const character of candidate.characters) {
-				await srpStub.backfillRecentLossesFromCache(character.characterId)
-			}
-		}
-	}
-
-	if (executionCtx) {
-		waitUntilWithTelemetry(
-			executionCtx,
-			'srp.recent-loss-cache.backfill',
-			launchBackfill,
-			{
-				adminUserId: user.id,
-				usersWithHistory: candidates.length,
-				totalCharacters,
-			}
-		)
-	} else {
-		await launchBackfill()
-	}
-
-	return c.json(
-		{
-			success: true,
-			message:
-				candidates.length > 0
-					? 'SRP cached-loss backfill started'
-					: 'No SRP cached losses found to backfill',
-			usersWithHistory: candidates.length,
-			usersQueued: candidates.length,
-			totalCharacters,
-			skippedUsers: 0,
-		},
-		202
-	)
 })
 
 // =============================================================================
@@ -1692,6 +1587,215 @@ export function buildSrpWalletHistoryExportFileName(dateFrom: string, dateTo: st
 	return `srp-wallet-history-${dateFrom.slice(0, 10)}-${dateTo.slice(0, 10)}.csv`
 }
 
+function serializeWalletHistoryEntryDate(value: unknown): string {
+	if (value == null) {
+		return ''
+	}
+	if (typeof value === 'string') {
+		const parsed = parseDateOrNull(value)
+		if (parsed) return parsed.toISOString()
+	}
+	if (typeof value === 'number' && Number.isFinite(value)) {
+		return new Date(value).toISOString()
+	}
+	if (value && typeof value === 'object') {
+		try {
+			const rawValue = (value as { valueOf?: () => unknown }).valueOf?.()
+			if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+				return new Date(rawValue).toISOString()
+			}
+			if (typeof rawValue === 'string') {
+				const parsed = parseDateOrNull(rawValue)
+				if (parsed) return parsed.toISOString()
+			}
+		} catch {
+			// Fall through to the generic parse/error path below.
+		}
+		try {
+			const jsonValue = JSON.stringify(value)
+			if (jsonValue) {
+				const unquotedValue = jsonValue.startsWith('"') && jsonValue.endsWith('"')
+					? jsonValue.slice(1, -1)
+					: jsonValue
+				const parsed = parseDateOrNull(unquotedValue)
+				if (parsed) return parsed.toISOString()
+			}
+		} catch {
+			// Fall through to the generic parse/error path below.
+		}
+		if ('toISOString' in value) {
+			try {
+				return (value as { toISOString: () => string }).toISOString()
+			} catch {
+				// Fall through to the generic parse/error path below.
+			}
+		}
+	}
+	const parsed = parseDateOrNull(String(value))
+	if (parsed) return parsed.toISOString()
+	throw new Error(`Invalid wallet history entry date: ${String(value)}`)
+}
+
+function buildSrpWalletHistoryWhereClause(args: {
+	processorCorporationId: string
+	reason?: string
+	recipientId?: string
+	dateFrom?: string
+	dateTo?: string
+}) {
+	const whereParts = [
+		sql`wj.corporation_id = ${args.processorCorporationId}`,
+		sql`wj.ref_type = 'corporation_account_withdrawal'`,
+		sql`exists (
+			select 1
+			from user_characters recipient_char
+			where recipient_char.character_id = wj.second_party_id
+		)`,
+	]
+
+	if (args.reason) whereParts.push(sql`wj.reason ilike ${`%${args.reason}%`}`)
+	if (args.recipientId) whereParts.push(sql`wj.second_party_id = ${args.recipientId}`)
+	if (args.dateFrom) {
+		whereParts.push(
+			sql`wj.date >= ${args.dateFrom.includes('T') ? new Date(args.dateFrom) : new Date(`${args.dateFrom}T00:00:00.000Z`)}`
+		)
+	}
+	if (args.dateTo) {
+		whereParts.push(
+			sql`wj.date <= ${args.dateTo.includes('T') ? new Date(args.dateTo) : new Date(`${args.dateTo}T23:59:59.999Z`)}`
+		)
+	}
+
+	return sql.join(whereParts, sql` and `)
+}
+
+function buildSrpWalletHistoryBaseCte(args: {
+	processorCorporationId: string
+	whereClause: unknown
+}) {
+	return sql`
+		with wallet_history_base as (
+			select
+				wj.journal_id::text as "journalId",
+				wj.ref_type as "refType",
+				wj.amount as "amount",
+				wj.reason as "reason",
+				wj.second_party_id::text as "recipientId",
+				wj.date as "entryDate",
+				request_ref.request_id_from_reason as "requestIdFromReason",
+				req.id::text as "linkedRequestId",
+				req.character_id as "expectedRequestCharacterId",
+				coalesce(
+					(
+						wj.ref_type = 'corporation_account_withdrawal'
+						and wj.second_party_id is not null
+						and (wj.reason is null or btrim(wj.reason) = '')
+					),
+					false
+				) as "hasMissingReasonWarning",
+				coalesce(
+					req.character_id is not null
+					and wj.second_party_id is not null
+					and wj.second_party_id::text <> req.character_id,
+					false
+				) as "hasRecipientMismatch",
+				(
+					coalesce(alert_counts.open_alert_count, 0) > 0
+					or (
+						req.character_id is not null
+						and wj.second_party_id is not null
+						and wj.second_party_id::text <> req.character_id
+					)
+				) as "hasOpenAlert"
+			from corporation_wallet_journal as wj
+			left join lateral (
+				select (regexp_match(coalesce(wj.reason, ''), 'KM#([0-9]+)'))[1] as request_id_from_reason
+			) as request_ref on true
+			left join srp_requests as req on req.id = request_ref.request_id_from_reason
+			left join (
+				select
+					journal_id::text as journal_id,
+					count(*)::int as open_alert_count
+				from srp_payment_alerts
+				where payment_processor_corporation_id = ${args.processorCorporationId}
+					and state = 'open'
+				group by journal_id
+			) as alert_counts on alert_counts.journal_id = wj.journal_id::text
+			where ${args.whereClause}
+		)
+	`
+}
+
+function buildSrpWalletHistoryRowsQuery(args: {
+	processorCorporationId: string
+	whereClause: unknown
+	alertsOnly: boolean
+	limit: number
+	offset: number
+}) {
+	const baseCte = buildSrpWalletHistoryBaseCte({
+		processorCorporationId: args.processorCorporationId,
+		whereClause: args.whereClause,
+	})
+	const alertFilter = args.alertsOnly ? sql`where "hasOpenAlert" or "hasMissingReasonWarning"` : sql``
+
+	return sql`
+		${baseCte}
+		select
+			"journalId",
+			"refType",
+			"amount",
+			"reason",
+			"recipientId",
+			"entryDate",
+			"requestIdFromReason",
+			"linkedRequestId",
+			"expectedRequestCharacterId",
+			"hasRecipientMismatch",
+			"hasMissingReasonWarning",
+			"hasOpenAlert"
+		from wallet_history_base
+		${alertFilter}
+		order by "entryDate" desc, "journalId" desc
+		limit ${args.limit}
+		offset ${args.offset}
+	`
+}
+
+function buildSrpWalletHistoryCountQuery(args: {
+	processorCorporationId: string
+	whereClause: unknown
+	alertsOnly: boolean
+}) {
+	const baseCte = buildSrpWalletHistoryBaseCte({
+		processorCorporationId: args.processorCorporationId,
+		whereClause: args.whereClause,
+	})
+	const alertFilter = args.alertsOnly ? sql`where "hasOpenAlert" or "hasMissingReasonWarning"` : sql``
+
+	return sql`
+		${baseCte}
+		select cast(count(*) as integer) as "total"
+		from wallet_history_base
+		${alertFilter}
+	`
+}
+
+type WalletHistoryRow = {
+	journalId: string
+	refType: string | null
+	amount: string
+	reason: string | null
+	recipientId: string | null
+	entryDate: Date
+	requestIdFromReason: string | null
+	linkedRequestId: string | null
+	expectedRequestCharacterId: string | null
+	hasRecipientMismatch: boolean
+	hasMissingReasonWarning: boolean
+	hasOpenAlert: boolean
+}
+
 export async function writeSrpPaidRequestsExportToBucket(args: {
 	bucket: R2Bucket
 	exportKey: string
@@ -1959,10 +2063,7 @@ export async function writeSrpWalletHistoryExportToBucket(args: {
 			reason: row.reason,
 			recipientId: row.recipientId,
 			recipientName: row.recipientId ? (resolvedNames[row.recipientId] ?? null) : null,
-			entryDate:
-				row.entryDate instanceof Date
-					? row.entryDate.toISOString()
-					: new Date(String(row.entryDate)).toISOString(),
+			entryDate: serializeWalletHistoryEntryDate(row.entryDate),
 			matchingAlertKinds: alertKindsByJournalId.get(row.journalId) ?? [],
 			alertDetail:
 				paymentAlertDetailByJournalId.get(row.journalId) ??
@@ -2177,127 +2278,36 @@ srp.get('/payments/wallet-history', async (c) => {
 
 	const db = c.get('db')
 	if (!db) return c.json({ error: 'Database unavailable' }, 500)
-
-	const whereParts = [
-		sql`corporation_id = ${processorCorporationId}`,
-		sql`ref_type = 'corporation_account_withdrawal'`,
-		sql`exists (
-			select 1
-			from user_characters recipient_char
-			where recipient_char.character_id = second_party_id
-		)`,
-	]
-	if (reason) whereParts.push(sql`reason ilike ${`%${reason}%`}`)
-	if (recipientId) whereParts.push(sql`second_party_id = ${recipientId}`)
-	if (dateFrom) whereParts.push(sql`date >= ${dateFrom.includes('T') ? new Date(dateFrom) : new Date(`${dateFrom}T00:00:00.000Z`)}`)
-	if (dateTo) whereParts.push(sql`date <= ${dateTo.includes('T') ? new Date(dateTo) : new Date(`${dateTo}T23:59:59.999Z`)}`)
-	const whereClause = sql.join(whereParts, sql` and `)
+	const whereClause = buildSrpWalletHistoryWhereClause({
+		processorCorporationId,
+		reason: reason ?? undefined,
+		recipientId: recipientId ?? undefined,
+		dateFrom: dateFrom ?? undefined,
+		dateTo: dateTo ?? undefined,
+	})
 
 	const [rowsResult, countResult] = await Promise.all([
-		db.execute<{
-			journalId: string
-			refType: string | null
-			amount: string
-			reason: string | null
-			recipientId: string | null
-			entryDate: Date
-		}>(
-			alertsOnly
-				? sql`select
-						journal_id::text as "journalId",
-						ref_type as "refType",
-						amount as "amount",
-						reason as "reason",
-						second_party_id as "recipientId",
-						date as "entryDate"
-					from corporation_wallet_journal
-					where ${whereClause}
-					order by date desc`
-				: sql`select
-						journal_id::text as "journalId",
-						ref_type as "refType",
-						amount as "amount",
-						reason as "reason",
-						second_party_id as "recipientId",
-						date as "entryDate"
-					from corporation_wallet_journal
-					where ${whereClause}
-					order by date desc
-					limit ${limit}
-					offset ${offset}`
+		db.execute<WalletHistoryRow>(
+			buildSrpWalletHistoryRowsQuery({
+				processorCorporationId,
+				whereClause,
+				alertsOnly,
+				limit,
+				offset,
+			})
 		),
 		db.execute<{ total: number }>(
-			sql`select cast(count(*) as integer) as "total"
-				from corporation_wallet_journal
-				where ${whereClause}`
+			buildSrpWalletHistoryCountQuery({
+				processorCorporationId,
+				whereClause,
+				alertsOnly,
+			})
 		),
 	])
 
 	const rows = rowsResult.rows ?? []
-	const rawTotal = countResult.rows?.[0]?.total ?? 0
+	const total = countResult.rows?.[0]?.total ?? 0
 	const journalIds = [...new Set(rows.map((row) => row.journalId))]
-	const kmRequestIds = [
-		...new Set(
-			rows
-				.map((row) => {
-					const text = row.reason ?? ''
-					const match = text.match(SRP_REQUEST_ID_IN_REASON_REGEX)
-					return match?.[1] ?? null
-				})
-				.filter((value): value is string => Boolean(value))
-		),
-	]
-
-	const [matchingRequestsResult, paymentAlertsResult] = await Promise.all([
-		kmRequestIds.length > 0
-			? db.execute<{ id: string; characterId: string }>(
-					sql`select id::text as "id", character_id as "characterId"
-						from srp_requests
-						where id in ${sql`(${sql.join(kmRequestIds.map((id) => sql`${id}`), sql`,`)})`}`
-				)
-			: Promise.resolve({ rows: [] as Array<{ id: string; characterId: string }> }),
-		journalIds.length > 0
-			? db.execute<{
-					journalId: string
-					kind: string
-					state: string
-					expectedAmount: string | null
-					observedAmount: string | null
-					expectedRecipientCharacterId: string | null
-					expectedRecipientCharacterName: string | null
-					actualRecipientCharacterId: string | null
-					actualRecipientCharacterName: string | null
-				}>(
-					sql`select
-							journal_id::text as "journalId",
-							kind,
-							state,
-							expected_amount as "expectedAmount",
-							observed_amount as "observedAmount",
-							expected_recipient_character_id as "expectedRecipientCharacterId",
-							expected_recipient_character_name as "expectedRecipientCharacterName",
-							actual_recipient_character_id as "actualRecipientCharacterId",
-							actual_recipient_character_name as "actualRecipientCharacterName"
-						from srp_payment_alerts
-						where journal_id in ${sql`(${sql.join(journalIds.map((id) => sql`${id}`), sql`,`)})`}`
-				)
-			: Promise.resolve({
-					rows: [] as Array<{
-						journalId: string
-						kind: string
-						state: string
-						expectedAmount: string | null
-						observedAmount: string | null
-						expectedRecipientCharacterId: string | null
-						expectedRecipientCharacterName: string | null
-						actualRecipientCharacterId: string | null
-						actualRecipientCharacterName: string | null
-					}>,
-				}),
-	])
-	const requestById = new Map(
-		(matchingRequestsResult.rows ?? []).map((row) => [row.id, row.characterId])
-	)
 	const alertKindsByJournalId = new Map<string, string[]>()
 	const paymentAlertDetailByJournalId = new Map<
 		string,
@@ -2310,7 +2320,47 @@ srp.get('/payments/wallet-history', async (c) => {
 			actualRecipientCharacterName: string | null
 		}
 	>()
-	for (const row of paymentAlertsResult.rows ?? []) {
+	for (const row of
+		(
+			await (journalIds.length > 0
+				? db.execute<{
+						journalId: string
+						kind: string
+						state: string
+						expectedAmount: string | null
+						observedAmount: string | null
+						expectedRecipientCharacterId: string | null
+						expectedRecipientCharacterName: string | null
+						actualRecipientCharacterId: string | null
+						actualRecipientCharacterName: string | null
+					}>(
+						sql`select
+								journal_id::text as "journalId",
+								kind,
+								state,
+								expected_amount as "expectedAmount",
+								observed_amount as "observedAmount",
+								expected_recipient_character_id as "expectedRecipientCharacterId",
+								expected_recipient_character_name as "expectedRecipientCharacterName",
+								actual_recipient_character_id as "actualRecipientCharacterId",
+								actual_recipient_character_name as "actualRecipientCharacterName"
+							from srp_payment_alerts
+							where journal_id in ${sql`(${sql.join(journalIds.map((id) => sql`${id}`), sql`,`)})`}`
+					)
+				: Promise.resolve({
+						rows: [] as Array<{
+							journalId: string
+							kind: string
+							state: string
+							expectedAmount: string | null
+							observedAmount: string | null
+							expectedRecipientCharacterId: string | null
+							expectedRecipientCharacterName: string | null
+							actualRecipientCharacterId: string | null
+							actualRecipientCharacterName: string | null
+						}>,
+					})
+		)).rows ?? []) {
 		const existing = alertKindsByJournalId.get(row.journalId) ?? []
 		if (row.state === 'open' && !existing.includes(row.kind)) {
 			existing.push(row.kind)
@@ -2328,10 +2378,12 @@ srp.get('/payments/wallet-history', async (c) => {
 		}
 	}
 
-	const requestCharacterIds = [...new Set((matchingRequestsResult.rows ?? []).map((row) => row.characterId))]
 	const idsToResolve = [
 		...new Set(
-			[...rows.map((row) => row.recipientId), ...requestCharacterIds].filter(
+			[
+				...rows.map((row) => row.recipientId),
+				...rows.map((row) => row.expectedRequestCharacterId),
+			].filter(
 				(id): id is string => Boolean(id)
 			)
 		),
@@ -2340,41 +2392,23 @@ srp.get('/payments/wallet-history', async (c) => {
 	const resolvedNames: Record<string, string> =
 		idsToResolve.length > 0 ? await resolver.resolveIds(idsToResolve).catch(() => ({})) : {}
 
-	const computedItems = rows.map((row) => {
-			const requestIdFromReason = (() => {
-				const reasonText = row.reason ?? ''
-				const match = reasonText.match(SRP_REQUEST_ID_IN_REASON_REGEX)
-				return match?.[1] ?? null
-			})()
-			const expectedRequestCharacterId = requestIdFromReason
-				? (requestById.get(requestIdFromReason) ?? null)
-				: null
-			const hasRecipientMismatch = Boolean(
-				expectedRequestCharacterId && row.recipientId && row.recipientId !== expectedRequestCharacterId
-			)
-			const hasMissingReasonWarning = Boolean(
-				row.refType === 'corporation_account_withdrawal' &&
-					row.recipientId &&
-					(!row.reason || row.reason.trim().length === 0)
-			)
+	const items = rows.map((row) => {
+		const hasRecipientMismatch = Boolean(row.hasRecipientMismatch)
+		const expectedRecipientCharacterName = row.expectedRequestCharacterId
+			? (resolvedNames[row.expectedRequestCharacterId] ?? null)
+			: null
 
-			return {
+		return {
 			hasRecipientMismatch,
-			hasMissingReasonWarning,
-			linkedRequestId: (() => {
-				if (!requestIdFromReason) return null
-				return requestById.has(requestIdFromReason) ? requestIdFromReason : null
-			})(),
+			hasMissingReasonWarning: row.hasMissingReasonWarning,
+			linkedRequestId: row.linkedRequestId,
 			journalId: row.journalId,
 			refType: row.refType,
 			amount: row.amount,
 			reason: row.reason,
 			recipientId: row.recipientId,
 			recipientName: row.recipientId ? (resolvedNames[row.recipientId] ?? null) : null,
-			entryDate:
-				row.entryDate instanceof Date
-					? row.entryDate.toISOString()
-					: new Date(String(row.entryDate)).toISOString(),
+			entryDate: serializeWalletHistoryEntryDate(row.entryDate),
 			matchingAlertKinds: alertKindsByJournalId.get(row.journalId) ?? [],
 			alertDetail:
 				paymentAlertDetailByJournalId.get(row.journalId) ??
@@ -2382,30 +2416,21 @@ srp.get('/payments/wallet-history', async (c) => {
 					? {
 							expectedAmount: null,
 							observedAmount: row.amount,
-							expectedRecipientCharacterId: expectedRequestCharacterId,
-							expectedRecipientCharacterName: expectedRequestCharacterId
-								? (resolvedNames[expectedRequestCharacterId] ?? null)
-								: null,
+							expectedRecipientCharacterId: row.expectedRequestCharacterId,
+							expectedRecipientCharacterName,
 							actualRecipientCharacterId: row.recipientId,
 							actualRecipientCharacterName: row.recipientId
 								? (resolvedNames[row.recipientId] ?? null)
 								: null,
 					  }
 					: null),
-			hasOpenAlert:
-				(alertKindsByJournalId.get(row.journalId) ?? []).length > 0 ||
-				hasRecipientMismatch,
+			hasOpenAlert: row.hasOpenAlert,
 		}
 	})
 
-	const items = alertsOnly
-		? computedItems.filter((item) => item.hasOpenAlert || item.hasMissingReasonWarning)
-		: computedItems
-	const pagedItems = alertsOnly ? items.slice(offset, offset + limit) : items
-
 	return c.json({
-		items: pagedItems,
-		total: alertsOnly ? items.length : rawTotal,
+		items,
+		total,
 		limit,
 		offset,
 	})

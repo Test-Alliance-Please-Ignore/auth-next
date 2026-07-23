@@ -75,12 +75,3 @@ export interface MilitarySrpAssessment {
 export type SRPRequestWithMilitary = SRPRequestResponse & {
 	militarySrp?: MilitarySrpAssessment
 }
-
-export interface SRPRecentLossRefreshBackfillResponse {
-	success: boolean
-	message: string
-	usersWithHistory: number
-	usersQueued: number
-	totalCharacters: number
-	skippedUsers: number
-}

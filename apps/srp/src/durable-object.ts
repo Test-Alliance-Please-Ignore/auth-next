@@ -26,7 +26,6 @@ import {
 } from './db/schema'
 import { buildEquippedByType } from './lib/equipment'
 import { SrpKillmailEsiClient, SrpKillmailNotFoundError } from './lib/killmail-esi'
-import { computeSrpPayout } from './lib/payout'
 import {
 	doesRecentLossCacheCoverCutoff,
 	mergeRecentLosses,
@@ -1211,31 +1210,6 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			characterId,
 			characterName: _characterName,
 			success: true,
-		}
-	}
-
-	async backfillRecentLossesFromCache(characterId: string): Promise<RecentLossCacheBackfillResult> {
-		const cached = await this.readRecentLossCache(characterId)
-		const cachedLosses = cached?.losses ?? []
-		if (cachedLosses.length === 0) {
-			return {
-				characterId,
-				cachedLosses: 0,
-				persistedLosses: 0,
-			}
-		}
-
-		const hydratedLosses = cachedLosses.map((loss) => ({
-			loss,
-			killmailData: buildKillmailDetailFromCachedLoss(characterId, loss.killmailId, loss.killmailHash, loss),
-		}))
-
-		await this.persistRecentLossesToCharacterData(characterId, hydratedLosses)
-
-		return {
-			characterId,
-			cachedLosses: cachedLosses.length,
-			persistedLosses: hydratedLosses.length,
 		}
 	}
 
