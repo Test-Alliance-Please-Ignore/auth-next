@@ -39,7 +39,6 @@ import { parseSecurityStatus, securityStatusTextClass } from '../security-status
 import type { OreRarity, ScannedMoonEntry } from '../types'
 
 const RARITY_VALUES: readonly OreRarity[] = ['R4', 'R8', 'R16', 'R32', 'R64']
-const EXPORT_STATUS_POLL_INTERVALS_MS = [5_000, 10_000, 15_000, 30_000] as const
 type SortBy =
 	| 'moonName'
 	| 'solarSystemName'
@@ -128,10 +127,7 @@ export default function ScannedMoonsPage() {
 		enabled: Boolean(pendingExport?.workflowInstanceId),
 		refetchInterval: (query) => {
 			const status = query.state.data?.status
-			if (status !== 'queued' && status !== 'running') return false
-			return EXPORT_STATUS_POLL_INTERVALS_MS[
-				Math.min(query.state.dataUpdateCount, EXPORT_STATUS_POLL_INTERVALS_MS.length - 1)
-			]
+			return status === 'queued' || status === 'running' ? 5000 : false
 		},
 		refetchOnWindowFocus: false,
 	})

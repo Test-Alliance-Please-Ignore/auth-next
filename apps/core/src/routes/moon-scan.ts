@@ -72,6 +72,8 @@ const MAX_SCAN_RAW_BYTES = 1_000_000
 
 const permissionCache = new TimeCache<boolean>(15_000)
 const verifiedMoonSummaryBackfillCache = new TimeCache<boolean>(5 * 60_000)
+const MOON_PRICING_INPUTS_CACHE_TTL_MS = 60_000
+const VERIFIED_MOONS_RESPONSE_CACHE_TTL_MS = 30_000
 const VERIFIED_MOON_SUMMARY_BACKFILL_BATCH_SIZE = 250
 const VERIFIED_MOONS_EXPORT_PAGE_SIZE = 100
 const VERIFIED_MOONS_EXPORT_BUCKET_PREFIX = 'moon-scan/verified-moons-exports'
@@ -359,6 +361,36 @@ type MoonPricingInputs = {
 	typeNamesMap: Record<string, { typeName: string } | null>
 }
 
+type VerifiedMoonsListItem = {
+	moonId: string
+	moonName: string
+	solarSystemId: string
+	solarSystemName: string
+	regionId: string
+	regionName: string
+	constellationId: string
+	constellationName: string
+	securityStatus: string | null
+	highestRarity: OreRarity | null
+	metenoxProfit: string | null
+	tataraProfit: string | null
+}
+
+type VerifiedMoonsListResponse = {
+	items: VerifiedMoonsListItem[]
+	total: number
+	page: number
+	pageSize: number
+	constellations: Array<{ constellationId: string; constellationName: string }>
+	updatedAt: string
+}
+
+const moonPricingInputsCache = new TimeCache<MoonPricingInputs>(MOON_PRICING_INPUTS_CACHE_TTL_MS, 100)
+const verifiedMoonsResponseCache = new TimeCache<VerifiedMoonsListResponse>(
+	VERIFIED_MOONS_RESPONSE_CACHE_TTL_MS,
+	200
+)
+
 type MoonExportEntry = {
 	moon: {
 		moonId: string
@@ -478,6 +510,73 @@ function getMoonProfitabilityInputsFromComposition(
 	}
 }
 
+function clearMoonScanReadCaches(): void {
+	verifiedMoonSummaryBackfillCache.clear()
+	verifiedMoonsResponseCache.clear()
+}
+
+function clearMoonScanPricingCaches(): void {
+	moonPricingInputsCache.clear()
+	clearMoonScanReadCaches()
+}
+
+function buildMoonPricingInputsCacheKey(oreTypeIds: string[]): string {
+	const sortedOreTypeIds = [...new Set(oreTypeIds)].sort((a, b) => Number(a) - Number(b))
+	return `moon-pricing-inputs:${sortedOreTypeIds.join(',')}`
+}
+
+function getMoonProfitValuesFromComposition(
+	composition: VerifiedComposition,
+	inputs: MoonPricingInputs,
+): Pick<VerifiedMoonsListItem, 'metenoxProfit' | 'tataraProfit'> {
+	const reprocessingYield = parseFloat(inputs.settings.defaultReprocessingYield)
+	const cycleDays = inputs.settings.defaultCycleDays
+	let metenoxProfit: number | null = null
+	let tataraProfit: number | null = null
+
+	for (const profile of inputs.profiles) {
+		const baseRate = parseFloat(profile.baseVolumePerHr) * (1 + parseFloat(profile.rigBonus))
+		const fuelPerHr = parseFloat(profile.fuelPerHr)
+		const magmaticGasPerHr = profile.magmaticGasPerHr ? parseFloat(profile.magmaticGasPerHr) : 0
+		const cycleHours = cycleDays * 24
+		const totalVolume = profile.isPassive
+			? baseRate * parseFloat(profile.nullsecModifier) * cycleHours
+			: baseRate * cycleHours
+		const fuelUnits = fuelPerHr * cycleHours
+		const magmaticGasUnits = profile.isPassive ? magmaticGasPerHr * cycleHours : 0
+
+		let grossIsk = 0
+		for (const ore of composition.ores) {
+			const liveMaterials = inputs.typeMaterialsMap[ore.oreTypeId] ?? []
+			const fraction = parseFloat(ore.quantity)
+			const oreUnits = (totalVolume * fraction) / getOreVolume(ore.oreTypeId)
+			for (const material of liveMaterials) {
+				if (profile.isPassive && MINERAL_TYPE_IDS.has(material.materialTypeId)) continue
+				const rawUnits = Math.floor(oreUnits / 100) * material.quantity * reprocessingYield
+				grossIsk += Math.floor(rawUnits) * (inputs.priceMap[material.materialTypeId] ?? 0)
+			}
+		}
+
+		const fuelCost = fuelUnits * resolveEffectivePrice(
+			inputs.settings.fuelBlockPriceOverride,
+			inputs.priceMap[FUEL_BLOCK_TYPE_ID] ?? 0
+		)
+		const magmaticGasCost = magmaticGasUnits * resolveEffectivePrice(
+			inputs.settings.magmaticGasPriceOverride,
+			inputs.priceMap[MAGMATIC_GAS_TYPE_ID] ?? 0
+		)
+		const profit = Math.round(grossIsk - fuelCost - magmaticGasCost)
+
+		if (profile.id === 'metenox') metenoxProfit = profit
+		else if (profile.id === 'tatara') tataraProfit = profit
+	}
+
+	return {
+		metenoxProfit: metenoxProfit !== null ? String(metenoxProfit) : null,
+		tataraProfit: tataraProfit !== null ? String(tataraProfit) : null,
+	}
+}
+
 async function getMoonPricingInputs(
 	env: App['Bindings'],
 	universe: Universe,
@@ -495,45 +594,47 @@ async function getMoonPricingInputsForOreTypeIds(
 	oreTypeIds: string[],
 ): Promise<MoonPricingInputs> {
 	const uniqueOreTypeIds = [...new Set(oreTypeIds)]
-	const [settings, profiles, typeMaterialsMap] = await Promise.all([
-		moonScan.getExtractionSettings(),
-		moonScan.getStructureProfiles(),
-		uniqueOreTypeIds.length > 0
-			? universe.getTypeMaterials(uniqueOreTypeIds)
-			: Promise.resolve({} as Record<string, Array<{ materialTypeId: string; quantity: number }>>),
-	])
+	return moonPricingInputsCache.getOrSet(buildMoonPricingInputsCacheKey(uniqueOreTypeIds), async () => {
+		const [settings, profiles, typeMaterialsMap] = await Promise.all([
+			moonScan.getExtractionSettings(),
+			moonScan.getStructureProfiles(),
+			uniqueOreTypeIds.length > 0
+				? universe.getTypeMaterials(uniqueOreTypeIds)
+				: Promise.resolve({} as Record<string, Array<{ materialTypeId: string; quantity: number }>>),
+		])
 
-	const materialTypeIds = [
-		...new Set(
-			Object.values(typeMaterialsMap).flatMap((materials) => materials.map((material) => material.materialTypeId))
-		),
-	]
-	const typeIdsForNames = [...new Set([...uniqueOreTypeIds, ...materialTypeIds])]
-	const priceTypeIds = [...new Set([...materialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID])]
-	const markets = getMarketsStub(env)
-	const [priceResponse, typeNamesMap] = await Promise.all([
-		markets.getBatchMarketDataAtTime({
-			regionId: createEveRegionId('universe'),
-			typeIds: priceTypeIds.map(createEveTypeId),
-			atTime: new Date(),
-		}),
-		typeIdsForNames.length > 0
-			? universe.resolveTypeNamesByIds(typeIdsForNames)
-			: Promise.resolve({} as Record<string, { typeName: string } | null>),
-	])
+		const materialTypeIds = [
+			...new Set(
+				Object.values(typeMaterialsMap).flatMap((materials) => materials.map((material) => material.materialTypeId))
+			),
+		]
+		const typeIdsForNames = [...new Set([...uniqueOreTypeIds, ...materialTypeIds])]
+		const priceTypeIds = [...new Set([...materialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID])]
+		const markets = getMarketsStub(env)
+		const [priceResponse, typeNamesMap] = await Promise.all([
+			markets.getBatchMarketDataAtTime({
+				regionId: createEveRegionId('universe'),
+				typeIds: priceTypeIds.map(createEveTypeId),
+				atTime: new Date(),
+			}),
+			typeIdsForNames.length > 0
+				? universe.resolveTypeNamesByIds(typeIdsForNames)
+				: Promise.resolve({} as Record<string, { typeName: string } | null>),
+		])
 
-	const priceMap: Record<string, number> = {}
-	for (const price of priceResponse.prices) {
-		if (price.bestSellPrice) priceMap[price.typeId] = parseFloat(price.bestSellPrice)
-	}
+		const priceMap: Record<string, number> = {}
+		for (const price of priceResponse.prices) {
+			if (price.bestSellPrice) priceMap[price.typeId] = parseFloat(price.bestSellPrice)
+		}
 
-	return {
-		settings,
-		profiles,
-		typeMaterialsMap,
-		priceMap,
-		typeNamesMap,
-	}
+		return {
+			settings,
+			profiles,
+			typeMaterialsMap,
+			priceMap,
+			typeNamesMap,
+		}
+	})
 }
 
 function buildMoonExportRows(entry: MoonExportEntry): Array<Array<string | number | boolean | null | undefined>> {
@@ -669,6 +770,21 @@ const VerifiedMoonsQuerySchema = z.object({
 		.default('moonName'),
 	sortDir: z.enum(['asc', 'desc']).default('asc'),
 })
+
+function buildVerifiedMoonsResponseCacheKey(query: z.infer<typeof VerifiedMoonsQuerySchema>): string {
+	const rarities = query.rarity ? [...query.rarity].sort().join(',') : ''
+	return [
+		'verified-moons',
+		query.page,
+		query.pageSize,
+		query.regionId ?? '',
+		query.constellationId ?? '',
+		rarities,
+		query.search ?? '',
+		query.sortBy,
+		query.sortDir,
+	].join('|')
+}
 
 const ExtractionSettingsSchema = z.object({
 	defaultReprocessingYield: z.string().optional(),
@@ -898,6 +1014,9 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 	const moonScan = getMoonScanStub(c.env)
 	const universe = getUniverseStub(c.env)
 	const usesProfitSort = query.data.sortBy === 'metenoxProfit' || query.data.sortBy === 'tataraProfit'
+	const verifiedMoonsResponseCacheKey = buildVerifiedMoonsResponseCacheKey(query.data)
+	const cachedResponse = verifiedMoonsResponseCache.get(verifiedMoonsResponseCacheKey)
+	if (cachedResponse) return c.json(cachedResponse)
 
 	if (!usesProfitSort) {
 		let summary: Awaited<ReturnType<MoonScanDO['getVerifiedMoonPage']>> | null = null
@@ -920,91 +1039,21 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 
 		if (summary) {
 			if (summary.items.length === 0) {
-				return c.json({
+				const response: VerifiedMoonsListResponse = {
 					items: [],
 					total: summary.total,
 					page: summary.page,
 					pageSize: summary.pageSize,
 					constellations: summary.constellations,
 					updatedAt: new Date().toISOString(),
-				})
+				}
+				verifiedMoonsResponseCache.set(verifiedMoonsResponseCacheKey, response)
+				return c.json(response)
 			}
 
 			const pageMoonIds = summary.items.map((item) => item.moonId)
-			const [compositions, settings, profiles] = await Promise.all([
-				moonScan.getVerifiedCompositions(pageMoonIds),
-				moonScan.getExtractionSettings(),
-				moonScan.getStructureProfiles(),
-			])
-
-			// Collect all unique ore type IDs across the current page for typeMaterials lookup
-			const allOreTypeIds = [...new Set(compositions.flatMap((c) => c.ores.map((o) => o.oreTypeId)))]
-
-			// Fetch live typeMaterials first, then price all discovered materials + consumables.
-			const markets = getMarketsStub(c.env)
-			const typeMaterialsMap = await universe.getTypeMaterials(allOreTypeIds)
-			const allMaterialTypeIds = [...new Set(
-				Object.values(typeMaterialsMap).flatMap((materials) => materials.map((material) => material.materialTypeId))
-			)]
-			const priceResponse = await markets.getBatchMarketDataAtTime({
-				regionId: createEveRegionId('universe'),
-				typeIds: [...allMaterialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID].map(createEveTypeId),
-				atTime: new Date(),
-			})
-			const priceMap: Record<string, number> = {}
-			for (const p of priceResponse.prices) {
-				if (p.bestSellPrice) priceMap[p.typeId] = parseFloat(p.bestSellPrice)
-			}
-
-			const fuelBlockPrice = resolveEffectivePrice(
-				settings.fuelBlockPriceOverride,
-				priceMap[FUEL_BLOCK_TYPE_ID] ?? 0
-			)
-			const magmaticGasPrice = resolveEffectivePrice(
-				settings.magmaticGasPriceOverride,
-				priceMap[MAGMATIC_GAS_TYPE_ID] ?? 0
-			)
-			const reprocessingYield = parseFloat(settings.defaultReprocessingYield)
-			const cycleDays = settings.defaultCycleDays
-
-			function computeMoonProfit(composition: typeof compositions[number]) {
-				let metenoxProfit: number | null = null
-				let tataraProfit: number | null = null
-
-				for (const profile of profiles) {
-					const baseRate = parseFloat(profile.baseVolumePerHr) * (1 + parseFloat(profile.rigBonus))
-					const fuelPerHr = parseFloat(profile.fuelPerHr)
-					const magmaticGasPerHr = profile.magmaticGasPerHr ? parseFloat(profile.magmaticGasPerHr) : 0
-					const cycleHours = cycleDays * 24
-					const totalVolume = profile.isPassive
-						? baseRate * parseFloat(profile.nullsecModifier) * cycleHours
-						: baseRate * cycleHours
-					const fuelUnits = fuelPerHr * cycleHours
-					const magmaticGasUnits = profile.isPassive ? magmaticGasPerHr * cycleHours : 0
-
-					let grossIsk = 0
-					for (const ore of composition.ores) {
-						const liveMaterials = typeMaterialsMap[ore.oreTypeId] ?? []
-						const fraction = parseFloat(ore.quantity)
-						const oreVolumeM3 = totalVolume * fraction
-						const oreUnits = oreVolumeM3 / getOreVolume(ore.oreTypeId)
-						for (const mat of liveMaterials) {
-							if (profile.isPassive && MINERAL_TYPE_IDS.has(mat.materialTypeId)) continue
-							const rawUnits = Math.floor(oreUnits / 100) * mat.quantity * reprocessingYield
-							grossIsk += Math.floor(rawUnits) * (priceMap[mat.materialTypeId] ?? 0)
-						}
-					}
-
-					const fuelCost = fuelUnits * fuelBlockPrice
-					const magmaticGasCost = magmaticGasUnits * magmaticGasPrice
-					const profit = Math.round(grossIsk - fuelCost - magmaticGasCost)
-
-					if (profile.id === 'metenox') metenoxProfit = profit
-					else if (profile.id === 'tatara') tataraProfit = profit
-				}
-
-				return { metenoxProfit, tataraProfit }
-			}
+			const compositions = await moonScan.getVerifiedCompositions(pageMoonIds)
+			const pricingInputs = await getMoonPricingInputs(c.env, universe, moonScan, compositions)
 
 			const compositionMap = new Map(compositions.map((composition) => [composition.moonId, composition]))
 			const items = summary.items.map((item) => {
@@ -1016,22 +1065,22 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 						tataraProfit: null,
 					}
 				}
-				const { metenoxProfit, tataraProfit } = computeMoonProfit(composition)
 				return {
 					...item,
-					metenoxProfit: metenoxProfit !== null ? String(metenoxProfit) : null,
-					tataraProfit: tataraProfit !== null ? String(tataraProfit) : null,
+					...getMoonProfitValuesFromComposition(composition, pricingInputs),
 				}
 			})
 
-			return c.json({
+			const response: VerifiedMoonsListResponse = {
 				items,
 				total: summary.total,
 				page: summary.page,
 				pageSize: summary.pageSize,
 				constellations: summary.constellations,
 				updatedAt: new Date().toISOString(),
-			})
+			}
+			verifiedMoonsResponseCache.set(verifiedMoonsResponseCacheKey, response)
+			return c.json(response)
 		}
 	}
 
@@ -1039,22 +1088,24 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 	const summary = await moonScan.getScanSummary()
 	const verifiedMoonIds = summary.verifiedMoonIds
 	if (verifiedMoonIds.length === 0) {
-		return c.json({
+		const response: VerifiedMoonsListResponse = {
 			items: [],
 			total: 0,
 			page: query.data.page,
 			pageSize: query.data.pageSize,
+			constellations: [],
 			updatedAt: new Date().toISOString(),
-		})
+		}
+		verifiedMoonsResponseCache.set(verifiedMoonsResponseCacheKey, response)
+		return c.json(response)
 	}
 
-	// Bulk-load compositions, moon static data, and settings+prices in parallel
-	const [compositions, moonsById, settings, profiles] = await Promise.all([
+	// Bulk-load compositions and moon static data before the legacy in-memory sort fallback.
+	const [compositions, moonsById] = await Promise.all([
 		moonScan.getVerifiedCompositions(verifiedMoonIds),
 		universe.resolveStaticMoonsByIds(verifiedMoonIds),
-		moonScan.getExtractionSettings(),
-		moonScan.getStructureProfiles(),
 	])
+	const pricingInputsPromise = getMoonPricingInputs(c.env, universe, moonScan, compositions)
 
 	// Resolve system IDs and fetch system info + moon→region mapping
 	const systemIds = [...new Set(
@@ -1083,77 +1134,7 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 	const constellationsById = constellationIds.length > 0
 		? await universe.resolveConstellationsByIds(constellationIds)
 		: {}
-
-	// Collect all unique ore type IDs across all compositions for typeMaterials lookup
-	const allOreTypeIds = [...new Set(compositions.flatMap((c) => c.ores.map((o) => o.oreTypeId)))]
-
-	// Fetch live typeMaterials first, then price all discovered materials + consumables.
-	const markets = getMarketsStub(c.env)
-	const typeMaterialsMap = await universe.getTypeMaterials(allOreTypeIds)
-	const allMaterialTypeIds = [...new Set(
-		Object.values(typeMaterialsMap).flatMap((materials) => materials.map((material) => material.materialTypeId))
-	)]
-	const priceResponse = await markets.getBatchMarketDataAtTime({
-		regionId: createEveRegionId('universe'),
-		typeIds: [...allMaterialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID].map(createEveTypeId),
-		atTime: new Date(),
-	})
-	const priceMap: Record<string, number> = {}
-	for (const p of priceResponse.prices) {
-		if (p.bestSellPrice) priceMap[p.typeId] = parseFloat(p.bestSellPrice)
-	}
-
-	const fuelBlockPrice = resolveEffectivePrice(
-		settings.fuelBlockPriceOverride,
-		priceMap[FUEL_BLOCK_TYPE_ID] ?? 0
-	)
-	const magmaticGasPrice = resolveEffectivePrice(
-		settings.magmaticGasPriceOverride,
-		priceMap[MAGMATIC_GAS_TYPE_ID] ?? 0
-	)
-	const reprocessingYield = parseFloat(settings.defaultReprocessingYield)
-	const cycleDays = settings.defaultCycleDays
-
-
-
-	function computeMoonProfit(composition: typeof compositions[number]) {
-		let metenoxProfit: number | null = null
-		let tataraProfit: number | null = null
-
-		for (const profile of profiles) {
-			const baseRate = parseFloat(profile.baseVolumePerHr) * (1 + parseFloat(profile.rigBonus))
-			const fuelPerHr = parseFloat(profile.fuelPerHr)
-			const magmaticGasPerHr = profile.magmaticGasPerHr ? parseFloat(profile.magmaticGasPerHr) : 0
-			const cycleHours = cycleDays * 24
-			const totalVolume = profile.isPassive
-				? baseRate * parseFloat(profile.nullsecModifier) * cycleHours
-				: baseRate * cycleHours
-			const fuelUnits = fuelPerHr * cycleHours
-			const magmaticGasUnits = profile.isPassive ? magmaticGasPerHr * cycleHours : 0
-
-			let grossIsk = 0
-			for (const ore of composition.ores) {
-				const liveMaterials = typeMaterialsMap[ore.oreTypeId] ?? []
-				const fraction = parseFloat(ore.quantity)
-				const oreVolumeM3 = totalVolume * fraction
-				const oreUnits = oreVolumeM3 / getOreVolume(ore.oreTypeId)
-				for (const mat of liveMaterials) {
-					if (profile.isPassive && MINERAL_TYPE_IDS.has(mat.materialTypeId)) continue
-					const rawUnits = Math.floor(oreUnits / 100) * mat.quantity * reprocessingYield
-					grossIsk += Math.floor(rawUnits) * (priceMap[mat.materialTypeId] ?? 0)
-				}
-			}
-
-			const fuelCost = fuelUnits * fuelBlockPrice
-			const magmaticGasCost = magmaticGasUnits * magmaticGasPrice
-			const profit = Math.round(grossIsk - fuelCost - magmaticGasCost)
-
-			if (profile.id === 'metenox') metenoxProfit = profit
-			else if (profile.id === 'tatara') tataraProfit = profit
-		}
-
-		return { metenoxProfit, tataraProfit }
-	}
+	const pricingInputs = await pricingInputsPromise
 
 	const moons = compositions.map((comp) => {
 		const moon = moonsById[comp.moonId]
@@ -1165,14 +1146,12 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 		const constellationId = system?.constellationId ?? null
 		const constellation = constellationId ? constellationsById[constellationId] : null
 
-		const highestRarity = comp.ores.reduce<string | null>((best, ore) => {
+		const highestRarity = comp.ores.reduce<OreRarity | null>((best, ore) => {
 			const r = ORE_TYPE_RARITY[ore.oreTypeId]
 			if (!r) return best
 			if (!best) return r
-			return (RARITY_ORDER[r] ?? 0) > (RARITY_ORDER[best as OreRarity] ?? 0) ? r : best
+			return (RARITY_ORDER[r] ?? 0) > (RARITY_ORDER[best] ?? 0) ? r : best
 		}, null)
-
-		const { metenoxProfit, tataraProfit } = computeMoonProfit(comp)
 
 		return {
 			moonId: comp.moonId,
@@ -1185,8 +1164,7 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 			constellationName: constellation?.constellationName ?? constellationId ?? '',
 			securityStatus: system?.securityStatus ?? null,
 			highestRarity,
-			metenoxProfit: metenoxProfit !== null ? String(metenoxProfit) : null,
-			tataraProfit: tataraProfit !== null ? String(tataraProfit) : null,
+			...getMoonProfitValuesFromComposition(comp, pricingInputs),
 		}
 	}).filter((m): m is NonNullable<typeof m> => m !== null)
 
@@ -1279,14 +1257,16 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 	const start = (page - 1) * pageSize
 	const items = filtered.slice(start, start + pageSize)
 
-	return c.json({
+	const response: VerifiedMoonsListResponse = {
 		items,
 		total,
 		page,
 		pageSize,
 		constellations: constellationsSummary,
 		updatedAt: new Date().toISOString(),
-	})
+	}
+	verifiedMoonsResponseCache.set(verifiedMoonsResponseCacheKey, response)
+	return c.json(response)
 })
 
 moonScanRoutes.post('/moons/verified/export', async (c) => {
@@ -1636,6 +1616,7 @@ moonScanRoutes.post('/scans/submit', async (c) => {
 		canValidate
 	)
 	if (canValidate) {
+		clearMoonScanReadCaches()
 		queueVerifiedMoonSummaryUpsert(c, moonScan, universe, submittedScans)
 	}
 
@@ -1733,6 +1714,7 @@ moonScanRoutes.post('/scans/queue/verify-all', async (c) => {
 	const moonScan = getMoonScanStub(c.env)
 	const universe = getUniverseStub(c.env)
 	const scans = await moonScan.verifyScans(body.data.scanIds, verifiedBy, null)
+	clearMoonScanReadCaches()
 	queueVerifiedMoonSummaryUpsert(c, moonScan, universe, scans)
 	return c.json(scans)
 })
@@ -1751,6 +1733,7 @@ moonScanRoutes.post('/scans/queue/reject-all', async (c) => {
 
 	const moonScan = getMoonScanStub(c.env)
 	const scans = await moonScan.rejectScans(body.data.scanIds, verifiedBy, null)
+	clearMoonScanReadCaches()
 	return c.json(scans)
 })
 
@@ -1806,6 +1789,7 @@ moonScanRoutes.post('/scans/:id/verify', async (c) => {
 	const moonScan = getMoonScanStub(c.env)
 	const universe = getUniverseStub(c.env)
 	const scan = await moonScan.verifyScan(c.req.param('id'), verifiedBy, body.data.notes ?? null)
+	clearMoonScanReadCaches()
 	queueVerifiedMoonSummaryUpsert(c, moonScan, universe, [scan])
 	return c.json(scan)
 })
@@ -1826,6 +1810,7 @@ moonScanRoutes.post('/scans/:id/reject', async (c) => {
 
 	const moonScan = getMoonScanStub(c.env)
 	const scan = await moonScan.rejectScan(c.req.param('id'), verifiedBy, body.data.notes ?? null)
+	clearMoonScanReadCaches()
 	return c.json(scan)
 })
 
@@ -1875,6 +1860,7 @@ moonScanRoutes.post('/admin/settings', async (c) => {
 
 	const moonScan = getMoonScanStub(c.env)
 	const updated = await moonScan.updateExtractionSettings(body.data)
+	clearMoonScanPricingCaches()
 	return c.json(updated)
 })
 
@@ -1894,6 +1880,7 @@ moonScanRoutes.post('/admin/settings/profiles/:id', async (c) => {
 
 	const moonScan = getMoonScanStub(c.env)
 	const updated = await moonScan.updateStructureProfile(id as 'tatara' | 'metenox', body.data)
+	clearMoonScanPricingCaches()
 	return c.json(updated)
 })
 
