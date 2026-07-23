@@ -558,8 +558,6 @@ export async function fetchCorporationSkyhooks(
 		return []
 	}
 
-	const nowMs = Date.now()
-
 	const skyhooks: Array<EsiCorporationSkyhook | null> = await Promise.all(
 		skyhookListing.map(async (skyhook) => {
 			const detailResult = await tokenStore.fetchEsi<RawCorporationSkyhookDetail>(
@@ -570,17 +568,6 @@ export async function fetchCorporationSkyhooks(
 
 			const detail = detailResult.data
 			const theftVulnerability = detail.theft_vulnerability ?? null
-			const becomesRaidableAt = theftVulnerability?.start
-				? new Date(theftVulnerability.start)
-				: null
-			const vulnerableAt = theftVulnerability?.end ? new Date(theftVulnerability.end) : null
-			const isRaidable =
-				becomesRaidableAt !== null &&
-				vulnerableAt !== null &&
-				!Number.isNaN(becomesRaidableAt.getTime()) &&
-				!Number.isNaN(vulnerableAt.getTime()) &&
-				nowMs >= becomesRaidableAt.getTime() &&
-				nowMs <= vulnerableAt.getTime()
 
 			return {
 				structure_id: String(detail.id),
@@ -595,12 +582,9 @@ export async function fetchCorporationSkyhooks(
 						secured_stock: reagent.secured_stock,
 						unsecured_stock: reagent.unsecured_stock,
 						last_cycle: reagent.last_cycle,
-					})) ?? [],
+				})) ?? [],
 				reinforcement_timer: detail.reinforcement_timer ?? null,
 				theft_vulnerability: theftVulnerability,
-				is_raidable: isRaidable,
-				becomes_raidable_at: becomesRaidableAt?.toISOString() ?? null,
-				vulnerable_at: vulnerableAt?.toISOString() ?? null,
 				raw: {
 					listing: skyhook,
 					detail,

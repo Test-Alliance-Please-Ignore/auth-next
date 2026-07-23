@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 
 import { formatDateTimeWithZone, formatUtcDateTime } from '@/lib/date-utils'
 import { formatDurationUntil } from '@/lib/duration-utils'
+import { useNowMs } from '@/hooks/useNowMs'
 import { cn } from '@/lib/utils'
 
 import { Popover, PopoverAnchor, PopoverContent } from './popover'
@@ -15,14 +16,14 @@ interface DurationDisplayProps {
 	referenceTimeMs?: number
 }
 
-export function DurationDisplay({
+function DurationDisplayContent({
 	endDate,
 	className,
 	format = 'compact',
 	durationStyle = 'long',
 	maxUnits = 3,
 	referenceTimeMs,
-}: DurationDisplayProps) {
+}: DurationDisplayProps & { referenceTimeMs: number }) {
 	const [open, setOpen] = useState(false)
 	const closeTimeoutRef = useRef<number | null>(null)
 
@@ -88,4 +89,18 @@ export function DurationDisplay({
 			</PopoverContent>
 		</Popover>
 	)
+}
+
+function DurationDisplayLive(props: DurationDisplayProps) {
+	const nowMs = useNowMs()
+
+	return <DurationDisplayContent {...props} referenceTimeMs={props.referenceTimeMs ?? nowMs} />
+}
+
+export function DurationDisplay(props: DurationDisplayProps) {
+	if (props.referenceTimeMs !== undefined) {
+		return <DurationDisplayContent {...props} referenceTimeMs={props.referenceTimeMs} />
+	}
+
+	return <DurationDisplayLive {...props} />
 }

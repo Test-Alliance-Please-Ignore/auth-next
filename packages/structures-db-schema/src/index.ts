@@ -16,6 +16,9 @@ import { corporationStructures } from '@repo/eve-corporation-data-db-schema'
 import type {
 	StructureSovereigntyReagent,
 	StructureSovereigntyTransportState,
+	SkyhookReagentEntry,
+	SkyhookReagentSnapshot,
+	SovereigntyReagentBaySnapshot,
 } from '@repo/structures'
 
 export const structureGroupSettings = pgTable(
@@ -99,6 +102,8 @@ export const structureSovereigntySystems = pgTable(
 	{
 		systemId: text('system_id').primaryKey(),
 		systemName: text('system_name'),
+		regionId: text('region_id'),
+		regionName: text('region_name'),
 		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
@@ -106,6 +111,7 @@ export const structureSovereigntySystems = pgTable(
 			enum: ['alliance', 'faction', 'unclaimed'],
 		}).notNull(),
 		allianceId: text('alliance_id'),
+		allianceName: text('alliance_name'),
 		corporationClaimantId: text('corporation_claimant_id'),
 		factionId: text('faction_id'),
 		claimedSince: timestamp('claimed_since', { withTimezone: true }),
@@ -126,6 +132,7 @@ export const structureSovereigntySystems = pgTable(
 	},
 	(table) => [
 		index('structure_sovereignty_systems_corporation_id_idx').on(table.corporationId),
+		index('structure_sovereignty_systems_region_id_idx').on(table.regionId),
 		index('structure_sovereignty_systems_alliance_id_idx').on(table.allianceId),
 		index('structure_sovereignty_systems_sovereignty_hub_structure_id_idx').on(
 			table.sovereigntyHubStructureId
@@ -143,16 +150,13 @@ export const structureSovereigntyHubs = pgTable(
 			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
 		systemId: text('system_id').notNull(),
 		systemName: text('system_name'),
-		name: text('name'),
 		typeId: text('type_id').notNull(),
 		fuelAccessListId: text('fuel_access_list_id'),
 		controllerAllianceId: text('controller_alliance_id'),
+		controllerAllianceName: text('controller_alliance_name'),
 		reagentBayLastUpdated: timestamp('reagent_bay_last_updated', { withTimezone: true }),
 		reagentBay: jsonb('reagent_bay')
-			.$type<{
-				lastUpdated: string
-				reagents: StructureSovereigntyReagent[]
-			}>()
+			.$type<SovereigntyReagentBaySnapshot>()
 			.notNull()
 			.default({ lastUpdated: '', reagents: [] }),
 		resources: jsonb('resources')
@@ -216,28 +220,17 @@ export const structureSkyhooks = pgTable(
 		planetName: text('planet_name'),
 		systemId: text('system_id'),
 		systemName: text('system_name'),
-		name: text('name'),
 		typeId: text('type_id').notNull(),
 		state: text('state').notNull(),
 		isActive: boolean('is_active').notNull().default(false),
 		effectiveWorkforce: integer('effective_workforce'),
 		reagents: jsonb('reagents')
-			.$type<
-				Array<{
-					typeId: string
-					securedStock: number
-					unsecuredStock: number
-					lastCycle: string
-				}>
-			>()
+			.$type<SkyhookReagentSnapshot | SkyhookReagentEntry[]>()
 			.notNull()
 			.default([]),
 		reinforcementTimerEnd: timestamp('reinforcement_timer_end', { withTimezone: true }),
 		theftVulnerabilityStart: timestamp('theft_vulnerability_start', { withTimezone: true }),
 		theftVulnerabilityEnd: timestamp('theft_vulnerability_end', { withTimezone: true }),
-		isRaidable: boolean('is_raidable').notNull().default(false),
-		becomesRaidableAt: timestamp('becomes_raidable_at', { withTimezone: true }),
-		vulnerableAt: timestamp('vulnerable_at', { withTimezone: true }),
 		syncStatus: text('sync_status', { enum: ['ok', 'warning', 'error'] }).notNull().default('ok'),
 		syncFailureReason: text('sync_failure_reason'),
 		lastObservedAt: timestamp('last_observed_at', { withTimezone: true }),
@@ -250,7 +243,6 @@ export const structureSkyhooks = pgTable(
 		index('structure_skyhooks_planet_id_idx').on(table.planetId),
 		index('structure_skyhooks_system_id_idx').on(table.systemId),
 		index('structure_skyhooks_type_id_idx').on(table.typeId),
-		index('structure_skyhooks_is_raidable_idx').on(table.isRaidable),
 		index('structure_skyhooks_last_synced_at_idx').on(table.lastSyncedAt),
 	]
 )

@@ -3,11 +3,12 @@ import {
 	ArrowRight,
 	ArrowUp,
 	ArrowUpDown,
+	CircleHelp,
 	Filter,
 	RefreshCcw,
 	Shield,
 } from 'lucide-react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
 import {
@@ -36,15 +37,21 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { FilterField } from '@/components/ui/filter-field'
+import { HoverPopover } from '@/components/ui/hover-popover'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDateTimeLong } from '@/lib/date-utils'
+import { formatDurationUntil } from '@/lib/duration-utils'
 import { allianceLogoUrl } from '@/lib/eve-images'
 import { getSkyhookVulnerabilityWindowDisplay } from '@/lib/skyhook-vulnerability-window'
 import { stripLeadingContextName } from '@/lib/structure-name-utils'
+import {
+	buildStructureListContentKey,
+	getEffectiveStructureSortByForTab,
+} from '../features/structures/query-utils'
 import {
 	Table,
 	TableBody,
@@ -57,22 +64,26 @@ import { UserSearchPaginationControls } from '@/components/user-search-paginatio
 import { useAuth } from '@/hooks/useAuth'
 import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useNowMs } from '@/hooks/useNowMs'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import {
 	type StructureCitadelListItem,
 	type StructureCitadelListQuery,
 	type StructureListBaseItem,
 	type StructureListFilterOptions,
+	type StructureListSummary,
 	type StructureListSortBy,
 	type StructureMoonDrillListItem,
 	type StructureMoonDrillListQuery,
 	type StructureMiningCitadelListQuery,
 	type StructureMiningCitadelListItem,
 	type StructureNavigationListItem,
+	type StructureSkyhookListFilterOptions,
 	type StructureSkyhookListItem,
 	type StructureSkyhookListQuery,
 	type StructureSovereigntyListFilterOptions,
 	type StructureSovereigntyListItem,
+	type StructureSovereigntyListSummary,
 	type StructureSovereigntyListQuery,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -183,6 +194,86 @@ function formatPercent(value: number | null | undefined): string {
 	return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
 }
 
+function LiveDurationUntilText({
+	endDate,
+	expiredLabel = 'Now',
+}: {
+	endDate: string | null | undefined
+	expiredLabel?: string
+}) {
+	if (!endDate) {
+		return '-'
+	}
+
+	return <LiveDurationUntilTextValue endDate={endDate} expiredLabel={expiredLabel} />
+}
+
+function LiveDurationUntilTextValue({
+	endDate,
+	expiredLabel,
+}: {
+	endDate: string
+	expiredLabel: string
+}) {
+	const nowMs = useNowMs()
+
+	return formatDurationUntil(endDate, {
+		referenceTimeMs: nowMs,
+		expiredLabel,
+		maxUnits: 2,
+		style: 'compact',
+	})
+}
+
+function StatCardHelp({
+	content,
+}: {
+	content: ReactNode
+}) {
+	return (
+		<HoverPopover
+			trigger={
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					showIcon={false}
+					className="h-8 w-8 cursor-help rounded-full border border-border/60 bg-background/80 text-muted-foreground shadow-none hover:bg-muted/60"
+					aria-label="More information"
+				>
+					<CircleHelp className="h-4 w-4" />
+				</Button>
+			}
+			triggerClassName="absolute right-2 top-2 z-10"
+			side="bottom"
+			align="end"
+			className="max-w-sm border border-border bg-popover p-3 text-popover-foreground shadow-lg"
+		>
+			<div className="space-y-2 text-sm leading-relaxed text-popover-foreground">{content}</div>
+		</HoverPopover>
+	)
+}
+
+function StatCard({
+	title,
+	help,
+	children,
+}: {
+	title: string
+	help: ReactNode
+	children: ReactNode
+}) {
+	return (
+		<Card>
+			<CardHeader className="relative pb-3 pr-10">
+				<CardTitle className="text-base">{title}</CardTitle>
+				<StatCardHelp content={help} />
+			</CardHeader>
+			<CardContent>{children}</CardContent>
+		</Card>
+	)
+}
+
 function SkyhookFillBar({ value }: { value: number }) {
 	return (
 		<div className="space-y-1.5">
@@ -206,12 +297,10 @@ function SovereigntyReagentCell({
 	quantity,
 	burningPerHour,
 	estimatedDepletionAt,
-	nowMs,
 }: {
 	quantity: number
 	burningPerHour: number
 	estimatedDepletionAt: string | null
-	nowMs: number
 }) {
 	return (
 		<div className="space-y-1.5">
@@ -225,7 +314,6 @@ function SovereigntyReagentCell({
 						<span className="mr-1">Remaining</span>
 						<DurationDisplay
 							endDate={estimatedDepletionAt}
-							referenceTimeMs={nowMs}
 							maxUnits={3}
 							durationStyle="compact"
 							format="compact"
@@ -235,6 +323,63 @@ function SovereigntyReagentCell({
 					'-'
 				)}
 			</div>
+		</div>
+	)
+}
+
+function SkyhookVulnerabilityWindowCell({
+	structure,
+}: {
+	structure: StructureSkyhookListItem
+}) {
+	const vulnerabilityWindow = getSkyhookVulnerabilityWindowDisplay({
+		theftVulnerabilityStart: structure.theftVulnerabilityStart,
+		theftVulnerabilityEnd: structure.theftVulnerabilityEnd,
+		isRaidable: structure.isRaidable,
+		nowMs: useNowMs(),
+	})
+
+	return (
+		<div className="space-y-1">
+			<div>
+				{structure.theftVulnerabilityStart && structure.theftVulnerabilityEnd ? (
+					<span className="inline-flex flex-wrap items-center gap-1">
+						<EveTimeDisplay
+							dateStr={structure.theftVulnerabilityStart}
+							format="window"
+							className="whitespace-nowrap"
+						/>
+						<span>-</span>
+						<EveTimeDisplay
+							dateStr={structure.theftVulnerabilityEnd}
+							format="window"
+							className="whitespace-nowrap"
+						/>
+					</span>
+				) : structure.theftVulnerabilityStart ? (
+					<EveTimeDisplay
+						dateStr={structure.theftVulnerabilityStart}
+						format="window"
+						className="whitespace-nowrap"
+					/>
+				) : (
+					'-'
+				)}
+			</div>
+			{structure.theftVulnerabilityStart ||
+			structure.theftVulnerabilityEnd ? (
+				<div className="text-xs text-muted-foreground">
+					{vulnerabilityWindow.label}{' '}
+					{vulnerabilityWindow.countdownTarget ? (
+						<DurationDisplay
+							endDate={vulnerabilityWindow.countdownTarget}
+							maxUnits={2}
+							durationStyle="compact"
+							format="compact"
+						/>
+					) : null}
+				</div>
+			) : null}
 		</div>
 	)
 }
@@ -309,7 +454,6 @@ export default function StructuresPage() {
 	const activeTab = visibleTabs.some((tab) => tab.tab === tableState.tab)
 		? tableState.tab
 		: visibleTabs[0]?.tab ?? tableState.tab
-	const [nowMs, setNowMs] = useState(() => Date.now())
 	const { data: moduleConfig } = useStructureModuleConfig()
 	const tableScrollContainerRef = useRef<HTMLDivElement | null>(null)
 	const tableScrollLeftByTabRef = useRef<Record<string, number>>({})
@@ -317,84 +461,97 @@ export default function StructuresPage() {
 		() => ({
 			page: tableState.page,
 			pageSize: tableState.pageSize,
-			sortBy: tableState.sortBy,
 			sortDirection: tableState.sortDirection,
 		}),
-		[tableState.page, tableState.pageSize, tableState.sortBy, tableState.sortDirection]
+		[tableState.page, tableState.pageSize, tableState.sortDirection]
 	)
-	const operationalQuery = useMemo<StructureCitadelListQuery>(
-		() => ({
-			...sharedQuery,
-			corporationId: tableState.filters.corporationId,
-			assignedGroupId: tableState.filters.assignedGroupId,
-			lowPower: tableState.filters.lowPower,
-			lowPowerAllowed: tableState.filters.lowPowerAllowed,
-			regionId: tableState.filters.regionId,
-			systemId: tableState.filters.systemId,
-			state: tableState.filters.state,
-			typeId: tableState.filters.typeId,
-		}),
-		[sharedQuery, tableState.filters]
+	const commonSortBy = getEffectiveStructureSortByForTab('citadels', tableState.sortBy)
+	const sovereigntySortBy = getEffectiveStructureSortByForTab('sovereignty', tableState.sortBy)
+	const skyhookSortBy = getEffectiveStructureSortByForTab('skyhooks', tableState.sortBy)
+	const moonSortBy = getEffectiveStructureSortByForTab('moon-drills', tableState.sortBy)
+	const commonQuery = useMemo<StructureCitadelListQuery>(
+		() =>
+			({
+				...sharedQuery,
+				sortBy: commonSortBy,
+				corporationId: tableState.filters.corporationId,
+				assignedGroupId: tableState.filters.assignedGroupId,
+				lowPower: tableState.filters.lowPower,
+				lowPowerAllowed: tableState.filters.lowPowerAllowed,
+				regionId: tableState.filters.regionId,
+				systemId: tableState.filters.systemId,
+				state: tableState.filters.state,
+				typeId: tableState.filters.typeId,
+			}) as StructureCitadelListQuery,
+			[sharedQuery, tableState.filters, commonSortBy]
 	)
 	const sovereigntyQuery = useMemo<StructureSovereigntyListQuery>(
-		() => ({
-			...sharedQuery,
-			corporationId: tableState.filters.corporationId,
-			assignedGroupId: tableState.filters.assignedGroupId,
-			regionId: tableState.filters.regionId,
-			systemId: tableState.filters.systemId,
-			controllerAllianceId: tableState.filters.controllerAllianceId,
-			vulnerabilityState: tableState.filters.vulnerabilityState,
-		}),
-		[sharedQuery, tableState.filters]
+		() =>
+			({
+				...sharedQuery,
+				sortBy: sovereigntySortBy,
+				corporationId: tableState.filters.corporationId,
+				assignedGroupId: tableState.filters.assignedGroupId,
+				regionId: tableState.filters.regionId,
+				systemId: tableState.filters.systemId,
+				controllerAllianceId: tableState.filters.controllerAllianceId,
+				vulnerabilityState: tableState.filters.vulnerabilityState,
+			}) as StructureSovereigntyListQuery,
+			[sharedQuery, tableState.filters, sovereigntySortBy]
 	)
 	const skyhookQuery = useMemo<StructureSkyhookListQuery>(
-		() => ({
-			...sharedQuery,
-			corporationId: tableState.filters.corporationId,
-			assignedGroupId: tableState.filters.assignedGroupId,
-			regionId: tableState.filters.regionId,
-			systemId: tableState.filters.systemId,
-			state: tableState.filters.state,
-			typeId: tableState.filters.typeId,
-			planetId: tableState.filters.planetId,
-			isRaidable: tableState.filters.isRaidable,
-		}),
-		[sharedQuery, tableState.filters]
+		() =>
+			({
+				...sharedQuery,
+				sortBy: skyhookSortBy,
+				corporationId: tableState.filters.corporationId,
+				assignedGroupId: tableState.filters.assignedGroupId,
+				regionId: tableState.filters.regionId,
+				systemId: tableState.filters.systemId,
+				state: tableState.filters.state,
+				typeId: tableState.filters.typeId,
+				planetId: tableState.filters.planetId,
+				isRaidable: tableState.filters.isRaidable,
+			}) as StructureSkyhookListQuery,
+			[sharedQuery, tableState.filters, skyhookSortBy]
 	)
 	const miningCitadelQuery = useMemo<StructureMiningCitadelListQuery>(
-		() => ({
-			...sharedQuery,
-			corporationId: tableState.filters.corporationId,
-			assignedGroupId: tableState.filters.assignedGroupId,
-			lowPower: tableState.filters.lowPower,
-			lowPowerAllowed: tableState.filters.lowPowerAllowed,
-			regionId: tableState.filters.regionId,
-			systemId: tableState.filters.systemId,
-			state: tableState.filters.state,
-			typeId: tableState.filters.typeId,
-			planetId: tableState.filters.planetId,
-		}),
-		[sharedQuery, tableState.filters]
+		() =>
+			({
+				...sharedQuery,
+				sortBy: moonSortBy,
+				corporationId: tableState.filters.corporationId,
+				assignedGroupId: tableState.filters.assignedGroupId,
+				lowPower: tableState.filters.lowPower,
+				lowPowerAllowed: tableState.filters.lowPowerAllowed,
+				regionId: tableState.filters.regionId,
+				systemId: tableState.filters.systemId,
+				state: tableState.filters.state,
+				typeId: tableState.filters.typeId,
+				planetId: tableState.filters.planetId,
+			}) as StructureMiningCitadelListQuery,
+			[sharedQuery, tableState.filters, moonSortBy]
 	)
 	const moonDrillQuery = useMemo<StructureMoonDrillListQuery>(
-		() => ({
-			...sharedQuery,
-			corporationId: tableState.filters.corporationId,
-			assignedGroupId: tableState.filters.assignedGroupId,
-			regionId: tableState.filters.regionId,
-			systemId: tableState.filters.systemId,
-			state: tableState.filters.state,
-			typeId: tableState.filters.typeId,
-			planetId: tableState.filters.planetId,
-		}),
-		[sharedQuery, tableState.filters]
+		() =>
+			({
+				...sharedQuery,
+				sortBy: moonSortBy,
+				corporationId: tableState.filters.corporationId,
+				assignedGroupId: tableState.filters.assignedGroupId,
+				regionId: tableState.filters.regionId,
+				systemId: tableState.filters.systemId,
+				state: tableState.filters.state,
+				typeId: tableState.filters.typeId,
+				planetId: tableState.filters.planetId,
+			}) as StructureMoonDrillListQuery,
+			[sharedQuery, tableState.filters, moonSortBy]
 	)
 
-	const citadelStructures = useCitadelStructures(operationalQuery, {
+	const citadelStructures = useCitadelStructures(commonQuery, {
 		enabled: !authLoading && !permissionsLoading && canViewStructures && activeTab === 'citadels',
 	})
-	const navigationStructures = useNavigationStructures(operationalQuery, {
+	const navigationStructures = useNavigationStructures(commonQuery, {
 		enabled: !authLoading && !permissionsLoading && canViewStructures && activeTab === 'navigation',
 	})
 	const sovereigntyStructures = useSovereigntyStructures(sovereigntyQuery, {
@@ -435,9 +592,14 @@ export default function StructuresPage() {
 		}
 	})()
 	const structuresResponse = activeResponse.data
+	const summary = structuresResponse?.summary
+	const sovereigntySummary = isSovereigntyTab
+		? (summary as StructureSovereigntyListSummary | undefined)
+		: undefined
+	const skyhookSummary = isSkyhooksTab ? (summary as StructureListSummary | undefined) : undefined
 	const structures = structuresResponse?.items ?? []
 	const pagination = structuresResponse?.pagination
-	const operationalFilterOptions: StructureListFilterOptions | undefined =
+	const commonFilterOptions: StructureListFilterOptions | undefined =
 		activeTab === 'citadels'
 			? citadelStructures.data?.filterOptions
 			: activeTab === 'navigation'
@@ -451,6 +613,8 @@ export default function StructuresPage() {
 							: undefined
 	const sovereigntyFilterOptions: StructureSovereigntyListFilterOptions | undefined =
 		activeTab === 'sovereignty' ? sovereigntyStructures.data?.filterOptions : undefined
+	const skyhookFilterOptions: StructureSkyhookListFilterOptions | undefined =
+		activeTab === 'skyhooks' ? skyhookStructures.data?.filterOptions : undefined
 	const isInitialLoading = activeResponse.isLoading && !activeResponse.data
 	const isSoftLoading = Boolean(activeResponse.data) && activeResponse.isFetching
 	const structuresError = activeResponse.error
@@ -460,13 +624,6 @@ export default function StructuresPage() {
 	const refreshAll = () => {
 		void activeResponse.refetch()
 	}
-
-	useEffect(() => {
-		const timer = window.setInterval(() => {
-			setNowMs(Date.now())
-		}, 60_000)
-		return () => window.clearInterval(timer)
-	}, [])
 
 	useEffect(() => {
 		if (visibleTabs.length === 0) {
@@ -481,13 +638,13 @@ export default function StructuresPage() {
 	const corporationOptions = useMemo<SelectOption[]>(
 		() =>
 			withAllOption(
-				(operationalFilterOptions?.corporations ?? []).map((option) => ({
+				(commonFilterOptions?.corporations ?? []).map((option) => ({
 					value: option.value,
 					label: option.label,
 				})),
 				'All Corporations'
 			),
-		[operationalFilterOptions]
+		[commonFilterOptions]
 	)
 	const groupNameById = useMemo(
 		() => new Map(groups.map((group) => [group.id, group.name])),
@@ -498,43 +655,43 @@ export default function StructuresPage() {
 			withAllOption(
 				[
 					{ value: UNASSIGNED_GROUP_VALUE, label: 'Unassigned' },
-					...(operationalFilterOptions?.assignedGroups ?? []).map((option) => ({
+					...(commonFilterOptions?.assignedGroups ?? []).map((option) => ({
 						value: option.value,
 						label: groupNameById.get(option.value) ?? option.label ?? option.value,
 					})),
 				],
 				'All Groups'
 			),
-		[operationalFilterOptions, groupNameById]
+		[commonFilterOptions, groupNameById]
 	)
 	const regionOptions = useMemo<SelectOption[]>(
 		() =>
 			withAllOption(
-				(operationalFilterOptions?.regions ?? []).map((option) => ({
+				(commonFilterOptions?.regions ?? []).map((option) => ({
 					value: option.value,
 					label: option.label,
 				})),
 				'All Regions'
 			),
-		[operationalFilterOptions]
+		[commonFilterOptions]
 	)
 	const systemOptions = useMemo<SelectOption[]>(
 		() =>
 			withAllOption(
-				(operationalFilterOptions?.systems ?? []).map((option) => ({
+				(commonFilterOptions?.systems ?? []).map((option) => ({
 					value: option.value,
 					label: option.label,
 				})),
 				'All Systems'
 			),
-		[operationalFilterOptions]
+		[commonFilterOptions]
 	)
 	const stateOptions = useMemo<SelectOption[]>(
 		() =>
 			withAllOption(
 				((isSovereigntyTab
 					? sovereigntyFilterOptions?.vulnerabilityStates ?? []
-					: operationalFilterOptions?.states ?? []
+					: commonFilterOptions?.states ?? []
 				).map(
 					(option) => ({
 						value: option.value,
@@ -543,18 +700,18 @@ export default function StructuresPage() {
 				)),
 				isSovereigntyTab ? 'All Vulnerability States' : 'All States'
 			),
-		[isSovereigntyTab, operationalFilterOptions, sovereigntyFilterOptions]
+		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions]
 	)
 	const typeOptions = useMemo<SelectOption[]>(
 		() =>
 			withAllOption(
-				(operationalFilterOptions?.types ?? []).map((option) => ({
+				(commonFilterOptions?.types ?? []).map((option) => ({
 					value: option.value,
 					label: option.label,
 				})),
 				'All Types'
 			),
-		[operationalFilterOptions]
+		[commonFilterOptions]
 	)
 	const allianceOptions = useMemo<SelectOption[]>(
 		() =>
@@ -562,73 +719,41 @@ export default function StructuresPage() {
 				(
 					isSovereigntyTab
 						? sovereigntyFilterOptions?.controllerAlliances ?? []
-						: operationalFilterOptions?.alliances ?? []
+						: commonFilterOptions?.alliances ?? []
 				).map((option) => ({
 					value: option.value,
 					label: option.label,
 				})),
 				isSovereigntyTab ? 'All Controlling Alliances' : 'All Alliances'
 			),
-		[isSovereigntyTab, operationalFilterOptions, sovereigntyFilterOptions]
+		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions]
 	)
 	const raidableStateOptions = useMemo<SelectOption[]>(
 		() =>
 			withAllOption(
-				(operationalFilterOptions?.raidableStates ?? []).map((option) => ({
+				(skyhookFilterOptions?.raidableStates ?? []).map((option) => ({
 					value: option.value,
 					label: option.label,
 				})),
 				'All Raidable States'
 			),
-		[operationalFilterOptions]
+		[skyhookFilterOptions]
 	)
-	const structuresContentKey = [
-		activeTab,
-		tableState.page,
-		tableState.pageSize,
-		tableState.sortBy,
-		tableState.sortDirection,
-		...(isSovereigntyTab
-			? [
-					tableState.filters.corporationId ?? '',
-					tableState.filters.assignedGroupId ?? '',
-					tableState.filters.regionId ?? '',
-					tableState.filters.systemId ?? '',
-					tableState.filters.controllerAllianceId ?? '',
-					tableState.filters.vulnerabilityState ?? '',
-				]
-			: isSkyhooksTab
-				? [
-						tableState.filters.corporationId ?? '',
-						tableState.filters.assignedGroupId ?? '',
-						tableState.filters.regionId ?? '',
-						tableState.filters.systemId ?? '',
-						tableState.filters.state ?? '',
-						tableState.filters.typeId ?? '',
-						tableState.filters.planetId ?? '',
-						tableState.filters.isRaidable ?? '',
-					]
-				: isMoonDrillsTab
-					? [
-							tableState.filters.corporationId ?? '',
-							tableState.filters.assignedGroupId ?? '',
-							tableState.filters.regionId ?? '',
-							tableState.filters.systemId ?? '',
-							tableState.filters.state ?? '',
-							tableState.filters.typeId ?? '',
-							tableState.filters.planetId ?? '',
-						]
-					: [
-							tableState.filters.corporationId ?? '',
-							tableState.filters.assignedGroupId ?? '',
-							tableState.filters.regionId ?? '',
-							tableState.filters.systemId ?? '',
-							tableState.filters.state ?? '',
-							tableState.filters.lowPower ?? '',
-							tableState.filters.lowPowerAllowed ?? '',
-							tableState.filters.typeId ?? '',
-		]),
-	].join(':')
+	const structuresContentKey = buildStructureListContentKey({
+		tab: activeTab,
+		page: tableState.page,
+		pageSize: tableState.pageSize,
+		sortBy:
+			isSovereigntyTab
+				? sovereigntySortBy
+				: isSkyhooksTab
+					? skyhookSortBy
+					: isMoonDrillsTab
+						? moonSortBy
+						: commonSortBy,
+		sortDirection: tableState.sortDirection,
+		filters: tableState.filters,
+	})
 
 	useLayoutEffect(() => {
 		const container = tableScrollContainerRef.current
@@ -696,7 +821,6 @@ export default function StructuresPage() {
 			const fuelLabel = structure.fuelExpires ? (
 				<DurationDisplay
 					endDate={structure.fuelExpires}
-					referenceTimeMs={nowMs}
 					maxUnits={3}
 					durationStyle="compact"
 				/>
@@ -754,7 +878,6 @@ export default function StructuresPage() {
 						{structure.nextStateAt ? (
 							<DurationDisplay
 								endDate={structure.nextStateAt}
-								referenceTimeMs={nowMs}
 								maxUnits={3}
 								durationStyle="compact"
 								format="compact"
@@ -846,7 +969,6 @@ export default function StructuresPage() {
 							quantity={structure.magmaticGasQuantity}
 							burningPerHour={structure.magmaticGasBurningPerHour}
 							estimatedDepletionAt={structure.magmaticGasEstimatedDepletionAt}
-							nowMs={nowMs}
 						/>
 					</TableCell>
 					<TableCell>
@@ -854,7 +976,6 @@ export default function StructuresPage() {
 							quantity={structure.superionicIceQuantity}
 							burningPerHour={structure.superionicIceBurningPerHour}
 							estimatedDepletionAt={structure.superionicIceEstimatedDepletionAt}
-							nowMs={nowMs}
 						/>
 					</TableCell>
 					<TableCell>
@@ -891,14 +1012,6 @@ export default function StructuresPage() {
 
 	const renderSkyhookRows = (items: StructureSkyhookListItem[]) =>
 		items.map((structure) => {
-			const vulnerabilityWindow = getSkyhookVulnerabilityWindowDisplay({
-				theftVulnerabilityStart: structure.theftVulnerabilityStart,
-				theftVulnerabilityEnd: structure.theftVulnerabilityEnd,
-				vulnerableAt: structure.vulnerableAt,
-				isRaidable: structure.isRaidable,
-				nowMs,
-			})
-
 			return (
 				<TableRow key={structure.structureId}>
 					<TableCell>
@@ -933,55 +1046,12 @@ export default function StructuresPage() {
 						</Badge>
 					</TableCell>
 					<TableCell>
-						<div className="space-y-1">
-							<div>
-								{structure.theftVulnerabilityStart && structure.theftVulnerabilityEnd ? (
-									<span className="inline-flex flex-wrap items-center gap-1">
-										<EveTimeDisplay
-											dateStr={structure.theftVulnerabilityStart}
-											format="window"
-											className="whitespace-nowrap"
-										/>
-										<span>-</span>
-										<EveTimeDisplay
-											dateStr={structure.theftVulnerabilityEnd}
-											format="window"
-											className="whitespace-nowrap"
-										/>
-									</span>
-								) : structure.vulnerableAt ? (
-									<EveTimeDisplay
-										dateStr={structure.vulnerableAt}
-										format="window"
-										className="whitespace-nowrap"
-									/>
-								) : (
-									'-'
-								)}
-							</div>
-							{structure.theftVulnerabilityStart ||
-							structure.theftVulnerabilityEnd ||
-							structure.vulnerableAt ? (
-								<div className="text-xs text-muted-foreground">
-									{vulnerabilityWindow.label}{" "}
-									{vulnerabilityWindow.countdownTarget ? (
-										<DurationDisplay
-											endDate={vulnerabilityWindow.countdownTarget}
-											referenceTimeMs={nowMs}
-											maxUnits={2}
-											durationStyle="compact"
-											format="compact"
-										/>
-									) : null}
-								</div>
-							) : null}
-						</div>
+						<SkyhookVulnerabilityWindowCell structure={structure} />
 					</TableCell>
 					<TableCell>
 						{structure.nextStateAt ? (
 							<DurationDisplay
 								endDate={structure.nextStateAt}
-								referenceTimeMs={nowMs}
 								maxUnits={3}
 								durationStyle="compact"
 								format="compact"
@@ -1050,7 +1120,6 @@ export default function StructuresPage() {
 						{structure.fuelExpires ? (
 							<DurationDisplay
 								endDate={structure.fuelExpires}
-								referenceTimeMs={nowMs}
 								maxUnits={3}
 								durationStyle="compact"
 							/>
@@ -1074,7 +1143,6 @@ export default function StructuresPage() {
 						{structure.nextStateAt ? (
 							<DurationDisplay
 								endDate={structure.nextStateAt}
-								referenceTimeMs={nowMs}
 								maxUnits={3}
 								durationStyle="compact"
 								format="compact"
@@ -1119,7 +1187,6 @@ export default function StructuresPage() {
 			const fuelLabel = structure.fuelExpires ? (
 				<DurationDisplay
 					endDate={structure.fuelExpires}
-					referenceTimeMs={nowMs}
 					maxUnits={3}
 					durationStyle="compact"
 				/>
@@ -1162,7 +1229,6 @@ export default function StructuresPage() {
 						{structure.nextStateAt ? (
 							<DurationDisplay
 								endDate={structure.nextStateAt}
-								referenceTimeMs={nowMs}
 								maxUnits={3}
 								durationStyle="compact"
 								format="compact"
@@ -1376,7 +1442,7 @@ export default function StructuresPage() {
 			</FilterField>
 		</div>
 	)
-	const operationalFilterControls = (
+	const commonFilterControls = (
 		<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4">
 			<FilterField label="Region">
 				<Select
@@ -1532,73 +1598,153 @@ export default function StructuresPage() {
 				}
 			/>
 
-			<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">Total Structures</CardTitle>
-						<CardDescription>Matches the active tab and filters.</CardDescription>
-					</CardHeader>
-					<CardContent className="text-3xl font-semibold">
-						{activeResponse.data?.summary.total ?? '-'}
-					</CardContent>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">Low Fuel</CardTitle>
-						<CardDescription>
-							Low fuel: {moduleConfig?.lowFuelTimeThresholdHours ?? '-'}h or{' '}
-							{moduleConfig?.lowFuelAmountThreshold ?? '-'} units remaining.
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
+				<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+					<StatCard
+						title="Total Structures"
+						help={<p>Matches the active tab and filters.</p>}
+					>
+						<div className="text-3xl font-semibold">{summary?.total ?? '-'}</div>
+					</StatCard>
+					{isSkyhooksTab ? (
+						<>
+							<StatCard
+								title="Highest Fill"
+								help={<p>Highest secured or surplus bay fullness among the filtered skyhooks.</p>}
+							>
+								<div className="text-3xl font-semibold">
+									{formatPercent(skyhookSummary?.skyhookHighestFillPercent)}
+								</div>
+							</StatCard>
+					<StatCard
+						title="Next Raidable"
+						help={
+							<>
+								<p>Time until the next skyhook becomes theft vulnerable or raidable.</p>
+								<p>
+									{skyhookSummary?.skyhookNextRaidableAt
+										? `Next raidable skyhook: ${skyhookSummary.skyhookNextRaidablePlanetName ?? '-'}${
+												skyhookSummary.skyhookCurrentRaidableCount &&
+												skyhookSummary.skyhookCurrentRaidableCount > 1
+													? ` and ${skyhookSummary.skyhookCurrentRaidableCount - 1} other${
+															skyhookSummary.skyhookCurrentRaidableCount - 1 === 1 ? '' : 's'
+														}`
+													: ''
+											}`
+										: 'No raidable skyhook is currently available.'}
+								</p>
+							</>
+						}
+					>
 						<div className="text-3xl font-semibold">
-							{activeResponse.data?.summary.lowFuel ?? '-'}
+							<LiveDurationUntilText endDate={skyhookSummary?.skyhookNextRaidableAt} />
 						</div>
-					</CardContent>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">Low Power</CardTitle>
-						<CardDescription>Structures in low power without suppression enabled.</CardDescription>
-					</CardHeader>
-					<CardContent className="text-3xl font-semibold">
-						{activeResponse.data?.summary.lowPower ?? '-'}
-					</CardContent>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">Reinforced</CardTitle>
-						<CardDescription>
-							Structures currently in a reinforced or transition state.
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="text-3xl font-semibold">
-						{activeResponse.data?.summary.reinforced ?? '-'}
-					</CardContent>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardTitle className="text-base">Fuel Burn Rate</CardTitle>
-						<CardDescription>
-							Estimated aggregate burn rate from the filtered structure set.
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-1">
-						<div className="text-3xl font-semibold">
-							{activeResponse.data?.summary.estimatedFuelBurnRatePerHour
-								? `${Number(activeResponse.data.summary.estimatedFuelBurnRatePerHour).toLocaleString(undefined, {
-										maximumFractionDigits: 2,
-									})}/hr`
-								: '-'}
-						</div>
-						{activeResponse.data?.summary && (
-							<p className="text-xs text-muted-foreground">
-								Estimated from {activeResponse.data.summary.fuelBurnRateSampleCount} structures with usable fuel
-								history.
-							</p>
-						)}
-					</CardContent>
-				</Card>
+					</StatCard>
+						</>
+					) : (
+						<>
+							<StatCard
+								title="Low Fuel"
+								help={
+									<p>
+										{isSovereigntyTab
+											? `Sovereignty hubs with either reagent below ${moduleConfig?.lowFuelTimeThresholdHours ?? '-'}h remaining. Zero-quantity reagents are ignored.`
+											: `Low fuel: ${moduleConfig?.lowFuelTimeThresholdHours ?? '-'}h or ${moduleConfig?.lowFuelAmountThreshold ?? '-'} units remaining.`}
+									</p>
+								}
+							>
+								<div className="text-3xl font-semibold">{summary?.lowFuel ?? '-'}</div>
+							</StatCard>
+							{!isSovereigntyTab ? (
+								<StatCard
+									title="Low Power"
+									help={<p>Structures in low power without suppression enabled.</p>}
+								>
+									<div className="text-3xl font-semibold">{summary?.lowPower ?? '-'}</div>
+								</StatCard>
+							) : null}
+						</>
+					)}
+							<StatCard
+								title="Reinforced"
+								help={<p>Structures currently in a reinforced or transition state.</p>}
+							>
+								<div className="text-3xl font-semibold">{summary?.reinforced ?? '-'}</div>
+							</StatCard>
+					{isSovereigntyTab ? (
+						<>
+							<StatCard
+								title="Magmatic Gas Burn"
+								help={
+									<>
+										<p>
+											Aggregate hourly magmatic gas burn across the filtered sovereignty hubs with
+											positive stock and valid burn data.
+										</p>
+										<p>
+											{sovereigntySummary
+												? `${sovereigntySummary.magmaticGasBurningSampleCount} hubs contributing`
+												: '-'}
+										</p>
+									</>
+								}
+							>
+								<div className="text-3xl font-semibold">
+									{formatNullableDecimal(sovereigntySummary?.magmaticGasBurningPerHour, 2)}/hr
+								</div>
+							</StatCard>
+							<StatCard
+								title="Superionic Ice Burn"
+								help={
+									<>
+										<p>
+											Aggregate hourly superionic ice burn across the filtered sovereignty hubs with
+											positive stock and valid burn data.
+										</p>
+										<p>
+											{sovereigntySummary
+												? `${sovereigntySummary.superionicIceBurningSampleCount} hubs contributing`
+												: '-'}
+										</p>
+									</>
+								}
+							>
+								<div className="text-3xl font-semibold">
+									{formatNullableDecimal(sovereigntySummary?.superionicIceBurningPerHour, 2)}/hr
+								</div>
+							</StatCard>
+						</>
+					) : isSkyhooksTab ? (
+							<StatCard
+								title="Total Workforce"
+								help={<p>Total effective workforce across the filtered skyhooks.</p>}
+							>
+								<div className="text-3xl font-semibold">
+									{summary ? formatNullableNumber(skyhookSummary?.skyhookTotalWorkforce) : '-'}
+								</div>
+							</StatCard>
+					) : (
+							<StatCard
+								title="Fuel Burn Rate"
+								help={
+									<>
+										<p>Estimated aggregate burn rate from the filtered structure set.</p>
+										<p>
+											{summary
+												? `Estimated from ${summary.fuelBurnRateSampleCount} structures with usable fuel history.`
+												: '-'}
+										</p>
+									</>
+								}
+							>
+								<div className="text-3xl font-semibold">
+									{summary?.estimatedFuelBurnRatePerHour
+										? `${Number(summary.estimatedFuelBurnRatePerHour).toLocaleString(undefined, {
+											maximumFractionDigits: 2,
+										})}/hr`
+										: '-'}
+								</div>
+					</StatCard>
+				)}
 			</div>
 
 			<Card>
@@ -1644,7 +1790,7 @@ export default function StructuresPage() {
 							? sovereigntyFilterControls
 							: isSkyhooksTab || isMoonDrillsTab
 								? specialFilterControls
-								: operationalFilterControls}
+								: commonFilterControls}
 					</div>
 					<div className="space-y-4 border-t border-border/60 pt-4">
 						<div className="border-b p-3">

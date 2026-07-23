@@ -146,9 +146,6 @@ describe('esi structure enrichment ownership handling', () => {
 				reagents: [],
 				reinforcement_timer: null,
 				theft_vulnerability: null,
-				is_raidable: false,
-				becomes_raidable_at: null,
-				vulnerable_at: null,
 				raw: { id: 71001, planet_id: 401 },
 			},
 			baseStructure: {
@@ -157,7 +154,6 @@ describe('esi structure enrichment ownership handling', () => {
 				typeId: '35842',
 				systemId: '30000142',
 				systemName: 'Jita',
-				name: null,
 			},
 			existingRow: null,
 			planet: {
@@ -177,7 +173,7 @@ describe('esi structure enrichment ownership handling', () => {
 			systemName: 'Jita',
 			name: null,
 			typeId: '35842',
-			state: 'invulnerable',
+			state: 'vulnerable',
 		})
 	})
 
@@ -197,9 +193,6 @@ describe('esi structure enrichment ownership handling', () => {
 					start: '2026-06-27T12:10:00.000Z',
 					end: '2026-06-27T12:20:00.000Z',
 				},
-				is_raidable: true,
-				becomes_raidable_at: '2026-06-27T12:10:00.000Z',
-				vulnerable_at: '2026-06-27T12:20:00.000Z',
 				raw: { id: 71001, planet_id: 401 },
 			},
 			baseStructure: {
@@ -208,7 +201,6 @@ describe('esi structure enrichment ownership handling', () => {
 				typeId: '35842',
 				systemId: '30000142',
 				systemName: 'Jita',
-				name: null,
 			},
 			existingRow: null,
 			planet: {
@@ -237,9 +229,6 @@ describe('esi structure enrichment ownership handling', () => {
 					end: '2026-06-27T12:30:00.000Z',
 				},
 				theft_vulnerability: null,
-				is_raidable: false,
-				becomes_raidable_at: null,
-				vulnerable_at: null,
 				raw: { id: 71001, planet_id: 401 },
 			},
 			planet: {

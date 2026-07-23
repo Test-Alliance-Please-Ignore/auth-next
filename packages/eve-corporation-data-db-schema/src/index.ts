@@ -1,5 +1,5 @@
 import { index, unique } from 'drizzle-orm/pg-core'
-import { boolean, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { boolean, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 import { managedCorporations } from '@repo/core-db-schema'
 
@@ -21,6 +21,10 @@ export const corporationStructures = pgTable(
 		profileId: text('profile_id').notNull(),
 		fuelExpires: timestamp('fuel_expires', { withTimezone: true }),
 		fuelAmount: integer('fuel_amount'),
+		fuelBurnRate: numeric('fuel_burn_rate', {
+			precision: 12,
+			scale: 4,
+		}),
 		lastRefilledAt: timestamp('last_refilled_at', { withTimezone: true }),
 		nextReinforceApply: timestamp('next_reinforce_apply', { withTimezone: true }),
 		nextReinforceHour: integer('next_reinforce_hour'),

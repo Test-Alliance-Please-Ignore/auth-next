@@ -108,7 +108,6 @@ export async function fetchSovereigntyEnrichment(
 		const allianceBySystemId = buildSovereigntyAllianceBySystemId(sovereigntySystems)
 		const enrichedSovereigntyHubs = sovereigntyHubs.map((hub) => ({
 			...hub,
-			name: systemGeography[hub.system_id]?.solarSystemName ?? hub.name ?? null,
 			system_name: systemGeography[hub.system_id]?.solarSystemName ?? hub.system_name ?? null,
 			controller_alliance_id: allianceBySystemId.get(hub.system_id) ?? null,
 		}))

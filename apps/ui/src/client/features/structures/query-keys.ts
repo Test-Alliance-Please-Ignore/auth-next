@@ -17,7 +17,6 @@ type StructureTabQuery =
 
 export const structureKeys = {
 	all: ['structures'] as const,
-	overview: () => [...structureKeys.all, 'overview'] as const,
 	citadels: (query: StructureTabQuery) => [...structureKeys.all, 'citadels', query] as const,
 	navigation: (query: StructureTabQuery) => [...structureKeys.all, 'navigation', query] as const,
 	sovereignty: (query: StructureTabQuery) => [...structureKeys.all, 'sovereignty', query] as const,

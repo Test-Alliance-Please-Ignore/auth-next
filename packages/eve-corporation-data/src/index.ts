@@ -203,7 +203,6 @@ export interface EsiSovereigntyHub {
 	corporation_id: string
 	system_id: string
 	system_name?: string | null
-	name: string | null
 	type_id: string
 	controller_alliance_id?: string | null
 	fuel_access_list_id: string | null
@@ -299,9 +298,6 @@ export interface EsiCorporationSkyhook {
 		start: string
 		end: string
 	} | null
-	is_raidable: boolean
-	becomes_raidable_at: string | null
-	vulnerable_at: string | null
 	raw: Record<string, unknown>
 }
 
@@ -672,6 +668,7 @@ export interface CorporationStructureData {
 	profileId: string
 	fuelExpires: Date | null
 	fuelAmount: number | null
+	fuelBurnRate: string | null
 	nextReinforceApply: Date | null
 	nextReinforceHour: number | null
 	reinforceHour: number | null

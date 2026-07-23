@@ -17,10 +17,10 @@ import {
 	getVisibleStructureDetail,
 	listMiningCitadelStructures,
 	listMoonDrillStructures,
-	listVisibleStructures,
+	listStructures,
 } from '../../../services/structures.service'
 
-type FakeDb = Parameters<typeof listVisibleStructures>[0]
+type FakeDb = Parameters<typeof listStructures>[0]
 
 function makeDb(
 	options: {
@@ -152,7 +152,7 @@ describe('structure permission gating', () => {
 	it('returns visible structures for all-scope viewer permissions resolved from group membership', async () => {
 		const db = makeDb()
 
-		const result = await listVisibleStructures(db as never, {
+		const result = await listStructures(db as never, {
 			id: 'user-1',
 			is_admin: false,
 			roles: ['urn:structures:all:viewer'],
@@ -163,12 +163,13 @@ describe('structure permission gating', () => {
 		expect(result.items[0]?.structureId).toBe('structure-1')
 		expect(result.items[0]?.canViewDetails).toBe(false)
 		expect(result.summary.total).toBe(1)
+		expect(db.query.structureFuelLog.findMany).not.toHaveBeenCalled()
 	})
 
 	it('returns visible structures for all-scope details permissions', async () => {
 		const db = makeDb()
 
-		const result = await listVisibleStructures(db as never, {
+		const result = await listStructures(db as never, {
 			id: 'user-1d',
 			is_admin: false,
 			roles: ['urn:structures:all:details'],
@@ -183,7 +184,7 @@ describe('structure permission gating', () => {
 	it('returns corporation-scoped structures when the user only has a corp-scoped viewer permission', async () => {
 		const db = makeDb()
 
-		const result = await listVisibleStructures(db as never, {
+		const result = await listStructures(db as never, {
 			id: 'user-2',
 			is_admin: false,
 			roles: ['urn:structures:corp-1:viewer'],
@@ -231,7 +232,7 @@ describe('structure permission gating', () => {
 	it('does not leak citadels to a tab-scoped moon-drills permission', async () => {
 		const db = makeDb()
 
-		const result = await listVisibleStructures(db as never, {
+		const result = await listStructures(db as never, {
 			id: 'user-3',
 			is_admin: false,
 			roles: ['urn:structures:moon-drills:all:viewer'],
@@ -429,6 +430,52 @@ describe('structure permission gating', () => {
 		expect(result.items[0]?.naturalDecayTime).toBe('2026-01-03T01:00:00.000Z')
 	})
 
+	it('treats a missing mining extraction snapshot as a non-fatal warning state', async () => {
+		const db = makeDb({
+			structures: [
+				{
+					structureId: 'structure-mining-citadel',
+					corporationId: 'corp-1',
+					name: 'Mining Citadel',
+					typeId: '35833',
+					typeName: 'Athanor',
+					systemId: '30000142',
+					systemName: 'Jita',
+					regionId: '10000002',
+					regionName: 'The Forge',
+					state: 'online',
+					nextReinforceApply: null,
+					stateTimerEnd: null,
+					unanchorsAt: null,
+					fuelExpires: null,
+					fuelAmount: 2000,
+					lowPower: false,
+					syncStatus: 'ok',
+					syncFailureReason: null,
+					lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
+					updatedAt: new Date('2026-01-01T00:00:00Z'),
+				},
+			],
+			miningStates: [],
+		})
+
+		const result = await listMiningCitadelStructures(db as never, {
+			id: 'user-4f',
+			is_admin: false,
+			roles: ['urn:structures:mining-citadels:all:viewer'],
+		})
+
+		expect(result.items).toHaveLength(1)
+		expect(result.items[0]?.structureId).toBe('structure-mining-citadel')
+		expect(result.items[0]?.syncStatus).toBe('warning')
+		expect(result.items[0]?.syncFailureReason).toBe(
+			'Mining extraction snapshot has not been ingested yet for this structure.'
+		)
+		expect(result.items[0]?.extractionStartTime).toBeNull()
+		expect(result.items[0]?.chunkArrivalTime).toBeNull()
+		expect(result.items[0]?.naturalDecayTime).toBeNull()
+	})
+
 	it('unions multiple corp-scoped permissions across corporations', async () => {
 		const db = makeDb({
 			structures: [
@@ -479,7 +526,7 @@ describe('structure permission gating', () => {
 			],
 		})
 
-		const result = await listVisibleStructures(db as never, {
+		const result = await listStructures(db as never, {
 			id: 'user-2a',
 			is_admin: false,
 			roles: ['urn:structures:corp-1:viewer', 'urn:structures:corp-2:sensitive'],
@@ -540,7 +587,7 @@ describe('structure permission gating', () => {
 			],
 		})
 
-		const result = await listVisibleStructures(db as never, {
+		const result = await listStructures(db as never, {
 			id: 'user-2b',
 			is_admin: false,
 			roles: ['urn:structures:corp-1:viewer', 'urn:structures:all:viewer'],
@@ -554,7 +601,7 @@ describe('structure permission gating', () => {
 	it('does not query structures when the user has no structure permissions', async () => {
 		const db = makeDb()
 
-		const result = await listVisibleStructures(db as never, {
+		const result = await listStructures(db as never, {
 			id: 'user-3',
 			is_admin: false,
 			roles: ['urn:srp:reviewer'],
@@ -568,7 +615,7 @@ describe('structure permission gating', () => {
 	it('filters hidden structures unless the user has manager-level access', async () => {
 		const db = makeDb({ hidden: true })
 
-		const viewerResult = await listVisibleStructures(db as never, {
+		const viewerResult = await listStructures(db as never, {
 			id: 'user-4',
 			is_admin: false,
 			roles: ['urn:structures:all:viewer'],
@@ -576,7 +623,7 @@ describe('structure permission gating', () => {
 
 		expect(viewerResult.items).toHaveLength(0)
 
-		const sensitiveResult = await listVisibleStructures(db as never, {
+		const sensitiveResult = await listStructures(db as never, {
 			id: 'user-5',
 			is_admin: false,
 			roles: ['urn:structures:all:sensitive'],
@@ -585,7 +632,7 @@ describe('structure permission gating', () => {
 		expect(sensitiveResult.items).toHaveLength(1)
 		expect(sensitiveResult.items[0]?.structureId).toBe('structure-1')
 
-		const corpSensitiveResult = await listVisibleStructures(db as never, {
+		const corpSensitiveResult = await listStructures(db as never, {
 			id: 'user-5b',
 			is_admin: false,
 			roles: ['urn:structures:corp-1:sensitive'],
@@ -594,7 +641,7 @@ describe('structure permission gating', () => {
 		expect(corpSensitiveResult.items).toHaveLength(1)
 		expect(corpSensitiveResult.items[0]?.structureId).toBe('structure-1')
 
-		const corpManagerResult = await listVisibleStructures(db as never, {
+		const corpManagerResult = await listStructures(db as never, {
 			id: 'user-5c',
 			is_admin: false,
 			roles: ['urn:structures:corp-1:manager'],
@@ -603,7 +650,7 @@ describe('structure permission gating', () => {
 		expect(corpManagerResult.items).toHaveLength(1)
 		expect(corpManagerResult.items[0]?.structureId).toBe('structure-1')
 
-		const managerResult = await listVisibleStructures(db as never, {
+		const managerResult = await listStructures(db as never, {
 			id: 'user-6',
 			is_admin: false,
 			roles: ['urn:structures:all:manager'],

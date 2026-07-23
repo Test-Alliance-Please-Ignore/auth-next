@@ -17,18 +17,27 @@ import { EntityResolverService } from '../services/entity-resolver.service'
 
 import type { Context } from 'hono'
 import type { EveTokenStore } from '@repo/eve-token-store'
+import {
+	STRUCTURE_COMMON_LIST_SORT_FIELDS,
+	STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS,
+	STRUCTURE_SKYHOOK_LIST_SORT_FIELDS,
+	STRUCTURE_SOVEREIGNTY_LIST_SORT_FIELDS,
+} from '@repo/structures'
 import type {
 	StructureDetailResult,
 	StructureCitadelListQuery,
+	StructureCommonListSortBy,
+	StructureMoonStructureListSortBy,
 	StructureFittingItem,
 	StructureMoonDrillListQuery,
 	StructureMiningCitadelListQuery,
 	StructureNavigationListQuery,
-	StructureOverviewMetrics,
 	StructureInventoryBay,
 	StructureInventoryItem,
 	StructureSkyhookListQuery,
+	StructureSkyhookListSortBy,
 	StructureSovereigntyListQuery,
+	StructureSovereigntyListSortBy,
 	StructureSovereigntyListResponse,
 	UpdateStructureConfigInput,
 	UpdateStructureModuleConfigInput,
@@ -39,36 +48,14 @@ import type { App } from '../context'
 
 const app = new Hono<App>()
 
-const structureListSortFields = [
-	'updatedAt',
-	'nextStateAt',
-	'fuel',
-	'name',
-	'corporation',
-	'region',
-	'planet',
-	'system',
-	'type',
-	'state',
-	'magmaticGasEstimatedDepletionAt',
-	'superionicIceEstimatedDepletionAt',
-	'theftVulnerabilityStart',
-	'skyhookSecureFullness',
-	'skyhookSurplusFullness',
-	'raidable',
-	'workforce',
-	'group',
-	'syncStatus',
-] as const
-
-const structureListPagingSchema = z.object({
+const structurePagingSchema = z.object({
 	page: z.coerce.number().int().min(1).default(1),
 	pageSize: z.coerce.number().int().min(1).max(100).default(25),
-	sortBy: z.enum(structureListSortFields).default('fuel'),
 	sortDirection: z.enum(['asc', 'desc']).default('asc'),
 })
 
-const structureCommonListQuerySchema = structureListPagingSchema.extend({
+const structureCommonListQuerySchema = structurePagingSchema.extend({
+	sortBy: z.enum(STRUCTURE_COMMON_LIST_SORT_FIELDS).default('fuel'),
 	corporationId: z.string().trim().min(1).optional(),
 	assignedGroupId: z.string().trim().min(1).optional(),
 	lowPower: z.enum(['true', 'false']).optional(),
@@ -83,7 +70,8 @@ const citadelStructureListQuerySchema = structureCommonListQuerySchema
 
 const navigationStructureListQuerySchema = structureCommonListQuerySchema
 
-const sovereigntyStructureListQuerySchema = structureListPagingSchema.extend({
+const sovereigntyStructureListQuerySchema = structurePagingSchema.extend({
+	sortBy: z.enum(STRUCTURE_SOVEREIGNTY_LIST_SORT_FIELDS).default('fuel'),
 	corporationId: z.string().trim().min(1).optional(),
 	assignedGroupId: z.string().trim().min(1).optional(),
 	regionId: z.string().trim().min(1).optional(),
@@ -93,11 +81,13 @@ const sovereigntyStructureListQuerySchema = structureListPagingSchema.extend({
 })
 
 const skyhookStructureListQuerySchema = structureCommonListQuerySchema.extend({
+	sortBy: z.enum(STRUCTURE_SKYHOOK_LIST_SORT_FIELDS).default('fuel'),
 	planetId: z.string().trim().min(1).optional(),
 	isRaidable: z.enum(['true', 'false']).optional(),
 })
 
 const moonDrillStructureListQuerySchema = structureCommonListQuerySchema.extend({
+	sortBy: z.enum(STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS).default('fuel'),
 	planetId: z.string().trim().min(1).optional(),
 })
 
@@ -370,10 +360,6 @@ app.get('/mining-citadels', async (c) => {
 	return handleMiningCitadelsStructuresRequest(c)
 })
 
-app.get('/overview', async (c) => {
-	return handleStructureOverviewRequest(c)
-})
-
 app.post('/:structureId/assets-debug', async (c) => {
 	const user = c.get('user')
 	if (!user) {
@@ -538,11 +524,11 @@ async function handleCitadelStructuresRequest(c: Context<App>): Promise<Response
 	}
 
 	try {
-		const query = citadelStructureListQuerySchema.parse({
-			page: c.req.query('page'),
-			pageSize: c.req.query('pageSize'),
-			sortBy: c.req.query('sortBy') || undefined,
-			sortDirection: c.req.query('sortDirection') || undefined,
+			const query = citadelStructureListQuerySchema.parse({
+				page: c.req.query('page'),
+				pageSize: c.req.query('pageSize'),
+				sortBy: (c.req.query('sortBy') || undefined) as StructureCommonListSortBy | undefined,
+				sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
 			assignedGroupId: c.req.query('assignedGroupId') || undefined,
 			lowPower: c.req.query('lowPower') || undefined,
@@ -551,7 +537,7 @@ async function handleCitadelStructuresRequest(c: Context<App>): Promise<Response
 			systemId: c.req.query('systemId') || undefined,
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
-		}) satisfies StructureCitadelListQuery
+			}) as StructureCitadelListQuery
 
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
@@ -575,10 +561,10 @@ async function handleNavigationStructuresRequest(c: Context<App>): Promise<Respo
 	}
 
 	try {
-		const query = navigationStructureListQuerySchema.parse({
-			page: c.req.query('page'),
-			pageSize: c.req.query('pageSize'),
-			sortBy: c.req.query('sortBy') || undefined,
+			const query = navigationStructureListQuerySchema.parse({
+				page: c.req.query('page'),
+				pageSize: c.req.query('pageSize'),
+				sortBy: (c.req.query('sortBy') || undefined) as StructureCommonListSortBy | undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
 			assignedGroupId: c.req.query('assignedGroupId') || undefined,
@@ -588,7 +574,7 @@ async function handleNavigationStructuresRequest(c: Context<App>): Promise<Respo
 			systemId: c.req.query('systemId') || undefined,
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
-		}) satisfies StructureNavigationListQuery
+			}) as StructureNavigationListQuery
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
 				await c.env.STRUCTURES.listNavigationStructures(await getStructureActor(c), query)
@@ -611,10 +597,10 @@ async function handleSovereigntyStructuresRequest(c: Context<App>): Promise<Resp
 	}
 
 	try {
-		const query = sovereigntyStructureListQuerySchema.parse({
-			page: c.req.query('page'),
-			pageSize: c.req.query('pageSize'),
-			sortBy: c.req.query('sortBy') || undefined,
+			const query = sovereigntyStructureListQuerySchema.parse({
+				page: c.req.query('page'),
+				pageSize: c.req.query('pageSize'),
+				sortBy: (c.req.query('sortBy') || undefined) as StructureSovereigntyListSortBy | undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
 			assignedGroupId: c.req.query('assignedGroupId') || undefined,
@@ -622,7 +608,7 @@ async function handleSovereigntyStructuresRequest(c: Context<App>): Promise<Resp
 			systemId: c.req.query('systemId') || undefined,
 			controllerAllianceId: c.req.query('controllerAllianceId') || undefined,
 			vulnerabilityState: c.req.query('vulnerabilityState') || undefined,
-		}) satisfies StructureSovereigntyListQuery
+			}) as StructureSovereigntyListQuery
 		const response = await c.env.STRUCTURES.listSovereigntyStructures(await getStructureActor(c), query)
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
@@ -646,10 +632,10 @@ async function handleSkyhookStructuresRequest(c: Context<App>): Promise<Response
 	}
 
 	try {
-		const query = skyhookStructureListQuerySchema.parse({
-			page: c.req.query('page'),
-			pageSize: c.req.query('pageSize'),
-			sortBy: c.req.query('sortBy') || undefined,
+			const query = skyhookStructureListQuerySchema.parse({
+				page: c.req.query('page'),
+				pageSize: c.req.query('pageSize'),
+				sortBy: (c.req.query('sortBy') || undefined) as StructureSkyhookListSortBy | undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
 			assignedGroupId: c.req.query('assignedGroupId') || undefined,
@@ -661,7 +647,7 @@ async function handleSkyhookStructuresRequest(c: Context<App>): Promise<Response
 			typeId: c.req.query('typeId') || undefined,
 			planetId: c.req.query('planetId') || undefined,
 			isRaidable: c.req.query('isRaidable') || undefined,
-		}) satisfies StructureSkyhookListQuery
+			}) as StructureSkyhookListQuery
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
 				await c.env.STRUCTURES.listSkyhookStructures(await getStructureActor(c), query)
@@ -684,10 +670,10 @@ async function handleMoonDrillStructuresRequest(c: Context<App>): Promise<Respon
 	}
 
 	try {
-		const query = moonDrillStructureListQuerySchema.parse({
-			page: c.req.query('page'),
-			pageSize: c.req.query('pageSize'),
-			sortBy: c.req.query('sortBy') || undefined,
+			const query = moonDrillStructureListQuerySchema.parse({
+				page: c.req.query('page'),
+				pageSize: c.req.query('pageSize'),
+				sortBy: (c.req.query('sortBy') || undefined) as StructureMoonStructureListSortBy | undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
 			assignedGroupId: c.req.query('assignedGroupId') || undefined,
@@ -698,7 +684,7 @@ async function handleMoonDrillStructuresRequest(c: Context<App>): Promise<Respon
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
 			planetId: c.req.query('planetId') || undefined,
-		}) satisfies StructureMoonDrillListQuery
+			}) as StructureMoonDrillListQuery
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
 				await c.env.STRUCTURES.listMoonDrillStructures(await getStructureActor(c), query)
@@ -721,10 +707,10 @@ async function handleMiningCitadelsStructuresRequest(c: Context<App>): Promise<R
 	}
 
 	try {
-		const query = moonDrillStructureListQuerySchema.parse({
-			page: c.req.query('page'),
-			pageSize: c.req.query('pageSize'),
-			sortBy: c.req.query('sortBy') || undefined,
+			const query = moonDrillStructureListQuerySchema.parse({
+				page: c.req.query('page'),
+				pageSize: c.req.query('pageSize'),
+				sortBy: (c.req.query('sortBy') || undefined) as StructureMoonStructureListSortBy | undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
 			assignedGroupId: c.req.query('assignedGroupId') || undefined,
@@ -735,7 +721,7 @@ async function handleMiningCitadelsStructuresRequest(c: Context<App>): Promise<R
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
 			planetId: c.req.query('planetId') || undefined,
-		}) satisfies StructureMiningCitadelListQuery
+			}) as StructureMiningCitadelListQuery
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
 				await c.env.STRUCTURES.listMiningCitadelStructures(await getStructureActor(c), query)
@@ -747,28 +733,6 @@ async function handleMiningCitadelsStructuresRequest(c: Context<App>): Promise<R
 				error: error instanceof Error ? error.message : 'Failed to list structures',
 			},
 			error instanceof z.ZodError ? 400 : 500
-		)
-	}
-}
-
-async function handleStructureOverviewRequest(c: Context<App>): Promise<Response> {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		return c.json(
-			(await c.env.STRUCTURES.getStructureOverviewMetrics(
-				await getStructureActor(c)
-			)) satisfies StructureOverviewMetrics
-		)
-	} catch (error) {
-		return c.json(
-			{
-				error: error instanceof Error ? error.message : 'Failed to load structure overview metrics',
-			},
-			500
 		)
 	}
 }

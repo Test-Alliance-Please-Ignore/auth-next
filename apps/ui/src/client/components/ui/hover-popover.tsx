@@ -15,6 +15,7 @@ interface HoverPopoverProps {
 	side?: PopoverContentProps['side']
 	sideOffset?: number
 	className?: string
+	triggerClassName?: string
 	fullWidth?: boolean
 }
 
@@ -25,6 +26,7 @@ export function HoverPopover({
 	side = 'bottom',
 	sideOffset = 8,
 	className,
+	triggerClassName,
 	fullWidth = false,
 }: HoverPopoverProps) {
 	const [open, setOpen] = useState(false)
@@ -39,7 +41,7 @@ export function HoverPopover({
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<span
-					className={fullWidth ? 'inline-block w-full' : 'inline-block'}
+					className={cn(fullWidth ? 'inline-block w-full' : 'inline-block', triggerClassName)}
 					onMouseEnter={() => setIsTriggerHover(true)}
 					onMouseLeave={() => setIsTriggerHover(false)}
 					onFocus={() => setIsTriggerHover(true)}

@@ -170,6 +170,38 @@ describe('structure prune cleanup', () => {
 		expect(db._where).toHaveBeenCalledTimes(3)
 	})
 
+	it('keeps recently seen structures and their dependent snapshots during the prune grace period', async () => {
+		const db = makeDb()
+		const instance = createDoInstance(db)
+		const recent = new Date('2026-07-22T00:00:00.000Z')
+
+		db.query.corporationStructures.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'structure-1',
+				typeId: '35832',
+				updatedAt: recent,
+			},
+		])
+		db.query.structureMoonGeographies.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'structure-1',
+				updatedAt: recent,
+			},
+		])
+		db.query.structureMoonDrills.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'structure-1',
+				updatedAt: recent,
+			},
+		])
+
+		;(instance as any).hydrateStructureRows = vi.fn().mockResolvedValue([])
+
+		await instance.storeStructures('corp-1', [])
+
+		expect(db.delete).not.toHaveBeenCalled()
+	})
+
 	it('clears all structure-side rows when the successful sync returns no structures', async () => {
 		const db = makeDb()
 		const instance = createDoInstance(db)
@@ -473,9 +505,6 @@ describe('structure prune cleanup', () => {
 				reagents: [],
 				reinforcement_timer: null,
 				theft_vulnerability: null,
-				is_raidable: false,
-				becomes_raidable_at: null,
-				vulnerable_at: null,
 				raw: { id: 1 },
 			} as never,
 		])
@@ -506,6 +535,41 @@ describe('structure prune cleanup', () => {
 		const instance = createDoInstance(db)
 
 		await expect(instance.storeSkyhooks('corp-1', [])).resolves.toEqual({ prunedCount: 1 })
+		expect(db.delete).toHaveBeenCalledTimes(1)
+		expect(db.delete).toHaveBeenNthCalledWith(1, structureSkyhooks)
+	})
+
+	it('counts both skyhook state rows and base structure rows when pruning an empty listing', async () => {
+		const db = makeDb()
+		const stale = new Date('2026-06-01T00:00:00.000Z')
+
+		db.query.corporationStructures.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'skyhook-1',
+				typeId: '35832',
+				updatedAt: stale,
+			},
+		])
+		db.query.structureSkyhooks.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'skyhook-1',
+				planetName: 'Planet One',
+				systemName: 'Jita',
+				name: 'Skyhook One',
+				updatedAt: stale,
+			},
+		])
+
+		mocks.getStub.mockReturnValue({
+			resolvePlanetGeographyByIds: vi.fn().mockResolvedValue({}),
+			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
+			resolveRegionsByIds: vi.fn().mockResolvedValue({}),
+			resolveNearestMoonGeographyBySystemPosition: vi.fn().mockResolvedValue(null),
+		} as never)
+
+		const instance = createDoInstance(db)
+
+		await expect(instance.storeSkyhooks('corp-1', [])).resolves.toEqual({ prunedCount: 2 })
 		expect(db.delete).toHaveBeenCalledTimes(2)
 		expect(db.delete).toHaveBeenNthCalledWith(1, structureSkyhooks)
 		expect(db.delete).toHaveBeenNthCalledWith(2, corporationStructures)
