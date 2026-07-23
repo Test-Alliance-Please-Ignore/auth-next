@@ -881,7 +881,7 @@ export interface UpdateStructureGroupAlertConfigRequest {
 }
 
 export interface StructuresWorker {
-	listVisibleStructures(
+	listStructures(
 		actor: StructureActor,
 		query?: StructureListQuery
 	): Promise<StructureListResponse<StructureCitadelListItem>>

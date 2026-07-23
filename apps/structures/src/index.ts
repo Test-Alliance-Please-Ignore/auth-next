@@ -21,7 +21,7 @@ import {
 	listStructureCorporationGroupDefaults,
 	listStructureGroupAlertConfigs,
 	listStructureGroupSettings,
-	listVisibleStructures,
+	listStructures,
 	syncCorporationStructures,
 	updateStructureConfig,
 	updateStructureModuleConfig,
@@ -76,11 +76,11 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		return createDb(this.env.DATABASE_URL)
 	}
 
-	async listVisibleStructures(
+	async listStructures(
 		actor: StructureActor,
 		query: StructureListQuery = {}
 	): Promise<StructureListResponse<StructureCitadelListItem>> {
-		return listVisibleStructures(this.getDb(), actor, query)
+		return listStructures(this.getDb(), actor, query)
 	}
 
 	async listCitadelStructures(

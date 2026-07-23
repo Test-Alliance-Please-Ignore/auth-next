@@ -35,7 +35,7 @@ export function getSkyhookReagentUnitVolumeM3(typeId: string): number {
 		case SKYHOOK_MAGMATIC_GAS_TYPE_ID:
 			return 0.01
 		case SKYHOOK_SUPERIONIC_ICE_TYPE_ID:
-			return 0.05
+			return 1.5
 		default:
 			return 0
 	}
