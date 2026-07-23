@@ -77,6 +77,44 @@ describe('refreshRecentLossesForCharacter', () => {
 		expect(srp.writeRecentLossCache).toHaveBeenCalledWith('character-1', [refreshedLoss], 30)
 	})
 
+	it('filters rookie ships out before persisting refreshed losses', async () => {
+		const srp = Object.create(SrpDO.prototype) as Record<string, any>
+		const rookieLoss = buildLoss('301', '2026-07-07T00:00:00.000Z', {
+			shipTypeId: '588',
+		})
+		const eligibleLoss = buildLoss('302', '2026-07-06T00:00:00.000Z')
+
+		srp.readRecentLossCache = vi.fn().mockResolvedValue({
+			losses: [],
+			refreshedAtMs: Date.now(),
+			complete: false,
+			maxLossAgeDays: 30,
+		})
+		srp.readMostRecentLoss = vi.fn().mockResolvedValue(null)
+		srp.fetchRecentLossesFromEsi = vi.fn().mockResolvedValue([
+			{ loss: rookieLoss, killmailData: { killmail_id: rookieLoss.killmailId } },
+			{ loss: eligibleLoss, killmailData: { killmail_id: eligibleLoss.killmailId } },
+		])
+		srp.persistRecentLossesToCharacterData = vi.fn().mockResolvedValue(undefined)
+		srp.writeRecentLossCache = vi.fn().mockResolvedValue(undefined)
+		srp.getConfig = vi.fn().mockResolvedValue({ maxLossAgeDays: 30 })
+
+		const result = await srp.refreshRecentLossesForCharacter(
+			'user-1',
+			'character-1',
+			'Character One',
+			30
+		)
+
+		expect(result.success).toBe(true)
+		expect(srp.persistRecentLossesToCharacterData).toHaveBeenCalledWith(
+			'character-1',
+			[{ loss: eligibleLoss, killmailData: { killmail_id: eligibleLoss.killmailId } }],
+			expect.any(Number)
+		)
+		expect(srp.writeRecentLossCache).toHaveBeenCalledWith('character-1', [eligibleLoss], 30)
+	})
+
 	it('treats an empty refresh as a successful complete cache write', async () => {
 		const srp = Object.create(SrpDO.prototype) as Record<string, any>
 

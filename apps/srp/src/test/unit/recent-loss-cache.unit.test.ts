@@ -122,11 +122,18 @@ describe('recent-loss cache helpers', () => {
 		expect(shouldInvalidateRecentLossCache(null, 365)).toBe(false)
 	})
 
-	it('excludes empty capsules but keeps pods with fitted implants requestable', () => {
+	it('excludes rookie ships and empty capsules but keeps fitted pods requestable', () => {
 		expect(isRecentLossRequestable(buildLoss('10', '2026-06-02T03:00:00.000Z'))).toBe(true)
 		expect(
 			isRecentLossRequestable({
 				...buildLoss('11', '2026-06-02T03:00:00.000Z', {
+					shipTypeId: '588',
+				}),
+			})
+		).toBe(false)
+		expect(
+			isRecentLossRequestable({
+				...buildLoss('12', '2026-06-02T03:00:00.000Z', {
 					shipTypeId: '670',
 					victimItems: [],
 				}),
@@ -134,7 +141,7 @@ describe('recent-loss cache helpers', () => {
 		).toBe(false)
 		expect(
 			isRecentLossRequestable({
-				...buildLoss('12', '2026-06-02T03:00:00.000Z', {
+				...buildLoss('13', '2026-06-02T03:00:00.000Z', {
 					shipTypeId: '33328',
 					victimItems: [{ flag: 89, item_type_id: '1956' }],
 				}),
