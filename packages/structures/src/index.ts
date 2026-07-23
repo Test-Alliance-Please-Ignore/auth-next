@@ -483,8 +483,6 @@ export interface StructureSkyhookListItem
 	theftVulnerabilityStart: string | null
 	theftVulnerabilityEnd: string | null
 	isRaidable: boolean
-	becomesRaidableAt: string | null
-	vulnerableAt: string | null
 }
 
 export interface StructureSkyhookListResponse {
@@ -649,8 +647,6 @@ export interface StructureSkyhookSummary {
 	theftVulnerabilityStart: string | null
 	theftVulnerabilityEnd: string | null
 	isRaidable: boolean
-	becomesRaidableAt: string | null
-	vulnerableAt: string | null
 }
 
 export interface StructureMoonDrillSummary extends StructureMoonGeography {}
@@ -942,3 +938,6 @@ export const STRUCTURE_ALERT_TYPES: StructureAlertTypeDefinition[] = [
 		supportedDestinationTypes: ['discord_channel', 'discord_user', 'discord_webhook', 'group'],
 	},
 ]
+
+export * from './skyhook-metrics'
+export * from './sovereignty-metrics'

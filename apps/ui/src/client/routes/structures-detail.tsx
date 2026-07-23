@@ -1526,9 +1526,9 @@ export default function StructuresDetailPage() {
 													className="whitespace-nowrap"
 												/>
 											</span>
-										) : structure.skyhook.vulnerableAt ? (
+										) : structure.skyhook.theftVulnerabilityStart ? (
 											<EveTimeDisplay
-												dateStr={structure.skyhook.vulnerableAt}
+												dateStr={structure.skyhook.theftVulnerabilityStart}
 												format="window"
 												className="whitespace-nowrap"
 											/>

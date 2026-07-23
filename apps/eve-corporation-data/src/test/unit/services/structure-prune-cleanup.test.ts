@@ -505,9 +505,6 @@ describe('structure prune cleanup', () => {
 				reagents: [],
 				reinforcement_timer: null,
 				theft_vulnerability: null,
-				is_raidable: false,
-				becomes_raidable_at: null,
-				vulnerable_at: null,
 				raw: { id: 1 },
 			} as never,
 		])

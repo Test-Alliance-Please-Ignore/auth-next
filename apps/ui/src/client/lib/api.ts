@@ -931,8 +931,6 @@ export interface StructureSkyhookSummary {
 	theftVulnerabilityStart: string | null
 	theftVulnerabilityEnd: string | null
 	isRaidable: boolean
-	becomesRaidableAt: string | null
-	vulnerableAt: string | null
 }
 
 export type StructureMoonDrillSummary = RepoStructureMoonDrillSummary

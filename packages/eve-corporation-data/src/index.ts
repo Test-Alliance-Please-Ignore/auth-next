@@ -299,9 +299,6 @@ export interface EsiCorporationSkyhook {
 		start: string
 		end: string
 	} | null
-	is_raidable: boolean
-	becomes_raidable_at: string | null
-	vulnerable_at: string | null
 	raw: Record<string, unknown>
 }
 

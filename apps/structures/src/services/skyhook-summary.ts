@@ -43,9 +43,8 @@ export function summarizeSkyhooks(
 		}
 
 		const startMs = parseDateMs(item.theftVulnerabilityStart)
-		const fallbackStartMs = parseDateMs(item.becomesRaidableAt ?? item.vulnerableAt)
 		const endMs = parseDateMs(item.theftVulnerabilityEnd)
-		const selectionStartMs = startMs ?? fallbackStartMs
+		const selectionStartMs = startMs
 		const isExpiredWindow = endMs !== null && nowMs > endMs
 		const isActiveWindow =
 			startMs !== null &&

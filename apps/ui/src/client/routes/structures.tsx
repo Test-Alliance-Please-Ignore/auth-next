@@ -342,7 +342,6 @@ function SkyhookVulnerabilityWindowCell({
 	const vulnerabilityWindow = getSkyhookVulnerabilityWindowDisplay({
 		theftVulnerabilityStart: structure.theftVulnerabilityStart,
 		theftVulnerabilityEnd: structure.theftVulnerabilityEnd,
-		vulnerableAt: structure.vulnerableAt,
 		isRaidable: structure.isRaidable,
 		nowMs: useNowMs(),
 	})
@@ -364,9 +363,9 @@ function SkyhookVulnerabilityWindowCell({
 							className="whitespace-nowrap"
 						/>
 					</span>
-				) : structure.vulnerableAt ? (
+				) : structure.theftVulnerabilityStart ? (
 					<EveTimeDisplay
-						dateStr={structure.vulnerableAt}
+						dateStr={structure.theftVulnerabilityStart}
 						format="window"
 						className="whitespace-nowrap"
 					/>
@@ -375,8 +374,7 @@ function SkyhookVulnerabilityWindowCell({
 				)}
 			</div>
 			{structure.theftVulnerabilityStart ||
-			structure.theftVulnerabilityEnd ||
-			structure.vulnerableAt ? (
+			structure.theftVulnerabilityEnd ? (
 				<div className="text-xs text-muted-foreground">
 					{vulnerabilityWindow.label}{' '}
 					{vulnerabilityWindow.countdownTarget ? (

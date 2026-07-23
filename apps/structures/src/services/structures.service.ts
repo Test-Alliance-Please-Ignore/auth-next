@@ -22,6 +22,18 @@ import {
 	SKYHOOK_STRUCTURE_TYPE_IDS,
 	SOVEREIGNTY_STRUCTURE_TYPE_IDS,
 	STRUCTURE_REINFORCED_STATES,
+	SKYHOOK_SECURED_BAY_CAPACITY_M3,
+	SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
+	SKYHOOK_MAGMATIC_GAS_TYPE_ID,
+	SKYHOOK_MAGMATIC_GAS_TYPE_NAME,
+	SKYHOOK_SUPERIONIC_ICE_TYPE_ID,
+	SKYHOOK_SUPERIONIC_ICE_TYPE_NAME,
+	getSkyhookFullness,
+	getSkyhookReagentEntries,
+	getSkyhookReagentSummary,
+	getSkyhookReagentUnitVolumeM3,
+	getSovereigntyReagentBayReagents,
+	getSovereigntyReagentBaySummary,
 	getStructureTabForTypeId,
 	isReinforcedStructureState,
 	STRUCTURE_SYNC_ERROR_STALE_MS,
@@ -105,24 +117,10 @@ type StructureSkyhookFilterableItem = RepoStructureSkyhookListItem
 type StructureMoonDrillFilterableItem = RepoStructureMoonDrillListItem
 type StructureMiningCitadelFilterableItem = RepoStructureMiningCitadelListItem
 
-const MAGMATIC_GAS_TYPE_ID = '81143'
-const SUPERIONIC_ICE_TYPE_ID = '81144'
-const SKYHOOK_BAY_CAPACITY_M3 = 70080
 const HOURS_TO_MS = 60 * 60 * 1000
 const STRUCTURE_LIST_PAGE_SIZE_MAX = 100
 
 type SkyhookStateLabel = 'invulnerable' | 'vulnerable' | 'reinforced'
-
-function getSkyhookReagentUnitVolumeM3(typeId: string): number {
-	switch (typeId) {
-		case MAGMATIC_GAS_TYPE_ID:
-			return 0.01
-		case SUPERIONIC_ICE_TYPE_ID:
-			return 1.5
-		default:
-			return 0
-	}
-}
 
 function getSkyhookState(
 	state: string,
@@ -139,17 +137,36 @@ function getSkyhookState(
 	return 'invulnerable'
 }
 
-function getSkyhookVulnerabilityWindowStart(
-	structure: Pick<StructureSkyhookFilterableItem, 'theftVulnerabilityStart' | 'vulnerableAt'>
-): string | null {
-	return structure.theftVulnerabilityStart ?? structure.vulnerableAt ?? null
+function isSkyhookCurrentlyRaidable(
+	structure:
+		| Pick<typeof structureSkyhooks.$inferSelect, 'theftVulnerabilityStart' | 'theftVulnerabilityEnd'>
+		| null
+		| undefined
+): boolean {
+	if (!structure) {
+		return false
+	}
+
+	const raidableStart = structure.theftVulnerabilityStart ?? null
+	if (!raidableStart) {
+		return false
+	}
+
+	const now = Date.now()
+	const raidableEnd = structure.theftVulnerabilityEnd?.getTime() ?? null
+	if (raidableEnd !== null && now > raidableEnd) {
+		return false
+	}
+
+	return raidableEnd === null
+		? now > raidableStart.getTime()
+		: now > raidableStart.getTime() && now < raidableEnd
 }
 
-function getSkyhookFullness(volumeM3: number, capacityM3: number): number {
-	if (!Number.isFinite(volumeM3) || !Number.isFinite(capacityM3) || capacityM3 <= 0) {
-		return 0
-	}
-	return (volumeM3 / capacityM3) * 100
+function getSkyhookVulnerabilityWindowStart(
+	structure: Pick<StructureSkyhookFilterableItem, 'theftVulnerabilityStart'>
+): string | null {
+	return structure.theftVulnerabilityStart ?? null
 }
 
 export type StructureListSortField =
@@ -204,6 +221,7 @@ export interface StructureListSummary {
 	skyhookNextRaidableAt?: string | null
 	skyhookNextRaidablePlanetName?: string | null
 	skyhookCurrentRaidableCount?: number | null
+	skyhookTotalWorkforce?: number | null
 }
 
 export type StructureListQuery = StructureCitadelListQuery
@@ -364,8 +382,6 @@ export interface StructureSkyhookSummary {
 	theftVulnerabilityStart: string | null
 	theftVulnerabilityEnd: string | null
 	isRaidable: boolean
-	becomesRaidableAt: string | null
-	vulnerableAt: string | null
 }
 
 export interface StructureMoonDrillSummary {
@@ -908,79 +924,24 @@ function isFuelBelowThreshold(
 	return hoursRemaining <= moduleConfig.lowFuelTimeThresholdHours
 }
 
-function estimateReagentDepletionAt(
-	quantity: number,
-	burningPerHour: number,
-	referenceTimeMs: number
-): string | null {
-	if (!Number.isFinite(quantity) || !Number.isFinite(burningPerHour) || burningPerHour <= 0) {
-		return null
-	}
-
-	return new Date(referenceTimeMs + (quantity / burningPerHour) * HOURS_TO_MS).toISOString()
-}
-
-function summarizeSovereigntyReagentStats(
-	reagents: StructureSovereigntyReagent[],
-	match: { typeId: string; typeName: string },
-	referenceTimeMs: number
-): {
-	quantity: number
-	burningPerHour: number
-	estimatedDepletionAt: string | null
-} {
-	const totals = reagents.reduce(
-		(accumulator, reagent) => {
-			const normalizedTypeName = reagent.typeName?.trim().toLowerCase() ?? ''
-			const matches =
-				reagent.typeId === match.typeId || normalizedTypeName === match.typeName.toLowerCase()
-
-			if (!matches) {
-				return accumulator
-			}
-
-			accumulator.quantity += reagent.amount
-			accumulator.burningPerHour += reagent.burningPerHour
-			return accumulator
-		},
-		{ quantity: 0, burningPerHour: 0 }
-	)
-
-	return {
-		...totals,
-		estimatedDepletionAt: estimateReagentDepletionAt(
-			totals.quantity,
-			totals.burningPerHour,
-			referenceTimeMs
-		),
-	}
-}
-
 function summarizeStructureSovereigntyHub(
 	hub: typeof structureSovereigntyHubs.$inferSelect
 ): StructureSovereigntyHubSummary {
-	const referenceTimeMs = Date.now()
-	const magmaticGasStats = summarizeSovereigntyReagentStats(hub.reagentBay.reagents, {
-		typeId: MAGMATIC_GAS_TYPE_ID,
-		typeName: 'Magmatic Gas',
-	}, referenceTimeMs)
-	const superionicIceStats = summarizeSovereigntyReagentStats(hub.reagentBay.reagents, {
-		typeId: SUPERIONIC_ICE_TYPE_ID,
-		typeName: 'Superionic Ice',
-	}, referenceTimeMs)
+	const reagentBaySummary = getSovereigntyReagentBaySummary(hub.reagentBay)
+	const reagents = getSovereigntyReagentBayReagents(hub.reagentBay)
 
 	return {
 		controllerAllianceId: hub.controllerAllianceId ?? null,
 		reagentBayLastUpdated: hub.reagentBayLastUpdated
 			? hub.reagentBayLastUpdated.toISOString()
 			: null,
-		reagentCount: hub.reagentBay.reagents.length,
-		magmaticGasQuantity: magmaticGasStats.quantity,
-		magmaticGasBurningPerHour: magmaticGasStats.burningPerHour,
-		magmaticGasEstimatedDepletionAt: magmaticGasStats.estimatedDepletionAt,
-		superionicIceQuantity: superionicIceStats.quantity,
-		superionicIceBurningPerHour: superionicIceStats.burningPerHour,
-		superionicIceEstimatedDepletionAt: superionicIceStats.estimatedDepletionAt,
+		reagentCount: reagentBaySummary?.reagentCount ?? reagents.length,
+		magmaticGasQuantity: reagentBaySummary?.magmaticGasQuantity ?? 0,
+		magmaticGasBurningPerHour: reagentBaySummary?.magmaticGasBurningPerHour ?? 0,
+		magmaticGasEstimatedDepletionAt: reagentBaySummary?.magmaticGasEstimatedDepletionAt ?? null,
+		superionicIceQuantity: reagentBaySummary?.superionicIceQuantity ?? 0,
+		superionicIceBurningPerHour: reagentBaySummary?.superionicIceBurningPerHour ?? 0,
+		superionicIceEstimatedDepletionAt: reagentBaySummary?.superionicIceEstimatedDepletionAt ?? null,
 		reagentBay: hub.reagentBay,
 		resources: hub.resources,
 		upgrades: hub.upgrades,
@@ -1040,23 +1001,12 @@ function summarizeStructureSkyhook(
 		return null
 	}
 
-	const reagentTotals = skyhook.reagents.reduce(
-		(
-			accumulator: { securedStock: number; unsecuredStock: number; securedVolumeM3: number; unsecuredVolumeM3: number },
-			reagent: { typeId: string; securedStock: number; unsecuredStock: number }
-		) => {
-			const unitVolumeM3 = getSkyhookReagentUnitVolumeM3(reagent.typeId)
-			accumulator.securedStock += reagent.securedStock
-			accumulator.unsecuredStock += reagent.unsecuredStock
-			accumulator.securedVolumeM3 += reagent.securedStock * unitVolumeM3
-			accumulator.unsecuredVolumeM3 += reagent.unsecuredStock * unitVolumeM3
-			return accumulator
-		},
-		{ securedStock: 0, unsecuredStock: 0, securedVolumeM3: 0, unsecuredVolumeM3: 0 }
-	)
+	const reagentTotals = getSkyhookReagentSummary(skyhook.reagents)
+	const reagents = getSkyhookReagentEntries(skyhook.reagents)
+	const isRaidable = isSkyhookCurrentlyRaidable(skyhook)
 	const normalizedState = getSkyhookState(
 		skyhook.state,
-		skyhook.isRaidable,
+		isRaidable,
 		skyhook.reinforcementTimerEnd ? skyhook.reinforcementTimerEnd.toISOString() : null
 	)
 
@@ -1068,60 +1018,52 @@ function summarizeStructureSkyhook(
 		state: normalizedState,
 		isActive: skyhook.isActive,
 		effectiveWorkforce: skyhook.effectiveWorkforce ?? null,
-		totalReagents: skyhook.reagents.length,
-		totalSecuredStock: reagentTotals.securedStock,
-		totalUnsecuredStock: reagentTotals.unsecuredStock,
-		totalSecuredVolumeM3: reagentTotals.securedVolumeM3,
-		totalUnsecuredVolumeM3: reagentTotals.unsecuredVolumeM3,
-		securedCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
-		unsecuredCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
-		securedFillPercent: getSkyhookFullness(
-			reagentTotals.securedVolumeM3,
-			SKYHOOK_BAY_CAPACITY_M3
-		),
-		unsecuredFillPercent: getSkyhookFullness(
-			reagentTotals.unsecuredVolumeM3,
-			SKYHOOK_BAY_CAPACITY_M3
-		),
-		reagents: skyhook.reagents.map((reagent) => ({
+		totalReagents: reagentTotals?.totalReagents ?? reagents.length,
+		totalSecuredStock: reagentTotals?.totalSecuredStock ?? 0,
+		totalUnsecuredStock: reagentTotals?.totalUnsecuredStock ?? 0,
+		totalSecuredVolumeM3: reagentTotals?.totalSecuredVolumeM3 ?? 0,
+		totalUnsecuredVolumeM3: reagentTotals?.totalUnsecuredVolumeM3 ?? 0,
+		securedCapacityM3: SKYHOOK_SECURED_BAY_CAPACITY_M3,
+		unsecuredCapacityM3: SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
+		securedFillPercent: reagentTotals?.securedFillPercent ?? 0,
+		unsecuredFillPercent: reagentTotals?.unsecuredFillPercent ?? 0,
+		reagents: reagents.map((reagent) => ({
 			typeId: reagent.typeId,
 			typeName:
-				reagent.typeId === MAGMATIC_GAS_TYPE_ID
-					? 'Magmatic Gas'
-					: reagent.typeId === SUPERIONIC_ICE_TYPE_ID
-						? 'Superionic Ice'
+				reagent.typeId === SKYHOOK_MAGMATIC_GAS_TYPE_ID
+					? SKYHOOK_MAGMATIC_GAS_TYPE_NAME
+					: reagent.typeId === SKYHOOK_SUPERIONIC_ICE_TYPE_ID
+						? SKYHOOK_SUPERIONIC_ICE_TYPE_NAME
 						: null,
 			unitVolumeM3: getSkyhookReagentUnitVolumeM3(reagent.typeId),
 			securedStock: reagent.securedStock,
 			unsecuredStock: reagent.unsecuredStock,
 			securedVolumeM3: reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
 			unsecuredVolumeM3: reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-			securedCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
-			unsecuredCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
+			securedCapacityM3: SKYHOOK_SECURED_BAY_CAPACITY_M3,
+			unsecuredCapacityM3: SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
 			securedFillPercent: getSkyhookFullness(
 				reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-				SKYHOOK_BAY_CAPACITY_M3
+				SKYHOOK_SECURED_BAY_CAPACITY_M3
 			),
 			unsecuredFillPercent: getSkyhookFullness(
 				reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-				SKYHOOK_BAY_CAPACITY_M3
+				SKYHOOK_SURPLUS_BAY_CAPACITY_M3
 			),
 			lastCycle: reagent.lastCycle,
 		})),
 		reinforcementTimerEnd: skyhook.reinforcementTimerEnd
 			? skyhook.reinforcementTimerEnd.toISOString()
 			: null,
-		theftVulnerabilityStart: skyhook.theftVulnerabilityStart
-			? skyhook.theftVulnerabilityStart.toISOString()
-			: null,
-		theftVulnerabilityEnd: skyhook.theftVulnerabilityEnd
-			? skyhook.theftVulnerabilityEnd.toISOString()
-			: null,
-		isRaidable: skyhook.isRaidable,
-		becomesRaidableAt: skyhook.becomesRaidableAt ? skyhook.becomesRaidableAt.toISOString() : null,
-		vulnerableAt: skyhook.vulnerableAt ? skyhook.vulnerableAt.toISOString() : null,
+			theftVulnerabilityStart: skyhook.theftVulnerabilityStart
+				? skyhook.theftVulnerabilityStart.toISOString()
+				: null,
+			theftVulnerabilityEnd: skyhook.theftVulnerabilityEnd
+				? skyhook.theftVulnerabilityEnd.toISOString()
+				: null,
+			isRaidable,
+		}
 	}
-}
 
 function summarizeStructureMoonDrill(
 	moonDrill: typeof structureMoonDrills.$inferSelect | null,
@@ -2042,13 +1984,13 @@ function getStructureSortValue(
 			return sovereigntyStructure.magmaticGasEstimatedDepletionAt ?? null
 		case 'superionicIceEstimatedDepletionAt':
 			return sovereigntyStructure.superionicIceEstimatedDepletionAt ?? null
-		case 'theftVulnerabilityStart':
-			return getSkyhookVulnerabilityWindowStart(
-				structure as Partial<StructureSkyhookFilterableItem> as Pick<
-					StructureSkyhookFilterableItem,
-					'theftVulnerabilityStart' | 'vulnerableAt'
-				>
-			)
+			case 'theftVulnerabilityStart':
+				return getSkyhookVulnerabilityWindowStart(
+					structure as Partial<StructureSkyhookFilterableItem> as Pick<
+						StructureSkyhookFilterableItem,
+						'theftVulnerabilityStart'
+					>
+				)
 		case 'skyhookSecureFullness':
 			return (structure as Partial<StructureSkyhookFilterableItem>).securedFillPercent ?? null
 		case 'skyhookSurplusFullness':
@@ -2679,6 +2621,18 @@ type VisibleOperationalStructureRow = {
 	updatedAt: Date
 }
 
+type VisibleSkyhookStructureRow = VisibleOperationalStructureRow & {
+	planetId: string | null
+	planetName: string | null
+	isActive: boolean | null
+	effectiveWorkforce: number | null
+	reagents: typeof structureSkyhooks.$inferSelect['reagents'] | null
+	reinforcementTimerEnd: Date | null
+	theftVulnerabilityStart: Date | null
+	theftVulnerabilityEnd: Date | null
+	isRaidable: boolean | null
+}
+
 type VisibleStructureContextCacheEntry = {
 	value: Promise<VisibleStructureContextsResult>
 }
@@ -2997,6 +2951,527 @@ function buildVisibleOperationalStructuresCte(db: DbClient<DbSchema>, corpWhere:
 			.leftJoin(managedCorporations, eq(managedCorporations.corporationId, corporationStructures.corporationId))
 			.where(corpWhere ?? sql`true`)
 	)
+}
+
+function buildVisibleSkyhookStructuresCte(db: DbClient<DbSchema>, corpWhere: any) {
+	return db.$with('visible_skyhook_structures').as(
+		db
+			.select({
+				structureId: corporationStructures.structureId,
+				corporationId: corporationStructures.corporationId,
+				corporationName: managedCorporations.name,
+				name: corporationStructures.name,
+				typeId: corporationStructures.typeId,
+				typeName: corporationStructures.typeName,
+				systemId: corporationStructures.systemId,
+				systemName: corporationStructures.systemName,
+				regionId: corporationStructures.regionId,
+				regionName: corporationStructures.regionName,
+				state: corporationStructures.state,
+				stateTimerEnd: corporationStructures.stateTimerEnd,
+				nextReinforceApply: corporationStructures.nextReinforceApply,
+				unanchorsAt: corporationStructures.unanchorsAt,
+				fuelExpires: corporationStructures.fuelExpires,
+				fuelAmount: corporationStructures.fuelAmount,
+				fuelBurnRate: corporationStructures.fuelBurnRate,
+				lowPower: corporationStructures.lowPower,
+				hidden: structureConfigs.hidden,
+				lowPowerAllowed: structureConfigs.lowPowerAllowed,
+				assignedGroupId: structureConfigs.assignedGroupId,
+				syncStatus: corporationStructures.syncStatus,
+				syncFailureReason: corporationStructures.syncFailureReason,
+				lastSyncedAt: corporationStructures.lastSyncedAt,
+				updatedAt: corporationStructures.updatedAt,
+				planetId: structureSkyhooks.planetId,
+				planetName: structureSkyhooks.planetName,
+				isActive: structureSkyhooks.isActive,
+				effectiveWorkforce: structureSkyhooks.effectiveWorkforce,
+				reagents: structureSkyhooks.reagents,
+				reinforcementTimerEnd: structureSkyhooks.reinforcementTimerEnd,
+				theftVulnerabilityStart: structureSkyhooks.theftVulnerabilityStart,
+				theftVulnerabilityEnd: structureSkyhooks.theftVulnerabilityEnd,
+				isRaidable: getSkyhookCurrentRaidableExpression(structureSkyhooks),
+			})
+			.from(corporationStructures)
+			.leftJoin(structureConfigs, eq(structureConfigs.structureId, corporationStructures.structureId))
+			.leftJoin(structureSkyhooks, eq(structureSkyhooks.structureId, corporationStructures.structureId))
+			.leftJoin(
+				managedCorporations,
+				eq(managedCorporations.corporationId, corporationStructures.corporationId)
+			)
+			.where(corpWhere ?? sql`true`)
+	)
+}
+
+function extractSkyhookSummaryFillPercentSql(source: any, field: 'securedFillPercent' | 'unsecuredFillPercent') {
+	const key = field === 'securedFillPercent' ? 'securedFillPercent' : 'unsecuredFillPercent'
+	return sql<number | null>`nullif(((${source.reagents} -> 'summary' ->> ${key})::numeric), 'NaN'::numeric)`
+}
+
+function buildSkyhookSortOrder(
+	sortBy: StructureListSortField,
+	sortDirection: StructureListSortDirection,
+	source: any
+) {
+	const descending = sortDirection === 'desc'
+	const sortExpression = (expression: any) => (descending ? desc(expression) : asc(expression))
+
+	switch (sortBy) {
+		case 'fuel':
+			return descending
+				? [
+						asc(sql`case when ${source.fuelExpires} is null then 0 else 1 end`),
+						desc(source.fuelExpires),
+						desc(source.fuelAmount),
+						desc(source.structureId),
+					]
+				: [
+						asc(sql`case when ${source.fuelExpires} is null then 1 else 0 end`),
+						asc(source.fuelExpires),
+						asc(source.fuelAmount),
+						asc(source.structureId),
+					]
+		case 'updatedAt':
+			return [sortExpression(source.updatedAt), sortExpression(source.structureId)]
+		case 'nextStateAt':
+			return [
+				sortExpression(
+					sql`coalesce(${source.stateTimerEnd}, ${source.nextReinforceApply}, ${source.unanchorsAt})`
+				),
+				sortExpression(source.structureId),
+			]
+		case 'theftVulnerabilityStart':
+			return [sortExpression(source.theftVulnerabilityStart), sortExpression(source.structureId)]
+		case 'skyhookSecureFullness':
+			return [
+				sortExpression(extractSkyhookSummaryFillPercentSql(source, 'securedFillPercent')),
+				sortExpression(source.structureId),
+			]
+		case 'skyhookSurplusFullness':
+			return [
+				sortExpression(extractSkyhookSummaryFillPercentSql(source, 'unsecuredFillPercent')),
+				sortExpression(source.structureId),
+			]
+		case 'raidable':
+			return [sortExpression(source.isRaidable), sortExpression(source.structureId)]
+		case 'workforce':
+			return [sortExpression(source.effectiveWorkforce), sortExpression(source.structureId)]
+		case 'name':
+			return [sortExpression(source.structureId), sortExpression(source.structureId)]
+		case 'corporation':
+			return [sortExpression(sql`coalesce(${source.corporationName}, '')`), sortExpression(source.structureId)]
+		case 'region':
+			return [sortExpression(sql`coalesce(${source.regionName}, '')`), sortExpression(source.structureId)]
+		case 'system':
+			return [sortExpression(sql`coalesce(${source.systemName}, '')`), sortExpression(source.structureId)]
+		case 'type':
+			return [sortExpression(sql`coalesce(${source.typeName}, '')`), sortExpression(source.structureId)]
+		case 'state':
+			return [sortExpression(source.state), sortExpression(source.structureId)]
+		case 'group':
+			return [sortExpression(sql`coalesce(${source.assignedGroupId}, '')`), sortExpression(source.structureId)]
+		case 'syncStatus':
+			return [
+				sortExpression(
+					sql`case ${source.syncStatus} when 'error' then 0 when 'warning' then 1 when 'ok' then 2 else null end`
+				),
+				sortExpression(source.structureId),
+			]
+		default:
+			return null
+	}
+}
+
+function isSqlPagedSkyhookSort(sortBy: StructureListSortField): boolean {
+	switch (sortBy) {
+		case 'fuel':
+		case 'updatedAt':
+		case 'nextStateAt':
+		case 'theftVulnerabilityStart':
+		case 'skyhookSecureFullness':
+		case 'skyhookSurplusFullness':
+		case 'raidable':
+		case 'workforce':
+		case 'name':
+		case 'corporation':
+		case 'region':
+		case 'system':
+		case 'type':
+		case 'state':
+		case 'group':
+		case 'syncStatus':
+			return true
+		default:
+			return false
+	}
+}
+
+function buildSkyhookVisibilityWhere(access: StructureAccessScope, query: StructureSkyhookListQuery): any {
+	const conditions: StructureWhereCondition[] = []
+	const baseWhere = buildVisibleStructureContextsWhere(access, query, 'skyhooks')
+	if (baseWhere) {
+		conditions.push(baseWhere)
+	}
+	if (query.planetId) {
+		conditions.push(eq(structureSkyhooks.planetId, query.planetId))
+	}
+	if (query.isRaidable === 'true') {
+		conditions.push(eq(getSkyhookCurrentRaidableExpression(structureSkyhooks), true))
+	} else if (query.isRaidable === 'false') {
+		conditions.push(eq(getSkyhookCurrentRaidableExpression(structureSkyhooks), false))
+	}
+	return combineWhereConditions(conditions)
+}
+
+function buildSkyhookListItemFromRow(
+	row: VisibleSkyhookStructureRow,
+	canViewDetails: boolean
+): RepoStructureSkyhookListItem {
+	const reagentSnapshot = row.reagents ?? []
+	const reagentSummary = getSkyhookReagentSummary(reagentSnapshot)
+	const reagentEntries = getSkyhookReagentEntries(reagentSnapshot)
+	const normalizedState = getSkyhookState(
+		row.state,
+		row.isRaidable ?? false,
+		row.reinforcementTimerEnd ? row.reinforcementTimerEnd.toISOString() : null
+	)
+
+	return {
+		structureId: row.structureId,
+		corporationId: row.corporationId,
+		corporationName: row.corporationName ?? row.corporationId,
+		typeId: row.typeId,
+		typeName: row.typeName,
+		systemId: row.systemId,
+		systemName: row.systemName ?? null,
+		regionId: row.regionId,
+		regionName: row.regionName,
+		state: normalizedState,
+		nextStateAt: toIso(row.stateTimerEnd ?? row.nextReinforceApply ?? row.unanchorsAt),
+		lowPower: row.lowPower,
+		hidden: row.hidden ?? false,
+		lowPowerAllowed: row.lowPowerAllowed ?? false,
+		assignedGroupId: row.assignedGroupId,
+		syncStatus: getStructureSyncStatus(
+			row.syncStatus as RepoStructureSkyhookListItem['syncStatus'],
+			row.lastSyncedAt
+		),
+		syncFailureReason: row.syncFailureReason,
+		lastSyncedAt: toIso(row.lastSyncedAt),
+		updatedAt: row.updatedAt.toISOString(),
+		canViewDetails,
+		planetId: row.planetId ?? '',
+		planetName: row.planetName ?? null,
+		isActive: row.isActive ?? false,
+		effectiveWorkforce: row.effectiveWorkforce ?? null,
+		totalReagents: reagentSummary?.totalReagents ?? reagentEntries.length,
+		totalSecuredStock: reagentSummary?.totalSecuredStock ?? 0,
+		totalUnsecuredStock: reagentSummary?.totalUnsecuredStock ?? 0,
+		totalSecuredVolumeM3: reagentSummary?.totalSecuredVolumeM3 ?? 0,
+		totalUnsecuredVolumeM3: reagentSummary?.totalUnsecuredVolumeM3 ?? 0,
+		securedCapacityM3: SKYHOOK_SECURED_BAY_CAPACITY_M3,
+		unsecuredCapacityM3: SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
+		securedFillPercent: reagentSummary?.securedFillPercent ?? 0,
+		unsecuredFillPercent: reagentSummary?.unsecuredFillPercent ?? 0,
+		reagents: reagentEntries.map((reagent) => ({
+			typeId: reagent.typeId,
+			typeName:
+				reagent.typeId === SKYHOOK_MAGMATIC_GAS_TYPE_ID
+					? SKYHOOK_MAGMATIC_GAS_TYPE_NAME
+					: reagent.typeId === SKYHOOK_SUPERIONIC_ICE_TYPE_ID
+						? SKYHOOK_SUPERIONIC_ICE_TYPE_NAME
+						: null,
+			unitVolumeM3: getSkyhookReagentUnitVolumeM3(reagent.typeId),
+			securedStock: reagent.securedStock,
+			unsecuredStock: reagent.unsecuredStock,
+			securedVolumeM3: reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
+			unsecuredVolumeM3: reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
+			securedCapacityM3: SKYHOOK_SECURED_BAY_CAPACITY_M3,
+			unsecuredCapacityM3: SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
+			securedFillPercent: getSkyhookFullness(
+				reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
+				SKYHOOK_SECURED_BAY_CAPACITY_M3
+			),
+			unsecuredFillPercent: getSkyhookFullness(
+				reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
+				SKYHOOK_SURPLUS_BAY_CAPACITY_M3
+			),
+			lastCycle: reagent.lastCycle,
+		})),
+			reinforcementTimerEnd: toIso(row.reinforcementTimerEnd),
+			theftVulnerabilityStart: toIso(row.theftVulnerabilityStart),
+			theftVulnerabilityEnd: toIso(row.theftVulnerabilityEnd),
+			isRaidable: row.isRaidable ?? false,
+		}
+	}
+
+async function buildSkyhookStructureFilterOptionsFromSql(
+	db: DbClient<DbSchema>,
+	visibleSkyhookStructures: ReturnType<typeof buildVisibleSkyhookStructuresCte>
+): Promise<StructureListFilterOptions> {
+	const visibleRowsDb = db.with(visibleSkyhookStructures)
+	const [corporations, assignedGroups, regions, systems, states, types, planets] = await Promise.all([
+		visibleRowsDb
+			.selectDistinct({
+				corporationId: visibleSkyhookStructures.corporationId,
+				corporationName: visibleSkyhookStructures.corporationName,
+			})
+			.from(visibleSkyhookStructures)
+			.orderBy(asc(visibleSkyhookStructures.corporationName)),
+		visibleRowsDb
+			.selectDistinct({
+				assignedGroupId: visibleSkyhookStructures.assignedGroupId,
+			})
+			.from(visibleSkyhookStructures)
+			.where(isNotNull(visibleSkyhookStructures.assignedGroupId))
+			.orderBy(asc(visibleSkyhookStructures.assignedGroupId)),
+		visibleRowsDb
+			.selectDistinct({
+				regionId: visibleSkyhookStructures.regionId,
+				regionName: visibleSkyhookStructures.regionName,
+			})
+			.from(visibleSkyhookStructures)
+			.orderBy(asc(visibleSkyhookStructures.regionName)),
+		visibleRowsDb
+			.selectDistinct({
+				systemId: visibleSkyhookStructures.systemId,
+				systemName: visibleSkyhookStructures.systemName,
+			})
+			.from(visibleSkyhookStructures)
+			.orderBy(asc(visibleSkyhookStructures.systemName)),
+		visibleRowsDb
+			.selectDistinct({
+				state: visibleSkyhookStructures.state,
+			})
+			.from(visibleSkyhookStructures)
+			.orderBy(asc(visibleSkyhookStructures.state)),
+		visibleRowsDb
+			.selectDistinct({
+				typeId: visibleSkyhookStructures.typeId,
+				typeName: visibleSkyhookStructures.typeName,
+			})
+			.from(visibleSkyhookStructures)
+			.orderBy(asc(visibleSkyhookStructures.typeName)),
+		visibleRowsDb
+			.selectDistinct({
+				planetId: visibleSkyhookStructures.planetId,
+				planetName: visibleSkyhookStructures.planetName,
+			})
+			.from(visibleSkyhookStructures)
+			.where(isNotNull(visibleSkyhookStructures.planetId))
+			.orderBy(asc(visibleSkyhookStructures.planetName)),
+	])
+
+	return {
+		corporations: corporations
+			.map((row) => ({
+				value: row.corporationId,
+				label: row.corporationName ?? row.corporationId,
+			}))
+			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+		assignedGroups: assignedGroups
+			.map((row) => ({
+				value: row.assignedGroupId ?? '',
+				label: row.assignedGroupId ?? '',
+			}))
+			.filter((option) => option.value.length > 0),
+		regions: regions
+			.map((row) => ({
+				value: row.regionId ?? '',
+				label: row.regionName ?? row.regionId ?? '',
+			}))
+			.filter((option) => option.value.length > 0),
+		systems: systems
+			.map((row) => ({
+				value: row.systemId,
+				label: row.systemName ?? row.systemId,
+			}))
+			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+		states: states
+			.map((row) => ({
+				value: row.state,
+				label: row.state,
+			}))
+			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+		types: types
+			.map((row) => ({
+				value: row.typeId,
+				label: row.typeName ?? row.typeId,
+			}))
+			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+		alliances: [],
+		planets: planets
+			.map((row) => ({
+				value: row.planetId ?? '',
+				label: row.planetName ?? row.planetId ?? '',
+			}))
+			.filter((option) => option.value.length > 0),
+		raidableStates: [
+			{ value: 'false', label: 'Not raidable' },
+			{ value: 'true', label: 'Raidable' },
+		],
+	}
+}
+
+function getSkyhookCurrentRaidableExpression(source: any) {
+	return sql<boolean>`
+		case
+			when ${source.theftVulnerabilityStart} is null then false
+			when ${source.theftVulnerabilityEnd} is not null and now() > ${source.theftVulnerabilityEnd} then false
+			when ${source.theftVulnerabilityEnd} is null and now() > ${source.theftVulnerabilityStart} then true
+			when ${source.theftVulnerabilityEnd} is not null and now() > ${source.theftVulnerabilityStart}
+				and now() < ${source.theftVulnerabilityEnd} then true
+			else false
+		end
+	`
+}
+
+async function buildSkyhookStructureSummaryFromSql(
+	db: DbClient<DbSchema>,
+	visibleSkyhookStructures: ReturnType<typeof buildVisibleSkyhookStructuresCte>
+): Promise<StructureListSummary> {
+	const visibleRowsDb = db.with(visibleSkyhookStructures)
+	const currentRaidableExpression = getSkyhookCurrentRaidableExpression(visibleSkyhookStructures)
+	const highestFillExpression = sql<number | null>`
+		greatest(
+			coalesce(((${visibleSkyhookStructures.reagents} -> 'summary' ->> 'securedFillPercent')::numeric), 0),
+			coalesce(((${visibleSkyhookStructures.reagents} -> 'summary' ->> 'unsecuredFillPercent')::numeric), 0)
+		)
+	`
+	const candidateStartExpression = sql<Date | null>`
+		${visibleSkyhookStructures.theftVulnerabilityStart}
+	`
+	const [totalResult, highestFillResult, workforceResult, raidableCountResult, nextRaidableResult] =
+		await Promise.all([
+			visibleRowsDb
+				.select({
+					total: sql<number>`count(*)::int`,
+				})
+				.from(visibleSkyhookStructures),
+			visibleRowsDb
+				.select({
+					skyhookHighestFillPercent: sql<number | null>`max(${highestFillExpression})`,
+				})
+				.from(visibleSkyhookStructures),
+			visibleRowsDb
+				.select({
+					skyhookTotalWorkforce: sql<number>`coalesce(sum(${visibleSkyhookStructures.effectiveWorkforce}), 0)::int`,
+				})
+				.from(visibleSkyhookStructures),
+			visibleRowsDb
+				.select({
+					skyhookCurrentRaidableCount: sql<number>`coalesce(sum(case when ${currentRaidableExpression} then 1 else 0 end), 0)::int`,
+				})
+				.from(visibleSkyhookStructures),
+			visibleRowsDb
+				.select({
+					structureId: visibleSkyhookStructures.structureId,
+					planetName: visibleSkyhookStructures.planetName,
+					candidateStart: sql<string | null>`${candidateStartExpression}`,
+					currentRaidable: currentRaidableExpression,
+				})
+				.from(visibleSkyhookStructures)
+				.where(
+					sql`(${candidateStartExpression}) is not null and (${visibleSkyhookStructures.theftVulnerabilityEnd} is null or now() <= ${visibleSkyhookStructures.theftVulnerabilityEnd})`
+				)
+				.orderBy(asc(candidateStartExpression), asc(visibleSkyhookStructures.structureId))
+				.limit(1),
+		])
+
+	const nextRaidableRow = nextRaidableResult[0] ?? null
+	const nextRaidableAt = nextRaidableRow
+		? nextRaidableRow.currentRaidable
+			? new Date().toISOString()
+			: nextRaidableRow.candidateStart
+				? new Date(nextRaidableRow.candidateStart).toISOString()
+				: null
+		: null
+
+	return {
+		total: totalResult[0]?.total ?? 0,
+		lowFuel: 0,
+		lowPower: 0,
+		reinforced: 0,
+		estimatedFuelBurnRatePerHour: null,
+		fuelBurnRateSampleCount: 0,
+		skyhookHighestFillPercent: highestFillResult[0]?.skyhookHighestFillPercent ?? null,
+		skyhookNextRaidableAt: nextRaidableAt,
+		skyhookNextRaidablePlanetName: nextRaidableRow?.planetName ?? null,
+		skyhookCurrentRaidableCount: raidableCountResult[0]?.skyhookCurrentRaidableCount ?? 0,
+		skyhookTotalWorkforce: workforceResult[0]?.skyhookTotalWorkforce ?? 0,
+	}
+}
+
+async function loadVisibleSkyhookPageItems(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	access: StructureAccessScope,
+	query: StructureSkyhookListQuery,
+	visibleSkyhookStructures: ReturnType<typeof buildVisibleSkyhookStructuresCte>,
+	pageOverride?: number
+): Promise<RepoStructureSkyhookListItem[]> {
+	const sortBy = query.sortBy ?? 'fuel'
+	const sortDirection = query.sortDirection ?? 'asc'
+	const sortOrder = buildSkyhookSortOrder(sortBy, sortDirection, visibleSkyhookStructures)
+	if (!sortOrder) {
+		return []
+	}
+
+	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
+	const page = Math.max(pageOverride ?? query.page ?? 1, 1)
+	const offset = (page - 1) * pageSize
+	const rows = await db
+		.with(visibleSkyhookStructures)
+		.select({
+			structureId: visibleSkyhookStructures.structureId,
+			corporationId: visibleSkyhookStructures.corporationId,
+			corporationName: visibleSkyhookStructures.corporationName,
+			name: visibleSkyhookStructures.name,
+			typeId: visibleSkyhookStructures.typeId,
+			typeName: visibleSkyhookStructures.typeName,
+			systemId: visibleSkyhookStructures.systemId,
+			systemName: visibleSkyhookStructures.systemName,
+			regionId: visibleSkyhookStructures.regionId,
+			regionName: visibleSkyhookStructures.regionName,
+			state: visibleSkyhookStructures.state,
+			stateTimerEnd: visibleSkyhookStructures.stateTimerEnd,
+			nextReinforceApply: visibleSkyhookStructures.nextReinforceApply,
+			unanchorsAt: visibleSkyhookStructures.unanchorsAt,
+			fuelExpires: visibleSkyhookStructures.fuelExpires,
+			fuelAmount: visibleSkyhookStructures.fuelAmount,
+			fuelBurnRate: visibleSkyhookStructures.fuelBurnRate,
+			lowPower: visibleSkyhookStructures.lowPower,
+			hidden: visibleSkyhookStructures.hidden,
+			lowPowerAllowed: visibleSkyhookStructures.lowPowerAllowed,
+			assignedGroupId: visibleSkyhookStructures.assignedGroupId,
+			syncStatus: visibleSkyhookStructures.syncStatus,
+			syncFailureReason: visibleSkyhookStructures.syncFailureReason,
+			lastSyncedAt: visibleSkyhookStructures.lastSyncedAt,
+			updatedAt: visibleSkyhookStructures.updatedAt,
+			planetId: visibleSkyhookStructures.planetId,
+			planetName: visibleSkyhookStructures.planetName,
+			isActive: visibleSkyhookStructures.isActive,
+			effectiveWorkforce: visibleSkyhookStructures.effectiveWorkforce,
+			reagents: visibleSkyhookStructures.reagents,
+			reinforcementTimerEnd: visibleSkyhookStructures.reinforcementTimerEnd,
+			theftVulnerabilityStart: visibleSkyhookStructures.theftVulnerabilityStart,
+			theftVulnerabilityEnd: visibleSkyhookStructures.theftVulnerabilityEnd,
+			isRaidable: visibleSkyhookStructures.isRaidable,
+		})
+		.from(visibleSkyhookStructures)
+		.orderBy(...sortOrder)
+		.limit(pageSize)
+		.offset(offset)
+
+	return rows.map((row) => {
+		const structureTab = getStructureTab({
+			typeId: row.typeId,
+			typeName: row.typeName,
+		})
+		const canViewDetails =
+			user.is_admin || canViewDetailsStructure(access, row.corporationId, structureTab)
+		return buildSkyhookListItemFromRow(row, canViewDetails)
+	})
 }
 
 async function buildOperationalStructureFilterOptions(
@@ -3549,7 +4024,67 @@ async function listVisibleOperationalStructures(
 				)
 
 		return {
-			items,
+			items: items as unknown as StructureListItem[],
+			pagination: {
+				page,
+				pageSize,
+				totalCount,
+				totalPages,
+				hasNextPage: page < totalPages,
+				hasPreviousPage: page > 1,
+			},
+			filterOptions,
+			summary,
+		}
+	}
+
+	if (activeTab === 'skyhooks' && isSqlPagedSkyhookSort(sortBy)) {
+		const corpWhere = buildSkyhookVisibilityWhere(access, query as StructureSkyhookListQuery)
+		if (!corpWhere) {
+			return {
+				items: [],
+				pagination: {
+					page: 1,
+					pageSize,
+					totalCount: 0,
+					totalPages: 1,
+					hasNextPage: false,
+					hasPreviousPage: false,
+				},
+				filterOptions: emptyStructureFilterOptions(),
+				summary: emptyStructureListSummary(),
+			}
+		}
+
+		const visibleSkyhookStructures = buildVisibleSkyhookStructuresCte(db, corpWhere)
+		const [filterOptions, summary, pageItems] = await Promise.all([
+			buildSkyhookStructureFilterOptionsFromSql(db, visibleSkyhookStructures),
+			buildSkyhookStructureSummaryFromSql(db, visibleSkyhookStructures),
+			loadVisibleSkyhookPageItems(
+				db,
+				user,
+				access,
+				query as StructureSkyhookListQuery,
+				visibleSkyhookStructures
+			),
+		])
+		const totalCount = summary.total
+		const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+		const page = Math.min(requestedPage, totalPages)
+		const items =
+			page === requestedPage
+				? pageItems
+				: await loadVisibleSkyhookPageItems(
+						db,
+						user,
+						access,
+						query as StructureSkyhookListQuery,
+						visibleSkyhookStructures,
+						page
+					)
+
+		return {
+			items: items as unknown as StructureListItem[],
 			pagination: {
 				page,
 				pageSize,
@@ -3912,29 +4447,13 @@ function buildSkyhookListItem(input: {
 		fuelAmount: _fuelAmount,
 		...structureBase
 	} = buildStructureListItem(context)
-	const reagentTotals = skyhookRow?.reagents.reduce(
-		(
-			accumulator: { securedStock: number; unsecuredStock: number; securedVolumeM3: number; unsecuredVolumeM3: number },
-			reagent: { typeId: string; securedStock: number; unsecuredStock: number }
-		) => {
-			const unitVolumeM3 = getSkyhookReagentUnitVolumeM3(reagent.typeId)
-			accumulator.securedStock += reagent.securedStock
-			accumulator.unsecuredStock += reagent.unsecuredStock
-			accumulator.securedVolumeM3 += reagent.securedStock * unitVolumeM3
-			accumulator.unsecuredVolumeM3 += reagent.unsecuredStock * unitVolumeM3
-			return accumulator
-		},
-		{ securedStock: 0, unsecuredStock: 0, securedVolumeM3: 0, unsecuredVolumeM3: 0 }
-	) ?? {
-		securedStock: 0,
-		unsecuredStock: 0,
-		securedVolumeM3: 0,
-		unsecuredVolumeM3: 0,
-	}
+	const reagentSummary = getSkyhookReagentSummary(skyhookRow?.reagents ?? [])
+	const reagentEntries = getSkyhookReagentEntries(skyhookRow?.reagents ?? [])
+	const isRaidable = isSkyhookCurrentlyRaidable(skyhookRow)
 	const normalizedState = skyhookRow
 		? getSkyhookState(
 				skyhookRow.state,
-				skyhookRow.isRaidable,
+				isRaidable,
 				skyhookRow.reinforcementTimerEnd ? skyhookRow.reinforcementTimerEnd.toISOString() : null
 			)
 		: 'invulnerable'
@@ -3956,54 +4475,45 @@ function buildSkyhookListItem(input: {
 		typeName: structureRow.typeName,
 		isActive: skyhookRow?.isActive ?? false,
 		effectiveWorkforce: skyhookRow?.effectiveWorkforce ?? null,
-		totalReagents: skyhookRow?.reagents.length ?? 0,
-		totalSecuredStock: reagentTotals.securedStock,
-		totalUnsecuredStock: reagentTotals.unsecuredStock,
-		totalSecuredVolumeM3: reagentTotals.securedVolumeM3,
-		totalUnsecuredVolumeM3: reagentTotals.unsecuredVolumeM3,
-		securedCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
-		unsecuredCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
-		securedFillPercent: getSkyhookFullness(
-			reagentTotals.securedVolumeM3,
-			SKYHOOK_BAY_CAPACITY_M3
-		),
-		unsecuredFillPercent: getSkyhookFullness(
-			reagentTotals.unsecuredVolumeM3,
-			SKYHOOK_BAY_CAPACITY_M3
-		),
-		reagents:
-			skyhookRow?.reagents.map((reagent) => ({
-				typeId: reagent.typeId,
-				typeName:
-					reagent.typeId === MAGMATIC_GAS_TYPE_ID
-						? 'Magmatic Gas'
-						: reagent.typeId === SUPERIONIC_ICE_TYPE_ID
-							? 'Superionic Ice'
-							: null,
-				unitVolumeM3: getSkyhookReagentUnitVolumeM3(reagent.typeId),
-				securedStock: reagent.securedStock,
-				unsecuredStock: reagent.unsecuredStock,
-				securedVolumeM3: reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-				unsecuredVolumeM3: reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-				securedCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
-				unsecuredCapacityM3: SKYHOOK_BAY_CAPACITY_M3,
-				securedFillPercent: getSkyhookFullness(
-					reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-					SKYHOOK_BAY_CAPACITY_M3
-				),
-				unsecuredFillPercent: getSkyhookFullness(
-					reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-					SKYHOOK_BAY_CAPACITY_M3
-				),
-				lastCycle: reagent.lastCycle,
-			})) ?? [],
-		reinforcementTimerEnd: toIso(skyhookRow?.reinforcementTimerEnd ?? null),
-		theftVulnerabilityStart: toIso(skyhookRow?.theftVulnerabilityStart ?? null),
-		theftVulnerabilityEnd: toIso(skyhookRow?.theftVulnerabilityEnd ?? null),
-		isRaidable: skyhookRow?.isRaidable ?? false,
-		becomesRaidableAt: toIso(skyhookRow?.becomesRaidableAt ?? null),
-		vulnerableAt: toIso(skyhookRow?.vulnerableAt ?? null),
-		state: normalizedState,
+		totalReagents: reagentSummary?.totalReagents ?? reagentEntries.length,
+		totalSecuredStock: reagentSummary?.totalSecuredStock ?? 0,
+		totalUnsecuredStock: reagentSummary?.totalUnsecuredStock ?? 0,
+		totalSecuredVolumeM3: reagentSummary?.totalSecuredVolumeM3 ?? 0,
+		totalUnsecuredVolumeM3: reagentSummary?.totalUnsecuredVolumeM3 ?? 0,
+		securedCapacityM3: SKYHOOK_SECURED_BAY_CAPACITY_M3,
+		unsecuredCapacityM3: SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
+		securedFillPercent: reagentSummary?.securedFillPercent ?? 0,
+		unsecuredFillPercent: reagentSummary?.unsecuredFillPercent ?? 0,
+		reagents: reagentEntries.map((reagent) => ({
+			typeId: reagent.typeId,
+			typeName:
+				reagent.typeId === SKYHOOK_MAGMATIC_GAS_TYPE_ID
+					? SKYHOOK_MAGMATIC_GAS_TYPE_NAME
+					: reagent.typeId === SKYHOOK_SUPERIONIC_ICE_TYPE_ID
+						? SKYHOOK_SUPERIONIC_ICE_TYPE_NAME
+						: null,
+			unitVolumeM3: getSkyhookReagentUnitVolumeM3(reagent.typeId),
+			securedStock: reagent.securedStock,
+			unsecuredStock: reagent.unsecuredStock,
+			securedVolumeM3: reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
+			unsecuredVolumeM3: reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
+			securedCapacityM3: SKYHOOK_SECURED_BAY_CAPACITY_M3,
+			unsecuredCapacityM3: SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
+			securedFillPercent: getSkyhookFullness(
+				reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
+				SKYHOOK_SECURED_BAY_CAPACITY_M3
+			),
+			unsecuredFillPercent: getSkyhookFullness(
+				reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
+				SKYHOOK_SURPLUS_BAY_CAPACITY_M3
+			),
+			lastCycle: reagent.lastCycle,
+		})),
+			reinforcementTimerEnd: toIso(skyhookRow?.reinforcementTimerEnd ?? null),
+			theftVulnerabilityStart: toIso(skyhookRow?.theftVulnerabilityStart ?? null),
+			theftVulnerabilityEnd: toIso(skyhookRow?.theftVulnerabilityEnd ?? null),
+			isRaidable,
+			state: normalizedState,
 		syncStatus,
 		syncFailureReason: explicitSyncFailure
 			? explicitSyncFailure
@@ -4144,129 +4654,12 @@ export async function listSkyhookStructures(
 	user: SessionUser,
 	query: StructureSkyhookListQuery = {}
 ): Promise<RepoStructureSkyhookListResponse> {
-	const { contexts, access } = await loadVisibleStructureContexts(
+	return (await listVisibleOperationalStructures(
 		db,
 		user,
-		{
-			corporationId: query.corporationId,
-			assignedGroupId: query.assignedGroupId,
-			lowPower: query.lowPower,
-			lowPowerAllowed: query.lowPowerAllowed,
-			regionId: query.regionId,
-			systemId: query.systemId,
-			state: query.state,
-			typeId: query.typeId,
-		},
+		query as StructureListQuery,
 		'skyhooks'
-	)
-
-	const accessForTab = getStructureAccessTarget(access, 'skyhooks')
-	if (!hasAnyStructureAccess(accessForTab)) {
-		return {
-			items: [],
-			pagination: {
-				page: 1,
-				pageSize: query.pageSize ?? 25,
-				totalCount: 0,
-				totalPages: 1,
-				hasNextPage: false,
-				hasPreviousPage: false,
-			},
-			filterOptions: emptyStructureFilterOptions(),
-			summary: emptyStructureListSummary(),
-		}
-	}
-
-	const skyhookContexts = contexts.filter((context) => matchesStructureTab(context.structure, 'skyhooks'))
-	const structureIds = skyhookContexts.map((context) => context.structure.structureId)
-
-	if (structureIds.length === 0) {
-		return {
-			items: [],
-			pagination: {
-				page: 1,
-				pageSize: query.pageSize ?? 25,
-				totalCount: 0,
-				totalPages: 1,
-				hasNextPage: false,
-				hasPreviousPage: false,
-			},
-			filterOptions: emptyStructureFilterOptions(),
-			summary: emptyStructureListSummary(),
-		}
-	}
-
-	const skyhookWhere = (() => {
-		const conditions: StructureWhereCondition[] = []
-		if (query.planetId) {
-			conditions.push(eq(structureSkyhooks.planetId, query.planetId))
-		}
-		if (query.state) {
-			conditions.push(eq(structureSkyhooks.state, query.state))
-		}
-		if (query.isRaidable === 'true') {
-			conditions.push(eq(structureSkyhooks.isRaidable, true))
-		} else if (query.isRaidable === 'false') {
-			conditions.push(eq(structureSkyhooks.isRaidable, false))
-		}
-		return combineWhereConditions(conditions)
-	})()
-
-	const skyhookRows = await db.query.structureSkyhooks.findMany({
-		where: combineWhereConditions([
-			inArray(structureSkyhooks.structureId, structureIds),
-			skyhookWhere,
-		]),
-		orderBy: desc(structureSkyhooks.updatedAt),
-	})
-	const [{ skyhookTotalWorkforce }] = await db
-		.select({
-			skyhookTotalWorkforce: sql<number>`coalesce(sum(${structureSkyhooks.effectiveWorkforce}), 0)::int`,
-		})
-		.from(structureSkyhooks)
-		.where(
-			combineWhereConditions([
-				inArray(structureSkyhooks.structureId, structureIds),
-				skyhookWhere,
-			]) ?? sql`true`
-		)
-	const skyhookByStructureId = new Map(skyhookRows.map((row) => [row.structureId, row]))
-
-	const items = skyhookContexts.map((context) => {
-		const skyhookRow = skyhookByStructureId.get(context.structure.structureId) ?? null
-		return buildSkyhookListItem({
-			context,
-			skyhookRow,
-		})
-	})
-
-	const sortBy = query.sortBy ?? 'fuel'
-	const sortDirection = query.sortDirection ?? 'asc'
-	const sortedItems = sortStructures(items, sortBy, sortDirection)
-	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
-	const totalCount = sortedItems.length
-	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
-	const page = Math.min(Math.max(query.page ?? 1, 1), totalPages)
-	const start = (page - 1) * pageSize
-	const end = start + pageSize
-
-	return {
-		items: sortedItems
-			.slice(start, end)
-			.map(
-				(item) => items.find((row) => row.structureId === item.structureId)!
-			) as RepoStructureSkyhookListItem[],
-		pagination: {
-			page,
-			pageSize,
-			totalCount,
-			totalPages,
-			hasNextPage: page < totalPages,
-			hasPreviousPage: page > 1,
-		},
-		filterOptions: buildSkyhookFilterOptions(items),
-		summary: buildSkyhookStructureSummary(items, { skyhookTotalWorkforce }),
-	}
+	)) as unknown as RepoStructureSkyhookListResponse
 }
 
 export async function listMiningCitadelStructures(

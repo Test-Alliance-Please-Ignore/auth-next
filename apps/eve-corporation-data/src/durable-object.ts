@@ -19,7 +19,18 @@ import { getStub } from '@repo/do-utils'
 import { logger, TimeCache } from '@repo/hono-helpers'
 import { parseDateOrNull } from '@repo/worker-utils'
 import { retryWithBackoff } from '@repo/workflow-utils'
-import { getStructureTabForTypeId } from '@repo/structures'
+import {
+	SKYHOOK_MAGMATIC_GAS_TYPE_ID,
+	SKYHOOK_MAGMATIC_GAS_TYPE_NAME,
+	SKYHOOK_SUPERIONIC_ICE_TYPE_ID,
+	SKYHOOK_SUPERIONIC_ICE_TYPE_NAME,
+	getStructureTabForTypeId,
+	summarizeSkyhookReagents,
+	summarizeSovereigntyReagentBay,
+	type SkyhookReagentEntry,
+	type SkyhookReagentSnapshot,
+	type SovereigntyReagentEntry,
+} from '@repo/structures'
 
 import { createDb } from './db'
 import {
@@ -259,18 +270,10 @@ type SkyhookStorageRow = {
 	state: string
 	isActive: boolean
 	effectiveWorkforce: number | null
-	reagents: Array<{
-		typeId: string
-		securedStock: number
-		unsecuredStock: number
-		lastCycle: string
-	}>
+	reagents: SkyhookReagentSnapshot
 	reinforcementTimerEnd: Date | null
 	theftVulnerabilityStart: Date | null
 	theftVulnerabilityEnd: Date | null
-	isRaidable: boolean
-	becomesRaidableAt: Date | null
-	vulnerableAt: Date | null
 	syncStatus: 'ok' | 'warning' | 'error'
 	syncFailureReason: string | null
 	lastObservedAt: Date
@@ -307,33 +310,16 @@ type SkyhookBaseStructureRow = {
 	updatedAt: Date
 }
 const STRUCTURE_PRUNE_GRACE_MS = 72 * 60 * 60 * 1000
-const MAGMATIC_GAS_TYPE_ID = '81143'
-const SUPERIONIC_ICE_TYPE_ID = '81144'
-
-function getSkyhookReagentUnitVolumeM3(typeId: string): number {
-	switch (typeId) {
-		case MAGMATIC_GAS_TYPE_ID:
-			return 0.01
-		case SUPERIONIC_ICE_TYPE_ID:
-			return 1.5
-		default:
-			return 0
-	}
-}
 
 function normalizeSkyhookState(
 	state: string,
-	isRaidable: boolean,
 	reinforcementTimerEnd: Date | null
 ): 'invulnerable' | 'vulnerable' | 'reinforced' {
 	const normalized = state.trim().toLowerCase()
 	if (reinforcementTimerEnd !== null || normalized.includes('reinforce')) {
 		return 'reinforced'
 	}
-	if (isRaidable || normalized.includes('vulnerable')) {
-		return 'vulnerable'
-	}
-	return 'invulnerable'
+	return 'vulnerable'
 }
 
 function isBeyondStructurePruneGrace(updatedAt: Date | null | undefined, now: Date): boolean {
@@ -414,24 +400,26 @@ export function buildSkyhookStorageRow(input: {
 		typeId: baseStructure.typeId,
 		state: normalizeSkyhookState(
 			skyhook.state,
-			skyhook.is_raidable ?? false,
 			parseDateOrNull(skyhook.reinforcement_timer?.end) ?? null
 		),
 		isActive: skyhook.is_active,
 		effectiveWorkforce: skyhook.effective_workforce ?? null,
-		reagents:
-			skyhook.reagents.map((reagent) => ({
+		reagents: (() => {
+			const reagents = skyhook.reagents.map((reagent) => ({
 				typeId: reagent.type_id,
 				securedStock: reagent.secured_stock,
 				unsecuredStock: reagent.unsecured_stock,
 				lastCycle: reagent.last_cycle,
-			})) ?? [],
+			})) satisfies SkyhookReagentEntry[]
+			return {
+				lastUpdated: observedAt.toISOString(),
+				summary: summarizeSkyhookReagents(reagents),
+				reagents,
+			}
+		})(),
 		reinforcementTimerEnd: parseDateOrNull(skyhook.reinforcement_timer?.end) ?? null,
 		theftVulnerabilityStart: parseDateOrNull(skyhook.theft_vulnerability?.start) ?? null,
 		theftVulnerabilityEnd: parseDateOrNull(skyhook.theft_vulnerability?.end) ?? null,
-		isRaidable: skyhook.is_raidable ?? false,
-		becomesRaidableAt: parseDateOrNull(skyhook.becomes_raidable_at) ?? null,
-		vulnerableAt: parseDateOrNull(skyhook.vulnerable_at) ?? null,
 		syncStatus: 'ok',
 		syncFailureReason: null,
 		lastObservedAt: observedAt,
@@ -3344,6 +3332,18 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const values: SovereigntyHubInsertRow[] = hubs.map((hub) => {
 			const resolvedSystemName =
 				systemGeography[hub.system_id]?.solarSystemName ?? hub.system_name ?? null
+			const reagents = hub.reagent_bay.reagents.map((reagent) => ({
+				typeId: reagent.type_id,
+				typeName:
+					reagent.type_id === SKYHOOK_MAGMATIC_GAS_TYPE_ID
+						? SKYHOOK_MAGMATIC_GAS_TYPE_NAME
+						: reagent.type_id === SKYHOOK_SUPERIONIC_ICE_TYPE_ID
+							? SKYHOOK_SUPERIONIC_ICE_TYPE_NAME
+							: null,
+				amount: reagent.amount,
+				burningPerHour: reagent.burning_per_hour,
+				lastCycle: reagent.last_cycle,
+			})) satisfies SovereigntyReagentEntry[]
 			return {
 				structureId: hub.structure_id,
 				corporationId,
@@ -3356,12 +3356,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				reagentBayLastUpdated: parseDateOrNull(hub.reagent_bay.last_updated) ?? null,
 				reagentBay: {
 					lastUpdated: hub.reagent_bay.last_updated,
-					reagents: hub.reagent_bay.reagents.map((reagent) => ({
-						typeId: reagent.type_id,
-						amount: reagent.amount,
-						burningPerHour: reagent.burning_per_hour,
-						lastCycle: reagent.last_cycle,
-					})),
+					summary: summarizeSovereigntyReagentBay(reagents),
+					reagents,
 				},
 				resources: hub.resources,
 				upgrades: hub.upgrades.map((upgrade) => ({
@@ -3737,9 +3733,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						reinforcementTimerEnd: sql`excluded.reinforcement_timer_end`,
 						theftVulnerabilityStart: sql`excluded.theft_vulnerability_start`,
 						theftVulnerabilityEnd: sql`excluded.theft_vulnerability_end`,
-						isRaidable: sql`excluded.is_raidable`,
-						becomesRaidableAt: sql`excluded.becomes_raidable_at`,
-						vulnerableAt: sql`excluded.vulnerable_at`,
 						syncStatus: sql`excluded.sync_status`,
 						syncFailureReason: sql`excluded.sync_failure_reason`,
 						lastObservedAt: sql`excluded.last_observed_at`,
@@ -6447,7 +6440,6 @@ export function buildSkyhookBaseStructureRow(input: {
 		reinforceHour: null,
 		state: normalizeSkyhookState(
 			skyhook.state,
-			skyhook.is_raidable ?? false,
 			parseDateOrNull(skyhook.reinforcement_timer?.end) ?? null
 		),
 		stateTimerEnd: skyhook.reinforcement_timer?.end
