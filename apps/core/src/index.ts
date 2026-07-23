@@ -567,7 +567,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		if (!ownership) return { modernUserId: null, items: [] }
 
 		const legacyStub = getStub<Legacy>(this.env.LEGACY, 'default')
-		await legacyStub.recheckUser(ownership.userId, 'system:fulcrum-report', { force: true })
+		await legacyStub.recheckUser(ownership.userId, 'system:fulcrum-report')
 		const listing = await legacyStub.listMigrations({
 			page: 1,
 			pageSize: 100,

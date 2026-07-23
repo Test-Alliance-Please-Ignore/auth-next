@@ -754,6 +754,29 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		if (!targetUser) {
 			throw new Error('Target user not found')
 		}
+		if (!force) {
+			// Terminal migrations are sticky during normal rechecks: once a user has an
+			// applied or dismissed legacy migration, later non-forced rechecks should
+			// not reopen the queue for that user.
+			const terminalMigrations = await this.db.query.legacyMigrationQueue.findMany({
+				where: and(
+					eq(legacyMigrationQueue.modernUserId, modernUserId),
+					inArray(legacyMigrationQueue.status, ['applied', 'dismissed'])
+				),
+				columns: { legacyAuthUserId: true },
+			})
+			if (terminalMigrations.length > 0) {
+				return {
+					ok: true,
+					modernUserId,
+					legacyAuthUserIds: [...new Set(terminalMigrations.map((row) => row.legacyAuthUserId))],
+					created: 0,
+					updated: 0,
+					dismissed: 0,
+					matches: [],
+				}
+			}
+		}
 		const modernCharacterIds = [...new Set(targetUser.characters.map((c) => c.characterId))]
 		if (modernCharacterIds.length === 0) {
 			return { ok: true, modernUserId, created: 0, updated: 0, dismissed: 0, matches: [] }

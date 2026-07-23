@@ -43,7 +43,7 @@ export async function hydrateCharacterAffiliation(
 	const { db, env, characterId, executionCtx } = params
 	const eveCharacterData = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
 
-	const publicRefreshResult = await eveCharacterData.refreshPublicCharacterData(characterId, true)
+	const publicRefreshResult = await eveCharacterData.refreshPublicCharacterData(characterId, false)
 
 	if (publicRefreshResult.isDeleted) {
 		await markCharacterDeletedEverywhere(db, env, characterId)
