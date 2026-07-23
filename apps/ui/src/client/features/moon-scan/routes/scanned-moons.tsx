@@ -21,6 +21,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { TableRefreshFrame } from '@/components/table-refresh-frame'
+import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatISK } from '@/lib/format-utils'
 import toast from '@/lib/toast'
@@ -38,6 +39,7 @@ import { parseSecurityStatus, securityStatusTextClass } from '../security-status
 import type { OreRarity, ScannedMoonEntry } from '../types'
 
 const RARITY_VALUES: readonly OreRarity[] = ['R4', 'R8', 'R16', 'R32', 'R64']
+const EXPORT_STATUS_POLL_INTERVALS_MS = [5_000, 10_000, 15_000, 30_000] as const
 type SortBy =
 	| 'moonName'
 	| 'solarSystemName'
@@ -118,6 +120,7 @@ export default function ScannedMoonsPage() {
 	const [collapsedConstellations, setCollapsedConstellations] = useState<Set<string>>(new Set())
 	const [pendingExport, setPendingExport] = useState<{ workflowInstanceId: string; fileName: string } | null>(null)
 	const [isExporting, setIsExporting] = useState(false)
+	const debouncedSearch = useDebounce(search, 400)
 
 	const exportStatusQuery = useQuery({
 		queryKey: ['moon-scan', 'verified-moons', 'export-status', pendingExport?.workflowInstanceId ?? null],
@@ -125,7 +128,10 @@ export default function ScannedMoonsPage() {
 		enabled: Boolean(pendingExport?.workflowInstanceId),
 		refetchInterval: (query) => {
 			const status = query.state.data?.status
-			return status === 'queued' || status === 'running' ? 5000 : false
+			if (status !== 'queued' && status !== 'running') return false
+			return EXPORT_STATUS_POLL_INTERVALS_MS[
+				Math.min(query.state.dataUpdateCount, EXPORT_STATUS_POLL_INTERVALS_MS.length - 1)
+			]
 		},
 		refetchOnWindowFocus: false,
 	})
@@ -174,7 +180,7 @@ export default function ScannedMoonsPage() {
 		regionId: regionFilter,
 		constellationId: constellationFilter,
 		rarities: selectedRarities,
-		search,
+		search: debouncedSearch,
 		sortBy,
 		sortDir,
 	}, canView)

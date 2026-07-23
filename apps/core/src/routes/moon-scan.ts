@@ -13,6 +13,7 @@ import {
 	getOreVolume,
 	parseMoonScanTsv,
 	type PaginatedScanQueue,
+	type MoonScan,
 	type MoonScanDO,
 	type ScanQueueEntry,
 	type MoonProfitability,
@@ -70,6 +71,7 @@ const MAX_SCAN_RAW_BYTES = 1_000_000
 // ─── Caches ──────────────────────────────────────────────────────────────────
 
 const permissionCache = new TimeCache<boolean>(15_000)
+const verifiedMoonSummaryBackfillCache = new TimeCache<boolean>(5 * 60_000)
 const VERIFIED_MOON_SUMMARY_BACKFILL_BATCH_SIZE = 250
 const VERIFIED_MOONS_EXPORT_PAGE_SIZE = 100
 const VERIFIED_MOONS_EXPORT_BUCKET_PREFIX = 'moon-scan/verified-moons-exports'
@@ -82,6 +84,7 @@ export type VerifiedMoonsExportQuery = Pick<
 // Minerals that Metenox does NOT output (only moon goo materials)
 const MINERAL_TYPE_IDS = new Set(['35', '36'])
 const ALLOWED_MOON_SCAN_ORE_TYPE_IDS = new Set<string>([...MOON_ORE_TYPE_IDS, ...MOON_GOO_TYPE_IDS])
+const ALL_MOON_SCAN_PRICING_TYPE_IDS = [...new Set([...MOON_ORE_TYPE_IDS, ...MOON_GOO_TYPE_IDS])]
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -177,6 +180,67 @@ function getExecutionContextOrNull(c: { executionCtx?: ExecutionContext }): Exec
 	}
 }
 
+function scanToVerifiedComposition(scan: MoonScan): VerifiedComposition | null {
+	if (scan.status !== 'verified' || !scan.verifiedAt) return null
+	return {
+		moonId: scan.moonId,
+		sourceScanId: scan.id,
+		verifiedAt: scan.verifiedAt,
+		verifiedBy: scan.verifiedBy,
+		ores: scan.ores,
+	}
+}
+
+async function upsertVerifiedMoonSummariesForScans(
+	moonScan: MoonScanDO,
+	universe: Universe,
+	scans: MoonScan[]
+): Promise<void> {
+	const compositions = scans
+		.map(scanToVerifiedComposition)
+		.filter((composition): composition is VerifiedComposition => composition !== null)
+	if (compositions.length === 0) return
+
+	const summaryRecords = await buildVerifiedMoonSummaryRecords(compositions, universe)
+	await moonScan.upsertVerifiedMoonSummaries(summaryRecords)
+}
+
+function queueVerifiedMoonSummaryUpsert(
+	c: { executionCtx?: ExecutionContext },
+	moonScan: MoonScanDO,
+	universe: Universe,
+	scans: MoonScan[]
+): void {
+	const task = upsertVerifiedMoonSummariesForScans(moonScan, universe, scans).catch((error) => {
+		logger.warn('[moon-scan] failed to upsert verified moon summaries from write path', { error })
+	})
+	const executionCtx = getExecutionContextOrNull(c)
+	if (executionCtx) {
+		executionCtx.waitUntil(task)
+	} else {
+		void task
+	}
+}
+
+async function backfillMissingVerifiedMoonSummaries(
+	moonScan: MoonScanDO,
+	universe: Universe
+): Promise<void> {
+	const [scanSummary, summaryMoonIds] = await Promise.all([
+		moonScan.getScanSummary(),
+		moonScan.getVerifiedMoonSummaryIds(),
+	])
+	const summaryMoonIdSet = new Set(summaryMoonIds)
+	const missingMoonIds = scanSummary.verifiedMoonIds.filter((moonId) => !summaryMoonIdSet.has(moonId))
+	if (missingMoonIds.length === 0) return
+
+	for (const missingMoonIdChunk of chunkArray(missingMoonIds, VERIFIED_MOON_SUMMARY_BACKFILL_BATCH_SIZE)) {
+		const missingCompositions = await moonScan.getVerifiedCompositions(missingMoonIdChunk)
+		const summaryRecords = await buildVerifiedMoonSummaryRecords(missingCompositions, universe)
+		await moonScan.upsertVerifiedMoonSummaries(summaryRecords)
+	}
+}
+
 export function getVerifiedMoonsExportBucket(env: App['Bindings']): R2Bucket {
 	return env.MOON_SCAN_EXPORTS
 }
@@ -241,6 +305,14 @@ export async function writeVerifiedMoonsExportToBucket(args: {
 			sortBy: 'moonName',
 			sortDir: 'asc',
 		})
+		const exportPricingInputs = firstPage.total > 0
+			? await getMoonPricingInputsForOreTypeIds(
+				args.env,
+				args.universe,
+				args.moonScan,
+				ALL_MOON_SCAN_PRICING_TYPE_IDS
+			)
+			: undefined
 		const totalPages = Math.max(1, Math.ceil(firstPage.total / VERIFIED_MOONS_EXPORT_PAGE_SIZE))
 		for (let page = 1; page <= totalPages; page += 1) {
 			const pageData =
@@ -261,6 +333,7 @@ export async function writeVerifiedMoonsExportToBucket(args: {
 				universe: args.universe,
 				env: args.env,
 				summaries: pageData.items,
+				pricingInputs: exportPricingInputs,
 			})
 			for (const entry of pageEntries) {
 				for (const row of buildMoonExportRows(entry)) {
@@ -412,10 +485,22 @@ async function getMoonPricingInputs(
 	compositions: VerifiedComposition[],
 ): Promise<MoonPricingInputs> {
 	const oreTypeIds = [...new Set(compositions.flatMap((composition) => composition.ores.map((ore) => ore.oreTypeId)))]
+	return getMoonPricingInputsForOreTypeIds(env, universe, moonScan, oreTypeIds)
+}
+
+async function getMoonPricingInputsForOreTypeIds(
+	env: App['Bindings'],
+	universe: Universe,
+	moonScan: MoonScanDO,
+	oreTypeIds: string[],
+): Promise<MoonPricingInputs> {
+	const uniqueOreTypeIds = [...new Set(oreTypeIds)]
 	const [settings, profiles, typeMaterialsMap] = await Promise.all([
 		moonScan.getExtractionSettings(),
 		moonScan.getStructureProfiles(),
-		universe.getTypeMaterials(oreTypeIds),
+		uniqueOreTypeIds.length > 0
+			? universe.getTypeMaterials(uniqueOreTypeIds)
+			: Promise.resolve({} as Record<string, Array<{ materialTypeId: string; quantity: number }>>),
 	])
 
 	const materialTypeIds = [
@@ -423,12 +508,13 @@ async function getMoonPricingInputs(
 			Object.values(typeMaterialsMap).flatMap((materials) => materials.map((material) => material.materialTypeId))
 		),
 	]
-	const typeIdsForNames = [...new Set([...oreTypeIds, ...materialTypeIds])]
+	const typeIdsForNames = [...new Set([...uniqueOreTypeIds, ...materialTypeIds])]
+	const priceTypeIds = [...new Set([...materialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID])]
 	const markets = getMarketsStub(env)
 	const [priceResponse, typeNamesMap] = await Promise.all([
 		markets.getBatchMarketDataAtTime({
 			regionId: createEveRegionId('universe'),
-			typeIds: [...materialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID].map(createEveTypeId),
+			typeIds: priceTypeIds.map(createEveTypeId),
 			atTime: new Date(),
 		}),
 		typeIdsForNames.length > 0
@@ -516,12 +602,13 @@ async function buildMoonExportEntriesForPage(args: {
 		securityStatus: string | null
 		highestRarity: string | null
 	}>
+	pricingInputs?: MoonPricingInputs
 }): Promise<MoonExportEntry[]> {
 	if (args.summaries.length === 0) return []
 
 	const compositions = await args.moonScan.getVerifiedCompositions(args.summaries.map((summary) => summary.moonId))
 	const compositionMap = new Map(compositions.map((composition) => [composition.moonId, composition]))
-	const inputs = await getMoonPricingInputs(args.env, args.universe, args.moonScan, compositions)
+	const inputs = args.pricingInputs ?? await getMoonPricingInputs(args.env, args.universe, args.moonScan, compositions)
 
 	return args.summaries.map((summary) => {
 		const composition = compositionMap.get(summary.moonId)
@@ -815,19 +902,10 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 	if (!usesProfitSort) {
 		let summary: Awaited<ReturnType<MoonScanDO['getVerifiedMoonPage']>> | null = null
 		try {
-			const [scanSummary, summaryMoonIds] = await Promise.all([
-				moonScan.getScanSummary(),
-				moonScan.getVerifiedMoonSummaryIds(),
-			])
-			const summaryMoonIdSet = new Set(summaryMoonIds)
-			const missingMoonIds = scanSummary.verifiedMoonIds.filter((moonId) => !summaryMoonIdSet.has(moonId))
-			if (missingMoonIds.length > 0) {
-				for (const missingMoonIdChunk of chunkArray(missingMoonIds, VERIFIED_MOON_SUMMARY_BACKFILL_BATCH_SIZE)) {
-					const missingCompositions = await moonScan.getVerifiedCompositions(missingMoonIdChunk)
-					const summaryRecords = await buildVerifiedMoonSummaryRecords(missingCompositions, universe)
-					await moonScan.upsertVerifiedMoonSummaries(summaryRecords)
-				}
-			}
+			await verifiedMoonSummaryBackfillCache.getOrSet('default', async () => {
+				await backfillMissingVerifiedMoonSummaries(moonScan, universe)
+				return true
+			})
 
 			summary = await moonScan.getVerifiedMoonPage({
 				...query.data,
@@ -1520,7 +1598,8 @@ moonScanRoutes.post('/scans/submit', async (c) => {
 
 	// Batch-resolve system security statuses and filter ineligible systems
 	const systemIds = [...new Set(parseResult.scans.map((s) => s.solarSystemId))]
-	const systemsById = await getUniverseStub(c.env).resolveSolarSystemsByIds(systemIds)
+	const universe = getUniverseStub(c.env)
+	const systemsById = await universe.resolveSolarSystemsByIds(systemIds)
 
 	const eligibleScans = parseResult.scans.filter((scan) => {
 		const system = systemsById[scan.solarSystemId]
@@ -1556,6 +1635,9 @@ moonScanRoutes.post('/scans/submit', async (c) => {
 		primaryChar?.characterId ?? null,
 		canValidate
 	)
+	if (canValidate) {
+		queueVerifiedMoonSummaryUpsert(c, moonScan, universe, submittedScans)
+	}
 
 	const rejected = parseResult.scans.length - scansWithOnlyAllowedOreTypes.length
 
@@ -1649,7 +1731,9 @@ moonScanRoutes.post('/scans/queue/verify-all', async (c) => {
 	const verifiedBy = primaryChar?.characterId ?? user.id
 
 	const moonScan = getMoonScanStub(c.env)
+	const universe = getUniverseStub(c.env)
 	const scans = await moonScan.verifyScans(body.data.scanIds, verifiedBy, null)
+	queueVerifiedMoonSummaryUpsert(c, moonScan, universe, scans)
 	return c.json(scans)
 })
 
@@ -1720,7 +1804,9 @@ moonScanRoutes.post('/scans/:id/verify', async (c) => {
 	const verifiedBy = primaryChar?.characterId ?? user.id
 
 	const moonScan = getMoonScanStub(c.env)
+	const universe = getUniverseStub(c.env)
 	const scan = await moonScan.verifyScan(c.req.param('id'), verifiedBy, body.data.notes ?? null)
+	queueVerifiedMoonSummaryUpsert(c, moonScan, universe, [scan])
 	return c.json(scan)
 })
 
