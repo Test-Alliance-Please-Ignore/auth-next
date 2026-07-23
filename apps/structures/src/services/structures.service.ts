@@ -27,6 +27,7 @@ import {
 	SKYHOOK_MAGMATIC_GAS_TYPE_NAME,
 	SKYHOOK_SUPERIONIC_ICE_TYPE_ID,
 	SKYHOOK_SUPERIONIC_ICE_TYPE_NAME,
+	SOVEREIGNTY_HUB_TYPE_ID,
 	getSkyhookFullness,
 	getSkyhookReagentEntries,
 	getSkyhookReagentSummary,
@@ -1031,7 +1032,7 @@ function buildStructureListItem(context: VisibleStructureContext): StructureList
 		syncStatus: getStructureSyncStatus(structure.syncStatus, structure.lastSyncedAt),
 		syncFailureReason: structure.syncFailureReason,
 		lastSyncedAt: toIso(structure.lastSyncedAt),
-		updatedAt: structure.updatedAt.toISOString(),
+		updatedAt: toIso(structure.updatedAt) ?? new Date().toISOString(),
 		canViewDetails,
 	}
 }
@@ -2525,8 +2526,73 @@ async function buildSkyhookStructureSummaryFromSql(
 	}
 }
 
+function buildSovereigntyReagentMetricSql(
+	source: any,
+	summaryField: 'magmaticGasQuantity' | 'magmaticGasBurningPerHour' | 'superionicIceQuantity' | 'superionicIceBurningPerHour',
+	reagentField: 'amount' | 'burningPerHour',
+	typeId: string
+) {
+	const summaryValue = sql<string | null>`nullif(${source.reagentBay} -> 'summary' ->> ${summaryField}, '')`
+	const arrayValue = sql<number>`
+		(
+			select coalesce(sum((reagent ->> ${reagentField})::numeric), 0)
+			from jsonb_array_elements(
+				case
+					when jsonb_typeof(${source.reagentBay}) = 'object'
+						and jsonb_typeof(${source.reagentBay} -> 'reagents') = 'array'
+						then ${source.reagentBay} -> 'reagents'
+					when jsonb_typeof(${source.reagentBay}) = 'array' then ${source.reagentBay}
+					else '[]'::jsonb
+				end
+			) as reagent
+			where reagent ->> 'typeId' = ${typeId}
+		)
+	`
+
+	return sql<number>`
+		coalesce(nullif(((${summaryValue})::numeric), 'NaN'::numeric), ${arrayValue})
+	`
+}
+
 function buildSovereigntySummaryDateSql(source: any, field: string) {
-	return sql<string | null>`nullif(${source.reagentBay} -> 'summary' ->> ${field}, '')`
+	const [quantityExpression, burningPerHourExpression] =
+		field === 'magmaticGasEstimatedDepletionAt'
+			? [
+					buildSovereigntyReagentMetricSql(
+						source,
+						'magmaticGasQuantity',
+						'amount',
+						SKYHOOK_MAGMATIC_GAS_TYPE_ID
+					),
+					buildSovereigntyReagentMetricSql(
+						source,
+						'magmaticGasBurningPerHour',
+						'burningPerHour',
+						SKYHOOK_MAGMATIC_GAS_TYPE_ID
+					),
+				]
+			: [
+					buildSovereigntyReagentMetricSql(
+						source,
+						'superionicIceQuantity',
+						'amount',
+						SKYHOOK_SUPERIONIC_ICE_TYPE_ID
+					),
+					buildSovereigntyReagentMetricSql(
+						source,
+						'superionicIceBurningPerHour',
+						'burningPerHour',
+						SKYHOOK_SUPERIONIC_ICE_TYPE_ID
+					),
+				]
+
+	return sql<string | null>`
+		case
+			when ${quantityExpression} > 0 and ${burningPerHourExpression} > 0
+				then (now() + ((${quantityExpression}::numeric / ${burningPerHourExpression}::numeric) * interval '1 hour'))::text
+			else null
+		end
+	`
 }
 
 function buildSovereigntySortOrder(
@@ -2579,14 +2645,18 @@ function buildSovereigntyStructuresCte(db: DbClient<DbSchema>, corpWhere: any) {
 	return db.$with('sovereignty_structures').as(
 		db
 			.select({
-				structureId: structureSovereigntyHubs.structureId,
-				corporationId: structureSovereigntyHubs.corporationId,
+				structureId: sql<string>`
+					coalesce(${structureSovereigntyHubs.structureId}, ${structureSovereigntySystems.sovereigntyHubStructureId}, ${structureSovereigntySystems.systemId})
+				`.as('structureId'),
+				corporationId: structureSovereigntySystems.corporationId,
 				corporationName: managedCorporations.name,
 				includeInStructureAssetSync: managedCorporations.includeInStructureAssetSync,
-				typeId: structureSovereigntyHubs.typeId,
-				typeName: sql<string>`'Sovereignty Hub'`,
-				systemId: structureSovereigntyHubs.systemId,
-				systemName: structureSovereigntyHubs.systemName,
+				typeId: sql<string>`
+					coalesce(${structureSovereigntyHubs.typeId}, ${SOVEREIGNTY_HUB_TYPE_ID})
+				`.as('typeId'),
+				typeName: sql<string>`'Sovereignty Hub'`.as('typeName'),
+				systemId: structureSovereigntySystems.systemId,
+				systemName: structureSovereigntySystems.systemName,
 				regionId: structureSovereigntySystems.regionId,
 				regionName: structureSovereigntySystems.regionName,
 				claimType: structureSovereigntySystems.claimType,
@@ -2610,18 +2680,33 @@ function buildSovereigntyStructuresCte(db: DbClient<DbSchema>, corpWhere: any) {
 				resources: structureSovereigntyHubs.resources,
 				upgrades: structureSovereigntyHubs.upgrades,
 				workforceTransport: structureSovereigntyHubs.workforceTransport,
-				syncStatus: structureSovereigntyHubs.syncStatus,
+				syncStatus: sql<string>`
+					coalesce(${structureSovereigntyHubs.syncStatus}, 'warning')
+				`.as('syncStatus'),
 				syncFailureReason: structureSovereigntyHubs.syncFailureReason,
 				sourceSyncAt: structureSovereigntyHubs.sourceSyncAt,
-				lastSyncedAt: structureSovereigntyHubs.lastSyncedAt,
-				updatedAt: sql<Date>`coalesce(${structureSovereigntySystems.updatedAt}, ${structureSovereigntyHubs.updatedAt})`,
+				lastSyncedAt: sql<Date | null>`
+					coalesce(${structureSovereigntyHubs.lastSyncedAt}, ${structureSovereigntySystems.lastSyncedAt})
+				`.as('lastSyncedAt'),
+				updatedAt: sql<Date>`
+					coalesce(${structureSovereigntySystems.updatedAt}, ${structureSovereigntyHubs.updatedAt})
+				`.as('updatedAt'),
 			})
-			.from(structureSovereigntyHubs)
+			.from(structureSovereigntySystems)
 			.leftJoin(
-				structureSovereigntySystems,
-				eq(structureSovereigntySystems.systemId, structureSovereigntyHubs.systemId)
+				structureSovereigntyHubs,
+				or(
+					eq(
+						structureSovereigntyHubs.structureId,
+						structureSovereigntySystems.sovereigntyHubStructureId
+					),
+					eq(structureSovereigntyHubs.systemId, structureSovereigntySystems.systemId)
+				)
 			)
-			.leftJoin(managedCorporations, eq(managedCorporations.corporationId, structureSovereigntyHubs.corporationId))
+			.leftJoin(
+				managedCorporations,
+				eq(managedCorporations.corporationId, structureSovereigntySystems.corporationId)
+			)
 			.where(corpWhere ?? sql`true`)
 	)
 }
@@ -2630,22 +2715,12 @@ function buildSovereigntyWhere(
 	access: StructureAccessScope,
 	query: StructureSovereigntyListQuery
 ): any {
-	const accessibleCorporations = getAccessibleCorporationIds(access, 'sovereignty')
-	if (!accessibleCorporations.hasGlobalAccess && accessibleCorporations.corporationIds.size === 0) {
-		return eq(structureSovereigntyHubs.corporationId, '__no_access__')
-	}
-
 	const conditions: StructureWhereCondition[] = []
 	if (query.corporationId) {
-		conditions.push(eq(structureSovereigntyHubs.corporationId, query.corporationId))
-	}
-	if (!accessibleCorporations.hasGlobalAccess) {
-		conditions.push(
-			inArray(structureSovereigntyHubs.corporationId, [...accessibleCorporations.corporationIds])
-		)
+		conditions.push(eq(structureSovereigntySystems.corporationId, query.corporationId))
 	}
 	if (query.systemId) {
-		conditions.push(eq(structureSovereigntyHubs.systemId, query.systemId))
+		conditions.push(eq(structureSovereigntySystems.systemId, query.systemId))
 	}
 	if (query.regionId) {
 		conditions.push(eq(structureSovereigntySystems.regionId, query.regionId))
@@ -2688,7 +2763,7 @@ function buildSovereigntyWhere(
 				break
 		}
 	}
-	return combineWhereConditions(conditions)
+	return combineWhereConditions(conditions) ?? sql`true`
 }
 
 async function buildSovereigntyStructureFilterOptionsFromSql(
@@ -2800,14 +2875,34 @@ async function buildSovereigntyStructureSummaryFromSql(
 	const lowFuelThresholdAt = new Date(
 		Date.now() + moduleConfig.lowFuelTimeThresholdHours * HOURS_TO_MS
 	)
-	const magmaticGasQuantityExpression = sql<number>`coalesce(((${sovereigntyStructures.reagentBay} -> 'summary' ->> 'magmaticGasQuantity')::int), 0)`
-	const magmaticGasBurningPerHourExpression = sql<number>`coalesce(((${sovereigntyStructures.reagentBay} -> 'summary' ->> 'magmaticGasBurningPerHour')::numeric), 0)`
+	const magmaticGasQuantityExpression = buildSovereigntyReagentMetricSql(
+		sovereigntyStructures,
+		'magmaticGasQuantity',
+		'amount',
+		SKYHOOK_MAGMATIC_GAS_TYPE_ID
+	)
+	const magmaticGasBurningPerHourExpression = buildSovereigntyReagentMetricSql(
+		sovereigntyStructures,
+		'magmaticGasBurningPerHour',
+		'burningPerHour',
+		SKYHOOK_MAGMATIC_GAS_TYPE_ID
+	)
 	const magmaticGasDepletionExpression = buildSovereigntySummaryDateSql(
 		sovereigntyStructures,
 		'magmaticGasEstimatedDepletionAt'
 	)
-	const superionicIceQuantityExpression = sql<number>`coalesce(((${sovereigntyStructures.reagentBay} -> 'summary' ->> 'superionicIceQuantity')::int), 0)`
-	const superionicIceBurningPerHourExpression = sql<number>`coalesce(((${sovereigntyStructures.reagentBay} -> 'summary' ->> 'superionicIceBurningPerHour')::numeric), 0)`
+	const superionicIceQuantityExpression = buildSovereigntyReagentMetricSql(
+		sovereigntyStructures,
+		'superionicIceQuantity',
+		'amount',
+		SKYHOOK_SUPERIONIC_ICE_TYPE_ID
+	)
+	const superionicIceBurningPerHourExpression = buildSovereigntyReagentMetricSql(
+		sovereigntyStructures,
+		'superionicIceBurningPerHour',
+		'burningPerHour',
+		SKYHOOK_SUPERIONIC_ICE_TYPE_ID
+	)
 	const superionicIceDepletionExpression = buildSovereigntySummaryDateSql(
 		sovereigntyStructures,
 		'superionicIceEstimatedDepletionAt'
@@ -2960,13 +3055,31 @@ async function loadSovereigntyPageItems(
 			controllerAllianceId: row.controllerAllianceId,
 			controllerAllianceName: row.controllerAllianceName,
 			reagentBayLastUpdated: row.reagentBayLastUpdated,
-			reagentBay: row.reagentBay,
-			resources: row.resources,
-			upgrades: row.upgrades,
+			reagentBay:
+				row.reagentBay ?? {
+					lastUpdated: '',
+					reagents: [],
+				},
+			resources:
+				row.resources ?? {
+					power: {
+						allocated: 0,
+						available: 0,
+					},
+					workforce: {
+						allocated: 0,
+						available: 0,
+					},
+				},
+			upgrades: row.upgrades ?? [],
 			vulnerabilityWindowStart: row.vulnerabilityWindowStart,
 			vulnerabilityWindowEnd: row.vulnerabilityWindowEnd,
-			workforceTransport: row.workforceTransport,
-			syncStatus: row.syncStatus,
+			workforceTransport:
+				row.workforceTransport ?? {
+					configuration: { mode: 'unknown', systems: [] },
+					state: { mode: 'unknown', systems: [] },
+				},
+			syncStatus: (row.syncStatus ?? 'warning') as typeof structureSovereigntyHubs.$inferSelect['syncStatus'],
 			syncFailureReason: row.syncFailureReason,
 			sourceSyncAt: row.sourceSyncAt,
 			lastSyncedAt: row.lastSyncedAt,
@@ -4144,7 +4257,7 @@ function buildSovereigntyListItem(input: {
 				? null
 				: 'Sovereignty hub snapshot has not been ingested yet for this structure.',
 		lastSyncedAt: toIso(lastSyncedAt),
-		updatedAt: sourceUpdatedAt.toISOString(),
+		updatedAt: toIso(sourceUpdatedAt) ?? new Date().toISOString(),
 	}
 }
 
@@ -4155,8 +4268,8 @@ export async function listSovereigntyStructures(
 	query: StructureSovereigntyListQuery = {}
 ): Promise<RepoStructureSovereigntyListResponse> {
 	const access = computeStructureAccess(user.roles, user.is_admin)
-	const accessForTab = getStructureAccessTarget(access, 'sovereignty')
-	if (!hasAnyStructureAccess(accessForTab)) {
+	const accessibleCorporations = getAccessibleCorporationIds(access)
+	if (!accessibleCorporations.hasGlobalAccess && accessibleCorporations.corporationIds.size === 0) {
 		return {
 			items: [],
 			pagination: {
