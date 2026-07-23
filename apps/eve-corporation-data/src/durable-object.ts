@@ -250,6 +250,36 @@ function parseNumberOrNull(value: unknown): number | null {
 	return Number.isFinite(parsed) ? parsed : null
 }
 
+async function resolveAllianceNames(
+	tokenStore: EveTokenStore,
+	allianceIds: readonly string[]
+): Promise<Map<string, string | null>> {
+	const uniqueAllianceIds = [...new Set(allianceIds.filter((value) => value.length > 0))]
+	if (uniqueAllianceIds.length === 0) {
+		return new Map()
+	}
+
+	const resolved = await Promise.all(
+		uniqueAllianceIds.map(async (allianceId) => {
+			try {
+				const response = await tokenStore.fetchPublicEsi<{ name?: string }>(
+					`/alliances/${allianceId}`,
+					{ cacheMode: 'no-store' }
+				)
+				return [allianceId, response.data.name?.trim() ?? null] as const
+			} catch (error) {
+				logger.warn('[EveCorporationData] Failed to resolve alliance name', {
+					allianceId,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				return [allianceId, null] as const
+			}
+		})
+	)
+
+	return new Map(resolved)
+}
+
 type SkyhookStateRow = typeof structureSkyhooks.$inferSelect
 type SovereigntyHubInsertRow = typeof structureSovereigntyHubs.$inferInsert
 type SkyhookInsertRow = typeof structureSkyhooks.$inferInsert
@@ -265,7 +295,6 @@ type SkyhookStorageRow = {
 	planetName: string | null
 	systemId: string
 	systemName: string | null
-	name: string | null
 	typeId: string
 	state: string
 	isActive: boolean
@@ -373,9 +402,9 @@ export function buildSkyhookStorageRow(input: {
 	skyhook: EsiCorporationSkyhook
 	baseStructure: Pick<
 		SkyhookBaseStructureRow,
-		'corporationId' | 'structureId' | 'typeId' | 'systemId' | 'systemName' | 'name'
+		'corporationId' | 'structureId' | 'typeId' | 'systemId' | 'systemName'
 	>
-	existingRow: Pick<SkyhookStateRow, 'planetName' | 'systemName' | 'name'> | null
+	existingRow: Pick<SkyhookStateRow, 'planetName' | 'systemName'> | null
 	planet: SkyhookPlanetGeography
 	observedAt: Date
 }): SkyhookStorageRow | null {
@@ -396,7 +425,6 @@ export function buildSkyhookStorageRow(input: {
 		planetName: resolvedPlanetName,
 		systemId: baseStructure.systemId,
 		systemName: resolvedSystemName,
-		name: null,
 		typeId: baseStructure.typeId,
 		state: normalizeSkyhookState(
 			skyhook.state,
@@ -3019,6 +3047,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	): Promise<void> {
 		const now = new Date()
 		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const existingRows = await this.getDb().query.structureSovereigntySystems.findMany({
 			where: eq(structureSovereigntySystems.corporationId, corporationId),
 			columns: {
@@ -3031,19 +3060,40 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						...new Set(systems.map((system) => system.system_id)),
 					])
 				: {}
+		const regionIds = [
+			...new Set(
+				Object.values(systemGeography)
+					.filter((system): system is NonNullable<(typeof systemGeography)[string]> => system !== null)
+					.map((system) => system.regionId)
+					.filter((regionId): regionId is string => Boolean(regionId))
+			),
+		]
+		const regionGeography: Awaited<ReturnType<Universe['resolveRegionsByIds']>> =
+			regionIds.length > 0 ? await universe.resolveRegionsByIds(regionIds) : {}
+		const allianceNames = await resolveAllianceNames(
+			tokenStore,
+			systems.flatMap((system) => (system.alliance_id ? [system.alliance_id] : []))
+		)
 		const values = systems.map((system) => {
+			const resolvedSystem = systemGeography[system.system_id] ?? null
+			const resolvedRegion = resolvedSystem?.regionId
+				? (regionGeography[resolvedSystem.regionId] ?? null)
+				: null
 			const claimedSince = parseDateOrNull(system.claimed_since) ?? null
 			const vulnerabilityWindowStart = parseDateOrNull(system.vulnerability_window?.start) ?? null
 			const vulnerabilityWindowEnd = parseDateOrNull(system.vulnerability_window?.end) ?? null
 			const resolvedSystemName =
-				systemGeography[system.system_id]?.solarSystemName ?? system.system_name ?? null
+				resolvedSystem?.solarSystemName ?? system.system_name ?? null
 
 			return {
 				systemId: system.system_id,
 				corporationId,
 				systemName: resolvedSystemName,
+				regionId: resolvedSystem?.regionId ?? null,
+				regionName: resolvedRegion?.regionName ?? resolvedSystem?.regionId ?? null,
 				claimType: system.claim_type,
 				allianceId: system.alliance_id ?? null,
+				allianceName: system.alliance_id ? (allianceNames.get(system.alliance_id) ?? null) : null,
 				corporationClaimantId: system.corporation_id ?? null,
 				factionId: system.faction_id ?? null,
 				claimedSince,
@@ -3084,8 +3134,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					set: {
 						corporationId: sql`excluded.corporation_id`,
 						systemName: sql`excluded.system_name`,
+						regionId: sql`excluded.region_id`,
+						regionName: sql`excluded.region_name`,
 						claimType: sql`excluded.claim_type`,
 						allianceId: sql`excluded.alliance_id`,
+						allianceName: sql`excluded.alliance_name`,
 						corporationClaimantId: sql`excluded.corporation_claimant_id`,
 						factionId: sql`excluded.faction_id`,
 						claimedSince: sql`excluded.claimed_since`,
@@ -3317,6 +3370,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	async storeSovereigntyHubs(corporationId: string, hubs: EsiSovereigntyHub[]): Promise<void> {
 		const now = new Date()
+		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const existingRows = await this.getDb().query.structureSovereigntyHubs.findMany({
 			where: eq(structureSovereigntyHubs.corporationId, corporationId),
 			columns: {
@@ -3324,6 +3378,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				updatedAt: true,
 			},
 		})
+		const controllerAllianceNames = await resolveAllianceNames(
+			tokenStore,
+			hubs.flatMap((hub) => (hub.controller_alliance_id ? [hub.controller_alliance_id] : []))
+		)
 		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
 		const systemGeography: Awaited<ReturnType<Universe['resolveSolarSystemsByIds']>> =
 			hubs.length > 0
@@ -3349,10 +3407,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				corporationId,
 				systemId: hub.system_id,
 				systemName: resolvedSystemName,
-				name: hub.name ?? null,
 				typeId: hub.type_id,
 				fuelAccessListId: hub.fuel_access_list_id ?? null,
 				controllerAllianceId: hub.controller_alliance_id ?? null,
+				controllerAllianceName: hub.controller_alliance_id
+					? (controllerAllianceNames.get(hub.controller_alliance_id) ?? null)
+					: null,
 				reagentBayLastUpdated: parseDateOrNull(hub.reagent_bay.last_updated) ?? null,
 				reagentBay: {
 					lastUpdated: hub.reagent_bay.last_updated,
@@ -3406,10 +3466,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						corporationId: sql`excluded.corporation_id`,
 						systemId: sql`excluded.system_id`,
 						systemName: sql`excluded.system_name`,
-						name: sql`excluded.name`,
 						typeId: sql`excluded.type_id`,
 						fuelAccessListId: sql`excluded.fuel_access_list_id`,
 						controllerAllianceId: sql`excluded.controller_alliance_id`,
+						controllerAllianceName: sql`excluded.controller_alliance_name`,
 						reagentBayLastUpdated: sql`excluded.reagent_bay_last_updated`,
 						reagentBay: sql`excluded.reagent_bay`,
 						resources: sql`excluded.resources`,
@@ -3479,12 +3539,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				structureId: true,
 				planetName: true,
 				systemName: true,
-				name: true,
 				updatedAt: true,
 			},
 		})
 		const existingByStructureId = new Map(existingRows.map((row) => [row.structureId, row]))
-		const structureIds = [...new Set(skyhooks.map((skyhook) => skyhook.structure_id))]
 		const existingBaseStructures = await this.getDb().query.corporationStructures.findMany({
 			where: and(
 				eq(corporationStructures.corporationId, corporationId),
@@ -3493,7 +3551,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			columns: {
 				structureId: true,
 				corporationId: true,
-				name: true,
 				typeId: true,
 				systemId: true,
 				systemName: true,
@@ -3545,7 +3602,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					region: resolvedRegion,
 					existingRow: existingBaseStructure
 						? {
-								name: existingBaseStructure.name,
 								systemId: existingBaseStructure.systemId,
 								systemName: existingBaseStructure.systemName,
 								regionId: existingBaseStructure.regionId,
@@ -3574,7 +3630,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						? {
 								planetName: existing.planetName,
 								systemName: existing.systemName,
-								name: existing.name,
 							}
 						: null,
 					planet: resolvedPlanet
@@ -3669,7 +3724,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					target: corporationStructures.structureId,
 					set: {
 						corporationId: sql`excluded.corporation_id`,
-						name: sql`excluded.name`,
 						typeId: sql`excluded.type_id`,
 						typeName: sql`excluded.type_name`,
 						systemId: sql`excluded.system_id`,
@@ -3724,7 +3778,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						planetName: sql`excluded.planet_name`,
 						systemId: sql`excluded.system_id`,
 						systemName: sql`excluded.system_name`,
-						name: sql`excluded.name`,
 						typeId: sql`excluded.type_id`,
 						state: sql`excluded.state`,
 						isActive: sql`excluded.is_active`,
@@ -6406,7 +6459,7 @@ export function buildSkyhookBaseStructureRow(input: {
 	region: UniverseRegion | null
 	existingRow: Pick<
 		SkyhookBaseStructureRow,
-		'name' | 'systemId' | 'systemName' | 'regionId' | 'regionName' | 'updatedAt'
+		'systemId' | 'systemName' | 'regionId' | 'regionName' | 'updatedAt'
 	> | null
 	observedAt: Date
 }): SkyhookBaseStructureRow | null {

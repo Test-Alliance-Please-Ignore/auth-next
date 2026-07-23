@@ -430,6 +430,52 @@ describe('structure permission gating', () => {
 		expect(result.items[0]?.naturalDecayTime).toBe('2026-01-03T01:00:00.000Z')
 	})
 
+	it('treats a missing mining extraction snapshot as a non-fatal warning state', async () => {
+		const db = makeDb({
+			structures: [
+				{
+					structureId: 'structure-mining-citadel',
+					corporationId: 'corp-1',
+					name: 'Mining Citadel',
+					typeId: '35833',
+					typeName: 'Athanor',
+					systemId: '30000142',
+					systemName: 'Jita',
+					regionId: '10000002',
+					regionName: 'The Forge',
+					state: 'online',
+					nextReinforceApply: null,
+					stateTimerEnd: null,
+					unanchorsAt: null,
+					fuelExpires: null,
+					fuelAmount: 2000,
+					lowPower: false,
+					syncStatus: 'ok',
+					syncFailureReason: null,
+					lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
+					updatedAt: new Date('2026-01-01T00:00:00Z'),
+				},
+			],
+			miningStates: [],
+		})
+
+		const result = await listMiningCitadelStructures(db as never, {
+			id: 'user-4f',
+			is_admin: false,
+			roles: ['urn:structures:mining-citadels:all:viewer'],
+		})
+
+		expect(result.items).toHaveLength(1)
+		expect(result.items[0]?.structureId).toBe('structure-mining-citadel')
+		expect(result.items[0]?.syncStatus).toBe('warning')
+		expect(result.items[0]?.syncFailureReason).toBe(
+			'Mining extraction snapshot has not been ingested yet for this structure.'
+		)
+		expect(result.items[0]?.extractionStartTime).toBeNull()
+		expect(result.items[0]?.chunkArrivalTime).toBeNull()
+		expect(result.items[0]?.naturalDecayTime).toBeNull()
+	})
+
 	it('unions multiple corp-scoped permissions across corporations', async () => {
 		const db = makeDb({
 			structures: [

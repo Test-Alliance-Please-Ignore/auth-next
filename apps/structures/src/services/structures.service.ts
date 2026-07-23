@@ -9,7 +9,6 @@ import {
 import { parseFittingSlotFlag } from '@repo/eve-fitting/flags'
 import {
 	parseStructurePermissionUrn,
-	STRUCTURE_PERMISSION_ROLES,
 	STRUCTURE_PERMISSION_SCOPE_ALL,
 } from '@repo/groups'
 import { logger } from '@repo/hono-helpers'
@@ -35,9 +34,33 @@ import {
 	getSovereigntyReagentBayReagents,
 	getSovereigntyReagentBaySummary,
 	getStructureTabForTypeId,
-	isReinforcedStructureState,
 	STRUCTURE_SYNC_ERROR_STALE_MS,
 	STRUCTURE_SYNC_WARNING_STALE_MS,
+	type StructureMoonStructureListSortBy,
+	type StructureCommonListSortBy,
+	type StructureSkyhookListSortBy,
+	type StructureSovereigntyListSortBy,
+	type StructureCitadelListQuery,
+	type StructureMoonDrillListQuery,
+	type StructureMiningCitadelListQuery,
+	type StructureMiningCitadelListItem as RepoStructureMiningCitadelListItem,
+	type StructureMiningCitadelListResponse as RepoStructureMiningCitadelListResponse,
+	type StructureNavigationListQuery,
+	type StructureSovereigntyListFilterOptions as RepoStructureSovereigntyListFilterOptions,
+	type StructureSovereigntyListItem as RepoStructureSovereigntyListItem,
+	type StructureSovereigntyListResponse as RepoStructureSovereigntyListResponse,
+	type StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
+	type StructureSovereigntyReagent,
+	type StructureSovereigntyTransportState,
+	type StructureMoonDrillListItem as RepoStructureMoonDrillListItem,
+	type StructureMoonDrillListResponse as RepoStructureMoonDrillListResponse,
+	type StructureMoonDrillSummary as RepoStructureMoonDrillSummary,
+	type StructureMiningCitadelSummary as RepoStructureMiningCitadelSummary,
+	type StructureSkyhookListItem as RepoStructureSkyhookListItem,
+	type StructureSkyhookListResponse as RepoStructureSkyhookListResponse,
+	type StructureSkyhookListQuery,
+	type StructureSovereigntyListQuery,
+	type StructureTab,
 } from '@repo/structures'
 import {
 	structureMoonDrills,
@@ -57,40 +80,10 @@ import {
 	structureStateEvents,
 } from '../db/schema'
 import { buildStructureFuelUsageHistory } from './structure-fuel-history'
-import {
-	buildSkyhookStructureSummary,
-} from './skyhook-summary'
 
 import type { DbClient } from '@repo/db-utils'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { InventoryDisplayBay } from '@repo/inventory-display'
-import type {
-	StructureIdentity,
-	StructureConfig,
-	StructureSyncState,
-	StructureCitadelListQuery,
-	StructureMoonDrillListQuery,
-	StructureMiningCitadelListQuery,
-	StructureMiningCitadelListItem as RepoStructureMiningCitadelListItem,
-	StructureMiningCitadelListResponse as RepoStructureMiningCitadelListResponse,
-	StructureNavigationListQuery,
-	StructureOverviewMetrics,
-	StructureSovereigntyListFilterOptions as RepoStructureSovereigntyListFilterOptions,
-	StructureSovereigntyListItem as RepoStructureSovereigntyListItem,
-	StructureSovereigntyListResponse as RepoStructureSovereigntyListResponse,
-	StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
-	StructureSovereigntyReagent,
-	StructureSovereigntyTransportState,
-	StructureMoonDrillListItem as RepoStructureMoonDrillListItem,
-	StructureMoonDrillListResponse as RepoStructureMoonDrillListResponse,
-	StructureMoonDrillSummary as RepoStructureMoonDrillSummary,
-	StructureMiningCitadelSummary as RepoStructureMiningCitadelSummary,
-	StructureSkyhookListItem as RepoStructureSkyhookListItem,
-	StructureSkyhookListResponse as RepoStructureSkyhookListResponse,
-	StructureSkyhookListQuery,
-	StructureSovereigntyListQuery,
-	StructureTab,
-} from '@repo/structures'
 import type { Env, SessionUser } from '../context'
 import type { DbSchema } from '../db'
 import type {
@@ -98,24 +91,7 @@ import type {
 	StructureFuelUsageHistory,
 } from './structure-fuel-history'
 
-type StructureFilterableItemBase = StructureIdentity &
-	StructureSyncState &
-	StructureConfig & {
-		state: string
-		typeId: string
-		typeName: string | null
-		planetId?: string | null
-		planetName?: string | null
-		nextStateAt: string | null
-		fuelExpires?: string | null
-		fuelAmount?: number | null
-		lowPower: boolean
-	}
-
 type StructureSovereigntyFilterableItem = RepoStructureSovereigntyListItem
-type StructureSkyhookFilterableItem = RepoStructureSkyhookListItem
-type StructureMoonDrillFilterableItem = RepoStructureMoonDrillListItem
-type StructureMiningCitadelFilterableItem = RepoStructureMiningCitadelListItem
 
 const HOURS_TO_MS = 60 * 60 * 1000
 const STRUCTURE_LIST_PAGE_SIZE_MAX = 100
@@ -163,33 +139,11 @@ function isSkyhookCurrentlyRaidable(
 		: now > raidableStart.getTime() && now < raidableEnd
 }
 
-function getSkyhookVulnerabilityWindowStart(
-	structure: Pick<StructureSkyhookFilterableItem, 'theftVulnerabilityStart'>
-): string | null {
-	return structure.theftVulnerabilityStart ?? null
-}
-
 export type StructureListSortField =
-	| 'updatedAt'
-	| 'nextStateAt'
-	| 'fuel'
-	| 'activityDefenseMultiplier'
-	| 'magmaticGasEstimatedDepletionAt'
-	| 'superionicIceEstimatedDepletionAt'
-	| 'theftVulnerabilityStart'
-	| 'skyhookSecureFullness'
-	| 'skyhookSurplusFullness'
-	| 'raidable'
-	| 'workforce'
-	| 'group'
-	| 'syncStatus'
-	| 'name'
-	| 'corporation'
-	| 'region'
-	| 'planet'
-	| 'system'
-	| 'type'
-	| 'state'
+	| StructureCommonListSortBy
+	| StructureMoonStructureListSortBy
+	| StructureSkyhookListSortBy
+	| StructureSovereigntyListSortBy
 export type StructureListSortDirection = 'asc' | 'desc'
 
 export interface StructureListFilterOptionsEntry {
@@ -255,8 +209,6 @@ interface StructureAccessScope {
 	all: StructurePermissionAccessTarget
 	tabs: Record<StructureTab, StructurePermissionAccessTarget>
 }
-
-type SovereigntyVulnerabilityState = 'vulnerable' | 'invulnerable' | 'reinforced' | 'unknown'
 
 export interface StructureListItem {
 	structureId: string
@@ -773,47 +725,6 @@ function toIso(value: Date | null | undefined): string | null {
 	return value ? value.toISOString() : null
 }
 
-function compareNullableStrings(
-	left: string | null | undefined,
-	right: string | null | undefined
-): number {
-	const normalizedLeft = left ?? ''
-	const normalizedRight = right ?? ''
-	return normalizedLeft.localeCompare(normalizedRight)
-}
-
-function compareNullableDates(
-	left: string | number | null | undefined,
-	right: string | number | null | undefined
-): number {
-	if (!left && !right) return 0
-	if (!left) return 1
-	if (!right) return -1
-	const leftTime = typeof left === 'number' ? left : new Date(left).getTime()
-	const rightTime = typeof right === 'number' ? right : new Date(right).getTime()
-	return leftTime - rightTime
-}
-
-function compareNullableNumbers(
-	left: number | null | undefined,
-	right: number | null | undefined
-): number {
-	if (left === null || left === undefined) {
-		if (right === null || right === undefined) return 0
-		return 1
-	}
-	if (right === null || right === undefined) {
-		return -1
-	}
-	return left - right
-}
-
-function parseNullableNumber(value: string | number | null | undefined): number | null {
-	if (value === null || value === undefined || value === '') return null
-	const parsed = typeof value === 'number' ? value : Number.parseFloat(value)
-	return Number.isFinite(parsed) ? parsed : null
-}
-
 type StructureWhereCondition = NonNullable<Parameters<typeof and>[number]>
 
 const NON_CITADEL_TYPE_IDS = [
@@ -824,13 +735,6 @@ const NON_CITADEL_TYPE_IDS = [
 ]
 
 const NON_CITADEL_TYPE_NAMES = [...MINING_CITADEL_TYPE_NAMES, METENOX_MOON_DRILL_TYPE_NAME]
-
-type SovereigntyHubUniverseStub = {
-	resolveSolarSystemsByIds(
-		systemIds: string[]
-	): Promise<Record<string, { solarSystemName: string; regionId: string } | null>>
-	resolveRegionsByIds(regionIds: string[]): Promise<Record<string, { regionName: string } | null>>
-}
 
 function combineWhereConditions(conditions: Array<StructureWhereCondition | undefined>): any {
 	const defined = conditions.filter(
@@ -902,28 +806,6 @@ function buildHiddenVisibilityWhere(
 	return or(...branches)
 }
 
-function isFuelBelowThreshold(
-	structure: Pick<StructureFilterableItemBase, 'fuelAmount' | 'fuelExpires'>,
-	moduleConfig: Pick<
-		StructureModuleConfigResult,
-		| 'lowFuelTimeThresholdHours'
-		| 'criticalFuelTimeThresholdHours'
-		| 'lowFuelAmountThreshold'
-		| 'criticalFuelAmountThreshold'
-	>
-): boolean {
-	if (structure.fuelAmount != null) {
-		return structure.fuelAmount <= moduleConfig.lowFuelAmountThreshold
-	}
-
-	if (!structure.fuelExpires) {
-		return false
-	}
-
-	const hoursRemaining = (new Date(structure.fuelExpires).getTime() - Date.now()) / (60 * 60 * 1000)
-	return hoursRemaining <= moduleConfig.lowFuelTimeThresholdHours
-}
-
 function summarizeStructureSovereigntyHub(
 	hub: typeof structureSovereigntyHubs.$inferSelect
 ): StructureSovereigntyHubSummary {
@@ -932,6 +814,7 @@ function summarizeStructureSovereigntyHub(
 
 	return {
 		controllerAllianceId: hub.controllerAllianceId ?? null,
+		controllerAllianceName: hub.controllerAllianceName ?? null,
 		reagentBayLastUpdated: hub.reagentBayLastUpdated
 			? hub.reagentBayLastUpdated.toISOString()
 			: null,
@@ -972,6 +855,7 @@ function summarizeStructureSovereignty(
 	return {
 		claimType: system.claimType,
 		allianceId: system.allianceId ?? null,
+		allianceName: system.allianceName ?? null,
 		corporationClaimantId: system.corporationClaimantId ?? null,
 		factionId: system.factionId ?? null,
 		claimedSince: system.claimedSince ? system.claimedSince.toISOString() : null,
@@ -1143,68 +1027,23 @@ function buildStructureListItem(context: VisibleStructureContext): StructureList
 	}
 }
 
-interface SovereigntyHubGeography {
-	solarSystemName: string
-	regionId: string
-	regionName: string
-}
-
-async function resolveSovereigntyHubGeographies(
-	env: Env,
-	systemIds: string[]
-): Promise<Record<string, SovereigntyHubGeography | null>> {
-	if (systemIds.length === 0) {
-		return {}
-	}
-
-	const universe = getStub<SovereigntyHubUniverseStub>(env.UNIVERSE, 'default')
-	const systemsById = await universe.resolveSolarSystemsByIds(systemIds)
-	const regionIds = [
-		...new Set(Object.values(systemsById).flatMap((system) => (system ? [system.regionId] : []))),
-	]
-	const regionsById = regionIds.length > 0 ? await universe.resolveRegionsByIds(regionIds) : {}
-
-	return Object.fromEntries(
-		Object.entries(systemsById).map(([systemId, system]) => {
-			if (!system) {
-				return [systemId, null]
-			}
-
-			const region = regionsById[system.regionId] ?? null
-			return [
-				systemId,
-				{
-					solarSystemName: system.solarSystemName,
-					regionId: system.regionId,
-					regionName: region?.regionName ?? system.regionId,
-				},
-			]
-		})
-	)
-}
-
 function buildSyntheticSovereigntyStructureRow(
 	hub: typeof structureSovereigntyHubs.$inferSelect,
 	system: typeof structureSovereigntySystems.$inferSelect | null,
-	geography: SovereigntyHubGeography | null
+	geography: { solarSystemName: string; regionId: string; regionName: string } | null
 ): StructureSourceRecord {
 	const lastSyncedAt = hub.lastSyncedAt ?? system?.lastSyncedAt ?? null
 	return {
 		id: hub.structureId,
 		corporationId: hub.corporationId,
 		structureId: hub.structureId,
-		name:
-			hub.name ??
-			geography?.solarSystemName ??
-			hub.systemName ??
-			system?.systemName ??
-			hub.structureId,
+		name: system?.systemName ?? hub.systemName ?? geography?.solarSystemName ?? hub.structureId,
 		typeId: hub.typeId,
 		typeName: 'Sovereignty Hub',
 		systemId: hub.systemId,
-		systemName: geography?.solarSystemName ?? hub.systemName ?? system?.systemName ?? null,
-		regionId: geography?.regionId ?? null,
-		regionName: geography?.regionName ?? null,
+		systemName: system?.systemName ?? hub.systemName ?? geography?.solarSystemName ?? null,
+		regionId: system?.regionId ?? geography?.regionId ?? null,
+		regionName: system?.regionName ?? geography?.regionName ?? null,
 		fuelExpires: null,
 		fuelAmount: null,
 		fuelBurnRate: null,
@@ -1759,13 +1598,6 @@ export function getStructureTab(
 	return getStructureTabForTypeId(structure.typeId, structure.typeName)
 }
 
-function matchesStructureTab(
-	structure: Pick<StructureListItem, 'typeId' | 'typeName'>,
-	tab: StructureTab
-): boolean {
-	return getStructureTab(structure) === tab
-}
-
 function buildStructureDetailResult(context: VisibleStructureContext): StructureDetailResult {
 	const { canViewDetails: _canViewDetails, ...structure } = buildStructureListItem(context)
 	return {
@@ -1863,13 +1695,10 @@ async function getVisibleStructureContext(
 		const systemRow = await db.query.structureSovereigntySystems.findFirst({
 			where: eq(structureSovereigntySystems.sovereigntyHubStructureId, structureId),
 		})
-		const geographyBySystemId = await resolveSovereigntyHubGeographies(env, [
-			sovereigntyHub.systemId,
-		])
 		const syntheticStructure = buildSyntheticSovereigntyStructureRow(
 			sovereigntyHub,
 			systemRow ?? null,
-			geographyBySystemId[sovereigntyHub.systemId] ?? null
+			null
 		)
 		const structureTab = getStructureTab(syntheticStructure)
 		if (!hasStructureAccessForTab(access, sovereigntyHub.corporationId, structureTab)) {
@@ -1961,471 +1790,34 @@ async function getVisibleStructureContext(
 	}
 }
 
-function getStructureSortValue(
-	structure: StructureFilterableItemBase,
-	field: StructureListSortField
-): string | number | null {
-	const sovereigntyStructure = structure as Partial<StructureSovereigntyFilterableItem>
-	const skyhookStructure = structure as Partial<StructureSkyhookFilterableItem>
-	switch (field) {
-		case 'updatedAt':
-			return new Date(structure.updatedAt).getTime()
-		case 'nextStateAt':
-			return structure.nextStateAt
-				? new Date(structure.nextStateAt).getTime()
-				: Number.POSITIVE_INFINITY
-		case 'fuel':
-			return structure.fuelExpires
-				? new Date(structure.fuelExpires).getTime()
-				: (structure.fuelAmount ?? Number.POSITIVE_INFINITY)
-		case 'activityDefenseMultiplier':
-			return parseNullableNumber(sovereigntyStructure.activityDefenseMultiplier ?? null)
-		case 'magmaticGasEstimatedDepletionAt':
-			return sovereigntyStructure.magmaticGasEstimatedDepletionAt ?? null
-		case 'superionicIceEstimatedDepletionAt':
-			return sovereigntyStructure.superionicIceEstimatedDepletionAt ?? null
-			case 'theftVulnerabilityStart':
-				return getSkyhookVulnerabilityWindowStart(
-					structure as Partial<StructureSkyhookFilterableItem> as Pick<
-						StructureSkyhookFilterableItem,
-						'theftVulnerabilityStart'
-					>
-				)
-		case 'skyhookSecureFullness':
-			return (structure as Partial<StructureSkyhookFilterableItem>).securedFillPercent ?? null
-		case 'skyhookSurplusFullness':
-			return (structure as Partial<StructureSkyhookFilterableItem>).unsecuredFillPercent ?? null
-		case 'raidable':
-			return skyhookStructure.isRaidable ? 1 : 0
-		case 'workforce':
-			return skyhookStructure.effectiveWorkforce ?? null
-		case 'group':
-			return structure.assignedGroupId ?? null
-		case 'syncStatus':
-			return skyhookStructure.syncStatus === 'error'
-				? 0
-				: skyhookStructure.syncStatus === 'warning'
-					? 1
-					: skyhookStructure.syncStatus === 'ok'
-						? 2
-						: null
-		case 'name':
-			return structure.structureId
-		case 'corporation':
-			return structure.corporationName
-		case 'region':
-			return structure.regionName ?? ''
-		case 'planet':
-			return structure.planetName ?? structure.planetId ?? ''
-		case 'system':
-			return structure.systemName ?? structure.systemId
-		case 'type':
-			return structure.typeName ?? structure.typeId
-		case 'state':
-			return structure.state
-	}
-
-	return null
-}
-
-function compareFuelStructures(
-	left: Pick<StructureFilterableItemBase, 'fuelExpires' | 'fuelAmount'>,
-	right: Pick<StructureFilterableItemBase, 'fuelExpires' | 'fuelAmount'>
-): number {
-	const leftHasExpiry = left.fuelExpires != null
-	const rightHasExpiry = right.fuelExpires != null
-	if (leftHasExpiry !== rightHasExpiry) {
-		return leftHasExpiry ? -1 : 1
-	}
-
-	if (leftHasExpiry && rightHasExpiry) {
-		return compareNullableDates(left.fuelExpires, right.fuelExpires)
-	}
-
-	return compareNullableNumbers(left.fuelAmount, right.fuelAmount)
-}
-
-function sortStructures<TItem extends StructureFilterableItemBase>(
-	items: TItem[],
-	sortBy: StructureListSortField,
-	sortDirection: StructureListSortDirection
-): TItem[] {
-	const direction = sortDirection === 'asc' ? 1 : -1
-	return [...items].sort((left, right) => {
-		let comparison = 0
-		switch (sortBy) {
-			case 'updatedAt':
-			case 'nextStateAt':
-				comparison = compareNullableDates(
-					getStructureSortValue(left, sortBy) as string | null | undefined,
-					getStructureSortValue(right, sortBy) as string | null | undefined
-				)
-				break
-			case 'activityDefenseMultiplier':
-				comparison = compareNullableNumbers(
-					getStructureSortValue(left, sortBy) as number | null | undefined,
-					getStructureSortValue(right, sortBy) as number | null | undefined
-				)
-				break
-			case 'magmaticGasEstimatedDepletionAt':
-			case 'superionicIceEstimatedDepletionAt':
-			case 'theftVulnerabilityStart':
-				comparison = compareNullableDates(
-					getStructureSortValue(left, sortBy) as string | null | undefined,
-					getStructureSortValue(right, sortBy) as string | null | undefined
-				)
-				break
-			case 'fuel':
-				comparison = compareFuelStructures(left, right)
-				break
-			case 'skyhookSecureFullness':
-			case 'skyhookSurplusFullness':
-				comparison = compareNullableNumbers(
-					getStructureSortValue(left, sortBy) as number | null | undefined,
-					getStructureSortValue(right, sortBy) as number | null | undefined
-				)
-				break
-			case 'raidable':
-			case 'workforce':
-			case 'syncStatus':
-				comparison = compareNullableNumbers(
-					getStructureSortValue(left, sortBy) as number | null | undefined,
-					getStructureSortValue(right, sortBy) as number | null | undefined
-				)
-				break
-			case 'group':
-				comparison = compareNullableStrings(
-					getStructureSortValue(left, sortBy) as string | null | undefined,
-					getStructureSortValue(right, sortBy) as string | null | undefined
-				)
-				break
-			case 'name':
-				comparison = left.structureId.localeCompare(right.structureId)
-				break
-			case 'corporation':
-				comparison = compareNullableStrings(left.corporationName, right.corporationName)
-				break
-			case 'region':
-				comparison = compareNullableStrings(left.regionName, right.regionName)
-				break
-			case 'planet':
-				comparison = compareNullableStrings(left.planetName, right.planetName)
-				break
-			case 'system':
-				comparison = compareNullableStrings(left.systemName, right.systemName)
-				break
-			case 'type':
-				comparison = compareNullableStrings(left.typeName, right.typeName)
-				break
-			case 'state':
-				comparison = left.state.localeCompare(right.state)
-				break
-		}
-
-		if (comparison !== 0) return comparison * direction
-		return left.structureId.localeCompare(right.structureId)
-	})
-}
-
-function buildCommonStructureFilterOptions<TItem extends StructureFilterableItemBase>(
-	items: TItem[]
-): StructureListFilterOptions {
-	const corporations = new Map<string, string>()
-	const assignedGroups = new Map<string, string>()
-	const regions = new Map<string, string>()
-	const systems = new Map<string, string>()
-	const states = new Set<string>()
-	const types = new Map<string, string>()
-
-	for (const structure of items) {
-		corporations.set(structure.corporationId, structure.corporationName)
-		if (structure.assignedGroupId) {
-			assignedGroups.set(structure.assignedGroupId, structure.assignedGroupId)
-		}
-		if (structure.regionId) {
-			regions.set(structure.regionId, structure.regionName ?? structure.regionId)
-		}
-		systems.set(structure.systemId, structure.systemName ?? structure.systemId)
-		states.add(structure.state)
-		types.set(structure.typeId, structure.typeName ?? structure.typeId)
-	}
-
-	return {
-		corporations: Array.from(corporations.entries())
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		assignedGroups: Array.from(assignedGroups.entries())
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		regions: Array.from(regions.entries())
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		systems: Array.from(systems.entries())
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		states: Array.from(states.values())
-			.sort((left, right) => left.localeCompare(right))
-			.map((value) => ({ value, label: value })),
-		types: Array.from(types.entries())
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		alliances: [],
-		planets: [],
-		raidableStates: [],
-	}
-}
-
-function buildStructureFilterOptions<TItem extends StructureFilterableItemBase>(
-	items: TItem[]
-): StructureListFilterOptions {
-	return buildCommonStructureFilterOptions(items)
-}
-
-function buildSkyhookFilterOptions(
-	items: StructureSkyhookFilterableItem[]
-): StructureListFilterOptions {
-	const filterOptions = buildCommonStructureFilterOptions(items)
-	const planets = new Map<string, string>()
-	const raidableStates = new Set<string>()
-
-	for (const structure of items) {
-		if (structure.planetId) {
-			planets.set(structure.planetId, structure.planetName ?? structure.planetId)
-		}
-		raidableStates.add(structure.isRaidable ? 'true' : 'false')
-	}
-
-	return {
-		...filterOptions,
-		planets: Array.from(planets.entries())
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		raidableStates: Array.from(raidableStates.values())
-			.sort((left, right) => left.localeCompare(right))
-			.map((value) => ({ value, label: value === 'true' ? 'Raidable' : 'Not raidable' })),
-	}
-}
-
-function buildMoonGeographyFilterOptions(
-	items: Array<
-		StructureFilterableItemBase & {
-			planetId: string | null
-			planetName: string | null
-		}
-	>
-): StructureListFilterOptions {
-	const filterOptions = buildCommonStructureFilterOptions(items)
-	const planets = new Map<string, string>()
-
-	for (const structure of items) {
-		if (structure.planetId) {
-			planets.set(structure.planetId, structure.planetName ?? structure.planetId)
-		}
-	}
-
-	return {
-		...filterOptions,
-		planets: Array.from(planets.entries())
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-	}
-}
-
-function getSovereigntyVulnerabilityState(
-	structure:
-		| Pick<
-				RepoStructureSovereigntyListItem,
-				'vulnerabilityWindowStart' | 'vulnerabilityWindowEnd' | 'state'
-		  >
-		| null
-		| undefined
-): SovereigntyVulnerabilityState {
-	if (!structure?.vulnerabilityWindowStart || !structure?.vulnerabilityWindowEnd) {
-		return 'unknown'
-	}
-
-	if (isReinforcedStructureState(structure.state)) {
-		return 'reinforced'
-	}
-
-	const start = new Date(structure.vulnerabilityWindowStart).getTime()
-	const end = new Date(structure.vulnerabilityWindowEnd).getTime()
-	const now = Date.now()
-	if (Number.isFinite(start) && Number.isFinite(end) && now >= start && now <= end) {
-		return 'vulnerable'
-	}
-
-	return 'invulnerable'
-}
-
-function buildSovereigntyFilterOptions(
-	items: RepoStructureSovereigntyListItem[]
-): RepoStructureSovereigntyListFilterOptions {
-	const corporations = new Map<string, string>()
-	const assignedGroups = new Map<string, string>()
-	const regions = new Map<string, string>()
-	const systems = new Map<string, string>()
-	const controllerAlliances = new Map<string, string>()
-	const vulnerabilityStates = new Set<SovereigntyVulnerabilityState>()
-
-	for (const item of items) {
-		corporations.set(item.corporationId, item.corporationName)
-		if (item.assignedGroupId) {
-			assignedGroups.set(item.assignedGroupId, item.assignedGroupId)
-		}
-		if (item.regionId) {
-			regions.set(item.regionId, item.regionName ?? item.regionId)
-		}
-		systems.set(item.systemId, item.systemName ?? item.systemId)
-		if (item.controllerAllianceId) {
-			controllerAlliances.set(
-				item.controllerAllianceId,
-				item.controllerAllianceName ?? item.controllerAllianceId
-			)
-		}
-		vulnerabilityStates.add(getSovereigntyVulnerabilityState(item))
-	}
-
-	return {
-		corporations: Array.from(corporations.entries())
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		assignedGroups: Array.from(assignedGroups.entries())
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		regions: Array.from(regions.entries())
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		systems: Array.from(systems.entries())
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		controllerAlliances: Array.from(controllerAlliances.entries())
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		vulnerabilityStates: Array.from(vulnerabilityStates.values())
-			.sort((left, right) => left.localeCompare(right))
-			.map((value) => {
-				switch (value) {
-					case 'vulnerable':
-						return { value, label: 'Vulnerable' }
-					case 'invulnerable':
-						return { value, label: 'Invulnerable' }
-					case 'reinforced':
-						return { value, label: 'Reinforced' }
-					case 'unknown':
-						return { value, label: 'Unknown' }
-				}
-			}),
-	}
-}
-
-async function buildSovereigntySummary(
+async function buildMoonStructureFilterOptionsFromSql(
 	db: DbClient<DbSchema>,
-	items: RepoStructureSovereigntyListItem[],
-	moduleConfig: Pick<
-		StructureModuleConfigResult,
-		| 'lowFuelTimeThresholdHours'
-		| 'criticalFuelTimeThresholdHours'
-		| 'lowFuelAmountThreshold'
-		| 'criticalFuelAmountThreshold'
-	>
-): Promise<RepoStructureSovereigntyListSummary> {
-	const baseSummary = buildStructureSummaryCounts(items, moduleConfig)
-	const hubBurnRates = summarizeSovereigntyHubBurnRates(items)
-	const summary: RepoStructureSovereigntyListSummary = {
-		...baseSummary,
-		vulnerable: 0,
-		invulnerable: 0,
-		reinforced: 0,
-		unknown: 0,
-		...hubBurnRates,
-	}
-
-	for (const item of items) {
-		if (isSovereigntyHubLowFuel(item, moduleConfig)) {
-			summary.lowFuel += 1
-		}
-		switch (getSovereigntyVulnerabilityState(item)) {
-			case 'vulnerable':
-				summary.vulnerable += 1
-				break
-			case 'invulnerable':
-				summary.invulnerable += 1
-				break
-			case 'reinforced':
-				summary.reinforced += 1
-				break
-			case 'unknown':
-				summary.unknown += 1
-				break
-			}
-	}
-	return summary
-}
-
-function summarizeSovereigntyHubBurnRates(items: RepoStructureSovereigntyListItem[]): Pick<
-	RepoStructureSovereigntyListSummary,
-		| 'magmaticGasBurningPerHour'
-		| 'superionicIceBurningPerHour'
-		| 'magmaticGasBurningSampleCount'
-		| 'superionicIceBurningSampleCount'
-> {
-	let magmaticGasBurningPerHour = 0
-	let superionicIceBurningPerHour = 0
-	let magmaticGasBurningSampleCount = 0
-	let superionicIceBurningSampleCount = 0
-
-	for (const item of items) {
-		if (
-			item.magmaticGasQuantity > 0 &&
-			Number.isFinite(item.magmaticGasBurningPerHour) &&
-			item.magmaticGasBurningPerHour > 0
-		) {
-			magmaticGasBurningPerHour += item.magmaticGasBurningPerHour
-			magmaticGasBurningSampleCount += 1
-		}
-		if (
-			item.superionicIceQuantity > 0 &&
-			Number.isFinite(item.superionicIceBurningPerHour) &&
-			item.superionicIceBurningPerHour > 0
-		) {
-			superionicIceBurningPerHour += item.superionicIceBurningPerHour
-			superionicIceBurningSampleCount += 1
-		}
-	}
+	visibleMoonStructures:
+		| ReturnType<typeof buildVisibleMoonDrillStructuresCte>
+		| ReturnType<typeof buildVisibleMiningCitadelStructuresCte>
+): Promise<StructureListFilterOptions> {
+	const [baseFilterOptions, planets] = await Promise.all([
+		buildOperationalStructureFilterOptions(db, visibleMoonStructures as any),
+		db
+			.with(visibleMoonStructures)
+			.selectDistinct({
+				planetId: visibleMoonStructures.planetId,
+				planetName: visibleMoonStructures.planetName,
+			})
+			.from(visibleMoonStructures)
+			.where(isNotNull(visibleMoonStructures.planetId))
+			.orderBy(asc(visibleMoonStructures.planetName)),
+	])
 
 	return {
-		magmaticGasBurningPerHour:
-			magmaticGasBurningSampleCount > 0 ? magmaticGasBurningPerHour.toFixed(4) : null,
-		superionicIceBurningPerHour:
-			superionicIceBurningSampleCount > 0 ? superionicIceBurningPerHour.toFixed(4) : null,
-		magmaticGasBurningSampleCount,
-		superionicIceBurningSampleCount,
+		...baseFilterOptions,
+		planets: planets
+			.map((row) => ({
+				value: row.planetId ?? '',
+				label: row.planetName ?? row.planetId ?? '',
+			}))
+			.filter((option) => option.value.length > 0),
 	}
-}
-
-function isSovereigntyHubLowFuel(
-	item: RepoStructureSovereigntyListItem,
-	moduleConfig: Pick<
-		StructureModuleConfigResult,
-		| 'lowFuelTimeThresholdHours'
-		| 'criticalFuelTimeThresholdHours'
-		| 'lowFuelAmountThreshold'
-		| 'criticalFuelAmountThreshold'
-	>
-): boolean {
-	const thresholdMs = moduleConfig.lowFuelTimeThresholdHours * 60 * 60 * 1000
-	const now = Date.now()
-	const magmaticGasLow =
-		item.magmaticGasQuantity > 0 &&
-		item.magmaticGasEstimatedDepletionAt !== null &&
-		new Date(item.magmaticGasEstimatedDepletionAt).getTime() - now <= thresholdMs
-	const superionicIceLow =
-		item.superionicIceQuantity > 0 &&
-		item.superionicIceEstimatedDepletionAt !== null &&
-		new Date(item.superionicIceEstimatedDepletionAt).getTime() - now <= thresholdMs
-
-	return magmaticGasLow || superionicIceLow
 }
 
 function emptySovereigntyFilterOptions(): RepoStructureSovereigntyListFilterOptions {
@@ -2466,68 +1858,6 @@ function emptyStructureListSummary(): StructureListSummary {
 		estimatedFuelBurnRatePerHour: null,
 		fuelBurnRateSampleCount: 0,
 	}
-}
-
-function buildStructureSummaryCounts(
-	items: Array<
-		Pick<
-			StructureFilterableItemBase,
-			'state' | 'lowPower' | 'lowPowerAllowed' | 'fuelAmount' | 'fuelExpires'
-		> & { estimatedFuelBurnRatePerHour?: string | null }
-	>,
-	moduleConfig: Pick<
-		StructureModuleConfigResult,
-		| 'lowFuelTimeThresholdHours'
-		| 'criticalFuelTimeThresholdHours'
-		| 'lowFuelAmountThreshold'
-		| 'criticalFuelAmountThreshold'
-	>,
-	totalCountOverride?: number
-): StructureListSummary {
-	let totalEstimatedFuelBurnRatePerHour = 0
-	let fuelBurnRateSampleCount = 0
-	for (const structure of items) {
-		if (structure.estimatedFuelBurnRatePerHour === null || structure.estimatedFuelBurnRatePerHour === undefined) {
-			continue
-		}
-
-		const burnRate = Number.parseFloat(structure.estimatedFuelBurnRatePerHour)
-		if (!Number.isFinite(burnRate)) {
-			continue
-		}
-
-		totalEstimatedFuelBurnRatePerHour += burnRate
-		fuelBurnRateSampleCount += 1
-	}
-
-	return {
-		total: totalCountOverride ?? items.length,
-		lowFuel: items.filter((structure) => isFuelBelowThreshold(structure, moduleConfig)).length,
-		lowPower: items.filter((structure) => structure.lowPower && !structure.lowPowerAllowed).length,
-		reinforced: items.filter((structure) => isReinforcedStructureState(structure.state)).length,
-		estimatedFuelBurnRatePerHour:
-			fuelBurnRateSampleCount > 0 ? totalEstimatedFuelBurnRatePerHour.toFixed(4) : null,
-		fuelBurnRateSampleCount,
-	}
-}
-
-async function buildStructureSummary(
-	items: Array<
-		Pick<
-			StructureFilterableItemBase,
-			'structureId' | 'state' | 'lowPower' | 'lowPowerAllowed' | 'fuelAmount' | 'fuelExpires'
-		> & { estimatedFuelBurnRatePerHour?: string | null }
-	>,
-	moduleConfig: Pick<
-		StructureModuleConfigResult,
-		| 'lowFuelTimeThresholdHours'
-		| 'criticalFuelTimeThresholdHours'
-		| 'lowFuelAmountThreshold'
-		| 'criticalFuelAmountThreshold'
-	>,
-	totalCountOverride?: number
-): Promise<StructureListSummary> {
-	return buildStructureSummaryCounts(items, moduleConfig, totalCountOverride)
 }
 
 async function loadFuelUsageForStructure(
@@ -2571,10 +1901,6 @@ function emptyStructureFilterOptions(): StructureListFilterOptions {
 	}
 }
 
-function emptyStructureOverviewMetrics(): StructureOverviewMetrics {
-	return emptyStructureListSummary()
-}
-
 interface StructureBaseFilterQuery {
 	corporationId?: string
 	assignedGroupId?: string
@@ -2584,13 +1910,6 @@ interface StructureBaseFilterQuery {
 	systemId?: string
 	state?: string
 	typeId?: string
-}
-
-type VisibleStructureContextsResult = {
-	moduleConfig: StructureModuleConfigResult
-	access: StructureAccessScope
-	contexts: VisibleStructureContext[]
-	totalCount: number
 }
 
 type VisibleOperationalStructureRow = {
@@ -2633,38 +1952,6 @@ type VisibleSkyhookStructureRow = VisibleOperationalStructureRow & {
 	isRaidable: boolean | null
 }
 
-type VisibleStructureContextCacheEntry = {
-	value: Promise<VisibleStructureContextsResult>
-}
-
-// Dedupes concurrent loads only; settled entries are cleared immediately.
-const visibleStructureContextCache = new Map<string, VisibleStructureContextCacheEntry>()
-
-function buildVisibleStructureContextCacheKey(
-	user: SessionUser,
-	query: StructureBaseFilterQuery,
-	tabFilter?: StructureTab
-): string {
-	return JSON.stringify({
-		userId: user.id,
-		isAdmin: user.is_admin,
-		roles: [...user.roles].sort(),
-		tabFilter: tabFilter ?? null,
-		corporationId: query.corporationId ?? null,
-		assignedGroupId: query.assignedGroupId ?? null,
-		lowPower: query.lowPower ?? null,
-		lowPowerAllowed: query.lowPowerAllowed ?? null,
-		regionId: query.regionId ?? null,
-		systemId: query.systemId ?? null,
-		state: query.state ?? null,
-		typeId: query.typeId ?? null,
-	})
-}
-
-function invalidateVisibleStructureContextCache(): void {
-	visibleStructureContextCache.clear()
-}
-
 function buildOperationalStructureListItem(
 	row: VisibleOperationalStructureRow,
 	canViewDetails: boolean
@@ -2699,99 +1986,7 @@ function buildOperationalStructureListItem(
 	}
 }
 
-async function loadVisibleStructureContextsUncached(
-	db: DbClient<DbSchema>,
-	user: SessionUser,
-	query: StructureBaseFilterQuery,
-	tabFilter?: StructureTab
-): Promise<VisibleStructureContextsResult> {
-	const moduleConfig = await getStructureModuleConfig(db)
-	const access = computeStructureAccess(user.roles, user.is_admin)
-	const corpWhere = buildVisibleStructureContextsWhere(access, query, tabFilter)
-	if (!corpWhere) {
-		return {
-			moduleConfig,
-			access,
-			contexts: [],
-			totalCount: 0,
-		}
-	}
-
-	const corpRows = await db
-		.select({
-			structure: corporationStructures,
-			config: structureConfigs,
-		})
-		.from(corporationStructures)
-		.leftJoin(structureConfigs, eq(structureConfigs.structureId, corporationStructures.structureId))
-		.where(corpWhere ?? sql`true`)
-	const [{ totalCount }] = await db
-		.select({
-			totalCount: sql<number>`count(*)::int`,
-		})
-		.from(corporationStructures)
-		.leftJoin(structureConfigs, eq(structureConfigs.structureId, corporationStructures.structureId))
-		.where(corpWhere ?? sql`true`)
-
-	const corpStructures = corpRows.map((row) => row.structure)
-	const configsByStructureId = new Map(
-		corpRows
-			.filter(
-				(row): row is (typeof corpRows)[number] & { config: typeof structureConfigs.$inferSelect } =>
-					row.config !== null
-			)
-			.map((row) => [row.structure.structureId, row.config] as const)
-	)
-	const corporationIds = [...new Set(corpStructures.map((structure) => structure.corporationId))]
-	const corporationRows = corporationIds.length
-		? await db.query.managedCorporations.findMany({
-				where: inArray(managedCorporations.corporationId, corporationIds),
-				columns: {
-					corporationId: true,
-					name: true,
-					includeInStructureAssetSync: true,
-				},
-			})
-		: []
-	const corporationById = new Map(corporationRows.map((row) => [row.corporationId, row] as const))
-
-	return {
-		moduleConfig,
-		access,
-		totalCount,
-		contexts: corpStructures
-			.map<VisibleStructureContext | null>((structure) => {
-				const config = configsByStructureId.get(structure.structureId) ?? null
-				const structureTab = getStructureTab(structure)
-				const canViewDetails =
-					user.is_admin || canViewDetailsStructure(access, structure.corporationId, structureTab)
-				const canViewSensitive =
-					user.is_admin || canViewSensitiveStructure(access, structure.corporationId, structureTab)
-				const canEdit =
-					user.is_admin || canEditStructure(access, structure.corporationId, structureTab)
-				if (config?.hidden && !canViewSensitive) {
-					return null
-				}
-
-				const corporation = corporationById.get(structure.corporationId)
-
-				return {
-					structure,
-					corporationName: corporation?.name ?? structure.corporationId,
-					includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
-					config,
-					canViewDetails,
-					canViewSensitive,
-					canEdit,
-					tabData: null,
-					fittingItems: null,
-					lastRefilledAt: null,
-					fuelUsage: null,
-				}
-			})
-			.filter((item): item is VisibleStructureContext => item !== null)
-	}
-}
+function invalidateVisibleStructureContextCache(): void {}
 
 function buildVisibleStructureContextsWhere(
 	access: StructureAccessScope,
@@ -2855,65 +2050,6 @@ function buildVisibleStructureContextsWhere(
 	}
 	conditions.push(or(...hiddenVisibilityConditions) ?? sql`false`)
 	return combineWhereConditions(conditions)
-}
-
-function buildCommonStructureFilterOptionsFromRows(
-	rows: Array<{
-		corporationId: string
-		corporationName: string | null
-		assignedGroupId: string | null
-		regionId: string | null
-		regionName: string | null
-		systemId: string
-		systemName: string | null
-		state: string
-		typeId: string
-		typeName: string | null
-	}>
-): StructureListFilterOptions {
-	const corporations = new Map<string, string>()
-	const assignedGroups = new Map<string, string>()
-	const regions = new Map<string, string>()
-	const systems = new Map<string, string>()
-	const states = new Set<string>()
-	const types = new Map<string, string>()
-
-	for (const row of rows) {
-		corporations.set(row.corporationId, row.corporationName ?? row.corporationId)
-		if (row.assignedGroupId) {
-			assignedGroups.set(row.assignedGroupId, row.assignedGroupId)
-		}
-		if (row.regionId) {
-			regions.set(row.regionId, row.regionName ?? row.regionId)
-		}
-		systems.set(row.systemId, row.systemName ?? row.systemId)
-		states.add(row.state)
-		types.set(row.typeId, row.typeName ?? row.typeId)
-	}
-
-	return {
-		corporations: [...corporations.entries()]
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		assignedGroups: [...assignedGroups.entries()]
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		regions: [...regions.entries()]
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		systems: [...systems.entries()]
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		states: [...states.values()]
-			.sort((left, right) => left.localeCompare(right))
-			.map((value) => ({ value, label: value })),
-		types: [...types.entries()]
-			.sort((left, right) => left[1].localeCompare(right[1]))
-			.map(([value, label]) => ({ value, label })),
-		alliances: [],
-		planets: [],
-		raidableStates: [],
-	}
 }
 
 function buildVisibleOperationalStructuresCte(db: DbClient<DbSchema>, corpWhere: any) {
@@ -3009,7 +2145,7 @@ function extractSkyhookSummaryFillPercentSql(source: any, field: 'securedFillPer
 }
 
 function buildSkyhookSortOrder(
-	sortBy: StructureListSortField,
+	sortBy: StructureSkyhookListSortBy,
 	sortDirection: StructureListSortDirection,
 	source: any
 ) {
@@ -3079,30 +2215,6 @@ function buildSkyhookSortOrder(
 			]
 		default:
 			return null
-	}
-}
-
-function isSqlPagedSkyhookSort(sortBy: StructureListSortField): boolean {
-	switch (sortBy) {
-		case 'fuel':
-		case 'updatedAt':
-		case 'nextStateAt':
-		case 'theftVulnerabilityStart':
-		case 'skyhookSecureFullness':
-		case 'skyhookSurplusFullness':
-		case 'raidable':
-		case 'workforce':
-		case 'name':
-		case 'corporation':
-		case 'region':
-		case 'system':
-		case 'type':
-		case 'state':
-		case 'group':
-		case 'syncStatus':
-			return true
-		default:
-			return false
 	}
 }
 
@@ -3402,6 +2514,505 @@ async function buildSkyhookStructureSummaryFromSql(
 	}
 }
 
+function buildSovereigntySummaryDateSql(source: any, field: string) {
+	return sql<string | null>`nullif(${source.reagentBay} -> 'summary' ->> ${field}, '')`
+}
+
+function buildSovereigntySortOrder(
+	sortBy: StructureSovereigntyListSortBy,
+	sortDirection: StructureListSortDirection,
+	source: any
+) {
+	const descending = sortDirection === 'desc'
+	const sortExpression = (expression: any) => (descending ? desc(expression) : asc(expression))
+	const depletionSort = (field: 'magmaticGasEstimatedDepletionAt' | 'superionicIceEstimatedDepletionAt') =>
+		sortExpression(buildSovereigntySummaryDateSql(source, field))
+
+	switch (sortBy) {
+		case 'fuel':
+		case 'nextStateAt':
+		case 'group':
+		case 'state':
+			return [sortExpression(source.structureId)]
+		case 'updatedAt':
+			return [sortExpression(source.updatedAt), sortExpression(source.structureId)]
+		case 'name':
+			return [sortExpression(sql`coalesce(${source.name}, '')`), sortExpression(source.structureId)]
+		case 'corporation':
+			return [sortExpression(sql`coalesce(${source.corporationName}, '')`), sortExpression(source.structureId)]
+		case 'region':
+			return [sortExpression(sql`coalesce(${source.regionName}, '')`), sortExpression(source.structureId)]
+		case 'system':
+			return [sortExpression(sql`coalesce(${source.systemName}, '')`), sortExpression(source.structureId)]
+		case 'type':
+			return [sortExpression(sql`coalesce(${source.typeName}, '')`), sortExpression(source.structureId)]
+		case 'syncStatus':
+			return [
+				sortExpression(
+					sql`case ${source.syncStatus} when 'error' then 0 when 'warning' then 1 when 'ok' then 2 else null end`
+				),
+				sortExpression(source.structureId),
+			]
+		case 'activityDefenseMultiplier':
+			return [sortExpression(source.activityDefenseMultiplier), sortExpression(source.structureId)]
+		case 'magmaticGasEstimatedDepletionAt':
+			return [depletionSort('magmaticGasEstimatedDepletionAt'), sortExpression(source.structureId)]
+		case 'superionicIceEstimatedDepletionAt':
+			return [depletionSort('superionicIceEstimatedDepletionAt'), sortExpression(source.structureId)]
+		default:
+			return [sortExpression(source.structureId)]
+	}
+}
+
+function buildVisibleSovereigntyStructuresCte(db: DbClient<DbSchema>, corpWhere: any) {
+	return db.$with('visible_sovereignty_structures').as(
+		db
+			.select({
+				structureId: structureSovereigntyHubs.structureId,
+				corporationId: structureSovereigntyHubs.corporationId,
+				corporationName: managedCorporations.name,
+				includeInStructureAssetSync: managedCorporations.includeInStructureAssetSync,
+				typeId: structureSovereigntyHubs.typeId,
+				typeName: sql<string>`'Sovereignty Hub'`,
+				systemId: structureSovereigntyHubs.systemId,
+				systemName: structureSovereigntyHubs.systemName,
+				regionId: structureSovereigntySystems.regionId,
+				regionName: structureSovereigntySystems.regionName,
+				claimType: structureSovereigntySystems.claimType,
+				allianceId: structureSovereigntySystems.allianceId,
+				allianceName: structureSovereigntySystems.allianceName,
+				corporationClaimantId: structureSovereigntySystems.corporationClaimantId,
+				factionId: structureSovereigntySystems.factionId,
+				claimedSince: structureSovereigntySystems.claimedSince,
+				sovereigntyHubStructureId: structureSovereigntySystems.sovereigntyHubStructureId,
+				isCapitalSystem: structureSovereigntySystems.isCapitalSystem,
+				vulnerabilityWindowStart: structureSovereigntySystems.vulnerabilityWindowStart,
+				vulnerabilityWindowEnd: structureSovereigntySystems.vulnerabilityWindowEnd,
+				activityDefenseMultiplier: structureSovereigntySystems.activityDefenseMultiplier,
+				militaryLevel: structureSovereigntySystems.militaryLevel,
+				industrialLevel: structureSovereigntySystems.industrialLevel,
+				strategicLevel: structureSovereigntySystems.strategicLevel,
+				controllerAllianceId: structureSovereigntyHubs.controllerAllianceId,
+				controllerAllianceName: structureSovereigntyHubs.controllerAllianceName,
+				reagentBayLastUpdated: structureSovereigntyHubs.reagentBayLastUpdated,
+				reagentBay: structureSovereigntyHubs.reagentBay,
+				resources: structureSovereigntyHubs.resources,
+				upgrades: structureSovereigntyHubs.upgrades,
+				workforceTransport: structureSovereigntyHubs.workforceTransport,
+				syncStatus: structureSovereigntyHubs.syncStatus,
+				syncFailureReason: structureSovereigntyHubs.syncFailureReason,
+				sourceSyncAt: structureSovereigntyHubs.sourceSyncAt,
+				lastSyncedAt: structureSovereigntyHubs.lastSyncedAt,
+				updatedAt: sql<Date>`coalesce(${structureSovereigntySystems.updatedAt}, ${structureSovereigntyHubs.updatedAt})`,
+			})
+			.from(structureSovereigntyHubs)
+			.leftJoin(
+				structureSovereigntySystems,
+				eq(structureSovereigntySystems.systemId, structureSovereigntyHubs.systemId)
+			)
+			.leftJoin(managedCorporations, eq(managedCorporations.corporationId, structureSovereigntyHubs.corporationId))
+			.where(corpWhere ?? sql`true`)
+	)
+}
+
+function buildVisibleSovereigntyWhere(
+	access: StructureAccessScope,
+	query: StructureSovereigntyListQuery
+): any {
+	const accessibleCorporations = getAccessibleCorporationIds(access, 'sovereignty')
+	if (!accessibleCorporations.hasGlobalAccess && accessibleCorporations.corporationIds.size === 0) {
+		return eq(structureSovereigntyHubs.corporationId, '__no_access__')
+	}
+
+	const conditions: StructureWhereCondition[] = []
+	if (query.corporationId) {
+		conditions.push(eq(structureSovereigntyHubs.corporationId, query.corporationId))
+	}
+	if (!accessibleCorporations.hasGlobalAccess) {
+		conditions.push(
+			inArray(structureSovereigntyHubs.corporationId, [...accessibleCorporations.corporationIds])
+		)
+	}
+	if (query.systemId) {
+		conditions.push(eq(structureSovereigntyHubs.systemId, query.systemId))
+	}
+	if (query.regionId) {
+		conditions.push(eq(structureSovereigntySystems.regionId, query.regionId))
+	}
+	if (query.controllerAllianceId) {
+		conditions.push(eq(structureSovereigntyHubs.controllerAllianceId, query.controllerAllianceId))
+	}
+	if (query.vulnerabilityState) {
+		switch (query.vulnerabilityState) {
+			case 'vulnerable':
+				{
+					const condition = combineWhereConditions([
+						isNotNull(structureSovereigntySystems.vulnerabilityWindowStart),
+						isNotNull(structureSovereigntySystems.vulnerabilityWindowEnd),
+						sql`now() >= ${structureSovereigntySystems.vulnerabilityWindowStart}`,
+						sql`now() <= ${structureSovereigntySystems.vulnerabilityWindowEnd}`,
+					])
+					if (condition) {
+						conditions.push(condition)
+					}
+				}
+				break
+			case 'invulnerable':
+				{
+					const condition = combineWhereConditions([
+						isNotNull(structureSovereigntySystems.vulnerabilityWindowStart),
+						isNotNull(structureSovereigntySystems.vulnerabilityWindowEnd),
+						or(
+							sql`now() < ${structureSovereigntySystems.vulnerabilityWindowStart}`,
+							sql`now() > ${structureSovereigntySystems.vulnerabilityWindowEnd}`
+						),
+					])
+					if (condition) {
+						conditions.push(condition)
+					}
+				}
+				break
+			case 'reinforced':
+				conditions.push(sql`false`)
+				break
+		}
+	}
+	return combineWhereConditions(conditions)
+}
+
+async function buildSovereigntyStructureFilterOptionsFromSql(
+	db: DbClient<DbSchema>,
+	visibleSovereigntyStructures: ReturnType<typeof buildVisibleSovereigntyStructuresCte>
+): Promise<RepoStructureSovereigntyListFilterOptions> {
+	const visibleRowsDb = db.with(visibleSovereigntyStructures)
+	const vulnerableExpression = sql<boolean>`
+		${visibleSovereigntyStructures.vulnerabilityWindowStart} is not null
+		and ${visibleSovereigntyStructures.vulnerabilityWindowEnd} is not null
+		and now() >= ${visibleSovereigntyStructures.vulnerabilityWindowStart}
+		and now() <= ${visibleSovereigntyStructures.vulnerabilityWindowEnd}
+	`
+	const invulnerableExpression = sql<boolean>`
+		${visibleSovereigntyStructures.vulnerabilityWindowStart} is not null
+		and ${visibleSovereigntyStructures.vulnerabilityWindowEnd} is not null
+		and (now() < ${visibleSovereigntyStructures.vulnerabilityWindowStart}
+			or now() > ${visibleSovereigntyStructures.vulnerabilityWindowEnd})
+	`
+	const unknownExpression = sql<boolean>`
+		${visibleSovereigntyStructures.vulnerabilityWindowStart} is null
+		or ${visibleSovereigntyStructures.vulnerabilityWindowEnd} is null
+	`
+	const [corporations, regions, systems, controllerAlliances, vulnerabilityCounts] = await Promise.all([
+			visibleRowsDb
+				.selectDistinct({
+					corporationId: visibleSovereigntyStructures.corporationId,
+					corporationName: visibleSovereigntyStructures.corporationName,
+				})
+				.from(visibleSovereigntyStructures)
+				.orderBy(asc(visibleSovereigntyStructures.corporationName)),
+			visibleRowsDb
+				.selectDistinct({
+					regionId: visibleSovereigntyStructures.regionId,
+					regionName: visibleSovereigntyStructures.regionName,
+				})
+				.from(visibleSovereigntyStructures)
+				.where(isNotNull(visibleSovereigntyStructures.regionId))
+				.orderBy(asc(visibleSovereigntyStructures.regionName)),
+			visibleRowsDb
+				.selectDistinct({
+					systemId: visibleSovereigntyStructures.systemId,
+					systemName: visibleSovereigntyStructures.systemName,
+				})
+				.from(visibleSovereigntyStructures)
+				.orderBy(asc(visibleSovereigntyStructures.systemName)),
+			visibleRowsDb
+				.selectDistinct({
+					controllerAllianceId: visibleSovereigntyStructures.controllerAllianceId,
+				})
+				.from(visibleSovereigntyStructures)
+				.where(isNotNull(visibleSovereigntyStructures.controllerAllianceId))
+				.orderBy(asc(visibleSovereigntyStructures.controllerAllianceId)),
+			visibleRowsDb
+				.select({
+					vulnerable: sql<number>`coalesce(sum(case when ${vulnerableExpression} then 1 else 0 end), 0)::int`,
+					invulnerable: sql<number>`coalesce(sum(case when ${invulnerableExpression} then 1 else 0 end), 0)::int`,
+					unknown: sql<number>`coalesce(sum(case when ${unknownExpression} then 1 else 0 end), 0)::int`,
+				})
+				.from(visibleSovereigntyStructures),
+	])
+
+	return {
+		corporations: corporations
+			.map((row) => ({
+				value: row.corporationId,
+				label: row.corporationName ?? row.corporationId,
+			}))
+			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+		assignedGroups: [],
+		regions: regions
+			.map((row) => ({
+				value: row.regionId ?? '',
+				label: row.regionName ?? row.regionId ?? '',
+			}))
+			.filter((option) => option.value.length > 0),
+		systems: systems
+			.map((row) => ({
+				value: row.systemId,
+				label: row.systemName ?? row.systemId,
+			}))
+			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+		controllerAlliances: controllerAlliances
+			.map((row) => ({
+				value: row.controllerAllianceId ?? '',
+				label: row.controllerAllianceId ?? '',
+			}))
+			.filter((option) => option.value.length > 0),
+		vulnerabilityStates: [
+			vulnerabilityCounts[0]?.vulnerable ? { value: 'vulnerable', label: 'Vulnerable' } : null,
+			vulnerabilityCounts[0]?.invulnerable ? { value: 'invulnerable', label: 'Invulnerable' } : null,
+			vulnerabilityCounts[0]?.unknown ? { value: 'unknown', label: 'Unknown' } : null,
+		].filter((entry): entry is NonNullable<typeof entry> => entry !== null),
+	}
+}
+
+async function buildSovereigntyStructureSummaryFromSql(
+	db: DbClient<DbSchema>,
+	visibleSovereigntyStructures: ReturnType<typeof buildVisibleSovereigntyStructuresCte>,
+	moduleConfig: Pick<
+		StructureModuleConfigResult,
+		| 'lowFuelTimeThresholdHours'
+		| 'criticalFuelTimeThresholdHours'
+		| 'lowFuelAmountThreshold'
+		| 'criticalFuelAmountThreshold'
+	>
+): Promise<RepoStructureSovereigntyListSummary> {
+	const visibleRowsDb = db.with(visibleSovereigntyStructures)
+	const lowFuelThresholdAt = new Date(
+		Date.now() + moduleConfig.lowFuelTimeThresholdHours * HOURS_TO_MS
+	)
+	const magmaticGasQuantityExpression = sql<number>`coalesce(((${visibleSovereigntyStructures.reagentBay} -> 'summary' ->> 'magmaticGasQuantity')::int), 0)`
+	const magmaticGasBurningPerHourExpression = sql<number>`coalesce(((${visibleSovereigntyStructures.reagentBay} -> 'summary' ->> 'magmaticGasBurningPerHour')::numeric), 0)`
+	const magmaticGasDepletionExpression = buildSovereigntySummaryDateSql(
+		visibleSovereigntyStructures,
+		'magmaticGasEstimatedDepletionAt'
+	)
+	const superionicIceQuantityExpression = sql<number>`coalesce(((${visibleSovereigntyStructures.reagentBay} -> 'summary' ->> 'superionicIceQuantity')::int), 0)`
+	const superionicIceBurningPerHourExpression = sql<number>`coalesce(((${visibleSovereigntyStructures.reagentBay} -> 'summary' ->> 'superionicIceBurningPerHour')::numeric), 0)`
+	const superionicIceDepletionExpression = buildSovereigntySummaryDateSql(
+		visibleSovereigntyStructures,
+		'superionicIceEstimatedDepletionAt'
+	)
+	const vulnerableExpression = sql<boolean>`
+		${visibleSovereigntyStructures.vulnerabilityWindowStart} is not null
+		and ${visibleSovereigntyStructures.vulnerabilityWindowEnd} is not null
+		and now() >= ${visibleSovereigntyStructures.vulnerabilityWindowStart}
+		and now() <= ${visibleSovereigntyStructures.vulnerabilityWindowEnd}
+	`
+	const invulnerableExpression = sql<boolean>`
+		${visibleSovereigntyStructures.vulnerabilityWindowStart} is not null
+		and ${visibleSovereigntyStructures.vulnerabilityWindowEnd} is not null
+		and (now() < ${visibleSovereigntyStructures.vulnerabilityWindowStart}
+			or now() > ${visibleSovereigntyStructures.vulnerabilityWindowEnd})
+	`
+	const lowFuelExpression = sql<boolean>`
+		(
+			${magmaticGasQuantityExpression} > 0
+			and ${magmaticGasDepletionExpression} is not null
+			and ${magmaticGasDepletionExpression}::timestamptz <= ${lowFuelThresholdAt}
+		)
+		or (
+			${superionicIceQuantityExpression} > 0
+			and ${superionicIceDepletionExpression} is not null
+			and ${superionicIceDepletionExpression}::timestamptz <= ${lowFuelThresholdAt}
+		)
+	`
+	const [totalResult, lowFuelResult, vulnerableResult, invulnerableResult, unknownResult, hubBurnRateResult] =
+		await Promise.all([
+			visibleRowsDb
+				.select({
+					total: sql<number>`count(*)::int`,
+				})
+				.from(visibleSovereigntyStructures),
+			visibleRowsDb
+				.select({
+					count: sql<number>`coalesce(sum(case when ${lowFuelExpression} then 1 else 0 end), 0)::int`,
+				})
+				.from(visibleSovereigntyStructures),
+			visibleRowsDb
+				.select({
+					count: sql<number>`coalesce(sum(case when ${vulnerableExpression} then 1 else 0 end), 0)::int`,
+				})
+				.from(visibleSovereigntyStructures),
+			visibleRowsDb
+				.select({
+					count: sql<number>`coalesce(sum(case when ${invulnerableExpression} then 1 else 0 end), 0)::int`,
+				})
+				.from(visibleSovereigntyStructures),
+			visibleRowsDb
+				.select({
+					count: sql<number>`coalesce(sum(case when ${vulnerableExpression} or ${invulnerableExpression} then 0 else 1 end), 0)::int`,
+				})
+				.from(visibleSovereigntyStructures),
+			visibleRowsDb
+				.select({
+					magmaticGasBurningPerHour: sql<string | null>`sum(case when ${magmaticGasQuantityExpression} > 0 and ${magmaticGasBurningPerHourExpression} > 0 then ${magmaticGasBurningPerHourExpression} else 0 end)::text`,
+					magmaticGasBurningSampleCount: sql<number>`coalesce(sum(case when ${magmaticGasQuantityExpression} > 0 and ${magmaticGasBurningPerHourExpression} > 0 then 1 else 0 end), 0)::int`,
+					superionicIceBurningPerHour: sql<string | null>`sum(case when ${superionicIceQuantityExpression} > 0 and ${superionicIceBurningPerHourExpression} > 0 then ${superionicIceBurningPerHourExpression} else 0 end)::text`,
+					superionicIceBurningSampleCount: sql<number>`coalesce(sum(case when ${superionicIceQuantityExpression} > 0 and ${superionicIceBurningPerHourExpression} > 0 then 1 else 0 end), 0)::int`,
+				})
+				.from(visibleSovereigntyStructures),
+		])
+
+	return {
+		total: totalResult[0]?.total ?? 0,
+		lowFuel: lowFuelResult[0]?.count ?? 0,
+		lowPower: 0,
+		reinforced: 0,
+		estimatedFuelBurnRatePerHour: null,
+		fuelBurnRateSampleCount: 0,
+		vulnerable: vulnerableResult[0]?.count ?? 0,
+		invulnerable: invulnerableResult[0]?.count ?? 0,
+		unknown: unknownResult[0]?.count ?? 0,
+		magmaticGasBurningPerHour: hubBurnRateResult[0]?.magmaticGasBurningPerHour ?? null,
+		superionicIceBurningPerHour: hubBurnRateResult[0]?.superionicIceBurningPerHour ?? null,
+		magmaticGasBurningSampleCount: hubBurnRateResult[0]?.magmaticGasBurningSampleCount ?? 0,
+		superionicIceBurningSampleCount: hubBurnRateResult[0]?.superionicIceBurningSampleCount ?? 0,
+	}
+}
+
+async function loadVisibleSovereigntyPageItems(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	access: StructureAccessScope,
+	query: StructureSovereigntyListQuery,
+	visibleSovereigntyStructures: ReturnType<typeof buildVisibleSovereigntyStructuresCte>,
+	pageOverride?: number
+): Promise<RepoStructureSovereigntyListItem[]> {
+	const sortBy = query.sortBy ?? 'fuel'
+	const sortDirection = query.sortDirection ?? 'asc'
+	const sortOrder = buildSovereigntySortOrder(sortBy, sortDirection, visibleSovereigntyStructures)
+	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
+	const page = Math.max(pageOverride ?? query.page ?? 1, 1)
+	const offset = (page - 1) * pageSize
+	const rows = await db
+		.with(visibleSovereigntyStructures)
+		.select({
+			structureId: visibleSovereigntyStructures.structureId,
+			corporationId: visibleSovereigntyStructures.corporationId,
+			corporationName: visibleSovereigntyStructures.corporationName,
+			includeInStructureAssetSync: visibleSovereigntyStructures.includeInStructureAssetSync,
+			typeId: visibleSovereigntyStructures.typeId,
+			typeName: visibleSovereigntyStructures.typeName,
+			systemId: visibleSovereigntyStructures.systemId,
+			systemName: visibleSovereigntyStructures.systemName,
+			regionId: visibleSovereigntyStructures.regionId,
+			regionName: visibleSovereigntyStructures.regionName,
+			claimType: visibleSovereigntyStructures.claimType,
+			allianceId: visibleSovereigntyStructures.allianceId,
+			allianceName: visibleSovereigntyStructures.allianceName,
+			corporationClaimantId: visibleSovereigntyStructures.corporationClaimantId,
+			factionId: visibleSovereigntyStructures.factionId,
+			claimedSince: visibleSovereigntyStructures.claimedSince,
+			sovereigntyHubStructureId: visibleSovereigntyStructures.sovereigntyHubStructureId,
+			isCapitalSystem: visibleSovereigntyStructures.isCapitalSystem,
+			vulnerabilityWindowStart: visibleSovereigntyStructures.vulnerabilityWindowStart,
+			vulnerabilityWindowEnd: visibleSovereigntyStructures.vulnerabilityWindowEnd,
+			activityDefenseMultiplier: visibleSovereigntyStructures.activityDefenseMultiplier,
+			militaryLevel: visibleSovereigntyStructures.militaryLevel,
+			industrialLevel: visibleSovereigntyStructures.industrialLevel,
+			strategicLevel: visibleSovereigntyStructures.strategicLevel,
+			controllerAllianceId: visibleSovereigntyStructures.controllerAllianceId,
+			controllerAllianceName: visibleSovereigntyStructures.controllerAllianceName,
+			reagentBayLastUpdated: visibleSovereigntyStructures.reagentBayLastUpdated,
+			reagentBay: visibleSovereigntyStructures.reagentBay,
+			resources: visibleSovereigntyStructures.resources,
+			upgrades: visibleSovereigntyStructures.upgrades,
+			workforceTransport: visibleSovereigntyStructures.workforceTransport,
+			syncStatus: visibleSovereigntyStructures.syncStatus,
+			syncFailureReason: visibleSovereigntyStructures.syncFailureReason,
+			sourceSyncAt: visibleSovereigntyStructures.sourceSyncAt,
+			lastSyncedAt: visibleSovereigntyStructures.lastSyncedAt,
+			updatedAt: visibleSovereigntyStructures.updatedAt,
+		})
+		.from(visibleSovereigntyStructures)
+		.orderBy(...sortOrder)
+		.limit(pageSize)
+		.offset(offset)
+
+	return rows.map((row) => {
+		const hubRow = {
+			structureId: row.structureId,
+			corporationId: row.corporationId,
+			systemId: row.systemId,
+			systemName: row.systemName,
+			typeId: row.typeId,
+			fuelAccessListId: null,
+			controllerAllianceId: row.controllerAllianceId,
+			controllerAllianceName: row.controllerAllianceName,
+			reagentBayLastUpdated: row.reagentBayLastUpdated,
+			reagentBay: row.reagentBay,
+			resources: row.resources,
+			upgrades: row.upgrades,
+			vulnerabilityWindowStart: row.vulnerabilityWindowStart,
+			vulnerabilityWindowEnd: row.vulnerabilityWindowEnd,
+			workforceTransport: row.workforceTransport,
+			syncStatus: row.syncStatus,
+			syncFailureReason: row.syncFailureReason,
+			sourceSyncAt: row.sourceSyncAt,
+			lastSyncedAt: row.lastSyncedAt,
+			updatedAt: row.updatedAt,
+		} satisfies typeof structureSovereigntyHubs.$inferSelect
+		const systemRow = {
+			systemId: row.systemId,
+			systemName: row.systemName,
+			corporationId: row.corporationId,
+			claimType: row.claimType ?? 'unclaimed',
+			allianceId: row.allianceId,
+			allianceName: row.allianceName,
+			corporationClaimantId: row.corporationClaimantId,
+			factionId: row.factionId,
+			regionId: row.regionId,
+			regionName: row.regionName,
+			claimedSince: row.claimedSince,
+			sovereigntyHubStructureId: row.sovereigntyHubStructureId,
+			isCapitalSystem: row.isCapitalSystem,
+			vulnerabilityWindowStart: row.vulnerabilityWindowStart,
+			vulnerabilityWindowEnd: row.vulnerabilityWindowEnd,
+			activityDefenseMultiplier: row.activityDefenseMultiplier,
+			militaryLevel: row.militaryLevel,
+			industrialLevel: row.industrialLevel,
+			strategicLevel: row.strategicLevel,
+			updatedAt: row.updatedAt,
+			lastSyncedAt: row.lastSyncedAt,
+			sourceSyncAt: row.sourceSyncAt,
+		} satisfies typeof structureSovereigntySystems.$inferSelect
+		const structure = buildSyntheticSovereigntyStructureRow(hubRow, systemRow, null)
+		const structureTab = getStructureTab(structure)
+		const canViewDetails =
+			user.is_admin || canViewDetailsStructure(access, row.corporationId, structureTab)
+		const canViewSensitive =
+			user.is_admin || canViewSensitiveStructure(access, row.corporationId, structureTab)
+		const canEdit = user.is_admin || canEditStructure(access, row.corporationId, structureTab)
+		const context: VisibleStructureContext = {
+			structure,
+			corporationName: row.corporationName ?? row.corporationId,
+			includeInStructureAssetSync: row.includeInStructureAssetSync ?? false,
+			config: null,
+			canViewDetails,
+			canViewSensitive,
+			canEdit,
+			tabData: null,
+			fittingItems: null,
+			lastRefilledAt: null,
+			fuelUsage: null,
+		}
+		return buildSovereigntyListItem({
+			context,
+			systemRow,
+			hubRow,
+		})
+	})
+}
+
 async function loadVisibleSkyhookPageItems(
 	db: DbClient<DbSchema>,
 	user: SessionUser,
@@ -3471,6 +3082,197 @@ async function loadVisibleSkyhookPageItems(
 		const canViewDetails =
 			user.is_admin || canViewDetailsStructure(access, row.corporationId, structureTab)
 		return buildSkyhookListItemFromRow(row, canViewDetails)
+	})
+}
+
+async function loadVisibleMoonDrillPageItems(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	access: StructureAccessScope,
+	query: StructureMoonDrillListQuery,
+	visibleMoonDrillStructures: ReturnType<typeof buildVisibleMoonDrillStructuresCte>,
+	pageOverride?: number
+): Promise<RepoStructureMoonDrillListItem[]> {
+	const sortBy = query.sortBy ?? 'fuel'
+	const sortDirection = query.sortDirection ?? 'asc'
+	const sortOrder = buildMoonStructureSortOrder(sortBy, sortDirection, visibleMoonDrillStructures)
+	if (!sortOrder) {
+		return []
+	}
+
+	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
+	const page = Math.max(pageOverride ?? query.page ?? 1, 1)
+	const offset = (page - 1) * pageSize
+	const rows = await db
+		.with(visibleMoonDrillStructures)
+		.select({
+			structureId: visibleMoonDrillStructures.structureId,
+			corporationId: visibleMoonDrillStructures.corporationId,
+			corporationName: visibleMoonDrillStructures.corporationName,
+			name: visibleMoonDrillStructures.name,
+			typeId: visibleMoonDrillStructures.typeId,
+			typeName: visibleMoonDrillStructures.typeName,
+			systemId: visibleMoonDrillStructures.systemId,
+			systemName: visibleMoonDrillStructures.systemName,
+			regionId: visibleMoonDrillStructures.regionId,
+			regionName: visibleMoonDrillStructures.regionName,
+			state: visibleMoonDrillStructures.state,
+			stateTimerEnd: visibleMoonDrillStructures.stateTimerEnd,
+			nextReinforceApply: visibleMoonDrillStructures.nextReinforceApply,
+			unanchorsAt: visibleMoonDrillStructures.unanchorsAt,
+			fuelExpires: visibleMoonDrillStructures.fuelExpires,
+			fuelAmount: visibleMoonDrillStructures.fuelAmount,
+			fuelBurnRate: visibleMoonDrillStructures.fuelBurnRate,
+			lowPower: visibleMoonDrillStructures.lowPower,
+			hidden: visibleMoonDrillStructures.hidden,
+			lowPowerAllowed: visibleMoonDrillStructures.lowPowerAllowed,
+			assignedGroupId: visibleMoonDrillStructures.assignedGroupId,
+			syncStatus: visibleMoonDrillStructures.syncStatus,
+			syncFailureReason: visibleMoonDrillStructures.syncFailureReason,
+			lastSyncedAt: visibleMoonDrillStructures.lastSyncedAt,
+			updatedAt: visibleMoonDrillStructures.updatedAt,
+			moonDrillStructureId: visibleMoonDrillStructures.moonDrillStructureId,
+			moonId: visibleMoonDrillStructures.moonId,
+			moonName: visibleMoonDrillStructures.moonName,
+			planetId: visibleMoonDrillStructures.planetId,
+			planetName: visibleMoonDrillStructures.planetName,
+			moonDrillLastSyncedAt: visibleMoonDrillStructures.moonDrillLastSyncedAt,
+			moonDrillUpdatedAt: visibleMoonDrillStructures.moonDrillUpdatedAt,
+		})
+		.from(visibleMoonDrillStructures)
+		.orderBy(...sortOrder)
+		.limit(pageSize)
+		.offset(offset)
+
+	return rows.map((row) => {
+		const structureTab = getStructureTab({
+			typeId: row.typeId,
+			typeName: row.typeName,
+		})
+		const canViewDetails =
+			user.is_admin || canViewDetailsStructure(access, row.corporationId, structureTab)
+		const hasMoonDrillSnapshot = row.moonDrillStructureId !== null && row.moonId !== null
+
+		return {
+			...buildOperationalStructureListItem(row, canViewDetails),
+			name: row.name ?? row.structureId,
+			planetId: row.planetId ?? null,
+			planetName: row.planetName ?? null,
+			moonId: row.moonId ?? '',
+			moonName: row.moonName ?? null,
+			syncStatus: hasMoonDrillSnapshot ? getSnapshotSyncStatus(row.moonDrillLastSyncedAt) : 'warning',
+			syncFailureReason: hasMoonDrillSnapshot
+				? null
+				: 'Moon drill snapshot has not been ingested yet for this structure.',
+			lastSyncedAt: toIso(row.moonDrillLastSyncedAt ?? row.lastSyncedAt),
+			updatedAt: (row.moonDrillUpdatedAt ?? row.updatedAt).toISOString(),
+		}
+	})
+}
+
+async function loadVisibleMiningCitadelPageItems(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	access: StructureAccessScope,
+	query: StructureMiningCitadelListQuery,
+	visibleMiningStructures: ReturnType<typeof buildVisibleMiningCitadelStructuresCte>,
+	pageOverride?: number
+): Promise<RepoStructureMiningCitadelListItem[]> {
+	const sortBy = query.sortBy ?? 'fuel'
+	const sortDirection = query.sortDirection ?? 'asc'
+	const sortOrder = buildMoonStructureSortOrder(sortBy, sortDirection, visibleMiningStructures)
+	if (!sortOrder) {
+		return []
+	}
+
+	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
+	const page = Math.max(pageOverride ?? query.page ?? 1, 1)
+	const offset = (page - 1) * pageSize
+	const rows = await db
+		.with(visibleMiningStructures)
+		.select({
+			structureId: visibleMiningStructures.structureId,
+			corporationId: visibleMiningStructures.corporationId,
+			corporationName: visibleMiningStructures.corporationName,
+			name: visibleMiningStructures.name,
+			typeId: visibleMiningStructures.typeId,
+			typeName: visibleMiningStructures.typeName,
+			systemId: visibleMiningStructures.systemId,
+			systemName: visibleMiningStructures.systemName,
+			regionId: visibleMiningStructures.regionId,
+			regionName: visibleMiningStructures.regionName,
+			state: visibleMiningStructures.state,
+			stateTimerEnd: visibleMiningStructures.stateTimerEnd,
+			nextReinforceApply: visibleMiningStructures.nextReinforceApply,
+			unanchorsAt: visibleMiningStructures.unanchorsAt,
+			fuelExpires: visibleMiningStructures.fuelExpires,
+			fuelAmount: visibleMiningStructures.fuelAmount,
+			fuelBurnRate: visibleMiningStructures.fuelBurnRate,
+			lowPower: visibleMiningStructures.lowPower,
+			hidden: visibleMiningStructures.hidden,
+			lowPowerAllowed: visibleMiningStructures.lowPowerAllowed,
+			assignedGroupId: visibleMiningStructures.assignedGroupId,
+			syncStatus: visibleMiningStructures.syncStatus,
+			syncFailureReason: visibleMiningStructures.syncFailureReason,
+			lastSyncedAt: visibleMiningStructures.lastSyncedAt,
+			updatedAt: visibleMiningStructures.updatedAt,
+			miningExtractionStructureId: visibleMiningStructures.miningExtractionStructureId,
+			moonId: visibleMiningStructures.moonId,
+			moonName: visibleMiningStructures.moonName,
+			planetId: visibleMiningStructures.planetId,
+			planetName: visibleMiningStructures.planetName,
+			miningExtractionLastSyncedAt: visibleMiningStructures.miningExtractionLastSyncedAt,
+			miningExtractionUpdatedAt: visibleMiningStructures.miningExtractionUpdatedAt,
+			extractionStartTime: visibleMiningStructures.extractionStartTime,
+			chunkArrivalTime: visibleMiningStructures.chunkArrivalTime,
+			naturalDecayTime: visibleMiningStructures.naturalDecayTime,
+		})
+		.from(visibleMiningStructures)
+		.orderBy(...sortOrder)
+		.limit(pageSize)
+		.offset(offset)
+
+	return rows.map((row) => {
+		const structureTab = getStructureTab({
+			typeId: row.typeId,
+			typeName: row.typeName,
+		})
+		const canViewDetails =
+			user.is_admin || canViewDetailsStructure(access, row.corporationId, structureTab)
+		const hasMiningSnapshot = row.miningExtractionStructureId !== null && row.moonId !== null
+		const baseItem = buildOperationalStructureListItem(row, canViewDetails)
+		if (!hasMiningSnapshot) {
+			return {
+				...baseItem,
+				name: row.name ?? row.structureId,
+				planetId: row.planetId ?? null,
+				planetName: row.planetName ?? null,
+				moonId: row.moonId ?? '',
+				moonName: row.moonName ?? null,
+				extractionStartTime: null,
+				chunkArrivalTime: null,
+				naturalDecayTime: null,
+				syncFailureReason: 'Mining extraction snapshot has not been ingested yet for this structure.',
+				lastSyncedAt: toIso(row.lastSyncedAt),
+				updatedAt: row.updatedAt.toISOString(),
+			}
+		}
+
+		return {
+			...baseItem,
+			name: row.name ?? row.structureId,
+			planetId: row.planetId ?? null,
+			planetName: row.planetName ?? null,
+			moonId: row.moonId ?? '',
+			moonName: row.moonName ?? null,
+			extractionStartTime: toIso(row.extractionStartTime ?? null),
+			chunkArrivalTime: toIso(row.chunkArrivalTime ?? null),
+			naturalDecayTime: toIso(row.naturalDecayTime ?? null),
+			syncStatus: getSnapshotSyncStatus(row.miningExtractionLastSyncedAt),
+			syncFailureReason: null,
+			lastSyncedAt: toIso(row.miningExtractionLastSyncedAt ?? row.lastSyncedAt),
+			updatedAt: (row.miningExtractionUpdatedAt ?? row.updatedAt).toISOString(),
+		}
 	})
 }
 
@@ -3646,39 +3448,189 @@ async function buildOperationalStructureSummary(
 	}
 }
 
-async function loadVisibleStructureContexts(
-	db: DbClient<DbSchema>,
-	user: SessionUser,
-	query: StructureBaseFilterQuery,
-	tabFilter?: StructureTab
-): Promise<VisibleStructureContextsResult> {
-	const cacheKey = buildVisibleStructureContextCacheKey(user, query, tabFilter)
-	const cached = visibleStructureContextCache.get(cacheKey)
-	if (cached) {
-		return cached.value
-	}
+function buildMoonStructureSortOrder(
+	sortBy: StructureMoonStructureListSortBy,
+	sortDirection: StructureListSortDirection,
+	source: any
+) {
+	const descending = sortDirection === 'desc'
+	const sortExpression = (expression: any) => (descending ? desc(expression) : asc(expression))
 
-	const value = loadVisibleStructureContextsUncached(db, user, query, tabFilter)
-	visibleStructureContextCache.set(cacheKey, { value })
-	value.then(
-		() => {
-			const current = visibleStructureContextCache.get(cacheKey)
-			if (current?.value === value) {
-				visibleStructureContextCache.delete(cacheKey)
-			}
-		},
-		() => {
-			const current = visibleStructureContextCache.get(cacheKey)
-			if (current?.value === value) {
-				visibleStructureContextCache.delete(cacheKey)
-			}
-		}
+	switch (sortBy) {
+		case 'fuel':
+			return descending
+				? [
+						asc(sql`case when ${source.fuelExpires} is null then 0 else 1 end`),
+						desc(source.fuelExpires),
+						desc(source.fuelAmount),
+						desc(source.structureId),
+					]
+				: [
+						asc(sql`case when ${source.fuelExpires} is null then 1 else 0 end`),
+						asc(source.fuelExpires),
+						asc(source.fuelAmount),
+						asc(source.structureId),
+					]
+		case 'updatedAt':
+			return [sortExpression(source.updatedAt), sortExpression(source.structureId)]
+		case 'nextStateAt':
+			return [
+				sortExpression(
+					sql`coalesce(${source.stateTimerEnd}, ${source.nextReinforceApply}, ${source.unanchorsAt})`
+				),
+				sortExpression(source.structureId),
+			]
+		case 'name':
+			return [sortExpression(source.structureId), sortExpression(source.structureId)]
+		case 'corporation':
+			return [sortExpression(sql`coalesce(${source.corporationName}, '')`), sortExpression(source.structureId)]
+		case 'region':
+			return [sortExpression(sql`coalesce(${source.regionName}, '')`), sortExpression(source.structureId)]
+		case 'planet':
+			return [sortExpression(sql`coalesce(${source.planetName}, '')`), sortExpression(source.structureId)]
+		case 'system':
+			return [sortExpression(sql`coalesce(${source.systemName}, '')`), sortExpression(source.structureId)]
+		case 'type':
+			return [sortExpression(sql`coalesce(${source.typeName}, '')`), sortExpression(source.structureId)]
+		case 'state':
+			return [sortExpression(source.state), sortExpression(source.structureId)]
+		case 'group':
+			return [sortExpression(sql`coalesce(${source.assignedGroupId}, '')`), sortExpression(source.structureId)]
+		case 'syncStatus':
+			return [
+				sortExpression(
+					sql`case ${source.syncStatus} when 'error' then 0 when 'warning' then 1 when 'ok' then 2 else null end`
+				),
+				sortExpression(source.structureId),
+			]
+		default:
+			return null
+	}
+}
+
+function buildVisibleMoonDrillStructuresCte(
+	db: DbClient<DbSchema>,
+	corpWhere: any,
+	planetId?: string
+) {
+	const visibleOperationalStructures = buildVisibleOperationalStructuresCte(db, corpWhere)
+	const conditions = [sql`true`]
+	if (planetId) {
+		conditions.push(eq(structureMoonGeographies.planetId, planetId))
+	}
+	return db.$with('visible_moon_drill_structures').as(
+		db
+			.select({
+				structureId: visibleOperationalStructures.structureId,
+				corporationId: visibleOperationalStructures.corporationId,
+				corporationName: visibleOperationalStructures.corporationName,
+				name: visibleOperationalStructures.name,
+				typeId: visibleOperationalStructures.typeId,
+				typeName: visibleOperationalStructures.typeName,
+				systemId: visibleOperationalStructures.systemId,
+				systemName: visibleOperationalStructures.systemName,
+				regionId: visibleOperationalStructures.regionId,
+				regionName: visibleOperationalStructures.regionName,
+				state: visibleOperationalStructures.state,
+				stateTimerEnd: visibleOperationalStructures.stateTimerEnd,
+				nextReinforceApply: visibleOperationalStructures.nextReinforceApply,
+				unanchorsAt: visibleOperationalStructures.unanchorsAt,
+				fuelExpires: visibleOperationalStructures.fuelExpires,
+				fuelAmount: visibleOperationalStructures.fuelAmount,
+				fuelBurnRate: visibleOperationalStructures.fuelBurnRate,
+				lowPower: visibleOperationalStructures.lowPower,
+				hidden: visibleOperationalStructures.hidden,
+				lowPowerAllowed: visibleOperationalStructures.lowPowerAllowed,
+				assignedGroupId: visibleOperationalStructures.assignedGroupId,
+				syncStatus: visibleOperationalStructures.syncStatus,
+				syncFailureReason: visibleOperationalStructures.syncFailureReason,
+				lastSyncedAt: visibleOperationalStructures.lastSyncedAt,
+				updatedAt: visibleOperationalStructures.updatedAt,
+				moonDrillStructureId: structureMoonDrills.structureId,
+				moonId: structureMoonGeographies.moonId,
+				moonName: structureMoonGeographies.moonName,
+				planetId: structureMoonGeographies.planetId,
+				planetName: structureMoonGeographies.planetName,
+				moonDrillLastSyncedAt: structureMoonDrills.lastSyncedAt,
+				moonDrillUpdatedAt: structureMoonDrills.updatedAt,
+			})
+			.from(visibleOperationalStructures)
+			.leftJoin(
+				structureMoonDrills,
+				eq(structureMoonDrills.structureId, visibleOperationalStructures.structureId)
+			)
+			.leftJoin(
+				structureMoonGeographies,
+				eq(structureMoonGeographies.structureId, visibleOperationalStructures.structureId)
+			)
+			.where(combineWhereConditions(conditions) ?? sql`true`)
 	)
-	return value
+}
+
+function buildVisibleMiningCitadelStructuresCte(
+	db: DbClient<DbSchema>,
+	corpWhere: any,
+	planetId?: string
+) {
+	const visibleOperationalStructures = buildVisibleOperationalStructuresCte(db, corpWhere)
+	const conditions = [sql`true`]
+	if (planetId) {
+		conditions.push(eq(structureMoonGeographies.planetId, planetId))
+	}
+	return db.$with('visible_mining_citadel_structures').as(
+		db
+			.select({
+				structureId: visibleOperationalStructures.structureId,
+				corporationId: visibleOperationalStructures.corporationId,
+				corporationName: visibleOperationalStructures.corporationName,
+				name: visibleOperationalStructures.name,
+				typeId: visibleOperationalStructures.typeId,
+				typeName: visibleOperationalStructures.typeName,
+				systemId: visibleOperationalStructures.systemId,
+				systemName: visibleOperationalStructures.systemName,
+				regionId: visibleOperationalStructures.regionId,
+				regionName: visibleOperationalStructures.regionName,
+				state: visibleOperationalStructures.state,
+				stateTimerEnd: visibleOperationalStructures.stateTimerEnd,
+				nextReinforceApply: visibleOperationalStructures.nextReinforceApply,
+				unanchorsAt: visibleOperationalStructures.unanchorsAt,
+				fuelExpires: visibleOperationalStructures.fuelExpires,
+				fuelAmount: visibleOperationalStructures.fuelAmount,
+				fuelBurnRate: visibleOperationalStructures.fuelBurnRate,
+				lowPower: visibleOperationalStructures.lowPower,
+				hidden: visibleOperationalStructures.hidden,
+				lowPowerAllowed: visibleOperationalStructures.lowPowerAllowed,
+				assignedGroupId: visibleOperationalStructures.assignedGroupId,
+				syncStatus: visibleOperationalStructures.syncStatus,
+				syncFailureReason: visibleOperationalStructures.syncFailureReason,
+				lastSyncedAt: visibleOperationalStructures.lastSyncedAt,
+				updatedAt: visibleOperationalStructures.updatedAt,
+				miningExtractionStructureId: structureMiningExtractions.structureId,
+				moonId: structureMoonGeographies.moonId,
+				moonName: structureMoonGeographies.moonName,
+				planetId: structureMoonGeographies.planetId,
+				planetName: structureMoonGeographies.planetName,
+				miningExtractionLastSyncedAt: structureMiningExtractions.lastSyncedAt,
+				miningExtractionUpdatedAt: structureMiningExtractions.updatedAt,
+				extractionStartTime: structureMiningExtractions.extractionStartTime,
+				chunkArrivalTime: structureMiningExtractions.chunkArrivalTime,
+				naturalDecayTime: structureMiningExtractions.naturalDecayTime,
+			})
+			.from(visibleOperationalStructures)
+			.leftJoin(
+				structureMiningExtractions,
+				eq(structureMiningExtractions.structureId, visibleOperationalStructures.structureId)
+			)
+			.leftJoin(
+				structureMoonGeographies,
+				eq(structureMoonGeographies.structureId, visibleOperationalStructures.structureId)
+			)
+			.where(combineWhereConditions(conditions) ?? sql`true`)
+	)
 }
 
 function buildOperationalSortOrder(
-	sortBy: StructureListSortField,
+	sortBy: StructureCommonListSortBy,
 	sortDirection: StructureListSortDirection,
 	source: any
 ) {
@@ -3732,25 +3684,6 @@ function buildOperationalSortOrder(
 			]
 		default:
 			return null
-	}
-}
-
-function isSqlPagedOperationalSort(sortBy: StructureListSortField): boolean {
-	switch (sortBy) {
-		case 'fuel':
-		case 'updatedAt':
-		case 'nextStateAt':
-		case 'name':
-		case 'corporation':
-		case 'region':
-		case 'system':
-		case 'type':
-		case 'state':
-		case 'group':
-		case 'syncStatus':
-			return true
-		default:
-			return false
 	}
 }
 
@@ -3818,136 +3751,6 @@ async function loadVisibleOperationalStructurePageItems(
 	})
 }
 
-async function loadVisibleSovereigntyHubContexts(
-	env: Env,
-	db: DbClient<DbSchema>,
-	user: SessionUser,
-	query: StructureSovereigntyListQuery
-): Promise<{
-	moduleConfig: StructureModuleConfigResult
-	access: StructureAccessScope
-	contexts: VisibleStructureContext[]
-	hubRows: Array<typeof structureSovereigntyHubs.$inferSelect>
-	systemRows: Array<typeof structureSovereigntySystems.$inferSelect>
-}> {
-	const moduleConfig = await getStructureModuleConfig(db)
-	const access = computeStructureAccess(user.roles, user.is_admin)
-	const accessForTab = getStructureAccessTarget(access, 'sovereignty')
-	if (!hasAnyStructureAccess(accessForTab)) {
-		return {
-			moduleConfig,
-			access,
-			contexts: [],
-			hubRows: [],
-			systemRows: [],
-		}
-	}
-
-	const accessibleCorporations = getAccessibleCorporationIds(access, 'sovereignty')
-	if (!accessibleCorporations.hasGlobalAccess && accessibleCorporations.corporationIds.size === 0) {
-		return {
-			moduleConfig,
-			access,
-			contexts: [],
-			hubRows: [],
-			systemRows: [],
-		}
-	}
-
-	const corpWhere = (() => {
-		const conditions: StructureWhereCondition[] = []
-		if (query.corporationId) {
-			conditions.push(eq(structureSovereigntyHubs.corporationId, query.corporationId))
-		}
-		if (!accessibleCorporations.hasGlobalAccess) {
-			conditions.push(
-				inArray(structureSovereigntyHubs.corporationId, [...accessibleCorporations.corporationIds])
-			)
-		}
-		if (query.systemId) {
-			conditions.push(eq(structureSovereigntyHubs.systemId, query.systemId))
-		}
-		if (query.controllerAllianceId) {
-			conditions.push(eq(structureSovereigntyHubs.controllerAllianceId, query.controllerAllianceId))
-		}
-		return combineWhereConditions(conditions)
-	})()
-
-	const joinedRows = await db
-		.select({
-			hub: structureSovereigntyHubs,
-			system: structureSovereigntySystems,
-			corporation: {
-				corporationId: managedCorporations.corporationId,
-				name: managedCorporations.name,
-				includeInStructureAssetSync: managedCorporations.includeInStructureAssetSync,
-			},
-		})
-		.from(structureSovereigntyHubs)
-		.leftJoin(
-			structureSovereigntySystems,
-			eq(structureSovereigntySystems.systemId, structureSovereigntyHubs.systemId)
-		)
-		.leftJoin(managedCorporations, eq(managedCorporations.corporationId, structureSovereigntyHubs.corporationId))
-		.where(corpWhere ?? sql`true`)
-		.orderBy(desc(structureSovereigntyHubs.updatedAt))
-	if (joinedRows.length === 0) {
-		return {
-			moduleConfig,
-			access,
-			contexts: [],
-			hubRows: [],
-			systemRows: [],
-		}
-	}
-
-	const geographyBySystemId = await resolveSovereigntyHubGeographies(env, [
-		...new Set(joinedRows.map((row) => row.hub.systemId)),
-	])
-	const systemRows = joinedRows
-		.map((row) => row.system)
-		.filter((row): row is typeof structureSovereigntySystems.$inferSelect => row !== null)
-
-	return {
-		moduleConfig,
-		access,
-		contexts: joinedRows
-			.map<VisibleStructureContext | null>((row) => {
-				const geography = geographyBySystemId[row.hub.systemId] ?? null
-				const structure = buildSyntheticSovereigntyStructureRow(row.hub, row.system ?? null, geography)
-				const structureTab = getStructureTab(structure)
-				const canViewDetails =
-					user.is_admin || canViewDetailsStructure(access, row.hub.corporationId, structureTab)
-				const canViewSensitive =
-					user.is_admin || canViewSensitiveStructure(access, row.hub.corporationId, structureTab)
-				const canEdit = user.is_admin || canEditStructure(access, row.hub.corporationId, structureTab)
-				const corporation = row.corporation
-
-				return {
-					structure,
-					corporationName: corporation?.name ?? row.hub.corporationId,
-					includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
-					config: null,
-					canViewDetails,
-					canViewSensitive,
-					canEdit,
-					tabData: null,
-					fittingItems: null,
-					lastRefilledAt: null,
-					fuelUsage: null,
-				}
-			})
-			.filter((item): item is VisibleStructureContext => item !== null)
-			.filter((context) => {
-				if (query.regionId && context.structure.regionId !== query.regionId) return false
-				if (query.systemId && context.structure.systemId !== query.systemId) return false
-				return true
-			}),
-		hubRows: joinedRows.map((row) => row.hub),
-		systemRows,
-	}
-}
-
 async function listVisibleOperationalStructures(
 	db: DbClient<DbSchema>,
 	user: SessionUser,
@@ -3972,17 +3775,15 @@ async function listVisibleOperationalStructures(
 		}
 	}
 
-	const sortBy = query.sortBy ?? 'skyhookSecureFullness'
-	const sortDirection = query.sortDirection ?? 'asc'
 	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
 	const requestedPage = Math.max(query.page ?? 1, 1)
 
-	if (isSqlPagedOperationalSort(sortBy) && (activeTab === 'citadels' || activeTab === 'navigation')) {
+	if (activeTab === 'citadels' || activeTab === 'navigation') {
 		const moduleConfig = await getStructureModuleConfig(db)
 		const corpWhere = buildVisibleStructureContextsWhere(access, query, activeTab)
 		if (!corpWhere) {
-				return {
-					items: [],
+			return {
+				items: [],
 				pagination: {
 					page: 1,
 					pageSize,
@@ -4038,8 +3839,9 @@ async function listVisibleOperationalStructures(
 		}
 	}
 
-	if (activeTab === 'skyhooks' && isSqlPagedSkyhookSort(sortBy)) {
-		const corpWhere = buildSkyhookVisibilityWhere(access, query as StructureSkyhookListQuery)
+	if (activeTab === 'skyhooks') {
+		const skyhookQuery = query as StructureSkyhookListQuery
+		const corpWhere = buildSkyhookVisibilityWhere(access, skyhookQuery)
 		if (!corpWhere) {
 			return {
 				items: [],
@@ -4064,7 +3866,7 @@ async function listVisibleOperationalStructures(
 				db,
 				user,
 				access,
-				query as StructureSkyhookListQuery,
+				skyhookQuery,
 				visibleSkyhookStructures
 			),
 		])
@@ -4078,7 +3880,7 @@ async function listVisibleOperationalStructures(
 						db,
 						user,
 						access,
-						query as StructureSkyhookListQuery,
+						skyhookQuery,
 						visibleSkyhookStructures,
 						page
 					)
@@ -4098,60 +3900,7 @@ async function listVisibleOperationalStructures(
 		}
 	}
 
-	const { moduleConfig, contexts, totalCount: totalCountFromDb } = await loadVisibleStructureContexts(
-		db,
-		user,
-		query,
-		activeTab
-	)
-	const baseItems = contexts
-		.map((context) => buildStructureListItem(context))
-		.filter((item) => matchesStructureTab(item, activeTab))
-		.filter((item) => hasStructureAccessForTab(access, item.corporationId, activeTab))
-	const filterOptions = buildStructureFilterOptions(baseItems)
-	const filteredItems = baseItems
-	const sortedItems = sortStructures(filteredItems, sortBy, sortDirection)
-		const summary = await buildStructureSummary(filteredItems, moduleConfig, totalCountFromDb)
-	const totalCount = totalCountFromDb
-	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
-	const page = Math.min(requestedPage, totalPages)
-	const start = (page - 1) * pageSize
-	const end = start + pageSize
-	const pageItems = sortedItems.slice(start, end)
-
-	return {
-		items: pageItems,
-		pagination: {
-			page,
-			pageSize,
-			totalCount,
-			totalPages,
-			hasNextPage: page < totalPages,
-			hasPreviousPage: page > 1,
-		},
-		filterOptions,
-		summary,
-	}
-}
-
-export async function getStructureOverviewMetrics(
-	db: DbClient<DbSchema>,
-	user: SessionUser
-): Promise<StructureOverviewMetrics> {
-	const { moduleConfig, access, contexts } = await loadVisibleStructureContexts(db, user, {})
-	const visibleContexts = contexts.filter((context) =>
-		hasStructureAccessForTab(
-			access,
-			context.structure.corporationId,
-			getStructureTab(context.structure)
-		)
-	)
-	if (visibleContexts.length === 0) {
-		return emptyStructureOverviewMetrics()
-	}
-
-	const items = visibleContexts.map((context) => buildStructureListItem(context))
-	return buildStructureSummary(items, moduleConfig)
+	throw new Error(`Unsupported structure tab: ${activeTab}`)
 }
 
 export async function listVisibleStructures(
@@ -4183,22 +3932,7 @@ export async function listMoonDrillStructures(
 	user: SessionUser,
 	query: StructureMoonDrillListQuery = {}
 ): Promise<RepoStructureMoonDrillListResponse> {
-	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(
-		db,
-		user,
-		{
-			corporationId: query.corporationId,
-			assignedGroupId: query.assignedGroupId,
-			lowPower: query.lowPower,
-			lowPowerAllowed: query.lowPowerAllowed,
-			regionId: query.regionId,
-			systemId: query.systemId,
-			state: query.state,
-			typeId: query.typeId,
-		},
-		'moon-drills'
-	)
-
+	const access = computeStructureAccess(user.roles, user.is_admin)
 	const accessForTab = getStructureAccessTarget(access, 'moon-drills')
 	if (!hasAnyStructureAccess(accessForTab)) {
 		return {
@@ -4216,15 +3950,15 @@ export async function listMoonDrillStructures(
 		}
 	}
 
-	const moonDrillContexts = contexts.filter((context) => matchesStructureTab(context.structure, 'moon-drills'))
-	const structureIds = moonDrillContexts.map((context) => context.structure.structureId)
-
-	if (structureIds.length === 0) {
+	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
+	const moduleConfig = await getStructureModuleConfig(db)
+	const corpWhere = buildVisibleStructureContextsWhere(access, query, 'moon-drills')
+	if (!corpWhere) {
 		return {
 			items: [],
 			pagination: {
 				page: 1,
-				pageSize: query.pageSize ?? 25,
+				pageSize,
 				totalCount: 0,
 				totalPages: 1,
 				hasNextPage: false,
@@ -4235,56 +3969,22 @@ export async function listMoonDrillStructures(
 		}
 	}
 
-	const moonDrillWhere = (() => {
-		const conditions: StructureWhereCondition[] = []
-		if (query.planetId) {
-			conditions.push(eq(structureMoonGeographies.planetId, query.planetId))
-		}
-		return combineWhereConditions(conditions)
-	})()
-
-		const moonDrillRows = await db
-			.select({
-				moonDrill: structureMoonDrills,
-				moonGeography: structureMoonGeographies,
-			})
-			.from(structureMoonDrills)
-			.leftJoin(
-				structureMoonGeographies,
-				eq(structureMoonGeographies.structureId, structureMoonDrills.structureId)
-			)
-			.where(
-				combineWhereConditions([
-					inArray(structureMoonDrills.structureId, structureIds),
-					moonDrillWhere,
-				]) ?? sql`true`
-			)
-			.orderBy(desc(structureMoonDrills.updatedAt))
-		const moonDrillByStructureId = new Map(
-			moonDrillRows.map((row) => [row.moonDrill.structureId, row] as const)
-		)
-		const items = moonDrillContexts.map((context) =>
-			buildMoonDrillListItem({
-				context,
-				moonDrillRow: moonDrillByStructureId.get(context.structure.structureId)?.moonDrill ?? null,
-				moonGeographyRow: moonDrillByStructureId.get(context.structure.structureId)?.moonGeography ?? null,
-			})
-		)
-
-	const sortBy = query.sortBy ?? 'fuel'
-	const sortDirection = query.sortDirection ?? 'asc'
-	const sortedItems = sortStructures(items, sortBy, sortDirection)
-	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
-	const totalCount = sortedItems.length
+	const visibleMoonDrillStructures = buildVisibleMoonDrillStructuresCte(db, corpWhere, query.planetId)
+	const [filterOptions, summary, pageItems] = await Promise.all([
+		buildMoonStructureFilterOptionsFromSql(db, visibleMoonDrillStructures),
+		buildOperationalStructureSummary(db, visibleMoonDrillStructures, moduleConfig),
+		loadVisibleMoonDrillPageItems(db, user, access, query, visibleMoonDrillStructures),
+	])
+	const totalCount = summary.total
 	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 	const page = Math.min(Math.max(query.page ?? 1, 1), totalPages)
-	const start = (page - 1) * pageSize
-	const end = start + pageSize
+	const items =
+		page === Math.max(query.page ?? 1, 1)
+			? pageItems
+			: await loadVisibleMoonDrillPageItems(db, user, access, query, visibleMoonDrillStructures, page)
 
 	return {
-		items: sortedItems
-			.slice(start, end)
-			.map((item) => items.find((row) => row.structureId === item.structureId)!) as RepoStructureMoonDrillListItem[],
+		items,
 		pagination: {
 			page,
 			pageSize,
@@ -4293,8 +3993,8 @@ export async function listMoonDrillStructures(
 			hasNextPage: page < totalPages,
 			hasPreviousPage: page > 1,
 		},
-		filterOptions: buildMoonGeographyFilterOptions(items),
-		summary: buildStructureSummaryCounts(items, moduleConfig),
+		filterOptions,
+		summary,
 	}
 }
 
@@ -4351,7 +4051,7 @@ function buildSovereigntyListItem(input: {
 	hubRow: typeof structureSovereigntyHubs.$inferSelect | null
 }): StructureSovereigntyFilterableItem {
 	const { context, systemRow, hubRow } = input
-	const { structure: structureRow, corporationName, canViewSensitive, canEdit } = context
+	const { structure: structureRow, corporationName } = context
 	const hasHubSnapshot = hubRow !== null
 	const lastSyncedAt =
 		hubRow?.lastSyncedAt ?? systemRow?.lastSyncedAt ?? structureRow.lastSyncedAt ?? null
@@ -4379,7 +4079,7 @@ function buildSovereigntyListItem(input: {
 			hubRow?.typeId ??
 			systemRow?.sovereigntyHubStructureId ??
 			'sovereignty hub',
-		structureRow?.typeName ?? hubRow?.name ?? 'Sovereignty Hub',
+		structureRow?.typeName ?? hubRow?.systemName ?? 'Sovereignty Hub',
 		structureRow.systemId,
 		structureRow.systemName ?? null,
 		structureRow.regionId ?? null,
@@ -4391,17 +4091,15 @@ function buildSovereigntyListItem(input: {
 		...structureIdentity,
 		claimType: systemRow?.claimType ?? 'unclaimed',
 		allianceId: systemRow?.allianceId ?? null,
-		allianceName: null,
-		controllerAllianceName: hubSummary?.controllerAllianceId
-			? (hubSummary.controllerAllianceName ?? null)
-			: null,
+		allianceName: systemRow?.allianceName ?? null,
+		controllerAllianceName: hubSummary?.controllerAllianceName ?? null,
 		corporationClaimantId: systemRow?.corporationClaimantId ?? null,
 		factionId: systemRow?.factionId ?? null,
 		claimedSince: toIso(systemRow?.claimedSince ?? null),
 		sovereigntyHubStructureId: systemRow?.sovereigntyHubStructureId ?? hubRow?.structureId ?? null,
 		vulnerabilityWindowStart: toIso(systemRow?.vulnerabilityWindowStart ?? null),
 		vulnerabilityWindowEnd: toIso(systemRow?.vulnerabilityWindowEnd ?? null),
-	activityDefenseMultiplier:
+		activityDefenseMultiplier:
 			systemRow?.activityDefenseMultiplier !== null &&
 			systemRow?.activityDefenseMultiplier !== undefined
 				? String(systemRow.activityDefenseMultiplier)
@@ -4434,165 +4132,15 @@ function buildSovereigntyListItem(input: {
 	}
 }
 
-function buildSkyhookListItem(input: {
-	context: VisibleStructureContext
-	skyhookRow: typeof structureSkyhooks.$inferSelect | null
-}): StructureSkyhookFilterableItem {
-	const { context, skyhookRow } = input
-	const { structure: structureRow } = context
-	const hasSkyhookSnapshot = skyhookRow !== null
-	const {
-		name: _structureName,
-		fuelExpires: _fuelExpires,
-		fuelAmount: _fuelAmount,
-		...structureBase
-	} = buildStructureListItem(context)
-	const reagentSummary = getSkyhookReagentSummary(skyhookRow?.reagents ?? [])
-	const reagentEntries = getSkyhookReagentEntries(skyhookRow?.reagents ?? [])
-	const isRaidable = isSkyhookCurrentlyRaidable(skyhookRow)
-	const normalizedState = skyhookRow
-		? getSkyhookState(
-				skyhookRow.state,
-				isRaidable,
-				skyhookRow.reinforcementTimerEnd ? skyhookRow.reinforcementTimerEnd.toISOString() : null
-			)
-		: 'invulnerable'
-	const explicitSyncFailure = skyhookRow?.syncStatus === 'error'
-		? (skyhookRow.syncFailureReason ?? 'Skyhook sync failed.')
-		: null
-	const syncStatus = explicitSyncFailure
-		? 'error'
-		: hasSkyhookSnapshot
-			? getSnapshotSyncStatus(skyhookRow.lastSyncedAt)
-			: 'warning'
-
-	return {
-		...structureBase,
-		systemName: skyhookRow?.systemName ?? structureRow.systemName ?? null,
-		planetId: skyhookRow?.planetId ?? '',
-		planetName: skyhookRow?.planetName ?? null,
-		typeId: skyhookRow?.typeId ?? structureRow.typeId,
-		typeName: structureRow.typeName,
-		isActive: skyhookRow?.isActive ?? false,
-		effectiveWorkforce: skyhookRow?.effectiveWorkforce ?? null,
-		totalReagents: reagentSummary?.totalReagents ?? reagentEntries.length,
-		totalSecuredStock: reagentSummary?.totalSecuredStock ?? 0,
-		totalUnsecuredStock: reagentSummary?.totalUnsecuredStock ?? 0,
-		totalSecuredVolumeM3: reagentSummary?.totalSecuredVolumeM3 ?? 0,
-		totalUnsecuredVolumeM3: reagentSummary?.totalUnsecuredVolumeM3 ?? 0,
-		securedCapacityM3: SKYHOOK_SECURED_BAY_CAPACITY_M3,
-		unsecuredCapacityM3: SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
-		securedFillPercent: reagentSummary?.securedFillPercent ?? 0,
-		unsecuredFillPercent: reagentSummary?.unsecuredFillPercent ?? 0,
-		reagents: reagentEntries.map((reagent) => ({
-			typeId: reagent.typeId,
-			typeName:
-				reagent.typeId === SKYHOOK_MAGMATIC_GAS_TYPE_ID
-					? SKYHOOK_MAGMATIC_GAS_TYPE_NAME
-					: reagent.typeId === SKYHOOK_SUPERIONIC_ICE_TYPE_ID
-						? SKYHOOK_SUPERIONIC_ICE_TYPE_NAME
-						: null,
-			unitVolumeM3: getSkyhookReagentUnitVolumeM3(reagent.typeId),
-			securedStock: reagent.securedStock,
-			unsecuredStock: reagent.unsecuredStock,
-			securedVolumeM3: reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-			unsecuredVolumeM3: reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-			securedCapacityM3: SKYHOOK_SECURED_BAY_CAPACITY_M3,
-			unsecuredCapacityM3: SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
-			securedFillPercent: getSkyhookFullness(
-				reagent.securedStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-				SKYHOOK_SECURED_BAY_CAPACITY_M3
-			),
-			unsecuredFillPercent: getSkyhookFullness(
-				reagent.unsecuredStock * getSkyhookReagentUnitVolumeM3(reagent.typeId),
-				SKYHOOK_SURPLUS_BAY_CAPACITY_M3
-			),
-			lastCycle: reagent.lastCycle,
-		})),
-			reinforcementTimerEnd: toIso(skyhookRow?.reinforcementTimerEnd ?? null),
-			theftVulnerabilityStart: toIso(skyhookRow?.theftVulnerabilityStart ?? null),
-			theftVulnerabilityEnd: toIso(skyhookRow?.theftVulnerabilityEnd ?? null),
-			isRaidable,
-			state: normalizedState,
-		syncStatus,
-		syncFailureReason: explicitSyncFailure
-			? explicitSyncFailure
-			: hasSkyhookSnapshot
-				? null
-				: 'Skyhook snapshot has not been ingested yet for this structure.',
-		lastSyncedAt: toIso(skyhookRow?.lastSyncedAt ?? structureRow.lastSyncedAt),
-		updatedAt: (skyhookRow?.updatedAt ?? structureRow.updatedAt).toISOString(),
-	}
-}
-
-function buildMoonDrillListItem(input: {
-	context: VisibleStructureContext
-	moonDrillRow: typeof structureMoonDrills.$inferSelect | null
-	moonGeographyRow: typeof structureMoonGeographies.$inferSelect | null
-}): StructureMoonDrillFilterableItem {
-	const { context, moonDrillRow, moonGeographyRow } = input
-	const { structure: structureRow } = context
-	const hasMoonDrillSnapshot = moonDrillRow !== null && moonGeographyRow !== null
-	const structureBase = buildStructureListItem(context)
-
-	return {
-		...structureBase,
-		systemId: moonGeographyRow?.systemId ?? structureRow.systemId,
-		systemName: moonGeographyRow?.systemName ?? structureRow.systemName ?? null,
-		moonId: moonGeographyRow?.moonId ?? '',
-		moonName: moonGeographyRow?.moonName ?? null,
-		planetId: moonGeographyRow?.planetId ?? null,
-		planetName: moonGeographyRow?.planetName ?? null,
-		syncStatus: hasMoonDrillSnapshot ? getSnapshotSyncStatus(moonDrillRow.lastSyncedAt) : 'warning',
-		syncFailureReason: hasMoonDrillSnapshot
-			? null
-			: 'Moon drill snapshot has not been ingested yet for this structure.',
-		lastSyncedAt: toIso(moonDrillRow?.lastSyncedAt ?? structureRow.lastSyncedAt),
-		updatedAt: (moonDrillRow?.updatedAt ?? structureRow.updatedAt).toISOString(),
-	}
-}
-
-function buildMiningCitadelListItem(input: {
-	context: VisibleStructureContext
-	miningExtractionRow: typeof structureMiningExtractions.$inferSelect | null
-	moonGeographyRow: typeof structureMoonGeographies.$inferSelect | null
-}): StructureMiningCitadelFilterableItem {
-	const { context, miningExtractionRow, moonGeographyRow } = input
-	const { structure: structureRow } = context
-	const hasMiningSnapshot = miningExtractionRow !== null && moonGeographyRow !== null
-	const structureBase = buildStructureListItem(context)
-
-	return {
-		...structureBase,
-		systemId: moonGeographyRow?.systemId ?? structureRow.systemId,
-		systemName: moonGeographyRow?.systemName ?? structureRow.systemName ?? null,
-		moonId: moonGeographyRow?.moonId ?? '',
-		moonName: moonGeographyRow?.moonName ?? null,
-		planetId: moonGeographyRow?.planetId ?? null,
-		planetName: moonGeographyRow?.planetName ?? null,
-		extractionStartTime: toIso(miningExtractionRow?.extractionStartTime ?? null),
-		chunkArrivalTime: toIso(miningExtractionRow?.chunkArrivalTime ?? null),
-		naturalDecayTime: toIso(miningExtractionRow?.naturalDecayTime ?? null),
-		syncStatus: hasMiningSnapshot
-			? getSnapshotSyncStatus(miningExtractionRow.lastSyncedAt)
-			: 'warning',
-		syncFailureReason: hasMiningSnapshot
-			? null
-			: 'Mining extraction snapshot has not been ingested yet for this structure.',
-		lastSyncedAt: toIso(miningExtractionRow?.lastSyncedAt ?? structureRow.lastSyncedAt),
-		updatedAt: (miningExtractionRow?.updatedAt ?? structureRow.updatedAt).toISOString(),
-	}
-}
-
 export async function listSovereigntyStructures(
-	env: Env,
+	_env: Env,
 	db: DbClient<DbSchema>,
 	user: SessionUser,
 	query: StructureSovereigntyListQuery = {}
 ): Promise<RepoStructureSovereigntyListResponse> {
-	const { moduleConfig, contexts, access, hubRows, systemRows } =
-		await loadVisibleSovereigntyHubContexts(env, db, user, query)
-	if (!hasAnyStructureAccess(getStructureAccessTarget(access, 'sovereignty'))) {
+	const access = computeStructureAccess(user.roles, user.is_admin)
+	const accessForTab = getStructureAccessTarget(access, 'sovereignty')
+	if (!hasAnyStructureAccess(accessForTab)) {
 		return {
 			items: [],
 			pagination: {
@@ -4608,34 +4156,42 @@ export async function listSovereigntyStructures(
 		}
 	}
 
-	const hubById = new Map(hubRows.map((row) => [row.structureId, row] as const))
-	const systemBySystemId = new Map(systemRows.map((row) => [row.systemId, row] as const))
-	const items = contexts.map((context) =>
-		buildSovereigntyListItem({
-			context,
-			systemRow: systemBySystemId.get(context.structure.systemId) ?? null,
-			hubRow: hubById.get(context.structure.structureId) ?? null,
-		})
-	)
-	const filteredItems = query.vulnerabilityState
-		? items.filter((item) => {
-				const vulnerabilityState = getSovereigntyVulnerabilityState(item)
-				return vulnerabilityState === query.vulnerabilityState
-			})
-		: items
-
-	const sortBy = query.sortBy ?? 'fuel'
-	const sortDirection = query.sortDirection ?? 'asc'
-	const sortedItems = sortStructures(filteredItems, sortBy, sortDirection)
 	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
-	const totalCount = sortedItems.length
+	const requestedPage = Math.max(query.page ?? 1, 1)
+	const corpWhere = buildVisibleSovereigntyWhere(access, query)
+	if (!corpWhere) {
+		return {
+			items: [],
+			pagination: {
+				page: 1,
+				pageSize,
+				totalCount: 0,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			filterOptions: emptySovereigntyFilterOptions(),
+			summary: emptySovereigntySummary(),
+		}
+	}
+
+	const visibleSovereigntyStructures = buildVisibleSovereigntyStructuresCte(db, corpWhere)
+	const moduleConfig = await getStructureModuleConfig(db)
+	const [filterOptions, summary, pageItems] = await Promise.all([
+		buildSovereigntyStructureFilterOptionsFromSql(db, visibleSovereigntyStructures),
+		buildSovereigntyStructureSummaryFromSql(db, visibleSovereigntyStructures, moduleConfig),
+		loadVisibleSovereigntyPageItems(db, user, access, query, visibleSovereigntyStructures),
+	])
+	const totalCount = summary.total
 	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
-	const page = Math.min(Math.max(query.page ?? 1, 1), totalPages)
-	const start = (page - 1) * pageSize
-	const end = start + pageSize
+	const page = Math.min(requestedPage, totalPages)
+	const items =
+		page === requestedPage
+			? pageItems
+			: await loadVisibleSovereigntyPageItems(db, user, access, query, visibleSovereigntyStructures, page)
 
 	return {
-		items: sortedItems.slice(start, end) as RepoStructureSovereigntyListItem[],
+		items,
 		pagination: {
 			page,
 			pageSize,
@@ -4644,8 +4200,8 @@ export async function listSovereigntyStructures(
 			hasNextPage: page < totalPages,
 			hasPreviousPage: page > 1,
 		},
-		filterOptions: buildSovereigntyFilterOptions(filteredItems),
-		summary: await buildSovereigntySummary(db, filteredItems, moduleConfig),
+		filterOptions,
+		summary,
 	}
 }
 
@@ -4667,22 +4223,7 @@ export async function listMiningCitadelStructures(
 	user: SessionUser,
 	query: StructureMiningCitadelListQuery = {}
 ): Promise<RepoStructureMiningCitadelListResponse> {
-	const { moduleConfig, contexts, access } = await loadVisibleStructureContexts(
-		db,
-		user,
-		{
-			corporationId: query.corporationId,
-			assignedGroupId: query.assignedGroupId,
-			lowPower: query.lowPower,
-			lowPowerAllowed: query.lowPowerAllowed,
-			regionId: query.regionId,
-			systemId: query.systemId,
-			state: query.state,
-			typeId: query.typeId,
-		},
-		'mining-citadels'
-	)
-
+	const access = computeStructureAccess(user.roles, user.is_admin)
 	const accessForTab = getStructureAccessTarget(access, 'mining-citadels')
 	if (!hasAnyStructureAccess(accessForTab)) {
 		return {
@@ -4700,17 +4241,15 @@ export async function listMiningCitadelStructures(
 		}
 	}
 
-	const matchingContexts = contexts.filter((context) =>
-		matchesStructureTab(context.structure, 'mining-citadels')
-	)
-	const structureIds = matchingContexts.map((context) => context.structure.structureId)
-
-	if (structureIds.length === 0) {
+	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
+	const moduleConfig = await getStructureModuleConfig(db)
+	const corpWhere = buildVisibleStructureContextsWhere(access, query, 'mining-citadels')
+	if (!corpWhere) {
 		return {
 			items: [],
 			pagination: {
 				page: 1,
-				pageSize: query.pageSize ?? 25,
+				pageSize,
 				totalCount: 0,
 				totalPages: 1,
 				hasNextPage: false,
@@ -4721,60 +4260,22 @@ export async function listMiningCitadelStructures(
 		}
 	}
 
-	const miningExtractionWhere = (() => {
-		const conditions: StructureWhereCondition[] = []
-		if (query.planetId) {
-			conditions.push(eq(structureMoonGeographies.planetId, query.planetId))
-		}
-		return combineWhereConditions(conditions)
-	})()
-
-		const miningExtractionRows = await db
-			.select({
-				miningExtraction: structureMiningExtractions,
-				moonGeography: structureMoonGeographies,
-			})
-			.from(structureMiningExtractions)
-			.leftJoin(
-				structureMoonGeographies,
-				eq(structureMoonGeographies.structureId, structureMiningExtractions.structureId)
-			)
-			.where(
-				combineWhereConditions([
-					inArray(structureMiningExtractions.structureId, structureIds),
-					miningExtractionWhere,
-				]) ?? sql`true`
-			)
-			.orderBy(desc(structureMiningExtractions.updatedAt))
-		const miningExtractionByStructureId = new Map(
-			miningExtractionRows.map((row) => [row.miningExtraction.structureId, row] as const)
-		)
-		const items = matchingContexts.map((context) =>
-			buildMiningCitadelListItem({
-				context,
-				miningExtractionRow:
-					miningExtractionByStructureId.get(context.structure.structureId)?.miningExtraction ?? null,
-				moonGeographyRow:
-					miningExtractionByStructureId.get(context.structure.structureId)?.moonGeography ?? null,
-			})
-		)
-
-	const sortBy = query.sortBy ?? 'fuel'
-	const sortDirection = query.sortDirection ?? 'asc'
-	const sortedItems = sortStructures(items, sortBy, sortDirection)
-	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
-	const totalCount = sortedItems.length
+	const visibleMiningStructures = buildVisibleMiningCitadelStructuresCte(db, corpWhere, query.planetId)
+	const [filterOptions, summary, pageItems] = await Promise.all([
+		buildMoonStructureFilterOptionsFromSql(db, visibleMiningStructures),
+		buildOperationalStructureSummary(db, visibleMiningStructures, moduleConfig),
+		loadVisibleMiningCitadelPageItems(db, user, access, query, visibleMiningStructures),
+	])
+	const totalCount = summary.total
 	const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 	const page = Math.min(Math.max(query.page ?? 1, 1), totalPages)
-	const start = (page - 1) * pageSize
-	const end = start + pageSize
+	const items =
+		page === Math.max(query.page ?? 1, 1)
+			? pageItems
+			: await loadVisibleMiningCitadelPageItems(db, user, access, query, visibleMiningStructures, page)
 
 	return {
-		items: sortedItems
-			.slice(start, end)
-			.map(
-				(item) => items.find((row) => row.structureId === item.structureId)!
-			) as RepoStructureMiningCitadelListItem[],
+		items,
 		pagination: {
 			page,
 			pageSize,
@@ -4783,8 +4284,8 @@ export async function listMiningCitadelStructures(
 			hasNextPage: page < totalPages,
 			hasPreviousPage: page > 1,
 		},
-		filterOptions: buildMoonGeographyFilterOptions(items),
-		summary: buildStructureSummaryCounts(items, moduleConfig),
+		filterOptions,
+		summary,
 	}
 }
 

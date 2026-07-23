@@ -203,7 +203,6 @@ export interface EsiSovereigntyHub {
 	corporation_id: string
 	system_id: string
 	system_name?: string | null
-	name: string | null
 	type_id: string
 	controller_alliance_id?: string | null
 	fuel_access_list_id: string | null

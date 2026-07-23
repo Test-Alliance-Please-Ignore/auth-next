@@ -14,16 +14,22 @@ import type { FreightRoute } from '@repo/freight'
 import type { InventoryDisplayBay as SharedInventoryDisplayBay } from '@repo/inventory-display'
 import type {
 	StructureCitadelListQuery as RepoStructureCitadelListQuery,
+	StructureMoonStructureListFilterOptions as RepoStructureMoonStructureListFilterOptions,
 	StructureMoonDrillListItem as RepoStructureMoonDrillListItem,
 	StructureMoonDrillListQuery as RepoStructureMoonDrillListQuery,
 	StructureMoonDrillListResponse as RepoStructureMoonDrillListResponse,
+	StructureMoonStructureListSortBy as RepoStructureMoonStructureListSortBy,
 	StructureMiningCitadelListItem as RepoStructureMiningCitadelListItem,
 	StructureMiningCitadelListQuery as RepoStructureMiningCitadelListQuery,
 	StructureMiningCitadelListResponse as RepoStructureMiningCitadelListResponse,
 	StructureNavigationListQuery as RepoStructureNavigationListQuery,
-	StructureOverviewMetrics as RepoStructureOverviewMetrics,
 	StructureListSummary as RepoStructureListSummary,
+	StructureCommonListQuery as RepoStructureCommonListQuery,
+	StructureCommonListFilterOptions as RepoStructureCommonListFilterOptions,
+	StructureCommonListSortBy as RepoStructureCommonListSortBy,
 	StructureSkyhookListItem as RepoStructureSkyhookListItem,
+	StructureSkyhookListFilterOptions as RepoStructureSkyhookListFilterOptions,
+	StructureSkyhookListSortBy as RepoStructureSkyhookListSortBy,
 	StructureSkyhookListResponse as RepoStructureSkyhookListResponse,
 	StructureSkyhookListQuery as RepoStructureSkyhookListQuery,
 	StructureSovereigntyListFilterOptions as RepoStructureSovereigntyListFilterOptions,
@@ -32,6 +38,7 @@ import type {
 	StructureSovereigntyListResponse as RepoStructureSovereigntyListResponse,
 	StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
 	StructureSovereigntyListQuery as RepoStructureSovereigntyListQuery,
+	StructureSovereigntyListSortBy as RepoStructureSovereigntyListSortBy,
 	StructureMoonDrillSummary as RepoStructureMoonDrillSummary,
 	StructureMiningCitadelSummary as RepoStructureMiningCitadelSummary,
 	StructureSovereigntyReagent,
@@ -739,26 +746,10 @@ export interface CreateCorporationAlertDestinationRequest {
 
 export type StructurePermissionRole = 'viewer' | 'details' | 'sensitive' | 'manager'
 export type StructureListSortBy =
-	| 'updatedAt'
-	| 'nextStateAt'
-	| 'fuel'
-	| 'activityDefenseMultiplier'
-	| 'magmaticGasEstimatedDepletionAt'
-	| 'superionicIceEstimatedDepletionAt'
-	| 'theftVulnerabilityStart'
-	| 'skyhookSecureFullness'
-	| 'skyhookSurplusFullness'
-	| 'raidable'
-	| 'workforce'
-	| 'group'
-	| 'syncStatus'
-	| 'name'
-	| 'corporation'
-	| 'region'
-	| 'planet'
-	| 'system'
-	| 'type'
-	| 'state'
+	| RepoStructureCommonListSortBy
+	| RepoStructureSkyhookListSortBy
+	| RepoStructureMoonStructureListSortBy
+	| RepoStructureSovereigntyListSortBy
 export type StructureListSortDirection = 'asc' | 'desc'
 
 export interface StructureListPagingQuery {
@@ -767,6 +758,12 @@ export interface StructureListPagingQuery {
 	sortBy?: StructureListSortBy
 	sortDirection?: StructureListSortDirection
 }
+
+export type StructureCommonListSortBy = RepoStructureCommonListSortBy
+export type StructureOperationalListSortBy = RepoStructureCommonListSortBy
+
+export type StructureCommonListQuery = RepoStructureCommonListQuery
+export type StructureOperationalListQuery = RepoStructureCommonListQuery
 
 export interface StructureCitadelListQuery extends RepoStructureCitadelListQuery {}
 
@@ -787,26 +784,23 @@ export interface StructureListFilterOption {
 	label: string
 }
 
-export interface StructureListFilterOptions {
-	corporations: StructureListFilterOption[]
-	assignedGroups: StructureListFilterOption[]
-	regions: StructureListFilterOption[]
-	systems: StructureListFilterOption[]
-	states: StructureListFilterOption[]
-	vulnerabilityStates?: StructureListFilterOption[]
-	types: StructureListFilterOption[]
-	alliances: StructureListFilterOption[]
-	planets: StructureListFilterOption[]
-	raidableStates: StructureListFilterOption[]
-}
+export type StructureCommonListFilterOptions = RepoStructureCommonListFilterOptions
+
+export interface StructureListFilterOptions extends RepoStructureCommonListFilterOptions {}
+
+export type StructureOperationalListFilterOptions = RepoStructureCommonListFilterOptions
+
+export interface StructureSkyhookListFilterOptions
+	extends RepoStructureSkyhookListFilterOptions {}
+
+export interface StructureMoonStructureListFilterOptions
+	extends RepoStructureMoonStructureListFilterOptions {}
 
 export type StructureSovereigntyListFilterOption = RepoStructureSovereigntyListFilterOption
 export type StructureSovereigntyListFilterOptions = RepoStructureSovereigntyListFilterOptions
 export type StructureSovereigntyListSummary = RepoStructureSovereigntyListSummary
 
 export interface StructureListSummary extends RepoStructureListSummary {}
-
-export interface StructureOverviewMetrics extends RepoStructureOverviewMetrics {}
 
 export interface StructureListBaseItem {
 	structureId: string
@@ -2664,9 +2658,6 @@ export class ApiClient {
 
 			if (!response.ok) {
 				// Try to parse error response body
-				let errorMessage: string
-				let errorFields: Record<string, string[]> | undefined
-
 				const errorData = await this.readResponseBody<{
 					error?: unknown
 					message?: unknown
@@ -2674,11 +2665,11 @@ export class ApiClient {
 				}>(response)
 
 				// Backend may return { error: string } or { message: string } or { error: string, fields: {...} }
-				errorMessage = this.toErrorMessage(
+				const errorMessage = this.toErrorMessage(
 					errorData?.error ?? errorData?.message,
 					response.statusText || `Request failed (${response.status})`
 				)
-				errorFields = errorData?.fields
+				const errorFields = errorData?.fields
 				requestInfo.status = response.status
 				requestInfo.responseBody = errorData
 
@@ -3639,10 +3630,6 @@ export class ApiClient {
 		if (query.typeId) params.set('typeId', query.typeId)
 		const queryString = params.toString()
 		return this.get(`/structures/mining-citadels${queryString ? `?${queryString}` : ''}`)
-	}
-
-	async getStructureOverviewMetrics(): Promise<StructureOverviewMetrics> {
-		return this.get('/structures/overview')
 	}
 
 	async getStructures(

@@ -7,28 +7,79 @@ export type StructureTab =
 	| 'navigation'
 	| 'mining-citadels'
 	| 'moon-drills'
-export type StructureListSortBy =
+export type StructureListSortDirection = 'asc' | 'desc'
+
+export type StructureCommonListSortBy =
 	| 'updatedAt'
 	| 'nextStateAt'
 	| 'fuel'
-	| 'activityDefenseMultiplier'
-	| 'magmaticGasEstimatedDepletionAt'
-	| 'superionicIceEstimatedDepletionAt'
-	| 'theftVulnerabilityStart'
-	| 'skyhookSecureFullness'
-	| 'skyhookSurplusFullness'
-	| 'raidable'
-	| 'workforce'
 	| 'group'
 	| 'syncStatus'
 	| 'name'
 	| 'corporation'
 	| 'region'
-	| 'planet'
 	| 'system'
 	| 'type'
 	| 'state'
-export type StructureListSortDirection = 'asc' | 'desc'
+
+export const STRUCTURE_COMMON_LIST_SORT_FIELDS = [
+	'updatedAt',
+	'nextStateAt',
+	'fuel',
+	'group',
+	'syncStatus',
+	'name',
+	'corporation',
+	'region',
+	'system',
+	'type',
+	'state',
+] as const satisfies readonly StructureCommonListSortBy[]
+
+export type StructureOperationalListSortBy = StructureCommonListSortBy
+
+export type StructureMoonStructureListSortBy = StructureCommonListSortBy | 'planet'
+
+export const STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS = [
+	...STRUCTURE_COMMON_LIST_SORT_FIELDS,
+	'planet',
+] as const satisfies readonly StructureMoonStructureListSortBy[]
+
+export type StructureSkyhookListSortBy =
+	| StructureCommonListSortBy
+	| 'theftVulnerabilityStart'
+	| 'skyhookSecureFullness'
+	| 'skyhookSurplusFullness'
+	| 'raidable'
+	| 'workforce'
+
+export const STRUCTURE_SKYHOOK_LIST_SORT_FIELDS = [
+	...STRUCTURE_COMMON_LIST_SORT_FIELDS,
+	'theftVulnerabilityStart',
+	'skyhookSecureFullness',
+	'skyhookSurplusFullness',
+	'raidable',
+	'workforce',
+] as const satisfies readonly StructureSkyhookListSortBy[]
+
+export type StructureSovereigntyListSortBy =
+	| StructureCommonListSortBy
+	| 'activityDefenseMultiplier'
+	| 'magmaticGasEstimatedDepletionAt'
+	| 'superionicIceEstimatedDepletionAt'
+
+export const STRUCTURE_SOVEREIGNTY_LIST_SORT_FIELDS = [
+	...STRUCTURE_COMMON_LIST_SORT_FIELDS,
+	'activityDefenseMultiplier',
+	'magmaticGasEstimatedDepletionAt',
+	'superionicIceEstimatedDepletionAt',
+] as const satisfies readonly StructureSovereigntyListSortBy[]
+
+export type StructureListSortBy =
+	| StructureCommonListSortBy
+	| StructureMoonStructureListSortBy
+	| StructureSkyhookListSortBy
+	| StructureSovereigntyListSortBy
 
 export interface StructureTabDefinition {
 	tab: StructureTab
@@ -128,14 +179,14 @@ export interface StructureActor {
 	roles: string[]
 }
 
-export interface StructureListPagingQuery {
+export interface StructureListPagingQuery<TSortBy extends StructureListSortBy = StructureListSortBy> {
 	page?: number
 	pageSize?: number
-	sortBy?: StructureListSortBy
+	sortBy?: TSortBy
 	sortDirection?: StructureListSortDirection
 }
 
-export interface StructureCommonListQuery extends StructureListPagingQuery {
+export interface StructureCommonListFilters {
 	corporationId?: string
 	assignedGroupId?: string
 	lowPower?: 'true' | 'false'
@@ -146,23 +197,22 @@ export interface StructureCommonListQuery extends StructureListPagingQuery {
 	typeId?: string
 }
 
-export interface StructureCitadelListQuery extends StructureListPagingQuery {
-	corporationId?: string
-	assignedGroupId?: string
-	lowPower?: 'true' | 'false'
-	lowPowerAllowed?: 'true' | 'false'
-	regionId?: string
-	systemId?: string
-	state?: string
-	typeId?: string
-}
+export interface StructureCommonListQuery
+	extends StructureListPagingQuery<StructureCommonListSortBy>,
+		StructureCommonListFilters {}
+
+export type StructureOperationalListFilters = StructureCommonListFilters
+
+export type StructureOperationalListQuery = StructureCommonListQuery
+
+export interface StructureCitadelListQuery extends StructureCommonListQuery {}
 
 export interface StructureNavigationListQuery extends StructureCommonListQuery {
 	corporationId?: string
 	systemId?: string
 }
 
-export interface StructureSovereigntyListQuery extends StructureListPagingQuery {
+export interface StructureSovereigntyListFilters {
 	corporationId?: string
 	assignedGroupId?: string
 	regionId?: string
@@ -170,6 +220,10 @@ export interface StructureSovereigntyListQuery extends StructureListPagingQuery 
 	controllerAllianceId?: string
 	vulnerabilityState?: 'vulnerable' | 'invulnerable' | 'reinforced'
 }
+
+export interface StructureSovereigntyListQuery
+	extends StructureListPagingQuery<StructureSovereigntyListSortBy>,
+		StructureSovereigntyListFilters {}
 
 export interface StructureSovereigntyListFilterOption {
 	value: string
@@ -264,16 +318,24 @@ export interface StructureListFilterOption {
 	label: string
 }
 
-export interface StructureListFilterOptions {
+export interface StructureCommonListFilterOptions {
 	corporations: StructureListFilterOption[]
 	assignedGroups: StructureListFilterOption[]
 	regions: StructureListFilterOption[]
 	systems: StructureListFilterOption[]
 	states: StructureListFilterOption[]
-	vulnerabilityStates?: StructureListFilterOption[]
 	types: StructureListFilterOption[]
 	alliances: StructureListFilterOption[]
+}
+
+export type StructureOperationalListFilterOptions = StructureCommonListFilterOptions
+
+export interface StructureMoonStructureListFilterOptions
+	extends StructureCommonListFilterOptions {
 	planets: StructureListFilterOption[]
+}
+
+export interface StructureSkyhookListFilterOptions extends StructureMoonStructureListFilterOptions {
 	raidableStates: StructureListFilterOption[]
 }
 
@@ -495,7 +557,7 @@ export interface StructureSkyhookListResponse {
 		hasNextPage: boolean
 		hasPreviousPage: boolean
 	}
-	filterOptions: StructureListFilterOptions
+	filterOptions: StructureSkyhookListFilterOptions
 	summary: StructureListSummary
 }
 
@@ -536,7 +598,7 @@ export interface StructureMoonDrillListResponse {
 		hasNextPage: boolean
 		hasPreviousPage: boolean
 	}
-	filterOptions: StructureListFilterOptions
+	filterOptions: StructureMoonStructureListFilterOptions
 	summary: StructureListSummary
 }
 
@@ -550,7 +612,7 @@ export interface StructureMiningCitadelListResponse {
 		hasNextPage: boolean
 		hasPreviousPage: boolean
 	}
-	filterOptions: StructureListFilterOptions
+	filterOptions: StructureMoonStructureListFilterOptions
 	summary: StructureListSummary
 }
 
@@ -719,26 +781,36 @@ export interface StructureCitadelListResponse extends StructureListResponse<Stru
 export interface StructureNavigationListResponse
 	extends StructureListResponse<StructureNavigationListItem> {}
 
-export interface StructureOverviewMetrics extends StructureListSummary {}
-
-export interface StructureSkyhookListQuery extends StructureCommonListQuery {
-	corporationId?: string
-	systemId?: string
+export interface StructureSkyhookListFilters extends StructureOperationalListFilters {
 	planetId?: string
 	isRaidable?: 'true' | 'false'
 }
 
-export interface StructureMoonDrillListQuery extends StructureCommonListQuery {
+export interface StructureSkyhookListQuery
+	extends StructureListPagingQuery<StructureSkyhookListSortBy>,
+		StructureSkyhookListFilters {}
+
+export interface StructureMoonStructureListFilters extends StructureOperationalListFilters {
+	planetId?: string
+}
+
+export interface StructureMoonStructureListQuery
+	extends StructureListPagingQuery<StructureMoonStructureListSortBy>,
+		StructureMoonStructureListFilters {}
+
+export interface StructureMoonDrillListQuery extends StructureMoonStructureListQuery {
 	corporationId?: string
 	systemId?: string
 	planetId?: string
 }
 
-export interface StructureMiningCitadelListQuery extends StructureCommonListQuery {
+export interface StructureMiningCitadelListQuery extends StructureMoonStructureListQuery {
 	corporationId?: string
 	systemId?: string
 	planetId?: string
 }
+
+export type StructureListFilterOptions = StructureCommonListFilterOptions
 
 export type StructureListQuery = StructureCitadelListQuery
 
@@ -837,7 +909,6 @@ export interface StructuresWorker {
 		actor: StructureActor,
 		query?: StructureMiningCitadelListQuery
 	): Promise<StructureMiningCitadelListResponse>
-	getStructureOverviewMetrics(actor: StructureActor): Promise<StructureOverviewMetrics>
 	getVisibleStructureDetail(
 		actor: StructureActor,
 		structureId: string

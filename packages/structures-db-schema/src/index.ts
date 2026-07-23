@@ -102,6 +102,8 @@ export const structureSovereigntySystems = pgTable(
 	{
 		systemId: text('system_id').primaryKey(),
 		systemName: text('system_name'),
+		regionId: text('region_id'),
+		regionName: text('region_name'),
 		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
@@ -109,6 +111,7 @@ export const structureSovereigntySystems = pgTable(
 			enum: ['alliance', 'faction', 'unclaimed'],
 		}).notNull(),
 		allianceId: text('alliance_id'),
+		allianceName: text('alliance_name'),
 		corporationClaimantId: text('corporation_claimant_id'),
 		factionId: text('faction_id'),
 		claimedSince: timestamp('claimed_since', { withTimezone: true }),
@@ -129,6 +132,7 @@ export const structureSovereigntySystems = pgTable(
 	},
 	(table) => [
 		index('structure_sovereignty_systems_corporation_id_idx').on(table.corporationId),
+		index('structure_sovereignty_systems_region_id_idx').on(table.regionId),
 		index('structure_sovereignty_systems_alliance_id_idx').on(table.allianceId),
 		index('structure_sovereignty_systems_sovereignty_hub_structure_id_idx').on(
 			table.sovereigntyHubStructureId
@@ -146,10 +150,10 @@ export const structureSovereigntyHubs = pgTable(
 			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
 		systemId: text('system_id').notNull(),
 		systemName: text('system_name'),
-		name: text('name'),
 		typeId: text('type_id').notNull(),
 		fuelAccessListId: text('fuel_access_list_id'),
 		controllerAllianceId: text('controller_alliance_id'),
+		controllerAllianceName: text('controller_alliance_name'),
 		reagentBayLastUpdated: timestamp('reagent_bay_last_updated', { withTimezone: true }),
 		reagentBay: jsonb('reagent_bay')
 			.$type<SovereigntyReagentBaySnapshot>()
@@ -216,7 +220,6 @@ export const structureSkyhooks = pgTable(
 		planetName: text('planet_name'),
 		systemId: text('system_id'),
 		systemName: text('system_name'),
-		name: text('name'),
 		typeId: text('type_id').notNull(),
 		state: text('state').notNull(),
 		isActive: boolean('is_active').notNull().default(false),

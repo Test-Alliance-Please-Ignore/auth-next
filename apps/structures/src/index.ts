@@ -12,7 +12,6 @@ import {
 	deleteStructureGroupAlertConfig,
 	deleteStructureGroupSetting,
 	getStructureModuleConfig,
-	getStructureOverviewMetrics,
 	getVisibleStructureDetail,
 	listCitadelStructures,
 	listMoonDrillStructures,
@@ -54,7 +53,6 @@ import type {
 	StructureSovereigntyListQuery,
 	StructureSovereigntyListResponse,
 	StructureListQuery,
-	StructureOverviewMetrics,
 	StructureModuleConfig,
 	StructureAlertDestination,
 	StructureAlertDestinationRecord,
@@ -125,10 +123,6 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		query: StructureMiningCitadelListQuery = {}
 	): Promise<StructureMiningCitadelListResponse> {
 		return listMiningCitadelStructures(this.getDb(), actor, query)
-	}
-
-	async getStructureOverviewMetrics(actor: StructureActor): Promise<StructureOverviewMetrics> {
-		return getStructureOverviewMetrics(this.getDb(), actor)
 	}
 
 	async getVisibleStructureDetail(

@@ -15,7 +15,6 @@ import type {
 	StructureMoonDrillListResponse,
 	StructureNavigationListQuery,
 	StructureNavigationListResponse,
-	StructureOverviewMetrics,
 	StructureSkyhookListQuery,
 	StructureSkyhookListResponse,
 	StructureSovereigntyListQuery,
@@ -118,18 +117,6 @@ export function useMoonDrillStructures(
 	)
 }
 
-export function useStructureOverviewMetrics(
-	options: Pick<UseQueryOptions<StructureOverviewMetrics>, 'enabled'> = {}
-) {
-	return useQuery<StructureOverviewMetrics>({
-		queryKey: structureKeys.overview(),
-		queryFn: () => api.getStructureOverviewMetrics(),
-		staleTime: STRUCTURE_LIST_STALE_TIME,
-		gcTime: STRUCTURE_LIST_GC_TIME,
-		enabled: options.enabled ?? true,
-	})
-}
-
 export function useStructures(
 	query: StructureCitadelListQuery,
 	options: Pick<UseQueryOptions<StructureCitadelListResponse>, 'enabled'> = {}
@@ -167,17 +154,17 @@ export function useStructuresForTab(
 		queryFn: () => {
 			switch (tab) {
 				case 'citadels':
-					return api.getCitadelStructures(query)
+					return api.getCitadelStructures(query as StructureCitadelListQuery)
 				case 'navigation':
-					return api.getNavigationStructures(query)
+					return api.getNavigationStructures(query as StructureNavigationListQuery)
 				case 'sovereignty':
-					return api.getSovereigntyStructures(query)
+					return api.getSovereigntyStructures(query as StructureSovereigntyListQuery)
 				case 'skyhooks':
-					return api.getSkyhookStructures(query)
+					return api.getSkyhookStructures(query as StructureSkyhookListQuery)
 				case 'mining-citadels':
-					return api.getMiningCitadelStructures(query)
+					return api.getMiningCitadelStructures(query as StructureMiningCitadelListQuery)
 				case 'moon-drills':
-					return api.getMoonDrillStructures(query)
+					return api.getMoonDrillStructures(query as StructureMoonDrillListQuery)
 			}
 			throw new Error(`Unknown structures tab: ${tab}`)
 		},
@@ -194,8 +181,6 @@ export function useStructureQueryManager() {
 	return {
 		invalidateStructures: () => queryClient.invalidateQueries({ queryKey: structureKeys.all }),
 		refetchStructures: () => queryClient.refetchQueries({ queryKey: structureKeys.all }),
-		invalidateStructureOverview: () => queryClient.invalidateQueries({ queryKey: structureKeys.overview() }),
-		refetchStructureOverview: () => queryClient.refetchQueries({ queryKey: structureKeys.overview() }),
 	}
 }
 

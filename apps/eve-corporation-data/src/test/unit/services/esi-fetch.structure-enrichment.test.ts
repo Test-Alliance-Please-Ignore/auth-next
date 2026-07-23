@@ -154,7 +154,6 @@ describe('esi structure enrichment ownership handling', () => {
 				typeId: '35842',
 				systemId: '30000142',
 				systemName: 'Jita',
-				name: null,
 			},
 			existingRow: null,
 			planet: {
@@ -202,7 +201,6 @@ describe('esi structure enrichment ownership handling', () => {
 				typeId: '35842',
 				systemId: '30000142',
 				systemName: 'Jita',
-				name: null,
 			},
 			existingRow: null,
 			planet: {
