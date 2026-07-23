@@ -18,7 +18,7 @@ vi.mock('@repo/do-utils', () => ({
 	getStub: mocks.getStubMock,
 }))
 
-import { getVisibleStructureDetail, listSovereigntyStructures } from '../../../services/structures.service'
+import { getStructureDetail, listSovereigntyStructures } from '../../../services/structures.service'
 
 function makeDb() {
 	const corporationStructures = {
@@ -906,7 +906,7 @@ describe('sovereignty hub model', () => {
 		const db = makeDb()
 		mocks.getStubMock.mockReturnValue(db.universeStub)
 
-		const result = await getVisibleStructureDetail(
+		const result = await getStructureDetail(
 			{
 				UNIVERSE: {} as never,
 				EVE_CORPORATION_DATA: {} as never,

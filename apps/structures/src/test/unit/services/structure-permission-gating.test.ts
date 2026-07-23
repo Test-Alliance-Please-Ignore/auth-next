@@ -14,134 +14,183 @@ vi.mock('@repo/hono-helpers', () => ({
 }))
 
 import {
-	getVisibleStructureDetail,
-	listMiningCitadelStructures,
-	listMoonDrillStructures,
-	listStructures,
+	canEditStructure,
+	canViewDetailsStructure,
+	canViewSensitiveStructure,
+	computeStructureAccess,
+	getStructureAccessTarget,
+	getStructureDetail,
+	hasAnyStructureAccess,
+	hasStructureAccessForTab,
 } from '../../../services/structures.service'
 
-type FakeDb = Parameters<typeof listStructures>[0]
-
-function makeDb(
-	options: {
-		hidden?: boolean
-		structures?: Array<{
-			structureId: string
-			corporationId: string
-			name: string
-			typeId: string
-			typeName: string
-			systemId: string
-			systemName: string
-			regionId: string
-			regionName: string
-			state: string
-			nextReinforceApply: null
-			stateTimerEnd: null
-			unanchorsAt: null
-			fuelExpires: null
-			fuelAmount: number
-			lowPower: boolean
-			syncStatus: 'ok'
-			syncFailureReason: null
-			lastSyncedAt: Date
-			updatedAt: Date
-		}>
-		miningStates?: Array<{
-			structureId: string
-			moonId: string
-			moonName: string | null
-			planetId: string | null
-			planetName: string | null
-			systemId: string | null
-			systemName: string | null
-			extractionStartTime: Date | null
-			chunkArrivalTime: Date | null
-			naturalDecayTime: Date | null
-			lastSyncedAt: Date
-			updatedAt: Date
-		}>
-	} = {}
-): FakeDb {
-	const hidden = options.hidden ?? false
-	const structures =
-		options.structures ??
-		[
-			{
-				structureId: 'structure-1',
-				corporationId: 'corp-1',
-				name: 'Structure One',
-				typeId: '35832',
-				typeName: 'Astrahus',
-				systemId: '30000142',
-				systemName: 'Jita',
-				regionId: '10000002',
-				regionName: 'The Forge',
-				state: 'online',
-				nextReinforceApply: null,
-				stateTimerEnd: null,
-				unanchorsAt: null,
-				fuelExpires: null,
-				fuelAmount: 2000,
-				lowPower: false,
-				syncStatus: 'ok',
-				syncFailureReason: null,
-				lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
-				updatedAt: new Date('2026-01-01T00:00:00Z'),
-			},
-		]
-
-	const query = {
+type FakeDb = {
+	query: {
 		structureModuleConfig: {
-			findFirst: vi.fn().mockResolvedValue({
-				id: 'default',
-				lowFuelTimeThresholdHours: 12,
-				criticalFuelTimeThresholdHours: 4,
-				lowFuelAmountThreshold: 0,
-				criticalFuelAmountThreshold: 0,
-				updatedBy: null,
-				createdAt: new Date('2026-01-01T00:00:00Z'),
-				updatedAt: new Date('2026-01-01T00:00:00Z'),
-			}),
-		},
+			findFirst: ReturnType<typeof vi.fn>
+		}
 		corporationStructures: {
-			findMany: vi.fn().mockResolvedValue(structures),
-		},
+			findFirst: ReturnType<typeof vi.fn>
+		}
 		structureConfigs: {
-			findMany: vi.fn().mockResolvedValue(
-				structures.map((structure) => ({
-					structureId: structure.structureId,
-					hidden,
+			findFirst: ReturnType<typeof vi.fn>
+		}
+		managedCorporations: {
+			findFirst: ReturnType<typeof vi.fn>
+		}
+		structureFuelLog: {
+			findMany: ReturnType<typeof vi.fn>
+		}
+		structureSkyhooks: {
+			findFirst: ReturnType<typeof vi.fn>
+		}
+		structureSkyhookReagents: {
+			findFirst: ReturnType<typeof vi.fn>
+		}
+		structureMoonDrills: {
+			findFirst: ReturnType<typeof vi.fn>
+		}
+		structureMiningExtractions: {
+			findFirst: ReturnType<typeof vi.fn>
+		}
+		structureMoonGeographies: {
+			findFirst: ReturnType<typeof vi.fn>
+		}
+		structureSovereigntyHubs: {
+			findFirst: ReturnType<typeof vi.fn>
+		}
+		structureSovereigntySystems: {
+			findFirst: ReturnType<typeof vi.fn>
+		}
+		corporationStructureInventory: {
+			findMany: ReturnType<typeof vi.fn>
+		}
+	}
+}
+
+function makeDb(options: { structure?: Record<string, unknown>; skyhook?: Record<string, unknown> } = {}): FakeDb {
+	const structure =
+		options.structure ?? {
+		structureId: 'structure-1',
+		corporationId: 'corp-1',
+		name: 'Structure One',
+		typeId: '35832',
+		typeName: 'Astrahus',
+		systemId: '30000142',
+		systemName: 'Jita',
+		regionId: '10000002',
+		regionName: 'The Forge',
+		state: 'online',
+		nextReinforceApply: null,
+		stateTimerEnd: null,
+		unanchorsAt: null,
+		fuelExpires: null,
+		fuelAmount: null,
+		fuelBurnRate: null,
+		lowPower: false,
+		syncStatus: 'ok',
+		syncFailureReason: null,
+		lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
+		updatedAt: new Date('2026-01-01T00:00:00Z'),
+	}
+
+	const skyhook =
+		options.skyhook ?? {
+		structureId: 'skyhook-1',
+		corporationId: 'corp-1',
+		name: 'Skyhook One',
+		typeId: '81080',
+		typeName: 'Orbital Skyhook',
+		systemId: '30000142',
+		systemName: 'Jita',
+		regionId: '10000002',
+		regionName: 'The Forge',
+		state: 'online',
+		nextReinforceApply: null,
+		stateTimerEnd: null,
+		unanchorsAt: null,
+		fuelExpires: null,
+		fuelAmount: 2000,
+		lowPower: false,
+		syncStatus: 'ok',
+		syncFailureReason: null,
+		lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
+		updatedAt: new Date('2026-01-01T00:00:00Z'),
+	}
+
+	return {
+		query: {
+			structureModuleConfig: {
+				findFirst: vi.fn().mockResolvedValue({
+					id: 'default',
+					lowFuelTimeThresholdHours: 12,
+					criticalFuelTimeThresholdHours: 4,
+					lowFuelAmountThreshold: 0,
+					criticalFuelAmountThreshold: 0,
+					updatedBy: null,
+					createdAt: new Date('2026-01-01T00:00:00Z'),
+					updatedAt: new Date('2026-01-01T00:00:00Z'),
+				}),
+			},
+			corporationStructures: {
+				findFirst: vi.fn().mockResolvedValue(structure),
+			},
+			structureConfigs: {
+				findFirst: vi.fn().mockResolvedValue({
+					structureId: 'structure-1',
+					hidden: false,
 					lowPowerAllowed: true,
 					assignedGroupId: null,
 					createdAt: new Date('2026-01-01T00:00:00Z'),
 					updatedAt: new Date('2026-01-01T00:00:00Z'),
-				}))
-			),
+				}),
+			},
+			managedCorporations: {
+				findFirst: vi.fn().mockResolvedValue({
+					corporationId: 'corp-1',
+					name: 'Test Corp',
+					includeInStructureAssetSync: false,
+				}),
+			},
+			structureFuelLog: {
+				findMany: vi.fn().mockResolvedValue([]),
+			},
+			structureSkyhooks: {
+				findFirst: vi.fn().mockResolvedValue(options.skyhook ?? skyhook),
+			},
+			structureSkyhookReagents: {
+				findFirst: vi.fn().mockResolvedValue({
+					structureId: 'skyhook-1',
+					corporationId: 'corp-1',
+					magmaticGasSecuredStock: 12,
+					magmaticGasUnsecuredStock: 34,
+					magmaticGasLastCycle: new Date('2026-01-01T01:00:00Z'),
+					superionicIceSecuredStock: 56,
+					superionicIceUnsecuredStock: 78,
+					superionicIceLastCycle: new Date('2026-01-01T02:00:00Z'),
+					updatedAt: new Date('2026-01-01T02:00:00Z'),
+				}),
+			},
+			structureMoonDrills: {
+				findFirst: vi.fn().mockResolvedValue(null),
+			},
+			structureMiningExtractions: {
+				findFirst: vi.fn().mockResolvedValue(null),
+			},
+			structureMoonGeographies: {
+				findFirst: vi.fn().mockResolvedValue(null),
+			},
+			structureSovereigntyHubs: {
+				findFirst: vi.fn().mockResolvedValue(null),
+			},
+			structureSovereigntySystems: {
+				findFirst: vi.fn().mockResolvedValue(null),
+			},
+			corporationStructureInventory: {
+				findMany: vi.fn().mockResolvedValue([]),
+			},
 		},
-		managedCorporations: {
-			findMany: vi.fn().mockResolvedValue(
-				[
-					...new Set(structures.map((structure) => structure.corporationId)),
-				].map((corporationId) => ({
-					corporationId,
-					name: corporationId === 'corp-1' ? 'Test Corp' : 'Second Corp',
-				}))
-			),
-		},
-		structureFuelLog: {
-			findMany: vi.fn().mockResolvedValue([]),
-		},
-		structureMoonDrills: {
-			findFirst: vi.fn().mockResolvedValue(null),
-			findMany: vi.fn().mockResolvedValue(options.miningStates ?? []),
-		},
-		corporationStructureInventory: {
-			findMany: vi.fn().mockResolvedValue([]),
-		},
-	}
-
-	return { query } as unknown as FakeDb
+	} as unknown as FakeDb
 }
 
 describe('structure permission gating', () => {
@@ -149,61 +198,54 @@ describe('structure permission gating', () => {
 		vi.clearAllMocks()
 	})
 
-	it('returns visible structures for all-scope viewer permissions resolved from group membership', async () => {
-		const db = makeDb()
+	it('computes access levels for all-scope roles', () => {
+		const access = computeStructureAccess(['urn:structures:all:viewer'], false)
+		const target = getStructureAccessTarget(access, 'citadels')
 
-		const result = await listStructures(db as never, {
-			id: 'user-1',
-			is_admin: false,
-			roles: ['urn:structures:all:viewer'],
-		})
-
-		expect(db.query.corporationStructures.findMany).toHaveBeenCalledTimes(1)
-		expect(result.items).toHaveLength(1)
-		expect(result.items[0]?.structureId).toBe('structure-1')
-		expect(result.items[0]?.canViewDetails).toBe(false)
-		expect(result.summary.total).toBe(1)
-		expect(db.query.structureFuelLog.findMany).not.toHaveBeenCalled()
+		expect(hasAnyStructureAccess(target)).toBe(true)
+		expect(hasStructureAccessForTab(access, 'corp-1', 'citadels')).toBe(true)
+		expect(canViewDetailsStructure(access, 'corp-1', 'citadels')).toBe(false)
+		expect(canViewSensitiveStructure(access, 'corp-1', 'citadels')).toBe(false)
+		expect(canEditStructure(access, 'corp-1', 'citadels')).toBe(false)
 	})
 
-	it('returns visible structures for all-scope details permissions', async () => {
-		const db = makeDb()
+	it('grants details, sensitive, and manager access in the expected order', () => {
+		const detailsAccess = computeStructureAccess(['urn:structures:corp-1:details'], false)
+		expect(canViewDetailsStructure(detailsAccess, 'corp-1', 'citadels')).toBe(true)
+		expect(canViewSensitiveStructure(detailsAccess, 'corp-1', 'citadels')).toBe(false)
+		expect(canEditStructure(detailsAccess, 'corp-1', 'citadels')).toBe(false)
 
-		const result = await listStructures(db as never, {
-			id: 'user-1d',
-			is_admin: false,
-			roles: ['urn:structures:all:details'],
-		})
+		const sensitiveAccess = computeStructureAccess(['urn:structures:corp-1:sensitive'], false)
+		expect(canViewDetailsStructure(sensitiveAccess, 'corp-1', 'citadels')).toBe(true)
+		expect(canViewSensitiveStructure(sensitiveAccess, 'corp-1', 'citadels')).toBe(true)
+		expect(canEditStructure(sensitiveAccess, 'corp-1', 'citadels')).toBe(false)
 
-		expect(db.query.corporationStructures.findMany).toHaveBeenCalledTimes(1)
-		expect(result.items).toHaveLength(1)
-		expect(result.items[0]?.structureId).toBe('structure-1')
-		expect(result.items[0]?.canViewDetails).toBe(true)
+		const managerAccess = computeStructureAccess(['urn:structures:corp-1:manager'], false)
+		expect(canViewDetailsStructure(managerAccess, 'corp-1', 'citadels')).toBe(true)
+		expect(canViewSensitiveStructure(managerAccess, 'corp-1', 'citadels')).toBe(true)
+		expect(canEditStructure(managerAccess, 'corp-1', 'citadels')).toBe(true)
 	})
 
-	it('returns corporation-scoped structures when the user only has a corp-scoped viewer permission', async () => {
-		const db = makeDb()
+	it('unions access across scopes and corporations', () => {
+		const access = computeStructureAccess(
+			['urn:structures:corp-1:viewer', 'urn:structures:corp-2:sensitive'],
+			false
+		)
 
-		const result = await listStructures(db as never, {
-			id: 'user-2',
-			is_admin: false,
-			roles: ['urn:structures:corp-1:viewer'],
-		})
-
-		expect(db.query.corporationStructures.findMany).toHaveBeenCalledTimes(1)
-		expect(result.items).toHaveLength(1)
-		expect(result.items[0]?.corporationId).toBe('corp-1')
-		expect(result.items[0]?.canViewDetails).toBe(false)
+		expect(hasStructureAccessForTab(access, 'corp-1', 'citadels')).toBe(true)
+		expect(hasStructureAccessForTab(access, 'corp-2', 'citadels')).toBe(true)
+		expect(canViewDetailsStructure(access, 'corp-1', 'citadels')).toBe(false)
+		expect(canViewSensitiveStructure(access, 'corp-2', 'citadels')).toBe(true)
 	})
 
-	it('allows detail access for details permission and denies it for viewer-only access', async () => {
+	it('returns null for viewer-only detail access and hydrates details for details access', async () => {
 		const db = makeDb()
 		const env = {
 			UNIVERSE: {} as never,
 			EVE_CORPORATION_DATA: {} as never,
 		}
 
-		const viewerResult = await getVisibleStructureDetail(
+		const viewerResult = await getStructureDetail(
 			env as never,
 			db as never,
 			{
@@ -215,7 +257,7 @@ describe('structure permission gating', () => {
 		)
 		expect(viewerResult).toBeNull()
 
-		const detailsResult = await getVisibleStructureDetail(
+		const detailsResult = await getStructureDetail(
 			env as never,
 			db as never,
 			{
@@ -229,434 +271,65 @@ describe('structure permission gating', () => {
 		expect(detailsResult?.canEdit).toBe(false)
 	})
 
-	it('does not leak citadels to a tab-scoped moon-drills permission', async () => {
-		const db = makeDb()
-
-		const result = await listStructures(db as never, {
-			id: 'user-3',
-			is_admin: false,
-			roles: ['urn:structures:moon-drills:all:viewer'],
-		})
-
-		expect(db.query.corporationStructures.findMany).toHaveBeenCalledTimes(1)
-		expect(result.items).toHaveLength(0)
-	})
-
-	it('returns moon-drill structures for a moon-drills tab permission', async () => {
+	it('hydrates skyhook detail reagent data from the companion table', async () => {
+		const skyhookStructure = {
+			structureId: 'skyhook-1',
+			corporationId: 'corp-1',
+			name: 'Skyhook One',
+			typeId: '81080',
+			typeName: 'Orbital Skyhook',
+			systemId: '30000142',
+			systemName: 'Jita',
+			regionId: '10000002',
+			regionName: 'The Forge',
+			state: 'online',
+			nextReinforceApply: null,
+			stateTimerEnd: null,
+			unanchorsAt: null,
+			fuelExpires: null,
+			fuelAmount: null,
+			fuelBurnRate: null,
+			lowPower: false,
+			syncStatus: 'ok',
+			syncFailureReason: null,
+			lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
+			updatedAt: new Date('2026-01-01T00:00:00Z'),
+		}
 		const db = makeDb({
-			structures: [
-				{
-					structureId: 'structure-moon-drill',
-					corporationId: 'corp-1',
-					name: 'Moon Drill',
-					typeId: '81826',
-					typeName: 'Metenox Moon Drill',
-					systemId: '30000142',
-					systemName: 'Jita',
-					regionId: '10000002',
-					regionName: 'The Forge',
-					state: 'online',
-					nextReinforceApply: null,
-					stateTimerEnd: null,
-					unanchorsAt: null,
-					fuelExpires: null,
-					fuelAmount: 2000,
-					lowPower: false,
-					syncStatus: 'ok',
-					syncFailureReason: null,
-					lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
-					updatedAt: new Date('2026-01-01T00:00:00Z'),
-				},
-			],
+			structure: skyhookStructure,
+			skyhook: skyhookStructure,
 		})
+		const env = {
+			UNIVERSE: {} as never,
+			EVE_CORPORATION_DATA: {} as never,
+		}
 
-		const result = await listMoonDrillStructures(db as never, {
-			id: 'user-4',
-			is_admin: false,
-			roles: ['urn:structures:moon-drills:all:viewer'],
-		})
-
-		expect(db.query.corporationStructures.findMany).toHaveBeenCalledTimes(1)
-		expect(result.items).toHaveLength(1)
-		expect(result.items[0]?.structureId).toBe('structure-moon-drill')
-	})
-
-	it('returns mining citadel structures for a mining-citadels tab permission', async () => {
-		const db = makeDb({
-			structures: [
-				{
-					structureId: 'structure-mining-citadel',
-					corporationId: 'corp-1',
-					name: 'Mining Citadel',
-					typeId: '35833',
-					typeName: 'Athanor',
-					systemId: '30000142',
-					systemName: 'Jita',
-					regionId: '10000002',
-					regionName: 'The Forge',
-					state: 'online',
-					nextReinforceApply: null,
-					stateTimerEnd: null,
-					unanchorsAt: null,
-					fuelExpires: null,
-					fuelAmount: 2000,
-					lowPower: false,
-					syncStatus: 'ok',
-					syncFailureReason: null,
-					lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
-					updatedAt: new Date('2026-01-01T00:00:00Z'),
-				},
-			],
-		})
-
-		const result = await listMiningCitadelStructures(db as never, {
-			id: 'user-4b',
-			is_admin: false,
-			roles: ['urn:structures:mining-citadels:all:viewer'],
-		})
-
-		expect(db.query.corporationStructures.findMany).toHaveBeenCalledTimes(1)
-		expect(result.items).toHaveLength(1)
-		expect(result.items[0]?.structureId).toBe('structure-mining-citadel')
-	})
-
-	it('applies tab-scoped sensitive and manager access to hidden moon-drills', async () => {
-		const db = makeDb({
-			hidden: true,
-			structures: [
-				{
-					structureId: 'structure-moon-drill',
-					corporationId: 'corp-1',
-					name: 'Moon Drill',
-					typeId: '81826',
-					typeName: 'Metenox Moon Drill',
-					systemId: '30000142',
-					systemName: 'Jita',
-					regionId: '10000002',
-					regionName: 'The Forge',
-					state: 'online',
-					nextReinforceApply: null,
-					stateTimerEnd: null,
-					unanchorsAt: null,
-					fuelExpires: null,
-					fuelAmount: 2000,
-					lowPower: false,
-					syncStatus: 'ok',
-					syncFailureReason: null,
-					lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
-					updatedAt: new Date('2026-01-01T00:00:00Z'),
-				},
-			],
-		})
-
-		const sensitiveResult = await listMoonDrillStructures(db as never, {
-			id: 'user-4c',
-			is_admin: false,
-			roles: ['urn:structures:moon-drills:corp-1:sensitive'],
-		})
-
-		expect(sensitiveResult.items).toHaveLength(1)
-
-		const managerResult = await listMoonDrillStructures(db as never, {
-			id: 'user-4d',
-			is_admin: false,
-			roles: ['urn:structures:moon-drills:corp-1:manager'],
-		})
-
-		expect(managerResult.items).toHaveLength(1)
-	})
-
-	it('returns mining snapshot data for mining citadels when permissioned', async () => {
-		const db = makeDb({
-			structures: [
-				{
-					structureId: 'structure-mining-citadel',
-					corporationId: 'corp-1',
-					name: 'Mining Citadel',
-					typeId: '35833',
-					typeName: 'Athanor',
-					systemId: '30000142',
-					systemName: 'Jita',
-					regionId: '10000002',
-					regionName: 'The Forge',
-					state: 'online',
-					nextReinforceApply: null,
-					stateTimerEnd: null,
-					unanchorsAt: null,
-					fuelExpires: null,
-					fuelAmount: 2000,
-					lowPower: false,
-					syncStatus: 'ok',
-					syncFailureReason: null,
-					lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
-					updatedAt: new Date('2026-01-01T00:00:00Z'),
-				},
-			],
-			miningStates: [
-				{
-					structureId: 'structure-mining-citadel',
-					moonId: '40200001',
-					moonName: 'Jita IV - Moon 4',
-					planetId: '40000042',
-					planetName: 'Jita IV',
-					systemId: '30000142',
-					systemName: 'Jita',
-					extractionStartTime: new Date('2026-01-01T01:00:00Z'),
-					chunkArrivalTime: new Date('2026-01-02T01:00:00Z'),
-					naturalDecayTime: new Date('2026-01-03T01:00:00Z'),
-					lastSyncedAt: new Date('2026-01-01T02:00:00Z'),
-					updatedAt: new Date('2026-01-01T02:00:00Z'),
-				},
-			],
-		})
-
-		const result = await listMiningCitadelStructures(db as never, {
-			id: 'user-4e',
-			is_admin: false,
-			roles: ['urn:structures:mining-citadels:all:viewer'],
-		})
-
-		expect(db.query.structureMoonDrills.findMany).toHaveBeenCalledTimes(1)
-		expect(result.items).toHaveLength(1)
-		expect(result.items[0]?.structureId).toBe('structure-mining-citadel')
-		expect(result.items[0]?.moonId).toBe('40200001')
-		expect(result.items[0]?.moonName).toBe('Jita IV - Moon 4')
-		expect(result.items[0]?.planetId).toBe('40000042')
-		expect(result.items[0]?.planetName).toBe('Jita IV')
-		expect(result.items[0]?.systemId).toBe('30000142')
-		expect(result.items[0]?.systemName).toBe('Jita')
-		expect(result.items[0]?.extractionStartTime).toBe('2026-01-01T01:00:00.000Z')
-		expect(result.items[0]?.chunkArrivalTime).toBe('2026-01-02T01:00:00.000Z')
-		expect(result.items[0]?.naturalDecayTime).toBe('2026-01-03T01:00:00.000Z')
-	})
-
-	it('treats a missing mining extraction snapshot as a non-fatal warning state', async () => {
-		const db = makeDb({
-			structures: [
-				{
-					structureId: 'structure-mining-citadel',
-					corporationId: 'corp-1',
-					name: 'Mining Citadel',
-					typeId: '35833',
-					typeName: 'Athanor',
-					systemId: '30000142',
-					systemName: 'Jita',
-					regionId: '10000002',
-					regionName: 'The Forge',
-					state: 'online',
-					nextReinforceApply: null,
-					stateTimerEnd: null,
-					unanchorsAt: null,
-					fuelExpires: null,
-					fuelAmount: 2000,
-					lowPower: false,
-					syncStatus: 'ok',
-					syncFailureReason: null,
-					lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
-					updatedAt: new Date('2026-01-01T00:00:00Z'),
-				},
-			],
-			miningStates: [],
-		})
-
-		const result = await listMiningCitadelStructures(db as never, {
-			id: 'user-4f',
-			is_admin: false,
-			roles: ['urn:structures:mining-citadels:all:viewer'],
-		})
-
-		expect(result.items).toHaveLength(1)
-		expect(result.items[0]?.structureId).toBe('structure-mining-citadel')
-		expect(result.items[0]?.syncStatus).toBe('warning')
-		expect(result.items[0]?.syncFailureReason).toBe(
-			'Mining extraction snapshot has not been ingested yet for this structure.'
+		const result = await getStructureDetail(
+			env as never,
+			db as never,
+			{
+				id: 'user-details',
+				is_admin: false,
+				roles: ['urn:structures:all:details'],
+			},
+			'skyhook-1'
 		)
-		expect(result.items[0]?.extractionStartTime).toBeNull()
-		expect(result.items[0]?.chunkArrivalTime).toBeNull()
-		expect(result.items[0]?.naturalDecayTime).toBeNull()
-	})
 
-	it('unions multiple corp-scoped permissions across corporations', async () => {
-		const db = makeDb({
-			structures: [
-				{
-					structureId: 'structure-1',
-					corporationId: 'corp-1',
-					name: 'Structure One',
-					typeId: '35832',
-					typeName: 'Astrahus',
-					systemId: '30000142',
-					systemName: 'Jita',
-					regionId: '10000002',
-					regionName: 'The Forge',
-					state: 'online',
-					nextReinforceApply: null,
-					stateTimerEnd: null,
-					unanchorsAt: null,
-					fuelExpires: null,
-					fuelAmount: 2000,
-					lowPower: false,
-					syncStatus: 'ok',
-					syncFailureReason: null,
-					lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
-					updatedAt: new Date('2026-01-01T00:00:00Z'),
-				},
-				{
-					structureId: 'structure-2',
-					corporationId: 'corp-2',
-					name: 'Structure Two',
-					typeId: '35832',
-					typeName: 'Astrahus',
-					systemId: '30000143',
-					systemName: 'Perimeter',
-					regionId: '10000002',
-					regionName: 'The Forge',
-					state: 'online',
-					nextReinforceApply: null,
-					stateTimerEnd: null,
-					unanchorsAt: null,
-					fuelExpires: null,
-					fuelAmount: 3000,
-					lowPower: false,
-					syncStatus: 'ok',
-					syncFailureReason: null,
-					lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
-					updatedAt: new Date('2026-01-01T00:00:00Z'),
-				},
-			],
-		})
-
-		const result = await listStructures(db as never, {
-			id: 'user-2a',
-			is_admin: false,
-			roles: ['urn:structures:corp-1:viewer', 'urn:structures:corp-2:sensitive'],
-		})
-
-		expect(db.query.corporationStructures.findMany).toHaveBeenCalledTimes(1)
-		expect(result.items).toHaveLength(2)
-		expect(result.items.map((item) => item.corporationId).sort()).toEqual(['corp-1', 'corp-2'])
-	})
-
-	it('lets all-scope access supersede corp-scoped permissions for visibility', async () => {
-		const db = makeDb({
-			structures: [
-				{
-					structureId: 'structure-1',
-					corporationId: 'corp-1',
-					name: 'Structure One',
-					typeId: '35832',
-					typeName: 'Astrahus',
-					systemId: '30000142',
-					systemName: 'Jita',
-					regionId: '10000002',
-					regionName: 'The Forge',
-					state: 'online',
-					nextReinforceApply: null,
-					stateTimerEnd: null,
-					unanchorsAt: null,
-					fuelExpires: null,
-					fuelAmount: 2000,
-					lowPower: false,
-					syncStatus: 'ok',
-					syncFailureReason: null,
-					lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
-					updatedAt: new Date('2026-01-01T00:00:00Z'),
-				},
-				{
-					structureId: 'structure-2',
-					corporationId: 'corp-2',
-					name: 'Structure Two',
-					typeId: '35832',
-					typeName: 'Astrahus',
-					systemId: '30000143',
-					systemName: 'Perimeter',
-					regionId: '10000002',
-					regionName: 'The Forge',
-					state: 'online',
-					nextReinforceApply: null,
-					stateTimerEnd: null,
-					unanchorsAt: null,
-					fuelExpires: null,
-					fuelAmount: 3000,
-					lowPower: false,
-					syncStatus: 'ok',
-					syncFailureReason: null,
-					lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
-					updatedAt: new Date('2026-01-01T00:00:00Z'),
-				},
-			],
-		})
-
-		const result = await listStructures(db as never, {
-			id: 'user-2b',
-			is_admin: false,
-			roles: ['urn:structures:corp-1:viewer', 'urn:structures:all:viewer'],
-		})
-
-		expect(db.query.corporationStructures.findMany).toHaveBeenCalledTimes(1)
-		expect(result.items).toHaveLength(2)
-		expect(result.items.map((item) => item.corporationId).sort()).toEqual(['corp-1', 'corp-2'])
-	})
-
-	it('does not query structures when the user has no structure permissions', async () => {
-		const db = makeDb()
-
-		const result = await listStructures(db as never, {
-			id: 'user-3',
-			is_admin: false,
-			roles: ['urn:srp:reviewer'],
-		})
-
-		expect(db.query.corporationStructures.findMany).not.toHaveBeenCalled()
-		expect(result.items).toHaveLength(0)
-		expect(result.summary.total).toBe(0)
-	})
-
-	it('filters hidden structures unless the user has manager-level access', async () => {
-		const db = makeDb({ hidden: true })
-
-		const viewerResult = await listStructures(db as never, {
-			id: 'user-4',
-			is_admin: false,
-			roles: ['urn:structures:all:viewer'],
-		})
-
-		expect(viewerResult.items).toHaveLength(0)
-
-		const sensitiveResult = await listStructures(db as never, {
-			id: 'user-5',
-			is_admin: false,
-			roles: ['urn:structures:all:sensitive'],
-		})
-
-		expect(sensitiveResult.items).toHaveLength(1)
-		expect(sensitiveResult.items[0]?.structureId).toBe('structure-1')
-
-		const corpSensitiveResult = await listStructures(db as never, {
-			id: 'user-5b',
-			is_admin: false,
-			roles: ['urn:structures:corp-1:sensitive'],
-		})
-
-		expect(corpSensitiveResult.items).toHaveLength(1)
-		expect(corpSensitiveResult.items[0]?.structureId).toBe('structure-1')
-
-		const corpManagerResult = await listStructures(db as never, {
-			id: 'user-5c',
-			is_admin: false,
-			roles: ['urn:structures:corp-1:manager'],
-		})
-
-		expect(corpManagerResult.items).toHaveLength(1)
-		expect(corpManagerResult.items[0]?.structureId).toBe('structure-1')
-
-		const managerResult = await listStructures(db as never, {
-			id: 'user-6',
-			is_admin: false,
-			roles: ['urn:structures:all:manager'],
-		})
-
-		expect(managerResult.items).toHaveLength(1)
-		expect(managerResult.items[0]?.structureId).toBe('structure-1')
+		expect(result?.skyhook).not.toBeNull()
+		expect(result?.skyhook?.totalReagents).toBe(2)
+		expect(result?.skyhook?.totalSecuredStock).toBe(68)
+		expect(result?.skyhook?.totalUnsecuredStock).toBe(112)
+		expect(result?.skyhook?.reagents).toEqual([
+			expect.objectContaining({
+				typeId: '81143',
+				securedStock: 12,
+				unsecuredStock: 34,
+			}),
+			expect.objectContaining({
+				typeId: '81144',
+				securedStock: 56,
+				unsecuredStock: 78,
+			}),
+		])
 	})
 })

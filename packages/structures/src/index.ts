@@ -909,7 +909,7 @@ export interface StructuresWorker {
 		actor: StructureActor,
 		query?: StructureMiningCitadelListQuery
 	): Promise<StructureMiningCitadelListResponse>
-	getVisibleStructureDetail(
+	getStructureDetail(
 		actor: StructureActor,
 		structureId: string
 	): Promise<StructureDetailResult | null>

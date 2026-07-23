@@ -372,7 +372,7 @@ app.post('/:structureId/assets-debug', async (c) => {
 	const structureId = c.req.param('structureId')
 	try {
 		const actor = await getStructureActor(c)
-		const structure = (await c.env.STRUCTURES.getVisibleStructureDetail(actor, structureId)) as {
+		const structure = (await c.env.STRUCTURES.getStructureDetail(actor, structureId)) as {
 			corporationId: string
 			corporationName: string | null
 			structureId: string
@@ -425,7 +425,7 @@ app.post('/:structureId/inventory-rebuild', async (c) => {
 	const structureId = c.req.param('structureId')
 	try {
 		const actor = await getStructureActor(c)
-		const structure = (await c.env.STRUCTURES.getVisibleStructureDetail(actor, structureId)) as {
+		const structure = (await c.env.STRUCTURES.getStructureDetail(actor, structureId)) as {
 			corporationId: string
 			structureId: string
 		} | null
@@ -778,7 +778,7 @@ app.get('/:structureId', async (c) => {
 
 	const structureId = c.req.param('structureId')
 	try {
-		const structure = await c.env.STRUCTURES.getVisibleStructureDetail(
+		const structure = await c.env.STRUCTURES.getStructureDetail(
 			await getStructureActor(c),
 			structureId
 		)
