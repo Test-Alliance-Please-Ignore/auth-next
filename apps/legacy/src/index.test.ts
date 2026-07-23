@@ -268,7 +268,7 @@ describe('legacy durable object rpc', () => {
 		)
 	})
 
-	it('keeps an applied migration applied when a recheck finds no new evidence', async () => {
+	it('does not re-trigger an applied migration on a normal recheck', async () => {
 		migrationQueueFindMany
 			.mockResolvedValueOnce([
 				{
@@ -303,14 +303,14 @@ describe('legacy durable object rpc', () => {
 
 		expect(result.ok).toBe(true)
 		expect(result.legacyAuthUserIds).toEqual(['legacy-1'])
-		expect(updateSetMock).toHaveBeenCalledWith(
-			expect.objectContaining({
-				status: 'applied',
-			})
-		)
+		expect(result.created).toBe(0)
+		expect(result.updated).toBe(0)
+		expect(result.dismissed).toBe(0)
+		expect(updateSetMock).not.toHaveBeenCalled()
+		expect(actionInsertValues).not.toHaveBeenCalled()
 	})
 
-	it('reopens an applied migration when a recheck finds new evidence', async () => {
+	it('reopens an applied migration when force recheck finds new evidence', async () => {
 		legacyCharactersFindMany.mockResolvedValue([
 			{ characterId: '2001', characterName: 'One', source: 'esi_owner' },
 			{ characterId: '2002', characterName: 'Two', source: 'xml_account' },
@@ -348,6 +348,7 @@ describe('legacy durable object rpc', () => {
 		)
 
 		expect(result.ok).toBe(true)
+		expect(result.legacyAuthUserIds).toEqual(['legacy-1'])
 		expect(updateSetMock).toHaveBeenCalledWith(
 			expect.objectContaining({
 				status: 'pending',

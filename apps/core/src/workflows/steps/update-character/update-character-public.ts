@@ -42,7 +42,7 @@ export async function updateCharacterPublicInfo(
 	const logger = getWorkflowLogger(ctx, 'update-character-public-info')
 	const eveCharDataStub = getStub<EveCharacterData>(ctx.env.EVE_CHARACTER_DATA, characterId)
 
-	const publicRefreshResult = await eveCharDataStub.refreshPublicCharacterData(characterId, true)
+	const publicRefreshResult = await eveCharDataStub.refreshPublicCharacterData(characterId, false)
 
 	if (publicRefreshResult.isDeleted) {
 		await markCharacterDeletedEverywhere(ctx.db, ctx.env, characterId, {
