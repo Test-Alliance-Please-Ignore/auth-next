@@ -39,11 +39,13 @@ import {
 	fetchSovereigntyEnrichment,
 	fetchStructures,
 	markStructureEnrichmentSyncFailure,
+	markStructureSyncFailureReason,
 	storeMiningExtractionEnrichment,
 	storeSkyhookEnrichment,
 	storeSovereigntyEnrichment,
 	storeStructures,
 } from './steps/structures'
+import { buildPriorityQueuedEntries } from '../services/structure-priority'
 import {
 	StructureEnrichmentScopeMismatchError,
 } from './utils/structure-enrichment-auth'
@@ -63,6 +65,7 @@ import type {
 	EveCorporationData,
 	EveCorporationSyncDataType,
 	EsiCorporationStructure,
+	StructureSyncPriorityTarget,
 } from '@repo/eve-corporation-data'
 import type { Env } from '../context'
 import type {
@@ -74,14 +77,9 @@ import type {
 
 const STEP_RETRY_OPTIONS = esiRetryOptions
 const MINING_CITADEL_STRUCTURE_TYPE_IDS = new Set(['35833', '35834'])
-const STRUCTURE_ENRICHMENT_COOLDOWN_HOURS = 1
 
 function isMiningCitadelStructure(structure: Pick<EsiCorporationStructure, 'type_id'>): boolean {
 	return MINING_CITADEL_STRUCTURE_TYPE_IDS.has(structure.type_id)
-}
-
-function addHours(date: Date, hours: number): Date {
-	return new Date(date.getTime() + hours * 60 * 60 * 1000)
 }
 
 const ROLE_REQUIREMENTS_BY_DATA_TYPE: Partial<
@@ -94,6 +92,7 @@ const ROLE_REQUIREMENTS_BY_DATA_TYPE: Partial<
 	'wallet-transactions': ['Accountant', 'Junior_Accountant'],
 	assets: ['Director'],
 	structures: ['Station_Manager'],
+	skyhooks: ['Director'],
 	orders: ['Accountant', 'Junior_Accountant', 'Trader'],
 	contracts: ['Director'],
 	'industry-jobs': ['Factory_Manager'],
@@ -189,14 +188,8 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			)
 
 			const structureAssetSyncEnabled = corporationConfig?.includeInStructureAssetSync ?? false
-			const structureEnrichmentNextAllowedAt = corporationConfig?.structuresLastSync
-				? addHours(corporationConfig.structuresLastSync, STRUCTURE_ENRICHMENT_COOLDOWN_HOURS)
-				: null
-			const workflowObservedAt = event.timestamp ?? new Date()
-			const structureEnrichmentCooldownActive =
-				structureEnrichmentNextAllowedAt !== null &&
-				structureEnrichmentNextAllowedAt > workflowObservedAt
 			let structureSyncCompleted = false
+			let skyhooksSync: SyncStepResult<'skyhooks'> | null = null
 			const shouldSync = createShouldSyncPredicate(dataTypes, {
 				disabledDataTypes: structureAssetSyncEnabled ? [] : ['assets'],
 			})
@@ -700,151 +693,280 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			}
 
 			if (shouldSyncAuthenticated('structures')) {
-				if (structureEnrichmentCooldownActive) {
-					logger.info('[EveCorporationSyncWorkflow] Skipping structure sync due to cooldown', {
-						corporationId,
-						nextAllowedAt: structureEnrichmentNextAllowedAt?.toISOString() ?? null,
-					})
-				} else {
-					// Keep the structure refresh from blocking the asset projection refresh.
-					// The inventory path can fall back to the DB or refresh structures on its own.
-					structuresSync = await step.do('sync-structures', {}, async () => {
-						let structureSyncHadFailure = false
-						let structuresCount = 0
-						let sovereigntySystemsCount = 0
-						let sovereigntyHubsCount = 0
-						let skyhooksCount = 0
-						let skyhooksReturnedCount = 0
-						let skyhooksPrunedCount = 0
-						let miningExtractionsCount = 0
+				// Keep the structure refresh from blocking the asset projection refresh.
+				// The inventory path can fall back to the DB or refresh structures on its own.
+				structuresSync = await step.do('sync-structures', {}, async () => {
+					let structureSyncHadFailure = false
+					let structuresCount = 0
+					let sovereigntySystemsCount = 0
+					let sovereigntyHubsCount = 0
+					let miningExtractionsCount = 0
+					const corpData = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
 
-						try {
-							const structures = await runDirectorStepWithFailover({
-								stepName: 'fetch-structures',
-								timeout: '5 minutes',
-								requiredRoles: ['Station_Manager'],
-								persistResult: false,
-								run: (directorCharacterId) =>
-									fetchStructures(this.env, corporationId, directorCharacterId),
-							})
-							structuresCount = structures.length
+					try {
+						const structures = await runDirectorStepWithFailover({
+							stepName: 'fetch-structures',
+							timeout: '5 minutes',
+							requiredRoles: ['Station_Manager'],
+							persistResult: false,
+							run: (directorCharacterId) =>
+								fetchStructures(this.env, corporationId, directorCharacterId),
+						})
+						structuresCount = structures.length
 
-							await storeStructures(this.env, corporationId, structures)
+						await storeStructures(this.env, corporationId, structures)
 
-							const miningCitadelStructureIds = new Set(
-								structures
-									.filter((structure) => isMiningCitadelStructure(structure))
-									.map((structure) => String(structure.structure_id))
-							)
-							if (miningCitadelStructureIds.size > 0) {
-								try {
-									const fetchedMiningExtractions = await runDirectorStepWithFailover({
-										stepName: 'fetch-structure-mining-extraction-enrichment',
-										timeout: '10 minutes',
-										requiredRoles: ['Station_Manager'],
-										persistResult: false,
-										run: (directorCharacterId) =>
-											fetchMiningExtractionEnrichment(
-												this.env,
-												corporationId,
-												directorCharacterId
-											),
-									})
-									const miningExtractions = fetchedMiningExtractions.filter((extraction) =>
-										miningCitadelStructureIds.has(String(extraction.structure_id))
+						const miningCitadelStructureIds = new Set(
+							structures
+								.filter((structure) => isMiningCitadelStructure(structure))
+								.map((structure) => String(structure.structure_id))
+						)
+
+						if (miningCitadelStructureIds.size > 0) {
+							try {
+								const miningCitadelPriorities =
+									await corpData.getMiningCitadelSyncPriorities(corporationId)
+								const newMiningCitadelStructureIds =
+									await corpData.getMissingStructureIdsForPriorityQueue(
+										corporationId,
+										'mining-extractions' as StructureSyncPriorityTarget,
+										[...miningCitadelStructureIds]
 									)
-									miningExtractionsCount = miningExtractions.length
+								const prioritizedMiningCitadelQueue = buildPriorityQueuedEntries(
+									[...miningCitadelStructureIds].map((structureId) => ({
+										id: structureId,
+									})),
+									newMiningCitadelStructureIds,
+									miningCitadelPriorities
+								)
+								const prioritizedMiningCitadelIds = prioritizedMiningCitadelQueue.entries.map(
+									({ entry }) => entry.id
+								)
 
-									if (miningExtractions.length > 0) {
-										await storeMiningExtractionEnrichment(
+								const fetchedMiningExtractions = await runDirectorStepWithFailover({
+									stepName: 'fetch-structure-mining-extraction-enrichment',
+									timeout: '10 minutes',
+									requiredRoles: ['Station_Manager'],
+									persistResult: false,
+									run: (directorCharacterId) =>
+										fetchMiningExtractionEnrichment(
 											this.env,
 											corporationId,
-											miningExtractions
+											directorCharacterId
+										),
+								})
+								const miningExtractionByStructureId = new Map(
+									fetchedMiningExtractions.map((extraction) => [
+										String(extraction.structure_id),
+										extraction,
+									])
+								)
+								const prioritizedMiningExtractions = prioritizedMiningCitadelIds
+									.map((structureId) => miningExtractionByStructureId.get(structureId) ?? null)
+									.filter(
+										(
+											extraction
+										): extraction is (typeof fetchedMiningExtractions)[number] =>
+											extraction !== null
+									)
+								miningExtractionsCount = prioritizedMiningExtractions.length
+
+								for (let index = 0; index < prioritizedMiningExtractions.length; index += 100) {
+									const batch = prioritizedMiningExtractions.slice(index, index + 100)
+									if (batch.length === 0) continue
+									await storeMiningExtractionEnrichment(this.env, corporationId, batch)
+								}
+							} catch (error) {
+								const metadata =
+									error instanceof Error ? parseEsiErrorMetadata(error.message) : null
+								const isRateLimitError = metadata?.status === 429
+								structureSyncHadFailure ||= !isRateLimitError
+								if (!isRateLimitError) {
+									try {
+										await markStructureSyncFailureReason(
+											this.env,
+											corporationId,
+											'mining-extractions',
+											error instanceof Error ? error.message : String(error)
+										)
+									} catch (markError) {
+										logger.warn(
+											'[EveCorporationSyncWorkflow] Mining extraction failure reason could not be persisted',
+											{
+												corporationId,
+												error: markError instanceof Error ? markError.message : String(markError),
+											}
 										)
 									}
-								} catch (error) {
-									structureSyncHadFailure = true
-									logger.warn(
-										'[EveCorporationSyncWorkflow] Mining extraction enrichment failed; continuing without it',
-										{
-											corporationId,
-											error: error instanceof Error ? error.message : String(error),
-										}
-									)
 								}
+								logger.warn(
+									'[EveCorporationSyncWorkflow] Mining extraction enrichment failed; continuing without it',
+									{
+										corporationId,
+										error: error instanceof Error ? error.message : String(error),
+										isRateLimitError,
+									}
+								)
 							}
-						} catch (error) {
-							structureSyncHadFailure = true
+						}
+					} catch (error) {
+						const metadata = error instanceof Error ? parseEsiErrorMetadata(error.message) : null
+						const isRateLimitError = metadata?.status === 429
+						structureSyncHadFailure ||= !isRateLimitError
+						if (!isRateLimitError) {
+							try {
+								await markStructureSyncFailureReason(
+									this.env,
+									corporationId,
+									'structures',
+									error instanceof Error ? error.message : String(error)
+								)
+							} catch (markError) {
+								logger.warn(
+									'[EveCorporationSyncWorkflow] Structure sync failure reason could not be persisted',
+									{
+										corporationId,
+										error: markError instanceof Error ? markError.message : String(markError),
+									}
+								)
+							}
+						}
+						logger.warn('[EveCorporationSyncWorkflow] Structure sync failed; continuing to asset sync', {
+							corporationId,
+							error: error instanceof Error ? error.message : String(error),
+							isRateLimitError,
+						})
+					}
+
+					try {
+						const sovereigntyEnrichment = await runDirectorStepWithFailover({
+							stepName: 'fetch-structure-sovereignty-enrichment',
+							timeout: '10 minutes',
+							requiredRoles: ['Station_Manager'],
+							persistResult: false,
+							run: (directorCharacterId) =>
+								fetchSovereigntyEnrichment(this.env, corporationId, directorCharacterId),
+						})
+
+						if (sovereigntyEnrichment) {
+							await storeSovereigntyEnrichment(
+								this.env,
+								corporationId,
+								sovereigntyEnrichment
+							)
+							sovereigntySystemsCount = sovereigntyEnrichment.sovereigntySystems?.length ?? 0
+							sovereigntyHubsCount = sovereigntyEnrichment.sovereigntyHubs.length
+
+							if (sovereigntyEnrichment.nonRateLimitFailureCount > 0) {
+								structureSyncHadFailure = true
+								logger.warn(
+									'[EveCorporationSyncWorkflow] Sovereignty enrichment completed with partial non-rate-limit failures',
+									{
+										corporationId,
+										successCount: sovereigntyEnrichment.sovereigntyHubs.length,
+										failureCount: sovereigntyEnrichment.failureCount,
+										rateLimitFailureCount: sovereigntyEnrichment.rateLimitFailureCount,
+										nonRateLimitFailureCount: sovereigntyEnrichment.nonRateLimitFailureCount,
+									}
+								)
+							} else if (sovereigntyEnrichment.rateLimitFailureCount > 0) {
+								logger.warn(
+									'[EveCorporationSyncWorkflow] Sovereignty enrichment completed with rate-limit pressure; preserving successful rows',
+									{
+										corporationId,
+										successCount: sovereigntyEnrichment.sovereigntyHubs.length,
+										rateLimitFailureCount: sovereigntyEnrichment.rateLimitFailureCount,
+									}
+								)
+							}
+						}
+					} catch (error) {
+						const metadata = error instanceof Error ? parseEsiErrorMetadata(error.message) : null
+						const isRateLimitError = metadata?.status === 429
+						structureSyncHadFailure ||= !isRateLimitError
+
+						if (error instanceof StructureEnrichmentScopeMismatchError) {
+							try {
+								await markStructureEnrichmentSyncFailure(
+									this.env,
+									corporationId,
+									error.target,
+									error.message
+								)
+							} catch (markError) {
+								logger.warn(
+									'[EveCorporationSyncWorkflow] Sovereignty enrichment scope mismatch could not be persisted',
+									{
+										corporationId,
+										error: markError instanceof Error ? markError.message : String(markError),
+									}
+								)
+							}
 							logger.warn(
-								'[EveCorporationSyncWorkflow] Structure sync failed; continuing to asset sync',
+								'[EveCorporationSyncWorkflow] Sovereignty enrichment scope mismatch; marking sync failure',
+								{
+									corporationId,
+									error: error.message,
+								}
+							)
+						} else if (isRateLimitError) {
+							logger.warn(
+								'[EveCorporationSyncWorkflow] Sovereignty enrichment hit rate limit; preserving previously synced rows',
+								{
+									corporationId,
+									error: error instanceof Error ? error.message : String(error),
+								}
+							)
+						} else {
+							try {
+								await markStructureSyncFailureReason(
+									this.env,
+									corporationId,
+									'sovereignty',
+									error instanceof Error ? error.message : String(error)
+								)
+							} catch (markError) {
+								logger.warn(
+									'[EveCorporationSyncWorkflow] Sovereignty failure reason could not be persisted',
+									{
+										corporationId,
+										error: markError instanceof Error ? markError.message : String(markError),
+									}
+								)
+							}
+							logger.warn(
+								'[EveCorporationSyncWorkflow] Sovereignty enrichment failed; continuing without it',
 								{
 									corporationId,
 									error: error instanceof Error ? error.message : String(error),
 								}
 							)
 						}
+					}
 
-						try {
-							const sovereigntyEnrichment = await runDirectorStepWithFailover({
-								stepName: 'fetch-structure-sovereignty-enrichment',
-								timeout: '10 minutes',
-								requiredRoles: ['Station_Manager'],
-								persistResult: false,
-								run: (directorCharacterId) =>
-									fetchSovereigntyEnrichment(this.env, corporationId, directorCharacterId),
-							})
+					const completed = !structureSyncHadFailure
+					structureSyncCompleted = completed
+					return {
+						dataType: 'structures' as const,
+						stats: {
+							structuresCount,
+							sovereigntySystemsCount,
+							sovereigntyHubsCount,
+							miningExtractionsCount,
+						},
+						completed,
+					}
+				})
+				}
 
-							if (sovereigntyEnrichment) {
-								await storeSovereigntyEnrichment(
-									this.env,
-									corporationId,
-									sovereigntyEnrichment
-								)
-								sovereigntySystemsCount =
-									sovereigntyEnrichment.sovereigntySystems?.length ?? 0
-								sovereigntyHubsCount = sovereigntyEnrichment.sovereigntyHubs.length
-							}
-						} catch (error) {
-							structureSyncHadFailure = true
-							if (error instanceof StructureEnrichmentScopeMismatchError) {
-								try {
-									await step.do(
-										'store-structure-sovereignty-enrichment-failure',
-										{},
-										async () =>
-											await markStructureEnrichmentSyncFailure(
-												this.env,
-												corporationId,
-												error.target,
-												error.message
-											)
-									)
-								} catch (markError) {
-									logger.warn(
-										'[EveCorporationSyncWorkflow] Sovereignty enrichment scope mismatch could not be persisted',
-										{
-											corporationId,
-											error: markError instanceof Error ? markError.message : String(markError),
-										}
-									)
-								}
-								logger.warn(
-									'[EveCorporationSyncWorkflow] Sovereignty enrichment scope mismatch; marking sync failure',
-									{
-										corporationId,
-										error: error.message,
-									}
-								)
-							} else {
-								logger.warn(
-									'[EveCorporationSyncWorkflow] Sovereignty enrichment failed; continuing without it',
-									{
-										corporationId,
-										error: error instanceof Error ? error.message : String(error),
-									}
-								)
-							}
-						}
+				const shouldSyncSkyhooks =
+					shouldSyncAuthenticated('structures') || shouldSyncAuthenticated('skyhooks')
+
+				if (shouldSyncSkyhooks) {
+					skyhooksSync = await step.do('sync-skyhooks', {}, async () => {
+						let skyhooksCount = 0
+						let skyhooksReturnedCount = 0
+						let skyhooksPrunedCount = 0
 
 						try {
 							const skyhookEnrichment = await runDirectorStepWithFailover({
@@ -865,21 +987,40 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 								skyhooksCount = skyhookEnrichment.skyhooks.length
 								skyhooksReturnedCount = skyhookEnrichment.skyhooks.length
 								skyhooksPrunedCount = skyhookStoreResult.prunedCount
+
+								if (skyhookEnrichment.nonRateLimitFailureCount > 0) {
+									logger.warn(
+										'[EveCorporationSyncWorkflow] Skyhook enrichment completed with partial non-rate-limit failures',
+										{
+											corporationId,
+											successCount: skyhookEnrichment.skyhooks.length,
+											failureCount: skyhookEnrichment.failureCount,
+											rateLimitFailureCount: skyhookEnrichment.rateLimitFailureCount,
+											nonRateLimitFailureCount: skyhookEnrichment.nonRateLimitFailureCount,
+										}
+									)
+								} else if (skyhookEnrichment.rateLimitFailureCount > 0) {
+									logger.warn(
+										'[EveCorporationSyncWorkflow] Skyhook enrichment completed with rate-limit pressure; preserving successful rows',
+										{
+											corporationId,
+											successCount: skyhookEnrichment.skyhooks.length,
+											rateLimitFailureCount: skyhookEnrichment.rateLimitFailureCount,
+										}
+									)
+								}
 							}
 						} catch (error) {
-							structureSyncHadFailure = true
+							const metadata = error instanceof Error ? parseEsiErrorMetadata(error.message) : null
+							const isRateLimitError = metadata?.status === 429
+
 							if (error instanceof StructureEnrichmentScopeMismatchError) {
 								try {
-									await step.do(
-										'store-structure-skyhook-enrichment-failure',
-										{},
-										async () =>
-											await markStructureEnrichmentSyncFailure(
-												this.env,
-												corporationId,
-												error.target,
-												error.message
-											)
+									await markStructureEnrichmentSyncFailure(
+										this.env,
+										corporationId,
+										error.target,
+										error.message
 									)
 								} catch (markError) {
 									logger.warn(
@@ -897,7 +1038,31 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 										error: error.message,
 									}
 								)
+							} else if (isRateLimitError) {
+								logger.warn(
+									'[EveCorporationSyncWorkflow] Skyhook enrichment hit rate limit; preserving previously synced rows',
+									{
+										corporationId,
+										error: error instanceof Error ? error.message : String(error),
+									}
+								)
 							} else {
+								try {
+									await markStructureSyncFailureReason(
+										this.env,
+										corporationId,
+										'skyhooks',
+										error instanceof Error ? error.message : String(error)
+									)
+								} catch (markError) {
+									logger.warn(
+										'[EveCorporationSyncWorkflow] Skyhook failure reason could not be persisted',
+										{
+											corporationId,
+											error: markError instanceof Error ? markError.message : String(markError),
+										}
+									)
+								}
 								logger.warn(
 									'[EveCorporationSyncWorkflow] Skyhook enrichment failed; continuing without it',
 									{
@@ -908,26 +1073,18 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 							}
 						}
 
-						const completed = !structureSyncHadFailure
-						structureSyncCompleted = completed
 						return {
-							dataType: 'structures' as const,
+							dataType: 'skyhooks' as const,
 							stats: {
-								structuresCount,
-								sovereigntySystemsCount,
-								sovereigntyHubsCount,
 								skyhooksCount,
 								skyhooksReturnedCount,
 								skyhooksPrunedCount,
-								miningExtractionsCount,
 							},
-							completed,
 						}
 					})
 				}
-			}
 
-			if (shouldSyncAuthenticated('assets')) {
+				if (shouldSyncAuthenticated('assets')) {
 				logger.info('[EveCorporationSyncWorkflow] Asset sync selected for this run', {
 					corporationId,
 					trigger,
@@ -1032,6 +1189,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				walletTransactionsSync,
 				assetsSync,
 				structuresSync,
+				skyhooksSync,
 				ordersSync,
 				contractsSync,
 				industryJobsSync,

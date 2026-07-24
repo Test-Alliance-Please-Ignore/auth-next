@@ -12,6 +12,7 @@
  */
 
 import { logger } from '@repo/hono-helpers'
+import { parseEsiErrorMetadata } from '@repo/workflow-utils'
 import {
 	transformAssets,
 	transformContracts,
@@ -44,9 +45,11 @@ import type {
 	EsiCorporationWalletJournalEntry,
 	EsiCorporationWalletTransaction,
 } from '@repo/eve-corporation-data'
-import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
+import type { EveTokenStore } from '@repo/eve-token-store'
 
 const SOVEREIGNTY_HUB_TYPE_ID = '32458'
+const SOVEREIGNTY_HUB_DETAIL_BATCH_SIZE = 4
+const SKYHOOK_DETAIL_BATCH_SIZE = 4
 
 // ========================================================================
 // PUBLIC DATA FETCHING
@@ -346,18 +349,30 @@ export async function fetchSovereigntySystems(
 	})
 }
 
+function isRateLimitEsiError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error)
+	const metadata = parseEsiErrorMetadata(message)
+	return metadata?.status === 429 || message.includes('429 Too Many Requests')
+}
+
 export async function fetchSovereigntyHubs(
 	tokenStore: EveTokenStore,
 	corporationId: string,
-	characterId: string
-): Promise<EsiSovereigntyHub[]> {
-	type RawSovereigntyHubsListing = {
-		sovereignty_hubs: Array<{
-			id: number
-			solar_system_id: number
+	characterId: string,
+	options: {
+		prioritizedEntries: ReadonlyArray<{
+			index: number
+			entry: { id: number; solar_system_id: number }
 		}>
+		pruneCandidateIds?: readonly string[]
 	}
-
+): Promise<{
+	sovereigntyHubs: EsiSovereigntyHub[]
+	pruneCandidateIds: string[]
+	failureCount: number
+	rateLimitFailureCount: number
+	nonRateLimitFailureCount: number
+}> {
 	type RawSovereigntyHubDetail = {
 		id: number
 		solar_system_id: number
@@ -428,31 +443,28 @@ export async function fetchSovereigntyHubs(
 		}
 	}
 
-	const firstPage = await tokenStore.fetchEsi<RawSovereigntyHubsListing>(
-		`/corporations/${corporationId}/structures/sovereignty-hubs?page=1`,
-		characterId,
-		{ cacheMode: 'no-store' }
-	)
-	const sovereigntyHubs = [...firstPage.data.sovereignty_hubs]
-
-	for (let page = 2; page <= (firstPage.pages ?? 1); page += 1) {
-		const pageResponse = await tokenStore.fetchEsi<RawSovereigntyHubsListing>(
-			`/corporations/${corporationId}/structures/sovereignty-hubs?page=${page}`,
-			characterId,
-			{ cacheMode: 'no-store' }
-		)
-		sovereigntyHubs.push(...pageResponse.data.sovereignty_hubs)
+	const prioritizedHubs = options.prioritizedEntries
+	if (prioritizedHubs.length === 0) {
+		return {
+			sovereigntyHubs: [],
+			pruneCandidateIds: [...(options.pruneCandidateIds ?? [])],
+			failureCount: 0,
+			rateLimitFailureCount: 0,
+			nonRateLimitFailureCount: 0,
+		}
 	}
 
-	if (sovereigntyHubs.length === 0) {
-		return []
-	}
+	const hubs: Array<{ index: number; hub: EsiSovereigntyHub }> = []
+	const failures: Array<{ structureId: string; error: string }> = []
+	let rateLimitFailureCount = 0
+	let nonRateLimitFailureCount = 0
 
-	const details: Array<EsiSovereigntyHub | null> = await Promise.all(
-		sovereigntyHubs.map(async (hub) => {
-			try {
+	for (let index = 0; index < prioritizedHubs.length; index += SOVEREIGNTY_HUB_DETAIL_BATCH_SIZE) {
+		const batch = prioritizedHubs.slice(index, index + SOVEREIGNTY_HUB_DETAIL_BATCH_SIZE)
+		const settled = await Promise.allSettled(
+			batch.map(async ({ entry }) => {
 				const detailResult = await tokenStore.fetchEsi<RawSovereigntyHubDetail>(
-					`/corporations/${corporationId}/structures/sovereignty-hubs/${hub.id}`,
+					`/corporations/${corporationId}/structures/sovereignty-hubs/${entry.id}`,
 					characterId,
 					{ cacheMode: 'no-store' }
 				)
@@ -468,15 +480,15 @@ export async function fetchSovereigntyHubs(
 						detail.fuel_access_list_id !== undefined && detail.fuel_access_list_id !== null
 							? String(detail.fuel_access_list_id)
 							: null,
-						reagent_bay: {
-							last_updated: detail.reagent_bay.last_updated,
-							reagents: detail.reagent_bay.reagents.map((reagent) => ({
-								type_id: String(reagent.type_id),
-								amount: reagent.amount,
-								burning_per_hour: reagent.burning_per_hour,
-								last_cycle: reagent.last_cycle,
-							})),
-						},
+					reagent_bay: {
+						last_updated: detail.reagent_bay.last_updated,
+						reagents: detail.reagent_bay.reagents.map((reagent) => ({
+							type_id: String(reagent.type_id),
+							amount: reagent.amount,
+							burning_per_hour: reagent.burning_per_hour,
+							last_cycle: reagent.last_cycle,
+						})),
+					},
 					resources: detail.resources,
 					upgrades: detail.upgrades.map((upgrade) => ({
 						type_id: String(upgrade.type_id),
@@ -491,32 +503,68 @@ export async function fetchSovereigntyHubs(
 						detail,
 					},
 				} as EsiSovereigntyHub
-			} catch (error) {
-				logger.warn('[ESI Fetch] Failed to enrich sovereignty hub', {
-					corporationId,
-					structureId: String(hub.id),
-					error: error instanceof Error ? error.message : String(error),
-				})
-				return null
-			}
-		})
-	)
+			})
+		)
 
-	return details.filter((hub): hub is EsiSovereigntyHub => hub !== null)
+		for (let resultIndex = 0; resultIndex < settled.length; resultIndex += 1) {
+			const result = settled[resultIndex]
+			const source = batch[resultIndex]
+			if (result.status === 'fulfilled') {
+				hubs.push({
+					index: source.index,
+					hub: result.value,
+				})
+				continue
+			}
+
+			if (isRateLimitEsiError(result.reason)) {
+				rateLimitFailureCount += 1
+			} else {
+				nonRateLimitFailureCount += 1
+			}
+			failures.push({
+				structureId: String(source.entry.id),
+				error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+			})
+		}
+	}
+
+	if (failures.length > 0) {
+		logger.warn('[ESI Fetch] Sovereignty hub detail fetch completed with partial failures', {
+			corporationId,
+			successCount: hubs.length,
+			failureCount: failures.length,
+			failures: failures.slice(0, 10),
+		})
+	}
+
+	return {
+		sovereigntyHubs: hubs.sort((a, b) => a.index - b.index).map((entry) => entry.hub),
+		pruneCandidateIds: [...(options.pruneCandidateIds ?? [])],
+		failureCount: failures.length,
+		rateLimitFailureCount,
+		nonRateLimitFailureCount,
+	}
 }
 
 export async function fetchCorporationSkyhooks(
 	tokenStore: EveTokenStore,
 	corporationId: string,
-	characterId: string
-): Promise<EsiCorporationSkyhook[]> {
-	type RawCorporationSkyhooksListing = {
-		skyhooks: Array<{
-			id: number
-			planet_id: number
+	characterId: string,
+	options: {
+		prioritizedEntries: ReadonlyArray<{
+			index: number
+			entry: { id: number; planet_id: number }
 		}>
+		pruneCandidateIds?: readonly string[]
 	}
-
+): Promise<{
+	skyhooks: EsiCorporationSkyhook[]
+	pruneCandidateIds: string[]
+	failureCount: number
+	rateLimitFailureCount: number
+	nonRateLimitFailureCount: number
+}> {
 	type RawCorporationSkyhookDetail = {
 		id: number
 		planet_id: number
@@ -538,62 +586,99 @@ export async function fetchCorporationSkyhooks(
 		} | null
 	}
 
-	const listing = await tokenStore.fetchEsi<RawCorporationSkyhooksListing>(
-		`/corporations/${corporationId}/structures/skyhooks`,
-		characterId,
-		{ cacheMode: 'no-store' }
-	)
+	const prioritizedListing = options.prioritizedEntries
 
-	const skyhookListing = [...listing.data.skyhooks]
-	for (let page = 2; page <= (listing.pages ?? 1); page += 1) {
-		const pageResponse = await tokenStore.fetchEsi<RawCorporationSkyhooksListing>(
-			`/corporations/${corporationId}/structures/skyhooks?page=${page}`,
-			characterId,
-			{ cacheMode: 'no-store' }
+	if (prioritizedListing.length === 0) {
+		return {
+			skyhooks: [],
+			pruneCandidateIds: [...(options.pruneCandidateIds ?? [])],
+			failureCount: 0,
+			rateLimitFailureCount: 0,
+			nonRateLimitFailureCount: 0,
+		}
+	}
+
+	const skyhooks: Array<{ index: number; skyhook: EsiCorporationSkyhook }> = []
+	const failures: Array<{ structureId: string; error: string }> = []
+	let rateLimitFailureCount = 0
+	let nonRateLimitFailureCount = 0
+
+	for (let index = 0; index < prioritizedListing.length; index += SKYHOOK_DETAIL_BATCH_SIZE) {
+		const batch = prioritizedListing.slice(index, index + SKYHOOK_DETAIL_BATCH_SIZE)
+		const settled = await Promise.allSettled(
+			batch.map(async ({ entry }) => {
+				const detailResult = await tokenStore.fetchEsi<RawCorporationSkyhookDetail>(
+					`/corporations/${corporationId}/structures/skyhooks/${entry.id}`,
+					characterId,
+					{ cacheMode: 'no-store' }
+				)
+
+				const detail = detailResult.data
+				const theftVulnerability = detail.theft_vulnerability ?? null
+
+				return {
+					structure_id: String(detail.id),
+					planet_id: String(detail.planet_id),
+					corporation_id: String(corporationId),
+					state: detail.state,
+					is_active: detail.is_active,
+					effective_workforce: detail.effective_workforce ?? null,
+					reagents:
+						detail.reagents?.map((reagent) => ({
+							type_id: String(reagent.type_id),
+							secured_stock: reagent.secured_stock,
+							unsecured_stock: reagent.unsecured_stock,
+							last_cycle: reagent.last_cycle,
+						})) ?? [],
+					reinforcement_timer: detail.reinforcement_timer ?? null,
+					theft_vulnerability: theftVulnerability,
+					raw: {
+						listing: entry,
+						detail,
+					},
+				} as EsiCorporationSkyhook
+			})
 		)
-		skyhookListing.push(...pageResponse.data.skyhooks)
+
+		for (let resultIndex = 0; resultIndex < settled.length; resultIndex += 1) {
+			const result = settled[resultIndex]
+			const source = batch[resultIndex]
+			if (result.status === 'fulfilled') {
+				skyhooks.push({
+					index: source.index,
+					skyhook: result.value,
+				})
+				continue
+			}
+
+			if (isRateLimitEsiError(result.reason)) {
+				rateLimitFailureCount += 1
+			} else {
+				nonRateLimitFailureCount += 1
+			}
+			failures.push({
+				structureId: String(source.entry.id),
+				error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+			})
+		}
 	}
 
-	if (skyhookListing.length === 0) {
-		return []
-	}
-
-	const skyhooks: Array<EsiCorporationSkyhook | null> = await Promise.all(
-		skyhookListing.map(async (skyhook) => {
-			const detailResult = await tokenStore.fetchEsi<RawCorporationSkyhookDetail>(
-				`/corporations/${corporationId}/structures/skyhooks/${skyhook.id}`,
-				characterId,
-				{ cacheMode: 'no-store' }
-			)
-
-			const detail = detailResult.data
-			const theftVulnerability = detail.theft_vulnerability ?? null
-
-			return {
-				structure_id: String(detail.id),
-				planet_id: String(detail.planet_id),
-				corporation_id: String(corporationId),
-				state: detail.state,
-				is_active: detail.is_active,
-				effective_workforce: detail.effective_workforce ?? null,
-				reagents:
-					detail.reagents?.map((reagent) => ({
-						type_id: String(reagent.type_id),
-						secured_stock: reagent.secured_stock,
-						unsecured_stock: reagent.unsecured_stock,
-						last_cycle: reagent.last_cycle,
-				})) ?? [],
-				reinforcement_timer: detail.reinforcement_timer ?? null,
-				theft_vulnerability: theftVulnerability,
-				raw: {
-					listing: skyhook,
-					detail,
-				},
-			} as EsiCorporationSkyhook
+	if (failures.length > 0) {
+		logger.warn('[ESI Fetch] Skyhook detail fetch completed with partial failures', {
+			corporationId,
+			successCount: skyhooks.length,
+			failureCount: failures.length,
+			failures: failures.slice(0, 10),
 		})
-	)
+	}
 
-	return skyhooks.filter((skyhook): skyhook is EsiCorporationSkyhook => skyhook !== null)
+	return {
+		skyhooks: skyhooks.sort((a, b) => a.index - b.index).map((entry) => entry.skyhook),
+		pruneCandidateIds: [...(options.pruneCandidateIds ?? [])],
+		failureCount: failures.length,
+		rateLimitFailureCount,
+		nonRateLimitFailureCount,
+	}
 }
 
 /**

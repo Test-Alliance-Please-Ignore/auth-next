@@ -66,8 +66,16 @@ describe('esi structure enrichment ownership handling', () => {
 			fetchEsi: vi
 				.fn()
 				.mockResolvedValueOnce({
-					data: { skyhooks: [{ id: 71001, planet_id: 401 }] },
-					pages: 1,
+					data: {
+						id: 71002,
+						planet_id: 402,
+						state: 'active',
+						is_active: true,
+						effective_workforce: 6,
+						reagents: [],
+						reinforcement_timer: null,
+						theft_vulnerability: null,
+					},
 				})
 				.mockResolvedValueOnce({
 					data: {
@@ -90,22 +98,28 @@ describe('esi structure enrichment ownership handling', () => {
 				}),
 		}
 
-		const skyhooks = await fetchCorporationSkyhooks(
-			tokenStore as never,
-			'98000001',
-			'211'
-		)
+		const skyhookResult = await fetchCorporationSkyhooks(tokenStore as never, '98000001', '211', {
+			prioritizedEntries: [
+				{ index: 0, entry: { id: 71002, planet_id: 402 } },
+				{ index: 1, entry: { id: 71001, planet_id: 401 } },
+			],
+		})
 
 		expect(tokenStore.fetchEsi).toHaveBeenCalledTimes(2)
+		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
+			1,
+			'/corporations/98000001/structures/skyhooks/71002',
+			'211',
+			{ cacheMode: 'no-store' }
+		)
 		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
 			2,
 			'/corporations/98000001/structures/skyhooks/71001',
 			'211',
 			{ cacheMode: 'no-store' }
 		)
-		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
-			1,
-			'/corporations/98000001/structures/skyhooks',
+		expect(tokenStore.fetchEsi).not.toHaveBeenCalledWith(
+			'/corporations/98000001/structures/skyhooks/99999',
 			'211',
 			{ cacheMode: 'no-store' }
 		)
@@ -114,8 +128,21 @@ describe('esi structure enrichment ownership handling', () => {
 			'211',
 			{ cacheMode: 'no-store' }
 		)
-		expect(skyhooks).toHaveLength(1)
-		expect(skyhooks[0]).toMatchObject({
+		expect(skyhookResult.failureCount).toBe(0)
+		expect(skyhookResult.skyhooks.map((skyhook) => skyhook.structure_id)).toEqual([
+			'71002',
+			'71001',
+		])
+		expect(skyhookResult.skyhooks[0]).toMatchObject({
+			structure_id: '71002',
+			planet_id: '402',
+			corporation_id: '98000001',
+			state: 'active',
+			is_active: true,
+			effective_workforce: 6,
+			reagents: [],
+		})
+		expect(skyhookResult.skyhooks[1]).toMatchObject({
 			structure_id: '71001',
 			planet_id: '401',
 			corporation_id: '98000001',
@@ -131,6 +158,111 @@ describe('esi structure enrichment ownership handling', () => {
 				},
 			],
 		})
+	})
+
+	it('prioritizes stale skyhooks first and keeps partial successes when one detail request fails', async () => {
+		const tokenStore = {
+			fetchEsi: vi.fn().mockImplementation(async (path: string) => {
+				if (path === '/corporations/98000001/structures/skyhooks') {
+					return {
+						data: {
+							skyhooks: [
+								{ id: 40001, planet_id: 404 },
+								{ id: 30001, planet_id: 401 },
+								{ id: 10001, planet_id: 402 },
+								{ id: 20001, planet_id: 403 },
+							],
+						},
+						pages: 1,
+					}
+				}
+
+				if (path === '/corporations/98000001/structures/skyhooks/40001') {
+					return {
+						data: {
+							id: 40001,
+							planet_id: 404,
+							state: 'active',
+							is_active: true,
+						},
+					}
+				}
+
+				if (path === '/corporations/98000001/structures/skyhooks/30001') {
+					throw new Error('ESI request failed: 429 Too Many Requests')
+				}
+
+				if (path === '/corporations/98000001/structures/skyhooks/10001') {
+					return {
+						data: {
+							id: 10001,
+							planet_id: 402,
+							state: 'active',
+							is_active: true,
+						},
+					}
+				}
+
+				if (path === '/corporations/98000001/structures/skyhooks/20001') {
+					return {
+						data: {
+							id: 20001,
+							planet_id: 403,
+							state: 'active',
+							is_active: true,
+						},
+					}
+				}
+
+				throw new Error(`Unexpected path: ${path}`)
+			}),
+		}
+
+		const skyhookResult = await fetchCorporationSkyhooks(
+			tokenStore as never,
+			'98000001',
+			'211',
+			{
+				prioritizedEntries: [
+					{ index: 0, entry: { id: 40001, planet_id: 404 } },
+					{ index: 1, entry: { id: 30001, planet_id: 401 } },
+					{ index: 2, entry: { id: 10001, planet_id: 402 } },
+					{ index: 3, entry: { id: 20001, planet_id: 403 } },
+				],
+			}
+		)
+
+		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
+			1,
+			'/corporations/98000001/structures/skyhooks/40001',
+			'211',
+			{ cacheMode: 'no-store' }
+		)
+		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
+			2,
+			'/corporations/98000001/structures/skyhooks/30001',
+			'211',
+			{ cacheMode: 'no-store' }
+		)
+		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
+			3,
+			'/corporations/98000001/structures/skyhooks/10001',
+			'211',
+			{ cacheMode: 'no-store' }
+		)
+		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
+			4,
+			'/corporations/98000001/structures/skyhooks/20001',
+			'211',
+			{ cacheMode: 'no-store' }
+		)
+		expect(skyhookResult.failureCount).toBe(1)
+		expect(skyhookResult.skyhooks).toHaveLength(3)
+		expect(skyhookResult.skyhooks.map((skyhook) => skyhook.structure_id)).toEqual([
+			'40001',
+			'10001',
+			'20001',
+		])
 	})
 
 	it('uses the base structure row and requesting corporation id when building the stored skyhook row', () => {
@@ -171,7 +303,6 @@ describe('esi structure enrichment ownership handling', () => {
 			planetName: 'Planet One',
 			systemId: '30000142',
 			systemName: 'Jita',
-			name: null,
 			typeId: '35842',
 			state: 'vulnerable',
 		})
@@ -276,9 +407,24 @@ describe('esi structure enrichment ownership handling', () => {
 				.fn()
 				.mockResolvedValueOnce({
 					data: {
-						sovereignty_hubs: [{ id: 81001 }],
+						id: 81002,
+						solar_system_id: 30000143,
+						fuel_access_list_id: null,
+						reagent_bay: {
+							last_updated: '2026-07-12T19:36:46.834Z',
+							reagents: [],
+						},
+						resources: {
+							power: { allocated: 0, available: 0 },
+							workforce: { allocated: 0, available: 0 },
+						},
+						upgrades: [],
+						vulnerability_window: null,
+						workforce_transport: {
+							configuration: { transit: true },
+							state: { transit: true },
+						},
 					},
-					pages: 1,
 				})
 				.mockResolvedValueOnce({
 					data: {
@@ -303,16 +449,28 @@ describe('esi structure enrichment ownership handling', () => {
 				}),
 		}
 
-		const hubs = await fetchSovereigntyHubs(
-			tokenStore as never,
-			'98000001',
-			'211'
-		)
+		const hubResult = await fetchSovereigntyHubs(tokenStore as never, '98000001', '211', {
+			prioritizedEntries: [
+				{
+					index: 0,
+					entry: { id: 81002, solar_system_id: 30000143 },
+				},
+				{
+					index: 1,
+					entry: { id: 81001, solar_system_id: 30000142 },
+				},
+			],
+		})
 
 		expect(tokenStore.fetchEsi).toHaveBeenCalledTimes(2)
 		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
 			1,
-			'/corporations/98000001/structures/sovereignty-hubs?page=1',
+			'/corporations/98000001/structures/sovereignty-hubs/81002',
+			'211',
+			{ cacheMode: 'no-store' }
+		)
+		expect(tokenStore.fetchEsi).not.toHaveBeenCalledWith(
+			'/corporations/98000001/structures/sovereignty-hubs/99999',
 			'211',
 			{ cacheMode: 'no-store' }
 		)
@@ -322,13 +480,137 @@ describe('esi structure enrichment ownership handling', () => {
 			'211',
 			{ cacheMode: 'no-store' }
 		)
-		expect(hubs).toHaveLength(1)
-		expect(hubs[0]).toMatchObject({
-			structure_id: '81001',
-			corporation_id: '98000001',
-			system_id: '30000142',
-			type_id: SOVEREIGNTY_HUB_TYPE_ID,
-			name: null,
+		expect(hubResult.failureCount).toBe(0)
+		expect(hubResult.sovereigntyHubs).toHaveLength(2)
+		expect(hubResult.sovereigntyHubs).toEqual([
+			expect.objectContaining({
+				structure_id: '81002',
+				corporation_id: '98000001',
+				system_id: '30000143',
+				type_id: SOVEREIGNTY_HUB_TYPE_ID,
+				name: null,
+			}),
+			expect.objectContaining({
+				structure_id: '81001',
+				corporation_id: '98000001',
+				system_id: '30000142',
+				type_id: SOVEREIGNTY_HUB_TYPE_ID,
+				name: null,
+			}),
+		])
+	})
+
+	it('prioritizes stale sovereignty hubs first and keeps partial successes when one detail request fails', async () => {
+		const tokenStore = {
+			fetchEsi: vi.fn().mockImplementation(async (path: string) => {
+					if (path === '/corporations/98000001/structures/sovereignty-hubs?page=1') {
+						return {
+							data: {
+								sovereignty_hubs: [
+									{ id: 40001, solar_system_id: 404 },
+									{ id: 30001, solar_system_id: 401 },
+									{ id: 10001, solar_system_id: 402 },
+									{ id: 20001, solar_system_id: 403 },
+								],
+							},
+							pages: 1,
+						}
+					}
+
+					if (path === '/corporations/98000001/structures/sovereignty-hubs/40001') {
+						return {
+							data: {
+								id: 40001,
+								solar_system_id: 404,
+								fuel_access_list_id: null,
+								reagent_bay: {
+									last_updated: '2026-07-23T00:00:00.000Z',
+									reagents: [],
+								},
+								resources: {
+									power: { allocated: 0, available: 0 },
+									workforce: { allocated: 0, available: 0 },
+								},
+								upgrades: [],
+								vulnerability_window: null,
+								workforce_transport: {
+									configuration: { transit: true },
+									state: { transit: true },
+								},
+							},
+						}
+					}
+
+				if (path === '/corporations/98000001/structures/sovereignty-hubs/30001') {
+					throw new Error('ESI request failed: 429 Too Many Requests')
+				}
+
+				if (path === '/corporations/98000001/structures/sovereignty-hubs/10001') {
+					return {
+						data: {
+							id: 10001,
+							solar_system_id: 402,
+							fuel_access_list_id: null,
+							reagent_bay: {
+								last_updated: '2026-07-23T00:00:00.000Z',
+								reagents: [],
+							},
+							resources: {
+								power: { allocated: 0, available: 0 },
+								workforce: { allocated: 0, available: 0 },
+							},
+							upgrades: [],
+							vulnerability_window: null,
+							workforce_transport: {
+								configuration: { transit: true },
+								state: { transit: true },
+							},
+						},
+					}
+				}
+
+				if (path === '/corporations/98000001/structures/sovereignty-hubs/20001') {
+					return {
+						data: {
+							id: 20001,
+							solar_system_id: 403,
+							fuel_access_list_id: null,
+							reagent_bay: {
+								last_updated: '2026-07-23T00:00:00.000Z',
+								reagents: [],
+							},
+							resources: {
+								power: { allocated: 0, available: 0 },
+								workforce: { allocated: 0, available: 0 },
+							},
+							upgrades: [],
+							vulnerability_window: null,
+							workforce_transport: {
+								configuration: { transit: true },
+								state: { transit: true },
+							},
+						},
+					}
+				}
+
+				throw new Error(`Unexpected path: ${path}`)
+			}),
+		}
+
+		const hubResult = await fetchSovereigntyHubs(tokenStore as never, '98000001', '211', {
+			prioritizedEntries: [
+				{ index: 0, entry: { id: 40001, solar_system_id: 404 } },
+				{ index: 1, entry: { id: 30001, solar_system_id: 401 } },
+				{ index: 2, entry: { id: 10001, solar_system_id: 402 } },
+				{ index: 3, entry: { id: 20001, solar_system_id: 403 } },
+			],
 		})
+
+		expect(hubResult.failureCount).toBe(1)
+		expect(hubResult.sovereigntyHubs.map((hub) => hub.structure_id)).toEqual([
+			'40001',
+			'10001',
+			'20001',
+		])
 	})
 })

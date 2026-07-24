@@ -192,6 +192,7 @@ export const structureSovereigntyHubs = pgTable(
 			}),
 		syncStatus: text('sync_status', { enum: ['ok', 'warning', 'error'] }).notNull().default('ok'),
 		syncFailureReason: text('sync_failure_reason'),
+		lastAttemptedSyncAt: timestamp('last_attempted_sync_at', { withTimezone: true }),
 		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
 		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -226,6 +227,7 @@ export const structureSkyhooks = pgTable(
 		theftVulnerabilityEnd: timestamp('theft_vulnerability_end', { withTimezone: true }),
 		syncStatus: text('sync_status', { enum: ['ok', 'warning', 'error'] }).notNull().default('ok'),
 		syncFailureReason: text('sync_failure_reason'),
+		lastAttemptedSyncAt: timestamp('last_attempted_sync_at', { withTimezone: true }),
 		lastObservedAt: timestamp('last_observed_at', { withTimezone: true }),
 		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
 		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
@@ -270,7 +272,9 @@ export const structureMoonDrills = pgTable(
 			.notNull()
 			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
 		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
+		lastAttemptedSyncAt: timestamp('last_attempted_sync_at', { withTimezone: true }),
 		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+		syncFailureReason: text('sync_failure_reason'),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
@@ -320,7 +324,9 @@ export const structureMiningExtractions = pgTable(
 		chunkArrivalTime: timestamp('chunk_arrival_time', { withTimezone: true }),
 		naturalDecayTime: timestamp('natural_decay_time', { withTimezone: true }),
 		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
+		lastAttemptedSyncAt: timestamp('last_attempted_sync_at', { withTimezone: true }),
 		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+		syncFailureReason: text('sync_failure_reason'),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
