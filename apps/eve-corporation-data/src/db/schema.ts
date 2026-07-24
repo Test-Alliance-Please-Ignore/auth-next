@@ -408,7 +408,10 @@ export const corporationStructures = pgTable(
 		>(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.structureId)]
+	(table) => [
+		unique().on(table.structureId),
+		index('corporation_structures_last_synced_at_idx').on(table.lastSyncedAt),
+	]
 )
 
 export const corporationStructureInventory = pgTable(

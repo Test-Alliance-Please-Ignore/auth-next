@@ -2760,6 +2760,7 @@ function buildSovereigntyStructuresCte(db: DbClient<DbSchema>, corpWhere: any) {
 					coalesce(${structureSovereigntyHubs.syncStatus}, 'warning')
 				`.as('syncStatus'),
 				syncFailureReason: structureSovereigntyHubs.syncFailureReason,
+				lastAttemptedSyncAt: structureSovereigntyHubs.lastAttemptedSyncAt,
 				sourceSyncAt: structureSovereigntyHubs.sourceSyncAt,
 				lastSyncedAt: sql<Date | null>`
 					coalesce(${structureSovereigntyHubs.lastSyncedAt}, ${structureSovereigntySystems.lastSyncedAt})
@@ -3111,6 +3112,7 @@ async function loadSovereigntyPageItems(
 			workforceTransport: sovereigntyStructures.workforceTransport,
 			syncStatus: sovereigntyStructures.syncStatus,
 			syncFailureReason: sovereigntyStructures.syncFailureReason,
+			lastAttemptedSyncAt: sovereigntyStructures.lastAttemptedSyncAt,
 			sourceSyncAt: sovereigntyStructures.sourceSyncAt,
 			lastSyncedAt: sovereigntyStructures.lastSyncedAt,
 			updatedAt: sovereigntyStructures.updatedAt,
@@ -3157,6 +3159,7 @@ async function loadSovereigntyPageItems(
 				},
 			syncStatus: (row.syncStatus ?? 'warning') as typeof structureSovereigntyHubs.$inferSelect['syncStatus'],
 			syncFailureReason: row.syncFailureReason,
+			lastAttemptedSyncAt: row.lastAttemptedSyncAt,
 			sourceSyncAt: row.sourceSyncAt,
 			lastSyncedAt: row.lastSyncedAt,
 			updatedAt: row.updatedAt,

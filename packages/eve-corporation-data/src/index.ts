@@ -21,6 +21,7 @@ export type EveCorporationSyncDataType =
 	| 'wallet-transactions'
 	| 'assets'
 	| 'structures'
+	| 'skyhooks'
 	| 'orders'
 	| 'contracts'
 	| 'industry-jobs'
@@ -437,6 +438,53 @@ export interface WalletTransactionsStoreResult {
 
 export interface SkyhookStoreResult {
 	prunedCount: number
+}
+
+export interface StructureSyncPriority {
+	structureId: string
+	lastAttemptedSyncAt: Date | null
+	lastSyncedAt: Date | null
+}
+
+export type SkyhookSyncPriority = StructureSyncPriority
+
+export type SovereigntyHubSyncPriority = StructureSyncPriority
+
+export type MoonDrillSyncPriority = StructureSyncPriority
+
+export type MiningCitadelSyncPriority = StructureSyncPriority
+
+export type StructureSyncFailureTarget =
+	| 'structures'
+	| 'sovereignty'
+	| 'skyhooks'
+	| 'moon-drills'
+	| 'mining-extractions'
+
+/**
+ * Targets for live-list based structure-priority queries.
+ */
+export type StructureSyncPriorityTarget =
+	| 'sovereignty'
+	| 'skyhooks'
+	| 'moon-drills'
+	| 'mining-extractions'
+
+/**
+ * A compact structure-priority queue entry used by enrichment batching.
+ */
+export interface StructurePriorityQueueEntry<P extends StructureSyncPriority = StructureSyncPriority> {
+	entry: { id: string | number }
+	index: number
+	priority: P | null
+}
+
+export interface StructurePriorityQueueResult<
+	T extends { id: string | number },
+	P extends StructureSyncPriority = StructureSyncPriority,
+> {
+	entries: Array<StructurePriorityQueueEntry<P> & { entry: T }>
+	pruneCandidateIds: string[]
 }
 
 /**
@@ -1357,7 +1405,42 @@ export interface EveCorporationData {
 	/**
 	 * Store sovereignty hub snapshots (workflow-friendly)
 	 */
-	storeSovereigntyHubs(corporationId: string, hubs: EsiSovereigntyHub[]): Promise<void>
+	storeSovereigntyHubs(
+		corporationId: string,
+		hubs: EsiSovereigntyHub[],
+		options?: {
+			pruneCandidateIds?: readonly string[]
+		}
+	): Promise<void>
+
+	/**
+	 * Read the current sovereignty hub sync priority order for a corporation.
+	 */
+	getSovereigntyHubSyncPriorities(corporationId: string): Promise<SovereigntyHubSyncPriority[]>
+
+	/**
+	 * Return the sovereignty hub IDs that are missing from the live listing.
+	 */
+	getMissingStructureIdsForPriorityQueue(
+		corporationId: string,
+		target: StructureSyncPriorityTarget,
+		structureIds: string[]
+	): Promise<string[]>
+
+	/**
+	 * Read the current sovereignty hub structure IDs for a corporation.
+	 */
+	getSovereigntyHubStructureIds(corporationId: string): Promise<string[]>
+
+	/**
+	 * Read the current moon-drill sync priority order for a corporation.
+	 */
+	getMoonDrillSyncPriorities(corporationId: string): Promise<MoonDrillSyncPriority[]>
+
+	/**
+	 * Read the current moon-drill structure IDs for a corporation.
+	 */
+	getMoonDrillStructureIds(corporationId: string): Promise<string[]>
 
 	/**
 	 * Mark a structure-enrichment snapshot as failed without discarding the last good data.
@@ -1369,9 +1452,46 @@ export interface EveCorporationData {
 	): Promise<void>
 
 	/**
+	 * Mark a structure ingest snapshot as failed without discarding the last good data.
+	 */
+	markStructureSyncFailureReason(
+		corporationId: string,
+		target: StructureSyncFailureTarget,
+		failureReason: string
+	): Promise<void>
+
+	/**
 	 * Store skyhook snapshots (workflow-friendly)
 	 */
-	storeSkyhooks(corporationId: string, skyhooks: EsiCorporationSkyhook[]): Promise<SkyhookStoreResult>
+	storeSkyhooks(
+		corporationId: string,
+		skyhooks: EsiCorporationSkyhook[],
+		options?: {
+			pruneCandidateIds?: readonly string[]
+		}
+	): Promise<SkyhookStoreResult>
+
+	/**
+	 * Read the current skyhook sync priority order for a corporation.
+	 */
+	getSkyhookSyncPriorities(corporationId: string): Promise<SkyhookSyncPriority[]>
+
+	/**
+	 * Read the current skyhook structure IDs for a corporation.
+	 */
+	getSkyhookStructureIds(corporationId: string): Promise<string[]>
+
+	/**
+	 * Read the current mining-citadel sync priority order for a corporation.
+	 */
+	getMiningCitadelSyncPriorities(
+		corporationId: string
+	): Promise<MiningCitadelSyncPriority[]>
+
+	/**
+	 * Read the current mining-citadel structure IDs for a corporation.
+	 */
+	getMiningCitadelStructureIds(corporationId: string): Promise<string[]>
 
 	/**
 	 * Store mining extraction snapshots (workflow-friendly)
