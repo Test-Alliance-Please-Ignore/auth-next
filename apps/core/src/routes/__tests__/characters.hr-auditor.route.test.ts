@@ -33,6 +33,7 @@ const hoisted = vi.hoisted(() => ({
 		getAttributes: vi.fn(),
 		getLastUpdated: vi.fn(),
 		getSensitiveData: vi.fn(),
+		fetchCharacterData: vi.fn(),
 		refreshPublicCharacterData: vi.fn(),
 	},
 	skills: {
@@ -193,6 +194,7 @@ describe('character detail access for HR page viewers', () => {
 			location: null,
 			skillQueue: [],
 		})
+		hoisted.characterInstance.fetchCharacterData.mockResolvedValue(undefined)
 		hoisted.characterInstance.refreshPublicCharacterData.mockResolvedValue({})
 		hoisted.skills.getAllSkills.mockResolvedValue([])
 		hoisted.skills.getSkillsMetadata.mockResolvedValue([])
@@ -270,6 +272,21 @@ describe('character detail access for HR page viewers', () => {
 		expect(body.skills?.totalSp).toBe(123456)
 		expect(body.private.wallet).toBe(123456789)
 		expect(body.private.status).toEqual({ state: 'active' })
+	})
+
+	it('returns not found when the character is missing from our data', async () => {
+		vi.mocked(db.query.userCharacters.findFirst).mockResolvedValue(null as any)
+		hoisted.characterInstance.getCharacterInfo.mockResolvedValue(null)
+		hoisted.characterInstance.fetchCharacterData.mockResolvedValue(undefined)
+
+		const app = createApp(makeUser(), db)
+		const res = await app.request('/api/characters/9999', {}, env)
+
+		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
+
+		expect(res.status).toBe(404)
+		const body = (await res.json()) as any
+		expect(body.error).toBe('Character not found')
 	})
 
 	it('returns private data for HR users via open applications without shared corp membership', async () => {

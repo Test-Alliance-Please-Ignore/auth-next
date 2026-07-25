@@ -234,7 +234,7 @@ type MembersAuthFilter =
 type MembersCoverageFilter = 'all' | 'full' | 'partial' | 'none' | 'unlinked'
 type MembersActivityFilter = 'all' | 'active' | 'inactive' | 'unknown'
 type MembersRoleFilter = 'all' | 'CEO' | 'Director' | 'Member'
-type MembersSortField = 'name' | 'role' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'
+type MembersSortField = 'name' | 'role' | 'hrRole' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'
 type MembersSortOrder = 'asc' | 'desc'
 
 type MembersQuery = {
@@ -354,6 +354,19 @@ function buildCorporationMemberCoverageSummary(
 	return coverage
 }
 
+function getHrRoleSortRank(role?: string | null): number {
+	switch (role) {
+		case 'hr_admin':
+			return 0
+		case 'hr_reviewer':
+			return 1
+		case 'hr_viewer':
+			return 2
+		default:
+			return 3
+	}
+}
+
 type AccountCoverageStatus = Exclude<MembersCoverageFilter, 'all'>
 
 function buildCoverageStatusByUserId(
@@ -444,6 +457,7 @@ function parseMembersQuery(c: Context<App>): MembersQuery {
 	const sortField: MembersSortField =
 		sortFieldRaw === 'name' ||
 			sortFieldRaw === 'role' ||
+			sortFieldRaw === 'hrRole' ||
 			sortFieldRaw === 'auth' ||
 			sortFieldRaw === 'activity' ||
 			sortFieldRaw === 'lastLogin' ||
@@ -488,7 +502,11 @@ function getMemberCoverageStatus(
 	return coverageByUserId.get(member.authUserId) ?? 'none'
 }
 
-function filterSortAndPaginateMembers(members: CorporationMemberListItem[], query: MembersQuery) {
+function filterSortAndPaginateMembers(
+	members: CorporationMemberListItem[],
+	query: MembersQuery,
+	hrRoleMap?: Map<string, string>
+) {
 	const AUTH_SORT_RANK: Record<'valid' | 'invalid' | 'unknown' | 'unlinked', number> = {
 		valid: 0,
 		invalid: 1,
@@ -554,6 +572,15 @@ function filterSortAndPaginateMembers(members: CorporationMemberListItem[], quer
 			case 'role': {
 				const roleOrder = { CEO: 0, Director: 1, Member: 2 }
 				comparison = roleOrder[a.role] - roleOrder[b.role]
+				if (comparison === 0) {
+					comparison = a.characterName.localeCompare(b.characterName)
+				}
+				break
+			}
+			case 'hrRole': {
+				const roleA = hrRoleMap?.get(a.authUserId || '') ?? null
+				const roleB = hrRoleMap?.get(b.authUserId || '') ?? null
+				comparison = getHrRoleSortRank(roleA) - getHrRoleSortRank(roleB)
 				if (comparison === 0) {
 					comparison = a.characterName.localeCompare(b.characterName)
 				}
@@ -634,7 +661,11 @@ function buildUnpaginatedMembersResponse(members: CorporationMemberListItem[]) {
 	}
 }
 
-function filterSortMembers(members: CorporationMemberListItem[], query: MembersQuery) {
+function filterSortMembers(
+	members: CorporationMemberListItem[],
+	query: MembersQuery,
+	hrRoleMap?: Map<string, string>
+) {
 	const AUTH_SORT_RANK: Record<'valid' | 'invalid' | 'unknown' | 'unlinked', number> = {
 		valid: 0,
 		invalid: 1,
@@ -700,6 +731,15 @@ function filterSortMembers(members: CorporationMemberListItem[], query: MembersQ
 			case 'role': {
 				const roleOrder = { CEO: 0, Director: 1, Member: 2 }
 				comparison = roleOrder[a.role] - roleOrder[b.role]
+				if (comparison === 0) {
+					comparison = a.characterName.localeCompare(b.characterName)
+				}
+				break
+			}
+			case 'hrRole': {
+				const roleA = hrRoleMap?.get(a.authUserId || '') ?? null
+				const roleB = hrRoleMap?.get(b.authUserId || '') ?? null
+				comparison = getHrRoleSortRank(roleA) - getHrRoleSortRank(roleB)
 				if (comparison === 0) {
 					comparison = a.characterName.localeCompare(b.characterName)
 				}
@@ -2183,6 +2223,9 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		const cached = await getCachedJson<CorporationMemberListItem[]>(cacheKey)
 		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		const hrRoles = query.sortField === 'hrRole' ? await hrStub.getCorporationRoles(corporationId, true) : []
+		const hrRoleMap = hrRoles.length > 0 ? new Map(hrRoles.map((role) => [role.userId, role.role])) : undefined
 
 		const useBackendPagination =
 			!returnUnpaginated &&
@@ -2250,7 +2293,6 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			)
 			const userIdToMainCharacterId = new Map(linkedUsers.map((u) => [u.id, u.mainCharacterId]))
 
-			const hrStub = getStub<Hr>(c.env.HR, 'default')
 			const blacklistStatuses =
 				pageCharacterIds.length > 0
 					? await hrStub.checkCharactersBlacklisted(pageCharacterIds)
@@ -2370,7 +2412,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 			})
 			const response = returnUnpaginated
 				? buildUnpaginatedMembersResponse(cached)
-				: filterSortAndPaginateMembers(cached, query)
+				: filterSortAndPaginateMembers(cached, query, hrRoleMap)
 			return c.json(response)
 		}
 
@@ -2439,7 +2481,6 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		})
 
 		// Bulk check blacklist status for all members
-		const hrStub = getStub<Hr>(c.env.HR, 'default')
 		const blacklistStatuses =
 			memberCharacterIds.length > 0
 				? await hrStub.checkCharactersBlacklisted(memberCharacterIds)
@@ -2517,7 +2558,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 
 		const response = returnUnpaginated
 			? buildUnpaginatedMembersResponse(membersWithDetails)
-			: filterSortAndPaginateMembers(membersWithDetails, query)
+			: filterSortAndPaginateMembers(membersWithDetails, query, hrRoleMap)
 		return c.json(response)
 	} catch (error) {
 		logger.error('[Corporations] Error fetching corporation members', {
@@ -2577,9 +2618,9 @@ app.get('/:corporationId/members/export', requireAuth(), async (c) => {
 		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
 		const members = await hydrateCorporationMembers(c, corporationId, managedCorp, corpStub, tokenStoreStub)
-		const filteredMembers = filterSortMembers(members, query)
 		const hrRoles = await hrStub.getCorporationRoles(corporationId, true)
 		const hrRoleMap = new Map(hrRoles.map((role) => [role.userId, role.role]))
+		const filteredMembers = filterSortMembers(members, query, hrRoleMap)
 		const csv = buildCorporationMembersCsv(filteredMembers, hrRoleMap)
 		const safeFileName = managedCorp.name
 			.trim()

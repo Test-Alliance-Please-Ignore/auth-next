@@ -235,15 +235,6 @@ export default function CorporationMembers() {
 		}))
 	}, [])
 
-	const handleLinkAccount = useCallback(
-		(member: CorporationMember) => {
-			// This would open a modal or navigate to a linking flow
-			// For now, just show a message
-			showError('Account linking not yet implemented')
-		},
-		[showError]
-	)
-
 	const handleExport = useCallback(async () => {
 		if (!corporationId || isExporting) return
 
@@ -450,14 +441,14 @@ export default function CorporationMembers() {
 					<CardContent>
 						{canUseHrTools ? (
 							<div className="flex flex-wrap gap-2">
-								<Button variant="primary" asChild>
+								<Button variant="primary" asChild className="w-full sm:w-auto">
 									<Link to={`/corporations/${corporationId}/applications`}>
 										<FileText className="h-4 w-4" />
 										Review Applications
 									</Link>
 								</Button>
 								{canManageHrRoles && (
-									<Button variant="ghost" asChild>
+									<Button variant="ghost" asChild className="w-full sm:w-auto">
 										<Link to={`/corporations/${corporationId}/hr/roles`}>
 											<Settings className="h-4 w-4" />
 											Manage HR Roles
@@ -465,7 +456,7 @@ export default function CorporationMembers() {
 									</Button>
 								)}
 								{canAccessSettings && (
-									<Button variant="ghost" asChild>
+									<Button variant="ghost" asChild className="w-full sm:w-auto">
 										<Link to={`/corporations/${corporationId}/settings`}>
 											<Settings className="h-4 w-4" />
 											Corporation Settings
@@ -587,14 +578,13 @@ export default function CorporationMembers() {
 					</Card>
 				}
 			>
-				<CorporationMembersTable
-					members={membersWithHrRoles ?? []}
-					loading={membersLoading && !membersResponse}
-					onMemberClick={handleMemberClick}
-					onLinkAccount={handleLinkAccount}
-					showActions={true}
-					canManageHrRoles={canManageHrRoles}
-					grantableHrRoles={[...grantableHrRoles]}
+					<CorporationMembersTable
+						members={membersWithHrRoles ?? []}
+						loading={membersLoading && !membersResponse}
+						onMemberClick={handleMemberClick}
+						showActions={true}
+						canManageHrRoles={canManageHrRoles}
+						grantableHrRoles={[...grantableHrRoles]}
 					canRevokeHrAdmin={canRevokeHrAdmin}
 					canManageEmeritus={canManageEmeritus}
 					corporationId={corporationId!}

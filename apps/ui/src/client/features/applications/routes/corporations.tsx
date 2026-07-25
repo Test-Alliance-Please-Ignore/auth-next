@@ -1,5 +1,5 @@
 import { useQueries } from '@tanstack/react-query'
-import { AlertCircle, Building2, FileText, Users } from 'lucide-react'
+import { AlertCircle, Building2, FileText, Settings2, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 
@@ -274,14 +274,16 @@ export default function CorporationsPage() {
 						user?.is_admin === true ||
 						isAuditor ||
 						accessibleCorporationIds.has(corporation.corporationId)
-					const canViewApplications =
-						corporation.isMemberCorporation &&
-						(user?.is_admin === true ||
-							isAuditor ||
-							accessibleCorporationIds.has(corporation.corporationId))
-					const pendingCount = canViewApplications
-						? applications.filter((application) => application.status === 'pending').length
-						: 0
+						const canViewApplications =
+							corporation.isMemberCorporation &&
+							(user?.is_admin === true ||
+								isAuditor ||
+								accessibleCorporationIds.has(corporation.corporationId))
+						const canConfigureCorporation =
+							user?.is_admin === true || corporationAccessEntry?.userRole === 'CEO'
+						const pendingCount = canViewApplications
+							? applications.filter((application) => application.status === 'pending').length
+							: 0
 					const underReviewCount = canViewApplications
 						? applications.filter((application) => application.status === 'under_review').length
 						: 0
@@ -316,25 +318,33 @@ export default function CorporationsPage() {
 									)}
 								</div>
 								<div className="self-end">
-									<div className="flex flex-nowrap gap-2">
+									<div className="flex flex-wrap gap-2">
 										{canAccessMembers && (
-											<Button variant="ghost" asChild>
+											<Button variant="ghost" asChild className="w-full sm:w-auto">
 												<Link to={`/corporations/${corporation.corporationId}/members`}>
 													<Users className="h-4 w-4" />
 													Members
 												</Link>
 											</Button>
 										)}
-										{canViewApplications && (
-											<Button variant={canAccessMembers ? 'ghost' : 'primary'} asChild>
-												<Link to={`/corporations/${corporation.corporationId}/applications`}>
-													<FileText className="h-4 w-4" />
-													Applications
-												</Link>
-											</Button>
-										)}
+											{canViewApplications && (
+												<Button variant={canAccessMembers ? 'ghost' : 'primary'} asChild className="w-full sm:w-auto">
+													<Link to={`/corporations/${corporation.corporationId}/applications`}>
+														<FileText className="h-4 w-4" />
+														Applications
+													</Link>
+												</Button>
+											)}
+											{canConfigureCorporation && (
+												<Button variant="ghost" asChild className="w-full sm:w-auto">
+													<Link to={`/corporations/${corporation.corporationId}/settings`}>
+														<Settings2 className="h-4 w-4" />
+														Configure
+													</Link>
+												</Button>
+											)}
+										</div>
 									</div>
-								</div>
 								<div className="justify-self-end self-end">
 									{applicationQuery?.isLoading ? (
 										<div className="flex gap-2">

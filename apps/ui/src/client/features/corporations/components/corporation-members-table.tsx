@@ -7,20 +7,17 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
+	ArrowDown,
+	ArrowUp,
+	ArrowUpDown,
 	ChevronDown,
-	ChevronUp,
-	ExternalLink,
 	Heart,
-	Link2,
 	Shield,
 	ShieldBan,
-	ShieldOff,
 	Star,
 	User,
-	Users,
 } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Badge } from '@/components/ui/badge'
@@ -49,9 +46,7 @@ import {
 	useGrantHrRole,
 	useRevokeHrRole,
 } from '../../hr'
-import {
-	myCorporationsApi,
-} from '../api'
+import { myCorporationsApi } from '../api'
 import { EmeritusConfirmationDialog } from './emeritus-confirmation-dialog'
 
 import type {
@@ -67,7 +62,6 @@ interface CorporationMembersTableProps {
 	members: CorporationMember[]
 	loading?: boolean
 	onMemberClick?: (member: CorporationMember) => void
-	onLinkAccount?: (member: CorporationMember) => void
 	showActions?: boolean
 	canManageHrRoles?: boolean
 	grantableHrRoles?: HrRoleType[]
@@ -161,7 +155,6 @@ export default function CorporationMembersTable({
 	members,
 	loading,
 	onMemberClick,
-	onLinkAccount,
 	showActions = true,
 	canManageHrRoles = false,
 	grantableHrRoles = ['hr_admin', 'hr_reviewer', 'hr_viewer'],
@@ -287,13 +280,29 @@ export default function CorporationMembersTable({
 	}
 
 	const SortIcon = ({ field }: { field: SortField }) => {
-		if (sortField !== field) return null
+		if (sortField !== field) {
+			return <ArrowUpDown className="h-3.5 w-3.5 opacity-60" />
+		}
+
 		return sortOrder === 'asc' ? (
-			<ChevronUp className="ml-1 h-3 w-3 inline" />
+			<ArrowUp className="h-3.5 w-3.5" />
 		) : (
-			<ChevronDown className="ml-1 h-3 w-3 inline" />
+			<ArrowDown className="h-3.5 w-3.5" />
 		)
 	}
+
+	const SortableHead = ({ field, label }: { field: SortField; label: string }) => (
+		<TableHead>
+			<button
+				type="button"
+				onClick={() => handleSort(field)}
+				className="inline-flex items-center gap-1 text-left text-muted-foreground hover:text-foreground"
+			>
+				<span>{label}</span>
+				<SortIcon field={field} />
+			</button>
+		</TableHead>
+	)
 
 	const stats = summary ?? {
 		total: members.length,
@@ -309,7 +318,6 @@ export default function CorporationMembersTable({
 	}
 	const pageLimit = pagination?.limit ?? query.limit ?? 50
 	const totalItems = pagination?.totalItems ?? 0
-	const hasPagination = (pagination?.totalPages ?? 1) > 1
 
 	const renderPaginationControls = () => (
 		<div className="border-b p-4">
@@ -439,53 +447,17 @@ export default function CorporationMembersTable({
 
 			{/* Table */}
 			<Card>
-				{hasPagination && renderPaginationControls()}
+				{renderPaginationControls()}
 				<Table>
 					<TableHeader>
 						<TableRow>
-							<TableHead
-								className="cursor-pointer hover:bg-muted/50"
-								onClick={() => handleSort('name')}
-							>
-								Member
-								<SortIcon field="name" />
-							</TableHead>
-							<TableHead
-								className="cursor-pointer hover:bg-muted/50"
-								onClick={() => handleSort('role')}
-							>
-								Role
-								<SortIcon field="role" />
-							</TableHead>
-							{canManageHrRoles && <TableHead>HR Role</TableHead>}
-							<TableHead
-								className="cursor-pointer hover:bg-muted/50"
-								onClick={() => handleSort('auth')}
-							>
-								Auth Account
-								<SortIcon field="auth" />
-							</TableHead>
-							<TableHead
-								className="cursor-pointer hover:bg-muted/50"
-								onClick={() => handleSort('activity')}
-							>
-								Activity
-								<SortIcon field="activity" />
-							</TableHead>
-							<TableHead
-								className="cursor-pointer hover:bg-muted/50"
-								onClick={() => handleSort('lastLogin')}
-							>
-								Last Login
-								<SortIcon field="lastLogin" />
-							</TableHead>
-							<TableHead
-								className="cursor-pointer hover:bg-muted/50"
-								onClick={() => handleSort('joinDate')}
-							>
-								Join Date
-								<SortIcon field="joinDate" />
-							</TableHead>
+							<SortableHead field="name" label="Member" />
+							<SortableHead field="role" label="Role" />
+							{canManageHrRoles && <SortableHead field="hrRole" label="HR Role" />}
+							<SortableHead field="auth" label="Auth Account" />
+							<SortableHead field="activity" label="Activity" />
+							<SortableHead field="lastLogin" label="Last Login" />
+							<SortableHead field="joinDate" label="Join Date" />
 							{showActions && (
 								<TableHead className="sticky right-0 z-20 bg-card text-right">
 									Actions
@@ -583,64 +555,58 @@ export default function CorporationMembersTable({
 									<div className="text-sm">{formatDate(member.joinDate)}</div>
 								</TableCell>
 								{showActions && (
-									<TableCell
-										className="sticky right-0 z-10 bg-card text-right"
-										onClick={(e) => e.stopPropagation()}
-									>
-										<ActionsMenu
-											items={[
-												{
-													label: 'View Profile',
-													intent: 'muted',
-													onClick: () => onMemberClick?.(member),
+								<TableCell
+									className="sticky right-0 z-10 bg-card text-right"
+									onClick={(e) => e.stopPropagation()}
+								>
+									<ActionsMenu
+										items={[
+											{
+												label: 'View Profile',
+												intent: 'muted',
+												onClick: () => onMemberClick?.(member),
+											},
+											{
+												label: 'Grant HR Role',
+												intent: 'confirm',
+												hidden: !canManageHrRoles || !member.hasAuthAccount || !!member.hrRole,
+												onClick: () => setGrantDialogMember(member),
+											},
+											{
+												label: 'Revoke HR Role',
+												intent: 'destructive',
+												hidden:
+													!canManageHrRoles ||
+													!member.hrRole ||
+													(!canRevokeHrAdmin && member.hrRole.role === 'hr_admin'),
+												onClick: () => setRevokeDialogMember(member),
+											},
+											{
+												label: 'Mark as Emeritus',
+												intent: 'secondary',
+												hidden:
+													!canManageEmeritus ||
+													!member.hasAuthAccount ||
+													member.role === 'CEO' ||
+													member.status === 'emeritus',
+												onClick: () => {
+													setEmeritusAction('mark')
+													setEmeritusDialogMember(member)
 												},
-												{
-													label: 'Link Account',
-													intent: 'primary',
-													hidden: member.hasAuthAccount || !onLinkAccount,
-													onClick: () => onLinkAccount?.(member),
+											},
+											{
+												label: 'Remove Emeritus',
+												intent: 'secondary',
+												hidden: !canManageEmeritus || member.status !== 'emeritus',
+												onClick: () => {
+													setEmeritusAction('remove')
+													setEmeritusDialogMember(member)
 												},
-												{
-													label: 'Grant HR Role',
-													intent: 'confirm',
-													hidden: !canManageHrRoles || !member.hasAuthAccount || !!member.hrRole,
-													onClick: () => setGrantDialogMember(member),
-												},
-												{
-													label: 'Revoke HR Role',
-													intent: 'destructive',
-													hidden:
-														!canManageHrRoles ||
-														!member.hrRole ||
-														(!canRevokeHrAdmin && member.hrRole.role === 'hr_admin'),
-													onClick: () => setRevokeDialogMember(member),
-												},
-												{
-													label: 'Mark as Emeritus',
-													intent: 'secondary',
-													hidden:
-														!canManageEmeritus ||
-														!member.hasAuthAccount ||
-														member.role === 'CEO' ||
-														member.status === 'emeritus',
-													onClick: () => {
-														setEmeritusAction('mark')
-														setEmeritusDialogMember(member)
-													},
-												},
-												{
-													label: 'Remove Emeritus',
-													intent: 'secondary',
-													hidden: !canManageEmeritus || member.status !== 'emeritus',
-													onClick: () => {
-														setEmeritusAction('remove')
-														setEmeritusDialogMember(member)
-													},
-												},
-											]}
-										/>
-									</TableCell>
-								)}
+											},
+										]}
+									/>
+								</TableCell>
+							)}
 							</TableRow>
 						))}
 						{paginatedMembers.length === 0 && (
@@ -657,7 +623,7 @@ export default function CorporationMembersTable({
 				</Table>
 
 				{/* Pagination */}
-				{hasPagination && renderPaginationControls()}
+				{renderPaginationControls()}
 			</Card>
 
 			{/* HR Role Dialogs */}
