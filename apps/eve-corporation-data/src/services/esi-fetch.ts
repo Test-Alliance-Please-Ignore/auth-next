@@ -62,7 +62,9 @@ export async function fetchPublicInfo(
 	tokenStore: EveTokenStore,
 	corporationId: string
 ): Promise<any> {
-	const response = await tokenStore.fetchPublicEsi<any>(`/corporations/${corporationId}`)
+	const response = await tokenStore.fetchPublicEsi<any>(`/corporations/${corporationId}`, {
+		cacheMode: 'no-store',
+	})
 
 	return {
 		corporationId: String(corporationId),

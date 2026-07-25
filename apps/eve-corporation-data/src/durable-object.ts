@@ -1570,28 +1570,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Takes pre-fetched data and stores it in the database
 	 */
 	async storePublicInfo(corporationId: string, publicInfo: any): Promise<void> {
-		await this.getDb()
-			.insert(corporationPublicInfo)
-			.values({
-				...publicInfo,
-				updatedAt: new Date(),
-			})
-			.onConflictDoUpdate({
-				target: corporationPublicInfo.corporationId,
-				set: {
-					name: publicInfo.name,
-					ticker: publicInfo.ticker,
-					ceoId: publicInfo.ceoId,
-					memberCount: publicInfo.memberCount,
-					shares: publicInfo.shares,
-					taxRate: publicInfo.taxRate,
-					url: publicInfo.url,
-					allianceId: publicInfo.allianceId,
-					factionId: publicInfo.factionId,
-					warEligible: publicInfo.warEligible,
-					updatedAt: sql`excluded.updated_at`,
-				},
-			})
+		await this.upsertPublicInfo(corporationId, publicInfo as CorporationPublicData)
 	}
 
 	/**
@@ -3016,28 +2995,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const data = await esiFetch.fetchPublicInfo(tokenStore, corporationId)
 
-		await this.getDb()
-			.insert(corporationPublicInfo)
-			.values({
-				...data,
-				updatedAt: new Date(),
-			})
-			.onConflictDoUpdate({
-				target: corporationPublicInfo.corporationId,
-				set: {
-					name: data.name,
-					ticker: data.ticker,
-					ceoId: data.ceoId,
-					memberCount: data.memberCount,
-					shares: data.shares,
-					taxRate: data.taxRate,
-					url: data.url,
-					allianceId: data.allianceId,
-					factionId: data.factionId,
-					warEligible: data.warEligible,
-					updatedAt: sql`excluded.updated_at`,
-				},
-			})
+			await this.upsertPublicInfo(corporationId, data as CorporationPublicData)
 
 		const previousAllianceId = previousInfo?.allianceId ?? null
 		const nextAllianceId = data.allianceId ?? null
@@ -3074,6 +3032,63 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					)
 				}
 			}
+		}
+	}
+
+	private async upsertPublicInfo(
+		corporationId: string,
+		publicInfo: CorporationPublicData
+	): Promise<void> {
+		await this.getDb()
+			.insert(corporationPublicInfo)
+			.values({
+				...publicInfo,
+				updatedAt: new Date(),
+			})
+			.onConflictDoUpdate({
+				target: corporationPublicInfo.corporationId,
+				set: {
+					name: publicInfo.name,
+					ticker: publicInfo.ticker,
+					ceoId: publicInfo.ceoId,
+					creatorId: publicInfo.creatorId,
+					dateFounded: publicInfo.dateFounded,
+					description: publicInfo.description,
+					homeStationId: publicInfo.homeStationId,
+					memberCount: publicInfo.memberCount,
+					shares: publicInfo.shares,
+					taxRate: publicInfo.taxRate,
+					url: publicInfo.url,
+					allianceId: publicInfo.allianceId,
+					factionId: publicInfo.factionId,
+					warEligible: publicInfo.warEligible,
+					updatedAt: sql`excluded.updated_at`,
+				},
+			})
+
+		const storedPublicInfo = await this.getCorporationInfo(corporationId)
+		if (
+			!storedPublicInfo ||
+			storedPublicInfo.corporationId !== corporationId ||
+			storedPublicInfo.ceoId !== publicInfo.ceoId ||
+			storedPublicInfo.creatorId !== publicInfo.creatorId ||
+			storedPublicInfo.name !== publicInfo.name ||
+			storedPublicInfo.ticker !== publicInfo.ticker ||
+			storedPublicInfo.memberCount !== publicInfo.memberCount ||
+			storedPublicInfo.shares !== publicInfo.shares ||
+			storedPublicInfo.taxRate !== publicInfo.taxRate ||
+			storedPublicInfo.url !== publicInfo.url ||
+			storedPublicInfo.allianceId !== publicInfo.allianceId ||
+			storedPublicInfo.factionId !== publicInfo.factionId ||
+			storedPublicInfo.warEligible !== publicInfo.warEligible ||
+			(storedPublicInfo.dateFounded?.toISOString() ?? null) !==
+				(publicInfo.dateFounded?.toISOString() ?? null) ||
+			storedPublicInfo.description !== publicInfo.description ||
+			storedPublicInfo.homeStationId !== publicInfo.homeStationId
+		) {
+			throw new Error(
+				`Failed to persist corporation public info for corporation ID ${corporationId}`
+			)
 		}
 	}
 
