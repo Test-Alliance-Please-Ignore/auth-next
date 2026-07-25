@@ -11,6 +11,7 @@ import {
 	ilike,
 	inArray,
 	isNotNull,
+	isNull,
 	or,
 	sql,
 } from '@repo/db-utils'
@@ -37,11 +38,14 @@ import type {
 	OreRarity,
 	PaginatedScans,
 	ScanFilters,
+	ScanLocation,
+	ScannedMoonRegionCount,
 	StructureProfile,
 	StructureType,
 	SubmitScanInput,
 	VerifiedComposition,
 	VerifiedMoonPage,
+	VerifiedMoonRegionCount,
 	VerifiedMoonSummaryRecord,
 	VerifiedMoonsSortBy,
 } from '@repo/moon-scan'
@@ -104,6 +108,8 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 				.insert(moonScans)
 				.values({
 					moonId: scan.moonId,
+					regionId: scan.regionId,
+					solarSystemId: scan.solarSystemId,
 					submittedBy,
 					status: autoVerify ? 'verified' : 'pending',
 					source: 'user',
@@ -409,10 +415,21 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		})()
 
 		const rows = await this.db
-			.select()
+			.select({
+				moonId: verifiedMoonSummaries.moonId,
+				moonName: verifiedMoonSummaries.moonName,
+				solarSystemId: verifiedMoonSummaries.solarSystemId,
+				solarSystemName: verifiedMoonSummaries.solarSystemName,
+				regionId: verifiedMoonSummaries.regionId,
+				regionName: verifiedMoonSummaries.regionName,
+				constellationId: verifiedMoonSummaries.constellationId,
+				constellationName: verifiedMoonSummaries.constellationName,
+				securityStatus: verifiedMoonSummaries.securityStatus,
+				highestRarity: verifiedMoonSummaries.highestRarity,
+			})
 			.from(verifiedMoonSummaries)
 			.where(where)
-			.orderBy(...orderByColumns, asc(verifiedMoonSummaries.moonName))
+			.orderBy(...orderByColumns, asc(verifiedMoonSummaries.moonName), asc(verifiedMoonSummaries.moonId))
 			.limit(filters.pageSize)
 			.offset(offset)
 
@@ -437,6 +454,25 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 				constellationName: row.constellationName,
 			})),
 		}
+	}
+
+	async getVerifiedMoonCountsByRegionIds(regionIds: string[]): Promise<VerifiedMoonRegionCount[]> {
+		const uniqueRegionIds = [...new Set(regionIds)]
+		if (uniqueRegionIds.length === 0) return []
+
+		const rows = await this.db
+			.select({
+				regionId: verifiedMoonSummaries.regionId,
+				verifiedCount: count(verifiedMoonSummaries.moonId),
+			})
+			.from(verifiedMoonSummaries)
+			.where(inArray(verifiedMoonSummaries.regionId, uniqueRegionIds))
+			.groupBy(verifiedMoonSummaries.regionId)
+
+		return rows.map((row) => ({
+			regionId: row.regionId,
+			verifiedCount: Number(row.verifiedCount),
+		}))
 	}
 
 	async getVerifiedMoonSummaryIds(): Promise<string[]> {
@@ -534,6 +570,59 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		return {
 			scannedMoonIds: scanned.map((r) => r.moonId),
 			verifiedMoonIds: verified.map((r) => r.moonId),
+		}
+	}
+
+	async getScannedMoonCountsByRegionIds(regionIds: string[]): Promise<ScannedMoonRegionCount[]> {
+		const uniqueRegionIds = [...new Set(regionIds)]
+		if (uniqueRegionIds.length === 0) return []
+
+		const rows = await this.db
+			.select({
+				regionId: moonScans.regionId,
+				scannedCount: sql<number>`count(distinct ${moonScans.moonId})`,
+			})
+			.from(moonScans)
+			.where(and(isNotNull(moonScans.regionId), inArray(moonScans.regionId, uniqueRegionIds)))
+			.groupBy(moonScans.regionId)
+
+		return rows.map((row) => ({
+			regionId: row.regionId as string,
+			scannedCount: Number(row.scannedCount),
+		}))
+	}
+
+	async getUnlocatedScannedMoonIds(limit: number, afterMoonId?: string): Promise<string[]> {
+		const conditions = [isNull(moonScans.regionId)]
+		if (afterMoonId) conditions.push(sql`${moonScans.moonId} > ${afterMoonId}`)
+
+		const rows = await this.db
+			.selectDistinct({ moonId: moonScans.moonId })
+			.from(moonScans)
+			.where(and(...conditions))
+			.orderBy(asc(moonScans.moonId))
+			.limit(Math.min(Math.max(limit, 1), 500))
+
+		return rows.map((row) => row.moonId)
+	}
+
+	async backfillScanLocations(locations: ScanLocation[]): Promise<void> {
+		const grouped = new Map<string, string[]>()
+		for (const location of locations) {
+			const key = `${location.regionId}:${location.solarSystemId}`
+			const moonIds = grouped.get(key) ?? []
+			moonIds.push(location.moonId)
+			grouped.set(key, moonIds)
+		}
+
+		for (const [key, moonIds] of grouped) {
+			const separator = key.indexOf(':')
+			const regionId = key.slice(0, separator)
+			const solarSystemId = key.slice(separator + 1)
+			await this.db
+				.update(moonScans)
+				.set({ regionId, solarSystemId })
+				.where(and(isNull(moonScans.regionId), inArray(moonScans.moonId, moonIds)))
 		}
 	}
 
@@ -672,6 +761,8 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		return {
 			id: row.id,
 			moonId: row.moonId,
+			regionId: row.regionId,
+			solarSystemId: row.solarSystemId,
 			submittedBy: row.submittedBy,
 			submittedAt: row.submittedAt.toISOString(),
 			status: row.status,

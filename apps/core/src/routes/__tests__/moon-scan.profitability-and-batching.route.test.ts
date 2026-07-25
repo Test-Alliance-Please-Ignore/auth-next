@@ -103,6 +103,8 @@ describe('moon-scan profitability and batching behavior', () => {
 				constellations: [],
 			}),
 			getVerifiedMoonSummaryIds: vi.fn().mockResolvedValue([]),
+			getScannedMoonCountsByRegionIds: vi.fn().mockResolvedValue([]),
+			getVerifiedMoonCountsByRegionIds: vi.fn().mockResolvedValue([]),
 			upsertVerifiedMoonSummaries: vi.fn().mockResolvedValue(undefined),
 			getScans: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 }),
 			resolveCharacterNames: vi.fn().mockResolvedValue({}),

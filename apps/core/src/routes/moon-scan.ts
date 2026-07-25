@@ -23,6 +23,7 @@ import {
 	type VerifiedMoonsSortBy,
 	type StructureProfitability,
 	type VerifiedComposition,
+	type ScanLocation,
 } from '@repo/moon-scan'
 import { buildCsvLine, createR2MultipartTextWriter } from '@repo/worker-utils'
 
@@ -33,7 +34,7 @@ import { requireAllianceMember } from '../middleware/session'
 
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
 import type { Markets } from '@repo/markets'
-import type { Universe } from '@repo/universe'
+import type { Universe, UniverseSolarSystem } from '@repo/universe'
 import type { App } from '../context'
 import { createWorkflow } from '@repo/workflow-utils'
 
@@ -76,6 +77,8 @@ const MOON_REGIONS_RESPONSE_CACHE_TTL_MS = 5 * 60_000
 const MOON_REGION_RESPONSE_CACHE_TTL_MS = 60_000
 const MOON_SYSTEM_RESPONSE_CACHE_TTL_MS = 60_000
 const MOON_LEADERBOARD_CACHE_TTL_MS = 60_000
+const MOON_SYSTEM_LOCATION_CACHE_TTL_MS = 24 * 60 * 60_000
+const MOON_SYSTEM_LOCATION_CACHE_MAX_SIZE = 10_000
 const VERIFIED_MOON_SUMMARY_BACKFILL_BATCH_SIZE = 250
 const VERIFIED_MOONS_EXPORT_PAGE_SIZE = 100
 const VERIFIED_MOONS_EXPORT_BUCKET_PREFIX = 'moon-scan/verified-moons-exports'
@@ -399,6 +402,8 @@ type MoonRegionsResponse = {
 	connections: Awaited<ReturnType<Universe['getRegionConnections']>>
 }
 
+type VerifiedMoonRegionCount = Awaited<ReturnType<MoonScanDO['getVerifiedMoonCountsByRegionIds']>>[number]
+
 type MoonRegionResponse = {
 	regionId: string
 	systems: Array<{
@@ -439,6 +444,65 @@ const moonRegionsResponseCache = new TimeCache<MoonRegionsResponse>(MOON_REGIONS
 const moonRegionResponseCache = new TimeCache<MoonRegionResponse>(MOON_REGION_RESPONSE_CACHE_TTL_MS, 100)
 const moonSystemResponseCache = new TimeCache<MoonSystemResponse>(MOON_SYSTEM_RESPONSE_CACHE_TTL_MS, 500)
 const moonLeaderboardCache = new TimeCache<MoonLeaderboardResponse>(MOON_LEADERBOARD_CACHE_TTL_MS, 10)
+const moonSystemLocationCache = new TimeCache<UniverseSolarSystem | null>(
+	MOON_SYSTEM_LOCATION_CACHE_TTL_MS,
+	MOON_SYSTEM_LOCATION_CACHE_MAX_SIZE
+)
+
+async function resolveSolarSystemsWithCache(
+	universe: Universe,
+	systemIds: string[],
+): Promise<Record<string, UniverseSolarSystem | null>> {
+	const uniqueSystemIds = [...new Set(systemIds)]
+	if (uniqueSystemIds.length === 0) return {}
+
+	const resolved: Record<string, UniverseSolarSystem | null> = {}
+	const missingSystemIds: string[] = []
+	for (const systemId of uniqueSystemIds) {
+		const cached = moonSystemLocationCache.get(`moon-system:${systemId}`)
+		if (cached === undefined) missingSystemIds.push(systemId)
+		else resolved[systemId] = cached
+	}
+
+	if (missingSystemIds.length > 0) {
+		const fetched = await universe.resolveSolarSystemsByIds(missingSystemIds)
+		for (const systemId of missingSystemIds) {
+			const system = fetched[systemId] ?? null
+			moonSystemLocationCache.set(`moon-system:${systemId}`, system)
+			resolved[systemId] = system
+		}
+	}
+
+	return resolved
+}
+
+const SCAN_LOCATION_BACKFILL_BATCH_SIZE = 250
+
+async function backfillScanLocations(moonScan: MoonScanDO, universe: Universe): Promise<void> {
+	let afterMoonId: string | undefined
+
+	for (;;) {
+		const moonIds = await moonScan.getUnlocatedScannedMoonIds(SCAN_LOCATION_BACKFILL_BATCH_SIZE, afterMoonId)
+		if (moonIds.length === 0) return
+
+		const moonsById = await universe.resolveStaticMoonsByIds(moonIds)
+		const systemIds = moonIds
+			.map((moonId) => moonsById[moonId]?.solarSystemId)
+			.filter((systemId): systemId is string => Boolean(systemId))
+		const systemsById = await resolveSolarSystemsWithCache(universe, systemIds)
+		const locations: ScanLocation[] = []
+
+		for (const moonId of moonIds) {
+			const moon = moonsById[moonId]
+			const system = moon ? systemsById[moon.solarSystemId] : null
+			if (!moon || !system) continue
+			locations.push({ moonId, regionId: system.regionId, solarSystemId: moon.solarSystemId })
+		}
+
+		if (locations.length > 0) await moonScan.backfillScanLocations(locations)
+		afterMoonId = moonIds[moonIds.length - 1]
+	}
+}
 
 type MoonExportEntry = {
 	moon: {
@@ -877,29 +941,20 @@ moonScanRoutes.get('/moons/regions', async (c) => {
 	const moonScan = getMoonScanStub(c.env)
 	const K_SPACE_REGIONS = getKSpaceRegionIds()
 
-	const [regionData, regionStats, scanSummary, connections] = await Promise.all([
+	const [regionData, regionStats, scannedRegionCounts, verifiedRegionCounts, connections] = await Promise.all([
 		universe.resolveRegionsByIds(K_SPACE_REGIONS),
 		universe.getRegionStats(K_SPACE_REGIONS),
-		moonScan.getScanSummary(),
+		moonScan.getScannedMoonCountsByRegionIds(K_SPACE_REGIONS),
+		moonScan.getVerifiedMoonCountsByRegionIds(K_SPACE_REGIONS),
 		universe.getRegionConnections(K_SPACE_REGIONS),
 	])
 
-	// Map scanned/verified moon IDs back to their regions
-	const allScanMoonIds = [...new Set([...scanSummary.scannedMoonIds, ...scanSummary.verifiedMoonIds])]
-	const moonRegionMap = allScanMoonIds.length > 0
-		? await universe.getMoonRegionIds(allScanMoonIds)
-		: {}
-
-	const scannedByRegion = new Map<string, number>()
-	const verifiedByRegion = new Map<string, number>()
-	for (const moonId of scanSummary.scannedMoonIds) {
-		const regionId = moonRegionMap[moonId]
-		if (regionId) scannedByRegion.set(regionId, (scannedByRegion.get(regionId) ?? 0) + 1)
-	}
-	for (const moonId of scanSummary.verifiedMoonIds) {
-		const regionId = moonRegionMap[moonId]
-		if (regionId) verifiedByRegion.set(regionId, (verifiedByRegion.get(regionId) ?? 0) + 1)
-	}
+	const scannedByRegion = new Map(
+		scannedRegionCounts.map((entry) => [entry.regionId, entry.scannedCount])
+	)
+	const verifiedByRegion = new Map<string, VerifiedMoonRegionCount['verifiedCount']>(
+		verifiedRegionCounts.map((entry) => [entry.regionId, entry.verifiedCount])
+	)
 
 	const regions = K_SPACE_REGIONS
 		.map((regionId) => regionData[regionId])
@@ -1599,9 +1654,7 @@ moonScanRoutes.post('/scans/parse', async (c) => {
 
 	// Annotate each scan with sec status eligibility
 	const systemIds = [...new Set(parseResult.scans.map((s) => s.solarSystemId))]
-	const systemsById = systemIds.length > 0
-		? await getUniverseStub(c.env).resolveSolarSystemsByIds(systemIds)
-		: {}
+	const systemsById = await resolveSolarSystemsWithCache(getUniverseStub(c.env), systemIds)
 
 	const annotated = parseResult.scans.map((scan) => {
 		const system = systemsById[scan.solarSystemId]
@@ -1637,7 +1690,7 @@ moonScanRoutes.post('/scans/submit', async (c) => {
 	// Batch-resolve system security statuses and filter ineligible systems
 	const systemIds = [...new Set(parseResult.scans.map((s) => s.solarSystemId))]
 	const universe = getUniverseStub(c.env)
-	const systemsById = await universe.resolveSolarSystemsByIds(systemIds)
+	const systemsById = await resolveSolarSystemsWithCache(universe, systemIds)
 
 	const eligibleScans = parseResult.scans.filter((scan) => {
 		const system = systemsById[scan.solarSystemId]
@@ -1668,6 +1721,8 @@ moonScanRoutes.post('/scans/submit', async (c) => {
 	const submittedScans = await moonScan.submitScans(
 		scansWithOnlyAllowedOreTypes.map((s) => ({
 			moonId: s.moonId,
+			regionId: systemsById[s.solarSystemId]!.regionId,
+			solarSystemId: s.solarSystemId,
 			ores: s.ores.map((o) => ({ oreTypeId: o.oreTypeId, quantity: o.quantity })),
 		})),
 		primaryChar?.characterId ?? null,
@@ -1945,6 +2000,29 @@ moonScanRoutes.post('/admin/settings/profiles/:id', async (c) => {
 	const updated = await moonScan.updateStructureProfile(id as 'tatara' | 'metenox', body.data)
 	clearMoonScanPricingCaches()
 	return c.json(updated)
+})
+
+moonScanRoutes.post('/admin/scan-locations/backfill', async (c) => {
+	const user = c.get('user')!
+	if (!await hasMoonPerm(c.env, user.id, MOON_URNS.admin, user.is_admin)) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const moonScan = getMoonScanStub(c.env)
+	const universe = getUniverseStub(c.env)
+	const task = backfillScanLocations(moonScan, universe).catch((error) => {
+		logger.error('[moon-scan] failed to backfill scan locations', { error })
+		throw error
+	})
+
+	const executionCtx = getExecutionContextOrNull(c)
+	if (executionCtx) {
+		executionCtx.waitUntil(task)
+		return c.json({ status: 'queued' }, 202)
+	}
+
+	await task
+	return c.json({ status: 'completed' })
 })
 
 moonScanRoutes.post('/admin/verified-moon-summaries/backfill', async (c) => {

@@ -54,6 +54,8 @@ function makeScan(status: MoonScan['status'], submittedBy: string | null = '7777
 	return {
 		id: 'scan-1',
 		moonId: '40161739',
+		regionId: '10000002',
+		solarSystemId: '30000142',
 		submittedBy,
 		submittedAt: '2026-05-01T00:00:00.000Z',
 		status,
@@ -98,6 +100,8 @@ describe('moon-scan access matrix', () => {
 			getLeaderboard: vi.fn(),
 			getScan: vi.fn(),
 			getScanSummary: vi.fn(),
+			getScannedMoonCountsByRegionIds: vi.fn().mockResolvedValue([]),
+			getVerifiedMoonCountsByRegionIds: vi.fn().mockResolvedValue([]),
 			getScans: vi.fn(),
 			resolveCharacterNames: vi.fn(),
 			rejectScans: vi.fn(),
@@ -120,7 +124,12 @@ describe('moon-scan access matrix', () => {
 
 	it('allows moon viewers to read regions', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:view' }] as any)
-		moonScanStub.getScanSummary.mockResolvedValue({ scannedMoonIds: [], verifiedMoonIds: [] })
+		moonScanStub.getScannedMoonCountsByRegionIds.mockResolvedValue([
+			{ regionId: '10000002', scannedCount: 9 },
+		])
+		moonScanStub.getVerifiedMoonCountsByRegionIds.mockResolvedValue([
+			{ regionId: '10000002', verifiedCount: 7 },
+		])
 		universeStub.resolveRegionsByIds.mockImplementation(async (ids: string[]) =>
 			Object.fromEntries(ids.map((id) => [id, { regionId: id, regionName: `Region ${id}` }]))
 		)
@@ -133,8 +142,13 @@ describe('moon-scan access matrix', () => {
 		const res = await app.request('/api/moon-scan/moons/regions', {}, env)
 
 		expect(res.status).toBe(200)
-		const body = await res.json() as { regions: Array<{ regionId: string }> }
+		const body = await res.json() as { regions: Array<{ regionId: string; verifiedCount: number }> }
 		expect(body.regions.length).toBeGreaterThan(0)
+		expect(body.regions.find((region) => region.regionId === '10000002')?.verifiedCount).toBe(7)
+		expect(moonScanStub.getVerifiedMoonCountsByRegionIds).toHaveBeenCalledWith(expect.any(Array))
+		expect(moonScanStub.getScannedMoonCountsByRegionIds).toHaveBeenCalledWith(expect.any(Array))
+		expect(moonScanStub.getScanSummary).not.toHaveBeenCalled()
+		expect(universeStub.getMoonRegionIds).not.toHaveBeenCalled()
 	})
 
 	it('denies submitters from reading regions', async () => {
