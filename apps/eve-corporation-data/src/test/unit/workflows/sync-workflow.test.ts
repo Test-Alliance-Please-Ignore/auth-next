@@ -4,6 +4,7 @@ import { EveCorporationSyncWorkflow } from '../../../workflows/sync-workflow'
 import { StructureEnrichmentScopeMismatchError } from '../../../workflows/utils/structure-enrichment-auth'
 
 import type { WorkflowStep } from 'cloudflare:workers'
+import type { Env } from '../../../context'
 
 const getStubMock = vi.fn()
 const syncAssetsMock = vi.fn()
@@ -176,11 +177,14 @@ function createWorkflowEnv() {
 	return {
 		env: {
 			DATABASE_URL: 'postgres://test',
+			NAME: 'eve-corporation-data',
+			ENVIRONMENT: 'VITEST',
+			SENTRY_RELEASE: 'test',
 			EVE_TOKEN_STORE: tokenStoreNamespace,
 			CORPORATION_TAX: {},
 			EVE_CORPORATION_DATA: corpDataNamespace,
 			CORE: coreStub,
-		},
+		} as unknown as Env,
 		corpDataStub,
 		tokenStoreStub,
 		updateCorporationAuthHealth,

@@ -67,6 +67,10 @@ import type {
 	EsiCorporationStructure,
 	StructureSyncPriorityTarget,
 } from '@repo/eve-corporation-data'
+import type {
+	EsiCharacterAffiliation,
+	EveTokenStore,
+} from '@repo/eve-token-store'
 import type { Env } from '../context'
 import type {
 	DirectorInfo,
@@ -115,7 +119,9 @@ async function ensureLinkedCeoDirector(
 
 	const tokenStore = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
 	const affiliations = await tokenStore.fetchCharacterAffiliations([ceoId])
-	const affiliation = affiliations.find((entry) => String(entry.character_id) === ceoId)
+	const affiliation = affiliations.find(
+		(entry: EsiCharacterAffiliation) => String(entry.character_id) === ceoId
+	)
 	if (!affiliation) {
 		logger.info('[EveCorporationSyncWorkflow] Linked CEO has no live affiliation data', {
 			corporationId,
