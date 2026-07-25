@@ -1887,7 +1887,7 @@ export default function StructuresPage() {
 								pageSize={pagination?.pageSize ?? tableState.pageSize}
 								onPageChange={setStructureTablePage}
 								onPageSizeChange={setStructureTablePageSize}
-								pageSizeOptions={[25, 50, 100]}
+								pageSizeOptions={[10, 25, 50, 100]}
 								itemLabel="structures"
 								nextButtonLoading={isFetching}
 								trailingAction={refreshButton}

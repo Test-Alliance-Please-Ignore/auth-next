@@ -62,7 +62,7 @@ function defaultState(): StructureTableUiState {
 		tab: 'citadels',
 		filters: currentTabState.filters,
 		page: 1,
-		pageSize: 25,
+		pageSize: 10,
 		sortBy: currentTabState.sortBy,
 		sortDirection: currentTabState.sortDirection,
 		tabStateByTab,
