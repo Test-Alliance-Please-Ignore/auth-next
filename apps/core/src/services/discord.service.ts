@@ -9,8 +9,6 @@ import { logger } from '@repo/hono-helpers'
 import { createDb } from '../db'
 import {
 	corporationDiscordServers,
-	corporationDiscordServerNicknameConfigs,
-	corporationDiscordServerScenarioRoles,
 	discordRoles,
 	discordServers,
 	managedCorporations,
@@ -19,7 +17,7 @@ import {
 	users,
 } from '../db/schema'
 
-import type { Discord, DiscordProfile, JoinServerResult } from '@repo/discord'
+import type { DiscordProfile, JoinServerResult } from '@repo/discord'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
@@ -618,7 +616,7 @@ type CorporationTickerSources = {
 	allianceTicker: string | null
 }
 
-function normalizeDiscordTicker(ticker?: string | null): string | null {
+function normalizeCustomTicker(ticker?: string | null): string | null {
 	const normalized = ticker?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
 	if (!normalized) {
 		return null
@@ -627,12 +625,12 @@ function normalizeDiscordTicker(ticker?: string | null): string | null {
 	return normalized.slice(0, 5)
 }
 
-function buildDiscordNicknameWithTickers(baseName: string, suffixes: string[]): string {
-	if (suffixes.length === 0) {
+function buildDiscordNicknameWithTickerPrefixes(baseName: string, prefixes: string[]): string {
+	if (prefixes.length === 0) {
 		return baseName
 	}
 
-	return `${suffixes.map((suffix) => `[${suffix}]`).join(' ')} ${baseName}`
+	return `${prefixes.map((prefix) => `[${prefix}]`).join(' ')} ${baseName}`
 }
 
 function getScenarioRoleRecord(
@@ -661,11 +659,11 @@ function resolveTickerPreference(
 	customTicker: string | null
 ): string | null {
 	if (source === 'custom') {
-		return normalizeDiscordTicker(customTicker)
+		return normalizeCustomTicker(customTicker)
 	}
 
-	const corpTicker = normalizeDiscordTicker(tickerSources.corpTicker)
-	const allianceTicker = normalizeDiscordTicker(tickerSources.allianceTicker)
+	const corpTicker = tickerSources.corpTicker?.length ? tickerSources.corpTicker : null
+	const allianceTicker = tickerSources.allianceTicker?.length ? tickerSources.allianceTicker : null
 
 	if (source === 'alliance') {
 		return allianceTicker ?? corpTicker
@@ -674,7 +672,7 @@ function resolveTickerPreference(
 	return corpTicker ?? allianceTicker
 }
 
-function resolveAttachmentNicknameSuffix(
+function resolveAttachmentNicknamePrefix(
 	attachment: CorporationDiscordNicknameFields,
 	isCorpMember: boolean,
 	isAllianceMember: boolean,
@@ -700,85 +698,78 @@ function resolveAttachmentNicknameSuffix(
 			continue
 		}
 
-		const suffix = resolveTickerPreference(bucket.source, tickerSources, bucket.customTicker)
-		if (suffix) {
-			return suffix
+		const prefix = resolveTickerPreference(bucket.source, tickerSources, bucket.customTicker)
+		if (prefix) {
+			return prefix
 		}
 	}
 
 	return null
 }
 
-async function getCorporationTickerSources(
+async function getPrimaryCharacterTickerSources(
 	db: ReturnType<typeof createDb>,
 	env: Env,
-	corporationIds: string[]
-): Promise<Map<string, CorporationTickerSources>> {
-	if (corporationIds.length === 0) {
-		return new Map()
-	}
-
-	const uniqueCorporationIds = Array.from(new Set(corporationIds))
-	const corpRows = await db.query.managedCorporations.findMany({
-		where: inArray(managedCorporations.corporationId, uniqueCorporationIds),
+	userId: string
+): Promise<
+	| {
+			primaryCharacterName: string
+			primaryCharacterCorporationId: string
+			primaryCharacterAllianceId: string | null
+			tickerSources: CorporationTickerSources
+	  }
+	| null
+> {
+	const primaryCharacter = await db.query.userCharacters.findFirst({
+		where: and(eq(userCharacters.userId, userId), eq(userCharacters.is_primary, true)),
 		columns: {
+			characterName: true,
 			corporationId: true,
-			ticker: true,
+			allianceId: true,
 		},
 	})
-	const corpTickerById = new Map(corpRows.map((row) => [row.corporationId, row.ticker]))
+
+	if (!primaryCharacter?.characterName || !primaryCharacter.corporationId) {
+		return null
+	}
 
 	const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'default')
 	const tokenStoreStub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	const corpInfoEntries = await Promise.all(
-		uniqueCorporationIds.map(async (corporationId) => {
-			try {
-				return [corporationId, await corpStub.getCorporationInfo(corporationId)] as const
-			} catch (error) {
-				logger.warn('[Discord] Failed to resolve corporation info for nickname routing', {
-					corporationId,
-					error: String(error),
-				})
-				return [corporationId, null] as const
-			}
-		})
-	)
-
-	const allianceIds = Array.from(
-		new Set(
-			corpInfoEntries
-				.map(([, corpInfo]) => corpInfo?.allianceId ?? null)
-				.filter((allianceId): allianceId is string => !!allianceId)
-		)
-	)
-
-	const allianceTickerById = new Map<string, string>()
-	await Promise.all(
-		allianceIds.map(async (allianceId) => {
-			try {
-				const allianceInfo = await tokenStoreStub.getAllianceById(allianceId)
-				if (allianceInfo?.ticker) {
-					allianceTickerById.set(allianceId, allianceInfo.ticker)
-				}
-			} catch (error) {
-				logger.warn('[Discord] Failed to resolve alliance info for nickname routing', {
-					allianceId,
-					error: String(error),
-				})
-			}
-		})
-	)
-
-	const result = new Map<string, CorporationTickerSources>()
-	for (const [corporationId, corpInfo] of corpInfoEntries) {
-		result.set(corporationId, {
-			corpTicker: corpTickerById.get(corporationId) ?? corpInfo?.ticker ?? null,
-			allianceTicker:
-				corpInfo?.allianceId ? allianceTickerById.get(corpInfo.allianceId) ?? null : null,
+	let corpTicker: string | null = null
+	try {
+		const corpInfo = await corpStub.getCorporationInfo(primaryCharacter.corporationId)
+		corpTicker = corpInfo?.ticker ?? null
+	} catch (error) {
+		logger.warn('[Discord] Failed to resolve primary character corporation info for nickname routing', {
+			userId,
+			corporationId: primaryCharacter.corporationId,
+			error: String(error),
 		})
 	}
 
-	return result
+	let allianceTicker: string | null = null
+	if (primaryCharacter.allianceId) {
+		try {
+			const allianceInfo = await tokenStoreStub.getAllianceById(primaryCharacter.allianceId)
+			allianceTicker = allianceInfo?.ticker ?? null
+		} catch (error) {
+			logger.warn('[Discord] Failed to resolve primary character alliance info for nickname routing', {
+				userId,
+				allianceId: primaryCharacter.allianceId,
+				error: String(error),
+			})
+		}
+	}
+
+	return {
+		primaryCharacterName: primaryCharacter.characterName,
+		primaryCharacterCorporationId: primaryCharacter.corporationId,
+		primaryCharacterAllianceId: primaryCharacter.allianceId ?? null,
+		tickerSources: {
+			corpTicker,
+			allianceTicker,
+		},
+	}
 }
 
 async function getUserAllianceMemberCorporationIds(
@@ -2707,30 +2698,11 @@ export async function updateUserDiscordNickname(
 		return // User doesn't have Discord linked
 	}
 
-	// Get all linked characters so nickname suffixes can reflect corp attachment buckets.
-	const userChars = await db.query.userCharacters.findMany({
-		where: eq(userCharacters.userId, userId),
-		columns: {
-			characterId: true,
-			characterName: true,
-			is_primary: true,
-		},
-	})
-
-	const primaryChar = userChars.find((char) => char.is_primary)
-	const primaryCharacterName = primaryChar?.characterName
-
-	if (!primaryCharacterName) {
+	// Resolve the ticker prefix from the primary character and configured attachment buckets.
+	const primaryCharacter = await getPrimaryCharacterTickerSources(db, env, userId)
+	if (!primaryCharacter) {
 		return // No primary character set
 	}
-
-	const characterIds = userChars.map((char) => char.characterId)
-	const userCorporationIds = await getUserCorporationIds(env, characterIds)
-	const userAllianceMemberCorporationIds = await getUserAllianceMemberCorporationIds(
-		db,
-		userCorporationIds
-	)
-	const isAllianceMember = userAllianceMemberCorporationIds.size > 0
 
 	// Get all servers with nickname management enabled.
 	// When guildIds are provided, only inspect that subset.
@@ -2781,38 +2753,32 @@ export async function updateUserDiscordNickname(
 		},
 	})
 
-	const tickerSourcesByCorporationId = await getCorporationTickerSources(
-		db,
-		env,
-		corpAttachments.map((attachment) => attachment.corporationId)
-	)
-
 	const nicknameToGuildIds = new Map<string, string[]>()
 	for (const server of activeServerSettings) {
-		const suffixes = new Set<string>()
+		const prefixes = new Set<string>()
 		const attachmentsForServer = corpAttachments.filter(
 			(attachment) => attachment.discordServerId === server.id
 		)
 
 		for (const attachment of attachmentsForServer) {
-			const suffix = resolveAttachmentNicknameSuffix(
+			const isCorpMember =
+				attachment.corporation.isMemberCorporation &&
+				attachment.corporationId === primaryCharacter.primaryCharacterCorporationId
+			const prefix = resolveAttachmentNicknamePrefix(
 				attachment as CorporationDiscordNicknameFields,
-				userCorporationIds.has(attachment.corporationId),
-				isAllianceMember,
-				tickerSourcesByCorporationId.get(attachment.corporationId) ?? {
-					corpTicker: null,
-					allianceTicker: null,
-				}
+				isCorpMember,
+				Boolean(primaryCharacter.primaryCharacterAllianceId),
+				primaryCharacter.tickerSources
 			)
 
-			if (suffix) {
-				suffixes.add(suffix)
+			if (prefix) {
+				prefixes.add(prefix)
 			}
 		}
 
-		const nickname = buildDiscordNicknameWithTickers(
-			primaryCharacterName,
-			Array.from(suffixes)
+		const nickname = buildDiscordNicknameWithTickerPrefixes(
+			primaryCharacter.primaryCharacterName,
+			Array.from(prefixes)
 		)
 		const existingGuildIds = nicknameToGuildIds.get(nickname) ?? []
 		existingGuildIds.push(server.guildId)
