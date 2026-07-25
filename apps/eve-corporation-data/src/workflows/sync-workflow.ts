@@ -99,6 +99,66 @@ const ROLE_REQUIREMENTS_BY_DATA_TYPE: Partial<
 	killmails: ['Director'],
 }
 
+async function ensureLinkedCeoDirector(
+	env: Env,
+	corporationId: string,
+	ceoId: string
+): Promise<{ linked: boolean; added: boolean }> {
+	const owner = await env.CORE.getCharacterOwner(ceoId)
+	if (!owner) {
+		logger.info('[EveCorporationSyncWorkflow] Public CEO is not linked to a user', {
+			corporationId,
+			ceoId,
+		})
+		return { linked: false, added: false }
+	}
+
+	const tokenStore = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+	const affiliations = await tokenStore.fetchCharacterAffiliations([ceoId])
+	const affiliation = affiliations.find((entry) => String(entry.character_id) === ceoId)
+	if (!affiliation) {
+		logger.info('[EveCorporationSyncWorkflow] Linked CEO has no live affiliation data', {
+			corporationId,
+			ceoId,
+			userId: owner.userId,
+		})
+		return { linked: true, added: false }
+	}
+
+	if (String(affiliation.corporation_id) !== corporationId) {
+		logger.info('[EveCorporationSyncWorkflow] Linked CEO is not a member of this corporation', {
+			corporationId,
+			ceoId,
+			userId: owner.userId,
+			characterCorporationId: String(affiliation.corporation_id),
+		})
+		return { linked: true, added: false }
+	}
+
+	const corpData = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corporationId)
+	const resolvedNames = await tokenStore.resolveIds([ceoId])
+	const characterName = resolvedNames[ceoId]?.trim() || ceoId
+	const existingDirectors = await corpData.getDirectors(corporationId)
+	const existingDirector = existingDirectors.find((director) => director.characterId === ceoId)
+
+	if (!existingDirector) {
+		await corpData.addDirector(corporationId, ceoId, characterName, 0)
+		logger.info('[EveCorporationSyncWorkflow] Linked CEO added to director roster', {
+			corporationId,
+			ceoId,
+			userId: owner.userId,
+		})
+		return { linked: true, added: true }
+	}
+
+	logger.info('[EveCorporationSyncWorkflow] Linked CEO already present in director roster', {
+		corporationId,
+		ceoId,
+		userId: owner.userId,
+	})
+	return { linked: true, added: false }
+}
+
 function getRequiredRoleSets(
 	shouldSync: (type: EveCorporationSyncDataType) => boolean
 ): CorporationRole[][] {
@@ -190,6 +250,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			const structureAssetSyncEnabled = corporationConfig?.includeInStructureAssetSync ?? false
 			let structureSyncCompleted = false
 			let skyhooksSync: SyncStepResult<'skyhooks'> | null = null
+			let publicInfo: Awaited<ReturnType<typeof fetchPublicInfo>> | null = null
 			const shouldSync = createShouldSyncPredicate(dataTypes, {
 				disabledDataTypes: structureAssetSyncEnabled ? [] : ['assets'],
 			})
@@ -246,6 +307,43 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 					}
 				}
 			)
+
+			const bootstrapCorpInfo = publicInfo ?? (await corpData.getCorporationInfo(corporationId))
+
+			if (!director && bootstrapCorpInfo?.ceoId) {
+				logger.warn('[EveCorporationSyncWorkflow] No healthy director selected; bootstrapping from public CEO', {
+					corporationId,
+					ceoId: bootstrapCorpInfo.ceoId,
+				})
+
+				await step.do(
+					'bootstrap-ceo-director',
+					{ timeout: '30 seconds' },
+					() => ensureLinkedCeoDirector(this.env, corporationId, bootstrapCorpInfo.ceoId)
+				)
+
+				director = await step.do(
+					'reselect-director-after-ceo-bootstrap',
+					{
+						retries: { limit: 3, delay: '2 seconds', backoff: 'exponential' },
+						timeout: '30 seconds',
+					},
+					async () => {
+						try {
+							return await selectDirector(this.env, corporationId, { requiredRoleSets })
+						} catch (error) {
+							logger.error(
+								'[EveCorporationSyncWorkflow] reselect-director-after-ceo-bootstrap failed',
+								{
+									corporationId,
+									error: error instanceof Error ? error.message : String(error),
+								}
+							)
+							return null
+						}
+					}
+				)
+			}
 
 			if (!director) {
 				logger.warn(
@@ -451,7 +549,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 			let killmailsSync: SyncStepResult<'killmails'> | null = null
 
 			if (shouldSync('public-info')) {
-				const publicInfo = await step.do(
+				publicInfo = await step.do(
 					'fetch-public-info',
 					{ ...STEP_RETRY_OPTIONS, timeout: '1 minute' },
 					() =>
@@ -467,6 +565,12 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						stats: { corporationName: publicInfo.name },
 					}
 				})
+
+				if (publicInfo.ceoId) {
+					await step.do('verify-linked-ceo-director', { timeout: '30 seconds' }, async () => {
+						return await ensureLinkedCeoDirector(this.env, corporationId, publicInfo.ceoId)
+					})
+				}
 			}
 
 			if (shouldSyncAuthenticated('members')) {

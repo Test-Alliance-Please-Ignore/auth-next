@@ -15,6 +15,8 @@ const storeStructuresMock = vi.fn()
 const storeSovereigntyEnrichmentMock = vi.fn()
 const storeSkyhookEnrichmentMock = vi.fn()
 const storeMiningExtractionEnrichmentMock = vi.fn()
+const fetchPublicInfoMock = vi.fn()
+const storePublicInfoMock = vi.fn()
 const markStructureEnrichmentSyncFailureMock = vi.fn()
 const markStructureSyncFailureReasonMock = vi.fn()
 const selectDirectorMock = vi.fn()
@@ -66,6 +68,11 @@ vi.mock('@repo/workflow-utils', () => ({
 
 vi.mock('../../../workflows/steps/assets', () => ({
 	syncAssets: (...args: unknown[]) => syncAssetsMock(...args),
+}))
+
+vi.mock('../../../workflows/steps/public-info', () => ({
+	fetchPublicInfo: (...args: unknown[]) => fetchPublicInfoMock(...args),
+	storePublicInfo: (...args: unknown[]) => storePublicInfoMock(...args),
 }))
 
 vi.mock('../../../workflows/steps/common', () => ({
@@ -123,8 +130,17 @@ function createStep() {
 
 function createWorkflowEnv() {
 	const corpDataNamespace = { __ns: 'EVE_CORPORATION_DATA' } as unknown as DurableObjectNamespace
+	const tokenStoreNamespace = { __ns: 'EVE_TOKEN_STORE' } as unknown as DurableObjectNamespace
 	const updateCorporationAuthHealth = vi.fn().mockResolvedValue(undefined)
+	const addDirector = vi.fn().mockResolvedValue(undefined)
+	const getCharacterOwner = vi.fn()
+	const coreStub = {
+		updateCorporationAuthHealth,
+		getCharacterOwner,
+	}
 	const corpDataStub = {
+		addDirector,
+		getCorporationInfo: vi.fn().mockResolvedValue(null),
 		getCorporationSyncConfig: vi.fn().mockResolvedValue({
 			includeInBackgroundRefresh: true,
 			includeInStructureAssetSync: true,
@@ -139,10 +155,18 @@ function createWorkflowEnv() {
 		getSkyhookSyncPriorities: vi.fn().mockResolvedValue([]),
 		getSkyhookStructureIds: vi.fn().mockResolvedValue([]),
 	}
+	const tokenStoreStub = {
+		fetchPublicEsi: vi.fn(),
+		fetchCharacterAffiliations: vi.fn(),
+		resolveIds: vi.fn(),
+	}
 
 	getStubMock.mockImplementation((namespace: unknown) => {
 		if (namespace === corpDataNamespace) {
 			return corpDataStub
+		}
+		if (namespace === tokenStoreNamespace) {
+			return tokenStoreStub
 		}
 		return {
 			getMissingStructureIdsForPriorityQueue: vi.fn().mockResolvedValue([]),
@@ -152,19 +176,292 @@ function createWorkflowEnv() {
 	return {
 		env: {
 			DATABASE_URL: 'postgres://test',
-			EVE_TOKEN_STORE: {},
+			EVE_TOKEN_STORE: tokenStoreNamespace,
 			CORPORATION_TAX: {},
 			EVE_CORPORATION_DATA: corpDataNamespace,
-			CORE: {
-				updateCorporationAuthHealth,
-			},
-		} as never,
+			CORE: coreStub,
+		},
 		corpDataStub,
+		tokenStoreStub,
 		updateCorporationAuthHealth,
 	}
 }
 
 describe('EveCorporationSyncWorkflow', () => {
+	it('bootstraps the current CEO when no healthy director is selectable', async () => {
+	vi.clearAllMocks()
+	const { env, corpDataStub, tokenStoreStub, updateCorporationAuthHealth } =
+		createWorkflowEnv()
+
+	vi.mocked(env.CORE.getCharacterOwner).mockResolvedValue({
+		userId: 'user-12345',
+		isPrimary: true,
+	})
+	vi.mocked(tokenStoreStub.fetchCharacterAffiliations).mockResolvedValue([
+		{
+			character_id: 12345,
+			corporation_id: 693378155,
+		},
+	] as never)
+	vi.mocked(tokenStoreStub.resolveIds).mockResolvedValue({
+		12345: 'Bootstrap CEO',
+	} as never)
+	corpDataStub.getCorporationInfo.mockResolvedValue({ ceoId: '12345' } as never)
+	fetchPublicInfoMock.mockResolvedValue({
+		corporationId: '693378155',
+		name: 'Corp',
+		ceoId: '12345',
+		})
+		storePublicInfoMock.mockResolvedValue(undefined)
+		verifyAllDirectorsHealthMock.mockResolvedValue({
+			verified: 0,
+			failed: 1,
+		})
+		selectDirectorMock
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce({
+				directorId: 'director-1',
+				characterId: '12345',
+				characterName: 'Bootstrap CEO',
+			})
+		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue(undefined)
+		updateSyncTimestampsMock.mockResolvedValue(undefined)
+		updateCoreLastSyncMock.mockResolvedValue(undefined)
+		recordDirectorSuccessMock.mockResolvedValue(undefined)
+		replayTaxProjectionRetryIntentMock.mockResolvedValue({
+			replayed: false,
+			succeeded: false,
+			retryCount: 0,
+			reason: 'none',
+		})
+		clearTaxProjectionRetryIntentMock.mockResolvedValue(undefined)
+		recordTaxProjectionRetryIntentMock.mockResolvedValue(undefined)
+		sendHrDepartedMessagesMock.mockResolvedValue(undefined)
+		triggerTaxProjectionRefreshMock.mockResolvedValue({
+			triggered: false,
+			reason: 'not-needed',
+		})
+
+		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, env)
+		const { step } = createStep()
+
+		await expect(
+			workflow.run(
+				{
+					payload: {
+						corporationId: '693378155',
+						dataTypes: ['public-info'],
+						trigger: 'cron',
+					},
+					instanceId: 'wf-bootstrap-ceo',
+					timestamp: new Date('2026-07-12T19:36:47.369Z'),
+				} as never,
+				step
+			)
+		).resolves.toMatchObject({
+			success: true,
+			corporationId: '693378155',
+			trigger: 'cron',
+		})
+
+		expect(corpDataStub.addDirector).toHaveBeenCalledWith('693378155', '12345', 'Bootstrap CEO', 0)
+		expect(reconcileDirectorsFromCorporationRolesMock).toHaveBeenCalledWith(
+			env,
+			'693378155',
+			'12345'
+		)
+		expect(updateCorporationAuthHealth).toHaveBeenCalled()
+
+		selectDirectorMock.mockReset()
+		fetchPublicInfoMock.mockReset()
+		storePublicInfoMock.mockReset()
+	})
+
+	it('explicitly verifies a linked CEO even when healthy directors already exist', async () => {
+		vi.clearAllMocks()
+		const { env, corpDataStub, tokenStoreStub } = createWorkflowEnv()
+
+		vi.mocked(env.CORE.getCharacterOwner).mockResolvedValue({
+			userId: 'user-12345',
+			isPrimary: true,
+		})
+		vi.mocked(tokenStoreStub.fetchCharacterAffiliations).mockResolvedValue([
+			{
+				character_id: 12345,
+				corporation_id: 693378155,
+			},
+		] as never)
+		vi.mocked(tokenStoreStub.resolveIds).mockResolvedValue({
+			12345: 'Linked CEO',
+		} as never)
+		corpDataStub.getDirectors.mockResolvedValue([
+			{
+				directorId: 'director-1',
+				characterId: '900000001',
+				characterName: 'Healthy Director',
+				isHealthy: true,
+			},
+		] as never)
+		fetchPublicInfoMock.mockResolvedValue({
+			corporationId: '693378155',
+			name: 'Corp',
+			ceoId: '12345',
+		})
+		storePublicInfoMock.mockResolvedValue(undefined)
+		verifyAllDirectorsHealthMock.mockResolvedValue({
+			verified: 1,
+			failed: 0,
+		})
+		selectDirectorMock.mockResolvedValue({
+			directorId: 'director-1',
+			characterId: '900000001',
+			characterName: 'Healthy Director',
+		})
+		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue({
+			added: 0,
+			removed: 0,
+			discovered: 1,
+			skippedUnlinked: 0,
+		})
+		updateSyncTimestampsMock.mockResolvedValue(undefined)
+		updateCoreLastSyncMock.mockResolvedValue(undefined)
+		recordDirectorSuccessMock.mockResolvedValue(undefined)
+		replayTaxProjectionRetryIntentMock.mockResolvedValue({
+			replayed: false,
+			succeeded: false,
+			retryCount: 0,
+			reason: 'none',
+		})
+		clearTaxProjectionRetryIntentMock.mockResolvedValue(undefined)
+		recordTaxProjectionRetryIntentMock.mockResolvedValue(undefined)
+		sendHrDepartedMessagesMock.mockResolvedValue(undefined)
+		triggerTaxProjectionRefreshMock.mockResolvedValue({
+			triggered: false,
+			reason: 'not-needed',
+		})
+
+		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, env)
+		const { step } = createStep()
+
+		await expect(
+			workflow.run(
+				{
+					payload: {
+						corporationId: '693378155',
+						dataTypes: ['public-info'],
+						trigger: 'cron',
+					},
+					instanceId: 'wf-linked-ceo',
+					timestamp: new Date('2026-07-12T19:36:47.369Z'),
+				} as never,
+				step
+			)
+		).resolves.toMatchObject({
+			success: true,
+			corporationId: '693378155',
+			trigger: 'cron',
+		})
+
+		expect(env.CORE.getCharacterOwner).toHaveBeenCalledWith('12345')
+	expect(corpDataStub.addDirector).toHaveBeenCalledWith('693378155', '12345', 'Linked CEO', 0)
+	expect(reconcileDirectorsFromCorporationRolesMock).toHaveBeenCalledWith(
+		env,
+		'693378155',
+		'900000001'
+	)
+	})
+
+	it('does not promote a linked CEO when live affiliation shows a different corporation', async () => {
+		vi.clearAllMocks()
+		const { env, corpDataStub, tokenStoreStub } = createWorkflowEnv()
+
+		vi.mocked(env.CORE.getCharacterOwner).mockResolvedValue({
+			userId: 'user-12345',
+			isPrimary: true,
+		})
+		vi.mocked(tokenStoreStub.fetchCharacterAffiliations).mockResolvedValue([
+			{
+				character_id: 12345,
+				corporation_id: 555555555,
+			},
+		] as never)
+		corpDataStub.getDirectors.mockResolvedValue([
+			{
+				directorId: 'director-1',
+				characterId: '900000001',
+				characterName: 'Healthy Director',
+				isHealthy: true,
+			},
+		] as never)
+		fetchPublicInfoMock.mockResolvedValue({
+			corporationId: '693378155',
+			name: 'Corp',
+			ceoId: '12345',
+		})
+		storePublicInfoMock.mockResolvedValue(undefined)
+		verifyAllDirectorsHealthMock.mockResolvedValue({
+			verified: 1,
+			failed: 0,
+		})
+		selectDirectorMock.mockResolvedValue({
+			directorId: 'director-1',
+			characterId: '900000001',
+			characterName: 'Healthy Director',
+		})
+		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue({
+			added: 0,
+			removed: 0,
+			discovered: 1,
+			skippedUnlinked: 0,
+		})
+		updateSyncTimestampsMock.mockResolvedValue(undefined)
+		updateCoreLastSyncMock.mockResolvedValue(undefined)
+		recordDirectorSuccessMock.mockResolvedValue(undefined)
+		replayTaxProjectionRetryIntentMock.mockResolvedValue({
+			replayed: false,
+			succeeded: false,
+			retryCount: 0,
+			reason: 'none',
+		})
+		clearTaxProjectionRetryIntentMock.mockResolvedValue(undefined)
+		recordTaxProjectionRetryIntentMock.mockResolvedValue(undefined)
+		sendHrDepartedMessagesMock.mockResolvedValue(undefined)
+		triggerTaxProjectionRefreshMock.mockResolvedValue({
+			triggered: false,
+			reason: 'not-needed',
+		})
+
+		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, env)
+		const { step } = createStep()
+
+		await expect(
+			workflow.run(
+				{
+					payload: {
+						corporationId: '693378155',
+						dataTypes: ['public-info'],
+						trigger: 'cron',
+					},
+					instanceId: 'wf-linked-ceo-mismatch',
+					timestamp: new Date('2026-07-12T19:36:47.369Z'),
+				} as never,
+				step
+			)
+		).resolves.toMatchObject({
+			success: true,
+			corporationId: '693378155',
+			trigger: 'cron',
+		})
+
+		expect(env.CORE.getCharacterOwner).toHaveBeenCalledWith('12345')
+		expect(corpDataStub.addDirector).not.toHaveBeenCalled()
+		expect(reconcileDirectorsFromCorporationRolesMock).toHaveBeenCalledWith(
+			env,
+			'693378155',
+			'900000001'
+		)
+	})
+
 	it('continues to asset sync even when the structure step fails', async () => {
 		vi.clearAllMocks()
 		parseEsiErrorMetadataMock.mockImplementation(() => null)
