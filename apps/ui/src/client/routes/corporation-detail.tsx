@@ -6,7 +6,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, ArrowLeft, Building2, FileText } from 'lucide-react'
+import { AlertCircle, ArrowLeft, FileText } from 'lucide-react'
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 
@@ -27,6 +27,7 @@ import { SubmitApplicationDialog } from '@/features/applications'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
+import { corporationLogoUrl } from '@/lib/eve-images'
 
 // ============================================================================
 // Component
@@ -122,8 +123,12 @@ export default function CorporationDetail() {
 			<Card className="mb-6">
 				<CardHeader>
 					<div className="flex items-start gap-4">
-						<div className="p-4 bg-primary/10 rounded-lg">
-							<Building2 className="h-16 w-16 text-primary" />
+						<div className="flex h-28 w-28 items-center justify-center rounded-lg bg-muted/30 p-4">
+							<img
+								src={corporationLogoUrl(corporation.corporationId, 256)}
+								alt={`${corporation.name} logo`}
+								className="h-full w-full rounded-md object-contain"
+							/>
 						</div>
 						<div className="flex-1">
 							<CardTitle className="text-3xl mb-2">{corporation.name}</CardTitle>

@@ -538,13 +538,6 @@ app.get('/:characterId/skills', requireAuth(), async (c) => {
 app.get('/:characterId', requireAuth(), async (c) => {
 	const characterIdStr = c.req.param('characterId')
 	const characterId = createEveCharacterId(characterIdStr)
-	const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr)
-
-	if (accessOrResponse instanceof Response) {
-		return accessOrResponse
-	}
-
-	const access = accessOrResponse
 	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
 	const eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
 
@@ -592,6 +585,13 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			}
 		}
 
+		const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr)
+
+		if (accessOrResponse instanceof Response) {
+			return accessOrResponse
+		}
+
+		const access = accessOrResponse
 		const eveTokenStore = c.get('eveTokenStore')
 		if (!eveTokenStore) {
 			logger.error('eveTokenStore not found in context!')
