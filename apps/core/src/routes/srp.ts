@@ -993,6 +993,41 @@ srp.get('/requests/by-status', async (c) => {
 })
 
 /**
+ * Get a count of SRP requests by status without fetching rows.
+ * GET /api/srp/requests/by-status/count?status=pending
+ */
+srp.get('/requests/by-status/count', async (c) => {
+	const user = c.get('user')!
+	const statusParsed = ReviewQueueStatusQuerySchema.safeParse(c.req.query('status'))
+	if (!statusParsed.success) {
+		return c.json({ error: 'Invalid status' }, 400)
+	}
+
+	const characterName = c.req.query('characterName')?.trim() || undefined
+	const shipTypeName = c.req.query('shipTypeName')?.trim() || undefined
+	const solarSystemName = c.req.query('solarSystemName')?.trim() || undefined
+	const dateFrom = c.req.query('dateFrom')?.trim() || undefined
+	const dateTo = c.req.query('dateTo')?.trim() || undefined
+
+	const canAccessCount =
+		statusParsed.data === 'approved'
+			? await hasSrpTierPermission(c.env, user.id, 'payer', user.is_admin)
+			: await hasSrpTierPermission(c.env, user.id, 'reviewer', user.is_admin)
+	if (!canAccessCount) return c.json({ error: 'Requires SRP staff permissions' }, 403)
+
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
+	const total = await srpStub.getRequestCountByStatus(statusParsed.data, {
+		characterName,
+		shipTypeName,
+		solarSystemName,
+		dateFrom,
+		dateTo,
+	})
+
+	return c.json({ total })
+})
+
+/**
  * Get search values for review queue filters
  * GET /api/srp/requests/search-values?status=pending&field=character&query=ab
  */

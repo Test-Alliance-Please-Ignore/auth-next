@@ -179,11 +179,35 @@ function PaymentStack() {
 		)
 	}
 
+	const refreshButton = (
+		<Button variant="secondary" size="sm" onClick={() => void refetch()} loading={isFetching} loadingText="Refreshing...">
+			Refresh Queue
+		</Button>
+	)
+	const queueSummaryCard = (
+		<Card className="p-4">
+			<div className="flex items-start justify-between gap-3">
+				<div>
+					<div className="text-sm text-muted-foreground">Pending Payout Total</div>
+					<div className="mt-1 font-mono text-2xl font-semibold tabular-nums text-success">
+						{formatISKShort(pendingPayoutTotal)}
+					</div>
+				</div>
+				{refreshButton}
+			</div>
+		</Card>
+	)
+
 	if (sortedRequests.length === 0) {
 		return (
-			<div className="mt-4 rounded-lg border border-dashed p-12 text-center">
-				<h3 className="mb-2 font-semibold">All caught up!</h3>
-				<p className="text-sm text-muted-foreground">No approved requests awaiting payment submission.</p>
+			<div className="relative mt-4 space-y-3">
+				{queueSummaryCard}
+				<Card className="border-dashed p-10 text-center">
+					<h3 className="text-lg font-semibold">All caught up!</h3>
+					<p className="mt-2 text-sm text-muted-foreground">
+						No approved requests awaiting payment submission.
+					</p>
+				</Card>
 			</div>
 		)
 	}
@@ -228,19 +252,7 @@ function PaymentStack() {
 
 	return (
 		<div ref={containerRef} className="relative mt-4 space-y-3">
-			<Card className="p-4">
-				<div className="flex items-start justify-between gap-3">
-					<div>
-						<div className="text-sm text-muted-foreground">Pending Payout Total</div>
-						<div className="mt-1 font-mono text-2xl font-semibold tabular-nums text-success">
-							{formatISKShort(pendingPayoutTotal)}
-						</div>
-					</div>
-					<Button variant="secondary" size="sm" onClick={() => void refetch()}>
-						Refresh Queue
-					</Button>
-				</div>
-			</Card>
+			{queueSummaryCard}
 			{[...ghosts.values()].map((ghost) => (
 				<GhostPaymentCard key={ghost.request.id} request={ghost.request} top={ghost.top} />
 			))}
