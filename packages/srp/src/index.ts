@@ -201,6 +201,16 @@ export interface Srp {
 			dateTo?: string
 		}
 	): Promise<{ requests: SRPRequestResponse[]; total: number }>
+	getRequestCountByStatus(
+		status: RequestStatus,
+		options?: {
+			characterName?: string
+			shipTypeName?: string
+			solarSystemName?: string
+			dateFrom?: string
+			dateTo?: string
+		}
+	): Promise<number>
 
 	getSearchValues(
 		status: RequestStatus,

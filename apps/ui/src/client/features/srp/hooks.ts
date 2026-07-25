@@ -121,6 +121,8 @@ function refreshQueuePagesHard(queryClient: ReturnType<typeof useQueryClient>) {
 	void queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
 	void queryClient.invalidateQueries({ queryKey: srpKeys.payments() })
 	void queryClient.invalidateQueries({ queryKey: srpKeys.pendingPayoutTotal() })
+	void queryClient.invalidateQueries({ queryKey: ['srp', 'sidebar-review-count'] })
+	void queryClient.invalidateQueries({ queryKey: ['srp', 'sidebar-payment-count'] })
 }
 
 function refreshQueueBadgesSoft(
@@ -140,6 +142,8 @@ function refreshQueueBadgesSoft(
 			)
 		},
 	})
+	void queryClient.invalidateQueries({ queryKey: ['srp', 'sidebar-review-count'] })
+	void queryClient.invalidateQueries({ queryKey: ['srp', 'sidebar-payment-count'] })
 }
 
 function adjustPendingPayoutTotalCaches(
@@ -558,7 +562,7 @@ export function useWithdrawRequest() {
 	return useMutation({
 		mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
 			api.withdrawSRPRequest(id, notes ? { notes } : undefined),
-		onSuccess: (request: SRPRequestResponse) => {
+	onSuccess: (request: SRPRequestResponse) => {
 			updateOverlayRequestStatus({
 				requestId: request.id,
 				requestStatus: request.requestStatus,
@@ -566,6 +570,7 @@ export function useWithdrawRequest() {
 			setRequestStatusAcrossCaches(queryClient, request)
 			void queryClient.invalidateQueries({ queryKey: srpKeys.requests() })
 			invalidateLossQueries(queryClient)
+			refreshQueuePagesHard(queryClient)
 		},
 	})
 }

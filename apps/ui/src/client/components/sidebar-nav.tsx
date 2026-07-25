@@ -115,7 +115,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const derivedPaymentQueueCount = useReviewQueueStatusCount('approved')
 	const { data: reviewQueueData } = useQuery({
 		queryKey: ['srp', 'sidebar-review-count'],
-		queryFn: () => api.get<{ total: number }>('/srp/requests/by-status?status=pending&limit=1&offset=0'),
+		queryFn: () => api.getRequestCountByStatus('pending'),
 		placeholderData: (previousData) => previousData,
 		staleTime: 1000 * 60 * 5,
 		gcTime: 1000 * 60 * 5,
@@ -123,7 +123,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	})
 	const { data: paymentQueueData } = useQuery({
 		queryKey: ['srp', 'sidebar-payment-count'],
-		queryFn: () => api.get<{ total: number }>('/srp/requests/by-status?status=approved&limit=1&offset=0'),
+		queryFn: () => api.getRequestCountByStatus('approved'),
 		placeholderData: (previousData) => previousData,
 		staleTime: 1000 * 60 * 5,
 		gcTime: 1000 * 60 * 5,

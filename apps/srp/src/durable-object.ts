@@ -185,6 +185,77 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		})
 	}
 
+	private buildReviewQueueConditions(
+		status: RequestStatus,
+		options: {
+			characterName?: string
+			shipTypeName?: string
+			solarSystemName?: string
+			dateFrom?: string
+			dateTo?: string
+		} = {}
+	): { where: ReturnType<typeof and>; oldestFirst: boolean } {
+		const { characterName, shipTypeName, solarSystemName, dateFrom, dateTo } = options
+
+		const startDate = dateFrom
+			? (dateFrom.includes('T')
+				? new Date(dateFrom)
+				: new Date(`${dateFrom}T00:00:00.000Z`))
+			: null
+		const endDate = dateTo
+			? (dateTo.includes('T')
+				? new Date(dateTo)
+				: new Date(`${dateTo}T23:59:59.999Z`))
+			: null
+
+		const conditions =
+			status === 'paid'
+				? [inArray(srpRequests.requestStatus, ['payment_pending', 'paid'])]
+				: [eq(srpRequests.requestStatus, status)]
+		if (characterName) conditions.push(ilike(srpRequests.characterName, `%${characterName}%`))
+		if (shipTypeName) conditions.push(ilike(srpRequests.shipTypeName, `%${shipTypeName}%`))
+		if (solarSystemName) conditions.push(ilike(srpRequests.solarSystemName, `%${solarSystemName}%`))
+		if (startDate) conditions.push(gte(srpRequests.lossDate, startDate))
+		if (endDate) conditions.push(lte(srpRequests.lossDate, endDate))
+
+		return {
+			where: and(...conditions),
+			oldestFirst: status === 'pending' || status === 'needs_context',
+		}
+	}
+
+	private async getReviewQueueCount(
+		status: RequestStatus,
+		options: {
+			characterName?: string
+			shipTypeName?: string
+			solarSystemName?: string
+			dateFrom?: string
+			dateTo?: string
+		} = {}
+	): Promise<number> {
+		const cacheKey = this.buildReviewQueueCountCacheKey({
+			status,
+			characterName: options.characterName,
+			shipTypeName: options.shipTypeName,
+			solarSystemName: options.solarSystemName,
+			dateFrom: options.dateFrom,
+			dateTo: options.dateTo,
+		})
+		const cached = this.reviewQueueCountCache.get(cacheKey)
+		const now = Date.now()
+		if (cached && cached.expiresAt > now) return cached.value
+
+		const { where } = this.buildReviewQueueConditions(status, options)
+		const [row] = await this.db.select({ count: sql<number>`count(*)::int` }).from(srpRequests).where(where)
+		const count = row?.count ?? 0
+		this.reviewQueueCountCache.set(cacheKey, {
+			value: count,
+			expiresAt: now + SrpDO.REVIEW_QUEUE_COUNT_CACHE_TTL_MS,
+		})
+		return count
+	}
+
 	private convertKillmailDetailToLoss(killmail: KillmailDetail & { killmail_hash?: string }): CharacterLossData | null {
 		if (!killmail.killmail_hash) return null
 		const victimCharacterId = killmail.victim.character_id
@@ -2239,31 +2310,8 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			dateTo?: string
 		} = {}
 	): Promise<{ requests: SRPRequestResponse[]; total: number }> {
-		const { limit = 25, offset = 0, characterName, shipTypeName, solarSystemName, dateFrom, dateTo } = options
-
-		const startDate = dateFrom
-			? (dateFrom.includes('T')
-				? new Date(dateFrom)
-				: new Date(`${dateFrom}T00:00:00.000Z`))
-			: null
-		const endDate = dateTo
-			? (dateTo.includes('T')
-				? new Date(dateTo)
-				: new Date(`${dateTo}T23:59:59.999Z`))
-			: null
-
-		const conditions =
-			status === 'paid'
-				? [inArray(srpRequests.requestStatus, ['payment_pending', 'paid'])]
-				: [eq(srpRequests.requestStatus, status)]
-		if (characterName) conditions.push(ilike(srpRequests.characterName, `%${characterName}%`))
-		if (shipTypeName) conditions.push(ilike(srpRequests.shipTypeName, `%${shipTypeName}%`))
-		if (solarSystemName) conditions.push(ilike(srpRequests.solarSystemName, `%${solarSystemName}%`))
-		if (startDate) conditions.push(gte(srpRequests.lossDate, startDate))
-		if (endDate) conditions.push(lte(srpRequests.lossDate, endDate))
-
-		const where = and(...conditions)
-		const oldestFirst = status === 'pending' || status === 'needs_context'
+		const { limit = 25, offset = 0 } = options
+		const { where, oldestFirst } = this.buildReviewQueueConditions(status, options)
 
 		const [requests, count] = await Promise.all([
 			this.db.query.srpRequests.findMany({
@@ -2272,33 +2320,23 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				limit,
 				offset,
 			}),
-			(async () => {
-				const cacheKey = this.buildReviewQueueCountCacheKey({
-					status,
-					characterName,
-					shipTypeName,
-					solarSystemName,
-					dateFrom,
-					dateTo,
-				})
-				const cached = this.reviewQueueCountCache.get(cacheKey)
-				const now = Date.now()
-				if (cached && cached.expiresAt > now) return cached.value
-
-				const [row] = await this.db
-					.select({ count: sql<number>`count(*)::int` })
-					.from(srpRequests)
-					.where(where)
-				const count = row?.count ?? 0
-				this.reviewQueueCountCache.set(cacheKey, {
-					value: count,
-					expiresAt: now + SrpDO.REVIEW_QUEUE_COUNT_CACHE_TTL_MS,
-				})
-				return count
-			})(),
+			this.getReviewQueueCount(status, options),
 		])
 
 		return { requests: await Promise.all(requests.map((r) => this.formatRequest(r))), total: count }
+	}
+
+	async getRequestCountByStatus(
+		status: RequestStatus,
+		options: {
+			characterName?: string
+			shipTypeName?: string
+			solarSystemName?: string
+			dateFrom?: string
+			dateTo?: string
+		} = {}
+	): Promise<number> {
+		return this.getReviewQueueCount(status, options)
 	}
 
 	async getSearchValues(

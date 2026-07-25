@@ -4697,6 +4697,27 @@ export class ApiClient {
 		return this.get(`/srp/payments/pending${query ? `?${query}` : ''}`)
 	}
 
+	async getRequestCountByStatus(
+		status: 'pending' | 'needs_context' | 'approved' | 'payment_pending' | 'rejected' | 'paid',
+		params?: {
+			characterName?: string
+			shipTypeName?: string
+			solarSystemName?: string
+			dateFrom?: string
+			dateTo?: string
+		}
+	): Promise<{ total: number }> {
+		const searchParams = new URLSearchParams()
+		searchParams.set('status', status)
+		if (params?.characterName) searchParams.set('characterName', params.characterName)
+		if (params?.shipTypeName) searchParams.set('shipTypeName', params.shipTypeName)
+		if (params?.solarSystemName) searchParams.set('solarSystemName', params.solarSystemName)
+		if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom)
+		if (params?.dateTo) searchParams.set('dateTo', params.dateTo)
+
+		return this.get(`/srp/requests/by-status/count?${searchParams.toString()}`)
+	}
+
 	async getPendingPayoutTotal(params?: {
 		corporationId?: string
 	}): Promise<{ pendingPayoutTotal: string }> {
