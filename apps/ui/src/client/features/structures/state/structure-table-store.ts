@@ -1,7 +1,14 @@
 import { createStore } from '@tanstack/store'
 import { useSyncExternalStore } from 'react'
 
-import type { StructureTab } from '@repo/structures'
+import {
+	STRUCTURE_COMMON_LIST_SORT_FIELDS,
+	STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS,
+	STRUCTURE_SKYHOOK_LIST_SORT_FIELDS,
+	STRUCTURE_SOVEREIGNTY_LIST_SORT_FIELDS,
+	type StructureSkyhookListSortBy,
+	type StructureTab,
+} from '@repo/structures'
 import type { StructureListSortBy, StructureListSortDirection } from '@/lib/api'
 
 export interface StructureTableFilters {
@@ -26,19 +33,114 @@ export interface StructureTableUiState {
 	pageSize: number
 	sortBy: StructureListSortBy
 	sortDirection: StructureListSortDirection
+	tabStateByTab: Partial<Record<StructureTab, StructureTableTabState>>
 }
 
-const STORAGE_KEY = 'structures.table-state.v1'
+interface StructureTableTabState {
+	filters: StructureTableFilters
+	sortBy: StructureListSortBy
+	sortDirection: StructureListSortDirection
+}
+
+const STORAGE_KEY = 'structures.table-state.v2'
+const LEGACY_STORAGE_KEY = 'structures.table-state.v1'
+const DEFAULT_SORT_BY: StructureListSortBy = 'fuel'
+const DEFAULT_SORT_DIRECTION: StructureListSortDirection = 'asc'
+const ALL_STRUCTURE_TABS: StructureTab[] = [
+	'citadels',
+	'sovereignty',
+	'skyhooks',
+	'navigation',
+	'mining-citadels',
+	'moon-drills',
+]
 
 function defaultState(): StructureTableUiState {
+	const tabStateByTab: Partial<Record<StructureTab, StructureTableTabState>> = {}
+	const currentTabState = defaultTabState('citadels')
 	return {
 		tab: 'citadels',
-		filters: {},
+		filters: currentTabState.filters,
 		page: 1,
 		pageSize: 25,
-		sortBy: 'fuel',
-		sortDirection: 'asc',
+		sortBy: currentTabState.sortBy,
+		sortDirection: currentTabState.sortDirection,
+		tabStateByTab,
 	}
+}
+
+function defaultSortForTab(tab: StructureTab): Pick<StructureTableTabState, 'sortBy' | 'sortDirection'> {
+	if (tab === 'skyhooks') {
+		return {
+			sortBy: 'skyhookSurplusFullness' as StructureSkyhookListSortBy,
+			sortDirection: 'desc',
+		}
+	}
+
+	return {
+		sortBy: DEFAULT_SORT_BY,
+		sortDirection: DEFAULT_SORT_DIRECTION,
+	}
+}
+
+function defaultTabState(tab: StructureTab): StructureTableTabState {
+	const defaultSort = defaultSortForTab(tab)
+	return {
+		filters: {},
+		...defaultSort,
+	}
+}
+
+function isValidSortByForTab(tab: StructureTab, sortBy: string | null | undefined): sortBy is StructureListSortBy {
+	const fields = (() => {
+		switch (tab) {
+			case 'skyhooks':
+				return STRUCTURE_SKYHOOK_LIST_SORT_FIELDS
+			case 'moon-drills':
+				return STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS
+			case 'sovereignty':
+				return STRUCTURE_SOVEREIGNTY_LIST_SORT_FIELDS
+			default:
+				return STRUCTURE_COMMON_LIST_SORT_FIELDS
+		}
+	})()
+
+	return typeof sortBy === 'string' && fields.includes(sortBy as never)
+}
+
+function normalizeTabState(
+	tab: StructureTab,
+	tabState: Partial<StructureTableTabState> | null | undefined
+): StructureTableTabState {
+	const defaults = defaultTabState(tab)
+	return {
+		filters: pruneFiltersForTab(tab, normalizeFilters(tabState?.filters ?? {})),
+		sortBy: isValidSortByForTab(tab, tabState?.sortBy) ? tabState.sortBy : defaults.sortBy,
+		sortDirection:
+			tabState?.sortDirection === 'asc' || tabState?.sortDirection === 'desc'
+				? tabState.sortDirection
+				: defaults.sortDirection,
+	}
+}
+
+function normalizeTabStateByTab(
+	tabStateByTab: Partial<Record<StructureTab, Partial<StructureTableTabState>>> | null | undefined
+): Partial<Record<StructureTab, StructureTableTabState>> {
+	const nextTabStateByTab: Partial<Record<StructureTab, StructureTableTabState>> = {}
+
+	for (const tab of ALL_STRUCTURE_TABS) {
+		if (!tabStateByTab?.[tab]) continue
+		nextTabStateByTab[tab] = normalizeTabState(tab, tabStateByTab[tab])
+	}
+
+	return nextTabStateByTab
+}
+
+function getTabState(
+	tab: StructureTab,
+	tabStateByTab: Partial<Record<StructureTab, StructureTableTabState>>
+): StructureTableTabState {
+	return tabStateByTab[tab] ?? defaultTabState(tab)
 }
 
 function normalizeFilters(filters: StructureTableFilters): StructureTableFilters {
@@ -175,16 +277,30 @@ function normalizeTab(tab: unknown): StructureTab {
 function readStateFromStorage(): StructureTableUiState {
 	if (typeof window === 'undefined') return defaultState()
 	try {
-		const raw = window.sessionStorage.getItem(STORAGE_KEY)
+		const raw = window.localStorage.getItem(STORAGE_KEY) ?? window.sessionStorage.getItem(LEGACY_STORAGE_KEY)
 		if (!raw) return defaultState()
-		const parsed = JSON.parse(raw) as StructureTableUiState
+		const parsed = JSON.parse(raw) as Partial<StructureTableUiState> & {
+			tabStateByTab?: Partial<Record<StructureTab, Partial<StructureTableTabState>>>
+		}
 		if (!parsed || typeof parsed !== 'object') return defaultState()
 		const tab = normalizeTab(parsed.tab)
+		const tabStateByTab = normalizeTabStateByTab(parsed.tabStateByTab)
+		if (parsed.tabStateByTab === undefined && parsed.filters && parsed.sortBy) {
+			tabStateByTab[tab] = normalizeTabState(tab, {
+				filters: parsed.filters,
+				sortBy: parsed.sortBy,
+				sortDirection: parsed.sortDirection,
+			})
+		}
+		const currentTabState = getTabState(tab, tabStateByTab)
 		return {
 			...defaultState(),
 			...parsed,
 			tab,
-			filters: pruneFiltersForTab(tab, normalizeFilters(parsed.filters ?? {})),
+			filters: currentTabState.filters,
+			sortBy: currentTabState.sortBy,
+			sortDirection: currentTabState.sortDirection,
+			tabStateByTab,
 		}
 	} catch {
 		return defaultState()
@@ -196,7 +312,13 @@ const structureTableStore = createStore<StructureTableUiState>(readStateFromStor
 function persistState(): void {
 	if (typeof window === 'undefined') return
 	try {
-		window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(structureTableStore.state))
+		window.localStorage.setItem(
+			STORAGE_KEY,
+			JSON.stringify({
+				tab: structureTableStore.state.tab,
+				tabStateByTab: structureTableStore.state.tabStateByTab,
+			})
+		)
 	} catch {
 		// Ignore storage failures; the in-memory store still works for the session.
 	}
@@ -232,9 +354,24 @@ export function setStructureTableFilters(
 ): void {
 	updateState((previous) => {
 		const nextFilters = typeof patch === 'function' ? patch(previous.filters) : { ...previous.filters, ...patch }
+		const currentTabState = normalizeTabState(previous.tab, {
+			filters: previous.filters,
+			sortBy: previous.sortBy,
+			sortDirection: previous.sortDirection,
+		})
+		const nextTabState = normalizeTabState(previous.tab, {
+			...currentTabState,
+			filters: nextFilters,
+		})
 		return {
 			...previous,
-			filters: normalizeFilters(nextFilters),
+			filters: nextTabState.filters,
+			sortBy: nextTabState.sortBy,
+			sortDirection: nextTabState.sortDirection,
+			tabStateByTab: {
+				...previous.tabStateByTab,
+				[previous.tab]: nextTabState,
+			},
 			page: 1,
 		}
 	})
@@ -244,7 +381,26 @@ export function setStructureTableTab(tab: StructureTab): void {
 	updateState((previous) => ({
 		...previous,
 		tab,
-		filters: pruneFiltersForTab(tab, previous.filters),
+		...(() => {
+			const nextTabStateByTab = {
+				...previous.tabStateByTab,
+				[previous.tab]: normalizeTabState(previous.tab, {
+					filters: previous.filters,
+					sortBy: previous.sortBy,
+					sortDirection: previous.sortDirection,
+				}),
+			}
+			const nextTabState = getTabState(tab, nextTabStateByTab)
+			return {
+				filters: nextTabState.filters,
+				sortBy: nextTabState.sortBy,
+				sortDirection: nextTabState.sortDirection,
+				tabStateByTab: {
+					...nextTabStateByTab,
+					[tab]: nextTabState,
+				},
+			}
+		})(),
 		page: 1,
 	}))
 }
@@ -252,7 +408,22 @@ export function setStructureTableTab(tab: StructureTab): void {
 export function clearStructureTableFilters(): void {
 	updateState((previous) => ({
 		...previous,
-		filters: {},
+		...(() => {
+			const nextTabState = normalizeTabState(previous.tab, {
+				filters: {},
+				sortBy: previous.sortBy,
+				sortDirection: previous.sortDirection,
+			})
+			return {
+				filters: nextTabState.filters,
+				sortBy: nextTabState.sortBy,
+				sortDirection: nextTabState.sortDirection,
+				tabStateByTab: {
+					...previous.tabStateByTab,
+					[previous.tab]: nextTabState,
+				},
+			}
+		})(),
 		page: 1,
 	}))
 }
@@ -275,8 +446,24 @@ export function setStructureTablePageSize(pageSize: number): void {
 export function setStructureTableSort(sortBy: StructureListSortBy): void {
 	updateState((previous) => ({
 		...previous,
-		sortBy,
-		sortDirection: previous.sortBy === sortBy && previous.sortDirection === 'asc' ? 'desc' : 'asc',
+		...(() => {
+			const nextSortDirection =
+				previous.sortBy === sortBy && previous.sortDirection === 'asc' ? 'desc' : 'asc'
+			const nextTabState = normalizeTabState(previous.tab, {
+				filters: previous.filters,
+				sortBy,
+				sortDirection: nextSortDirection,
+			})
+			return {
+				filters: nextTabState.filters,
+				sortBy: nextTabState.sortBy,
+				sortDirection: nextTabState.sortDirection,
+				tabStateByTab: {
+					...previous.tabStateByTab,
+					[previous.tab]: nextTabState,
+				},
+			}
+		})(),
 		page: 1,
 	}))
 }

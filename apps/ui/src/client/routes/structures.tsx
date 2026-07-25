@@ -1225,6 +1225,8 @@ export default function StructuresPage() {
 						</div>
 					</TableCell>
 					<TableCell>{fuelLabel}</TableCell>
+					<TableCell>{formatNullableNumber(structure.fuelBlockUnits)}</TableCell>
+					<TableCell>{formatNullableNumber(structure.magmaticGasUnits)}</TableCell>
 					<TableCell>
 						{structure.nextStateAt ? (
 							<DurationDisplay
@@ -1905,6 +1907,8 @@ export default function StructuresPage() {
 												<SortableHead field="name" label="Name" />
 												<SortableHead field="corporation" label="Corporation" />
 												<SortableHead field="fuel" label="Fuel" />
+												<SortableHead field="fuelBlocks" label="Fuel Blocks" />
+												<SortableHead field="magmaticGas" label="Magmatic Gas" />
 												<SortableHead field="nextStateAt" label="Next State In" />
 												<TableHead>Group</TableHead>
 												<TableHead>Sync</TableHead>
