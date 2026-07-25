@@ -21,6 +21,7 @@ import {
 	SKYHOOK_STRUCTURE_TYPE_IDS,
 	SOVEREIGNTY_STRUCTURE_TYPE_IDS,
 	STRUCTURE_REINFORCED_STATES,
+	FUEL_BLOCK_TYPE_IDS,
 	SKYHOOK_SECURED_BAY_CAPACITY_M3,
 	SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
 	SKYHOOK_MAGMATIC_GAS_TYPE_ID,
@@ -2209,6 +2210,22 @@ function buildSkyhookReagentFillPercentExpression(
 	`
 }
 
+function buildSkyhookReagentVolumeExpression(source: any, stockType: 'secured' | 'unsecured') {
+	const magmaticGasStock =
+		stockType === 'secured' ? source.magmaticGasSecuredStock : source.magmaticGasUnsecuredStock
+	const superionicIceStock =
+		stockType === 'secured' ? source.superionicIceSecuredStock : source.superionicIceUnsecuredStock
+
+	return sql<number>`
+		(
+			coalesce(${magmaticGasStock}, 0)::numeric
+				* ${getSkyhookReagentUnitVolumeM3(SKYHOOK_MAGMATIC_GAS_TYPE_ID)}::numeric
+			+ coalesce(${superionicIceStock}, 0)::numeric
+				* ${getSkyhookReagentUnitVolumeM3(SKYHOOK_SUPERIONIC_ICE_TYPE_ID)}::numeric
+		)
+	`
+}
+
 function buildSkyhookSortOrder(
 	sortBy: StructureSkyhookListSortBy,
 	sortDirection: StructureListSortDirection,
@@ -2536,9 +2553,17 @@ async function buildSkyhookStructureSummaryFromSql(
 ): Promise<StructureListSummary> {
 	const rowsDb = db.with(skyhookStructures)
 	const currentRaidableExpression = getSkyhookCurrentRaidableExpression(skyhookStructures)
-	const securedFillPercent = buildSkyhookReagentFillPercentExpression(skyhookStructures, 'secured')
-	const unsecuredFillPercent = buildSkyhookReagentFillPercentExpression(skyhookStructures, 'unsecured')
-	const highestFillPercent = sql<number>`greatest(${securedFillPercent}, ${unsecuredFillPercent})`
+	const securedVolume = buildSkyhookReagentVolumeExpression(skyhookStructures, 'secured')
+	const unsecuredVolume = buildSkyhookReagentVolumeExpression(skyhookStructures, 'unsecured')
+	const highestFillPercent = sql<number>`
+		least(
+			(
+				(${securedVolume} + ${unsecuredVolume})
+				/ (${SKYHOOK_SECURED_BAY_CAPACITY_M3}::numeric + ${SKYHOOK_SURPLUS_BAY_CAPACITY_M3}::numeric)
+			) * 100,
+			100
+		)
+	`
 	const [totalResult, highestFillResult, workforceResult, raidableCountResult, nextRaidableResult] =
 		await Promise.all([
 			rowsDb
@@ -3339,6 +3364,8 @@ async function loadMoonDrillPageItems(
 			syncFailureReason: moonDrillStructures.syncFailureReason,
 			lastSyncedAt: moonDrillStructures.lastSyncedAt,
 			updatedAt: moonDrillStructures.updatedAt,
+			fuelBlockUnits: moonDrillStructures.fuelBlockUnits,
+			magmaticGasUnits: moonDrillStructures.magmaticGasUnits,
 			moonDrillStructureId: moonDrillStructures.moonDrillStructureId,
 			moonId: moonDrillStructures.moonId,
 			moonName: moonDrillStructures.moonName,
@@ -3361,17 +3388,19 @@ async function loadMoonDrillPageItems(
 			user.is_admin || canViewDetailsStructure(access, row.corporationId, structureTab)
 		const hasMoonDrillSnapshot = row.moonDrillStructureId !== null && row.moonId !== null
 
-		return {
-			...buildOperationalStructureListItem(row, canViewDetails),
-			name: row.structureName ?? row.structureId,
-			planetId: row.planetId ?? null,
-			planetName: row.planetName ?? null,
-			moonId: row.moonId ?? '',
-			moonName: row.moonName ?? null,
-			syncStatus: hasMoonDrillSnapshot ? getSnapshotSyncStatus(row.moonDrillLastSyncedAt) : 'warning',
-			syncFailureReason: hasMoonDrillSnapshot
-				? null
-				: 'Moon drill snapshot has not been ingested yet for this structure.',
+			return {
+				...buildOperationalStructureListItem(row, canViewDetails),
+				name: row.structureName ?? row.structureId,
+				planetId: row.planetId ?? null,
+				planetName: row.planetName ?? null,
+				moonId: row.moonId ?? '',
+				moonName: row.moonName ?? null,
+				fuelBlockUnits: row.fuelBlockUnits,
+				magmaticGasUnits: row.magmaticGasUnits,
+				syncStatus: hasMoonDrillSnapshot ? getSnapshotSyncStatus(row.moonDrillLastSyncedAt) : 'warning',
+				syncFailureReason: hasMoonDrillSnapshot
+					? null
+					: 'Moon drill snapshot has not been ingested yet for this structure.',
 			lastSyncedAt: toIso(row.moonDrillLastSyncedAt ?? row.lastSyncedAt),
 			updatedAt: toIso(row.moonDrillUpdatedAt ?? row.updatedAt) ?? new Date().toISOString(),
 		}
@@ -3696,6 +3725,10 @@ function buildMoonStructureSortOrder(
 			return [sortExpression(sql`coalesce(${source.regionName}, '')`), sortExpression(source.structureId)]
 		case 'planet':
 			return [sortExpression(sql`coalesce(${source.planetName}, '')`), sortExpression(source.structureId)]
+		case 'fuelBlocks':
+			return [sortExpression(source.fuelBlockUnits), sortExpression(source.structureId)]
+		case 'magmaticGas':
+			return [sortExpression(source.magmaticGasUnits), sortExpression(source.structureId)]
 		case 'system':
 			return [sortExpression(sql`coalesce(${source.systemName}, '')`), sortExpression(source.structureId)]
 		case 'type':
@@ -3722,12 +3755,52 @@ function buildMoonDrillStructuresCte(
 	planetId?: string
 ) {
 	const operationalStructures = buildOperationalStructuresSelectQuery(db, corpWhere).as('operational_structures')
+	const moonDrillInventoryAggregate = db.$with('moon_drill_inventory_aggregate').as(
+		db
+			.select({
+				corporationId: corporationStructureInventory.corporationId,
+				structureId: corporationStructureInventory.structureId,
+				fuelBlockUnits: sql<number>`
+					coalesce(
+						sum(
+							case
+								when ${inArray(corporationStructureInventory.typeId, [...FUEL_BLOCK_TYPE_IDS])}
+									then ${corporationStructureInventory.quantity}
+								else 0
+							end
+						),
+						0
+					)::int
+				`.as('fuelBlockUnits'),
+				magmaticGasUnits: sql<number>`
+					coalesce(
+						sum(
+							case
+								when ${corporationStructureInventory.typeId} = ${SKYHOOK_MAGMATIC_GAS_TYPE_ID}
+									then ${corporationStructureInventory.quantity}
+								else 0
+							end
+						),
+						0
+					)::int
+				`.as('magmaticGasUnits'),
+			})
+			.from(corporationStructureInventory)
+			.innerJoin(
+				operationalStructures,
+				and(
+					eq(corporationStructureInventory.corporationId, operationalStructures.corporationId),
+					eq(corporationStructureInventory.structureId, operationalStructures.structureId)
+				)
+			)
+			.groupBy(corporationStructureInventory.corporationId, corporationStructureInventory.structureId)
+	)
 	const conditions = [sql`true`]
 	if (planetId) {
 		conditions.push(eq(structureMoonGeographies.planetId, planetId))
 	}
 	return db.$with('moon_drill_structures').as(
-		db.with(operationalStructures)
+		db.with(operationalStructures, moonDrillInventoryAggregate)
 			.select({
 				structureId: sql<string>`${operationalStructures.structureId}`.as('structureId'),
 				corporationId: sql<string>`${operationalStructures.corporationId}`.as('corporationId'),
@@ -3754,6 +3827,12 @@ function buildMoonDrillStructuresCte(
 				syncFailureReason: sql<string | null>`${operationalStructures.syncFailureReason}`.as('syncFailureReason'),
 				lastSyncedAt: sql<Date | null>`${operationalStructures.lastSyncedAt}`.as('lastSyncedAt'),
 				updatedAt: sql<Date>`${operationalStructures.updatedAt}`.as('updatedAt'),
+				fuelBlockUnits: sql<number>`coalesce(${moonDrillInventoryAggregate.fuelBlockUnits}, 0)`.as(
+					'fuelBlockUnits'
+				),
+				magmaticGasUnits: sql<number>`coalesce(${moonDrillInventoryAggregate.magmaticGasUnits}, 0)`.as(
+					'magmaticGasUnits'
+				),
 				moonDrillStructureId: sql<string | null>`${structureMoonDrills.structureId}`.as('moonDrillStructureId'),
 				moonId: sql<string | null>`${structureMoonGeographies.moonId}`.as('moonId'),
 				moonName: sql<string | null>`${structureMoonGeographies.moonName}`.as('moonName'),
@@ -3763,6 +3842,13 @@ function buildMoonDrillStructuresCte(
 				moonDrillUpdatedAt: sql<Date | null>`${structureMoonDrills.updatedAt}`.as('moonDrillUpdatedAt'),
 			})
 			.from(operationalStructures)
+			.leftJoin(
+				moonDrillInventoryAggregate,
+				and(
+					eq(moonDrillInventoryAggregate.corporationId, operationalStructures.corporationId),
+					eq(moonDrillInventoryAggregate.structureId, operationalStructures.structureId)
+				)
+			)
 			.leftJoin(
 				structureMoonDrills,
 				eq(structureMoonDrills.structureId, operationalStructures.structureId)

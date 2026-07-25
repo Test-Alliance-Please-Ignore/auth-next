@@ -2,6 +2,10 @@ import type {
 	StructureListSummary,
 	StructureSkyhookListItem,
 } from '@repo/structures'
+import {
+	SKYHOOK_SECURED_BAY_CAPACITY_M3,
+	SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
+} from '@repo/structures'
 
 type SkyhookRaidableWindowSelection = {
 	structureId: string
@@ -32,9 +36,13 @@ export function summarizeSkyhooks(
 	let skyhookHighestFillPercent: number | null = null
 	let nextRaidableWindow: SkyhookRaidableWindowSelection | null = null
 	let currentRaidableCount = 0
+	const totalCapacity = SKYHOOK_SECURED_BAY_CAPACITY_M3 + SKYHOOK_SURPLUS_BAY_CAPACITY_M3
 
 	for (const item of items) {
-		const itemHighestFillPercent = Math.max(item.securedFillPercent, item.unsecuredFillPercent)
+		const itemHighestFillPercent =
+			((item.securedFillPercent * SKYHOOK_SECURED_BAY_CAPACITY_M3) +
+				(item.unsecuredFillPercent * SKYHOOK_SURPLUS_BAY_CAPACITY_M3)) /
+			totalCapacity
 		if (Number.isFinite(itemHighestFillPercent)) {
 			skyhookHighestFillPercent =
 				skyhookHighestFillPercent === null

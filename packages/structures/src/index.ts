@@ -38,12 +38,16 @@ export const STRUCTURE_COMMON_LIST_SORT_FIELDS = [
 
 export type StructureOperationalListSortBy = StructureCommonListSortBy
 
-export type StructureMoonStructureListSortBy = StructureCommonListSortBy | 'planet'
+export type StructureMoonStructureListSortBy = StructureCommonListSortBy | 'planet' | 'fuelBlocks' | 'magmaticGas'
 
 export const STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS = [
 	...STRUCTURE_COMMON_LIST_SORT_FIELDS,
 	'planet',
+	'fuelBlocks',
+	'magmaticGas',
 ] as const satisfies readonly StructureMoonStructureListSortBy[]
+
+export const FUEL_BLOCK_TYPE_IDS = new Set(['4051', '4246', '4247', '4312'])
 
 export type StructureSkyhookListSortBy =
 	| StructureCommonListSortBy
@@ -570,6 +574,8 @@ export interface StructureMoonDrillListItem
 	nextStateAt: string | null
 	fuelExpires: string | null
 	fuelAmount: number | null
+	fuelBlockUnits: number
+	magmaticGasUnits: number
 	lowPower: boolean
 }
 

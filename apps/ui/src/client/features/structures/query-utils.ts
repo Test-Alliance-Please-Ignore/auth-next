@@ -44,7 +44,7 @@ function getMoonSortBy(sortBy: string | null | undefined): StructureMoonStructur
 function getSkyhookSortBy(sortBy: string | null | undefined): StructureSkyhookListSortBy {
 	return isIncluded(sortBy ?? '', STRUCTURE_SKYHOOK_LIST_SORT_FIELDS)
 		? (sortBy as StructureSkyhookListSortBy)
-		: 'fuel'
+		: 'skyhookSurplusFullness'
 }
 
 function getSovereigntySortBy(sortBy: string | null | undefined): StructureSovereigntyListSortBy {
