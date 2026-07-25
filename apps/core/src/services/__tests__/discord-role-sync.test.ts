@@ -168,6 +168,8 @@ function makeCharacter(
 		userId: string
 		characterId: string
 		characterName: string
+		corporationId: string
+		allianceId: string | null
 		is_primary: boolean
 	}> = {}
 ) {
@@ -176,6 +178,7 @@ function makeCharacter(
 		characterId: 'char-1',
 		characterName: 'Test Pilot',
 		corporationId: 'corp-1',
+		allianceId: null,
 		is_primary: true,
 		...overrides,
 	}
@@ -825,7 +828,12 @@ describe('updateUserDiscordRoles', () => {
 
 		it('should append the configured alliance ticker for corp members when that bucket is enabled', async () => {
 			dbQueryMocks.users.findFirst.mockResolvedValue(makeUser())
-			dbQueryMocks.userCharacters.findMany.mockResolvedValue([makeCharacter()])
+			dbQueryMocks.userCharacters.findFirst.mockResolvedValue(
+				makeCharacter({
+					corporationId: 'corp-1',
+					allianceId: 'alliance-1',
+				})
+			)
 			dbQueryMocks.discordServers.findMany.mockResolvedValue([
 				makeDiscordServer({
 					id: 'ds-1',
@@ -841,7 +849,7 @@ describe('updateUserDiscordRoles', () => {
 					guildId: 'guild-1',
 					isMemberCorporation: true,
 					corpMemberNicknameEnabled: true,
-					corpMemberNicknameSource: 'alliance',
+					corpMemberNicknameSource: 'corp',
 					corpMemberNicknameCustomTicker: null,
 				}),
 			])
@@ -852,11 +860,12 @@ describe('updateUserDiscordRoles', () => {
 				corporationId: 'corp-1',
 				name: 'Test Corp',
 				allianceId: 'alliance-1',
+				ticker: 'AKS.',
 			} as any)
 			tokenStoreStubMethods.getAllianceById.mockResolvedValue({
 				allianceId: 'alliance-1',
 				name: 'Test Alliance',
-				ticker: 'ALLY',
+				ticker: 'ALLY.',
 			} as any)
 			discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue(['guild-1'])
 
@@ -865,13 +874,64 @@ describe('updateUserDiscordRoles', () => {
 			expect(discordStubMethods.updateUserNickname).toHaveBeenCalledWith(
 				'user-1',
 				['guild-1'],
-				'[ALLY] Test Pilot'
+				'[AKS.] Test Pilot'
+			)
+		})
+
+		it('should use the primary character affiliation for alliance guests', async () => {
+			dbQueryMocks.users.findFirst.mockResolvedValue(makeUser())
+			dbQueryMocks.userCharacters.findFirst.mockResolvedValue(
+				makeCharacter({
+					corporationId: 'guest-corp-1',
+					allianceId: 'guest-alliance-1',
+					characterName: 'Guest Pilot',
+				})
+			)
+			dbQueryMocks.discordServers.findMany.mockResolvedValue([
+				makeDiscordServer({
+					id: 'ds-1',
+					guildId: 'guild-1',
+					guildName: 'Nick Server',
+					manageNicknames: true,
+				}),
+			])
+			dbQueryMocks.corporationDiscordServers.findMany.mockResolvedValue([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					discordServerId: 'ds-1',
+					guildId: 'guild-1',
+					isMemberCorporation: true,
+					allianceGuestNicknameEnabled: true,
+					allianceGuestNicknameSource: 'alliance',
+					allianceGuestNicknameCustomTicker: null,
+				}),
+			])
+			dbQueryMocks.managedCorporations.findMany.mockResolvedValue([])
+			eveCorpStubMethods.getCorporationInfo.mockResolvedValue({
+				corporationId: 'guest-corp-1',
+				name: 'Guest Corp',
+				ticker: 'GUEST.',
+				allianceId: 'guest-alliance-1',
+			} as any)
+			tokenStoreStubMethods.getAllianceById.mockResolvedValue({
+				allianceId: 'guest-alliance-1',
+				name: 'Guest Alliance',
+				ticker: 'ALLY.',
+			} as any)
+			discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue(['guild-1'])
+
+			await updateUserDiscordNickname(mockEnv, 'user-1', ['guild-1'])
+
+			expect(discordStubMethods.updateUserNickname).toHaveBeenCalledWith(
+				'user-1',
+				['guild-1'],
+				'[ALLY.] Guest Pilot'
 			)
 		})
 
 		it('should use the custom ticker configured for the all-members bucket', async () => {
 			dbQueryMocks.users.findFirst.mockResolvedValue(makeUser())
-			dbQueryMocks.userCharacters.findMany.mockResolvedValue([makeCharacter()])
+			dbQueryMocks.userCharacters.findFirst.mockResolvedValue(makeCharacter())
 			dbQueryMocks.discordServers.findMany.mockResolvedValue([
 				makeDiscordServer({
 					id: 'ds-1',
