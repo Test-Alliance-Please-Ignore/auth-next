@@ -5,8 +5,11 @@ import {
 	ArrowUpDown,
 	CircleHelp,
 	Filter,
+	Flame,
+	Package,
 	RefreshCcw,
 	Shield,
+	Snowflake,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react'
 import { Link, Navigate } from 'react-router-dom'
@@ -19,11 +22,14 @@ import {
 } from '@repo/groups'
 import {
 	STRUCTURE_TABS,
+	FUEL_BLOCK_TYPE_IDS,
 	isReinforcedStructureState,
 	isStructureTab,
 	isStructureVulnerabilityState,
 	STRUCTURE_SYNC_ERROR_STALE_MS,
 	STRUCTURE_SYNC_WARNING_STALE_MS,
+	SKYHOOK_MAGMATIC_GAS_TYPE_ID,
+	SKYHOOK_SUPERIONIC_ICE_TYPE_ID,
 } from '@repo/structures'
 
 import { TableRefreshFrame } from '@/components/table-refresh-frame'
@@ -45,7 +51,7 @@ import { Select } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDateTimeLong } from '@/lib/date-utils'
 import { formatDurationUntil } from '@/lib/duration-utils'
-import { allianceLogoUrl } from '@/lib/eve-images'
+import { allianceLogoUrl, typeIconUrl } from '@/lib/eve-images'
 import { getSkyhookVulnerabilityWindowDisplay } from '@/lib/skyhook-vulnerability-window'
 import { stripLeadingContextName } from '@/lib/structure-name-utils'
 import {
@@ -114,6 +120,7 @@ const BOOLEAN_FILTER_OPTIONS: SelectOption[] = [
 	{ value: 'true', label: 'Yes' },
 	{ value: 'false', label: 'No' },
 ]
+const FUEL_BLOCK_ICON_TYPE_ID = Array.from(FUEL_BLOCK_TYPE_IDS)[0] ?? '4051'
 
 function structureSyncStatusDescription(
 	structure: Pick<StructureListBaseItem, 'syncStatus' | 'syncFailureReason' | 'lastSyncedAt'>
@@ -192,6 +199,37 @@ function formatNullableDecimal(
 function formatPercent(value: number | null | undefined): string {
 	if (value === null || value === undefined || !Number.isFinite(value)) return '-'
 	return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
+}
+
+function MoonDrillResourceCell({
+	typeId,
+	iconAlt,
+	fallbackIcon: FallbackIcon,
+	value,
+}: {
+	typeId: string
+	iconAlt: string
+	fallbackIcon: typeof Package | typeof Flame
+	value: number | null | undefined
+}) {
+	const [failed, setFailed] = useState(false)
+
+	return (
+		<div className="flex items-center gap-2">
+			{failed ? (
+				<FallbackIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+			) : (
+				<img
+					src={typeIconUrl(typeId, 32)}
+					alt={iconAlt}
+					className="h-4 w-4 shrink-0 rounded-sm"
+					loading="lazy"
+					onError={() => setFailed(true)}
+				/>
+			)}
+			<span className="tabular-nums">{formatNullableNumber(value)}</span>
+		</div>
+	)
 }
 
 function LiveDurationUntilText({
@@ -293,18 +331,49 @@ function formatReagentBurnRate(value: number | null | undefined): string {
 	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}/hr`
 }
 
+function SovereigntyReagentAmount({
+	typeId,
+	value,
+}: {
+	typeId: string
+	value: number
+}) {
+	const [failed, setFailed] = useState(false)
+	const isGas = typeId === SKYHOOK_MAGMATIC_GAS_TYPE_ID
+	const FallbackIcon = isGas ? Flame : Snowflake
+
+	return (
+		<div className="flex items-center gap-2">
+			{failed ? (
+				<FallbackIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+			) : (
+				<img
+					src={typeIconUrl(typeId, 32)}
+					alt=""
+					className="h-4 w-4 shrink-0 rounded-sm"
+					loading="lazy"
+					onError={() => setFailed(true)}
+				/>
+			)}
+			<span className="font-medium tabular-nums">{formatNullableNumber(value)}</span>
+		</div>
+	)
+}
+
 function SovereigntyReagentCell({
+	typeId,
 	quantity,
 	burningPerHour,
 	estimatedDepletionAt,
 }: {
+	typeId: string
 	quantity: number
 	burningPerHour: number
 	estimatedDepletionAt: string | null
 }) {
 	return (
 		<div className="space-y-1.5">
-			<div className="font-medium tabular-nums">{formatNullableNumber(quantity)}</div>
+			<SovereigntyReagentAmount typeId={typeId} value={quantity} />
 			<div className="text-xs text-muted-foreground">
 				Burn {formatReagentBurnRate(burningPerHour)}
 			</div>
@@ -966,6 +1035,7 @@ export default function StructuresPage() {
 					<TableCell>{formatNullableDecimal(structure.activityDefenseMultiplier)}</TableCell>
 					<TableCell>
 						<SovereigntyReagentCell
+							typeId={SKYHOOK_MAGMATIC_GAS_TYPE_ID}
 							quantity={structure.magmaticGasQuantity}
 							burningPerHour={structure.magmaticGasBurningPerHour}
 							estimatedDepletionAt={structure.magmaticGasEstimatedDepletionAt}
@@ -973,6 +1043,7 @@ export default function StructuresPage() {
 					</TableCell>
 					<TableCell>
 						<SovereigntyReagentCell
+							typeId={SKYHOOK_SUPERIONIC_ICE_TYPE_ID}
 							quantity={structure.superionicIceQuantity}
 							burningPerHour={structure.superionicIceBurningPerHour}
 							estimatedDepletionAt={structure.superionicIceEstimatedDepletionAt}
@@ -1225,8 +1296,22 @@ export default function StructuresPage() {
 						</div>
 					</TableCell>
 					<TableCell>{fuelLabel}</TableCell>
-					<TableCell>{formatNullableNumber(structure.fuelBlockUnits)}</TableCell>
-					<TableCell>{formatNullableNumber(structure.magmaticGasUnits)}</TableCell>
+					<TableCell>
+						<MoonDrillResourceCell
+							typeId={FUEL_BLOCK_ICON_TYPE_ID}
+							iconAlt="Fuel block"
+							fallbackIcon={Package}
+							value={structure.fuelBlockUnits}
+						/>
+					</TableCell>
+					<TableCell>
+						<MoonDrillResourceCell
+							typeId={SKYHOOK_MAGMATIC_GAS_TYPE_ID}
+							iconAlt="Magmatic gas"
+							fallbackIcon={Flame}
+							value={structure.magmaticGasUnits}
+						/>
+					</TableCell>
 					<TableCell>
 						{structure.nextStateAt ? (
 							<DurationDisplay

@@ -3843,6 +3843,13 @@ function buildMoonDrillStructuresCte(
 			})
 			.from(operationalStructures)
 			.leftJoin(
+				moonDrillInventoryAggregate,
+				and(
+					eq(moonDrillInventoryAggregate.corporationId, operationalStructures.corporationId),
+					eq(moonDrillInventoryAggregate.structureId, operationalStructures.structureId)
+				)
+			)
+			.leftJoin(
 				structureMoonDrills,
 				eq(structureMoonDrills.structureId, operationalStructures.structureId)
 			)
