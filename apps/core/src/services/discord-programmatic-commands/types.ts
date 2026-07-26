@@ -1,4 +1,4 @@
-import type { DiscordSlashCommandDefinition } from '@repo/discord'
+import type { DiscordEmbed, DiscordSlashCommandDefinition } from '@repo/discord'
 import type { Env } from '../../context'
 import type { ExecuteDiscordSlashCommandInput } from '../discord-commands.service'
 import type { DiscordCommandOptionAlias } from '../discord-command-registry.service'
@@ -8,6 +8,7 @@ export interface ProgrammaticCommandResponse {
 	data?: {
 		content: string
 		flags?: number
+		embeds?: DiscordEmbed[]
 	}
 }
 
@@ -22,7 +23,10 @@ export interface ProgrammaticCommandResponse {
 export type DeferralMode = 'sync' | 'defer-public' | 'defer-ephemeral'
 
 /** Subset of bindings a programmatic handler may use. Extend as new command surfaces need more. */
-export type ProgrammaticCommandEnv = Pick<Env, 'GROUPS' | 'DISCORD' | 'PREDICTION_MARKETS'>
+export type ProgrammaticCommandEnv = Pick<
+	Env,
+	'GROUPS' | 'DISCORD' | 'PREDICTION_MARKETS' | 'BROADCASTS' | 'FLEETS' | 'SRP' | 'DOCTRINES'
+>
 
 export interface ProgrammaticCommandContext {
 	optionValues: Record<string, string>

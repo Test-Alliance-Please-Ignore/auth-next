@@ -12,6 +12,7 @@ import type {
 } from '@repo/admin'
 import type { FreightRoute } from '@repo/freight'
 import type { InventoryDisplayBay as SharedInventoryDisplayBay } from '@repo/inventory-display'
+import type { UpdateSRPConfig } from '@repo/srp'
 import type {
 	StructureCitadelListQuery as RepoStructureCitadelListQuery,
 	StructureMoonStructureListFilterOptions as RepoStructureMoonStructureListFilterOptions,
@@ -4976,6 +4977,10 @@ export class ApiClient {
 		return this.get('/srp/config')
 	}
 
+	async getSRPDiscordGuilds(): Promise<Array<{ id: string; guildId: string; guildName: string }>> {
+		return this.get('/srp/config/discord-guilds')
+	}
+
 	async searchSRPPaymentProcessorCorporations(
 		query: string
 	): Promise<Array<{ corporationId: string; name: string }>> {
@@ -4987,7 +4992,7 @@ export class ApiClient {
 	/**
 	 * Update SRP configuration (admin only)
 	 */
-	async updateSRPConfig(data: any): Promise<any> {
+	async updateSRPConfig(data: UpdateSRPConfig): Promise<unknown> {
 		return this.patch('/srp/config', data)
 	}
 

@@ -273,6 +273,15 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 		}
 	}
 
+	async getDoctrineName(id: string): Promise<string | null> {
+		const [doctrine] = await this.db
+			.select({ name: schema.doctrinesDoctrines.name })
+			.from(schema.doctrinesDoctrines)
+			.where(and(eq(schema.doctrinesDoctrines.id, id), isNull(schema.doctrinesDoctrines.deletedAt)))
+			.limit(1)
+		return doctrine?.name ?? null
+	}
+
 	async updateDoctrine(id: string, data: UpdateDoctrineRequest & { updatedBy?: string }): Promise<Doctrine> {
 		const updates: Partial<typeof schema.doctrinesDoctrines.$inferInsert> = {
 			updatedAt: new Date(),

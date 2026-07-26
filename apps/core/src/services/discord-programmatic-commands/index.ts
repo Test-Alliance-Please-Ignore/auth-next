@@ -2,6 +2,7 @@ import { EVETIME_PROGRAMMATIC_COMMAND } from './evetime'
 import { HOW_PROGRAMMATIC_COMMAND } from './how'
 import { MARKET_PROGRAMMATIC_COMMAND } from './market'
 import { PING_SLOW_PROGRAMMATIC_COMMAND } from './ping-slow'
+import { SRPFLEET_PROGRAMMATIC_COMMAND } from './srpfleet'
 
 import type { ProgrammaticCommandDefinition } from './types'
 
@@ -9,6 +10,7 @@ export { EVETIME_PROGRAMMATIC_COMMAND } from './evetime'
 export { HOW_PROGRAMMATIC_COMMAND } from './how'
 export { MARKET_PROGRAMMATIC_COMMAND } from './market'
 export { PING_SLOW_PROGRAMMATIC_COMMAND } from './ping-slow'
+export { SRPFLEET_PROGRAMMATIC_COMMAND } from './srpfleet'
 export type { DeferralMode, ProgrammaticCommandDefinition } from './types'
 
 export const PROGRAMMATIC_COMMAND_DEFINITIONS: ProgrammaticCommandDefinition[] = [
@@ -16,6 +18,7 @@ export const PROGRAMMATIC_COMMAND_DEFINITIONS: ProgrammaticCommandDefinition[] =
 	HOW_PROGRAMMATIC_COMMAND,
 	MARKET_PROGRAMMATIC_COMMAND,
 	PING_SLOW_PROGRAMMATIC_COMMAND,
+	SRPFLEET_PROGRAMMATIC_COMMAND,
 ]
 
 export const programmaticCommandDefinitionByName = new Map(

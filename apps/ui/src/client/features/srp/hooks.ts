@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef } from 'react'
 
 import { NotFoundError, api } from '@/lib/api'
 
+import type { UpdateSRPConfig } from '@repo/srp'
+
 import { srpKeys } from './query-keys'
 import {
 	isSrpLossesQueryKey,
@@ -35,7 +37,6 @@ import type {
 	RequestStatus,
 	RecentLossesResponse,
 	SRPCommentResponse,
-	SRPConfigResponse,
 	SRPRequestResponse,
 	SRPPaymentMismatchAlert,
 	SRPReviewSubmission,
@@ -333,6 +334,14 @@ export function useSRPConfig() {
 		queryKey: srpKeys.config(),
 		queryFn: () => api.getSRPConfig(),
 		staleTime: 1000 * 60 * 10,
+	})
+}
+
+export function useSRPDiscordGuilds() {
+	return useQuery({
+		queryKey: srpKeys.discordGuilds(),
+		queryFn: () => api.getSRPDiscordGuilds(),
+		staleTime: 1000 * 60 * 5,
 	})
 }
 
@@ -835,7 +844,7 @@ export function useSrpWalletHistory(params: {
 export function useUpdateSRPConfig() {
 	const queryClient = useQueryClient()
 	return useMutation({
-		mutationFn: (data: Partial<SRPConfigResponse>) => api.updateSRPConfig(data),
+		mutationFn: (data: UpdateSRPConfig) => api.updateSRPConfig(data),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: srpKeys.config() })
 		},

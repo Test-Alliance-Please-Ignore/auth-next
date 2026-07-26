@@ -1,4 +1,4 @@
-import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import { WorkflowEntrypoint } from 'cloudflare:workers'
 
 import { sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
@@ -15,6 +15,8 @@ import type { EsiTypeResolver } from '@repo/esi'
 import type { SRPRequestResponse, Srp } from '@repo/srp'
 import type { Env } from '../context'
 import { logger } from '@repo/hono-helpers'
+
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 
 export interface SrpPaymentStatusCheckWorkflowParams {
 	requestId: string

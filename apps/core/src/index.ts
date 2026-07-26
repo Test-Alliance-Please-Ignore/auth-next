@@ -95,7 +95,6 @@ import type {
 	UserDetails,
 } from '@repo/admin'
 import type { Core } from '@repo/core'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
 import type { App, Env } from './context'
@@ -968,6 +967,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 			data?: {
 				content: string
 				flags?: number
+				embeds?: unknown[]
 			}
 		}
 		coreUserId: string | null

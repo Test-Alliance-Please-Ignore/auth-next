@@ -43,6 +43,14 @@ export function getConfig(importMetaUrl: string): Array<Linter.Config<Linter.Rul
 		...tseslint.configs.recommended,
 		importPlugin.flatConfigs.recommended,
 		...turboConfig,
+		{
+			rules: {
+				'turbo/no-undeclared-env-vars': [
+					'error',
+					{ allowList: ['^LOCAL_DEV_DISABLE_AUXILIARY_WORKERS$'] },
+				],
+			},
+		},
 
 		// TypeScript Configuration
 		{

@@ -15,7 +15,7 @@ import {
 	registerDiscordCommand,
 } from './discord-command-registry.service'
 
-import type { Discord, DiscordSlashCommandDefinition } from '@repo/discord'
+import type { Discord, DiscordEmbed, DiscordSlashCommandDefinition } from '@repo/discord'
 import type { Env } from '../context'
 import type { createDb } from '../db'
 import type { DiscordCommandOptionAlias } from './discord-command-registry.service'
@@ -48,6 +48,7 @@ export interface DiscordInteractionResponse {
 	data?: {
 		content: string
 		flags?: number
+		embeds?: DiscordEmbed[]
 	}
 }
 
@@ -91,7 +92,10 @@ export interface ExecuteDiscordSlashCommandResult {
 		| 'execution-failed'
 }
 
-export type CommandEnv = Pick<Env, 'GROUPS' | 'DISCORD' | 'PREDICTION_MARKETS'>
+export type CommandEnv = Pick<
+	Env,
+	'GROUPS' | 'DISCORD' | 'PREDICTION_MARKETS' | 'BROADCASTS' | 'FLEETS' | 'SRP' | 'DOCTRINES'
+>
 
 function normalizeCommandName(name: string): string {
 	return name.trim().toLowerCase()

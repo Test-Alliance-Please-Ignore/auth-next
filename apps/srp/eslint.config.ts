@@ -1,7 +1,5 @@
-import { defineConfig } from '@repo/eslint-config'
+import { defineConfig, getConfig } from '@repo/eslint-config'
 
-export default defineConfig({
-	typescript: {
-		project: './tsconfig.json',
-	},
-})
+const config = getConfig(import.meta.url)
+
+export default defineConfig([config])

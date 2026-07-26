@@ -110,6 +110,13 @@ export interface BroadcastWithDetails extends Broadcast {
 	deliveries: BroadcastDelivery[]
 }
 
+export interface SrpFleetBroadcastLookup {
+	content: Record<string, unknown>
+	srpToken: string
+	doctrineId: string | null
+	fleetSessionId: string | null
+}
+
 export interface BroadcastPage {
 	rows: Broadcast[]
 	rowCount: number
@@ -400,6 +407,9 @@ export interface Broadcasts {
 	 * @returns Broadcast details or null if not found
 	 */
 	getBroadcastBySrpToken(srpToken: string, userId: string): Promise<BroadcastWithDetails | null>
+
+	/** Resolve only the broadcast fields needed by SRP fleet tooling. */
+	getSrpFleetBroadcastByToken(srpToken: string): Promise<SrpFleetBroadcastLookup | null>
 
 	/**
 	 * Resolve a broadcast by linked fleet tracking session id.

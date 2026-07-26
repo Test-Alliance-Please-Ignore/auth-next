@@ -9,7 +9,7 @@ import { DiscordDO, DiscordGatewayDO } from './durable-object'
 import * as discordService from './services/discord.service'
 import { resolveDeferralMode, resolveSubcommandKey } from './utils/interaction-routing'
 
-import type { Discord } from '@repo/discord'
+import type { Discord, DiscordEmbed } from '@repo/discord'
 import type { App, DiscordInteractionOption, DiscordInteractionRouting } from './context'
 
 const DISCORD_INTERACTION_PING = 1
@@ -130,7 +130,10 @@ async function runDeferredCommand(
 		// Zero-width space fallback: Discord rejects empty content on an edit.
 		const content = execution.response.data?.content ?? '​'
 		const stub = getStub<Discord>(env.DISCORD, 'default')
-		const result = await stub.editOriginalInteractionResponse(ctx.token, { content })
+		const result = await stub.editOriginalInteractionResponse(ctx.token, {
+			content,
+			embeds: execution.response.data?.embeds as DiscordEmbed[] | undefined,
+		})
 
 		if (!result.success) {
 			logger.error('[DiscordInteractions] Failed to deliver deferred response', {
@@ -726,7 +729,7 @@ const app = new Hono<App>()
 
 const sentryApp = withSentry(app)
 
-async function scheduled(event: ScheduledEvent, env: App['Bindings'], _ctx: ExecutionContext): Promise<void> {
+	async function scheduled(event: ScheduledEvent, _env: App['Bindings'], _ctx: ExecutionContext): Promise<void> {
 	// Intentionally stubbed: the Discord gateway listener has been disabled because
 	// the always-on websocket bootstrap caused unacceptable hosting cost inflation.
 	// We keep the scheduled entrypoint and gateway DO stub in place so the feature can

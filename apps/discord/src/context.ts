@@ -62,9 +62,10 @@ export type Env = SharedHonoEnv & {
 			ok: boolean
 			response: {
 				type: number
-				data?: {
+			data?: {
 					content: string
 					flags?: number
+					embeds?: unknown[]
 				}
 			}
 			coreUserId: string | null
