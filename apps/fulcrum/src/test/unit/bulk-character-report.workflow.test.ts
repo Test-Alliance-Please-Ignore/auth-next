@@ -67,7 +67,7 @@ describe('BulkCharacterReportWorkflow', () => {
 		] as const
 		let uuidIndex = 0
 		const uuidSpy = vi
-			.spyOn(globalThis.crypto, 'randomUUID')
+			.spyOn(crypto, 'randomUUID')
 			.mockImplementation(() => uuidValues[Math.min(uuidIndex++, uuidValues.length - 1)]!)
 
 		const env = {
@@ -107,7 +107,7 @@ describe('BulkCharacterReportWorkflow', () => {
 		] as const
 		let uuidIndex = 0
 		const uuidSpy = vi
-			.spyOn(globalThis.crypto, 'randomUUID')
+			.spyOn(crypto, 'randomUUID')
 			.mockImplementation(() => uuidValues[Math.min(uuidIndex++, uuidValues.length - 1)]!)
 
 		const childWorkflowCreate = vi
