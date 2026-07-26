@@ -24,7 +24,7 @@ jobs:
           node-version: 22.22.0
           cache: 'pnpm'
       - name: Install Dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts --child-concurrency=10
+        run: pnpm install --frozen-lockfile --ignore-scripts --prod=false --child-concurrency=10
       - name: Validate Discord Client ID Wiring
         run: node scripts/ci/validate-discord-client-id-wiring.mjs
       - name: Export UI Discord Client ID
@@ -129,7 +129,7 @@ jobs:
           node-version: 22.22.0
           cache: 'pnpm'
       - name: Install Dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts --child-concurrency=10
+        run: pnpm install --frozen-lockfile --ignore-scripts --prod=false --child-concurrency=10
       - name: Create Release PR
         uses: changesets/action@v1
         env:
