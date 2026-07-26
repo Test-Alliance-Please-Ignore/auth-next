@@ -22,7 +22,6 @@
 		"noEmit": true,
 		"resolveJsonModule": true,
 		"target": "ES2022",
-		"lib": ["ES2022"],
-		"downlevelIteration": true
+		"lib": ["ES2022"]
 	}
 }
