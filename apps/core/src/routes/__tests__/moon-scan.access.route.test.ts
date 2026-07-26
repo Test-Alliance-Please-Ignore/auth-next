@@ -178,7 +178,9 @@ describe('moon-scan access matrix', () => {
 		const res = await app.request('/api/moon-scan/moons/verified/export', { method: 'POST' }, env)
 
 		expect(res.status).toBe(400)
-		expect(await res.json()).toEqual({ error: 'regionId is required for moon export' })
+		expect(await res.json()).toEqual({
+			error: 'regionId or constellationId is required for moon export',
+		})
 	})
 
 	it('allows submitters to read the leaderboard', async () => {

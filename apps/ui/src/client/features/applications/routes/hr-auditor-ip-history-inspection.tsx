@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router'
 
 import { IpHashInspectionPage } from '@/components/ip-hash-inspection-page'
 import { Container } from '@/components/ui/container'

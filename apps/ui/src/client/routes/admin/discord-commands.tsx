@@ -1,6 +1,6 @@
 import { Edit, FolderKanban, Plus, Trash2, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
 import { Badge } from '@/components/ui/badge'

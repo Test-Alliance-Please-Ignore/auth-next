@@ -1,4 +1,4 @@
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router'
 
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { Container } from '../../../components/ui/container'

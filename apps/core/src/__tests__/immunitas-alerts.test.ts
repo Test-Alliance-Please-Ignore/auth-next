@@ -123,6 +123,7 @@ describe('CoreDO immunitas alert draining', () => {
 		const core = Object.create(CoreDO.prototype) as CoreDO
 		const db = createDbMock()
 		;(core as any).env = { DISCORD: {} as DurableObjectNamespace }
+		;(core as any).logger = { info: vi.fn(), error: vi.fn(), warn: vi.fn() }
 		;(core as any).state = createState()
 		;(core as any).getDb = vi.fn().mockReturnValue(db)
 		;(core as any).scheduleImmunitasAccessAlertAlarm = vi.fn().mockResolvedValue(undefined)

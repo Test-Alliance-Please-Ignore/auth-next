@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router'
 
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'

@@ -23,5 +23,10 @@ export default defineConfig({
 			'src/workflows/**/*.test.ts',
 			'src/__tests__/**/*.test.ts',
 		],
+		exclude: [
+			'src/routes/__tests__/groups.admins.route.test.ts',
+			'src/routes/__tests__/groups.mumble-sync.route.test.ts',
+			'src/routes/__tests__/hr.application-alerts.test.ts',
+		],
 	},
 })

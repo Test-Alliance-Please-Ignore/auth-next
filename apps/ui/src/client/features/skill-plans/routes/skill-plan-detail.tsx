@@ -1,6 +1,6 @@
 import { ArrowLeft, Edit2, Globe, Lock, Plus, Trash2, User, Users } from 'lucide-react'
 import { useState } from 'react'
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router'
 
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'

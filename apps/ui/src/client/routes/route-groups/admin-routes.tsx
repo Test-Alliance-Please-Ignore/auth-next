@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Navigate, Route } from 'react-router-dom'
+import { Navigate, Route } from 'react-router'
 
 import { LoadingPage } from '@/components/ui/loading'
 import AdminActivityLogPage from '@/routes/admin/activity-log'

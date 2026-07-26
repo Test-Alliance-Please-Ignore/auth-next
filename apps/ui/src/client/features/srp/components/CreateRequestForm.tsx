@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import toast from '@/lib/toast'
 import { z } from 'zod'
 

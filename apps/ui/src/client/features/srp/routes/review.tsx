@@ -1,7 +1,7 @@
 import { Loader2, RefreshCw } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Button } from '@/components/ui/button'

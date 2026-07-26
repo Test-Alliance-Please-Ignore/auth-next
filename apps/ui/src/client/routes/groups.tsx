@@ -1,6 +1,6 @@
 import { X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 
 import { GroupList } from '@/components/group-list'
 import { InviteCodeRedemption } from '@/components/invite-code-redemption'

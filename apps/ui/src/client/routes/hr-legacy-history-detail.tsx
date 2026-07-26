@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useParams, useSearchParams } from 'react-router'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'

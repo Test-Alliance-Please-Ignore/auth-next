@@ -6,7 +6,7 @@
 
 import { ArrowLeft, ChevronDown, ChevronRight, Edit, Plus, Settings, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

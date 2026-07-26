@@ -12,12 +12,12 @@
 	},
 	"dependencies": {
 		"@repo/hono-helpers": "workspace:*",
-		"drizzle-orm": "0.44.7"
+		"drizzle-orm": "0.45.2"
 	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
-		"vitest": "3.2.4"
+		"vitest": "4.1.10"
 	}
 }

@@ -1,6 +1,6 @@
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { lazy, Suspense, useEffect } from 'react'
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router'
 
 import Layout from './components/layout'
 import { LoadingPage } from './components/ui/loading'

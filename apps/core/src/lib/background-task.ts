@@ -7,10 +7,12 @@ type BackgroundTaskOptions = {
 	verbose?: boolean
 }
 
+export type BackgroundTaskExecutionContext = Pick<ExecutionContext, 'waitUntil'>
+
 const DEFAULT_WARN_AFTER_MS = 5_000
 
 export function waitUntilWithTelemetry(
-	executionCtx: ExecutionContext,
+	executionCtx: BackgroundTaskExecutionContext,
 	label: string,
 	task: () => Promise<unknown>,
 	metadata: BackgroundTaskMetadata = {},

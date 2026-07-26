@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Button } from '@/components/ui/button'

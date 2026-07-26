@@ -28,7 +28,7 @@ import {
 import { DynamicIcon } from 'lucide-react/dynamic.mjs'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router'
 
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { useCorporationAccess } from '@/features/corporations'

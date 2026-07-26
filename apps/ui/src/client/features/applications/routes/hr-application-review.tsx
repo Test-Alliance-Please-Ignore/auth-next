@@ -10,7 +10,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
 import toast from '@/lib/toast'
-import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import {
 	Breadcrumb,

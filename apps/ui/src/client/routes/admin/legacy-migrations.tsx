@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Badge } from '@/components/ui/badge'

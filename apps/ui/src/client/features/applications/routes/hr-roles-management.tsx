@@ -7,7 +7,7 @@
 
 import { AlertCircle, ArrowLeft, Shield } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import {

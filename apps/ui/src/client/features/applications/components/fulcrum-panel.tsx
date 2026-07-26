@@ -9,7 +9,7 @@
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, Clock, ExternalLink, FileText, Loader2, RefreshCw, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

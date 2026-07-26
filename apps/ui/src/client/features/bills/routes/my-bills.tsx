@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 
 import { BillListFilters } from '@/components/bills/bill-list-filters'
 import { BillListGrid } from '@/components/bills/bill-list-grid'

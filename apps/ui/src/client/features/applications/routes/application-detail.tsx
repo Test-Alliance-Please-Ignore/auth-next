@@ -10,7 +10,7 @@
 import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, Briefcase, Plus, X } from 'lucide-react'
 import { useState } from 'react'
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { useEntityNames } from '@/hooks/useEntityNames'

@@ -1,5 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router'
 
 import { roundToMillion } from '@repo/srp'
 import { Badge } from '@/components/ui/badge'

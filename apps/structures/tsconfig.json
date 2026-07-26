@@ -6,5 +6,5 @@
 			"@repo/inventory-display": ["../../packages/inventory-display/src/index.ts"]
 		}
 	},
-	"include": ["src/**/*", "env.d.ts", "../core/worker-configuration.d.ts"]
+	"include": ["src/**/*", "env.d.ts", "worker-configuration.d.ts"]
 }

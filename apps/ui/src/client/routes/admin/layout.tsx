@@ -1,6 +1,6 @@
 import { ChevronRight, Menu, X } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Link, Navigate, Outlet, useLocation } from 'react-router'
 
 import { AdminNav } from '@/components/admin-nav'
 import { Button } from '@/components/ui/button'

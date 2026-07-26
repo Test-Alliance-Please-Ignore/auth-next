@@ -90,7 +90,10 @@ describe('admin legacy rpc routes', () => {
 			env
 		)
 		expect(response.status).toBe(200)
-		expect(legacyStub.resolveMigration).toHaveBeenCalledWith('queue-1', { decision: 'accept' })
+		expect(legacyStub.resolveMigration).toHaveBeenCalledWith(
+			'queue-1',
+			{ decision: 'accept' },
+			'00000000-0000-0000-0000-000000000001'
+		)
 	})
 })
-

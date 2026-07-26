@@ -1,6 +1,6 @@
 import { Check, Copy } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router'
 import toast from '@/lib/toast'
 
 import { Button } from '@/components/ui/button'

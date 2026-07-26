@@ -1,6 +1,6 @@
 import { Search, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate } from 'react-router'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { UserSearchResultsTable } from '@/components/user-search-results-table'

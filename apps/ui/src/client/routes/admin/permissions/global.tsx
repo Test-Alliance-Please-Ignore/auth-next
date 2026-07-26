@@ -1,6 +1,6 @@
 import { Edit2, FileKey, FolderOpen, Plus, Search, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import { PermissionFormDialog } from '@/components/permission-form-dialog'
 import { Badge } from '@/components/ui/badge'

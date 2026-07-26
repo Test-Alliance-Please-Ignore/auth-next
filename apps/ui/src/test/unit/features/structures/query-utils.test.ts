@@ -7,7 +7,7 @@ import {
 
 describe('structure query utils', () => {
 	it('falls back to the tab default sort when a value is not supported on that tab', () => {
-		expect(getEffectiveStructureSortByForTab('skyhooks', 'planet')).toBe('fuel')
+		expect(getEffectiveStructureSortByForTab('skyhooks', 'planet')).toBe('skyhookSurplusFullness')
 		expect(getEffectiveStructureSortByForTab('sovereignty', 'planet')).toBe('fuel')
 		expect(getEffectiveStructureSortByForTab('moon-drills', 'planet')).toBe('planet')
 	})
@@ -30,11 +30,11 @@ describe('structure query utils', () => {
 		})
 		const defaultSortKey = buildStructureListContentKey({
 			...baseArgs,
-			sortBy: 'fuel',
+			sortBy: 'skyhookSurplusFullness',
 		})
 
 		expect(invalidSortKey).toBe(defaultSortKey)
-		expect(invalidSortKey).toContain(':fuel:asc:')
+		expect(invalidSortKey).toContain(':skyhookSurplusFullness:asc:')
 	})
 
 	it('keeps valid tab-specific sorts intact', () => {

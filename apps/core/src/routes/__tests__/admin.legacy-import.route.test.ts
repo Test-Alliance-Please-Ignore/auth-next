@@ -41,11 +41,12 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 function createApp(user?: SessionUser) {
 	const app = new Hono<{
 		Bindings: any
-		Variables: { user?: SessionUser }
+		Variables: { user?: SessionUser; db?: ReturnType<typeof createDbMock> }
 	}>()
 	if (user) {
 		app.use('*', async (c, next) => {
 			c.set('user', user)
+			c.set('db', createDbMock())
 			await next()
 		})
 	}
@@ -168,4 +169,3 @@ describe('admin legacy import routes', () => {
 		expect(json).toMatchObject({ imported: 2, failed: 0, totalRequested: 2 })
 	})
 })
-

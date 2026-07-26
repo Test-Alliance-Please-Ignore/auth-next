@@ -1,5 +1,5 @@
 import { Mail } from 'lucide-react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router'
 
 import { InvitationCard } from '@/components/invitation-card'
 import { Button } from '@/components/ui/button'

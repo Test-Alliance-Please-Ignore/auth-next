@@ -1,5 +1,5 @@
 import { eq, ilike, inArray, or } from 'drizzle-orm'
-import { Hono, type Context } from 'hono'
+import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
 import { createEveCharacterId } from '@repo/eve-types'
@@ -13,18 +13,24 @@ import {
 	shouldBlockCharacterPrivateAccess,
 } from '../lib/character-access'
 import { queueImmunitasAccessAlertForUser } from '../lib/immunitas-alerts'
-import { didTokenTransitionFromValidToInvalid, queueTokenInvalidationAlertsForUser } from '../lib/token-invalid-alerts'
-import { validateAndSyncCharacterTokenValidity } from '../lib/token-validity'
-import { markCharacterTokenInvalidFromAuthFailure } from '../lib/token-validity'
+import {
+	didTokenTransitionFromValidToInvalid,
+	queueTokenInvalidationAlertsForUser,
+} from '../lib/token-invalid-alerts'
+import {
+	markCharacterTokenInvalidFromAuthFailure,
+	validateAndSyncCharacterTokenValidity,
+} from '../lib/token-validity'
 import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAuth } from '../middleware/session'
-import { checkAndUpdateDirectorStatus } from '../services/corporation-auto-register.service'
 import { markCharacterDeletedEverywhere } from '../services/character-deletion.service'
+import { checkAndUpdateDirectorStatus } from '../services/corporation-auto-register.service'
 import { EntityResolverService } from '../services/entity-resolver.service'
 import { shouldTreatSensitiveDataAsLive } from './characters-utils'
 
-import type { EveCharacterData } from '@repo/eve-character-data'
+import type { Context } from 'hono'
 import type { Core as CoreRpc } from '@repo/core'
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { App } from '../context'
 
 // Helper to transform and enrich skills data
@@ -182,8 +188,7 @@ async function transformAndEnrichSkillQueue(queue: any, env: any) {
 	}
 }
 
-function getExecutionContextOrNull(c: Context<App>): ExecutionContext | null {
-
+function getExecutionContextOrNull(c: Context<App>): Pick<ExecutionContext, 'waitUntil'> | null {
 	try {
 		return c.executionCtx
 	} catch {
@@ -260,11 +265,13 @@ app.post('/ownership', requireAuth(), async (c) => {
 	}
 
 	const characterIds = Array.isArray((body as { characterIds?: unknown } | null)?.characterIds)
-		? [...new Set(
-				((body as { characterIds?: unknown }).characterIds as unknown[])
-					.map((characterId) => String(characterId).trim())
-					.filter(Boolean),
-			)]
+		? [
+				...new Set(
+					((body as { characterIds?: unknown }).characterIds as unknown[])
+						.map((characterId) => String(characterId).trim())
+						.filter(Boolean)
+				),
+			]
 		: []
 
 	if (characterIds.length === 0) {
@@ -356,14 +363,19 @@ app.get('/:characterId/private', requireAuth(), async (c) => {
 
 		const [skills, allSkills] = await Promise.all([
 			eveCharacterData.getSkills(),
-			getStub<any>(c.env.SKILLS, 'default').getAllSkills().catch((error: unknown) => {
-				logger.warn('[Character Detail] Failed to fetch skill catalog, falling back to trained-only', {
-					characterId: characterIdStr,
-					requestingUserId: access.user.id,
-					error: error instanceof Error ? error.message : String(error),
-				})
-				return []
-			}),
+			getStub<any>(c.env.SKILLS, 'default')
+				.getAllSkills()
+				.catch((error: unknown) => {
+					logger.warn(
+						'[Character Detail] Failed to fetch skill catalog, falling back to trained-only',
+						{
+							characterId: characterIdStr,
+							requestingUserId: access.user.id,
+							error: error instanceof Error ? error.message : String(error),
+						}
+					)
+					return []
+				}),
 		])
 
 		const [enrichedSkills, sensitiveData] = await Promise.all([
@@ -633,11 +645,19 @@ app.get('/:characterId', requireAuth(), async (c) => {
 						: undefined,
 				},
 				corporationHistory: corporationHistory
-					? corporationHistory.map((entry: { corporationId: string; recordId: string; startDate: string; isDeleted?: boolean }) => ({
-							...entry,
-							corporationName:
-								entityNames.get(String(entry.corporationId)) || `Corporation #${entry.corporationId}`,
-						}))
+					? corporationHistory.map(
+							(entry: {
+								corporationId: string
+								recordId: string
+								startDate: string
+								isDeleted?: boolean
+							}) => ({
+								...entry,
+								corporationName:
+									entityNames.get(String(entry.corporationId)) ||
+									`Corporation #${entry.corporationId}`,
+							})
+						)
 					: [],
 				attributes,
 			},
@@ -756,7 +776,9 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 					forceValidate: true,
 				})
 			: null
-		const fallbackValidation = tokenStatus ? null : await eveTokenStoreStub.validateToken(characterIdStr)
+		const fallbackValidation = tokenStatus
+			? null
+			: await eveTokenStoreStub.validateToken(characterIdStr)
 		let hasValidToken = tokenStatus
 			? tokenStatus.nextHasValidToken === true
 			: fallbackValidation?.isValid === true
@@ -782,10 +804,8 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 				if (downgradedToken) {
 					hasValidToken = false
 					tokenInvalidated =
-						didTokenTransitionFromValidToInvalid(
-							tokenStatus?.previousHasValidToken,
-							false
-						) || tokenInvalidated
+						didTokenTransitionFromValidToInvalid(tokenStatus?.previousHasValidToken, false) ||
+						tokenInvalidated
 				}
 				authError =
 					error instanceof Error
@@ -832,15 +852,16 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			waitUntilWithTelemetry(
 				c.executionCtx,
 				'characters.director-status',
-				() => checkAndUpdateDirectorStatus(
-					characterIdStr,
-					character.characterName,
-					user.id,
-					db!,
-					c.env.EVE_CHARACTER_DATA,
-					c.env.EVE_TOKEN_STORE,
-					c.env.EVE_CORPORATION_DATA
-				),
+				() =>
+					checkAndUpdateDirectorStatus(
+						characterIdStr,
+						character.characterName,
+						user.id,
+						db!,
+						c.env.EVE_CHARACTER_DATA,
+						c.env.EVE_TOKEN_STORE,
+						c.env.EVE_CORPORATION_DATA
+					),
 				{
 					characterId: characterIdStr,
 					userId: user.id,
@@ -853,8 +874,8 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			message: isDeletedCharacter
 				? 'Character marked as deleted during refresh'
 				: hasValidToken
-				? 'Character data refreshed successfully'
-				: 'Public character data refreshed (no valid token for private data)',
+					? 'Character data refreshed successfully'
+					: 'Public character data refreshed (no valid token for private data)',
 			lastUpdated,
 			hasValidToken: isDeletedCharacter ? false : hasValidToken,
 			tokenInfo: tokenInfo

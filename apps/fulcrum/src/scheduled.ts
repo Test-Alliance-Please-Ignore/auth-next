@@ -4,8 +4,10 @@
  */
 
 import { logger, withWorkerLogContext } from '@repo/hono-helpers'
+
 import { createDb } from './db'
 import * as queries from './db/queries'
+
 import type { Env } from './context'
 
 const DAILY_EXPIRATION_CRON = '0 0 * * *'
@@ -27,7 +29,7 @@ const STALLED_SWEEP_BATCH_LIMIT = 200
 export async function scheduledHandler(
 	event: ScheduledEvent,
 	env: Env,
-	_ctx: ExecutionContext,
+	_ctx: ExecutionContext
 ): Promise<void> {
 	await withWorkerLogContext('fulcrum-scheduled', env, async () => {
 		const start = Date.now()
@@ -62,17 +64,10 @@ export async function scheduledHandler(
 	})
 }
 
-async function reconcileStalledReports(
-	env: Env,
-	db: ReturnType<typeof createDb>,
-): Promise<void> {
+async function reconcileStalledReports(env: Env, db: ReturnType<typeof createDb>): Promise<void> {
 	const sweepLogger = logger.withTags({ component: 'stalled-sweep' })
 	const cutoff = new Date(Date.now() - STALLED_SWEEP_THRESHOLD_MINUTES * 60 * 1000)
-	const candidates = await queries.getStaleInProgressReports(
-		db,
-		cutoff,
-		STALLED_SWEEP_BATCH_LIMIT,
-	)
+	const candidates = await queries.getStaleInProgressReports(db, cutoff, STALLED_SWEEP_BATCH_LIMIT)
 
 	sweepLogger.info('Loaded stale in-progress candidates', {
 		count: candidates.length,
@@ -114,11 +109,12 @@ async function reconcileStalledReports(
 			}
 
 			const reason =
-				workflowStatus.error
-				?? `Stalled report recovery: workflow status is ${workflowStatus.status}`
+				workflowStatus.error ??
+				`Stalled report recovery: workflow status is ${workflowStatus.status}`
+			const errorMessage = typeof reason === 'string' ? reason : `${reason.name}: ${reason.message}`
 
 			await queries.updateReportStatus(db, report.id, 'failed', {
-				errorMessage: reason.slice(0, 500),
+				errorMessage: errorMessage.slice(0, 500),
 			})
 			reportLogger.warn('Marked stale report failed after workflow status check', {
 				workflowStatus: workflowStatus.status,
@@ -126,7 +122,10 @@ async function reconcileStalledReports(
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
 			await queries.updateReportStatus(db, report.id, 'failed', {
-				errorMessage: `Stalled report recovery: workflow lookup failed - ${errorMessage}`.slice(0, 500),
+				errorMessage: `Stalled report recovery: workflow lookup failed - ${errorMessage}`.slice(
+					0,
+					500
+				),
 			})
 			reportLogger.warn('Marked stale report failed after workflow lookup error', {
 				error: errorMessage,
@@ -138,7 +137,7 @@ async function reconcileStalledReports(
 async function expireReports(
 	env: Env,
 	db: ReturnType<typeof createDb>,
-	start: number,
+	start: number
 ): Promise<void> {
 	const scheduledLogger = logger.withTags({ component: 'auto-expiration' })
 
@@ -156,7 +155,7 @@ async function expireReports(
 
 	// Process each expired report
 	const results = await Promise.allSettled(
-		expiredReports.map((report) => expireReport(env, db, report)),
+		expiredReports.map((report) => expireReport(env, db, report))
 	)
 
 	// Count successes and failures
@@ -176,9 +175,7 @@ async function expireReports(
 	if (failed > 0) {
 		const failedReports = results
 			.map((result, index) =>
-				result.status === 'rejected'
-					? { ...expiredReports[index], error: result.reason }
-					: null,
+				result.status === 'rejected' ? { ...expiredReports[index], error: result.reason } : null
 			)
 			.filter((r) => r !== null)
 
@@ -205,7 +202,7 @@ async function expireReport(
 		characterId: string
 		r2Bucket: string | null
 		r2Key: string | null
-	},
+	}
 ): Promise<void> {
 	const expireLogger = logger.withTags({
 		component: 'auto-expiration',

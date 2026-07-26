@@ -1,6 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
 import { useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router'
 
 import { UserGroupMembershipsTable } from '@/components/user-group-memberships-table'
 import { Badge } from '@/components/ui/badge'

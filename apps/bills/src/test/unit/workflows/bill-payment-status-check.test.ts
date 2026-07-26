@@ -128,7 +128,9 @@ function createWorkflowAndContext() {
 			BILLS: billsNamespace,
 		} as never
 	)
-	vi.spyOn(workflow as never, 'createContext').mockReturnValue(ctx as never)
+	vi.spyOn(workflow as unknown as { createContext: () => unknown }, 'createContext').mockReturnValue(
+		ctx
+	)
 
 	return {
 		workflow,

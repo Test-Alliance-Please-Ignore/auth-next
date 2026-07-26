@@ -1,5 +1,5 @@
 import { Calendar, DollarSign, FileText, TrendingUp } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import { ISKAmount } from '@/components/bills/isk-amount'
 import { Button } from '@/components/ui/button'

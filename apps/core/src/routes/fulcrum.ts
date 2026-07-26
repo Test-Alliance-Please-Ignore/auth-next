@@ -3,11 +3,12 @@ import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
+import { isOpenApplicationStatus } from '@repo/hr'
 
 import { managedCorporations, userCharacters, users } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
-import { queueImmunitasAccessAlertForUser } from '../lib/immunitas-alerts'
 import { getCachedUserPermissions } from '../lib/groups-cache'
+import { queueImmunitasAccessAlertForUser } from '../lib/immunitas-alerts'
 import { requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
@@ -15,10 +16,8 @@ import type { Core } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Fulcrum, ReportRequestSource, ReportSectionName } from '@repo/fulcrum'
-import { isOpenApplicationStatus } from '@repo/hr'
 import type { Hr } from '@repo/hr'
-import type { App } from '../context'
-import type { SessionUser } from '../context'
+import type { App, SessionUser } from '../context'
 
 const app = new Hono<App>()
 const MS_PER_DAY = 86_400_000
@@ -39,7 +38,7 @@ function getCoreStub(c: Context<App>): Core {
 	return getStub<Core>(c.env.CORE, 'default')
 }
 
-function getExecutionContextOrNull(c: Context<App>): ExecutionContext | null {
+function getExecutionContextOrNull(c: Context<App>): Pick<ExecutionContext, 'waitUntil'> | null {
 	try {
 		return c.executionCtx
 	} catch {
@@ -81,7 +80,10 @@ async function getImmunitasReportTarget(
 	}
 }
 
-async function getCharacterCorporationId(c: Context<App>, characterId: string): Promise<string | null> {
+async function getCharacterCorporationId(
+	c: Context<App>,
+	characterId: string
+): Promise<string | null> {
 	const characterStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
 	const characterInstance = await characterStub.getInstance(characterId)
 	const characterInfo = await characterInstance.getCharacterInfo()
@@ -99,19 +101,19 @@ async function resolveApplicationFulcrumCorporationForTargetUser(
 	requestor: SessionUser,
 	targetUserId: string
 ): Promise<FulcrumCorporationResolution> {
-	const applications = await hr.listApplications(
-		{ userId: targetUserId },
-		requestor.id,
-		{
-			isAdmin: false,
-			isAuditor: false,
-		}
-	)
+	const applications = await hr.listApplications({ userId: targetUserId }, requestor.id, {
+		isAdmin: false,
+		isAuditor: false,
+	})
 
 	let sawPermission = false
 	let sawOpenApplication = false
 	for (const application of applications) {
-		const hasPermission = await hr.checkPermission(requestor.id, application.corporationId, 'hr_reviewer')
+		const hasPermission = await hr.checkPermission(
+			requestor.id,
+			application.corporationId,
+			'hr_reviewer'
+		)
 		if (!hasPermission) {
 			continue
 		}
@@ -166,7 +168,11 @@ async function resolveSharedFulcrumCorporationForTargetUser(
 	}
 
 	for (const corporation of corporations) {
-		const hasPermission = await hr.checkPermission(requestor.id, corporation.corporationId, 'hr_reviewer')
+		const hasPermission = await hr.checkPermission(
+			requestor.id,
+			corporation.corporationId,
+			'hr_reviewer'
+		)
 		if (hasPermission) {
 			return {
 				corporationId: corporation.corporationId,
@@ -319,14 +325,10 @@ async function resolveFallbackFulcrumCorporationId(
 	targetUserId: string,
 	characterId: string
 ): Promise<string | null> {
-	const applications = await hr.listApplications(
-		{ userId: targetUserId },
-		requestor.id,
-		{
-			isAdmin: requestor.is_admin,
-			isAuditor: await isHrAuditorUser(c, requestor),
-		}
-	)
+	const applications = await hr.listApplications({ userId: targetUserId }, requestor.id, {
+		isAdmin: requestor.is_admin,
+		isAuditor: await isHrAuditorUser(c, requestor),
+	})
 	const applicationCorporationId = applications[0]?.corporationId ?? null
 	if (applicationCorporationId) {
 		return applicationCorporationId
@@ -422,7 +424,7 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 			if (!accessResolution.corporationId) {
 				return c.json(
 					{ error: 'HR staff access requires a shared corporation or an open application' },
-					403,
+					403
 				)
 			}
 		} else if (corporationId) {
@@ -457,7 +459,7 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 		})
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to list characters' },
-			500,
+			500
 		)
 	}
 })
@@ -480,7 +482,7 @@ app.get('/users/:userId/reports', requireAuth(), async (c) => {
 			if (!accessResolution.corporationId) {
 				return c.json(
 					{ error: 'HR staff access requires a shared corporation or an open application' },
-					403,
+					403
 				)
 			}
 		} else if (corporationId) {
@@ -500,7 +502,7 @@ app.get('/users/:userId/reports', requireAuth(), async (c) => {
 		})
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to list character reports' },
-			500,
+			500
 		)
 	}
 })
@@ -543,12 +545,12 @@ app.get('/characters/:characterId/reports', requireAuth(), async (c) => {
 			} else if (accessResolution.error === 'open_application_required') {
 				return c.json(
 					{ error: 'An open application is required to view Fulcrum reports for this user' },
-					403,
+					403
 				)
 			} else {
 				return c.json(
 					{ error: 'HR staff access requires a shared corporation or an open application' },
-					403,
+					403
 				)
 			}
 		}
@@ -566,10 +568,7 @@ app.get('/characters/:characterId/reports', requireAuth(), async (c) => {
 			characterId,
 			error: error instanceof Error ? error.message : String(error),
 		})
-		return c.json(
-			{ error: error instanceof Error ? error.message : 'Failed to list reports' },
-			500,
-		)
+		return c.json({ error: error instanceof Error ? error.message : 'Failed to list reports' }, 500)
 	}
 })
 
@@ -602,10 +601,7 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 		const immunitasTarget = await getImmunitasReportTarget(c, db, characterId)
 		const resolvedTargetUserId = immunitasTarget?.userId
 		if (!resolvedTargetUserId) {
-			return c.json(
-				{ error: 'Fulcrum report requests are not allowed for this character' },
-				403,
-			)
+			return c.json({ error: 'Fulcrum report requests are not allowed for this character' }, 403)
 		}
 		const isSelfImmunitasTarget = immunitasTarget?.immunitas && resolvedTargetUserId === user.id
 		const requestorCharacterLabel =
@@ -626,24 +622,16 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 				})
 			}
 			if (executionCtx) {
-				waitUntilWithTelemetry(
-					executionCtx,
-					'fulcrum.immunitas-report-alert',
-					queueTask,
-					{
-						userId: user.id,
-						characterId,
-						targetUserId: immunitasTarget.userId,
-						accessType: 'fulcrum-report',
-					}
-				)
+				waitUntilWithTelemetry(executionCtx, 'fulcrum.immunitas-report-alert', queueTask, {
+					userId: user.id,
+					characterId,
+					targetUserId: immunitasTarget.userId,
+					accessType: 'fulcrum-report',
+				})
 			} else {
 				await queueTask()
 			}
-			return c.json(
-				{ error: 'Fulcrum report requests are not allowed for this character' },
-				403
-			)
+			return c.json({ error: 'Fulcrum report requests are not allowed for this character' }, 403)
 		}
 
 		const hr = getHrStub(c)
@@ -656,10 +644,7 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 				characterId
 			)
 			if (!resolvedCorporationId) {
-				return c.json(
-					{ error: 'Fulcrum report requests are not allowed for this character' },
-					403,
-				)
+				return c.json({ error: 'Fulcrum report requests are not allowed for this character' }, 403)
 			}
 
 			const fulcrum = getFulcrumStub(c)
@@ -688,7 +673,7 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 		if (!auditor && !user.is_admin && (await isMemberCorpCeo(c, characterId))) {
 			return c.json(
 				{ error: 'Only auditors or site admins can request reports for member corp CEOs' },
-				403,
+				403
 			)
 		}
 
@@ -702,10 +687,7 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 				characterId
 			)
 			if (!resolvedCorporationId) {
-				return c.json(
-					{ error: 'Fulcrum report requests are not allowed for this character' },
-					403,
-				)
+				return c.json({ error: 'Fulcrum report requests are not allowed for this character' }, 403)
 			}
 		} else {
 			const accessResolution = await resolveFulcrumReportAccessForTargetUser(
@@ -719,13 +701,10 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 			} else if (accessResolution.error === 'open_application_required') {
 				return c.json(
 					{ error: 'An open application is required to request Fulcrum reports for this user' },
-					403,
+					403
 				)
 			} else {
-				return c.json(
-					{ error: 'Fulcrum report requests are not allowed for this character' },
-					403,
-				)
+				return c.json({ error: 'Fulcrum report requests are not allowed for this character' }, 403)
 			}
 		}
 
@@ -761,7 +740,7 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 		})
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to request report' },
-			500,
+			500
 		)
 	}
 })
@@ -835,19 +814,19 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 		if (unresolvedTargetCharacterIds.length > 0) {
 			return c.json(
 				{ error: 'Fulcrum report requests are not allowed for one or more targeted characters' },
-				403,
+				403
 			)
 		}
 		const resolvedTargetUserIds = [...new Set(resolvedTargets.map((target) => target.userId))]
 		if (resolvedTargetUserIds.length > 1) {
 			return c.json(
 				{ error: 'Batch report requests must target characters owned by the same user' },
-				400,
+				400
 			)
 		}
 		const resolvedTargetUserId = resolvedTargetUserIds[0] ?? null
 		const blockedImmunitasTargets = new Map(
-			[...immunitasTargets.entries()].filter(([targetUserId]) => targetUserId !== user.id),
+			[...immunitasTargets.entries()].filter(([targetUserId]) => targetUserId !== user.id)
 		)
 		if (blockedImmunitasTargets.size > 0) {
 			const executionCtx = getExecutionContextOrNull(c)
@@ -867,17 +846,12 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 				}
 			}
 			if (executionCtx) {
-				waitUntilWithTelemetry(
-					executionCtx,
-					'fulcrum.immunitas-report-batch-alert',
-					queueTask,
-					{
-						userId: user.id,
-						characterCount: body.characterIds.length,
-						targetUserIds: [...blockedImmunitasTargets.keys()],
-						accessType: 'fulcrum-report',
-					}
-				)
+				waitUntilWithTelemetry(executionCtx, 'fulcrum.immunitas-report-batch-alert', queueTask, {
+					userId: user.id,
+					characterCount: body.characterIds.length,
+					targetUserIds: [...blockedImmunitasTargets.keys()],
+					accessType: 'fulcrum-report',
+				})
 			} else {
 				await queueTask()
 			}
@@ -903,7 +877,7 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 			if (!resolvedCorporationId) {
 				return c.json(
 					{ error: 'Fulcrum report requests are not allowed for these characters' },
-					403,
+					403
 				)
 			}
 			const fulcrum = getFulcrumStub(c)
@@ -941,7 +915,7 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 			if (!resolvedCorporationId) {
 				return c.json(
 					{ error: 'Fulcrum report requests are not allowed for these characters' },
-					403,
+					403
 				)
 			}
 		} else {
@@ -949,7 +923,7 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 				if (!auditor && !user.is_admin && (await isMemberCorpCeo(c, targetCharacterId))) {
 					return c.json(
 						{ error: 'Only auditors or site admins can request reports for member corp CEOs' },
-						403,
+						403
 					)
 				}
 			}
@@ -965,12 +939,12 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 			} else if (accessResolution.error === 'open_application_required') {
 				return c.json(
 					{ error: 'An open application is required to request Fulcrum reports for this user' },
-					403,
+					403
 				)
 			} else {
 				return c.json(
 					{ error: 'Fulcrum report requests are not allowed for these characters' },
-					403,
+					403
 				)
 			}
 		}
@@ -1004,7 +978,7 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 		})
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to request bulk reports' },
-			500,
+			500
 		)
 	}
 })
@@ -1035,7 +1009,7 @@ app.get('/reports/:reportId/sections', requireAuth(), async (c) => {
 			const hasPermission = await hr.checkPermission(
 				user.id,
 				report.requestorCorporationId,
-				'hr_viewer',
+				'hr_viewer'
 			)
 			if (!hasPermission) {
 				return c.json({ error: 'HR role required' }, 403)
@@ -1055,7 +1029,7 @@ app.get('/reports/:reportId/sections', requireAuth(), async (c) => {
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to get report sections' },
-			500,
+			500
 		)
 	}
 })
@@ -1088,7 +1062,7 @@ app.get('/reports/:reportId/sections/:section', requireAuth(), async (c) => {
 			const hasPermission = await hr.checkPermission(
 				user.id,
 				report.requestorCorporationId,
-				'hr_viewer',
+				'hr_viewer'
 			)
 			if (!hasPermission) {
 				return c.json({ error: 'HR role required' }, 403)
@@ -1140,7 +1114,7 @@ app.get('/reports/:reportId/sections/:section', requireAuth(), async (c) => {
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to get section data' },
-			500,
+			500
 		)
 	}
 })
@@ -1168,7 +1142,7 @@ app.get('/reports/:reportId/mails/:mailId/content', requireAuth(), async (c) => 
 			const hasPermission = await hr.checkPermission(
 				user.id,
 				report.requestorCorporationId,
-				'hr_viewer',
+				'hr_viewer'
 			)
 			if (!hasPermission) {
 				return c.json({ error: 'HR role required' }, 403)
@@ -1188,7 +1162,7 @@ app.get('/reports/:reportId/mails/:mailId/content', requireAuth(), async (c) => 
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to fetch mail content' },
-			500,
+			500
 		)
 	}
 })

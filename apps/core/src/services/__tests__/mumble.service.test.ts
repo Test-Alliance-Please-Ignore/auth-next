@@ -594,7 +594,7 @@ describe('provisionTempopGuest', () => {
 			characterId: 'char-1',
 		})
 
-		expect(characterStub.refreshPublicCharacterData).toHaveBeenCalledWith('char-1', true)
+		expect(characterStub.refreshPublicCharacterData).toHaveBeenCalledWith('char-1', false)
 		expect(corpStub.getCorporationInfo).toHaveBeenCalledWith('corp-1')
 		expect(tokenStoreStub.getAllianceById).toHaveBeenCalledWith('ally-1')
 		expect(mumbleStub.provisionAccount).toHaveBeenCalledWith('srv', {
@@ -684,7 +684,7 @@ describe('provisionTempopGuest', () => {
 			characterId: 'char-1',
 		})
 
-		expect(characterStub.refreshPublicCharacterData).toHaveBeenCalledWith('char-1', true)
+		expect(characterStub.refreshPublicCharacterData).toHaveBeenCalledWith('char-1', false)
 		expect(corpStub.getCorporationInfo).toHaveBeenCalledWith('corp-1')
 		expect(tokenStoreStub.getAllianceById).not.toHaveBeenCalled()
 		expect(mumbleStub.provisionAccount).toHaveBeenCalledWith('srv', {

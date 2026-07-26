@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'

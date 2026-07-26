@@ -8,7 +8,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, ArrowLeft, Save } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router'
 
 import {
 	Breadcrumb,

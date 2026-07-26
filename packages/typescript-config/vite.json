@@ -5,7 +5,11 @@
 		"target": "ES2022",
 		"lib": ["ES2022", "DOM", "DOM.Iterable"],
 		"jsx": "react-jsx",
-		"types": ["vite/client", "@cloudflare/vitest-pool-workers"],
+		"types": [
+			"vite/client",
+			"@cloudflare/vitest-pool-workers",
+			"@cloudflare/vitest-pool-workers/types"
+		],
 		"allowJs": true
 	}
 }

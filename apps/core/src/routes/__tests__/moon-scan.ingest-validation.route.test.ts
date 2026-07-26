@@ -189,7 +189,7 @@ describe('moon-scan ingest sanitization', () => {
 		expect(moonScanStub.submitScans).not.toHaveBeenCalled()
 	})
 
-	it('rejects validators from previewing or submitting scans', async () => {
+	it('allows validators to preview and submit scans with auto-verification', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([
 			{ urn: 'urn:moons:scan:validate' },
 		] as any)
@@ -211,10 +211,20 @@ describe('moon-scan ingest sanitization', () => {
 			body,
 		}, env)
 
-		expect(parseRes.status).toBe(403)
-		expect(submitRes.status).toBe(403)
-		expect(await parseRes.json()).toEqual({ error: 'Forbidden' })
-		expect(await submitRes.json()).toEqual({ error: 'Forbidden' })
-		expect(moonScanStub.submitScans).not.toHaveBeenCalled()
+		expect(parseRes.status).toBe(200)
+		expect(submitRes.status).toBe(200)
+		expect(moonScanStub.submitScans).toHaveBeenCalledWith(
+		[
+			{
+				moonId: '40161739',
+				ores: [
+					{ oreTypeId: '45490', quantity: '0.500000' },
+					{ oreTypeId: '45491', quantity: '0.500000' },
+				],
+			},
+		],
+		'1001',
+		true
+		)
 	})
 })

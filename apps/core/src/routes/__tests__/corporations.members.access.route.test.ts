@@ -90,9 +90,11 @@ function makeTokenStoreStub(options?: {
 	return {
 		resolveIds:
 			options?.resolveIds ??
-			vi.fn().mockImplementation(async (ids: string[]) =>
-				Object.fromEntries(ids.map((id) => [id, id === '2001' ? 'Pilot One' : `Character ${id}`]))
-			),
+			vi
+				.fn()
+				.mockImplementation(async (ids: string[]) =>
+					Object.fromEntries(ids.map((id) => [id, id === '2001' ? 'Pilot One' : `Character ${id}`]))
+				),
 		validateToken:
 			options?.validateToken ??
 			vi.fn().mockImplementation(async (characterId: string) => ({
@@ -196,13 +198,17 @@ describe('corporations members access matrix', () => {
 			}),
 			getUserDetails: vi.fn().mockResolvedValue(null),
 		}
-		vi.mocked(CoreRpcService).mockImplementation(() => coreStub as any)
+		vi.mocked(CoreRpcService).mockImplementation(function () {
+			return coreStub as any
+		})
 		tokenStoreStub = makeTokenStoreStub()
 		corpStub = {
 			getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: '9999', allianceId: null }),
-			getMembers: vi.fn().mockResolvedValue([
-				{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
-			]),
+			getMembers: vi
+				.fn()
+				.mockResolvedValue([
+					{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') },
+				]),
 			getCorporationRoles: vi.fn().mockResolvedValue([]),
 			getCoreData: vi.fn().mockResolvedValue({
 				members: [{ characterId: '2001', updatedAt: new Date('2026-04-01T00:00:00.000Z') }],
@@ -453,11 +459,16 @@ describe('corporations members access matrix', () => {
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
 			if (binding === env.EVE_TOKEN_STORE) {
 				return makeTokenStoreStub({
-					resolveIds: vi.fn().mockImplementation(async (ids: string[]) =>
-						Object.fromEntries(
-							ids.map((id) => [id, id === '2001' ? 'Pilot One' : id === '2002' ? 'Pilot Two' : id])
-						)
-					),
+					resolveIds: vi
+						.fn()
+						.mockImplementation(async (ids: string[]) =>
+							Object.fromEntries(
+								ids.map((id) => [
+									id,
+									id === '2001' ? 'Pilot One' : id === '2002' ? 'Pilot Two' : id,
+								])
+							)
+						),
 				}) as any
 			}
 			throw new Error('Unexpected binding')
@@ -562,20 +573,22 @@ describe('corporations members access matrix', () => {
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
 			if (binding === env.EVE_TOKEN_STORE) {
 				return makeTokenStoreStub({
-					resolveIds: vi.fn().mockImplementation(async (ids: string[]) =>
-						Object.fromEntries(
-							ids.map((id) => [
-								id,
-								id === '2001'
-									? 'Zulu'
-									: id === '2002'
-										? 'Alpha'
-										: id === '2003'
-											? 'Echo'
-											: 'Delta',
-							])
-						)
-					),
+					resolveIds: vi
+						.fn()
+						.mockImplementation(async (ids: string[]) =>
+							Object.fromEntries(
+								ids.map((id) => [
+									id,
+									id === '2001'
+										? 'Zulu'
+										: id === '2002'
+											? 'Alpha'
+											: id === '2003'
+												? 'Echo'
+												: 'Delta',
+								])
+							)
+						),
 				}) as any
 			}
 			throw new Error('Unexpected binding')
@@ -641,14 +654,16 @@ describe('corporations members access matrix', () => {
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
 			if (binding === env.EVE_TOKEN_STORE) {
 				return makeTokenStoreStub({
-					resolveIds: vi.fn().mockImplementation(async (ids: string[]) =>
-						Object.fromEntries(
-							ids.map((id) => [
-								id,
-								id === '2001' ? 'Pilot One' : id === '2002' ? 'Pilot Two' : 'Captain Main',
-							])
-						)
-					),
+					resolveIds: vi
+						.fn()
+						.mockImplementation(async (ids: string[]) =>
+							Object.fromEntries(
+								ids.map((id) => [
+									id,
+									id === '2001' ? 'Pilot One' : id === '2002' ? 'Pilot Two' : 'Captain Main',
+								])
+							)
+						),
 				}) as any
 			}
 			throw new Error('Unexpected binding')
@@ -671,8 +686,12 @@ describe('corporations members access matrix', () => {
 			'Character Name,Character ID,Role,HR Role,ESI Status,Auth Account UUID,Auth Account Primary Character Name,Auth Account Primary Character ID,Activity Status,Last Login,Join Date'
 		)
 		expect(lines).toHaveLength(3)
-		expect(lines[1]).toContain('Pilot One,2001,Member,hr_admin,ESI Valid,target-user-1,Captain Main,3001,unknown,Never,2026-04-01T00:00:00.000Z')
-		expect(lines[2]).toContain('Pilot Two,2002,Member,,Unlinked,,,,unknown,Never,2026-04-01T00:00:00.000Z')
+		expect(lines[1]).toContain(
+			'Pilot One,2001,Member,hr_admin,ESI Valid,target-user-1,Captain Main,3001,unknown,Never,2026-04-01T00:00:00.000Z'
+		)
+		expect(lines[2]).toContain(
+			'Pilot Two,2002,Member,,Unlinked,,,,unknown,Never,2026-04-01T00:00:00.000Z'
+		)
 		expect(lines[0]).not.toContain('Alliance')
 		expect(lines[0]).not.toContain('Location')
 	})
@@ -709,11 +728,16 @@ describe('corporations members access matrix', () => {
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
 			if (binding === env.EVE_TOKEN_STORE) {
 				return makeTokenStoreStub({
-					resolveIds: vi.fn().mockImplementation(async (ids: string[]) =>
-						Object.fromEntries(
-							ids.map((id) => [id, id === '2001' ? 'Pilot One' : id === '2002' ? 'Pilot Two' : id])
-						)
-					),
+					resolveIds: vi
+						.fn()
+						.mockImplementation(async (ids: string[]) =>
+							Object.fromEntries(
+								ids.map((id) => [
+									id,
+									id === '2001' ? 'Pilot One' : id === '2002' ? 'Pilot Two' : id,
+								])
+							)
+						),
 					validateToken: vi.fn().mockImplementation(async (characterId: string) => ({
 						characterId,
 						isValid: characterId !== '2002',
@@ -797,22 +821,24 @@ describe('corporations members access matrix', () => {
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
 			if (binding === env.EVE_TOKEN_STORE) {
 				return makeTokenStoreStub({
-					resolveIds: vi.fn().mockImplementation(async (ids: string[]) =>
-						Object.fromEntries(
-							ids.map((id) => [
-								id,
-								id === '2001'
-									? 'Alpha One'
-									: id === '2002'
-										? 'Alpha Two'
-										: id === '2003'
-											? 'Beta Three'
-											: id === '2004'
-												? 'Beta Four'
-												: `Character ${id}`,
-							])
-						)
-					),
+					resolveIds: vi
+						.fn()
+						.mockImplementation(async (ids: string[]) =>
+							Object.fromEntries(
+								ids.map((id) => [
+									id,
+									id === '2001'
+										? 'Alpha One'
+										: id === '2002'
+											? 'Alpha Two'
+											: id === '2003'
+												? 'Beta Three'
+												: id === '2004'
+													? 'Beta Four'
+													: `Character ${id}`,
+								])
+							)
+						),
 				}) as any
 			}
 			throw new Error('Unexpected binding')
@@ -1123,7 +1149,9 @@ describe('corporations members access matrix', () => {
 			corporationId: '1001',
 			characterName: 'Director Pilot',
 		})
-		corpStub.getDirectors.mockResolvedValue([{ characterId: '1001', characterName: 'Director Pilot' }])
+		corpStub.getDirectors.mockResolvedValue([
+			{ characterId: '1001', characterName: 'Director Pilot' },
+		])
 
 		const res = await app.request('/api/corporations/1001/members/refresh', { method: 'POST' }, env)
 

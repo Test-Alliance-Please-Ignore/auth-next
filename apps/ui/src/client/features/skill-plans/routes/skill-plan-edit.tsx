@@ -1,6 +1,6 @@
 import { ArrowLeft, Plus, Save, Trash2, Upload } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams } from 'react-router'
 
 import { EvemonXmlImporter } from '../../../components/evemon-xml-importer'
 import { Button } from '../../../components/ui/button'

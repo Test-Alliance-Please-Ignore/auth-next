@@ -1,7 +1,7 @@
 import { AlertTriangle } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router'
 
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Card, CardContent } from '@/components/ui/card'

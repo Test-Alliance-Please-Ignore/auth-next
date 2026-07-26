@@ -11,7 +11,7 @@ import {
 	Snowflake,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type UIEvent } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router'
 
 import {
 	hasAllStructureManagerPermission,

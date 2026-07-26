@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { useQuery } from '@tanstack/react-query'
-import { Navigate, useSearchParams } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'

@@ -1,5 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router'
 
 import { UserGroupMembershipsTable } from '@/components/user-group-memberships-table'
 import { Button } from '@/components/ui/button'

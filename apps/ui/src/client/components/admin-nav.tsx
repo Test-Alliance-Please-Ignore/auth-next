@@ -23,7 +23,7 @@ import {
 	Waypoints,
 } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router'
 
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'

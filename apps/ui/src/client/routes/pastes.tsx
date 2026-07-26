@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Copy, Pencil, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router'
 
 import { Container } from '@/components/ui/container'
 import { Button } from '@/components/ui/button'

@@ -1,6 +1,6 @@
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
 import { AlertCircle } from 'lucide-react'
 
 import { LoadingSpinner } from '@/components/ui/loading'

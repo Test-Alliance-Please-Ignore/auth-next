@@ -1,6 +1,6 @@
 import { Calendar, Clock, Pause, Play, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router'
 
 import { BillEntityPicker } from '@/components/bills/bill-entity-picker'
 import { Badge } from '@/components/ui/badge'

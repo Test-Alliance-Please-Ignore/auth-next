@@ -12,7 +12,7 @@ import {
 	Users,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router'
 
 import { FittingPanel } from '@repo/eve-fitting/fitting-panel'
 import { FittingSlotTable } from '@repo/eve-fitting/fitting-slot-table'
