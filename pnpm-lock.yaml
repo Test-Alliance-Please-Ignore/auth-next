@@ -3773,6 +3773,9 @@ importers:
       smol-toml:
         specifier: 1.7.0
         version: 1.7.0
+      syncpack:
+        specifier: 15.3.2
+        version: 15.3.2
       ts-pattern:
         specifier: 5.9.0
         version: 5.9.0

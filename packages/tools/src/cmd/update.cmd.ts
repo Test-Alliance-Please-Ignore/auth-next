@@ -16,7 +16,7 @@ updateCmd
 	.command('deps')
 	.description('Update dependencies via syncpack')
 	.action(async () => {
-		await $`syncpack update`
+		await $`pnpm --filter @repo/tools exec syncpack update`
 
 		// Run fix if there are any changes
 		const status = await $({

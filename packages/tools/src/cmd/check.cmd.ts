@@ -48,7 +48,7 @@ export const checkCmd = new Command('check')
 		}
 
 		const checks = {
-			deps: ['syncpack', 'lint'],
+			deps: ['pnpm', '--filter', '@repo/tools', 'exec', 'syncpack', 'lint'],
 			// eslint can be run from anywhere and it'll automatically only lint the current dir and children
 			lint: ['run-eslint'],
 			types: ['turbo', turboFlags, 'check:types'].flat(),
