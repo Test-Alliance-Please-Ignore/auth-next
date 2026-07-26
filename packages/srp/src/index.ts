@@ -139,6 +139,7 @@ export interface Srp {
 		notes?: string
 	): Promise<SRPRequestResponse>
 	getRequest(requestId: string, userId: string): Promise<SRPRequestResponse | null>
+	getRequestEligibilityData(requestId: string): Promise<SrpRequestEligibilityData | null>
 	getPublicRequestSummary(requestId: string): Promise<SRPPublicRequestSummaryResponse | null>
 	getUserRequests(
 		userId: string,
@@ -495,6 +496,8 @@ export const UpdateSRPConfigSchema = z.object({
 	maxLossAgeDays: z.number().int().positive().max(MAX_SRP_LOSS_AGE_DAYS).optional(),
 	paymentProcessorCorporationId: z.string().nullable().optional(),
 	srpGroupId: z.string().nullable().optional(),
+	srpDiscordGuildId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
+	srpDiscordChannelId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
 	metadata: z.record(z.string(), z.unknown()).optional(),
 	predefinedAdhocModifiers: z.array(PredefinedAdhocModifierSchema).optional(),
 })
@@ -667,12 +670,21 @@ export interface SRPConfigResponse {
 	maxLossAgeDays: number
 	paymentProcessorCorporationId?: string
 	srpGroupId?: string
+	srpDiscordGuildId?: string
+	srpDiscordChannelId?: string
 	metadata?: Record<string, unknown>
 	predefinedAdhocModifiers?: SRPPredefinedAdhocModifier[]
 	createdBy: string
 	effectiveFrom: string
 	effectiveTo?: string
 	createdAt: string
+}
+
+export interface SrpRequestEligibilityData {
+	requestId: string
+	victimCharacterId: string
+	victimCharacterName: string
+	lossDate: string
 }
 
 export interface SRPPaymentMismatchAlert {

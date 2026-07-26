@@ -56,6 +56,7 @@ export const srpKeys = {
 
 	// Config
 	config: () => [...srpKeys.all, 'config'] as const,
+	discordGuilds: () => [...srpKeys.config(), 'discord-guilds'] as const,
 
 	// Policies
 	policies: () => [...srpKeys.all, 'policies'] as const,

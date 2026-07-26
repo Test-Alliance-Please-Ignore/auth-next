@@ -9,7 +9,6 @@ import type {
 	RecentLossRefreshStatusRecord,
 	RecentLossRefreshStatusResponse,
 } from '@repo/srp'
-import type { SrpRecentLossRefreshWorkflowParams } from './workflows/recent-loss-refresh.workflow'
 import type { Env } from './context'
 
 export class RecentLossRefreshCoordinatorDO extends DurableObject<Env> implements RecentLossRefreshCoordinator {

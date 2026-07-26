@@ -40,7 +40,6 @@ import {
 	DEFAULT_POD_SLOT_CAPACITIES,
 	parseShipSlotCapacitiesFromDogmaAttributes,
 } from './lib/ship-slot-capacities'
-import { isEquippedSlot } from './lib/slot-flags'
 import { formatSrpRequest } from './lib/format-request'
 
 import type { srpRequests as srpRequestsTable } from './db/schema'
@@ -49,7 +48,6 @@ type KillmailDataJson = NonNullable<typeof srpRequestsTable.$inferInsert.killmai
 
 import type {
 	CharacterKillmailData,
-	CharacterKillmailUpsertData,
 	CharacterLossData,
 	CharacterLossItemData,
 	EveCharacterData,
@@ -58,18 +56,16 @@ import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { LatestMarketPrice, Markets } from '@repo/markets'
 import type {
-	AppliedModifier,
 	CreateSRPPolicy,
 	RecentLossRefreshCharacterFailure,
 	RecentLossRefreshCharacterInput,
-	RecentLossCacheBackfillResult,
 	RecentLossRefreshCharacterResult,
 	RecentLossesResponse,
-	LossWithSRPStatus,
 	RequestStatus,
 	Srp,
 	SRPCommentResponse,
 	SRPConfigResponse,
+	SrpRequestEligibilityData,
 	SRPPaymentMismatchAlert,
 	SRPPolicy,
 	SRPPolicyConfig,
@@ -438,7 +434,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 					item_type_id?: number | string
 					type_id?: number | string
 					typeId?: number | string
-					items?: Array<any>
+					items?: any[]
 			  }>)
 			: []
 		if (itemPrices.length === 0 && killmailItems.length === 0) return
@@ -587,7 +583,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			flag?: number
 			quantity_destroyed?: number
 			quantity_dropped?: number
-			items?: Array<any>
+			items?: any[]
 		}>,
 		inheritedFlag?: number
 	): Array<{
@@ -632,12 +628,12 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	private collectVictimItemTypeIds(
 		items: Array<{
 			item_type_id?: number | string
-			items?: Array<any>
+			items?: any[]
 		}>
 	): string[] {
 		const typeIds = new Set<string>()
 
-		const walk = (rows: Array<{ item_type_id?: number | string; items?: Array<any> }>) => {
+		const walk = (rows: Array<{ item_type_id?: number | string; items?: any[] }>) => {
 			for (const row of rows) {
 				if (row.item_type_id != null) {
 					typeIds.add(String(row.item_type_id))
@@ -839,7 +835,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			item_type_id?: number | string
 			type_id?: number | string
 			typeId?: number | string
-			items?: Array<any>
+			items?: any[]
 		}>)
 		const [typeMap, systemMap] = await Promise.all([
 			universeStub
@@ -860,7 +856,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				item_type_id?: number | string
 				type_id?: number | string
 				typeId?: number | string
-				items?: Array<any>
+				items?: any[]
 			}>,
 			typeMap as Record<string, { typeName?: string | null; groupId?: string | null }>
 		)
@@ -1052,6 +1048,25 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 
 		return await this.formatRequestWithShipSlotCapacities(request)
+	}
+
+	async getRequestEligibilityData(requestId: string): Promise<SrpRequestEligibilityData | null> {
+		const request = await this.db.query.srpRequests.findFirst({
+			where: eq(srpRequests.id, requestId.trim()),
+			columns: {
+				id: true,
+				characterId: true,
+				characterName: true,
+				lossDate: true,
+			},
+		})
+		if (!request) return null
+		return {
+			requestId: request.id,
+			victimCharacterId: request.characterId,
+			victimCharacterName: request.characterName,
+			lossDate: request.lossDate.toISOString(),
+		}
 	}
 
 	/**
@@ -1802,6 +1817,14 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			typeof metadata.srpGroupId === 'string' && metadata.srpGroupId.trim().length > 0
 				? metadata.srpGroupId.trim()
 				: undefined
+		const srpDiscordGuildId =
+			typeof metadata.srpDiscordGuildId === 'string' && metadata.srpDiscordGuildId.trim().length > 0
+				? metadata.srpDiscordGuildId.trim()
+				: undefined
+		const srpDiscordChannelId =
+			typeof metadata.srpDiscordChannelId === 'string' && metadata.srpDiscordChannelId.trim().length > 0
+				? metadata.srpDiscordChannelId.trim()
+				: undefined
 
 		return {
 			id: config.id,
@@ -1811,6 +1834,8 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			maxLossAgeDays: Math.min(config.maxLossAgeDays, MAX_SRP_LOSS_AGE_DAYS),
 			paymentProcessorCorporationId,
 			srpGroupId,
+			srpDiscordGuildId,
+			srpDiscordChannelId,
 			metadata,
 			predefinedAdhocModifiers,
 			createdBy: config.createdBy,
@@ -1857,6 +1882,20 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				mergedMetadata.srpGroupId = updates.srpGroupId.trim()
 			} else {
 				delete mergedMetadata.srpGroupId
+			}
+		}
+		if (updates.srpDiscordGuildId !== undefined) {
+			if (updates.srpDiscordGuildId && updates.srpDiscordGuildId.trim()) {
+				mergedMetadata.srpDiscordGuildId = updates.srpDiscordGuildId.trim()
+			} else {
+				delete mergedMetadata.srpDiscordGuildId
+			}
+		}
+		if (updates.srpDiscordChannelId !== undefined) {
+			if (updates.srpDiscordChannelId && updates.srpDiscordChannelId.trim()) {
+				mergedMetadata.srpDiscordChannelId = updates.srpDiscordChannelId.trim()
+			} else {
+				delete mergedMetadata.srpDiscordChannelId
 			}
 		}
 

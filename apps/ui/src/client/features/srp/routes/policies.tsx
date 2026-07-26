@@ -22,6 +22,7 @@ import {
 	useCreatePolicy,
 	useDeletePolicy,
 	useSRPConfig,
+	useSRPDiscordGuilds,
 	useSRPPolicies,
 	useUpdatePolicy,
 	useUpdateSRPConfig,
@@ -122,10 +123,13 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 	const [maxLossAgeDays, setMaxLossAgeDays] = useState('30')
 	const [paymentProcessorCorporationId, setPaymentProcessorCorporationId] = useState('')
 	const [srpGroupId, setSrpGroupId] = useState('')
+	const [srpDiscordGuildId, setSrpDiscordGuildId] = useState('')
+	const [srpDiscordChannelId, setSrpDiscordChannelId] = useState('')
 	const [paymentProcessorCorporationOptions, setPaymentProcessorCorporationOptions] = useState<
 		SelectOption[]
 	>([])
 	const [srpGroupOptions, setSrpGroupOptions] = useState<SelectOption[]>([])
+	const { data: discordServers = [] } = useSRPDiscordGuilds()
 
 	useEffect(() => {
 		if (!config) return
@@ -134,6 +138,8 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 		setMaxLossAgeDays(String(config.maxLossAgeDays))
 		setPaymentProcessorCorporationId(config.paymentProcessorCorporationId ?? '')
 		setSrpGroupId(config.srpGroupId ?? '')
+		setSrpDiscordGuildId(config.srpDiscordGuildId ?? '')
+		setSrpDiscordChannelId(config.srpDiscordChannelId ?? '')
 	}, [config])
 
 	useEffect(() => {
@@ -211,13 +217,15 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 		try {
 			await updateConfigMutation.mutateAsync({
 				defaultCoverageRate: String((Number.parseFloat(defaultCoverageRatePercent) || 0) / 100),
-				maxPayoutAmount: maxPayoutAmount.trim() ? maxPayoutAmount.trim() : null,
+					maxPayoutAmount: maxPayoutAmount.trim() ? maxPayoutAmount.trim() : null,
 				maxLossAgeDays: Math.max(1, Number.parseInt(maxLossAgeDays, 10) || 30),
 				paymentProcessorCorporationId: paymentProcessorCorporationId.trim()
-					? paymentProcessorCorporationId.trim()
-					: null,
-				srpGroupId: srpGroupId.trim() ? srpGroupId.trim() : null,
-			} as any)
+						? paymentProcessorCorporationId.trim()
+						: null,
+					srpGroupId: srpGroupId.trim() ? srpGroupId.trim() : null,
+					srpDiscordGuildId: srpDiscordGuildId.trim() ? srpDiscordGuildId.trim() : null,
+					srpDiscordChannelId: srpDiscordChannelId.trim() ? srpDiscordChannelId.trim() : null,
+			})
 			toast.success('SRP configuration saved')
 		} catch (error: any) {
 			toast.error('Failed to save SRP configuration', { description: error.message })
@@ -298,6 +306,35 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 								)
 							}
 						/>
+					</div>
+					<div>
+						<Label htmlFor="srpDiscordGuildId">SRP Discord Guild</Label>
+						<Select
+							inputId="srpDiscordGuildId"
+							value={srpDiscordGuildId}
+							onValueChange={(next) => {
+								setSrpDiscordGuildId(next)
+								if (next !== srpDiscordGuildId) setSrpDiscordChannelId('')
+							}}
+							options={discordServers.map((server) => ({
+								value: server.guildId,
+								label: `${server.guildName} (${server.guildId})`,
+							}))}
+							placeholder="Select a Discord guild..."
+						/>
+					</div>
+					<div>
+						<Label htmlFor="srpDiscordChannelId">SRP Discord Channel ID</Label>
+						<Input
+							id="srpDiscordChannelId"
+							value={srpDiscordChannelId}
+							onChange={(event) => setSrpDiscordChannelId(event.target.value)}
+							placeholder="Discord channel ID"
+							inputMode="numeric"
+						/>
+						<p className="mt-1 text-xs text-muted-foreground">
+							/srpfleet results are only shown when invoked from this channel.
+						</p>
 					</div>
 					<div className="sm:col-span-2">
 						<Label htmlFor="srpGroupId">SRP Group</Label>

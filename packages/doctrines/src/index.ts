@@ -313,6 +313,7 @@ export interface Doctrines {
 	createDoctrine(data: CreateDoctrineRequest & { updatedBy?: string }): Promise<Doctrine>
 	getDoctrines(filters: ListDoctrinesFilters): Promise<Doctrine[]>
 	getDoctrine(id: string): Promise<DoctrineWithFittings | null>
+	getDoctrineName(id: string): Promise<string | null>
 	updateDoctrine(
 		id: string,
 		data: UpdateDoctrineRequest & { updatedBy?: string }

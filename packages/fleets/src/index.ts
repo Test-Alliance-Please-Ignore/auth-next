@@ -253,6 +253,10 @@ export interface Fleets extends DurableObject {
 	 * written yet (only present after the session has ended).
 	 */
 	getSessionSummary(sessionId: string): Promise<SessionSummary | null>
+	/** Return the minimal fleet/session projection needed by the SRP Discord command. */
+	getSrpFleetSessionDetails(sessionId: string): Promise<SrpFleetSessionDetails | null>
+	/** Check whether a character was in the tracked session at a specific time. */
+	wasSessionMemberAt(sessionId: string, characterId: string, occurredAt: string): Promise<boolean>
 
 	/**
 	 * Get the current member roster for an active session, derived from open
@@ -543,6 +547,18 @@ export interface SessionSummary {
 	durationMinutes: number | null
 	peakMemberCount: number
 	finalMemberCount: number
+	motd: string | null
+}
+
+export interface SrpFleetSessionDetails {
+	sessionId: string
+	sessionName: string
+	fleetId: string | null
+	status: TrackingSessionStatus
+	startedAt: string
+	endedAt: string | null
+	commanderCharacterIds: string[]
+	commanderCharacterNames: Record<string, string>
 	motd: string | null
 }
 

@@ -18,8 +18,7 @@ import { buildCsvLine, createR2MultipartTextWriter, parseDateOrNull } from '@rep
 import { createWorkflow } from '@repo/workflow-utils'
 
 import { createDb } from '../db'
-import { managedCorporations, userCharacters } from '../db/schema'
-import { waitUntilWithTelemetry } from '../lib/background-task'
+import { discordServers, managedCorporations, userCharacters } from '../db/schema'
 import { isExportArtifactExpired } from '../lib/export-retention'
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { normalizeWorkflowStatus } from '../lib/workflow-status'
@@ -2831,6 +2830,24 @@ srp.get('/config', async (c) => {
 	}
 
 	return c.json(config)
+})
+
+/**
+ * Get active Discord guilds available for SRP output configuration.
+ * GET /api/srp/config/discord-guilds
+ */
+srp.get('/config/discord-guilds', async (c) => {
+	const user = c.get('user')!
+	const canManage = await hasSrpTierPermission(c.env, user.id, 'manager', user.is_admin)
+	if (!canManage) return c.json({ error: 'Requires manager-or-higher permissions' }, 403)
+
+	const db = createDb(c.env.DATABASE_URL)
+	const rows = await db
+		.select({ id: discordServers.id, guildId: discordServers.guildId, guildName: discordServers.guildName })
+		.from(discordServers)
+		.where(eq(discordServers.isActive, true))
+		.orderBy(asc(discordServers.guildName))
+	return c.json(rows)
 })
 
 /**

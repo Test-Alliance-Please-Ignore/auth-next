@@ -9,63 +9,34 @@ import {
 	gt,
 	gte,
 	inArray,
-	isNull,
 	isNotNull,
+	isNull,
 	lt,
 	lte,
 	or,
 	sql,
 } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { assertEveCharacterId, createEveCharacterId } from '@repo/eve-types'
 import { buildEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
+import { createEveCharacterId } from '@repo/eve-types'
 import {
-	EsiGetCharacterFleetInformation,
 	esiGetCharacterFleetInformationSchema,
-	EsiGetFleetInformation,
 	esiGetFleetInformationSchema,
-	EsiGetFleetMembers,
 	esiGetFleetMembersSchema,
-	FleetDetailsResponse,
-	FleetInformation,
-	FleetJoinResult,
-	Fleets,
-	KickTrackingSessionMemberResult,
-	QuickJoinCreationResult,
-	QuickJoinInvitation,
-	QuickJoinValidationResult,
-	CharacterRecentSessionRow,
-	CharacterStatsResult,
-	CorpRollupRow,
-	SessionCurrentMemberRow,
-	SessionLiveMemberLocation,
-	SessionLiveSnapshotResult,
-	SessionMemberShipHistoryRow,
-	SessionRosterRow,
-	SessionSummary,
-	SessionCommanderEvent,
-	SessionTimelineResult,
-	SessionTimelineRow,
 	StartTrackingSessionError,
-	StartTrackingSessionResult,
-	StatsOverviewResult,
-	StatsRange,
-	TrackingSession,
-	TrackingSessionListFilter,
-	TrackingSessionListResult,
 } from '@repo/fleets'
 import { logger } from '@repo/hono-helpers'
+import { parseDateOrNull } from '@repo/worker-utils'
 
-import { Env } from './context'
 import {
-	fleetInvitations,
 	fleetCommanderAccessAnchors,
 	fleetCommanderEvents,
+	fleetInvitations,
 	fleetMemberHistory,
-	fleetMemberships,
 	fleetMemberShipEvents,
-	fleetTrackingSessionEvents,
+	fleetMemberships,
 	fleetSummaries,
+	fleetTrackingSessionEvents,
 	fleetTrackingSessions,
 	schema,
 } from './db/schema'
@@ -73,8 +44,41 @@ import {
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { EveCharacterId } from '@repo/eve-types'
-import type { FleetMonitor } from '@repo/fleets'
+import type {
+	CharacterRecentSessionRow,
+	CharacterStatsResult,
+	CorpRollupRow,
+	EsiGetCharacterFleetInformation,
+	EsiGetFleetInformation,
+	EsiGetFleetMembers,
+	FleetDetailsResponse,
+	FleetInformation,
+	FleetJoinResult,
+	FleetMonitor,
+	FleetMonitorState,
+	Fleets,
+	KickTrackingSessionMemberResult,
+	QuickJoinCreationResult,
+	QuickJoinValidationResult,
+	SessionCommanderEvent,
+	SessionCurrentMemberRow,
+	SessionLiveMemberLocation,
+	SessionLiveSnapshotResult,
+	SessionMemberShipHistoryRow,
+	SessionRosterRow,
+	SessionSummary,
+	SessionTimelineResult,
+	SessionTimelineRow,
+	SrpFleetSessionDetails,
+	StartTrackingSessionResult,
+	StatsOverviewResult,
+	StatsRange,
+	TrackingSession,
+	TrackingSessionListFilter,
+	TrackingSessionListResult,
+} from '@repo/fleets'
 import type { Universe } from '@repo/universe'
+import type { Env } from './context'
 
 const LIVE_FLEET_ESI_OPTIONS = { cacheMode: 'no-store' } as const
 
@@ -91,10 +95,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 	private db: ReturnType<typeof createDbClient<typeof schema>>
 	private readonly esiRateLimits: EsiRateLimitGuard
 
-	private formatFleetKickError(
-		response: Pick<Response, 'status'>,
-		details = ''
-	): string {
+	private formatFleetKickError(response: Pick<Response, 'status'>, details = ''): string {
 		let parsedDetails = details
 		if (parsedDetails) {
 			try {
@@ -171,7 +172,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 	private async getMonitorStateForFleet(
 		fleetId: string
-	): Promise<import('@repo/fleets').FleetMonitorState | null> {
+	): Promise<FleetMonitorState | null> {
 		try {
 			const monitorStub = getStub<FleetMonitor>(this.env.FLEET_MONITOR, `fleet-${fleetId}`)
 			const state = await monitorStub.getMonitorState()
@@ -188,9 +189,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 	}
 
-	private async getLatestCommanderBySessionIds(
-		sessionIds: string[]
-	): Promise<Map<string, string>> {
+	private async getLatestCommanderBySessionIds(sessionIds: string[]): Promise<Map<string, string>> {
 		if (sessionIds.length === 0) return new Map()
 
 		const rows = await this.db
@@ -212,12 +211,10 @@ export class FleetsDO extends DurableObject implements Fleets {
 		return latestBySession
 	}
 
-	private getEffectiveSessionStatus(
-		session: {
-			status: string
-			endedAt: Date | null
-		},
-	): TrackingSession['status'] {
+	private getEffectiveSessionStatus(session: {
+		status: string
+		endedAt: Date | null
+	}): TrackingSession['status'] {
 		return session.status === 'active' && session.endedAt === null ? 'active' : 'ended'
 	}
 
@@ -323,15 +320,14 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		// Check fleet info to verify boss
-		let fleetData: EsiGetFleetInformation
 		try {
 			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
 				`/fleets/${fleetId}/`,
 				fleetBossId,
 				LIVE_FLEET_ESI_OPTIONS
 			)
-			fleetData = esiGetFleetInformationSchema.parse(fleetResponse.data)
-		} catch (error) {
+			esiGetFleetInformationSchema.parse(fleetResponse.data)
+		} catch {
 			throw new Error('Unable to verify fleet ownership')
 		}
 
@@ -340,18 +336,15 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000)
 
 		// Store in database
-		const [invitation] = await this.db
-			.insert(fleetInvitations)
-			.values({
-				token,
-				fleetBossId,
-				fleetId,
-				expiresAt,
-				maxUses: maxUses || null,
-				usesCount: 0,
-				isActive: true,
-			})
-			.returning()
+		await this.db.insert(fleetInvitations).values({
+			token,
+			fleetBossId,
+			fleetId,
+			expiresAt,
+			maxUses: maxUses || null,
+			usesCount: 0,
+			isActive: true,
+		})
 
 		return {
 			token,
@@ -415,7 +408,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				LIVE_FLEET_ESI_OPTIONS
 			)
 			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
-		} catch (error) {
+		} catch {
 			// Fleet info fetch failed, but invitation is valid
 			fleetInfo = undefined
 		}
@@ -467,17 +460,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
-		let fleetInfo: EsiGetFleetInformation
-		try {
-			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
-				`/fleets/${fleetId}/`,
-				characterId,
-				LIVE_FLEET_ESI_OPTIONS
-			)
-			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
-		} catch (error) {
-			throw error
-		}
+		const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
+			`/fleets/${fleetId}/`,
+			characterId,
+			LIVE_FLEET_ESI_OPTIONS
+		)
+		const fleetInfo: EsiGetFleetInformation = esiGetFleetInformationSchema.parse(fleetResponse.data)
 
 		let members: EsiGetFleetMembers | undefined
 		let memberCount = 0
@@ -615,10 +603,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				'[Fleet Join] First member station_id type:',
 				typeof membersResponse.data[0]?.station_id
 			)
-			logger.log(
-				'[Fleet Join] First member station_id value:',
-				membersResponse.data[0]?.station_id
-			)
+			logger.log('[Fleet Join] First member station_id value:', membersResponse.data[0]?.station_id)
 
 			const members = esiGetFleetMembersSchema.parse(membersResponse.data)
 
@@ -793,7 +778,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				LIVE_FLEET_ESI_OPTIONS
 			)
 			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
-		} catch (error) {
+		} catch {
 			fleetInfo = null
 		}
 
@@ -851,9 +836,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		// 1. Pre-flight ESI
 		let fleetInfo: FleetInformation
 		try {
-			fleetInfo = await this.getCharacterFleetInformation(
-				createEveCharacterId(characterId)
-			)
+			fleetInfo = await this.getCharacterFleetInformation(createEveCharacterId(characterId))
 		} catch (error) {
 			logger.error('[FleetsDO startTrackingSession] ESI pre-flight failed', {
 				characterId,
@@ -926,9 +909,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 					eventType: 'resumed',
 					observedAt: now,
 				})
-				await this.db
-					.delete(fleetSummaries)
-					.where(eq(fleetSummaries.trackingSessionId, sessionId))
+				await this.db.delete(fleetSummaries).where(eq(fleetSummaries.trackingSessionId, sessionId))
 			}
 		} else {
 			if (action === 'new' && mostRecentStatus === 'active') {
@@ -963,10 +944,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 
 		// 4. Spawn the FleetMonitor DO and initialize it
 		try {
-			const fleetMonitorStub = getStub<FleetMonitor>(
-				this.env.FLEET_MONITOR,
-				`fleet-${fleetId}`
-			)
+			const fleetMonitorStub = getStub<FleetMonitor>(this.env.FLEET_MONITOR, `fleet-${fleetId}`)
 			await fleetMonitorStub.initializeMonitoring(fleetId, characterId, sessionId, {
 				force: true,
 				previousFleetBossCharacterId,
@@ -1061,11 +1039,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 	/**
 	 * List tracking sessions, filterable.
 	 */
-	async listTrackingSessions(filter: TrackingSessionListFilter): Promise<TrackingSessionListResult> {
+	async listTrackingSessions(
+		filter: TrackingSessionListFilter
+	): Promise<TrackingSessionListResult> {
 		const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200)
 		const offset = Math.max(filter.offset ?? 0, 0)
-		const fleetBossCharacterIds =
-			filter.fleetBossCharacterIds ?? filter.commanderCharacterIds ?? []
+		const fleetBossCharacterIds = filter.fleetBossCharacterIds ?? filter.commanderCharacterIds ?? []
 
 		const conditions = []
 		const activeSessionCondition = and(
@@ -1129,7 +1108,9 @@ export class FleetsDO extends DurableObject implements Fleets {
 			.from(fleetTrackingSessions)
 			.where(where)
 		const total = totalResult[0]?.count ?? 0
-		const commanderMap = await this.getLatestCommanderBySessionIds(items.map((row) => row.session.id))
+		const commanderMap = await this.getLatestCommanderBySessionIds(
+			items.map((row) => row.session.id)
+		)
 
 		return {
 			items: items.map((row) =>
@@ -1266,7 +1247,10 @@ export class FleetsDO extends DurableObject implements Fleets {
 				snapshot: null,
 			}
 		}
-		if (this.getEffectiveSessionStatus({ status: session.status, endedAt: session.endedAt }) !== 'active') {
+		if (
+			this.getEffectiveSessionStatus({ status: session.status, endedAt: session.endedAt }) !==
+			'active'
+		) {
 			return {
 				state: 'inactive',
 				message: 'This fleet tracking session is no longer active.',
@@ -1385,7 +1369,8 @@ export class FleetsDO extends DurableObject implements Fleets {
 		if (args.characterId) {
 			histConditions.push(eq(fleetMemberHistory.characterId, args.characterId))
 		}
-		const wantHistEvents = !args.eventType || args.eventType === 'join' || args.eventType === 'leave'
+		const wantHistEvents =
+			!args.eventType || args.eventType === 'join' || args.eventType === 'leave'
 		if (args.eventType === 'join' || args.eventType === 'leave') {
 			histConditions.push(eq(fleetMemberHistory.eventType, args.eventType))
 		}
@@ -1504,7 +1489,9 @@ export class FleetsDO extends DurableObject implements Fleets {
 			id: `boss-${row.id}`,
 			characterId: row.commanderCharacterId,
 			eventType:
-				row.eventType === 'initial' ? ('fleet_boss_initial' as const) : ('fleet_boss_change' as const),
+				row.eventType === 'initial'
+					? ('fleet_boss_initial' as const)
+					: ('fleet_boss_change' as const),
 			shipTypeId: 0,
 			shipTypeName: null,
 			previousShipTypeId: null,
@@ -1559,9 +1546,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 			characterName: row.characterName,
 			eventTimestamp: row.eventTimestamp.toISOString(),
 		}))
-		const merged = [...historyItems, ...lifecycleItems, ...bossChangeItems, ...shipChangeItems].sort((a, b) =>
-			b.eventTimestamp.localeCompare(a.eventTimestamp)
-		)
+		const merged = [
+			...historyItems,
+			...lifecycleItems,
+			...bossChangeItems,
+			...shipChangeItems,
+		].sort((a, b) => b.eventTimestamp.localeCompare(a.eventTimestamp))
 		const total = merged.length
 		const items = merged.slice(offset, offset + limit)
 
@@ -1616,9 +1606,9 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}))
 	}
 
-	private async getFleetBossAttributionBySession(range: StatsRange): Promise<
-		Map<string, Map<string, { minutes: number; hasActiveTime: boolean }>>
-	> {
+	private async getFleetBossAttributionBySession(
+		range: StatsRange
+	): Promise<Map<string, Map<string, { minutes: number; hasActiveTime: boolean }>>> {
 		const from = new Date(range.from)
 		const to = new Date(range.to)
 
@@ -1754,11 +1744,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				if (eventTime > windowEnd) break
 
 				if (active && eventTime > windowStart) {
-					addMinutes(
-						sessionMap,
-						currentBossId,
-						eventTime - Math.max(cursor, windowStart)
-					)
+					addMinutes(sessionMap, currentBossId, eventTime - Math.max(cursor, windowStart))
 				}
 
 				cursor = eventTime
@@ -1797,6 +1783,92 @@ export class FleetsDO extends DurableObject implements Fleets {
 			finalMemberCount: row.finalMemberCount,
 			motd: row.motd,
 		}
+	}
+
+	/** Minimal read projection for SRP staff tooling. */
+	async getSrpFleetSessionDetails(sessionId: string): Promise<SrpFleetSessionDetails | null> {
+		const session = await this.getTrackingSession(sessionId)
+		if (!session) return null
+
+		const [commanderEvents, summary, liveSnapshot] = await Promise.all([
+			this.getSessionCommanderHistory(sessionId),
+			session.status === 'ended'
+				? this.getSessionSummary(sessionId).catch(() => null)
+				: Promise.resolve(null),
+			session.status === 'active'
+				? this.getSessionLiveSnapshot(sessionId).catch(() => null)
+				: Promise.resolve(null),
+		])
+
+		const commanderCharacterIds = Array.from(
+			new Set(
+				[
+					session.characterId,
+					...commanderEvents.flatMap((event) => [
+						event.previousCommanderCharacterId,
+						event.commanderCharacterId,
+					]),
+				].filter((id): id is string => Boolean(id))
+			)
+		)
+		let commanderCharacterNames: Record<string, string> = {}
+		try {
+			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+			commanderCharacterNames = await tokenStore.resolveIds(commanderCharacterIds)
+		} catch (error) {
+			logger.warn('[FleetsDO] Failed to resolve SRP commander names', {
+				sessionId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+
+		return {
+			sessionId: session.id,
+			sessionName: session.name,
+			fleetId: session.fleetId,
+			status: session.status,
+			startedAt: session.startedAt,
+			endedAt: session.endedAt,
+			commanderCharacterIds,
+			commanderCharacterNames,
+			motd: summary?.motd ?? liveSnapshot?.snapshot?.motd ?? null,
+		}
+	}
+
+	async wasSessionMemberAt(
+		sessionId: string,
+		characterId: string,
+		occurredAt: string
+	): Promise<boolean> {
+		const occurred = parseDateOrNull(occurredAt)
+		if (!occurred) return false
+
+		const [session] = await this.db
+			.select({
+				fleetId: fleetTrackingSessions.fleetId,
+				startedAt: fleetTrackingSessions.startedAt,
+				endedAt: fleetTrackingSessions.endedAt,
+			})
+			.from(fleetTrackingSessions)
+			.where(eq(fleetTrackingSessions.id, sessionId))
+			.limit(1)
+		if (!session || !session.fleetId) return false
+		if (occurred < session.startedAt || (session.endedAt && occurred > session.endedAt))
+			return false
+
+		const [membership] = await this.db
+			.select({ id: fleetMemberShipEvents.id })
+			.from(fleetMemberShipEvents)
+			.where(
+				and(
+					eq(fleetMemberShipEvents.trackingSessionId, sessionId),
+					eq(fleetMemberShipEvents.characterId, characterId),
+					lte(fleetMemberShipEvents.startedAt, occurred),
+					or(isNull(fleetMemberShipEvents.endedAt), gte(fleetMemberShipEvents.endedAt, occurred))
+				)
+			)
+			.limit(1)
+		return Boolean(membership)
 	}
 
 	/**
@@ -1863,10 +1935,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 
 		try {
-			const monitorStub = getStub<FleetMonitor>(
-				this.env.FLEET_MONITOR,
-				`fleet-${session.fleetId}`
-			)
+			const monitorStub = getStub<FleetMonitor>(this.env.FLEET_MONITOR, `fleet-${session.fleetId}`)
 			const status = await monitorStub.getFleetStatus()
 			if (!status?.members?.length) {
 				return []
@@ -1883,7 +1952,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				stationId: member.station_id ?? null,
 				stationName:
 					member.station_id !== null && member.station_id !== undefined
-						? stationNames[String(member.station_id)] ?? null
+						? (stationNames[String(member.station_id)] ?? null)
 						: null,
 				updatedAt,
 			}))
@@ -1954,7 +2023,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			// For open segments (endedAt null), use session end if session has ended, else now.
 			let totalMs = 0
 			for (const seg of segments) {
-				const segEnd = seg.endedAt ? seg.endedAt.getTime() : sessionEndedMs ?? now.getTime()
+				const segEnd = seg.endedAt ? seg.endedAt.getTime() : (sessionEndedMs ?? now.getTime())
 				const segDur = segEnd - seg.startedAt.getTime()
 				if (segDur > 0) totalMs += segDur
 			}
@@ -2086,8 +2155,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 					method: 'DELETE',
 					accessToken,
 					parse: async () => undefined,
-					buildError: ({ response, body }) =>
-						new Error(this.formatFleetKickError(response, body)),
+					buildError: ({ response, body }) => new Error(this.formatFleetKickError(response, body)),
 				})
 
 				results.push({ characterId: memberCharacterId, success: true })
@@ -2133,9 +2201,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				totalMinutes: sql<number>`coalesce(sum(${fleetSummaries.durationMinutes}), 0)::int`,
 			})
 			.from(fleetSummaries)
-			.where(
-				and(gte(fleetSummaries.startedAt, from), lt(fleetSummaries.startedAt, to))
-			)
+			.where(and(gte(fleetSummaries.startedAt, from), lt(fleetSummaries.startedAt, to)))
 
 		// Active (still running) sessions started in the window — include their
 		// session count but their durations aren't in fleet_summaries yet.
@@ -2161,10 +2227,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			})
 			.from(fleetMemberHistory)
 			.where(
-				and(
-					gte(fleetMemberHistory.eventTimestamp, from),
-					lt(fleetMemberHistory.eventTimestamp, to)
-				)
+				and(gte(fleetMemberHistory.eventTimestamp, from), lt(fleetMemberHistory.eventTimestamp, to))
 			)
 
 		const bossAttributionBySession = await this.getFleetBossAttributionBySession(range)
@@ -2208,7 +2271,11 @@ export class FleetsDO extends DurableObject implements Fleets {
 				)
 			)
 			.groupBy(fleetMemberShipEvents.characterId)
-			.orderBy(desc(sql`sum(extract(epoch from least(coalesce(${fleetMemberShipEvents.endedAt}, ${to.toISOString()}::timestamp), ${to.toISOString()}::timestamp) - greatest(${fleetMemberShipEvents.startedAt}, ${from.toISOString()}::timestamp)))`))
+			.orderBy(
+				desc(
+					sql`sum(extract(epoch from least(coalesce(${fleetMemberShipEvents.endedAt}, ${to.toISOString()}::timestamp), ${to.toISOString()}::timestamp) - greatest(${fleetMemberShipEvents.startedAt}, ${from.toISOString()}::timestamp)))`
+				)
+			)
 			.limit(10)
 
 		// Top ships by total clamped time in window. Includes any ship-event that
@@ -2257,10 +2324,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			})
 			.from(fleetTrackingSessions)
 			.where(
-				and(
-					gte(fleetTrackingSessions.startedAt, from),
-					lt(fleetTrackingSessions.startedAt, to)
-				)
+				and(gte(fleetTrackingSessions.startedAt, from), lt(fleetTrackingSessions.startedAt, to))
 			)
 			.groupBy(sql`to_char(${fleetTrackingSessions.startedAt}, 'YYYY-MM-DD')`)
 			.orderBy(sql`to_char(${fleetTrackingSessions.startedAt}, 'YYYY-MM-DD')`)
@@ -2479,11 +2543,10 @@ export class FleetsDO extends DurableObject implements Fleets {
 		for (const [sessionId, sessionMap] of bossAttributionBySession.entries()) {
 			for (const [bossCharacterId, stats] of sessionMap.entries()) {
 				if (!stats.hasActiveTime) continue
-				const entry =
-					bossAggregates.get(bossCharacterId) ?? {
-						minutesAsFC: 0,
-						sessionIds: new Set<string>(),
-					}
+				const entry = bossAggregates.get(bossCharacterId) ?? {
+					minutesAsFC: 0,
+					sessionIds: new Set<string>(),
+				}
 				entry.minutesAsFC += stats.minutes
 				entry.sessionIds.add(sessionId)
 				bossAggregates.set(bossCharacterId, entry)
@@ -2502,7 +2565,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 		for (const row of recentRows) {
 			const bossMinutes = row.sessionId
-				? bossAttributionBySession.get(row.sessionId)?.get(row.characterId)?.minutes ?? 0
+				? (bossAttributionBySession.get(row.sessionId)?.get(row.characterId)?.minutes ?? 0)
 				: 0
 			const recent: CharacterRecentSessionRow = {
 				sessionId: row.sessionId,
@@ -2564,10 +2627,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 	 * Distinct character IDs that joined a fleet while in the given corporation
 	 * during the window. Used to seed the corp-stats per-character rollup.
 	 */
-	async getCharactersByCorpInWindow(
-		corporationId: string,
-		range: StatsRange
-	): Promise<string[]> {
+	async getCharactersByCorpInWindow(corporationId: string, range: StatsRange): Promise<string[]> {
 		const from = new Date(range.from)
 		const to = new Date(range.to)
 
@@ -2774,8 +2834,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 	 * Fetch handler for HTTP requests to the Durable Object
 	 */
 	async fetch(request: Request): Promise<Response> {
-		const url = new URL(request.url)
-
 		// WebSocket upgrade handling
 		if (request.headers.get('Upgrade') === 'websocket') {
 			const pair = new WebSocketPair()

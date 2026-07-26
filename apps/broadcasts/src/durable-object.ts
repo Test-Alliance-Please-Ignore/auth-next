@@ -37,6 +37,7 @@ import type {
 	BroadcastTarget,
 	BroadcastTemplate,
 	BroadcastWithDetails,
+	SrpFleetBroadcastLookup,
 	CreateBroadcastRequest,
 	CreateBroadcastTargetRequest,
 	CreateBroadcastTemplateRequest,
@@ -101,7 +102,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		}))
 	}
 
-	async getTarget(targetId: string, userId: string): Promise<BroadcastTarget | null> {
+	async getTarget(targetId: string, _userId: string): Promise<BroadcastTarget | null> {
 		const target = await this.db.query.broadcastTargets.findFirst({
 			where: eq(broadcastTargets.id, targetId),
 		})
@@ -182,7 +183,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		}
 	}
 
-	async deleteTarget(targetId: string, userId: string): Promise<void> {
+	async deleteTarget(targetId: string, _userId: string): Promise<void> {
 		await this.db.delete(broadcastTargets).where(eq(broadcastTargets.id, targetId))
 	}
 
@@ -253,7 +254,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			}))
 	}
 
-	async getTemplate(templateId: string, userId: string): Promise<BroadcastTemplate | null> {
+	async getTemplate(templateId: string, _userId: string): Promise<BroadcastTemplate | null> {
 		const template = await this.db.query.broadcastTemplates.findFirst({
 			where: eq(broadcastTemplates.id, templateId),
 		})
@@ -401,7 +402,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		}
 	}
 
-	async deleteTemplate(templateId: string, userId: string): Promise<void> {
+	async deleteTemplate(templateId: string, _userId: string): Promise<void> {
 		const template = await this.db.query.broadcastTemplates.findFirst({
 			where: eq(broadcastTemplates.id, templateId),
 		})
@@ -546,7 +547,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			return { content: args.content, srpMode: null, srpToken: null, doctrineId }
 		}
 
-		let nextContent = { ...args.content }
+		const nextContent = { ...args.content }
 		if (srpMode === 'disabled' || srpMode === 'coalition') {
 			if ('__srpToken' in nextContent) {
 				delete nextContent.__srpToken
@@ -601,7 +602,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			offset?: number
 		}
 	): Promise<BroadcastPage> {
-		let whereConditions = []
+		const whereConditions = []
 
 		if (filters?.permissionId) {
 			whereConditions.push(eq(broadcasts.permissionId, filters.permissionId))
@@ -660,7 +661,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		}
 	}
 
-	async getBroadcast(broadcastId: string, userId: string): Promise<BroadcastWithDetails | null> {
+	async getBroadcast(broadcastId: string, _userId: string): Promise<BroadcastWithDetails | null> {
 		const broadcast = await this.db.query.broadcasts.findFirst({
 			where: eq(broadcasts.id, broadcastId),
 		})
@@ -741,6 +742,39 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		if (!link) return null
 		if (link.srpMode !== 'blanket' && link.srpMode !== 'military') return null
 		return this.getBroadcast(link.broadcastId, userId)
+	}
+
+	async getSrpFleetBroadcastByToken(srpToken: string): Promise<SrpFleetBroadcastLookup | null> {
+		const normalized = srpToken.trim()
+		if (!normalized) return null
+
+		const [row] = await this.db
+			.select({
+				content: broadcasts.content,
+				srpToken: broadcastSessionLinks.srpToken,
+				doctrineId: broadcastSessionLinks.doctrineId,
+				fleetSessionId: broadcastSessionLinks.fleetSessionId,
+			})
+			.from(broadcastSessionLinks)
+			.innerJoin(broadcasts, eq(broadcasts.id, broadcastSessionLinks.broadcastId))
+			.where(
+				and(
+					eq(broadcastSessionLinks.srpToken, normalized),
+					or(
+						eq(broadcastSessionLinks.srpMode, 'blanket'),
+						eq(broadcastSessionLinks.srpMode, 'military')
+					)
+				)
+			)
+			.limit(1)
+
+		if (!row?.srpToken) return null
+		return {
+			content: row.content as Record<string, unknown>,
+			srpToken: row.srpToken,
+			doctrineId: row.doctrineId,
+			fleetSessionId: row.fleetSessionId,
+		}
 	}
 
 	async getBroadcastByFleetSessionId(
@@ -1066,7 +1100,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 	async updateBroadcast(
 		broadcastId: string,
 		data: UpdateBroadcastRequest,
-		userId: string
+		_userId: string
 	): Promise<Broadcast> {
 		const existing = await this.db.query.broadcasts.findFirst({
 			where: eq(broadcasts.id, broadcastId),
@@ -1114,7 +1148,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		}
 	}
 
-	async deleteBroadcast(broadcastId: string, userId: string): Promise<void> {
+	async deleteBroadcast(broadcastId: string, _userId: string): Promise<void> {
 		// Fetch deliveries and target config before deleting so we can clean up Discord
 		const broadcast = await this.db.query.broadcasts.findFirst({
 			where: eq(broadcasts.id, broadcastId),
@@ -1316,7 +1350,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			.where(eq(broadcasts.id, broadcastId))
 	}
 
-	async getDeliveries(broadcastId: string, userId: string): Promise<BroadcastDelivery[]> {
+	async getDeliveries(broadcastId: string, _userId: string): Promise<BroadcastDelivery[]> {
 		const deliveries = await this.db.query.broadcastDeliveries.findMany({
 			where: eq(broadcastDeliveries.broadcastId, broadcastId),
 		})

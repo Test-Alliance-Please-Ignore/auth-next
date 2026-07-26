@@ -259,7 +259,7 @@ export default function CorporationMembers() {
 			a.href = downloadUrl
 
 			const contentDisposition = response.headers.get('content-disposition') ?? ''
-			const match = contentDisposition.match(/filename=\"?([^\";]+)\"?/i)
+			const match = contentDisposition.match(/filename="?([^";]+)"?/i)
 			a.download = match?.[1] ?? `${corpName}-members-${new Date().toISOString().split('T')[0]}.csv`
 			a.click()
 			URL.revokeObjectURL(downloadUrl)
