@@ -126,6 +126,20 @@ export function useStartServicesAuditScan() {
  * finalize step may still overwrite the status. Harmless while the scan only
  * reads.
  */
+export function useAcknowledgeServicesAuditBasis() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({ runId, reason }: { runId: string; reason: string }) =>
+			api.acknowledgeServicesAuditBasis(runId, reason),
+		onSuccess: (_data, { runId }) => {
+			// Both: acking changes the baseline every FUTURE run is judged against, so
+			// the list's suspect markers can change too, not just this run.
+			void queryClient.invalidateQueries({ queryKey: servicesAuditKeys.runs() })
+			void queryClient.invalidateQueries({ queryKey: servicesAuditKeys.run(runId) })
+		},
+	})
+}
+
 export function useCancelServicesAuditScan() {
 	const queryClient = useQueryClient()
 	return useMutation({

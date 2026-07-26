@@ -347,3 +347,95 @@ describe('the enforcement surface does not exist yet', () => {
 		expect(createWorkflowMock).not.toHaveBeenCalled()
 	})
 })
+
+/**
+ * THE ACKNOWLEDGEMENT.
+ *
+ * This is the only thing that can lower the guard's bar, so its failure modes are
+ * the guard's failure modes. It exists because a count cannot tell "an operator
+ * de-flagged 13 corps" from "the table is half-restored" — only a human reading
+ * WHICH corps left can — and because a basis poisoned upward by a bad migration
+ * has no other way out.
+ */
+describe('POST /runs/:id/acknowledge-basis', () => {
+	/** A db whose conditional ack UPDATE matches `matched` rows. */
+	function makeAckDb(matched: number) {
+		const captured: { where?: unknown; set?: Record<string, unknown> } = {}
+		return {
+			captured,
+			db: {
+				update: vi.fn(() => ({
+					set: (values: Record<string, unknown>) => {
+						captured.set = values
+						return {
+							where: (clause: unknown) => {
+								captured.where = clause
+								return {
+									returning: async () =>
+										Array.from({ length: matched }, () => ({
+											id: RUN_ID,
+											memberCorpCount: 37,
+										})),
+								}
+							},
+						}
+					},
+				})),
+			},
+		}
+	}
+
+	function ack(db: unknown, body: unknown) {
+		return createApp(db).request(
+			`/api/services-audit/runs/${RUN_ID}/acknowledge-basis`,
+			{
+				method: 'POST',
+				body: JSON.stringify(body),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+	}
+
+	it('records who vouched, when, and why', async () => {
+		const { db, captured } = makeAckDb(1)
+		const res = await ack(db, { reason: 'We de-flagged the 13 corps that left last night.' })
+
+		expect(res.status).toBe(200)
+		expect(captured.set?.basisAcknowledgedByUserId).toBe('admin-1')
+		expect(captured.set?.basisAcknowledgedAt).toBeInstanceOf(Date)
+		expect(captured.set?.basisAcknowledgedReason).toContain('13 corps')
+	})
+
+	it('requires a reason of substance', async () => {
+		// "ok" is not a judgement anyone can audit later.
+		const { db } = makeAckDb(1)
+		expect((await ack(db, { reason: 'ok' })).status).toBe(400)
+		expect((await ack(db, {})).status).toBe(400)
+		// And it must not have written anything.
+		expect(db.update).not.toHaveBeenCalled()
+	})
+
+	it('404s when the conditional UPDATE matches nothing', async () => {
+		// Covers all three: unknown id, already acknowledged, and a blocked/failed
+		// run — whose basis is by definition the broken one and must never be
+		// vouchable. The condition lives in SQL, so two admins racing resolve in
+		// Postgres rather than in JS.
+		const { db } = makeAckDb(0)
+		const res = await ack(db, { reason: 'This basis looks correct to me, honest.' })
+		expect(res.status).toBe(404)
+	})
+
+	it('is idempotent by construction: a second ack matches no rows', async () => {
+		const { db } = makeAckDb(0)
+		const res = await ack(db, { reason: 'Confirming again, should not double-apply.' })
+		expect(res.status).toBe(404)
+	})
+
+	it('never touches a Mumble or Discord stub', async () => {
+		const { db } = makeAckDb(1)
+		await ack(db, { reason: 'Confirming the basis after a corp restructure.' })
+		expect(getStubMock).not.toHaveBeenCalled()
+		expect(getDiscordStubMock).not.toHaveBeenCalled()
+	})
+})

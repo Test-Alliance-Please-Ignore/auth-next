@@ -1493,6 +1493,31 @@ export const serviceAccessAuditRuns = pgTable(
 		basisRemovedCorporationIds: text('basis_removed_corporation_ids').array(),
 		/** Operator-facing explanation of the diff; null unless basisSuspect. */
 		basisNote: text('basis_note'),
+		/**
+		 * A human has confirmed THIS RUN'S BASIS IS CORRECT.
+		 *
+		 * This is the anchor the guard is built on, and the only thing that can
+		 * lower the bar. An acknowledged run becomes the new floor: later runs are
+		 * compared against the highest basis seen since it, not against history
+		 * before it.
+		 *
+		 * It exists because a count alone cannot distinguish "an operator de-flagged
+		 * 13 corps" from "the table is half-restored" — only a human looking at
+		 * WHICH corps left can. Acking records that judgement so the guard stops
+		 * re-asking, without ever silently forgetting it on a timer.
+		 *
+		 * ENFORCEMENT MUST REFUSE to act on a run whose basisSuspect is true and
+		 * whose basisAcknowledgedAt is null. That is the real circuit breaker.
+		 */
+		basisAcknowledgedAt: timestamp('basis_acknowledged_at', { withTimezone: true }),
+		/** Who vouched for it. 'set null' so deleting the admin does not erase the
+		 * fact that the basis was confirmed. */
+		basisAcknowledgedByUserId: uuid('basis_acknowledged_by_user_id').references(() => users.id, {
+			onDelete: 'set null',
+		}),
+		/** Why they believed it. Required at ack time — "13 corps left" is only
+		 * safe if someone can say which, and why that was expected. */
+		basisAcknowledgedReason: text('basis_acknowledged_reason'),
 		/** Every user row walked, including eligible ones. */
 		scanned: integer('scanned').notNull().default(0),
 		/** Users holding a Mumble account or a Discord link — reported alongside
@@ -1519,6 +1544,13 @@ export const serviceAccessAuditRuns = pgTable(
 	(table) => [
 		index('service_access_audit_runs_status_started_idx').on(table.status, table.startedAt),
 		index('service_access_audit_runs_expires_at_idx').on(table.expiresAt),
+		// The baseline query: find the most recently acknowledged run, then the
+		// highest basis since it. Both are ORDER BY ... DESC LIMIT 1 reads.
+		index('service_access_audit_runs_basis_acknowledged_at_idx').on(table.basisAcknowledgedAt),
+		index('service_access_audit_runs_member_corp_count_idx').on(
+			table.startedAt,
+			table.memberCorpCount
+		),
 		unique('service_access_audit_runs_active_lock_unique').on(table.activeLock),
 	]
 )
@@ -1637,6 +1669,11 @@ export const serviceAccessAuditRunsRelations = relations(
 			fields: [serviceAccessAuditRuns.enforcedByUserId],
 			references: [users.id],
 			relationName: 'serviceAccessAuditRunEnforcedBy',
+		}),
+		basisAcknowledgedByUser: one(users, {
+			fields: [serviceAccessAuditRuns.basisAcknowledgedByUserId],
+			references: [users.id],
+			relationName: 'serviceAccessAuditRunBasisAcknowledgedBy',
 		}),
 		rows: many(serviceAccessAuditRows),
 	})

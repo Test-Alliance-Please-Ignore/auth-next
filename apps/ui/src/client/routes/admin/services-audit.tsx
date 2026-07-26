@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { LoadingInline, LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
@@ -14,6 +15,7 @@ import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import {
 	isTerminalRunStatus,
+	useAcknowledgeServicesAuditBasis,
 	useCancelServicesAuditScan,
 	useServicesAuditRun,
 	useServicesAuditRunRows,
@@ -259,16 +261,32 @@ function BasisSuspectBanner({
 	corporationNames: Record<string, string>
 }) {
 	const removed = run.basisRemovedCorporationIds ?? []
+	const acknowledge = useAcknowledgeServicesAuditBasis()
+	const [reason, setReason] = useState('')
+	const acknowledged = run.basisAcknowledgedAt !== null
+
 	return (
-		<Card className="border-amber-500 bg-amber-500/10">
+		<Card
+			className={
+				acknowledged ? 'border-border' : 'border-amber-500 bg-amber-500/10'
+			}
+		>
 			<CardHeader>
-				<CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+				<CardTitle
+					className={
+						acknowledged
+							? 'flex items-center gap-2'
+							: 'flex items-center gap-2 text-amber-700 dark:text-amber-400'
+					}
+				>
 					<ShieldAlert className="h-5 w-5" />
-					The member-corporation basis shrank — check this before trusting the numbers below
+					{acknowledged
+						? 'The basis shrank, and an administrator confirmed it is correct'
+						: 'The member-corporation basis shrank — check this before trusting the numbers below'}
 				</CardTitle>
 				<CardDescription>
 					{run.memberCorpCount} member corporation{run.memberCorpCount === 1 ? '' : 's'} now, versus
-					a high of {run.basisComparedToCount} in the last 30 days.
+					a high of {run.basisComparedToCount} since the last confirmed basis.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-3">
@@ -292,6 +310,58 @@ function BasisSuspectBanner({
 							them? <code>managed_corporations</code> may be half-restored or mid-sync, and the
 							counts below are not trustworthy.
 						</p>
+					</div>
+				)}
+
+				{acknowledged ? (
+					<div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
+						<p className="font-medium">
+							Basis confirmed {formatTimestamp(run.basisAcknowledgedAt)}
+						</p>
+						{run.basisAcknowledgedReason && (
+							<p className="mt-1 text-muted-foreground whitespace-pre-wrap">
+								“{run.basisAcknowledgedReason}”
+							</p>
+						)}
+						<p className="mt-2 text-xs text-muted-foreground">
+							Later scans are now compared against this basis rather than against the higher
+							figure above.
+						</p>
+					</div>
+				) : (
+					/*
+					 * Confirming is the ONLY thing that lowers the guard's bar, so it is
+					 * deliberately a typed judgement rather than a button. It also has to
+					 * exist: without it a legitimate de-flag would flag every future scan
+					 * forever, and an operator trained to ignore an amber banner is worse
+					 * than no banner.
+					 */
+					<div className="space-y-2 rounded-md border border-amber-500/50 p-3">
+						<label htmlFor="basis-ack-reason" className="text-sm font-medium">
+							Confirm this basis is correct
+						</label>
+						<p className="text-xs text-muted-foreground">
+							Only if you recognise the corporations above. If you don’t, fix the corporation
+							data and re-scan instead — confirming a broken basis is what tells enforcement to
+							trust it.
+						</p>
+						<Input
+							id="basis-ack-reason"
+							value={reason}
+							onChange={(event) => setReason(event.target.value)}
+							placeholder="Why is this basis correct? e.g. we de-flagged these 13 corps on 14 Jul"
+							disabled={acknowledge.isPending}
+						/>
+						{acknowledge.isError && (
+							<p className="text-xs text-destructive">{acknowledge.error.message}</p>
+						)}
+						<Button
+							variant="secondary"
+							disabled={reason.trim().length < 10 || acknowledge.isPending}
+							onClick={() => acknowledge.mutate({ runId: run.id, reason: reason.trim() })}
+						>
+							{acknowledge.isPending ? 'Confirming…' : 'Confirm basis'}
+						</Button>
 					</div>
 				)}
 			</CardContent>
