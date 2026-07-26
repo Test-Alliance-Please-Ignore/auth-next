@@ -2461,6 +2461,14 @@ export interface MumbleAccountStatus {
 
 export interface MumbleAccountResponse {
 	account: MumbleAccountStatus | null
+	/**
+	 * Whether the user currently passes the services eligibility rule: a character
+	 * in a member corporation, or site admin. The read itself is not gated on this
+	 * — you can always see your own account — but creating or resetting is, so the
+	 * client hides those affordances rather than offering a button that can only
+	 * 403.
+	 */
+	eligible: boolean
 	connection: MumbleConnectionInfo
 }
 

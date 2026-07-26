@@ -19,6 +19,7 @@ export default defineConfig({
 			'src/routes/__tests__/**/*.test.ts',
 			'src/services/__tests__/**/*.test.ts',
 			'src/lib/__tests__/**/*.test.ts',
+			'src/middleware/__tests__/**/*.test.ts',
 			'src/workflows/**/*.test.ts',
 			'src/__tests__/**/*.test.ts',
 		],

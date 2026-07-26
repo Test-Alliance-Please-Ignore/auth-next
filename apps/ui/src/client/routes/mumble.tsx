@@ -49,6 +49,16 @@ export default function MumblePage() {
 
 	const account = data?.account ?? null
 	const connection = data?.connection
+	/**
+	 * The SERVER's eligibility verdict, not a client guess.
+	 *
+	 * `canAccessMumble(user)` above only checks the alliance-member role, which is
+	 * looser than the rule the API enforces (a character in a member corporation,
+	 * or site admin) — so this page is reachable by users who cannot actually
+	 * provision. Default to false while loading so the affordance appears only once
+	 * the server has said yes.
+	 */
+	const isEligible = data?.eligible === true
 
 	if (authLoading || isLoadingMumbleFeature || (canViewMumblePage && isLoading)) {
 		return (
@@ -138,9 +148,21 @@ export default function MumblePage() {
 								</CardDescription>
 							</CardHeader>
 							<CardContent>
-								<Button onClick={handleProvision} disabled={provision.isPending}>
-									{provision.isPending ? 'Creating…' : 'Create Mumble account'}
-								</Button>
+								{isEligible ? (
+									<Button onClick={handleProvision} disabled={provision.isPending}>
+										{provision.isPending ? 'Creating…' : 'Create Mumble account'}
+									</Button>
+								) : (
+									// The server 403s this now, so offering the button would only
+									// produce a failure the user cannot act on. Say why instead —
+									// and name the recently-joined case, because a lagging character
+									// sync is the one cause the user can neither see nor fix.
+									<p className="text-sm text-muted-foreground">
+										A Mumble account requires a character in a member corporation. If you have
+										recently joined one, your character data may not have synced yet — check back
+										shortly, or contact an admin if it persists.
+									</p>
+								)}
 							</CardContent>
 						</Card>
 					) : null}
@@ -168,14 +190,24 @@ export default function MumblePage() {
 											? `Last connected ${new Date(account.lastAuthenticatedAt).toLocaleString()}`
 											: 'Never connected'}
 									</div>
-									<Button
-										variant="secondary"
-										onClick={() => setResetDialogOpen(true)}
-										disabled={resetPassword.isPending}
-									>
-										<RefreshCw className="h-4 w-4 mr-2" />
-										{resetPassword.isPending ? 'Generating…' : 'Regenerate password'}
-									</Button>
+									{isEligible ? (
+										<Button
+											variant="secondary"
+											onClick={() => setResetDialogOpen(true)}
+											disabled={resetPassword.isPending}
+										>
+											<RefreshCw className="h-4 w-4 mr-2" />
+											{resetPassword.isPending ? 'Generating…' : 'Regenerate password'}
+										</Button>
+									) : (
+										// An account can outlive eligibility: it is still shown above (with
+										// whatever groups it has, which is none), but issuing fresh
+										// credentials for it is gated server-side.
+										<p className="text-sm text-muted-foreground">
+											This account is inactive because you no longer have a character in a member
+											corporation. Password regeneration is unavailable while that is the case.
+										</p>
+									)}
 								</CardContent>
 							</Card>
 

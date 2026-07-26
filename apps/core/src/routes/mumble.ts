@@ -4,6 +4,8 @@ import { logger } from '@repo/hono-helpers'
 import { parseMumbleError } from '@repo/mumble'
 import { MUMBLE_FEATURE_FLAG_KEY } from '@repo/features'
 
+import { isUserEligibleForServices } from '../lib/service-eligibility'
+import { requireServiceEligibility } from '../middleware/service-eligibility'
 import { requireAllianceMember } from '../middleware/session'
 import { resolveFlag } from './flags'
 import * as mumbleService from '../services/mumble.service'
@@ -56,14 +58,24 @@ function isRpcTransportLoss(error: unknown): boolean {
 /**
  * GET /api/mumble/account
  * Current user's Mumble account status plus connection info.
+ *
+ * Deliberately NOT gated on eligibility: an ineligible user must still be able to
+ * see the state of their own account. `eligible` is reported so the client can
+ * hide the create/reset affordances rather than offer a button that can only 403.
  */
 mumble.get('/account', async (c) => {
 	const user = c.get('user')!
+	const db = c.get('db')
+
+	// A read must not 500 just because the eligibility probe could not run; the
+	// grant paths have their own fail-closed guard.
+	const eligible = db ? await isUserEligibleForServices(db, user.id).catch(() => false) : false
 
 	try {
 		const account = await mumbleService.getMumbleAccount(c.env, user.id)
 		return c.json({
 			account,
+			eligible,
 			connection: mumbleService.getMumbleConnectionInfo(c.env),
 		})
 	} catch (error) {
@@ -74,6 +86,7 @@ mumble.get('/account', async (c) => {
 			})
 			return c.json({
 				account: null,
+				eligible,
 				connection: mumbleService.getMumbleConnectionInfo(c.env),
 			})
 		}
@@ -88,7 +101,7 @@ mumble.get('/account', async (c) => {
  * Provision a Mumble account for the current user.
  * Returns the one-time password — it is never stored or shown again.
  */
-mumble.post('/account', async (c) => {
+mumble.post('/account', requireServiceEligibility(), async (c) => {
 	const user = c.get('user')!
 
 	try {
@@ -114,7 +127,7 @@ mumble.post('/account', async (c) => {
  * Rotate the current user's Mumble password.
  * Returns the new one-time password — it is never stored or shown again.
  */
-mumble.post('/account/reset-password', async (c) => {
+mumble.post('/account/reset-password', requireServiceEligibility(), async (c) => {
 	const user = c.get('user')!
 
 	try {
