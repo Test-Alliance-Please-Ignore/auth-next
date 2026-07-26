@@ -1110,11 +1110,12 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				attributedModernUser?.mainCharacterId ??
 				importerCharacterId ??
 				null
+			const legacyAuthorCharacterName = note.legacyCreatedByUserId
+				? legacyActorCharacterNames[note.legacyCreatedByUserId]
+				: undefined
 			const authorCharacterName =
 				attributedPrimary?.characterName ??
-				(note.legacyCreatedByUserId
-					? (legacyActorCharacterNames[note.legacyCreatedByUserId] ?? null)
-					: null) ??
+				legacyAuthorCharacterName ??
 				importerCharacterName
 
 			try {
