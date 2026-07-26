@@ -3746,6 +3746,9 @@ importers:
       '@jahands/cli-tools':
         specifier: 0.11.4
         version: 0.11.4(@commander-js/extra-typings@14.0.0(commander@14.0.2))(commander@14.0.2)(typescript@5.9.3)(zod@4.1.12)(zx@8.8.5)
+      '@types/bun':
+        specifier: 1.3.2
+        version: 1.3.2(@types/react@19.2.6)
       '@types/fs-extra':
         specifier: 11.0.4
         version: 11.0.4
@@ -3792,9 +3795,6 @@ importers:
       '@repo/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config
-      '@types/bun':
-        specifier: 1.3.2
-        version: 1.3.2(@types/react@19.2.6)
       vitest:
         specifier: 4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(vite@8.1.5(@types/node@24.10.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
