@@ -1,7 +1,6 @@
 {
 	"extends": "@repo/typescript-config/workers.json",
 	"compilerOptions": {
-		"baseUrl": ".",
 		"paths": {
 			"@repo/inventory-display": ["../../packages/inventory-display/src/index.ts"]
 		}
