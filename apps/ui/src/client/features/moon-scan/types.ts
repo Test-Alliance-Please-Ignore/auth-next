@@ -192,6 +192,7 @@ export interface MoonProfitability {
 	ores: OreWithProfitability[]
 	structures: StructureProfitability[]
 	updatedAt: string
+	pricingSnapshotDate: string | null
 }
 
 export interface MoonDetail {
@@ -229,6 +230,7 @@ export interface ScannedMoonsResponse {
 	pageSize: number
 	constellations: ConstellationSummary[]
 	updatedAt: string
+	pricingSnapshotDate: string | null
 }
 
 // Scan submission

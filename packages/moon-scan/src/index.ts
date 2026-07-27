@@ -16,6 +16,8 @@ export type VerifiedMoonsSortBy =
 	| 'regionName'
 	| 'securityStatus'
 	| 'highestRarity'
+	| 'metenoxProfit'
+	| 'tataraProfit'
 
 export interface VerifiedMoonSummary {
 	moonId: string
@@ -37,11 +39,40 @@ export interface VerifiedMoonSummaryRecord extends VerifiedMoonSummary {
 }
 
 export interface VerifiedMoonPage {
-	items: VerifiedMoonSummary[]
+	items: Array<VerifiedMoonSummary & {
+		metenoxProfit?: string | null
+		tataraProfit?: string | null
+	}>
 	total: number
 	page: number
 	pageSize: number
 	constellations: Array<{ constellationId: string; constellationName: string }>
+}
+
+export interface MoonProfitabilityQueryInputs {
+	defaultReprocessingYield: string
+	defaultCycleDays: number
+	fuelBlockPriceOverride: string | null
+	magmaticGasPriceOverride: string | null
+	profiles: Array<{
+		id: StructureType
+		baseVolumePerHr: string
+		rigBonus: string
+		fuelPerHr: string
+		magmaticGasPerHr: string | null
+		nullsecModifier: string
+		isPassive: boolean
+	}>
+	typeMaterials: Array<{
+		oreTypeId: string
+		materialTypeId: string
+		quantity: number
+	}>
+	oreVolumes: Record<string, number>
+	prices: Array<{
+		typeId: string
+		price: number
+	}>
 }
 
 export interface VerifiedMoonRegionCount {
@@ -218,6 +249,7 @@ export interface MoonProfitability {
 	ores: OreWithProfitability[]
 	structures: StructureProfitability[]
 	updatedAt: string
+	pricingSnapshotDate: string | null
 }
 
 export interface MoonScanDO {
@@ -243,6 +275,7 @@ export interface MoonScanDO {
 		search?: string
 		sortBy: VerifiedMoonsSortBy
 		sortDir: 'asc' | 'desc'
+		profitability?: MoonProfitabilityQueryInputs
 	}): Promise<VerifiedMoonPage>
 	getVerifiedMoonSummaryIds(): Promise<string[]>
 	upsertVerifiedMoonSummaries(summaries: VerifiedMoonSummaryRecord[]): Promise<void>

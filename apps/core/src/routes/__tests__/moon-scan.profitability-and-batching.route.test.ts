@@ -159,6 +159,7 @@ describe('moon-scan profitability and batching behavior', () => {
 		}
 
 		marketsStub = {
+			getMarketDataRevisionAtTime: vi.fn().mockResolvedValue('revision-1'),
 			getBatchMarketDataAtTime: vi.fn().mockResolvedValue({ prices: [] }),
 		}
 		const storedExports = new Map<string, { text: string; fileName: string }>()
@@ -252,7 +253,7 @@ describe('moon-scan profitability and batching behavior', () => {
 		expect(body.moons.find((m) => m.moonId === 'moon-2')?.composition).toBeNull()
 	})
 
-	it('pages verified moons through the summary read model before computing profitability', async () => {
+	it('uses the database-backed page query for both pagination and profitability sorting', async () => {
 		moonScanStub.getVerifiedMoonPage.mockResolvedValue({
 			items: [
 				{
@@ -266,6 +267,8 @@ describe('moon-scan profitability and batching behavior', () => {
 					constellationName: 'Kimotoro',
 					securityStatus: '0.5',
 					highestRarity: 'R64',
+					metenoxProfit: '12345',
+					tataraProfit: '67890',
 				},
 			],
 			total: 1,
@@ -302,12 +305,18 @@ describe('moon-scan profitability and batching behavior', () => {
 		}
 
 		expect(res.status).toBe(200)
-		expect(moonScanStub.getVerifiedMoonPage).toHaveBeenCalled()
-		expect(moonScanStub.getVerifiedCompositions).toHaveBeenCalledWith(['moon-1'])
+		expect(moonScanStub.getVerifiedMoonPage).toHaveBeenCalledWith(expect.objectContaining({
+		profitability: expect.objectContaining({
+			defaultCycleDays: 1,
+			prices: expect.any(Array),
+		}),
+	}))
+	expect(moonScanStub.getVerifiedCompositions).not.toHaveBeenCalled()
 		expect(universeStub.resolveStaticMoonsByIds).not.toHaveBeenCalled()
 		expect(body.total).toBe(1)
 		expect(body.items).toHaveLength(1)
 		expect(body.items[0]?.moonId).toBe('moon-1')
+		expect(body.items[0]?.metenoxProfit).toBe('12345')
 	})
 
 	it('applies fuel and magmatic override prices in single-moon profitability', async () => {

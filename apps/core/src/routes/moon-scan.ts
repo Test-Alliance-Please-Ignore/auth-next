@@ -17,6 +17,7 @@ import {
 	type MoonScanDO,
 	type ScanQueueEntry,
 	type MoonProfitability,
+	type MoonProfitabilityQueryInputs,
 	type OreRarity,
 	type OreWithProfitability,
 	type VerifiedMoonSummaryRecord,
@@ -71,8 +72,9 @@ const MAX_SCAN_RAW_BYTES = 1_000_000
 // ─── Caches ──────────────────────────────────────────────────────────────────
 
 const permissionCache = new TimeCache<boolean>(15_000)
-const MOON_PRICING_INPUTS_CACHE_TTL_MS = 60_000
-const VERIFIED_MOONS_RESPONSE_CACHE_TTL_MS = 30_000
+const MOON_PRICING_REVISION_CACHE_TTL_MS = 60_000
+const MOON_PRICING_INPUTS_CACHE_TTL_MS = 60 * 60_000
+const VERIFIED_MOONS_RESPONSE_CACHE_TTL_MS = 10 * 60_000
 const MOON_REGIONS_RESPONSE_CACHE_TTL_MS = 5 * 60_000
 const MOON_REGION_RESPONSE_CACHE_TTL_MS = 60_000
 const MOON_SYSTEM_RESPONSE_CACHE_TTL_MS = 60_000
@@ -364,6 +366,8 @@ type MoonPricingInputs = {
 	typeMaterialsMap: Record<string, Array<{ materialTypeId: string; quantity: number }>>
 	priceMap: Record<string, number>
 	typeNamesMap: Record<string, { typeName: string } | null>
+	oreVolumes: Record<string, number>
+	pricingSnapshotDate: string | null
 }
 
 type VerifiedMoonsListItem = {
@@ -388,6 +392,7 @@ type VerifiedMoonsListResponse = {
 	pageSize: number
 	constellations: Array<{ constellationId: string; constellationName: string }>
 	updatedAt: string
+	pricingSnapshotDate: string | null
 }
 
 type MoonRegionsResponse = {
@@ -436,6 +441,7 @@ type MoonSystemResponse = {
 type MoonLeaderboardResponse = Awaited<ReturnType<MoonScanDO['getLeaderboard']>>
 
 const moonPricingInputsCache = new TimeCache<MoonPricingInputs>(MOON_PRICING_INPUTS_CACHE_TTL_MS, 100)
+const moonPricingRevisionCache = new TimeCache<string | null>(MOON_PRICING_REVISION_CACHE_TTL_MS, 2)
 const verifiedMoonsResponseCache = new TimeCache<VerifiedMoonsListResponse>(
 	VERIFIED_MOONS_RESPONSE_CACHE_TTL_MS,
 	200
@@ -616,6 +622,7 @@ function getMoonProfitabilityInputsFromComposition(
 			ores: compositionOres,
 			structures,
 			updatedAt: new Date().toISOString(),
+			pricingSnapshotDate: inputs.pricingSnapshotDate,
 		}
 	} catch (error) {
 		logger.error('[moon-scan] failed to build profitability from cached inputs', { error })
@@ -633,12 +640,26 @@ function clearMoonScanReadCaches(): void {
 
 function clearMoonScanPricingCaches(): void {
 	moonPricingInputsCache.clear()
+	moonPricingRevisionCache.clear()
 	clearMoonScanReadCaches()
 }
 
-function buildMoonPricingInputsCacheKey(oreTypeIds: string[]): string {
+function buildMoonPricingInputsCacheKey(oreTypeIds: string[], pricingRevision: string | null): string {
 	const sortedOreTypeIds = [...new Set(oreTypeIds)].sort((a, b) => Number(a) - Number(b))
-	return `moon-pricing-inputs:${sortedOreTypeIds.join(',')}`
+	return `moon-pricing-inputs:${pricingRevision ?? 'none'}:${sortedOreTypeIds.join(',')}`
+}
+
+async function getMoonPricingRevision(env: App['Bindings']): Promise<string | null> {
+	return moonPricingRevisionCache.getOrSet('moon-pricing-revision:universe', () =>
+		getMarketsStub(env).getMarketDataRevisionAtTime({
+			regionId: createEveRegionId('universe'),
+			atTime: new Date(),
+		})
+	)
+}
+
+function getPricingSnapshotDate(pricingRevision: string | null): string | null {
+	return pricingRevision?.split(':', 1)[0] ?? null
 }
 
 function getMoonProfitValuesFromComposition(
@@ -693,6 +714,26 @@ function getMoonProfitValuesFromComposition(
 	}
 }
 
+function toMoonProfitabilityQueryInputs(inputs: MoonPricingInputs): MoonProfitabilityQueryInputs {
+	return {
+		...inputs.settings,
+		profiles: inputs.profiles.map((profile) => ({
+			id: profile.id,
+			baseVolumePerHr: profile.baseVolumePerHr,
+			rigBonus: profile.rigBonus,
+			fuelPerHr: profile.fuelPerHr,
+			magmaticGasPerHr: profile.magmaticGasPerHr,
+			nullsecModifier: profile.nullsecModifier,
+			isPassive: profile.isPassive,
+		})),
+		typeMaterials: Object.entries(inputs.typeMaterialsMap).flatMap(([oreTypeId, materials]) =>
+			materials.map((material) => ({ ...material, oreTypeId }))
+		),
+		oreVolumes: inputs.oreVolumes,
+		prices: Object.entries(inputs.priceMap).map(([typeId, price]) => ({ typeId, price })),
+	}
+}
+
 async function getMoonPricingInputs(
 	env: App['Bindings'],
 	universe: Universe,
@@ -708,9 +749,13 @@ async function getMoonPricingInputsForOreTypeIds(
 	universe: Universe,
 	moonScan: MoonScanDO,
 	oreTypeIds: string[],
+	pricingRevision?: string | null,
 ): Promise<MoonPricingInputs> {
 	const uniqueOreTypeIds = [...new Set(oreTypeIds)]
-	return moonPricingInputsCache.getOrSet(buildMoonPricingInputsCacheKey(uniqueOreTypeIds), async () => {
+	const effectivePricingRevision = pricingRevision ?? await getMoonPricingRevision(env)
+	return moonPricingInputsCache.getOrSet(
+		buildMoonPricingInputsCacheKey(uniqueOreTypeIds, effectivePricingRevision),
+		async () => {
 		const [settings, profiles, typeMaterialsMap] = await Promise.all([
 			moonScan.getExtractionSettings(),
 			moonScan.getStructureProfiles(),
@@ -749,8 +794,11 @@ async function getMoonPricingInputsForOreTypeIds(
 			typeMaterialsMap,
 			priceMap,
 			typeNamesMap,
+			oreVolumes: Object.fromEntries(uniqueOreTypeIds.map((typeId) => [typeId, getOreVolume(typeId)])),
+			pricingSnapshotDate: getPricingSnapshotDate(effectivePricingRevision),
 		}
-	})
+		}
+	)
 }
 
 function buildMoonExportRows(entry: MoonExportEntry): Array<Array<string | number | boolean | null | undefined>> {
@@ -887,7 +935,10 @@ const VerifiedMoonsQuerySchema = z.object({
 	sortDir: z.enum(['asc', 'desc']).default('asc'),
 })
 
-function buildVerifiedMoonsResponseCacheKey(query: z.infer<typeof VerifiedMoonsQuerySchema>): string {
+function buildVerifiedMoonsResponseCacheKey(
+	query: z.infer<typeof VerifiedMoonsQuerySchema>,
+	pricingRevision: string | null,
+): string {
 	const rarities = query.rarity ? [...query.rarity].sort().join(',') : ''
 	return [
 		'verified-moons',
@@ -899,6 +950,7 @@ function buildVerifiedMoonsResponseCacheKey(query: z.infer<typeof VerifiedMoonsQ
 		query.search ?? '',
 		query.sortBy,
 		query.sortDir,
+		pricingRevision ?? 'none',
 	].join('|')
 }
 
@@ -1131,252 +1183,36 @@ moonScanRoutes.get('/moons/verified', async (c) => {
 
 	const moonScan = getMoonScanStub(c.env)
 	const universe = getUniverseStub(c.env)
-	const usesProfitSort = query.data.sortBy === 'metenoxProfit' || query.data.sortBy === 'tataraProfit'
-	const verifiedMoonsResponseCacheKey = buildVerifiedMoonsResponseCacheKey(query.data)
+	const pricingRevision = await getMoonPricingRevision(c.env)
+	const verifiedMoonsResponseCacheKey = buildVerifiedMoonsResponseCacheKey(query.data, pricingRevision)
 	const cachedResponse = verifiedMoonsResponseCache.get(verifiedMoonsResponseCacheKey)
 	if (cachedResponse) return c.json(cachedResponse)
 
-	if (!usesProfitSort) {
-		let summary: Awaited<ReturnType<MoonScanDO['getVerifiedMoonPage']>> | null = null
-		try {
-			summary = await moonScan.getVerifiedMoonPage({
-				...query.data,
-				sortBy: query.data.sortBy as VerifiedMoonsSortBy,
-			})
-		} catch (error) {
-			logger.warn('Falling back to legacy verified-moons hydration', {
-				error,
-				sortBy: query.data.sortBy,
-			})
-		}
-
-		if (summary) {
-			if (summary.items.length === 0) {
-				const response: VerifiedMoonsListResponse = {
-					items: [],
-					total: summary.total,
-					page: summary.page,
-					pageSize: summary.pageSize,
-					constellations: summary.constellations,
-					updatedAt: new Date().toISOString(),
-				}
-				verifiedMoonsResponseCache.set(verifiedMoonsResponseCacheKey, response)
-				return c.json(response)
-			}
-
-			const pageMoonIds = summary.items.map((item) => item.moonId)
-			const compositions = await moonScan.getVerifiedCompositions(pageMoonIds)
-			const pricingInputs = await getMoonPricingInputs(c.env, universe, moonScan, compositions)
-
-			const compositionMap = new Map(compositions.map((composition) => [composition.moonId, composition]))
-			const items = summary.items.map((item) => {
-				const composition = compositionMap.get(item.moonId)
-				if (!composition) {
-					return {
-						...item,
-						metenoxProfit: null,
-						tataraProfit: null,
-					}
-				}
-				return {
-					...item,
-					...getMoonProfitValuesFromComposition(composition, pricingInputs),
-				}
-			})
-
-			const response: VerifiedMoonsListResponse = {
-				items,
-				total: summary.total,
-				page: summary.page,
-				pageSize: summary.pageSize,
-				constellations: summary.constellations,
-				updatedAt: new Date().toISOString(),
-			}
-			verifiedMoonsResponseCache.set(verifiedMoonsResponseCacheKey, response)
-			return c.json(response)
-		}
-	}
-
-	// Get all verified moon IDs
-	const summary = await moonScan.getScanSummary()
-	const verifiedMoonIds = summary.verifiedMoonIds
-	if (verifiedMoonIds.length === 0) {
-		const response: VerifiedMoonsListResponse = {
-			items: [],
-			total: 0,
-			page: query.data.page,
-			pageSize: query.data.pageSize,
-			constellations: [],
-			updatedAt: new Date().toISOString(),
-		}
-		verifiedMoonsResponseCache.set(verifiedMoonsResponseCacheKey, response)
-		return c.json(response)
-	}
-
-	// Bulk-load compositions and moon static data before the legacy in-memory sort fallback.
-	const [compositions, moonsById] = await Promise.all([
-		moonScan.getVerifiedCompositions(verifiedMoonIds),
-		universe.resolveStaticMoonsByIds(verifiedMoonIds),
-	])
-	const pricingInputsPromise = getMoonPricingInputs(c.env, universe, moonScan, compositions)
-
-	// Resolve system IDs and fetch system info + moon→region mapping
-	const systemIds = [...new Set(
-		Object.values(moonsById)
-			.filter((m): m is NonNullable<typeof m> => m !== null)
-			.map((m) => m.solarSystemId)
-	)]
-	const [systemsById, moonRegionMap] = await Promise.all([
-		universe.resolveSolarSystemsByIds(systemIds),
-		universe.getMoonRegionIds(verifiedMoonIds),
-	])
-
-	// Resolve region names
-	const regionIds = [...new Set(Object.values(moonRegionMap).filter((id): id is string => !!id))]
-	const regionsById = regionIds.length > 0 ? await universe.resolveRegionsByIds(regionIds) : {}
-
-	// Resolve constellation names (each system already carries constellationId)
-	const constellationIds = [
-		...new Set(
-			Object.values(systemsById)
-				.filter((s): s is NonNullable<typeof s> => s !== null)
-				.map((s) => s.constellationId)
-				.filter((id): id is string => !!id)
-		),
-	]
-	const constellationsById = constellationIds.length > 0
-		? await universe.resolveConstellationsByIds(constellationIds)
-		: {}
-	const pricingInputs = await pricingInputsPromise
-
-	const moons = compositions.map((comp) => {
-		const moon = moonsById[comp.moonId]
-		if (!moon) return null
-
-		const system = systemsById[moon.solarSystemId]
-		const regionId = moonRegionMap[comp.moonId] ?? null
-		const region = regionId ? regionsById[regionId] : null
-		const constellationId = system?.constellationId ?? null
-		const constellation = constellationId ? constellationsById[constellationId] : null
-
-		const highestRarity = comp.ores.reduce<OreRarity | null>((best, ore) => {
-			const r = ORE_TYPE_RARITY[ore.oreTypeId]
-			if (!r) return best
-			if (!best) return r
-			return (RARITY_ORDER[r] ?? 0) > (RARITY_ORDER[best] ?? 0) ? r : best
-		}, null)
-
-		return {
-			moonId: comp.moonId,
-			moonName: moon.moonName,
-			solarSystemId: moon.solarSystemId,
-			solarSystemName: system?.solarSystemName ?? moon.solarSystemId,
-			regionId: regionId ?? '',
-			regionName: region?.regionName ?? regionId ?? '',
-			constellationId: constellationId ?? '',
-			constellationName: constellation?.constellationName ?? constellationId ?? '',
-			securityStatus: system?.securityStatus ?? null,
-			highestRarity,
-			...getMoonProfitValuesFromComposition(comp, pricingInputs),
-		}
-	}).filter((m): m is NonNullable<typeof m> => m !== null)
-
-	let filtered = moons
-	if (query.data.regionId) {
-		filtered = filtered.filter((m) => m.regionId === query.data.regionId)
-	}
-	// Unique constellations within the region-filter (drives the cascading dropdown).
-	const constellationsForFilter = new Map<string, { constellationId: string; constellationName: string }>()
-	for (const m of filtered) {
-		if (m.constellationId && !constellationsForFilter.has(m.constellationId)) {
-			constellationsForFilter.set(m.constellationId, {
-				constellationId: m.constellationId,
-				constellationName: m.constellationName,
-			})
-		}
-	}
-	const constellationsSummary = [...constellationsForFilter.values()].sort((a, b) =>
-		a.constellationName.localeCompare(b.constellationName)
+	const pricingInputs = await getMoonPricingInputsForOreTypeIds(
+		c.env,
+		universe,
+		moonScan,
+		ALL_MOON_SCAN_PRICING_TYPE_IDS,
+		pricingRevision,
 	)
-	if (query.data.constellationId) {
-		filtered = filtered.filter((m) => m.constellationId === query.data.constellationId)
-	}
-	if (query.data.rarity && query.data.rarity.length > 0) {
-		const rarities = new Set<string>(query.data.rarity)
-		filtered = filtered.filter((m) => m.highestRarity !== null && rarities.has(m.highestRarity))
-	}
-	if (query.data.search) {
-		const q = query.data.search.toLowerCase()
-		filtered = filtered.filter(
-			(m) => m.moonName.toLowerCase().includes(q) || m.solarSystemName.toLowerCase().includes(q)
-		)
-	}
-
-	const { sortBy, sortDir } = query.data
-	const direction = sortDir === 'asc' ? 1 : -1
-	const rarityRank = (rarity: string | null): number => {
-		if (!rarity) return -1
-		return RARITY_ORDER[rarity as OreRarity] ?? -1
-	}
-	const parseNum = (value: string | null): number | null => {
-		if (value == null) return null
-		const n = Number.parseFloat(value)
-		return Number.isFinite(n) ? n : null
-	}
-	filtered = [...filtered].sort((a, b) => {
-		let cmp = 0
-		switch (sortBy) {
-			case 'moonName':
-				cmp = a.moonName.localeCompare(b.moonName)
-				break
-			case 'solarSystemName':
-				cmp = a.solarSystemName.localeCompare(b.solarSystemName)
-				break
-			case 'regionName':
-				cmp = a.regionName.localeCompare(b.regionName)
-				break
-			case 'securityStatus': {
-				const av = parseSecurityStatus(a.securityStatus)
-				const bv = parseSecurityStatus(b.securityStatus)
-				cmp = av === bv ? 0 : av === null ? 1 : bv === null ? -1 : av - bv
-				break
-			}
-			case 'highestRarity': {
-				const av = rarityRank(a.highestRarity)
-				const bv = rarityRank(b.highestRarity)
-				cmp = av - bv
-				break
-			}
-			case 'metenoxProfit': {
-				const av = parseNum(a.metenoxProfit)
-				const bv = parseNum(b.metenoxProfit)
-				cmp = av === bv ? 0 : av === null ? 1 : bv === null ? -1 : av - bv
-				break
-			}
-			case 'tataraProfit': {
-				const av = parseNum(a.tataraProfit)
-				const bv = parseNum(b.tataraProfit)
-				cmp = av === bv ? 0 : av === null ? 1 : bv === null ? -1 : av - bv
-				break
-			}
-		}
-		if (cmp !== 0) return cmp * direction
-		return a.moonName.localeCompare(b.moonName)
+	const summary = await moonScan.getVerifiedMoonPage({
+		...query.data,
+		sortBy: query.data.sortBy as VerifiedMoonsSortBy,
+		profitability: toMoonProfitabilityQueryInputs(pricingInputs),
 	})
 
-	const total = filtered.length
-	const page = query.data.page
-	const pageSize = query.data.pageSize
-	const start = (page - 1) * pageSize
-	const items = filtered.slice(start, start + pageSize)
-
 	const response: VerifiedMoonsListResponse = {
-		items,
-		total,
-		page,
-		pageSize,
-		constellations: constellationsSummary,
+		items: summary.items.map((item) => ({
+			...item,
+			metenoxProfit: item.metenoxProfit ?? null,
+			tataraProfit: item.tataraProfit ?? null,
+		})),
+		total: summary.total,
+		page: summary.page,
+		pageSize: summary.pageSize,
+		constellations: summary.constellations,
 		updatedAt: new Date().toISOString(),
+		pricingSnapshotDate: pricingInputs.pricingSnapshotDate,
 	}
 	verifiedMoonsResponseCache.set(verifiedMoonsResponseCacheKey, response)
 	return c.json(response)
