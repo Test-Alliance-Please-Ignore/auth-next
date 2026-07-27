@@ -939,7 +939,7 @@ export class SrpPaymentStatusCheckWorkflow extends WorkflowEntrypoint<
 					reasonNeedle,
 					srpGroupId: config?.srpGroupId?.trim() ?? '',
 					srpStub: {
-						updateReviewState: srpStub.updateReviewState.bind(srpStub),
+						updateReviewState: (...args) => srpStub.updateReviewState(...args),
 					},
 					workflowInstanceId,
 				})
