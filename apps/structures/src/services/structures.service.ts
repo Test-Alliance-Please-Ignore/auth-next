@@ -747,7 +747,7 @@ const NON_CITADEL_TYPE_IDS = [
 	...MOON_DRILL_STRUCTURE_TYPE_IDS,
 ]
 
-const NON_CITADEL_TYPE_NAMES = [...MINING_CITADEL_TYPE_NAMES, METENOX_MOON_DRILL_TYPE_NAME]
+const NON_CITADEL_TYPE_NAMES = [METENOX_MOON_DRILL_TYPE_NAME]
 
 function combineWhereConditions(conditions: Array<StructureWhereCondition | undefined>): any {
 	const defined = conditions.filter(
