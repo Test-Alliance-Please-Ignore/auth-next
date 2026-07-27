@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { max } from 'drizzle-orm'
 import { and, desc, eq, gt, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { GetRegionMarketDataResponseObjectSchema } from '@repo/markets'
@@ -577,6 +578,39 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			prices,
 			missingTypeIds: uniqueTypeIds.filter((id) => !foundTypeIds.has(id)),
 		}
+	}
+
+	async getMarketDataRevisionAtTime(
+		input: Pick<import('@repo/markets').GetBatchMarketDataAtTimeInput, 'regionId' | 'atTime'>
+	): Promise<string | null> {
+		const targetDate = input.atTime.toISOString().slice(0, 10)
+		const [nearestDay] = await this.db
+			.select({ priceDate: marketDailyPrices.priceDate })
+			.from(marketDailyPrices)
+			.where(
+				and(
+					eq(marketDailyPrices.locationId, input.regionId),
+					sql`${marketDailyPrices.priceDate} <= ${targetDate}::date`
+				)
+			)
+			.orderBy(sql`${marketDailyPrices.priceDate} DESC`)
+			.limit(1)
+
+		if (!nearestDay) return null
+
+		const [revision] = await this.db
+			.select({ updatedAt: max(marketDailyPrices.updatedAt) })
+			.from(marketDailyPrices)
+			.where(
+				and(
+					eq(marketDailyPrices.locationId, input.regionId),
+					eq(marketDailyPrices.priceDate, nearestDay.priceDate)
+				)
+			)
+
+		return revision?.updatedAt
+			? `${nearestDay.priceDate}:${revision.updatedAt.toISOString()}`
+			: null
 	}
 
 	// ========================================================================

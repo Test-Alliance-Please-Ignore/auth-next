@@ -7,6 +7,7 @@ import { UserSearchPaginationControls } from '@/components/user-search-paginatio
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { HoverPopover } from '@/components/ui/hover-popover'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
@@ -21,6 +22,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { TableRefreshFrame } from '@/components/table-refresh-frame'
+import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatISK } from '@/lib/format-utils'
 import toast from '@/lib/toast'
@@ -118,6 +120,7 @@ export default function ScannedMoonsPage() {
 	const [collapsedConstellations, setCollapsedConstellations] = useState<Set<string>>(new Set())
 	const [pendingExport, setPendingExport] = useState<{ workflowInstanceId: string; fileName: string } | null>(null)
 	const [isExporting, setIsExporting] = useState(false)
+	const debouncedSearch = useDebounce(search, 400)
 
 	const exportStatusQuery = useQuery({
 		queryKey: ['moon-scan', 'verified-moons', 'export-status', pendingExport?.workflowInstanceId ?? null],
@@ -174,7 +177,7 @@ export default function ScannedMoonsPage() {
 		regionId: regionFilter,
 		constellationId: constellationFilter,
 		rarities: selectedRarities,
-		search,
+		search: debouncedSearch,
 		sortBy,
 		sortDir,
 	}, canView)
@@ -368,7 +371,6 @@ export default function ScannedMoonsPage() {
 					</div>
 				}
 			/>
-
 			{error && (
 				<div className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-500">
 					Failed to load moon data
@@ -475,17 +477,15 @@ export default function ScannedMoonsPage() {
 					))}
 				</div>
 
-				{!isLoading && data && (
-					<span className="flex items-center gap-2 text-xs text-muted-foreground">
-						{isFetching && (
-							<span
-								className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary"
-								aria-label="Updating"
-							/>
-						)}
-						{data.items.length} shown • {data.total} total
+			{!isLoading && data?.pricingSnapshotDate && (
+				<span className="ml-auto flex items-center gap-x-2 text-xs text-muted-foreground">
+					<span>Pricing Source: Global Daily Average</span>
+					<span aria-hidden="true">•</span>
+					<span className="flex items-center gap-1">
+						Snapshot: <EveTimeDisplay dateStr={`${data.pricingSnapshotDate}T00:00:00Z`} format="date" />
 					</span>
-				)}
+				</span>
+			)}
 			</div>
 
 			<Card className="mt-4 overflow-hidden">

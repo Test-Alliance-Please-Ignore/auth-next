@@ -11,9 +11,12 @@ import {
 	ilike,
 	inArray,
 	isNotNull,
+	isNull,
 	or,
 	sql,
 } from '@repo/db-utils'
+import { FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID } from '@repo/moon-scan'
+import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import {
@@ -31,23 +34,26 @@ import type {
 	ExtractionSettings,
 	LeaderboardEntry,
 	LeaderboardWindow,
+	MoonProfitabilityQueryInputs,
 	MoonCoverageStat,
 	MoonScan,
 	MoonScanDO as IMoonScanDO,
 	OreRarity,
 	PaginatedScans,
 	ScanFilters,
+	ScanLocation,
+	ScannedMoonRegionCount,
 	StructureProfile,
 	StructureType,
 	SubmitScanInput,
 	VerifiedComposition,
 	VerifiedMoonPage,
+	VerifiedMoonRegionCount,
 	VerifiedMoonSummaryRecord,
 	VerifiedMoonsSortBy,
 } from '@repo/moon-scan'
 import type { DbClient } from './db'
 import type { Env } from './context'
-import { logger } from '@repo/hono-helpers'
 
 const BATCH_SIZE = 500
 
@@ -104,6 +110,8 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 				.insert(moonScans)
 				.values({
 					moonId: scan.moonId,
+					regionId: scan.regionId,
+					solarSystemId: scan.solarSystemId,
 					submittedBy,
 					status: autoVerify ? 'verified' : 'pending',
 					source: 'user',
@@ -328,6 +336,7 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		search?: string
 		sortBy: VerifiedMoonsSortBy
 		sortDir: 'asc' | 'desc'
+		profitability?: MoonProfitabilityQueryInputs
 	}): Promise<VerifiedMoonPage> {
 		const offset = (filters.page - 1) * filters.pageSize
 		const conditions = []
@@ -379,6 +388,170 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 				.from(verifiedMoonSummaries)
 				.orderBy(asc(verifiedMoonSummaries.constellationName))
 
+		if (filters.profitability) {
+			// Keep the small pricing context as query parameters so compositions stay in SQL.
+			const inputs = filters.profitability
+			const materialRows = inputs.typeMaterials.map((material) => ({
+				ore_type_id: material.oreTypeId,
+				material_type_id: material.materialTypeId,
+				quantity: material.quantity,
+				ore_volume: inputs.oreVolumes[material.oreTypeId] ?? 1,
+			}))
+			const profileRows = inputs.profiles.map((profile) => ({
+				id: profile.id,
+				base_volume_per_hr: profile.baseVolumePerHr,
+				rig_bonus: profile.rigBonus,
+				fuel_per_hr: profile.fuelPerHr,
+				magmatic_gas_per_hr: profile.magmaticGasPerHr,
+				nullsec_modifier: profile.nullsecModifier,
+				is_passive: profile.isPassive,
+			}))
+			const priceRows = inputs.prices.map((price) => ({
+				type_id: price.typeId,
+				price: price.price,
+			}))
+			const orderColumn = filters.sortBy === 'metenoxProfit'
+				? 'metenox_profit'
+				: filters.sortBy === 'tataraProfit'
+					? 'tatara_profit'
+					: filters.sortBy === 'moonName'
+						? 'moon_name'
+						: filters.sortBy === 'solarSystemName'
+							? 'solar_system_name'
+							: filters.sortBy === 'regionName'
+								? 'region_name'
+								: filters.sortBy === 'securityStatus'
+									? 'security_status_value'
+									: 'rarity_order'
+			const direction = filters.sortDir === 'asc' ? 'asc' : 'desc'
+			const orderSql = sql.raw(
+				`${orderColumn} ${direction} nulls last, moon_name asc, moon_id asc`
+			)
+			const rawConditions = []
+			if (filters.regionId) rawConditions.push(sql`s.region_id = ${filters.regionId}`)
+			if (filters.constellationId) rawConditions.push(sql`s.constellation_id = ${filters.constellationId}`)
+			if (filters.rarity && filters.rarity.length > 0) {
+				rawConditions.push(
+					sql`s.highest_rarity in (${sql.join(filters.rarity.map((rarity) => sql`${rarity}`), sql`, `)})`
+				)
+			}
+			if (filters.search) {
+				const search = `%${filters.search.trim()}%`
+				rawConditions.push(sql`(s.moon_name ilike ${search} or s.solar_system_name ilike ${search})`)
+			}
+			const rawWhere = rawConditions.length > 0
+				? sql`where ${sql.join(rawConditions, sql` and `)}`
+				: sql``
+			const pricingSql = sql`
+				with pricing_settings as (
+					select
+						${inputs.defaultReprocessingYield}::numeric as reprocessing_yield,
+						${inputs.defaultCycleDays}::numeric as cycle_days,
+						${inputs.fuelBlockPriceOverride}::numeric as fuel_override,
+						${inputs.magmaticGasPriceOverride}::numeric as gas_override
+				), pricing_profiles as (
+					select * from jsonb_to_recordset(${JSON.stringify(profileRows)}::jsonb) as p(
+						id text, base_volume_per_hr numeric, rig_bonus numeric, fuel_per_hr numeric,
+						magmatic_gas_per_hr numeric, nullsec_modifier numeric, is_passive boolean
+					)
+				), pricing_materials as (
+					select * from jsonb_to_recordset(${JSON.stringify(materialRows)}::jsonb) as m(
+						ore_type_id text, material_type_id text, quantity numeric, ore_volume numeric
+					)
+				), pricing_prices as (
+					select * from jsonb_to_recordset(${JSON.stringify(priceRows)}::jsonb) as p(
+						type_id text, price numeric
+					)
+				), gross_values as (
+					select vc.moon_id, p.id as structure_type,
+						sum(
+							floor(
+								floor(
+									(
+										p.base_volume_per_hr * (1 + p.rig_bonus) * s.cycle_days * 24 *
+										case when p.is_passive then p.nullsec_modifier else 1 end *
+										o.quantity::numeric / m.ore_volume / 100
+										) * m.quantity * s.reprocessing_yield
+								) * coalesce(pr.price, 0)
+						)) as gross_isk
+					from ${verifiedCompositions} vc
+					join ${moonScanOres} o on o.scan_id = vc.source_scan_id
+					join pricing_materials m on m.ore_type_id = o.ore_type_id
+					cross join pricing_profiles p
+					cross join pricing_settings s
+					left join pricing_prices pr on pr.type_id = m.material_type_id
+					where not (p.is_passive and m.material_type_id in ('35', '36'))
+					group by vc.moon_id, p.id
+				), profit_values as (
+					select
+						g.moon_id,
+						g.structure_type,
+						round(
+							g.gross_isk -
+							(
+								p.fuel_per_hr * s.cycle_days * 24 *
+								case when s.fuel_override > 0 then s.fuel_override else coalesce(fuel.price, 0) end
+							) -
+							(
+								case when p.is_passive then coalesce(p.magmatic_gas_per_hr, 0) * s.cycle_days * 24 else 0 end *
+								case when s.gas_override > 0 then s.gas_override else coalesce(gas.price, 0) end
+							)
+						) as profit
+					from gross_values g
+					join pricing_profiles p on p.id = g.structure_type
+					cross join pricing_settings s
+					left join pricing_prices fuel on fuel.type_id = ${FUEL_BLOCK_TYPE_ID}
+					left join pricing_prices gas on gas.type_id = ${MAGMATIC_GAS_TYPE_ID}
+				)
+				select
+					s.moon_id as moon_id,
+					s.moon_name as moon_name,
+					s.solar_system_id as solar_system_id,
+					s.solar_system_name as solar_system_name,
+					s.region_id as region_id,
+					s.region_name as region_name,
+					s.constellation_id as constellation_id,
+					s.constellation_name as constellation_name,
+					s.security_status as security_status,
+					s.highest_rarity as highest_rarity,
+					case s.highest_rarity when 'R4' then 1 when 'R8' then 2 when 'R16' then 3 when 'R32' then 4 when 'R64' then 5 else -1 end as rarity_order,
+					case when s.security_status ~ '^[+-]?[0-9]+([.][0-9]+)?$' then s.security_status::double precision else null end as security_status_value,
+					max(case when pv.structure_type = 'metenox' then pv.profit end) as metenox_profit,
+					max(case when pv.structure_type = 'tatara' then pv.profit end) as tatara_profit
+				from ${verifiedMoonSummaries} s
+				left join profit_values pv on pv.moon_id = s.moon_id
+				${rawWhere}
+				group by s.moon_id, s.moon_name, s.solar_system_id, s.solar_system_name, s.region_id,
+					s.region_name, s.constellation_id, s.constellation_name, s.security_status, s.highest_rarity
+				order by ${orderSql}
+				limit ${filters.pageSize} offset ${offset}
+			`
+			const rows = await this.db.execute(pricingSql)
+			return {
+				items: rows.rows.map((row) => ({
+					moonId: String(row.moon_id),
+					moonName: String(row.moon_name),
+					solarSystemId: String(row.solar_system_id),
+					solarSystemName: String(row.solar_system_name),
+					regionId: String(row.region_id),
+					regionName: String(row.region_name),
+					constellationId: String(row.constellation_id),
+					constellationName: String(row.constellation_name),
+					securityStatus: row.security_status == null ? null : String(row.security_status),
+					highestRarity: row.highest_rarity as OreRarity | null,
+					metenoxProfit: row.metenox_profit == null ? null : String(row.metenox_profit),
+					tataraProfit: row.tatara_profit == null ? null : String(row.tatara_profit),
+				})),
+				total,
+				page: filters.page,
+				pageSize: filters.pageSize,
+				constellations: constellations.map((row) => ({
+					constellationId: row.constellationId,
+					constellationName: row.constellationName,
+				})),
+			}
+		}
+
 		const rarityOrderExpr = sql<number>`case ${verifiedMoonSummaries.highestRarity}
 			when 'R4' then 1
 			when 'R8' then 2
@@ -409,10 +582,21 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		})()
 
 		const rows = await this.db
-			.select()
+			.select({
+				moonId: verifiedMoonSummaries.moonId,
+				moonName: verifiedMoonSummaries.moonName,
+				solarSystemId: verifiedMoonSummaries.solarSystemId,
+				solarSystemName: verifiedMoonSummaries.solarSystemName,
+				regionId: verifiedMoonSummaries.regionId,
+				regionName: verifiedMoonSummaries.regionName,
+				constellationId: verifiedMoonSummaries.constellationId,
+				constellationName: verifiedMoonSummaries.constellationName,
+				securityStatus: verifiedMoonSummaries.securityStatus,
+				highestRarity: verifiedMoonSummaries.highestRarity,
+			})
 			.from(verifiedMoonSummaries)
 			.where(where)
-			.orderBy(...orderByColumns, asc(verifiedMoonSummaries.moonName))
+			.orderBy(...orderByColumns, asc(verifiedMoonSummaries.moonName), asc(verifiedMoonSummaries.moonId))
 			.limit(filters.pageSize)
 			.offset(offset)
 
@@ -437,6 +621,25 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 				constellationName: row.constellationName,
 			})),
 		}
+	}
+
+	async getVerifiedMoonCountsByRegionIds(regionIds: string[]): Promise<VerifiedMoonRegionCount[]> {
+		const uniqueRegionIds = [...new Set(regionIds)]
+		if (uniqueRegionIds.length === 0) return []
+
+		const rows = await this.db
+			.select({
+				regionId: verifiedMoonSummaries.regionId,
+				verifiedCount: count(verifiedMoonSummaries.moonId),
+			})
+			.from(verifiedMoonSummaries)
+			.where(inArray(verifiedMoonSummaries.regionId, uniqueRegionIds))
+			.groupBy(verifiedMoonSummaries.regionId)
+
+		return rows.map((row) => ({
+			regionId: row.regionId,
+			verifiedCount: Number(row.verifiedCount),
+		}))
 	}
 
 	async getVerifiedMoonSummaryIds(): Promise<string[]> {
@@ -534,6 +737,59 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		return {
 			scannedMoonIds: scanned.map((r) => r.moonId),
 			verifiedMoonIds: verified.map((r) => r.moonId),
+		}
+	}
+
+	async getScannedMoonCountsByRegionIds(regionIds: string[]): Promise<ScannedMoonRegionCount[]> {
+		const uniqueRegionIds = [...new Set(regionIds)]
+		if (uniqueRegionIds.length === 0) return []
+
+		const rows = await this.db
+			.select({
+				regionId: moonScans.regionId,
+				scannedCount: sql<number>`count(distinct ${moonScans.moonId})`,
+			})
+			.from(moonScans)
+			.where(and(isNotNull(moonScans.regionId), inArray(moonScans.regionId, uniqueRegionIds)))
+			.groupBy(moonScans.regionId)
+
+		return rows.map((row) => ({
+			regionId: row.regionId as string,
+			scannedCount: Number(row.scannedCount),
+		}))
+	}
+
+	async getUnlocatedScannedMoonIds(limit: number, afterMoonId?: string): Promise<string[]> {
+		const conditions = [isNull(moonScans.regionId)]
+		if (afterMoonId) conditions.push(sql`${moonScans.moonId} > ${afterMoonId}`)
+
+		const rows = await this.db
+			.selectDistinct({ moonId: moonScans.moonId })
+			.from(moonScans)
+			.where(and(...conditions))
+			.orderBy(asc(moonScans.moonId))
+			.limit(Math.min(Math.max(limit, 1), 500))
+
+		return rows.map((row) => row.moonId)
+	}
+
+	async backfillScanLocations(locations: ScanLocation[]): Promise<void> {
+		const grouped = new Map<string, string[]>()
+		for (const location of locations) {
+			const key = `${location.regionId}:${location.solarSystemId}`
+			const moonIds = grouped.get(key) ?? []
+			moonIds.push(location.moonId)
+			grouped.set(key, moonIds)
+		}
+
+		for (const [key, moonIds] of grouped) {
+			const separator = key.indexOf(':')
+			const regionId = key.slice(0, separator)
+			const solarSystemId = key.slice(separator + 1)
+			await this.db
+				.update(moonScans)
+				.set({ regionId, solarSystemId })
+				.where(and(isNull(moonScans.regionId), inArray(moonScans.moonId, moonIds)))
 		}
 	}
 
@@ -672,6 +928,8 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		return {
 			id: row.id,
 			moonId: row.moonId,
+			regionId: row.regionId,
+			solarSystemId: row.solarSystemId,
 			submittedBy: row.submittedBy,
 			submittedAt: row.submittedAt.toISOString(),
 			status: row.status,

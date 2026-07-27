@@ -6,6 +6,8 @@ export const moonScanSourceEnum = pgEnum('moon_scan_source', ['user', 'system'])
 export const moonScans = pgTable('moon_scans', {
 	id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
 	moonId: text('moon_id').notNull(),
+	regionId: text('region_id'),
+	solarSystemId: text('solar_system_id'),
 	submittedBy: text('submitted_by'),
 	submittedAt: timestamp('submitted_at', { withTimezone: true }).defaultNow().notNull(),
 	status: moonScanStatusEnum('status').default('pending').notNull(),
@@ -15,6 +17,7 @@ export const moonScans = pgTable('moon_scans', {
 	notes: text('notes'),
 }, (t) => [
 	index('moon_scans_moon_id_idx').on(t.moonId),
+	index('moon_scans_region_moon_idx').on(t.regionId, t.moonId),
 	index('moon_scans_submitted_by_idx').on(t.submittedBy),
 	index('moon_scans_status_idx').on(t.status),
 	index('moon_scans_submitted_at_idx').on(t.submittedAt),

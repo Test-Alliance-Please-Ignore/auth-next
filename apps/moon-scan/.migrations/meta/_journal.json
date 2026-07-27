@@ -15,6 +15,13 @@
       "when": 1783286618443,
       "tag": "0001_wandering_bloodstorm",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784964393566,
+      "tag": "0002_ancient_medusa",
+      "breakpoints": true
     }
   ]
 }

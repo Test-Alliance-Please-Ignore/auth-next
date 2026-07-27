@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 
-import { formatDateTimeWithZone, formatUtcDateTime } from '@/lib/date-utils'
+import { formatDate, formatDateTimeWithZone, formatUtcDateTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { Popover, PopoverAnchor, PopoverContent } from './popover'
@@ -8,10 +8,14 @@ import { Popover, PopoverAnchor, PopoverContent } from './popover'
 interface EveTimeDisplayProps {
 	dateStr: string
 	className?: string
-	format?: 'full' | 'compact' | 'window'
+	format?: 'full' | 'compact' | 'date' | 'window'
 }
 
-function formatEveDateTime(dateStr: string, format: 'full' | 'compact' | 'window'): string {
+function formatEveDateTime(dateStr: string, format: 'full' | 'compact' | 'date' | 'window'): string {
+	if (format === 'date') {
+		return `${formatDate(dateStr)} EVE`
+	}
+
 	if (format === 'compact') {
 		const formatted = formatUtcDateTime(dateStr, true)
 		return `${formatted} EVE`

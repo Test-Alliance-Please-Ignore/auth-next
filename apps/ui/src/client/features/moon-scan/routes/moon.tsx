@@ -6,6 +6,7 @@ import { ArrowLeft } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
+import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -206,7 +207,15 @@ function StructurePanel({ structure }: { structure: StructureProfitability }) {
 	)
 }
 
-function ProfitabilityCard({ structures, updatedAt }: { structures: StructureProfitability[]; updatedAt: string }) {
+function ProfitabilityCard({
+	structures,
+	updatedAt,
+	pricingSnapshotDate,
+}: {
+	structures: StructureProfitability[]
+	updatedAt: string
+	pricingSnapshotDate: string | null
+}) {
 	const ORDER = ['metenox', 'tatara']
 	const visible = ORDER
 		.map((id) => structures.find((s) => s.structureType === id))
@@ -219,7 +228,22 @@ function ProfitabilityCard({ structures, updatedAt }: { structures: StructurePro
 				{visible.map((s) => <StructurePanel key={s.structureType} structure={s} />)}
 			</div>
 			<div className="border-t px-4 py-2 text-xs text-muted-foreground">
-				Updated {new Date(updatedAt).toUTCString().replace(':00 GMT', ' UTC')}
+				<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+					<span>Calculated:</span>
+					<EveTimeDisplay dateStr={updatedAt} />
+				</div>
+				<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+					<span>Pricing Source: Global Daily Average</span>
+					<span aria-hidden="true">•</span>
+					<span className="flex items-center gap-1">
+						Snapshot:
+						{pricingSnapshotDate ? (
+							<EveTimeDisplay dateStr={`${pricingSnapshotDate}T00:00:00Z`} format="date" />
+						) : (
+							<span>Unavailable</span>
+						)}
+					</span>
+				</div>
 			</div>
 		</div>
 	)
@@ -340,7 +364,11 @@ export default function MoonPage() {
 			{/* Profitability panel */}
 			{!isLoading && profitability && (
 				<div className="mb-6">
-					<ProfitabilityCard structures={profitability.structures} updatedAt={profitability.updatedAt} />
+					<ProfitabilityCard
+						structures={profitability.structures}
+						updatedAt={profitability.updatedAt}
+						pricingSnapshotDate={profitability.pricingSnapshotDate ?? null}
+					/>
 				</div>
 			)}
 

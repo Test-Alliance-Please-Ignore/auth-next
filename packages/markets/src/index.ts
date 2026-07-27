@@ -48,6 +48,9 @@ export interface Markets {
 		input: GetBatchMarketDataAtTimeInput
 	): Promise<GetBatchMarketDataResponse>
 
+	/** Return the revision of the daily price set used for time-relative lookups. */
+	getMarketDataRevisionAtTime(input: Pick<GetBatchMarketDataAtTimeInput, 'regionId' | 'atTime'>): Promise<string | null>
+
 	/**
 	 * Start automatic hourly snapshots for a region
 	 * Takes an immediate snapshot, then schedules hourly snapshots via alarm
