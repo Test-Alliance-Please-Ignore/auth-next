@@ -6,6 +6,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 
 import { apiClient } from '@/lib/api'
 import { applicationsApi, fulcrumApi } from './api'
@@ -31,6 +32,7 @@ import type {
 	Recommendation,
 	RecommenderApplicationDetail,
 	ReportManifest,
+	ReportSectionMeta,
 	ReportRequestSource,
 	ReportSectionName,
 	FulcrumCharacterReportData,
@@ -1278,14 +1280,59 @@ export function useReportSections(reportId: string, enabled = true) {
 /**
  * Hook to fetch a specific report section's data (lazy-loaded per tab)
  */
+export interface ReportChunkProgress {
+	loadedChunks: number
+	totalChunks: number
+}
+
 export function useReportSectionData<T = unknown>(
 	reportId: string,
 	section: ReportSectionName,
 	enabled = true,
+	sectionMeta?: ReportSectionMeta,
 ) {
-	return useQuery<T>({
-		queryKey: applicationKeys.fulcrumReportSection(reportId, section),
-		queryFn: () => fulcrumApi.getReportSectionData<T>(reportId, section),
+	const queryClient = useQueryClient()
+	const chunkCount = sectionMeta?.chunks ?? 0
+
+	const [chunkProgress, setChunkProgress] = useState<ReportChunkProgress>({
+		loadedChunks: 0,
+		totalChunks: chunkCount,
+	})
+
+	const query = useQuery<T>({
+		queryKey: [...applicationKeys.fulcrumReportSection(reportId, section), chunkCount],
+		queryFn: async () => {
+			if (chunkCount === 0) {
+				return fulcrumApi.getReportSectionData<T>(reportId, section)
+			}
+
+			setChunkProgress({ loadedChunks: 0, totalChunks: chunkCount })
+			const chunks: unknown[] = []
+			for (let page = 0; page < chunkCount; page++) {
+				const result = await queryClient.fetchQuery({
+					queryKey: [...applicationKeys.fulcrumReportSection(reportId, section), 'chunk', page],
+					queryFn: () => fulcrumApi.getReportSectionData<{
+						data: unknown[]
+						page: number
+						totalChunks: number
+					}>(reportId, section, page),
+					staleTime: 1000 * 60 * 5,
+					gcTime: 1000 * 60 * 10,
+					retry: 2,
+				})
+				chunks.push(...result.data)
+				setChunkProgress({ loadedChunks: page + 1, totalChunks: chunkCount })
+			}
+
+			if (section === 'wallet-transactions') {
+				return {
+					transactions: chunks,
+					truncated: sectionMeta?.truncated ?? false,
+				} as T
+			}
+
+			return chunks as T
+		},
 		staleTime: 1000 * 60 * 5,
 		gcTime: 1000 * 60 * 10,
 		enabled: !!reportId && enabled,
@@ -1296,4 +1343,15 @@ export function useReportSectionData<T = unknown>(
 			return failureCount < 2
 		},
 	})
+
+	useEffect(() => {
+		if (chunkCount === 0) return
+		if (query.isFetching && !query.data) {
+			setChunkProgress({ loadedChunks: 0, totalChunks: chunkCount })
+		} else if (query.data) {
+			setChunkProgress({ loadedChunks: chunkCount, totalChunks: chunkCount })
+		}
+	}, [chunkCount, query.data, query.isFetching, reportId, section])
+
+	return { ...query, chunkProgress }
 }

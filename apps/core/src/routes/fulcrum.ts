@@ -1099,7 +1099,39 @@ app.get('/reports/:reportId/sections/:section', requireAuth(), async (c) => {
 			return c.json({ error: 'Report not ready', status: report.status }, 400)
 		}
 
-		const data = await fulcrum.getReportSectionData(reportId, section)
+		const pageParam = c.req.query('page')
+		const pageSizeParam = c.req.query('pageSize')
+		let page: number | undefined
+		let pageSize: number | undefined
+		if (pageParam !== undefined) {
+			page = Number(pageParam)
+			if (!Number.isInteger(page) || page < 0) {
+				return c.json({ error: 'Page must be a non-negative integer' }, 400)
+			}
+		}
+		if (pageSizeParam !== undefined) {
+			if (page === undefined) {
+				return c.json({ error: 'page is required when pageSize is provided' }, 400)
+			}
+			pageSize = Number(pageSizeParam)
+			if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) {
+				return c.json({ error: 'pageSize must be an integer between 1 and 200' }, 400)
+			}
+		}
+
+		if (page === undefined) {
+			const manifest = await fulcrum.getReportSections(reportId)
+			if ((manifest?.sections[section]?.chunks ?? 0) > 0) {
+				return c.json(
+					{ error: 'A page parameter is required for chunked report sections' },
+					400,
+				)
+			}
+		}
+
+		const data = page === undefined && pageSize === undefined
+			? await fulcrum.getReportSectionData(reportId, section)
+			: await fulcrum.getReportSectionData(reportId, section, page, pageSize)
 		if (!data) {
 			return c.json({ error: 'Section data not found' }, 404)
 		}

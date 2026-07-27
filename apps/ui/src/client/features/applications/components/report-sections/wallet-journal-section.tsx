@@ -166,7 +166,7 @@ export function WalletJournalSection({ data }: { data: ProcessedWalletJournalEnt
 		data: filteredData,
 		emptyMessage: 'No journal entries found.',
 		searchPlaceholder: 'Search journal...',
-		pageSize: 1000,
+		pageSize: 100,
 		getRowClassName: (row) => (isHighlightedJournalType(row) ? 'bg-amber-500/10' : undefined),
 		renderTopToolbarCustomActions: () => (
 			<div className="ml-auto flex items-center gap-2">
