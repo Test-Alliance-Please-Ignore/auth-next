@@ -480,6 +480,7 @@ export function ContractsSection({ data }: { data: ProcessedContract[] }) {
 		data: filtered,
 		emptyMessage: 'No contracts match the current filters',
 		searchPlaceholder: 'Search contracts...',
+		compactRows: true,
 		renderDetailPanel: ({ row }) => <ContractDetails contract={row.original} />,
 	})
 

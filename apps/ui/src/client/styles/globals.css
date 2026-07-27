@@ -365,6 +365,12 @@ body {
 	font-size: 0.875rem;
 }
 
+/* Keep dense financial/report tables readable without changing other MRT tables. */
+.mrt-grid__paper .mrt-grid__compact-row > td {
+	padding-bottom: 0.35rem;
+	padding-top: 0.35rem;
+}
+
 .mrt-grid__paper .mantine-Paper-root,
 .mrt-grid__paper .mantine-ScrollArea-root,
 .mrt-grid__paper .mantine-Table-root {

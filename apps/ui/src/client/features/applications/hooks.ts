@@ -95,6 +95,8 @@ export const applicationKeys = {
 		[...applicationKeys.all, 'user-history', userId] as const,
 }
 
+const REPORT_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+
 export const hrUserKeys = {
 	all: ['hr', 'users'] as const,
 	characters: (userId: string) => [...hrUserKeys.all, userId, 'characters'] as const,
@@ -1270,8 +1272,8 @@ export function useReportSections(reportId: string, enabled = true) {
 	return useQuery<ReportManifest>({
 		queryKey: applicationKeys.fulcrumReportSections(reportId),
 		queryFn: () => fulcrumApi.getReportSections(reportId),
-		staleTime: 1000 * 60 * 5,
-		gcTime: 1000 * 60 * 10,
+		staleTime: REPORT_CACHE_TTL_MS,
+		gcTime: REPORT_CACHE_TTL_MS,
 		enabled: !!reportId && enabled,
 		retry: 2,
 	})
@@ -1284,6 +1286,8 @@ export interface ReportChunkProgress {
 	loadedChunks: number
 	totalChunks: number
 }
+
+const REPORT_CHUNK_FETCH_CONCURRENCY = 3
 
 export function useReportSectionData<T = unknown>(
 	reportId: string,
@@ -1308,20 +1312,33 @@ export function useReportSectionData<T = unknown>(
 
 			setChunkProgress({ loadedChunks: 0, totalChunks: chunkCount })
 			const chunks: unknown[] = []
-			for (let page = 0; page < chunkCount; page++) {
-				const result = await queryClient.fetchQuery({
-					queryKey: [...applicationKeys.fulcrumReportSection(reportId, section), 'chunk', page],
-					queryFn: () => fulcrumApi.getReportSectionData<{
-						data: unknown[]
-						page: number
-						totalChunks: number
-					}>(reportId, section, page),
-					staleTime: 1000 * 60 * 5,
-					gcTime: 1000 * 60 * 10,
-					retry: 2,
+			for (let batchStart = 0; batchStart < chunkCount; batchStart += REPORT_CHUNK_FETCH_CONCURRENCY) {
+				const batchPages = Array.from(
+					{ length: Math.min(REPORT_CHUNK_FETCH_CONCURRENCY, chunkCount - batchStart) },
+					(_, index) => batchStart + index,
+				)
+				const batchResults = await Promise.all(
+					batchPages.map((page) =>
+						queryClient.fetchQuery({
+							queryKey: [...applicationKeys.fulcrumReportSection(reportId, section), 'chunk', page],
+							queryFn: () => fulcrumApi.getReportSectionData<{
+								data: unknown[]
+								page: number
+								totalChunks: number
+							}>(reportId, section, page),
+							staleTime: REPORT_CACHE_TTL_MS,
+							gcTime: REPORT_CACHE_TTL_MS,
+							retry: 2,
+						}),
+					),
+				)
+				for (const result of batchResults) {
+					chunks.push(...result.data)
+				}
+				setChunkProgress({
+					loadedChunks: Math.min(batchStart + batchResults.length, chunkCount),
+					totalChunks: chunkCount,
 				})
-				chunks.push(...result.data)
-				setChunkProgress({ loadedChunks: page + 1, totalChunks: chunkCount })
 			}
 
 			if (section === 'wallet-transactions') {
@@ -1333,8 +1350,8 @@ export function useReportSectionData<T = unknown>(
 
 			return chunks as T
 		},
-		staleTime: 1000 * 60 * 5,
-		gcTime: 1000 * 60 * 10,
+		staleTime: REPORT_CACHE_TTL_MS,
+		gcTime: REPORT_CACHE_TTL_MS,
 		enabled: !!reportId && enabled,
 		retry: (failureCount, error) => {
 			// Don't retry on 404 (section genuinely missing)
