@@ -39,7 +39,7 @@ import {
 import { AlertsBanner } from './report-sections/alerts-banner'
 import { extractBlacklistHighlights } from './report-sections/blacklist-highlighting'
 
-import type { ReportSectionName } from '../api'
+import type { ReportSectionMeta, ReportSectionName } from '../api'
 
 type LegacyBlacklistSignals = {
 	hasAnyBlacklistSignal?: boolean
@@ -374,6 +374,7 @@ function SectionContent({
 	section,
 	isActive,
 	availableSections,
+	sectionMeta,
 	characterId,
 	highlightedCharacterName,
 }: {
@@ -381,6 +382,7 @@ function SectionContent({
 	section: ReportSectionName
 	isActive: boolean
 	availableSections: ReportSectionName[]
+	sectionMeta?: ReportSectionMeta
 	characterId: string
 	highlightedCharacterName?: string
 }) {
@@ -396,10 +398,13 @@ function SectionContent({
 		isActive && needsBlacklistHighlights,
 	)
 	const blacklistHighlights = needsBlacklistHighlights ? extractBlacklistHighlights(alertData) : undefined
-	const { data, isLoading, error } = useReportSectionData(
+	const { data, isLoading, error, chunkProgress } = useReportSectionData(
 		reportId,
 		section,
-		isActive && !isCommunications && !isOverview,
+		isActive &&
+			!isCommunications &&
+			!isOverview,
+		sectionMeta,
 	)
 
 	if (!isActive) return null
@@ -424,6 +429,15 @@ function SectionContent({
 	// Overview handles its own data fetching for multiple sections
 	if (section === 'public-info') {
 		return <OverviewContent reportId={reportId} availableSections={availableSections} />
+	}
+
+	if (section === 'wallet-transactions' && (sectionMeta?.chunks ?? 0) > 0 && !error) {
+		return (
+			<WalletTransactionsSection
+				data={data as any}
+				loadingProgress={chunkProgress}
+			/>
+		)
 	}
 
 	if (isLoading) {
@@ -610,6 +624,7 @@ export function FulcrumReportViewer({ reportId }: FulcrumReportViewerProps) {
 						section={tab.name}
 						isActive={effectiveTab === tab.name}
 						availableSections={availableSectionNames}
+						sectionMeta={manifest.sections[tab.name]}
 						characterId={manifest.characterId}
 						highlightedCharacterName={highlightedCharacterName}
 					/>

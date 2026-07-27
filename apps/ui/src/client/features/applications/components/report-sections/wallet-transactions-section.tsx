@@ -3,6 +3,7 @@
  */
 
 import { MantineReactTable } from 'mantine-react-table'
+import { Loader2 } from 'lucide-react'
 import { useMemo } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -12,6 +13,7 @@ import { useFulcrumTable } from './use-fulcrum-table'
 import { EntityNameLink } from './entity-name-link'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
+import type { ReportChunkProgress } from '../../hooks'
 
 interface ProcessedWalletTransaction {
 	transaction_id: string
@@ -147,26 +149,44 @@ function buildWalletTransactionColumns(): MRT_ColumnDef<ProcessedWalletTransacti
 
 export function WalletTransactionsSection({
 	data: rawData,
+	loadingProgress,
 }: {
-	data: ProcessedWalletTransaction[] | WalletTransactionsData
+	data: ProcessedWalletTransaction[] | WalletTransactionsData | undefined
+	loadingProgress?: ReportChunkProgress
 }) {
-	const data = Array.isArray(rawData) ? rawData : rawData.transactions
-	const truncated = Array.isArray(rawData) ? false : rawData.truncated ?? false
+	const data = !rawData
+		? []
+		: Array.isArray(rawData)
+			? rawData
+			: rawData.transactions
+	const truncated = !rawData || Array.isArray(rawData) ? false : rawData.truncated ?? false
+	const isLoadingChunks = Boolean(
+		!rawData && loadingProgress && loadingProgress.loadedChunks < loadingProgress.totalChunks,
+	)
 	const columns = useMemo(() => buildWalletTransactionColumns(), [])
 
 	const table = useFulcrumTable({
 		columns,
 		data,
-		emptyMessage: 'No transactions found.',
+		emptyMessage: isLoadingChunks ? 'Loading transactions...' : 'No transactions found.',
 		searchPlaceholder: 'Search transactions...',
-		pageSize: 1000,
+		pageSize: 100,
+		rowsPerPageOptions: ['50', '100', '200', '500'],
+		renderTopToolbarCustomActions: isLoadingChunks
+			? () => (
+					<span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+						<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+						Loading chunks {loadingProgress?.loadedChunks ?? 0}/{loadingProgress?.totalChunks ?? 0}
+					</span>
+				)
+			: undefined,
 	})
 
-	if (data.length === 0) {
+	if (data.length === 0 && !isLoadingChunks) {
 		return <p className="text-sm text-muted-foreground">No wallet transactions found.</p>
 	}
 
-	// Compute total buy/sell volumes
+	// Compute totals across the complete client-side dataset.
 	const { totalBuy, totalSell } = data.reduce(
 		(acc, txn) => {
 			const val = typeof txn.totalValue === 'number'

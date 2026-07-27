@@ -17,7 +17,12 @@ import {
 	mrtTableProps,
 } from '@/lib/mrt-theme'
 
-import type { MRT_ColumnDef, MRT_RowData, MRT_TableOptions } from 'mantine-react-table'
+import type {
+	MRT_ColumnDef,
+	MRT_PaginationState,
+	MRT_RowData,
+	MRT_TableOptions,
+} from 'mantine-react-table'
 
 interface UseFulcrumTableOptions<Row extends MRT_RowData> {
 	columns: MRT_ColumnDef<Row>[]
@@ -29,6 +34,10 @@ interface UseFulcrumTableOptions<Row extends MRT_RowData> {
 	renderDetailPanel?: MRT_TableOptions<Row>['renderDetailPanel']
 	renderTopToolbarCustomActions?: MRT_TableOptions<Row>['renderTopToolbarCustomActions']
 	getRowClassName?: (row: Row) => string | undefined
+	pagination?: MRT_PaginationState
+	onPaginationChange?: MRT_TableOptions<Row>['onPaginationChange']
+	rowCount?: number
+	rowsPerPageOptions?: string[]
 }
 
 export function useFulcrumTable<Row extends MRT_RowData>({
@@ -41,6 +50,10 @@ export function useFulcrumTable<Row extends MRT_RowData>({
 	renderDetailPanel,
 	renderTopToolbarCustomActions,
 	getRowClassName,
+	pagination,
+	onPaginationChange,
+	rowCount,
+	rowsPerPageOptions,
 }: UseFulcrumTableOptions<Row>) {
 	return useMantineReactTable({
 		columns,
@@ -58,6 +71,10 @@ export function useFulcrumTable<Row extends MRT_RowData>({
 		enablePagination: true,
 		enableStickyHeader: false,
 		enableTopToolbar: true,
+		manualPagination: Boolean(pagination && onPaginationChange),
+		...(pagination ? { state: { pagination } } : {}),
+		...(onPaginationChange ? { onPaginationChange } : {}),
+		...(rowCount !== undefined ? { rowCount } : {}),
 		enableExpanding: Boolean(renderDetailPanel),
 		renderDetailPanel,
 		renderTopToolbarCustomActions,
@@ -75,7 +92,7 @@ export function useFulcrumTable<Row extends MRT_RowData>({
 		paginationDisplayMode: 'pages',
 		mantinePaginationProps: {
 			...mrtPaginationProps,
-			rowsPerPageOptions: ['25', '50', '100', '200', '500', '1000'],
+			rowsPerPageOptions: rowsPerPageOptions ?? ['25', '50', '100', '200', '500', '1000'],
 		},
 		mantinePaperProps: mrtPaperProps,
 		mantineTableContainerProps: mrtTableContainerProps,

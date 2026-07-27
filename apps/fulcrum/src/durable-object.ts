@@ -22,6 +22,10 @@ import { resolveReportMetadata } from './lib/report-metadata'
 import type { Env } from './context'
 import type { WorkflowParams } from './workflows/character-report.workflow.js'
 
+const CHUNK_SIZE = 500
+const REPORT_CHUNK_CACHE_TTL_MS = 5 * 60 * 1000
+const REPORT_CHUNK_CACHE_MAX_ENTRIES = 64
+
 /**
  * Fulcrum Durable Object
  *
@@ -33,6 +37,10 @@ import type { WorkflowParams } from './workflows/character-report.workflow.js'
  */
 export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	private logger = logger.withTags({ component: 'fulcrum-do' })
+	private reportChunkCache = new Map<
+		string,
+		{ rows: unknown[]; exists: boolean; expiresAt: number }
+	>()
 
 	/**
 	 * Initialize the Durable Object
@@ -50,6 +58,34 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	 */
 	private getDb(): DbClient {
 		return createDb(this.env.DATABASE_URL)
+	}
+
+	private async getReportChunk(
+		r2Key: string,
+		section: ReportSectionName,
+		chunkIndex: number,
+	): Promise<unknown[] | null> {
+		const cacheKey = `${r2Key}/sections/${section}/chunk-${chunkIndex}.json`
+		const now = Date.now()
+		const cached = this.reportChunkCache.get(cacheKey)
+		if (cached && cached.expiresAt > now) {
+			return cached.exists ? cached.rows : null
+		}
+		if (cached) this.reportChunkCache.delete(cacheKey)
+
+		const object = await this.env.CHARACTER_REPORTS.get(cacheKey)
+		const exists = Boolean(object)
+		const rows = object ? await object.json<unknown[]>() : []
+		if (this.reportChunkCache.size >= REPORT_CHUNK_CACHE_MAX_ENTRIES) {
+			const oldestKey = this.reportChunkCache.keys().next().value
+			if (oldestKey) this.reportChunkCache.delete(oldestKey)
+		}
+		this.reportChunkCache.set(cacheKey, {
+			rows,
+			exists,
+			expiresAt: now + REPORT_CHUNK_CACHE_TTL_MS,
+		})
+		return exists ? rows : null
 	}
 
 	/**
@@ -358,12 +394,14 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	 * file or as chunked files, then fetches accordingly.
 	 *
 	 * - page omitted: returns full data (all chunks concatenated for chunked sections)
-	 * - page provided: returns { data, page, totalChunks } for that chunk only
+	 * - page provided without pageSize: returns one storage chunk
+	 * - page provided with pageSize: returns one page across storage chunk boundaries
 	 */
 	async getReportSectionData(
 		reportId: string,
 		section: ReportSectionName,
 		page?: number,
+		pageSize?: number,
 	): Promise<unknown | null> {
 		const db = this.getDb()
 		const report = await queries.getReport(db, reportId)
@@ -383,8 +421,37 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 		// Read manifest to determine storage format
 		const manifestKey = `${report.r2Key}/manifest.json`
 		const manifestObj = await this.env.CHARACTER_REPORTS.get(manifestKey)
-		const manifest = manifestObj ? await manifestObj.json<{ sections: Record<string, { chunks: number }> }>() : null
+		const manifest = manifestObj
+			? await manifestObj.json<{
+					sections: Record<string, { chunks: number; totalCount: number }>
+				}>()
+			: null
 		const meta = manifest?.sections?.[section]
+
+		if (page !== undefined && pageSize !== undefined && meta && meta.chunks > 0) {
+			const offset = page * pageSize
+			const firstChunk = Math.floor(offset / CHUNK_SIZE)
+			const lastChunk = Math.floor((offset + pageSize - 1) / CHUNK_SIZE)
+			const chunkRows = await Promise.all(
+				Array.from({ length: lastChunk - firstChunk + 1 }, (_, index) =>
+					this.getReportChunk(report.r2Key!, section, firstChunk + index),
+				),
+			)
+			if (chunkRows.some((rows) => rows === null)) {
+				return null
+			}
+			const rows = (
+				chunkRows as unknown[][]
+			).flat()
+
+			return {
+				data: rows.slice(offset - firstChunk * CHUNK_SIZE, offset - firstChunk * CHUNK_SIZE + pageSize),
+				page,
+				pageSize,
+				totalCount: meta.totalCount,
+				totalPages: Math.ceil(meta.totalCount / pageSize),
+			}
+		}
 
 		// Flat file (no manifest entry, chunks === 0, or no manifest at all)
 		if (!meta || meta.chunks === 0) {
@@ -395,28 +462,23 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 
 		// Chunked: specific page requested
 		if (page !== undefined) {
-			const chunkKey = `${report.r2Key}/sections/${section}/chunk-${page}.json`
-			const r2Object = await this.env.CHARACTER_REPORTS.get(chunkKey)
-			if (!r2Object) return null
+			const rows = await this.getReportChunk(report.r2Key!, section, page)
+			if (!rows) return null
 			return {
-				data: await r2Object.json(),
+				data: rows,
 				page,
 				totalChunks: meta.chunks,
 			}
 		}
 
 		// Chunked: fetch all chunks in parallel and concatenate
-		const chunkObjects = await Promise.all(
+		const arrays = await Promise.all(
 			Array.from({ length: meta.chunks }, (_, i) =>
-				this.env.CHARACTER_REPORTS.get(`${report.r2Key}/sections/${section}/chunk-${i}.json`),
+				this.getReportChunk(report.r2Key!, section, i),
 			),
 		)
 
-		const arrays = await Promise.all(
-			chunkObjects.map((obj) => (obj ? obj.json<unknown[]>() : Promise.resolve([] as unknown[]))),
-		)
-
-		return arrays.flat()
+		return arrays.flatMap((rows) => rows ?? [])
 	}
 
 	/**

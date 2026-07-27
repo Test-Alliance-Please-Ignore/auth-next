@@ -216,13 +216,16 @@ export interface Fulcrum extends DurableObject {
 	 * When page is provided, only that chunk is returned with pagination envelope.
 	 * @param reportId - Report UUID
 	 * @param section - Section name
-	 * @param page - Optional chunk index (0-based) for paginated access
+	 * @param page - Optional zero-based page/chunk index for paginated access
+	 * @param pageSize - Optional page size. When provided, `page` is treated as a
+	 * page index and only that page is returned.
 	 * @returns Section JSON data or null if not found
 	 */
 	getReportSectionData(
 		reportId: string,
 		section: ReportSectionName,
 		page?: number,
+		pageSize?: number,
 	): Promise<unknown | null>
 
 	/**

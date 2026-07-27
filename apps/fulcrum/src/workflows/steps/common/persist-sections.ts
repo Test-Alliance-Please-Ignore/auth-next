@@ -1,8 +1,8 @@
 /**
  * Persist processed section data to permanent R2 paths
  *
- * Array sections with more than CHUNK_THRESHOLD items are split into
- * chunk-{i}.json files under sections/{name}/. Smaller arrays and
+ * Array sections with more than CHUNK_SIZE items are split into
+ * chunk-{i}.json files under sections/{name}. Smaller arrays and
  * single-object sections are written as a flat sections/{name}.json.
  *
  * R2 layout (chunked):  character-reports/{characterId}/{reportId}/sections/{name}/chunk-{i}.json
@@ -16,8 +16,8 @@ import type { ReportSectionMeta } from '@repo/fulcrum'
 import type { StepResult } from '../../utils/storage'
 import { logger } from '@repo/hono-helpers'
 
-/** Maximum items per chunk file. Sections at or below this size stay flat. */
-const CHUNK_THRESHOLD = 500
+/** Physical R2 chunk size; pagination and caching operate independently of it. */
+const CHUNK_SIZE = 500
 
 /**
  * Section mapping: process step result variable name -> section slug
@@ -74,7 +74,7 @@ async function persistSection(
 	const isArray = Array.isArray(data) || isWalletTransactions
 
 	// Flat write: non-array sections or arrays within threshold
-	if (!isArray || items.length <= CHUNK_THRESHOLD) {
+	if (!isArray || items.length <= CHUNK_SIZE) {
 		const key = `${baseKey}/sections/${name}.json`
 		await putWithRetry(bucket, key, safeJsonStringify(data), `section '${name}'`)
 		return {
@@ -84,11 +84,11 @@ async function persistSection(
 		}
 	}
 
-	// Chunked write: split into CHUNK_THRESHOLD-sized files written in parallel
-	const chunkCount = Math.ceil(items.length / CHUNK_THRESHOLD)
+	// Chunked write: split into cache windows written in parallel
+	const chunkCount = Math.ceil(items.length / CHUNK_SIZE)
 	await Promise.all(
 		Array.from({ length: chunkCount }, (_, i) => {
-			const chunk = items.slice(i * CHUNK_THRESHOLD, (i + 1) * CHUNK_THRESHOLD)
+			const chunk = items.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
 			const key = `${baseKey}/sections/${name}/chunk-${i}.json`
 			return putWithRetry(bucket, key, safeJsonStringify(chunk), `section '${name}' chunk ${i}`)
 		}),

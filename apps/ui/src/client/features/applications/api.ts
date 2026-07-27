@@ -879,8 +879,14 @@ export const fulcrumApi = {
 	async getReportSectionData<T = unknown>(
 		reportId: string,
 		section: ReportSectionName,
+		page?: number,
+		pageSize?: number,
 	): Promise<T> {
-		return apiClient.get(`/fulcrum/reports/${reportId}/sections/${section}`)
+		const params = new URLSearchParams()
+		if (page !== undefined) params.set('page', String(page))
+		if (pageSize !== undefined) params.set('pageSize', String(pageSize))
+		const query = params.toString() ? `?${params.toString()}` : ''
+		return apiClient.get(`/fulcrum/reports/${reportId}/sections/${section}${query}`)
 	},
 
 	/**
