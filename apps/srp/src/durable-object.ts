@@ -40,11 +40,58 @@ import {
 	DEFAULT_POD_SLOT_CAPACITIES,
 	parseShipSlotCapacitiesFromDogmaAttributes,
 } from './lib/ship-slot-capacities'
-import { formatSrpRequest } from './lib/format-request'
+import { formatSrpRequest, formatSrpRequestSummary } from './lib/format-request'
 
 import type { srpRequests as srpRequestsTable } from './db/schema'
 
 type KillmailDataJson = NonNullable<typeof srpRequestsTable.$inferInsert.killmailData>
+
+const srpRequestListColumns = {
+	id: srpRequests.id,
+	userId: srpRequests.userId,
+	characterId: srpRequests.characterId,
+	characterName: srpRequests.characterName,
+	corporationName: srpRequests.corporationName,
+	shipTypeId: srpRequests.shipTypeId,
+	shipTypeName: srpRequests.shipTypeName,
+	shipValue: srpRequests.shipValue,
+	solarSystemId: srpRequests.solarSystemId,
+	solarSystemName: srpRequests.solarSystemName,
+	lossDate: srpRequests.lossDate,
+	requestStatus: srpRequests.requestStatus,
+	approvedAmount: srpRequests.approvedAmount,
+	reviewedAt: srpRequests.reviewedAt,
+	createdAt: srpRequests.createdAt,
+	updatedAt: srpRequests.updatedAt,
+}
+
+const srpMyRequestListColumns = {
+	id: srpRequests.id,
+	userId: srpRequests.userId,
+	characterId: srpRequests.characterId,
+	characterName: srpRequests.characterName,
+	shipTypeId: srpRequests.shipTypeId,
+	shipTypeName: srpRequests.shipTypeName,
+	solarSystemId: srpRequests.solarSystemId,
+	solarSystemName: srpRequests.solarSystemName,
+	lossDate: srpRequests.lossDate,
+	requestStatus: srpRequests.requestStatus,
+	approvedAmount: srpRequests.approvedAmount,
+	createdAt: srpRequests.createdAt,
+	updatedAt: srpRequests.updatedAt,
+}
+
+const srpPaymentListColumns = {
+	id: srpRequests.id,
+	characterName: srpRequests.characterName,
+	corporationName: srpRequests.corporationName,
+	shipTypeName: srpRequests.shipTypeName,
+	lossDate: srpRequests.lossDate,
+	approvedAmount: srpRequests.approvedAmount,
+	reviewedAt: srpRequests.reviewedAt,
+	createdAt: srpRequests.createdAt,
+	updatedAt: srpRequests.updatedAt,
+}
 
 import type {
 	CharacterKillmailData,
@@ -1025,13 +1072,14 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	/**
 	 * Get a single SRP request
 	 */
-	async getRequest(requestId: string, userId: string): Promise<SRPRequestResponse | null> {
+	async getRequest(
+		requestId: string,
+		userId: string,
+		includeShipSlotCapacities = false
+	): Promise<SRPRequestResponse | null> {
 		const request = await this.db.query.srpRequests.findFirst({
 			where: eq(srpRequests.id, requestId),
 				with: {
-					comments: {
-						orderBy: asc(srpComments.createdAt),
-					},
 					history: {
 						orderBy: asc(srpRequestHistory.timestamp),
 						limit: 50,
@@ -1042,12 +1090,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		if (!request) return null
 
 		// Check if user has access (owner, reviewer, or admin handled by core worker)
-		if (request.userId !== userId) {
-			// Only return public comments if not the owner
-			request.comments = request.comments?.filter((c) => c.visibility === 'public')
-		}
-
-		return await this.formatRequestWithShipSlotCapacities(request)
+		return includeShipSlotCapacities
+			? await this.formatRequestWithShipSlotCapacities(request)
+			: await this.formatRequestForRequestor(request)
 	}
 
 	async getRequestEligibilityData(requestId: string): Promise<SrpRequestEligibilityData | null> {
@@ -1115,12 +1160,13 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		const where = and(...conditions)
 		const [requests, countRows] = await Promise.all([
-			this.db.query.srpRequests.findMany({
-				where,
-				orderBy: desc(srpRequests.createdAt),
-				limit,
-				offset,
-			}),
+			this.db
+				.select(srpMyRequestListColumns)
+				.from(srpRequests)
+				.where(where)
+				.orderBy(desc(srpRequests.createdAt))
+				.limit(limit)
+				.offset(offset),
 			this.db
 				.select({ count: sql<number>`count(*)::int` })
 				.from(srpRequests)
@@ -1128,7 +1174,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		])
 
 		return {
-			requests: await Promise.all(requests.map((r) => this.formatRequest(r))),
+			requests: requests.map((r) => formatSrpRequestSummary(r)),
 			total: countRows[0]?.count ?? 0,
 		}
 	}
@@ -1723,17 +1769,20 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		limit = 50,
 		offset = 0
 	): Promise<SRPRequestResponse[]> {
-		const requests = await this.db.query.srpRequests.findMany({
-			where: and(
-				corporationId ? eq(srpRequests.corporationId, corporationId) : undefined,
-				eq(srpRequests.requestStatus, 'approved')
-			),
-			orderBy: [asc(srpRequests.createdAt)],
-			limit,
-			offset,
-		})
+		const requests = await this.db
+			.select(srpPaymentListColumns)
+			.from(srpRequests)
+			.where(
+				and(
+					corporationId ? eq(srpRequests.corporationId, corporationId) : undefined,
+					eq(srpRequests.requestStatus, 'approved')
+				)
+			)
+			.orderBy(asc(srpRequests.createdAt))
+			.limit(limit)
+			.offset(offset)
 
-		return await Promise.all(requests.map((r) => this.formatRequest(r)))
+		return requests.map((r) => formatSrpRequestSummary(r))
 	}
 
 	async getPendingPayoutTotal(corporationId?: string): Promise<string> {
@@ -2214,6 +2263,29 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		return formatSrpRequest(request)
 	}
 
+	private async formatRequestForRequestor(request: any): Promise<SRPRequestResponse> {
+		const formatted = formatSrpRequest(request)
+		const {
+			reviewerId: _reviewerId,
+			reviewerCharacterName: _reviewerCharacterName,
+			reviewNotes: _reviewNotes,
+			srpEquipmentValue: _srpEquipmentValue,
+			srpInsurancePremium: _srpInsurancePremium,
+			srpInsurancePayout: _srpInsurancePayout,
+			srpNetInsurance: _srpNetInsurance,
+			srpCalculatedValue: _srpCalculatedValue,
+			srpFinalValue: _srpFinalValue,
+			srpPriceSnapshotTime: _srpPriceSnapshotTime,
+			srpItemPrices: _srpItemPrices,
+			killmailItemNames: _killmailItemNames,
+			killmailItemGroupIds: _killmailItemGroupIds,
+			killmailItems: _killmailItems,
+			shipSlotCapacities: _shipSlotCapacities,
+			...requestorRequest
+		} = formatted
+		return requestorRequest
+	}
+
 	private async formatRequestWithShipSlotCapacities(request: any): Promise<SRPRequestResponse> {
 		const formatted = await this.formatRequest(request)
 		formatted.shipSlotCapacities = await this.resolveShipSlotCapacities(formatted.shipTypeId)
@@ -2353,16 +2425,17 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const { where, oldestFirst } = this.buildReviewQueueConditions(status, options)
 
 		const [requests, count] = await Promise.all([
-			this.db.query.srpRequests.findMany({
-				where,
-				orderBy: oldestFirst ? srpRequests.createdAt : desc(srpRequests.createdAt),
-				limit,
-				offset,
-			}),
+			this.db
+				.select(srpRequestListColumns)
+				.from(srpRequests)
+				.where(where)
+				.orderBy(oldestFirst ? srpRequests.createdAt : desc(srpRequests.createdAt))
+				.limit(limit)
+				.offset(offset),
 			this.getReviewQueueCount(status, options),
 		])
 
-		return { requests: await Promise.all(requests.map((r) => this.formatRequest(r))), total: count }
+		return { requests: requests.map((r) => formatSrpRequestSummary(r)), total: count }
 	}
 
 	async getRequestCountByStatus(

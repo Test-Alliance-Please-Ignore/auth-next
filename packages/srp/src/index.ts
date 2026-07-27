@@ -138,7 +138,7 @@ export interface Srp {
 		actorCharacterName: string,
 		notes?: string
 	): Promise<SRPRequestResponse>
-	getRequest(requestId: string, userId: string): Promise<SRPRequestResponse | null>
+	getRequest(requestId: string, userId: string, includeShipSlotCapacities?: boolean): Promise<SRPRequestResponse | null>
 	getRequestEligibilityData(requestId: string): Promise<SrpRequestEligibilityData | null>
 	getPublicRequestSummary(requestId: string): Promise<SRPPublicRequestSummaryResponse | null>
 	getUserRequests(

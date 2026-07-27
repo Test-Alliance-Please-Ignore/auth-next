@@ -934,10 +934,9 @@ srp.get('/requests', async (c) => {
 		c.env.DATABASE_URL
 	)
 	const withSystemRegions = await enrichRequestsWithSystemRegions(withCharacterRoles, c.env)
-	const requests = await enrichRequestsWithMilitarySrp(withSystemRegions, c.env)
 
 	return c.json({
-		requests,
+		requests: withSystemRegions,
 		total: requestsRaw.total,
 		limit: pagination.data.limit,
 		offset: pagination.data.offset,
@@ -982,9 +981,8 @@ srp.get('/requests/by-status', async (c) => {
 		c.env.DATABASE_URL
 	)
 	const withSystemRegions = await enrichRequestsWithSystemRegions(withCharacterRoles, c.env)
-	const requests = await enrichRequestsWithMilitarySrp(withSystemRegions, c.env)
 	return c.json({
-		requests,
+		requests: withSystemRegions,
 		total: result.total,
 		limit,
 		offset,
@@ -1066,14 +1064,14 @@ srp.get('/requests/:id', async (c) => {
 		return c.json({ error: 'Invalid request id' }, 400)
 	}
 
+	const canSeeInternalHistory = await hasAnyPermission(c.env, user.id, SRP_ROLE_URNS, user.is_admin)
 	const srpStub = getStub<Srp>(c.env.SRP, 'default')
-	const request = await srpStub.getRequest(requestId, user.id)
+	const request = await srpStub.getRequest(requestId, user.id, canSeeInternalHistory)
 
 	if (!request) {
 		return c.json({ error: 'Request not found' }, 404)
 	}
 
-	const canSeeInternalHistory = await hasAnyPermission(c.env, user.id, SRP_ROLE_URNS, user.is_admin)
 	const canViewRequest = request.userId === user.id || canSeeInternalHistory
 	if (!canViewRequest) {
 		return c.json({ error: 'Not authorized to view this request' }, 403)
@@ -1546,14 +1544,10 @@ srp.get('/payments/pending', async (c) => {
 
 	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const requestsRaw = await srpStub.getPendingPayments(corporationId, limit, offset)
-	const requests = await enrichRequestsWithMilitarySrp(
-		requestsRaw as RequestWithCharacterRole[],
-		c.env
-	)
 
 	return c.json({
-		requests,
-		total: requests.length,
+		requests: requestsRaw,
+		total: requestsRaw.length,
 		limit,
 		offset,
 	})

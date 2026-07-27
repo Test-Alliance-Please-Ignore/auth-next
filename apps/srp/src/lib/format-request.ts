@@ -79,3 +79,17 @@ export function formatSrpRequest(request: any): SRPRequestResponse {
 			})),
 	}
 }
+
+export function formatSrpRequestSummary(request: any): SRPRequestResponse {
+	const formatted = formatSrpRequest(request)
+	const {
+		srpItemPrices: _srpItemPrices,
+		killmailItemNames: _killmailItemNames,
+		killmailItemGroupIds: _killmailItemGroupIds,
+		killmailItems: _killmailItems,
+		comments: _comments,
+		history: _history,
+		...summary
+	} = formatted
+	return summary
+}
