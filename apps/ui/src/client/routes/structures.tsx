@@ -1,6 +1,5 @@
 import {
 	ArrowDown,
-	ArrowRight,
 	ArrowUp,
 	ArrowUpDown,
 	CircleHelp,
@@ -17,7 +16,6 @@ import { Link, Navigate, useNavigate } from 'react-router-dom'
 import {
 	hasAllStructureManagerPermission,
 	hasAnyStructurePermission,
-	hasStructureDetailsPermission,
 	hasStructureTabPermission,
 } from '@repo/groups'
 import {
@@ -510,7 +508,6 @@ export default function StructuresPage() {
 	const { data: groups = [] } = useGroups({ limit: 100 })
 	const { permissions, isLoading: permissionsLoading } = useUserPermissions()
 	const canViewStructures = user?.is_admin === true || hasAnyStructurePermission(permissions)
-	const canViewStructureDetails = user?.is_admin === true || hasStructureDetailsPermission(permissions)
 	const canManageStructures =
 		user?.is_admin === true || hasAllStructureManagerPermission(permissions)
 	const tableState = useStructureTableUiState((state) => state)
@@ -980,20 +977,6 @@ export default function StructuresPage() {
 							description={structureSyncStatusDescription(structure)}
 						/>
 					</TableCell>
-					{canViewStructureDetails && (
-						<TableCell className="sticky right-0 z-10 border-l border-border/50 bg-card text-right">
-							{structure.canViewDetails ? (
-								<Button asChild size="sm" variant="ghost">
-									<Link to={`/structures/${structure.structureId}`}>
-										<ArrowRight className="h-4 w-4" />
-										Details
-									</Link>
-								</Button>
-							) : (
-								<span className="text-sm text-muted-foreground">-</span>
-							)}
-						</TableCell>
-					)}
 				</TableRow>
 			)
 		})
@@ -1081,20 +1064,6 @@ export default function StructuresPage() {
 							description={structureSyncStatusDescription(structure)}
 						/>
 					</TableCell>
-					{canViewStructureDetails && (
-						<TableCell className="sticky right-0 z-10 border-l border-border/50 bg-card text-right">
-							{structure.canViewDetails ? (
-								<Button asChild size="sm" variant="ghost">
-									<Link to={`/structures/${structure.structureId}`}>
-										<ArrowRight className="h-4 w-4" />
-										Details
-									</Link>
-								</Button>
-							) : (
-								<span className="text-sm text-muted-foreground">-</span>
-							)}
-						</TableCell>
-					)}
 				</TableRow>
 			)
 		})
@@ -1156,20 +1125,6 @@ export default function StructuresPage() {
 							description={structureSyncStatusDescription(structure)}
 						/>
 					</TableCell>
-					{canViewStructureDetails && (
-						<TableCell className="sticky right-0 z-10 border-l border-border/50 bg-card text-right">
-							{structure.canViewDetails ? (
-								<Button asChild size="sm" variant="ghost">
-									<Link to={`/structures/${structure.structureId}`}>
-										<ArrowRight className="h-4 w-4" />
-										Details
-									</Link>
-								</Button>
-							) : (
-								<span className="text-sm text-muted-foreground">-</span>
-							)}
-						</TableCell>
-					)}
 				</TableRow>
 			)
 		})
@@ -1251,20 +1206,6 @@ export default function StructuresPage() {
 							description={structureSyncStatusDescription(structure)}
 						/>
 					</TableCell>
-					{canViewStructureDetails && (
-						<TableCell className="sticky right-0 z-10 border-l border-border/50 bg-card text-right">
-							{structure.canViewDetails ? (
-								<Button asChild size="sm" variant="ghost">
-									<Link to={`/structures/${structure.structureId}`}>
-										<ArrowRight className="h-4 w-4" />
-										Details
-									</Link>
-								</Button>
-							) : (
-								<span className="text-sm text-muted-foreground">-</span>
-							)}
-						</TableCell>
-					)}
 				</TableRow>
 			)
 		})
@@ -1349,20 +1290,6 @@ export default function StructuresPage() {
 							description={structureSyncStatusDescription(structure)}
 						/>
 					</TableCell>
-					{canViewStructureDetails && (
-						<TableCell className="sticky right-0 z-10 border-l border-border/50 bg-card text-right">
-							{structure.canViewDetails ? (
-								<Button asChild size="sm" variant="ghost">
-									<Link to={`/structures/${structure.structureId}`}>
-										<ArrowRight className="h-4 w-4" />
-										Details
-									</Link>
-								</Button>
-							) : (
-								<span className="text-sm text-muted-foreground">-</span>
-							)}
-						</TableCell>
-					)}
 				</TableRow>
 			)
 		})
@@ -1905,7 +1832,7 @@ export default function StructuresPage() {
 								pageSize={pagination?.pageSize ?? tableState.pageSize}
 								onPageChange={setStructureTablePage}
 								onPageSizeChange={setStructureTablePageSize}
-								pageSizeOptions={[10, 25, 50, 100]}
+								pageSizeOptions={[15, 25, 50, 100]}
 								itemLabel="structures"
 								nextButtonLoading={isFetching}
 								trailingAction={refreshButton}
@@ -2052,11 +1979,6 @@ export default function StructuresPage() {
 												<TableHead>Group</TableHead>
 												<TableHead>Sync</TableHead>
 											</>
-										)}
-										{canViewStructureDetails && (
-											<TableHead className="sticky right-0 z-20 table-header-bg border-l border-border/50 text-right">
-												Actions
-											</TableHead>
 										)}
 									</TableRow>
 								</TableHeader>
