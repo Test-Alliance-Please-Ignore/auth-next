@@ -440,6 +440,15 @@ function SectionContent({
 		)
 	}
 
+	if (section === 'wallet-journal' && (sectionMeta?.chunks ?? 0) > 0 && !error) {
+		return (
+			<WalletJournalSection
+				data={data as any}
+				loadingProgress={chunkProgress}
+			/>
+		)
+	}
+
 	if (isLoading) {
 		return (
 			<div className="space-y-4">

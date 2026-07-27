@@ -172,6 +172,7 @@ export function WalletTransactionsSection({
 		searchPlaceholder: 'Search transactions...',
 		pageSize: 100,
 		rowsPerPageOptions: ['50', '100', '200', '500'],
+		compactRows: true,
 		renderTopToolbarCustomActions: isLoadingChunks
 			? () => (
 					<span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">

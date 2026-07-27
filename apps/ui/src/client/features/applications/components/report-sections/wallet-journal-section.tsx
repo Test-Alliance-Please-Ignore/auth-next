@@ -4,6 +4,7 @@
 
 import { useMemo, useState } from 'react'
 import { MantineReactTable } from 'mantine-react-table'
+import { Loader2 } from 'lucide-react'
 
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { Select } from '@/components/ui/select'
@@ -11,6 +12,7 @@ import { useFulcrumTable } from './use-fulcrum-table'
 import { EntityNameLink } from './entity-name-link'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
+import type { ReportChunkProgress } from '../../hooks'
 
 interface ProcessedWalletJournalEntry {
 	id: string
@@ -136,15 +138,25 @@ function buildWalletJournalColumns(): MRT_ColumnDef<ProcessedWalletJournalEntry>
 	]
 }
 
-export function WalletJournalSection({ data }: { data: ProcessedWalletJournalEntry[] }) {
+export function WalletJournalSection({
+	data,
+	loadingProgress,
+}: {
+	data: ProcessedWalletJournalEntry[] | undefined
+	loadingProgress?: ReportChunkProgress
+}) {
+	const rows = data ?? []
+	const isLoadingChunks = Boolean(
+		!data && loadingProgress && loadingProgress.loadedChunks < loadingProgress.totalChunks,
+	)
 	const [refTypeFilter, setRefTypeFilter] = useState<string>('all')
 	const columns = useMemo(() => buildWalletJournalColumns(), [])
 	const availableRefTypes = useMemo(
 		() =>
 			Array.from(
-				new Set(data.map((entry) => entry.refTypeLabel).filter((type): type is string => Boolean(type))),
+				new Set(rows.map((entry) => entry.refTypeLabel).filter((type): type is string => Boolean(type))),
 			).sort(),
-		[data],
+		[rows],
 	)
 	const refTypeOptions = useMemo(
 		() => [
@@ -156,20 +168,27 @@ export function WalletJournalSection({ data }: { data: ProcessedWalletJournalEnt
 	const filteredData = useMemo(
 		() =>
 			refTypeFilter === 'all'
-				? data
-				: data.filter((entry) => (entry.refTypeLabel ?? 'Unknown') === refTypeFilter),
-		[data, refTypeFilter],
+				? rows
+				: rows.filter((entry) => (entry.refTypeLabel ?? 'Unknown') === refTypeFilter),
+		[rows, refTypeFilter],
 	)
 
 	const table = useFulcrumTable({
 		columns,
 		data: filteredData,
-		emptyMessage: 'No journal entries found.',
+		emptyMessage: isLoadingChunks ? 'Loading journal entries...' : 'No journal entries found.',
 		searchPlaceholder: 'Search journal...',
 		pageSize: 100,
+		compactRows: true,
 		getRowClassName: (row) => (isHighlightedJournalType(row) ? 'bg-amber-500/10' : undefined),
 		renderTopToolbarCustomActions: () => (
 			<div className="ml-auto flex items-center gap-2">
+				{isLoadingChunks && (
+					<span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+						<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+						Loading chunks {loadingProgress?.loadedChunks ?? 0}/{loadingProgress?.totalChunks ?? 0}
+					</span>
+				)}
 				<label htmlFor="journal-ref-type-filter" className="text-xs font-medium text-muted-foreground">
 					Transaction Type
 				</label>
@@ -183,18 +202,18 @@ export function WalletJournalSection({ data }: { data: ProcessedWalletJournalEnt
 					className="w-56"
 				/>
 				<span className="text-xs text-muted-foreground">
-					{filteredData.length} / {data.length}
+					{filteredData.length} / {rows.length}
 				</span>
 			</div>
 		),
 	})
 
-	if (data.length === 0) {
+	if (rows.length === 0 && !isLoadingChunks) {
 		return <p className="text-sm text-muted-foreground">No journal entries found.</p>
 	}
 
 	// Most recent entry's balance is the current wallet balance
-	const currentBalance = data[0]?.balanceFormatted
+	const currentBalance = rows[0]?.balanceFormatted
 
 	return (
 		<div className="space-y-3">

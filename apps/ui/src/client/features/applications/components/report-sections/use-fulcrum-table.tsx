@@ -38,6 +38,7 @@ interface UseFulcrumTableOptions<Row extends MRT_RowData> {
 	onPaginationChange?: MRT_TableOptions<Row>['onPaginationChange']
 	rowCount?: number
 	rowsPerPageOptions?: string[]
+	compactRows?: boolean
 }
 
 export function useFulcrumTable<Row extends MRT_RowData>({
@@ -54,6 +55,7 @@ export function useFulcrumTable<Row extends MRT_RowData>({
 	onPaginationChange,
 	rowCount,
 	rowsPerPageOptions,
+	compactRows = false,
 }: UseFulcrumTableOptions<Row>) {
 	return useMantineReactTable({
 		columns,
@@ -72,6 +74,7 @@ export function useFulcrumTable<Row extends MRT_RowData>({
 		enableStickyHeader: false,
 		enableTopToolbar: true,
 		manualPagination: Boolean(pagination && onPaginationChange),
+		positionPagination: 'both',
 		...(pagination ? { state: { pagination } } : {}),
 		...(onPaginationChange ? { onPaginationChange } : {}),
 		...(rowCount !== undefined ? { rowCount } : {}),
@@ -101,7 +104,11 @@ export function useFulcrumTable<Row extends MRT_RowData>({
 		mantineTableHeadCellProps: mrtTableHeadCellProps,
 		mantineTableBodyCellProps: mrtTableBodyCellProps,
 		mantineTableBodyRowProps: ({ row }) => ({
-			className: cn('mrt-grid__row', getRowClassName?.(row.original as Row)),
+			className: cn(
+				'mrt-grid__row',
+				compactRows && 'mrt-grid__compact-row',
+				getRowClassName?.(row.original as Row),
+			),
 			style: mrtRowStyle(row.index),
 		}),
 		renderEmptyRowsFallback: () => (
