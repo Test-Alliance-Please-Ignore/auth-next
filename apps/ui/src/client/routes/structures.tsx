@@ -11,8 +11,8 @@ import {
 	Shield,
 	Snowflake,
 } from 'lucide-react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type UIEvent } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type UIEvent } from 'react'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 
 import {
 	hasAllStructureManagerPermission,
@@ -506,6 +506,7 @@ export default function StructuresPage() {
 	usePageTitle('Structures')
 
 	const { user, isLoading: authLoading } = useAuth()
+	const navigate = useNavigate()
 	const { data: groups = [] } = useGroups({ limit: 100 })
 	const { permissions, isLoading: permissionsLoading } = useUserPermissions()
 	const canViewStructures = user?.is_admin === true || hasAnyStructurePermission(permissions)
@@ -692,6 +693,23 @@ export default function StructuresPage() {
 	const isFetching = isStructuresFetching
 	const refreshAll = () => {
 		void activeResponse.refetch()
+	}
+	const getStructureRowProps = (structure: Pick<StructureListBaseItem, 'structureId' | 'canViewDetails'>) => {
+		if (!structure.canViewDetails) return {}
+		return {
+			className: 'cursor-pointer transition-colors hover:bg-muted/40',
+			onClick: (event: MouseEvent<HTMLTableRowElement>) => {
+				if ((event.target as HTMLElement).closest('a,button')) return
+				navigate(`/structures/${structure.structureId}`)
+			},
+			onKeyDown: (event: KeyboardEvent<HTMLTableRowElement>) => {
+				if (event.key !== 'Enter' && event.key !== ' ') return
+				event.preventDefault()
+				navigate(`/structures/${structure.structureId}`)
+			},
+			tabIndex: 0,
+			role: 'link' as const,
+		}
 	}
 
 	useEffect(() => {
@@ -903,7 +921,7 @@ export default function StructuresPage() {
 				: '-'
 
 			return (
-				<TableRow key={structure.structureId}>
+				<TableRow key={structure.structureId} {...getStructureRowProps(structure)}>
 					<TableCell>
 						<SkyhookStateBadge state={structure.state} />
 					</TableCell>
@@ -988,7 +1006,7 @@ export default function StructuresPage() {
 		items.map((structure) => {
 			const vulnerabilityState = getSovereigntyVulnerabilityState(structure)
 			return (
-				<TableRow key={structure.structureId}>
+				<TableRow key={structure.structureId} {...getStructureRowProps(structure)}>
 					<TableCell>
 						<div className="space-y-1">
 							<Badge variant={vulnerabilityState.variant}>{vulnerabilityState.label}</Badge>
@@ -1084,7 +1102,7 @@ export default function StructuresPage() {
 	const renderSkyhookRows = (items: StructureSkyhookListItem[]) =>
 		items.map((structure) => {
 			return (
-				<TableRow key={structure.structureId}>
+				<TableRow key={structure.structureId} {...getStructureRowProps(structure)}>
 					<TableCell>
 						<SkyhookStateBadge state={structure.state} />
 					</TableCell>
@@ -1162,7 +1180,7 @@ export default function StructuresPage() {
 			const displayStructureName = stripLeadingContextName(structure.name, structure.systemName)
 
 			return (
-				<TableRow key={structure.structureId}>
+				<TableRow key={structure.structureId} {...getStructureRowProps(structure)}>
 					<TableCell>
 						<StructureStateBadge state={structure.state} />
 					</TableCell>
@@ -1271,7 +1289,7 @@ export default function StructuresPage() {
 				: '-'
 
 			return (
-				<TableRow key={structure.structureId}>
+				<TableRow key={structure.structureId} {...getStructureRowProps(structure)}>
 					<TableCell>
 						<StructureStateBadge state={structure.state} />
 					</TableCell>
@@ -1661,7 +1679,7 @@ export default function StructuresPage() {
 	}
 
 	return (
-		<Container className="space-y-6 py-6 2xl:!max-w-none">
+		<Container className="flex h-full min-h-0 flex-col space-y-6 overflow-hidden py-6 2xl:!max-w-none">
 			<PageHeader
 				title="Structures"
 				description="Track visible structures, review their current state, and fuel posture."
@@ -1834,7 +1852,7 @@ export default function StructuresPage() {
 				)}
 			</div>
 
-			<Card>
+			<Card className="flex min-h-0 flex-1 flex-col">
 				<CardHeader className="pb-3">
 					<div className="flex flex-wrap items-start justify-between gap-4">
 						<div>
@@ -1848,7 +1866,7 @@ export default function StructuresPage() {
 						</div>
 					</div>
 				</CardHeader>
-				<CardContent className="space-y-4">
+				<CardContent className="flex min-h-0 flex-1 flex-col space-y-4 overflow-hidden">
 					<Tabs
 						value={activeTab}
 						onValueChange={(value) => {
@@ -1879,7 +1897,7 @@ export default function StructuresPage() {
 								? specialFilterControls
 								: commonFilterControls}
 					</div>
-					<div className="space-y-4 border-t border-border/60 pt-4">
+					<div className="flex min-h-0 flex-1 flex-col space-y-4 border-t border-border/60 pt-4">
 						<div className="border-b p-3">
 							<UserSearchPaginationControls
 								totalCount={pagination?.totalCount ?? 0}
@@ -1894,6 +1912,7 @@ export default function StructuresPage() {
 							/>
 						</div>
 						<TableRefreshFrame
+							className="min-h-0 flex-1"
 							key={structuresContentKey}
 							isRefreshing={isSoftLoading}
 							refreshMessage="Refreshing structure list..."
@@ -1936,6 +1955,7 @@ export default function StructuresPage() {
 							<Table
 								containerRef={tableScrollContainerRef}
 								onContainerScroll={handleTableScroll}
+								containerClassName="h-full min-h-0"
 								className={cn(
 									'min-w-[118rem]',
 									isSovereigntyTab && 'min-w-[136rem]',

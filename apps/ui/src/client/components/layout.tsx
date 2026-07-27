@@ -31,6 +31,7 @@ export default function Layout() {
 	})
 	const sidebarOpenRef = useRef(sidebarOpen)
 	const location = useLocation()
+	const isStructuresPage = location.pathname === '/structures'
 
 	useEffect(() => {
 		window.localStorage.setItem(SIDEBAR_OPEN_STORAGE_KEY, sidebarOpen ? '1' : '0')
@@ -88,7 +89,7 @@ export default function Layout() {
 	}
 
 	return (
-		<div className="relative min-h-screen flex overflow-x-hidden">
+		<div className={cn('relative min-h-screen flex overflow-x-hidden', isStructuresPage && 'h-dvh overflow-hidden')}>
 			{/* Starfield Background */}
 			<Starfield />
 
@@ -124,7 +125,8 @@ export default function Layout() {
 			{/* Main Content Area */}
 				<div
 					className={cn(
-						'relative z-10 flex-1 flex flex-col min-w-0 overflow-x-hidden overflow-y-auto transition-[padding-left] duration-300 ease-in-out',
+					'relative z-10 flex-1 flex flex-col min-w-0 overflow-x-hidden overflow-y-auto transition-[padding-left] duration-300 ease-in-out',
+					isStructuresPage && 'min-h-0 overflow-y-hidden',
 						sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
 					)}
 				>
@@ -144,8 +146,8 @@ export default function Layout() {
 				) : null}
 
 				{/* Page Content */}
-				<main className="flex-1 relative z-10 p-4 md:p-6 lg:p-8">
-					<div className={cn('w-full mx-auto max-w-[120rem]')}>
+				<main className={cn('flex flex-1 flex-col relative z-10 p-4 md:p-6 lg:p-8', isStructuresPage && 'min-h-0 overflow-hidden')}>
+					<div className={cn('w-full mx-auto max-w-[120rem]', isStructuresPage && 'h-full')}>
 						<Outlet />
 					</div>
 				</main>
