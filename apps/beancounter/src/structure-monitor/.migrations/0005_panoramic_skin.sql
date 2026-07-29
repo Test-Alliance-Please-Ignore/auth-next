@@ -1,1 +1,0 @@
-ALTER TABLE `monitor_config` ADD `structure_owner_name` text;

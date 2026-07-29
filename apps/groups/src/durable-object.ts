@@ -26,6 +26,7 @@ import {
 } from './db/schema'
 import { assertValidBroadcastPermissionUrn } from './services/broadcast-urn'
 import { CategoryService } from './services/category-service' // Added
+import { userHasPermission } from './services/permission-target'
 import {
 	bulkFindMainCharactersByUserIds,
 	bulkFindMainCharactersWithIdsByUserIds,
@@ -3315,16 +3316,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		isOwner: boolean,
 		isAdmin: boolean
 	): boolean {
-		if (targetType === 'all_members') {
-			return true
-		} else if (targetType === 'all_admins') {
-			return isAdmin
-		} else if (targetType === 'owner_only') {
-			return isOwner
-		} else if (targetType === 'owner_and_admins') {
-			return isOwner || isAdmin
-		}
-		return false
+		return userHasPermission(targetType, isOwner, isAdmin)
 	}
 
 	/**

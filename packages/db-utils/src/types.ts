@@ -12,18 +12,6 @@ export type DbClient<T extends Record<string, unknown> = Record<string, never>> 
  */
 export type DbClientWs<T extends Record<string, unknown> = Record<string, never>> = NeonDatabase<T>
 
-export type NeonTestEnv = {
-	NEON_API_KEY: string
-	NEON_PROJECT_ID: string
-}
-
-export type NeonTestClientFactory<
-	TSchema extends Record<string, unknown>,
-	Env extends NeonTestEnv,
-> = (env: Env & NeonTestEnv) => DbClient<TSchema>
-
-export type NeonTestClientFactoryRaw<Env extends NeonTestEnv> = (env: Env & NeonTestEnv) => DbClient
-
 /**
  * Common timestamp fields for database tables
  */
