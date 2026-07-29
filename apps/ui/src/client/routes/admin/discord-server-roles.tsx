@@ -529,7 +529,7 @@ export default function AdminDiscordServerRolesPage() {
 						<CardContent className="space-y-3">
 							{selfAssignableRoles.isLoading ? (
 								<LoadingSpinner label="Loading self-assignable roles..." />
-							) : selfAssignableRoles.data?.length ? (
+						) : selfAssignableRoles.data?.length || isCreatingSelfAssignableRole ? (
 								<div className="overflow-x-auto rounded-lg border border-border/50 bg-card">
 									<Table>
 										<TableHeader>
