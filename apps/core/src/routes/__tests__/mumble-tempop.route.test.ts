@@ -21,13 +21,6 @@ vi.mock('../flags', () => ({
 	resolveFlag: vi.fn(),
 }))
 
-// @neondatabase/api-client (pulled in via @repo/db-utils test helpers) breaks
-// the workers-pool CJS shim; it is irrelevant to these tests.
-vi.mock('@neondatabase/api-client', () => ({
-	createApiClient: vi.fn(),
-	EndpointType: {},
-}))
-
 const createDbMock = vi.mocked(createDb)
 const getCachedUserPermissionsMock = vi.mocked(getCachedUserPermissions)
 const resolveFlagMock = vi.mocked(resolveFlag)

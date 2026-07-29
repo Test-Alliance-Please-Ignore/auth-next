@@ -71,8 +71,6 @@ just db-studio bills
 
 ### Testing
 
-Integration tests use neon-testing for database branching:
-
 ```bash
 # Run all tests
 just test -F bills

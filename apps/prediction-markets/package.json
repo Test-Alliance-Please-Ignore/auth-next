@@ -17,7 +17,7 @@
 		"preview": "run-vite-preview",
 		"tail": "run-wrangler-tail",
 		"test": "run-vitest",
-		"test:integration": "vitest run -c vitest.config.node.ts"
+		"test:integration": "vitest run -c vitest.integration.config.ts"
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "1.0.2",

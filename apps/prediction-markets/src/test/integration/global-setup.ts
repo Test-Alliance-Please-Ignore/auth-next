@@ -27,6 +27,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 config({ path: resolve(__dirname, '../../../../../.env') })
 
 export default async function setup(): Promise<(() => Promise<void>) | void> {
+	if (process.env.CI || process.env.GITHUB_ACTIONS) {
+		throw new Error('Prediction Markets Neon integration tests are local-only and cannot run in CI')
+	}
+
 	const NEON_API_KEY = process.env.NEON_API_KEY
 	const NEON_PROJECT_ID = process.env.NEON_PROJECT_ID
 	if (!NEON_API_KEY || !NEON_PROJECT_ID) {

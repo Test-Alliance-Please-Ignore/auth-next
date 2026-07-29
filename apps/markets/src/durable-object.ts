@@ -6,6 +6,7 @@ import { getStub } from '@repo/do-utils'
 import { GetRegionMarketDataResponseObjectSchema } from '@repo/markets'
 
 import { createDb } from './db'
+import { getSnapshotDeleteCount } from './utils/snapshot-retention'
 import {
 	apiKeys,
 	insuranceDailyPrices,
@@ -143,7 +144,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		try {
 			const maxSnapshots = this.getMaxSnapshots()
 
-			// Skip cleanup if max is 0 or negative
+			// Skip cleanup if retention is disabled or invalid.
 			if (maxSnapshots <= 0) {
 				logger.warn(
 					`[cleanupOldSnapshots] Skipping cleanup - invalid maxSnapshots: ${maxSnapshots}`
@@ -171,13 +172,12 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			logger.log(`[cleanupOldSnapshots] Found ${totalSnapshots} complete snapshots`)
 
 			// Only delete if we exceed the limit
-			if (totalSnapshots <= maxSnapshots) {
+			const deleteCount = getSnapshotDeleteCount(totalSnapshots, maxSnapshots)
+			if (deleteCount === 0) {
 				logger.log(`[cleanupOldSnapshots] Within limit, no cleanup needed`)
 				return
 			}
 
-			// Calculate how many to delete
-			const deleteCount = totalSnapshots - maxSnapshots
 			logger.log(`[cleanupOldSnapshots] Need to delete ${deleteCount} oldest snapshots`)
 
 			// Get the oldest snapshots to delete

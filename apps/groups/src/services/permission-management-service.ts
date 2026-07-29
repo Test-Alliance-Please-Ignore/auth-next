@@ -12,6 +12,7 @@ import {
 } from '../db/schema'
 import { assertValidBroadcastPermissionUrn } from './broadcast-urn'
 import { canManageGroup } from './permissions'
+import { userHasPermission } from './permission-target'
 import { isUserGroupAdmin } from './query-helpers'
 
 import type { Core } from '@repo/core'
@@ -642,16 +643,7 @@ export class PermissionManagementService {
 		isOwner: boolean,
 		isAdmin: boolean
 	): boolean {
-		if (targetType === 'all_members') {
-			return true
-		} else if (targetType === 'all_admins') {
-			return isAdmin
-		} else if (targetType === 'owner_only') {
-			return isOwner
-		} else if (targetType === 'owner_and_admins') {
-			return isOwner || isAdmin
-		}
-		return false
+		return userHasPermission(targetType, isOwner, isAdmin)
 	}
 
 	/**

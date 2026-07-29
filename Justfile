@@ -101,7 +101,6 @@ db-generate-all:
   cd apps/srp && bun run db:generate
   cd apps/doctrines && bun run db:generate
   cd apps/fulcrum && bun run db:generate
-  cd apps/beancounter && bun run db:generate
   cd apps/esi && bun run db:generate
   cd apps/donations && bun run db:generate
   cd apps/postman && bun run db:generate
@@ -132,7 +131,6 @@ db-push-all:
   cd apps/srp && bun run db:push
   cd apps/doctrines && bun run db:push
   cd apps/fulcrum && bun run db:push
-  cd apps/beancounter && bun run db:push
   cd apps/esi && bun run db:push
   cd apps/donations && bun run db:push
   cd apps/postman && bun run db:push
@@ -161,7 +159,6 @@ db-migrate-all:
   cd apps/srp && bun run db:migrate
   cd apps/doctrines && bun run db:migrate
   cd apps/fulcrum && bun run db:migrate
-  cd apps/beancounter && bun run db:migrate
   cd apps/esi && bun run db:migrate
   cd apps/corporation-tax && bun run db:migrate
   cd apps/donations && bun run db:migrate
