@@ -18,7 +18,8 @@
 		"fix:workers-types": "run-wrangler-types",
 		"preview": "run-vite-preview",
 		"tail": "run-wrangler-tail",
-		"test": "run-vitest"
+		"test": "run-vitest",
+		"test:integration": "vitest run -c vitest.integration.config.ts"
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "1.0.2",
@@ -42,6 +43,7 @@
 		"@types/node": "24.10.1",
 		"dotenv": "17.2.3",
 		"drizzle-kit": "0.31.10",
+		"neon-testing": "2.2.0",
 		"tsx": "4.21.0",
 		"vite": "7.2.2",
 		"vitest": "3.2.4",

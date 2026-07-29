@@ -29,6 +29,7 @@ export {
 } from 'drizzle-orm'
 export { desc, asc } from 'drizzle-orm'
 export type { InferSelectModel, InferInsertModel } from 'drizzle-orm'
+export { TestBranchManager } from './test-client'
 type AnySql = SQL | Column
 // eslint-disable-next-line @typescript-eslint/array-type
 type Coalesce<Array extends AnySql[]> = Array extends [...infer Optionals, infer Last]
