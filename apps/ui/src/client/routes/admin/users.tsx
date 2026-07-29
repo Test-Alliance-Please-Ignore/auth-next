@@ -9,7 +9,6 @@ import { Select } from '@/components/ui/select'
 import { useAdminUsers } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
-import { Button } from '@/components/ui/button'
 
 export default function UsersPage() {
 	usePageTitle('Admin - Users')
@@ -61,17 +60,25 @@ export default function UsersPage() {
 		setJoinMessage(null)
 
 		try {
-			const result = await api.triggerDiscordJoin(userId)
+			const trigger = await api.triggerDiscordJoin(userId)
+			const result = await api.waitForAdminDiscordRefresh(userId, trigger.workflowInstanceId)
+			const totalInvited = result.totalInvited ?? 0
+			const totalFailed = result.totalFailed ?? 0
 
-			if (result.totalInvited > 0) {
-				setJoinMessage({
-					type: 'success',
-					text: `Successfully joined ${result.totalInvited} Discord server${result.totalInvited !== 1 ? 's' : ''}${result.totalFailed > 0 ? ` (${result.totalFailed} failed)` : ''}`,
-				})
-			} else if (result.totalFailed > 0) {
+			if (result.status === 'failed') {
 				setJoinMessage({
 					type: 'error',
-					text: `Failed to join ${result.totalFailed} Discord server${result.totalFailed !== 1 ? 's' : ''}`,
+					text: `Discord access refresh failed: ${result.error?.message ?? 'The refresh did not complete.'}`,
+				})
+			} else if (totalInvited > 0) {
+				setJoinMessage({
+					type: 'success',
+					text: `Successfully joined ${totalInvited} Discord server${totalInvited !== 1 ? 's' : ''}${totalFailed > 0 ? ` (${totalFailed} failed)` : ''}`,
+				})
+			} else if (totalFailed > 0) {
+				setJoinMessage({
+					type: 'error',
+					text: `Failed to join ${totalFailed} Discord server${totalFailed !== 1 ? 's' : ''}`,
 				})
 			} else {
 				setJoinMessage({

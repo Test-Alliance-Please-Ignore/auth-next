@@ -1,23 +1,23 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { and, eq, ilike, isNotNull, sql } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
 import {
-	DiscordAPIError,
-	DiscordFetch,
-	DiscordRoutes,
 	DISCORD_CHANNEL_TYPE,
 	DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID,
+	DiscordAPIError,
+	DiscordFetch,
 	discordRateLimitGuard,
+	DiscordRoutes,
 } from '@repo/discord'
+import { getStub } from '@repo/do-utils'
 import { generateShardKey } from '@repo/hazmat'
 import { logger } from '@repo/hono-helpers'
 import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
-import { createDiscordRateLimitKvStore } from './lib/discord-rate-limit-store'
 import { discordTokens, discordUsers } from './db/schema'
 import { DiscordGatewayClient } from './gateway/client'
+import { createDiscordRateLimitKvStore } from './lib/discord-rate-limit-store'
 import { DiscordBotService, fetchWithRetry } from './services/discord-bot.service'
 import { augmentRequestedRoleIdsForRefresh, calculateRoleChanges } from './utils/role-calculation'
 
@@ -27,8 +27,8 @@ import type {
 	DiscordChannelSummary,
 	DiscordEmbed,
 	DiscordForumTag,
-	DiscordGuildMemberSnapshot,
 	DiscordGuildMembershipDetail,
+	DiscordGuildMemberSnapshot,
 	DiscordPermissionOverwrite,
 	DiscordRegisteredSlashCommand,
 	DiscordSlashCommandDefinition,
@@ -37,10 +37,7 @@ import type {
 	SendMessageResult,
 } from '@repo/discord'
 import type { Env } from './context'
-import type {
-	DiscordGateway,
-	DiscordGatewayJoinSuppressionLookupResult,
-} from './gateway/types'
+import type { DiscordGateway, DiscordGatewayJoinSuppressionLookupResult } from './gateway/types'
 
 const DISCORD_MEMBERSHIP_RETRY_MAX_ATTEMPTS = 3
 const DISCORD_MEMBERSHIP_RETRY_BASE_DELAY_MS = 1000
@@ -84,9 +81,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
 		if (env.DISCORD_RATE_LIMITS) {
-			discordRateLimitGuard.configureStore(
-				createDiscordRateLimitKvStore(env.DISCORD_RATE_LIMITS)
-			)
+			discordRateLimitGuard.configureStore(createDiscordRateLimitKvStore(env.DISCORD_RATE_LIMITS))
 		}
 	}
 
@@ -1015,6 +1010,33 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		return botService.getGuildRoles(guildId)
 	}
 
+	async getGuildMemberByDiscordUserId(
+		guildId: string,
+		discordUserId: string
+	): Promise<{ isMember: boolean; roleIds: string[] }> {
+		const botService = new DiscordBotService(this.env)
+		const member = await botService.getGuildMember(guildId, discordUserId)
+		return { isMember: member !== null, roleIds: member?.roles ?? [] }
+	}
+
+	async addGuildMemberRole(
+		guildId: string,
+		discordUserId: string,
+		roleId: string
+	): Promise<{ success: boolean; error?: string }> {
+		const botService = new DiscordBotService(this.env)
+		return botService.addGuildMemberRole(guildId, discordUserId, roleId)
+	}
+
+	async removeGuildMemberRole(
+		guildId: string,
+		discordUserId: string,
+		roleId: string
+	): Promise<{ success: boolean; error?: string }> {
+		const botService = new DiscordBotService(this.env)
+		return botService.removeGuildMemberRole(guildId, discordUserId, roleId)
+	}
+
 	async listGuildMembers(
 		guildId: string,
 		options?: {
@@ -1048,6 +1070,8 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			guildId: string
 			roleIds: string[]
 			managedRoleIds?: string[]
+			preserveRoleIds?: string[]
+			preserveAllCurrentRoles?: boolean
 			clearAllRoles?: boolean
 		}>,
 		allowRemoval?: boolean
@@ -1138,7 +1162,11 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 								currentRoleIds,
 								requestedRoleIds,
 								managedRoleIds,
-								preserveRoleIds: [DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID],
+								preserveRoleIds: [
+									DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID,
+									...(req.preserveRoleIds ?? []),
+									...(req.preserveAllCurrentRoles ? currentRoleIds : []),
+								],
 								isAddOnlyMode,
 							})
 							newRoleIds = roleChanges.newRoleIds
@@ -1231,11 +1259,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 				if (!member) {
 					return { discordUserId, success: true }
 				}
-				const updateResult = await botService.updateGuildMemberRoles(
-					guildId,
-					discordUserId,
-					[]
-				)
+				const updateResult = await botService.updateGuildMemberRoles(guildId, discordUserId, [])
 				return {
 					discordUserId,
 					success: updateResult.success,
@@ -1784,9 +1808,8 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			...(command.options && command.options.length > 0 ? { options: command.options } : {}),
 		}
 
-		const existing = await client.get<Array<{ id: string; name: string; description: string }>>(
-			baseRoute
-		)
+		const existing =
+			await client.get<Array<{ id: string; name: string; description: string }>>(baseRoute)
 		const existingByName = existing.find((entry) => entry.name === normalizedName)
 
 		const registered = existingByName
@@ -1913,9 +1936,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			type: DISCORD_CHANNEL_TYPE.GUILD_FORUM,
 			parent_id: input.parentId,
 			...(input.topic ? { topic: input.topic } : {}),
-			...(input.permissionOverwrites
-				? { permission_overwrites: input.permissionOverwrites }
-				: {}),
+			...(input.permissionOverwrites ? { permission_overwrites: input.permissionOverwrites } : {}),
 			...(input.availableTags ? { available_tags: input.availableTags } : {}),
 		})
 	}
@@ -2180,7 +2201,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		const encryptedRefreshToken = await this.encrypt(refreshToken)
 
 		// Check if user already exists
-		let user = await this.db.query.discordUsers.findFirst({
+		const user = await this.db.query.discordUsers.findFirst({
 			where: eq(discordUsers.userId, userId),
 		})
 

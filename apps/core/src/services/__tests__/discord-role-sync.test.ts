@@ -12,6 +12,7 @@ import {
 	syncUserDiscordAccess,
 	updateUserDiscordRoles,
 	updateUserDiscordNickname,
+	getTemporaryRoleIdsByGuild,
 } from '../discord.service'
 
 /**
@@ -121,6 +122,50 @@ vi.mock('@repo/db-utils', async () => {
 	}
 })
 
+describe('temporary role cleanup source resolution', () => {
+	it('retains pending cleanup role IDs after the managed role is deactivated', async () => {
+		dbQueryMocks.discordRoles.findMany.mockResolvedValue([])
+		temporaryAssignmentsStub.listActiveAssignments.mockResolvedValue([])
+		temporaryAssignmentsStub.listPendingRemovalAssignments.mockResolvedValue([
+			{
+				roleId: 'historically-managed-role',
+				status: 'removal_pending',
+			},
+		])
+
+		const result = await getTemporaryRoleIdsByGuild(
+			mockDb as any,
+			mockEnv,
+			['guild-1'],
+			'user-1'
+		)
+
+		expect(result.cleanupRoleIdsByGuild.get('guild-1')).toEqual(['historically-managed-role'])
+	})
+
+	it('lets a newer active assignment suppress stale cleanup for the same role', async () => {
+		dbQueryMocks.discordRoles.findMany.mockResolvedValue([
+			{ roleId: 'role-1', discordServer: { guildId: 'guild-1', isActive: true } },
+		])
+		temporaryAssignmentsStub.listActiveAssignments.mockResolvedValue([
+			{ roleId: 'role-1', status: 'active', revision: 8 },
+		])
+		temporaryAssignmentsStub.listPendingRemovalAssignments.mockResolvedValue([
+			{ roleId: 'role-1', status: 'failed', revision: 7 },
+		])
+
+		const result = await getTemporaryRoleIdsByGuild(
+			mockDb as any,
+			mockEnv,
+			['guild-1'],
+			'user-1'
+		)
+
+		expect(result.activeRoleIdsByGuild.get('guild-1')).toEqual(['role-1'])
+		expect(result.cleanupRoleIdsByGuild.has('guild-1')).toBe(false)
+	})
+})
+
 const mockedGetStub = vi.mocked(getStub)
 
 // ─── Setup a routing getStub ─────────────────────────────────────────────────
@@ -131,6 +176,11 @@ const HR_NS = Symbol('HR')
 const EVE_CORP_NS = Symbol('EVE_CORPORATION_DATA')
 const EVE_TOKEN_STORE_NS = Symbol('EVE_TOKEN_STORE')
 const DISCORD_NS = Symbol('DISCORD')
+const TEMPORARY_ROLE_ASSIGNMENTS_NS = Symbol('TEMPORARY_ROLE_ASSIGNMENTS')
+const temporaryAssignmentsStub = {
+	listActiveAssignments: vi.fn(),
+	listPendingRemovalAssignments: vi.fn(),
+}
 
 const mockEnv = {
 	DATABASE_URL: 'postgresql://test',
@@ -139,6 +189,7 @@ const mockEnv = {
 	EVE_CORPORATION_DATA: EVE_CORP_NS,
 	EVE_TOKEN_STORE: EVE_TOKEN_STORE_NS,
 	DISCORD: DISCORD_NS,
+	TEMPORARY_ROLE_ASSIGNMENTS: TEMPORARY_ROLE_ASSIGNMENTS_NS,
 	DISCORD_ROLE_ADD_ONLY_MODE: false,
 } as any
 
@@ -148,6 +199,7 @@ function setupGetStubRouting() {
 		if (namespace === HR_NS) return hrStubMethods as any
 		if (namespace === EVE_CORP_NS) return eveCorpStubMethods as any
 		if (namespace === EVE_TOKEN_STORE_NS) return tokenStoreStubMethods as any
+		if (namespace === TEMPORARY_ROLE_ASSIGNMENTS_NS) return temporaryAssignmentsStub as any
 		return {} as any
 	})
 }
@@ -343,6 +395,7 @@ beforeEach(() => {
 			value.mockReset()
 		}
 	}
+	for (const value of Object.values(temporaryAssignmentsStub)) value.mockReset()
 	for (const tableMocks of Object.values(dbQueryMocks)) {
 		tableMocks.findMany.mockReset()
 		tableMocks.findFirst.mockReset()
@@ -591,7 +644,7 @@ describe('updateUserDiscordRoles', () => {
 				},
 			])
 
-			const result = await updateUserDiscordRoles(mockEnv, 'user-1', undefined, true)
+			const _result = await updateUserDiscordRoles(mockEnv, 'user-1', undefined, true)
 
 			// With allowRemoval=true, guild should be included even with empty expectedRoleIds
 			expect(discordStubMethods.updateUserRoles).toHaveBeenCalled()
@@ -745,7 +798,7 @@ describe('updateUserDiscordRoles', () => {
 				{ guildId: 'guild-1', success: true, rolesAdded: [], rolesRemoved: ['group-role-1'] },
 			])
 
-			const result = await updateUserDiscordRoles(mockEnv, 'user-1', undefined, true)
+			const _result = await updateUserDiscordRoles(mockEnv, 'user-1', undefined, true)
 
 			// Group roles should be WITHHELD (corp-gated without entitlement),
 			// resulting in empty expectedRoleIds. With allowRemoval=true, the
@@ -784,7 +837,7 @@ describe('updateUserDiscordRoles', () => {
 				{ guildId: 'guild-1', success: true, rolesAdded: ['auto-role-1'], rolesRemoved: [] },
 			])
 
-			const result = await updateUserDiscordRoles(mockEnv, 'user-1')
+			const _result = await updateUserDiscordRoles(mockEnv, 'user-1')
 
 			expect(discordStubMethods.updateUserRoles).toHaveBeenCalled()
 			const requests = discordStubMethods.updateUserRoles.mock.calls[0][1]
@@ -1522,7 +1575,7 @@ describe('updateUserDiscordRoles', () => {
 				{ guildId: 'guild-group', success: true, rolesAdded: ['group-role-grp'], rolesRemoved: [] },
 			])
 
-			const result = await updateUserDiscordRoles(mockEnv, 'user-1')
+			const _result = await updateUserDiscordRoles(mockEnv, 'user-1')
 
 			expect(discordStubMethods.updateUserRoles).toHaveBeenCalled()
 			const requests = discordStubMethods.updateUserRoles.mock.calls[0][1]
@@ -1596,7 +1649,7 @@ describe('updateUserDiscordRoles', () => {
 				{ guildId: 'guild-group', success: true, rolesAdded: ['group-role-grp'], rolesRemoved: [] },
 			])
 
-			const result = await updateUserDiscordRoles(mockEnv, 'user-1', undefined, true)
+			const _result = await updateUserDiscordRoles(mockEnv, 'user-1', undefined, true)
 
 			expect(discordStubMethods.updateUserRoles).toHaveBeenCalled()
 			const requests = discordStubMethods.updateUserRoles.mock.calls[0][1]
@@ -1714,7 +1767,7 @@ describe('inviteUserToDiscordServers', () => {
 			])
 			groupsStubMethods.insertDiscordInviteAuditRecords.mockResolvedValue(undefined)
 
-			const result = await inviteUserToDiscordServers(mockEnv, 'user-1')
+			const _result = await inviteUserToDiscordServers(mockEnv, 'user-1')
 
 			expect(discordStubMethods.joinUserToServers).toHaveBeenCalled()
 			const guildIds = discordStubMethods.joinUserToServers.mock.calls[0][1]
@@ -1763,7 +1816,7 @@ describe('inviteUserToDiscordServers', () => {
 			groupsStubMethods.getGroupMemberUserIds.mockResolvedValue(['user-1'])
 			dbQueryMocks.discordRoles.findMany.mockResolvedValue([])
 
-			const result = await inviteUserToDiscordServers(mockEnv, 'user-1')
+			const _result = await inviteUserToDiscordServers(mockEnv, 'user-1')
 
 			// No guilds to join => joinUserToServers should not be called
 			expect(discordStubMethods.joinUserToServers).not.toHaveBeenCalled()
@@ -1786,7 +1839,7 @@ describe('inviteUserToDiscordServers', () => {
 			groupsStubMethods.getGroupMemberUserIds.mockResolvedValue([]) // user NOT a member
 			dbQueryMocks.discordRoles.findMany.mockResolvedValue([])
 
-			const result = await inviteUserToDiscordServers(mockEnv, 'user-1')
+			const _result = await inviteUserToDiscordServers(mockEnv, 'user-1')
 
 			expect(discordStubMethods.joinUserToServers).not.toHaveBeenCalled()
 		})
@@ -1863,7 +1916,7 @@ describe('inviteUserToDiscordServers', () => {
 			])
 			groupsStubMethods.insertDiscordInviteAuditRecords.mockResolvedValue(undefined)
 
-			const result = await inviteUserToDiscordServers(mockEnv, 'user-1')
+			const _result = await inviteUserToDiscordServers(mockEnv, 'user-1')
 
 			expect(discordStubMethods.joinUserToServers).toHaveBeenCalled()
 			const guildIds = discordStubMethods.joinUserToServers.mock.calls[0][1]

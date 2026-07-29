@@ -85,6 +85,11 @@
 				"script_name": "discord"
 			},
 			{
+				"name": "TEMPORARY_ROLE_ASSIGNMENTS",
+				"class_name": "TemporaryRoleAssignments",
+				"script_name": "core"
+			},
+			{
 				"name": "BILLS",
 				"class_name": "Bills",
 				"script_name": "bills"
@@ -221,6 +226,10 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["Core"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["TemporaryRoleAssignments"]
 		}
 	],
 	"workflows": [

@@ -2,23 +2,29 @@ import { eq, inArray } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import { discordCommandPermissions, discordCommands, users } from '../db/schema'
-import { getCachedUserPermissions } from '../lib/groups-cache'
 import {
-	PROGRAMMATIC_COMMAND_DEFINITIONS,
-	programmaticCommandDefinitionByName,
-} from './discord-programmatic-commands'
-import type { DeferralMode } from './discord-programmatic-commands'
+	discordCommandCategories,
+	discordCommandPermissions,
+	discordCommands,
+	users,
+} from '../db/schema'
+import { getCachedUserPermissions } from '../lib/groups-cache'
 import {
 	clearRegisteredDiscordCommandsBySource,
 	getRegisteredDiscordCommand,
 	registerDiscordCommand,
 } from './discord-command-registry.service'
+import {
+	PROGRAMMATIC_COMMAND_DEFINITIONS,
+	programmaticCommandDefinitionByName,
+} from './discord-programmatic-commands'
 
 import type { Discord, DiscordEmbed, DiscordSlashCommandDefinition } from '@repo/discord'
 import type { Env } from '../context'
 import type { createDb } from '../db'
 import type { DiscordCommandOptionAlias } from './discord-command-registry.service'
+import { ProgrammaticCommandPermissionError } from './discord-programmatic-commands/types'
+import type { DeferralMode } from './discord-programmatic-commands'
 
 const DISCORD_EPHEMERAL_FLAG = 1 << 6
 const STATIC_RESPONSE_DISCORD_COMMAND_SOURCE = 'database-static-response'
@@ -94,7 +100,16 @@ export interface ExecuteDiscordSlashCommandResult {
 
 export type CommandEnv = Pick<
 	Env,
-	'GROUPS' | 'DISCORD' | 'PREDICTION_MARKETS' | 'BROADCASTS' | 'FLEETS' | 'SRP' | 'DOCTRINES'
+	| 'DATABASE_URL'
+	| 'GROUPS'
+	| 'DISCORD'
+	| 'TEMPORARY_ROLE_ASSIGNMENTS'
+	| 'USER_DISCORD_REFRESH_WORKFLOW'
+	| 'PREDICTION_MARKETS'
+	| 'BROADCASTS'
+	| 'FLEETS'
+	| 'SRP'
+	| 'DOCTRINES'
 >
 
 function normalizeCommandName(name: string): string {
@@ -201,11 +216,45 @@ async function ensureProgrammaticCommandRows(db: ReturnType<typeof createDb>): P
 		return
 	}
 
+	const categoryNames = [
+		...new Set(
+			PROGRAMMATIC_COMMAND_DEFINITIONS.map((definition) => definition.categoryName).filter(
+				(categoryName): categoryName is string => Boolean(categoryName)
+			)
+		),
+	]
+	if (categoryNames.length > 0) {
+		const existingCategories =
+			(await db.query.discordCommandCategories?.findMany({
+				where: inArray(discordCommandCategories.name, categoryNames),
+				columns: { name: true },
+			})) ?? []
+		const existingCategoryNames = new Set(existingCategories.map((category) => category.name))
+		const missingCategoryNames = categoryNames.filter((name) => !existingCategoryNames.has(name))
+		if (missingCategoryNames.length > 0) {
+			const insert = db
+				.insert(discordCommandCategories)
+				.values(missingCategoryNames.map((name) => ({ name })))
+			if (typeof insert.onConflictDoNothing === 'function') {
+				await insert.onConflictDoNothing({ target: discordCommandCategories.name })
+			} else {
+				await insert
+			}
+		}
+	}
+	const categories =
+		(await db.query.discordCommandCategories?.findMany({
+			where: inArray(discordCommandCategories.name, categoryNames),
+			columns: { id: true, name: true },
+		})) ?? []
+	const categoryIdByName = new Map(categories.map((category) => [category.name, category.id]))
+
 	const existingCommands = await db.query.discordCommands.findMany({
 		where: inArray(discordCommands.name, names),
 		columns: {
 			name: true,
 			commandType: true,
+			categoryId: true,
 		},
 	})
 	const existingByName = new Map(existingCommands.map((command) => [command.name, command]))
@@ -218,15 +267,34 @@ async function ensureProgrammaticCommandRows(db: ReturnType<typeof createDb>): P
 		commandType: 'programmatic' as const,
 		responseTemplate: null,
 		isActive: true,
+		categoryId: definition.categoryName
+			? (categoryIdByName.get(definition.categoryName) ?? null)
+			: null,
 	}))
 
 	for (const definition of PROGRAMMATIC_COMMAND_DEFINITIONS) {
 		const existing = existingByName.get(definition.name)
+		const categoryId = definition.categoryName
+			? categoryIdByName.get(definition.categoryName)
+			: undefined
+		if (existing && categoryId && existing.categoryId !== categoryId) {
+			await db
+				.update(discordCommands)
+				.set({ categoryId, updatedAt: new Date() })
+				.where(eq(discordCommands.name, definition.name))
+		}
+	}
+
+	for (const definition of PROGRAMMATIC_COMMAND_DEFINITIONS) {
+		const existing = existingByName.get(definition.name)
 		if (existing && existing.commandType !== 'programmatic') {
-			logger.warn('[DiscordCommands] Programmatic command name conflicts with non-programmatic row', {
-				commandName: definition.name,
-				existingType: existing.commandType,
-			})
+			logger.warn(
+				'[DiscordCommands] Programmatic command name conflicts with non-programmatic row',
+				{
+					commandName: definition.name,
+					existingType: existing.commandType,
+				}
+			)
 		}
 	}
 
@@ -498,7 +566,10 @@ export async function executeDiscordSlashCommand(
 			...input,
 			commandName,
 		}
-		const optionValues = buildTemplateContext(normalizedInput, registeredCommand.optionAliases ?? [])
+		const optionValues = buildTemplateContext(
+			normalizedInput,
+			registeredCommand.optionAliases ?? []
+		)
 		const interactionResponse = await registeredCommand.handler({
 			input: normalizedInput,
 			coreUserId: user.id,
@@ -524,7 +595,11 @@ export async function executeDiscordSlashCommand(
 			error: error instanceof Error ? error.message : String(error),
 		})
 		return {
-			response: ephemeralResponse('Command execution failed. Please try again later.'),
+			response: ephemeralResponse(
+				error instanceof ProgrammaticCommandPermissionError
+					? error.message
+					: 'Command execution failed. Please try again later.'
+			),
 			coreUserId: user.id,
 			authorized: false,
 			commandId: registeredCommand.commandId,
@@ -584,9 +659,12 @@ export function buildDiscordSlashCommandDefinition(command: {
 			}
 		}
 
-		logger.warn('[DiscordCommands] Missing programmatic definition while building slash registration', {
-			commandName: name,
-		})
+		logger.warn(
+			'[DiscordCommands] Missing programmatic definition while building slash registration',
+			{
+				commandName: name,
+			}
+		)
 	}
 
 	return {
@@ -618,7 +696,9 @@ export async function replaceCommandPermissions(
 	commandId: string,
 	permissionIds: string[]
 ): Promise<void> {
-	await db.delete(discordCommandPermissions).where(eq(discordCommandPermissions.commandId, commandId))
+	await db
+		.delete(discordCommandPermissions)
+		.where(eq(discordCommandPermissions.commandId, commandId))
 	if (permissionIds.length === 0) {
 		return
 	}

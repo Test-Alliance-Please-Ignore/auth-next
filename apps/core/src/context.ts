@@ -32,6 +32,8 @@ export type Env = SharedHonoEnv & {
 	GROUPS: DurableObjectNamespace
 	/** Discord Durable Object binding */
 	DISCORD: DurableObjectNamespace
+	/** Per-guild temporary Discord role assignment Durable Objects */
+	TEMPORARY_ROLE_ASSIGNMENTS: DurableObjectNamespace
 	/** Bills Durable Object binding */
 	BILLS: DurableObjectNamespace
 	/** Prediction Markets Durable Object binding */

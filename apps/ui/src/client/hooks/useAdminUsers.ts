@@ -227,7 +227,10 @@ export function useUpdateDiscordAccess() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: (userId: string) => api.triggerDiscordJoin(userId),
+		mutationFn: async (userId: string) => {
+			const trigger = await api.triggerDiscordJoin(userId)
+			return api.waitForAdminDiscordRefresh(userId, trigger.workflowInstanceId)
+		},
 		onSuccess: (_, userId) => {
 			// Invalidate user detail to refetch Discord status
 			void queryClient.invalidateQueries({ queryKey: adminUserKeys.detail(userId) })

@@ -9,6 +9,7 @@ import {
 	text,
 	timestamp,
 	unique,
+	uniqueIndex,
 	uuid,
 	varchar,
 } from 'drizzle-orm/pg-core'
@@ -375,7 +376,9 @@ export const managedCorporations = pgTable(
 		/** Whether this corporation should be included in background data refresh */
 		includeInBackgroundRefresh: boolean('include_in_background_refresh').default(false).notNull(),
 		/** Whether this corporation should be included in structure asset snapshots */
-		includeInStructureAssetSync: boolean('include_in_structure_asset_sync').default(false).notNull(),
+		includeInStructureAssetSync: boolean('include_in_structure_asset_sync')
+			.default(false)
+			.notNull(),
 		/** Last successful data sync timestamp */
 		lastSync: timestamp('last_sync', { withTimezone: true }),
 		/** Last verification timestamp (any director verified) */
@@ -495,6 +498,32 @@ export const discordRoles = pgTable(
 			.on(table.discordServerId, table.autoApply, table.isActive)
 			.where(sql`${table.autoApply} = true AND ${table.isActive} = true`),
 		unique('unique_discord_server_role').on(table.discordServerId, table.roleId),
+		uniqueIndex('discord_roles_server_name_unique').on(
+			table.discordServerId,
+			sql`lower(${table.roleName})`
+		),
+	]
+)
+
+/**
+ * Discord roles that alliance members may assign to themselves through Discord commands.
+ * The referenced discordRoles row remains the canonical managed-role registry.
+ */
+export const discordSelfAssignableRoles = pgTable(
+	'discord_self_assignable_roles',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		discordRoleId: uuid('discord_role_id')
+			.notNull()
+			.references(() => discordRoles.id, { onDelete: 'cascade' }),
+		defaultDurationSeconds: integer('default_duration_seconds'),
+		createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('discord_self_assignable_roles_role_unique').on(table.discordRoleId),
+		index('discord_self_assignable_roles_role_idx').on(table.discordRoleId),
 	]
 )
 
@@ -539,12 +568,12 @@ export const discordCommands = pgTable(
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-		(table) => [
-			index('discord_commands_name_idx').on(table.name),
-			index('discord_commands_type_idx').on(table.commandType),
-			index('discord_commands_is_active_idx').on(table.isActive),
-			index('discord_commands_category_id_idx').on(table.categoryId),
-		]
+	(table) => [
+		index('discord_commands_name_idx').on(table.name),
+		index('discord_commands_type_idx').on(table.commandType),
+		index('discord_commands_is_active_idx').on(table.isActive),
+		index('discord_commands_category_id_idx').on(table.categoryId),
+	]
 )
 
 /**
@@ -593,7 +622,10 @@ export const discordServerCommands = pgTable(
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
-		unique('discord_server_commands_server_command_unique').on(table.discordServerId, table.commandId),
+		unique('discord_server_commands_server_command_unique').on(
+			table.discordServerId,
+			table.commandId
+		),
 		index('discord_server_commands_server_id_idx').on(table.discordServerId),
 		index('discord_server_commands_command_id_idx').on(table.commandId),
 	]
@@ -793,7 +825,10 @@ export const corporationAlertDestinations = pgTable(
 		}),
 		channelId: text('channel_id'),
 		coreUserId: uuid('core_user_id').references(() => users.id, { onDelete: 'cascade' }),
-		destinationConfig: jsonb('destination_config').$type<Record<string, unknown>>().notNull().default({}),
+		destinationConfig: jsonb('destination_config')
+			.$type<Record<string, unknown>>()
+			.notNull()
+			.default({}),
 		isEnabled: boolean('is_enabled').notNull().default(true),
 		createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
 		updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
@@ -832,7 +867,10 @@ export const corporationAlertConfigs = pgTable(
 		index('corporation_alert_configs_alert_type_idx').on(table.alertType),
 		index('corporation_alert_configs_enabled_idx').on(table.isEnabled),
 		index('corporation_alert_configs_corp_alert_type_idx').on(table.corporationId, table.alertType),
-		unique('corporation_alert_configs_corp_alert_type_unique').on(table.corporationId, table.alertType),
+		unique('corporation_alert_configs_corp_alert_type_unique').on(
+			table.corporationId,
+			table.alertType
+		),
 	]
 )
 
@@ -868,7 +906,10 @@ export const discordMemberAuditRuns = pgTable(
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
-		index('discord_member_audit_runs_server_started_idx').on(table.discordServerId, table.startedAt),
+		index('discord_member_audit_runs_server_started_idx').on(
+			table.discordServerId,
+			table.startedAt
+		),
 		index('discord_member_audit_runs_status_idx').on(table.status),
 	]
 )
@@ -900,8 +941,15 @@ export const discordMemberAuditRows = pgTable(
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
-		index('discord_member_audit_rows_run_linked_user_idx').on(table.runId, table.linked, table.discordUserId),
-		unique('discord_member_audit_rows_run_discord_user_unique').on(table.runId, table.discordUserId),
+		index('discord_member_audit_rows_run_linked_user_idx').on(
+			table.runId,
+			table.linked,
+			table.discordUserId
+		),
+		unique('discord_member_audit_rows_run_discord_user_unique').on(
+			table.runId,
+			table.discordUserId
+		),
 	]
 )
 
@@ -1080,17 +1128,20 @@ export const discordServersRelations = relations(discordServers, ({ one, many })
 	auditRuns: many(discordMemberAuditRuns),
 }))
 
-export const discordMemberAuditRunsRelations = relations(discordMemberAuditRuns, ({ one, many }) => ({
-	discordServer: one(discordServers, {
-		fields: [discordMemberAuditRuns.discordServerId],
-		references: [discordServers.id],
-	}),
-	initiatedByUser: one(users, {
-		fields: [discordMemberAuditRuns.initiatedByUserId],
-		references: [users.id],
-	}),
-	rows: many(discordMemberAuditRows),
-}))
+export const discordMemberAuditRunsRelations = relations(
+	discordMemberAuditRuns,
+	({ one, many }) => ({
+		discordServer: one(discordServers, {
+			fields: [discordMemberAuditRuns.discordServerId],
+			references: [discordServers.id],
+		}),
+		initiatedByUser: one(users, {
+			fields: [discordMemberAuditRuns.initiatedByUserId],
+			references: [users.id],
+		}),
+		rows: many(discordMemberAuditRows),
+	})
+)
 
 export const discordMemberAuditRowsRelations = relations(discordMemberAuditRows, ({ one }) => ({
 	run: one(discordMemberAuditRuns, {
@@ -1108,11 +1159,32 @@ export const discordRolesRelations = relations(discordRoles, ({ one }) => ({
 		fields: [discordRoles.discordServerId],
 		references: [discordServers.id],
 	}),
+	selfAssignable: one(discordSelfAssignableRoles, {
+		fields: [discordRoles.id],
+		references: [discordSelfAssignableRoles.discordRoleId],
+	}),
 }))
 
-export const discordCommandCategoriesRelations = relations(discordCommandCategories, ({ many }) => ({
-	commands: many(discordCommands),
-}))
+export const discordSelfAssignableRolesRelations = relations(
+	discordSelfAssignableRoles,
+	({ one }) => ({
+		discordRole: one(discordRoles, {
+			fields: [discordSelfAssignableRoles.discordRoleId],
+			references: [discordRoles.id],
+		}),
+		createdByUser: one(users, {
+			fields: [discordSelfAssignableRoles.createdBy],
+			references: [users.id],
+		}),
+	})
+)
+
+export const discordCommandCategoriesRelations = relations(
+	discordCommandCategories,
+	({ many }) => ({
+		commands: many(discordCommands),
+	})
+)
 
 export const discordCommandsRelations = relations(discordCommands, ({ one, many }) => ({
 	category: one(discordCommandCategories, {
@@ -1127,12 +1199,15 @@ export const discordCommandsRelations = relations(discordCommands, ({ one, many 
 	serverAttachments: many(discordServerCommands),
 }))
 
-export const discordCommandPermissionsRelations = relations(discordCommandPermissions, ({ one }) => ({
-	command: one(discordCommands, {
-		fields: [discordCommandPermissions.commandId],
-		references: [discordCommands.id],
-	}),
-}))
+export const discordCommandPermissionsRelations = relations(
+	discordCommandPermissions,
+	({ one }) => ({
+		command: one(discordCommands, {
+			fields: [discordCommandPermissions.commandId],
+			references: [discordCommands.id],
+		}),
+	})
+)
 
 export const discordServerCommandsRelations = relations(discordServerCommands, ({ one }) => ({
 	discordServer: one(discordServers, {
@@ -1326,11 +1401,11 @@ export const mumbleTempopGuests = pgTable(
 		/** EVE character ID (string form, matches userCharacters.characterId) */
 		characterId: varchar('character_id', { length: 32 }).notNull(),
 		characterName: varchar('character_name', { length: 255 }).notNull(),
-	corporationId: varchar('corporation_id', { length: 32 }),
-	allianceId: varchar('alliance_id', { length: 32 }),
-	corpTicker: varchar('corp_ticker', { length: 8 }),
-	/** murmur-control subject key: `tempop:<tempopId>:<characterId>` */
-	subjectId: varchar('subject_id', { length: 255 }).notNull().unique(),
+		corporationId: varchar('corporation_id', { length: 32 }),
+		allianceId: varchar('alliance_id', { length: 32 }),
+		corpTicker: varchar('corp_ticker', { length: 8 }),
+		/** murmur-control subject key: `tempop:<tempopId>:<characterId>` */
+		subjectId: varchar('subject_id', { length: 255 }).notNull().unique(),
 		loginName: varchar('login_name', { length: 60 }).notNull(),
 		/** Lifecycle status: 'active' | 'deleted' */
 		status: varchar('status', { length: 20 }).default('active').notNull(),
@@ -1696,6 +1771,7 @@ export const schema = {
 	managedCorporationsRelations,
 	discordServersRelations,
 	discordRolesRelations,
+	discordSelfAssignableRolesRelations,
 	discordMemberAuditRunsRelations,
 	discordMemberAuditRowsRelations,
 	discordCommandCategoriesRelations,

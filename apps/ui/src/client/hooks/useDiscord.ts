@@ -6,9 +6,11 @@ import type {
 	AssignRoleRequest,
 	AttachDiscordServerRequest,
 	CreateDiscordRoleRequest,
+	CreateDiscordSelfAssignableRoleRequest,
 	CreateDiscordServerRequest,
 	CorporationDiscordServer,
 	UpdateDiscordRoleRequest,
+	UpdateDiscordSelfAssignableRoleRequest,
 	UpdateDiscordServerAttachmentRequest,
 	UpdateDiscordServerNicknameConfigRequest,
 	UpdateDiscordServerRequest,
@@ -88,6 +90,7 @@ export function useDiscordLink() {
 export const discordKeys = {
 	all: ['admin', 'discord'] as const,
 	servers: () => [...discordKeys.all, 'servers'] as const,
+	selfAssignableRoles: (serverId: string) => [...discordKeys.servers(), 'self-assignable', serverId] as const,
 	audit: (serverId: string, tab: 'linked' | 'unlinked', page: number, pageSize: number) =>
 		[...discordKeys.all, 'audit', serverId, tab, page, pageSize] as const,
 	corporationServers: (corporationId: string) =>
@@ -240,6 +243,54 @@ export function useDeleteDiscordRole() {
 				queryKey: discordKeys.servers(),
 				refetchType: 'active',
 			})
+		},
+	})
+}
+
+export function useDiscordSelfAssignableRoles(serverId: string) {
+	return useQuery({
+		queryKey: discordKeys.selfAssignableRoles(serverId),
+		queryFn: () => apiClient.getDiscordSelfAssignableRoles(serverId),
+		enabled: !!serverId,
+	})
+}
+
+export function useCreateDiscordSelfAssignableRole() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({ serverId, data }: { serverId: string; data: CreateDiscordSelfAssignableRoleRequest }) =>
+			apiClient.createDiscordSelfAssignableRole(serverId, data),
+		onSuccess: (_, variables) => {
+			void queryClient.invalidateQueries({ queryKey: discordKeys.selfAssignableRoles(variables.serverId) })
+		},
+	})
+}
+
+export function useUpdateDiscordSelfAssignableRole() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({
+			serverId,
+			configId,
+			data,
+		}: {
+			serverId: string
+			configId: string
+			data: UpdateDiscordSelfAssignableRoleRequest
+		}) => apiClient.updateDiscordSelfAssignableRole(serverId, configId, data),
+		onSuccess: (_, variables) => {
+			void queryClient.invalidateQueries({ queryKey: discordKeys.selfAssignableRoles(variables.serverId) })
+		},
+	})
+}
+
+export function useDeleteDiscordSelfAssignableRole() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({ serverId, configId }: { serverId: string; configId: string }) =>
+			apiClient.deleteDiscordSelfAssignableRole(serverId, configId),
+		onSuccess: (_, variables) => {
+			void queryClient.invalidateQueries({ queryKey: discordKeys.selfAssignableRoles(variables.serverId) })
 		},
 	})
 }

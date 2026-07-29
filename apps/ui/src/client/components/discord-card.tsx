@@ -9,6 +9,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 
 import type { User } from '@/hooks/useAuth'
 
+function getDiscordRefreshMessage(
+	reason: 'authorization' | 'configuration' | 'temporary' | 'unknown' | undefined,
+	partial: boolean
+): string {
+	if (reason === 'authorization') {
+		return partial ? 'Some access needs Discord authorization' : 'Discord authorization may need renewal'
+	}
+	if (reason === 'configuration') {
+		return partial ? 'Some access has a server configuration issue' : 'Discord server configuration issue'
+	}
+	if (reason === 'temporary') {
+		return partial ? 'Some access affected by a temporary Discord issue' : 'Discord temporarily unavailable'
+	}
+	return partial ? 'Some Discord access could not be updated' : 'Discord access update incomplete'
+}
+
 interface DiscordCardProps {
 	user: User
 }
@@ -34,23 +50,35 @@ export function DiscordCard({ user }: DiscordCardProps) {
 		setJoinMessage(null)
 		setJoinError(null)
 
+		let workflowInstanceId: string
 		try {
-			const result = await apiClient.joinDiscordServers()
+			workflowInstanceId = (await apiClient.joinDiscordServers()).workflowInstanceId
+		} catch (error) {
+			console.error('Failed to start Discord access refresh:', error)
+			setJoinError('We could not start the Discord access refresh. Please try again later.')
+			setIsJoiningServers(false)
+			return
+		}
 
-			if (result.totalFailed > 0) {
-				setJoinError(
-					`Failed to refresh ${result.totalFailed} server${result.totalFailed > 1 ? 's' : ''}. ${result.results.find((r) => !r.success)?.errorMessage ?? ''}`
-				)
-			} else if (result.totalInvited > 0) {
+		try {
+			const result = await apiClient.waitForDiscordRefresh(workflowInstanceId)
+			const totalFailed = result.totalFailed ?? 0
+			const totalInvited = result.totalInvited ?? 0
+
+			if (result.status === 'failed') {
+				setJoinError(getDiscordRefreshMessage(result.reason, false))
+			} else if (totalFailed > 0) {
+				setJoinError(`${getDiscordRefreshMessage(result.reason, true)} (${totalFailed} server${totalFailed > 1 ? 's' : ''}).`)
+			} else if (totalInvited > 0) {
 				setJoinMessage(
-					`Successfully joined ${result.totalInvited} Discord server${result.totalInvited > 1 ? 's' : ''}!`
+					`Successfully joined ${totalInvited} Discord server${totalInvited > 1 ? 's' : ''}!`
 				)
 			} else {
 				setJoinMessage('Discord access refreshed successfully.')
 			}
 		} catch (error) {
-			console.error('Failed to join Discord servers:', error)
-			setJoinError('Failed to join Discord servers. Please try again later.')
+			console.error('Failed to confirm Discord access refresh:', error)
+			setJoinError('Discord access status could not be confirmed')
 		} finally {
 			setIsJoiningServers(false)
 		}

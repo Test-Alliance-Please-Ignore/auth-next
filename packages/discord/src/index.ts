@@ -330,19 +330,20 @@ export const DISCORD_SLASH_COMMAND_OPTION_TYPE = {
 export type DiscordSlashCommandOptionType =
 	(typeof DISCORD_SLASH_COMMAND_OPTION_TYPE)[keyof typeof DISCORD_SLASH_COMMAND_OPTION_TYPE]
 
-export const DISCORD_SLASH_COMMAND_OPTION_TYPE_NAME: Record<DiscordSlashCommandOptionType, string> = {
-	1: 'SUB_COMMAND',
-	2: 'SUB_COMMAND_GROUP',
-	3: 'STRING',
-	4: 'INTEGER',
-	5: 'BOOLEAN',
-	6: 'USER',
-	7: 'CHANNEL',
-	8: 'ROLE',
-	9: 'MENTIONABLE',
-	10: 'NUMBER',
-	11: 'ATTACHMENT',
-}
+export const DISCORD_SLASH_COMMAND_OPTION_TYPE_NAME: Record<DiscordSlashCommandOptionType, string> =
+	{
+		1: 'SUB_COMMAND',
+		2: 'SUB_COMMAND_GROUP',
+		3: 'STRING',
+		4: 'INTEGER',
+		5: 'BOOLEAN',
+		6: 'USER',
+		7: 'CHANNEL',
+		8: 'ROLE',
+		9: 'MENTIONABLE',
+		10: 'NUMBER',
+		11: 'ATTACHMENT',
+	}
 
 export interface DiscordSlashCommandOptionChoice {
 	name: string
@@ -538,11 +539,7 @@ export interface Discord {
 	/**
 	 * Edit an existing channel message by ID
 	 */
-	editMessage(
-		channelId: string,
-		messageId: string,
-		content: string
-	): Promise<SendMessageResult>
+	editMessage(channelId: string, messageId: string, content: string): Promise<SendMessageResult>
 
 	/**
 	 * Delete a channel message by ID
@@ -573,6 +570,24 @@ export interface Discord {
 	 * List the roles available in a Discord guild.
 	 */
 	getGuildRoles(guildId: string): Promise<DiscordGuildRoleSummary[]>
+	getGuildMemberByDiscordUserId(
+		guildId: string,
+		discordUserId: string
+	): Promise<{ isMember: boolean; roleIds: string[] }>
+
+	/** Add one explicitly managed role without replacing any other member roles. */
+	addGuildMemberRole(
+		guildId: string,
+		discordUserId: string,
+		roleId: string
+	): Promise<{ success: boolean; error?: string }>
+
+	/** Remove one explicitly managed role without replacing any other member roles. */
+	removeGuildMemberRole(
+		guildId: string,
+		discordUserId: string,
+		roleId: string
+	): Promise<{ success: boolean; error?: string }>
 
 	/**
 	 * List guild members using bot access.
@@ -600,6 +615,8 @@ export interface Discord {
 			guildId: string
 			roleIds: string[]
 			managedRoleIds?: string[] // All system-managed role IDs for this guild
+			preserveRoleIds?: string[] // Roles preserved when one role source is unavailable
+			preserveAllCurrentRoles?: boolean // Fail-safe when the managed-role inventory is unavailable
 			clearAllRoles?: boolean // When true, clear all roles for this guild (managed + unmanaged)
 		}>,
 		allowRemoval?: boolean // When true, overrides add-only mode and removes managed roles the user no longer qualifies for
@@ -798,12 +815,7 @@ export const getDiscordStub = (env: { DISCORD: DurableObjectNamespace }): Discor
 }
 
 // Re-export client utilities
-export {
-	DiscordFetch,
-	DiscordAPIError,
-	DiscordRateLimitError,
-	DiscordRoutes,
-} from './client'
+export { DiscordFetch, DiscordAPIError, DiscordRateLimitError, DiscordRoutes } from './client'
 
 export {
 	DiscordRateLimitGuard,

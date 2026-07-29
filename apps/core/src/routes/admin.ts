@@ -19,7 +19,8 @@ import { waitUntilWithTelemetry } from '../lib/background-task'
 import { getIpHashMatches, getUserIpHistory } from '../lib/ip-history'
 import { recordUserIpAddress } from '../lib/ip-tracking'
 import { validatePagination } from '../lib/validation'
-import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
+import { normalizeWorkflowStatus } from '../lib/workflow-status'
+import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAdmin, requireAuth } from '../middleware/session'
 import * as discordService from '../services/discord.service'
 import {
@@ -1037,17 +1038,46 @@ app.post('/users/:userId/discord/join-servers', requireAuth(), requireAdmin(), a
 		return c.json({ error: 'Unauthorized' }, 401)
 	}
 
+	const result = await triggerDiscordRefreshWorkflow({
+		env: c.env,
+		userId,
+		source: `admin-manual-${user.id}`,
+		allowRemoval: true,
+	})
+	if (result.status === 'failed' || !result.workflowInstanceId) {
+		return c.json({ error: result.error ?? 'Failed to start Discord access refresh' }, 500)
+	}
+	return c.json({ status: 'queued', workflowInstanceId: result.workflowInstanceId }, 202)
+})
+
+app.get('/users/:userId/discord/join-servers/:workflowInstanceId', requireAuth(), requireAdmin(), async (c) => {
+	const userId = c.req.param('userId')
+	const workflowInstanceId = c.req.param('workflowInstanceId')
 	try {
-		const result = await discordService.syncUserDiscordAccess(c.env, userId, true)
-		return c.json(result)
+		const workflow = await c.env.USER_DISCORD_REFRESH_WORKFLOW.get(workflowInstanceId)
+		const status = await workflow.status()
+		const output = status.output ?? null
+		if (!output || typeof output !== 'object' || !('userId' in output) || output.userId !== userId) {
+			if (normalizeWorkflowStatus(status.status) !== 'queued' && normalizeWorkflowStatus(status.status) !== 'running') {
+				return c.json({ error: 'Workflow not found' }, 404)
+			}
+		}
+		const outputStatus =
+			output && typeof output === 'object' && 'status' in output
+				? String((output as { status?: string }).status ?? '')
+				: undefined
+		return c.json({
+			workflowInstanceId,
+			status: normalizeWorkflowStatus(status.status, outputStatus),
+			output,
+		})
 	} catch (error) {
-		logger.error('Error joining user to Discord servers:', error)
-		return c.json(
-			{
-				error: error instanceof Error ? error.message : 'Failed to join Discord servers',
-			},
-			500
-		)
+		logger.error('Error reading admin Discord access refresh status:', {
+			userId,
+			workflowInstanceId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Unable to read Discord access refresh status' }, 502)
 	}
 })
 

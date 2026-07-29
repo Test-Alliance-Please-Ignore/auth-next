@@ -67,7 +67,9 @@ export function createDiscordRefreshWorkflowId(source: string, userId: string): 
 		.replace(/[^a-z0-9]+/g, '-')
 		.replace(/^-+|-+$/g, '')
 	const sourceToken = (normalizedSource || 'unknown').slice(0, 20)
-	const userToken = userId.replace(/-/g, '').slice(0, 12)
+	// Keep the complete user identifier in the instance ID so status routes can
+	// verify ownership without relying on a truncated prefix.
+	const userToken = userId.replace(/-/g, '')
 	const timeToken = Date.now().toString(36)
 	return `discord-refresh-${sourceToken}-${userToken}-${timeToken}`
 }
