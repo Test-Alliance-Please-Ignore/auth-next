@@ -19,6 +19,10 @@
 			{
 				"name": "CORE",
 				"class_name": "Core"
+			},
+			{
+				"name": "TEMPORARY_ROLE_ASSIGNMENTS",
+				"class_name": "TemporaryRoleAssignments"
 			}
 		]
 	},
@@ -26,6 +30,10 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["Core"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["TemporaryRoleAssignments"]
 		}
 	]
 }

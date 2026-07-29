@@ -422,7 +422,8 @@ export default function AdminDiscordAuditPage() {
 	}
 
 	const refreshLinkedUser = async (coreUserId: string) => {
-		await api.triggerDiscordJoin(coreUserId)
+		const trigger = await api.triggerDiscordJoin(coreUserId)
+		await api.waitForAdminDiscordRefresh(coreUserId, trigger.workflowInstanceId)
 		void fetchAuditPage(effectiveServerId, tab)
 	}
 

@@ -10,7 +10,7 @@ import type { Discord, DiscordEmbed } from '@repo/discord'
 import type { Doctrines } from '@repo/doctrines'
 import type { Fleets } from '@repo/fleets'
 import type { Srp } from '@repo/srp'
-import type { ProgrammaticCommandDefinition, ProgrammaticCommandResponse } from './types'
+import type { ProgrammaticCommandDefinition } from './types'
 
 const SRP_STAFF_URNS = new Set(['urn:srp:reviewer', 'urn:srp:payer', 'urn:srp:manager'])
 const MAX_EMBED_FIELD_LENGTH = 1024
@@ -57,6 +57,7 @@ function buildComparisonError(message: string): string {
 export const SRPFLEET_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition = {
 	name: 'srpfleet',
 	description: 'Show SRP fleet details for a fleet broadcast token.',
+	categoryName: 'SRP',
 	deferral: 'defer-ephemeral',
 	options: [
 		{

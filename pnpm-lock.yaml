@@ -524,6 +524,9 @@ importers:
       hono:
         specifier: 4.10.6
         version: 4.10.6
+      parse-duration:
+        specifier: 2.1.8
+        version: 2.1.8
       workers-tagged-logger:
         specifier: 0.13.7
         version: 0.13.7
@@ -2739,6 +2742,9 @@ importers:
       mantine-react-table:
         specifier: 2.0.0-beta.9
         version: 2.0.0-beta.9(@mantine/core@7.17.8(@mantine/hooks@7.17.8(react@19.2.0))(@types/react@19.2.6)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(@mantine/dates@7.17.8(@mantine/core@7.17.8(@mantine/hooks@7.17.8(react@19.2.0))(@types/react@19.2.6)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(@mantine/hooks@7.17.8(react@19.2.0))(dayjs@1.11.20)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(@mantine/hooks@7.17.8(react@19.2.0))(@tabler/icons-react@3.40.0(react@19.2.0))(clsx@2.1.1)(dayjs@1.11.20)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      parse-duration:
+        specifier: 2.1.8
+        version: 2.1.8
       react:
         specifier: 19.2.0
         version: 19.2.0
@@ -8686,6 +8692,9 @@ packages:
     resolution: {integrity: sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==}
     engines: {node: '>=6'}
 
+  parse-duration@2.1.8:
+    resolution: {integrity: sha512-hM72vQ2w/HebbXx2pyUaR+EBjbkPx3Xi2aWAF9SNvJnRbP0p46KLcI8WP/z5ZruCUsJr0L2HWexVtB3PlBf/LA==}
+
   parse-json@5.2.0:
     resolution: {integrity: sha512-ayCKvm/phCGxOkYRSCM82iDwct8/EonSEgCSxWxD7ve6jHggsFl4fZVQBPRNgQoKiuV/odhFrGzQXZwbifC8Rg==}
     engines: {node: '>=8'}
@@ -14068,6 +14077,8 @@ snapshots:
   parent-module@1.0.1:
     dependencies:
       callsites: 3.1.0
+
+  parse-duration@2.1.8: {}
 
   parse-json@5.2.0:
     dependencies:

@@ -36,7 +36,6 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
 	Table,
@@ -75,7 +74,7 @@ import { characterPortraitUrl } from '@/lib/eve-images'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
-import type { BlacklistTargetType } from '@/lib/api'
+import type { BlacklistTargetType, DiscordRefreshOutput } from '@/lib/api'
 
 const TARGET_TYPE_LABELS: Record<BlacklistTargetType, string> = {
 	user: 'User',
@@ -128,16 +127,16 @@ export default function UserDetailPage() {
 		mutationFn: (data: { userId: string; reason: string }) =>
 			api.createUserBlacklist({ userId: data.userId, reason: data.reason }),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['userBlacklists', userId] })
-			queryClient.invalidateQueries({ queryKey: ['adminUser', userId] })
+			void queryClient.invalidateQueries({ queryKey: ['userBlacklists', userId] })
+			void queryClient.invalidateQueries({ queryKey: ['adminUser', userId] })
 		},
 	})
 
 	const removeBlacklist = useMutation({
 		mutationFn: (id: string) => api.removeBlacklistEntry(id),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['userBlacklists', userId] })
-			queryClient.invalidateQueries({ queryKey: ['adminUser', userId] })
+			void queryClient.invalidateQueries({ queryKey: ['userBlacklists', userId] })
+			void queryClient.invalidateQueries({ queryKey: ['adminUser', userId] })
 		},
 	})
 	const activeBlacklist = blacklistEntries.find((entry) => entry.targetType === 'user')
@@ -164,26 +163,7 @@ export default function UserDetailPage() {
 	const [removeBlacklistDialogOpen, setRemoveBlacklistDialogOpen] = useState(false)
 	const [blacklistReason, setBlacklistReason] = useState('')
 	const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false)
-	const [discordUpdateResults, setDiscordUpdateResults] = useState<{
-		results: Array<{
-			guildId: string
-			guildName: string
-			corporationName: string
-			success: boolean
-			errorMessage?: string
-			alreadyMember?: boolean
-			rolesAdded?: string[]
-			roleNamesAdded?: string[]
-			rolesRemoved?: string[]
-			roleNamesRemoved?: string[]
-			attemptedRoleIds?: string[]
-			attemptedRoleNames?: string[]
-			operation?: 'invite' | 'update' | 'revoke-ban'
-		}>
-		totalInvited: number
-		totalUpdated: number
-		totalFailed: number
-	} | null>(null)
+	const [discordUpdateResults, setDiscordUpdateResults] = useState<DiscordRefreshOutput | null>(null)
 	const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null)
 
 	// Message state
@@ -406,9 +386,14 @@ export default function UserDetailPage() {
 			const results = await updateDiscordAccess.mutateAsync(user.id)
 			setDiscordUpdateResults(results)
 			setUpdateDiscordDialogOpen(true)
+			const totalInvited = results.totalInvited ?? 0
+			const totalFailed = results.totalFailed ?? 0
 			setMessage({
-				type: 'success',
-				text: `Discord access updated! Joined ${results.totalInvited} server(s), ${results.totalFailed} failed.`,
+				type: results.status === 'failed' ? 'error' : 'success',
+				text:
+					results.status === 'failed'
+						? `Discord access refresh failed: ${results.error?.message ?? 'The refresh did not complete.'}`
+						: `Discord access updated! Joined ${totalInvited} server(s), ${totalFailed} failed.`,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		} catch (error) {
@@ -1556,27 +1541,27 @@ export default function UserDetailPage() {
 								<div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
 									<div className="text-sm text-muted-foreground">Servers Joined</div>
 									<div className="text-2xl font-bold text-green-500">
-										{discordUpdateResults.totalInvited}
+										{discordUpdateResults.totalInvited ?? 0}
 									</div>
 								</div>
 								<div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
 									<div className="text-sm text-muted-foreground">Servers Updated</div>
 									<div className="text-2xl font-bold text-blue-500">
-										{discordUpdateResults.totalUpdated}
+										{discordUpdateResults.totalUpdated ?? 0}
 									</div>
 								</div>
 								<div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
 									<div className="text-sm text-muted-foreground">Failed</div>
 									<div className="text-2xl font-bold text-red-500">
-										{discordUpdateResults.totalFailed}
+										{discordUpdateResults.totalFailed ?? 0}
 									</div>
 								</div>
 							</div>
 
-							{discordUpdateResults.results.length > 0 && (
+							{(discordUpdateResults.results ?? []).length > 0 && (
 								<div className="space-y-2">
 									<div className="text-sm font-semibold">Server Details</div>
-									{discordUpdateResults.results.map((result, index) => (
+									{(discordUpdateResults.results ?? []).map((result, index) => (
 										<div
 											key={`${result.guildId}-${index}`}
 											className={cn(

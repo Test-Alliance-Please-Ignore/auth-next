@@ -1,8 +1,5 @@
 import { and, eq, inArray } from '@repo/db-utils'
-import {
-	DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID,
-	getDiscordStub,
-} from '@repo/discord'
+import { DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID, getDiscordStub } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -23,6 +20,7 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { Env } from '../context'
+import type { TemporaryRoleAssignments } from '../temporary-role-assignments-do'
 
 /**
  * Discord linking service
@@ -463,10 +461,10 @@ async function getAllManagedRolesForGuild(
 			}
 		}
 
-	if (groupDiscordRoleIds.length > 0) {
-		// Verify roles are still active (roleIds are already Discord snowflake IDs)
-		const groupRoles = await db.query.discordRoles.findMany({
-			where: and(
+		if (groupDiscordRoleIds.length > 0) {
+			// Verify roles are still active (roleIds are already Discord snowflake IDs)
+			const groupRoles = await db.query.discordRoles.findMany({
+				where: and(
 					inArray(discordRoles.roleId, groupDiscordRoleIds),
 					eq(discordRoles.isActive, true)
 				),
@@ -508,6 +506,137 @@ async function getAllManagedRolesForGuild(
 	}
 
 	return result
+}
+
+export async function getTemporaryRoleIdsByGuild(
+	db: ReturnType<typeof createDb>,
+	env: Env,
+	guildIds: string[],
+	coreUserId: string
+): Promise<{
+	activeRoleIdsByGuild: Map<string, string[]>
+	cleanupRoleIdsByGuild: Map<string, string[]>
+	configuredRoleIdsByGuild: Map<string, Set<string>>
+	failedGuildIds: Set<string>
+	preserveAllCurrentRolesGuildIds: Set<string>
+}> {
+	const activeRoleIdsByGuild = new Map<string, string[]>()
+	const cleanupAssignmentsByGuild = new Map<string, string[]>()
+	const failedGuildIds = new Set<string>()
+	const preserveAllCurrentRolesGuildIds = new Set<string>()
+	const assignmentStubs = new Map<string, TemporaryRoleAssignments>()
+	const assignmentRowsByGuild = new Map<
+		string,
+		{
+			active: Awaited<ReturnType<TemporaryRoleAssignments['listActiveAssignments']>>
+			pending: Awaited<ReturnType<TemporaryRoleAssignments['listPendingRemovalAssignments']>>
+		}
+	>()
+	for (const guildId of guildIds) {
+		const assignments = getStub<TemporaryRoleAssignments>(env.TEMPORARY_ROLE_ASSIGNMENTS, guildId)
+		if (
+			typeof assignments.listActiveAssignments !== 'function' ||
+			typeof assignments.listPendingRemovalAssignments !== 'function'
+		) {
+			failedGuildIds.add(guildId)
+			continue
+		}
+		assignmentStubs.set(guildId, assignments)
+	}
+	await Promise.all(
+		Array.from(assignmentStubs.entries()).map(async ([guildId, assignments]) => {
+			try {
+				const activeAssignments =
+					(await assignments.listActiveAssignments(guildId, undefined, coreUserId)) ?? []
+				const pendingAssignments =
+					(await assignments.listPendingRemovalAssignments(guildId, undefined, coreUserId)) ?? []
+				// Pending assignments retain their historical role IDs so expiry cleanup
+				// still removes a role after its managed-role record is deactivated.
+				assignmentRowsByGuild.set(guildId, { active: activeAssignments, pending: pendingAssignments })
+			} catch (error) {
+				failedGuildIds.add(guildId)
+				logger.error('[Discord] Failed to resolve temporary role assignments for guild', {
+					userId: coreUserId,
+					guildId,
+					error: String(error),
+				})
+			}
+		})
+	)
+
+	let configuredRoles: Array<{
+		roleId: string
+		discordServer: { guildId: string; isActive: boolean } | null
+	}> = []
+	const hasAssignments = Array.from(assignmentRowsByGuild.values()).some(
+		({ active, pending }) => active.length > 0 || pending.length > 0
+	)
+	if (hasAssignments) {
+		try {
+			configuredRoles = await db.query.discordRoles.findMany({
+				with: { discordServer: { columns: { guildId: true, isActive: true } } },
+				columns: { roleId: true },
+			})
+		} catch (error) {
+			for (const guildId of assignmentStubs.keys()) {
+				failedGuildIds.add(guildId)
+				preserveAllCurrentRolesGuildIds.add(guildId)
+			}
+			logger.error('[Discord] Failed to resolve configured roles for temporary assignments', {
+				guildIds,
+				error: String(error),
+			})
+		}
+	}
+	const configuredRoleIdsByGuild = new Map<string, Set<string>>()
+	for (const role of configuredRoles) {
+		if (!role.discordServer?.isActive || !guildIds.includes(role.discordServer.guildId)) continue
+		const roleIds = configuredRoleIdsByGuild.get(role.discordServer.guildId) ?? new Set<string>()
+		roleIds.add(role.roleId)
+		configuredRoleIdsByGuild.set(role.discordServer.guildId, roleIds)
+	}
+	for (const [guildId, { active, pending }] of assignmentRowsByGuild) {
+		const configuredRoleIds = configuredRoleIdsByGuild.get(guildId) ?? new Set<string>()
+		const latestByRoleId = new Map<string, { revision: number; status: 'active' | 'pending' }>()
+		for (const assignment of active) {
+			latestByRoleId.set(assignment.roleId, {
+				revision: Number(assignment.revision ?? 0),
+				status: 'active',
+			})
+		}
+		for (const assignment of pending) {
+			const revision = Number(assignment.revision ?? 0)
+			const current = latestByRoleId.get(assignment.roleId)
+			if (!current || revision >= current.revision) {
+				latestByRoleId.set(assignment.roleId, { revision, status: 'pending' })
+			}
+		}
+
+		const activeRoleIds: string[] = []
+		const cleanupRoleIds: string[] = []
+		for (const [roleId, assignment] of latestByRoleId) {
+			if (assignment.status === 'active') {
+				if (configuredRoleIds.has(roleId)) activeRoleIds.push(roleId)
+			} else {
+				// Pending assignments retain historical role IDs so expiry cleanup
+				// still removes a role after its managed-role record is deactivated.
+				cleanupRoleIds.push(roleId)
+			}
+		}
+		if (activeRoleIds.length > 0) {
+			activeRoleIdsByGuild.set(guildId, activeRoleIds)
+		}
+		if (cleanupRoleIds.length > 0) {
+			cleanupAssignmentsByGuild.set(guildId, cleanupRoleIds)
+		}
+	}
+	return {
+		activeRoleIdsByGuild,
+		cleanupRoleIdsByGuild: cleanupAssignmentsByGuild,
+		configuredRoleIdsByGuild,
+		failedGuildIds,
+		preserveAllCurrentRolesGuildIds,
+	}
 }
 
 /**
@@ -571,10 +700,7 @@ async function getUserCorporationIds(env: Env, characterIds: string[]): Promise<
 
 type CorpAttachmentScenarioKey = 'corp-member' | 'alliance-guest' | 'non-alliance-guest'
 type CorporationDiscordScenarioRoleBucket = 'alliance_guest' | 'non_alliance_guest'
-type CorporationDiscordNicknameBucket =
-	| 'corp_member'
-	| 'alliance_guest'
-	| 'non_alliance_guest'
+type CorporationDiscordNicknameBucket = 'corp_member' | 'alliance_guest' | 'non_alliance_guest'
 
 type CorporationDiscordAttachmentScenarioFields = {
 	corporationId: string
@@ -617,7 +743,10 @@ type CorporationTickerSources = {
 }
 
 function normalizeCustomTicker(ticker?: string | null): string | null {
-	const normalized = ticker?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+	const normalized = ticker
+		?.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, '')
 	if (!normalized) {
 		return null
 	}
@@ -711,15 +840,12 @@ async function getPrimaryCharacterTickerSources(
 	db: ReturnType<typeof createDb>,
 	env: Env,
 	userId: string
-): Promise<
-	| {
-			primaryCharacterName: string
-			primaryCharacterCorporationId: string
-			primaryCharacterAllianceId: string | null
-			tickerSources: CorporationTickerSources
-	  }
-	| null
-> {
+): Promise<{
+	primaryCharacterName: string
+	primaryCharacterCorporationId: string
+	primaryCharacterAllianceId: string | null
+	tickerSources: CorporationTickerSources
+} | null> {
 	const primaryCharacter = await db.query.userCharacters.findFirst({
 		where: and(eq(userCharacters.userId, userId), eq(userCharacters.is_primary, true)),
 		columns: {
@@ -740,11 +866,14 @@ async function getPrimaryCharacterTickerSources(
 		const corpInfo = await corpStub.getCorporationInfo(primaryCharacter.corporationId)
 		corpTicker = corpInfo?.ticker ?? null
 	} catch (error) {
-		logger.warn('[Discord] Failed to resolve primary character corporation info for nickname routing', {
-			userId,
-			corporationId: primaryCharacter.corporationId,
-			error: String(error),
-		})
+		logger.warn(
+			'[Discord] Failed to resolve primary character corporation info for nickname routing',
+			{
+				userId,
+				corporationId: primaryCharacter.corporationId,
+				error: String(error),
+			}
+		)
 	}
 
 	let allianceTicker: string | null = null
@@ -753,11 +882,14 @@ async function getPrimaryCharacterTickerSources(
 			const allianceInfo = await tokenStoreStub.getAllianceById(primaryCharacter.allianceId)
 			allianceTicker = allianceInfo?.ticker ?? null
 		} catch (error) {
-			logger.warn('[Discord] Failed to resolve primary character alliance info for nickname routing', {
-				userId,
-				allianceId: primaryCharacter.allianceId,
-				error: String(error),
-			})
+			logger.warn(
+				'[Discord] Failed to resolve primary character alliance info for nickname routing',
+				{
+					userId,
+					allianceId: primaryCharacter.allianceId,
+					error: String(error),
+				}
+			)
 		}
 	}
 
@@ -915,6 +1047,16 @@ export async function getExpectedManagedRoleIdsByGuild(
 		return expectedRoleIdsByGuild
 	}
 
+	const temporaryRoleState = await getTemporaryRoleIdsByGuild(
+		db,
+		env,
+		knownServers.map((server) => server.guildId),
+		userId
+	)
+	for (const [guildId, roleIds] of temporaryRoleState.activeRoleIdsByGuild) {
+		for (const roleId of roleIds) ensureExpectedSet(guildId).add(roleId)
+	}
+
 	const knownServerDbIds = knownServers.map((server) => server.id)
 	const serverByDbId = new Map(knownServers.map((server) => [server.id, server]))
 
@@ -1055,10 +1197,7 @@ export async function getExpectedManagedRoleIdsByGuild(
 		const uniqueGroupRoleDbIds = Array.from(groupRoleDbIds)
 		if (uniqueGroupRoleDbIds.length > 0) {
 			const roleRows = await db.query.discordRoles.findMany({
-				where: and(
-					inArray(discordRoles.id, uniqueGroupRoleDbIds),
-					eq(discordRoles.isActive, true)
-				),
+				where: and(inArray(discordRoles.id, uniqueGroupRoleDbIds), eq(discordRoles.isActive, true)),
 				columns: { id: true, roleId: true },
 			})
 			roleIdByDbId = mapDiscordRoleIdsByDbId(uniqueGroupRoleDbIds, roleRows)
@@ -1116,11 +1255,14 @@ export async function getExpectedManagedRoleIdsByGuild(
 					ensureExpectedSet(server.guildId).add(DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID)
 				}
 			} catch (error) {
-				logger.warn('[Discord] Error resolving special auth role presence for expected role build', {
-					userId,
-					guildId: server.guildId,
-					error: String(error),
-				})
+				logger.warn(
+					'[Discord] Error resolving special auth role presence for expected role build',
+					{
+						userId,
+						guildId: server.guildId,
+						error: String(error),
+					}
+				)
 			}
 		}
 	} catch (error) {
@@ -1445,10 +1587,7 @@ export async function inviteUserToDiscordServers(
 							const actualRoleIds: string[] = []
 							if (roleDbIds.length > 0) {
 								const roleRecords = await db.query.discordRoles.findMany({
-									where: and(
-										inArray(discordRoles.id, roleDbIds),
-										eq(discordRoles.isActive, true)
-									),
+									where: and(inArray(discordRoles.id, roleDbIds), eq(discordRoles.isActive, true)),
 								})
 								actualRoleIds.push(...roleRecords.map((r) => r.roleId))
 							}
@@ -1694,14 +1833,14 @@ export async function inviteUserToDiscordServers(
 		manageNicknamesByGuildId: Object.fromEntries(manageNicknamesByGuildId),
 	})
 
-		if (guildsForNicknameUpdate.length > 0) {
-			logger.info('[Discord] inviteUserToDiscordServers: Updating nicknames', {
-				userId,
-				guilds: guildsForNicknameUpdate,
-				primaryCharacterName,
-			})
-			await updateUserDiscordNickname(env, userId, guildsForNicknameUpdate)
-		}
+	if (guildsForNicknameUpdate.length > 0) {
+		logger.info('[Discord] inviteUserToDiscordServers: Updating nicknames', {
+			userId,
+			guilds: guildsForNicknameUpdate,
+			primaryCharacterName,
+		})
+		await updateUserDiscordNickname(env, userId, guildsForNicknameUpdate)
+	}
 
 	// === UPDATE ROLES (only for successful joins) ===
 
@@ -1784,6 +1923,7 @@ export async function updateUserDiscordRoles(
 		roleNamesRemoved: string[]
 		success: boolean
 		errorMessage?: string
+		warningMessages: string[]
 	}>
 	totalUpdated: number
 	totalFailed: number
@@ -1863,7 +2003,8 @@ export async function updateUserDiscordRoles(
 			guildId: string
 			guildName: string
 			expectedRoleIds: string[]
-			sources: Array<{ type: 'corporation' | 'group' | 'auto-apply'; name: string }>
+			sources: Array<{ type: 'corporation' | 'group' | 'auto-apply' | 'temporary'; name: string }>
+			temporaryRoleSourceUnavailable: boolean
 		}
 	>()
 
@@ -1874,6 +2015,7 @@ export async function updateUserDiscordRoles(
 			guildName: guildId, // Will be updated if we find the name
 			expectedRoleIds: [],
 			sources: [],
+			temporaryRoleSourceUnavailable: false,
 		})
 	}
 
@@ -1884,14 +2026,6 @@ export async function updateUserDiscordRoles(
 		})
 
 		const characterIds = userChars.map((char) => char.characterId)
-
-		if (characterIds.length === 0) {
-			return {
-				results: [],
-				totalUpdated: 0,
-				totalFailed: 0,
-			}
-		}
 
 		// === CHECK CORPORATION ROLES (all attachments, not just auto-invite) ===
 		// Resolve the user's corp/alliance memberships once, then evaluate every
@@ -1904,7 +2038,10 @@ export async function updateUserDiscordRoles(
 		const isAllianceMember = userAllianceMemberCorporationIds.size > 0
 
 		const targetServerRecords = await db.query.discordServers.findMany({
-			where: and(inArray(discordServers.guildId, serversToUpdate), eq(discordServers.isActive, true)),
+			where: and(
+				inArray(discordServers.guildId, serversToUpdate),
+				eq(discordServers.isActive, true)
+			),
 			columns: { id: true, guildId: true, guildName: true },
 		})
 		const targetServerDbIds = targetServerRecords.map((s) => s.id)
@@ -2093,7 +2230,7 @@ export async function updateUserDiscordRoles(
 		})
 
 		for (const role of autoApplyRoles) {
-			if (role.discordServer.isActive && serversToUpdate.includes(role.discordServer.guildId)) {
+			if (role.discordServer?.isActive && serversToUpdate.includes(role.discordServer.guildId)) {
 				const guildData = rolesByGuild.get(role.discordServer.guildId)
 				if (guildData) {
 					guildData.expectedRoleIds.push(role.roleId)
@@ -2106,9 +2243,29 @@ export async function updateUserDiscordRoles(
 		}
 	}
 
+	const temporaryRoleState = await getTemporaryRoleIdsByGuild(db, env, serversToUpdate, userId)
+	for (const [guildId, roleIds] of temporaryRoleState.activeRoleIdsByGuild) {
+		const guildData = rolesByGuild.get(guildId)
+		if (!guildData) continue
+		guildData.expectedRoleIds.push(...roleIds)
+		guildData.sources.push({ type: 'temporary', name: 'Temporary role assignment' })
+	}
+	for (const [guildId, roleIds] of temporaryRoleState.cleanupRoleIdsByGuild) {
+		const guildData = rolesByGuild.get(guildId)
+		if (!guildData) continue
+		guildData.sources.push({ type: 'temporary', name: 'Temporary role cleanup' })
+		guildData.expectedRoleIds = guildData.expectedRoleIds.filter(
+			(roleId) => !roleIds.includes(roleId)
+		)
+	}
+	for (const guildId of temporaryRoleState.failedGuildIds) {
+		const guildData = rolesByGuild.get(guildId)
+		if (guildData) guildData.temporaryRoleSourceUnavailable = true
+	}
+
 	// === DEDUPLICATE ROLES PER GUILD ===
 
-	for (const [guildId, guildData] of rolesByGuild.entries()) {
+	for (const guildData of rolesByGuild.values()) {
 		guildData.expectedRoleIds = [...new Set(guildData.expectedRoleIds)]
 	}
 
@@ -2117,6 +2274,8 @@ export async function updateUserDiscordRoles(
 		guildId: string
 		roleIds: string[]
 		managedRoleIds: string[]
+		preserveRoleIds?: string[]
+		preserveAllCurrentRoles?: boolean
 		clearAllRoles?: boolean
 	}>
 
@@ -2135,12 +2294,24 @@ export async function updateUserDiscordRoles(
 				.filter((guild) => guild.expectedRoleIds.length > 0 || allowRemoval === true)
 				.map(async (guild) => {
 					// Get all managed roles for this guild
-					const managedRoleIds = await getAllManagedRolesForGuild(db, env, guild.guildId)
+					const managedRoleIds = [
+						...new Set([
+							...(await getAllManagedRolesForGuild(db, env, guild.guildId)),
+							...(temporaryRoleState.cleanupRoleIdsByGuild.get(guild.guildId) ?? []),
+							...(temporaryRoleState.activeRoleIdsByGuild.get(guild.guildId) ?? []),
+						]),
+					]
 
 					return {
 						guildId: guild.guildId,
 						roleIds: guild.expectedRoleIds,
 						managedRoleIds,
+						preserveRoleIds: guild.temporaryRoleSourceUnavailable
+							? [...(temporaryRoleState.configuredRoleIdsByGuild.get(guild.guildId) ?? [])]
+							: [],
+						preserveAllCurrentRoles: temporaryRoleState.preserveAllCurrentRolesGuildIds.has(
+							guild.guildId
+						),
 					}
 				})
 		)
@@ -2212,6 +2383,11 @@ export async function updateUserDiscordRoles(
 			roleNamesRemoved: rolesRemoved.map((roleId: string) => roleNameMap.get(roleId) ?? roleId),
 			success: result.success,
 			errorMessage: result.errorMessage,
+			warningMessages: guildData?.temporaryRoleSourceUnavailable
+				? [
+						'Temporary role assignments could not be checked; configured managed roles were preserved.',
+					]
+				: [],
 		}
 	})
 
@@ -2236,6 +2412,7 @@ export interface DiscordGuildAccessInspection {
 	guildName: string
 	isMember: boolean
 	membershipError?: string
+	temporaryRoleSourceUnavailable?: boolean
 	expectedManagedRoles: DiscordRoleInspectionItem[]
 	currentManagedRoles: DiscordRoleInspectionItem[]
 	currentUnmanagedRoles: DiscordRoleInspectionItem[]
@@ -2310,7 +2487,6 @@ export async function inspectUserDiscordAccess(
 	}
 
 	const knownGuildIds = knownServers.map((server) => server.guildId)
-	const knownServerDbIds = knownServers.map((server) => server.id)
 	const serverByDbId = new Map(knownServers.map((server) => [server.id, server]))
 	const serverByGuildId = new Map(knownServers.map((server) => [server.guildId, server]))
 	let expectedRoleIdsByGuild = new Map<string, Set<string>>()
@@ -2339,6 +2515,22 @@ export async function inspectUserDiscordAccess(
 	for (const guildId of inspectGuildIds) {
 		const managedRoleIds = await getAllManagedRolesForGuild(db, env, guildId, managedRoleCache)
 		managedRoleIdsByGuild.set(guildId, new Set(managedRoleIds))
+	}
+	const temporaryRoleState = await getTemporaryRoleIdsByGuild(
+		db,
+		env,
+		Array.from(inspectGuildIds),
+		userId
+	)
+	for (const [guildId, roleIds] of temporaryRoleState.activeRoleIdsByGuild) {
+		const managedRoleIds = managedRoleIdsByGuild.get(guildId) ?? new Set<string>()
+		for (const roleId of roleIds) managedRoleIds.add(roleId)
+		managedRoleIdsByGuild.set(guildId, managedRoleIds)
+	}
+	for (const [guildId, roleIds] of temporaryRoleState.cleanupRoleIdsByGuild) {
+		const managedRoleIds = managedRoleIdsByGuild.get(guildId) ?? new Set<string>()
+		for (const roleId of roleIds) managedRoleIds.add(roleId)
+		managedRoleIdsByGuild.set(guildId, managedRoleIds)
 	}
 
 	// Configured role-name lookup by guild for best-effort naming of expected/stale roles.
@@ -2431,6 +2623,7 @@ export async function inspectUserDiscordAccess(
 			guildName: server.guildName,
 			isMember,
 			membershipError: membership?.errorMessage,
+			temporaryRoleSourceUnavailable: temporaryRoleState.failedGuildIds.has(guildId),
 			expectedManagedRoles: toRoleItems(guildId, expectedRoleIds),
 			currentManagedRoles: toRoleItems(guildId, currentManagedRoleIds),
 			currentUnmanagedRoles: toRoleItems(guildId, currentUnmanagedRoleIds),
@@ -2443,7 +2636,8 @@ export async function inspectUserDiscordAccess(
 	const memberGuilds = guilds.filter((guild) => guild.isMember).length
 	const memberGuildRows = guilds.filter((guild) => guild.isMember)
 	const guildsWithDrift = memberGuildRows.filter(
-		(guild) => guild.missingExpectedManagedRoles.length > 0 || guild.unexpectedManagedRoles.length > 0
+		(guild) =>
+			guild.missingExpectedManagedRoles.length > 0 || guild.unexpectedManagedRoles.length > 0
 	).length
 	const totalMissingExpectedManagedRoles = memberGuildRows.reduce(
 		(total, guild) => total + guild.missingExpectedManagedRoles.length,
@@ -2714,7 +2908,7 @@ export async function updateUserDiscordNickname(
 						eq(discordServers.isActive, true),
 						inArray(discordServers.guildId, guildIds)
 					)
-					: and(eq(discordServers.manageNicknames, true), eq(discordServers.isActive, true)),
+				: and(eq(discordServers.manageNicknames, true), eq(discordServers.isActive, true)),
 		columns: { id: true, guildId: true },
 	})
 
@@ -2732,7 +2926,9 @@ export async function updateUserDiscordNickname(
 		return // User is not in any Discord servers with nickname management
 	}
 
-	const activeServerSettings = serverSettings.filter((server) => userGuildIds.includes(server.guildId))
+	const activeServerSettings = serverSettings.filter((server) =>
+		userGuildIds.includes(server.guildId)
+	)
 	if (activeServerSettings.length === 0) {
 		return
 	}
@@ -2793,10 +2989,12 @@ export async function updateUserDiscordNickname(
 	logger.info('[Discord] Updated user nickname', {
 		userId,
 		discordUserId: user.discordUserId,
-		nicknameGroups: Array.from(nicknameToGuildIds.entries()).map(([resolvedNickname, guildIdGroup]) => ({
-			nickname: resolvedNickname,
-			guildIds: guildIdGroup,
-		})),
+		nicknameGroups: Array.from(nicknameToGuildIds.entries()).map(
+			([resolvedNickname, guildIdGroup]) => ({
+				nickname: resolvedNickname,
+				guildIds: guildIdGroup,
+			})
+		),
 		serverCount: serverSettings.length,
 	})
 }

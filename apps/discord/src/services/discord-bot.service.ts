@@ -238,6 +238,52 @@ export class DiscordBotService {
 		return roles.map((role) => ({ id: role.id, name: role.name }))
 	}
 
+	async addGuildMemberRole(
+		guildId: string,
+		userId: string,
+		roleId: string
+	): Promise<{ success: boolean; error?: string }> {
+		return this.modifyGuildMemberRole(guildId, userId, roleId, 'PUT')
+	}
+
+	async removeGuildMemberRole(
+		guildId: string,
+		userId: string,
+		roleId: string
+	): Promise<{ success: boolean; error?: string }> {
+		return this.modifyGuildMemberRole(guildId, userId, roleId, 'DELETE')
+	}
+
+	private async modifyGuildMemberRole(
+		guildId: string,
+		userId: string,
+		roleId: string,
+		method: 'PUT' | 'DELETE'
+	): Promise<{ success: boolean; error?: string }> {
+		try {
+			const proxyUrl = getDiscordProxyUrl(this.env)
+			const url = `${this.baseUrl}/guilds/${guildId}/members/${userId}/roles/${roleId}`
+			const response = await fetchWithRetry(url, {
+				method,
+				headers: { Authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}` },
+				...(proxyUrl ? { proxy: proxyUrl } : {}),
+			})
+			if (!response.ok) {
+				const errorData = await parseJsonResponse(response, {
+					context: `Discord ${method} guild member role error for ${url}`,
+					allowEmpty: true,
+				}).catch(() => ({}))
+				throw new DiscordAPIError(response.status, errorData)
+			}
+			return { success: true }
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			}
+		}
+	}
+
 	/**
 	 * Get Discord gateway connection info for bot clients.
 	 * Uses GET /gateway/bot so callers can respect Discord's recommended URL and shard count.

@@ -1,5 +1,17 @@
 import { relations, sql } from 'drizzle-orm'
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+import {
+	boolean,
+	index,
+	integer,
+	jsonb,
+	pgTable,
+	text,
+	timestamp,
+	unique,
+	uniqueIndex,
+	uuid,
+	varchar,
+} from 'drizzle-orm/pg-core'
 
 export const users = pgTable(
 	'users',
@@ -60,7 +72,9 @@ export const managedCorporations = pgTable(
 		assignedCharacterName: varchar('assigned_character_name', { length: 255 }),
 		isActive: boolean('is_active').default(true).notNull(),
 		includeInBackgroundRefresh: boolean('include_in_background_refresh').default(false).notNull(),
-		includeInStructureAssetSync: boolean('include_in_structure_asset_sync').default(false).notNull(),
+		includeInStructureAssetSync: boolean('include_in_structure_asset_sync')
+			.default(false)
+			.notNull(),
 		lastSync: timestamp('last_sync', { withTimezone: true }),
 		lastVerified: timestamp('last_verified', { withTimezone: true }),
 		isVerified: boolean('is_verified').default(false).notNull(),
@@ -103,7 +117,9 @@ export const discordServers = pgTable(
 	},
 	(table) => [
 		index('discord_servers_guild_id_idx').on(table.guildId),
-		index('discord_servers_active_idx').on(table.isActive).where(sql`${table.isActive} = true`),
+		index('discord_servers_active_idx')
+			.on(table.isActive)
+			.where(sql`${table.isActive} = true`),
 	]
 )
 
@@ -122,7 +138,31 @@ export const discordRoles = pgTable(
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [index('discord_roles_server_id_idx').on(table.discordServerId)]
+	(table) => [
+		index('discord_roles_server_id_idx').on(table.discordServerId),
+		uniqueIndex('discord_roles_server_name_unique').on(
+			table.discordServerId,
+			sql`lower(${table.roleName})`
+		),
+	]
+)
+
+export const discordSelfAssignableRoles = pgTable(
+	'discord_self_assignable_roles',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		discordRoleId: uuid('discord_role_id')
+			.notNull()
+			.references(() => discordRoles.id, { onDelete: 'cascade' }),
+		defaultDurationSeconds: integer('default_duration_seconds'),
+		createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('discord_self_assignable_roles_role_unique').on(table.discordRoleId),
+		index('discord_self_assignable_roles_role_idx').on(table.discordRoleId),
+	]
 )
 
 /**
@@ -148,7 +188,10 @@ export const alertDestinations = pgTable(
 		channelId: text('channel_id'),
 		coreUserId: uuid('core_user_id').references(() => users.id, { onDelete: 'cascade' }),
 		groupId: text('group_id'),
-		destinationConfig: jsonb('destination_config').$type<Record<string, unknown>>().notNull().default({}),
+		destinationConfig: jsonb('destination_config')
+			.$type<Record<string, unknown>>()
+			.notNull()
+			.default({}),
 		isEnabled: boolean('is_enabled').notNull().default(true),
 		createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
 		updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
@@ -187,7 +230,25 @@ export const discordRolesRelations = relations(discordRoles, ({ one }) => ({
 		fields: [discordRoles.discordServerId],
 		references: [discordServers.id],
 	}),
+	selfAssignable: one(discordSelfAssignableRoles, {
+		fields: [discordRoles.id],
+		references: [discordSelfAssignableRoles.discordRoleId],
+	}),
 }))
+
+export const discordSelfAssignableRolesRelations = relations(
+	discordSelfAssignableRoles,
+	({ one }) => ({
+		discordRole: one(discordRoles, {
+			fields: [discordSelfAssignableRoles.discordRoleId],
+			references: [discordRoles.id],
+		}),
+		createdByUser: one(users, {
+			fields: [discordSelfAssignableRoles.createdBy],
+			references: [users.id],
+		}),
+	})
+)
 
 export const schema = {
 	users,
@@ -195,8 +256,10 @@ export const schema = {
 	managedCorporations,
 	discordServers,
 	discordRoles,
+	discordSelfAssignableRoles,
 	alertDestinations,
 	discordServersRelations,
 	discordRolesRelations,
+	discordSelfAssignableRolesRelations,
 	alertDestinationsRelations,
 }

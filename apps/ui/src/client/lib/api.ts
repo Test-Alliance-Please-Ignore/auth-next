@@ -53,6 +53,8 @@ import type {
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 const API_REQUEST_TIMEOUT_MS = 30_000
+const DISCORD_REFRESH_POLL_INTERVAL_MS = 2_000
+const DISCORD_REFRESH_MAX_POLLS = 60
 
 export interface ApiError {
 	message: string
@@ -66,6 +68,43 @@ export interface ApiRequestDebugInfo {
 	payload?: unknown
 	status?: number
 	responseBody?: unknown
+}
+
+export interface DiscordRefreshResult {
+	guildId: string
+	guildName: string
+	corporationName?: string
+	groupName?: string
+	success: boolean
+	errorMessage?: string
+	alreadyMember?: boolean
+	type?: 'corporation' | 'group'
+	operation?: 'invite' | 'update' | 'revoke-ban'
+	attemptedRoleIds?: string[]
+	attemptedRoleNames?: string[]
+	rolesAdded?: string[]
+	roleNamesAdded?: string[]
+	rolesRemoved?: string[]
+	roleNamesRemoved?: string[]
+}
+
+export interface DiscordRefreshOutput {
+	status: 'completed' | 'failed'
+	userId: string
+	source: string
+	workflowInstanceId: string
+	totalInvited?: number
+	totalUpdated?: number
+	totalFailed?: number
+	reason?: 'authorization' | 'configuration' | 'temporary' | 'unknown'
+	results?: DiscordRefreshResult[]
+	error?: { message: string }
+}
+
+export interface DiscordRefreshStatusResponse {
+	workflowInstanceId: string
+	status: 'queued' | 'running' | 'completed' | 'failed' | 'unknown'
+	output: DiscordRefreshOutput | null
 }
 
 /**
@@ -663,6 +702,21 @@ export interface DiscordRole {
 	updatedAt: string
 }
 
+export interface DiscordSelfAssignableRole {
+	id: string
+	discordRoleId: string
+	defaultDurationSeconds: number | null
+	createdAt: string
+	updatedAt: string
+	discordRole: {
+		id: string
+		roleId: string
+		roleName: string
+		isActive: boolean
+		discordServerId: string
+	}
+}
+
 export interface DiscordServerWithRoles extends DiscordServer {
 	roles: DiscordRole[]
 }
@@ -1170,6 +1224,16 @@ export interface UpdateDiscordRoleRequest {
 	description?: string
 	isActive?: boolean
 	autoApply?: boolean
+}
+
+export interface CreateDiscordSelfAssignableRoleRequest {
+	discordRoleId: string
+	defaultDuration: string | null
+}
+
+export interface UpdateDiscordSelfAssignableRoleRequest {
+	discordRoleId?: string
+	defaultDuration: string | null
 }
 
 export interface AttachDiscordServerRequest {
@@ -2973,19 +3037,28 @@ export class ApiClient {
 		return this.post('/discord/link/start')
 	}
 
-	async joinDiscordServers(): Promise<{
-		results: Array<{
-			guildId: string
-			guildName: string
-			corporationName: string
-			success: boolean
-			errorMessage?: string
-			alreadyMember?: boolean
-		}>
-		totalInvited: number
-		totalFailed: number
-	}> {
+	async joinDiscordServers(): Promise<{ status: 'queued'; workflowInstanceId: string }> {
 		return this.post('/discord/join-servers')
+	}
+
+	async getDiscordRefreshStatus(workflowInstanceId: string): Promise<DiscordRefreshStatusResponse> {
+		return this.get(`/discord/join-servers/${encodeURIComponent(workflowInstanceId)}`)
+	}
+
+	async waitForDiscordRefresh(workflowInstanceId: string): Promise<DiscordRefreshOutput> {
+		for (let poll = 0; poll < DISCORD_REFRESH_MAX_POLLS; poll += 1) {
+			try {
+				const response = await this.getDiscordRefreshStatus(workflowInstanceId)
+				if (response.status === 'completed' || response.status === 'failed') {
+					if (response.output) return response.output
+					throw new Error('Discord access refresh completed without a result')
+				}
+			} catch {
+				// Continue polling through transient status endpoint failures.
+			}
+			await new Promise((resolve) => setTimeout(resolve, DISCORD_REFRESH_POLL_INTERVAL_MS))
+		}
+		throw new Error('Discord access refresh status could not be confirmed')
 	}
 
 	// ===== Groups API Methods =====
@@ -3783,6 +3856,32 @@ export class ApiClient {
 		return this.delete(`/discord-servers/${serverId}/roles/${roleId}`)
 	}
 
+	async getDiscordSelfAssignableRoles(serverId: string): Promise<DiscordSelfAssignableRole[]> {
+		return this.get(`/discord-servers/${serverId}/self-assignable-roles`)
+	}
+
+	async createDiscordSelfAssignableRole(
+		serverId: string,
+		data: CreateDiscordSelfAssignableRoleRequest
+	): Promise<DiscordSelfAssignableRole> {
+		return this.post(`/discord-servers/${serverId}/self-assignable-roles`, data)
+	}
+
+	async updateDiscordSelfAssignableRole(
+		serverId: string,
+		configId: string,
+		data: UpdateDiscordSelfAssignableRoleRequest
+	): Promise<DiscordSelfAssignableRole> {
+		return this.put(`/discord-servers/${serverId}/self-assignable-roles/${configId}`, data)
+	}
+
+	async deleteDiscordSelfAssignableRole(
+		serverId: string,
+		configId: string
+	): Promise<{ success: boolean }> {
+		return this.delete(`/discord-servers/${serverId}/self-assignable-roles/${configId}`)
+	}
+
 	async refreshDiscordServerMembers(
 		serverId: string
 	): Promise<RefreshDiscordServerMembersResponse> {
@@ -4146,27 +4245,39 @@ export class ApiClient {
 		return this.get(`/admin/activity-log${query ? `?${query}` : ''}`)
 	}
 
-	async triggerDiscordJoin(userId: string): Promise<{
-		results: Array<{
-			guildId: string
-			guildName: string
-			corporationName: string
-			success: boolean
-			errorMessage?: string
-			alreadyMember?: boolean
-			rolesAdded?: string[]
-			roleNamesAdded?: string[]
-			rolesRemoved?: string[]
-			roleNamesRemoved?: string[]
-			attemptedRoleIds?: string[]
-			attemptedRoleNames?: string[]
-			operation?: 'invite' | 'update' | 'revoke-ban'
-		}>
-		totalInvited: number
-		totalUpdated: number
-		totalFailed: number
-	}> {
+	async triggerDiscordJoin(userId: string): Promise<{ status: 'queued'; workflowInstanceId: string }> {
 		return this.post(`/admin/users/${userId}/discord/join-servers`)
+	}
+
+	async getAdminDiscordRefreshStatus(
+		userId: string,
+		workflowInstanceId: string
+	): Promise<DiscordRefreshStatusResponse> {
+		return this.get(
+			`/admin/users/${userId}/discord/join-servers/${encodeURIComponent(workflowInstanceId)}`
+		)
+	}
+
+	async waitForAdminDiscordRefresh(
+		userId: string,
+		workflowInstanceId: string
+	): Promise<DiscordRefreshOutput> {
+		let lastError: unknown
+		for (let poll = 0; poll < DISCORD_REFRESH_MAX_POLLS; poll += 1) {
+			try {
+				const response = await this.getAdminDiscordRefreshStatus(userId, workflowInstanceId)
+				if (response.status === 'completed' || response.status === 'failed') {
+					if (response.output) return response.output
+					throw new Error('Discord access refresh completed without a result')
+				}
+			} catch (error) {
+				lastError = error
+			}
+			await new Promise((resolve) => setTimeout(resolve, DISCORD_REFRESH_POLL_INTERVAL_MS))
+		}
+		throw lastError instanceof Error
+			? new Error(`Discord access refresh did not finish in time: ${lastError.message}`)
+			: new Error('Discord access refresh did not finish in time')
 	}
 
 	async inspectDiscordAccess(userId: string): Promise<AdminDiscordAccessInspection> {

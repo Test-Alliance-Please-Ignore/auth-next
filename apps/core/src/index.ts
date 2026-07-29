@@ -16,6 +16,7 @@ import {
 import { createDb } from './db'
 import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from './db/schema'
 import { CoreDO } from './durable-object'
+import { TemporaryRoleAssignmentsDO } from './temporary-role-assignments-do'
 import { cleanupExpiredExportArtifacts } from './lib/export-retention'
 import { waitUntilWithTelemetry } from './lib/background-task'
 import { IMMUNITAS_ALERT_DRAIN_CRON } from './lib/immunitas-alerts'
@@ -1180,6 +1181,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 // Note: Automatic Sentry instrumentation for DOs is not supported in Cloudflare Workers
 // Use manual captureException() in DO methods for error tracking
 export { CoreDO as Core }
+export { TemporaryRoleAssignmentsDO as TemporaryRoleAssignments }
 
 // Export Workflow class
 export { UserRefreshWorkflow } from './workflows/user-refresh.workflow'

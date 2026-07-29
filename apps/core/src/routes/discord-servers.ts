@@ -1,21 +1,19 @@
 import { Hono } from 'hono'
 
 import { ROLE_CORE_CORP_MEMBER } from '@repo/core'
-import { and, asc, desc, eq, gt, ilike, inArray, isNotNull } from '@repo/db-utils'
-import {
-	DISCORD_EXCLUDED_AUTH_ROLE_IDS,
-	getDiscordStub,
-} from '@repo/discord'
+import { and, asc, desc, eq, ilike, inArray, isNotNull } from '@repo/db-utils'
+import { DISCORD_EXCLUDED_AUTH_ROLE_IDS, getDiscordStub } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
 import { ResourceType, RoleAttachmentType } from '@repo/groups'
+import { logger } from '@repo/hono-helpers'
 import { createWorkflow } from '@repo/workflow-utils'
 
 import {
 	corporationDiscordServers,
-	discordRoles,
 	discordMemberAuditRows,
 	discordMemberAuditRuns,
+	discordRoles,
+	discordSelfAssignableRoles,
 	discordServerCommands,
 	discordServers,
 	managedCorporations,
@@ -23,18 +21,28 @@ import {
 	users,
 } from '../db/schema'
 import { requireAdmin, requireAuth } from '../middleware/session'
-import * as discordService from '../services/discord.service'
 import {
 	buildDiscordSlashCommandDefinition,
 	deleteGuildSlashCommand,
 	upsertGuildSlashCommand,
 } from '../services/discord-commands.service'
+import { parseDiscordDurationSeconds } from '../services/discord-duration'
+import * as discordService from '../services/discord.service'
 
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Groups } from '@repo/groups'
 import type { App } from '../context'
 
 const app = new Hono<App>()
+
+function parseConfiguredDiscordDuration(value: unknown): number | null {
+	if (value === null || value === undefined) return null
+	if (typeof value === 'number' && Number.isInteger(value)) {
+		return parseDiscordDurationSeconds(`${value} seconds`)
+	}
+	if (typeof value !== 'string') throw new Error('Duration must be text or null')
+	return parseDiscordDurationSeconds(value)
+}
 
 type DiscordAuditTab = 'linked' | 'unlinked'
 type DiscordAuditFilter =
@@ -328,7 +336,12 @@ app.post('/:id/roles', requireAuth(), requireAdmin(), async (c) => {
 		const body = await c.req.json()
 		const { roleId, roleName, description, autoApply } = body
 
-		if (!roleId || !roleName) {
+		if (
+			typeof roleId !== 'string' ||
+			typeof roleName !== 'string' ||
+			roleId.trim() === '' ||
+			roleName.trim() === ''
+		) {
 			return c.json({ error: 'roleId and roleName are required' }, 400)
 		}
 
@@ -348,6 +361,15 @@ app.post('/:id/roles', requireAuth(), requireAdmin(), async (c) => {
 
 		if (existing) {
 			return c.json({ error: 'Role already exists for this server' }, 409)
+		}
+		const sameName = await db.query.discordRoles.findMany({
+			where: eq(discordRoles.discordServerId, serverId),
+			columns: { roleName: true },
+		})
+		if (
+			sameName.some((role) => role.roleName.trim().toLowerCase() === roleName.trim().toLowerCase())
+		) {
+			return c.json({ error: 'A role with this name already exists for this server' }, 409)
 		}
 
 		// Create the role
@@ -397,14 +419,33 @@ app.put('/:id/roles/:roleId', requireAuth(), requireAdmin(), async (c) => {
 	try {
 		const body = await c.req.json()
 		const { roleName, description, isActive, autoApply } = body
+		if (roleName !== undefined && (typeof roleName !== 'string' || roleName.trim() === '')) {
+			return c.json({ error: 'roleName must be a non-empty string' }, 400)
+		}
 
 		// Check if role exists
 		const existing = await db.query.discordRoles.findFirst({
-			where: eq(discordRoles.id, roleId),
+			where: and(eq(discordRoles.id, roleId), eq(discordRoles.discordServerId, serverId)),
 		})
 
 		if (!existing) {
 			return c.json({ error: 'Discord role not found' }, 404)
+		}
+
+		if (roleName !== undefined) {
+			const sameName = await db.query.discordRoles.findMany({
+				where: eq(discordRoles.discordServerId, serverId),
+				columns: { id: true, roleName: true },
+			})
+			if (
+				sameName.some(
+					(role) =>
+						role.id !== roleId &&
+						role.roleName.trim().toLowerCase() === String(roleName).trim().toLowerCase()
+				)
+			) {
+				return c.json({ error: 'A role with this name already exists for this server' }, 409)
+			}
 		}
 
 		// Update the role
@@ -417,7 +458,7 @@ app.put('/:id/roles/:roleId', requireAuth(), requireAdmin(), async (c) => {
 				...(autoApply !== undefined && { autoApply }),
 				updatedAt: new Date(),
 			})
-			.where(eq(discordRoles.id, roleId))
+			.where(and(eq(discordRoles.id, roleId), eq(discordRoles.discordServerId, serverId)))
 			.returning()
 
 		return c.json(updated)
@@ -432,6 +473,7 @@ app.put('/:id/roles/:roleId', requireAuth(), requireAdmin(), async (c) => {
  * Delete a Discord role
  */
 app.delete('/:id/roles/:roleId', requireAuth(), requireAdmin(), async (c) => {
+	const serverId = c.req.param('id')
 	const roleId = c.req.param('roleId')
 	const db = c.get('db')
 
@@ -442,7 +484,7 @@ app.delete('/:id/roles/:roleId', requireAuth(), requireAdmin(), async (c) => {
 	try {
 		// Check if role exists
 		const existing = await db.query.discordRoles.findFirst({
-			where: eq(discordRoles.id, roleId),
+			where: and(eq(discordRoles.id, roleId), eq(discordRoles.discordServerId, serverId)),
 		})
 
 		if (!existing) {
@@ -450,7 +492,9 @@ app.delete('/:id/roles/:roleId', requireAuth(), requireAdmin(), async (c) => {
 		}
 
 		// Delete the role (cascade will handle assignments)
-		await db.delete(discordRoles).where(eq(discordRoles.id, roleId))
+		await db
+			.delete(discordRoles)
+			.where(and(eq(discordRoles.id, roleId), eq(discordRoles.discordServerId, serverId)))
 
 		logger.info(`Discord role ${existing.roleName} (${existing.roleId}) deleted`)
 
@@ -459,6 +503,185 @@ app.delete('/:id/roles/:roleId', requireAuth(), requireAdmin(), async (c) => {
 		logger.error('Error deleting Discord role:', error)
 		return c.json({ error: 'Failed to delete Discord role' }, 500)
 	}
+})
+
+/**
+ * Self-assignable role configuration for one registered Discord server.
+ * These rows reference the existing managed-role registry; they never create Discord roles.
+ */
+app.get('/:id/self-assignable-roles', requireAuth(), requireAdmin(), async (c) => {
+	const serverId = c.req.param('id')
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database not available' }, 500)
+
+	const server = await db.query.discordServers.findFirst({
+		where: eq(discordServers.id, serverId),
+		columns: { id: true },
+	})
+	if (!server) return c.json({ error: 'Discord server not found' }, 404)
+
+	const configs = await db.query.discordSelfAssignableRoles.findMany({
+		with: {
+			discordRole: {
+				columns: {
+					id: true,
+					roleId: true,
+					roleName: true,
+					isActive: true,
+					discordServerId: true,
+				},
+			},
+		},
+	})
+
+	return c.json(
+		configs
+			.filter((config) => config.discordRole.discordServerId === serverId)
+			.sort((a, b) => a.discordRole.roleName.localeCompare(b.discordRole.roleName))
+	)
+})
+
+app.post('/:id/self-assignable-roles', requireAuth(), requireAdmin(), async (c) => {
+	const serverId = c.req.param('id')
+	const db = c.get('db')
+	const user = c.get('user')
+	if (!db) return c.json({ error: 'Database not available' }, 500)
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+
+	try {
+		const body = (await c.req.json()) as { discordRoleId?: unknown; defaultDuration?: unknown }
+		const discordRoleId = typeof body.discordRoleId === 'string' ? body.discordRoleId.trim() : ''
+		let duration: number | null
+		try {
+			duration = parseConfiguredDiscordDuration(body.defaultDuration)
+		} catch (error) {
+			return c.json({ error: error instanceof Error ? error.message : 'Invalid duration' }, 400)
+		}
+		if (!discordRoleId) return c.json({ error: 'discordRoleId is required' }, 400)
+
+		const role = await db.query.discordRoles.findFirst({
+			where: and(eq(discordRoles.id, discordRoleId), eq(discordRoles.discordServerId, serverId)),
+			columns: { id: true, isActive: true },
+		})
+		if (!role) return c.json({ error: 'Managed Discord role not found for this server' }, 404)
+		if (!role.isActive)
+			return c.json({ error: 'Inactive Discord roles cannot be self-assignable' }, 400)
+
+		const [config] = await db
+			.insert(discordSelfAssignableRoles)
+			.values({
+				discordRoleId: role.id,
+				defaultDurationSeconds: duration,
+				createdBy: user.id,
+			})
+			.onConflictDoUpdate({
+				target: discordSelfAssignableRoles.discordRoleId,
+				set: {
+					defaultDurationSeconds: duration,
+					updatedAt: new Date(),
+				},
+			})
+			.returning()
+
+		return c.json(config, 201)
+	} catch (error) {
+		logger.error('[Discord] Failed to create self-assignable role configuration', {
+			serverId,
+			error: String(error),
+		})
+		return c.json({ error: 'Failed to save self-assignable role configuration' }, 500)
+	}
+})
+
+app.put('/:id/self-assignable-roles/:configId', requireAuth(), requireAdmin(), async (c) => {
+	const serverId = c.req.param('id')
+	const configId = c.req.param('configId')
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database not available' }, 500)
+
+	try {
+		const body = (await c.req.json()) as { discordRoleId?: unknown; defaultDuration?: unknown }
+		let duration: number | null
+		try {
+			duration = parseConfiguredDiscordDuration(body.defaultDuration)
+		} catch (error) {
+			return c.json({ error: error instanceof Error ? error.message : 'Invalid duration' }, 400)
+		}
+
+		const existing = await db.query.discordSelfAssignableRoles.findFirst({
+			where: eq(discordSelfAssignableRoles.id, configId),
+			with: { discordRole: { columns: { discordServerId: true } } },
+		})
+		if (!existing || existing.discordRole.discordServerId !== serverId) {
+			return c.json({ error: 'Self-assignable role configuration not found' }, 404)
+		}
+
+		const discordRoleId =
+			typeof body.discordRoleId === 'string' ? body.discordRoleId.trim() : undefined
+		let roleId: string | undefined
+		if (discordRoleId) {
+			const role = await db.query.discordRoles.findFirst({
+				where: and(eq(discordRoles.id, discordRoleId), eq(discordRoles.discordServerId, serverId)),
+				columns: { id: true, isActive: true },
+			})
+			if (!role) return c.json({ error: 'Managed Discord role not found for this server' }, 404)
+			if (!role.isActive)
+				return c.json({ error: 'Inactive Discord roles cannot be self-assignable' }, 400)
+			roleId = role.id
+		}
+
+		if (roleId) {
+			const configuredRoles = await db.query.discordSelfAssignableRoles.findMany({
+				with: { discordRole: { columns: { id: true, discordServerId: true } } },
+			})
+			if (
+				configuredRoles.some(
+					(config) =>
+						config.id !== configId &&
+						config.discordRole.discordServerId === serverId &&
+						config.discordRole.id === roleId
+				)
+			) {
+				return c.json({ error: 'This role is already configured as self-assignable' }, 409)
+			}
+		}
+
+		const [updated] = await db
+			.update(discordSelfAssignableRoles)
+			.set({
+				...(roleId ? { discordRoleId: roleId } : {}),
+				defaultDurationSeconds: duration,
+				updatedAt: new Date(),
+			})
+			.where(eq(discordSelfAssignableRoles.id, configId))
+			.returning()
+		return c.json(updated)
+	} catch (error) {
+		logger.error('[Discord] Failed to update self-assignable role configuration', {
+			serverId,
+			configId,
+			error: String(error),
+		})
+		return c.json({ error: 'Failed to update self-assignable role configuration' }, 500)
+	}
+})
+
+app.delete('/:id/self-assignable-roles/:configId', requireAuth(), requireAdmin(), async (c) => {
+	const serverId = c.req.param('id')
+	const configId = c.req.param('configId')
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database not available' }, 500)
+
+	const existing = await db.query.discordSelfAssignableRoles.findFirst({
+		where: eq(discordSelfAssignableRoles.id, configId),
+		with: { discordRole: { columns: { discordServerId: true } } },
+	})
+	if (!existing || existing.discordRole.discordServerId !== serverId) {
+		return c.json({ error: 'Self-assignable role configuration not found' }, 404)
+	}
+
+	await db.delete(discordSelfAssignableRoles).where(eq(discordSelfAssignableRoles.id, configId))
+	return c.json({ success: true })
 })
 
 /**
@@ -736,9 +959,7 @@ app.post('/:id/audit/cleanup', requireAuth(), requireAdmin(), async (c) => {
 		}
 
 		const staleRunIds = runs.slice(1).map((run) => run.id)
-		await db
-			.delete(discordMemberAuditRuns)
-			.where(inArray(discordMemberAuditRuns.id, staleRunIds))
+		await db.delete(discordMemberAuditRuns).where(inArray(discordMemberAuditRuns.id, staleRunIds))
 
 		return c.json({ deletedRuns: staleRunIds.length })
 	} catch (error) {
@@ -826,7 +1047,10 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			})
 		}
 
-		const whereClauses = [eq(discordMemberAuditRows.runId, latestRun.id), eq(discordMemberAuditRows.linked, tab === 'linked')]
+		const whereClauses = [
+			eq(discordMemberAuditRows.runId, latestRun.id),
+			eq(discordMemberAuditRows.linked, tab === 'linked'),
+		]
 
 		const memberCorporations = await db.query.managedCorporations.findMany({
 			where: eq(managedCorporations.isMemberCorporation, true),
@@ -844,7 +1068,9 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 			orderBy: asc(discordMemberAuditRows.discordUserId),
 		})
 
-		const linkedCoreUserIds = [...new Set(rows.map((row) => row.coreUserId).filter((id): id is string => !!id))]
+		const linkedCoreUserIds = [
+			...new Set(rows.map((row) => row.coreUserId).filter((id): id is string => !!id)),
+		]
 		const hasMemberCorpAttachmentByUserId = new Map<string, boolean>()
 		const expectedManagedRoleIdsByUserId = new Map<string, Set<string>>()
 		if (linkedCoreUserIds.length > 0) {
@@ -915,21 +1141,17 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 		})
 		let filteredRows = normalizedRows
 		if (filter === 'member_corp') {
-			filteredRows = normalizedRows.filter(
-				(row) => row.isInMemberCorporationByAttachments
-			)
+			filteredRows = normalizedRows.filter((row) => row.isInMemberCorporationByAttachments)
 		}
 		if (filter === 'roles_without_member_corp') {
 			filteredRows = normalizedRows.filter(
 				(row) =>
-					row.roleIds.filter((roleId) => !EXCLUDED_AFFILIATION_MISMATCH_ROLE_IDS.has(roleId)).length > 0 &&
-					!row.isInMemberCorporationByAttachments
+					row.roleIds.filter((roleId) => !EXCLUDED_AFFILIATION_MISMATCH_ROLE_IDS.has(roleId))
+						.length > 0 && !row.isInMemberCorporationByAttachments
 			)
 		}
 		if (filter === 'external') {
-			filteredRows = normalizedRows.filter(
-				(row) => !row.isInMemberCorporationByAttachments
-			)
+			filteredRows = normalizedRows.filter((row) => !row.isInMemberCorporationByAttachments)
 		}
 		if (filter === 'drifted') {
 			filteredRows = normalizedRows.filter((row) => row.hasManagedRoleDrift)
@@ -951,7 +1173,9 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 		const offset = (safePage - 1) * pageSize
 		const visibleRows = filteredRows.slice(offset, offset + pageSize)
 		const results: DiscordAuditMemberRow[] = visibleRows.map((row) => {
-			const unmanagedRoleCount = row.roleIds.filter((roleId) => !managedRoleIdSet.has(roleId)).length
+			const unmanagedRoleCount = row.roleIds.filter(
+				(roleId) => !managedRoleIdSet.has(roleId)
+			).length
 			const relevantAffiliationRoleCount = row.roleIds.filter(
 				(roleId) => !EXCLUDED_AFFILIATION_MISMATCH_ROLE_IDS.has(roleId)
 			).length
@@ -959,24 +1183,23 @@ app.get('/:id/audit', requireAuth(), requireAdmin(), async (c) => {
 				isInMemberCorporation: row.isInMemberCorporationByAttachments,
 				hasManagedRoleDrift: row.hasManagedRoleDrift ?? false,
 				hasRoleAffiliationMismatch:
-					relevantAffiliationRoleCount > 0 &&
-					!row.isInMemberCorporationByAttachments,
+					relevantAffiliationRoleCount > 0 && !row.isInMemberCorporationByAttachments,
 				unmanagedRoleCount,
-			discordUserId: row.discordUserId,
-			username: row.username,
-			discriminator: row.discriminator,
-			displayName: row.displayName,
-			roleIds: row.roleIds,
-			linked: row.linked,
-			coreUserId: row.coreUserId,
-			mainCharacterId: row.mainCharacterId,
-			mainCharacterName: row.mainCharacterName,
-			hasValidToken: row.hasValidToken,
-			corporationId: row.corporationId,
-			corporationName: row.corporationName,
-			runId: latestRun.id,
-			runStatus: latestRun.status,
-			runScanned: latestRun.scanned,
+				discordUserId: row.discordUserId,
+				username: row.username,
+				discriminator: row.discriminator,
+				displayName: row.displayName,
+				roleIds: row.roleIds,
+				linked: row.linked,
+				coreUserId: row.coreUserId,
+				mainCharacterId: row.mainCharacterId,
+				mainCharacterName: row.mainCharacterName,
+				hasValidToken: row.hasValidToken,
+				corporationId: row.corporationId,
+				corporationName: row.corporationName,
+				runId: latestRun.id,
+				runStatus: latestRun.status,
+				runScanned: latestRun.scanned,
 			}
 		})
 
@@ -1046,7 +1269,9 @@ app.post('/:id/audit/strip-roles', requireAuth(), requireAdmin(), async (c) => {
 			server.guildId,
 			discordUserIds
 		)
-		const strippedIds = results.filter((result) => result.success).map((result) => result.discordUserId)
+		const strippedIds = results
+			.filter((result) => result.success)
+			.map((result) => result.discordUserId)
 		if (strippedIds.length > 0) {
 			const targetRunId =
 				requestedRunId ??
@@ -1119,7 +1344,9 @@ app.post('/:id/audit/kick-users', requireAuth(), requireAdmin(), async (c) => {
 			server.guildId,
 			discordUserIds
 		)
-		const kickedIds = results.filter((result) => result.success).map((result) => result.discordUserId)
+		const kickedIds = results
+			.filter((result) => result.success)
+			.map((result) => result.discordUserId)
 		if (kickedIds.length > 0) {
 			const targetRunId =
 				requestedRunId ??

@@ -12,6 +12,16 @@ export interface ProgrammaticCommandResponse {
 	}
 }
 
+/** A handler error that is safe and useful to show to the Discord user. */
+export class ProgrammaticCommandPermissionError extends Error {
+	readonly code = 'permission' as const
+
+	constructor(message: string) {
+		super(message)
+		this.name = 'ProgrammaticCommandPermissionError'
+	}
+}
+
 /**
  * How the interactions receiver should acknowledge a command:
  * - 'sync': reply immediately (type:4). For instant commands with no slow work.
@@ -25,7 +35,16 @@ export type DeferralMode = 'sync' | 'defer-public' | 'defer-ephemeral'
 /** Subset of bindings a programmatic handler may use. Extend as new command surfaces need more. */
 export type ProgrammaticCommandEnv = Pick<
 	Env,
-	'GROUPS' | 'DISCORD' | 'PREDICTION_MARKETS' | 'BROADCASTS' | 'FLEETS' | 'SRP' | 'DOCTRINES'
+	| 'DATABASE_URL'
+	| 'GROUPS'
+	| 'DISCORD'
+	| 'TEMPORARY_ROLE_ASSIGNMENTS'
+	| 'USER_DISCORD_REFRESH_WORKFLOW'
+	| 'PREDICTION_MARKETS'
+	| 'BROADCASTS'
+	| 'FLEETS'
+	| 'SRP'
+	| 'DOCTRINES'
 >
 
 export interface ProgrammaticCommandContext {
@@ -41,6 +60,8 @@ export interface ProgrammaticCommandContext {
 export interface ProgrammaticCommandDefinition {
 	name: string
 	description: string
+	/** Default admin UI category used when bootstrapping the database command row. */
+	categoryName?: string
 	options?: DiscordSlashCommandDefinition['options']
 	optionAliases?: DiscordCommandOptionAlias[]
 	/**

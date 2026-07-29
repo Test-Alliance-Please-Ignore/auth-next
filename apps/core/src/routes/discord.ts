@@ -3,6 +3,8 @@ import { Hono } from 'hono'
 import { logger } from '@repo/hono-helpers'
 
 import { getDiscordStatus } from '../lib/discord-helpers'
+import { normalizeWorkflowStatus } from '../lib/workflow-status'
+import { triggerDiscordRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAuth } from '../middleware/session'
 import * as discordService from '../services/discord.service'
 
@@ -14,6 +16,30 @@ import type { App } from '../context'
  * Handles Discord account linking for authenticated users.
  */
 const discord = new Hono<App>()
+
+type PublicDiscordRefreshReason = 'authorization' | 'configuration' | 'temporary' | 'unknown'
+
+function classifyDiscordRefreshReason(output: object): PublicDiscordRefreshReason {
+	const messages: string[] = []
+	if ('error' in output && output.error && typeof output.error === 'object' && 'message' in output.error) {
+		messages.push(String(output.error.message))
+	}
+	if ('results' in output && Array.isArray(output.results)) {
+		for (const result of output.results) {
+			if (result && typeof result === 'object' && 'errorMessage' in result) {
+				messages.push(String(result.errorMessage))
+			}
+		}
+	}
+
+	const message = messages.join(' ').toLowerCase()
+	if (/(unauthor|forbidden|revok|token|oauth|access denied)/.test(message)) return 'authorization'
+	if (/(permission|role|not configured|configuration|managed guild)/.test(message)) return 'configuration'
+	if (/(timeout|rate limit|temporar|unavailable|network|fetch|gateway|service)/.test(message)) {
+		return 'temporary'
+	}
+	return 'unknown'
+}
 
 /**
  * Start Discord linking flow (PKCE)
@@ -184,17 +210,70 @@ discord.post('/refresh', requireAuth(), async (c) => {
 discord.post('/join-servers', requireAuth(), async (c) => {
 	const user = c.get('user')!
 
+	const result = await triggerDiscordRefreshWorkflow({
+		env: c.env,
+		userId: user.id,
+		source: 'user-manual',
+	})
+	if (result.status === 'failed' || !result.workflowInstanceId) {
+		logger.error('Error starting Discord access refresh:', { userId: user.id, error: result.error })
+		return c.json({ error: 'Unable to start Discord access refresh' }, 500)
+	}
+
+	return c.json({ status: 'queued', workflowInstanceId: result.workflowInstanceId }, 202)
+})
+
+discord.get('/join-servers/:workflowInstanceId', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const workflowInstanceId = c.req.param('workflowInstanceId')
+	const userToken = user.id.replace(/-/g, '')
+	const expectedWorkflowPrefix = `discord-refresh-user-manual-${userToken}-`
+	if (!workflowInstanceId.startsWith(expectedWorkflowPrefix)) {
+		return c.json({ error: 'Workflow not found' }, 404)
+	}
+
 	try {
-		const result = await discordService.syncUserDiscordAccess(c.env, user.id)
-		return c.json(result)
+		const workflow = await c.env.USER_DISCORD_REFRESH_WORKFLOW.get(workflowInstanceId)
+		const status = await workflow.status()
+		const output = status.output ?? null
+		if (output && typeof output === 'object' && 'userId' in output && output.userId !== user.id) {
+			return c.json({ error: 'Workflow not found' }, 404)
+		}
+		const outputStatus =
+			output && typeof output === 'object' && 'status' in output
+				? String((output as { status?: string }).status ?? '')
+				: undefined
+		const publicOutput =
+			output && typeof output === 'object'
+				? {
+						status: outputStatus === 'failed' ? 'failed' : 'completed',
+						totalInvited:
+							'totalInvited' in output && typeof output.totalInvited === 'number'
+								? output.totalInvited
+								: 0,
+						totalUpdated:
+							'totalUpdated' in output && typeof output.totalUpdated === 'number'
+								? output.totalUpdated
+								: 0,
+						totalFailed:
+							'totalFailed' in output && typeof output.totalFailed === 'number'
+									? output.totalFailed
+									: 0,
+						reason: classifyDiscordRefreshReason(output),
+					}
+				: null
+		return c.json({
+			workflowInstanceId,
+			status: normalizeWorkflowStatus(status.status, outputStatus),
+			output: publicOutput,
+		})
 	} catch (error) {
-		logger.error('Error joining Discord servers:', error)
-		return c.json(
-			{
-				error: error instanceof Error ? error.message : 'Failed to join Discord servers',
-			},
-			500
-		)
+		logger.error('Error reading Discord access refresh status:', {
+			userId: user.id,
+			workflowInstanceId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Unable to confirm Discord access refresh status' }, 502)
 	}
 })
 
