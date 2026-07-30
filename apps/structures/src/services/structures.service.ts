@@ -901,10 +901,11 @@ function summarizeStructureSkyhook(
 	const reagentTotals = getSkyhookReagentSummaryFromStorageState(skyhook)
 	const reagents = getSkyhookReagentEntriesFromStorageState(skyhook)
 	const isRaidable = isSkyhookCurrentlyRaidable(skyhook)
+	const reinforcementTimerEnd = toIso(skyhook.reinforcementTimerEnd)
 	const normalizedState = getSkyhookState(
 		skyhook.state,
 		isRaidable,
-		skyhook.reinforcementTimerEnd ? skyhook.reinforcementTimerEnd.toISOString() : null
+		reinforcementTimerEnd
 	)
 
 	return {
@@ -949,18 +950,12 @@ function summarizeStructureSkyhook(
 			),
 			lastCycle: reagent.lastCycle,
 		})),
-		reinforcementTimerEnd: skyhook.reinforcementTimerEnd
-			? skyhook.reinforcementTimerEnd.toISOString()
-			: null,
-			theftVulnerabilityStart: skyhook.theftVulnerabilityStart
-				? skyhook.theftVulnerabilityStart.toISOString()
-				: null,
-			theftVulnerabilityEnd: skyhook.theftVulnerabilityEnd
-				? skyhook.theftVulnerabilityEnd.toISOString()
-				: null,
-			isRaidable,
-		}
+		reinforcementTimerEnd,
+		theftVulnerabilityStart: toIso(skyhook.theftVulnerabilityStart),
+		theftVulnerabilityEnd: toIso(skyhook.theftVulnerabilityEnd),
+		isRaidable,
 	}
+}
 
 function summarizeStructureMoonDrill(
 	moonDrill: typeof structureMoonDrills.$inferSelect | null,
@@ -2326,10 +2321,11 @@ function buildSkyhookListItemFromRow(
 ): RepoStructureSkyhookListItem {
 	const reagentSummary = getSkyhookReagentSummaryFromStorageState(row)
 	const reagentEntries = getSkyhookReagentEntriesFromStorageState(row)
+	const reinforcementTimerEnd = toIso(row.reinforcementTimerEnd)
 	const normalizedState = getSkyhookState(
 		row.state,
 		row.isRaidable ?? false,
-		row.reinforcementTimerEnd ? row.reinforcementTimerEnd.toISOString() : null
+		reinforcementTimerEnd
 	)
 
 	return {
@@ -2394,12 +2390,12 @@ function buildSkyhookListItemFromRow(
 			),
 			lastCycle: reagent.lastCycle,
 		})),
-			reinforcementTimerEnd: toIso(row.reinforcementTimerEnd),
-			theftVulnerabilityStart: toIso(row.theftVulnerabilityStart),
-			theftVulnerabilityEnd: toIso(row.theftVulnerabilityEnd),
-			isRaidable: row.isRaidable ?? false,
-		}
+		reinforcementTimerEnd,
+		theftVulnerabilityStart: toIso(row.theftVulnerabilityStart),
+		theftVulnerabilityEnd: toIso(row.theftVulnerabilityEnd),
+		isRaidable: row.isRaidable ?? false,
 	}
+}
 
 async function buildSkyhookStructureFilterOptionsFromSql(
 	db: DbClient<DbSchema>,
