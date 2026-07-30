@@ -140,12 +140,22 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		const password = this.env.DISCORD_PROXY_PASSWORD?.trim()
 		const portStart = Number(this.env.DISCORD_PROXY_PORT_START)
 		const portCount = Number(this.env.DISCORD_PROXY_PORT_COUNT)
+		const hasAnyProxyConfig =
+			Boolean(host) ||
+			Boolean(username) ||
+			Boolean(password) ||
+			Boolean(this.env.DISCORD_PROXY_PORT_START?.trim()) ||
+			Boolean(this.env.DISCORD_PROXY_PORT_COUNT?.trim())
 
 		const hasValidPortRange =
 			Number.isInteger(portStart) && Number.isInteger(portCount) && portCount > 0
 		const hasCredentials = Boolean(host && username && password)
 
 		if (!hasValidPortRange || !hasCredentials) {
+			if (!hasAnyProxyConfig) {
+				return null
+			}
+
 			logger.warn('[DiscordDO] Proxy config invalid or incomplete, using direct Discord API', {
 				hasHost: Boolean(host),
 				hasUsername: Boolean(username),
@@ -1847,7 +1857,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			const commands = await client.get<Array<{ id: string; name: string }>>(baseRoute)
 			commandId = commands.find((entry) => entry.name === commandName)?.id
 			if (!commandId) {
-				return { success: false, error: 'Command not found for guild' }
+				return { success: true }
 			}
 		}
 
@@ -1860,7 +1870,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			return { success: true, deletedCommandId: commandId }
 		} catch (error) {
 			if (error instanceof DiscordAPIError && error.status === 404) {
-				return { success: false, error: 'Command not found for guild' }
+				return { success: true, deletedCommandId: commandId }
 			}
 			return {
 				success: false,
@@ -1875,7 +1885,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	 */
 	async editOriginalInteractionResponse(
 		interactionToken: string,
-		message: { content: string; embeds?: DiscordEmbed[] }
+		message: { content: string; embeds?: DiscordEmbed[]; components?: DiscordActionRow[] }
 	): Promise<{ success: boolean; error?: string }> {
 		const applicationId = this.env.DISCORD_CLIENT_ID?.trim()
 		if (!applicationId) {
@@ -1891,6 +1901,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			await client.patch(route, {
 				content: message.content,
 				...(message.embeds && message.embeds.length > 0 ? { embeds: message.embeds } : {}),
+				...(message.components !== undefined ? { components: message.components } : {}),
 			})
 			return { success: true }
 		} catch (error) {

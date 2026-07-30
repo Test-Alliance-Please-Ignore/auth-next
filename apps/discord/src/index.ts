@@ -9,7 +9,12 @@ import { DiscordDO, DiscordGatewayDO } from './durable-object'
 import * as discordService from './services/discord.service'
 import { resolveDeferralMode, resolveSubcommandKey } from './utils/interaction-routing'
 
-import type { Discord, DiscordEmbed } from '@repo/discord'
+import type {
+	Discord,
+	DiscordActionRow,
+	DiscordEmbed,
+	DiscordModalLabelComponent,
+} from '@repo/discord'
 import type { App, DiscordInteractionOption, DiscordInteractionRouting } from './context'
 
 const DISCORD_INTERACTION_PING = 1
@@ -36,6 +41,7 @@ interface DiscordInteractionPayload {
 			id: string
 		}
 		permissions?: string
+		roles?: string[]
 	}
 	data?: {
 		name?: string
@@ -44,11 +50,8 @@ interface DiscordInteractionPayload {
 		custom_id?: string
 		component_type?: number
 		values?: string[]
-		/** Modal-submit action rows → text inputs. */
-		components?: Array<{
-			type: number
-			components?: Array<{ type: number; custom_id?: string; value?: string }>
-		}>
+		/** Modal-submit label tree. Discord returns Label -> component payloads here. */
+		components?: Array<Record<string, unknown>>
 	}
 	/** Source message on a component interaction (unreliable on modal submit). */
 	message?: { id: string }
@@ -104,6 +107,7 @@ interface DeferredCommandContext {
 	discordUserId: string
 	guildId: string | null
 	channelId: string | null
+	memberRoleIds?: string[]
 	options: DiscordInteractionOption[]
 }
 
@@ -123,6 +127,7 @@ async function runDeferredCommand(
 			discordUserId: ctx.discordUserId,
 			guildId: ctx.guildId,
 			channelId: ctx.channelId,
+			memberRoleIds: ctx.memberRoleIds,
 			options: ctx.options,
 			interactionId: ctx.interactionId,
 		})
@@ -133,6 +138,7 @@ async function runDeferredCommand(
 		const result = await stub.editOriginalInteractionResponse(ctx.token, {
 			content,
 			embeds: execution.response.data?.embeds as DiscordEmbed[] | undefined,
+			components: execution.response.data?.components as DiscordActionRow[] | undefined,
 		})
 
 		if (!result.success) {
@@ -166,6 +172,7 @@ interface DeferredModalSubmitContext {
 	token: string
 	customId: string
 	fields: Record<string, string>
+	selectValues: Record<string, string[]>
 	discordUserId: string
 	guildId: string | null
 	channelId: string | null
@@ -185,6 +192,7 @@ async function runDeferredModalSubmit(
 		const execution = await env.CORE.executeDiscordModalSubmit({
 			customId: ctx.customId,
 			fields: ctx.fields,
+			selectValues: ctx.selectValues,
 			discordUserId: ctx.discordUserId,
 			interactionId: ctx.interactionId,
 			guildId: ctx.guildId,
@@ -203,7 +211,10 @@ async function runDeferredModalSubmit(
 		}
 		const content = execution.response.data?.content ?? '​'
 		const stub = getStub<Discord>(env.DISCORD, 'default')
-		const result = await stub.editOriginalInteractionResponse(ctx.token, { content })
+		const result = await stub.editOriginalInteractionResponse(ctx.token, {
+			content,
+			components: execution.response.data?.components as DiscordActionRow[] | undefined,
+		})
 		if (!result.success) {
 			logger.error('[DiscordInteractions] Failed to deliver modal-submit response', {
 				interactionId: ctx.interactionId,
@@ -235,6 +246,8 @@ interface DeferredComponentContext {
 	discordUserId: string
 	guildId: string | null
 	channelId: string | null
+	memberRoleIds?: string[]
+	values?: string[]
 }
 
 /**
@@ -254,10 +267,15 @@ async function runDeferredComponent(
 			interactionId: ctx.interactionId,
 			guildId: ctx.guildId,
 			channelId: ctx.channelId,
+			memberRoleIds: ctx.memberRoleIds,
+			values: ctx.values ?? [],
 		})
 		const content = execution.response.data?.content ?? '​'
 		const stub = getStub<Discord>(env.DISCORD, 'default')
-		const result = await stub.editOriginalInteractionResponse(ctx.token, { content })
+			const result = await stub.editOriginalInteractionResponse(ctx.token, {
+				content,
+				components: execution.response.data?.components as DiscordActionRow[] | undefined,
+			})
 		if (!result.success) {
 			logger.error('[DiscordInteractions] Failed to deliver component response', {
 				interactionId: ctx.interactionId,
@@ -282,46 +300,59 @@ async function runDeferredComponent(
 	}
 }
 
-/** Build a type:9 MODAL response with a single required text input. */
+type ModalComponentInput = DiscordModalLabelComponent
+
 function buildModalResponse(
 	customId: string,
 	title: string,
-	input: {
-		customId: string
-		label: string
-		style: 1 | 2 // 1 SHORT, 2 PARAGRAPH
-		minLength?: number
-		maxLength?: number
-		placeholder?: string
-	}
+	components: ModalComponentInput[]
 ) {
 	return {
 		type: DISCORD_RESPONSE_MODAL,
 		data: {
 			custom_id: customId,
 			title,
-			components: [
-				{
-					type: 1, // ACTION_ROW
-					components: [
-						{
-							type: 4, // TEXT_INPUT
-							custom_id: input.customId,
-							style: input.style,
-							label: input.label,
-							required: true,
-							...(input.minLength !== undefined ? { min_length: input.minLength } : {}),
-							...(input.maxLength !== undefined ? { max_length: input.maxLength } : {}),
-							...(input.placeholder ? { placeholder: input.placeholder } : {}),
-						},
-					],
-				},
-			],
+			components,
 		},
 	}
 }
 
-function hexToBytes(hex: string): Uint8Array | null {
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null
+}
+
+function collectModalSubmissionData(
+	node: unknown,
+	out: { fields: Record<string, string>; values: Record<string, string[]> }
+): void {
+	if (!isRecord(node)) return
+
+	const customId = typeof node.custom_id === 'string' ? node.custom_id : null
+	const values = Array.isArray(node.values)
+		? node.values.filter((value): value is string => typeof value === 'string')
+		: null
+	const value = typeof node.value === 'string' ? node.value : null
+	if (customId) {
+		if (values && values.length > 0) {
+			out.values[customId] = values
+		} else if (value !== null) {
+			out.fields[customId] = value
+		}
+	}
+
+	if (Array.isArray(node.components)) {
+		for (const child of node.components) {
+			collectModalSubmissionData(child, out)
+		}
+	}
+	if (isRecord(node.component)) {
+		collectModalSubmissionData(node.component, out)
+	}
+}
+
+
+function hexToBytes(hex: unknown): Uint8Array | null {
+	if (typeof hex !== 'string') return null
 	const normalized = hex.trim()
 	if (!/^[0-9a-fA-F]+$/.test(normalized) || normalized.length % 2 !== 0) {
 		return null
@@ -335,10 +366,10 @@ function hexToBytes(hex: string): Uint8Array | null {
 }
 
 async function verifyDiscordInteractionSignature(
-	publicKeyHex: string,
+	publicKeyHex: unknown,
 	timestamp: string,
 	rawBody: string,
-	signatureHex: string
+	signatureHex: unknown
 ): Promise<boolean> {
 	const publicKey = hexToBytes(publicKeyHex)
 	const signature = hexToBytes(signatureHex)
@@ -432,18 +463,45 @@ const app = new Hono<App>()
 			const customId = interaction.data?.custom_id ?? ''
 			const parts = customId.split(':')
 			const componentUserId = interaction.member?.user?.id ?? interaction.user?.id ?? null
+			const memberRoleIds = interaction.member?.roles ?? []
+
+			if (parts[0] === 'tmp-role' && componentUserId) {
+				c.executionCtx.waitUntil(
+					runDeferredComponent(c.env, {
+						interactionId: interaction.id,
+						token: interaction.token,
+						customId,
+						discordUserId: componentUserId,
+						guildId: interaction.guild_id ?? null,
+						channelId: interaction.channel_id ?? null,
+						memberRoleIds,
+						values: interaction.data?.values ?? [],
+					})
+				)
+				return c.json({
+					type: DISCORD_INTERACTION_DEFERRED_RESPONSE,
+					data: { flags: DISCORD_EPHEMERAL_FLAG },
+				})
+			}
 
 			// bet:<mkt>:<out> → stake modal
 			if (parts[0] === 'bet' && parts.length === 3) {
 				return c.json(
-					buildModalResponse(`betmodal:${parts[1]}:${parts[2]}`, 'Place a bet', {
-						customId: 'amount',
-						label: 'Stake (points)',
-						style: 1,
-						minLength: 1,
-						maxLength: 12,
-						placeholder: '100',
-					})
+					buildModalResponse(`betmodal:${parts[1]}:${parts[2]}`, 'Place a bet', [
+						{
+							type: 18,
+							label: 'Stake (points)',
+							component: {
+								type: 4,
+								custom_id: 'amount',
+								style: 1,
+								required: true,
+								min_length: 1,
+								max_length: 12,
+								placeholder: '100',
+							},
+						},
+					])
 				)
 			}
 
@@ -452,26 +510,40 @@ const app = new Hono<App>()
 				const [, action, marketId] = parts
 				if (action === 'resolve') {
 					return c.json(
-						buildModalResponse(`resolvemodal:${marketId}`, 'Resolve market', {
-							customId: 'outcome',
+					buildModalResponse(`resolvemodal:${marketId}`, 'Resolve market', [
+						{
+							type: 18,
 							label: 'Winning outcome number',
-							style: 1,
-							minLength: 1,
-							maxLength: 3,
-							placeholder: '1',
-						})
+							component: {
+								type: 4,
+								custom_id: 'outcome',
+								style: 1,
+								required: true,
+								min_length: 1,
+								max_length: 3,
+								placeholder: '1',
+								},
+							},
+						])
 					)
 				}
 				if (action === 'void') {
 					return c.json(
-						buildModalResponse(`voidmodal:${marketId}`, 'Void market', {
-							customId: 'reason',
+					buildModalResponse(`voidmodal:${marketId}`, 'Void market', [
+						{
+							type: 18,
 							label: 'Void reason',
-							style: 2,
-							minLength: 3,
-							maxLength: 500,
-							placeholder: 'Why is this market being voided?',
-						})
+							component: {
+								type: 4,
+								custom_id: 'reason',
+								style: 2,
+								required: true,
+								min_length: 3,
+								max_length: 500,
+								placeholder: 'Why is this market being voided?',
+								},
+							},
+						])
 					)
 				}
 				if ((action === 'close' || action === 'approve') && componentUserId) {
@@ -483,6 +555,7 @@ const app = new Hono<App>()
 							discordUserId: componentUserId,
 							guildId: interaction.guild_id ?? null,
 							channelId: interaction.channel_id ?? null,
+							memberRoleIds,
 						})
 					)
 					return c.json({
@@ -511,24 +584,61 @@ const app = new Hono<App>()
 			const modalAction = customId.split(':')[0]
 			const isMarketModal =
 				modalAction === 'betmodal' || modalAction === 'resolvemodal' || modalAction === 'voidmodal'
-			if (!isMarketModal || !modalUserId) {
+			const isTemporaryRoleModal = modalAction === 'tmp-role'
+			if ((!isMarketModal && !isTemporaryRoleModal) || !modalUserId) {
 				return c.json({
 					type: 4,
 					data: { content: 'This action is not available.', flags: DISCORD_EPHEMERAL_FLAG },
 				})
 			}
-			const fields: Record<string, string> = {}
-			for (const row of interaction.data?.components ?? []) {
-				for (const comp of row.components ?? []) {
-					if (comp.custom_id) fields[comp.custom_id] = comp.value ?? ''
+			const submission = {
+				fields: {} as Record<string, string>,
+				values: {} as Record<string, string[]>,
+			}
+			for (const component of interaction.data?.components ?? []) {
+				collectModalSubmissionData(component, submission)
+			}
+			if (isTemporaryRoleModal) {
+				const values = Object.values(submission.values).flat()
+				const execution = await c.env.CORE.executeDiscordModalSubmit({
+					interactionId: interaction.id,
+					customId,
+					discordUserId: modalUserId,
+					guildId: interaction.guild_id ?? null,
+					channelId: interaction.channel_id ?? null,
+					fields: submission.fields,
+					selectValues: submission.values,
+					values,
+				})
+				if (!execution.ok) {
+					logger.warn('[DiscordInteractions] Temp-role modal returned a non-ok result', {
+						requestId,
+						interactionId: interaction.id,
+						customId,
+						discordUserId: modalUserId,
+						guildId: interaction.guild_id ?? null,
+						coreUserId: execution.coreUserId,
+						reason: execution.reason,
+					})
 				}
+				logger.info('[DiscordInteractions] Temp-role modal handled', {
+					requestId,
+					interactionId: interaction.id,
+					customId,
+					discordUserId: modalUserId,
+					guildId: interaction.guild_id ?? null,
+					reason: execution.reason,
+					durationMs: Date.now() - startedAt,
+				})
+				return c.json(execution.response)
 			}
 			c.executionCtx.waitUntil(
 				runDeferredModalSubmit(c.env, {
 					interactionId: interaction.id,
 					token: interaction.token,
 					customId,
-					fields,
+					fields: submission.fields,
+					selectValues: submission.values,
 					discordUserId: modalUserId,
 					guildId: interaction.guild_id ?? null,
 					channelId: interaction.channel_id ?? null,
@@ -559,6 +669,7 @@ const app = new Hono<App>()
 		const discordUserId = interaction.member?.user?.id ?? interaction.user?.id ?? null
 		const guildId = interaction.guild_id ?? null
 		const channelId = interaction.channel_id ?? null
+		const memberRoleIds = interaction.member?.roles ?? []
 
 		logger.info('[DiscordInteractions] Received slash command', {
 			requestId,
@@ -600,6 +711,7 @@ const app = new Hono<App>()
 					discordUserId,
 					guildId,
 					channelId,
+					memberRoleIds,
 					options: interaction.data.options ?? [],
 				})
 			)
@@ -615,6 +727,7 @@ const app = new Hono<App>()
 				discordUserId,
 				guildId,
 				channelId,
+				memberRoleIds,
 				options: interaction.data.options ?? [],
 				interactionId: interaction.id,
 			})
@@ -629,6 +742,12 @@ const app = new Hono<App>()
 				authorized: execution.authorized,
 				reason: execution.reason,
 				durationMs: Date.now() - startedAt,
+			})
+			logger.debug?.('[DiscordInteractions] Slash command response payload', {
+				requestId,
+				interactionId: interaction.id,
+				commandName,
+				responsePayload: execution.response,
 			})
 
 			return c.json(execution.response)

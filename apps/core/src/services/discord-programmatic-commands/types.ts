@@ -1,16 +1,14 @@
-import type { DiscordEmbed, DiscordSlashCommandDefinition } from '@repo/discord'
+import type {
+	DiscordActionRow,
+	DiscordInteractionResponse,
+	DiscordModalLabelComponent,
+	DiscordSlashCommandDefinition,
+} from '@repo/discord'
 import type { Env } from '../../context'
 import type { ExecuteDiscordSlashCommandInput } from '../discord-commands.service'
 import type { DiscordCommandOptionAlias } from '../discord-command-registry.service'
 
-export interface ProgrammaticCommandResponse {
-	type: number
-	data?: {
-		content: string
-		flags?: number
-		embeds?: DiscordEmbed[]
-	}
-}
+export type ProgrammaticCommandResponse = DiscordInteractionResponse
 
 /** A handler error that is safe and useful to show to the Discord user. */
 export class ProgrammaticCommandPermissionError extends Error {
@@ -62,6 +60,11 @@ export interface ProgrammaticCommandDefinition {
 	description: string
 	/** Default admin UI category used when bootstrapping the database command row. */
 	categoryName?: string
+	/**
+	 * Human-readable access requirements that are enforced in code and should be shown as locked
+	 * entries in the admin UI.
+	 */
+	immutableAccessRequirements?: string[]
 	options?: DiscordSlashCommandDefinition['options']
 	optionAliases?: DiscordCommandOptionAlias[]
 	/**
@@ -94,5 +97,26 @@ export function ephemeralCommandResponse(content: string): ProgrammaticCommandRe
 	return {
 		type: 4,
 		data: { content, flags: DISCORD_EPHEMERAL_FLAG },
+	}
+}
+
+export function ephemeralCommandResponseWithComponents(
+	content: string,
+	components: DiscordActionRow[]
+): ProgrammaticCommandResponse {
+	return {
+		type: 4,
+		data: { content, flags: DISCORD_EPHEMERAL_FLAG, components },
+	}
+}
+
+export function modalCommandResponse(
+	title: string,
+	customId: string,
+	components: DiscordModalLabelComponent[]
+): ProgrammaticCommandResponse {
+	return {
+		type: 9,
+		data: { custom_id: customId, title, components },
 	}
 }

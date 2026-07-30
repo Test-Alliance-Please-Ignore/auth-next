@@ -1,8 +1,8 @@
 import type {
 	CommandEnv,
-	DiscordInteractionResponse,
 	ExecuteDiscordSlashCommandInput,
 } from './discord-commands.service'
+import type { DiscordInteractionResponse } from '@repo/discord'
 
 export type DiscordCommandSource = 'database-static-response' | 'programmatic'
 

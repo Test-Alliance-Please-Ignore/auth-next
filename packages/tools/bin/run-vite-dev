@@ -11,4 +11,8 @@ if [ -f "$REPO_ROOT/.env" ]; then
 	set +a
 fi
 
+# Expose the sourced root environment to the local Cloudflare Worker runtime. This is safe for
+# local-only dev because all module .dev.vars files are intentionally absent.
+export CLOUDFLARE_INCLUDE_PROCESS_ENV=true
+
 exec vite dev

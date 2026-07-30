@@ -182,6 +182,7 @@ export function buildDiscordWebhookMessagePayload(
 export const DISCORD_COMPONENT_TYPE = {
 	ACTION_ROW: 1,
 	BUTTON: 2,
+	STRING_SELECT: 3,
 } as const
 
 export const DISCORD_BUTTON_STYLE = {
@@ -207,9 +208,68 @@ export interface DiscordButtonComponent {
 	emoji?: { id?: string; name?: string }
 }
 
+export interface DiscordSelectOption {
+	label: string
+	value: string
+	description?: string
+	default?: boolean
+	emoji?: { id?: string; name?: string }
+}
+
+export interface DiscordStringSelectComponent {
+	type: 3
+	custom_id: string
+	options: DiscordSelectOption[]
+	placeholder?: string
+	min_values?: number
+	max_values?: number
+	disabled?: boolean
+}
+
+export interface DiscordUserSelectComponent {
+	type: 5
+	custom_id: string
+	placeholder?: string
+	min_values?: number
+	max_values?: number
+	required?: boolean
+	disabled?: boolean
+}
+
+export interface DiscordTextInputComponent {
+	type: 4
+	custom_id: string
+	style: 1 | 2
+	label?: string
+	required?: boolean
+	min_length?: number
+	max_length?: number
+	placeholder?: string
+	value?: string
+}
+
+export interface DiscordModalLabelComponent {
+	type: 18
+	label: string
+	description?: string
+	component: DiscordStringSelectComponent | DiscordUserSelectComponent | DiscordTextInputComponent
+}
+
 export interface DiscordActionRow {
 	type: 1
-	components: DiscordButtonComponent[]
+	components: Array<DiscordButtonComponent | DiscordStringSelectComponent>
+}
+
+export interface DiscordInteractionResponse {
+	type: number
+	data?: {
+		content?: string
+		flags?: number
+		embeds?: DiscordEmbed[]
+		components?: DiscordActionRow[] | DiscordModalLabelComponent[]
+		custom_id?: string
+		title?: string
+	}
 }
 
 /**
@@ -731,7 +791,11 @@ export interface Discord {
 	 */
 	editOriginalInteractionResponse(
 		interactionToken: string,
-		message: { content: string; embeds?: DiscordEmbed[] }
+		message: {
+			content: string
+			embeds?: DiscordEmbed[]
+			components?: DiscordActionRow[]
+		}
 	): Promise<{ success: boolean; error?: string }>
 
 	/**

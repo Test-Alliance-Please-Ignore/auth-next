@@ -164,6 +164,26 @@ describe('temporary role cleanup source resolution', () => {
 		expect(result.activeRoleIdsByGuild.get('guild-1')).toEqual(['role-1'])
 		expect(result.cleanupRoleIdsByGuild.has('guild-1')).toBe(false)
 	})
+
+	it('loads configured role IDs when the assignment source is unavailable', async () => {
+		temporaryAssignmentsStub.listActiveAssignments.mockRejectedValue(new Error('DO unavailable'))
+		dbQueryMocks.discordRoles.findMany.mockResolvedValue([
+			{ roleId: 'temporary-role-1', discordServer: { guildId: 'guild-1', isActive: true } },
+		])
+
+		const result = await getTemporaryRoleIdsByGuild(
+			mockDb as any,
+			mockEnv,
+			['guild-1'],
+			'user-1'
+		)
+
+		expect(result.failedGuildIds).toContain('guild-1')
+		expect(result.configuredRoleIdsByGuild.get('guild-1')).toEqual(
+			new Set(['temporary-role-1'])
+		)
+		expect(result.preserveAllCurrentRolesGuildIds).not.toContain('guild-1')
+	})
 })
 
 const mockedGetStub = vi.mocked(getStub)

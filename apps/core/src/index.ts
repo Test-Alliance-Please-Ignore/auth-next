@@ -35,7 +35,7 @@ import broadcastsRoutes from './routes/broadcasts'
 import charactersRoutes from './routes/characters'
 import corporationTaxRoutes from './routes/corporation-tax'
 import corporationsRoutes from './routes/corporations'
-import discordRoutes from './routes/discord'
+import discordRoutes, { isDiscordInteractionDevProxyPath } from './routes/discord'
 import discordCommandsRoutes from './routes/discord-commands'
 import discordServersRoutes from './routes/discord-servers'
 import dkpRoutes from './routes/dkp'
@@ -96,6 +96,7 @@ import type {
 	UserDetails,
 } from '@repo/admin'
 import type { Core } from '@repo/core'
+import type { DiscordInteractionResponse } from '@repo/discord'
 import type { Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
 import type { App, Env } from './context'
@@ -108,6 +109,7 @@ import type {
 	ExecuteModalSubmitInput,
 } from './services/discord-components.service'
 
+const csrf = csrfProtection()
 const app = new Hono<App>()
 	.use(
 		'*',
@@ -126,11 +128,20 @@ const app = new Hono<App>()
 		return await next()
 	})
 
+	// Discord interaction dev proxy requests are webhook-style POSTs and must bypass CSRF.
+	.use('/api/*', async (c, next) => {
+		if (
+			c.env.ENVIRONMENT === 'development' &&
+			c.req.method.toUpperCase() === 'POST' &&
+			isDiscordInteractionDevProxyPath(new URL(c.req.url).pathname)
+		) {
+			return await next()
+		}
+		return await csrf(c, next)
+	})
+
 	// Session middleware - loads user into context if authenticated
 	.use('*', sessionMiddleware())
-
-	// CSRF protection - requires X-Requested-With header on state-changing API requests
-	.use('/api/*', csrfProtection())
 
 	.onError(withOnError())
 	.notFound(withNotFound())
@@ -284,7 +295,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		waitUntilWithTelemetry(
 			ctx,
 			'core.command-registry-warm',
-			() => ensureDiscordCommandRegistryLoaded(db),
+			() => ensureDiscordCommandRegistryLoaded(db, env),
 			{}
 		)
 	}
@@ -963,14 +974,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	 */
 	async executeDiscordSlashCommand(input: ExecuteDiscordSlashCommandInput): Promise<{
 		ok: boolean
-		response: {
-			type: number
-			data?: {
-				content: string
-				flags?: number
-				embeds?: unknown[]
-			}
-		}
+		response: DiscordInteractionResponse
 		coreUserId: string | null
 		authorized: boolean
 		commandId?: string
@@ -994,7 +998,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	 */
 	async executeDiscordModalSubmit(input: ExecuteModalSubmitInput): Promise<{
 		ok: boolean
-		response: { type: number; data?: { content: string; flags?: number; embeds?: unknown[] } }
+		response: DiscordInteractionResponse
 		coreUserId: string | null
 		reason: string
 	}> {
@@ -1032,7 +1036,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	 */
 	async executeDiscordComponent(input: ExecuteComponentInput): Promise<{
 		ok: boolean
-		response: { type: number; data?: { content: string; flags?: number; embeds?: unknown[] } }
+		response: DiscordInteractionResponse
 		coreUserId: string | null
 		reason: string
 	}> {

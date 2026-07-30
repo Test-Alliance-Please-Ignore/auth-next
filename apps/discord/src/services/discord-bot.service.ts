@@ -53,12 +53,22 @@ function getDiscordProxyUrl(env: Env): string | null {
 	const password = env.DISCORD_PROXY_PASSWORD?.trim()
 	const portStart = Number(env.DISCORD_PROXY_PORT_START)
 	const portCount = Number(env.DISCORD_PROXY_PORT_COUNT)
+	const hasAnyProxyConfig =
+		Boolean(host) ||
+		Boolean(username) ||
+		Boolean(password) ||
+		Boolean(env.DISCORD_PROXY_PORT_START?.trim()) ||
+		Boolean(env.DISCORD_PROXY_PORT_COUNT?.trim())
 
 	const hasValidPortRange =
 		Number.isInteger(portStart) && Number.isInteger(portCount) && portCount > 0
 	const hasCredentials = Boolean(host && username && password)
 
 	if (!hasValidPortRange || !hasCredentials) {
+		if (!hasAnyProxyConfig) {
+			return null
+		}
+
 		logger.warn(
 			'[DiscordBotService] Proxy config invalid or incomplete, using direct Discord API',
 			{

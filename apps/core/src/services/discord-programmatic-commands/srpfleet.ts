@@ -58,6 +58,7 @@ export const SRPFLEET_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition = {
 	name: 'srpfleet',
 	description: 'Show SRP fleet details for a fleet broadcast token.',
 	categoryName: 'SRP',
+	immutableAccessRequirements: ['SRP reviewer', 'SRP payer', 'SRP manager'],
 	deferral: 'defer-ephemeral',
 	options: [
 		{

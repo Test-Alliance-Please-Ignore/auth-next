@@ -6,6 +6,7 @@ import {
 	discordCommandCategories,
 	discordCommandPermissions,
 	discordCommands,
+	discordServerCommands,
 	users,
 } from '../db/schema'
 import { getCachedUserPermissions } from '../lib/groups-cache'
@@ -18,12 +19,16 @@ import {
 	PROGRAMMATIC_COMMAND_DEFINITIONS,
 	programmaticCommandDefinitionByName,
 } from './discord-programmatic-commands'
+import { ProgrammaticCommandPermissionError } from './discord-programmatic-commands/types'
 
-import type { Discord, DiscordEmbed, DiscordSlashCommandDefinition } from '@repo/discord'
+import type {
+	Discord,
+	DiscordInteractionResponse,
+	DiscordSlashCommandDefinition,
+} from '@repo/discord'
 import type { Env } from '../context'
 import type { createDb } from '../db'
 import type { DiscordCommandOptionAlias } from './discord-command-registry.service'
-import { ProgrammaticCommandPermissionError } from './discord-programmatic-commands/types'
 import type { DeferralMode } from './discord-programmatic-commands'
 
 const DISCORD_EPHEMERAL_FLAG = 1 << 6
@@ -49,15 +54,6 @@ const staticRegistryState: StaticRegistryState = {
 	loadingPromise: null,
 }
 
-export interface DiscordInteractionResponse {
-	type: number
-	data?: {
-		content: string
-		flags?: number
-		embeds?: DiscordEmbed[]
-	}
-}
-
 export interface DiscordInteractionOption {
 	name: string
 	value?: unknown
@@ -70,6 +66,8 @@ export interface ExecuteDiscordSlashCommandInput {
 	discordUserId: string
 	guildId?: string | null
 	channelId?: string | null
+	/** Discord member role ids from the interaction payload, if available. */
+	memberRoleIds?: string[]
 	options?: DiscordInteractionOption[]
 	/** Discord interaction id; passed through to handlers as an idempotency key. */
 	interactionId?: string | null
@@ -210,17 +208,61 @@ async function getEffectivePermissionIdSet(env: CommandEnv, userId: string): Pro
 	)
 }
 
-async function ensureProgrammaticCommandRows(db: ReturnType<typeof createDb>): Promise<void> {
-	const names = PROGRAMMATIC_COMMAND_DEFINITIONS.map((definition) => definition.name)
-	if (names.length === 0) {
+export function invalidateDiscordCommandRegistryCache(): void {
+	staticRegistryState.initialized = false
+	staticRegistryState.lastLoadedAtMs = 0
+}
+
+async function ensureProgrammaticCommandRows(
+	db: ReturnType<typeof createDb>,
+	env: Pick<Env, 'DISCORD'>
+): Promise<void> {
+	const registryDefinitions = PROGRAMMATIC_COMMAND_DEFINITIONS
+	const registryNames = new Set(registryDefinitions.map((definition) => definition.name))
+
+	const programmaticRows = await db.query.discordCommands.findMany({
+		where: eq(discordCommands.commandType, 'programmatic'),
+		with: {
+			serverAttachments: {
+				with: {
+					discordServer: true,
+				},
+			},
+		},
+	})
+
+	const staleRows = programmaticRows.filter((row) => !registryNames.has(row.name))
+	for (const staleRow of staleRows) {
+		let allRemoteDeletionsSucceeded = true
+		for (const attachment of staleRow.serverAttachments) {
+			const deleteResult = await deleteGuildSlashCommand(env, attachment.discordServer.guildId, {
+				commandId: attachment.discordCommandId ?? undefined,
+				commandName: staleRow.name,
+			})
+			if (!deleteResult.success) {
+				allRemoteDeletionsSucceeded = false
+				logger.warn('[DiscordCommands] Failed to delete retired programmatic guild command', {
+					commandId: staleRow.id,
+					commandName: staleRow.name,
+					guildId: attachment.discordServer.guildId,
+					error: deleteResult.error,
+				})
+			}
+		}
+		if (allRemoteDeletionsSucceeded) {
+			await db.delete(discordCommands).where(eq(discordCommands.id, staleRow.id))
+		}
+	}
+
+	if (registryDefinitions.length === 0) {
 		return
 	}
 
 	const categoryNames = [
 		...new Set(
-			PROGRAMMATIC_COMMAND_DEFINITIONS.map((definition) => definition.categoryName).filter(
-				(categoryName): categoryName is string => Boolean(categoryName)
-			)
+			registryDefinitions
+				.map((definition) => definition.categoryName)
+				.filter((categoryName): categoryName is string => Boolean(categoryName))
 		),
 	]
 	if (categoryNames.length > 0) {
@@ -250,51 +292,99 @@ async function ensureProgrammaticCommandRows(db: ReturnType<typeof createDb>): P
 	const categoryIdByName = new Map(categories.map((category) => [category.name, category.id]))
 
 	const existingCommands = await db.query.discordCommands.findMany({
-		where: inArray(discordCommands.name, names),
+		where: inArray(
+			discordCommands.name,
+			registryDefinitions.map((definition) => definition.name)
+		),
 		columns: {
+			id: true,
 			name: true,
 			commandType: true,
 			categoryId: true,
+			description: true,
+			responseTemplate: true,
+		},
+		with: {
+			serverAttachments: {
+				with: {
+					discordServer: { columns: { guildId: true } },
+				},
+			},
 		},
 	})
 	const existingByName = new Map(existingCommands.map((command) => [command.name, command]))
 
-	const missingProgrammaticRows = PROGRAMMATIC_COMMAND_DEFINITIONS.filter(
-		(definition) => !existingByName.has(definition.name)
-	).map((definition) => ({
-		name: definition.name,
-		description: definition.description,
-		commandType: 'programmatic' as const,
-		responseTemplate: null,
-		isActive: true,
-		categoryId: definition.categoryName
-			? (categoryIdByName.get(definition.categoryName) ?? null)
-			: null,
-	}))
+	const missingProgrammaticRows = registryDefinitions
+		.filter((definition) => !existingByName.has(definition.name))
+		.map((definition) => ({
+			name: definition.name,
+			description: definition.description,
+			commandType: 'programmatic' as const,
+			responseTemplate: null,
+			isActive: true,
+			categoryId: definition.categoryName
+				? (categoryIdByName.get(definition.categoryName) ?? null)
+				: null,
+		}))
 
-	for (const definition of PROGRAMMATIC_COMMAND_DEFINITIONS) {
+	for (const definition of registryDefinitions) {
 		const existing = existingByName.get(definition.name)
 		const categoryId = definition.categoryName
 			? categoryIdByName.get(definition.categoryName)
 			: undefined
-		if (existing && categoryId && existing.categoryId !== categoryId) {
-			await db
-				.update(discordCommands)
-				.set({ categoryId, updatedAt: new Date() })
-				.where(eq(discordCommands.name, definition.name))
-		}
-	}
-
-	for (const definition of PROGRAMMATIC_COMMAND_DEFINITIONS) {
-		const existing = existingByName.get(definition.name)
-		if (existing && existing.commandType !== 'programmatic') {
-			logger.warn(
-				'[DiscordCommands] Programmatic command name conflicts with non-programmatic row',
-				{
-					commandName: definition.name,
-					existingType: existing.commandType,
+		if (existing) {
+			const updates: Record<string, unknown> = {}
+			if (categoryId !== undefined && existing.categoryId !== categoryId) {
+				updates.categoryId = categoryId
+			}
+			if (existing.description !== definition.description) {
+				updates.description = definition.description
+			}
+			if (existing.commandType !== 'programmatic') {
+				logger.error(
+					'[DiscordCommands] Disabling command name conflict with programmatic registry',
+					{
+						commandName: definition.name,
+						commandId: existing.id,
+						existingType: existing.commandType,
+					}
+				)
+				let allRemoteDeletionsSucceeded = true
+				for (const attachment of existing.serverAttachments) {
+					const deleteResult = await deleteGuildSlashCommand(
+						env,
+						attachment.discordServer.guildId,
+						{
+							commandId: attachment.discordCommandId ?? undefined,
+							commandName: definition.name,
+						}
+					)
+					if (!deleteResult.success) {
+						allRemoteDeletionsSucceeded = false
+						logger.warn('[DiscordCommands] Failed to remove conflicting guild command', {
+							commandName: definition.name,
+							guildId: attachment.discordServer.guildId,
+							error: deleteResult.error,
+						})
+					}
 				}
-			)
+				if (allRemoteDeletionsSucceeded) {
+					await db
+						.delete(discordServerCommands)
+						.where(eq(discordServerCommands.commandId, existing.id))
+				}
+				await db
+					.update(discordCommands)
+					.set({ isActive: false, updatedAt: new Date() })
+					.where(eq(discordCommands.id, existing.id))
+				continue
+			}
+			if (Object.keys(updates).length > 0) {
+				await db
+					.update(discordCommands)
+					.set({ ...updates, updatedAt: new Date() })
+					.where(eq(discordCommands.name, definition.name))
+			}
 		}
 	}
 
@@ -303,8 +393,11 @@ async function ensureProgrammaticCommandRows(db: ReturnType<typeof createDb>): P
 	}
 }
 
-async function loadConfiguredCommandsIntoRegistry(db: ReturnType<typeof createDb>): Promise<void> {
-	await ensureProgrammaticCommandRows(db)
+async function loadConfiguredCommandsIntoRegistry(
+	db: ReturnType<typeof createDb>,
+	env: Pick<Env, 'DISCORD'>
+): Promise<void> {
+	await ensureProgrammaticCommandRows(db, env)
 
 	const activeCommands = await db.query.discordCommands.findMany({
 		where: eq(discordCommands.isActive, true),
@@ -414,6 +507,7 @@ async function loadConfiguredCommandsIntoRegistry(db: ReturnType<typeof createDb
 
 export async function ensureDiscordCommandRegistryLoaded(
 	db: ReturnType<typeof createDb>,
+	env: Pick<Env, 'DISCORD'>,
 	options?: { force?: boolean }
 ): Promise<void> {
 	const force = options?.force ?? false
@@ -436,7 +530,7 @@ export async function ensureDiscordCommandRegistryLoaded(
 		}
 	}
 
-	staticRegistryState.loadingPromise = loadConfiguredCommandsIntoRegistry(db)
+	staticRegistryState.loadingPromise = loadConfiguredCommandsIntoRegistry(db, env)
 	try {
 		await staticRegistryState.loadingPromise
 	} finally {
@@ -445,9 +539,10 @@ export async function ensureDiscordCommandRegistryLoaded(
 }
 
 export async function refreshDiscordCommandRegistry(
-	db: ReturnType<typeof createDb>
+	db: ReturnType<typeof createDb>,
+	env: Pick<Env, 'DISCORD'>
 ): Promise<void> {
-	await ensureDiscordCommandRegistryLoaded(db, { force: true })
+	await ensureDiscordCommandRegistryLoaded(db, env, { force: true })
 }
 
 export function resetDiscordCommandRegistryCacheForTests(): void {
@@ -493,7 +588,7 @@ export async function executeDiscordSlashCommand(
 	}
 
 	try {
-		await ensureDiscordCommandRegistryLoaded(db)
+		await ensureDiscordCommandRegistryLoaded(db, env)
 	} catch (error) {
 		logger.error('[DiscordCommands] Failed to initialize command registry', {
 			commandName,
@@ -510,7 +605,7 @@ export async function executeDiscordSlashCommand(
 	let registeredCommand = getRegisteredDiscordCommand(commandName)
 	if (!registeredCommand) {
 		try {
-			await refreshDiscordCommandRegistry(db)
+			await refreshDiscordCommandRegistry(db, env)
 		} catch (error) {
 			logger.error('[DiscordCommands] Failed to refresh command registry after miss', {
 				commandName,
@@ -535,12 +630,21 @@ export async function executeDiscordSlashCommand(
 		}
 	}
 
-	if (!input.guildId || !registeredCommand.access.guildIds.includes(input.guildId)) {
+	const guildId = input.guildId ?? null
+	const isCommandAllowedForGuild = (command: typeof registeredCommand | null): boolean =>
+		Boolean(command && guildId && command.access.guildIds.includes(guildId))
+
+	if (!isCommandAllowedForGuild(registeredCommand)) {
+		await refreshDiscordCommandRegistry(db, env)
+		registeredCommand = getRegisteredDiscordCommand(commandName)
+	}
+
+	if (!registeredCommand || !isCommandAllowedForGuild(registeredCommand)) {
 		return {
 			response: ephemeralResponse('This command is not enabled for this server.'),
 			coreUserId: user.id,
 			authorized: false,
-			commandId: registeredCommand.commandId,
+			commandId: registeredCommand?.commandId,
 			reason: 'guild-not-allowed',
 		}
 	}
@@ -578,6 +682,13 @@ export async function executeDiscordSlashCommand(
 			optionValues,
 			env,
 			interactionId: normalizedInput.interactionId ?? null,
+		})
+
+		logger.debug('[DiscordCommands] Registered command response prepared', {
+			commandName,
+			commandId: registeredCommand.commandId,
+			coreUserId: user.id,
+			responsePayload: interactionResponse,
 		})
 
 		return {

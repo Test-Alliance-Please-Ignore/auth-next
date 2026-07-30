@@ -11,6 +11,8 @@ if [ -f "$REPO_ROOT/.env" ]; then
 	set +a
 fi
 
+export CLOUDFLARE_INCLUDE_PROCESS_ENV=true
+
 NAME=$(jq -r '.name' package.json)
 
 if [ ! -f "wrangler.local.jsonc" ]; then

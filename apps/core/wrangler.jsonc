@@ -207,6 +207,10 @@
 			"service": "admin"
 		},
 		{
+			"binding": "DISCORD_HTTP",
+			"service": "discord"
+		},
+		{
 			"binding": "STRUCTURES",
 			"service": "structures",
 			"entrypoint": "StructuresWorkerEntrypoint"

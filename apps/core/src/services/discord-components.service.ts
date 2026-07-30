@@ -13,9 +13,17 @@
 
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { getDiscordStub } from '@repo/discord'
 import { captureException, logger } from '@repo/hono-helpers'
 
 import { users } from '../db/schema'
+import { TEMPORARY_ROLE_INTERACTION_REPLAY_ERROR } from '../temporary-role-assignments-do'
+import {
+	assignTemporaryRole,
+	findCommandRoleById,
+	hasAllianceMemberRole,
+	removeTemporaryRole,
+} from './discord-temporary-roles.service'
 import {
 	BET_AMOUNT_INPUT_ID,
 	customIdAction,
@@ -38,23 +46,54 @@ import {
 	updateMarketPostFromDetail,
 } from './discord-market-post.service'
 
-import type { Discord, DiscordEmbed } from '@repo/discord'
+import type { Discord, DiscordActionRow, DiscordEmbed } from '@repo/discord'
 import type { PredictionMarkets } from '@repo/prediction-markets'
 import type { Env } from '../context'
 import type { createDb } from '../db'
+import type { TemporaryRoleAssignments } from '../temporary-role-assignments-do'
 
 const EPHEMERAL_FLAG = 1 << 6
 const NOT_LINKED = 'Your Discord account is not linked to a core user. Link it in the app first.'
 const RESOLVER_ONLY = 'Resolver only — you don’t have permission for this action.'
 
+function temporaryRoleFailureMessage(
+	error: unknown,
+	context: { guildId: string | null | undefined; discordUserId: string; roleValue: string }
+): string {
+	const message = error instanceof Error ? error.message : String(error)
+	logger.error('[DiscordComponents] Temporary role action failed', {
+		...context,
+		error: message,
+		stack: error instanceof Error ? error.stack : undefined,
+	})
+
+	if (message.includes('not a member of this server')) {
+		return 'That Discord user is no longer a member of this server.'
+	}
+	if (message.includes('no longer self-assignable')) {
+		return 'That role is no longer available for self-assignment.'
+	}
+	if (message === TEMPORARY_ROLE_INTERACTION_REPLAY_ERROR) {
+		return 'That role action has already failed. Please run the command again.'
+	}
+	return 'Discord could not update that role. Check that the bot can manage it, then try again.'
+}
+
 /** Bindings the component/modal path needs (money DO, Discord DO, groups for the tier gate). */
 export type ComponentEnv = Pick<
 	Env,
-	'DISCORD' | 'PREDICTION_MARKETS' | 'GROUPS' | 'PM_FORUM_GUILD_ID'
+	| 'DISCORD'
+	| 'PREDICTION_MARKETS'
+	| 'GROUPS'
+	| 'PM_FORUM_GUILD_ID'
+	| 'TEMPORARY_ROLE_ASSIGNMENTS'
 >
 
 export interface DiscordComponentResult {
-	response: { type: number; data: { content: string; flags?: number; embeds?: DiscordEmbed[] } }
+	response: {
+		type: number
+		data: { content: string; flags?: number; embeds?: DiscordEmbed[]; components?: DiscordActionRow[] }
+	}
 	coreUserId: string | null
 	reason: string
 	/**
@@ -73,11 +112,19 @@ export interface ExecuteComponentInput {
 	interactionId?: string | null
 	guildId?: string | null
 	channelId?: string | null
+	/** Discord member role ids from the interaction payload, if available. */
+	memberRoleIds?: string[]
+	/** Selected values from a Discord select component. */
+	values?: string[]
+	/** Selected values keyed by custom_id when a component payload carries multiple selects. */
+	selectValues?: Record<string, string[]>
 }
 
 export interface ExecuteModalSubmitInput extends ExecuteComponentInput {
 	/** Modal text-input values keyed by their custom_id. */
 	fields: Record<string, string>
+	/** Modal select values keyed by their custom_id. */
+	selectValues?: Record<string, string[]>
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -120,6 +167,136 @@ function ephemeral(
 		reason,
 		...(background ? { background } : {}),
 	}
+}
+
+function parseTemporaryRoleMode(customId: string): 'join' | 'leave' | null {
+	const [prefix, mode] = customId.split(':')
+	if (prefix !== 'tmp-role') return null
+	if (mode !== 'join' && mode !== 'leave') return null
+	return mode
+}
+
+function firstSelectedValue(
+	selectValues: Record<string, string[]> | undefined,
+	prefix: string
+): string | null {
+	if (!selectValues) return null
+	for (const [customId, values] of Object.entries(selectValues)) {
+		if (!customId.startsWith(prefix)) continue
+		const value = values[0]
+		if (value) return value
+	}
+	return null
+}
+
+async function handleTemporaryRoleSelection(
+	db: ReturnType<typeof createDb>,
+	env: ComponentEnv,
+	guildId: string | null | undefined,
+	discordUserId: string,
+	mode: 'join' | 'leave',
+	roleValue: string | null,
+	selectValues: Record<string, string[]> | undefined,
+	interactionId?: string | null
+): Promise<DiscordComponentResult> {
+	if (!guildId) return ephemeral('This action can only be used in a Discord server.', 'no-guild')
+	const user = await resolveUser(db, discordUserId)
+	if (!user) return ephemeral(NOT_LINKED, 'not-linked')
+	if (!user.is_admin && !(await hasAllianceMemberRole(env, user.id))) {
+		return ephemeral('You need alliance member permission to use this command.', 'permission', user.id)
+	}
+	const selectedRoleValue =
+		roleValue ?? firstSelectedValue(selectValues, `tmp-role:${mode}:role`) ?? null
+	if (!selectedRoleValue) {
+		return ephemeral('Choose one role and try again.', 'invalid-selection', user.id)
+	}
+
+	try {
+		const role = await findCommandRoleById(db, guildId, selectedRoleValue, true)
+		const assignmentStub = getStub<TemporaryRoleAssignments>(
+			env.TEMPORARY_ROLE_ASSIGNMENTS,
+			guildId
+		)
+		const assignments = await assignmentStub.listActiveAssignments(guildId, discordUserId)
+		const memberRoleIds = (
+			await getDiscordStub(env).getGuildMemberByDiscordUserId(guildId, discordUserId)
+		).roleIds
+		const isAssigned = memberRoleIds.includes(role.roleId)
+		const isSelfAssigned = assignments.some(
+			(assignment) => assignment.roleId === role.roleId && assignment.assignmentSource === 'self'
+		)
+		if (mode === 'join') {
+			if (isAssigned) {
+				return ephemeral(`You already have **${role.displayName}**.`, 'already-assigned', user.id)
+			}
+			const assignment = await assignTemporaryRole(env, db, {
+				guildId,
+				discordUserId,
+				coreUserId: user.id,
+				role,
+				defaultDurationSeconds: role.defaultDurationSeconds,
+				assignedByCoreUserId: user.id,
+				assignmentSource: 'self',
+				interactionId: interactionId ?? null,
+			})
+			return ephemeral(
+				`Joined **${role.displayName}** ${assignment.expiresAt === null ? 'forever' : `until <t:${Math.floor(assignment.expiresAt / 1000)}:F>`}.`,
+				'ok',
+				user.id
+			)
+		}
+		if (!isAssigned || !isSelfAssigned) {
+			return ephemeral(
+				`You do not currently have **${role.displayName}** self-assigned.`,
+				'not-assigned',
+				user.id
+			)
+		}
+		const removed = await removeTemporaryRole(env, db, {
+			guildId,
+			discordUserId,
+			coreUserId: user.id,
+			role,
+			reason: 'part',
+			onlySelf: true,
+		})
+		return ephemeral(
+			removed ? `Left **${role.displayName}**.` : `You do not currently have **${role.displayName}**.`,
+			'ok',
+			user.id
+		)
+	} catch (error) {
+		return ephemeral(
+			temporaryRoleFailureMessage(error, {
+				guildId,
+				discordUserId,
+				roleValue: selectedRoleValue,
+			}),
+			'role-error',
+			user.id
+		)
+	}
+}
+
+async function executeTemporaryRoleComponent(
+	db: ReturnType<typeof createDb>,
+	env: ComponentEnv,
+	input: ExecuteComponentInput
+): Promise<DiscordComponentResult> {
+	const [, action] = input.customId.split(':')
+	if (action !== 'join' && action !== 'leave') {
+		return ephemeral('This role action is not available.', 'invalid-component')
+	}
+	return handleTemporaryRoleSelection(
+		db,
+		env,
+		input.guildId,
+		input.discordUserId,
+		action,
+		input.values?.[0] ?? null,
+		input.selectValues,
+		input.interactionId
+	)
 }
 
 /** Pull the underlying driver error off a Drizzle "Failed query: …" wrapper (the real cause). */
@@ -318,6 +495,9 @@ export async function executeDiscordComponent(
 	env: ComponentEnv,
 	input: ExecuteComponentInput
 ): Promise<DiscordComponentResult> {
+	if (input.customId.startsWith('tmp-role:')) {
+		return executeTemporaryRoleComponent(db, env, input)
+	}
 	const decoded = decodeMarketAction(input.customId)
 	if (!decoded || (decoded.action !== 'close' && decoded.action !== 'approve')) {
 		return ephemeral('This action is not available.', 'invalid-component')
@@ -373,6 +553,20 @@ export async function executeDiscordModalSubmit(
 	env: ComponentEnv,
 	input: ExecuteModalSubmitInput
 ): Promise<DiscordComponentResult> {
+	if (input.customId.startsWith('tmp-role:join') || input.customId.startsWith('tmp-role:leave')) {
+		return handleTemporaryRoleSelection(
+			db,
+			env,
+			input.guildId,
+			input.discordUserId,
+			parseTemporaryRoleMode(input.customId) ?? 'join',
+			firstSelectedValue(input.selectValues, `tmp-role:${parseTemporaryRoleMode(input.customId) ?? 'join'}:role`) ??
+				input.values?.[0] ??
+				null,
+			input.selectValues,
+			input.interactionId
+		)
+	}
 	switch (customIdAction(input.customId)) {
 		case 'betmodal':
 			return handleBetModal(db, env, input)

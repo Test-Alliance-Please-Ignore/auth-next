@@ -32,6 +32,8 @@ export type Env = SharedHonoEnv & {
 	GROUPS: DurableObjectNamespace
 	/** Discord Durable Object binding */
 	DISCORD: DurableObjectNamespace
+	/** Discord worker service binding for local development proxying */
+	DISCORD_HTTP?: Fetcher
 	/** Per-guild temporary Discord role assignment Durable Objects */
 	TEMPORARY_ROLE_ASSIGNMENTS: DurableObjectNamespace
 	/** Bills Durable Object binding */
@@ -110,6 +112,8 @@ export type Env = SharedHonoEnv & {
 	MUMBLE_HOST: string
 	/** Mumble server port shown to users for connecting */
 	MUMBLE_PORT: string
+	/** Discord application public key used to verify interaction signatures */
+	DISCORD_PUBLIC_KEY?: string
 	/** Legacy Auth OAuth Client ID (set as Wrangler secret) */
 	LEGACY_AUTH_CLIENT_ID: string
 	/** Legacy Auth OAuth Client Secret (set as Wrangler secret) */
