@@ -332,4 +332,58 @@ describe('structure permission gating', () => {
 			}),
 		])
 	})
+
+	it('serializes reinforced skyhook timestamps returned as strings', async () => {
+		const reinforcementTimerEnd = '2026-01-01T06:00:00.000Z'
+		const db = makeDb({
+			structure: {
+				structureId: 'skyhook-1',
+				corporationId: 'corp-1',
+				name: 'Skyhook One',
+				typeId: '81080',
+				typeName: 'Orbital Skyhook',
+				systemId: '30000142',
+				systemName: 'Jita',
+				regionId: '10000002',
+				regionName: 'The Forge',
+				state: 'reinforced',
+				nextReinforceApply: null,
+				stateTimerEnd: null,
+				unanchorsAt: null,
+				fuelExpires: null,
+				fuelAmount: null,
+				fuelBurnRate: null,
+				lowPower: false,
+				syncStatus: 'ok',
+				syncFailureReason: null,
+				lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
+				updatedAt: new Date('2026-01-01T00:00:00Z'),
+			},
+			skyhook: {
+				structureId: 'skyhook-1',
+				corporationId: 'corp-1',
+				state: 'reinforced',
+				isActive: true,
+				reinforcementTimerEnd,
+			},
+		})
+		const env = {
+			UNIVERSE: {} as never,
+			EVE_CORPORATION_DATA: {} as never,
+		}
+
+		const result = await getStructureDetail(
+			env as never,
+			db as never,
+			{
+				id: 'user-details',
+				is_admin: false,
+				roles: ['urn:structures:all:details'],
+			},
+			'skyhook-1'
+		)
+
+		expect(result?.skyhook?.state).toBe('reinforced')
+		expect(result?.skyhook?.reinforcementTimerEnd).toBe(reinforcementTimerEnd)
+	})
 })
