@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
 import { ROLE_CORE_CORP_MEMBER } from '@repo/core'
-import { and, asc, desc, eq, ilike, inArray, isNotNull } from '@repo/db-utils'
+import { and, asc, desc, eq, ilike, inArray, isNotNull, sql } from '@repo/db-utils'
 import { DISCORD_EXCLUDED_AUTH_ROLE_IDS, getDiscordStub } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
 import { ResourceType, RoleAttachmentType } from '@repo/groups'
@@ -34,6 +34,8 @@ import type { Groups } from '@repo/groups'
 import type { App } from '../context'
 
 const app = new Hono<App>()
+const MAX_DISCORD_SELECT_LABEL_LENGTH = 100
+const MAX_DISCORD_SELF_ASSIGNABLE_ROLES = 25
 
 function parseConfiguredDiscordDuration(value: unknown): number | null {
 	if (value === null || value === undefined) return null
@@ -537,7 +539,7 @@ app.get('/:id/self-assignable-roles', requireAuth(), requireAdmin(), async (c) =
 	return c.json(
 		configs
 			.filter((config) => config.discordRole.discordServerId === serverId)
-			.sort((a, b) => a.discordRole.roleName.localeCompare(b.discordRole.roleName))
+			.sort((a, b) => a.displayName.localeCompare(b.displayName))
 	)
 })
 
@@ -549,8 +551,16 @@ app.post('/:id/self-assignable-roles', requireAuth(), requireAdmin(), async (c) 
 	if (!user) return c.json({ error: 'Unauthorized' }, 401)
 
 	try {
-		const body = (await c.req.json()) as { discordRoleId?: unknown; defaultDuration?: unknown }
+		const body = (await c.req.json()) as {
+			discordRoleId?: unknown
+			displayName?: unknown
+			defaultDuration?: unknown
+		}
 		const discordRoleId = typeof body.discordRoleId === 'string' ? body.discordRoleId.trim() : ''
+		const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : ''
+		if (displayName.length > MAX_DISCORD_SELECT_LABEL_LENGTH) {
+			return c.json({ error: 'displayName must be 100 characters or fewer' }, 400)
+		}
 		let duration: number | null
 		try {
 			duration = parseConfiguredDiscordDuration(body.defaultDuration)
@@ -561,27 +571,84 @@ app.post('/:id/self-assignable-roles', requireAuth(), requireAdmin(), async (c) 
 
 		const role = await db.query.discordRoles.findFirst({
 			where: and(eq(discordRoles.id, discordRoleId), eq(discordRoles.discordServerId, serverId)),
-			columns: { id: true, isActive: true },
+			columns: { id: true, roleName: true, isActive: true },
 		})
 		if (!role) return c.json({ error: 'Managed Discord role not found for this server' }, 404)
 		if (!role.isActive)
 			return c.json({ error: 'Inactive Discord roles cannot be self-assignable' }, 400)
 
-		const [config] = await db
-			.insert(discordSelfAssignableRoles)
-			.values({
-				discordRoleId: role.id,
-				defaultDurationSeconds: duration,
-				createdBy: user.id,
-			})
-			.onConflictDoUpdate({
-				target: discordSelfAssignableRoles.discordRoleId,
-				set: {
-					defaultDurationSeconds: duration,
-					updatedAt: new Date(),
-				},
-			})
-			.returning()
+		const [, result] = await db.batch([
+			db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${serverId}, 0))`),
+			db.execute<{
+			id: string
+			discord_role_id: string
+			display_name: string
+			default_duration_seconds: number | null
+			created_by: string | null
+			created_at: Date
+			updated_at: Date
+		}>(sql`
+			WITH candidate AS (
+				SELECT
+					${role.id}::uuid AS discord_role_id,
+					${displayName || role.roleName}::text AS display_name,
+					${duration}::integer AS default_duration_seconds,
+					${user.id}::uuid AS created_by
+			), eligible AS (
+				SELECT candidate.*
+				FROM candidate
+				WHERE EXISTS (
+					SELECT 1
+					FROM public.discord_self_assignable_roles
+					WHERE discord_role_id = candidate.discord_role_id
+				)
+				OR (
+					SELECT count(*)
+					FROM public.discord_self_assignable_roles AS self_assignable
+					INNER JOIN public.discord_roles AS managed_role
+						ON managed_role.id = self_assignable.discord_role_id
+					WHERE managed_role.discord_server_id = ${serverId}::uuid
+				) < ${MAX_DISCORD_SELF_ASSIGNABLE_ROLES}
+			)
+			INSERT INTO public.discord_self_assignable_roles (
+				discord_role_id,
+				display_name,
+				default_duration_seconds,
+				created_by
+			)
+			SELECT
+				discord_role_id,
+				display_name,
+				default_duration_seconds,
+				created_by
+			FROM eligible
+			ON CONFLICT (discord_role_id) DO UPDATE SET
+				display_name = EXCLUDED.display_name,
+				default_duration_seconds = EXCLUDED.default_duration_seconds,
+				updated_at = now()
+			RETURNING
+				id,
+				discord_role_id,
+				display_name,
+				default_duration_seconds,
+				created_by,
+				created_at,
+				updated_at
+			`)
+		])
+		const row = result.rows[0]
+		if (!row) {
+			return c.json({ error: 'A Discord server can have at most 25 self-assignable roles' }, 400)
+		}
+		const config = {
+			id: row.id,
+			discordRoleId: row.discord_role_id,
+			displayName: row.display_name,
+			defaultDurationSeconds: row.default_duration_seconds,
+			createdBy: row.created_by,
+			createdAt: row.created_at,
+			updatedAt: row.updated_at,
+		}
 
 		return c.json(config, 201)
 	} catch (error) {
@@ -600,7 +667,11 @@ app.put('/:id/self-assignable-roles/:configId', requireAuth(), requireAdmin(), a
 	if (!db) return c.json({ error: 'Database not available' }, 500)
 
 	try {
-		const body = (await c.req.json()) as { discordRoleId?: unknown; defaultDuration?: unknown }
+		const body = (await c.req.json()) as {
+			discordRoleId?: unknown
+			displayName?: unknown
+			defaultDuration?: unknown
+		}
 		let duration: number | null
 		try {
 			duration = parseConfiguredDiscordDuration(body.defaultDuration)
@@ -618,11 +689,15 @@ app.put('/:id/self-assignable-roles/:configId', requireAuth(), requireAdmin(), a
 
 		const discordRoleId =
 			typeof body.discordRoleId === 'string' ? body.discordRoleId.trim() : undefined
+		const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : undefined
+		if (displayName !== undefined && displayName.length > MAX_DISCORD_SELECT_LABEL_LENGTH) {
+			return c.json({ error: 'displayName must be 100 characters or fewer' }, 400)
+		}
 		let roleId: string | undefined
 		if (discordRoleId) {
 			const role = await db.query.discordRoles.findFirst({
 				where: and(eq(discordRoles.id, discordRoleId), eq(discordRoles.discordServerId, serverId)),
-				columns: { id: true, isActive: true },
+				columns: { id: true, roleName: true, isActive: true },
 			})
 			if (!role) return c.json({ error: 'Managed Discord role not found for this server' }, 404)
 			if (!role.isActive)
@@ -645,11 +720,34 @@ app.put('/:id/self-assignable-roles/:configId', requireAuth(), requireAdmin(), a
 				return c.json({ error: 'This role is already configured as self-assignable' }, 409)
 			}
 		}
+		if (displayName !== undefined && displayName === '') {
+			return c.json({ error: 'displayName must be a non-empty string' }, 400)
+		}
+
+		if (roleId) {
+			const existingConfigs = await db.query.discordSelfAssignableRoles.findMany({
+				with: {
+					discordRole: {
+						columns: {
+							id: true,
+							discordServerId: true,
+						},
+					},
+				},
+			})
+			const serverConfigCount = existingConfigs.filter(
+				(config) => config.id !== configId && config.discordRole.discordServerId === serverId
+			).length
+			if (serverConfigCount >= MAX_DISCORD_SELF_ASSIGNABLE_ROLES) {
+				return c.json({ error: 'A Discord server can have at most 25 self-assignable roles' }, 400)
+			}
+		}
 
 		const [updated] = await db
 			.update(discordSelfAssignableRoles)
 			.set({
 				...(roleId ? { discordRoleId: roleId } : {}),
+				...(displayName !== undefined ? { displayName } : {}),
 				defaultDurationSeconds: duration,
 				updatedAt: new Date(),
 			})
@@ -1424,6 +1522,26 @@ app.post('/:id/resync-commands', requireAuth(), requireAdmin(), async (c) => {
 
 		for (const attachment of attachments) {
 			try {
+				if (!attachment.command.isActive) {
+					const deleted = await deleteGuildSlashCommand(c.env, server.guildId, {
+						commandId: attachment.discordCommandId ?? undefined,
+						commandName: attachment.command.name,
+					})
+					if (!deleted.success) {
+						throw new Error(deleted.error ?? 'Failed to delete inactive command')
+					}
+					await db
+						.update(discordServerCommands)
+						.set({ discordCommandId: null, updatedAt: new Date() })
+						.where(eq(discordServerCommands.id, attachment.id))
+					results.push({
+						attachmentId: attachment.id,
+						commandId: attachment.commandId,
+						commandName: attachment.command.name,
+						success: true,
+					})
+					continue
+				}
 				const registered = await upsertGuildSlashCommand(
 					c.env,
 					server.guildId,

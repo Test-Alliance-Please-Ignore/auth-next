@@ -4,10 +4,7 @@ import { PROGRAMMATIC_COMMAND_DEFINITIONS } from '../discord-programmatic-comman
 import {
 	DISCORD_JOIN_PROGRAMMATIC_COMMAND,
 	DISCORD_LEAVE_PROGRAMMATIC_COMMAND,
-	DISCORD_LIST_ROLES_PROGRAMMATIC_COMMAND,
 	DISCORD_PART_PROGRAMMATIC_COMMAND,
-	DISCORD_SET_PROGRAMMATIC_COMMAND,
-	DISCORD_UNSET_PROGRAMMATIC_COMMAND,
 } from '../discord-programmatic-commands/temporary-roles'
 
 import type {
@@ -17,8 +14,7 @@ import type {
 
 const hoisted = vi.hoisted(() => ({
 	hasAllianceMemberRole: vi.fn(),
-	findCommandRole: vi.fn(),
-	listCommandRoles: vi.fn(),
+	listSelfAssignableRolesForUser: vi.fn(),
 	assignTemporaryRole: vi.fn(),
 	removeTemporaryRole: vi.fn(),
 	createDb: vi.fn(() => ({})),
@@ -26,11 +22,9 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock('../discord-temporary-roles.service', () => ({
 	hasAllianceMemberRole: hoisted.hasAllianceMemberRole,
-	findCommandRole: hoisted.findCommandRole,
-	listCommandRoles: hoisted.listCommandRoles,
+	listSelfAssignableRolesForUser: hoisted.listSelfAssignableRolesForUser,
 	assignTemporaryRole: hoisted.assignTemporaryRole,
 	removeTemporaryRole: hoisted.removeTemporaryRole,
-	DEFAULT_TEMPORARY_ADMIN_SET_DURATION_SECONDS: 86400,
 }))
 
 vi.mock('../../db', () => ({ createDb: hoisted.createDb }))
@@ -39,6 +33,7 @@ const role = {
 	roleDbId: 'role-db-1',
 	roleId: 'role-1',
 	roleName: 'Fleet Member',
+	displayName: 'Fleet Member',
 	defaultDurationSeconds: 3600,
 }
 
@@ -68,8 +63,7 @@ describe('temporary role programmatic commands', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		hoisted.hasAllianceMemberRole.mockResolvedValue(true)
-		hoisted.findCommandRole.mockResolvedValue(role)
-		hoisted.listCommandRoles.mockResolvedValue([role])
+		hoisted.listSelfAssignableRolesForUser.mockResolvedValue([role])
 		hoisted.assignTemporaryRole.mockResolvedValue({
 			...role,
 			expiresAt: Date.now() + 3600000,
@@ -77,20 +71,17 @@ describe('temporary role programmatic commands', () => {
 		hoisted.removeTemporaryRole.mockResolvedValue(true)
 	})
 
-	it('registers every role command, including both removal aliases', () => {
+	it('registers every live role command', () => {
 		expect(PROGRAMMATIC_COMMAND_DEFINITIONS.map((definition) => definition.name)).toEqual(
-			expect.arrayContaining(['join', 'part', 'leave', 'listroles', 'set', 'unset'])
+			expect.arrayContaining(['join', 'part', 'leave'])
 		)
 		expect(
 			[
 				DISCORD_JOIN_PROGRAMMATIC_COMMAND,
 				DISCORD_PART_PROGRAMMATIC_COMMAND,
 				DISCORD_LEAVE_PROGRAMMATIC_COMMAND,
-				DISCORD_LIST_ROLES_PROGRAMMATIC_COMMAND,
-				DISCORD_SET_PROGRAMMATIC_COMMAND,
-				DISCORD_UNSET_PROGRAMMATIC_COMMAND,
 			].map((definition) => definition.name)
-		).toEqual(expect.arrayContaining(['join', 'part', 'leave', 'listroles', 'set', 'unset']))
+		).toEqual(expect.arrayContaining(['join', 'part', 'leave']))
 	})
 
 	it('rejects self-assignment when the caller lacks alliance member permission', async () => {
@@ -103,64 +94,62 @@ describe('temporary role programmatic commands', () => {
 	})
 
 	it('allows alliance members to join only self-assignable roles', async () => {
-		await DISCORD_JOIN_PROGRAMMATIC_COMMAND.handler(ctx())
+		const response = await DISCORD_JOIN_PROGRAMMATIC_COMMAND.handler(ctx())
 
 		expect(hoisted.hasAllianceMemberRole).toHaveBeenCalledWith(expect.anything(), 'core-1')
-		expect(hoisted.findCommandRole).toHaveBeenCalledWith(
+		expect(hoisted.listSelfAssignableRolesForUser).toHaveBeenCalledWith(
+			expect.anything(),
 			expect.anything(),
 			'guild-1',
-			'Fleet Member',
-			true
+			'discord-1',
+			'join',
+			undefined
 		)
-		expect(hoisted.assignTemporaryRole).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.anything(),
-			expect.objectContaining({ assignmentSource: 'self', role, coreUserId: 'core-1' })
-		)
-		expect(DISCORD_JOIN_PROGRAMMATIC_COMMAND.options).toHaveLength(1)
+		expect(DISCORD_JOIN_PROGRAMMATIC_COMMAND.options).toBeUndefined()
+		expect(response.data?.components).toHaveLength(1)
+		expect(response.data?.components?.[0]).toMatchObject({
+			type: 18,
+		})
+		expect(
+			(response.data?.components?.[0] as { component?: { type?: number; custom_id?: string } })
+				?.component
+		).toMatchObject({
+			type: 3,
+			custom_id: 'tmp-role:join:role',
+		})
 	})
 
-	it('allows admins to bypass alliance membership but still uses the managed-role set', async () => {
-		await DISCORD_SET_PROGRAMMATIC_COMMAND.handler(ctx({ isAdmin: true }))
+	it('rejects self-assignment menus with too many configured roles', async () => {
+		const roles = Array.from({ length: 26 }, (_, index) => ({
+			...role,
+			roleDbId: `role-db-${index}`,
+			roleName: `Role ${index}`,
+		}))
+		hoisted.listSelfAssignableRolesForUser.mockResolvedValue(roles)
 
-		expect(hoisted.hasAllianceMemberRole).not.toHaveBeenCalled()
-		expect(hoisted.findCommandRole).toHaveBeenCalledWith(
-			expect.anything(),
-			'guild-1',
-			'Fleet Member',
-			false
-		)
-		expect(hoisted.assignTemporaryRole).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.anything(),
-			expect.objectContaining({
-				assignmentSource: 'admin',
-				discordUserId: 'discord-2',
-				defaultDurationSeconds: 86400,
-				durationText: '2 hours',
-			})
-		)
+		const response = await DISCORD_JOIN_PROGRAMMATIC_COMMAND.handler(ctx())
+		expect(response.data?.content).toContain('Too many self-assignable roles')
+		expect(response.data?.components).toBeUndefined()
 	})
 
-	it('uses self-assignable filtering for members and full managed roles for admins', async () => {
-		await DISCORD_LIST_ROLES_PROGRAMMATIC_COMMAND.handler(ctx())
-		expect(hoisted.listCommandRoles).toHaveBeenLastCalledWith(expect.anything(), 'guild-1', true)
+	it('rejects role labels that Discord cannot render in a select menu', async () => {
+		hoisted.listSelfAssignableRolesForUser.mockResolvedValue([
+			{ ...role, displayName: 'x'.repeat(101) },
+		])
 
-		await DISCORD_LIST_ROLES_PROGRAMMATIC_COMMAND.handler(ctx({ isAdmin: true }))
-		expect(hoisted.listCommandRoles).toHaveBeenLastCalledWith(expect.anything(), 'guild-1', false)
+		const response = await DISCORD_JOIN_PROGRAMMATIC_COMMAND.handler(ctx())
+		expect(response.data?.content).toContain('role name is too long')
+		expect(response.data?.components).toBeUndefined()
 	})
 
-	it('requires admin access for set and unset and lets members part/leave their own roles', async () => {
-		await expect(DISCORD_SET_PROGRAMMATIC_COMMAND.handler(ctx())).rejects.toThrow('site admins')
-		await expect(DISCORD_UNSET_PROGRAMMATIC_COMMAND.handler(ctx())).rejects.toThrow('site admins')
+	it('shows the leave menu when multiple self-assigned roles are available', async () => {
+		hoisted.listSelfAssignableRolesForUser.mockResolvedValue([
+			role,
+			{ ...role, roleDbId: 'role-2' },
+		])
+		const response = await DISCORD_PART_PROGRAMMATIC_COMMAND.handler(ctx())
 
-		await DISCORD_PART_PROGRAMMATIC_COMMAND.handler(ctx())
-		await DISCORD_LEAVE_PROGRAMMATIC_COMMAND.handler(ctx())
-		expect(hoisted.removeTemporaryRole).toHaveBeenCalledTimes(2)
-		expect(hoisted.removeTemporaryRole).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.anything(),
-			expect.objectContaining({ onlySelf: true, reason: 'part' })
-		)
+		expect(hoisted.removeTemporaryRole).not.toHaveBeenCalled()
+		expect(response.data?.components).toHaveLength(1)
 	})
 })

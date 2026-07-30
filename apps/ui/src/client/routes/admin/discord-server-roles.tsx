@@ -136,6 +136,7 @@ export default function AdminDiscordServerRolesPage() {
 	const [refreshing, setRefreshing] = useState(false)
 	const [activeTab, setActiveTab] = useState('managed')
 	const [newSelfAssignableRoleId, setNewSelfAssignableRoleId] = useState('')
+	const [newSelfAssignableDisplayName, setNewSelfAssignableDisplayName] = useState('')
 	const [newSelfAssignableDuration, setNewSelfAssignableDuration] = useState<DurationDraft>({
 		mode: '1 day',
 		customValue: '',
@@ -143,8 +144,15 @@ export default function AdminDiscordServerRolesPage() {
 	const [selfAssignableDurationDrafts, setSelfAssignableDurationDrafts] = useState<
 		Record<string, DurationDraft>
 	>({})
-	const [selfAssignableRoleDrafts, setSelfAssignableRoleDrafts] = useState<Record<string, string>>({})
-	const [editingSelfAssignableRoleId, setEditingSelfAssignableRoleId] = useState<string | null>(null)
+	const [selfAssignableRoleDrafts, setSelfAssignableRoleDrafts] = useState<Record<string, string>>(
+		{}
+	)
+	const [selfAssignableDisplayNameDrafts, setSelfAssignableDisplayNameDrafts] = useState<
+		Record<string, string>
+	>({})
+	const [editingSelfAssignableRoleId, setEditingSelfAssignableRoleId] = useState<string | null>(
+		null
+	)
 	const [isCreatingSelfAssignableRole, setIsCreatingSelfAssignableRole] = useState(false)
 	const [newCustomDurationValid, setNewCustomDurationValid] = useState<boolean | null>(null)
 	const [customDurationValidity, setCustomDurationValidity] = useState<
@@ -211,7 +219,8 @@ export default function AdminDiscordServerRolesPage() {
 		(server?.roles.some((role) => role.roleId === normalizedRoleId) ?? false)
 	const duplicateRoleName =
 		normalizedRoleName.length > 0 &&
-		(server?.roles.some((role) => role.roleName.trim().toLowerCase() === normalizedRoleName) ?? false)
+		(server?.roles.some((role) => role.roleName.trim().toLowerCase() === normalizedRoleName) ??
+			false)
 
 	const handleCreateRole = async (e: React.FormEvent) => {
 		e.preventDefault()
@@ -287,15 +296,17 @@ export default function AdminDiscordServerRolesPage() {
 		[server?.roles]
 	)
 
+	const managedRoleNameById = useMemo(
+		() => new Map((server?.roles ?? []).map((role) => [role.id, role.roleName])),
+		[server?.roles]
+	)
+
 	const saveNewSelfAssignableRole = async () => {
 		if (!server || !newSelfAssignableRoleId) {
 			showError('Select a managed role')
 			return
 		}
-		if (
-			newSelfAssignableDuration.mode === 'custom' &&
-			newCustomDurationValid !== true
-		) {
+		if (newSelfAssignableDuration.mode === 'custom' && newCustomDurationValid !== true) {
 			showError('Enter a valid duration')
 			return
 		}
@@ -304,6 +315,10 @@ export default function AdminDiscordServerRolesPage() {
 				serverId: server.id,
 				data: {
 					discordRoleId: newSelfAssignableRoleId,
+					displayName:
+						newSelfAssignableDisplayName.trim() ||
+						managedRoleNameById.get(newSelfAssignableRoleId) ||
+						'',
 					defaultDuration:
 						newSelfAssignableDuration.mode === 'custom'
 							? newSelfAssignableDuration.customValue
@@ -311,6 +326,7 @@ export default function AdminDiscordServerRolesPage() {
 				},
 			})
 			setNewSelfAssignableRoleId('')
+			setNewSelfAssignableDisplayName('')
 			setNewSelfAssignableDuration({ mode: '1 day', customValue: '' })
 			setIsCreatingSelfAssignableRole(false)
 			showSuccess('Self-assignable role saved')
@@ -322,7 +338,8 @@ export default function AdminDiscordServerRolesPage() {
 	const saveSelfAssignableDuration = async (
 		configId: string,
 		draft: DurationDraft,
-		discordRoleId?: string
+		discordRoleId?: string,
+		displayName?: string
 	) => {
 		if (!server) return
 		if (draft.mode === 'custom' && customDurationValidity[configId] !== true) {
@@ -334,7 +351,11 @@ export default function AdminDiscordServerRolesPage() {
 			await updateSelfAssignableRole.mutateAsync({
 				serverId: server.id,
 				configId,
-				data: { defaultDuration: value, ...(discordRoleId ? { discordRoleId } : {}) },
+				data: {
+					defaultDuration: value,
+					...(discordRoleId ? { discordRoleId } : {}),
+					...(displayName !== undefined ? { displayName } : {}),
+				},
 			})
 			setEditingSelfAssignableRoleId(null)
 			setSelfAssignableRoleDrafts((current) => {
@@ -345,9 +366,13 @@ export default function AdminDiscordServerRolesPage() {
 				const { [configId]: _, ...rest } = current
 				return rest
 			})
-			showSuccess('Self-assignable duration updated')
+			setSelfAssignableDisplayNameDrafts((current) => {
+				const { [configId]: _, ...rest } = current
+				return rest
+			})
+			showSuccess('Self-assignable role updated')
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update duration')
+			showError(error instanceof Error ? error.message : 'Failed to update self-assignable role')
 		}
 	}
 
@@ -468,7 +493,7 @@ export default function AdminDiscordServerRolesPage() {
 													</TableCell>
 													<TableCell className="text-right">
 														<div className="inline-flex gap-2">
-										<Button
+															<Button
 																variant="ghost"
 																size="sm"
 																onClick={() => {
@@ -529,7 +554,7 @@ export default function AdminDiscordServerRolesPage() {
 						<CardContent className="space-y-3">
 							{selfAssignableRoles.isLoading ? (
 								<LoadingSpinner label="Loading self-assignable roles..." />
-						) : selfAssignableRoles.data?.length || isCreatingSelfAssignableRole ? (
+							) : selfAssignableRoles.data?.length || isCreatingSelfAssignableRole ? (
 								<div className="overflow-x-auto rounded-lg border border-border/50 bg-card">
 									<Table>
 										<TableHeader>
@@ -545,6 +570,8 @@ export default function AdminDiscordServerRolesPage() {
 												const duration =
 													selfAssignableDurationDrafts[config.id] ??
 													getDurationDraft(config.defaultDurationSeconds)
+												const displayName =
+													selfAssignableDisplayNameDrafts[config.id] ?? config.displayName
 												return (
 													<TableRow key={config.id}>
 														{isEditing ? (
@@ -552,16 +579,43 @@ export default function AdminDiscordServerRolesPage() {
 																<TableCell>
 																	<Select
 																		options={managedRoleOptions}
-																		value={selfAssignableRoleDrafts[config.id] ?? config.discordRole.id}
+																		value={
+																			selfAssignableRoleDrafts[config.id] ?? config.discordRole.id
+																		}
 																		onValueChange={(value) =>
-																			setSelfAssignableRoleDrafts((current) => ({
-																				...current,
-																				[config.id]: value,
-																			}))
+																			setSelfAssignableRoleDrafts((current) => {
+																				const next = {
+																					...current,
+																					[config.id]: value,
+																				}
+																				if (!selfAssignableDisplayNameDrafts[config.id]) {
+																					const roleName = managedRoleNameById.get(value)
+																					if (roleName) {
+																						setSelfAssignableDisplayNameDrafts((drafts) => ({
+																							...drafts,
+																							[config.id]: roleName,
+																						}))
+																					}
+																				}
+																				return next
+																			})
 																		}
 																		searchable
 																		placeholder={config.discordRole.roleName}
 																	/>
+																	<div className="mt-2 space-y-2">
+																		<Input
+																			value={displayName}
+																			maxLength={100}
+																			onChange={(event) =>
+																				setSelfAssignableDisplayNameDrafts((current) => ({
+																					...current,
+																					[config.id]: event.target.value,
+																				}))
+																			}
+																			placeholder="Display name shown in Discord"
+																		/>
+																	</div>
 																</TableCell>
 																<TableCell>
 																	<div className="space-y-2">
@@ -582,15 +636,20 @@ export default function AdminDiscordServerRolesPage() {
 																				onChange={(event) =>
 																					setSelfAssignableDurationDrafts((current) => ({
 																						...current,
-																						[config.id]: { ...duration, customValue: event.target.value },
+																						[config.id]: {
+																							...duration,
+																							customValue: event.target.value,
+																						},
 																					}))
 																				}
 																				placeholder="Custom duration, e.g. 90 minutes or forever"
 																				maxLength={MAX_DURATION_INPUT_LENGTH}
-																				className={durationBorderClass(customDurationValidity[config.id] ?? null)}
+																				className={durationBorderClass(
+																					customDurationValidity[config.id] ?? null
+																				)}
 																				aria-invalid={customDurationValidity[config.id] === false}
 																			/>
-																			)}
+																		)}
 																	</div>
 																</TableCell>
 																<TableCell className="text-right">
@@ -600,17 +659,22 @@ export default function AdminDiscordServerRolesPage() {
 																			className="px-2"
 																			onClick={() =>
 																				void saveSelfAssignableDuration(
-																						config.id,
-																						duration,
-																						selfAssignableRoleDrafts[config.id]
-																					)
+																					config.id,
+																					duration,
+																					selfAssignableRoleDrafts[config.id],
+																					selfAssignableDisplayNameDrafts[config.id]?.trim() ||
+																						undefined
+																				)
 																			}
-											loading={updateSelfAssignableRole.isPending}
-											disabled={duration.mode === 'custom' && customDurationValidity[config.id] !== true}
+																			loading={updateSelfAssignableRole.isPending}
+																			disabled={
+																				duration.mode === 'custom' &&
+																				customDurationValidity[config.id] !== true
+																			}
 																		>
 																			Save
 																		</Button>
-										<Button
+																		<Button
 																			variant="ghost"
 																			className="px-2"
 																			onClick={() => {
@@ -623,6 +687,10 @@ export default function AdminDiscordServerRolesPage() {
 																					const { [config.id]: _, ...rest } = current
 																					return rest
 																				})
+																				setSelfAssignableDisplayNameDrafts((current) => {
+																					const { [config.id]: _, ...rest } = current
+																					return rest
+																				})
 																			}}
 																		>
 																			Cancel
@@ -632,9 +700,18 @@ export default function AdminDiscordServerRolesPage() {
 															</>
 														) : (
 															<>
-																<TableCell className="font-medium">{config.discordRole.roleName}</TableCell>
+																<TableCell className="font-medium">
+																	<div className="flex flex-col">
+																		<span>{config.displayName}</span>
+																		<span className="text-xs text-muted-foreground">
+																			{config.discordRole.roleName}
+																		</span>
+																	</div>
+																</TableCell>
 																<TableCell className="text-sm text-muted-foreground">
-																	{duration.mode === 'custom' ? duration.customValue : duration.mode}
+																	{duration.mode === 'custom'
+																		? duration.customValue
+																		: duration.mode}
 																</TableCell>
 																<TableCell className="text-right">
 																	<div className="inline-flex gap-1">
@@ -647,9 +724,15 @@ export default function AdminDiscordServerRolesPage() {
 																					...current,
 																					[config.id]: config.discordRole.id,
 																				}))
+																				setSelfAssignableDisplayNameDrafts((current) => ({
+																					...current,
+																					[config.id]: config.displayName,
+																				}))
 																				setSelfAssignableDurationDrafts((current) => ({
 																					...current,
-																					[config.id]: getDurationDraft(config.defaultDurationSeconds),
+																					[config.id]: getDurationDraft(
+																						config.defaultDurationSeconds
+																					),
 																				}))
 																			}}
 																			aria-label={`Edit ${config.discordRole.roleName} configuration`}
@@ -668,7 +751,7 @@ export default function AdminDiscordServerRolesPage() {
 																						configId: config.id,
 																					})
 																					showSuccess('Self-assignable role removed')
-																			} catch (error) {
+																				} catch (error) {
 																					showError(
 																						error instanceof Error
 																							? error.message
@@ -691,13 +774,29 @@ export default function AdminDiscordServerRolesPage() {
 											{isCreatingSelfAssignableRole && (
 												<TableRow>
 													<TableCell>
-														<Select
-															options={managedRoleOptions}
-															value={newSelfAssignableRoleId}
-															onValueChange={setNewSelfAssignableRoleId}
-															searchable
-															placeholder="Select managed role"
-														/>
+														<div className="space-y-2">
+															<Select
+																options={managedRoleOptions}
+																value={newSelfAssignableRoleId}
+																onValueChange={(value) => {
+																	setNewSelfAssignableRoleId(value)
+																	if (!newSelfAssignableDisplayName.trim()) {
+																		const roleName = managedRoleNameById.get(value)
+																		if (roleName) setNewSelfAssignableDisplayName(roleName)
+																	}
+																}}
+																searchable
+																placeholder="Select managed role"
+															/>
+															<Input
+																value={newSelfAssignableDisplayName}
+																maxLength={100}
+																onChange={(event) =>
+																	setNewSelfAssignableDisplayName(event.target.value)
+																}
+																placeholder="Display name shown in Discord"
+															/>
+														</div>
 													</TableCell>
 													<TableCell>
 														<div className="space-y-2">
@@ -723,8 +822,8 @@ export default function AdminDiscordServerRolesPage() {
 																	className={durationBorderClass(newCustomDurationValid)}
 																	aria-invalid={newCustomDurationValid === false}
 																/>
-																)}
-															</div>
+															)}
+														</div>
 													</TableCell>
 													<TableCell className="text-right">
 														<div className="inline-flex gap-1">
@@ -732,11 +831,11 @@ export default function AdminDiscordServerRolesPage() {
 																variant="confirm"
 																className="px-2"
 																onClick={saveNewSelfAssignableRole}
-											loading={createSelfAssignableRole.isPending}
-											disabled={
-												newSelfAssignableDuration.mode === 'custom' &&
-												newCustomDurationValid !== true
-											}
+																loading={createSelfAssignableRole.isPending}
+																disabled={
+																	newSelfAssignableDuration.mode === 'custom' &&
+																	newCustomDurationValid !== true
+																}
 															>
 																Save
 															</Button>
@@ -746,6 +845,7 @@ export default function AdminDiscordServerRolesPage() {
 																onClick={() => {
 																	setIsCreatingSelfAssignableRole(false)
 																	setNewSelfAssignableRoleId('')
+																	setNewSelfAssignableDisplayName('')
 																	setNewSelfAssignableDuration({ mode: '1 day', customValue: '' })
 																}}
 															>
@@ -759,7 +859,9 @@ export default function AdminDiscordServerRolesPage() {
 									</Table>
 								</div>
 							) : (
-								<p className="text-sm text-muted-foreground">No self-assignable roles configured.</p>
+								<p className="text-sm text-muted-foreground">
+									No self-assignable roles configured.
+								</p>
 							)}
 							{!isCreatingSelfAssignableRole && (
 								<div className="flex justify-center">
@@ -792,7 +894,9 @@ export default function AdminDiscordServerRolesPage() {
 								type="text"
 								value={roleFormData.roleId}
 								onChange={(e) => setRoleFormData({ ...roleFormData, roleId: e.target.value })}
-								className={duplicateRoleId ? 'border-destructive focus-visible:ring-destructive' : undefined}
+								className={
+									duplicateRoleId ? 'border-destructive focus-visible:ring-destructive' : undefined
+								}
 								aria-invalid={duplicateRoleId}
 								required
 							/>
@@ -807,7 +911,11 @@ export default function AdminDiscordServerRolesPage() {
 								type="text"
 								value={roleFormData.roleName}
 								onChange={(e) => setRoleFormData({ ...roleFormData, roleName: e.target.value })}
-								className={duplicateRoleName ? 'border-destructive focus-visible:ring-destructive' : undefined}
+								className={
+									duplicateRoleName
+										? 'border-destructive focus-visible:ring-destructive'
+										: undefined
+								}
 								aria-invalid={duplicateRoleName}
 								required
 							/>

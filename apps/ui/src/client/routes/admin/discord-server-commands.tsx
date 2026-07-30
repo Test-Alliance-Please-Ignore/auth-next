@@ -15,6 +15,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Select } from '@/components/ui/select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
 	useDiscordServers,
 	useResyncDiscordServerCommands,
@@ -192,29 +193,41 @@ export default function AdminDiscordServerCommandsPage() {
 					{attachedCommands.length === 0 ? (
 						<p className="text-sm text-muted-foreground">No commands attached to this server.</p>
 					) : (
-						<div className="space-y-2">
-							{attachedCommands.map((command) => (
-								<div key={command.id} className="flex items-center justify-between rounded-lg border p-3">
-									<div className="flex-1">
-										<div className="flex items-center gap-2">
-											<p className="font-medium">/{command.name}</p>
-											{!command.isActive && (
-												<span className="text-xs text-muted-foreground">(Inactive)</span>
-											)}
-										</div>
-										<p className="text-xs text-muted-foreground">{command.description}</p>
-									</div>
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => handleDetachCommand(command)}
-										loading={detachCommandFromServer.isPending}
-										loadingText="Detaching..."
-									>
-										<Trash2 className="h-4 w-4 text-destructive" />
-									</Button>
-								</div>
-							))}
+						<div className="overflow-x-auto rounded-lg border border-border/50">
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>Command</TableHead>
+										<TableHead>Description</TableHead>
+										<TableHead>Status</TableHead>
+										<TableHead className="text-right">Actions</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{attachedCommands.map((command) => (
+										<TableRow key={command.id}>
+											<TableCell className="font-medium">/{command.name}</TableCell>
+											<TableCell className="max-w-[36rem] truncate text-sm text-muted-foreground">
+												{command.description}
+											</TableCell>
+											<TableCell className="text-sm">
+												{command.isActive ? 'Active' : 'Inactive'}
+											</TableCell>
+											<TableCell className="text-right">
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => handleDetachCommand(command)}
+													loading={detachCommandFromServer.isPending}
+													loadingText="Detaching..."
+												>
+													<Trash2 className="h-4 w-4 text-destructive" />
+												</Button>
+											</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+							</Table>
 						</div>
 					)}
 				</CardContent>
@@ -238,6 +251,7 @@ export default function AdminDiscordServerCommandsPage() {
 									label: `/${command.name}`,
 									description: command.description,
 								}))}
+								searchable
 								placeholder="Select command"
 							/>
 						</div>

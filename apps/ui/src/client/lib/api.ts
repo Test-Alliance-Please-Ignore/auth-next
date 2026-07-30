@@ -705,6 +705,7 @@ export interface DiscordRole {
 export interface DiscordSelfAssignableRole {
 	id: string
 	discordRoleId: string
+	displayName: string
 	defaultDurationSeconds: number | null
 	createdAt: string
 	updatedAt: string
@@ -1228,11 +1229,13 @@ export interface UpdateDiscordRoleRequest {
 
 export interface CreateDiscordSelfAssignableRoleRequest {
 	discordRoleId: string
+	displayName: string
 	defaultDuration: string | null
 }
 
 export interface UpdateDiscordSelfAssignableRoleRequest {
 	discordRoleId?: string
+	displayName?: string
 	defaultDuration: string | null
 }
 
@@ -1588,6 +1591,7 @@ export interface DiscordCommand {
 	category?: DiscordCommandCategory | null
 	requiredPermissions: DiscordCommandPermission[]
 	serverAttachments: DiscordServerCommand[]
+	immutableAccessRequirements: string[]
 }
 
 export interface CreateDiscordCommandCategoryRequest {

@@ -13,6 +13,32 @@ vi.mock('../../lib/groups-cache', () => ({
 
 const getCachedUserPermissionsMock = vi.mocked(getCachedUserPermissions)
 
+function createDoNamespaceMock() {
+	const stub = new Proxy(
+		{},
+		{
+			get: (_target, property) => {
+				if (property === 'then' || property === Symbol.toStringTag) {
+					return undefined
+				}
+				return vi.fn().mockResolvedValue({})
+			},
+		}
+	)
+
+	return {
+		idFromName: vi.fn((name: string) => name),
+		get: vi.fn(() => stub),
+	}
+}
+
+function createEnvMock() {
+	return {
+		GROUPS: createDoNamespaceMock(),
+		DISCORD: createDoNamespaceMock(),
+	} as any
+}
+
 function createDbMock({
 	user,
 	commands,
@@ -33,16 +59,31 @@ function createDbMock({
 		}>
 	}>
 }) {
+	const discordCommandsFindMany = vi.fn().mockResolvedValue(commands)
+
 	return {
 		insert: vi.fn().mockReturnValue({
-			values: vi.fn().mockResolvedValue([]),
+			values: vi.fn().mockReturnValue({
+				onConflictDoNothing: vi.fn().mockResolvedValue([]),
+			}),
+		}),
+		update: vi.fn().mockReturnValue({
+			set: vi.fn().mockReturnValue({
+				where: vi.fn().mockResolvedValue([]),
+			}),
+		}),
+		delete: vi.fn().mockReturnValue({
+			where: vi.fn().mockResolvedValue(undefined),
 		}),
 		query: {
 			users: {
 				findFirst: vi.fn().mockResolvedValue(user),
 			},
+			discordCommandCategories: {
+				findMany: vi.fn().mockResolvedValue([]),
+			},
 			discordCommands: {
-				findMany: vi.fn().mockResolvedValue(commands),
+				findMany: discordCommandsFindMany,
 			},
 		},
 	} as any
@@ -59,7 +100,7 @@ describe('executeDiscordSlashCommand', () => {
 	it('rejects invalid command names', async () => {
 		const result = await executeDiscordSlashCommand(
 			createDbMock({ user: null, commands: [] }),
-			{ GROUPS: {}, DISCORD: {} } as any,
+			createEnvMock(),
 			{
 				commandName: 'Invalid Name!',
 				discordUserId: '12345',
@@ -94,7 +135,7 @@ describe('executeDiscordSlashCommand', () => {
 					},
 				],
 			}),
-			{ GROUPS: {}, DISCORD: {} } as any,
+			createEnvMock(),
 			{
 				commandName: 'status',
 				discordUserId: '12345',
@@ -114,7 +155,7 @@ describe('executeDiscordSlashCommand', () => {
 				user: { id: 'user-1', is_admin: false },
 				commands: [],
 			}),
-			{ GROUPS: {}, DISCORD: {} } as any,
+			createEnvMock(),
 			{
 				commandName: 'status',
 				discordUserId: '12345',
@@ -155,7 +196,7 @@ describe('executeDiscordSlashCommand', () => {
 					},
 				],
 			}),
-			{ GROUPS: {}, DISCORD: {} } as any,
+			createEnvMock(),
 			{
 				commandName: 'status',
 				discordUserId: '12345',
@@ -166,6 +207,100 @@ describe('executeDiscordSlashCommand', () => {
 		expect(result.reason).toBe('guild-not-allowed')
 		expect(result.authorized).toBe(false)
 		expect(result.response.data?.flags).toBe(64)
+	})
+
+	it('rechecks guild attachment access after a registry refresh when the cache is stale', async () => {
+		const db = createDbMock({
+			user: { id: 'user-1', is_admin: false },
+			commands: [
+				{
+					id: 'command-1',
+					name: 'status',
+					description: 'status',
+					commandType: 'static_response',
+					responseTemplate: 'ok',
+					requiredPermissions: [],
+					serverAttachments: [
+						{
+							discordServer: {
+								guildId: '111',
+								isActive: true,
+							},
+						},
+					],
+				},
+			],
+		})
+			db.query.discordCommands.findMany
+			.mockReset()
+			.mockResolvedValueOnce([
+				{
+					id: 'command-1',
+					name: 'status',
+					description: 'status',
+					commandType: 'static_response',
+					responseTemplate: 'ok',
+					requiredPermissions: [],
+					serverAttachments: [
+						{
+							discordServer: {
+								guildId: '111',
+								isActive: true,
+							},
+						},
+					],
+				},
+			])
+			.mockResolvedValueOnce([
+				{
+					id: 'command-1',
+					name: 'status',
+					description: 'status',
+					commandType: 'static_response',
+					responseTemplate: 'ok',
+					requiredPermissions: [],
+					serverAttachments: [
+						{
+							discordServer: {
+								guildId: '999',
+								isActive: true,
+							},
+						},
+					],
+				},
+			])
+			.mockResolvedValueOnce([
+				{
+					id: 'command-1',
+					name: 'status',
+					description: 'status',
+					commandType: 'static_response',
+					responseTemplate: 'ok',
+					requiredPermissions: [],
+					serverAttachments: [
+						{
+							discordServer: {
+								guildId: '999',
+								isActive: true,
+							},
+						},
+					],
+				},
+			])
+
+		const result = await executeDiscordSlashCommand(
+			db,
+			createEnvMock(),
+			{
+				commandName: 'status',
+				discordUserId: '12345',
+				guildId: '999',
+			}
+		)
+
+		expect(db.query.discordCommands.findMany.mock.calls.length).toBeGreaterThanOrEqual(2)
+		expect(result.reason).toBe('ok')
+		expect(result.authorized).toBe(true)
 	})
 
 	it('enforces required permissions for non-admin users', async () => {
@@ -205,7 +340,7 @@ describe('executeDiscordSlashCommand', () => {
 					},
 				],
 			}),
-			{ GROUPS: {}, DISCORD: {} } as any,
+			createEnvMock(),
 			{
 				commandName: 'status',
 				discordUserId: '12345',
@@ -240,7 +375,7 @@ describe('executeDiscordSlashCommand', () => {
 					},
 				],
 			}),
-			{ GROUPS: {}, DISCORD: {} } as any,
+			createEnvMock(),
 			{
 				commandName: 'score',
 				discordUserId: '12345',
@@ -286,7 +421,7 @@ describe('executeDiscordSlashCommand', () => {
 					},
 				],
 			}),
-			{ GROUPS: {}, DISCORD: {} } as any,
+			createEnvMock(),
 			{
 				commandName: 'how',
 				discordUserId: '12345',
@@ -326,7 +461,7 @@ describe('executeDiscordSlashCommand', () => {
 					},
 				],
 			}),
-			{ GROUPS: {}, DISCORD: {} } as any,
+			createEnvMock(),
 			{
 				commandName: 'evetime',
 				discordUserId: '12345',

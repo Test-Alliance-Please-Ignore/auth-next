@@ -17,6 +17,10 @@ import type { App } from '../context'
  */
 const discord = new Hono<App>()
 
+export function isDiscordInteractionDevProxyPath(pathname: string): boolean {
+	return pathname === '/api/discord/interactions'
+}
+
 type PublicDiscordRefreshReason = 'authorization' | 'configuration' | 'temporary' | 'unknown'
 
 function classifyDiscordRefreshReason(output: object): PublicDiscordRefreshReason {
@@ -40,6 +44,25 @@ function classifyDiscordRefreshReason(output: object): PublicDiscordRefreshReaso
 	}
 	return 'unknown'
 }
+
+discord.post('/interactions', async (c) => {
+	if (c.env.ENVIRONMENT !== 'development') {
+		return c.notFound()
+	}
+
+	logger.info('[CoreDiscordInteractions] Dev proxy request received', {
+		method: c.req.method,
+		path: new URL(c.req.url).pathname,
+		hasDiscordBinding: Boolean(c.env.DISCORD_HTTP),
+	})
+
+	if (!c.env.DISCORD_HTTP) {
+		logger.error('[CoreDiscordInteractions] DISCORD_HTTP service binding is not configured')
+		return c.json({ error: 'Discord interactions proxy unavailable' }, 503)
+	}
+
+	return c.env.DISCORD_HTTP.fetch(c.req.raw)
+})
 
 /**
  * Start Discord linking flow (PKCE)

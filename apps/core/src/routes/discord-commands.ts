@@ -15,16 +15,22 @@ import {
 	buildDiscordSlashCommandDefinition,
 	deleteGuildSlashCommand,
 	ensureDiscordCommandRegistryLoaded,
+	invalidateDiscordCommandRegistryCache,
 	refreshDiscordCommandRegistry,
 	replaceCommandPermissions,
 	upsertGuildSlashCommand,
 } from '../services/discord-commands.service'
+import { programmaticCommandDefinitionByName } from '../services/discord-programmatic-commands'
 
 import type { App } from '../context'
 
 const app = new Hono<App>()
 
-const commandNameSchema = z.string().trim().toLowerCase().regex(/^[a-z0-9_-]{1,32}$/)
+const commandNameSchema = z
+	.string()
+	.trim()
+	.toLowerCase()
+	.regex(/^[a-z0-9_-]{1,32}$/)
 
 const categoryCreateSchema = z.object({
 	name: z.string().trim().min(1).max(120),
@@ -68,7 +74,7 @@ const serverAttachSchema = z.object({
 })
 
 async function getCommandWithRelations(db: NonNullable<App['Variables']['db']>, commandId: string) {
-	return db.query.discordCommands.findFirst({
+	const command = await db.query.discordCommands.findFirst({
 		where: eq(discordCommands.id, commandId),
 		with: {
 			category: true,
@@ -80,6 +86,19 @@ async function getCommandWithRelations(db: NonNullable<App['Variables']['db']>, 
 			},
 		},
 	})
+	return decorateCommandWithImmutableAccess(command)
+}
+
+function decorateCommandWithImmutableAccess(command: any) {
+	if (!command) return command
+	const immutableAccessRequirements =
+		command.commandType === 'programmatic'
+			? (programmaticCommandDefinitionByName.get(command.name)?.immutableAccessRequirements ?? [])
+			: []
+	return {
+		...command,
+		immutableAccessRequirements,
+	}
 }
 
 async function syncSingleCommandToAttachment(
@@ -127,9 +146,13 @@ async function syncSingleCommandToAttachment(
 	}
 }
 
-async function refreshRegistryBestEffort(db: NonNullable<App['Variables']['db']>): Promise<void> {
+async function refreshRegistryBestEffort(
+	db: NonNullable<App['Variables']['db']>,
+	env: App['Bindings']
+): Promise<void> {
 	try {
-		await refreshDiscordCommandRegistry(db)
+		invalidateDiscordCommandRegistryCache()
+		await refreshDiscordCommandRegistry(db, env)
 	} catch (error) {
 		logger.error('[DiscordCommands] Failed to refresh runtime command registry', {
 			error: error instanceof Error ? error.message : String(error),
@@ -157,7 +180,6 @@ app.post('/categories', async (c) => {
 	if (!parsed.success) {
 		return c.json({ error: 'Invalid request body', details: parsed.error.flatten() }, 400)
 	}
-
 	const [created] = await db
 		.insert(discordCommandCategories)
 		.values({
@@ -213,7 +235,7 @@ app.get('/', async (c) => {
 	if (!db) return c.json({ error: 'Database not available' }, 500)
 
 	try {
-		await ensureDiscordCommandRegistryLoaded(db)
+		await ensureDiscordCommandRegistryLoaded(db, c.env)
 	} catch (error) {
 		logger.error('[DiscordCommands] Failed to initialize command registry before list', {
 			error: error instanceof Error ? error.message : String(error),
@@ -233,7 +255,7 @@ app.get('/', async (c) => {
 		},
 	})
 
-	return c.json(commands)
+	return c.json(commands.map((command) => decorateCommandWithImmutableAccess(command)))
 })
 
 app.post('/', async (c) => {
@@ -244,6 +266,9 @@ app.post('/', async (c) => {
 	const parsed = commandCreateSchema.safeParse(await c.req.json())
 	if (!parsed.success) {
 		return c.json({ error: 'Invalid request body', details: parsed.error.flatten() }, 400)
+	}
+	if (programmaticCommandDefinitionByName.has(parsed.data.name)) {
+		return c.json({ error: 'This command name is reserved for a programmatic command' }, 409)
 	}
 
 	const [created] = await db
@@ -260,7 +285,7 @@ app.post('/', async (c) => {
 		.returning({ id: discordCommands.id })
 
 	await replaceCommandPermissions(db, created.id, parsed.data.requiredPermissionIds ?? [])
-	await refreshRegistryBestEffort(db)
+	await refreshRegistryBestEffort(db, c.env)
 	const command = await getCommandWithRelations(db, created.id)
 	return c.json(command, 201)
 })
@@ -295,6 +320,13 @@ app.patch('/:id', async (c) => {
 			return c.json({ error: 'Programmatic commands do not support response templates' }, 400)
 		}
 	}
+	if (
+		existing.commandType !== 'programmatic' &&
+		parsed.data.name !== undefined &&
+		programmaticCommandDefinitionByName.has(parsed.data.name)
+	) {
+		return c.json({ error: 'This command name is reserved for a programmatic command' }, 409)
+	}
 
 	await db
 		.update(discordCommands)
@@ -316,7 +348,7 @@ app.patch('/:id', async (c) => {
 		await replaceCommandPermissions(db, commandId, parsed.data.requiredPermissionIds)
 	}
 
-	await refreshRegistryBestEffort(db)
+	await refreshRegistryBestEffort(db, c.env)
 
 	const nameChanged = parsed.data.name !== undefined && parsed.data.name !== existing.name
 	const descriptionChanged =
@@ -378,7 +410,7 @@ app.delete('/:id', async (c) => {
 			commandId: attachment.discordCommandId ?? undefined,
 			commandName: command.name,
 		})
-		if (!deleteResult.success && deleteResult.error !== 'Command not found for guild') {
+		if (!deleteResult.success) {
 			return c.json(
 				{
 					error: 'Failed to delete command from Discord guild',
@@ -391,7 +423,7 @@ app.delete('/:id', async (c) => {
 	}
 
 	await db.delete(discordCommands).where(eq(discordCommands.id, commandId))
-	await refreshRegistryBestEffort(db)
+	await refreshRegistryBestEffort(db, c.env)
 	return c.json({ success: true })
 })
 
@@ -432,6 +464,9 @@ app.post('/:id/servers', async (c) => {
 
 	if (!command) return c.json({ error: 'Command not found' }, 404)
 	if (!server) return c.json({ error: 'Discord server not found' }, 404)
+	if (!command.isActive) {
+		return c.json({ error: 'Inactive commands cannot be attached to a server' }, 400)
+	}
 
 	const existing = await db.query.discordServerCommands.findFirst({
 		where: and(
@@ -463,6 +498,7 @@ app.post('/:id/servers', async (c) => {
 		})
 		.returning()
 
+	await refreshRegistryBestEffort(db, c.env)
 	return c.json(
 		{
 			...created,
@@ -510,6 +546,7 @@ app.delete('/:id/servers/:serverId', async (c) => {
 	}
 
 	await db.delete(discordServerCommands).where(eq(discordServerCommands.id, attachment.id))
+	await refreshRegistryBestEffort(db, c.env)
 	return c.json({ success: true })
 })
 

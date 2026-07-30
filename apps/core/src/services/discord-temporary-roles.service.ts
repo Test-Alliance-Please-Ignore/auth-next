@@ -15,15 +15,31 @@ import type {
 	TemporaryRoleAssignments,
 	TemporaryRoleAssignmentSource,
 } from '../temporary-role-assignments-do'
-import type { ProgrammaticCommandEnv } from './discord-programmatic-commands/types'
-
-const DEFAULT_ADMIN_SET_DURATION_SECONDS = 24 * 60 * 60
 
 export interface TemporaryRoleCommandRole {
 	roleDbId: string
 	roleId: string
 	roleName: string
+	displayName: string
 	defaultDurationSeconds: number | null
+}
+
+async function rollbackTemporaryAssignment(
+	assignments: TemporaryRoleAssignments,
+	guildId: string,
+	assignment: TemporaryRoleAssignment,
+	previousAssignment: TemporaryRoleAssignment | undefined
+): Promise<void> {
+	if (previousAssignment) {
+		await assignments.restoreAssignment(
+			guildId,
+			assignment.id,
+			assignment.revision,
+			previousAssignment
+		)
+		return
+	}
+	await assignments.deleteAssignment(guildId, assignment.id, assignment.revision)
 }
 
 export async function hasAllianceMemberRole(
@@ -32,44 +48,6 @@ export async function hasAllianceMemberRole(
 ): Promise<boolean> {
 	const roles = await getCachedUserRoles(env, userId)
 	return roles.some((attachment) => attachment.role?.name === ROLE_CORE_ALLIANCE_MEMBER)
-}
-
-export async function findCommandRole(
-	db: DbClient<typeof schema>,
-	guildId: string,
-	roleName: string,
-	selfAssignableOnly: boolean
-): Promise<TemporaryRoleCommandRole> {
-	const roles = await db.query.discordRoles.findMany({
-		where: eq(discordRoles.isActive, true),
-		with: {
-			discordServer: { columns: { guildId: true, isActive: true } },
-			selfAssignable: true,
-		},
-	})
-	const normalized = roleName.trim().toLocaleLowerCase()
-	const matches = roles.filter(
-		(role) =>
-			role.discordServer.guildId === guildId &&
-			role.discordServer.isActive &&
-			role.roleName.trim().toLocaleLowerCase() === normalized &&
-			(!selfAssignableOnly || role.selfAssignable !== null)
-	)
-	if (matches.length === 0) {
-		throw new Error(
-			selfAssignableOnly
-				? 'That role is not self-assignable on this server.'
-				: 'That managed role was not found on this server.'
-		)
-	}
-	if (matches.length > 1) throw new Error('That role name is ambiguous on this server.')
-	const role = matches[0]
-	return {
-		roleDbId: role.id,
-		roleId: role.roleId,
-		roleName: role.roleName,
-		defaultDurationSeconds: role.selfAssignable?.defaultDurationSeconds ?? null,
-	}
 }
 
 export async function listCommandRoles(
@@ -91,13 +69,83 @@ export async function listCommandRoles(
 				role.discordServer.isActive &&
 				(!selfAssignableOnly || role.selfAssignable !== null)
 		)
-		.sort((a, b) => a.roleName.localeCompare(b.roleName))
+		.sort((a, b) =>
+			(a.selfAssignable?.displayName ?? a.roleName).localeCompare(
+				b.selfAssignable?.displayName ?? b.roleName
+			)
+		)
 		.map((role) => ({
 			roleDbId: role.id,
 			roleId: role.roleId,
 			roleName: role.roleName,
+			displayName: role.selfAssignable?.displayName ?? role.roleName,
 			defaultDurationSeconds: role.selfAssignable?.defaultDurationSeconds ?? null,
 		}))
+}
+
+export async function listSelfAssignableRolesForUser(
+	env: Pick<Env, 'DISCORD' | 'TEMPORARY_ROLE_ASSIGNMENTS'>,
+	db: DbClient<typeof schema>,
+	guildId: string,
+	discordUserId: string,
+	mode: 'join' | 'leave',
+	memberRoleIds?: string[]
+): Promise<TemporaryRoleCommandRole[]> {
+	const roles = await listCommandRoles(db, guildId, true)
+	const assignedRoleIds = new Set(
+		memberRoleIds ??
+			(await getDiscordStub(env).getGuildMemberByDiscordUserId(guildId, discordUserId)).roleIds
+	)
+	const selfAssignedRoleIds =
+		mode === 'leave'
+			? new Set(
+					(
+						await getAssignmentStub(env, guildId).then((stub) =>
+							stub.listActiveAssignments(guildId, discordUserId)
+						)
+					)
+						.filter((assignment) => assignment.assignmentSource === 'self')
+						.map((assignment) => assignment.roleId)
+				)
+			: new Set<string>()
+	return roles.filter((role) =>
+		mode === 'join'
+			? !assignedRoleIds.has(role.roleId)
+			: selfAssignedRoleIds.has(role.roleId) && assignedRoleIds.has(role.roleId)
+	)
+}
+
+export async function findCommandRoleById(
+	db: DbClient<typeof schema>,
+	guildId: string,
+	roleDbId: string,
+	selfAssignableOnly: boolean
+): Promise<TemporaryRoleCommandRole> {
+	const roles = await db.query.discordRoles.findMany({
+		where: eq(discordRoles.isActive, true),
+		with: { discordServer: { columns: { guildId: true, isActive: true } }, selfAssignable: true },
+	})
+	const role = roles.find(
+		(candidate) =>
+			candidate.id === roleDbId &&
+			candidate.discordServer.guildId === guildId &&
+			candidate.discordServer.isActive &&
+			(!selfAssignableOnly || candidate.selfAssignable !== null)
+	)
+	if (!role) {
+		throw new Error(
+			selfAssignableOnly
+				? 'That role is no longer self-assignable on this server.'
+				: 'That managed role was not found on this server.'
+		)
+	}
+	return {
+		roleDbId: role.id,
+		roleId: role.roleId,
+		roleName: role.roleName,
+		displayName: role.selfAssignable?.displayName ?? role.roleName,
+		defaultDurationSeconds: role.selfAssignable?.defaultDurationSeconds ?? null,
+	}
 }
 
 function parseCommandDuration(
@@ -136,7 +184,7 @@ async function verifyGuildMember(
 }
 
 export async function assignTemporaryRole(
-	env: ProgrammaticCommandEnv,
+	env: Pick<Env, 'DISCORD' | 'TEMPORARY_ROLE_ASSIGNMENTS'>,
 	db: DbClient<typeof schema>,
 	input: {
 		guildId: string
@@ -170,30 +218,28 @@ export async function assignTemporaryRole(
 		interactionId: input.interactionId,
 	})
 
-	const result = await assignments.applyRoleMutation(input.guildId, {
-		roleId: input.role.roleId,
-		discordUserId: input.discordUserId,
-		action: 'add',
-		revision: assignment.revision,
-	})
+	let result: { success: boolean; error?: string }
+	try {
+		result = await assignments.applyRoleMutation(input.guildId, {
+			assignmentId: assignment.id,
+			roleId: input.role.roleId,
+			discordUserId: input.discordUserId,
+			action: 'add',
+			revision: assignment.revision,
+		})
+	} catch (error) {
+		await rollbackTemporaryAssignment(assignments, input.guildId, assignment, previousAssignment)
+		throw error
+	}
 	if (!result.success) {
-		if (previousAssignment) {
-			await assignments.restoreAssignment(
-				input.guildId,
-				assignment.id,
-				assignment.revision,
-				previousAssignment
-			)
-		} else {
-			await assignments.deleteAssignment(input.guildId, assignment.id)
-		}
+		await rollbackTemporaryAssignment(assignments, input.guildId, assignment, previousAssignment)
 		throw new Error(result.error ?? 'Failed to assign the Discord role')
 	}
 	return assignment
 }
 
 export async function removeTemporaryRole(
-	env: ProgrammaticCommandEnv,
+	env: Pick<Env, 'DISCORD' | 'TEMPORARY_ROLE_ASSIGNMENTS'>,
 	db: DbClient<any>,
 	input: {
 		guildId: string
@@ -213,6 +259,7 @@ export async function removeTemporaryRole(
 	})
 	if (!assignment) return false
 	const result = await assignments.applyRoleMutation(input.guildId, {
+		assignmentId: assignment.id,
 		roleId: input.role.roleId,
 		discordUserId: input.discordUserId,
 		action: 'remove',
@@ -227,5 +274,3 @@ export async function removeTemporaryRole(
 	if (!result.success) throw new Error(result.error ?? 'Failed to remove the Discord role')
 	return true
 }
-
-export const DEFAULT_TEMPORARY_ADMIN_SET_DURATION_SECONDS = DEFAULT_ADMIN_SET_DURATION_SECONDS

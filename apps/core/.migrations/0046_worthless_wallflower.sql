@@ -1,0 +1,1 @@
+ALTER TABLE "discord_self_assignable_roles" ADD COLUMN "display_name" text NOT NULL;

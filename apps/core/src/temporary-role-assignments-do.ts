@@ -10,6 +10,7 @@ type SqlValue = ArrayBuffer | string | number | null
 
 export type TemporaryRoleAssignmentSource = 'self' | 'admin'
 export type TemporaryRoleAssignmentStatus = 'active' | 'claimed' | 'removal_pending' | 'failed'
+export const TEMPORARY_ROLE_INTERACTION_REPLAY_ERROR = 'TEMPORARY_ROLE_INTERACTION_REPLAY'
 
 export interface TemporaryRoleAssignment {
 	id: string
@@ -27,6 +28,7 @@ export interface TemporaryRoleAssignment {
 	attemptCount: number
 	nextAttemptAt: number | null
 	revision: number
+	claimToken: string | null
 }
 
 export interface TemporaryRoleAssignmentInput {
@@ -50,6 +52,7 @@ export interface TemporaryRoleAssignments {
 	applyRoleMutation(
 		guildId: string,
 		input: {
+			assignmentId: string
 			roleId: string
 			discordUserId: string
 			action: 'add' | 'remove'
@@ -76,11 +79,11 @@ export interface TemporaryRoleAssignments {
 	): Promise<TemporaryRoleAssignment | null>
 	completeRemoval(
 		guildId: string,
-		removals: Array<{ assignmentId: string; revision?: number }>,
+		removals: Array<{ assignmentId: string; revision?: number; claimToken?: string }>,
 		success: boolean,
 		errorMessage?: string
 	): Promise<void>
-	deleteAssignment(guildId: string, assignmentId: string): Promise<void>
+	deleteAssignment(guildId: string, assignmentId: string, expectedRevision: number): Promise<void>
 	restoreAssignment(
 		guildId: string,
 		assignmentId: string,
@@ -123,6 +126,7 @@ function rowToAssignment(row: Record<string, unknown>): TemporaryRoleAssignment 
 				? null
 				: Number(row.next_attempt_at),
 		revision: Number(row.revision ?? 0),
+		claimToken: row.claim_token ? String(row.claim_token) : null,
 	}
 }
 
@@ -155,7 +159,8 @@ export class TemporaryRoleAssignmentsDO
 					revision INTEGER NOT NULL DEFAULT 0,
 					failure_message TEXT,
 					failure_expires_at INTEGER,
-					interaction_id TEXT
+					interaction_id TEXT,
+					claim_token TEXT
 				)
 			`)
 			state.storage.sql.exec(
@@ -174,7 +179,13 @@ export class TemporaryRoleAssignmentsDO
 			} catch {
 				// Existing DO instances already have the column.
 			}
-			await this.rescheduleAlarm()
+			try {
+				state.storage.sql.exec(`ALTER TABLE temporary_role_assignments ADD COLUMN claim_token TEXT`)
+			} catch {
+				// Existing DO instances already have the column.
+			}
+			const existingAlarm = await state.storage.getAlarm()
+			if (existingAlarm === null) await this.rescheduleAlarm()
 		})
 	}
 
@@ -264,7 +275,12 @@ export class TemporaryRoleAssignmentsDO
 				`SELECT * FROM temporary_role_assignments WHERE interaction_id = ?`,
 				input.interactionId
 			)[0]
-			if (existingByInteraction) return existingByInteraction
+			if (existingByInteraction) {
+				if (existingByInteraction.status === 'failed') {
+					throw new Error(TEMPORARY_ROLE_INTERACTION_REPLAY_ERROR)
+				}
+				return existingByInteraction
+			}
 		}
 
 		const existing = this.queryRows(
@@ -279,7 +295,7 @@ export class TemporaryRoleAssignmentsDO
 		if (existing) {
 			const revision = await this.nextRevision()
 			this.state.storage.sql.exec(
-				`UPDATE temporary_role_assignments SET role_name = ?, core_user_id = ?, assigned_by_core_user_id = ?, assignment_source = ?, assigned_at = ?, expires_at = ?, status = 'active', removal_reason = NULL, attempt_count = 0, next_attempt_at = NULL, failure_message = NULL, failure_expires_at = NULL, interaction_id = ?, revision = ? WHERE id = ?`,
+				`UPDATE temporary_role_assignments SET role_name = ?, core_user_id = ?, assigned_by_core_user_id = ?, assignment_source = ?, assigned_at = ?, expires_at = ?, status = 'active', removal_reason = NULL, attempt_count = 0, next_attempt_at = NULL, failure_message = NULL, failure_expires_at = NULL, interaction_id = ?, claim_token = NULL, revision = ? WHERE id = ?`,
 				input.roleName,
 				input.coreUserId ?? null,
 				input.assignedByCoreUserId ?? null,
@@ -330,7 +346,7 @@ export class TemporaryRoleAssignmentsDO
 		if (!existing) return null
 		const revision = await this.nextRevision()
 		this.state.storage.sql.exec(
-			`UPDATE temporary_role_assignments SET status = 'removal_pending', removal_reason = ?, next_attempt_at = ?, attempt_count = 0, revision = ? WHERE id = ?`,
+			`UPDATE temporary_role_assignments SET status = 'removal_pending', removal_reason = ?, next_attempt_at = ?, attempt_count = 0, claim_token = NULL, revision = ? WHERE id = ?`,
 			input.reason,
 			Date.now(),
 			revision,
@@ -343,6 +359,7 @@ export class TemporaryRoleAssignmentsDO
 	async applyRoleMutation(
 		guildId: string,
 		input: {
+			assignmentId: string
 			roleId: string
 			discordUserId: string
 			action: 'add' | 'remove'
@@ -359,10 +376,10 @@ export class TemporaryRoleAssignmentsDO
 			// Count each Discord mutation attempt so the immediate retry and any
 			// alarm-driven retry share one bounded assignment retry budget.
 			this.state.storage.sql.exec(
-				`UPDATE temporary_role_assignments SET attempt_count = attempt_count + 1 WHERE id = (SELECT id FROM temporary_role_assignments WHERE guild_id = ? AND role_id = ? AND discord_user_id = ? ORDER BY revision DESC LIMIT 1)`,
+				`UPDATE temporary_role_assignments SET attempt_count = attempt_count + 1 WHERE guild_id = ? AND id = ? AND revision = ?`,
 				guildId,
-				input.roleId,
-				input.discordUserId
+				input.assignmentId,
+				revision
 			)
 			result =
 				action === 'add'
@@ -388,7 +405,7 @@ export class TemporaryRoleAssignmentsDO
 
 	async completeRemoval(
 		guildId: string,
-		removals: Array<{ assignmentId: string; revision?: number }>,
+		removals: Array<{ assignmentId: string; revision?: number; claimToken?: string }>,
 		success: boolean,
 		errorMessage?: string
 	): Promise<void> {
@@ -400,10 +417,16 @@ export class TemporaryRoleAssignmentsDO
 				guildId,
 				id
 			)[0]
-			if (!row || (removal.revision !== undefined && row.revision !== removal.revision)) continue
+			if (
+				!row ||
+				(removal.revision !== undefined && row.revision !== removal.revision) ||
+				(removal.claimToken !== undefined &&
+					(row.status !== 'claimed' || row.claimToken !== removal.claimToken))
+			)
+				continue
 			if (success) {
 				this.state.storage.sql.exec(
-					`UPDATE temporary_role_assignments SET status = 'failed', failure_message = 'removed', failure_expires_at = ?, next_attempt_at = NULL WHERE guild_id = ? AND id = ?`,
+					`UPDATE temporary_role_assignments SET status = 'failed', failure_message = 'removed', failure_expires_at = ?, next_attempt_at = NULL, claim_token = NULL WHERE guild_id = ? AND id = ?`,
 					Date.now() + REMOVAL_TOMBSTONE_RETENTION_MS,
 					guildId,
 					id
@@ -412,7 +435,7 @@ export class TemporaryRoleAssignmentsDO
 			}
 			if (row.attemptCount < 2) {
 				this.state.storage.sql.exec(
-					`UPDATE temporary_role_assignments SET status = 'removal_pending', next_attempt_at = ?, failure_message = ? WHERE guild_id = ? AND id = ?`,
+					`UPDATE temporary_role_assignments SET status = 'removal_pending', next_attempt_at = ?, failure_message = ?, claim_token = NULL WHERE guild_id = ? AND id = ?`,
 					Date.now() + RETRY_DELAY_MS,
 					errorMessage ?? 'Temporary role removal failed; retrying',
 					guildId,
@@ -420,7 +443,7 @@ export class TemporaryRoleAssignmentsDO
 				)
 			} else {
 				this.state.storage.sql.exec(
-					`UPDATE temporary_role_assignments SET status = 'failed', failure_message = ?, failure_expires_at = ?, next_attempt_at = NULL WHERE guild_id = ? AND id = ?`,
+					`UPDATE temporary_role_assignments SET status = 'failed', failure_message = ?, failure_expires_at = ?, next_attempt_at = NULL, claim_token = NULL WHERE guild_id = ? AND id = ?`,
 					errorMessage ?? 'Temporary role removal failed',
 					Date.now() + FAILURE_RETENTION_MS,
 					guildId,
@@ -431,13 +454,18 @@ export class TemporaryRoleAssignmentsDO
 		await this.rescheduleAlarm()
 	}
 
-	async deleteAssignment(guildId: string, assignmentId: string): Promise<void> {
+	async deleteAssignment(
+		guildId: string,
+		assignmentId: string,
+		expectedRevision: number
+	): Promise<void> {
 		await this.assertGuild(guildId)
 		this.state.storage.sql.exec(
-			`UPDATE temporary_role_assignments SET status = 'failed', failure_message = 'removed', failure_expires_at = ?, next_attempt_at = NULL WHERE guild_id = ? AND id = ?`,
+			`UPDATE temporary_role_assignments SET status = 'failed', failure_message = 'removed', failure_expires_at = ?, next_attempt_at = NULL, claim_token = NULL WHERE guild_id = ? AND id = ? AND revision = ?`,
 			Date.now() + REMOVAL_TOMBSTONE_RETENTION_MS,
 			guildId,
-			assignmentId
+			assignmentId,
+			expectedRevision
 		)
 		await this.rescheduleAlarm()
 	}
@@ -454,7 +482,7 @@ export class TemporaryRoleAssignmentsDO
 		await this.assertGuild(guildId)
 		const revision = await this.nextRevision()
 		this.state.storage.sql.exec(
-			`UPDATE temporary_role_assignments SET assigned_at = ?, expires_at = ?, core_user_id = ?, assigned_by_core_user_id = ?, assignment_source = ?, status = 'active', removal_reason = NULL, attempt_count = 0, next_attempt_at = NULL, failure_message = NULL, failure_expires_at = NULL, revision = ? WHERE guild_id = ? AND id = ? AND revision = ?`,
+			`UPDATE temporary_role_assignments SET assigned_at = ?, expires_at = ?, core_user_id = ?, assigned_by_core_user_id = ?, assignment_source = ?, status = 'active', removal_reason = NULL, attempt_count = 0, next_attempt_at = NULL, failure_message = NULL, failure_expires_at = NULL, claim_token = NULL, revision = ? WHERE guild_id = ? AND id = ? AND revision = ?`,
 			previous.assignedAt,
 			previous.expiresAt,
 			previous.coreUserId,
@@ -494,78 +522,92 @@ export class TemporaryRoleAssignmentsDO
 	}
 
 	async alarm(): Promise<void> {
-		const guildId = await this.state.storage.get<string>(GUILD_ID_STORAGE_KEY)
-		if (!guildId) {
-			await this.state.storage.deleteAlarm()
-			return
-		}
-		const now = Date.now()
-		const due = this.queryRows(
-			`SELECT * FROM temporary_role_assignments WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= ? LIMIT 100`,
-			now
-		)
-		for (const assignment of due) {
-			const revision = await this.nextRevision()
-			this.state.storage.sql.exec(
-				`UPDATE temporary_role_assignments SET status = 'removal_pending', removal_reason = 'expired', next_attempt_at = ?, attempt_count = 0, revision = ? WHERE id = ? AND status = 'active'`,
-				now,
-				revision,
-				assignment.id
+		try {
+			const guildId = await this.state.storage.get<string>(GUILD_ID_STORAGE_KEY)
+			if (!guildId) {
+				await this.state.storage.deleteAlarm()
+				return
+			}
+			const now = Date.now()
+			const due = this.queryRows(
+				`SELECT * FROM temporary_role_assignments WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= ? LIMIT 100`,
+				now
 			)
-		}
-
-		const pending = this.queryRows(
-			`SELECT * FROM temporary_role_assignments WHERE status IN ('removal_pending', 'claimed') AND next_attempt_at IS NOT NULL AND next_attempt_at <= ? LIMIT 100`,
-			now
-		)
-		const linked = new Map<string, Array<{ assignmentId: string; revision: number }>>()
-		for (const assignment of pending) {
-			if (assignment.coreUserId) {
-				const ids = linked.get(assignment.coreUserId) ?? []
-				ids.push({ assignmentId: assignment.id, revision: assignment.revision })
-				linked.set(assignment.coreUserId, ids)
+			for (const assignment of due) {
+				const revision = await this.nextRevision()
 				this.state.storage.sql.exec(
-					`UPDATE temporary_role_assignments SET status = 'claimed', attempt_count = attempt_count + 1, next_attempt_at = ? WHERE id = ?`,
-					now + CLAIM_LEASE_MS,
+					`UPDATE temporary_role_assignments SET status = 'removal_pending', removal_reason = 'expired', next_attempt_at = ?, attempt_count = 0, claim_token = NULL, revision = ? WHERE id = ? AND status = 'active'`,
+					now,
+					revision,
 					assignment.id
 				)
-				continue
 			}
 
-			this.state.storage.sql.exec(
-				`UPDATE temporary_role_assignments SET status = 'claimed', attempt_count = attempt_count + 1, next_attempt_at = ? WHERE id = ?`,
-				now + CLAIM_LEASE_MS,
-				assignment.id
+			const pending = this.queryRows(
+				`SELECT * FROM temporary_role_assignments WHERE status IN ('removal_pending', 'claimed') AND next_attempt_at IS NOT NULL AND next_attempt_at <= ? LIMIT 100`,
+				now
 			)
-			const result = await this.applyRoleMutation(guildId, {
-				roleId: assignment.roleId,
-				discordUserId: assignment.discordUserId,
-				action: 'remove',
-				revision: assignment.revision,
-			})
-			await this.completeRemoval(
-				guildId,
-				[{ assignmentId: assignment.id, revision: assignment.revision }],
-				result.success,
-				result.error
-			)
-		}
+			const linked = new Map<
+				string,
+				Array<{ assignmentId: string; revision: number; claimToken: string }>
+			>()
+			for (const assignment of pending) {
+				const claimToken = crypto.randomUUID()
+				this.state.storage.sql.exec(
+					`UPDATE temporary_role_assignments SET status = 'claimed', attempt_count = attempt_count + 1, next_attempt_at = ?, claim_token = ? WHERE id = ? AND status IN ('removal_pending', 'claimed') AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`,
+					now + CLAIM_LEASE_MS,
+					claimToken,
+					assignment.id,
+					now
+				)
+				if (assignment.coreUserId) {
+					const ids = linked.get(assignment.coreUserId) ?? []
+					ids.push({ assignmentId: assignment.id, revision: assignment.revision, claimToken })
+					linked.set(assignment.coreUserId, ids)
+					continue
+				}
 
-		for (const [coreUserId, assignmentIds] of linked) {
-			try {
-				await createWorkflow(this.env.USER_DISCORD_REFRESH_WORKFLOW, {
-					id: `temporary-role-expiry-${guildId}-${coreUserId}-${Date.now().toString(36)}`,
-					params: {
-						userId: coreUserId,
-						source: 'temporary-role-expiry',
-						allowRemoval: true,
-						temporaryRoleRemovalsByGuild: { [guildId]: assignmentIds },
-					},
+				const result = await this.applyRoleMutation(guildId, {
+					assignmentId: assignment.id,
+					roleId: assignment.roleId,
+					discordUserId: assignment.discordUserId,
+					action: 'remove',
+					revision: assignment.revision,
 				})
-			} catch (error) {
-				await this.completeRemoval(guildId, assignmentIds, false, String(error))
+				await this.completeRemoval(
+					guildId,
+					[{ assignmentId: assignment.id, revision: assignment.revision, claimToken }],
+					result.success,
+					result.error
+				)
+			}
+
+			for (const [coreUserId, assignmentIds] of linked) {
+				try {
+					await createWorkflow(this.env.USER_DISCORD_REFRESH_WORKFLOW, {
+						id: `temporary-role-expiry-${guildId}-${coreUserId}-${Date.now().toString(36)}`,
+						params: {
+							userId: coreUserId,
+							source: 'temporary-role-expiry',
+							allowRemoval: true,
+							temporaryRoleRemovalsByGuild: { [guildId]: assignmentIds },
+						},
+					})
+				} catch (error) {
+					await this.completeRemoval(guildId, assignmentIds, false, String(error))
+				}
+			}
+			await this.rescheduleAlarm()
+		} catch (error) {
+			console.error('[TemporaryRoleAssignmentsDO] Alarm processing failed', error)
+			try {
+				await this.state.storage.setAlarm(Date.now() + RETRY_DELAY_MS)
+			} catch (recoveryError) {
+				console.error(
+					'[TemporaryRoleAssignmentsDO] Failed to schedule alarm recovery',
+					recoveryError
+				)
 			}
 		}
-		await this.rescheduleAlarm()
 	}
 }

@@ -516,6 +516,7 @@ export const discordSelfAssignableRoles = pgTable(
 		discordRoleId: uuid('discord_role_id')
 			.notNull()
 			.references(() => discordRoles.id, { onDelete: 'cascade' }),
+		displayName: text('display_name').notNull(),
 		defaultDurationSeconds: integer('default_duration_seconds'),
 		createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),

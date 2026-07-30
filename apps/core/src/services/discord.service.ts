@@ -571,14 +571,16 @@ export async function getTemporaryRoleIdsByGuild(
 	const hasAssignments = Array.from(assignmentRowsByGuild.values()).some(
 		({ active, pending }) => active.length > 0 || pending.length > 0
 	)
-	if (hasAssignments) {
+	// Resolve configured role IDs after an assignment-source failure so the refresh
+	// can preserve temporary roles instead of treating the failed read as empty state.
+	if (hasAssignments || failedGuildIds.size > 0) {
 		try {
 			configuredRoles = await db.query.discordRoles.findMany({
 				with: { discordServer: { columns: { guildId: true, isActive: true } } },
 				columns: { roleId: true },
 			})
 		} catch (error) {
-			for (const guildId of assignmentStubs.keys()) {
+			for (const guildId of new Set([...assignmentStubs.keys(), ...failedGuildIds])) {
 				failedGuildIds.add(guildId)
 				preserveAllCurrentRolesGuildIds.add(guildId)
 			}

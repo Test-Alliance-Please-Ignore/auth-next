@@ -1,4 +1,5 @@
 import type { HonoApp } from '@repo/hono-helpers'
+import type { DiscordInteractionResponse } from '@repo/discord'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 import type { createDb } from './db'
 
@@ -41,9 +42,6 @@ export type Env = SharedHonoEnv & {
 	DISCORD_PROXY_USERNAME: string
 	DISCORD_PROXY_PASSWORD: string
 
-	LEGACY_AUTH_CLIENT_ID: string
-	LEGACY_AUTH_CLIENT_SECRET: string
-
 	ENCRYPTION_KEY: string
 
 	// Role management configuration
@@ -56,18 +54,12 @@ export type Env = SharedHonoEnv & {
 			discordUserId: string
 			guildId?: string | null
 			channelId?: string | null
+			memberRoleIds?: string[]
 			options?: DiscordInteractionOption[]
 			interactionId?: string | null
 		}): Promise<{
 			ok: boolean
-			response: {
-				type: number
-			data?: {
-					content: string
-					flags?: number
-					embeds?: unknown[]
-				}
-			}
+			response: DiscordInteractionResponse
 			coreUserId: string | null
 			authorized: boolean
 			commandId?: string
@@ -76,19 +68,15 @@ export type Env = SharedHonoEnv & {
 		executeDiscordModalSubmit(input: {
 			customId: string
 			fields: Record<string, string>
+			selectValues?: Record<string, string[]>
 			discordUserId: string
 			interactionId?: string | null
 			guildId?: string | null
 			channelId?: string | null
+			values?: string[]
 		}): Promise<{
 			ok: boolean
-			response: {
-				type: number
-				data?: {
-					content: string
-					flags?: number
-				}
-			}
+			response: DiscordInteractionResponse
 			coreUserId: string | null
 			reason: string
 		}>
@@ -98,15 +86,12 @@ export type Env = SharedHonoEnv & {
 			interactionId?: string | null
 			guildId?: string | null
 			channelId?: string | null
+			memberRoleIds?: string[]
+			values?: string[]
+			selectValues?: Record<string, string[]>
 		}): Promise<{
 			ok: boolean
-			response: {
-				type: number
-				data?: {
-					content: string
-					flags?: number
-				}
-			}
+			response: DiscordInteractionResponse
 			coreUserId: string | null
 			reason: string
 		}>

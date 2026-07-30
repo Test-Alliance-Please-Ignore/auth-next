@@ -295,6 +295,7 @@ export default function AdminDiscordCommandsPage() {
 								const requiredPermissionNames = command.requiredPermissions.map((permission) => {
 									return permissionById.get(permission.permissionId)?.name ?? permission.permissionId
 								})
+								const immutableAccessRequirements = command.immutableAccessRequirements ?? []
 
 								return (
 									<Card key={command.id} className="border border-border/70">
@@ -322,10 +323,15 @@ export default function AdminDiscordCommandsPage() {
 															? requiredPermissionNames.join(', ')
 															: 'None'}
 													</div>
-												<div className="text-xs text-muted-foreground">
-													Attached servers: {command.serverAttachments.length}
+													{immutableAccessRequirements.length > 0 && (
+														<div className="text-xs text-muted-foreground">
+															Code-defined access: {immutableAccessRequirements.join(', ')}
+														</div>
+													)}
+													<div className="text-xs text-muted-foreground">
+														Attached servers: {command.serverAttachments.length}
+													</div>
 												</div>
-											</div>
 											<div className="flex items-center gap-2">
 												<Button
 													variant="ghost"
@@ -373,6 +379,7 @@ export default function AdminDiscordCommandsPage() {
 							setPermissionSearch={setPermissionSearch}
 							onAddRequiredPermission={addRequiredPermission}
 							onRemoveRequiredPermission={removeRequiredPermission}
+							immutableAccessRequirements={selectedCommand?.immutableAccessRequirements ?? []}
 							/>
 						<DialogFooter>
 							<Button variant="cancel" type="button" onClick={() => setCreateCommandOpen(false)}>
@@ -410,6 +417,7 @@ export default function AdminDiscordCommandsPage() {
 							setPermissionSearch={setPermissionSearch}
 							onAddRequiredPermission={addRequiredPermission}
 							onRemoveRequiredPermission={removeRequiredPermission}
+							immutableAccessRequirements={selectedCommand?.immutableAccessRequirements ?? []}
 							/>
 						<DialogFooter>
 							<Button variant="cancel" type="button" onClick={() => setEditCommandOpen(false)}>
@@ -468,6 +476,7 @@ function CommandFormFields({
 	setPermissionSearch,
 	onAddRequiredPermission,
 	onRemoveRequiredPermission,
+	immutableAccessRequirements,
 }: {
 	categories: Array<{ value: string; label: string }>
 	commandForm: CommandFormState
@@ -493,6 +502,7 @@ function CommandFormFields({
 	setPermissionSearch: Dispatch<SetStateAction<string>>
 	onAddRequiredPermission: (permissionId: string) => void
 	onRemoveRequiredPermission: (permissionId: string) => void
+	immutableAccessRequirements: string[]
 }) {
 	const availablePermissionOptions = permissionOptions.filter(
 		(permission) => !commandForm.requiredPermissionIds.includes(permission.value)
@@ -501,24 +511,25 @@ function CommandFormFields({
 	const selectedPermissions = commandForm.requiredPermissionIds
 		.map((permissionId) => permissionById.get(permissionId))
 		.filter((permission): permission is NonNullable<typeof permission> => Boolean(permission))
+	const hasImmutableAccessRequirements = immutableAccessRequirements.length > 0
 
 	return (
 		<div className="grid gap-4 md:grid-cols-2">
-				<div className="space-y-4">
-					<div>
-						<Label htmlFor="command-name">Command Name</Label>
-						<Input
-							id="command-name"
-							value={commandForm.name}
-							onChange={(event) =>
-								setCommandForm((previous) => ({ ...previous, name: event.target.value }))
-							}
-							placeholder="example_command"
-							disabled={disableNameEdit}
-							required
-						/>
-						<p className="mt-1 text-xs text-muted-foreground">lowercase letters, numbers, `_` or `-`</p>
-					</div>
+			<div className="space-y-4">
+				<div>
+					<Label htmlFor="command-name">Command Name</Label>
+					<Input
+						id="command-name"
+						value={commandForm.name}
+						onChange={(event) =>
+							setCommandForm((previous) => ({ ...previous, name: event.target.value }))
+						}
+						placeholder="example_command"
+						disabled={disableNameEdit}
+						required
+					/>
+					<p className="mt-1 text-xs text-muted-foreground">lowercase letters, numbers, `_` or `-`</p>
+				</div>
 				<div>
 					<Label htmlFor="command-description">Description</Label>
 					<Input
@@ -553,52 +564,69 @@ function CommandFormFields({
 					<span className="text-sm font-medium">Active</span>
 				</div>
 				<div className="space-y-2">
-					<Label htmlFor="permission-select">Required Global Permissions</Label>
-					{selectedPermissions.length > 0 && (
-						<div className="flex flex-wrap gap-2">
-							{selectedPermissions.map((permission) => (
-								<div
-									key={permission.id}
-									className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-sm"
-								>
-									<span>{permission.name}</span>
-									<button
-										type="button"
-										onClick={() => onRemoveRequiredPermission(permission.id)}
-										className="ml-1 hover:text-destructive"
-										aria-label={`Remove ${permission.name}`}
-									>
-										<X className="h-3 w-3" />
-									</button>
+					<Label htmlFor="permission-select">Required Access</Label>
+					{hasImmutableAccessRequirements ? (
+							<div className="rounded-md border border-border/60 bg-muted/30 p-3">
+								<div className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">
+								Static access requirements
 								</div>
-							))}
-						</div>
-					)}
-					<Select<{ value: string; label: string; urn: string; description?: string }>
-						inputId="permission-select"
-						value=""
-						onValueChange={(nextPermissionId) => {
-							if (!nextPermissionId) return
-							onAddRequiredPermission(nextPermissionId)
-							setPermissionSearch('')
-						}}
-						query={permissionSearch}
-						onQueryChange={setPermissionSearch}
-						searchable
-						options={availablePermissionOptions}
-						placeholder="Add permission..."
-						emptyText="No matching permissions found"
-						className="w-full"
-						contentClassName="w-[min(90vw,36rem)]"
-						inputClassName="h-9"
-						getOptionSearchText={(option) => `${option.label} ${option.urn} ${option.description ?? ''}`.trim()}
-						renderOption={(option) => (
-							<div className="space-y-0.5 py-0.5">
-								<div className="text-sm font-medium">{option.label}</div>
-								<div className="font-mono text-xs text-muted-foreground">{option.urn}</div>
+							<div className="flex flex-wrap gap-2">
+								{immutableAccessRequirements.map((label) => (
+									<Badge key={label} variant="secondary" className="px-2 py-1">
+										{label}
+									</Badge>
+								))}
 							</div>
-						)}
-					/>
+						</div>
+					) : (
+						<>
+							{selectedPermissions.length > 0 && (
+								<div className="flex flex-wrap gap-2">
+									{selectedPermissions.map((permission) => (
+										<div
+											key={permission.id}
+											className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-sm"
+										>
+											<span>{permission.name}</span>
+											<button
+												type="button"
+												onClick={() => onRemoveRequiredPermission(permission.id)}
+												className="ml-1 hover:text-destructive"
+												aria-label={`Remove ${permission.name}`}
+											>
+												<X className="h-3 w-3" />
+											</button>
+										</div>
+									))}
+								</div>
+							)}
+							<Select<{ value: string; label: string; urn: string; description?: string }>
+								inputId="permission-select"
+								value=""
+								onValueChange={(nextPermissionId) => {
+									if (!nextPermissionId) return
+									onAddRequiredPermission(nextPermissionId)
+									setPermissionSearch('')
+								}}
+								query={permissionSearch}
+								onQueryChange={setPermissionSearch}
+								searchable
+								options={availablePermissionOptions}
+								placeholder="Add permission..."
+								emptyText="No matching permissions found"
+								className="w-full"
+								contentClassName="w-[min(90vw,36rem)]"
+								inputClassName="h-9"
+								getOptionSearchText={(option) => `${option.label} ${option.urn} ${option.description ?? ''}`.trim()}
+								renderOption={(option) => (
+									<div className="space-y-0.5 py-0.5">
+										<div className="text-sm font-medium">{option.label}</div>
+										<div className="font-mono text-xs text-muted-foreground">{option.urn}</div>
+									</div>
+								)}
+							/>
+						</>
+					)}
 				</div>
 			</div>
 

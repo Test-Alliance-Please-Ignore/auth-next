@@ -23,7 +23,10 @@ export interface UserDiscordRefreshWorkflowParams {
 	/** Optional delay before executing the refresh, used to stagger batch runs (0–600 seconds). */
 	jitterDelaySeconds?: number
 	/** Assignment DO rows waiting for this refresh to confirm role removal. */
-	temporaryRoleRemovalsByGuild?: Record<string, Array<{ assignmentId: string; revision: number }>>
+	temporaryRoleRemovalsByGuild?: Record<
+		string,
+		Array<{ assignmentId: string; revision: number; claimToken: string }>
+	>
 }
 
 type WorkflowStepStatus = 'ok' | 'failed' | 'skipped'

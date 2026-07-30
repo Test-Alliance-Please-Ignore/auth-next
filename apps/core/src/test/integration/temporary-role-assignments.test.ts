@@ -84,6 +84,34 @@ describe('TemporaryRoleAssignments Durable Object', () => {
 		expect(current[0]?.expiresAt).toBe(renewed.expiresAt)
 	})
 
+	it('does not tombstone a newer renewal when an older mutation rolls back', async () => {
+		const guildId = `guild-rollback-${crypto.randomUUID()}`
+		const assignments = assignmentsFor(guildId)
+		const first = await assignments.upsertAssignment(guildId, {
+			guildId,
+			roleId: 'role-rollback',
+			roleName: 'Rollback Role',
+			discordUserId: 'discord-rollback',
+			assignmentSource: 'self',
+			expiresAt: Date.now() + 60_000,
+		})
+		const renewed = await assignments.upsertAssignment(guildId, {
+			guildId,
+			roleId: 'role-rollback',
+			roleName: 'Rollback Role',
+			discordUserId: 'discord-rollback',
+			assignmentSource: 'self',
+			expiresAt: Date.now() + 120_000,
+		})
+
+		await assignments.deleteAssignment(guildId, first.id, first.revision)
+
+		const current = await assignments.listActiveAssignments(guildId, 'discord-rollback')
+		expect(current).toHaveLength(1)
+		expect(current[0]?.id).toBe(renewed.id)
+		expect(current[0]?.revision).toBe(renewed.revision)
+	})
+
 	it('retains failed removals for alarm retry and explicit eviction handling', async () => {
 		const guildId = `guild-retry-${crypto.randomUUID()}`
 		const assignments = assignmentsFor(guildId)
@@ -109,9 +137,68 @@ describe('TemporaryRoleAssignments Durable Object', () => {
 		)
 		const retry = await assignments.listPendingRemovalAssignments(guildId, 'discord-user-2')
 		expect(retry[0]?.status).toBe('removal_pending')
-		await assignments.deleteAssignment(guildId, created.id)
+		await assignments.deleteAssignment(guildId, created.id, created.revision)
 		expect(await assignments.listPendingRemovalAssignments(guildId, 'discord-user-2')).toHaveLength(
 			0
 		)
+	})
+
+	it('ignores completion from a stale or unclaimed expiry workflow', async () => {
+		const guildId = `guild-claim-fence-${crypto.randomUUID()}`
+		const assignments = assignmentsFor(guildId)
+		const created = await assignments.upsertAssignment(guildId, {
+			guildId,
+			roleId: 'role-claim-fence',
+			roleName: 'Claim Fence Role',
+			discordUserId: 'discord-claim-fence',
+			assignmentSource: 'self',
+			expiresAt: Date.now() + 60_000,
+		})
+		const pending = await assignments.markRemovalPending(guildId, {
+			roleId: 'role-claim-fence',
+			discordUserId: 'discord-claim-fence',
+			reason: 'expired',
+		})
+
+		await assignments.completeRemoval(
+			guildId,
+			[{ assignmentId: created.id, revision: pending!.revision, claimToken: 'stale-token' }],
+			true
+		)
+
+		const stillPending = await assignments.listPendingRemovalAssignments(
+			guildId,
+			'discord-claim-fence'
+		)
+		expect(stillPending[0]?.status).toBe('removal_pending')
+	})
+
+	it('rejects replay of an interaction whose assignment was tombstoned', async () => {
+		const guildId = `guild-replay-${crypto.randomUUID()}`
+		const assignments = assignmentsFor(guildId)
+		const interactionId = `interaction-${crypto.randomUUID()}`
+		const created = await assignments.upsertAssignment(guildId, {
+			guildId,
+			roleId: 'role-replay',
+			roleName: 'Replay Role',
+			discordUserId: 'discord-replay',
+			assignmentSource: 'self',
+			expiresAt: Date.now() + 60_000,
+			interactionId,
+		})
+
+		await assignments.deleteAssignment(guildId, created.id, created.revision)
+
+		await expect(
+			assignments.upsertAssignment(guildId, {
+				guildId,
+				roleId: 'role-replay',
+				roleName: 'Replay Role',
+				discordUserId: 'discord-replay',
+				assignmentSource: 'self',
+				expiresAt: Date.now() + 60_000,
+				interactionId,
+			})
+		).rejects.toThrow('TEMPORARY_ROLE_INTERACTION_REPLAY')
 	})
 })

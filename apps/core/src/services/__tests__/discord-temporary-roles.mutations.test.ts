@@ -29,6 +29,7 @@ const role = {
 	roleDbId: 'role-db-1',
 	roleId: 'role-1',
 	roleName: 'Fleet Member',
+	displayName: 'Fleet Member',
 	defaultDurationSeconds: 3600,
 }
 
@@ -66,6 +67,7 @@ describe('temporary role direct mutations', () => {
 		})
 
 		expect(assignmentStub.applyRoleMutation).toHaveBeenCalledWith('guild-1', {
+			assignmentId: 'assignment-1',
 			roleId: 'role-1',
 			discordUserId: 'discord-1',
 			action: 'add',
@@ -83,6 +85,7 @@ describe('temporary role direct mutations', () => {
 		})
 
 		expect(assignmentStub.applyRoleMutation).toHaveBeenCalledWith('guild-1', {
+			assignmentId: 'assignment-1',
 			roleId: 'role-1',
 			discordUserId: 'discord-1',
 			action: 'remove',
@@ -94,6 +97,25 @@ describe('temporary role direct mutations', () => {
 			true,
 			undefined
 		)
+	})
+
+	it('rolls back the persisted assignment when the Discord RPC throws', async () => {
+		assignmentStub.applyRoleMutation.mockRejectedValueOnce(new Error('Discord worker unavailable'))
+
+		await expect(
+			assignTemporaryRole(env, {} as any, {
+				guildId: 'guild-1',
+				discordUserId: 'discord-1',
+				coreUserId: 'core-1',
+				role,
+				durationText: '1 hour',
+				defaultDurationSeconds: 3600,
+				assignedByCoreUserId: 'core-1',
+				assignmentSource: 'self',
+			})
+		).rejects.toThrow('Discord worker unavailable')
+
+		expect(assignmentStub.deleteAssignment).toHaveBeenCalledWith('guild-1', 'assignment-1', 1)
 	})
 
 	it('propagates a failed Durable Object mutation while retaining the assignment state', async () => {
