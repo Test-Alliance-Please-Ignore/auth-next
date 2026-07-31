@@ -131,6 +131,10 @@
 			"dependsOn": ["build", "topo"],
 			"outputLogs": "new-only"
 		},
+		"test:focused": {
+			"dependsOn": ["build", "topo"],
+			"outputLogs": "new-only"
+		},
 		"check:ci": {
 			"dependsOn": ["//#check:deps", "check:types", "topo"],
 			"outputLogs": "new-only"

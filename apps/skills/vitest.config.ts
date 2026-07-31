@@ -8,6 +8,7 @@ export default defineConfig({
 			miniflare: {
 				bindings: {
 					ENVIRONMENT: 'VITEST',
+					DATABASE_URL: process.env.DATABASE_URL || '',
 				},
 			},
 		}),

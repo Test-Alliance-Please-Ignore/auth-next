@@ -8,8 +8,8 @@
 		"build": "run-vite-build",
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc",
-		"db:generate": "drizzle-kit generate",
 		"db:drop-legacy-sde-tables": "tsx ./src/scripts/drop-legacy-sde-tables.ts",
+		"db:generate": "drizzle-kit generate",
 		"db:migrate": "tsx ./src/scripts/migrate.ts",
 		"db:push": "drizzle-kit push",
 		"db:studio": "drizzle-kit studio",
@@ -18,8 +18,8 @@
 		"fix:workers-types": "run-wrangler-types",
 		"import:inv-all": "pnpm run import:sde-inventory",
 		"import:sde-all": "pnpm run import:sde-inventory && pnpm run import:sde-geography",
-		"import:sde-inventory": "tsx ./src/scripts/import-sde-inventory.ts",
 		"import:sde-geography": "tsx ./src/scripts/import-sde-geography.ts",
+		"import:sde-inventory": "tsx ./src/scripts/import-sde-inventory.ts",
 		"preview": "run-vite-preview",
 		"tail": "run-wrangler-tail",
 		"test": "run-vitest",
@@ -43,7 +43,7 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "1.47.0",
-		"@cloudflare/vitest-pool-workers": "0.18.8",
+		"@cloudflare/vitest-pool-workers": "0.19.1",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
@@ -53,6 +53,6 @@
 		"tsx": "4.21.0",
 		"vite": "8.1.5",
 		"vitest": "4.1.10",
-		"wrangler": "4.114.0"
+		"wrangler": "4.116.0"
 	}
 }

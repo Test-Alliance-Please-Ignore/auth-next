@@ -19,9 +19,9 @@ vi.mock('../../lib/groups-cache', () => ({
 vi.mock('../../middleware/session', () => ({
 	requireAllianceMember:
 		() =>
-			async (_c: unknown, next: () => Promise<void>): Promise<void> => {
-				await next()
-			},
+		async (_c: unknown, next: () => Promise<void>): Promise<void> => {
+			await next()
+		},
 }))
 
 const getStubMock = vi.mocked(getStub)
@@ -66,11 +66,16 @@ function createApp(user: SessionUser) {
 	return app
 }
 
-function buildRawWithOres(ores: Array<{ oreName: string; quantity: string; oreTypeId: string }>, moonId: string): string {
+function buildRawWithOres(
+	ores: Array<{ oreName: string; quantity: string; oreTypeId: string }>,
+	moonId: string
+): string {
 	return [
 		'Moon\tOre\tQuantity\tOre Type ID\tSystem ID\tPlanet ID\tMoon ID',
 		'Jita IV - Moon 4',
-		...ores.map((ore) => `\t${ore.oreName}\t${ore.quantity}\t${ore.oreTypeId}\t30000142\t40000001\t${moonId}`),
+		...ores.map(
+			(ore) => `\t${ore.oreName}\t${ore.quantity}\t${ore.oreTypeId}\t30000142\t40000001\t${moonId}`
+		),
 	].join('\n')
 }
 
@@ -85,9 +90,7 @@ describe('moon-scan ingest sanitization', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks()
-		getCachedUserPermissionsMock.mockResolvedValue([
-			{ urn: 'urn:moons:scan:submit' },
-		] as any)
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:submit' }] as any)
 
 		moonScanStub = {
 			cacheCharacterName: vi.fn().mockResolvedValue(undefined),
@@ -109,11 +112,15 @@ describe('moon-scan ingest sanitization', () => {
 	it('rejects oversized parse payloads', async () => {
 		const app = createApp(makeUser({ id: 'submit-user-oversized-parse' }))
 		const raw = 'x'.repeat(1_000_001)
-		const res = await app.request('/api/moon-scan/scans/parse', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ raw }),
-		}, env)
+		const res = await app.request(
+			'/api/moon-scan/scans/parse',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ raw }),
+			},
+			env
+		)
 
 		expect(res.status).toBe(413)
 		expect(await res.json()).toEqual({ error: 'raw payload exceeds 1000000 bytes' })
@@ -122,11 +129,15 @@ describe('moon-scan ingest sanitization', () => {
 	it('rejects oversized submit payloads', async () => {
 		const app = createApp(makeUser({ id: 'submit-user-oversized-submit' }))
 		const raw = 'x'.repeat(1_000_001)
-		const res = await app.request('/api/moon-scan/scans/submit', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ raw }),
-		}, env)
+		const res = await app.request(
+			'/api/moon-scan/scans/submit',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ raw }),
+			},
+			env
+		)
 
 		expect(res.status).toBe(413)
 		expect(await res.json()).toEqual({ error: 'raw payload exceeds 1000000 bytes' })
@@ -134,97 +145,133 @@ describe('moon-scan ingest sanitization', () => {
 
 	it('hard-rejects invalid numeric moon IDs', async () => {
 		const app = createApp(makeUser({ id: 'submit-user-invalid-id' }))
-		const raw = buildRawWithOres([
-			{ oreName: 'Bitumens', quantity: '0.5', oreTypeId: '45490' },
-			{ oreName: 'Coesite', quantity: '0.5', oreTypeId: '45491' },
-		], 'moon-abc')
+		const raw = buildRawWithOres(
+			[
+				{ oreName: 'Bitumens', quantity: '0.5', oreTypeId: '45490' },
+				{ oreName: 'Coesite', quantity: '0.5', oreTypeId: '45491' },
+			],
+			'moon-abc'
+		)
 
-		const res = await app.request('/api/moon-scan/scans/submit', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ raw }),
-		}, env)
+		const res = await app.request(
+			'/api/moon-scan/scans/submit',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ raw }),
+			},
+			env
+		)
 
 		expect(res.status).toBe(400)
-		const body = await res.json() as { parseErrors?: string[] }
+		const body = (await res.json()) as { parseErrors?: string[] }
 		expect(body.parseErrors?.some((error) => error.includes('invalid moonId'))).toBe(true)
 		expect(moonScanStub.submitScans).not.toHaveBeenCalled()
 	})
 
 	it('accepts observed quantity sums without requiring them to total exactly one', async () => {
 		const app = createApp(makeUser({ id: 'submit-user-sum' }))
-		const raw = buildRawWithOres([
-			{ oreName: 'Bitumens', quantity: '0.8', oreTypeId: '45490' },
-			{ oreName: 'Coesite', quantity: '0.1', oreTypeId: '45491' },
-		], '40161739')
+		const raw = buildRawWithOres(
+			[
+				{ oreName: 'Bitumens', quantity: '0.8', oreTypeId: '45490' },
+				{ oreName: 'Coesite', quantity: '0.1', oreTypeId: '45491' },
+			],
+			'40161739'
+		)
 
-		const res = await app.request('/api/moon-scan/scans/submit', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ raw }),
-		}, env)
+		const res = await app.request(
+			'/api/moon-scan/scans/submit',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ raw }),
+			},
+			env
+		)
 
 		expect(res.status).toBe(200)
-		const body = await res.json() as { submitted?: number }
+		const body = (await res.json()) as { submitted?: number }
 		expect(body.submitted).toBe(0)
 		expect(moonScanStub.submitScans).toHaveBeenCalled()
 	})
 
 	it('hard-rejects non-whitelisted ore type IDs', async () => {
 		const app = createApp(makeUser({ id: 'submit-user-whitelist' }))
-		const raw = buildRawWithOres([
-			{ oreName: 'Unknown Moon Ore', quantity: '0.5', oreTypeId: '99999' },
-			{ oreName: 'Bitumens', quantity: '0.5', oreTypeId: '45490' },
-		], '40161739')
+		const raw = buildRawWithOres(
+			[
+				{ oreName: 'Unknown Moon Ore', quantity: '0.5', oreTypeId: '99999' },
+				{ oreName: 'Bitumens', quantity: '0.5', oreTypeId: '45490' },
+			],
+			'40161739'
+		)
 
-		const res = await app.request('/api/moon-scan/scans/submit', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ raw }),
-		}, env)
+		const res = await app.request(
+			'/api/moon-scan/scans/submit',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ raw }),
+			},
+			env
+		)
 
 		expect(res.status).toBe(400)
-		const body = await res.json() as { parseErrors?: string[] }
-		expect(body.parseErrors?.some((error) => error.includes('not allowed for moon scans'))).toBe(true)
+		const body = (await res.json()) as { parseErrors?: string[] }
+		expect(body.parseErrors?.some((error) => error.includes('not allowed for moon scans'))).toBe(
+			true
+		)
 		expect(moonScanStub.submitScans).not.toHaveBeenCalled()
 	})
 
 	it('allows validators to preview and submit scans with auto-verification', async () => {
-		getCachedUserPermissionsMock.mockResolvedValue([
-			{ urn: 'urn:moons:scan:validate' },
-		] as any)
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:scan:validate' }] as any)
 
 		const app = createApp(makeUser({ id: 'validate-only-user' }))
-		const body = JSON.stringify({ raw: buildRawWithOres([
-			{ oreName: 'Bitumens', quantity: '0.5', oreTypeId: '45490' },
-			{ oreName: 'Coesite', quantity: '0.5', oreTypeId: '45491' },
-		], '40161739') })
+		const body = JSON.stringify({
+			raw: buildRawWithOres(
+				[
+					{ oreName: 'Bitumens', quantity: '0.5', oreTypeId: '45490' },
+					{ oreName: 'Coesite', quantity: '0.5', oreTypeId: '45491' },
+				],
+				'40161739'
+			),
+		})
 
-		const parseRes = await app.request('/api/moon-scan/scans/parse', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body,
-		}, env)
-		const submitRes = await app.request('/api/moon-scan/scans/submit', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body,
-		}, env)
+		const parseRes = await app.request(
+			'/api/moon-scan/scans/parse',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body,
+			},
+			env
+		)
+		const submitRes = await app.request(
+			'/api/moon-scan/scans/submit',
+			{
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body,
+			},
+			env
+		)
 
 		expect(parseRes.status).toBe(200)
 		expect(submitRes.status).toBe(200)
 		expect(moonScanStub.submitScans).toHaveBeenCalledWith(
-		[
-			{
-				moonId: '40161739',
-				ores: [
-					{ oreTypeId: '45490', quantity: '0.500000' },
-					{ oreTypeId: '45491', quantity: '0.500000' },
-				],
-			},
-		],
-		'1001',
-		true
+			[
+				{
+					moonId: '40161739',
+					solarSystemId: '30000142',
+					regionId: undefined,
+					ores: [
+						{ oreTypeId: '45490', quantity: '0.500000' },
+						{ oreTypeId: '45491', quantity: '0.500000' },
+					],
+				},
+			],
+			'1001',
+			true
 		)
 	})
 })

@@ -15,6 +15,8 @@ vi.mock('@repo/hono-helpers', () => ({
 		info: (...args: unknown[]) => loggerInfoMock(...args),
 		error: (...args: unknown[]) => loggerErrorMock(...args),
 	},
+	withWorkerLogContext: async (_name: string, _env: unknown, callback: () => Promise<void>) =>
+		callback(),
 }))
 
 describe('scheduledHandler', () => {

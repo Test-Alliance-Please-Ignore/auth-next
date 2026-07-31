@@ -144,6 +144,12 @@ describe('EsiTypeResolverDO local-first resolution', () => {
 	})
 
 	it('falls back to ESI names endpoint for unresolved local IDs', async () => {
+		const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+			new Response(JSON.stringify([{ id: 10000002, name: 'The Forge', category: 'region' }]), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		)
 		const { resolver, env } = await createResolver()
 
 		const universeStub = {
@@ -163,15 +169,6 @@ describe('EsiTypeResolverDO local-first resolution', () => {
 			if (binding === env.UNIVERSE) return universeStub as never
 			throw new Error('Unexpected binding in test')
 		})
-
-		const fetchSpy = vi
-			.spyOn(globalThis, 'fetch')
-			.mockResolvedValue(
-				new Response(JSON.stringify([{ id: 10000002, name: 'The Forge', category: 'region' }]), {
-					status: 200,
-					headers: { 'Content-Type': 'application/json' },
-				})
-			)
 
 		const result = await resolver.resolveIds(['10000002'])
 

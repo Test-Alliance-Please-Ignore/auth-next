@@ -467,6 +467,11 @@ just check -d    # deps only
 just fix -d      # fix deps only
 ```
 
+When making code changes, run the relevant Prettier check in addition to
+typechecks and tests. Formatting is part of change validation, not a follow-up
+step. Use `bun runx check --format` where possible, or run Prettier against the
+changed files when the repository-wide check has unrelated baseline failures.
+
 ### Database Operations
 ```bash
 # Generate migrations for all apps

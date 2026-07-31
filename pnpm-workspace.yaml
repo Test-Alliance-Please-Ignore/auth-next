@@ -8,7 +8,7 @@ overrides:
   esbuild: 0.28.1
   drizzle-orm: 0.45.2
   tsx: 4.21.0
-  workerd: 1.20260724.1
+  workerd: 1.20260730.1
 
 peerDependencyRules:
   allowedVersions:
@@ -19,3 +19,8 @@ allowBuilds:
   esbuild: true
   unrs-resolver: true
   workerd: true
+
+minimumReleaseAgeExclude:
+  - '@cloudflare/vitest-pool-workers@0.19.1'
+  - miniflare@4.20260730.0
+  - wrangler@4.116.0

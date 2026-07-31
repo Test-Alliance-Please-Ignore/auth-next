@@ -39,14 +39,14 @@ describe('QueueConsumer Integration', () => {
 			{
 				id: 'msg-1',
 				timestamp: new Date(),
-				body: { characterId: 12345, action: 'update' },
+				body: { characterId: '12345', action: 'update' },
 				ack: () => {},
 				retry: () => {},
 			},
 			{
 				id: 'msg-2',
 				timestamp: new Date(),
-				body: { characterId: 67890, action: 'delete' },
+				body: { characterId: '67890', action: 'delete' },
 				ack: () => {},
 				retry: () => {},
 			},
@@ -62,8 +62,8 @@ describe('QueueConsumer Integration', () => {
 		await consumer.queue(batch, {}, {} as ExecutionContext)
 
 		expect(processedMessages).toHaveLength(2)
-		expect(processedMessages[0].characterId).toBe(12345)
-		expect(processedMessages[1].characterId).toBe(67890)
+		expect(processedMessages[0].characterId).toBe('12345')
+		expect(processedMessages[1].characterId).toBe('67890')
 	})
 
 	it('should handle validation errors gracefully', async () => {
@@ -96,7 +96,7 @@ describe('QueueConsumer Integration', () => {
 			{
 				id: 'msg-1',
 				timestamp: new Date(),
-				body: { characterId: 12345, action: 'update' },
+				body: { characterId: '12345', action: 'update' },
 				ack: () => {},
 				retry: () => {},
 			},
@@ -110,7 +110,7 @@ describe('QueueConsumer Integration', () => {
 			{
 				id: 'msg-3',
 				timestamp: new Date(),
-				body: { characterId: 67890, action: 'delete' },
+				body: { characterId: '67890', action: 'delete' },
 				ack: () => {},
 				retry: () => {},
 			},
@@ -167,14 +167,14 @@ describe('QueueConsumer Integration', () => {
 			{
 				id: 'msg-1',
 				timestamp: new Date(),
-				body: { characterId: 12345, action: 'update' },
+				body: { characterId: '12345', action: 'update' },
 				ack: () => {},
 				retry: () => {},
 			},
 			{
 				id: 'msg-2',
 				timestamp: new Date(),
-				body: { characterId: 67890, action: 'update' },
+				body: { characterId: '67890', action: 'update' },
 				ack: () => {},
 				retry: () => {},
 			},
@@ -217,7 +217,7 @@ describe('QueueConsumer Integration', () => {
 		const messages: Message[] = Array.from({ length: 6 }, (_, i) => ({
 			id: `msg-${i}`,
 			timestamp: new Date(),
-			body: { characterId: i + 1, action: 'update' as const },
+			body: { characterId: String(i + 1), action: 'update' as const },
 			ack: () => {},
 			retry: () => {},
 		}))
@@ -263,7 +263,7 @@ describe('QueueConsumer Integration', () => {
 			{
 				id: 'msg-1',
 				timestamp: new Date(),
-				body: { characterId: 12345, action: 'update' },
+				body: { characterId: '12345', action: 'update' },
 				ack: () => {},
 				retry: () => {},
 			},
@@ -309,7 +309,7 @@ describe('QueueConsumer Integration', () => {
 		const messages: Message[] = Array.from({ length: 5 }, (_, i) => ({
 			id: `msg-${i}`,
 			timestamp: new Date(),
-			body: { characterId: i + 1, action: 'update' as const },
+			body: { characterId: String(i + 1), action: 'update' as const },
 			ack: () => {},
 			retry: () => {},
 		}))

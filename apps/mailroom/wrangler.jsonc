@@ -2,7 +2,7 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "mailroom",
 	"main": "src/index.ts",
-	"compatibility_date": "2025-04-28",
+	"compatibility_date": "2026-07-30",
 	"compatibility_flags": ["nodejs_compat"],
 	"workers_dev": false,
 	// Inbound email is delivered by an Email Routing rule ("Send to a Worker" / catch-all)

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getStub } from '@repo/do-utils'
 
 import { getCachedUserPermissions } from '../../lib/groups-cache'
-import { moonScanRoutes } from '../moon-scan'
+import { clearMoonScanPricingCaches, moonScanRoutes } from '../moon-scan'
 
 import type { SessionUser } from '../../context'
 
@@ -19,9 +19,9 @@ vi.mock('../../lib/groups-cache', () => ({
 vi.mock('../../middleware/session', () => ({
 	requireAllianceMember:
 		() =>
-			async (_c: unknown, next: () => Promise<void>): Promise<void> => {
-				await next()
-			},
+		async (_c: unknown, next: () => Promise<void>): Promise<void> => {
+			await next()
+		},
 }))
 
 const getStubMock = vi.mocked(getStub)
@@ -89,6 +89,7 @@ describe('moon-scan profitability and batching behavior', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks()
+		clearMoonScanPricingCaches()
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:view' }] as any)
 
 		moonScanStub = {
@@ -216,7 +217,11 @@ describe('moon-scan profitability and batching behavior', () => {
 		const res = await app.request('/api/moon-scan/moons/region/10000002', {}, env)
 
 		expect(res.status).toBe(200)
-		expect(universeStub.getMoonsBySystemIds).toHaveBeenCalledWith(['sys-low', 'sys-high', 'sys-null'])
+		expect(universeStub.getMoonsBySystemIds).toHaveBeenCalledWith([
+			'sys-low',
+			'sys-high',
+			'sys-null',
+		])
 		expect(universeStub.getMoonsBySystemId).not.toHaveBeenCalled()
 	})
 
@@ -244,7 +249,9 @@ describe('moon-scan profitability and batching behavior', () => {
 
 		const app = createApp(makeUser())
 		const res = await app.request('/api/moon-scan/moons/system/sys-1', {}, env)
-		const body = await res.json() as { moons: Array<{ moonId: string; composition: unknown | null }> }
+		const body = (await res.json()) as {
+			moons: Array<{ moonId: string; composition: unknown | null }>
+		}
 
 		expect(res.status).toBe(200)
 		expect(moonScanStub.getVerifiedCompositions).toHaveBeenCalledWith(['moon-1'])
@@ -298,20 +305,22 @@ describe('moon-scan profitability and batching behavior', () => {
 
 		const app = createApp(makeUser())
 		const res = await app.request('/api/moon-scan/moons/verified', {}, env)
-		const body = await res.json() as {
+		const body = (await res.json()) as {
 			items: Array<{ moonId: string; moonName: string; metenoxProfit: string | null }>
 			total: number
 			constellations: Array<{ constellationId: string }>
 		}
 
 		expect(res.status).toBe(200)
-		expect(moonScanStub.getVerifiedMoonPage).toHaveBeenCalledWith(expect.objectContaining({
-		profitability: expect.objectContaining({
-			defaultCycleDays: 1,
-			prices: expect.any(Array),
-		}),
-	}))
-	expect(moonScanStub.getVerifiedCompositions).not.toHaveBeenCalled()
+		expect(moonScanStub.getVerifiedMoonPage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				profitability: expect.objectContaining({
+					defaultCycleDays: 1,
+					prices: expect.any(Array),
+				}),
+			})
+		)
+		expect(moonScanStub.getVerifiedCompositions).not.toHaveBeenCalled()
 		expect(universeStub.resolveStaticMoonsByIds).not.toHaveBeenCalled()
 		expect(body.total).toBe(1)
 		expect(body.items).toHaveLength(1)
@@ -344,7 +353,12 @@ describe('moon-scan profitability and batching behavior', () => {
 		})
 		universeStub.resolveTypeNamesByIds.mockResolvedValue({
 			'45490': { typeId: '45490', typeName: 'Bitumens', groupId: '1', groupName: 'Moon Ore' },
-			'16633': { typeId: '16633', typeName: 'Hydrocarbons', groupId: '2', groupName: 'Moon Materials' },
+			'16633': {
+				typeId: '16633',
+				typeName: 'Hydrocarbons',
+				groupId: '2',
+				groupName: 'Moon Materials',
+			},
 		})
 		marketsStub.getBatchMarketDataAtTime.mockResolvedValue({
 			prices: [
@@ -356,7 +370,7 @@ describe('moon-scan profitability and batching behavior', () => {
 
 		const app = createApp(makeUser())
 		const res = await app.request('/api/moon-scan/moons/moon-1', {}, env)
-		const body = await res.json() as {
+		const body = (await res.json()) as {
 			profitability: {
 				structures: Array<{
 					structureType: 'tatara' | 'metenox'
@@ -433,7 +447,7 @@ describe('moon-scan profitability and batching behavior', () => {
 		})
 
 		const app = createApp(makeUser())
-		const res = await app.request('/api/moon-scan/moons/verified', {}, env)
+		const res = await app.request('/api/moon-scan/moons/verified?search=refine-materials', {}, env)
 
 		expect(res.status).toBe(200)
 		expect(marketsStub.getBatchMarketDataAtTime).toHaveBeenCalledTimes(1)
@@ -459,34 +473,40 @@ describe('moon-scan profitability and batching behavior', () => {
 			pageSize: 50,
 			constellations: [],
 		})
-		moonScanStub.getVerifiedCompositions.mockImplementation(async (moonIds: string[]) => moonIds.map((moonId) => ({
-			moonId,
-			sourceScanId: `scan-${moonId}`,
-			verifiedAt: '2026-05-01T00:00:00.000Z',
-			verifiedBy: null,
-			ores: [],
-		})))
-		universeStub.resolveStaticMoonsByIds.mockImplementation(async (moonIds: string[]) =>
-			Object.fromEntries(moonIds.map((moonId) => [
+		moonScanStub.getVerifiedCompositions.mockImplementation(async (moonIds: string[]) =>
+			moonIds.map((moonId) => ({
 				moonId,
-				{
+				sourceScanId: `scan-${moonId}`,
+				verifiedAt: '2026-05-01T00:00:00.000Z',
+				verifiedBy: null,
+				ores: [],
+			}))
+		)
+		universeStub.resolveStaticMoonsByIds.mockImplementation(async (moonIds: string[]) =>
+			Object.fromEntries(
+				moonIds.map((moonId) => [
 					moonId,
-					moonName: `Moon ${moonId}`,
-					solarSystemId: `sys-${moonId}`,
-				},
-			]))
+					{
+						moonId,
+						moonName: `Moon ${moonId}`,
+						solarSystemId: `sys-${moonId}`,
+					},
+				])
+			)
 		)
 		universeStub.resolveSolarSystemsByIds.mockImplementation(async (systemIds: string[]) =>
-			Object.fromEntries(systemIds.map((systemId) => [
-				systemId,
-				{
-					solarSystemId: systemId,
-					solarSystemName: `System ${systemId}`,
-					regionId: 'region-1',
-					constellationId: 'const-1',
-					securityStatus: '0.5',
-				},
-			]))
+			Object.fromEntries(
+				systemIds.map((systemId) => [
+					systemId,
+					{
+						solarSystemId: systemId,
+						solarSystemName: `System ${systemId}`,
+						regionId: 'region-1',
+						constellationId: 'const-1',
+						securityStatus: '0.5',
+					},
+				])
+			)
 		)
 		universeStub.resolveRegionsByIds.mockResolvedValue({
 			'region-1': { regionId: 'region-1', regionName: 'Region 1' },
@@ -495,8 +515,15 @@ describe('moon-scan profitability and batching behavior', () => {
 			'const-1': { constellationId: 'const-1', constellationName: 'Constellation 1' },
 		})
 
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:moons:admin' }] as any)
 		const app = createApp(makeUser())
-		const res = await app.request('/api/moon-scan/moons/verified', {}, env)
+		const res = await app.request(
+			'/api/moon-scan/admin/verified-moon-summaries/backfill',
+			{
+				method: 'POST',
+			},
+			env
+		)
 
 		expect(res.status).toBe(200)
 		expect(moonScanStub.upsertVerifiedMoonSummaries).toHaveBeenCalledTimes(3)
@@ -514,7 +541,11 @@ describe('moon-scan profitability and batching behavior', () => {
 			env
 		)
 		expect(response.status).toBe(202)
-		const payload = await response.json() as { exportId: string; fileName: string; workflowInstanceId: string }
+		const payload = (await response.json()) as {
+			exportId: string
+			fileName: string
+			workflowInstanceId: string
+		}
 		expect(payload.fileName).toMatch(/^scanned-moons-export-/)
 		const workflowInput = exportWorkflowStub.create.mock.calls[0]?.[0] as {
 			params?: { query?: Record<string, unknown> }
@@ -535,7 +566,9 @@ describe('moon-scan profitability and batching behavior', () => {
 		responseBody.httpMetadata = { contentType: 'text/csv; charset=utf-8' }
 		const storedExports = new Map<string, Response>()
 		storedExports.set(key, responseBody)
-		exportBucketStub.get.mockImplementation(async (requestKey: string) => storedExports.get(requestKey) ?? null)
+		exportBucketStub.get.mockImplementation(
+			async (requestKey: string) => storedExports.get(requestKey) ?? null
+		)
 
 		const exportResponse = await app.request(
 			`/api/moon-scan/moons/verified/export/${payload.exportId}/download`,

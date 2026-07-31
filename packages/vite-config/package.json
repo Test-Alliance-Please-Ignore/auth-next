@@ -8,7 +8,8 @@
 	"scripts": {
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc",
-		"test": "run-vitest"
+		"test": "run-vitest",
+		"test:focused": "run-vitest"
 	},
 	"dependencies": {
 		"@cloudflare/vite-plugin": "1.47.0",
@@ -16,7 +17,7 @@
 		"vite": "8.1.5"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "0.18.8",
+		"@cloudflare/vitest-pool-workers": "0.19.1",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",

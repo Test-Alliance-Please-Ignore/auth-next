@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
 	corporationStructures,
-	structureMoonGeographies,
 	structureMoonDrills,
+	structureMoonGeographies,
 } from '../../../db/schema'
 import { EveCorporationDataDO } from '../../../durable-object'
 
@@ -47,6 +47,7 @@ vi.mock('@repo/do-utils', () => ({
 function makeDb() {
 	const where = vi.fn().mockResolvedValue(undefined)
 	const deleteMock = vi.fn(() => ({ where }))
+	const execute = vi.fn().mockResolvedValue({ rows: [] })
 	const set = vi.fn(() => ({ where }))
 	const update = vi.fn(() => ({ set }))
 	const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined)
@@ -55,9 +56,7 @@ function makeDb() {
 	const corporationStructuresFindMany = vi
 		.fn()
 		.mockResolvedValue([{ structureId: 'stale-structure' }])
-	const structureSkyhooksFindMany = vi
-		.fn()
-		.mockResolvedValue([{ structureId: 'stale-structure' }])
+	const structureSkyhooksFindMany = vi.fn().mockResolvedValue([{ structureId: 'stale-structure' }])
 	const structureMiningExtractionsFindMany = vi
 		.fn()
 		.mockResolvedValue([{ structureId: 'stale-structure' }])
@@ -94,11 +93,13 @@ function makeDb() {
 			},
 		},
 		delete: deleteMock,
+		execute,
 		update,
 		insert,
 		_where: where,
 		_set: set,
 		_values: values,
+		_execute: execute,
 	}
 }
 
@@ -121,6 +122,9 @@ describe('structure prune cleanup', () => {
 	it('orders moon drill storage with new ids before stale priority rows', async () => {
 		const db = makeDb()
 		const instance = createDoInstance(db)
+		db._execute.mockResolvedValue({
+			rows: [{ structureId: 'moon-1' }, { structureId: 'moon-2' }],
+		})
 
 		db.query.structureMoonDrills.findMany = vi
 			.fn()
@@ -150,10 +154,9 @@ describe('structure prune cleanup', () => {
 		])
 
 		expect(db._values).toHaveBeenCalled()
-		expect(db._values.mock.calls[0][0].map((row: { structureId: string }) => row.structureId)).toEqual([
-			'moon-1',
-			'moon-2',
-		])
+		expect(
+			db._values.mock.calls[0][0].map((row: { structureId: string }) => row.structureId)
+		).toEqual(['moon-1', 'moon-2'])
 	})
 
 	it('prunes stale skyhook and mining snapshots when structures disappear from a successful sync', async () => {
@@ -219,7 +222,7 @@ describe('structure prune cleanup', () => {
 	it('keeps recently seen structures and their dependent snapshots during the prune grace period', async () => {
 		const db = makeDb()
 		const instance = createDoInstance(db)
-		const recent = new Date('2026-07-22T00:00:00.000Z')
+		const recent = new Date(Date.now() - 60 * 60 * 1000)
 
 		db.query.corporationStructures.findMany = vi.fn().mockResolvedValue([
 			{
@@ -240,7 +243,6 @@ describe('structure prune cleanup', () => {
 				updatedAt: recent,
 			},
 		])
-
 		;(instance as any).hydrateStructureRows = vi.fn().mockResolvedValue([])
 
 		await instance.storeStructures('corp-1', [])
@@ -285,7 +287,6 @@ describe('structure prune cleanup', () => {
 			resolveRegionsByIds: vi.fn(),
 			resolveNearestMoonGeographyBySystemPosition,
 		} as never)
-
 		;(instance as any).hydrateStructureRows = vi.fn().mockResolvedValue([
 			{
 				corporationId: 'corp-1',

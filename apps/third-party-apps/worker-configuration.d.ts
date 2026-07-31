@@ -1,5 +1,5 @@
 /* eslint-disable */
-// Runtime types generated with workerd@1.20260724.1 2025-04-28 nodejs_compat
+// Runtime types generated with workerd@1.20260730.1 2026-07-30 nodejs_compat
 // Begin runtime types
 /*! *****************************************************************************
 Copyright (c) Cloudflare. All rights reserved.
@@ -316,6 +316,8 @@ interface ServiceWorkerGlobalScope extends WorkerGlobalScope {
     ByteLengthQueuingStrategy: typeof ByteLengthQueuingStrategy;
     CountQueuingStrategy: typeof CountQueuingStrategy;
     ErrorEvent: typeof ErrorEvent;
+    MessageChannel: typeof MessageChannel;
+    MessagePort: typeof MessagePort;
     EventSource: typeof EventSource;
     ReadableStreamBYOBRequest: typeof ReadableStreamBYOBRequest;
     ReadableStreamDefaultController: typeof ReadableStreamDefaultController;
@@ -418,6 +420,7 @@ interface TestController {
 interface ExecutionContext<Props = unknown> {
     waitUntil(promise: Promise<any>): void;
     passThroughOnException(): void;
+    readonly exports: Cloudflare.Exports;
     readonly props: Props;
     cache?: CacheContext;
     readonly access?: CloudflareAccessContext;
@@ -450,6 +453,8 @@ declare abstract class Navigator {
     readonly userAgent: string;
     readonly hardwareConcurrency: number;
     readonly platform: string;
+    readonly language: string;
+    readonly languages: string[];
 }
 interface AlarmInvocationInfo {
     readonly isRetry: boolean;
@@ -522,6 +527,7 @@ interface DurableObjectClass<_T extends Rpc.DurableObjectBranded | undefined = u
 }
 interface DurableObjectState<Props = unknown> {
     waitUntil(promise: Promise<any>): void;
+    readonly exports: Cloudflare.Exports;
     readonly props: Props;
     readonly id: DurableObjectId;
     readonly storage: DurableObjectStorage;
@@ -1639,7 +1645,7 @@ declare class Headers {
         value: string
     ]>;
 }
-type BodyInit = ReadableStream<Uint8Array> | string | ArrayBuffer | ArrayBufferView | Blob | URLSearchParams | FormData;
+type BodyInit = ReadableStream<Uint8Array> | string | ArrayBuffer | ArrayBufferView | Blob | URLSearchParams | FormData | Iterable<ArrayBuffer | ArrayBufferView> | AsyncIterable<ArrayBuffer | ArrayBufferView>;
 declare abstract class Body {
     /* [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/body) */
     get body(): ReadableStream | null;
@@ -1806,7 +1812,7 @@ interface Request<CfHostMetadata = unknown, Cf = CfProperties<CfHostMetadata>> e
      *
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/cache)
      */
-    cache?: "no-store";
+    cache?: "no-store" | "no-cache";
 }
 interface RequestInit<Cf = CfProperties> {
     /* A string to set request's method. */
@@ -1820,7 +1826,7 @@ interface RequestInit<Cf = CfProperties> {
     fetcher?: (Fetcher | null);
     cf?: Cf;
     /* A string indicating how the request will interact with the browser's cache to set request's cache. */
-    cache?: "no-store";
+    cache?: "no-store" | "no-cache";
     /* A cryptographic hash of the resource to be fetched by request. Sets request's integrity. */
     integrity?: string;
     /* An AbortSignal to set request's signal. */
@@ -3025,6 +3031,7 @@ declare class URLPattern {
     get pathname(): string;
     get search(): string;
     get hash(): string;
+    get hasRegExpGroups(): boolean;
     test(input?: (string | URLPatternInit), baseURL?: string): boolean;
     exec(input?: (string | URLPatternInit), baseURL?: string): URLPatternResult | null;
 }
@@ -3375,6 +3382,26 @@ declare abstract class MessagePort extends EventTarget {
     start(): void;
     get onmessage(): any | null;
     set onmessage(value: any | null);
+}
+/**
+ * The **`MessageChannel`** interface of the Channel Messaging API allows us to create a new message channel and send data through it via its two MessagePort properties.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageChannel)
+ */
+declare class MessageChannel {
+    constructor();
+    /**
+     * The **`port1`** read-only property of the the port attached to the context that originated the channel.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageChannel/port1)
+     */
+    readonly port1: MessagePort;
+    /**
+     * The **`port2`** read-only property of the the port attached to the context at the other end of the channel, which the message is initially sent to.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageChannel/port2)
+     */
+    readonly port2: MessagePort;
 }
 interface MessagePortPostMessageOptions {
     transfer?: any[];
@@ -11482,7 +11509,7 @@ interface RequestInitCfPropertiesImageDraw extends BasicImageTransformations {
     /**
      * How to combine the foreground and backdrop pixels to create the result
      */
-    composite?: 
+    composite?:
     /** Foreground drawn on top of backdrop (default) */
     'over'
     /** Foreground shown only where backdrop is opaque */
@@ -11996,7 +12023,7 @@ interface IncomingRequestCfPropertiesTLSClientAuthPlaceholder {
     certChainRFC9440TooLarge: false;
 }
 /** Possible outcomes of TLS verification */
-declare type CertVerificationStatus = 
+declare type CertVerificationStatus =
 /** Authentication succeeded */
 "SUCCESS"
 /** No certificate was presented */
@@ -12064,7 +12091,7 @@ interface D1ExecResult {
     count: number;
     duration: number;
 }
-type D1SessionConstraint = 
+type D1SessionConstraint =
 // Indicates that the first query should go to the primary, and the rest queries
 // using the same D1DatabaseSession will go to any replica that is consistent with
 // the bookmark maintained by the session (returned by the first query).
@@ -12484,7 +12511,7 @@ type ImageDrawOptions = {
     bottom?: number;
     right?: number;
 };
-type ImageCompositeMode = 
+type ImageCompositeMode =
 /** Foreground drawn on top of backdrop (default) */
 'over'
 /** Foreground shown only where backdrop is opaque */
@@ -12919,7 +12946,7 @@ declare namespace Rpc {
     // The reason for using a generic type here is to build a serializable subset of structured
     //   cloneable composite types. This allows types defined with the "interface" keyword to pass the
     //   serializable check as well. Otherwise, only types defined with the "type" keyword would pass.
-    type Serializable<T> = 
+    type Serializable<T> =
     // Structured cloneables
     BaseType
     // Structured cloneable composites

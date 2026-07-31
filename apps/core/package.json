@@ -19,6 +19,7 @@
 		"preview": "run-vite-preview",
 		"tail": "run-wrangler-tail",
 		"test": "run-vitest --config vitest.unit.config.ts",
+		"test:focused": "run-vitest --config vitest.unit.config.ts",
 		"test:unit": "run-vitest --config vitest.unit.config.ts",
 		"test:workers": "run-vitest --config vitest.config.ts"
 	},
@@ -71,7 +72,7 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "1.47.0",
-		"@cloudflare/vitest-pool-workers": "0.18.8",
+		"@cloudflare/vitest-pool-workers": "0.19.1",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
@@ -82,6 +83,6 @@
 		"tsx": "4.21.0",
 		"vite": "8.1.5",
 		"vitest": "4.1.10",
-		"wrangler": "4.114.0"
+		"wrangler": "4.116.0"
 	}
 }

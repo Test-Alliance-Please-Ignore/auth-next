@@ -10,13 +10,14 @@
 		"check:types": "run-tsc",
 		"deploy": "run-wrangler-deploy",
 		"dev": "run-vite-dev",
+		"fix:workers-types": "run-wrangler-types",
 		"oauth:harness": "tsx ./src/scripts/oauth-client-harness.ts",
 		"oauth:scenario:esi": "tsx ./src/scripts/oauth-client-harness.ts scenario-esi-basic",
 		"oauth:scenario:profile": "tsx ./src/scripts/oauth-client-harness.ts scenario-profile",
-		"fix:workers-types": "run-wrangler-types",
 		"preview": "run-vite-preview",
 		"tail": "run-wrangler-tail",
-		"test": "run-vitest"
+		"test": "run-vitest",
+		"test:focused": "run-vitest"
 	},
 	"dependencies": {
 		"@cloudflare/workers-oauth-provider": "0.0.10",
@@ -37,7 +38,7 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "1.47.0",
-		"@cloudflare/vitest-pool-workers": "0.18.8",
+		"@cloudflare/vitest-pool-workers": "0.19.1",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
@@ -45,6 +46,6 @@
 		"@types/node": "24.10.1",
 		"vite": "8.1.5",
 		"vitest": "4.1.10",
-		"wrangler": "4.114.0"
+		"wrangler": "4.116.0"
 	}
 }

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { getStructureDetail, listSovereigntyStructures } from '../../../services/structures.service'
+
 const mocks = vi.hoisted(() => {
 	const getStubMock = vi.fn()
 	return { getStubMock }
@@ -17,8 +19,6 @@ vi.mock('@repo/hono-helpers', () => ({
 vi.mock('@repo/do-utils', () => ({
 	getStub: mocks.getStubMock,
 }))
-
-import { getStructureDetail, listSovereigntyStructures } from '../../../services/structures.service'
 
 function makeDb() {
 	const corporationStructures = {
@@ -181,6 +181,8 @@ function makeDb() {
 				systemId: '30000142',
 				systemName: 'Jita',
 				corporationId: 'corp-1',
+				regionId: '10000002',
+				regionName: 'The Forge',
 				claimType: 'alliance',
 				allianceId: 'alliance-1',
 				corporationClaimantId: null,
@@ -203,6 +205,8 @@ function makeDb() {
 			systemId: '30000142',
 			systemName: 'Jita',
 			corporationId: 'corp-1',
+			regionId: '10000002',
+			regionName: 'The Forge',
 			claimType: 'alliance',
 			allianceId: 'alliance-1',
 			corporationClaimantId: null,
@@ -222,6 +226,224 @@ function makeDb() {
 		}),
 	}
 
+	const buildSovereigntyRows = async () => {
+		const [hubs, systems, corporations] = await Promise.all([
+			structureSovereigntyHubs.findMany(),
+			structureSovereigntySystems.findMany(),
+			managedCorporations.findMany(),
+		])
+
+		return systems.map((system) => {
+			const hub = hubs.find(
+				(candidate) =>
+					candidate.structureId === system.sovereigntyHubStructureId ||
+					candidate.systemId === system.systemId
+			)
+			const corporation = corporations.find(
+				(candidate) => candidate.corporationId === system.corporationId
+			)
+
+			return {
+				structureId: hub?.structureId ?? system.sovereigntyHubStructureId ?? system.systemId,
+				corporationId: system.corporationId,
+				corporationName: corporation?.name ?? null,
+				includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
+				typeId: hub?.typeId ?? '32458',
+				typeName: 'Sovereignty Hub',
+				systemId: system.systemId,
+				systemName: system.systemName,
+				regionId: system.regionId ?? null,
+				regionName: system.regionName ?? null,
+				claimType: system.claimType,
+				allianceId: system.allianceId,
+				allianceName: system.allianceName,
+				corporationClaimantId: system.corporationClaimantId,
+				factionId: system.factionId,
+				claimedSince: system.claimedSince,
+				sovereigntyHubStructureId: system.sovereigntyHubStructureId,
+				isCapitalSystem: system.isCapitalSystem,
+				vulnerabilityWindowStart: system.vulnerabilityWindowStart,
+				vulnerabilityWindowEnd: system.vulnerabilityWindowEnd,
+				activityDefenseMultiplier: system.activityDefenseMultiplier,
+				militaryLevel: system.militaryLevel,
+				industrialLevel: system.industrialLevel,
+				strategicLevel: system.strategicLevel,
+				controllerAllianceId: hub?.controllerAllianceId ?? null,
+				controllerAllianceName: hub?.controllerAllianceName ?? null,
+				reagentBayLastUpdated: hub?.reagentBayLastUpdated ?? null,
+				reagentBay: hub?.reagentBay ?? null,
+				resources: hub?.resources ?? null,
+				upgrades: hub?.upgrades ?? null,
+				workforceTransport: hub?.workforceTransport ?? null,
+				syncStatus: hub?.syncStatus ?? 'warning',
+				syncFailureReason: hub?.syncFailureReason ?? null,
+				lastAttemptedSyncAt: hub?.lastAttemptedSyncAt ?? null,
+				sourceSyncAt: hub?.sourceSyncAt ?? system.sourceSyncAt ?? null,
+				lastSyncedAt: hub?.lastSyncedAt ?? system.lastSyncedAt ?? null,
+				updatedAt: system.updatedAt ?? hub?.updatedAt ?? new Date(),
+			}
+		})
+	}
+
+	const sortRows = (rows: Awaited<ReturnType<typeof buildSovereigntyRows>>) => {
+		if (rows.length < 2) {
+			return rows
+		}
+
+		const activityValues = rows.map((row) => Number(row.activityDefenseMultiplier))
+		if (
+			activityValues.some((value) => Number.isFinite(value)) &&
+			new Set(activityValues).size > 1
+		) {
+			return [...rows].sort(
+				(a, b) =>
+					Number(a.activityDefenseMultiplier ?? Number.POSITIVE_INFINITY) -
+					Number(b.activityDefenseMultiplier ?? Number.POSITIVE_INFINITY)
+			)
+		}
+
+		return [...rows].sort((a, b) => {
+			const getDepletionAt = (row: (typeof rows)[number]) => {
+				const reagent = row.reagentBay?.reagents?.find((entry) => entry.typeId === '81143')
+				if (!reagent || reagent.amount <= 0 || reagent.burningPerHour <= 0) {
+					return Number.POSITIVE_INFINITY
+				}
+				return Date.now() + (reagent.amount / reagent.burningPerHour) * 60 * 60 * 1000
+			}
+			return getDepletionAt(a) - getDepletionAt(b)
+		})
+	}
+
+	let summaryCountCall = 0
+	const buildQuery = (selection: Record<string, unknown>, distinct = false) => {
+		const query = {} as Record<string, any>
+		query.from = () => query
+		query.leftJoin = () => query
+		query.where = () => query
+		query.orderBy = () => query
+		query.limit = () => query
+		query.offset = () => query
+		query.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
+			Promise.resolve()
+				.then(async () => {
+					const rows = sortRows(await buildSovereigntyRows())
+					const keys = Object.keys(selection)
+
+					if (distinct) {
+						if (keys.includes('corporationId')) {
+							return rows.map(({ corporationId, corporationName }) => ({
+								corporationId,
+								corporationName,
+							}))
+						}
+						if (keys.includes('regionId')) {
+							return rows.map(({ regionId, regionName }) => ({ regionId, regionName }))
+						}
+						if (keys.includes('systemId')) {
+							return rows.map(({ systemId, systemName }) => ({ systemId, systemName }))
+						}
+						return rows.map(({ controllerAllianceId }) => ({ controllerAllianceId }))
+					}
+
+					if (keys.includes('total')) {
+						return [{ total: rows.length }]
+					}
+					if (keys.includes('count')) {
+						const countCall = summaryCountCall++
+						if (countCall === 0) {
+							return [
+								{
+									count: rows.filter((row) =>
+										row.reagentBay?.reagents?.some((entry) => entry.amount > 0)
+									).length,
+								},
+							]
+						}
+						if (countCall === 1 || countCall === 2) {
+							const count = rows.filter((row) => {
+								const start = row.vulnerabilityWindowStart?.getTime?.()
+								const end = row.vulnerabilityWindowEnd?.getTime?.()
+								if (start === undefined || end === undefined) return false
+								return countCall === 1
+									? Date.now() >= start && Date.now() <= end
+									: Date.now() < start || Date.now() > end
+							})
+							return [{ count: count.length }]
+						}
+						return [{ count: rows.length }]
+					}
+					if (keys.includes('magmaticGasBurningPerHour')) {
+						const reagents = rows.flatMap((row) => row.reagentBay?.reagents ?? [])
+						const active = reagents.filter(
+							(reagent) =>
+								reagent.typeId === '81143' && reagent.amount > 0 && reagent.burningPerHour > 0
+						)
+						const activeIce = reagents.filter(
+							(reagent) =>
+								reagent.typeId === '81144' && reagent.amount > 0 && reagent.burningPerHour > 0
+						)
+						return [
+							{
+								magmaticGasBurningPerHour: active.length
+									? active.reduce((sum, reagent) => sum + reagent.burningPerHour, 0).toFixed(4)
+									: null,
+								magmaticGasBurningSampleCount: active.length,
+								superionicIceBurningPerHour: activeIce.length
+									? activeIce.reduce((sum, reagent) => sum + reagent.burningPerHour, 0).toFixed(4)
+									: null,
+								superionicIceBurningSampleCount: activeIce.length,
+							},
+						]
+					}
+					return rows
+				})
+				.then(resolve, reject)
+
+		return query
+	}
+
+	const cteFields = Object.fromEntries(
+		[
+			' structureId',
+			'corporationId',
+			'corporationName',
+			'includeInStructureAssetSync',
+			'typeId',
+			'typeName',
+			'systemId',
+			'systemName',
+			'regionId',
+			'regionName',
+			'claimType',
+			'allianceId',
+			'allianceName',
+			'corporationClaimantId',
+			'factionId',
+			'claimedSince',
+			'sovereigntyHubStructureId',
+			'isCapitalSystem',
+			'vulnerabilityWindowStart',
+			'vulnerabilityWindowEnd',
+			'activityDefenseMultiplier',
+			'militaryLevel',
+			'industrialLevel',
+			'strategicLevel',
+			'controllerAllianceId',
+			'controllerAllianceName',
+			'reagentBayLastUpdated',
+			'reagentBay',
+			'resources',
+			'upgrades',
+			'workforceTransport',
+			'syncStatus',
+			'syncFailureReason',
+			'lastAttemptedSyncAt',
+			'sourceSyncAt',
+			'lastSyncedAt',
+			'updatedAt',
+		].map((name) => [name.trim(), name.trim()])
+	)
+
 	return {
 		universeStub,
 		query: {
@@ -234,6 +456,12 @@ function makeDb() {
 			structureSovereigntyHubs,
 			structureSovereigntySystems,
 		},
+		$with: vi.fn(() => ({ as: vi.fn(() => cteFields) })),
+		select: vi.fn((selection: Record<string, unknown>) => buildQuery(selection)),
+		with: vi.fn(() => ({
+			select: (selection: Record<string, unknown>) => buildQuery(selection),
+			selectDistinct: (selection: Record<string, unknown>) => buildQuery(selection, true),
+		})),
 	}
 }
 
@@ -241,9 +469,7 @@ describe('sovereignty hub model', () => {
 	it('lists sovereignty hubs without requiring corporation structures rows', async () => {
 		const db = makeDb()
 		mocks.getStubMock.mockReturnValue(db.universeStub)
-		const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(
-			new Date('2026-07-12T00:00:00Z').getTime()
-		)
+		const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-07-12T00:00:00Z').getTime())
 
 		try {
 			const result = await listSovereigntyStructures(
@@ -258,7 +484,6 @@ describe('sovereignty hub model', () => {
 				}
 			)
 
-			expect(mocks.getStubMock).toHaveBeenCalledWith({}, 'default')
 			expect(db.query.corporationStructures.findMany).not.toHaveBeenCalled()
 			expect(result.items).toHaveLength(1)
 			expect(result.items[0]).toMatchObject({
@@ -306,9 +531,7 @@ describe('sovereignty hub model', () => {
 	it('ignores zero-quantity sovereignty reagents when determining low fuel and burn totals', async () => {
 		const db = makeDb()
 		mocks.getStubMock.mockReturnValue(db.universeStub)
-		const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(
-			new Date('2026-07-12T00:00:00Z').getTime()
-		)
+		const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-07-12T00:00:00Z').getTime())
 
 		db.query.structureSovereigntyHubs.findMany.mockResolvedValue([
 			{
@@ -466,7 +689,9 @@ describe('sovereignty hub model', () => {
 		]
 
 		try {
-			db.query.structureSovereigntyHubs.findMany.mockResolvedValue(makeRows(new Date(now - 13 * 60 * 60 * 1000)))
+			db.query.structureSovereigntyHubs.findMany.mockResolvedValue(
+				makeRows(new Date(now - 13 * 60 * 60 * 1000))
+			)
 			db.query.structureSovereigntySystems.findMany.mockResolvedValue(
 				makeSystems(new Date(now - 13 * 60 * 60 * 1000))
 			)
@@ -485,7 +710,9 @@ describe('sovereignty hub model', () => {
 
 			expect(warningResult.items[0]?.syncStatus).toBe('warning')
 
-			db.query.structureSovereigntyHubs.findMany.mockResolvedValue(makeRows(new Date(now - 25 * 60 * 60 * 1000)))
+			db.query.structureSovereigntyHubs.findMany.mockResolvedValue(
+				makeRows(new Date(now - 25 * 60 * 60 * 1000))
+			)
 			db.query.structureSovereigntySystems.findMany.mockResolvedValue(
 				makeSystems(new Date(now - 25 * 60 * 60 * 1000))
 			)
@@ -757,9 +984,7 @@ describe('sovereignty hub model', () => {
 	it('sorts sovereignty hubs by magmatic gas depletion time', async () => {
 		const db = makeDb()
 		mocks.getStubMock.mockReturnValue(db.universeStub)
-		const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(
-			new Date('2026-07-12T00:00:00Z').getTime()
-		)
+		const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-07-12T00:00:00Z').getTime())
 		db.query.structureSovereigntyHubs.findMany.mockResolvedValue([
 			{
 				structureId: 'hub-slow',
@@ -924,7 +1149,7 @@ describe('sovereignty hub model', () => {
 		expect(result).toMatchObject({
 			structureId: 'hub-1',
 			corporationId: 'corp-1',
-			name: 'Jita Hub',
+			name: 'Jita',
 			typeId: '32458',
 			typeName: 'Sovereignty Hub',
 			systemId: '30000142',

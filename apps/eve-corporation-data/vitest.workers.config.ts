@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
 	plugins: [
 		cloudflareTest({
-			wrangler: { configPath: `${__dirname}/wrangler.jsonc` },
+			wrangler: { configPath: `${__dirname}/wrangler.test.jsonc` },
 			miniflare: {
 				bindings: {
 					ENVIRONMENT: 'VITEST',
@@ -28,44 +28,12 @@ export default defineConfig({
                     `,
 					},
 					{
-						name: 'corporation-tax',
-						modules: true,
-						script: `
-                        export default {
-                            fetch() {
-                                return new Response('Mock CorporationTax Worker')
-                            }
-                        }
-                    `,
-					},
-					{
-						name: 'universe',
-						modules: true,
-						script: `
-                        export default {
-                            fetch() {
-                                return new Response('Mock Universe Worker')
-                            }
-                        }
-                    `,
-					},
-					{
-						name: 'esi',
-						modules: true,
-						script: `
-                        export default {
-                            fetch() {
-                                return new Response('Mock ESI Worker')
-                            }
-                        }
-                    `,
-					},
-					{
 						name: 'eve-token-store',
 						modules: true,
 						script: `
-                        export class EveTokenStore {
-                            constructor(state, env) {}
+                        import { DurableObject } from 'cloudflare:workers'
+
+                        export class EveTokenStore extends DurableObject {
                             async fetch(request) {
                                 return new Response('Mock EveTokenStore')
                             }
@@ -84,6 +52,6 @@ export default defineConfig({
 	],
 
 	test: {
-		exclude: ['src/test/unit/workflows/wallet-fanout.test.ts'],
+		exclude: ['**/node_modules/**', '**/.git/**', 'src/test/unit/workflows/wallet-fanout.test.ts'],
 	},
 })

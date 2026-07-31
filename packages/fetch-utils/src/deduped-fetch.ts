@@ -1,5 +1,6 @@
-import { defaultAuthAwareKeyGenerator } from './key-generator'
 import { logger } from '@repo/hono-helpers/logger'
+
+import { defaultAuthAwareKeyGenerator } from './key-generator'
 
 import type { DedupConfig, DedupStats } from './types'
 
@@ -25,6 +26,7 @@ import type { DedupConfig, DedupStats } from './types'
  */
 export class DedupedFetch {
 	private inFlight: Map<string, Promise<Response>>
+	private keyGenerationQueue: Promise<void> = Promise.resolve()
 	private config: Required<Omit<DedupConfig, 'keyGenerator'>> & {
 		keyGenerator: (input: RequestInfo | URL, init?: RequestInit) => string | Promise<string>
 	}
@@ -76,52 +78,75 @@ export class DedupedFetch {
 		}
 
 		// Generate cache key (may be async for SHA-256 hashing)
-		const key = await this.config.keyGenerator(input, init)
+		const releaseKeyGeneration = await this.acquireKeyGenerationLock()
+		try {
+			const key = await this.config.keyGenerator(input, init)
 
-		// Check for in-flight request (synchronous after key is resolved)
-		const existing = this.inFlight.get(key)
-		if (existing) {
-			this.stats.hits++
-			if (this.config.debug) {
-				logger.debug(`[DedupedFetch] HIT: ${key} (${this.stats.hits} total hits)`)
-			}
-			// Clone the response so each caller can consume it independently
-			return existing.then((r) => r.clone())
-		}
-
-		// No in-flight request - create new fetch
-		this.stats.misses++
-		if (this.config.debug) {
-			logger.debug(`[DedupedFetch] MISS: ${key} (${this.stats.misses} total misses)`)
-		}
-
-		// Enforce maxSize limit by removing oldest entry if needed
-		if (this.inFlight.size >= this.config.maxSize) {
-			const firstKey = this.inFlight.keys().next().value
-			if (firstKey) {
-				this.inFlight.delete(firstKey)
+			// Check for in-flight request (synchronous after the key is resolved)
+			const existing = this.inFlight.get(key)
+			if (existing) {
+				this.stats.hits++
 				if (this.config.debug) {
-					logger.debug(`[DedupedFetch] Removed oldest entry due to maxSize: ${firstKey}`)
+					logger.debug(`[DedupedFetch] HIT: ${key} (${this.stats.hits} total hits)`)
+				}
+				// Clone the response so each caller can consume it independently
+				return existing.then((r) => r.clone())
+			}
+
+			// No in-flight request - create new fetch
+			this.stats.misses++
+			if (this.config.debug) {
+				logger.debug(`[DedupedFetch] MISS: ${key} (${this.stats.misses} total misses)`)
+			}
+
+			// Enforce maxSize limit by removing oldest entry if needed
+			if (this.inFlight.size >= this.config.maxSize) {
+				const firstKey = this.inFlight.keys().next().value
+				if (firstKey) {
+					this.inFlight.delete(firstKey)
+					if (this.config.debug) {
+						logger.debug(`[DedupedFetch] Removed oldest entry due to maxSize: ${firstKey}`)
+					}
 				}
 			}
-		}
 
-		// Create the fetch promise
-		const fetchPromise = fetch(input, init).finally(() => {
-			// Clean up after the request completes (success or error)
-			this.inFlight.delete(key)
+			// Create the fetch promise
+			const fetchPromise = fetch(input, init).finally(() => {
+				// Keep the reservation until callers already queued for key
+				// generation have had a chance to observe it.
+				this.keyGenerationQueue.then(() => {
+					this.inFlight.delete(key)
+					this.stats.inFlight = this.inFlight.size
+					if (this.config.debug) {
+						logger.debug(
+							`[DedupedFetch] Completed: ${key} (${this.stats.inFlight} in-flight remaining)`
+						)
+					}
+				})
+			})
+
+			// Store in map before releasing the key-generation lock
+			this.inFlight.set(key, fetchPromise)
 			this.stats.inFlight = this.inFlight.size
-			if (this.config.debug) {
-				logger.debug(`[DedupedFetch] Completed: ${key} (${this.stats.inFlight} in-flight remaining)`)
-			}
+
+			// Return cloned response so the original can be cached for concurrent callers
+			return fetchPromise.then((r) => r.clone())
+		} finally {
+			releaseKeyGeneration()
+		}
+	}
+
+	private async acquireKeyGenerationLock(): Promise<() => void> {
+		// Async key generators must be serialized so concurrent callers cannot all
+		// observe an empty inFlight map before the first generated key is stored.
+		const previous = this.keyGenerationQueue
+		let release!: () => void
+		this.keyGenerationQueue = new Promise<void>((resolve) => {
+			release = resolve
 		})
 
-		// Store in map
-		this.inFlight.set(key, fetchPromise)
-		this.stats.inFlight = this.inFlight.size
-
-		// Return cloned response so the original can be cached for concurrent callers
-		return fetchPromise.then((r) => r.clone())
+		await previous
+		return release
 	}
 
 	/**

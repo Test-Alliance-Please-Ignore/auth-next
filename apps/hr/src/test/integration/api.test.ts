@@ -12,7 +12,7 @@ describe('Hr Worker', () => {
 
 		expect(response.status).toBe(200)
 		const text = await response.text()
-		expect(text).toContain('Hr')
+		expect(text).toContain('HR Durable Object Worker')
 	})
 })
 

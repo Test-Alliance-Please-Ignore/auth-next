@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { handleThirdPartyAppsHttpRequest, isOAuthHttpRoute } from './http-handler'
+
 const oauthFetchMock = vi.hoisted(() => vi.fn())
 
 vi.mock('./oauth-api-handler', () => ({
@@ -11,16 +13,16 @@ vi.mock('./oauth-api-handler', () => ({
 }))
 
 vi.mock('@cloudflare/workers-oauth-provider', () => ({
-	OAuthProvider: vi.fn().mockImplementation(() => ({
-		fetch: oauthFetchMock,
-	})),
+	OAuthProvider: vi.fn(function () {
+		return {
+			fetch: oauthFetchMock,
+		}
+	}),
 }))
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
 }))
-
-import { handleThirdPartyAppsHttpRequest, isOAuthHttpRoute } from './http-handler'
 
 describe('third-party apps http handler', () => {
 	beforeEach(() => {
@@ -29,11 +31,15 @@ describe('third-party apps http handler', () => {
 	})
 
 	it('recognizes oauth http routes', () => {
-		expect(isOAuthHttpRoute(new Request('http://127.0.0.1:8787/.well-known/oauth-authorization-server'))).toBe(true)
+		expect(
+			isOAuthHttpRoute(new Request('http://127.0.0.1:8787/.well-known/oauth-authorization-server'))
+		).toBe(true)
 		expect(isOAuthHttpRoute(new Request('http://127.0.0.1:8787/authorize'))).toBe(true)
 		expect(isOAuthHttpRoute(new Request('http://127.0.0.1:8787/oauth/token'))).toBe(true)
 		expect(isOAuthHttpRoute(new Request('http://127.0.0.1:8787/oauth/api/me'))).toBe(true)
-		expect(isOAuthHttpRoute(new Request('http://127.0.0.1:8787/__internal/oauth/authorize/preview'))).toBe(true)
+		expect(
+			isOAuthHttpRoute(new Request('http://127.0.0.1:8787/__internal/oauth/authorize/preview'))
+		).toBe(true)
 		expect(isOAuthHttpRoute(new Request('http://127.0.0.1:8787/not-oauth'))).toBe(false)
 	})
 

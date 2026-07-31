@@ -8,7 +8,8 @@
 	"scripts": {
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc",
-		"test": "run-vitest"
+		"test": "run-vitest",
+		"test:focused": "run-vitest"
 	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",

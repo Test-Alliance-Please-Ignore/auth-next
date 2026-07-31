@@ -35,6 +35,8 @@ jobs:
           node scripts/ci/validate-ui-build-env-injection.mjs
       - name: Check & Test
         run: bun turbo check:ci
+      - name: Focused Tests
+        run: bun runx ci test
       - name: Deploy
         run: bun turbo deploy
         env:

@@ -1,0 +1,30 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "groups-test",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-30",
+	"compatibility_flags": ["nodejs_compat"],
+	"vars": {
+		"SENTRY_DSN": ""
+	},
+	"kv_namespaces": [
+		{
+			"binding": "GROUPS_KV",
+			"id": "9e1ea7a8ec8c4df2add5da1e524c8c00"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "GROUPS",
+				"class_name": "Groups"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["Groups"]
+		}
+	]
+}
