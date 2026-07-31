@@ -1,7 +1,7 @@
 import { useQueries } from '@tanstack/react-query'
 import { AlertCircle, Building2, FileText, Settings2, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'

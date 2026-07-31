@@ -21,7 +21,7 @@ import {
 	XCircle,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router'
 
 import { CorporationAlertsCard } from '@/components/admin/corporation-alerts-card'
 import { DirectorList } from '@/components/DirectorList'

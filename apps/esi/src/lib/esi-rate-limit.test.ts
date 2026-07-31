@@ -1,4 +1,4 @@
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
 	buildEsiUserKey,
@@ -100,9 +100,9 @@ describe('esi-rate-limit helpers', () => {
 			userKey,
 			routeKey,
 			limit: 2,
-			remaining: 0,
+			remaining: 1,
 			used: 2,
-			charges: [{ atMs: Math.floor(nowMs / 1000) * 1000, cost: 2 }],
+			charges: [{ atMs: Math.floor(nowMs / 1000) * 1000, cost: 1 }],
 		})
 
 		vi.setSystemTime(new Date(nowMs + 2_000))

@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate } from 'react-router'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Container } from './ui/container'
 import { AlertCircle } from 'lucide-react'

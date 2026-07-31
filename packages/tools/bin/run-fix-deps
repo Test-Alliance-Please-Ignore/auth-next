@@ -4,7 +4,7 @@ set -eu
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
-syncpack fix-mismatches
+pnpm --filter @repo/tools exec syncpack fix-mismatches
 
 # Update lockfile if there were any changes to package.json files
 if git status --porcelain | grep -q 'package.json'; then

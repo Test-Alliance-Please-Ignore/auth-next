@@ -1,6 +1,6 @@
 import { Ban, ExternalLink, FilePlus2, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import { AddBroadcastAddendumDialog } from '../add-broadcast-addendum-dialog'
 import { RescindBroadcastDialog } from '../rescind-broadcast-dialog'

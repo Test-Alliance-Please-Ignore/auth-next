@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { DiscordDO } from '../../durable-object'
+
 vi.mock('cloudflare:workers', () => ({
 	DurableObject: class {},
 }))
@@ -15,12 +17,14 @@ const {
 	const getGuildRolesMock = vi.fn()
 	const updateGuildMemberRolesMock = vi.fn()
 	const banGuildMemberMock = vi.fn()
-	const DiscordBotServiceMock = vi.fn().mockImplementation(() => ({
-		getGuildMember: getGuildMemberMock,
-		getGuildRoles: getGuildRolesMock,
-		updateGuildMemberRoles: updateGuildMemberRolesMock,
-		banGuildMember: banGuildMemberMock,
-	}))
+	const DiscordBotServiceMock = vi.fn(function () {
+		return {
+			getGuildMember: getGuildMemberMock,
+			getGuildRoles: getGuildRolesMock,
+			updateGuildMemberRoles: updateGuildMemberRolesMock,
+			banGuildMember: banGuildMemberMock,
+		}
+	})
 
 	return {
 		getGuildMemberMock,
@@ -35,8 +39,6 @@ vi.mock('../discord-bot.service', () => ({
 	DiscordBotService: DiscordBotServiceMock,
 	fetchWithRetry: vi.fn(),
 }))
-
-import { DiscordDO } from '../../durable-object'
 
 describe('DiscordDO.revokeAccessAndBan', () => {
 	it('returns failure results when Discord account is not linked', async () => {
@@ -96,16 +98,8 @@ describe('DiscordDO.revokeAccessAndBan', () => {
 		expect(updateGuildMemberRolesMock).toHaveBeenCalledTimes(1)
 		expect(updateGuildMemberRolesMock).toHaveBeenCalledWith('guild-1', 'discord-user-1', [])
 		expect(banGuildMemberMock).toHaveBeenCalledTimes(2)
-		expect(banGuildMemberMock).toHaveBeenCalledWith(
-			'guild-1',
-			'discord-user-1',
-			'security action'
-		)
-		expect(banGuildMemberMock).toHaveBeenCalledWith(
-			'guild-2',
-			'discord-user-1',
-			'security action'
-		)
+		expect(banGuildMemberMock).toHaveBeenCalledWith('guild-1', 'discord-user-1', 'security action')
+		expect(banGuildMemberMock).toHaveBeenCalledWith('guild-2', 'discord-user-1', 'security action')
 		expect(result).toEqual([
 			{
 				guildId: 'guild-1',
@@ -155,7 +149,7 @@ describe('DiscordDO.getUserGuildMembershipDetails', () => {
 			await vi.advanceTimersByTimeAsync(1000)
 			const result = await promise
 
-		expect(getGuildMemberMock.mock.calls.length).toBeGreaterThanOrEqual(2)
+			expect(getGuildMemberMock.mock.calls.length).toBeGreaterThanOrEqual(2)
 			expect(result).toEqual([
 				{
 					guildId: 'guild-1',

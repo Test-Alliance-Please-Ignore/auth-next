@@ -8,6 +8,9 @@ import worker from '../../index'
 import type { Skills } from '@repo/skills'
 import type { Env } from '../../context'
 
+const testEnv = env as unknown as Env
+const hasConfiguredDatabase = Boolean(testEnv.DATABASE_URL)
+
 describe('Skills Worker', () => {
 	it('responds to root endpoint', async () => {
 		const request = new Request('http://example.com/')
@@ -20,7 +23,7 @@ describe('Skills Worker', () => {
 		expect(text).toContain('Skills')
 	})
 
-	it('can get skill info via API endpoint', async () => {
+	it.skipIf(!hasConfiguredDatabase)('can get skill info via API endpoint', async () => {
 		const request = new Request('http://example.com/skill/3300')
 		const ctx = createExecutionContext()
 		const response = await worker.fetch(request, env, ctx)
@@ -39,8 +42,7 @@ describe('Skills Worker', () => {
 })
 
 describe('Skills Durable Object', () => {
-	it('can create and retrieve a skill plan', async () => {
-		const testEnv = env as unknown as Env
+	it.skipIf(!hasConfiguredDatabase)('can create and retrieve a skill plan', async () => {
 		const stub = getStub<Skills>(testEnv.SKILLS, 'test')
 
 		// Create a skill plan
@@ -61,8 +63,7 @@ describe('Skills Durable Object', () => {
 		expect(retrievedPlan?.name).toBe('Test Plan')
 	})
 
-	it('can add skills to a plan', async () => {
-		const testEnv = env as unknown as Env
+	it.skipIf(!hasConfiguredDatabase)('can add skills to a plan', async () => {
 		const stub = getStub<Skills>(testEnv.SKILLS, 'test')
 
 		// Create a skill plan
@@ -83,8 +84,7 @@ describe('Skills Durable Object', () => {
 		expect(added).toBe(true)
 	})
 
-	it('can create and list skill plan categories', async () => {
-		const testEnv = env as unknown as Env
+	it.skipIf(!hasConfiguredDatabase)('can create and list skill plan categories', async () => {
 		const stub = getStub<Skills>(testEnv.SKILLS, 'test')
 
 		// Create a category

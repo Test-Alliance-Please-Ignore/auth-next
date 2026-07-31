@@ -273,7 +273,6 @@ describe('structures routes', () => {
 
 	it.each([
 		'theftVulnerabilityStart',
-		'planet',
 		'raidable',
 		'workforce',
 		'group',

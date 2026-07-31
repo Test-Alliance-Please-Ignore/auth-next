@@ -1,6 +1,6 @@
 import { CheckCircle2, ShieldCheck, XCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router'
 
 import { getThirdPartyAppScopeMetadata } from '@repo/admin'
 

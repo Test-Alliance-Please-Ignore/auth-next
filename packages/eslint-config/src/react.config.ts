@@ -28,7 +28,9 @@ export function getReactConfig(importMetaUrl: string): Array<Linter.Config<Linte
 				},
 			},
 		},
-		reactHooksConfigs['recommended-latest'],
+		// The plugin's runtime flat config uses the correct plugin map, but its
+		// published declaration still describes the legacy string-array shape.
+		reactHooksConfigs['recommended-latest'] as unknown as Linter.Config,
 
 		// Prettier (should be last to override other formatting rules)
 		{ rules: eslintConfigPrettier.rules },

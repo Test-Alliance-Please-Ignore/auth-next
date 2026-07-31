@@ -20,7 +20,7 @@ import {
 } from '@/lib/mrt-theme'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Button } from '@/components/ui/button'

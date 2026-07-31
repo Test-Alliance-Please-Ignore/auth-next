@@ -1,6 +1,6 @@
 import { ChevronDown } from 'lucide-react'
 import { Fragment, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import { SYSTEM_WALLET_USER_ID } from '@repo/prediction-markets'
 

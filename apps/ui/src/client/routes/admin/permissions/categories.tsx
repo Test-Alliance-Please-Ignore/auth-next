@@ -1,6 +1,6 @@
 import { Edit2, FileKey, FolderOpen, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import { PermissionCategoryForm } from '@/components/permission-category-form'
 import { Button } from '@/components/ui/button'

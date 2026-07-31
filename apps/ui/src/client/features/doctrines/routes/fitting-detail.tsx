@@ -6,7 +6,7 @@
 
 import { ArrowLeft, CheckCircle2, ClipboardCopy, Edit, Gamepad2 } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

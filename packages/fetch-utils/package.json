@@ -5,19 +5,20 @@
 	"sideEffects": false,
 	"type": "module",
 	"main": "src/index.ts",
-	"dependencies": {
-		"@repo/hono-helpers": "workspace:*"
-	},
 	"scripts": {
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc",
-		"test": "run-vitest"
+		"test": "run-vitest",
+		"test:focused": "run-vitest"
+	},
+	"dependencies": {
+		"@repo/hono-helpers": "workspace:*"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "0.10.8",
+		"@cloudflare/vitest-pool-workers": "0.19.1",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
-		"vitest": "3.2.4"
+		"vitest": "4.1.10"
 	}
 }

@@ -6,4 +6,3 @@ export default defineConfig({
 		include: ['src/services/__tests__/**/*.test.ts'],
 	},
 })
-

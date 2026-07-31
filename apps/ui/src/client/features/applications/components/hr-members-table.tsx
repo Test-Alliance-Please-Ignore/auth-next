@@ -18,7 +18,7 @@ import {
 	mrtTableProps,
 } from '@/lib/mrt-theme'
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'

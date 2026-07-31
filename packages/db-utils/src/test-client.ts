@@ -33,7 +33,10 @@ export class TestBranchManager<Env extends NeonTestEnv> {
 			throw new Error('No branch to delete')
 		}
 
-		await this.apiClient.deleteProjectBranch(this.env.NEON_PROJECT_ID, this.branchId)
+		await this.apiClient.deleteProjectBranch({
+			projectId: this.env.NEON_PROJECT_ID,
+			branchId: this.branchId,
+		})
 		this.branchId = undefined
 	}
 

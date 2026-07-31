@@ -1,6 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'

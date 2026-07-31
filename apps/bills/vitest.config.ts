@@ -1,20 +1,21 @@
-import { defineWorkersProject } from '@cloudflare/vitest-pool-workers/config'
+import { cloudflareTest } from '@cloudflare/vitest-pool-workers'
+import { defineConfig } from 'vitest/config'
 
-export default defineWorkersProject({
+export default defineConfig({
+	plugins: [
+		cloudflareTest({
+			wrangler: {
+				configPath: './wrangler.jsonc',
+			},
+		}),
+	],
+
 	esbuild: {
 		// Required for `using` support
 		target: 'ES2022',
 	},
+
 	test: {
 		setupFiles: ['./src/test/setup.ts'],
-		poolOptions: {
-			workers: {
-				singleWorker: true,
-				isolatedStorage: false,
-				wrangler: {
-					configPath: './wrangler.jsonc',
-				},
-			},
-		},
 	},
 })

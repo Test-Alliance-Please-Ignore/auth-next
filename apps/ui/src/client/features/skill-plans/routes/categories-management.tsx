@@ -1,6 +1,6 @@
 import { Edit2, Plus, Settings, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate } from 'react-router'
 
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'

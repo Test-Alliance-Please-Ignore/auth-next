@@ -15,15 +15,14 @@ const {
 	enforceBlacklistedMumbleAccessMock,
 	srpGetUserRequestsMock,
 	srpUpdateReviewStateMock,
-} =
-	vi.hoisted(() => ({
-		createDbMock: vi.fn(),
-		invalidateAllUserSessionsMock: vi.fn(),
-		enforceBlacklistedDiscordAccessMock: vi.fn(),
-		enforceBlacklistedMumbleAccessMock: vi.fn(),
-		srpGetUserRequestsMock: vi.fn(),
-		srpUpdateReviewStateMock: vi.fn(),
-	}))
+} = vi.hoisted(() => ({
+	createDbMock: vi.fn(),
+	invalidateAllUserSessionsMock: vi.fn(),
+	enforceBlacklistedDiscordAccessMock: vi.fn(),
+	enforceBlacklistedMumbleAccessMock: vi.fn(),
+	srpGetUserRequestsMock: vi.fn(),
+	srpUpdateReviewStateMock: vi.fn(),
+}))
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
@@ -34,9 +33,11 @@ vi.mock('../../db', () => ({
 }))
 
 vi.mock('../../services/session.service', () => ({
-	SessionService: vi.fn().mockImplementation(() => ({
-		invalidateAllUserSessions: invalidateAllUserSessionsMock,
-	})),
+	SessionService: vi.fn().mockImplementation(function () {
+		return {
+			invalidateAllUserSessions: invalidateAllUserSessionsMock,
+		}
+	}),
 }))
 
 vi.mock('../../services/discord.service', () => ({

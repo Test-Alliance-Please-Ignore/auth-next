@@ -21,19 +21,19 @@ import { createDb } from '../db'
 import { discordServers, managedCorporations, userCharacters } from '../db/schema'
 import { isExportArtifactExpired } from '../lib/export-retention'
 import { getCachedUserPermissions } from '../lib/groups-cache'
-import { normalizeWorkflowStatus } from '../lib/workflow-status'
 import { validatePagination } from '../lib/validation'
+import { normalizeWorkflowStatus } from '../lib/workflow-status'
 import { requireAllianceMember } from '../middleware/session'
 
 import type { Doctrines, FittingWithItems } from '@repo/doctrines'
 import type { EsiTypeResolver } from '@repo/esi'
 import type {
 	LossWithSRPStatus,
-	SRPCommentResponse,
-	SRPRequestResponse,
 	RecentLossRefreshCoordinator,
 	RequestStatus,
 	Srp,
+	SRPCommentResponse,
+	SRPRequestResponse,
 } from '@repo/srp'
 import type { Universe } from '@repo/universe'
 import type { App } from '../context'
@@ -76,7 +76,9 @@ const SRP_ROLE_URNS = ['urn:srp:reviewer', 'urn:srp:payer', 'urn:srp:manager']
 const SRP_REQUEST_ID_PATTERN = /^\d+$/
 const SRP_CSV_EXPORT_MAX_RANGE_YEARS = 1
 
-function getExecutionContextOrNull(c: { executionCtx?: ExecutionContext }): ExecutionContext | null {
+function getExecutionContextOrNull(c: {
+	executionCtx?: Pick<ExecutionContext, 'waitUntil'>
+}): Pick<ExecutionContext, 'waitUntil'> | null {
 	try {
 		return c.executionCtx ?? null
 	} catch {
@@ -108,19 +110,28 @@ function isValidSrpRequestId(requestId: string): boolean {
 }
 
 function normalizeUtcStartOfDay(date: Date): Date {
-	return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0))
+	return new Date(
+		Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0)
+	)
 }
 
 function normalizeUtcEndOfDay(date: Date): Date {
-	return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999))
+	return new Date(
+		Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999)
+	)
 }
 
-export function parseSrpCsvExportDateRange(dateFromRaw: string | undefined, dateToRaw: string | undefined): {
-	dateFrom: string
-	dateTo: string
-	startDate: Date
-	endDate: Date
-} | { error: string } {
+export function parseSrpCsvExportDateRange(
+	dateFromRaw: string | undefined,
+	dateToRaw: string | undefined
+):
+	| {
+			dateFrom: string
+			dateTo: string
+			startDate: Date
+			endDate: Date
+	  }
+	| { error: string } {
 	if (!dateFromRaw || !dateToRaw) {
 		return { error: 'dateFrom and dateTo must be selected for CSV export' }
 	}
@@ -156,7 +167,9 @@ async function enrichRequestsWithSystemRegions<T extends SRPRequestResponse>(
 	env: { UNIVERSE: DurableObjectNamespace }
 ): Promise<T[]> {
 	if (requests.length === 0) return requests
-	const systemIds = [...new Set(requests.map((request) => request.solarSystemId).filter(Boolean))] as string[]
+	const systemIds = [
+		...new Set(requests.map((request) => request.solarSystemId).filter(Boolean)),
+	] as string[]
 	if (systemIds.length === 0) return requests
 
 	const universeStub = getStub<Universe>(env.UNIVERSE, 'default')
@@ -168,8 +181,7 @@ async function enrichRequestsWithSystemRegions<T extends SRPRequestResponse>(
 				.filter((value): value is string => Boolean(value))
 		),
 	]
-	const regionsById =
-		regionIds.length > 0 ? await universeStub.resolveRegionsByIds(regionIds) : {}
+	const regionsById = regionIds.length > 0 ? await universeStub.resolveRegionsByIds(regionIds) : {}
 
 	return requests.map((request) => {
 		const system = request.solarSystemId ? systemsById[request.solarSystemId] : null
@@ -186,7 +198,9 @@ async function enrichLossesWithSystemRegions<T extends LossWithSRPStatus>(
 	env: { UNIVERSE: DurableObjectNamespace }
 ): Promise<T[]> {
 	if (losses.length === 0) return losses
-	const systemIds = [...new Set(losses.map((loss) => loss.solarSystemId).filter(Boolean))] as string[]
+	const systemIds = [
+		...new Set(losses.map((loss) => loss.solarSystemId).filter(Boolean)),
+	] as string[]
 	if (systemIds.length === 0) return losses
 
 	const universeStub = getStub<Universe>(env.UNIVERSE, 'default')
@@ -198,8 +212,7 @@ async function enrichLossesWithSystemRegions<T extends LossWithSRPStatus>(
 				.filter((value): value is string => Boolean(value))
 		),
 	]
-	const regionsById =
-		regionIds.length > 0 ? await universeStub.resolveRegionsByIds(regionIds) : {}
+	const regionsById = regionIds.length > 0 ? await universeStub.resolveRegionsByIds(regionIds) : {}
 
 	return losses.map((loss) => {
 		const system = loss.solarSystemId ? systemsById[loss.solarSystemId] : null
@@ -283,10 +296,7 @@ type RequestWithCharacterRole = SRPRequestResponse & {
 	mainCharacterName?: string
 }
 type DoctrineSlot = 'high' | 'mid' | 'low' | 'rig' | 'sub'
-type MilitarySrpFindingCode =
-	| 'missing_rigs'
-	| 'module_missing'
-	| 'module_variant_mismatch'
+type MilitarySrpFindingCode = 'missing_rigs' | 'module_missing' | 'module_variant_mismatch'
 
 interface MilitarySrpFinding {
 	code: MilitarySrpFindingCode
@@ -335,10 +345,7 @@ function classifyLossSlot(flag: number): DoctrineSlot | null {
 	return null
 }
 
-function sumLossQuantity(item: {
-	quantity_destroyed?: number
-	quantity_dropped?: number
-}): number {
+function sumLossQuantity(item: { quantity_destroyed?: number; quantity_dropped?: number }): number {
 	const total = (item.quantity_destroyed ?? 0) + (item.quantity_dropped ?? 0)
 	return total > 0 ? total : 1
 }
@@ -356,7 +363,10 @@ function buildDoctrineTypeCounts(
 		const slot = classifyDoctrineSlot(item.flagId)
 		if (!slot) continue
 		const slotMap = bySlot.get(slot) ?? new Map<string, number>()
-		slotMap.set(item.typeId, (slotMap.get(item.typeId) ?? 0) + normalizeDoctrineQuantity(item.quantity))
+		slotMap.set(
+			item.typeId,
+			(slotMap.get(item.typeId) ?? 0) + normalizeDoctrineQuantity(item.quantity)
+		)
 		bySlot.set(slot, slotMap)
 	}
 	return bySlot
@@ -423,7 +433,8 @@ async function enrichRequestsWithMilitarySrp(
 		if (cached) return cached
 
 		const eligible = await doctrinesStub.getFittings({ shipTypeId, srpEligible: true })
-		const fallback = eligible.length > 0 ? eligible : await doctrinesStub.getFittings({ shipTypeId })
+		const fallback =
+			eligible.length > 0 ? eligible : await doctrinesStub.getFittings({ shipTypeId })
 		if (fallback.length === 0) {
 			fittingsByShip.set(shipTypeId, [])
 			return []
@@ -498,8 +509,10 @@ async function enrichRequestsWithMilitarySrp(
 
 			const typeMap = await universeStub
 				.resolveTypeNamesByIds([...comparedTypeIds])
-				.catch(() => ({} as Record<string, null>))
-			const doctrineGroupIds = [...new Set(best.fittingItems.map((item) => item.groupId).filter(Boolean))]
+				.catch(() => ({}) as Record<string, null>)
+			const doctrineGroupIds = [
+				...new Set(best.fittingItems.map((item) => item.groupId).filter(Boolean)),
+			]
 			const lossGroupIds = [
 				...new Set(
 					[...comparedTypeIds]
@@ -509,7 +522,7 @@ async function enrichRequestsWithMilitarySrp(
 			]
 			const groupMap = await universeStub
 				.resolveInvGroups([...new Set([...doctrineGroupIds, ...lossGroupIds])])
-				.catch(() => ({} as Record<string, null>))
+				.catch(() => ({}) as Record<string, null>)
 
 			const expectedRigCount = [...(doctrineBySlot.get('rig')?.values() ?? [])].reduce(
 				(acc, qty) => acc + qty,
@@ -628,7 +641,10 @@ async function hydrateRequestCharacterRoles(
 		.where(and(eq(userCharacters.is_primary, true), inArray(userCharacters.userId, userIds)))
 
 	const mainCharacterByUserId = new Map(
-		rows.map((row) => [row.userId, { characterId: row.characterId, characterName: row.characterName }])
+		rows.map((row) => [
+			row.userId,
+			{ characterId: row.characterId, characterName: row.characterName },
+		])
 	)
 
 	return requests.map((request) => {
@@ -738,8 +754,9 @@ srp.get('/losses', async (c) => {
 		pagination?.data.limit,
 		pagination?.data.offset
 	)
-	const losses = result.losses
-		.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
+	const losses = result.losses.sort(
+		(a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime()
+	)
 	const failedCharacters = result.failedCharacters
 	const characterNameById = new Map(
 		user.characters.map((character) => [character.characterId, character.characterName])
@@ -1078,16 +1095,11 @@ srp.get('/requests/:id', async (c) => {
 	}
 
 	if (request.comments && request.comments.length > 0) {
-		request.comments = await hydrateCommentAuthors(
-			request.comments,
-			c.env.DATABASE_URL,
-			c.env,
-			{
-				requestUserId: request.userId,
-				requestCharacterId: request.characterId,
-				requestCharacterName: request.characterName,
-			}
-		)
+		request.comments = await hydrateCommentAuthors(request.comments, c.env.DATABASE_URL, c.env, {
+			requestUserId: request.userId,
+			requestCharacterId: request.characterId,
+			requestCharacterName: request.characterName,
+		})
 	}
 
 	if (request.history && !canSeeInternalHistory) {
@@ -1180,7 +1192,12 @@ srp.post('/requests/:id/approve', async (c) => {
 	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const existingRequest = await srpStub.getRequest(requestId, user.id)
 	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
-	const request = await srpStub.approveRequest(existingRequest.id, user.id, approvedAmount, reviewNotes)
+	const request = await srpStub.approveRequest(
+		existingRequest.id,
+		user.id,
+		approvedAmount,
+		reviewNotes
+	)
 
 	return c.json(request)
 })
@@ -1323,12 +1340,15 @@ srp.patch('/requests/:id/state', async (c) => {
 	const requiredTier = newState === 'paid' || newState === 'payment_pending' ? 'payer' : 'reviewer'
 	const hasRequiredTier = await hasSrpTierPermission(c.env, user.id, requiredTier, user.is_admin)
 	if (!hasRequiredTier) {
-		return c.json({
-			error:
-				requiredTier === 'payer'
-					? 'Requires payer-or-higher permissions'
-					: 'Requires reviewer-or-higher permissions',
-		}, 403)
+		return c.json(
+			{
+				error:
+					requiredTier === 'payer'
+						? 'Requires payer-or-higher permissions'
+						: 'Requires reviewer-or-higher permissions',
+			},
+			403
+		)
 	}
 
 	const srpStub = getStub<Srp>(c.env.SRP, 'default')
@@ -1642,9 +1662,8 @@ function serializeWalletHistoryEntryDate(value: unknown): string {
 		try {
 			const jsonValue = JSON.stringify(value)
 			if (jsonValue) {
-				const unquotedValue = jsonValue.startsWith('"') && jsonValue.endsWith('"')
-					? jsonValue.slice(1, -1)
-					: jsonValue
+				const unquotedValue =
+					jsonValue.startsWith('"') && jsonValue.endsWith('"') ? jsonValue.slice(1, -1) : jsonValue
 				const parsed = parseDateOrNull(unquotedValue)
 				if (parsed) return parsed.toISOString()
 			}
@@ -1765,7 +1784,9 @@ function buildSrpWalletHistoryRowsQuery(args: {
 		processorCorporationId: args.processorCorporationId,
 		whereClause: args.whereClause,
 	})
-	const alertFilter = args.alertsOnly ? sql`where "hasOpenAlert" or "hasMissingReasonWarning"` : sql``
+	const alertFilter = args.alertsOnly
+		? sql`where "hasOpenAlert" or "hasMissingReasonWarning"`
+		: sql``
 
 	return sql`
 		${baseCte}
@@ -1799,7 +1820,9 @@ function buildSrpWalletHistoryCountQuery(args: {
 		processorCorporationId: args.processorCorporationId,
 		whereClause: args.whereClause,
 	})
-	const alertFilter = args.alertsOnly ? sql`where "hasOpenAlert" or "hasMissingReasonWarning"` : sql``
+	const alertFilter = args.alertsOnly
+		? sql`where "hasOpenAlert" or "hasMissingReasonWarning"`
+		: sql``
 
 	return sql`
 		${baseCte}
@@ -1943,7 +1966,7 @@ export async function writeSrpWalletHistoryExportToBucket(args: {
 	if (args.filters.recipientId) whereParts.push(sql`second_party_id = ${args.filters.recipientId}`)
 	whereParts.push(
 		sql`date >= ${args.filters.dateRange.startDate}`,
-		sql`date <= ${args.filters.dateRange.endDate}`,
+		sql`date <= ${args.filters.dateRange.endDate}`
 	)
 	const whereClause = sql.join(whereParts, sql` and `)
 
@@ -1965,8 +1988,9 @@ export async function writeSrpWalletHistoryExportToBucket(args: {
 			from corporation_wallet_journal
 			where ${whereClause}
 			order by date desc`),
-		db.execute<{ id: string; characterId: string }>(
-			sql`select id::text as "id", character_id as "characterId"
+		db
+			.execute<{ id: string; characterId: string }>(
+				sql`select id::text as "id", character_id as "characterId"
 				from srp_requests
 				where id in (
 					select distinct substring(coalesce(reason, '') from 'KM#([0-9]+)')::text
@@ -1974,18 +1998,21 @@ export async function writeSrpWalletHistoryExportToBucket(args: {
 					where ${whereClause}
 						and reason ~ 'KM#[0-9]+'
 				)`
-		).catch(() => ({ rows: [] as Array<{ id: string; characterId: string }> })),
-		db.execute<{
-			journalId: string
-			kind: string
-			state: string
-			expectedAmount: string | null
-			observedAmount: string | null
-			expectedRecipientCharacterId: string | null
-			expectedRecipientCharacterName: string | null
-			actualRecipientCharacterId: string | null
-			actualRecipientCharacterName: string | null
-		}>(sql`select
+			)
+			.catch(() => ({ rows: [] as Array<{ id: string; characterId: string }> })),
+		db
+			.execute<{
+				journalId: string
+				kind: string
+				state: string
+				expectedAmount: string | null
+				observedAmount: string | null
+				expectedRecipientCharacterId: string | null
+				expectedRecipientCharacterName: string | null
+				actualRecipientCharacterId: string | null
+				actualRecipientCharacterName: string | null
+			}>(
+				sql`select
 				journal_id::text as "journalId",
 				kind,
 				state,
@@ -2000,19 +2027,21 @@ export async function writeSrpWalletHistoryExportToBucket(args: {
 				select journal_id
 				from corporation_wallet_journal
 				where ${whereClause}
-			)`).catch(() => ({
-			rows: [] as Array<{
-				journalId: string
-				kind: string
-				state: string
-				expectedAmount: string | null
-				observedAmount: string | null
-				expectedRecipientCharacterId: string | null
-				expectedRecipientCharacterName: string | null
-				actualRecipientCharacterId: string | null
-				actualRecipientCharacterName: string | null
-			}>,
-		})),
+			)`
+			)
+			.catch(() => ({
+				rows: [] as Array<{
+					journalId: string
+					kind: string
+					state: string
+					expectedAmount: string | null
+					observedAmount: string | null
+					expectedRecipientCharacterId: string | null
+					expectedRecipientCharacterName: string | null
+					actualRecipientCharacterId: string | null
+					actualRecipientCharacterName: string | null
+				}>,
+			})),
 	])
 
 	const requestById = new Map(
@@ -2048,7 +2077,9 @@ export async function writeSrpWalletHistoryExportToBucket(args: {
 		}
 	}
 
-	const requestCharacterIds = [...new Set((matchingRequestsResult.rows ?? []).map((row) => row.characterId))]
+	const requestCharacterIds = [
+		...new Set((matchingRequestsResult.rows ?? []).map((row) => row.characterId)),
+	]
 	const idsToResolve = [
 		...new Set(
 			[...rowsResult.rows.map((row) => row.recipientId), ...requestCharacterIds].filter(
@@ -2070,7 +2101,9 @@ export async function writeSrpWalletHistoryExportToBucket(args: {
 			? (requestById.get(requestIdFromReason) ?? null)
 			: null
 		const hasRecipientMismatch = Boolean(
-			expectedRequestCharacterId && row.recipientId && row.recipientId !== expectedRequestCharacterId
+			expectedRequestCharacterId &&
+				row.recipientId &&
+				row.recipientId !== expectedRequestCharacterId
 		)
 		const hasMissingReasonWarning = Boolean(
 			row.refType === 'corporation_account_withdrawal' &&
@@ -2107,11 +2140,10 @@ export async function writeSrpWalletHistoryExportToBucket(args: {
 							actualRecipientCharacterName: row.recipientId
 								? (resolvedNames[row.recipientId] ?? null)
 								: null,
-					  }
+						}
 					: null),
 			hasOpenAlert:
-				(alertKindsByJournalId.get(row.journalId) ?? []).length > 0 ||
-				hasRecipientMismatch,
+				(alertKindsByJournalId.get(row.journalId) ?? []).length > 0 || hasRecipientMismatch,
 		}
 	})
 
@@ -2348,21 +2380,20 @@ srp.get('/payments/wallet-history', async (c) => {
 			actualRecipientCharacterName: string | null
 		}
 	>()
-	for (const row of
-		(
-			await (journalIds.length > 0
-				? db.execute<{
-						journalId: string
-						kind: string
-						state: string
-						expectedAmount: string | null
-						observedAmount: string | null
-						expectedRecipientCharacterId: string | null
-						expectedRecipientCharacterName: string | null
-						actualRecipientCharacterId: string | null
-						actualRecipientCharacterName: string | null
-					}>(
-						sql`select
+	for (const row of (
+		await (journalIds.length > 0
+			? db.execute<{
+					journalId: string
+					kind: string
+					state: string
+					expectedAmount: string | null
+					observedAmount: string | null
+					expectedRecipientCharacterId: string | null
+					expectedRecipientCharacterName: string | null
+					actualRecipientCharacterId: string | null
+					actualRecipientCharacterName: string | null
+				}>(
+					sql`select
 								journal_id::text as "journalId",
 								kind,
 								state,
@@ -2373,22 +2404,25 @@ srp.get('/payments/wallet-history', async (c) => {
 								actual_recipient_character_id as "actualRecipientCharacterId",
 								actual_recipient_character_name as "actualRecipientCharacterName"
 							from srp_payment_alerts
-							where journal_id in ${sql`(${sql.join(journalIds.map((id) => sql`${id}`), sql`,`)})`}`
-					)
-				: Promise.resolve({
-						rows: [] as Array<{
-							journalId: string
-							kind: string
-							state: string
-							expectedAmount: string | null
-							observedAmount: string | null
-							expectedRecipientCharacterId: string | null
-							expectedRecipientCharacterName: string | null
-							actualRecipientCharacterId: string | null
-							actualRecipientCharacterName: string | null
-						}>,
-					})
-		)).rows ?? []) {
+							where journal_id in ${sql`(${sql.join(
+								journalIds.map((id) => sql`${id}`),
+								sql`,`
+							)})`}`
+				)
+			: Promise.resolve({
+					rows: [] as Array<{
+						journalId: string
+						kind: string
+						state: string
+						expectedAmount: string | null
+						observedAmount: string | null
+						expectedRecipientCharacterId: string | null
+						expectedRecipientCharacterName: string | null
+						actualRecipientCharacterId: string | null
+						actualRecipientCharacterName: string | null
+					}>,
+				}))
+	).rows ?? []) {
 		const existing = alertKindsByJournalId.get(row.journalId) ?? []
 		if (row.state === 'open' && !existing.includes(row.kind)) {
 			existing.push(row.kind)
@@ -2411,9 +2445,7 @@ srp.get('/payments/wallet-history', async (c) => {
 			[
 				...rows.map((row) => row.recipientId),
 				...rows.map((row) => row.expectedRequestCharacterId),
-			].filter(
-				(id): id is string => Boolean(id)
-			)
+			].filter((id): id is string => Boolean(id))
 		),
 	]
 	const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
@@ -2450,7 +2482,7 @@ srp.get('/payments/wallet-history', async (c) => {
 							actualRecipientCharacterName: row.recipientId
 								? (resolvedNames[row.recipientId] ?? null)
 								: null,
-					  }
+						}
 					: null),
 			hasOpenAlert: row.hasOpenAlert,
 		}
@@ -2722,11 +2754,7 @@ srp.post('/requests/:id/mark-paid', async (c) => {
 	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const existingRequest = await srpStub.getRequest(requestId, user.id)
 	if (!existingRequest) return c.json({ error: 'Request not found' }, 404)
-	const request = await srpStub.markPaid(
-		existingRequest.id,
-		user.id,
-		getPrimaryCharacterName(user)
-	)
+	const request = await srpStub.markPaid(existingRequest.id, user.id, getPrimaryCharacterName(user))
 
 	return c.json(request)
 })
@@ -2837,7 +2865,11 @@ srp.get('/config/discord-guilds', async (c) => {
 
 	const db = createDb(c.env.DATABASE_URL)
 	const rows = await db
-		.select({ id: discordServers.id, guildId: discordServers.guildId, guildName: discordServers.guildName })
+		.select({
+			id: discordServers.id,
+			guildId: discordServers.guildId,
+			guildName: discordServers.guildName,
+		})
 		.from(discordServers)
 		.where(eq(discordServers.isActive, true))
 		.orderBy(asc(discordServers.guildName))

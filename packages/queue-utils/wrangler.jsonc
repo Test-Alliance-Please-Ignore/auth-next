@@ -2,6 +2,6 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "queue-utils-test",
 	"main": "src/index.ts",
-	"compatibility_date": "2025-03-07",
+	"compatibility_date": "2026-07-30",
 	"compatibility_flags": ["nodejs_compat"]
 }

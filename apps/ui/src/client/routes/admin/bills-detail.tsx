@@ -1,6 +1,6 @@
 import { ArrowLeft, Edit } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router'
 import toast from '@/lib/toast'
 
 import { Button } from '@/components/ui/button'

@@ -1,5 +1,5 @@
 import { Crown, Shield, Users } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 
 import { MyGroupsCard } from '@/components/my-groups-card'
 import { Button } from '@/components/ui/button'

@@ -8,7 +8,7 @@
 
 import { formatDistanceToNow } from 'date-fns'
 import { FileText, History, User, Users } from 'lucide-react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { LoadingSpinner } from '@/components/ui/loading'

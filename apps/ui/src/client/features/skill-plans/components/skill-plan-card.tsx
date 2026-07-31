@@ -1,5 +1,5 @@
 import { CheckCircle2, Globe, Lock, Star, XCircle } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router'
 
 import { Badge } from '../../../components/ui/badge'
 import {

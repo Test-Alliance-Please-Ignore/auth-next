@@ -1,5 +1,5 @@
 import { ExternalLink, Users } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import { PermissionTargetBadge } from '@/components/permission-target-badge'
 import { Button } from '@/components/ui/button'

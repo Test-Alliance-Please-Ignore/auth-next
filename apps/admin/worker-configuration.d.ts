@@ -1,5 +1,5 @@
 /* eslint-disable */
-// Runtime types generated with workerd@1.20251106.1 2025-03-07 nodejs_compat
+// Runtime types generated with workerd@1.20260730.1 2026-07-30 nodejs_compat
 // Begin runtime types
 /*! *****************************************************************************
 Copyright (c) Cloudflare. All rights reserved.
@@ -316,6 +316,8 @@ interface ServiceWorkerGlobalScope extends WorkerGlobalScope {
     ByteLengthQueuingStrategy: typeof ByteLengthQueuingStrategy;
     CountQueuingStrategy: typeof CountQueuingStrategy;
     ErrorEvent: typeof ErrorEvent;
+    MessageChannel: typeof MessageChannel;
+    MessagePort: typeof MessagePort;
     EventSource: typeof EventSource;
     ReadableStreamBYOBRequest: typeof ReadableStreamBYOBRequest;
     ReadableStreamDefaultController: typeof ReadableStreamDefaultController;
@@ -418,48 +420,82 @@ interface TestController {
 interface ExecutionContext<Props = unknown> {
     waitUntil(promise: Promise<any>): void;
     passThroughOnException(): void;
+    readonly exports: Cloudflare.Exports;
     readonly props: Props;
+    cache?: CacheContext;
+    readonly access?: CloudflareAccessContext;
+    tracing: Tracing;
 }
-type ExportedHandlerFetchHandler<Env = unknown, CfHostMetadata = unknown> = (request: Request<CfHostMetadata, IncomingRequestCfProperties<CfHostMetadata>>, env: Env, ctx: ExecutionContext) => Response | Promise<Response>;
-type ExportedHandlerTailHandler<Env = unknown> = (events: TraceItem[], env: Env, ctx: ExecutionContext) => void | Promise<void>;
-type ExportedHandlerTraceHandler<Env = unknown> = (traces: TraceItem[], env: Env, ctx: ExecutionContext) => void | Promise<void>;
-type ExportedHandlerTailStreamHandler<Env = unknown> = (event: TailStream.TailEvent<TailStream.Onset>, env: Env, ctx: ExecutionContext) => TailStream.TailEventHandlerType | Promise<TailStream.TailEventHandlerType>;
-type ExportedHandlerScheduledHandler<Env = unknown> = (controller: ScheduledController, env: Env, ctx: ExecutionContext) => void | Promise<void>;
-type ExportedHandlerQueueHandler<Env = unknown, Message = unknown> = (batch: MessageBatch<Message>, env: Env, ctx: ExecutionContext) => void | Promise<void>;
-type ExportedHandlerTestHandler<Env = unknown> = (controller: TestController, env: Env, ctx: ExecutionContext) => void | Promise<void>;
-interface ExportedHandler<Env = unknown, QueueHandlerMessage = unknown, CfHostMetadata = unknown> {
-    fetch?: ExportedHandlerFetchHandler<Env, CfHostMetadata>;
-    tail?: ExportedHandlerTailHandler<Env>;
-    trace?: ExportedHandlerTraceHandler<Env>;
-    tailStream?: ExportedHandlerTailStreamHandler<Env>;
-    scheduled?: ExportedHandlerScheduledHandler<Env>;
-    test?: ExportedHandlerTestHandler<Env>;
-    email?: EmailExportedHandler<Env>;
-    queue?: ExportedHandlerQueueHandler<Env, QueueHandlerMessage>;
+type ExportedHandlerFetchHandler<Env = unknown, CfHostMetadata = unknown, Props = unknown> = (request: Request<CfHostMetadata, IncomingRequestCfProperties<CfHostMetadata>>, env: Env, ctx: ExecutionContext<Props>) => Response | Promise<Response>;
+type ExportedHandlerConnectHandler<Env = unknown, Props = unknown> = (socket: Socket, env: Env, ctx: ExecutionContext<Props>) => void | Promise<void>;
+type ExportedHandlerTailHandler<Env = unknown, Props = unknown> = (events: TraceItem[], env: Env, ctx: ExecutionContext<Props>) => void | Promise<void>;
+type ExportedHandlerTraceHandler<Env = unknown, Props = unknown> = (traces: TraceItem[], env: Env, ctx: ExecutionContext<Props>) => void | Promise<void>;
+type ExportedHandlerTailStreamHandler<Env = unknown, Props = unknown> = (event: TailStream.TailEvent<TailStream.Onset>, env: Env, ctx: ExecutionContext<Props>) => TailStream.TailEventHandlerType | Promise<TailStream.TailEventHandlerType>;
+type ExportedHandlerScheduledHandler<Env = unknown, Props = unknown> = (controller: ScheduledController, env: Env, ctx: ExecutionContext<Props>) => void | Promise<void>;
+type ExportedHandlerQueueHandler<Env = unknown, Message = unknown, Props = unknown> = (batch: MessageBatch<Message>, env: Env, ctx: ExecutionContext<Props>) => void | Promise<void>;
+type ExportedHandlerTestHandler<Env = unknown, Props = unknown> = (controller: TestController, env: Env, ctx: ExecutionContext<Props>) => void | Promise<void>;
+interface ExportedHandler<Env = unknown, QueueHandlerMessage = unknown, CfHostMetadata = unknown, Props = unknown> {
+    fetch?: ExportedHandlerFetchHandler<Env, CfHostMetadata, Props>;
+    connect?: ExportedHandlerConnectHandler<Env, Props>;
+    tail?: ExportedHandlerTailHandler<Env, Props>;
+    trace?: ExportedHandlerTraceHandler<Env, Props>;
+    tailStream?: ExportedHandlerTailStreamHandler<Env, Props>;
+    scheduled?: ExportedHandlerScheduledHandler<Env, Props>;
+    test?: ExportedHandlerTestHandler<Env, Props>;
+    email?: EmailExportedHandler<Env, Props>;
+    queue?: ExportedHandlerQueueHandler<Env, QueueHandlerMessage, Props>;
 }
 interface StructuredSerializeOptions {
     transfer?: any[];
 }
 declare abstract class Navigator {
-    sendBeacon(url: string, body?: (ReadableStream | string | (ArrayBuffer | ArrayBufferView) | Blob | FormData | URLSearchParams | URLSearchParams)): boolean;
+    sendBeacon(url: string, body?: BodyInit): boolean;
     readonly userAgent: string;
     readonly hardwareConcurrency: number;
+    readonly platform: string;
+    readonly language: string;
+    readonly languages: string[];
 }
 interface AlarmInvocationInfo {
     readonly isRetry: boolean;
     readonly retryCount: number;
+    readonly scheduledTime: number;
 }
 interface Cloudflare {
     readonly compatibilityFlags: Record<string, boolean>;
 }
+interface CachePurgeError {
+    code: number;
+    message: string;
+}
+interface CachePurgeResult {
+    success: boolean;
+    errors: CachePurgeError[];
+}
+interface CachePurgeOptions {
+    tags?: string[];
+    pathPrefixes?: string[];
+    purgeEverything?: boolean;
+}
+interface CacheContext {
+    purge(options: CachePurgeOptions): Promise<CachePurgeResult>;
+}
+interface CloudflareAccessContext {
+    readonly aud: string;
+    getIdentity(): Promise<CloudflareAccessIdentity | undefined>;
+}
+declare abstract class ColoLocalActorNamespace {
+    get(actorId: string): Fetcher;
+}
 interface DurableObject {
     fetch(request: Request): Response | Promise<Response>;
+    connect?(socket: Socket): void | Promise<void>;
     alarm?(alarmInfo?: AlarmInvocationInfo): void | Promise<void>;
     webSocketMessage?(ws: WebSocket, message: string | ArrayBuffer): void | Promise<void>;
     webSocketClose?(ws: WebSocket, code: number, reason: string, wasClean: boolean): void | Promise<void>;
     webSocketError?(ws: WebSocket, error: unknown): void | Promise<void>;
 }
-type DurableObjectStub<T extends Rpc.DurableObjectBranded | undefined = undefined> = Fetcher<T, "alarm" | "webSocketMessage" | "webSocketClose" | "webSocketError"> & {
+type DurableObjectStub<T extends Rpc.DurableObjectBranded | undefined = undefined> = Fetcher<T, "alarm" | "connect" | "webSocketMessage" | "webSocketClose" | "webSocketError"> & {
     readonly id: DurableObjectId;
     readonly name?: string;
 };
@@ -467,6 +503,7 @@ interface DurableObjectId {
     toString(): string;
     equals(other: DurableObjectId): boolean;
     readonly name?: string;
+    readonly jurisdiction?: string;
 }
 declare abstract class DurableObjectNamespace<T extends Rpc.DurableObjectBranded | undefined = undefined> {
     newUniqueId(options?: DurableObjectNamespaceNewUniqueIdOptions): DurableObjectId;
@@ -476,22 +513,26 @@ declare abstract class DurableObjectNamespace<T extends Rpc.DurableObjectBranded
     getByName(name: string, options?: DurableObjectNamespaceGetDurableObjectOptions): DurableObjectStub<T>;
     jurisdiction(jurisdiction: DurableObjectJurisdiction): DurableObjectNamespace<T>;
 }
-type DurableObjectJurisdiction = "eu" | "fedramp" | "fedramp-high";
+type DurableObjectJurisdiction = "eu" | "fedramp" | "fedramp-high" | "us";
 interface DurableObjectNamespaceNewUniqueIdOptions {
     jurisdiction?: DurableObjectJurisdiction;
 }
-type DurableObjectLocationHint = "wnam" | "enam" | "sam" | "weur" | "eeur" | "apac" | "oc" | "afr" | "me";
+type DurableObjectLocationHint = "wnam" | "enam" | "sam" | "weur" | "eeur" | "apac" | "apac-ne" | "apac-se" | "oc" | "afr" | "me";
+type DurableObjectRoutingMode = "primary-only";
 interface DurableObjectNamespaceGetDurableObjectOptions {
     locationHint?: DurableObjectLocationHint;
+    routingMode?: DurableObjectRoutingMode;
 }
 interface DurableObjectClass<_T extends Rpc.DurableObjectBranded | undefined = undefined> {
 }
 interface DurableObjectState<Props = unknown> {
     waitUntil(promise: Promise<any>): void;
+    readonly exports: Cloudflare.Exports;
     readonly props: Props;
     readonly id: DurableObjectId;
     readonly storage: DurableObjectStorage;
     container?: Container;
+    facets: DurableObjectFacets;
     blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
     acceptWebSocket(ws: WebSocket, tags?: string[]): void;
     getWebSockets(tag?: string): WebSocket[];
@@ -567,6 +608,16 @@ declare class WebSocketRequestResponsePair {
     constructor(request: string, response: string);
     get request(): string;
     get response(): string;
+}
+interface DurableObjectFacets {
+    get<T extends Rpc.DurableObjectBranded | undefined = undefined>(name: string, getStartupOptions: () => FacetStartupOptions<T> | Promise<FacetStartupOptions<T>>): Fetcher<T>;
+    abort(name: string, reason: any): void;
+    delete(name: string): void;
+    clone(src: string, dst: string): void;
+}
+interface FacetStartupOptions<T extends Rpc.DurableObjectBranded | undefined = undefined> {
+    id?: DurableObjectId | string;
+    class: DurableObjectClass<T>;
 }
 interface AnalyticsEngineDataset {
     writeDataPoint(event?: AnalyticsEngineDataPoint): void;
@@ -860,7 +911,7 @@ interface CustomEventCustomEventInit {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Blob)
  */
 declare class Blob {
-    constructor(type?: ((ArrayBuffer | ArrayBufferView) | string | Blob)[], options?: BlobOptions);
+    constructor(bits?: ((ArrayBuffer | ArrayBufferView) | string | Blob)[], options?: BlobOptions);
     /**
      * The **`size`** read-only property of the Blob interface returns the size of the Blob or File in bytes.
      *
@@ -1374,6 +1425,12 @@ declare class FormData {
      *
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FormData/append)
      */
+    append(name: string, value: string | Blob): void;
+    /**
+     * The **`append()`** method of the FormData interface appends a new value onto an existing key inside a `FormData` object, or adds the key if it does not already exist.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FormData/append)
+     */
     append(name: string, value: string): void;
     /**
      * The **`append()`** method of the FormData interface appends a new value onto an existing key inside a `FormData` object, or adds the key if it does not already exist.
@@ -1405,6 +1462,12 @@ declare class FormData {
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FormData/has)
      */
     has(name: string): boolean;
+    /**
+     * The **`set()`** method of the FormData interface sets a new value for an existing key inside a `FormData` object, or adds the key/value if it does not already exist.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/FormData/set)
+     */
+    set(name: string, value: string | Blob): void;
     /**
      * The **`set()`** method of the FormData interface sets a new value for an existing key inside a `FormData` object, or adds the key/value if it does not already exist.
      *
@@ -1582,7 +1645,7 @@ declare class Headers {
         value: string
     ]>;
 }
-type BodyInit = ReadableStream<Uint8Array> | string | ArrayBuffer | ArrayBufferView | Blob | URLSearchParams | FormData;
+type BodyInit = ReadableStream<Uint8Array> | string | ArrayBuffer | ArrayBufferView | Blob | URLSearchParams | FormData | Iterable<ArrayBuffer | ArrayBufferView> | AsyncIterable<ArrayBuffer | ArrayBufferView>;
 declare abstract class Body {
     /* [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/body) */
     get body(): ReadableStream | null;
@@ -1731,7 +1794,7 @@ interface Request<CfHostMetadata = unknown, Cf = CfProperties<CfHostMetadata>> e
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/signal)
      */
     signal: AbortSignal;
-    cf: Cf | undefined;
+    cf?: Cf;
     /**
      * The **`integrity`** read-only property of the Request interface contains the subresource integrity value of the request.
      *
@@ -1749,7 +1812,7 @@ interface Request<CfHostMetadata = unknown, Cf = CfProperties<CfHostMetadata>> e
      *
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Request/cache)
      */
-    cache?: "no-store";
+    cache?: "no-store" | "no-cache";
 }
 interface RequestInit<Cf = CfProperties> {
     /* A string to set request's method. */
@@ -1763,7 +1826,7 @@ interface RequestInit<Cf = CfProperties> {
     fetcher?: (Fetcher | null);
     cf?: Cf;
     /* A string indicating how the request will interact with the browser's cache to set request's cache. */
-    cache?: "no-store";
+    cache?: "no-store" | "no-cache";
     /* A cryptographic hash of the resource to be fetched by request. Sets request's integrity. */
     integrity?: string;
     /* An AbortSignal to set request's signal. */
@@ -1844,8 +1907,31 @@ interface KVNamespaceGetWithMetadataResult<Value, Metadata> {
 }
 type QueueContentType = "text" | "bytes" | "json" | "v8";
 interface Queue<Body = unknown> {
-    send(message: Body, options?: QueueSendOptions): Promise<void>;
-    sendBatch(messages: Iterable<MessageSendRequest<Body>>, options?: QueueSendBatchOptions): Promise<void>;
+    metrics(): Promise<QueueMetrics>;
+    send(message: Body, options?: QueueSendOptions): Promise<QueueSendResponse>;
+    sendBatch(messages: Iterable<MessageSendRequest<Body>>, options?: QueueSendBatchOptions): Promise<QueueSendBatchResponse>;
+}
+interface QueueSendMetrics {
+    backlogCount: number;
+    backlogBytes: number;
+    oldestMessageTimestamp?: Date;
+}
+interface QueueSendMetadata {
+    metrics: QueueSendMetrics;
+}
+interface QueueSendResponse {
+    metadata: QueueSendMetadata;
+}
+interface QueueSendBatchMetrics {
+    backlogCount: number;
+    backlogBytes: number;
+    oldestMessageTimestamp?: Date;
+}
+interface QueueSendBatchMetadata {
+    metrics: QueueSendBatchMetrics;
+}
+interface QueueSendBatchResponse {
+    metadata: QueueSendBatchMetadata;
 }
 interface QueueSendOptions {
     contentType?: QueueContentType;
@@ -1858,6 +1944,19 @@ interface MessageSendRequest<Body = unknown> {
     body: Body;
     contentType?: QueueContentType;
     delaySeconds?: number;
+}
+interface QueueMetrics {
+    backlogCount: number;
+    backlogBytes: number;
+    oldestMessageTimestamp?: Date;
+}
+interface MessageBatchMetrics {
+    backlogCount: number;
+    backlogBytes: number;
+    oldestMessageTimestamp?: Date;
+}
+interface MessageBatchMetadata {
+    metrics: MessageBatchMetrics;
 }
 interface QueueRetryOptions {
     delaySeconds?: number;
@@ -1873,12 +1972,14 @@ interface Message<Body = unknown> {
 interface QueueEvent<Body = unknown> extends ExtendableEvent {
     readonly messages: readonly Message<Body>[];
     readonly queue: string;
+    readonly metadata: MessageBatchMetadata;
     retryAll(options?: QueueRetryOptions): void;
     ackAll(): void;
 }
 interface MessageBatch<Body = unknown> {
     readonly messages: readonly Message<Body>[];
     readonly queue: string;
+    readonly metadata: MessageBatchMetadata;
     retryAll(options?: QueueRetryOptions): void;
     ackAll(): void;
 }
@@ -1897,7 +1998,7 @@ interface R2ListOptions {
     startAfter?: string;
     include?: ("httpMetadata" | "customMetadata")[];
 }
-declare abstract class R2Bucket {
+interface R2Bucket {
     head(key: string): Promise<R2Object | null>;
     get(key: string, options: R2GetOptions & {
         onlyIf: R2Conditional | Headers;
@@ -2066,6 +2167,8 @@ interface Transformer<I = any, O = any> {
     expectedLength?: number;
 }
 interface StreamPipeOptions {
+    preventAbort?: boolean;
+    preventCancel?: boolean;
     /**
      * Pipes this readable stream to a given writable stream destination. The way in which the piping process behaves under various error conditions can be customized with a number of passed options. It returns a promise that fulfills when the piping process completes successfully, or rejects if any errors were encountered.
      *
@@ -2084,8 +2187,6 @@ interface StreamPipeOptions {
      * The signal option can be set to an AbortSignal to allow aborting an ongoing pipe operation via the corresponding AbortController. In this case, this source readable stream will be canceled, and destination aborted, unless the respective options preventCancel or preventAbort are set.
      */
     preventClose?: boolean;
-    preventAbort?: boolean;
-    preventCancel?: boolean;
     signal?: AbortSignal;
 }
 type ReadableStreamReadResult<R = any> = {
@@ -2360,13 +2461,13 @@ declare abstract class TransformStreamDefaultController<O = any> {
     terminate(): void;
 }
 interface ReadableWritablePair<R = any, W = any> {
+    readable: ReadableStream<R>;
     /**
      * Provides a convenient, chainable way of piping this readable stream through a transform stream (or any other { writable, readable } pair). It simply pipes the stream into the writable side of the supplied pair, and returns the readable side for further use.
      *
      * Piping a stream will lock it for the duration of the pipe, preventing any other consumer from acquiring a reader.
      */
     writable: WritableStream<W>;
-    readable: ReadableStream<R>;
 }
 /**
  * The **`WritableStream`** interface of the Streams API provides a standard abstraction for writing streaming data to a destination, known as a sink.
@@ -2562,6 +2663,11 @@ interface QueuingStrategyInit {
      */
     highWaterMark: number;
 }
+interface TracePreviewInfo {
+    id: string;
+    slug: string;
+    name: string;
+}
 interface ScriptVersion {
     id?: string;
     tag?: string;
@@ -2572,7 +2678,7 @@ declare abstract class TailEvent extends ExtendableEvent {
     readonly traces: TraceItem[];
 }
 interface TraceItem {
-    readonly event: (TraceItemFetchEventInfo | TraceItemJsRpcEventInfo | TraceItemScheduledEventInfo | TraceItemAlarmEventInfo | TraceItemQueueEventInfo | TraceItemEmailEventInfo | TraceItemTailEventInfo | TraceItemCustomEventInfo | TraceItemHibernatableWebSocketEventInfo) | null;
+    readonly event: (TraceItemFetchEventInfo | TraceItemJsRpcEventInfo | TraceItemConnectEventInfo | TraceItemScheduledEventInfo | TraceItemAlarmEventInfo | TraceItemQueueEventInfo | TraceItemEmailEventInfo | TraceItemTailEventInfo | TraceItemCustomEventInfo | TraceItemHibernatableWebSocketEventInfo) | null;
     readonly eventTimestamp: number | null;
     readonly logs: TraceLog[];
     readonly exceptions: TraceException[];
@@ -2582,6 +2688,8 @@ interface TraceItem {
     readonly scriptVersion?: ScriptVersion;
     readonly dispatchNamespace?: string;
     readonly scriptTags?: string[];
+    readonly tailAttributes?: Record<string, boolean | number | string>;
+    readonly preview?: TracePreviewInfo;
     readonly durableObjectId?: string;
     readonly outcome: string;
     readonly executionModel: string;
@@ -2591,6 +2699,8 @@ interface TraceItem {
 }
 interface TraceItemAlarmEventInfo {
     readonly scheduledTime: Date;
+}
+interface TraceItemConnectEventInfo {
 }
 interface TraceItemCustomEventInfo {
 }
@@ -2921,6 +3031,7 @@ declare class URLPattern {
     get pathname(): string;
     get search(): string;
     get hash(): string;
+    get hasRegExpGroups(): boolean;
     test(input?: (string | URLPatternInit), baseURL?: string): boolean;
     exec(input?: (string | URLPatternInit), baseURL?: string): URLPatternResult | null;
 }
@@ -3013,7 +3124,7 @@ declare var WebSocket: {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebSocket)
  */
 interface WebSocket extends EventTarget<WebSocketEventMap> {
-    accept(): void;
+    accept(options?: WebSocketAcceptOptions): void;
     /**
      * The **`WebSocket.send()`** method enqueues the specified data to be transmitted to the server over the WebSocket connection, increasing the value of `bufferedAmount` by the number of bytes needed to contain the data.
      *
@@ -3052,6 +3163,22 @@ interface WebSocket extends EventTarget<WebSocketEventMap> {
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebSocket/extensions)
      */
     extensions: string | null;
+    /**
+     * The **`WebSocket.binaryType`** property controls the type of binary data being received over the WebSocket connection.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebSocket/binaryType)
+     */
+    binaryType: "blob" | "arraybuffer";
+}
+interface WebSocketAcceptOptions {
+    /**
+     * When set to `true`, receiving a server-initiated WebSocket Close frame will not
+     * automatically send a reciprocal Close frame, leaving the connection in a half-open
+     * state. This is useful for proxying scenarios where you need to coordinate closing
+     * both sides independently. Defaults to `false` when the
+     * `no_web_socket_half_open_by_default` compatibility flag is enabled.
+     */
+    allowHalfOpen?: boolean;
 }
 declare const WebSocketPair: {
     new (): {
@@ -3162,6 +3289,28 @@ interface EventSourceEventSourceInit {
     withCredentials?: boolean;
     fetcher?: Fetcher;
 }
+interface ExecOutput {
+    readonly stdout: ArrayBuffer;
+    readonly stderr: ArrayBuffer;
+    readonly exitCode: number;
+}
+interface ContainerExecOptions {
+    cwd?: string;
+    env?: Record<string, string>;
+    user?: string;
+    stdin?: ReadableStream | "pipe";
+    stdout?: "pipe" | "ignore";
+    stderr?: "pipe" | "ignore" | "combined";
+}
+interface ExecProcess {
+    readonly stdin: WritableStream | null;
+    readonly stdout: ReadableStream | null;
+    readonly stderr: ReadableStream | null;
+    readonly pid: number;
+    readonly exitCode: Promise<number>;
+    output(): Promise<ExecOutput>;
+    kill(signal?: number): void;
+}
 interface Container {
     get running(): boolean;
     start(options?: ContainerStartupOptions): void;
@@ -3170,19 +3319,49 @@ interface Container {
     signal(signo: number): void;
     getTcpPort(port: number): Fetcher;
     setInactivityTimeout(durationMs: number | bigint): Promise<void>;
+    interceptOutboundHttp(addr: string, binding: Fetcher): Promise<void>;
+    interceptAllOutboundHttp(binding: Fetcher): Promise<void>;
+    snapshotDirectory(options: ContainerDirectorySnapshotOptions): Promise<ContainerDirectorySnapshot>;
+    snapshotContainer(options: ContainerSnapshotOptions): Promise<ContainerSnapshot>;
+    interceptOutboundHttps(addr: string, binding: Fetcher): Promise<void>;
+    exec(cmd: string[], options?: ContainerExecOptions): Promise<ExecProcess>;
+}
+interface ContainerDirectorySnapshot {
+    id: string;
+    size: number;
+    dir: string;
+    name?: string;
+}
+interface ContainerDirectorySnapshotOptions {
+    dir: string;
+    name?: string;
+}
+interface ContainerDirectorySnapshotRestoreParams {
+    snapshot: ContainerDirectorySnapshot;
+    mountPoint?: string;
+}
+interface ContainerSnapshot {
+    id: string;
+    size: number;
+    name?: string;
+}
+interface ContainerSnapshotOptions {
+    name?: string;
 }
 interface ContainerStartupOptions {
     entrypoint?: string[];
     enableInternet: boolean;
     env?: Record<string, string>;
-    hardTimeout?: (number | bigint);
+    labels?: Record<string, string>;
+    directorySnapshots?: ContainerDirectorySnapshotRestoreParams[];
+    containerSnapshot?: ContainerSnapshot;
 }
 /**
  * The **`MessagePort`** interface of the Channel Messaging API represents one of the two ports of a MessageChannel, allowing messages to be sent from one port and listening out for them arriving at the other.
  *
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessagePort)
  */
-interface MessagePort extends EventTarget {
+declare abstract class MessagePort extends EventTarget {
     /**
      * The **`postMessage()`** method of the transfers ownership of objects to other browsing contexts.
      *
@@ -3204,6 +3383,26 @@ interface MessagePort extends EventTarget {
     get onmessage(): any | null;
     set onmessage(value: any | null);
 }
+/**
+ * The **`MessageChannel`** interface of the Channel Messaging API allows us to create a new message channel and send data through it via its two MessagePort properties.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageChannel)
+ */
+declare class MessageChannel {
+    constructor();
+    /**
+     * The **`port1`** read-only property of the the port attached to the context that originated the channel.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageChannel/port1)
+     */
+    readonly port1: MessagePort;
+    /**
+     * The **`port2`** read-only property of the the port attached to the context at the other end of the channel, which the message is initially sent to.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/MessageChannel/port2)
+     */
+    readonly port2: MessagePort;
+}
 interface MessagePortPostMessageOptions {
     transfer?: any[];
 }
@@ -3218,6 +3417,10 @@ type LoopbackDurableObjectClass<T extends Rpc.DurableObjectBranded | undefined =
 }) => DurableObjectClass<T> : (opts: {
     props?: any;
 }) => DurableObjectClass<T>);
+interface LoopbackDurableObjectNamespace extends DurableObjectNamespace {
+}
+interface LoopbackColoLocalActorNamespace extends ColoLocalActorNamespace {
+}
 interface SyncKvStorage {
     get<T = unknown>(key: string): T | undefined;
     list<T = unknown>(options?: SyncKvListOptions): Iterable<[
@@ -3237,12 +3440,15 @@ interface SyncKvListOptions {
 }
 interface WorkerStub {
     getEntrypoint<T extends Rpc.WorkerEntrypointBranded | undefined>(name?: string, options?: WorkerStubEntrypointOptions): Fetcher<T>;
+    getDurableObjectClass<T extends Rpc.DurableObjectBranded | undefined>(name?: string, options?: WorkerStubEntrypointOptions): DurableObjectClass<T>;
 }
 interface WorkerStubEntrypointOptions {
     props?: any;
+    limits?: workerdResourceLimits;
 }
 interface WorkerLoader {
-    get(name: string, getCode: () => WorkerLoaderWorkerCode | Promise<WorkerLoaderWorkerCode>): WorkerStub;
+    get(name: string | null, getCode: () => WorkerLoaderWorkerCode | Promise<WorkerLoaderWorkerCode>): WorkerStub;
+    load(code: WorkerLoaderWorkerCode): WorkerStub;
 }
 interface WorkerLoaderModule {
     js?: string;
@@ -3257,12 +3463,17 @@ interface WorkerLoaderWorkerCode {
     compatibilityDate: string;
     compatibilityFlags?: string[];
     allowExperimental?: boolean;
+    limits?: workerdResourceLimits;
     mainModule: string;
     modules: Record<string, WorkerLoaderModule | string>;
     env?: any;
     globalOutbound?: (Fetcher | null);
     tails?: Fetcher[];
     streamingTails?: Fetcher[];
+}
+interface workerdResourceLimits {
+    cpuMs?: number;
+    subRequests?: number;
 }
 /**
 * The Workers runtime supports a subset of the Performance API, used to measure timing and performance,
@@ -3275,6 +3486,1035 @@ declare abstract class Performance {
     get timeOrigin(): number;
     /* [Cloudflare Docs Reference](https://developers.cloudflare.com/workers/runtime-apis/performance/#performancenow) */
     now(): number;
+    /**
+     * The **`toJSON()`** method of the Performance interface is a Serialization; it returns a JSON representation of the Performance object.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Performance/toJSON)
+     */
+    toJSON(): object;
+}
+interface Tracing {
+    enterSpan<T, A extends unknown[]>(name: string, callback: (span: Span, ...args: A) => T, ...args: A): T;
+    startActiveSpan<T, A extends unknown[]>(name: string, callback: (span: Span, ...args: A) => T, ...args: A): T;
+    Span: typeof Span;
+}
+declare abstract class Span {
+    get isTraced(): boolean;
+    setAttribute(key: string, value?: (boolean | number | string)): void;
+    end(): void;
+}
+/**
+ * Represents the identity of a user authenticated via Cloudflare Access.
+ * This matches the result of calling /cdn-cgi/access/get-identity.
+ *
+ * The exact structure of the returned object depends on the identity provider
+ * configuration for the Access application. The fields below represent commonly
+ * available properties, but additional provider-specific fields may be present.
+ */
+interface CloudflareAccessIdentity extends Record<string, unknown> {
+    /** The user's email address, if available from the identity provider. */
+    email?: string;
+    /** The user's display name. */
+    name?: string;
+    /** The user's unique identifier. */
+    user_uuid?: string;
+    /** The Cloudflare account ID. */
+    account_id?: string;
+    /** Login timestamp (Unix epoch seconds). */
+    iat?: number;
+    /** The user's IP address at authentication time. */
+    ip?: string;
+    /** Authentication methods used (e.g., "pwd"). */
+    amr?: string[];
+    /** Identity provider information. */
+    idp?: {
+        id: string;
+        type: string;
+    };
+    /** Geographic information about where the user authenticated. */
+    geo?: {
+        country: string;
+    };
+    /** Group memberships from the identity provider. */
+    groups?: Array<{
+        id: string;
+        name: string;
+        email?: string;
+    }>;
+    /** Device posture check results, keyed by check ID. */
+    devicePosture?: Record<string, unknown>;
+    /** True if the user connected via Cloudflare WARP. */
+    is_warp?: boolean;
+    /** True if the user is authenticated via Cloudflare Gateway. */
+    is_gateway?: boolean;
+}
+// ============================================================================
+// Agent Memory
+//
+// Public type surface for user Workers binding to an Agent Memory namespace.
+// ============================================================================
+/** Memory type — every memory is classified into exactly one. */
+type AgentMemoryMemoryType = "fact" | "event" | "instruction" | "task";
+/** Search intensity for recall. */
+type AgentMemoryThinkingLevel = "low" | "medium" | "high";
+/** Response verbosity for recall. */
+type AgentMemoryResponseLength = "short" | "medium" | "long";
+/** A conversation message passed to ingest(). */
+interface AgentMemoryMessage {
+    role: "system" | "user" | "assistant";
+    content: string;
+    /** Optional message timestamp. */
+    timestamp?: Date;
+}
+/** Raw memory content passed to remember(). */
+interface AgentMemoryIncomingMemory {
+    /** Raw memory content. The service classifies and summarizes automatically. */
+    content: string;
+    /** Optional session identifier to associate with this memory. */
+    sessionId?: string | null | undefined;
+}
+/** A stored memory returned from remember(), get(), and delete(). */
+interface AgentMemoryMemory {
+    /** Memory ID. */
+    id: string;
+    /** Memory type. */
+    type: AgentMemoryMemoryType;
+    /** Text summary. */
+    summary: string;
+    /** Memory text. */
+    content: string;
+    /** Session that created this memory. */
+    sessionId: string | null;
+    /** Memory creation time. */
+    createdAt: Date;
+    /** Memory last-update time. */
+    updatedAt: Date;
+}
+/** Single entry in a list() response. Same shape as Memory minus full content. */
+type AgentMemoryMemoryListEntry = Omit<AgentMemoryMemory, "content">;
+/** A scored memory candidate in a recall result. */
+interface AgentMemoryScoredCandidate {
+    /** Candidate ID. */
+    id: string;
+    /** Text summary. */
+    summary: string;
+    /** Session that created this candidate, when known. */
+    sessionId: string | null;
+    /** Relevance score (higher is better). Comparable only within a single query. */
+    score: number;
+}
+/** Options for the ingest() method. */
+interface AgentMemoryIngestOptions {
+    /** Session identifier to associate with memories created during ingestion. */
+    sessionId?: string | null | undefined;
+}
+/** Options for the getSummary() method. */
+interface AgentMemoryGetSummaryOptions {
+    /** Session identifier to retrieve session summary for. */
+    sessionId?: string | null | undefined;
+}
+/** Response from the getSummary() method. */
+interface AgentMemoryGetSummaryResponse {
+    /** Markdown summary. */
+    summary: string;
+}
+/**
+ * Options for the recall() method.
+ *
+ * `referenceDate` accepts a Date object, an ISO-8601 date string
+ * (YYYY-MM-DD), or a full ISO-8601 datetime string. When provided, this
+ * date is used as "today" for resolving relative time references
+ * ("how many days ago", "last week") instead of the server's wall-clock time.
+ */
+interface AgentMemoryRecallOptions {
+    /** Recall intensity: "low" (default), "medium", or "high". */
+    thinkingLevel?: AgentMemoryThinkingLevel;
+    /** Response verbosity: "short", "medium" (default), or "long". */
+    responseLength?: AgentMemoryResponseLength;
+    /** Temporal anchor for date arithmetic. */
+    referenceDate?: Date | string;
+}
+/** Response from the recall() method. */
+interface AgentMemoryRecallResult {
+    /** Number of memories retrieved. */
+    count: number;
+    /** LLM-generated answer synthesizing the matching memories. */
+    answer: string;
+    /** Matching memories ranked by relevance. */
+    candidates: AgentMemoryScoredCandidate[];
+}
+/**
+ * Options for the list() method.
+ *
+ * `cursor` is the opaque continuation token returned by the previous page;
+ * pass it back unchanged to fetch the next page. `sessionId` and `type`
+ * are exact-match filters; combining them is allowed.
+ */
+interface AgentMemoryListMemoriesOptions {
+    /** Maximum number of memories to return. Default 20, max 500. */
+    limit?: number;
+    /** Opaque cursor from a previous page. */
+    cursor?: string;
+    /** Exact-match session filter. */
+    sessionId?: string;
+    /** Exact-match memory-type filter. */
+    type?: AgentMemoryMemoryType;
+}
+/** Response from the list() method. */
+interface AgentMemoryListMemoriesResult {
+    memories: AgentMemoryMemoryListEntry[];
+    /** Continuation cursor; absent when this page exhausted the result set. */
+    cursor?: string;
+}
+/**
+ * A single Agent Memory profile, scoped to a profile name.
+ *
+ * Returned by {@link AgentMemoryNamespace.getProfile}.
+ */
+declare abstract class AgentMemoryProfile {
+    /**
+     * Retrieve a memory by ID.
+     *
+     * @param memoryId - ULID of the memory to retrieve.
+     * @throws if the memory does not exist.
+     */
+    get(memoryId: string): Promise<AgentMemoryMemory>;
+    /**
+     * Delete a memory by ID.
+     *
+     * Removes the memory and any source messages linked by the memory's
+     * source message IDs.
+     *
+     * @param memoryId - ULID of the memory to delete.
+     * @throws if the memory does not exist.
+     */
+    delete(memoryId: string): Promise<AgentMemoryMemory>;
+    /**
+     * Store a memory in this profile. The content is automatically classified,
+     * summarized, and indexed.
+     *
+     * @param memory - Raw memory content to persist.
+     */
+    remember(memory: AgentMemoryIncomingMemory): Promise<AgentMemoryMemory>;
+    /**
+     * Extract memories from a conversation.
+     *
+     * @param messages - Conversation messages to extract memories from.
+     * @param options  - Optional ingest options.
+     */
+    ingest(messages: Iterable<AgentMemoryMessage>, options?: AgentMemoryIngestOptions): Promise<void>;
+    /**
+     * Get a profile summary.
+     *
+     * @param options - Optional getSummary options.
+     */
+    getSummary(options?: AgentMemoryGetSummaryOptions): Promise<AgentMemoryGetSummaryResponse>;
+    /**
+     * Recall memories in this profile.
+     *
+     * @param query   - Recall query matched against memory content and keywords.
+     * @param options - Optional recall parameters.
+     * @returns Matching memories with relevance scores and a synthesized answer.
+     */
+    recall(query: string, options?: AgentMemoryRecallOptions): Promise<AgentMemoryRecallResult>;
+    /**
+     * List active memories in this profile.
+     *
+     * Returns a paginated, filterable view of stored memories. Superseded
+     * versions are excluded. Use the returned `cursor` (when present) to
+     * fetch the next page.
+     *
+     * @param options - Optional pagination and filter options.
+     */
+    list(options?: AgentMemoryListMemoriesOptions): Promise<AgentMemoryListMemoriesResult>;
+    /**
+     * Soft-delete every memory and message in this profile that is tagged
+     * with `sessionId`.
+     *
+     * Idempotent: deleting a sessionId that has no rows is a no-op.
+     *
+     * @param sessionId - Session to delete.
+     */
+    deleteSession(sessionId: string): Promise<void>;
+}
+/**
+ * Namespace-level Agent Memory binding.
+ *
+ * Used as the type of an `env.MEMORY`-style binding backed by the Agent
+ * Memory product.
+ *
+ * @example
+ * ```ts
+ * export default {
+ *   async fetch(_request: Request, env: Env): Promise<Response> {
+ *     const profile = await env.MEMORY.getProfile("wrangler-e2e");
+ *     const summary = await profile.getSummary();
+ *     return Response.json(summary);
+ *   },
+ * };
+ * ```
+ */
+declare abstract class AgentMemoryNamespace {
+    /**
+     * Get a memory profile by name. Profiles are isolated by namespace and
+     * addressed by a compound key (namespaceId:profileName).
+     *
+     * @param profileName - Profile name (validated against naming rules).
+     * @returns RPC target for interacting with the profile.
+     */
+    getProfile(profileName: string): Promise<AgentMemoryProfile>;
+    /**
+     * Soft-delete a profile and schedule deferred purge. Marks all
+     * memories and messages as deleted.
+     *
+     * @param profileName - Name of the profile to delete.
+     */
+    deleteProfile(profileName: string): Promise<void>;
+}
+// ============ AI Search Error Interfaces ============
+interface AiSearchInternalError extends Error {
+}
+interface AiSearchNotFoundError extends Error {
+}
+// ============ AI Search Common Types ============
+/** A single message in a conversation-style search or chat request. */
+type AiSearchMessage = {
+    role: 'system' | 'developer' | 'user' | 'assistant' | 'tool';
+    content: string | null;
+};
+/**
+ * Common shape for `ai_search_options` used by both single-instance and multi-instance requests.
+ * Contains retrieval, query rewrite, reranking, and cache sub-options.
+ */
+type AiSearchOptions = {
+    retrieval?: {
+        /** Which retrieval backend to use. Defaults to the instance's configured index_method. */
+        retrieval_type?: 'vector' | 'keyword' | 'hybrid';
+        /** Fusion method for combining vector + keyword results. */
+        fusion_method?: 'max' | 'rrf';
+        /** How keyword terms are combined: "and" = all terms must match, "or" = any term matches. */
+        keyword_match_mode?: 'and' | 'or';
+        /** Minimum similarity score (0-1) for a result to be included. Default 0.4. */
+        match_threshold?: number;
+        /** Maximum number of results to return (1-50). Default 10. */
+        max_num_results?: number;
+        /** Vectorize metadata filters applied to the search. */
+        filters?: VectorizeVectorMetadataFilter;
+        /** Number of surrounding chunks to include for context (0-3). Default 0. */
+        context_expansion?: number;
+        /** If true, return only item metadata without chunk text. */
+        metadata_only?: boolean;
+        /** If true (default), return empty results on retrieval failure instead of throwing. */
+        return_on_failure?: boolean;
+        /** Boost results by metadata field values. Max 3 entries. */
+        boost_by?: Array<{
+            field: string;
+            direction?: 'asc' | 'desc' | 'exists' | 'not_exists';
+        }>;
+        [key: string]: unknown;
+    };
+    query_rewrite?: {
+        enabled?: boolean;
+        model?: string;
+        rewrite_prompt?: string;
+        [key: string]: unknown;
+    };
+    reranking?: {
+        enabled?: boolean;
+        model?: string;
+        /** Match threshold (0-1, default 0.4) */
+        match_threshold?: number;
+        [key: string]: unknown;
+    };
+    cache?: {
+        enabled?: boolean;
+        cache_threshold?: 'super_strict_match' | 'close_enough' | 'flexible_friend' | 'anything_goes';
+    };
+    [key: string]: unknown;
+};
+// ============ AI Search Request Types ============
+/**
+ * Request body for single-instance search.
+ * Exactly one of `query` or `messages` must be provided.
+ */
+type AiSearchSearchRequest = {
+    /** Simple query string. */
+    query: string;
+    messages?: never;
+    ai_search_options?: AiSearchOptions;
+} | {
+    query?: never;
+    /** Conversation-style input. At least one user message with non-empty content is required. */
+    messages: AiSearchMessage[];
+    ai_search_options?: AiSearchOptions;
+};
+type AiSearchChatCompletionsRequest = {
+    messages: AiSearchMessage[];
+    model?: string;
+    stream?: boolean;
+    ai_search_options?: AiSearchOptions;
+    [key: string]: unknown;
+};
+// ============ AI Search Multi-Instance Types (Namespace-Scoped) ============
+/** `ai_search_options` shape for multi-instance requests — requires `instance_ids`. */
+type AiSearchMultiSearchOptions = AiSearchOptions & {
+    /** Instance IDs to search across (1-10). */
+    instance_ids: string[];
+};
+/**
+ * Request for searching across multiple instances within a namespace.
+ * `ai_search_options` is required and must include `instance_ids`.
+ * Exactly one of `query` or `messages` must be provided.
+ */
+type AiSearchMultiSearchRequest = {
+    /** Simple query string. */
+    query: string;
+    messages?: never;
+    ai_search_options: AiSearchMultiSearchOptions;
+} | {
+    query?: never;
+    /** Conversation-style input. */
+    messages: AiSearchMessage[];
+    ai_search_options: AiSearchMultiSearchOptions;
+};
+/** A search result chunk tagged with the instance it originated from. */
+type AiSearchMultiSearchChunk = AiSearchSearchResponse['chunks'][number] & {
+    instance_id: string;
+};
+/** Describes a per-instance error during a multi-instance operation. */
+type AiSearchMultiSearchError = {
+    instance_id: string;
+    message: string;
+};
+/** Response from a multi-instance search, with chunks tagged by instance and optional partial-failure errors. */
+type AiSearchMultiSearchResponse = {
+    search_query: string;
+    chunks: AiSearchMultiSearchChunk[];
+    errors?: AiSearchMultiSearchError[];
+};
+/** Request for chat completions across multiple instances within a namespace. `ai_search_options` is required and must include `instance_ids`. */
+type AiSearchMultiChatCompletionsRequest = Omit<AiSearchChatCompletionsRequest, 'ai_search_options'> & {
+    ai_search_options: AiSearchMultiSearchOptions;
+};
+/** Response from multi-instance chat completions, with chunks tagged by instance and optional partial-failure errors. */
+type AiSearchMultiChatCompletionsResponse = Omit<AiSearchChatCompletionsResponse, 'chunks'> & {
+    chunks: AiSearchMultiSearchChunk[];
+    errors?: AiSearchMultiSearchError[];
+};
+// ============ AI Search Response Types ============
+type AiSearchSearchResponse = {
+    search_query: string;
+    chunks: Array<{
+        id: string;
+        type: string;
+        /** Match score (0-1) */
+        score: number;
+        text: string;
+        item: {
+            timestamp?: number;
+            key: string;
+            metadata?: Record<string, unknown>;
+        };
+        scoring_details?: {
+            /** Keyword match score (0-1) */
+            keyword_score?: number;
+            /** Vector similarity score (0-1) */
+            vector_score?: number;
+            /** Keyword rank position */
+            keyword_rank?: number;
+            /** Vector rank position */
+            vector_rank?: number;
+            /** Reranking model score */
+            reranking_score?: number;
+            /** Fusion method used to combine results */
+            fusion_method?: 'rrf' | 'max';
+            [key: string]: unknown;
+        };
+    }>;
+};
+type AiSearchChatCompletionsResponse = {
+    id?: string;
+    object?: string;
+    model?: string;
+    choices: Array<{
+        index?: number;
+        message: {
+            role: 'system' | 'developer' | 'user' | 'assistant' | 'tool';
+            content: string | null;
+            [key: string]: unknown;
+        };
+        [key: string]: unknown;
+    }>;
+    chunks: AiSearchSearchResponse['chunks'];
+    [key: string]: unknown;
+};
+type AiSearchStatsResponse = {
+    queued?: number;
+    running?: number;
+    completed?: number;
+    error?: number;
+    skipped?: number;
+    outdated?: number;
+    last_activity?: string;
+    /** Storage engine statistics. */
+    engine?: {
+        vectorize?: {
+            vectorsCount: number;
+            dimensions: number;
+        };
+        r2?: {
+            payloadSizeBytes: number;
+            metadataSizeBytes: number;
+            objectCount: number;
+        };
+    };
+};
+// ============ AI Search Instance Info Types ============
+type AiSearchInstanceInfo = {
+    id: string;
+    type?: 'r2' | 'web-crawler' | string;
+    source?: string;
+    source_params?: unknown;
+    paused?: boolean;
+    status?: string;
+    namespace?: string;
+    created_at?: string;
+    modified_at?: string;
+    token_id?: string;
+    ai_gateway_id?: string;
+    rewrite_query?: boolean;
+    reranking?: boolean;
+    embedding_model?: string;
+    ai_search_model?: string;
+    rewrite_model?: string;
+    reranking_model?: string;
+    /** @deprecated Use index_method instead. */
+    hybrid_search_enabled?: boolean;
+    /** Controls which storage backends are active. */
+    index_method?: {
+        vector?: boolean;
+        keyword?: boolean;
+    };
+    /** Fusion method for combining vector and keyword results. */
+    fusion_method?: 'max' | 'rrf';
+    indexing_options?: {
+        keyword_tokenizer?: 'porter' | 'trigram';
+    } | null;
+    retrieval_options?: {
+        keyword_match_mode?: 'and' | 'or';
+        boost_by?: Array<{
+            field: string;
+            direction?: 'asc' | 'desc' | 'exists' | 'not_exists';
+        }>;
+    } | null;
+    chunk?: boolean;
+    chunk_size?: number;
+    chunk_overlap?: number;
+    score_threshold?: number;
+    max_num_results?: number;
+    cache?: boolean;
+    cache_threshold?: 'super_strict_match' | 'close_enough' | 'flexible_friend' | 'anything_goes';
+    custom_metadata?: Array<{
+        field_name: string;
+        data_type: 'text' | 'number' | 'boolean' | 'datetime';
+    }>;
+    /** Sync interval in seconds. */
+    sync_interval?: 3600 | 7200 | 14400 | 21600 | 43200 | 86400;
+    metadata?: Record<string, unknown>;
+    [key: string]: unknown;
+};
+/** Pagination, search, and ordering parameters for listing instances within a namespace. */
+type AiSearchListInstancesParams = {
+    page?: number;
+    per_page?: number;
+    /** Search instances by ID. */
+    search?: string;
+    /** Field to sort by. */
+    order_by?: 'created_at';
+    /** Sort direction. */
+    order_by_direction?: 'asc' | 'desc';
+};
+type AiSearchListResponse = {
+    result: AiSearchInstanceInfo[];
+    result_info?: {
+        count: number;
+        page: number;
+        per_page: number;
+        total_count: number;
+    };
+};
+// ============ AI Search Config Types ============
+type AiSearchConfig = {
+    /** Instance ID (1-32 chars, pattern: ^[a-z0-9_]+(?:-[a-z0-9_]+)*$) */
+    id: string;
+    /** Instance type. Omit to create with built-in storage. */
+    type?: 'r2' | 'web-crawler' | string;
+    /** Source URL (required for web-crawler type). */
+    source?: string;
+    source_params?: unknown;
+    /** Token ID (UUID format) */
+    token_id?: string;
+    ai_gateway_id?: string;
+    /** Enable query rewriting (default false) */
+    rewrite_query?: boolean;
+    /** Enable reranking (default false) */
+    reranking?: boolean;
+    embedding_model?: string;
+    ai_search_model?: string;
+    rewrite_model?: string;
+    reranking_model?: string;
+    /** @deprecated Use index_method instead. */
+    hybrid_search_enabled?: boolean;
+    /** Controls which storage backends are used during indexing. Defaults to vector-only. */
+    index_method?: {
+        vector?: boolean;
+        keyword?: boolean;
+    };
+    /** Fusion method for combining vector and keyword results. "rrf" = reciprocal rank fusion (default), "max" = maximum score. */
+    fusion_method?: 'max' | 'rrf';
+    indexing_options?: {
+        keyword_tokenizer?: 'porter' | 'trigram';
+    } | null;
+    retrieval_options?: {
+        keyword_match_mode?: 'and' | 'or';
+        boost_by?: Array<{
+            field: string;
+            direction?: 'asc' | 'desc' | 'exists' | 'not_exists';
+        }>;
+    } | null;
+    chunk?: boolean;
+    chunk_size?: number;
+    chunk_overlap?: number;
+    /** Minimum similarity score (0-1) for a result to be included. */
+    score_threshold?: number;
+    max_num_results?: number;
+    cache?: boolean;
+    /** Similarity threshold for cache hits. Stricter = fewer cache hits but higher relevance. */
+    cache_threshold?: 'super_strict_match' | 'close_enough' | 'flexible_friend' | 'anything_goes';
+    custom_metadata?: Array<{
+        field_name: string;
+        data_type: 'text' | 'number' | 'boolean' | 'datetime';
+    }>;
+    namespace?: string;
+    /** Sync interval in seconds. 3600=1h, 7200=2h, 14400=4h, 21600=6h, 43200=12h, 86400=24h. */
+    sync_interval?: 3600 | 7200 | 14400 | 21600 | 43200 | 86400;
+    metadata?: Record<string, unknown>;
+    [key: string]: unknown;
+};
+// ============ AI Search Item Types ============
+type AiSearchItemInfo = {
+    id: string;
+    key: string;
+    status: 'completed' | 'error' | 'skipped' | 'queued' | 'running' | 'outdated';
+    next_action?: 'INDEX' | 'DELETE' | null;
+    error?: string;
+    checksum?: string;
+    namespace?: string;
+    chunks_count?: number | null;
+    file_size?: number | null;
+    source_id?: string | null;
+    last_seen_at?: string;
+    created_at?: string;
+    metadata?: Record<string, unknown>;
+    [key: string]: unknown;
+};
+type AiSearchItemContentResult = {
+    body: ReadableStream;
+    contentType: string;
+    filename: string;
+    size: number;
+};
+type AiSearchUploadItemOptions = {
+    metadata?: Record<string, unknown>;
+};
+type AiSearchListItemsParams = {
+    page?: number;
+    per_page?: number;
+    /** Search items by key name. */
+    search?: string;
+    /** Sort order for results. */
+    sort_by?: 'status' | 'modified_at';
+    /** Filter items by processing status. */
+    status?: 'queued' | 'running' | 'completed' | 'error' | 'skipped' | 'outdated';
+    /** Filter items by source (e.g. "builtin" or "web-crawler:https://example.com"). */
+    source?: string;
+    /** JSON-encoded Vectorize filter for metadata filtering. */
+    metadata_filter?: string;
+};
+type AiSearchListItemsResponse = {
+    result: AiSearchItemInfo[];
+    result_info?: {
+        count: number;
+        page: number;
+        per_page: number;
+        total_count: number;
+    };
+};
+// ============ AI Search Item Logs Types ============
+type AiSearchItemLogsParams = {
+    /** Maximum number of log entries to return (1-100, default 50). */
+    limit?: number;
+    /** Opaque cursor for pagination. Pass the `cursor` value from a previous response. */
+    cursor?: string;
+};
+type AiSearchItemLog = {
+    timestamp: string;
+    action: string;
+    message: string;
+    fileKey?: string;
+    chunkCount?: number;
+    processingTimeMs?: number;
+    errorType?: string;
+};
+/** Paginated response for item processing logs (cursor-based). */
+type AiSearchItemLogsResponse = {
+    result: AiSearchItemLog[];
+    result_info: {
+        count: number;
+        per_page: number;
+        cursor: string | null;
+        truncated: boolean;
+    };
+};
+// ============ AI Search Item Chunks Types ============
+type AiSearchItemChunksParams = {
+    /** Maximum number of chunks to return (1-100, default 20). */
+    limit?: number;
+    /** Offset into the chunks list (default 0). */
+    offset?: number;
+};
+/** A single indexed chunk belonging to an item, including its text content and byte range. */
+type AiSearchItemChunk = {
+    id: string;
+    text: string;
+    start_byte: number;
+    end_byte: number;
+    item?: {
+        timestamp?: number;
+        key: string;
+        metadata?: Record<string, unknown>;
+    };
+};
+/** Paginated response for item chunks (offset-based). */
+type AiSearchItemChunksResponse = {
+    result: AiSearchItemChunk[];
+    result_info: {
+        count: number;
+        total: number;
+        limit: number;
+        offset: number;
+    };
+};
+// ============ AI Search Job Types ============
+type AiSearchJobInfo = {
+    id: string;
+    source: 'user' | 'schedule';
+    description?: string;
+    last_seen_at?: string;
+    started_at?: string;
+    ended_at?: string;
+    end_reason?: string;
+};
+type AiSearchJobLog = {
+    id: number;
+    message: string;
+    message_type: number;
+    created_at: number;
+};
+type AiSearchCreateJobParams = {
+    description?: string;
+};
+type AiSearchListJobsParams = {
+    page?: number;
+    per_page?: number;
+};
+type AiSearchListJobsResponse = {
+    result: AiSearchJobInfo[];
+    result_info?: {
+        count: number;
+        page: number;
+        per_page: number;
+        total_count: number;
+    };
+};
+type AiSearchJobLogsParams = {
+    page?: number;
+    per_page?: number;
+};
+type AiSearchJobLogsResponse = {
+    result: AiSearchJobLog[];
+    result_info?: {
+        count: number;
+        page: number;
+        per_page: number;
+        total_count: number;
+    };
+};
+// ============ AI Search Sub-Service Classes ============
+/**
+ * Single item service for an AI Search instance.
+ * Provides info, download, sync, logs, and chunks operations on a specific item.
+ */
+declare abstract class AiSearchItem {
+    /** Get metadata about this item. */
+    info(): Promise<AiSearchItemInfo>;
+    /**
+     * Download the item's content.
+     * @returns Object with body stream, content type, filename, and size.
+     */
+    download(): Promise<AiSearchItemContentResult>;
+    /**
+     * Trigger re-indexing of this item.
+     * @returns The updated item info.
+     */
+    sync(): Promise<AiSearchItemInfo>;
+    /**
+     * Retrieve processing logs for this item (cursor-based pagination).
+     * @param params Optional pagination parameters (limit, cursor).
+     * @returns Paginated log entries for this item.
+     */
+    logs(params?: AiSearchItemLogsParams): Promise<AiSearchItemLogsResponse>;
+    /**
+     * List indexed chunks for this item (offset-based pagination).
+     * @param params Optional pagination parameters (limit, offset).
+     * @returns Paginated chunk entries for this item.
+     */
+    chunks(params?: AiSearchItemChunksParams): Promise<AiSearchItemChunksResponse>;
+}
+/**
+ * Items collection service for an AI Search instance.
+ * Provides list, upload, and access to individual items.
+ */
+declare abstract class AiSearchItems {
+    /** List items in this instance. */
+    list(params?: AiSearchListItemsParams): Promise<AiSearchListItemsResponse>;
+    /**
+     * Upload a file as an item. Behaves as an upsert: if an item with the same
+     * filename already exists, it is overwritten and re-indexed.
+     * @param name Filename for the uploaded item.
+     * @param content File content as a ReadableStream, Blob, or string.
+     * @param options Optional metadata to attach to the item.
+     * @returns The created item info.
+     */
+    upload(name: string, content: ReadableStream | Blob | string, options?: AiSearchUploadItemOptions): Promise<AiSearchItemInfo>;
+    /**
+     * Upload a file and poll until processing completes.
+     * Behaves as an upsert: if an item with the same filename already exists,
+     * it is overwritten and re-indexed.
+     * @param name Filename for the uploaded item.
+     * @param content File content as a ReadableStream, Blob, or string.
+     * @param options Optional metadata and polling configuration.
+     * @returns The item info after processing completes (or timeout).
+     */
+    uploadAndPoll(name: string, content: ReadableStream | Blob | string, options?: AiSearchUploadItemOptions & {
+        /** Polling interval in milliseconds (default 1000). */
+        pollIntervalMs?: number;
+        /** Maximum time to wait in milliseconds (default 30000). */
+        timeoutMs?: number;
+    }): Promise<AiSearchItemInfo>;
+    /**
+     * Get an item by ID.
+     * @param itemId The item identifier.
+     * @returns Item service for info, download, sync, logs, and chunks operations.
+     */
+    get(itemId: string): AiSearchItem;
+    /**
+     * Delete an item from the instance.
+     * @param itemId The item identifier.
+     */
+    delete(itemId: string): Promise<void>;
+}
+/**
+ * Single job service for an AI Search instance.
+ * Provides info, logs, and cancel operations for a specific job.
+ */
+declare abstract class AiSearchJob {
+    /** Get metadata about this job. */
+    info(): Promise<AiSearchJobInfo>;
+    /** Get logs for this job. */
+    logs(params?: AiSearchJobLogsParams): Promise<AiSearchJobLogsResponse>;
+    /**
+     * Cancel a running job.
+     * @returns The updated job info.
+     * @throws AiSearchNotFoundError if the job does not exist.
+     */
+    cancel(): Promise<AiSearchJobInfo>;
+}
+/**
+ * Jobs collection service for an AI Search instance.
+ * Provides list, create, and access to individual jobs.
+ */
+declare abstract class AiSearchJobs {
+    /** List jobs for this instance. */
+    list(params?: AiSearchListJobsParams): Promise<AiSearchListJobsResponse>;
+    /**
+     * Create a new indexing job.
+     * @param params Optional job parameters.
+     * @returns The created job info.
+     */
+    create(params?: AiSearchCreateJobParams): Promise<AiSearchJobInfo>;
+    /**
+     * Get a job by ID.
+     * @param jobId The job identifier.
+     * @returns Job service for info, logs, and cancel operations.
+     */
+    get(jobId: string): AiSearchJob;
+}
+// ============ AI Search Binding Classes ============
+/**
+ * Instance-level AI Search service.
+ *
+ * Used as:
+ * - The return type of `AiSearchNamespace.get(name)` (namespace binding)
+ * - The type of `env.BLOG_SEARCH` (single instance binding via `ai_search`)
+ *
+ * Provides search, chat, update, stats, items, and jobs operations.
+ *
+ * @example
+ * ```ts
+ * // Via namespace binding
+ * const instance = env.AI_SEARCH.get("blog");
+ * const results = await instance.search({
+ *   query: "How does caching work?",
+ * });
+ *
+ * // Via single instance binding
+ * const results = await env.BLOG_SEARCH.search({
+ *   messages: [{ role: "user", content: "How does caching work?" }],
+ * });
+ * ```
+ */
+declare abstract class AiSearchInstance {
+    /**
+     * Search the AI Search instance for relevant chunks.
+     * @param params Search request with query or messages and optional AI search options.
+     * @returns Search response with matching chunks and search query.
+     */
+    search(params: AiSearchSearchRequest): Promise<AiSearchSearchResponse>;
+    /**
+     * Generate chat completions with AI Search context (streaming).
+     * @param params Chat completions request with stream: true.
+     * @returns ReadableStream of server-sent events.
+     */
+    chatCompletions(params: AiSearchChatCompletionsRequest & {
+        stream: true;
+    }): Promise<ReadableStream>;
+    /**
+     * Generate chat completions with AI Search context.
+     * @param params Chat completions request.
+     * @returns Chat completion response with choices and RAG chunks.
+     */
+    chatCompletions(params: AiSearchChatCompletionsRequest): Promise<AiSearchChatCompletionsResponse>;
+    /**
+     * Update the instance configuration.
+     * @param config Partial configuration to update.
+     * @returns Updated instance info.
+     */
+    update(config: Partial<AiSearchConfig>): Promise<AiSearchInstanceInfo>;
+    /** Get metadata about this instance. */
+    info(): Promise<AiSearchInstanceInfo>;
+    /**
+     * Get instance statistics (item count, indexing status, etc.).
+     * @returns Statistics with counts per status, last activity time, and engine details.
+     */
+    stats(): Promise<AiSearchStatsResponse>;
+    /** Items collection — list, upload, and manage items in this instance. */
+    get items(): AiSearchItems;
+    /** Jobs collection — list, create, and inspect indexing jobs. */
+    get jobs(): AiSearchJobs;
+}
+/**
+ * Namespace-level AI Search service.
+ *
+ * Used as the type of `env.AI_SEARCH` (namespace binding via `ai_search_namespaces`).
+ * Scoped to a single namespace. Provides dynamic instance access, creation, deletion,
+ * and multi-instance search/chat operations.
+ *
+ * @example
+ * ```ts
+ * // Access an instance within the namespace
+ * const blog = env.AI_SEARCH.get("blog");
+ * const results = await blog.search({ query: "How does caching work?" });
+ *
+ * // List all instances in the namespace
+ * const instances = await env.AI_SEARCH.list();
+ *
+ * // Create a new instance with built-in storage
+ * const tenant = await env.AI_SEARCH.create({ id: "tenant-123" });
+ *
+ * // Upload items into the instance
+ * await tenant.items.upload("doc.pdf", fileContent);
+ *
+ * // Search across multiple instances
+ * const multi = await env.AI_SEARCH.search({
+ *   query: "caching",
+ *   ai_search_options: { instance_ids: ["blog", "docs"] },
+ * });
+ *
+ * // Delete an instance
+ * await env.AI_SEARCH.delete("tenant-123");
+ * ```
+ */
+declare abstract class AiSearchNamespace {
+    /**
+     * Get an instance by name within the bound namespace.
+     * @param name Instance name.
+     * @returns Instance service for search, chat, update, stats, items, and jobs.
+     */
+    get(name: string): AiSearchInstance;
+    /**
+     * List instances in the bound namespace.
+     * @param params Optional pagination, search, and ordering parameters.
+     * @returns Array of instance metadata with pagination info.
+     */
+    list(params?: AiSearchListInstancesParams): Promise<AiSearchListResponse>;
+    /**
+     * Create a new instance within the bound namespace.
+     * @param config Instance configuration. Only `id` is required — omit `type` and `source` to create with built-in storage.
+     * @returns Instance service for the newly created instance.
+     *
+     * @example
+     * ```ts
+     * // Create with built-in storage (upload items manually)
+     * const instance = await env.AI_SEARCH.create({ id: "my-search" });
+     *
+     * // Create with web crawler source
+     * const instance = await env.AI_SEARCH.create({
+     *   id: "docs-search",
+     *   type: "web-crawler",
+     *   source: "https://developers.cloudflare.com",
+     * });
+     * ```
+     */
+    create(config: AiSearchConfig): Promise<AiSearchInstance>;
+    /**
+     * Delete an instance from the bound namespace.
+     * @param name Instance name to delete.
+     */
+    delete(name: string): Promise<void>;
+    /**
+     * Search across multiple instances within the bound namespace.
+     * Fans out to the specified instance_ids and merges results.
+     * @param params Search request with required `ai_search_options.instance_ids`.
+     * @returns Search response with chunks tagged by instance_id and optional partial-failure errors.
+     */
+    search(params: AiSearchMultiSearchRequest): Promise<AiSearchMultiSearchResponse>;
+    /**
+     * Generate chat completions across multiple instances within the bound namespace (streaming).
+     * Fans out to the specified instance_ids, merges context, and generates a response.
+     * @param params Chat completions request with stream: true and required `ai_search_options.instance_ids`.
+     * @returns ReadableStream of server-sent events.
+     */
+    chatCompletions(params: AiSearchMultiChatCompletionsRequest & {
+        stream: true;
+    }): Promise<ReadableStream>;
+    /**
+     * Generate chat completions across multiple instances within the bound namespace.
+     * Fans out to the specified instance_ids, merges context, and generates a response.
+     * @param params Chat completions request with required `ai_search_options.instance_ids`.
+     * @returns Chat completion response with choices, chunks tagged by instance_id, and optional partial-failure errors.
+     */
+    chatCompletions(params: AiSearchMultiChatCompletionsRequest): Promise<AiSearchMultiChatCompletionsResponse>;
 }
 type AiImageClassificationInput = {
     image: number[];
@@ -3539,6 +4779,719 @@ declare abstract class BaseAiTranslation {
     inputs: AiTranslationInput;
     postProcessedOutputs: AiTranslationOutput;
 }
+/**
+ * Workers AI support for OpenAI's Chat Completions API
+ */
+type ChatCompletionContentPartText = {
+    type: "text";
+    text: string;
+};
+type ChatCompletionContentPartImage = {
+    type: "image_url";
+    image_url: {
+        url: string;
+        detail?: "auto" | "low" | "high";
+    };
+};
+type ChatCompletionContentPartInputAudio = {
+    type: "input_audio";
+    input_audio: {
+        /** Base64 encoded audio data. */
+        data: string;
+        format: "wav" | "mp3";
+    };
+};
+type ChatCompletionContentPartFile = {
+    type: "file";
+    file: {
+        /** Base64 encoded file data. */
+        file_data?: string;
+        /** The ID of an uploaded file. */
+        file_id?: string;
+        filename?: string;
+    };
+};
+type ChatCompletionContentPartRefusal = {
+    type: "refusal";
+    refusal: string;
+};
+type ChatCompletionContentPart = ChatCompletionContentPartText | ChatCompletionContentPartImage | ChatCompletionContentPartInputAudio | ChatCompletionContentPartFile;
+type FunctionDefinition = {
+    name: string;
+    description?: string;
+    parameters?: Record<string, unknown>;
+    strict?: boolean | null;
+};
+type ChatCompletionFunctionTool = {
+    type: "function";
+    function: FunctionDefinition;
+};
+type ChatCompletionCustomToolGrammarFormat = {
+    type: "grammar";
+    grammar: {
+        definition: string;
+        syntax: "lark" | "regex";
+    };
+};
+type ChatCompletionCustomToolTextFormat = {
+    type: "text";
+};
+type ChatCompletionCustomToolFormat = ChatCompletionCustomToolTextFormat | ChatCompletionCustomToolGrammarFormat;
+type ChatCompletionCustomTool = {
+    type: "custom";
+    custom: {
+        name: string;
+        description?: string;
+        format?: ChatCompletionCustomToolFormat;
+    };
+};
+type ChatCompletionTool = ChatCompletionFunctionTool | ChatCompletionCustomTool;
+type ChatCompletionMessageFunctionToolCall = {
+    id: string;
+    type: "function";
+    function: {
+        name: string;
+        /** JSON-encoded arguments string. */
+        arguments: string;
+    };
+};
+type ChatCompletionMessageCustomToolCall = {
+    id: string;
+    type: "custom";
+    custom: {
+        name: string;
+        input: string;
+    };
+};
+type ChatCompletionMessageToolCall = ChatCompletionMessageFunctionToolCall | ChatCompletionMessageCustomToolCall;
+type ChatCompletionToolChoiceFunction = {
+    type: "function";
+    function: {
+        name: string;
+    };
+};
+type ChatCompletionToolChoiceCustom = {
+    type: "custom";
+    custom: {
+        name: string;
+    };
+};
+type ChatCompletionToolChoiceAllowedTools = {
+    type: "allowed_tools";
+    allowed_tools: {
+        mode: "auto" | "required";
+        tools: Array<Record<string, unknown>>;
+    };
+};
+type ChatCompletionToolChoiceOption = "none" | "auto" | "required" | ChatCompletionToolChoiceFunction | ChatCompletionToolChoiceCustom | ChatCompletionToolChoiceAllowedTools;
+type DeveloperMessage = {
+    role: "developer";
+    content: string | Array<{
+        type: "text";
+        text: string;
+    }>;
+    name?: string;
+};
+type SystemMessage = {
+    role: "system";
+    content: string | Array<{
+        type: "text";
+        text: string;
+    }>;
+    name?: string;
+};
+/**
+ * Permissive merged content part used inside UserMessage arrays.
+ *
+ * Cabidela has a limitation where anyOf/oneOf with enum-based discrimination
+ * inside nested array items does not correctly match different branches for
+ * different array elements, so the schema uses a single merged object.
+ */
+type UserMessageContentPart = {
+    type: "text" | "image_url" | "input_audio" | "file";
+    text?: string;
+    image_url?: {
+        url?: string;
+        detail?: "auto" | "low" | "high";
+    };
+    input_audio?: {
+        data?: string;
+        format?: "wav" | "mp3";
+    };
+    file?: {
+        file_data?: string;
+        file_id?: string;
+        filename?: string;
+    };
+};
+type UserMessage = {
+    role: "user";
+    content: string | Array<UserMessageContentPart>;
+    name?: string;
+};
+type AssistantMessageContentPart = {
+    type: "text" | "refusal";
+    text?: string;
+    refusal?: string;
+};
+type AssistantMessage = {
+    role: "assistant";
+    content?: string | null | Array<AssistantMessageContentPart>;
+    refusal?: string | null;
+    name?: string;
+    audio?: {
+        id: string;
+    };
+    tool_calls?: Array<ChatCompletionMessageToolCall>;
+    function_call?: {
+        name: string;
+        arguments: string;
+    };
+};
+type ToolMessage = {
+    role: "tool";
+    content: string | Array<{
+        type: "text";
+        text: string;
+    }>;
+    tool_call_id: string;
+};
+type FunctionMessage = {
+    role: "function";
+    content: string;
+    name: string;
+};
+type ChatCompletionMessageParam = DeveloperMessage | SystemMessage | UserMessage | AssistantMessage | ToolMessage | FunctionMessage;
+type ChatCompletionsResponseFormatText = {
+    type: "text";
+};
+type ChatCompletionsResponseFormatJSONObject = {
+    type: "json_object";
+};
+type ResponseFormatJSONSchema = {
+    type: "json_schema";
+    json_schema: {
+        name: string;
+        description?: string;
+        schema?: Record<string, unknown>;
+        strict?: boolean | null;
+    };
+};
+type ResponseFormat = ChatCompletionsResponseFormatText | ChatCompletionsResponseFormatJSONObject | ResponseFormatJSONSchema;
+type ChatCompletionsStreamOptions = {
+    include_usage?: boolean;
+    include_obfuscation?: boolean;
+};
+type PredictionContent = {
+    type: "content";
+    content: string | Array<{
+        type: "text";
+        text: string;
+    }>;
+};
+type AudioParams = {
+    voice: string | {
+        id: string;
+    };
+    format: "wav" | "aac" | "mp3" | "flac" | "opus" | "pcm16";
+};
+type WebSearchUserLocation = {
+    type: "approximate";
+    approximate: {
+        city?: string;
+        country?: string;
+        region?: string;
+        timezone?: string;
+    };
+};
+type WebSearchOptions = {
+    search_context_size?: "low" | "medium" | "high";
+    user_location?: WebSearchUserLocation;
+};
+type ChatTemplateKwargs = {
+    /** Whether to enable reasoning, enabled by default. */
+    enable_thinking?: boolean;
+    /** If false, preserves reasoning context between turns. */
+    clear_thinking?: boolean;
+};
+/** Shared optional properties used by both Prompt and Messages input branches. */
+type ChatCompletionsCommonOptions = {
+    model?: string;
+    audio?: AudioParams;
+    frequency_penalty?: number | null;
+    logit_bias?: Record<string, unknown> | null;
+    logprobs?: boolean | null;
+    top_logprobs?: number | null;
+    max_tokens?: number | null;
+    max_completion_tokens?: number | null;
+    metadata?: Record<string, unknown> | null;
+    modalities?: Array<"text" | "audio"> | null;
+    n?: number | null;
+    parallel_tool_calls?: boolean;
+    prediction?: PredictionContent;
+    presence_penalty?: number | null;
+    reasoning_effort?: "low" | "medium" | "high" | null;
+    chat_template_kwargs?: ChatTemplateKwargs;
+    response_format?: ResponseFormat;
+    seed?: number | null;
+    service_tier?: "auto" | "default" | "flex" | "scale" | "priority" | null;
+    stop?: string | Array<string> | null;
+    store?: boolean | null;
+    stream?: boolean | null;
+    stream_options?: ChatCompletionsStreamOptions;
+    temperature?: number | null;
+    tool_choice?: ChatCompletionToolChoiceOption;
+    tools?: Array<ChatCompletionTool>;
+    top_p?: number | null;
+    user?: string;
+    web_search_options?: WebSearchOptions;
+    function_call?: "none" | "auto" | {
+        name: string;
+    };
+    functions?: Array<FunctionDefinition>;
+};
+type PromptTokensDetails = {
+    cached_tokens?: number;
+    audio_tokens?: number;
+};
+type CompletionTokensDetails = {
+    reasoning_tokens?: number;
+    audio_tokens?: number;
+    accepted_prediction_tokens?: number;
+    rejected_prediction_tokens?: number;
+};
+type CompletionUsage = {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    prompt_tokens_details?: PromptTokensDetails;
+    completion_tokens_details?: CompletionTokensDetails;
+};
+type ChatCompletionTopLogprob = {
+    token: string;
+    logprob: number;
+    bytes: Array<number> | null;
+};
+type ChatCompletionTokenLogprob = {
+    token: string;
+    logprob: number;
+    bytes: Array<number> | null;
+    top_logprobs: Array<ChatCompletionTopLogprob>;
+};
+type ChatCompletionAudio = {
+    id: string;
+    /** Base64 encoded audio bytes. */
+    data: string;
+    expires_at: number;
+    transcript: string;
+};
+type ChatCompletionUrlCitation = {
+    type: "url_citation";
+    url_citation: {
+        url: string;
+        title: string;
+        start_index: number;
+        end_index: number;
+    };
+};
+type ChatCompletionResponseMessage = {
+    role: "assistant";
+    content: string | null;
+    refusal: string | null;
+    annotations?: Array<ChatCompletionUrlCitation>;
+    audio?: ChatCompletionAudio;
+    tool_calls?: Array<ChatCompletionMessageToolCall>;
+    function_call?: {
+        name: string;
+        arguments: string;
+    } | null;
+};
+type ChatCompletionLogprobs = {
+    content: Array<ChatCompletionTokenLogprob> | null;
+    refusal?: Array<ChatCompletionTokenLogprob> | null;
+};
+type ChatCompletionChoice = {
+    index: number;
+    message: ChatCompletionResponseMessage;
+    finish_reason: "stop" | "length" | "tool_calls" | "content_filter" | "function_call";
+    logprobs: ChatCompletionLogprobs | null;
+};
+type ChatCompletionsMessagesInput = {
+    messages: Array<ChatCompletionMessageParam>;
+} & ChatCompletionsCommonOptions;
+type ChatCompletionsOutput = {
+    id: string;
+    object: string;
+    created: number;
+    model: string;
+    choices: Array<ChatCompletionChoice>;
+    usage?: CompletionUsage;
+    system_fingerprint?: string | null;
+    service_tier?: "auto" | "default" | "flex" | "scale" | "priority" | null;
+};
+/**
+ * Workers AI support for OpenAI's Responses API
+ * Reference: https://github.com/openai/openai-node/blob/master/src/resources/responses/responses.ts
+ *
+ * It's a stripped down version from its source.
+ * It currently supports basic function calling, json mode and accepts images as input.
+ *
+ * It does not include types for WebSearch, CodeInterpreter, FileInputs, MCP, CustomTools.
+ * We plan to add those incrementally as model + platform capabilities evolve.
+ */
+type ResponsesInput = {
+    background?: boolean | null;
+    conversation?: string | ResponseConversationParam | null;
+    include?: Array<ResponseIncludable> | null;
+    input?: string | ResponseInput;
+    instructions?: string | null;
+    max_output_tokens?: number | null;
+    parallel_tool_calls?: boolean | null;
+    previous_response_id?: string | null;
+    prompt_cache_key?: string;
+    reasoning?: Reasoning | null;
+    safety_identifier?: string;
+    service_tier?: "auto" | "default" | "flex" | "scale" | "priority" | null;
+    stream?: boolean | null;
+    stream_options?: StreamOptions | null;
+    temperature?: number | null;
+    text?: ResponseTextConfig;
+    tool_choice?: ToolChoiceOptions | ToolChoiceFunction;
+    tools?: Array<Tool>;
+    top_p?: number | null;
+    truncation?: "auto" | "disabled" | null;
+};
+type ResponsesOutput = {
+    id?: string;
+    created_at?: number;
+    output_text?: string;
+    error?: ResponseError | null;
+    incomplete_details?: ResponseIncompleteDetails | null;
+    instructions?: string | Array<ResponseInputItem> | null;
+    object?: "response";
+    output?: Array<ResponseOutputItem>;
+    parallel_tool_calls?: boolean;
+    temperature?: number | null;
+    tool_choice?: ToolChoiceOptions | ToolChoiceFunction;
+    tools?: Array<Tool>;
+    top_p?: number | null;
+    max_output_tokens?: number | null;
+    previous_response_id?: string | null;
+    prompt?: ResponsePrompt | null;
+    reasoning?: Reasoning | null;
+    safety_identifier?: string;
+    service_tier?: "auto" | "default" | "flex" | "scale" | "priority" | null;
+    status?: ResponseStatus;
+    text?: ResponseTextConfig;
+    truncation?: "auto" | "disabled" | null;
+    usage?: ResponseUsage;
+};
+type EasyInputMessage = {
+    content: string | ResponseInputMessageContentList;
+    role: "user" | "assistant" | "system" | "developer";
+    type?: "message";
+};
+type ResponsesFunctionTool = {
+    name: string;
+    parameters: {
+        [key: string]: unknown;
+    } | null;
+    strict: boolean | null;
+    type: "function";
+    description?: string | null;
+};
+type ResponseIncompleteDetails = {
+    reason?: "max_output_tokens" | "content_filter";
+};
+type ResponsePrompt = {
+    id: string;
+    variables?: {
+        [key: string]: string | ResponseInputText | ResponseInputImage;
+    } | null;
+    version?: string | null;
+};
+type Reasoning = {
+    effort?: ReasoningEffort | null;
+    generate_summary?: "auto" | "concise" | "detailed" | null;
+    summary?: "auto" | "concise" | "detailed" | null;
+};
+type ResponseContent = ResponseInputText | ResponseInputImage | ResponseOutputText | ResponseOutputRefusal | ResponseContentReasoningText;
+type ResponseContentReasoningText = {
+    text: string;
+    type: "reasoning_text";
+};
+type ResponseConversationParam = {
+    id: string;
+};
+type ResponseCreatedEvent = {
+    response: Response;
+    sequence_number: number;
+    type: "response.created";
+};
+type ResponseCustomToolCallOutput = {
+    call_id: string;
+    output: string | Array<ResponseInputText | ResponseInputImage>;
+    type: "custom_tool_call_output";
+    id?: string;
+};
+type ResponseError = {
+    code: "server_error" | "rate_limit_exceeded" | "invalid_prompt" | "vector_store_timeout" | "invalid_image" | "invalid_image_format" | "invalid_base64_image" | "invalid_image_url" | "image_too_large" | "image_too_small" | "image_parse_error" | "image_content_policy_violation" | "invalid_image_mode" | "image_file_too_large" | "unsupported_image_media_type" | "empty_image_file" | "failed_to_download_image" | "image_file_not_found";
+    message: string;
+};
+type ResponseErrorEvent = {
+    code: string | null;
+    message: string;
+    param: string | null;
+    sequence_number: number;
+    type: "error";
+};
+type ResponseFailedEvent = {
+    response: Response;
+    sequence_number: number;
+    type: "response.failed";
+};
+type ResponseFormatText = {
+    type: "text";
+};
+type ResponseFormatJSONObject = {
+    type: "json_object";
+};
+type ResponseFormatTextConfig = ResponseFormatText | ResponseFormatTextJSONSchemaConfig | ResponseFormatJSONObject;
+type ResponseFormatTextJSONSchemaConfig = {
+    name: string;
+    schema: {
+        [key: string]: unknown;
+    };
+    type: "json_schema";
+    description?: string;
+    strict?: boolean | null;
+};
+type ResponseFunctionCallArgumentsDeltaEvent = {
+    delta: string;
+    item_id: string;
+    output_index: number;
+    sequence_number: number;
+    type: "response.function_call_arguments.delta";
+};
+type ResponseFunctionCallArgumentsDoneEvent = {
+    arguments: string;
+    item_id: string;
+    name: string;
+    output_index: number;
+    sequence_number: number;
+    type: "response.function_call_arguments.done";
+};
+type ResponseFunctionCallOutputItem = ResponseInputTextContent | ResponseInputImageContent;
+type ResponseFunctionCallOutputItemList = Array<ResponseFunctionCallOutputItem>;
+type ResponseFunctionToolCall = {
+    arguments: string;
+    call_id: string;
+    name: string;
+    type: "function_call";
+    id?: string;
+    status?: "in_progress" | "completed" | "incomplete";
+};
+interface ResponseFunctionToolCallItem extends ResponseFunctionToolCall {
+    id: string;
+}
+type ResponseFunctionToolCallOutputItem = {
+    id: string;
+    call_id: string;
+    output: string | Array<ResponseInputText | ResponseInputImage>;
+    type: "function_call_output";
+    status?: "in_progress" | "completed" | "incomplete";
+};
+type ResponseIncludable = "message.input_image.image_url" | "message.output_text.logprobs";
+type ResponseIncompleteEvent = {
+    response: Response;
+    sequence_number: number;
+    type: "response.incomplete";
+};
+type ResponseInput = Array<ResponseInputItem>;
+type ResponseInputContent = ResponseInputText | ResponseInputImage;
+type ResponseInputImage = {
+    detail: "low" | "high" | "auto";
+    type: "input_image";
+    /**
+     * Base64 encoded image
+     */
+    image_url?: string | null;
+};
+type ResponseInputImageContent = {
+    type: "input_image";
+    detail?: "low" | "high" | "auto" | null;
+    /**
+     * Base64 encoded image
+     */
+    image_url?: string | null;
+};
+type ResponseInputItem = EasyInputMessage | ResponseInputItemMessage | ResponseOutputMessage | ResponseFunctionToolCall | ResponseInputItemFunctionCallOutput | ResponseReasoningItem;
+type ResponseInputItemFunctionCallOutput = {
+    call_id: string;
+    output: string | ResponseFunctionCallOutputItemList;
+    type: "function_call_output";
+    id?: string | null;
+    status?: "in_progress" | "completed" | "incomplete" | null;
+};
+type ResponseInputItemMessage = {
+    content: ResponseInputMessageContentList;
+    role: "user" | "system" | "developer";
+    status?: "in_progress" | "completed" | "incomplete";
+    type?: "message";
+};
+type ResponseInputMessageContentList = Array<ResponseInputContent>;
+type ResponseInputMessageItem = {
+    id: string;
+    content: ResponseInputMessageContentList;
+    role: "user" | "system" | "developer";
+    status?: "in_progress" | "completed" | "incomplete";
+    type?: "message";
+};
+type ResponseInputText = {
+    text: string;
+    type: "input_text";
+};
+type ResponseInputTextContent = {
+    text: string;
+    type: "input_text";
+};
+type ResponseItem = ResponseInputMessageItem | ResponseOutputMessage | ResponseFunctionToolCallItem | ResponseFunctionToolCallOutputItem;
+type ResponseOutputItem = ResponseOutputMessage | ResponseFunctionToolCall | ResponseReasoningItem;
+type ResponseOutputItemAddedEvent = {
+    item: ResponseOutputItem;
+    output_index: number;
+    sequence_number: number;
+    type: "response.output_item.added";
+};
+type ResponseOutputItemDoneEvent = {
+    item: ResponseOutputItem;
+    output_index: number;
+    sequence_number: number;
+    type: "response.output_item.done";
+};
+type ResponseOutputMessage = {
+    id: string;
+    content: Array<ResponseOutputText | ResponseOutputRefusal>;
+    role: "assistant";
+    status: "in_progress" | "completed" | "incomplete";
+    type: "message";
+};
+type ResponseOutputRefusal = {
+    refusal: string;
+    type: "refusal";
+};
+type ResponseOutputText = {
+    text: string;
+    type: "output_text";
+    logprobs?: Array<Logprob>;
+};
+type ResponseReasoningItem = {
+    id: string;
+    summary: Array<ResponseReasoningSummaryItem>;
+    type: "reasoning";
+    content?: Array<ResponseReasoningContentItem>;
+    encrypted_content?: string | null;
+    status?: "in_progress" | "completed" | "incomplete";
+};
+type ResponseReasoningSummaryItem = {
+    text: string;
+    type: "summary_text";
+};
+type ResponseReasoningContentItem = {
+    text: string;
+    type: "reasoning_text";
+};
+type ResponseReasoningTextDeltaEvent = {
+    content_index: number;
+    delta: string;
+    item_id: string;
+    output_index: number;
+    sequence_number: number;
+    type: "response.reasoning_text.delta";
+};
+type ResponseReasoningTextDoneEvent = {
+    content_index: number;
+    item_id: string;
+    output_index: number;
+    sequence_number: number;
+    text: string;
+    type: "response.reasoning_text.done";
+};
+type ResponseRefusalDeltaEvent = {
+    content_index: number;
+    delta: string;
+    item_id: string;
+    output_index: number;
+    sequence_number: number;
+    type: "response.refusal.delta";
+};
+type ResponseRefusalDoneEvent = {
+    content_index: number;
+    item_id: string;
+    output_index: number;
+    refusal: string;
+    sequence_number: number;
+    type: "response.refusal.done";
+};
+type ResponseStatus = "completed" | "failed" | "in_progress" | "cancelled" | "queued" | "incomplete";
+type ResponseStreamEvent = ResponseCompletedEvent | ResponseCreatedEvent | ResponseErrorEvent | ResponseFunctionCallArgumentsDeltaEvent | ResponseFunctionCallArgumentsDoneEvent | ResponseFailedEvent | ResponseIncompleteEvent | ResponseOutputItemAddedEvent | ResponseOutputItemDoneEvent | ResponseReasoningTextDeltaEvent | ResponseReasoningTextDoneEvent | ResponseRefusalDeltaEvent | ResponseRefusalDoneEvent | ResponseTextDeltaEvent | ResponseTextDoneEvent;
+type ResponseCompletedEvent = {
+    response: Response;
+    sequence_number: number;
+    type: "response.completed";
+};
+type ResponseTextConfig = {
+    format?: ResponseFormatTextConfig;
+    verbosity?: "low" | "medium" | "high" | null;
+};
+type ResponseTextDeltaEvent = {
+    content_index: number;
+    delta: string;
+    item_id: string;
+    logprobs: Array<Logprob>;
+    output_index: number;
+    sequence_number: number;
+    type: "response.output_text.delta";
+};
+type ResponseTextDoneEvent = {
+    content_index: number;
+    item_id: string;
+    logprobs: Array<Logprob>;
+    output_index: number;
+    sequence_number: number;
+    text: string;
+    type: "response.output_text.done";
+};
+type Logprob = {
+    token: string;
+    logprob: number;
+    top_logprobs?: Array<TopLogprob>;
+};
+type TopLogprob = {
+    token?: string;
+    logprob?: number;
+};
+type ResponseUsage = {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+};
+type Tool = ResponsesFunctionTool;
+type ToolChoiceFunction = {
+    name: string;
+    type: "function";
+};
+type ToolChoiceOptions = "none";
+type ReasoningEffort = "minimal" | "low" | "medium" | "high" | null;
+type StreamOptions = {
+    include_obfuscation?: boolean;
+};
+/** Marks keys from T that aren't in U as optional never */
+type Without<T, U> = {
+    [P in Exclude<keyof T, keyof U>]?: never;
+};
+/** Either T or U, but not both (mutually exclusive) */
+type XOR<T, U> = (T & Without<U, T>) | (U & Without<T, U>);
 type Ai_Cf_Baai_Bge_Base_En_V1_5_Input = {
     text: string | string[];
     /**
@@ -3567,8 +5520,8 @@ type Ai_Cf_Baai_Bge_Base_En_V1_5_Output = {
      * The pooling method used in the embedding process.
      */
     pooling?: "mean" | "cls";
-} | AsyncResponse;
-interface AsyncResponse {
+} | Ai_Cf_Baai_Bge_Base_En_V1_5_AsyncResponse;
+interface Ai_Cf_Baai_Bge_Base_En_V1_5_AsyncResponse {
     /**
      * The async request id that can be used to obtain the results.
      */
@@ -3644,7 +5597,13 @@ type Ai_Cf_Meta_M2M100_1_2B_Output = {
      * The translated text in the target language
      */
     translated_text?: string;
-} | AsyncResponse;
+} | Ai_Cf_Meta_M2M100_1_2B_AsyncResponse;
+interface Ai_Cf_Meta_M2M100_1_2B_AsyncResponse {
+    /**
+     * The async request id that can be used to obtain the results.
+     */
+    request_id?: string;
+}
 declare abstract class Base_Ai_Cf_Meta_M2M100_1_2B {
     inputs: Ai_Cf_Meta_M2M100_1_2B_Input;
     postProcessedOutputs: Ai_Cf_Meta_M2M100_1_2B_Output;
@@ -3677,7 +5636,13 @@ type Ai_Cf_Baai_Bge_Small_En_V1_5_Output = {
      * The pooling method used in the embedding process.
      */
     pooling?: "mean" | "cls";
-} | AsyncResponse;
+} | Ai_Cf_Baai_Bge_Small_En_V1_5_AsyncResponse;
+interface Ai_Cf_Baai_Bge_Small_En_V1_5_AsyncResponse {
+    /**
+     * The async request id that can be used to obtain the results.
+     */
+    request_id?: string;
+}
 declare abstract class Base_Ai_Cf_Baai_Bge_Small_En_V1_5 {
     inputs: Ai_Cf_Baai_Bge_Small_En_V1_5_Input;
     postProcessedOutputs: Ai_Cf_Baai_Bge_Small_En_V1_5_Output;
@@ -3710,7 +5675,13 @@ type Ai_Cf_Baai_Bge_Large_En_V1_5_Output = {
      * The pooling method used in the embedding process.
      */
     pooling?: "mean" | "cls";
-} | AsyncResponse;
+} | Ai_Cf_Baai_Bge_Large_En_V1_5_AsyncResponse;
+interface Ai_Cf_Baai_Bge_Large_En_V1_5_AsyncResponse {
+    /**
+     * The async request id that can be used to obtain the results.
+     */
+    request_id?: string;
+}
 declare abstract class Base_Ai_Cf_Baai_Bge_Large_En_V1_5 {
     inputs: Ai_Cf_Baai_Bge_Large_En_V1_5_Input;
     postProcessedOutputs: Ai_Cf_Baai_Bge_Large_En_V1_5_Output;
@@ -3791,10 +5762,10 @@ declare abstract class Base_Ai_Cf_Openai_Whisper_Tiny_En {
     postProcessedOutputs: Ai_Cf_Openai_Whisper_Tiny_En_Output;
 }
 interface Ai_Cf_Openai_Whisper_Large_V3_Turbo_Input {
-    /**
-     * Base64 encoded value of the audio data.
-     */
-    audio: string;
+    audio: string | {
+        body?: object;
+        contentType?: string;
+    };
     /**
      * Supported tasks are 'translate' or 'transcribe'.
      */
@@ -3812,9 +5783,33 @@ interface Ai_Cf_Openai_Whisper_Large_V3_Turbo_Input {
      */
     initial_prompt?: string;
     /**
-     * The prefix it appended the the beginning of the output of the transcription and can guide the transcription result.
+     * The prefix appended to the beginning of the output of the transcription and can guide the transcription result.
      */
     prefix?: string;
+    /**
+     * The number of beams to use in beam search decoding. Higher values may improve accuracy at the cost of speed.
+     */
+    beam_size?: number;
+    /**
+     * Whether to condition on previous text during transcription. Setting to false may help prevent hallucination loops.
+     */
+    condition_on_previous_text?: boolean;
+    /**
+     * Threshold for detecting no-speech segments. Segments with no-speech probability above this value are skipped.
+     */
+    no_speech_threshold?: number;
+    /**
+     * Threshold for filtering out segments with high compression ratio, which often indicate repetitive or hallucinated text.
+     */
+    compression_ratio_threshold?: number;
+    /**
+     * Threshold for filtering out segments with low average log probability, indicating low confidence.
+     */
+    log_prob_threshold?: number;
+    /**
+     * Optional threshold (in seconds) to skip silent periods that may cause hallucinations.
+     */
+    hallucination_silence_threshold?: number;
 }
 interface Ai_Cf_Openai_Whisper_Large_V3_Turbo_Output {
     transcription_info?: {
@@ -3896,13 +5891,13 @@ declare abstract class Base_Ai_Cf_Openai_Whisper_Large_V3_Turbo {
     inputs: Ai_Cf_Openai_Whisper_Large_V3_Turbo_Input;
     postProcessedOutputs: Ai_Cf_Openai_Whisper_Large_V3_Turbo_Output;
 }
-type Ai_Cf_Baai_Bge_M3_Input = BGEM3InputQueryAndContexts | BGEM3InputEmbedding | {
+type Ai_Cf_Baai_Bge_M3_Input = Ai_Cf_Baai_Bge_M3_Input_QueryAnd_Contexts | Ai_Cf_Baai_Bge_M3_Input_Embedding | {
     /**
      * Batch of the embeddings requests to run using async-queue
      */
-    requests: (BGEM3InputQueryAndContexts1 | BGEM3InputEmbedding1)[];
+    requests: (Ai_Cf_Baai_Bge_M3_Input_QueryAnd_Contexts_1 | Ai_Cf_Baai_Bge_M3_Input_Embedding_1)[];
 };
-interface BGEM3InputQueryAndContexts {
+interface Ai_Cf_Baai_Bge_M3_Input_QueryAnd_Contexts {
     /**
      * A query you wish to perform against the provided contexts. If no query is provided the model with respond with embeddings for contexts
      */
@@ -3921,14 +5916,14 @@ interface BGEM3InputQueryAndContexts {
      */
     truncate_inputs?: boolean;
 }
-interface BGEM3InputEmbedding {
+interface Ai_Cf_Baai_Bge_M3_Input_Embedding {
     text: string | string[];
     /**
      * When provided with too long context should the model error out or truncate the context to fit?
      */
     truncate_inputs?: boolean;
 }
-interface BGEM3InputQueryAndContexts1 {
+interface Ai_Cf_Baai_Bge_M3_Input_QueryAnd_Contexts_1 {
     /**
      * A query you wish to perform against the provided contexts. If no query is provided the model with respond with embeddings for contexts
      */
@@ -3947,15 +5942,15 @@ interface BGEM3InputQueryAndContexts1 {
      */
     truncate_inputs?: boolean;
 }
-interface BGEM3InputEmbedding1 {
+interface Ai_Cf_Baai_Bge_M3_Input_Embedding_1 {
     text: string | string[];
     /**
      * When provided with too long context should the model error out or truncate the context to fit?
      */
     truncate_inputs?: boolean;
 }
-type Ai_Cf_Baai_Bge_M3_Output = BGEM3OuputQuery | BGEM3OutputEmbeddingForContexts | BGEM3OuputEmbedding | AsyncResponse;
-interface BGEM3OuputQuery {
+type Ai_Cf_Baai_Bge_M3_Output = Ai_Cf_Baai_Bge_M3_Output_Query | Ai_Cf_Baai_Bge_M3_Output_EmbeddingFor_Contexts | Ai_Cf_Baai_Bge_M3_Output_Embedding | Ai_Cf_Baai_Bge_M3_AsyncResponse;
+interface Ai_Cf_Baai_Bge_M3_Output_Query {
     response?: {
         /**
          * Index of the context in the request
@@ -3967,7 +5962,7 @@ interface BGEM3OuputQuery {
         score?: number;
     }[];
 }
-interface BGEM3OutputEmbeddingForContexts {
+interface Ai_Cf_Baai_Bge_M3_Output_EmbeddingFor_Contexts {
     response?: number[][];
     shape?: number[];
     /**
@@ -3975,7 +5970,7 @@ interface BGEM3OutputEmbeddingForContexts {
      */
     pooling?: "mean" | "cls";
 }
-interface BGEM3OuputEmbedding {
+interface Ai_Cf_Baai_Bge_M3_Output_Embedding {
     shape?: number[];
     /**
      * Embeddings of the requested text values
@@ -3985,6 +5980,12 @@ interface BGEM3OuputEmbedding {
      * The pooling method used in the embedding process.
      */
     pooling?: "mean" | "cls";
+}
+interface Ai_Cf_Baai_Bge_M3_AsyncResponse {
+    /**
+     * The async request id that can be used to obtain the results.
+     */
+    request_id?: string;
 }
 declare abstract class Base_Ai_Cf_Baai_Bge_M3 {
     inputs: Ai_Cf_Baai_Bge_M3_Input;
@@ -4010,8 +6011,8 @@ declare abstract class Base_Ai_Cf_Black_Forest_Labs_Flux_1_Schnell {
     inputs: Ai_Cf_Black_Forest_Labs_Flux_1_Schnell_Input;
     postProcessedOutputs: Ai_Cf_Black_Forest_Labs_Flux_1_Schnell_Output;
 }
-type Ai_Cf_Meta_Llama_3_2_11B_Vision_Instruct_Input = Prompt | Messages;
-interface Prompt {
+type Ai_Cf_Meta_Llama_3_2_11B_Vision_Instruct_Input = Ai_Cf_Meta_Llama_3_2_11B_Vision_Instruct_Prompt | Ai_Cf_Meta_Llama_3_2_11B_Vision_Instruct_Messages;
+interface Ai_Cf_Meta_Llama_3_2_11B_Vision_Instruct_Prompt {
     /**
      * The input text prompt for the model to generate a response.
      */
@@ -4062,7 +6063,7 @@ interface Prompt {
      */
     lora?: string;
 }
-interface Messages {
+interface Ai_Cf_Meta_Llama_3_2_11B_Vision_Instruct_Messages {
     /**
      * An array of message objects representing the conversation history.
      */
@@ -4072,7 +6073,7 @@ interface Messages {
          */
         role?: string;
         /**
-         * The tool call id. Must be supplied for tool calls for Mistral-3. If you don't know what to put here you can fall back to 000000001
+         * The tool call id. If you don't know what to put here you can fall back to 000000001
          */
         tool_call_id?: string;
         content?: string | {
@@ -4253,8 +6254,8 @@ declare abstract class Base_Ai_Cf_Meta_Llama_3_2_11B_Vision_Instruct {
     inputs: Ai_Cf_Meta_Llama_3_2_11B_Vision_Instruct_Input;
     postProcessedOutputs: Ai_Cf_Meta_Llama_3_2_11B_Vision_Instruct_Output;
 }
-type Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Input = Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Prompt | Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Messages | AsyncBatch;
-interface Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Prompt {
+type Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Input = Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Prompt | Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Messages | Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Async_Batch;
+interface Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Prompt {
     /**
      * The input text prompt for the model to generate a response.
      */
@@ -4263,7 +6264,7 @@ interface Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Prompt {
      * Name of the LoRA (Low-Rank Adaptation) model to fine-tune the base model.
      */
     lora?: string;
-    response_format?: JSONMode;
+    response_format?: Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_JSON_Mode;
     /**
      * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
      */
@@ -4305,11 +6306,11 @@ interface Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Prompt {
      */
     presence_penalty?: number;
 }
-interface JSONMode {
+interface Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_JSON_Mode {
     type?: "json_object" | "json_schema";
     json_schema?: unknown;
 }
-interface Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Messages {
+interface Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Messages {
     /**
      * An array of message objects representing the conversation history.
      */
@@ -4318,10 +6319,16 @@ interface Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Messages {
          * The role of the message sender (e.g., 'user', 'assistant', 'system', 'tool').
          */
         role: string;
-        /**
-         * The content of the message as a string.
-         */
-        content: string;
+        content: string | {
+            /**
+             * Type of the content (text)
+             */
+            type?: string;
+            /**
+             * Text content
+             */
+            text?: string;
+        }[];
     }[];
     functions?: {
         name: string;
@@ -4414,7 +6421,7 @@ interface Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Messages {
             };
         };
     })[];
-    response_format?: JSONMode;
+    response_format?: Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_JSON_Mode_1;
     /**
      * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
      */
@@ -4456,7 +6463,11 @@ interface Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Messages {
      */
     presence_penalty?: number;
 }
-interface AsyncBatch {
+interface Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_JSON_Mode_1 {
+    type?: "json_object" | "json_schema";
+    json_schema?: unknown;
+}
+interface Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Async_Batch {
     requests?: {
         /**
          * User-supplied reference. This field will be present in the response as well it can be used to reference the request and response. It's NOT validated to be unique.
@@ -4498,8 +6509,12 @@ interface AsyncBatch {
          * Increases the likelihood of the model introducing new topics.
          */
         presence_penalty?: number;
-        response_format?: JSONMode;
+        response_format?: Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_JSON_Mode_2;
     }[];
+}
+interface Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_JSON_Mode_2 {
+    type?: "json_object" | "json_schema";
+    json_schema?: unknown;
 }
 type Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Output = {
     /**
@@ -4536,7 +6551,13 @@ type Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Output = {
          */
         name?: string;
     }[];
-} | string | AsyncResponse;
+} | string | Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_AsyncResponse;
+interface Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_AsyncResponse {
+    /**
+     * The async request id that can be used to obtain the results.
+     */
+    request_id?: string;
+}
 declare abstract class Base_Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast {
     inputs: Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Input;
     postProcessedOutputs: Ai_Cf_Meta_Llama_3_3_70B_Instruct_Fp8_Fast_Output;
@@ -4640,8 +6661,8 @@ declare abstract class Base_Ai_Cf_Baai_Bge_Reranker_Base {
     inputs: Ai_Cf_Baai_Bge_Reranker_Base_Input;
     postProcessedOutputs: Ai_Cf_Baai_Bge_Reranker_Base_Output;
 }
-type Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct_Input = Qwen2_5_Coder_32B_Instruct_Prompt | Qwen2_5_Coder_32B_Instruct_Messages;
-interface Qwen2_5_Coder_32B_Instruct_Prompt {
+type Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct_Input = Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct_Prompt | Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct_Messages;
+interface Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct_Prompt {
     /**
      * The input text prompt for the model to generate a response.
      */
@@ -4650,7 +6671,7 @@ interface Qwen2_5_Coder_32B_Instruct_Prompt {
      * Name of the LoRA (Low-Rank Adaptation) model to fine-tune the base model.
      */
     lora?: string;
-    response_format?: JSONMode;
+    response_format?: Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct_JSON_Mode;
     /**
      * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
      */
@@ -4692,7 +6713,11 @@ interface Qwen2_5_Coder_32B_Instruct_Prompt {
      */
     presence_penalty?: number;
 }
-interface Qwen2_5_Coder_32B_Instruct_Messages {
+interface Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct_JSON_Mode {
+    type?: "json_object" | "json_schema";
+    json_schema?: unknown;
+}
+interface Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct_Messages {
     /**
      * An array of message objects representing the conversation history.
      */
@@ -4797,7 +6822,7 @@ interface Qwen2_5_Coder_32B_Instruct_Messages {
             };
         };
     })[];
-    response_format?: JSONMode;
+    response_format?: Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct_JSON_Mode_1;
     /**
      * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
      */
@@ -4839,6 +6864,10 @@ interface Qwen2_5_Coder_32B_Instruct_Messages {
      */
     presence_penalty?: number;
 }
+interface Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct_JSON_Mode_1 {
+    type?: "json_object" | "json_schema";
+    json_schema?: unknown;
+}
 type Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct_Output = {
     /**
      * The generated text response from the model
@@ -4879,8 +6908,8 @@ declare abstract class Base_Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct {
     inputs: Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct_Input;
     postProcessedOutputs: Ai_Cf_Qwen_Qwen2_5_Coder_32B_Instruct_Output;
 }
-type Ai_Cf_Qwen_Qwq_32B_Input = Qwen_Qwq_32B_Prompt | Qwen_Qwq_32B_Messages;
-interface Qwen_Qwq_32B_Prompt {
+type Ai_Cf_Qwen_Qwq_32B_Input = Ai_Cf_Qwen_Qwq_32B_Prompt | Ai_Cf_Qwen_Qwq_32B_Messages;
+interface Ai_Cf_Qwen_Qwq_32B_Prompt {
     /**
      * The input text prompt for the model to generate a response.
      */
@@ -4930,7 +6959,7 @@ interface Qwen_Qwq_32B_Prompt {
      */
     presence_penalty?: number;
 }
-interface Qwen_Qwq_32B_Messages {
+interface Ai_Cf_Qwen_Qwq_32B_Messages {
     /**
      * An array of message objects representing the conversation history.
      */
@@ -4940,7 +6969,7 @@ interface Qwen_Qwq_32B_Messages {
          */
         role?: string;
         /**
-         * The tool call id. Must be supplied for tool calls for Mistral-3. If you don't know what to put here you can fall back to 000000001
+         * The tool call id. If you don't know what to put here you can fall back to 000000001
          */
         tool_call_id?: string;
         content?: string | {
@@ -5145,8 +7174,8 @@ declare abstract class Base_Ai_Cf_Qwen_Qwq_32B {
     inputs: Ai_Cf_Qwen_Qwq_32B_Input;
     postProcessedOutputs: Ai_Cf_Qwen_Qwq_32B_Output;
 }
-type Ai_Cf_Mistralai_Mistral_Small_3_1_24B_Instruct_Input = Mistral_Small_3_1_24B_Instruct_Prompt | Mistral_Small_3_1_24B_Instruct_Messages;
-interface Mistral_Small_3_1_24B_Instruct_Prompt {
+type Ai_Cf_Mistralai_Mistral_Small_3_1_24B_Instruct_Input = Ai_Cf_Mistralai_Mistral_Small_3_1_24B_Instruct_Prompt | Ai_Cf_Mistralai_Mistral_Small_3_1_24B_Instruct_Messages;
+interface Ai_Cf_Mistralai_Mistral_Small_3_1_24B_Instruct_Prompt {
     /**
      * The input text prompt for the model to generate a response.
      */
@@ -5196,7 +7225,7 @@ interface Mistral_Small_3_1_24B_Instruct_Prompt {
      */
     presence_penalty?: number;
 }
-interface Mistral_Small_3_1_24B_Instruct_Messages {
+interface Ai_Cf_Mistralai_Mistral_Small_3_1_24B_Instruct_Messages {
     /**
      * An array of message objects representing the conversation history.
      */
@@ -5411,8 +7440,8 @@ declare abstract class Base_Ai_Cf_Mistralai_Mistral_Small_3_1_24B_Instruct {
     inputs: Ai_Cf_Mistralai_Mistral_Small_3_1_24B_Instruct_Input;
     postProcessedOutputs: Ai_Cf_Mistralai_Mistral_Small_3_1_24B_Instruct_Output;
 }
-type Ai_Cf_Google_Gemma_3_12B_It_Input = Google_Gemma_3_12B_It_Prompt | Google_Gemma_3_12B_It_Messages;
-interface Google_Gemma_3_12B_It_Prompt {
+type Ai_Cf_Google_Gemma_3_12B_It_Input = Ai_Cf_Google_Gemma_3_12B_It_Prompt | Ai_Cf_Google_Gemma_3_12B_It_Messages;
+interface Ai_Cf_Google_Gemma_3_12B_It_Prompt {
     /**
      * The input text prompt for the model to generate a response.
      */
@@ -5462,7 +7491,7 @@ interface Google_Gemma_3_12B_It_Prompt {
      */
     presence_penalty?: number;
 }
-interface Google_Gemma_3_12B_It_Messages {
+interface Ai_Cf_Google_Gemma_3_12B_It_Messages {
     /**
      * An array of message objects representing the conversation history.
      */
@@ -5483,19 +7512,7 @@ interface Google_Gemma_3_12B_It_Messages {
                  */
                 url?: string;
             };
-        }[] | {
-            /**
-             * Type of the content provided
-             */
-            type?: string;
-            text?: string;
-            image_url?: {
-                /**
-                 * image uri with data (e.g. data:image/jpeg;base64,/9j/...). HTTP URL will not be accepted
-                 */
-                url?: string;
-            };
-        };
+        }[];
     }[];
     functions?: {
         name: string;
@@ -5673,8 +7690,8 @@ declare abstract class Base_Ai_Cf_Google_Gemma_3_12B_It {
     inputs: Ai_Cf_Google_Gemma_3_12B_It_Input;
     postProcessedOutputs: Ai_Cf_Google_Gemma_3_12B_It_Output;
 }
-type Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Input = Ai_Cf_Meta_Llama_4_Prompt | Ai_Cf_Meta_Llama_4_Messages | Ai_Cf_Meta_Llama_4_Async_Batch;
-interface Ai_Cf_Meta_Llama_4_Prompt {
+type Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Input = Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Prompt | Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Messages | Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Async_Batch;
+interface Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Prompt {
     /**
      * The input text prompt for the model to generate a response.
      */
@@ -5683,7 +7700,7 @@ interface Ai_Cf_Meta_Llama_4_Prompt {
      * JSON schema that should be fulfilled for the response.
      */
     guided_json?: object;
-    response_format?: JSONMode;
+    response_format?: Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_JSON_Mode;
     /**
      * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
      */
@@ -5725,7 +7742,11 @@ interface Ai_Cf_Meta_Llama_4_Prompt {
      */
     presence_penalty?: number;
 }
-interface Ai_Cf_Meta_Llama_4_Messages {
+interface Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_JSON_Mode {
+    type?: "json_object" | "json_schema";
+    json_schema?: unknown;
+}
+interface Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Messages {
     /**
      * An array of message objects representing the conversation history.
      */
@@ -5855,7 +7876,7 @@ interface Ai_Cf_Meta_Llama_4_Messages {
             };
         };
     })[];
-    response_format?: JSONMode;
+    response_format?: Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_JSON_Mode;
     /**
      * JSON schema that should be fufilled for the response.
      */
@@ -5901,10 +7922,10 @@ interface Ai_Cf_Meta_Llama_4_Messages {
      */
     presence_penalty?: number;
 }
-interface Ai_Cf_Meta_Llama_4_Async_Batch {
-    requests: (Ai_Cf_Meta_Llama_4_Prompt_Inner | Ai_Cf_Meta_Llama_4_Messages_Inner)[];
+interface Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Async_Batch {
+    requests: (Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Prompt_Inner | Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Messages_Inner)[];
 }
-interface Ai_Cf_Meta_Llama_4_Prompt_Inner {
+interface Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Prompt_Inner {
     /**
      * The input text prompt for the model to generate a response.
      */
@@ -5913,7 +7934,7 @@ interface Ai_Cf_Meta_Llama_4_Prompt_Inner {
      * JSON schema that should be fulfilled for the response.
      */
     guided_json?: object;
-    response_format?: JSONMode;
+    response_format?: Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_JSON_Mode;
     /**
      * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
      */
@@ -5955,7 +7976,7 @@ interface Ai_Cf_Meta_Llama_4_Prompt_Inner {
      */
     presence_penalty?: number;
 }
-interface Ai_Cf_Meta_Llama_4_Messages_Inner {
+interface Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Messages_Inner {
     /**
      * An array of message objects representing the conversation history.
      */
@@ -6085,7 +8106,7 @@ interface Ai_Cf_Meta_Llama_4_Messages_Inner {
             };
         };
     })[];
-    response_format?: JSONMode;
+    response_format?: Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_JSON_Mode;
     /**
      * JSON schema that should be fufilled for the response.
      */
@@ -6183,6 +8204,609 @@ type Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Output = {
 declare abstract class Base_Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct {
     inputs: Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Input;
     postProcessedOutputs: Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct_Output;
+}
+type Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Input = Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Prompt | Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Messages | Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Async_Batch;
+interface Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Prompt {
+    /**
+     * The input text prompt for the model to generate a response.
+     */
+    prompt: string;
+    /**
+     * Name of the LoRA (Low-Rank Adaptation) model to fine-tune the base model.
+     */
+    lora?: string;
+    response_format?: Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_JSON_Mode;
+    /**
+     * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
+     */
+    raw?: boolean;
+    /**
+     * If true, the response will be streamed back incrementally using SSE, Server Sent Events.
+     */
+    stream?: boolean;
+    /**
+     * The maximum number of tokens to generate in the response.
+     */
+    max_tokens?: number;
+    /**
+     * Controls the randomness of the output; higher values produce more random results.
+     */
+    temperature?: number;
+    /**
+     * Adjusts the creativity of the AI's responses by controlling how many possible words it considers. Lower values make outputs more predictable; higher values allow for more varied and creative responses.
+     */
+    top_p?: number;
+    /**
+     * Limits the AI to choose from the top 'k' most probable words. Lower values make responses more focused; higher values introduce more variety and potential surprises.
+     */
+    top_k?: number;
+    /**
+     * Random seed for reproducibility of the generation.
+     */
+    seed?: number;
+    /**
+     * Penalty for repeated tokens; higher values discourage repetition.
+     */
+    repetition_penalty?: number;
+    /**
+     * Decreases the likelihood of the model repeating the same lines verbatim.
+     */
+    frequency_penalty?: number;
+    /**
+     * Increases the likelihood of the model introducing new topics.
+     */
+    presence_penalty?: number;
+}
+interface Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_JSON_Mode {
+    type?: "json_object" | "json_schema";
+    json_schema?: unknown;
+}
+interface Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Messages {
+    /**
+     * An array of message objects representing the conversation history.
+     */
+    messages: {
+        /**
+         * The role of the message sender (e.g., 'user', 'assistant', 'system', 'tool').
+         */
+        role: string;
+        content: string | {
+            /**
+             * Type of the content (text)
+             */
+            type?: string;
+            /**
+             * Text content
+             */
+            text?: string;
+        }[];
+    }[];
+    functions?: {
+        name: string;
+        code: string;
+    }[];
+    /**
+     * A list of tools available for the assistant to use.
+     */
+    tools?: ({
+        /**
+         * The name of the tool. More descriptive the better.
+         */
+        name: string;
+        /**
+         * A brief description of what the tool does.
+         */
+        description: string;
+        /**
+         * Schema defining the parameters accepted by the tool.
+         */
+        parameters: {
+            /**
+             * The type of the parameters object (usually 'object').
+             */
+            type: string;
+            /**
+             * List of required parameter names.
+             */
+            required?: string[];
+            /**
+             * Definitions of each parameter.
+             */
+            properties: {
+                [k: string]: {
+                    /**
+                     * The data type of the parameter.
+                     */
+                    type: string;
+                    /**
+                     * A description of the expected parameter.
+                     */
+                    description: string;
+                };
+            };
+        };
+    } | {
+        /**
+         * Specifies the type of tool (e.g., 'function').
+         */
+        type: string;
+        /**
+         * Details of the function tool.
+         */
+        function: {
+            /**
+             * The name of the function.
+             */
+            name: string;
+            /**
+             * A brief description of what the function does.
+             */
+            description: string;
+            /**
+             * Schema defining the parameters accepted by the function.
+             */
+            parameters: {
+                /**
+                 * The type of the parameters object (usually 'object').
+                 */
+                type: string;
+                /**
+                 * List of required parameter names.
+                 */
+                required?: string[];
+                /**
+                 * Definitions of each parameter.
+                 */
+                properties: {
+                    [k: string]: {
+                        /**
+                         * The data type of the parameter.
+                         */
+                        type: string;
+                        /**
+                         * A description of the expected parameter.
+                         */
+                        description: string;
+                    };
+                };
+            };
+        };
+    })[];
+    response_format?: Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_JSON_Mode_1;
+    /**
+     * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
+     */
+    raw?: boolean;
+    /**
+     * If true, the response will be streamed back incrementally using SSE, Server Sent Events.
+     */
+    stream?: boolean;
+    /**
+     * The maximum number of tokens to generate in the response.
+     */
+    max_tokens?: number;
+    /**
+     * Controls the randomness of the output; higher values produce more random results.
+     */
+    temperature?: number;
+    /**
+     * Adjusts the creativity of the AI's responses by controlling how many possible words it considers. Lower values make outputs more predictable; higher values allow for more varied and creative responses.
+     */
+    top_p?: number;
+    /**
+     * Limits the AI to choose from the top 'k' most probable words. Lower values make responses more focused; higher values introduce more variety and potential surprises.
+     */
+    top_k?: number;
+    /**
+     * Random seed for reproducibility of the generation.
+     */
+    seed?: number;
+    /**
+     * Penalty for repeated tokens; higher values discourage repetition.
+     */
+    repetition_penalty?: number;
+    /**
+     * Decreases the likelihood of the model repeating the same lines verbatim.
+     */
+    frequency_penalty?: number;
+    /**
+     * Increases the likelihood of the model introducing new topics.
+     */
+    presence_penalty?: number;
+}
+interface Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_JSON_Mode_1 {
+    type?: "json_object" | "json_schema";
+    json_schema?: unknown;
+}
+interface Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Async_Batch {
+    requests: (Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Prompt_1 | Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Messages_1)[];
+}
+interface Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Prompt_1 {
+    /**
+     * The input text prompt for the model to generate a response.
+     */
+    prompt: string;
+    /**
+     * Name of the LoRA (Low-Rank Adaptation) model to fine-tune the base model.
+     */
+    lora?: string;
+    response_format?: Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_JSON_Mode_2;
+    /**
+     * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
+     */
+    raw?: boolean;
+    /**
+     * If true, the response will be streamed back incrementally using SSE, Server Sent Events.
+     */
+    stream?: boolean;
+    /**
+     * The maximum number of tokens to generate in the response.
+     */
+    max_tokens?: number;
+    /**
+     * Controls the randomness of the output; higher values produce more random results.
+     */
+    temperature?: number;
+    /**
+     * Adjusts the creativity of the AI's responses by controlling how many possible words it considers. Lower values make outputs more predictable; higher values allow for more varied and creative responses.
+     */
+    top_p?: number;
+    /**
+     * Limits the AI to choose from the top 'k' most probable words. Lower values make responses more focused; higher values introduce more variety and potential surprises.
+     */
+    top_k?: number;
+    /**
+     * Random seed for reproducibility of the generation.
+     */
+    seed?: number;
+    /**
+     * Penalty for repeated tokens; higher values discourage repetition.
+     */
+    repetition_penalty?: number;
+    /**
+     * Decreases the likelihood of the model repeating the same lines verbatim.
+     */
+    frequency_penalty?: number;
+    /**
+     * Increases the likelihood of the model introducing new topics.
+     */
+    presence_penalty?: number;
+}
+interface Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_JSON_Mode_2 {
+    type?: "json_object" | "json_schema";
+    json_schema?: unknown;
+}
+interface Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Messages_1 {
+    /**
+     * An array of message objects representing the conversation history.
+     */
+    messages: {
+        /**
+         * The role of the message sender (e.g., 'user', 'assistant', 'system', 'tool').
+         */
+        role: string;
+        content: string | {
+            /**
+             * Type of the content (text)
+             */
+            type?: string;
+            /**
+             * Text content
+             */
+            text?: string;
+        }[];
+    }[];
+    functions?: {
+        name: string;
+        code: string;
+    }[];
+    /**
+     * A list of tools available for the assistant to use.
+     */
+    tools?: ({
+        /**
+         * The name of the tool. More descriptive the better.
+         */
+        name: string;
+        /**
+         * A brief description of what the tool does.
+         */
+        description: string;
+        /**
+         * Schema defining the parameters accepted by the tool.
+         */
+        parameters: {
+            /**
+             * The type of the parameters object (usually 'object').
+             */
+            type: string;
+            /**
+             * List of required parameter names.
+             */
+            required?: string[];
+            /**
+             * Definitions of each parameter.
+             */
+            properties: {
+                [k: string]: {
+                    /**
+                     * The data type of the parameter.
+                     */
+                    type: string;
+                    /**
+                     * A description of the expected parameter.
+                     */
+                    description: string;
+                };
+            };
+        };
+    } | {
+        /**
+         * Specifies the type of tool (e.g., 'function').
+         */
+        type: string;
+        /**
+         * Details of the function tool.
+         */
+        function: {
+            /**
+             * The name of the function.
+             */
+            name: string;
+            /**
+             * A brief description of what the function does.
+             */
+            description: string;
+            /**
+             * Schema defining the parameters accepted by the function.
+             */
+            parameters: {
+                /**
+                 * The type of the parameters object (usually 'object').
+                 */
+                type: string;
+                /**
+                 * List of required parameter names.
+                 */
+                required?: string[];
+                /**
+                 * Definitions of each parameter.
+                 */
+                properties: {
+                    [k: string]: {
+                        /**
+                         * The data type of the parameter.
+                         */
+                        type: string;
+                        /**
+                         * A description of the expected parameter.
+                         */
+                        description: string;
+                    };
+                };
+            };
+        };
+    })[];
+    response_format?: Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_JSON_Mode_3;
+    /**
+     * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
+     */
+    raw?: boolean;
+    /**
+     * If true, the response will be streamed back incrementally using SSE, Server Sent Events.
+     */
+    stream?: boolean;
+    /**
+     * The maximum number of tokens to generate in the response.
+     */
+    max_tokens?: number;
+    /**
+     * Controls the randomness of the output; higher values produce more random results.
+     */
+    temperature?: number;
+    /**
+     * Adjusts the creativity of the AI's responses by controlling how many possible words it considers. Lower values make outputs more predictable; higher values allow for more varied and creative responses.
+     */
+    top_p?: number;
+    /**
+     * Limits the AI to choose from the top 'k' most probable words. Lower values make responses more focused; higher values introduce more variety and potential surprises.
+     */
+    top_k?: number;
+    /**
+     * Random seed for reproducibility of the generation.
+     */
+    seed?: number;
+    /**
+     * Penalty for repeated tokens; higher values discourage repetition.
+     */
+    repetition_penalty?: number;
+    /**
+     * Decreases the likelihood of the model repeating the same lines verbatim.
+     */
+    frequency_penalty?: number;
+    /**
+     * Increases the likelihood of the model introducing new topics.
+     */
+    presence_penalty?: number;
+}
+interface Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_JSON_Mode_3 {
+    type?: "json_object" | "json_schema";
+    json_schema?: unknown;
+}
+type Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Output = Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Chat_Completion_Response | Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Text_Completion_Response | string | Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_AsyncResponse;
+interface Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Chat_Completion_Response {
+    /**
+     * Unique identifier for the completion
+     */
+    id?: string;
+    /**
+     * Object type identifier
+     */
+    object?: "chat.completion";
+    /**
+     * Unix timestamp of when the completion was created
+     */
+    created?: number;
+    /**
+     * Model used for the completion
+     */
+    model?: string;
+    /**
+     * List of completion choices
+     */
+    choices?: {
+        /**
+         * Index of the choice in the list
+         */
+        index?: number;
+        /**
+         * The message generated by the model
+         */
+        message?: {
+            /**
+             * Role of the message author
+             */
+            role: string;
+            /**
+             * The content of the message
+             */
+            content: string;
+            /**
+             * Internal reasoning content (if available)
+             */
+            reasoning_content?: string;
+            /**
+             * Tool calls made by the assistant
+             */
+            tool_calls?: {
+                /**
+                 * Unique identifier for the tool call
+                 */
+                id: string;
+                /**
+                 * Type of tool call
+                 */
+                type: "function";
+                function: {
+                    /**
+                     * Name of the function to call
+                     */
+                    name: string;
+                    /**
+                     * JSON string of arguments for the function
+                     */
+                    arguments: string;
+                };
+            }[];
+        };
+        /**
+         * Reason why the model stopped generating
+         */
+        finish_reason?: string;
+        /**
+         * Stop reason (may be null)
+         */
+        stop_reason?: string | null;
+        /**
+         * Log probabilities (if requested)
+         */
+        logprobs?: {} | null;
+    }[];
+    /**
+     * Usage statistics for the inference request
+     */
+    usage?: {
+        /**
+         * Total number of tokens in input
+         */
+        prompt_tokens?: number;
+        /**
+         * Total number of tokens in output
+         */
+        completion_tokens?: number;
+        /**
+         * Total number of input and output tokens
+         */
+        total_tokens?: number;
+    };
+    /**
+     * Log probabilities for the prompt (if requested)
+     */
+    prompt_logprobs?: {} | null;
+}
+interface Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Text_Completion_Response {
+    /**
+     * Unique identifier for the completion
+     */
+    id?: string;
+    /**
+     * Object type identifier
+     */
+    object?: "text_completion";
+    /**
+     * Unix timestamp of when the completion was created
+     */
+    created?: number;
+    /**
+     * Model used for the completion
+     */
+    model?: string;
+    /**
+     * List of completion choices
+     */
+    choices?: {
+        /**
+         * Index of the choice in the list
+         */
+        index: number;
+        /**
+         * The generated text completion
+         */
+        text: string;
+        /**
+         * Reason why the model stopped generating
+         */
+        finish_reason: string;
+        /**
+         * Stop reason (may be null)
+         */
+        stop_reason?: string | null;
+        /**
+         * Log probabilities (if requested)
+         */
+        logprobs?: {} | null;
+        /**
+         * Log probabilities for the prompt (if requested)
+         */
+        prompt_logprobs?: {} | null;
+    }[];
+    /**
+     * Usage statistics for the inference request
+     */
+    usage?: {
+        /**
+         * Total number of tokens in input
+         */
+        prompt_tokens?: number;
+        /**
+         * Total number of tokens in output
+         */
+        completion_tokens?: number;
+        /**
+         * Total number of input and output tokens
+         */
+        total_tokens?: number;
+    };
+}
+interface Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_AsyncResponse {
+    /**
+     * The async request id that can be used to obtain the results.
+     */
+    request_id?: string;
+}
+declare abstract class Base_Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8 {
+    inputs: Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Input;
+    postProcessedOutputs: Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8_Output;
 }
 interface Ai_Cf_Deepgram_Nova_3_Input {
     audio: {
@@ -6367,6 +8991,23 @@ declare abstract class Base_Ai_Cf_Deepgram_Nova_3 {
     inputs: Ai_Cf_Deepgram_Nova_3_Input;
     postProcessedOutputs: Ai_Cf_Deepgram_Nova_3_Output;
 }
+interface Ai_Cf_Qwen_Qwen3_Embedding_0_6B_Input {
+    queries?: string | string[];
+    /**
+     * Optional instruction for the task
+     */
+    instruction?: string;
+    documents?: string | string[];
+    text?: string | string[];
+}
+interface Ai_Cf_Qwen_Qwen3_Embedding_0_6B_Output {
+    data?: number[][];
+    shape?: number[];
+}
+declare abstract class Base_Ai_Cf_Qwen_Qwen3_Embedding_0_6B {
+    inputs: Ai_Cf_Qwen_Qwen3_Embedding_0_6B_Input;
+    postProcessedOutputs: Ai_Cf_Qwen_Qwen3_Embedding_0_6B_Output;
+}
 type Ai_Cf_Pipecat_Ai_Smart_Turn_V2_Input = {
     /**
      * readable stream with audio data and content-type specified for that data
@@ -6403,85 +9044,13 @@ declare abstract class Base_Ai_Cf_Pipecat_Ai_Smart_Turn_V2 {
     inputs: Ai_Cf_Pipecat_Ai_Smart_Turn_V2_Input;
     postProcessedOutputs: Ai_Cf_Pipecat_Ai_Smart_Turn_V2_Output;
 }
-type Ai_Cf_Openai_Gpt_Oss_120B_Input = GPT_OSS_120B_Responses | GPT_OSS_120B_Responses_Async;
-interface GPT_OSS_120B_Responses {
-    /**
-     * Responses API Input messages. Refer to OpenAI Responses API docs to learn more about supported content types
-     */
-    input: string | unknown[];
-    reasoning?: {
-        /**
-         * Constrains effort on reasoning for reasoning models. Currently supported values are low, medium, and high. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.
-         */
-        effort?: "low" | "medium" | "high";
-        /**
-         * A summary of the reasoning performed by the model. This can be useful for debugging and understanding the model's reasoning process. One of auto, concise, or detailed.
-         */
-        summary?: "auto" | "concise" | "detailed";
-    };
-}
-interface GPT_OSS_120B_Responses_Async {
-    requests: {
-        /**
-         * Responses API Input messages. Refer to OpenAI Responses API docs to learn more about supported content types
-         */
-        input: string | unknown[];
-        reasoning?: {
-            /**
-             * Constrains effort on reasoning for reasoning models. Currently supported values are low, medium, and high. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.
-             */
-            effort?: "low" | "medium" | "high";
-            /**
-             * A summary of the reasoning performed by the model. This can be useful for debugging and understanding the model's reasoning process. One of auto, concise, or detailed.
-             */
-            summary?: "auto" | "concise" | "detailed";
-        };
-    }[];
-}
-type Ai_Cf_Openai_Gpt_Oss_120B_Output = {} | (string & NonNullable<unknown>);
 declare abstract class Base_Ai_Cf_Openai_Gpt_Oss_120B {
-    inputs: Ai_Cf_Openai_Gpt_Oss_120B_Input;
-    postProcessedOutputs: Ai_Cf_Openai_Gpt_Oss_120B_Output;
+    inputs: XOR<ResponsesInput, ChatCompletionsMessagesInput>;
+    postProcessedOutputs: XOR<ResponsesOutput, ChatCompletionsOutput>;
 }
-type Ai_Cf_Openai_Gpt_Oss_20B_Input = GPT_OSS_20B_Responses | GPT_OSS_20B_Responses_Async;
-interface GPT_OSS_20B_Responses {
-    /**
-     * Responses API Input messages. Refer to OpenAI Responses API docs to learn more about supported content types
-     */
-    input: string | unknown[];
-    reasoning?: {
-        /**
-         * Constrains effort on reasoning for reasoning models. Currently supported values are low, medium, and high. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.
-         */
-        effort?: "low" | "medium" | "high";
-        /**
-         * A summary of the reasoning performed by the model. This can be useful for debugging and understanding the model's reasoning process. One of auto, concise, or detailed.
-         */
-        summary?: "auto" | "concise" | "detailed";
-    };
-}
-interface GPT_OSS_20B_Responses_Async {
-    requests: {
-        /**
-         * Responses API Input messages. Refer to OpenAI Responses API docs to learn more about supported content types
-         */
-        input: string | unknown[];
-        reasoning?: {
-            /**
-             * Constrains effort on reasoning for reasoning models. Currently supported values are low, medium, and high. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.
-             */
-            effort?: "low" | "medium" | "high";
-            /**
-             * A summary of the reasoning performed by the model. This can be useful for debugging and understanding the model's reasoning process. One of auto, concise, or detailed.
-             */
-            summary?: "auto" | "concise" | "detailed";
-        };
-    }[];
-}
-type Ai_Cf_Openai_Gpt_Oss_20B_Output = {} | (string & NonNullable<unknown>);
 declare abstract class Base_Ai_Cf_Openai_Gpt_Oss_20B {
-    inputs: Ai_Cf_Openai_Gpt_Oss_20B_Input;
-    postProcessedOutputs: Ai_Cf_Openai_Gpt_Oss_20B_Output;
+    inputs: XOR<ResponsesInput, ChatCompletionsMessagesInput>;
+    postProcessedOutputs: XOR<ResponsesOutput, ChatCompletionsOutput>;
 }
 interface Ai_Cf_Leonardo_Phoenix_1_0_Input {
     /**
@@ -6595,6 +9164,879 @@ declare abstract class Base_Ai_Cf_Deepgram_Aura_1 {
     inputs: Ai_Cf_Deepgram_Aura_1_Input;
     postProcessedOutputs: Ai_Cf_Deepgram_Aura_1_Output;
 }
+interface Ai_Cf_Ai4Bharat_Indictrans2_En_Indic_1B_Input {
+    /**
+     * Input text to translate. Can be a single string or a list of strings.
+     */
+    text: string | string[];
+    /**
+     * Target langauge to translate to
+     */
+    target_language: "asm_Beng" | "awa_Deva" | "ben_Beng" | "bho_Deva" | "brx_Deva" | "doi_Deva" | "eng_Latn" | "gom_Deva" | "gon_Deva" | "guj_Gujr" | "hin_Deva" | "hne_Deva" | "kan_Knda" | "kas_Arab" | "kas_Deva" | "kha_Latn" | "lus_Latn" | "mag_Deva" | "mai_Deva" | "mal_Mlym" | "mar_Deva" | "mni_Beng" | "mni_Mtei" | "npi_Deva" | "ory_Orya" | "pan_Guru" | "san_Deva" | "sat_Olck" | "snd_Arab" | "snd_Deva" | "tam_Taml" | "tel_Telu" | "urd_Arab" | "unr_Deva";
+}
+interface Ai_Cf_Ai4Bharat_Indictrans2_En_Indic_1B_Output {
+    /**
+     * Translated texts
+     */
+    translations: string[];
+}
+declare abstract class Base_Ai_Cf_Ai4Bharat_Indictrans2_En_Indic_1B {
+    inputs: Ai_Cf_Ai4Bharat_Indictrans2_En_Indic_1B_Input;
+    postProcessedOutputs: Ai_Cf_Ai4Bharat_Indictrans2_En_Indic_1B_Output;
+}
+type Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Input = Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Prompt | Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Messages | Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Async_Batch;
+interface Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Prompt {
+    /**
+     * The input text prompt for the model to generate a response.
+     */
+    prompt: string;
+    /**
+     * Name of the LoRA (Low-Rank Adaptation) model to fine-tune the base model.
+     */
+    lora?: string;
+    response_format?: Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_JSON_Mode;
+    /**
+     * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
+     */
+    raw?: boolean;
+    /**
+     * If true, the response will be streamed back incrementally using SSE, Server Sent Events.
+     */
+    stream?: boolean;
+    /**
+     * The maximum number of tokens to generate in the response.
+     */
+    max_tokens?: number;
+    /**
+     * Controls the randomness of the output; higher values produce more random results.
+     */
+    temperature?: number;
+    /**
+     * Adjusts the creativity of the AI's responses by controlling how many possible words it considers. Lower values make outputs more predictable; higher values allow for more varied and creative responses.
+     */
+    top_p?: number;
+    /**
+     * Limits the AI to choose from the top 'k' most probable words. Lower values make responses more focused; higher values introduce more variety and potential surprises.
+     */
+    top_k?: number;
+    /**
+     * Random seed for reproducibility of the generation.
+     */
+    seed?: number;
+    /**
+     * Penalty for repeated tokens; higher values discourage repetition.
+     */
+    repetition_penalty?: number;
+    /**
+     * Decreases the likelihood of the model repeating the same lines verbatim.
+     */
+    frequency_penalty?: number;
+    /**
+     * Increases the likelihood of the model introducing new topics.
+     */
+    presence_penalty?: number;
+}
+interface Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_JSON_Mode {
+    type?: "json_object" | "json_schema";
+    json_schema?: unknown;
+}
+interface Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Messages {
+    /**
+     * An array of message objects representing the conversation history.
+     */
+    messages: {
+        /**
+         * The role of the message sender (e.g., 'user', 'assistant', 'system', 'tool').
+         */
+        role: string;
+        content: string | {
+            /**
+             * Type of the content (text)
+             */
+            type?: string;
+            /**
+             * Text content
+             */
+            text?: string;
+        }[];
+    }[];
+    functions?: {
+        name: string;
+        code: string;
+    }[];
+    /**
+     * A list of tools available for the assistant to use.
+     */
+    tools?: ({
+        /**
+         * The name of the tool. More descriptive the better.
+         */
+        name: string;
+        /**
+         * A brief description of what the tool does.
+         */
+        description: string;
+        /**
+         * Schema defining the parameters accepted by the tool.
+         */
+        parameters: {
+            /**
+             * The type of the parameters object (usually 'object').
+             */
+            type: string;
+            /**
+             * List of required parameter names.
+             */
+            required?: string[];
+            /**
+             * Definitions of each parameter.
+             */
+            properties: {
+                [k: string]: {
+                    /**
+                     * The data type of the parameter.
+                     */
+                    type: string;
+                    /**
+                     * A description of the expected parameter.
+                     */
+                    description: string;
+                };
+            };
+        };
+    } | {
+        /**
+         * Specifies the type of tool (e.g., 'function').
+         */
+        type: string;
+        /**
+         * Details of the function tool.
+         */
+        function: {
+            /**
+             * The name of the function.
+             */
+            name: string;
+            /**
+             * A brief description of what the function does.
+             */
+            description: string;
+            /**
+             * Schema defining the parameters accepted by the function.
+             */
+            parameters: {
+                /**
+                 * The type of the parameters object (usually 'object').
+                 */
+                type: string;
+                /**
+                 * List of required parameter names.
+                 */
+                required?: string[];
+                /**
+                 * Definitions of each parameter.
+                 */
+                properties: {
+                    [k: string]: {
+                        /**
+                         * The data type of the parameter.
+                         */
+                        type: string;
+                        /**
+                         * A description of the expected parameter.
+                         */
+                        description: string;
+                    };
+                };
+            };
+        };
+    })[];
+    response_format?: Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_JSON_Mode_1;
+    /**
+     * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
+     */
+    raw?: boolean;
+    /**
+     * If true, the response will be streamed back incrementally using SSE, Server Sent Events.
+     */
+    stream?: boolean;
+    /**
+     * The maximum number of tokens to generate in the response.
+     */
+    max_tokens?: number;
+    /**
+     * Controls the randomness of the output; higher values produce more random results.
+     */
+    temperature?: number;
+    /**
+     * Adjusts the creativity of the AI's responses by controlling how many possible words it considers. Lower values make outputs more predictable; higher values allow for more varied and creative responses.
+     */
+    top_p?: number;
+    /**
+     * Limits the AI to choose from the top 'k' most probable words. Lower values make responses more focused; higher values introduce more variety and potential surprises.
+     */
+    top_k?: number;
+    /**
+     * Random seed for reproducibility of the generation.
+     */
+    seed?: number;
+    /**
+     * Penalty for repeated tokens; higher values discourage repetition.
+     */
+    repetition_penalty?: number;
+    /**
+     * Decreases the likelihood of the model repeating the same lines verbatim.
+     */
+    frequency_penalty?: number;
+    /**
+     * Increases the likelihood of the model introducing new topics.
+     */
+    presence_penalty?: number;
+}
+interface Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_JSON_Mode_1 {
+    type?: "json_object" | "json_schema";
+    json_schema?: unknown;
+}
+interface Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Async_Batch {
+    requests: (Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Prompt_1 | Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Messages_1)[];
+}
+interface Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Prompt_1 {
+    /**
+     * The input text prompt for the model to generate a response.
+     */
+    prompt: string;
+    /**
+     * Name of the LoRA (Low-Rank Adaptation) model to fine-tune the base model.
+     */
+    lora?: string;
+    response_format?: Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_JSON_Mode_2;
+    /**
+     * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
+     */
+    raw?: boolean;
+    /**
+     * If true, the response will be streamed back incrementally using SSE, Server Sent Events.
+     */
+    stream?: boolean;
+    /**
+     * The maximum number of tokens to generate in the response.
+     */
+    max_tokens?: number;
+    /**
+     * Controls the randomness of the output; higher values produce more random results.
+     */
+    temperature?: number;
+    /**
+     * Adjusts the creativity of the AI's responses by controlling how many possible words it considers. Lower values make outputs more predictable; higher values allow for more varied and creative responses.
+     */
+    top_p?: number;
+    /**
+     * Limits the AI to choose from the top 'k' most probable words. Lower values make responses more focused; higher values introduce more variety and potential surprises.
+     */
+    top_k?: number;
+    /**
+     * Random seed for reproducibility of the generation.
+     */
+    seed?: number;
+    /**
+     * Penalty for repeated tokens; higher values discourage repetition.
+     */
+    repetition_penalty?: number;
+    /**
+     * Decreases the likelihood of the model repeating the same lines verbatim.
+     */
+    frequency_penalty?: number;
+    /**
+     * Increases the likelihood of the model introducing new topics.
+     */
+    presence_penalty?: number;
+}
+interface Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_JSON_Mode_2 {
+    type?: "json_object" | "json_schema";
+    json_schema?: unknown;
+}
+interface Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Messages_1 {
+    /**
+     * An array of message objects representing the conversation history.
+     */
+    messages: {
+        /**
+         * The role of the message sender (e.g., 'user', 'assistant', 'system', 'tool').
+         */
+        role: string;
+        content: string | {
+            /**
+             * Type of the content (text)
+             */
+            type?: string;
+            /**
+             * Text content
+             */
+            text?: string;
+        }[];
+    }[];
+    functions?: {
+        name: string;
+        code: string;
+    }[];
+    /**
+     * A list of tools available for the assistant to use.
+     */
+    tools?: ({
+        /**
+         * The name of the tool. More descriptive the better.
+         */
+        name: string;
+        /**
+         * A brief description of what the tool does.
+         */
+        description: string;
+        /**
+         * Schema defining the parameters accepted by the tool.
+         */
+        parameters: {
+            /**
+             * The type of the parameters object (usually 'object').
+             */
+            type: string;
+            /**
+             * List of required parameter names.
+             */
+            required?: string[];
+            /**
+             * Definitions of each parameter.
+             */
+            properties: {
+                [k: string]: {
+                    /**
+                     * The data type of the parameter.
+                     */
+                    type: string;
+                    /**
+                     * A description of the expected parameter.
+                     */
+                    description: string;
+                };
+            };
+        };
+    } | {
+        /**
+         * Specifies the type of tool (e.g., 'function').
+         */
+        type: string;
+        /**
+         * Details of the function tool.
+         */
+        function: {
+            /**
+             * The name of the function.
+             */
+            name: string;
+            /**
+             * A brief description of what the function does.
+             */
+            description: string;
+            /**
+             * Schema defining the parameters accepted by the function.
+             */
+            parameters: {
+                /**
+                 * The type of the parameters object (usually 'object').
+                 */
+                type: string;
+                /**
+                 * List of required parameter names.
+                 */
+                required?: string[];
+                /**
+                 * Definitions of each parameter.
+                 */
+                properties: {
+                    [k: string]: {
+                        /**
+                         * The data type of the parameter.
+                         */
+                        type: string;
+                        /**
+                         * A description of the expected parameter.
+                         */
+                        description: string;
+                    };
+                };
+            };
+        };
+    })[];
+    response_format?: Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_JSON_Mode_3;
+    /**
+     * If true, a chat template is not applied and you must adhere to the specific model's expected formatting.
+     */
+    raw?: boolean;
+    /**
+     * If true, the response will be streamed back incrementally using SSE, Server Sent Events.
+     */
+    stream?: boolean;
+    /**
+     * The maximum number of tokens to generate in the response.
+     */
+    max_tokens?: number;
+    /**
+     * Controls the randomness of the output; higher values produce more random results.
+     */
+    temperature?: number;
+    /**
+     * Adjusts the creativity of the AI's responses by controlling how many possible words it considers. Lower values make outputs more predictable; higher values allow for more varied and creative responses.
+     */
+    top_p?: number;
+    /**
+     * Limits the AI to choose from the top 'k' most probable words. Lower values make responses more focused; higher values introduce more variety and potential surprises.
+     */
+    top_k?: number;
+    /**
+     * Random seed for reproducibility of the generation.
+     */
+    seed?: number;
+    /**
+     * Penalty for repeated tokens; higher values discourage repetition.
+     */
+    repetition_penalty?: number;
+    /**
+     * Decreases the likelihood of the model repeating the same lines verbatim.
+     */
+    frequency_penalty?: number;
+    /**
+     * Increases the likelihood of the model introducing new topics.
+     */
+    presence_penalty?: number;
+}
+interface Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_JSON_Mode_3 {
+    type?: "json_object" | "json_schema";
+    json_schema?: unknown;
+}
+type Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Output = Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Chat_Completion_Response | Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Text_Completion_Response | string | Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_AsyncResponse;
+interface Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Chat_Completion_Response {
+    /**
+     * Unique identifier for the completion
+     */
+    id?: string;
+    /**
+     * Object type identifier
+     */
+    object?: "chat.completion";
+    /**
+     * Unix timestamp of when the completion was created
+     */
+    created?: number;
+    /**
+     * Model used for the completion
+     */
+    model?: string;
+    /**
+     * List of completion choices
+     */
+    choices?: {
+        /**
+         * Index of the choice in the list
+         */
+        index?: number;
+        /**
+         * The message generated by the model
+         */
+        message?: {
+            /**
+             * Role of the message author
+             */
+            role: string;
+            /**
+             * The content of the message
+             */
+            content: string;
+            /**
+             * Internal reasoning content (if available)
+             */
+            reasoning_content?: string;
+            /**
+             * Tool calls made by the assistant
+             */
+            tool_calls?: {
+                /**
+                 * Unique identifier for the tool call
+                 */
+                id: string;
+                /**
+                 * Type of tool call
+                 */
+                type: "function";
+                function: {
+                    /**
+                     * Name of the function to call
+                     */
+                    name: string;
+                    /**
+                     * JSON string of arguments for the function
+                     */
+                    arguments: string;
+                };
+            }[];
+        };
+        /**
+         * Reason why the model stopped generating
+         */
+        finish_reason?: string;
+        /**
+         * Stop reason (may be null)
+         */
+        stop_reason?: string | null;
+        /**
+         * Log probabilities (if requested)
+         */
+        logprobs?: {} | null;
+    }[];
+    /**
+     * Usage statistics for the inference request
+     */
+    usage?: {
+        /**
+         * Total number of tokens in input
+         */
+        prompt_tokens?: number;
+        /**
+         * Total number of tokens in output
+         */
+        completion_tokens?: number;
+        /**
+         * Total number of input and output tokens
+         */
+        total_tokens?: number;
+    };
+    /**
+     * Log probabilities for the prompt (if requested)
+     */
+    prompt_logprobs?: {} | null;
+}
+interface Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Text_Completion_Response {
+    /**
+     * Unique identifier for the completion
+     */
+    id?: string;
+    /**
+     * Object type identifier
+     */
+    object?: "text_completion";
+    /**
+     * Unix timestamp of when the completion was created
+     */
+    created?: number;
+    /**
+     * Model used for the completion
+     */
+    model?: string;
+    /**
+     * List of completion choices
+     */
+    choices?: {
+        /**
+         * Index of the choice in the list
+         */
+        index: number;
+        /**
+         * The generated text completion
+         */
+        text: string;
+        /**
+         * Reason why the model stopped generating
+         */
+        finish_reason: string;
+        /**
+         * Stop reason (may be null)
+         */
+        stop_reason?: string | null;
+        /**
+         * Log probabilities (if requested)
+         */
+        logprobs?: {} | null;
+        /**
+         * Log probabilities for the prompt (if requested)
+         */
+        prompt_logprobs?: {} | null;
+    }[];
+    /**
+     * Usage statistics for the inference request
+     */
+    usage?: {
+        /**
+         * Total number of tokens in input
+         */
+        prompt_tokens?: number;
+        /**
+         * Total number of tokens in output
+         */
+        completion_tokens?: number;
+        /**
+         * Total number of input and output tokens
+         */
+        total_tokens?: number;
+    };
+}
+interface Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_AsyncResponse {
+    /**
+     * The async request id that can be used to obtain the results.
+     */
+    request_id?: string;
+}
+declare abstract class Base_Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It {
+    inputs: Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Input;
+    postProcessedOutputs: Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It_Output;
+}
+interface Ai_Cf_Pfnet_Plamo_Embedding_1B_Input {
+    /**
+     * Input text to embed. Can be a single string or a list of strings.
+     */
+    text: string | string[];
+}
+interface Ai_Cf_Pfnet_Plamo_Embedding_1B_Output {
+    /**
+     * Embedding vectors, where each vector is a list of floats.
+     */
+    data: number[][];
+    /**
+     * Shape of the embedding data as [number_of_embeddings, embedding_dimension].
+     *
+     * @minItems 2
+     * @maxItems 2
+     */
+    shape: [
+        number,
+        number
+    ];
+}
+declare abstract class Base_Ai_Cf_Pfnet_Plamo_Embedding_1B {
+    inputs: Ai_Cf_Pfnet_Plamo_Embedding_1B_Input;
+    postProcessedOutputs: Ai_Cf_Pfnet_Plamo_Embedding_1B_Output;
+}
+interface Ai_Cf_Deepgram_Flux_Input {
+    /**
+     * Encoding of the audio stream. Currently only supports raw signed little-endian 16-bit PCM.
+     */
+    encoding: "linear16";
+    /**
+     * Sample rate of the audio stream in Hz.
+     */
+    sample_rate: string;
+    /**
+     * End-of-turn confidence required to fire an eager end-of-turn event. When set, enables EagerEndOfTurn and TurnResumed events. Valid Values 0.3 - 0.9.
+     */
+    eager_eot_threshold?: string;
+    /**
+     * End-of-turn confidence required to finish a turn. Valid Values 0.5 - 0.9.
+     */
+    eot_threshold?: string;
+    /**
+     * A turn will be finished when this much time has passed after speech, regardless of EOT confidence.
+     */
+    eot_timeout_ms?: string;
+    /**
+     * Keyterm prompting can improve recognition of specialized terminology. Pass multiple keyterm query parameters to boost multiple keyterms.
+     */
+    keyterm?: string;
+    /**
+     * Opts out requests from the Deepgram Model Improvement Program. Refer to Deepgram Docs for pricing impacts before setting this to true. https://dpgr.am/deepgram-mip
+     */
+    mip_opt_out?: "true" | "false";
+    /**
+     * Label your requests for the purpose of identification during usage reporting
+     */
+    tag?: string;
+}
+/**
+ * Output will be returned as websocket messages.
+ */
+interface Ai_Cf_Deepgram_Flux_Output {
+    /**
+     * The unique identifier of the request (uuid)
+     */
+    request_id?: string;
+    /**
+     * Starts at 0 and increments for each message the server sends to the client.
+     */
+    sequence_id?: number;
+    /**
+     * The type of event being reported.
+     */
+    event?: "Update" | "StartOfTurn" | "EagerEndOfTurn" | "TurnResumed" | "EndOfTurn";
+    /**
+     * The index of the current turn
+     */
+    turn_index?: number;
+    /**
+     * Start time in seconds of the audio range that was transcribed
+     */
+    audio_window_start?: number;
+    /**
+     * End time in seconds of the audio range that was transcribed
+     */
+    audio_window_end?: number;
+    /**
+     * Text that was said over the course of the current turn
+     */
+    transcript?: string;
+    /**
+     * The words in the transcript
+     */
+    words?: {
+        /**
+         * The individual punctuated, properly-cased word from the transcript
+         */
+        word: string;
+        /**
+         * Confidence that this word was transcribed correctly
+         */
+        confidence: number;
+    }[];
+    /**
+     * Confidence that no more speech is coming in this turn
+     */
+    end_of_turn_confidence?: number;
+}
+declare abstract class Base_Ai_Cf_Deepgram_Flux {
+    inputs: Ai_Cf_Deepgram_Flux_Input;
+    postProcessedOutputs: Ai_Cf_Deepgram_Flux_Output;
+}
+interface Ai_Cf_Deepgram_Aura_2_En_Input {
+    /**
+     * Speaker used to produce the audio.
+     */
+    speaker?: "amalthea" | "andromeda" | "apollo" | "arcas" | "aries" | "asteria" | "athena" | "atlas" | "aurora" | "callista" | "cora" | "cordelia" | "delia" | "draco" | "electra" | "harmonia" | "helena" | "hera" | "hermes" | "hyperion" | "iris" | "janus" | "juno" | "jupiter" | "luna" | "mars" | "minerva" | "neptune" | "odysseus" | "ophelia" | "orion" | "orpheus" | "pandora" | "phoebe" | "pluto" | "saturn" | "thalia" | "theia" | "vesta" | "zeus";
+    /**
+     * Encoding of the output audio.
+     */
+    encoding?: "linear16" | "flac" | "mulaw" | "alaw" | "mp3" | "opus" | "aac";
+    /**
+     * Container specifies the file format wrapper for the output audio. The available options depend on the encoding type..
+     */
+    container?: "none" | "wav" | "ogg";
+    /**
+     * The text content to be converted to speech
+     */
+    text: string;
+    /**
+     * Sample Rate specifies the sample rate for the output audio. Based on the encoding, different sample rates are supported. For some encodings, the sample rate is not configurable
+     */
+    sample_rate?: number;
+    /**
+     * The bitrate of the audio in bits per second. Choose from predefined ranges or specific values based on the encoding type.
+     */
+    bit_rate?: number;
+}
+/**
+ * The generated audio in MP3 format
+ */
+type Ai_Cf_Deepgram_Aura_2_En_Output = string;
+declare abstract class Base_Ai_Cf_Deepgram_Aura_2_En {
+    inputs: Ai_Cf_Deepgram_Aura_2_En_Input;
+    postProcessedOutputs: Ai_Cf_Deepgram_Aura_2_En_Output;
+}
+interface Ai_Cf_Deepgram_Aura_2_Es_Input {
+    /**
+     * Speaker used to produce the audio.
+     */
+    speaker?: "sirio" | "nestor" | "carina" | "celeste" | "alvaro" | "diana" | "aquila" | "selena" | "estrella" | "javier";
+    /**
+     * Encoding of the output audio.
+     */
+    encoding?: "linear16" | "flac" | "mulaw" | "alaw" | "mp3" | "opus" | "aac";
+    /**
+     * Container specifies the file format wrapper for the output audio. The available options depend on the encoding type..
+     */
+    container?: "none" | "wav" | "ogg";
+    /**
+     * The text content to be converted to speech
+     */
+    text: string;
+    /**
+     * Sample Rate specifies the sample rate for the output audio. Based on the encoding, different sample rates are supported. For some encodings, the sample rate is not configurable
+     */
+    sample_rate?: number;
+    /**
+     * The bitrate of the audio in bits per second. Choose from predefined ranges or specific values based on the encoding type.
+     */
+    bit_rate?: number;
+}
+/**
+ * The generated audio in MP3 format
+ */
+type Ai_Cf_Deepgram_Aura_2_Es_Output = string;
+declare abstract class Base_Ai_Cf_Deepgram_Aura_2_Es {
+    inputs: Ai_Cf_Deepgram_Aura_2_Es_Input;
+    postProcessedOutputs: Ai_Cf_Deepgram_Aura_2_Es_Output;
+}
+interface Ai_Cf_Black_Forest_Labs_Flux_2_Dev_Input {
+    multipart: {
+        body?: object;
+        contentType?: string;
+    };
+}
+interface Ai_Cf_Black_Forest_Labs_Flux_2_Dev_Output {
+    /**
+     * Generated image as Base64 string.
+     */
+    image?: string;
+}
+declare abstract class Base_Ai_Cf_Black_Forest_Labs_Flux_2_Dev {
+    inputs: Ai_Cf_Black_Forest_Labs_Flux_2_Dev_Input;
+    postProcessedOutputs: Ai_Cf_Black_Forest_Labs_Flux_2_Dev_Output;
+}
+interface Ai_Cf_Black_Forest_Labs_Flux_2_Klein_4B_Input {
+    multipart: {
+        body?: object;
+        contentType?: string;
+    };
+}
+interface Ai_Cf_Black_Forest_Labs_Flux_2_Klein_4B_Output {
+    /**
+     * Generated image as Base64 string.
+     */
+    image?: string;
+}
+declare abstract class Base_Ai_Cf_Black_Forest_Labs_Flux_2_Klein_4B {
+    inputs: Ai_Cf_Black_Forest_Labs_Flux_2_Klein_4B_Input;
+    postProcessedOutputs: Ai_Cf_Black_Forest_Labs_Flux_2_Klein_4B_Output;
+}
+interface Ai_Cf_Black_Forest_Labs_Flux_2_Klein_9B_Input {
+    multipart: {
+        body?: object;
+        contentType?: string;
+    };
+}
+interface Ai_Cf_Black_Forest_Labs_Flux_2_Klein_9B_Output {
+    /**
+     * Generated image as Base64 string.
+     */
+    image?: string;
+}
+declare abstract class Base_Ai_Cf_Black_Forest_Labs_Flux_2_Klein_9B {
+    inputs: Ai_Cf_Black_Forest_Labs_Flux_2_Klein_9B_Input;
+    postProcessedOutputs: Ai_Cf_Black_Forest_Labs_Flux_2_Klein_9B_Output;
+}
+declare abstract class Base_Ai_Cf_Zai_Org_Glm_4_7_Flash {
+    inputs: ChatCompletionsInput;
+    postProcessedOutputs: ChatCompletionsOutput;
+}
+declare abstract class Base_Ai_Cf_Moonshotai_Kimi_K2_5 {
+    inputs: ChatCompletionsInput;
+    postProcessedOutputs: ChatCompletionsOutput;
+}
+declare abstract class Base_Ai_Cf_Moonshotai_Kimi_K2_6 {
+    inputs: ChatCompletionsInput;
+    postProcessedOutputs: ChatCompletionsOutput;
+}
+declare abstract class Base_Ai_Cf_Nvidia_Nemotron_3_120B_A12B {
+    inputs: ChatCompletionsInput;
+    postProcessedOutputs: ChatCompletionsOutput;
+}
+declare abstract class Base_Ai_Cf_Google_Gemma_4_26B_A4B_IT {
+    inputs: ChatCompletionsInput;
+    postProcessedOutputs: ChatCompletionsOutput;
+}
 interface AiModels {
     "@cf/huggingface/distilbert-sst-2-int8": BaseAiTextClassification;
     "@cf/stabilityai/stable-diffusion-xl-base-1.0": BaseAiTextToImage;
@@ -6613,7 +10055,6 @@ interface AiModels {
     "@hf/thebloke/zephyr-7b-beta-awq": BaseAiTextGeneration;
     "@hf/thebloke/openhermes-2.5-mistral-7b-awq": BaseAiTextGeneration;
     "@hf/thebloke/neural-chat-7b-v3-1-awq": BaseAiTextGeneration;
-    "@hf/thebloke/llamaguard-7b-awq": BaseAiTextGeneration;
     "@hf/thebloke/deepseek-coder-6.7b-base-awq": BaseAiTextGeneration;
     "@hf/thebloke/deepseek-coder-6.7b-instruct-awq": BaseAiTextGeneration;
     "@cf/deepseek-ai/deepseek-math-7b-instruct": BaseAiTextGeneration;
@@ -6638,12 +10079,12 @@ interface AiModels {
     "@cf/meta/llama-3-8b-instruct": BaseAiTextGeneration;
     "@cf/fblgit/una-cybertron-7b-v2-bf16": BaseAiTextGeneration;
     "@cf/meta/llama-3-8b-instruct-awq": BaseAiTextGeneration;
-    "@hf/meta-llama/meta-llama-3-8b-instruct": BaseAiTextGeneration;
     "@cf/meta/llama-3.1-8b-instruct-fp8": BaseAiTextGeneration;
     "@cf/meta/llama-3.1-8b-instruct-awq": BaseAiTextGeneration;
     "@cf/meta/llama-3.2-3b-instruct": BaseAiTextGeneration;
     "@cf/meta/llama-3.2-1b-instruct": BaseAiTextGeneration;
     "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": BaseAiTextGeneration;
+    "@cf/ibm-granite/granite-4.0-h-micro": BaseAiTextGeneration;
     "@cf/facebook/bart-large-cnn": BaseAiSummarization;
     "@cf/llava-hf/llava-1.5-7b-hf": BaseAiImageToText;
     "@cf/baai/bge-base-en-v1.5": Base_Ai_Cf_Baai_Bge_Base_En_V1_5;
@@ -6665,13 +10106,29 @@ interface AiModels {
     "@cf/mistralai/mistral-small-3.1-24b-instruct": Base_Ai_Cf_Mistralai_Mistral_Small_3_1_24B_Instruct;
     "@cf/google/gemma-3-12b-it": Base_Ai_Cf_Google_Gemma_3_12B_It;
     "@cf/meta/llama-4-scout-17b-16e-instruct": Base_Ai_Cf_Meta_Llama_4_Scout_17B_16E_Instruct;
+    "@cf/qwen/qwen3-30b-a3b-fp8": Base_Ai_Cf_Qwen_Qwen3_30B_A3B_Fp8;
     "@cf/deepgram/nova-3": Base_Ai_Cf_Deepgram_Nova_3;
+    "@cf/qwen/qwen3-embedding-0.6b": Base_Ai_Cf_Qwen_Qwen3_Embedding_0_6B;
     "@cf/pipecat-ai/smart-turn-v2": Base_Ai_Cf_Pipecat_Ai_Smart_Turn_V2;
     "@cf/openai/gpt-oss-120b": Base_Ai_Cf_Openai_Gpt_Oss_120B;
     "@cf/openai/gpt-oss-20b": Base_Ai_Cf_Openai_Gpt_Oss_20B;
     "@cf/leonardo/phoenix-1.0": Base_Ai_Cf_Leonardo_Phoenix_1_0;
     "@cf/leonardo/lucid-origin": Base_Ai_Cf_Leonardo_Lucid_Origin;
     "@cf/deepgram/aura-1": Base_Ai_Cf_Deepgram_Aura_1;
+    "@cf/ai4bharat/indictrans2-en-indic-1B": Base_Ai_Cf_Ai4Bharat_Indictrans2_En_Indic_1B;
+    "@cf/aisingapore/gemma-sea-lion-v4-27b-it": Base_Ai_Cf_Aisingapore_Gemma_Sea_Lion_V4_27B_It;
+    "@cf/pfnet/plamo-embedding-1b": Base_Ai_Cf_Pfnet_Plamo_Embedding_1B;
+    "@cf/deepgram/flux": Base_Ai_Cf_Deepgram_Flux;
+    "@cf/deepgram/aura-2-en": Base_Ai_Cf_Deepgram_Aura_2_En;
+    "@cf/deepgram/aura-2-es": Base_Ai_Cf_Deepgram_Aura_2_Es;
+    "@cf/black-forest-labs/flux-2-dev": Base_Ai_Cf_Black_Forest_Labs_Flux_2_Dev;
+    "@cf/black-forest-labs/flux-2-klein-4b": Base_Ai_Cf_Black_Forest_Labs_Flux_2_Klein_4B;
+    "@cf/black-forest-labs/flux-2-klein-9b": Base_Ai_Cf_Black_Forest_Labs_Flux_2_Klein_9B;
+    "@cf/zai-org/glm-4.7-flash": Base_Ai_Cf_Zai_Org_Glm_4_7_Flash;
+    "@cf/moonshotai/kimi-k2.5": Base_Ai_Cf_Moonshotai_Kimi_K2_5;
+    "@cf/moonshotai/kimi-k2.6": Base_Ai_Cf_Moonshotai_Kimi_K2_6;
+    "@cf/nvidia/nemotron-3-120b-a12b": Base_Ai_Cf_Nvidia_Nemotron_3_120B_A12B;
+    "@cf/google/gemma-4-26b-a4b-it": Base_Ai_Cf_Google_Gemma_4_26B_A4B_IT;
 }
 type AiOptions = {
     /**
@@ -6683,10 +10140,21 @@ type AiOptions = {
      * Establish websocket connections, only works for supported models
      */
     websocket?: boolean;
+    /**
+     * Tag your requests to group and view them in Cloudflare dashboard.
+     *
+     * Rules:
+     * Tags must only contain letters, numbers, and the symbols: : - . / @
+     * Each tag can have maximum 50 characters.
+     * Maximum 5 tags are allowed each request.
+     * Duplicate tags will removed.
+     */
+    tags?: string[];
     gateway?: GatewayOptions;
     returnRawResponse?: boolean;
     prefix?: string;
     extraHeaders?: object;
+    signal?: AbortSignal;
 };
 type AiModelsSearchParams = {
     author?: string;
@@ -6713,38 +10181,65 @@ type AiModelsSearchObject = {
         value: string;
     }[];
 };
+type ChatCompletionsBase = ChatCompletionsMessagesInput;
+type ChatCompletionsInput = ChatCompletionsMessagesInput;
 interface InferenceUpstreamError extends Error {
 }
 interface AiInternalError extends Error {
 }
 type AiModelListType = Record<string, any>;
+type AiAsyncBatchResponse = {
+    request_id: string;
+};
 declare abstract class Ai<AiModelList extends AiModelListType = AiModels> {
     aiGatewayLogId: string | null;
     gateway(gatewayId: string): AiGateway;
+    /**
+     * @deprecated Use the standalone `ai_search_namespaces` or `ai_search` Workers bindings instead.
+     * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+     */
+    aiSearch(): AiSearchNamespace;
+    /**
+     * @deprecated AutoRAG has been replaced by AI Search.
+     * Use the standalone `ai_search_namespaces` or `ai_search` Workers bindings instead.
+     * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+     *
+     * @param autoragId Instance ID
+     */
     autorag(autoragId: string): AutoRAG;
-    run<Name extends keyof AiModelList, Options extends AiOptions, InputOptions extends AiModelList[Name]["inputs"]>(model: Name, inputs: InputOptions, options?: Options): Promise<Options extends {
+    // Batch request
+    run<Name extends keyof AiModelList>(model: Name, inputs: {
+        requests: AiModelList[Name]['inputs'][];
+    }, options: AiOptions & {
+        queueRequest: true;
+    }): Promise<AiAsyncBatchResponse>;
+    // Raw response
+    run<Name extends keyof AiModelList>(model: Name, inputs: AiModelList[Name]['inputs'], options: AiOptions & {
         returnRawResponse: true;
-    } | {
+    }): Promise<Response>;
+    // WebSocket
+    run<Name extends keyof AiModelList>(model: Name, inputs: AiModelList[Name]['inputs'], options: AiOptions & {
         websocket: true;
-    } ? Response : InputOptions extends {
+    }): Promise<Response>;
+    // Streaming
+    run<Name extends keyof AiModelList>(model: Name, inputs: AiModelList[Name]['inputs'] & {
         stream: true;
-    } ? ReadableStream : AiModelList[Name]["postProcessedOutputs"]>;
+    }, options?: AiOptions): Promise<ReadableStream>;
+    // Normal (default) - known model
+    run<Name extends keyof AiModelList>(model: Name, inputs: AiModelList[Name]['inputs'], options?: AiOptions): Promise<AiModelList[Name]['postProcessedOutputs']>;
+    // Unknown model (fallback).
+    //
+    // The `Exclude<..., keyof AiModelList>` constraint forces TypeScript to
+    // route any model name that is a literal key of `AiModelList` to one of
+    // the known-model overloads above (so input/output mismatches surface as
+    // type errors rather than silently falling back to `Record<string, unknown>`).
+    // Names that aren't in `AiModelList` — e.g. third-party gateway models
+    // like `"google/nano-banana"` — still hit this overload.
+    run<Model extends string>(model: Model extends keyof AiModelList ? never : Model, inputs: Record<string, unknown>, options?: AiOptions): Promise<Record<string, unknown>>;
     models(params?: AiModelsSearchParams): Promise<AiModelsSearchObject[]>;
     toMarkdown(): ToMarkdownService;
-    toMarkdown(files: {
-        name: string;
-        blob: Blob;
-    }[], options?: {
-        gateway?: GatewayOptions;
-        extraHeaders?: object;
-    }): Promise<ConversionResponse[]>;
-    toMarkdown(files: {
-        name: string;
-        blob: Blob;
-    }, options?: {
-        gateway?: GatewayOptions;
-        extraHeaders?: object;
-    }): Promise<ConversionResponse>;
+    toMarkdown(files: MarkdownDocument[], options?: ConversionRequestOptions): Promise<ConversionResponse[]>;
+    toMarkdown(files: MarkdownDocument, options?: ConversionRequestOptions): Promise<ConversionResponse>;
 }
 type GatewayRetries = {
     maxAttempts?: 1 | 2 | 3 | 4 | 5;
@@ -6838,15 +10333,251 @@ declare abstract class AiGateway {
     run(data: AIGatewayUniversalRequest | AIGatewayUniversalRequest[], options?: {
         gateway?: UniversalGatewayOptions;
         extraHeaders?: object;
+        signal?: AbortSignal;
     }): Promise<Response>;
     getUrl(provider?: AIGatewayProviders | string): Promise<string>; // eslint-disable-line
 }
+// Copyright (c) 2022-2025 Cloudflare, Inc.
+// Licensed under the Apache 2.0 license found in the LICENSE file or at:
+//     https://opensource.org/licenses/Apache-2.0
+/**
+ * Artifacts — Git-compatible file storage on Cloudflare Workers.
+ *
+ * Provides programmatic access to create, manage, and fork repositories,
+ * and to issue and revoke scoped access tokens.
+ */
+/** Information about a repository. */
+interface ArtifactsRepoInfo {
+    /** Unique repository ID. */
+    id: string;
+    /** Repository name. */
+    name: string;
+    /** Repository description, or null if not set. */
+    description: string | null;
+    /** Default branch name (e.g. "main"). */
+    defaultBranch: string;
+    /** ISO 8601 creation timestamp. */
+    createdAt: string;
+    /** ISO 8601 last-updated timestamp. */
+    updatedAt: string;
+    /** ISO 8601 timestamp of the last push, or null if never pushed. */
+    lastPushAt: string | null;
+    /** Fork source (e.g. "github:owner/repo", "artifacts:namespace/repo"), or null if not a fork. */
+    source: string | null;
+    /** Whether the repository is read-only. */
+    readOnly: boolean;
+    /** HTTPS git remote URL. */
+    remote: string;
+}
+/** Result of creating a repository — includes the initial access token. */
+interface ArtifactsCreateRepoResult {
+    /** Unique repository ID. */
+    id: string;
+    /** Repository name. */
+    name: string;
+    /** Repository description, or null if not set. */
+    description: string | null;
+    /** Default branch name. */
+    defaultBranch: string;
+    /** HTTPS git remote URL. */
+    remote: string;
+    /** Plaintext access token (only returned at creation time). */
+    token: string;
+    /** ISO 8601 token expiry timestamp. */
+    tokenExpiresAt: string;
+}
+/** Paginated list of repositories. */
+interface ArtifactsRepoListResult {
+    /** Repositories in this page (without the `remote` field). */
+    repos: Omit<ArtifactsRepoInfo, 'remote'>[];
+    /** Total number of repositories in the namespace. */
+    total: number;
+    /** Cursor for the next page, if there are more results. */
+    cursor?: string;
+}
+/** Result of creating an access token. */
+interface ArtifactsCreateTokenResult {
+    /** Unique token ID. */
+    id: string;
+    /** Plaintext token (only returned at creation time). */
+    plaintext: string;
+    /** Token scope: "read" or "write". */
+    scope: 'read' | 'write';
+    /** ISO 8601 token expiry timestamp. */
+    expiresAt: string;
+}
+/** Token metadata (no plaintext). */
+interface ArtifactsTokenInfo {
+    /** Unique token ID. */
+    id: string;
+    /** Token scope: "read" or "write". */
+    scope: 'read' | 'write';
+    /** Token state: "active", "expired", or "revoked". */
+    state: 'active' | 'expired' | 'revoked';
+    /** ISO 8601 creation timestamp. */
+    createdAt: string;
+    /** ISO 8601 expiry timestamp. */
+    expiresAt: string;
+}
+/** Paginated list of tokens for a repository. */
+interface ArtifactsTokenListResult {
+    /** Tokens in this page. */
+    tokens: ArtifactsTokenInfo[];
+    /** Total number of tokens for the repository. */
+    total: number;
+}
+/**
+ * Handle for a single repository. Returned by Artifacts.get().
+ *
+ * Methods may throw `ArtifactsError` with code `INTERNAL_ERROR` if an unexpected service error occurs.
+ */
+interface ArtifactsRepo extends ArtifactsRepoInfo {
+    /**
+     * Create an access token for this repo.
+     * @param scope Token scope: "write" (default) or "read".
+     * @param ttl Time-to-live in seconds (default 86400, min 60, max 31536000).
+     * @throws {ArtifactsError} with code `INVALID_TTL` if ttl is out of range.
+     */
+    createToken(scope?: 'write' | 'read', ttl?: number): Promise<ArtifactsCreateTokenResult>;
+    /** List tokens for this repo (metadata only, no plaintext). */
+    listTokens(): Promise<ArtifactsTokenListResult>;
+    /**
+     * Revoke a token by plaintext or ID.
+     * @param tokenOrId Plaintext token or token ID.
+     * @returns true if revoked, false if not found.
+     * @throws {ArtifactsError} with code `INVALID_INPUT` if tokenOrId is empty.
+     */
+    revokeToken(tokenOrId: string): Promise<boolean>;
+    // ── Fork ──
+    /**
+     * Fork this repo to a new repo.
+     * @param name Target repository name.
+     * @param opts Optional: description, readOnly flag, defaultBranchOnly (default true).
+     * @throws {ArtifactsError} with code `INVALID_REPO_NAME` if name is invalid.
+     * @throws {ArtifactsError} with code `ALREADY_EXISTS` if the target repo already exists.
+     * @throws {ArtifactsError} with code `FORK_IN_PROGRESS` if a fork is already running.
+     */
+    fork(name: string, opts?: {
+        description?: string;
+        readOnly?: boolean;
+        defaultBranchOnly?: boolean;
+    }): Promise<ArtifactsCreateRepoResult>;
+}
+// ── Error types ──────────────────────────────────────────────────────────────
+/**
+ * Error codes returned by Artifacts binding operations.
+ *
+ * Each code maps to a numeric code available on `ArtifactsError.numericCode`.
+ */
+type ArtifactsErrorCode = 'ALREADY_EXISTS' | 'NOT_FOUND' | 'IMPORT_IN_PROGRESS' | 'FORK_IN_PROGRESS' | 'INVALID_INPUT' | 'INVALID_REPO_NAME' | 'INVALID_TTL' | 'INVALID_URL' | 'REMOTE_AUTH_REQUIRED' | 'UPSTREAM_UNAVAILABLE' | 'MEMORY_LIMIT' | 'INTERNAL_ERROR';
+/**
+ * Error thrown by Artifacts binding operations.
+ *
+ * Uses a string `.code` discriminator following the Cloudflare platform
+ * convention (StreamError, ImagesError, etc.). The `.numericCode` matches
+ * the REST API `errors[].code` values.
+ */
+interface ArtifactsError extends Error {
+    readonly name: 'ArtifactsError';
+    /** String error code for programmatic matching. */
+    readonly code: ArtifactsErrorCode;
+    /** Numeric error code matching the REST API. */
+    readonly numericCode: number;
+}
+// ── Binding ──────────────────────────────────────────────────────────────────
+/**
+ * Artifacts binding — namespace-level operations.
+ *
+ * Methods may throw `ArtifactsError` with code `INTERNAL_ERROR` if an unexpected service error occurs.
+ */
+interface Artifacts {
+    /**
+     * Create a new repository with an initial access token.
+     * @param name Repository name (alphanumeric, dots, hyphens, underscores).
+     * @param opts Optional: readOnly flag, description, default branch name.
+     * @returns Repo metadata with initial token.
+     * @throws {ArtifactsError} with code `INVALID_REPO_NAME` if name is invalid.
+     * @throws {ArtifactsError} with code `ALREADY_EXISTS` if the repo already exists.
+     */
+    create(name: string, opts?: {
+        readOnly?: boolean;
+        description?: string;
+        setDefaultBranch?: string;
+    }): Promise<ArtifactsCreateRepoResult>;
+    /**
+     * Get a handle to an existing repository.
+     * @param name Repository name.
+     * @returns Repo handle.
+     * @throws {ArtifactsError} with code `NOT_FOUND` if the repo does not exist.
+     * @throws {ArtifactsError} with code `IMPORT_IN_PROGRESS` if the repo is still importing.
+     * @throws {ArtifactsError} with code `FORK_IN_PROGRESS` if the repo is still forking.
+     */
+    get(name: string): Promise<ArtifactsRepo>;
+    /**
+     * Import a repository from an external git remote.
+     * @param params Source URL and optional branch/depth, plus target name and options.
+     * @returns Repo metadata with initial token.
+     * @throws {ArtifactsError} with code `INVALID_REPO_NAME` if the target name is invalid.
+     * @throws {ArtifactsError} with code `INVALID_INPUT` if the source URL is not valid HTTPS.
+     * @throws {ArtifactsError} with code `INVALID_URL` if the source URL does not point to a git repository.
+     * @throws {ArtifactsError} with code `REMOTE_AUTH_REQUIRED` if the remote requires authentication.
+     * @throws {ArtifactsError} with code `NOT_FOUND` if the remote repository does not exist.
+     * @throws {ArtifactsError} with code `UPSTREAM_UNAVAILABLE` if the remote cannot be reached.
+     * @throws {ArtifactsError} with code `MEMORY_LIMIT` if the import exceeds service memory limits.
+     * @throws {ArtifactsError} with code `ALREADY_EXISTS` if the target repo already exists.
+     */
+    import(params: {
+        source: {
+            url: string;
+            branch?: string;
+            depth?: number;
+        };
+        target: {
+            name: string;
+            opts?: {
+                description?: string;
+                readOnly?: boolean;
+            };
+        };
+    }): Promise<ArtifactsCreateRepoResult>;
+    /**
+     * List repositories with cursor-based pagination.
+     * @param opts Optional: limit (1–200, default 50), cursor for next page.
+     */
+    list(opts?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<ArtifactsRepoListResult>;
+    /**
+     * Delete a repository and all associated tokens.
+     * @param name Repository name.
+     * @returns true if deleted, false if not found.
+     * @throws {ArtifactsError} with code `INVALID_REPO_NAME` if name is invalid.
+     */
+    delete(name: string): Promise<boolean>;
+}
+/**
+ * @deprecated Use the standalone AI Search Workers binding instead.
+ * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+ */
 interface AutoRAGInternalError extends Error {
 }
+/**
+ * @deprecated Use the standalone AI Search Workers binding instead.
+ * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+ */
 interface AutoRAGNotFoundError extends Error {
 }
+/**
+ * @deprecated Use the standalone AI Search Workers binding instead.
+ * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+ */
 interface AutoRAGUnauthorizedError extends Error {
 }
+/**
+ * @deprecated Use the standalone AI Search Workers binding instead.
+ * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+ */
 interface AutoRAGNameNotSetError extends Error {
 }
 type ComparisonFilter = {
@@ -6858,6 +10589,10 @@ type CompoundFilter = {
     type: 'and' | 'or';
     filters: ComparisonFilter[];
 };
+/**
+ * @deprecated Use the standalone AI Search Workers binding instead.
+ * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+ */
 type AutoRagSearchRequest = {
     query: string;
     filters?: CompoundFilter | ComparisonFilter;
@@ -6872,13 +10607,25 @@ type AutoRagSearchRequest = {
     };
     rewrite_query?: boolean;
 };
+/**
+ * @deprecated Use the standalone AI Search Workers binding instead.
+ * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+ */
 type AutoRagAiSearchRequest = AutoRagSearchRequest & {
     stream?: boolean;
     system_prompt?: string;
 };
+/**
+ * @deprecated Use the standalone AI Search Workers binding instead.
+ * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+ */
 type AutoRagAiSearchRequestStreaming = Omit<AutoRagAiSearchRequest, 'stream'> & {
     stream: true;
 };
+/**
+ * @deprecated Use the standalone AI Search Workers binding instead.
+ * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+ */
 type AutoRagSearchResponse = {
     object: 'vector_store.search_results.page';
     search_query: string;
@@ -6895,6 +10642,10 @@ type AutoRagSearchResponse = {
     has_more: boolean;
     next_page: string | null;
 };
+/**
+ * @deprecated Use the standalone AI Search Workers binding instead.
+ * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+ */
 type AutoRagListResponse = {
     id: string;
     enable: boolean;
@@ -6904,87 +10655,489 @@ type AutoRagListResponse = {
     paused: boolean;
     status: string;
 }[];
+/**
+ * @deprecated Use the standalone AI Search Workers binding instead.
+ * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+ */
 type AutoRagAiSearchResponse = AutoRagSearchResponse & {
     response: string;
 };
+/**
+ * @deprecated Use the standalone AI Search Workers binding instead.
+ * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+ */
 declare abstract class AutoRAG {
+    /**
+     * @deprecated Use the standalone AI Search Workers binding instead.
+     * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+     */
     list(): Promise<AutoRagListResponse>;
+    /**
+     * @deprecated Use the standalone AI Search Workers binding instead.
+     * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+     */
     search(params: AutoRagSearchRequest): Promise<AutoRagSearchResponse>;
+    /**
+     * @deprecated Use the standalone AI Search Workers binding instead.
+     * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+     */
     aiSearch(params: AutoRagAiSearchRequestStreaming): Promise<Response>;
+    /**
+     * @deprecated Use the standalone AI Search Workers binding instead.
+     * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+     */
     aiSearch(params: AutoRagAiSearchRequest): Promise<AutoRagAiSearchResponse>;
+    /**
+     * @deprecated Use the standalone AI Search Workers binding instead.
+     * See https://developers.cloudflare.com/ai-search/usage/workers-binding/
+     */
     aiSearch(params: AutoRagAiSearchRequest): Promise<AutoRagAiSearchResponse | Response>;
 }
-interface BasicImageTransformations {
-    /**
-     * Maximum width in image pixels. The value must be an integer.
+type BrowserRunLifecycleEvent = 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2';
+type BrowserRunResourceType = 'document' | 'stylesheet' | 'image' | 'media' | 'font' | 'script' | 'texttrack' | 'xhr' | 'fetch' | 'prefetch' | 'eventsource' | 'websocket' | 'manifest' | 'signedexchange' | 'ping' | 'cspviolationreport' | 'preflight' | 'other';
+/** Options fields shared by all quick actions. */
+interface BrowserRunBaseOptions {
+    /** Adds `<script>` tags into the page with the desired URL or content.
+     * @see https://pptr.dev/api/puppeteer.frameaddscripttagoptions
      */
-    width?: number;
-    /**
-     * Maximum height in image pixels. The value must be an integer.
+    addScriptTag?: Array<{
+        content?: string;
+        url?: string;
+        type?: string;
+        id?: string;
+    }>;
+    /** Adds `<link rel="stylesheet">` or `<style>` tags into the page.
+     * @see https://pptr.dev/api/puppeteer.frameaddstyletagoptions
      */
-    height?: number;
-    /**
-     * Resizing mode as a string. It affects interpretation of width and height
-     * options:
-     *  - scale-down: Similar to contain, but the image is never enlarged. If
-     *    the image is larger than given width or height, it will be resized.
-     *    Otherwise its original size will be kept.
-     *  - contain: Resizes to maximum size that fits within the given width and
-     *    height. If only a single dimension is given (e.g. only width), the
-     *    image will be shrunk or enlarged to exactly match that dimension.
-     *    Aspect ratio is always preserved.
-     *  - cover: Resizes (shrinks or enlarges) to fill the entire area of width
-     *    and height. If the image has an aspect ratio different from the ratio
-     *    of width and height, it will be cropped to fit.
-     *  - crop: The image will be shrunk and cropped to fit within the area
-     *    specified by width and height. The image will not be enlarged. For images
-     *    smaller than the given dimensions it's the same as scale-down. For
-     *    images larger than the given dimensions, it's the same as cover.
-     *    See also trim.
-     *  - pad: Resizes to the maximum size that fits within the given width and
-     *    height, and then fills the remaining area with a background color
-     *    (white by default). Use of this mode is not recommended, as the same
-     *    effect can be more efficiently achieved with the contain mode and the
-     *    CSS object-fit: contain property.
-     *  - squeeze: Stretches and deforms to the width and height given, even if it
-     *    breaks aspect ratio
+    addStyleTag?: Array<{
+        content?: string;
+        url?: string;
+    }>;
+    /** Provide credentials for HTTP authentication. @see https://pptr.dev/api/puppeteer.credentials */
+    authenticate?: {
+        username: string;
+        password: string;
+    };
+    /** Set cookies before navigating. @see https://pptr.dev/api/puppeteer.cookieparam */
+    cookies?: Array<{
+        name: string;
+        value: string;
+        url?: string;
+        domain?: string;
+        path?: string;
+        secure?: boolean;
+        httpOnly?: boolean;
+        sameSite?: 'Strict' | 'Lax' | 'None';
+        expires?: number;
+        priority?: 'Low' | 'Medium' | 'High';
+        sameParty?: boolean;
+        sourceScheme?: 'Unset' | 'NonSecure' | 'Secure';
+        sourcePort?: number;
+        partitionKey?: string;
+    }>;
+    /** Emulate a specific CSS media type (e.g. `"screen"`, `"print"`). */
+    emulateMediaType?: string;
+    /** Navigation options. @see https://pptr.dev/api/puppeteer.gotooptions */
+    gotoOptions?: {
+        /** Navigation timeout in milliseconds (max 60 000). @default 30000 */
+        timeout?: number;
+        /** When to consider navigation complete. @default "domcontentloaded" */
+        waitUntil?: BrowserRunLifecycleEvent | BrowserRunLifecycleEvent[];
+        referer?: string;
+        referrerPolicy?: string;
+    };
+    /** Block requests matching these regex patterns. Mutually exclusive with `allowRequestPattern`. */
+    rejectRequestPattern?: string[];
+    /** Only allow requests matching these regex patterns. Mutually exclusive with `rejectRequestPattern`. */
+    allowRequestPattern?: string[];
+    /** Block requests of these resource types. Mutually exclusive with `allowResourceTypes`. */
+    rejectResourceTypes?: BrowserRunResourceType[];
+    /** Only allow requests of these resource types. Mutually exclusive with `rejectResourceTypes`. */
+    allowResourceTypes?: BrowserRunResourceType[];
+    /** Additional HTTP headers sent with every request. */
+    setExtraHTTPHeaders?: Record<string, string>;
+    /** Whether JavaScript is enabled on the page. */
+    setJavaScriptEnabled?: boolean;
+    /** Override the default user agent string.
+     * @default "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+     * */
+    userAgent?: string;
+    /** Set the browser viewport size.
+     * @see https://pptr.dev/api/puppeteer.viewport
+     * @default {width:1920,height:1080}
+     * */
+    viewport?: {
+        width: number;
+        height: number;
+        deviceScaleFactor?: number;
+        isMobile?: boolean;
+        isLandscape?: boolean;
+        hasTouch?: boolean;
+    };
+    /** Wait for a CSS selector to appear in the page before proceeding.
+     * @see https://pptr.dev/api/puppeteer.waitforselectoroptions
      */
-    fit?: "scale-down" | "contain" | "cover" | "crop" | "pad" | "squeeze";
-    /**
-     * Image segmentation using artificial intelligence models. Sets pixels not
-     * within selected segment area to transparent e.g "foreground" sets every
-     * background pixel as transparent.
+    waitForSelector?: {
+        selector: string;
+        hidden?: true;
+        visible?: true;
+        /** Timeout in milliseconds. Max 120000 */
+        timeout?: number;
+    };
+    /** Wait for a fixed delay in milliseconds before proceeding. Max 120000 */
+    waitForTimeout?: number;
+    /** When true, continue on best-effort when awaited events fail or timeout. */
+    bestAttempt?: boolean;
+    /** Maximum duration in milliseconds for the browser action after page load. Max 120000 */
+    actionTimeout?: number;
+    /** Cache time to live in seconds (0-86400). Set to 0 to disable.
+     * @default 5
      */
-    segment?: "foreground";
-    /**
-     * When cropping with fit: "cover", this defines the side or point that should
-     * be left uncropped. The value is either a string
-     * "left", "right", "top", "bottom", "auto", or "center" (the default),
-     * or an object {x, y} containing focal point coordinates in the original
-     * image expressed as fractions ranging from 0.0 (top or left) to 1.0
-     * (bottom or right), 0.5 being the center. {fit: "cover", gravity: "top"} will
-     * crop bottom or left and right sides as necessary, but won’t crop anything
-     * from the top. {fit: "cover", gravity: {x:0.5, y:0.2}} will crop each side to
-     * preserve as much as possible around a point at 20% of the height of the
-     * source image.
-     */
-    gravity?: 'face' | 'left' | 'right' | 'top' | 'bottom' | 'center' | 'auto' | 'entropy' | BasicImageTransformationsGravityCoordinates;
-    /**
-     * Background color to add underneath the image. Applies only to images with
-     * transparency (such as PNG). Accepts any CSS color (#RRGGBB, rgba(…),
-     * hsl(…), etc.)
-     */
-    background?: string;
-    /**
-     * Number of degrees (90, 180, 270) to rotate the image by. width and height
-     * options refer to axes after rotation.
-     */
-    rotate?: 0 | 90 | 180 | 270 | 360;
+    cacheTTL?: number;
 }
-interface BasicImageTransformationsGravityCoordinates {
-    x?: number;
-    y?: number;
-    mode?: 'remainder' | 'box-center';
+/** Common options shared by all quick actions. Exactly one of `url` or `html` must be provided.*/
+type BrowserRunCommonOptions = (BrowserRunBaseOptions & {
+    /** URL to navigate to, e.g. `"https://example.com"`. */
+    url: string;
+}) | (BrowserRunBaseOptions & {
+    /** Set the HTML content of the page directly. */
+    html: string;
+});
+type BrowserRunPuppeteerScreenshotOptions = {
+    /** @default "png" */
+    type?: 'png' | 'jpeg' | 'webp';
+    /** @default "binary" */
+    encoding?: 'binary' | 'base64';
+    quality?: number;
+    fullPage?: boolean;
+    clip?: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        scale?: number;
+    };
+    omitBackground?: boolean;
+    optimizeForSpeed?: boolean;
+    captureBeyondViewport?: boolean;
+    fromSurface?: boolean;
+};
+type BrowserRunScreenshotOptions = BrowserRunCommonOptions & {
+    /** CSS selector of the element to screenshot. */
+    selector?: string;
+    /** When true, scroll the entire page before taking the screenshot. */
+    scrollPage?: boolean;
+    /** @see https://pptr.dev/api/puppeteer.screenshotoptions */
+    screenshotOptions?: BrowserRunPuppeteerScreenshotOptions;
+};
+type BrowserRunPDFOptions = BrowserRunCommonOptions & {
+    /** @see https://pptr.dev/api/puppeteer.pdfoptions */
+    pdfOptions?: {
+        /** @default 1 */
+        scale?: number;
+        /** @default false */
+        displayHeaderFooter?: boolean;
+        headerTemplate?: string;
+        footerTemplate?: string;
+        /** @default false */
+        printBackground?: boolean;
+        /** @default false */
+        landscape?: boolean;
+        pageRanges?: string;
+        /** @default "letter" */
+        format?: 'letter' | 'legal' | 'tabloid' | 'ledger' | 'a0' | 'a1' | 'a2' | 'a3' | 'a4' | 'a5' | 'a6';
+        width?: string | number;
+        height?: string | number;
+        /** @default false */
+        preferCSSPageSize?: boolean;
+        margin?: {
+            top?: string | number;
+            right?: string | number;
+            bottom?: string | number;
+            left?: string | number;
+        };
+        /** @default false */
+        omitBackground?: boolean;
+        /** @default true */
+        tagged?: boolean;
+        /** @default false */
+        outline?: boolean;
+        /** @default 30000 */
+        timeout?: number;
+    };
+};
+type BrowserRunScrapeOptions = BrowserRunCommonOptions & {
+    /** CSS selectors to scrape. At least one element is required. */
+    elements: Array<{
+        selector: string;
+    }>;
+};
+type BrowserRunLinksOptions = BrowserRunCommonOptions & {
+    /** When true, only return links that are visible on the page. @default false */
+    visibleLinksOnly?: boolean;
+    /** When true, exclude links pointing to external domains. @default false */
+    excludeExternalLinks?: boolean;
+};
+type BrowserRunSnapshotOptions = BrowserRunCommonOptions & {
+    /** @see https://pptr.dev/api/puppeteer.screenshotoptions */
+    screenshotOptions?: Omit<BrowserRunPuppeteerScreenshotOptions, 'encoding'>;
+};
+interface BrowserRunJsonBaseOptions {
+    /** Custom AI models to try in order. Max 3. Falls back to next on error. */
+    custom_ai?: Array<{
+        /** Model ID in `<provider>/<model_name>` format, e.g. `"workers-ai/@cf/meta/llama-3.3-70b-instruct-fp8-fast"`. */
+        model: string;
+        /** Bearer token. Not needed for workers-ai models. */
+        authorization?: string;
+    }>;
+}
+/**
+ * Options for the `json` quick action.
+ * At least one of `prompt` or `response_format` must be provided.
+ */
+type BrowserRunJsonOptions = BrowserRunCommonOptions & BrowserRunJsonBaseOptions & ({
+    /** Natural-language prompt describing what data to extract. */
+    prompt: string;
+    /** Structured output schema for the AI model. @see https://developers.cloudflare.com/workers-ai/json-mode/ */
+    response_format?: AiTextGenerationResponseFormat;
+} | {
+    /** Natural-language prompt describing what data to extract. */
+    prompt?: string;
+    /** Structured output schema for the AI model. @see https://developers.cloudflare.com/workers-ai/json-mode/ */
+    response_format: AiTextGenerationResponseFormat;
+});
+type BrowserRunContentOptions = BrowserRunCommonOptions;
+type BrowserRunMarkdownOptions = BrowserRunCommonOptions;
+type BrowserRunResponseMeta = {
+    /** HTTP status code of the rendered page */
+    status: number;
+    /** Page title */
+    title: string;
+};
+/** Success response for `content` action. */
+type BrowserRunContentSuccessResponse = {
+    success: true;
+    /** Extracted HTML content */
+    result: string;
+    meta: BrowserRunResponseMeta;
+};
+/** Success response for `links` action. */
+type BrowserRunLinksSuccessResponse = {
+    success: true;
+    /** Extracted links */
+    result: string[];
+};
+/** Success response for `scrape` action. */
+type BrowserRunScrapeSuccessResponse = {
+    success: true;
+    result: Array<{
+        /** The CSS selector used to find elements. */
+        selector: string;
+        /** Array of elements matching the selector. */
+        results: Array<{
+            /** Outer HTML of the element. */
+            html: string;
+            /** Text content of the element. */
+            text: string;
+            /** Width of the element in pixels. */
+            width: number;
+            /** Height of the element in pixels. */
+            height: number;
+            /** Top position of the element relative to the viewport in pixels. */
+            top: number;
+            /** Left position of the element relative to the viewport in pixels. */
+            left: number;
+            /** Array of HTML attributes on the element. */
+            attributes: Array<{
+                /** Attribute name. */
+                name: string;
+                /** Attribute value. */
+                value: string;
+            }>;
+        }>;
+    }>;
+};
+/** Success response for `snapshot` action. */
+type BrowserRunSnapshotSuccessResponse = {
+    success: true;
+    result: {
+        /** HTML content of the page. */
+        content: string;
+        /** Base64-encoded screenshot image. */
+        screenshot: string;
+    };
+    meta: BrowserRunResponseMeta;
+};
+/** Success response for `json` action. */
+type BrowserRunJsonSuccessResponse = {
+    success: true;
+    /** JSON data extracted from the page using an AI model */
+    result: Record<string, unknown>;
+};
+/** Success response for `markdown` action. */
+type BrowserRunMarkdownSuccessResponse = {
+    success: true;
+    /** Extracted markdown content */
+    result: string;
+};
+/** Error response for BrowserRun actions. */
+type BrowserRunErrorResponse = {
+    success: false;
+    errors: {
+        message: string;
+        code?: number;
+        detail?: string;
+        path?: string;
+    }[];
+};
+/** Error response for BrowserRun `json` action. */
+type BrowserRunJsonErrorResponse = BrowserRunErrorResponse & {
+    /** Raw AI response text for debugging */
+    rawAiResponse?: string;
+};
+/**
+ * Browser Run API binding for automating headless browsers.
+ * @see https://developers.cloudflare.com/browser-run/
+ */
+declare abstract class BrowserRun {
+    /**
+     * Send a raw HTTP request to the Browser Run API.
+     * Used by libraries like `@cloudflare/puppeteer` to acquire and connect to a browser instance.
+     * @see https://developers.cloudflare.com/browser-run/
+     */
+    fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+    /**
+     * Take a screenshot of a web page.
+     * @param action - Must be `'screenshot'`.
+     * @param options - Screenshot options including viewport, selectors, and image format.
+     * @returns A `Response` containing one of:
+     *
+     * **Success (HTTP 200):**
+     * - Binary image data with `Content-Type: image/png`, `image/jpeg`, or `image/webp` (when `encoding: 'binary'`, the default)
+     * - Data URI string with `Content-Type: text/plain` (when `encoding: 'base64'`)
+     *
+     * **Error:**
+     * - `BrowserRunErrorResponse` JSON with appropriate HTTP status code (400, 422, 429, 500, 503)
+     *
+     * **Headers:**
+     * - `X-Browser-Ms-Used`: Browser time consumed in milliseconds (set when status < 500)
+     */
+    quickAction(action: 'screenshot', options: BrowserRunScreenshotOptions): Promise<Response>;
+    /**
+     * Generate a PDF of a web page.
+     * @param action - Must be `'pdf'`.
+     * @param options - PDF generation options including page size, margins, and headers/footers.
+     * @returns A `Response` containing one of:
+     *
+     * **Success (HTTP 200):**
+     * - Binary PDF data with `Content-Type: application/pdf`
+     *
+     * **Error:**
+     * - `BrowserRunErrorResponse` JSON with appropriate HTTP status code (400, 422, 429, 500, 503)
+     *
+     * **Headers:**
+     * - `X-Browser-Ms-Used`: Browser time consumed in milliseconds (set when status < 500)
+     */
+    quickAction(action: 'pdf', options: BrowserRunPDFOptions): Promise<Response>;
+    /**
+     * Get the HTML content of a web page.
+     * @param action - Must be `'content'`.
+     * @param options - Navigation and page interaction options.
+     * @returns A `Response` containing one of:
+     *
+     * **Success (HTTP 200):**
+     * - `BrowserRunContentSuccessResponse` JSON with `Content-Type: application/json`
+     *
+     * **Error:**
+     * - `BrowserRunErrorResponse` JSON with appropriate HTTP status code (400, 422, 429, 500, 503)
+     *
+     * **Headers:**
+     * - `X-Browser-Ms-Used`: Browser time consumed in milliseconds (set when status < 500)
+     */
+    quickAction(action: 'content', options: BrowserRunContentOptions): Promise<Response>;
+    /**
+     * Scrape elements from a web page by CSS selector.
+     * @param action - Must be `'scrape'`.
+     * @param options - Scrape options with CSS selectors for elements to extract.
+     * @returns A `Response` containing one of:
+     *
+     * **Success (HTTP 200):**
+     * - `BrowserRunScrapeSuccessResponse` JSON with `Content-Type: application/json`
+     *
+     * **Error:**
+     * - `BrowserRunErrorResponse` JSON with appropriate HTTP status code (400, 422, 429, 500, 503)
+     *
+     * **Headers:**
+     * - `X-Browser-Ms-Used`: Browser time consumed in milliseconds (set when status < 500)
+     */
+    quickAction(action: 'scrape', options: BrowserRunScrapeOptions): Promise<Response>;
+    /**
+     * Extract all links from a web page.
+     * @param action - Must be `'links'`.
+     * @param options - Options to filter visible or internal links only.
+     * @returns A `Response` containing one of:
+     *
+     * **Success (HTTP 200):**
+     * - `BrowserRunLinksSuccessResponse` JSON with `Content-Type: application/json`
+     *
+     * **Error:**
+     * - `BrowserRunErrorResponse` JSON with appropriate HTTP status code (400, 422, 429, 500, 503)
+     *
+     * **Headers:**
+     * - `X-Browser-Ms-Used`: Browser time consumed in milliseconds (set when status < 500)
+     */
+    quickAction(action: 'links', options: BrowserRunLinksOptions): Promise<Response>;
+    /**
+     * Get both the HTML content and a base64-encoded screenshot of a web page.
+     * @param action - Must be `'snapshot'`.
+     * @param options - Snapshot options including screenshot settings (encoding is always base64).
+     * @returns A `Response` containing one of:
+     *
+     * **Success (HTTP 200):**
+     * - `BrowserRunSnapshotSuccessResponse` JSON with `Content-Type: application/json`
+     *
+     * **Error:**
+     * - `BrowserRunErrorResponse` JSON with appropriate HTTP status code (400, 422, 429, 500, 503)
+     *
+     * **Headers:**
+     * - `X-Browser-Ms-Used`: Browser time consumed in milliseconds (set when status < 500)
+     */
+    quickAction(action: 'snapshot', options: BrowserRunSnapshotOptions): Promise<Response>;
+    /**
+     * Extract structured JSON data from a web page using AI.
+     * @param action - Must be `'json'`.
+     * @param options - JSON extraction options with prompt or response_format schema.
+     * @returns A `Response` containing one of:
+     *
+     * **Success (HTTP 200):**
+     * - `BrowserRunJsonSuccessResponse` JSON with `Content-Type: application/json`
+     *
+     * **Error:**
+     * - `BrowserRunErrorResponse` JSON with appropriate HTTP status code (400, 422, 429, 500, 503)
+     * - HTTP 422 with code `2012` for HTML-to-markdown conversion failures
+     * - HTTP 422/500 for AI extraction failures (may include `rawAiResponse` field)
+     *
+     * **Headers:**
+     * - `X-Browser-Ms-Used`: Browser time consumed in milliseconds (set when status < 500)
+     */
+    quickAction(action: 'json', options: BrowserRunJsonOptions): Promise<Response>;
+    /**
+     * Convert a web page to Markdown.
+     * @param action - Must be `'markdown'`.
+     * @param options - Navigation and page interaction options.
+     * @returns A `Response` containing one of:
+     *
+     * **Success (HTTP 200):**
+     * - `BrowserRunMarkdownSuccessResponse` JSON with `Content-Type: application/json`
+     *
+     * **Error:**
+     * - `BrowserRunErrorResponse` JSON with appropriate HTTP status code (400, 422, 429, 500, 503)
+     * - HTTP 422 with code `2012` for HTML-to-markdown conversion failures
+     *
+     * **Headers:**
+     * - `X-Browser-Ms-Used`: Browser time consumed in milliseconds (set when status < 500)
+     */
+    quickAction(action: 'markdown', options: BrowserRunMarkdownOptions): Promise<Response>;
 }
 /**
  * In addition to the properties you can set in the RequestInit dict
@@ -7024,8 +11177,56 @@ interface RequestInitCfProperties extends Record<string, unknown> {
      * (e.g. { '200-299': 86400, '404': 1, '500-599': 0 })
      */
     cacheTtlByStatus?: Record<string, number>;
+    /** Controls how responses with a `Vary` header are cached for this request. */
+    vary?: RequestInitCfPropertiesVary;
+    /**
+     * Explicit Cache-Control header value to set on the response stored in cache.
+     * This gives full control over cache directives (e.g. 'public, max-age=3600, s-maxage=86400').
+     *
+     * Cannot be used together with `cacheTtl` or the `cache` request option (`no-store`/`no-cache`),
+     * as these are mutually exclusive cache control mechanisms. Setting both will throw a TypeError.
+     *
+     * Can be used together with `cacheTtlByStatus`.
+     */
+    cacheControl?: string;
+    /**
+     * Whether the response should be eligible for Cache Reserve storage.
+     */
+    cacheReserveEligible?: boolean;
+    /**
+     * Whether to respect strong ETags (as opposed to weak ETags) from the origin.
+     */
+    respectStrongEtag?: boolean;
+    /**
+     * Whether to strip ETag headers from the origin response before caching.
+     */
+    stripEtags?: boolean;
+    /**
+     * Whether to strip Last-Modified headers from the origin response before caching.
+     */
+    stripLastModified?: boolean;
+    /**
+     * Whether to enable Cache Deception Armor, which protects against web cache
+     * deception attacks by verifying the Content-Type matches the URL extension.
+     */
+    cacheDeceptionArmor?: boolean;
+    /**
+     * Minimum file size in bytes for a response to be eligible for Cache Reserve storage.
+     */
+    cacheReserveMinimumFileSize?: number;
     scrapeShield?: boolean;
     apps?: boolean;
+    /**
+     * Controls whether an outbound gRPC-web subrequest from this Worker is
+     * converted to gRPC at the Cloudflare edge.
+     *
+     * - `"passthrough"`: forward the subrequest unchanged as gRPC-web (default).
+     * - `"convert"`: convert the gRPC-web subrequest to gRPC at the edge.
+     *
+     * Provides per-request control over the same edge conversion behavior
+     * gated by the `auto_grpc_convert` compatibility flag.
+     */
+    grpcWeb?: "passthrough" | "convert";
     image?: RequestInitCfPropertiesImage;
     minify?: RequestInitCfPropertiesImageMinify;
     mirage?: boolean;
@@ -7046,49 +11247,122 @@ interface RequestInitCfProperties extends Record<string, unknown> {
      */
     resolveOverride?: string;
 }
-interface RequestInitCfPropertiesImageDraw extends BasicImageTransformations {
+/**
+ * Controls how Workers Standard Vary handles a request header listed by an
+ * origin `Vary` response header:
+ *
+ * - `"normalize"`: normalize the request header value before it is used in the
+ *   cache variance key.
+ * - `"passthrough"`: use the raw request header value in the cache variance
+ *   key.
+ * - `"bypass"`: bypass cache when the header appears in the origin `Vary`
+ *   response header.
+ */
+type RequestInitCfPropertiesVaryAction = "normalize" | "passthrough" | "bypass";
+/** Configuration for Workers Standard Vary support. */
+interface RequestInitCfPropertiesVary {
+    /** The fallback action for varied request headers not listed in `headers`. */
+    default: RequestInitCfPropertiesVaryHeader;
     /**
-     * Absolute URL of the image file to use for the drawing. It can be any of
-     * the supported file formats. For drawing of watermarks or non-rectangular
-     * overlays we recommend using PNG or WebP images.
-     */
-    url: string;
-    /**
-     * Floating-point number between 0 (transparent) and 1 (opaque).
-     * For example, opacity: 0.5 makes overlay semitransparent.
-     */
-    opacity?: number;
-    /**
-     * - If set to true, the overlay image will be tiled to cover the entire
-     *   area. This is useful for stock-photo-like watermarks.
-     * - If set to "x", the overlay image will be tiled horizontally only
-     *   (form a line).
-     * - If set to "y", the overlay image will be tiled vertically only
-     *   (form a line).
-     */
-    repeat?: true | "x" | "y";
-    /**
-     * Position of the overlay image relative to a given edge. Each property is
-     * an offset in pixels. 0 aligns exactly to the edge. For example, left: 10
-     * positions left side of the overlay 10 pixels from the left edge of the
-     * image it's drawn over. bottom: 0 aligns bottom of the overlay with bottom
-     * of the background image.
+     * Lowercase request header names and their Vary configuration.
      *
-     * Setting both left & right, or both top & bottom is an error.
-     *
-     * If no position is specified, the image will be centered.
+     * The `accept` header can include `media_types`, the `accept-language`
+     * header can include `languages`, and other headers support only `action`.
      */
-    top?: number;
-    left?: number;
-    bottom?: number;
-    right?: number;
+    headers?: RequestInitCfPropertiesVaryHeaders;
 }
-interface RequestInitCfPropertiesImage extends BasicImageTransformations {
+/** Common Vary behavior for a single request header. */
+interface RequestInitCfPropertiesVaryHeader {
+    /** How this request header contributes to cache variance. */
+    action: RequestInitCfPropertiesVaryAction;
+}
+/** Vary behavior for the `accept` request header. */
+interface RequestInitCfPropertiesVaryAcceptHeader extends RequestInitCfPropertiesVaryHeader {
     /**
-     * Device Pixel Ratio. Default 1. Multiplier for width/height that makes it
-     * easier to specify higher-DPI sizes in <img srcset>.
+     * Media types to keep when normalizing the `Accept` request header.
+     *
+     * Named `media_types` to match the serialized `cf.vary` configuration.
      */
-    dpr?: number;
+    media_types?: string[];
+}
+/** Vary behavior for the `accept-language` request header. */
+interface RequestInitCfPropertiesVaryAcceptLanguageHeader extends RequestInitCfPropertiesVaryHeader {
+    /**
+     * Language tags to keep when normalizing the `Accept-Language` request
+     * header.
+     */
+    languages?: string[];
+}
+/**
+ * Lowercase request header names and their Vary behavior.
+ *
+ * The index signature allows arbitrary custom request headers beyond the
+ * well-known `accept` and `accept-language` specializations.
+ */
+interface RequestInitCfPropertiesVaryHeaders {
+    accept?: RequestInitCfPropertiesVaryAcceptHeader;
+    "accept-language"?: RequestInitCfPropertiesVaryAcceptLanguageHeader;
+    [header: string]: RequestInitCfPropertiesVaryHeader | RequestInitCfPropertiesVaryAcceptHeader | RequestInitCfPropertiesVaryAcceptLanguageHeader | undefined;
+}
+interface BasicImageTransformations {
+    /**
+     * Maximum width in image pixels. The value must be an integer.
+     */
+    width?: number;
+    /**
+     * Maximum height in image pixels. The value must be an integer.
+     */
+    height?: number;
+    /**
+     * When cropping with fit: "cover", this defines the side or point that should
+     * be left uncropped. The value is either a string
+     * "left", "right", "top", "bottom", "auto", or "center" (the default),
+     * or an object {x, y} containing focal point coordinates in the original
+     * image expressed as fractions ranging from 0.0 (top or left) to 1.0
+     * (bottom or right), 0.5 being the center. {fit: "cover", gravity: "top"} will
+     * crop bottom or left and right sides as necessary, but won’t crop anything
+     * from the top. {fit: "cover", gravity: {x:0.5, y:0.2}} will crop each side to
+     * preserve as much as possible around a point at 20% of the height of the
+     * source image.
+     */
+    gravity?: 'face' | 'left' | 'right' | 'top' | 'bottom' | 'center' | 'auto' | 'entropy' | BasicImageTransformationsGravityCoordinates;
+    /**
+     * Specifies how closely the image is cropped toward detected faces when combined
+     * with the gravity=face option. Accepts a valid range between 0.0 (includes as much
+     * of the background as possible) and 1.0 (crops the image as closely to the face as
+     * possible). The default is 0.
+     */
+    zoom?: number;
+    /**
+     * Resizing mode as a string. It affects interpretation of width and height
+     * options:
+     *  - scale-down: Similar to contain, but the image is never enlarged. If
+     *    the image is larger than given width or height, it will be resized.
+     *    Otherwise its original size will be kept.
+     *  - scale-up: Similar to contain, but the image is never shrunk. If the
+     *    image is smaller than the given width or height, it will be resized.
+     *    Otherwise its original size will be kept.
+     *  - contain: Resizes to maximum size that fits within the given width and
+     *    height. If only a single dimension is given (e.g. only width), the
+     *    image will be shrunk or enlarged to exactly match that dimension.
+     *    Aspect ratio is always preserved.
+     *  - cover: Resizes (shrinks or enlarges) to fill the entire area of width
+     *    and height. If the image has an aspect ratio different from the ratio
+     *    of width and height, it will be cropped to fit.
+     *  - crop: The image will be shrunk and cropped to fit within the area
+     *    specified by width and height. The image will not be enlarged. For images
+     *    smaller than the given dimensions it's the same as scale-down. For
+     *    images larger than the given dimensions, it's the same as cover.
+     *    See also trim.
+     *  - pad: Resizes to the maximum size that fits within the given width and
+     *    height, and then fills the remaining area with a background color
+     *    (white by default). Use of this mode is not recommended, as the same
+     *    effect can be more efficiently achieved with the contain mode and the
+     *    CSS object-fit: contain property.
+     *  - squeeze: Stretches and deforms to the width and height given, even if it
+     *    breaks aspect ratio
+     */
+    fit?: "scale-down" | "scale-up" | "contain" | "cover" | "crop" | "pad" | "squeeze";
     /**
      * Allows you to trim your image. Takes dpr into account and is performed before
      * resizing or rotation.
@@ -7117,6 +11391,154 @@ interface RequestInitCfPropertiesImage extends BasicImageTransformations {
             keep?: number;
         };
     };
+    /**
+     * Background color to add underneath the image. Applies only to images with
+     * transparency (such as PNG). Accepts any CSS color (#RRGGBB, rgba(…),
+     * hsl(…), etc.)
+     */
+    background?: string;
+    /**
+     * Flips the images horizontally, vertically, or both. Flipping is applied before
+     * rotation, so if you apply flip=h,rotate=90 then the image will be flipped
+     * horizontally, then rotated by 90 degrees.
+     */
+    flip?: 'h' | 'v' | 'hv';
+    /**
+     * Number of degrees (90, 180, 270) to rotate the image by. width and height
+     * options refer to axes after rotation.
+     */
+    rotate?: 0 | 90 | 180 | 270 | 360;
+    /**
+     * Strength of sharpening filter to apply to the image. Floating-point
+     * number between 0 (no sharpening, default) and 10 (maximum). 1.0 is a
+     * recommended value for downscaled images.
+     */
+    sharpen?: number;
+    /**
+     * Radius of a blur filter (approximate gaussian). Maximum supported radius
+     * is 250.
+     */
+    blur?: number;
+    /**
+     * Increase contrast by a factor. A value of 1.0 equals no change, a value of
+     * 0.5 equals low contrast, and a value of 2.0 equals high contrast. 0 is
+     * ignored.
+     */
+    contrast?: number;
+    /**
+     * Increase brightness by a factor. A value of 1.0 equals no change, a value
+     * of 0.5 equals half brightness, and a value of 2.0 equals twice as bright.
+     * 0 is ignored.
+     */
+    brightness?: number;
+    /**
+     * Increase exposure by a factor. A value of 1.0 equals no change, a value of
+     * 0.5 darkens the image, and a value of 2.0 lightens the image. 0 is ignored.
+     */
+    gamma?: number;
+    /**
+     * Increase contrast by a factor. A value of 1.0 equals no change, a value of
+     * 0.5 equals low contrast, and a value of 2.0 equals high contrast. 0 is
+     * ignored.
+     */
+    saturation?: number;
+    /**
+     * Device Pixel Ratio. Default 1. Multiplier for width/height that makes it
+     * easier to specify higher-DPI sizes in <img srcset>.
+     */
+    dpr?: number;
+    /**
+     * Adds a border around the image. The border is added after resizing. Border
+     * width takes dpr into account, and can be specified either using a single
+     * width property, or individually for each side.
+     */
+    border?: {
+        color: string;
+        width: number;
+    } | {
+        color: string;
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+    };
+    /**
+     * Image segmentation using artificial intelligence models. Sets pixels not
+     * within selected segment area to transparent e.g "foreground" sets every
+     * background pixel as transparent.
+     */
+    segment?: "foreground";
+    /**
+     * Controls the algorithm used when an image needs to be enlarged. This
+     * parameter works with any fit mode that upscales, such as `contain`,
+     * `cover`, and `scale-up`. It has no effect when `fit=scale-down` or when
+     * the target dimensions are smaller than the source.
+     * - interpolate: Uses bicubic interpolation, which may reduce image quality.
+     *   This is the default behavior when `upscale` is not specified.
+     * - generate: Uses AI upscaling to produce sharper, more detailed results
+     *   when enlarging images.
+     */
+    upscale?: "interpolate" | "generate";
+}
+interface BasicImageTransformationsGravityCoordinates {
+    x?: number;
+    y?: number;
+    mode?: 'remainder' | 'box-center';
+}
+interface RequestInitCfPropertiesImageDraw extends BasicImageTransformations {
+    /**
+     * Absolute URL of the image file to use for the drawing. It can be any of
+     * the supported file formats. For drawing of watermarks or non-rectangular
+     * overlays we recommend using PNG or WebP images.
+     */
+    url: string;
+    /**
+     * Floating-point number between 0 (transparent) and 1 (opaque).
+     * For example, opacity: 0.5 makes overlay semitransparent.
+     */
+    opacity?: number;
+    /**
+     * - If set to true, the overlay image will be tiled to cover the entire
+     *   area. This is useful for stock-photo-like watermarks.
+     * - If set to "x", the overlay image will be tiled horizontally only
+     *   (form a line).
+     * - If set to "y", the overlay image will be tiled vertically only
+     *   (form a line).
+     */
+    repeat?: true | "x" | "y";
+    /**
+     * How to combine the foreground and backdrop pixels to create the result
+     */
+    composite?:
+    /** Foreground drawn on top of backdrop (default) */
+    'over'
+    /** Foreground shown only where backdrop is opaque */
+     | 'in'
+    /** Foreground drawn on top, but clipped to the backdrop's shape */
+     | 'atop'
+    /** Foreground shown only where backdrop is transparent */
+     | 'out'
+    /** Foreground and backdrop visible only where the other is not */
+     | 'xor'
+    /** Foreground and backdrop channels added (brightening) */
+     | 'lighter';
+    /**
+     * Position of the overlay image relative to a given edge. Each property is
+     * an offset in pixels. 0 aligns exactly to the edge. For example, left: 10
+     * positions left side of the overlay 10 pixels from the left edge of the
+     * image it's drawn over. bottom: 0 aligns bottom of the overlay with bottom
+     * of the background image.
+     *
+     * Setting both left & right, or both top & bottom is an error.
+     *
+     * If no position is specified, the image will be centered.
+     */
+    top?: number;
+    left?: number;
+    bottom?: number;
+    right?: number;
+}
+interface RequestInitCfPropertiesImage extends BasicImageTransformations {
     /**
      * Quality setting from 1-100 (useful values are in 60-90 range). Lower values
      * make images look worse, but load faster. The default is 85. It applies only
@@ -7159,17 +11581,6 @@ interface RequestInitCfPropertiesImage extends BasicImageTransformations {
      */
     metadata?: "keep" | "copyright" | "none";
     /**
-     * Strength of sharpening filter to apply to the image. Floating-point
-     * number between 0 (no sharpening, default) and 10 (maximum). 1.0 is a
-     * recommended value for downscaled images.
-     */
-    sharpen?: number;
-    /**
-     * Radius of a blur filter (approximate gaussian). Maximum supported radius
-     * is 250.
-     */
-    blur?: number;
-    /**
      * Overlays are drawn in the order they appear in the array (last array
      * entry is the topmost layer).
      */
@@ -7180,50 +11591,6 @@ interface RequestInitCfPropertiesImage extends BasicImageTransformations {
      * the origin.
      */
     "origin-auth"?: "share-publicly";
-    /**
-     * Adds a border around the image. The border is added after resizing. Border
-     * width takes dpr into account, and can be specified either using a single
-     * width property, or individually for each side.
-     */
-    border?: {
-        color: string;
-        width: number;
-    } | {
-        color: string;
-        top: number;
-        right: number;
-        bottom: number;
-        left: number;
-    };
-    /**
-     * Increase brightness by a factor. A value of 1.0 equals no change, a value
-     * of 0.5 equals half brightness, and a value of 2.0 equals twice as bright.
-     * 0 is ignored.
-     */
-    brightness?: number;
-    /**
-     * Increase contrast by a factor. A value of 1.0 equals no change, a value of
-     * 0.5 equals low contrast, and a value of 2.0 equals high contrast. 0 is
-     * ignored.
-     */
-    contrast?: number;
-    /**
-     * Increase exposure by a factor. A value of 1.0 equals no change, a value of
-     * 0.5 darkens the image, and a value of 2.0 lightens the image. 0 is ignored.
-     */
-    gamma?: number;
-    /**
-     * Increase contrast by a factor. A value of 1.0 equals no change, a value of
-     * 0.5 equals low contrast, and a value of 2.0 equals high contrast. 0 is
-     * ignored.
-     */
-    saturation?: number;
-    /**
-     * Flips the images horizontally, vertically, or both. Flipping is applied before
-     * rotation, so if you apply flip=h,rotate=90 then the image will be flipped
-     * horizontally, then rotated by 90 degrees.
-     */
-    flip?: 'h' | 'v' | 'hv';
     /**
      * Slightly reduces latency on a cache miss by selecting a
      * quickest-to-compress file format, at a cost of increased file size and
@@ -7604,6 +11971,32 @@ interface IncomingRequestCfPropertiesTLSClientAuth {
      * @example "Dec 22 19:39:00 2018 GMT"
      */
     certNotAfter: string;
+    /**
+     * The client leaf certificate in [RFC 9440](https://www.rfc-editor.org/rfc/rfc9440)
+     * format (`:base64-DER:`). Empty if no client certificate was presented or if
+     * the leaf certificate exceeded 10 KB (see {@link certRFC9440TooLarge}).
+     *
+     * Suitable for forwarding to an origin via the `Client-Cert` HTTP header.
+     */
+    certRFC9440: string;
+    /**
+     * `true` if the leaf certificate exceeded 10 KB and was omitted from
+     * {@link certRFC9440}.
+     */
+    certRFC9440TooLarge: boolean;
+    /**
+     * The intermediate certificate chain in [RFC 9440](https://www.rfc-editor.org/rfc/rfc9440)
+     * format as a comma-separated list. Empty if no intermediates were sent or
+     * if the chain exceeded 16 KB (see {@link certChainRFC9440TooLarge}).
+     *
+     * Suitable for forwarding to an origin via the `Client-Cert-Chain` HTTP header.
+     */
+    certChainRFC9440: string;
+    /**
+     * `true` if the intermediate chain exceeded 16 KB and was omitted from
+     * {@link certChainRFC9440}.
+     */
+    certChainRFC9440TooLarge: boolean;
 }
 /** Placeholder values for TLS Client Authorization */
 interface IncomingRequestCfPropertiesTLSClientAuthPlaceholder {
@@ -7624,9 +12017,13 @@ interface IncomingRequestCfPropertiesTLSClientAuthPlaceholder {
     certFingerprintSHA256: "";
     certNotBefore: "";
     certNotAfter: "";
+    certRFC9440: "";
+    certRFC9440TooLarge: false;
+    certChainRFC9440: "";
+    certChainRFC9440TooLarge: false;
 }
 /** Possible outcomes of TLS verification */
-declare type CertVerificationStatus = 
+declare type CertVerificationStatus =
 /** Authentication succeeded */
 "SUCCESS"
 /** No certificate was presented */
@@ -7663,6 +12060,10 @@ interface D1Meta {
      */
     served_by_region?: string;
     /**
+     * The three letters airport code of the colo that executed the query.
+     */
+    served_by_colo?: string;
+    /**
      * True if-and-only-if the database instance that executed the query was the primary.
      */
     served_by_primary?: boolean;
@@ -7690,7 +12091,7 @@ interface D1ExecResult {
     count: number;
     duration: number;
 }
-type D1SessionConstraint = 
+type D1SessionConstraint =
 // Indicates that the first query should go to the primary, and the rest queries
 // using the same D1DatabaseSession will go to any replica that is consistent with
 // the bookmark maintained by the session (returned by the first query).
@@ -7751,6 +12152,15 @@ declare abstract class D1PreparedStatement {
 interface Disposable {
 }
 /**
+ * The returned data after sending an email
+ */
+interface EmailSendResult {
+    /**
+     * The Email Message ID
+     */
+    messageId: string;
+}
+/**
  * An email message that can be sent from a Worker.
  */
 interface EmailMessage {
@@ -7791,30 +12201,190 @@ interface ForwardableEmailMessage extends EmailMessage {
      * @param headers A [Headers object](https://developer.mozilla.org/en-US/docs/Web/API/Headers).
      * @returns A promise that resolves when the email message is forwarded.
      */
-    forward(rcptTo: string, headers?: Headers): Promise<void>;
+    forward(rcptTo: string, headers?: Headers): Promise<EmailSendResult>;
     /**
      * Reply to the sender of this email message with a new EmailMessage object.
      * @param message The reply message.
      * @returns A promise that resolves when the email message is replied.
      */
-    reply(message: EmailMessage): Promise<void>;
+    reply(message: EmailMessage): Promise<EmailSendResult>;
+    /**
+     * Reply to the sender of this email message with a message built from the given
+     * fields. Threading headers (In-Reply-To/References) are set automatically.
+     * @param builder The reply message contents.
+     * @returns A promise that resolves when the email message is replied.
+     */
+    reply(builder: EmailReplyMessageBuilder): Promise<EmailSendResult>;
 }
+/** A file attachment for an email message */
+type EmailAttachment = {
+    disposition: 'inline';
+    contentId: string;
+    filename: string;
+    type: string;
+    content: string | ArrayBuffer | ArrayBufferView;
+} | {
+    disposition: 'attachment';
+    contentId?: undefined;
+    filename: string;
+    type: string;
+    content: string | ArrayBuffer | ArrayBufferView;
+};
+/** An Email Address */
+interface EmailAddress {
+    name: string;
+    email: string;
+}
+/**
+ * Recipient fields for `SendEmail.send()`. At least one of `to`, `cc`, or
+ * `bcc` must be provided.
+ */
+type EmailDestinations = {
+    to?: string | EmailAddress | (string | EmailAddress)[];
+    cc?: string | EmailAddress | (string | EmailAddress)[];
+    bcc?: string | EmailAddress | (string | EmailAddress)[];
+} & ({
+    to: string | EmailAddress | (string | EmailAddress)[];
+} | {
+    cc: string | EmailAddress | (string | EmailAddress)[];
+} | {
+    bcc: string | EmailAddress | (string | EmailAddress)[];
+});
+/**
+ * Fields shared by all composed emails (no recipients). Used directly by
+ * `ForwardableEmailMessage.reply()`, which always replies to the original
+ * sender, and extended by `EmailMessageBuilder` for `SendEmail.send()`.
+ */
+interface EmailReplyMessageBuilder {
+    from: string | EmailAddress;
+    subject: string;
+    replyTo?: string | EmailAddress;
+    headers?: Record<string, string>;
+    text?: string;
+    html?: string;
+    attachments?: EmailAttachment[];
+}
+/**
+ * Fields for composing an email without constructing raw MIME, for
+ * `SendEmail.send()`. Requires at least one of `to`, `cc`, or `bcc`.
+ */
+type EmailMessageBuilder = EmailReplyMessageBuilder & EmailDestinations;
 /**
  * A binding that allows a Worker to send email messages.
  */
 interface SendEmail {
-    send(message: EmailMessage): Promise<void>;
+    send(message: EmailMessage): Promise<EmailSendResult>;
+    send(builder: EmailMessageBuilder): Promise<EmailSendResult>;
 }
 declare abstract class EmailEvent extends ExtendableEvent {
     readonly message: ForwardableEmailMessage;
 }
-declare type EmailExportedHandler<Env = unknown> = (message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext) => void | Promise<void>;
+declare type EmailExportedHandler<Env = unknown, Props = unknown> = (message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext<Props>) => void | Promise<void>;
 declare module "cloudflare:email" {
     let _EmailMessage: {
         prototype: EmailMessage;
         new (from: string, to: string, raw: ReadableStream | string): EmailMessage;
     };
     export { _EmailMessage as EmailMessage };
+}
+/**
+ * Evaluation context for targeting rules.
+ * Keys are attribute names (e.g. "userId", "country"), values are the attribute values.
+ */
+type FlagshipEvaluationContext = Record<string, string | number | boolean>;
+interface FlagshipEvaluationDetails<T> {
+    flagKey: string;
+    value: T;
+    variant?: string | undefined;
+    reason?: string | undefined;
+    errorCode?: string | undefined;
+    errorMessage?: string | undefined;
+}
+interface FlagshipEvaluationError extends Error {
+}
+/**
+ * Feature flags binding for evaluating feature flags from a Cloudflare Workers script.
+ *
+ * @example
+ * ```typescript
+ * // Get a boolean flag value with a default
+ * const enabled = await env.FLAGS.getBooleanValue('my-feature', false);
+ *
+ * // Get a flag value with evaluation context for targeting
+ * const variant = await env.FLAGS.getStringValue('experiment', 'control', {
+ *   userId: 'user-123',
+ *   country: 'US',
+ * });
+ *
+ * // Get full evaluation details including variant and reason
+ * const details = await env.FLAGS.getBooleanDetails('my-feature', false);
+ * console.log(details.variant, details.reason);
+ * ```
+ */
+declare abstract class Flagship {
+    /**
+     * Get a flag value without type checking.
+     * @param flagKey The key of the flag to evaluate.
+     * @param defaultValue Optional default value returned when evaluation fails.
+     * @param context Optional evaluation context for targeting rules.
+     */
+    get(flagKey: string, defaultValue?: unknown, context?: FlagshipEvaluationContext): Promise<unknown>;
+    /**
+     * Get a boolean flag value.
+     * @param flagKey The key of the flag to evaluate.
+     * @param defaultValue Default value returned when evaluation fails or the flag type does not match.
+     * @param context Optional evaluation context for targeting rules.
+     */
+    getBooleanValue(flagKey: string, defaultValue: boolean, context?: FlagshipEvaluationContext): Promise<boolean>;
+    /**
+     * Get a string flag value.
+     * @param flagKey The key of the flag to evaluate.
+     * @param defaultValue Default value returned when evaluation fails or the flag type does not match.
+     * @param context Optional evaluation context for targeting rules.
+     */
+    getStringValue(flagKey: string, defaultValue: string, context?: FlagshipEvaluationContext): Promise<string>;
+    /**
+     * Get a number flag value.
+     * @param flagKey The key of the flag to evaluate.
+     * @param defaultValue Default value returned when evaluation fails or the flag type does not match.
+     * @param context Optional evaluation context for targeting rules.
+     */
+    getNumberValue(flagKey: string, defaultValue: number, context?: FlagshipEvaluationContext): Promise<number>;
+    /**
+     * Get an object flag value.
+     * @param flagKey The key of the flag to evaluate.
+     * @param defaultValue Default value returned when evaluation fails or the flag type does not match.
+     * @param context Optional evaluation context for targeting rules.
+     */
+    getObjectValue<T extends object>(flagKey: string, defaultValue: T, context?: FlagshipEvaluationContext): Promise<T>;
+    /**
+     * Get a boolean flag value with full evaluation details.
+     * @param flagKey The key of the flag to evaluate.
+     * @param defaultValue Default value returned when evaluation fails or the flag type does not match.
+     * @param context Optional evaluation context for targeting rules.
+     */
+    getBooleanDetails(flagKey: string, defaultValue: boolean, context?: FlagshipEvaluationContext): Promise<FlagshipEvaluationDetails<boolean>>;
+    /**
+     * Get a string flag value with full evaluation details.
+     * @param flagKey The key of the flag to evaluate.
+     * @param defaultValue Default value returned when evaluation fails or the flag type does not match.
+     * @param context Optional evaluation context for targeting rules.
+     */
+    getStringDetails(flagKey: string, defaultValue: string, context?: FlagshipEvaluationContext): Promise<FlagshipEvaluationDetails<string>>;
+    /**
+     * Get a number flag value with full evaluation details.
+     * @param flagKey The key of the flag to evaluate.
+     * @param defaultValue Default value returned when evaluation fails or the flag type does not match.
+     * @param context Optional evaluation context for targeting rules.
+     */
+    getNumberDetails(flagKey: string, defaultValue: number, context?: FlagshipEvaluationContext): Promise<FlagshipEvaluationDetails<number>>;
+    /**
+     * Get an object flag value with full evaluation details.
+     * @param flagKey The key of the flag to evaluate.
+     * @param defaultValue Default value returned when evaluation fails or the flag type does not match.
+     * @param context Optional evaluation context for targeting rules.
+     */
+    getObjectDetails<T extends object>(flagKey: string, defaultValue: T, context?: FlagshipEvaluationContext): Promise<FlagshipEvaluationDetails<T>>;
 }
 /**
  * Hello World binding to serve as an explanatory example. DO NOT USE
@@ -7836,7 +12406,7 @@ interface Hyperdrive {
     /**
      * Connect directly to Hyperdrive as if it's your database, returning a TCP socket.
      *
-     * Calling this method returns an idential socket to if you call
+     * Calling this method returns an identical socket to if you call
      * `connect("host:port")` using the `host` and `port` fields from this object.
      * Pick whichever approach works better with your preferred DB client library.
      *
@@ -7935,11 +12505,25 @@ type ImageTransform = {
 type ImageDrawOptions = {
     opacity?: number;
     repeat?: boolean | string;
+    composite?: ImageCompositeMode;
     top?: number;
     left?: number;
     bottom?: number;
     right?: number;
 };
+type ImageCompositeMode =
+/** Foreground drawn on top of backdrop (default) */
+'over'
+/** Foreground shown only where backdrop is opaque */
+ | 'in'
+/** Foreground drawn on top, but clipped to the backdrop's shape */
+ | 'atop'
+/** Foreground shown only where backdrop is transparent */
+ | 'out'
+/** Foreground and backdrop visible only where the other is not */
+ | 'xor'
+/** Foreground and backdrop channels added (brightening) */
+ | 'lighter';
 type ImageInputOptions = {
     encoding?: 'base64';
 };
@@ -7949,6 +12533,87 @@ type ImageOutputOptions = {
     background?: string;
     anim?: boolean;
 };
+interface ImageMetadata {
+    id: string;
+    filename?: string;
+    uploaded?: string;
+    requireSignedURLs: boolean;
+    meta?: Record<string, unknown>;
+    variants: string[];
+    draft?: boolean;
+    creator?: string;
+}
+interface ImageUploadOptions {
+    id?: string;
+    filename?: string;
+    requireSignedURLs?: boolean;
+    metadata?: Record<string, unknown>;
+    creator?: string;
+    encoding?: 'base64';
+}
+interface ImageUpdateOptions {
+    requireSignedURLs?: boolean;
+    metadata?: Record<string, unknown>;
+    creator?: string;
+}
+interface ImageListOptions {
+    limit?: number;
+    cursor?: string;
+    sortOrder?: 'asc' | 'desc';
+    creator?: string;
+}
+interface ImageList {
+    images: ImageMetadata[];
+    cursor?: string;
+    listComplete: boolean;
+}
+interface ImageHandle {
+    /**
+     * Get metadata for a hosted image
+     * @returns Image metadata, or null if not found
+     */
+    details(): Promise<ImageMetadata | null>;
+    /**
+     * Get the raw image data for a hosted image
+     * @returns ReadableStream of image bytes, or null if not found
+     */
+    bytes(): Promise<ReadableStream<Uint8Array> | null>;
+    /**
+     * Update hosted image metadata
+     * @param options Properties to update
+     * @returns Updated image metadata
+     * @throws {@link ImagesError} if update fails
+     */
+    update(options: ImageUpdateOptions): Promise<ImageMetadata>;
+    /**
+     * Delete a hosted image
+     * @returns True if deleted, false if not found
+     */
+    delete(): Promise<boolean>;
+}
+interface HostedImagesBinding {
+    /**
+     * Get a handle for a hosted image
+     * @param imageId The ID of the image (UUID or custom ID)
+     * @returns A handle for per-image operations
+     */
+    image(imageId: string): ImageHandle;
+    /**
+     * Upload a new hosted image
+     * @param image The image file to upload
+     * @param options Upload configuration
+     * @returns Metadata for the uploaded image
+     * @throws {@link ImagesError} if upload fails
+     */
+    upload(image: ReadableStream<Uint8Array> | ArrayBuffer, options?: ImageUploadOptions): Promise<ImageMetadata>;
+    /**
+     * List hosted images with pagination
+     * @param options List configuration
+     * @returns List of images with pagination info
+     * @throws {@link ImagesError} if list fails
+     */
+    list(options?: ImageListOptions): Promise<ImageList>;
+}
 interface ImagesBinding {
     /**
      * Get image metadata (type, width and height)
@@ -7962,6 +12627,10 @@ interface ImagesBinding {
      * @returns A transform handle
      */
     input(stream: ReadableStream<Uint8Array>, options?: ImageInputOptions): ImageTransformer;
+    /**
+     * Access hosted images CRUD operations
+     */
+    readonly hosted: HostedImagesBinding;
 }
 interface ImageTransformer {
     /**
@@ -8028,7 +12697,13 @@ interface MediaTransformer {
      * @param transform - Configuration for how the media should be transformed
      * @returns A generator for producing the transformed media output
      */
-    transform(transform: MediaTransformationInputOptions): MediaTransformationGenerator;
+    transform(transform?: MediaTransformationInputOptions): MediaTransformationGenerator;
+    /**
+     * Generates the final media output with specified options.
+     * @param output - Configuration for the output format and parameters
+     * @returns The final transformation result containing the transformed media
+     */
+    output(output?: MediaTransformationOutputOptions): MediaTransformationResult;
 }
 /**
  * Generator for producing media transformation results.
@@ -8040,7 +12715,7 @@ interface MediaTransformationGenerator {
      * @param output - Configuration for the output format and parameters
      * @returns The final transformation result containing the transformed media
      */
-    output(output: MediaTransformationOutputOptions): MediaTransformationResult;
+    output(output?: MediaTransformationOutputOptions): MediaTransformationResult;
 }
 /**
  * Result of a media transformation operation.
@@ -8049,19 +12724,19 @@ interface MediaTransformationGenerator {
 interface MediaTransformationResult {
     /**
      * Returns the transformed media as a readable stream of bytes.
-     * @returns A stream containing the transformed media data
+     * @returns A promise containing a readable stream with the transformed media
      */
-    media(): ReadableStream<Uint8Array>;
+    media(): Promise<ReadableStream<Uint8Array>>;
     /**
      * Returns the transformed media as an HTTP response object.
-     * @returns The transformed media as a Response, ready to store in cache or return to users
+     * @returns The transformed media as a Promise<Response>, ready to store in cache or return to users
      */
-    response(): Response;
+    response(): Promise<Response>;
     /**
      * Returns the MIME type of the transformed media.
-     * @returns The content type string (e.g., 'image/jpeg', 'video/mp4')
+     * @returns A promise containing the content type string (e.g., 'image/jpeg', 'video/mp4')
      */
-    contentType(): string;
+    contentType(): Promise<string>;
 }
 /**
  * Configuration options for transforming media input.
@@ -8169,7 +12844,7 @@ declare module "cloudflare:pipelines" {
         protected ctx: ExecutionContext;
         constructor(ctx: ExecutionContext, env: Env);
         /**
-         * run recieves an array of PipelineRecord which can be
+         * run receives an array of PipelineRecord which can be
          * transformed and returned to the pipeline
          * @param records Incoming records from the pipeline to be transformed
          * @param metadata Information about the specific pipeline calling the transformation entrypoint
@@ -8271,7 +12946,7 @@ declare namespace Rpc {
     // The reason for using a generic type here is to build a serializable subset of structured
     //   cloneable composite types. This allows types defined with the "interface" keyword to pass the
     //   serializable check as well. Otherwise, only types defined with the "type" keyword would pass.
-    type Serializable<T> = 
+    type Serializable<T> =
     // Structured cloneables
     BaseType
     // Structured cloneable composites
@@ -8335,9 +13010,9 @@ declare namespace Rpc {
     // Base type for all other types providing RPC-like interfaces.
     // Rewrites all methods/properties to be `MethodOrProperty`s, while preserving callable types.
     // `Reserved` names (e.g. stub method names like `dup()`) and symbols can't be accessed over RPC.
-    export type Provider<T extends object, Reserved extends string = never> = MaybeCallableProvider<T> & {
-        [K in Exclude<keyof T, Reserved | symbol | keyof StubBase<never>>]: MethodOrProperty<T[K]>;
-    };
+    export type Provider<T extends object, Reserved extends string = never> = MaybeCallableProvider<T> & Pick<{
+        [K in keyof T]: MethodOrProperty<T[K]>;
+    }, Exclude<keyof T, Reserved | symbol | keyof StubBase<never>>>;
 }
 declare namespace Cloudflare {
     // Type of `env`.
@@ -8396,21 +13071,24 @@ declare namespace CloudflareWorkersModule {
         protected ctx: ExecutionContext<Props>;
         protected env: Env;
         constructor(ctx: ExecutionContext, env: Env);
+        email?(message: ForwardableEmailMessage): void | Promise<void>;
         fetch?(request: Request): Response | Promise<Response>;
+        connect?(socket: Socket): void | Promise<void>;
+        queue?(batch: MessageBatch): void | Promise<void>;
+        scheduled?(controller: ScheduledController): void | Promise<void>;
         tail?(events: TraceItem[]): void | Promise<void>;
         tailStream?(event: TailStream.TailEvent<TailStream.Onset>): TailStream.TailEventHandlerType | Promise<TailStream.TailEventHandlerType>;
-        trace?(traces: TraceItem[]): void | Promise<void>;
-        scheduled?(controller: ScheduledController): void | Promise<void>;
-        queue?(batch: MessageBatch<unknown>): void | Promise<void>;
         test?(controller: TestController): void | Promise<void>;
+        trace?(traces: TraceItem[]): void | Promise<void>;
     }
     export abstract class DurableObject<Env = Cloudflare.Env, Props = {}> implements Rpc.DurableObjectBranded {
         [Rpc.__DURABLE_OBJECT_BRAND]: never;
         protected ctx: DurableObjectState<Props>;
         protected env: Env;
         constructor(ctx: DurableObjectState, env: Env);
-        fetch?(request: Request): Response | Promise<Response>;
         alarm?(alarmInfo?: AlarmInvocationInfo): void | Promise<void>;
+        fetch?(request: Request): Response | Promise<Response>;
+        connect?(socket: Socket): void | Promise<void>;
         webSocketMessage?(ws: WebSocket, message: string | ArrayBuffer): void | Promise<void>;
         webSocketClose?(ws: WebSocket, code: number, reason: string, wasClean: boolean): void | Promise<void>;
         webSocketError?(ws: WebSocket, error: unknown): void | Promise<void>;
@@ -8418,30 +13096,78 @@ declare namespace CloudflareWorkersModule {
     export type WorkflowDurationLabel = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year';
     export type WorkflowSleepDuration = `${number} ${WorkflowDurationLabel}${'s' | ''}` | number;
     export type WorkflowDelayDuration = WorkflowSleepDuration;
+    export type WorkflowDynamicDelayContext = {
+        ctx: WorkflowStepContext<WorkflowDelayFunction>;
+        error: Error;
+    };
+    export type WorkflowDelayFunction = (input: WorkflowDynamicDelayContext) => WorkflowDelayDuration | Promise<WorkflowDelayDuration>;
     export type WorkflowTimeoutDuration = WorkflowSleepDuration;
     export type WorkflowRetentionDuration = WorkflowSleepDuration;
     export type WorkflowBackoff = 'constant' | 'linear' | 'exponential';
+    export type WorkflowStepSensitivity = 'output';
     export type WorkflowStepConfig = {
         retries?: {
             limit: number;
-            delay: WorkflowDelayDuration | number;
+            delay: WorkflowDelayDuration | number | WorkflowDelayFunction;
             backoff?: WorkflowBackoff;
         };
         timeout?: WorkflowTimeoutDuration | number;
+        sensitive?: WorkflowStepSensitivity;
+    };
+    export type WorkflowStepRollbackConfig = Pick<WorkflowStepConfig, 'retries' | 'timeout'>;
+    export type WorkflowCronSchedule = {
+        /** Cron expression that triggered this event. */
+        cron: string;
+        /** Timestamp of the scheduled trigger, in milliseconds since the Unix epoch. */
+        scheduledTime: number;
     };
     export type WorkflowEvent<T> = {
         payload: Readonly<T>;
         timestamp: Date;
         instanceId: string;
+        workflowName: string;
+        schedule?: WorkflowCronSchedule;
     };
     export type WorkflowStepEvent<T> = {
         payload: Readonly<T>;
         timestamp: Date;
         type: string;
+        sensitive?: WorkflowStepSensitivity;
+    };
+    export type WorkflowStepContext<Delay = WorkflowDelayDuration | number> = {
+        step: {
+            name: string;
+            count: number;
+        };
+        attempt: number;
+        config: {
+            retries?: {
+                limit: number;
+                backoff?: WorkflowBackoff;
+            } & (Delay extends WorkflowDelayFunction ? {} : {
+                delay: WorkflowDelayDuration | number;
+            });
+            timeout?: WorkflowTimeoutDuration | number;
+            sensitive?: WorkflowStepSensitivity;
+        };
+    };
+    export type WorkflowRollbackContext<T = unknown> = {
+        ctx: WorkflowStepContext;
+        error: Error;
+        output: T | undefined;
+        /** @deprecated Use `ctx.step.name` and `ctx.step.count` instead. */
+        stepName: string;
+    };
+    export type WorkflowRollbackHandler<T = unknown> = (ctx: WorkflowRollbackContext<T>) => Promise<void>;
+    export type WorkflowStepRollbackOptions<T = unknown> = {
+        rollback: WorkflowRollbackHandler<T>;
+        rollbackConfig?: WorkflowStepRollbackConfig;
     };
     export abstract class WorkflowStep {
-        do<T extends Rpc.Serializable<T>>(name: string, callback: () => Promise<T>): Promise<T>;
-        do<T extends Rpc.Serializable<T>>(name: string, config: WorkflowStepConfig, callback: () => Promise<T>): Promise<T>;
+        do<T extends Rpc.Serializable<T>>(name: string, callback: (ctx: WorkflowStepContext) => Promise<T>, rollbackOptions?: WorkflowStepRollbackOptions<T>): Promise<T>;
+        do<T extends Rpc.Serializable<T>, const C extends WorkflowStepConfig>(name: string, config: C, callback: (ctx: WorkflowStepContext<C['retries'] extends {
+            delay: infer D;
+        } ? D : WorkflowDelayDuration | number>) => Promise<T>, rollbackOptions?: WorkflowStepRollbackOptions<T>): Promise<T>;
         sleep: (name: string, duration: WorkflowSleepDuration) => Promise<void>;
         sleepUntil: (name: string, timestamp: Date | number) => Promise<void>;
         waitForEvent<T extends Rpc.Serializable<T>>(name: string, options: {
@@ -8449,6 +13175,7 @@ declare namespace CloudflareWorkersModule {
             timeout?: WorkflowTimeoutDuration | number;
         }): Promise<WorkflowStepEvent<T>>;
     }
+    export type WorkflowInstanceStatus = 'queued' | 'running' | 'paused' | 'errored' | 'terminated' | 'complete' | 'waiting' | 'waitingForPause' | 'unknown';
     export abstract class WorkflowEntrypoint<Env = unknown, T extends Rpc.Serializable<T> | unknown = unknown> implements Rpc.WorkflowEntrypointBranded {
         [Rpc.__WORKFLOW_ENTRYPOINT_BRAND]: never;
         protected ctx: ExecutionContext;
@@ -8457,7 +13184,13 @@ declare namespace CloudflareWorkersModule {
         run(event: Readonly<WorkflowEvent<T>>, step: WorkflowStep): Promise<unknown>;
     }
     export function waitUntil(promise: Promise<unknown>): void;
+    export function withEnv(newEnv: unknown, fn: () => unknown): unknown;
+    export function withExports(newExports: unknown, fn: () => unknown): unknown;
+    export function withEnvAndExports(newEnv: unknown, newExports: unknown, fn: () => unknown): unknown;
     export const env: Cloudflare.Env;
+    export const exports: Cloudflare.Exports;
+    export const cache: CacheContext;
+    export const tracing: Tracing;
 }
 declare module 'cloudflare:workers' {
     export = CloudflareWorkersModule;
@@ -8473,36 +13206,792 @@ declare module "cloudflare:sockets" {
     function _connect(address: string | SocketAddress, options?: SocketOptions): Socket;
     export { _connect as connect };
 }
+/**
+ * Binding entrypoint for Cloudflare Stream.
+ *
+ * Usage:
+ * - Binding-level operations:
+ *   `await env.STREAM.videos.upload`
+ *   `await env.STREAM.videos.createDirectUpload`
+ *   `await env.STREAM.videos.*`
+ *   `await env.STREAM.watermarks.*`
+ * - Per-video operations:
+ *   `await env.STREAM.video(id).downloads.*`
+ *   `await env.STREAM.video(id).captions.*`
+ *
+ * Example usage:
+ * ```ts
+ * await env.STREAM.video(id).downloads.generate();
+ *
+ * const video = env.STREAM.video(id)
+ * const captions = video.captions.list();
+ * const videoDetails = video.details()
+ * ```
+ */
+interface StreamBinding {
+    /**
+     * Returns a handle scoped to a single video for per-video operations.
+     * @param id The unique identifier for the video.
+     * @returns A handle for per-video operations.
+     */
+    video(id: string): StreamVideoHandle;
+    /**
+     * Uploads a new video from a provided URL.
+     * @param url The URL to upload from.
+     * @param params Optional upload parameters.
+     * @returns The uploaded video details.
+     * @throws {BadRequestError} if the upload parameter is invalid or the URL is invalid
+     * @throws {QuotaReachedError} if the account storage capacity is exceeded
+     * @throws {MaxFileSizeError} if the file size is too large
+     * @throws {RateLimitedError} if the server received too many requests
+     * @throws {AlreadyUploadedError} if a video was already uploaded to this URL
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    upload(url: string, params?: StreamUrlUploadParams): Promise<StreamVideo>;
+    /**
+     * Creates a direct upload that allows video uploads without an API key.
+     * @param params Parameters for the direct upload
+     * @returns The direct upload details.
+     * @throws {BadRequestError} if the parameters are invalid
+     * @throws {RateLimitedError} if the server received too many requests
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    createDirectUpload(params: StreamDirectUploadCreateParams): Promise<StreamDirectUpload>;
+    videos: StreamVideos;
+    watermarks: StreamWatermarks;
+}
+/**
+ * Handle for operations scoped to a single Stream video.
+ */
+interface StreamVideoHandle {
+    /**
+     * The unique identifier for the video.
+     */
+    id: string;
+    /**
+     * Get a full videos details
+     * @returns The full video details.
+     * @throws {NotFoundError} if the video is not found
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    details(): Promise<StreamVideo>;
+    /**
+     * Update details for a single video.
+     * @param params The fields to update for the video.
+     * @returns The updated video details.
+     * @throws {NotFoundError} if the video is not found
+     * @throws {BadRequestError} if the parameters are invalid
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    update(params: StreamUpdateVideoParams): Promise<StreamVideo>;
+    /**
+     * Deletes a video and its copies from Cloudflare Stream.
+     * @returns A promise that resolves when deletion completes.
+     * @throws {NotFoundError} if the video is not found
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    delete(): Promise<void>;
+    /**
+     * Creates a signed URL token for a video.
+     * @returns The signed token that was created.
+     * @throws {InternalError} if the signing key cannot be retrieved or the token cannot be signed
+     */
+    generateToken(): Promise<string>;
+    downloads: StreamScopedDownloads;
+    captions: StreamScopedCaptions;
+}
+interface StreamVideo {
+    /**
+     * The unique identifier for the video.
+     */
+    id: string;
+    /**
+     * A user-defined identifier for the media creator.
+     */
+    creator: string | null;
+    /**
+     * The thumbnail URL for the video.
+     */
+    thumbnail: string;
+    /**
+     * The thumbnail timestamp percentage.
+     */
+    thumbnailTimestampPct: number;
+    /**
+     * Indicates whether the video is ready to stream.
+     */
+    readyToStream: boolean;
+    /**
+     * The date and time the video became ready to stream.
+     */
+    readyToStreamAt: string | null;
+    /**
+     * Processing status information.
+     */
+    status: StreamVideoStatus;
+    /**
+     * A user modifiable key-value store.
+     */
+    meta: Record<string, string>;
+    /**
+     * The date and time the video was created.
+     */
+    created: string;
+    /**
+     * The date and time the video was last modified.
+     */
+    modified: string;
+    /**
+     * The date and time at which the video will be deleted.
+     */
+    scheduledDeletion: string | null;
+    /**
+     * The size of the video in bytes.
+     */
+    size: number;
+    /**
+     * The preview URL for the video.
+     */
+    preview?: string;
+    /**
+     * Origins allowed to display the video.
+     */
+    allowedOrigins: Array<string>;
+    /**
+     * Indicates whether signed URLs are required.
+     */
+    requireSignedURLs: boolean | null;
+    /**
+     * The date and time the video was uploaded.
+     */
+    uploaded: string | null;
+    /**
+     * The date and time when the upload URL expires.
+     */
+    uploadExpiry: string | null;
+    /**
+     * The maximum size in bytes for direct uploads.
+     */
+    maxSizeBytes: number | null;
+    /**
+     * The maximum duration in seconds for direct uploads.
+     */
+    maxDurationSeconds: number | null;
+    /**
+     * The video duration in seconds. -1 indicates unknown.
+     */
+    duration: number;
+    /**
+     * Input metadata for the original upload.
+     */
+    input: StreamVideoInput;
+    /**
+     * Playback URLs for the video.
+     */
+    hlsPlaybackUrl: string;
+    dashPlaybackUrl: string;
+    /**
+     * The watermark applied to the video, if any.
+     */
+    watermark: StreamWatermark | null;
+    /**
+     * The live input id associated with the video, if any.
+     */
+    liveInputId?: string | null;
+    /**
+     * The source video id if this is a clip.
+     */
+    clippedFromId: string | null;
+    /**
+     * Public details associated with the video.
+     */
+    publicDetails: StreamPublicDetails | null;
+}
+type StreamVideoStatus = {
+    /**
+     * The current processing state.
+     */
+    state: string;
+    /**
+     * The current processing step.
+     */
+    step?: string;
+    /**
+     * The percent complete as a string.
+     */
+    pctComplete?: string;
+    /**
+     * An error reason code, if applicable.
+     */
+    errorReasonCode: string;
+    /**
+     * An error reason text, if applicable.
+     */
+    errorReasonText: string;
+};
+type StreamVideoInput = {
+    /**
+     * The input width in pixels.
+     */
+    width: number;
+    /**
+     * The input height in pixels.
+     */
+    height: number;
+};
+type StreamPublicDetails = {
+    /**
+     * The public title for the video.
+     */
+    title: string | null;
+    /**
+     * The public share link.
+     */
+    share_link: string | null;
+    /**
+     * The public channel link.
+     */
+    channel_link: string | null;
+    /**
+     * The public logo URL.
+     */
+    logo: string | null;
+};
+type StreamDirectUpload = {
+    /**
+     * The URL an unauthenticated upload can use for a single multipart request.
+     */
+    uploadURL: string;
+    /**
+     * A Cloudflare-generated unique identifier for a media item.
+     */
+    id: string;
+    /**
+     * The watermark profile applied to the upload.
+     */
+    watermark: StreamWatermark | null;
+    /**
+     * The scheduled deletion time, if any.
+     */
+    scheduledDeletion: string | null;
+};
+type StreamDirectUploadCreateParams = {
+    /**
+     * The maximum duration in seconds for a video upload.
+     */
+    maxDurationSeconds: number;
+    /**
+     * The date and time after upload when videos will not be accepted.
+     */
+    expiry?: string;
+    /**
+     * A user-defined identifier for the media creator.
+     */
+    creator?: string;
+    /**
+     * A user modifiable key-value store used to reference other systems of record for
+     * managing videos.
+     */
+    meta?: Record<string, string>;
+    /**
+     * Lists the origins allowed to display the video.
+     */
+    allowedOrigins?: Array<string>;
+    /**
+     * Indicates whether the video can be accessed using the id. When set to `true`,
+     * a signed token must be generated with a signing key to view the video.
+     */
+    requireSignedURLs?: boolean;
+    /**
+     * The thumbnail timestamp percentage.
+     */
+    thumbnailTimestampPct?: number;
+    /**
+     * The date and time at which the video will be deleted. Include `null` to remove
+     * a scheduled deletion.
+     */
+    scheduledDeletion?: string | null;
+    /**
+     * The watermark profile to apply.
+     */
+    watermark?: StreamDirectUploadWatermark;
+};
+type StreamDirectUploadWatermark = {
+    /**
+     * The unique identifier for the watermark profile.
+     */
+    id: string;
+};
+type StreamUrlUploadParams = {
+    /**
+     * Lists the origins allowed to display the video. Enter allowed origin
+     * domains in an array and use `*` for wildcard subdomains. Empty arrays allow the
+     * video to be viewed on any origin.
+     */
+    allowedOrigins?: Array<string>;
+    /**
+     * A user-defined identifier for the media creator.
+     */
+    creator?: string;
+    /**
+     * A user modifiable key-value store used to reference other systems of
+     * record for managing videos.
+     */
+    meta?: Record<string, string>;
+    /**
+     * Indicates whether the video can be a accessed using the id. When
+     * set to `true`, a signed token must be generated with a signing key to view the
+     * video.
+     */
+    requireSignedURLs?: boolean;
+    /**
+     * Indicates the date and time at which the video will be deleted. Omit
+     * the field to indicate no change, or include with a `null` value to remove an
+     * existing scheduled deletion. If specified, must be at least 30 days from upload
+     * time.
+     */
+    scheduledDeletion?: string | null;
+    /**
+     * The timestamp for a thumbnail image calculated as a percentage value
+     * of the video's duration. To convert from a second-wise timestamp to a
+     * percentage, divide the desired timestamp by the total duration of the video. If
+     * this value is not set, the default thumbnail image is taken from 0s of the
+     * video.
+     */
+    thumbnailTimestampPct?: number;
+    /**
+     * The identifier for the watermark profile
+     */
+    watermarkId?: string;
+};
+interface StreamScopedCaptions {
+    /**
+     * Uploads the caption or subtitle file to the endpoint for a specific BCP47 language.
+     * One caption or subtitle file per language is allowed.
+     * @param language The BCP 47 language tag for the caption or subtitle.
+     * @param input The caption or subtitle stream to upload.
+     * @returns The created caption entry.
+     * @throws {NotFoundError} if the video is not found
+     * @throws {BadRequestError} if the language or file is invalid
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    upload(language: string, input: ReadableStream): Promise<StreamCaption>;
+    /**
+     * Generate captions or subtitles for the provided language via AI.
+     * @param language The BCP 47 language tag to generate.
+     * @returns The generated caption entry.
+     * @throws {NotFoundError} if the video is not found
+     * @throws {BadRequestError} if the language is invalid
+     * @throws {StreamError} if a generated caption already exists
+     * @throws {StreamError} if the video duration is too long
+     * @throws {StreamError} if the video is missing audio
+     * @throws {StreamError} if the requested language is not supported
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    generate(language: string): Promise<StreamCaption>;
+    /**
+     * Lists the captions or subtitles.
+     * Use the language parameter to filter by a specific language.
+     * @param language The optional BCP 47 language tag to filter by.
+     * @returns The list of captions or subtitles.
+     * @throws {NotFoundError} if the video or caption is not found
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    list(language?: string): Promise<StreamCaption[]>;
+    /**
+     * Removes the captions or subtitles from a video.
+     * @param language The BCP 47 language tag to remove.
+     * @returns A promise that resolves when deletion completes.
+     * @throws {NotFoundError} if the video or caption is not found
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    delete(language: string): Promise<void>;
+}
+interface StreamScopedDownloads {
+    /**
+     * Generates a download for a video when a video is ready to view. Available
+     * types are `default` and `audio`. Defaults to `default` when omitted.
+     * @param downloadType The download type to create.
+     * @returns The current downloads for the video.
+     * @throws {NotFoundError} if the video is not found
+     * @throws {BadRequestError} if the download type is invalid
+     * @throws {StreamError} if the video duration is too long to generate a download
+     * @throws {StreamError} if the video is not ready to stream
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    generate(downloadType?: StreamDownloadType): Promise<StreamDownloadGetResponse>;
+    /**
+     * Lists the downloads created for a video.
+     * @returns The current downloads for the video.
+     * @throws {NotFoundError} if the video or downloads are not found
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    get(): Promise<StreamDownloadGetResponse>;
+    /**
+     * Delete the downloads for a video. Available types are `default` and `audio`.
+     * Defaults to `default` when omitted.
+     * @param downloadType The download type to delete.
+     * @returns A promise that resolves when deletion completes.
+     * @throws {NotFoundError} if the video or downloads are not found
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    delete(downloadType?: StreamDownloadType): Promise<void>;
+}
+interface StreamVideos {
+    /**
+     * Lists all videos in a users account.
+     * @returns The list of videos.
+     * @throws {BadRequestError} if the parameters are invalid
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    list(params?: StreamVideosListParams): Promise<StreamVideo[]>;
+}
+interface StreamWatermarks {
+    /**
+     * Generate a new watermark profile
+     * @param input The image stream to upload
+     * @param params The watermark creation parameters.
+     * @returns The created watermark profile.
+     * @throws {BadRequestError} if the parameters are invalid
+     * @throws {InvalidURLError} if the URL is invalid
+     * @throws {TooManyWatermarksError} if the number of allowed watermarks is reached
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    generate(input: ReadableStream, params: StreamWatermarkCreateParams): Promise<StreamWatermark>;
+    /**
+     * Generate a new watermark profile
+     * @param url The image url to upload
+     * @param params The watermark creation parameters.
+     * @returns The created watermark profile.
+     * @throws {BadRequestError} if the parameters are invalid
+     * @throws {InvalidURLError} if the URL is invalid
+     * @throws {TooManyWatermarksError} if the number of allowed watermarks is reached
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    generate(url: string, params: StreamWatermarkCreateParams): Promise<StreamWatermark>;
+    /**
+     * Lists all watermark profiles for an account.
+     * @returns The list of watermark profiles.
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    list(): Promise<StreamWatermark[]>;
+    /**
+     * Retrieves details for a single watermark profile.
+     * @param watermarkId The watermark profile identifier.
+     * @returns The watermark profile details.
+     * @throws {NotFoundError} if the watermark is not found
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    get(watermarkId: string): Promise<StreamWatermark>;
+    /**
+     * Deletes a watermark profile.
+     * @param watermarkId The watermark profile identifier.
+     * @returns A promise that resolves when deletion completes.
+     * @throws {NotFoundError} if the watermark is not found
+     * @throws {InternalError} if an unexpected error occurs
+     */
+    delete(watermarkId: string): Promise<void>;
+}
+type StreamUpdateVideoParams = {
+    /**
+     * Lists the origins allowed to display the video. Enter allowed origin
+     * domains in an array and use `*` for wildcard subdomains. Empty arrays allow the
+     * video to be viewed on any origin.
+     */
+    allowedOrigins?: Array<string>;
+    /**
+     * A user-defined identifier for the media creator.
+     */
+    creator?: string;
+    /**
+     * The maximum duration in seconds for a video upload. Can be set for a
+     * video that is not yet uploaded to limit its duration. Uploads that exceed the
+     * specified duration will fail during processing. A value of `-1` means the value
+     * is unknown.
+     */
+    maxDurationSeconds?: number;
+    /**
+     * A user modifiable key-value store used to reference other systems of
+     * record for managing videos.
+     */
+    meta?: Record<string, string>;
+    /**
+     * Indicates whether the video can be a accessed using the id. When
+     * set to `true`, a signed token must be generated with a signing key to view the
+     * video.
+     */
+    requireSignedURLs?: boolean;
+    /**
+     * Indicates the date and time at which the video will be deleted. Omit
+     * the field to indicate no change, or include with a `null` value to remove an
+     * existing scheduled deletion. If specified, must be at least 30 days from upload
+     * time.
+     */
+    scheduledDeletion?: string | null;
+    /**
+     * The timestamp for a thumbnail image calculated as a percentage value
+     * of the video's duration. To convert from a second-wise timestamp to a
+     * percentage, divide the desired timestamp by the total duration of the video. If
+     * this value is not set, the default thumbnail image is taken from 0s of the
+     * video.
+     */
+    thumbnailTimestampPct?: number;
+};
+type StreamCaption = {
+    /**
+     * Whether the caption was generated via AI.
+     */
+    generated?: boolean;
+    /**
+     * The language label displayed in the native language to users.
+     */
+    label: string;
+    /**
+     * The language tag in BCP 47 format.
+     */
+    language: string;
+    /**
+     * The status of a generated caption.
+     */
+    status?: 'ready' | 'inprogress' | 'error';
+};
+type StreamDownloadStatus = 'ready' | 'inprogress' | 'error';
+type StreamDownloadType = 'default' | 'audio';
+type StreamDownload = {
+    /**
+     * Indicates the progress as a percentage between 0 and 100.
+     */
+    percentComplete: number;
+    /**
+     * The status of a generated download.
+     */
+    status: StreamDownloadStatus;
+    /**
+     * The URL to access the generated download.
+     */
+    url?: string;
+};
+/**
+ * An object with download type keys. Each key is optional and only present if that
+ * download type has been created.
+ */
+type StreamDownloadGetResponse = {
+    /**
+     * The audio-only download. Only present if this download type has been created.
+     */
+    audio?: StreamDownload;
+    /**
+     * The default video download. Only present if this download type has been created.
+     */
+    default?: StreamDownload;
+};
+type StreamWatermarkPosition = 'upperRight' | 'upperLeft' | 'lowerLeft' | 'lowerRight' | 'center';
+type StreamWatermark = {
+    /**
+     * The unique identifier for a watermark profile.
+     */
+    id: string;
+    /**
+     * The size of the image in bytes.
+     */
+    size: number;
+    /**
+     * The height of the image in pixels.
+     */
+    height: number;
+    /**
+     * The width of the image in pixels.
+     */
+    width: number;
+    /**
+     * The date and a time a watermark profile was created.
+     */
+    created: string;
+    /**
+     * The source URL for a downloaded image. If the watermark profile was created via
+     * direct upload, this field is null.
+     */
+    downloadedFrom: string | null;
+    /**
+     * A short description of the watermark profile.
+     */
+    name: string;
+    /**
+     * The translucency of the image. A value of `0.0` makes the image completely
+     * transparent, and `1.0` makes the image completely opaque. Note that if the image
+     * is already semi-transparent, setting this to `1.0` will not make the image
+     * completely opaque.
+     */
+    opacity: number;
+    /**
+     * The whitespace between the adjacent edges (determined by position) of the video
+     * and the image. `0.0` indicates no padding, and `1.0` indicates a fully padded
+     * video width or length, as determined by the algorithm.
+     */
+    padding: number;
+    /**
+     * The size of the image relative to the overall size of the video. This parameter
+     * will adapt to horizontal and vertical videos automatically. `0.0` indicates no
+     * scaling (use the size of the image as-is), and `1.0 `fills the entire video.
+     */
+    scale: number;
+    /**
+     * The location of the image. Valid positions are: `upperRight`, `upperLeft`,
+     * `lowerLeft`, `lowerRight`, and `center`. Note that `center` ignores the
+     * `padding` parameter.
+     */
+    position: StreamWatermarkPosition;
+};
+type StreamWatermarkCreateParams = {
+    /**
+     * A short description of the watermark profile.
+     */
+    name?: string;
+    /**
+     * The translucency of the image. A value of `0.0` makes the image completely
+     * transparent, and `1.0` makes the image completely opaque. Note that if the
+     * image is already semi-transparent, setting this to `1.0` will not make the
+     * image completely opaque.
+     */
+    opacity?: number;
+    /**
+     * The whitespace between the adjacent edges (determined by position) of the
+     * video and the image. `0.0` indicates no padding, and `1.0` indicates a fully
+     * padded video width or length, as determined by the algorithm.
+     */
+    padding?: number;
+    /**
+     * The size of the image relative to the overall size of the video. This
+     * parameter will adapt to horizontal and vertical videos automatically. `0.0`
+     * indicates no scaling (use the size of the image as-is), and `1.0 `fills the
+     * entire video.
+     */
+    scale?: number;
+    /**
+     * The location of the image.
+     */
+    position?: StreamWatermarkPosition;
+};
+type StreamVideosListParams = {
+    /**
+     * The maximum number of videos to return.
+     */
+    limit?: number;
+    /**
+     * Return videos created before this timestamp.
+     * (RFC3339/RFC3339Nano)
+     */
+    before?: string;
+    /**
+     * Comparison operator for the `before` field.
+     * @default 'lt'
+     */
+    beforeComp?: StreamPaginationComparison;
+    /**
+     * Return videos created after this timestamp.
+     * (RFC3339/RFC3339Nano)
+     */
+    after?: string;
+    /**
+     * Comparison operator for the `after` field.
+     * @default 'gte'
+     */
+    afterComp?: StreamPaginationComparison;
+};
+type StreamPaginationComparison = 'eq' | 'gt' | 'gte' | 'lt' | 'lte';
+/**
+ * Error object for Stream binding operations.
+ */
+interface StreamError extends Error {
+    readonly code: number;
+    readonly statusCode: number;
+    readonly message: string;
+    readonly stack?: string;
+}
+interface InternalError extends StreamError {
+    name: 'InternalError';
+}
+interface BadRequestError extends StreamError {
+    name: 'BadRequestError';
+}
+interface NotFoundError extends StreamError {
+    name: 'NotFoundError';
+}
+interface ForbiddenError extends StreamError {
+    name: 'ForbiddenError';
+}
+interface RateLimitedError extends StreamError {
+    name: 'RateLimitedError';
+}
+interface QuotaReachedError extends StreamError {
+    name: 'QuotaReachedError';
+}
+interface MaxFileSizeError extends StreamError {
+    name: 'MaxFileSizeError';
+}
+interface InvalidURLError extends StreamError {
+    name: 'InvalidURLError';
+}
+interface AlreadyUploadedError extends StreamError {
+    name: 'AlreadyUploadedError';
+}
+interface TooManyWatermarksError extends StreamError {
+    name: 'TooManyWatermarksError';
+}
+type MarkdownDocument = {
+    name: string;
+    blob: Blob;
+};
 type ConversionResponse = {
+    id: string;
     name: string;
     mimeType: string;
-} & ({
-    format: "markdown";
+    format: 'markdown';
     tokens: number;
     data: string;
 } | {
-    format: "error";
+    id: string;
+    name: string;
+    mimeType: string;
+    format: 'error';
     error: string;
-});
+};
+type ImageConversionOptions = {
+    descriptionLanguage?: 'en' | 'es' | 'fr' | 'it' | 'pt' | 'de';
+};
+type EmbeddedImageConversionOptions = ImageConversionOptions & {
+    convert?: boolean;
+    maxConvertedImages?: number;
+};
+type ConversionOptions = {
+    html?: {
+        images?: EmbeddedImageConversionOptions & {
+            convertOGImage?: boolean;
+        };
+        hostname?: string;
+        cssSelector?: string;
+    };
+    docx?: {
+        images?: EmbeddedImageConversionOptions;
+    };
+    image?: ImageConversionOptions;
+    pdf?: {
+        images?: EmbeddedImageConversionOptions;
+        metadata?: boolean;
+    };
+};
+type ConversionRequestOptions = {
+    gateway?: GatewayOptions;
+    extraHeaders?: object;
+    conversionOptions?: ConversionOptions;
+};
 type SupportedFileFormat = {
     mimeType: string;
     extension: string;
 };
 declare abstract class ToMarkdownService {
-    transform(files: {
-        name: string;
-        blob: Blob;
-    }[], options?: {
-        gateway?: GatewayOptions;
-        extraHeaders?: object;
-    }): Promise<ConversionResponse[]>;
-    transform(files: {
-        name: string;
-        blob: Blob;
-    }, options?: {
-        gateway?: GatewayOptions;
-        extraHeaders?: object;
-    }): Promise<ConversionResponse>;
+    transform(files: MarkdownDocument[], options?: ConversionRequestOptions): Promise<ConversionResponse[]>;
+    transform(files: MarkdownDocument, options?: ConversionRequestOptions): Promise<ConversionResponse>;
     supported(): Promise<SupportedFileFormat[]>;
 }
 declare namespace TailStream {
@@ -8566,11 +14055,19 @@ declare namespace TailStream {
         readonly type: "fetch";
         readonly statusCode: number;
     }
-    type EventOutcome = "ok" | "canceled" | "exception" | "unknown" | "killSwitch" | "daemonDown" | "exceededCpu" | "exceededMemory" | "loadShed" | "responseStreamDisconnected" | "scriptNotFound";
+    interface ConnectEventInfo {
+        readonly type: "connect";
+    }
+    type EventOutcome = "ok" | "canceled" | "exception" | "unknown" | "killSwitch" | "daemonDown" | "exceededCpu" | "exceededMemory" | "loadShed" | "responseStreamDisconnected" | "scriptNotFound" | "internalError" | "exceededWallTime";
     interface ScriptVersion {
         readonly id: string;
         readonly tag?: string;
         readonly message?: string;
+    }
+    interface TracePreviewInfo {
+        readonly id: string;
+        readonly slug: string;
+        readonly name: string;
     }
     interface Onset {
         readonly type: "onset";
@@ -8580,10 +14077,12 @@ declare namespace TailStream {
         readonly dispatchNamespace?: string;
         readonly entrypoint?: string;
         readonly executionModel: string;
+        readonly durableObjectId?: string;
         readonly scriptName?: string;
         readonly scriptTags?: string[];
         readonly scriptVersion?: ScriptVersion;
-        readonly info: FetchEventInfo | JsRpcEventInfo | ScheduledEventInfo | AlarmEventInfo | QueueEventInfo | EmailEventInfo | TraceEventInfo | HibernatableWebSocketEventInfo | CustomEventInfo;
+        readonly preview?: TracePreviewInfo;
+        readonly info: FetchEventInfo | ConnectEventInfo | JsRpcEventInfo | ScheduledEventInfo | AlarmEventInfo | QueueEventInfo | EmailEventInfo | TraceEventInfo | HibernatableWebSocketEventInfo | CustomEventInfo;
     }
     interface Outcome {
         readonly type: "outcome";
@@ -8618,6 +14117,15 @@ declare namespace TailStream {
         readonly level: "debug" | "error" | "info" | "log" | "warn";
         readonly message: object;
     }
+    interface DroppedEventsDiagnostic {
+        readonly diagnosticsType: "droppedEvents";
+        readonly count: number;
+    }
+    interface StreamDiagnostic {
+        readonly type: 'streamDiagnostic';
+        // To add new diagnostic types, define a new interface and add it to this union type.
+        readonly diagnostic: DroppedEventsDiagnostic;
+    }
     // This marks the worker handler return information.
     // This is separate from Outcome because the worker invocation can live for a long time after
     // returning. For example - Websockets that return an http upgrade response but then continue
@@ -8634,7 +14142,7 @@ declare namespace TailStream {
         readonly type: "attributes";
         readonly info: Attribute[];
     }
-    type EventType = Onset | Outcome | SpanOpen | SpanClose | DiagnosticChannelEvent | Exception | Log | Return | Attributes;
+    type EventType = Onset | Outcome | SpanOpen | SpanClose | DiagnosticChannelEvent | Exception | Log | StreamDiagnostic | Return | Attributes;
     // Context in which this trace event lives.
     interface SpanContext {
         // Single id for the entire top-level invocation
@@ -8648,8 +14156,11 @@ declare namespace TailStream {
         // For Hibernate and Mark this would be the span under which they were emitted.
         // spanId is not set ONLY if:
         //  1. This is an Onset event
-        //  2. We are not inherting any SpanContext. (e.g. this is a cross-account service binding or a new top-level invocation)
+        //  2. We are not inheriting any SpanContext. (e.g. this is a cross-account service binding or a new top-level invocation)
         readonly spanId?: string;
+        // W3C trace flags from an upstream traceparent. Absent when no upstream
+        // sampling decision was made.
+        readonly traceFlags?: number;
     }
     interface TailEvent<Event extends EventType> {
         // invocation id of the currently invoked worker stage.
@@ -8923,6 +14434,103 @@ type WorkerVersionMetadata = {
     /** The timestamp of when the Worker Version was uploaded */
     timestamp: string;
 };
+// ============ Web Search Request Types ============
+/**
+ * Options for a Web Search query.
+ */
+type WebSearchSearchOptions = {
+    /** The search query. */
+    query: string;
+    /**
+     * Maximum number of results to return. Defaults to 10, capped at 20.
+     * The actual count may be lower if fewer matches exist.
+     */
+    limit?: number;
+};
+// ============ Web Search Response Types ============
+/**
+ * A single Web Search result.
+ *
+ * Web Search is discovery-only -- results carry catalog metadata about a page
+ * but never the page body. To read a result's content the caller invokes the
+ * global `fetch()` API against the result's `url`, at which point the
+ * destination's own access controls apply (including Cloudflare Pay-per-Crawl).
+ */
+type WebSearchResult = {
+    /** Canonical URL. */
+    url: string;
+    /** Page title. */
+    title: string;
+    /** Page-level description. May be absent. */
+    description?: string;
+    /**
+     * Last-modified date for the page, when known. Naive (no timezone)
+     * ISO-8601 datetime, e.g. `"2025-11-30T04:39:48"`.
+     */
+    lastModifiedDate?: string;
+    /**
+     * Page meta image URL (typically the `og:image`). May be absent.
+     */
+    imageUrl?: string;
+    /** Optional favicon URL for UI hints. */
+    faviconUrl?: string;
+};
+/**
+ * Per-response metadata for a Web Search query. Carries operational
+ * fields useful for support and debugging.
+ */
+type WebSearchResponseMetadata = {
+    /** The query that was executed. */
+    query: string;
+    /** Opaque request identifier used for support and debugging. */
+    requestId: string;
+    /** End-to-end latency for this search request, in milliseconds. */
+    latencyMs: number;
+};
+/**
+ * Response from a Web Search query.
+ */
+type WebSearchSearchResponse = {
+    items: WebSearchResult[];
+    metadata: WebSearchResponseMetadata;
+};
+// ============ Web Search Binding Class ============
+/**
+ * Cloudflare Web Search binding.
+ *
+ * Discovery-only primitive for agents and Workers. Returns URLs and catalog
+ * metadata for a query; never returns page content or excerpts. To read a
+ * result's body, fetch the URL with the global `fetch()` API.
+ *
+ * Declared in wrangler with a single object (there is exactly one corpus, the
+ * public web, so there is no name, namespace, or instance to specify):
+ *
+ * ```jsonc
+ * { "web_search": { "binding": "WEBSEARCH" } }
+ * ```
+ *
+ * @example
+ * ```ts
+ * const { items, metadata } = await env.WEBSEARCH.search({
+ *   query: "Cloudflare Workers",
+ * });
+ *
+ * const top = items[0];
+ * console.log(top.url, top.title, metadata.latencyMs);
+ *
+ * // Read content yourself; pay-per-crawl and other publisher
+ * // controls apply at the fetch site, not at search time.
+ * const page = await fetch(top.url);
+ * ```
+ */
+declare abstract class WebSearch {
+    /**
+     * Run a Web Search query.
+     * @param options Search options. Only `query` is required.
+     * @returns The matching results plus per-response metadata.
+     */
+    search(options: WebSearchSearchOptions): Promise<WebSearchSearchResponse>;
+}
 interface DynamicDispatchLimits {
     /**
      * Limit CPU time in milliseconds.
@@ -9014,12 +14622,43 @@ type InstanceStatus = {
      | 'complete' | 'waiting' // instance is hibernating and waiting for sleep or event to finish
      | 'waitingForPause' // instance is finishing the current work to pause
      | 'unknown';
-    error?: string;
-    output?: object;
+    error?: {
+        name: string;
+        message: string;
+    };
+    output?: unknown;
 };
 interface WorkflowError {
     code?: number;
     message: string;
+}
+interface WorkflowInstanceTerminateOptions {
+    /**
+     * If true, run registered rollback handlers before terminating the instance.
+     * Only steps that registered rollback handlers are rolled back.
+     */
+    rollback?: boolean;
+}
+interface WorkflowInstanceRestartOptions {
+    /**
+     * Restart from a specific step. If omitted, the instance restarts from the beginning.
+     * The step must exist in the instance's execution history.
+     */
+    from?: {
+        /**
+         * The step name as defined in your workflow code.
+         */
+        name: string;
+        /**
+         * 1-indexed occurrence of this step name. Use when the same step name appears multiple times (e.g. in a loop).
+         * @default 1
+         */
+        count?: number;
+        /**
+         * Step type filter. Use when different step types share the same name.
+         */
+        type?: 'do' | 'sleep' | 'waitForEvent';
+    };
 }
 declare abstract class WorkflowInstance {
     public id: string;
@@ -9033,12 +14672,15 @@ declare abstract class WorkflowInstance {
     public resume(): Promise<void>;
     /**
      * Terminate the instance. If it is errored, terminated or complete, an error will be thrown.
+     * @param options Options for termination, including whether registered rollback handlers should run.
      */
-    public terminate(): Promise<void>;
+    public terminate(options?: WorkflowInstanceTerminateOptions): Promise<void>;
     /**
-     * Restart the instance.
+     * Restart the instance. Optionally restart from a specific step, preserving
+     * cached results for all steps before it.
+     * @param options Options for the restart, including an optional step to restart from.
      */
-    public restart(): Promise<void>;
+    public restart(options?: WorkflowInstanceRestartOptions): Promise<void>;
     /**
      * Returns the current status of the instance.
      */

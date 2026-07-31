@@ -1,7 +1,6 @@
 {
 	"extends": "@repo/typescript-config/vite.json",
 	"compilerOptions": {
-		"baseUrl": ".",
 		"paths": {
 			"@/*": ["./src/client/*"],
 			"@repo/alert-destinations": ["../../packages/alert-destinations/src/index.ts"],

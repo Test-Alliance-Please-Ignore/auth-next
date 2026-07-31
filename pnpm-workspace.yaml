@@ -2,11 +2,25 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
-configDependencies:
-  '@pnpm/trusted-deps': 0.1.1+sha512-jI3PWNv2zCg9+KHI3qQTsa534c5nisZQrHFeWSyyHoUXcuzvjkXxQKPFLJ/qtNAF+PtKHDlRntO2aZKb3VDuHQ==
+overrides:
+  '@cloudflare/workers-types': 5.20260724.1
+  '@emnapi/runtime': 1.11.2
+  esbuild: 0.28.1
+  drizzle-orm: 0.45.2
+  tsx: 4.21.0
+  workerd: 1.20260730.1
 
-onlyBuiltDependenciesFile: node_modules/.pnpm-config/@pnpm/trusted-deps/allow.json
+peerDependencyRules:
+  allowedVersions:
+    '@cloudflare/workers-types': 5.20260724.1
 
-onlyBuiltDependencies:
-  - core-js-pure
-  - unrs-resolver
+allowBuilds:
+  core-js-pure: true
+  esbuild: true
+  unrs-resolver: true
+  workerd: true
+
+minimumReleaseAgeExclude:
+  - '@cloudflare/vitest-pool-workers@0.19.1'
+  - miniflare@4.20260730.0
+  - wrangler@4.116.0

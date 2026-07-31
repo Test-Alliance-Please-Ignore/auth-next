@@ -20,3 +20,10 @@ ciCmd
 	.action(async () => {
 		await $(opts())`bun turbo check:ci`
 	})
+
+ciCmd
+	.command('test')
+	.description('Run focused Node/Vite tests')
+	.action(async () => {
+		await $(opts())`bun turbo test:focused`
+	})

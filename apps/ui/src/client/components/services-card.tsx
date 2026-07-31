@@ -2,7 +2,7 @@ import { ArrowRight, Mic, Server } from 'lucide-react'
 import { useState } from 'react'
 
 import { useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 
 import { ServiceDialog } from '@/components/service-dialog'
 import { ServiceItemCard } from '@/components/service-item-card'

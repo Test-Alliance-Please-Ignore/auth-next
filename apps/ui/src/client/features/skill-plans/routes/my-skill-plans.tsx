@@ -1,6 +1,6 @@
 import { Plus, Settings } from 'lucide-react'
 import { useMemo } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router'
 
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent } from '../../../components/ui/card'

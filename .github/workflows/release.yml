@@ -15,16 +15,16 @@ jobs:
     concurrency: ${{ github.workflow }}
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: lts/*
+          node-version: 22.22.0
           cache: 'pnpm'
       - name: Install Dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts --child-concurrency=10
+        run: pnpm install --frozen-lockfile --ignore-scripts --prod=false --child-concurrency=10
       - name: Validate Discord Client ID Wiring
         run: node scripts/ci/validate-discord-client-id-wiring.mjs
       - name: Export UI Discord Client ID
@@ -35,6 +35,8 @@ jobs:
           node scripts/ci/validate-ui-build-env-injection.mjs
       - name: Check & Test
         run: bun turbo check:ci
+      - name: Focused Tests
+        run: bun runx ci test
       - name: Deploy
         run: bun turbo deploy
         env:
@@ -120,16 +122,16 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: lts/*
+          node-version: 22.22.0
           cache: 'pnpm'
       - name: Install Dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts --child-concurrency=10
+        run: pnpm install --frozen-lockfile --ignore-scripts --prod=false --child-concurrency=10
       - name: Create Release PR
         uses: changesets/action@v1
         env:

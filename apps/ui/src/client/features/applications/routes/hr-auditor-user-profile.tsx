@@ -2,7 +2,7 @@ import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, Scan, Shield, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Navigate, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, Link, useLocation, useNavigate, useParams } from 'react-router'
 
 import { IpHistoryCard } from '@/components/ip-history-card'
 import { ArrowLeft } from 'lucide-react'

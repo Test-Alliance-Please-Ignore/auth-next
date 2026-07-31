@@ -43,9 +43,10 @@ describe('CoreDO.handleCharacterAffiliationChanges', () => {
 		})
 
 		expect(triggerUserRefreshWorkflow).toHaveBeenCalledTimes(2)
-		expect(addPendingDiscordRefreshes).toHaveBeenCalledWith(['user-1', 'user-2'], {
-			source: 'corp-membership-changed',
-		})
+		expect(addPendingDiscordRefreshes).toHaveBeenCalledWith(
+			['user-1', 'user-2'],
+			expect.objectContaining({ source: 'corp-membership-changed' })
+		)
 		expect(result).toEqual({
 			usersMatched: 2,
 			workflowsTriggered: 1,

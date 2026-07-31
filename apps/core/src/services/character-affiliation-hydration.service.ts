@@ -1,5 +1,6 @@
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { userCharacters } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
@@ -10,7 +11,6 @@ import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Env } from '../context'
 import type { createDb } from '../db'
-import { logger } from '@repo/hono-helpers'
 
 type CharacterAffiliationHydrationParams = {
 	db: ReturnType<typeof createDb>
@@ -18,7 +18,7 @@ type CharacterAffiliationHydrationParams = {
 		Partial<Pick<Env, 'EVE_CORPORATION_DATA'>>
 	characterId: string
 	cacheMode?: 'default' | 'no-store'
-	executionCtx?: ExecutionContext
+	executionCtx?: Pick<ExecutionContext, 'waitUntil'>
 }
 
 export interface HydratedCharacterAffiliation {
@@ -133,7 +133,7 @@ async function resolveAffiliationNames(params: ResolveAffiliationNamesParams): P
 		.update(userCharacters)
 		.set({
 			corporationName: nameMap[corporationId] ?? null,
-			allianceName: allianceId ? nameMap[allianceId] ?? null : null,
+			allianceName: allianceId ? (nameMap[allianceId] ?? null) : null,
 			updatedAt: new Date(),
 		})
 		.where(eq(userCharacters.characterId, characterId))

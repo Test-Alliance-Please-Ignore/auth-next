@@ -1,0 +1,53 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "eve-corporation-data-test",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-30",
+	"compatibility_flags": ["nodejs_compat"],
+	"workers_dev": false,
+	"routes": [],
+	"logpush": false,
+	"kv_namespaces": [
+		{
+			"binding": "CACHE",
+			"id": "ab5cf334a1294610896c1a732dcde577",
+			"remote": false
+		}
+	],
+	"queues": {
+		"producers": [{ "queue": "hr-member-departed", "binding": "hr-member-departed" }]
+	},
+	"services": [
+		{
+			"binding": "CORE",
+			"service": "core",
+			"entrypoint": "CoreWorker"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "EVE_CORPORATION_DATA",
+				"class_name": "EveCorporationData"
+			},
+			{
+				"name": "EVE_TOKEN_STORE",
+				"class_name": "EveTokenStore",
+				"script_name": "eve-token-store"
+			}
+		]
+	},
+	"workflows": [
+		{
+			"name": "eve-corporation-sync",
+			"binding": "EVE_CORPORATION_SYNC",
+			"class_name": "EveCorporationSyncWorkflow"
+		}
+	],
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["EveCorporationData"]
+		}
+	]
+}

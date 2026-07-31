@@ -1,6 +1,6 @@
 import { AlertTriangle, ExternalLink, RefreshCw, UserPlus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { DiscordCard } from '@/components/discord-card'
 import { ServicesCard } from '@/components/services-card'

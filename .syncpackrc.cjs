@@ -2,7 +2,6 @@
 /** @type {import("syncpack").RcFile} */
 const config = {
 	indent: '\t',
-	lintFormatting: false, // handled by prettier
 	versionGroups: [
 		{
 			label: 'local packages',

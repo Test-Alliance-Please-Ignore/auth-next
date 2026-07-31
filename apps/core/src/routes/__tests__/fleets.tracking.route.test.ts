@@ -261,6 +261,7 @@ describe('fleets tracking routes', () => {
 				name: 'Race Fleet',
 				characterId: '1001',
 				currentCommanderCharacterId: '1001',
+				currentFleetBossCharacterId: '1001',
 				commanderCharacterIds: ['1001'],
 				startedByUserId: 'user-1',
 				fleetId: 'fleet-1',

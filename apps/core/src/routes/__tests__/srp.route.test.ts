@@ -91,18 +91,18 @@ function createApp(user?: SessionUser, db?: any) {
 	return app
 }
 
-	function makeSrpStub() {
-		return {
-			getConfig: vi.fn().mockResolvedValue({ maxLossAgeDays: 30 }),
-			getUserRequests: vi.fn().mockResolvedValue({ requests: [], total: 0 }),
-			getRecentLosses: vi.fn().mockResolvedValue({
-				losses: [],
-				failedCharacters: [],
-				total: 0,
-				limit: 0,
-				offset: 0,
-			}),
-			getRecentLossRefreshStatus: vi.fn().mockResolvedValue({ status: null, cooldownUntil: null }),
+function makeSrpStub() {
+	return {
+		getConfig: vi.fn().mockResolvedValue({ maxLossAgeDays: 30 }),
+		getUserRequests: vi.fn().mockResolvedValue({ requests: [], total: 0 }),
+		getRecentLosses: vi.fn().mockResolvedValue({
+			losses: [],
+			failedCharacters: [],
+			total: 0,
+			limit: 0,
+			offset: 0,
+		}),
+		getRecentLossRefreshStatus: vi.fn().mockResolvedValue({ status: null, cooldownUntil: null }),
 		getRequest: vi.fn(),
 		getRequestsByStatus: vi.fn().mockResolvedValue({ requests: [], total: 0 }),
 		getPendingPayments: vi.fn().mockResolvedValue([]),
@@ -110,10 +110,10 @@ function createApp(user?: SessionUser, db?: any) {
 		withdrawRequest: vi.fn(),
 		getComments: vi.fn().mockResolvedValue([]),
 		addComment: vi.fn(),
-	approveRequest: vi.fn(),
-	startRecentLossRefresh: vi.fn().mockResolvedValue({
-		allowed: true,
-		retryAfterMs: 0,
+		approveRequest: vi.fn(),
+		startRecentLossRefresh: vi.fn().mockResolvedValue({
+			allowed: true,
+			retryAfterMs: 0,
 			cooldownUntil: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
 			workflowInstanceId: 'workflow-1',
 			status: 'queued',
@@ -304,14 +304,18 @@ describe('srp routes - permissions', () => {
 		})
 		env.EXPORT_WORKFLOW = exportWorkflowStub as any
 
-	getCachedUserPermissionsMock.mockResolvedValue([])
-	mockDbPrimaryCharacterRows([])
+		getCachedUserPermissionsMock.mockResolvedValue([])
+		mockDbPrimaryCharacterRows([])
 	})
 
 	it('requires a selected entry date range for wallet history CSV export', async () => {
 		const app = createApp(makeUser({ is_admin: true }))
 
-		const response = await app.request('/api/srp/payments/wallet-history/export', { method: 'POST' }, env)
+		const response = await app.request(
+			'/api/srp/payments/wallet-history/export',
+			{ method: 'POST' },
+			env
+		)
 
 		expect(response.status).toBe(400)
 		expect(await response.json()).toEqual({
@@ -393,7 +397,10 @@ describe('srp routes - permissions', () => {
 				},
 			],
 		})
-		const app = createApp(makeUser({ id: 'wallet-history-user', is_admin: true }), walletHistoryDb.db)
+		const app = createApp(
+			makeUser({ id: 'wallet-history-user', is_admin: true }),
+			walletHistoryDb.db
+		)
 		srpStub.getConfig.mockResolvedValue({ paymentProcessorCorporationId: '9000' })
 		resolverStub.resolveIds.mockResolvedValue({
 			'7001': 'Pilot One',
@@ -474,11 +481,7 @@ describe('srp routes - permissions', () => {
 		storedResponse.httpMetadata = { contentType: 'text/csv; charset=utf-8' }
 		exportBucketStub.get.mockResolvedValue(storedResponse)
 
-		const response = await app.request(
-			'/api/srp/requests/paid/export/workflow-1/download',
-			{},
-			env
-		)
+		const response = await app.request('/api/srp/requests/paid/export/workflow-1/download', {}, env)
 
 		expect(response.status).toBe(200)
 		expect(await response.text()).toContain('userId,losingCharacterId')
@@ -510,7 +513,9 @@ describe('srp routes - permissions', () => {
 
 		expect(response.status).toBe(200)
 		expect(await response.text()).toContain('date,reason')
-		expect(exportBucketStub.delete).toHaveBeenCalledWith('srp-exports/wallet-history/workflow-1.csv')
+		expect(exportBucketStub.delete).toHaveBeenCalledWith(
+			'srp-exports/wallet-history/workflow-1.csv'
+		)
 	})
 
 	it('requires a selected entry date range for paid SRP CSV export', async () => {
@@ -613,17 +618,17 @@ describe('srp routes - permissions', () => {
 		const body = await response.json<any>()
 
 		expect(response.status).toBe(200)
-			expect(srpStub.getRecentLosses).toHaveBeenCalledWith(
-				[
-					{ characterId: '7001', characterName: 'Pilot One' },
-					{ characterId: '7002', characterName: 'Pilot Two' },
-				],
-				'loss-user',
-				30,
-				true,
-				undefined,
-				undefined
-			)
+		expect(srpStub.getRecentLosses).toHaveBeenCalledWith(
+			[
+				{ characterId: '7001', characterName: 'Pilot One' },
+				{ characterId: '7002', characterName: 'Pilot Two' },
+			],
+			'loss-user',
+			30,
+			true,
+			undefined,
+			undefined
+		)
 		expect(body.losses).toHaveLength(1)
 		expect(body.losses[0]).toMatchObject({
 			killmailId: '123',
@@ -707,17 +712,17 @@ describe('srp routes - permissions', () => {
 		const body = await response.json<any>()
 
 		expect(response.status).toBe(200)
-			expect(srpStub.getRecentLosses).toHaveBeenCalledWith(
-				[
-					{ characterId: '7001', characterName: 'Pilot One' },
-					{ characterId: '7002', characterName: 'Pilot Two' },
-				],
-				'loss-user-invalid-token',
-				30,
-				true,
-				undefined,
-				undefined
-			)
+		expect(srpStub.getRecentLosses).toHaveBeenCalledWith(
+			[
+				{ characterId: '7001', characterName: 'Pilot One' },
+				{ characterId: '7002', characterName: 'Pilot Two' },
+			],
+			'loss-user-invalid-token',
+			30,
+			true,
+			undefined,
+			undefined
+		)
 		expect(body.losses).toHaveLength(1)
 		expect(body.failedCharacters).toEqual([
 			{
@@ -816,7 +821,9 @@ describe('srp routes - permissions', () => {
 		const body = await response.json<any>()
 
 		expect(response.status).toBe(200)
-		expect(refreshCoordinatorStub.getRecentLossRefreshStatus).toHaveBeenCalledWith('loss-refresh-status')
+		expect(refreshCoordinatorStub.getRecentLossRefreshStatus).toHaveBeenCalledWith(
+			'loss-refresh-status'
+		)
 		expect(body).toMatchObject({
 			cooldownUntil: expect.any(String),
 			status: {
@@ -849,7 +856,7 @@ describe('srp routes - permissions', () => {
 		const response = await app.request('/api/srp/requests/100001', {}, env)
 
 		expect(response.status).toBe(200)
-		expect(srpStub.getRequest).toHaveBeenCalledWith('100001', 'staff-request-view')
+		expect(srpStub.getRequest).toHaveBeenCalledWith('100001', 'staff-request-view', true)
 	})
 
 	it('rejects non-killmail request ids on request detail routes', async () => {
@@ -863,16 +870,14 @@ describe('srp routes - permissions', () => {
 
 	it('returns killmail id as external request id in request detail responses', async () => {
 		const app = createApp(makeUser({ id: 'owner-1' }))
-		srpStub.getRequest.mockResolvedValue(
-			makeRequest({ id: '654321', userId: 'owner-1' })
-		)
+		srpStub.getRequest.mockResolvedValue(makeRequest({ id: '654321', userId: 'owner-1' }))
 		mockDbPrimaryCharacterRows([{ userId: 'owner-1', characterId: '7002' }])
 
 		const response = await app.request('/api/srp/requests/654321', {}, env)
 		const body = await response.json<any>()
 
 		expect(response.status).toBe(200)
-		expect(srpStub.getRequest).toHaveBeenCalledWith('654321', 'owner-1')
+		expect(srpStub.getRequest).toHaveBeenCalledWith('654321', 'owner-1', false)
 		expect(body.id).toBe('654321')
 	})
 
@@ -970,7 +975,11 @@ describe('srp routes - permissions', () => {
 		const app = createApp(makeUser({ id: 'outsider-comments-read' }))
 		srpStub.getRequest.mockResolvedValue(makeRequest({ userId: 'owner-1' }))
 
-		const response = await app.request('/api/srp/requests/100001/comments?includeInternal=true', {}, env)
+		const response = await app.request(
+			'/api/srp/requests/100001/comments?includeInternal=true',
+			{},
+			env
+		)
 
 		expect(response.status).toBe(403)
 		expect(srpStub.getComments).not.toHaveBeenCalled()
@@ -983,7 +992,11 @@ describe('srp routes - permissions', () => {
 			userId === 'staff-comments-read' ? ([{ urn: 'urn:srp:manager' }] as any) : []
 		)
 
-		const response = await app.request('/api/srp/requests/100001/comments?includeInternal=true', {}, env)
+		const response = await app.request(
+			'/api/srp/requests/100001/comments?includeInternal=true',
+			{},
+			env
+		)
 
 		expect(response.status).toBe(200)
 		expect(srpStub.getComments).toHaveBeenCalledWith('100001', 'staff-comments-read', true)
@@ -1115,7 +1128,11 @@ describe('srp routes - permissions', () => {
 			},
 		])
 
-		const response = await app.request('/api/srp/requests/100011/comments?includeInternal=true', {}, env)
+		const response = await app.request(
+			'/api/srp/requests/100011/comments?includeInternal=true',
+			{},
+			env
+		)
 		const body = await response.json<any[]>()
 
 		expect(response.status).toBe(200)

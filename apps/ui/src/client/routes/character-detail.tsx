@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, RefreshCw, Shield, User, Users } from 'lucide-react'
-import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useParams } from 'react-router'
 
 import { CharacterAttributes } from '../components/character-attributes'
 import { CharacterCorporationHistory } from '../components/character-corporation-history'

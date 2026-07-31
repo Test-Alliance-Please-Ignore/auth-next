@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { LogIn, Mic } from 'lucide-react'
 import { useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'

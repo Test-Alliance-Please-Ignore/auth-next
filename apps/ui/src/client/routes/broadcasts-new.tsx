@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router'
 import { parseBroadcastSrpMode } from '@repo/broadcasts'
 
 import { Button } from '@/components/ui/button'
@@ -161,18 +161,15 @@ export default function NewBroadcastPage() {
 	const renderedOutboundMessage = useMemo(() => {
 		if (!selectedTarget) return ''
 
-		let message = ''
-		if (selectedTemplate) {
-			message = [
+		let message = selectedTemplate
+			? [
 				messageParts.prefix.trim(),
 				renderBroadcastTemplateMessage(selectedTemplate.messageTemplate, templateFields, true),
 				messageParts.suffix.trim(),
 			]
 				.filter(Boolean)
 				.join('\n\n')
-		} else {
-			message = customMessage
-		}
+			: customMessage
 
 		message = convertUnixTimestampsForPreview(message)
 

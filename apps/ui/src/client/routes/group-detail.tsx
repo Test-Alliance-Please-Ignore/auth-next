@@ -1,6 +1,6 @@
 import { ArrowLeft, Check, Copy, Plus, Ticket, Trash2, UserCog, Users } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router'
 
 import { GroupCard } from '@/components/group-card'
 import { InviteMemberForm } from '@/components/invite-member-form'

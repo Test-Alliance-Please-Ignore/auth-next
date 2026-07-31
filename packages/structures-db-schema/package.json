@@ -13,7 +13,7 @@
 		"@repo/core-db-schema": "workspace:*",
 		"@repo/eve-corporation-data-db-schema": "workspace:*",
 		"@repo/structures": "workspace:*",
-		"drizzle-orm": "0.44.7"
+		"drizzle-orm": "0.45.2"
 	},
 	"devDependencies": {
 		"@repo/eslint-config": "workspace:*",

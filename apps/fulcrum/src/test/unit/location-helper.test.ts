@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildAssetMap, isInsideShip, isShipAsset, resolveTopLevelLocation } from '../../workflows/processors/helpers/location'
+import {
+	buildAssetMap,
+	isInsideShip,
+	isShipAsset,
+	resolveTopLevelLocation,
+} from '../../workflows/processors/helpers/location'
 import { shipTypeIds } from '../../workflows/processors/helpers/ship-types'
 
 import type { CharacterAsset } from '@repo/esi'
 
-function makeAsset(asset: Partial<CharacterAsset> & Pick<CharacterAsset, 'item_id' | 'location_id' | 'location_type' | 'type_id'>): CharacterAsset {
+function makeAsset(
+	asset: Partial<CharacterAsset> &
+		Pick<CharacterAsset, 'item_id' | 'location_id' | 'location_type' | 'type_id'>
+): CharacterAsset {
 	return {
 		quantity: 1,
 		is_singleton: false,
@@ -110,7 +118,7 @@ describe('asset location helpers', () => {
 	})
 
 	it('resolves items inside structure-held containers even when the structure row is absent', () => {
-		const structureId = '303'
+		const structureId = '1000000000303'
 		const containerId = '302'
 		const itemId = '301'
 
@@ -142,12 +150,16 @@ describe('asset location helpers', () => {
 
 	it('treats singleton ships as ship assets for report inclusion', () => {
 		expect(shipTypeIds.has('582')).toBe(true)
-		expect(isShipAsset(makeAsset({
-			item_id: '1',
-			location_id: '2',
-			location_type: 'item',
-			type_id: '582',
-			is_singleton: true,
-		}))).toBe(true)
+		expect(
+			isShipAsset(
+				makeAsset({
+					item_id: '1',
+					location_id: '2',
+					location_type: 'item',
+					type_id: '582',
+					is_singleton: true,
+				})
+			)
+		).toBe(true)
 	})
 })

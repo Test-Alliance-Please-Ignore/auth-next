@@ -1,6 +1,6 @@
 import { ChevronDown, ExternalLink, Filter } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router'
 
 import { JsonViewer } from '@/components/json-viewer'
 import { Badge } from '@/components/ui/badge'

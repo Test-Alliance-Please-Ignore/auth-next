@@ -47,7 +47,13 @@ export function getConfig(importMetaUrl: string): Array<Linter.Config<Linter.Rul
 			rules: {
 				'turbo/no-undeclared-env-vars': [
 					'error',
-					{ allowList: ['^LOCAL_DEV_DISABLE_AUXILIARY_WORKERS$'] },
+					{
+						allowList: [
+							'^LOCAL_DEV_DISABLE_AUXILIARY_WORKERS$',
+							'^(LEGACY_BLACKLIST_LEVELS|NEON_API_KEY|NEON_PROJECT_ID|NEON_TEST_PARENT_BRANCH_ID|TEST_DATABASE_URL)$',
+							'^(OAUTH_ISSUER|OAUTH_CLIENT_ID|OAUTH_CLIENT_SECRET|OAUTH_CLIENT_AUTH_METHOD|OAUTH_REDIRECT_URI|OAUTH_HARNESS_JSON|OAUTH_HARNESS_DEBUG)$',
+						],
+					},
 				],
 			},
 		},

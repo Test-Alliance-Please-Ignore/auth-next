@@ -4,12 +4,12 @@
 	"private": true,
 	"sideEffects": false,
 	"type": "module",
-	"main": "src/index.ts",
 	"exports": {
 		".": "./src/index.ts",
 		"./src/types": "./src/types.ts",
 		"./logger": "./src/logger.ts"
 	},
+	"main": "src/index.ts",
 	"scripts": {
 		"check:lint": "run-eslint",
 		"check:types": "run-tsc",
@@ -17,17 +17,17 @@
 	},
 	"dependencies": {
 		"@hono/standard-validator": "0.1.5",
-		"@sentry/cloudflare": "10.26.0",
-		"hono": "4.10.6",
+		"@sentry/cloudflare": "10.68.0",
+		"hono": "4.12.27",
 		"http-codex": "0.6.6",
 		"workers-tagged-logger": "0.13.7",
 		"zod": "4.1.12"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "0.10.8",
+		"@cloudflare/vitest-pool-workers": "0.19.1",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
-		"vitest": "3.2.4"
+		"vitest": "4.1.10"
 	}
 }

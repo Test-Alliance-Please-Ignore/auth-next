@@ -50,7 +50,7 @@ describe('QueueProducer Integration', () => {
 		})
 
 		expect(mockQueue.sentMessages).toHaveLength(1)
-		expect(mockQueue.sentMessages[0].body.userId).toBe(12345)
+		expect(mockQueue.sentMessages[0].body.userId).toBe('12345')
 		expect(mockQueue.sentMessages[0].body.type).toBe('email')
 	})
 
@@ -77,7 +77,7 @@ describe('QueueProducer Integration', () => {
 
 		await expect(
 			producer.send({
-				userId: 'invalid' as any,
+				userId: 123 as any,
 				type: 'email',
 				message: 'Test',
 			})
@@ -98,9 +98,9 @@ describe('QueueProducer Integration', () => {
 
 		expect(mockQueue.sentBatches).toHaveLength(1)
 		expect(mockQueue.sentBatches[0]).toHaveLength(3)
-		expect(mockQueue.sentBatches[0][0].body.userId).toBe(1)
-		expect(mockQueue.sentBatches[0][1].body.userId).toBe(2)
-		expect(mockQueue.sentBatches[0][2].body.userId).toBe(3)
+		expect(mockQueue.sentBatches[0][0].body.userId).toBe('1')
+		expect(mockQueue.sentBatches[0][1].body.userId).toBe('2')
+		expect(mockQueue.sentBatches[0][2].body.userId).toBe('3')
 	})
 
 	it('should send batch with delay options', async () => {
@@ -127,7 +127,7 @@ describe('QueueProducer Integration', () => {
 		await expect(
 			producer.sendBatch([
 				{ userId: '1', type: 'email', message: 'Valid' },
-				{ userId: 'invalid' as any, type: 'email', message: 'Invalid' },
+				{ userId: 123 as any, type: 'email', message: 'Invalid' },
 				{ userId: '3', type: 'email', message: 'Valid' },
 			])
 		).rejects.toThrow(MessageValidationError)
@@ -291,7 +291,7 @@ describe('createQueueProducer Integration', () => {
 
 		// Invalid message should throw
 		await expect(
-			producer.send({ userId: 'invalid' as any, type: 'email', message: 'Test' })
+			producer.send({ userId: 123 as any, type: 'email', message: 'Test' })
 		).rejects.toThrow(MessageValidationError)
 	})
 })

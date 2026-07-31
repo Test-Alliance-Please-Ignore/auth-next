@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useQueries } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router'
 import { formatDistanceToNow } from 'date-fns'
 
 import { MemberAvatar } from '@/components/member-avatar'

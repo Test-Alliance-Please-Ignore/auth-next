@@ -195,27 +195,25 @@ function callbackResult(ownerHash: string) {
 beforeEach(() => {
 	vi.clearAllMocks()
 	vi.mocked(waitUntilWithTelemetry).mockImplementation(() => undefined)
-	vi.mocked(ActivityService).mockImplementation(
-		() =>
-			({
-				logLogin: vi.fn(),
-				logLoginFailed: vi.fn(),
-				logCharacterLinked: vi.fn(),
-			}) as any
-	)
-	vi.mocked(SessionService).mockImplementation(
-		() => ({ invalidateAllUserSessions: vi.fn().mockResolvedValue(1) }) as any
-	)
-	vi.mocked(AuthService).mockImplementation(
-		() =>
-			({
-				createSession: vi.fn().mockResolvedValue({
-					id: 'session-1',
-					sessionToken: 'token-1',
-					createdAt: new Date(),
-				}),
-			}) as any
-	)
+	vi.mocked(ActivityService).mockImplementation(function () {
+		return {
+			logLogin: vi.fn(),
+			logLoginFailed: vi.fn(),
+			logCharacterLinked: vi.fn(),
+		} as any
+	})
+	vi.mocked(SessionService).mockImplementation(function () {
+		return { invalidateAllUserSessions: vi.fn().mockResolvedValue(1) } as any
+	})
+	vi.mocked(AuthService).mockImplementation(function () {
+		return {
+			createSession: vi.fn().mockResolvedValue({
+				id: 'session-1',
+				sessionToken: 'token-1',
+				createdAt: new Date(),
+			}),
+		} as any
+	})
 	vi.mocked(autoRegisterDirectorCorporation).mockResolvedValue(undefined as any)
 	vi.mocked(reconcileUserCoreMembershipRoles).mockResolvedValue(undefined as any)
 	vi.mocked(hydrateCharacterAffiliation).mockResolvedValue(undefined as any)
@@ -314,7 +312,9 @@ describe('POST /api/auth/claim-main - authority comes from the ticket, not the b
 		const createUser = vi.fn()
 		// The token store reflects the CURRENT owner, who is not who the ticket was minted for.
 		mockStubs({ getTokenInfo: vi.fn().mockResolvedValue(tokenInfo('HASH-2-NEW-OWNER')) })
-		vi.mocked(UserService).mockImplementation(() => ({ createUser }) as any)
+		vi.mocked(UserService).mockImplementation(function () {
+			return { createUser } as any
+		})
 
 		const res = await claimRequest({ claimTicket: 'ticket-1' })
 
@@ -325,14 +325,13 @@ describe('POST /api/auth/claim-main - authority comes from the ticket, not the b
 	it('answers 409 rather than 500 when the character was already claimed', async () => {
 		mockDb(claimTicketRow())
 		mockStubs({ getTokenInfo: vi.fn().mockResolvedValue(tokenInfo('HASH-1')) })
-		vi.mocked(UserService).mockImplementation(
-			() =>
-				({
-					createUser: vi
-						.fn()
-						.mockRejectedValue(new CharacterAlreadyClaimedError('User already exists')),
-				}) as any
-		)
+		vi.mocked(UserService).mockImplementation(function () {
+			return {
+				createUser: vi
+					.fn()
+					.mockRejectedValue(new CharacterAlreadyClaimedError('User already exists')),
+			} as any
+		})
 
 		const res = await claimRequest({ claimTicket: 'ticket-1' })
 
@@ -342,13 +341,12 @@ describe('POST /api/auth/claim-main - authority comes from the ticket, not the b
 	it('does not flatten an unexpected fault into a reassuring 409', async () => {
 		mockDb(claimTicketRow())
 		mockStubs({ getTokenInfo: vi.fn().mockResolvedValue(tokenInfo('HASH-1')) })
-		vi.mocked(UserService).mockImplementation(
-			() =>
-				({
-					// A database outage is not a lost race, and must stay loud.
-					createUser: vi.fn().mockRejectedValue(new Error('connection terminated')),
-				}) as any
-		)
+		vi.mocked(UserService).mockImplementation(function () {
+			return {
+				// A database outage is not a lost race, and must stay loud.
+				createUser: vi.fn().mockRejectedValue(new Error('connection terminated')),
+			} as any
+		})
 
 		const res = await claimRequest({ claimTicket: 'ticket-1' })
 
@@ -460,14 +458,13 @@ describe('GET /api/auth/callback - the state must belong to this browser', () =>
 describe('GET /api/auth/callback - minting a claim ticket for a new user', () => {
 	function mockNewUser() {
 		mockStubs({ handleCallback: vi.fn().mockResolvedValue(callbackResult('HASH-1')) })
-		vi.mocked(UserService).mockImplementation(
-			() =>
-				({
-					// No account exists for this character yet.
-					getUserByCharacterId: vi.fn().mockResolvedValue(null),
-					getCharacterOwnership: vi.fn().mockResolvedValue(null),
-				}) as any
-		)
+		vi.mocked(UserService).mockImplementation(function () {
+			return {
+				// No account exists for this character yet.
+				getUserByCharacterId: vi.fn().mockResolvedValue(null),
+				getCharacterOwnership: vi.fn().mockResolvedValue(null),
+			} as any
+		})
 	}
 
 	it('binds the ticket to the character SSO verified, not to anything client-supplied', async () => {
@@ -516,23 +513,24 @@ describe('GET /api/auth/callback - character owner hash is enforced on login', (
 		mockStubs({ handleCallback: vi.fn().mockResolvedValue(callbackResult('NEW-OWNER-HASH')) })
 
 		const invalidateAllUserSessions = vi.fn().mockResolvedValue(1)
-		vi.mocked(SessionService).mockImplementation(() => ({ invalidateAllUserSessions }) as any)
+		vi.mocked(SessionService).mockImplementation(function () {
+			return { invalidateAllUserSessions } as any
+		})
 
 		const logLoginFailed = vi.fn()
-		vi.mocked(ActivityService).mockImplementation(
-			() => ({ logLogin: vi.fn(), logLoginFailed }) as any
-		)
+		vi.mocked(ActivityService).mockImplementation(function () {
+			return { logLogin: vi.fn(), logLoginFailed } as any
+		})
 
-		vi.mocked(UserService).mockImplementation(
-			() =>
-				({
-					getUserByCharacterId: vi.fn().mockResolvedValue({ id: 'seller-user', characters: [] }),
-					getCharacterOwnership: vi.fn().mockResolvedValue({
-						userId: 'seller-user',
-						characterOwnerHash: 'OLD-OWNER-HASH',
-					}),
-				}) as any
-		)
+		vi.mocked(UserService).mockImplementation(function () {
+			return {
+				getUserByCharacterId: vi.fn().mockResolvedValue({ id: 'seller-user', characters: [] }),
+				getCharacterOwnership: vi.fn().mockResolvedValue({
+					userId: 'seller-user',
+					characterOwnerHash: 'OLD-OWNER-HASH',
+				}),
+			} as any
+		})
 
 		const res = await callbackRequest({ state: 'state-1' })
 
@@ -548,16 +546,15 @@ describe('GET /api/auth/callback - character owner hash is enforced on login', (
 		mockDb(loginState())
 		mockStubs({ handleCallback: vi.fn().mockResolvedValue(callbackResult('SAME-HASH')) })
 
-		vi.mocked(UserService).mockImplementation(
-			() =>
-				({
-					getUserByCharacterId: vi.fn().mockResolvedValue({ id: 'user-1', characters: [] }),
-					getCharacterOwnership: vi.fn().mockResolvedValue({
-						userId: 'user-1',
-						characterOwnerHash: 'SAME-HASH',
-					}),
-				}) as any
-		)
+		vi.mocked(UserService).mockImplementation(function () {
+			return {
+				getUserByCharacterId: vi.fn().mockResolvedValue({ id: 'user-1', characters: [] }),
+				getCharacterOwnership: vi.fn().mockResolvedValue({
+					userId: 'user-1',
+					characterOwnerHash: 'SAME-HASH',
+				}),
+			} as any
+		})
 
 		const res = await callbackRequest({ state: 'state-1' })
 
@@ -576,35 +573,34 @@ describe('GET /api/auth/callback - character owner hash is enforced on login', (
 		})
 		mockStubs({ handleCallback: vi.fn().mockResolvedValue(callbackResult('SAME-HASH')) })
 
-		vi.mocked(UserService).mockImplementation(
-			() =>
-				({
-					getUserById: vi.fn().mockResolvedValue({
-						id: 'user-1',
-						characters: [
-							{
-								characterId: 'char-1',
-								characterName: 'Pilot',
-								hasValidToken: false,
-							},
-						],
-					}),
-					getUserByCharacterId: vi.fn().mockResolvedValue({
-						id: 'user-1',
-						characters: [
-							{
-								characterId: 'char-1',
-								characterName: 'Pilot',
-								hasValidToken: false,
-							},
-						],
-					}),
-					getCharacterOwnership: vi.fn().mockResolvedValue({
-						userId: 'user-1',
-						characterOwnerHash: 'SAME-HASH',
-					}),
-				}) as any
-		)
+		vi.mocked(UserService).mockImplementation(function () {
+			return {
+				getUserById: vi.fn().mockResolvedValue({
+					id: 'user-1',
+					characters: [
+						{
+							characterId: 'char-1',
+							characterName: 'Pilot',
+							hasValidToken: false,
+						},
+					],
+				}),
+				getUserByCharacterId: vi.fn().mockResolvedValue({
+					id: 'user-1',
+					characters: [
+						{
+							characterId: 'char-1',
+							characterName: 'Pilot',
+							hasValidToken: false,
+						},
+					],
+				}),
+				getCharacterOwnership: vi.fn().mockResolvedValue({
+					userId: 'user-1',
+					characterOwnerHash: 'SAME-HASH',
+				}),
+			} as any
+		})
 
 		const res = await callbackRequest({ state: 'state-1' })
 
@@ -629,19 +625,20 @@ describe('GET /api/auth/callback - character owner hash is enforced on login', (
 
 		const adoptCharacterOwnerHash = vi.fn().mockResolvedValue(undefined)
 		const invalidateAllUserSessions = vi.fn()
-		vi.mocked(SessionService).mockImplementation(() => ({ invalidateAllUserSessions }) as any)
+		vi.mocked(SessionService).mockImplementation(function () {
+			return { invalidateAllUserSessions } as any
+		})
 
-		vi.mocked(UserService).mockImplementation(
-			() =>
-				({
-					getUserByCharacterId: vi.fn().mockResolvedValue({ id: 'migrated-user', characters: [] }),
-					getCharacterOwnership: vi.fn().mockResolvedValue({
-						userId: 'migrated-user',
-						characterOwnerHash: 'legacy-import:42:esi_owner',
-					}),
-					adoptCharacterOwnerHash,
-				}) as any
-		)
+		vi.mocked(UserService).mockImplementation(function () {
+			return {
+				getUserByCharacterId: vi.fn().mockResolvedValue({ id: 'migrated-user', characters: [] }),
+				getCharacterOwnership: vi.fn().mockResolvedValue({
+					userId: 'migrated-user',
+					characterOwnerHash: 'legacy-import:42:esi_owner',
+				}),
+				adoptCharacterOwnerHash,
+			} as any
+		})
 
 		const res = await callbackRequest({ state: 'state-1' })
 

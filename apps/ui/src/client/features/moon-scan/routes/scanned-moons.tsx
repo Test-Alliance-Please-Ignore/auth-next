@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 

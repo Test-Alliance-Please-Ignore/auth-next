@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { LegacyDO } from './durable-object'
+
 vi.mock('cloudflare:workers', () => ({
 	DurableObject: class {
 		constructor(
@@ -26,6 +28,7 @@ const { coreStubMock } = vi.hoisted(() => ({
 		legacyImportCharacterLinks: vi.fn(),
 		legacyImportNotes: vi.fn(),
 		legacyImportIpAssociations: vi.fn(),
+		getLegacyCharacterImportMetadata: vi.fn(),
 		evaluateLegacyMigrationBlacklistSignals: vi.fn(),
 	},
 }))
@@ -33,8 +36,6 @@ const { coreStubMock } = vi.hoisted(() => ({
 vi.mock('@repo/do-utils', () => ({
 	getStub: () => coreStubMock,
 }))
-
-import { LegacyDO } from './durable-object'
 
 describe('legacy durable object rpc', () => {
 	const migrationQueueFindFirst = vi.fn()
@@ -44,6 +45,7 @@ describe('legacy durable object rpc', () => {
 	const legacyIpsFindMany = vi.fn()
 	const legacyApplicationsFindMany = vi.fn()
 	const legacyApplicationEventsFindMany = vi.fn()
+	const legacyAuthDiscordAccountsFindMany = vi.fn()
 	const updateSetMock = vi.fn()
 	const updateReturning = vi.fn()
 	const actionInsertValues = vi.fn()
@@ -64,12 +66,16 @@ describe('legacy durable object rpc', () => {
 
 		createDbMock.mockReturnValue({
 			query: {
-				legacyMigrationQueue: { findFirst: migrationQueueFindFirst, findMany: migrationQueueFindMany },
+				legacyMigrationQueue: {
+					findFirst: migrationQueueFindFirst,
+					findMany: migrationQueueFindMany,
+				},
 				legacyAuthCharacters: { findMany: legacyCharactersFindMany },
 				legacyAuthNotes: { findMany: legacyNotesFindMany },
 				legacyAuthUserIpAddresses: { findMany: legacyIpsFindMany },
 				legacyAuthApplications: { findMany: legacyApplicationsFindMany, findFirst: vi.fn() },
 				legacyAuthApplicationEvents: { findMany: legacyApplicationEventsFindMany },
+				legacyAuthDiscordAccounts: { findMany: legacyAuthDiscordAccountsFindMany },
 			},
 			select: selectMock,
 			update: vi.fn(() => ({
@@ -97,7 +103,14 @@ describe('legacy durable object rpc', () => {
 			status: 'pending',
 		})
 		migrationQueueFindMany.mockResolvedValue([])
-		legacyCharactersFindMany.mockResolvedValue([{ characterId: '2001', characterName: 'One', source: 'esi_owner' }])
+		legacyCharactersFindMany.mockResolvedValue([
+			{
+				legacyAuthUserId: 'legacy-1',
+				characterId: '2001',
+				characterName: 'One',
+				source: 'esi_owner',
+			},
+		])
 		legacyNotesFindMany.mockResolvedValue([
 			{
 				legacyNoteId: 'n-1',
@@ -110,14 +123,18 @@ describe('legacy durable object rpc', () => {
 		legacyIpsFindMany.mockResolvedValue([{ ipAddress: '1.1.1.1' }])
 		legacyApplicationsFindMany.mockResolvedValue([])
 		legacyApplicationEventsFindMany.mockResolvedValue([])
+		legacyAuthDiscordAccountsFindMany.mockResolvedValue([])
 		selectWhereMock.mockReturnValue(selectWhereResult)
 		selectGroupByMock.mockResolvedValue([])
 		updateReturning.mockResolvedValue([{ id: 'queue-1', status: 'applied' }])
 		actionInsertValues.mockResolvedValue(undefined)
 		actionInsertReturning.mockResolvedValue([{ id: 'queue-row-1' }])
 
-		coreStubMock.getUserCharacters.mockResolvedValue([{ characterId: '2001', characterName: 'One' }])
+		coreStubMock.getUserCharacters.mockResolvedValue([
+			{ characterId: '2001', characterName: 'One' },
+		])
 		coreStubMock.getUserDiscordUserId.mockResolvedValue(null)
+		coreStubMock.getLegacyCharacterImportMetadata.mockResolvedValue([])
 		coreStubMock.createUserBlacklist.mockResolvedValue({ entryId: 'entry-1' })
 		coreStubMock.createCharacterBlacklist.mockResolvedValue({ entryId: 'char-entry-1' })
 		coreStubMock.legacyImportCharacterLinks.mockResolvedValue({
@@ -141,10 +158,13 @@ describe('legacy durable object rpc', () => {
 			ipAssociatedBlacklistedUsers: [],
 		})
 
-		legacy = new LegacyDO({} as DurableObjectState, {
-			DATABASE_URL: 'postgresql://test',
-			CORE: {} as DurableObjectNamespace,
-		} as any)
+		legacy = new LegacyDO(
+			{} as DurableObjectState,
+			{
+				DATABASE_URL: 'postgresql://test',
+				CORE: {} as DurableObjectNamespace,
+			} as any
+		)
 	})
 
 	it('executes import actions and records apply payload results', async () => {
@@ -269,37 +289,31 @@ describe('legacy durable object rpc', () => {
 	})
 
 	it('does not re-trigger an applied migration on a normal recheck', async () => {
-		migrationQueueFindMany
-			.mockResolvedValueOnce([
-				{
-					id: 'queue-1',
-					modernUserId: '11111111-1111-4111-8111-111111111111',
-					legacyAuthUserId: 'legacy-1',
-					status: 'applied',
-					candidateSnapshot: {
-						matchingCharacters: [{ characterId: '2001', characterName: 'One', source: 'esi_owner' }],
-						matchingDiscordAccounts: [],
-						associatedCounts: {
-							characters: 1,
-							ipAddresses: 0,
-							notes: 0,
-							applications: 0,
-							discordAccounts: 0,
-						},
-					},
-					conflicts: {
-						multipleLegacyUsersForModernUser: false,
-						crossModernUserQueueMatches: [],
+		migrationQueueFindMany.mockResolvedValue([
+			{
+				id: 'queue-1',
+				modernUserId: '11111111-1111-4111-8111-111111111111',
+				legacyAuthUserId: 'legacy-1',
+				status: 'applied',
+				candidateSnapshot: {
+					matchingCharacters: [{ characterId: '2001', characterName: 'One', source: 'esi_owner' }],
+					matchingDiscordAccounts: [],
+					associatedCounts: {
+						characters: 1,
+						ipAddresses: 0,
+						notes: 0,
+						applications: 0,
+						discordAccounts: 0,
 					},
 				},
-			])
-			.mockResolvedValueOnce([])
+				conflicts: {
+					multipleLegacyUsersForModernUser: false,
+					crossModernUserQueueMatches: [],
+				},
+			},
+		])
 
-		const result = await legacy.recheckUser(
-			'11111111-1111-4111-8111-111111111111',
-			'admin-1',
-			{ force: true }
-		)
+		const result = await legacy.recheckUser('11111111-1111-4111-8111-111111111111', 'admin-1')
 
 		expect(result.ok).toBe(true)
 		expect(result.legacyAuthUserIds).toEqual(['legacy-1'])
@@ -312,40 +326,46 @@ describe('legacy durable object rpc', () => {
 
 	it('reopens an applied migration when force recheck finds new evidence', async () => {
 		legacyCharactersFindMany.mockResolvedValue([
-			{ characterId: '2001', characterName: 'One', source: 'esi_owner' },
-			{ characterId: '2002', characterName: 'Two', source: 'xml_account' },
+			{
+				legacyAuthUserId: 'legacy-1',
+				characterId: '2001',
+				characterName: 'One',
+				source: 'esi_owner',
+			},
+			{
+				legacyAuthUserId: 'legacy-1',
+				characterId: '2002',
+				characterName: 'Two',
+				source: 'xml_account',
+			},
 		])
-		migrationQueueFindMany
-			.mockResolvedValueOnce([
-				{
-					id: 'queue-1',
-					modernUserId: '11111111-1111-4111-8111-111111111111',
-					legacyAuthUserId: 'legacy-1',
-					status: 'applied',
-					candidateSnapshot: {
-						matchingCharacters: [{ characterId: '2001', characterName: 'One', source: 'esi_owner' }],
-						matchingDiscordAccounts: [],
-						associatedCounts: {
-							characters: 1,
-							ipAddresses: 0,
-							notes: 0,
-							applications: 0,
-							discordAccounts: 0,
-						},
-					},
-					conflicts: {
-						multipleLegacyUsersForModernUser: false,
-						crossModernUserQueueMatches: [],
+		migrationQueueFindMany.mockResolvedValue([
+			{
+				id: 'queue-1',
+				modernUserId: '11111111-1111-4111-8111-111111111111',
+				legacyAuthUserId: 'legacy-1',
+				status: 'applied',
+				candidateSnapshot: {
+					matchingCharacters: [{ characterId: '2001', characterName: 'One', source: 'esi_owner' }],
+					matchingDiscordAccounts: [],
+					associatedCounts: {
+						characters: 1,
+						ipAddresses: 0,
+						notes: 0,
+						applications: 0,
+						discordAccounts: 0,
 					},
 				},
-			])
-			.mockResolvedValueOnce([])
+				conflicts: {
+					multipleLegacyUsersForModernUser: false,
+					crossModernUserQueueMatches: [],
+				},
+			},
+		])
 
-		const result = await legacy.recheckUser(
-			'11111111-1111-4111-8111-111111111111',
-			'admin-1',
-			{ force: true }
-		)
+		const result = await legacy.recheckUser('11111111-1111-4111-8111-111111111111', 'admin-1', {
+			force: true,
+		})
 
 		expect(result.ok).toBe(true)
 		expect(result.legacyAuthUserIds).toEqual(['legacy-1'])

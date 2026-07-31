@@ -7,7 +7,8 @@
  *   B) void → refund
  *   C) bet idempotency (no double-debit on a re-delivered interaction)
  *
- * These run in a Node vitest project (vitest.config.node.ts), NOT the workers pool: after the fix-5
+ * These run in the explicit Node-backed integration project
+ * (vitest.integration.config.ts), NOT the default workers pool: after the fix-5
  * decomposition every operation is a standalone `service(deps, …)` taking `deps = { db }`, so we build
  * `deps` with a real client and call the services directly. A real DB is required because placeBet /
  * proposeResolution use interactive FOR UPDATE transactions (the neon-http driver can't do those).

@@ -9,8 +9,11 @@ export class QueueError extends Error {
 		this.name = 'QueueError'
 		this.cause = cause
 		// Maintain proper stack trace in V8
-		if (Error.captureStackTrace) {
-			Error.captureStackTrace(this, QueueError)
+		const errorConstructor = Error as ErrorConstructor & {
+			captureStackTrace?: (target: object, constructor?: unknown) => void
+		}
+		if (errorConstructor.captureStackTrace) {
+			errorConstructor.captureStackTrace(this, QueueError)
 		}
 	}
 }

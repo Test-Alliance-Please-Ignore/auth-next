@@ -14,31 +14,23 @@
 		"drizzle-kit": "0.31.10"
 	},
 	"devDependencies": {
-		"@changesets/cli": "2.29.7",
-		"@ianvs/prettier-plugin-sort-imports": "4.7.0",
+		"@changesets/cli": "2.31.1",
+		"@ianvs/prettier-plugin-sort-imports": "4.7.1",
 		"@repo/eslint-config": "workspace:*",
 		"@repo/tools": "workspace:*",
 		"@repo/typescript-config": "workspace:*",
 		"@repo/workspace-dependencies": "workspace:*",
-		"@turbo/gen": "2.8.16",
-		"npm-run-all2": "8.0.4",
+		"@turbo/gen": "2.10.6",
+		"eslint": "9.39.4",
+		"npm-run-all2": "9.0.2",
 		"prettier": "3.6.2",
 		"prettier-plugin-packagejson": "2.5.19",
 		"prettier-plugin-toml": "2.0.6",
-		"syncpack": "13.0.4",
-		"turbo": "2.9.7",
+		"syncpack": "15.3.2",
+		"turbo": "2.10.6",
 		"typescript": "5.9.3",
-		"vitest": "3.2.4",
-		"wrangler": "4.87.0"
+		"vitest": "4.1.10",
+		"wrangler": "4.116.0"
 	},
-	"pnpm": {
-		"overrides": {
-			"@vitest/runner": "3.2.4",
-			"@vitest/snapshot": "3.2.4",
-			"drizzle-orm": "0.44.7",
-			"workerd": "1.20251106.1",
-			"tsx": "4.21.0"
-		}
-	},
-	"packageManager": "pnpm@10.31.0"
+	"packageManager": "pnpm@11.18.0"
 }

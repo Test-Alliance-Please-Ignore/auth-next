@@ -1,6 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router'
 
 import { BillEntityPicker } from '@/components/bills/bill-entity-picker'
 import { Button } from '@/components/ui/button'

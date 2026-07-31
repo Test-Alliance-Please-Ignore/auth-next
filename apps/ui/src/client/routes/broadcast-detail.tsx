@@ -1,6 +1,6 @@
 import { ArrowLeft, Ban, Edit3, FilePlus2, RefreshCw, Send, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
 import { AddBroadcastAddendumDialog } from './add-broadcast-addendum-dialog'

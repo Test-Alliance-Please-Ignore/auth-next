@@ -7,7 +7,7 @@
 
 import { AlertCircle, ArrowLeft, Lock } from 'lucide-react'
 import { useState } from 'react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import {

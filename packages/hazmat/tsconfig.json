@@ -1,6 +1,7 @@
 {
 	"extends": "@repo/typescript-config/base.json",
 	"compilerOptions": {
+		"lib": ["es2022", "webworker"],
 		"outDir": "dist",
 		"rootDir": "src"
 	},

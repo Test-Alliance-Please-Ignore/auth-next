@@ -47,13 +47,13 @@ describe('QueueConsumer', () => {
 		}
 
 		const consumer = new TestConsumer()
-		const message = createMockMessage({ id: 1, type: 'update' })
+		const message = createMockMessage({ id: '1', type: 'update' })
 		const batch = createMockBatch([message])
 
 		await consumer.queue(batch, {}, {} as ExecutionContext)
 
 		expect(handleMessage).toHaveBeenCalledWith(
-			{ id: 1, type: 'update' },
+			{ id: '1', type: 'update' },
 			expect.objectContaining({
 				attempt: 1,
 			})
@@ -75,7 +75,7 @@ describe('QueueConsumer', () => {
 		}
 
 		const consumer = new TestConsumer()
-		const message = createMockMessage({ id: 'invalid', type: 'update' })
+		const message = createMockMessage({ id: 1, type: 'update' })
 		const batch = createMockBatch([message])
 
 		await consumer.queue(batch, {}, {} as ExecutionContext)
@@ -96,7 +96,7 @@ describe('QueueConsumer', () => {
 		}
 
 		const consumer = new TestConsumer()
-		const message = createMockMessage({ id: 1, type: 'update' })
+		const message = createMockMessage({ id: '1', type: 'update' })
 		const batch = createMockBatch([message])
 
 		await consumer.queue(batch, {}, {} as ExecutionContext)
@@ -117,7 +117,7 @@ describe('QueueConsumer', () => {
 		}
 
 		const consumer = new TestConsumer()
-		const message = createMockMessage({ id: 1, type: 'update' })
+		const message = createMockMessage({ id: '1', type: 'update' })
 		const batch = createMockBatch([message])
 
 		await consumer.queue(batch, {}, {} as ExecutionContext)
@@ -147,7 +147,7 @@ describe('QueueConsumer', () => {
 		}
 
 		const consumer = new TestConsumer()
-		const message = createMockMessage({ id: 1, type: 'update' })
+		const message = createMockMessage({ id: '1', type: 'update' })
 		const batch = createMockBatch([message])
 
 		await consumer.queue(batch, {}, {} as ExecutionContext)
@@ -162,7 +162,7 @@ describe('QueueConsumer', () => {
 			})
 		)
 		expect(onMessageSuccess).toHaveBeenCalledWith(
-			{ id: 1, type: 'update' },
+			{ id: '1', type: 'update' },
 			expect.objectContaining({ attempt: 1 })
 		)
 	})
@@ -184,14 +184,14 @@ describe('QueueConsumer', () => {
 		}
 
 		const consumer = new TestConsumer()
-		const message = createMockMessage({ id: 1, type: 'update' })
+		const message = createMockMessage({ id: '1', type: 'update' })
 		const batch = createMockBatch([message])
 
 		await consumer.queue(batch, {}, {} as ExecutionContext)
 
 		expect(onMessageError).toHaveBeenCalledWith(
 			expect.any(Error),
-			{ id: 1, type: 'update' },
+			{ id: '1', type: 'update' },
 			expect.objectContaining({ attempt: 1 })
 		)
 	})
@@ -213,7 +213,7 @@ describe('QueueConsumer', () => {
 		}
 
 		const consumer = new TestConsumer()
-		const message = createMockMessage({ id: 1, type: 'update' })
+		const message = createMockMessage({ id: '1', type: 'update' })
 		const batch = createMockBatch([message])
 
 		await consumer.queue(batch, {}, {} as ExecutionContext)
@@ -243,7 +243,7 @@ describe('QueueConsumer', () => {
 		}
 
 		const consumer = new TestConsumer()
-		const message = createMockMessage({ id: 1, type: 'update' })
+		const message = createMockMessage({ id: '1', type: 'update' })
 		const batch = createMockBatch([message])
 
 		await consumer.queue(batch, {}, {} as ExecutionContext)
@@ -288,9 +288,9 @@ describe('QueueConsumer', () => {
 
 		const consumer = new TestConsumer()
 		const messages = [
-			createMockMessage({ id: 1, type: 'update' }, 'msg-1'),
-			createMockMessage({ id: 2, type: 'update' }, 'msg-2'),
-			createMockMessage({ id: 3, type: 'update' }, 'msg-3'),
+			createMockMessage({ id: '1', type: 'update' }, 'msg-1'),
+			createMockMessage({ id: '2', type: 'update' }, 'msg-2'),
+			createMockMessage({ id: '3', type: 'update' }, 'msg-3'),
 		]
 		const batch = createMockBatch(messages)
 

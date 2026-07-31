@@ -18,7 +18,7 @@ import {
 	X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router'
 
 import { AttachPermissionDialog } from '@/components/attach-permission-dialog'
 import { EditGroupDescriptionDialog } from '@/components/edit-group-description-dialog'

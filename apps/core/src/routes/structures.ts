@@ -3,6 +3,12 @@ import { z } from 'zod'
 
 import { getStub } from '@repo/do-utils'
 import { hasAllStructureManagerPermission } from '@repo/groups'
+import {
+	STRUCTURE_COMMON_LIST_SORT_FIELDS,
+	STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS,
+	STRUCTURE_SKYHOOK_LIST_SORT_FIELDS,
+	STRUCTURE_SOVEREIGNTY_LIST_SORT_FIELDS,
+} from '@repo/structures'
 import { createWorkflow } from '@repo/workflow-utils'
 
 import { getCachedUserPermissions } from '../lib/groups-cache'
@@ -16,33 +22,27 @@ import { normalizeWorkflowStatus } from '../lib/workflow-status'
 import { EntityResolverService } from '../services/entity-resolver.service'
 
 import type { Context } from 'hono'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
-import {
-	STRUCTURE_COMMON_LIST_SORT_FIELDS,
-	STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS,
-	STRUCTURE_SKYHOOK_LIST_SORT_FIELDS,
-	STRUCTURE_SOVEREIGNTY_LIST_SORT_FIELDS,
-} from '@repo/structures'
 import type {
-	StructureDetailResult,
 	StructureCitadelListQuery,
 	StructureCommonListSortBy,
-	StructureMoonStructureListSortBy,
+	StructureDetailResult,
 	StructureFittingItem,
-	StructureMoonDrillListQuery,
-	StructureMiningCitadelListQuery,
-	StructureNavigationListQuery,
 	StructureInventoryBay,
 	StructureInventoryItem,
+	StructureMiningCitadelListQuery,
+	StructureMoonDrillListQuery,
+	StructureMoonStructureListSortBy,
+	StructureNavigationListQuery,
 	StructureSkyhookListQuery,
 	StructureSkyhookListSortBy,
 	StructureSovereigntyListQuery,
-	StructureSovereigntyListSortBy,
 	StructureSovereigntyListResponse,
+	StructureSovereigntyListSortBy,
 	UpdateStructureConfigInput,
 	UpdateStructureModuleConfigInput,
 } from '@repo/structures'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { TypeMetadata, Universe } from '@repo/universe'
 import type { App } from '../context'
 
@@ -137,7 +137,9 @@ function getUniverseStub(env: App['Bindings']): Universe {
 	return getStub<Universe>(env.UNIVERSE, 'default')
 }
 
-function getExecutionContextOrNull(c: { executionCtx?: ExecutionContext }): ExecutionContext | null {
+function getExecutionContextOrNull(c: {
+	executionCtx?: Pick<ExecutionContext, 'waitUntil'>
+}): Pick<ExecutionContext, 'waitUntil'> | null {
 	try {
 		return c.executionCtx ?? null
 	} catch {
@@ -433,7 +435,10 @@ app.post('/:structureId/inventory-rebuild', async (c) => {
 			return c.json({ error: 'Structure not found' }, 404)
 		}
 
-		const corpData = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, structure.corporationId)
+		const corpData = getStub<EveCorporationData>(
+			c.env.EVE_CORPORATION_DATA,
+			structure.corporationId
+		)
 		const result = await corpData.rebuildStructureInventorySnapshot(
 			structure.corporationId,
 			structure.structureId
@@ -448,9 +453,7 @@ app.post('/:structureId/inventory-rebuild', async (c) => {
 		return c.json(
 			{
 				error:
-					error instanceof Error
-						? error.message
-						: 'Failed to rebuild structure inventory snapshot',
+					error instanceof Error ? error.message : 'Failed to rebuild structure inventory snapshot',
 			},
 			500
 		)
@@ -524,11 +527,11 @@ async function handleCitadelStructuresRequest(c: Context<App>): Promise<Response
 	}
 
 	try {
-			const query = citadelStructureListQuerySchema.parse({
-				page: c.req.query('page'),
-				pageSize: c.req.query('pageSize'),
-				sortBy: (c.req.query('sortBy') || undefined) as StructureCommonListSortBy | undefined,
-				sortDirection: c.req.query('sortDirection') || undefined,
+		const query = citadelStructureListQuerySchema.parse({
+			page: c.req.query('page'),
+			pageSize: c.req.query('pageSize'),
+			sortBy: (c.req.query('sortBy') || undefined) as StructureCommonListSortBy | undefined,
+			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
 			assignedGroupId: c.req.query('assignedGroupId') || undefined,
 			lowPower: c.req.query('lowPower') || undefined,
@@ -537,7 +540,7 @@ async function handleCitadelStructuresRequest(c: Context<App>): Promise<Response
 			systemId: c.req.query('systemId') || undefined,
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
-			}) as StructureCitadelListQuery
+		}) as StructureCitadelListQuery
 
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
@@ -561,10 +564,10 @@ async function handleNavigationStructuresRequest(c: Context<App>): Promise<Respo
 	}
 
 	try {
-			const query = navigationStructureListQuerySchema.parse({
-				page: c.req.query('page'),
-				pageSize: c.req.query('pageSize'),
-				sortBy: (c.req.query('sortBy') || undefined) as StructureCommonListSortBy | undefined,
+		const query = navigationStructureListQuerySchema.parse({
+			page: c.req.query('page'),
+			pageSize: c.req.query('pageSize'),
+			sortBy: (c.req.query('sortBy') || undefined) as StructureCommonListSortBy | undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
 			assignedGroupId: c.req.query('assignedGroupId') || undefined,
@@ -574,7 +577,7 @@ async function handleNavigationStructuresRequest(c: Context<App>): Promise<Respo
 			systemId: c.req.query('systemId') || undefined,
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
-			}) as StructureNavigationListQuery
+		}) as StructureNavigationListQuery
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
 				await c.env.STRUCTURES.listNavigationStructures(await getStructureActor(c), query)
@@ -597,10 +600,10 @@ async function handleSovereigntyStructuresRequest(c: Context<App>): Promise<Resp
 	}
 
 	try {
-			const query = sovereigntyStructureListQuerySchema.parse({
-				page: c.req.query('page'),
-				pageSize: c.req.query('pageSize'),
-				sortBy: (c.req.query('sortBy') || undefined) as StructureSovereigntyListSortBy | undefined,
+		const query = sovereigntyStructureListQuerySchema.parse({
+			page: c.req.query('page'),
+			pageSize: c.req.query('pageSize'),
+			sortBy: (c.req.query('sortBy') || undefined) as StructureSovereigntyListSortBy | undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
 			assignedGroupId: c.req.query('assignedGroupId') || undefined,
@@ -608,8 +611,11 @@ async function handleSovereigntyStructuresRequest(c: Context<App>): Promise<Resp
 			systemId: c.req.query('systemId') || undefined,
 			controllerAllianceId: c.req.query('controllerAllianceId') || undefined,
 			vulnerabilityState: c.req.query('vulnerabilityState') || undefined,
-			}) as StructureSovereigntyListQuery
-		const response = await c.env.STRUCTURES.listSovereigntyStructures(await getStructureActor(c), query)
+		}) as StructureSovereigntyListQuery
+		const response = await c.env.STRUCTURES.listSovereigntyStructures(
+			await getStructureActor(c),
+			query
+		)
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
 				await enrichSovereigntyStructureListResponse(c.env, response)
@@ -632,10 +638,10 @@ async function handleSkyhookStructuresRequest(c: Context<App>): Promise<Response
 	}
 
 	try {
-			const query = skyhookStructureListQuerySchema.parse({
-				page: c.req.query('page'),
-				pageSize: c.req.query('pageSize'),
-				sortBy: (c.req.query('sortBy') || undefined) as StructureSkyhookListSortBy | undefined,
+		const query = skyhookStructureListQuerySchema.parse({
+			page: c.req.query('page'),
+			pageSize: c.req.query('pageSize'),
+			sortBy: (c.req.query('sortBy') || undefined) as StructureSkyhookListSortBy | undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
 			assignedGroupId: c.req.query('assignedGroupId') || undefined,
@@ -647,7 +653,7 @@ async function handleSkyhookStructuresRequest(c: Context<App>): Promise<Response
 			typeId: c.req.query('typeId') || undefined,
 			planetId: c.req.query('planetId') || undefined,
 			isRaidable: c.req.query('isRaidable') || undefined,
-			}) as StructureSkyhookListQuery
+		}) as StructureSkyhookListQuery
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
 				await c.env.STRUCTURES.listSkyhookStructures(await getStructureActor(c), query)
@@ -670,10 +676,10 @@ async function handleMoonDrillStructuresRequest(c: Context<App>): Promise<Respon
 	}
 
 	try {
-			const query = moonDrillStructureListQuerySchema.parse({
-				page: c.req.query('page'),
-				pageSize: c.req.query('pageSize'),
-				sortBy: (c.req.query('sortBy') || undefined) as StructureMoonStructureListSortBy | undefined,
+		const query = moonDrillStructureListQuerySchema.parse({
+			page: c.req.query('page'),
+			pageSize: c.req.query('pageSize'),
+			sortBy: (c.req.query('sortBy') || undefined) as StructureMoonStructureListSortBy | undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
 			assignedGroupId: c.req.query('assignedGroupId') || undefined,
@@ -684,7 +690,7 @@ async function handleMoonDrillStructuresRequest(c: Context<App>): Promise<Respon
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
 			planetId: c.req.query('planetId') || undefined,
-			}) as StructureMoonDrillListQuery
+		}) as StructureMoonDrillListQuery
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
 				await c.env.STRUCTURES.listMoonDrillStructures(await getStructureActor(c), query)
@@ -707,10 +713,10 @@ async function handleMiningCitadelsStructuresRequest(c: Context<App>): Promise<R
 	}
 
 	try {
-			const query = moonDrillStructureListQuerySchema.parse({
-				page: c.req.query('page'),
-				pageSize: c.req.query('pageSize'),
-				sortBy: (c.req.query('sortBy') || undefined) as StructureMoonStructureListSortBy | undefined,
+		const query = moonDrillStructureListQuerySchema.parse({
+			page: c.req.query('page'),
+			pageSize: c.req.query('pageSize'),
+			sortBy: (c.req.query('sortBy') || undefined) as StructureMoonStructureListSortBy | undefined,
 			sortDirection: c.req.query('sortDirection') || undefined,
 			corporationId: c.req.query('corporationId') || undefined,
 			assignedGroupId: c.req.query('assignedGroupId') || undefined,
@@ -721,7 +727,7 @@ async function handleMiningCitadelsStructuresRequest(c: Context<App>): Promise<R
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
 			planetId: c.req.query('planetId') || undefined,
-			}) as StructureMiningCitadelListQuery
+		}) as StructureMiningCitadelListQuery
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
 				await c.env.STRUCTURES.listMiningCitadelStructures(await getStructureActor(c), query)
@@ -786,9 +792,7 @@ app.get('/:structureId', async (c) => {
 			return c.json({ error: 'Structure not found' }, 404)
 		}
 		return c.json(
-			stripUpdatedAtFromStructureItem(
-				await enrichStructureDetailTypeNames(c.env, structure)
-			)
+			stripUpdatedAtFromStructureItem(await enrichStructureDetailTypeNames(c.env, structure))
 		)
 	} catch (error) {
 		return c.json(
@@ -821,9 +825,7 @@ app.patch('/:structureId/config', async (c) => {
 			return c.json({ error: 'Structure not found' }, 404)
 		}
 		return c.json(
-			stripUpdatedAtFromStructureItem(
-				await enrichStructureDetailTypeNames(c.env, structure)
-			)
+			stripUpdatedAtFromStructureItem(await enrichStructureDetailTypeNames(c.env, structure))
 		)
 	} catch (error) {
 		if (error instanceof z.ZodError) {

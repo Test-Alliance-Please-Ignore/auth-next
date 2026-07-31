@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
+
+import { DoctrinesDO } from '../../durable-object'
+
 vi.mock('cloudflare:workers', () => ({
 	DurableObject: class {},
 }))
 
-async function createSubjectWithDb(db: unknown) {
-	const { DoctrinesDO } = await import('../../durable-object')
+function createSubjectWithDb(db: unknown) {
 	const subject = Object.create(DoctrinesDO.prototype) as InstanceType<typeof DoctrinesDO>
 	;(subject as unknown as { db: unknown }).db = db
 	return subject
@@ -48,7 +50,7 @@ describe('DoctrinesDO soft-delete behavior', () => {
 			}),
 		}
 
-		const subject = await createSubjectWithDb(db)
+		const subject = createSubjectWithDb(db)
 		await subject.deleteDoctrine('doc-1', 'Alice FC')
 
 		expect(db.query.doctrinesDoctrines.findFirst).toHaveBeenCalledOnce()
@@ -95,7 +97,7 @@ describe('DoctrinesDO soft-delete behavior', () => {
 			}),
 		}
 
-		const subject = await createSubjectWithDb(db)
+		const subject = createSubjectWithDb(db)
 		await subject.deleteFitting('fit-1', 'Alice FC')
 
 		expect(db.query.doctrinesFittings.findFirst).toHaveBeenCalledOnce()
@@ -120,7 +122,7 @@ describe('DoctrinesDO soft-delete behavior', () => {
 			insert: vi.fn(),
 		}
 
-		const subject = await createSubjectWithDb(db)
+		const subject = createSubjectWithDb(db)
 		await expect(
 			subject.addFittingToDoctrine('doc-1', {
 				fittingId: 'fit-1',
@@ -146,7 +148,7 @@ describe('DoctrinesDO soft-delete behavior', () => {
 			insert: vi.fn(),
 		}
 
-		const subject = await createSubjectWithDb(db)
+		const subject = createSubjectWithDb(db)
 		await expect(
 			subject.addFittingToDoctrine('doc-1', {
 				fittingId: 'fit-1',
