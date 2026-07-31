@@ -7,6 +7,80 @@ const mocks = vi.hoisted(() => {
 	return { getStubMock }
 })
 
+type ReagentFixture = {
+	typeId: string
+	amount: number
+	burningPerHour: number
+	lastCycle: string
+}
+
+type ReagentBayFixture = {
+	lastUpdated: string
+	reagents: ReagentFixture[]
+}
+
+type SovereigntyHubFixture = {
+	structureId: string
+	corporationId: string
+	systemId: string
+	systemName: string
+	name: string
+	typeId: string
+	fuelAccessListId: string | null
+	controllerAllianceId: string | null
+	controllerAllianceName?: string | null
+	reagentBayLastUpdated?: Date | null
+	reagentBay?: ReagentBayFixture | null
+	resources?: {
+		power: { allocated: number; available: number }
+		workforce: { allocated: number; available: number }
+	} | null
+	upgrades?: Array<{ typeId: string; powerState: string }> | null
+	vulnerabilityWindowStart?: Date | null
+	vulnerabilityWindowEnd?: Date | null
+	workforceTransport?: {
+		configuration: { mode: string; systems: string[] }
+		state: { mode: string; systems: string[] }
+	} | null
+	syncStatus?: string | null
+	syncFailureReason?: string | null
+	lastAttemptedSyncAt?: Date | null
+	sourceSyncAt?: Date | null
+	lastSyncedAt?: Date | null
+	updatedAt?: Date | null
+}
+
+type SovereigntySystemFixture = {
+	systemId: string
+	systemName: string
+	corporationId: string
+	regionId?: string | null
+	regionName?: string | null
+	claimType: string
+	allianceId: string | null
+	allianceName?: string | null
+	corporationClaimantId: string | null
+	factionId: string | null
+	claimedSince: Date | null
+	sovereigntyHubStructureId: string | null
+	isCapitalSystem: boolean
+	vulnerabilityWindowStart: Date | null
+	vulnerabilityWindowEnd: Date | null
+	activityDefenseMultiplier: string | null
+	militaryLevel: number
+	industrialLevel: number
+	strategicLevel: number
+	sourceSyncAt: Date | null
+	lastSyncedAt: Date | null
+	updatedAt: Date | null
+}
+
+type ManagedCorporationFixture = {
+	corporationId: string
+	name: string
+	includeInStructureAssetSync: boolean
+}
+
 vi.mock('@repo/hono-helpers', () => ({
 	logger: {
 		debug: vi.fn(),
@@ -41,14 +115,14 @@ function makeDb() {
 		findFirst: vi.fn().mockResolvedValue(null),
 	}
 	const managedCorporations = {
-		findMany: vi.fn().mockResolvedValue([
+		findMany: vi.fn<() => Promise<ManagedCorporationFixture[]>>().mockResolvedValue([
 			{
 				corporationId: 'corp-1',
 				name: 'Test Corp',
 				includeInStructureAssetSync: true,
 			},
 		]),
-		findFirst: vi.fn().mockResolvedValue({
+		findFirst: vi.fn<() => Promise<ManagedCorporationFixture | null>>().mockResolvedValue({
 			corporationId: 'corp-1',
 			name: 'Test Corp',
 			includeInStructureAssetSync: true,
@@ -78,7 +152,7 @@ function makeDb() {
 		findMany: vi.fn().mockResolvedValue([]),
 	}
 	const structureSovereigntyHubs = {
-		findMany: vi.fn().mockResolvedValue([
+		findMany: vi.fn<() => Promise<SovereigntyHubFixture[]>>().mockResolvedValue([
 			{
 				structureId: 'hub-1',
 				corporationId: 'corp-1',
@@ -127,7 +201,7 @@ function makeDb() {
 				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
 			},
 		]),
-		findFirst: vi.fn().mockResolvedValue({
+		findFirst: vi.fn<() => Promise<SovereigntyHubFixture | null>>().mockResolvedValue({
 			structureId: 'hub-1',
 			corporationId: 'corp-1',
 			systemId: '30000142',
@@ -176,7 +250,7 @@ function makeDb() {
 		}),
 	}
 	const structureSovereigntySystems = {
-		findMany: vi.fn().mockResolvedValue([
+		findMany: vi.fn<() => Promise<SovereigntySystemFixture[]>>().mockResolvedValue([
 			{
 				systemId: '30000142',
 				systemName: 'Jita',
@@ -201,7 +275,7 @@ function makeDb() {
 				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
 			},
 		]),
-		findFirst: vi.fn().mockResolvedValue({
+		findFirst: vi.fn<() => Promise<SovereigntySystemFixture | null>>().mockResolvedValue({
 			systemId: '30000142',
 			systemName: 'Jita',
 			corporationId: 'corp-1',
