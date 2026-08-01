@@ -13,7 +13,9 @@ import type {
 	EnrichedQueueEntry,
 } from '../../workflows/utils/background-refresh-batching'
 
-function makeCorporation(overrides: Partial<BackgroundRefreshCorporation> = {}): BackgroundRefreshCorporation {
+function makeCorporation(
+	overrides: Partial<BackgroundRefreshCorporation> = {}
+): BackgroundRefreshCorporation {
 	return {
 		corporationId: '1',
 		name: 'Test Corp',
@@ -90,7 +92,9 @@ function buildRefreshSimulationCorporations(now: number): BackgroundRefreshCorpo
 	]
 }
 
-function getStaticBucket(corporation: BackgroundRefreshCorporation): 'structure-asset' | 'member' | 'alt-special' | 'other' {
+function getStaticBucket(
+	corporation: BackgroundRefreshCorporation
+): 'structure-asset' | 'member' | 'alt-special' | 'other' {
 	if (corporation.includeInStructureAssetSync) return 'structure-asset'
 	if (corporation.isMemberCorporation) return 'member'
 	if (corporation.isAltCorp || corporation.isSpecialPurpose) return 'alt-special'
@@ -125,7 +129,9 @@ function formatDurationMs(ms: number): string {
 		hours > 0 ? `${hours}h` : null,
 		minutes > 0 || hours > 0 ? `${minutes}m` : null,
 		`${seconds}s`,
-	].filter((part): part is string => part !== null).join(' ')
+	]
+		.filter((part): part is string => part !== null)
+		.join(' ')
 }
 
 function simulateRefreshRuns(
@@ -139,8 +145,13 @@ function simulateRefreshRuns(
 	refreshCounts: Map<string, number>
 	refreshTimelineByCorp: Map<string, number[]>
 } {
-	const corpStateById = new Map(corporations.map((corp) => [corp.corporationId, { ...corp }] as const))
-	let queueByCorpId = new Map<string, { corporationId: string; name: string; nextAttemptAtMs: number; attempt: number }>()
+	const corpStateById = new Map(
+		corporations.map((corp) => [corp.corporationId, { ...corp }] as const)
+	)
+	let queueByCorpId = new Map<
+		string,
+		{ corporationId: string; name: string; nextAttemptAtMs: number; attempt: number }
+	>()
 
 	for (const corporation of corporations) {
 		queueByCorpId.set(corporation.corporationId, {
@@ -176,7 +187,7 @@ function simulateRefreshRuns(
 				if (!corporation) return null
 				return enrichQueueEntry(entry, corporation, runAt)
 			})
-		.filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+			.filter((entry): entry is NonNullable<typeof entry> => entry !== null)
 
 		let { draining } = selectPriorityDrain(due, batchSize)
 		if (draining.length < batchSize) {
@@ -339,14 +350,19 @@ describe('scheduled background refresh selection', () => {
 						nextAttemptAtMs: 0,
 						attempt: 0,
 					},
-					makeCorporation({ isMemberCorporation: true, lastSync: new Date(now - 45 * 60 * 1000).toISOString() }),
+					makeCorporation({
+						isMemberCorporation: true,
+						lastSync: new Date(now - 45 * 60 * 1000).toISOString(),
+					}),
 					now
 				)
 			),
 		]
 
 		const selected = selectPriorityDrain(due, 8)
-		const selectedBackstopCount = selected.draining.filter((entry) => entry.bucket === 'backstop').length
+		const selectedBackstopCount = selected.draining.filter(
+			(entry) => entry.bucket === 'backstop'
+		).length
 		expect(selectedBackstopCount).toBe(2)
 		expect(selected.draining.map((entry) => entry.corporationId)).toEqual([
 			'backstop-0',
@@ -365,8 +381,8 @@ describe('scheduled background refresh selection', () => {
 			corporations,
 			startMs,
 			24,
-			5 * 60 * 1000,
-			20
+			10 * 60 * 1000,
+			30
 		)
 		const metrics = summarizeSimulationMetrics(corporations, refreshTimelineByCorp)
 
@@ -383,7 +399,7 @@ describe('scheduled background refresh selection', () => {
 			)
 		)
 
-		expect(selectedByRun[0]?.length).toBeLessThanOrEqual(20)
+		expect(selectedByRun[0]?.length).toBeLessThanOrEqual(30)
 		expect(new Set(selectedByRun.flat().map((entry) => entry.corporationId)).size).toBe(110)
 		expect(refreshCounts.size).toBe(110)
 		expect([...refreshCounts.values()].every((count) => count >= 1)).toBe(true)

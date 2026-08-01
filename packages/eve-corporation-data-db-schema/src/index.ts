@@ -1,5 +1,16 @@
-import { index, unique } from 'drizzle-orm/pg-core'
-import { boolean, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import {
+	boolean,
+	foreignKey,
+	index,
+	integer,
+	jsonb,
+	numeric,
+	pgTable,
+	text,
+	timestamp,
+	unique,
+	uuid,
+} from 'drizzle-orm/pg-core'
 
 import { managedCorporations } from '@repo/core-db-schema'
 
@@ -7,9 +18,7 @@ export const corporationStructures = pgTable(
 	'corporation_structures',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: text('corporation_id')
-			.notNull()
-			.references(() => managedCorporations.corporationId),
+		corporationId: text('corporation_id').notNull(),
 		structureId: text('structure_id').notNull(),
 		name: text('name'),
 		typeId: text('type_id').notNull(),
@@ -34,7 +43,9 @@ export const corporationStructures = pgTable(
 		stateTimerStart: timestamp('state_timer_start', { withTimezone: true }),
 		unanchorsAt: timestamp('unanchors_at', { withTimezone: true }),
 		lowPower: boolean('low_power').notNull().default(false),
-		syncStatus: text('sync_status', { enum: ['ok', 'warning', 'error'] }).notNull().default('ok'),
+		syncStatus: text('sync_status', { enum: ['ok', 'warning', 'error'] })
+			.notNull()
+			.default('ok'),
 		syncFailureReason: text('sync_failure_reason'),
 		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
 		services: jsonb('services').$type<
@@ -48,6 +59,30 @@ export const corporationStructures = pgTable(
 	(table) => [unique().on(table.structureId)]
 )
 
+export const corporationStructureInventorySnapshots = pgTable(
+	'corporation_structure_inventory_snapshots',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		corporationId: text('corporation_id')
+			.notNull()
+			.references(() => managedCorporations.corporationId),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		activatedAt: timestamp('activated_at', { withTimezone: true }),
+	},
+	(table) => [
+		foreignKey({
+			columns: [table.corporationId],
+			foreignColumns: [managedCorporations.corporationId],
+			name: 'corp_inv_snapshots_corp_fk',
+		}),
+		index('corporation_structure_inventory_snapshots_corp_activated_idx').on(
+			table.corporationId,
+			table.activatedAt,
+			table.createdAt
+		),
+	]
+)
+
 export const corporationStructureInventory = pgTable(
 	'corporation_structure_inventory',
 	{
@@ -55,6 +90,7 @@ export const corporationStructureInventory = pgTable(
 		corporationId: text('corporation_id')
 			.notNull()
 			.references(() => managedCorporations.corporationId),
+		snapshotId: uuid('snapshot_id').notNull(),
 		structureId: text('structure_id')
 			.notNull()
 			.references(() => corporationStructures.structureId, { onDelete: 'cascade' }),
@@ -67,8 +103,18 @@ export const corporationStructureInventory = pgTable(
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
-		unique().on(table.corporationId, table.itemId),
+		foreignKey({
+			columns: [table.snapshotId],
+			foreignColumns: [corporationStructureInventorySnapshots.id],
+			name: 'corp_inv_snapshot_fk',
+		}).onDelete('cascade'),
+		unique('corp_inv_snapshot_item_uniq').on(table.corporationId, table.snapshotId, table.itemId),
 		index('corporation_structure_inventory_corp_structure_idx').on(
+			table.corporationId,
+			table.structureId
+		),
+		index('corporation_structure_inventory_snapshot_structure_idx').on(
+			table.snapshotId,
 			table.corporationId,
 			table.structureId
 		),
@@ -100,6 +146,7 @@ export const structureFuelLog = pgTable(
 
 export const schema = {
 	corporationStructures,
+	corporationStructureInventorySnapshots,
 	corporationStructureInventory,
 	structureFuelLog,
 }

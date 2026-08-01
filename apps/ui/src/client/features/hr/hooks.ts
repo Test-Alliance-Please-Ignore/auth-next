@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { useAuth } from '@/hooks/useAuth'
+
 import { hrApi } from './api'
 
 import type {
@@ -40,13 +42,20 @@ export function useHrRoles(corporationId: string, options?: { enabled?: boolean 
  * @param request - Permission check request (userId derived from session)
  */
 export function useHrPermissionCheck(request: CheckHrPermissionRequest | null) {
+	const { user } = useAuth()
+	const userId = user?.id ?? null
+
 	return useQuery({
-		queryKey: request ? hrKeys.permission(request.corporationId) : ['hr', 'permission', 'null'],
+		// The API derives the user from the session, so the session user and role
+		// requirement must be part of the client cache identity as well.
+		queryKey: request
+			? [...hrKeys.permission(request.corporationId), userId, request.requiredRole ?? null]
+			: ['hr', 'permission', 'null'],
 		queryFn: () => {
 			if (!request) throw new Error('No request provided')
 			return hrApi.checkHrPermission(request)
 		},
-		enabled: !!request,
+		enabled: !!request && userId !== null,
 		staleTime: 10 * 60 * 1000, // 10 minutes (HR roles change infrequently)
 	})
 }
@@ -55,11 +64,14 @@ export function useHrPermissionCheck(request: CheckHrPermissionRequest | null) {
  * Hook to list corporations where current user has HR access
  */
 export function useHrAccessibleCorporations(options?: { enabled?: boolean }) {
+	const { user } = useAuth()
+	const userId = user?.id ?? null
+
 	return useQuery<HrAccessibleCorporation[]>({
-		queryKey: hrKeys.corporations(),
+		queryKey: [...hrKeys.corporations(), userId],
 		queryFn: () => hrApi.listAccessibleCorporations(),
 		staleTime: 5 * 60 * 1000,
-		enabled: options?.enabled ?? true,
+		enabled: (options?.enabled ?? true) && userId !== null,
 	})
 }
 

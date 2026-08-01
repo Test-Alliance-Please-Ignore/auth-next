@@ -8,7 +8,7 @@
 	"routes": [],
 	"logpush": false,
 	"triggers": {
-		"crons": ["*/5 * * * *"]
+		"crons": ["*/10 * * * *"]
 	},
 	"observability": {
 		"enabled": true,
@@ -25,9 +25,7 @@
 		}
 	],
 	"queues": {
-		"producers": [
-			{ "queue": "hr-member-departed", "binding": "hr-member-departed" }
-		]
+		"producers": [{ "queue": "hr-member-departed", "binding": "hr-member-departed" }]
 	},
 	"services": [
 		{

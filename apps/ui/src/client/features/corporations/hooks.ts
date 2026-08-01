@@ -7,16 +7,18 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 
+import { useAuth } from '@/hooks/useAuth'
+
 import { myCorporationsApi } from './api'
 
 import type {
-	CorporationMemberAccountResponse,
 	CorporationAccessResult,
+	CorporationMemberAccountResponse,
 	CorporationMembersQuery,
 	CorporationMembersResponse,
+	CorporationScopedAccessResult,
 	CorporationUserSearchResult,
 	MyCorporation,
-	CorporationScopedAccessResult,
 } from './api'
 
 // ============================================================================
@@ -49,11 +51,15 @@ export const corporationKeys = {
  * This is optimized for speed and should be used in the sidebar
  */
 export function useHasCorporationAccess() {
+	const { user } = useAuth()
+	const userId = user?.id ?? null
+
 	return useQuery({
-		queryKey: ['my-corporations', 'has-access'],
+		queryKey: ['my-corporations', 'has-access', userId],
 		queryFn: () => myCorporationsApi.hasAccess(),
 		staleTime: 1000 * 60 * 5, // 5 minutes
 		gcTime: 1000 * 60 * 10, // 10 minutes
+		enabled: userId !== null,
 	})
 }
 
@@ -86,11 +92,15 @@ export function formatCorporationRoleLabel(
  * This returns the complete list of accessible corporations
  */
 export function useCorporationAccess() {
+	const { user } = useAuth()
+	const userId = user?.id ?? null
+
 	return useQuery<CorporationAccessResult>({
-		queryKey: corporationKeys.access(),
+		queryKey: [...corporationKeys.access(), userId],
 		queryFn: () => myCorporationsApi.checkAccess(),
 		staleTime: 1000 * 60 * 5, // 5 minutes
 		gcTime: 1000 * 60 * 10, // 10 minutes (formerly cacheTime)
+		enabled: userId !== null,
 	})
 }
 
@@ -98,11 +108,15 @@ export function useCorporationAccess() {
  * Hook to fetch user's corporations with leadership roles
  */
 export function useMyCorporations() {
+	const { user } = useAuth()
+	const userId = user?.id ?? null
+
 	return useQuery<MyCorporation[]>({
-		queryKey: corporationKeys.list(),
+		queryKey: [...corporationKeys.list(), userId],
 		queryFn: () => myCorporationsApi.getMyCorporations(),
 		staleTime: 1000 * 60 * 2, // 2 minutes
 		gcTime: 1000 * 60 * 5, // 5 minutes
+		enabled: userId !== null,
 	})
 }
 
@@ -286,14 +300,19 @@ export function useCorporationMemberStats(corporationId: string) {
  * Hook to check access for a specific corporation.
  */
 export function useCanAccessCorporation(corporationId: string) {
+	const { user } = useAuth()
+	const userId = user?.id ?? null
+
 	const {
 		data: access,
 		isLoading,
 		isFetching,
 	} = useQuery<CorporationScopedAccessResult>({
-		queryKey: corporationKeys.accessForCorporation(corporationId),
+		// The API derives the caller from the session, so access results must be
+		// isolated per authenticated user in the client cache.
+		queryKey: [...corporationKeys.accessForCorporation(corporationId), userId],
 		queryFn: () => myCorporationsApi.getCorporationAccess(corporationId),
-		enabled: Boolean(corporationId),
+		enabled: Boolean(corporationId) && userId !== null,
 		staleTime: 1000 * 60 * 5,
 		gcTime: 1000 * 60 * 10,
 		meta: {

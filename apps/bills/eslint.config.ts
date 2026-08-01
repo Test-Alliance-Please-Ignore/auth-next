@@ -7,6 +7,6 @@ const config = getConfig(import.meta.url)
 export default defineConfig([
 	config,
 	{
-		ignores: ['vite.config.ts', 'vitest.config.ts'],
+		ignores: ['vite.config.ts', 'vitest.config.ts', 'vitest.unit.config.ts'],
 	},
 ]) as Config

@@ -1,7 +1,8 @@
-import { createDbClient } from '@repo/db-utils'
 import { alertDestinations, discordServers, managedCorporations, users } from '@repo/core-db-schema'
+import { createDbClient } from '@repo/db-utils'
 import {
 	corporationStructureInventory,
+	corporationStructureInventorySnapshots,
 	corporationStructures,
 	structureFuelLog,
 } from '@repo/eve-corporation-data-db-schema'
@@ -17,6 +18,7 @@ export const querySchema = {
 	users,
 	managedCorporations,
 	corporationStructures,
+	corporationStructureInventorySnapshots,
 	corporationStructureInventory,
 	structureFuelLog,
 }

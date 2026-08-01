@@ -1,6 +1,7 @@
-import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import { WorkflowEntrypoint } from 'cloudflare:workers'
 
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { BillService } from '../services/bill.service'
@@ -9,10 +10,12 @@ import { fetchBillData } from './steps/fetch-bill-data'
 import { findPaymentsForBill } from './steps/find-payments/find-payments'
 import { updateCheckTimestamp } from './steps/update-check-timestamp'
 
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { BillStatus } from '@repo/bills'
 import type { Env } from '../context'
 import type { WorkflowContext } from './context'
-import { logger } from '@repo/hono-helpers'
+
+const DATABASE_QUERY_TIMEOUT_MS = 25_000
 
 const TAX_SYNC_ACTOR = 'system:bills:payment-status-check'
 type CorporationTaxSyncStub = {
@@ -69,7 +72,7 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 	 * MUST be called inside step.do() callbacks since services don't survive hibernation.
 	 */
 	private createContext(billId: string, workflowInstanceId: string): WorkflowContext {
-		const db = createDb(this.env.DATABASE_URL)
+		const db = createDb(this.env.DATABASE_URL, { queryTimeoutMs: DATABASE_QUERY_TIMEOUT_MS })
 		return {
 			env: this.env,
 			workflowInstanceId,
@@ -96,92 +99,34 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 		logger.log('[Workflow] Starting payment status check', logContext)
 
 		try {
-			// Step 1: Fetch bill data
-			const fetchBillDataResult = await step.do(
-				'fetch-bill-data',
+			// Step 1: Fetch bill data and record any new payments in one durable DB step.
+			const paymentReconciliationResult = await step.do(
+				'reconcile-payment-data',
 				{
 					retries: {
 						limit: 3,
 						delay: 1000,
 						backoff: 'exponential',
 					},
-					timeout: '30 seconds',
+					timeout: '1 minute',
 				},
-				() => {
+				async () => {
 					const ctx = this.createContext(billId, workflowInstanceId)
-					return fetchBillData(ctx)
+					const billDataResult = await fetchBillData(ctx)
+					const paymentLookupResult = await findPaymentsForBill(ctx, billDataResult.bill)
+					return { ...billDataResult, ...paymentLookupResult }
 				}
 			)
 
 			logger.log('[Workflow] Fetched bill data', {
 				...logContext,
-				status: fetchBillDataResult.bill.status,
+				status: paymentReconciliationResult.bill.status,
 			})
 
-			// Step 2: Find payments
-			const paymentLookupResult = await step.do(
-				'find-and-post-payments',
-				{
-					retries: {
-						limit: 3,
-						delay: 1000,
-						backoff: 'exponential',
-					},
-					timeout: '1 minute',
-				},
-				() => {
-					const ctx = this.createContext(billId, workflowInstanceId)
-					return findPaymentsForBill(ctx, fetchBillDataResult.bill)
-				}
-			)
-
-			// Step 3: If no new payment was recorded in this run, explicitly normalize overdue state.
-			const overdueRefreshResult =
-				paymentLookupResult.newPaymentsRecorded === 0
-					? await step.do(
-							'refresh-overdue-status',
-							{
-								retries: {
-									limit: 3,
-									delay: 1000,
-									backoff: 'exponential',
-								},
-								timeout: '30 seconds',
-							},
-							() => {
-								const ctx = this.createContext(billId, workflowInstanceId)
-								return ctx.billService.refreshBillLifecycleStatus(ctx.billId)
-							}
-						)
-					: {
-							overdueMarked: false,
-							lateFeeChanged: false,
-							billStatus: fetchBillDataResult.bill.status,
-						}
-
-			if (overdueRefreshResult.overdueMarked) {
-				await step.do(
-					'enqueue-overdue-notification',
-					{
-						retries: {
-							limit: 3,
-							delay: 1000,
-							backoff: 'exponential',
-						},
-						timeout: '30 seconds',
-					},
-					async () => {
-						const billsStub = getStub<BillsNotificationStub>(this.env.BILLS, 'default')
-						return billsStub.enqueueBillNotificationEvent(billId, 'overdue', {
-							source: 'bill_payment_status_workflow',
-						})
-					}
-				)
-			}
-
-			// Step 4: Check payment status
+			// Step 2: Normalize lifecycle state and evaluate payment status. Keep the transition
+			// result durable so a later timestamp retry cannot re-run it and lose its edge flags.
 			const paymentStatusResult = await step.do(
-				'check-payment-status',
+				'finalize-payment-state',
 				{
 					retries: {
 						limit: 3,
@@ -190,66 +135,70 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 					},
 					timeout: '1 minute',
 				},
-				() => {
+				async () => {
 					const ctx = this.createContext(billId, workflowInstanceId)
-					return checkPaymentStatus(ctx)
+					const overdueRefreshResult =
+						paymentReconciliationResult.newPaymentsRecorded === 0
+							? await ctx.billService.refreshBillLifecycleStatus(ctx.billId)
+							: {
+									overdueMarked: false,
+									lateFeeChanged: false,
+									billStatus: paymentReconciliationResult.bill.status,
+								}
+					const paymentStatus = await checkPaymentStatus(ctx)
+					return { ...overdueRefreshResult, ...paymentStatus }
 				}
 			)
 
-			logger.log('[Workflow] Checked payment status', logContext)
-
-			if (paymentStatusResult.markedPaid) {
-				await step.do(
-					'enqueue-paid-notification',
-					{
-						retries: {
-							limit: 3,
-							delay: 1000,
-							backoff: 'exponential',
-						},
-						timeout: '30 seconds',
-					},
-					async () => {
-						const billsStub = getStub<BillsNotificationStub>(this.env.BILLS, 'default')
-						return billsStub.enqueueBillNotificationEvent(billId, 'paid', {
-							source: 'bill_payment_status_workflow',
-						})
-					}
-				)
-			}
-
-			// Step 3.5: Sync tax assessment bill status if this run changed payment data/status.
-			const shouldSyncTaxAssessment =
-				fetchBillDataResult.bill.externalSourceType === 'corporation_tax_assessment' &&
-				(paymentLookupResult.newPaymentsRecorded > 0 ||
-					paymentStatusResult.markedPaid ||
-					overdueRefreshResult.overdueMarked)
-			if (shouldSyncTaxAssessment) {
-				await step.do(
-					'sync-tax-assessment-bill-status',
-					{
-						retries: {
-							limit: 3,
-							delay: 1000,
-							backoff: 'exponential',
-						},
-						timeout: '30 seconds',
-					},
-					async () => {
-						const taxStub = getStub<CorporationTaxSyncStub>(this.env.CORPORATION_TAX, 'default')
-						return taxStub.syncBillStatus(TAX_SYNC_ACTOR, {
-							id: billId,
-							status: paymentStatusResult.statusAfter as BillStatus,
-						})
-					}
-				)
-			}
-
-			// Step 4: Update last checked timestamp even if no status change
+			// Keep this independent from state transitions. If it retries, the durable
+			// paymentStatusResult above is reused instead of being recomputed.
 			await step.do('update-check-timestamp', () => {
 				const ctx = this.createContext(billId, workflowInstanceId)
 				return updateCheckTimestamp(ctx)
 			})
+
+			logger.log('[Workflow] Checked payment status', logContext)
+
+			const shouldSyncTaxAssessment =
+				paymentReconciliationResult.bill.externalSourceType === 'corporation_tax_assessment' &&
+				(paymentReconciliationResult.newPaymentsRecorded > 0 ||
+					paymentStatusResult.markedPaid ||
+					paymentStatusResult.overdueMarked)
+			const shouldEnqueueNotification =
+				paymentStatusResult.overdueMarked || paymentStatusResult.markedPaid
+			if (shouldSyncTaxAssessment || shouldEnqueueNotification) {
+				await step.do(
+					'sync-bill-effects',
+					{
+						retries: {
+							limit: 3,
+							delay: 1000,
+							backoff: 'exponential',
+						},
+						timeout: '30 seconds',
+					},
+					async () => {
+						const billsStub = getStub<BillsNotificationStub>(this.env.BILLS, 'default')
+						if (paymentStatusResult.overdueMarked) {
+							await billsStub.enqueueBillNotificationEvent(billId, 'overdue', {
+								source: 'bill_payment_status_workflow',
+							})
+						}
+						if (paymentStatusResult.markedPaid) {
+							await billsStub.enqueueBillNotificationEvent(billId, 'paid', {
+								source: 'bill_payment_status_workflow',
+							})
+						}
+						if (shouldSyncTaxAssessment) {
+							const taxStub = getStub<CorporationTaxSyncStub>(this.env.CORPORATION_TAX, 'default')
+							await taxStub.syncBillStatus(TAX_SYNC_ACTOR, {
+								id: billId,
+								status: paymentStatusResult.statusAfter as BillStatus,
+							})
+						}
+					}
+				)
+			}
 
 			logger.log('[Workflow] Payment status check completed', logContext)
 

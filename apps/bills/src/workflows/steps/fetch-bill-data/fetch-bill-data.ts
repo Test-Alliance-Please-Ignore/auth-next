@@ -3,10 +3,22 @@ import { eq } from '@repo/db-utils'
 import { bills } from '../../../db/schema'
 import { getWorkflowLogger } from '../../context'
 
+import type { BillStatus, EntityType } from '@repo/bills'
 import type { WorkflowContext } from '../../context'
 
+export interface BillPaymentCheckData {
+	id: string
+	status: BillStatus
+	payeeId: string | null
+	payeeType: EntityType | null
+	payerType: EntityType
+	paymentToken: string
+	createdAt: string
+	externalSourceType: string | null
+}
+
 export interface FetchBillDataResult {
-	bill: typeof bills.$inferSelect
+	bill: BillPaymentCheckData
 }
 
 /**
@@ -33,6 +45,15 @@ export async function fetchBillData(ctx: WorkflowContext): Promise<FetchBillData
 	})
 
 	return {
-		bill,
+		bill: {
+			id: bill.id,
+			status: bill.status,
+			payeeId: bill.payeeId,
+			payeeType: bill.payeeType,
+			payerType: bill.payerType,
+			paymentToken: bill.paymentToken,
+			createdAt: bill.createdAt.toISOString(),
+			externalSourceType: bill.externalSourceType,
+		},
 	}
 }

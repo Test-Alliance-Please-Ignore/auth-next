@@ -23,11 +23,17 @@
 	},
 	"workers_dev": false,
 	"triggers": {
-		// Runs 3 minutes after the 5-minute corporation data refresh cron,
-		// giving corp sync time to detect departures and enqueue pending refreshes.
-		// A separate half-hour cron drains token invalidation DMs.
-		// Also runs daily at midnight UTC for Discord member audit cleanup.
-		"crons": ["3-58/5 * * * *", "15,45 * * * *", "0 0 * * *"]
+		// Discord refreshes run 5 minutes after the 10-minute corporation data refresh cron.
+		// The remaining maintenance jobs use independent schedules so each can be adjusted separately.
+		// Token invalidation alerts drain twice hourly; Discord member audit history is cleaned at midnight.
+		"crons": [
+			"5-55/10 * * * *",
+			"*/30 * * * *",
+			"*/10 * * * *",
+			"*/15 * * * *",
+			"15,45 * * * *",
+			"0 0 * * *"
+		]
 	},
 	"vars": {
 		"NAME": "core",

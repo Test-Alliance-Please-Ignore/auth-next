@@ -1,10 +1,11 @@
-import { eq, sql } from '@repo/db-utils'
+import { sql } from '@repo/db-utils'
 
-import { billPayments } from '../../../db/schema'
 import { getWorkflowLogger } from '../../context'
 
-import type { bills } from '../../../db/schema'
 import type { WorkflowContext } from '../../context'
+import type { BillPaymentCheckData } from '../fetch-bill-data'
+
+const MAX_NEW_PAYMENT_TRANSACTIONS_PER_RUN = 100
 
 type CorporationWalletPaymentRow = {
 	journalId: string
@@ -44,7 +45,7 @@ function parseAmountToBigInt(rawAmount: string): bigint | null {
 
 async function findPaymentTransactionsForCorporationFromDb(
 	ctx: WorkflowContext,
-	billData: typeof bills.$inferSelect
+	billData: BillPaymentCheckData
 ): Promise<CorporationWalletPaymentRow[]> {
 	const logger = getWorkflowLogger(ctx, 'find-payment-transaction-for-corporation-db')
 
@@ -59,10 +60,13 @@ async function findPaymentTransactionsForCorporationFromDb(
 	})
 
 	if (!corporationId) {
-		logger.warn('[Workflow] Skipping corporation payment transaction lookup because corporation ID is missing', {
-			billId: ctx.billId,
-			workflowInstanceId: ctx.workflowInstanceId,
-		})
+		logger.warn(
+			'[Workflow] Skipping corporation payment transaction lookup because corporation ID is missing',
+			{
+				billId: ctx.billId,
+				workflowInstanceId: ctx.workflowInstanceId,
+			}
+		)
 		return []
 	}
 
@@ -79,15 +83,20 @@ async function findPaymentTransactionsForCorporationFromDb(
 			and amount::numeric > 0
 			and reason is not null
 			and reason like ${tokenNeedle}
+			and not exists (
+				select 1
+				from bill_payments
+				where bill_payments.esi_transaction_id = corporation_wallet_journal.journal_id::text
+			)
 		order by date asc
-		limit 500`
+		limit ${MAX_NEW_PAYMENT_TRANSACTIONS_PER_RUN}`
 	)
 	return results.rows ?? []
 }
 
 async function findPaymentTransactionsForCharacterFromDb(
 	ctx: WorkflowContext,
-	billData: typeof bills.$inferSelect
+	billData: BillPaymentCheckData
 ): Promise<CharacterWalletPaymentRow[]> {
 	const logger = getWorkflowLogger(ctx, 'find-payment-transaction-for-character-db')
 
@@ -102,10 +111,13 @@ async function findPaymentTransactionsForCharacterFromDb(
 	})
 
 	if (!characterId) {
-		logger.warn('[Workflow] Skipping character payment transaction lookup because character ID is missing', {
-			billId: ctx.billId,
-			workflowInstanceId: ctx.workflowInstanceId,
-		})
+		logger.warn(
+			'[Workflow] Skipping character payment transaction lookup because character ID is missing',
+			{
+				billId: ctx.billId,
+				workflowInstanceId: ctx.workflowInstanceId,
+			}
+		)
 		return []
 	}
 
@@ -122,15 +134,20 @@ async function findPaymentTransactionsForCharacterFromDb(
 			and amount::numeric > 0
 			and reason is not null
 			and reason like ${tokenNeedle}
+			and not exists (
+				select 1
+				from bill_payments
+				where bill_payments.esi_transaction_id = character_wallet_journal.journal_id::text
+			)
 		order by date asc
-		limit 500`
+		limit ${MAX_NEW_PAYMENT_TRANSACTIONS_PER_RUN}`
 	)
 	return results.rows ?? []
 }
 
 export async function findPaymentsForBill(
 	ctx: WorkflowContext,
-	billData: typeof bills.$inferSelect
+	billData: BillPaymentCheckData
 ): Promise<{ newPaymentsRecorded: number }> {
 	const logger = getWorkflowLogger(ctx, 'check-character-payment-status')
 	let newPaymentsRecorded = 0
@@ -166,9 +183,6 @@ export async function findPaymentsForBill(
 			return { newPaymentsRecorded }
 		}
 		for (const paymentTransaction of paymentTransactions) {
-			const existingPayment = await ctx.db.query.billPayments.findFirst({
-				where: eq(billPayments.esiTransactionId, paymentTransaction.journalId),
-			})
 			const amount = parseAmountToBigInt(paymentTransaction.amount)
 			if (amount === null || amount <= 0n) {
 				logger.warn('[Workflow] Skipping corporation payment transaction with invalid amount', {
@@ -193,9 +207,7 @@ export async function findPaymentsForBill(
 				paidByType: 'corporation',
 				esiTransactionId: paymentTransaction.journalId,
 			})
-			if (!existingPayment) {
-				newPaymentsRecorded += 1
-			}
+			newPaymentsRecorded += 1
 		}
 		logger.info('[Workflow] Processed corporation payment transactions from persisted data', {
 			billId: ctx.billId,
@@ -220,9 +232,6 @@ export async function findPaymentsForBill(
 		}
 
 		for (const paymentTransaction of paymentTransactions) {
-			const existingPayment = await ctx.db.query.billPayments.findFirst({
-				where: eq(billPayments.esiTransactionId, paymentTransaction.journalId),
-			})
 			const amount = parseAmountToBigInt(paymentTransaction.amount)
 			if (amount === null || amount <= 0n) {
 				logger.warn('[Workflow] Skipping character payment transaction with invalid amount', {
@@ -247,9 +256,7 @@ export async function findPaymentsForBill(
 				paidByType: billData.payerType ?? 'character',
 				esiTransactionId: paymentTransaction.journalId,
 			})
-			if (!existingPayment) {
-				newPaymentsRecorded += 1
-			}
+			newPaymentsRecorded += 1
 		}
 
 		logger.info('[Workflow] Processed character payment transactions from persisted data', {

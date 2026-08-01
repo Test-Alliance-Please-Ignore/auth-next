@@ -1,10 +1,10 @@
-import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import { WorkflowEntrypoint } from 'cloudflare:workers'
 
 import { getStub } from '@repo/do-utils'
 
-import type { Bills, ScheduleExecutionResult } from '@repo/bills'
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import type { Bills } from '@repo/bills'
 import type { Env } from '../context'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Bill Schedule Executor Workflow
@@ -44,30 +44,9 @@ export class BillScheduleExecutorWorkflow extends WorkflowEntrypoint<Env, { sche
 			}
 		)
 
-		// Step 2: Handle execution result
 		if (!result.success) {
-			await step.do('handle-failure', async () => {
-				// Log the failure
-				logger.error(`Schedule ${scheduleId} execution failed:`, result.error)
-
-				return { notified: false }
-			})
-
 			throw new Error(`Schedule execution failed: ${result.error}`)
 		}
-
-		// Step 3: Handle success
-		await step.do('handle-success', async () => {
-			if (result.groupBillId) {
-				logger.log(
-					`Schedule ${scheduleId} executed successfully, created group bill ${result.groupBillId} with ${result.billCount} sub-bills`
-				)
-			} else {
-				logger.log(`Schedule ${scheduleId} executed successfully, created bill ${result.billId}`)
-			}
-
-			return { billId: result.billId, groupBillId: result.groupBillId, billCount: result.billCount }
-		})
 
 		return {
 			success: true,

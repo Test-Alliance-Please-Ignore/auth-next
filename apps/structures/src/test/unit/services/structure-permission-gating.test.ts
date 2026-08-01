@@ -1,5 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import {
+	canEditStructure,
+	canViewDetailsStructure,
+	canViewSensitiveStructure,
+	computeStructureAccess,
+	getStructureAccessTarget,
+	getStructureDetail,
+	hasAnyStructureAccess,
+	hasStructureAccessForTab,
+} from '../../../services/structures.service'
+
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
 }))
@@ -12,17 +23,6 @@ vi.mock('@repo/hono-helpers', () => ({
 		warn: vi.fn(),
 	},
 }))
-
-import {
-	canEditStructure,
-	canViewDetailsStructure,
-	canViewSensitiveStructure,
-	computeStructureAccess,
-	getStructureAccessTarget,
-	getStructureDetail,
-	hasAnyStructureAccess,
-	hasStructureAccessForTab,
-} from '../../../services/structures.service'
 
 type FakeDb = {
 	query: {
@@ -65,12 +65,16 @@ type FakeDb = {
 		corporationStructureInventory: {
 			findMany: ReturnType<typeof vi.fn>
 		}
+		corporationStructureInventorySnapshots: {
+			findFirst: ReturnType<typeof vi.fn>
+		}
 	}
 }
 
-function makeDb(options: { structure?: Record<string, unknown>; skyhook?: Record<string, unknown> } = {}): FakeDb {
-	const structure =
-		options.structure ?? {
+function makeDb(
+	options: { structure?: Record<string, unknown>; skyhook?: Record<string, unknown> } = {}
+): FakeDb {
+	const structure = options.structure ?? {
 		structureId: 'structure-1',
 		corporationId: 'corp-1',
 		name: 'Structure One',
@@ -94,8 +98,7 @@ function makeDb(options: { structure?: Record<string, unknown>; skyhook?: Record
 		updatedAt: new Date('2026-01-01T00:00:00Z'),
 	}
 
-	const skyhook =
-		options.skyhook ?? {
+	const skyhook = options.skyhook ?? {
 		structureId: 'skyhook-1',
 		corporationId: 'corp-1',
 		name: 'Skyhook One',
@@ -188,6 +191,9 @@ function makeDb(options: { structure?: Record<string, unknown>; skyhook?: Record
 			},
 			corporationStructureInventory: {
 				findMany: vi.fn().mockResolvedValue([]),
+			},
+			corporationStructureInventorySnapshots: {
+				findFirst: vi.fn().mockResolvedValue({ id: 'snapshot-1' }),
 			},
 		},
 	} as unknown as FakeDb

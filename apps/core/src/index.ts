@@ -6,22 +6,21 @@ import { getStub } from '@repo/do-utils'
 import {
 	captureException,
 	logger,
-	withWorkerLogContext,
 	withNotFound,
 	withOnError,
 	withSentry,
+	withWorkerLogContext,
 	withWorkersLogger,
 } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from './db/schema'
 import { CoreDO } from './durable-object'
-import { TemporaryRoleAssignmentsDO } from './temporary-role-assignments-do'
-import { cleanupExpiredExportArtifacts } from './lib/export-retention'
 import { waitUntilWithTelemetry } from './lib/background-task'
+import { cleanupExpiredExportArtifacts } from './lib/export-retention'
 import { IMMUNITAS_ALERT_DRAIN_CRON } from './lib/immunitas-alerts'
-import { TOKEN_INVALID_ALERT_DRAIN_CRON } from './lib/token-invalid-alerts'
 import { getStructureAssetsDebugBucket } from './lib/structure-assets-debug'
+import { TOKEN_INVALID_ALERT_DRAIN_CRON } from './lib/token-invalid-alerts'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { csrfProtection } from './middleware/csrf'
 import { sessionMiddleware } from './middleware/session'
@@ -85,6 +84,7 @@ import {
 } from './services/discord-components.service'
 import { reconcileMarketPosts } from './services/discord-market-reconcile.service'
 import { DkpService } from './services/dkp.service'
+import { TemporaryRoleAssignmentsDO } from './temporary-role-assignments-do'
 
 import type {
 	CharacterOwnerInfo,
@@ -111,13 +111,11 @@ import type {
 
 const csrf = csrfProtection()
 const app = new Hono<App>()
-	.use(
-		'*',
-		(c, next) =>
-			withWorkersLogger(c.env.NAME, {
-				environment: c.env.ENVIRONMENT,
-				release: c.env.SENTRY_RELEASE,
-			})(c, next)
+	.use('*', (c, next) =>
+		withWorkersLogger(c.env.NAME, {
+			environment: c.env.ENVIRONMENT,
+			release: c.env.SENTRY_RELEASE,
+		})(c, next)
 	)
 
 	// Dev-only OAuth issuer proxy for local client harnesses.
@@ -209,39 +207,59 @@ const app = new Hono<App>()
 // HTTP handler is wrapped with Sentry for automatic error tracking
 const sentryApp = withSentry(app)
 
+const DISCORD_REFRESH_CRON = '5-55/10 * * * *'
+const EXPORT_CLEANUP_CRON = '*/30 * * * *'
+const TEMPOP_EXPIRY_CRON = '*/10 * * * *'
+const MARKET_RECONCILIATION_CRON = '*/15 * * * *'
+
 export default {
 	fetch: sentryApp.fetch.bind(sentryApp),
 	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
 		await withWorkerLogContext('core-scheduled', env, async () => {
 			const scheduledLogger = logger.withTags({ component: 'core-scheduled' })
 			const coreStub = getStub<Core>(env.CORE, 'default')
-			if (event.cron === '3-58/5 * * * *') {
+			if (event.cron === DISCORD_REFRESH_CRON) {
 				const result = await coreStub.processPendingDiscordRefreshes()
 				if (result.processed > 0) {
 					scheduledLogger.info('[Core:Scheduled] Processed pending Discord refreshes', result)
 				}
+			}
 
+			if (event.cron === TEMPOP_EXPIRY_CRON) {
 				const tempopResult = await coreStub.processExpiredTempops()
 				if (tempopResult.expired > 0) {
 					scheduledLogger.info('[Core:Scheduled] Expired Mumble temp-ops', tempopResult)
 				}
+			}
 
+			if (event.cron === MARKET_RECONCILIATION_CRON) {
 				// Prediction-markets forum-post drift sweep: auto-close due markets + refresh/backfill
 				// posts. Best-effort and out-of-band so a slow Discord run never delays the cron; a real
 				// failure is paged, not swallowed.
 				ctx.waitUntil(
 					reconcileMarketPosts(createDb(env.DATABASE_URL), env)
 						.then((r) => {
-							if (r.closed > 0 || r.refreshed > 0 || r.posted > 0 || r.notified > 0 || r.failed > 0) {
+							if (
+								r.closed > 0 ||
+								r.refreshed > 0 ||
+								r.posted > 0 ||
+								r.notified > 0 ||
+								r.failed > 0
+							) {
 								scheduledLogger.info('[Core:Scheduled] Prediction-market reconcile', r)
 							}
 						})
 						.catch((error) => captureException(error as Error, { tags: { job: 'pm-reconcile' } }))
 				)
+			}
 
+			if (event.cron === EXPORT_CLEANUP_CRON) {
 				ctx.waitUntil(
-					cleanupExpiredExportArtifacts(getStructureAssetsDebugBucket(env), 'structure-assets-debug').catch(
-						(error) => captureException(error as Error, { tags: { job: 'structure-assets-debug-cleanup' } })
+					cleanupExpiredExportArtifacts(
+						getStructureAssetsDebugBucket(env),
+						'structure-assets-debug'
+					).catch((error) =>
+						captureException(error as Error, { tags: { job: 'structure-assets-debug-cleanup' } })
 					)
 				)
 			}
