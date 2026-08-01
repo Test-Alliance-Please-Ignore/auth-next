@@ -13,6 +13,7 @@
 
 import { logger } from '@repo/hono-helpers'
 import { parseEsiErrorMetadata } from '@repo/workflow-utils'
+
 import {
 	transformAssets,
 	transformContracts,
@@ -35,21 +36,26 @@ import type {
 	EsiCorporationKillmail,
 	EsiCorporationMembers,
 	EsiCorporationMemberTracking,
-	EsiCorporationOrder,
 	EsiCorporationMiningExtraction,
+	EsiCorporationOrder,
 	EsiCorporationSkyhook,
 	EsiCorporationStructure,
-	EsiSovereigntyHub,
-	EsiSovereigntySystem,
 	EsiCorporationWallet,
 	EsiCorporationWalletJournalEntry,
 	EsiCorporationWalletTransaction,
+	EsiSovereigntyHub,
+	EsiSovereigntySystem,
 } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 
 const SOVEREIGNTY_HUB_TYPE_ID = '32458'
 const SOVEREIGNTY_HUB_DETAIL_BATCH_SIZE = 4
 const SKYHOOK_DETAIL_BATCH_SIZE = 4
+
+export interface StructureEnrichmentFailure {
+	structureId: string
+	failureReason: string
+}
 
 // ========================================================================
 // PUBLIC DATA FETCHING
@@ -193,11 +199,9 @@ export async function fetchWalletTransactions(
 			type_id: number
 			unit_price: number
 		}>
-	>(
-		`/corporations/${corporationId}/wallets/${division}/transactions`,
-		characterId,
-		{ cacheMode: 'no-store' }
-	)
+	>(`/corporations/${corporationId}/wallets/${division}/transactions`, characterId, {
+		cacheMode: 'no-store',
+	})
 
 	return transformWalletTransactions(response.data)
 }
@@ -371,6 +375,7 @@ export async function fetchSovereigntyHubs(
 ): Promise<{
 	sovereigntyHubs: EsiSovereigntyHub[]
 	pruneCandidateIds: string[]
+	failures: StructureEnrichmentFailure[]
 	failureCount: number
 	rateLimitFailureCount: number
 	nonRateLimitFailureCount: number
@@ -408,15 +413,15 @@ export async function fetchSovereigntyHubs(
 		} | null
 		workforce_transport: {
 			configuration:
-			| {
-					import: {
-						sources: Array<{
-							solar_system_id: number
-						}>
-					}
-			  }
-			| {
-					export: {
+				| {
+						import: {
+							sources: Array<{
+								solar_system_id: number
+							}>
+						}
+				  }
+				| {
+						export: {
 							amount: number
 							solar_system_id?: number
 						}
@@ -425,14 +430,14 @@ export async function fetchSovereigntyHubs(
 						transit: boolean | null
 				  }
 			state:
-			| {
-					import: {
-						sources: Array<{
-							amount: number
-							solar_system_id: number
-						}>
-					}
-			  }
+				| {
+						import: {
+							sources: Array<{
+								amount: number
+								solar_system_id: number
+							}>
+						}
+				  }
 				| {
 						export: {
 							amount: number
@@ -450,6 +455,7 @@ export async function fetchSovereigntyHubs(
 		return {
 			sovereigntyHubs: [],
 			pruneCandidateIds: [...(options.pruneCandidateIds ?? [])],
+			failures: [],
 			failureCount: 0,
 			rateLimitFailureCount: 0,
 			nonRateLimitFailureCount: 0,
@@ -463,6 +469,7 @@ export async function fetchSovereigntyHubs(
 
 	for (let index = 0; index < prioritizedHubs.length; index += SOVEREIGNTY_HUB_DETAIL_BATCH_SIZE) {
 		const batch = prioritizedHubs.slice(index, index + SOVEREIGNTY_HUB_DETAIL_BATCH_SIZE)
+		let rateLimitEncountered = false
 		const settled = await Promise.allSettled(
 			batch.map(async ({ entry }) => {
 				const detailResult = await tokenStore.fetchEsi<RawSovereigntyHubDetail>(
@@ -521,6 +528,7 @@ export async function fetchSovereigntyHubs(
 
 			if (isRateLimitEsiError(result.reason)) {
 				rateLimitFailureCount += 1
+				rateLimitEncountered = true
 			} else {
 				nonRateLimitFailureCount += 1
 			}
@@ -528,6 +536,10 @@ export async function fetchSovereigntyHubs(
 				structureId: String(source.entry.id),
 				error: result.reason instanceof Error ? result.reason.message : String(result.reason),
 			})
+		}
+
+		if (rateLimitEncountered) {
+			break
 		}
 	}
 
@@ -543,6 +555,10 @@ export async function fetchSovereigntyHubs(
 	return {
 		sovereigntyHubs: hubs.sort((a, b) => a.index - b.index).map((entry) => entry.hub),
 		pruneCandidateIds: [...(options.pruneCandidateIds ?? [])],
+		failures: failures.map(({ structureId, error }) => ({
+			structureId,
+			failureReason: error.slice(0, 1000),
+		})),
 		failureCount: failures.length,
 		rateLimitFailureCount,
 		nonRateLimitFailureCount,
@@ -563,6 +579,7 @@ export async function fetchCorporationSkyhooks(
 ): Promise<{
 	skyhooks: EsiCorporationSkyhook[]
 	pruneCandidateIds: string[]
+	failures: StructureEnrichmentFailure[]
 	failureCount: number
 	rateLimitFailureCount: number
 	nonRateLimitFailureCount: number
@@ -594,6 +611,7 @@ export async function fetchCorporationSkyhooks(
 		return {
 			skyhooks: [],
 			pruneCandidateIds: [...(options.pruneCandidateIds ?? [])],
+			failures: [],
 			failureCount: 0,
 			rateLimitFailureCount: 0,
 			nonRateLimitFailureCount: 0,
@@ -607,6 +625,7 @@ export async function fetchCorporationSkyhooks(
 
 	for (let index = 0; index < prioritizedListing.length; index += SKYHOOK_DETAIL_BATCH_SIZE) {
 		const batch = prioritizedListing.slice(index, index + SKYHOOK_DETAIL_BATCH_SIZE)
+		let rateLimitEncountered = false
 		const settled = await Promise.allSettled(
 			batch.map(async ({ entry }) => {
 				const detailResult = await tokenStore.fetchEsi<RawCorporationSkyhookDetail>(
@@ -655,6 +674,7 @@ export async function fetchCorporationSkyhooks(
 
 			if (isRateLimitEsiError(result.reason)) {
 				rateLimitFailureCount += 1
+				rateLimitEncountered = true
 			} else {
 				nonRateLimitFailureCount += 1
 			}
@@ -662,6 +682,10 @@ export async function fetchCorporationSkyhooks(
 				structureId: String(source.entry.id),
 				error: result.reason instanceof Error ? result.reason.message : String(result.reason),
 			})
+		}
+
+		if (rateLimitEncountered) {
+			break
 		}
 	}
 
@@ -677,6 +701,10 @@ export async function fetchCorporationSkyhooks(
 	return {
 		skyhooks: skyhooks.sort((a, b) => a.index - b.index).map((entry) => entry.skyhook),
 		pruneCandidateIds: [...(options.pruneCandidateIds ?? [])],
+		failures: failures.map(({ structureId, error }) => ({
+			structureId,
+			failureReason: error.slice(0, 1000),
+		})),
 		failureCount: failures.length,
 		rateLimitFailureCount,
 		nonRateLimitFailureCount,
@@ -783,11 +811,7 @@ export async function fetchContracts(
 			type: string
 			volume?: number
 		}>
-	>(
-		`/corporations/${corporationId}/contracts`,
-		characterId,
-		{ cacheMode: 'no-store' }
-	)
+	>(`/corporations/${corporationId}/contracts`, characterId, { cacheMode: 'no-store' })
 
 	return transformContracts(response.data)
 }
@@ -825,11 +849,7 @@ export async function fetchIndustryJobs(
 			completed_character_id?: number
 			successful_runs?: number
 		}>
-	>(
-		`/corporations/${corporationId}/industry/jobs`,
-		characterId,
-		{ cacheMode: 'no-store' }
-	)
+	>(`/corporations/${corporationId}/industry/jobs`, characterId, { cacheMode: 'no-store' })
 
 	return transformIndustryJobs(response.data)
 }

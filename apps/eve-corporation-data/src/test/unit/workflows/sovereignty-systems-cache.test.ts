@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import {
+	ensureSharedSovereigntySystems,
+	refreshSharedSovereigntySystems,
+} from '../../../workflows/utils/sovereignty-systems-cache'
+
 const mocks = vi.hoisted(() => {
 	const fetchSovereigntySystemsMock = vi.fn()
 	const createTokenStoreMock = vi.fn()
@@ -22,175 +27,107 @@ vi.mock('../../../workflows/utils/services', () => ({
 		mocks.getGlobalCorporationDataStubMock(...args),
 }))
 
-import { refreshSharedSovereigntySystems } from '../../../workflows/utils/sovereignty-systems-cache'
+describe('ensureSharedSovereigntySystems', () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+	})
+
+	it('checks only the freshness metadata for an existing snapshot', async () => {
+		const hasFreshSharedSovereigntySystemsMock = vi.fn().mockResolvedValue(true)
+		mocks.getGlobalCorporationDataStubMock.mockReturnValue({
+			hasFreshSharedSovereigntySystems: hasFreshSharedSovereigntySystemsMock,
+		})
+
+		await expect(ensureSharedSovereigntySystems({} as never)).resolves.toBeUndefined()
+
+		expect(hasFreshSharedSovereigntySystemsMock).toHaveBeenCalledWith(60 * 60)
+	})
+
+	it('refreshes when the metadata is absent or stale', async () => {
+		const hasFreshSharedSovereigntySystemsMock = vi.fn().mockResolvedValue(false)
+		const acquireSharedSovereigntySystemsRefreshLeaseMock = vi.fn().mockResolvedValue('lease-token')
+		const releaseSharedSovereigntySystemsRefreshLeaseMock = vi.fn()
+		const storeSharedSovereigntySystemsMock = vi.fn()
+
+		mocks.createTokenStoreMock.mockReturnValue({})
+		mocks.fetchSovereigntySystemsMock.mockResolvedValue([{ system_id: '30000142' }])
+		mocks.getGlobalCorporationDataStubMock.mockReturnValue({
+			hasFreshSharedSovereigntySystems: hasFreshSharedSovereigntySystemsMock,
+			acquireSharedSovereigntySystemsRefreshLease: acquireSharedSovereigntySystemsRefreshLeaseMock,
+			releaseSharedSovereigntySystemsRefreshLease: releaseSharedSovereigntySystemsRefreshLeaseMock,
+			storeSharedSovereigntySystems: storeSharedSovereigntySystemsMock,
+		})
+
+		await ensureSharedSovereigntySystems({} as never)
+
+		expect(acquireSharedSovereigntySystemsRefreshLeaseMock).toHaveBeenCalledWith()
+		expect(mocks.fetchSovereigntySystemsMock).toHaveBeenCalledWith({})
+		expect(storeSharedSovereigntySystemsMock).toHaveBeenCalledWith([{ system_id: '30000142' }])
+		expect(releaseSharedSovereigntySystemsRefreshLeaseMock).toHaveBeenCalledWith('lease-token')
+	})
+})
 
 describe('refreshSharedSovereigntySystems', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 	})
 
-	it('returns the fresh snapshot without acquiring a lease or fetching ESI', async () => {
-		const getSharedSovereigntySystemsSnapshotMock = vi.fn().mockResolvedValue([
-			{ system_id: '30000142' },
-		])
-		const acquireSharedSovereigntySystemsRefreshLeaseMock = vi.fn().mockResolvedValue(
-			'lease-token'
-		)
-		const releaseSharedSovereigntySystemsRefreshLeaseMock = vi.fn()
-		const clearSharedSovereigntySystemsMock = vi.fn()
-		const storeSharedSovereigntySystemsMock = vi.fn()
-
-		mocks.createTokenStoreMock.mockReturnValue({})
-		mocks.fetchSovereigntySystemsMock.mockResolvedValue([{ system_id: '30000142' }])
-		mocks.getGlobalCorporationDataStubMock.mockReturnValue({
-			acquireSharedSovereigntySystemsRefreshLease:
-				acquireSharedSovereigntySystemsRefreshLeaseMock,
-			clearSharedSovereigntySystems: clearSharedSovereigntySystemsMock,
-			releaseSharedSovereigntySystemsRefreshLease:
-				releaseSharedSovereigntySystemsRefreshLeaseMock,
-			storeSharedSovereigntySystems: storeSharedSovereigntySystemsMock,
-			getSharedSovereigntySystemsSnapshot: getSharedSovereigntySystemsSnapshotMock,
-		})
-
-		const result = await refreshSharedSovereigntySystems({} as never)
-
-		expect(getSharedSovereigntySystemsSnapshotMock).not.toHaveBeenCalled()
-		expect(acquireSharedSovereigntySystemsRefreshLeaseMock).toHaveBeenCalledWith()
-		expect(clearSharedSovereigntySystemsMock).toHaveBeenCalledWith()
-		expect(mocks.fetchSovereigntySystemsMock).toHaveBeenCalledWith({})
-		expect(storeSharedSovereigntySystemsMock).toHaveBeenCalledWith([{ system_id: '30000142' }])
-		expect(releaseSharedSovereigntySystemsRefreshLeaseMock).toHaveBeenCalledWith('lease-token')
-		expect(result).toEqual([{ system_id: '30000142' }])
-	})
-
-	it('rebuilds the snapshot even if an existing snapshot is still fresh', async () => {
-		const releaseSharedSovereigntySystemsRefreshLeaseMock = vi.fn()
-		const clearSharedSovereigntySystemsMock = vi.fn()
-		const storeSharedSovereigntySystemsMock = vi.fn()
-		const getSharedSovereigntySystemsSnapshotMock = vi.fn().mockResolvedValue([
-			{ system_id: '30000142' },
-		])
+	it('refreshes under the lease without clearing the last good snapshot first', async () => {
 		const acquireSharedSovereigntySystemsRefreshLeaseMock = vi.fn().mockResolvedValue('lease-token')
-
-		mocks.createTokenStoreMock.mockReturnValue({})
-		mocks.fetchSovereigntySystemsMock.mockResolvedValue([{ system_id: '30000999' }])
-		mocks.getGlobalCorporationDataStubMock.mockReturnValue({
-			acquireSharedSovereigntySystemsRefreshLease:
-				acquireSharedSovereigntySystemsRefreshLeaseMock,
-			clearSharedSovereigntySystems: clearSharedSovereigntySystemsMock,
-			releaseSharedSovereigntySystemsRefreshLease:
-				releaseSharedSovereigntySystemsRefreshLeaseMock,
-			storeSharedSovereigntySystems: storeSharedSovereigntySystemsMock,
-			getSharedSovereigntySystemsSnapshot: getSharedSovereigntySystemsSnapshotMock,
-		})
-
-		const result = await refreshSharedSovereigntySystems({} as never)
-
-		expect(getSharedSovereigntySystemsSnapshotMock).not.toHaveBeenCalled()
-		expect(acquireSharedSovereigntySystemsRefreshLeaseMock).toHaveBeenCalledWith()
-		expect(clearSharedSovereigntySystemsMock).toHaveBeenCalledWith()
-		expect(mocks.fetchSovereigntySystemsMock).toHaveBeenCalledWith({})
-		expect(storeSharedSovereigntySystemsMock).toHaveBeenCalledWith([{ system_id: '30000999' }])
-		expect(releaseSharedSovereigntySystemsRefreshLeaseMock).toHaveBeenCalledWith('lease-token')
-		expect(result).toEqual([{ system_id: '30000999' }])
-	})
-
-	it('uses the lease holder to refresh the snapshot and releases the lease afterward', async () => {
 		const releaseSharedSovereigntySystemsRefreshLeaseMock = vi.fn()
-		const clearSharedSovereigntySystemsMock = vi.fn()
 		const storeSharedSovereigntySystemsMock = vi.fn()
-		const getSharedSovereigntySystemsSnapshotMock = vi
-			.fn()
-			.mockResolvedValueOnce(null)
-			.mockResolvedValueOnce(null)
-		const acquireSharedSovereigntySystemsRefreshLeaseMock = vi
-			.fn()
-			.mockResolvedValue('lease-token')
 
 		mocks.createTokenStoreMock.mockReturnValue({})
 		mocks.fetchSovereigntySystemsMock.mockResolvedValue([{ system_id: '30000142' }])
 		mocks.getGlobalCorporationDataStubMock.mockReturnValue({
-			acquireSharedSovereigntySystemsRefreshLease:
-				acquireSharedSovereigntySystemsRefreshLeaseMock,
-			clearSharedSovereigntySystems: clearSharedSovereigntySystemsMock,
-			releaseSharedSovereigntySystemsRefreshLease:
-				releaseSharedSovereigntySystemsRefreshLeaseMock,
+			acquireSharedSovereigntySystemsRefreshLease: acquireSharedSovereigntySystemsRefreshLeaseMock,
+			releaseSharedSovereigntySystemsRefreshLease: releaseSharedSovereigntySystemsRefreshLeaseMock,
 			storeSharedSovereigntySystems: storeSharedSovereigntySystemsMock,
-			getSharedSovereigntySystemsSnapshot: getSharedSovereigntySystemsSnapshotMock,
 		})
 
-		const result = await refreshSharedSovereigntySystems({} as never)
+		await expect(refreshSharedSovereigntySystems({} as never)).resolves.toBeUndefined()
 
-		expect(acquireSharedSovereigntySystemsRefreshLeaseMock).toHaveBeenCalledWith()
-		expect(clearSharedSovereigntySystemsMock).toHaveBeenCalledWith()
-		expect(mocks.createTokenStoreMock).toHaveBeenCalledWith({})
 		expect(mocks.fetchSovereigntySystemsMock).toHaveBeenCalledWith({})
 		expect(storeSharedSovereigntySystemsMock).toHaveBeenCalledWith([{ system_id: '30000142' }])
 		expect(releaseSharedSovereigntySystemsRefreshLeaseMock).toHaveBeenCalledWith('lease-token')
-		expect(result).toEqual([{ system_id: '30000142' }])
-		expect(clearSharedSovereigntySystemsMock.mock.invocationCallOrder[0]).toBeLessThan(
-			mocks.fetchSovereigntySystemsMock.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
-		)
 	})
 
-	it('falls back to the existing snapshot when another refresh already holds the lease', async () => {
-		const releaseSharedSovereigntySystemsRefreshLeaseMock = vi.fn()
-		const storeSharedSovereigntySystemsMock = vi.fn()
-		const clearSharedSovereigntySystemsMock = vi.fn()
-		const getSharedSovereigntySystemsSnapshotMock = vi
+	it('waits for the active lease holder using metadata-only checks', async () => {
+		const hasFreshSharedSovereigntySystemsMock = vi
 			.fn()
-			.mockResolvedValueOnce(null)
-			.mockResolvedValueOnce([{ system_id: '30000142' }])
+			.mockResolvedValueOnce(false)
+			.mockResolvedValueOnce(true)
 		const acquireSharedSovereigntySystemsRefreshLeaseMock = vi.fn().mockResolvedValue(null)
 
-		mocks.createTokenStoreMock.mockReturnValue({})
 		mocks.getGlobalCorporationDataStubMock.mockReturnValue({
-			acquireSharedSovereigntySystemsRefreshLease:
-				acquireSharedSovereigntySystemsRefreshLeaseMock,
-			clearSharedSovereigntySystems: clearSharedSovereigntySystemsMock,
-			releaseSharedSovereigntySystemsRefreshLease:
-				releaseSharedSovereigntySystemsRefreshLeaseMock,
-			storeSharedSovereigntySystems: storeSharedSovereigntySystemsMock,
-			getSharedSovereigntySystemsSnapshot: getSharedSovereigntySystemsSnapshotMock,
+			hasFreshSharedSovereigntySystems: hasFreshSharedSovereigntySystemsMock,
+			acquireSharedSovereigntySystemsRefreshLease: acquireSharedSovereigntySystemsRefreshLeaseMock,
 		})
 
-		const result = await refreshSharedSovereigntySystems({} as never)
-
-		expect(acquireSharedSovereigntySystemsRefreshLeaseMock).toHaveBeenCalledWith()
-		expect(clearSharedSovereigntySystemsMock).not.toHaveBeenCalled()
+		await expect(refreshSharedSovereigntySystems({} as never)).resolves.toBeUndefined()
+		expect(hasFreshSharedSovereigntySystemsMock).toHaveBeenCalledTimes(2)
 		expect(mocks.fetchSovereigntySystemsMock).not.toHaveBeenCalled()
-		expect(storeSharedSovereigntySystemsMock).not.toHaveBeenCalled()
-		expect(releaseSharedSovereigntySystemsRefreshLeaseMock).not.toHaveBeenCalled()
-		expect(getSharedSovereigntySystemsSnapshotMock).toHaveBeenCalledTimes(2)
-		expect(result).toEqual([{ system_id: '30000142' }])
 	})
 
-	it('throws when it cannot produce a fresh snapshot after refresh attempts', async () => {
-		const releaseSharedSovereigntySystemsRefreshLeaseMock = vi.fn()
-		const clearSharedSovereigntySystemsMock = vi.fn()
-		const storeSharedSovereigntySystemsMock = vi.fn()
-		const getSharedSovereigntySystemsSnapshotMock = vi.fn().mockResolvedValue(null)
-		const acquireSharedSovereigntySystemsRefreshLeaseMock = vi.fn().mockResolvedValue(null)
+	it('fails after the lease holder does not publish a fresh snapshot', async () => {
+		vi.useFakeTimers()
+		try {
+			const hasFreshSharedSovereigntySystemsMock = vi.fn().mockResolvedValue(false)
+			const acquireSharedSovereigntySystemsRefreshLeaseMock = vi.fn().mockResolvedValue(null)
+			mocks.getGlobalCorporationDataStubMock.mockReturnValue({
+				hasFreshSharedSovereigntySystems: hasFreshSharedSovereigntySystemsMock,
+				acquireSharedSovereigntySystemsRefreshLease:
+					acquireSharedSovereigntySystemsRefreshLeaseMock,
+			})
 
-		mocks.getGlobalCorporationDataStubMock.mockReturnValue({
-			acquireSharedSovereigntySystemsRefreshLease:
-				acquireSharedSovereigntySystemsRefreshLeaseMock,
-			clearSharedSovereigntySystems: clearSharedSovereigntySystemsMock,
-			releaseSharedSovereigntySystemsRefreshLease:
-				releaseSharedSovereigntySystemsRefreshLeaseMock,
-			storeSharedSovereigntySystems: storeSharedSovereigntySystemsMock,
-			getSharedSovereigntySystemsSnapshot: getSharedSovereigntySystemsSnapshotMock,
-		})
+			const refreshAssertion = expect(refreshSharedSovereigntySystems({} as never)).rejects.toThrow(
+				'Failed to refresh shared sovereignty systems snapshot'
+			)
+			await vi.advanceTimersByTimeAsync(32_000)
 
-		await expect(refreshSharedSovereigntySystems({} as never)).rejects.toThrow(
-			'Failed to refresh shared sovereignty systems snapshot'
-		)
-
-		expect(acquireSharedSovereigntySystemsRefreshLeaseMock).toHaveBeenCalledWith()
-		expect(clearSharedSovereigntySystemsMock).not.toHaveBeenCalled()
-		expect(mocks.fetchSovereigntySystemsMock).not.toHaveBeenCalled()
-		expect(storeSharedSovereigntySystemsMock).not.toHaveBeenCalled()
-		expect(releaseSharedSovereigntySystemsRefreshLeaseMock).not.toHaveBeenCalled()
-		expect(getSharedSovereigntySystemsSnapshotMock).toHaveBeenCalledTimes(4)
+			await refreshAssertion
+		} finally {
+			vi.useRealTimers()
+		}
 	})
 })

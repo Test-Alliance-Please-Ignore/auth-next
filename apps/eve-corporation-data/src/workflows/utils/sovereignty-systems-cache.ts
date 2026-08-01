@@ -5,7 +5,7 @@ import type { EsiSovereigntySystem } from '@repo/eve-corporation-data'
 import type { Env } from '../../context'
 
 const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS = 60 * 60
-const SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_RETRY_DELAYS_MS = [250, 500, 1000]
+const SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_RETRY_DELAYS_MS = [250, 500, 1000, 2000, 4000, 8000, 16000]
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => {
@@ -28,41 +28,59 @@ export async function readSharedSovereigntySystemsByIds(
 }
 
 /**
+ * Ensure the full sovereignty snapshot is available before structure fanout.
+ */
+export async function ensureSharedSovereigntySystems(env: Env): Promise<void> {
+	const globalCorpData = getGlobalCorporationDataStub(env)
+	const isFresh = await globalCorpData.hasFreshSharedSovereigntySystems(
+		SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
+	)
+	if (!isFresh) {
+		await refreshSharedSovereigntySystems(env)
+	}
+}
+
+/**
  * Fetch the live sovereignty snapshot and write it to the shared cache.
  */
-export async function refreshSharedSovereigntySystems(
-	env: Env
-): Promise<EsiSovereigntySystem[]> {
+export async function refreshSharedSovereigntySystems(env: Env): Promise<void> {
 	const globalCorpData = getGlobalCorporationDataStub(env)
 	const leaseToken = await globalCorpData.acquireSharedSovereigntySystemsRefreshLease()
 
 	if (leaseToken) {
 		try {
-			await globalCorpData.clearSharedSovereigntySystems()
 			const tokenStore = createTokenStore(env)
 			const sovereigntySystems = await esiFetch.fetchSovereigntySystems(tokenStore)
 			await globalCorpData.storeSharedSovereigntySystems(sovereigntySystems)
-			return sovereigntySystems
 		} finally {
 			await globalCorpData.releaseSharedSovereigntySystemsRefreshLease(leaseToken)
 		}
+		return
+	}
+
+	if (
+		await globalCorpData.hasFreshSharedSovereigntySystems(
+			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
+		)
+	) {
+		return
 	}
 
 	for (const delayMs of SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_RETRY_DELAYS_MS) {
-		const snapshot = await globalCorpData.getSharedSovereigntySystemsSnapshot(
+		await sleep(delayMs)
+		const isFresh = await globalCorpData.hasFreshSharedSovereigntySystems(
 			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
 		)
-		if (snapshot) {
-			return snapshot
+		if (isFresh) {
+			return
 		}
-		await sleep(delayMs)
 	}
 
-	const snapshot = await globalCorpData.getSharedSovereigntySystemsSnapshot(
+	const isFresh = await globalCorpData.hasFreshSharedSovereigntySystems(
 		SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
 	)
-	if (snapshot) {
-		return snapshot
+	if (isFresh) {
+		return
 	}
 
 	throw new Error('Failed to refresh shared sovereignty systems snapshot')

@@ -251,7 +251,7 @@ export interface EsiSovereigntyHub {
 			  }
 			| {
 					transit: boolean | null
-			}
+			  }
 		state:
 			| {
 					import: {
@@ -454,6 +454,12 @@ export type MoonDrillSyncPriority = StructureSyncPriority
 
 export type MiningCitadelSyncPriority = StructureSyncPriority
 
+export interface StructurePriorityQueue {
+	newStructureIds: string[]
+	pruneCandidateIds: string[]
+	syncPriorities: StructureSyncPriority[]
+}
+
 export type StructureSyncFailureTarget =
 	| 'structures'
 	| 'sovereignty'
@@ -473,7 +479,9 @@ export type StructureSyncPriorityTarget =
 /**
  * A compact structure-priority queue entry used by enrichment batching.
  */
-export interface StructurePriorityQueueEntry<P extends StructureSyncPriority = StructureSyncPriority> {
+export interface StructurePriorityQueueEntry<
+	P extends StructureSyncPriority = StructureSyncPriority,
+> {
 	entry: { id: string | number }
 	index: number
 	priority: P | null
@@ -1360,17 +1368,10 @@ export interface EveCorporationData {
 	storeSharedSovereigntySystems(systems: EsiSovereigntySystem[]): Promise<void>
 
 	/**
-	 * Remove the shared sovereignty system snapshot before rebuilding it.
-	 */
-	clearSharedSovereigntySystems(): Promise<void>
-
-	/**
 	 * Acquire a short-lived refresh lease for the shared sovereignty snapshot.
 	 * Returns a token when acquired, or null when another refresh is already in progress.
 	 */
-	acquireSharedSovereigntySystemsRefreshLease(
-		leaseSeconds?: number
-	): Promise<string | null>
+	acquireSharedSovereigntySystemsRefreshLease(leaseSeconds?: number): Promise<string | null>
 
 	/**
 	 * Release a previously acquired shared sovereignty refresh lease.
@@ -1388,7 +1389,15 @@ export interface EveCorporationData {
 	/**
 	 * Read the entire shared sovereignty system snapshot if it is still fresh.
 	 */
-	getSharedSovereigntySystemsSnapshot(maxAgeSeconds?: number): Promise<EsiSovereigntySystem[] | null>
+	getSharedSovereigntySystemsSnapshot(
+		maxAgeSeconds?: number
+	): Promise<EsiSovereigntySystem[] | null>
+
+	/**
+	 * Check whether a completed shared sovereignty snapshot is still fresh.
+	 * This reads only the snapshot metadata, not the cached system rows.
+	 */
+	hasFreshSharedSovereigntySystems(maxAgeSeconds?: number): Promise<boolean>
 
 	/**
 	 * Get a cached sovereignty system snapshot if it is still fresh enough.
@@ -1428,6 +1437,28 @@ export interface EveCorporationData {
 	): Promise<string[]>
 
 	/**
+	 * Build the new, prune, and due-refresh sets from one complete live listing.
+	 */
+	getStructurePriorityQueue(
+		corporationId: string,
+		target: StructureSyncPriorityTarget,
+		structureIds: string[]
+	): Promise<StructurePriorityQueue>
+
+	/**
+	 * Return persisted structure IDs that are absent from a complete live listing.
+	 *
+	 * This is intentionally separate from the sync-priority queue: a structure
+	 * can be on cooldown and must not be treated as a prune candidate merely
+	 * because another structure was selected for enrichment.
+	 */
+	getStructureIdsMissingFromLiveListing(
+		corporationId: string,
+		target: StructureSyncPriorityTarget,
+		structureIds: string[]
+	): Promise<string[]>
+
+	/**
 	 * Read the current sovereignty hub structure IDs for a corporation.
 	 */
 	getSovereigntyHubStructureIds(corporationId: string): Promise<string[]>
@@ -1449,6 +1480,15 @@ export interface EveCorporationData {
 		corporationId: string,
 		target: StructureEnrichmentSyncTarget,
 		failureReason: string
+	): Promise<void>
+
+	/**
+	 * Mark individual live structure enrichment failures without overwriting their last good data.
+	 */
+	markStructureEnrichmentFailures(
+		corporationId: string,
+		target: Extract<StructureEnrichmentSyncTarget, 'sovereignty-hubs' | 'skyhooks'>,
+		failures: Array<{ structureId: string; failureReason: string }>
 	): Promise<void>
 
 	/**
@@ -1484,9 +1524,7 @@ export interface EveCorporationData {
 	/**
 	 * Read the current mining-citadel sync priority order for a corporation.
 	 */
-	getMiningCitadelSyncPriorities(
-		corporationId: string
-	): Promise<MiningCitadelSyncPriority[]>
+	getMiningCitadelSyncPriorities(corporationId: string): Promise<MiningCitadelSyncPriority[]>
 
 	/**
 	 * Read the current mining-citadel structure IDs for a corporation.
@@ -1498,7 +1536,8 @@ export interface EveCorporationData {
 	 */
 	storeMiningExtractions(
 		corporationId: string,
-		extractions: EsiCorporationMiningExtraction[]
+		extractions: EsiCorporationMiningExtraction[],
+		options?: { pruneCandidateIds?: readonly string[] }
 	): Promise<void>
 
 	/**

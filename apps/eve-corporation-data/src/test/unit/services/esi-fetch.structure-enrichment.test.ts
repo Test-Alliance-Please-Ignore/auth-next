@@ -29,10 +29,7 @@ describe('esi structure enrichment ownership handling', () => {
 
 		const structures = await fetchStructures(tokenStore as never, '98000001', '211')
 
-		expect(tokenStore.fetchEsi).toHaveBeenCalledWith(
-			'/corporations/98000001/structures',
-			'211'
-		)
+		expect(tokenStore.fetchEsi).toHaveBeenCalledWith('/corporations/98000001/structures', '211')
 		expect(structures).toHaveLength(1)
 		expect(structures[0]).toMatchObject({
 			structure_id: '1001',
@@ -123,11 +120,9 @@ describe('esi structure enrichment ownership handling', () => {
 			'211',
 			{ cacheMode: 'no-store' }
 		)
-		expect(tokenStore.fetchEsi).not.toHaveBeenCalledWith(
-			'/universe/structures/71001',
-			'211',
-			{ cacheMode: 'no-store' }
-		)
+		expect(tokenStore.fetchEsi).not.toHaveBeenCalledWith('/universe/structures/71001', '211', {
+			cacheMode: 'no-store',
+		})
 		expect(skyhookResult.failureCount).toBe(0)
 		expect(skyhookResult.skyhooks.map((skyhook) => skyhook.structure_id)).toEqual([
 			'71002',
@@ -218,19 +213,15 @@ describe('esi structure enrichment ownership handling', () => {
 			}),
 		}
 
-		const skyhookResult = await fetchCorporationSkyhooks(
-			tokenStore as never,
-			'98000001',
-			'211',
-			{
-				prioritizedEntries: [
-					{ index: 0, entry: { id: 40001, planet_id: 404 } },
-					{ index: 1, entry: { id: 30001, planet_id: 401 } },
-					{ index: 2, entry: { id: 10001, planet_id: 402 } },
-					{ index: 3, entry: { id: 20001, planet_id: 403 } },
-				],
-			}
-		)
+		const skyhookResult = await fetchCorporationSkyhooks(tokenStore as never, '98000001', '211', {
+			prioritizedEntries: [
+				{ index: 0, entry: { id: 40001, planet_id: 404 } },
+				{ index: 1, entry: { id: 30001, planet_id: 401 } },
+				{ index: 2, entry: { id: 10001, planet_id: 402 } },
+				{ index: 3, entry: { id: 20001, planet_id: 403 } },
+				{ index: 4, entry: { id: 50001, planet_id: 405 } },
+			],
+		})
 
 		expect(tokenStore.fetchEsi).toHaveBeenNthCalledWith(
 			1,
@@ -257,6 +248,12 @@ describe('esi structure enrichment ownership handling', () => {
 			{ cacheMode: 'no-store' }
 		)
 		expect(skyhookResult.failureCount).toBe(1)
+		expect(skyhookResult.failures).toEqual([
+			{
+				structureId: '30001',
+				failureReason: 'ESI request failed: 429 Too Many Requests',
+			},
+		])
 		expect(skyhookResult.skyhooks).toHaveLength(3)
 		expect(skyhookResult.skyhooks.map((skyhook) => skyhook.structure_id)).toEqual([
 			'40001',
@@ -503,43 +500,43 @@ describe('esi structure enrichment ownership handling', () => {
 	it('prioritizes stale sovereignty hubs first and keeps partial successes when one detail request fails', async () => {
 		const tokenStore = {
 			fetchEsi: vi.fn().mockImplementation(async (path: string) => {
-					if (path === '/corporations/98000001/structures/sovereignty-hubs?page=1') {
-						return {
-							data: {
-								sovereignty_hubs: [
-									{ id: 40001, solar_system_id: 404 },
-									{ id: 30001, solar_system_id: 401 },
-									{ id: 10001, solar_system_id: 402 },
-									{ id: 20001, solar_system_id: 403 },
-								],
-							},
-							pages: 1,
-						}
+				if (path === '/corporations/98000001/structures/sovereignty-hubs?page=1') {
+					return {
+						data: {
+							sovereignty_hubs: [
+								{ id: 40001, solar_system_id: 404 },
+								{ id: 30001, solar_system_id: 401 },
+								{ id: 10001, solar_system_id: 402 },
+								{ id: 20001, solar_system_id: 403 },
+							],
+						},
+						pages: 1,
 					}
+				}
 
-					if (path === '/corporations/98000001/structures/sovereignty-hubs/40001') {
-						return {
-							data: {
-								id: 40001,
-								solar_system_id: 404,
-								fuel_access_list_id: null,
-								reagent_bay: {
-									last_updated: '2026-07-23T00:00:00.000Z',
-									reagents: [],
-								},
-								resources: {
-									power: { allocated: 0, available: 0 },
-									workforce: { allocated: 0, available: 0 },
-								},
-								upgrades: [],
-								vulnerability_window: null,
-								workforce_transport: {
-									configuration: { transit: true },
-									state: { transit: true },
-								},
+				if (path === '/corporations/98000001/structures/sovereignty-hubs/40001') {
+					return {
+						data: {
+							id: 40001,
+							solar_system_id: 404,
+							fuel_access_list_id: null,
+							reagent_bay: {
+								last_updated: '2026-07-23T00:00:00.000Z',
+								reagents: [],
 							},
-						}
+							resources: {
+								power: { allocated: 0, available: 0 },
+								workforce: { allocated: 0, available: 0 },
+							},
+							upgrades: [],
+							vulnerability_window: null,
+							workforce_transport: {
+								configuration: { transit: true },
+								state: { transit: true },
+							},
+						},
 					}
+				}
 
 				if (path === '/corporations/98000001/structures/sovereignty-hubs/30001') {
 					throw new Error('ESI request failed: 429 Too Many Requests')
@@ -603,10 +600,13 @@ describe('esi structure enrichment ownership handling', () => {
 				{ index: 1, entry: { id: 30001, solar_system_id: 401 } },
 				{ index: 2, entry: { id: 10001, solar_system_id: 402 } },
 				{ index: 3, entry: { id: 20001, solar_system_id: 403 } },
+				{ index: 4, entry: { id: 50001, solar_system_id: 405 } },
 			],
 		})
 
 		expect(hubResult.failureCount).toBe(1)
+		expect(hubResult.failures).toHaveLength(1)
+		expect(hubResult.failures[0]).toMatchObject({ structureId: '30001' })
 		expect(hubResult.sovereigntyHubs.map((hub) => hub.structure_id)).toEqual([
 			'40001',
 			'10001',

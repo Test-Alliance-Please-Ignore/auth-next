@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
+
+import { fetchSovereigntyEnrichment } from '../../../workflows/steps/structures'
+
 const SOVEREIGNTY_HUB_TYPE_ID = '32458'
 
 const mocks = vi.hoisted(() => {
@@ -8,6 +11,8 @@ const mocks = vi.hoisted(() => {
 	const resolveSolarSystemsByIdsMock = vi.fn()
 	const getSovereigntyHubSyncPrioritiesMock = vi.fn()
 	const getMissingStructureIdsForPriorityQueueMock = vi.fn()
+	const getStructureIdsMissingFromLiveListingMock = vi.fn()
+	const getStructurePriorityQueueMock = vi.fn()
 	const fetchEsiMock = vi.fn()
 	const getStubMock = vi.fn(() => ({
 		resolveSolarSystemsByIds: resolveSolarSystemsByIdsMock,
@@ -21,6 +26,8 @@ const mocks = vi.hoisted(() => {
 		resolveSolarSystemsByIdsMock,
 		getSovereigntyHubSyncPrioritiesMock,
 		getMissingStructureIdsForPriorityQueueMock,
+		getStructureIdsMissingFromLiveListingMock,
+		getStructurePriorityQueueMock,
 		fetchEsiMock,
 		getStubMock,
 		createTokenStoreMock,
@@ -42,6 +49,9 @@ vi.mock('../../../workflows/utils/services', () => ({
 			mocks.getSovereigntyHubSyncPrioritiesMock(...args),
 		getMissingStructureIdsForPriorityQueue: (...args: unknown[]) =>
 			mocks.getMissingStructureIdsForPriorityQueueMock(...args),
+		getStructureIdsMissingFromLiveListing: (...args: unknown[]) =>
+			mocks.getStructureIdsMissingFromLiveListingMock(...args),
+		getStructurePriorityQueue: (...args: unknown[]) => mocks.getStructurePriorityQueueMock(...args),
 	})),
 }))
 
@@ -52,22 +62,22 @@ vi.mock('../../../workflows/utils/sovereignty-systems-cache', () => ({
 		mocks.refreshSharedSovereigntySystemsMock(...args),
 }))
 
-import { fetchSovereigntyEnrichment } from '../../../workflows/steps/structures'
-
 describe('fetchSovereigntyEnrichment', () => {
 	it('enriches sovereignty hub names from resolved solar systems before persistence', async () => {
 		mocks.createTokenStoreMock.mockReturnValue({
 			fetchEsi: mocks.fetchEsiMock,
 		})
-		mocks.getSovereigntyHubSyncPrioritiesMock
-			.mockResolvedValueOnce([
+		mocks.getStructurePriorityQueueMock.mockResolvedValueOnce({
+			newStructureIds: [],
+			pruneCandidateIds: ['departed-hub'],
+			syncPriorities: [
 				{
 					structureId: '1',
 					lastAttemptedSyncAt: null,
 					lastSyncedAt: new Date('2026-07-22T00:00:00.000Z'),
 				},
-			])
-		mocks.getMissingStructureIdsForPriorityQueueMock.mockResolvedValue([])
+			],
+		})
 		mocks.fetchEsiMock.mockResolvedValueOnce({
 			data: {
 				sovereignty_hubs: [{ id: 1, solar_system_id: 30000142 }],
@@ -119,6 +129,7 @@ describe('fetchSovereigntyEnrichment', () => {
 					raw: { detail: { id: 1 } },
 				},
 			],
+			failures: [],
 			failureCount: 0,
 			rateLimitFailureCount: 0,
 			nonRateLimitFailureCount: 0,
@@ -155,7 +166,7 @@ describe('fetchSovereigntyEnrichment', () => {
 						},
 					},
 				],
-				pruneCandidateIds: [],
+				pruneCandidateIds: ['departed-hub'],
 			}
 		)
 		expect(mocks.readSharedSovereigntySystemsByIdsMock).toHaveBeenCalledWith(
@@ -177,8 +188,11 @@ describe('fetchSovereigntyEnrichment', () => {
 		mocks.createTokenStoreMock.mockReturnValue({
 			fetchEsi: mocks.fetchEsiMock,
 		})
-		mocks.getSovereigntyHubSyncPrioritiesMock.mockResolvedValueOnce([])
-		mocks.getMissingStructureIdsForPriorityQueueMock.mockResolvedValue([])
+		mocks.getStructurePriorityQueueMock.mockResolvedValueOnce({
+			newStructureIds: [],
+			pruneCandidateIds: [],
+			syncPriorities: [],
+		})
 		mocks.fetchEsiMock.mockRejectedValue(
 			new Error(
 				'ESI request failed: 401 Unauthorized - {"error":"missing scope"} | metadata={"status":401,"path":"/corporations/123/structures/sovereignty-hubs/"}'
@@ -193,7 +207,9 @@ describe('fetchSovereigntyEnrichment', () => {
 			'character-1'
 		)
 
-		await expect(promise).rejects.toThrow('Sovereignty hub enrichment requires updated director scopes.')
+		await expect(promise).rejects.toThrow(
+			'Sovereignty hub enrichment requires updated director scopes.'
+		)
 		await promise.catch((error) => {
 			expect(error).toBeInstanceOf(Error)
 			expect((error as { target?: string }).target).toBe('sovereignty-hubs')

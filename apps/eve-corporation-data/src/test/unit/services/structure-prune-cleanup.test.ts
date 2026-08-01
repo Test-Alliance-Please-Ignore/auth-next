@@ -45,7 +45,8 @@ vi.mock('@repo/do-utils', () => ({
 }))
 
 function makeDb() {
-	const where = vi.fn().mockResolvedValue(undefined)
+	const returning = vi.fn().mockResolvedValue([])
+	const where = vi.fn(() => ({ returning }))
 	const deleteMock = vi.fn(() => ({ where }))
 	const execute = vi.fn().mockResolvedValue({ rows: [] })
 	const set = vi.fn(() => ({ where }))
@@ -97,6 +98,7 @@ function makeDb() {
 		update,
 		insert,
 		_where: where,
+		_returning: returning,
 		_set: set,
 		_values: values,
 		_execute: execute,
@@ -119,24 +121,16 @@ function createDoInstance(db: ReturnType<typeof makeDb>) {
 }
 
 describe('structure prune cleanup', () => {
-	it('orders moon drill storage with new ids before stale priority rows', async () => {
+	it('stores all live moon drill rows from the corporation structure listing', async () => {
 		const db = makeDb()
 		const instance = createDoInstance(db)
-		db._execute.mockResolvedValue({
-			rows: [{ structureId: 'moon-1' }, { structureId: 'moon-2' }],
-		})
 
-		db.query.structureMoonDrills.findMany = vi
-			.fn()
-			.mockResolvedValueOnce([])
-			.mockResolvedValueOnce([
-				{
-					structureId: 'moon-2',
-					lastAttemptedSyncAt: new Date('2026-07-22T00:00:00.000Z'),
-					lastSyncedAt: new Date('2026-07-22T00:00:00.000Z'),
-				},
-			])
-			.mockResolvedValue([])
+		db.query.structureMoonDrills.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'stale-moon',
+				updatedAt: new Date('2026-07-22T00:00:00.000Z'),
+			},
+		])
 
 		await (instance as any).storeMoonDrills('corp-1', [
 			{
@@ -157,6 +151,7 @@ describe('structure prune cleanup', () => {
 		expect(
 			db._values.mock.calls[0][0].map((row: { structureId: string }) => row.structureId)
 		).toEqual(['moon-1', 'moon-2'])
+		expect(db.delete).toHaveBeenCalledWith(structureMoonDrills)
 	})
 
 	it('prunes stale skyhook and mining snapshots when structures disappear from a successful sync', async () => {
@@ -340,6 +335,43 @@ describe('structure prune cleanup', () => {
 		expect(db.delete).not.toHaveBeenCalled()
 	})
 
+	it('does not recalculate moon geography for an existing structure', async () => {
+		const db = makeDb()
+		db.query.structureMoonGeographies.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'moon-drill-1',
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+		])
+		const resolveNearestMoonGeographyBySystemPosition = vi.fn()
+		mocks.getStub.mockReturnValue({
+			resolveNearestMoonGeographyBySystemPosition,
+		} as never)
+		const instance = createDoInstance(db)
+
+		await (instance as any).storeMoonGeographies('corp-1', [
+			{
+				structureId: 'moon-drill-1',
+				corporationId: 'corp-1',
+				typeId: '81826',
+				typeName: 'Metenox Moon Drill',
+				systemId: '30000142',
+				systemName: 'Jita',
+				structureInfo: {
+					position: {
+						x: 1,
+						y: 2,
+						z: 3,
+					},
+				},
+			},
+		])
+
+		expect(resolveNearestMoonGeographyBySystemPosition).not.toHaveBeenCalled()
+		expect(db.insert).not.toHaveBeenCalled()
+		expect(db.delete).not.toHaveBeenCalled()
+	})
+
 	it('stores sovereignty hub names using resolved solar system names', async () => {
 		const db = makeDb()
 		const instance = createDoInstance(db)
@@ -456,11 +488,12 @@ describe('structure prune cleanup', () => {
 		})
 	})
 
-	it('rebuilds sovereignty hubs without preserving stale hub names', async () => {
+	it('preserves existing sovereignty hub geography without re-resolving it', async () => {
 		const db = makeDb()
 		db.query.structureSovereigntyHubs.findMany = vi.fn().mockResolvedValue([
 			{
 				structureId: 'hub-1',
+				systemId: '30000142',
 				systemName: 'Stale Name',
 				name: 'Stale Hub',
 			},
@@ -468,12 +501,9 @@ describe('structure prune cleanup', () => {
 		const instance = createDoInstance(db)
 
 		mocks.getStub.mockReturnValueOnce({} as never)
+		const resolveSolarSystemsByIds = vi.fn()
 		mocks.getStub.mockReturnValueOnce({
-			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({
-				'30000142': {
-					solarSystemName: 'Jita',
-				},
-			}),
+			resolveSolarSystemsByIds,
 		} as never)
 
 		await instance.storeSovereigntyHubs('corp-1', [
@@ -514,8 +544,10 @@ describe('structure prune cleanup', () => {
 
 		expect(db._values).toHaveBeenCalled()
 		expect(db._values.mock.calls[0][0][0]).toMatchObject({
-			systemName: 'Jita',
+			systemId: '30000142',
+			systemName: 'Stale Name',
 		})
+		expect(resolveSolarSystemsByIds).not.toHaveBeenCalled()
 	})
 
 	it('preserves existing skyhook snapshots when upstream skyhooks cannot be synthesized', async () => {
@@ -558,6 +590,70 @@ describe('structure prune cleanup', () => {
 
 		expect(db.delete).not.toHaveBeenCalled()
 		expect(db.insert).not.toHaveBeenCalled()
+	})
+
+	it('preserves existing skyhook geography without re-resolving it', async () => {
+		const db = makeDb()
+		db.query.corporationStructures.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'skyhook-1',
+				corporationId: 'corp-1',
+				typeId: '81826',
+				systemId: '30000142',
+				systemName: 'Jita',
+				regionId: '10000002',
+				regionName: 'The Forge',
+				updatedAt: new Date('2026-07-12T19:36:46.834Z'),
+			},
+		])
+		db.query.structureSkyhooks.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'skyhook-1',
+				planetName: 'Planet One',
+				systemName: 'Jita',
+				updatedAt: new Date('2026-07-12T19:36:46.834Z'),
+			},
+		])
+		const resolvePlanetGeographyByIds = vi.fn()
+		const resolveSolarSystemsByIds = vi.fn()
+		const resolveRegionsByIds = vi.fn()
+		mocks.getStub.mockReturnValue({
+			resolvePlanetGeographyByIds,
+			resolveSolarSystemsByIds,
+			resolveRegionsByIds,
+			resolveNearestMoonGeographyBySystemPosition: vi.fn(),
+		} as never)
+
+		const instance = createDoInstance(db)
+
+		await instance.storeSkyhooks('corp-1', [
+			{
+				structure_id: 'skyhook-1',
+				planet_id: '401',
+				corporation_id: 'corp-1',
+				state: 'active',
+				is_active: true,
+				effective_workforce: 0,
+				reagents: [],
+				reinforcement_timer: null,
+				theft_vulnerability: null,
+				raw: { id: 1 },
+			} as never,
+		])
+
+		expect(resolvePlanetGeographyByIds).not.toHaveBeenCalled()
+		expect(resolveSolarSystemsByIds).not.toHaveBeenCalled()
+		expect(resolveRegionsByIds).not.toHaveBeenCalled()
+		expect(db._values.mock.calls[0][0][0]).toMatchObject({
+			systemId: '30000142',
+			systemName: 'Jita',
+			regionId: '10000002',
+			regionName: 'The Forge',
+		})
+		expect(db._values.mock.calls[1][0][0]).toMatchObject({
+			planetName: 'Planet One',
+			systemName: 'Jita',
+		})
 	})
 
 	it('does not prune skyhooks without explicit prune candidates when the upstream listing is empty', async () => {
