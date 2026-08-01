@@ -95,6 +95,7 @@ export const bills = pgTable(
 		groupBillId: uuid('group_bill_id'), // nullable — links all sub-bills of a group bill together
 		createdAt: timestamp('created_at').notNull().defaultNow(),
 		updatedAt: timestamp('updated_at').notNull().defaultNow(),
+		// Completed payment-window watermark. It advances only after the full lookbehind is drained.
 		paymentLastCheckedAt: timestamp('payment_last_checked_at', { withTimezone: true }),
 	},
 	(table) => [
@@ -186,7 +187,11 @@ export const billNotificationEvents = pgTable(
 		index('bill_notification_events_event_type_idx').on(table.eventType),
 		index('bill_notification_events_status_idx').on(table.status),
 		index('bill_notification_events_first_eligible_at_idx').on(table.firstEligibleAt),
-		unique('bill_notification_events_unique').on(table.billId, table.recipientUserId, table.eventType),
+		unique('bill_notification_events_unique').on(
+			table.billId,
+			table.recipientUserId,
+			table.eventType
+		),
 	]
 )
 

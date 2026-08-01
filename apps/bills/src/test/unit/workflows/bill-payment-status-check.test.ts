@@ -154,7 +154,9 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 				externalSourceType: 'corporation_tax_assessment',
 			},
 		})
-		findPaymentsForBillMock.mockResolvedValue({ newPaymentsRecorded: 0 })
+		findPaymentsForBillMock.mockResolvedValue({
+			newPaymentsRecorded: 0,
+		})
 		checkPaymentStatusMock.mockResolvedValue({
 			markedPaid: false,
 			statusBefore: 'issued',
@@ -164,7 +166,9 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 	})
 
 	it('syncs tax status when payment is newly recorded', async () => {
-		findPaymentsForBillMock.mockResolvedValueOnce({ newPaymentsRecorded: 1 })
+		findPaymentsForBillMock.mockResolvedValueOnce({
+			newPaymentsRecorded: 1,
+		})
 		const { workflow, taxSyncMock } = createWorkflowAndContext()
 		const { step, executedStepNames } = createStep()
 
@@ -173,7 +177,6 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 		expect(executedStepNames).toEqual([
 			'reconcile-payment-data',
 			'finalize-payment-state',
-			'update-check-timestamp',
 			'sync-bill-effects',
 		])
 		expect(taxSyncMock).toHaveBeenCalledWith('system:bills:payment-status-check', {
@@ -194,7 +197,6 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 		expect(noPaymentStep.executedStepNames).toEqual([
 			'reconcile-payment-data',
 			'finalize-payment-state',
-			'update-check-timestamp',
 		])
 
 		vi.clearAllMocks()
@@ -205,7 +207,9 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 				externalSourceType: 'corporation_tax_assessment',
 			},
 		})
-		findPaymentsForBillMock.mockResolvedValue({ newPaymentsRecorded: 2 })
+		findPaymentsForBillMock.mockResolvedValue({
+			newPaymentsRecorded: 2,
+		})
 		checkPaymentStatusMock.mockResolvedValue({
 			markedPaid: false,
 			statusBefore: 'issued',
@@ -223,7 +227,6 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 		expect(withPaymentStep.executedStepNames).toEqual([
 			'reconcile-payment-data',
 			'finalize-payment-state',
-			'update-check-timestamp',
 			'sync-bill-effects',
 		])
 	})
@@ -240,7 +243,7 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 
 		await workflow.run({ payload: { billId: 'bill-1' }, instanceId: 'wf-1' } as never, step)
 
-		expect(doMock).toHaveBeenCalledTimes(4)
+		expect(doMock).toHaveBeenCalledTimes(3)
 		expect(taxSyncMock).toHaveBeenCalledWith('system:bills:payment-status-check', {
 			id: 'bill-1',
 			status: 'paid',
@@ -286,7 +289,9 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 				externalSourceType: 'manual',
 			},
 		})
-		findPaymentsForBillMock.mockResolvedValue({ newPaymentsRecorded: 2 })
+		findPaymentsForBillMock.mockResolvedValue({
+			newPaymentsRecorded: 2,
+		})
 		checkPaymentStatusMock.mockResolvedValue({
 			markedPaid: false,
 			statusBefore: 'issued',
@@ -305,26 +310,31 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 		expect(secondStep.executedStepNames).toEqual([
 			'reconcile-payment-data',
 			'finalize-payment-state',
-			'update-check-timestamp',
 		])
 	})
 
-	it('does not recompute transition flags when the timestamp step retries', async () => {
-		checkPaymentStatusMock.mockResolvedValueOnce({
-			markedPaid: true,
-			statusBefore: 'issued',
-			statusAfter: 'paid',
-		})
+	it('retries the finalization step when timestamp persistence fails', async () => {
+		checkPaymentStatusMock
+			.mockResolvedValueOnce({
+				markedPaid: true,
+				statusBefore: 'issued',
+				statusAfter: 'paid',
+			})
+			.mockResolvedValue({
+				markedPaid: true,
+				statusBefore: 'issued',
+				statusAfter: 'paid',
+			})
 		updateCheckTimestampMock
 			.mockRejectedValueOnce(new Error('temporary timestamp failure'))
 			.mockResolvedValueOnce({ updated: true })
 
 		const { workflow } = createWorkflowAndContext()
-		const { step } = createStep(['update-check-timestamp'])
+		const { step } = createStep(['finalize-payment-state'])
 
 		await workflow.run({ payload: { billId: 'bill-1' }, instanceId: 'wf-1' } as never, step)
 
-		expect(checkPaymentStatusMock).toHaveBeenCalledTimes(1)
+		expect(checkPaymentStatusMock).toHaveBeenCalledTimes(2)
 		expect(updateCheckTimestampMock).toHaveBeenCalledTimes(2)
 	})
 })

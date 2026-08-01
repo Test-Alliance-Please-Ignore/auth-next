@@ -123,8 +123,8 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 				status: paymentReconciliationResult.bill.status,
 			})
 
-			// Step 2: Normalize lifecycle state and evaluate payment status. Keep the transition
-			// result durable so a later timestamp retry cannot re-run it and lose its edge flags.
+			// Step 2: Normalize lifecycle state and evaluate payment status. The watermark write is
+			// deliberately last so failed finalization leaves the payment window eligible for retry.
 			const paymentStatusResult = await step.do(
 				'finalize-payment-state',
 				{
@@ -146,16 +146,12 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 									billStatus: paymentReconciliationResult.bill.status,
 								}
 					const paymentStatus = await checkPaymentStatus(ctx)
+					// Advance the watermark only after payment reconciliation and lifecycle evaluation
+					// both succeed, without adding another workflow step.
+					await updateCheckTimestamp(ctx)
 					return { ...overdueRefreshResult, ...paymentStatus }
 				}
 			)
-
-			// Keep this independent from state transitions. If it retries, the durable
-			// paymentStatusResult above is reused instead of being recomputed.
-			await step.do('update-check-timestamp', () => {
-				const ctx = this.createContext(billId, workflowInstanceId)
-				return updateCheckTimestamp(ctx)
-			})
 
 			logger.log('[Workflow] Checked payment status', logContext)
 

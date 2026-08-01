@@ -304,7 +304,15 @@ export const corporationWalletJournal = pgTable(
 		taxReceiverId: text('tax_receiver_id'),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.division, table.journalId)]
+	(table) => [
+		unique().on(table.corporationId, table.division, table.journalId),
+		index('corporation_wallet_journal_corporation_date_idx').on(table.corporationId, table.date),
+		index('corporation_wallet_journal_corporation_reason_date_idx').on(
+			table.corporationId,
+			table.reason,
+			table.date
+		),
+	]
 )
 
 /**

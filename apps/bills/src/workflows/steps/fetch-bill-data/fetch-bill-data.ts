@@ -1,6 +1,6 @@
-import { eq } from '@repo/db-utils'
+import { and, desc, eq } from '@repo/db-utils'
 
-import { bills } from '../../../db/schema'
+import { bills, billStatusEvents } from '../../../db/schema'
 import { getWorkflowLogger } from '../../context'
 
 import type { BillStatus, EntityType } from '@repo/bills'
@@ -13,7 +13,8 @@ export interface BillPaymentCheckData {
 	payeeType: EntityType | null
 	payerType: EntityType
 	paymentToken: string
-	createdAt: string
+	paymentStartAt: string
+	paymentLastCheckedAt: string | null
 	externalSourceType: string | null
 }
 
@@ -38,6 +39,12 @@ export async function fetchBillData(ctx: WorkflowContext): Promise<FetchBillData
 		throw new Error(`Bill not found: ${ctx.billId}`)
 	}
 
+	const issuedEvent = await ctx.db.query.billStatusEvents.findFirst({
+		where: and(eq(billStatusEvents.billId, bill.id), eq(billStatusEvents.eventType, 'issued')),
+		orderBy: desc(billStatusEvents.createdAt),
+		columns: { createdAt: true },
+	})
+
 	logger.info('[Workflow] Fetched bill data', {
 		billId: ctx.billId,
 		workflowInstanceId: ctx.workflowInstanceId,
@@ -52,7 +59,8 @@ export async function fetchBillData(ctx: WorkflowContext): Promise<FetchBillData
 			payeeType: bill.payeeType,
 			payerType: bill.payerType,
 			paymentToken: bill.paymentToken,
-			createdAt: bill.createdAt.toISOString(),
+			paymentStartAt: (issuedEvent?.createdAt ?? bill.createdAt).toISOString(),
+			paymentLastCheckedAt: bill.paymentLastCheckedAt?.toISOString() ?? null,
 			externalSourceType: bill.externalSourceType,
 		},
 	}

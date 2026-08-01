@@ -1,0 +1,2 @@
+CREATE INDEX "character_wallet_journal_character_date_idx" ON "character_wallet_journal" USING btree ("character_id","date");--> statement-breakpoint
+CREATE INDEX "character_wallet_journal_character_reason_date_idx" ON "character_wallet_journal" USING btree ("character_id","reason","date");
