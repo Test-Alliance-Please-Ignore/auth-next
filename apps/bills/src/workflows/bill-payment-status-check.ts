@@ -15,8 +15,6 @@ import type { BillStatus } from '@repo/bills'
 import type { Env } from '../context'
 import type { WorkflowContext } from './context'
 
-const DATABASE_QUERY_TIMEOUT_MS = 25_000
-
 const TAX_SYNC_ACTOR = 'system:bills:payment-status-check'
 type CorporationTaxSyncStub = {
 	syncBillStatus(
@@ -72,7 +70,7 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 	 * MUST be called inside step.do() callbacks since services don't survive hibernation.
 	 */
 	private createContext(billId: string, workflowInstanceId: string): WorkflowContext {
-		const db = createDb(this.env.DATABASE_URL, { queryTimeoutMs: DATABASE_QUERY_TIMEOUT_MS })
+		const db = createDb(this.env.DATABASE_URL)
 		return {
 			env: this.env,
 			workflowInstanceId,
