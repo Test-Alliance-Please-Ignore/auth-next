@@ -2,6 +2,18 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { BillService } from '../../../services/bill.service'
 
+function sqlText(query: unknown): string {
+	if (typeof query === 'string') return query
+	if (query === null || typeof query !== 'object') return ''
+
+	const node = query as { queryChunks?: unknown[]; value?: unknown }
+	if (Array.isArray(node.queryChunks)) {
+		return node.queryChunks.map(sqlText).join('')
+	}
+	if (Array.isArray(node.value)) return node.value.join('')
+	return ''
+}
+
 function createService(overrides?: {
 	bill?: {
 		id: string
@@ -100,5 +112,6 @@ describe('BillService.recordWalletPayments', () => {
 
 		expect(findFirst).toHaveBeenCalledTimes(1)
 		expect(execute).toHaveBeenCalledTimes(1)
+		expect(sqlText(execute.mock.calls[0]?.[0])).toContain('::timestamptz')
 	})
 })

@@ -755,7 +755,7 @@ export class BillService {
 					${payment.amount.toString()},
 					${payment.paidById},
 					${payment.paidByType}::bill_entity_type,
-					${paidAt}
+					${paidAt}::timestamptz
 				)`
 			}),
 			sql`, `
