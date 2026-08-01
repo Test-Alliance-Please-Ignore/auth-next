@@ -438,9 +438,9 @@ users.get('/has-corporation-access', async (c) => {
 		// Fetch corporation IDs for ALL characters (not just first 10)
 		// This ensures we check all managed corporations the user has characters in
 		const charCorpPromises = characters.map(async (character) => {
+			const charStub = getStub<Rpc.Provider<EveCharacterData>>(c.env.EVE_CHARACTER_DATA, 'default')
 			try {
-				const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
-				const charData = await charStub.getCharacterInfo(character.characterId)
+				using charData = await charStub.getCharacterInfo(character.characterId)
 				return charData ? String(charData.corporationId) : null
 			} catch {
 				return null
@@ -455,11 +455,20 @@ users.get('/has-corporation-access', async (c) => {
 			const managedCorp = managedCorps.find((c) => c.corporationId === corpId)
 			if (managedCorp) {
 				// Found a managed corp - quick check for any role
+				const corpStub = getStub<Rpc.Provider<EveCorporationData>>(
+					c.env.EVE_CORPORATION_DATA,
+					corpId
+				)
 				try {
-					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corpId)
 					const [corpInfo, directors] = await Promise.all([
-						corpStub.getCorporationInfo(corpId),
-						corpStub.getDirectors(corpId),
+						(async () => {
+							using result = await corpStub.getCorporationInfo(corpId)
+							return result ? { ceoId: result.ceoId } : null
+						})(),
+						(async () => {
+							using result = await corpStub.getDirectors(corpId)
+							return result.map((director) => ({ characterId: director.characterId }))
+						})(),
 					])
 
 					// Check if any character is CEO or director
@@ -481,9 +490,9 @@ users.get('/has-corporation-access', async (c) => {
 		}
 
 		// Also check if user has any HR roles
+		const hrStub = getStub<Rpc.Provider<Hr>>(c.env.HR, 'default')
 		try {
-			const hrStub = getStub<Hr>(c.env.HR, 'default')
-			const hrCorpIds = await hrStub.getUserHrCorporations(user.id)
+			using hrCorpIds = await hrStub.getUserHrCorporations(user.id)
 			if (hrCorpIds.length > 0) {
 				return c.json({ hasAccess: true })
 			}
@@ -586,7 +595,9 @@ users.get('/corporation-access', async (c) => {
 			// Only fall back to the corporation-data worker for rows that are missing it.
 			const characterCorpMap = new Map<string, string>() // characterId -> corporationId
 			const missingCharacterIds: string[] = []
-			const charactersById = new Map(characters.map((character) => [character.characterId, character]))
+			const charactersById = new Map(
+				characters.map((character) => [character.characterId, character])
+			)
 
 			for (const character of characters) {
 				if (character.corporationId) {
@@ -602,10 +613,11 @@ users.get('/corporation-access', async (c) => {
 				})
 
 				try {
-					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, 'default')
-					const missingCorpMap = await corpStub.getCorporationIdsByCharacterIds(
-						missingCharacterIds
+					const corpStub = getStub<Rpc.Provider<EveCorporationData>>(
+						c.env.EVE_CORPORATION_DATA,
+						'default'
 					)
+					using missingCorpMap = await corpStub.getCorporationIdsByCharacterIds(missingCharacterIds)
 
 					for (const [characterId, corporationId] of Object.entries(missingCorpMap)) {
 						characterCorpMap.set(characterId, corporationId)
@@ -646,15 +658,22 @@ users.get('/corporation-access', async (c) => {
 			// Process corporations in parallel instead of sequential loop
 			const corpCheckPromises = relevantCorps.map(async (corp) => {
 				try {
-					const corpStub = getStub<EveCorporationData>(
+					const corpStub = getStub<Rpc.Provider<EveCorporationData>>(
 						c.env.EVE_CORPORATION_DATA,
 						corp.corporationId
 					)
 
-					// Get corporation info and directors in parallel
+					// Get corporation info and directors in parallel while disposing each result
+					// within the async scope that owns it.
 					const [corpInfo, directors] = await Promise.all([
-						corpStub.getCorporationInfo(corp.corporationId),
-						corpStub.getDirectors(corp.corporationId),
+						(async () => {
+							using result = await corpStub.getCorporationInfo(corp.corporationId)
+							return result ? { ceoId: result.ceoId } : null
+						})(),
+						(async () => {
+							using result = await corpStub.getDirectors(corp.corporationId)
+							return result.map((director) => ({ characterId: director.characterId }))
+						})(),
 					])
 
 					// Create director lookup Set for O(1) checks
@@ -753,8 +772,8 @@ users.get('/corporation-access', async (c) => {
 		// Also check HR roles across member corporations only (non-admin users only).
 		if (!user.is_admin) {
 			const accessibleCorpIds = new Set(accessibleCorporations.map((c) => c.corporationId))
-			const hrStub = getStub<Hr>(c.env.HR, 'default')
-			const hrCorpIds = await hrStub.getUserHrCorporations(user.id)
+			const hrStub = getStub<Rpc.Provider<Hr>>(c.env.HR, 'default')
+			using hrCorpIds = await hrStub.getUserHrCorporations(user.id)
 			const managedCorpById = new Map(managedCorps.map((corp) => [corp.corporationId, corp]))
 			const uniqueHrCorpIds = [...new Set(hrCorpIds)].filter((id) => {
 				if (accessibleCorpIds.has(id)) return false
@@ -767,7 +786,7 @@ users.get('/corporation-access', async (c) => {
 					hr_reviewer: 2,
 					hr_viewer: 1,
 				}
-				const explicitHrRoles = await hrStub.getUserRoles(user.id)
+				using explicitHrRoles = await hrStub.getUserRoles(user.id)
 				const highestExplicitRoleByCorp = new Map<
 					string,
 					'hr_admin' | 'hr_reviewer' | 'hr_viewer'
@@ -813,11 +832,16 @@ users.get('/corporation-access', async (c) => {
 		const accessibleCorpData = await Promise.all(
 			accessibleCorporations.map(async (corp) => {
 				try {
-					const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
-					const members = await corpStub.getMembers(corp.corporationId)
+					const corpStub = getStub<Rpc.Provider<EveCorporationData>>(
+						c.env.EVE_CORPORATION_DATA,
+						corp.corporationId
+					)
+					using members = await corpStub.getMembers(corp.corporationId)
 					return {
 						corporationId: corp.corporationId,
-						members,
+						members: members.map((member) => ({
+							characterId: String(member.characterId),
+						})),
 					}
 				} catch (error) {
 					logger.warn('[Corporation Access] Failed to hydrate corporation stats', {
@@ -950,11 +974,11 @@ users.get('/my-corporations', async (c) => {
 			// Fetch all corporation data in parallel
 			const corpDataPromises = managedCorps.map(async (corp) => {
 				try {
-					const corpStub = getStub<EveCorporationData>(
+					const corpStub = getStub<Rpc.Provider<EveCorporationData>>(
 						c.env.EVE_CORPORATION_DATA,
 						corp.corporationId
 					)
-					const coreData = await corpStub.getCoreData(corp.corporationId)
+					using coreData = await corpStub.getCoreData(corp.corporationId)
 					const linkedChars =
 						coreData?.members && coreData.members.length > 0
 							? await db.query.userCharacters.findMany({
@@ -1033,16 +1057,18 @@ users.get('/my-corporations', async (c) => {
 		}
 
 		// STEP 2: Create stubs ONCE (outside loops)
-		const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		const charStub = getStub<Rpc.Provider<EveCharacterData>>(c.env.EVE_CHARACTER_DATA, 'default')
 
 		// STEP 3: Batch fetch all character data in parallel
 		const characterDataMap = new Map<string, any>()
 		await Promise.all(
 			characters.map(async (char) => {
 				try {
-					const charData = await charStub.getCharacterInfo(char.characterId)
+					using charData = await charStub.getCharacterInfo(char.characterId)
 					if (charData) {
-						characterDataMap.set(char.characterId, charData)
+						characterDataMap.set(char.characterId, {
+							corporationId: charData.corporationId,
+						})
 					}
 				} catch (error) {
 					logger.warn('Error fetching character data:', {
@@ -1069,13 +1095,31 @@ users.get('/my-corporations', async (c) => {
 		// STEP 6: Batch fetch all corporation data in parallel
 		const corpDataPromises = relevantCorps.map(async (corp) => {
 			try {
-				const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corp.corporationId)
+				const corpStub = getStub<Rpc.Provider<EveCorporationData>>(
+					c.env.EVE_CORPORATION_DATA,
+					corp.corporationId
+				)
 
 				// Fetch all corp data in parallel for each corporation
 				const [corpInfo, directors, coreData] = await Promise.all([
-					corpStub.getCorporationInfo(corp.corporationId),
-					corpStub.getDirectors(corp.corporationId),
-					corpStub.getCoreData(corp.corporationId),
+					(async () => {
+						using result = await corpStub.getCorporationInfo(corp.corporationId)
+						return result ? { ceoId: result.ceoId, allianceId: result.allianceId } : null
+					})(),
+					(async () => {
+						using result = await corpStub.getDirectors(corp.corporationId)
+						return result.map((director) => ({ characterId: director.characterId }))
+					})(),
+					(async () => {
+						using result = await corpStub.getCoreData(corp.corporationId)
+						return result
+							? {
+									members: result.members?.map((member) => ({
+										characterId: member.characterId,
+									})),
+								}
+							: null
+					})(),
 				])
 
 				return { corp, corpInfo, directors, coreData }

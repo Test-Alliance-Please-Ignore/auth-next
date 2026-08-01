@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import * as z4 from 'zod/v4/core'
 
-import { and, asc, eq, gt, gte, inArray, isNull, lt, lte, or } from '@repo/db-utils'
+import { and, asc, eq, gt, inArray, isNull, lt, lte, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { EsiRequestClient } from '@repo/esi'
 import { buildEsiUserKey, buildPublicEsiUserKey, EsiRateLimitStore } from '@repo/esi-rate-limit'
@@ -87,6 +87,9 @@ const AUTH_ESI_ROUTE_WINDOW_LIMIT = 60
 const AUTH_ESI_RAMP_WINDOW_MS = 60 * 1000
 const TOKEN_REFRESH_COOLDOWN_PREFIX = 'token:refresh:cooldown:'
 const TOKEN_REFRESH_TRANSIENT_COOLDOWN_MS = 5 * 60 * 1000
+const TOKEN_REFRESH_ALARM_BATCH_SIZE = 10
+const TOKEN_REFRESH_ALARM_CONTINUE_DELAY_MS = 30 * 1000
+const TOKEN_REFRESH_ALARM_INTERVAL_MS = 5 * 60 * 1000
 
 type AccessTokenLookupResult =
 	| {
@@ -152,7 +155,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		})
 
 		// Load cached metadata from DO storage once on startup.
-		state.blockConcurrencyWhile(async () => {
+		void state.blockConcurrencyWhile(async () => {
 			this.metadata = (await state.storage.get<CachedEveMetadata>('eve:oauth:metadata')) ?? null
 
 			if (this.metadata) {
@@ -2024,7 +2027,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	): Promise<{
 		data: T[]
 		pages: number
-		responses: EsiResponse<T[]>[]
+		responses: Array<EsiResponse<T[]>>
 	}> {
 		const maxConcurrent = options?.maxConcurrent ?? 5
 		const cacheMode = options?.cacheMode ?? 'default'
@@ -2040,7 +2043,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		})
 
 		const totalPages = firstResponse.pages ?? 1
-		const responses: EsiResponse<T[]>[] = [firstResponse]
+		const responses: Array<EsiResponse<T[]>> = [firstResponse]
 
 		// If there's only one page, return early
 		if (totalPages === 1) {
@@ -2061,7 +2064,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 
 		// Fetch with concurrency control
-		const remainingResponses: EsiResponse<T[]>[] = []
+		const remainingResponses: Array<EsiResponse<T[]>> = []
 		for (let i = 0; i < remainingPages.length; i += maxConcurrent) {
 			const batch = remainingPages.slice(i, i + maxConcurrent)
 			const batchResponses = await Promise.all(batch.map(fetchPage))
@@ -2093,7 +2096,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	): Promise<{
 		data: T[]
 		pages: number
-		responses: EsiResponse<T[]>[]
+		responses: Array<EsiResponse<T[]>>
 	}> {
 		const maxConcurrent = options?.maxConcurrent ?? 5
 
@@ -2106,7 +2109,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const firstResponse = await this.fetchPublicEsi<T[]>(firstPagePath)
 
 		const totalPages = firstResponse.pages ?? 1
-		const responses: EsiResponse<T[]>[] = [firstResponse]
+		const responses: Array<EsiResponse<T[]>> = [firstResponse]
 
 		// If there's only one page, return early
 		if (totalPages === 1) {
@@ -2125,7 +2128,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 
 		// Fetch with concurrency control
-		const remainingResponses: EsiResponse<T[]>[] = []
+		const remainingResponses: Array<EsiResponse<T[]>> = []
 		for (let i = 0; i < remainingPages.length; i += maxConcurrent) {
 			const batch = remainingPages.slice(i, i + maxConcurrent)
 			const batchResponses = await Promise.all(batch.map(fetchPage))
@@ -2187,8 +2190,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 					// Fetch and stream remaining pages with concurrency control
 					const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2)
-					let totalItems = firstResponse.data.length
-
 					for (let i = 0; i < remainingPages.length; i += maxConcurrent) {
 						const batch = remainingPages.slice(i, i + maxConcurrent)
 
@@ -2205,7 +2206,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 							for (const item of response.data) {
 								const line = JSON.stringify(item) + '\n'
 								controller.enqueue(encoder.encode(line))
-								totalItems++
 							}
 						}
 					}
@@ -2221,7 +2221,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				}
 			},
 
-			cancel(reason) {
+			cancel(_reason) {
 				// Stream cancelled
 			},
 		})
@@ -2551,35 +2551,44 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Alarm handler - automatically refresh tokens that are expiring soon
 	 */
 	async alarm(): Promise<void> {
+		let processedBatchSize = 0
 		try {
 			const now = new Date()
 			const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000)
 
-			// Find tokens expiring within the next 5 minutes
-			const expiringTokens = await this.db.query.eveTokens.findMany({
-				where: and(
-					gt(eveTokens.expiresAt, now), // Not already expired
-					lte(eveTokens.expiresAt, fiveMinutesFromNow), // Expires within 5 minutes
-					or(isNull(eveTokens.nextRetryAt), lte(eveTokens.nextRetryAt, now))
-				),
-			})
+			// Process a bounded batch so one alarm cannot build an unbounded queue of
+			// Durable Object storage operations when many tokens expire together.
+			const expiringTokens = await this.db
+				.select({ characterId: eveCharacters.characterId })
+				.from(eveTokens)
+				.innerJoin(eveCharacters, eq(eveTokens.characterId, eveCharacters.id))
+				.where(
+					and(
+						gt(eveTokens.expiresAt, now),
+						lte(eveTokens.expiresAt, fiveMinutesFromNow),
+						isNull(eveCharacters.deletedAt),
+						isNull(eveTokens.permanentInvalidAt),
+						or(isNull(eveTokens.nextRetryAt), lte(eveTokens.nextRetryAt, now))
+					)
+				)
+				.orderBy(asc(eveTokens.expiresAt))
+				.limit(TOKEN_REFRESH_ALARM_BATCH_SIZE)
+
+			processedBatchSize = expiringTokens.length
 
 			// Refresh each token
-			for (const token of expiringTokens) {
-				const character = await this.db.query.eveCharacters.findFirst({
-					where: eq(eveCharacters.id, token.characterId),
-				})
-
-				if (character) {
-					await this.refreshToken(character.characterId)
-				}
+			for (const { characterId } of expiringTokens) {
+				await this.refreshToken(characterId)
 			}
 		} catch (error) {
 			logger.error(error)
 		}
 
-		// Schedule next alarm (5 minutes)
-		await this.state.storage.setAlarm(Date.now() + 5 * 60 * 1000)
+		const nextAlarmDelayMs =
+			processedBatchSize === TOKEN_REFRESH_ALARM_BATCH_SIZE
+				? TOKEN_REFRESH_ALARM_CONTINUE_DELAY_MS
+				: TOKEN_REFRESH_ALARM_INTERVAL_MS
+		await this.state.storage.setAlarm(Date.now() + nextAlarmDelayMs)
 	}
 
 	/**

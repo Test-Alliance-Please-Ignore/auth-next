@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
 	calculateJsonSize,
+	classifyEsiCredentialFailure,
 	generateCleanupPrefix,
 	generateR2Key,
 	isEsiRateLimitError,
@@ -165,6 +166,28 @@ describe('workflow-utils', () => {
 				'request failed without explicit 429 text | metadata={"status":429,"path":"/x"}'
 			)
 			expect(isEsiRateLimitError(error)).toBe(true)
+		})
+
+		it('classifies canonical ESI authentication and permission failures separately', () => {
+			expect(classifyEsiCredentialFailure(new Error('ESI request failed: 401 Unauthorized'))).toBe(
+				'authentication'
+			)
+			expect(classifyEsiCredentialFailure(new Error('ESI request failed: 403 Forbidden'))).toBe(
+				'permission'
+			)
+			expect(
+				classifyEsiCredentialFailure(
+					new Error('fetch failed: ESI request failed: 401 Unauthorized | metadata={"status":401}')
+				)
+			).toBe('authentication')
+			expect(classifyEsiCredentialFailure(new Error('Worker failed: forbidden RPC response'))).toBe(
+				null
+			)
+			expect(
+				classifyEsiCredentialFailure(
+					new Error('ESI request failed: 403 Forbidden | metadata={"status":500,"path":"/x"}')
+				)
+			).toBe(null)
 		})
 	})
 })

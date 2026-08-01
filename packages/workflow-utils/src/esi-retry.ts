@@ -49,6 +49,26 @@ function getEsiStatusFromError(error: unknown): number | null {
 }
 
 /**
+ * Classify an ESI authentication or permission failure.
+ *
+ * Generic words such as "forbidden" are not sufficient because Durable
+ * Object, Worker, and Workflow errors can contain them without saying
+ * anything about the director token.
+ */
+export type EsiCredentialFailureKind = 'authentication' | 'permission'
+
+export function classifyEsiCredentialFailure(error: unknown): EsiCredentialFailureKind | null {
+	if (!(error instanceof Error)) return null
+
+	const match = error.message.match(/ESI request failed:\s*(401|403)\b/i)
+	if (!match) return null
+
+	const metadataStatus = getEsiStatusFromError(error)
+	if (metadataStatus !== null && metadataStatus !== Number(match[1])) return null
+	return match[1] === '401' ? 'authentication' : 'permission'
+}
+
+/**
  * Check if an error is a retriable ESI rate limit (420 or 429).
  */
 export function isEsiRateLimitError(error: unknown): boolean {
@@ -113,8 +133,12 @@ export function extractEsiRateLimitSleepSeconds(
 
 	if (metadata.status !== 429) return null
 
-	const retryAfter = typeof metadata.retryAfterSeconds === 'number' ? metadata.retryAfterSeconds : undefined
-	const errorLimitReset = typeof metadata.errorLimitResetSeconds === 'number' ? metadata.errorLimitResetSeconds : undefined
+	const retryAfter =
+		typeof metadata.retryAfterSeconds === 'number' ? metadata.retryAfterSeconds : undefined
+	const errorLimitReset =
+		typeof metadata.errorLimitResetSeconds === 'number'
+			? metadata.errorLimitResetSeconds
+			: undefined
 	const recommended = retryAfter ?? errorLimitReset ?? fallbackSeconds
 
 	return Math.max(1, Math.min(maxSeconds, recommended))
@@ -165,7 +189,11 @@ export async function withEsiRetryClassification<T>(
 		}
 
 		const message = error instanceof Error ? error.message : String(error)
-		const sleepSeconds = extractEsiRateLimitSleepSeconds(message, rateLimitFallbackSeconds, rateLimitMaxSeconds)
+		const sleepSeconds = extractEsiRateLimitSleepSeconds(
+			message,
+			rateLimitFallbackSeconds,
+			rateLimitMaxSeconds
+		)
 		if (sleepSeconds !== null) {
 			await new Promise((resolve) => setTimeout(resolve, sleepSeconds * 1000))
 		}

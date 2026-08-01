@@ -117,7 +117,7 @@ export async function createWorkflow<PARAMS = unknown>(
  */
 export async function createWorkflowBatch<PARAMS = unknown>(
 	workflow: Workflow<PARAMS>,
-	batch: CreateWorkflowOptions<PARAMS>[]
+	batch: Array<CreateWorkflowOptions<PARAMS>>
 ): Promise<WorkflowInstance[]> {
 	return workflow.createBatch(batch.map((options) => withDefaultRetention(options)))
 }

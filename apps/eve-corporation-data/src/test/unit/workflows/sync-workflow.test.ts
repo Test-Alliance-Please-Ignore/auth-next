@@ -59,6 +59,7 @@ vi.mock('@repo/do-utils', () => ({
 vi.mock('@repo/workflow-utils', () => ({
 	NonRetryableError: class NonRetryableError extends Error {},
 	esiRetryOptions: {},
+	classifyEsiCredentialFailure: () => null,
 	parseEsiErrorMetadata: (message: string) => parseEsiErrorMetadataMock(message),
 	withEsiRetryClassification: async (_label: string, fn: () => Promise<unknown> | unknown) =>
 		await fn(),
@@ -70,8 +71,10 @@ vi.mock('../../../workflows/steps/assets', () => ({
 
 vi.mock('../../../workflows/steps/common', () => ({
 	clearTaxProjectionRetryIntent: (...args: unknown[]) => clearTaxProjectionRetryIntentMock(...args),
-	recordTaxProjectionRetryIntent: (...args: unknown[]) => recordTaxProjectionRetryIntentMock(...args),
-	replayTaxProjectionRetryIntent: (...args: unknown[]) => replayTaxProjectionRetryIntentMock(...args),
+	recordTaxProjectionRetryIntent: (...args: unknown[]) =>
+		recordTaxProjectionRetryIntentMock(...args),
+	replayTaxProjectionRetryIntent: (...args: unknown[]) =>
+		replayTaxProjectionRetryIntentMock(...args),
 	sendHrDepartedMessages: (...args: unknown[]) => sendHrDepartedMessagesMock(...args),
 	triggerTaxProjectionRefresh: (...args: unknown[]) => triggerTaxProjectionRefreshMock(...args),
 	updateCoreLastSync: (...args: unknown[]) => updateCoreLastSyncMock(...args),
@@ -105,14 +108,16 @@ vi.mock('../../../workflows/steps/structures', () => ({
 
 function createStep() {
 	const executedStepNames: string[] = []
-	const doMock = vi.fn(async (name: string, optionsOrHandler: unknown, maybeHandler?: () => unknown) => {
-		executedStepNames.push(name)
-		const handler =
-			typeof optionsOrHandler === 'function'
-				? (optionsOrHandler as () => unknown)
-				: (maybeHandler as () => unknown)
-		return await handler()
-	})
+	const doMock = vi.fn(
+		async (name: string, optionsOrHandler: unknown, maybeHandler?: () => unknown) => {
+			executedStepNames.push(name)
+			const handler =
+				typeof optionsOrHandler === 'function'
+					? (optionsOrHandler as () => unknown)
+					: (maybeHandler as () => unknown)
+			return await handler()
+		}
+	)
 
 	return {
 		executedStepNames,
@@ -201,7 +206,7 @@ describe('EveCorporationSyncWorkflow', () => {
 		})
 
 		const workflow = new EveCorporationSyncWorkflow({} as ExecutionContext, env)
-		const { step } = createStep()
+		const { step, executedStepNames } = createStep()
 
 		await expect(
 			workflow.run(
@@ -223,17 +228,14 @@ describe('EveCorporationSyncWorkflow', () => {
 		})
 
 		expect(syncAssetsMock).toHaveBeenCalledWith(env, '693378155', '900000001')
+		expect(executedStepNames.filter((name) => name === 'sync-assets')).toHaveLength(1)
 		expect(markStructureSyncFailureReasonMock).toHaveBeenCalledWith(
 			env,
 			'693378155',
 			'structures',
 			'Station Manager access required'
 		)
-		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(
-			env,
-			'693378155',
-			['assets', 'skyhooks']
-		)
+		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', ['assets', 'skyhooks'])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 		expect(corpDataStub.getCorporationSyncConfig).toHaveBeenCalledWith('693378155')
 	})
@@ -312,11 +314,7 @@ describe('EveCorporationSyncWorkflow', () => {
 			'structures',
 			'Station Manager access required'
 		)
-		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(
-			env,
-			'693378155',
-			['assets', 'skyhooks']
-		)
+		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', ['assets', 'skyhooks'])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 		expect(corpDataStub.getCorporationSyncConfig).toHaveBeenCalledWith('693378155')
 	})
@@ -387,11 +385,11 @@ describe('EveCorporationSyncWorkflow', () => {
 			trigger: 'cron',
 		})
 
-		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(
-			env,
-			'693378155',
-			['assets', 'structures', 'skyhooks']
-		)
+		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', [
+			'assets',
+			'structures',
+			'skyhooks',
+		])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 		expect(corpDataStub.getCorporationSyncConfig).toHaveBeenCalledWith('693378155')
 	})
@@ -537,11 +535,11 @@ describe('EveCorporationSyncWorkflow', () => {
 			},
 		])
 		expect(syncAssetsMock).toHaveBeenCalledWith(env, '693378155', '900000001')
-		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(
-			env,
-			'693378155',
-			['assets', 'structures', 'skyhooks']
-		)
+		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', [
+			'assets',
+			'structures',
+			'skyhooks',
+		])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
 
@@ -974,11 +972,11 @@ describe('EveCorporationSyncWorkflow', () => {
 		expect(fetchSkyhookEnrichmentMock).toHaveBeenCalled()
 		expect(storeSkyhookEnrichmentMock).toHaveBeenCalled()
 		expect(fetchMiningExtractionEnrichmentMock).toHaveBeenCalled()
-		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(
-			env,
-			'693378155',
-			['assets', 'structures', 'skyhooks']
-		)
+		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', [
+			'assets',
+			'structures',
+			'skyhooks',
+		])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
 })
