@@ -5,7 +5,7 @@ import * as esiFetch from '../../../services/esi-fetch'
 import { buildPriorityQueuedEntries } from '../../../services/structure-priority'
 import { createTokenStore, getCorporationDataStub } from '../../utils/services'
 import {
-	readSharedSovereigntySystemsByIds,
+	readSharedSovereigntySystemsForCorporation,
 	refreshSharedSovereigntySystems,
 } from '../../utils/sovereignty-systems-cache'
 import {
@@ -127,6 +127,20 @@ export async function fetchSovereigntyEnrichment(
 	try {
 		const corpData = getCorporationDataStub(env, corporationId)
 		const tokenStore = createTokenStore(env)
+		let sovereigntySystems = await readSharedSovereigntySystemsForCorporation(env, corporationId)
+		if (!sovereigntySystems) {
+			logger.warn(
+				'[StructuresStep] Shared sovereignty snapshot missing or stale; rewarming cache',
+				{
+					corporationId,
+				}
+			)
+			await refreshSharedSovereigntySystems(env)
+			sovereigntySystems = await readSharedSovereigntySystemsForCorporation(env, corporationId)
+			if (!sovereigntySystems) {
+				throw new Error('Complete shared sovereignty snapshot was unavailable after refresh')
+			}
+		}
 		const sovereigntyHubListing = await fetchStructureListing(
 			(page) =>
 				tokenStore.fetchEsi<{ sovereignty_hubs: Array<{ id: number; solar_system_id: number }> }>(
@@ -165,7 +179,7 @@ export async function fetchSovereigntyEnrichment(
 
 		if (collectedHubs.length === 0) {
 			return {
-				sovereigntySystems: null,
+				sovereigntySystems,
 				sovereigntyHubs: [],
 				pruneCandidateIds: [...sovereigntyHubResult.pruneCandidateIds],
 				failures: sovereigntyHubResult.failures,
@@ -179,27 +193,6 @@ export async function fetchSovereigntyEnrichment(
 		const systemGeography = await universe.resolveSolarSystemsByIds([
 			...new Set(collectedHubs.map((hub) => hub.system_id)),
 		])
-		let sovereigntySystems = await readSharedSovereigntySystemsByIds(
-			env,
-			collectedHubs.map((hub) => hub.system_id)
-		)
-		if (!sovereigntySystems) {
-			logger.warn(
-				'[StructuresStep] Shared sovereignty snapshot missing or stale; rewarming cache',
-				{
-					corporationId,
-				}
-			)
-			await refreshSharedSovereigntySystems(env)
-			sovereigntySystems = await readSharedSovereigntySystemsByIds(
-				env,
-				collectedHubs.map((hub) => hub.system_id)
-			)
-			if (!sovereigntySystems) {
-				throw new Error('Shared sovereignty snapshot was unavailable after refresh')
-			}
-		}
-
 		const allianceBySystemId = buildSovereigntyAllianceBySystemId(sovereigntySystems)
 		const enrichedSovereigntyHubs = collectedHubs.map((hub) => ({
 			...hub,
@@ -209,7 +202,7 @@ export async function fetchSovereigntyEnrichment(
 
 		logger.debug('[StructuresStep] Fetched sovereignty structure enrichment', {
 			corporationId,
-			sovereigntySystems: sovereigntySystems?.length ?? 0,
+			sovereigntySystems: sovereigntySystems.length,
 			sovereigntyHubs: collectedHubs.length,
 			failureCount,
 		})
@@ -329,6 +322,7 @@ export async function storeSovereigntyEnrichment(
 	enrichment: SovereigntyEnrichmentData
 ): Promise<void> {
 	const corpData = getCorporationDataStub(env, corporationId)
+
 	await Promise.all([
 		enrichment.sovereigntySystems
 			? corpData.storeSovereigntySystems(corporationId, enrichment.sovereigntySystems)

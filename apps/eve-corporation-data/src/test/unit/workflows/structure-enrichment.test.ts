@@ -6,7 +6,7 @@ const SOVEREIGNTY_HUB_TYPE_ID = '32458'
 
 const mocks = vi.hoisted(() => {
 	const fetchSovereigntyHubsMock = vi.fn()
-	const readSharedSovereigntySystemsByIdsMock = vi.fn()
+	const readSharedSovereigntySystemsForCorporationMock = vi.fn()
 	const refreshSharedSovereigntySystemsMock = vi.fn()
 	const resolveSolarSystemsByIdsMock = vi.fn()
 	const getSovereigntyHubSyncPrioritiesMock = vi.fn()
@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => {
 
 	return {
 		fetchSovereigntyHubsMock,
-		readSharedSovereigntySystemsByIdsMock,
+		readSharedSovereigntySystemsForCorporationMock,
 		refreshSharedSovereigntySystemsMock,
 		resolveSolarSystemsByIdsMock,
 		getSovereigntyHubSyncPrioritiesMock,
@@ -56,8 +56,8 @@ vi.mock('../../../workflows/utils/services', () => ({
 }))
 
 vi.mock('../../../workflows/utils/sovereignty-systems-cache', () => ({
-	readSharedSovereigntySystemsByIds: (...args: unknown[]) =>
-		mocks.readSharedSovereigntySystemsByIdsMock(...args),
+	readSharedSovereigntySystemsForCorporation: (...args: unknown[]) =>
+		mocks.readSharedSovereigntySystemsForCorporationMock(...args),
 	refreshSharedSovereigntySystems: (...args: unknown[]) =>
 		mocks.refreshSharedSovereigntySystemsMock(...args),
 }))
@@ -84,7 +84,7 @@ describe('fetchSovereigntyEnrichment', () => {
 			},
 			pages: 1,
 		})
-		mocks.readSharedSovereigntySystemsByIdsMock.mockResolvedValue([
+		mocks.readSharedSovereigntySystemsForCorporationMock.mockResolvedValue([
 			{
 				system_id: '30000142',
 				claim_type: 'alliance',
@@ -169,11 +169,11 @@ describe('fetchSovereigntyEnrichment', () => {
 				pruneCandidateIds: ['departed-hub'],
 			}
 		)
-		expect(mocks.readSharedSovereigntySystemsByIdsMock).toHaveBeenCalledWith(
+		expect(mocks.readSharedSovereigntySystemsForCorporationMock).toHaveBeenCalledWith(
 			{
 				UNIVERSE: {},
 			},
-			['30000142']
+			'corp-1'
 		)
 		expect(mocks.getStubMock).toHaveBeenCalledWith({}, 'default')
 		expect(mocks.resolveSolarSystemsByIdsMock).toHaveBeenCalledWith(['30000142'])
@@ -193,6 +193,7 @@ describe('fetchSovereigntyEnrichment', () => {
 			pruneCandidateIds: [],
 			syncPriorities: [],
 		})
+		mocks.readSharedSovereigntySystemsForCorporationMock.mockResolvedValue([])
 		mocks.fetchEsiMock.mockRejectedValue(
 			new Error(
 				'ESI request failed: 401 Unauthorized - {"error":"missing scope"} | metadata={"status":401,"path":"/corporations/123/structures/sovereignty-hubs/"}'

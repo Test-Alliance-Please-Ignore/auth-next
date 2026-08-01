@@ -14,15 +14,15 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Read the shared sovereignty snapshot subset for the requested system IDs if it is still fresh enough.
+ * Read the complete sovereignty-system slice owned by a corporation if the shared snapshot is fresh.
  */
-export async function readSharedSovereigntySystemsByIds(
+export async function readSharedSovereigntySystemsForCorporation(
 	env: Env,
-	systemIds: string[]
+	corporationId: string
 ): Promise<EsiSovereigntySystem[] | null> {
 	const globalCorpData = getGlobalCorporationDataStub(env)
-	return await globalCorpData.getSharedSovereigntySystemsByIds(
-		systemIds,
+	return await globalCorpData.getSharedSovereigntySystemsForCorporation(
+		corporationId,
 		SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
 	)
 }

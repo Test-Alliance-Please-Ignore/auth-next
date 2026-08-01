@@ -208,6 +208,7 @@ const CORPORATION_MEMBERSHIP_SCOPE = 'esi-corporations.read_corporation_membersh
 const NPC_CORPORATION_ID_MIN = 1_000_000
 const NPC_CORPORATION_ID_MAX = 1_999_999
 const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY = 'shared:sovereignty-systems:observed-at'
+const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_COUNT_KEY = 'shared:sovereignty-systems:count'
 const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX = 'shared:sovereignty-systems:row:'
 const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_MAX_AGE_SECONDS = 60 * 60
 const SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_KEY = 'shared:sovereignty-systems:refresh-lease'
@@ -3438,6 +3439,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				await txn.delete([...existing.keys()])
 			}
 			await txn.put(SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY, observedAt)
+			await txn.put(SHARED_SOVEREIGNTY_SYSTEMS_CACHE_COUNT_KEY, systems.length)
 			if (systems.length > 0) {
 				await txn.put(rowEntries)
 			}
@@ -3482,40 +3484,34 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		})
 	}
 
-	/**
-	 * Get shared sovereignty system snapshots for the requested system IDs if they are still within TTL.
-	 */
-	async getSharedSovereigntySystemsByIds(
-		systemIds: string[],
+	async getSharedSovereigntySystemsForCorporation(
+		corporationId: string,
 		maxAgeSeconds = SHARED_SOVEREIGNTY_SYSTEMS_CACHE_MAX_AGE_SECONDS
 	): Promise<EsiSovereigntySystem[] | null> {
 		const observedAtRaw = await this.state.storage.get<string>(
 			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY
 		)
-		if (!observedAtRaw) {
+		const cachedSystemCount = await this.state.storage.get<number>(
+			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_COUNT_KEY
+		)
+		if (!observedAtRaw || cachedSystemCount === undefined) {
 			return null
 		}
 
 		const observedAt = parseDateOrNull(observedAtRaw)
-		if (!observedAt) {
+		if (!observedAt || Date.now() - observedAt.getTime() > maxAgeSeconds * 1000) {
 			return null
 		}
 
-		const ageMs = Date.now() - observedAt.getTime()
-		if (ageMs > maxAgeSeconds * 1000) {
+		const rows = await this.state.storage.list<EsiSovereigntySystem>({
+			prefix: SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX,
+		})
+		if (rows.size !== cachedSystemCount) {
 			return null
 		}
-
-		const uniqueSystemIds = [...new Set(systemIds.filter((systemId) => Boolean(systemId)))]
-		if (uniqueSystemIds.length === 0) {
-			return []
-		}
-
-		const rows = await this.state.storage.get<EsiSovereigntySystem>(
-			uniqueSystemIds.map((systemId) => `${SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX}${systemId}`)
+		return [...rows.values()].filter(
+			(system) => system.claim_type === 'alliance' && system.corporation_id === corporationId
 		)
-
-		return [...rows.values()]
 	}
 
 	async getSharedSovereigntySystemsSnapshot(
@@ -3524,7 +3520,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const observedAtRaw = await this.state.storage.get<string>(
 			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY
 		)
-		if (!observedAtRaw) {
+		const cachedSystemCount = await this.state.storage.get<number>(
+			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_COUNT_KEY
+		)
+		if (!observedAtRaw || cachedSystemCount === undefined) {
 			return null
 		}
 
@@ -3541,6 +3540,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const rows = await this.state.storage.list<EsiSovereigntySystem>({
 			prefix: SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX,
 		})
+		if (rows.size !== cachedSystemCount) {
+			return null
+		}
 		return [...rows.values()]
 	}
 
@@ -3550,7 +3552,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const observedAtRaw = await this.state.storage.get<string>(
 			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY
 		)
-		if (!observedAtRaw) {
+		const cachedSystemCount = await this.state.storage.get<number>(
+			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_COUNT_KEY
+		)
+		if (!observedAtRaw || cachedSystemCount === undefined) {
 			return false
 		}
 
