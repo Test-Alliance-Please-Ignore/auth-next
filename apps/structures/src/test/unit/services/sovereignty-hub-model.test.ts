@@ -148,6 +148,9 @@ function makeDb() {
 	const corporationStructureInventory = {
 		findMany: vi.fn().mockResolvedValue([]),
 	}
+	const corporationStructureInventorySnapshots = {
+		findFirst: vi.fn().mockResolvedValue({ id: 'snapshot-1' }),
+	}
 	const structureFuelLog = {
 		findMany: vi.fn().mockResolvedValue([]),
 	}
@@ -525,6 +528,7 @@ function makeDb() {
 			structureModuleConfig,
 			structureConfigs,
 			managedCorporations,
+			corporationStructureInventorySnapshots,
 			corporationStructureInventory,
 			structureFuelLog,
 			structureSovereigntyHubs,

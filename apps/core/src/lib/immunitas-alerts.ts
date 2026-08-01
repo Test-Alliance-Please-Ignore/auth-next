@@ -70,7 +70,8 @@ function formatRequestorGroups(groups: ImmunitasAccessRequestorGroup[], maxGroup
 	const lines: string[] = []
 
 	for (const group of visibleGroups) {
-		const label = group.requestorLabels[0]?.trim() || group.requestorUserId.trim() || 'Unknown requester'
+		const label =
+			group.requestorLabels[0]?.trim() || group.requestorUserId.trim() || 'Unknown requester'
 		const attemptLabel =
 			group.attemptCount === 1 ? '1 blocked attempt' : `${group.attemptCount} blocked attempts`
 		lines.push(`• ${label} (${attemptLabel})`)
@@ -102,7 +103,9 @@ export function buildImmunitasAccessAlertMessage(input: {
 }): MessageContent {
 	const accessTypeLabel = getAccessTypeLabel(input.accessType)
 	const attemptLabel =
-		input.attemptCount === 1 ? 'One unauthorized attempt' : `${input.attemptCount} unauthorized attempts`
+		input.attemptCount === 1
+			? 'One unauthorized attempt'
+			: `${input.attemptCount} unauthorized attempts`
 	const description =
 		input.attemptCount === 1
 			? 'One unauthorized attempt to access an immunitas account was blocked.'
@@ -153,14 +156,11 @@ export async function queueImmunitasAccessAlertForUser(
 		accessType: ImmunitasAccessType
 		source?: string
 	}
-): Promise<
-	| {
-			added: number
-			skipped: number
-			pendingCount: number
-	  }
-	| null
-> {
+): Promise<{
+	added: number
+	skipped: number
+	pendingCount: number
+} | null> {
 	const targetCharacterLabel = input.targetCharacterLabel.trim()
 	if (!targetCharacterLabel) {
 		return null

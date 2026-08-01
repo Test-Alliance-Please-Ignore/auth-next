@@ -18,8 +18,9 @@
 		"preview": "run-vite-preview",
 		"repair-migration": "tsx ./src/scripts/repair-migration.ts",
 		"tail": "run-wrangler-tail",
-		"test": "run-vitest",
-		"test:focused": "run-vitest --config vitest.node.config.ts"
+		"test": "run-vitest --config vitest.node.config.ts",
+		"test:focused": "run-vitest --config vitest.node.config.ts",
+		"test:workers": "run-vitest --config vitest.config.ts"
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "1.0.2",

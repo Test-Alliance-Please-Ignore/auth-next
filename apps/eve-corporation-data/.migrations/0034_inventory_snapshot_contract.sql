@@ -1,0 +1,1 @@
+ALTER TABLE "corporation_structure_inventory" ALTER COLUMN "snapshot_id" SET NOT NULL;

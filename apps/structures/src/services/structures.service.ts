@@ -1,34 +1,30 @@
 import { managedCorporations } from '@repo/core-db-schema'
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, notInArray, or, sql } from '@repo/db-utils'
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	inArray,
+	isNotNull,
+	isNull,
+	lte,
+	notInArray,
+	or,
+	sql,
+} from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import {
 	corporationStructureInventory,
+	corporationStructureInventorySnapshots,
 	corporationStructures,
 	structureFuelLog,
 } from '@repo/eve-corporation-data-db-schema'
 import { parseFittingSlotFlag } from '@repo/eve-fitting/flags'
-import {
-	parseStructurePermissionUrn,
-	STRUCTURE_PERMISSION_SCOPE_ALL,
-} from '@repo/groups'
+import { parseStructurePermissionUrn, STRUCTURE_PERMISSION_SCOPE_ALL } from '@repo/groups'
 import { logger } from '@repo/hono-helpers'
 import { summarizeInventoryRows } from '@repo/inventory-display'
 import {
-	METENOX_MOON_DRILL_TYPE_NAME,
-	MINING_CITADEL_TYPE_NAMES,
-	MOON_DRILL_STRUCTURE_TYPE_IDS,
-	NAVIGATION_STRUCTURE_TYPE_IDS,
-	SKYHOOK_STRUCTURE_TYPE_IDS,
-	SOVEREIGNTY_STRUCTURE_TYPE_IDS,
-	STRUCTURE_REINFORCED_STATES,
 	FUEL_BLOCK_TYPE_IDS,
-	SKYHOOK_SECURED_BAY_CAPACITY_M3,
-	SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
-	SKYHOOK_MAGMATIC_GAS_TYPE_ID,
-	SKYHOOK_MAGMATIC_GAS_TYPE_NAME,
-	SKYHOOK_SUPERIONIC_ICE_TYPE_ID,
-	SKYHOOK_SUPERIONIC_ICE_TYPE_NAME,
-	SOVEREIGNTY_HUB_TYPE_ID,
 	getSkyhookFullness,
 	getSkyhookReagentEntriesFromStorageState,
 	getSkyhookReagentSummaryFromStorageState,
@@ -36,39 +32,27 @@ import {
 	getSovereigntyReagentBayReagents,
 	getSovereigntyReagentBaySummary,
 	getStructureTabForTypeId,
+	METENOX_MOON_DRILL_TYPE_NAME,
+	MINING_CITADEL_TYPE_NAMES,
+	MOON_DRILL_STRUCTURE_TYPE_IDS,
+	NAVIGATION_STRUCTURE_TYPE_IDS,
+	SKYHOOK_MAGMATIC_GAS_TYPE_ID,
+	SKYHOOK_MAGMATIC_GAS_TYPE_NAME,
+	SKYHOOK_SECURED_BAY_CAPACITY_M3,
+	SKYHOOK_STRUCTURE_TYPE_IDS,
+	SKYHOOK_SUPERIONIC_ICE_TYPE_ID,
+	SKYHOOK_SUPERIONIC_ICE_TYPE_NAME,
+	SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
+	SOVEREIGNTY_HUB_TYPE_ID,
+	SOVEREIGNTY_STRUCTURE_TYPE_IDS,
+	STRUCTURE_REINFORCED_STATES,
 	STRUCTURE_SYNC_ERROR_STALE_MS,
 	STRUCTURE_SYNC_WARNING_STALE_MS,
-	type StructureMoonStructureListSortBy,
-	type StructureCommonListSortBy,
-	type StructureSkyhookListSortBy,
-	type StructureSovereigntyListSortBy,
-	type StructureCitadelListQuery,
-	type StructureMoonDrillListQuery,
-	type StructureMiningCitadelListQuery,
-	type StructureMiningCitadelListItem as RepoStructureMiningCitadelListItem,
-	type StructureMiningCitadelListResponse as RepoStructureMiningCitadelListResponse,
-	type StructureNavigationListQuery,
-	type StructureSovereigntyListFilterOptions as RepoStructureSovereigntyListFilterOptions,
-	type StructureSovereigntyListItem as RepoStructureSovereigntyListItem,
-	type StructureSovereigntyListResponse as RepoStructureSovereigntyListResponse,
-	type StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
-	type StructureSovereigntyReagent,
-	type StructureSovereigntyTransportState,
-	type StructureMoonDrillListItem as RepoStructureMoonDrillListItem,
-	type StructureMoonDrillListResponse as RepoStructureMoonDrillListResponse,
-	type StructureMoonDrillSummary as RepoStructureMoonDrillSummary,
-	type StructureMiningCitadelSummary as RepoStructureMiningCitadelSummary,
-	type StructureSkyhookListItem as RepoStructureSkyhookListItem,
-	type StructureSkyhookListResponse as RepoStructureSkyhookListResponse,
-	type StructureSkyhookListQuery,
-	type StructureSovereigntyListQuery,
-	type StructureTab,
-	type SkyhookReagentStorageState,
 } from '@repo/structures'
 import {
+	structureMiningExtractions,
 	structureMoonDrills,
 	structureMoonGeographies,
-	structureMiningExtractions,
 	structureSkyhookReagents,
 	structureSkyhooks,
 	structureSovereigntyHubs,
@@ -88,6 +72,34 @@ import { buildStructureFuelUsageHistory } from './structure-fuel-history'
 import type { DbClient } from '@repo/db-utils'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { InventoryDisplayBay } from '@repo/inventory-display'
+import type {
+	StructureMiningCitadelListItem as RepoStructureMiningCitadelListItem,
+	StructureMiningCitadelListResponse as RepoStructureMiningCitadelListResponse,
+	StructureMiningCitadelSummary as RepoStructureMiningCitadelSummary,
+	StructureMoonDrillListItem as RepoStructureMoonDrillListItem,
+	StructureMoonDrillListResponse as RepoStructureMoonDrillListResponse,
+	StructureMoonDrillSummary as RepoStructureMoonDrillSummary,
+	StructureSkyhookListItem as RepoStructureSkyhookListItem,
+	StructureSkyhookListResponse as RepoStructureSkyhookListResponse,
+	StructureSovereigntyListFilterOptions as RepoStructureSovereigntyListFilterOptions,
+	StructureSovereigntyListItem as RepoStructureSovereigntyListItem,
+	StructureSovereigntyListResponse as RepoStructureSovereigntyListResponse,
+	StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
+	SkyhookReagentStorageState,
+	StructureCitadelListQuery,
+	StructureCommonListSortBy,
+	StructureMiningCitadelListQuery,
+	StructureMoonDrillListQuery,
+	StructureMoonStructureListSortBy,
+	StructureNavigationListQuery,
+	StructureSkyhookListQuery,
+	StructureSkyhookListSortBy,
+	StructureSovereigntyListQuery,
+	StructureSovereigntyListSortBy,
+	StructureSovereigntyReagent,
+	StructureSovereigntyTransportState,
+	StructureTab,
+} from '@repo/structures'
 import type { Env, SessionUser } from '../context'
 import type { DbSchema } from '../db'
 import type {
@@ -119,7 +131,10 @@ function getSkyhookState(
 
 function isSkyhookCurrentlyRaidable(
 	structure:
-		| Pick<typeof structureSkyhooks.$inferSelect, 'theftVulnerabilityStart' | 'theftVulnerabilityEnd'>
+		| Pick<
+				typeof structureSkyhooks.$inferSelect,
+				'theftVulnerabilityStart' | 'theftVulnerabilityEnd'
+		  >
 		| null
 		| undefined
 ): boolean {
@@ -902,11 +917,7 @@ function summarizeStructureSkyhook(
 	const reagents = getSkyhookReagentEntriesFromStorageState(skyhook)
 	const isRaidable = isSkyhookCurrentlyRaidable(skyhook)
 	const reinforcementTimerEnd = toIso(skyhook.reinforcementTimerEnd)
-	const normalizedState = getSkyhookState(
-		skyhook.state,
-		isRaidable,
-		reinforcementTimerEnd
-	)
+	const normalizedState = getSkyhookState(skyhook.state, isRaidable, reinforcementTimerEnd)
 
 	return {
 		planetId: skyhook.planetId ?? null,
@@ -1156,9 +1167,25 @@ async function loadStructureInventoryDetailData(
 	db: DbClient<DbSchema>,
 	structure: StructureSourceRecord
 ): Promise<StructureInventoryBaySummary[]> {
+	const activeSnapshot = await db.query.corporationStructureInventorySnapshots.findFirst({
+		where: and(
+			eq(corporationStructureInventorySnapshots.corporationId, structure.corporationId),
+			isNotNull(corporationStructureInventorySnapshots.activatedAt)
+		),
+		orderBy: [
+			desc(corporationStructureInventorySnapshots.activatedAt),
+			desc(corporationStructureInventorySnapshots.createdAt),
+		],
+		columns: { id: true },
+	})
+	if (!activeSnapshot) {
+		return []
+	}
+
 	const rows = await db.query.corporationStructureInventory.findMany({
 		where: and(
 			eq(corporationStructureInventory.corporationId, structure.corporationId),
+			eq(corporationStructureInventory.snapshotId, activeSnapshot.id),
 			eq(corporationStructureInventory.structureId, structure.structureId)
 		),
 	})
@@ -1773,7 +1800,8 @@ async function getStructureContext(
 		return null
 	}
 
-	const canViewDetails = user.is_admin || canViewDetailsStructure(access, structure.corporationId, structureTab)
+	const canViewDetails =
+		user.is_admin || canViewDetailsStructure(access, structure.corporationId, structureTab)
 	if (requireDetailsPermission && !canViewDetails) {
 		return null
 	}
@@ -1995,7 +2023,10 @@ function buildOperationalStructureListItem(
 		hidden: row.hidden ?? false,
 		lowPowerAllowed: row.lowPowerAllowed ?? false,
 		assignedGroupId: row.assignedGroupId,
-		syncStatus: getStructureSyncStatus(row.syncStatus as StructureListItem['syncStatus'], row.lastSyncedAt),
+		syncStatus: getStructureSyncStatus(
+			row.syncStatus as StructureListItem['syncStatus'],
+			row.lastSyncedAt
+		),
 		syncFailureReason: row.syncFailureReason,
 		lastSyncedAt: toIso(row.lastSyncedAt),
 		updatedAt: toIso(row.updatedAt) ?? new Date().toISOString(),
@@ -2021,7 +2052,9 @@ function buildStructureContextsWhere(
 		conditions.push(eq(corporationStructures.corporationId, query.corporationId))
 	}
 	if (!accessibleCorporations.hasGlobalAccess) {
-		conditions.push(inArray(corporationStructures.corporationId, [...accessibleCorporations.corporationIds]))
+		conditions.push(
+			inArray(corporationStructures.corporationId, [...accessibleCorporations.corporationIds])
+		)
 	}
 	if (query.lowPower === 'true') {
 		conditions.push(eq(corporationStructures.lowPower, true))
@@ -2055,7 +2088,10 @@ function buildStructureContextsWhere(
 	if (query.lowPowerAllowed === 'true') {
 		conditions.push(eq(structureConfigs.lowPowerAllowed, true))
 	} else if (query.lowPowerAllowed === 'false') {
-		conditions.push(or(eq(structureConfigs.lowPowerAllowed, false), isNull(structureConfigs.structureId)) ?? sql`false`)
+		conditions.push(
+			or(eq(structureConfigs.lowPowerAllowed, false), isNull(structureConfigs.structureId)) ??
+				sql`false`
+		)
 	}
 	const hiddenVisibilityWhere = buildHiddenVisibilityWhere(access, tabFilter)
 	const hiddenVisibilityConditions: StructureWhereCondition[] = [
@@ -2100,7 +2136,10 @@ function buildOperationalStructuresSelectQuery(db: DbClient<DbSchema>, corpWhere
 		})
 		.from(corporationStructures)
 		.leftJoin(structureConfigs, eq(structureConfigs.structureId, corporationStructures.structureId))
-		.leftJoin(managedCorporations, eq(managedCorporations.corporationId, corporationStructures.corporationId))
+		.leftJoin(
+			managedCorporations,
+			eq(managedCorporations.corporationId, corporationStructures.corporationId)
+		)
 		.where(corpWhere ?? sql`true`)
 }
 
@@ -2114,7 +2153,9 @@ function buildSkyhookStructuresCte(db: DbClient<DbSchema>, corpWhere: any) {
 			.select({
 				structureId: sql<string>`${corporationStructures.structureId}`.as('structureId'),
 				corporationId: sql<string>`${corporationStructures.corporationId}`.as('corporationId'),
-				corporationName: sql<string>`coalesce(${managedCorporations.name}, '')`.as('corporationName'),
+				corporationName: sql<string>`coalesce(${managedCorporations.name}, '')`.as(
+					'corporationName'
+				),
 				structureName: sql<string | null>`${corporationStructures.name}`.as('structureName'),
 				typeId: sql<string>`${corporationStructures.typeId}`.as('typeId'),
 				typeName: sql<string | null>`${corporationStructures.typeName}`.as('typeName'),
@@ -2124,23 +2165,33 @@ function buildSkyhookStructuresCte(db: DbClient<DbSchema>, corpWhere: any) {
 				regionName: sql<string | null>`${corporationStructures.regionName}`.as('regionName'),
 				state: sql<string>`${corporationStructures.state}`.as('state'),
 				stateTimerEnd: sql<Date | null>`${corporationStructures.stateTimerEnd}`.as('stateTimerEnd'),
-				nextReinforceApply: sql<Date | null>`${corporationStructures.nextReinforceApply}`.as('nextReinforceApply'),
+				nextReinforceApply: sql<Date | null>`${corporationStructures.nextReinforceApply}`.as(
+					'nextReinforceApply'
+				),
 				unanchorsAt: sql<Date | null>`${corporationStructures.unanchorsAt}`.as('unanchorsAt'),
 				fuelExpires: sql<Date | null>`${corporationStructures.fuelExpires}`.as('fuelExpires'),
 				fuelAmount: sql<number | null>`${corporationStructures.fuelAmount}`.as('fuelAmount'),
 				fuelBurnRate: sql<string | null>`${corporationStructures.fuelBurnRate}`.as('fuelBurnRate'),
 				lowPower: sql<boolean>`${corporationStructures.lowPower}`.as('lowPower'),
 				hidden: sql<boolean | null>`${structureConfigs.hidden}`.as('hidden'),
-				lowPowerAllowed: sql<boolean | null>`${structureConfigs.lowPowerAllowed}`.as('lowPowerAllowed'),
-				assignedGroupId: sql<string | null>`${structureConfigs.assignedGroupId}`.as('assignedGroupId'),
+				lowPowerAllowed: sql<boolean | null>`${structureConfigs.lowPowerAllowed}`.as(
+					'lowPowerAllowed'
+				),
+				assignedGroupId: sql<string | null>`${structureConfigs.assignedGroupId}`.as(
+					'assignedGroupId'
+				),
 				syncStatus: sql<string>`${corporationStructures.syncStatus}`.as('syncStatus'),
-				syncFailureReason: sql<string | null>`${corporationStructures.syncFailureReason}`.as('syncFailureReason'),
+				syncFailureReason: sql<string | null>`${corporationStructures.syncFailureReason}`.as(
+					'syncFailureReason'
+				),
 				lastSyncedAt: sql<Date | null>`${corporationStructures.lastSyncedAt}`.as('lastSyncedAt'),
 				updatedAt: sql<Date>`${corporationStructures.updatedAt}`.as('updatedAt'),
 				planetId: sql<string | null>`${structureSkyhooks.planetId}`.as('planetId'),
 				planetName: sql<string | null>`${structureSkyhooks.planetName}`.as('planetName'),
 				isActive: sql<boolean | null>`${structureSkyhooks.isActive}`.as('isActive'),
-				effectiveWorkforce: sql<number | null>`${structureSkyhooks.effectiveWorkforce}`.as('effectiveWorkforce'),
+				effectiveWorkforce: sql<number | null>`${structureSkyhooks.effectiveWorkforce}`.as(
+					'effectiveWorkforce'
+				),
 				magmaticGasSecuredStock: sql<number>`
 					coalesce(${structureSkyhookReagents.magmaticGasSecuredStock}, 0)
 				`.as('magmaticGasSecuredStock'),
@@ -2156,9 +2207,10 @@ function buildSkyhookStructuresCte(db: DbClient<DbSchema>, corpWhere: any) {
 				superionicIceUnsecuredStock: sql<number>`
 					coalesce(${structureSkyhookReagents.superionicIceUnsecuredStock}, 0)
 				`.as('superionicIceUnsecuredStock'),
-				superionicIceLastCycle: sql<Date | null>`${structureSkyhookReagents.superionicIceLastCycle}`.as(
-					'superionicIceLastCycle'
-				),
+				superionicIceLastCycle:
+					sql<Date | null>`${structureSkyhookReagents.superionicIceLastCycle}`.as(
+						'superionicIceLastCycle'
+					),
 				reinforcementTimerEnd: sql<Date | null>`${structureSkyhooks.reinforcementTimerEnd}`.as(
 					'reinforcementTimerEnd'
 				),
@@ -2170,21 +2222,27 @@ function buildSkyhookStructuresCte(db: DbClient<DbSchema>, corpWhere: any) {
 				),
 			})
 			.from(corporationStructures)
-			.leftJoin(structureConfigs, eq(structureConfigs.structureId, corporationStructures.structureId))
-			.leftJoin(structureSkyhooks, eq(structureSkyhooks.structureId, corporationStructures.structureId))
+			.leftJoin(
+				structureConfigs,
+				eq(structureConfigs.structureId, corporationStructures.structureId)
+			)
+			.leftJoin(
+				structureSkyhooks,
+				eq(structureSkyhooks.structureId, corporationStructures.structureId)
+			)
 			.leftJoin(
 				structureSkyhookReagents,
 				eq(structureSkyhookReagents.structureId, corporationStructures.structureId)
 			)
-			.leftJoin(managedCorporations, eq(managedCorporations.corporationId, corporationStructures.corporationId))
+			.leftJoin(
+				managedCorporations,
+				eq(managedCorporations.corporationId, corporationStructures.corporationId)
+			)
 			.where(corpWhere ?? sql`true`)
 	)
 }
 
-function buildSkyhookReagentFillPercentExpression(
-	source: any,
-	stockType: 'secured' | 'unsecured'
-) {
+function buildSkyhookReagentFillPercentExpression(source: any, stockType: 'secured' | 'unsecured') {
 	const magmaticGasStock =
 		stockType === 'secured' ? source.magmaticGasSecuredStock : source.magmaticGasUnsecuredStock
 	const superionicIceStock =
@@ -2273,19 +2331,37 @@ function buildSkyhookSortOrder(
 		case 'workforce':
 			return [sortExpression(source.effectiveWorkforce), sortExpression(source.structureId)]
 		case 'name':
-			return [sortExpression(sql`coalesce(${source.structureName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.structureName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'corporation':
-			return [sortExpression(sql`coalesce(${source.corporationName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.corporationName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'region':
-			return [sortExpression(sql`coalesce(${source.regionName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.regionName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'system':
-			return [sortExpression(sql`coalesce(${source.systemName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.systemName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'type':
-			return [sortExpression(sql`coalesce(${source.typeName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.typeName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'state':
 			return [sortExpression(source.state), sortExpression(source.structureId)]
 		case 'group':
-			return [sortExpression(sql`coalesce(${source.assignedGroupId}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.assignedGroupId}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'syncStatus':
 			return [
 				sortExpression(
@@ -2298,7 +2374,10 @@ function buildSkyhookSortOrder(
 	}
 }
 
-function buildSkyhookVisibilityWhere(access: StructureAccessScope, query: StructureSkyhookListQuery): any {
+function buildSkyhookVisibilityWhere(
+	access: StructureAccessScope,
+	query: StructureSkyhookListQuery
+): any {
 	const conditions: StructureWhereCondition[] = []
 	const baseWhere = buildStructureContextsWhere(access, query, 'skyhooks')
 	if (baseWhere) {
@@ -2322,11 +2401,7 @@ function buildSkyhookListItemFromRow(
 	const reagentSummary = getSkyhookReagentSummaryFromStorageState(row)
 	const reagentEntries = getSkyhookReagentEntriesFromStorageState(row)
 	const reinforcementTimerEnd = toIso(row.reinforcementTimerEnd)
-	const normalizedState = getSkyhookState(
-		row.state,
-		row.isRaidable ?? false,
-		reinforcementTimerEnd
-	)
+	const normalizedState = getSkyhookState(row.state, row.isRaidable ?? false, reinforcementTimerEnd)
 
 	return {
 		structureId: row.structureId,
@@ -2402,57 +2477,58 @@ async function buildSkyhookStructureFilterOptionsFromSql(
 	skyhookStructures: ReturnType<typeof buildSkyhookStructuresCte>
 ): Promise<StructureListFilterOptions> {
 	const rowsDb = db.with(skyhookStructures)
-	const [corporations, assignedGroups, regions, systems, states, types, planets] = await Promise.all([
-		rowsDb
-			.selectDistinct({
-				corporationId: skyhookStructures.corporationId,
-				corporationName: skyhookStructures.corporationName,
-			})
-			.from(skyhookStructures)
-			.orderBy(asc(skyhookStructures.corporationName)),
-		rowsDb
-			.selectDistinct({
-				assignedGroupId: skyhookStructures.assignedGroupId,
-			})
-			.from(skyhookStructures)
-			.where(isNotNull(skyhookStructures.assignedGroupId))
-			.orderBy(asc(skyhookStructures.assignedGroupId)),
-		rowsDb
-			.selectDistinct({
-				regionId: skyhookStructures.regionId,
-				regionName: skyhookStructures.regionName,
-			})
-			.from(skyhookStructures)
-			.orderBy(asc(skyhookStructures.regionName)),
-		rowsDb
-			.selectDistinct({
-				systemId: skyhookStructures.systemId,
-				systemName: skyhookStructures.systemName,
-			})
-			.from(skyhookStructures)
-			.orderBy(asc(skyhookStructures.systemName)),
-		rowsDb
-			.selectDistinct({
-				state: skyhookStructures.state,
-			})
-			.from(skyhookStructures)
-			.orderBy(asc(skyhookStructures.state)),
-		rowsDb
-			.selectDistinct({
-				typeId: skyhookStructures.typeId,
-				typeName: skyhookStructures.typeName,
-			})
-			.from(skyhookStructures)
-			.orderBy(asc(skyhookStructures.typeName)),
-		rowsDb
-			.selectDistinct({
-				planetId: skyhookStructures.planetId,
-				planetName: skyhookStructures.planetName,
-			})
-			.from(skyhookStructures)
-			.where(isNotNull(skyhookStructures.planetId))
-			.orderBy(asc(skyhookStructures.planetName)),
-	])
+	const [corporations, assignedGroups, regions, systems, states, types, planets] =
+		await Promise.all([
+			rowsDb
+				.selectDistinct({
+					corporationId: skyhookStructures.corporationId,
+					corporationName: skyhookStructures.corporationName,
+				})
+				.from(skyhookStructures)
+				.orderBy(asc(skyhookStructures.corporationName)),
+			rowsDb
+				.selectDistinct({
+					assignedGroupId: skyhookStructures.assignedGroupId,
+				})
+				.from(skyhookStructures)
+				.where(isNotNull(skyhookStructures.assignedGroupId))
+				.orderBy(asc(skyhookStructures.assignedGroupId)),
+			rowsDb
+				.selectDistinct({
+					regionId: skyhookStructures.regionId,
+					regionName: skyhookStructures.regionName,
+				})
+				.from(skyhookStructures)
+				.orderBy(asc(skyhookStructures.regionName)),
+			rowsDb
+				.selectDistinct({
+					systemId: skyhookStructures.systemId,
+					systemName: skyhookStructures.systemName,
+				})
+				.from(skyhookStructures)
+				.orderBy(asc(skyhookStructures.systemName)),
+			rowsDb
+				.selectDistinct({
+					state: skyhookStructures.state,
+				})
+				.from(skyhookStructures)
+				.orderBy(asc(skyhookStructures.state)),
+			rowsDb
+				.selectDistinct({
+					typeId: skyhookStructures.typeId,
+					typeName: skyhookStructures.typeName,
+				})
+				.from(skyhookStructures)
+				.orderBy(asc(skyhookStructures.typeName)),
+			rowsDb
+				.selectDistinct({
+					planetId: skyhookStructures.planetId,
+					planetName: skyhookStructures.planetName,
+				})
+				.from(skyhookStructures)
+				.where(isNotNull(skyhookStructures.planetId))
+				.orderBy(asc(skyhookStructures.planetName)),
+		])
 
 	return {
 		corporations: (corporations as Array<{ corporationId?: unknown; corporationName?: unknown }>)
@@ -2464,8 +2540,11 @@ async function buildSkyhookStructureFilterOptionsFromSql(
 						: typeof row.corporationId === 'string'
 							? row.corporationId
 							: '',
-				}))
-			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+			}))
+			.filter(
+				(option, index, options) =>
+					options.findIndex((candidate) => candidate.value === option.value) === index
+			),
 		assignedGroups: (assignedGroups as Array<{ assignedGroupId?: unknown }>)
 			.map((row) => ({
 				value: typeof row.assignedGroupId === 'string' ? row.assignedGroupId : '',
@@ -2480,7 +2559,7 @@ async function buildSkyhookStructureFilterOptionsFromSql(
 						? row.regionName
 						: typeof row.regionId === 'string'
 							? row.regionId
-						: '',
+							: '',
 			}))
 			.filter((option) => option.value.length > 0),
 		systems: (systems as Array<{ systemId?: unknown; systemName?: unknown }>)
@@ -2492,14 +2571,20 @@ async function buildSkyhookStructureFilterOptionsFromSql(
 						: typeof row.systemId === 'string'
 							? row.systemId
 							: '',
-				}))
-			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+			}))
+			.filter(
+				(option, index, options) =>
+					options.findIndex((candidate) => candidate.value === option.value) === index
+			),
 		states: (states as Array<{ state?: unknown }>)
 			.map((row) => ({
 				value: typeof row.state === 'string' ? row.state : '',
 				label: typeof row.state === 'string' ? row.state : '',
 			}))
-			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+			.filter(
+				(option, index, options) =>
+					options.findIndex((candidate) => candidate.value === option.value) === index
+			),
 		types: (types as Array<{ typeId?: unknown; typeName?: unknown }>)
 			.map((row) => ({
 				value: typeof row.typeId === 'string' ? row.typeId : '',
@@ -2509,8 +2594,11 @@ async function buildSkyhookStructureFilterOptionsFromSql(
 						: typeof row.typeId === 'string'
 							? row.typeId
 							: '',
-				}))
-			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+			}))
+			.filter(
+				(option, index, options) =>
+					options.findIndex((candidate) => candidate.value === option.value) === index
+			),
 		alliances: [],
 		planets: (planets as Array<{ planetId?: unknown; planetName?: unknown }>)
 			.map((row) => ({
@@ -2569,9 +2657,9 @@ async function buildSkyhookStructureSummaryFromSql(
 				.from(skyhookStructures),
 			rowsDb
 				.select({
-					skyhookHighestFillPercent: sql<number | null>`max(${highestFillPercent})::double precision`.as(
-						'skyhookHighestFillPercent'
-					),
+					skyhookHighestFillPercent: sql<
+						number | null
+					>`max(${highestFillPercent})::double precision`.as('skyhookHighestFillPercent'),
 				})
 				.from(skyhookStructures),
 			rowsDb
@@ -2625,11 +2713,17 @@ async function buildSkyhookStructureSummaryFromSql(
 
 function buildSovereigntyReagentMetricSql(
 	source: any,
-	summaryField: 'magmaticGasQuantity' | 'magmaticGasBurningPerHour' | 'superionicIceQuantity' | 'superionicIceBurningPerHour',
+	summaryField:
+		| 'magmaticGasQuantity'
+		| 'magmaticGasBurningPerHour'
+		| 'superionicIceQuantity'
+		| 'superionicIceBurningPerHour',
 	reagentField: 'amount' | 'burningPerHour',
 	typeId: string
 ) {
-	const summaryValue = sql<string | null>`nullif(${source.reagentBay} -> 'summary' ->> ${summaryField}, '')`
+	const summaryValue = sql<
+		string | null
+	>`nullif(${source.reagentBay} -> 'summary' ->> ${summaryField}, '')`
 	const arrayValue = sql<number>`
 		(
 			select coalesce(sum((reagent ->> ${reagentField})::numeric), 0)
@@ -2699,8 +2793,9 @@ function buildSovereigntySortOrder(
 ) {
 	const descending = sortDirection === 'desc'
 	const sortExpression = (expression: any) => (descending ? desc(expression) : asc(expression))
-	const depletionSort = (field: 'magmaticGasEstimatedDepletionAt' | 'superionicIceEstimatedDepletionAt') =>
-		sortExpression(buildSovereigntySummaryDateSql(source, field))
+	const depletionSort = (
+		field: 'magmaticGasEstimatedDepletionAt' | 'superionicIceEstimatedDepletionAt'
+	) => sortExpression(buildSovereigntySummaryDateSql(source, field))
 
 	switch (sortBy) {
 		case 'fuel':
@@ -2711,15 +2806,30 @@ function buildSovereigntySortOrder(
 		case 'updatedAt':
 			return [sortExpression(source.updatedAt), sortExpression(source.structureId)]
 		case 'name':
-			return [sortExpression(sql`coalesce(${source.structureName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.structureName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'corporation':
-			return [sortExpression(sql`coalesce(${source.corporationName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.corporationName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'region':
-			return [sortExpression(sql`coalesce(${source.regionName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.regionName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'system':
-			return [sortExpression(sql`coalesce(${source.systemName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.systemName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'type':
-			return [sortExpression(sql`coalesce(${source.typeName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.typeName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'syncStatus':
 			return [
 				sortExpression(
@@ -2732,7 +2842,10 @@ function buildSovereigntySortOrder(
 		case 'magmaticGasEstimatedDepletionAt':
 			return [depletionSort('magmaticGasEstimatedDepletionAt'), sortExpression(source.structureId)]
 		case 'superionicIceEstimatedDepletionAt':
-			return [depletionSort('superionicIceEstimatedDepletionAt'), sortExpression(source.structureId)]
+			return [
+				depletionSort('superionicIceEstimatedDepletionAt'),
+				sortExpression(source.structureId),
+			]
 		default:
 			return [sortExpression(source.structureId)]
 	}
@@ -2885,7 +2998,8 @@ async function buildSovereigntyStructureFilterOptionsFromSql(
 		${sovereigntyStructures.vulnerabilityWindowStart} is null
 		or ${sovereigntyStructures.vulnerabilityWindowEnd} is null
 	`
-	const [corporations, regions, systems, controllerAlliances, vulnerabilityCounts] = await Promise.all([
+	const [corporations, regions, systems, controllerAlliances, vulnerabilityCounts] =
+		await Promise.all([
 			rowsDb
 				.selectDistinct({
 					corporationId: sovereigntyStructures.corporationId,
@@ -2922,7 +3036,7 @@ async function buildSovereigntyStructureFilterOptionsFromSql(
 					unknown: sql<number>`coalesce(sum(case when ${unknownExpression} then 1 else 0 end), 0)::int`,
 				})
 				.from(sovereigntyStructures),
-	])
+		])
 
 	return {
 		corporations: corporations
@@ -2930,7 +3044,10 @@ async function buildSovereigntyStructureFilterOptionsFromSql(
 				value: row.corporationId,
 				label: row.corporationName ?? row.corporationId,
 			}))
-			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+			.filter(
+				(option, index, options) =>
+					options.findIndex((candidate) => candidate.value === option.value) === index
+			),
 		assignedGroups: [],
 		regions: regions
 			.map((row) => ({
@@ -2943,7 +3060,10 @@ async function buildSovereigntyStructureFilterOptionsFromSql(
 				value: row.systemId,
 				label: row.systemName ?? row.systemId,
 			}))
-			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+			.filter(
+				(option, index, options) =>
+					options.findIndex((candidate) => candidate.value === option.value) === index
+			),
 		controllerAlliances: controllerAlliances
 			.map((row) => ({
 				value: row.controllerAllianceId ?? '',
@@ -2952,7 +3072,9 @@ async function buildSovereigntyStructureFilterOptionsFromSql(
 			.filter((option) => option.value.length > 0),
 		vulnerabilityStates: [
 			vulnerabilityCounts[0]?.vulnerable ? { value: 'vulnerable', label: 'Vulnerable' } : null,
-			vulnerabilityCounts[0]?.invulnerable ? { value: 'invulnerable', label: 'Invulnerable' } : null,
+			vulnerabilityCounts[0]?.invulnerable
+				? { value: 'invulnerable', label: 'Invulnerable' }
+				: null,
 			vulnerabilityCounts[0]?.unknown ? { value: 'unknown', label: 'Unknown' } : null,
 		].filter((entry): entry is NonNullable<typeof entry> => entry !== null),
 	}
@@ -3029,42 +3151,52 @@ async function buildSovereigntyStructureSummaryFromSql(
 			and ${superionicIceDepletionExpression}::timestamptz <= ${lowFuelThresholdAt}
 		)
 	`
-	const [totalResult, lowFuelResult, vulnerableResult, invulnerableResult, unknownResult, hubBurnRateResult] =
-		await Promise.all([
-			rowsDb
-				.select({
-					total: sql<number>`count(*)::int`,
-				})
-				.from(sovereigntyStructures),
-			rowsDb
-				.select({
-					count: sql<number>`coalesce(sum(case when ${lowFuelExpression} then 1 else 0 end), 0)::int`,
-				})
-				.from(sovereigntyStructures),
-			rowsDb
-				.select({
-					count: sql<number>`coalesce(sum(case when ${vulnerableExpression} then 1 else 0 end), 0)::int`,
-				})
-				.from(sovereigntyStructures),
-			rowsDb
-				.select({
-					count: sql<number>`coalesce(sum(case when ${invulnerableExpression} then 1 else 0 end), 0)::int`,
-				})
-				.from(sovereigntyStructures),
-			rowsDb
-				.select({
-					count: sql<number>`coalesce(sum(case when ${vulnerableExpression} or ${invulnerableExpression} then 0 else 1 end), 0)::int`,
-				})
-				.from(sovereigntyStructures),
-			rowsDb
-				.select({
-					magmaticGasBurningPerHour: sql<string | null>`sum(case when ${magmaticGasQuantityExpression} > 0 and ${magmaticGasBurningPerHourExpression} > 0 then ${magmaticGasBurningPerHourExpression} else 0 end)::text`,
-					magmaticGasBurningSampleCount: sql<number>`coalesce(sum(case when ${magmaticGasQuantityExpression} > 0 and ${magmaticGasBurningPerHourExpression} > 0 then 1 else 0 end), 0)::int`,
-					superionicIceBurningPerHour: sql<string | null>`sum(case when ${superionicIceQuantityExpression} > 0 and ${superionicIceBurningPerHourExpression} > 0 then ${superionicIceBurningPerHourExpression} else 0 end)::text`,
-					superionicIceBurningSampleCount: sql<number>`coalesce(sum(case when ${superionicIceQuantityExpression} > 0 and ${superionicIceBurningPerHourExpression} > 0 then 1 else 0 end), 0)::int`,
-				})
-				.from(sovereigntyStructures),
-		])
+	const [
+		totalResult,
+		lowFuelResult,
+		vulnerableResult,
+		invulnerableResult,
+		unknownResult,
+		hubBurnRateResult,
+	] = await Promise.all([
+		rowsDb
+			.select({
+				total: sql<number>`count(*)::int`,
+			})
+			.from(sovereigntyStructures),
+		rowsDb
+			.select({
+				count: sql<number>`coalesce(sum(case when ${lowFuelExpression} then 1 else 0 end), 0)::int`,
+			})
+			.from(sovereigntyStructures),
+		rowsDb
+			.select({
+				count: sql<number>`coalesce(sum(case when ${vulnerableExpression} then 1 else 0 end), 0)::int`,
+			})
+			.from(sovereigntyStructures),
+		rowsDb
+			.select({
+				count: sql<number>`coalesce(sum(case when ${invulnerableExpression} then 1 else 0 end), 0)::int`,
+			})
+			.from(sovereigntyStructures),
+		rowsDb
+			.select({
+				count: sql<number>`coalesce(sum(case when ${vulnerableExpression} or ${invulnerableExpression} then 0 else 1 end), 0)::int`,
+			})
+			.from(sovereigntyStructures),
+		rowsDb
+			.select({
+				magmaticGasBurningPerHour: sql<
+					string | null
+				>`sum(case when ${magmaticGasQuantityExpression} > 0 and ${magmaticGasBurningPerHourExpression} > 0 then ${magmaticGasBurningPerHourExpression} else 0 end)::text`,
+				magmaticGasBurningSampleCount: sql<number>`coalesce(sum(case when ${magmaticGasQuantityExpression} > 0 and ${magmaticGasBurningPerHourExpression} > 0 then 1 else 0 end), 0)::int`,
+				superionicIceBurningPerHour: sql<
+					string | null
+				>`sum(case when ${superionicIceQuantityExpression} > 0 and ${superionicIceBurningPerHourExpression} > 0 then ${superionicIceBurningPerHourExpression} else 0 end)::text`,
+				superionicIceBurningSampleCount: sql<number>`coalesce(sum(case when ${superionicIceQuantityExpression} > 0 and ${superionicIceBurningPerHourExpression} > 0 then 1 else 0 end), 0)::int`,
+			})
+			.from(sovereigntyStructures),
+	])
 
 	return {
 		total: totalResult[0]?.total ?? 0,
@@ -3154,31 +3286,29 @@ async function loadSovereigntyPageItems(
 			controllerAllianceId: row.controllerAllianceId,
 			controllerAllianceName: row.controllerAllianceName,
 			reagentBayLastUpdated: row.reagentBayLastUpdated,
-			reagentBay:
-				row.reagentBay ?? {
-					lastUpdated: '',
-					reagents: [],
+			reagentBay: row.reagentBay ?? {
+				lastUpdated: '',
+				reagents: [],
+			},
+			resources: row.resources ?? {
+				power: {
+					allocated: 0,
+					available: 0,
 				},
-			resources:
-				row.resources ?? {
-					power: {
-						allocated: 0,
-						available: 0,
-					},
-					workforce: {
-						allocated: 0,
-						available: 0,
-					},
+				workforce: {
+					allocated: 0,
+					available: 0,
 				},
+			},
 			upgrades: row.upgrades ?? [],
 			vulnerabilityWindowStart: row.vulnerabilityWindowStart,
 			vulnerabilityWindowEnd: row.vulnerabilityWindowEnd,
-			workforceTransport:
-				row.workforceTransport ?? {
-					configuration: { mode: 'unknown', systems: [] },
-					state: { mode: 'unknown', systems: [] },
-				},
-			syncStatus: (row.syncStatus ?? 'warning') as typeof structureSovereigntyHubs.$inferSelect['syncStatus'],
+			workforceTransport: row.workforceTransport ?? {
+				configuration: { mode: 'unknown', systems: [] },
+				state: { mode: 'unknown', systems: [] },
+			},
+			syncStatus: (row.syncStatus ??
+				'warning') as (typeof structureSovereigntyHubs.$inferSelect)['syncStatus'],
 			syncFailureReason: row.syncFailureReason,
 			lastAttemptedSyncAt: row.lastAttemptedSyncAt,
 			sourceSyncAt: row.sourceSyncAt,
@@ -3384,19 +3514,21 @@ async function loadMoonDrillPageItems(
 			user.is_admin || canViewDetailsStructure(access, row.corporationId, structureTab)
 		const hasMoonDrillSnapshot = row.moonDrillStructureId !== null && row.moonId !== null
 
-			return {
-				...buildOperationalStructureListItem(row, canViewDetails),
-				name: row.structureName ?? row.structureId,
-				planetId: row.planetId ?? null,
-				planetName: row.planetName ?? null,
-				moonId: row.moonId ?? '',
-				moonName: row.moonName ?? null,
-				fuelBlockUnits: row.fuelBlockUnits,
-				magmaticGasUnits: row.magmaticGasUnits,
-				syncStatus: hasMoonDrillSnapshot ? getSnapshotSyncStatus(row.moonDrillLastSyncedAt) : 'warning',
-				syncFailureReason: hasMoonDrillSnapshot
-					? null
-					: 'Moon drill snapshot has not been ingested yet for this structure.',
+		return {
+			...buildOperationalStructureListItem(row, canViewDetails),
+			name: row.structureName ?? row.structureId,
+			planetId: row.planetId ?? null,
+			planetName: row.planetName ?? null,
+			moonId: row.moonId ?? '',
+			moonName: row.moonName ?? null,
+			fuelBlockUnits: row.fuelBlockUnits,
+			magmaticGasUnits: row.magmaticGasUnits,
+			syncStatus: hasMoonDrillSnapshot
+				? getSnapshotSyncStatus(row.moonDrillLastSyncedAt)
+				: 'warning',
+			syncFailureReason: hasMoonDrillSnapshot
+				? null
+				: 'Moon drill snapshot has not been ingested yet for this structure.',
 			lastSyncedAt: toIso(row.moonDrillLastSyncedAt ?? row.lastSyncedAt),
 			updatedAt: toIso(row.moonDrillUpdatedAt ?? row.updatedAt) ?? new Date().toISOString(),
 		}
@@ -3485,7 +3617,8 @@ async function loadMiningCitadelPageItems(
 				extractionStartTime: null,
 				chunkArrivalTime: null,
 				naturalDecayTime: null,
-				syncFailureReason: 'Mining extraction snapshot has not been ingested yet for this structure.',
+				syncFailureReason:
+					'Mining extraction snapshot has not been ingested yet for this structure.',
 				lastSyncedAt: toIso(row.lastSyncedAt),
 				updatedAt: toIso(row.updatedAt) ?? new Date().toISOString(),
 			}
@@ -3564,7 +3697,10 @@ async function buildOperationalStructureFilterOptions(
 				value: row.corporationId,
 				label: row.corporationName ?? row.corporationId,
 			}))
-			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+			.filter(
+				(option, index, options) =>
+					options.findIndex((candidate) => candidate.value === option.value) === index
+			),
 		assignedGroups: assignedGroups
 			.map((row) => ({
 				value: row.assignedGroupId ?? '',
@@ -3582,19 +3718,28 @@ async function buildOperationalStructureFilterOptions(
 				value: row.systemId,
 				label: row.systemName ?? row.systemId,
 			}))
-			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+			.filter(
+				(option, index, options) =>
+					options.findIndex((candidate) => candidate.value === option.value) === index
+			),
 		states: states
 			.map((row) => ({
 				value: row.state,
 				label: row.state,
 			}))
-			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+			.filter(
+				(option, index, options) =>
+					options.findIndex((candidate) => candidate.value === option.value) === index
+			),
 		types: types
 			.map((row) => ({
 				value: row.typeId,
 				label: row.typeName ?? row.typeId,
 			}))
-			.filter((option, index, options) => options.findIndex((candidate) => candidate.value === option.value) === index),
+			.filter(
+				(option, index, options) =>
+					options.findIndex((candidate) => candidate.value === option.value) === index
+			),
 		alliances: [],
 		planets: [],
 		raidableStates: [],
@@ -3611,9 +3756,14 @@ function buildOperationalLowFuelWhere(
 	>,
 	structureSource: { fuelAmount: any; fuelExpires: any } = corporationStructures
 ) {
-	const lowFuelExpiresAt = new Date(Date.now() + moduleConfig.lowFuelTimeThresholdHours * HOURS_TO_MS)
+	const lowFuelExpiresAt = new Date(
+		Date.now() + moduleConfig.lowFuelTimeThresholdHours * HOURS_TO_MS
+	)
 	return or(
-		and(isNotNull(structureSource.fuelAmount), lte(structureSource.fuelAmount, moduleConfig.lowFuelAmountThreshold)),
+		and(
+			isNotNull(structureSource.fuelAmount),
+			lte(structureSource.fuelAmount, moduleConfig.lowFuelAmountThreshold)
+		),
 		and(
 			isNull(structureSource.fuelAmount),
 			isNotNull(structureSource.fuelExpires),
@@ -3632,44 +3782,46 @@ async function buildOperationalStructureSummary(
 	const reinforcedStates = [...STRUCTURE_REINFORCED_STATES]
 	const [totalResult, lowFuelResult, lowPowerResult, reinforcedResult, fuelBurnRateResult] =
 		await Promise.all([
-		rowsDb
-			.select({
-				total: sql<number>`count(*)::int`,
-			})
-			.from(operationalStructures),
-		rowsDb
-			.select({
-				count: sql<number>`count(*)::int`,
-			})
-			.from(operationalStructures)
-			.where(lowFuelWhere),
-		rowsDb
-			.select({
-				count: sql<number>`count(*)::int`,
-			})
-			.from(operationalStructures)
-			.where(
-				and(
-					eq(operationalStructures.lowPower, true),
-					or(
-						eq(operationalStructures.lowPowerAllowed, false),
-						isNull(operationalStructures.lowPowerAllowed)
+			rowsDb
+				.select({
+					total: sql<number>`count(*)::int`,
+				})
+				.from(operationalStructures),
+			rowsDb
+				.select({
+					count: sql<number>`count(*)::int`,
+				})
+				.from(operationalStructures)
+				.where(lowFuelWhere),
+			rowsDb
+				.select({
+					count: sql<number>`count(*)::int`,
+				})
+				.from(operationalStructures)
+				.where(
+					and(
+						eq(operationalStructures.lowPower, true),
+						or(
+							eq(operationalStructures.lowPowerAllowed, false),
+							isNull(operationalStructures.lowPowerAllowed)
+						)
 					)
-				)
-			),
-		rowsDb
-			.select({
-				count: sql<number>`count(*)::int`,
-			})
-			.from(operationalStructures)
-			.where(inArray(operationalStructures.state, reinforcedStates)),
-		rowsDb
-			.select({
-				estimatedFuelBurnRatePerHour: sql<string | null>`sum(${operationalStructures.fuelBurnRate})::text`,
-				fuelBurnRateSampleCount: sql<number>`count(${operationalStructures.fuelBurnRate})::int`,
-			})
-			.from(operationalStructures),
-	])
+				),
+			rowsDb
+				.select({
+					count: sql<number>`count(*)::int`,
+				})
+				.from(operationalStructures)
+				.where(inArray(operationalStructures.state, reinforcedStates)),
+			rowsDb
+				.select({
+					estimatedFuelBurnRatePerHour: sql<
+						string | null
+					>`sum(${operationalStructures.fuelBurnRate})::text`,
+					fuelBurnRateSampleCount: sql<number>`count(${operationalStructures.fuelBurnRate})::int`,
+				})
+				.from(operationalStructures),
+		])
 
 	return {
 		total: totalResult[0]?.total ?? 0,
@@ -3714,25 +3866,46 @@ function buildMoonStructureSortOrder(
 				sortExpression(source.structureId),
 			]
 		case 'name':
-			return [sortExpression(sql`coalesce(${source.structureName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.structureName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'corporation':
-			return [sortExpression(sql`coalesce(${source.corporationName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.corporationName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'region':
-			return [sortExpression(sql`coalesce(${source.regionName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.regionName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'planet':
-			return [sortExpression(sql`coalesce(${source.planetName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.planetName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'fuelBlocks':
 			return [sortExpression(source.fuelBlockUnits), sortExpression(source.structureId)]
 		case 'magmaticGas':
 			return [sortExpression(source.magmaticGasUnits), sortExpression(source.structureId)]
 		case 'system':
-			return [sortExpression(sql`coalesce(${source.systemName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.systemName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'type':
-			return [sortExpression(sql`coalesce(${source.typeName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.typeName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'state':
 			return [sortExpression(source.state), sortExpression(source.structureId)]
 		case 'group':
-			return [sortExpression(sql`coalesce(${source.assignedGroupId}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.assignedGroupId}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'syncStatus':
 			return [
 				sortExpression(
@@ -3745,12 +3918,27 @@ function buildMoonStructureSortOrder(
 	}
 }
 
-function buildMoonDrillStructuresCte(
-	db: DbClient<DbSchema>,
-	corpWhere: any,
-	planetId?: string
-) {
-	const operationalStructures = buildOperationalStructuresSelectQuery(db, corpWhere).as('operational_structures')
+function buildMoonDrillStructuresCte(db: DbClient<DbSchema>, corpWhere: any, planetId?: string) {
+	const operationalStructures = buildOperationalStructuresSelectQuery(db, corpWhere).as(
+		'operational_structures'
+	)
+	const activeSnapshotId = db
+		.select({ id: corporationStructureInventorySnapshots.id })
+		.from(corporationStructureInventorySnapshots)
+		.where(
+			and(
+				eq(
+					corporationStructureInventorySnapshots.corporationId,
+					corporationStructureInventory.corporationId
+				),
+				isNotNull(corporationStructureInventorySnapshots.activatedAt)
+			)
+		)
+		.orderBy(
+			desc(corporationStructureInventorySnapshots.activatedAt),
+			desc(corporationStructureInventorySnapshots.createdAt)
+		)
+		.limit(1)
 	const moonDrillInventoryAggregate = db.$with('moon_drill_inventory_aggregate').as(
 		db
 			.select({
@@ -3789,19 +3977,28 @@ function buildMoonDrillStructuresCte(
 					eq(corporationStructureInventory.structureId, operationalStructures.structureId)
 				)
 			)
-			.groupBy(corporationStructureInventory.corporationId, corporationStructureInventory.structureId)
+			.where(eq(corporationStructureInventory.snapshotId, activeSnapshotId))
+			.groupBy(
+				corporationStructureInventory.corporationId,
+				corporationStructureInventory.structureId
+			)
 	)
 	const conditions = [sql`true`]
 	if (planetId) {
 		conditions.push(eq(structureMoonGeographies.planetId, planetId))
 	}
 	return db.$with('moon_drill_structures').as(
-		db.with(operationalStructures, moonDrillInventoryAggregate)
+		db
+			.with(operationalStructures, moonDrillInventoryAggregate)
 			.select({
 				structureId: sql<string>`${operationalStructures.structureId}`.as('structureId'),
 				corporationId: sql<string>`${operationalStructures.corporationId}`.as('corporationId'),
-				corporationName: sql<string>`${operationalStructures.corporationName}`.as('corporationName'),
-				structureName: sql<string | null>`${operationalStructures.structureName}`.as('structureName'),
+				corporationName: sql<string>`${operationalStructures.corporationName}`.as(
+					'corporationName'
+				),
+				structureName: sql<string | null>`${operationalStructures.structureName}`.as(
+					'structureName'
+				),
 				typeId: sql<string>`${operationalStructures.typeId}`.as('typeId'),
 				typeName: sql<string | null>`${operationalStructures.typeName}`.as('typeName'),
 				systemId: sql<string>`${operationalStructures.systemId}`.as('systemId'),
@@ -3810,32 +4007,47 @@ function buildMoonDrillStructuresCte(
 				regionName: sql<string | null>`${operationalStructures.regionName}`.as('regionName'),
 				state: sql<string>`${operationalStructures.state}`.as('state'),
 				stateTimerEnd: sql<Date | null>`${operationalStructures.stateTimerEnd}`.as('stateTimerEnd'),
-				nextReinforceApply: sql<Date | null>`${operationalStructures.nextReinforceApply}`.as('nextReinforceApply'),
+				nextReinforceApply: sql<Date | null>`${operationalStructures.nextReinforceApply}`.as(
+					'nextReinforceApply'
+				),
 				unanchorsAt: sql<Date | null>`${operationalStructures.unanchorsAt}`.as('unanchorsAt'),
 				fuelExpires: sql<Date | null>`${operationalStructures.fuelExpires}`.as('fuelExpires'),
 				fuelAmount: sql<number | null>`${operationalStructures.fuelAmount}`.as('fuelAmount'),
 				fuelBurnRate: sql<string | null>`${operationalStructures.fuelBurnRate}`.as('fuelBurnRate'),
 				lowPower: sql<boolean>`${operationalStructures.lowPower}`.as('lowPower'),
 				hidden: sql<boolean | null>`${operationalStructures.hidden}`.as('hidden'),
-				lowPowerAllowed: sql<boolean | null>`${operationalStructures.lowPowerAllowed}`.as('lowPowerAllowed'),
-				assignedGroupId: sql<string | null>`${operationalStructures.assignedGroupId}`.as('assignedGroupId'),
+				lowPowerAllowed: sql<boolean | null>`${operationalStructures.lowPowerAllowed}`.as(
+					'lowPowerAllowed'
+				),
+				assignedGroupId: sql<string | null>`${operationalStructures.assignedGroupId}`.as(
+					'assignedGroupId'
+				),
 				syncStatus: sql<string>`${operationalStructures.syncStatus}`.as('syncStatus'),
-				syncFailureReason: sql<string | null>`${operationalStructures.syncFailureReason}`.as('syncFailureReason'),
+				syncFailureReason: sql<string | null>`${operationalStructures.syncFailureReason}`.as(
+					'syncFailureReason'
+				),
 				lastSyncedAt: sql<Date | null>`${operationalStructures.lastSyncedAt}`.as('lastSyncedAt'),
 				updatedAt: sql<Date>`${operationalStructures.updatedAt}`.as('updatedAt'),
 				fuelBlockUnits: sql<number>`coalesce(${moonDrillInventoryAggregate.fuelBlockUnits}, 0)`.as(
 					'fuelBlockUnits'
 				),
-				magmaticGasUnits: sql<number>`coalesce(${moonDrillInventoryAggregate.magmaticGasUnits}, 0)`.as(
-					'magmaticGasUnits'
+				magmaticGasUnits:
+					sql<number>`coalesce(${moonDrillInventoryAggregate.magmaticGasUnits}, 0)`.as(
+						'magmaticGasUnits'
+					),
+				moonDrillStructureId: sql<string | null>`${structureMoonDrills.structureId}`.as(
+					'moonDrillStructureId'
 				),
-				moonDrillStructureId: sql<string | null>`${structureMoonDrills.structureId}`.as('moonDrillStructureId'),
 				moonId: sql<string | null>`${structureMoonGeographies.moonId}`.as('moonId'),
 				moonName: sql<string | null>`${structureMoonGeographies.moonName}`.as('moonName'),
 				planetId: sql<string | null>`${structureMoonGeographies.planetId}`.as('planetId'),
 				planetName: sql<string | null>`${structureMoonGeographies.planetName}`.as('planetName'),
-				moonDrillLastSyncedAt: sql<Date | null>`${structureMoonDrills.lastSyncedAt}`.as('moonDrillLastSyncedAt'),
-				moonDrillUpdatedAt: sql<Date | null>`${structureMoonDrills.updatedAt}`.as('moonDrillUpdatedAt'),
+				moonDrillLastSyncedAt: sql<Date | null>`${structureMoonDrills.lastSyncedAt}`.as(
+					'moonDrillLastSyncedAt'
+				),
+				moonDrillUpdatedAt: sql<Date | null>`${structureMoonDrills.updatedAt}`.as(
+					'moonDrillUpdatedAt'
+				),
 			})
 			.from(operationalStructures)
 			.leftJoin(
@@ -3862,18 +4074,25 @@ function buildMiningCitadelStructuresCte(
 	corpWhere: any,
 	planetId?: string
 ) {
-	const operationalStructures = buildOperationalStructuresSelectQuery(db, corpWhere).as('operational_structures')
+	const operationalStructures = buildOperationalStructuresSelectQuery(db, corpWhere).as(
+		'operational_structures'
+	)
 	const conditions = [sql`true`]
 	if (planetId) {
 		conditions.push(eq(structureMoonGeographies.planetId, planetId))
 	}
 	return db.$with('mining_citadel_structures').as(
-		db.with(operationalStructures)
+		db
+			.with(operationalStructures)
 			.select({
 				structureId: sql<string>`${operationalStructures.structureId}`.as('structureId'),
 				corporationId: sql<string>`${operationalStructures.corporationId}`.as('corporationId'),
-				corporationName: sql<string>`${operationalStructures.corporationName}`.as('corporationName'),
-				structureName: sql<string | null>`${operationalStructures.structureName}`.as('structureName'),
+				corporationName: sql<string>`${operationalStructures.corporationName}`.as(
+					'corporationName'
+				),
+				structureName: sql<string | null>`${operationalStructures.structureName}`.as(
+					'structureName'
+				),
 				typeId: sql<string>`${operationalStructures.typeId}`.as('typeId'),
 				typeName: sql<string | null>`${operationalStructures.typeName}`.as('typeName'),
 				systemId: sql<string>`${operationalStructures.systemId}`.as('systemId'),
@@ -3882,29 +4101,50 @@ function buildMiningCitadelStructuresCte(
 				regionName: sql<string | null>`${operationalStructures.regionName}`.as('regionName'),
 				state: sql<string>`${operationalStructures.state}`.as('state'),
 				stateTimerEnd: sql<Date | null>`${operationalStructures.stateTimerEnd}`.as('stateTimerEnd'),
-				nextReinforceApply: sql<Date | null>`${operationalStructures.nextReinforceApply}`.as('nextReinforceApply'),
+				nextReinforceApply: sql<Date | null>`${operationalStructures.nextReinforceApply}`.as(
+					'nextReinforceApply'
+				),
 				unanchorsAt: sql<Date | null>`${operationalStructures.unanchorsAt}`.as('unanchorsAt'),
 				fuelExpires: sql<Date | null>`${operationalStructures.fuelExpires}`.as('fuelExpires'),
 				fuelAmount: sql<number | null>`${operationalStructures.fuelAmount}`.as('fuelAmount'),
 				fuelBurnRate: sql<string | null>`${operationalStructures.fuelBurnRate}`.as('fuelBurnRate'),
 				lowPower: sql<boolean>`${operationalStructures.lowPower}`.as('lowPower'),
 				hidden: sql<boolean | null>`${operationalStructures.hidden}`.as('hidden'),
-				lowPowerAllowed: sql<boolean | null>`${operationalStructures.lowPowerAllowed}`.as('lowPowerAllowed'),
-				assignedGroupId: sql<string | null>`${operationalStructures.assignedGroupId}`.as('assignedGroupId'),
+				lowPowerAllowed: sql<boolean | null>`${operationalStructures.lowPowerAllowed}`.as(
+					'lowPowerAllowed'
+				),
+				assignedGroupId: sql<string | null>`${operationalStructures.assignedGroupId}`.as(
+					'assignedGroupId'
+				),
 				syncStatus: sql<string>`${operationalStructures.syncStatus}`.as('syncStatus'),
-				syncFailureReason: sql<string | null>`${operationalStructures.syncFailureReason}`.as('syncFailureReason'),
+				syncFailureReason: sql<string | null>`${operationalStructures.syncFailureReason}`.as(
+					'syncFailureReason'
+				),
 				lastSyncedAt: sql<Date | null>`${operationalStructures.lastSyncedAt}`.as('lastSyncedAt'),
 				updatedAt: sql<Date>`${operationalStructures.updatedAt}`.as('updatedAt'),
-				miningExtractionStructureId: sql<string | null>`${structureMiningExtractions.structureId}`.as('miningExtractionStructureId'),
+				miningExtractionStructureId: sql<
+					string | null
+				>`${structureMiningExtractions.structureId}`.as('miningExtractionStructureId'),
 				moonId: sql<string | null>`${structureMoonGeographies.moonId}`.as('moonId'),
 				moonName: sql<string | null>`${structureMoonGeographies.moonName}`.as('moonName'),
 				planetId: sql<string | null>`${structureMoonGeographies.planetId}`.as('planetId'),
 				planetName: sql<string | null>`${structureMoonGeographies.planetName}`.as('planetName'),
-				miningExtractionLastSyncedAt: sql<Date | null>`${structureMiningExtractions.lastSyncedAt}`.as('miningExtractionLastSyncedAt'),
-				miningExtractionUpdatedAt: sql<Date | null>`${structureMiningExtractions.updatedAt}`.as('miningExtractionUpdatedAt'),
-				extractionStartTime: sql<Date | null>`${structureMiningExtractions.extractionStartTime}`.as('extractionStartTime'),
-				chunkArrivalTime: sql<Date | null>`${structureMiningExtractions.chunkArrivalTime}`.as('chunkArrivalTime'),
-				naturalDecayTime: sql<Date | null>`${structureMiningExtractions.naturalDecayTime}`.as('naturalDecayTime'),
+				miningExtractionLastSyncedAt:
+					sql<Date | null>`${structureMiningExtractions.lastSyncedAt}`.as(
+						'miningExtractionLastSyncedAt'
+					),
+				miningExtractionUpdatedAt: sql<Date | null>`${structureMiningExtractions.updatedAt}`.as(
+					'miningExtractionUpdatedAt'
+				),
+				extractionStartTime: sql<Date | null>`${structureMiningExtractions.extractionStartTime}`.as(
+					'extractionStartTime'
+				),
+				chunkArrivalTime: sql<Date | null>`${structureMiningExtractions.chunkArrivalTime}`.as(
+					'chunkArrivalTime'
+				),
+				naturalDecayTime: sql<Date | null>`${structureMiningExtractions.naturalDecayTime}`.as(
+					'naturalDecayTime'
+				),
 			})
 			.from(operationalStructures)
 			.leftJoin(
@@ -3952,19 +4192,37 @@ function buildOperationalSortOrder(
 				sortExpression(source.structureId),
 			]
 		case 'name':
-			return [sortExpression(sql`coalesce(${source.structureName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.structureName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'corporation':
-			return [sortExpression(sql`coalesce(${source.corporationName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.corporationName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'region':
-			return [sortExpression(sql`coalesce(${source.regionName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.regionName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'system':
-			return [sortExpression(sql`coalesce(${source.systemName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.systemName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'type':
-			return [sortExpression(sql`coalesce(${source.typeName}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.typeName}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'state':
 			return [sortExpression(source.state), sortExpression(source.structureId)]
 		case 'group':
-			return [sortExpression(sql`coalesce(${source.assignedGroupId}, '')`), sortExpression(source.structureId)]
+			return [
+				sortExpression(sql`coalesce(${source.assignedGroupId}, '')`),
+				sortExpression(source.structureId),
+			]
 		case 'syncStatus':
 			return [
 				sortExpression(
@@ -4091,28 +4349,22 @@ async function listOperationalStructures(
 		const [filterOptions, summary, pageItems] = await Promise.all([
 			buildOperationalStructureFilterOptions(db, operationalStructures),
 			buildOperationalStructureSummary(db, operationalStructures, moduleConfig),
-			loadOperationalStructurePageItems(
-				db,
-				user,
-				access,
-				query,
-				operationalStructures
-			),
+			loadOperationalStructurePageItems(db, user, access, query, operationalStructures),
 		])
 		const totalCount = summary.total
 		const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 		const page = Math.min(requestedPage, totalPages)
 		const items =
 			page === requestedPage
-			? pageItems
-			: await loadOperationalStructurePageItems(
-					db,
-					user,
-					access,
-					query,
-					operationalStructures,
-					page
-				)
+				? pageItems
+				: await loadOperationalStructurePageItems(
+						db,
+						user,
+						access,
+						query,
+						operationalStructures,
+						page
+					)
 
 		return {
 			items: items as unknown as StructureListItem[],
@@ -4152,13 +4404,7 @@ async function listOperationalStructures(
 		const [filterOptions, summary, pageItems] = await Promise.all([
 			buildSkyhookStructureFilterOptionsFromSql(db, skyhookStructures),
 			buildSkyhookStructureSummaryFromSql(db, skyhookStructures),
-			loadSkyhookPageItems(
-				db,
-				user,
-				access,
-				skyhookQuery,
-				skyhookStructures
-			),
+			loadSkyhookPageItems(db, user, access, skyhookQuery, skyhookStructures),
 		])
 		const totalCount = summary.total
 		const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
@@ -4166,14 +4412,7 @@ async function listOperationalStructures(
 		const items =
 			page === requestedPage
 				? pageItems
-				: await loadSkyhookPageItems(
-						db,
-						user,
-						access,
-						skyhookQuery,
-						skyhookStructures,
-						page
-					)
+				: await loadSkyhookPageItems(db, user, access, skyhookQuery, skyhookStructures, page)
 
 		return {
 			items: items as unknown as StructureListItem[],
@@ -4289,11 +4528,12 @@ export async function listMoonDrillStructures(
 }
 
 function getSnapshotSyncStatus(lastSyncedAt: unknown): 'ok' | 'warning' | 'error' {
-	const parsed = lastSyncedAt instanceof Date
-		? lastSyncedAt
-		: typeof lastSyncedAt === 'string' || typeof lastSyncedAt === 'number'
-			? new Date(lastSyncedAt)
-			: null
+	const parsed =
+		lastSyncedAt instanceof Date
+			? lastSyncedAt
+			: typeof lastSyncedAt === 'string' || typeof lastSyncedAt === 'number'
+				? new Date(lastSyncedAt)
+				: null
 	if (!parsed || Number.isNaN(parsed.getTime())) {
 		return 'warning'
 	}
@@ -4359,9 +4599,10 @@ function buildSovereigntyListItem(input: {
 	} = buildStructureListItem(context)
 
 	const hubSummary = hubRow ? summarizeStructureSovereigntyHub(hubRow) : null
-	const explicitSyncFailure = hubRow?.syncStatus === 'error'
-		? (hubRow.syncFailureReason ?? 'Sovereignty hub sync failed.')
-		: null
+	const explicitSyncFailure =
+		hubRow?.syncStatus === 'error'
+			? (hubRow.syncFailureReason ?? 'Sovereignty hub sync failed.')
+			: null
 	const syncStatus = explicitSyncFailure
 		? 'error'
 		: hasHubSnapshot

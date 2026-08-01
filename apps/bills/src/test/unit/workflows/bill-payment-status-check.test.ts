@@ -11,18 +11,13 @@ const updateCheckTimestampMock = vi.fn()
 const getStubMock = vi.fn()
 
 vi.mock('cloudflare:workers', () => {
-	class WorkflowEntrypoint<Env = unknown, Params = unknown> {
+	class WorkflowEntrypoint<Env = unknown> {
 		protected readonly ctx: unknown
 		protected readonly env: Env
 
 		constructor(ctx: unknown, env: Env) {
 			this.ctx = ctx
 			this.env = env
-		}
-
-		// eslint-disable-next-line @typescript-eslint/require-await
-		async run(_event: unknown, _step: unknown): Promise<Params> {
-			throw new Error('WorkflowEntrypoint.run is not implemented in unit-test shim')
 		}
 	}
 
@@ -61,8 +56,9 @@ type MockContext = {
 	}
 }
 
-function createStep() {
+function createStep(retryStepNames: string[] = []) {
 	const executedStepNames: string[] = []
+	const retrySteps = new Set(retryStepNames)
 	const doMock = vi.fn(
 		async (name: string, optionsOrHandler: unknown, maybeHandler?: () => unknown) => {
 			executedStepNames.push(name)
@@ -70,7 +66,12 @@ function createStep() {
 				typeof optionsOrHandler === 'function'
 					? (optionsOrHandler as () => unknown)
 					: (maybeHandler as () => unknown)
-			return await handler()
+			try {
+				return await handler()
+			} catch (error) {
+				if (!retrySteps.has(name)) throw error
+				return await handler()
+			}
 		}
 	)
 
@@ -128,9 +129,10 @@ function createWorkflowAndContext() {
 			BILLS: billsNamespace,
 		} as never
 	)
-	vi.spyOn(workflow as unknown as { createContext: () => unknown }, 'createContext').mockReturnValue(
-		ctx
-	)
+	vi.spyOn(
+		workflow as unknown as { createContext: () => unknown },
+		'createContext'
+	).mockReturnValue(ctx)
 
 	return {
 		workflow,
@@ -169,11 +171,10 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 		await workflow.run({ payload: { billId: 'bill-1' }, instanceId: 'wf-1' } as never, step)
 
 		expect(executedStepNames).toEqual([
-			'fetch-bill-data',
-			'find-and-post-payments',
-			'check-payment-status',
-			'sync-tax-assessment-bill-status',
+			'reconcile-payment-data',
+			'finalize-payment-state',
 			'update-check-timestamp',
+			'sync-bill-effects',
 		])
 		expect(taxSyncMock).toHaveBeenCalledWith('system:bills:payment-status-check', {
 			id: 'bill-1',
@@ -190,7 +191,11 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 			noPaymentStep.step
 		)
 		expect(refreshBillLifecycleStatus).toHaveBeenCalledTimes(1)
-		expect(noPaymentStep.executedStepNames).toContain('refresh-overdue-status')
+		expect(noPaymentStep.executedStepNames).toEqual([
+			'reconcile-payment-data',
+			'finalize-payment-state',
+			'update-check-timestamp',
+		])
 
 		vi.clearAllMocks()
 		fetchBillDataMock.mockResolvedValue({
@@ -215,7 +220,12 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 			withPaymentStep.step
 		)
 		expect(withPayment.refreshBillLifecycleStatus).not.toHaveBeenCalled()
-		expect(withPaymentStep.executedStepNames).not.toContain('refresh-overdue-status')
+		expect(withPaymentStep.executedStepNames).toEqual([
+			'reconcile-payment-data',
+			'finalize-payment-state',
+			'update-check-timestamp',
+			'sync-bill-effects',
+		])
 	})
 
 	it('syncs tax status when payment status transition marks bill as paid', async () => {
@@ -226,10 +236,11 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 		})
 
 		const { workflow, taxSyncMock, enqueueBillNotificationEventMock } = createWorkflowAndContext()
-		const { step } = createStep()
+		const { step, doMock } = createStep()
 
 		await workflow.run({ payload: { billId: 'bill-1' }, instanceId: 'wf-1' } as never, step)
 
+		expect(doMock).toHaveBeenCalledTimes(4)
 		expect(taxSyncMock).toHaveBeenCalledWith('system:bills:payment-status-check', {
 			id: 'bill-1',
 			status: 'paid',
@@ -291,5 +302,29 @@ describe('BillPaymentStatusCheckWorkflow', () => {
 		)
 		expect(second.taxSyncMock).not.toHaveBeenCalled()
 		expect(second.enqueueBillNotificationEventMock).not.toHaveBeenCalled()
+		expect(secondStep.executedStepNames).toEqual([
+			'reconcile-payment-data',
+			'finalize-payment-state',
+			'update-check-timestamp',
+		])
+	})
+
+	it('does not recompute transition flags when the timestamp step retries', async () => {
+		checkPaymentStatusMock.mockResolvedValueOnce({
+			markedPaid: true,
+			statusBefore: 'issued',
+			statusAfter: 'paid',
+		})
+		updateCheckTimestampMock
+			.mockRejectedValueOnce(new Error('temporary timestamp failure'))
+			.mockResolvedValueOnce({ updated: true })
+
+		const { workflow } = createWorkflowAndContext()
+		const { step } = createStep(['update-check-timestamp'])
+
+		await workflow.run({ payload: { billId: 'bill-1' }, instanceId: 'wf-1' } as never, step)
+
+		expect(checkPaymentStatusMock).toHaveBeenCalledTimes(1)
+		expect(updateCheckTimestampMock).toHaveBeenCalledTimes(2)
 	})
 })

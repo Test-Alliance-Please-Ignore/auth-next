@@ -9,9 +9,9 @@
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
-import toast from '@/lib/toast'
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 
+import { Badge } from '@/components/ui/badge'
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -20,6 +20,7 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
@@ -30,23 +31,22 @@ import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import toast from '@/lib/toast'
 
-import { useHrPermissionCheck } from '../../hr/hooks'
 import { useCanAccessCorporation } from '../../corporations/hooks'
+import { useHrPermissionCheck } from '../../hr/hooks'
 import { AccessDeniedCard } from '../components/access-denied-card'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
 import { ApplicationActionPanel } from '../components/application-action-panel'
+import { ApplicationCharacterStack } from '../components/application-character-stack'
 import { ApplicationHistoryPanel } from '../components/application-history-panel'
 import { ApplicationStaffNotesPanel } from '../components/application-staff-notes-panel'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { ApplicationTimeline } from '../components/application-timeline'
-import { ApplicationCharacterStack } from '../components/application-character-stack'
 import { CharacterIdentitySummary } from '../components/character-identity-summary'
 import { FulcrumPanel } from '../components/fulcrum-panel'
 import { HRNotesList } from '../components/hr-notes-list'
 import { MessagesPanel } from '../components/messages-panel'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { RecommendationList } from '../components/recommendation-list'
 import { OPEN_APPLICATION_STATUSES } from '../constants'
 import {
@@ -54,12 +54,13 @@ import {
 	useApplicationActivity,
 	useApplicationStaffNotes,
 	useDeleteHRNote,
-	useHRNotes,
 	useHRNote,
+	useHRNotes,
 	useHrUserCharacters,
 	useMessageCount,
 	useRecommendations,
 } from '../hooks'
+import { resolveApplicationActionRole } from '../utils/application-action-role'
 import { canViewFulcrumTab } from '../utils/fulcrum-access'
 import { FORBIDDEN_PRIVATE_DATA_MESSAGE } from '../utils/private-data'
 
@@ -81,11 +82,14 @@ export default function HrApplicationReview() {
 	const initialTab = searchParams.get('tab') || 'details'
 	const { user, isAuthenticated, isLoading: authLoading, permissions } = useAuth()
 	const isAuditor = permissions.some((permission) => permission.urn === 'urn:hr:auditor')
-	const { canAccess: hasCorporationAccess, isLoading: corporationAccessLoading, corporation: accessCorp } =
-		useCanAccessCorporation(corporationId ?? '')
+	const {
+		canAccess: hasCorporationAccess,
+		isLoading: corporationAccessLoading,
+		corporation: accessCorp,
+		userRole: accessUserRole,
+	} = useCanAccessCorporation(corporationId ?? '')
 	const isMemberCorporation = accessCorp?.isMemberCorporation === true
-	const canViewCorporationApplications =
-		user?.is_admin === true || isAuditor || isMemberCorporation
+	const canViewCorporationApplications = user?.is_admin === true || isAuditor || isMemberCorporation
 
 	// Dialog state for HR Notes
 	const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false)
@@ -97,7 +101,8 @@ export default function HrApplicationReview() {
 	const deleteHrNote = useDeleteHRNote()
 
 	// Check HR permission (userId derived from authenticated session)
-	const shouldCheckPermission = !!corporationId && canViewCorporationApplications && user?.is_admin !== true
+	const shouldCheckPermission =
+		!!corporationId && canViewCorporationApplications && user?.is_admin !== true
 	const { data: permission, isLoading: permissionLoading } = useHrPermissionCheck(
 		shouldCheckPermission ? { corporationId } : null
 	)
@@ -133,20 +138,25 @@ export default function HrApplicationReview() {
 		}
 	)
 	const globalUserNotesCount = globalUserNotes.length
-	const { data: hrCharacters = [] } = useHrUserCharacters(
-		application?.userId ?? '',
-		{
-			enabled: !!application?.userId && canViewCorporationApplications,
-		},
-	)
+	const { data: hrCharacters = [] } = useHrUserCharacters(application?.userId ?? '', {
+		enabled: !!application?.userId && canViewCorporationApplications,
+	})
 	const canViewApplicationPrivateData =
 		!!application &&
 		canViewCorporationApplications &&
-		(user?.is_admin === true || isAuditor || isMemberCorporation || OPEN_APPLICATION_STATUSES.includes(application.status))
+		(user?.is_admin === true ||
+			isAuditor ||
+			isMemberCorporation ||
+			OPEN_APPLICATION_STATUSES.includes(application.status))
 	const canShowFulcrumTab = canViewFulcrumTab({
 		applicationStatus: application?.status,
 		currentRole: permission?.currentRole,
 		isAdmin: user?.is_admin === true,
+	})
+	const applicationActionRole = resolveApplicationActionRole({
+		isSiteAdmin: user?.is_admin === true,
+		corporationRole: accessUserRole,
+		permissionRole: permission?.currentRole,
 	})
 
 	// Fetch selected HR note for edit/delete
@@ -159,9 +169,7 @@ export default function HrApplicationReview() {
 	})
 
 	// Fetch total SP for main character + alts
-	const allCharacterIds = application
-		? [application.characterId, ...altCharacterIds]
-		: []
+	const allCharacterIds = application ? [application.characterId, ...altCharacterIds] : []
 	const markCharacterNameCopied = async (characterId: string, characterName: string) => {
 		if (!characterName.trim()) return
 		try {
@@ -184,11 +192,15 @@ export default function HrApplicationReview() {
 		walletByCharacterId[allCharacterIds[i]] = null
 		metricsLoadingByCharacterId[allCharacterIds[i]] = false
 	}
-	const privateDataUnavailableMessage = !canViewApplicationPrivateData ? FORBIDDEN_PRIVATE_DATA_MESSAGE : null
+	const privateDataUnavailableMessage = !canViewApplicationPrivateData
+		? FORBIDDEN_PRIVATE_DATA_MESSAGE
+		: null
 	const hrCharacterTokenStateById = new Map(
 		hrCharacters.map((character) => [character.characterId, character.hasValidToken])
 	)
-	const hrCharacterById = new Map(hrCharacters.map((character) => [character.characterId, character]))
+	const hrCharacterById = new Map(
+		hrCharacters.map((character) => [character.characterId, character])
+	)
 	const esiStateByCharacterId: Record<string, boolean | null> = {}
 	for (const characterId of allCharacterIds) {
 		esiStateByCharacterId[characterId] = hrCharacterTokenStateById.get(characterId) ?? null
@@ -200,9 +212,7 @@ export default function HrApplicationReview() {
 	)
 
 	const applicationsPath = `/corporations/${corporationId}/applications`
-	const memberProfilePath = application
-		? `/hr/users/${application.userId}`
-		: null
+	const memberProfilePath = application ? `/hr/users/${application.userId}` : null
 	const memberProfileState = application
 		? {
 				source: 'applications' as const,
@@ -267,7 +277,12 @@ export default function HrApplicationReview() {
 	}
 
 	// Loading state
-	if (authLoading || corporationAccessLoading || (shouldCheckPermission && permissionLoading) || (canViewCorporationApplications && applicationLoading)) {
+	if (
+		authLoading ||
+		corporationAccessLoading ||
+		(shouldCheckPermission && permissionLoading) ||
+		(canViewCorporationApplications && applicationLoading)
+	) {
 		return (
 			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -279,7 +294,10 @@ export default function HrApplicationReview() {
 
 	// Access denied - no HR role
 	// Check permission - site admins always have access
-	if (!canViewCorporationApplications || (!permission?.hasPermission && !user?.is_admin && !isAuditor)) {
+	if (
+		!canViewCorporationApplications ||
+		(!permission?.hasPermission && !user?.is_admin && !isAuditor)
+	) {
 		return (
 			<Container>
 				<AccessDeniedCard
@@ -297,7 +315,11 @@ export default function HrApplicationReview() {
 			<Container>
 				<AccessDeniedCard
 					title="Failed to Load Application"
-					message={applicationError instanceof Error ? applicationError.message : 'An unexpected error occurred'}
+					message={
+						applicationError instanceof Error
+							? applicationError.message
+							: 'An unexpected error occurred'
+					}
 					backLabel="Back to Applications"
 					backHref={applicationsPath}
 				/>
@@ -317,9 +339,7 @@ export default function HrApplicationReview() {
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button asChild variant="ghost">
-							<Link to={applicationsPath}>
-								Back to Applications
-							</Link>
+							<Link to={applicationsPath}>Back to Applications</Link>
 						</Button>
 					</CardContent>
 				</Card>
@@ -408,32 +428,32 @@ export default function HrApplicationReview() {
 
 						{/* Application Header Info */}
 						<div className="flex-1 min-w-0">
-			<h1 className="mb-1 flex flex-wrap items-center gap-2 text-2xl font-bold text-foreground">
-				{memberProfilePath && memberProfileState ? (
-					<Link
-						to={memberProfilePath}
-						state={memberProfileState}
-						className="truncate text-left transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
-					>
-						{application.characterName}
-					</Link>
-				) : (
-					<span className="min-w-0 truncate">{application.characterName}</span>
-				)}
-				{application.isFirstApplication !== undefined && (
-					<Badge
-						variant={application.isFirstApplication ? 'success' : 'default'}
-						className="h-5 shrink-0 px-1.5 text-[10px] font-semibold leading-none"
-					>
-						{application.isFirstApplication ? 'First' : 'Repeat'}
-					</Badge>
-				)}
-				{altCharacterIds.length > 0 && (
-					<span className="ml-2 text-lg font-normal text-muted-foreground">
-						(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
-					</span>
-				)}
-			</h1>
+							<h1 className="mb-1 flex flex-wrap items-center gap-2 text-2xl font-bold text-foreground">
+								{memberProfilePath && memberProfileState ? (
+									<Link
+										to={memberProfilePath}
+										state={memberProfileState}
+										className="truncate text-left transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
+									>
+										{application.characterName}
+									</Link>
+								) : (
+									<span className="min-w-0 truncate">{application.characterName}</span>
+								)}
+								{application.isFirstApplication !== undefined && (
+									<Badge
+										variant={application.isFirstApplication ? 'success' : 'default'}
+										className="h-5 shrink-0 px-1.5 text-[10px] font-semibold leading-none"
+									>
+										{application.isFirstApplication ? 'First' : 'Repeat'}
+									</Badge>
+								)}
+								{altCharacterIds.length > 0 && (
+									<span className="ml-2 text-lg font-normal text-muted-foreground">
+										(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
+									</span>
+								)}
+							</h1>
 							{application.corporationName && (
 								<p className="text-lg text-muted-foreground mb-3">
 									Applied to: <span className="font-medium">{application.corporationName}</span>
@@ -460,50 +480,32 @@ export default function HrApplicationReview() {
 			{/* Tabbed Content */}
 			<Tabs defaultValue={initialTab} className="space-y-6">
 				<TabsList className="w-full flex-wrap gap-2 sm:w-auto sm:flex-nowrap">
-					<TabsTrigger
-						value="details"
-						className={reviewTabTriggerClassName}
-					>
+					<TabsTrigger value="details" className={reviewTabTriggerClassName}>
 						Details
 					</TabsTrigger>
-					<TabsTrigger
-						value="alts"
-						className={reviewTabTriggerClassName}
-					>
+					<TabsTrigger value="alts" className={reviewTabTriggerClassName}>
 						Characters
 						{altCharacterIds.length > 0 && (
 							<span className="ml-1.5 text-xs opacity-70">({altCharacterIds.length})</span>
 						)}
 					</TabsTrigger>
-					<TabsTrigger
-						value="recommendations"
-						className={reviewTabTriggerClassName}
-					>
+					<TabsTrigger value="recommendations" className={reviewTabTriggerClassName}>
 						Recommendations
 						{recommendations && recommendations.length > 0 && (
 							<span className="ml-1.5 text-xs opacity-70">({recommendations.length})</span>
 						)}
 					</TabsTrigger>
-					<TabsTrigger
-						value="history"
-						className={reviewTabTriggerClassName}
-					>
+					<TabsTrigger value="history" className={reviewTabTriggerClassName}>
 						History
 					</TabsTrigger>
-					<TabsTrigger
-						value="messages"
-						className={reviewTabTriggerClassName}
-					>
+					<TabsTrigger value="messages" className={reviewTabTriggerClassName}>
 						Messages
 						{messageCount > 0 && (
 							<span className="ml-1.5 text-xs opacity-70">({messageCount})</span>
 						)}
 					</TabsTrigger>
 					{(user?.is_admin || permission?.hasPermission) && (
-						<TabsTrigger
-							value="staff-notes"
-							className={reviewTabTriggerClassName}
-						>
+						<TabsTrigger value="staff-notes" className={reviewTabTriggerClassName}>
 							Application Notes
 							{staffNotesCount > 0 && (
 								<span className="ml-1.5 text-xs opacity-70">({staffNotesCount})</span>
@@ -511,25 +513,16 @@ export default function HrApplicationReview() {
 						</TabsTrigger>
 					)}
 					{(user?.is_admin || permission?.hasPermission) && (
-						<TabsTrigger
-							value="global-notes"
-							className={reviewTabTriggerClassName}
-						>
+						<TabsTrigger value="global-notes" className={reviewTabTriggerClassName}>
 							Account Notes
 							<span className="ml-1.5 text-xs opacity-70">({globalUserNotesCount})</span>
 						</TabsTrigger>
 					)}
-					<TabsTrigger
-						value="prior-apps"
-						className={reviewTabTriggerClassName}
-					>
+					<TabsTrigger value="prior-apps" className={reviewTabTriggerClassName}>
 						Prior Apps
 					</TabsTrigger>
 					{canShowFulcrumTab && (
-						<TabsTrigger
-							value="fulcrum"
-							className={reviewTabTriggerClassName}
-						>
+						<TabsTrigger value="fulcrum" className={reviewTabTriggerClassName}>
 							Fulcrum
 						</TabsTrigger>
 					)}
@@ -554,8 +547,16 @@ export default function HrApplicationReview() {
 
 					{/* Review Information (shown for under_review, accepted, rejected) */}
 					{application.reviewedAt &&
-						(application.status === 'under_review' || application.status === 'accepted' || application.status === 'rejected') && (
-							<Card className={application.status === 'under_review' ? 'border-primary/30 bg-primary/5' : undefined}>
+						(application.status === 'under_review' ||
+							application.status === 'accepted' ||
+							application.status === 'rejected') && (
+							<Card
+								className={
+									application.status === 'under_review'
+										? 'border-primary/30 bg-primary/5'
+										: undefined
+								}
+							>
 								<CardHeader>
 									<CardTitle>Review Information</CardTitle>
 									<CardDescription>Details about the application review</CardDescription>
@@ -592,7 +593,7 @@ export default function HrApplicationReview() {
 					{/* HR Action Panel */}
 					<ApplicationActionPanel
 						application={application}
-						userRole={permission?.currentRole || null}
+						userRole={applicationActionRole}
 						onStatusChange={() => {
 							// Status change is handled by React Query cache invalidation
 							// No need to manually refetch
@@ -619,26 +620,28 @@ export default function HrApplicationReview() {
 					<Card>
 						<CardHeader>
 							<CardTitle>Main Character</CardTitle>
-							<CardDescription>
-								The primary character for this application
-							</CardDescription>
+							<CardDescription>The primary character for this application</CardDescription>
 						</CardHeader>
 						<CardContent>
 							<div className="card-gradient rounded-md border border-border/50 bg-card p-3 shadow-elevated">
-						<CharacterIdentitySummary
-							characterId={application.characterId}
-							characterName={application.characterName}
-							hasValidToken={esiStateByCharacterId[application.characterId]}
-							corporationId={hrCharacterById.get(application.characterId)?.corporationId ?? null}
-							corporationName={hrCharacterById.get(application.characterId)?.corporationName ?? null}
-							allianceId={hrCharacterById.get(application.characterId)?.allianceId ?? null}
-							allianceName={hrCharacterById.get(application.characterId)?.allianceName ?? null}
-							skillPoints={spByCharacterId[application.characterId]}
-							walletBalance={walletByCharacterId[application.characterId]}
-							isMetricsLoading={metricsLoadingByCharacterId[application.characterId]}
-							enableCopyName
-							isNameCopied={copiedCharacterIds.has(application.characterId)}
-							onCopyName={() =>
+								<CharacterIdentitySummary
+									characterId={application.characterId}
+									characterName={application.characterName}
+									hasValidToken={esiStateByCharacterId[application.characterId]}
+									corporationId={
+										hrCharacterById.get(application.characterId)?.corporationId ?? null
+									}
+									corporationName={
+										hrCharacterById.get(application.characterId)?.corporationName ?? null
+									}
+									allianceId={hrCharacterById.get(application.characterId)?.allianceId ?? null}
+									allianceName={hrCharacterById.get(application.characterId)?.allianceName ?? null}
+									skillPoints={spByCharacterId[application.characterId]}
+									walletBalance={walletByCharacterId[application.characterId]}
+									isMetricsLoading={metricsLoadingByCharacterId[application.characterId]}
+									enableCopyName
+									isNameCopied={copiedCharacterIds.has(application.characterId)}
+									onCopyName={() =>
 										void markCharacterNameCopied(application.characterId, application.characterName)
 									}
 								/>
@@ -662,28 +665,30 @@ export default function HrApplicationReview() {
 											key={charId}
 											className="card-gradient rounded-md border border-border/50 bg-card p-3 shadow-elevated"
 										>
-						<CharacterIdentitySummary
-							characterId={charId}
-							characterName={altCharacterNames[charId] ?? charId}
-							hasValidToken={esiStateByCharacterId[charId]}
-							corporationId={hrCharacterById.get(charId)?.corporationId ?? null}
-							corporationName={hrCharacterById.get(charId)?.corporationName ?? null}
-							allianceId={hrCharacterById.get(charId)?.allianceId ?? null}
-							allianceName={hrCharacterById.get(charId)?.allianceName ?? null}
-							skillPoints={spByCharacterId[charId]}
-							walletBalance={walletByCharacterId[charId]}
-							isMetricsLoading={metricsLoadingByCharacterId[charId]}
-							enableCopyName
-							isNameCopied={copiedCharacterIds.has(charId)}
-							onCopyName={() =>
-								void markCharacterNameCopied(charId, altCharacterNames[charId] ?? charId)
-							}
-						/>
+											<CharacterIdentitySummary
+												characterId={charId}
+												characterName={altCharacterNames[charId] ?? charId}
+												hasValidToken={esiStateByCharacterId[charId]}
+												corporationId={hrCharacterById.get(charId)?.corporationId ?? null}
+												corporationName={hrCharacterById.get(charId)?.corporationName ?? null}
+												allianceId={hrCharacterById.get(charId)?.allianceId ?? null}
+												allianceName={hrCharacterById.get(charId)?.allianceName ?? null}
+												skillPoints={spByCharacterId[charId]}
+												walletBalance={walletByCharacterId[charId]}
+												isMetricsLoading={metricsLoadingByCharacterId[charId]}
+												enableCopyName
+												isNameCopied={copiedCharacterIds.has(charId)}
+												onCopyName={() =>
+													void markCharacterNameCopied(charId, altCharacterNames[charId] ?? charId)
+												}
+											/>
 										</div>
 									))}
 								</div>
 							) : (
-								<p className="text-sm text-muted-foreground">No alt characters were included with this application.</p>
+								<p className="text-sm text-muted-foreground">
+									No alt characters were included with this application.
+								</p>
 							)}
 						</CardContent>
 					</Card>
@@ -702,7 +707,7 @@ export default function HrApplicationReview() {
 							<RecommendationList
 								applicationId={applicationId!}
 								currentUserId={user?.id}
-							// HR cannot add recommendations, only view them
+								// HR cannot add recommendations, only view them
 							/>
 						</CardContent>
 					</Card>
@@ -785,7 +790,8 @@ export default function HrApplicationReview() {
 									<CardTitle>Account Notes</CardTitle>
 								</div>
 								<CardDescription>
-									Private internal notes about this user across all applications. Only visible to HR staff.
+									Private internal notes about this user across all applications. Only visible to HR
+									staff.
 								</CardDescription>
 							</CardHeader>
 							<CardContent>
@@ -808,7 +814,8 @@ export default function HrApplicationReview() {
 						<CardHeader>
 							<CardTitle>Prior Applications</CardTitle>
 							<CardDescription>
-								Applications by this character (across all accounts) and other characters on this account
+								Applications by this character (across all accounts) and other characters on this
+								account
 							</CardDescription>
 						</CardHeader>
 						<CardContent>

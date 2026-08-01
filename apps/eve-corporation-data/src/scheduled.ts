@@ -5,18 +5,20 @@ import {
 	computeNextAttemptAtMs,
 	enrichQueueEntry,
 	selectPriorityDrain,
-	type EnrichedQueueEntry,
-	type QueueEntry,
-	type RefreshBucket,
 } from './workflows/utils/background-refresh-batching'
 import { refreshSharedSovereigntySystems } from './workflows/utils/sovereignty-systems-cache'
 
 import type { Env } from './context'
+import type {
+	EnrichedQueueEntry,
+	QueueEntry,
+	RefreshBucket,
+} from './workflows/utils/background-refresh-batching'
 
 const BACKGROUND_REFRESH_QUEUE_KEY = 'background-refresh:workflow-create-queue:v1'
 // Keep the per-run fan-out small so the workflow creator does not overwhelm
 // Workers or ESI. The KV queue retains the remainder for later cron ticks.
-const BACKGROUND_REFRESH_DRAIN_LIMIT = 20
+const BACKGROUND_REFRESH_DRAIN_LIMIT = 30
 const RATE_LIMIT_BACKOFF_BASE_MS = 15_000
 const RATE_LIMIT_BACKOFF_MAX_MS = 10 * 60 * 1000
 
@@ -56,7 +58,7 @@ async function saveQueue(cache: KVNamespace, queue: QueueEntry[]): Promise<void>
 /**
  * Background Corporation Data Refresh Handler
  *
- * This handler runs on a scheduled cron trigger (every 15 minutes) and:
+ * This handler runs on a scheduled cron trigger (every 10 minutes) and:
  * 1. Queries the core worker for corporations with includeInBackgroundRefresh = true
  * 2. Creates workflow instances for each corporation
  * 3. Handles "already running" workflows gracefully
@@ -257,7 +259,11 @@ async function createWorkflowInstance(
 			const existingInstance = await env.EVE_CORPORATION_SYNC.get(corporationId)
 			const status = await existingInstance.status()
 
-			if (status.status === 'running' || status.status === 'queued' || status.status === 'waiting') {
+			if (
+				status.status === 'running' ||
+				status.status === 'queued' ||
+				status.status === 'waiting'
+			) {
 				logger.info('[BackgroundRefresh] Workflow already running, skipping', {
 					corporationId,
 					corporationName,

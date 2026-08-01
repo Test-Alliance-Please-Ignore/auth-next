@@ -13,9 +13,10 @@ import type { NeonDatabase } from 'drizzle-orm/neon-serverless'
  */
 export function createDbClient<TSchema extends Record<string, unknown>>(
 	databaseUrl: string,
-	schema: TSchema
+	schema: TSchema,
+	options?: { fetchOptions?: Record<string, unknown> }
 ): NeonHttpDatabase<TSchema> {
-	const sql = neon(databaseUrl)
+	const sql = neon(databaseUrl, options)
 	return drizzle(sql, { schema })
 }
 
@@ -24,8 +25,11 @@ export function createDbClient<TSchema extends Record<string, unknown>>(
  * @param databaseUrl - The Neon database connection URL
  * @returns A configured Drizzle database instance
  */
-export function createDbClientRaw(databaseUrl: string) {
-	const sql = neon(databaseUrl)
+export function createDbClientRaw(
+	databaseUrl: string,
+	options?: { fetchOptions?: Record<string, unknown> }
+) {
+	const sql = neon(databaseUrl, options)
 	return drizzle(sql)
 }
 
