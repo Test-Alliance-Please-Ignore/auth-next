@@ -13,6 +13,14 @@ vi.mock('@repo/do-utils', () => ({
 
 const getStubMock = vi.mocked(getStub)
 
+function makeRpcResult<T extends object>(
+	value: T
+): { value: T; dispose: ReturnType<typeof vi.fn> } {
+	const dispose = vi.fn()
+	Object.defineProperty(value, Symbol.dispose, { value: dispose })
+	return { value, dispose }
+}
+
 function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 	return {
 		id: 'user-1',
@@ -121,28 +129,32 @@ describe('users corporation access', () => {
 			},
 		}
 		hrStub = {
-			getUserHrCorporations: vi.fn().mockResolvedValue(['1001', '2001', '3001']),
-			getUserRoles: vi.fn().mockResolvedValue([
-				{
-					id: 'role-1',
-					corporationId: '1001',
-					role: 'hr_viewer',
-					isActive: true,
-				},
-				{
-					id: 'role-2',
-					corporationId: '2001',
-					role: 'hr_admin',
-					isActive: true,
-				},
-			]),
+			getUserHrCorporations: vi
+				.fn()
+				.mockResolvedValue(makeRpcResult(['1001', '2001', '3001']).value),
+			getUserRoles: vi.fn().mockResolvedValue(
+				makeRpcResult([
+					{
+						id: 'role-1',
+						corporationId: '1001',
+						role: 'hr_viewer',
+						isActive: true,
+					},
+					{
+						id: 'role-2',
+						corporationId: '2001',
+						role: 'hr_admin',
+						isActive: true,
+					},
+				]).value
+			),
 		}
 		charStub = {
 			getCharacterInfo: vi.fn(),
 		}
 		corpStub = {
-			getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: '9999' } as any),
-			getDirectors: vi.fn().mockResolvedValue([]),
+			getCorporationInfo: vi.fn().mockResolvedValue(makeRpcResult({ ceoId: '9999' }).value as any),
+			getDirectors: vi.fn().mockResolvedValue(makeRpcResult([]).value),
 			getMembers: vi.fn(),
 		}
 
@@ -184,12 +196,14 @@ describe('users corporation access', () => {
 				{ characterId: '2002', userId: 'user-a', status: 'active', hasValidToken: true },
 				{ characterId: '2003', userId: 'user-b', status: 'active', hasValidToken: true },
 			] as any)
-		corpStub.getMembers.mockResolvedValue([
-			{ characterId: '2001' },
-			{ characterId: '2002' },
-			{ characterId: '2003' },
-			{ characterId: '2004' },
-		] as any)
+		corpStub.getMembers.mockResolvedValue(
+			makeRpcResult([
+				{ characterId: '2001' },
+				{ characterId: '2002' },
+				{ characterId: '2003' },
+				{ characterId: '2004' },
+			] as any).value
+		)
 
 		const app = createApp({ user: makeUser(), db: dbStub })
 		const res = await app.request('/api/users/corporation-access', {}, env)
@@ -224,9 +238,9 @@ describe('users corporation access', () => {
 	it('returns all managed corporations for site admins without character lookups', async () => {
 		dbStub.query.userCharacters.findMany.mockResolvedValue([] as any)
 		corpStub.getMembers
-			.mockResolvedValueOnce([{ characterId: '1001' }] as any)
-			.mockResolvedValueOnce([{ characterId: '2001' }] as any)
-			.mockResolvedValueOnce([{ characterId: '3001' }] as any)
+			.mockResolvedValueOnce(makeRpcResult([{ characterId: '1001' }] as any).value)
+			.mockResolvedValueOnce(makeRpcResult([{ characterId: '2001' }] as any).value)
+			.mockResolvedValueOnce(makeRpcResult([{ characterId: '3001' }] as any).value)
 
 		const app = createApp({ user: makeUser({ is_admin: true }), db: dbStub })
 		const res = await app.request('/api/users/corporation-access', {}, env)
@@ -286,5 +300,35 @@ describe('users corporation access', () => {
 		expect(corpStub.getCorporationInfo).not.toHaveBeenCalled()
 		expect(corpStub.getDirectors).not.toHaveBeenCalled()
 		expect(corpStub.getMembers).toHaveBeenCalledTimes(3)
+	})
+
+	it('disposes RPC results when checking quick corporation access', async () => {
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{
+				characterId: '2001',
+				characterName: 'Alpha One',
+				corporationId: '1001',
+				status: 'active',
+				hasValidToken: true,
+			},
+		] as any)
+		const characterResult = makeRpcResult({ corporationId: '1001' })
+		const corporationResult = makeRpcResult({ ceoId: '9999' })
+		const directorsResult = makeRpcResult([])
+		const hrCorporationsResult = makeRpcResult(['1001'])
+		charStub.getCharacterInfo.mockResolvedValue(characterResult.value)
+		corpStub.getCorporationInfo.mockResolvedValue(corporationResult.value)
+		corpStub.getDirectors.mockResolvedValue(directorsResult.value)
+		hrStub.getUserHrCorporations.mockResolvedValue(hrCorporationsResult.value)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/users/has-corporation-access', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ hasAccess: true })
+		expect(characterResult.dispose).toHaveBeenCalledOnce()
+		expect(corporationResult.dispose).toHaveBeenCalledOnce()
+		expect(directorsResult.dispose).toHaveBeenCalledOnce()
+		expect(hrCorporationsResult.dispose).toHaveBeenCalledOnce()
 	})
 })

@@ -14,7 +14,7 @@ function mockWorkflow<PARAMS = unknown>() {
 		id: 'instance-1',
 		options,
 	}))
-	const createBatch = vi.fn(async (batch: WorkflowInstanceCreateOptions<PARAMS>[]) =>
+	const createBatch = vi.fn(async (batch: Array<WorkflowInstanceCreateOptions<PARAMS>>) =>
 		batch.map((options, i) => ({ id: `instance-${i}`, options }))
 	)
 	return { create, createBatch } as unknown as Workflow<PARAMS> & {

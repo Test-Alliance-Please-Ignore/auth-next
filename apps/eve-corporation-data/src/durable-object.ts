@@ -2394,21 +2394,36 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			const UPDATE_BATCH_SIZE = STRUCTURE_SNAPSHOT_BATCH_SIZE
 			for (let i = 0; i < estimatedFuelBurnRateRows.length; i += UPDATE_BATCH_SIZE) {
 				const batch = estimatedFuelBurnRateRows.slice(i, i + UPDATE_BATCH_SIZE)
+				const structureIds = batch.map(([structureId]) => structureId)
+				if (batch.every(([, burnRate]) => burnRate === null)) {
+					await db
+						.update(corporationStructures)
+						.set({ fuelBurnRate: null })
+						.where(
+							and(
+								eq(corporationStructures.corporationId, corporationId),
+								inArray(corporationStructures.structureId, structureIds)
+							)
+						)
+					continue
+				}
+
 				await db
 					.update(corporationStructures)
 					.set({
 						fuelBurnRate: sql`case ${corporationStructures.structureId} ${sql.join(
-							batch.map(([structureId, burnRate]) => sql`when ${structureId} then ${burnRate}`),
+							batch.map(([structureId, burnRate]) =>
+								burnRate === null
+									? sql`when ${structureId} then null`
+									: sql`when ${structureId} then cast(${burnRate} as numeric)`
+							),
 							sql` `
 						)} else null end`,
 					})
 					.where(
 						and(
 							eq(corporationStructures.corporationId, corporationId),
-							inArray(
-								corporationStructures.structureId,
-								batch.map(([structureId]) => structureId)
-							)
+							inArray(corporationStructures.structureId, structureIds)
 						)
 					)
 			}

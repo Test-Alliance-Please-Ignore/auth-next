@@ -98,6 +98,8 @@ export {
 	parseEsiErrorMetadata,
 	extractEsiRateLimitSleepSeconds,
 	isEsiRateLimitError,
+	classifyEsiCredentialFailure,
+	type EsiCredentialFailureKind,
 	isPermanentEsiFailure,
 	withJitter,
 	withEsiRetryClassification,

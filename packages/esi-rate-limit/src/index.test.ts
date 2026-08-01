@@ -156,10 +156,38 @@ describe('EsiRateLimitStore', () => {
 		const kv = new DeferredKv()
 		const store = new EsiRateLimitStore(kv as never)
 
-		void store.rememberRouteGroup('/corporations/:id/wallets/:id/journal', 'corp-wallet')
+		const firstWrite = store.rememberRouteGroup(
+			'/corporations/:id/wallets/:id/journal',
+			'corp-wallet'
+		)
 		void store.rememberRouteGroup('/corporations/:id/wallets/:id/journal', 'corp-wallet')
 
 		await Promise.resolve()
 		expect(kv.peekPutCount()).toBe(1)
+		kv.resolveNextPut()
+		await firstWrite
+
+		await store.rememberRouteGroup('/corporations/:id/wallets/:id/journal', 'corp-wallet')
+		expect(kv.peekPutCount()).toBe(0)
+	})
+
+	it('backs off repeated route-group writes after KV throttling', async () => {
+		const kv = new DeferredKv()
+		const store = new EsiRateLimitStore(kv as never)
+
+		const firstWrite = store.rememberRouteGroup('/characters/:id/wallet', 'char-wallet')
+		await Promise.resolve()
+		kv.rejectNextPut(new Error('KV PUT failed: 429 Too Many Requests'))
+		await firstWrite
+
+		await store.rememberRouteGroup('/characters/:id/wallet', 'char-wallet')
+		expect(kv.peekPutCount()).toBe(0)
+
+		vi.advanceTimersByTime(60_000)
+		const retry = store.rememberRouteGroup('/characters/:id/wallet', 'char-wallet')
+		await Promise.resolve()
+		expect(kv.peekPutCount()).toBe(1)
+		kv.rejectNextPut(new Error('KV PUT failed: 429 Too Many Requests'))
+		await retry
 	})
 })

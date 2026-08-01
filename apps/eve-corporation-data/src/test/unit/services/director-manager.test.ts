@@ -87,11 +87,7 @@ describe('DirectorManager.selectDirector', () => {
 					},
 				}),
 		}
-		const manager = new DirectorManager(
-			{} as never,
-			'98000001',
-			tokenStore as never
-		)
+		const manager = new DirectorManager({} as never, '98000001', tokenStore as never)
 
 		vi.spyOn(manager as any, 'getHealthyDirectors').mockResolvedValue([
 			{
@@ -158,11 +154,7 @@ describe('DirectorManager.selectDirector', () => {
 				error: 'Network timeout while refreshing token',
 			}),
 		}
-		const manager = new DirectorManager(
-			{} as never,
-			'98000001',
-			tokenStore as never
-		)
+		const manager = new DirectorManager({} as never, '98000001', tokenStore as never)
 
 		vi.spyOn(manager as any, 'getHealthyDirectors').mockResolvedValue([
 			{
@@ -220,11 +212,7 @@ describe('DirectorManager.selectDirector', () => {
 			getTokenInfo: vi.fn().mockResolvedValue({ isExpired: false }),
 			refreshToken: vi.fn().mockResolvedValue(true),
 		}
-		const manager = new DirectorManager(
-			{} as never,
-			'98000001',
-			tokenStore as never
-		)
+		const manager = new DirectorManager({} as never, '98000001', tokenStore as never)
 
 		vi.spyOn(manager as any, 'getHealthyDirectors').mockResolvedValue([
 			{
@@ -265,15 +253,11 @@ describe('DirectorManager.checkAffiliation', () => {
 
 	it('uses token store affiliation RPC and matches corporation', async () => {
 		const tokenStore = {
-			fetchCharacterAffiliations: vi.fn().mockResolvedValue([
-				{ character_id: 111, corporation_id: 98000001 },
-			]),
+			fetchCharacterAffiliations: vi
+				.fn()
+				.mockResolvedValue([{ character_id: 111, corporation_id: 98000001 }]),
 		}
-		const manager = new DirectorManager(
-			{} as never,
-			'98000001',
-			tokenStore as never
-		)
+		const manager = new DirectorManager({} as never, '98000001', tokenStore as never)
 
 		const result = await (manager as any).checkAffiliation('111')
 
@@ -285,11 +269,7 @@ describe('DirectorManager.checkAffiliation', () => {
 		const tokenStore = {
 			fetchCharacterAffiliations: vi.fn().mockResolvedValue([]),
 		}
-		const manager = new DirectorManager(
-			{} as never,
-			'98000001',
-			tokenStore as never
-		)
+		const manager = new DirectorManager({} as never, '98000001', tokenStore as never)
 
 		await expect((manager as any).checkAffiliation('111')).rejects.toThrow(
 			'Director affiliation lookup returned no affiliations for character 111'
@@ -299,17 +279,15 @@ describe('DirectorManager.checkAffiliation', () => {
 
 	it('throws a hard error when the affiliation lookup returns 404', async () => {
 		const tokenStore = {
-			fetchCharacterAffiliations: vi.fn().mockRejectedValue(
-				new Error(
-					'ESI request failed: 404 Not Found - not found | metadata={"status":404,"path":"/characters/affiliation"}'
-				)
-			),
+			fetchCharacterAffiliations: vi
+				.fn()
+				.mockRejectedValue(
+					new Error(
+						'ESI request failed: 404 Not Found - not found | metadata={"status":404,"path":"/characters/affiliation"}'
+					)
+				),
 		}
-		const manager = new DirectorManager(
-			{} as never,
-			'98000001',
-			tokenStore as never
-		)
+		const manager = new DirectorManager({} as never, '98000001', tokenStore as never)
 
 		await expect((manager as any).checkAffiliation('111')).rejects.toThrow(
 			'Director affiliation lookup returned 404 for character 111'
@@ -343,11 +321,7 @@ describe('DirectorManager.recordFailure', () => {
 			delete: deleteBuilder,
 			update,
 		}
-		const manager = new DirectorManager(
-			db as never,
-			'98000001',
-			{} as never
-		)
+		const manager = new DirectorManager(db as never, '98000001', {} as never)
 		vi.spyOn(manager, 'getHealthyDirectorsCount').mockResolvedValue(1)
 
 		await manager.recordFailure('dir-1', 'ESI request failed: 403 Forbidden', {
@@ -387,11 +361,7 @@ describe('DirectorManager.recordFailure', () => {
 			delete: deleteBuilder,
 			update,
 		}
-		const manager = new DirectorManager(
-			db as never,
-			'98000001',
-			{} as never
-		)
+		const manager = new DirectorManager(db as never, '98000001', {} as never)
 		vi.spyOn(manager, 'getHealthyDirectorsCount').mockResolvedValue(0)
 
 		await manager.recordFailure('dir-1', 'Director missing required roles: [Station_Manager]')
@@ -427,11 +397,7 @@ describe('DirectorManager.recordFailure', () => {
 			delete: deleteBuilder,
 			update,
 		}
-		const manager = new DirectorManager(
-			db as never,
-			'98000001',
-			{} as never
-		)
+		const manager = new DirectorManager(db as never, '98000001', {} as never)
 
 		await manager.recordFailure(
 			'dir-1',
@@ -525,9 +491,9 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 				refreshSucceeded: false,
 				status: 'valid',
 			}),
-			fetchCharacterAffiliations: vi.fn().mockResolvedValue([
-				{ character_id: 111, corporation_id: 98000001 },
-			]),
+			fetchCharacterAffiliations: vi
+				.fn()
+				.mockResolvedValue([{ character_id: 111, corporation_id: 98000001 }]),
 			fetchEsi: vi.fn().mockResolvedValue({
 				data: {
 					roles: ['Trader'],
@@ -535,11 +501,7 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 				},
 			}),
 		}
-		const manager = new DirectorManager(
-			db as never,
-			'98000001',
-			tokenStore as never
-		)
+		const manager = new DirectorManager(db as never, '98000001', tokenStore as never)
 
 		const result = await manager.verifyDirectorHealth('dir-1', {
 			requiredRoleSets: [['Station_Manager'], ['Trader', 'Accountant']],
@@ -597,20 +559,16 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 				refreshSucceeded: false,
 				status: 'valid',
 			}),
-			fetchCharacterAffiliations: vi.fn().mockResolvedValue([
-				{ character_id: 111, corporation_id: 98000001 },
-			]),
+			fetchCharacterAffiliations: vi
+				.fn()
+				.mockResolvedValue([{ character_id: 111, corporation_id: 98000001 }]),
 			fetchEsi: vi.fn().mockResolvedValue({
 				data: {
 					roles: ['Trader'],
 				},
 			}),
 		}
-		const manager = new DirectorManager(
-			db as never,
-			'98000001',
-			tokenStore as never
-		)
+		const manager = new DirectorManager(db as never, '98000001', tokenStore as never)
 		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
 
 		const result = await manager.verifyDirectorHealth('dir-1', {
@@ -648,11 +606,7 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 				error: 'Network timeout while refreshing token',
 			}),
 		}
-		const manager = new DirectorManager(
-			db as never,
-			'98000001',
-			tokenStore as never
-		)
+		const manager = new DirectorManager(db as never, '98000001', tokenStore as never)
 		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
 
 		const result = await manager.verifyDirectorHealth('dir-1')
@@ -662,6 +616,35 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			'dir-1',
 			expect.stringContaining('transient failure')
 		)
+	})
+
+	it('does not classify Durable Object failures as director auth failures', async () => {
+		const db = {
+			query: {
+				corporationDirectors: {
+					findFirst: vi.fn().mockResolvedValue({
+						id: 'dir-1',
+						characterId: '111',
+					}),
+				},
+			},
+		}
+		const tokenStore = {
+			validateToken: vi
+				.fn()
+				.mockRejectedValue(new Error('Durable Object storage operation exceeded timeout')),
+		}
+		const manager = new DirectorManager(db as never, '98000001', tokenStore as never)
+		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
+
+		const result = await manager.verifyDirectorHealth('dir-1')
+
+		expect(result).toBe(false)
+		expect(recordFailure).toHaveBeenCalledWith(
+			'dir-1',
+			expect.stringContaining('Director dependency failure (verify-director-health)')
+		)
+		expect(recordFailure.mock.calls[0]?.[1]).not.toContain('Director auth failure')
 	})
 
 	it('records failure when ESI role fetch throws', async () => {
@@ -685,22 +668,21 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 				refreshSucceeded: false,
 				status: 'valid',
 			}),
-			fetchCharacterAffiliations: vi.fn().mockResolvedValue([
-				{ character_id: 111, corporation_id: 98000001 },
-			]),
+			fetchCharacterAffiliations: vi
+				.fn()
+				.mockResolvedValue([{ character_id: 111, corporation_id: 98000001 }]),
 			fetchEsi: vi.fn().mockRejectedValue(new Error('ESI request failed: 403 Forbidden')),
 		}
-		const manager = new DirectorManager(
-			db as never,
-			'98000001',
-			tokenStore as never
-		)
+		const manager = new DirectorManager(db as never, '98000001', tokenStore as never)
 		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
 
 		const result = await manager.verifyDirectorHealth('dir-1')
 
 		expect(result).toBe(false)
-		expect(recordFailure).toHaveBeenCalledWith('dir-1', 'ESI request failed: 403 Forbidden')
+		expect(recordFailure).toHaveBeenCalledWith(
+			'dir-1',
+			expect.stringContaining('Director permission failure')
+		)
 	})
 
 	it('records failure when the director token is missing required scopes', async () => {
@@ -727,11 +709,7 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			fetchCharacterAffiliations: vi.fn(),
 			fetchEsi: vi.fn(),
 		}
-		const manager = new DirectorManager(
-			db as never,
-			'98000001',
-			tokenStore as never
-		)
+		const manager = new DirectorManager(db as never, '98000001', tokenStore as never)
 		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
 		const removeDirector = vi.spyOn(manager, 'removeDirector').mockResolvedValue(undefined)
 
@@ -771,9 +749,9 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 				refreshSucceeded: false,
 				status: 'valid',
 			}),
-			fetchCharacterAffiliations: vi.fn().mockResolvedValue([
-				{ character_id: 111, corporation_id: 98000002 },
-			]),
+			fetchCharacterAffiliations: vi
+				.fn()
+				.mockResolvedValue([{ character_id: 111, corporation_id: 98000002 }]),
 			fetchEsi: vi.fn(),
 		}
 		const manager = new DirectorManager(
@@ -808,11 +786,7 @@ describe('DirectorManager.verifyAllDirectorsHealth', () => {
 		const where = vi.fn().mockResolvedValue(undefined)
 		const set = vi.fn().mockReturnValue({ where })
 		const update = vi.fn().mockReturnValue({ set })
-		const manager = new DirectorManager(
-			{ update } as never,
-			'98000001',
-			{} as never
-		)
+		const manager = new DirectorManager({ update } as never, '98000001', {} as never)
 
 		vi.spyOn(manager, 'getAllDirectors').mockResolvedValue([
 			{
@@ -856,11 +830,7 @@ describe('DirectorManager.verifyAllDirectorsHealth', () => {
 		const where = vi.fn().mockResolvedValue(undefined)
 		const set = vi.fn().mockReturnValue({ where })
 		const update = vi.fn().mockReturnValue({ set })
-		const manager = new DirectorManager(
-			{ update } as never,
-			'98000001',
-			{} as never
-		)
+		const manager = new DirectorManager({ update } as never, '98000001', {} as never)
 
 		vi.spyOn(manager, 'getAllDirectors').mockResolvedValue([
 			{
@@ -891,11 +861,7 @@ describe('DirectorManager.verifyAllDirectorsHealth', () => {
 		const where = vi.fn().mockResolvedValue(undefined)
 		const set = vi.fn().mockReturnValue({ where })
 		const update = vi.fn().mockReturnValue({ set })
-		const manager = new DirectorManager(
-			{ update } as never,
-			'98000001',
-			{} as never
-		)
+		const manager = new DirectorManager({ update } as never, '98000001', {} as never)
 		const verifyDirectorHealth = vi.spyOn(manager, 'verifyDirectorHealth').mockResolvedValue(true)
 
 		vi.spyOn(manager, 'getAllDirectors').mockResolvedValue([
@@ -934,13 +900,8 @@ describe('DirectorManager.verifyAllDirectorsHealth', () => {
 			.fn()
 			.mockReturnValueOnce({ set: directorSet })
 			.mockReturnValueOnce({ set: corpSet })
-		const manager = new DirectorManager(
-			{ update } as never,
-			'98000001',
-			{} as never
-		)
-		vi.spyOn(manager, 'verifyDirectorHealth')
-			.mockResolvedValueOnce(false)
+		const manager = new DirectorManager({ update } as never, '98000001', {} as never)
+		vi.spyOn(manager, 'verifyDirectorHealth').mockResolvedValueOnce(false)
 		vi.spyOn(manager, 'getAllDirectors').mockResolvedValue([
 			{
 				directorId: 'dir-1',
@@ -974,11 +935,7 @@ describe('DirectorManager.verifyAllDirectorsHealth', () => {
 		const where = vi.fn().mockResolvedValue(undefined)
 		const set = vi.fn().mockReturnValue({ where })
 		const update = vi.fn().mockReturnValue({ set })
-		const manager = new DirectorManager(
-			{ update } as never,
-			'98000001',
-			{} as never
-		)
+		const manager = new DirectorManager({ update } as never, '98000001', {} as never)
 
 		const verifyDirectorHealth = vi.spyOn(manager, 'verifyDirectorHealth').mockResolvedValue(true)
 
@@ -991,7 +948,8 @@ describe('DirectorManager.verifyAllDirectorsHealth', () => {
 				lastHealthCheck: null,
 				lastUsed: null,
 				failureCount: 3,
-				lastFailureReason: '[PERMANENT] Director affiliation mismatch: expected corporation 98000001, got 98000002',
+				lastFailureReason:
+					'[PERMANENT] Director affiliation mismatch: expected corporation 98000001, got 98000002',
 				nextRetryAt: null,
 				permanentFailureAt: new Date(),
 				priority: 1,
@@ -1044,7 +1002,8 @@ describe('DirectorManager.verifyAllDirectorsHealth', () => {
 				lastHealthCheck: null,
 				lastUsed: null,
 				failureCount: 3,
-				lastFailureReason: '[PERMANENT] Director token expired and could not be refreshed. Re-authenticate this character.',
+				lastFailureReason:
+					'[PERMANENT] Director token expired and could not be refreshed. Re-authenticate this character.',
 				nextRetryAt: null,
 				permanentFailureAt: new Date(),
 				priority: 1,

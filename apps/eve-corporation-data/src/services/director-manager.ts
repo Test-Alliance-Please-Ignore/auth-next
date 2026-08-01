@@ -1,12 +1,12 @@
 import { and, asc, eq } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
-import { parseEsiErrorMetadata, retryWithBackoff } from '@repo/workflow-utils'
-
 import {
-	characterCorporationRoles,
-	corporationConfig,
-	corporationDirectors,
-} from '../db/schema'
+	classifyEsiCredentialFailure,
+	parseEsiErrorMetadata,
+	retryWithBackoff,
+} from '@repo/workflow-utils'
+
+import { characterCorporationRoles, corporationConfig, corporationDirectors } from '../db/schema'
 
 import type { CorporationRole, EsiCharacterRoles } from '@repo/eve-corporation-data'
 import type {
@@ -54,6 +54,7 @@ const FAILURE_THRESHOLD = 3
  */
 const _RECOVERY_THRESHOLD = 3
 const PERMANENT_FAILURE_PREFIX = '[PERMANENT]'
+const DIRECTOR_DEPENDENCY_FAILURE_PREFIX = 'Director dependency failure'
 const INVALID_STALE_PERMANENT_MS = 7 * 24 * 60 * 60 * 1000
 const TRANSIENT_DIRECTOR_COOLDOWN_MS = 10 * 60 * 1000
 
@@ -67,7 +68,7 @@ const FULL_SYNC_REQUIRED_ROLE_SETS: CorporationRole[][] = [
 
 function describeTokenValidationFailure(validation: TokenValidationResult): string {
 	if (validation.status === 'missing_scopes' && validation.missingScopes.length > 0) {
-		return `Director token is missing required ESI scopes: ${validation.missingScopes.join(', ')}`
+		return `Director permission failure: Director token is missing required ESI scopes: ${validation.missingScopes.join(', ')}`
 	}
 
 	if (validation.error) {
@@ -240,7 +241,9 @@ export class DirectorManager {
 	 * Select the next healthy director using round-robin with priority
 	 * Returns null if no healthy directors available
 	 */
-	async selectDirector(options?: { requiredRoleSets?: CorporationRole[][] }): Promise<SelectedDirector | null> {
+	async selectDirector(options?: {
+		requiredRoleSets?: CorporationRole[][]
+	}): Promise<SelectedDirector | null> {
 		try {
 			const now = Date.now()
 			const healthyDirectors = (await this.getHealthyDirectors()).filter(
@@ -274,24 +277,22 @@ export class DirectorManager {
 							)
 							continue
 						}
-							const refreshResult = await this.tokenStore.refreshTokenWithResult(
-								candidate.characterId
+						const refreshResult = await this.tokenStore.refreshTokenWithResult(
+							candidate.characterId
+						)
+						if (!refreshResult.success) {
+							const reason =
+								refreshResult.status === 'transient_error'
+									? `Director token refresh transient failure: ${refreshResult.error ?? 'unknown'}`
+									: (refreshResult.error ?? 'Director token expired and refresh failed')
+							await this.safeRecordFailure(
+								candidate.directorId,
+								reason,
+								refreshResult.status === 'transient_error' ? undefined : { forceUnhealthy: true }
 							)
-							if (!refreshResult.success) {
-								const reason =
-									refreshResult.status === 'transient_error'
-										? `Director token refresh transient failure: ${refreshResult.error ?? 'unknown'}`
-										: refreshResult.error ?? 'Director token expired and refresh failed'
-								await this.safeRecordFailure(
-									candidate.directorId,
-									reason,
-									refreshResult.status === 'transient_error'
-										? undefined
-										: { forceUnhealthy: true }
-								)
-								continue
-							}
+							continue
 						}
+					}
 
 					const affiliationCheck = await this.checkAffiliation(candidate.characterId)
 					if (!affiliationCheck.matches) {
@@ -314,14 +315,17 @@ export class DirectorManager {
 								),
 							{
 								onRetry: (attempt, error, delayMs) => {
-									logger.warn('[DirectorManager] Retrying director role lookup after ESI throttling', {
-										corporationId: this.corporationId,
-										directorId: candidate.directorId,
-										characterId: candidate.characterId,
-										attempt,
-										delayMs,
-										error: error.message,
-									})
+									logger.warn(
+										'[DirectorManager] Retrying director role lookup after ESI throttling',
+										{
+											corporationId: this.corporationId,
+											directorId: candidate.directorId,
+											characterId: candidate.characterId,
+											attempt,
+											delayMs,
+											error: error.message,
+										}
+									)
 								},
 							}
 						)
@@ -331,7 +335,7 @@ export class DirectorManager {
 						if (missingRoleSets.length > 0) {
 							await this.safeRecordFailure(
 								candidate.directorId,
-								`Director missing required roles for selection: ${missingRoleSets.map((set) => `[${set.join('|')}]`).join(', ')}`,
+								`Director permission failure: Director missing required roles for selection: ${missingRoleSets.map((set) => `[${set.join('|')}]`).join(', ')}`,
 								{ forceUnhealthy: true }
 							)
 							continue
@@ -346,10 +350,12 @@ export class DirectorManager {
 						characterName: candidate.characterName,
 					}
 				} catch (error) {
-					await this.safeRecordFailure(
-						candidate.directorId,
-						this.buildDirectorAuthFailureReason('select-director', error)
-					)
+					const reason = classifyEsiCredentialFailure(error)
+						? this.buildDirectorCredentialFailureReason('select-director', error)
+						: this.isDirectorLookupNotFoundFailure(error)
+							? this.buildDirectorLookupFailureReason('select-director', error)
+							: this.buildDirectorDependencyFailureReason('select-director', error)
+					await this.safeRecordFailure(candidate.directorId, reason)
 				}
 			}
 
@@ -405,13 +411,16 @@ export class DirectorManager {
 				() => this.tokenStore.fetchCharacterAffiliations([characterId]),
 				{
 					onRetry: (attempt, error, delayMs) => {
-						logger.warn('[DirectorManager] Retrying character affiliation lookup after ESI throttling', {
-							corporationId: this.corporationId,
-							characterId,
-							attempt,
-							delayMs,
-							error: error.message,
-						})
+						logger.warn(
+							'[DirectorManager] Retrying character affiliation lookup after ESI throttling',
+							{
+								corporationId: this.corporationId,
+								characterId,
+								attempt,
+								delayMs,
+								error: error.message,
+							}
+						)
 					},
 				}
 			)
@@ -429,11 +438,11 @@ export class DirectorManager {
 				`Director affiliation lookup returned no affiliations for character ${characterId}`
 			)
 		}
-		const affiliation = affiliations.find((entry) => entry.character_id === Number.parseInt(characterId, 10))
+		const affiliation = affiliations.find(
+			(entry) => entry.character_id === Number.parseInt(characterId, 10)
+		)
 		if (!affiliation) {
-			throw new Error(
-				`Director affiliation lookup did not include character ${characterId}`
-			)
+			throw new Error(`Director affiliation lookup did not include character ${characterId}`)
 		}
 
 		const corporationId = String(affiliation.corporation_id)
@@ -512,10 +521,7 @@ export class DirectorManager {
 		])
 	}
 
-	private satisfiesAnyRequiredRoles(
-		roleSet: Set<string>,
-		anyOf: CorporationRole[]
-	): boolean {
+	private satisfiesAnyRequiredRoles(roleSet: Set<string>, anyOf: CorporationRole[]): boolean {
 		return anyOf.some((role) => roleSet.has(role))
 	}
 
@@ -583,19 +589,21 @@ export class DirectorManager {
 				})
 				return
 			}
-		} catch (error) {
+		} catch {
 			return
 		}
 	}
 
-	private buildDirectorAuthFailureReason(
+	private buildDirectorCredentialFailureReason(
 		stepName: string,
 		error: unknown,
 		requiredRoles?: CorporationRole[]
 	): string {
 		const rawMessage = error instanceof Error ? error.message : String(error)
 		const metadata = error instanceof Error ? parseEsiErrorMetadata(error.message) : null
-		const status = typeof metadata?.status === 'number' ? metadata.status : null
+		const credentialFailureKind = classifyEsiCredentialFailure(error)
+		const metadataStatus = typeof metadata?.status === 'number' ? metadata.status : null
+		const status = metadataStatus ?? (credentialFailureKind === 'permission' ? 403 : 401)
 		const path = typeof metadata?.path === 'string' ? metadata.path : null
 		const lower = rawMessage.toLowerCase()
 		const roleHint = lower.includes('required role') ? 'required_roles_missing' : null
@@ -645,9 +653,32 @@ export class DirectorManager {
 			detailCode ? `detailCode=${detailCode}` : null,
 			roleHint ? `hint=${roleHint}` : null,
 			requiredRoles && requiredRoles.length > 0 ? `requiredRoles=${requiredRoles.join('|')}` : null,
-			roleHint && requiredRoles && requiredRoles.length > 0 ? `missingRoles=unknown_from_esi` : null,
+			roleHint && requiredRoles && requiredRoles.length > 0
+				? `missingRoles=unknown_from_esi`
+				: null,
 		].filter((part): part is string => Boolean(part))
-		return `Director auth failure (${parts.join(', ')})`
+		const failureLabel =
+			credentialFailureKind === 'permission'
+				? 'Director permission failure'
+				: 'Director authentication failure'
+		return `${failureLabel} (${parts.join(', ')})`
+	}
+
+	private isDirectorLookupNotFoundFailure(error: unknown): boolean {
+		if (!(error instanceof Error)) return false
+		const metadata = parseEsiErrorMetadata(error.message)
+		if (metadata?.status !== 404) return false
+		return /ESI request failed:|Director affiliation lookup/i.test(error.message)
+	}
+
+	private buildDirectorLookupFailureReason(stepName: string, error: unknown): string {
+		const rawMessage = error instanceof Error ? error.message : String(error)
+		return `Director lookup failure (step=${stepName}, reasonCode=lookup_not_found): ${rawMessage}`
+	}
+
+	private buildDirectorDependencyFailureReason(stepName: string, error: unknown): string {
+		const rawMessage = error instanceof Error ? error.message : String(error)
+		return `${DIRECTOR_DEPENDENCY_FAILURE_PREFIX} (${stepName}): ${rawMessage}`
 	}
 
 	private isTransientEsiFailure(reason: string): boolean {
@@ -662,6 +693,7 @@ export class DirectorManager {
 		if (lower.includes('timeout')) return true
 		if (lower.includes('temporarily unavailable')) return true
 		if (lower.includes('token refresh transient failure')) return true
+		if (lower.includes(DIRECTOR_DEPENDENCY_FAILURE_PREFIX.toLowerCase())) return true
 
 		return false
 	}
@@ -675,7 +707,10 @@ export class DirectorManager {
 		permanentFailureAt?: Date | null
 		lastFailureReason: string | null
 	}): boolean {
-		return Boolean(director.permanentFailureAt) || this.isPermanentFailureReason(director.lastFailureReason)
+		return (
+			Boolean(director.permanentFailureAt) ||
+			this.isPermanentFailureReason(director.lastFailureReason)
+		)
 	}
 
 	private asPermanentFailureReason(reason: string): string {
@@ -719,7 +754,8 @@ export class DirectorManager {
 	}): boolean {
 		if (director.isHealthy) return false
 		if (this.isPermanentlyFailed(director)) return false
-		if (director.lastFailureReason && this.isTransientEsiFailure(director.lastFailureReason)) return false
+		if (director.lastFailureReason && this.isTransientEsiFailure(director.lastFailureReason))
+			return false
 		if (director.nextRetryAt && director.nextRetryAt.getTime() > Date.now()) return false
 
 		const anchor = director.lastHealthCheck ?? director.updatedAt
@@ -851,12 +887,15 @@ export class DirectorManager {
 						)
 					)
 			} catch (error) {
-				logger.warn('[DirectorManager] Failed to clear stale director role cache after unhealthy transition', {
-					corporationId: this.corporationId,
-					directorId,
-					characterId: director.characterId,
-					error: error instanceof Error ? error.message : String(error),
-				})
+				logger.warn(
+					'[DirectorManager] Failed to clear stale director role cache after unhealthy transition',
+					{
+						corporationId: this.corporationId,
+						directorId,
+						characterId: director.characterId,
+						error: error instanceof Error ? error.message : String(error),
+					}
+				)
 			}
 			await this.syncHealthSnapshot()
 		}
@@ -944,14 +983,17 @@ export class DirectorManager {
 					),
 				{
 					onRetry: (attempt, error, delayMs) => {
-						logger.warn('[DirectorManager] Retrying director health role check after ESI throttling', {
-							corporationId: this.corporationId,
-							directorId,
-							characterId: director.characterId,
-							attempt,
-							delayMs,
-							error: error.message,
-						})
+						logger.warn(
+							'[DirectorManager] Retrying director health role check after ESI throttling',
+							{
+								corporationId: this.corporationId,
+								directorId,
+								characterId: director.characterId,
+								attempt,
+								delayMs,
+								error: error.message,
+							}
+						)
 					},
 				}
 			)
@@ -1001,7 +1043,7 @@ export class DirectorManager {
 			await this.syncHealthSnapshot()
 
 			if (missingRoleSets.length > 0) {
-				const reason = `Director missing required roles: ${missingRoleSets
+				const reason = `Director permission failure: Director missing required roles: ${missingRoleSets
 					.map((set) => `[${set.join('|')}]`)
 					.join(', ')}`
 				await this.recordFailure(directorId, reason, { forceUnhealthy: true })
@@ -1023,7 +1065,12 @@ export class DirectorManager {
 				error: errorMessage,
 			})
 
-			await this.recordFailure(directorId, errorMessage)
+			const failureReason = classifyEsiCredentialFailure(error)
+				? this.buildDirectorCredentialFailureReason('verify-director-health', error)
+				: this.isDirectorLookupNotFoundFailure(error)
+					? this.buildDirectorLookupFailureReason('verify-director-health', error)
+					: this.buildDirectorDependencyFailureReason('verify-director-health', error)
+			await this.recordFailure(directorId, failureReason)
 			return false
 		}
 	}
@@ -1142,8 +1189,14 @@ export class DirectorManager {
 					error: lastError.message,
 				})
 
-				// Record failure
-				await this.recordFailure(director.directorId, lastError.message)
+				// Preserve director health for dependency failures; only ESI auth failures
+				// should be eligible for permanent director failover.
+				const failureReason = classifyEsiCredentialFailure(lastError)
+					? this.buildDirectorCredentialFailureReason('execute-with-failover', lastError)
+					: this.isDirectorLookupNotFoundFailure(lastError)
+						? this.buildDirectorLookupFailureReason('execute-with-failover', lastError)
+						: this.buildDirectorDependencyFailureReason('execute-with-failover', lastError)
+				await this.recordFailure(director.directorId, failureReason)
 
 				// Continue to next director
 			}
