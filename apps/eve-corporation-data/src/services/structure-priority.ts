@@ -10,16 +10,17 @@ export function buildPriorityQueuedEntries<
 >(
 	entries: readonly T[],
 	newStructureIds: readonly string[] = [],
-	syncPriorities: readonly P[] = []
+	syncPriorities: readonly P[] = [],
+	options: {
+		pruneCandidateIds: readonly string[]
+	}
 ): {
 	entries: Array<{ index: number; entry: T; priority: P | null }>
 	pruneCandidateIds: string[]
 } {
-	const liveStructureIds = new Set(entries.map((entry) => String(entry.id)))
 	const newStructureIdSet = new Set(newStructureIds.map((structureId) => String(structureId)))
-	const livePriorities = syncPriorities.filter((priority) => liveStructureIds.has(priority.structureId))
 	const priorityByStructureId = new Map(
-		livePriorities.map((priority) => [priority.structureId, priority] as const)
+		syncPriorities.map((priority) => [priority.structureId, priority] as const)
 	)
 	const mappedEntries = entries.map((entry, index) => ({
 		entry,
@@ -27,11 +28,9 @@ export function buildPriorityQueuedEntries<
 		priority: priorityByStructureId.get(String(entry.id)) ?? null,
 	}))
 
-	const newEntries = mappedEntries.filter(
-		(entry) => newStructureIdSet.has(String(entry.entry.id)) && entry.priority === null
-	)
+	const newEntries = mappedEntries.filter((entry) => newStructureIdSet.has(String(entry.entry.id)))
 	const prioritizedEntries = mappedEntries
-		.filter((entry) => entry.priority !== null)
+		.filter((entry) => entry.priority !== null && !newStructureIdSet.has(String(entry.entry.id)))
 		.sort((a, b) => {
 			const aPriority = a.priority!
 			const bPriority = b.priority!
@@ -39,18 +38,16 @@ export function buildPriorityQueuedEntries<
 			const bSynced = bPriority.lastSyncedAt?.getTime() ?? Number.NEGATIVE_INFINITY
 			if (aSynced !== bSynced) return aSynced - bSynced
 
-			const aAttempted =
-				aPriority.lastAttemptedSyncAt?.getTime() ?? Number.NEGATIVE_INFINITY
-			const bAttempted =
-				bPriority.lastAttemptedSyncAt?.getTime() ?? Number.NEGATIVE_INFINITY
+			const aAttempted = aPriority.lastAttemptedSyncAt?.getTime() ?? Number.NEGATIVE_INFINITY
+			const bAttempted = bPriority.lastAttemptedSyncAt?.getTime() ?? Number.NEGATIVE_INFINITY
 			if (aAttempted !== bAttempted) return aAttempted - bAttempted
 
 			return a.index - b.index
 		})
 
-	const pruneCandidateIds = syncPriorities
-		.filter((priority) => !liveStructureIds.has(priority.structureId))
-		.map((priority) => priority.structureId)
+	const pruneCandidateIds = [
+		...new Set(options.pruneCandidateIds.map((structureId) => String(structureId))),
+	]
 
 	return {
 		entries: [...newEntries, ...prioritizedEntries],
@@ -58,7 +55,10 @@ export function buildPriorityQueuedEntries<
 	}
 }
 
-export function buildPriorityOrderedEntries<T extends { id: string | number }, P extends SyncPriorityLike>(
+export function buildPriorityOrderedEntries<
+	T extends { id: string | number },
+	P extends SyncPriorityLike,
+>(
 	entries: readonly T[],
 	syncPriorities: readonly P[] = [],
 	options: {
@@ -69,9 +69,10 @@ export function buildPriorityOrderedEntries<T extends { id: string | number }, P
 	const knownStructureIds = options.knownStructureIds
 		? new Set(options.knownStructureIds.map((structureId) => String(structureId)))
 		: null
-	const livePriorities = syncPriorities.filter((priority) =>
-		liveStructureIds.has(priority.structureId) &&
-		(knownStructureIds === null || knownStructureIds.has(priority.structureId))
+	const livePriorities = syncPriorities.filter(
+		(priority) =>
+			liveStructureIds.has(priority.structureId) &&
+			(knownStructureIds === null || knownStructureIds.has(priority.structureId))
 	)
 	const priorityByStructureId = new Map(
 		livePriorities.map((priority) => [priority.structureId, priority] as const)
@@ -96,10 +97,8 @@ export function buildPriorityOrderedEntries<T extends { id: string | number }, P
 			const bSynced = bPriority.lastSyncedAt?.getTime() ?? Number.NEGATIVE_INFINITY
 			if (aSynced !== bSynced) return aSynced - bSynced
 
-			const aAttempted =
-				aPriority.lastAttemptedSyncAt?.getTime() ?? Number.NEGATIVE_INFINITY
-			const bAttempted =
-				bPriority.lastAttemptedSyncAt?.getTime() ?? Number.NEGATIVE_INFINITY
+			const aAttempted = aPriority.lastAttemptedSyncAt?.getTime() ?? Number.NEGATIVE_INFINITY
+			const bAttempted = bPriority.lastAttemptedSyncAt?.getTime() ?? Number.NEGATIVE_INFINITY
 			if (aAttempted !== bAttempted) return aAttempted - bAttempted
 
 			return a.index - b.index

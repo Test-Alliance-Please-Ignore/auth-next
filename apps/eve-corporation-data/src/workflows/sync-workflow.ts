@@ -51,6 +51,7 @@ import { syncWalletJournal } from './steps/wallet-journal'
 import { syncWalletTransactions } from './steps/wallet-transactions'
 import { fetchWallets, storeWallets } from './steps/wallets'
 import { createShouldSyncPredicate } from './utils/should-sync'
+import { ensureSharedSovereigntySystems } from './utils/sovereignty-systems-cache'
 import { StructureEnrichmentScopeMismatchError } from './utils/structure-enrichment-auth'
 import { dispatchTaxProjectionRefresh } from './utils/tax-projection-dispatch'
 import {
@@ -692,6 +693,8 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						)
 
 						try {
+							await ensureSharedSovereigntySystems(this.env)
+
 							const structures = await runDirectorStepWithFailover({
 								stepName: 'fetch-structures',
 								timeout: '5 minutes',
@@ -712,25 +715,6 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 							if (miningCitadelStructureIds.size > 0) {
 								try {
-									const miningCitadelPriorities =
-										await corpData.getMiningCitadelSyncPriorities(corporationId)
-									const newMiningCitadelStructureIds =
-										await corpData.getMissingStructureIdsForPriorityQueue(
-											corporationId,
-											'mining-extractions' as StructureSyncPriorityTarget,
-											[...miningCitadelStructureIds]
-										)
-									const prioritizedMiningCitadelQueue = buildPriorityQueuedEntries(
-										[...miningCitadelStructureIds].map((structureId) => ({
-											id: structureId,
-										})),
-										newMiningCitadelStructureIds,
-										miningCitadelPriorities
-									)
-									const prioritizedMiningCitadelIds = prioritizedMiningCitadelQueue.entries.map(
-										({ entry }) => entry.id
-									)
-
 									const fetchedMiningExtractions = await runDirectorStepWithFailover({
 										stepName: 'fetch-structure-mining-extraction-enrichment',
 										timeout: '10 minutes',
@@ -739,25 +723,31 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 										run: (directorCharacterId) =>
 											fetchMiningExtractionEnrichment(this.env, corporationId, directorCharacterId),
 									})
-									const miningExtractionByStructureId = new Map(
-										fetchedMiningExtractions.map((extraction) => [
-											String(extraction.structure_id),
-											extraction,
-										])
+									const liveMiningExtractions = fetchedMiningExtractions.filter((extraction) =>
+										miningCitadelStructureIds.has(String(extraction.structure_id))
 									)
-									const prioritizedMiningExtractions = prioritizedMiningCitadelIds
-										.map((structureId) => miningExtractionByStructureId.get(structureId) ?? null)
-										.filter(
-											(extraction): extraction is (typeof fetchedMiningExtractions)[number] =>
-												extraction !== null
-										)
+									const priorityQueue = await corpData.getStructurePriorityQueue(
+										corporationId,
+										'mining-extractions' as StructureSyncPriorityTarget,
+										liveMiningExtractions.map((extraction) => String(extraction.structure_id))
+									)
+									const prioritizedMiningExtractions = buildPriorityQueuedEntries(
+										liveMiningExtractions.map((extraction) => ({
+											id: String(extraction.structure_id),
+											extraction,
+										})),
+										priorityQueue.newStructureIds,
+										priorityQueue.syncPriorities,
+										{ pruneCandidateIds: priorityQueue.pruneCandidateIds }
+									).entries.map(({ entry }) => entry.extraction)
 									miningExtractionsCount = prioritizedMiningExtractions.length
 
-									for (let index = 0; index < prioritizedMiningExtractions.length; index += 100) {
-										const batch = prioritizedMiningExtractions.slice(index, index + 100)
-										if (batch.length === 0) continue
-										await storeMiningExtractionEnrichment(this.env, corporationId, batch)
-									}
+									await storeMiningExtractionEnrichment(
+										this.env,
+										corporationId,
+										prioritizedMiningExtractions,
+										{ pruneCandidateIds: priorityQueue.pruneCandidateIds }
+									)
 								} catch (error) {
 									const metadata =
 										error instanceof Error ? parseEsiErrorMetadata(error.message) : null

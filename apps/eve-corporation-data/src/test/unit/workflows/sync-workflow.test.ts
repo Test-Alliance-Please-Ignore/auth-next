@@ -29,6 +29,7 @@ const recordTaxProjectionRetryIntentMock = vi.fn()
 const sendHrDepartedMessagesMock = vi.fn()
 const triggerTaxProjectionRefreshMock = vi.fn()
 const parseEsiErrorMetadataMock = vi.fn((_message: string) => null as { status: number } | null)
+const ensureSharedSovereigntySystemsMock = vi.fn().mockResolvedValue([])
 
 vi.mock('cloudflare:workers', () => {
 	class WorkflowEntrypoint<Env = unknown, Params = unknown> {
@@ -106,6 +107,11 @@ vi.mock('../../../workflows/steps/structures', () => ({
 		storeMiningExtractionEnrichmentMock(...args),
 }))
 
+vi.mock('../../../workflows/utils/sovereignty-systems-cache', () => ({
+	ensureSharedSovereigntySystems: (...args: unknown[]) =>
+		ensureSharedSovereigntySystemsMock(...args),
+}))
+
 function createStep() {
 	const executedStepNames: string[] = []
 	const doMock = vi.fn(
@@ -139,6 +145,12 @@ function createWorkflowEnv() {
 		getMiningCitadelSyncPriorities: vi.fn().mockResolvedValue([]),
 		getMiningCitadelStructureIds: vi.fn().mockResolvedValue([]),
 		getMissingStructureIdsForPriorityQueue: vi.fn().mockResolvedValue([]),
+		getStructureIdsMissingFromLiveListing: vi.fn().mockResolvedValue([]),
+		getStructurePriorityQueue: vi.fn().mockResolvedValue({
+			newStructureIds: [],
+			pruneCandidateIds: [],
+			syncPriorities: [],
+		}),
 		getSovereigntyHubSyncPriorities: vi.fn().mockResolvedValue([]),
 		getSovereigntyHubStructureIds: vi.fn().mockResolvedValue([]),
 		getSkyhookSyncPriorities: vi.fn().mockResolvedValue([]),
@@ -570,6 +582,7 @@ describe('EveCorporationSyncWorkflow', () => {
 					structure_id: 'skyhook-1',
 				},
 			],
+			failures: [],
 			failureCount: 0,
 			rateLimitFailureCount: 0,
 			nonRateLimitFailureCount: 0,
@@ -713,13 +726,17 @@ describe('EveCorporationSyncWorkflow', () => {
 	it('runs mining enrichment for mining citadels and still continues to asset sync', async () => {
 		vi.clearAllMocks()
 		const { env, corpDataStub, updateCorporationAuthHealth } = createWorkflowEnv()
-		corpDataStub.getMiningCitadelSyncPriorities.mockResolvedValue([
-			{
-				structureId: '1000001',
-				lastAttemptedSyncAt: null,
-				lastSyncedAt: new Date('2026-07-10T00:00:00.000Z'),
-			},
-		])
+		corpDataStub.getStructurePriorityQueue.mockResolvedValue({
+			newStructureIds: [],
+			pruneCandidateIds: [],
+			syncPriorities: [
+				{
+					structureId: '1000001',
+					lastAttemptedSyncAt: null,
+					lastSyncedAt: new Date('2026-07-10T00:00:00.000Z'),
+				},
+			],
+		})
 
 		verifyAllDirectorsHealthMock.mockResolvedValue({
 			verified: 1,
@@ -793,11 +810,16 @@ describe('EveCorporationSyncWorkflow', () => {
 
 		expect(fetchMiningExtractionEnrichmentMock).toHaveBeenCalledTimes(1)
 		expect(storeMiningExtractionEnrichmentMock).toHaveBeenCalledTimes(1)
-		expect(storeMiningExtractionEnrichmentMock).toHaveBeenCalledWith(env, '693378155', [
-			{
-				structure_id: '1000001',
-			},
-		])
+		expect(storeMiningExtractionEnrichmentMock).toHaveBeenCalledWith(
+			env,
+			'693378155',
+			[
+				{
+					structure_id: '1000001',
+				},
+			],
+			{ pruneCandidateIds: [] }
+		)
 		expect(syncAssetsMock).toHaveBeenCalledWith(env, '693378155', '900000001')
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
@@ -919,6 +941,7 @@ describe('EveCorporationSyncWorkflow', () => {
 		storeSovereigntyEnrichmentMock.mockResolvedValue(undefined)
 		fetchSkyhookEnrichmentMock.mockResolvedValue({
 			skyhooks: [],
+			failures: [],
 			failureCount: 0,
 			rateLimitFailureCount: 0,
 			nonRateLimitFailureCount: 0,

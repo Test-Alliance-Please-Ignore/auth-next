@@ -96,10 +96,8 @@ async function runScheduledRefresh(event: ScheduledEvent, env: Env): Promise<voi
 		// Corp workflows read this from the global corporation-data DO instead of
 		// refetching the same system map independently.
 		try {
-			const sovereigntySystems = await refreshSharedSovereigntySystems(env)
-			logger.info('[BackgroundRefresh] Warmed shared sovereignty systems cache', {
-				count: sovereigntySystems.length,
-			})
+			await refreshSharedSovereigntySystems(env)
+			logger.info('[BackgroundRefresh] Warmed shared sovereignty systems cache')
 		} catch (error) {
 			logger.error('[BackgroundRefresh] Failed to warm shared sovereignty systems cache', {
 				error: error instanceof Error ? error.message : String(error),

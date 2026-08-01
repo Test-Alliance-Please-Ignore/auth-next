@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { structureMiningExtractions } from '../../../db/schema'
+import { EveCorporationDataDO } from '../../../durable-object'
 
 const mocks = vi.hoisted(() => {
 	const findMany = vi.fn()
@@ -28,11 +29,11 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('../../../db', () => ({
 	createDb: vi.fn(() => ({
-			query: {
-				structureMiningExtractions: {
-					findMany: mocks.findMany,
-				},
+		query: {
+			structureMiningExtractions: {
+				findMany: mocks.findMany,
 			},
+		},
 		insert: mocks.insert,
 		update: vi.fn(() => ({
 			set: vi.fn(() => ({
@@ -46,8 +47,6 @@ vi.mock('../../../db', () => ({
 vi.mock('@repo/do-utils', () => ({
 	getStub: mocks.getStub,
 }))
-
-import { EveCorporationDataDO } from '../../../durable-object'
 
 describe('storeMiningExtractions', () => {
 	it('stamps mining snapshot rows with attempt and success timestamps on insert', async () => {
@@ -136,5 +135,39 @@ describe('storeMiningExtractions', () => {
 
 		expect(mocks.deleteMock).toHaveBeenCalledWith(structureMiningExtractions)
 		expect(mocks.values).not.toHaveBeenCalled()
+	})
+
+	it('uses the SQL-selected prune candidates for a partial priority refresh', async () => {
+		vi.clearAllMocks()
+
+		const doInstance = new EveCorporationDataDO(
+			{} as DurableObjectState,
+			{
+				DATABASE_URL: 'postgres://example',
+				UNIVERSE: {} as never,
+				EVE_TOKEN_STORE: {} as never,
+			} as never
+		)
+
+		await doInstance.storeMiningExtractions(
+			'corp-1',
+			[
+				{
+					structure_id: 'structure-1',
+					moon_id: 'moon-1',
+					extraction_start_time: '2026-07-01T00:00:00.000Z',
+					chunk_arrival_time: '2026-07-02T00:00:00.000Z',
+					natural_decay_time: '2026-07-03T00:00:00.000Z',
+					raw: {},
+				},
+			] as never,
+			{ pruneCandidateIds: [] }
+		)
+
+		expect(mocks.findMany).not.toHaveBeenCalled()
+		expect(mocks.deleteMock).not.toHaveBeenCalled()
+		expect(mocks.values).toHaveBeenCalledWith([
+			expect.objectContaining({ structureId: 'structure-1' }),
+		])
 	})
 })
