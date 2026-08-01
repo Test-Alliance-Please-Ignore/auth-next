@@ -1379,10 +1379,10 @@ export interface EveCorporationData {
 	releaseSharedSovereigntySystemsRefreshLease(leaseToken: string): Promise<void>
 
 	/**
-	 * Read a subset of the shared sovereignty system snapshot by system ID if it is still fresh.
+	 * Read the complete fresh shared sovereignty snapshot slice owned by a corporation.
 	 */
-	getSharedSovereigntySystemsByIds(
-		systemIds: string[],
+	getSharedSovereigntySystemsForCorporation(
+		corporationId: string,
 		maxAgeSeconds?: number
 	): Promise<EsiSovereigntySystem[] | null>
 

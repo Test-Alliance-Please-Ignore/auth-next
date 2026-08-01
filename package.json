@@ -7,6 +7,7 @@
 		"check:deps": "runx check --deps",
 		"check:format": "runx check --format",
 		"check:lint:all": "run-eslint",
+		"diagnose:sovereignty-alliance": "node scripts/diagnose-sovereignty-alliance.mjs",
 		"test": "vitest",
 		"test:ci": "run-vitest-ci"
 	},

@@ -6,7 +6,7 @@ import {
 	enrichQueueEntry,
 	selectPriorityDrain,
 } from './workflows/utils/background-refresh-batching'
-import { refreshSharedSovereigntySystems } from './workflows/utils/sovereignty-systems-cache'
+import { ensureSharedSovereigntySystems } from './workflows/utils/sovereignty-systems-cache'
 
 import type { Env } from './context'
 import type {
@@ -96,12 +96,15 @@ async function runScheduledRefresh(event: ScheduledEvent, env: Env): Promise<voi
 		// Corp workflows read this from the global corporation-data DO instead of
 		// refetching the same system map independently.
 		try {
-			await refreshSharedSovereigntySystems(env)
-			logger.info('[BackgroundRefresh] Warmed shared sovereignty systems cache')
+			await ensureSharedSovereigntySystems(env)
+			logger.info('[BackgroundRefresh] Ensured shared sovereignty systems cache freshness')
 		} catch (error) {
-			logger.error('[BackgroundRefresh] Failed to warm shared sovereignty systems cache', {
-				error: error instanceof Error ? error.message : String(error),
-			})
+			logger.error(
+				'[BackgroundRefresh] Failed to ensure shared sovereignty systems cache freshness',
+				{
+					error: error instanceof Error ? error.message : String(error),
+				}
+			)
 		}
 
 		const corporationsById = new Map(
