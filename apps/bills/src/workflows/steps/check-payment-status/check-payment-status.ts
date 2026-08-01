@@ -1,5 +1,3 @@
-import { eq } from 'drizzle-orm'
-
 import { getWorkflowLogger } from '../../context'
 
 import type { WorkflowContext } from '../../context'

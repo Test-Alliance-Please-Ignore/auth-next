@@ -1,5 +1,6 @@
 import {
 	boolean,
+	index,
 	integer,
 	jsonb,
 	pgTable,
@@ -200,7 +201,15 @@ export const characterWalletJournal = pgTable(
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.characterId, table.journalId)]
+	(table) => [
+		unique().on(table.characterId, table.journalId),
+		index('character_wallet_journal_character_date_idx').on(table.characterId, table.date),
+		index('character_wallet_journal_character_reason_date_idx').on(
+			table.characterId,
+			table.reason,
+			table.date
+		),
+	]
 )
 
 /**

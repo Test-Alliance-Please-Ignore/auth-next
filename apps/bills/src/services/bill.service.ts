@@ -50,6 +50,13 @@ function parseISKToMinorUnits(value: string): bigint | null {
 	}
 }
 
+export interface WalletPaymentInput {
+	amount: bigint
+	paidById: string
+	paidByType: EntityType
+	esiTransactionId: string
+}
+
 /**
  * Bill Service
  *
@@ -137,8 +144,9 @@ export class BillService {
 		}
 
 		const first = rows[0]
-		const groupId =
-			(first.externalMetadata as Record<string, unknown> | null)?.groupId as string | undefined
+		const groupId = (first.externalMetadata as Record<string, unknown> | null)?.groupId as
+			| string
+			| undefined
 
 		const billEntries: GroupBillEntry[] = rows.map((b) => {
 			const totalDue = Number(b.amount) + Number(b.lateFee)
@@ -146,7 +154,7 @@ export class BillService {
 			return {
 				billId: b.id,
 				payerId: b.payerId,
-				status: b.status as import('@repo/bills').BillStatus,
+				status: b.status as BillStatus,
 				amount: b.amount,
 				lateFee: b.lateFee,
 				totalDue: totalDue.toString(),
@@ -679,6 +687,153 @@ export class BillService {
 	}
 
 	/**
+	 * Record wallet payments in bounded, idempotent batches.
+	 */
+	async recordWalletPayments(
+		billId: string,
+		payments: readonly WalletPaymentInput[]
+	): Promise<number> {
+		const uniquePayments = Array.from(
+			new Map(payments.map((payment) => [payment.esiTransactionId, payment])).values()
+		)
+		if (uniquePayments.length === 0) {
+			return 0
+		}
+
+		const bill = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+		})
+
+		if (!bill) {
+			throw new Error('Bill not found')
+		}
+
+		if (bill.status === 'paid') {
+			throw new Error('Bill is already paid')
+		}
+
+		if (bill.status === 'cancelled') {
+			throw new Error('Bill has been cancelled')
+		}
+
+		if (bill.status === 'draft') {
+			throw new Error('Bill has not been issued yet')
+		}
+
+		// Late fees and the issued-to-overdue transition only need to be evaluated once for the
+		// batch. Each batch insert below is atomic with its payment-recorded events.
+		const updatedBill = await this.updateLateFeeIfNeeded(bill)
+		let insertedCount = 0
+		const batchSize = 50
+
+		for (let offset = 0; offset < uniquePayments.length; offset += batchSize) {
+			insertedCount += await this.insertWalletPaymentBatch(
+				updatedBill,
+				uniquePayments.slice(offset, offset + batchSize)
+			)
+		}
+
+		return insertedCount
+	}
+
+	private async insertWalletPaymentBatch(
+		bill: typeof bills.$inferSelect,
+		payments: readonly WalletPaymentInput[]
+	): Promise<number> {
+		const inputValues = sql.join(
+			payments.map((payment) => {
+				const paymentId = generateUuidV7()
+				const eventId = generateUuidV7()
+				const paidAt = new Date()
+
+				return sql`(
+					${paymentId}::uuid,
+					${eventId}::uuid,
+					${bill.id}::uuid,
+					${bill.paymentToken},
+					${payment.esiTransactionId},
+					${payment.amount.toString()},
+					${payment.paidById},
+					${payment.paidByType}::bill_entity_type,
+					${paidAt}
+				)`
+			}),
+			sql`, `
+		)
+
+		const result = await this.db.execute<{ insertedCount: number | string }>(sql`
+			with payment_input (
+				payment_id,
+				event_id,
+				bill_id,
+				payment_token,
+				esi_transaction_id,
+				amount,
+				paid_by_id,
+				paid_by_type,
+				paid_at
+			) as (
+				values ${inputValues}
+			), inserted_payments as (
+				insert into bill_payments (
+					id,
+					bill_id,
+					payment_token,
+					esi_transaction_id,
+					amount,
+					paid_by_id,
+					paid_by_type,
+					paid_at
+				)
+				select
+					payment_id,
+					bill_id,
+					payment_token,
+					esi_transaction_id,
+					amount,
+					paid_by_id,
+					paid_by_type,
+					paid_at
+				from payment_input
+				on conflict (esi_transaction_id) do nothing
+				returning bill_id, esi_transaction_id, amount, paid_by_id, paid_by_type
+			), inserted_events as (
+				insert into bill_status_events (
+					id,
+					bill_id,
+					event_type,
+					from_status,
+					to_status,
+					actor_user_id,
+					metadata
+				)
+				select
+					payment_input.event_id,
+					inserted_payments.bill_id,
+					'payment_recorded'::bill_status_event_type,
+					null::bill_status,
+					null::bill_status,
+					null,
+					jsonb_build_object(
+						'amount', inserted_payments.amount,
+						'paidById', inserted_payments.paid_by_id,
+						'paidByType', inserted_payments.paid_by_type,
+						'esiTransactionId', inserted_payments.esi_transaction_id
+					)
+				from inserted_payments
+				inner join payment_input
+					on payment_input.bill_id = inserted_payments.bill_id
+					and payment_input.esi_transaction_id = inserted_payments.esi_transaction_id
+				returning id
+			)
+			select count(*)::int as "insertedCount"
+			from inserted_payments
+		`)
+
+		return Number(result.rows[0]?.insertedCount ?? 0)
+	}
+
+	/**
 	 * Pay a bill using payment token
 	 */
 	async payBill(
@@ -833,7 +988,10 @@ export class BillService {
 	/**
 	 * Issue all eligible (draft) sub-bills sharing a groupBillId
 	 */
-	async issueGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult> {
+	async issueGroupBill(
+		actorUserId: string,
+		groupBillId: string
+	): Promise<GroupBillOperationResult> {
 		const subBills = await this.db.query.bills.findMany({
 			where: eq(bills.groupBillId, groupBillId),
 		})
@@ -853,7 +1011,10 @@ export class BillService {
 	/**
 	 * Cancel all eligible sub-bills sharing a groupBillId
 	 */
-	async cancelGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult> {
+	async cancelGroupBill(
+		actorUserId: string,
+		groupBillId: string
+	): Promise<GroupBillOperationResult> {
 		const subBills = await this.db.query.bills.findMany({
 			where: eq(bills.groupBillId, groupBillId),
 		})
@@ -900,7 +1061,10 @@ export class BillService {
 	/**
 	 * Delete all eligible (draft) sub-bills sharing a groupBillId
 	 */
-	async deleteGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult> {
+	async deleteGroupBill(
+		actorUserId: string,
+		groupBillId: string
+	): Promise<GroupBillOperationResult> {
 		const subBills = await this.db.query.bills.findMany({
 			where: eq(bills.groupBillId, groupBillId),
 		})
@@ -947,9 +1111,6 @@ export class BillService {
 	async checkBillBalancePaid(billId: string): Promise<boolean> {
 		const bill = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
-			with: {
-				payments: true,
-			},
 		})
 
 		if (!bill) {
@@ -961,13 +1122,16 @@ export class BillService {
 			throw new Error('Bill amount or late fee is invalid')
 		}
 
-		const paidAmount = bill.payments.reduce((acc, payment) => {
-			const paymentAmount = parseISKToMinorUnits(payment.amount)
-			if (paymentAmount === null) {
-				throw new Error(`Invalid payment amount for bill ${billId}`)
-			}
-			return acc + paymentAmount
-		}, BigInt(0))
+		const [paymentTotal] = await this.db
+			.select({
+				paidAmount: sql<string>`coalesce(sum(${billPayments.amount}::numeric), 0)`,
+			})
+			.from(billPayments)
+			.where(eq(billPayments.billId, billId))
+		const paidAmount = parseISKToMinorUnits(paymentTotal?.paidAmount ?? '0')
+		if (paidAmount === null) {
+			throw new Error(`Invalid payment amount for bill ${billId}`)
+		}
 
 		return paidAmount >= totalAmount + lateFeeAmount
 	}
@@ -989,9 +1153,6 @@ export class BillService {
 			throw new Error('Cannot mark a cancelled bill as paid')
 		}
 
-		const existingPayments = await this.db.query.billPayments.findMany({
-			where: eq(billPayments.billId, billId),
-		})
 		const paidAt = new Date()
 
 		const transitioned = await this.applyStatusTransitionAtomic({

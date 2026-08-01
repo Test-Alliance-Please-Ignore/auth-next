@@ -1,5 +1,5 @@
-import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
-import { and, eq, inArray, lte, sql } from 'drizzle-orm'
+import { WorkflowEntrypoint } from 'cloudflare:workers'
+import { eq, sql } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
 import { formatISK } from '@repo/worker-utils'
@@ -7,6 +7,7 @@ import { formatISK } from '@repo/worker-utils'
 import { createDb } from '../db'
 import { billNotificationEvents, bills } from '../db/schema'
 
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { Discord, MessageContent } from '@repo/discord'
 import type { EsiTypeResolver } from '@repo/esi'
 import type { Env } from '../context'
@@ -182,12 +183,11 @@ export class BillDiscordNotifyWorkflow extends WorkflowEntrypoint<
 
 				const payeeName =
 					bill.payeeId && bill.payeeId.trim().length > 0
-						? (
-								(await getStub<EsiTypeResolver>(
-									this.env.ESI_TYPE_RESOLVER,
-									'global'
-								).resolveIds([bill.payeeId]))[bill.payeeId] ?? bill.payeeId
-							)
+						? ((
+								await getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global').resolveIds([
+									bill.payeeId,
+								])
+							)[bill.payeeId] ?? bill.payeeId)
 						: 'Unknown'
 
 				const message = buildMessage({
