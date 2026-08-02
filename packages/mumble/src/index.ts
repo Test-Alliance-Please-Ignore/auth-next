@@ -116,6 +116,11 @@ export interface MumbleSyncProfilesResult {
 	skipped: string[]
 }
 
+/** A short-lived lease used to coalesce on-demand account refreshes. */
+export interface MumbleUserSyncLease {
+	token: string
+}
+
 export interface MumbleDeleteResult {
 	/** Subjects deleted from murmur-control */
 	deleted: string[]
@@ -160,6 +165,24 @@ export interface Mumble extends DurableObject {
 
 	/** Get account status, or null if the subject has no account. */
 	getAccount(serverId: string, subjectId: string): Promise<MumbleAccountStatus | null>
+
+	/** Claim the right to perform a user refresh when its cooldown has elapsed. */
+	tryClaimUserSync(
+		serverId: string,
+		subjectId: string,
+		cooldownMs: number,
+		leaseMs: number,
+		nowMs?: number
+	): Promise<MumbleUserSyncLease | null>
+
+	/** Complete or release a previously claimed on-demand user refresh. */
+	completeUserSync(
+		serverId: string,
+		subjectId: string,
+		token: string,
+		nowMs?: number
+	): Promise<void>
+	releaseUserSync(serverId: string, subjectId: string, token: string): Promise<void>
 
 	/**
 	 * Replace group sets for the given subjects (batch-first; pass 1 or N).

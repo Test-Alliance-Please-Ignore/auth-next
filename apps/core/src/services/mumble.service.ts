@@ -5,10 +5,10 @@ import { logger } from '@repo/hono-helpers'
 import { parseMumbleError } from '@repo/mumble'
 
 import { createDb } from '../db'
+import { mumbleTempopGuests, mumbleTempops, userCharacters, users } from '../db/schema'
 import { getCachedUserRoles } from '../lib/groups-cache'
 import { isMumbleFeatureEnabled } from '../lib/mumble-feature'
 import { hasMemberCorporationAttachment } from '../lib/service-eligibility'
-import { mumbleTempopGuests, mumbleTempops, userCharacters, users } from '../db/schema'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -43,6 +43,8 @@ const ALLIANCE_MEMBER_MUMBLE_GROUP = 'Test Alliance'
 export const TEMPOP_GROUP_NAME = 'TempOp'
 const USER_GROUP_LOOKUP_CONCURRENCY = 5
 const USER_PROFILE_LOOKUP_CONCURRENCY = 5
+const ON_DEMAND_SYNC_COOLDOWN_MS = 5 * 60 * 1000
+const ON_DEMAND_SYNC_LEASE_MS = 60 * 1000
 interface MumbleIdentity {
 	characterName: string
 	displayName: string
@@ -75,7 +77,10 @@ export function deriveLoginName(characterName: string, userId: string): string {
 }
 
 function normalizeMumbleTicker(ticker?: string | null): string | null {
-	const normalized = ticker?.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+	const normalized = ticker
+		?.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, '')
 	if (!normalized) {
 		return null
 	}
@@ -123,10 +128,7 @@ async function buildMumbleIdentity(env: Env, userId: string): Promise<MumbleIden
 	const [corpTicker, groupTickers] = await Promise.all([
 		corporationId
 			? (async () => {
-					const corpStub = getStub<EveCorporationData>(
-						env.EVE_CORPORATION_DATA,
-						corporationId
-					)
+					const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corporationId)
 					const corpInfo = await corpStub.getCorporationInfo(corporationId)
 					return normalizeMumbleTicker(corpInfo?.ticker)
 				})()
@@ -257,6 +259,40 @@ export async function getMumbleAccount(
 	userId: string
 ): Promise<MumbleAccountStatus | null> {
 	return getMumbleStub(env).getAccount(env.MUMBLE_SERVER_ID, userId)
+}
+
+/**
+ * Refresh a provisioned user's Mumble groups and profile at account-view time.
+ * The Mumble DO owns the cooldown and short lease so concurrent requests and
+ * separate Core isolates cannot fan out duplicate refreshes.
+ */
+export async function syncMumbleAccountIfDue(env: Env, userId: string): Promise<void> {
+	const mumble = getMumbleStub(env)
+	const lease = await mumble.tryClaimUserSync(
+		env.MUMBLE_SERVER_ID,
+		userId,
+		ON_DEMAND_SYNC_COOLDOWN_MS,
+		ON_DEMAND_SYNC_LEASE_MS
+	)
+	if (!lease) return
+
+	try {
+		await Promise.all([
+			syncUsersMumbleGroups(env, [userId], 'account-view'),
+			syncUsersMumbleProfiles(env, [userId]),
+		])
+		await mumble.completeUserSync(env.MUMBLE_SERVER_ID, userId, lease.token)
+	} catch (error) {
+		await mumble
+			.releaseUserSync(env.MUMBLE_SERVER_ID, userId, lease.token)
+			.catch((releaseError) => {
+				logger.error('[Mumble] Failed to release on-demand sync lease', {
+					userId,
+					error: releaseError instanceof Error ? releaseError.message : String(releaseError),
+				})
+			})
+		throw error
+	}
 }
 
 /**

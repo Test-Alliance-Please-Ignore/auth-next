@@ -53,11 +53,16 @@ function makeFakeStorage() {
 	const data = new Map<string, unknown>()
 	return {
 		data,
-		put: vi.fn(async (entries: Record<string, unknown>) => {
-			for (const [key, value] of Object.entries(entries)) data.set(key, value)
+		get: vi.fn(async (key: string) => data.get(key)),
+		put: vi.fn(async (keyOrEntries: string | Record<string, unknown>, value?: unknown) => {
+			if (typeof keyOrEntries === 'string') {
+				data.set(keyOrEntries, value)
+				return
+			}
+			for (const [key, entryValue] of Object.entries(keyOrEntries)) data.set(key, entryValue)
 		}),
-		delete: vi.fn(async (keys: string[]) => {
-			for (const key of keys) data.delete(key)
+		delete: vi.fn(async (keys: string | string[]) => {
+			for (const key of typeof keys === 'string' ? [keys] : keys) data.delete(key)
 		}),
 		list: vi.fn(async ({ prefix }: { prefix: string }) => {
 			const result = new Map<string, unknown>()
@@ -68,6 +73,7 @@ function makeFakeStorage() {
 		}),
 		getAlarm: vi.fn(async () => null),
 		setAlarm: vi.fn(async () => undefined),
+		deleteAlarm: vi.fn(async () => undefined),
 	}
 }
 
@@ -84,6 +90,9 @@ function makeFakeThis(client: FakeClient, overrides: Record<string, unknown> = {
 		takeToken: proto.takeToken,
 		handleError: proto.handleError,
 		resolveLoginName: proto.resolveLoginName,
+		userSyncKey: proto.userSyncKey,
+		scheduleUserSyncAlarm: proto.scheduleUserSyncAlarm,
+		cleanupUserSyncStates: proto.cleanupUserSyncStates,
 		findProvisionedSubjects: proto.findProvisionedSubjects,
 		deleteAccountsInner: proto.deleteAccountsInner,
 		queuePendingDeletes: proto.queuePendingDeletes,
@@ -188,6 +197,93 @@ describe('MumbleDO.provisionAccount', () => {
 			'busy'
 		)
 		expect(client.getLocalAccount).not.toHaveBeenCalled()
+	})
+})
+
+describe('MumbleDO user sync leases', () => {
+	it('allows one claim and suppresses concurrent claims', async () => {
+		const client = makeFakeClient()
+		const state = makeFakeThis(client) as any
+
+		const first = await MumbleDO.prototype.tryClaimUserSync.call(
+			state,
+			'srv',
+			'user-1',
+			300_000,
+			60_000,
+			1_000
+		)
+		const second = await MumbleDO.prototype.tryClaimUserSync.call(
+			state,
+			'srv',
+			'user-1',
+			300_000,
+			60_000,
+			1_001
+		)
+
+		expect(first).toEqual({ token: expect.any(String) })
+		expect(second).toBeNull()
+	})
+
+	it('starts a new claim after completion and cooldown expiry', async () => {
+		const client = makeFakeClient()
+		const state = makeFakeThis(client) as any
+
+		const first = await MumbleDO.prototype.tryClaimUserSync.call(
+			state,
+			'srv',
+			'user-1',
+			300_000,
+			60_000,
+			1_000
+		)
+		await MumbleDO.prototype.completeUserSync.call(state, 'srv', 'user-1', first!.token, 1_001)
+
+		const duringCooldown = await MumbleDO.prototype.tryClaimUserSync.call(
+			state,
+			'srv',
+			'user-1',
+			300_000,
+			60_000,
+			299_999
+		)
+		const afterCooldown = await MumbleDO.prototype.tryClaimUserSync.call(
+			state,
+			'srv',
+			'user-1',
+			300_000,
+			60_000,
+			301_001
+		)
+
+		expect(duringCooldown).toBeNull()
+		expect(afterCooldown).toEqual({ token: expect.any(String) })
+	})
+
+	it('releases a failed claim so it can be retried immediately', async () => {
+		const client = makeFakeClient()
+		const state = makeFakeThis(client) as any
+
+		const first = await MumbleDO.prototype.tryClaimUserSync.call(
+			state,
+			'srv',
+			'user-1',
+			300_000,
+			60_000,
+			1_000
+		)
+		await MumbleDO.prototype.releaseUserSync.call(state, 'srv', 'user-1', first!.token)
+		const retry = await MumbleDO.prototype.tryClaimUserSync.call(
+			state,
+			'srv',
+			'user-1',
+			300_000,
+			60_000,
+			1_001
+		)
+
+		expect(retry).toEqual({ token: expect.any(String) })
 	})
 })
 
@@ -347,6 +443,32 @@ describe('MumbleDO.deleteAccounts', () => {
 })
 
 describe('MumbleDO.alarm', () => {
+	it('cleans up completed and abandoned user sync state', async () => {
+		const client = makeFakeClient()
+		const fakeThis = makeFakeThis(client)
+		const now = Date.now()
+		fakeThis.state.storage.data.set('user-sync:completed', {
+			completedAt: now - 301_000,
+			cooldownMs: 300_000,
+			leaseToken: null,
+			leaseUntil: 0,
+			cleanupAt: now - 1,
+		})
+		fakeThis.state.storage.data.set('user-sync:abandoned', {
+			completedAt: 0,
+			cooldownMs: 300_000,
+			leaseToken: 'stale-lease',
+			leaseUntil: now - 1,
+			cleanupAt: now - 1,
+		})
+
+		await (MumbleDO.prototype.alarm as () => Promise<void>).call(fakeThis as any)
+
+		expect(fakeThis.state.storage.data.has('user-sync:completed')).toBe(false)
+		expect(fakeThis.state.storage.data.has('user-sync:abandoned')).toBe(false)
+		expect(fakeThis.state.storage.deleteAlarm).toHaveBeenCalledTimes(1)
+	})
+
 	it('retries queued deletions and clears confirmed entries', async () => {
 		const client = makeFakeClient()
 		client.getLocalAccount.mockResolvedValue(SNAPSHOT)

@@ -1,12 +1,12 @@
 import { Hono } from 'hono'
 
+import { MUMBLE_FEATURE_FLAG_KEY } from '@repo/features'
 import { logger } from '@repo/hono-helpers'
 import { parseMumbleError } from '@repo/mumble'
-import { MUMBLE_FEATURE_FLAG_KEY } from '@repo/features'
 
 import { requireAllianceMember } from '../middleware/session'
-import { resolveFlag } from './flags'
 import * as mumbleService from '../services/mumble.service'
+import { resolveFlag } from './flags'
 
 import type { Context } from 'hono'
 import type { App } from '../context'
@@ -62,6 +62,16 @@ mumble.get('/account', async (c) => {
 
 	try {
 		const account = await mumbleService.getMumbleAccount(c.env, user.id)
+		if (account) {
+			c.executionCtx.waitUntil(
+				mumbleService.syncMumbleAccountIfDue(c.env, user.id).catch((error) => {
+					logger.warn('[Mumble] On-demand account sync failed', {
+						userId: user.id,
+						error: error instanceof Error ? error.message : String(error),
+					})
+				})
+			)
+		}
 		return c.json({
 			account,
 			connection: mumbleService.getMumbleConnectionInfo(c.env),
