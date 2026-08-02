@@ -68,14 +68,11 @@ export function useCopyField() {
 }
 
 /** One-time credentials card shown after provisioning or a password reset. */
-export function OneTimeCredentialsCard({
-	credentials,
-}: {
-	credentials: MumbleOneTimeCredentials
-}) {
+export function OneTimeCredentialsCard({ credentials }: { credentials: MumbleOneTimeCredentials }) {
 	const { copiedField, copyToClipboard } = useCopyField()
 	const mumbleUrl = buildMumbleUrl(credentials)
-	const server = `${credentials.connection.host}:${credentials.connection.port}`
+	const server = credentials.connection.host
+	const port = String(credentials.connection.port)
 
 	return (
 		<Card variant="default" className="border-amber-500/50">
@@ -85,8 +82,8 @@ export function OneTimeCredentialsCard({
 					Your Mumble credentials
 				</CardTitle>
 				<CardDescription>
-					The password below is shown only once and cannot be recovered. Save the server,
-					username, and password somewhere safe before you leave this page.
+					The password below is shown only once and cannot be recovered. Save the server, username,
+					and password somewhere safe before you leave this page.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-3">
@@ -111,6 +108,12 @@ export function OneTimeCredentialsCard({
 					value={server}
 					copied={copiedField === 'server'}
 					onCopy={() => copyToClipboard(server, 'server', 'Server')}
+				/>
+				<CopyRow
+					label="Port"
+					value={port}
+					copied={copiedField === 'port'}
+					onCopy={() => copyToClipboard(port, 'port', 'Port')}
 				/>
 				<div className="pt-3">
 					<Button asChild variant="primary" className="justify-center gap-2">

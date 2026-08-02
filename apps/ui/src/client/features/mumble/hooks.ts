@@ -1,14 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { mumbleKeys } from './query-keys'
 import { apiClient } from '@/lib/api'
+
+import { mumbleKeys } from './query-keys'
 
 /** Current user's Mumble account status + connection info. */
 export function useMumbleAccount(enabled = true) {
 	return useQuery({
 		queryKey: mumbleKeys.account(),
 		queryFn: () => apiClient.getMumbleAccount(),
-		staleTime: 1000 * 30,
+		// The API performs a best-effort on-demand sync with its own durable
+		// cooldown. Do not turn tab focus into a recurring sync trigger.
+		staleTime: 1000 * 60 * 5,
+		refetchOnWindowFocus: false,
 		enabled,
 	})
 }

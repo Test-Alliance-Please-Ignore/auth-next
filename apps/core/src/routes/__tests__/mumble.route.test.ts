@@ -10,6 +10,7 @@ import type { App, SessionUser } from '../../context'
 
 const {
 	getMumbleAccountMock,
+	syncMumbleAccountIfDueMock,
 	provisionMumbleAccountMock,
 	resetMumblePasswordMock,
 	getMumbleConnectionInfoMock,
@@ -17,6 +18,7 @@ const {
 	featuresStub,
 } = vi.hoisted(() => ({
 	getMumbleAccountMock: vi.fn(),
+	syncMumbleAccountIfDueMock: vi.fn(),
 	provisionMumbleAccountMock: vi.fn(),
 	resetMumblePasswordMock: vi.fn(),
 	getMumbleConnectionInfoMock: vi.fn(() => ({ host: 'voice.test', port: 64738 })),
@@ -28,6 +30,7 @@ const {
 
 vi.mock('../../services/mumble.service', () => ({
 	getMumbleAccount: getMumbleAccountMock,
+	syncMumbleAccountIfDue: syncMumbleAccountIfDueMock,
 	provisionMumbleAccount: provisionMumbleAccountMock,
 	resetMumblePassword: resetMumblePasswordMock,
 	getMumbleConnectionInfo: getMumbleConnectionInfoMock,
@@ -71,6 +74,7 @@ function makeApp(user?: SessionUser) {
 beforeEach(() => {
 	vi.clearAllMocks()
 	getMumbleConnectionInfoMock.mockReturnValue({ host: 'voice.test', port: 64738 })
+	syncMumbleAccountIfDueMock.mockResolvedValue(undefined)
 	getStubMock.mockImplementation((namespace: any) => {
 		if (namespace === env.FEATURES) return featuresStub as any
 		throw new Error('Unexpected namespace')
@@ -79,10 +83,12 @@ beforeEach(() => {
 })
 
 describe('GET /api/mumble/account', () => {
+	const executionContext = { waitUntil: vi.fn() } as any
+
 	it('returns 404 when the mumble feature flag is disabled', async () => {
 		featuresStub.checkFlag.mockResolvedValue(false)
 
-		const res = await makeApp(makeUser()).request('/api/mumble/account', {}, env)
+		const res = await makeApp(makeUser()).request('/api/mumble/account', {}, env, executionContext)
 
 		expect(res.status).toBe(404)
 	})
@@ -100,12 +106,22 @@ describe('GET /api/mumble/account', () => {
 	it('returns account and connection info', async () => {
 		getMumbleAccountMock.mockResolvedValue({ subjectId: 'u1', loginName: 'pilot' })
 
-		const res = await makeApp(makeUser()).request('/api/mumble/account', {}, env)
+		const res = await makeApp(makeUser()).request('/api/mumble/account', {}, env, executionContext)
 
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as any
 		expect(body.account.loginName).toBe('pilot')
 		expect(body.connection).toEqual({ host: 'voice.test', port: 64738 })
+		expect(syncMumbleAccountIfDueMock).toHaveBeenCalledWith(env, makeUser().id)
+	})
+
+	it('does not start a sync when no Mumble account exists', async () => {
+		getMumbleAccountMock.mockResolvedValue(null)
+
+		const res = await makeApp(makeUser()).request('/api/mumble/account', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(syncMumbleAccountIfDueMock).not.toHaveBeenCalled()
 	})
 
 	it('falls back to an empty state when the Mumble RPC transport is unavailable', async () => {

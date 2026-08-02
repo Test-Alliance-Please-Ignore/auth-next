@@ -39,6 +39,19 @@ const PENDING_DELETE_PREFIX = 'pending-delete:'
 /** Retry interval for pending deletions */
 const PENDING_DELETE_RETRY_MS = 5 * 60 * 1000
 
+/** Durable state prefix for on-demand user sync cooldown leases. */
+const USER_SYNC_PREFIX = 'user-sync:'
+/** Keep temporary sync state only until the cooldown has elapsed. */
+const USER_SYNC_DEFAULT_COOLDOWN_MS = 5 * 60 * 1000
+
+interface UserSyncState {
+	completedAt: number
+	cooldownMs: number
+	leaseToken: string | null
+	leaseUntil: number
+	cleanupAt: number
+}
+
 /**
  * Assignments at or below this count are existence-checked per subject;
  * larger batches use a single full user-state read instead.
@@ -263,6 +276,123 @@ export class MumbleDO extends DurableObject<Env> implements Mumble {
 		} catch (error) {
 			this.handleError(error, 'getAccount', serverId)
 		}
+	}
+
+	private userSyncKey(subjectId: string): string {
+		return `${USER_SYNC_PREFIX}${subjectId}`
+	}
+
+	async tryClaimUserSync(
+		_serverId: string,
+		subjectId: string,
+		cooldownMs: number,
+		leaseMs: number,
+		nowMs = Date.now()
+	): Promise<{ token: string } | null> {
+		if (cooldownMs < 0 || leaseMs <= 0) {
+			throw new Error('User sync cooldown and lease must be non-negative and positive respectively')
+		}
+
+		return this.serialize(async () => {
+			const key = this.userSyncKey(subjectId)
+			const current = (await this.state.storage.get<UserSyncState>(key)) ?? {
+				completedAt: 0,
+				cooldownMs,
+				leaseToken: null,
+				leaseUntil: 0,
+				cleanupAt: 0,
+			}
+			const cleanupAt =
+				current.cleanupAt > 0
+					? current.cleanupAt
+					: current.completedAt > 0
+						? current.completedAt + (current.cooldownMs || cooldownMs)
+						: current.leaseUntil
+
+			if (current.leaseToken && current.leaseUntil > nowMs) {
+				return null
+			}
+			if (cleanupAt > nowMs) {
+				return null
+			}
+
+			const token = crypto.randomUUID()
+			await this.state.storage.put(key, {
+				completedAt: current.completedAt,
+				cooldownMs,
+				leaseToken: token,
+				leaseUntil: nowMs + leaseMs,
+				cleanupAt: nowMs + leaseMs,
+			})
+			await this.scheduleUserSyncAlarm(nowMs + leaseMs)
+			return { token }
+		})
+	}
+
+	async completeUserSync(
+		_serverId: string,
+		subjectId: string,
+		token: string,
+		nowMs = Date.now()
+	): Promise<void> {
+		await this.serialize(async () => {
+			const key = this.userSyncKey(subjectId)
+			const current = await this.state.storage.get<UserSyncState>(key)
+			if (current?.leaseToken !== token) return
+			await this.state.storage.put(key, {
+				completedAt: nowMs,
+				cooldownMs: current.cooldownMs || USER_SYNC_DEFAULT_COOLDOWN_MS,
+				leaseToken: null,
+				leaseUntil: 0,
+				cleanupAt: nowMs + (current.cooldownMs || USER_SYNC_DEFAULT_COOLDOWN_MS),
+			})
+			await this.scheduleUserSyncAlarm(
+				nowMs + (current.cooldownMs || USER_SYNC_DEFAULT_COOLDOWN_MS)
+			)
+		})
+	}
+
+	async releaseUserSync(_serverId: string, subjectId: string, token: string): Promise<void> {
+		await this.serialize(async () => {
+			const key = this.userSyncKey(subjectId)
+			const current = await this.state.storage.get<UserSyncState>(key)
+			if (current?.leaseToken !== token) return
+			await this.state.storage.delete(key)
+		})
+	}
+
+	private async scheduleUserSyncAlarm(scheduledAt: number): Promise<void> {
+		const existingAlarm = await this.state.storage.getAlarm()
+		const nowMs = Date.now()
+		if (existingAlarm === null || existingAlarm <= nowMs || existingAlarm > scheduledAt) {
+			await this.state.storage.setAlarm(scheduledAt)
+		}
+	}
+
+	private async cleanupUserSyncStates(nowMs: number): Promise<number | null> {
+		const entries = await this.state.storage.list<UserSyncState>({ prefix: USER_SYNC_PREFIX })
+		let nextCleanupAt: number | null = null
+		const expiredKeys: string[] = []
+
+		for (const [key, state] of entries) {
+			const cleanupAt =
+				state.cleanupAt > 0
+					? state.cleanupAt
+					: state.completedAt > 0
+						? state.completedAt + (state.cooldownMs || USER_SYNC_DEFAULT_COOLDOWN_MS)
+						: state.leaseUntil
+			if (cleanupAt <= nowMs) {
+				expiredKeys.push(key)
+			} else if (nextCleanupAt === null || cleanupAt < nextCleanupAt) {
+				nextCleanupAt = cleanupAt
+			}
+		}
+
+		if (expiredKeys.length > 0) {
+			await this.state.storage.delete(expiredKeys)
+		}
+
+		return nextCleanupAt
 	}
 
 	/**
@@ -494,7 +624,16 @@ export class MumbleDO extends DurableObject<Env> implements Mumble {
 		const pendingEntries = await this.state.storage.list<number>({
 			prefix: PENDING_DELETE_PREFIX,
 		})
-		if (pendingEntries.size === 0) return
+		const nowMs = Date.now()
+		const nextUserSyncCleanupAt = await this.cleanupUserSyncStates(nowMs)
+		if (pendingEntries.size === 0) {
+			if (nextUserSyncCleanupAt === null) {
+				await this.state.storage.deleteAlarm()
+			} else {
+				await this.state.storage.setAlarm(nextUserSyncCleanupAt)
+			}
+			return
+		}
 
 		// Group queued subjects by serverId. subjectIds are UUIDs (no colons),
 		// so the last colon separates serverId from subjectId.
@@ -520,6 +659,19 @@ export class MumbleDO extends DurableObject<Env> implements Mumble {
 					resolved.map((subjectId) => `${PENDING_DELETE_PREFIX}${serverId}:${subjectId}`)
 				)
 			}
+		}
+
+		const remainingPendingEntries = await this.state.storage.list<number>({
+			prefix: PENDING_DELETE_PREFIX,
+		})
+		if (remainingPendingEntries.size === 0) {
+			if (nextUserSyncCleanupAt === null) {
+				await this.state.storage.deleteAlarm()
+			} else {
+				await this.state.storage.setAlarm(nextUserSyncCleanupAt)
+			}
+		} else if (nextUserSyncCleanupAt !== null) {
+			await this.scheduleUserSyncAlarm(nextUserSyncCleanupAt)
 		}
 	}
 }
