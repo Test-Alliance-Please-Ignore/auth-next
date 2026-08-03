@@ -7,6 +7,7 @@ import {
 	DISCORD_JOIN_PROGRAMMATIC_COMMAND,
 	DISCORD_LEAVE_PROGRAMMATIC_COMMAND,
 	DISCORD_PART_PROGRAMMATIC_COMMAND,
+	DISCORD_ROLES_PROGRAMMATIC_COMMAND,
 } from './temporary-roles'
 
 import type { ProgrammaticCommandDefinition } from './types'
@@ -20,6 +21,7 @@ export {
 	DISCORD_JOIN_PROGRAMMATIC_COMMAND,
 	DISCORD_LEAVE_PROGRAMMATIC_COMMAND,
 	DISCORD_PART_PROGRAMMATIC_COMMAND,
+	DISCORD_ROLES_PROGRAMMATIC_COMMAND,
 } from './temporary-roles'
 export type { DeferralMode, ProgrammaticCommandDefinition } from './types'
 
@@ -32,6 +34,7 @@ export const PROGRAMMATIC_COMMAND_DEFINITIONS: ProgrammaticCommandDefinition[] =
 	DISCORD_JOIN_PROGRAMMATIC_COMMAND,
 	DISCORD_PART_PROGRAMMATIC_COMMAND,
 	DISCORD_LEAVE_PROGRAMMATIC_COMMAND,
+	DISCORD_ROLES_PROGRAMMATIC_COMMAND,
 ]
 
 export const programmaticCommandDefinitionByName = new Map(

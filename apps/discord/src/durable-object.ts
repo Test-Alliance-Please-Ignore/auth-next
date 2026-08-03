@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, eq, ilike, isNotNull, sql } from '@repo/db-utils'
 import {
+	buildDiscordWebhookMessagePayload,
 	DISCORD_CHANNEL_TYPE,
 	DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID,
 	DiscordAPIError,
@@ -1489,31 +1490,7 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 		try {
 			const proxyUrl = this.getDiscordProxyUrl()
 
-			// Build the message payload
-			const payload: any = {
-				content: message.content,
-			}
-
-			// Add embeds if provided
-			if (message.embeds && message.embeds.length > 0) {
-				payload.embeds = message.embeds
-			}
-
-			// Handle mention permissions
-			if (message.allowEveryone === false) {
-				payload.allowed_mentions = {
-					parse: [], // Don't parse any mentions
-				}
-			} else if (message.allowEveryone === true) {
-				payload.allowed_mentions = {
-					parse: ['everyone', 'roles', 'users'],
-				}
-			} else {
-				// Default: allow user and role mentions but not @everyone/@here
-				payload.allowed_mentions = {
-					parse: ['roles', 'users'],
-				}
-			}
+			const payload = buildDiscordWebhookMessagePayload(message)
 
 			// Send message via Discord API (with retry on rate limit)
 			const url = `https://discord.com/api/v10/channels/${channelId}/messages`

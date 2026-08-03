@@ -1,122 +1,39 @@
-import { createDb } from '../../db'
-import {
-	hasAllianceMemberRole,
-	listSelfAssignableRolesForUser,
-	removeTemporaryRole,
-} from '../discord-temporary-roles.service'
-import {
-	ephemeralCommandResponse,
-	modalCommandResponse,
-	ProgrammaticCommandPermissionError,
-} from './types'
+import { DISCORD_SLASH_COMMAND_OPTION_TYPE } from '@repo/discord'
+import { getStub } from '@repo/do-utils'
 
+import { createDb } from '../../db'
+import { buildTemporaryRolePanelMessage } from '../../lib/temporary-role-panel'
+import { executeTemporaryRoleCommand } from '../temporary-role-command.service'
+
+import type { Discord } from '@repo/discord'
 import type { ProgrammaticCommandContext, ProgrammaticCommandDefinition } from './types'
 
 const ALLIANCE_MEMBER_ACCESS = ['Alliance member']
 
-type TemporaryRoleCommandRole = {
-	roleDbId: string
-	roleName: string
-	displayName: string
-}
-
-const MAX_DISCORD_SELECT_LABEL_LENGTH = 100
-
-function buildRoleSelectModalResponse(mode: 'join' | 'leave', roles: TemporaryRoleCommandRole[]) {
-	if (
-		roles.length > 25 ||
-		roles.some(
-			(role) =>
-				role.displayName.length > MAX_DISCORD_SELECT_LABEL_LENGTH ||
-				role.roleName.length > MAX_DISCORD_SELECT_LABEL_LENGTH
-		)
-	) {
-		return ephemeralCommandResponse(
-			roles.length > 25
-				? 'Too many self-assignable roles are configured for this server.'
-				: 'A configured role name is too long for Discord selection.'
-		)
-	}
-	return modalCommandResponse(
-		mode === 'join' ? 'Choose a role to join.' : 'Choose a role to leave.',
-		`tmp-role:${mode}`,
-		[
-			{
-				type: 18 as const,
-				label: mode === 'join' ? 'Available roles' : 'Assigned roles',
-				description: mode === 'join' ? 'Select a role to join.' : 'Select a role to leave.',
-				component: {
-					type: 3 as const,
-					custom_id: `tmp-role:${mode}:role`,
-					options: roles.map((role) => ({
-						label: role.displayName,
-						value: role.roleDbId,
-						description: role.roleName,
-					})),
-					placeholder: mode === 'join' ? 'Select a role to join' : 'Select a role to leave',
-					max_values: 1,
-				},
-			},
-		]
-	)
-}
-
-async function assertMemberAccess(ctx: ProgrammaticCommandContext): Promise<void> {
-	if (ctx.isAdmin) return
-	if (!(await hasAllianceMemberRole(ctx.env, ctx.coreUserId))) {
-		throw new ProgrammaticCommandPermissionError(
-			'You need alliance member permission to use this command.'
-		)
-	}
-}
-
 async function handleSelfAssignment(ctx: ProgrammaticCommandContext) {
-	await assertMemberAccess(ctx)
-	const guildId = ctx.input.guildId
-	if (!guildId) throw new Error('This command can only be used in a Discord server.')
-	const db = createDb(ctx.env.DATABASE_URL)
-	const roles = await listSelfAssignableRolesForUser(
-		ctx.env,
-		db,
-		guildId,
-		ctx.input.discordUserId,
-		'join',
-		ctx.input.memberRoleIds
-	)
-	if (roles.length === 0) return ephemeralCommandResponse('You have no available roles to join.')
-	return buildRoleSelectModalResponse('join', roles)
+	return executeTemporaryRoleCommand({
+		db: createDb(ctx.env.DATABASE_URL),
+		env: ctx.env,
+		guildId: ctx.input.guildId,
+		discordUserId: ctx.input.discordUserId,
+		coreUserId: ctx.coreUserId,
+		isAdmin: ctx.isAdmin,
+		memberRoleIds: ctx.input.memberRoleIds,
+		mode: 'join',
+	})
 }
 
 async function handleSelfRemoval(ctx: ProgrammaticCommandContext) {
-	await assertMemberAccess(ctx)
-	const guildId = ctx.input.guildId
-	if (!guildId) throw new Error('This command can only be used in a Discord server.')
-	const db = createDb(ctx.env.DATABASE_URL)
-	const roles = await listSelfAssignableRolesForUser(
-		ctx.env,
-		db,
-		guildId,
-		ctx.input.discordUserId,
-		'leave',
-		ctx.input.memberRoleIds
-	)
-	if (roles.length === 0)
-		return ephemeralCommandResponse('You have no self-assigned roles to leave.')
-	if (roles.length > 1) return buildRoleSelectModalResponse('leave', roles)
-	const role = roles[0]
-	const removed = await removeTemporaryRole(ctx.env, db, {
-		guildId,
+	return executeTemporaryRoleCommand({
+		db: createDb(ctx.env.DATABASE_URL),
+		env: ctx.env,
+		guildId: ctx.input.guildId,
 		discordUserId: ctx.input.discordUserId,
 		coreUserId: ctx.coreUserId,
-		role,
-		reason: 'part',
-		onlySelf: true,
+		isAdmin: ctx.isAdmin,
+		memberRoleIds: ctx.input.memberRoleIds,
+		mode: 'leave',
 	})
-	return ephemeralCommandResponse(
-		removed
-			? `Removed **${role.displayName}**.`
-			: `You do not currently have **${role.displayName}** self-assigned.`
-	)
 }
 
 export const DISCORD_JOIN_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition = {
@@ -147,4 +64,83 @@ export const DISCORD_LEAVE_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition =
 	options: undefined,
 	deferral: 'sync',
 	handler: handleSelfRemoval,
+}
+
+export const DISCORD_ROLES_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition = {
+	name: 'roles',
+	description: 'Post a temporary role selection panel in this channel.',
+	categoryName: 'Roles Management',
+	immutableAccessRequirements: [],
+	options: [
+		{
+			type: DISCORD_SLASH_COMMAND_OPTION_TYPE.STRING,
+			name: 'title',
+			description: 'Optional title for the panel embed.',
+			required: false,
+			max_length: 256,
+		},
+		{
+			type: DISCORD_SLASH_COMMAND_OPTION_TYPE.STRING,
+			name: 'message',
+			description: 'Optional instructions to show in the panel.',
+			required: false,
+			max_length: 4000,
+		},
+	],
+	deferral: 'sync',
+	handler: async ({ optionValues, isAdmin, env, input }) => {
+		if (!isAdmin) {
+			return {
+				type: 4,
+				data: {
+					content: 'Only site admins can post a temporary role panel.',
+					flags: 1 << 6,
+				},
+			}
+		}
+		if (!input.guildId || !input.channelId) {
+			return {
+				type: 4,
+				data: {
+					content: 'This command can only be used in a Discord server channel.',
+					flags: 1 << 6,
+				},
+			}
+		}
+
+		try {
+			const discord = getStub<Discord>(env.DISCORD, 'default')
+			const result = await discord.sendMessage(
+				input.guildId,
+				input.channelId,
+				buildTemporaryRolePanelMessage(optionValues.title, optionValues.message)
+			)
+			if (!result.success) {
+				return {
+					type: 4,
+					data: {
+						content: `Could not post the temporary role panel: ${result.error ?? 'Discord rejected the message.'}`,
+						flags: 1 << 6,
+					},
+				}
+			}
+			return {
+				type: 4,
+				data: {
+					content: result.messageId
+						? `Temporary role panel posted in <#${input.channelId}> (message ${result.messageId}).`
+						: `Temporary role panel posted in <#${input.channelId}>.`,
+					flags: 1 << 6,
+				},
+			}
+		} catch {
+			return {
+				type: 4,
+				data: {
+					content: 'Could not post the temporary role panel. Please try again later.',
+					flags: 1 << 6,
+				},
+			}
+		}
+	},
 }

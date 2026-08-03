@@ -1,9 +1,15 @@
 import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
-import { getStub } from '@repo/do-utils'
 import { z } from 'zod'
 
-import { logger, withNotFound, withOnError, withSentry, withWorkersLogger } from '@repo/hono-helpers'
+import { getStub } from '@repo/do-utils'
+import {
+	logger,
+	withNotFound,
+	withOnError,
+	withSentry,
+	withWorkersLogger,
+} from '@repo/hono-helpers'
 
 import { DiscordDO, DiscordGatewayDO } from './durable-object'
 import * as discordService from './services/discord.service'
@@ -87,9 +93,12 @@ async function getInteractionRouting(env: App['Bindings']): Promise<DiscordInter
 				routingCache.loadedAtMs = Date.now()
 				return routing
 			} catch (error) {
-				logger.warn('[DiscordInteractions] Failed to load interaction routing; defaulting to sync', {
-					error: error instanceof Error ? error.message : String(error),
-				})
+				logger.warn(
+					'[DiscordInteractions] Failed to load interaction routing; defaulting to sync',
+					{
+						error: error instanceof Error ? error.message : String(error),
+					}
+				)
 				return routingCache.value ?? { commands: {} }
 			} finally {
 				routingCache.loading = null
@@ -272,10 +281,10 @@ async function runDeferredComponent(
 		})
 		const content = execution.response.data?.content ?? '​'
 		const stub = getStub<Discord>(env.DISCORD, 'default')
-			const result = await stub.editOriginalInteractionResponse(ctx.token, {
-				content,
-				components: execution.response.data?.components as DiscordActionRow[] | undefined,
-			})
+		const result = await stub.editOriginalInteractionResponse(ctx.token, {
+			content,
+			components: execution.response.data?.components as DiscordActionRow[] | undefined,
+		})
 		if (!result.success) {
 			logger.error('[DiscordInteractions] Failed to deliver component response', {
 				interactionId: ctx.interactionId,
@@ -302,11 +311,7 @@ async function runDeferredComponent(
 
 type ModalComponentInput = DiscordModalLabelComponent
 
-function buildModalResponse(
-	customId: string,
-	title: string,
-	components: ModalComponentInput[]
-) {
+function buildModalResponse(customId: string, title: string, components: ModalComponentInput[]) {
 	return {
 		type: DISCORD_RESPONSE_MODAL,
 		data: {
@@ -350,7 +355,6 @@ function collectModalSubmissionData(
 	}
 }
 
-
 function hexToBytes(hex: unknown): Uint8Array | null {
 	if (typeof hex !== 'string') return null
 	const normalized = hex.trim()
@@ -389,13 +393,11 @@ async function verifyDiscordInteractionSignature(
 }
 
 const app = new Hono<App>()
-	.use(
-		'*',
-		(c, next) =>
-			withWorkersLogger(c.env.NAME ?? 'discord', {
-				environment: c.env.ENVIRONMENT ?? 'development',
-				release: c.env.SENTRY_RELEASE ?? 'unknown',
-			})(c, next)
+	.use('*', (c, next) =>
+		withWorkersLogger(c.env.NAME ?? 'discord', {
+			environment: c.env.ENVIRONMENT ?? 'development',
+			release: c.env.SENTRY_RELEASE ?? 'unknown',
+		})(c, next)
 	)
 
 	.onError(withOnError())
@@ -453,7 +455,10 @@ const app = new Hono<App>()
 		}
 
 		if (interaction.type === DISCORD_INTERACTION_PING) {
-			logger.info('[DiscordInteractions] Ping interaction', { requestId, interactionId: interaction.id })
+			logger.info('[DiscordInteractions] Ping interaction', {
+				requestId,
+				interactionId: interaction.id,
+			})
 			return c.json({ type: DISCORD_INTERACTION_PING })
 		}
 
@@ -464,6 +469,21 @@ const app = new Hono<App>()
 			const parts = customId.split(':')
 			const componentUserId = interaction.member?.user?.id ?? interaction.user?.id ?? null
 			const memberRoleIds = interaction.member?.roles ?? []
+
+			// Temporary role panels reuse the same command executor as /join and /leave. The executor
+			// may return a role-selection modal, so this path must remain synchronous for Discord's ACK.
+			if (parts[0] === 'tmp-role-panel' && componentUserId) {
+				const execution = await c.env.CORE.executeDiscordComponent({
+					customId,
+					discordUserId: componentUserId,
+					interactionId: interaction.id,
+					guildId: interaction.guild_id ?? null,
+					channelId: interaction.channel_id ?? null,
+					memberRoleIds,
+					values: interaction.data?.values ?? [],
+				})
+				return c.json(execution.response)
+			}
 
 			if (parts[0] === 'tmp-role' && componentUserId) {
 				c.executionCtx.waitUntil(
@@ -510,18 +530,18 @@ const app = new Hono<App>()
 				const [, action, marketId] = parts
 				if (action === 'resolve') {
 					return c.json(
-					buildModalResponse(`resolvemodal:${marketId}`, 'Resolve market', [
-						{
-							type: 18,
-							label: 'Winning outcome number',
-							component: {
-								type: 4,
-								custom_id: 'outcome',
-								style: 1,
-								required: true,
-								min_length: 1,
-								max_length: 3,
-								placeholder: '1',
+						buildModalResponse(`resolvemodal:${marketId}`, 'Resolve market', [
+							{
+								type: 18,
+								label: 'Winning outcome number',
+								component: {
+									type: 4,
+									custom_id: 'outcome',
+									style: 1,
+									required: true,
+									min_length: 1,
+									max_length: 3,
+									placeholder: '1',
 								},
 							},
 						])
@@ -529,18 +549,18 @@ const app = new Hono<App>()
 				}
 				if (action === 'void') {
 					return c.json(
-					buildModalResponse(`voidmodal:${marketId}`, 'Void market', [
-						{
-							type: 18,
-							label: 'Void reason',
-							component: {
-								type: 4,
-								custom_id: 'reason',
-								style: 2,
-								required: true,
-								min_length: 3,
-								max_length: 500,
-								placeholder: 'Why is this market being voided?',
+						buildModalResponse(`voidmodal:${marketId}`, 'Void market', [
+							{
+								type: 18,
+								label: 'Void reason',
+								component: {
+									type: 4,
+									custom_id: 'reason',
+									style: 2,
+									required: true,
+									min_length: 3,
+									max_length: 500,
+									placeholder: 'Why is this market being voided?',
 								},
 							},
 						])
@@ -848,7 +868,11 @@ const app = new Hono<App>()
 
 const sentryApp = withSentry(app)
 
-	async function scheduled(event: ScheduledEvent, _env: App['Bindings'], _ctx: ExecutionContext): Promise<void> {
+async function scheduled(
+	event: ScheduledEvent,
+	_env: App['Bindings'],
+	_ctx: ExecutionContext
+): Promise<void> {
 	// Intentionally stubbed: the Discord gateway listener has been disabled because
 	// the always-on websocket bootstrap caused unacceptable hosting cost inflation.
 	// We keep the scheduled entrypoint and gateway DO stub in place so the feature can
