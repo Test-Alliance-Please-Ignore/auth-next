@@ -6,6 +6,7 @@ import type { DiscordEmbed } from '@repo/discord'
 import type { ProgrammaticCommandContext, ProgrammaticCommandEnv } from '../types'
 
 const hoisted = vi.hoisted(() => ({
+	select: vi.fn(),
 	getConfig: vi.fn(),
 	getSrpFleetBroadcastByToken: vi.fn(),
 	getSrpFleetSessionDetails: vi.fn(),
@@ -14,6 +15,10 @@ const hoisted = vi.hoisted(() => ({
 	wasSessionMemberAt: vi.fn(),
 	sendMessage: vi.fn(),
 	getCachedUserPermissions: vi.fn(),
+}))
+
+vi.mock('../../../db', () => ({
+	createDb: vi.fn(() => ({ select: hoisted.select })),
 }))
 
 vi.mock('@repo/do-utils', () => ({
@@ -39,6 +44,7 @@ function ctx(overrides: Partial<ProgrammaticCommandContext> = {}): ProgrammaticC
 		isAdmin: false,
 		env: {
 			GROUPS: {},
+			DATABASE_URL: 'database-url',
 			DISCORD: {},
 			PREDICTION_MARKETS: {},
 			BROADCASTS: {},
@@ -65,6 +71,7 @@ describe('SRPFLEET_PROGRAMMATIC_COMMAND', () => {
 		})
 		hoisted.getSrpFleetBroadcastByToken.mockResolvedValue({
 			fleetSessionId: 'session-1',
+			srpMode: 'blanket',
 			doctrineId: null,
 			srpToken: 'FleetToken',
 			content: {
@@ -91,6 +98,15 @@ describe('SRPFLEET_PROGRAMMATIC_COMMAND', () => {
 		})
 		hoisted.wasSessionMemberAt.mockResolvedValue(true)
 		hoisted.getCachedUserPermissions.mockResolvedValue([{ urn: 'urn:srp:reviewer' }])
+		hoisted.select.mockReturnValue({
+			from: () => ({
+				innerJoin: () => ({
+					where: () => ({
+						limit: () => Promise.resolve([{ characterName: 'Commanding Main' }]),
+					}),
+				}),
+			}),
+		})
 		hoisted.sendMessage.mockResolvedValue({ success: true, messageId: 'message-1' })
 	})
 
@@ -108,16 +124,22 @@ describe('SRPFLEET_PROGRAMMATIC_COMMAND', () => {
 		expect(result.data?.content).toContain('posted')
 		const embed = hoisted.sendMessage.mock.calls[0]?.[2]?.embeds?.[0] as DiscordEmbed | undefined
 		expect(embed?.title).toContain('Standing Fleet')
-		expect(embed?.fields?.find((field) => field.name === 'MOTD')?.value).toContain('Comms\nStanding')
+		expect(embed?.fields?.find((field) => field.name === 'MOTD')?.value).toContain(
+			'Comms\nStanding'
+		)
 		expect(embed?.fields?.find((field) => field.name === 'SRP Token')?.value).toBe('FleetToken')
+		expect(embed?.fields?.find((field) => field.name === 'SRP Type')?.value).toBe('Blanket')
+		expect(embed?.fields?.find((field) => field.name === 'Requested By')?.value).toBe(
+			'Commanding Main'
+		)
 		expect(embed?.fields?.find((field) => field.name === 'Eligibility Check')?.value).toContain(
 			'Member of fleet at loss: Yes'
 		)
 		expect(hoisted.wasSessionMemberAt).toHaveBeenCalledWith(
-		'session-1',
-		'300',
-		'2026-01-01T11:00:00.000Z'
-	)
+			'session-1',
+			'300',
+			'2026-01-01T11:00:00.000Z'
+		)
 	})
 
 	it('rejects an invocation from the wrong channel before looking up the token', async () => {
@@ -127,6 +149,7 @@ describe('SRPFLEET_PROGRAMMATIC_COMMAND', () => {
 
 		expect(result.data?.content).toContain('configured SRP channel')
 		expect(hoisted.getSrpFleetBroadcastByToken).not.toHaveBeenCalled()
+		expect(hoisted.select).not.toHaveBeenCalled()
 		expect(hoisted.sendMessage).not.toHaveBeenCalled()
 	})
 
@@ -141,6 +164,7 @@ describe('SRPFLEET_PROGRAMMATIC_COMMAND', () => {
 	it('resolves the linked doctrine name without loading doctrine fittings', async () => {
 		hoisted.getSrpFleetBroadcastByToken.mockResolvedValue({
 			fleetSessionId: 'session-1',
+			srpMode: 'military',
 			doctrineId: 'doctrine-1',
 			srpToken: 'FleetToken',
 			content: { fleetName: 'Standing Fleet' },
@@ -152,5 +176,6 @@ describe('SRPFLEET_PROGRAMMATIC_COMMAND', () => {
 		expect(hoisted.getDoctrineName).toHaveBeenCalledWith('doctrine-1')
 		const embed = hoisted.sendMessage.mock.calls[0]?.[2]?.embeds?.[0] as DiscordEmbed | undefined
 		expect(embed?.fields?.find((field) => field.name === 'Doctrine')?.value).toBe('Armor HAC')
+		expect(embed?.fields?.find((field) => field.name === 'SRP Type')?.value).toBe('Military')
 	})
 })

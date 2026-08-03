@@ -113,6 +113,7 @@ export interface BroadcastWithDetails extends Broadcast {
 export interface SrpFleetBroadcastLookup {
 	content: Record<string, unknown>
 	srpToken: string
+	srpMode: 'blanket' | 'military' | 'coalition' | 'disabled' | null
 	doctrineId: string | null
 	fleetSessionId: string | null
 }
