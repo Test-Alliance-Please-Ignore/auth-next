@@ -18,6 +18,7 @@ const hoisted = vi.hoisted(() => ({
 	assignTemporaryRole: vi.fn(),
 	removeTemporaryRole: vi.fn(),
 	createDb: vi.fn(() => ({})),
+	getStub: vi.fn(),
 }))
 
 vi.mock('../discord-temporary-roles.service', () => ({
@@ -28,6 +29,8 @@ vi.mock('../discord-temporary-roles.service', () => ({
 }))
 
 vi.mock('../../db', () => ({ createDb: hoisted.createDb }))
+
+vi.mock('@repo/do-utils', () => ({ getStub: hoisted.getStub }))
 
 const role = {
 	roleDbId: 'role-db-1',
@@ -69,11 +72,14 @@ describe('temporary role programmatic commands', () => {
 			expiresAt: Date.now() + 3600000,
 		})
 		hoisted.removeTemporaryRole.mockResolvedValue(true)
+		hoisted.getStub.mockReturnValue({
+			sendMessage: vi.fn().mockResolvedValue({ success: true, messageId: 'message-1' }),
+		})
 	})
 
 	it('registers every live role command', () => {
 		expect(PROGRAMMATIC_COMMAND_DEFINITIONS.map((definition) => definition.name)).toEqual(
-			expect.arrayContaining(['join', 'part', 'leave'])
+			expect.arrayContaining(['join', 'part', 'leave', 'roles'])
 		)
 		expect(
 			[
@@ -82,6 +88,41 @@ describe('temporary role programmatic commands', () => {
 				DISCORD_LEAVE_PROGRAMMATIC_COMMAND,
 			].map((definition) => definition.name)
 		).toEqual(expect.arrayContaining(['join', 'part', 'leave']))
+	})
+
+	it('allows only site admins to post a temporary role panel', async () => {
+		const rolesCommand = PROGRAMMATIC_COMMAND_DEFINITIONS.find(
+			(definition) => definition.name === 'roles'
+		)
+		expect(rolesCommand).toBeDefined()
+		expect(rolesCommand!.options?.map((option) => option.name)).toEqual(['title', 'message'])
+
+		const response = await rolesCommand!.handler(
+			ctx({
+				isAdmin: true,
+				optionValues: { title: 'Fleet Roles', message: 'Pick a role.' },
+				input: {
+					commandName: 'roles',
+					discordUserId: 'discord-1',
+					guildId: 'guild-1',
+					channelId: 'channel-1',
+				},
+			})
+		)
+
+		expect(response.data?.content).toContain('message-1')
+		const sendMessage = hoisted.getStub.mock.results[0]?.value.sendMessage
+		expect(sendMessage).toHaveBeenCalledWith(
+			'guild-1',
+			'channel-1',
+			expect.objectContaining({
+				embeds: [expect.objectContaining({ title: 'Fleet Roles', description: 'Pick a role.' })],
+				components: [expect.objectContaining({ type: 1 })],
+			})
+		)
+
+		const denied = await rolesCommand!.handler(ctx({ isAdmin: false }))
+		expect(denied.data?.content).toContain('Only site admins')
 	})
 
 	it('rejects self-assignment when the caller lacks alliance member permission', async () => {

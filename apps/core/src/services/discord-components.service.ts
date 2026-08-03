@@ -12,18 +12,11 @@
  */
 
 import { eq } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
 import { getDiscordStub } from '@repo/discord'
+import { getStub } from '@repo/do-utils'
 import { captureException, logger } from '@repo/hono-helpers'
 
 import { users } from '../db/schema'
-import { TEMPORARY_ROLE_INTERACTION_REPLAY_ERROR } from '../temporary-role-assignments-do'
-import {
-	assignTemporaryRole,
-	findCommandRoleById,
-	hasAllianceMemberRole,
-	removeTemporaryRole,
-} from './discord-temporary-roles.service'
 import {
 	BET_AMOUNT_INPUT_ID,
 	customIdAction,
@@ -35,6 +28,8 @@ import {
 } from '../lib/market-custom-id'
 import { formatMarketPoints } from '../lib/market-embed'
 import { hasMarketPermission } from '../lib/market-permissions'
+import { parseTemporaryRolePanelAction } from '../lib/temporary-role-panel'
+import { TEMPORARY_ROLE_INTERACTION_REPLAY_ERROR } from '../temporary-role-assignments-do'
 import {
 	announceMarketClosed,
 	announceMarketResolved,
@@ -45,8 +40,15 @@ import {
 	applyMarketPostStatus,
 	updateMarketPostFromDetail,
 } from './discord-market-post.service'
+import {
+	assignTemporaryRole,
+	findCommandRoleById,
+	hasAllianceMemberRole,
+	removeTemporaryRole,
+} from './discord-temporary-roles.service'
+import { executeTemporaryRoleCommand } from './temporary-role-command.service'
 
-import type { Discord, DiscordActionRow, DiscordEmbed } from '@repo/discord'
+import type { Discord, DiscordInteractionResponse } from '@repo/discord'
 import type { PredictionMarkets } from '@repo/prediction-markets'
 import type { Env } from '../context'
 import type { createDb } from '../db'
@@ -82,17 +84,12 @@ function temporaryRoleFailureMessage(
 /** Bindings the component/modal path needs (money DO, Discord DO, groups for the tier gate). */
 export type ComponentEnv = Pick<
 	Env,
-	| 'DISCORD'
-	| 'PREDICTION_MARKETS'
-	| 'GROUPS'
-	| 'PM_FORUM_GUILD_ID'
-	| 'TEMPORARY_ROLE_ASSIGNMENTS'
+	'DISCORD' | 'PREDICTION_MARKETS' | 'GROUPS' | 'PM_FORUM_GUILD_ID' | 'TEMPORARY_ROLE_ASSIGNMENTS'
 >
 
 export interface DiscordComponentResult {
-	response: {
-		type: number
-		data: { content: string; flags?: number; embeds?: DiscordEmbed[]; components?: DiscordActionRow[] }
+	response: Omit<DiscordInteractionResponse, 'data'> & {
+		data: NonNullable<DiscordInteractionResponse['data']>
 	}
 	coreUserId: string | null
 	reason: string
@@ -203,7 +200,11 @@ async function handleTemporaryRoleSelection(
 	const user = await resolveUser(db, discordUserId)
 	if (!user) return ephemeral(NOT_LINKED, 'not-linked')
 	if (!user.is_admin && !(await hasAllianceMemberRole(env, user.id))) {
-		return ephemeral('You need alliance member permission to use this command.', 'permission', user.id)
+		return ephemeral(
+			'You need alliance member permission to use this command.',
+			'permission',
+			user.id
+		)
 	}
 	const selectedRoleValue =
 		roleValue ?? firstSelectedValue(selectValues, `tmp-role:${mode}:role`) ?? null
@@ -261,7 +262,9 @@ async function handleTemporaryRoleSelection(
 			onlySelf: true,
 		})
 		return ephemeral(
-			removed ? `Left **${role.displayName}**.` : `You do not currently have **${role.displayName}**.`,
+			removed
+				? `Left **${role.displayName}**.`
+				: `You do not currently have **${role.displayName}**.`,
 			'ok',
 			user.id
 		)
@@ -297,6 +300,49 @@ async function executeTemporaryRoleComponent(
 		input.selectValues,
 		input.interactionId
 	)
+}
+
+async function executeTemporaryRolePanelComponent(
+	db: ReturnType<typeof createDb>,
+	env: ComponentEnv,
+	input: ExecuteComponentInput,
+	mode: 'join' | 'leave'
+): Promise<DiscordComponentResult> {
+	if (!input.guildId)
+		return ephemeral('This action can only be used in a Discord server.', 'no-guild')
+	const user = await resolveUser(db, input.discordUserId)
+	if (!user) return ephemeral(NOT_LINKED, 'not-linked')
+
+	try {
+		const response = await executeTemporaryRoleCommand({
+			db,
+			env,
+			guildId: input.guildId,
+			discordUserId: input.discordUserId,
+			coreUserId: user.id,
+			isAdmin: user.is_admin,
+			memberRoleIds: input.memberRoleIds,
+			mode,
+		})
+		return {
+			response: response as DiscordComponentResult['response'],
+			coreUserId: user.id,
+			reason: response.type === 9 ? 'role-selection' : 'ok',
+		}
+	} catch (error) {
+		if (error instanceof Error && error.name === 'ProgrammaticCommandPermissionError') {
+			return ephemeral(error.message, 'permission', user.id)
+		}
+		return ephemeral(
+			temporaryRoleFailureMessage(error, {
+				guildId: input.guildId,
+				discordUserId: input.discordUserId,
+				roleValue: `panel:${mode}`,
+			}),
+			'role-error',
+			user.id
+		)
+	}
 }
 
 /** Pull the underlying driver error off a Drizzle "Failed query: …" wrapper (the real cause). */
@@ -441,7 +487,12 @@ async function announceSettlement(
 		const settlement = await prediction.getMarketSettlement(marketId)
 		if (!settlement) return undefined
 		const discord = getStub<Discord>(env.DISCORD, 'default')
-		const posted = await announceMarketResolved(discord, env.PM_FORUM_GUILD_ID ?? '', market, settlement)
+		const posted = await announceMarketResolved(
+			discord,
+			env.PM_FORUM_GUILD_ID ?? '',
+			market,
+			settlement
+		)
 		// Post failed → leave the flag NULL so the reconcile sweep re-posts (and re-DMs) later; don't
 		// half-notify by DMing now against a market whose public result never landed.
 		if (!posted) return undefined
@@ -495,6 +546,10 @@ export async function executeDiscordComponent(
 	env: ComponentEnv,
 	input: ExecuteComponentInput
 ): Promise<DiscordComponentResult> {
+	const panelAction = parseTemporaryRolePanelAction(input.customId)
+	if (panelAction) {
+		return executeTemporaryRolePanelComponent(db, env, input, panelAction)
+	}
 	if (input.customId.startsWith('tmp-role:')) {
 		return executeTemporaryRoleComponent(db, env, input)
 	}
@@ -560,7 +615,10 @@ export async function executeDiscordModalSubmit(
 			input.guildId,
 			input.discordUserId,
 			parseTemporaryRoleMode(input.customId) ?? 'join',
-			firstSelectedValue(input.selectValues, `tmp-role:${parseTemporaryRoleMode(input.customId) ?? 'join'}:role`) ??
+			firstSelectedValue(
+				input.selectValues,
+				`tmp-role:${parseTemporaryRoleMode(input.customId) ?? 'join'}:role`
+			) ??
 				input.values?.[0] ??
 				null,
 			input.selectValues,

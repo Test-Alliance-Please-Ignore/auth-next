@@ -133,6 +133,8 @@ export interface MessageContent {
 	content: string
 	/** Message embeds */
 	embeds?: DiscordEmbed[]
+	/** Interactive message components */
+	components?: DiscordActionRow[]
 	/** Whether to allow @everyone and @here mentions */
 	allowEveryone?: boolean
 }
@@ -144,6 +146,7 @@ export interface DiscordWebhookAllowedMentions {
 export interface DiscordWebhookMessagePayload {
 	content: string
 	embeds?: DiscordEmbed[]
+	components?: DiscordActionRow[]
 	allowed_mentions?: DiscordWebhookAllowedMentions
 }
 
@@ -156,6 +159,10 @@ export function buildDiscordWebhookMessagePayload(
 
 	if (message.embeds && message.embeds.length > 0) {
 		payload.embeds = message.embeds
+	}
+
+	if (message.components && message.components.length > 0) {
+		payload.components = message.components
 	}
 
 	if (message.allowEveryone === false) {

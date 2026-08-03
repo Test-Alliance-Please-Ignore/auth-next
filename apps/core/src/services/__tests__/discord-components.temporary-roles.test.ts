@@ -6,6 +6,7 @@ import type { ExecuteComponentInput, ExecuteModalSubmitInput } from '../discord-
 
 const hoisted = vi.hoisted(() => ({
 	findCommandRoleById: vi.fn(),
+	listSelfAssignableRolesForUser: vi.fn(),
 	assignTemporaryRole: vi.fn(),
 	removeTemporaryRole: vi.fn(),
 	hasAllianceMemberRole: vi.fn(),
@@ -15,6 +16,7 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock('../discord-temporary-roles.service', () => ({
 	findCommandRoleById: hoisted.findCommandRoleById,
+	listSelfAssignableRolesForUser: hoisted.listSelfAssignableRolesForUser,
 	assignTemporaryRole: hoisted.assignTemporaryRole,
 	removeTemporaryRole: hoisted.removeTemporaryRole,
 	hasAllianceMemberRole: hoisted.hasAllianceMemberRole,
@@ -91,6 +93,7 @@ describe('temporary role component/modal flow', () => {
 			getGuildMemberByDiscordUserId: vi.fn().mockResolvedValue({ isMember: true, roleIds: [] }),
 		})
 		hoisted.findCommandRoleById.mockResolvedValue(role)
+		hoisted.listSelfAssignableRolesForUser.mockResolvedValue([role])
 		hoisted.assignTemporaryRole.mockResolvedValue({
 			...role,
 			expiresAt: Date.now() + 302400000,
@@ -99,6 +102,51 @@ describe('temporary role component/modal flow', () => {
 		assignmentStub.listActiveAssignments.mockResolvedValue([])
 		db.query.users.findFirst.mockResolvedValue({ id: 'core-admin', is_admin: true })
 		hoisted.hasAllianceMemberRole.mockResolvedValue(true)
+	})
+
+	it('uses the shared join command behavior when a panel button is clicked', async () => {
+		const result = await executeDiscordComponent(
+			db,
+			env as never,
+			componentInput({ customId: 'tmp-role-panel:join', values: [] })
+		)
+
+		expect(result.reason).toBe('role-selection')
+		expect(result.response.type).toBe(9)
+		expect(result.response.data.components).toHaveLength(1)
+		expect(hoisted.listSelfAssignableRolesForUser).toHaveBeenCalledWith(
+			env,
+			db,
+			'guild-1',
+			'admin-discord',
+			'join',
+			undefined
+		)
+	})
+
+	it('uses the shared leave command behavior for a single panel role', async () => {
+		hoisted.listSelfAssignableRolesForUser.mockResolvedValue([role])
+
+		const result = await executeDiscordComponent(
+			db,
+			env as never,
+			componentInput({ customId: 'tmp-role-panel:leave', values: [] })
+		)
+
+		expect(result.reason).toBe('ok')
+		expect(result.response.data.content).toContain('Removed')
+		expect(hoisted.removeTemporaryRole).toHaveBeenCalledWith(
+			env,
+			db,
+			expect.objectContaining({
+				guildId: 'guild-1',
+				discordUserId: 'admin-discord',
+				coreUserId: 'core-admin',
+				role,
+				reason: 'part',
+				onlySelf: true,
+			})
+		)
 	})
 
 	it('assigns a selected self-assignable role from the join modal submission', async () => {
@@ -173,7 +221,9 @@ describe('temporary role component/modal flow', () => {
 			{ roleId: 'role-1', assignmentSource: 'self' },
 		])
 		hoisted.getDiscordStub.mockReturnValue({
-			getGuildMemberByDiscordUserId: vi.fn().mockResolvedValue({ isMember: true, roleIds: ['role-1'] }),
+			getGuildMemberByDiscordUserId: vi
+				.fn()
+				.mockResolvedValue({ isMember: true, roleIds: ['role-1'] }),
 		})
 		const result = await executeDiscordComponent(
 			db,
@@ -204,7 +254,9 @@ describe('temporary role component/modal flow', () => {
 			{ roleId: 'role-1', assignmentSource: 'self' },
 		])
 		hoisted.getDiscordStub.mockReturnValue({
-			getGuildMemberByDiscordUserId: vi.fn().mockResolvedValue({ isMember: true, roleIds: ['role-1'] }),
+			getGuildMemberByDiscordUserId: vi
+				.fn()
+				.mockResolvedValue({ isMember: true, roleIds: ['role-1'] }),
 		})
 
 		const result = await executeDiscordModalSubmit(
