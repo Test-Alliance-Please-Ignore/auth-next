@@ -1,11 +1,14 @@
+import { eq } from '@repo/db-utils'
 import { DISCORD_SLASH_COMMAND_OPTION_TYPE } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
-
-import { getCachedUserPermissions } from '../../lib/groups-cache'
-import { ephemeralCommandResponse } from './types'
 import { parseDateOrNull } from '@repo/worker-utils'
 
-import type { Broadcasts } from '@repo/broadcasts'
+import { createDb } from '../../db'
+import { userCharacters, users } from '../../db/schema'
+import { getCachedUserPermissions } from '../../lib/groups-cache'
+import { ephemeralCommandResponse } from './types'
+
+import type { Broadcasts, BroadcastSrpMode } from '@repo/broadcasts'
 import type { Discord, DiscordEmbed } from '@repo/discord'
 import type { Doctrines } from '@repo/doctrines'
 import type { Fleets } from '@repo/fleets'
@@ -54,6 +57,29 @@ function buildComparisonError(message: string): string {
 	return `Eligibility comparison unavailable: ${message}`
 }
 
+function srpTypeLabel(mode: BroadcastSrpMode | null | undefined): string {
+	if (mode === 'blanket') return 'Blanket'
+	if (mode === 'military') return 'Military'
+	if (mode === 'coalition') return 'Coalition'
+	if (mode === 'disabled') return 'None'
+	return 'Unavailable'
+}
+
+async function getInvokerMainCharacterName(
+	databaseUrl: string,
+	userId: string
+): Promise<string | null> {
+	const db = createDb(databaseUrl)
+	const [row] = await db
+		.select({ characterName: userCharacters.characterName })
+		.from(users)
+		.innerJoin(userCharacters, eq(userCharacters.characterId, users.mainCharacterId))
+		.where(eq(users.id, userId))
+		.limit(1)
+
+	return row?.characterName ?? null
+}
+
 export const SRPFLEET_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition = {
 	name: 'srpfleet',
 	description: 'Show SRP fleet details for a fleet broadcast token.',
@@ -81,7 +107,9 @@ export const SRPFLEET_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition = {
 		if (!isAdmin) {
 			const permissions = await getCachedUserPermissions(env, coreUserId)
 			if (!permissions.some((permission) => SRP_STAFF_URNS.has(permission.urn))) {
-				return ephemeralCommandResponse('You need SRP reviewer, payer, or manager permissions to use this command.')
+				return ephemeralCommandResponse(
+					'You need SRP reviewer, payer, or manager permissions to use this command.'
+				)
 			}
 		}
 
@@ -93,7 +121,9 @@ export const SRPFLEET_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition = {
 			return ephemeralCommandResponse('The SRP Discord channel is not configured.')
 		}
 		if (input.guildId !== configuredGuildId || input.channelId !== configuredChannelId) {
-			return ephemeralCommandResponse('This command can only be used in the configured SRP channel.')
+			return ephemeralCommandResponse(
+				'This command can only be used in the configured SRP channel.'
+			)
 		}
 
 		const token = optionValues.token?.trim()
@@ -106,11 +136,15 @@ export const SRPFLEET_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition = {
 		}
 
 		const fleets = getStub<Fleets>(env.FLEETS, 'default')
-		const details = await fleets.getSrpFleetSessionDetails(broadcast.fleetSessionId)
+		const [details, invokerMainCharacterName] = await Promise.all([
+			fleets.getSrpFleetSessionDetails(broadcast.fleetSessionId),
+			getInvokerMainCharacterName(env.DATABASE_URL, coreUserId).catch(() => null),
+		])
 		if (!details) return ephemeralCommandResponse('The fleet session could not be found.')
 
 		const content = broadcast.content ?? {}
-		const fleetName = textValue(content.fleetName) ?? textValue(content.fleet_name) ?? details.sessionName
+		const fleetName =
+			textValue(content.fleetName) ?? textValue(content.fleet_name) ?? details.sessionName
 		let doctrine = textValue(content.doctrine) ?? textValue(content.doctrineName)
 		if (!doctrine && broadcast.doctrineId) {
 			try {
@@ -123,7 +157,12 @@ export const SRPFLEET_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition = {
 		doctrine ??= 'Unavailable'
 		const commanders = details.commanderCharacterIds.map((id, index) => {
 			const name = details.commanderCharacterNames[id] ?? id
-			const label = index === 0 ? 'Initial Commander' : index === details.commanderCharacterIds.length - 1 ? 'Final Commander' : 'Commander Handoff'
+			const label =
+				index === 0
+					? 'Initial Commander'
+					: index === details.commanderCharacterIds.length - 1
+						? 'Final Commander'
+						: 'Commander Handoff'
 			return `${label}: ${name}`
 		})
 
@@ -136,7 +175,9 @@ export const SRPFLEET_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition = {
 				} else {
 					const request = await srp.getRequestEligibilityData(comparisonId)
 					if (!request) {
-						comparison = buildComparisonError(`no SRP request was found for Killmail ID ${comparisonId}.`)
+						comparison = buildComparisonError(
+							`no SRP request was found for Killmail ID ${comparisonId}.`
+						)
 					} else {
 						const memberAtLoss = await fleets.wasSessionMemberAt(
 							details.sessionId,
@@ -159,8 +200,10 @@ export const SRPFLEET_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition = {
 		const fields: NonNullable<DiscordEmbed['fields']> = [
 			{ name: 'Fleet Commander(s)', value: truncate(commanders.join('\n') || 'Unavailable') },
 			{ name: 'Doctrine', value: truncate(doctrine) },
+			{ name: 'SRP Type', value: srpTypeLabel(broadcast.srpMode) },
 			{ name: 'MOTD', value: sanitizeMotd(details.motd) },
 			{ name: 'SRP Token', value: truncate(token) },
+			{ name: 'Requested By', value: truncate(invokerMainCharacterName ?? 'Unavailable') },
 			{
 				name: 'Fleet Period',
 				value: `${discordTimestamp(details.startedAt, 'Unknown start')} - ${discordTimestamp(details.endedAt, 'Ongoing')}`,
@@ -185,7 +228,9 @@ export const SRPFLEET_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition = {
 			allowEveryone: false,
 		})
 		if (!sent.success) {
-			return ephemeralCommandResponse('The fleet details could not be posted to the configured SRP channel.')
+			return ephemeralCommandResponse(
+				'The fleet details could not be posted to the configured SRP channel.'
+			)
 		}
 		return ephemeralCommandResponse('Fleet details posted to the configured SRP channel.')
 	},

@@ -752,6 +752,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 			.select({
 				content: broadcasts.content,
 				srpToken: broadcastSessionLinks.srpToken,
+				srpMode: broadcastSessionLinks.srpMode,
 				doctrineId: broadcastSessionLinks.doctrineId,
 				fleetSessionId: broadcastSessionLinks.fleetSessionId,
 			})
@@ -772,6 +773,7 @@ export class BroadcastsDO extends DurableObject<Env> implements Broadcasts {
 		return {
 			content: row.content as Record<string, unknown>,
 			srpToken: row.srpToken,
+			srpMode: row.srpMode,
 			doctrineId: row.doctrineId,
 			fleetSessionId: row.fleetSessionId,
 		}
