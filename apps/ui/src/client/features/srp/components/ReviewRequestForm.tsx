@@ -1,6 +1,5 @@
 import { Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import toast from '@/lib/toast'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import toast from '@/lib/toast'
 
 import {
 	useDoctrineFittingsForShip,
@@ -18,7 +18,11 @@ import {
 	useUpdateReviewState,
 } from '../hooks'
 import { formatISK } from '../utils'
-import { transformKillmailToCargoItems, transformKillmailToFittingItems } from '../utils/fitting'
+import {
+	transformKillmailToCargoItems,
+	transformKillmailToFittingItems,
+	transformKillmailToShipMaintenanceBayShips,
+} from '../utils/fitting'
 import { SRPFittingDisplay } from './SRPFittingDisplay'
 
 import type { ReactNode } from 'react'
@@ -733,7 +737,8 @@ export function ReviewRequestForm({
 			return
 		}
 		const hasSelected =
-			selectedCapPolicyId !== null && capPolicies.some((policy) => policy.id === selectedCapPolicyId)
+			selectedCapPolicyId !== null &&
+			capPolicies.some((policy) => policy.id === selectedCapPolicyId)
 
 		if (!hasInitializedCapPolicyDefault.current && selectedCapPolicyId === null) {
 			setSelectedCapPolicyId(capPolicies[0].id)
@@ -804,6 +809,10 @@ export function ReviewRequestForm({
 		itemNames
 	)
 	const cargoItems = transformKillmailToCargoItems(request.killmailItems ?? [], itemNames)
+	const shipMaintenanceBayShips = transformKillmailToShipMaintenanceBayShips(
+		request.killmailItems ?? [],
+		itemNames
+	)
 
 	const sortedDoctrineFittings = useMemo(
 		() =>
@@ -858,9 +867,7 @@ export function ReviewRequestForm({
 				0,
 				Math.min(
 					SHIP_SLOT_ARC_MAX[slot],
-					requestedCapacity > 0
-						? requestedCapacity
-						: Math.max(observedCapacity, doctrineCapacity)
+					requestedCapacity > 0 ? requestedCapacity : Math.max(observedCapacity, doctrineCapacity)
 				)
 			)
 		}
@@ -947,16 +954,16 @@ export function ReviewRequestForm({
 			delta = mod.amount * 1_000_000
 		}
 		const signed = mod.modifierType === 'deduction' ? -delta : delta
-			const percentSuffix =
-				mod.mode === 'percentage'
-					? ` (${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(mod.amount)}%)`
-					: ''
-			modifierLines.push({
-				label: mod.reason,
-				percentSuffix: percentSuffix || undefined,
-				amount: signed,
-				modifierType: mod.modifierType,
-			})
+		const percentSuffix =
+			mod.mode === 'percentage'
+				? ` (${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(mod.amount)}%)`
+				: ''
+		modifierLines.push({
+			label: mod.reason,
+			percentSuffix: percentSuffix || undefined,
+			amount: signed,
+			modifierType: mod.modifierType,
+		})
 		afterModifiers = afterModifiers + signed
 	}
 	afterModifiers = Math.max(0, afterModifiers)
@@ -1073,6 +1080,7 @@ export function ReviewRequestForm({
 					shipTypeName={request.shipTypeName}
 					fittingItems={fittingItems}
 					cargoItems={cargoItems}
+					shipMaintenanceBayShips={shipMaintenanceBayShips}
 					slotHighlights={slotHighlights}
 					slotCapacities={slotCapacities}
 					middleContent={
@@ -1192,19 +1200,19 @@ export function ReviewRequestForm({
 							value={applyInsurance ? afterInsurance : equipmentValue}
 							bold
 						/>
-							{coverageRate !== null && (
-								<>
-									<div className="flex justify-between text-xs text-muted-foreground">
-										<span>× Coverage Rate</span>
-										<span>{Math.round(coverageRate * 100)}%</span>
-									</div>
-									{coverageReduction > 0 && (
-										<MathRow label="− Coverage Reduction" value={-coverageReduction} dim />
-									)}
-									<div className="my-1 border-t border-border/50" />
-									<MathRow label="After Coverage" value={afterCoverage} bold />
-								</>
-							)}
+						{coverageRate !== null && (
+							<>
+								<div className="flex justify-between text-xs text-muted-foreground">
+									<span>× Coverage Rate</span>
+									<span>{Math.round(coverageRate * 100)}%</span>
+								</div>
+								{coverageReduction > 0 && (
+									<MathRow label="− Coverage Reduction" value={-coverageReduction} dim />
+								)}
+								<div className="my-1 border-t border-border/50" />
+								<MathRow label="After Coverage" value={afterCoverage} bold />
+							</>
+						)}
 						{modifierLines.map((line, i) => (
 							<div key={i} className="flex justify-between text-xs text-muted-foreground">
 								<span className="inline-flex items-center gap-2">
@@ -1216,13 +1224,13 @@ export function ReviewRequestForm({
 									>
 										{line.modifierType === 'deduction' ? 'Deduction' : 'Bonus'}
 									</Badge>
-										<span>
-											{line.label}
-											{line.percentSuffix && (
-												<span className="font-semibold">{line.percentSuffix}</span>
-											)}
-										</span>
+									<span>
+										{line.label}
+										{line.percentSuffix && (
+											<span className="font-semibold">{line.percentSuffix}</span>
+										)}
 									</span>
+								</span>
 								<span className={line.amount >= 0 ? 'text-green-400' : 'text-destructive'}>
 									{line.amount >= 0 ? '+' : '-'}
 									{formatISK(String(Math.round(Math.abs(line.amount))))}
@@ -1238,13 +1246,13 @@ export function ReviewRequestForm({
 						{capPolicy && (
 							<div className="flex justify-between text-xs text-muted-foreground">
 								<span>Cap ({selectedCapPolicy?.name})</span>
-									<span className={isCapped ? 'text-amber-500' : ''}>
-										{isCapped
-											? `→ ${formatISK(String(capPolicy.maxPayoutMillions * 1_000_000))}`
-											: 'not applicable'}
-									</span>
-								</div>
-							)}
+								<span className={isCapped ? 'text-amber-500' : ''}>
+									{isCapped
+										? `→ ${formatISK(String(capPolicy.maxPayoutMillions * 1_000_000))}`
+										: 'not applicable'}
+								</span>
+							</div>
+						)}
 						<div className="my-1 border-t-2 border-border" />
 						<div className="flex justify-between font-bold">
 							<span
@@ -1278,12 +1286,12 @@ export function ReviewRequestForm({
 					<Card className="p-4">
 						<h4 className="mb-3 text-sm font-semibold">Payout Modifier Policy</h4>
 						<div className="space-y-2">
-								<PolicyRadio
-									label="No Modifier Policy"
-									selected={selectedModifierPolicyId === null}
-									onSelect={() => setSelectedModifierPolicyId(null)}
-									detail="No policy applied"
-								/>
+							<PolicyRadio
+								label="No Modifier Policy"
+								selected={selectedModifierPolicyId === null}
+								onSelect={() => setSelectedModifierPolicyId(null)}
+								detail="No policy applied"
+							/>
 							{modifierPolicies.map((p) => {
 								const cfg = isPayoutModifierConfig(p.config) ? p.config : null
 								return (
@@ -1338,32 +1346,32 @@ export function ReviewRequestForm({
 					<h4 className="mb-3 text-sm font-semibold">Ad-hoc Modifiers</h4>
 					<div className="space-y-2">
 						{predefinedModifierOptions.length > 0 && (
-								<Select
-									value={selectedPredefinedModifierValue}
-									onValueChange={(value) => {
-										setSelectedPredefinedModifierValue(value)
-										addPredefinedModifier(value)
-									}}
-									options={predefinedModifierOptions}
-									placeholder="Apply modifier template"
-									searchable
-									emptyText="No predefined modifiers"
-								/>
-							)}
+							<Select
+								value={selectedPredefinedModifierValue}
+								onValueChange={(value) => {
+									setSelectedPredefinedModifierValue(value)
+									addPredefinedModifier(value)
+								}}
+								options={predefinedModifierOptions}
+								placeholder="Apply modifier template"
+								searchable
+								emptyText="No predefined modifiers"
+							/>
+						)}
 						{modifiers.map((mod) => (
 							<div
 								key={mod.id}
 								className="flex items-center gap-2 rounded-md border border-border/40 p-2"
 							>
 								<div className="w-32">
-										<Select
-											value={mod.modifierType}
-											onValueChange={(v) => updateModifier(mod.id, { modifierType: v as any })}
-											options={[
-												{ value: 'deduction', label: 'Deduction' },
-												{ value: 'bonus', label: 'Bonus' },
-											]}
-										/>
+									<Select
+										value={mod.modifierType}
+										onValueChange={(v) => updateModifier(mod.id, { modifierType: v as any })}
+										options={[
+											{ value: 'deduction', label: 'Deduction' },
+											{ value: 'bonus', label: 'Bonus' },
+										]}
+									/>
 								</div>
 								<div className="w-24">
 									<Select

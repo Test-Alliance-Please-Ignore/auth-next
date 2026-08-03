@@ -33,8 +33,8 @@ describe('isEquippedSlot', () => {
 
 	describe('Implant slot (89)', () => {
 		it('includes flag 89 (Implant)', () => expect(isEquippedSlot(89)).toBe(true))
-		it('includes flag 90 (in implant+rig range)', () => expect(isEquippedSlot(90)).toBe(true))
-		it('includes flag 91 (in implant+rig range)', () => expect(isEquippedSlot(91)).toBe(true))
+		it('excludes flag 90 (Ship Maintenance Bay)', () => expect(isEquippedSlot(90)).toBe(false))
+		it('excludes flag 91 (not an equipped slot)', () => expect(isEquippedSlot(91)).toBe(false))
 	})
 
 	describe('Rig slots (92–99)', () => {

@@ -1,4 +1,5 @@
 export interface KillmailItemNode {
+	flag?: number
 	item_type_id?: number | string
 	type_id?: number | string
 	typeId?: number | string
@@ -29,6 +30,9 @@ export function collectKillmailItemTypeIds(items: readonly KillmailItemNode[]): 
 	walk(items)
 	return [...typeIds]
 }
+
+/** ESI flag used for a ship stored in another ship's ship maintenance bay. */
+export const SHIP_MAINTENANCE_BAY_FLAG = 90
 
 export function buildKillmailItemMetadata(
 	items: readonly KillmailItemNode[],

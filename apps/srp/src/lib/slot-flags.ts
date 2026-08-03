@@ -17,7 +17,8 @@
 export function isEquippedSlot(flag: number): boolean {
 	return (
 		(flag >= 11 && flag <= 34) || // Low + Mid + High slots
-		(flag >= 89 && flag <= 99) || // Implants (89) + Rig slots (92–99)
+		flag === 89 || // Implant slot
+		(flag >= 92 && flag <= 99) || // Rig slots
 		(flag >= 125 && flag <= 132) // Subsystems (T3)
 	)
 }

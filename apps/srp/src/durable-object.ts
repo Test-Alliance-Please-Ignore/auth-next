@@ -2,19 +2,18 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import type { CharacterKillmailBasic } from '@repo/esi'
 import { buildPublicEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
+import { logger } from '@repo/hono-helpers'
 import {
 	buildKillmailItemMetadata,
 	collectKillmailItemTypeIds,
-	roundToMillion,
 	MAX_SRP_LOSS_AGE_DAYS,
+	roundToMillion,
 } from '@repo/srp'
 import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
-import { buildKillmailDetailFromCachedLoss } from './lib/cached-killmail'
 import {
 	srpComments,
 	srpConfig,
@@ -24,27 +23,76 @@ import {
 	srpRequestHistory,
 	srpRequests,
 } from './db/schema'
+import { buildKillmailDetailFromCachedLoss } from './lib/cached-killmail'
 import { buildEquippedByType } from './lib/equipment'
+import { formatSrpRequest, formatSrpRequestSummary } from './lib/format-request'
 import { SrpKillmailEsiClient, SrpKillmailNotFoundError } from './lib/killmail-esi'
 import {
 	doesRecentLossCacheCoverCutoff,
-	mergeRecentLosses,
 	isRecentLossRequestable,
-	selectRecentKillmailsUntilKnown,
+	mergeRecentLosses,
 	ROOKIE_SHIP_TYPE_IDS,
-	type RecentLossCacheRecord,
-	type RecentLossCacheStorageRecord,
+	selectRecentKillmailsUntilKnown,
 } from './lib/recent-loss-cache'
 import {
 	DEFAULT_NON_POD_SLOT_CAPACITIES,
 	DEFAULT_POD_SLOT_CAPACITIES,
 	parseShipSlotCapacitiesFromDogmaAttributes,
 } from './lib/ship-slot-capacities'
-import { formatSrpRequest, formatSrpRequestSummary } from './lib/format-request'
 
+import type { CharacterKillmailBasic } from '@repo/esi'
+import type {
+	CharacterKillmailData,
+	CharacterLossData,
+	CharacterLossItemData,
+	EveCharacterData,
+} from '@repo/eve-character-data'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
+import type { LatestMarketPrice, Markets } from '@repo/markets'
+import type {
+	CreateSRPPolicy,
+	RecentLossesResponse,
+	RecentLossRefreshCharacterFailure,
+	RecentLossRefreshCharacterInput,
+	RecentLossRefreshCharacterResult,
+	RequestStatus,
+	Srp,
+	SRPCommentResponse,
+	SRPConfigResponse,
+	SRPPaymentMismatchAlert,
+	SRPPolicy,
+	SRPPolicyConfig,
+	SRPPublicRequestSummaryResponse,
+	SrpRequestEligibilityData,
+	SRPRequestResponse,
+	SRPReviewSubmission,
+	SRPStatsResponse,
+	SRPValuationPreview,
+	UpdateSRPConfig,
+} from '@repo/srp'
+import type { KillmailDetail, Universe } from '@repo/universe'
+import type { Env } from './context'
 import type { srpRequests as srpRequestsTable } from './db/schema'
+import type { RecentLossCacheRecord, RecentLossCacheStorageRecord } from './lib/recent-loss-cache'
 
 type KillmailDataJson = NonNullable<typeof srpRequestsTable.$inferInsert.killmailData>
+
+type RawVictimItem = {
+	item_type_id?: number | string
+	flag?: number
+	quantity_destroyed?: number
+	quantity_dropped?: number
+	items?: RawVictimItem[]
+}
+
+type PreviewVictimItem = {
+	typeId: string
+	flag: number
+	quantityDestroyed: number
+	quantityDropped: number
+	items?: PreviewVictimItem[]
+}
 
 const srpRequestListColumns = {
 	id: srpRequests.id,
@@ -92,40 +140,6 @@ const srpPaymentListColumns = {
 	createdAt: srpRequests.createdAt,
 	updatedAt: srpRequests.updatedAt,
 }
-
-import type {
-	CharacterKillmailData,
-	CharacterLossData,
-	CharacterLossItemData,
-	EveCharacterData,
-} from '@repo/eve-character-data'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
-import type { LatestMarketPrice, Markets } from '@repo/markets'
-import type {
-	CreateSRPPolicy,
-	RecentLossRefreshCharacterFailure,
-	RecentLossRefreshCharacterInput,
-	RecentLossRefreshCharacterResult,
-	RecentLossesResponse,
-	RequestStatus,
-	Srp,
-	SRPCommentResponse,
-	SRPConfigResponse,
-	SrpRequestEligibilityData,
-	SRPPaymentMismatchAlert,
-	SRPPolicy,
-	SRPPolicyConfig,
-	SRPRequestResponse,
-	SRPPublicRequestSummaryResponse,
-	SRPReviewSubmission,
-	SRPStatsResponse,
-	SRPValuationPreview,
-	UpdateSRPConfig,
-} from '@repo/srp'
-import type { KillmailDetail, Universe } from '@repo/universe'
-import type { Env } from './context'
-import { logger } from '@repo/hono-helpers'
 
 const SRP_REQUIRED_KILLMAIL_SCOPES = ['esi-killmails.read_killmails.v1']
 
@@ -241,14 +255,14 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const { characterName, shipTypeName, solarSystemName, dateFrom, dateTo } = options
 
 		const startDate = dateFrom
-			? (dateFrom.includes('T')
+			? dateFrom.includes('T')
 				? new Date(dateFrom)
-				: new Date(`${dateFrom}T00:00:00.000Z`))
+				: new Date(`${dateFrom}T00:00:00.000Z`)
 			: null
 		const endDate = dateTo
-			? (dateTo.includes('T')
+			? dateTo.includes('T')
 				? new Date(dateTo)
-				: new Date(`${dateTo}T23:59:59.999Z`))
+				: new Date(`${dateTo}T23:59:59.999Z`)
 			: null
 
 		const conditions =
@@ -290,7 +304,10 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		if (cached && cached.expiresAt > now) return cached.value
 
 		const { where } = this.buildReviewQueueConditions(status, options)
-		const [row] = await this.db.select({ count: sql<number>`count(*)::int` }).from(srpRequests).where(where)
+		const [row] = await this.db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(srpRequests)
+			.where(where)
 		const count = row?.count ?? 0
 		this.reviewQueueCountCache.set(cacheKey, {
 			value: count,
@@ -299,7 +316,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		return count
 	}
 
-	private convertKillmailDetailToLoss(killmail: KillmailDetail & { killmail_hash?: string }): CharacterLossData | null {
+	private convertKillmailDetailToLoss(
+		killmail: KillmailDetail & { killmail_hash?: string }
+	): CharacterLossData | null {
 		if (!killmail.killmail_hash) return null
 		const victimCharacterId = killmail.victim.character_id
 		if (!victimCharacterId) return null
@@ -321,7 +340,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	}
 
 	private async readRecentLossCache(characterId: string): Promise<RecentLossCacheRecord | null> {
-		const record = await this.storage.get<RecentLossCacheStorageRecord>(this.buildRecentLossCacheKey(characterId))
+		const record = await this.storage.get<RecentLossCacheStorageRecord>(
+			this.buildRecentLossCacheKey(characterId)
+		)
 		if (!record || !Array.isArray(record.losses)) {
 			return null
 		}
@@ -365,7 +386,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 							items?: CharacterLossItemData[]
 						}
 						solar_system_id?: number | string
-				  })
+					})
 				: null
 		const victim = killmailData?.victim
 		const shipTypeId = row.shipTypeId ?? victim?.ship_type_id
@@ -390,10 +411,16 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 	}
 
-	private async readRecentLossRows(characterIds: string[], cutoffMs: number): Promise<RecentLossDbRow[]> {
+	private async readRecentLossRows(
+		characterIds: string[],
+		cutoffMs: number
+	): Promise<RecentLossDbRow[]> {
 		if (characterIds.length === 0) return []
 
-		const characterIdList = sql.join(characterIds.map((id) => sql`${id}`), sql`, `)
+		const characterIdList = sql.join(
+			characterIds.map((id) => sql`${id}`),
+			sql`, `
+		)
 		const cutoff = new Date(cutoffMs)
 
 		const result = await this.db.execute<RecentLossDbRow>(sql`
@@ -435,7 +462,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 					? new Date(entry.loss.killmailTime).getTime() >= cutoffMs
 					: true
 			)
-			.sort((a, b) => new Date(b.loss.killmailTime).getTime() - new Date(a.loss.killmailTime).getTime())
+			.sort(
+				(a, b) => new Date(b.loss.killmailTime).getTime() - new Date(a.loss.killmailTime).getTime()
+			)
 
 		if (persistable.length === 0) return
 
@@ -482,13 +511,16 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 					type_id?: number | string
 					typeId?: number | string
 					items?: any[]
-			  }>)
+				}>)
 			: []
 		if (itemPrices.length === 0 && killmailItems.length === 0) return
 		if (!request?.id) return
 
 		const existingKillmailItemNames = (request.killmailItemNames ?? {}) as Record<string, string>
-		const existingKillmailItemGroupIds = (request.killmailItemGroupIds ?? {}) as Record<string, string>
+		const existingKillmailItemGroupIds = (request.killmailItemGroupIds ?? {}) as Record<
+			string,
+			string
+		>
 		const missingPriceTypeIds = itemPrices
 			.filter((item) => Boolean(item.typeId) && (!item.typeName || item.typeName === item.typeId))
 			.map((item) => String(item.typeId))
@@ -542,7 +574,10 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 					...resolvedKillmailItemMetadata.killmailItemGroupIds,
 				}
 			: existingKillmailItemGroupIds
-		const isSameStringMap = (left?: Record<string, string> | null, right?: Record<string, string>) => {
+		const isSameStringMap = (
+			left?: Record<string, string> | null,
+			right?: Record<string, string>
+		) => {
 			const leftEntries = Object.entries(left ?? {})
 			const rightEntries = Object.entries(right ?? {})
 			if (leftEntries.length !== rightEntries.length) return false
@@ -568,7 +603,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				killmailItemNames:
 					Object.keys(nextKillmailItemNames).length > 0 ? (nextKillmailItemNames as any) : null,
 				killmailItemGroupIds:
-					Object.keys(nextKillmailItemGroupIds).length > 0 ? (nextKillmailItemGroupIds as any) : null,
+					Object.keys(nextKillmailItemGroupIds).length > 0
+						? (nextKillmailItemGroupIds as any)
+						: null,
 				updatedAt: new Date(),
 			})
 			.where(eq(srpRequests.id, request.id))
@@ -624,63 +661,30 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		)
 	}
 
-	private flattenVictimItemsForPreview(
-		items: Array<{
-			item_type_id?: number | string
-			flag?: number
-			quantity_destroyed?: number
-			quantity_dropped?: number
-			items?: any[]
-		}>,
-		inheritedFlag?: number
-	): Array<{
-		typeId: string
-		flag: number
-		quantityDestroyed: number
-		quantityDropped: number
-	}> {
-		const flattened: Array<{
-			typeId: string
-			flag: number
-			quantityDestroyed: number
-			quantityDropped: number
-		}> = []
+	private serializeVictimItemsForPreview(items: RawVictimItem[]): PreviewVictimItem[] {
+		const serialized: PreviewVictimItem[] = []
 
 		for (const item of items) {
 			const itemTypeId = item.item_type_id
 			const flag = item.flag
 			if (itemTypeId != null && flag != null) {
-				const displayFlag = inheritedFlag ?? flag
-				flattened.push({
+				serialized.push({
 					typeId: String(itemTypeId),
-					flag: displayFlag,
+					flag,
 					quantityDestroyed: item.quantity_destroyed ?? 0,
 					quantityDropped: item.quantity_dropped ?? 0,
+					items: item.items?.length ? this.serializeVictimItemsForPreview(item.items) : undefined,
 				})
-
-				if (item.items?.length) {
-					flattened.push(...this.flattenVictimItemsForPreview(item.items, displayFlag))
-				}
-				continue
-			}
-
-			if (item.items?.length) {
-				flattened.push(...this.flattenVictimItemsForPreview(item.items, inheritedFlag))
 			}
 		}
 
-		return flattened
+		return serialized
 	}
 
-	private collectVictimItemTypeIds(
-		items: Array<{
-			item_type_id?: number | string
-			items?: any[]
-		}>
-	): string[] {
+	private collectVictimItemTypeIds(items: RawVictimItem[]): string[] {
 		const typeIds = new Set<string>()
 
-		const walk = (rows: Array<{ item_type_id?: number | string; items?: any[] }>) => {
+		const walk = (rows: RawVictimItem[]) => {
 			for (const row of rows) {
 				if (row.item_type_id != null) {
 					typeIds.add(String(row.item_type_id))
@@ -704,10 +708,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 
 		const losses: HydratedRecentLoss[] = []
-		const concurrency = Math.min(
-			SrpDO.RECENT_LOSS_DETAIL_CONCURRENCY,
-			killmails.length
-		)
+		const concurrency = Math.min(SrpDO.RECENT_LOSS_DETAIL_CONCURRENCY, killmails.length)
 		let nextIndex = 0
 
 		const worker = async () => {
@@ -836,25 +837,27 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 					killmailHash,
 					cachedLoss
 				) as KillmailDataJson
-				void charInstance.upsertCharacterKillmails([
-					{
-						killmailId: normalizedKillmailId,
-						killmailHash,
-						killmailTime: cachedLoss.killmailTime,
-						isLoss: true,
-						shipTypeId: cachedLoss.shipTypeId,
-						totalValue: cachedLoss.totalValue,
-						solarSystemId: cachedLoss.solarSystemId,
-						victimCharacterId: cachedLoss.victimCharacterId,
-						killmailData,
-					},
-				]).catch((error) => {
-					logger.warn('[createRequest] Failed to backfill cached killmail into character data', {
-						characterId,
-						killmailId: normalizedKillmailId,
-						error: error instanceof Error ? error.message : String(error),
+				void charInstance
+					.upsertCharacterKillmails([
+						{
+							killmailId: normalizedKillmailId,
+							killmailHash,
+							killmailTime: cachedLoss.killmailTime,
+							isLoss: true,
+							shipTypeId: cachedLoss.shipTypeId,
+							totalValue: cachedLoss.totalValue,
+							solarSystemId: cachedLoss.solarSystemId,
+							victimCharacterId: cachedLoss.victimCharacterId,
+							killmailData,
+						},
+					])
+					.catch((error) => {
+						logger.warn('[createRequest] Failed to backfill cached killmail into character data', {
+							characterId,
+							killmailId: normalizedKillmailId,
+							error: error instanceof Error ? error.message : String(error),
+						})
 					})
-				})
 			}
 		}
 
@@ -878,17 +881,17 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		const victim = killmailData.victim as any
 		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
-		const killmailItemTypeIds = collectKillmailItemTypeIds((victim.items ?? []) as Array<{
-			item_type_id?: number | string
-			type_id?: number | string
-			typeId?: number | string
-			items?: any[]
-		}>)
+		const killmailItemTypeIds = collectKillmailItemTypeIds(
+			(victim.items ?? []) as Array<{
+				item_type_id?: number | string
+				type_id?: number | string
+				typeId?: number | string
+				items?: any[]
+			}>
+		)
 		const [typeMap, systemMap] = await Promise.all([
 			universeStub
-				.resolveTypeNamesByIds(
-					[...new Set([String(victim.ship_type_id), ...killmailItemTypeIds])]
-				)
+				.resolveTypeNamesByIds([...new Set([String(victim.ship_type_id), ...killmailItemTypeIds])])
 				.catch(() => ({}) as Record<string, null>),
 			solarSystemId
 				? universeStub
@@ -926,7 +929,12 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		}
 		let valuation: Awaited<ReturnType<typeof this.calculateSrpValuation>> = null
 		try {
-			valuation = await this.calculateSrpValuation(killmailData as any, lossDate, String(victim.ship_type_id), config)
+			valuation = await this.calculateSrpValuation(
+				killmailData as any,
+				lossDate,
+				String(victim.ship_type_id),
+				config
+			)
 		} catch (err) {
 			// Non-fatal — request is still created, valuation fields will be null
 			logger.error('[createRequest] SRP valuation failed:', err)
@@ -1007,11 +1015,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 							items: cachedVictimItems as any,
 						},
 					} as any)
-				: await this.killmailEsi.fetchCharacterKillmailDetail(
-						characterId,
-						killmailId,
-						killmailHash
-					)
+				: await this.killmailEsi.fetchCharacterKillmailDetail(characterId, killmailId, killmailHash)
 		}
 
 		const victim = killmailData.victim as any
@@ -1037,16 +1041,15 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			.map((item) => item.typeId)
 
 		const rawItems = victim.items ?? []
-		const victimItems = this.flattenVictimItemsForPreview(rawItems)
+		const victimItems = this.serializeVictimItemsForPreview(rawItems)
 
 		const allTypeIds = [
-			...new Set([
-				String(victim.ship_type_id),
-				...this.collectVictimItemTypeIds(rawItems),
-			]),
+			...new Set([String(victim.ship_type_id), ...this.collectVictimItemTypeIds(rawItems)]),
 		]
 		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
-		const typeMap = await universeStub.resolveTypeNamesByIds(allTypeIds).catch(() => ({}) as Record<string, null>)
+		const typeMap = await universeStub
+			.resolveTypeNamesByIds(allTypeIds)
+			.catch(() => ({}) as Record<string, null>)
 		const itemNames: Record<string, string> = {}
 		for (const [id, type] of Object.entries(typeMap)) {
 			if (type?.typeName) itemNames[id] = type.typeName
@@ -1079,12 +1082,12 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	): Promise<SRPRequestResponse | null> {
 		const request = await this.db.query.srpRequests.findFirst({
 			where: eq(srpRequests.id, requestId),
-				with: {
-					history: {
-						orderBy: asc(srpRequestHistory.timestamp),
-						limit: 50,
-					},
+			with: {
+				history: {
+					orderBy: asc(srpRequestHistory.timestamp),
+					limit: 50,
 				},
+			},
 		})
 
 		if (!request) return null
@@ -1224,11 +1227,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		for (const [index, character] of characters.entries()) {
 			const storedLosses = recentLossesByCharacter.get(character.characterId) ?? []
 			const cached = cachedRecords[index]
-			const mergedCharacterLosses = mergeRecentLosses(
-				storedLosses,
-				cached?.losses ?? [],
-				cutoffMs
-			)
+			const mergedCharacterLosses = mergeRecentLosses(storedLosses, cached?.losses ?? [], cutoffMs)
 
 			if (mergedCharacterLosses.length === 0) {
 				if (cached?.complete === true) {
@@ -1277,8 +1276,9 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			}
 		}
 
-		const mergedLosses = [...allLosses.values()]
-			.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
+		const mergedLosses = [...allLosses.values()].sort(
+			(a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime()
+		)
 		const total = mergedLosses.length
 		const effectiveLimit = typeof limit === 'number' ? Math.max(1, limit) : total
 		const effectiveOffset = typeof offset === 'number' ? Math.max(0, offset) : 0
@@ -1324,7 +1324,10 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			where: and(eq(srpRequests.userId, userId), inArray(srpRequests.id, killmailIds)),
 		})
 		const dismissedLosses = await this.db.query.srpDismissedLosses.findMany({
-			where: and(eq(srpDismissedLosses.userId, userId), inArray(srpDismissedLosses.killmailId, killmailIds)),
+			where: and(
+				eq(srpDismissedLosses.userId, userId),
+				inArray(srpDismissedLosses.killmailId, killmailIds)
+			),
 			columns: { killmailId: true },
 		})
 		const dismissedKillmailIds = new Set(dismissedLosses.map((row) => row.killmailId))
@@ -1366,35 +1369,35 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		// Annotate losses with SRP status and sort by time descending
 		const annotatedLosses = mergedLosses
-				.filter((loss) => !dismissedKillmailIds.has(String(loss.killmailId)))
-				.filter((loss) => !legacyPaidKillmailIds.has(String(loss.killmailId)))
-				.filter((loss) => {
-					const shipTypeId = String(loss.shipTypeId)
-					const marketGroupId = typeMetaMap[shipTypeId]?.marketGroupId ?? null
-					const shipTypeName = resolved[shipTypeId] ?? ''
-					const looksLikeShuttleByName = shipTypeName.toLowerCase().includes('shuttle')
-					return !(this.isShuttleMarketGroupId(marketGroupId) || looksLikeShuttleByName)
-				})
-				.map((loss) => {
-					const lossKillmailId = String(loss.killmailId)
-					const request = requestMap.get(lossKillmailId)
-					return {
-						killmailId: lossKillmailId,
-						killmailHash: loss.killmailHash ?? '',
-						killmailTime: new Date(loss.killmailTime).toISOString(),
-						shipTypeId: loss.shipTypeId,
-						shipTypeName: resolved[String(loss.shipTypeId)],
-						totalValue: loss.totalValue ?? '0',
-						solarSystemId: loss.solarSystemId,
-						solarSystemName: resolved[String(loss.solarSystemId)],
-						victimCharacterId: String(loss.victimCharacterId ?? ''),
-						victimItems: loss.victimItems,
-						hasSRPRequest: !!request,
-						srpRequestId: request?.id,
-						srpRequestStatus: request?.status,
-					}
-				})
-				.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
+			.filter((loss) => !dismissedKillmailIds.has(String(loss.killmailId)))
+			.filter((loss) => !legacyPaidKillmailIds.has(String(loss.killmailId)))
+			.filter((loss) => {
+				const shipTypeId = String(loss.shipTypeId)
+				const marketGroupId = typeMetaMap[shipTypeId]?.marketGroupId ?? null
+				const shipTypeName = resolved[shipTypeId] ?? ''
+				const looksLikeShuttleByName = shipTypeName.toLowerCase().includes('shuttle')
+				return !(this.isShuttleMarketGroupId(marketGroupId) || looksLikeShuttleByName)
+			})
+			.map((loss) => {
+				const lossKillmailId = String(loss.killmailId)
+				const request = requestMap.get(lossKillmailId)
+				return {
+					killmailId: lossKillmailId,
+					killmailHash: loss.killmailHash ?? '',
+					killmailTime: new Date(loss.killmailTime).toISOString(),
+					shipTypeId: loss.shipTypeId,
+					shipTypeName: resolved[String(loss.shipTypeId)],
+					totalValue: loss.totalValue ?? '0',
+					solarSystemId: loss.solarSystemId,
+					solarSystemName: resolved[String(loss.solarSystemId)],
+					victimCharacterId: String(loss.victimCharacterId ?? ''),
+					victimItems: loss.victimItems,
+					hasSRPRequest: !!request,
+					srpRequestId: request?.id,
+					srpRequestStatus: request?.status,
+				}
+			})
+			.sort((a, b) => new Date(b.killmailTime).getTime() - new Date(a.killmailTime).getTime())
 
 		return {
 			losses: annotatedLosses.slice(effectiveOffset, effectiveOffset + effectiveLimit),
@@ -1643,13 +1646,13 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		if (!request) throw new Error('Request not found')
 
-			const comments = await this.db.query.srpComments.findMany({
+		const comments = await this.db.query.srpComments.findMany({
 			where: and(
 				eq(srpComments.requestId, requestId),
 				includeInternal ? undefined : eq(srpComments.visibility, 'public')
 			),
-				orderBy: asc(srpComments.createdAt),
-			})
+			orderBy: asc(srpComments.createdAt),
+		})
 
 		return comments.map((c) => ({
 			id: c.id,
@@ -1871,7 +1874,8 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				? metadata.srpDiscordGuildId.trim()
 				: undefined
 		const srpDiscordChannelId =
-			typeof metadata.srpDiscordChannelId === 'string' && metadata.srpDiscordChannelId.trim().length > 0
+			typeof metadata.srpDiscordChannelId === 'string' &&
+			metadata.srpDiscordChannelId.trim().length > 0
 				? metadata.srpDiscordChannelId.trim()
 				: undefined
 
@@ -1897,10 +1901,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	/**
 	 * Update SRP configuration
 	 */
-	async updateConfig(
-		userId: string,
-		updates: UpdateSRPConfig
-	): Promise<SRPConfigResponse> {
+	async updateConfig(userId: string, updates: UpdateSRPConfig): Promise<SRPConfigResponse> {
 		// Get current config
 		const current = await this.getConfig()
 
@@ -2116,7 +2117,14 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		priceSnapshotTime: Date | null
 		pricingSource: 'historic' | 'fallback'
 		insuranceSource?: 'historic' | 'fallback'
-		itemPrices: Array<{ typeId: string; typeName: string; quantity: number; unitPrice: string; lineTotal: string; isConsumable?: boolean }>
+		itemPrices: Array<{
+			typeId: string
+			typeName: string
+			quantity: number
+			unitPrice: string
+			lineTotal: string
+			isConsumable?: boolean
+		}>
 	} | null> {
 		const equippedByType = buildEquippedByType(killmailData?.victim?.items ?? [])
 
@@ -2132,16 +2140,17 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			atTime: lossDate,
 		})
 
-		const priceMap = new Map(
-			prices.map((p: LatestMarketPrice) => [p.typeId, p.bestSellPrice])
-		)
+		const priceMap = new Map(prices.map((p: LatestMarketPrice) => [p.typeId, p.bestSellPrice]))
 		const priceSnapshotTime = prices[0]?.snapshotTime ?? null
 		let pricingSource: 'historic' | 'fallback' = prices.length > 0 ? 'historic' : 'fallback'
 
 		// Fill in any types missing from daily history using the DB-first/cache-fallback RPC
 		if (missingTypeIds.length > 0) {
 			try {
-				const cached = await marketsStub.getMarketPricesForTypes(missingTypeIds.map(String), priceDate)
+				const cached = await marketsStub.getMarketPricesForTypes(
+					missingTypeIds.map(String),
+					priceDate
+				)
 				for (const p of cached) {
 					const avg = p.averagePrice
 					if (avg && avg > 0) {
@@ -2160,13 +2169,15 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const allTypeIds = [...equippedByType.keys()]
 		const [typeNameMap, typeMetaMap] = await Promise.all([
 			universeStub.resolveTypeNamesByIds(allTypeIds).catch(() => ({}) as Record<string, null>),
-			universeStub.resolveTypeMetadataByIds(allTypeIds).catch(
-				() =>
-					({}) as Record<
-						string,
-						{ categoryName: string; marketGroupId: string | null; marketGroupName: string | null }
-					>
-			),
+			universeStub
+				.resolveTypeMetadataByIds(allTypeIds)
+				.catch(
+					() =>
+						({}) as Record<
+							string,
+							{ categoryName: string; marketGroupId: string | null; marketGroupName: string | null }
+						>
+				),
 		])
 
 		// Build per-item breakdown
@@ -2483,7 +2494,13 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const rows = await this.db
 			.selectDistinct({ solarSystemName: srpRequests.solarSystemName })
 			.from(srpRequests)
-			.where(and(statusCond, ilike(srpRequests.solarSystemName!, `%${query}%`), sql`${srpRequests.solarSystemName} is not null`))
+			.where(
+				and(
+					statusCond,
+					ilike(srpRequests.solarSystemName!, `%${query}%`),
+					sql`${srpRequests.solarSystemName} is not null`
+				)
+			)
 			.limit(20)
 		return rows.map((r) => ({ value: r.solarSystemName! }))
 	}
@@ -2509,16 +2526,18 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		let capPolicy: typeof srpPolicies.$inferSelect | null = null
 
 		if (data.appliedModifierPolicyId) {
-			modifierPolicy = await this.db.query.srpPolicies.findFirst({
-				where: eq(srpPolicies.id, data.appliedModifierPolicyId),
-			}) ?? null
+			modifierPolicy =
+				(await this.db.query.srpPolicies.findFirst({
+					where: eq(srpPolicies.id, data.appliedModifierPolicyId),
+				})) ?? null
 			if (!modifierPolicy) throw new Error('Modifier policy not found')
 		}
 
 		if (data.appliedCapPolicyId) {
-			capPolicy = await this.db.query.srpPolicies.findFirst({
-				where: eq(srpPolicies.id, data.appliedCapPolicyId),
-			}) ?? null
+			capPolicy =
+				(await this.db.query.srpPolicies.findFirst({
+					where: eq(srpPolicies.id, data.appliedCapPolicyId),
+				})) ?? null
 			if (!capPolicy) throw new Error('Cap policy not found')
 		}
 
@@ -2530,9 +2549,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		if (data.reviewerOverrideMillions != null) {
 			// Override replaces the entire calculation
-			approvedAmount = roundToMillion(
-				String(BigInt(data.reviewerOverrideMillions) * 1_000_000n)
-			)
+			approvedAmount = roundToMillion(String(BigInt(data.reviewerOverrideMillions) * 1_000_000n))
 		} else {
 			approvedAmount = this.computeReviewPayout(request, data, modifierPolicy, capPolicy)
 		}
@@ -2604,12 +2621,24 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		// Auto-post feedback as public comment
 		if (data.feedbackText) {
-			await this.addComment(requestId, reviewerUserId, reviewerCharacterName, data.feedbackText, 'public')
+			await this.addComment(
+				requestId,
+				reviewerUserId,
+				reviewerCharacterName,
+				data.feedbackText,
+				'public'
+			)
 		}
 
 		// Auto-post review notes as internal comment
 		if (data.reviewNotes) {
-			await this.addComment(requestId, reviewerUserId, reviewerCharacterName, data.reviewNotes, 'internal')
+			await this.addComment(
+				requestId,
+				reviewerUserId,
+				reviewerCharacterName,
+				data.reviewNotes,
+				'internal'
+			)
 		}
 
 		return await this.formatRequestWithShipSlotCapacities(updated[0])
@@ -2626,7 +2655,10 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		let current = parseFloat(request.srpEquipmentValue ?? '0')
 
 		// Step 1: Insurance delta — applied by default unless policy explicitly disables it
-		const modifierConfig = modifierPolicy?.config as { rate?: string; applyInsuranceDelta?: boolean } | null
+		const modifierConfig = modifierPolicy?.config as {
+			rate?: string
+			applyInsuranceDelta?: boolean
+		} | null
 		const applyInsuranceDelta = modifierConfig?.applyInsuranceDelta ?? true
 		if (applyInsuranceDelta) {
 			const netInsurance = parseFloat(request.srpNetInsurance ?? '0')
@@ -2641,7 +2673,8 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		// Step 3: Ad-hoc modifiers in order
 		for (const mod of data.appliedModifiers) {
 			if (mod.mode === 'percentage') {
-				const factor = mod.modifierType === 'deduction' ? 1 - mod.amount / 100 : 1 + mod.amount / 100
+				const factor =
+					mod.modifierType === 'deduction' ? 1 - mod.amount / 100 : 1 + mod.amount / 100
 				current = current * factor
 			} else {
 				const delta = mod.amount * 1_000_000
@@ -2689,7 +2722,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 							paymentDate: new Date(),
 							paymentCharacterName: actorCharacterName,
 							paymentScanCursorDate: null,
-					  }
+						}
 					: {}),
 				updatedAt: new Date(),
 			})
@@ -2764,10 +2797,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		return rows.map(this.formatPolicy)
 	}
 
-	async createPolicy(
-		userId: string,
-		data: CreateSRPPolicy
-	): Promise<SRPPolicy> {
+	async createPolicy(userId: string, data: CreateSRPPolicy): Promise<SRPPolicy> {
 		const [row] = await this.db
 			.insert(srpPolicies)
 			.values({

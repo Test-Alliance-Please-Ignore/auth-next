@@ -1,7 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router'
-import toast from '@/lib/toast'
 import { z } from 'zod'
 
 import { Button } from '@/components/ui/button'
@@ -9,12 +8,18 @@ import { Card } from '@/components/ui/card'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import toast from '@/lib/toast'
 
 import { useCreateRequest } from '../hooks'
-import type { RecentLossVictimItem } from '../types'
 import { getKillmailUrl } from '../utils'
-import { transformKillmailToCargoItems, transformKillmailToFittingItems } from '../utils/fitting'
+import {
+	transformKillmailToCargoItems,
+	transformKillmailToFittingItems,
+	transformKillmailToShipMaintenanceBayShips,
+} from '../utils/fitting'
 import { SRPFittingDisplay } from './SRPFittingDisplay'
+
+import type { RecentLossVictimItem } from '../types'
 
 const createRequestSchema = z.object({
 	killmailId: z.string().min(1),
@@ -25,13 +30,16 @@ const createRequestSchema = z.object({
 
 type CreateRequestFormData = z.infer<typeof createRequestSchema>
 
+type PreviewVictimItem = {
+	typeId: string
+	flag: number
+	quantityDestroyed: number
+	quantityDropped: number
+	items?: PreviewVictimItem[]
+}
+
 interface KillmailPreview {
-	victimItems: Array<{
-		typeId: string
-		flag: number
-		quantityDestroyed: number
-		quantityDropped: number
-	}>
+	victimItems: PreviewVictimItem[]
 	itemPrices: Array<{
 		typeId: string
 		quantity: number
@@ -72,12 +80,15 @@ function normalizeVictimItems(items: RecentLossVictimItem[]): NormalizedVictimIt
 	}))
 }
 
-function normalizePreviewVictimItems(items: KillmailPreview['victimItems']): NormalizedVictimItem[] {
+function normalizePreviewVictimItems(
+	items: KillmailPreview['victimItems']
+): NormalizedVictimItem[] {
 	return items.map((item) => ({
 		item_type_id: Number(item.typeId),
 		flag: item.flag,
 		quantity_destroyed: item.quantityDestroyed,
 		quantity_dropped: item.quantityDropped,
+		items: item.items?.length ? normalizePreviewVictimItems(item.items) : undefined,
 	}))
 }
 
@@ -100,12 +111,11 @@ export function CreateRequestForm({
 		defaultValues: { killmailId, killmailHash, characterId, contextText: '' },
 	})
 
-	const displayVictimItems =
-		lossVictimItems?.length
-			? normalizeVictimItems(lossVictimItems)
-			: preview?.victimItems?.length
-				? normalizePreviewVictimItems(preview.victimItems)
-				: []
+	const displayVictimItems = lossVictimItems?.length
+		? normalizeVictimItems(lossVictimItems)
+		: preview?.victimItems?.length
+			? normalizePreviewVictimItems(preview.victimItems)
+			: []
 	const fittingItems = transformKillmailToFittingItems(
 		displayVictimItems,
 		preview?.itemPrices?.map((p) => ({
@@ -115,7 +125,8 @@ export function CreateRequestForm({
 		})) ?? [],
 		preview?.itemNames ?? {}
 	)
-	const cargoItems = transformKillmailToCargoItems(
+	const cargoItems = transformKillmailToCargoItems(displayVictimItems, preview?.itemNames ?? {})
+	const shipMaintenanceBayShips = transformKillmailToShipMaintenanceBayShips(
 		displayVictimItems,
 		preview?.itemNames ?? {}
 	)
@@ -190,6 +201,7 @@ export function CreateRequestForm({
 				shipTypeName={shipTypeName}
 				fittingItems={fittingItems}
 				cargoItems={cargoItems}
+				shipMaintenanceBayShips={shipMaintenanceBayShips}
 				showPricing={false}
 				panelLoading={previewLoading}
 			/>

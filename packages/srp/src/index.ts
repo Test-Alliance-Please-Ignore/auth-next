@@ -9,6 +9,7 @@ import { z } from 'zod'
 export {
 	buildKillmailItemMetadata,
 	collectKillmailItemTypeIds,
+	SHIP_MAINTENANCE_BAY_FLAG,
 	type KillmailItemNode,
 	type KillmailItemTypeMeta,
 } from './lib/killmail-item-names'
@@ -64,11 +65,7 @@ export interface RecentLossCacheBackfillResult {
 	persistedLosses: number
 }
 
-export type RecentLossRefreshStatus =
-	| 'queued'
-	| 'running'
-	| 'completed'
-	| 'failed'
+export type RecentLossRefreshStatus = 'queued' | 'running' | 'completed' | 'failed'
 
 export interface RecentLossRefreshStatusRecord {
 	userId: string
@@ -138,7 +135,11 @@ export interface Srp {
 		actorCharacterName: string,
 		notes?: string
 	): Promise<SRPRequestResponse>
-	getRequest(requestId: string, userId: string, includeShipSlotCapacities?: boolean): Promise<SRPRequestResponse | null>
+	getRequest(
+		requestId: string,
+		userId: string,
+		includeShipSlotCapacities?: boolean
+	): Promise<SRPRequestResponse | null>
 	getRequestEligibilityData(requestId: string): Promise<SrpRequestEligibilityData | null>
 	getPublicRequestSummary(requestId: string): Promise<SRPPublicRequestSummaryResponse | null>
 	getUserRequests(
@@ -286,7 +287,6 @@ export interface Srp {
 		actorUserId: string,
 		actorCharacterName: string
 	): Promise<SRPPaymentMismatchAlert>
-
 
 	// Statistics
 	getStats(startDate?: string, endDate?: string, corporationId?: string): Promise<SRPStatsResponse>
@@ -459,14 +459,7 @@ export const SRPReviewSubmissionSchema = z.object({
  * Schema for changing request state
  */
 export const UpdateReviewStateSchema = z.object({
-	newState: z.enum([
-		'pending',
-		'needs_context',
-		'approved',
-		'payment_pending',
-		'rejected',
-		'paid',
-	]),
+	newState: z.enum(['pending', 'needs_context', 'approved', 'payment_pending', 'rejected', 'paid']),
 	notes: z.string().max(2000).optional(),
 })
 
@@ -496,8 +489,16 @@ export const UpdateSRPConfigSchema = z.object({
 	maxLossAgeDays: z.number().int().positive().max(MAX_SRP_LOSS_AGE_DAYS).optional(),
 	paymentProcessorCorporationId: z.string().nullable().optional(),
 	srpGroupId: z.string().nullable().optional(),
-	srpDiscordGuildId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
-	srpDiscordChannelId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
+	srpDiscordGuildId: z
+		.string()
+		.regex(/^\d{17,20}$/)
+		.nullable()
+		.optional(),
+	srpDiscordChannelId: z
+		.string()
+		.regex(/^\d{17,20}$/)
+		.nullable()
+		.optional(),
 	metadata: z.record(z.string(), z.unknown()).optional(),
 	predefinedAdhocModifiers: z.array(PredefinedAdhocModifierSchema).optional(),
 })
@@ -740,18 +741,28 @@ export interface SRPValuationPreview {
 	pricingSource: 'historic' | 'fallback'
 	/** Whether insurance prices came from stored daily history or live ESI cache fallback. Absent for pod losses. */
 	insuranceSource?: 'historic' | 'fallback'
-	itemPrices: Array<{ typeId: string; typeName: string; quantity: number; unitPrice: string; lineTotal: string; isConsumable?: boolean }>
-	/** Raw victim items from the killmail — used to render the fitting panel. */
-	victimItems: Array<{
+	itemPrices: Array<{
 		typeId: string
-		flag: number
-		quantityDestroyed: number
-		quantityDropped: number
+		typeName: string
+		quantity: number
+		unitPrice: string
+		lineTotal: string
+		isConsumable?: boolean
 	}>
+	/** Raw victim items from the killmail — used to render the fitting panel. */
+	victimItems: SRPValuationPreviewVictimItem[]
 	/** Resolved type names for all item and ship type IDs in this killmail. */
 	itemNames: Record<string, string>
 	/** Type IDs that had no market data at the loss date (priced at 0). */
 	missingPriceTypeIds: string[]
+}
+
+export interface SRPValuationPreviewVictimItem {
+	typeId: string
+	flag: number
+	quantityDestroyed: number
+	quantityDropped: number
+	items?: SRPValuationPreviewVictimItem[]
 }
 
 /**
