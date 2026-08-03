@@ -17,14 +17,13 @@ describe('buildEquippedByType', () => {
 	it('filters out cargo and non-equipped flags', () => {
 		const result = buildEquippedByType([
 			{ flag: FLAG_CARGO, item_type_id: 100, quantity_destroyed: 1 },
+			{ flag: 90, item_type_id: 101, quantity_destroyed: 1 },
 		])
 		expect(result.size).toBe(0)
 	})
 
 	it('filters out items with missing flag', () => {
-		const result = buildEquippedByType([
-			{ flag: 0, item_type_id: 100, quantity_destroyed: 1 },
-		])
+		const result = buildEquippedByType([{ flag: 0, item_type_id: 100, quantity_destroyed: 1 }])
 		expect(result.size).toBe(0)
 	})
 
@@ -71,9 +70,7 @@ describe('buildEquippedByType', () => {
 	})
 
 	it('defaults missing quantity fields to 0', () => {
-		const result = buildEquippedByType([
-			{ flag: FLAG_LOW_0, item_type_id: 301 },
-		])
+		const result = buildEquippedByType([{ flag: FLAG_LOW_0, item_type_id: 301 }])
 		expect(result.get('301')).toBe(0)
 	})
 
