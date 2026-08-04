@@ -129,9 +129,10 @@ describe('SRPFLEET_PROGRAMMATIC_COMMAND', () => {
 		)
 		expect(embed?.fields?.find((field) => field.name === 'SRP Token')?.value).toBe('FleetToken')
 		expect(embed?.fields?.find((field) => field.name === 'SRP Type')?.value).toBe('Blanket')
-		expect(embed?.fields?.find((field) => field.name === 'Requested By')?.value).toBe(
-			'Commanding Main'
-		)
+		expect(embed?.fields?.[0]).toEqual({
+			name: 'Fleet Details Requested By',
+			value: 'Commanding Main',
+		})
 		expect(embed?.fields?.find((field) => field.name === 'Eligibility Check')?.value).toContain(
 			'Member of fleet at loss: Yes'
 		)

@@ -1,14 +1,13 @@
 import { Link2, Trash2, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { CopyRow, useCopyField } from './credentials-card'
-import { useCreateTempop, useDeleteTempop, useTempops } from '../tempop-hooks'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -17,9 +16,11 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { Select } from '@/components/ui/select'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import toast from '@/lib/toast'
+
+import { useCreateTempop, useDeleteTempop, useTempops } from '../tempop-hooks'
+import { CopyRow } from './credentials-card'
 
 import type { CreateTempopResponse, TempopListFilters, TempopListItem } from '@/lib/api'
 
@@ -60,12 +61,9 @@ function statusBadgeVariant(status: string): 'default' | 'secondary' | 'destruct
 /** Permission-gated create card. */
 function CreateTempopCard() {
 	const create = useCreateTempop()
-	const { copiedField, copyToClipboard } = useCopyField()
 	const [ttlMode, setTtlMode] = useState('1h')
 	const [customHours, setCustomHours] = useState('2')
-	const [generated, setGenerated] = useState<
-		(CreateTempopResponse & { url: string }) | null
-	>(null)
+	const [generated, setGenerated] = useState<(CreateTempopResponse & { url: string }) | null>(null)
 
 	const customHoursNumber = Number(customHours)
 	const customInvalid =
@@ -96,8 +94,8 @@ function CreateTempopCard() {
 				</CardTitle>
 				<CardDescription>
 					Generate a time-limited link that lets guests join voice after a quick EVE login. Guests
-					are placed in the <span className="font-mono">TempOp</span> group and disconnected when the
-					temp-op expires or is deleted.
+					are placed in the <span className="font-mono">TempOp</span> group and disconnected when
+					the temp-op expires or is deleted.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
@@ -132,7 +130,9 @@ function CreateTempopCard() {
 				</div>
 
 				{customInvalid ? (
-					<p className="text-sm text-destructive">Custom duration must be between 1 and 12 hours.</p>
+					<p className="text-sm text-destructive">
+						Custom duration must be between 1 and 12 hours.
+					</p>
 				) : null}
 
 				{generated ? (
@@ -141,12 +141,7 @@ function CreateTempopCard() {
 							Share this link (code <span className="font-mono">{generated.shortCode}</span>). It
 							expires {new Date(generated.expiresAt).toLocaleString()}.
 						</p>
-						<CopyRow
-							label="Link"
-							value={generated.url}
-							copied={copiedField === 'tempop-link'}
-							onCopy={() => copyToClipboard(generated.url, 'tempop-link', 'Link')}
-						/>
+						<CopyRow label="Link" value={generated.url} />
 					</div>
 				) : null}
 			</CardContent>
@@ -329,12 +324,10 @@ export function TempopSection({
 									inputId="tempop-creator"
 									options={creatorOptions}
 									value={creatorId === '' ? ALL_CREATORS : creatorId}
-									onValueChange={(value) =>
-										{
-											setCreatorId(value === ALL_CREATORS ? '' : value)
-											resetPage()
-										}
-									}
+									onValueChange={(value) => {
+										setCreatorId(value === ALL_CREATORS ? '' : value)
+										resetPage()
+									}}
 									disabled={mine}
 									className="w-56"
 								/>

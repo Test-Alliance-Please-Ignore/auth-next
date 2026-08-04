@@ -1,7 +1,6 @@
 import { Check, Copy } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate } from 'react-router'
-import toast from '@/lib/toast'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -10,6 +9,7 @@ import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import toast from '@/lib/toast'
 
 import { useMarkPaid, usePendingPayments, usePendingPayoutTotal } from '../hooks'
 import {
@@ -48,7 +48,10 @@ export default function PaymentsQueue() {
 
 	return (
 		<Container>
-			<PageHeader title="Payment Queue" description="Submit approved SRP payouts for payment validation" />
+			<PageHeader
+				title="Payment Queue"
+				description="Submit approved SRP payouts for payment validation"
+			/>
 			<div className="mt-section">
 				<PaymentStack />
 			</div>
@@ -180,7 +183,13 @@ function PaymentStack() {
 	}
 
 	const refreshButton = (
-		<Button variant="secondary" size="sm" onClick={() => void refetch()} loading={isFetching} loadingText="Refreshing...">
+		<Button
+			variant="secondary"
+			size="sm"
+			onClick={() => void refetch()}
+			loading={isFetching}
+			loadingText="Refreshing..."
+		>
 			Refresh Queue
 		</Button>
 	)
@@ -286,43 +295,20 @@ function PaymentCard({
 	isPendingRemoval?: boolean
 	registerCardRef: (el: HTMLDivElement | null) => void
 }) {
-	const [copiedField, setCopiedField] = useState<string | null>(null)
-
-	const copyToClipboard = (text: string, field: string, label: string) => {
-		void navigator.clipboard.writeText(text).then(() => {
-			toast.success(`${label} copied`)
-			setCopiedField(field)
-			setTimeout(() => setCopiedField(null), 2000)
-		})
-	}
-
 	const recipient = request.characterName
 	const amount = request.approvedAmount ?? '0'
 	const reason = `SRP - KM#${request.id}`
 
 	return (
-		<div ref={registerCardRef} className={`transition-opacity ${isPendingRemoval ? 'pointer-events-none opacity-0' : 'opacity-100'}`}>
+		<div
+			ref={registerCardRef}
+			className={`transition-opacity ${isPendingRemoval ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
+		>
 			<Card className="p-4">
 				<div className="space-y-1.5">
-					<CopyRow
-						label="Recipient"
-						value={recipient}
-						copied={copiedField === 'recipient'}
-						onCopy={() => copyToClipboard(recipient, 'recipient', 'Recipient')}
-					/>
-					<CopyRow
-						label="Amount"
-						value={amount}
-						display={formatISK(amount)}
-						copied={copiedField === 'amount'}
-						onCopy={() => copyToClipboard(amount, 'amount', 'Amount')}
-					/>
-					<CopyRow
-						label="Reason"
-						value={reason}
-						copied={copiedField === 'reason'}
-						onCopy={() => copyToClipboard(reason, 'reason', 'Reason')}
-					/>
+					<CopyRow label="Recipient" value={recipient} />
+					<CopyRow label="Amount" value={amount} display={formatISK(amount)} />
+					<CopyRow label="Reason" value={reason} />
 				</div>
 
 				<div className="mt-3 flex items-center gap-3 border-t border-border/40 pt-3">
@@ -359,13 +345,7 @@ function PaymentCard({
 	)
 }
 
-function GhostPaymentCard({
-	request,
-	top,
-}: {
-	request: SRPRequestResponse
-	top: number
-}) {
+function GhostPaymentCard({ request, top }: { request: SRPRequestResponse; top: number }) {
 	const recipient = request.characterName
 	const amount = request.approvedAmount ?? '0'
 	const reason = `SRP - KM#${request.id}`
@@ -408,19 +388,32 @@ function GhostCopyRow({ label, value }: { label: string; value: string }) {
 	)
 }
 
-function CopyRow({
-	label,
-	value,
-	display,
-	copied,
-	onCopy,
-}: {
-	label: string
-	value: string
-	display?: string
-	copied: boolean
-	onCopy: () => void
-}) {
+function CopyRow({ label, value, display }: { label: string; value: string; display?: string }) {
+	const [copied, setCopied] = useState(false)
+	const resetTimerRef = useRef<number | null>(null)
+
+	useEffect(() => {
+		return () => {
+			if (resetTimerRef.current !== null) {
+				window.clearTimeout(resetTimerRef.current)
+			}
+		}
+	}, [])
+
+	const onCopy = () => {
+		void navigator.clipboard.writeText(value).then(() => {
+			toast.success(`${label} copied`)
+			setCopied(true)
+			if (resetTimerRef.current !== null) {
+				window.clearTimeout(resetTimerRef.current)
+			}
+			resetTimerRef.current = window.setTimeout(() => {
+				setCopied(false)
+				resetTimerRef.current = null
+			}, 2000)
+		})
+	}
+
 	return (
 		<div className="flex items-center gap-2">
 			<span className="w-20 shrink-0 text-xs text-muted-foreground">{label}</span>
@@ -428,7 +421,12 @@ function CopyRow({
 				role="button"
 				tabIndex={0}
 				onClick={onCopy}
-				onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCopy() } }}
+				onKeyDown={(e) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault()
+						onCopy()
+					}
+				}}
 				className={`flex cursor-pointer items-center gap-2.5 rounded-md border-2 px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
 					copied
 						? 'border-teal-500 bg-teal-500/30 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]'
