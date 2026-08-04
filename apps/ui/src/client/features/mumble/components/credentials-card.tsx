@@ -1,5 +1,5 @@
 import { Check, Copy, ExternalLink, KeyRound } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,17 +16,32 @@ export function buildMumbleUrl(credentials: MumbleOneTimeCredentials): string {
 }
 
 /** A click-to-copy row used for credentials and generated links. */
-export function CopyRow({
-	label,
-	value,
-	copied,
-	onCopy,
-}: {
-	label: string
-	value: string
-	copied: boolean
-	onCopy: () => void
-}) {
+export function CopyRow({ label, value }: { label: string; value: string }) {
+	const [copied, setCopied] = useState(false)
+	const resetTimerRef = useRef<number | null>(null)
+
+	useEffect(() => {
+		return () => {
+			if (resetTimerRef.current !== null) {
+				window.clearTimeout(resetTimerRef.current)
+			}
+		}
+	}, [])
+
+	const onCopy = () => {
+		void navigator.clipboard.writeText(value).then(() => {
+			toast.success(`${label} copied`)
+			setCopied(true)
+			if (resetTimerRef.current !== null) {
+				window.clearTimeout(resetTimerRef.current)
+			}
+			resetTimerRef.current = window.setTimeout(() => {
+				setCopied(false)
+				resetTimerRef.current = null
+			}, 2000)
+		})
+	}
+
 	return (
 		<div className="flex items-center gap-2">
 			<span className="w-20 shrink-0 text-xs text-muted-foreground">{label}</span>
@@ -54,22 +69,8 @@ export function CopyRow({
 	)
 }
 
-/** Hook providing a copy-to-clipboard handler with transient "copied" state. */
-export function useCopyField() {
-	const [copiedField, setCopiedField] = useState<string | null>(null)
-	const copyToClipboard = (text: string, field: string, label: string) => {
-		void navigator.clipboard.writeText(text).then(() => {
-			toast.success(`${label} copied`)
-			setCopiedField(field)
-			setTimeout(() => setCopiedField(null), 2000)
-		})
-	}
-	return { copiedField, copyToClipboard }
-}
-
 /** One-time credentials card shown after provisioning or a password reset. */
 export function OneTimeCredentialsCard({ credentials }: { credentials: MumbleOneTimeCredentials }) {
-	const { copiedField, copyToClipboard } = useCopyField()
 	const mumbleUrl = buildMumbleUrl(credentials)
 	const server = credentials.connection.host
 	const port = String(credentials.connection.port)
@@ -91,30 +92,10 @@ export function OneTimeCredentialsCard({ credentials }: { credentials: MumbleOne
 					Once you close or refresh this page, the password will no longer be visible. If you lose
 					it, you will need to generate a new one.
 				</div>
-				<CopyRow
-					label="Username"
-					value={credentials.loginName}
-					copied={copiedField === 'username'}
-					onCopy={() => copyToClipboard(credentials.loginName, 'username', 'Username')}
-				/>
-				<CopyRow
-					label="Password"
-					value={credentials.password}
-					copied={copiedField === 'password'}
-					onCopy={() => copyToClipboard(credentials.password, 'password', 'Password')}
-				/>
-				<CopyRow
-					label="Server"
-					value={server}
-					copied={copiedField === 'server'}
-					onCopy={() => copyToClipboard(server, 'server', 'Server')}
-				/>
-				<CopyRow
-					label="Port"
-					value={port}
-					copied={copiedField === 'port'}
-					onCopy={() => copyToClipboard(port, 'port', 'Port')}
-				/>
+				<CopyRow label="Username" value={credentials.loginName} />
+				<CopyRow label="Password" value={credentials.password} />
+				<CopyRow label="Server" value={server} />
+				<CopyRow label="Port" value={port} />
 				<div className="pt-3">
 					<Button asChild variant="primary" className="justify-center gap-2">
 						<a href={mumbleUrl}>

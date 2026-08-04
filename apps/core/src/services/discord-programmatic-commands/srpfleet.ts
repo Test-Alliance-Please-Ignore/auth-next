@@ -198,12 +198,15 @@ export const SRPFLEET_PROGRAMMATIC_COMMAND: ProgrammaticCommandDefinition = {
 		}
 
 		const fields: NonNullable<DiscordEmbed['fields']> = [
+			{
+				name: 'Fleet Details Requested By',
+				value: truncate(invokerMainCharacterName ?? 'Unavailable'),
+			},
 			{ name: 'Fleet Commander(s)', value: truncate(commanders.join('\n') || 'Unavailable') },
 			{ name: 'Doctrine', value: truncate(doctrine) },
 			{ name: 'SRP Type', value: srpTypeLabel(broadcast.srpMode) },
 			{ name: 'MOTD', value: sanitizeMotd(details.motd) },
 			{ name: 'SRP Token', value: truncate(token) },
-			{ name: 'Requested By', value: truncate(invokerMainCharacterName ?? 'Unavailable') },
 			{
 				name: 'Fleet Period',
 				value: `${discordTimestamp(details.startedAt, 'Unknown start')} - ${discordTimestamp(details.endedAt, 'Ongoing')}`,
