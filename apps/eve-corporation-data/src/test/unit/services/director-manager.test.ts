@@ -434,6 +434,11 @@ describe('DirectorManager.recordFailure', () => {
 				},
 			},
 			update,
+			select: vi.fn(() => ({
+				from: vi.fn(() => ({
+					where: vi.fn().mockResolvedValue([{ count: 0 }]),
+				})),
+			})),
 		}
 		const onHealthSnapshotChanged = vi.fn().mockResolvedValue(undefined)
 		const manager = new DirectorManager(
@@ -454,6 +459,20 @@ describe('DirectorManager.recordFailure', () => {
 			healthyDirectorCount: 0,
 			isVerified: false,
 		})
+	})
+})
+
+describe('DirectorManager.getHealthyDirectorsCount', () => {
+	it('uses a database count query instead of loading director rows', async () => {
+		const where = vi.fn().mockResolvedValue([{ count: 3 }])
+		const from = vi.fn().mockReturnValue({ where })
+		const select = vi.fn().mockReturnValue({ from })
+		const manager = new DirectorManager({ select } as never, '98000001', {} as never)
+
+		await expect(manager.getHealthyDirectorsCount()).resolves.toBe(3)
+		expect(select).toHaveBeenCalledTimes(1)
+		expect(from).toHaveBeenCalledTimes(1)
+		expect(where).toHaveBeenCalledTimes(1)
 	})
 })
 

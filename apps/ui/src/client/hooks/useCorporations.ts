@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
@@ -7,6 +7,8 @@ import type {
 	CorporationsFilters,
 	CreateCorporationRequest,
 	FetchCorporationDataRequest,
+	ManagedCorporation,
+	PaginatedResponse,
 	UpdateCorporationRequest,
 	UpdateDirectorPriorityRequest,
 } from '@/lib/api'
@@ -50,7 +52,9 @@ export function useCorporations(filters?: CorporationsFilters) {
 	return useQuery({
 		queryKey: corporationKeys.list(filters),
 		queryFn: () => api.getCorporations(filters),
+		placeholderData: keepPreviousData,
 		staleTime: 1000 * 60, // 1 minute
+		gcTime: 1000 * 60 * 60, // Keep recently viewed pages available for one hour
 	})
 }
 
@@ -126,18 +130,41 @@ export function useUpdateCorporation() {
 			corporationId: string
 			data: UpdateCorporationRequest
 		}) => api.updateCorporation(corporationId, data),
-		onSuccess: (updatedCorporation) => {
+		onSuccess: (updatedCorporation, { data }) => {
 			// Update detail cache first (immediate update)
 			queryClient.setQueryData(
 				corporationKeys.detail(updatedCorporation.corporationId),
 				updatedCorporation
 			)
 
-			// Then invalidate list to show updated data
-			void queryClient.invalidateQueries({
-				queryKey: corporationKeys.lists(),
-				refetchType: 'active',
-			})
+			// Patch every cached page so sync toggles update only the affected row.
+			queryClient.setQueriesData<PaginatedResponse<ManagedCorporation>>(
+				{ queryKey: corporationKeys.lists() },
+				(previous) => {
+					if (!previous) return previous
+					return {
+						...previous,
+						data: previous.data.map((corporation) =>
+							corporation.corporationId === updatedCorporation.corporationId
+								? updatedCorporation
+								: corporation
+						),
+					}
+				}
+			)
+
+			const isSyncOnlyUpdate =
+				Object.keys(data).length > 0 &&
+				Object.keys(data).every(
+					(key) => key === 'includeInBackgroundRefresh' || key === 'includeInStructureAssetSync'
+				)
+			if (!isSyncOnlyUpdate) {
+				// Other updates can change filtering or ordering, so reconcile all active pages.
+				void queryClient.invalidateQueries({
+					queryKey: corporationKeys.lists(),
+					refetchType: 'active',
+				})
+			}
 		},
 	})
 }
@@ -173,16 +200,33 @@ export function useVerifyCorporationAccess() {
 
 	return useMutation({
 		mutationFn: (corporationId: string) => api.verifyCorporationAccess(corporationId),
-		onSuccess: (_, corporationId) => {
-			// Batch invalidations for this specific corporation
+		onSuccess: (verification, corporationId) => {
+			const lastVerified = verification.lastVerified
+				? new Date(verification.lastVerified).toISOString()
+				: null
+			queryClient.setQueriesData<PaginatedResponse<ManagedCorporation>>(
+				{ queryKey: corporationKeys.lists() },
+				(previous) => {
+					if (!previous) return previous
+					return {
+						...previous,
+						data: previous.data.map((corporation) =>
+							corporation.corporationId === corporationId
+								? {
+										...corporation,
+										isVerified: verification.healthyDirectorCount > 0,
+										healthyDirectorCount: verification.healthyDirectorCount,
+										lastVerified: lastVerified ?? corporation.lastVerified,
+									}
+								: corporation
+						),
+					}
+				}
+			)
+
+			// Reconcile the detailed corporation view without refetching every list row.
 			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.detail(corporationId),
-				refetchType: 'active',
-			})
-
-			// Also invalidate list, but less aggressively
-			void queryClient.invalidateQueries({
-				queryKey: corporationKeys.lists(),
 				refetchType: 'active',
 			})
 		},

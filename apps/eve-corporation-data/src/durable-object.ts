@@ -1535,6 +1535,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	}
 
 	/**
+	 * Get the number of healthy directors without loading director rows.
+	 */
+	async getHealthyDirectorCount(corporationId: string): Promise<number> {
+		const directorManager = this.createDirectorManager(corporationId)
+		return await directorManager.getHealthyDirectorsCount()
+	}
+
+	/**
 	 * Verify health of a specific director
 	 */
 	async verifyDirectorHealth(corporationId: string, directorId: string): Promise<boolean> {

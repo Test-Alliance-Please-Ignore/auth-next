@@ -230,6 +230,11 @@
 			"binding": "PASTE",
 			"service": "paste",
 			"entrypoint": "PasteWorkerEntrypoint"
+		},
+		{
+			"binding": "EVE_CORPORATION_DATA_WORKER",
+			"service": "eve-corporation-data",
+			"entrypoint": "EveCorporationDataWorker"
 		}
 	],
 	"migrations": [

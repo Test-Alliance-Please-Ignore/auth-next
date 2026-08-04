@@ -1,4 +1,4 @@
-import { and, asc, eq } from '@repo/db-utils'
+import { and, asc, eq, sql } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
 import {
 	classifyEsiCredentialFailure,
@@ -914,8 +914,17 @@ export class DirectorManager {
 	 * Get count of healthy directors
 	 */
 	async getHealthyDirectorsCount(): Promise<number> {
-		const directors = await this.getHealthyDirectors()
-		return directors.length
+		const [result] = await this.db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(corporationDirectors)
+			.where(
+				and(
+					eq(corporationDirectors.corporationId, this.corporationId),
+					eq(corporationDirectors.isHealthy, true)
+				)
+			)
+
+		return result?.count ?? 0
 	}
 
 	/**

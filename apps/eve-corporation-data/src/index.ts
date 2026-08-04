@@ -19,13 +19,11 @@ import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { App, Env } from './context'
 
 const app = new Hono<App>()
-	.use(
-		'*',
-		(c, next) =>
-			withWorkersLogger(c.env.NAME, {
-				environment: c.env.ENVIRONMENT,
-				release: c.env.SENTRY_RELEASE,
-			})(c, next)
+	.use('*', (c, next) =>
+		withWorkersLogger(c.env.NAME, {
+			environment: c.env.ENVIRONMENT,
+			release: c.env.SENTRY_RELEASE,
+		})(c, next)
 	)
 
 	.onError(withOnError())
@@ -38,7 +36,7 @@ const app = new Hono<App>()
 // Export default worker with fetch, queue, and scheduled handlers
 export default {
 	fetch: app.fetch.bind(app),
-	async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
+	async queue(batch: MessageBatch, env: Env, _ctx: ExecutionContext): Promise<void> {
 		await withWorkerLogContext('eve-corporation-data-queue', env, async () => {
 			// No queue consumers anymore - this handler exists only because
 			// we have the hr-member-departed producer binding which requires
@@ -62,6 +60,36 @@ export { EveCorporationDataDO as EveCorporationData }
  * Exposes workflow dispatch methods for internal callers.
  */
 export class EveCorporationDataWorker extends WorkerEntrypoint<Env> {
+	/**
+	 * Read healthy director counts for a page of corporations. Corporation
+	 * Durable Objects are independent, so keep the internal fan-out bounded.
+	 */
+	async getHealthyDirectorCounts(corporationIds: string[]): Promise<Record<string, number | null>> {
+		const uniqueCorporationIds = [...new Set(corporationIds)]
+		const counts: Record<string, number | null> = {}
+		const BATCH_CONCURRENCY = 4
+
+		for (let i = 0; i < uniqueCorporationIds.length; i += BATCH_CONCURRENCY) {
+			const batch = uniqueCorporationIds.slice(i, i + BATCH_CONCURRENCY)
+			await Promise.all(
+				batch.map(async (corporationId) => {
+					try {
+						const stub = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corporationId)
+						counts[corporationId] = await stub.getHealthyDirectorCount(corporationId)
+					} catch (error) {
+						logger.warn('[EveCorporationDataWorker] Failed to read director health count', {
+							corporationId,
+							error: error instanceof Error ? error.message : String(error),
+						})
+						counts[corporationId] = null
+					}
+				})
+			)
+		}
+
+		return counts
+	}
+
 	/**
 	 * Trigger corporation sync workflows in batches.
 	 */

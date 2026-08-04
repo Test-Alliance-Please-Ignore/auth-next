@@ -1,30 +1,22 @@
 import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getStub } from '@repo/do-utils'
-
 import corporationsRoutes from '../corporations'
 
 import type { SessionUser } from '../../context'
 
-vi.mock('@repo/do-utils', () => ({
-	getStub: vi.fn(),
-}))
-
 vi.mock('../../middleware/session', () => ({
 	requireAuth:
 		() =>
-			async (_c: unknown, next: () => Promise<void>): Promise<void> => {
-				await next()
-			},
+		async (_c: unknown, next: () => Promise<void>): Promise<void> => {
+			await next()
+		},
 	requireAdmin:
 		() =>
-			async (_c: unknown, next: () => Promise<void>): Promise<void> => {
-				await next()
-			},
+		async (_c: unknown, next: () => Promise<void>): Promise<void> => {
+			await next()
+		},
 }))
-
-const getStubMock = vi.mocked(getStub)
 
 function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 	return {
@@ -61,6 +53,9 @@ function createApp(user: SessionUser, db: any) {
 describe('corporations list route', () => {
 	const env = {
 		EVE_CORPORATION_DATA: { name: 'EVE_CORPORATION_DATA' },
+		EVE_CORPORATION_DATA_WORKER: {
+			getHealthyDirectorCounts: vi.fn(),
+		},
 		DATABASE_URL: 'postgres://test',
 	} as any
 
@@ -69,60 +64,113 @@ describe('corporations list route', () => {
 	})
 
 	it('keeps the persisted verification flag while surfacing live healthy director counts', async () => {
+		const findMany = vi.fn().mockResolvedValue([
+			{
+				corporationId: 'corp-1',
+				name: 'Test Corp',
+				ticker: 'TST',
+				assignedCharacterId: null,
+				assignedCharacterName: null,
+				isActive: true,
+				includeInBackgroundRefresh: true,
+				includeInStructureAssetSync: false,
+				isMemberCorporation: true,
+				isAltCorp: false,
+				isSpecialPurpose: false,
+				isRecruiting: false,
+				shortDescription: null,
+				fullDescription: null,
+				lastSync: null,
+				lastVerified: null,
+				isVerified: false,
+				healthyDirectorCount: 0,
+				configuredBy: null,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			},
+		])
 		const db = {
 			query: {
 				managedCorporations: {
-					findMany: vi.fn().mockResolvedValue([
-						{
-							corporationId: 'corp-1',
-							name: 'Test Corp',
-							ticker: 'TST',
-							assignedCharacterId: null,
-							assignedCharacterName: null,
-							isActive: true,
-							includeInBackgroundRefresh: true,
-							includeInStructureAssetSync: false,
-							isMemberCorporation: true,
-							isAltCorp: false,
-							isSpecialPurpose: false,
-							isRecruiting: false,
-							shortDescription: null,
-							fullDescription: null,
-							lastSync: null,
-							lastVerified: null,
-							isVerified: false,
-							healthyDirectorCount: 0,
-							configuredBy: null,
-							createdAt: new Date().toISOString(),
-							updatedAt: new Date().toISOString(),
-						},
-					]),
+					findMany,
 				},
 			},
+			select: vi.fn(() => ({
+				from: vi.fn(() => ({
+					where: vi.fn().mockResolvedValue([{ count: 1 }]),
+				})),
+			})),
 		}
-		const corpStub = {
-			getHealthyDirectors: vi.fn().mockResolvedValue([
-				{ directorId: 'dir-1' },
-				{ directorId: 'dir-2' },
-			]),
-		}
-
-		getStubMock.mockImplementation((binding: unknown) => {
-			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
-			throw new Error('Unexpected binding')
-		})
+		env.EVE_CORPORATION_DATA_WORKER.getHealthyDirectorCounts.mockResolvedValue({ 'corp-1': 2 })
 
 		const app = createApp(makeUser(), db)
 		const response = await app.request('/api/corporations', {}, env)
 
 		expect(response.status).toBe(200)
-		expect(await response.json()).toEqual([
+		expect(await response.json()).toEqual({
+			data: [
+				expect.objectContaining({
+					corporationId: 'corp-1',
+					isVerified: false,
+					healthyDirectorCount: 2,
+				}),
+			],
+			pagination: {
+				page: 1,
+				pageSize: 25,
+				totalCount: 1,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+		})
+		expect(findMany).toHaveBeenCalledWith(
 			expect.objectContaining({
-				corporationId: 'corp-1',
-				isVerified: false,
-				healthyDirectorCount: 2,
-			}),
+				limit: 25,
+				offset: 0,
+			})
+		)
+		expect(env.EVE_CORPORATION_DATA_WORKER.getHealthyDirectorCounts).toHaveBeenCalledWith([
+			'corp-1',
 		])
-		expect(corpStub.getHealthyDirectors).toHaveBeenCalledWith('corp-1')
+	})
+
+	it('passes requested SQL pagination to the corporation query', async () => {
+		const findMany = vi.fn().mockResolvedValue([])
+		const db = {
+			query: { managedCorporations: { findMany } },
+			select: vi.fn(() => ({
+				from: vi.fn(() => ({
+					where: vi.fn().mockResolvedValue([{ count: 125 }]),
+				})),
+			})),
+		}
+
+		const app = createApp(makeUser(), db)
+		const response = await app.request(
+			'/api/corporations?corporationType=alt&search=alpha&page=2&pageSize=100',
+			{},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(await response.json()).toMatchObject({
+			data: [],
+			pagination: {
+				page: 2,
+				pageSize: 100,
+				totalCount: 125,
+				totalPages: 2,
+				hasNextPage: false,
+				hasPreviousPage: true,
+			},
+		})
+		expect(findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				limit: 100,
+				offset: 100,
+			})
+		)
+		expect(env.EVE_CORPORATION_DATA_WORKER.getHealthyDirectorCounts).not.toHaveBeenCalled()
 	})
 })

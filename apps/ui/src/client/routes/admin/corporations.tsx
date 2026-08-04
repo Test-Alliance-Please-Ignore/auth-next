@@ -9,9 +9,10 @@ import {
 	Trash2,
 	X,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 
+import { TableRefreshFrame } from '@/components/table-refresh-frame'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -36,6 +37,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import {
 	useCorporations,
 	useCreateCorporation,
@@ -52,9 +54,40 @@ export default function CorporationsPage() {
 	usePageTitle('Admin - Corporations')
 
 	// Filter state
-	const [filters, setFilters] = useState<CorporationsFilters>({ corporationType: 'member' })
+	const [filters, setFilters] = useState<CorporationsFilters>({
+		corporationType: 'member',
+		page: 1,
+		pageSize: 25,
+	})
+	const [searchQuery, setSearchQuery] = useState('')
+	const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
 
-	const { data: corporations, isLoading } = useCorporations(filters)
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			setDebouncedSearchQuery(searchQuery.trim())
+			setFilters((current) => ({ ...current, page: 1 }))
+		}, 300)
+
+		return () => clearTimeout(timer)
+	}, [searchQuery])
+
+	const { data, isLoading, isFetching, error } = useCorporations({
+		...filters,
+		search: debouncedSearchQuery || undefined,
+	})
+	const corporations = data?.data ?? []
+	const pagination = data?.pagination
+	const isInitialLoading = isLoading && !data
+	const isSoftLoading = Boolean(data) && isFetching
+
+	useEffect(() => {
+		const totalPages = pagination?.totalPages ?? 0
+		const currentPage = filters.page ?? 1
+		if (totalPages > 0 && currentPage > totalPages) {
+			setFilters((current) => ({ ...current, page: totalPages }))
+		}
+	}, [filters.page, pagination?.totalPages])
+
 	const createCorporation = useCreateCorporation()
 	const deleteCorporation = useDeleteCorporation()
 	const updateCorporation = useUpdateCorporation()
@@ -79,30 +112,19 @@ export default function CorporationsPage() {
 		includeInStructureAssetSync: false,
 	})
 
-	// Search state
-	const [searchQuery, setSearchQuery] = useState('')
-
-	// Memoize filtered and sorted corporations to prevent unnecessary processing on every render
-	const filteredCorporations = useMemo(() => {
-		if (!corporations) return undefined
-
-		const query = searchQuery.trim().toLowerCase()
-		const filtered = query
-			? corporations.filter(
-					(corp) =>
-						corp.name.toLowerCase().includes(query) || corp.ticker.toLowerCase().includes(query)
-				)
-			: corporations
-
-		return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
-	}, [corporations, searchQuery])
-
 	// Check if any filters are active (different from default)
-	const hasActiveFilters = filters.corporationType !== 'member'
+	const hasActiveFilters = filters.corporationType !== 'member' || searchQuery.trim().length > 0
 
 	// Clear all filters (reset to default)
 	const clearFilters = () => {
-		setFilters({ corporationType: 'member' })
+		setSearchQuery('')
+		setDebouncedSearchQuery('')
+		setFilters({ corporationType: 'member', page: 1, pageSize: filters.pageSize ?? 25 })
+	}
+
+	const handlePageSizeChange = (pageSize: number) => {
+		if (pageSize !== 25 && pageSize !== 50 && pageSize !== 100) return
+		setFilters((current) => ({ ...current, page: 1, pageSize }))
 	}
 
 	// Handlers
@@ -289,6 +311,8 @@ export default function CorporationsPage() {
 												value === 'all'
 													? undefined
 													: (value as 'member' | 'alt' | 'special' | 'other'),
+											page: 1,
+											pageSize: filters.pageSize ?? 25,
 										})
 									}}
 									inputId="corporation-type-filter"
@@ -310,113 +334,162 @@ export default function CorporationsPage() {
 			{/* Corporations Table */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Managed Corporations ({filteredCorporations?.length || 0})</CardTitle>
-					<CardDescription>Corporations configured for data collection</CardDescription>
+					<div className="space-y-4">
+						<div>
+							<CardTitle>Managed Corporations ({pagination?.totalCount ?? 0})</CardTitle>
+							<CardDescription>Corporations configured for data collection</CardDescription>
+						</div>
+						<UserSearchPaginationControls
+							totalCount={pagination?.totalCount ?? 0}
+							page={filters.page ?? 1}
+							pageSize={filters.pageSize ?? 25}
+							onPageChange={(page) => setFilters((current) => ({ ...current, page }))}
+							onPageSizeChange={handlePageSizeChange}
+							itemLabel="corporations"
+							nextButtonLoading={isFetching}
+						/>
+					</div>
 				</CardHeader>
 				<CardContent>
-					{isLoading ? (
-						<div className="flex justify-center py-8">
-							<LoadingSpinner label="Loading corporations..." />
-						</div>
-					) : !filteredCorporations || filteredCorporations.length === 0 ? (
-						<div className="text-center py-8">
-							<Building2 className="mx-auto h-12 w-12 text-muted-foreground" />
-							<h3 className="mt-4 text-lg font-medium">No corporations found</h3>
-							<p className="text-muted-foreground mt-2">
-								{searchQuery
-									? 'Try adjusting your search'
-									: 'Add your first corporation to get started'}
-							</p>
-						</div>
-					) : (
-						<div className="rounded-md border bg-card">
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>Corporation</TableHead>
-										<TableHead>Directors</TableHead>
-										<TableHead>Status</TableHead>
-										<TableHead>Auto-Sync</TableHead>
-										<TableHead>Asset Sync</TableHead>
-										<TableHead>Last Sync</TableHead>
-										<TableHead>Last Verified</TableHead>
-										<TableHead className="text-right">Actions</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{filteredCorporations.map((corp) => (
-										<TableRow key={corp.corporationId}>
-											<TableCell>
-												<div>
-													<Link
-														to={`/admin/corporations/${corp.corporationId}`}
-														className="font-medium hover:underline"
-													>
-														{corp.name}
-													</Link>
-													<div className="text-sm text-muted-foreground">[{corp.ticker}]</div>
-												</div>
-											</TableCell>
-											<TableCell>
-													<div className="text-sm">
-														<div>{`${corp.healthyDirectorCount} healthy`}</div>
-														{corp.healthyDirectorCount === 0 && (
-															<div className="text-amber-600 text-xs">Needs verification</div>
-														)}
-												</div>
-											</TableCell>
-											<TableCell>{getVerificationBadge(corp)}</TableCell>
-											<TableCell>
-												<Switch
-													checked={corp.includeInBackgroundRefresh}
-													onCheckedChange={(checked) =>
-														handleToggleBackgroundRefresh(corp.corporationId, checked)
-													}
-													disabled={updateCorporation.isPending}
-												/>
-											</TableCell>
-											<TableCell>
-												<Switch
-													checked={corp.includeInStructureAssetSync}
-													onCheckedChange={(checked) =>
-														handleToggleStructureAssetSync(corp.corporationId, checked)
-													}
-													disabled={updateCorporation.isPending}
-												/>
-											</TableCell>
-											<TableCell>
-												<span className="text-sm">{formatDate(corp.lastSync)}</span>
-											</TableCell>
-											<TableCell>
-												<span className="text-sm">{formatDate(corp.lastVerified)}</span>
-											</TableCell>
-											<TableCell className="text-right">
-												<div className="flex justify-end gap-2">
-													{corp.assignedCharacterId && (
-														<Button
-															variant="ghost"
-															size="sm"
-															onClick={() => handleVerify(corp.corporationId)}
-															disabled={verifyAccess.isPending}
-														>
-															<RefreshCw className="h-4 w-4" />
-														</Button>
-													)}
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => openDeleteDialog(corp.corporationId)}
-													>
-														<Trash2 className="h-4 w-4 text-destructive" />
-													</Button>
-												</div>
-											</TableCell>
-										</TableRow>
-									))}
-								</TableBody>
-							</Table>
-						</div>
-					)}
+					<TableRefreshFrame
+						isRefreshing={isSoftLoading}
+						refreshMessage="Loading corporations..."
+						errorMessage={
+							error && data
+								? error instanceof Error
+									? error.message
+									: 'Failed to refresh corporations.'
+								: null
+						}
+					>
+						{error && !data ? (
+							<div className="rounded-lg border border-destructive/40 bg-destructive/10 p-8 text-center text-sm text-destructive">
+								<div className="font-medium">Failed to load corporations.</div>
+								<div className="mt-1 text-destructive/80">
+									{error instanceof Error ? error.message : 'Please try again.'}
+								</div>
+							</div>
+						) : isInitialLoading ? (
+							<div className="flex justify-center py-8">
+								<LoadingSpinner label="Loading corporations..." />
+							</div>
+						) : corporations.length === 0 ? (
+							<div className="text-center py-8">
+								<Building2 className="mx-auto h-12 w-12 text-muted-foreground" />
+								<h3 className="mt-4 text-lg font-medium">No corporations found</h3>
+								<p className="text-muted-foreground mt-2">
+									{searchQuery
+										? 'Try adjusting your search'
+										: 'Add your first corporation to get started'}
+								</p>
+							</div>
+						) : (
+							<>
+								<div className="rounded-md border bg-card">
+									<Table>
+										<TableHeader>
+											<TableRow>
+												<TableHead>Corporation</TableHead>
+												<TableHead>Directors</TableHead>
+												<TableHead>Status</TableHead>
+												<TableHead>Auto-Sync</TableHead>
+												<TableHead>Asset Sync</TableHead>
+												<TableHead>Last Sync</TableHead>
+												<TableHead>Last Verified</TableHead>
+												<TableHead className="text-right">Actions</TableHead>
+											</TableRow>
+										</TableHeader>
+										<TableBody>
+											{corporations.map((corp) => (
+												<TableRow key={corp.corporationId}>
+													<TableCell>
+														<div>
+															<Link
+																to={`/admin/corporations/${corp.corporationId}`}
+																className="font-medium hover:underline"
+															>
+																{corp.name}
+															</Link>
+															<div className="text-sm text-muted-foreground">[{corp.ticker}]</div>
+														</div>
+													</TableCell>
+													<TableCell>
+														<div className="text-sm">
+															<div>{`${corp.healthyDirectorCount} healthy`}</div>
+															{corp.healthyDirectorCount === 0 && (
+																<div className="text-amber-600 text-xs">Needs verification</div>
+															)}
+														</div>
+													</TableCell>
+													<TableCell>{getVerificationBadge(corp)}</TableCell>
+													<TableCell>
+														<Switch
+															checked={corp.includeInBackgroundRefresh}
+															onCheckedChange={(checked) =>
+																handleToggleBackgroundRefresh(corp.corporationId, checked)
+															}
+															disabled={updateCorporation.isPending}
+														/>
+													</TableCell>
+													<TableCell>
+														<Switch
+															checked={corp.includeInStructureAssetSync}
+															onCheckedChange={(checked) =>
+																handleToggleStructureAssetSync(corp.corporationId, checked)
+															}
+															disabled={updateCorporation.isPending}
+														/>
+													</TableCell>
+													<TableCell>
+														<span className="text-sm">{formatDate(corp.lastSync)}</span>
+													</TableCell>
+													<TableCell>
+														<span className="text-sm">{formatDate(corp.lastVerified)}</span>
+													</TableCell>
+													<TableCell className="text-right">
+														<div className="flex justify-end gap-2">
+															{corp.assignedCharacterId && (
+																<Button
+																	variant="ghost"
+																	size="sm"
+																	onClick={() => handleVerify(corp.corporationId)}
+																	disabled={verifyAccess.isPending}
+																	title="Verify corporation access"
+																	aria-label="Verify corporation access"
+																>
+																	<RefreshCw className="h-4 w-4" />
+																</Button>
+															)}
+															<Button
+																variant="ghost"
+																size="sm"
+																onClick={() => openDeleteDialog(corp.corporationId)}
+															>
+																<Trash2 className="h-4 w-4 text-destructive" />
+															</Button>
+														</div>
+													</TableCell>
+												</TableRow>
+											))}
+										</TableBody>
+									</Table>
+								</div>
+								{pagination && pagination.totalPages > 1 ? (
+									<div className="mt-4 border-t border-border pt-4">
+										<UserSearchPaginationControls
+											totalCount={pagination.totalCount}
+											page={filters.page ?? 1}
+											pageSize={filters.pageSize ?? 25}
+											onPageChange={(page) => setFilters((current) => ({ ...current, page }))}
+											onPageSizeChange={handlePageSizeChange}
+											itemLabel="corporations"
+											nextButtonLoading={isFetching}
+										/>
+									</div>
+								) : null}
+							</>
+						)}
+					</TableRefreshFrame>
 				</CardContent>
 			</Card>
 
@@ -493,22 +566,22 @@ export default function CorporationsPage() {
 								/>
 							</div>
 							<div className="space-y-2">
-									<div className="flex items-center space-x-2">
-										<Switch
-											id="includeInBackgroundRefresh"
-											checked={formData.includeInBackgroundRefresh ?? false}
-											onCheckedChange={(checked) =>
-												setFormData({ ...formData, includeInBackgroundRefresh: checked })
-											}
-										/>
-										<Label htmlFor="includeInBackgroundRefresh" className="cursor-pointer">
-											Include in Background Refresh
-										</Label>
-									</div>
-									<p className="text-sm text-muted-foreground">
-										Automatically fetch and sync corporation data on a regular schedule
-									</p>
+								<div className="flex items-center space-x-2">
+									<Switch
+										id="includeInBackgroundRefresh"
+										checked={formData.includeInBackgroundRefresh ?? false}
+										onCheckedChange={(checked) =>
+											setFormData({ ...formData, includeInBackgroundRefresh: checked })
+										}
+									/>
+									<Label htmlFor="includeInBackgroundRefresh" className="cursor-pointer">
+										Include in Background Refresh
+									</Label>
 								</div>
+								<p className="text-sm text-muted-foreground">
+									Automatically fetch and sync corporation data on a regular schedule
+								</p>
+							</div>
 							<div className="space-y-2">
 								<div className="flex items-center space-x-2">
 									<Switch
@@ -531,7 +604,8 @@ export default function CorporationsPage() {
 							<Button variant="cancel" type="button" onClick={() => setCreateDialogOpen(false)}>
 								Cancel
 							</Button>
-							<Button variant="confirm"
+							<Button
+								variant="confirm"
 								type="submit"
 								loading={createCorporation.isPending}
 								loadingText="Adding..."
@@ -553,8 +627,11 @@ export default function CorporationsPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-						<Button variant="destructive"
+						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>
+							Cancel
+						</Button>
+						<Button
+							variant="destructive"
 							onClick={handleDelete}
 							loading={deleteCorporation.isPending}
 							loadingText="Removing..."
