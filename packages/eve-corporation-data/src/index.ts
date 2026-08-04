@@ -1190,6 +1190,13 @@ export interface EveCorporationData {
 	getHealthyDirectors(corporationId: string): Promise<DirectorHealth[]>
 
 	/**
+	 * Get the number of healthy directors for this corporation
+	 * @param corporationId - The corporation ID
+	 * @returns Number of healthy directors
+	 */
+	getHealthyDirectorCount(corporationId: string): Promise<number>
+
+	/**
 	 * Verify health of a specific director
 	 * @param corporationId - The corporation ID
 	 * @param directorId - The director's character ID
@@ -1956,4 +1963,15 @@ export interface EveCorporationData {
 		corporationId: string,
 		updates: { includeInBackgroundRefresh?: boolean; includeInStructureAssetSync?: boolean }
 	): Promise<void>
+}
+
+/**
+ * RPC service methods exposed by the Eve Corporation Data worker entrypoint.
+ */
+export interface EveCorporationDataWorker {
+	/**
+	 * Read healthy director counts for a page of corporations with bounded
+	 * concurrency and per-corporation failure isolation.
+	 */
+	getHealthyDirectorCounts(corporationIds: string[]): Promise<Record<string, number | null>>
 }

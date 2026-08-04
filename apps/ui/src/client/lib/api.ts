@@ -15,41 +15,38 @@ import type { InventoryDisplayBay as SharedInventoryDisplayBay } from '@repo/inv
 import type { UpdateSRPConfig } from '@repo/srp'
 import type {
 	StructureCitadelListQuery as RepoStructureCitadelListQuery,
-	StructureMoonStructureListFilterOptions as RepoStructureMoonStructureListFilterOptions,
-	StructureMoonDrillListItem as RepoStructureMoonDrillListItem,
-	StructureMoonDrillListQuery as RepoStructureMoonDrillListQuery,
-	StructureMoonDrillListResponse as RepoStructureMoonDrillListResponse,
-	StructureMoonStructureListSortBy as RepoStructureMoonStructureListSortBy,
+	StructureCommonListFilterOptions as RepoStructureCommonListFilterOptions,
+	StructureCommonListQuery as RepoStructureCommonListQuery,
+	StructureCommonListSortBy as RepoStructureCommonListSortBy,
+	StructureListSummary as RepoStructureListSummary,
 	StructureMiningCitadelListItem as RepoStructureMiningCitadelListItem,
 	StructureMiningCitadelListQuery as RepoStructureMiningCitadelListQuery,
 	StructureMiningCitadelListResponse as RepoStructureMiningCitadelListResponse,
-	StructureNavigationListQuery as RepoStructureNavigationListQuery,
-	StructureListSummary as RepoStructureListSummary,
-	StructureCommonListQuery as RepoStructureCommonListQuery,
-	StructureCommonListFilterOptions as RepoStructureCommonListFilterOptions,
-	StructureCommonListSortBy as RepoStructureCommonListSortBy,
-	StructureSkyhookListItem as RepoStructureSkyhookListItem,
-	StructureSkyhookListFilterOptions as RepoStructureSkyhookListFilterOptions,
-	StructureSkyhookListSortBy as RepoStructureSkyhookListSortBy,
-	StructureSkyhookListResponse as RepoStructureSkyhookListResponse,
-	StructureSkyhookListQuery as RepoStructureSkyhookListQuery,
-	StructureSovereigntyListFilterOptions as RepoStructureSovereigntyListFilterOptions,
-	StructureSovereigntyListFilterOption as RepoStructureSovereigntyListFilterOption,
-	StructureSovereigntyListItem as RepoStructureSovereigntyListItem,
-	StructureSovereigntyListResponse as RepoStructureSovereigntyListResponse,
-	StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
-	StructureSovereigntyListQuery as RepoStructureSovereigntyListQuery,
-	StructureSovereigntyListSortBy as RepoStructureSovereigntyListSortBy,
-	StructureMoonDrillSummary as RepoStructureMoonDrillSummary,
 	StructureMiningCitadelSummary as RepoStructureMiningCitadelSummary,
+	StructureMoonDrillListItem as RepoStructureMoonDrillListItem,
+	StructureMoonDrillListQuery as RepoStructureMoonDrillListQuery,
+	StructureMoonDrillListResponse as RepoStructureMoonDrillListResponse,
+	StructureMoonDrillSummary as RepoStructureMoonDrillSummary,
+	StructureMoonStructureListFilterOptions as RepoStructureMoonStructureListFilterOptions,
+	StructureMoonStructureListSortBy as RepoStructureMoonStructureListSortBy,
+	StructureNavigationListQuery as RepoStructureNavigationListQuery,
+	StructureSkyhookListFilterOptions as RepoStructureSkyhookListFilterOptions,
+	StructureSkyhookListItem as RepoStructureSkyhookListItem,
+	StructureSkyhookListQuery as RepoStructureSkyhookListQuery,
+	StructureSkyhookListResponse as RepoStructureSkyhookListResponse,
+	StructureSkyhookListSortBy as RepoStructureSkyhookListSortBy,
+	StructureSovereigntyListFilterOption as RepoStructureSovereigntyListFilterOption,
+	StructureSovereigntyListFilterOptions as RepoStructureSovereigntyListFilterOptions,
+	StructureSovereigntyListItem as RepoStructureSovereigntyListItem,
+	StructureSovereigntyListQuery as RepoStructureSovereigntyListQuery,
+	StructureSovereigntyListResponse as RepoStructureSovereigntyListResponse,
+	StructureSovereigntyListSortBy as RepoStructureSovereigntyListSortBy,
+	StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
 	StructureSovereigntyReagent,
 	StructureSovereigntyTransportState,
 } from '@repo/structures'
 import type { TrackingSession } from '../features/fleet-tracking/types'
-import type {
-	RecentLossesResponse,
-	RequestListResponse,
-} from '../features/srp/types'
+import type { RecentLossesResponse, RequestListResponse } from '../features/srp/types'
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 const API_REQUEST_TIMEOUT_MS = 30_000
@@ -635,6 +632,9 @@ export interface UpdateCorporationRequest {
 
 export interface CorporationsFilters {
 	corporationType?: 'member' | 'alt' | 'special' | 'other'
+	search?: string
+	page?: number
+	pageSize?: 25 | 50 | 100
 }
 
 export interface CorporationAccessVerification {
@@ -644,6 +644,7 @@ export interface CorporationAccessVerification {
 	verifiedRoles: string[]
 	missingRoles?: string[]
 	lastVerified: Date | null
+	healthyDirectorCount: number
 }
 
 export interface CorporationDataSummary {
@@ -845,8 +846,7 @@ export interface StructureListFilterOptions extends RepoStructureCommonListFilte
 
 export type StructureOperationalListFilterOptions = RepoStructureCommonListFilterOptions
 
-export interface StructureSkyhookListFilterOptions
-	extends RepoStructureSkyhookListFilterOptions {}
+export interface StructureSkyhookListFilterOptions extends RepoStructureSkyhookListFilterOptions {}
 
 export interface StructureMoonStructureListFilterOptions
 	extends RepoStructureMoonStructureListFilterOptions {}
@@ -3382,10 +3382,15 @@ export class ApiClient {
 
 	// ===== Corporations API Methods =====
 
-	async getCorporations(filters?: CorporationsFilters): Promise<ManagedCorporation[]> {
+	async getCorporations(
+		filters?: CorporationsFilters
+	): Promise<PaginatedResponse<ManagedCorporation>> {
 		const params = new URLSearchParams()
 		if (filters?.corporationType !== undefined)
 			params.set('corporationType', filters.corporationType)
+		if (filters?.search) params.set('search', filters.search)
+		if (filters?.page !== undefined) params.set('page', String(filters.page))
+		if (filters?.pageSize !== undefined) params.set('pageSize', String(filters.pageSize))
 
 		const query = params.toString()
 		return this.get(`/corporations${query ? `?${query}` : ''}`)
@@ -4249,7 +4254,9 @@ export class ApiClient {
 		return this.get(`/admin/activity-log${query ? `?${query}` : ''}`)
 	}
 
-	async triggerDiscordJoin(userId: string): Promise<{ status: 'queued'; workflowInstanceId: string }> {
+	async triggerDiscordJoin(
+		userId: string
+	): Promise<{ status: 'queued'; workflowInstanceId: string }> {
 		return this.post(`/admin/users/${userId}/discord/join-servers`)
 	}
 
@@ -4642,7 +4649,10 @@ export class ApiClient {
 	/**
 	 * Get recent losses for all user's characters with SRP status
 	 */
-	async getRecentLosses(params?: { limit?: number; offset?: number }): Promise<RecentLossesResponse> {
+	async getRecentLosses(params?: {
+		limit?: number
+		offset?: number
+	}): Promise<RecentLossesResponse> {
 		const searchParams = new URLSearchParams()
 		if (params?.limit !== undefined) searchParams.set('limit', String(params.limit))
 		if (params?.offset !== undefined) searchParams.set('offset', String(params.offset))
@@ -4678,7 +4688,11 @@ export class ApiClient {
 	/**
 	 * Get user's own SRP requests (paginated)
 	 */
-	async getMyRequests(params?: { limit?: number; offset?: number; status?: string }): Promise<RequestListResponse> {
+	async getMyRequests(params?: {
+		limit?: number
+		offset?: number
+		status?: string
+	}): Promise<RequestListResponse> {
 		const searchParams = new URLSearchParams()
 		if (params?.limit) searchParams.set('limit', String(params.limit))
 		if (params?.offset) searchParams.set('offset', String(params.offset))

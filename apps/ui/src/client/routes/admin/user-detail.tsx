@@ -7,26 +7,27 @@ import {
 	ChevronDown,
 	ExternalLink,
 	History,
-	Mic,
 	LogOut,
 	MessageSquare,
 	MessageSquarePlus,
+	Mic,
 	RefreshCw,
+	Server,
 	Shield,
 	ShieldBan,
 	ShieldOff,
 	Trash2,
 	Users,
-	Server,
 	XCircle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
+import { IpHistoryCard } from '@/components/ip-history-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { IpHistoryCard } from '@/components/ip-history-card'
+import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
 import {
 	Dialog,
 	DialogContent,
@@ -35,7 +36,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
 import { Label } from '@/components/ui/label'
 import {
 	Table,
@@ -50,28 +50,28 @@ import { AddHRNoteDialog } from '@/features/applications/components/add-hr-note-
 import { HRNoteCard } from '@/features/applications/components/hr-note-card'
 import { useHRNotes } from '@/features/applications/hooks'
 import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
-import { useAuth } from '@/hooks/useAuth'
 import {
 	useAdminMumbleAccount,
 	useAdminUser,
 	useAdminUserIpHistory,
-	useDeleteAdminMumbleAccount,
 	useClearUserSessions,
+	useDeleteAdminMumbleAccount,
 	useDeleteUserCharacter,
 	useRevokeDiscordLink,
 	useSetUserAdmin,
 	useSetUserPrimaryCharacter,
-	useSyncUser,
 	useSyncAdminMumbleGroups,
+	useSyncUser,
 	useUnlinkDiscordAccount,
 	useUpdateDiscordAccess,
 } from '@/hooks/useAdminUsers'
+import { useAuth } from '@/hooks/useAuth'
+import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 import { useCorporations } from '@/hooks/useCorporations'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 import { api } from '@/lib/api'
-import { characterPortraitUrl } from '@/lib/eve-images'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
+import { characterPortraitUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
 
 import type { BlacklistTargetType, DiscordRefreshOutput } from '@/lib/api'
@@ -113,7 +113,8 @@ export default function UserDetailPage() {
 	const updateDiscordAccess = useUpdateDiscordAccess()
 	const syncMumbleGroups = useSyncAdminMumbleGroups()
 	const deleteMumbleAccount = useDeleteAdminMumbleAccount()
-	const { data: managedCorporations = [] } = useCorporations()
+	const { data: managedCorporationData } = useCorporations({ page: 1, pageSize: 100 })
+	const managedCorporations = managedCorporationData?.data ?? []
 	const managedCorporationIds = new Set(managedCorporations.map((corp) => corp.corporationId))
 
 	// Blacklist data
@@ -163,7 +164,9 @@ export default function UserDetailPage() {
 	const [removeBlacklistDialogOpen, setRemoveBlacklistDialogOpen] = useState(false)
 	const [blacklistReason, setBlacklistReason] = useState('')
 	const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false)
-	const [discordUpdateResults, setDiscordUpdateResults] = useState<DiscordRefreshOutput | null>(null)
+	const [discordUpdateResults, setDiscordUpdateResults] = useState<DiscordRefreshOutput | null>(
+		null
+	)
 	const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null)
 
 	// Message state
@@ -177,9 +180,10 @@ export default function UserDetailPage() {
 	const primaryCharacter =
 		user?.characters.find((character) => character.is_primary) ?? user?.characters[0] ?? null
 	const primaryCharacterName = primaryCharacter?.characterName || 'this user'
-	const corporationLinkForCurrentUser = sessionUser?.is_admin === true
-		? (corporationId: string) => `/admin/corporations/${corporationId}`
-		: (corporationId: string) => `/corporations/${corporationId}/members`
+	const corporationLinkForCurrentUser =
+		sessionUser?.is_admin === true
+			? (corporationId: string) => `/admin/corporations/${corporationId}`
+			: (corporationId: string) => `/corporations/${corporationId}/members`
 
 	useEffect(() => {
 		if (!userId) return
@@ -586,9 +590,7 @@ export default function UserDetailPage() {
 							<div className="flex items-start justify-between">
 								<div>
 									<div className="flex items-center justify-between gap-2">
-										<h2 className="text-2xl font-bold">
-											{primaryCharacterName || 'Unknown'}
-										</h2>
+										<h2 className="text-2xl font-bold">{primaryCharacterName || 'Unknown'}</h2>
 										{user.is_admin && (
 											<Badge variant="default">
 												<Shield className="h-3 w-3 mr-1" />
@@ -606,7 +608,8 @@ export default function UserDetailPage() {
 										</Badge>
 									)}
 									{user.is_admin ? (
-										<Button variant="destructive"
+										<Button
+											variant="destructive"
 											onClick={() => setAdminDialogOpen(true)}
 											disabled={setUserAdmin.isPending}
 											size="sm"
@@ -616,7 +619,8 @@ export default function UserDetailPage() {
 											Revoke Admin
 										</Button>
 									) : (
-										<Button variant="destructive"
+										<Button
+											variant="destructive"
 											onClick={() => setAdminDialogOpen(true)}
 											disabled={setUserAdmin.isPending}
 											size="sm"
@@ -636,7 +640,8 @@ export default function UserDetailPage() {
 											Remove from Blocklist
 										</Button>
 									) : (
-										<Button variant="destructive"
+										<Button
+											variant="destructive"
 											onClick={() => setBlacklistDialogOpen(true)}
 											disabled={createBlacklist.isPending}
 											size="sm"
@@ -662,7 +667,8 @@ export default function UserDetailPage() {
 											</span>
 										</Button>
 									)}
-									<Button variant="destructive"
+									<Button
+										variant="destructive"
 										onClick={() => setClearSessionsDialogOpen(true)}
 										disabled={clearSessions.isPending}
 										size="sm"
@@ -671,14 +677,13 @@ export default function UserDetailPage() {
 										<LogOut className="h-4 w-4" />
 										Clear Sessions
 									</Button>
-									<Button variant="primary"
+									<Button
+										variant="primary"
 										onClick={() => setSyncUserDialogOpen(true)}
 										disabled={syncUser.isPending}
 										size="sm"
 									>
-										<RefreshCw
-											className={cn('h-4 w-4', syncUser.isPending && 'animate-spin')}
-										/>
+										<RefreshCw className={cn('h-4 w-4', syncUser.isPending && 'animate-spin')} />
 										Sync User
 									</Button>
 								</div>
@@ -738,9 +743,7 @@ export default function UserDetailPage() {
 						<summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
 							<div>
 								<CardTitle>Account Notes ({hrNotes.length})</CardTitle>
-								<CardDescription className="mt-1">
-									Private notes about this user
-								</CardDescription>
+								<CardDescription className="mt-1">Private notes about this user</CardDescription>
 							</div>
 							<div className="pointer-events-auto flex items-center gap-3">
 								<Button
@@ -788,20 +791,19 @@ export default function UserDetailPage() {
 							<div className="flex items-center gap-2">
 								{!user.discord.authRevoked && (
 									<>
-										<Button variant="primary"
+										<Button
+											variant="primary"
 											onClick={handleUpdateDiscordAccess}
 											disabled={updateDiscordAccess.isPending}
 											size="sm"
 										>
 											<RefreshCw
-												className={cn(
-													'h-4 w-4',
-													updateDiscordAccess.isPending && 'animate-spin'
-												)}
+												className={cn('h-4 w-4', updateDiscordAccess.isPending && 'animate-spin')}
 											/>
 											Update Discord Access
 										</Button>
-										<Button variant="destructive"
+										<Button
+											variant="destructive"
 											onClick={() => setRevokeDiscordDialogOpen(true)}
 											disabled={revokeDiscord.isPending}
 											size="sm"
@@ -812,7 +814,8 @@ export default function UserDetailPage() {
 										</Button>
 									</>
 								)}
-								<Button variant="destructive"
+								<Button
+									variant="destructive"
 									onClick={() => setUnlinkDiscordDialogOpen(true)}
 									disabled={unlinkDiscord.isPending}
 									size="sm"
@@ -852,7 +855,9 @@ export default function UserDetailPage() {
 									<div className="flex items-start gap-2">
 										<ShieldBan className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
 										<div>
-											<p className="text-sm text-destructive font-medium">Discord Account Blocklisted</p>
+											<p className="text-sm text-destructive font-medium">
+												Discord Account Blocklisted
+											</p>
 											<p className="text-sm text-destructive/90 mt-1">
 												This Discord account is blocked from accessing the platform.
 												{activeDiscordBlacklist.isAutoBlacklist && (
@@ -886,13 +891,9 @@ export default function UserDetailPage() {
 									<div className="text-sm text-muted-foreground">Authorization Status</div>
 									<div className="text-sm font-medium">
 										{user.discord.authRevoked ? (
-											<Badge variant="destructive">
-												Revoked
-											</Badge>
+											<Badge variant="destructive">Revoked</Badge>
 										) : (
-											<Badge variant="success">
-												Active
-											</Badge>
+											<Badge variant="success">Active</Badge>
 										)}
 									</div>
 								</div>
@@ -911,118 +912,118 @@ export default function UserDetailPage() {
 			)}
 
 			{/* Mumble Services */}
-			{isMumbleFeatureEnabled && !isLoadingMumbleFeature && !isLoadingMumbleAccount && mumbleAccountData?.account && (
-				<Card>
-					<CardHeader>
-						<CardTitle>Services</CardTitle>
-						<CardDescription>Mumble account status and admin controls</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<Card variant="flat" className="border-border/50">
-							<CardContent className="p-4">
-								<div className="flex flex-col gap-4">
-									<div className="flex items-start justify-between gap-4">
-										<div className="flex items-center gap-3 min-w-0">
-											<div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-												<Mic className="h-6 w-6 text-muted-foreground" />
-											</div>
-											<div className="min-w-0">
-												<div className="flex flex-wrap items-center gap-2">
-													<p className="font-semibold text-lg">Mumble</p>
-													<Badge
-														variant="default"
-														className={cn(
-															'text-xs',
-															mumbleAccountData.account.enabled
-																? 'bg-green-500/20 text-green-500'
-																: 'bg-muted text-muted-foreground'
-														)}
-													>
-														{mumbleAccountData.account.enabled ? 'Active' : 'Disabled'}
-													</Badge>
+			{isMumbleFeatureEnabled &&
+				!isLoadingMumbleFeature &&
+				!isLoadingMumbleAccount &&
+				mumbleAccountData?.account && (
+					<Card>
+						<CardHeader>
+							<CardTitle>Services</CardTitle>
+							<CardDescription>Mumble account status and admin controls</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<Card variant="flat" className="border-border/50">
+								<CardContent className="p-4">
+									<div className="flex flex-col gap-4">
+										<div className="flex items-start justify-between gap-4">
+											<div className="flex items-center gap-3 min-w-0">
+												<div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+													<Mic className="h-6 w-6 text-muted-foreground" />
 												</div>
-												<p className="text-sm text-muted-foreground">
-													Login: {mumbleAccountData.account.loginName}
-												</p>
-												<p className="text-xs text-muted-foreground">
-													Display: {mumbleAccountData.account.displayName}
-												</p>
+												<div className="min-w-0">
+													<div className="flex flex-wrap items-center gap-2">
+														<p className="font-semibold text-lg">Mumble</p>
+														<Badge
+															variant="default"
+															className={cn(
+																'text-xs',
+																mumbleAccountData.account.enabled
+																	? 'bg-green-500/20 text-green-500'
+																	: 'bg-muted text-muted-foreground'
+															)}
+														>
+															{mumbleAccountData.account.enabled ? 'Active' : 'Disabled'}
+														</Badge>
+													</div>
+													<p className="text-sm text-muted-foreground">
+														Login: {mumbleAccountData.account.loginName}
+													</p>
+													<p className="text-xs text-muted-foreground">
+														Display: {mumbleAccountData.account.displayName}
+													</p>
+												</div>
+											</div>
+											<div className="flex items-center gap-2">
+												<Button
+													variant="primary"
+													size="sm"
+													onClick={handleSyncMumbleGroups}
+													disabled={syncMumbleGroups.isPending}
+													showIcon={false}
+												>
+													<RefreshCw
+														className={cn('h-4 w-4', syncMumbleGroups.isPending && 'animate-spin')}
+													/>
+													Sync Groups
+												</Button>
+												<Button
+													variant="destructive"
+													size="sm"
+													onClick={() => setDeleteMumbleDialogOpen(true)}
+													disabled={deleteMumbleAccount.isPending}
+													showIcon={false}
+												>
+													<Trash2 className="h-4 w-4" />
+													Delete Account
+												</Button>
 											</div>
 										</div>
-										<div className="flex items-center gap-2">
-											<Button
-												variant="primary"
-												size="sm"
-												onClick={handleSyncMumbleGroups}
-												disabled={syncMumbleGroups.isPending}
-												showIcon={false}
-											>
-												<RefreshCw
-													className={cn(
-														'h-4 w-4',
-														syncMumbleGroups.isPending && 'animate-spin'
-													)}
-												/>
-												Sync Groups
-											</Button>
-											<Button
-												variant="destructive"
-												size="sm"
-												onClick={() => setDeleteMumbleDialogOpen(true)}
-												disabled={deleteMumbleAccount.isPending}
-												showIcon={false}
-											>
-												<Trash2 className="h-4 w-4" />
-												Delete Account
-											</Button>
-										</div>
-									</div>
 
-									<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-										<div>
-											<div className="text-xs uppercase tracking-wide text-muted-foreground">
-												Status
+										<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+											<div>
+												<div className="text-xs uppercase tracking-wide text-muted-foreground">
+													Status
+												</div>
+												<div className="text-sm font-medium mt-1">
+													{mumbleAccountData.account.enabled ? 'Enabled' : 'Disabled'}
+												</div>
 											</div>
-											<div className="text-sm font-medium mt-1">
-												{mumbleAccountData.account.enabled ? 'Enabled' : 'Disabled'}
+											<div>
+												<div className="text-xs uppercase tracking-wide text-muted-foreground">
+													Groups
+												</div>
+												<div className="text-sm font-medium mt-1">
+													{mumbleAccountData.account.groups.length}
+												</div>
 											</div>
-										</div>
-										<div>
-											<div className="text-xs uppercase tracking-wide text-muted-foreground">
-												Groups
+											<div>
+												<div className="text-xs uppercase tracking-wide text-muted-foreground">
+													Connection
+												</div>
+												<div className="text-sm font-medium mt-1 flex items-center gap-1">
+													<Server className="h-3.5 w-3.5 text-muted-foreground" />
+													<span>
+														{mumbleAccountData.connection.host}:{mumbleAccountData.connection.port}
+													</span>
+												</div>
 											</div>
-											<div className="text-sm font-medium mt-1">
-												{mumbleAccountData.account.groups.length}
-											</div>
-										</div>
-										<div>
-											<div className="text-xs uppercase tracking-wide text-muted-foreground">
-												Connection
-											</div>
-											<div className="text-sm font-medium mt-1 flex items-center gap-1">
-												<Server className="h-3.5 w-3.5 text-muted-foreground" />
-												<span>
-													{mumbleAccountData.connection.host}:{mumbleAccountData.connection.port}
-												</span>
-											</div>
-										</div>
-										<div>
-											<div className="text-xs uppercase tracking-wide text-muted-foreground">
-												Last Auth
-											</div>
-											<div className="text-sm font-medium mt-1">
-												{mumbleAccountData.account.lastAuthenticatedAt
-													? formatRelativeTime(mumbleAccountData.account.lastAuthenticatedAt)
-													: 'Never'}
+											<div>
+												<div className="text-xs uppercase tracking-wide text-muted-foreground">
+													Last Auth
+												</div>
+												<div className="text-sm font-medium mt-1">
+													{mumbleAccountData.account.lastAuthenticatedAt
+														? formatRelativeTime(mumbleAccountData.account.lastAuthenticatedAt)
+														: 'Never'}
+												</div>
 											</div>
 										</div>
 									</div>
-								</div>
-							</CardContent>
-						</Card>
-					</CardContent>
-				</Card>
-			)}
+								</CardContent>
+							</Card>
+						</CardContent>
+					</Card>
+				)}
 
 			{/* Blacklist Information */}
 			{activeBlacklist && (
@@ -1061,9 +1062,7 @@ export default function UserDetailPage() {
 												Auto-Blocklisted
 											</Badge>
 										) : (
-											<Badge variant="destructive">
-												Manual Blocklist
-											</Badge>
+											<Badge variant="destructive">Manual Blocklist</Badge>
 										)}
 									</div>
 								</div>
@@ -1084,10 +1083,7 @@ export default function UserDetailPage() {
 														{TARGET_TYPE_LABELS[triggeringEntry.targetType]}
 													</span>{' '}
 													blocklist on{' '}
-													<span className="font-mono">
-														{triggeringEntry.targetValue}
-													</span>
-													.{' '}
+													<span className="font-mono">{triggeringEntry.targetValue}</span>.{' '}
 													<Link to="/admin/blacklist" className="underline hover:text-orange-400">
 														View blocklist
 													</Link>
@@ -1128,7 +1124,7 @@ export default function UserDetailPage() {
 						</TableHeader>
 						<TableBody>
 							{user.characters.map((character) => (
-													<TableRow
+								<TableRow
 									key={character.characterId}
 									className="cursor-pointer"
 									onClick={() =>
@@ -1141,62 +1137,54 @@ export default function UserDetailPage() {
 										})
 									}
 								>
-										<TableCell>
-											<div className="flex items-center gap-3">
-												<img
+									<TableCell>
+										<div className="flex items-center gap-3">
+											<img
 												src={characterPortraitUrl(character.characterId, 64)}
 												alt={character.characterName}
 												className="h-10 w-10 rounded-full"
 											/>
-												<div>
-													<div className="font-medium">{character.characterName}</div>
-													<div className="text-xs text-muted-foreground">{character.characterId}</div>
-													<div className="mt-1 flex gap-2">
-														{character.is_primary && (
-															<Badge variant="default">Primary</Badge>
-														)}
-														{character.isBlacklisted && (
-															<Badge variant="destructive">
-																<ShieldBan className="h-3 w-3 mr-1" />
-																Blocklisted
-															</Badge>
-														)}
-													</div>
+											<div>
+												<div className="font-medium">{character.characterName}</div>
+												<div className="text-xs text-muted-foreground">{character.characterId}</div>
+												<div className="mt-1 flex gap-2">
+													{character.is_primary && <Badge variant="default">Primary</Badge>}
+													{character.isBlacklisted && (
+														<Badge variant="destructive">
+															<ShieldBan className="h-3 w-3 mr-1" />
+															Blocklisted
+														</Badge>
+													)}
 												</div>
 											</div>
-										</TableCell>
-										<TableCell>
-											<div className="text-sm">
-												{character.corporationId &&
-												managedCorporationIds.has(character.corporationId) ? (
-													<Link
-														to={corporationLinkForCurrentUser(character.corporationId)}
-														className="font-medium underline-offset-2 hover:underline"
-													>
-														{character.corporationName || 'Unknown'}
-													</Link>
-												) : (
-													<div className="font-medium">
-														{character.corporationName || 'Unknown'}
-													</div>
-												)}
-												{character.corporationId && (
-													<div className="text-xs text-muted-foreground">
-														{character.corporationId}
-													</div>
-												)}
-											</div>
-										</TableCell>
+										</div>
+									</TableCell>
+									<TableCell>
+										<div className="text-sm">
+											{character.corporationId &&
+											managedCorporationIds.has(character.corporationId) ? (
+												<Link
+													to={corporationLinkForCurrentUser(character.corporationId)}
+													className="font-medium underline-offset-2 hover:underline"
+												>
+													{character.corporationName || 'Unknown'}
+												</Link>
+											) : (
+												<div className="font-medium">{character.corporationName || 'Unknown'}</div>
+											)}
+											{character.corporationId && (
+												<div className="text-xs text-muted-foreground">
+													{character.corporationId}
+												</div>
+											)}
+										</div>
+									</TableCell>
 									<TableCell>
 										<div className="text-sm">
 											{character.hasValidToken ? (
-												<Badge variant="success">
-													Valid
-												</Badge>
+												<Badge variant="success">Valid</Badge>
 											) : (
-												<Badge variant="destructive">
-													Invalid
-												</Badge>
+												<Badge variant="destructive">Invalid</Badge>
 											)}
 										</div>
 									</TableCell>
@@ -1275,14 +1263,16 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => setAdminDialogOpen(false)}
 							disabled={setUserAdmin.isPending}
 						>
 							Cancel
 						</Button>
 						{user.is_admin ? (
-							<Button variant="destructive"
+							<Button
+								variant="destructive"
 								onClick={handleToggleAdmin}
 								loading={setUserAdmin.isPending}
 								showIcon={false}
@@ -1292,7 +1282,8 @@ export default function UserDetailPage() {
 								Revoke Admin
 							</Button>
 						) : (
-							<Button variant="confirm"
+							<Button
+								variant="confirm"
 								onClick={handleToggleAdmin}
 								loading={setUserAdmin.isPending}
 								loadingText="Granting..."
@@ -1312,19 +1303,20 @@ export default function UserDetailPage() {
 					<DialogHeader>
 						<DialogTitle>Revoke Discord Authorization</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to revoke Discord authorization for{' '}
-							{primaryCharacterName}? This will
-							mark their Discord account as unauthorized and they will need to re-link it.
+							Are you sure you want to revoke Discord authorization for {primaryCharacterName}? This
+							will mark their Discord account as unauthorized and they will need to re-link it.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => setRevokeDiscordDialogOpen(false)}
 							disabled={revokeDiscord.isPending}
 						>
 							Cancel
 						</Button>
-						<Button variant="destructive"
+						<Button
+							variant="destructive"
 							onClick={handleRevokeDiscordConfirm}
 							loading={revokeDiscord.isPending}
 							loadingText="Revoking..."
@@ -1344,8 +1336,7 @@ export default function UserDetailPage() {
 						<DialogTitle>Unlink Discord Account</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to completely unlink the Discord account for{' '}
-							{primaryCharacterName}? This action
-							will:
+							{primaryCharacterName}? This action will:
 							<ul className="list-disc list-inside mt-2 space-y-1">
 								<li>Remove the Discord link from their account</li>
 								<li>Delete all Discord tokens</li>
@@ -1357,13 +1348,15 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => setUnlinkDiscordDialogOpen(false)}
 							disabled={unlinkDiscord.isPending}
 						>
 							Cancel
 						</Button>
-						<Button variant="destructive"
+						<Button
+							variant="destructive"
 							onClick={handleUnlinkDiscordConfirm}
 							loading={unlinkDiscord.isPending}
 							loadingText="Unlinking..."
@@ -1394,19 +1387,20 @@ export default function UserDetailPage() {
 					<DialogHeader>
 						<DialogTitle>Clear All Sessions</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to clear all active sessions for{' '}
-							{primaryCharacterName}? This will
-							force them to re-authenticate on all devices.
+							Are you sure you want to clear all active sessions for {primaryCharacterName}? This
+							will force them to re-authenticate on all devices.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => setClearSessionsDialogOpen(false)}
 							disabled={clearSessions.isPending}
 						>
 							Cancel
 						</Button>
-						<Button variant="destructive"
+						<Button
+							variant="destructive"
 							onClick={handleClearSessionsConfirm}
 							loading={clearSessions.isPending}
 							loadingText="Clearing..."
@@ -1425,20 +1419,21 @@ export default function UserDetailPage() {
 					<DialogHeader>
 						<DialogTitle>Sync User Data</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to trigger a data sync for{' '}
-							{primaryCharacterName}? This will
+							Are you sure you want to trigger a data sync for {primaryCharacterName}? This will
 							refresh all character data, authenticated data, and role assignments. The sync runs in
 							the background and may take a few minutes to complete.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => setSyncUserDialogOpen(false)}
 							disabled={syncUser.isPending}
 						>
 							Cancel
 						</Button>
-						<Button variant="confirm"
+						<Button
+							variant="confirm"
 							onClick={handleSyncUserConfirm}
 							loading={syncUser.isPending}
 							loadingText="Triggering..."
@@ -1468,7 +1463,8 @@ export default function UserDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => {
 								setDeleteDialogOpen(false)
 								setSelectedCharacter(null)
@@ -1477,7 +1473,8 @@ export default function UserDetailPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="destructive"
+						<Button
+							variant="destructive"
 							onClick={handleDeleteCharacterConfirm}
 							loading={deleteCharacter.isPending}
 							loadingText="Deleting..."
@@ -1497,13 +1494,13 @@ export default function UserDetailPage() {
 						<DialogTitle>Set Primary Character</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to set "{selectedCharacterData?.characterName}" as the primary
-							character for{' '}
-							{primaryCharacterName}? This will
-							change the user's main character and update their display name throughout the system.
+							character for {primaryCharacterName}? This will change the user's main character and
+							update their display name throughout the system.
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => {
 								setPrimaryDialogOpen(false)
 								setSelectedCharacter(null)
@@ -1512,7 +1509,8 @@ export default function UserDetailPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="confirm"
+						<Button
+							variant="confirm"
 							onClick={handleSetPrimaryConfirm}
 							loading={setPrimaryCharacter.isPending}
 							loadingText="Setting..."
@@ -1531,8 +1529,7 @@ export default function UserDetailPage() {
 					<DialogHeader>
 						<DialogTitle>Discord Access Update Results</DialogTitle>
 						<DialogDescription>
-							Results of updating Discord server access for{' '}
-							{primaryCharacterName}
+							Results of updating Discord server access for {primaryCharacterName}
 						</DialogDescription>
 					</DialogHeader>
 					{discordUpdateResults && (
@@ -1655,9 +1652,8 @@ export default function UserDetailPage() {
 					<DialogHeader>
 						<DialogTitle>Blocklist User</DialogTitle>
 						<DialogDescription>
-							Blocklist {primaryCharacterName}.
-							This will immediately disable all services and prevent login. This action can be
-							reversed.
+							Blocklist {primaryCharacterName}. This will immediately disable all services and
+							prevent login. This action can be reversed.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4 py-4">
@@ -1676,7 +1672,8 @@ export default function UserDetailPage() {
 						</div>
 					</div>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => {
 								setBlacklistDialogOpen(false)
 								setBlacklistReason('')
@@ -1685,7 +1682,8 @@ export default function UserDetailPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="destructive"
+						<Button
+							variant="destructive"
 							onClick={handleBlacklistConfirm}
 							loading={createBlacklist.isPending}
 							loadingText="Blocklisting..."
@@ -1704,9 +1702,8 @@ export default function UserDetailPage() {
 					<DialogHeader>
 						<DialogTitle>Remove from Blocklist</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to remove{' '}
-							{primaryCharacterName} from the
-							blocklist? They will regain access to all services immediately.
+							Are you sure you want to remove {primaryCharacterName} from the blocklist? They will
+							regain access to all services immediately.
 						</DialogDescription>
 					</DialogHeader>
 					{activeBlacklist && (
@@ -1716,13 +1713,15 @@ export default function UserDetailPage() {
 						</div>
 					)}
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => setRemoveBlacklistDialogOpen(false)}
 							disabled={removeBlacklist.isPending}
 						>
 							Cancel
 						</Button>
-						<Button variant="confirm"
+						<Button
+							variant="confirm"
 							onClick={handleRemoveBlacklistConfirm}
 							loading={removeBlacklist.isPending}
 							loadingText="Removing..."

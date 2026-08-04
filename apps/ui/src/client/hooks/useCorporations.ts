@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
@@ -7,6 +7,8 @@ import type {
 	CorporationsFilters,
 	CreateCorporationRequest,
 	FetchCorporationDataRequest,
+	ManagedCorporation,
+	PaginatedResponse,
 	UpdateCorporationRequest,
 	UpdateDirectorPriorityRequest,
 } from '@/lib/api'
@@ -50,7 +52,9 @@ export function useCorporations(filters?: CorporationsFilters) {
 	return useQuery({
 		queryKey: corporationKeys.list(filters),
 		queryFn: () => api.getCorporations(filters),
+		placeholderData: keepPreviousData,
 		staleTime: 1000 * 60, // 1 minute
+		gcTime: 1000 * 60 * 60, // Keep recently viewed pages available for one hour
 	})
 }
 
@@ -173,7 +177,30 @@ export function useVerifyCorporationAccess() {
 
 	return useMutation({
 		mutationFn: (corporationId: string) => api.verifyCorporationAccess(corporationId),
-		onSuccess: (_, corporationId) => {
+		onSuccess: (verification, corporationId) => {
+			const lastVerified = verification.lastVerified
+				? new Date(verification.lastVerified).toISOString()
+				: null
+			queryClient.setQueriesData<PaginatedResponse<ManagedCorporation>>(
+				{ queryKey: corporationKeys.lists() },
+				(previous) => {
+					if (!previous) return previous
+					return {
+						...previous,
+						data: previous.data.map((corporation) =>
+							corporation.corporationId === corporationId
+								? {
+										...corporation,
+										isVerified: verification.healthyDirectorCount > 0,
+										healthyDirectorCount: verification.healthyDirectorCount,
+										lastVerified: lastVerified ?? corporation.lastVerified,
+									}
+								: corporation
+						),
+					}
+				}
+			)
+
 			// Batch invalidations for this specific corporation
 			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.detail(corporationId),

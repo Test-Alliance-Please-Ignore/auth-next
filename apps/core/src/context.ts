@@ -1,19 +1,23 @@
-import type { AdminWorker as IAdminWorker, ThirdPartyAppsAdminWorker as IThirdPartyAppsAdminWorker } from '@repo/admin'
+import type {
+	AdminWorker as IAdminWorker,
+	ThirdPartyAppsAdminWorker as IThirdPartyAppsAdminWorker,
+} from '@repo/admin'
+import type { UserProfileDTO } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
+import type { EveCorporationDataWorker as IEveCorporationDataWorker } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
-import type { StructuresWorker } from '@repo/structures'
-import type { Skills } from '@repo/skills'
 import type { PasteWorker } from '@repo/paste'
-import type { UserProfileDTO } from '@repo/core'
+import type { Skills } from '@repo/skills'
+import type { StructuresWorker } from '@repo/structures'
 import type { createDb } from './db'
 import type { CsvExportWorkflowParams } from './workflows/csv-export.workflow'
-import type { UserDiscordRefreshWorkflowParams } from './workflows/user-discord-refresh.workflow'
-import type { UserMumbleRefreshWorkflowParams } from './workflows/user-mumble-refresh.workflow'
 import type { DiscordMemberAuditWorkflowParams } from './workflows/discord-member-audit.workflow'
 import type { ServiceAccessAuditWorkflowParams } from './workflows/service-access-audit.workflow'
+import type { UserDiscordRefreshWorkflowParams } from './workflows/user-discord-refresh.workflow'
+import type { UserMumbleRefreshWorkflowParams } from './workflows/user-mumble-refresh.workflow'
 import type { UserRefreshWorkflowParams } from './workflows/user-refresh.workflow'
 
 export type Env = SharedHonoEnv & {
@@ -28,6 +32,8 @@ export type Env = SharedHonoEnv & {
 	EVE_CHARACTER_DATA: DurableObjectNamespace
 	/** EVE Corporation Data Durable Object binding */
 	EVE_CORPORATION_DATA: DurableObjectNamespace
+	/** EVE Corporation Data worker service binding */
+	EVE_CORPORATION_DATA_WORKER: IEveCorporationDataWorker
 	/** Groups Durable Object binding */
 	GROUPS: DurableObjectNamespace
 	/** Discord Durable Object binding */
