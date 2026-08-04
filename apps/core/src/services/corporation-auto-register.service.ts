@@ -183,6 +183,8 @@ export async function autoRegisterDirectorCorporation(
 					assignedCharacterId: characterId,
 					assignedCharacterName: characterName,
 					isActive: true,
+					includeInBackgroundRefresh: false,
+					includeInStructureAssetSync: false,
 					isVerified: false,
 					healthyDirectorCount: 0,
 					configuredBy: userId,
