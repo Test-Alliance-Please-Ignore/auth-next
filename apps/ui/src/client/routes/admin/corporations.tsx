@@ -454,6 +454,8 @@ export default function CorporationsPage() {
 																	size="sm"
 																	onClick={() => handleVerify(corp.corporationId)}
 																	disabled={verifyAccess.isPending}
+																	title="Verify corporation access"
+																	aria-label="Verify corporation access"
 																>
 																	<RefreshCw className="h-4 w-4" />
 																</Button>

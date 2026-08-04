@@ -130,18 +130,41 @@ export function useUpdateCorporation() {
 			corporationId: string
 			data: UpdateCorporationRequest
 		}) => api.updateCorporation(corporationId, data),
-		onSuccess: (updatedCorporation) => {
+		onSuccess: (updatedCorporation, { data }) => {
 			// Update detail cache first (immediate update)
 			queryClient.setQueryData(
 				corporationKeys.detail(updatedCorporation.corporationId),
 				updatedCorporation
 			)
 
-			// Then invalidate list to show updated data
-			void queryClient.invalidateQueries({
-				queryKey: corporationKeys.lists(),
-				refetchType: 'active',
-			})
+			// Patch every cached page so sync toggles update only the affected row.
+			queryClient.setQueriesData<PaginatedResponse<ManagedCorporation>>(
+				{ queryKey: corporationKeys.lists() },
+				(previous) => {
+					if (!previous) return previous
+					return {
+						...previous,
+						data: previous.data.map((corporation) =>
+							corporation.corporationId === updatedCorporation.corporationId
+								? updatedCorporation
+								: corporation
+						),
+					}
+				}
+			)
+
+			const isSyncOnlyUpdate =
+				Object.keys(data).length > 0 &&
+				Object.keys(data).every(
+					(key) => key === 'includeInBackgroundRefresh' || key === 'includeInStructureAssetSync'
+				)
+			if (!isSyncOnlyUpdate) {
+				// Other updates can change filtering or ordering, so reconcile all active pages.
+				void queryClient.invalidateQueries({
+					queryKey: corporationKeys.lists(),
+					refetchType: 'active',
+				})
+			}
 		},
 	})
 }
@@ -201,15 +224,9 @@ export function useVerifyCorporationAccess() {
 				}
 			)
 
-			// Batch invalidations for this specific corporation
+			// Reconcile the detailed corporation view without refetching every list row.
 			void queryClient.invalidateQueries({
 				queryKey: corporationKeys.detail(corporationId),
-				refetchType: 'active',
-			})
-
-			// Also invalidate list, but less aggressively
-			void queryClient.invalidateQueries({
-				queryKey: corporationKeys.lists(),
 				refetchType: 'active',
 			})
 		},
