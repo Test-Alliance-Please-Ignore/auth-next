@@ -1,11 +1,9 @@
 import { getStub } from '@repo/do-utils'
-import { createEveCharacterId } from '@repo/eve-types'
 
 import type { Context } from 'hono'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { CharacterForFleetJoin, Fleets } from '@repo/fleets'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Render the fleet quick join page

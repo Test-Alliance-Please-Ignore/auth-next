@@ -1,11 +1,11 @@
-import type { DiscordEmbed, MessageContent } from '@repo/discord'
+import { ALERT_DESTINATION_TYPES } from './alert-routing'
 
-import {
-	ALERT_DESTINATION_TYPES,
-	type AlertDestinationRecord,
-	type AlertDestinationType,
-	type AlertRegistryEntry,
-	type AlertTypeDefinition,
+import type { DiscordEmbed, MessageContent } from '@repo/discord'
+import type {
+	AlertDestinationRecord,
+	AlertDestinationType,
+	AlertRegistryEntry,
+	AlertTypeDefinition,
 } from './alert-routing'
 
 export const CORPORATION_ALERT_TYPES = [
@@ -74,10 +74,16 @@ const ALERT_TYPE_DEFINITIONS: CorporationAlertTypeDefinition[] = [
 const DISCORD_ALERT_COLORS = {
 	applicationSubmitted: 0x3b82f6,
 	applicationAccepted: 0x22c55e,
+	applicationUpdate: 0x3b82f6,
 }
 
-function formatDiscordTimestamp(date: Date): string {
-	return `<t:${Math.floor(date.getTime() / 1000)}:F>`
+export type CorporationApplicationApplicantUpdateType = 'message' | 'review_note'
+
+export interface CorporationApplicationApplicantUpdatePayload {
+	applicationId: string
+	corporationName: string
+	updateType: CorporationApplicationApplicantUpdateType
+	updatedAt: string
 }
 
 function buildApplicationFields(
@@ -166,6 +172,25 @@ export function buildCorporationApplicationFirstTimeAcceptedMessage(
 				},
 				fields: buildApplicationFields(applicantLabel, 'First application'),
 				timestamp: acceptedAt.toISOString(),
+			},
+		],
+	}
+}
+
+export function buildCorporationApplicationApplicantUpdateMessage(
+	payload: CorporationApplicationApplicantUpdatePayload
+): MessageContent {
+	const applicationUrl = `https://pleaseignore.app/my-applications/${payload.applicationId}`
+
+	return {
+		content: '',
+		allowEveryone: false,
+		embeds: [
+			{
+				title: `Your corporation application to ${payload.corporationName} received an update`,
+				description: `[View your application](${applicationUrl})`,
+				color: DISCORD_ALERT_COLORS.applicationUpdate,
+				timestamp: payload.updatedAt,
 			},
 		],
 	}

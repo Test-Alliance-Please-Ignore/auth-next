@@ -4,22 +4,25 @@ import { z } from 'zod'
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { and, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { userCharacters } from '../db/schema.js'
 import { waitUntilWithTelemetry } from '../lib/background-task'
+import { clearUserCache, getCachedUserMemberships } from '../lib/groups-cache'
+import {
+	triggerDiscordRefreshWorkflow,
+	triggerMumbleRefreshWorkflow,
+} from '../lib/workflow-triggers'
+import { requireAdmin, requireAuth } from '../middleware/session'
 import {
 	dispatchGroupApplicationSubmittedAlert,
 	dispatchGroupInvitationAlert,
 } from '../services/group-alerts.service'
-import { clearUserCache, getCachedUserMemberships } from '../lib/groups-cache'
-import { triggerDiscordRefreshWorkflow, triggerMumbleRefreshWorkflow } from '../lib/workflow-triggers'
-import { requireAdmin, requireAuth } from '../middleware/session'
 
 import type { Discord } from '@repo/discord'
 import type { Groups } from '@repo/groups'
 import type { App } from '../context'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Groups management routes
@@ -285,7 +288,6 @@ groups.post('/', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), requireAdmin
  */
 groups.get('/my-groups', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
-	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 	const memberships = await getCachedUserMemberships(c.env, user.id)
 	return c.json(memberships)
@@ -486,25 +488,21 @@ groups.post(
  * Cancel an invitation (same permissions as creating invitations)
  * Works on both active and expired pending invitations
  */
-groups.delete(
-	'/invitations/:id',
-	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
-	async (c) => {
-		const user = c.get('user')!
-		const invitationId = c.req.param('id')
-		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.delete('/invitations/:id', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
+	const user = c.get('user')!
+	const invitationId = c.req.param('id')
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-		try {
-			await groupsDO.cancelInvitation(invitationId, user.id)
-			return c.json({ success: true }, 200)
-		} catch (error) {
-			if (error instanceof Error) {
-				return c.json({ error: error.message }, 400)
-			}
-			throw error
+	try {
+		await groupsDO.cancelInvitation(invitationId, user.id)
+		return c.json({ success: true }, 200)
+	} catch (error) {
+		if (error instanceof Error) {
+			return c.json({ error: error.message }, 400)
 		}
+		throw error
 	}
-)
+})
 
 /**
  * POST /:groupId/invite-codes
@@ -1547,33 +1545,29 @@ groups.delete(
  *
  * Add a group admin (admin only)
  */
-groups.post(
-	'/:groupId/admins',
-	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
-	async (c) => {
-		const user = c.get('user')!
-		const groupId = c.req.param('groupId')
-		const body = await c.req.json()
-		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
+groups.post('/:groupId/admins', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
+	const user = c.get('user')!
+	const groupId = c.req.param('groupId')
+	const body = await c.req.json()
+	const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
-		if (!body.userId) {
-			return c.json({ error: 'userId is required' }, 400)
-		}
-
-		try {
-			await groupsDO.addAdmin(groupId, user.id, body.userId, user.is_admin)
-			return c.json({ success: true }, 200)
-		} catch (error) {
-			if (error instanceof Error) {
-				if (error.message.includes('not found')) {
-					return c.json({ error: 'Group or user not found' }, 404)
-				}
-				return c.json({ error: error.message }, 400)
-			}
-			throw error
-		}
+	if (!body.userId) {
+		return c.json({ error: 'userId is required' }, 400)
 	}
-)
+
+	try {
+		await groupsDO.addAdmin(groupId, user.id, body.userId, user.is_admin)
+		return c.json({ success: true }, 200)
+	} catch (error) {
+		if (error instanceof Error) {
+			if (error.message.includes('not found')) {
+				return c.json({ error: 'Group or user not found' }, 404)
+			}
+			return c.json({ error: error.message }, 400)
+		}
+		throw error
+	}
+})
 
 /**
  * DELETE /:groupId/admins/:userId
@@ -1635,7 +1629,10 @@ groups.post(
 
 			const db = createDb(c.env.DATABASE_URL)
 			const targetUser = await db.query.userCharacters.findFirst({
-				where: and(eq(userCharacters.is_primary, true), eq(userCharacters.characterName, body.characterName)),
+				where: and(
+					eq(userCharacters.is_primary, true),
+					eq(userCharacters.characterName, body.characterName)
+				),
 				columns: {
 					userId: true,
 				},
@@ -1709,8 +1706,7 @@ groups.post('/:id/join', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), asyn
 		waitUntilWithTelemetry(
 			c.executionCtx,
 			'groups.discord-refresh.join-group',
-			() =>
-				triggerDiscordRefreshWorkflow({ env: c.env, userId: user.id, source: 'group-joined' }),
+			() => triggerDiscordRefreshWorkflow({ env: c.env, userId: user.id, source: 'group-joined' }),
 			{
 				userId: user.id,
 				groupId,
@@ -1778,8 +1774,7 @@ groups.post('/:id/leave', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), asy
 		waitUntilWithTelemetry(
 			c.executionCtx,
 			'groups.mumble-refresh.leave-group',
-			() =>
-				triggerMumbleRefreshWorkflow({ env: c.env, userIds: [user.id], source: 'group-left' }),
+			() => triggerMumbleRefreshWorkflow({ env: c.env, userIds: [user.id], source: 'group-left' }),
 			{
 				userId: user.id,
 				groupId,
@@ -2051,10 +2046,7 @@ groups.post(
 		try {
 			const membershipType = parseDiscordRoleMembershipType(body.membershipType)
 			if (!membershipType) {
-				return c.json(
-					{ error: "membershipType must be 'member' or 'owner_admin'" },
-					400
-				)
+				return c.json({ error: "membershipType must be 'member' or 'owner_admin'" }, 400)
 			}
 
 			const result = await groupsDO.assignRoleToDiscordServer(
@@ -2173,12 +2165,16 @@ groups.post(
 					}
 
 					// Then update roles — admin-initiated refresh allows removal of roles no longer granted
-					const results = await discordDO.updateUserRoles(user.id, [
-						{
-							guildId: config.guildId,
-							roleIds: config.roleIds,
-						},
-					], true)
+					const results = await discordDO.updateUserRoles(
+						user.id,
+						[
+							{
+								guildId: config.guildId,
+								roleIds: config.roleIds,
+							},
+						],
+						true
+					)
 
 					if (results[0]?.success) {
 						successCount++

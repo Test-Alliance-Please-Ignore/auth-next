@@ -1,7 +1,6 @@
 import { eq } from '@repo/db-utils'
 
-import { getCachedUserMemberships } from './groups-cache'
-import { getCachedUserPermissions } from './groups-cache'
+import { getCachedUserMemberships, getCachedUserPermissions } from './groups-cache'
 
 import type { SkillPlan, SkillPlanSummary } from '@repo/skills'
 import type { DbClient, schema } from '../db'

@@ -3,9 +3,10 @@
  */
 
 import { getStub } from '@repo/do-utils'
-import { EntityType, type Industry, type IndustryOrder, type ServiceProviderId } from '@repo/industry'
+import { EntityType } from '@repo/industry'
 
-import type { Env, SessionUser } from '../context'
+import type { Industry, IndustryOrder, ServiceProviderId } from '@repo/industry'
+import type { Env } from '../context'
 
 /**
  * Check if the user is the issuer of an order
@@ -111,9 +112,7 @@ export async function getClaimableProvider(
 		// Find a provider that offers this service type
 		for (const provider of providers) {
 			const services = await industryDO.listProviderServices(provider.id)
-			const hasService = services.some(
-				(s) => s.serviceType === orderType && s.status === 'active'
-			)
+			const hasService = services.some((s) => s.serviceType === orderType && s.status === 'active')
 			if (hasService) {
 				return provider.id
 			}

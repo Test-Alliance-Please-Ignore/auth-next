@@ -176,7 +176,7 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 					statuses: Set<string>
 				}
 			>()
-			const coalescedRows: (typeof fullRows)[number][] = []
+			const coalescedRows: Array<(typeof fullRows)[number]> = []
 			for (const row of fullRows) {
 				if (!row.groupBillId) {
 					coalescedRows.push(row)
@@ -204,7 +204,8 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 					coalescedRows.push(representative)
 				}
 
-				entry.representative.groupBillTotalCount = (entry.representative.groupBillTotalCount ?? 0) + 1
+				entry.representative.groupBillTotalCount =
+					(entry.representative.groupBillTotalCount ?? 0) + 1
 				if (row.status === 'paid') {
 					entry.representative.groupBillPaidCount =
 						(entry.representative.groupBillPaidCount ?? 0) + 1

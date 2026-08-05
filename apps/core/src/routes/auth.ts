@@ -4,10 +4,17 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { assertEveCharacterId } from '@repo/eve-types'
-import { captureException, toErrorMessage } from '@repo/hono-helpers'
+import { captureException, logger, toErrorMessage } from '@repo/hono-helpers'
+import { createWorkflow } from '@repo/workflow-utils'
 
 import { createDb } from '../db'
-import { managedCorporations, mumbleTempops, oauthStates, userCharacters, users } from '../db/schema'
+import {
+	managedCorporations,
+	mumbleTempops,
+	oauthStates,
+	userCharacters,
+	users,
+} from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
 import { getDiscordStatus } from '../lib/discord-helpers'
 import { getCachedUserPermissions } from '../lib/groups-cache'
@@ -17,15 +24,11 @@ import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { AuthService } from '../services/auth.service'
 import { hydrateCharacterAffiliation } from '../services/character-affiliation-hydration.service'
-import {
-	recheckDirectorHealthAfterTokenReauth,
-	type DirectorHealthRecheckStub,
-	type ManagedCorporationSummary,
-} from '../services/director-health-recheck.service'
 import { reconcileUserCoreMembershipRoles } from '../services/core-role-reconciliation.service'
-import { provisionTempopGuest } from '../services/mumble.service'
-import { storeCredentialHandoff } from '../services/mumble-tempop.service'
 import { autoRegisterDirectorCorporation } from '../services/corporation-auto-register.service'
+import { recheckDirectorHealthAfterTokenReauth } from '../services/director-health-recheck.service'
+import { storeCredentialHandoff } from '../services/mumble-tempop.service'
+import { provisionTempopGuest } from '../services/mumble.service'
 import { SessionService } from '../services/session.service'
 import { CharacterAlreadyClaimedError, UserService } from '../services/user.service'
 
@@ -35,14 +38,12 @@ import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { BlacklistEntry, Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
-import type {
-	ClaimMainOAuthMetadata,
-	OAuthStateMetadata,
-	TempopOAuthMetadata,
-} from '../db/schema'
 import type { App } from '../context'
-import { logger } from '@repo/hono-helpers'
-import { createWorkflow } from '@repo/workflow-utils'
+import type { ClaimMainOAuthMetadata, OAuthStateMetadata, TempopOAuthMetadata } from '../db/schema'
+import type {
+	DirectorHealthRecheckStub,
+	ManagedCorporationSummary,
+} from '../services/director-health-recheck.service'
 
 /**
  * Authentication routes
@@ -756,7 +757,9 @@ auth.get('/callback', async (c) => {
 				return c.json({
 					characterLinked: true,
 					tokenUpdated: true,
-					character: existingCharacter ? { ...existingCharacter, hasValidToken: true } : existingCharacter,
+					character: existingCharacter
+						? { ...existingCharacter, hasValidToken: true }
+						: existingCharacter,
 				})
 			} else {
 				return c.json({ error: 'Character is already linked to another account' }, 400)
@@ -810,12 +813,7 @@ auth.get('/callback', async (c) => {
 			.update(userCharacters)
 			.set({ hasValidToken: true })
 			.where(eq(userCharacters.characterId, characterId))
-		triggerDirectorHealthRecheckAfterTokenReauth(
-			c,
-			db,
-			characterId,
-			characterInfo.characterName
-		)
+		triggerDirectorHealthRecheckAfterTokenReauth(c, db, characterId, characterInfo.characterName)
 
 		await activityService.logCharacterLinked(stateUserId, characterId, getRequestMetadata(c))
 		triggerLegacyMigrationRecheck(c, stateUserId)
@@ -982,12 +980,7 @@ auth.get('/callback', async (c) => {
 			.update(userCharacters)
 			.set({ hasValidToken: true })
 			.where(eq(userCharacters.characterId, characterId))
-		triggerDirectorHealthRecheckAfterTokenReauth(
-			c,
-			db,
-			characterId,
-			characterInfo.characterName
-		)
+		triggerDirectorHealthRecheckAfterTokenReauth(c, db, characterId, characterInfo.characterName)
 
 		await activityService.logLogin(user.id, characterId, getRequestMetadata(c))
 
@@ -1187,10 +1180,7 @@ auth.post('/claim-main', async (c) => {
 		logger.warn('[Auth] claim-main ticket owner hash no longer matches, refusing', {
 			characterId,
 		})
-		return c.json(
-			{ error: 'This character has changed ownership. Please login again.' },
-			400
-		)
+		return c.json({ error: 'This character has changed ownership. Please login again.' }, 400)
 	}
 
 	// SECURITY: Check if character ID/name is blacklisted before creating user
@@ -1225,10 +1215,7 @@ auth.post('/claim-main', async (c) => {
 				characterId,
 				reason: toErrorMessage(error),
 			})
-			return c.json(
-				{ error: 'This character has already been claimed. Please login again.' },
-				409
-			)
+			return c.json({ error: 'This character has already been claimed. Please login again.' }, 409)
 		}
 
 		captureException(error as Error, {

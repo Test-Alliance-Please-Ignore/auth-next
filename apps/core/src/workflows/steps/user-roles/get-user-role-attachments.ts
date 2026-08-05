@@ -1,4 +1,3 @@
-import { ROLE_CORE_ALLIANCE_MEMBER, ROLE_CORE_CORP_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 import { RoleAttachmentType } from '@repo/groups'
 

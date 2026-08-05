@@ -46,7 +46,7 @@ vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
 }))
 
-const backgroundTasks: Promise<unknown>[] = []
+const backgroundTasks: Array<Promise<unknown>> = []
 
 vi.mock('../../lib/background-task', () => ({
 	waitUntilWithTelemetry: (
@@ -224,11 +224,7 @@ describe('character detail access for HR page viewers', () => {
 
 	it('returns public overview data without private fields', async () => {
 		const app = createApp(makeUser(), db)
-		const res = await app.request(
-			'/api/characters/2001',
-			{},
-			env
-		)
+		const res = await app.request('/api/characters/2001', {}, env)
 
 		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
 
@@ -259,11 +255,7 @@ describe('character detail access for HR page viewers', () => {
 		} as any)
 
 		const app = createApp(makeUser(), db)
-		const res = await app.request(
-			'/api/characters/2001/private',
-			{},
-			env
-		)
+		const res = await app.request('/api/characters/2001/private', {}, env)
 
 		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
 
@@ -307,10 +299,12 @@ describe('character detail access for HR page viewers', () => {
 		} as any)
 		vi.mocked(db.query.users.findFirst).mockResolvedValue({ immunitas: false } as any)
 		hoisted.core.getUserCorporations.mockResolvedValue([])
-		hoisted.hr.listApplications.mockImplementation(async (_filters: any, _userId: string, access: any) => {
-			if (access.isAdmin || access.isAuditor) return []
-			return [{ corporationId: '2001', status: 'accepted' }]
-		})
+		hoisted.hr.listApplications.mockImplementation(
+			async (_filters: any, _userId: string, access: any) => {
+				if (access.isAdmin || access.isAuditor) return []
+				return [{ corporationId: '2001', status: 'accepted' }]
+			}
+		)
 		hoisted.hr.checkPermission.mockResolvedValue(true)
 
 		const app = createApp(makeUser(), db)
@@ -344,11 +338,7 @@ describe('character detail access for HR page viewers', () => {
 		vi.mocked(db.query.users.findFirst).mockResolvedValue({ immunitas: true } as any)
 
 		const app = createApp(makeUser({ is_admin: true }), db)
-		const res = await app.request(
-			'/api/characters/2001/private',
-			{},
-			env
-		)
+		const res = await app.request('/api/characters/2001/private', {}, env)
 
 		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
 
@@ -387,5 +377,4 @@ describe('character detail access for HR page viewers', () => {
 		expect(body.totalSp).toBe(123456)
 		expect(hoisted.core.queueImmunitasAccessAlert).not.toHaveBeenCalled()
 	})
-
 })

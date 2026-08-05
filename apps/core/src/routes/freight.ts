@@ -8,20 +8,17 @@
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
-import { TimeCache, logger } from '@repo/hono-helpers'
+import { logger, TimeCache } from '@repo/hono-helpers'
 
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAllianceMember, requireAuth } from '../middleware/session'
+import { resolveFreightLeaderboardWindow } from './freight-leaderboard-period'
 
 import type { EsiTypeResolver } from '@repo/esi'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { CorporationContractSortBy, EveCorporationData } from '@repo/eve-corporation-data'
 import type { Freight } from '@repo/freight'
 import type { App } from '../context'
-import type { CorporationContractSortBy } from '@repo/eve-corporation-data'
-import {
-	resolveFreightLeaderboardWindow,
-	type FreightLeaderboardPeriod,
-} from './freight-leaderboard-period'
+import type { FreightLeaderboardPeriod } from './freight-leaderboard-period'
 
 const FREIGHT_MANAGER_URN = 'urn:freight:manager'
 
@@ -70,7 +67,10 @@ app.get('/routes/active', requireAuth(), async (c) => {
 
 		return c.json(routes)
 	} catch (error) {
-		logger.error('Error listing active freight routes:', { error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined })
+		logger.error('Error listing active freight routes:', {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
 		return c.json({ error: 'Failed to list freight routes' }, 500)
 	}
 })
@@ -95,7 +95,10 @@ app.get('/routes', requireAuth(), async (c) => {
 
 		return c.json(routes)
 	} catch (error) {
-		logger.error('Error listing freight routes:', { error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined })
+		logger.error('Error listing freight routes:', {
+			error: error instanceof Error ? error.message : String(error),
+			stack: error instanceof Error ? error.stack : undefined,
+		})
 		return c.json({ error: 'Failed to list freight routes' }, 500)
 	}
 })
@@ -106,13 +109,17 @@ app.get('/routes', requireAuth(), async (c) => {
  */
 function validateFreightRouteOptionalFields(data: Record<string, unknown>): string | null {
 	if (data.maxVolume !== undefined && data.maxVolume !== null) {
-		const maxVol = typeof data.maxVolume === 'string' ? parseFloat(data.maxVolume) : Number(data.maxVolume)
+		const maxVol =
+			typeof data.maxVolume === 'string' ? parseFloat(data.maxVolume) : Number(data.maxVolume)
 		if (isNaN(maxVol) || maxVol <= 0) {
 			return 'maxVolume must be a positive number'
 		}
 	}
 	if (data.collateralFeeRate !== undefined && data.collateralFeeRate !== null) {
-		const rate = typeof data.collateralFeeRate === 'string' ? parseFloat(data.collateralFeeRate) : Number(data.collateralFeeRate)
+		const rate =
+			typeof data.collateralFeeRate === 'string'
+				? parseFloat(data.collateralFeeRate)
+				: Number(data.collateralFeeRate)
 		if (isNaN(rate) || rate < 0 || rate > 1) {
 			return 'collateralFeeRate must be a decimal between 0 and 1'
 		}
@@ -136,10 +143,16 @@ function validateFreightRouteOptionalFields(data: Record<string, unknown>): stri
  * Validate fields for update (all required fields are optional, only validate if present)
  */
 function validateFreightRouteUpdateFields(data: Record<string, unknown>): string | null {
-	if (data.pickupName !== undefined && (typeof data.pickupName !== 'string' || !data.pickupName.trim())) {
+	if (
+		data.pickupName !== undefined &&
+		(typeof data.pickupName !== 'string' || !data.pickupName.trim())
+	) {
 		return 'pickupName must be a non-empty string'
 	}
-	if (data.destinationName !== undefined && (typeof data.destinationName !== 'string' || !data.destinationName.trim())) {
+	if (
+		data.destinationName !== undefined &&
+		(typeof data.destinationName !== 'string' || !data.destinationName.trim())
+	) {
 		return 'destinationName must be a non-empty string'
 	}
 	if (data.iskPerVolumeUnit !== undefined) {
@@ -380,10 +393,7 @@ app.get('/contracts', requireAuth(), requireAllianceMember(), async (c) => {
 				: DEFAULT_CONTRACT_SORT_BY
 		const sortDirection: 'asc' | 'desc' =
 			rawSortDirection === 'desc' ? 'desc' : DEFAULT_CONTRACT_SORT_DIRECTION
-		const corpDataStub = getStub<EveCorporationData>(
-			c.env.EVE_CORPORATION_DATA,
-			'alliance-queries'
-		)
+		const corpDataStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, 'alliance-queries')
 
 		const contractPage = await corpDataStub.getAllianceCourierContracts(
 			ALLIANCE_ID,
@@ -422,9 +432,7 @@ app.get('/contracts', requireAuth(), requireAllianceMember(), async (c) => {
 			startLocationName: contract.startLocationId
 				? (names[contract.startLocationId] ?? null)
 				: null,
-			endLocationName: contract.endLocationId
-				? (names[contract.endLocationId] ?? null)
-				: null,
+			endLocationName: contract.endLocationId ? (names[contract.endLocationId] ?? null) : null,
 		}))
 
 		return c.json({
@@ -445,89 +453,94 @@ app.get('/contracts', requireAuth(), requireAllianceMember(), async (c) => {
  * Delegates contract window opening to the Freight worker, which owns the
  * authenticated ESI request and limiter keying for this action.
  */
-app.post('/contracts/:contractId/open-in-game', requireAuth(), requireAllianceMember(), async (c) => {
-	const user = c.get('user')!
-	const contractIdParam = c.req.param('contractId')
+app.post(
+	'/contracts/:contractId/open-in-game',
+	requireAuth(),
+	requireAllianceMember(),
+	async (c) => {
+		const user = c.get('user')!
+		const contractIdParam = c.req.param('contractId')
 
-	const contractId = Number(contractIdParam)
-	if (!Number.isInteger(contractId) || contractId <= 0) {
-		return c.json({ error: 'Invalid contract ID' }, 400)
-	}
-
-	// Resolve the user's main character: explicit mainCharacterId, then the
-	// primary character, then fall back to the first linked character.
-	const mainCharacter =
-		user.characters.find((char) => char.characterId === user.mainCharacterId) ??
-		user.characters.find((char) => char.is_primary) ??
-		user.characters[0]
-
-	if (!mainCharacter) {
-		return c.json({ error: 'No EVE character linked to this account' }, 400)
-	}
-
-	try {
-		const freightStub = getStub<Freight>(c.env.FREIGHT, 'default')
-		const result = await freightStub.openContractInGame(
-			mainCharacter.characterId,
-			mainCharacter.characterName,
-			contractId
-		)
-
-		if (result.success) {
-			return c.json({ success: true, characterName: mainCharacter.characterName })
+		const contractId = Number(contractIdParam)
+		if (!Number.isInteger(contractId) || contractId <= 0) {
+			return c.json({ error: 'Invalid contract ID' }, 400)
 		}
 
-		if (result.error === 'token_unavailable') {
+		// Resolve the user's main character: explicit mainCharacterId, then the
+		// primary character, then fall back to the first linked character.
+		const mainCharacter =
+			user.characters.find((char) => char.characterId === user.mainCharacterId) ??
+			user.characters.find((char) => char.is_primary) ??
+			user.characters[0]
+
+		if (!mainCharacter) {
+			return c.json({ error: 'No EVE character linked to this account' }, 400)
+		}
+
+		try {
+			const freightStub = getStub<Freight>(c.env.FREIGHT, 'default')
+			const result = await freightStub.openContractInGame(
+				mainCharacter.characterId,
+				mainCharacter.characterName,
+				contractId
+			)
+
+			if (result.success) {
+				return c.json({ success: true, characterName: mainCharacter.characterName })
+			}
+
+			if (result.error === 'token_unavailable') {
+				return c.json(
+					{
+						error: result.error,
+						message: result.message,
+					},
+					409
+				)
+			}
+
+			if (result.error === 'scope_missing') {
+				return c.json(
+					{
+						error: result.error,
+						message: result.message,
+					},
+					409
+				)
+			}
+
+			if (result.error === 'esi_rate_limited') {
+				return c.json(
+					{
+						error: result.error,
+						message: result.message,
+					},
+					429
+				)
+			}
+
+			// 520 / other: ESI reaches no client, or the client is offline.
+			logger.warn('Freight worker openwindow/contract returned non-success', {
+				contractId,
+				characterId: mainCharacter.characterId,
+				error: result.error,
+			})
 			return c.json(
 				{
-					error: result.error,
+					error: 'client_unreachable',
 					message: result.message,
 				},
-				409
+				502
 			)
+		} catch (error) {
+			logger.error('Error opening contract in-game:', {
+				error: error instanceof Error ? error.message : String(error),
+				contractId,
+			})
+			return c.json({ error: 'Failed to open contract in-game' }, 500)
 		}
-
-		if (result.error === 'scope_missing') {
-			return c.json(
-				{
-					error: result.error,
-					message: result.message,
-				},
-				409
-			)
-		}
-
-		if (result.error === 'esi_rate_limited') {
-			return c.json(
-				{
-					error: result.error,
-					message: result.message,
-				},
-				429
-			)
-		}
-
-		// 520 / other: ESI reaches no client, or the client is offline.
-		logger.warn('Freight worker openwindow/contract returned non-success', {
-			contractId,
-			characterId: mainCharacter.characterId,
-			error: result.error,
-		})
-		return c.json(
-			{
-				error: 'client_unreachable',
-				message: result.message,
-			},
-			502
-		)
-	} catch (error) {
-		logger.error('Error opening contract in-game:', {
-			error: error instanceof Error ? error.message : String(error),
-			contractId,
-		})
-		return c.json({ error: 'Failed to open contract in-game' }, 500)
 	}
-})
+)
 
 /**
  * GET /freight/leaderboard
@@ -535,10 +548,7 @@ app.post('/contracts/:contractId/open-in-game', requireAuth(), requireAllianceMe
  */
 app.get('/leaderboard', requireAuth(), requireAllianceMember(), async (c) => {
 	try {
-		const corpDataStub = getStub<EveCorporationData>(
-			c.env.EVE_CORPORATION_DATA,
-			'alliance-queries'
-		)
+		const corpDataStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, 'alliance-queries')
 
 		const period = c.req.query('period') as FreightLeaderboardPeriod | '30d' | undefined
 		const window = resolveFreightLeaderboardWindow(period)

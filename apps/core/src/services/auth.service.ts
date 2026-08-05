@@ -2,9 +2,9 @@ import { and, eq } from '@repo/db-utils'
 
 import { userSessions } from '../db/schema'
 
+import type { CreateSessionOptions, UserSessionDTO } from '@repo/core'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { createDb } from '../db'
-import type { CreateSessionOptions, RequestMetadata, UserSessionDTO } from '@repo/core'
 
 /**
  * Authentication Service

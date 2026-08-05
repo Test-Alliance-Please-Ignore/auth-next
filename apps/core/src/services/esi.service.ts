@@ -10,7 +10,7 @@ const AUTH_CHARACTER_ID = '2114114257' // Test Auth character
  * Module-level cache for all solar system names.
  * Loaded lazily on first search, persists for the Worker instance lifetime.
  */
-let systemNamesCache: { id: number; name: string }[] | null = null
+let systemNamesCache: Array<{ id: number; name: string }> | null = null
 let systemNamesCacheExpiry = 0
 
 /**
@@ -160,7 +160,7 @@ export class EsiService {
 	 * Load all solar system names from ESI public endpoints.
 	 * Caches in module-level variable for the Worker instance lifetime (1 hour refresh).
 	 */
-	private async getAllSystemNames(): Promise<{ id: number; name: string }[]> {
+	private async getAllSystemNames(): Promise<Array<{ id: number; name: string }>> {
 		if (systemNamesCache && systemNamesCacheExpiry > Date.now()) {
 			return systemNamesCache
 		}
@@ -168,15 +168,13 @@ export class EsiService {
 		logger.info('Loading all system names from ESI...')
 
 		// Step 1: Get all system IDs (public endpoint, no auth)
-		const idsResult = await this.tokenStore.fetchPublicEsi<number[]>(
-			'/latest/universe/systems/'
-		)
+		const idsResult = await this.tokenStore.fetchPublicEsi<number[]>('/latest/universe/systems/')
 		const allIds = idsResult.data
 		logger.info('Loaded system IDs', { count: allIds.length })
 
 		// Step 2: Resolve names in batches of 1000 via resolveIds
 		const BATCH_SIZE = 1000
-		const systems: { id: number; name: string }[] = []
+		const systems: Array<{ id: number; name: string }> = []
 
 		for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
 			const batch = allIds.slice(i, i + BATCH_SIZE)

@@ -1,12 +1,12 @@
 import { and, desc, eq, gte, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 
-import { dkpDecayConfig, dkpTransactions, userCharacters, users } from '../db/schema'
+import { dkpTransactions, userCharacters, users } from '../db/schema'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { DbClient, schema } from '../db'
-import { logger } from '@repo/hono-helpers'
 
 const MS_PER_DAY = 86_400_000
 
@@ -141,7 +141,7 @@ export class DkpService {
 		try {
 			const currentBalance = await this.getCharacterBalance(params.characterId)
 			currentBalanceAmount = currentBalance.balance.current
-		} catch (error) {
+		} catch {
 			// Character has no prior transactions, balance is 0
 			currentBalanceAmount = 0
 		}
@@ -349,7 +349,7 @@ export class DkpService {
 	 */
 	async getCharacterBalance(
 		characterId: string,
-		period?: '7d' | '30d' | '90d' | 'all'
+		_period?: '7d' | '30d' | '90d' | 'all'
 	): Promise<{
 		characterId: string
 		characterName: string
@@ -422,7 +422,7 @@ export class DkpService {
 	 */
 	async getUserBalance(
 		userId: string,
-		period?: '7d' | '30d' | '90d' | 'all'
+		_period?: '7d' | '30d' | '90d' | 'all'
 	): Promise<{
 		userId: string
 		balance: {
@@ -537,7 +537,7 @@ export class DkpService {
 	 */
 	async getCorporationBalance(
 		corporationId: string,
-		period?: '7d' | '30d' | '90d' | 'all'
+		_period?: '7d' | '30d' | '90d' | 'all'
 	): Promise<{
 		corporationId: string
 		corporationName: string

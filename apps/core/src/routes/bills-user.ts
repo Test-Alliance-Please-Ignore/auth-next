@@ -192,7 +192,7 @@ app.get('/my-bills', requireAuth(), requireBillingViewer(), async (c) => {
 		// If exactly 1 appears the user is the pure payer — render as individual.
 		const groupBillMap = new Map<string, (typeof enrichedRows)[0]>()
 		const groupBillStatuses = new Map<string, Set<string>>()
-		const nonGroupRows: (typeof enrichedRows)[0][] = []
+		const nonGroupRows: Array<(typeof enrichedRows)[0]> = []
 		for (const row of enrichedRows) {
 			if (row.groupBillId) {
 				if (!groupBillMap.has(row.groupBillId)) {

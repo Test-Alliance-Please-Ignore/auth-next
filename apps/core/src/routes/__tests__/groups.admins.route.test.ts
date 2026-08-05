@@ -1,13 +1,14 @@
-import { Hono } from 'hono'
 import { createExecutionContext } from 'cloudflare:test'
+import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
 
-import groupsRoutes from '../groups'
 import { createDb } from '../../db'
+import groupsRoutes from '../groups'
 
 import type { SessionUser } from '../../context'
+import type * as sessionMiddleware from '../../middleware/session'
 
 const serviceMocks = vi.hoisted(() => ({
 	waitUntilWithTelemetry: vi.fn((_: unknown, __: string, task: () => Promise<unknown>) => {
@@ -35,13 +36,13 @@ vi.mock('../../lib/workflow-triggers', () => ({
 }))
 
 vi.mock('../../middleware/session', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../middleware/session')>()
+	const actual = await importOriginal<typeof sessionMiddleware>()
 
 	const passThrough =
 		() =>
-			async (_c: unknown, next: () => Promise<void>): Promise<void> => {
-				await next()
-			}
+		async (_c: unknown, next: () => Promise<void>): Promise<void> => {
+			await next()
+		}
 
 	return {
 		...actual,
@@ -49,13 +50,13 @@ vi.mock('../../middleware/session', async (importOriginal) => {
 		requireAllianceMember: passThrough,
 		requireAdmin:
 			() =>
-				async (c: any, next: () => Promise<void>): Promise<Response | void> => {
-					const user = c.get('user')
-					if (!user?.is_admin) {
-						return c.json({ error: 'Forbidden' }, 403)
-					}
-					await next()
-				},
+			async (c: any, next: () => Promise<void>): Promise<Response | void> => {
+				const user = c.get('user')
+				if (!user?.is_admin) {
+					return c.json({ error: 'Forbidden' }, 403)
+				}
+				await next()
+			},
 	}
 })
 
@@ -118,15 +119,15 @@ describe('groups admin membership routes', () => {
 			throw new Error('Unexpected binding')
 		})
 
-			createDbMock.mockReturnValue({
-				query: {
-					userCharacters: {
-						findFirst: vi.fn(),
-					},
+		createDbMock.mockReturnValue({
+			query: {
+				userCharacters: {
+					findFirst: vi.fn(),
 				},
-			} as any)
-			serviceMocks.triggerDiscordRefreshWorkflow.mockResolvedValue(undefined)
-			serviceMocks.triggerMumbleRefreshWorkflow.mockResolvedValue(undefined)
+			},
+		} as any)
+		serviceMocks.triggerDiscordRefreshWorkflow.mockResolvedValue(undefined)
+		serviceMocks.triggerMumbleRefreshWorkflow.mockResolvedValue(undefined)
 	})
 
 	it('allows non-site-admin group owner flow to add an admin (DO enforces ownership)', async () => {
@@ -151,10 +152,19 @@ describe('groups admin membership routes', () => {
 		const user = makeUser({ id: 'owner-user', is_admin: false })
 		const app = createApp(user)
 
-		const res = await app.request('/api/groups/group-1/admins/target-user', { method: 'DELETE' }, env)
+		const res = await app.request(
+			'/api/groups/group-1/admins/target-user',
+			{ method: 'DELETE' },
+			env
+		)
 
 		expect(res.status).toBe(200)
-		expect(groupsStub.removeAdmin).toHaveBeenCalledWith('group-1', 'owner-user', 'target-user', false)
+		expect(groupsStub.removeAdmin).toHaveBeenCalledWith(
+			'group-1',
+			'owner-user',
+			'target-user',
+			false
+		)
 	})
 
 	it('forces site-admin direct member adds through the admin-managed endpoint', async () => {

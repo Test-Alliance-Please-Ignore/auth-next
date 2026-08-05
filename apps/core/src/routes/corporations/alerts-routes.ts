@@ -1,16 +1,16 @@
 import { Hono } from 'hono'
-import type { Context } from 'hono'
 import { z } from 'zod'
 
+import { validateAlertDestinationRequirements } from '@repo/alert-destinations'
 import { eq } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
-import { validateAlertDestinationRequirements } from '@repo/alert-destinations'
 
-import { alertDestinations, managedCorporations } from '../../db/schema'
+import { managedCorporations } from '../../db/schema'
 import {
 	CORPORATION_ALERT_DESTINATION_TYPES,
 	CORPORATION_ALERT_TYPES,
 } from '../../lib/corporation-alerts'
+import { requireAdmin, requireAuth } from '../../middleware/session'
 import {
 	createCorporationAlertDestination,
 	deleteCorporationAlertDestination,
@@ -18,8 +18,8 @@ import {
 	listCorporationAlertTypes,
 	updateCorporationAlertDestination,
 } from '../../services/corporation-alerts.service'
-import { requireAdmin, requireAuth } from '../../middleware/session'
 
+import type { Context } from 'hono'
 import type { App } from '../../context'
 
 const app = new Hono<App>()
@@ -222,14 +222,24 @@ app.put('/:corporationId/alerts/:destinationId', requireAuth(), requireAdmin(), 
 
 		if (body.destinationType === 'discord_channel') {
 			if (body.discordServerId !== undefined && body.discordServerId === null) {
-				return c.json({ error: 'discordServerId cannot be cleared for discord_channel destinations' }, 400)
+				return c.json(
+					{ error: 'discordServerId cannot be cleared for discord_channel destinations' },
+					400
+				)
 			}
 			if (body.channelId !== undefined && body.channelId === null) {
-				return c.json({ error: 'channelId cannot be cleared for discord_channel destinations' }, 400)
+				return c.json(
+					{ error: 'channelId cannot be cleared for discord_channel destinations' },
+					400
+				)
 			}
 		}
 
-		if (body.destinationType === 'discord_user' && body.coreUserId !== undefined && body.coreUserId === null) {
+		if (
+			body.destinationType === 'discord_user' &&
+			body.coreUserId !== undefined &&
+			body.coreUserId === null
+		) {
 			return c.json({ error: 'coreUserId cannot be cleared for discord_user destinations' }, 400)
 		}
 

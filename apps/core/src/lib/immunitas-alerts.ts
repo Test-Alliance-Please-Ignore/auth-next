@@ -102,10 +102,6 @@ export function buildImmunitasAccessAlertMessage(input: {
 	updatedAt?: Date
 }): MessageContent {
 	const accessTypeLabel = getAccessTypeLabel(input.accessType)
-	const attemptLabel =
-		input.attemptCount === 1
-			? 'One unauthorized attempt'
-			: `${input.attemptCount} unauthorized attempts`
 	const description =
 		input.attemptCount === 1
 			? 'One unauthorized attempt to access an immunitas account was blocked.'

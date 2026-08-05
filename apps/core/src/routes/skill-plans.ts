@@ -1,28 +1,26 @@
 import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
+import {
+	getCachedGroup,
+	getCachedUserMemberships,
+	getCachedUserPermissions,
+} from '../lib/groups-cache'
 import {
 	canCheckCharacterProgress,
 	canDeletePlan,
 	canModifyPlan,
 	canViewPlan,
 } from '../lib/skill-plan-auth'
-import { getCachedGroup, getCachedUserMemberships, getCachedUserPermissions } from '../lib/groups-cache'
 import { requireAllianceMember } from '../middleware/session'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { Hr } from '@repo/hr'
-import type {
-	AddSkillToPlanInput,
-	CreateSkillPlanInput,
-	SkillPlan,
-	SkillPlanCategory,
-	Skills,
-} from '@repo/skills'
+import type { AddSkillToPlanInput, CreateSkillPlanInput, Skills } from '@repo/skills'
 import type { App } from '../context'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Helper function to resolve maintainer name from maintainerId
@@ -257,12 +255,7 @@ const skillPlansRoutes = new Hono<App>()
 							? ('group' as const)
 							: ('user' as const)
 						const maintainerName = plan.maintainerId
-							? await resolveMaintainerName(
-								plan.maintainerId,
-								user.id,
-								c.env,
-								db
-							)
+							? await resolveMaintainerName(plan.maintainerId, user.id, c.env, db)
 							: 'System'
 						return {
 							...plan,
