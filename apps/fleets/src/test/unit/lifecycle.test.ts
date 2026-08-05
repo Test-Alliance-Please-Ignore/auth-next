@@ -1,4 +1,14 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import {
+	fleetMemberShipEvents,
+	fleetSummaries,
+	fleetTrackingSessionEvents,
+	fleetTrackingSessions,
+} from '../../db/schema'
+import { FleetsDO } from '../../durable-object'
+import { FleetMonitorDO } from '../../fleet-monitor'
+import { sweepStaleFleetMonitors } from '../../index'
 
 const harness = vi.hoisted(() => ({
 	currentDb: null as unknown,
@@ -21,6 +31,13 @@ vi.mock('cloudflare:workers', () => {
 })
 
 vi.mock('@repo/db-utils', async () => {
+	const sql = Object.assign(
+		vi.fn(() => ({})),
+		{
+			join: vi.fn(() => ({})),
+		}
+	)
+
 	return {
 		and: vi.fn(() => ({})),
 		asc: vi.fn(() => ({})),
@@ -34,7 +51,7 @@ vi.mock('@repo/db-utils', async () => {
 		lt: vi.fn(() => ({})),
 		lte: vi.fn(() => ({})),
 		or: vi.fn(() => ({})),
-		sql: vi.fn(() => ({})),
+		sql,
 		createDbClient: vi.fn(() => harness.currentDb),
 		createDbClientWs: vi.fn(() => harness.currentDb),
 	}
@@ -60,16 +77,6 @@ vi.mock('@repo/hono-helpers', () => ({
 	withWorkersLogger: vi.fn(() => vi.fn((_c: unknown, next: () => Promise<void>) => next())),
 }))
 
-import {
-	fleetMemberShipEvents,
-	fleetSummaries,
-	fleetTrackingSessionEvents,
-	fleetTrackingSessions,
-} from '../../db/schema'
-import { sweepStaleFleetMonitors } from '../../index'
-import { FleetMonitorDO } from '../../fleet-monitor'
-import { FleetsDO } from '../../durable-object'
-
 function getNamespaceKey(namespace: object): string {
 	const existing = harness.namespaceIds.get(namespace)
 	if (existing) return existing
@@ -83,12 +90,14 @@ function registerStub(namespace: object, id: string, stub: unknown): void {
 	harness.stubs.set(`${getNamespaceKey(namespace)}:${id}`, stub)
 }
 
-function createDbMock(options: {
-	selectResults?: unknown[]
-	insertResults?: unknown[]
-	updateResults?: unknown[]
-	deleteResults?: unknown[]
-} = {}) {
+function createDbMock(
+	options: {
+		selectResults?: unknown[]
+		insertResults?: unknown[]
+		updateResults?: unknown[]
+		deleteResults?: unknown[]
+	} = {}
+) {
 	const queues = {
 		select: [...(options.selectResults ?? [])],
 		insert: [...(options.insertResults ?? [])],
@@ -149,8 +158,10 @@ function createDbMock(options: {
 				capture.onConflictDoUpdate = args
 				return Promise.resolve(queue.shift())
 			},
-			then: (onFulfilled: ((value: unknown) => unknown) | null, onRejected: ((reason: unknown) => unknown) | null) =>
-				Promise.resolve(queue.shift()).then(onFulfilled, onRejected),
+			then: (
+				onFulfilled: ((value: unknown) => unknown) | null,
+				onRejected: ((reason: unknown) => unknown) | null
+			) => Promise.resolve(queue.shift()).then(onFulfilled, onRejected),
 		}
 
 		return chain
@@ -247,7 +258,6 @@ describe('fleet lifecycle management', () => {
 			initializeMonitoring: vi.fn().mockResolvedValue(undefined),
 		}
 		registerStub(env.FLEET_MONITOR, 'fleet-123', monitorStub)
-
 		;(fleets as any).env = env
 		;(fleets as any).getCharacterFleetInformation = vi.fn().mockResolvedValue({
 			fleet_id: '123',
@@ -483,7 +493,9 @@ describe('fleet lifecycle management', () => {
 				memberCount: 3,
 				members: [],
 			}),
-			getMonitorState: vi.fn().mockResolvedValue({ peakMemberCount: 8, lastChecked: '2026-07-20T00:00:00.000Z' }),
+			getMonitorState: vi
+				.fn()
+				.mockResolvedValue({ peakMemberCount: 8, lastChecked: '2026-07-20T00:00:00.000Z' }),
 		}
 		registerStub(activeSnapshotEnv.FLEET_MONITOR, 'fleet-123', monitorStub)
 		;(activeSnapshotDo as any).env = activeSnapshotEnv
@@ -506,7 +518,9 @@ describe('fleet lifecycle management', () => {
 		expect(monitorStub.getMonitorState).toHaveBeenCalledTimes(1)
 
 		const endedLocationsDb = createDbMock({
-			selectResults: [[{ fleetId: '123', status: 'ended', endedAt: new Date('2026-07-19T23:59:00.000Z') }]],
+			selectResults: [
+				[{ fleetId: '123', status: 'ended', endedAt: new Date('2026-07-19T23:59:00.000Z') }],
+			],
 		})
 		const endedLocationsDo = createFleetsDo(endedLocationsDb)
 		const endedLocationsEnv = createBaseEnv()
@@ -535,11 +549,13 @@ describe('fleet lifecycle management', () => {
 		const liveSnapshotDo = createFleetsDo(liveSnapshotDb)
 		const liveSnapshotEnv = createBaseEnv()
 		const monitorStub = {
-			getFleetStatus: vi.fn().mockRejectedValue(
-				new Error(
-					'ESI request failed: 404 Not Found - {"error":"The fleet does not exist or you don\'t have access to it!"}'
-				)
-			),
+			getFleetStatus: vi
+				.fn()
+				.mockRejectedValue(
+					new Error(
+						'ESI request failed: 404 Not Found - {"error":"The fleet does not exist or you don\'t have access to it!"}'
+					)
+				),
 			getMonitorState: vi.fn().mockResolvedValue({
 				fleetId: '123',
 				characterId: '42',
@@ -603,10 +619,7 @@ describe('fleet lifecycle management', () => {
 
 	it('finalizes a fleet monitor session once and ignores mismatches', async () => {
 		const db = createDbMock({
-			selectResults: [
-				[],
-				[],
-			],
+			selectResults: [[], []],
 			insertResults: [undefined, undefined],
 			updateResults: [undefined, undefined],
 		})
@@ -661,9 +674,15 @@ describe('fleet lifecycle management', () => {
 			}),
 		])
 
-		expect(db.captures.inserts.filter((entry) => entry.table === fleetTrackingSessionEvents)).toHaveLength(1)
-		expect(db.captures.updates.filter((entry) => entry.table === fleetMemberShipEvents)).toHaveLength(1)
-		expect(db.captures.updates.filter((entry) => entry.table === fleetTrackingSessions)).toHaveLength(1)
+		expect(
+			db.captures.inserts.filter((entry) => entry.table === fleetTrackingSessionEvents)
+		).toHaveLength(1)
+		expect(
+			db.captures.updates.filter((entry) => entry.table === fleetMemberShipEvents)
+		).toHaveLength(1)
+		expect(
+			db.captures.updates.filter((entry) => entry.table === fleetTrackingSessions)
+		).toHaveLength(1)
 		expect(db.captures.inserts.filter((entry) => entry.table === fleetSummaries)).toHaveLength(1)
 	})
 

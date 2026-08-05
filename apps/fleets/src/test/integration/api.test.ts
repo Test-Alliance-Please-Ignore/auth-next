@@ -1,4 +1,8 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import worker from '../../index'
+
+import type { Env } from '../../context'
 
 const harness = vi.hoisted(() => ({
 	getStub: vi.fn(() => ({})),
@@ -13,23 +17,32 @@ vi.mock('cloudflare:workers', () => ({
 	},
 }))
 
-vi.mock('@repo/db-utils', () => ({
-	and: vi.fn(() => ({})),
-	asc: vi.fn(() => ({})),
-	desc: vi.fn(() => ({})),
-	eq: vi.fn(() => ({})),
-	gt: vi.fn(() => ({})),
-	gte: vi.fn(() => ({})),
-	inArray: vi.fn(() => ({})),
-	isNull: vi.fn(() => ({})),
-	isNotNull: vi.fn(() => ({})),
-	lt: vi.fn(() => ({})),
-	lte: vi.fn(() => ({})),
-	or: vi.fn(() => ({})),
-	sql: vi.fn(() => ({})),
-	createDbClient: vi.fn(() => ({})),
-	createDbClientWs: vi.fn(() => ({})),
-}))
+vi.mock('@repo/db-utils', () => {
+	const sql = Object.assign(
+		vi.fn(() => ({})),
+		{
+			join: vi.fn(() => ({})),
+		}
+	)
+
+	return {
+		and: vi.fn(() => ({})),
+		asc: vi.fn(() => ({})),
+		desc: vi.fn(() => ({})),
+		eq: vi.fn(() => ({})),
+		gt: vi.fn(() => ({})),
+		gte: vi.fn(() => ({})),
+		inArray: vi.fn(() => ({})),
+		isNull: vi.fn(() => ({})),
+		isNotNull: vi.fn(() => ({})),
+		lt: vi.fn(() => ({})),
+		lte: vi.fn(() => ({})),
+		or: vi.fn(() => ({})),
+		sql,
+		createDbClient: vi.fn(() => ({})),
+		createDbClientWs: vi.fn(() => ({})),
+	}
+})
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: harness.getStub,
@@ -43,20 +56,13 @@ vi.mock('@repo/hono-helpers', () => ({
 		log: vi.fn(),
 		warn: vi.fn(),
 	},
-	withOnError: () => async (_err: Error, ctx: { json: (body: unknown, status: number) => Response }) =>
-		ctx.json({ success: false, error: { message: 'internal server error' } }, 500),
-	withNotFound: () =>
-		async (ctx: { json: (body: unknown, status: number) => Response }) =>
-			ctx.json({ success: false, error: { message: 'not found' } }, 404),
-	withWorkersLogger:
-		() =>
-		async (_ctx: unknown, next: () => Promise<Response>) =>
-			await next(),
+	withOnError:
+		() => async (_err: Error, ctx: { json: (body: unknown, status: number) => Response }) =>
+			ctx.json({ success: false, error: { message: 'internal server error' } }, 500),
+	withNotFound: () => async (ctx: { json: (body: unknown, status: number) => Response }) =>
+		ctx.json({ success: false, error: { message: 'not found' } }, 404),
+	withWorkersLogger: () => async (_ctx: unknown, next: () => Promise<Response>) => await next(),
 }))
-
-import worker from '../../index'
-
-import type { Env } from '../../context'
 
 function createEnv(): Env {
 	return {
