@@ -4,6 +4,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { managedCorporations } from '../db/schema'
 import { isNpcCorporationId } from '../lib/corporation-id'
+import { clearCorporationListCache } from '../lib/corporation-list-cache'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -189,6 +190,7 @@ export async function autoRegisterDirectorCorporation(
 					healthyDirectorCount: 0,
 					configuredBy: userId,
 				})
+				clearCorporationListCache()
 
 				wasNew = true
 			} catch (error) {
