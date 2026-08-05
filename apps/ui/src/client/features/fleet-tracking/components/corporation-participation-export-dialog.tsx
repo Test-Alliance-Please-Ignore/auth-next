@@ -16,6 +16,8 @@ import { Select } from '@/components/ui/select'
 import { fleetTrackingApi } from '../api'
 import { fleetStatsKeys, useCorporationParticipationExportMonths } from '../hooks'
 
+import type { FleetParticipationExportMonth } from '../types'
+
 interface CorporationParticipationExportDialogProps {
 	corporationId: string
 	open: boolean
@@ -27,6 +29,33 @@ function monthRange(year: number, monthIndex: number): { from: string; to: strin
 		from: new Date(Date.UTC(year, monthIndex, 1)).toISOString(),
 		to: new Date(Date.UTC(year, monthIndex + 1, 1)).toISOString(),
 	}
+}
+
+export function buildParticipationPeriodOptions(
+	months: readonly FleetParticipationExportMonth[],
+	now = new Date()
+): Array<{ value: string; label: string }> {
+	const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
+	const previousMonthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
+	const previousMonth = `${previousMonthDate.getUTCFullYear()}-${String(
+		previousMonthDate.getUTCMonth() + 1
+	).padStart(2, '0')}`
+	const representedMonths = new Set([currentMonth, previousMonth])
+
+	return [
+		{ value: 'month-to-date', label: 'Month to date' },
+		{ value: 'last-month', label: 'Last month' },
+		...months
+			.filter((month) => !representedMonths.has(month.month))
+			.map((month) => ({
+				value: `month:${month.month}`,
+				label: new Date(`${month.month}-01T00:00:00Z`).toLocaleDateString(undefined, {
+					month: 'long',
+					year: 'numeric',
+					timeZone: 'UTC',
+				}),
+			})),
+	]
 }
 
 export function CorporationParticipationExportDialog({
@@ -46,30 +75,7 @@ export function CorporationParticipationExportDialog({
 	const [error, setError] = useState<string | null>(null)
 
 	const months = monthData?.months ?? []
-	const periodOptions = useMemo(() => {
-		const now = new Date()
-		const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
-		const previousMonthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
-		const previousMonth = `${previousMonthDate.getUTCFullYear()}-${String(
-			previousMonthDate.getUTCMonth() + 1
-		).padStart(2, '0')}`
-		const representedMonths = new Set([currentMonth, previousMonth])
-
-		return [
-			{ value: 'month-to-date', label: 'Month to date' },
-			{ value: 'last-month', label: 'Last month' },
-			...months
-				.filter((month) => !representedMonths.has(month.month))
-				.map((month) => ({
-					value: `month:${month.month}`,
-					label: new Date(`${month.month}-01T00:00:00Z`).toLocaleDateString(undefined, {
-						month: 'long',
-						year: 'numeric',
-						timeZone: 'UTC',
-					}),
-				})),
-		]
-	}, [months])
+	const periodOptions = useMemo(() => buildParticipationPeriodOptions(months), [months])
 
 	const selectedRange = useMemo(() => {
 		const now = new Date()
