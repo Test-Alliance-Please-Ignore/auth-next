@@ -46,20 +46,30 @@ export function CorporationParticipationExportDialog({
 	const [error, setError] = useState<string | null>(null)
 
 	const months = monthData?.months ?? []
-	const periodOptions = useMemo(
-		() => [
+	const periodOptions = useMemo(() => {
+		const now = new Date()
+		const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
+		const previousMonthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
+		const previousMonth = `${previousMonthDate.getUTCFullYear()}-${String(
+			previousMonthDate.getUTCMonth() + 1
+		).padStart(2, '0')}`
+		const representedMonths = new Set([currentMonth, previousMonth])
+
+		return [
 			{ value: 'month-to-date', label: 'Month to date' },
 			{ value: 'last-month', label: 'Last month' },
-			...months.map((month) => ({
-				value: `month:${month.month}`,
-				label: new Date(`${month.month}-01T00:00:00Z`).toLocaleDateString(undefined, {
-					month: 'long',
-					year: 'numeric',
-				}),
-			})),
-		],
-		[months]
-	)
+			...months
+				.filter((month) => !representedMonths.has(month.month))
+				.map((month) => ({
+					value: `month:${month.month}`,
+					label: new Date(`${month.month}-01T00:00:00Z`).toLocaleDateString(undefined, {
+						month: 'long',
+						year: 'numeric',
+						timeZone: 'UTC',
+					}),
+				})),
+		]
+	}, [months])
 
 	const selectedRange = useMemo(() => {
 		const now = new Date()
