@@ -554,12 +554,14 @@ app.get('/:characterId', requireAuth(), async (c) => {
 	const eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
 
 	try {
-		let [info, corporationHistory, attributes, lastUpdated] = await Promise.all([
+		const [initialInfo, initialCorporationHistory, attributes, lastUpdated] = await Promise.all([
 			eveCharacterData.getCharacterInfo(),
 			eveCharacterData.getCorporationHistory(),
 			eveCharacterData.getAttributes(),
 			eveCharacterData.getLastUpdated(),
 		])
+		let info = initialInfo
+		let corporationHistory = initialCorporationHistory
 
 		if (!info) {
 			logger.info('[Character Detail] Character not in database, attempting auto-fetch', {

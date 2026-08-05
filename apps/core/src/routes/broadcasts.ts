@@ -1,20 +1,18 @@
 import { Hono } from 'hono'
 
-import { and, eq } from '@repo/db-utils'
-import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
-import { getStub } from '@repo/do-utils'
 import { getBroadcastSystemTemplateToken } from '@repo/broadcasts'
-import { createDb, schema } from '../db'
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
+import { and, eq } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
 
-import {
-	getCachedUserPermissions,
-} from '../lib/groups-cache'
+import { createDb, schema } from '../db'
+import { getCachedUserPermissions } from '../lib/groups-cache'
 import { validatePagination } from '../lib/validation'
 import { requireAuth } from '../middleware/session'
 import {
-	canAccessBroadcastTargetByAction,
 	buildBroadcastPermissionContext,
 	canAccessBroadcastPermissionId,
+	canAccessBroadcastTargetByAction,
 	filterBroadcastTargetsByAction,
 } from './broadcasts-permissions'
 
@@ -67,10 +65,6 @@ interface ParsedTemplateResult {
 	normalizedMessageTemplate: string
 }
 
-function extractTemplateTagBlocks(messageTemplate: string): string[] {
-	return [...messageTemplate.matchAll(/\{\{([^}]*)\}\}/g)].map((match) => (match[1] ?? '').trim())
-}
-
 function parseTemplateMessage(messageTemplate: string): ParsedTemplateResult {
 	const tokens: ParsedTemplateToken[] = []
 	const invalidTokens = new Set<string>()
@@ -86,9 +80,7 @@ function parseTemplateMessage(messageTemplate: string): ParsedTemplateResult {
 			}
 
 			const wrappedToken =
-				rawToken.startsWith('<') && rawToken.endsWith('>')
-					? rawToken.slice(1, -1).trim()
-					: rawToken
+				rawToken.startsWith('<') && rawToken.endsWith('>') ? rawToken.slice(1, -1).trim() : rawToken
 
 			const systemToken = getBroadcastSystemTemplateToken(wrappedToken)
 			if (systemToken) {
@@ -139,10 +131,7 @@ function parseTemplateMessage(messageTemplate: string): ParsedTemplateResult {
 					.map((option) => toTemplateFieldLabel(option.trim()))
 					.filter(Boolean)
 
-				if (
-					!BROADCAST_TEMPLATE_SELECT_LABEL_PATTERN.test(labelName) ||
-					options.length === 0
-				) {
+				if (!BROADCAST_TEMPLATE_SELECT_LABEL_PATTERN.test(labelName) || options.length === 0) {
 					invalidTokens.add(rawToken)
 					return `{{${rawToken}}}`
 				}
@@ -189,17 +178,6 @@ function parseTemplateMessage(messageTemplate: string): ParsedTemplateResult {
 		invalidTokens: [...invalidTokens],
 		normalizedMessageTemplate,
 	}
-}
-
-function getInvalidTemplateTagNames(messageTemplate: string): string[] {
-	return parseTemplateMessage(messageTemplate).invalidTokens
-}
-
-function getTemplateFieldSchemaNames(fieldSchema: unknown): string[] {
-	if (!Array.isArray(fieldSchema)) return []
-	return fieldSchema
-		.map((field) => (typeof field === 'object' && field !== null ? (field as { name?: unknown }).name : null))
-		.filter((name): name is string => typeof name === 'string')
 }
 
 function hasFleetTrackingRequiredTokens(messageTemplate: string): boolean {
@@ -393,7 +371,11 @@ function normalizeTemplateTargetIds(payload: Record<string, unknown>): string[] 
 			? [payload.targetId]
 			: []
 
-	return [...new Set([...targetIdsFromArray, ...singleTargetId].map((value) => value.trim()).filter(Boolean))]
+	return [
+		...new Set(
+			[...targetIdsFromArray, ...singleTargetId].map((value) => value.trim()).filter(Boolean)
+		),
+	]
 }
 
 /**
@@ -929,7 +911,9 @@ broadcasts.get('/templates/:id', async (c) => {
 	if (!user.is_admin) {
 		const permissionContext = await getUserBroadcastPermissionContext(c.env, user.id)
 		const templateTargets = await Promise.all(
-			template.targetIds.map((templateTargetId) => broadcastsStub.getTarget(templateTargetId, user.id))
+			template.targetIds.map((templateTargetId) =>
+				broadcastsStub.getTarget(templateTargetId, user.id)
+			)
 		)
 		const resolvedTemplateTargets = templateTargets.filter(
 			(target): target is NonNullable<typeof target> => Boolean(target)
@@ -988,18 +972,23 @@ broadcasts.post('/templates', async (c) => {
 	if (fleetTrackingEnabled && !hasFleetTrackingRequiredTokens(data.messageTemplate)) {
 		return c.json(
 			{
-				error: 'Fleet tracking templates must include both {{<fleetName>}} and {{<fleetCommander>}} tokens.',
+				error:
+					'Fleet tracking templates must include both {{<fleetName>}} and {{<fleetCommander>}} tokens.',
 			},
 			400
 		)
 	}
 
 	const broadcastsStub = getStub<Broadcasts>(c.env.BROADCASTS, 'default')
-	const targets = await Promise.all(targetIds.map((targetId) => broadcastsStub.getTarget(targetId, user.id)))
+	const targets = await Promise.all(
+		targetIds.map((targetId) => broadcastsStub.getTarget(targetId, user.id))
+	)
 	if (targets.some((target) => !target)) {
 		return c.json({ error: 'One or more targets not found' }, 404)
 	}
-	const resolvedTargets = targets.filter((target): target is NonNullable<typeof target> => Boolean(target))
+	const resolvedTargets = targets.filter((target): target is NonNullable<typeof target> =>
+		Boolean(target)
+	)
 	const targetType = resolvedTargets[0]?.type
 	if (!targetType || resolvedTargets.some((target) => target.type !== targetType)) {
 		return c.json({ error: 'All selected targets must share the same target type' }, 400)
@@ -1061,15 +1050,18 @@ broadcasts.patch('/templates/:id', async (c) => {
 	if (!template) {
 		return c.json({ error: 'Template not found' }, 404)
 	}
-	const nextTargetIds = data.targetIds !== undefined || data.targetId !== undefined
-		? normalizeTemplateTargetIds(data)
-		: template.targetIds
+	const nextTargetIds =
+		data.targetIds !== undefined || data.targetId !== undefined
+			? normalizeTemplateTargetIds(data)
+			: template.targetIds
 	if (nextTargetIds.length === 0) {
 		return c.json({ error: 'At least one target is required' }, 400)
 	}
 
 	const currentTargets = await Promise.all(
-		template.targetIds.map((templateTargetId) => broadcastsStub.getTarget(templateTargetId, user.id))
+		template.targetIds.map((templateTargetId) =>
+			broadcastsStub.getTarget(templateTargetId, user.id)
+		)
 	)
 	const resolvedCurrentTargets = currentTargets.filter(
 		(target): target is NonNullable<typeof target> => Boolean(target)
@@ -1125,7 +1117,8 @@ broadcasts.patch('/templates/:id', async (c) => {
 	) {
 		return c.json(
 			{
-				error: 'Fleet tracking templates must include both {{<fleetName>}} and {{<fleetCommander>}} tokens.',
+				error:
+					'Fleet tracking templates must include both {{<fleetName>}} and {{<fleetCommander>}} tokens.',
 			},
 			400
 		)
@@ -1150,11 +1143,7 @@ broadcasts.patch('/templates/:id', async (c) => {
 		updatePayload.fieldSchema = normalizedFieldSchema
 	}
 
-	const updated = await broadcastsStub.updateTemplate(
-		templateId,
-		updatePayload,
-		user.id
-	)
+	const updated = await broadcastsStub.updateTemplate(templateId, updatePayload, user.id)
 	return c.json(updated)
 })
 
@@ -1174,9 +1163,13 @@ broadcasts.delete('/templates/:id', async (c) => {
 		return c.json({ error: 'Template not found' }, 404)
 	}
 	const targets = await Promise.all(
-		template.targetIds.map((templateTargetId) => broadcastsStub.getTarget(templateTargetId, user.id))
+		template.targetIds.map((templateTargetId) =>
+			broadcastsStub.getTarget(templateTargetId, user.id)
+		)
 	)
-	const resolvedTargets = targets.filter((target): target is NonNullable<typeof target> => Boolean(target))
+	const resolvedTargets = targets.filter((target): target is NonNullable<typeof target> =>
+		Boolean(target)
+	)
 
 	// Check permissions against target's manage permission
 	const permissionContext = user.is_admin
@@ -1479,8 +1472,7 @@ broadcasts.post('/:id/send', async (c) => {
 	}
 	const userPermissions = await getCachedUserPermissions(c.env, user.id)
 	const canStartTracking =
-		user.is_admin ||
-		userPermissions.some((p) => p.urn === 'urn:fleet-tracking:create')
+		user.is_admin || userPermissions.some((p) => p.urn === 'urn:fleet-tracking:create')
 	if (parseEnabledFlag(broadcast.content.__fleetTrackingEnabled) && !canStartTracking) {
 		return c.json(
 			{

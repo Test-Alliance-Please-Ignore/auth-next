@@ -21,7 +21,7 @@ export class SessionService {
 	 * @returns Number of sessions invalidated
 	 */
 	async invalidateAllUserSessions(userId: string): Promise<number> {
-		const result = await this.db.delete(userSessions).where(eq(userSessions.userId, userId))
+		await this.db.delete(userSessions).where(eq(userSessions.userId, userId))
 
 		// Drizzle doesn't provide a standard way to get affected rows count
 		// We return 0 as a placeholder (the operation still succeeds)

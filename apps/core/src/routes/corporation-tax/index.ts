@@ -30,7 +30,6 @@ import {
 	TAX_RULE_PRIORITY_MAX,
 	TAX_RULE_PRIORITY_MIN,
 } from './shared'
-import { buildCsvLine } from '@repo/worker-utils'
 
 import type { CorporationTax } from '@repo/corporation-tax'
 import type { EveCharacterData } from '@repo/eve-character-data'
@@ -716,7 +715,7 @@ app.post('/rule-groups', requireAuth(), async (c) => {
 	let body: Record<string, unknown>
 	try {
 		body = await c.req.json()
-	} catch (_error) {
+	} catch {
 		return c.json({ error: 'Invalid JSON payload' }, 400)
 	}
 
@@ -1050,7 +1049,7 @@ app.post('/corporations/:corporationId/assessments/run', requireAuth(), async (c
 	let body: Record<string, unknown>
 	try {
 		body = await c.req.json()
-	} catch (_error) {
+	} catch {
 		return c.json({ error: 'Invalid JSON payload' }, 400)
 	}
 
@@ -1101,7 +1100,7 @@ app.post('/corporations/:corporationId/assessments/rebuild-finalized', requireAu
 	let body: Record<string, unknown>
 	try {
 		body = await c.req.json()
-	} catch (_error) {
+	} catch {
 		return c.json({ error: 'Invalid JSON payload' }, 400)
 	}
 
@@ -1239,7 +1238,7 @@ app.post('/corporations/:corporationId/ledger/ingest', requireAuth(), async (c) 
 	let body: Record<string, unknown> = {}
 	try {
 		body = await c.req.json()
-	} catch (_error) {
+	} catch {
 		// Optional JSON body; defaults are applied if empty/invalid.
 	}
 
@@ -1566,7 +1565,7 @@ app.post('/corporations/:corporationId/ledger/trim', requireAuth(), async (c) =>
 	let body: Record<string, unknown> = {}
 	try {
 		body = await c.req.json()
-	} catch (_error) {
+	} catch {
 		// Optional payload.
 	}
 
@@ -2014,7 +2013,7 @@ app.post('/corporations/:corporationId/periods/issue-bills', requireAuth(), asyn
 	let body: Record<string, unknown>
 	try {
 		body = await c.req.json()
-	} catch (_error) {
+	} catch {
 		return c.json({ error: 'Invalid JSON payload' }, 400)
 	}
 
@@ -2164,7 +2163,7 @@ app.post('/corporations/:corporationId/bills/sync', requireAuth(), async (c) => 
 	let body: Record<string, unknown> = {}
 	try {
 		body = await c.req.json()
-	} catch (_error) {
+	} catch {
 		// Optional JSON body; ignore parse errors for empty body.
 	}
 
@@ -2195,10 +2194,7 @@ async function resolveMemberSummaryTargets(input: {
 	user: SessionUser
 	corporationId: string
 	characterQuery?: string
-}): Promise<
-	| { targetCharacterIds: string[] | undefined }
-	| { response: Response }
-> {
+}): Promise<{ targetCharacterIds: string[] | undefined } | { response: Response }> {
 	const { c, user, corporationId, characterQuery } = input
 	const canReadWithTaxScopes = await canReadTaxFeature(c.env, user, corporationId)
 	const memberCharacterIds = await getMemberCharacterIdsInCorporation(c, user, corporationId)
@@ -2215,7 +2211,9 @@ async function resolveMemberSummaryTargets(input: {
 	if (characterQuery) {
 		const numericOnly = /^\d+$/.test(characterQuery)
 		if (numericOnly) {
-			const targetCharacterIds = allowedCharacterIds.includes(characterQuery) ? [characterQuery] : []
+			const targetCharacterIds = allowedCharacterIds.includes(characterQuery)
+				? [characterQuery]
+				: []
 			if (!canReadWithTaxScopes && targetCharacterIds.length === 0) {
 				return { response: c.json({ error: 'Forbidden' }, 403) }
 			}

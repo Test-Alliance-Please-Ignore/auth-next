@@ -1,44 +1,38 @@
+import { and, desc, eq } from '@repo/db-utils'
+import { buildDiscordWebhookMessagePayload } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import {
-	and,
-	desc,
-	eq,
-} from '@repo/db-utils'
-
+import { alertDestinations, discordServers, managedCorporations } from '../db/schema'
 import {
 	corporationAlertRegistry,
 	getCorporationAlertTypeDefinitions,
 	isCorporationAlertDestinationType,
 	isCorporationAlertType,
-	type CorporationAlertDestinationRecord,
-	type CorporationAlertPayloadByType,
-	type CorporationAlertType,
 } from '../lib/corporation-alerts'
-import type { AlertRegistryEntry } from '../lib/alert-routing'
-import { alertDestinations, managedCorporations, discordServers } from '../db/schema'
-import type * as schema from '../db/schema'
 import {
 	createAlertDestination,
 	deleteAlertDestination,
 	listAlertDestinations,
 	updateAlertDestination,
-	type AlertDestinationInsert,
-	type AlertDestinationListItem,
-	type AlertDestinationRow,
 } from './alert-destinations.service'
 
-import type {
-	Discord,
-	MessageContent,
-	SendMessageResult,
-} from '@repo/discord'
-import { buildDiscordWebhookMessagePayload } from '@repo/discord'
+import type { Discord, MessageContent, SendMessageResult } from '@repo/discord'
 import type { Groups } from '@repo/groups'
-import type { DbClient } from '../db'
 import type { Env } from '../context'
-import type { AlertDestinationType } from '../lib/alert-routing'
+import type { DbClient } from '../db'
+import type * as schema from '../db/schema'
+import type { AlertDestinationType, AlertRegistryEntry } from '../lib/alert-routing'
+import type {
+	CorporationAlertDestinationRecord,
+	CorporationAlertPayloadByType,
+	CorporationAlertType,
+} from '../lib/corporation-alerts'
+import type {
+	AlertDestinationInsert,
+	AlertDestinationListItem,
+	AlertDestinationRow,
+} from './alert-destinations.service'
 
 export type CorporationAlertDestinationRow = AlertDestinationRow & { corporationId: string }
 export type CorporationAlertDestinationInsert = AlertDestinationInsert
@@ -77,7 +71,9 @@ export interface UpdateCorporationAlertDestinationInput {
 	updatedBy?: string | null
 }
 
-export interface DispatchCorporationAlertInput<T extends CorporationAlertType = CorporationAlertType> {
+export interface DispatchCorporationAlertInput<
+	T extends CorporationAlertType = CorporationAlertType,
+> {
 	corporationId: string
 	alertType: T
 	payload: CorporationAlertPayloadByType[T]
@@ -176,7 +172,10 @@ export async function updateCorporationAlertDestination(
 		throw new Error(`Unsupported alert type: ${input.alertType}`)
 	}
 
-	if (input.destinationType !== undefined && !isCorporationAlertDestinationType(input.destinationType)) {
+	if (
+		input.destinationType !== undefined &&
+		!isCorporationAlertDestinationType(input.destinationType)
+	) {
 		throw new Error(`Unsupported alert destination type: ${input.destinationType}`)
 	}
 

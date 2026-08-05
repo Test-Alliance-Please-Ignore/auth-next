@@ -19,7 +19,7 @@ vi.mock('../../lib/groups-cache', () => ({
 const getStubMock = vi.mocked(getStub)
 const getCachedUserPermissionsMock = vi.mocked(getCachedUserPermissions)
 
-const backgroundTasks: Promise<unknown>[] = []
+const backgroundTasks: Array<Promise<unknown>> = []
 
 vi.mock('../../lib/background-task', () => ({
 	waitUntilWithTelemetry: (
@@ -119,10 +119,7 @@ function makeDbStub() {
 	}
 }
 
-function createApp(
-	user?: SessionUser,
-	db: ReturnType<typeof makeDbStub> = makeDbStub()
-) {
+function createApp(user?: SessionUser, db: ReturnType<typeof makeDbStub> = makeDbStub()) {
 	const app = new Hono<{
 		Bindings: any
 		Variables: { user?: SessionUser; db?: ReturnType<typeof makeDbStub> }
@@ -215,14 +212,10 @@ describe('fulcrum route access matrix', () => {
 		expect(await res.json()).toEqual({
 			error: 'HR staff access requires a shared corporation or an open application',
 		})
-		expect(hrStub.listApplications).toHaveBeenCalledWith(
-			{ userId: 'target-1' },
-			'user-1',
-			{
-				isAdmin: false,
-				isAuditor: false,
-			}
-		)
+		expect(hrStub.listApplications).toHaveBeenCalledWith({ userId: 'target-1' }, 'user-1', {
+			isAdmin: false,
+			isAuditor: false,
+		})
 		expect(coreStub.getUserCorporations).toHaveBeenCalledWith('target-1')
 	})
 
@@ -273,7 +266,10 @@ describe('fulcrum route access matrix', () => {
 		expect(hrStub.checkPermission).not.toHaveBeenCalled()
 		expect(coreStub.getUserCharacters).toHaveBeenCalledWith('target-1', false)
 		expect(fulcrumStub.listReports).toHaveBeenCalledWith({ characterId: '3001' }, 50)
-		const body = (await res.json()) as Array<{ characterId: string; hasValidToken?: boolean | null }>
+		const body = (await res.json()) as Array<{
+			characterId: string
+			hasValidToken?: boolean | null
+		}>
 		expect(body[0]).toMatchObject({ characterId: '3001', hasValidToken: true })
 	})
 
@@ -383,14 +379,10 @@ describe('fulcrum route access matrix', () => {
 		expect(await res.json()).toEqual({
 			error: 'HR staff access requires a shared corporation or an open application',
 		})
-		expect(hrStub.listApplications).toHaveBeenCalledWith(
-			{ userId: 'target-1' },
-			'user-1',
-			{
-				isAdmin: false,
-				isAuditor: false,
-			}
-		)
+		expect(hrStub.listApplications).toHaveBeenCalledWith({ userId: 'target-1' }, 'user-1', {
+			isAdmin: false,
+			isAuditor: false,
+		})
 		expect(coreStub.getUserCorporations).toHaveBeenCalledWith('target-1')
 	})
 
@@ -623,8 +615,8 @@ describe('fulcrum route access matrix', () => {
 				corporationName: 'Corp 2002',
 			},
 		])
-		hrStub.checkPermission.mockImplementation(async (_userId: string, corporationId: string) =>
-			corporationId === '1001'
+		hrStub.checkPermission.mockImplementation(
+			async (_userId: string, corporationId: string) => corporationId === '1001'
 		)
 		hrStub.getUserRoles.mockResolvedValue([
 			{
@@ -941,8 +933,8 @@ describe('fulcrum route access matrix', () => {
 						},
 					]
 		)
-		hrStub.checkPermission.mockImplementation(async (_userId: string, corporationId: string) =>
-			corporationId === '2002'
+		hrStub.checkPermission.mockImplementation(
+			async (_userId: string, corporationId: string) => corporationId === '2002'
 		)
 		hrStub.getUserRoles.mockResolvedValue([
 			{
@@ -1016,8 +1008,8 @@ describe('fulcrum route access matrix', () => {
 				userId: 'target-user',
 				characterName: 'Target Pilot Two',
 			} as any)
-		hrStub.checkPermission.mockImplementation(async (_userId: string, corporationId: string) =>
-			corporationId === '2002'
+		hrStub.checkPermission.mockImplementation(
+			async (_userId: string, corporationId: string) => corporationId === '2002'
 		)
 		hrStub.getUserRoles.mockResolvedValue([
 			{
@@ -1153,12 +1145,15 @@ describe('fulcrum route access matrix', () => {
 				userId: 'target-user',
 				characterName: 'Target Pilot Two',
 			} as any)
-		eveCharacterDataStub.getInstance.mockImplementation(async (characterId: string) => ({
-			getCharacterInfo: vi.fn().mockResolvedValue({
-				characterId,
-				corporationId: characterId === '3001' ? '2002' : '3003',
-			}),
-		}) as any)
+		eveCharacterDataStub.getInstance.mockImplementation(
+			async (characterId: string) =>
+				({
+					getCharacterInfo: vi.fn().mockResolvedValue({
+						characterId,
+						corporationId: characterId === '3001' ? '2002' : '3003',
+					}),
+				}) as any
+		)
 		coreStub.getUserCorporations.mockResolvedValue([
 			{
 				corporationId: '1001',
@@ -1169,8 +1164,8 @@ describe('fulcrum route access matrix', () => {
 				corporationName: 'Corp 2002',
 			},
 		])
-		hrStub.checkPermission.mockImplementation(async (_userId: string, corporationId: string) =>
-			corporationId === '1001'
+		hrStub.checkPermission.mockImplementation(
+			async (_userId: string, corporationId: string) => corporationId === '1001'
 		)
 		hrStub.getUserRoles.mockResolvedValue([
 			{
@@ -1438,28 +1433,29 @@ describe('fulcrum route access matrix', () => {
 				updatedAt: new Date(),
 			},
 		] as any)
-		hrStub.listApplications.mockImplementation(async (_filters: any, _userId: string, _access: any) =>
-			_filters.status === 'pending'
-				? []
-				: [
-						{
-							id: 'app-1',
-							corporationId: '1001',
-							userId: 'target-1',
-							characterId: '3001',
-							characterName: 'Alt Pilot',
-							applicationText: 'app',
-							status: 'accepted',
-							reviewedBy: null,
-							reviewedByCharacterName: null,
-							reviewedAt: null,
-							reviewNotes: null,
-							createdAt: new Date(),
-							updatedAt: new Date(),
-							lastStaffInteractionAt: null,
-							altCharacterIds: [],
-						},
-					]
+		hrStub.listApplications.mockImplementation(
+			async (_filters: any, _userId: string, _access: any) =>
+				_filters.status === 'pending'
+					? []
+					: [
+							{
+								id: 'app-1',
+								corporationId: '1001',
+								userId: 'target-1',
+								characterId: '3001',
+								characterName: 'Alt Pilot',
+								applicationText: 'app',
+								status: 'accepted',
+								reviewedBy: null,
+								reviewedByCharacterName: null,
+								reviewedAt: null,
+								reviewNotes: null,
+								createdAt: new Date(),
+								updatedAt: new Date(),
+								lastStaffInteractionAt: null,
+								altCharacterIds: [],
+							},
+						]
 		)
 
 		const app = createApp(makeUser())
@@ -1555,25 +1551,28 @@ describe('fulcrum route access matrix', () => {
 			},
 		] as any)
 		hrStub.listApplications.mockResolvedValue([])
-		hrStub.listApplications.mockImplementation(async (_filters: any, _userId: string, _access: any) => [
-			{
-				id: 'app-1',
-				corporationId: '1001',
-				userId: 'target-1',
-				characterId: '3001',
-				characterName: 'Alt Pilot',
-				applicationText: 'app',
-				status: 'under_review',
-				reviewedBy: null,
-				reviewedByCharacterName: null,
-				reviewedAt: null,
-				reviewNotes: null,
-				createdAt: new Date(),
-				updatedAt: new Date(),
-				lastStaffInteractionAt: null,
-				altCharacterIds: [],
-			},
-		] as any)
+		hrStub.listApplications.mockImplementation(
+			async (_filters: any, _userId: string, _access: any) =>
+				[
+					{
+						id: 'app-1',
+						corporationId: '1001',
+						userId: 'target-1',
+						characterId: '3001',
+						characterName: 'Alt Pilot',
+						applicationText: 'app',
+						status: 'under_review',
+						reviewedBy: null,
+						reviewedByCharacterName: null,
+						reviewedAt: null,
+						reviewNotes: null,
+						createdAt: new Date(),
+						updatedAt: new Date(),
+						lastStaffInteractionAt: null,
+						altCharacterIds: [],
+					},
+				] as any
+		)
 
 		const app = createApp(makeUser())
 		const res = await app.request(
@@ -1746,7 +1745,7 @@ describe('fulcrum route access matrix', () => {
 					sendDm: false,
 				}),
 			},
-			env,
+			env
 		)
 
 		expect(res.status).toBe(201)
@@ -1788,7 +1787,7 @@ describe('fulcrum route access matrix', () => {
 					characterIds: ['3001', '3002'],
 				}),
 			},
-			env,
+			env
 		)
 
 		expect(res.status).toBe(201)

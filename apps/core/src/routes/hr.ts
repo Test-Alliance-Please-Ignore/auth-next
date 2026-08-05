@@ -3,26 +3,27 @@ import { z } from 'zod'
 
 import { and, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import type { Discord } from '@repo/discord'
 import { captureException, logger } from '@repo/hono-helpers'
 import { APPLICATION_STATUSES } from '@repo/hr'
 
 import { managedCorporations, userCharacters, users } from '../db/schema'
+import { waitUntilWithTelemetry } from '../lib/background-task'
+import { buildCorporationApplicationApplicantUpdateMessage } from '../lib/corporation-alerts'
 import {
 	hasHrAuditorPermission as hasHrAuditorPermissionForUser,
 	resolveHrAccessState,
 } from '../lib/hr-access'
-import { waitUntilWithTelemetry } from '../lib/background-task'
 import { getIpHashMatches, getUserIpHistory } from '../lib/ip-history'
-import { dispatchCorporationAlert } from '../services/corporation-alerts.service'
-import { validatePagination } from '../lib/validation'
 import { getUserCorporationAffiliationIds } from '../lib/user-corporation-affiliations'
+import { validatePagination } from '../lib/validation'
 import { requireAdmin, requireAuth } from '../middleware/session'
+import { dispatchCorporationAlert } from '../services/corporation-alerts.service'
 
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
+import type { Discord } from '@repo/discord'
 import type { Esi, EsiTypeResolver } from '@repo/esi'
-import type { ApplicationFilters, Hr, HrNote, NoteFilters } from '@repo/hr'
+import type { Application, ApplicationFilters, Hr, HrNote, NoteFilters } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
 import type { App } from '../context'
 
@@ -42,6 +43,50 @@ const upsertApplicationStaffNoteSchema = z.object({
  */
 function getHrStub(c: Context<App>): Hr {
 	return getStub<Hr>(c.env.HR, 'default')
+}
+
+function queueApplicationApplicantUpdateNotification(
+	c: Context<App>,
+	application: Pick<Application, 'id' | 'userId' | 'corporationId'>,
+	updateType: 'message' | 'review_note',
+	updatedAt: Date
+): void {
+	waitUntilWithTelemetry(
+		c.executionCtx,
+		'hr-application-applicant-update-notification',
+		async () => {
+			const db = c.get('db')
+			const corporation = db
+				? await db.query.managedCorporations.findFirst({
+						where: eq(managedCorporations.corporationId, application.corporationId),
+						columns: { name: true },
+					})
+				: null
+			const discord = getStub<Discord>(c.env.DISCORD, 'default')
+			const result = await discord.sendDirectMessage(
+				application.userId,
+				buildCorporationApplicationApplicantUpdateMessage({
+					applicationId: application.id,
+					corporationName: corporation?.name ?? application.corporationId,
+					updateType,
+					updatedAt: updatedAt.toISOString(),
+				})
+			)
+
+			if (!result.success) {
+				logger.warn('[HR] Failed to send application update Discord notification', {
+					applicationId: application.id,
+					userId: application.userId,
+					error: result.error,
+				})
+			}
+		},
+		{
+			applicationId: application.id,
+			userId: application.userId,
+			updateType,
+		}
+	)
 }
 
 /**
@@ -98,7 +143,10 @@ async function getActiveMemberCorporationIds(c: Context<App>): Promise<string[]>
 	}
 
 	const memberCorporations = await db.query.managedCorporations.findMany({
-		where: and(eq(managedCorporations.isActive, true), eq(managedCorporations.isMemberCorporation, true)),
+		where: and(
+			eq(managedCorporations.isActive, true),
+			eq(managedCorporations.isMemberCorporation, true)
+		),
 		columns: { corporationId: true },
 	})
 
@@ -337,7 +385,10 @@ async function hasHrAuditorPermission(c: Context<App>): Promise<boolean> {
 	})
 }
 
-async function canManageHrRolesForCorporation(c: Context<App>, corporationId: string): Promise<boolean> {
+async function canManageHrRolesForCorporation(
+	c: Context<App>,
+	corporationId: string
+): Promise<boolean> {
 	const db = c.get('db')
 	if (!db) {
 		throw new Error('Database not available')
@@ -359,7 +410,10 @@ async function canManageHrRolesForCorporation(c: Context<App>, corporationId: st
 	)
 }
 
-async function canUseHrToolsForCorporation(c: Context<App>, corporationId: string): Promise<boolean> {
+async function canUseHrToolsForCorporation(
+	c: Context<App>,
+	corporationId: string
+): Promise<boolean> {
 	const user = c.get('user')!
 
 	if (user.is_admin) {
@@ -547,13 +601,13 @@ app.get('/applications', requireAuth(), async (c) => {
 	const searchCharacterIds =
 		searchQuery && searchQuery.length > 0
 			? (
-				await db.query.userCharacters.findMany({
-					where: ilike(userCharacters.characterName, `%${searchQuery}%`),
-					columns: { characterId: true },
-					limit: 200,
-				})
-			).map((character) => character.characterId)
-		: []
+					await db.query.userCharacters.findMany({
+						where: ilike(userCharacters.characterName, `%${searchQuery}%`),
+						columns: { characterId: true },
+						limit: 200,
+					})
+				).map((character) => character.characterId)
+			: []
 
 	// Parse query params
 	const corporationId = c.req.query('corporationId')
@@ -628,12 +682,12 @@ app.get('/applications/paged', requireAuth(), async (c) => {
 	const searchCharacterIds =
 		searchQuery && searchQuery.length > 0
 			? (
-				await db.query.userCharacters.findMany({
-					where: ilike(userCharacters.characterName, `%${searchQuery}%`),
-					columns: { characterId: true },
-					limit: 200,
-				})
-			).map((character) => character.characterId)
+					await db.query.userCharacters.findMany({
+						where: ilike(userCharacters.characterName, `%${searchQuery}%`),
+						columns: { characterId: true },
+						limit: 200,
+					})
+				).map((character) => character.characterId)
 			: []
 
 	const filters: ApplicationFilters = {
@@ -698,7 +752,9 @@ app.get('/applications/:id', requireAuth(), async (c) => {
 			}
 		}
 		const discordUsername =
-			application.userId === user.id ? null : await resolveApplicationDiscordUsername(c, application.userId)
+			application.userId === user.id
+				? null
+				: await resolveApplicationDiscordUsername(c, application.userId)
 
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const db = c.get('db')!
@@ -747,7 +803,31 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 				403
 			)
 		}
-		await hr.updateApplicationStatus(applicationId, status, user.id, characterId, characterName, reviewNotes)
+		await hr.updateApplicationStatus(
+			applicationId,
+			status,
+			user.id,
+			characterId,
+			characterName,
+			reviewNotes
+		)
+
+		const normalizedReviewNotes = reviewNotes?.trim()
+		const previousReviewNotes = applicationBeforeUpdate.reviewNotes?.trim()
+		if (
+			applicationBeforeUpdate.userId !== user.id &&
+			normalizedReviewNotes &&
+			normalizedReviewNotes !== previousReviewNotes &&
+			(status === 'accepted' || status === 'rejected')
+		) {
+			// Only final-status review notes are shown on the applicant-facing page.
+			queueApplicationApplicantUpdateNotification(
+				c,
+				applicationBeforeUpdate,
+				'review_note',
+				new Date()
+			)
+		}
 
 		if (
 			status === 'accepted' &&
@@ -891,7 +971,14 @@ app.delete('/applications/:id/alts/:altCharacterId', requireAuth(), async (c) =>
 
 	try {
 		const hr = getHrStub(c)
-		await hr.removeApplicationAlt(applicationId, user.id, characterId, characterName, altCharacterId, altCharacterName)
+		await hr.removeApplicationAlt(
+			applicationId,
+			user.id,
+			characterId,
+			characterName,
+			altCharacterId,
+			altCharacterName
+		)
 		return c.json({ success: true })
 	} catch (error) {
 		return c.json(
@@ -938,7 +1025,10 @@ app.get('/recommendations/pending', requireAuth(), async (c) => {
 
 	try {
 		const hr = getHrStub(c)
-		const applications = await hr.listCorpApplicationsForRecommendation(accessibleCorporationIds, user.id)
+		const applications = await hr.listCorpApplicationsForRecommendation(
+			accessibleCorporationIds,
+			user.id
+		)
 		return c.json(applications)
 	} catch (error) {
 		return c.json(
@@ -975,7 +1065,8 @@ app.get('/recommendations/applications/:id', requireAuth(), async (c) => {
 		if (!accessibleCorporationIds.includes(application.corporationId)) {
 			return c.json(
 				{
-					error: 'Access denied. Recommendations are only available for member corporations you are attached to.',
+					error:
+						'Access denied. Recommendations are only available for member corporations you are attached to.',
 				},
 				403
 			)
@@ -1024,7 +1115,8 @@ app.post('/applications/:applicationId/recommendations', requireAuth(), async (c
 		if (!accessibleCorporationIds.includes(application.corporationId)) {
 			return c.json(
 				{
-					error: 'Access denied. Recommendations are only available for member corporations you are attached to.',
+					error:
+						'Access denied. Recommendations are only available for member corporations you are attached to.',
 				},
 				403
 			)
@@ -1187,6 +1279,10 @@ app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 			{ isApplicant, isAdmin: user.is_admin, corporationId: application.corporationId }
 		)
 
+		if (!isApplicant) {
+			queueApplicationApplicantUpdateNotification(c, application, 'message', result.createdAt)
+		}
+
 		// Enrich the returned message with sender character name
 		const senderName = primaryCharacter?.characterName || 'Unknown'
 
@@ -1249,7 +1345,10 @@ app.get('/applications/:applicationId/messages/count', requireAuth(), async (c) 
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
-		if (application.userId !== user.id && !(await canUseHrToolsForCorporation(c, application.corporationId))) {
+		if (
+			application.userId !== user.id &&
+			!(await canUseHrToolsForCorporation(c, application.corporationId))
+		) {
 			return c.json(
 				{ error: 'Access denied. HR tools are only available for member corporations.' },
 				403
@@ -1305,7 +1404,8 @@ app.get('/applications/:applicationId/staff-notes', requireAuth(), async (c) => 
 		const notes = await hr.listApplicationStaffNotes(applicationId)
 		return c.json(notes)
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Failed to list application staff notes'
+		const message =
+			error instanceof Error ? error.message : 'Failed to list application staff notes'
 		const status = message.includes('permission') ? 403 : 400
 		return c.json({ error: message }, status)
 	}
@@ -1341,11 +1441,12 @@ app.post('/applications/:applicationId/staff-notes', requireAuth(), async (c) =>
 		}
 
 		const managementAccess = await getHrRoleManagementAccess(c, application.corporationId)
-		const hasHrStaffPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_viewer')
-		const hasWritePermission =
-			user.is_admin ||
-			managementAccess === 'ceo' ||
-			hasHrStaffPermission
+		const hasHrStaffPermission = await hr.checkPermission(
+			user.id,
+			application.corporationId,
+			'hr_viewer'
+		)
+		const hasWritePermission = user.is_admin || managementAccess === 'ceo' || hasHrStaffPermission
 		if (!hasWritePermission) {
 			return c.json({ error: 'HR staff, CEO, or admin access required' }, 403)
 		}
@@ -1400,11 +1501,12 @@ app.patch('/applications/:applicationId/staff-notes/:noteId', requireAuth(), asy
 		}
 
 		const managementAccess = await getHrRoleManagementAccess(c, application.corporationId)
-		const hasHrStaffPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_viewer')
-		const hasWritePermission =
-			user.is_admin ||
-			managementAccess === 'ceo' ||
-			hasHrStaffPermission
+		const hasHrStaffPermission = await hr.checkPermission(
+			user.id,
+			application.corporationId,
+			'hr_viewer'
+		)
+		const hasWritePermission = user.is_admin || managementAccess === 'ceo' || hasHrStaffPermission
 		if (!hasWritePermission) {
 			return c.json({ error: 'HR staff, CEO, or admin access required' }, 403)
 		}
@@ -1434,7 +1536,8 @@ app.patch('/applications/:applicationId/staff-notes/:noteId', requireAuth(), asy
 		}
 		return c.json(updated)
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Failed to update application staff note'
+		const message =
+			error instanceof Error ? error.message : 'Failed to update application staff note'
 		const status = message.includes('permission') ? 403 : 400
 		return c.json({ error: message }, status)
 	}
@@ -1465,11 +1568,12 @@ app.delete('/applications/:applicationId/staff-notes/:noteId', requireAuth(), as
 		}
 
 		const managementAccess = await getHrRoleManagementAccess(c, application.corporationId)
-		const hasHrStaffPermission = await hr.checkPermission(user.id, application.corporationId, 'hr_viewer')
-		const hasWritePermission =
-			user.is_admin ||
-			managementAccess === 'ceo' ||
-			hasHrStaffPermission
+		const hasHrStaffPermission = await hr.checkPermission(
+			user.id,
+			application.corporationId,
+			'hr_viewer'
+		)
+		const hasWritePermission = user.is_admin || managementAccess === 'ceo' || hasHrStaffPermission
 		if (!hasWritePermission) {
 			return c.json({ error: 'HR staff, CEO, or admin access required' }, 403)
 		}
@@ -1490,7 +1594,8 @@ app.delete('/applications/:applicationId/staff-notes/:noteId', requireAuth(), as
 		await hr.deleteApplicationStaffNote(noteId, user.id, actorCharacterId, actorCharacterName)
 		return c.json({ success: true })
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Failed to delete application staff note'
+		const message =
+			error instanceof Error ? error.message : 'Failed to delete application staff note'
 		const status = message.includes('permission') ? 403 : 400
 		return c.json({ error: message }, status)
 	}
@@ -1601,10 +1706,7 @@ app.get('/corporations', requireAuth(), async (c) => {
 			hr_viewer: 1,
 		}
 		const explicitUserRoles = await hr.getUserRoles(user.id)
-		const highestExplicitRoleByCorp = new Map<
-			string,
-			typeof explicitUserRoles[number]['role']
-		>()
+		const highestExplicitRoleByCorp = new Map<string, (typeof explicitUserRoles)[number]['role']>()
 		for (const role of explicitUserRoles.filter((r) => r.isActive)) {
 			const corpId = role.corporationId
 			if (!corpId) continue
@@ -1631,10 +1733,7 @@ app.get('/corporations', requireAuth(), async (c) => {
 			}
 		})
 
-		return c.json(
-			results
-				.sort((a, b) => a.name.localeCompare(b.name))
-		)
+		return c.json(results.sort((a, b) => a.name.localeCompare(b.name)))
 	} catch (error) {
 		logger.error('[HR Roles] Failed to list accessible HR corporations', {
 			userId: user.id,
@@ -2028,7 +2127,10 @@ app.post('/:corporationId/roles', requireAuth(), async (c) => {
 	const { userId, characterId, role, expiresAt } = await c.req.json()
 
 	if (!(await canManageHrRolesForCorporation(c, corporationId))) {
-		return c.json({ error: 'Access denied. HR roles can only be managed for member corporations.' }, 403)
+		return c.json(
+			{ error: 'Access denied. HR roles can only be managed for member corporations.' },
+			403
+		)
 	}
 
 	// Authorization check
@@ -2039,7 +2141,10 @@ app.post('/:corporationId/roles', requireAuth(), async (c) => {
 
 	// Only CEOs and site admins can grant HR admin
 	if (role === 'hr_admin' && managementAccess !== 'ceo' && managementAccess !== 'site_admin') {
-		return c.json({ error: 'Access denied. Only corporation CEOs or site admins can grant HR admin.' }, 403)
+		return c.json(
+			{ error: 'Access denied. Only corporation CEOs or site admins can grant HR admin.' },
+			403
+		)
 	}
 
 	// HR admins can only grant lower roles
@@ -2097,7 +2202,10 @@ app.get('/:corporationId/roles', requireAuth(), async (c) => {
 	const db = c.get('db')
 
 	if (!(await canManageHrRolesForCorporation(c, corporationId))) {
-		return c.json({ error: 'Access denied. HR roles can only be managed for member corporations.' }, 403)
+		return c.json(
+			{ error: 'Access denied. HR roles can only be managed for member corporations.' },
+			403
+		)
 	}
 
 	const managementAccess = await getHrRoleManagementAccess(c, corporationId)
@@ -2281,7 +2389,10 @@ app.delete('/:corporationId/roles/:roleId', requireAuth(), async (c) => {
 	const roleId = c.req.param('roleId')
 
 	if (!(await canManageHrRolesForCorporation(c, corporationId))) {
-		return c.json({ error: 'Access denied. HR roles can only be managed for member corporations.' }, 403)
+		return c.json(
+			{ error: 'Access denied. HR roles can only be managed for member corporations.' },
+			403
+		)
 	}
 
 	// Authorization check
@@ -2480,7 +2591,11 @@ app.get('/audit/ip-history/:ipAddressHash/matches', requireAuth(), async (c) => 
  */
 app.get('/legacy/history', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	if (!user.is_admin && !(await hasHrAuditorPermission(c)) && !(await hasExplicitMemberCorpHrAccess(c))) {
+	if (
+		!user.is_admin &&
+		!(await hasHrAuditorPermission(c)) &&
+		!(await hasExplicitMemberCorpHrAccess(c))
+	) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
@@ -2502,7 +2617,11 @@ app.get('/legacy/history', requireAuth(), async (c) => {
  */
 app.get('/legacy/history/:legacyApplicationId', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	if (!user.is_admin && !(await hasHrAuditorPermission(c)) && !(await hasExplicitMemberCorpHrAccess(c))) {
+	if (
+		!user.is_admin &&
+		!(await hasHrAuditorPermission(c)) &&
+		!(await hasExplicitMemberCorpHrAccess(c))
+	) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 

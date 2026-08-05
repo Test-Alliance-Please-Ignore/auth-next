@@ -1,6 +1,5 @@
 import { and, asc, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
 
 import { userCharacters, users } from '../../db/schema'
 import { requireAuth } from '../../middleware/session'

@@ -20,7 +20,6 @@ vi.mock('cloudflare:workers', () => {
 			this.env = env
 		}
 
-		// eslint-disable-next-line @typescript-eslint/require-await
 		async run(_event: unknown, _step: unknown): Promise<Params> {
 			throw new Error('WorkflowEntrypoint.run is not implemented in unit-test shim')
 		}

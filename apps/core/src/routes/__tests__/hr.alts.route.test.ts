@@ -74,21 +74,10 @@ function makeHrStub() {
 	}
 }
 
-function makeDbStub() {
-	return {
-		query: {
-			managedCorporations: { findMany: vi.fn().mockResolvedValue([]) },
-			users: { findMany: vi.fn().mockResolvedValue([]) },
-			userCharacters: { findMany: vi.fn().mockResolvedValue([]) },
-		},
-	}
-}
-
-function createApp(opts: { user?: SessionUser; db?: ReturnType<typeof makeDbStub> }) {
+function createApp(opts: { user?: SessionUser }) {
 	const app = new Hono<{ Bindings: any; Variables: any }>()
 	app.use('*', async (c, next) => {
 		if (opts.user) c.set('user', opts.user)
-		if (opts.db) c.set('db', opts.db)
 		await next()
 	})
 	app.route('/api/hr', hrRoutes)
@@ -121,51 +110,71 @@ describe('POST /api/hr/applications/:id/alts', () => {
 
 	it('returns 401 when not authenticated', async () => {
 		const app = createApp({})
-		const res = await app.request('/api/hr/applications/app-1/alts', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ altCharacterIds: ['2001'] }),
-		}, env)
+		const res = await app.request(
+			'/api/hr/applications/app-1/alts',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ altCharacterIds: ['2001'] }),
+			},
+			env
+		)
 		expect(res.status).toBe(401)
 	})
 
 	it('returns 400 when body is missing', async () => {
 		const app = createApp({ user: makeUser() })
-		const res = await app.request('/api/hr/applications/app-1/alts', {
-			method: 'POST',
-		}, env)
+		const res = await app.request(
+			'/api/hr/applications/app-1/alts',
+			{
+				method: 'POST',
+			},
+			env
+		)
 		expect(res.status).toBe(400)
 	})
 
 	it('returns 400 when altCharacterIds is not an array', async () => {
 		const app = createApp({ user: makeUser() })
-		const res = await app.request('/api/hr/applications/app-1/alts', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ altCharacterIds: '2001' }),
-		}, env)
+		const res = await app.request(
+			'/api/hr/applications/app-1/alts',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ altCharacterIds: '2001' }),
+			},
+			env
+		)
 		expect(res.status).toBe(400)
 		expect(await res.json()).toMatchObject({ error: expect.stringContaining('altCharacterIds') })
 	})
 
 	it('returns 400 when altCharacterIds is an empty array', async () => {
 		const app = createApp({ user: makeUser() })
-		const res = await app.request('/api/hr/applications/app-1/alts', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ altCharacterIds: [] }),
-		}, env)
+		const res = await app.request(
+			'/api/hr/applications/app-1/alts',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ altCharacterIds: [] }),
+			},
+			env
+		)
 		expect(res.status).toBe(400)
 		expect(await res.json()).toMatchObject({ error: expect.stringContaining('altCharacterIds') })
 	})
 
 	it('calls addApplicationAlts with resolved character names and returns 200', async () => {
 		const app = createApp({ user: makeUser() })
-		const res = await app.request('/api/hr/applications/app-1/alts', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ altCharacterIds: ['2001', '2002'] }),
-		}, env)
+		const res = await app.request(
+			'/api/hr/applications/app-1/alts',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ altCharacterIds: ['2001', '2002'] }),
+			},
+			env
+		)
 
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual({ success: true })
@@ -182,16 +191,24 @@ describe('POST /api/hr/applications/:id/alts', () => {
 	})
 
 	it('returns 400 when service throws (e.g. terminal application state)', async () => {
-		hrStub.addApplicationAlts.mockRejectedValue(new Error('You can only modify alts on active applications'))
+		hrStub.addApplicationAlts.mockRejectedValue(
+			new Error('You can only modify alts on active applications')
+		)
 		const app = createApp({ user: makeUser() })
-		const res = await app.request('/api/hr/applications/app-1/alts', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ altCharacterIds: ['2001'] }),
-		}, env)
+		const res = await app.request(
+			'/api/hr/applications/app-1/alts',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ altCharacterIds: ['2001'] }),
+			},
+			env
+		)
 
 		expect(res.status).toBe(400)
-		expect(await res.json()).toMatchObject({ error: 'You can only modify alts on active applications' })
+		expect(await res.json()).toMatchObject({
+			error: 'You can only modify alts on active applications',
+		})
 	})
 })
 
@@ -239,16 +256,25 @@ describe('DELETE /api/hr/applications/:id/alts/:altCharacterId', () => {
 
 		expect(res.status).toBe(200)
 		expect(hrStub.removeApplicationAlt).toHaveBeenCalledWith(
-			'app-1', 'user-1', '1001', 'Main Pilot', '9999', 'Unknown'
+			'app-1',
+			'user-1',
+			'1001',
+			'Main Pilot',
+			'9999',
+			'Unknown'
 		)
 	})
 
 	it('returns 400 when service throws (e.g. terminal application state)', async () => {
-		hrStub.removeApplicationAlt.mockRejectedValue(new Error('You can only modify alts on active applications'))
+		hrStub.removeApplicationAlt.mockRejectedValue(
+			new Error('You can only modify alts on active applications')
+		)
 		const app = createApp({ user: makeUser() })
 		const res = await app.request('/api/hr/applications/app-1/alts/2001', { method: 'DELETE' }, env)
 
 		expect(res.status).toBe(400)
-		expect(await res.json()).toMatchObject({ error: 'You can only modify alts on active applications' })
+		expect(await res.json()).toMatchObject({
+			error: 'You can only modify alts on active applications',
+		})
 	})
 })

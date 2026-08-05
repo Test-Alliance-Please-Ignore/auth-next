@@ -1,18 +1,17 @@
 import { and, inArray, isNotNull } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
+import * as schema from '../db/schema'
 import {
 	buildGroupApplicationSubmittedMessage,
 	buildGroupInvitationMessage,
 } from '../lib/group-alerts'
 import { getPrimaryCharacterSummaryByUserId } from '../lib/user-character-lookup'
 
-import type { Discord } from '@repo/discord'
+import type { Discord, MessageContent } from '@repo/discord'
 import type { Groups } from '@repo/groups'
-import type { MessageContent } from '@repo/discord'
-import type { DbClient } from '../db'
-import * as schema from '../db/schema'
 import type { Env } from '../context'
+import type { DbClient } from '../db'
 
 type DispatchResult = {
 	recipientCount: number
@@ -76,7 +75,8 @@ export async function dispatchGroupApplicationSubmittedAlert(
 		applicantUserId: string
 		applicationNote: string | null
 		submittedAt: Date
-	}): Promise<DispatchResult> {
+	}
+): Promise<DispatchResult> {
 	const groupsStub = getStub<Groups>(env.GROUPS, 'default')
 	const discordStub = getStub<Discord>(env.DISCORD, 'default')
 
@@ -128,7 +128,8 @@ export async function dispatchGroupInvitationAlert(
 		inviterUserId: string
 		inviteeUserId: string
 		createdAt: Date
-	}): Promise<DispatchResult> {
+	}
+): Promise<DispatchResult> {
 	const discordStub = getStub<Discord>(env.DISCORD, 'default')
 	const [inviteeRecipients, inviter] = await Promise.all([
 		getDiscordLinkedUserIds(db, [input.inviteeUserId]),
@@ -152,11 +153,7 @@ export async function dispatchGroupInvitationAlert(
 		createdAt: input.createdAt,
 	})
 
-	const { sentCount, failedCount } = await sendToRecipients(
-		discordStub,
-		inviteeRecipients,
-		message
-	)
+	const { sentCount, failedCount } = await sendToRecipients(discordStub, inviteeRecipients, message)
 
 	return {
 		recipientCount: inviteeRecipients.length,

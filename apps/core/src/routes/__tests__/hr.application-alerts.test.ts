@@ -1,5 +1,5 @@
-import { Hono } from 'hono'
 import { createExecutionContext } from 'cloudflare:test'
+import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
@@ -19,6 +19,17 @@ const serviceMocks = vi.hoisted(() => ({
 		isFirstApplication: true,
 	}),
 	getApplication: vi.fn(),
+	sendMessage: vi.fn().mockResolvedValue({
+		id: 'message-1',
+		applicationId: 'app-1',
+		senderId: 'hr-1',
+		senderCharacterId: 'main-1',
+		senderCharacterName: null,
+		recipientId: 'user-1',
+		message: 'Please provide one more detail.',
+		createdAt: new Date('2026-06-11T12:30:00.000Z'),
+	}),
+	sendDirectMessage: vi.fn().mockResolvedValue({ success: true }),
 	updateApplicationStatus: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -111,6 +122,8 @@ describe('HR application submission alerts', () => {
 			return {
 				submitApplication: serviceMocks.submitApplication,
 				getApplication: serviceMocks.getApplication,
+				sendMessage: serviceMocks.sendMessage,
+				sendDirectMessage: serviceMocks.sendDirectMessage,
 				updateApplicationStatus: serviceMocks.updateApplicationStatus,
 			}
 		})
@@ -273,6 +286,7 @@ describe('HR application submission alerts', () => {
 				'Not accepted.'
 			)
 			expect(serviceMocks.dispatchCorporationAlert).not.toHaveBeenCalled()
+			expect(serviceMocks.sendDirectMessage).not.toHaveBeenCalled()
 			expect(serviceMocks.waitUntilWithTelemetry).not.toHaveBeenCalled()
 		}
 	)
@@ -281,7 +295,7 @@ describe('HR application submission alerts', () => {
 		serviceMocks.getApplication.mockResolvedValueOnce({
 			id: 'app-1',
 			corporationId: 'corp-1',
-			userId: 'user-1',
+			userId: 'applicant-1',
 			characterId: 'main-1',
 			characterName: 'Main Pilot',
 			applicationText: 'Let me in.',
@@ -300,7 +314,7 @@ describe('HR application submission alerts', () => {
 			activityLog: [],
 		})
 
-		const app = createApp(makeUser({ is_admin: true }), createDb())
+		const app = createApp(makeUser({ id: 'hr-1', is_admin: true }), createDb())
 		const executionCtx = createExecutionContext()
 		const response = await app.request(
 			'/api/hr/applications/app-1',
@@ -326,5 +340,85 @@ describe('HR application submission alerts', () => {
 				alertType: 'corp_application_first_time_accepted',
 			})
 		)
+		expect(serviceMocks.sendDirectMessage).toHaveBeenCalledWith(
+			'applicant-1',
+			expect.objectContaining({
+				embeds: [
+					expect.objectContaining({
+						title: 'Your corporation application to Test Corporation received an update',
+					}),
+				],
+			})
+		)
+	})
+
+	it('DMs the application owner after an HR-authored public message', async () => {
+		serviceMocks.getApplication.mockResolvedValueOnce({
+			id: 'app-1',
+			corporationId: 'corp-1',
+			userId: 'applicant-1',
+			characterId: 'main-1',
+			characterName: 'Main Pilot',
+			applicationText: 'Let me in.',
+			status: 'pending',
+			reviewedBy: null,
+			reviewedByCharacterName: null,
+			reviewedAt: null,
+			reviewNotes: null,
+			createdAt: new Date('2026-06-11T12:00:00.000Z'),
+			updatedAt: new Date('2026-06-11T12:00:00.000Z'),
+			lastStaffInteractionAt: null,
+			altCharacterIds: [],
+			isFirstApplication: true,
+			recommendations: [],
+			recommendationCount: 0,
+			activityLog: [],
+		})
+		const app = createApp(makeUser({ id: 'hr-1', is_admin: true }), createDb())
+		const executionCtx = createExecutionContext()
+		const response = await app.request(
+			'/api/hr/applications/app-1/messages',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					recipientId: 'applicant-1',
+					message: 'Please provide one more detail.',
+				}),
+			},
+			{ HR: { name: 'HR' }, DISCORD: { name: 'DISCORD' } } as any,
+			executionCtx
+		)
+
+		expect(response.status).toBe(201)
+		expect(serviceMocks.sendDirectMessage).toHaveBeenCalledWith(
+			'applicant-1',
+			expect.objectContaining({
+				embeds: [
+					expect.objectContaining({
+						title: 'Your corporation application to Test Corporation received an update',
+						description: '[View your application](https://pleaseignore.app/my-applications/app-1)',
+					}),
+				],
+			})
+		)
+	})
+
+	it('does not DM an applicant for their own application message', async () => {
+		const app = createApp(makeUser(), createDb())
+		const executionCtx = createExecutionContext()
+		const response = await app.request(
+			'/api/hr/applications/app-1/messages',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ message: 'Here is more information.' }),
+			},
+			{ HR: { name: 'HR' }, DISCORD: { name: 'DISCORD' } } as any,
+			executionCtx
+		)
+
+		expect(response.status).toBe(201)
+		expect(serviceMocks.sendDirectMessage).not.toHaveBeenCalled()
 	})
 })

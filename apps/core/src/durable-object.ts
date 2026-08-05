@@ -3,19 +3,21 @@ import { DurableObject } from 'cloudflare:workers'
 import { CORE_ROLES, SERVICE_CORE } from '@repo/core'
 import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import {
-	getEsiInstance,
-	getEsiInstanceForCharacter,
-	getEsiInstanceForCorporation,
-} from '@repo/esi'
+import { getEsiInstance, getEsiInstanceForCharacter, getEsiInstanceForCorporation } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
-import { discordServers, managedCorporations, userCharacters, userIpAddresses, users } from './db/schema'
+import {
+	discordServers,
+	managedCorporations,
+	userCharacters,
+	userIpAddresses,
+	users,
+} from './db/schema'
 import {
 	buildImmunitasAccessAlertMessage,
-	IMMUNITAS_ALERT_INITIAL_DELAY_MS,
 	IMMUNITAS_ALERT_COOLDOWN_MS,
+	IMMUNITAS_ALERT_INITIAL_DELAY_MS,
 	IMMUNITAS_ALERT_RETRY_MS,
 	IMMUNITAS_ALERT_TTL_MS,
 	shouldRetryImmunitasAccessAlertDelivery,
@@ -23,14 +25,12 @@ import {
 import { recordUserIpAddress } from './lib/ip-tracking'
 import {
 	buildTokenInvalidationMessage,
+	shouldRetryTokenInvalidationAlertDelivery,
 	TOKEN_INVALID_ALERT_COOLDOWN_MS,
 	TOKEN_INVALID_ALERT_RETRY_MS,
 	TOKEN_INVALID_ALERT_TTL_MS,
-	shouldRetryTokenInvalidationAlertDelivery,
 } from './lib/token-invalid-alerts'
-import {
-	validateAndSyncCharacterTokenValidityBatchTransitions,
-} from './lib/token-validity'
+import { validateAndSyncCharacterTokenValidityBatchTransitions } from './lib/token-validity'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { processExpiredTempops } from './services/mumble-tempop.service'
 import { updateCharacterPublicInfo } from './workflows/steps/update-character'
@@ -209,7 +209,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 								requestorLabels: value.pendingRequestorLabels ?? [],
 								attemptCount: value.attemptCount ?? 0,
 							},
-					  ]
+						]
 					: [])
 			const queueKey = key.slice(CoreDO.IMMUNITAS_ALERT_STORAGE_PREFIX.length)
 			this.pendingImmunitasAccessAlerts.set(queueKey, {
@@ -374,10 +374,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		return characters.map((character) => character.characterId)
 	}
 
-	async listUsersWithActiveCharactersPage(input: {
-		limit: number
-		offset: number
-	}): Promise<{
+	async listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{
 		users: Array<{ userId: string; characterIds: string[] }>
 		totalCount: number
 	}> {
@@ -416,7 +413,10 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				userId: true,
 				characterId: true,
 			},
-			orderBy: (table, operators) => [operators.asc(table.userId), operators.asc(table.characterId)],
+			orderBy: (table, operators) => [
+				operators.asc(table.userId),
+				operators.asc(table.characterId),
+			],
 		})
 
 		const characterIdsByUserId = new Map<string, string[]>()
@@ -454,7 +454,9 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			},
 		})
 
-		const dueCharacterIndex = new Map(dueCharacterIds.map((characterId, index) => [characterId, index]))
+		const dueCharacterIndex = new Map(
+			dueCharacterIds.map((characterId, index) => [characterId, index])
+		)
 		const userOrder = new Map<string, number>()
 		const dueUserIds = new Set<string>()
 
@@ -468,7 +470,9 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 
 		const ownedCharacterIdSet = new Set(dueCharacterOwners.map((row) => row.characterId))
-		const unownedCharacterIds = dueCharacterIds.filter((characterId) => !ownedCharacterIdSet.has(characterId))
+		const unownedCharacterIds = dueCharacterIds.filter(
+			(characterId) => !ownedCharacterIdSet.has(characterId)
+		)
 
 		if (dueUserIds.size === 0) {
 			return { userBatches: [], unownedCharacterIds }
@@ -548,7 +552,9 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			refreshSucceeded: boolean
 		}>
 	> {
-		const normalizedCharacterIds = [...new Set(input.characterIds.map((id) => String(id).trim()))].filter(Boolean)
+		const normalizedCharacterIds = [
+			...new Set(input.characterIds.map((id) => String(id).trim())),
+		].filter(Boolean)
 		if (normalizedCharacterIds.length === 0) {
 			return []
 		}
@@ -723,7 +729,9 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			})
 		)
 
-		const corporationIds = [...new Set(Array.from(characterInfoMap.values()).map((info) => info.corporation_id))]
+		const corporationIds = [
+			...new Set(Array.from(characterInfoMap.values()).map((info) => info.corporation_id)),
+		]
 		const corporationNames = new Map<string, string>()
 		await Promise.all(
 			corporationIds.map(async (corporationId) => {
@@ -1114,9 +1122,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				? legacyActorCharacterNames[note.legacyCreatedByUserId]
 				: undefined
 			const authorCharacterName =
-				attributedPrimary?.characterName ??
-				legacyAuthorCharacterName ??
-				importerCharacterName
+				attributedPrimary?.characterName ?? legacyAuthorCharacterName ?? importerCharacterName
 
 			try {
 				await hrStub.createNote(
@@ -1344,7 +1350,9 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 		return baseRows.map((row) => ({
 			...row,
-			corporationName: row.corporationId ? (resolvedNames[row.corporationId] ?? row.corporationName) : null,
+			corporationName: row.corporationId
+				? (resolvedNames[row.corporationId] ?? row.corporationName)
+				: null,
 			allianceName: row.allianceId ? (resolvedNames[row.allianceId] ?? row.allianceName) : null,
 			isDeleted:
 				row.isDeleted ||
@@ -1463,15 +1471,6 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				: 'legacy'
 			return { sources, preferredSource }
 		}
-		const buildMatchSet = (rows: Array<{ targetType: string; targetValue: string }>): Set<string> =>
-			new Set(
-				rows.map((row) => {
-					const normalizedValue =
-						row.targetType === 'character_name' ? row.targetValue.toLowerCase() : row.targetValue
-					return `${row.targetType}:${normalizedValue}`
-				})
-			)
-
 		const uniqueCharacterPairs = [
 			...new Map(
 				input.characterPairs
@@ -1985,7 +1984,9 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			return []
 		}
 
-		const normalized = [...new Set(characterIds.map((characterId) => String(characterId).trim()))].filter(Boolean)
+		const normalized = [
+			...new Set(characterIds.map((characterId) => String(characterId).trim())),
+		].filter(Boolean)
 		if (normalized.length === 0) {
 			return []
 		}
@@ -2074,9 +2075,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		const skipped = normalizedCharacterIds.length - added
 
 		const nextEligibleAt =
-			existing?.nextEligibleAt && existing.nextEligibleAt > now
-				? existing.nextEligibleAt
-				: now
+			existing?.nextEligibleAt && existing.nextEligibleAt > now ? existing.nextEligibleAt : now
 
 		this.pendingTokenInvalidationAlerts.set(input.userId, {
 			expiresAt,
@@ -2130,7 +2129,9 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				group.requestorUserId,
 				{
 					requestorUserId: group.requestorUserId,
-					requestorLabels: new Set(group.requestorLabels.map((label) => String(label).trim()).filter(Boolean)),
+					requestorLabels: new Set(
+						group.requestorLabels.map((label) => String(label).trim()).filter(Boolean)
+					),
 					attemptCount: group.attemptCount ?? 0,
 				},
 			])
@@ -2150,8 +2151,10 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		existingRequestorGroup.attemptCount += 1
 		pendingRequestorGroupsByUserId.set(input.requestorUserId, existingRequestorGroup)
 		const added =
-			pendingTargetCharacterLabels.size - beforeTargetSize +
-			existingRequestorGroup.requestorLabels.size - beforeRequestorSize
+			pendingTargetCharacterLabels.size -
+			beforeTargetSize +
+			existingRequestorGroup.requestorLabels.size -
+			beforeRequestorSize
 		const skipped = Math.max(0, 2 - added)
 		const nextEligibleAt = hasPendingEntry
 			? existing!.nextEligibleAt
@@ -2198,9 +2201,9 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 	}
 
-	private buildPendingTokenInvalidationMessage(characterNames: string[]): ReturnType<
-		typeof buildTokenInvalidationMessage
-	> {
+	private buildPendingTokenInvalidationMessage(
+		characterNames: string[]
+	): ReturnType<typeof buildTokenInvalidationMessage> {
 		return buildTokenInvalidationMessage({
 			characterNames,
 			invalidCharacterCount: characterNames.length,
@@ -2523,7 +2526,9 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 
 		const dueEntries = [...this.pendingImmunitasAccessAlerts.entries()]
-			.filter(([, entry]) => entry.pendingTargetCharacterLabels.length > 0 && entry.nextEligibleAt <= now)
+			.filter(
+				([, entry]) => entry.pendingTargetCharacterLabels.length > 0 && entry.nextEligibleAt <= now
+			)
 			.sort((a, b) => a[1].nextEligibleAt - b[1].nextEligibleAt)
 			.slice(0, 20)
 
@@ -2603,12 +2608,15 @@ export class CoreDO extends DurableObject<Env> implements Core {
 						result.error ?? 'fatal Discord delivery failure'
 					)
 					failed++
-					this.logger.warn('[CoreDO] Dropped immunitas access alert due to fatal Discord delivery failure', {
-						queueKey,
-						targetUserId: entry.targetUserId,
-						accessType: entry.accessType,
-						error: result.error ?? 'Unknown Discord delivery error',
-					})
+					this.logger.warn(
+						'[CoreDO] Dropped immunitas access alert due to fatal Discord delivery failure',
+						{
+							queueKey,
+							targetUserId: entry.targetUserId,
+							accessType: entry.accessType,
+							error: result.error ?? 'Unknown Discord delivery error',
+						}
+					)
 					continue
 				}
 
@@ -2797,10 +2805,13 @@ export class CoreDO extends DurableObject<Env> implements Core {
 						result.error ?? 'fatal Discord delivery failure'
 					)
 					failed++
-					this.logger.warn('[CoreDO] Dropped token invalidation alert due to fatal Discord delivery failure', {
-						userId,
-						error: result.error ?? 'Unknown Discord delivery error',
-					})
+					this.logger.warn(
+						'[CoreDO] Dropped token invalidation alert due to fatal Discord delivery failure',
+						{
+							userId,
+							error: result.error ?? 'Unknown Discord delivery error',
+						}
+					)
 					continue
 				}
 

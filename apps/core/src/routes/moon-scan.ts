@@ -702,62 +702,6 @@ function getPricingSnapshotDate(pricingRevision: string | null): string | null {
 	return pricingRevision?.split(':', 1)[0] ?? null
 }
 
-function getMoonProfitValuesFromComposition(
-	composition: VerifiedComposition,
-	inputs: MoonPricingInputs
-): Pick<VerifiedMoonsListItem, 'metenoxProfit' | 'tataraProfit'> {
-	const reprocessingYield = parseFloat(inputs.settings.defaultReprocessingYield)
-	const cycleDays = inputs.settings.defaultCycleDays
-	let metenoxProfit: number | null = null
-	let tataraProfit: number | null = null
-
-	for (const profile of inputs.profiles) {
-		const baseRate = parseFloat(profile.baseVolumePerHr) * (1 + parseFloat(profile.rigBonus))
-		const fuelPerHr = parseFloat(profile.fuelPerHr)
-		const magmaticGasPerHr = profile.magmaticGasPerHr ? parseFloat(profile.magmaticGasPerHr) : 0
-		const cycleHours = cycleDays * 24
-		const totalVolume = profile.isPassive
-			? baseRate * parseFloat(profile.nullsecModifier) * cycleHours
-			: baseRate * cycleHours
-		const fuelUnits = fuelPerHr * cycleHours
-		const magmaticGasUnits = profile.isPassive ? magmaticGasPerHr * cycleHours : 0
-
-		let grossIsk = 0
-		for (const ore of composition.ores) {
-			const liveMaterials = inputs.typeMaterialsMap[ore.oreTypeId] ?? []
-			const fraction = parseFloat(ore.quantity)
-			const oreUnits = (totalVolume * fraction) / getOreVolume(ore.oreTypeId)
-			for (const material of liveMaterials) {
-				if (profile.isPassive && MINERAL_TYPE_IDS.has(material.materialTypeId)) continue
-				const rawUnits = Math.floor(oreUnits / 100) * material.quantity * reprocessingYield
-				grossIsk += Math.floor(rawUnits) * (inputs.priceMap[material.materialTypeId] ?? 0)
-			}
-		}
-
-		const fuelCost =
-			fuelUnits *
-			resolveEffectivePrice(
-				inputs.settings.fuelBlockPriceOverride,
-				inputs.priceMap[FUEL_BLOCK_TYPE_ID] ?? 0
-			)
-		const magmaticGasCost =
-			magmaticGasUnits *
-			resolveEffectivePrice(
-				inputs.settings.magmaticGasPriceOverride,
-				inputs.priceMap[MAGMATIC_GAS_TYPE_ID] ?? 0
-			)
-		const profit = Math.round(grossIsk - fuelCost - magmaticGasCost)
-
-		if (profile.id === 'metenox') metenoxProfit = profit
-		else if (profile.id === 'tatara') tataraProfit = profit
-	}
-
-	return {
-		metenoxProfit: metenoxProfit !== null ? String(metenoxProfit) : null,
-		tataraProfit: tataraProfit !== null ? String(tataraProfit) : null,
-	}
-}
-
 function toMoonProfitabilityQueryInputs(inputs: MoonPricingInputs): MoonProfitabilityQueryInputs {
 	return {
 		...inputs.settings,

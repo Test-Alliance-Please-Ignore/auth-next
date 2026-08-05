@@ -596,7 +596,6 @@ app.post('/characters/:characterId/reports', requireAuth(), async (c) => {
 			return c.json({ error: 'Database not available' }, 500)
 		}
 
-		const core = getCoreStub(c)
 		const auditor = await isHrAuditorUser(c, user)
 		const immunitasTarget = await getImmunitasReportTarget(c, db, characterId)
 		const resolvedTargetUserId = immunitasTarget?.userId
@@ -773,7 +772,6 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 			return c.json({ error: 'Database not available' }, 500)
 		}
 
-		const core = getCoreStub(c)
 		const auditor = await isHrAuditorUser(c, user)
 		const requestorCharacterLabel =
 			user.characters.find((char) => char.is_primary)?.characterName ??
@@ -1096,16 +1094,14 @@ app.get('/reports/:reportId/sections/:section', requireAuth(), async (c) => {
 		if (page === undefined) {
 			const manifest = await fulcrum.getReportSections(reportId)
 			if ((manifest?.sections[section]?.chunks ?? 0) > 0) {
-				return c.json(
-					{ error: 'A page parameter is required for chunked report sections' },
-					400,
-				)
+				return c.json({ error: 'A page parameter is required for chunked report sections' }, 400)
 			}
 		}
 
-		const data = page === undefined && pageSize === undefined
-			? await fulcrum.getReportSectionData(reportId, section)
-			: await fulcrum.getReportSectionData(reportId, section, page, pageSize)
+		const data =
+			page === undefined && pageSize === undefined
+				? await fulcrum.getReportSectionData(reportId, section)
+				: await fulcrum.getReportSectionData(reportId, section, page, pageSize)
 		if (!data) {
 			return c.json({ error: 'Section data not found' }, 404)
 		}

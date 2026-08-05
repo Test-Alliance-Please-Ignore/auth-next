@@ -5,12 +5,12 @@
 import { eq } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
+
+import { userCharacters } from '../../../db/schema'
 import {
 	didTokenTransitionFromValidToInvalid,
 	queueTokenInvalidationAlertsForUser,
 } from '../../../lib/token-invalid-alerts'
-
-import { userCharacters } from '../../../db/schema'
 import {
 	markCharacterTokenInvalidFromAuthFailure,
 	validateAndSyncCharacterTokenValidity,
@@ -77,9 +77,9 @@ export async function tryCharacterAuthenticatedFetch(
 			previousHasValidToken: existingCharacter?.hasValidToken ?? null,
 			touchLastCharacterRefresh: true,
 			forceValidate: ctx.forceTokenValidation === true,
-	})
+		})
 
-	let tokenInvalidated = didTokenTransitionFromValidToInvalid(
+	const tokenInvalidated = didTokenTransitionFromValidToInvalid(
 		previousHasValidToken,
 		nextHasValidToken
 	)
@@ -116,10 +116,7 @@ export async function tryCharacterAuthenticatedFetch(
 				error: errorMessage,
 				errorDetails: extractErrorDetails(error),
 			})
-			if (
-				downgradedToken &&
-				didTokenTransitionFromValidToInvalid(previousHasValidToken, false)
-			) {
+			if (downgradedToken && didTokenTransitionFromValidToInvalid(previousHasValidToken, false)) {
 				try {
 					const coreStub = getStub<CoreRpc>(ctx.env.CORE, 'default')
 					const queueResult = await queueTokenInvalidationAlertsForUser(coreStub, {
@@ -145,7 +142,7 @@ export async function tryCharacterAuthenticatedFetch(
 				error: errorMessage,
 				status: downgradedToken ? 'invalid_token' : validation.status,
 				success: false,
-			tokenInvalidated: downgradedToken && previousHasValidToken === true,
+				tokenInvalidated: downgradedToken && previousHasValidToken === true,
 			}
 		}
 	}

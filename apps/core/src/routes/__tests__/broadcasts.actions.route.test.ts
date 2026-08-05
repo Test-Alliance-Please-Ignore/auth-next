@@ -7,10 +7,9 @@ import { getStub } from '@repo/do-utils'
 import { getCachedUserPermissions } from '../../lib/groups-cache'
 import broadcastsRoutes from '../broadcasts'
 
-import type { BroadcastWithDetails } from '@repo/broadcasts'
+import type { BroadcastTemplate, BroadcastWithDetails } from '@repo/broadcasts'
 import type { UserPermission } from '@repo/groups'
 import type { SessionUser } from '../../context'
-import type { BroadcastTemplate } from '@repo/broadcasts'
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),

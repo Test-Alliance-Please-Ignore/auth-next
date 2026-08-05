@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+	buildCorporationApplicationApplicantUpdateMessage,
 	buildCorporationApplicationFirstTimeAcceptedMessage,
 	buildCorporationApplicationSubmittedMessage,
 } from '../corporation-alerts'
@@ -24,7 +25,8 @@ describe('corporation alerts embed builder', () => {
 		const embed = message.embeds?.[0]
 		expect(embed).toMatchObject({
 			title: 'New application to Rift Coalition submitted',
-			description: '[View Application](https://pleaseignore.app/corporations/corp-456/applications/app-123)',
+			description:
+				'[View Application](https://pleaseignore.app/corporations/corp-456/applications/app-123)',
 			thumbnail: {
 				url: 'https://images.evetech.net/characters/char-789/portrait?size=256',
 			},
@@ -89,7 +91,8 @@ describe('corporation alerts embed builder', () => {
 		const embed = message.embeds?.[0]
 		expect(embed).toMatchObject({
 			title: 'First application to Rift Coalition accepted',
-			description: '[View Application](https://pleaseignore.app/corporations/corp-456/applications/app-123)',
+			description:
+				'[View Application](https://pleaseignore.app/corporations/corp-456/applications/app-123)',
 			thumbnail: {
 				url: 'https://images.evetech.net/characters/char-789/portrait?size=256',
 			},
@@ -108,5 +111,26 @@ describe('corporation alerts embed builder', () => {
 				inline: true,
 			},
 		])
+	})
+
+	it('renders an applicant-facing update with the user-accessible application link', () => {
+		const message = buildCorporationApplicationApplicantUpdateMessage({
+			applicationId: 'app-123',
+			corporationName: 'Rift Coalition',
+			updateType: 'message',
+			updatedAt: '2026-06-11T12:30:00.000Z',
+		})
+
+		expect(message).toMatchObject({
+			content: '',
+			allowEveryone: false,
+			embeds: [
+				{
+					title: 'Your corporation application to Rift Coalition received an update',
+					description: '[View your application](https://pleaseignore.app/my-applications/app-123)',
+					timestamp: '2026-06-11T12:30:00.000Z',
+				},
+			],
+		})
 	})
 })

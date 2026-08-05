@@ -159,7 +159,7 @@ export function clearUserRolesCache(userId: string): void {
  * Clear group-related caches
  * Call this when group data changes
  */
-export function clearGroupCache(groupId: string): void {
+export function clearGroupCache(_groupId: string): void {
 	// Clear all group entries for this groupId
 	// Since we can't iterate efficiently, we rely on TTL expiration
 	// For immediate invalidation, we'd need to track keys per group

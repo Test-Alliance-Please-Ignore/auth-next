@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-	recheckDirectorHealthAfterTokenReauth,
-	type DirectorHealthRecheckStub,
-} from '../director-health-recheck.service'
+import { recheckDirectorHealthAfterTokenReauth } from '../director-health-recheck.service'
+
+import type { DirectorHealthRecheckStub } from '../director-health-recheck.service'
 
 describe('director health reauth recheck', () => {
 	it('re-verifies a matching director and updates managed corporation health', async () => {
@@ -18,7 +17,8 @@ describe('director health reauth recheck', () => {
 					lastHealthCheck: null,
 					lastUsed: null,
 					failureCount: 3,
-					lastFailureReason: 'Director token is missing required ESI scopes: esi-fleets.read_fleet.v1',
+					lastFailureReason:
+						'Director token is missing required ESI scopes: esi-fleets.read_fleet.v1',
 					priority: 100,
 				},
 				{
@@ -58,17 +58,17 @@ describe('director health reauth recheck', () => {
 				},
 			])
 
-		const verifyDirectorHealth = vi.fn<DirectorHealthRecheckStub['verifyDirectorHealth']>().mockResolvedValue(true)
+		const verifyDirectorHealth = vi
+			.fn<DirectorHealthRecheckStub['verifyDirectorHealth']>()
+			.mockResolvedValue(true)
 
 		const updateManagedCorporationHealth = vi.fn().mockResolvedValue(undefined)
 
 		const result = await recheckDirectorHealthAfterTokenReauth({
 			characterId: '111',
 			characterName: 'Test Auth',
-			corporations: [
-				{ corporationId: '1001', name: 'Corp One' },
-			],
-			getCorporationStub: (corporationId) =>
+			corporations: [{ corporationId: '1001', name: 'Corp One' }],
+			getCorporationStub: (_corporationId) =>
 				({
 					getDirectors,
 					verifyDirectorHealth,
