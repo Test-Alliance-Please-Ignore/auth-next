@@ -61,6 +61,10 @@
 		{
 			"binding": "STRUCTURE_ASSETS_DEBUG_EXPORTS",
 			"bucket_name": "structure-assets-debug-exports"
+		},
+		{
+			"binding": "FLEET_EXPORTS",
+			"bucket_name": "fleet-exports"
 		}
 	],
 	"durable_objects": {

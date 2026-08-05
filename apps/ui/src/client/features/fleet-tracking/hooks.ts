@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { fleetTrackingApi } from './api'
 
-import type { ListSessionsFilter, StartSessionRequest, StatsRange } from './types'
+import type { ListSessionsFilter, StartSessionRequest, StatsRangeInput } from './types'
 
 export const fleetTrackingKeys = {
 	all: ['fleet-tracking'] as const,
@@ -11,10 +11,16 @@ export const fleetTrackingKeys = {
 	sessions: () => [...fleetTrackingKeys.all, 'session'] as const,
 	session: (id: string) => [...fleetTrackingKeys.sessions(), id] as const,
 	live: (id: string) => [...fleetTrackingKeys.session(id), 'live'] as const,
-	commanderHistory: (id: string) => [...fleetTrackingKeys.session(id), 'commander-history'] as const,
+	commanderHistory: (id: string) =>
+		[...fleetTrackingKeys.session(id), 'commander-history'] as const,
 	timeline: (
 		id: string,
-		opts: { eventType?: 'join' | 'leave' | 'ship_change'; characterId?: string; limit?: number; offset?: number }
+		opts: {
+			eventType?: 'join' | 'leave' | 'ship_change'
+			characterId?: string
+			limit?: number
+			offset?: number
+		}
 	) => [...fleetTrackingKeys.session(id), 'timeline', opts] as const,
 	shipHistory: (id: string, characterId: string) =>
 		[...fleetTrackingKeys.session(id), 'ship-history', characterId] as const,
@@ -23,10 +29,12 @@ export const fleetTrackingKeys = {
 }
 
 export function useTrackingSessions(filter: ListSessionsFilter = {}) {
+	const isHistorical = isHistoricalRange(filter.to)
 	return useQuery({
 		queryKey: fleetTrackingKeys.list(filter),
 		queryFn: () => fleetTrackingApi.listSessions(filter),
-		staleTime: 5_000,
+		staleTime: isHistorical ? HISTORICAL_STATS_STALE_TIME : 5_000,
+		gcTime: isHistorical ? HISTORICAL_STATS_GC_TIME : RECENT_STATS_GC_TIME,
 		placeholderData: keepPreviousData,
 	})
 }
@@ -155,7 +163,7 @@ export function useStartTracking() {
 	return useMutation({
 		mutationFn: (req: StartSessionRequest) => fleetTrackingApi.startSession(req),
 		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: fleetTrackingKeys.lists() })
+			void qc.invalidateQueries({ queryKey: fleetTrackingKeys.lists() })
 		},
 	})
 }
@@ -165,8 +173,8 @@ export function useStopTracking() {
 	return useMutation({
 		mutationFn: (sessionId: string) => fleetTrackingApi.stopSession(sessionId),
 		onSuccess: (_data, sessionId) => {
-			qc.invalidateQueries({ queryKey: fleetTrackingKeys.lists() })
-			qc.invalidateQueries({ queryKey: fleetTrackingKeys.session(sessionId) })
+			void qc.invalidateQueries({ queryKey: fleetTrackingKeys.lists() })
+			void qc.invalidateQueries({ queryKey: fleetTrackingKeys.session(sessionId) })
 		},
 	})
 }
@@ -182,11 +190,13 @@ export function useKickTrackingMembers() {
 			memberCharacterIds: string[]
 		}) => fleetTrackingApi.kickMembers(sessionId, memberCharacterIds),
 		onSuccess: (_data, variables) => {
-			qc.invalidateQueries({ queryKey: fleetTrackingKeys.live(variables.sessionId) })
-			qc.invalidateQueries({
+			void qc.invalidateQueries({ queryKey: fleetTrackingKeys.live(variables.sessionId) })
+			void qc.invalidateQueries({
 				queryKey: [...fleetTrackingKeys.session(variables.sessionId), 'current-members'] as const,
 			})
-			qc.invalidateQueries({ queryKey: [...fleetTrackingKeys.session(variables.sessionId), 'timeline'] })
+			void qc.invalidateQueries({
+				queryKey: [...fleetTrackingKeys.session(variables.sessionId), 'timeline'],
+			})
 		},
 	})
 }
@@ -195,57 +205,102 @@ export function useKickTrackingMembers() {
 
 export const fleetStatsKeys = {
 	all: ['fleet-tracking', 'stats'] as const,
-	overview: (range?: Partial<StatsRange>) => [...fleetStatsKeys.all, 'overview', range] as const,
-	character: (characterId: string, range?: Partial<StatsRange>) =>
+	overview: (range?: StatsRangeInput) => [...fleetStatsKeys.all, 'overview', range] as const,
+	character: (characterId: string, range?: StatsRangeInput) =>
 		[...fleetStatsKeys.all, 'character', characterId, range] as const,
-	user: (userId: string, range?: Partial<StatsRange>) =>
+	user: (userId: string, range?: StatsRangeInput) =>
 		[...fleetStatsKeys.all, 'user', userId, range] as const,
-	corporation: (corporationId: string, range?: Partial<StatsRange>) =>
+	corporation: (corporationId: string, range?: StatsRangeInput) =>
 		[...fleetStatsKeys.all, 'corporation', corporationId, range] as const,
+	corporationExportMonths: (corporationId: string) =>
+		[...fleetStatsKeys.all, 'corporation-export-months', corporationId] as const,
+	corporationExportStatus: (corporationId: string, workflowInstanceId: string) =>
+		[
+			...fleetStatsKeys.all,
+			'corporation-export-status',
+			corporationId,
+			workflowInstanceId,
+		] as const,
 }
 
 const STATS_STALE_TIME = 60_000
+const HISTORICAL_STATS_STALE_TIME = 30 * 60_000
+const RECENT_STATS_GC_TIME = 30 * 60_000
+const HISTORICAL_STATS_GC_TIME = 24 * 60 * 60_000
 
-export function useStatsOverview(
-	range?: Partial<StatsRange>,
-	options?: { enabled?: boolean }
-) {
+function isHistoricalRange(to: string | undefined): boolean {
+	if (!to) return false
+	const timestamp = Date.parse(to)
+	return Number.isFinite(timestamp) && timestamp < Date.now() - 5 * 60_000
+}
+
+function getStatsCacheOptions(range?: StatsRangeInput) {
+	const isHistorical = isHistoricalRange(range?.to)
+	return {
+		staleTime: isHistorical ? HISTORICAL_STATS_STALE_TIME : STATS_STALE_TIME,
+		gcTime: isHistorical ? HISTORICAL_STATS_GC_TIME : RECENT_STATS_GC_TIME,
+	}
+}
+
+export function useStatsOverview(range?: StatsRangeInput, options?: { enabled?: boolean }) {
 	return useQuery({
 		queryKey: fleetStatsKeys.overview(range),
 		queryFn: () => fleetTrackingApi.getStatsOverview(range),
-		staleTime: STATS_STALE_TIME,
+		...getStatsCacheOptions(range),
 		enabled: options?.enabled ?? true,
 	})
 }
 
-export function useCharacterStats(characterId: string | undefined, range?: Partial<StatsRange>) {
+export function useCharacterStats(
+	characterId: string | undefined,
+	range?: StatsRangeInput,
+	pagination?: { limit?: number; offset?: number }
+) {
 	return useQuery({
-		queryKey: fleetStatsKeys.character(characterId ?? '', range),
-		queryFn: () => fleetTrackingApi.getCharacterStats(characterId!, range),
+		queryKey: fleetStatsKeys.character(characterId ?? '', { ...range, ...pagination }),
+		queryFn: () => fleetTrackingApi.getCharacterStats(characterId!, range, pagination),
 		enabled: !!characterId,
-		staleTime: STATS_STALE_TIME,
+		...getStatsCacheOptions(range),
+		placeholderData: keepPreviousData,
 	})
 }
 
-export function useUserStats(userId: string | undefined, range?: Partial<StatsRange>) {
+export function useUserStats(
+	userId: string | undefined,
+	range?: StatsRangeInput,
+	pagination?: { limit?: number; offset?: number }
+) {
 	return useQuery({
-		queryKey: fleetStatsKeys.user(userId ?? '', range),
-		queryFn: () => fleetTrackingApi.getUserStats(userId!, range),
+		queryKey: fleetStatsKeys.user(userId ?? '', { ...range, ...pagination }),
+		queryFn: () => fleetTrackingApi.getUserStats(userId!, range, pagination),
 		enabled: !!userId,
-		staleTime: STATS_STALE_TIME,
+		...getStatsCacheOptions(range),
+		placeholderData: keepPreviousData,
 	})
 }
 
 export function useCorporationStats(
 	corporationId: string | undefined,
-	range?: Partial<StatsRange>,
+	range?: StatsRangeInput,
 	options?: { enabled?: boolean }
 ) {
 	return useQuery({
 		queryKey: fleetStatsKeys.corporation(corporationId ?? '', range),
 		queryFn: () => fleetTrackingApi.getCorporationStats(corporationId!, range),
 		enabled: options?.enabled ?? !!corporationId,
-		staleTime: STATS_STALE_TIME,
+		...getStatsCacheOptions(range),
+	})
+}
+
+export function useCorporationParticipationExportMonths(
+	corporationId: string | undefined,
+	options?: { enabled?: boolean }
+) {
+	return useQuery({
+		queryKey: fleetStatsKeys.corporationExportMonths(corporationId ?? ''),
+		queryFn: () => fleetTrackingApi.getCorporationParticipationExportMonths(corporationId!),
+		enabled: options?.enabled ?? !!corporationId,
+		staleTime: 10 * 60_000,
 	})
 }
 
@@ -256,5 +311,6 @@ export function useStatsEntitySearch(query: string) {
 		queryFn: () => fleetTrackingApi.searchStatsEntities(trimmed),
 		enabled: trimmed.length >= 2,
 		staleTime: STATS_STALE_TIME,
+		gcTime: RECENT_STATS_GC_TIME,
 	})
 }

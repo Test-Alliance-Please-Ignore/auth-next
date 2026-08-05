@@ -1,20 +1,28 @@
 import { Hono } from 'hono'
-import type { Context } from 'hono'
 
 import { and, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { createEveCharacterId } from '@repo/eve-types'
-import { StartTrackingSessionError } from '@repo/fleets'
+import { FLEET_NON_SHIP_TYPE_IDS, StartTrackingSessionError } from '@repo/fleets'
 import { logger, TimeCache } from '@repo/hono-helpers'
+import { createWorkflow } from '@repo/workflow-utils'
 
 import { createDb, schema } from '../db'
-import { getCachedCharacterPermissions, getCachedUserPermissions } from '../lib/groups-cache'
+import { isExportArtifactExpired } from '../lib/export-retention'
+import {
+	buildFleetParticipationExportFileName,
+	buildFleetParticipationExportKey,
+	getFleetParticipationExportBucket,
+} from '../lib/fleet-participation-export'
+import { getCachedUserPermissions } from '../lib/groups-cache'
 import { validatePagination } from '../lib/validation'
+import { normalizeWorkflowStatus } from '../lib/workflow-status'
 import { requireAuth } from '../middleware/session'
 import { hasCorporationSelfServiceAccess } from '../middleware/tax-permissions'
 
-import type { EsiTypeResolver } from '@repo/esi'
+import type { Context } from 'hono'
 import type { Broadcasts } from '@repo/broadcasts'
+import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type {
@@ -26,45 +34,6 @@ import type {
 } from '@repo/fleets'
 import type { Universe } from '@repo/universe'
 import type { App } from '../context'
-
-/**
- * Permission check cache - 15 second TTL
- * Caches the boolean result of permission checks
- */
-const permissionCache = new TimeCache<boolean>(15000)
-
-/**
- * Helper function to check if a character has a specific permission
- * Checks both user permissions and character permissions
- * Results are cached for 15 seconds to reduce load on Groups DO
- */
-async function hasCharacterPermission(
-	env: { GROUPS: DurableObjectNamespace },
-	userId: string,
-	characterId: string,
-	permissionUrn: string,
-	isAdmin: boolean
-): Promise<boolean> {
-	// Admins bypass permission checks
-	if (isAdmin) {
-		return true
-	}
-
-	// Check cache or fetch permissions
-	const cacheKey = `${userId}:${characterId}:${permissionUrn}`
-	return permissionCache.getOrSet(cacheKey, async () => {
-		// Check user group permissions first (cached)
-		const groupPermissions = await getCachedUserPermissions(env, userId)
-
-		if (groupPermissions.some((p) => p.urn === permissionUrn)) {
-			return true
-		}
-
-		// Check character permissions (cached)
-		const characterPermissions = await getCachedCharacterPermissions(env, characterId)
-		return characterPermissions.some((p) => p.urn === permissionUrn)
-	})
-}
 
 const app = new Hono<App>()
 
@@ -373,9 +342,7 @@ const FLEET_TRACKING_VIEW_ALL = 'urn:fleet-tracking:view-all'
  * Admin implies every perm. :view-all implies :view-fleets (stats viewers
  * always get session-detail visibility too).
  */
-async function resolveTrackingPerms(
-	c: Context<App>
-): Promise<{
+async function resolveTrackingPerms(c: Context<App>): Promise<{
 	canCreate: boolean
 	canViewFleets: boolean
 	canViewAll: boolean
@@ -460,9 +427,7 @@ app.post('/tracking', async (c) => {
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 	const eveCharacterId = createEveCharacterId(characterId)
 
-	let fleetInfo:
-		| Awaited<ReturnType<Fleets['getCharacterFleetInformation']>>
-		| null = null
+	let fleetInfo: Awaited<ReturnType<Fleets['getCharacterFleetInformation']>> | null = null
 	try {
 		fleetInfo = await fleetsStub.getCharacterFleetInformation(eveCharacterId)
 	} catch (error) {
@@ -509,8 +474,8 @@ app.post('/tracking', async (c) => {
 				error.code === 'not_in_fleet' || error.code === 'not_fleet_boss'
 					? 400
 					: error.code === 'character_session_active' || error.code === 'fleet_session_active'
-					? 409
-					: 502
+						? 409
+						: 502
 			if (error.code === 'fleet_session_active') {
 				const existingSession = fleetInfo?.fleet_id
 					? await fleetsStub.getActiveTrackingSessionByFleetId(fleetInfo.fleet_id)
@@ -676,7 +641,10 @@ app.get('/tracking', async (c) => {
 	const characterIds = Array.from(
 		new Set(
 			result.items
-				.flatMap((s) => [s.characterId, s.currentFleetBossCharacterId ?? s.currentCommanderCharacterId])
+				.flatMap((s) => [
+					s.characterId,
+					s.currentFleetBossCharacterId ?? s.currentCommanderCharacterId,
+				])
 				.filter((id): id is string => !!id)
 		)
 	)
@@ -688,14 +656,14 @@ app.get('/tracking', async (c) => {
 			...s,
 			characterName: names[s.characterId] ?? null,
 			currentFleetBossCharacterName: s.currentFleetBossCharacterId
-				? names[s.currentFleetBossCharacterId] ?? null
+				? (names[s.currentFleetBossCharacterId] ?? null)
 				: s.currentCommanderCharacterId
-					? names[s.currentCommanderCharacterId] ?? null
+					? (names[s.currentCommanderCharacterId] ?? null)
 					: null,
 			currentCommanderCharacterName: s.currentFleetBossCharacterId
-				? names[s.currentFleetBossCharacterId] ?? null
+				? (names[s.currentFleetBossCharacterId] ?? null)
 				: s.currentCommanderCharacterId
-					? names[s.currentCommanderCharacterId] ?? null
+					? (names[s.currentCommanderCharacterId] ?? null)
 					: null,
 		})),
 	})
@@ -714,7 +682,11 @@ async function resolveSessionAccess(
 	c: Context<App>,
 	sessionId: string
 ): Promise<
-	| { mode: 'allow'; session: NonNullable<Awaited<ReturnType<Fleets['getTrackingSession']>>>; canViewDetail: boolean }
+	| {
+			mode: 'allow'
+			session: NonNullable<Awaited<ReturnType<Fleets['getTrackingSession']>>>
+			canViewDetail: boolean
+	  }
 	| Response
 > {
 	const user = c.get('user')!
@@ -728,7 +700,11 @@ async function resolveSessionAccess(
 		? session.fleetBossCharacterIds
 		: session.commanderCharacterIds?.length
 			? session.commanderCharacterIds
-			: [session.currentFleetBossCharacterId ?? session.currentCommanderCharacterId ?? session.characterId]
+			: [
+					session.currentFleetBossCharacterId ??
+						session.currentCommanderCharacterId ??
+						session.characterId,
+				]
 	const isBoss =
 		canCreate &&
 		user.characters.some((character) => bossCharacterIds.includes(character.characterId.toString()))
@@ -747,7 +723,9 @@ function isCurrentFleetBossForUser(
 ): boolean {
 	const currentFleetBossCharacterId = session.currentFleetBossCharacterId ?? null
 	if (!currentFleetBossCharacterId) return false
-	return user.characters.some((character) => character.characterId.toString() === currentFleetBossCharacterId)
+	return user.characters.some(
+		(character) => character.characterId.toString() === currentFleetBossCharacterId
+	)
 }
 
 /**
@@ -803,14 +781,14 @@ app.get('/tracking/:sessionId', async (c) => {
 		...result.session,
 		characterName: names[result.session.characterId] ?? null,
 		currentFleetBossCharacterName: result.session.currentFleetBossCharacterId
-			? names[result.session.currentFleetBossCharacterId] ?? null
+			? (names[result.session.currentFleetBossCharacterId] ?? null)
 			: result.session.currentCommanderCharacterId
-				? names[result.session.currentCommanderCharacterId] ?? null
+				? (names[result.session.currentCommanderCharacterId] ?? null)
 				: null,
 		currentCommanderCharacterName: result.session.currentFleetBossCharacterId
-			? names[result.session.currentFleetBossCharacterId] ?? null
+			? (names[result.session.currentFleetBossCharacterId] ?? null)
 			: result.session.currentCommanderCharacterId
-				? names[result.session.currentCommanderCharacterId] ?? null
+				? (names[result.session.currentCommanderCharacterId] ?? null)
 				: null,
 		broadcast,
 	})
@@ -862,7 +840,7 @@ app.get('/tracking/:sessionId/current-members', async (c) => {
 	// Resolve ship type metadata via Universe DO to get type name + groupId.
 	const shipTypeIds = Array.from(new Set(members.map((m) => String(m.shipTypeId))))
 	const universe = getStub<Universe>(c.env.UNIVERSE, 'global')
-	let typeMeta: Record<string, { typeName: string; groupId: string } | null> = {}
+	const typeMeta: Record<string, { typeName: string; groupId: string } | null> = {}
 	try {
 		const raw = await universe.resolveTypeNamesByIds(shipTypeIds)
 		for (const [id, t] of Object.entries(raw)) {
@@ -882,7 +860,7 @@ app.get('/tracking/:sessionId/current-members', async (c) => {
 				.map((t) => t.groupId)
 		)
 	)
-	let groupNames: Record<string, string | null> = {}
+	const groupNames: Record<string, string | null> = {}
 	if (groupIds.length > 0) {
 		try {
 			const raw = await universe.resolveInvGroups(groupIds)
@@ -908,18 +886,14 @@ app.get('/tracking/:sessionId/current-members', async (c) => {
 			systemName: nameMap[String(m.solarSystemId)] ?? null,
 			stationId: m.stationId,
 			groupId,
-			groupName: groupId ? groupNames[groupId] ?? null : null,
+			groupName: groupId ? (groupNames[groupId] ?? null) : null,
 			sinceTime: m.sinceTime,
 		}
 	})
 
 	// Resolve system names for any systems we haven't seen yet.
 	const systemIds = Array.from(
-		new Set(
-			resolvedMembers
-				.filter((m) => !m.systemName)
-				.map((m) => String(m.solarSystemId))
-		)
+		new Set(resolvedMembers.filter((m) => !m.systemName).map((m) => String(m.solarSystemId)))
 	)
 	if (systemIds.length > 0) {
 		const sysNames = await resolveNames(c, systemIds)
@@ -1024,7 +998,7 @@ app.get('/tracking/:sessionId/timeline', async (c) => {
 				row.eventType === 'tracking_resumed' ||
 				row.eventType === 'tracking_ended'
 					? null
-					: row.shipTypeName ?? names[String(row.shipTypeId)] ?? null,
+					: (row.shipTypeName ?? names[String(row.shipTypeId)] ?? null),
 			systemName:
 				row.eventType === 'fleet_boss_change' ||
 				row.eventType === 'fleet_boss_initial' ||
@@ -1032,7 +1006,7 @@ app.get('/tracking/:sessionId/timeline', async (c) => {
 				row.eventType === 'tracking_resumed' ||
 				row.eventType === 'tracking_ended'
 					? null
-					: row.systemName ?? names[String(row.solarSystemId)] ?? null,
+					: (row.systemName ?? names[String(row.solarSystemId)] ?? null),
 			previousShipTypeName:
 				row.eventType === 'fleet_boss_change' ||
 				row.eventType === 'fleet_boss_initial' ||
@@ -1041,10 +1015,10 @@ app.get('/tracking/:sessionId/timeline', async (c) => {
 				row.eventType === 'tracking_ended'
 					? null
 					: row.previousShipTypeId != null
-						? names[String(row.previousShipTypeId)] ?? null
+						? (names[String(row.previousShipTypeId)] ?? null)
 						: null,
 			previousFleetBossCharacterName: row.previousFleetBossCharacterId
-				? names[row.previousFleetBossCharacterId] ?? null
+				? (names[row.previousFleetBossCharacterId] ?? null)
 				: null,
 		})),
 	})
@@ -1074,15 +1048,20 @@ app.get('/tracking/:sessionId/members/:characterId/ship-history', async (c) => {
 		if (row.stationId) ids.push(row.stationId)
 	}
 	const names = await resolveNames(c, ids)
+	const nonShipTypeIds = new Set<number>(FLEET_NON_SHIP_TYPE_IDS)
+	const shipsFlown = new Set(
+		rows.filter((row) => !nonShipTypeIds.has(row.shipTypeId)).map((row) => row.shipTypeId)
+	).size
 
 	return c.json({
 		characterId,
 		characterName: names[characterId] ?? null,
+		shipsFlown,
 		items: rows.map((row) => ({
 			...row,
 			shipTypeName: names[String(row.shipTypeId)] ?? null,
 			systemName: names[String(row.solarSystemId)] ?? null,
-			stationName: row.stationId ? names[String(row.stationId)] ?? null : null,
+			stationName: row.stationId ? (names[String(row.stationId)] ?? null) : null,
 		})),
 	})
 })
@@ -1163,7 +1142,7 @@ app.get('/tracking/:sessionId/commander-history', async (c) => {
 		items: events.map((event) => ({
 			...event,
 			previousCommanderCharacterName: event.previousCommanderCharacterId
-				? names[event.previousCommanderCharacterId] ?? null
+				? (names[event.previousCommanderCharacterId] ?? null)
 				: null,
 			commanderCharacterName: names[event.commanderCharacterId] ?? null,
 		})),
@@ -1175,23 +1154,35 @@ app.get('/tracking/:sessionId/commander-history', async (c) => {
 // ============================================================================
 
 /**
- * 5-minute response cache for stats endpoints.
+ * Short response caches for stats endpoints. Completed historical ranges use a
+ * longer TTL because their underlying rows do not normally change.
  * Key: scope:url. Different cache entries for :create-only vs :view-all viewers
  * because their visible session set differs (overview cares; per-character does
  * not since we already gated access by URL).
  */
 const fleetStatsCache = new TimeCache<unknown>(5 * 60 * 1000)
+const fleetHistoricalStatsCache = new TimeCache<unknown>(30 * 60 * 1000)
+
+function isHistoricalStatsRequest(c: Context<App>): boolean {
+	const to = c.req.query('to')
+	if (!to) return false
+	const timestamp = Date.parse(to)
+	return Number.isFinite(timestamp) && timestamp < Date.now() - 5 * 60 * 1000
+}
 
 /** Parse from/to from URL; default to last 30 days. */
-function parseStatsRange(c: Context<App>): { success: true; data: StatsRange } | { success: false; error: string } {
+function parseStatsRange(
+	c: Context<App>
+): { success: true; data: StatsRange } | { success: false; error: string } {
 	const url = new URL(c.req.url)
 	const now = new Date()
 	const defaultFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
 	const fromParam = url.searchParams.get('from')
 	const toParam = url.searchParams.get('to')
+	const allTime = ['1', 'true'].includes(url.searchParams.get('allTime') ?? '')
 
-	const from = fromParam ? new Date(fromParam) : defaultFrom
+	const from = allTime ? new Date(0) : fromParam ? new Date(fromParam) : defaultFrom
 	const to = toParam ? new Date(toParam) : now
 	if (Number.isNaN(from.getTime())) {
 		return { success: false, error: 'Invalid from timestamp' }
@@ -1201,6 +1192,29 @@ function parseStatsRange(c: Context<App>): { success: true; data: StatsRange } |
 	}
 
 	return { success: true, data: { from: from.toISOString(), to: to.toISOString() } }
+}
+
+function parseFleetExportRange(dateFrom: unknown, dateTo: unknown): StatsRange | null {
+	if (typeof dateFrom !== 'string' || typeof dateTo !== 'string') return null
+	const from = new Date(dateFrom)
+	const to = new Date(dateTo)
+	if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) return null
+	if (to.getTime() - from.getTime() > 366 * 24 * 60 * 60 * 1000) return null
+	return { from: from.toISOString(), to: to.toISOString() }
+}
+
+async function canViewCorporationStats(c: Context<App>, corporationId: string): Promise<boolean> {
+	const { canViewAll } = await resolveTrackingPerms(c)
+	const user = c.get('user')!
+	return canViewAll || (await hasCorporationSelfServiceAccess(c.env, user, corporationId))
+}
+
+function getExecutionContextOrNull(c: { executionCtx?: Pick<ExecutionContext, 'waitUntil'> }) {
+	try {
+		return c.executionCtx ?? null
+	} catch {
+		return null
+	}
 }
 
 /** Cache key derived from the URL and viewer scope. */
@@ -1218,7 +1232,8 @@ async function withStatsCache<T>(
 	loader: () => Promise<T>
 ): Promise<T> {
 	const key = statsCacheKey(c, scope)
-	return (await fleetStatsCache.getOrSet(key, loader)) as T
+	const cache = isHistoricalStatsRequest(c) ? fleetHistoricalStatsCache : fleetStatsCache
+	return (await cache.getOrSet(key, loader)) as T
 }
 
 /**
@@ -1319,8 +1334,7 @@ app.get('/tracking/stats/overview', async (c) => {
 			pilots: r.pilotCount,
 		}))
 
-		const nameFor = (cid: string) =>
-			byCharacter[cid]?.characterName ?? resolverNames[cid] ?? null
+		const nameFor = (cid: string) => byCharacter[cid]?.characterName ?? resolverNames[cid] ?? null
 
 		return {
 			range,
@@ -1406,7 +1420,12 @@ app.get('/tracking/stats/search', async (c) => {
 							isPrimary: schema.userCharacters.is_primary,
 						})
 						.from(schema.userCharacters)
-						.where(inArray(schema.userCharacters.characterId, characters.map((c) => c.characterId)))
+						.where(
+							inArray(
+								schema.userCharacters.characterId,
+								characters.map((c) => c.characterId)
+							)
+						)
 				: []
 
 		const ownershipByCharacterId = new Map(
@@ -1468,11 +1487,22 @@ app.get('/tracking/stats/characters/:characterId', async (c) => {
 	const rangeResult = parseStatsRange(c)
 	if (!rangeResult.success) return c.json({ error: rangeResult.error }, 400)
 	const range = rangeResult.data
+	const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
+	if (!pagination.success) {
+		return c.json({ error: pagination.error }, pagination.status)
+	}
+	const sessionPageSize = Math.min(pagination.data.limit, 100)
 	const scope = canViewAll || isAdmin ? 'view-all' : `self:${user.id}`
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
 	const data = await withStatsCache(c, scope, async () => {
 		const stats = await fleetsStub.getStatsForCharacter(characterId, range)
+		const sessions = await fleetsStub.getCharacterFleetSessionsPage({
+			characterId,
+			range,
+			limit: sessionPageSize,
+			offset: pagination.data.offset,
+		})
 		const { byCharacter } = await resolveCharacterOwnership(c, [characterId])
 
 		const ids: Array<string | number> = [characterId]
@@ -1486,6 +1516,10 @@ app.get('/tracking/stats/characters/:characterId', async (c) => {
 			corporationId: byCharacter[characterId]?.corporationId ?? null,
 			corporationName: byCharacter[characterId]?.corporationName ?? null,
 			...stats,
+			recentSessions: sessions.items,
+			recentSessionsTotal: sessions.total,
+			recentSessionsLimit: sessionPageSize,
+			recentSessionsOffset: pagination.data.offset,
 			shipsFlown: stats.shipsFlown.map((s) => ({
 				...s,
 				shipTypeName: names[String(s.shipTypeId)] ?? null,
@@ -1512,6 +1546,9 @@ app.get('/tracking/stats/users/:userId', async (c) => {
 	const rangeResult = parseStatsRange(c)
 	if (!rangeResult.success) return c.json({ error: rangeResult.error }, 400)
 	const range = rangeResult.data
+	const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
+	if (!pagination.success) return c.json({ error: pagination.error }, pagination.status)
+	const sessionPageSize = Math.min(pagination.data.limit, 100)
 	const scope = canViewAll || isAdmin ? 'view-all' : `self:${user.id}`
 	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
 
@@ -1544,10 +1581,19 @@ app.get('/tracking/stats/users/:userId', async (c) => {
 				perCharacter: [],
 				shipsFlown: [],
 				recentSessions: [],
+				recentSessionsTotal: 0,
+				recentSessionsLimit: sessionPageSize,
+				recentSessionsOffset: pagination.data.offset,
 			}
 		}
 
 		const perCharStats = await fleetsStub.getStatsForCharacters(characterIds, range)
+		const sessionPage = await fleetsStub.getUserFleetSessionsPage({
+			characterIds,
+			range,
+			limit: sessionPageSize,
+			offset: pagination.data.offset,
+		})
 
 		// Sum totals
 		const totals = {
@@ -1558,7 +1604,6 @@ app.get('/tracking/stats/users/:userId', async (c) => {
 			avgFleetDurationMinutes: null as number | null,
 		}
 		const shipsAcc = new Map<number, { totalMinutes: number }>()
-		const allRecent: Array<{ characterId: string; row: ReturnType<typeof Object>['type'] }> = []
 		const perCharacter: Array<{
 			characterId: string
 			characterName: string
@@ -1590,9 +1635,6 @@ app.get('/tracking/stats/users/:userId', async (c) => {
 					totalMinutes: cur.totalMinutes + s.totalMinutes,
 				})
 			}
-			for (const r of stats.recentSessions) {
-				allRecent.push({ characterId: row.characterId, row: r as any })
-			}
 			perCharacter.push({
 				characterId: row.characterId,
 				characterName: row.characterName,
@@ -1611,17 +1653,11 @@ app.get('/tracking/stats/users/:userId', async (c) => {
 			.sort((a, b) => b.totalMinutes - a.totalMinutes)
 			.slice(0, 25)
 
-		const recentSessions = allRecent
-			.sort(
-				(a, b) =>
-					new Date((b.row as any).startedAt).getTime() -
-					new Date((a.row as any).startedAt).getTime()
-			)
-			.slice(0, 20)
-			.map((x) => ({ ...(x.row as object), characterId: x.characterId }))
-
 		// Resolve ship type names for the aggregated ship list
-		const shipNames = await resolveNames(c, shipsFlown.map((s) => s.shipTypeId))
+		const shipNames = await resolveNames(
+			c,
+			shipsFlown.map((s) => s.shipTypeId)
+		)
 
 		return {
 			range,
@@ -1632,7 +1668,10 @@ app.get('/tracking/stats/users/:userId', async (c) => {
 				...s,
 				shipTypeName: shipNames[String(s.shipTypeId)] ?? null,
 			})),
-			recentSessions,
+			recentSessions: sessionPage.items,
+			recentSessionsTotal: sessionPage.total,
+			recentSessionsLimit: sessionPageSize,
+			recentSessionsOffset: pagination.data.offset,
 		}
 	})
 
@@ -1643,6 +1682,118 @@ app.get('/tracking/stats/users/:userId', async (c) => {
  * GET /fleets/tracking/stats/corporations/:corpId
  * Per-corporation stats (current members). Requires :view-all.
  */
+app.get('/tracking/stats/corporations/:corpId/export-months', async (c) => {
+	const corporationId = c.req.param('corpId')
+	if (!(await canViewCorporationStats(c, corporationId))) {
+		return c.json({ error: 'Not authorized to view this corporation' }, 403)
+	}
+	const fleetsStub = getStub<Fleets>(c.env.FLEETS, 'default')
+	const months = await fleetsStub.getCorporationFleetParticipationMonths(corporationId)
+	return c.json({ months })
+})
+
+app.post('/tracking/stats/corporations/:corpId/export', async (c) => {
+	const corporationId = c.req.param('corpId')
+	if (!(await canViewCorporationStats(c, corporationId))) {
+		return c.json({ error: 'Not authorized to view this corporation' }, 403)
+	}
+	const body = await c.req.json<{ dateFrom?: unknown; dateTo?: unknown }>()
+	const range = parseFleetExportRange(body.dateFrom, body.dateTo)
+	if (!range) return c.json({ error: 'Invalid export date range' }, 400)
+
+	const workflow = await createWorkflow(c.env.EXPORT_WORKFLOW, {
+		params: {
+			kind: 'fleet-corporation-participation',
+			userId: c.get('user')!.id,
+			corporationId,
+			dateFrom: range.from,
+			dateTo: range.to,
+		},
+	})
+	return c.json(
+		{
+			workflowInstanceId: workflow.id,
+			exportId: workflow.id,
+			fileName: buildFleetParticipationExportFileName(corporationId, range.from, range.to),
+			status: 'queued',
+		},
+		202
+	)
+})
+
+async function getFleetExportWorkflowOutput(
+	c: Context<App>,
+	corporationId: string,
+	workflowInstanceId: string
+) {
+	const workflow = await c.env.EXPORT_WORKFLOW.get(workflowInstanceId)
+	const status = await workflow.status()
+	const output = status.output
+	const outputRecord =
+		output && typeof output === 'object' ? (output as Record<string, unknown>) : null
+	if (
+		outputRecord &&
+		(outputRecord.kind !== 'fleet-corporation-participation' ||
+			outputRecord.corporationId !== corporationId)
+	) {
+		return null
+	}
+	const outputStatus =
+		outputRecord && typeof outputRecord.status === 'string' ? outputRecord.status : undefined
+	return {
+		status: normalizeWorkflowStatus(status.status, outputStatus),
+		rawStatus: status.status,
+		output: output ?? null,
+	}
+}
+
+app.get('/tracking/stats/corporations/:corpId/export/:workflowInstanceId', async (c) => {
+	const corporationId = c.req.param('corpId')
+	const workflowInstanceId = c.req.param('workflowInstanceId')
+	if (!(await canViewCorporationStats(c, corporationId))) {
+		return c.json({ error: 'Not authorized to view this corporation' }, 403)
+	}
+	if (!workflowInstanceId) return c.json({ error: 'workflowInstanceId is required' }, 400)
+	const workflowStatus = await getFleetExportWorkflowOutput(c, corporationId, workflowInstanceId)
+	if (!workflowStatus) return c.json({ error: 'Export not found' }, 404)
+	return c.json({ workflowInstanceId, ...workflowStatus })
+})
+
+app.get('/tracking/stats/corporations/:corpId/export/:workflowInstanceId/download', async (c) => {
+	const corporationId = c.req.param('corpId')
+	const workflowInstanceId = c.req.param('workflowInstanceId')
+	if (!(await canViewCorporationStats(c, corporationId))) {
+		return c.json({ error: 'Not authorized to view this corporation' }, 403)
+	}
+	if (!workflowInstanceId) return c.json({ error: 'workflowInstanceId is required' }, 400)
+	const workflowStatus = await getFleetExportWorkflowOutput(c, corporationId, workflowInstanceId)
+	if (!workflowStatus) return c.json({ error: 'Export not found' }, 404)
+
+	const bucket = getFleetParticipationExportBucket(c.env)
+	const exportKey = buildFleetParticipationExportKey(workflowInstanceId)
+	const object = await bucket.get(exportKey)
+	if (!object) return c.json({ error: 'Export not found' }, 404)
+	if (isExportArtifactExpired(object.customMetadata?.expiresAt)) {
+		await bucket.delete(exportKey).catch(() => {})
+		return c.json({ error: 'Export expired' }, 404)
+	}
+
+	const fileName = object.customMetadata?.fileName ?? `${workflowInstanceId}.csv`
+	const response = new Response(object.body, {
+		status: 200,
+		headers: {
+			'Content-Type': object.httpMetadata?.contentType ?? 'text/csv; charset=utf-8',
+			'Content-Disposition': `attachment; filename="${fileName}"`,
+			'Cache-Control': 'no-store',
+		},
+	})
+	const executionCtx = getExecutionContextOrNull(c)
+	const cleanup = bucket.delete(exportKey).catch(() => {})
+	if (executionCtx) executionCtx.waitUntil(cleanup)
+	else void cleanup
+	return response
+})
+
 app.get('/tracking/stats/corporations/:corpId', async (c) => {
 	const corpId = c.req.param('corpId')
 	const { canViewAll } = await resolveTrackingPerms(c)
@@ -1650,8 +1801,7 @@ app.get('/tracking/stats/corporations/:corpId', async (c) => {
 	// self-service (CEO/Director of this specific corp). The short-circuit
 	// keeps view-all viewers from paying the extra Durable Object lookups.
 	const user = c.get('user')!
-	const isCorpLeader =
-		canViewAll || (await hasCorporationSelfServiceAccess(c.env, user, corpId))
+	const isCorpLeader = canViewAll || (await hasCorporationSelfServiceAccess(c.env, user, corpId))
 	if (!isCorpLeader) {
 		return c.json({ error: 'Not authorized to view this corporation' }, 403)
 	}
@@ -1744,7 +1894,10 @@ app.get('/tracking/stats/corporations/:corpId', async (c) => {
 			.sort((a, b) => b.totalMinutes - a.totalMinutes)
 			.slice(0, 25)
 
-		const shipNames = await resolveNames(c, shipsFlown.map((s) => s.shipTypeId))
+		const shipNames = await resolveNames(
+			c,
+			shipsFlown.map((s) => s.shipTypeId)
+		)
 		const [corpRow] = await db
 			.select({ name: schema.managedCorporations.name })
 			.from(schema.managedCorporations)

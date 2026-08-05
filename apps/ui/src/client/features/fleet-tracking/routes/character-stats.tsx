@@ -1,4 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -15,10 +16,12 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { corporationLogoUrl } from '@/lib/eve-images'
+
 import { SessionStatsGrid } from '../components/session-stats-grid'
 import { ShipDistributionChart } from '../components/ship-distribution-chart'
 import { StatsRangePicker, useRangeFromSearchParams } from '../components/stats-range-picker'
@@ -34,8 +37,17 @@ export default function CharacterStats() {
 	const canViewAll = isAdmin || hasPermission('urn:fleet-tracking:view-all')
 	const ownsCharacter = !!user?.characters.some((ch) => ch.characterId === characterId)
 	const canView = canViewAll || ownsCharacter
+	const [page, setPage] = useState(1)
+	const [pageSize, setPageSize] = useState(25)
+	useEffect(() => {
+		setPage(1)
+	}, [characterId, range.from, range.to])
 
-	const { data, isLoading } = useCharacterStats(canView ? characterId : undefined, range)
+	const { data, isFetching, isLoading } = useCharacterStats(
+		canView ? characterId : undefined,
+		range,
+		{ limit: pageSize, offset: (page - 1) * pageSize }
+	)
 
 	if (!characterId) return <Navigate to="/fleet-tracking/stats" replace />
 
@@ -141,6 +153,23 @@ export default function CharacterStats() {
 
 					<Card>
 						<CardContent className="p-0">
+							{data.recentSessionsTotal > 0 && (
+								<div className="border-b p-4">
+									<UserSearchPaginationControls
+										totalCount={data.recentSessionsTotal}
+										page={page}
+										pageSize={pageSize}
+										onPageChange={setPage}
+										onPageSizeChange={(nextPageSize) => {
+											setPageSize(nextPageSize)
+											setPage(1)
+										}}
+										pageSizeOptions={[10, 25, 50, 100]}
+										itemLabel="fleet sessions"
+										nextButtonLoading={isFetching}
+									/>
+								</div>
+							)}
 							{data.recentSessions.length === 0 ? (
 								<div className="py-8 text-center text-sm text-muted-foreground">
 									No recent fleets for this character in range.
@@ -159,7 +188,9 @@ export default function CharacterStats() {
 									<TableBody>
 										{data.recentSessions.map((s) => (
 											<TableRow key={s.sessionId}>
-												<TableCell><EveTimeDisplay dateStr={s.startedAt} /></TableCell>
+												<TableCell>
+													<EveTimeDisplay dateStr={s.startedAt} />
+												</TableCell>
 												<TableCell>
 													<Link to={`/fleet-tracking/${s.sessionId}`} className="hover:underline">
 														{s.sessionName}

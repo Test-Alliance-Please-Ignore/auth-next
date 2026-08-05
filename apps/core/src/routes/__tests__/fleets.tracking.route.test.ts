@@ -2,10 +2,11 @@ import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
+import { createWorkflow } from '@repo/workflow-utils'
 
-import fleetsRoutes from '../fleets'
 import { createDb } from '../../db'
 import { getCachedUserPermissions } from '../../lib/groups-cache'
+import fleetsRoutes from '../fleets'
 
 import type { SessionUser } from '../../context'
 import type * as DbModule from '../../db'
@@ -17,14 +18,18 @@ vi.mock('@repo/do-utils', () => ({
 vi.mock('../../middleware/session', () => ({
 	requireAuth:
 		() =>
-			async (_c: unknown, next: () => Promise<void>): Promise<void> => {
-				await next()
-			},
+		async (_c: unknown, next: () => Promise<void>): Promise<void> => {
+			await next()
+		},
 }))
 
 vi.mock('../../lib/groups-cache', () => ({
 	getCachedUserPermissions: vi.fn(),
 	getCachedCharacterPermissions: vi.fn(),
+}))
+
+vi.mock('@repo/workflow-utils', () => ({
+	createWorkflow: vi.fn(),
 }))
 
 // Preserve the real Drizzle `schema` (table definitions, no DB connection) but
@@ -37,6 +42,7 @@ vi.mock('../../db', async (importOriginal) => {
 const getStubMock = vi.mocked(getStub)
 const getCachedUserPermissionsMock = vi.mocked(getCachedUserPermissions)
 const createDbMock = vi.mocked(createDb)
+const createWorkflowMock = vi.mocked(createWorkflow)
 
 /**
  * Chainable Drizzle `select().from().where().limit()` stub that resolves to the
@@ -47,6 +53,7 @@ function makeDbStub(rows: unknown[]): any {
 		from: () => chain,
 		where: () => chain,
 		limit: () => Promise.resolve(rows),
+		then: (resolve: (value: unknown[]) => unknown) => Promise.resolve(rows).then(resolve),
 	}
 	return { select: () => chain }
 }
@@ -115,8 +122,13 @@ describe('fleets tracking routes', () => {
 		getSessionRoster: ReturnType<typeof vi.fn>
 		getSessionSummary: ReturnType<typeof vi.fn>
 		getStatsOverview: ReturnType<typeof vi.fn>
+		getCorpRollupForOverview: ReturnType<typeof vi.fn>
+		getStatsForCharacter: ReturnType<typeof vi.fn>
+		getCharacterFleetSessionsPage: ReturnType<typeof vi.fn>
+		getUserFleetSessionsPage: ReturnType<typeof vi.fn>
 		getCharactersByCorpInWindow: ReturnType<typeof vi.fn>
 		getStatsForCharacters: ReturnType<typeof vi.fn>
+		getCorporationFleetParticipationMonths: ReturnType<typeof vi.fn>
 	}
 	let broadcastsStub: {
 		getBroadcastByFleetSessionId: ReturnType<typeof vi.fn>
@@ -146,8 +158,23 @@ describe('fleets tracking routes', () => {
 			getSessionRoster: vi.fn(),
 			getSessionSummary: vi.fn(),
 			getStatsOverview: vi.fn(),
+			getCorpRollupForOverview: vi.fn().mockResolvedValue([]),
+			getStatsForCharacter: vi.fn().mockResolvedValue({
+				totals: {
+					fleetsJoined: 0,
+					minutesInFleet: 0,
+					timesFC: 0,
+					minutesAsFC: 0,
+					avgFleetDurationMinutes: null,
+				},
+				shipsFlown: [],
+				recentSessions: [],
+			}),
+			getCharacterFleetSessionsPage: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+			getUserFleetSessionsPage: vi.fn().mockResolvedValue({ items: [], total: 0 }),
 			getCharactersByCorpInWindow: vi.fn().mockResolvedValue([]),
 			getStatsForCharacters: vi.fn().mockResolvedValue({}),
+			getCorporationFleetParticipationMonths: vi.fn().mockResolvedValue([]),
 		}
 		broadcastsStub = {
 			getBroadcastByFleetSessionId: vi.fn().mockResolvedValue(null),
@@ -468,7 +495,11 @@ describe('fleets tracking routes', () => {
 			})
 		)
 
-		const res = await app.request('/api/fleets/tracking?userId=other-user&limit=25&offset=0', {}, env)
+		const res = await app.request(
+			'/api/fleets/tracking?userId=other-user&limit=25&offset=0',
+			{},
+			env
+		)
 
 		expect(res.status).toBe(200)
 		expect(fleetsStub.listTrackingSessions).toHaveBeenCalledWith(
@@ -488,7 +519,11 @@ describe('fleets tracking routes', () => {
 		fleetsStub.listTrackingSessions.mockResolvedValue({ items: [], total: 0 })
 		const app = createApp(makeUser({ id: 'self-user' }))
 
-		const res = await app.request('/api/fleets/tracking?userId=other-user&limit=25&offset=0', {}, env)
+		const res = await app.request(
+			'/api/fleets/tracking?userId=other-user&limit=25&offset=0',
+			{},
+			env
+		)
 
 		expect(res.status).toBe(200)
 		expect(fleetsStub.listTrackingSessions).toHaveBeenCalledWith(
@@ -710,7 +745,9 @@ describe('fleets tracking routes', () => {
 	})
 
 	it('returns live member locations for detailed viewers without mutating ship events', async () => {
-		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:view-fleets' }] as any)
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{ urn: 'urn:fleet-tracking:view-fleets' },
+		] as any)
 		fleetsStub.getTrackingSession.mockResolvedValue({
 			id: 's-live',
 			status: 'active',
@@ -769,6 +806,34 @@ describe('fleets tracking routes', () => {
 
 		expect(res.status).toBe(400)
 		expect(fleetsStub.getStatsOverview).not.toHaveBeenCalled()
+	})
+
+	it('uses an epoch-start range for all-time stats', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:view-all' }] as any)
+		fleetsStub.getStatsOverview.mockResolvedValue({
+			totals: {
+				sessions: 0,
+				totalMinutes: 0,
+				uniquePilots: 0,
+				totalJoins: 0,
+				avgDurationMinutes: null,
+				avgPeakMembers: null,
+				largestFleetPeak: null,
+			},
+			topFCs: [],
+			topPilots: [],
+			topShips: [],
+			sessionsPerDay: [],
+		})
+
+		const app = createApp(makeUser({ id: 'all-time-viewer' }))
+		const res = await app.request('/api/fleets/tracking/stats/overview?allTime=true', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(fleetsStub.getStatsOverview).toHaveBeenCalledWith({
+			from: '1970-01-01T00:00:00.000Z',
+			to: expect.any(String),
+		})
 	})
 
 	it('hydrates linked broadcast SRP/doctrine on session detail', async () => {
@@ -914,5 +979,195 @@ describe('fleets tracking routes', () => {
 
 		expect(res.status).toBe(200)
 		expect(corpDataStub.getCorporationInfo).not.toHaveBeenCalled()
+	})
+
+	it('loads the requested character session page without changing aggregate stats', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:view-all' }] as any)
+		fleetsStub.getStatsForCharacter.mockResolvedValue({
+			totals: {
+				fleetsJoined: 22,
+				minutesInFleet: 320,
+				timesFC: 2,
+				minutesAsFC: 90,
+				avgFleetDurationMinutes: 15,
+			},
+			shipsFlown: [{ shipTypeId: 42, totalMinutes: 120 }],
+			recentSessions: [],
+		})
+		fleetsStub.getCharacterFleetSessionsPage.mockResolvedValue({
+			total: 22,
+			items: [
+				{
+					sessionId: 'session-2',
+					sessionName: 'Fleet 2',
+					fleetId: 'fleet-2',
+					wasFC: false,
+					startedAt: '2026-08-04T10:00:00.000Z',
+					endedAt: '2026-08-04T11:00:00.000Z',
+					totalMinutes: 60,
+					shipsFlown: 1,
+				},
+			],
+		})
+
+		const app = createApp(makeUser({ id: 'viewall-user' }))
+		const res = await app.request(
+			'/api/fleets/tracking/stats/characters/1514842406?from=2026-07-01T00:00:00.000Z&to=2026-08-05T00:00:00.000Z&limit=10&offset=10',
+			{},
+			env
+		)
+
+		expect(res.status).toBe(200)
+		await expect(res.json()).resolves.toMatchObject({
+			characterId: '1514842406',
+			totals: { fleetsJoined: 22 },
+			recentSessionsTotal: 22,
+			recentSessionsLimit: 10,
+			recentSessionsOffset: 10,
+			recentSessions: [{ sessionId: 'session-2' }],
+		})
+		expect(fleetsStub.getCharacterFleetSessionsPage).toHaveBeenCalledWith({
+			characterId: '1514842406',
+			range: {
+				from: '2026-07-01T00:00:00.000Z',
+				to: '2026-08-05T00:00:00.000Z',
+			},
+			limit: 10,
+			offset: 10,
+		})
+	})
+
+	it('loads all user fleet sessions through the batch page endpoint', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:fleet-tracking:view-all' }] as any)
+		createDbMock.mockReturnValue(
+			makeDbStub([
+				{
+					characterId: '1001',
+					characterName: 'Pilot One',
+					is_primary: true,
+					corporationId: null,
+					corporationName: null,
+				},
+			])
+		)
+		fleetsStub.getStatsForCharacters.mockResolvedValue({})
+		fleetsStub.getUserFleetSessionsPage.mockResolvedValue({
+			total: 31,
+			items: [
+				{
+					characterId: '1001',
+					sessionId: 'session-31',
+					sessionName: 'Fleet 31',
+					fleetId: 'fleet-31',
+					wasFC: false,
+					startedAt: '2026-08-04T10:00:00.000Z',
+					endedAt: '2026-08-04T11:00:00.000Z',
+					totalMinutes: 60,
+					shipsFlown: 1,
+				},
+			],
+		})
+
+		const app = createApp(makeUser({ id: 'viewall-user' }))
+		const res = await app.request(
+			'/api/fleets/tracking/stats/users/viewall-user?from=2026-07-01T00:00:00.000Z&to=2026-08-05T00:00:00.000Z&limit=10&offset=20',
+			{},
+			env
+		)
+
+		expect(res.status).toBe(200)
+		await expect(res.json()).resolves.toMatchObject({
+			recentSessionsTotal: 31,
+			recentSessionsLimit: 10,
+			recentSessionsOffset: 20,
+			recentSessions: [{ characterId: '1001', sessionId: 'session-31' }],
+		})
+		expect(fleetsStub.getUserFleetSessionsPage).toHaveBeenCalledWith({
+			characterIds: ['1001'],
+			range: {
+				from: '2026-07-01T00:00:00.000Z',
+				to: '2026-08-05T00:00:00.000Z',
+			},
+			limit: 10,
+			offset: 20,
+		})
+	})
+
+	it('uses the fleet DO for export month metadata without loading participation rows', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([])
+		fleetsStub.getCorporationFleetParticipationMonths.mockResolvedValue([
+			{ month: '2026-07', from: '2026-07-01T00:00:00.000Z', to: '2026-08-01T00:00:00.000Z' },
+		])
+		const app = createApp(makeUser({ id: 'admin-user', is_admin: true }))
+
+		const res = await app.request(
+			'/api/fleets/tracking/stats/corporations/505/export-months',
+			{},
+			env
+		)
+
+		expect(res.status).toBe(200)
+		await expect(res.json()).resolves.toEqual({
+			months: [
+				{ month: '2026-07', from: '2026-07-01T00:00:00.000Z', to: '2026-08-01T00:00:00.000Z' },
+			],
+		})
+		expect(fleetsStub.getCorporationFleetParticipationMonths).toHaveBeenCalledWith('505')
+	})
+
+	it('allows a corporation CEO to access export metadata under the same self-service gate', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([])
+		corpDataStub.getCorporationInfo.mockResolvedValue({ ceoId: '3001' })
+		corpDataStub.getDirectors.mockResolvedValue([])
+		charDataStub.getCharacterInfo.mockResolvedValue({ corporationId: '506' })
+		fleetsStub.getCorporationFleetParticipationMonths.mockResolvedValue([])
+
+		const app = createApp(makeLeaderUser('export-ceo-user', '3001'))
+		const res = await app.request(
+			'/api/fleets/tracking/stats/corporations/506/export-months',
+			{},
+			env
+		)
+
+		expect(res.status).toBe(200)
+		expect(fleetsStub.getCorporationFleetParticipationMonths).toHaveBeenCalledWith('506')
+	})
+
+	it('denies a plain corporation member from export metadata', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([])
+		corpDataStub.getCorporationInfo.mockResolvedValue({ ceoId: '9999' })
+		corpDataStub.getDirectors.mockResolvedValue([])
+		charDataStub.getCharacterInfo.mockResolvedValue({ corporationId: '507' })
+
+		const app = createApp(makeLeaderUser('export-member-user', '3002'))
+		const res = await app.request(
+			'/api/fleets/tracking/stats/corporations/507/export-months',
+			{},
+			env
+		)
+
+		expect(res.status).toBe(403)
+		expect(fleetsStub.getCorporationFleetParticipationMonths).not.toHaveBeenCalled()
+	})
+
+	it('validates the export range before creating a workflow', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([])
+		const app = createApp(makeUser({ id: 'admin-user', is_admin: true }))
+
+		const res = await app.request(
+			'/api/fleets/tracking/stats/corporations/505/export',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					dateFrom: '2026-08-01T00:00:00.000Z',
+					dateTo: '2026-07-01T00:00:00.000Z',
+				}),
+			},
+			env
+		)
+
+		expect(res.status).toBe(400)
+		expect(createWorkflowMock).not.toHaveBeenCalled()
 	})
 })

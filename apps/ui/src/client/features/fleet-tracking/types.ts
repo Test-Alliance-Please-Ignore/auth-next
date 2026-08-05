@@ -120,6 +120,7 @@ export interface SessionMemberShipHistoryRow {
 export interface SessionMemberShipHistoryResponse {
 	characterId: string
 	characterName: string | null
+	shipsFlown: number
 	items: SessionMemberShipHistoryRow[]
 }
 
@@ -233,6 +234,10 @@ export interface StatsRange {
 	to: string
 }
 
+export type StatsRangeInput = Partial<StatsRange> & {
+	allTime?: boolean
+}
+
 export interface TopCharacterWithMeta {
 	characterId: string
 	count: number
@@ -317,6 +322,9 @@ export interface CharacterStatsResponse {
 	}
 	shipsFlown: CharacterShipBreakdownRow[]
 	recentSessions: CharacterRecentSessionRow[]
+	recentSessionsTotal: number
+	recentSessionsLimit: number
+	recentSessionsOffset: number
 }
 
 export interface UserPerCharacterStats {
@@ -339,6 +347,9 @@ export interface UserStatsResponse {
 	perCharacter: UserPerCharacterStats[]
 	shipsFlown: CharacterShipBreakdownRow[]
 	recentSessions: Array<CharacterRecentSessionRow & { characterId: string }>
+	recentSessionsTotal: number
+	recentSessionsLimit: number
+	recentSessionsOffset: number
 }
 
 export interface StatsSearchResponse {
@@ -367,6 +378,35 @@ export interface CorporationStatsResponse {
 		fleetsJoined: number
 		minutesInFleet: number
 	}>
-	topFCs: Array<{ characterId: string; characterName: string; sessions: number; minutesAsFC?: number }>
+	topFCs: Array<{
+		characterId: string
+		characterName: string
+		sessions: number
+		minutesAsFC?: number
+	}>
 	shipsFlown: CharacterShipBreakdownRow[]
+}
+
+export interface FleetParticipationExportMonth {
+	month: string
+	from: string
+	to: string
+}
+
+export interface FleetParticipationExportMonthsResponse {
+	months: FleetParticipationExportMonth[]
+}
+
+export interface FleetParticipationExportStartResponse {
+	workflowInstanceId: string
+	exportId: string
+	fileName: string
+	status: 'queued'
+}
+
+export interface FleetParticipationExportStatusResponse {
+	workflowInstanceId: string
+	status: 'queued' | 'running' | 'completed' | 'failed' | 'unknown'
+	rawStatus: string
+	output: unknown
 }

@@ -5,10 +5,8 @@
  * This package allows other workers to interact with the Durable Object via RPC.
  */
 import type { DurableObject } from 'cloudflare:workers'
-
-import { EsiGetCharacterFleetInformation, EsiGetFleetInformation, EsiGetFleetMembers } from './esi'
-
 import type { EveCharacterId } from '@repo/eve-types'
+import type { EsiGetCharacterFleetInformation, EsiGetFleetInformation } from './esi'
 import type { FleetDetailsResponse } from './fleet-monitor'
 
 /**
@@ -163,7 +161,9 @@ export interface Fleets extends DurableObject {
 	 * @param fleetId - ESI fleet ID
 	 * @returns Cache snapshot with notFound markers, or null if not in cache
 	 */
-	getFleetCacheStatus(fleetId: string): Promise<{ notFound: boolean; notFoundAt: Date | null; lastChecked: Date } | null>
+	getFleetCacheStatus(
+		fleetId: string
+	): Promise<{ notFound: boolean; notFoundAt: Date | null; lastChecked: Date } | null>
 
 	/**
 	 * Get fleet registration status (is_registered) with cache-first approach
@@ -303,6 +303,22 @@ export interface Fleets extends DurableObject {
 	/** Aggregate metrics for one character within a time window. */
 	getStatsForCharacter(characterId: string, range: StatsRange): Promise<CharacterStatsResult>
 
+	/** Paginated fleet sessions for one character within a time window. */
+	getCharacterFleetSessionsPage(args: {
+		characterId: string
+		range: StatsRange
+		limit?: number
+		offset?: number
+	}): Promise<CharacterFleetSessionsPage>
+
+	/** Paginated fleet sessions for multiple characters within a time window. */
+	getUserFleetSessionsPage(args: {
+		characterIds: string[]
+		range: StatsRange
+		limit?: number
+		offset?: number
+	}): Promise<UserFleetSessionsPage>
+
 	/**
 	 * Aggregate metrics for a set of character IDs (used for user-level and
 	 * corp-level rollups).
@@ -324,6 +340,16 @@ export interface Fleets extends DurableObject {
 	 * of the given corporation within the window. Powers the corp stats page.
 	 */
 	getCharactersByCorpInWindow(corporationId: string, range: StatsRange): Promise<string[]>
+
+	/** Return calendar months with historical participation for a corporation. */
+	getCorporationFleetParticipationMonths(
+		corporationId: string
+	): Promise<FleetParticipationExportMonth[]>
+
+	/** Return one bounded, keyset-paginated participation export page. */
+	getCorporationFleetParticipationPage(
+		args: FleetParticipationExportPageRequest
+	): Promise<FleetParticipationExportPage>
 
 	/**
 	 * Search characters that have appeared in any tracked fleet by (substring) name.
@@ -358,6 +384,17 @@ export interface CorpRollupRow {
 	corporationId: string
 	pilotCount: number
 }
+
+/**
+ * EVE ship type IDs that represent capsules or shuttles rather than fleet
+ * ships. These are the published types in the SDE's Capsule (29) and Shuttle
+ * (31) groups; they remain part of participation time but are excluded from
+ * ships-flown statistics.
+ */
+export const FLEET_NON_SHIP_TYPE_IDS = [
+	670, 672, 11129, 11132, 11134, 21097, 21628, 27299, 27301, 27303, 27305, 29266, 29328, 29330,
+	29332, 29334, 30842, 33328, 33513, 34496, 64034,
+] as const
 
 // ===== Stats types =====
 
@@ -421,6 +458,20 @@ export interface CharacterRecentSessionRow {
 	shipsFlown: number
 }
 
+export interface CharacterFleetSessionsPage {
+	items: CharacterRecentSessionRow[]
+	total: number
+}
+
+export interface UserFleetSessionRow extends CharacterRecentSessionRow {
+	characterId: string
+}
+
+export interface UserFleetSessionsPage {
+	items: UserFleetSessionRow[]
+	total: number
+}
+
 export interface CharacterStatsResult {
 	totals: {
 		fleetsJoined: number
@@ -432,6 +483,37 @@ export interface CharacterStatsResult {
 	}
 	shipsFlown: CharacterShipBreakdownRow[]
 	recentSessions: CharacterRecentSessionRow[]
+}
+
+export interface FleetParticipationExportMonth {
+	month: string
+	from: string
+	to: string
+}
+
+export interface FleetParticipationExportPageRequest {
+	corporationId: string
+	from: string
+	to: string
+	/** Opaque cursor returned by the previous page. */
+	cursor?: string | null
+	limit?: number
+}
+
+export interface FleetParticipationExportRow {
+	dateStamp: string
+	fleetCharacterId: string
+	fleetCharacterName: string | null
+	fleetSessionId: string
+	fleetName: string
+	role: string
+	shipCount: number
+	durationSeconds: number
+}
+
+export interface FleetParticipationExportPage {
+	items: FleetParticipationExportRow[]
+	nextCursor: string | null
 }
 
 // ===== Read-side response types =====

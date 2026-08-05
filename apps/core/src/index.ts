@@ -20,6 +20,7 @@ import { waitUntilWithTelemetry } from './lib/background-task'
 import { cleanupExpiredExportArtifacts } from './lib/export-retention'
 import { IMMUNITAS_ALERT_DRAIN_CRON } from './lib/immunitas-alerts'
 import { getStructureAssetsDebugBucket } from './lib/structure-assets-debug'
+import { getFleetParticipationExportBucket } from './lib/fleet-participation-export'
 import { TOKEN_INVALID_ALERT_DRAIN_CRON } from './lib/token-invalid-alerts'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { csrfProtection } from './middleware/csrf'
@@ -255,11 +256,17 @@ export default {
 
 			if (event.cron === EXPORT_CLEANUP_CRON) {
 				ctx.waitUntil(
-					cleanupExpiredExportArtifacts(
-						getStructureAssetsDebugBucket(env),
-						'structure-assets-debug'
-					).catch((error) =>
-						captureException(error as Error, { tags: { job: 'structure-assets-debug-cleanup' } })
+					Promise.all([
+						cleanupExpiredExportArtifacts(
+							getStructureAssetsDebugBucket(env),
+							'structure-assets-debug'
+						),
+						cleanupExpiredExportArtifacts(
+							getFleetParticipationExportBucket(env),
+							'fleet-participation'
+						),
+					]).catch((error) =>
+						captureException(error as Error, { tags: { job: 'export-artifact-cleanup' } })
 					)
 				)
 			}
