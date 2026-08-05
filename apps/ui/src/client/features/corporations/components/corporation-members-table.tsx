@@ -19,11 +19,11 @@ import {
 } from 'lucide-react'
 import { useCallback, useState } from 'react'
 
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { EsiStatusBadge, getEsiStatusBadgeState } from '@/components/esi-status-badge'
+import { TableRefreshFrame } from '@/components/table-refresh-frame'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { EsiStatusBadge, getEsiStatusBadgeState } from '@/components/esi-status-badge'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select } from '@/components/ui/select'
@@ -35,6 +35,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { useMessage } from '@/hooks/useMessage'
 import { characterPortraitUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
@@ -49,18 +50,19 @@ import {
 import { myCorporationsApi } from '../api'
 import { EmeritusConfirmationDialog } from './emeritus-confirmation-dialog'
 
+import type { SetStateAction } from 'react'
+import type { HrRoleType } from '../../hr'
 import type {
 	CorporationMember,
 	CorporationMembersQuery,
 	CorporationMembersResponse,
 	CorporationMembersSortField,
 } from '../api'
-import type { HrRoleType } from '../../hr'
-import type { SetStateAction } from 'react'
 
 interface CorporationMembersTableProps {
 	members: CorporationMember[]
 	loading?: boolean
+	isRefreshing?: boolean
 	onMemberClick?: (member: CorporationMember) => void
 	showActions?: boolean
 	canManageHrRoles?: boolean
@@ -83,7 +85,9 @@ interface CorporationMembersTableProps {
 
 type SortField = CorporationMembersSortField
 
-export function getAuthStatusBadge(member: Pick<CorporationMember, 'hasAuthAccount' | 'hasValidToken'>): {
+export function getAuthStatusBadge(
+	member: Pick<CorporationMember, 'hasAuthAccount' | 'hasValidToken'>
+): {
 	variant: 'success' | 'destructive' | 'warning'
 	label: 'ESI Valid' | 'ESI Invalid' | 'ESI Unknown' | 'Unlinked'
 } {
@@ -154,6 +158,7 @@ function ActionsMenu({ items }: { items: ActionItem[] }) {
 export default function CorporationMembersTable({
 	members,
 	loading,
+	isRefreshing = false,
 	onMemberClick,
 	showActions = true,
 	canManageHrRoles = false,
@@ -446,185 +451,193 @@ export default function CorporationMembersTable({
 			</Card>
 
 			{/* Table */}
-			<Card>
-				{renderPaginationControls()}
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<SortableHead field="name" label="Member" />
-							<SortableHead field="role" label="Role" />
-							{canManageHrRoles && <SortableHead field="hrRole" label="HR Role" />}
-							<SortableHead field="auth" label="Auth Account" />
-							<SortableHead field="activity" label="Activity" />
-							<SortableHead field="lastLogin" label="Last Login" />
-							<SortableHead field="joinDate" label="Join Date" />
-							{showActions && (
-								<TableHead className="sticky right-0 z-20 bg-card text-right">
-									Actions
-								</TableHead>
-							)}
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{paginatedMembers.map((member) => (
-							<TableRow
-								key={member.characterId}
-								className={cn(
-									'hover:bg-muted/50 cursor-pointer',
-									!member.hasAuthAccount && 'bg-yellow-500/5'
+			<TableRefreshFrame isRefreshing={isRefreshing} refreshMessage="Loading members...">
+				<Card>
+					{renderPaginationControls()}
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<SortableHead field="name" label="Member" />
+								<SortableHead field="role" label="Role" />
+								{canManageHrRoles && <SortableHead field="hrRole" label="HR Role" />}
+								<SortableHead field="auth" label="Auth Account" />
+								<SortableHead field="activity" label="Activity" />
+								<SortableHead field="lastLogin" label="Last Login" />
+								<SortableHead field="joinDate" label="Join Date" />
+								{showActions && (
+									<TableHead className="sticky right-0 z-20 bg-card text-right">Actions</TableHead>
 								)}
-								onClick={() => onMemberClick?.(member)}
-							>
-								<TableCell>
-									<div className="flex items-center gap-3">
-										<img
-											src={characterPortraitUrl(member.characterId, 64)}
-											alt={`${member.characterName}'s portrait`}
-											loading="lazy"
-											onError={(e) => {
-												; (e.currentTarget as HTMLImageElement).src =
-													'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
-											}}
-											className="w-8 h-8 rounded-full border border-border"
-										/>
-										<div>
-											<div className="font-medium">{member.characterName}</div>
-											{member.locationSystem && (
-												<div className="text-xs text-muted-foreground">{member.locationSystem}</div>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{paginatedMembers.map((member) => (
+								<TableRow
+									key={member.characterId}
+									className={cn(
+										'hover:bg-muted/50 cursor-pointer',
+										!member.hasAuthAccount && 'bg-yellow-500/5'
+									)}
+									onClick={() => onMemberClick?.(member)}
+								>
+									<TableCell>
+										<div className="flex items-center gap-3">
+											<img
+												src={characterPortraitUrl(member.characterId, 64)}
+												alt={`${member.characterName}'s portrait`}
+												loading="lazy"
+												onError={(e) => {
+													;(e.currentTarget as HTMLImageElement).src =
+														'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
+												}}
+												className="w-8 h-8 rounded-full border border-border"
+											/>
+											<div>
+												<div className="font-medium">{member.characterName}</div>
+												{member.locationSystem && (
+													<div className="text-xs text-muted-foreground">
+														{member.locationSystem}
+													</div>
+												)}
+											</div>
+										</div>
+									</TableCell>
+									<TableCell>
+										<div className="flex gap-2 flex-wrap">
+											{member.role === 'CEO' && (
+												<Badge variant="destructive" icon={Star}>
+													CEO
+												</Badge>
+											)}
+											{member.role === 'Director' && (
+												<Badge variant="warning" icon={Shield}>
+													Director
+												</Badge>
+											)}
+											{member.role === 'Member' && (
+												<Badge variant="default" icon={User}>
+													Member
+												</Badge>
+											)}
+											{member.status === 'emeritus' && (
+												<Badge variant="special" icon={Heart}>
+													Emeritus
+												</Badge>
+											)}
+											{member.isBlacklisted && (
+												<Badge variant="destructive" icon={ShieldBan}>
+													Blocklisted
+												</Badge>
 											)}
 										</div>
-									</div>
-								</TableCell>
-								<TableCell>
-									<div className="flex gap-2 flex-wrap">
-										{member.role === 'CEO' && (
-											<Badge variant="destructive" icon={Star}>CEO</Badge>
-										)}
-										{member.role === 'Director' && (
-											<Badge variant="warning" icon={Shield}>Director</Badge>
-										)}
-										{member.role === 'Member' && (
-											<Badge variant="default" icon={User}>Member</Badge>
-										)}
-										{member.status === 'emeritus' && (
-											<Badge variant="special" icon={Heart}>Emeritus</Badge>
-										)}
-										{member.isBlacklisted && (
-											<Badge variant="destructive" icon={ShieldBan}>Blocklisted</Badge>
-										)}
-									</div>
-								</TableCell>
-								{canManageHrRoles && (
-									<TableCell>
-										{member.hrRole ? (
-											<HrRoleBadge role={member.hrRole} />
-										) : (
-											<span className="text-xs text-muted-foreground">None</span>
-										)}
 									</TableCell>
-								)}
-								<TableCell>
-									<div className="space-y-1">
-										<EsiStatusBadge
-											hasAuthAccount={member.hasAuthAccount}
-											hasValidToken={member.hasValidToken}
-											className="text-[10px]"
-										/>
-										{member.mainCharacterName && (
-											<div className="text-xs text-muted-foreground">
-												{member.mainCharacterName}
-											</div>
+									{canManageHrRoles && (
+										<TableCell>
+											{member.hrRole ? (
+												<HrRoleBadge role={member.hrRole} />
+											) : (
+												<span className="text-xs text-muted-foreground">None</span>
+											)}
+										</TableCell>
+									)}
+									<TableCell>
+										<div className="space-y-1">
+											<EsiStatusBadge
+												hasAuthAccount={member.hasAuthAccount}
+												hasValidToken={member.hasValidToken}
+												className="text-[10px]"
+											/>
+											{member.mainCharacterName && (
+												<div className="text-xs text-muted-foreground">
+													{member.mainCharacterName}
+												</div>
+											)}
+										</div>
+									</TableCell>
+									<TableCell>
+										{member.activityStatus === 'active' && <Badge variant="success">Active</Badge>}
+										{member.activityStatus === 'inactive' && (
+											<Badge variant="warning">Inactive</Badge>
 										)}
-									</div>
-								</TableCell>
-								<TableCell>
-									{member.activityStatus === 'active' && (
-										<Badge variant="success">Active</Badge>
+										{member.activityStatus === 'unknown' && <Badge variant="ghost">Unknown</Badge>}
+									</TableCell>
+									<TableCell>
+										<div className="text-sm">{formatDate(member.lastLogin)}</div>
+									</TableCell>
+									<TableCell>
+										<div className="text-sm">{formatDate(member.joinDate)}</div>
+									</TableCell>
+									{showActions && (
+										<TableCell
+											className="sticky right-0 z-10 bg-card text-right"
+											onClick={(e) => e.stopPropagation()}
+										>
+											<ActionsMenu
+												items={[
+													{
+														label: 'View Profile',
+														intent: 'muted',
+														onClick: () => onMemberClick?.(member),
+													},
+													{
+														label: 'Grant HR Role',
+														intent: 'confirm',
+														hidden: !canManageHrRoles || !member.hasAuthAccount || !!member.hrRole,
+														onClick: () => setGrantDialogMember(member),
+													},
+													{
+														label: 'Revoke HR Role',
+														intent: 'destructive',
+														hidden:
+															!canManageHrRoles ||
+															!member.hrRole ||
+															(!canRevokeHrAdmin && member.hrRole.role === 'hr_admin'),
+														onClick: () => setRevokeDialogMember(member),
+													},
+													{
+														label: 'Mark as Emeritus',
+														intent: 'secondary',
+														hidden:
+															!canManageEmeritus ||
+															!member.hasAuthAccount ||
+															member.role === 'CEO' ||
+															member.status === 'emeritus',
+														onClick: () => {
+															setEmeritusAction('mark')
+															setEmeritusDialogMember(member)
+														},
+													},
+													{
+														label: 'Remove Emeritus',
+														intent: 'secondary',
+														hidden: !canManageEmeritus || member.status !== 'emeritus',
+														onClick: () => {
+															setEmeritusAction('remove')
+															setEmeritusDialogMember(member)
+														},
+													},
+												]}
+											/>
+										</TableCell>
 									)}
-									{member.activityStatus === 'inactive' && (
-										<Badge variant="warning">Inactive</Badge>
-									)}
-									{member.activityStatus === 'unknown' && (
-										<Badge variant="ghost">Unknown</Badge>
-									)}
-								</TableCell>
-								<TableCell>
-									<div className="text-sm">{formatDate(member.lastLogin)}</div>
-								</TableCell>
-								<TableCell>
-									<div className="text-sm">{formatDate(member.joinDate)}</div>
-								</TableCell>
-								{showActions && (
-								<TableCell
-									className="sticky right-0 z-10 bg-card text-right"
-									onClick={(e) => e.stopPropagation()}
-								>
-									<ActionsMenu
-										items={[
-											{
-												label: 'View Profile',
-												intent: 'muted',
-												onClick: () => onMemberClick?.(member),
-											},
-											{
-												label: 'Grant HR Role',
-												intent: 'confirm',
-												hidden: !canManageHrRoles || !member.hasAuthAccount || !!member.hrRole,
-												onClick: () => setGrantDialogMember(member),
-											},
-											{
-												label: 'Revoke HR Role',
-												intent: 'destructive',
-												hidden:
-													!canManageHrRoles ||
-													!member.hrRole ||
-													(!canRevokeHrAdmin && member.hrRole.role === 'hr_admin'),
-												onClick: () => setRevokeDialogMember(member),
-											},
-											{
-												label: 'Mark as Emeritus',
-												intent: 'secondary',
-												hidden:
-													!canManageEmeritus ||
-													!member.hasAuthAccount ||
-													member.role === 'CEO' ||
-													member.status === 'emeritus',
-												onClick: () => {
-													setEmeritusAction('mark')
-													setEmeritusDialogMember(member)
-												},
-											},
-											{
-												label: 'Remove Emeritus',
-												intent: 'secondary',
-												hidden: !canManageEmeritus || member.status !== 'emeritus',
-												onClick: () => {
-													setEmeritusAction('remove')
-													setEmeritusDialogMember(member)
-												},
-											},
-										]}
-									/>
-								</TableCell>
+								</TableRow>
+							))}
+							{paginatedMembers.length === 0 && (
+								<TableRow>
+									<TableCell
+										colSpan={showActions ? (canManageHrRoles ? 8 : 7) : canManageHrRoles ? 7 : 6}
+										className="py-8 text-center text-sm text-muted-foreground"
+									>
+										No members found for the current filters.
+									</TableCell>
+								</TableRow>
 							)}
-							</TableRow>
-						))}
-						{paginatedMembers.length === 0 && (
-							<TableRow>
-								<TableCell
-									colSpan={showActions ? (canManageHrRoles ? 8 : 7) : (canManageHrRoles ? 7 : 6)}
-									className="py-8 text-center text-sm text-muted-foreground"
-								>
-									No members found for the current filters.
-								</TableCell>
-							</TableRow>
-						)}
-					</TableBody>
-				</Table>
+						</TableBody>
+					</Table>
 
-				{/* Pagination */}
-				{renderPaginationControls()}
-			</Card>
+					{/* Pagination */}
+					{renderPaginationControls()}
+				</Card>
+			</TableRefreshFrame>
 
 			{/* HR Role Dialogs */}
 			{canManageHrRoles && corporationId && (

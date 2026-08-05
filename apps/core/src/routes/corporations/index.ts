@@ -1,12 +1,21 @@
 import { Hono } from 'hono'
 
-import { and, asc, desc, eq, gte, ilike, inArray, lt, not, or, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, ilike, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { buildCsvLine } from '@repo/worker-utils'
 
 import { managedCorporations, userCharacters, users } from '../../db/schema'
 import { isNpcCorporationId } from '../../lib/corporation-id'
+import {
+	clearCorporationListCache,
+	clearCorporationStatusCache,
+	clearCorporationSyncStatusCache,
+	corporationDirectorStatusCache,
+	corporationHealthCache,
+	corporationListCache,
+	corporationSyncStatusCache,
+} from '../../lib/corporation-list-cache'
 import { getCachedUserPermissions } from '../../lib/groups-cache'
 import { requireAdmin, requireAuth } from '../../middleware/session'
 import { CoreRpcService } from '../../services/core-rpc.service'
@@ -35,7 +44,6 @@ const ACTIVE_MEMBER_THRESHOLD_MS = 7 * MS_PER_DAY
 const CACHE_TTL = 5 * 60 // 5 minutes in seconds
 const MEMBERS_ACCESS_DENIED_MESSAGE =
 	'Access denied. Corporation CEO, Director, site admin, HR role, or HR auditor permission required.'
-
 /**
  * Helper to get cache instance
  */
@@ -1148,14 +1156,12 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 			| undefined
 		const search = c.req.query('search')?.trim()
 
-		// Keep the NPC safety filter in SQL so the count and page contain the same rows.
+		// Corporation IDs are stored as text. Cast before applying the NPC range so
+		// valid player corporations such as 1018389948 are not excluded by a
+		// lexicographic comparison with 2000000.
+		const corporationId = managedCorporations.corporationId
 		const conditions = [
-			not(
-				and(
-					gte(managedCorporations.corporationId, '1000000'),
-					lt(managedCorporations.corporationId, '2000000')
-				)!
-			),
+			sql`(${corporationId}::bigint < 1000000 OR ${corporationId}::bigint >= 2000000)`,
 		]
 		if (corporationType === 'member') {
 			conditions.push(eq(managedCorporations.isMemberCorporation, true))
@@ -1183,25 +1189,82 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 			)
 		}
 		const whereCondition = and(...conditions)!
+		const cacheKey = [
+			corporationType ?? 'all',
+			search?.toLocaleLowerCase() ?? '',
+			page,
+			pageSize,
+		].join(':')
+		const response = await corporationListCache.getOrSet(cacheKey, async () => {
+			const countRows = await db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(managedCorporations)
+				.where(whereCondition)
+			const totalCount = countRows[0]?.count ?? 0
+			const corporations = await db.query.managedCorporations.findMany({
+				where: whereCondition,
+				// Keep the page order stable and alphabetical across requests.
+				orderBy: [asc(managedCorporations.name), asc(managedCorporations.corporationId)],
+				limit: pageSize,
+				offset: (page - 1) * pageSize,
+			})
 
-		const countRows = await db
-			.select({ count: sql<number>`count(*)::int` })
-			.from(managedCorporations)
-			.where(whereCondition)
-		const totalCount = countRows[0]?.count ?? 0
-		const corporations = await db.query.managedCorporations.findMany({
-			where: whereCondition,
-			orderBy: [asc(managedCorporations.name), asc(managedCorporations.corporationId)],
-			limit: pageSize,
-			offset: (page - 1) * pageSize,
+			return {
+				data: corporations.map(
+					({ lastSync, lastVerified, isVerified, healthyDirectorCount, ...corp }) => {
+						corporationDirectorStatusCache.set(corp.corporationId, {
+							lastVerified,
+							isVerified,
+							healthyDirectorCount,
+						})
+						corporationSyncStatusCache.set(corp.corporationId, { lastSync })
+						return corp
+					}
+				),
+				totalCount,
+			}
 		})
 
-		let healthyDirectorCounts: Record<string, number | null> = {}
-		if (corporations.length > 0) {
+		const corporationIds = response.data.map((corporation) => corporation.corporationId)
+		const missingDirectorStatusIds = corporationIds.filter(
+			(corporationId) => !corporationDirectorStatusCache.has(corporationId)
+		)
+		const missingSyncStatusIds = corporationIds.filter(
+			(corporationId) => !corporationSyncStatusCache.has(corporationId)
+		)
+		const missingStatusIds = [...new Set([...missingDirectorStatusIds, ...missingSyncStatusIds])]
+
+		if (missingStatusIds.length > 0) {
+			const statusRows = await db.query.managedCorporations.findMany({
+				where: inArray(managedCorporations.corporationId, missingStatusIds),
+				columns: {
+					corporationId: true,
+					lastSync: true,
+					lastVerified: true,
+					isVerified: true,
+					healthyDirectorCount: true,
+				},
+			})
+			for (const row of statusRows) {
+				corporationDirectorStatusCache.set(row.corporationId, {
+					lastVerified: row.lastVerified,
+					isVerified: row.isVerified,
+					healthyDirectorCount: row.healthyDirectorCount,
+				})
+				corporationSyncStatusCache.set(row.corporationId, { lastSync: row.lastSync })
+			}
+		}
+
+		const missingHealthIds = corporationIds.filter(
+			(corporationId) => !corporationHealthCache.has(corporationId)
+		)
+		if (missingHealthIds.length > 0) {
 			try {
-				healthyDirectorCounts = await c.env.EVE_CORPORATION_DATA_WORKER.getHealthyDirectorCounts(
-					corporations.map((corp) => corp.corporationId)
-				)
+				const healthyDirectorCounts =
+					await c.env.EVE_CORPORATION_DATA_WORKER.getHealthyDirectorCounts(missingHealthIds)
+				for (const corporationId of missingHealthIds) {
+					corporationHealthCache.set(corporationId, healthyDirectorCounts[corporationId] ?? null)
+				}
 			} catch (error) {
 				logger.warn('[Corporations] Failed to batch-enrich live director health', {
 					error: error instanceof Error ? error.message : String(error),
@@ -1209,18 +1272,27 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 			}
 		}
 
-		const enriched = corporations.map((corp) => {
-			const healthyDirectorCount = healthyDirectorCounts[corp.corporationId]
-			return typeof healthyDirectorCount === 'number' ? { ...corp, healthyDirectorCount } : corp
+		const data = response.data.map((corporation) => {
+			const directorStatus = corporationDirectorStatusCache.get(corporation.corporationId)
+			const syncStatus = corporationSyncStatusCache.get(corporation.corporationId)
+			const liveHealthyDirectorCount = corporationHealthCache.get(corporation.corporationId)
+			return {
+				...corporation,
+				...directorStatus,
+				...syncStatus,
+				healthyDirectorCount:
+					typeof liveHealthyDirectorCount === 'number'
+						? liveHealthyDirectorCount
+						: (directorStatus?.healthyDirectorCount ?? 0),
+			}
 		})
-
-		const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize)
+		const totalPages = response.totalCount === 0 ? 0 : Math.ceil(response.totalCount / pageSize)
 		return c.json({
-			data: enriched,
+			data,
 			pagination: {
 				page,
 				pageSize,
-				totalCount,
+				totalCount: response.totalCount,
 				totalPages,
 				hasNextPage: page < totalPages,
 				hasPreviousPage: page > 1 && totalPages > 0,
@@ -1518,6 +1590,7 @@ app.patch('/:corporationId/settings', requireAuth(), async (c) => {
 			.set(updateData)
 			.where(eq(managedCorporations.corporationId, corporationId))
 			.returning()
+		clearCorporationListCache()
 
 		logger.info('[Corporations] Settings updated', {
 			corporationId,
@@ -1599,6 +1672,7 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 				configuredBy: user.id,
 			})
 			.returning()
+		clearCorporationListCache()
 
 		// Configure the Durable Object
 		try {
@@ -1888,6 +1962,7 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 			})
 			.where(eq(managedCorporations.corporationId, corporationId))
 			.returning()
+		clearCorporationListCache()
 
 		// Update Durable Object if character assignment changed
 		if (assignedCharacterId && assignedCharacterName) {
@@ -1951,6 +2026,7 @@ app.delete('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 
 	try {
 		await db.delete(managedCorporations).where(eq(managedCorporations.corporationId, corporationId))
+		clearCorporationListCache()
 
 		return c.json({ success: true })
 	} catch (error) {
@@ -1991,6 +2067,7 @@ app.post('/:corporationId/verify', requireAuth(), requireAdmin(), async (c) => {
 				updatedAt: new Date(),
 			})
 			.where(eq(managedCorporations.corporationId, corporationId))
+		clearCorporationStatusCache(corporationId)
 
 		if (verification.hasAccess) {
 			logger.info('[Corporations] Corporation access verified', {
@@ -2103,6 +2180,7 @@ app.post('/:corporationId/fetch', requireAuth(), requireAdmin(), async (c) => {
 				updatedAt: new Date(),
 			})
 			.where(eq(managedCorporations.corporationId, corporationId))
+		clearCorporationStatusCache(corporationId)
 
 		logger.info('[Corporations] Fetch successful', { corporationId, category })
 		return c.json({ success: true, category })
@@ -3061,6 +3139,7 @@ app.post('/:corporationId/members/refresh', requireAuth(), async (c) => {
 				updatedAt: new Date(),
 			})
 			.where(eq(managedCorporations.corporationId, corporationId))
+		clearCorporationSyncStatusCache(corporationId)
 
 		logger.info('[Corporations] Members refresh completed', { corporationId, userId: user.id })
 		return c.json({ success: true })

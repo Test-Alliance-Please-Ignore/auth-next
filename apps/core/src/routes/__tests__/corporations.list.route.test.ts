@@ -173,4 +173,56 @@ describe('corporations list route', () => {
 		)
 		expect(env.EVE_CORPORATION_DATA_WORKER.getHealthyDirectorCounts).not.toHaveBeenCalled()
 	})
+
+	it('reuses cached page and per-corporation health data', async () => {
+		const findMany = vi.fn().mockResolvedValue([
+			{
+				corporationId: 'corp-cache-1',
+				name: 'Cached Corp',
+				ticker: 'CAC',
+				assignedCharacterId: null,
+				assignedCharacterName: null,
+				isActive: true,
+				includeInBackgroundRefresh: false,
+				includeInStructureAssetSync: false,
+				isMemberCorporation: true,
+				isAltCorp: false,
+				isSpecialPurpose: false,
+				isRecruiting: false,
+				shortDescription: null,
+				fullDescription: null,
+				lastSync: null,
+				lastVerified: null,
+				isVerified: false,
+				healthyDirectorCount: 1,
+				configuredBy: null,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			},
+		])
+		const db = {
+			query: { managedCorporations: { findMany } },
+			select: vi.fn(() => ({
+				from: vi.fn(() => ({
+					where: vi.fn().mockResolvedValue([{ count: 1 }]),
+				})),
+			})),
+		}
+		env.EVE_CORPORATION_DATA_WORKER.getHealthyDirectorCounts.mockResolvedValue({
+			'corp-cache-1': 4,
+		})
+
+		const app = createApp(makeUser(), db)
+		const firstResponse = await app.request('/api/corporations?search=cache-test', {}, env)
+		const secondResponse = await app.request('/api/corporations?search=cache-test', {}, env)
+
+		expect(firstResponse.status).toBe(200)
+		expect(secondResponse.status).toBe(200)
+		const secondBody = (await secondResponse.json()) as {
+			data: Array<{ healthyDirectorCount: number }>
+		}
+		expect(secondBody.data[0]?.healthyDirectorCount).toBe(4)
+		expect(findMany).toHaveBeenCalledTimes(1)
+		expect(env.EVE_CORPORATION_DATA_WORKER.getHealthyDirectorCounts).toHaveBeenCalledTimes(1)
+	})
 })

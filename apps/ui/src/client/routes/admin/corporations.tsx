@@ -56,25 +56,25 @@ export default function CorporationsPage() {
 	// Filter state
 	const [filters, setFilters] = useState<CorporationsFilters>({
 		corporationType: 'member',
+		search: undefined,
 		page: 1,
 		pageSize: 25,
 	})
 	const [searchQuery, setSearchQuery] = useState('')
-	const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
 
 	useEffect(() => {
 		const timer = setTimeout(() => {
-			setDebouncedSearchQuery(searchQuery.trim())
-			setFilters((current) => ({ ...current, page: 1 }))
+			const search = searchQuery.trim() || undefined
+			setFilters((current) => {
+				if (current.search === search && current.page === 1) return current
+				return { ...current, search, page: 1 }
+			})
 		}, 300)
 
 		return () => clearTimeout(timer)
 	}, [searchQuery])
 
-	const { data, isLoading, isFetching, error } = useCorporations({
-		...filters,
-		search: debouncedSearchQuery || undefined,
-	})
+	const { data, isLoading, isFetching, error } = useCorporations(filters)
 	const corporations = data?.data ?? []
 	const pagination = data?.pagination
 	const isInitialLoading = isLoading && !data
@@ -118,8 +118,12 @@ export default function CorporationsPage() {
 	// Clear all filters (reset to default)
 	const clearFilters = () => {
 		setSearchQuery('')
-		setDebouncedSearchQuery('')
-		setFilters({ corporationType: 'member', page: 1, pageSize: filters.pageSize ?? 25 })
+		setFilters({
+			corporationType: 'member',
+			search: undefined,
+			page: 1,
+			pageSize: filters.pageSize ?? 25,
+		})
 	}
 
 	const handlePageSizeChange = (pageSize: number) => {

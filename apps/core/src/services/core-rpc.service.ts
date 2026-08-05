@@ -1,7 +1,12 @@
 import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { discordServers, userCharacters, users } from '../db/schema'
+import {
+	clearCorporationDirectorHealthCache,
+	clearCorporationSyncStatusCache,
+} from '../lib/corporation-list-cache'
 import { validateAndSyncCharacterTokenValidityBatchTransitions } from '../lib/token-validity'
 import * as discordService from '../services/discord.service'
 import * as mumbleService from '../services/mumble.service'
@@ -22,7 +27,6 @@ import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { Env } from '../context'
 import type { DbClient, schema } from '../db'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Core RPC Service - Business logic for user/character management operations
@@ -369,14 +373,15 @@ export class CoreRpcService {
 		const tokenValidityByCharacterId = new Map<string, boolean | null>()
 		if (chars.length > 0) {
 			try {
-				const tokenValidityTransitions = await validateAndSyncCharacterTokenValidityBatchTransitions({
-					db: this.db,
-					tokenStore: eveTokenStore,
-					characters: chars.map((char) => ({
-						characterId: char.characterId,
-						hasValidToken: char.hasValidToken ?? null,
-					})),
-				})
+				const tokenValidityTransitions =
+					await validateAndSyncCharacterTokenValidityBatchTransitions({
+						db: this.db,
+						tokenStore: eveTokenStore,
+						characters: chars.map((char) => ({
+							characterId: char.characterId,
+							hasValidToken: char.hasValidToken ?? null,
+						})),
+					})
 				for (const transition of tokenValidityTransitions) {
 					tokenValidityByCharacterId.set(transition.characterId, transition.nextHasValidToken)
 				}
@@ -394,7 +399,8 @@ export class CoreRpcService {
 			allianceName: char.allianceName,
 			is_primary: char.is_primary,
 			linkedAt: char.linkedAt,
-			hasValidToken: tokenValidityByCharacterId.get(char.characterId) ?? (char.hasValidToken === true),
+			hasValidToken:
+				tokenValidityByCharacterId.get(char.characterId) ?? char.hasValidToken === true,
 			isBlacklisted: blacklistStatuses[char.characterId] || false,
 		}))
 
@@ -449,7 +455,9 @@ export class CoreRpcService {
 			refreshSucceeded: boolean
 		}>
 	> {
-		const normalizedCharacterIds = [...new Set(input.characterIds.map((id) => String(id).trim()))].filter(Boolean)
+		const normalizedCharacterIds = [
+			...new Set(input.characterIds.map((id) => String(id).trim())),
+		].filter(Boolean)
 		if (normalizedCharacterIds.length === 0) {
 			return []
 		}
@@ -705,10 +713,7 @@ export class CoreRpcService {
 		return characters.map((character) => character.characterId)
 	}
 
-	async listUsersWithActiveCharactersPage(input: {
-		limit: number
-		offset: number
-	}): Promise<{
+	async listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{
 		users: Array<{ userId: string; characterIds: string[] }>
 		totalCount: number
 	}> {
@@ -741,15 +746,15 @@ export class CoreRpcService {
 		}
 
 		const pageCharacters = await this.db.query.userCharacters.findMany({
-			where: and(
-				inArray(userCharacters.userId, userIds),
-				eq(userCharacters.isDeleted, false)
-			),
+			where: and(inArray(userCharacters.userId, userIds), eq(userCharacters.isDeleted, false)),
 			columns: {
 				userId: true,
 				characterId: true,
 			},
-			orderBy: (table, operators) => [operators.asc(table.userId), operators.asc(table.characterId)],
+			orderBy: (table, operators) => [
+				operators.asc(table.userId),
+				operators.asc(table.characterId),
+			],
 		})
 
 		const characterIdsByUserId = new Map<string, string[]>()
@@ -909,6 +914,7 @@ export class CoreRpcService {
 				updatedAt: now,
 			})
 			.where(eq(managedCorporations.corporationId, corporationId))
+		clearCorporationSyncStatusCache(corporationId)
 	}
 
 	async updateCorporationAuthHealth(
@@ -930,6 +936,7 @@ export class CoreRpcService {
 				updatedAt: new Date(),
 			})
 			.where(eq(managedCorporations.corporationId, corporationId))
+		clearCorporationDirectorHealthCache(corporationId)
 	}
 
 	/**

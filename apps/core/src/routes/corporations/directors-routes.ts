@@ -5,6 +5,10 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { managedCorporations, userCharacters } from '../../db/schema'
+import {
+	clearCorporationDirectorHealthCache,
+	clearCorporationListCache,
+} from '../../lib/corporation-list-cache'
 import { requireAdmin, requireAuth } from '../../middleware/session'
 
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -29,6 +33,7 @@ async function syncManagedCorporationDirectorHealth(
 			updatedAt: new Date(),
 		})
 		.where(eq(managedCorporations.corporationId, corporationId))
+	clearCorporationDirectorHealthCache(corporationId)
 
 	return healthyDirectorCount
 }
@@ -70,7 +75,16 @@ function toAdminUnhealthyReason(lastFailureReason: string | null | undefined): {
 		? missingRolesMatch[1].split('|').filter(Boolean)
 		: null
 
-	if (!step && !status && !path && !hint && !reasonCode && !detailCode && !requiredRoles && !missingRoles) {
+	if (
+		!step &&
+		!status &&
+		!path &&
+		!hint &&
+		!reasonCode &&
+		!detailCode &&
+		!requiredRoles &&
+		!missingRoles
+	) {
 		const lower = lastFailureReason.toLowerCase()
 		let summary = 'Director authentication failed'
 		if (lower.includes('no token')) {
@@ -207,6 +221,7 @@ app.post('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) =
 					updatedAt: new Date(),
 				})
 				.where(eq(managedCorporations.corporationId, corporationId))
+			clearCorporationListCache()
 		}
 
 		return c.json({ success: true, characterId, characterName, priority })

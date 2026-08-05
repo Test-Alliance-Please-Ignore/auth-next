@@ -25,6 +25,7 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
@@ -39,15 +40,14 @@ import { useHrRoles } from '../../hr'
 import { buildCorporationMembersExportUrl, myCorporationsApi } from '../api'
 import { CorporationUserSearchDialog } from '../components/corporation-user-search-dialog'
 import {
-	useCanAccessCorporation,
 	formatCorporationRoleLabel,
+	useCanAccessCorporation,
 	useCorporationManager,
 	useCorporationMembers,
 	useMyCorporation,
 } from '../hooks'
 
 import type { CorporationMember, CorporationMembersQuery } from '../api'
-import { Button } from '@/components/ui/button'
 
 // Lazy load the members table for code splitting
 const CorporationMembersTable = lazy(() => import('../components/corporation-members-table'))
@@ -99,6 +99,7 @@ export default function CorporationMembers() {
 	const {
 		data: membersResponse,
 		isLoading: membersLoading,
+		isFetching: membersFetching,
 		error,
 	} = useCorporationMembers(corporationId!, effectiveMembersQuery, { enabled: canAccess })
 
@@ -107,7 +108,8 @@ export default function CorporationMembers() {
 	const isHrAdmin = userRole === 'hr_admin'
 	const isHrOnly =
 		userRole === 'hr_admin' || userRole === 'hr_reviewer' || userRole === 'hr_viewer' || isAuditor
-	const isMemberCorporation = corporation?.isMemberCorporation ?? accessCorp?.isMemberCorporation ?? false
+	const isMemberCorporation =
+		corporation?.isMemberCorporation ?? accessCorp?.isMemberCorporation ?? false
 
 	// Can refresh data: CEO/Director/admin only
 	const canRefresh = isLeadership
@@ -119,8 +121,7 @@ export default function CorporationMembers() {
 	// Can manage HR roles: member corp only, with CEO/admin/hr_admin access
 	const canManageHrRoles = useMemo(() => {
 		return (
-			isMemberCorporation &&
-			(userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin')
+			isMemberCorporation && (userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin')
 		)
 	}, [isMemberCorporation, userRole])
 	const { data: hrRoles, isLoading: hrRolesLoading } = useHrRoles(corporationId!, {
@@ -141,10 +142,12 @@ export default function CorporationMembers() {
 	)
 
 	// Can manage emeritus status: site admins or member corporations only, CEO/site admin
-	const canManageEmeritus = user?.is_admin === true || (isMemberCorporation && (userRole === 'CEO' || userRole === 'admin'))
+	const canManageEmeritus =
+		user?.is_admin === true || (isMemberCorporation && (userRole === 'CEO' || userRole === 'admin'))
 
 	// Can access settings: site admins or member corporations only
-	const canAccessSettings = user?.is_admin === true || (isMemberCorporation && (isLeadership || isHrAdmin))
+	const canAccessSettings =
+		user?.is_admin === true || (isMemberCorporation && (isLeadership || isHrAdmin))
 	const canUseHrTools = isMemberCorporation
 
 	// Enhance members with HR role data
@@ -302,8 +305,8 @@ export default function CorporationMembers() {
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have permission to view members of this corporation. CEO, director, or
-							HR role access is required.
+							You don't have permission to view members of this corporation. CEO, director, or HR
+							role access is required.
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
@@ -381,13 +384,13 @@ export default function CorporationMembers() {
 							{corpName} Members
 						</h1>
 						<p className="text-muted-foreground mt-2">
-							View and manage all members of{' '}
-							{corpTicker ? `[${corpTicker}]` : 'this corporation'}
+							View and manage all members of {corpTicker ? `[${corpTicker}]` : 'this corporation'}
 							{corpAllianceName && ` • Alliance: ${corpAllianceName}`}
 						</p>
 						{userRole && (
 							<p className="text-sm text-muted-foreground mt-1">
-								Your role: <span className="font-medium">{formatCorporationRoleLabel(userRole)}</span>
+								Your role:{' '}
+								<span className="font-medium">{formatCorporationRoleLabel(userRole)}</span>
 							</p>
 						)}
 					</div>
@@ -472,8 +475,8 @@ export default function CorporationMembers() {
 										HR tools unavailable
 									</div>
 									<p className="text-sm text-muted-foreground">
-										{corpTypeLabel} corporations do not expose HR management tools. You can still review
-										member details and ESI coverage here.
+										{corpTypeLabel} corporations do not expose HR management tools. You can still
+										review member details and ESI coverage here.
 									</p>
 								</div>
 							</div>
@@ -498,7 +501,9 @@ export default function CorporationMembers() {
 										: 'bg-background/80 hover:border-success/50 hover:bg-background/95'
 								)}
 							>
-								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Full</div>
+								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+									Full
+								</div>
 								<div className="text-base font-bold text-success leading-none">
 									{esiCoverage.full}
 								</div>
@@ -517,7 +522,9 @@ export default function CorporationMembers() {
 										: 'bg-background/80 hover:border-warning/50 hover:bg-background/95'
 								)}
 							>
-								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Partial</div>
+								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+									Partial
+								</div>
 								<div className="text-base font-bold text-warning leading-none">
 									{esiCoverage.partial}
 								</div>
@@ -536,7 +543,9 @@ export default function CorporationMembers() {
 										: 'bg-background/80 hover:border-destructive/50 hover:bg-background/95'
 								)}
 							>
-								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">None</div>
+								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+									None
+								</div>
 								<div className="text-base font-bold text-destructive leading-none">
 									{esiCoverage.none}
 								</div>
@@ -555,7 +564,9 @@ export default function CorporationMembers() {
 										: 'bg-background/80 hover:border-muted-foreground/50 hover:bg-background/95'
 								)}
 							>
-								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">Unlinked</div>
+								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+									Unlinked
+								</div>
 								<div className="text-base font-bold text-muted-foreground leading-none">
 									{esiCoverage.unlinked}
 								</div>
@@ -578,13 +589,14 @@ export default function CorporationMembers() {
 					</Card>
 				}
 			>
-					<CorporationMembersTable
-						members={membersWithHrRoles ?? []}
-						loading={membersLoading && !membersResponse}
-						onMemberClick={handleMemberClick}
-						showActions={true}
-						canManageHrRoles={canManageHrRoles}
-						grantableHrRoles={[...grantableHrRoles]}
+				<CorporationMembersTable
+					members={membersWithHrRoles ?? []}
+					loading={membersLoading && !membersResponse}
+					isRefreshing={membersFetching && Boolean(membersResponse)}
+					onMemberClick={handleMemberClick}
+					showActions={true}
+					canManageHrRoles={canManageHrRoles}
+					grantableHrRoles={[...grantableHrRoles]}
 					canRevokeHrAdmin={canRevokeHrAdmin}
 					canManageEmeritus={canManageEmeritus}
 					corporationId={corporationId!}
@@ -602,7 +614,6 @@ export default function CorporationMembers() {
 					onOpenChange={setIsUserSearchOpen}
 				/>
 			)}
-
 		</Container>
 	)
 }
