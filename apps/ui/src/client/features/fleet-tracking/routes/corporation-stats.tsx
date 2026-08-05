@@ -1,4 +1,5 @@
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Download } from 'lucide-react'
+import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -8,6 +9,8 @@ import { PageHeader } from '@/components/ui/page-header'
 import { useCorporationAccess } from '@/features/corporations'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+
+import { CorporationParticipationExportDialog } from '../components/corporation-participation-export-dialog'
 import { RankingList } from '../components/ranking-list'
 import { SessionStatsGrid } from '../components/session-stats-grid'
 import { ShipDistributionChart } from '../components/ship-distribution-chart'
@@ -25,11 +28,14 @@ export default function CorporationStats() {
 		(corp) => corp.corporationId === corpId && corp.isMemberCorporation
 	)
 	const canView = canViewAll || !!memberCorporation
+	const [exportOpen, setExportOpen] = useState(false)
 
 	const { data, isLoading } = useCorporationStats(canView ? corpId : undefined, range, {
 		enabled: canView,
 	})
-	usePageTitle(data?.corporationName ? `${data.corporationName} — Corporation Stats` : 'Corporation Stats')
+	usePageTitle(
+		data?.corporationName ? `${data.corporationName} — Corporation Stats` : 'Corporation Stats'
+	)
 
 	if (!corpId) return <Navigate to="/fleet-tracking/stats" replace />
 
@@ -63,13 +69,24 @@ export default function CorporationStats() {
 			<PageHeader
 				title={data?.corporationName ?? 'Corporation Stats'}
 				action={
-					<Button asChild variant="ghost" size="sm">
-						<Link to="/fleet-tracking/stats">
-							<ArrowLeft className="h-4 w-4" />
-							Stats
-						</Link>
-					</Button>
+					<div className="flex items-center gap-2">
+						<Button size="sm" onClick={() => setExportOpen(true)}>
+							<Download className="h-4 w-4" />
+							Export CSV
+						</Button>
+						<Button asChild variant="ghost" size="sm">
+							<Link to="/fleet-tracking/stats">
+								<ArrowLeft className="h-4 w-4" />
+								Stats
+							</Link>
+						</Button>
+					</div>
 				}
+			/>
+			<CorporationParticipationExportDialog
+				corporationId={corpId}
+				open={exportOpen}
+				onOpenChange={setExportOpen}
 			/>
 			<div className="mb-6 flex items-start justify-end gap-4 flex-wrap">
 				<StatsRangePicker />

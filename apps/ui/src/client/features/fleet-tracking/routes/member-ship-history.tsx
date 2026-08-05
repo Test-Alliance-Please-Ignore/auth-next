@@ -7,8 +7,16 @@ import { Container } from '@/components/ui/container'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
+
 import { useMemberShipHistory, useTrackingSession } from '../hooks'
 import { formatDurationBetween } from '../utils/format'
 
@@ -49,7 +57,7 @@ export default function MemberShipHistory() {
 				<p className="text-sm pt-2">
 					Time in fleet: <span className="font-medium">{formatDuration(totalMs)}</span>
 					{' • '}
-					Ships flown: <span className="font-medium">{rows.length}</span>
+					Ships flown: <span className="font-medium">{data?.shipsFlown ?? 0}</span>
 				</p>
 			</div>
 
@@ -76,11 +84,11 @@ export default function MemberShipHistory() {
 										<TableCell>{r.shipTypeName ?? `type #${r.shipTypeId}`}</TableCell>
 										<TableCell>
 											{r.systemName ?? `system #${r.solarSystemId}`}
-											{r.stationId
-												? ` / ${r.stationName ?? `station #${r.stationId}`}`
-												: ''}
+											{r.stationId ? ` / ${r.stationName ?? `station #${r.stationId}`}` : ''}
 										</TableCell>
-										<TableCell><EveTimeDisplay dateStr={r.startedAt} /></TableCell>
+										<TableCell>
+											<EveTimeDisplay dateStr={r.startedAt} />
+										</TableCell>
 										<TableCell>
 											{r.endedAt ? <EveTimeDisplay dateStr={r.endedAt} /> : 'current'}
 										</TableCell>
@@ -94,8 +102,8 @@ export default function MemberShipHistory() {
 			</Card>
 
 			<p className="text-xs text-muted-foreground mt-3">
-				Note: location shown is where the pilot was when they boarded each ship. Movement within
-				the same ship is not tracked.
+				Note: location shown is where the pilot was when they boarded each ship. Movement within the
+				same ship is not tracked.
 			</p>
 		</Container>
 	)

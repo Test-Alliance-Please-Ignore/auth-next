@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router'
 
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-import type { StatsRange } from '../types'
+import type { StatsRangeInput } from '../types'
 
 export type RangePreset = '7d' | '30d' | '90d' | '1y' | 'all'
 
@@ -19,7 +19,10 @@ const PRESETS: Array<{ key: RangePreset; label: string; days: number | null }> =
  * Compute the effective from/to from URL search params.
  * If neither is set, defaults to 30 days back.
  */
-export function useRangeFromSearchParams(): { range: Partial<StatsRange>; activePreset: RangePreset | 'custom' } {
+export function useRangeFromSearchParams(): {
+	range: StatsRangeInput
+	activePreset: RangePreset | 'custom'
+} {
 	const [params] = useSearchParams()
 	const from = params.get('from') ?? undefined
 	const to = params.get('to') ?? undefined
@@ -30,7 +33,7 @@ export function useRangeFromSearchParams(): { range: Partial<StatsRange>; active
 		if (preset) {
 			const p = PRESETS.find((x) => x.key === preset)
 			if (p) {
-				if (p.days === null) return { range: { from: undefined, to: undefined }, activePreset: 'all' }
+				if (p.days === null) return { range: { allTime: true }, activePreset: 'all' }
 				const start = new Date(now.getTime() - p.days * 24 * 60 * 60 * 1000)
 				return {
 					range: { from: start.toISOString(), to: now.toISOString() },

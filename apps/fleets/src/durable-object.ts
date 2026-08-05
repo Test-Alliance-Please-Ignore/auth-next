@@ -13,6 +13,7 @@ import {
 	isNull,
 	lt,
 	lte,
+	notInArray,
 	or,
 	sql,
 } from '@repo/db-utils'
@@ -23,6 +24,7 @@ import {
 	esiGetCharacterFleetInformationSchema,
 	esiGetFleetInformationSchema,
 	esiGetFleetMembersSchema,
+	FLEET_NON_SHIP_TYPE_IDS,
 	StartTrackingSessionError,
 } from '@repo/fleets'
 import { logger } from '@repo/hono-helpers'
@@ -45,6 +47,7 @@ import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { EveCharacterId } from '@repo/eve-types'
 import type {
+	CharacterFleetSessionsPage,
 	CharacterRecentSessionRow,
 	CharacterStatsResult,
 	CorpRollupRow,
@@ -56,6 +59,9 @@ import type {
 	FleetJoinResult,
 	FleetMonitor,
 	FleetMonitorState,
+	FleetParticipationExportMonth,
+	FleetParticipationExportPage,
+	FleetParticipationExportPageRequest,
 	Fleets,
 	KickTrackingSessionMemberResult,
 	QuickJoinCreationResult,
@@ -76,11 +82,19 @@ import type {
 	TrackingSession,
 	TrackingSessionListFilter,
 	TrackingSessionListResult,
+	UserFleetSessionsPage,
 } from '@repo/fleets'
 import type { Universe } from '@repo/universe'
 import type { Env } from './context'
 
 const LIVE_FLEET_ESI_OPTIONS = { cacheMode: 'no-store' } as const
+const MAX_FLEET_DURATION_MINUTES = 24 * 60
+const MAX_FLEET_DURATION_MS = MAX_FLEET_DURATION_MINUTES * 60_000
+const FLEET_NON_SHIP_TYPE_IDS_SQL = sql.join(
+	FLEET_NON_SHIP_TYPE_IDS.map((typeId) => sql`${typeId}`),
+	sql`, `
+)
+const FLEET_NON_SHIP_TYPE_ID_SET = new Set<number>(FLEET_NON_SHIP_TYPE_IDS)
 
 /**
  * Fleets Durable Object
@@ -170,9 +184,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		})
 	}
 
-	private async getMonitorStateForFleet(
-		fleetId: string
-	): Promise<FleetMonitorState | null> {
+	private async getMonitorStateForFleet(fleetId: string): Promise<FleetMonitorState | null> {
 		try {
 			const monitorStub = getStub<FleetMonitor>(this.env.FLEET_MONITOR, `fleet-${fleetId}`)
 			const state = await monitorStub.getMonitorState()
@@ -1618,14 +1630,20 @@ export class FleetsDO extends DurableObject implements Fleets {
 				characterId: fleetTrackingSessions.characterId,
 				startedAt: fleetTrackingSessions.startedAt,
 				endedAt: fleetTrackingSessions.endedAt,
+				summaryEndedAt: fleetSummaries.endedAt,
 			})
 			.from(fleetTrackingSessions)
+			.leftJoin(fleetSummaries, eq(fleetTrackingSessions.id, fleetSummaries.trackingSessionId))
 			.where(
 				and(
 					lt(fleetTrackingSessions.startedAt, to),
 					or(
-						and(eq(fleetTrackingSessions.status, 'active'), isNull(fleetTrackingSessions.endedAt)),
-						and(isNotNull(fleetTrackingSessions.endedAt), gt(fleetTrackingSessions.endedAt, from))
+						and(
+							eq(fleetTrackingSessions.status, 'active'),
+							isNull(fleetTrackingSessions.endedAt),
+							isNull(fleetSummaries.endedAt)
+						),
+						gt(sql`coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt})`, from)
 					)
 				)
 			)
@@ -1737,7 +1755,11 @@ export class FleetsDO extends DurableObject implements Fleets {
 			let currentBossId = session.characterId
 			let cursor = session.startedAt.getTime()
 			const windowStart = from.getTime()
-			const windowEnd = Math.min(session.endedAt?.getTime() ?? to.getTime(), to.getTime())
+			const windowEnd = Math.min(
+				session.summaryEndedAt?.getTime() ?? session.endedAt?.getTime() ?? to.getTime(),
+				to.getTime(),
+				session.startedAt.getTime() + MAX_FLEET_DURATION_MS
+			)
 
 			for (const event of timeline) {
 				const eventTime = Math.max(event.observedAt.getTime(), session.startedAt.getTime())
@@ -1778,7 +1800,10 @@ export class FleetsDO extends DurableObject implements Fleets {
 		return {
 			startedAt: row.startedAt.toISOString(),
 			endedAt: row.endedAt.toISOString(),
-			durationMinutes: row.durationMinutes,
+			durationMinutes:
+				row.durationMinutes == null
+					? null
+					: Math.min(row.durationMinutes, MAX_FLEET_DURATION_MINUTES),
 			peakMemberCount: row.peakMemberCount,
 			finalMemberCount: row.finalMemberCount,
 			motd: row.motd,
@@ -2027,6 +2052,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				const segDur = segEnd - seg.startedAt.getTime()
 				if (segDur > 0) totalMs += segDur
 			}
+			totalMs = Math.min(totalMs, MAX_FLEET_DURATION_MS)
 
 			// Did the pilot leave before session end?
 			// - If session is active: pilot left iff last segment is closed (endedAt set).
@@ -2054,7 +2080,11 @@ export class FleetsDO extends DurableObject implements Fleets {
 				}
 			}
 
-			const distinctShips = new Set(segments.map((s) => s.shipTypeId)).size
+			const distinctShips = new Set(
+				segments
+					.filter((segment) => !FLEET_NON_SHIP_TYPE_ID_SET.has(segment.shipTypeId))
+					.map((segment) => segment.shipTypeId)
+			).size
 
 			result.push({
 				characterId,
@@ -2195,10 +2225,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const sessionTotals = await this.db
 			.select({
 				sessions: sql<number>`count(*)::int`,
-				avgDuration: sql<number | null>`avg(${fleetSummaries.durationMinutes})::float`,
+				avgDuration: sql<
+					number | null
+				>`avg(least(${fleetSummaries.durationMinutes}, ${MAX_FLEET_DURATION_MINUTES}))::float`,
 				avgPeak: sql<number | null>`avg(${fleetSummaries.peakMemberCount})::float`,
 				maxPeak: sql<number | null>`max(${fleetSummaries.peakMemberCount})::int`,
-				totalMinutes: sql<number>`coalesce(sum(${fleetSummaries.durationMinutes}), 0)::int`,
+				totalMinutes: sql<number>`coalesce(sum(least(${fleetSummaries.durationMinutes}, ${MAX_FLEET_DURATION_MINUTES})), 0)::int`,
 			})
 			.from(fleetSummaries)
 			.where(and(gte(fleetSummaries.startedAt, from), lt(fleetSummaries.startedAt, to)))
@@ -2257,15 +2289,36 @@ export class FleetsDO extends DurableObject implements Fleets {
 				minutesInFleet: sql<number>`
 					sum(
 						extract(epoch from
-							least(coalesce(${fleetMemberShipEvents.endedAt}, ${to.toISOString()}::timestamp), ${to.toISOString()}::timestamp)
-							- greatest(${fleetMemberShipEvents.startedAt}, ${from.toISOString()}::timestamp)
+							least(
+								least(
+									coalesce(${fleetMemberShipEvents.endedAt}, ${to.toISOString()}::timestamp),
+									coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}, ${to.toISOString()}::timestamp),
+									${to.toISOString()}::timestamp,
+									${fleetTrackingSessions.startedAt} + interval '24 hours'
+								),
+								${to.toISOString()}::timestamp
+							) - greatest(
+								${fleetMemberShipEvents.startedAt},
+								${fleetTrackingSessions.startedAt},
+								${from.toISOString()}::timestamp
+							)
 						) / 60
 					)::int
 				`,
 			})
 			.from(fleetMemberShipEvents)
+			.innerJoin(
+				fleetTrackingSessions,
+				eq(fleetMemberShipEvents.trackingSessionId, fleetTrackingSessions.id)
+			)
+			.leftJoin(
+				fleetSummaries,
+				eq(fleetMemberShipEvents.trackingSessionId, fleetSummaries.trackingSessionId)
+			)
 			.where(
 				and(
+					lt(fleetTrackingSessions.startedAt, to),
+					sql`(coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}) IS NULL OR coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}) > ${from})`,
 					lt(fleetMemberShipEvents.startedAt, to),
 					sql`(${fleetMemberShipEvents.endedAt} IS NULL OR ${fleetMemberShipEvents.endedAt} > ${from})`
 				)
@@ -2273,7 +2326,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 			.groupBy(fleetMemberShipEvents.characterId)
 			.orderBy(
 				desc(
-					sql`sum(extract(epoch from least(coalesce(${fleetMemberShipEvents.endedAt}, ${to.toISOString()}::timestamp), ${to.toISOString()}::timestamp) - greatest(${fleetMemberShipEvents.startedAt}, ${from.toISOString()}::timestamp)))`
+					sql`sum(extract(epoch from least(
+							coalesce(${fleetMemberShipEvents.endedAt}, ${to.toISOString()}::timestamp),
+							coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}, ${to.toISOString()}::timestamp),
+							${to.toISOString()}::timestamp,
+							${fleetTrackingSessions.startedAt} + interval '24 hours'
+						) - greatest(${fleetMemberShipEvents.startedAt}, ${fleetTrackingSessions.startedAt}, ${from.toISOString()}::timestamp)))`
 				)
 			)
 			.limit(10)
@@ -2290,17 +2348,39 @@ export class FleetsDO extends DurableObject implements Fleets {
 				totalMinutes: sql<number>`
 					sum(
 						extract(epoch from
-							least(coalesce(${fleetMemberShipEvents.endedAt}, ${toIsoOverview}::timestamp), ${toIsoOverview}::timestamp)
-							- greatest(${fleetMemberShipEvents.startedAt}, ${fromIsoOverview}::timestamp)
+							least(
+								least(
+									coalesce(${fleetMemberShipEvents.endedAt}, ${toIsoOverview}::timestamp),
+									coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}, ${toIsoOverview}::timestamp),
+									${toIsoOverview}::timestamp,
+									${fleetTrackingSessions.startedAt} + interval '24 hours'
+								),
+								${toIsoOverview}::timestamp
+							) - greatest(
+								${fleetMemberShipEvents.startedAt},
+								${fleetTrackingSessions.startedAt},
+								${fromIsoOverview}::timestamp
+							)
 						) / 60
 					)::int
 				`,
 			})
 			.from(fleetMemberShipEvents)
+			.innerJoin(
+				fleetTrackingSessions,
+				eq(fleetMemberShipEvents.trackingSessionId, fleetTrackingSessions.id)
+			)
+			.leftJoin(
+				fleetSummaries,
+				eq(fleetMemberShipEvents.trackingSessionId, fleetSummaries.trackingSessionId)
+			)
 			.where(
 				and(
+					lt(fleetTrackingSessions.startedAt, to),
+					sql`(coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}) IS NULL OR coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}) > ${from})`,
 					lt(fleetMemberShipEvents.startedAt, to),
-					sql`(${fleetMemberShipEvents.endedAt} IS NULL OR ${fleetMemberShipEvents.endedAt} > ${from})`
+					sql`(${fleetMemberShipEvents.endedAt} IS NULL OR ${fleetMemberShipEvents.endedAt} > ${from})`,
+					notInArray(fleetMemberShipEvents.shipTypeId, [...FLEET_NON_SHIP_TYPE_IDS])
 				)
 			)
 			.groupBy(fleetMemberShipEvents.shipTypeId)
@@ -2308,8 +2388,19 @@ export class FleetsDO extends DurableObject implements Fleets {
 				desc(sql`
 					sum(
 						extract(epoch from
-							least(coalesce(${fleetMemberShipEvents.endedAt}, ${toIsoOverview}::timestamp), ${toIsoOverview}::timestamp)
-							- greatest(${fleetMemberShipEvents.startedAt}, ${fromIsoOverview}::timestamp)
+							least(
+								least(
+									coalesce(${fleetMemberShipEvents.endedAt}, ${toIsoOverview}::timestamp),
+									coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}, ${toIsoOverview}::timestamp),
+									${toIsoOverview}::timestamp,
+									${fleetTrackingSessions.startedAt} + interval '24 hours'
+								),
+								${toIsoOverview}::timestamp
+							) - greatest(
+								${fleetMemberShipEvents.startedAt},
+								${fleetTrackingSessions.startedAt},
+								${fromIsoOverview}::timestamp
+							)
 						)
 					)
 				`)
@@ -2379,6 +2470,190 @@ export class FleetsDO extends DurableObject implements Fleets {
 		)
 	}
 
+	async getCharacterFleetSessionsPage(args: {
+		characterId: string
+		range: StatsRange
+		limit?: number
+		offset?: number
+	}): Promise<CharacterFleetSessionsPage> {
+		const limit = Math.min(Math.max(args.limit ?? 25, 1), 100)
+		const offset = Math.max(args.offset ?? 0, 0)
+		const from = new Date(args.range.from)
+		const to = new Date(args.range.to)
+		if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) {
+			throw new Error('Invalid character fleet sessions range')
+		}
+
+		const fromIso = from.toISOString()
+		const toIso = to.toISOString()
+		const bossAttributionBySession = await this.getFleetBossAttributionBySession(args.range)
+		const rows = await this.db
+			.select({
+				characterId: fleetMemberShipEvents.characterId,
+				sessionId: fleetMemberShipEvents.trackingSessionId,
+				sessionName: fleetTrackingSessions.name,
+				fleetId: fleetTrackingSessions.fleetId,
+				startedAt: fleetTrackingSessions.startedAt,
+				endedAt: fleetTrackingSessions.endedAt,
+				totalMinutes: sql<number>`
+						least(sum(
+							greatest(0, extract(epoch from
+								least(
+									coalesce(${fleetMemberShipEvents.endedAt}, ${toIso}::timestamp),
+									coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}, ${toIso}::timestamp),
+									${toIso}::timestamp,
+									${fleetTrackingSessions.startedAt} + interval '24 hours'
+							) - greatest(
+								${fleetMemberShipEvents.startedAt},
+								${fleetTrackingSessions.startedAt},
+								${fromIso}::timestamp
+							)) / 60)
+						), ${MAX_FLEET_DURATION_MINUTES})::int
+				`,
+				shipsFlown: sql<number>`count(distinct case when ${fleetMemberShipEvents.shipTypeId} not in (${FLEET_NON_SHIP_TYPE_IDS_SQL}) then ${fleetMemberShipEvents.shipTypeId} end)::int`,
+				total: sql<number>`count(*) over()::int`,
+			})
+			.from(fleetMemberShipEvents)
+			.innerJoin(
+				fleetTrackingSessions,
+				eq(fleetMemberShipEvents.trackingSessionId, fleetTrackingSessions.id)
+			)
+			.leftJoin(
+				fleetSummaries,
+				eq(fleetMemberShipEvents.trackingSessionId, fleetSummaries.trackingSessionId)
+			)
+			.where(
+				and(
+					eq(fleetMemberShipEvents.characterId, args.characterId),
+					lt(fleetTrackingSessions.startedAt, to),
+					sql`(coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}) IS NULL OR coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}) > ${from})`,
+					lt(fleetMemberShipEvents.startedAt, to),
+					sql`(${fleetMemberShipEvents.endedAt} IS NULL OR ${fleetMemberShipEvents.endedAt} > ${from})`
+				)
+			)
+			.groupBy(
+				fleetMemberShipEvents.characterId,
+				fleetMemberShipEvents.trackingSessionId,
+				fleetTrackingSessions.id,
+				fleetTrackingSessions.name,
+				fleetTrackingSessions.fleetId,
+				fleetTrackingSessions.startedAt,
+				fleetTrackingSessions.endedAt
+			)
+			.orderBy(desc(fleetTrackingSessions.startedAt), desc(fleetTrackingSessions.id))
+			.limit(limit)
+			.offset(offset)
+
+		return {
+			total: rows[0]?.total ?? 0,
+			items: rows.map((row) => ({
+				sessionId: row.sessionId,
+				sessionName: row.sessionName,
+				fleetId: row.fleetId,
+				wasFC:
+					(bossAttributionBySession.get(row.sessionId)?.get(args.characterId)?.minutes ?? 0) > 0,
+				startedAt: row.startedAt.toISOString(),
+				endedAt: row.endedAt ? row.endedAt.toISOString() : null,
+				totalMinutes: row.totalMinutes ?? 0,
+				shipsFlown: row.shipsFlown,
+			})),
+		}
+	}
+
+	async getUserFleetSessionsPage(args: {
+		characterIds: string[]
+		range: StatsRange
+		limit?: number
+		offset?: number
+	}): Promise<UserFleetSessionsPage> {
+		const characterIds = Array.from(new Set(args.characterIds))
+		if (characterIds.length === 0) return { items: [], total: 0 }
+
+		const limit = Math.min(Math.max(args.limit ?? 25, 1), 100)
+		const offset = Math.max(args.offset ?? 0, 0)
+		const from = new Date(args.range.from)
+		const to = new Date(args.range.to)
+		if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) {
+			throw new Error('Invalid user fleet sessions range')
+		}
+
+		const fromIso = from.toISOString()
+		const toIso = to.toISOString()
+		const bossAttributionBySession = await this.getFleetBossAttributionBySession(args.range)
+		const rows = await this.db
+			.select({
+				characterId: fleetMemberShipEvents.characterId,
+				sessionId: fleetMemberShipEvents.trackingSessionId,
+				sessionName: fleetTrackingSessions.name,
+				fleetId: fleetTrackingSessions.fleetId,
+				startedAt: fleetTrackingSessions.startedAt,
+				endedAt: fleetTrackingSessions.endedAt,
+				totalMinutes: sql<number>`
+					least(sum(
+						greatest(0, extract(epoch from
+							least(
+									coalesce(${fleetMemberShipEvents.endedAt}, ${toIso}::timestamp),
+									coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}, ${toIso}::timestamp),
+									${toIso}::timestamp,
+									${fleetTrackingSessions.startedAt} + interval '24 hours'
+							) - greatest(
+								${fleetMemberShipEvents.startedAt},
+								${fleetTrackingSessions.startedAt},
+								${fromIso}::timestamp
+						)) / 60)
+					), ${MAX_FLEET_DURATION_MINUTES})::int
+				`,
+				shipsFlown: sql<number>`count(distinct case when ${fleetMemberShipEvents.shipTypeId} not in (${FLEET_NON_SHIP_TYPE_IDS_SQL}) then ${fleetMemberShipEvents.shipTypeId} end)::int`,
+				total: sql<number>`count(*) over()::int`,
+			})
+			.from(fleetMemberShipEvents)
+			.innerJoin(
+				fleetTrackingSessions,
+				eq(fleetMemberShipEvents.trackingSessionId, fleetTrackingSessions.id)
+			)
+			.leftJoin(
+				fleetSummaries,
+				eq(fleetMemberShipEvents.trackingSessionId, fleetSummaries.trackingSessionId)
+			)
+			.where(
+				and(
+					inArray(fleetMemberShipEvents.characterId, characterIds),
+					lt(fleetTrackingSessions.startedAt, to),
+					sql`(coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}) IS NULL OR coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}) > ${from})`,
+					lt(fleetMemberShipEvents.startedAt, to),
+					sql`(${fleetMemberShipEvents.endedAt} IS NULL OR ${fleetMemberShipEvents.endedAt} > ${from})`
+				)
+			)
+			.groupBy(
+				fleetMemberShipEvents.characterId,
+				fleetMemberShipEvents.trackingSessionId,
+				fleetTrackingSessions.id,
+				fleetTrackingSessions.name,
+				fleetTrackingSessions.fleetId,
+				fleetTrackingSessions.startedAt,
+				fleetTrackingSessions.endedAt
+			)
+			.orderBy(desc(fleetTrackingSessions.startedAt), desc(fleetTrackingSessions.id))
+			.limit(limit)
+			.offset(offset)
+
+		return {
+			total: rows[0]?.total ?? 0,
+			items: rows.map((row) => ({
+				characterId: row.characterId,
+				sessionId: row.sessionId,
+				sessionName: row.sessionName,
+				fleetId: row.fleetId,
+				wasFC:
+					(bossAttributionBySession.get(row.sessionId)?.get(row.characterId)?.minutes ?? 0) > 0,
+				startedAt: row.startedAt.toISOString(),
+				endedAt: row.endedAt ? row.endedAt.toISOString() : null,
+				totalMinutes: row.totalMinutes ?? 0,
+				shipsFlown: row.shipsFlown,
+			})),
+		}
+	}
+
 	/**
 	 * Stats for a batch of character IDs within the window.
 	 * Used by user-level and corp-level rollups.
@@ -2412,28 +2687,49 @@ export class FleetsDO extends DurableObject implements Fleets {
 			)
 			.groupBy(fleetMemberHistory.characterId)
 
-		// Minutes-in-fleet per character (clamped to window)
-		const minutesRows = await this.db
-			.select({
-				characterId: fleetMemberShipEvents.characterId,
-				minutes: sql<number>`
-					sum(
-						extract(epoch from
-							least(coalesce(${fleetMemberShipEvents.endedAt}, ${toIso}::timestamp), ${toIso}::timestamp)
-							- greatest(${fleetMemberShipEvents.startedAt}, ${fromIso}::timestamp)
-						) / 60
-					)::int
-				`,
-			})
-			.from(fleetMemberShipEvents)
-			.where(
-				and(
-					inArray(fleetMemberShipEvents.characterId, characterIds),
-					lt(fleetMemberShipEvents.startedAt, to),
-					sql`(${fleetMemberShipEvents.endedAt} IS NULL OR ${fleetMemberShipEvents.endedAt} > ${from})`
-				)
+		// Minutes-in-fleet per character (clamped to the report window and the
+		// owning session). If an individual ship interval was not closed, the
+		// enclosing tracking session's end is the authoritative fallback.
+		const minutesRowsResult = await this.db.execute<{
+			character_id: string
+			minutes: number
+		}>(sql`
+			with per_session as (
+				select
+					se.character_id,
+					se.tracking_session_id,
+						least(sum(greatest(0, extract(epoch from
+							least(
+								coalesce(se.ended_at, ${toIso}::timestamp),
+								coalesce(fs.ended_at, s.ended_at, ${toIso}::timestamp),
+								${toIso}::timestamp,
+								s.started_at + interval '24 hours'
+							) - greatest(
+								se.started_at,
+								s.started_at,
+								${fromIso}::timestamp
+							)) / 60)), ${MAX_FLEET_DURATION_MINUTES})::int as minutes
+				from fleet_member_ship_events se
+				inner join fleet_tracking_sessions s on s.id = se.tracking_session_id
+				left join fleet_summaries fs on fs.tracking_session_id = se.tracking_session_id
+				where se.character_id in (${sql.join(
+					characterIds.map((id) => sql`${id}`),
+					sql`, `
+				)})
+					and s.started_at < ${toIso}::timestamp
+					and coalesce(fs.ended_at, s.ended_at, ${toIso}::timestamp) > ${fromIso}::timestamp
+					and se.started_at < ${toIso}::timestamp
+					and (se.ended_at is null or se.ended_at > ${fromIso}::timestamp)
+				group by se.character_id, se.tracking_session_id
 			)
-			.groupBy(fleetMemberShipEvents.characterId)
+			select character_id, coalesce(sum(minutes), 0)::int as minutes
+			from per_session
+			group by character_id
+		`)
+		const minutesRows = minutesRowsResult.rows.map((row) => ({
+			characterId: row.character_id,
+			minutes: row.minutes,
+		}))
 
 		// Ships flown per character — total time in each ship (clamped to window)
 		const shipRows = await this.db
@@ -2443,18 +2739,40 @@ export class FleetsDO extends DurableObject implements Fleets {
 				totalMinutes: sql<number>`
 					sum(
 						extract(epoch from
-							least(coalesce(${fleetMemberShipEvents.endedAt}, ${toIso}::timestamp), ${toIso}::timestamp)
-							- greatest(${fleetMemberShipEvents.startedAt}, ${fromIso}::timestamp)
+							least(
+								least(
+									coalesce(${fleetMemberShipEvents.endedAt}, ${toIso}::timestamp),
+									coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}, ${toIso}::timestamp),
+									${toIso}::timestamp,
+									${fleetTrackingSessions.startedAt} + interval '24 hours'
+								),
+								${toIso}::timestamp
+							) - greatest(
+								${fleetMemberShipEvents.startedAt},
+								${fleetTrackingSessions.startedAt},
+								${fromIso}::timestamp
+							)
 						) / 60
 					)::int
 				`,
 			})
 			.from(fleetMemberShipEvents)
+			.innerJoin(
+				fleetTrackingSessions,
+				eq(fleetMemberShipEvents.trackingSessionId, fleetTrackingSessions.id)
+			)
+			.leftJoin(
+				fleetSummaries,
+				eq(fleetMemberShipEvents.trackingSessionId, fleetSummaries.trackingSessionId)
+			)
 			.where(
 				and(
 					inArray(fleetMemberShipEvents.characterId, characterIds),
+					lt(fleetTrackingSessions.startedAt, to),
+					sql`(coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}) IS NULL OR coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}) > ${from})`,
 					lt(fleetMemberShipEvents.startedAt, to),
-					sql`(${fleetMemberShipEvents.endedAt} IS NULL OR ${fleetMemberShipEvents.endedAt} > ${from})`
+					sql`(${fleetMemberShipEvents.endedAt} IS NULL OR ${fleetMemberShipEvents.endedAt} > ${from})`,
+					notInArray(fleetMemberShipEvents.shipTypeId, [...FLEET_NON_SHIP_TYPE_IDS])
 				)
 			)
 			.groupBy(fleetMemberShipEvents.characterId, fleetMemberShipEvents.shipTypeId)
@@ -2462,8 +2780,19 @@ export class FleetsDO extends DurableObject implements Fleets {
 				desc(sql`
 					sum(
 						extract(epoch from
-							least(coalesce(${fleetMemberShipEvents.endedAt}, ${toIso}::timestamp), ${toIso}::timestamp)
-							- greatest(${fleetMemberShipEvents.startedAt}, ${fromIso}::timestamp)
+							least(
+								least(
+									coalesce(${fleetMemberShipEvents.endedAt}, ${toIso}::timestamp),
+									coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}, ${toIso}::timestamp),
+									${toIso}::timestamp,
+									${fleetTrackingSessions.startedAt} + interval '24 hours'
+								),
+								${toIso}::timestamp
+							) - greatest(
+								${fleetMemberShipEvents.startedAt},
+								${fleetTrackingSessions.startedAt},
+								${fromIso}::timestamp
+							)
 						)
 					)
 				`)
@@ -2480,23 +2809,40 @@ export class FleetsDO extends DurableObject implements Fleets {
 				startedAt: fleetTrackingSessions.startedAt,
 				endedAt: fleetTrackingSessions.endedAt,
 				totalMinutes: sql<number>`
-					sum(
+					least(sum(
 						extract(epoch from
-							least(coalesce(${fleetMemberShipEvents.endedAt}, ${toIso}::timestamp), ${toIso}::timestamp)
-							- greatest(${fleetMemberShipEvents.startedAt}, ${fromIso}::timestamp)
+							least(
+								least(
+									coalesce(${fleetMemberShipEvents.endedAt}, ${toIso}::timestamp),
+									coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}, ${toIso}::timestamp),
+									${toIso}::timestamp,
+									${fleetTrackingSessions.startedAt} + interval '24 hours'
+								),
+								${toIso}::timestamp
+							) - greatest(
+								${fleetMemberShipEvents.startedAt},
+								${fleetTrackingSessions.startedAt},
+								${fromIso}::timestamp
+							)
 						) / 60
-					)::int
+					), ${MAX_FLEET_DURATION_MINUTES})::int
 				`,
-				shipsFlown: sql<number>`count(distinct ${fleetMemberShipEvents.shipTypeId})::int`,
+				shipsFlown: sql<number>`count(distinct case when ${fleetMemberShipEvents.shipTypeId} not in (${FLEET_NON_SHIP_TYPE_IDS_SQL}) then ${fleetMemberShipEvents.shipTypeId} end)::int`,
 			})
 			.from(fleetMemberShipEvents)
 			.innerJoin(
 				fleetTrackingSessions,
 				eq(fleetMemberShipEvents.trackingSessionId, fleetTrackingSessions.id)
 			)
+			.leftJoin(
+				fleetSummaries,
+				eq(fleetMemberShipEvents.trackingSessionId, fleetSummaries.trackingSessionId)
+			)
 			.where(
 				and(
 					inArray(fleetMemberShipEvents.characterId, characterIds),
+					lt(fleetTrackingSessions.startedAt, to),
+					sql`(coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}) IS NULL OR coalesce(${fleetSummaries.endedAt}, ${fleetTrackingSessions.endedAt}) > ${from})`,
 					lt(fleetMemberShipEvents.startedAt, to),
 					sql`(${fleetMemberShipEvents.endedAt} IS NULL OR ${fleetMemberShipEvents.endedAt} > ${from})`
 				)
@@ -2644,6 +2990,177 @@ export class FleetsDO extends DurableObject implements Fleets {
 			)
 
 		return rows.map((r) => r.characterId)
+	}
+
+	async getCorporationFleetParticipationMonths(
+		corporationId: string
+	): Promise<FleetParticipationExportMonth[]> {
+		const result = await this.db.execute<{ month: string }>(sql`
+			select distinct to_char(date_trunc('month', event_timestamp), 'YYYY-MM') as month
+			from fleet_member_history
+			where corporation_id = ${corporationId}
+				and event_type = 'join'
+				and event_timestamp is not null
+			order by month desc
+			limit 12
+		`)
+
+		return result.rows.map((row) => {
+			const from = `${row.month}-01T00:00:00.000Z`
+			const [year, month] = row.month.split('-').map(Number)
+			const to = new Date(Date.UTC(year, month, 1)).toISOString()
+			return { month: row.month, from, to }
+		})
+	}
+
+	async getCorporationFleetParticipationPage(
+		args: FleetParticipationExportPageRequest
+	): Promise<FleetParticipationExportPage> {
+		const limit = Math.min(Math.max(args.limit ?? 500, 1), 1000)
+		const from = new Date(args.from)
+		const to = new Date(args.to)
+		if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) {
+			throw new Error('Invalid fleet participation export range')
+		}
+
+		type ParticipationCursor = { startedAt: string; sessionId: string; characterId: string }
+		const cursor = (() => {
+			if (!args.cursor) return null
+			try {
+				const decoded = JSON.parse(atob(args.cursor)) as Partial<ParticipationCursor> | null
+				if (
+					decoded &&
+					typeof decoded.startedAt === 'string' &&
+					typeof decoded.sessionId === 'string' &&
+					typeof decoded.characterId === 'string'
+				) {
+					return {
+						startedAt: decoded.startedAt,
+						sessionId: decoded.sessionId,
+						characterId: decoded.characterId,
+					}
+				}
+			} catch {
+				throw new Error('Invalid fleet participation export cursor')
+			}
+			return null
+		})()
+
+		const fromIso = from.toISOString()
+		const toIso = to.toISOString()
+		let cursorPredicate = sql``
+		if (cursor) {
+			const cursorValue = cursor
+			cursorPredicate = sql`and (
+					s.started_at > ${cursorValue.startedAt}::timestamp
+					or (s.started_at = ${cursorValue.startedAt}::timestamp and s.id::text > ${cursorValue.sessionId})
+					or (s.started_at = ${cursorValue.startedAt}::timestamp and s.id::text = ${cursorValue.sessionId}
+						and se.character_id > ${cursorValue.characterId})
+				)`
+		}
+
+		const result = await this.db.execute<{
+			date_stamp: string
+			fleet_character_id: string
+			fleet_character_name: string | null
+			fleet_session_id: string
+			fleet_name: string
+			role: string
+			ship_count: number
+			duration_seconds: number
+		}>(sql`
+			select
+				s.started_at as date_stamp,
+				se.character_id as fleet_character_id,
+				max(mh.character_name) as fleet_character_name,
+				s.id::text as fleet_session_id,
+				s.name as fleet_name,
+				case when se.character_id = s.character_id or exists (
+					select 1
+					from fleet_commander_events ce
+					where ce.tracking_session_id = s.id
+						and ce.commander_character_id = se.character_id
+					and ce.observed_at < ${toIso}::timestamp
+					and ce.observed_at >= ${fromIso}::timestamp
+				) then 'FC'
+				else 'Member' end as role,
+				count(distinct case when se.ship_type_id not in (${FLEET_NON_SHIP_TYPE_IDS_SQL}) then se.ship_type_id end)::int as ship_count,
+				least(
+					coalesce(sum(extract(epoch from (
+						least(
+							coalesce(se.ended_at, ${toIso}::timestamp),
+							coalesce(fs.ended_at, s.ended_at, ${toIso}::timestamp),
+							${toIso}::timestamp,
+							s.started_at + interval '24 hours'
+						) - greatest(se.started_at, s.started_at, ${fromIso}::timestamp)
+					))), 0),
+					${MAX_FLEET_DURATION_MINUTES} * 60
+				)::bigint as duration_seconds
+			from fleet_member_ship_events se
+			inner join fleet_tracking_sessions s on s.id = se.tracking_session_id
+			left join fleet_summaries fs on fs.tracking_session_id = se.tracking_session_id
+			left join lateral (
+				select character_name
+				from fleet_member_history
+				where fleet_id = se.fleet_id
+					and character_id = se.character_id
+					and event_type = 'join'
+					and corporation_id = ${args.corporationId}
+					and event_timestamp >= ${fromIso}::timestamp
+					and event_timestamp < ${toIso}::timestamp
+					and event_timestamp >= s.started_at
+					and event_timestamp < coalesce(fs.ended_at, s.ended_at, ${toIso}::timestamp)
+				order by event_timestamp asc
+				limit 1
+			) mh on true
+			where s.started_at < ${toIso}::timestamp
+				and coalesce(fs.ended_at, s.ended_at, ${toIso}::timestamp) > ${fromIso}::timestamp
+				and se.started_at < ${toIso}::timestamp
+				and (se.ended_at is null or se.ended_at > ${fromIso}::timestamp)
+				and exists (
+					select 1
+					from fleet_member_history eligible
+					where eligible.fleet_id = se.fleet_id
+						and eligible.character_id = se.character_id
+						and eligible.event_type = 'join'
+						and eligible.corporation_id = ${args.corporationId}
+						and eligible.event_timestamp >= ${fromIso}::timestamp
+						and eligible.event_timestamp < ${toIso}::timestamp
+						and eligible.event_timestamp >= s.started_at
+					and eligible.event_timestamp < coalesce(fs.ended_at, s.ended_at, ${toIso}::timestamp)
+				)
+				${cursorPredicate}
+			group by s.id, s.started_at, s.name, se.character_id
+			order by s.started_at asc, s.id asc, se.character_id asc
+			limit ${limit + 1}
+		`)
+
+		const rows = result.rows
+		const hasNext = rows.length > limit
+		const pageRows = hasNext ? rows.slice(0, limit) : rows
+		const last = pageRows.at(-1)
+		return {
+			items: pageRows.map((row) => ({
+				dateStamp: new Date(row.date_stamp).toISOString(),
+				fleetCharacterId: row.fleet_character_id,
+				fleetCharacterName: row.fleet_character_name,
+				fleetSessionId: row.fleet_session_id,
+				fleetName: row.fleet_name,
+				role: row.role,
+				shipCount: Number(row.ship_count),
+				durationSeconds: Number(row.duration_seconds),
+			})),
+			nextCursor:
+				hasNext && last
+					? btoa(
+							JSON.stringify({
+								startedAt: new Date(last.date_stamp).toISOString(),
+								sessionId: last.fleet_session_id,
+								characterId: last.fleet_character_id,
+							})
+						)
+					: null,
+		}
 	}
 
 	/**

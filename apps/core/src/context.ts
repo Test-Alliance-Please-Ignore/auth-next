@@ -108,6 +108,8 @@ export type Env = SharedHonoEnv & {
 	SRP_EXPORTS: R2Bucket
 	/** Structure asset debug artifact bucket */
 	STRUCTURE_ASSETS_DEBUG_EXPORTS: R2Bucket
+	/** Fleet participation export artifact bucket */
+	FLEET_EXPORTS: R2Bucket
 	/** Markets Durable Object binding */
 	MARKETS: DurableObjectNamespace
 	/** Mumble Durable Object binding */

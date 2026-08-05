@@ -1,24 +1,26 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { getExportArtifactExpiresAtIso } from '../lib/export-retention'
+import {
+	buildFleetParticipationExportFileName,
+	writeFleetParticipationExportToBucket,
+} from '../lib/fleet-participation-export'
 import {
 	buildStructureAssetsDebugExportKey,
 	buildStructureAssetsDebugFileName,
 	enrichStructureAssetsDebugTypeNames,
-	getStructureAssetsDebugBucket,
 	getStructureAssetLocationLabel,
-	type StructureAssetsDebugWorkflowParams,
+	getStructureAssetsDebugBucket,
 	writeStructureAssetsDebugArtifact,
 } from '../lib/structure-assets-debug'
-
 import {
 	buildVerifiedMoonsExportFileName,
 	buildVerifiedMoonsExportKey,
-	getVerifiedMoonsExportBucket,
 	buildVerifiedMoonSummaryRecords,
-	type VerifiedMoonsExportQuery,
+	getVerifiedMoonsExportBucket,
 	writeVerifiedMoonsExportToBucket,
 } from '../routes/moon-scan'
 import {
@@ -37,7 +39,9 @@ import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { MoonScanDO } from '@repo/moon-scan'
 import type { Universe } from '@repo/universe'
 import type { Env } from '../context'
-import { logger } from '@repo/hono-helpers'
+import type { FleetParticipationExportParams } from '../lib/fleet-participation-export'
+import type { StructureAssetsDebugWorkflowParams } from '../lib/structure-assets-debug'
+import type { VerifiedMoonsExportQuery } from '../routes/moon-scan'
 
 export type CsvExportWorkflowParams =
 	| {
@@ -64,6 +68,7 @@ export type CsvExportWorkflowParams =
 			dateTo: string
 	  }
 	| StructureAssetsDebugWorkflowParams
+	| FleetParticipationExportParams
 
 export type CsvExportWorkflowKind = CsvExportWorkflowParams['kind']
 
@@ -81,6 +86,7 @@ export interface CsvExportWorkflowResult {
 		message: string
 		stack?: string
 	}
+	corporationId?: string
 }
 
 function chunkArray<T>(items: readonly T[], size: number): T[][] {
@@ -102,10 +108,7 @@ async function runStructureAssetsDebugExport(
 	const fileName = buildStructureAssetsDebugFileName(workflowInstanceId)
 	const bucket = getStructureAssetsDebugBucket(env)
 
-	const { assetsCount: fetchedAssetCount } = await corpData.fetchAssets(
-		params.corporationId,
-		true
-	)
+	const { assetsCount: fetchedAssetCount } = await corpData.fetchAssets(params.corporationId, true)
 	const rawItems = await corpData.searchAssets(params.corporationId, {
 		locationId: params.structureId,
 		locationType: 'item',
@@ -172,7 +175,9 @@ async function runMoonScanExport(
 			moonScan.getVerifiedMoonSummaryIds(),
 		])
 		const summaryMoonIdSet = new Set(summaryMoonIds)
-		const missingMoonIds = scanSummary.verifiedMoonIds.filter((moonId) => !summaryMoonIdSet.has(moonId))
+		const missingMoonIds = scanSummary.verifiedMoonIds.filter(
+			(moonId) => !summaryMoonIdSet.has(moonId)
+		)
 		if (missingMoonIds.length > 0) {
 			for (const missingMoonIdChunk of chunkArray(missingMoonIds, 250)) {
 				const missingCompositions = await moonScan.getVerifiedCompositions(missingMoonIdChunk)
@@ -271,6 +276,27 @@ async function runSrpWalletHistoryExport(
 	}
 }
 
+async function runFleetParticipationExport(
+	env: Env,
+	workflowInstanceId: string,
+	params: FleetParticipationExportParams
+): Promise<{ fileName: string; expiresAt: string; rowCount: number }> {
+	const fileName = buildFleetParticipationExportFileName(
+		params.corporationId,
+		params.dateFrom,
+		params.dateTo
+	)
+	const result = await writeFleetParticipationExportToBucket({
+		env,
+		exportId: workflowInstanceId,
+		corporationId: params.corporationId,
+		dateFrom: params.dateFrom,
+		dateTo: params.dateTo,
+		fileName,
+	})
+	return { fileName, expiresAt: result.expiresAt, rowCount: result.rowCount }
+}
+
 export class CsvExportWorkflow extends WorkflowEntrypoint<Env, CsvExportWorkflowParams> {
 	async run(
 		event: WorkflowEvent<CsvExportWorkflowParams>,
@@ -299,17 +325,15 @@ export class CsvExportWorkflow extends WorkflowEntrypoint<Env, CsvExportWorkflow
 				async () => {
 					switch (payload.kind) {
 						case 'moon-scan-verified':
-							return await runMoonScanExport(
-								this.env,
-								workflowInstanceId,
-								payload.query
-							)
+							return await runMoonScanExport(this.env, workflowInstanceId, payload.query)
 						case 'srp-paid-requests':
 							return await runSrpPaidRequestsExport(this.env, workflowInstanceId, payload)
 						case 'srp-wallet-history':
 							return await runSrpWalletHistoryExport(this.env, workflowInstanceId, payload)
 						case 'structure-assets-debug':
 							return await runStructureAssetsDebugExport(this.env, workflowInstanceId, payload)
+						case 'fleet-corporation-participation':
+							return await runFleetParticipationExport(this.env, workflowInstanceId, payload)
 					}
 				}
 			)
@@ -322,6 +346,9 @@ export class CsvExportWorkflow extends WorkflowEntrypoint<Env, CsvExportWorkflow
 				fileName: result.fileName,
 				expiresAt: result.expiresAt,
 				rowCount: result.rowCount,
+				...(payload.kind === 'fleet-corporation-participation'
+					? { corporationId: payload.corporationId }
+					: {}),
 			}
 		} catch (error) {
 			return {
@@ -332,6 +359,9 @@ export class CsvExportWorkflow extends WorkflowEntrypoint<Env, CsvExportWorkflow
 				fileName: workflowInstanceId,
 				expiresAt: null,
 				rowCount: 0,
+				...(payload.kind === 'fleet-corporation-participation'
+					? { corporationId: payload.corporationId }
+					: {}),
 				error: {
 					message: error instanceof Error ? error.message : String(error),
 					stack: error instanceof Error ? error.stack : undefined,

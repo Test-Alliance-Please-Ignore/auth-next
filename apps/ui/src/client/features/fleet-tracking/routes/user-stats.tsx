@@ -1,4 +1,5 @@
 import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -15,9 +16,11 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+
 import { SessionStatsGrid } from '../components/session-stats-grid'
 import { ShipDistributionChart } from '../components/ship-distribution-chart'
 import { StatsRangePicker, useRangeFromSearchParams } from '../components/stats-range-picker'
@@ -33,8 +36,16 @@ export default function UserStats() {
 	const canViewAll = isAdmin || hasPermission('urn:fleet-tracking:view-all')
 	const isSelf = !!user && user.id === userId
 	const canView = canViewAll || isSelf
+	const [page, setPage] = useState(1)
+	const [pageSize, setPageSize] = useState(25)
+	useEffect(() => {
+		setPage(1)
+	}, [userId, range.from, range.to])
 
-	const { data, isLoading } = useUserStats(canView ? userId : undefined, range)
+	const { data, isFetching, isLoading } = useUserStats(canView ? userId : undefined, range, {
+		limit: pageSize,
+		offset: (page - 1) * pageSize,
+	})
 
 	if (!userId) return <Navigate to="/fleet-tracking/stats" replace />
 
@@ -80,7 +91,8 @@ export default function UserStats() {
 			<div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
 				<div>
 					<p className="text-sm text-muted-foreground mt-1">
-						{data?.perCharacter.length ?? 0} character{(data?.perCharacter.length ?? 0) === 1 ? '' : 's'}
+						{data?.perCharacter.length ?? 0} character
+						{(data?.perCharacter.length ?? 0) === 1 ? '' : 's'}
 					</p>
 				</div>
 				<StatsRangePicker />
@@ -95,7 +107,10 @@ export default function UserStats() {
 					<SessionStatsGrid
 						stats={[
 							{ label: 'Fleets joined', value: data.totals.fleetsJoined },
-							{ label: 'Time in fleet', value: formatDuration(data.totals.minutesInFleet * 60_000) },
+							{
+								label: 'Time in fleet',
+								value: formatDuration(data.totals.minutesInFleet * 60_000),
+							},
 							{
 								label: 'FC time',
 								value: formatDuration(data.totals.minutesAsFC * 60_000),
@@ -127,10 +142,15 @@ export default function UserStats() {
 									{data.perCharacter.map((c) => (
 										<TableRow key={c.characterId}>
 											<TableCell>
-												{c.characterName} {c.is_primary && <span className="text-xs text-muted-foreground">(main)</span>}
+												{c.characterName}{' '}
+												{c.is_primary && (
+													<span className="text-xs text-muted-foreground">(main)</span>
+												)}
 											</TableCell>
 											<TableCell>{c.stats.totals.fleetsJoined}</TableCell>
-											<TableCell>{formatDuration(c.stats.totals.minutesInFleet * 60_000)}</TableCell>
+											<TableCell>
+												{formatDuration(c.stats.totals.minutesInFleet * 60_000)}
+											</TableCell>
 											<TableCell>{c.stats.totals.timesFC}</TableCell>
 											<TableCell>
 												<Button asChild variant="ghost" size="sm">
@@ -157,6 +177,23 @@ export default function UserStats() {
 
 					<Card>
 						<CardContent className="p-0">
+							{data.recentSessionsTotal > 0 && (
+								<div className="border-b p-4">
+									<UserSearchPaginationControls
+										totalCount={data.recentSessionsTotal}
+										page={page}
+										pageSize={pageSize}
+										onPageChange={setPage}
+										onPageSizeChange={(nextPageSize) => {
+											setPageSize(nextPageSize)
+											setPage(1)
+										}}
+										pageSizeOptions={[10, 25, 50, 100]}
+										itemLabel="fleet sessions"
+										nextButtonLoading={isFetching}
+									/>
+								</div>
+							)}
 							{data.recentSessions.length === 0 ? (
 								<div className="py-8 text-center text-sm text-muted-foreground">
 									No recent fleets in range.
@@ -175,7 +212,9 @@ export default function UserStats() {
 									<TableBody>
 										{data.recentSessions.map((s) => (
 											<TableRow key={`${s.sessionId}-${s.characterId}`}>
-												<TableCell><EveTimeDisplay dateStr={s.startedAt} /></TableCell>
+												<TableCell>
+													<EveTimeDisplay dateStr={s.startedAt} />
+												</TableCell>
 												<TableCell>
 													<Link
 														to={`/fleet-tracking/stats/characters/${s.characterId}`}

@@ -8,6 +8,7 @@ const getStubMock = vi.fn()
 const moonWriteMock = vi.fn()
 const srpPaidWriteMock = vi.fn()
 const srpWalletWriteMock = vi.fn()
+const fleetWriteMock = vi.fn()
 
 vi.mock('cloudflare:workers', () => {
 	class WorkflowEntrypoint<Env = unknown, Params = unknown> {
@@ -60,14 +61,21 @@ vi.mock('../../../routes/srp', () => ({
 	writeSrpWalletHistoryExportToBucket: (...args: unknown[]) => srpWalletWriteMock(...args),
 }))
 
+vi.mock('../../../lib/fleet-participation-export', () => ({
+	buildFleetParticipationExportFileName: () => 'fleet-participation.csv',
+	writeFleetParticipationExportToBucket: (...args: unknown[]) => fleetWriteMock(...args),
+}))
+
 function createStep() {
-	const doMock = vi.fn(async (_name: string, optionsOrHandler: unknown, maybeHandler?: () => unknown) => {
-		const handler =
-			typeof optionsOrHandler === 'function'
-				? (optionsOrHandler as () => unknown)
-				: (maybeHandler as () => unknown)
-		return await handler()
-	})
+	const doMock = vi.fn(
+		async (_name: string, optionsOrHandler: unknown, maybeHandler?: () => unknown) => {
+			const handler =
+				typeof optionsOrHandler === 'function'
+					? (optionsOrHandler as () => unknown)
+					: (maybeHandler as () => unknown)
+			return await handler()
+		}
+	)
 
 	return {
 		step: { do: doMock } as unknown as WorkflowStep,
@@ -102,23 +110,41 @@ describe('CsvExportWorkflow structure assets debug export', () => {
 		}
 
 		getStubMock.mockImplementation((binding: unknown) => {
-			if (binding && typeof binding === 'object' && 'name' in binding && binding.name === 'EVE_CORPORATION_DATA') {
+			if (
+				binding &&
+				typeof binding === 'object' &&
+				'name' in binding &&
+				binding.name === 'EVE_CORPORATION_DATA'
+			) {
 				return corpData
 			}
-			if (binding && typeof binding === 'object' && 'name' in binding && binding.name === 'UNIVERSE') {
+			if (
+				binding &&
+				typeof binding === 'object' &&
+				'name' in binding &&
+				binding.name === 'UNIVERSE'
+			) {
 				return universe
 			}
-			if (binding && typeof binding === 'object' && 'name' in binding && binding.name === 'STRUCTURE_ASSETS_DEBUG_EXPORTS') {
+			if (
+				binding &&
+				typeof binding === 'object' &&
+				'name' in binding &&
+				binding.name === 'STRUCTURE_ASSETS_DEBUG_EXPORTS'
+			) {
 				return bucket
 			}
 			return {}
 		})
 
-		const workflow = new CsvExportWorkflow({} as ExecutionContext, {
-			EVE_CORPORATION_DATA: { name: 'EVE_CORPORATION_DATA' },
-			UNIVERSE: { name: 'UNIVERSE' },
-			STRUCTURE_ASSETS_DEBUG_EXPORTS: bucket,
-		} as never)
+		const workflow = new CsvExportWorkflow(
+			{} as ExecutionContext,
+			{
+				EVE_CORPORATION_DATA: { name: 'EVE_CORPORATION_DATA' },
+				UNIVERSE: { name: 'UNIVERSE' },
+				STRUCTURE_ASSETS_DEBUG_EXPORTS: bucket,
+			} as never
+		)
 		const { step } = createStep()
 
 		const result = await workflow.run(
@@ -155,7 +181,7 @@ describe('CsvExportWorkflow structure assets debug export', () => {
 		const [exportKey, body, options] = bucketPut.mock.calls[0] as [
 			string,
 			string,
-			{ customMetadata?: { fileName?: string; expiresAt?: string } }
+			{ customMetadata?: { fileName?: string; expiresAt?: string } },
 		]
 		expect(exportKey).toBe('structure-assets-debug/workflow-1.json')
 		expect(options.customMetadata?.fileName).toBe('structure-assets-debug-workflow.json')
@@ -172,5 +198,47 @@ describe('CsvExportWorkflow structure assets debug export', () => {
 			itemCount: 1,
 		})
 		expect(artifact.items[0]?.typeName).toBe('Astrahus')
+	})
+})
+
+describe('CsvExportWorkflow fleet participation export', () => {
+	it('dispatches the bounded fleet export writer and preserves corporation metadata', async () => {
+		fleetWriteMock.mockResolvedValue({
+			rowCount: 12,
+			expiresAt: '2026-07-13T01:00:00.000Z',
+		})
+		const workflow = new CsvExportWorkflow({} as ExecutionContext, {} as never)
+		const { step } = createStep()
+
+		const result = await workflow.run(
+			{
+				payload: {
+					kind: 'fleet-corporation-participation',
+					userId: 'user-1',
+					corporationId: 'corp-1',
+					dateFrom: '2026-07-01T00:00:00.000Z',
+					dateTo: '2026-08-01T00:00:00.000Z',
+				},
+				instanceId: 'workflow-fleet-1',
+				timestamp: new Date('2026-07-13T00:00:00.000Z'),
+			} as never,
+			step
+		)
+
+		expect(result).toMatchObject({
+			status: 'completed',
+			kind: 'fleet-corporation-participation',
+			workflowInstanceId: 'workflow-fleet-1',
+			corporationId: 'corp-1',
+			rowCount: 12,
+		})
+		expect(fleetWriteMock).toHaveBeenCalledWith({
+			env: {},
+			exportId: 'workflow-fleet-1',
+			corporationId: 'corp-1',
+			dateFrom: '2026-07-01T00:00:00.000Z',
+			dateTo: '2026-08-01T00:00:00.000Z',
+			fileName: 'fleet-participation.csv',
+		})
 	})
 })
