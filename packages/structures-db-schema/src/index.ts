@@ -13,9 +13,10 @@ import {
 
 import { managedCorporations, users } from '@repo/core-db-schema'
 import { corporationStructures } from '@repo/eve-corporation-data-db-schema'
+
 import type {
-	StructureSovereigntyTransportState,
 	SovereigntyReagentBaySnapshot,
+	StructureSovereigntyTransportState,
 } from '@repo/structures'
 
 export const structureGroupSettings = pgTable(
@@ -48,7 +49,9 @@ export const structureCorporationGroupDefaults = pgTable(
 export const structureModuleConfig = pgTable('structure_module_config', {
 	id: text('id').primaryKey(),
 	lowFuelTimeThresholdHours: integer('low_fuel_time_threshold_hours').notNull().default(12),
-	criticalFuelTimeThresholdHours: integer('critical_fuel_time_threshold_hours').notNull().default(4),
+	criticalFuelTimeThresholdHours: integer('critical_fuel_time_threshold_hours')
+		.notNull()
+		.default(4),
 	lowFuelAmountThreshold: integer('low_fuel_amount_threshold').notNull().default(0),
 	criticalFuelAmountThreshold: integer('critical_fuel_amount_threshold').notNull().default(0),
 	updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
@@ -190,7 +193,9 @@ export const structureSovereigntyHubs = pgTable(
 				configuration: { mode: 'unknown', systems: [] },
 				state: { mode: 'unknown', systems: [] },
 			}),
-		syncStatus: text('sync_status', { enum: ['ok', 'warning', 'error'] }).notNull().default('ok'),
+		syncStatus: text('sync_status', { enum: ['ok', 'warning', 'error'] })
+			.notNull()
+			.default('ok'),
 		syncFailureReason: text('sync_failure_reason'),
 		lastAttemptedSyncAt: timestamp('last_attempted_sync_at', { withTimezone: true }),
 		sourceSyncAt: timestamp('source_sync_at', { withTimezone: true }),
@@ -225,7 +230,9 @@ export const structureSkyhooks = pgTable(
 		reinforcementTimerEnd: timestamp('reinforcement_timer_end', { withTimezone: true }),
 		theftVulnerabilityStart: timestamp('theft_vulnerability_start', { withTimezone: true }),
 		theftVulnerabilityEnd: timestamp('theft_vulnerability_end', { withTimezone: true }),
-		syncStatus: text('sync_status', { enum: ['ok', 'warning', 'error'] }).notNull().default('ok'),
+		syncStatus: text('sync_status', { enum: ['ok', 'warning', 'error'] })
+			.notNull()
+			.default('ok'),
 		syncFailureReason: text('sync_failure_reason'),
 		lastAttemptedSyncAt: timestamp('last_attempted_sync_at', { withTimezone: true }),
 		lastObservedAt: timestamp('last_observed_at', { withTimezone: true }),
@@ -352,7 +359,10 @@ export const structureGroupAlertConfigs = pgTable(
 		index('structure_group_alert_configs_alert_type_idx').on(table.alertType),
 		index('structure_group_alert_configs_enabled_idx').on(table.isEnabled),
 		index('structure_group_alert_configs_group_alert_type_idx').on(table.groupId, table.alertType),
-		unique('structure_group_alert_configs_group_alert_type_unique').on(table.groupId, table.alertType),
+		unique('structure_group_alert_configs_group_alert_type_unique').on(
+			table.groupId,
+			table.alertType
+		),
 	]
 )
 

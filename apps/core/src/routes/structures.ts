@@ -25,16 +25,15 @@ import type { Context } from 'hono'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type {
-	StructureCitadelListQuery,
 	StructureCommonListSortBy,
 	StructureDetailResult,
 	StructureFittingItem,
 	StructureInventoryBay,
 	StructureInventoryItem,
+	StructureListQuery,
 	StructureMiningCitadelListQuery,
 	StructureMoonDrillListQuery,
 	StructureMoonStructureListSortBy,
-	StructureNavigationListQuery,
 	StructureSkyhookListQuery,
 	StructureSkyhookListSortBy,
 	StructureSovereigntyListQuery,
@@ -54,7 +53,7 @@ const structurePagingSchema = z.object({
 	sortDirection: z.enum(['asc', 'desc']).default('asc'),
 })
 
-	const structureCommonListQuerySchema = structurePagingSchema.extend({
+const structureCommonListQuerySchema = structurePagingSchema.extend({
 	sortBy: z.enum(STRUCTURE_COMMON_LIST_SORT_FIELDS).default('fuel'),
 	corporationId: z.string().trim().min(1).optional(),
 	assignedGroupId: z.string().trim().min(1).optional(),
@@ -66,9 +65,7 @@ const structurePagingSchema = z.object({
 	typeId: z.string().trim().min(1).optional(),
 })
 
-const citadelStructureListQuerySchema = structureCommonListQuerySchema
-
-const navigationStructureListQuerySchema = structureCommonListQuerySchema
+const structureListQuerySchema = structureCommonListQuerySchema
 
 const sovereigntyStructureListQuerySchema = structurePagingSchema.extend({
 	sortBy: z.enum(STRUCTURE_SOVEREIGNTY_LIST_SORT_FIELDS).default('fuel'),
@@ -335,15 +332,7 @@ async function enrichSovereigntyStructureListResponse(
 }
 
 app.get('/', async (c) => {
-	return handleCitadelStructuresRequest(c)
-})
-
-app.get('/citadels', async (c) => {
-	return handleCitadelStructuresRequest(c)
-})
-
-app.get('/navigation', async (c) => {
-	return handleNavigationStructuresRequest(c)
+	return handleStructuresRequest(c)
 })
 
 app.get('/sovereignty', async (c) => {
@@ -520,14 +509,14 @@ app.get('/:structureId/assets-debug/:workflowInstanceId/download', async (c) => 
 	return c.json(artifact)
 })
 
-async function handleCitadelStructuresRequest(c: Context<App>): Promise<Response> {
+async function handleStructuresRequest(c: Context<App>): Promise<Response> {
 	const user = c.get('user')
 	if (!user) {
 		return c.json({ error: 'Unauthorized' }, 401)
 	}
 
 	try {
-		const query = citadelStructureListQuerySchema.parse({
+		const query = structureListQuerySchema.parse({
 			page: c.req.query('page'),
 			pageSize: c.req.query('pageSize'),
 			sortBy: (c.req.query('sortBy') || undefined) as StructureCommonListSortBy | undefined,
@@ -540,47 +529,11 @@ async function handleCitadelStructuresRequest(c: Context<App>): Promise<Response
 			systemId: c.req.query('systemId') || undefined,
 			state: c.req.query('state') || undefined,
 			typeId: c.req.query('typeId') || undefined,
-		}) as StructureCitadelListQuery
+		}) as StructureListQuery
 
 		return c.json(
 			stripUpdatedAtFromStructureListResponse(
-				await c.env.STRUCTURES.listCitadelStructures(await getStructureActor(c), query)
-			)
-		)
-	} catch (error) {
-		return c.json(
-			{
-				error: error instanceof Error ? error.message : 'Failed to list structures',
-			},
-			error instanceof z.ZodError ? 400 : 500
-		)
-	}
-}
-
-async function handleNavigationStructuresRequest(c: Context<App>): Promise<Response> {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	try {
-		const query = navigationStructureListQuerySchema.parse({
-			page: c.req.query('page'),
-			pageSize: c.req.query('pageSize'),
-			sortBy: (c.req.query('sortBy') || undefined) as StructureCommonListSortBy | undefined,
-			sortDirection: c.req.query('sortDirection') || undefined,
-			corporationId: c.req.query('corporationId') || undefined,
-			assignedGroupId: c.req.query('assignedGroupId') || undefined,
-			lowPower: c.req.query('lowPower') || undefined,
-			lowPowerAllowed: c.req.query('lowPowerAllowed') || undefined,
-			regionId: c.req.query('regionId') || undefined,
-			systemId: c.req.query('systemId') || undefined,
-			state: c.req.query('state') || undefined,
-			typeId: c.req.query('typeId') || undefined,
-		}) as StructureNavigationListQuery
-		return c.json(
-			stripUpdatedAtFromStructureListResponse(
-				await c.env.STRUCTURES.listNavigationStructures(await getStructureActor(c), query)
+				await c.env.STRUCTURES.listStructures(await getStructureActor(c), query)
 			)
 		)
 	} catch (error) {

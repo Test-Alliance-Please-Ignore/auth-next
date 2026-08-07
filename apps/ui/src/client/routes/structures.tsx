@@ -63,17 +63,16 @@ import { useNowMs } from '@/hooks/useNowMs'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import {
-	type StructureCitadelListItem,
-	type StructureCitadelListQuery,
 	type StructureListBaseItem,
 	type StructureListFilterOptions,
+	type StructureListItem,
+	type StructureListQuery,
 	type StructureListSortBy,
 	type StructureListSummary,
 	type StructureMiningCitadelListItem,
 	type StructureMiningCitadelListQuery,
 	type StructureMoonDrillListItem,
 	type StructureMoonDrillListQuery,
-	type StructureNavigationListItem,
 	type StructureSkyhookListFilterOptions,
 	type StructureSkyhookListItem,
 	type StructureSkyhookListQuery,
@@ -90,13 +89,12 @@ import { stripLeadingContextName } from '@/lib/structure-name-utils'
 import { cn } from '@/lib/utils'
 
 import {
-	useCitadelStructures,
 	useMiningCitadelStructures,
 	useMoonDrillStructures,
-	useNavigationStructures,
 	useSkyhookStructures,
 	useSovereigntyStructures,
 	useStructureModuleConfig,
+	useStructures,
 } from '../features/structures/hooks'
 import {
 	buildStructureListContentKey,
@@ -121,6 +119,8 @@ const BOOLEAN_FILTER_OPTIONS: SelectOption[] = [
 	{ value: 'false', label: 'No' },
 ]
 const FUEL_BLOCK_ICON_TYPE_ID = Array.from(FUEL_BLOCK_TYPE_IDS)[0] ?? '4051'
+// EVE's Station Vault Container is a clear representative icon for stored Moon Goo.
+const STATION_VAULT_ICON_TYPE_ID = '17367'
 
 function structureSyncStatusDescription(
 	structure: Pick<StructureListBaseItem, 'syncStatus' | 'syncFailureReason' | 'lastSyncedAt'>
@@ -226,11 +226,15 @@ function MoonDrillResourceCell({
 	iconAlt,
 	fallbackIcon: FallbackIcon,
 	value,
+	secondaryValue,
+	secondarySuffix,
 }: {
 	typeId: string
 	iconAlt: string
 	fallbackIcon: typeof Package | typeof Flame
 	value: number | null | undefined
+	secondaryValue?: number | null | undefined
+	secondarySuffix?: string
 }) {
 	const [failed, setFailed] = useState(false)
 
@@ -248,6 +252,11 @@ function MoonDrillResourceCell({
 				/>
 			)}
 			<span className="tabular-nums">{formatNullableNumber(value)}</span>
+			{secondaryValue !== undefined && (
+				<span className="text-muted-foreground">
+					({formatNullableDecimal(secondaryValue)} {secondarySuffix ?? ''})
+				</span>
+			)}
 		</div>
 	)
 }
@@ -536,11 +545,11 @@ export default function StructuresPage() {
 		}),
 		[tableState.page, tableState.pageSize, tableState.sortDirection]
 	)
-	const commonSortBy = getEffectiveStructureSortByForTab('citadels', tableState.sortBy)
+	const commonSortBy = getEffectiveStructureSortByForTab('structures', tableState.sortBy)
 	const sovereigntySortBy = getEffectiveStructureSortByForTab('sovereignty', tableState.sortBy)
 	const skyhookSortBy = getEffectiveStructureSortByForTab('skyhooks', tableState.sortBy)
 	const moonSortBy = getEffectiveStructureSortByForTab('moon-drills', tableState.sortBy)
-	const commonQuery = useMemo<StructureCitadelListQuery>(
+	const commonQuery = useMemo<StructureListQuery>(
 		() =>
 			({
 				...sharedQuery,
@@ -553,7 +562,7 @@ export default function StructuresPage() {
 				systemId: tableState.filters.systemId,
 				state: tableState.filters.state,
 				typeId: tableState.filters.typeId,
-			}) as StructureCitadelListQuery,
+			}) as StructureListQuery,
 		[sharedQuery, tableState.filters, commonSortBy]
 	)
 	const sovereigntyQuery = useMemo<StructureSovereigntyListQuery>(
@@ -619,11 +628,8 @@ export default function StructuresPage() {
 		[sharedQuery, tableState.filters, moonSortBy]
 	)
 
-	const citadelStructures = useCitadelStructures(commonQuery, {
-		enabled: !authLoading && !permissionsLoading && canViewStructures && activeTab === 'citadels',
-	})
-	const navigationStructures = useNavigationStructures(commonQuery, {
-		enabled: !authLoading && !permissionsLoading && canViewStructures && activeTab === 'navigation',
+	const structuresResponseQuery = useStructures(commonQuery, {
+		enabled: !authLoading && !permissionsLoading && canViewStructures && activeTab === 'structures',
 	})
 	const sovereigntyStructures = useSovereigntyStructures(sovereigntyQuery, {
 		enabled:
@@ -647,10 +653,8 @@ export default function StructuresPage() {
 	const isMoonDrillsTab = activeTab === 'moon-drills'
 	const activeResponse = (() => {
 		switch (activeTab) {
-			case 'citadels':
-				return citadelStructures
-			case 'navigation':
-				return navigationStructures
+			case 'structures':
+				return structuresResponseQuery
 			case 'sovereignty':
 				return sovereigntyStructures
 			case 'skyhooks':
@@ -670,17 +674,15 @@ export default function StructuresPage() {
 	const structures = structuresResponse?.items ?? []
 	const pagination = structuresResponse?.pagination
 	const commonFilterOptions: StructureListFilterOptions | undefined =
-		activeTab === 'citadels'
-			? citadelStructures.data?.filterOptions
-			: activeTab === 'navigation'
-				? navigationStructures.data?.filterOptions
-				: activeTab === 'skyhooks'
-					? skyhookStructures.data?.filterOptions
-					: activeTab === 'mining-citadels'
-						? miningCitadelStructures.data?.filterOptions
-						: activeTab === 'moon-drills'
-							? moonDrillStructures.data?.filterOptions
-							: undefined
+		activeTab === 'structures'
+			? structuresResponseQuery.data?.filterOptions
+			: activeTab === 'skyhooks'
+				? skyhookStructures.data?.filterOptions
+				: activeTab === 'mining-citadels'
+					? miningCitadelStructures.data?.filterOptions
+					: activeTab === 'moon-drills'
+						? moonDrillStructures.data?.filterOptions
+						: undefined
 	const sovereigntyFilterOptions: StructureSovereigntyListFilterOptions | undefined =
 		activeTab === 'sovereignty' ? sovereigntyStructures.data?.filterOptions : undefined
 	const skyhookFilterOptions: StructureSkyhookListFilterOptions | undefined =
@@ -720,7 +722,7 @@ export default function StructuresPage() {
 		}
 
 		if (!visibleTabs.some((tab) => tab.tab === tableState.tab)) {
-			setStructureTableTab(visibleTabs[0]?.tab ?? 'citadels')
+			setStructureTableTab(visibleTabs[0]?.tab ?? 'structures')
 		}
 	}, [tableState.tab, visibleTabs])
 
@@ -896,9 +898,7 @@ export default function StructuresPage() {
 						]
 	).filter(Boolean).length
 
-	const renderStructureRows = <T extends StructureCitadelListItem | StructureNavigationListItem>(
-		items: T[]
-	) =>
+	const renderStructureRows = (items: StructureListItem[]) =>
 		items.map((structure) => {
 			const fuelLabel = structure.fuelExpires ? (
 				<DurationDisplay endDate={structure.fuelExpires} maxUnits={3} durationStyle="compact" />
@@ -974,10 +974,6 @@ export default function StructuresPage() {
 				</TableRow>
 			)
 		})
-
-	const renderCitadelRows = (items: StructureCitadelListItem[]) => renderStructureRows(items)
-
-	const renderNavigationRows = (items: StructureNavigationListItem[]) => renderStructureRows(items)
 
 	const renderSovereigntyRows = (items: StructureSovereigntyListItem[]) =>
 		items.map((structure) => {
@@ -1264,6 +1260,16 @@ export default function StructuresPage() {
 					<TableCell>{fuelLabel}</TableCell>
 					<TableCell>
 						<MoonDrillResourceCell
+							typeId={STATION_VAULT_ICON_TYPE_ID}
+							iconAlt="Moon goo"
+							fallbackIcon={Package}
+							value={structure.moonMaterialUnits}
+							secondaryValue={structure.moonMaterialVolumeM3}
+							secondarySuffix="m3"
+						/>
+					</TableCell>
+					<TableCell>
+						<MoonDrillResourceCell
 							typeId={FUEL_BLOCK_ICON_TYPE_ID}
 							iconAlt="Fuel block"
 							fallbackIcon={Package}
@@ -1303,10 +1309,10 @@ export default function StructuresPage() {
 
 	const renderStructuresTableBody = () => {
 		switch (activeTab) {
-			case 'citadels':
-				return <TableBody>{renderCitadelRows(citadelStructures.data?.items ?? [])}</TableBody>
-			case 'navigation':
-				return <TableBody>{renderNavigationRows(navigationStructures.data?.items ?? [])}</TableBody>
+			case 'structures':
+				return (
+					<TableBody>{renderStructureRows(structuresResponseQuery.data?.items ?? [])}</TableBody>
+				)
 			case 'sovereignty':
 				return (
 					<TableBody>{renderSovereigntyRows(sovereigntyStructures.data?.items ?? [])}</TableBody>
@@ -1380,8 +1386,7 @@ export default function StructuresPage() {
 				return 'type'
 			case 'skyhooks':
 				return 'raidable'
-			case 'citadels':
-			case 'navigation':
+			case 'structures':
 			case 'mining-citadels':
 			case 'moon-drills':
 				return 'type'
@@ -1979,6 +1984,7 @@ export default function StructuresPage() {
 													<SortableHead field="name" label="Name" />
 													<SortableHead field="corporation" label="Corporation" />
 													<SortableHead field="fuel" label="Fuel" />
+													<SortableHead field="moonMaterials" label="Moon Goo" />
 													<SortableHead field="fuelBlocks" label="Fuel Blocks" />
 													<SortableHead field="magmaticGas" label="Magmatic Gas" />
 													<SortableHead field="nextStateAt" label="Next State In" />

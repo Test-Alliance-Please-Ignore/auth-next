@@ -1,10 +1,13 @@
 export type StructurePermissionRole = 'viewer' | 'details' | 'sensitive' | 'manager'
-export type CorporationAlertDestinationType = 'discord_channel' | 'discord_user' | 'discord_webhook' | 'group'
+export type CorporationAlertDestinationType =
+	| 'discord_channel'
+	| 'discord_user'
+	| 'discord_webhook'
+	| 'group'
 export type StructureTab =
-	| 'citadels'
+	| 'structures'
 	| 'sovereignty'
 	| 'skyhooks'
-	| 'navigation'
 	| 'mining-citadels'
 	| 'moon-drills'
 export type StructureListSortDirection = 'asc' | 'desc'
@@ -38,13 +41,19 @@ export const STRUCTURE_COMMON_LIST_SORT_FIELDS = [
 
 export type StructureOperationalListSortBy = StructureCommonListSortBy
 
-export type StructureMoonStructureListSortBy = StructureCommonListSortBy | 'planet' | 'fuelBlocks' | 'magmaticGas'
+export type StructureMoonStructureListSortBy =
+	| StructureCommonListSortBy
+	| 'planet'
+	| 'fuelBlocks'
+	| 'magmaticGas'
+	| 'moonMaterials'
 
 export const STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS = [
 	...STRUCTURE_COMMON_LIST_SORT_FIELDS,
 	'planet',
 	'fuelBlocks',
 	'magmaticGas',
+	'moonMaterials',
 ] as const satisfies readonly StructureMoonStructureListSortBy[]
 
 export const FUEL_BLOCK_TYPE_IDS = new Set(['4051', '4246', '4247', '4312'])
@@ -117,10 +126,9 @@ export const STRUCTURE_REINFORCED_STATES = new Set([
 ])
 
 export const STRUCTURE_TABS: StructureTabDefinition[] = [
-	{ tab: 'citadels', label: 'Citadels' },
+	{ tab: 'structures', label: 'Structures' },
 	{ tab: 'sovereignty', label: 'Sovereignty' },
 	{ tab: 'skyhooks', label: 'Skyhooks' },
-	{ tab: 'navigation', label: 'Navigation' },
 	{ tab: 'mining-citadels', label: 'Mining Citadels' },
 	{ tab: 'moon-drills', label: 'Moon Drills' },
 ]
@@ -153,7 +161,10 @@ export function getStructureTabForTypeId(
 	const normalized = normalizeStructureTypeId(typeId)
 	const normalizedName = (typeName ?? '').trim()
 
-	if (normalizedName === METENOX_MOON_DRILL_TYPE_NAME || MOON_DRILL_STRUCTURE_TYPE_IDS.has(normalized)) {
+	if (
+		normalizedName === METENOX_MOON_DRILL_TYPE_NAME ||
+		MOON_DRILL_STRUCTURE_TYPE_IDS.has(normalized)
+	) {
 		return 'moon-drills'
 	}
 
@@ -166,11 +177,7 @@ export function getStructureTabForTypeId(
 	if (SKYHOOK_STRUCTURE_TYPE_IDS.has(normalized)) {
 		return 'skyhooks'
 	}
-	if (NAVIGATION_STRUCTURE_TYPE_IDS.has(normalized)) {
-		return 'navigation'
-	}
-
-	return 'citadels'
+	return 'structures'
 }
 
 export function isReinforcedStructureState(state: string): boolean {
@@ -183,7 +190,9 @@ export interface StructureActor {
 	roles: string[]
 }
 
-export interface StructureListPagingQuery<TSortBy extends StructureListSortBy = StructureListSortBy> {
+export interface StructureListPagingQuery<
+	TSortBy extends StructureListSortBy = StructureListSortBy,
+> {
 	page?: number
 	pageSize?: number
 	sortBy?: TSortBy
@@ -209,12 +218,7 @@ export type StructureOperationalListFilters = StructureCommonListFilters
 
 export type StructureOperationalListQuery = StructureCommonListQuery
 
-export interface StructureCitadelListQuery extends StructureCommonListQuery {}
-
-export interface StructureNavigationListQuery extends StructureCommonListQuery {
-	corporationId?: string
-	systemId?: string
-}
+export interface StructureListQuery extends StructureCommonListQuery {}
 
 export interface StructureSovereigntyListFilters {
 	corporationId?: string
@@ -334,8 +338,7 @@ export interface StructureCommonListFilterOptions {
 
 export type StructureOperationalListFilterOptions = StructureCommonListFilterOptions
 
-export interface StructureMoonStructureListFilterOptions
-	extends StructureCommonListFilterOptions {
+export interface StructureMoonStructureListFilterOptions extends StructureCommonListFilterOptions {
 	planets: StructureListFilterOption[]
 }
 
@@ -371,9 +374,7 @@ export interface StructureListBaseItem
 	lowPower: boolean
 }
 
-export interface StructureCitadelListItem extends StructureListBaseItem {}
-
-export interface StructureNavigationListItem extends StructureCitadelListItem {}
+export interface StructureListItem extends StructureListBaseItem {}
 
 export interface StructureModuleConfig {
 	id: string
@@ -525,7 +526,9 @@ export interface StructureSkyhookReagent {
 }
 
 export interface StructureSkyhookListItem
-	extends StructureIdentity, StructureSyncState, StructureConfig {
+	extends StructureIdentity,
+		StructureSyncState,
+		StructureConfig {
 	state: string
 	typeId: string
 	typeName: string | null
@@ -566,7 +569,10 @@ export interface StructureSkyhookListResponse {
 }
 
 export interface StructureMoonDrillListItem
-	extends StructureIdentity, StructureSyncState, StructureConfig, StructureMoonGeography {
+	extends StructureIdentity,
+		StructureSyncState,
+		StructureConfig,
+		StructureMoonGeography {
 	name: string
 	state: string
 	typeId: string
@@ -576,11 +582,16 @@ export interface StructureMoonDrillListItem
 	fuelAmount: number | null
 	fuelBlockUnits: number
 	magmaticGasUnits: number
+	moonMaterialUnits: number
+	moonMaterialVolumeM3: number
 	lowPower: boolean
 }
 
 export interface StructureMiningCitadelListItem
-	extends StructureIdentity, StructureSyncState, StructureConfig, StructureMoonGeography {
+	extends StructureIdentity,
+		StructureSyncState,
+		StructureConfig,
+		StructureMoonGeography {
 	name: string
 	state: string
 	typeId: string
@@ -735,7 +746,7 @@ export interface StructureFittingItem {
 	isConsumable?: boolean
 }
 
-export interface StructureDetailResult extends Omit<StructureCitadelListItem, 'canViewDetails'> {
+export interface StructureDetailResult extends Omit<StructureListItem, 'canViewDetails'> {
 	includeInStructureAssetSync: boolean
 	canViewSensitive: boolean
 	canEdit: boolean
@@ -768,7 +779,7 @@ export interface StructureDetailResult extends Omit<StructureCitadelListItem, 'c
 	fittingItems?: StructureFittingItem[]
 }
 
-export interface StructureListResponse<TItem = StructureCitadelListItem> {
+export interface StructureListResponse<TItem = StructureListItem> {
 	items: TItem[]
 	pagination: {
 		page: number
@@ -781,11 +792,6 @@ export interface StructureListResponse<TItem = StructureCitadelListItem> {
 	filterOptions: StructureListFilterOptions
 	summary: StructureListSummary
 }
-
-export interface StructureCitadelListResponse extends StructureListResponse<StructureCitadelListItem> {}
-
-export interface StructureNavigationListResponse
-	extends StructureListResponse<StructureNavigationListItem> {}
 
 export interface StructureSkyhookListFilters extends StructureOperationalListFilters {
 	planetId?: string
@@ -817,8 +823,6 @@ export interface StructureMiningCitadelListQuery extends StructureMoonStructureL
 }
 
 export type StructureListFilterOptions = StructureCommonListFilterOptions
-
-export type StructureListQuery = StructureCitadelListQuery
 
 export interface UpdateStructureConfigInput {
 	hidden?: boolean
@@ -887,18 +891,7 @@ export interface UpdateStructureGroupAlertConfigRequest {
 }
 
 export interface StructuresWorker {
-	listStructures(
-		actor: StructureActor,
-		query?: StructureListQuery
-	): Promise<StructureListResponse<StructureCitadelListItem>>
-	listCitadelStructures(
-		actor: StructureActor,
-		query?: StructureCitadelListQuery
-	): Promise<StructureCitadelListResponse>
-	listNavigationStructures(
-		actor: StructureActor,
-		query?: StructureNavigationListQuery
-	): Promise<StructureNavigationListResponse>
+	listStructures(actor: StructureActor, query?: StructureListQuery): Promise<StructureListResponse>
 	listSovereigntyStructures(
 		actor: StructureActor,
 		query?: StructureSovereigntyListQuery
@@ -938,7 +931,10 @@ export interface StructuresWorker {
 		actor: StructureActor,
 		input: UpsertStructureGroupSettingInput
 	): Promise<StructureGroupSetting>
-	deleteStructureGroupSetting(actor: StructureActor, groupId: string): Promise<StructureGroupSetting | null>
+	deleteStructureGroupSetting(
+		actor: StructureActor,
+		groupId: string
+	): Promise<StructureGroupSetting | null>
 	listStructureCorporationGroupDefaults(
 		actor: StructureActor
 	): Promise<StructureCorporationGroupDefault[]>
@@ -1005,13 +1001,15 @@ export const STRUCTURE_ALERT_TYPES: StructureAlertTypeDefinition[] = [
 	{
 		type: 'structure_fuel_time_status',
 		label: 'Structure Fuel Status',
-		description: 'Trigger alerts for time-based structures when the configured thresholds are crossed.',
+		description:
+			'Trigger alerts for time-based structures when the configured thresholds are crossed.',
 		supportedDestinationTypes: ['discord_channel', 'discord_user', 'discord_webhook', 'group'],
 	},
 	{
 		type: 'structure_fuel_amount_status',
 		label: 'Jump Gate Fuel Status',
-		description: 'Trigger alerts for fuel-unit structures when the configured thresholds are crossed.',
+		description:
+			'Trigger alerts for fuel-unit structures when the configured thresholds are crossed.',
 		supportedDestinationTypes: ['discord_channel', 'discord_user', 'discord_webhook', 'group'],
 	},
 ]

@@ -3,13 +3,16 @@ import {
 	STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS,
 	STRUCTURE_SKYHOOK_LIST_SORT_FIELDS,
 	STRUCTURE_SOVEREIGNTY_LIST_SORT_FIELDS,
-	type StructureCommonListSortBy,
-	type StructureListSortBy,
-	type StructureListSortDirection,
-	type StructureMoonStructureListSortBy,
-	type StructureSkyhookListSortBy,
-	type StructureSovereigntyListSortBy,
-	type StructureTab,
+} from '@repo/structures'
+
+import type {
+	StructureCommonListSortBy,
+	StructureListSortBy,
+	StructureListSortDirection,
+	StructureMoonStructureListSortBy,
+	StructureSkyhookListSortBy,
+	StructureSovereigntyListSortBy,
+	StructureTab,
 } from '@repo/structures'
 
 export interface StructureListContentKeyFilters {
@@ -32,13 +35,15 @@ function isIncluded(value: string, allowed: readonly string[]): boolean {
 }
 
 function getCommonSortBy(sortBy: string | null | undefined): StructureCommonListSortBy {
-	return isIncluded(sortBy ?? '', STRUCTURE_COMMON_LIST_SORT_FIELDS) ? (sortBy as StructureCommonListSortBy) : 'fuel'
+	return isIncluded(sortBy ?? '', STRUCTURE_COMMON_LIST_SORT_FIELDS)
+		? (sortBy as StructureCommonListSortBy)
+		: 'fuel'
 }
 
 function getMoonSortBy(sortBy: string | null | undefined): StructureMoonStructureListSortBy {
 	return isIncluded(sortBy ?? '', STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS)
 		? (sortBy as StructureMoonStructureListSortBy)
-		: 'fuel'
+		: 'moonMaterials'
 }
 
 function getSkyhookSortBy(sortBy: string | null | undefined): StructureSkyhookListSortBy {
@@ -58,8 +63,7 @@ export function getEffectiveStructureSortByForTab(
 	sortBy: string | null | undefined
 ): StructureListSortBy {
 	switch (tab) {
-		case 'citadels':
-		case 'navigation':
+		case 'structures':
 		case 'mining-citadels':
 			return getCommonSortBy(sortBy)
 		case 'moon-drills':
@@ -123,8 +127,7 @@ export function buildStructureListContentKey({
 			pushDefined(parts, filters.typeId)
 			pushDefined(parts, filters.planetId)
 			break
-		case 'citadels':
-		case 'navigation':
+		case 'structures':
 		case 'mining-citadels':
 			pushDefined(parts, filters.corporationId)
 			pushDefined(parts, filters.assignedGroupId)

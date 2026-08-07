@@ -225,8 +225,7 @@ export type StructurePermissionRole = (typeof STRUCTURE_PERMISSION_ROLES)[number
 
 export const STRUCTURE_PERMISSION_TABS = [
 	'all',
-	'citadels',
-	'navigation',
+	'structures',
 	'sovereignty',
 	'skyhooks',
 	'moon-drills',

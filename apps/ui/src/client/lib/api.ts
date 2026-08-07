@@ -14,10 +14,10 @@ import type { FreightRoute } from '@repo/freight'
 import type { InventoryDisplayBay as SharedInventoryDisplayBay } from '@repo/inventory-display'
 import type { UpdateSRPConfig } from '@repo/srp'
 import type {
-	StructureCitadelListQuery as RepoStructureCitadelListQuery,
 	StructureCommonListFilterOptions as RepoStructureCommonListFilterOptions,
 	StructureCommonListQuery as RepoStructureCommonListQuery,
 	StructureCommonListSortBy as RepoStructureCommonListSortBy,
+	StructureListQuery as RepoStructureListQuery,
 	StructureListSummary as RepoStructureListSummary,
 	StructureMiningCitadelListItem as RepoStructureMiningCitadelListItem,
 	StructureMiningCitadelListQuery as RepoStructureMiningCitadelListQuery,
@@ -29,7 +29,6 @@ import type {
 	StructureMoonDrillSummary as RepoStructureMoonDrillSummary,
 	StructureMoonStructureListFilterOptions as RepoStructureMoonStructureListFilterOptions,
 	StructureMoonStructureListSortBy as RepoStructureMoonStructureListSortBy,
-	StructureNavigationListQuery as RepoStructureNavigationListQuery,
 	StructureSkyhookListFilterOptions as RepoStructureSkyhookListFilterOptions,
 	StructureSkyhookListItem as RepoStructureSkyhookListItem,
 	StructureSkyhookListQuery as RepoStructureSkyhookListQuery,
@@ -821,11 +820,7 @@ export type StructureOperationalListSortBy = RepoStructureCommonListSortBy
 export type StructureCommonListQuery = RepoStructureCommonListQuery
 export type StructureOperationalListQuery = RepoStructureCommonListQuery
 
-export interface StructureCitadelListQuery extends RepoStructureCitadelListQuery {}
-
-export interface StructureListQuery extends StructureCitadelListQuery {}
-
-export interface StructureNavigationListQuery extends RepoStructureNavigationListQuery {}
+export interface StructureListQuery extends RepoStructureListQuery {}
 
 export interface StructureSovereigntyListQuery extends RepoStructureSovereigntyListQuery {}
 
@@ -882,9 +877,7 @@ export interface StructureListBaseItem {
 	canViewDetails: boolean
 }
 
-export interface StructureCitadelListItem extends StructureListBaseItem {}
-
-export interface StructureNavigationListItem extends StructureCitadelListItem {}
+export interface StructureListItem extends StructureListBaseItem {}
 
 export interface StructureSovereigntyHubSummary {
 	fuelAccessListId: string | null
@@ -1018,7 +1011,7 @@ export interface StructureFittingItem {
 	isConsumable?: boolean
 }
 
-export interface StructureDetailResult extends Omit<StructureCitadelListItem, 'canViewDetails'> {
+export interface StructureDetailResult extends Omit<StructureListItem, 'canViewDetails'> {
 	includeInStructureAssetSync: boolean
 	canViewSensitive: boolean
 	canEdit: boolean
@@ -1062,7 +1055,7 @@ export interface StructureAssetsDebugResult {
 	items: StructureAssetsDebugItem[]
 }
 
-export interface StructureListResponse<TItem = StructureCitadelListItem> {
+export interface StructureListResponse<TItem = StructureListItem> {
 	items: TItem[]
 	pagination: {
 		page: number
@@ -1076,17 +1069,13 @@ export interface StructureListResponse<TItem = StructureCitadelListItem> {
 	summary: StructureListSummary
 }
 
-export interface StructureCitadelListResponse
-	extends StructureListResponse<StructureCitadelListItem> {}
-export interface StructureNavigationListResponse
-	extends StructureListResponse<StructureNavigationListItem> {}
+export interface StructureMainListResponse extends StructureListResponse<StructureListItem> {}
 export type StructureSovereigntyListResponse = RepoStructureSovereigntyListResponse
 export type StructureSkyhookListResponse = RepoStructureSkyhookListResponse
 export type StructureMoonDrillListResponse = RepoStructureMoonDrillListResponse
 export type StructureMiningCitadelListResponse = RepoStructureMiningCitadelListResponse
 export type StructureTabListResponse =
-	| StructureCitadelListResponse
-	| StructureNavigationListResponse
+	| StructureMainListResponse
 	| StructureSovereigntyListResponse
 	| StructureSkyhookListResponse
 	| StructureMiningCitadelListResponse
@@ -3611,9 +3600,7 @@ export class ApiClient {
 		return this.delete(`/admin/navigation/external-links/${id}`)
 	}
 
-	async getCitadelStructures(
-		query: StructureCitadelListQuery = {}
-	): Promise<StructureCitadelListResponse> {
+	async getStructures(query: StructureListQuery = {}): Promise<StructureMainListResponse> {
 		const params = new URLSearchParams()
 		if (query.page) params.set('page', String(query.page))
 		if (query.pageSize) params.set('pageSize', String(query.pageSize))
@@ -3628,23 +3615,7 @@ export class ApiClient {
 		if (query.state) params.set('state', query.state)
 		if (query.typeId) params.set('typeId', query.typeId)
 		const queryString = params.toString()
-		return this.get(`/structures/citadels${queryString ? `?${queryString}` : ''}`)
-	}
-
-	async getNavigationStructures(
-		query: StructureNavigationListQuery = {}
-	): Promise<StructureNavigationListResponse> {
-		const params = new URLSearchParams()
-		if (query.page) params.set('page', String(query.page))
-		if (query.pageSize) params.set('pageSize', String(query.pageSize))
-		if (query.sortBy) params.set('sortBy', query.sortBy)
-		if (query.sortDirection) params.set('sortDirection', query.sortDirection)
-		if (query.corporationId) params.set('corporationId', query.corporationId)
-		if (query.systemId) params.set('systemId', query.systemId)
-		if (query.state) params.set('state', query.state)
-		if (query.typeId) params.set('typeId', query.typeId)
-		const queryString = params.toString()
-		return this.get(`/structures/navigation${queryString ? `?${queryString}` : ''}`)
+		return this.get(`/structures${queryString ? `?${queryString}` : ''}`)
 	}
 
 	async getSovereigntyStructures(
@@ -3713,12 +3684,6 @@ export class ApiClient {
 		if (query.typeId) params.set('typeId', query.typeId)
 		const queryString = params.toString()
 		return this.get(`/structures/mining-citadels${queryString ? `?${queryString}` : ''}`)
-	}
-
-	async getStructures(
-		query: StructureCitadelListQuery = {}
-	): Promise<StructureCitadelListResponse> {
-		return this.getCitadelStructures(query)
 	}
 
 	async getStructure(structureId: string): Promise<StructureDetailResult> {

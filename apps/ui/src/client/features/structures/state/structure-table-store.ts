@@ -6,9 +6,9 @@ import {
 	STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS,
 	STRUCTURE_SKYHOOK_LIST_SORT_FIELDS,
 	STRUCTURE_SOVEREIGNTY_LIST_SORT_FIELDS,
-	type StructureSkyhookListSortBy,
-	type StructureTab,
 } from '@repo/structures'
+
+import type { StructureSkyhookListSortBy, StructureTab } from '@repo/structures'
 import type { StructureListSortBy, StructureListSortDirection } from '@/lib/api'
 
 export interface StructureTableFilters {
@@ -47,19 +47,18 @@ const LEGACY_STORAGE_KEY = 'structures.table-state.v1'
 const DEFAULT_SORT_BY: StructureListSortBy = 'fuel'
 const DEFAULT_SORT_DIRECTION: StructureListSortDirection = 'asc'
 const ALL_STRUCTURE_TABS: StructureTab[] = [
-	'citadels',
+	'structures',
 	'sovereignty',
 	'skyhooks',
-	'navigation',
 	'mining-citadels',
 	'moon-drills',
 ]
 
 function defaultState(): StructureTableUiState {
 	const tabStateByTab: Partial<Record<StructureTab, StructureTableTabState>> = {}
-	const currentTabState = defaultTabState('citadels')
+	const currentTabState = defaultTabState('structures')
 	return {
-		tab: 'citadels',
+		tab: 'structures',
 		filters: currentTabState.filters,
 		page: 1,
 		pageSize: 15,
@@ -69,10 +68,18 @@ function defaultState(): StructureTableUiState {
 	}
 }
 
-function defaultSortForTab(tab: StructureTab): Pick<StructureTableTabState, 'sortBy' | 'sortDirection'> {
+function defaultSortForTab(
+	tab: StructureTab
+): Pick<StructureTableTabState, 'sortBy' | 'sortDirection'> {
 	if (tab === 'skyhooks') {
 		return {
 			sortBy: 'skyhookSurplusFullness' as StructureSkyhookListSortBy,
+			sortDirection: 'desc',
+		}
+	}
+	if (tab === 'moon-drills') {
+		return {
+			sortBy: 'moonMaterials',
 			sortDirection: 'desc',
 		}
 	}
@@ -91,7 +98,10 @@ function defaultTabState(tab: StructureTab): StructureTableTabState {
 	}
 }
 
-function isValidSortByForTab(tab: StructureTab, sortBy: string | null | undefined): sortBy is StructureListSortBy {
+function isValidSortByForTab(
+	tab: StructureTab,
+	sortBy: string | null | undefined
+): sortBy is StructureListSortBy {
 	const fields = (() => {
 		switch (tab) {
 			case 'skyhooks':
@@ -160,7 +170,10 @@ function normalizeFilters(filters: StructureTableFilters): StructureTableFilters
 	}
 }
 
-function pruneFiltersForTab(tab: StructureTab, filters: StructureTableFilters): StructureTableFilters {
+function pruneFiltersForTab(
+	tab: StructureTab,
+	filters: StructureTableFilters
+): StructureTableFilters {
 	const nextFilters: StructureTableFilters = {}
 
 	for (const field of TAB_FILTER_FIELDS[tab]) {
@@ -247,8 +260,7 @@ const MOON_DRILL_TAB_FILTER_FIELDS = [
 ] as const satisfies Array<keyof StructureTableFilters>
 
 const TAB_FILTER_FIELDS: Record<StructureTab, Array<keyof StructureTableFilters>> = {
-	citadels: [...COMMON_TAB_FILTER_FIELDS],
-	navigation: [...COMMON_TAB_FILTER_FIELDS],
+	structures: [...COMMON_TAB_FILTER_FIELDS],
 	sovereignty: [
 		'corporationId',
 		'assignedGroupId',
@@ -265,19 +277,19 @@ const TAB_FILTER_FIELDS: Record<StructureTab, Array<keyof StructureTableFilters>
 function normalizeTab(tab: unknown): StructureTab {
 	return tab === 'sovereignty' ||
 		tab === 'skyhooks' ||
-		tab === 'navigation' ||
 		tab === 'mining-citadels' ||
 		tab === 'moon-drills'
 		? tab
 		: tab === 'mining'
 			? 'moon-drills'
-		: 'citadels'
+			: 'structures'
 }
 
 function readStateFromStorage(): StructureTableUiState {
 	if (typeof window === 'undefined') return defaultState()
 	try {
-		const raw = window.localStorage.getItem(STORAGE_KEY) ?? window.sessionStorage.getItem(LEGACY_STORAGE_KEY)
+		const raw =
+			window.localStorage.getItem(STORAGE_KEY) ?? window.sessionStorage.getItem(LEGACY_STORAGE_KEY)
 		if (!raw) return defaultState()
 		const parsed = JSON.parse(raw) as Partial<StructureTableUiState> & {
 			tabStateByTab?: Partial<Record<StructureTab, Partial<StructureTableTabState>>>
@@ -350,10 +362,13 @@ export function useStructureTableUiState<TSelected>(
 }
 
 export function setStructureTableFilters(
-	patch: Partial<StructureTableFilters> | ((previous: StructureTableFilters) => StructureTableFilters)
+	patch:
+		| Partial<StructureTableFilters>
+		| ((previous: StructureTableFilters) => StructureTableFilters)
 ): void {
 	updateState((previous) => {
-		const nextFilters = typeof patch === 'function' ? patch(previous.filters) : { ...previous.filters, ...patch }
+		const nextFilters =
+			typeof patch === 'function' ? patch(previous.filters) : { ...previous.filters, ...patch }
 		const currentTabState = normalizeTabState(previous.tab, {
 			filters: previous.filters,
 			sortBy: previous.sortBy,
