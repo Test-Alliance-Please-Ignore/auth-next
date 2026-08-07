@@ -65,7 +65,7 @@ export class AdminService {
 	async transferCharacterOwnership(
 		characterId: string,
 		newUserId: string,
-		_adminUserId: string
+		adminUserId: string
 	): Promise<TransferCharacterResult> {
 		// 1. Delegate to core worker for character transfer
 		const result = await this.coreWorker.transferCharacterOwnership(characterId, newUserId)
