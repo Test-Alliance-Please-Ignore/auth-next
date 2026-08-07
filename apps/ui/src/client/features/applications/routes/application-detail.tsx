@@ -10,10 +10,10 @@
 import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, Briefcase, Plus, X } from 'lucide-react'
 import { useState } from 'react'
-import { Link, Navigate, useNavigate, useParams } from 'react-router'
+import { Link, Navigate, useParams } from 'react-router'
 
 import { MemberAvatar } from '@/components/member-avatar'
-import { useEntityNames } from '@/hooks/useEntityNames'
+import { Badge } from '@/components/ui/badge'
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -22,7 +22,6 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -42,18 +41,19 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
+import { useEntityNames } from '@/hooks/useEntityNames'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
-import { canWithdrawApplication } from '../api'
-import { useHrPermissionCheck } from '../../hr/hooks'
 import { useCanAccessCorporation } from '../../corporations/hooks'
+import { useHrPermissionCheck } from '../../hr/hooks'
+import { canWithdrawApplication } from '../api'
 import { AccessDeniedCard } from '../components/access-denied-card'
 import { AddRecommendationDialog } from '../components/add-recommendation-dialog'
+import { ApplicationCharacterStack } from '../components/application-character-stack'
 import { ApplicationStatusBadge } from '../components/application-status-badge'
 import { ApplicationTimeline } from '../components/application-timeline'
 import { DeleteRecommendationDialog } from '../components/delete-recommendation-dialog'
-import { ApplicationCharacterStack } from '../components/application-character-stack'
 import { MessagesPanel } from '../components/messages-panel'
 import { RecommendationList } from '../components/recommendation-list'
 import {
@@ -77,7 +77,6 @@ import type { Recommendation } from '../api'
  */
 export default function ApplicationDetail() {
 	const { applicationId } = useParams<{ applicationId: string }>()
-	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { showSuccess, showError } = useMessage()
 
@@ -98,10 +97,8 @@ export default function ApplicationDetail() {
 		isLoading: applicationLoading,
 		error: applicationError,
 	} = useApplication(applicationId!)
-	const {
-		corporation: applicationCorporation,
-		isLoading: applicationCorporationLoading,
-	} = useCanAccessCorporation(application?.corporationId ?? '')
+	const { corporation: applicationCorporation, isLoading: applicationCorporationLoading } =
+		useCanAccessCorporation(application?.corporationId ?? '')
 	const { data: activityLog, isLoading: activityLoading } = useApplicationActivity(applicationId!)
 	const { data: recommendations } = useRecommendations(applicationId!)
 	const { data: messageCount = 0 } = useMessageCount(applicationId!)
@@ -141,8 +138,7 @@ export default function ApplicationDetail() {
 	// Alt characters the user could still add (their chars minus main minus already-added)
 	const addableAlts = (user?.characters ?? []).filter(
 		(ch: { characterId: string }) =>
-			ch.characterId !== application?.characterId &&
-			!altCharacterIds.includes(ch.characterId)
+			ch.characterId !== application?.characterId && !altCharacterIds.includes(ch.characterId)
 	)
 
 	// Handlers
@@ -218,7 +214,11 @@ export default function ApplicationDetail() {
 			<Container>
 				<AccessDeniedCard
 					title="Failed to Load Application"
-					message={applicationError instanceof Error ? applicationError.message : 'An unexpected error occurred'}
+					message={
+						applicationError instanceof Error
+							? applicationError.message
+							: 'An unexpected error occurred'
+					}
 					backLabel="Back to My Applications"
 					backHref={myApplicationsPath}
 				/>
@@ -237,7 +237,13 @@ export default function ApplicationDetail() {
 	}
 
 	// Wait for HR permission check before denying non-owner access
-	if (application && !isOwner && applicationCorporation?.isMemberCorporation && !user?.is_admin && hrPermissionLoading) {
+	if (
+		application &&
+		!isOwner &&
+		applicationCorporation?.isMemberCorporation &&
+		!user?.is_admin &&
+		hrPermissionLoading
+	) {
 		return (
 			<Container>
 				<div className="flex items-center justify-center min-h-[400px]">
@@ -401,7 +407,11 @@ export default function ApplicationDetail() {
 										{addableAlts.length > 0 && (
 											<Button
 												size="sm"
-												onClick={() => { setAltSearch(''); setSelectedAltIds(new Set()); setShowAddAltDialog(true) }}
+												onClick={() => {
+													setAltSearch('')
+													setSelectedAltIds(new Set())
+													setShowAddAltDialog(true)
+												}}
 											>
 												<Plus className="h-4 w-4" />
 												Add Alt
@@ -413,13 +423,20 @@ export default function ApplicationDetail() {
 									{altCharacterIds.length > 0 ? (
 										<div className="space-y-2">
 											{altCharacterIds.map((altId) => (
-												<div key={altId} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
-												<div className="flex items-center gap-2">
-													<MemberAvatar characterId={altId} characterName={altCharacterNames[altId] ?? altId} size="sm" />
-													<span className="truncate text-sm font-medium">
-														{altCharacterNames[altId] ?? altId}
-													</span>
-												</div>
+												<div
+													key={altId}
+													className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+												>
+													<div className="flex items-center gap-2">
+														<MemberAvatar
+															characterId={altId}
+															characterName={altCharacterNames[altId] ?? altId}
+															size="sm"
+														/>
+														<span className="truncate text-sm font-medium">
+															{altCharacterNames[altId] ?? altId}
+														</span>
+													</div>
 													<Button
 														variant="ghost"
 														size="sm"
@@ -432,13 +449,19 @@ export default function ApplicationDetail() {
 																confirmLabel: 'Remove',
 																intent: 'destructive',
 																onConfirm: async () => {
-																	await removeAltMutation.mutateAsync({
-																		applicationId: applicationId!,
-																		altCharacterId: altId,
-																		altCharacterName: altCharacterNames[altId],
-																		actorCharacterId: application.characterId,
-																		actorCharacterName: application.characterName,
-																	}).catch((e) => showError(e instanceof Error ? e.message : 'Failed to remove alt'))
+																	await removeAltMutation
+																		.mutateAsync({
+																			applicationId: applicationId!,
+																			altCharacterId: altId,
+																			altCharacterName: altCharacterNames[altId],
+																			actorCharacterId: application.characterId,
+																			actorCharacterName: application.characterName,
+																		})
+																		.catch((e) =>
+																			showError(
+																				e instanceof Error ? e.message : 'Failed to remove alt'
+																			)
+																		)
 																},
 															})
 														}
@@ -464,8 +487,15 @@ export default function ApplicationDetail() {
 								<CardContent>
 									<div className="space-y-2">
 										{altCharacterIds.map((altId) => (
-											<div key={altId} className="flex items-center gap-2 rounded-md border px-3 py-2">
-												<MemberAvatar characterId={altId} characterName={altCharacterNames[altId] ?? altId} size="sm" />
+											<div
+												key={altId}
+												className="flex items-center gap-2 rounded-md border px-3 py-2"
+											>
+												<MemberAvatar
+													characterId={altId}
+													characterName={altCharacterNames[altId] ?? altId}
+													size="sm"
+												/>
 												<span className="truncate text-sm font-medium">
 													{altCharacterNames[altId] ?? altId}
 												</span>
@@ -531,30 +561,39 @@ export default function ApplicationDetail() {
 								/>
 								<div className="max-h-64 overflow-y-auto rounded-md border p-3 space-y-2">
 									{(() => {
-										const filtered = addableAlts.filter((ch: { characterId: string; characterName: string }) =>
-											ch.characterName.toLowerCase().includes(altSearch.toLowerCase())
+										const filtered = addableAlts.filter(
+											(ch: { characterId: string; characterName: string }) =>
+												ch.characterName.toLowerCase().includes(altSearch.toLowerCase())
 										)
-										return filtered.length > 0 ? filtered.map((ch: { characterId: string; characterName: string }) => (
-											<label
-												key={ch.characterId}
-												className="flex items-center gap-3 cursor-pointer"
-											>
-												<Checkbox
-													checked={selectedAltIds.has(ch.characterId)}
-													onCheckedChange={() => {
-														setSelectedAltIds((prev) => {
-															const next = new Set(prev)
-															if (next.has(ch.characterId)) next.delete(ch.characterId)
-															else next.add(ch.characterId)
-															return next
-														})
-													}}
-												/>
-												<MemberAvatar characterId={ch.characterId} characterName={ch.characterName} size="sm" />
-												<Label className="text-sm cursor-pointer">{ch.characterName}</Label>
-											</label>
-										)) : (
-											<p className="text-sm text-muted-foreground text-center py-4">No characters found.</p>
+										return filtered.length > 0 ? (
+											filtered.map((ch: { characterId: string; characterName: string }) => (
+												<label
+													key={ch.characterId}
+													className="flex items-center gap-3 cursor-pointer"
+												>
+													<Checkbox
+														checked={selectedAltIds.has(ch.characterId)}
+														onCheckedChange={() => {
+															setSelectedAltIds((prev) => {
+																const next = new Set(prev)
+																if (next.has(ch.characterId)) next.delete(ch.characterId)
+																else next.add(ch.characterId)
+																return next
+															})
+														}}
+													/>
+													<MemberAvatar
+														characterId={ch.characterId}
+														characterName={ch.characterName}
+														size="sm"
+													/>
+													<Label className="text-sm cursor-pointer">{ch.characterName}</Label>
+												</label>
+											))
+										) : (
+											<p className="text-sm text-muted-foreground text-center py-4">
+												No characters found.
+											</p>
 										)
 									})()}
 								</div>
@@ -569,7 +608,9 @@ export default function ApplicationDetail() {
 									loadingText="Adding..."
 									onClick={() => {
 										const alts = [...selectedAltIds].map((id) => {
-											const ch = addableAlts.find((c: { characterId: string; characterName: string }) => c.characterId === id)
+											const ch = addableAlts.find(
+												(c: { characterId: string; characterName: string }) => c.characterId === id
+											)
 											return { characterId: id, characterName: ch?.characterName }
 										})
 										addAltMutation.mutate(
@@ -579,7 +620,10 @@ export default function ApplicationDetail() {
 												actorCharacterId: application.characterId,
 												actorCharacterName: application.characterName,
 											},
-											{ onError: (e) => showError(e instanceof Error ? e.message : 'Failed to add alts') }
+											{
+												onError: (e) =>
+													showError(e instanceof Error ? e.message : 'Failed to add alts'),
+											}
 										)
 										setShowAddAltDialog(false)
 									}}
@@ -649,9 +693,7 @@ export default function ApplicationDetail() {
 					<Card>
 						<CardHeader>
 							<CardTitle>Messages</CardTitle>
-							<CardDescription>
-								Communicate with the HR team about your application
-							</CardDescription>
+							<CardDescription>Communicate with the HR team about your application</CardDescription>
 						</CardHeader>
 						<CardContent>
 							<MessagesPanel
@@ -683,7 +725,8 @@ export default function ApplicationDetail() {
 						>
 							Cancel
 						</Button>
-						<Button variant="destructive"
+						<Button
+							variant="destructive"
 							onClick={handleWithdrawConfirm}
 							loading={withdrawMutation.isPending}
 							loadingText="Withdrawing..."
@@ -713,6 +756,6 @@ export default function ApplicationDetail() {
 			/>
 
 			{confirmationDialog}
-	</Container>
+		</Container>
 	)
 }

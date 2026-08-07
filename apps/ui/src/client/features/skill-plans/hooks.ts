@@ -85,8 +85,8 @@ export function useCreateSkillPlan() {
 		mutationFn: (data) => skillPlansApi.createPlan(data),
 		onSuccess: () => {
 			// Invalidate all plan lists
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.lists() })
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.myPlans() })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.myPlans() })
 		},
 	})
 }
@@ -100,8 +100,8 @@ export function useUpdateSkillPlan() {
 			// Update the detail cache
 			queryClient.setQueryData(skillPlanKeys.detail(variables.planId), data)
 			// Invalidate lists
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.lists() })
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.myPlans() })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.myPlans() })
 		},
 	})
 }
@@ -115,8 +115,8 @@ export function useDeleteSkillPlan() {
 			// Remove from cache
 			queryClient.removeQueries({ queryKey: skillPlanKeys.detail(planId) })
 			// Invalidate lists
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.lists() })
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.myPlans() })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.myPlans() })
 		},
 	})
 }
@@ -138,9 +138,9 @@ export function useAddSkillToPlan() {
 		mutationFn: ({ planId, data }) => skillPlansApi.addSkillToPlan(planId, data),
 		onSuccess: (_, variables) => {
 			// Invalidate plan skills
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.skills(variables.planId) })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.skills(variables.planId) })
 			// Invalidate plan detail to refresh skill count
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.detail(variables.planId) })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.detail(variables.planId) })
 		},
 	})
 }
@@ -159,9 +159,9 @@ export function useBatchAddSkillsToPlan() {
 		mutationFn: ({ planId, skills }) => skillPlansApi.batchAddSkillsToPlan(planId, skills),
 		onSuccess: (_, variables) => {
 			// Invalidate plan skills
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.skills(variables.planId) })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.skills(variables.planId) })
 			// Invalidate plan detail to refresh skill count
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.detail(variables.planId) })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.detail(variables.planId) })
 		},
 	})
 }
@@ -178,7 +178,7 @@ export function useUpdateSkillLevels() {
 			skillPlansApi.updateSkillLevels(planId, skillId, data),
 		onSuccess: (_, variables) => {
 			// Invalidate plan skills
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.skills(variables.planId) })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.skills(variables.planId) })
 		},
 	})
 }
@@ -190,9 +190,9 @@ export function useRemoveSkillFromPlan() {
 		mutationFn: ({ planId, skillId }) => skillPlansApi.removeSkillFromPlan(planId, skillId),
 		onSuccess: (_, variables) => {
 			// Invalidate plan skills
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.skills(variables.planId) })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.skills(variables.planId) })
 			// Invalidate plan detail to refresh skill count
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.detail(variables.planId) })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.detail(variables.planId) })
 		},
 	})
 }
@@ -217,7 +217,7 @@ export function useCreateCategory() {
 		mutationFn: (data) => skillPlansApi.createCategory(data),
 		onSuccess: () => {
 			// Invalidate categories list
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.categories() })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.categories() })
 		},
 	})
 }
@@ -233,7 +233,7 @@ export function useUpdateCategory() {
 		mutationFn: ({ categoryId, data }) => skillPlansApi.updateCategory(categoryId, data),
 		onSuccess: () => {
 			// Invalidate categories list
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.categories() })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.categories() })
 		},
 	})
 }
@@ -245,7 +245,7 @@ export function useDeleteCategory() {
 		mutationFn: (categoryId) => skillPlansApi.deleteCategory(categoryId),
 		onSuccess: () => {
 			// Invalidate categories list
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.categories() })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.categories() })
 		},
 	})
 }
@@ -257,7 +257,7 @@ export function useAddCategoryToPlan() {
 		mutationFn: ({ planId, categoryId }) => skillPlansApi.addCategoryToPlan(planId, categoryId),
 		onSuccess: (_, variables) => {
 			// Invalidate plan detail
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.detail(variables.planId) })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.detail(variables.planId) })
 		},
 	})
 }
@@ -270,7 +270,7 @@ export function useRemoveCategoryFromPlan() {
 			skillPlansApi.removeCategoryFromPlan(planId, categoryId),
 		onSuccess: (_, variables) => {
 			// Invalidate plan detail
-			queryClient.invalidateQueries({ queryKey: skillPlanKeys.detail(variables.planId) })
+			void queryClient.invalidateQueries({ queryKey: skillPlanKeys.detail(variables.planId) })
 		},
 	})
 }

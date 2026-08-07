@@ -13,7 +13,6 @@ import {
 	getUserLeaderboard,
 } from './api'
 
-import type { QueryKey } from '@tanstack/react-query'
 import type { AwardDkpRequest, BulkAwardDkpRequest, DkpFilters, LeaderboardFilters } from './types'
 
 /**
@@ -150,7 +149,7 @@ export function useAwardDkp() {
 		mutationFn: (data: AwardDkpRequest) => awardDkp(data),
 		onSuccess: () => {
 			// Invalidate all DKP-related queries to refetch updated data
-			queryClient.invalidateQueries({ queryKey: dkpKeys.all })
+			void queryClient.invalidateQueries({ queryKey: dkpKeys.all })
 		},
 	})
 }
@@ -165,7 +164,7 @@ export function useAwardDkpBulk() {
 		mutationFn: (data: BulkAwardDkpRequest) => awardDkpBulk(data),
 		onSuccess: () => {
 			// Invalidate all DKP-related queries to refetch updated data
-			queryClient.invalidateQueries({ queryKey: dkpKeys.all })
+			void queryClient.invalidateQueries({ queryKey: dkpKeys.all })
 		},
 	})
 }

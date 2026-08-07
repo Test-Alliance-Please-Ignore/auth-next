@@ -208,7 +208,7 @@ export default function FreightManageEditPage() {
 
 			setMessage({ type: 'success', text: 'Freight route updated successfully!' })
 			setTimeout(() => {
-				navigate('/freight/manage')
+				void navigate('/freight/manage')
 			}, 1000)
 		} catch (error) {
 			console.error('Error updating route:', error)
@@ -537,7 +537,12 @@ export default function FreightManageEditPage() {
 					<Button variant="cancel" type="button" onClick={() => navigate('/freight/manage')}>
 						Cancel
 					</Button>
-					<Button variant="confirm" type="submit" loading={updateRoute.isPending} loadingText="Saving...">
+					<Button
+						variant="confirm"
+						type="submit"
+						loading={updateRoute.isPending}
+						loadingText="Saving..."
+					>
 						Save Changes
 					</Button>
 				</div>

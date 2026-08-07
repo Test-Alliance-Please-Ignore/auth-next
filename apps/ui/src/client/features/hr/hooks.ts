@@ -6,10 +6,8 @@ import { hrApi } from './api'
 
 import type {
 	CheckHrPermissionRequest,
-	CheckHrPermissionResult,
 	GrantHrRoleRequest,
 	HrAccessibleCorporation,
-	HrRoleGrant,
 	RevokeHrRoleRequest,
 } from './api'
 
@@ -86,20 +84,20 @@ export function useGrantHrRole() {
 		mutationFn: (request: GrantHrRoleRequest) => hrApi.grantHrRole(request),
 		onSuccess: (data, variables) => {
 			// Invalidate HR roles for this corporation
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: hrKeys.roles(variables.corporationId),
 				refetchType: 'active', // Force refetch active queries
 			})
 
 			// Invalidate all HR permission checks for this corporation
 			// Note: Permission checks are now per-corporation only (user is from session)
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: hrKeys.permission(variables.corporationId),
 				refetchType: 'active',
 			})
 
 			// Invalidate corporation members to refresh the table
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: ['my-corporations', 'members', variables.corporationId],
 				refetchType: 'active',
 			})
@@ -118,20 +116,20 @@ export function useRevokeHrRole() {
 		mutationFn: (request: RevokeHrRoleRequest) => hrApi.revokeHrRole(request),
 		onSuccess: (data, variables) => {
 			// Invalidate HR roles for this corporation
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: hrKeys.roles(variables.corporationId),
 				refetchType: 'active', // Force refetch active queries
 			})
 
 			// Invalidate all HR permission checks for this corporation
 			// Note: Permission checks are now per-corporation only (user is from session)
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: hrKeys.permission(variables.corporationId),
 				refetchType: 'active',
 			})
 
 			// Invalidate corporation members to refresh the table
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: ['my-corporations', 'members', variables.corporationId],
 				refetchType: 'active',
 			})

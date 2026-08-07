@@ -22,7 +22,7 @@ export function ScopedAssessmentSnapshotCard({
 	assessments,
 	entityNames,
 }: ScopedAssessmentSnapshotCardProps) {
-	const columns = useMemo<MRT_ColumnDef<TaxAssessment>[]>(
+	const columns = useMemo<Array<MRT_ColumnDef<TaxAssessment>>>(
 		() => [
 			{
 				accessorKey: 'assessmentScope',

@@ -1,6 +1,9 @@
-import type { NeonHttpDatabase } from 'drizzle-orm/neon-http'
 import { and, eq, inArray, lt } from 'drizzle-orm'
-import { characterReports, schema } from './schema'
+
+import { characterReports } from './schema'
+
+import type { NeonHttpDatabase } from 'drizzle-orm/neon-http'
+import type { schema } from './schema'
 
 export type DbClient = NeonHttpDatabase<typeof schema>
 
@@ -17,10 +20,7 @@ export async function getReport(db: DbClient, reportId: string) {
 }
 
 // Check if report is cancelled
-export async function isReportCancelled(
-	db: DbClient,
-	reportId: string,
-): Promise<boolean> {
+export async function isReportCancelled(db: DbClient, reportId: string): Promise<boolean> {
 	const report = await getReport(db, reportId)
 	return report?.status === 'cancelled'
 }
@@ -36,7 +36,7 @@ export function buildUpdateReportStatusQuery(
 		characterName: string
 		errorMessage: string
 		viewedAt: Date
-	}>,
+	}>
 ) {
 	return {
 		where: eq(characterReports.id, reportId),
@@ -60,13 +60,10 @@ export async function updateReportStatus(
 		characterName: string
 		errorMessage: string
 		viewedAt: Date
-	}>,
+	}>
 ) {
 	const query = buildUpdateReportStatusQuery(reportId, status, updates)
-	await db
-		.update(characterReports)
-		.set(query.set)
-		.where(query.where)
+	await db.update(characterReports).set(query.set).where(query.where)
 }
 
 // Helper: Build create report query (pure function)
@@ -108,36 +105,29 @@ export async function createCharacterReport(
 		applicationId?: string
 		retentionDays: number
 		expiresAt?: Date
-	},
+	}
 ) {
 	const values = buildCreateReportQuery(params)
 	await db.insert(characterReports).values(values)
 }
 
 // Get an existing in-progress report for a character (pending or processing)
-export async function getInProgressReportForCharacter(
-	db: DbClient,
-	characterId: string,
-) {
+export async function getInProgressReportForCharacter(db: DbClient, characterId: string) {
 	return await db.query.characterReports.findFirst({
 		where: and(
 			eq(characterReports.characterId, characterId),
-			inArray(characterReports.status, ['pending', 'processing']),
+			inArray(characterReports.status, ['pending', 'processing'])
 		),
 		orderBy: (reports, { desc }) => [desc(reports.createdAt)],
 	})
 }
 
 // Get stale in-progress reports (pending/processing older than cutoff)
-export async function getStaleInProgressReports(
-	db: DbClient,
-	cutoff: Date,
-	limit = 200,
-) {
+export async function getStaleInProgressReports(db: DbClient, cutoff: Date, limit = 200) {
 	return await db.query.characterReports.findMany({
 		where: and(
 			inArray(characterReports.status, ['pending', 'processing']),
-			lt(characterReports.updatedAt, cutoff),
+			lt(characterReports.updatedAt, cutoff)
 		),
 		orderBy: (reports, { asc }) => [asc(reports.updatedAt)],
 		limit,
@@ -153,7 +143,7 @@ export async function listReports(
 		characterId?: string
 	},
 	limit = 50,
-	offset = 0,
+	offset = 0
 ) {
 	const conditions = []
 
@@ -194,10 +184,7 @@ export async function getExpiredReports(db: DbClient) {
 	const now = new Date()
 
 	return await db.query.characterReports.findMany({
-		where: and(
-			lt(characterReports.expiresAt, now),
-			eq(characterReports.status, 'completed'),
-		),
+		where: and(lt(characterReports.expiresAt, now), eq(characterReports.status, 'completed')),
 		columns: {
 			id: true,
 			characterId: true,

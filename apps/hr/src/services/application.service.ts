@@ -1,7 +1,13 @@
 import { and, asc, desc, eq, ilike, inArray, or, sql } from '@repo/db-utils'
+import { logger } from '@repo/hono-helpers'
 import { isActiveApplicationStatus, isApplicationStatus } from '@repo/hr'
 
-import { applicationActivityLog, applicationAlts, applicationRecommendations, applications } from '../db/schema'
+import {
+	applicationActivityLog,
+	applicationAlts,
+	applicationRecommendations,
+	applications,
+} from '../db/schema'
 
 import type {
 	Application,
@@ -15,7 +21,6 @@ import type {
 	RecommenderApplicationDetail,
 } from '@repo/hr'
 import type { ServiceContext } from './context'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Application Service
@@ -23,7 +28,7 @@ import { logger } from '@repo/hono-helpers'
  * Handles all business logic for corporation membership applications.
  */
 export class ApplicationService {
-	constructor(private ctx: ServiceContext) { }
+	constructor(private ctx: ServiceContext) {}
 
 	private buildListApplicationsWhere(
 		filters: ApplicationFilters,
@@ -32,7 +37,7 @@ export class ApplicationService {
 		isAuditor: boolean,
 		userHrCorporations: string[] = []
 	) {
-		const conditions: ReturnType<typeof and>[] = []
+		const conditions: Array<ReturnType<typeof and>> = []
 
 		// Apply filters
 		if (filters.corporationId) {
@@ -159,7 +164,15 @@ export class ApplicationService {
 		}
 
 		// Log the submission
-		await this.logActivity(application.id, userId, characterId, characterName, 'submitted', null, 'pending')
+		await this.logActivity(
+			application.id,
+			userId,
+			characterId,
+			characterName,
+			'submitted',
+			null,
+			'pending'
+		)
 
 		logger.log('[HR] application submitted', {
 			applicationId: application.id,
@@ -169,7 +182,11 @@ export class ApplicationService {
 		})
 
 		const firstApplicationIds = await this.resolveFirstApplicationIds([application.userId])
-		return this.mapToApplication(application, altCharacterIds, firstApplicationIds.has(application.id))
+		return this.mapToApplication(
+			application,
+			altCharacterIds,
+			firstApplicationIds.has(application.id)
+		)
 	}
 
 	/**
@@ -182,7 +199,13 @@ export class ApplicationService {
 		isAuditor: boolean,
 		userHrCorporations: string[] = []
 	): Promise<Application[]> {
-		const where = this.buildListApplicationsWhere(filters, userId, isAdmin, isAuditor, userHrCorporations)
+		const where = this.buildListApplicationsWhere(
+			filters,
+			userId,
+			isAdmin,
+			isAuditor,
+			userHrCorporations
+		)
 
 		// Build query
 		const results = await this.ctx.db.query.applications.findMany({
@@ -193,10 +216,16 @@ export class ApplicationService {
 			with: { alts: true },
 		})
 
-		const firstApplicationIds = await this.resolveFirstApplicationIds(results.map((app) => app.userId))
+		const firstApplicationIds = await this.resolveFirstApplicationIds(
+			results.map((app) => app.userId)
+		)
 
 		return results.map((app) =>
-			this.mapToApplication(app, app.alts.map((a) => a.characterId), firstApplicationIds.has(app.id))
+			this.mapToApplication(
+				app,
+				app.alts.map((a) => a.characterId),
+				firstApplicationIds.has(app.id)
+			)
 		)
 	}
 
@@ -207,7 +236,13 @@ export class ApplicationService {
 		isAuditor: boolean,
 		userHrCorporations: string[] = []
 	): Promise<ApplicationListResult> {
-		const where = this.buildListApplicationsWhere(filters, userId, isAdmin, isAuditor, userHrCorporations)
+		const where = this.buildListApplicationsWhere(
+			filters,
+			userId,
+			isAdmin,
+			isAuditor,
+			userHrCorporations
+		)
 		const whereWithoutStatus = this.buildListApplicationsWhere(
 			{ ...filters, status: undefined },
 			userId,
@@ -230,7 +265,9 @@ export class ApplicationService {
 			offset,
 			with: { alts: true },
 		})
-		const firstApplicationIds = await this.resolveFirstApplicationIds(results.map((app) => app.userId))
+		const firstApplicationIds = await this.resolveFirstApplicationIds(
+			results.map((app) => app.userId)
+		)
 
 		const groupedCounts = await this.ctx.db
 			.select({
@@ -257,7 +294,11 @@ export class ApplicationService {
 
 		return {
 			items: results.map((app) =>
-				this.mapToApplication(app, app.alts.map((a) => a.characterId), firstApplicationIds.has(app.id))
+				this.mapToApplication(
+					app,
+					app.alts.map((a) => a.characterId),
+					firstApplicationIds.has(app.id)
+				)
 			),
 			total: countRow?.total ?? 0,
 			limit,
@@ -307,7 +348,7 @@ export class ApplicationService {
 		})
 
 		// Get activity log if requested (HR, admin, or application owner)
-		let activityLog: (typeof applicationActivityLog.$inferSelect)[] | undefined
+		let activityLog: Array<typeof applicationActivityLog.$inferSelect> | undefined
 
 		if (includeActivityLog && (hasHrAccess || isAdmin || isOwner)) {
 			activityLog = await this.ctx.db.query.applicationActivityLog.findMany({
@@ -319,11 +360,7 @@ export class ApplicationService {
 		const firstApplicationIds = await this.resolveFirstApplicationIds([application.userId])
 
 		return {
-			...this.mapToApplication(
-				application,
-				undefined,
-				firstApplicationIds.has(application.id)
-			),
+			...this.mapToApplication(application, undefined, firstApplicationIds.has(application.id)),
 			altCharacterIds: alts.map((alt) => alt.characterId),
 			recommendations: recommendations.map((rec) => ({
 				id: rec.id,
@@ -392,10 +429,10 @@ export class ApplicationService {
 				lastStaffInteractionAt: new Date(),
 				...(isReviewAction
 					? {
-						reviewedBy: userId,
-						reviewedAt: new Date(),
-						reviewNotes,
-					}
+							reviewedBy: userId,
+							reviewedAt: new Date(),
+							reviewNotes,
+						}
 					: {}),
 				updatedAt: new Date(),
 			})
@@ -482,7 +519,8 @@ export class ApplicationService {
 		const application = await this.getApplicationById(applicationId)
 		if (!application) throw new Error('Application not found')
 		if (application.userId !== userId) throw new Error('You can only modify your own applications')
-		if (!isActiveApplicationStatus(application.status)) throw new Error('You can only modify alts on active applications')
+		if (!isActiveApplicationStatus(application.status))
+			throw new Error('You can only modify alts on active applications')
 
 		// Filter out already-existing alts
 		const altIds = alts.map((a) => a.characterId)
@@ -496,12 +534,21 @@ export class ApplicationService {
 		const newAlts = alts.filter((a) => !existingIds.has(a.characterId))
 		if (newAlts.length === 0) return
 
-		await this.ctx.db.insert(applicationAlts).values(
-			newAlts.map((a) => ({ applicationId, characterId: a.characterId }))
-		)
+		await this.ctx.db
+			.insert(applicationAlts)
+			.values(newAlts.map((a) => ({ applicationId, characterId: a.characterId })))
 
 		for (const alt of newAlts) {
-			await this.logActivity(applicationId, userId, characterId, characterName, 'alt_added', null, alt.characterId, { altCharacterName: alt.characterName })
+			await this.logActivity(
+				applicationId,
+				userId,
+				characterId,
+				characterName,
+				'alt_added',
+				null,
+				alt.characterId,
+				{ altCharacterName: alt.characterName }
+			)
 		}
 	}
 
@@ -519,7 +566,8 @@ export class ApplicationService {
 		const application = await this.getApplicationById(applicationId)
 		if (!application) throw new Error('Application not found')
 		if (application.userId !== userId) throw new Error('You can only modify your own applications')
-		if (!isActiveApplicationStatus(application.status)) throw new Error('You can only modify alts on active applications')
+		if (!isActiveApplicationStatus(application.status))
+			throw new Error('You can only modify alts on active applications')
 
 		await this.ctx.db
 			.delete(applicationAlts)
@@ -530,7 +578,16 @@ export class ApplicationService {
 				)
 			)
 
-		await this.logActivity(applicationId, userId, characterId, characterName, 'alt_removed', altCharacterId, null, { altCharacterName })
+		await this.logActivity(
+			applicationId,
+			userId,
+			characterId,
+			characterName,
+			'alt_removed',
+			altCharacterId,
+			null,
+			{ altCharacterName }
+		)
 	}
 
 	/**
@@ -633,12 +690,12 @@ export class ApplicationService {
 				userHasRecommended: (rec?.userRecommended ?? 0) > 0,
 				userRecommendation: userRec
 					? {
-						id: userRec.id,
-						characterId: userRec.characterId,
-						sentiment: userRec.sentiment as RecommendationSentiment,
-						recommendationText: userRec.recommendationText,
-						isPublic: userRec.isPublic,
-					}
+							id: userRec.id,
+							characterId: userRec.characterId,
+							sentiment: userRec.sentiment as RecommendationSentiment,
+							recommendationText: userRec.recommendationText,
+							isPublic: userRec.isPublic,
+						}
 					: null,
 			}
 		})

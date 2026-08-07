@@ -5,7 +5,6 @@
 import { ChevronDown, ChevronRight, Package, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { typeIconUrl, typeImageUrl } from '@/lib/eve-images'
@@ -134,14 +133,7 @@ function getShipClassRank(shipGroupId?: string): number {
 }
 
 function ShipIcon({ typeId }: { typeId: string }) {
-	return (
-		<img
-			src={typeIconUrl(typeId, 64)}
-			alt=""
-			className="h-10 w-10 rounded"
-			loading="lazy"
-		/>
-	)
+	return <img src={typeIconUrl(typeId, 64)} alt="" className="h-10 w-10 rounded" loading="lazy" />
 }
 
 function SlotItemIcon({ typeId, typeName }: { typeId: string; typeName: string }) {
@@ -182,9 +174,7 @@ function SlotGroup({ label, items }: { label: string; items: FittedShipItem[] })
 					<li key={`${item.typeId}-${i}`} className="flex items-center gap-1.5 text-sm">
 						<SlotItemIcon typeId={item.typeId} typeName={item.typeName} />
 						<span className="text-foreground">{item.typeName}</span>
-						{item.quantity > 1 && (
-							<span className="text-muted-foreground">x{item.quantity}</span>
-						)}
+						{item.quantity > 1 && <span className="text-muted-foreground">x{item.quantity}</span>}
 					</li>
 				))}
 			</ul>
@@ -238,9 +228,7 @@ function ShipCard({
 					<div className="flex items-center gap-2">
 						<span className="font-medium text-sm">{ship.shipName}</span>
 						{ship.customName && (
-							<span className="text-xs text-muted-foreground italic">
-								"{ship.customName}"
-							</span>
+							<span className="text-xs text-muted-foreground italic">"{ship.customName}"</span>
 						)}
 					</div>
 					<span className="text-xs text-muted-foreground">
@@ -281,7 +269,10 @@ function ShipCard({
 							<div className="space-y-2">
 								{ship.containedShips.map((containedShip) => (
 									<ShipCard
-										key={containedShip.itemId ?? `${containedShip.shipTypeId}-${containedShip.shipName}`}
+										key={
+											containedShip.itemId ??
+											`${containedShip.shipTypeId}-${containedShip.shipName}`
+										}
 										ship={containedShip}
 										isExpanded={expandedShips.has(containedShip.itemId || containedShip.shipTypeId)}
 										onToggleShip={onToggleShip}
@@ -312,13 +303,13 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 	const groups = useMemo(() => {
 		const filtered = search
 			? data.filter((ship) => {
-				const q = search.toLowerCase()
-				return (
-					ship.shipName.toLowerCase().includes(q) ||
-					ship.customName?.toLowerCase().includes(q) ||
-					ship.locationName.toLowerCase().includes(q)
-				)
-			})
+					const q = search.toLowerCase()
+					return (
+						ship.shipName.toLowerCase().includes(q) ||
+						ship.customName?.toLowerCase().includes(q) ||
+						ship.locationName.toLowerCase().includes(q)
+					)
+				})
 			: data
 
 		const map = new Map<string, FittedShip[]>()
@@ -417,7 +408,9 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 						type="button"
 						onClick={() => {
 							setExpandedLocations(new Set(groups.map((group) => group.locationName)))
-							setExpandedShips(new Set(groups.flatMap((group) => group.ships.flatMap(collectShipKeys))))
+							setExpandedShips(
+								new Set(groups.flatMap((group) => group.ships.flatMap(collectShipKeys)))
+							)
 						}}
 						className="rounded border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
 					>
@@ -451,9 +444,7 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 								) : (
 									<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
 								)}
-								<span className="font-medium text-sm flex-1 truncate">
-									{group.locationName}
-								</span>
+								<span className="font-medium text-sm flex-1 truncate">{group.locationName}</span>
 								<span className="text-xs text-muted-foreground">
 									{group.ships.length} ship{group.ships.length !== 1 ? 's' : ''}
 								</span>

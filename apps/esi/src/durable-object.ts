@@ -1,28 +1,27 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { logger } from '@repo/hono-helpers'
+import { killmailDetailSchema } from '@repo/universe'
 
-import { KillmailDetail, killmailDetailSchema } from '@repo/universe'
-
+import { UseCharacterAuth, UseCorporationAuth, UsePublicAuth } from './lib/auth-decorators'
 import { EsiFetcher } from './lib/esi-fetch'
 import {
 	transformAlliancePublicInfo,
+	transformCharacterAffiliation,
 	transformCharacterAgentResearch,
 	transformCharacterAsset,
 	transformCharacterAssetNames,
 	transformCharacterAttributes,
 	transformCharacterBlueprint,
 	transformCharacterCalendar,
+	transformCharacterClones,
 	transformCharacterContact,
 	transformCharacterContract,
-	transformContractItems,
 	transformCharacterFitting,
+	transformCharacterImplants,
 	transformCharacterKillmails,
 	transformCharacterLocation,
 	transformCharacterMail,
-	transformMailContent,
-	transformMailingLists,
-	transformMailLabels,
 	transformCharacterMarketOrder,
 	transformCharacterMarketTransaction,
 	transformCharacterMiningLedger,
@@ -36,17 +35,19 @@ import {
 	transformCharacterStanding,
 	transformCharacterTitle,
 	transformCharacterWalletJournal,
+	transformContractItems,
 	transformCorporationAssets,
 	transformCorporationContact,
 	transformCorporationContracts,
 	transformCorporationDivision,
 	transformCorporationFacility,
+	transformCorporationHistoryEntry,
 	transformCorporationIcon,
 	transformCorporationIndustryJobs,
 	transformCorporationKillmails,
 	transformCorporationMedal,
-	transformCorporationMemberTracking,
 	transformCorporationMembers,
+	transformCorporationMemberTracking,
 	transformCorporationOrders,
 	transformCorporationPublicInfo,
 	transformCorporationRole,
@@ -55,33 +56,33 @@ import {
 	transformCorporationStructures,
 	transformCorporationTitle,
 	transformCorporationWalletJournal,
-	transformCorporationWalletTransactions,
 	transformCorporationWallets,
-	transformCorporationHistoryEntry,
+	transformCorporationWalletTransactions,
+	transformMailContent,
+	transformMailingLists,
+	transformMailLabels,
 	transformStructureInfo,
-	transformCharacterAffiliation,
-	transformCharacterClones,
-	transformCharacterImplants,
 } from './lib/esi-transforms'
 import { createEsiDb, runEsiMigrations } from './storage'
 
 import type {
+	AlliancePublicInfo,
+	CharacterAffiliation,
 	CharacterAgentResearch,
 	CharacterAsset,
 	CharacterAssetName,
 	CharacterAttributes,
 	CharacterBlueprint,
 	CharacterCalendar,
+	CharacterClones,
 	CharacterContact,
 	CharacterContract,
 	CharacterContractItem,
 	CharacterFitting,
+	CharacterImplants,
 	CharacterKillmailBasic,
 	CharacterLocation,
 	CharacterMail,
-	MailContent,
-	MailingList,
-	MailLabelsResponse,
 	CharacterMarketOrder,
 	CharacterMarketTransaction,
 	CharacterMiningLedger,
@@ -105,10 +106,10 @@ import type {
 	CorporationIndustryJob,
 	CorporationKillmail,
 	CorporationMedal,
+	CorporationMemberRole,
 	CorporationMembers,
 	CorporationMemberTracking,
 	CorporationOrder,
-	AlliancePublicInfo,
 	CorporationPublicInfo,
 	CorporationRole,
 	CorporationShareholder,
@@ -119,25 +120,22 @@ import type {
 	CorporationWalletJournalEntry,
 	CorporationWalletTransaction,
 	Esi,
-	EsiRequestOptions,
+	EsiAlliancePublicInfo,
+	EsiCharacterAffiliation,
 	EsiCharacterAgentResearch,
 	EsiCharacterAsset,
 	EsiCharacterAssetName,
 	EsiCharacterAttributes,
 	EsiCharacterBlueprint,
 	EsiCharacterCalendar,
+	EsiCharacterClones,
 	EsiCharacterContact,
 	EsiCharacterContract,
-	EsiContractItem,
 	EsiCharacterFitting,
-	EsiSaveFittingRequest,
-	SaveFittingResponse,
+	EsiCharacterImplants,
 	EsiCharacterKillmail,
 	EsiCharacterLocation,
 	EsiCharacterMail,
-	EsiMailContent,
-	EsiMailingList,
-	EsiMailLabelsResponse,
 	EsiCharacterMarketOrder,
 	EsiCharacterMarketTransaction,
 	EsiCharacterMiningLedger,
@@ -151,6 +149,7 @@ import type {
 	EsiCharacterStanding,
 	EsiCharacterTitle,
 	EsiCharacterWalletJournalEntry,
+	EsiContractItem,
 	EsiCorporationAsset,
 	EsiCorporationContact,
 	EsiCorporationContract,
@@ -161,10 +160,10 @@ import type {
 	EsiCorporationIndustryJob,
 	EsiCorporationKillmail,
 	EsiCorporationMedal,
+	EsiCorporationMemberRole,
 	EsiCorporationMembers,
 	EsiCorporationMemberTracking,
 	EsiCorporationOrder,
-	EsiAlliancePublicInfo,
 	EsiCorporationPublicInfo,
 	EsiCorporationRole,
 	EsiCorporationShareholder,
@@ -174,24 +173,25 @@ import type {
 	EsiCorporationWallet,
 	EsiCorporationWalletJournalEntry,
 	EsiCorporationWalletTransaction,
-	EsiStructureInfo,
-	StructureInfo,
 	EsiInsurancePrices,
-	InsurancePlatinumValues,
+	EsiMailContent,
+	EsiMailingList,
+	EsiMailLabelsResponse,
 	EsiMarketPrice,
+	EsiRequestOptions,
+	EsiSaveFittingRequest,
+	EsiStructureInfo,
+	InsurancePlatinumValues,
+	MailContent,
+	MailingList,
+	MailLabelsResponse,
 	MarketPrice,
-	EsiCorporationMemberRole,
-	CorporationMemberRole,
-	CharacterAffiliation,
-	EsiCharacterAffiliation,
-	CharacterClones,
-	CharacterImplants,
-	EsiCharacterClones,
-	EsiCharacterImplants,
+	SaveFittingResponse,
+	StructureInfo,
 } from '@repo/esi'
+import type { KillmailDetail } from '@repo/universe'
 import type { Env } from './context'
 import type { EsiDb } from './storage/state'
-import { UseCharacterAuth, UseCorporationAuth, UsePublicAuth } from './lib/auth-decorators'
 
 // ========================================================================
 // CACHE REVALIDATION TTL CONSTANTS
@@ -224,7 +224,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		this.esiFetcher = new EsiFetcher(state, env)
 		this.storage = createEsiDb(state.storage)
 
-		state.blockConcurrencyWhile(async () => {
+		void state.blockConcurrencyWhile(async () => {
 			await runEsiMigrations(this.storage)
 		})
 	}
@@ -687,9 +687,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 				return { ...detail, killmail_hash: km.killmail_hash }
 			})
 		)
-		return killmails.filter(
-			(km): km is Exclude<(typeof killmails)[number], null> => km !== null
-		)
+		return killmails.filter((km): km is Exclude<(typeof killmails)[number], null> => km !== null)
 	}
 
 	@UseCharacterAuth

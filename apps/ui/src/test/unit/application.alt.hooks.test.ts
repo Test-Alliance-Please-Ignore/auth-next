@@ -10,7 +10,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { applicationKeys } from '../../client/features/applications/hooks'
 
-import type { Application, ApplicationActivityLogEntry } from '../../client/features/applications/api'
+import type {
+	Application,
+	ApplicationActivityLogEntry,
+} from '../../client/features/applications/api'
 
 // ============================================================================
 // Helpers
@@ -33,7 +36,9 @@ function makeApplication(overrides: Partial<Application> = {}): Application {
 	}
 }
 
-function makeActivityEntry(overrides: Partial<ApplicationActivityLogEntry> = {}): ApplicationActivityLogEntry {
+function makeActivityEntry(
+	overrides: Partial<ApplicationActivityLogEntry> = {}
+): ApplicationActivityLogEntry {
 	return {
 		id: 'log-1',
 		applicationId: 'app-1',
@@ -53,7 +58,12 @@ function makeActivityEntry(overrides: Partial<ApplicationActivityLogEntry> = {})
 function makeAddAltMutationHandlers(queryClient: QueryClient) {
 	return {
 		mutationFn: vi.fn(),
-		onMutate: (vars: { applicationId: string; alts: Array<{ characterId: string; characterName?: string }>; actorCharacterId?: string; actorCharacterName?: string }) => {
+		onMutate: (vars: {
+			applicationId: string
+			alts: Array<{ characterId: string; characterName?: string }>
+			actorCharacterId?: string
+			actorCharacterName?: string
+		}) => {
 			const detailKey = applicationKeys.detail(vars.applicationId)
 			const activityKey = applicationKeys.activity(vars.applicationId)
 
@@ -61,7 +71,15 @@ function makeAddAltMutationHandlers(queryClient: QueryClient) {
 			const prevActivity = queryClient.getQueryData<ApplicationActivityLogEntry[]>(activityKey)
 
 			queryClient.setQueryData<Application>(detailKey, (old) =>
-				old ? { ...old, altCharacterIds: [...(old.altCharacterIds ?? []), ...vars.alts.map((a) => a.characterId)] } : old
+				old
+					? {
+							...old,
+							altCharacterIds: [
+								...(old.altCharacterIds ?? []),
+								...vars.alts.map((a) => a.characterId),
+							],
+						}
+					: old
 			)
 			queryClient.setQueryData<ApplicationActivityLogEntry[]>(activityKey, (old) => [
 				...vars.alts.map((alt, i) => ({
@@ -80,14 +98,24 @@ function makeAddAltMutationHandlers(queryClient: QueryClient) {
 
 			return { prevDetail, prevActivity }
 		},
-		onError: (_err: unknown, vars: { applicationId: string; [key: string]: unknown }, ctx: { prevDetail?: Application; prevActivity?: ApplicationActivityLogEntry[] } | undefined) => {
-			if (ctx?.prevDetail !== undefined) queryClient.setQueryData(applicationKeys.detail(vars.applicationId), ctx.prevDetail)
-			if (ctx?.prevActivity !== undefined) queryClient.setQueryData(applicationKeys.activity(vars.applicationId), ctx.prevActivity)
+		onError: (
+			_err: unknown,
+			vars: { applicationId: string; [key: string]: unknown },
+			ctx: { prevDetail?: Application; prevActivity?: ApplicationActivityLogEntry[] } | undefined
+		) => {
+			if (ctx?.prevDetail !== undefined)
+				queryClient.setQueryData(applicationKeys.detail(vars.applicationId), ctx.prevDetail)
+			if (ctx?.prevActivity !== undefined)
+				queryClient.setQueryData(applicationKeys.activity(vars.applicationId), ctx.prevActivity)
 		},
-		onSettled: (_: unknown, __: unknown, vars: { applicationId: string; [key: string]: unknown }) => {
-			queryClient.invalidateQueries({ queryKey: applicationKeys.detail(vars.applicationId) })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.activity(vars.applicationId) })
+		onSettled: (
+			_: unknown,
+			__: unknown,
+			vars: { applicationId: string; [key: string]: unknown }
+		) => {
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.detail(vars.applicationId) })
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.activity(vars.applicationId) })
 		},
 	}
 }
@@ -95,7 +123,13 @@ function makeAddAltMutationHandlers(queryClient: QueryClient) {
 function makeRemoveAltMutationHandlers(queryClient: QueryClient) {
 	return {
 		mutationFn: vi.fn(),
-		onMutate: (vars: { applicationId: string; altCharacterId: string; altCharacterName?: string; actorCharacterId?: string; actorCharacterName?: string }) => {
+		onMutate: (vars: {
+			applicationId: string
+			altCharacterId: string
+			altCharacterName?: string
+			actorCharacterId?: string
+			actorCharacterName?: string
+		}) => {
 			const detailKey = applicationKeys.detail(vars.applicationId)
 			const activityKey = applicationKeys.activity(vars.applicationId)
 
@@ -103,7 +137,14 @@ function makeRemoveAltMutationHandlers(queryClient: QueryClient) {
 			const prevActivity = queryClient.getQueryData<ApplicationActivityLogEntry[]>(activityKey)
 
 			queryClient.setQueryData<Application>(detailKey, (old) =>
-				old ? { ...old, altCharacterIds: (old.altCharacterIds ?? []).filter((id) => id !== vars.altCharacterId) } : old
+				old
+					? {
+							...old,
+							altCharacterIds: (old.altCharacterIds ?? []).filter(
+								(id) => id !== vars.altCharacterId
+							),
+						}
+					: old
 			)
 			queryClient.setQueryData<ApplicationActivityLogEntry[]>(activityKey, (old) => [
 				{
@@ -122,14 +163,24 @@ function makeRemoveAltMutationHandlers(queryClient: QueryClient) {
 
 			return { prevDetail, prevActivity }
 		},
-		onError: (_err: unknown, vars: { applicationId: string; [key: string]: unknown }, ctx: { prevDetail?: Application; prevActivity?: ApplicationActivityLogEntry[] } | undefined) => {
-			if (ctx?.prevDetail !== undefined) queryClient.setQueryData(applicationKeys.detail(vars.applicationId), ctx.prevDetail)
-			if (ctx?.prevActivity !== undefined) queryClient.setQueryData(applicationKeys.activity(vars.applicationId), ctx.prevActivity)
+		onError: (
+			_err: unknown,
+			vars: { applicationId: string; [key: string]: unknown },
+			ctx: { prevDetail?: Application; prevActivity?: ApplicationActivityLogEntry[] } | undefined
+		) => {
+			if (ctx?.prevDetail !== undefined)
+				queryClient.setQueryData(applicationKeys.detail(vars.applicationId), ctx.prevDetail)
+			if (ctx?.prevActivity !== undefined)
+				queryClient.setQueryData(applicationKeys.activity(vars.applicationId), ctx.prevActivity)
 		},
-		onSettled: (_: unknown, __: unknown, vars: { applicationId: string; [key: string]: unknown }) => {
-			queryClient.invalidateQueries({ queryKey: applicationKeys.detail(vars.applicationId) })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.activity(vars.applicationId) })
+		onSettled: (
+			_: unknown,
+			__: unknown,
+			vars: { applicationId: string; [key: string]: unknown }
+		) => {
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.detail(vars.applicationId) })
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.activity(vars.applicationId) })
 		},
 	}
 }
@@ -146,10 +197,18 @@ describe('useAddApplicationAlt — onMutate', () => {
 	})
 
 	it('appends alt IDs to the detail cache', () => {
-		queryClient.setQueryData(applicationKeys.detail('app-1'), makeApplication({ altCharacterIds: ['existing-alt'] }))
+		queryClient.setQueryData(
+			applicationKeys.detail('app-1'),
+			makeApplication({ altCharacterIds: ['existing-alt'] })
+		)
 
 		const { onMutate } = makeAddAltMutationHandlers(queryClient)
-		onMutate({ applicationId: 'app-1', alts: [{ characterId: 'new-alt', characterName: 'New Alt' }], actorCharacterId: '1001', actorCharacterName: 'Main Pilot' })
+		onMutate({
+			applicationId: 'app-1',
+			alts: [{ characterId: 'new-alt', characterName: 'New Alt' }],
+			actorCharacterId: '1001',
+			actorCharacterName: 'Main Pilot',
+		})
 
 		const detail = queryClient.getQueryData<Application>(applicationKeys.detail('app-1'))
 		expect(detail?.altCharacterIds).toEqual(['existing-alt', 'new-alt'])
@@ -169,10 +228,20 @@ describe('useAddApplicationAlt — onMutate', () => {
 			actorCharacterName: 'Main Pilot',
 		})
 
-		const activity = queryClient.getQueryData<ApplicationActivityLogEntry[]>(applicationKeys.activity('app-1'))
+		const activity = queryClient.getQueryData<ApplicationActivityLogEntry[]>(
+			applicationKeys.activity('app-1')
+		)
 		expect(activity).toHaveLength(3) // 2 optimistic + 1 existing
-		expect(activity![0]).toMatchObject({ action: 'alt_added', newValue: 'alt-2001', metadata: { altCharacterName: 'Alt One' } })
-		expect(activity![1]).toMatchObject({ action: 'alt_added', newValue: 'alt-2002', metadata: { altCharacterName: 'Alt Two' } })
+		expect(activity![0]).toMatchObject({
+			action: 'alt_added',
+			newValue: 'alt-2001',
+			metadata: { altCharacterName: 'Alt One' },
+		})
+		expect(activity![1]).toMatchObject({
+			action: 'alt_added',
+			newValue: 'alt-2002',
+			metadata: { altCharacterName: 'Alt Two' },
+		})
 	})
 
 	it('returns previous cache state for rollback', () => {
@@ -232,10 +301,19 @@ describe('useRemoveApplicationAlt — onMutate', () => {
 	})
 
 	it('removes the alt ID from the detail cache', () => {
-		queryClient.setQueryData(applicationKeys.detail('app-1'), makeApplication({ altCharacterIds: ['alt-2001', 'alt-2002'] }))
+		queryClient.setQueryData(
+			applicationKeys.detail('app-1'),
+			makeApplication({ altCharacterIds: ['alt-2001', 'alt-2002'] })
+		)
 
 		const { onMutate } = makeRemoveAltMutationHandlers(queryClient)
-		onMutate({ applicationId: 'app-1', altCharacterId: 'alt-2001', altCharacterName: 'Alt One', actorCharacterId: '1001', actorCharacterName: 'Main Pilot' })
+		onMutate({
+			applicationId: 'app-1',
+			altCharacterId: 'alt-2001',
+			altCharacterName: 'Alt One',
+			actorCharacterId: '1001',
+			actorCharacterName: 'Main Pilot',
+		})
 
 		const detail = queryClient.getQueryData<Application>(applicationKeys.detail('app-1'))
 		expect(detail?.altCharacterIds).toEqual(['alt-2002'])
@@ -245,9 +323,17 @@ describe('useRemoveApplicationAlt — onMutate', () => {
 		queryClient.setQueryData(applicationKeys.activity('app-1'), [makeActivityEntry()])
 
 		const { onMutate } = makeRemoveAltMutationHandlers(queryClient)
-		onMutate({ applicationId: 'app-1', altCharacterId: 'alt-2001', altCharacterName: 'Alt One', actorCharacterId: '1001', actorCharacterName: 'Main Pilot' })
+		onMutate({
+			applicationId: 'app-1',
+			altCharacterId: 'alt-2001',
+			altCharacterName: 'Alt One',
+			actorCharacterId: '1001',
+			actorCharacterName: 'Main Pilot',
+		})
 
-		const activity = queryClient.getQueryData<ApplicationActivityLogEntry[]>(applicationKeys.activity('app-1'))
+		const activity = queryClient.getQueryData<ApplicationActivityLogEntry[]>(
+			applicationKeys.activity('app-1')
+		)
 		expect(activity).toHaveLength(2)
 		expect(activity![0]).toMatchObject({
 			action: 'alt_removed',
@@ -286,7 +372,11 @@ describe('useRemoveApplicationAlt — onError rollback', () => {
 		queryClient.setQueryData(applicationKeys.activity('app-1'), prevLog)
 
 		const handlers = makeRemoveAltMutationHandlers(queryClient)
-		const ctx = handlers.onMutate({ applicationId: 'app-1', altCharacterId: 'alt-2001', altCharacterName: 'Alt One' })
+		const ctx = handlers.onMutate({
+			applicationId: 'app-1',
+			altCharacterId: 'alt-2001',
+			altCharacterName: 'Alt One',
+		})
 
 		handlers.onError(new Error('fail'), { applicationId: 'app-1', altCharacterId: 'alt-2001' }, ctx)
 

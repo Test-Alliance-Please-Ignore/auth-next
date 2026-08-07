@@ -2,6 +2,7 @@ import { FileText, Info } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,7 +14,6 @@ import { useCreateTemplate } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import type { CreateTemplateInput, LateFeeCompounding, LateFeeType } from '@repo/bills'
-import { Button } from '@/components/ui/button'
 
 export default function AdminBillsTemplatesNewPage() {
 	usePageTitle('Admin - Create Bill Template')
@@ -122,7 +122,7 @@ export default function AdminBillsTemplatesNewPage() {
 			await createTemplate.mutateAsync(input)
 			setMessage({ type: 'success', text: 'Template created successfully!' })
 			setTimeout(() => {
-				navigate('/admin/bills/templates')
+				void navigate('/admin/bills/templates')
 			}, 1500)
 		} catch (error) {
 			console.error('Failed to create template:', error)

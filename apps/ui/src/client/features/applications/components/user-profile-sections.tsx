@@ -10,7 +10,6 @@ import {
 	Users,
 } from 'lucide-react'
 
-import { getEsiStatusBadgeState } from '@/components/esi-status-badge'
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -59,13 +58,6 @@ export interface SharedProfileApplication {
 	createdAt: string
 }
 
-function resolveEsiBadge(character: SharedProfileCharacter) {
-	return getEsiStatusBadgeState({
-		hasAuthAccount: true,
-		hasValidToken: character.hasValidToken ?? null,
-	})
-}
-
 export function ProfileCharactersSection({
 	characters,
 	fulcrumLoading = false,
@@ -109,7 +101,7 @@ export function ProfileCharactersSection({
 						<Users className="h-4 w-4" />
 						Characters ({characters.length})
 					</CardTitle>
-						{showFulcrumReports && isScanAllVisible && (
+					{showFulcrumReports && isScanAllVisible && (
 						<Button
 							variant="ghost"
 							size="sm"
@@ -132,7 +124,6 @@ export function ProfileCharactersSection({
 				) : (
 					<div className="space-y-2">
 						{characters.map((character) => {
-							const esiBadge = resolveEsiBadge(character)
 							const isScanPending = isScanPendingFor?.(character.characterId) ?? false
 							const canRequestCharacter = canRequestCharacterReport?.(character) ?? true
 							return (
@@ -149,18 +140,18 @@ export function ProfileCharactersSection({
 										</div>
 									)}
 									<CharacterIdentitySummary
-								characterId={character.characterId}
-								characterName={character.characterName}
-								hasValidToken={character.hasValidToken}
-								corporationId={character.corporationId}
-								corporationName={character.corporationName}
-								allianceId={character.allianceId}
-								allianceName={character.allianceName}
-								skillPoints={character.skillPoints}
-								walletBalance={character.walletBalance}
-								isMetricsLoading={character.isMetricsLoading}
-								nameBadges={
-									<>
+										characterId={character.characterId}
+										characterName={character.characterName}
+										hasValidToken={character.hasValidToken}
+										corporationId={character.corporationId}
+										corporationName={character.corporationName}
+										allianceId={character.allianceId}
+										allianceName={character.allianceName}
+										skillPoints={character.skillPoints}
+										walletBalance={character.walletBalance}
+										isMetricsLoading={character.isMetricsLoading}
+										nameBadges={
+											<>
 												{character.isPrimary && (
 													<Badge
 														variant="default"
@@ -207,94 +198,94 @@ export function ProfileCharactersSection({
 											</>
 										}
 									/>
-										<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-											{character.joinDate && (
-												<span>
-													Joined{' '}
-													{formatDistanceToNow(new Date(character.joinDate), { addSuffix: true })}
-												</span>
-											)}
-											{character.joinDate && character.lastLogin && <span>•</span>}
-											{character.lastLogin && (
-												<span title="Last active is based on the most recent ESI member-tracking login timestamp.">
-													Last active{' '}
-													{formatDistanceToNow(new Date(character.lastLogin), { addSuffix: true })}
-												</span>
-											)}
-										</div>
-										{showFulcrumReports && (
-											<div className="flex items-center gap-2">
-												<div
-													className={cn(
-														'flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs',
-														character.latestReport?.status === 'completed' &&
-															character.corporationId &&
-															'cursor-pointer transition-colors hover:bg-muted/50'
-													)}
-													onClick={() => onViewReport(character)}
-												>
-													<Scan className="h-3 w-3 shrink-0 text-muted-foreground" />
-													<span className="shrink-0 font-medium text-muted-foreground">
-														Fulcrum Report
-													</span>
-													<span className="shrink-0 text-muted-foreground">·</span>
-													{character.latestReport ? (
-														character.latestReport.status === 'completed' ? (
-															<>
-																<span className="truncate text-foreground">
-																	View latest report (
-																	{formatDistanceToNow(new Date(character.latestReport.createdAt), {
-																		addSuffix: true,
-																	})}
-																	)
-																</span>
-																<ExternalLink className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" />
-															</>
-														) : character.latestReport.status === 'pending' ||
-														  character.latestReport.status === 'processing' ? (
-															<span className="truncate text-muted-foreground">
-																Processing... (
-																{formatDistanceToNow(new Date(character.latestReport.createdAt), {
-																	addSuffix: true,
-																})}
-																)
-															</span>
-														) : (
-															<span className="truncate text-muted-foreground">
-																Failed (
-																{formatDistanceToNow(new Date(character.latestReport.createdAt), {
-																	addSuffix: true,
-																})}
-																)
-															</span>
-														)
-													) : (
-														<span className="truncate text-muted-foreground">No report yet</span>
-													)}
-												</div>
-
-												<Button
-													variant={character.latestReport ? 'ghost' : 'primary'}
-													size="sm"
-													disabled={
-														!canRequestReports ||
-														!canRequestCharacter ||
-														!character.corporationId ||
-														character.hasPendingReport ||
-														isScanPending
-													}
-													onClick={() => onScan(character)}
-												>
-													{isScanPending ? (
-														<Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-													) : (
-														<Scan className="mr-1.5 h-3.5 w-3.5" />
-													)}
-													{isScanPending ? 'Requesting...' : 'Scan'}
-												</Button>
-											</div>
+									<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+										{character.joinDate && (
+											<span>
+												Joined{' '}
+												{formatDistanceToNow(new Date(character.joinDate), { addSuffix: true })}
+											</span>
+										)}
+										{character.joinDate && character.lastLogin && <span>•</span>}
+										{character.lastLogin && (
+											<span title="Last active is based on the most recent ESI member-tracking login timestamp.">
+												Last active{' '}
+												{formatDistanceToNow(new Date(character.lastLogin), { addSuffix: true })}
+											</span>
 										)}
 									</div>
+									{showFulcrumReports && (
+										<div className="flex items-center gap-2">
+											<div
+												className={cn(
+													'flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs',
+													character.latestReport?.status === 'completed' &&
+														character.corporationId &&
+														'cursor-pointer transition-colors hover:bg-muted/50'
+												)}
+												onClick={() => onViewReport(character)}
+											>
+												<Scan className="h-3 w-3 shrink-0 text-muted-foreground" />
+												<span className="shrink-0 font-medium text-muted-foreground">
+													Fulcrum Report
+												</span>
+												<span className="shrink-0 text-muted-foreground">·</span>
+												{character.latestReport ? (
+													character.latestReport.status === 'completed' ? (
+														<>
+															<span className="truncate text-foreground">
+																View latest report (
+																{formatDistanceToNow(new Date(character.latestReport.createdAt), {
+																	addSuffix: true,
+																})}
+																)
+															</span>
+															<ExternalLink className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" />
+														</>
+													) : character.latestReport.status === 'pending' ||
+													  character.latestReport.status === 'processing' ? (
+														<span className="truncate text-muted-foreground">
+															Processing... (
+															{formatDistanceToNow(new Date(character.latestReport.createdAt), {
+																addSuffix: true,
+															})}
+															)
+														</span>
+													) : (
+														<span className="truncate text-muted-foreground">
+															Failed (
+															{formatDistanceToNow(new Date(character.latestReport.createdAt), {
+																addSuffix: true,
+															})}
+															)
+														</span>
+													)
+												) : (
+													<span className="truncate text-muted-foreground">No report yet</span>
+												)}
+											</div>
+
+											<Button
+												variant={character.latestReport ? 'ghost' : 'primary'}
+												size="sm"
+												disabled={
+													!canRequestReports ||
+													!canRequestCharacter ||
+													!character.corporationId ||
+													character.hasPendingReport ||
+													isScanPending
+												}
+												onClick={() => onScan(character)}
+											>
+												{isScanPending ? (
+													<Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+												) : (
+													<Scan className="mr-1.5 h-3.5 w-3.5" />
+												)}
+												{isScanPending ? 'Requesting...' : 'Scan'}
+											</Button>
+										</div>
+									)}
+								</div>
 							)
 						})}
 					</div>

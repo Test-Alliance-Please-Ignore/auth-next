@@ -12,7 +12,7 @@ export function useCharacterMastery(
 	characterName: string,
 	hasValidToken: boolean = true
 ) {
-	const { data: progress, isLoading, isPending, error } = useCharacterProgress(planId, characterId)
+	const { data: progress, isPending, error } = useCharacterProgress(planId, characterId)
 
 	// Calculate mastery status from progress data
 	const getMasteryStatus = (): MasteryStatus => {

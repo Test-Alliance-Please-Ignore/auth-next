@@ -105,7 +105,7 @@ export function useCreateMarket(scope: 'admin' | 'member' = 'admin') {
 				: 'Market created and posted to the forum.',
 		onSuccess: () => {
 			// Broad key so every markets-list variant (any filter) refetches.
-			queryClient.invalidateQueries({ queryKey: [...pmKeys.all, 'markets'] })
+			void queryClient.invalidateQueries({ queryKey: [...pmKeys.all, 'markets'] })
 		},
 	})
 }
@@ -121,7 +121,7 @@ export function useUpdateMarket() {
 		mutationFn: ({ id, body }: { id: string; body: UpdateMarketRequest }) => updateMarket(id, body),
 		successMessage: 'Market updated.',
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: [...pmKeys.all, 'markets'] })
+			void queryClient.invalidateQueries({ queryKey: [...pmKeys.all, 'markets'] })
 		},
 	})
 }
@@ -144,7 +144,7 @@ export function useUpdateConfig() {
 		mutationFn: (body: UpdateConfigRequest) => updateConfig(body),
 		successMessage: 'Configuration updated.',
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: pmKeys.config() })
+			void queryClient.invalidateQueries({ queryKey: pmKeys.config() })
 		},
 	})
 }
@@ -158,8 +158,8 @@ export function useDeposit() {
 		successMessage: (res) =>
 			res.deduped ? 'Deposit already applied (idempotent).' : 'Deposit successful.',
 		onSuccess: (_res, variables) => {
-			queryClient.invalidateQueries({ queryKey: pmKeys.all })
-			queryClient.invalidateQueries({ queryKey: pmKeys.wallet(variables.targetUserId) })
+			void queryClient.invalidateQueries({ queryKey: pmKeys.all })
+			void queryClient.invalidateQueries({ queryKey: pmKeys.wallet(variables.targetUserId) })
 		},
 	})
 }

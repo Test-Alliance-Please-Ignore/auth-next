@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, eq, inArray, isNull, or, sql } from '@repo/db-utils'
+import { and, eq, inArray, sql } from '@repo/db-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
 import {
@@ -30,7 +31,6 @@ import type {
 	Skills,
 } from '@repo/skills'
 import type { Env } from './context'
-import { logger } from '@repo/hono-helpers'
 
 export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 	private db: ReturnType<typeof createDb>
@@ -71,7 +71,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 	/**
 	 * Fetch handler for HTTP requests to the Durable Object
 	 */
-	async fetch(request: Request): Promise<Response> {
+	async fetch(_request: Request): Promise<Response> {
 		return new Response('Skills Durable Object', { status: 200 })
 	}
 
@@ -151,10 +151,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 		const cachedAllSkills = this.allSkillsCache.get(cacheKey)
 
 		// Check cache first
-		if (
-			cachedAllSkills &&
-			this.isCacheValid(cachedAllSkills.cachedAt, this.ALL_SKILLS_CACHE_TTL)
-		) {
+		if (cachedAllSkills && this.isCacheValid(cachedAllSkills.cachedAt, this.ALL_SKILLS_CACHE_TTL)) {
 			return cachedAllSkills.skills
 		}
 
@@ -254,7 +251,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 	 * @param skillIds - Array of skill IDs to fetch metadata for
 	 * @returns Array of skills with full metadata including group and category names
 	 */
-	async getSkillsMetadata(skillIds: (string | number)[]): Promise<any[]> {
+	async getSkillsMetadata(skillIds: Array<string | number>): Promise<any[]> {
 		if (!skillIds || skillIds.length === 0) {
 			return []
 		}

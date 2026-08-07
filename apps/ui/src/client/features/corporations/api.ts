@@ -1,11 +1,14 @@
+import { API_BASE_URL, apiClient } from '../../lib/api'
+
+import type { ManagedCorporation } from '../../lib/api'
+import type { HrRoleGrant } from '../hr/api'
+
 /**
  * Corporations Feature API Client
  *
  * Provides typed API methods and interfaces for corporation management
  * functionality, including member lists and access control.
  */
-
-import { API_BASE_URL, apiClient, type ManagedCorporation } from '../../lib/api'
 
 // ============================================================================
 // Type Definitions
@@ -36,7 +39,7 @@ export interface CorporationMember {
 	locationSystem?: string
 	locationRegion?: string
 	activityStatus: 'active' | 'inactive' | 'unknown'
-	hrRole?: import('../hr/api').HrRoleGrant
+	hrRole?: HrRoleGrant
 	isBlacklisted: boolean
 }
 
@@ -50,7 +53,14 @@ export type CorporationMembersAuthFilter =
 export type CorporationMembersCoverageFilter = 'all' | 'full' | 'partial' | 'none' | 'unlinked'
 export type CorporationMembersActivityFilter = 'all' | 'active' | 'inactive' | 'unknown'
 export type CorporationMembersRoleFilter = 'all' | 'CEO' | 'Director' | 'Member'
-export type CorporationMembersSortField = 'name' | 'role' | 'hrRole' | 'auth' | 'activity' | 'lastLogin' | 'joinDate'
+export type CorporationMembersSortField =
+	| 'name'
+	| 'role'
+	| 'hrRole'
+	| 'auth'
+	| 'activity'
+	| 'lastLogin'
+	| 'joinDate'
 export type CorporationMembersSortOrder = 'asc' | 'desc'
 
 export interface CorporationMembersQuery {

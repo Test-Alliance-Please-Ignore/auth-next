@@ -1,6 +1,6 @@
 import { logger } from '@repo/hono-helpers'
 
-import { DiscordGatewayEventRegistry } from './registry'
+import type { DiscordGatewayEventRegistry } from './registry'
 import type { DiscordGatewayContext, DiscordGatewayEnvelope } from './types'
 
 export interface DiscordGatewayRouteResult {

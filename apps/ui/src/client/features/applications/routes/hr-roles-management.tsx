@@ -18,6 +18,7 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import {
@@ -40,7 +41,6 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import {
-	GrantHrRoleDialog,
 	HrRoleBadge,
 	RevokeHrRoleDialog,
 	useGrantHrRole,
@@ -52,16 +52,19 @@ import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import {
+	formatCorporationRoleLabel,
 	useCanAccessCorporation,
 	useCorporationMembers,
 	useMyCorporation,
-	formatCorporationRoleLabel,
 } from '../../corporations/hooks'
 
-import type { GrantHrRoleRequest, HrRoleGrant, RevokeHrRoleRequest } from '@/features/hr'
+import type {
+	GrantHrRoleRequest,
+	HrRoleGrant,
+	HrRoleType,
+	RevokeHrRoleRequest,
+} from '@/features/hr'
 import type { CorporationMember } from '../../corporations'
-import { Button } from '@/components/ui/button'
-import type { HrRoleType } from '@/features/hr'
 
 /**
  * Main HR Roles Management Component
@@ -70,7 +73,7 @@ export default function HrRolesManagement() {
 	const { corporationId } = useParams<{ corporationId: string }>()
 	const { showSuccess, showError } = useMessage()
 
-	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { isAuthenticated, isLoading: authLoading } = useAuth()
 	const {
 		canAccess,
 		isLoading: accessLoading,
@@ -85,15 +88,20 @@ export default function HrRolesManagement() {
 	const members = membersResponse?.items ?? []
 	const corp = corporation ?? accessCorp
 	const isMemberCorporation = corp?.isMemberCorporation ?? false
-	const { data: hrRoles, isLoading: hrRolesLoading, error } = useHrRoles(corporationId!, {
+	const {
+		data: hrRoles,
+		isLoading: hrRolesLoading,
+		error,
+	} = useHrRoles(corporationId!, {
 		enabled: isMemberCorporation && canAccess,
 	})
 
-	const [grantDialogMember, setGrantDialogMember] = useState<CorporationMember | null>(null)
 	const [revokeDialogMember, setRevokeDialogMember] = useState<CorporationMember | null>(null)
 	const [assignUserDialogOpen, setAssignUserDialogOpen] = useState(false)
 	const [assignUserId, setAssignUserId] = useState('')
-	const [assignRole, setAssignRole] = useState<'hr_admin' | 'hr_reviewer' | 'hr_viewer'>('hr_viewer')
+	const [assignRole, setAssignRole] = useState<'hr_admin' | 'hr_reviewer' | 'hr_viewer'>(
+		'hr_viewer'
+	)
 	const [changeRoleTarget, setChangeRoleTarget] = useState<HrRoleGrant | null>(null)
 	const [changeRoleValue, setChangeRoleValue] = useState<HrRoleType>('hr_viewer')
 
@@ -104,8 +112,7 @@ export default function HrRolesManagement() {
 	// Check if current user can manage HR roles (CEO, site admin, or HR admin)
 	const canManageHrRoles = useMemo(() => {
 		return (
-			isMemberCorporation &&
-			(userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin')
+			isMemberCorporation && (userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin')
 		)
 	}, [isMemberCorporation, userRole])
 	const canRevokeHrAdmin = useMemo(
@@ -283,7 +290,6 @@ export default function HrRolesManagement() {
 		try {
 			await grantMutation.mutateAsync(request)
 			showSuccess(`HR role granted successfully`)
-			setGrantDialogMember(null)
 		} catch (error) {
 			showError(error instanceof Error ? error.message : 'Failed to grant HR role')
 		}
@@ -437,14 +443,13 @@ export default function HrRolesManagement() {
 						</p>
 						{userRole && (
 							<p className="text-sm text-muted-foreground mt-1">
-								Your role: <span className="font-medium">{formatCorporationRoleLabel(userRole)}</span>
+								Your role:{' '}
+								<span className="font-medium">{formatCorporationRoleLabel(userRole)}</span>
 							</p>
 						)}
 					</div>
 					<div className="flex items-center gap-2">
-						<Button onClick={() => setAssignUserDialogOpen(true)}>
-							Assign User
-						</Button>
+						<Button onClick={() => setAssignUserDialogOpen(true)}>Assign User</Button>
 						<Button variant="ghost" asChild>
 							<Link to={`/corporations/${corporationId}/members`}>
 								<ArrowLeft className="h-4 w-4" />
@@ -652,7 +657,8 @@ export default function HrRolesManagement() {
 					<DialogHeader>
 						<DialogTitle>Change HR Role</DialogTitle>
 						<DialogDescription>
-							Update role assignment for {changeRoleTarget?.characterName || changeRoleTarget?.userId}.
+							Update role assignment for{' '}
+							{changeRoleTarget?.characterName || changeRoleTarget?.userId}.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-2">

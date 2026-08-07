@@ -1,5 +1,5 @@
-import { ArrowLeft, Plus, Save, Trash2, Upload } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ArrowLeft, Trash2, Upload } from 'lucide-react'
+import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router'
 
 import { EvemonXmlImporter } from '../../../components/evemon-xml-importer'
@@ -8,8 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui
 import { Container } from '../../../components/ui/container'
 import { LoadingPage } from '../../../components/ui/loading'
 import { PageHeader } from '../../../components/ui/page-header'
-import { Select } from '../../../components/ui/select'
 import { Section } from '../../../components/ui/section'
+import { Select } from '../../../components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -19,7 +19,6 @@ import {
 	TableRow,
 } from '../../../components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs'
-import { useAuth } from '../../../hooks/useAuth'
 import { usePageTitle } from '../../../hooks/usePageTitle'
 import { SkillPlanForm } from '../components/skill-plan-form'
 import { SkillSelector } from '../components/skill-selector'
@@ -39,7 +38,6 @@ import type { AddSkillRequest, UpdateSkillPlanRequest } from '../types'
 export default function SkillPlanEdit() {
 	const { id } = useParams<{ id: string }>()
 	const navigate = useNavigate()
-	const { user } = useAuth()
 	const [activeTab, setActiveTab] = useState('details')
 	const [showImporter, setShowImporter] = useState(false)
 
@@ -74,7 +72,7 @@ export default function SkillPlanEdit() {
 		try {
 			await updatePlan.mutateAsync({ planId: id, data })
 			// Navigate back to detail view
-			navigate(`/skill-plans/${id}`)
+			void navigate(`/skill-plans/${id}`)
 		} catch (error) {
 			console.error('Failed to update plan:', error)
 		}
@@ -84,7 +82,7 @@ export default function SkillPlanEdit() {
 		try {
 			await addSkill.mutateAsync({ planId: id, data: skill })
 			// Refetch skills to update the list
-			refetchSkills()
+			void refetchSkills()
 		} catch (error) {
 			console.error('Failed to add skill:', error)
 		}
@@ -95,7 +93,7 @@ export default function SkillPlanEdit() {
 			try {
 				await removeSkill.mutateAsync({ planId: id, skillId })
 				// Refetch skills to update the list
-				refetchSkills()
+				void refetchSkills()
 			} catch (error) {
 				console.error('Failed to remove skill:', error)
 			}
@@ -117,7 +115,7 @@ export default function SkillPlanEdit() {
 				data: { [field]: level },
 			})
 			// Refetch skills to update the list
-			refetchSkills()
+			void refetchSkills()
 		} catch (error) {
 			console.error('Failed to update skill level:', error)
 		}
@@ -136,7 +134,7 @@ export default function SkillPlanEdit() {
 
 			// Hide importer and refetch skills
 			setShowImporter(false)
-			refetchSkills()
+			void refetchSkills()
 
 			// Show success message (in a real app, use a toast)
 			if (result.successful > 0) {
@@ -280,9 +278,7 @@ export default function SkillPlanEdit() {
 															}
 															options={[1, 2, 3, 4, 5]
 																.filter((level) => level >= skill.requiredLevel)
-																.map((level) => ({ value: String(level),
-																	label: String(level),
-																}))}
+																.map((level) => ({ value: String(level), label: String(level) }))}
 															className="w-20 mx-auto"
 															disabled={updateSkillLevels.isPending}
 														/>

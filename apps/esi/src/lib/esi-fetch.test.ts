@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { EsiRequestClient } from '@repo/esi'
+import { EsiRateLimitStore } from '@repo/esi-rate-limit'
+
 import { EsiFetcher } from './esi-fetch'
 
 import type { Env } from '../context'
@@ -26,15 +29,28 @@ describe('EsiFetcher cache policy', () => {
 			getCachedResponse: vi.fn(),
 			setCachedResponse: vi.fn(),
 		}
+		const fetchImpl = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify([]), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			})
+		)
+		const requestClient = new EsiRequestClient({
+			rateLimits: new EsiRateLimitStore({} as KVNamespace),
+			cache,
+			fetchImpl,
+		})
 
-		;(fetcher as unknown as { cache: typeof cache }).cache = cache
+		;(fetcher as unknown as { requestClient: EsiRequestClient }).requestClient = requestClient
 
-		await fetcher.fetchEsi('/characters/affiliation', {
+		const response = await fetcher.fetchEsi('/characters/affiliation', {
 			method: 'POST',
 			body: [2124170938],
 			cacheMode: 'no-store',
 		})
 
+		expect(response.data).toEqual([])
+		expect(fetchImpl).toHaveBeenCalledTimes(1)
 		expect(cache.getCachedResponse).not.toHaveBeenCalled()
 		expect(cache.setCachedResponse).not.toHaveBeenCalled()
 	})

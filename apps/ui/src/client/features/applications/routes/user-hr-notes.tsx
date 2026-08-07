@@ -30,8 +30,6 @@ import { DeleteHRNoteDialog } from '../components/delete-hr-note-dialog'
 import { HRNotesList } from '../components/hr-notes-list'
 import { useHRNote, useHRNotes } from '../hooks'
 
-import type { HRNote } from '../api'
-
 // ============================================================================
 // Component
 // ============================================================================
@@ -68,7 +66,7 @@ export default function UserHrNotes() {
 
 	// Handlers
 	const handleBackClick = () => {
-		navigate('/admin/users') // Adjust based on your admin routes
+		void navigate('/admin/users') // Adjust based on your admin routes
 	}
 
 	const handleAddNote = () => {

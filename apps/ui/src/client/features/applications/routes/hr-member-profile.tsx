@@ -7,22 +7,15 @@
  * main content area.
  */
 
-import {
-	ArrowLeft,
-	Link2,
-	Loader2,
-	ShieldAlert,
-	Users,
-	XCircle,
-} from 'lucide-react'
 import { useQueries } from '@tanstack/react-query'
+import { formatDistanceToNow } from 'date-fns'
+import { ArrowLeft, Link2, ShieldAlert, XCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router'
-import { formatDistanceToNow } from 'date-fns'
 
-import { MemberAvatar } from '@/components/member-avatar'
 import { CopyableMetaPill } from '@/components/copyable-meta-pill'
 import { getEsiStatusBadgeState } from '@/components/esi-status-badge'
+import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import {
 	Breadcrumb,
@@ -42,29 +35,30 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { apiClient } from '@/lib/api'
 
-import { useHrPermissionCheck } from '../../hr/hooks'
 import { useCanAccessCorporation, useCorporationMemberAccount } from '../../corporations/hooks'
+import { useHrPermissionCheck } from '../../hr/hooks'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
+import {
+	FulcrumBulkScanDialog,
+	useFulcrumScanDmPreference,
+} from '../components/fulcrum-scan-dialogs'
 import {
 	ProfileApplicationHistorySection,
 	ProfileCharactersSection,
 	ProfileNotesSection,
 } from '../components/user-profile-sections'
 import {
-	FulcrumBulkScanDialog,
-	useFulcrumScanDmPreference,
-} from '../components/fulcrum-scan-dialogs'
-import {
 	useApplications,
+	useFulcrumUserReports,
 	useHRNotes,
+	useHrUserCharacters,
 	useRequestFulcrumReport,
 	useRequestFulcrumReportBatch,
-	useFulcrumUserReports,
-	useHrUserCharacters,
 } from '../hooks'
+import { getPrivateDataUnavailableMessage } from '../utils/private-data'
+
 import type { CorporationMember } from '../../corporations/api'
 import type { FulcrumCharacterReportData } from '../api'
-import { getPrivateDataUnavailableMessage } from '../utils/private-data'
 
 // ============================================================================
 // Types & Sub-Components
@@ -87,7 +81,6 @@ interface UnifiedCharacter {
 	}
 	report?: FulcrumCharacterReportData
 }
-
 
 // Test compatibility helper retained after section-component extraction.
 export function resolveEsiBadgeState({
@@ -118,7 +111,6 @@ export function resolveEsiBadgeState({
 	}
 }
 
-
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -129,22 +121,17 @@ export default function HrMemberProfile() {
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasAnyPermission } = useUserPermissions()
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
-	const {
-		canAccess: hasCorporationAccess,
-		isLoading: corporationAccessLoading,
-	} = useCanAccessCorporation(corporationId ?? '')
+	const { canAccess: hasCorporationAccess, isLoading: corporationAccessLoading } =
+		useCanAccessCorporation(corporationId ?? '')
 	const [addNoteOpen, setAddNoteOpen] = useState(false)
 	const [scanAllDialogOpen, setScanAllDialogOpen] = useState(false)
 	const [isScanningAll, setIsScanningAll] = useState(false)
-	const {
-		sendDmForScanRequests,
-		setSendDmForScanRequests,
-		persistSendDmPreference,
-	} = useFulcrumScanDmPreference()
+	const { sendDmForScanRequests, setSendDmForScanRequests, persistSendDmPreference } =
+		useFulcrumScanDmPreference()
 
 	// Permissions
 	const { data: permission, isLoading: permissionLoading } = useHrPermissionCheck(
-		corporationId ? { corporationId } : null,
+		corporationId ? { corporationId } : null
 	)
 
 	// Fetch specific linked member account details (non-paginated endpoint)
@@ -166,7 +153,7 @@ export default function HrMemberProfile() {
 
 	// HR notes — admins and auditors can view
 	const { data: notes, isLoading: notesLoading } = useHRNotes(
-		(isAdmin || isAuditor) && authUserId ? { subjectUserId: authUserId } : undefined,
+		(isAdmin || isAuditor) && authUserId ? { subjectUserId: authUserId } : undefined
 	)
 
 	const { data: hrCharacters = [] } = useHrUserCharacters(authUserId ?? '', {
@@ -174,7 +161,7 @@ export default function HrMemberProfile() {
 	})
 	const { data: reportCharacters = [], isLoading: fulcrumLoading } = useFulcrumUserReports(
 		authUserId ?? '',
-		account?.isLinked && !!authUserId,
+		account?.isLinked && !!authUserId
 	)
 
 	const requestReport = useRequestFulcrumReport()
@@ -182,13 +169,13 @@ export default function HrMemberProfile() {
 
 	// Application history
 	const { data: applications, isLoading: appsLoading } = useApplications(
-		account?.isLinked ? { corporationId, userId: authUserId } : undefined,
+		account?.isLinked ? { corporationId, userId: authUserId } : undefined
 	)
 
 	const sortedApps = useMemo(() => {
 		if (!applications) return []
 		return [...applications].sort(
-			(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+			(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 		)
 	}, [applications])
 	const reportCharacterById = useMemo(
@@ -278,7 +265,7 @@ export default function HrMemberProfile() {
 				return (
 					Boolean(character.member?.corporationId ?? character.hr?.corporationId) &&
 					!hasPending &&
-					((user?.is_admin || isAuditor) || character.role !== 'CEO')
+					(user?.is_admin || isAuditor || character.role !== 'CEO')
 				)
 			}),
 		[isAuditor, unifiedCharacters, user?.is_admin]
@@ -378,9 +365,7 @@ export default function HrMemberProfile() {
 			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Access Denied
-						</CardTitle>
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
 					</CardHeader>
 					<CardContent className="text-center">
 						<p className="text-red-700 dark:text-red-300 mb-4">
@@ -407,10 +392,7 @@ export default function HrMemberProfile() {
 						<p className="text-muted-foreground mb-4">
 							This account could not be found in the corporation member list.
 						</p>
-						<Button
-							variant="ghost"
-							onClick={() => navigate(backPath)}
-						>
+						<Button variant="ghost" onClick={() => navigate(backPath)}>
 							<ArrowLeft className="h-4 w-4" />
 							{backLabel}
 						</Button>
@@ -427,15 +409,11 @@ export default function HrMemberProfile() {
 				<Breadcrumb>
 					<BreadcrumbList>
 						<BreadcrumbItem>
-							<BreadcrumbLink to={rootCorporationsPath}>
-								{rootCorporationsLabel}
-							</BreadcrumbLink>
+							<BreadcrumbLink to={rootCorporationsPath}>{rootCorporationsLabel}</BreadcrumbLink>
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
-							<BreadcrumbLink to={backPath}>
-								{breadcrumbParentLabel}
-							</BreadcrumbLink>
+							<BreadcrumbLink to={backPath}>{breadcrumbParentLabel}</BreadcrumbLink>
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
@@ -443,10 +421,7 @@ export default function HrMemberProfile() {
 						</BreadcrumbItem>
 					</BreadcrumbList>
 				</Breadcrumb>
-				<Button
-					variant="ghost"
-					onClick={() => navigate(backPath)}
-				>
+				<Button variant="ghost" onClick={() => navigate(backPath)}>
 					<ArrowLeft className="h-4 w-4" />
 					{backLabel}
 				</Button>
@@ -467,13 +442,9 @@ export default function HrMemberProfile() {
 								/>
 								<div className="space-y-1">
 									<h1 className="text-xl font-bold">{accountName}</h1>
-									<p className="text-sm text-muted-foreground">
-										{representative.corporationName}
-									</p>
+									<p className="text-sm text-muted-foreground">{representative.corporationName}</p>
 									{representative.allianceName && (
-										<p className="text-xs text-muted-foreground">
-											{representative.allianceName}
-										</p>
+										<p className="text-xs text-muted-foreground">{representative.allianceName}</p>
 									)}
 								</div>
 								<div className="flex items-center gap-2">
@@ -504,10 +475,7 @@ export default function HrMemberProfile() {
 											/>
 										) : null}
 										{representative.discordUserId ? (
-											<CopyableMetaPill
-												label="Discord ID"
-												value={representative.discordUserId}
-											/>
+											<CopyableMetaPill label="Discord ID" value={representative.discordUserId} />
 										) : null}
 									</div>
 								)}
@@ -540,7 +508,8 @@ export default function HrMemberProfile() {
 									{inCorpCharacterCount} in corp
 									{totalCharacters > inCorpCharacterCount && (
 										<span className="text-muted-foreground font-normal">
-											{' '}/ {totalCharacters} total
+											{' '}
+											/ {totalCharacters} total
 										</span>
 									)}
 								</span>
@@ -569,7 +538,6 @@ export default function HrMemberProfile() {
 							)}
 						</CardContent>
 					</Card>
-
 				</div>
 
 				{/* ── Main Content ── */}
@@ -607,8 +575,9 @@ export default function HrMemberProfile() {
 							isMetricsLoading: metricsLoadingByCharacterId.get(char.characterId),
 							latestReport: char.report?.reports[0] ?? null,
 							hasPendingReport:
-								char.report?.reports.some((r) => r.status === 'pending' || r.status === 'processing') ??
-								false,
+								char.report?.reports.some(
+									(r) => r.status === 'pending' || r.status === 'processing'
+								) ?? false,
 						}))}
 						fulcrumLoading={
 							fulcrumLoading && unifiedCharacters.length === account.characters.length
@@ -618,15 +587,15 @@ export default function HrMemberProfile() {
 						scanAllLabel={
 							isScanningAll ? 'Scanning All...' : `Scan All (${scanEligibleCharacters.length})`
 						}
-							scanAllDisabled={
-								isScanningAll ||
-								requestReport.isPending ||
-								requestReportBatch.isPending ||
-								scanEligibleCharacters.length === 0
-							}
-							canRequestReports={canRequestFulcrumReports}
-							canRequestCharacterReport={canRequestCharacterReport}
-							onScanAll={handleOpenScanAllDialog}
+						scanAllDisabled={
+							isScanningAll ||
+							requestReport.isPending ||
+							requestReportBatch.isPending ||
+							scanEligibleCharacters.length === 0
+						}
+						canRequestReports={canRequestFulcrumReports}
+						canRequestCharacterReport={canRequestCharacterReport}
+						onScanAll={handleOpenScanAllDialog}
 						isScanPendingFor={(characterId) =>
 							requestReport.isPending &&
 							(requestReport.variables as { characterId?: string } | undefined)?.characterId ===
@@ -634,7 +603,7 @@ export default function HrMemberProfile() {
 						}
 						onViewReport={(character) => {
 							if (character.latestReport?.status !== 'completed') return
-							navigate(`/fulcrum/reports/${character.latestReport.id}`, {
+							void navigate(`/fulcrum/reports/${character.latestReport.id}`, {
 								state: {
 									characterName: character.characterName,
 									userId: accountId,

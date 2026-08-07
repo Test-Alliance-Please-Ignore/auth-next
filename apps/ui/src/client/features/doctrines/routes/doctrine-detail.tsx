@@ -48,11 +48,12 @@ import type { DoctrineCategory, DoctrineFittingEntry, DoctrineStagingEntry } fro
 function groupFittingsByCategory(
 	entries: DoctrineFittingEntry[],
 	categories: DoctrineCategory[]
-): { category: string; entries: DoctrineFittingEntry[] }[] {
+): Array<{ category: string; entries: DoctrineFittingEntry[] }> {
 	const map = new Map<string, DoctrineFittingEntry[]>()
 	for (const entry of entries) {
 		const fc = entry.fittingCategory
-		const key = (fc && fc !== 'Uncategorized' ? fc : null) || entry.fitting.category || 'Uncategorized'
+		const key =
+			(fc && fc !== 'Uncategorized' ? fc : null) || entry.fitting.category || 'Uncategorized'
 		const group = map.get(key)
 		if (group) {
 			group.push(entry)
@@ -121,7 +122,9 @@ function StagingDialog({
 				<form onSubmit={handleSubmit}>
 					<DialogHeader>
 						<DialogTitle>
-							{isEdit ? `Edit Staging: ${existing.stagingSystem.solarSystemName}` : 'Assign Staging System'}
+							{isEdit
+								? `Edit Staging: ${existing.stagingSystem.solarSystemName}`
+								: 'Assign Staging System'}
 						</DialogTitle>
 					</DialogHeader>
 					<div className="space-y-4 py-4">
@@ -204,7 +207,7 @@ export default function DoctrineDetailPage() {
 			onConfirm: async () => {
 				await deleteMutation.mutateAsync(id)
 				toast.success('Doctrine deleted')
-				navigate('/doctrines')
+				void navigate('/doctrines')
 			},
 		})
 	}
@@ -333,7 +336,9 @@ export default function DoctrineDetailPage() {
 							{doctrine.description && (
 								<div>
 									<span className="text-sm text-muted-foreground">Description:</span>
-									<p className="text-sm text-foreground whitespace-pre-wrap mt-1">{doctrine.description}</p>
+									<p className="text-sm text-foreground whitespace-pre-wrap mt-1">
+										{doctrine.description}
+									</p>
 								</div>
 							)}
 							{doctrine.category && (
@@ -351,7 +356,8 @@ export default function DoctrineDetailPage() {
 											variant="secondary"
 											className="cursor-default group/staging"
 										>
-											{s.stagingSystem.solarSystemName}{s.note && ` — ${s.note}`}
+											{s.stagingSystem.solarSystemName}
+											{s.note && ` — ${s.note}`}
 											{canManage && (
 												<>
 													<button
@@ -395,7 +401,6 @@ export default function DoctrineDetailPage() {
 						</div>
 					</CardContent>
 				</Card>
-
 
 				{doctrine.fittings.length === 0 ? (
 					<Card>
@@ -445,10 +450,7 @@ export default function DoctrineDetailPage() {
 										<div className="space-y-3">
 											{entries.map((entry) => (
 												<div key={entry.fitting.id} className="relative group/fitting">
-													<FittingCard
-														fitting={entry.fitting}
-														doctrineId={doctrine.id}
-													/>
+													<FittingCard fitting={entry.fitting} doctrineId={doctrine.id} />
 													{canManage && (
 														<div className="absolute top-1/2 -translate-y-1/2 right-2 z-10 flex gap-1">
 															<Button
@@ -498,7 +500,6 @@ export default function DoctrineDetailPage() {
 						})}
 					</div>
 				)}
-
 			</div>
 
 			{/* Add fitting dialog */}

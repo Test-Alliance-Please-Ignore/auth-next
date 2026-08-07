@@ -3,20 +3,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { billsApi } from '@/lib/bills-api'
 
 import type {
-	Bill,
 	BillListSortDirection,
 	BillListSortField,
 	BillPartyDirection,
-	BillSchedule,
-	BillTemplate,
-	BillWithDetails,
 	CreateBillFromTemplateInput,
 	CreateBillInput,
 	CreateScheduleInput,
 	CreateTemplateInput,
 	EntitySearchType,
 	EntityType,
-	GroupBillAggregate,
 	GroupBillOperationResult,
 	UpdateBillInput,
 	UpdateScheduleInput,

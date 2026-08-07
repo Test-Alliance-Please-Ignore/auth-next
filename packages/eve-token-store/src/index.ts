@@ -5,9 +5,8 @@
  * This package allows other workers to interact with the Durable Object via RPC.
  */
 
-import { createRemoteJWKSet } from 'jose'
-import * as z4 from 'zod/v4/core'
-
+import type { createRemoteJWKSet } from 'jose'
+import type * as z4 from 'zod/v4/core'
 import type { EveCharacterId } from '@repo/eve-types'
 
 /**
@@ -687,7 +686,7 @@ export interface EveTokenStore {
 	): Promise<{
 		data: T[]
 		pages: number
-		responses: EsiResponse<T[]>[]
+		responses: Array<EsiResponse<T[]>>
 	}>
 
 	/**
@@ -715,7 +714,7 @@ export interface EveTokenStore {
 	): Promise<{
 		data: T[]
 		pages: number
-		responses: EsiResponse<T[]>[]
+		responses: Array<EsiResponse<T[]>>
 	}>
 
 	/**

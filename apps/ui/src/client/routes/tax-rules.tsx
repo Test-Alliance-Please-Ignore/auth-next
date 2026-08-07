@@ -28,8 +28,6 @@ import {
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
-import type { SelectOption } from '@/components/ui/select'
-
 export default function TaxRulesPage() {
 	usePageTitle('Tax Rules')
 

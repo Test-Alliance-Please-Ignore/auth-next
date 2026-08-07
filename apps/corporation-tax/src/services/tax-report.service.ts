@@ -38,7 +38,6 @@ import type {
 	TaxMemberSummaryReportFilters,
 	TaxMissingEsiKeyRow,
 	TaxPagedResult,
-	TaxReportWindowFilters,
 	TaxRollupReportFilters,
 	TaxSummaryReport,
 	TaxTopIncomeSourceMonthlyRow,
@@ -1676,7 +1675,7 @@ export class TaxReportService {
 				hasCorporationMembershipScope: status.hasCorporationMembershipScope,
 				grantedScopeCount: status.grantedScopeCount,
 			}
-		} catch (_error) {
+		} catch {
 			return null
 		}
 	}
@@ -1686,7 +1685,7 @@ export class TaxReportService {
 			const stub = getStub<EveCorporationData>(this.eveCorporationDataNamespace, corporationId)
 			const members = await stub.getMembers(corporationId)
 			return members.map((member) => member.characterId)
-		} catch (_error) {
+		} catch {
 			return []
 		}
 	}

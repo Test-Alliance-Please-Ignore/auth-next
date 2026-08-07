@@ -1,11 +1,12 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, createDbClient, eq, ilike, inArray, isNull, or, sql } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
-
 // Import Core database schema for Discord server and role lookups
 import { discordRoles, discordServers } from '@repo/core-db-schema'
 import * as coreSchema from '@repo/core-db-schema'
+import { and, createDbClient, eq, ilike, inArray, isNull, sql } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
+
 import { createDb } from './db'
 import {
 	categories,
@@ -26,7 +27,7 @@ import {
 } from './db/schema'
 import { assertValidBroadcastPermissionUrn } from './services/broadcast-urn'
 import { CategoryService } from './services/category-service' // Added
-import { userHasPermission } from './services/permission-target'
+
 import {
 	bulkFindMainCharactersByUserIds,
 	bulkFindMainCharactersWithIdsByUserIds,
@@ -34,23 +35,15 @@ import {
 } from './services/character-lookup'
 import { generateInviteCode } from './services/code-generator'
 import { GROUPS_WITH_DISCORD_CACHE_KEY, GroupsDOCache } from './services/groups-do-cache' // Added
-import {
-	mapCategory,
-	mapGroup,
-	mapGroupInvitation,
-	mapGroupInviteCode,
-	mapGroupJoinRequest,
-	mapGroupMember,
-} from './services/mappers'
+import { mapCategory } from './services/mappers'
+import { userHasPermission } from './services/permission-target'
 // Added
 import {
 	canCreateGroupInCategory,
 	canManageGroup,
 	canModerateGroup,
-	canViewCategory,
 	canViewGroup,
 	canViewGroupMembers,
-	isGroupOwner,
 } from './services/permissions'
 import { RoleService } from './services/role-service'
 
@@ -112,7 +105,6 @@ import type {
 } from '@repo/groups'
 import type { Env } from './context'
 import type { ServiceContext } from './services/context' // Added
-import { logger } from '@repo/hono-helpers'
 
 const FALLBACK_OWNER = '4a16f141-ddd2-4179-8e3f-7d64a6548f74'
 
@@ -485,7 +477,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return rows.map((row) => ({
 			id: row.id,
 			name: row.name,
-			}))
+		}))
 	}
 
 	async getGroupOwnerAndAdminUserIds(groupId: string): Promise<string[]> {
@@ -550,7 +542,8 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		if (data.visibility !== undefined) updates.visibility = data.visibility
 		if (data.joinMode !== undefined) updates.joinMode = data.joinMode
 		if (data.mumbleSyncEnabled !== undefined) updates.mumbleSyncEnabled = data.mumbleSyncEnabled
-		if (data.mumbleTicker !== undefined) updates.mumbleTicker = normalizeMumbleTicker(data.mumbleTicker)
+		if (data.mumbleTicker !== undefined)
+			updates.mumbleTicker = normalizeMumbleTicker(data.mumbleTicker)
 		if (data.categoryId !== undefined) updates.categoryId = data.categoryId
 
 		updates.updatedAt = new Date()
@@ -915,13 +908,16 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 					FALLBACK_OWNER,
 				])
 
-				await this.db.delete(groupAdmins).where(
-					and(eq(groupAdmins.groupId, groupId), eq(groupAdmins.userId, FALLBACK_OWNER))
-				)
-				await this.db.insert(groupMembers).values({
-					groupId,
-					userId: FALLBACK_OWNER,
-				}).onConflictDoNothing()
+				await this.db
+					.delete(groupAdmins)
+					.where(and(eq(groupAdmins.groupId, groupId), eq(groupAdmins.userId, FALLBACK_OWNER)))
+				await this.db
+					.insert(groupMembers)
+					.values({
+						groupId,
+						userId: FALLBACK_OWNER,
+					})
+					.onConflictDoNothing()
 				await this.db.update(groups).set({ ownerId: FALLBACK_OWNER }).where(eq(groups.id, groupId))
 
 				for (const touchedGroupUserId of touchedGroupUserIds) {
@@ -2458,7 +2454,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async createPermissionCategory(
 		data: CreatePermissionCategoryRequest,
-		actorId: string
+		_actorId: string
 	): Promise<PermissionCategory> {
 		// Admin-only operation - validation should happen before calling this
 
@@ -2501,7 +2497,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	async updatePermissionCategory(
 		id: string,
 		data: UpdatePermissionCategoryRequest,
-		actorId: string
+		_actorId: string
 	): Promise<PermissionCategory> {
 		// Admin-only operation
 
@@ -2525,7 +2521,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return this.mapPermissionCategory(updated)
 	}
 
-	async deletePermissionCategory(id: string, actorId: string): Promise<void> {
+	async deletePermissionCategory(id: string, _actorId: string): Promise<void> {
 		// Admin-only operation
 		// SET NULL will update permissions that reference this category
 		await this.db.delete(permissionCategories).where(eq(permissionCategories.id, id))
@@ -2615,7 +2611,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	async updatePermission(
 		id: string,
 		data: UpdatePermissionRequest,
-		actorId: string
+		_actorId: string
 	): Promise<Permission> {
 		// Admin-only operation
 		if (data.urn !== undefined) {
@@ -2647,7 +2643,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		return this.mapPermission(updated)
 	}
 
-	async deletePermission(id: string, actorId: string): Promise<void> {
+	async deletePermission(id: string, _actorId: string): Promise<void> {
 		// Admin-only operation
 		// CASCADE will delete all group_permissions that reference this
 		await this.db.delete(permissions).where(eq(permissions.id, id))
@@ -2722,7 +2718,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 				createdBy: actorId,
 			})
 			.returning() // Invalidate permissions cache for all members of this group
-		this.invalidateGroupMemberPermissionsCache(data.groupId)
+		await this.invalidateGroupMemberPermissionsCache(data.groupId)
 
 		const creatorNames = await bulkFindMainCharactersByUserIds([actorId], this.db)
 
@@ -2781,7 +2777,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			.returning()
 
 		// Invalidate permissions cache for all members of this group
-		this.invalidateGroupMemberPermissionsCache(data.groupId)
+		await this.invalidateGroupMemberPermissionsCache(data.groupId)
 
 		const creatorNames = await bulkFindMainCharactersByUserIds([actorId], this.db)
 
@@ -2798,7 +2794,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async listGroupPermissions(
 		groupId: string,
-		actorId: string
+		_actorId: string
 	): Promise<GroupPermissionWithDetails[]> {
 		// Admin-only operation
 
@@ -2859,7 +2855,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	async updateGroupPermission(
 		groupPermissionId: string,
 		data: UpdateGroupPermissionRequest,
-		actorId: string
+		_actorId: string
 	): Promise<GroupPermissionWithDetails> {
 		// Admin-only operation
 
@@ -2901,7 +2897,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 
 		// Invalidate permissions cache for all members of this group
-		this.invalidateGroupMemberPermissionsCache(groupPerm.groupId)
+		await this.invalidateGroupMemberPermissionsCache(groupPerm.groupId)
 
 		const creatorNames = await bulkFindMainCharactersByUserIds([updated.createdBy], this.db)
 
@@ -2923,7 +2919,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		}
 	}
 
-	async removePermissionFromGroup(groupPermissionId: string, actorId: string): Promise<void> {
+	async removePermissionFromGroup(groupPermissionId: string, _actorId: string): Promise<void> {
 		// Admin-only operation
 
 		const groupPerm = await this.db.query.groupPermissions.findFirst({
@@ -2937,7 +2933,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		await this.db.delete(groupPermissions).where(eq(groupPermissions.id, groupPermissionId))
 
 		// Invalidate permissions cache for all members of this group
-		this.invalidateGroupMemberPermissionsCache(groupPerm.groupId)
+		await this.invalidateGroupMemberPermissionsCache(groupPerm.groupId)
 	}
 
 	/**
@@ -3033,7 +3029,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async removePermissionFromCorporation(
 		corporationPermissionId: string,
-		actorId: string
+		_actorId: string
 	): Promise<void> {
 		// Admin-only operation
 
@@ -3450,7 +3446,11 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			groupPermissions: groupPermissions.length,
 			corporationPermissions: corporationPermissions.length,
 			totalPermissions: allPermissions.length,
-			permissions: allPermissions.map((p) => ({ urn: p.urn, groupId: p.groupId, source: p.source })),
+			permissions: allPermissions.map((p) => ({
+				urn: p.urn,
+				groupId: p.groupId,
+				source: p.source,
+			})),
 		})
 
 		return allPermissions

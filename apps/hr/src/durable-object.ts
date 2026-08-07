@@ -1,8 +1,8 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { createDb } from './db'
-import { ApplicationService } from './services/application.service'
 import { ApplicationStaffNotesService } from './services/application-staff-notes.service'
+import { ApplicationService } from './services/application.service'
 import { BlacklistService } from './services/blacklist.service'
 import { HrNotesService } from './services/hr-notes.service'
 import { HrRoleService } from './services/hr-role.service'
@@ -16,13 +16,13 @@ import type {
 	ApplicationFilters,
 	ApplicationListResult,
 	ApplicationMessage,
-	ApplicationStatus,
 	ApplicationStaffNote,
+	ApplicationStatus,
 	BlacklistEntry,
 	BlacklistFilters,
+	BlacklistResults,
 	BlacklistTargetCheckItem,
 	BlacklistTargetCheckResult,
-	BlacklistResults,
 	CharacterIdNameBlacklistResult,
 	CharacterIdNamePair,
 	CreateCharacterBlacklistParams,
@@ -215,8 +215,6 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		const hasReviewerAccess = activeRoles.some(
 			(role) => role.role === 'hr_reviewer' || role.role === 'hr_admin'
 		)
-		const hasAdminAccess = activeRoles.some((role) => role.role === 'hr_admin')
-
 		const hasPermission = hasReviewerAccess
 
 		if (!hasPermission) {
@@ -242,7 +240,12 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		characterId: string,
 		characterName: string
 	): Promise<void> {
-		await this.applicationService.withdrawApplication(applicationId, userId, characterId, characterName)
+		await this.applicationService.withdrawApplication(
+			applicationId,
+			userId,
+			characterId,
+			characterName
+		)
 	}
 
 	/**
@@ -255,7 +258,13 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		characterName: string,
 		alts: Array<{ characterId: string; characterName?: string }>
 	): Promise<void> {
-		await this.applicationService.addApplicationAlts(applicationId, userId, characterId, characterName, alts)
+		await this.applicationService.addApplicationAlts(
+			applicationId,
+			userId,
+			characterId,
+			characterName,
+			alts
+		)
 	}
 
 	/**
@@ -269,7 +278,14 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		altCharacterId: string,
 		altCharacterName?: string
 	): Promise<void> {
-		await this.applicationService.removeApplicationAlt(applicationId, userId, characterId, characterName, altCharacterId, altCharacterName)
+		await this.applicationService.removeApplicationAlt(
+			applicationId,
+			userId,
+			characterId,
+			characterName,
+			altCharacterId,
+			altCharacterName
+		)
 	}
 
 	/**
@@ -620,7 +636,6 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		return await this.hrRoleService.getUserHrCorporations(userId)
 	}
 
-
 	/**
 	 * Get all HR roles for a corporation (cached)
 	 */
@@ -699,7 +714,10 @@ export class HrDO extends DurableObject<Env> implements Hr {
 	/**
 	 * Check if either character ID or name is blacklisted.
 	 */
-	async isCharacterIdOrNameBlacklisted(characterId: string, characterName?: string): Promise<boolean> {
+	async isCharacterIdOrNameBlacklisted(
+		characterId: string,
+		characterName?: string
+	): Promise<boolean> {
 		return await this.blacklistService.isCharacterIdOrNameBlacklisted(characterId, characterName)
 	}
 
@@ -727,7 +745,9 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		return await this.blacklistService.checkCharacterIdOrNamePairsBlacklisted(pairs)
 	}
 
-	async checkBlacklistTargets(targets: BlacklistTargetCheckItem[]): Promise<BlacklistTargetCheckResult[]> {
+	async checkBlacklistTargets(
+		targets: BlacklistTargetCheckItem[]
+	): Promise<BlacklistTargetCheckResult[]> {
 		return await this.blacklistService.checkBlacklistTargets(targets)
 	}
 

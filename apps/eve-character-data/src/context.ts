@@ -1,4 +1,3 @@
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 import type { createDb } from './db'
@@ -6,16 +5,11 @@ import type { EveCharacterSyncParams } from './workflows/sync-workflow'
 
 interface CoreWorker {
 	listUsersWithActiveCharacters(): Promise<Array<{ userId: string; characterIds: string[] }>>
-	listUsersWithActiveCharactersPage(input: {
-		limit: number
-		offset: number
-	}): Promise<{
+	listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{
 		users: Array<{ userId: string; characterIds: string[] }>
 		totalCount: number
 	}>
-	getCharacterOwner(
-		characterId: string
-	): Promise<{ userId: string; isPrimary: boolean } | null>
+	getCharacterOwner(characterId: string): Promise<{ userId: string; isPrimary: boolean } | null>
 	getUserCharacterIds(userId: string): Promise<string[]>
 	getUsersNeedingCharacterDataSync(): Promise<{
 		userBatches: Array<{ userId: string; characterIds: string[] }>

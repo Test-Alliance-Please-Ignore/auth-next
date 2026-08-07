@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 
 import { and, desc, eq, gt, sql } from '@repo/db-utils'
+import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../../db'
 import { marketSnapshots } from '../../db/schema'
@@ -8,7 +9,6 @@ import { createPaginationMeta, decodeCursor } from '../../utils/pagination'
 import { formatZodErrors, SnapshotsQuerySchema, validateEntityId } from '../../utils/validation'
 
 import type { App } from '../../context'
-import { logger } from '@repo/hono-helpers'
 
 const snapshotsRouter = new Hono<App>()
 
@@ -96,7 +96,7 @@ snapshotsRouter.get('/:locationId/snapshots', async (c) => {
 			try {
 				const cursorData = decodeCursor(cursor)
 				conditions.push(gt(marketSnapshots.id, cursorData.id))
-			} catch (error) {
+			} catch {
 				return c.json(
 					{
 						error: 'Invalid pagination cursor',

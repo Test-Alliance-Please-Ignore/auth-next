@@ -5,10 +5,10 @@ import {
 	type DeletePasteInput,
 	type ListAdminPastesInput,
 	type ListCreatorPastesInput,
+	type PagedResult,
 	type PasteRecord,
 	type PasteSettings,
 	type PasteVisibility,
-	type PagedResult,
 	type RotatePasswordInput,
 	type UpdatePasteInput,
 	type UpdatePasteSettingsInput,
@@ -131,9 +131,7 @@ function isIndefinite(value: number | 'indefinite'): boolean {
 	return value === 'indefinite'
 }
 
-function validateExpirationOption(
-	input: number | 'indefinite'
-): Date | null {
+function validateExpirationOption(input: number | 'indefinite'): Date | null {
 	if (isIndefinite(input)) {
 		return null
 	}
@@ -146,7 +144,10 @@ function validateExpirationOption(
 	return new Date(Date.now() + input * 60_000)
 }
 
-async function encryptContent(password: string, plaintext: string): Promise<{ content: string; envelope: Envelope }> {
+async function encryptContent(
+	password: string,
+	plaintext: string
+): Promise<{ content: string; envelope: Envelope }> {
 	const salt = crypto.getRandomValues(new Uint8Array(16))
 	const iv = crypto.getRandomValues(new Uint8Array(12))
 	const keyMaterial = await crypto.subtle.importKey(
@@ -186,7 +187,11 @@ async function encryptContent(password: string, plaintext: string): Promise<{ co
 	}
 }
 
-async function decryptContent(password: string, ciphertextBase64: string, row: PasteRow): Promise<string> {
+async function decryptContent(
+	password: string,
+	ciphertextBase64: string,
+	row: PasteRow
+): Promise<string> {
 	if (!row.kdfSalt || !row.cipherIv || !row.kdfIterations) {
 		throw new Error('Paste is missing encryption metadata')
 	}
@@ -212,11 +217,7 @@ async function decryptContent(password: string, ciphertextBase64: string, row: P
 		false,
 		['decrypt']
 	)
-	const decrypted = await crypto.subtle.decrypt(
-		{ name: 'AES-GCM', iv },
-		key,
-		ciphertext
-	)
+	const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext)
 	return new TextDecoder().decode(decrypted)
 }
 
@@ -259,7 +260,9 @@ export class PasteService {
 		const [recentRows] = await this.db
 			.select({ total: sql<number>`count(*)` })
 			.from(schema.pastes)
-			.where(and(eq(schema.pastes.createdByUserId, userId), gte(schema.pastes.createdAt, windowStart)))
+			.where(
+				and(eq(schema.pastes.createdByUserId, userId), gte(schema.pastes.createdAt, windowStart))
+			)
 
 		if (recentRows.total >= settings.createRateLimitCount) {
 			throw new Error('Rate limit exceeded for paste creation')
@@ -296,8 +299,8 @@ export class PasteService {
 			throw new Error('Paste name is required')
 		}
 		assertPlaintext(input.content)
-		const settings = await this.getOrCreateSettings()
 		const expiresAt = validateExpirationOption(input.expiration)
+		const settings = await this.getOrCreateSettings()
 		await this.assertCreateLimits(input.creatorUserId, settings)
 
 		const visibility = input.visibility
@@ -443,7 +446,10 @@ export class PasteService {
 
 	async canAttemptPublicDecrypt(input: { attemptKey: string }): Promise<boolean> {
 		if (!this.throttleKv) return true
-		const record = await this.throttleKv.get<{ failedCount: number }>(`public-decrypt:${input.attemptKey}`, 'json')
+		const record = await this.throttleKv.get<{ failedCount: number }>(
+			`public-decrypt:${input.attemptKey}`,
+			'json'
+		)
 		if (!record) return true
 		return record.failedCount < PUBLIC_DECRYPT_MAX_ATTEMPTS
 	}
@@ -453,11 +459,9 @@ export class PasteService {
 		const key = `public-decrypt:${attemptKey}`
 		const record = await this.throttleKv.get<{ failedCount: number }>(key, 'json')
 		const failedCount = (record?.failedCount ?? 0) + 1
-		await this.throttleKv.put(
-			key,
-			JSON.stringify({ failedCount }),
-			{ expirationTtl: Math.ceil(PUBLIC_DECRYPT_WINDOW_MS / 1000) }
-		)
+		await this.throttleKv.put(key, JSON.stringify({ failedCount }), {
+			expirationTtl: Math.ceil(PUBLIC_DECRYPT_WINDOW_MS / 1000),
+		})
 	}
 
 	private async clearPublicDecryptFailures(attemptKey: string): Promise<void> {
@@ -501,9 +505,11 @@ export class PasteService {
 		const conditions = []
 		if (input.visibility) conditions.push(eq(schema.pastes.visibility, input.visibility))
 		if (input.creatorUserId) conditions.push(eq(schema.pastes.createdByUserId, input.creatorUserId))
-		if (input.createdFrom) conditions.push(gte(schema.pastes.createdAt, new Date(input.createdFrom)))
+		if (input.createdFrom)
+			conditions.push(gte(schema.pastes.createdAt, new Date(input.createdFrom)))
 		if (input.createdTo) conditions.push(lte(schema.pastes.createdAt, new Date(input.createdTo)))
-		if (input.expiresFrom) conditions.push(gte(schema.pastes.expiresAt, new Date(input.expiresFrom)))
+		if (input.expiresFrom)
+			conditions.push(gte(schema.pastes.expiresAt, new Date(input.expiresFrom)))
 		if (input.expiresTo) conditions.push(lte(schema.pastes.expiresAt, new Date(input.expiresTo)))
 		const where = conditions.length > 1 ? and(...conditions) : conditions[0]
 
@@ -514,17 +520,22 @@ export class PasteService {
 				limit,
 				offset,
 			}),
-			this.db.select({ total: sql<number>`count(*)` }).from(schema.pastes).where(where),
+			this.db
+				.select({ total: sql<number>`count(*)` })
+				.from(schema.pastes)
+				.where(where),
 		])
 		return { items: rows.map(toPasteRecord), total }
 	}
 
 	async updatePaste(input: UpdatePasteInput): Promise<PasteRecord | null> {
 		const row = await this.db.query.pastes.findFirst({
-			where: and(eq(schema.pastes.id, input.pasteId), eq(schema.pastes.createdByUserId, input.actorUserId)),
+			where: and(
+				eq(schema.pastes.id, input.pasteId),
+				eq(schema.pastes.createdByUserId, input.actorUserId)
+			),
 		})
 		if (!row) return null
-		const settings = await this.getOrCreateSettings()
 		const updates: Partial<typeof schema.pastes.$inferInsert> = { updatedAt: new Date() }
 		if (input.name !== undefined) {
 			const trimmedName = input.name.trim()
@@ -540,7 +551,11 @@ export class PasteService {
 			updates.visibility = input.visibility
 		}
 
-		if (input.content !== undefined || input.isPasswordProtected !== undefined || input.password !== undefined) {
+		if (
+			input.content !== undefined ||
+			input.isPasswordProtected !== undefined ||
+			input.password !== undefined
+		) {
 			const nextVisibility = (input.visibility ?? row.visibility) as PasteVisibility
 			const nextProtected = input.isPasswordProtected ?? row.isPasswordProtected === 1
 
@@ -604,7 +619,10 @@ export class PasteService {
 		assertPassword(input.currentPassword)
 		assertPassword(input.newPassword)
 		const row = await this.db.query.pastes.findFirst({
-			where: and(eq(schema.pastes.id, input.pasteId), eq(schema.pastes.createdByUserId, input.actorUserId)),
+			where: and(
+				eq(schema.pastes.id, input.pasteId),
+				eq(schema.pastes.createdByUserId, input.actorUserId)
+			),
 		})
 		if (!row) return null
 		if (row.isPasswordProtected !== 1) {
@@ -688,7 +706,9 @@ export class PasteService {
 		return this.mapSettings(updated)
 	}
 
-	async runExpirySweep(nowIso?: string): Promise<{ scanned: number; purged: number; failed: number }> {
+	async runExpirySweep(
+		nowIso?: string
+	): Promise<{ scanned: number; purged: number; failed: number }> {
 		const now = nowIso ? new Date(nowIso) : new Date()
 		const expired = await this.db.query.pastes.findMany({
 			where: and(lte(schema.pastes.expiresAt, now)),

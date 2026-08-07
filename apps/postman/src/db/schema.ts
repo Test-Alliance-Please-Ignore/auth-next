@@ -1,5 +1,3 @@
-import { pgTable } from 'drizzle-orm/pg-core'
-
 /**
  * Database schema for the postman worker
  *

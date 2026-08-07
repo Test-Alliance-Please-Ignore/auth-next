@@ -20,7 +20,7 @@ export default function LandingPage() {
 		if (!isLoading) {
 			if (isAuthenticated) {
 				// Redirect authenticated users to dashboard
-				navigate('/dashboard')
+				void navigate('/dashboard')
 			} else {
 				// Redirect to server-side login page with full page navigation
 				window.location.href = '/login'

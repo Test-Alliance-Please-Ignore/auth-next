@@ -22,7 +22,7 @@ export function EssPayoutGrid(props: {
 	pageCount: number
 	rowCount: number
 }) {
-	const columns = useMemo<MRT_ColumnDef<TaxEssPayoutRow>[]>(
+	const columns = useMemo<Array<MRT_ColumnDef<TaxEssPayoutRow>>>(
 		() => [
 			{
 				accessorKey: 'entryDate',

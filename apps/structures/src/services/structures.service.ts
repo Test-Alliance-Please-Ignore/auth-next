@@ -2036,6 +2036,28 @@ function buildOperationalStructureListItem(
 
 function invalidateStructureContextCache(): void {}
 
+function addDelimitedFilterCondition(
+	conditions: StructureWhereCondition[],
+	column: any,
+	value: string | undefined
+): void {
+	if (!value) return
+
+	const values = [
+		...new Set(
+			value
+				.split(',')
+				.map((entry) => entry.trim())
+				.filter(Boolean)
+		),
+	]
+	if (values.length === 1) {
+		conditions.push(eq(column, values[0]!))
+	} else if (values.length > 1) {
+		conditions.push(inArray(column, values))
+	}
+}
+
 function buildStructureContextsWhere(
 	access: StructureAccessScope,
 	query: StructureBaseFilterQuery,
@@ -2048,9 +2070,7 @@ function buildStructureContextsWhere(
 	}
 
 	const conditions: StructureWhereCondition[] = []
-	if (query.corporationId) {
-		conditions.push(eq(corporationStructures.corporationId, query.corporationId))
-	}
+	addDelimitedFilterCondition(conditions, corporationStructures.corporationId, query.corporationId)
 	if (!accessibleCorporations.hasGlobalAccess) {
 		conditions.push(
 			inArray(corporationStructures.corporationId, [...accessibleCorporations.corporationIds])
@@ -2061,18 +2081,12 @@ function buildStructureContextsWhere(
 	} else if (query.lowPower === 'false') {
 		conditions.push(eq(corporationStructures.lowPower, false))
 	}
-	if (query.regionId) {
-		conditions.push(eq(corporationStructures.regionId, query.regionId))
-	}
-	if (query.systemId) {
-		conditions.push(eq(corporationStructures.systemId, query.systemId))
-	}
+	addDelimitedFilterCondition(conditions, corporationStructures.regionId, query.regionId)
+	addDelimitedFilterCondition(conditions, corporationStructures.systemId, query.systemId)
 	if (query.state) {
 		conditions.push(eq(corporationStructures.state, query.state))
 	}
-	if (query.typeId) {
-		conditions.push(eq(corporationStructures.typeId, query.typeId))
-	}
+	addDelimitedFilterCondition(conditions, corporationStructures.typeId, query.typeId)
 	if (tabFilter) {
 		const tabWhere = buildStructureFamilyWhere(tabFilter)
 		if (tabWhere) {
@@ -2927,15 +2941,13 @@ function buildSovereigntyWhere(
 	query: StructureSovereigntyListQuery
 ): any {
 	const conditions: StructureWhereCondition[] = []
-	if (query.corporationId) {
-		conditions.push(eq(structureSovereigntySystems.corporationId, query.corporationId))
-	}
-	if (query.systemId) {
-		conditions.push(eq(structureSovereigntySystems.systemId, query.systemId))
-	}
-	if (query.regionId) {
-		conditions.push(eq(structureSovereigntySystems.regionId, query.regionId))
-	}
+	addDelimitedFilterCondition(
+		conditions,
+		structureSovereigntySystems.corporationId,
+		query.corporationId
+	)
+	addDelimitedFilterCondition(conditions, structureSovereigntySystems.systemId, query.systemId)
+	addDelimitedFilterCondition(conditions, structureSovereigntySystems.regionId, query.regionId)
 	if (query.controllerAllianceId) {
 		conditions.push(eq(structureSovereigntyHubs.controllerAllianceId, query.controllerAllianceId))
 	}
@@ -4345,9 +4357,26 @@ async function listOperationalStructures(
 			}
 		}
 		const operationalStructures = buildOperationalStructuresCte(db, corpWhere)
+		const filterOptionsStructures =
+			query.corporationId || query.regionId || query.systemId || query.typeId
+				? buildOperationalStructuresCte(
+						db,
+						buildStructureContextsWhere(
+							access,
+							{
+								...query,
+								corporationId: undefined,
+								regionId: undefined,
+								systemId: undefined,
+								typeId: undefined,
+							},
+							activeTab
+						)
+					)
+				: operationalStructures
 
 		const [filterOptions, summary, pageItems] = await Promise.all([
-			buildOperationalStructureFilterOptions(db, operationalStructures),
+			buildOperationalStructureFilterOptions(db, filterOptionsStructures),
 			buildOperationalStructureSummary(db, operationalStructures, moduleConfig),
 			loadOperationalStructurePageItems(db, user, access, query, operationalStructures),
 		])
@@ -4401,8 +4430,24 @@ async function listOperationalStructures(
 		}
 
 		const skyhookStructures = buildSkyhookStructuresCte(db, corpWhere)
+		const filterOptionsStructures =
+			skyhookQuery.corporationId ||
+			skyhookQuery.regionId ||
+			skyhookQuery.systemId ||
+			skyhookQuery.typeId
+				? buildSkyhookStructuresCte(
+						db,
+						buildSkyhookVisibilityWhere(access, {
+							...skyhookQuery,
+							corporationId: undefined,
+							regionId: undefined,
+							systemId: undefined,
+							typeId: undefined,
+						})
+					)
+				: skyhookStructures
 		const [filterOptions, summary, pageItems] = await Promise.all([
-			buildSkyhookStructureFilterOptionsFromSql(db, skyhookStructures),
+			buildSkyhookStructureFilterOptionsFromSql(db, filterOptionsStructures),
 			buildSkyhookStructureSummaryFromSql(db, skyhookStructures),
 			loadSkyhookPageItems(db, user, access, skyhookQuery, skyhookStructures),
 		])
@@ -4499,8 +4544,26 @@ export async function listMoonDrillStructures(
 	}
 
 	const moonDrillStructures = buildMoonDrillStructuresCte(db, corpWhere, query.planetId)
+	const filterOptionsStructures =
+		query.corporationId || query.regionId || query.systemId || query.typeId
+			? buildMoonDrillStructuresCte(
+					db,
+					buildStructureContextsWhere(
+						access,
+						{
+							...query,
+							corporationId: undefined,
+							regionId: undefined,
+							systemId: undefined,
+							typeId: undefined,
+						},
+						'moon-drills'
+					),
+					query.planetId
+				)
+			: moonDrillStructures
 	const [filterOptions, summary, pageItems] = await Promise.all([
-		buildMoonStructureFilterOptionsFromSql(db, moonDrillStructures),
+		buildMoonStructureFilterOptionsFromSql(db, filterOptionsStructures),
 		buildOperationalStructureSummary(db, moonDrillStructures, moduleConfig),
 		loadMoonDrillPageItems(db, user, access, query, moonDrillStructures),
 	])
@@ -4712,9 +4775,21 @@ export async function listSovereigntyStructures(
 	}
 
 	const sovereigntyStructures = buildSovereigntyStructuresCte(db, corpWhere)
+	const filterOptionsStructures =
+		query.corporationId || query.regionId || query.systemId
+			? buildSovereigntyStructuresCte(
+					db,
+					buildSovereigntyWhere(access, {
+						...query,
+						corporationId: undefined,
+						regionId: undefined,
+						systemId: undefined,
+					})
+				)
+			: sovereigntyStructures
 	const moduleConfig = await getStructureModuleConfig(db)
 	const [filterOptions, summary, pageItems] = await Promise.all([
-		buildSovereigntyStructureFilterOptionsFromSql(db, sovereigntyStructures),
+		buildSovereigntyStructureFilterOptionsFromSql(db, filterOptionsStructures),
 		buildSovereigntyStructureSummaryFromSql(db, sovereigntyStructures, moduleConfig),
 		loadSovereigntyPageItems(db, user, access, query, sovereigntyStructures),
 	])
@@ -4797,8 +4872,26 @@ export async function listMiningCitadelStructures(
 	}
 
 	const miningStructures = buildMiningCitadelStructuresCte(db, corpWhere, query.planetId)
+	const filterOptionsStructures =
+		query.corporationId || query.regionId || query.systemId || query.typeId
+			? buildMiningCitadelStructuresCte(
+					db,
+					buildStructureContextsWhere(
+						access,
+						{
+							...query,
+							corporationId: undefined,
+							regionId: undefined,
+							systemId: undefined,
+							typeId: undefined,
+						},
+						'mining-citadels'
+					),
+					query.planetId
+				)
+			: miningStructures
 	const [filterOptions, summary, pageItems] = await Promise.all([
-		buildMoonStructureFilterOptionsFromSql(db, miningStructures),
+		buildMoonStructureFilterOptionsFromSql(db, filterOptionsStructures),
 		buildOperationalStructureSummary(db, miningStructures, moduleConfig),
 		loadMiningCitadelPageItems(db, user, access, query, miningStructures),
 	])

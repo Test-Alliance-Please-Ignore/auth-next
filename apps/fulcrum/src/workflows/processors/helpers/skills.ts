@@ -4,9 +4,9 @@
  */
 
 import { getStub } from '@repo/do-utils'
-
-import type { CharacterSkills, CharacterSkillQueue, EsiTypeResolver } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
+
+import type { CharacterSkillQueue, CharacterSkills, EsiTypeResolver } from '@repo/esi'
 
 /**
  * Enriched skill entry with resolved name
@@ -56,7 +56,7 @@ export async function enrichSkills(
 	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace },
 	skills: CharacterSkills,
 	skillQueue: CharacterSkillQueue[],
-	characterId: string,
+	_characterId: string
 ): Promise<ProcessedSkillsData> {
 	// Collect all skill IDs that need resolution
 	const skillIds = new Set<string>()

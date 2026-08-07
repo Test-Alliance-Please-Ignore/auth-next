@@ -3,8 +3,6 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
-import { AddBroadcastAddendumDialog } from '../add-broadcast-addendum-dialog'
-import { RescindBroadcastDialog } from '../rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -33,6 +31,9 @@ import {
 } from '@/hooks/useBroadcasts'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatDateTimeLocal } from '@/lib/discord-time'
+
+import { AddBroadcastAddendumDialog } from '../add-broadcast-addendum-dialog'
+import { RescindBroadcastDialog } from '../rescind-broadcast-dialog'
 
 import type { BadgeVariant } from '@/components/ui/badge'
 import type { BroadcastStatus, DeliveryStatus } from '@/lib/api'
@@ -116,7 +117,7 @@ export default function AdminBroadcastDetailPage() {
 	const handleDelete = async () => {
 		try {
 			await deleteBroadcast.mutateAsync(broadcast.id)
-			navigate('/admin/broadcasts')
+			void navigate('/admin/broadcasts')
 		} catch (error) {
 			setDeleteDialogOpen(false)
 			setMessage({

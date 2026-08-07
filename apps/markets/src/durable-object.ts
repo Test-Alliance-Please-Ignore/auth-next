@@ -1,25 +1,25 @@
 import { DurableObject } from 'cloudflare:workers'
-
 import { max } from 'drizzle-orm'
+
 import { and, desc, eq, gt, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 import { GetRegionMarketDataResponseObjectSchema } from '@repo/markets'
 
 import { createDb } from './db'
-import { getSnapshotDeleteCount } from './utils/snapshot-retention'
 import {
-	apiKeys,
 	insuranceDailyPrices,
 	latestMarketPrices,
 	marketDailyPrices,
 	marketOrders,
 	marketSnapshots,
 } from './db/schema'
+import { getSnapshotDeleteCount } from './utils/snapshot-retention'
 
-import type { DbClientWs } from '@repo/db-utils'
 import type { Esi } from '@repo/esi'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type {
+	GetBatchMarketDataAtTimeInput,
 	GetBatchMarketDataInput,
 	GetBatchMarketDataResponse,
 	GetRegionMarketDataInput,
@@ -29,16 +29,6 @@ import type {
 	Markets,
 } from '@repo/markets'
 import type { Env } from './context'
-import { logger } from '@repo/hono-helpers'
-
-const schema = {
-	apiKeys,
-	insuranceDailyPrices,
-	latestMarketPrices,
-	marketDailyPrices,
-	marketOrders,
-	marketSnapshots,
-}
 
 /**
  * Markets Durable Object
@@ -53,7 +43,7 @@ const schema = {
  * - Pre-computed latest prices via materialized view
  */
 export class MarketsDO extends DurableObject<Env, {}> implements Markets {
-	private db: DbClientWs<typeof schema>
+	private db: ReturnType<typeof createDb>
 
 	constructor(
 		public state: DurableObjectState,
@@ -76,7 +66,9 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		`)
 		// Add column if upgrading from an older schema that didn't have it
 		try {
-			this.state.storage.sql.exec(`ALTER TABLE config ADD COLUMN max_snapshots INTEGER DEFAULT NULL`)
+			this.state.storage.sql.exec(
+				`ALTER TABLE config ADD COLUMN max_snapshots INTEGER DEFAULT NULL`
+			)
 		} catch {
 			// Column already exists — ignore
 		}
@@ -504,7 +496,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 	 * daily history has been populated yet.
 	 */
 	async getBatchMarketDataAtTime(
-		input: import('@repo/markets').GetBatchMarketDataAtTimeInput
+		input: GetBatchMarketDataAtTimeInput
 	): Promise<GetBatchMarketDataResponse> {
 		const { regionId, typeIds, atTime } = input
 
@@ -581,7 +573,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 	}
 
 	async getMarketDataRevisionAtTime(
-		input: Pick<import('@repo/markets').GetBatchMarketDataAtTimeInput, 'regionId' | 'atTime'>
+		input: Pick<GetBatchMarketDataAtTimeInput, 'regionId' | 'atTime'>
 	): Promise<string | null> {
 		const targetDate = input.atTime.toISOString().slice(0, 10)
 		const [nearestDay] = await this.db

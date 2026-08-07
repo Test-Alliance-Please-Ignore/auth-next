@@ -1,12 +1,26 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 
+import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
+import { esiFetchStepConfig, esiProcessingStepConfig } from '@repo/workflow-utils'
+
 import { createDb } from '../db'
-import { characterReports } from '../db/schema'
 import { buildUpdateReportStatusQuery, getReport } from '../db/queries'
+import { characterReports } from '../db/schema'
 import { sendReportFailedDM } from '../lib/discord-webhook'
 import { resolveReportMetadata } from '../lib/report-metadata'
-import { fetchAssets, processAssets, fetchAssetNames, applyAssetCustomNames, applyMarketPrices } from './steps/assets'
+import { CharacterAffiliationCoordinator } from './processors/helpers/character-affiliation'
+import { EntityLinkCoordinator } from './processors/helpers/entity-links'
+import { StructureResolutionCoordinator } from './processors/helpers/structure-resolution'
 import { generateAlerts } from './steps/alerts'
+import {
+	applyAssetCustomNames,
+	applyMarketPrices,
+	fetchAssetNames,
+	fetchAssets,
+	processAssets,
+} from './steps/assets'
+import { fetchClones, processClones } from './steps/clones'
 import {
 	checkCancellation,
 	cleanupIntermediateData,
@@ -18,25 +32,17 @@ import { fetchContracts, processContracts } from './steps/contracts'
 import { fetchCorpHistory, processCorpHistory } from './steps/corp-history'
 import { processFittedShips } from './steps/fitted-ships'
 import { fetchMails, processMails } from './steps/mails'
-import { fetchOrders, processOrders } from './steps/orders'
 import { fetchNotifications, processNotifications } from './steps/notifications'
+import { fetchOrders, processOrders } from './steps/orders'
 import { fetchPublicInfo, processPublicInfo } from './steps/public-info'
 import { fetchSkills, processSkills } from './steps/skills'
 import { fetchWalletJournal, processWalletJournal } from './steps/wallet-journal'
 import { fetchWalletTransactions, processWalletTransactions } from './steps/wallet-transactions'
-import { fetchClones, processClones } from './steps/clones'
-import { CharacterAffiliationCoordinator } from './processors/helpers/character-affiliation'
-import { EntityLinkCoordinator } from './processors/helpers/entity-links'
-import { StructureResolutionCoordinator } from './processors/helpers/structure-resolution'
 
-import { getStub } from '@repo/do-utils'
-import { esiFetchStepConfig, esiProcessingStepConfig } from '@repo/workflow-utils'
-
-import type { Hr } from '@repo/hr'
 import type { WorkflowEvent, WorkflowStep, WorkflowStepConfig } from 'cloudflare:workers'
+import type { Hr } from '@repo/hr'
 import type { Env } from '../context'
 import type { StepResult } from './utils/storage'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Character Report Workflow
@@ -119,14 +125,22 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 		// Wrap step.do() with structured start/completion logging.
 		// Logs run outside the callback so they fire on replay too, making it easy
 		// to see how far a replayed workflow has progressed.
-		const doStep = async <T>(name: string, config: WorkflowStepConfig, fn: () => Promise<T>): Promise<T> => {
+		const doStep = async <T>(
+			name: string,
+			config: WorkflowStepConfig,
+			fn: () => Promise<T>
+		): Promise<T> => {
 			const stepStartedAt = Date.now()
 			logger.log('[Workflow] step:start', { step: name, config, ...logCtx })
 			try {
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				const result = await step.do(name, config, fn as () => Promise<any>) as T
+				const result = (await step.do(name, config, fn as () => Promise<any>)) as T
 				const logFields: Record<string, unknown> = { step: name, ...logCtx }
-				if (result !== null && typeof result === 'object' && 'success' in result && 'source' in result) {
+				if (
+					result !== null &&
+					typeof result === 'object' &&
+					'success' in result &&
+					'source' in result
+				) {
 					const r = result as unknown as StepResult
 					logFields.success = r.success
 					logFields.source = r.source
@@ -154,10 +168,9 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 		logger.log('[Workflow] started', logCtx)
 
 		try {
-
 			// Step 1: Check if report was cancelled
 			const cancelled = await doStep('check-cancellation', STEP, () =>
-				checkCancellation(this.env, reportId),
+				checkCancellation(this.env, reportId)
 			)
 
 			if (cancelled) {
@@ -171,8 +184,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					this.env.CHARACTER_REPORTS,
 					'CHARACTER_REPORTS',
 					characterId,
-					workflowInstanceId,
-				),
+					workflowInstanceId
+				)
 			)
 
 			// Step 3: Process public info
@@ -185,8 +198,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchResult,
 					workflowInstanceId,
 					characterId,
-					entityLinkCoordinator,
-				),
+					entityLinkCoordinator
+				)
 			)
 
 			// Step 4: Fetch assets from ESI
@@ -196,8 +209,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					this.env.CHARACTER_REPORTS,
 					'CHARACTER_REPORTS',
 					characterId,
-					workflowInstanceId,
-				),
+					workflowInstanceId
+				)
 			)
 
 			// Step 5: Process assets
@@ -210,8 +223,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchAssetsResult,
 					workflowInstanceId,
 					characterId,
-					structureResolutionCoordinator,
-				),
+					structureResolutionCoordinator
+				)
 			)
 
 			// Step 6: Fetch custom ship names from ESI
@@ -223,8 +236,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					'CHARACTER_REPORTS',
 					fetchAssetsResult,
 					workflowInstanceId,
-					characterId,
-				),
+					characterId
+				)
 			)
 
 			// Step 7: Process fitted ships
@@ -237,8 +250,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchAssetsResult,
 					workflowInstanceId,
 					characterId,
-					structureResolutionCoordinator,
-				),
+					structureResolutionCoordinator
+				)
 			)
 
 			// Step 8: Fetch active market orders from ESI
@@ -248,8 +261,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					this.env.CHARACTER_REPORTS,
 					'CHARACTER_REPORTS',
 					characterId,
-					workflowInstanceId,
-				),
+					workflowInstanceId
+				)
 			)
 
 			// Step 9: Process active market orders
@@ -262,35 +275,41 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchOrdersResult,
 					workflowInstanceId,
 					characterId,
-					structureResolutionCoordinator,
-				),
+					structureResolutionCoordinator
+				)
 			)
 
 			// Step 10: Fetch wallet transactions from ESI
-			const fetchWalletTransactionsResult = await doStep('fetch-wallet-transactions', ESI_STEP, () =>
-				fetchWalletTransactions(
-					this.env.ESI,
-					this.env.CHARACTER_REPORTS,
-					'CHARACTER_REPORTS',
-					characterId,
-					workflowInstanceId,
-				),
+			const fetchWalletTransactionsResult = await doStep(
+				'fetch-wallet-transactions',
+				ESI_STEP,
+				() =>
+					fetchWalletTransactions(
+						this.env.ESI,
+						this.env.CHARACTER_REPORTS,
+						'CHARACTER_REPORTS',
+						characterId,
+						workflowInstanceId
+					)
 			)
 
 			// Step 11: Process wallet transactions
-			const processWalletTransactionsResult = await doStep('process-wallet-transactions', STEP, () =>
-				processWalletTransactions(
-					this.env,
-					getBucket,
-					this.env.CHARACTER_REPORTS,
-					'CHARACTER_REPORTS',
-					fetchWalletTransactionsResult,
-					workflowInstanceId,
-					characterId,
-					structureResolutionCoordinator,
-					characterAffiliationCoordinator,
-					entityLinkCoordinator,
-				),
+			const processWalletTransactionsResult = await doStep(
+				'process-wallet-transactions',
+				STEP,
+				() =>
+					processWalletTransactions(
+						this.env,
+						getBucket,
+						this.env.CHARACTER_REPORTS,
+						'CHARACTER_REPORTS',
+						fetchWalletTransactionsResult,
+						workflowInstanceId,
+						characterId,
+						structureResolutionCoordinator,
+						characterAffiliationCoordinator,
+						entityLinkCoordinator
+					)
 			)
 
 			// Step 12: Fetch wallet journal entries
@@ -300,8 +319,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					this.env.CHARACTER_REPORTS,
 					'CHARACTER_REPORTS',
 					characterId,
-					workflowInstanceId,
-				),
+					workflowInstanceId
+				)
 			)
 
 			// Step 13: Process wallet journal entries
@@ -316,8 +335,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					characterId,
 					structureResolutionCoordinator,
 					characterAffiliationCoordinator,
-					entityLinkCoordinator,
-				),
+					entityLinkCoordinator
+				)
 			)
 
 			// Step 14: Fetch mails from ESI
@@ -327,8 +346,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					this.env.CHARACTER_REPORTS,
 					'CHARACTER_REPORTS',
 					characterId,
-					workflowInstanceId,
-				),
+					workflowInstanceId
+				)
 			)
 
 			// Step 15: Process mails
@@ -342,8 +361,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					workflowInstanceId,
 					characterId,
 					characterAffiliationCoordinator,
-					entityLinkCoordinator,
-				),
+					entityLinkCoordinator
+				)
 			)
 
 			// Step 16: Fetch contacts from ESI
@@ -353,8 +372,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					this.env.CHARACTER_REPORTS,
 					'CHARACTER_REPORTS',
 					characterId,
-					workflowInstanceId,
-				),
+					workflowInstanceId
+				)
 			)
 
 			// Step 17: Process contacts
@@ -368,8 +387,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					workflowInstanceId,
 					characterId,
 					characterAffiliationCoordinator,
-					entityLinkCoordinator,
-				),
+					entityLinkCoordinator
+				)
 			)
 
 			// Step 18: Fetch corporation history from ESI
@@ -379,8 +398,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					this.env.CHARACTER_REPORTS,
 					'CHARACTER_REPORTS',
 					characterId,
-					workflowInstanceId,
-				),
+					workflowInstanceId
+				)
 			)
 
 			// Step 19: Process corporation history
@@ -392,8 +411,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					'CHARACTER_REPORTS',
 					fetchCorpHistoryResult,
 					workflowInstanceId,
-					characterId,
-				),
+					characterId
+				)
 			)
 
 			// Step 20: Fetch skills and skill queue from ESI
@@ -403,8 +422,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					this.env.CHARACTER_REPORTS,
 					'CHARACTER_REPORTS',
 					characterId,
-					workflowInstanceId,
-				),
+					workflowInstanceId
+				)
 			)
 
 			// Step 21: Process skills
@@ -416,8 +435,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					'CHARACTER_REPORTS',
 					fetchSkillsResult,
 					workflowInstanceId,
-					characterId,
-				),
+					characterId
+				)
 			)
 
 			// Step 22: Fetch contracts from ESI
@@ -427,8 +446,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					this.env.CHARACTER_REPORTS,
 					'CHARACTER_REPORTS',
 					characterId,
-					workflowInstanceId,
-				),
+					workflowInstanceId
+				)
 			)
 
 			// Step 23: Process contracts
@@ -441,8 +460,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchContractsResult,
 					workflowInstanceId,
 					characterId,
-					characterAffiliationCoordinator,
-				),
+					characterAffiliationCoordinator
+				)
 			)
 
 			// Step 24: Fetch notifications from ESI
@@ -452,22 +471,25 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					this.env.CHARACTER_REPORTS,
 					'CHARACTER_REPORTS',
 					characterId,
-					workflowInstanceId,
-				),
+					workflowInstanceId
+				)
 			)
 
 			// Step 25: Process notifications
-			const processNotificationsResult = await doStep('process-notifications', NOTIFICATIONS_PROCESS_STEP, () =>
-				processNotifications(
-					this.env,
-					getBucket,
-					this.env.CHARACTER_REPORTS,
-					'CHARACTER_REPORTS',
-					fetchNotificationsResult,
-					workflowInstanceId,
-					characterId,
-					characterAffiliationCoordinator,
-				),
+			const processNotificationsResult = await doStep(
+				'process-notifications',
+				NOTIFICATIONS_PROCESS_STEP,
+				() =>
+					processNotifications(
+						this.env,
+						getBucket,
+						this.env.CHARACTER_REPORTS,
+						'CHARACTER_REPORTS',
+						fetchNotificationsResult,
+						workflowInstanceId,
+						characterId,
+						characterAffiliationCoordinator
+					)
 			)
 
 			// Step 26: Fetch clones and active implants from ESI
@@ -477,8 +499,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					this.env.CHARACTER_REPORTS,
 					'CHARACTER_REPORTS',
 					characterId,
-					workflowInstanceId,
-				),
+					workflowInstanceId
+				)
 			)
 
 			// Step 27: Process clones
@@ -491,8 +513,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					fetchClonesResult,
 					workflowInstanceId,
 					characterId,
-					structureResolutionCoordinator,
-				),
+					structureResolutionCoordinator
+				)
 			)
 
 			// Apply custom ship names to processed assets and fitted ships in-place
@@ -502,8 +524,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					this.env.CHARACTER_REPORTS,
 					fetchAssetNamesResult,
 					processAssetsResult,
-					processFittedShipsResult,
-				),
+					processFittedShipsResult
+				)
 			)
 
 			// Apply market prices to processed assets in-place
@@ -512,8 +534,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					getBucket,
 					this.env.MARKETS,
 					processAssetsResult,
-					processFittedShipsResult,
-				),
+					processFittedShipsResult
+				)
 			)
 
 			// Build enrichment failure entries for alert generation
@@ -573,39 +595,33 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 						...enrichmentResults,
 					},
 					workflowInstanceId,
-					characterId,
-				),
+					characterId
+				)
 			)
 
 			// Persist all processed sections to permanent R2 paths
 			const finalResult = await doStep('persist-sections', STEP, () =>
-				persistSections(
-					this.env.CHARACTER_REPORTS,
-					getBucket,
-					characterId,
-					reportId,
-					[
-						{ name: 'public-info', result: processResult },
-						{ name: 'assets', result: processAssetsResult },
-						{ name: 'fitted-ships', result: processFittedShipsResult },
-						{ name: 'orders', result: processOrdersResult },
-						{ name: 'wallet-transactions', result: processWalletTransactionsResult },
-						{ name: 'wallet-journal', result: processWalletJournalResult },
-						{ name: 'mails', result: processMailsResult },
-						{ name: 'contacts', result: processContactsResult },
-						{ name: 'corp-history', result: processCorpHistoryResult },
-						{ name: 'skills', result: processSkillsResult },
-						{ name: 'contracts', result: processContractsResult },
-						{ name: 'notifications', result: processNotificationsResult },
-						{ name: 'clones', result: processClonesResult },
-						{ name: 'alerts', result: generateAlertsResult },
-					],
-				),
+				persistSections(this.env.CHARACTER_REPORTS, getBucket, characterId, reportId, [
+					{ name: 'public-info', result: processResult },
+					{ name: 'assets', result: processAssetsResult },
+					{ name: 'fitted-ships', result: processFittedShipsResult },
+					{ name: 'orders', result: processOrdersResult },
+					{ name: 'wallet-transactions', result: processWalletTransactionsResult },
+					{ name: 'wallet-journal', result: processWalletJournalResult },
+					{ name: 'mails', result: processMailsResult },
+					{ name: 'contacts', result: processContactsResult },
+					{ name: 'corp-history', result: processCorpHistoryResult },
+					{ name: 'skills', result: processSkillsResult },
+					{ name: 'contracts', result: processContractsResult },
+					{ name: 'notifications', result: processNotificationsResult },
+					{ name: 'clones', result: processClonesResult },
+					{ name: 'alerts', result: generateAlertsResult },
+				])
 			)
 
 			// Step 22: Clean up intermediate data
 			await doStep('cleanup-intermediate-data', STEP, () =>
-				cleanupIntermediateData(this.env.CHARACTER_REPORTS, workflowInstanceId),
+				cleanupIntermediateData(this.env.CHARACTER_REPORTS, workflowInstanceId)
 			)
 
 			// Step 23: Update database with final status
@@ -617,8 +633,8 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 					finalResult.bucket,
 					finalResult.key,
 					targetUserId,
-					sendDm,
-				),
+					sendDm
+				)
 			)
 
 			logger.log('[Workflow] completed', {

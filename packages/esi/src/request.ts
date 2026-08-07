@@ -1,11 +1,12 @@
-import { hashString } from '@repo/fetch-utils'
 import {
 	buildPublicEsiUserKey,
 	EsiRateLimitGuard,
-	EsiRateLimitStore,
-	parseEsiRateLimitHeaders,
 	normalizeEsiRouteKey,
+	parseEsiRateLimitHeaders,
 } from '@repo/esi-rate-limit'
+import { hashString } from '@repo/fetch-utils'
+
+import type { EsiRateLimitStore } from '@repo/esi-rate-limit'
 
 export type EsiCacheScope = 'character' | 'corporation' | 'public' | 'global'
 
@@ -98,13 +99,6 @@ const DEFAULT_MAX_RETRIES = 5
 const DEFAULT_PUBLIC_SCOPE: EsiCacheScopeContext = {
 	scope: 'public',
 	scopeId: buildPublicEsiUserKey(),
-}
-
-function parseHeaderInteger(headers: Headers, header: string): number | undefined {
-	const value = headers.get(header)
-	if (!value) return undefined
-	const parsed = Number.parseInt(value, 10)
-	return Number.isFinite(parsed) ? parsed : undefined
 }
 
 function sleep(ms: number): Promise<void> {
@@ -206,9 +200,11 @@ function buildRequestInit(options: {
 	}
 
 	if (options.timeoutMs !== undefined) {
-		const abortSignal = (globalThis as unknown as {
-			AbortSignal?: { timeout(ms: number): unknown }
-		}).AbortSignal?.timeout(options.timeoutMs)
+		const abortSignal = (
+			globalThis as unknown as {
+				AbortSignal?: { timeout(ms: number): unknown }
+			}
+		).AbortSignal?.timeout(options.timeoutMs)
 		if (abortSignal) {
 			requestInit.signal = abortSignal as RequestInit['signal']
 		}
@@ -224,9 +220,7 @@ export class EsiRequestClient {
 	private readonly maxRetries: number
 	private readonly fetchImpl: typeof fetch
 
-	constructor(
-		private readonly options: EsiRequestClientOptions
-	) {
+	constructor(private readonly options: EsiRequestClientOptions) {
 		this.rateLimitGuard = new EsiRateLimitGuard(options.rateLimits)
 		this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL
 		this.compatibilityDate = options.compatibilityDate ?? DEFAULT_COMPATIBILITY_DATE
@@ -287,7 +281,12 @@ export class EsiRequestClient {
 		const providedCached = options.cachedResponse ?? null
 		let cached: EsiResponse<T> | null = providedCached
 		if (!cached && cacheMode !== 'no-store' && this.options.cache) {
-			cached = await this.options.cache.getCachedResponse<T>(cacheScope, cachePath, cachePage, false)
+			cached = await this.options.cache.getCachedResponse<T>(
+				cacheScope,
+				cachePath,
+				cachePage,
+				false
+			)
 		}
 
 		if (cached && options.maxLocalCacheTtl !== undefined) {
@@ -346,8 +345,10 @@ export class EsiRequestClient {
 			})
 
 			try {
-				response = await this.rateLimitGuard.withResponseRateLimit(options.path, userKey, async () =>
-					fetchImpl(`${this.baseUrl}${options.path}`, requestInit)
+				response = await this.rateLimitGuard.withResponseRateLimit(
+					options.path,
+					userKey,
+					async () => fetchImpl(`${this.baseUrl}${options.path}`, requestInit)
 				)
 			} catch (error) {
 				this.debug('ESI request blocked before fetch', {
@@ -369,7 +370,8 @@ export class EsiRequestClient {
 				userKey,
 				method,
 				status: response.status,
-				rateLimitSource: response.status === 420 || response.status === 429 ? 'upstream' : undefined,
+				rateLimitSource:
+					response.status === 420 || response.status === 429 ? 'upstream' : undefined,
 				retryCount,
 				rateLimit: rateLimitSnapshot,
 			})
@@ -428,7 +430,9 @@ export class EsiRequestClient {
 
 		if (response.status === 304) {
 			if (!expiredCached) {
-				throw new Error(`ESI response returned 304 but no cached data was available for ${options.path}`)
+				throw new Error(
+					`ESI response returned 304 but no cached data was available for ${options.path}`
+				)
 			}
 
 			const newExpiresAt = parseEsiCacheExpiry(response.headers)
@@ -441,9 +445,15 @@ export class EsiRequestClient {
 			}
 
 			if (cacheMode !== 'no-store' && this.options.cache) {
-				await this.options.cache.setCachedResponse(cacheScope, cachePath, updatedResponse, cachePage, {
-					persistGlobal: persistGlobalCache,
-				})
+				await this.options.cache.setCachedResponse(
+					cacheScope,
+					cachePath,
+					updatedResponse,
+					cachePage,
+					{
+						persistGlobal: persistGlobalCache,
+					}
+				)
 			}
 
 			return { ...updatedResponse, cached: true }
@@ -486,7 +496,9 @@ export class EsiRequestClient {
 	}
 
 	async requestPaginated<T>(options: EsiPaginatedRequestOptions<T>): Promise<EsiResponse<T[]>> {
-		const firstPagePath = options.path.includes('?') ? `${options.path}&page=1` : `${options.path}?page=1`
+		const firstPagePath = options.path.includes('?')
+			? `${options.path}&page=1`
+			: `${options.path}?page=1`
 		const firstPageResponse = await this.request<T[]>({
 			...options,
 			path: firstPagePath,
@@ -498,11 +510,15 @@ export class EsiRequestClient {
 		}
 
 		const allData: T[] = [
-			...(Array.isArray(firstPageResponse.data) ? firstPageResponse.data : [firstPageResponse.data]),
+			...(Array.isArray(firstPageResponse.data)
+				? firstPageResponse.data
+				: [firstPageResponse.data]),
 		]
 
 		for (let page = 2; page <= totalPages; page++) {
-			const pagePath = options.path.includes('?') ? `${options.path}&page=${page}` : `${options.path}?page=${page}`
+			const pagePath = options.path.includes('?')
+				? `${options.path}&page=${page}`
+				: `${options.path}?page=${page}`
 			const pageResponse = await this.request<T[]>({
 				...options,
 				path: pagePath,

@@ -11,32 +11,36 @@ import { useState } from 'react'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { AccessDeniedCard } from '../components/access-denied-card'
-
 import { AddRecommendationDialog } from '../components/add-recommendation-dialog'
 import { DeleteRecommendationDialog } from '../components/delete-recommendation-dialog'
 import { RecommendationSentimentBadge } from '../components/recommendation-sentiment-badge'
 import { usePendingRecommendations } from '../hooks'
 
-import type { Recommendation, RecommendableApplication } from '../api'
+import type { RecommendableApplication, Recommendation } from '../api'
 
 export default function RecommendationsList() {
 	const { data: applications, isLoading, error } = usePendingRecommendations()
 	const [selectedApp, setSelectedApp] = useState<RecommendableApplication | null>(null)
-	const [editingRec, setEditingRec] = useState<{ app: RecommendableApplication; rec: Recommendation } | null>(null)
+	const [editingRec, setEditingRec] = useState<{
+		app: RecommendableApplication
+		rec: Recommendation
+	} | null>(null)
 	const [deletingRec, setDeletingRec] = useState<Recommendation | null>(null)
 
 	usePageTitle('Recommendations')
 
 	// Collect unique corporation IDs for name resolution
 	const corporationIds = [...new Set((applications ?? []).map((a) => a.corporationId))]
-	const { data: corpNames = {} } = useEntityNames(corporationIds, { enabled: corporationIds.length > 0 })
+	const { data: corpNames = {} } = useEntityNames(corporationIds, {
+		enabled: corporationIds.length > 0,
+	})
 
 	if (isLoading) {
 		return (
@@ -97,8 +101,8 @@ export default function RecommendationsList() {
 						<Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
 						<h3 className="text-lg font-semibold mb-2">No pending applications</h3>
 						<p className="text-sm text-muted-foreground max-w-md mx-auto">
-							There are currently no pending applications for your corporation(s).
-							Check back later when new applicants apply.
+							There are currently no pending applications for your corporation(s). Check back later
+							when new applicants apply.
 						</p>
 					</CardContent>
 				</Card>
@@ -175,7 +179,10 @@ function ApplicationRecommendCard({
 	const userRec = application.userRecommendation
 
 	return (
-		<Card className={userRec ? undefined : 'cursor-pointer transition-colors hover:bg-accent/30'} onClick={userRec ? undefined : onRecommend}>
+		<Card
+			className={userRec ? undefined : 'cursor-pointer transition-colors hover:bg-accent/30'}
+			onClick={userRec ? undefined : onRecommend}
+		>
 			<CardContent className="flex items-center gap-4 py-4">
 				{/* Avatar */}
 				<MemberAvatar

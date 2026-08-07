@@ -7,23 +7,20 @@
 
 import { formatDistanceToNow } from 'date-fns'
 import { MessageSquare } from 'lucide-react'
-import { MantineReactTable, createMRTColumnHelper, useMantineReactTable } from 'mantine-react-table'
+import { createMRTColumnHelper, MantineReactTable, useMantineReactTable } from 'mantine-react-table'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router'
 
+import { MemberAvatar } from '@/components/member-avatar'
+import { Button } from '@/components/ui/button'
 import {
 	mrtPaperProps,
-	mrtPaginationProps,
 	mrtRowStyle,
 	mrtTableBodyCellProps,
 	mrtTableHeadCellProps,
 	mrtTableHeadProps,
 	mrtTableProps,
 } from '@/lib/mrt-theme'
-import { useEffect, useMemo, useState } from 'react'
-
-import { Link } from 'react-router'
-
-import { MemberAvatar } from '@/components/member-avatar'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import { ApplicationStatusBadge } from './application-status-badge'
@@ -58,9 +55,9 @@ const col = createMRTColumnHelper<Application>()
 function buildColumns(
 	getApplicationHref: (app: Application) => string,
 	onApplicationClick?: (app: Application) => void,
-	canManage?: boolean,
-): MRT_ColumnDef<Application>[] {
-	const base: MRT_ColumnDef<Application>[] = [
+	canManage?: boolean
+): Array<MRT_ColumnDef<Application>> {
+	const base: Array<MRT_ColumnDef<Application>> = [
 		col.accessor('characterName', {
 			header: 'Character',
 			size: 220,
@@ -98,7 +95,8 @@ function buildColumns(
 							</span>
 							{(row.original.altCharacterIds?.length ?? 0) > 0 && (
 								<span className="text-xs text-muted-foreground">
-									+{row.original.altCharacterIds!.length} {row.original.altCharacterIds!.length === 1 ? 'Alt' : 'Alts'}
+									+{row.original.altCharacterIds!.length}{' '}
+									{row.original.altCharacterIds!.length === 1 ? 'Alt' : 'Alts'}
 								</span>
 							)}
 						</div>
@@ -110,9 +108,7 @@ function buildColumns(
 			header: 'Corporation',
 			size: 160,
 			Cell: ({ row }) => (
-				<span className="text-muted-foreground">
-					{row.original.corporationName || 'Unknown'}
-				</span>
+				<span className="text-muted-foreground">{row.original.corporationName || 'Unknown'}</span>
 			),
 		}),
 		col.accessor('status', {
@@ -173,11 +169,13 @@ function buildColumns(
 					const href = getApplicationHref(row.original)
 					return (
 						<Button asChild variant="ghost" size="sm">
-							<Link to={href} onClick={(e) => e.stopPropagation()}>View</Link>
+							<Link to={href} onClick={(e) => e.stopPropagation()}>
+								View
+							</Link>
 						</Button>
 					)
 				},
-			}),
+			})
 		)
 	}
 
@@ -216,7 +214,7 @@ export function ApplicationsTable({
 
 	const columns = useMemo(
 		() => buildColumns(getApplicationHref, onApplicationClick, canManage),
-		[getApplicationHref, onApplicationClick, canManage],
+		[getApplicationHref, onApplicationClick, canManage]
 	)
 
 	const table = useMantineReactTable({

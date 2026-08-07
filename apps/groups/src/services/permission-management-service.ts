@@ -11,14 +11,13 @@ import {
 	permissions,
 } from '../db/schema'
 import { assertValidBroadcastPermissionUrn } from './broadcast-urn'
-import { canManageGroup } from './permissions'
 import { userHasPermission } from './permission-target'
+import { canManageGroup } from './permissions'
 import { isUserGroupAdmin } from './query-helpers'
 
 import type { Core } from '@repo/core'
 import type {
 	AttachPermissionRequest,
-	AttachPermissionToCorporationRequest,
 	CorporationPermissionWithDetails,
 	CreatePermissionCategoryRequest,
 	CreatePermissionRequest,
@@ -59,7 +58,7 @@ export class PermissionManagementService {
 
 	async createPermissionCategory(
 		data: CreatePermissionCategoryRequest,
-		adminUserId: string
+		_adminUserId: string
 	): Promise<PermissionCategory> {
 		// Admin-only
 		const [category] = await this.ctx.db
@@ -76,7 +75,7 @@ export class PermissionManagementService {
 	async updatePermissionCategory(
 		id: string,
 		data: UpdatePermissionCategoryRequest,
-		adminUserId: string
+		_adminUserId: string
 	): Promise<PermissionCategory> {
 		// Admin-only
 		const updates: Partial<typeof permissionCategories.$inferInsert> = {}
@@ -99,7 +98,7 @@ export class PermissionManagementService {
 		return this.mapPermissionCategory(updated)
 	}
 
-	async deletePermissionCategory(id: string, adminUserId: string): Promise<void> {
+	async deletePermissionCategory(id: string, _adminUserId: string): Promise<void> {
 		// Admin-only (cascades to permissions)
 		await this.ctx.db.delete(permissionCategories).where(eq(permissionCategories.id, id))
 	}
@@ -139,7 +138,7 @@ export class PermissionManagementService {
 	async updatePermission(
 		id: string,
 		data: UpdatePermissionRequest,
-		adminUserId: string
+		_adminUserId: string
 	): Promise<Permission> {
 		// Admin-only
 		if (data.urn !== undefined) {
@@ -169,7 +168,7 @@ export class PermissionManagementService {
 		return this.mapPermission(updated)
 	}
 
-	async deletePermission(id: string, adminUserId: string): Promise<void> {
+	async deletePermission(id: string, _adminUserId: string): Promise<void> {
 		// Admin-only
 		await this.ctx.db.delete(permissions).where(eq(permissions.id, id))
 		this.ctx.groupsDOCache.invalidateAllPermissionsCache()
@@ -215,7 +214,7 @@ export class PermissionManagementService {
 		groupId: string,
 		data: AttachPermissionRequest,
 		addedBy: string,
-		isAdmin: boolean = false
+		_isAdmin: boolean = false
 	): Promise<GroupPermissionWithDetails> {
 		const group = await this.ctx.db.query.groups.findFirst({
 			where: eq(groupsTable.id, groupId),
@@ -280,7 +279,7 @@ export class PermissionManagementService {
 		groupPermissionId: string,
 		data: UpdateGroupPermissionRequest,
 		updatedBy: string,
-		isAdmin: boolean = false
+		_isAdmin: boolean = false
 	): Promise<GroupPermissionWithDetails> {
 		const group = await this.ctx.db.query.groups.findFirst({
 			where: eq(groupsTable.id, groupId),
@@ -333,7 +332,7 @@ export class PermissionManagementService {
 		groupId: string,
 		groupPermissionId: string,
 		removedBy: string,
-		isAdmin: boolean = false
+		_isAdmin: boolean = false
 	): Promise<void> {
 		const group = await this.ctx.db.query.groups.findFirst({
 			where: eq(groupsTable.id, groupId),
@@ -361,7 +360,7 @@ export class PermissionManagementService {
 		corporationId: string,
 		data: AttachPermissionRequest,
 		addedBy: string,
-		isAdmin: boolean = false
+		_isAdmin: boolean = false
 	): Promise<CorporationPermissionWithDetails> {
 		// Ensure corporation exists
 		const coreStub = getStub<Core>(this.ctx.env.CORE, 'default') as unknown as CoreStub
@@ -410,7 +409,7 @@ export class PermissionManagementService {
 		corporationPermissionId: string,
 		data: UpdateGroupPermissionRequest,
 		updatedBy: string,
-		isAdmin: boolean = false
+		_isAdmin: boolean = false
 	): Promise<CorporationPermissionWithDetails> {
 		// Corporation permissions seem to be immutable links between Corp and Permission.
 		// They don't have targetType or custom fields in schema.
@@ -424,7 +423,7 @@ export class PermissionManagementService {
 		groupId: string, // Irrelevant
 		corporationPermissionId: string,
 		removedBy: string,
-		isAdmin: boolean = false
+		_isAdmin: boolean = false
 	): Promise<void> {
 		// Check admin? `canManageGroup` requires a group.
 		// If these are global, maybe only site admins can manage?

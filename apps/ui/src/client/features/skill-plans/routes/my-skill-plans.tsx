@@ -13,7 +13,7 @@ import { usePageTitle } from '../../../hooks/usePageTitle'
 import { useUserPermissions } from '../../../hooks/useUserPermissions'
 import { CategorySectionHeader } from '../components/category-section-header'
 import { SkillPlanCard } from '../components/skill-plan-card'
-import { useDeleteSkillPlan, useMySkillPlans } from '../hooks'
+import { useMySkillPlans } from '../hooks'
 import { groupPlansByCategory } from '../utils/group-by-category'
 
 export default function MySkillPlans() {
@@ -22,7 +22,6 @@ export default function MySkillPlans() {
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasPermission } = useUserPermissions()
 	const { data: plansResponse, isLoading } = useMySkillPlans()
-	const deletePlan = useDeleteSkillPlan()
 	const canCreatePlans = !!user && (user.is_admin || hasPermission('urn:skill-plans:create'))
 	const canManageCategories =
 		!!user &&
@@ -43,21 +42,6 @@ export default function MySkillPlans() {
 	// Extract plans from paginated response
 	const plans = plansResponse?.items || []
 	const totalPlans = plansResponse?.total || 0
-
-	const handleDelete = async (planId: string) => {
-		if (confirm('Are you sure you want to delete this skill plan?')) {
-			try {
-				await deletePlan.mutateAsync(planId)
-			} catch (error) {
-				console.error('Failed to delete plan:', error)
-			}
-		}
-	}
-
-	const handleClone = (planId: string) => {
-		// TODO: Implement clone functionality
-		console.log('Clone plan:', planId)
-	}
 
 	// Group plans by category
 	const groupedPlans = useMemo(() => {

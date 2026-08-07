@@ -2,6 +2,7 @@ import { ArrowLeft } from 'lucide-react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router'
 
 import { roundToMillion } from '@repo/srp'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -13,12 +14,12 @@ import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
+import { CharacterRoleBadge } from '../components/CharacterRoleBadge'
 import { CommentForm } from '../components/CommentForm'
 import { CommentsList } from '../components/CommentsList'
-import { CharacterRoleBadge } from '../components/CharacterRoleBadge'
 import { RequestHistory } from '../components/RequestHistory'
-import { SRPRequestDetailSkeleton } from '../components/SRPRequestDetailSkeleton'
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
+import { SRPRequestDetailSkeleton } from '../components/SRPRequestDetailSkeleton'
 import { useCreateRequest, useRequest, useRequestComments, useWithdrawRequest } from '../hooks'
 import { formatISK, getKillmailUrl, getRequestCharacterRole } from '../utils'
 
@@ -100,13 +101,12 @@ export default function RequestDetails() {
 		if (!id) return
 		requestConfirmation({
 			title: 'Withdraw SRP Request',
-			description:
-				'Withdraw this SRP request? You can re-submit it later from Recent Losses.',
+			description: 'Withdraw this SRP request? You can re-submit it later from Recent Losses.',
 			confirmLabel: 'Withdraw Request',
 			intent: 'destructive',
 			onConfirm: async () => {
 				await withdrawRequest.mutateAsync({ id })
-				navigate('/srp')
+				void navigate('/srp')
 			},
 		})
 	}
@@ -115,8 +115,7 @@ export default function RequestDetails() {
 		if (!id) return
 		requestConfirmation({
 			title: 'Reopen SRP Request',
-			description:
-				'Reopen this withdrawn SRP request? This will move it back to pending review.',
+			description: 'Reopen this withdrawn SRP request? This will move it back to pending review.',
 			confirmLabel: 'Reopen Request',
 			intent: 'confirm',
 			onConfirm: async () => {
@@ -126,7 +125,7 @@ export default function RequestDetails() {
 					killmailHash: request.killmailHash,
 					contextText: request.contextText?.trim() || 'Reopened SRP request',
 				})
-				navigate(`/srp/request/${id}`)
+				void navigate(`/srp/request/${id}`)
 			},
 		})
 	}
@@ -140,9 +139,7 @@ export default function RequestDetails() {
 			<Container>
 				<PageHeader title="Permission Denied" />
 				<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-6 text-center">
-					<p className="text-sm text-red-500">
-						You are not authorized to view this SRP request.
-					</p>
+					<p className="text-sm text-red-500">You are not authorized to view this SRP request.</p>
 					<Button variant="ghost" className="mt-4" asChild>
 						<Link to="/srp">Back to Dashboard</Link>
 					</Button>
@@ -219,9 +216,7 @@ export default function RequestDetails() {
 							<div className="text-sm text-muted-foreground">Loss System</div>
 							<div className="font-medium">{request.solarSystemName ?? 'Unknown'}</div>
 							{request.solarSystemRegionName ? (
-								<div className="text-xs text-muted-foreground">
-									{request.solarSystemRegionName}
-								</div>
+								<div className="text-xs text-muted-foreground">{request.solarSystemRegionName}</div>
 							) : null}
 						</div>
 						<div>
@@ -251,11 +246,7 @@ export default function RequestDetails() {
 						</div>
 						<div>
 							<Button variant="ghost" size="sm" asChild>
-								<a
-									href={getKillmailUrl(request.id)}
-									target="_blank"
-									rel="noopener noreferrer"
-								>
+								<a href={getKillmailUrl(request.id)} target="_blank" rel="noopener noreferrer">
 									View on zKillboard →
 								</a>
 							</Button>
@@ -281,35 +272,33 @@ export default function RequestDetails() {
 						<div className="text-sm text-muted-foreground">Bonuses / Deductions</div>
 						{appliedModifiers.length > 0 ? (
 							<ul className="mt-2 space-y-1 text-sm">
-								{appliedModifiers.map((modifier: {
-									id: string
-									modifierType: 'deduction' | 'bonus'
-									mode: 'percentage' | 'value'
-									amount: number
-									reason: string
-									computedAmountISK: string
-								}) => (
-									<li
-										key={modifier.id}
-										className={
-											modifier.modifierType === 'deduction'
-												? 'flex items-center gap-2 text-destructive'
-												: 'flex items-center gap-2 text-green-600'
-										}
-									>
-										<Badge
-											variant={
-												modifier.modifierType === 'deduction' ? 'destructive' : 'success'
+								{appliedModifiers.map(
+									(modifier: {
+										id: string
+										modifierType: 'deduction' | 'bonus'
+										mode: 'percentage' | 'value'
+										amount: number
+										reason: string
+										computedAmountISK: string
+									}) => (
+										<li
+											key={modifier.id}
+											className={
+												modifier.modifierType === 'deduction'
+													? 'flex items-center gap-2 text-destructive'
+													: 'flex items-center gap-2 text-green-600'
 											}
 										>
-											{modifier.modifierType === 'deduction' ? 'Deduction' : 'Bonus'}
-										</Badge>
-										<span className="font-semibold">
-											{formatAppliedModifierValue(modifier)}
-										</span>
-										<span className="text-foreground">: {modifier.reason}</span>
-									</li>
-								))}
+											<Badge
+												variant={modifier.modifierType === 'deduction' ? 'destructive' : 'success'}
+											>
+												{modifier.modifierType === 'deduction' ? 'Deduction' : 'Bonus'}
+											</Badge>
+											<span className="font-semibold">{formatAppliedModifierValue(modifier)}</span>
+											<span className="text-foreground">: {modifier.reason}</span>
+										</li>
+									)
+								)}
 							</ul>
 						) : (
 							<div className="mt-1 text-sm font-medium">None</div>

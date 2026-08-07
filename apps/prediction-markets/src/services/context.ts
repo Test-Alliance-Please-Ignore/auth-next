@@ -1,6 +1,5 @@
-import { createDb } from '../db'
-
 import type { MarketStatus, Visibility } from '@repo/prediction-markets'
+import type { createDb } from '../db'
 
 export type PmDatabase = ReturnType<typeof createDb>
 export type PmTransaction = Parameters<Parameters<PmDatabase['transaction']>[0]>[0]

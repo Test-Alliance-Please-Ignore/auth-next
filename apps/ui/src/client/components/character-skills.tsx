@@ -1,7 +1,7 @@
 import { GraduationCap } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { formatSkillPoints, toRomanLevel } from '@repo/eve-types'
+import { formatSkillPoints } from '@repo/eve-types'
 
 import { cn } from '../lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'

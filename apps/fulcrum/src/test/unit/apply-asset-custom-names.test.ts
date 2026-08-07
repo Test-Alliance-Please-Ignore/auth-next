@@ -2,17 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { applyAssetCustomNames } from '../../workflows/steps/assets/apply-asset-custom-names'
 
-import type { FittedShip } from '../../workflows/processors/helpers/ships'
 import type { ProcessedAsset } from '../../workflows/processors/helpers/assets'
-import type { StepResult } from '../../workflows/utils/storage'
+import type { FittedShip } from '../../workflows/processors/helpers/ships'
+import type * as StorageUtils from '../../workflows/utils/storage'
 
 const retrieveData = vi.fn()
 const storeInR2 = vi.fn()
 
 vi.mock('../../workflows/utils/storage', async () => {
-	const actual = await vi.importActual<typeof import('../../workflows/utils/storage')>(
-		'../../workflows/utils/storage'
-	)
+	const actual = await vi.importActual<typeof StorageUtils>('../../workflows/utils/storage')
 	return {
 		...actual,
 		retrieveData: (...args: unknown[]) => retrieveData(...args),
@@ -20,13 +18,13 @@ vi.mock('../../workflows/utils/storage', async () => {
 	}
 })
 
-function makeStepResult(): StepResult {
+function makeStepResult(): StorageUtils.StepResult {
 	return {
 		success: true,
 		source: 'r2',
 		r2Bucket: 'bucket',
 		r2Key: 'key',
-	} as StepResult
+	} as StorageUtils.StepResult
 }
 
 describe('applyAssetCustomNames', () => {
@@ -103,14 +101,14 @@ describe('applyAssetCustomNames', () => {
 			.mockResolvedValueOnce(assets)
 			.mockResolvedValueOnce([topShip])
 
-		const getBucket = (() => ({} as R2Bucket)) as (name: string) => R2Bucket
+		const getBucket = (() => ({}) as R2Bucket) as (name: string) => R2Bucket
 
 		const result = await applyAssetCustomNames(
 			getBucket,
 			{} as R2Bucket,
 			makeStepResult(),
 			makeStepResult(),
-			makeStepResult(),
+			makeStepResult()
 		)
 
 		expect(result.applied).toBe(2)

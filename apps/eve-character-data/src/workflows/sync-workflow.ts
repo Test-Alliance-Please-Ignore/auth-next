@@ -1,13 +1,14 @@
-import { WorkflowEntrypoint, WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import { WorkflowEntrypoint } from 'cloudflare:workers'
 
-import { logger } from '@repo/hono-helpers'
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 import { createWorkflowInstanceUpdater } from '@repo/orchestrator'
 import { esiRetryOptions, withEsiRetryClassification } from '@repo/workflow-utils'
 
 import * as refreshAuthenticatedData from './helpers/refresh-authenticated-data'
 import * as refreshHelpers from './helpers/refresh-public-info'
 
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { EveCharacterData, EveCharacterSyncDataType } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from '../context'
@@ -159,8 +160,7 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 				const invalidatedCharacterIds = transitions
 					.filter(
 						(transition) =>
-							transition.previousHasValidToken === true &&
-							transition.nextHasValidToken === false
+							transition.previousHasValidToken === true && transition.nextHasValidToken === false
 					)
 					.map((transition) => transition.characterId)
 
@@ -170,17 +170,23 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 						characterIds: invalidatedCharacterIds,
 						source: 'character-refresh-token-invalidated',
 					})
-					logger.info('[EveCharacterSyncWorkflow] Queued token invalidation alerts from batch sync', {
-						userId,
-						invalidatedCharacterIds,
-						queueResult,
-					})
+					logger.info(
+						'[EveCharacterSyncWorkflow] Queued token invalidation alerts from batch sync',
+						{
+							userId,
+							invalidatedCharacterIds,
+							queueResult,
+						}
+					)
 				}
 			} catch (error) {
-				logger.warn('[EveCharacterSyncWorkflow] Failed to batch-sync token validity; falling back to per-character validation', {
-					userId,
-					error: error instanceof Error ? error.message : String(error),
-				})
+				logger.warn(
+					'[EveCharacterSyncWorkflow] Failed to batch-sync token validity; falling back to per-character validation',
+					{
+						userId,
+						error: error instanceof Error ? error.message : String(error),
+					}
+				)
 			}
 		}
 
@@ -205,12 +211,12 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 							},
 							() =>
 								withEsiRetryClassification('fetch-public-info', async () => {
-										logger.debug('[Step] Fetching public info', {
-											characterId,
-											userId: userId ?? null,
-										})
-										return await refreshHelpers.refreshPublicInfo(this.env, characterId)
+									logger.debug('[Step] Fetching public info', {
+										characterId,
+										userId: userId ?? null,
 									})
+									return await refreshHelpers.refreshPublicInfo(this.env, characterId)
+								})
 						)
 						syncStats.publicInfoSuccess++
 						publicInfoRefreshedCharacterIds.push(characterId)

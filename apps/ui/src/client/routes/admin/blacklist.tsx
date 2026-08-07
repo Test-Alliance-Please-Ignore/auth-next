@@ -6,7 +6,6 @@ import { Link } from 'react-router'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import {
 	Dialog,
 	DialogContent,
@@ -18,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
-import { Select, type SelectOption } from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
 	Table,
@@ -29,10 +28,12 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 
+import type { SelectOption } from '@/components/ui/select'
 import type { BlacklistEntry, BlacklistTargetType } from '@/lib/api'
 
 const TARGET_TYPE_LABELS: Record<BlacklistTargetType, string> = {
@@ -167,7 +168,10 @@ export default function BlacklistPage() {
 				case 'user':
 					return {
 						targetType: data.targetType,
-						result: await api.createUserBlacklist({ userId: data.targetValue, reason: data.reason }),
+						result: await api.createUserBlacklist({
+							userId: data.targetValue,
+							reason: data.reason,
+						}),
 					}
 				case 'character_id':
 					return {
@@ -196,7 +200,7 @@ export default function BlacklistPage() {
 			}
 		},
 		onSuccess: ({ targetType, result }) => {
-			queryClient.invalidateQueries({ queryKey: ['blacklists'] })
+			void queryClient.invalidateQueries({ queryKey: ['blacklists'] })
 			setAddDialogOpen(false)
 			resetAddForm()
 
@@ -231,7 +235,7 @@ export default function BlacklistPage() {
 	const removeBlacklist = useMutation({
 		mutationFn: (id: string) => api.removeBlacklistEntry(id),
 		onSuccess: (result) => {
-			queryClient.invalidateQueries({ queryKey: ['blacklists'] })
+			void queryClient.invalidateQueries({ queryKey: ['blacklists'] })
 			setDeleteDialogOpen(false)
 			setSelectedEntry(null)
 			const cascadeMsg =
@@ -402,7 +406,6 @@ export default function BlacklistPage() {
 								Search
 							</Button>
 						</div>
-
 					</div>
 
 					{hasActiveFilters && (
@@ -527,7 +530,9 @@ export default function BlacklistPage() {
 															Auto
 														</Badge>
 													) : (
-														<Badge variant="default" className="w-fit">Manual</Badge>
+														<Badge variant="default" className="w-fit">
+															Manual
+														</Badge>
 													)}
 													{entry.triggeredBy && (
 														<span
@@ -616,7 +621,9 @@ export default function BlacklistPage() {
 									onChange={(e) => setFormData({ ...formData, targetValue: e.target.value })}
 									required
 								/>
-								<p className="text-xs text-muted-foreground">{addBlacklistFieldConfig.helperText}</p>
+								<p className="text-xs text-muted-foreground">
+									{addBlacklistFieldConfig.helperText}
+								</p>
 							</div>
 
 							<div className="space-y-2">
@@ -642,11 +649,7 @@ export default function BlacklistPage() {
 							>
 								Cancel
 							</Button>
-							<Button
-								variant="confirm"
-								loading={createBlacklist.isPending}
-								loadingText="Adding..."
-							>
+							<Button variant="confirm" loading={createBlacklist.isPending} loadingText="Adding...">
 								Add to Blocklist
 							</Button>
 						</DialogFooter>
@@ -661,7 +664,8 @@ export default function BlacklistPage() {
 						<DialogTitle>Remove from Blocklist</DialogTitle>
 						<DialogDescription>
 							Are you sure you want to remove this{' '}
-					{selectedEntry ? TARGET_TYPE_LABELS[selectedEntry.targetType] : ''} from the blocklist?
+							{selectedEntry ? TARGET_TYPE_LABELS[selectedEntry.targetType] : ''} from the
+							blocklist?
 							{selectedEntry?.isAutoBlacklist && (
 								<span className="block mt-2 text-orange-500">
 									Warning: This is an auto-blocklist entry. The user may still be blocked if the
@@ -671,8 +675,14 @@ export default function BlacklistPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-						<Button variant="destructive" onClick={handleDelete} loading={removeBlacklist.isPending}>
+						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>
+							Cancel
+						</Button>
+						<Button
+							variant="destructive"
+							onClick={handleDelete}
+							loading={removeBlacklist.isPending}
+						>
 							Remove from Blocklist
 						</Button>
 					</DialogFooter>

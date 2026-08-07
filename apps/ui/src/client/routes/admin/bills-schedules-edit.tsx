@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 
 import { BillEntityPicker } from '@/components/bills/bill-entity-picker'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
 	Dialog,
@@ -13,7 +14,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { NumberInput } from '@/components/ui/number-input'
@@ -39,10 +39,8 @@ import {
 } from '@/hooks/useBills'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { formatScheduleFrequency } from '@/lib/bills-utils'
 
 import type { EntityType, PayeeType, ScheduleFrequency, UpdateScheduleInput } from '@repo/bills'
-import { Button } from '@/components/ui/button'
 
 export default function AdminBillsSchedulesEditPage() {
 	const { id } = useParams<{ id: string }>()
@@ -257,7 +255,7 @@ export default function AdminBillsSchedulesEditPage() {
 		try {
 			await deleteSchedule.mutateAsync(id)
 			setDeleteDialogOpen(false)
-			navigate('/admin/bills/schedules')
+			void navigate('/admin/bills/schedules')
 		} catch (error) {
 			setMessage({
 				type: 'error',
@@ -334,7 +332,8 @@ export default function AdminBillsSchedulesEditPage() {
 				</div>
 				<div className="flex gap-2">
 					{schedule.isActive ? (
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							size="sm"
 							onClick={() => setPauseDialogOpen(true)}
 							loading={pauseSchedule.isPending}
@@ -348,7 +347,8 @@ export default function AdminBillsSchedulesEditPage() {
 							Resume Schedule
 						</Button>
 					)}
-					<Button variant="destructive"
+					<Button
+						variant="destructive"
 						size="sm"
 						onClick={() => setDeleteDialogOpen(true)}
 						loading={deleteSchedule.isPending}
@@ -548,7 +548,10 @@ export default function AdminBillsSchedulesEditPage() {
 							query={payerQuery}
 							onQueryChange={setPayerQuery}
 							options={payerOptions}
-							onEntitySelect={(entityId, name) => { handleChange('payerId', entityId); setPayerName(name) }}
+							onEntitySelect={(entityId, name) => {
+								handleChange('payerId', entityId)
+								setPayerName(name)
+							}}
 							loading={payerEntitySearch.isLoading}
 							selectedEntityId={formData.payerId}
 							selectedEntityName={payerName}
@@ -564,7 +567,10 @@ export default function AdminBillsSchedulesEditPage() {
 							query={payeeQuery}
 							onQueryChange={setPayeeQuery}
 							options={payeeOptions}
-							onEntitySelect={(entityId, name) => { handleChange('payeeId', entityId); setPayeeName(name) }}
+							onEntitySelect={(entityId, name) => {
+								handleChange('payeeId', entityId)
+								setPayeeName(name)
+							}}
 							loading={payeeEntitySearch.isLoading}
 							selectedEntityId={formData.payeeId}
 							selectedEntityName={payeeName}
@@ -708,7 +714,9 @@ export default function AdminBillsSchedulesEditPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel" onClick={() => setPauseDialogOpen(false)}>Cancel</Button>
+						<Button variant="cancel" onClick={() => setPauseDialogOpen(false)}>
+							Cancel
+						</Button>
 						<Button variant="confirm" onClick={handlePause} loading={pauseSchedule.isPending}>
 							{pauseSchedule.isPending ? 'Pausing...' : 'Pause Schedule'}
 						</Button>
@@ -727,7 +735,9 @@ export default function AdminBillsSchedulesEditPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel" onClick={() => setResumeDialogOpen(false)}>Cancel</Button>
+						<Button variant="cancel" onClick={() => setResumeDialogOpen(false)}>
+							Cancel
+						</Button>
 						<Button variant="confirm" onClick={handleResume} loading={resumeSchedule.isPending}>
 							{resumeSchedule.isPending ? 'Resuming...' : 'Resume Schedule'}
 						</Button>
@@ -746,7 +756,9 @@ export default function AdminBillsSchedulesEditPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>
+							Cancel
+						</Button>
 						<Button variant="destructive" onClick={handleDelete} loading={deleteSchedule.isPending}>
 							Delete Schedule
 						</Button>

@@ -5,13 +5,13 @@
 
 import { getStub } from '@repo/do-utils'
 import { isStructureId } from '@repo/eve-types'
+import { logger } from '@repo/hono-helpers'
 
 import { buildAssetMap, isInsideShip, isShipAsset, resolveTopLevelLocation } from './location'
 import { StructureResolutionCoordinator } from './structure-resolution'
 
-import type { CharacterAsset, Esi, EsiTypeResolver } from '@repo/esi'
+import type { CharacterAsset, EsiTypeResolver } from '@repo/esi'
 import type { Universe } from '@repo/universe'
-import { logger } from '@repo/hono-helpers'
 
 function isContainerType(typeName?: string, categoryName?: string): boolean {
 	return Boolean(
@@ -174,12 +174,9 @@ export async function enrichAssets(
 
 	const structureNameMap =
 		structureLocationIds.length > 0
-			? await (structureResolutionCoordinator ?? new StructureResolutionCoordinator()).resolveStructureNames(
-					{ ESI: env.ESI },
-					characterId,
-					structureLocationIds,
-					'enrichAssets'
-				)
+			? await (
+					structureResolutionCoordinator ?? new StructureResolutionCoordinator()
+				).resolveStructureNames({ ESI: env.ESI }, characterId, structureLocationIds, 'enrichAssets')
 			: {}
 
 	if (structureLocationIds.length > 0) {

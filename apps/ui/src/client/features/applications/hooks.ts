@@ -8,22 +8,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 
-import { apiClient } from '@/lib/api'
-import { applicationsApi, fulcrumApi } from './api'
 import { useApiMutation } from '@/hooks/useApiMutation'
+import { apiClient } from '@/lib/api'
+
+import { applicationsApi, fulcrumApi } from './api'
 
 import type {
 	AddHRNoteRequest,
 	AddRecommendationRequest,
 	Application,
 	ApplicationActivityLogEntry,
-	ApplicationsListResult,
 	ApplicationMessage,
-	ApplicationStaffNote,
+	ApplicationsListResult,
 	ApplicationsParams,
+	ApplicationStaffNote,
 	CharacterReportMetadata,
 	CreateTemplateRequest,
 	FulcrumCharacterData,
+	FulcrumCharacterReportData,
 	HRNote,
 	HRNotesParams,
 	MessageTemplate,
@@ -32,17 +34,16 @@ import type {
 	Recommendation,
 	RecommenderApplicationDetail,
 	ReportManifest,
-	ReportSectionMeta,
 	ReportRequestSource,
+	ReportSectionMeta,
 	ReportSectionName,
-	FulcrumCharacterReportData,
 	SendMessageRequest,
 	SubmitApplicationRequest,
-	UpsertApplicationStaffNoteRequest,
 	UpdateApplicationStatusRequest,
 	UpdateHRNoteRequest,
 	UpdateRecommendationRequest,
 	UpdateTemplateRequest,
+	UpsertApplicationStaffNoteRequest,
 } from './api'
 
 // ============================================================================
@@ -72,7 +73,8 @@ export const applicationKeys = {
 	templates: () => [...applicationKeys.all, 'templates'] as const,
 	templatesList: (corporationId: string, status?: string) =>
 		[...applicationKeys.templates(), corporationId, status || 'all'] as const,
-	templateDetail: (templateId: string) => [...applicationKeys.templates(), 'detail', templateId] as const,
+	templateDetail: (templateId: string) =>
+		[...applicationKeys.templates(), 'detail', templateId] as const,
 	// Fulcrum (Character Reports)
 	fulcrumUserCharacters: (userId: string, corporationId: string) =>
 		[...applicationKeys.all, 'fulcrum', 'user-characters', userId, corporationId] as const,
@@ -91,8 +93,7 @@ export const applicationKeys = {
 	// Character application history
 	characterHistory: (characterId: string) =>
 		[...applicationKeys.all, 'character-history', characterId] as const,
-	userHistory: (userId: string) =>
-		[...applicationKeys.all, 'user-history', userId] as const,
+	userHistory: (userId: string) => [...applicationKeys.all, 'user-history', userId] as const,
 }
 
 const REPORT_CACHE_TTL_MS = 24 * 60 * 60 * 1000
@@ -264,7 +265,10 @@ export function usePendingRecommendations(options?: { enabled?: boolean }) {
 /**
  * Hook to fetch application detail for writing a recommendation
  */
-export function useApplicationForRecommender(applicationId: string, options?: { enabled?: boolean }) {
+export function useApplicationForRecommender(
+	applicationId: string,
+	options?: { enabled?: boolean }
+) {
 	return useQuery<RecommenderApplicationDetail>({
 		queryKey: applicationKeys.recommendationsDetail(applicationId),
 		queryFn: () => applicationsApi.getApplicationForRecommender(applicationId),
@@ -273,7 +277,6 @@ export function useApplicationForRecommender(applicationId: string, options?: { 
 		enabled: options?.enabled ?? !!applicationId,
 	})
 }
-
 
 export function useHrUserCharacters(userId: string, options?: { enabled?: boolean }) {
 	return useQuery<HrUserCharacterData[]>({
@@ -303,14 +306,14 @@ export function useSubmitApplication() {
 		mutationFn: (data: SubmitApplicationRequest) => applicationsApi.submitApplication(data),
 		onSuccess: (newApplication) => {
 			// Invalidate all application lists
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.lists(),
 			})
 
 			// Pre-populate the cache so the detail page renders immediately, then mark
 			// it stale so it refetches the authoritative response (which includes altCharacterIds)
 			queryClient.setQueryData(applicationKeys.detail(newApplication.id), newApplication)
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.detail(newApplication.id),
 			})
 		},
@@ -334,17 +337,17 @@ export function useUpdateApplicationStatus() {
 		}) => applicationsApi.updateApplicationStatus(applicationId, data),
 		onSuccess: (_, variables) => {
 			// Invalidate the specific application
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.detail(variables.applicationId),
 			})
 
 			// Invalidate all application lists
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.lists(),
 			})
 
 			// Invalidate activity log
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(variables.applicationId),
 			})
 		},
@@ -362,17 +365,17 @@ export function useWithdrawApplication() {
 		mutationFn: (applicationId: string) => applicationsApi.withdrawApplication(applicationId),
 		onSuccess: (_, applicationId) => {
 			// Invalidate the specific application
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.detail(applicationId),
 			})
 
 			// Invalidate all application lists
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.lists(),
 			})
 
 			// Invalidate activity log
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(applicationId),
 			})
 		},
@@ -424,7 +427,10 @@ export function useAddApplicationAlt() {
 
 	return useMutation({
 		mutationFn: ({ applicationId, alts }: AddAltMutationVars) =>
-			applicationsApi.addApplicationAlts(applicationId, alts.map((a) => a.characterId)),
+			applicationsApi.addApplicationAlts(
+				applicationId,
+				alts.map((a) => a.characterId)
+			),
 		onMutate: (vars) => {
 			const detailKey = applicationKeys.detail(vars.applicationId)
 			const activityKey = applicationKeys.activity(vars.applicationId)
@@ -434,15 +440,25 @@ export function useAddApplicationAlt() {
 
 			queryClient.setQueryData<Application>(detailKey, (old) =>
 				old
-					? { ...old, altCharacterIds: [...(old.altCharacterIds ?? []), ...vars.alts.map((a) => a.characterId)] }
+					? {
+							...old,
+							altCharacterIds: [
+								...(old.altCharacterIds ?? []),
+								...vars.alts.map((a) => a.characterId),
+							],
+						}
 					: old
 			)
 			queryClient.setQueryData<ApplicationActivityLogEntry[]>(activityKey, (old) => [
 				...vars.alts.map((alt, i) =>
 					makeOptimisticAltEntry(
-						vars.applicationId, 'alt_added',
-						vars.actorCharacterId ?? '', vars.actorCharacterName,
-						alt.characterId, alt.characterName, i
+						vars.applicationId,
+						'alt_added',
+						vars.actorCharacterId ?? '',
+						vars.actorCharacterName,
+						alt.characterId,
+						alt.characterName,
+						i
 					)
 				),
 				...(old ?? []),
@@ -459,9 +475,9 @@ export function useAddApplicationAlt() {
 			}
 		},
 		onSettled: (_, __, { applicationId }) => {
-			queryClient.invalidateQueries({ queryKey: applicationKeys.detail(applicationId) })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.activity(applicationId) })
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.detail(applicationId) })
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.activity(applicationId) })
 		},
 	})
 }
@@ -484,14 +500,22 @@ export function useRemoveApplicationAlt() {
 
 			queryClient.setQueryData<Application>(detailKey, (old) =>
 				old
-					? { ...old, altCharacterIds: (old.altCharacterIds ?? []).filter((id) => id !== vars.altCharacterId) }
+					? {
+							...old,
+							altCharacterIds: (old.altCharacterIds ?? []).filter(
+								(id) => id !== vars.altCharacterId
+							),
+						}
 					: old
 			)
 			queryClient.setQueryData<ApplicationActivityLogEntry[]>(activityKey, (old) => [
 				makeOptimisticAltEntry(
-					vars.applicationId, 'alt_removed',
-					vars.actorCharacterId ?? '', vars.actorCharacterName,
-					vars.altCharacterId, vars.altCharacterName
+					vars.applicationId,
+					'alt_removed',
+					vars.actorCharacterId ?? '',
+					vars.actorCharacterName,
+					vars.altCharacterId,
+					vars.altCharacterName
 				),
 				...(old ?? []),
 			])
@@ -507,9 +531,9 @@ export function useRemoveApplicationAlt() {
 			}
 		},
 		onSettled: (_, __, { applicationId }) => {
-			queryClient.invalidateQueries({ queryKey: applicationKeys.detail(applicationId) })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.activity(applicationId) })
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.detail(applicationId) })
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.activity(applicationId) })
 		},
 	})
 }
@@ -531,22 +555,22 @@ export function useAddRecommendation() {
 		}) => applicationsApi.addRecommendation(applicationId, data),
 		onSuccess: (_, variables) => {
 			// Invalidate recommendations for this application
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.recommendations(variables.applicationId),
 			})
 
 			// Invalidate the application detail (to update recommendation count)
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.detail(variables.applicationId),
 			})
 
 			// Invalidate activity log
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(variables.applicationId),
 			})
 
 			// Invalidate the recommendations list page
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.recommendationsPending(),
 			})
 		},
@@ -572,22 +596,22 @@ export function useUpdateRecommendation() {
 		}) => applicationsApi.updateRecommendation(applicationId, recommendationId, data),
 		onSuccess: (_, variables) => {
 			// Invalidate recommendations for this application
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.recommendations(variables.applicationId),
 			})
 
 			// Invalidate the application detail (to update recommendation count)
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.detail(variables.applicationId),
 			})
 
 			// Invalidate activity log
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(variables.applicationId),
 			})
 
 			// Invalidate the recommendations list page
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.recommendationsPending(),
 			})
 		},
@@ -611,22 +635,22 @@ export function useDeleteRecommendation() {
 		}) => applicationsApi.deleteRecommendation(applicationId, recommendationId),
 		onSuccess: (_, variables) => {
 			// Invalidate recommendations for this application
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.recommendations(variables.applicationId),
 			})
 
 			// Invalidate the application detail (to update recommendation count)
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.detail(variables.applicationId),
 			})
 
 			// Invalidate activity log
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(variables.applicationId),
 			})
 
 			// Invalidate the recommendations list page
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.recommendationsPending(),
 			})
 		},
@@ -641,34 +665,29 @@ export function useSendMessage() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({
-			applicationId,
-			data,
-		}: {
-			applicationId: string
-			data: SendMessageRequest
-		}) => applicationsApi.sendMessage(applicationId, data),
+		mutationFn: ({ applicationId, data }: { applicationId: string; data: SendMessageRequest }) =>
+			applicationsApi.sendMessage(applicationId, data),
 		onSuccess: (_, variables) => {
 			// Invalidate messages list
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.messages(variables.applicationId),
 			})
 
 			// Invalidate message count
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.messageCount(variables.applicationId),
 			})
 
 			// Invalidate activity log (messages are logged)
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.activity(variables.applicationId),
 			})
 
 			// Invalidate detail and lists to refresh last HR activity timestamp.
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.detail(variables.applicationId),
 			})
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.lists(),
 			})
 		},
@@ -697,10 +716,16 @@ export function useAddApplicationStaffNote() {
 			data: UpsertApplicationStaffNoteRequest
 		}) => applicationsApi.addApplicationStaffNote(applicationId, data),
 		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: applicationKeys.staffNotes(variables.applicationId) })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.detail(variables.applicationId) })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.activity(variables.applicationId) })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
+			void queryClient.invalidateQueries({
+				queryKey: applicationKeys.staffNotes(variables.applicationId),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: applicationKeys.detail(variables.applicationId),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: applicationKeys.activity(variables.applicationId),
+			})
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
 		},
 	})
 }
@@ -719,10 +744,16 @@ export function useUpdateApplicationStaffNote() {
 			data: UpsertApplicationStaffNoteRequest
 		}) => applicationsApi.updateApplicationStaffNote(applicationId, noteId, data),
 		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: applicationKeys.staffNotes(variables.applicationId) })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.detail(variables.applicationId) })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.activity(variables.applicationId) })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
+			void queryClient.invalidateQueries({
+				queryKey: applicationKeys.staffNotes(variables.applicationId),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: applicationKeys.detail(variables.applicationId),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: applicationKeys.activity(variables.applicationId),
+			})
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
 		},
 	})
 }
@@ -731,18 +762,19 @@ export function useDeleteApplicationStaffNote() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({
-			applicationId,
-			noteId,
-		}: {
-			applicationId: string
-			noteId: string
-		}) => applicationsApi.deleteApplicationStaffNote(applicationId, noteId),
+		mutationFn: ({ applicationId, noteId }: { applicationId: string; noteId: string }) =>
+			applicationsApi.deleteApplicationStaffNote(applicationId, noteId),
 		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: applicationKeys.staffNotes(variables.applicationId) })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.detail(variables.applicationId) })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.activity(variables.applicationId) })
-			queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
+			void queryClient.invalidateQueries({
+				queryKey: applicationKeys.staffNotes(variables.applicationId),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: applicationKeys.detail(variables.applicationId),
+			})
+			void queryClient.invalidateQueries({
+				queryKey: applicationKeys.activity(variables.applicationId),
+			})
+			void queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
 		},
 	})
 }
@@ -798,12 +830,12 @@ export function useAddHRNote() {
 		mutationFn: (data: AddHRNoteRequest) => applicationsApi.addHRNote(data),
 		onSuccess: (newNote) => {
 			// Invalidate all HR notes lists
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.hrNotes(),
 			})
 
 			// Invalidate user-specific notes
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.hrNotesForUser(newNote.subjectUserId),
 			})
 
@@ -825,17 +857,17 @@ export function useUpdateHRNote() {
 			applicationsApi.updateHRNote(noteId, data),
 		onSuccess: (updatedNote) => {
 			// Invalidate the specific note
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.hrNoteDetail(updatedNote.id),
 			})
 
 			// Invalidate all HR notes lists
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.hrNotes(),
 			})
 
 			// Invalidate user-specific notes
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.hrNotesForUser(updatedNote.subjectUserId),
 			})
 		},
@@ -850,16 +882,16 @@ export function useDeleteHRNote() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ noteId, subjectUserId }: { noteId: string; subjectUserId: string }) =>
+		mutationFn: ({ noteId }: { noteId: string; subjectUserId: string }) =>
 			applicationsApi.deleteHRNote(noteId),
 		onSuccess: (_, variables) => {
 			// Invalidate all HR notes lists
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.hrNotes(),
 			})
 
 			// Invalidate user-specific notes
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.hrNotesForUser(variables.subjectUserId),
 			})
 
@@ -916,16 +948,11 @@ export function useCreateTemplate() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({
-			corporationId,
-			data,
-		}: {
-			corporationId: string
-			data: CreateTemplateRequest
-		}) => applicationsApi.createTemplate(corporationId, data),
+		mutationFn: ({ corporationId, data }: { corporationId: string; data: CreateTemplateRequest }) =>
+			applicationsApi.createTemplate(corporationId, data),
 		onSuccess: (newTemplate) => {
 			// Invalidate template list for this corporation
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.templatesList(newTemplate.ownerCorporationId),
 			})
 
@@ -943,21 +970,16 @@ export function useUpdateTemplate() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({
-			templateId,
-			data,
-		}: {
-			templateId: string
-			data: UpdateTemplateRequest
-		}) => applicationsApi.updateTemplate(templateId, data),
+		mutationFn: ({ templateId, data }: { templateId: string; data: UpdateTemplateRequest }) =>
+			applicationsApi.updateTemplate(templateId, data),
 		onSuccess: (updatedTemplate) => {
 			// Invalidate the specific template
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.templateDetail(updatedTemplate.id),
 			})
 
 			// Invalidate template list for this corporation
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.templatesList(updatedTemplate.ownerCorporationId),
 			})
 		},
@@ -972,16 +994,11 @@ export function useDeleteTemplate() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({
-			templateId,
-			corporationId,
-		}: {
-			templateId: string
-			corporationId: string
-		}) => applicationsApi.deleteTemplate(templateId),
+		mutationFn: ({ templateId }: { templateId: string; corporationId: string }) =>
+			applicationsApi.deleteTemplate(templateId),
 		onSuccess: (_, variables) => {
 			// Invalidate template list for this corporation
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.templatesList(variables.corporationId),
 			})
 
@@ -1011,7 +1028,7 @@ export function useApplicationFulcrum(userId: string, corporationId: string, ena
 		refetchInterval: (query) => {
 			const data = query.state.data
 			const hasInProgress = data?.some((ch) =>
-				ch.reports.some((r) => r.status === 'pending' || r.status === 'processing'),
+				ch.reports.some((r) => r.status === 'pending' || r.status === 'processing')
 			)
 			return hasInProgress ? 10_000 : false
 		},
@@ -1022,9 +1039,9 @@ export function useFulcrumUserReports(
 	userId: string,
 	options?: boolean | { enabled?: boolean; suppressErrorToast?: boolean }
 ) {
-	const enabled = typeof options === 'boolean' ? options : options?.enabled ?? true
+	const enabled = typeof options === 'boolean' ? options : (options?.enabled ?? true)
 	const suppressErrorToast =
-		typeof options === 'boolean' ? true : options?.suppressErrorToast ?? true
+		typeof options === 'boolean' ? true : (options?.suppressErrorToast ?? true)
 
 	return useQuery<FulcrumCharacterReportData[]>({
 		queryKey: applicationKeys.fulcrumUserReports(userId),
@@ -1035,7 +1052,7 @@ export function useFulcrumUserReports(
 		refetchInterval: (query) => {
 			const data = query.state.data
 			const hasInProgress = data?.some((ch) =>
-				ch.reports.some((r) => r.status === 'pending' || r.status === 'processing'),
+				ch.reports.some((r) => r.status === 'pending' || r.status === 'processing')
 			)
 			return hasInProgress ? 10_000 : false
 		},
@@ -1072,11 +1089,9 @@ export function useRequestFulcrumReport() {
 	return useApiMutation({
 		mutationFn: ({
 			characterId,
-			corporationId,
 			requestSource,
 			applicationId,
 			sendDm,
-			userId,
 		}: {
 			characterId: string
 			corporationId: string
@@ -1085,8 +1100,7 @@ export function useRequestFulcrumReport() {
 			sendDm?: boolean
 			/** Pass userId to invalidate the user-characters query (application Fulcrum panel) */
 			userId?: string
-		}) =>
-			fulcrumApi.requestReport(characterId, requestSource, applicationId, sendDm),
+		}) => fulcrumApi.requestReport(characterId, requestSource, applicationId, sendDm),
 		errorMessage: 'You do not have permission to request a Fulcrum report for this character.',
 		onMutate: ({ characterId, corporationId, userId }) => {
 			if (!userId) return
@@ -1106,13 +1120,13 @@ export function useRequestFulcrumReport() {
 					character.characterId !== characterId
 						? character
 						: {
-							...character,
-							reports: character.reports.some(
-								(report) => report.status === 'pending' || report.status === 'processing',
-							)
-								? character.reports
-								: [optimisticPendingReport, ...character.reports],
-						},
+								...character,
+								reports: character.reports.some(
+									(report) => report.status === 'pending' || report.status === 'processing'
+								)
+									? character.reports
+									: [optimisticPendingReport, ...character.reports],
+							}
 				)
 
 			queryClient.setQueryData<FulcrumCharacterData[]>(
@@ -1122,34 +1136,33 @@ export function useRequestFulcrumReport() {
 						character.characterId !== characterId
 							? character
 							: {
-								...character,
-								reports: character.reports.some(
-									(report) => report.status === 'pending' || report.status === 'processing',
-								)
-									? character.reports
-									: [optimisticPendingReport, ...character.reports],
-							},
-						),
+									...character,
+									reports: character.reports.some(
+										(report) => report.status === 'pending' || report.status === 'processing'
+									)
+										? character.reports
+										: [optimisticPendingReport, ...character.reports],
+								}
+					)
 			)
 			queryClient.setQueryData<FulcrumCharacterReportData[]>(
 				applicationKeys.fulcrumUserReports(userId),
-				applyOptimisticPendingToReportRows,
+				applyOptimisticPendingToReportRows
 			)
-
 		},
 		onSettled: (_, __, variables) => {
-			queryClient.invalidateQueries({
+			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.fulcrumCharacterReports(variables.characterId),
 			})
 			// Also invalidate user-characters query if userId is provided
 			if (variables.userId) {
-				queryClient.invalidateQueries({
+				void queryClient.invalidateQueries({
 					queryKey: applicationKeys.fulcrumUserReports(variables.userId),
 				})
-				queryClient.invalidateQueries({
+				void queryClient.invalidateQueries({
 					queryKey: applicationKeys.fulcrumUserCharacters(
 						variables.userId,
-						variables.corporationId,
+						variables.corporationId
 					),
 				})
 			}
@@ -1163,11 +1176,9 @@ export function useRequestFulcrumReportBatch() {
 	return useApiMutation({
 		mutationFn: ({
 			characterIds,
-			corporationId,
 			requestSource,
 			applicationId,
 			sendDm,
-			userId,
 		}: {
 			characterIds: string[]
 			corporationId: string
@@ -1175,8 +1186,7 @@ export function useRequestFulcrumReportBatch() {
 			applicationId?: string
 			sendDm?: boolean
 			userId?: string
-		}) =>
-			fulcrumApi.requestBulkReports(characterIds, requestSource, applicationId, sendDm),
+		}) => fulcrumApi.requestBulkReports(characterIds, requestSource, applicationId, sendDm),
 		errorMessage: 'You do not have permission to request Fulcrum reports for these characters.',
 		onMutate: ({ characterIds, corporationId, userId }) => {
 			if (!userId || characterIds.length === 0) return
@@ -1187,7 +1197,7 @@ export function useRequestFulcrumReportBatch() {
 					if (!characterIds.includes(character.characterId)) return character
 					if (
 						character.reports.some(
-							(report) => report.status === 'pending' || report.status === 'processing',
+							(report) => report.status === 'pending' || report.status === 'processing'
 						)
 					) {
 						return character
@@ -1213,7 +1223,7 @@ export function useRequestFulcrumReportBatch() {
 					if (!characterIds.includes(character.characterId)) return character
 					if (
 						character.reports.some(
-							(report) => report.status === 'pending' || report.status === 'processing',
+							(report) => report.status === 'pending' || report.status === 'processing'
 						)
 					) {
 						return character
@@ -1237,27 +1247,27 @@ export function useRequestFulcrumReportBatch() {
 
 			queryClient.setQueryData<FulcrumCharacterData[]>(
 				applicationKeys.fulcrumUserCharacters(userId, corporationId),
-				applyOptimisticPendingToCharacters,
+				applyOptimisticPendingToCharacters
 			)
 			queryClient.setQueryData<FulcrumCharacterReportData[]>(
 				applicationKeys.fulcrumUserReports(userId),
-				applyOptimisticPendingToReportRows,
+				applyOptimisticPendingToReportRows
 			)
 		},
 		onSettled: (_, __, variables) => {
 			for (const characterId of variables.characterIds) {
-				queryClient.invalidateQueries({
+				void queryClient.invalidateQueries({
 					queryKey: applicationKeys.fulcrumCharacterReports(characterId),
 				})
 			}
 			if (variables.userId) {
-				queryClient.invalidateQueries({
+				void queryClient.invalidateQueries({
 					queryKey: applicationKeys.fulcrumUserReports(variables.userId),
 				})
-				queryClient.invalidateQueries({
+				void queryClient.invalidateQueries({
 					queryKey: applicationKeys.fulcrumUserCharacters(
 						variables.userId,
-						variables.corporationId,
+						variables.corporationId
 					),
 				})
 			}
@@ -1293,7 +1303,7 @@ export function useReportSectionData<T = unknown>(
 	reportId: string,
 	section: ReportSectionName,
 	enabled = true,
-	sectionMeta?: ReportSectionMeta,
+	sectionMeta?: ReportSectionMeta
 ) {
 	const queryClient = useQueryClient()
 	const chunkCount = sectionMeta?.chunks ?? 0
@@ -1312,25 +1322,30 @@ export function useReportSectionData<T = unknown>(
 
 			setChunkProgress({ loadedChunks: 0, totalChunks: chunkCount })
 			const chunks: unknown[] = []
-			for (let batchStart = 0; batchStart < chunkCount; batchStart += REPORT_CHUNK_FETCH_CONCURRENCY) {
+			for (
+				let batchStart = 0;
+				batchStart < chunkCount;
+				batchStart += REPORT_CHUNK_FETCH_CONCURRENCY
+			) {
 				const batchPages = Array.from(
 					{ length: Math.min(REPORT_CHUNK_FETCH_CONCURRENCY, chunkCount - batchStart) },
-					(_, index) => batchStart + index,
+					(_, index) => batchStart + index
 				)
 				const batchResults = await Promise.all(
 					batchPages.map((page) =>
 						queryClient.fetchQuery({
 							queryKey: [...applicationKeys.fulcrumReportSection(reportId, section), 'chunk', page],
-							queryFn: () => fulcrumApi.getReportSectionData<{
-								data: unknown[]
-								page: number
-								totalChunks: number
-							}>(reportId, section, page),
+							queryFn: () =>
+								fulcrumApi.getReportSectionData<{
+									data: unknown[]
+									page: number
+									totalChunks: number
+								}>(reportId, section, page),
 							staleTime: REPORT_CACHE_TTL_MS,
 							gcTime: REPORT_CACHE_TTL_MS,
 							retry: 2,
-						}),
-					),
+						})
+					)
 				)
 				for (const result of batchResults) {
 					chunks.push(...result.data)

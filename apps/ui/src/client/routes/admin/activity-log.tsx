@@ -1,5 +1,5 @@
-import { ChevronDown, ExternalLink, Filter } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ChevronDown, Filter } from 'lucide-react'
+import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
 import { JsonViewer } from '@/components/json-viewer'
@@ -8,14 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
 import { useActivityLogs } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'

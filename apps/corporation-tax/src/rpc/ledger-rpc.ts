@@ -12,6 +12,9 @@ import { computeRuleMutationRecalcStart } from '../services/projection-rule-fres
 
 import type {
 	IngestTaxLedgerWindowInput,
+	ListTaxAssessmentLinesFilters,
+	ListTaxAssessmentsFilters,
+	ListTaxDiscrepanciesFilters,
 	ListTaxLedgerPartiesFilters,
 	RunTaxAssessmentForPeriodInput,
 	RunTaxAssessmentForPeriodResult,
@@ -107,7 +110,7 @@ export class TaxLedgerRpc {
 						periodEnd: currentMonthWindow.periodEnd,
 						includeCharacterWallets: false,
 					})
-				} catch (_error) {
+				} catch {
 					// Best-effort follow-up only.
 				}
 			}
@@ -264,9 +267,7 @@ export class TaxLedgerRpc {
 		return result
 	}
 
-	async listAssessments(
-		filters?: import('@repo/corporation-tax').ListTaxAssessmentsFilters
-	): Promise<TaxAssessment[]> {
+	async listAssessments(filters?: ListTaxAssessmentsFilters): Promise<TaxAssessment[]> {
 		return this.ctx.assessmentService.listAssessments(filters)
 	}
 
@@ -338,15 +339,11 @@ export class TaxLedgerRpc {
 		return result
 	}
 
-	async listAssessmentLines(
-		filters: import('@repo/corporation-tax').ListTaxAssessmentLinesFilters
-	): Promise<TaxAssessmentLine[]> {
+	async listAssessmentLines(filters: ListTaxAssessmentLinesFilters): Promise<TaxAssessmentLine[]> {
 		return this.ctx.assessmentService.listAssessmentLines(filters)
 	}
 
-	async listDiscrepancies(
-		filters: import('@repo/corporation-tax').ListTaxDiscrepanciesFilters
-	): Promise<TaxDiscrepancy[]> {
+	async listDiscrepancies(filters: ListTaxDiscrepanciesFilters): Promise<TaxDiscrepancy[]> {
 		return this.ctx.assessmentService.listDiscrepancies(filters)
 	}
 

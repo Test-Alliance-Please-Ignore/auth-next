@@ -39,7 +39,7 @@ export function CorporationBillHistoryCard({
 	const rowCount = data?.totalRows ?? 0
 	const pageCount = grid.pageCountFor(rowCount)
 
-	const columns = useMemo<MRT_ColumnDef<TaxBillingEventHistoryRow>[]>(
+	const columns = useMemo<Array<MRT_ColumnDef<TaxBillingEventHistoryRow>>>(
 		() => [
 			{
 				id: 'createdAt',

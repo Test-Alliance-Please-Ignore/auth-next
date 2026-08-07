@@ -2,7 +2,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { logger, resolveLogLevel, withWorkerLogLevelContext } from '../helpers/logger'
 
-import type { Context, MiddlewareHandler, Next } from 'hono'
+import type { Context, MiddlewareHandler } from 'hono'
 
 type WorkersLoggerTags = Parameters<typeof useWorkersLogger>[1]
 

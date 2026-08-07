@@ -5,7 +5,14 @@ import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { createDb } from '../db'
-import { invCategories, invFlags, invGroups, invMarketGroups, invTypes, typeMaterials } from '../db/schema'
+import {
+	invCategories,
+	invFlags,
+	invGroups,
+	invMarketGroups,
+	invTypes,
+	typeMaterials,
+} from '../db/schema'
 import {
 	getEnglishName,
 	prepareSdeDataDir,
@@ -70,10 +77,14 @@ const invTypeSchema = z.object({
 
 const typeMaterialSchema = z.object({
 	_key: z.number(),
-	materials: z.array(z.object({
-		materialTypeID: z.number(),
-		quantity: z.number(),
-	})).optional(),
+	materials: z
+		.array(
+			z.object({
+				materialTypeID: z.number(),
+				quantity: z.number(),
+			})
+		)
+		.optional(),
 })
 
 const dogmaEffectSchema = z.object({
@@ -407,10 +418,13 @@ async function importFlags(db: ReturnType<typeof createDb>, sdeDataDir: string) 
 
 async function importTypeMaterials(db: ReturnType<typeof createDb>, sdeDataDir: string) {
 	console.log('Importing type materials...')
-	const raw = await readSdeJsonlTable<z.input<typeof typeMaterialSchema>>(sdeDataDir, 'typeMaterials.jsonl')
+	const raw = await readSdeJsonlTable<z.input<typeof typeMaterialSchema>>(
+		sdeDataDir,
+		'typeMaterials.jsonl'
+	)
 	const data = z.array(typeMaterialSchema).parse(raw)
 
-	const rows: { typeId: string; materialTypeId: string; quantity: number }[] = []
+	const rows: Array<{ typeId: string; materialTypeId: string; quantity: number }> = []
 	for (const entry of data) {
 		if (!entry.materials) continue
 		const typeId = entry._key.toString()

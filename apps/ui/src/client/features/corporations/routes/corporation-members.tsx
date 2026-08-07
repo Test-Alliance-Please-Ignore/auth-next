@@ -213,9 +213,9 @@ export default function CorporationMembers() {
 		(member: CorporationMember) => {
 			// Navigate to HR member profile if user has an auth account
 			if (member.hasAuthAccount && member.authUserId) {
-				navigate(`/corporations/${corporationId}/members/${member.authUserId}`)
+				void navigate(`/corporations/${corporationId}/members/${member.authUserId}`)
 			} else {
-				navigate(`/character/${member.characterId}`, {
+				void navigate(`/character/${member.characterId}`, {
 					state: {
 						source: 'corporation-members',
 						backTo: `/corporations/${corporationId}/members`,

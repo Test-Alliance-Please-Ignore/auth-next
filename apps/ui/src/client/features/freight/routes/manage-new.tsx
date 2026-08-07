@@ -186,7 +186,7 @@ export default function FreightManageNewPage() {
 
 			setMessage({ type: 'success', text: 'Freight route created successfully!' })
 			setTimeout(() => {
-				navigate('/freight/manage')
+				void navigate('/freight/manage')
 			}, 1000)
 		} catch (error) {
 			console.error('Error creating route:', error)
@@ -483,7 +483,12 @@ export default function FreightManageNewPage() {
 					<Button variant="cancel" type="button" onClick={() => navigate('/freight/manage')}>
 						Cancel
 					</Button>
-					<Button variant="confirm" type="submit" loading={createRoute.isPending} loadingText="Creating...">
+					<Button
+						variant="confirm"
+						type="submit"
+						loading={createRoute.isPending}
+						loadingText="Creating..."
+					>
 						Create Route
 					</Button>
 				</div>

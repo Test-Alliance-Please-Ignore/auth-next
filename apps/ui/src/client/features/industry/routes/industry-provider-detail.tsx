@@ -37,7 +37,7 @@ import {
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatDateTime } from '@/lib/date-utils'
 
-import { EntityTypeBadge, ServiceStatusBadge, ServiceTypeBadge } from '../components'
+import { EntityTypeBadge, ServiceTypeBadge } from '../components'
 import {
 	useAddProviderService,
 	useDeleteIndustryProvider,
@@ -47,9 +47,9 @@ import {
 	useSetProviderAcceptingOrders,
 	useUpdateProviderServiceStatus,
 } from '../hooks'
-import { SERVICE_STATUS_LABELS, SERVICE_TYPE_LABELS, ServiceStatus, ServiceType } from '../types'
+import { SERVICE_STATUS_LABELS, SERVICE_TYPE_LABELS, ServiceType } from '../types'
 
-import type { ProviderServiceDTO } from '../types'
+import type { ProviderServiceDTO, ServiceStatus } from '../types'
 
 export default function IndustryProviderDetailPage() {
 	usePageTitle('Admin - Provider Details')
@@ -110,7 +110,7 @@ export default function IndustryProviderDetailPage() {
 		if (!provider) return
 		try {
 			await deleteProvider.mutateAsync(provider.id)
-			navigate('/admin/industry-providers')
+			void navigate('/admin/industry-providers')
 		} catch (error) {
 			setMessage({
 				type: 'error',
@@ -297,12 +297,12 @@ export default function IndustryProviderDetailPage() {
 							<Label className="text-muted-foreground">Status</Label>
 							<div className="mt-1">
 								{provider.acceptingOrders ? (
-									<Badge  variant="success">
+									<Badge variant="success">
 										<CheckCircle className="mr-1 h-3 w-3" />
 										Accepting Orders
 									</Badge>
 								) : (
-									<Badge  variant="destructive">
+									<Badge variant="destructive">
 										<XCircle className="mr-1 h-3 w-3" />
 										Not Accepting
 									</Badge>
@@ -416,8 +416,11 @@ export default function IndustryProviderDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-						<Button variant="destructive"
+						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>
+							Cancel
+						</Button>
+						<Button
+							variant="destructive"
 							onClick={handleDeleteProvider}
 							loading={deleteProvider.isPending}
 							loadingText="Deleting..."
@@ -450,8 +453,11 @@ export default function IndustryProviderDetailPage() {
 						/>
 					</div>
 					<DialogFooter>
-						<Button variant="cancel" onClick={() => setAddServiceDialogOpen(false)}>Cancel</Button>
-						<Button variant="confirm"
+						<Button variant="cancel" onClick={() => setAddServiceDialogOpen(false)}>
+							Cancel
+						</Button>
+						<Button
+							variant="confirm"
 							onClick={handleAddService}
 							loading={addService.isPending}
 							loadingText="Adding..."
@@ -475,7 +481,8 @@ export default function IndustryProviderDetailPage() {
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel"
+						<Button
+							variant="cancel"
 							onClick={() => {
 								setRemoveServiceDialogOpen(false)
 								setSelectedService(null)
@@ -483,7 +490,8 @@ export default function IndustryProviderDetailPage() {
 						>
 							Cancel
 						</Button>
-						<Button variant="destructive"
+						<Button
+							variant="destructive"
 							onClick={handleRemoveService}
 							loading={removeService.isPending}
 							loadingText="Removing..."

@@ -16,7 +16,7 @@ export function ComplianceGrid(props: {
 	error: unknown
 }) {
 	const columnHelper = createMRTColumnHelper<TaxCompliancePoint>()
-	const columns = useMemo<MRT_ColumnDef<TaxCompliancePoint>[]>(
+	const columns = useMemo<Array<MRT_ColumnDef<TaxCompliancePoint>>>(
 		() => [
 			columnHelper.accessor((row) => new Date(row.rollupDate).getTime(), {
 				id: 'rollupDate',

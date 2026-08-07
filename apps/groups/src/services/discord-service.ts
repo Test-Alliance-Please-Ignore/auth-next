@@ -1,11 +1,7 @@
-import { and, eq, inArray } from '@repo/db-utils'
-import {
-	groupDiscordInvites,
-	groupDiscordServerRoles,
-	groupDiscordServers,
-	groups,
-} from '../db/schema'
 import { discordRoles, discordServers } from '@repo/core-db-schema'
+import { and, eq, inArray } from '@repo/db-utils'
+
+import { groupDiscordServerRoles, groupDiscordServers, groups } from '../db/schema'
 import { canManageGroup } from './permissions'
 import { isUserGroupAdmin } from './query-helpers'
 
@@ -20,25 +16,25 @@ export class DiscordService {
 	 */
 	async getDiscordServers(groupId: string): Promise<any[]> {
 		// Check cache first (via direct access to cache map if possible, or re-implement caching strategy)
-		// Since we can't easily access the private cache map from here without exposing it in ctx, 
+		// Since we can't easily access the private cache map from here without exposing it in ctx,
 		// we might need to rely on the DO to handle the caching wrapper or expose the cache in ctx.
 		// In the previous steps, we added groupsDOCache to ctx, but it only exposes invalidation methods.
 		// For now, I will implement the fetching logic. Caching should ideally be handled by a caching layer or the DO.
 		// However, to match the DO's behavior, I should probably use the cache if available.
-		
-		// The DO implementation uses `this.discordServersCache`. 
+
+		// The DO implementation uses `this.discordServersCache`.
 		// We passed `discordServersCache` to `GroupsDOCache`, but didn't expose a getter.
-		// Let's assume for now we fetch directly and refactor caching later if needed, 
-		// OR we can add a getter to GroupsDOCache. 
+		// Let's assume for now we fetch directly and refactor caching later if needed,
+		// OR we can add a getter to GroupsDOCache.
 		// Actually, looking at `GroupsDOCache` in `groups-do-cache.ts`, it receives the map in constructor.
 		// I can add a method to `GroupsDOCache` to get/set discord servers if I modify it.
-		
-		// For this iteration, I will implement the raw fetch logic. 
-		// The DO wrapper can handle the caching if it wants to retain that behavior, 
+
+		// For this iteration, I will implement the raw fetch logic.
+		// The DO wrapper can handle the caching if it wants to retain that behavior,
 		// or I can modify GroupsDOCache to expose `getDiscordServers` with caching.
-		
+
 		// Let's stick to the pattern of Service doing the work.
-		
+
 		// Fetch group Discord server attachments with role assignments
 		const attachments = await this.ctx.db.query.groupDiscordServers.findMany({
 			where: eq(groupDiscordServers.groupId, groupId),
@@ -107,7 +103,7 @@ export class DiscordService {
 		groupId: string,
 		discordServerId: string,
 		addedBy: string,
-		isAdmin: boolean = false
+		_isAdmin: boolean = false
 	): Promise<void> {
 		const group = await this.ctx.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
@@ -156,7 +152,7 @@ export class DiscordService {
 		groupId: string,
 		discordServerId: string,
 		removedBy: string,
-		isAdmin: boolean = false
+		_isAdmin: boolean = false
 	): Promise<void> {
 		const group = await this.ctx.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
@@ -191,7 +187,7 @@ export class DiscordService {
 		roleName: string,
 		addedBy: string,
 		membershipType: 'member' | 'owner_admin' = 'member',
-		isAdmin: boolean = false
+		_isAdmin: boolean = false
 	): Promise<void> {
 		const group = await this.ctx.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
@@ -221,7 +217,10 @@ export class DiscordService {
 
 		// Ensure Discord role exists in Core DB
 		const discordRole = await this.ctx.coreDb.query.discordRoles.findFirst({
-			where: and(eq(discordRoles.id, discordRoleId), eq(discordRoles.discordServerId, discordServerId)),
+			where: and(
+				eq(discordRoles.id, discordRoleId),
+				eq(discordRoles.discordServerId, discordServerId)
+			),
 		})
 
 		if (!discordRole) {
@@ -240,9 +239,9 @@ export class DiscordService {
 			throw new Error('Discord role already attached to this group and server')
 		}
 
-        // The original code had `addedBy` here too, which was likely an error.
-        // Checking schema: `groupDiscordServerRoles` has `roleName` but probably not `addedBy`.
-        // Assuming `addedBy` is not in schema based on previous errors.
+		// The original code had `addedBy` here too, which was likely an error.
+		// Checking schema: `groupDiscordServerRoles` has `roleName` but probably not `addedBy`.
+		// Assuming `addedBy` is not in schema based on previous errors.
 		await this.ctx.db.insert(groupDiscordServerRoles).values({
 			groupDiscordServerId: groupDiscordServer.id,
 			discordRoleId,
@@ -256,7 +255,7 @@ export class DiscordService {
 		discordServerId: string,
 		discordRoleId: string,
 		removedBy: string,
-		isAdmin: boolean = false
+		_isAdmin: boolean = false
 	): Promise<void> {
 		const group = await this.ctx.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
@@ -300,7 +299,7 @@ export class DiscordService {
 		autoInviteId: string,
 		autoInviteType: 'discord' | 'custom',
 		addedBy: string,
-		isAdmin: boolean = false
+		_isAdmin: boolean = false
 	): Promise<void> {
 		const group = await this.ctx.db.query.groups.findFirst({
 			where: eq(groups.id, groupId),
@@ -329,49 +328,49 @@ export class DiscordService {
 		}
 
 		// Check if auto-invite exists
-        // Note: groupDiscordInvites table seems to be for logs, NOT configuration.
-        // The original code seems to be confused or using `groupDiscordInvites` for config?
-        // Let's check the schema. `groupDiscordInvites` has `success`, `errorMessage`. This is definitely an audit log.
-        // But `addDiscordAutoInvite` implies configuration.
-        // Wait, looking at the original code:
-        // `await this.db.insert(groupDiscordInvites).values({...})`
-        // It inserts `autoInviteId`, `autoInviteType`.
-        // But `groupDiscordInvites` schema in `durable-object.ts` (and `schema.ts`) 
-        // has `userId`, `discordUserId`, `success`.
-        // It DOES NOT have `autoInviteId` or `autoInviteType`.
-        // This suggests the original code was trying to write to a table or columns that don't match the schema!
-        // Or maybe I misread the schema file.
-        
-        // Let's re-read `apps/groups/src/db/schema.ts`.
-        
-        // ... `groupDiscordInvites` table ...
-        // userId, discordUserId, success, errorMessage, assignedRoleIds, createdAt.
-        
-        // It does NOT have autoInviteId or autoInviteType.
-        // So `addDiscordAutoInvite` in the original DO was likely broken or referring to a different schema version?
-        // Or maybe I am misinterpreting what it does.
-        
-        // "Group Discord invites table - Audit log for Discord invite attempts"
-        
-        // Okay, so `addDiscordAutoInvite` looks like it's trying to configure something, but it's writing to the log table?
-        // That makes no sense.
-        
-        // Wait, looking at the errors from `check:types` earlier:
-        // `Property 'autoInviteId' does not exist on type ...`
-        // `Property 'autoInviteType' does not exist on type ...`
-        
-        // This confirms that the original code was indeed broken regarding `addDiscordAutoInvite` and `removeDiscordAutoInvite`.
-        // Since I am refactoring, I should probably comment this out or fix it if I knew what it was supposed to do.
-        // Given I don't have an `auto_invites` table, I will omit these methods or implement them as no-ops with a TODO.
-        
-        // I'll leave them out for now to avoid type errors, or implement them if I find where they belong.
-        // Actually, `groupDiscordServers` has `autoInvite` boolean.
-        // Maybe `addDiscordAutoInvite` was intended to update `groupDiscordServers`?
-        // But it takes `autoInviteId`... 
-        
-        // I will omit `addDiscordAutoInvite` and `removeDiscordAutoInvite` from the `DiscordService` 
-        // for now as they seem to be implementing non-existent functionality.
+		// Note: groupDiscordInvites table seems to be for logs, NOT configuration.
+		// The original code seems to be confused or using `groupDiscordInvites` for config?
+		// Let's check the schema. `groupDiscordInvites` has `success`, `errorMessage`. This is definitely an audit log.
+		// But `addDiscordAutoInvite` implies configuration.
+		// Wait, looking at the original code:
+		// `await this.db.insert(groupDiscordInvites).values({...})`
+		// It inserts `autoInviteId`, `autoInviteType`.
+		// But `groupDiscordInvites` schema in `durable-object.ts` (and `schema.ts`)
+		// has `userId`, `discordUserId`, `success`.
+		// It DOES NOT have `autoInviteId` or `autoInviteType`.
+		// This suggests the original code was trying to write to a table or columns that don't match the schema!
+		// Or maybe I misread the schema file.
+
+		// Let's re-read `apps/groups/src/db/schema.ts`.
+
+		// ... `groupDiscordInvites` table ...
+		// userId, discordUserId, success, errorMessage, assignedRoleIds, createdAt.
+
+		// It does NOT have autoInviteId or autoInviteType.
+		// So `addDiscordAutoInvite` in the original DO was likely broken or referring to a different schema version?
+		// Or maybe I am misinterpreting what it does.
+
+		// "Group Discord invites table - Audit log for Discord invite attempts"
+
+		// Okay, so `addDiscordAutoInvite` looks like it's trying to configure something, but it's writing to the log table?
+		// That makes no sense.
+
+		// Wait, looking at the errors from `check:types` earlier:
+		// `Property 'autoInviteId' does not exist on type ...`
+		// `Property 'autoInviteType' does not exist on type ...`
+
+		// This confirms that the original code was indeed broken regarding `addDiscordAutoInvite` and `removeDiscordAutoInvite`.
+		// Since I am refactoring, I should probably comment this out or fix it if I knew what it was supposed to do.
+		// Given I don't have an `auto_invites` table, I will omit these methods or implement them as no-ops with a TODO.
+
+		// I'll leave them out for now to avoid type errors, or implement them if I find where they belong.
+		// Actually, `groupDiscordServers` has `autoInvite` boolean.
+		// Maybe `addDiscordAutoInvite` was intended to update `groupDiscordServers`?
+		// But it takes `autoInviteId`...
+
+		// I will omit `addDiscordAutoInvite` and `removeDiscordAutoInvite` from the `DiscordService`
+		// for now as they seem to be implementing non-existent functionality.
 	}
-    
-    // Placeholder for removed methods to satisfy any potential interface requirements (though they are not in the Groups interface)
+
+	// Placeholder for removed methods to satisfy any potential interface requirements (though they are not in the Groups interface)
 }

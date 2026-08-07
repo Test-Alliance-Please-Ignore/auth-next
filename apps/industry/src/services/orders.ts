@@ -1,21 +1,18 @@
 import { and, asc, desc, eq, inArray, isNull } from '@repo/db-utils'
-import {
-	ActorInfo,
-	CreateOrderParams,
-	EntityType,
-	IndustryOrder,
-	isValidOrderTransition,
-	OrderFilters,
-	OrderId,
-	OrderStatus,
-	OrderStatusHistoryEntry,
-	ServiceProviderId,
-	ServiceStatus,
-	ServiceType,
-} from '@repo/industry'
+import { EntityType, isValidOrderTransition, OrderStatus, ServiceStatus } from '@repo/industry'
 
 import { orders, orderStatusHistory, providerServices, serviceProviders } from '../db/schema'
 
+import type {
+	ActorInfo,
+	CreateOrderParams,
+	IndustryOrder,
+	OrderFilters,
+	OrderId,
+	OrderStatusHistoryEntry,
+	ServiceProviderId,
+	ServiceType,
+} from '@repo/industry'
 import type { ServiceContext } from './context'
 
 /**
@@ -95,7 +92,7 @@ export class OrderService {
 	 * List orders with optional filters
 	 */
 	async listOrders(filters: OrderFilters = {}): Promise<IndustryOrder[]> {
-		const conditions: ReturnType<typeof eq>[] = []
+		const conditions: Array<ReturnType<typeof eq>> = []
 
 		// Status filter
 		if (filters.status) {
@@ -174,7 +171,7 @@ export class OrderService {
 	async claimOrder(
 		orderId: OrderId,
 		providerId: ServiceProviderId,
-		actor: ActorInfo
+		_actor: ActorInfo
 	): Promise<IndustryOrder> {
 		const order = await this.getOrderOrThrow(orderId)
 
@@ -413,9 +410,7 @@ export class OrderService {
 	 * Check if actor is the issuer
 	 */
 	private isIssuer(order: IndustryOrder, actor: ActorInfo): boolean {
-		return (
-			order.issuerEntityId === actor.entityId && order.issuerEntityType === actor.entityType
-		)
+		return order.issuerEntityId === actor.entityId && order.issuerEntityType === actor.entityType
 	}
 
 	/**

@@ -55,21 +55,19 @@ export function useRevokeInviteCode() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ codeId, groupId }: { codeId: string; groupId: string }) =>
+		mutationFn: ({ codeId }: { codeId: string; groupId: string }) =>
 			apiClient.revokeGroupInviteCode(codeId),
 		onMutate: async ({ codeId, groupId }) => {
 			await queryClient.cancelQueries({ queryKey: inviteCodeKeys.group(groupId) })
 			const previousInviteCodes = queryClient.getQueryData<GroupInviteCode[]>(
 				inviteCodeKeys.group(groupId)
 			)
-			queryClient.setQueryData<GroupInviteCode[]>(
-				inviteCodeKeys.group(groupId),
-				(current = []) =>
-					current.map((inviteCode) =>
-						inviteCode.id === codeId
-							? { ...inviteCode, revokedAt: new Date().toISOString() }
-							: inviteCode
-					)
+			queryClient.setQueryData<GroupInviteCode[]>(inviteCodeKeys.group(groupId), (current = []) =>
+				current.map((inviteCode) =>
+					inviteCode.id === codeId
+						? { ...inviteCode, revokedAt: new Date().toISOString() }
+						: inviteCode
+				)
 			)
 			return { previousInviteCodes, groupId }
 		},

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 
+import { Checkbox } from './checkbox'
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from './command'
 import { Input } from './input'
 import { Popover, PopoverAnchor, PopoverContent } from './popover'
@@ -52,9 +53,12 @@ export interface SelectProps<TOption extends SelectOption> {
 	inputId?: string
 	options: TOption[]
 	value?: string
+	values?: string[]
 	defaultValue?: string
 	initialValue?: string
 	onValueChange?: (value: string, option: TOption | null) => void
+	onValuesChange?: (values: string[]) => void
+	multiple?: boolean
 	searchable?: boolean
 	query?: string
 	defaultQuery?: string
@@ -84,9 +88,12 @@ export function Select<TOption extends SelectOption>({
 	inputId,
 	options,
 	value,
+	values,
 	defaultValue,
 	initialValue,
 	onValueChange,
+	onValuesChange,
+	multiple = false,
 	searchable = false,
 	query,
 	defaultQuery = '',
@@ -284,6 +291,14 @@ export function Select<TOption extends SelectOption>({
 			selectedValue,
 		})
 	}, [knownOptions, selectedValue])
+	const selectedValues = useMemo(
+		() => new Set(multiple ? (values ?? []) : selectedValue ? [selectedValue] : []),
+		[multiple, selectedValue, values]
+	)
+	const selectedOptions = useMemo(
+		() => knownOptions.filter((option) => selectedValues.has(option.value)),
+		[knownOptions, selectedValues]
+	)
 
 	useEffect(() => {
 		for (const option of knownOptions) {
@@ -291,15 +306,19 @@ export function Select<TOption extends SelectOption>({
 		}
 	}, [knownOptions])
 
-	const selectedLabel = useMemo(
-		() =>
-			resolveSelectedLabel({
-				selectedValue,
-				selectedOptionLabel: selectedOption?.label ?? null,
-				cachedSelectedLabel: selectedLabelByValueRef.current.get(selectedValue) ?? null,
-			}),
-		[selectedOption, selectedValue]
-	)
+	const selectedLabel = useMemo(() => {
+		if (multiple) {
+			if (selectedOptions.length === 0) return null
+			if (selectedOptions.length === 1) return selectedOptions[0]?.label ?? null
+			return `${selectedOptions.length} selected`
+		}
+
+		return resolveSelectedLabel({
+			selectedValue,
+			selectedOptionLabel: selectedOption?.label ?? null,
+			cachedSelectedLabel: selectedLabelByValueRef.current.get(selectedValue) ?? null,
+		})
+	}, [multiple, selectedOption, selectedOptions, selectedValue])
 
 	const minQueryBlocked = queryTooShort
 	const isLoading = loading || delegateLoading
@@ -428,10 +447,27 @@ export function Select<TOption extends SelectOption>({
 		setIsCommitted(true)
 
 		if (isSelectAllInternalOption(option)) {
+			if (multiple) {
+				onValuesChange?.([])
+				clearQuery()
+				setHighlightedIndex(-1)
+				return
+			}
+
 			selectedLabelByValueRef.current.set(option.value, option.label)
 			emitSelectionChange(option.value, null)
 			clearQuery()
 			setOpen(false)
+			setHighlightedIndex(-1)
+			return
+		}
+
+		if (multiple) {
+			const nextValues = selectedValues.has(option.value)
+				? (values ?? []).filter((selectedValue) => selectedValue !== option.value)
+				: [...(values ?? []), option.value]
+			onValuesChange?.(nextValues)
+			clearQuery()
 			setHighlightedIndex(-1)
 			return
 		}
@@ -595,6 +631,14 @@ export function Select<TOption extends SelectOption>({
 												onMouseMove={() => setHighlightedIndex(index)}
 												onSelect={() => selectOption(option)}
 											>
+												{multiple && !isSelectAllInternalOption(option) && (
+													<Checkbox
+														checked={selectedValues.has(option.value)}
+														tabIndex={-1}
+														aria-hidden
+														className="pointer-events-none mr-2 border-2 border-muted-foreground/70 data-[state=checked]:border-primary"
+													/>
+												)}
 												{!isSelectAllInternalOption(option) && renderOption ? (
 													renderOption(option)
 												) : (

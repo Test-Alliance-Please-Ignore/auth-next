@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from '@repo/db-utils'
 
 import { categories, groupAdmins, groupJoinRequests, groupMembers, groups } from '../db/schema'
 import { bulkFindMainCharactersByUserIds } from './character-lookup'
+import { GROUPS_WITH_DISCORD_CACHE_KEY } from './groups-do-cache'
 import { mapCategory, mapGroup } from './mappers'
 import {
 	canCreateGroupInCategory,
@@ -10,7 +11,6 @@ import {
 	canViewGroup,
 } from './permissions'
 import { getGroupMemberCount, isUserGroupAdmin, isUserMember } from './query-helpers'
-import { GROUPS_WITH_DISCORD_CACHE_KEY } from './groups-do-cache'
 
 import type {
 	CreateGroupRequest,
@@ -63,7 +63,7 @@ export class GroupService {
 	/**
 	 * Invalidate the group members cache for a specific group
 	 */
-	private invalidateGroupMembersCache(groupId: string): void {
+	private invalidateGroupMembersCache(_groupId: string): void {
 		// Accessing the cache directly from the DO would be ideal, but we can't.
 		// For now, we'll leave this as a no-op and rely on the DO to handle member cache invalidation
 		// via its own methods or refactor the cache into a shared service.
@@ -130,7 +130,7 @@ export class GroupService {
 		const { categoryId } = filters
 
 		// 1. Get groups based on filters
-		let groupsQuery = this.ctx.db.query.groups.findMany({
+		const groupsQuery = this.ctx.db.query.groups.findMany({
 			with: {
 				category: true,
 			},
@@ -296,7 +296,8 @@ export class GroupService {
 		if (data.visibility !== undefined) updates.visibility = data.visibility
 		if (data.joinMode !== undefined) updates.joinMode = data.joinMode
 		if (data.mumbleSyncEnabled !== undefined) updates.mumbleSyncEnabled = data.mumbleSyncEnabled
-		if (data.mumbleTicker !== undefined) updates.mumbleTicker = normalizeMumbleTicker(data.mumbleTicker)
+		if (data.mumbleTicker !== undefined)
+			updates.mumbleTicker = normalizeMumbleTicker(data.mumbleTicker)
 		if (data.categoryId !== undefined) updates.categoryId = data.categoryId
 		updates.updatedAt = new Date()
 

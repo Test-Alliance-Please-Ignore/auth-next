@@ -310,7 +310,7 @@ export class TaxExportService {
 		reportType: TaxExportReportType
 		corporationId?: string
 		filters?: Record<string, unknown> | null
-	}): Promise<Record<string, unknown>[]> {
+	}): Promise<Array<Record<string, unknown>>> {
 		const reportFilters = this.toReportWindowFilters(input.filters, input.corporationId)
 
 		switch (input.reportType) {
@@ -432,7 +432,7 @@ export class TaxExportService {
 		) as Record<string, unknown>
 	}
 
-	private toCsv(rows: Record<string, unknown>[]): string {
+	private toCsv(rows: Array<Record<string, unknown>>): string {
 		if (rows.length === 0) {
 			return ''
 		}

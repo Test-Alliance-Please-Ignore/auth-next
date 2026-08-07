@@ -55,7 +55,7 @@ describe('MessageService.sendMessage staff interaction touch behavior', () => {
 					findMany: vi.fn(),
 				},
 			},
-			insert: vi.fn((table: unknown) => {
+			insert: vi.fn(() => {
 				// First insert call: application_messages
 				// Second insert call: application_activity_log
 				insertCallCount += 1
@@ -66,14 +66,7 @@ describe('MessageService.sendMessage staff interaction touch behavior', () => {
 		}
 
 		const service = makeService(db)
-		await service.sendMessage(
-			'app-1',
-			'reviewer-1',
-			'applicant-1',
-			'Hello',
-			'char-2',
-			false
-		)
+		await service.sendMessage('app-1', 'reviewer-1', 'applicant-1', 'Hello', 'char-2', false)
 
 		expect(updateSet).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -109,7 +102,7 @@ describe('MessageService.sendMessage staff interaction touch behavior', () => {
 					findMany: vi.fn(),
 				},
 			},
-			insert: vi.fn((table: unknown) => {
+			insert: vi.fn(() => {
 				insertCallCount += 1
 				if (insertCallCount === 1) return { values: messageInsertValues }
 				return { values: activityInsertValues }
@@ -118,14 +111,7 @@ describe('MessageService.sendMessage staff interaction touch behavior', () => {
 		}
 
 		const service = makeService(db)
-		await service.sendMessage(
-			'app-1',
-			'applicant-1',
-			null,
-			'Ping',
-			'char-1',
-			true
-		)
+		await service.sendMessage('app-1', 'applicant-1', null, 'Ping', 'char-1', true)
 
 		expect(updateSet).not.toHaveBeenCalled()
 	})

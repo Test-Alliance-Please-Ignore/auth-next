@@ -3,8 +3,6 @@ import { useEffect, useState } from 'react'
 
 import { esiApi } from '@/lib/esi-api'
 
-import type { EsiLocationSearchResult } from '@/lib/esi-api'
-
 // Query keys
 export const locationSearchKeys = {
 	all: ['location-search'] as const,

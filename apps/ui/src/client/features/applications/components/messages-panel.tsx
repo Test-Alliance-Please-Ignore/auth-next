@@ -16,7 +16,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
 import { useMessages, useSendMessage } from '../hooks'
-
 import { MessageItem } from './message-item'
 import { TemplateSelector } from './template-selector'
 
@@ -105,7 +104,7 @@ export function MessagesPanel({
 	const handleKeyPress = (e: React.KeyboardEvent) => {
 		if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
 			e.preventDefault()
-			handleSend()
+			void handleSend()
 		}
 	}
 
@@ -129,8 +128,7 @@ export function MessagesPanel({
 
 	// Validation
 	const isValidMessage =
-		messageText.trim().length >= MIN_MESSAGE_LENGTH &&
-		messageText.length <= MAX_MESSAGE_LENGTH
+		messageText.trim().length >= MIN_MESSAGE_LENGTH && messageText.length <= MAX_MESSAGE_LENGTH
 	const canSubmit = isValidMessage && !sendMutation.isPending
 
 	// Loading state
@@ -160,11 +158,7 @@ export function MessagesPanel({
 				{messages && messages.length > 0 ? (
 					<>
 						{messages.map((msg) => (
-							<MessageItem
-								key={msg.id}
-								message={msg}
-								currentUserId={currentUserId}
-							/>
+							<MessageItem key={msg.id} message={msg} currentUserId={currentUserId} />
 						))}
 						<div ref={messagesEndRef} />
 					</>
@@ -207,9 +201,7 @@ export function MessagesPanel({
 						{/* Character counter and send button */}
 						<div className="flex items-center justify-end gap-3">
 							{sendMutation.isError && (
-								<span className="text-xs text-destructive">
-									Failed to send. Try again.
-								</span>
+								<span className="text-xs text-destructive">Failed to send. Try again.</span>
 							)}
 							<div className="flex items-center gap-2 text-xs">
 								{messageText.length > 0 && messageText.length < MIN_MESSAGE_LENGTH && (
@@ -228,11 +220,7 @@ export function MessagesPanel({
 									{messageText.length} / {MAX_MESSAGE_LENGTH}
 								</span>
 							</div>
-							<Button
-								onClick={handleSend}
-								disabled={!canSubmit}
-								size="sm"
-							>
+							<Button onClick={handleSend} disabled={!canSubmit} size="sm">
 								{sendMutation.isPending ? (
 									<LoadingSpinner size="sm" className="mr-2" />
 								) : (

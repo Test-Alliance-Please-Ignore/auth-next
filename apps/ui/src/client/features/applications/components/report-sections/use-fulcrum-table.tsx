@@ -4,11 +4,10 @@
  */
 
 import { useMantineReactTable } from 'mantine-react-table'
-import { cn } from '@/lib/utils'
 
 import {
-	mrtPaperProps,
 	mrtPaginationProps,
+	mrtPaperProps,
 	mrtRowStyle,
 	mrtTableBodyCellProps,
 	mrtTableContainerProps,
@@ -16,6 +15,7 @@ import {
 	mrtTableHeadProps,
 	mrtTableProps,
 } from '@/lib/mrt-theme'
+import { cn } from '@/lib/utils'
 
 import type {
 	MRT_ColumnDef,
@@ -25,7 +25,7 @@ import type {
 } from 'mantine-react-table'
 
 interface UseFulcrumTableOptions<Row extends MRT_RowData> {
-	columns: MRT_ColumnDef<Row>[]
+	columns: Array<MRT_ColumnDef<Row>>
 	data: Row[]
 	emptyMessage: string
 	searchPlaceholder?: string
@@ -107,7 +107,7 @@ export function useFulcrumTable<Row extends MRT_RowData>({
 			className: cn(
 				'mrt-grid__row',
 				compactRows && 'mrt-grid__compact-row',
-				getRowClassName?.(row.original as Row),
+				getRowClassName?.(row.original as Row)
 			),
 			style: mrtRowStyle(row.index),
 		}),

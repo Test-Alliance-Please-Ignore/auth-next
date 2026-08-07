@@ -1,8 +1,9 @@
+import { AlertCircle } from 'lucide-react'
 import { Navigate } from 'react-router'
+
+import { useUserPermissions } from '../hooks/useUserPermissions'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Container } from './ui/container'
-import { AlertCircle } from 'lucide-react'
-import { useUserPermissions } from '../hooks/useUserPermissions'
 import { LoadingPage } from './ui/loading'
 
 interface PermissionGuardProps {
@@ -70,7 +71,7 @@ export function PermissionGuard({
 	redirectTo = '/',
 	showError = false,
 }: PermissionGuardProps) {
-	const { hasPermission, hasAnyPermission, hasAllPermissions, isLoading } = useUserPermissions()
+	const { hasAnyPermission, hasAllPermissions, isLoading } = useUserPermissions()
 
 	// Show loading state while checking permissions
 	if (isLoading) {
@@ -106,7 +107,8 @@ export function PermissionGuard({
 					</CardHeader>
 					<CardContent>
 						<p className="text-red-600 dark:text-red-400">
-							You don't have permission to access this resource. Please contact an administrator if you believe this is an error.
+							You don't have permission to access this resource. Please contact an administrator if
+							you believe this is an error.
 						</p>
 					</CardContent>
 				</Card>

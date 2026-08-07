@@ -1,3 +1,3 @@
-import baseConfig from '@repo/eslint-config/base'
+import { getConfig } from '@repo/eslint-config'
 
-export default baseConfig
+export default getConfig(import.meta.url)

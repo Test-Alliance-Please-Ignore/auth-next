@@ -1,7 +1,16 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { logger } from '@repo/hono-helpers'
 import { getEsiInstanceForCharacter } from '@repo/esi'
+import { DEFAULT_RETENTION_DAYS, RETENTION_POLICIES } from '@repo/fulcrum'
+import { logger } from '@repo/hono-helpers'
+import { createWorkflow } from '@repo/workflow-utils'
+
+import { createDb } from './db'
+import * as queries from './db/queries'
+import { sendReportStartedDM } from './lib/discord-webhook'
+import { resolveReportMetadata } from './lib/report-metadata'
+import { stripHtmlToPlainText } from './workflows/processors/helpers/html-stripper'
+
 import type {
 	CharacterReportMetadata,
 	CreateBulkReportOptions,
@@ -11,15 +20,8 @@ import type {
 	ReportManifest,
 	ReportSectionName,
 } from '@repo/fulcrum'
-import { DEFAULT_RETENTION_DAYS, RETENTION_POLICIES } from '@repo/fulcrum'
-import { createWorkflow } from '@repo/workflow-utils'
-import { createDb } from './db'
-import { stripHtmlToPlainText } from './workflows/processors/helpers/html-stripper'
-import type { DbClient } from './db/queries'
-import * as queries from './db/queries'
-import { sendReportStartedDM } from './lib/discord-webhook'
-import { resolveReportMetadata } from './lib/report-metadata'
 import type { Env } from './context'
+import type { DbClient } from './db/queries'
 import type { WorkflowParams } from './workflows/character-report.workflow.js'
 
 const CHUNK_SIZE = 500
@@ -47,7 +49,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	 */
 	constructor(
 		public state: DurableObjectState,
-		public env: Env,
+		public env: Env
 	) {
 		super(state, env)
 	}
@@ -63,7 +65,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	private async getReportChunk(
 		r2Key: string,
 		section: ReportSectionName,
-		chunkIndex: number,
+		chunkIndex: number
 	): Promise<unknown[] | null> {
 		const cacheKey = `${r2Key}/sections/${section}/chunk-${chunkIndex}.json`
 		const now = Date.now()
@@ -275,7 +277,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	async listReports(
 		filters?: ListReportsFilters,
 		limit = 50,
-		offset = 0,
+		offset = 0
 	): Promise<CharacterReportMetadata[]> {
 		const db = this.getDb()
 		const reports = await queries.listReports(db, filters, limit, offset)
@@ -304,7 +306,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	 * Currently not implemented - returns null
 	 * TODO: Implement signed URL generation with R2 presigned URLs or custom tokens
 	 */
-	async generateShareUrl(reportId: string, expiresIn: number): Promise<string | null> {
+	async generateShareUrl(reportId: string, _expiresIn: number): Promise<string | null> {
 		const db = this.getDb()
 		const report = await queries.getReport(db, reportId)
 
@@ -401,7 +403,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 		reportId: string,
 		section: ReportSectionName,
 		page?: number,
-		pageSize?: number,
+		pageSize?: number
 	): Promise<unknown | null> {
 		const db = this.getDb()
 		const report = await queries.getReport(db, reportId)
@@ -434,18 +436,19 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 			const lastChunk = Math.floor((offset + pageSize - 1) / CHUNK_SIZE)
 			const chunkRows = await Promise.all(
 				Array.from({ length: lastChunk - firstChunk + 1 }, (_, index) =>
-					this.getReportChunk(report.r2Key!, section, firstChunk + index),
-				),
+					this.getReportChunk(report.r2Key!, section, firstChunk + index)
+				)
 			)
 			if (chunkRows.some((rows) => rows === null)) {
 				return null
 			}
-			const rows = (
-				chunkRows as unknown[][]
-			).flat()
+			const rows = (chunkRows as unknown[][]).flat()
 
 			return {
-				data: rows.slice(offset - firstChunk * CHUNK_SIZE, offset - firstChunk * CHUNK_SIZE + pageSize),
+				data: rows.slice(
+					offset - firstChunk * CHUNK_SIZE,
+					offset - firstChunk * CHUNK_SIZE + pageSize
+				),
 				page,
 				pageSize,
 				totalCount: meta.totalCount,
@@ -473,9 +476,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 
 		// Chunked: fetch all chunks in parallel and concatenate
 		const arrays = await Promise.all(
-			Array.from({ length: meta.chunks }, (_, i) =>
-				this.getReportChunk(report.r2Key!, section, i),
-			),
+			Array.from({ length: meta.chunks }, (_, i) => this.getReportChunk(report.r2Key!, section, i))
 		)
 
 		return arrays.flatMap((rows) => rows ?? [])
@@ -528,7 +529,7 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	 * WebSocket message handler (Hibernation API)
 	 * Called when a WebSocket message is received
 	 */
-	async webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): Promise<void> {
+	async webSocketMessage(_ws: WebSocket, _message: ArrayBuffer | string): Promise<void> {
 		// TODO: Implement WebSocket message handling
 	}
 
@@ -537,10 +538,10 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	 * Called when a WebSocket connection is closed
 	 */
 	async webSocketClose(
-		ws: WebSocket,
-		code: number,
-		reason: string,
-		wasClean: boolean,
+		_ws: WebSocket,
+		_code: number,
+		_reason: string,
+		_wasClean: boolean
 	): Promise<void> {
 		// TODO: Implement cleanup logic
 	}
@@ -567,8 +568,6 @@ export class FulcrumDO extends DurableObject<Env, {}> implements Fulcrum {
 	 * Fetch handler for HTTP requests to the Durable Object
 	 */
 	async fetch(request: Request): Promise<Response> {
-		const url = new URL(request.url)
-
 		// WebSocket upgrade handling
 		if (request.headers.get('Upgrade') === 'websocket') {
 			const pair = new WebSocketPair()

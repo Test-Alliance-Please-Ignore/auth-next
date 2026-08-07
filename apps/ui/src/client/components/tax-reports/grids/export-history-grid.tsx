@@ -2,12 +2,12 @@ import { useMemo } from 'react'
 
 import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { formatTaxDateTime } from '@/lib/tax-date'
 import { formatTaxNumber, TaxEntityDisplay } from '@/lib/tax-display'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { TaxExportRecord } from '@repo/corporation-tax'
-import { Button } from '@/components/ui/button'
 
 export function ExportHistoryGrid(props: {
 	rows: TaxExportRecord[]
@@ -17,7 +17,7 @@ export function ExportHistoryGrid(props: {
 	onDownload: (exportId: string) => void
 	downloading: boolean
 }) {
-	const columns = useMemo<MRT_ColumnDef<TaxExportRecord>[]>(
+	const columns = useMemo<Array<MRT_ColumnDef<TaxExportRecord>>>(
 		() => [
 			{
 				id: 'requestedAt',
@@ -79,7 +79,8 @@ export function ExportHistoryGrid(props: {
 				header: 'Download',
 				enableSorting: false,
 				Cell: ({ row }) => (
-					<Button variant="ghost"
+					<Button
+						variant="ghost"
 						size="sm"
 						disabled={row.original.status !== 'completed' || props.downloading}
 						onClick={() => props.onDownload(row.original.id)}

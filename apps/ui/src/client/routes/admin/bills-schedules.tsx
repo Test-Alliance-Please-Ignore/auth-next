@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
 	Table,
 	TableBody,
@@ -20,7 +21,6 @@ import {
 } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatScheduleFrequency } from '@/lib/bills-utils'
-import { Button } from '@/components/ui/button'
 
 export default function BillsSchedulesPage() {
 	usePageTitle('Admin - Bill Schedules')
@@ -206,7 +206,8 @@ export default function BillsSchedulesPage() {
 											<TableCell className="sticky right-0 z-10 bg-card text-right">
 												<div className="flex justify-end gap-2">
 													{schedule.isActive ? (
-														<Button variant="cancel"
+														<Button
+															variant="cancel"
 															size="sm"
 															showIcon={false}
 															onClick={() => handlePause(schedule.id)}
@@ -216,7 +217,8 @@ export default function BillsSchedulesPage() {
 															Pause
 														</Button>
 													) : (
-														<Button variant="confirm"
+														<Button
+															variant="confirm"
 															size="sm"
 															showIcon={false}
 															onClick={() => handleResume(schedule.id)}
@@ -226,7 +228,8 @@ export default function BillsSchedulesPage() {
 															Resume
 														</Button>
 													)}
-													<Button variant="destructive"
+													<Button
+														variant="destructive"
 														size="sm"
 														showIcon={false}
 														onClick={() => handleDelete(schedule.id)}

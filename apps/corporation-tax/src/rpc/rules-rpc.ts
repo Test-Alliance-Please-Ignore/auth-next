@@ -82,7 +82,7 @@ export class TaxRulesRpc {
 		try {
 			const stub = getStub<EveCorporationData>(this.ctx.env.EVE_CORPORATION_DATA, corporationId)
 			return await stub.getWalletDivisions(corporationId)
-		} catch (_error) {
+		} catch {
 			return []
 		}
 	}

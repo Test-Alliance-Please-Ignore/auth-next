@@ -1,12 +1,11 @@
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { AlertCircle, Scan, Shield, Users } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Navigate, Link, useLocation, useNavigate, useParams } from 'react-router'
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router'
 
-import { IpHistoryCard } from '@/components/ip-history-card'
-import { ArrowLeft } from 'lucide-react'
 import { CopyableMetaPill } from '@/components/copyable-meta-pill'
+import { IpHistoryCard } from '@/components/ip-history-card'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -16,13 +15,19 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { apiClient } from '@/lib/api'
 
-import { ApplicationStatusBadge } from '../components/application-status-badge'
+import { useAuditorUser, useAuditorUserIpHistory } from '../../../hooks/useAuditorUsers'
+import { myCorporationsApi } from '../../corporations/api'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
+import {
+	FulcrumBulkScanDialog,
+	FulcrumSingleScanDialog,
+	useFulcrumScanDmPreference,
+} from '../components/fulcrum-scan-dialogs'
 import {
 	UserProfilePageShell,
 	UserProfileStatRow,
-	UserProfileStatusBadge,
 	UserProfileStatsSeparator,
+	UserProfileStatusBadge,
 } from '../components/user-profile-page-shell'
 import {
 	ProfileApplicationHistorySection,
@@ -30,24 +35,14 @@ import {
 	ProfileNotesSection,
 } from '../components/user-profile-sections'
 import {
-	FulcrumBulkScanDialog,
-	FulcrumSingleScanDialog,
-	useFulcrumScanDmPreference,
-} from '../components/fulcrum-scan-dialogs'
-import {
 	useApplications,
-	useHRNotes,
 	useFulcrumUserReports,
+	useHRNotes,
 	useHrUserCharacters,
 	useRequestFulcrumReport,
 	useRequestFulcrumReportBatch,
 } from '../hooks'
 import { getPrivateDataUnavailableMessage } from '../utils/private-data'
-import {
-	useAuditorUser,
-	useAuditorUserIpHistory,
-} from '../../../hooks/useAuditorUsers'
-import { myCorporationsApi } from '../../corporations/api'
 
 import type { CharacterReportMetadata, FulcrumCharacterReportData } from '../api'
 
@@ -90,13 +85,11 @@ export default function HrAuditorUserProfilePage() {
 	const [requestingCharacterId, setRequestingCharacterId] = useState<string | null>(null)
 	const [isScanningAll, setIsScanningAll] = useState(false)
 	const [scanAllDialogOpen, setScanAllDialogOpen] = useState(false)
-	const [singleScanDialogCharacter, setSingleScanDialogCharacter] = useState<AuditorCharacterRow | null>(null)
+	const [singleScanDialogCharacter, setSingleScanDialogCharacter] =
+		useState<AuditorCharacterRow | null>(null)
 	const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false)
-	const {
-		sendDmForScanRequests,
-		setSendDmForScanRequests,
-		persistSendDmPreference,
-	} = useFulcrumScanDmPreference()
+	const { sendDmForScanRequests, setSendDmForScanRequests, persistSendDmPreference } =
+		useFulcrumScanDmPreference()
 
 	const { data: userDetails, isLoading: userLoading } = useAuditorUser(userId ?? '')
 	const { data: hrCharacters = [], isLoading: hrLoading } = useHrUserCharacters(userId ?? '', {
@@ -127,17 +120,18 @@ export default function HrAuditorUserProfilePage() {
 
 	const mainCharacter = useMemo(() => {
 		if (!userDetails) return null
-		return userDetails.characters.find((c) => c.characterId === userDetails.mainCharacterId)
-			?? userDetails.characters[0]
-			?? null
+		return (
+			userDetails.characters.find((c) => c.characterId === userDetails.mainCharacterId) ??
+			userDetails.characters[0] ??
+			null
+		)
 	}, [userDetails])
 
 	const accountName = mainCharacter?.characterName ?? userId ?? 'Unknown'
 	const canAddNote = isAuditor || user?.is_admin === true
 	const canRequestCeoReports = user?.is_admin || isAuditor
-	const canRequestCharacterReport = (character: {
-		role?: 'CEO' | 'Director' | 'Member' | null
-	}) => canRequestCeoReports || character.role !== 'CEO'
+	const canRequestCharacterReport = (character: { role?: 'CEO' | 'Director' | 'Member' | null }) =>
+		canRequestCeoReports || character.role !== 'CEO'
 	usePageTitle(userDetails ? `${accountName} | Auditor` : 'Auditor Profile')
 
 	const sortedApps = useMemo(() => {
@@ -153,13 +147,23 @@ export default function HrAuditorUserProfilePage() {
 	const fromApplications = source === 'applications' || returnTo?.includes('/applications')
 	const fromMembers = source === 'members' || returnTo?.includes('/members')
 	const backTarget = returnTo ?? '/hr/users'
-	const breadcrumbMidLabel = fromApplications ? 'Applications' : fromMembers ? 'Members' : 'User Search'
-	const backLabel = fromApplications ? 'Back to Applications' : fromMembers ? 'Back to Members' : 'Back to User Search'
+	const breadcrumbMidLabel = fromApplications
+		? 'Applications'
+		: fromMembers
+			? 'Members'
+			: 'User Search'
+	const backLabel = fromApplications
+		? 'Back to Applications'
+		: fromMembers
+			? 'Back to Members'
+			: 'Back to User Search'
 
 	const rows = useMemo<AuditorCharacterRow[]>(() => {
 		if (!userDetails) return []
 
-		const userCharacterById = new Map(userDetails.characters.map((character) => [character.characterId, character]))
+		const userCharacterById = new Map(
+			userDetails.characters.map((character) => [character.characterId, character])
+		)
 		const allCharacterIds = new Set<string>([
 			...userDetails.characters.map((character) => character.characterId),
 			...hrCharacters.map((character) => character.characterId),
@@ -172,7 +176,9 @@ export default function HrAuditorUserProfilePage() {
 				const reportCharacter = reportCharacterById.get(characterId)
 				const latestReport = reportCharacter ? getLatestReport(reportCharacter) : null
 				const hasPendingReport =
-					reportCharacter?.reports.some((r) => r.status === 'pending' || r.status === 'processing') ?? false
+					reportCharacter?.reports.some(
+						(r) => r.status === 'pending' || r.status === 'processing'
+					) ?? false
 
 				return {
 					characterId,
@@ -208,8 +214,11 @@ export default function HrAuditorUserProfilePage() {
 		})),
 	})
 	const corporationIdsForMemberMeta = useMemo(
-		() =>
-			[...new Set(rows.map((row) => row.corporationId).filter((value): value is string => Boolean(value)))],
+		() => [
+			...new Set(
+				rows.map((row) => row.corporationId).filter((value): value is string => Boolean(value))
+			),
+		],
 		[rows]
 	)
 	const memberAccountQueries = useQueries({
@@ -224,7 +233,10 @@ export default function HrAuditorUserProfilePage() {
 		})),
 	})
 	const memberMetaByCharacterId = useMemo(() => {
-		const map = new Map<string, { joinDate?: string; lastLogin?: string; locationSystem?: string; locationRegion?: string }>()
+		const map = new Map<
+			string,
+			{ joinDate?: string; lastLogin?: string; locationSystem?: string; locationRegion?: string }
+		>()
 		for (const query of memberAccountQueries) {
 			const account = query.data?.account
 			if (!account) continue
@@ -334,7 +346,7 @@ export default function HrAuditorUserProfilePage() {
 	}
 
 	const handleViewDetails = (character: AuditorCharacterRow) => {
-		navigate(`/character/${character.characterId}`, {
+		void navigate(`/character/${character.characterId}`, {
 			state: {
 				source: 'hr-auditor-user-profile',
 				backTo: `/hr/users/${userId}`,
@@ -347,7 +359,7 @@ export default function HrAuditorUserProfilePage() {
 	const handleViewLatestReport = (character: AuditorCharacterRow) => {
 		if (character.latestReport?.status !== 'completed' || !character.corporationId) return
 		const returnTo = `${location.pathname}${location.search}`
-		navigate(`/hr/users/${userId}/reports/${character.latestReport.id}`, {
+		void navigate(`/hr/users/${userId}/reports/${character.latestReport.id}`, {
 			state: {
 				characterName: character.characterName,
 				userId: userId ?? undefined,
@@ -361,7 +373,9 @@ export default function HrAuditorUserProfilePage() {
 
 	const scanEligibleCharacters = rows.filter(
 		(character) =>
-			!!character.corporationId && !character.hasPendingReport && (canRequestCeoReports || character.role !== 'CEO')
+			!!character.corporationId &&
+			!character.hasPendingReport &&
+			(canRequestCeoReports || character.role !== 'CEO')
 	)
 
 	const handleScanAllCharacters = async (sendDm: boolean) => {
@@ -400,7 +414,13 @@ export default function HrAuditorUserProfilePage() {
 	}
 
 	const handleOpenScanAllDialog = () => {
-		if (isScanningAll || requestReport.isPending || requestReportBatch.isPending || scanEligibleCharacters.length === 0) return
+		if (
+			isScanningAll ||
+			requestReport.isPending ||
+			requestReportBatch.isPending ||
+			scanEligibleCharacters.length === 0
+		)
+			return
 		setScanAllDialogOpen(true)
 	}
 
@@ -447,16 +467,10 @@ export default function HrAuditorUserProfilePage() {
 					{(userDetails.discord?.username || userDetails.discordUserId) && (
 						<div className="mt-2 flex flex-wrap items-center justify-center gap-2">
 							{userDetails.discord?.username ? (
-								<CopyableMetaPill
-									label="Discord username"
-									value={userDetails.discord.username}
-								/>
+								<CopyableMetaPill label="Discord username" value={userDetails.discord.username} />
 							) : null}
 							{userDetails.discordUserId ? (
-								<CopyableMetaPill
-									label="Discord ID"
-									value={userDetails.discordUserId}
-								/>
+								<CopyableMetaPill label="Discord ID" value={userDetails.discordUserId} />
 							) : null}
 						</div>
 					)}
@@ -487,7 +501,7 @@ export default function HrAuditorUserProfilePage() {
 					</Link>
 				</Button>
 			}
-			>
+		>
 			<>
 				<div className="space-y-6">
 					{privateDataUnavailableMessage && (
@@ -520,7 +534,9 @@ export default function HrAuditorUserProfilePage() {
 							skillPoints: spByCharacterId.get(character.characterId),
 							walletBalance: walletByCharacterId.get(character.characterId),
 							isMetricsLoading: metricsLoadingByCharacterId.get(character.characterId),
-							privateDataUnavailableNote: privateDataUnavailableNoteByCharacterId.get(character.characterId),
+							privateDataUnavailableNote: privateDataUnavailableNoteByCharacterId.get(
+								character.characterId
+							),
 							joinDate: memberMetaByCharacterId.get(character.characterId)?.joinDate,
 							lastLogin: memberMetaByCharacterId.get(character.characterId)?.lastLogin,
 							locationSystem: memberMetaByCharacterId.get(character.characterId)?.locationSystem,
@@ -530,7 +546,9 @@ export default function HrAuditorUserProfilePage() {
 						showViewDetailsButton
 						isScanAllVisible
 						isScanningAll={isScanningAll}
-						scanAllLabel={isScanningAll ? 'Scanning All...' : `Scan All (${scanEligibleCharacters.length})`}
+						scanAllLabel={
+							isScanningAll ? 'Scanning All...' : `Scan All (${scanEligibleCharacters.length})`
+						}
 						scanAllDisabled={
 							isScanningAll ||
 							requestReport.isPending ||
@@ -591,30 +609,30 @@ export default function HrAuditorUserProfilePage() {
 						open={addNoteDialogOpen}
 						onOpenChange={setAddNoteDialogOpen}
 						subjectUserId={userId}
-					subjectCharacterId={mainCharacter?.characterId}
-					subjectCharacterName={mainCharacter?.characterName}
-					onSuccess={() => {
-						void queryClient.invalidateQueries({
-							queryKey: ['applications', 'hr-notes'],
-						})
-					}}
+						subjectCharacterId={mainCharacter?.characterId}
+						subjectCharacterName={mainCharacter?.characterName}
+						onSuccess={() => {
+							void queryClient.invalidateQueries({
+								queryKey: ['applications', 'hr-notes'],
+							})
+						}}
+					/>
+				)}
+				<FulcrumBulkScanDialog
+					open={scanAllDialogOpen}
+					onOpenChange={setScanAllDialogOpen}
+					eligibleCount={scanEligibleCharacters.length}
+					sendDmForScanRequests={sendDmForScanRequests}
+					setSendDmForScanRequests={setSendDmForScanRequests}
+					onConfirm={handleConfirmScanAll}
 				/>
-			)}
-			<FulcrumBulkScanDialog
-				open={scanAllDialogOpen}
-				onOpenChange={setScanAllDialogOpen}
-				eligibleCount={scanEligibleCharacters.length}
-				sendDmForScanRequests={sendDmForScanRequests}
-				setSendDmForScanRequests={setSendDmForScanRequests}
-				onConfirm={handleConfirmScanAll}
-			/>
-			<FulcrumSingleScanDialog
-				open={singleScanDialogCharacter !== null}
-				onOpenChange={(open) => !open && setSingleScanDialogCharacter(null)}
-				characterName={singleScanDialogCharacter?.characterName ?? 'Character'}
-				sendDmForScanRequests={sendDmForScanRequests}
-				setSendDmForScanRequests={setSendDmForScanRequests}
-				onConfirm={handleConfirmSingleScan}
+				<FulcrumSingleScanDialog
+					open={singleScanDialogCharacter !== null}
+					onOpenChange={(open) => !open && setSingleScanDialogCharacter(null)}
+					characterName={singleScanDialogCharacter?.characterName ?? 'Character'}
+					sendDmForScanRequests={sendDmForScanRequests}
+					setSendDmForScanRequests={setSendDmForScanRequests}
+					onConfirm={handleConfirmSingleScan}
 				/>
 			</>
 		</UserProfilePageShell>

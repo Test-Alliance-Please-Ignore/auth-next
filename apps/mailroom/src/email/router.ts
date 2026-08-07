@@ -24,7 +24,7 @@ const DEFAULT_NO_MATCH_REASON = 'No handler is configured for this address.'
  * the safe error fallback (forward-to-fallback, not a permanent reject).
  */
 export class EmailRouter<Env = unknown> {
-	private readonly routes: EmailRoute<Env>[] = []
+	private readonly routes: Array<EmailRoute<Env>> = []
 	private noMatch: EmailHandler<Env> = () => reject(DEFAULT_NO_MATCH_REASON)
 
 	/** Append a route from a matcher + handler. */

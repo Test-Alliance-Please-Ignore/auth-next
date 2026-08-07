@@ -9,7 +9,7 @@
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
-import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
 import {
@@ -77,7 +77,6 @@ export default function HrApplicationReview() {
 		applicationId: string
 	}>()
 	const navigate = useNavigate()
-	const location = useLocation()
 	const [searchParams] = useSearchParams()
 	const initialTab = searchParams.get('tab') || 'details'
 	const { user, isAuthenticated, isLoading: authLoading, permissions } = useAuth()

@@ -4,7 +4,6 @@ import { freightApi } from '@/lib/freight-api'
 
 import type {
 	CreateFreightRouteInput,
-	FreightRoute,
 	FreightRouteStatus,
 	UpdateFreightRouteInput,
 } from '@repo/freight'

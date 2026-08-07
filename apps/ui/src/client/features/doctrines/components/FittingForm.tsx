@@ -7,7 +7,6 @@
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -27,12 +26,18 @@ interface FittingFormProps {
 	onPreviewChange?: (eftString: string | null) => void
 }
 
-export function FittingForm({ fitting, onSubmit, onCancel, isSubmitting, onPreviewChange }: FittingFormProps) {
+export function FittingForm({
+	fitting,
+	onSubmit,
+	onCancel,
+	isSubmitting,
+	onPreviewChange,
+}: FittingFormProps) {
 	const [eftString, setEftString] = useState(fitting?.fitting || '')
 	const [description, setDescription] = useState(fitting?.description || '')
 	const [category, setCategory] = useState(fitting?.category || '')
 	const [srpEligible, setSrpEligible] = useState(fitting?.srpEligible || false)
-	const [srpValue, setSrpValue] = useState(fitting?.srpValue || '0')
+	const [srpValue] = useState(fitting?.srpValue || '0')
 	const [showPreview, setShowPreview] = useState(false)
 	const [eftError, setEftError] = useState<string | null>(null)
 	const { data: categories } = useDoctrineCategories()
@@ -76,11 +81,10 @@ export function FittingForm({ fitting, onSubmit, onCancel, isSubmitting, onPrevi
 			fittingItems: [], // Server will parse and populate this
 		}
 
-		onSubmit(data)
+		void onSubmit(data)
 	}
 
-	const canSubmit =
-		eftString.trim() !== '' && category.trim() !== '' && !eftError
+	const canSubmit = eftString.trim() !== '' && category.trim() !== '' && !eftError
 
 	return (
 		<form onSubmit={handleSubmit} className="space-y-6">
@@ -152,7 +156,8 @@ export function FittingForm({ fitting, onSubmit, onCancel, isSubmitting, onPrevi
 				<Button variant="cancel" onClick={onCancel} type="button">
 					Cancel
 				</Button>
-				<Button variant="confirm"
+				<Button
+					variant="confirm"
 					type="submit"
 					loading={isSubmitting}
 					loadingText={fitting ? 'Updating...' : 'Creating...'}

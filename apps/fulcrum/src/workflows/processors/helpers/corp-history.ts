@@ -4,9 +4,9 @@
  */
 
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 
 import type { CorporationHistoryEntry, EsiTypeResolver } from '@repo/esi'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Enriched corporation history entry with resolved names
@@ -51,7 +51,7 @@ function formatDuration(startDate: string, endDate?: string): string {
 export async function enrichCorpHistory(
 	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace },
 	history: CorporationHistoryEntry[],
-	characterId: string,
+	_characterId: string
 ): Promise<ProcessedCorpHistory> {
 	if (history.length === 0) {
 		return []
@@ -77,7 +77,7 @@ export async function enrichCorpHistory(
 
 	// Sort by start_date descending (most recent first)
 	const sorted = [...history].sort(
-		(a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime(),
+		(a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
 	)
 
 	// Build enriched entries with durations

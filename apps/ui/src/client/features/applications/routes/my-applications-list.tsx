@@ -104,7 +104,7 @@ export default function MyApplicationsList() {
 
 	// Handlers
 	const handleApplicationClick = (applicationId: string) => {
-		navigate(`/my-applications/${applicationId}`)
+		void navigate(`/my-applications/${applicationId}`)
 	}
 
 	// Check authentication

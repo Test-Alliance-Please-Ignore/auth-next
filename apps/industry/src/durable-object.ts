@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
+
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
@@ -63,8 +64,6 @@ export class IndustryDO extends DurableObject<Env, {}> implements Industry {
 	 * Fetch handler for HTTP requests to the Durable Object
 	 */
 	async fetch(request: Request): Promise<Response> {
-		const url = new URL(request.url)
-
 		// WebSocket upgrade handling
 		if (request.headers.get('Upgrade') === 'websocket') {
 			const pair = new WebSocketPair()

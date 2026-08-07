@@ -1,10 +1,10 @@
+import { logger } from '@repo/hono-helpers'
+
 import { DiscordBotService } from '../services/discord-bot.service'
 import { defaultDiscordGatewayHandlers } from './handlers'
 import { createDiscordGatewayEventRegistry } from './registry'
 import { DiscordGatewayEventRouter } from './router'
 import { DISCORD_GATEWAY_VERSION } from './types'
-
-import { logger } from '@repo/hono-helpers'
 
 import type { Env } from '../context'
 import type {
@@ -57,7 +57,7 @@ export class DiscordGatewayClient implements DiscordGateway {
 	) {
 		this.gatewayEnabled = env.DISCORD_GATEWAY_ENABLED === 'true'
 
-		state.blockConcurrencyWhile(async () => {
+		void state.blockConcurrencyWhile(async () => {
 			const persisted = await state.storage.get<Partial<DiscordGatewayStatus>>('gateway-state')
 			if (!persisted) {
 				return
@@ -124,7 +124,10 @@ export class DiscordGatewayClient implements DiscordGateway {
 		return true
 	}
 
-	private async getJoinSuppressionRecord(discordUserId: string, guildId: string): Promise<{
+	private async getJoinSuppressionRecord(
+		discordUserId: string,
+		guildId: string
+	): Promise<{
 		record: {
 			discordUserId: string
 			guildId: string
@@ -204,9 +207,12 @@ export class DiscordGatewayClient implements DiscordGateway {
 		await this.persistStatus()
 
 		if (gatewayInfo.shards > 1) {
-			logger.warn('[DiscordGateway] Discord recommended multiple shards, using a single listener for now', {
-				recommendedShards: gatewayInfo.shards,
-			})
+			logger.warn(
+				'[DiscordGateway] Discord recommended multiple shards, using a single listener for now',
+				{
+					recommendedShards: gatewayInfo.shards,
+				}
+			)
 		}
 
 		return this.gatewayUrl
@@ -322,7 +328,7 @@ export class DiscordGatewayClient implements DiscordGateway {
 			})
 		}, payload.heartbeat_interval)
 
-		this.state.storage.setAlarm(Date.now() + payload.heartbeat_interval * 2)
+		await this.state.storage.setAlarm(Date.now() + payload.heartbeat_interval * 2)
 	}
 
 	private async handleReady(payload: DiscordGatewayReadyPayload): Promise<void> {
@@ -340,7 +346,7 @@ export class DiscordGatewayClient implements DiscordGateway {
 		this.lastHeartbeatAckAt = new Date().toISOString()
 		await this.persistStatus()
 		if (this.heartbeatIntervalMs) {
-			this.state.storage.setAlarm(Date.now() + this.heartbeatIntervalMs * 2)
+			await this.state.storage.setAlarm(Date.now() + this.heartbeatIntervalMs * 2)
 		}
 	}
 
@@ -390,7 +396,7 @@ export class DiscordGatewayClient implements DiscordGateway {
 			})
 		}, delayMs)
 
-		this.state.storage.setAlarm(Date.now() + delayMs)
+		void this.state.storage.setAlarm(Date.now() + delayMs)
 	}
 
 	private async connect(resume = true): Promise<DiscordGatewayBootstrapResult> {

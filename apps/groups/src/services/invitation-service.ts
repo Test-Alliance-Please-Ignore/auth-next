@@ -1,37 +1,32 @@
-import { and, eq, inArray, sql } from '@repo/db-utils'
-import type {
-	CreateInvitationRequest,
-	CreateInviteCodeRequest,
-	CreateInviteCodeResponse,
-	GroupInvitation,
-	GroupInvitationWithDetails,
-	GroupInviteCode,
-	GroupByInviteCodeResponse,
-	RedeemInviteCodeResponse,
-	GroupWithDetails,
-	Group,
-	Category,
-} from '@repo/groups'
+import { and, eq } from '@repo/db-utils'
+
 import {
-	groupAdmins,
 	groupInvitations,
 	groupInviteCodeRedemptions,
 	groupInviteCodes,
 	groupMembers,
 	groups,
 } from '../db/schema'
-import {
-	bulkFindMainCharactersByUserIds,
-	bulkFindMainCharactersWithIdsByUserIds,
-	findUserByMainCharacterName,
-} from './character-lookup'
+import { bulkFindMainCharactersByUserIds, findUserByMainCharacterName } from './character-lookup'
 import { generateInviteCode } from './code-generator'
-import { mapCategory, mapGroup, mapGroupInviteCode, mapGroupInvitation } from './mappers'
+import { mapCategory, mapGroup, mapGroupInvitation, mapGroupInviteCode } from './mappers'
 import { canManageGroup, canModerateGroup } from './permissions'
 import { getGroupMemberCount, isUserGroupAdmin, isUserMember } from './query-helpers'
 
-import type { MembershipService } from './membership-service'
+import type {
+	CreateInvitationRequest,
+	CreateInviteCodeRequest,
+	CreateInviteCodeResponse,
+	Group,
+	GroupByInviteCodeResponse,
+	GroupInvitation,
+	GroupInvitationWithDetails,
+	GroupInviteCode,
+	GroupWithDetails,
+	RedeemInviteCodeResponse,
+} from '@repo/groups'
 import type { ServiceContext } from './context'
+import type { MembershipService } from './membership-service'
 
 export class InvitationService {
 	constructor(
@@ -39,7 +34,10 @@ export class InvitationService {
 		private membershipService: MembershipService
 	) {}
 
-	async createInvitation(data: CreateInvitationRequest, inviterId: string): Promise<GroupInvitation> {
+	async createInvitation(
+		data: CreateInvitationRequest,
+		inviterId: string
+	): Promise<GroupInvitation> {
 		const group = await this.ctx.db.query.groups.findFirst({
 			where: eq(groups.id, data.groupId),
 		})
@@ -105,7 +103,10 @@ export class InvitationService {
 
 	async listPendingInvitations(userId: string): Promise<GroupInvitationWithDetails[]> {
 		const invitations = await this.ctx.db.query.groupInvitations.findMany({
-			where: and(eq(groupInvitations.inviteeUserId, userId), eq(groupInvitations.status, 'pending')),
+			where: and(
+				eq(groupInvitations.inviteeUserId, userId),
+				eq(groupInvitations.status, 'pending')
+			),
 			with: {
 				group: true,
 			},
@@ -227,7 +228,10 @@ export class InvitationService {
 			.where(eq(groupInvitations.id, invitationId))
 	}
 
-	async createInviteCode(data: CreateInviteCodeRequest, createdBy: string): Promise<CreateInviteCodeResponse> {
+	async createInviteCode(
+		data: CreateInviteCodeRequest,
+		createdBy: string
+	): Promise<CreateInviteCodeResponse> {
 		const group = await this.ctx.db.query.groups.findFirst({
 			where: eq(groups.id, data.groupId),
 		})
@@ -322,7 +326,10 @@ export class InvitationService {
 			.where(eq(groupInviteCodes.id, codeId))
 	}
 
-	async getGroupByInviteCode(code: string, userId: string): Promise<GroupByInviteCodeResponse | null> {
+	async getGroupByInviteCode(
+		code: string,
+		userId: string
+	): Promise<GroupByInviteCodeResponse | null> {
 		const inviteCode = await this.ctx.db.query.groupInviteCodes.findFirst({
 			where: eq(groupInviteCodes.code, code),
 			with: {

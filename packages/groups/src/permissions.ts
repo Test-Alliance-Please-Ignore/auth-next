@@ -331,12 +331,12 @@ export function parseStructurePermissionUrn(value: string): ParsedStructurePermi
 	return null
 }
 
-export function hasAnyStructurePermission(permissions: Array<PermissionLike>): boolean {
+export function hasAnyStructurePermission(permissions: PermissionLike[]): boolean {
 	return permissions.some((permission) => parseStructurePermissionUrn(permission.urn) !== null)
 }
 
 export function hasStructureTabPermission(
-	permissions: Array<PermissionLike>,
+	permissions: PermissionLike[],
 	tab: Exclude<StructurePermissionTab, 'all'>
 ): boolean {
 	return permissions.some((permission) => {
@@ -349,7 +349,7 @@ export function hasStructureTabPermission(
 	})
 }
 
-export function hasStructureManagerPermission(permissions: Array<PermissionLike>): boolean {
+export function hasStructureManagerPermission(permissions: PermissionLike[]): boolean {
 	return permissions.some((permission) => {
 		const parsed = parseStructurePermissionUrn(permission.urn)
 		if (!parsed) {
@@ -360,7 +360,7 @@ export function hasStructureManagerPermission(permissions: Array<PermissionLike>
 	})
 }
 
-export function hasStructureDetailsPermission(permissions: Array<PermissionLike>): boolean {
+export function hasStructureDetailsPermission(permissions: PermissionLike[]): boolean {
 	return permissions.some((permission) => {
 		const parsed = parseStructurePermissionUrn(permission.urn)
 		if (!parsed) {
@@ -371,7 +371,7 @@ export function hasStructureDetailsPermission(permissions: Array<PermissionLike>
 	})
 }
 
-export function hasStructureSensitivePermission(permissions: Array<PermissionLike>): boolean {
+export function hasStructureSensitivePermission(permissions: PermissionLike[]): boolean {
 	return permissions.some((permission) => {
 		const parsed = parseStructurePermissionUrn(permission.urn)
 		if (!parsed) {
@@ -382,22 +382,18 @@ export function hasStructureSensitivePermission(permissions: Array<PermissionLik
 	})
 }
 
-export function hasAllStructureDetailsPermission(permissions: Array<PermissionLike>): boolean {
+export function hasAllStructureDetailsPermission(permissions: PermissionLike[]): boolean {
 	return permissions.some((permission) => {
 		const parsed = parseStructurePermissionUrn(permission.urn)
 		if (!parsed || parsed.scope !== 'all') {
 			return false
 		}
 
-		return (
-			parsed.role === 'details' ||
-			parsed.role === 'sensitive' ||
-			parsed.role === 'manager'
-		)
+		return parsed.role === 'details' || parsed.role === 'sensitive' || parsed.role === 'manager'
 	})
 }
 
-export function hasAllStructureManagerPermission(permissions: Array<PermissionLike>): boolean {
+export function hasAllStructureManagerPermission(permissions: PermissionLike[]): boolean {
 	return permissions.some((permission) => {
 		const parsed = parseStructurePermissionUrn(permission.urn)
 		if (!parsed || parsed.scope !== 'all') {
@@ -408,7 +404,7 @@ export function hasAllStructureManagerPermission(permissions: Array<PermissionLi
 	})
 }
 
-export function hasAllStructureSensitivePermission(permissions: Array<PermissionLike>): boolean {
+export function hasAllStructureSensitivePermission(permissions: PermissionLike[]): boolean {
 	return permissions.some((permission) => {
 		const parsed = parseStructurePermissionUrn(permission.urn)
 		if (!parsed || parsed.scope !== 'all') {

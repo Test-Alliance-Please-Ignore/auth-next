@@ -14,9 +14,10 @@ import {
 import { ServicesSelection } from '../components/services-selection'
 import { WizardStepIndicator } from '../components/wizard-step-indicator'
 import { useAddProviderService, useCreateIndustryProvider } from '../hooks'
-import { SERVICE_TYPE_LABELS, ServiceType } from '../types'
+import { SERVICE_TYPE_LABELS } from '../types'
 
 import type { ProviderFormData } from '../components/provider-details-form'
+import type { ServiceType } from '../types'
 
 const WIZARD_STEPS = [
 	{ label: 'Provider Details', description: 'Basic information' },
@@ -86,19 +87,7 @@ export default function IndustryProviderNewPage() {
 				setCurrentStep(2)
 			} catch (error) {
 				setCreationStatus('error')
-				setCreationError(
-					error instanceof Error ? error.message : 'Failed to create provider'
-				)
-			}
-		}
-	}
-
-	const handlePreviousStep = () => {
-		if (currentStep === 2) {
-			// Can't go back after provider is created
-			// Provider already exists, just navigate to detail page
-			if (createdProviderId) {
-				navigate(`/admin/industry-providers/${createdProviderId}`)
+				setCreationError(error instanceof Error ? error.message : 'Failed to create provider')
 			}
 		}
 	}
@@ -108,7 +97,7 @@ export default function IndustryProviderNewPage() {
 
 		if (selectedServices.length === 0) {
 			// No services selected, just navigate to detail page
-			navigate(`/admin/industry-providers/${createdProviderId}`)
+			void navigate(`/admin/industry-providers/${createdProviderId}`)
 			return
 		}
 
@@ -137,13 +126,13 @@ export default function IndustryProviderNewPage() {
 
 		// Wait a bit then navigate
 		setTimeout(() => {
-			navigate(`/admin/industry-providers/${createdProviderId}`)
+			void navigate(`/admin/industry-providers/${createdProviderId}`)
 		}, 2000)
 	}
 
 	const handleSkipServices = () => {
 		if (createdProviderId) {
-			navigate(`/admin/industry-providers/${createdProviderId}`)
+			void navigate(`/admin/industry-providers/${createdProviderId}`)
 		}
 	}
 
@@ -164,9 +153,7 @@ export default function IndustryProviderNewPage() {
 				</Button>
 				<div>
 					<h1 className="text-3xl font-bold gradient-text">Create Provider</h1>
-					<p className="text-muted-foreground mt-1">
-						Set up a new service provider
-					</p>
+					<p className="text-muted-foreground mt-1">Set up a new service provider</p>
 				</div>
 			</div>
 
@@ -246,12 +233,9 @@ export default function IndustryProviderNewPage() {
 										{serviceCreationResults.map((result) => (
 											<div
 												key={result.type}
-												className={
-													result.success ? 'text-green-500' : 'text-destructive'
-												}
+												className={result.success ? 'text-green-500' : 'text-destructive'}
 											>
-												{result.success ? '✓' : '✗'}{' '}
-												{SERVICE_TYPE_LABELS[result.type]}
+												{result.success ? '✓' : '✗'} {SERVICE_TYPE_LABELS[result.type]}
 												{result.error && ` - ${result.error}`}
 											</div>
 										))}

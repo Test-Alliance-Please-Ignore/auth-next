@@ -1,4 +1,4 @@
-import { Building2, Factory, Sword, User, Users } from 'lucide-react'
+import { Building2, Factory, Sword, User } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 

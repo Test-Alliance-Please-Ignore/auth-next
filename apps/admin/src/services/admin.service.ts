@@ -1,3 +1,5 @@
+import { logger } from '@repo/hono-helpers'
+
 import type {
 	ActivityLogFilters,
 	ActivityLogResult,
@@ -16,7 +18,6 @@ import type { DbClient } from '@repo/db-utils'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { schema } from '../db'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Admin service - Business logic for administrative operations
@@ -195,7 +196,7 @@ export class AdminService {
 	 */
 	async getActivityLog(
 		filters: ActivityLogFilters,
-		adminUserId: string
+		_adminUserId: string
 	): Promise<ActivityLogResult> {
 		const { adminOperationsLog } = await import('../db/schema')
 		const { eq, and, desc, sql } = await import('@repo/db-utils')

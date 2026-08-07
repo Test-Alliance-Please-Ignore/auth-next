@@ -1,5 +1,7 @@
-import { and, eq, inArray, sql } from '@repo/db-utils'
+import { and, eq, sql } from '@repo/db-utils'
+
 import { groupAdmins, groupMembers } from '../db/schema'
+
 import type { ServiceContext } from './context'
 
 export async function isUserMember(
@@ -24,10 +26,7 @@ export async function isUserGroupAdmin(
 	return !!admin
 }
 
-export async function getGroupMemberCount(
-	ctx: ServiceContext,
-	groupId: string
-): Promise<number> {
+export async function getGroupMemberCount(ctx: ServiceContext, groupId: string): Promise<number> {
 	const result = await ctx.db
 		.select({ count: sql<number>`count(*)::int` })
 		.from(groupMembers)

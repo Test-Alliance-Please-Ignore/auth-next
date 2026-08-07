@@ -7,7 +7,7 @@ import {
 	MessageSquare,
 	Package,
 	Plus,
-		RefreshCw,
+	RefreshCw,
 	Settings,
 	Shield,
 	ShieldAlert,
@@ -75,7 +75,7 @@ import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useGlobalPermissions } from '@/hooks/usePermissions'
 
-import type { CorporationAccessVerification } from '@/lib/api'
+import type { CorporationAccessVerification, CorporationDiscordServer } from '@/lib/api'
 
 const ACCESS_ROLE_GROUPS = [
 	{ label: 'Director', roles: ['Director'] },
@@ -113,6 +113,8 @@ const NICKNAME_SOURCE_OPTIONS: Array<{ value: NicknameBucketSource; label: strin
 	{ value: 'alliance', label: 'Alliance ticker' },
 	{ value: 'custom', label: 'Custom ticker' },
 ]
+
+const EMPTY_CORPORATION_DISCORD_SERVERS: CorporationDiscordServer[] = []
 
 function sanitizeNicknameTickerInput(value: string): string {
 	return value
@@ -180,7 +182,9 @@ export default function CorporationDetailPage() {
 	// Discord hooks
 	const refreshCorporationDiscord = useRefreshCorporationDiscord()
 	const { data: discordServers = [] } = useDiscordServers()
-	const { data: corporationDiscordServers = [] } = useCorporationDiscordServers(corpId)
+	const { data: corporationDiscordServersData } = useCorporationDiscordServers(corpId)
+	const corporationDiscordServers =
+		corporationDiscordServersData ?? EMPTY_CORPORATION_DISCORD_SERVERS
 	const attachServer = useAttachDiscordServer()
 	const detachServer = useDetachDiscordServer()
 	const updateAttachment = useUpdateCorporationDiscordServer()
@@ -1187,8 +1191,8 @@ export default function CorporationDetailPage() {
 																</div>
 															</div>
 
-										<div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 shadow-md ring-1 ring-border/60">
-											<div className="grid gap-6 xl:grid-cols-2">
+															<div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 shadow-md ring-1 ring-border/60">
+																<div className="grid gap-6 xl:grid-cols-2">
 																	<div className="space-y-3">
 																		<div className="flex items-start justify-between gap-3">
 																			<div>
@@ -1265,15 +1269,13 @@ export default function CorporationDetailPage() {
 																		)}
 																	</div>
 
-											<div className="space-y-3 xl:border-l xl:pl-6">
+																	<div className="space-y-3 xl:border-l xl:pl-6">
 																		<div className="flex items-start justify-between gap-3">
 																			<div>
-																				<p className="text-sm font-medium">
-																	Corp Members Ticker
-																				</p>
+																				<p className="text-sm font-medium">Corp Members Ticker</p>
 																				<p className="text-xs text-muted-foreground">
-																	Used for members of this corporation. Takes priority over the guest
-																	settings.
+																					Used for members of this corporation. Takes priority over
+																					the guest settings.
 																				</p>
 																				{!nicknameManagementEnabled && (
 																					<p className="mt-1 text-xs text-muted-foreground">
@@ -1368,7 +1370,7 @@ export default function CorporationDetailPage() {
 																return (
 																	<div
 																		key={`${attachment.id}-${config.roleIdKey}`}
-															className={`rounded-xl border p-4 shadow-md ring-1 ring-border/60 ${config.nicknameClassName}`}
+																		className={`rounded-xl border p-4 shadow-md ring-1 ring-border/60 ${config.nicknameClassName}`}
 																	>
 																		<div className="grid gap-6 xl:grid-cols-2">
 																			<div className="space-y-3">
@@ -1423,9 +1425,7 @@ export default function CorporationDetailPage() {
 																				</div>
 																			</div>
 
-																			<div
-															className="space-y-3 xl:border-l xl:pl-6"
-																			>
+																			<div className="space-y-3 xl:border-l xl:pl-6">
 																				<div className="flex items-start justify-between gap-3">
 																					<div>
 																						<p className="text-sm font-medium">

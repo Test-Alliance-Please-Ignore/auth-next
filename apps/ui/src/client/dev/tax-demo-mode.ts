@@ -10,7 +10,6 @@ import type {
 	TaxAssessmentWithBillHistory,
 	TaxAuditLogEntry,
 	TaxBillingEventHistoryRow,
-	TaxBillStatus,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
 	TaxCorporationBillingConfig,
@@ -63,7 +62,6 @@ type TaxReportFilters = TaxRollupReportQueryFilters
 type DemoTaxState = ReturnType<typeof buildDemoState>
 
 function isDevRuntime(): boolean {
-	// eslint-disable-next-line turbo/no-undeclared-env-vars
 	return import.meta.env.DEV && typeof window !== 'undefined'
 }
 
@@ -116,25 +114,8 @@ function persistConfig(config: DemoTaxConfig): void {
 	window.localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config))
 }
 
-function mulberry32(seed: number) {
-	return function rng() {
-		let t = (seed += 0x6d2b79f5)
-		t = Math.imul(t ^ (t >>> 15), t | 1)
-		t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-		return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-	}
-}
-
 function withLatency<T>(value: T): Promise<T> {
 	return new Promise((resolve) => window.setTimeout(() => resolve(value), 120))
-}
-
-function toIsoDate(date: Date): string {
-	return date.toISOString()
-}
-
-function toDateOnly(date: Date): string {
-	return date.toISOString().slice(0, 10)
 }
 
 function startOfMonth(date = new Date()): Date {
@@ -144,12 +125,6 @@ function startOfMonth(date = new Date()): Date {
 function addDays(date: Date, days: number): Date {
 	const copy = new Date(date)
 	copy.setUTCDate(copy.getUTCDate() + days)
-	return copy
-}
-
-function addMonths(date: Date, months: number): Date {
-	const copy = new Date(date)
-	copy.setUTCMonth(copy.getUTCMonth() + months)
 	return copy
 }
 
@@ -287,18 +262,7 @@ function rebuildDemoBillHistory(state: DemoTaxState): void {
 	}))
 }
 
-function maybeFilterReportRows<T extends { corporationId?: string | null }>(
-	rows: T[],
-	filters?: TaxReportFilters
-): T[] {
-	return rows.filter((row) => {
-		if (filters?.corporationId && row.corporationId !== filters.corporationId) return false
-		return true
-	})
-}
-
 function buildDemoState(seed: number) {
-	const rng = mulberry32(seed)
 	const config = readStoredConfig()
 	const monthStart = startOfMonth()
 	const demoStart = addDays(monthStart, -30 * Math.max(0, config.months - 1))
@@ -2167,8 +2131,8 @@ export const taxDemoApi = {
 }
 
 function notifyToggle(queryClient?: QueryClient): void {
-	queryClient?.invalidateQueries({ queryKey: ['corporation-tax'] })
-	queryClient?.invalidateQueries({ queryKey: ['entities'] })
+	void queryClient?.invalidateQueries({ queryKey: ['corporation-tax'] })
+	void queryClient?.invalidateQueries({ queryKey: ['entities'] })
 }
 
 export function installTaxDemoWindow(queryClient: QueryClient): void {

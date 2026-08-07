@@ -1,12 +1,13 @@
-import { Calendar, ChevronDown, Edit, FileText, Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { Calendar, ChevronDown, FileText, Plus } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
 import { BillListFilters } from '@/components/bills/bill-list-filters'
 import { BillListGrid } from '@/components/bills/bill-list-grid'
 import { BillStatusBadge } from '@/components/bills/bill-status-badge'
 import { ISKAmount } from '@/components/bills/isk-amount'
+import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
 	groupBillKeys,
@@ -27,10 +28,9 @@ import {
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-import type { MRT_Row, MRT_SortingState } from 'mantine-react-table'
+import type { MRT_SortingState } from 'mantine-react-table'
 import type {
 	BillListSortDirection,
 	BillListSortField,
@@ -429,7 +429,7 @@ export default function AdminBillsPage() {
 				onPaginationChange={setPagination}
 				pageCount={pageCount}
 				rowCount={billsPage.data?.rowCount ?? 0}
-				renderActions={(bill, row) => {
+				renderActions={(bill, _row) => {
 					// Coalesced group aggregate row — show bulk actions menu
 					if (bill.groupBillTotalCount != null && bill.groupBillId) {
 						const groupBillId = bill.groupBillId
@@ -519,7 +519,10 @@ export default function AdminBillsPage() {
 								{
 									label: 'Mark Paid',
 									intent: 'confirm',
-									hidden: bill.status === 'draft' || bill.status === 'paid' || bill.status === 'cancelled',
+									hidden:
+										bill.status === 'draft' ||
+										bill.status === 'paid' ||
+										bill.status === 'cancelled',
 									loading: markBillPaid.isPending,
 									onClick: () => void handleMarkPaid(bill.id),
 								},
@@ -625,7 +628,7 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 													intent: 'secondary',
 													onConfirm: async () => {
 														await revertBillToDraft.mutateAsync(subBill.billId)
-														invalidateAggregate()
+														void invalidateAggregate()
 													},
 												})
 											},
@@ -643,7 +646,7 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 													intent: 'confirm',
 													onConfirm: async () => {
 														await issueBill.mutateAsync(subBill.billId)
-														invalidateAggregate()
+														void invalidateAggregate()
 													},
 												})
 											},
@@ -661,7 +664,7 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 													intent: 'confirm',
 													onConfirm: async () => {
 														await cancelBill.mutateAsync(subBill.billId)
-														invalidateAggregate()
+														void invalidateAggregate()
 													},
 												})
 											},
@@ -682,7 +685,7 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 													intent: 'confirm',
 													onConfirm: async () => {
 														await markBillPaid.mutateAsync(subBill.billId)
-														invalidateAggregate()
+														void invalidateAggregate()
 													},
 												})
 											},
@@ -700,7 +703,7 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 													intent: 'destructive',
 													onConfirm: async () => {
 														await deleteBill.mutateAsync(subBill.billId)
-														invalidateAggregate()
+														void invalidateAggregate()
 													},
 												})
 											},

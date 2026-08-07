@@ -1,15 +1,15 @@
+import { useQuery } from '@tanstack/react-query'
 import {
 	BookOpen,
 	Briefcase,
 	Building2,
-	ChevronLeft,
 	ChevronDown,
+	ChevronLeft,
 	ChevronRight,
 	CircleDollarSign,
 	ExternalLink,
 	FileText,
 	FolderHeart,
-	Globe,
 	LayoutDashboard,
 	LogOut,
 	Mail,
@@ -26,36 +26,32 @@ import {
 	Users,
 } from 'lucide-react'
 import { DynamicIcon } from 'lucide-react/dynamic.mjs'
-import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router'
 
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
-import { useCorporationAccess } from '@/features/corporations'
+import { hasAnyStructurePermission } from '@repo/groups'
+
+import { useCorporationAccess, useHasCorporationAccess } from '@/features/corporations'
 import { useHrAccessibleCorporations } from '@/features/hr'
-import { useHasCorporationAccess } from '@/features/corporations'
-import { useSrpPaymentMismatchAlerts } from '@/features/srp/hooks'
-import { useReviewQueueStatusCount } from '@/features/srp/state/review-queue-snapshot-store'
+import { useMoonScanPermissions } from '@/features/moon-scan/permissions'
 import { canAccessMumble } from '@/features/mumble/access'
 import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
-import { useMoonScanPermissions } from '@/features/moon-scan/permissions'
+import { useSrpPaymentMismatchAlerts } from '@/features/srp/hooks'
+import { useReviewQueueStatusCount } from '@/features/srp/state/review-queue-snapshot-store'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { usePendingInvitations } from '@/hooks/useGroups'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { api } from '@/lib/api'
 import { characterPortraitUrl } from '@/lib/eve-images'
+import { resolveSidebarExternalLinkIconName } from '@/lib/sidebar-external-links'
 import { extractCorporationIdFromTaxViewerScopedUrn } from '@/lib/tax-permissions'
 import { cn } from '@/lib/utils'
-import { resolveSidebarExternalLinkIconName } from '@/lib/sidebar-external-links'
-import {
-	hasAnyStructurePermission,
-	hasAllStructureManagerPermission,
-} from '@repo/groups'
 
+import { resolveSrpNavState } from './sidebar-nav.srp'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
-import { resolveSrpNavState } from './sidebar-nav.srp'
 
 interface SidebarNavProps {
 	onNavigate?: () => void
@@ -129,13 +125,20 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		gcTime: 1000 * 60 * 5,
 		enabled: shouldFetchSrpPaymentCount && derivedPaymentQueueCount === undefined,
 	})
-	const { data: srpAlertData } = useSrpPaymentMismatchAlerts({
-		includeAcknowledged: false,
-		limit: 1,
-		offset: 0,
-	}, { enabled: shouldFetchSrpAlertCount })
-	const reviewQueueCount = shouldFetchSrpReviewCount ? (derivedReviewQueueCount ?? reviewQueueData?.total ?? 0) : 0
-	const paymentQueueCount = shouldFetchSrpPaymentCount ? (derivedPaymentQueueCount ?? paymentQueueData?.total ?? 0) : 0
+	const { data: srpAlertData } = useSrpPaymentMismatchAlerts(
+		{
+			includeAcknowledged: false,
+			limit: 1,
+			offset: 0,
+		},
+		{ enabled: shouldFetchSrpAlertCount }
+	)
+	const reviewQueueCount = shouldFetchSrpReviewCount
+		? (derivedReviewQueueCount ?? reviewQueueData?.total ?? 0)
+		: 0
+	const paymentQueueCount = shouldFetchSrpPaymentCount
+		? (derivedPaymentQueueCount ?? paymentQueueData?.total ?? 0)
+		: 0
 	const srpAlertCount = shouldFetchSrpAlertCount ? (srpAlertData?.total ?? 0) : 0
 	const srpNavState = resolveSrpNavState({
 		isSiteAdmin,
@@ -150,7 +153,6 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const pendingCount = invitations?.length || 0
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
 	const canSeeMumble = isMumbleFeatureEnabled && canAccessMumble(user)
-	const hasMemberCorporationAccess = hrCorporations?.some((corp) => corp.isMemberCorporation) ?? false
 	const hasFleetStatsAccess =
 		leadershipCorporationAccess?.corporations.some(
 			(corp) =>
@@ -261,7 +263,9 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		const hasCorporationModuleAccess =
 			(corporationAccess?.hasAccess ?? false) || (hrCorporations?.length ?? 0) > 0 || isAuditor
 		const canSeeLegacyApplications =
-			isSiteAdmin || isAuditor || (hrCorporations?.some((corp) => corp.isMemberCorporation) ?? false)
+			isSiteAdmin ||
+			isAuditor ||
+			(hrCorporations?.some((corp) => corp.isMemberCorporation) ?? false)
 		const isHrOnlyUser =
 			!(corporationAccess?.hasAccess ?? false) && ((hrCorporations?.length ?? 0) > 0 || isAuditor)
 		const isOnCorpHrRoute = /^\/corporations\/[^/]+\/hr/.test(location.pathname)
@@ -354,7 +358,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 				label: 'Doctrines',
 				href: '/doctrines',
 				icon: Swords,
-			},
+			}
 		)
 
 		navItems.push(
@@ -388,7 +392,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 						? [{ label: 'Manage Routes', href: '/freight/manage' }]
 						: []),
 				],
-			},
+			}
 		)
 
 		const canSeeMoonScanNav = moonScanPermissions.canAccessMoonScan
@@ -623,7 +627,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 													(child.href === item.href
 														? location.pathname === child.href
 														: location.pathname === child.href ||
-														location.pathname.startsWith(child.href + '/')))
+															location.pathname.startsWith(child.href + '/')))
 
 											if (child.external) {
 												const ChildIcon = child.icon
@@ -741,7 +745,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 							alt={`${mainCharacter.characterName}'s portrait`}
 							loading="lazy"
 							onError={(e) => {
-								; (e.currentTarget as HTMLImageElement).src =
+								;(e.currentTarget as HTMLImageElement).src =
 									'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
 							}}
 							className="w-10 h-10 rounded-full border-2 border-primary/50"

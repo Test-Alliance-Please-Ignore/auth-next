@@ -1,43 +1,42 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Save, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import type { ButtonVariant } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Container } from '@/components/ui/container'
-import { FilterField } from '@/components/ui/filter-field'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { LoadingSpinner } from '@/components/ui/loading'
-import { PageHeader } from '@/components/ui/page-header'
-import { Select, type SelectOption } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+	getAlertDestinationTypeOptions,
+	validateAlertDestinationRequirements,
+} from '@repo/alert-destinations'
+import { STRUCTURE_STATE_OPTIONS } from '@repo/structure-states'
+
 import {
 	AlertDestinationEditor,
-	type AlertDestinationEditorRow,
 	alertDestinationEditorRowFromDestination,
 	createAlertDestinationEditorRow,
 } from '@/components/admin/alert-destination-editor'
 import { CorporationSearchSelect } from '@/components/corporation-search-select'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Container } from '@/components/ui/container'
+import { FilterField } from '@/components/ui/filter-field'
+import { LoadingSpinner } from '@/components/ui/loading'
+import { PageHeader } from '@/components/ui/page-header'
+import { Select } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useApiMutation } from '@/hooks/useApiMutation'
-import { useDiscordServers } from '@/hooks/useDiscord'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
+import { useDiscordServers } from '@/hooks/useDiscord'
 import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 import toast from '@/lib/toast'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-	getAlertDestinationTypeOptions,
-	validateAlertDestinationRequirements,
-	type AlertDestinationType,
-} from '@repo/alert-destinations'
-import { STRUCTURE_STATE_OPTIONS } from '@repo/structure-states'
-
+import type { AlertDestinationType } from '@repo/alert-destinations'
+import type { AlertDestinationEditorRow } from '@/components/admin/alert-destination-editor'
+import type { ButtonVariant } from '@/components/ui/button'
+import type { SelectOption } from '@/components/ui/select'
 import type {
 	CorporationAlertDestination,
 	CreateStructureAlertDestinationRequest,
@@ -69,7 +68,12 @@ type CorporationDefaultDraft = {
 }
 
 const DESTINATION_TYPE_OPTIONS: SelectOption[] = [
-	...getAlertDestinationTypeOptions(['discord_channel', 'discord_user', 'discord_webhook', 'group']),
+	...getAlertDestinationTypeOptions([
+		'discord_channel',
+		'discord_user',
+		'discord_webhook',
+		'group',
+	]),
 ]
 
 function alertConfigDraftFromRow(config: StructureGroupAlertConfig): AlertConfigDraft {
@@ -102,13 +106,16 @@ function syncCorporationDefaultDrafts(
 	const next = Object.fromEntries(
 		rows
 			.filter((row) => row.groupId !== null)
-			.map((row) => [
-				row.corporationId,
-				{
-					...row,
-					corporationName: row.corporationName ?? row.corporationId,
-				},
-			] as const)
+			.map(
+				(row) =>
+					[
+						row.corporationId,
+						{
+							...row,
+							corporationName: row.corporationName ?? row.corporationId,
+						},
+					] as const
+			)
 	)
 	const currentKeys = Object.keys(current)
 	const nextKeys = Object.keys(next)
@@ -213,13 +220,16 @@ export default function AdminStructuresPage() {
 	const [corporationDefaultDrafts, setCorporationDefaultDrafts] = useState<
 		Record<string, StructureCorporationGroupDefault>
 	>({})
-	const [newCorporationDefaultRows, setNewCorporationDefaultRows] = useState<CorporationDefaultDraft[]>([])
-	const [destinationDrafts, setDestinationDrafts] = useState<Record<string, AlertDestinationEditorRow>>(
-		{}
-	)
+	const [newCorporationDefaultRows, setNewCorporationDefaultRows] = useState<
+		CorporationDefaultDraft[]
+	>([])
+	const [destinationDrafts, setDestinationDrafts] = useState<
+		Record<string, AlertDestinationEditorRow>
+	>({})
 	const [newDestinationRows, setNewDestinationRows] = useState<AlertDestinationEditorRow[]>([])
 	const [alertConfigDrafts, setAlertConfigDrafts] = useState<Record<string, AlertConfigDraft>>({})
-	const [newStatusAlertConfigDraft, setNewStatusAlertConfigDraft] = useState<AlertConfigDraft | null>(null)
+	const [newStatusAlertConfigDraft, setNewStatusAlertConfigDraft] =
+		useState<AlertConfigDraft | null>(null)
 	const [newFuelAlertConfigType, setNewFuelAlertConfigType] = useState('')
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
@@ -235,11 +245,12 @@ export default function AdminStructuresPage() {
 		staleTime: 1000 * 30,
 	})
 
-	const { data: corporationDefaults = EMPTY_ARRAY, isLoading: corporationDefaultsLoading } = useQuery({
-		queryKey: ['admin', 'structures', 'corporation-defaults'],
-		queryFn: () => api.getAdminStructureCorporationDefaults(),
-		staleTime: 1000 * 30,
-	})
+	const { data: corporationDefaults = EMPTY_ARRAY, isLoading: corporationDefaultsLoading } =
+		useQuery({
+			queryKey: ['admin', 'structures', 'corporation-defaults'],
+			queryFn: () => api.getAdminStructureCorporationDefaults(),
+			staleTime: 1000 * 30,
+		})
 
 	const { data: alertDestinations = EMPTY_ARRAY } = useQuery({
 		queryKey: ['admin', 'structures', 'destinations', selectedGroupId],
@@ -256,7 +267,9 @@ export default function AdminStructuresPage() {
 	})
 
 	useEffect(() => {
-		setCorporationDefaultDrafts((current) => syncCorporationDefaultDrafts(current, corporationDefaults))
+		setCorporationDefaultDrafts((current) =>
+			syncCorporationDefaultDrafts(current, corporationDefaults)
+		)
 	}, [corporationDefaults])
 
 	useEffect(() => {
@@ -277,7 +290,10 @@ export default function AdminStructuresPage() {
 		)
 	}, [alertTypes])
 
-	const groupOptions = useMemo(() => groups.map((group) => ({ value: group.id, label: group.name })), [groups])
+	const groupOptions = useMemo(
+		() => groups.map((group) => ({ value: group.id, label: group.name })),
+		[groups]
+	)
 	const configuredGroupIds = useMemo(
 		() => new Set(structureGroupSettings.map((setting) => setting.groupId)),
 		[structureGroupSettings]
@@ -287,7 +303,10 @@ export default function AdminStructuresPage() {
 		[groupOptions, configuredGroupIds]
 	)
 	const configuredCorporationIds = useMemo(
-		() => new Set(corporationDefaults.filter((row) => row.groupId !== null).map((row) => row.corporationId)),
+		() =>
+			new Set(
+				corporationDefaults.filter((row) => row.groupId !== null).map((row) => row.corporationId)
+			),
 		[corporationDefaults]
 	)
 	const availableGroupOptions = useMemo(
@@ -305,7 +324,8 @@ export default function AdminStructuresPage() {
 	const fuelAlertTypes = useMemo(
 		() =>
 			alertTypes.filter(
-				(type) => type.type === 'structure_fuel_time_status' || type.type === 'structure_fuel_amount_status'
+				(type) =>
+					type.type === 'structure_fuel_time_status' || type.type === 'structure_fuel_amount_status'
 			),
 		[alertTypes]
 	)
@@ -315,23 +335,32 @@ export default function AdminStructuresPage() {
 				(option) =>
 					fuelAlertTypes.some((type) => type.type === option.value) &&
 					!alertConfigs.some((row) => row.alertType === option.value)
-		),
+			),
 		[alertConfigs, alertTypeOptions, fuelAlertTypes]
 	)
 
 	useEffect(() => {
-		if (newFuelAlertConfigType && !availableFuelAlertTypeOptions.some((option) => option.value === newFuelAlertConfigType)) {
+		if (
+			newFuelAlertConfigType &&
+			!availableFuelAlertTypeOptions.some((option) => option.value === newFuelAlertConfigType)
+		) {
 			setNewFuelAlertConfigType('')
 		}
 	}, [availableFuelAlertTypeOptions, newFuelAlertConfigType])
 
 	const statusAlertType = statusAlertTypes[0] ?? null
-	const statusAlertConfig = statusAlertType ? alertConfigs.find((row) => row.alertType === statusAlertType.type) ?? null : null
-	const statusAlertDraft = statusAlertType
-		? alertConfigDrafts[statusAlertType.type] ??
-			(statusAlertConfig ? alertConfigDraftFromRow(statusAlertConfig) : emptyAlertConfigDraft(statusAlertType.type))
+	const statusAlertConfig = statusAlertType
+		? (alertConfigs.find((row) => row.alertType === statusAlertType.type) ?? null)
 		: null
-	const canAddStatusAlertConfig = Boolean(statusAlertType && !statusAlertConfig && !newStatusAlertConfigDraft)
+	const statusAlertDraft = statusAlertType
+		? (alertConfigDrafts[statusAlertType.type] ??
+			(statusAlertConfig
+				? alertConfigDraftFromRow(statusAlertConfig)
+				: emptyAlertConfigDraft(statusAlertType.type)))
+		: null
+	const canAddStatusAlertConfig = Boolean(
+		statusAlertType && !statusAlertConfig && !newStatusAlertConfigDraft
+	)
 
 	useEffect(() => {
 		if (configuredGroupOptions.length === 0) {
@@ -346,7 +375,8 @@ export default function AdminStructuresPage() {
 		}
 	}, [configuredGroupIds, configuredGroupOptions, selectedGroupId])
 	const addGroupSetting = useMutation({
-		mutationFn: (params: { groupId: string }) => api.updateAdminStructureGroupSetting(params.groupId),
+		mutationFn: (params: { groupId: string }) =>
+			api.updateAdminStructureGroupSetting(params.groupId),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: ['admin', 'structures', 'group-settings'] })
 			toast.success('Structure group added.')
@@ -423,7 +453,11 @@ export default function AdminStructuresPage() {
 	})
 
 	const saveAlertConfig = useApiMutation({
-		mutationFn: (data: { groupId: string; payload: CreateStructureGroupAlertConfigRequest; configId?: string }) =>
+		mutationFn: (data: {
+			groupId: string
+			payload: CreateStructureGroupAlertConfigRequest
+			configId?: string
+		}) =>
 			data.configId
 				? api.updateAdminStructureAlertConfig(data.groupId, data.configId, data.payload)
 				: api.createAdminStructureAlertConfig(data.groupId, data.payload),
@@ -480,7 +514,8 @@ export default function AdminStructuresPage() {
 								<div className="space-y-1">
 									<CardTitle>Structure Groups</CardTitle>
 									<CardDescription>
-										Add auth groups that can be assigned to structures and used by structure alert configs.
+										Add auth groups that can be assigned to structures and used by structure alert
+										configs.
 									</CardDescription>
 								</div>
 								<Button
@@ -514,7 +549,9 @@ export default function AdminStructuresPage() {
 												onValueChange={(value) =>
 													setNewGroupSettingRows((current) =>
 														current.map((currentRow) =>
-															currentRow.id === row.id ? { ...currentRow, groupId: value } : currentRow
+															currentRow.id === row.id
+																? { ...currentRow, groupId: value }
+																: currentRow
 														)
 													)
 												}
@@ -603,7 +640,8 @@ export default function AdminStructuresPage() {
 								<div className="space-y-1">
 									<CardTitle>Corporation Defaults</CardTitle>
 									<CardDescription>
-										Add defaults only for corporations that need an explicit structure-group fallback.
+										Add defaults only for corporations that need an explicit structure-group
+										fallback.
 									</CardDescription>
 								</div>
 								<Button
@@ -631,7 +669,10 @@ export default function AdminStructuresPage() {
 								<div className="space-y-3 rounded-xl border border-dashed border-border/70 bg-muted/10 p-4">
 									<div className="text-sm font-medium">New corporation default</div>
 									{newCorporationDefaultRows.map((row) => (
-										<div key={row.id} className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_auto]">
+										<div
+											key={row.id}
+											className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_auto]"
+										>
 											<CorporationSearchSelect
 												value={row.corporationId}
 												label={row.corporationName}
@@ -653,7 +694,9 @@ export default function AdminStructuresPage() {
 												onValueChange={(value) =>
 													setNewCorporationDefaultRows((current) =>
 														current.map((currentRow) =>
-															currentRow.id === row.id ? { ...currentRow, groupId: value || null } : currentRow
+															currentRow.id === row.id
+																? { ...currentRow, groupId: value || null }
+																: currentRow
 														)
 													)
 												}
@@ -711,7 +754,10 @@ export default function AdminStructuresPage() {
 									<tbody>
 										{Object.values(corporationDefaultDrafts).map((draft) => {
 											return (
-												<tr key={draft.corporationId} className="border-b border-border/50 hover:bg-muted/20">
+												<tr
+													key={draft.corporationId}
+													className="border-b border-border/50 hover:bg-muted/20"
+												>
 													<td className="px-3 py-3 font-medium text-foreground">
 														{draft.corporationName ?? draft.corporationId}
 													</td>
@@ -787,7 +833,8 @@ export default function AdminStructuresPage() {
 						<CardHeader>
 							<CardTitle>Structure Alert Scope</CardTitle>
 							<CardDescription>
-								Select the auth group whose structure alert destinations and configs you want to edit.
+								Select the auth group whose structure alert destinations and configs you want to
+								edit.
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -856,10 +903,14 @@ export default function AdminStructuresPage() {
 												}
 												const payload = buildDestinationPayload(row)
 												await createDestination.mutateAsync({ groupId: selectedGroupId, payload })
-												setNewDestinationRows((current) => current.filter((currentRow) => currentRow.id !== row.id))
+												setNewDestinationRows((current) =>
+													current.filter((currentRow) => currentRow.id !== row.id)
+												)
 											}}
 											onRemove={() =>
-												setNewDestinationRows((current) => current.filter((currentRow) => currentRow.id !== row.id))
+												setNewDestinationRows((current) =>
+													current.filter((currentRow) => currentRow.id !== row.id)
+												)
 											}
 											isSaving={createDestination.isPending}
 											removeButtonVariant="cancel"
@@ -870,19 +921,19 @@ export default function AdminStructuresPage() {
 										<div className="rounded-lg border border-dashed border-border/70 p-6 text-sm text-muted-foreground">
 											No destinations configured for this group.
 										</div>
-										) : (
-											alertDestinations.map((destination) => {
-												const draft = destinationDrafts[destination.id]
-												if (!draft) return null
-												return (
-											<AlertDestinationEditor
-												key={destination.id}
-												row={draft}
-												alertTypeOptions={alertTypeOptions}
-												showAlertTypeSelector
-												groupOptions={configuredGroupOptions}
-												destinationTypeOptions={DESTINATION_TYPE_OPTIONS}
-												discordServers={discordServers}
+									) : (
+										alertDestinations.map((destination) => {
+											const draft = destinationDrafts[destination.id]
+											if (!draft) return null
+											return (
+												<AlertDestinationEditor
+													key={destination.id}
+													row={draft}
+													alertTypeOptions={alertTypeOptions}
+													showAlertTypeSelector
+													groupOptions={configuredGroupOptions}
+													destinationTypeOptions={DESTINATION_TYPE_OPTIONS}
+													discordServers={discordServers}
 													onChange={(patch) =>
 														setDestinationDrafts((current) => ({
 															...current,
@@ -953,7 +1004,9 @@ export default function AdminStructuresPage() {
 														setAlertConfigDrafts((current) => ({
 															...current,
 															[statusAlertType.type]: {
-																...(current[statusAlertType.type] ?? statusAlertDraft ?? emptyAlertConfigDraft(statusAlertType.type)),
+																...(current[statusAlertType.type] ??
+																	statusAlertDraft ??
+																	emptyAlertConfigDraft(statusAlertType.type)),
 																...patch,
 															},
 														}))
@@ -1016,7 +1069,8 @@ export default function AdminStructuresPage() {
 
 											{!statusAlertConfig && !newStatusAlertConfigDraft ? (
 												<p className="text-sm text-muted-foreground">
-													Add a status alert config to choose which destination states should trigger alerts.
+													Add a status alert config to choose which destination states should
+													trigger alerts.
 												</p>
 											) : null}
 										</>
@@ -1030,13 +1084,16 @@ export default function AdminStructuresPage() {
 										<div>
 											<CardTitle>Fuel Alerts</CardTitle>
 											<CardDescription>
-												Use module-wide fuel settings and choose where low fuel alerts should be delivered.
+												Use module-wide fuel settings and choose where low fuel alerts should be
+												delivered.
 											</CardDescription>
 										</div>
 										<Button
 											variant="primary"
 											size="sm"
-											onClick={() => setNewFuelAlertConfigType(availableFuelAlertTypeOptions[0]?.value ?? '')}
+											onClick={() =>
+												setNewFuelAlertConfigType(availableFuelAlertTypeOptions[0]?.value ?? '')
+											}
 											disabled={availableFuelAlertTypeOptions.length === 0}
 										>
 											<Plus className="h-4 w-4" />
@@ -1080,7 +1137,9 @@ export default function AdminStructuresPage() {
 															if (!newFuelAlertConfigType) return
 															await saveAlertConfig.mutateAsync({
 																groupId: selectedGroupId,
-																payload: buildAlertConfigPayload(emptyAlertConfigDraft(newFuelAlertConfigType)),
+																payload: buildAlertConfigPayload(
+																	emptyAlertConfigDraft(newFuelAlertConfigType)
+																),
 															})
 															setNewFuelAlertConfigType('')
 														}}
@@ -1094,11 +1153,14 @@ export default function AdminStructuresPage() {
 										</div>
 									) : null}
 
-									{fuelAlertTypes.some((alertType) => alertConfigs.some((row) => row.alertType === alertType.type)) ? (
+									{fuelAlertTypes.some((alertType) =>
+										alertConfigs.some((row) => row.alertType === alertType.type)
+									) ? (
 										fuelAlertTypes.map((alertType) => {
 											const existing = alertConfigs.find((row) => row.alertType === alertType.type)
 											if (!existing) return null
-											const draft = alertConfigDrafts[alertType.type] ?? alertConfigDraftFromRow(existing)
+											const draft =
+												alertConfigDrafts[alertType.type] ?? alertConfigDraftFromRow(existing)
 											return (
 												<AlertConfigEditor
 													key={alertType.type}
@@ -1141,7 +1203,8 @@ export default function AdminStructuresPage() {
 										})
 									) : (
 										<p className="text-sm text-muted-foreground">
-											No fuel alert configs yet. Use Add Config to create time or amount-based fuel alerts.
+											No fuel alert configs yet. Use Add Config to create time or amount-based fuel
+											alerts.
 										</p>
 									)}
 								</CardContent>
@@ -1161,7 +1224,9 @@ export default function AdminStructuresPage() {
 	)
 }
 
-function buildDestinationPayload(row: AlertDestinationEditorRow): CreateStructureAlertDestinationRequest {
+function buildDestinationPayload(
+	row: AlertDestinationEditorRow
+): CreateStructureAlertDestinationRequest {
 	return {
 		alertType: row.alertType,
 		destinationType: row.destinationType,
@@ -1212,7 +1277,10 @@ function buildAlertConfigPayload(row: AlertConfigDraft): CreateStructureGroupAle
 		payload.config = {
 			stateTransitions: row.stateTransitions,
 		}
-	} else if (row.alertType === 'structure_fuel_time_status' || row.alertType === 'structure_fuel_amount_status') {
+	} else if (
+		row.alertType === 'structure_fuel_time_status' ||
+		row.alertType === 'structure_fuel_amount_status'
+	) {
 		payload.config = {}
 	}
 
@@ -1251,13 +1319,18 @@ function AlertConfigEditor({
 			<div className="flex items-center justify-between gap-3">
 				<div className="space-y-1">
 					<div className="font-medium">{alertTypeLabel ?? row.alertType}</div>
-					<div className="text-xs text-muted-foreground">{description ?? 'Structure alert configuration.'}</div>
+					<div className="text-xs text-muted-foreground">
+						{description ?? 'Structure alert configuration.'}
+					</div>
 				</div>
 				<div className="flex items-center gap-2">
 					<Badge variant={row.isEnabled ? 'success' : 'ghost'}>
 						{row.isEnabled ? 'Enabled' : 'Disabled'}
 					</Badge>
-					<Switch checked={row.isEnabled} onCheckedChange={(checked) => onChange({ isEnabled: checked })} />
+					<Switch
+						checked={row.isEnabled}
+						onCheckedChange={(checked) => onChange({ isEnabled: checked })}
+					/>
 				</div>
 			</div>
 
@@ -1325,12 +1398,20 @@ function AlertConfigEditor({
 						{removeButtonLabel}
 					</Button>
 				)}
-				<Button variant="confirm" size="sm" onClick={() => void onSave()} loading={isSaving} showIcon={false}>
+				<Button
+					variant="confirm"
+					size="sm"
+					onClick={() => void onSave()}
+					loading={isSaving}
+					showIcon={false}
+				>
 					<Save className="h-4 w-4" />
 					Save
 				</Button>
 			</div>
-			{existingConfig && <div className="text-xs text-muted-foreground">Existing config id: {existingConfig.id}</div>}
+			{existingConfig && (
+				<div className="text-xs text-muted-foreground">Existing config id: {existingConfig.id}</div>
+			)}
 		</div>
 	)
 }

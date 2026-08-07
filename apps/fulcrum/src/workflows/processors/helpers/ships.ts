@@ -1,13 +1,13 @@
 import { getStub } from '@repo/do-utils'
 import { isStructureId } from '@repo/eve-types'
-import type { Universe } from '@repo/universe'
+import { logger } from '@repo/hono-helpers'
 
 import { buildAssetMap, resolveTopLevelLocation } from './location'
-import { StructureResolutionCoordinator } from './structure-resolution'
 import { shipTypeIds } from './ship-types'
+import { StructureResolutionCoordinator } from './structure-resolution'
 
-import type { CharacterAsset, Esi, EsiTypeResolver } from '@repo/esi'
-import { logger } from '@repo/hono-helpers'
+import type { CharacterAsset, EsiTypeResolver } from '@repo/esi'
+import type { Universe } from '@repo/universe'
 
 export interface FittedShipItem {
 	slot: string
@@ -119,7 +119,9 @@ export async function findFittedShips(
 	const locationNameMap = await typeResolver.resolveIds([...stationLocationIds], characterId)
 	const structureNameMap =
 		structureLocationIds.size > 0
-			? await (structureResolutionCoordinator ?? new StructureResolutionCoordinator()).resolveStructureNames(
+			? await (
+					structureResolutionCoordinator ?? new StructureResolutionCoordinator()
+				).resolveStructureNames(
 					{ ESI: env.ESI },
 					characterId,
 					structureLocationIds,
@@ -204,11 +206,20 @@ export async function findShipItems(
 
 	// Collect specialized holds (ore, gas, mineral, ice, ammo, etc.)
 	const knownPrefixes = [
-		'RigSlot', 'HiSlot', 'MedSlot', 'LowSlot', 'DroneBay', 'Cargo',
-		'SpecializedFuelBay', 'FighterTube', 'FighterBay', 'ShipHangar',
-		'FleetHangar', 'SubSystemSlot',
+		'RigSlot',
+		'HiSlot',
+		'MedSlot',
+		'LowSlot',
+		'DroneBay',
+		'Cargo',
+		'SpecializedFuelBay',
+		'FighterTube',
+		'FighterBay',
+		'ShipHangar',
+		'FleetHangar',
+		'SubSystemSlot',
 	]
-	const specializedPrefixes: [string, string][] = [
+	const specializedPrefixes: Array<[string, string]> = [
 		['SpecializedOreHold', 'Ore Hold'],
 		['SpecializedGasHold', 'Gas Hold'],
 		['SpecializedMineralHold', 'Mineral Hold'],
@@ -225,7 +236,7 @@ export async function findShipItems(
 		['SpecializedIceHold', 'Ice Hold'],
 		['CorpseBay', 'Corpse Bay'],
 	]
-	const specializedBaysRaw: { bayName: string; items: CharacterAsset[] }[] = []
+	const specializedBaysRaw: Array<{ bayName: string; items: CharacterAsset[] }> = []
 	for (const [prefix, label] of specializedPrefixes) {
 		const items = findItemsBySlot(ship.item_id, shipItems, prefix)
 		if (items.length > 0) {
@@ -259,17 +270,19 @@ export async function findShipItems(
 		ship.type_id, // Include ship type ID for name resolution
 	]
 	// Deduplicate type IDs to avoid unnecessary API calls
-	const locationIds = resolvedLocation?.locationType === 'other'
-		? []
-		: [resolvedLocation?.locationId ?? ship.location_id]
+	const locationIds =
+		resolvedLocation?.locationType === 'other'
+			? []
+			: [resolvedLocation?.locationId ?? ship.location_id]
 	const idsToResolve = Array.from(new Set([...allTypeIds, ...locationIds]))
 	const nameMap = await stub.resolveIds(idsToResolve, characterId)
 	// Ensure shipName is always a string - fallback to typeId if resolution failed
 	const shipName = nameMap[ship.type_id] || ship.type_id
 	const locationId = resolvedLocation?.locationId ?? ship.location_id
-	const locationName = resolvedLocation?.locationType === 'other'
-		? structureNameMap[locationId] ?? locationId
-		: locationNameMap[locationId] || nameMap[locationId] || locationId
+	const locationName =
+		resolvedLocation?.locationType === 'other'
+			? (structureNameMap[locationId] ?? locationId)
+			: locationNameMap[locationId] || nameMap[locationId] || locationId
 	const locationType = resolvedLocation?.locationType ?? ship.location_type
 
 	if (!nameMap[ship.type_id]) {

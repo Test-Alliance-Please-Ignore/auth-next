@@ -149,7 +149,7 @@ export default function BrowseCorporations() {
 
 	// Handlers
 	const handleCorporationClick = (corporationId: string) => {
-		navigate(`/join/${corporationId}`)
+		void navigate(`/join/${corporationId}`)
 	}
 
 	const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
