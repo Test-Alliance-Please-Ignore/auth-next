@@ -89,16 +89,18 @@ export default function Layout() {
 	}
 
 	return (
-		<div className={cn('relative min-h-screen flex overflow-x-hidden', isStructuresPage && 'h-dvh overflow-hidden')}>
+		<div
+			className={cn(
+				'relative min-h-screen flex overflow-x-hidden',
+				isStructuresPage && 'lg:h-dvh lg:overflow-hidden'
+			)}
+		>
 			{/* Starfield Background */}
 			<Starfield />
 
 			{/* Mobile Overlay */}
 			{sidebarOpen && (
-				<div
-					className="fixed inset-0 z-40 lg:hidden"
-					onClick={() => setSidebarOpen(false)}
-				/>
+				<div className="fixed inset-0 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
 			)}
 
 			{/* Sidebar */}
@@ -123,13 +125,13 @@ export default function Layout() {
 			</aside>
 
 			{/* Main Content Area */}
-				<div
-					className={cn(
+			<div
+				className={cn(
 					'relative z-10 flex-1 flex flex-col min-w-0 overflow-x-hidden overflow-y-auto transition-[padding-left] duration-300 ease-in-out',
-					isStructuresPage && 'min-h-0 overflow-y-hidden',
-						sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
-					)}
-				>
+					isStructuresPage && 'lg:min-h-0 lg:overflow-y-hidden',
+					sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
+				)}
+			>
 				{!sidebarOpen ? (
 					<div className="fixed top-6 left-2 z-30">
 						<Button
@@ -146,8 +148,13 @@ export default function Layout() {
 				) : null}
 
 				{/* Page Content */}
-				<main className={cn('flex flex-1 flex-col relative z-10 p-4 md:p-6 lg:p-8', isStructuresPage && 'min-h-0 overflow-hidden')}>
-					<div className={cn('w-full mx-auto max-w-[120rem]', isStructuresPage && 'h-full')}>
+				<main
+					className={cn(
+						'flex flex-1 flex-col relative z-10 p-4 md:p-6 lg:p-8',
+						isStructuresPage && 'lg:min-h-0 lg:overflow-hidden'
+					)}
+				>
+					<div className={cn('w-full mx-auto max-w-[120rem]', isStructuresPage && 'lg:h-full')}>
 						<Outlet />
 					</div>
 				</main>

@@ -18,6 +18,7 @@ import {
 	hasAnyStructurePermission,
 	hasStructureTabPermission,
 } from '@repo/groups'
+import { STRUCTURE_STATE_OPTIONS } from '@repo/structure-states'
 import {
 	FUEL_BLOCK_TYPE_IDS,
 	isReinforcedStructureState,
@@ -175,6 +176,26 @@ function toBooleanFilterValue(value: string): 'true' | 'false' | undefined {
 	if (value === 'true' || value === 'false') return value
 	return undefined
 }
+
+function parseMultiFilter(value: string | undefined): string[] {
+	return [
+		...new Set(
+			(value ?? '')
+				.split(',')
+				.map((typeId) => typeId.trim())
+				.filter(Boolean)
+		),
+	]
+}
+
+function serializeMultiFilter(values: string[]): string | undefined {
+	const normalizedValues = [...new Set(values.map((value) => value.trim()).filter(Boolean))]
+	return normalizedValues.length > 0 ? normalizedValues.join(',') : undefined
+}
+
+const structureStateLabelByValue = new Map<string, string>(
+	STRUCTURE_STATE_OPTIONS.map((option) => [option.value, option.label])
+)
 
 function formatNullableDateTime(value: string | null | undefined): string {
 	return value ? formatDateTimeLong(value) : '-'
@@ -705,14 +726,14 @@ export default function StructuresPage() {
 
 	const corporationOptions = useMemo<SelectOption[]>(
 		() =>
-			withAllOption(
-				(commonFilterOptions?.corporations ?? []).map((option) => ({
-					value: option.value,
-					label: option.label,
-				})),
-				'All Corporations'
-			),
-		[commonFilterOptions]
+			(isSovereigntyTab
+				? (sovereigntyFilterOptions?.corporations ?? [])
+				: (commonFilterOptions?.corporations ?? [])
+			).map((option) => ({
+				value: option.value,
+				label: option.label,
+			})),
+		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions]
 	)
 	const groupNameById = useMemo(
 		() => new Map(groups.map((group) => [group.id, group.name])),
@@ -734,25 +755,25 @@ export default function StructuresPage() {
 	)
 	const regionOptions = useMemo<SelectOption[]>(
 		() =>
-			withAllOption(
-				(commonFilterOptions?.regions ?? []).map((option) => ({
-					value: option.value,
-					label: option.label,
-				})),
-				'All Regions'
-			),
-		[commonFilterOptions]
+			(isSovereigntyTab
+				? (sovereigntyFilterOptions?.regions ?? [])
+				: (commonFilterOptions?.regions ?? [])
+			).map((option) => ({
+				value: option.value,
+				label: option.label,
+			})),
+		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions]
 	)
 	const systemOptions = useMemo<SelectOption[]>(
 		() =>
-			withAllOption(
-				(commonFilterOptions?.systems ?? []).map((option) => ({
-					value: option.value,
-					label: option.label,
-				})),
-				'All Systems'
-			),
-		[commonFilterOptions]
+			(isSovereigntyTab
+				? (sovereigntyFilterOptions?.systems ?? [])
+				: (commonFilterOptions?.systems ?? [])
+			).map((option) => ({
+				value: option.value,
+				label: option.label,
+			})),
+		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions]
 	)
 	const stateOptions = useMemo<SelectOption[]>(
 		() =>
@@ -762,7 +783,7 @@ export default function StructuresPage() {
 					: (commonFilterOptions?.states ?? [])
 				).map((option) => ({
 					value: option.value,
-					label: option.label,
+					label: structureStateLabelByValue.get(option.value) ?? option.label,
 				})),
 				isSovereigntyTab ? 'All Vulnerability States' : 'All States'
 			),
@@ -770,13 +791,10 @@ export default function StructuresPage() {
 	)
 	const typeOptions = useMemo<SelectOption[]>(
 		() =>
-			withAllOption(
-				(commonFilterOptions?.types ?? []).map((option) => ({
-					value: option.value,
-					label: option.label,
-				})),
-				'All Types'
-			),
+			(commonFilterOptions?.types ?? []).map((option) => ({
+				value: option.value,
+				label: option.label,
+			})),
 		[commonFilterOptions]
 	)
 	const allianceOptions = useMemo<SelectOption[]>(
@@ -1390,8 +1408,11 @@ export default function StructuresPage() {
 					<FilterField label="Type">
 						<Select
 							options={typeOptions}
-							value={tableState.filters.typeId ?? ''}
-							onValueChange={(value) => setStructureTableFilters({ typeId: value || undefined })}
+							values={parseMultiFilter(tableState.filters.typeId)}
+							onValuesChange={(values) =>
+								setStructureTableFilters({ typeId: serializeMultiFilter(values) })
+							}
+							multiple
 							placeholder="All Types"
 							searchable
 						/>
@@ -1404,8 +1425,11 @@ export default function StructuresPage() {
 			<FilterField label="Region">
 				<Select
 					options={regionOptions}
-					value={tableState.filters.regionId ?? ''}
-					onValueChange={(value) => setStructureTableFilters({ regionId: value || undefined })}
+					values={parseMultiFilter(tableState.filters.regionId)}
+					onValuesChange={(values) =>
+						setStructureTableFilters({ regionId: serializeMultiFilter(values) })
+					}
+					multiple
 					placeholder="All Regions"
 					searchable
 				/>
@@ -1413,8 +1437,11 @@ export default function StructuresPage() {
 			<FilterField label="System">
 				<Select
 					options={systemOptions}
-					value={tableState.filters.systemId ?? ''}
-					onValueChange={(value) => setStructureTableFilters({ systemId: value || undefined })}
+					values={parseMultiFilter(tableState.filters.systemId)}
+					onValuesChange={(values) =>
+						setStructureTableFilters({ systemId: serializeMultiFilter(values) })
+					}
+					multiple
 					placeholder="All Systems"
 					searchable
 				/>
@@ -1422,8 +1449,11 @@ export default function StructuresPage() {
 			<FilterField label="Corporation">
 				<Select
 					options={corporationOptions}
-					value={tableState.filters.corporationId ?? ''}
-					onValueChange={(value) => setStructureTableFilters({ corporationId: value || undefined })}
+					values={parseMultiFilter(tableState.filters.corporationId)}
+					onValuesChange={(values) =>
+						setStructureTableFilters({ corporationId: serializeMultiFilter(values) })
+					}
+					multiple
 					placeholder="All Corporations"
 					searchable
 				/>
@@ -1472,8 +1502,11 @@ export default function StructuresPage() {
 			<FilterField label="Region">
 				<Select
 					options={regionOptions}
-					value={tableState.filters.regionId ?? ''}
-					onValueChange={(value) => setStructureTableFilters({ regionId: value || undefined })}
+					values={parseMultiFilter(tableState.filters.regionId)}
+					onValuesChange={(values) =>
+						setStructureTableFilters({ regionId: serializeMultiFilter(values) })
+					}
+					multiple
 					placeholder="All Regions"
 					searchable
 				/>
@@ -1481,8 +1514,11 @@ export default function StructuresPage() {
 			<FilterField label="System">
 				<Select
 					options={systemOptions}
-					value={tableState.filters.systemId ?? ''}
-					onValueChange={(value) => setStructureTableFilters({ systemId: value || undefined })}
+					values={parseMultiFilter(tableState.filters.systemId)}
+					onValuesChange={(values) =>
+						setStructureTableFilters({ systemId: serializeMultiFilter(values) })
+					}
+					multiple
 					placeholder="All Systems"
 					searchable
 				/>
@@ -1490,8 +1526,11 @@ export default function StructuresPage() {
 			<FilterField label="Corporation">
 				<Select
 					options={corporationOptions}
-					value={tableState.filters.corporationId ?? ''}
-					onValueChange={(value) => setStructureTableFilters({ corporationId: value || undefined })}
+					values={parseMultiFilter(tableState.filters.corporationId)}
+					onValuesChange={(values) =>
+						setStructureTableFilters({ corporationId: serializeMultiFilter(values) })
+					}
+					multiple
 					placeholder="All Corporations"
 					searchable
 				/>
@@ -1546,8 +1585,11 @@ export default function StructuresPage() {
 			<FilterField label="Region">
 				<Select
 					options={regionOptions}
-					value={tableState.filters.regionId ?? ''}
-					onValueChange={(value) => setStructureTableFilters({ regionId: value || undefined })}
+					values={parseMultiFilter(tableState.filters.regionId)}
+					onValuesChange={(values) =>
+						setStructureTableFilters({ regionId: serializeMultiFilter(values) })
+					}
+					multiple
 					placeholder="All Regions"
 					searchable
 				/>
@@ -1555,8 +1597,11 @@ export default function StructuresPage() {
 			<FilterField label="System">
 				<Select
 					options={systemOptions}
-					value={tableState.filters.systemId ?? ''}
-					onValueChange={(value) => setStructureTableFilters({ systemId: value || undefined })}
+					values={parseMultiFilter(tableState.filters.systemId)}
+					onValuesChange={(values) =>
+						setStructureTableFilters({ systemId: serializeMultiFilter(values) })
+					}
+					multiple
 					placeholder="All Systems"
 					searchable
 				/>
@@ -1564,8 +1609,11 @@ export default function StructuresPage() {
 			<FilterField label="Corporation">
 				<Select
 					options={corporationOptions}
-					value={tableState.filters.corporationId ?? ''}
-					onValueChange={(value) => setStructureTableFilters({ corporationId: value || undefined })}
+					values={parseMultiFilter(tableState.filters.corporationId)}
+					onValuesChange={(values) =>
+						setStructureTableFilters({ corporationId: serializeMultiFilter(values) })
+					}
+					multiple
 					placeholder="All Corporations"
 					searchable
 				/>
@@ -1601,7 +1649,7 @@ export default function StructuresPage() {
 	}
 
 	return (
-		<Container className="flex h-full min-h-0 flex-col space-y-6 overflow-hidden py-6 2xl:!max-w-none">
+		<Container className="flex min-h-0 flex-col space-y-6 py-6 lg:h-full lg:overflow-hidden 2xl:!max-w-none">
 			<PageHeader
 				title="Structures"
 				description="Track visible structures, review their current state, and fuel posture."
@@ -1771,7 +1819,7 @@ export default function StructuresPage() {
 				)}
 			</div>
 
-			<Card className="flex min-h-0 flex-1 flex-col">
+			<Card className="flex flex-col lg:min-h-0 lg:flex-1">
 				<CardHeader className="pb-3">
 					<div className="flex flex-wrap items-start justify-between gap-4">
 						<div>
@@ -1785,7 +1833,7 @@ export default function StructuresPage() {
 						</div>
 					</div>
 				</CardHeader>
-				<CardContent className="flex min-h-0 flex-1 flex-col space-y-4 overflow-hidden">
+				<CardContent className="flex flex-col space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
 					<Tabs
 						value={activeTab}
 						onValueChange={(value) => {
@@ -1816,7 +1864,7 @@ export default function StructuresPage() {
 								? specialFilterControls
 								: commonFilterControls}
 					</div>
-					<div className="flex min-h-0 flex-1 flex-col space-y-4 border-t border-border/60 pt-4">
+					<div className="flex flex-col space-y-4 border-t border-border/60 pt-4 lg:min-h-0 lg:flex-1">
 						<div className="border-b p-3">
 							<UserSearchPaginationControls
 								totalCount={pagination?.totalCount ?? 0}
@@ -1831,7 +1879,7 @@ export default function StructuresPage() {
 							/>
 						</div>
 						<TableRefreshFrame
-							className="min-h-0 flex-1"
+							className="min-h-0 lg:flex-1"
 							key={structuresContentKey}
 							isRefreshing={isSoftLoading}
 							refreshMessage="Refreshing structure list..."
@@ -1874,7 +1922,7 @@ export default function StructuresPage() {
 								<Table
 									containerRef={tableScrollContainerRef}
 									onContainerScroll={handleTableScroll}
-									containerClassName="h-full min-h-0"
+									containerClassName="w-full lg:h-full lg:min-h-0"
 									className={cn(
 										'min-w-[118rem]',
 										isSovereigntyTab && 'min-w-[136rem]',

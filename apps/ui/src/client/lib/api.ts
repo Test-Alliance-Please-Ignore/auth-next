@@ -3677,6 +3677,7 @@ export class ApiClient {
 		if (query.systemId) params.set('systemId', query.systemId)
 		if (query.planetId) params.set('planetId', query.planetId)
 		if (query.state) params.set('state', query.state)
+		if (query.typeId) params.set('typeId', query.typeId)
 		if (query.isRaidable) params.set('isRaidable', query.isRaidable)
 		const queryString = params.toString()
 		return this.get(`/structures/skyhooks${queryString ? `?${queryString}` : ''}`)

@@ -54,7 +54,7 @@ const structurePagingSchema = z.object({
 	sortDirection: z.enum(['asc', 'desc']).default('asc'),
 })
 
-const structureCommonListQuerySchema = structurePagingSchema.extend({
+	const structureCommonListQuerySchema = structurePagingSchema.extend({
 	sortBy: z.enum(STRUCTURE_COMMON_LIST_SORT_FIELDS).default('fuel'),
 	corporationId: z.string().trim().min(1).optional(),
 	assignedGroupId: z.string().trim().min(1).optional(),
