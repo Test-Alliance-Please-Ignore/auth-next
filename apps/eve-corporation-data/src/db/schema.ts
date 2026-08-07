@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import {
 	boolean,
 	foreignKey,
@@ -312,6 +313,17 @@ export const corporationWalletJournal = pgTable(
 			table.reason,
 			table.date
 		),
+		index('corporation_wallet_journal_corp_div_date_idx').on(
+			table.corporationId,
+			table.division,
+			table.date
+		),
+		index('corporation_wallet_journal_corp_div_num_id_idx').using(
+			'btree',
+			table.corporationId,
+			table.division,
+			sql`(${table.journalId}::numeric)`
+		),
 	]
 )
 
@@ -340,7 +352,20 @@ export const corporationWalletTransactions = pgTable(
 		unitPrice: text('unit_price').notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.division, table.transactionId)]
+	(table) => [
+		unique().on(table.corporationId, table.division, table.transactionId),
+		index('corporation_wallet_tx_corp_div_date_idx').on(
+			table.corporationId,
+			table.division,
+			table.date
+		),
+		index('corporation_wallet_tx_corp_div_num_id_idx').using(
+			'btree',
+			table.corporationId,
+			table.division,
+			sql`(${table.transactionId}::numeric)`
+		),
+	]
 )
 
 // ============================================================================
