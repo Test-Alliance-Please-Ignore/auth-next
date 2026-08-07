@@ -1,5 +1,7 @@
 import { and, eq } from '@repo/db-utils'
 
+import { taxAssessments } from '../db/schema'
+
 import type {
 	CreateTaxExportScheduleInput,
 	ListTaxAlertsFilters,

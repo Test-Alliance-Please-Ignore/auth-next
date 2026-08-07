@@ -7,7 +7,7 @@ import {
 	groupMembers,
 	groups,
 } from '../db/schema'
-import { findUserByMainCharacterName } from './character-lookup'
+import { bulkFindMainCharactersByUserIds, findUserByMainCharacterName } from './character-lookup'
 import { generateInviteCode } from './code-generator'
 import { mapCategory, mapGroup, mapGroupInvitation, mapGroupInviteCode } from './mappers'
 import { canManageGroup, canModerateGroup } from './permissions'
@@ -17,6 +17,7 @@ import type {
 	CreateInvitationRequest,
 	CreateInviteCodeRequest,
 	CreateInviteCodeResponse,
+	Group,
 	GroupByInviteCodeResponse,
 	GroupInvitation,
 	GroupInvitationWithDetails,

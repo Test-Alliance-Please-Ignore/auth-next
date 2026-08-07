@@ -265,7 +265,7 @@ export class FleetMonitorDO extends DurableObject {
 				this.state.storage.sql.exec(`
 					ALTER TABLE monitor_state ADD COLUMN last_checked TEXT
 				`)
-			} catch {
+			} catch (error) {
 				// Column might already exist, which is fine
 				const errorMessage = error instanceof Error ? error.message : String(error)
 				if (!errorMessage.includes('duplicate column')) {
@@ -329,7 +329,7 @@ export class FleetMonitorDO extends DurableObject {
 		if (currentVersion < 3) {
 			try {
 				this.state.storage.sql.exec(`ALTER TABLE monitor_state ADD COLUMN tracking_session_id TEXT`)
-			} catch {
+			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error)
 				if (!message.includes('duplicate column')) {
 					logger.warn('[FleetMonitor] Could not add tracking_session_id column', {

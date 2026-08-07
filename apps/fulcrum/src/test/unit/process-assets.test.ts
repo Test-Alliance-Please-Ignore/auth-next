@@ -28,7 +28,7 @@ function makeStepResult(): StorageUtils.StepResult {
 		source: 'r2',
 		r2Bucket: 'bucket',
 		r2Key: 'key',
-	} as StepResult
+	} as StorageUtils.StepResult
 }
 
 function makeAsset(

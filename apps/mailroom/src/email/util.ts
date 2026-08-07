@@ -1,5 +1,6 @@
-import type { EmailLogger } from './types'
 import { logger } from '@repo/hono-helpers'
+
+import type { EmailLogger } from './types'
 
 /** Extract a human-readable message from an unknown thrown value. */
 export function errorMessage(error: unknown): string {
@@ -7,7 +8,7 @@ export function errorMessage(error: unknown): string {
 	if (typeof error === 'string') return error
 	try {
 		return JSON.stringify(error)
-	} catch {
+	} catch (error) {
 		return String(error)
 	}
 }

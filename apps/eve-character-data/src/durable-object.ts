@@ -237,7 +237,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		try {
 			await this.refreshPublicCharacterData(characterId, forceRefresh)
 			logger.log('EveCharacterData.fetchCharacterData completed successfully')
-		} catch {
+		} catch (error) {
 			logger.error('EveCharacterData.fetchCharacterData failed:', error)
 			throw error
 		}
