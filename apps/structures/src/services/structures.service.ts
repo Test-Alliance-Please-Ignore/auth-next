@@ -705,7 +705,8 @@ export function computeStructureAccess(roles: string[], isAdmin: boolean): Struc
 		if (parsed.tab === 'all') {
 			addParsedStructurePermissionToTarget(all, parsed)
 		} else {
-			addParsedStructurePermissionToTarget(tabs[parsed.tab], parsed)
+			const structureTab = parsed.tab === 'main' ? 'structures' : parsed.tab
+			addParsedStructurePermissionToTarget(tabs[structureTab], parsed)
 		}
 	}
 

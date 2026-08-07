@@ -94,18 +94,18 @@ describe('structure permission utilities', () => {
 	})
 
 	it('builds and parses corp-scoped tab URNs', () => {
-		const urn = buildStructureTabPermissionUrn('structures', '1234567890', 'manager')
+		const urn = buildStructureTabPermissionUrn('main', '1234567890', 'manager')
 
-		expect(urn).toBe('urn:structures:structures:1234567890:manager')
+		expect(urn).toBe('urn:structures:main:1234567890:manager')
 		expect(parseStructurePermissionUrn(urn)).toEqual({
-			tab: 'structures',
+			tab: 'main',
 			scope: 'corp',
 			corporationId: '1234567890',
 			role: 'manager',
 		})
 	})
 
-	it.each(['structures', 'sovereignty', 'skyhooks', 'moon-drills', 'mining-citadels'] as const)(
+	it.each(['main', 'sovereignty', 'skyhooks', 'moon-drills', 'mining-citadels'] as const)(
 		'builds and parses every valid tab scope: %s',
 		(tab) => {
 			const viewerUrn = buildStructureTabPermissionUrn(tab, 'all', 'viewer')
@@ -128,7 +128,7 @@ describe('structure permission utilities', () => {
 		}
 	)
 
-	it.each(['structures', 'sovereignty', 'skyhooks', 'moon-drills', 'mining-citadels'] as const)(
+	it.each(['main', 'sovereignty', 'skyhooks', 'moon-drills', 'mining-citadels'] as const)(
 		'treats legacy all-scope permissions as access to every tab: %s',
 		(tab) => {
 			expect(hasStructureTabPermission([{ urn: 'urn:structures:all:viewer' }], tab)).toBe(true)
@@ -145,9 +145,12 @@ describe('structure permission utilities', () => {
 		expect(parseStructurePermissionUrn('urn:structures:')).toBeNull()
 	})
 
-	it.each(['citadels', 'navigation'] as const)('rejects removed structure tab URNs: %s', (tab) => {
-		expect(parseStructurePermissionUrn(`urn:structures:${tab}:all:viewer`)).toBeNull()
-	})
+	it.each(['citadels', 'navigation', 'structures'] as const)(
+		'rejects removed structure tab URNs: %s',
+		(tab) => {
+			expect(parseStructurePermissionUrn(`urn:structures:${tab}:all:viewer`)).toBeNull()
+		}
+	)
 
 	it('only treats syntactically valid structure URNs as structure access', () => {
 		expect(hasAnyStructurePermission([{ urn: 'urn:structures:all:viewer' }])).toBe(true)
