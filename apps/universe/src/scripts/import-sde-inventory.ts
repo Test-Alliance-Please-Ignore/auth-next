@@ -12,6 +12,12 @@ import {
 	invMarketGroups,
 	invTypes,
 	typeMaterials,
+	universeDogmaAttributes,
+	universeDogmaEffectModifiers,
+	universeDogmaEffects,
+	universeDogmaUnits,
+	universeTypeDogmaAttributes,
+	universeTypeDogmaEffects,
 } from '../db/schema'
 import {
 	getEnglishName,
@@ -92,6 +98,63 @@ const dogmaEffectSchema = z.object({
 	name: z.string().optional(),
 	description: z.union([z.string(), localizedTextSchema]).optional(),
 	displayName: z.union([z.string(), localizedTextSchema]).optional(),
+	effectCategoryID: z.number().nullable().optional(),
+	published: z.union([z.number(), z.boolean()]).optional(),
+	modifierInfo: z
+		.array(
+			z.object({
+				domain: z.string().optional(),
+				func: z.string().optional(),
+				groupID: z.number().nullable().optional(),
+				modifiedAttributeID: z.number().nullable().optional(),
+				modifyingAttributeID: z.number().nullable().optional(),
+				operation: z.number().nullable().optional(),
+				skillTypeID: z.number().nullable().optional(),
+			})
+		)
+		.optional(),
+})
+
+const dogmaUnitSchema = z.object({
+	_key: z.number(),
+	name: z.string(),
+	description: z.union([z.string(), localizedTextSchema]).optional(),
+	displayName: z.union([z.string(), localizedTextSchema]).optional(),
+})
+
+const dogmaAttributeSchema = z.object({
+	_key: z.number(),
+	attributeCategoryID: z.number().nullable().optional(),
+	dataType: z.number().nullable().optional(),
+	defaultValue: z.number().nullable().optional(),
+	description: z.union([z.string(), localizedTextSchema]).optional(),
+	displayName: z.union([z.string(), localizedTextSchema]).optional(),
+	displayWhenZero: z.boolean().nullable().optional(),
+	highIsGood: z.boolean().nullable().optional(),
+	name: z.string(),
+	published: z.boolean().nullable().optional(),
+	stackable: z.boolean().nullable().optional(),
+	unitID: z.number().nullable().optional(),
+})
+
+const typeDogmaSchema = z.object({
+	_key: z.number(),
+	dogmaAttributes: z
+		.array(
+			z.object({
+				attributeID: z.number(),
+				value: z.number(),
+			})
+		)
+		.optional(),
+	dogmaEffects: z
+		.array(
+			z.object({
+				effectID: z.number(),
+				isDefault: z.boolean(),
+			})
+		)
+		.optional(),
 })
 
 type InvCategory = z.output<typeof invCategorySchema>
@@ -99,6 +162,9 @@ type InvGroup = z.output<typeof invGroupSchema>
 type InvMarketGroup = z.output<typeof invMarketGroupSchema>
 type InvType = z.output<typeof invTypeSchema>
 type DogmaEffect = z.output<typeof dogmaEffectSchema>
+type DogmaUnit = z.output<typeof dogmaUnitSchema>
+type DogmaAttribute = z.output<typeof dogmaAttributeSchema>
+type TypeDogma = z.output<typeof typeDogmaSchema>
 
 type SeedFlag = {
 	flagId: string
@@ -375,6 +441,219 @@ async function importTypes(db: ReturnType<typeof createDb>, sdeDataDir: string) 
 	console.log(`  ✓ ${rows.length} types`)
 }
 
+async function importDogmaUnits(db: ReturnType<typeof createDb>, sdeDataDir: string) {
+	console.log('Importing dogma units...')
+	const raw = await readSdeJsonlTable<z.input<typeof dogmaUnitSchema>>(
+		sdeDataDir,
+		'dogmaUnits.jsonl'
+	)
+	const data = z.array(dogmaUnitSchema).parse(raw)
+	const rows = data.map((unit: DogmaUnit) => {
+		const unitId = unit._key.toString()
+		return {
+			unitId,
+			unitName: unit.name,
+			displayName: getEnglishName(unit.displayName, '') || null,
+			description: getOptionalEnglishText(unit.description),
+		}
+	})
+
+	const reportProgress = createProgressReporter('dogma units', rows.length)
+	const BATCH_SIZE = 500
+	let processed = 0
+	for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+		const batch = rows.slice(i, i + BATCH_SIZE)
+		await db
+			.insert(universeDogmaUnits)
+			.values(batch)
+			.onConflictDoUpdate({
+				target: universeDogmaUnits.unitId,
+				set: {
+					unitName: sql`excluded.unit_name`,
+					displayName: sql`excluded.display_name`,
+					description: sql`excluded.description`,
+				},
+			})
+		processed += batch.length
+		reportProgress(processed)
+	}
+
+	console.log(`  ✓ ${rows.length} dogma units`)
+}
+
+async function importDogmaAttributes(db: ReturnType<typeof createDb>, sdeDataDir: string) {
+	console.log('Importing dogma attributes...')
+	const raw = await readSdeJsonlTable<z.input<typeof dogmaAttributeSchema>>(
+		sdeDataDir,
+		'dogmaAttributes.jsonl'
+	)
+	const data = z.array(dogmaAttributeSchema).parse(raw)
+	const rows = data.map((attribute: DogmaAttribute) => {
+		const attributeId = attribute._key.toString()
+		return {
+			attributeId,
+			attributeCategoryId: attribute.attributeCategoryID?.toString() ?? null,
+			dataType: attribute.dataType ?? null,
+			defaultValue: attribute.defaultValue?.toString() ?? null,
+			attributeName: attribute.name,
+			displayName: getEnglishName(attribute.displayName, '') || null,
+			description: getOptionalEnglishText(attribute.description),
+			displayWhenZero: attribute.displayWhenZero ?? null,
+			highIsGood: attribute.highIsGood ?? null,
+			published: attribute.published ?? null,
+			stackable: attribute.stackable ?? null,
+			unitId: attribute.unitID?.toString() ?? null,
+		}
+	})
+
+	const reportProgress = createProgressReporter('dogma attributes', rows.length)
+	const BATCH_SIZE = 500
+	let processed = 0
+	for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+		const batch = rows.slice(i, i + BATCH_SIZE)
+		await db
+			.insert(universeDogmaAttributes)
+			.values(batch)
+			.onConflictDoUpdate({
+				target: universeDogmaAttributes.attributeId,
+				set: {
+					attributeCategoryId: sql`excluded.attribute_category_id`,
+					dataType: sql`excluded.data_type`,
+					defaultValue: sql`excluded.default_value`,
+					attributeName: sql`excluded.attribute_name`,
+					displayName: sql`excluded.display_name`,
+					description: sql`excluded.description`,
+					displayWhenZero: sql`excluded.display_when_zero`,
+					highIsGood: sql`excluded.high_is_good`,
+					published: sql`excluded.published`,
+					stackable: sql`excluded.stackable`,
+					unitId: sql`excluded.unit_id`,
+				},
+			})
+		processed += batch.length
+		reportProgress(processed)
+	}
+
+	console.log(`  ✓ ${rows.length} dogma attributes`)
+}
+
+async function importDogmaEffects(db: ReturnType<typeof createDb>, sdeDataDir: string) {
+	console.log('Importing dogma effects and modifiers...')
+	const raw = await readSdeJsonlTable<z.input<typeof dogmaEffectSchema>>(
+		sdeDataDir,
+		'dogmaEffects.jsonl'
+	)
+	const data = z.array(dogmaEffectSchema).parse(raw)
+	const effectRows = data.map((effect: DogmaEffect) => ({
+		effectId: effect._key.toString(),
+		effectName: effect.name ?? `Unknown Effect (${effect._key})`,
+		description: getOptionalEnglishText(effect.description),
+		displayName: getEnglishName(effect.displayName, '') || null,
+		effectCategoryId: effect.effectCategoryID ?? null,
+		published: effect.published === undefined ? null : toBoolean(effect.published),
+	}))
+	const modifierRows = data.flatMap((effect: DogmaEffect) =>
+		(effect.modifierInfo ?? []).map((modifier, modifierIndex) => ({
+			effectId: effect._key.toString(),
+			modifierIndex,
+			domain: modifier.domain ?? null,
+			func: modifier.func ?? null,
+			groupId: modifier.groupID?.toString() ?? null,
+			modifiedAttributeId: modifier.modifiedAttributeID?.toString() ?? null,
+			modifyingAttributeId: modifier.modifyingAttributeID?.toString() ?? null,
+			operation: modifier.operation ?? null,
+			skillTypeId: modifier.skillTypeID?.toString() ?? null,
+		}))
+	)
+
+	const BATCH_SIZE = 500
+	for (let i = 0; i < effectRows.length; i += BATCH_SIZE) {
+		const batch = effectRows.slice(i, i + BATCH_SIZE)
+		await db
+			.insert(universeDogmaEffects)
+			.values(batch)
+			.onConflictDoUpdate({
+				target: universeDogmaEffects.effectId,
+				set: {
+					effectName: sql`excluded.effect_name`,
+					description: sql`excluded.description`,
+					displayName: sql`excluded.display_name`,
+					effectCategoryId: sql`excluded.effect_category_id`,
+					published: sql`excluded.published`,
+				},
+			})
+	}
+
+	for (let i = 0; i < modifierRows.length; i += BATCH_SIZE) {
+		const batch = modifierRows.slice(i, i + BATCH_SIZE)
+		await db
+			.insert(universeDogmaEffectModifiers)
+			.values(batch)
+			.onConflictDoUpdate({
+				target: [universeDogmaEffectModifiers.effectId, universeDogmaEffectModifiers.modifierIndex],
+				set: {
+					domain: sql`excluded.domain`,
+					func: sql`excluded.func`,
+					groupId: sql`excluded.group_id`,
+					modifiedAttributeId: sql`excluded.modified_attribute_id`,
+					modifyingAttributeId: sql`excluded.modifying_attribute_id`,
+					operation: sql`excluded.operation`,
+					skillTypeId: sql`excluded.skill_type_id`,
+				},
+			})
+	}
+
+	console.log(`  ✓ ${effectRows.length} dogma effects and ${modifierRows.length} modifiers`)
+}
+
+async function importTypeDogma(db: ReturnType<typeof createDb>, sdeDataDir: string) {
+	console.log('Importing type dogma attributes and effects...')
+	const raw = await readSdeJsonlTable<z.input<typeof typeDogmaSchema>>(
+		sdeDataDir,
+		'typeDogma.jsonl'
+	)
+	const data = z.array(typeDogmaSchema).parse(raw)
+	const attributeRows = data.flatMap((type: TypeDogma) =>
+		(type.dogmaAttributes ?? []).map((attribute) => ({
+			typeId: type._key.toString(),
+			attributeId: attribute.attributeID.toString(),
+			value: attribute.value.toString(),
+		}))
+	)
+	const effectRows = data.flatMap((type: TypeDogma) =>
+		(type.dogmaEffects ?? []).map((effect) => ({
+			typeId: type._key.toString(),
+			effectId: effect.effectID.toString(),
+			isDefault: effect.isDefault,
+		}))
+	)
+
+	const BATCH_SIZE = 500
+	for (let i = 0; i < attributeRows.length; i += BATCH_SIZE) {
+		const batch = attributeRows.slice(i, i + BATCH_SIZE)
+		await db
+			.insert(universeTypeDogmaAttributes)
+			.values(batch)
+			.onConflictDoUpdate({
+				target: [universeTypeDogmaAttributes.typeId, universeTypeDogmaAttributes.attributeId],
+				set: { value: sql`excluded.value` },
+			})
+	}
+
+	for (let i = 0; i < effectRows.length; i += BATCH_SIZE) {
+		const batch = effectRows.slice(i, i + BATCH_SIZE)
+		await db
+			.insert(universeTypeDogmaEffects)
+			.values(batch)
+			.onConflictDoUpdate({
+				target: [universeTypeDogmaEffects.typeId, universeTypeDogmaEffects.effectId],
+				set: { isDefault: sql`excluded.is_default` },
+			})
+	}
+
+	console.log(`  ✓ ${attributeRows.length} type dogma attributes and ${effectRows.length} effects`)
+}
+
 function resolveSeedFlag(
 	definition: SeedFlagDefinition,
 	effectsById: Map<number, DogmaEffect>
@@ -512,6 +791,10 @@ async function main() {
 	await importMarketGroups(db, sdeDataDir)
 	await importTypes(db, sdeDataDir)
 	await importTypeMaterials(db, sdeDataDir)
+	await importDogmaUnits(db, sdeDataDir)
+	await importDogmaAttributes(db, sdeDataDir)
+	await importDogmaEffects(db, sdeDataDir)
+	await importTypeDogma(db, sdeDataDir)
 	await importFlags(db, sdeDataDir)
 	await storeSdeVersion(db, sdeMetadata)
 

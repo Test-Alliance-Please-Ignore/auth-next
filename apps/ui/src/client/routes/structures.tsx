@@ -3,8 +3,9 @@ import {
 	ArrowUp,
 	ArrowUpDown,
 	CircleHelp,
-	Filter,
 	Flame,
+	Maximize2,
+	Minimize2,
 	Package,
 	RefreshCcw,
 	Shield,
@@ -32,13 +33,20 @@ import {
 } from '@repo/structures'
 
 import { CorporationLogo } from '@/components/corporation-logo'
+import { useLayoutScrollMode } from '@/components/layout'
 import { SkyhookStateBadge } from '@/components/skyhook-state-badge'
 import { StructureStateBadge } from '@/components/structure-state-badge'
 import { StructureSyncStatusBadge } from '@/components/structure-sync-status-badge'
 import { TableRefreshFrame } from '@/components/table-refresh-frame'
+import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger,
+} from '@/components/ui/accordion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { DurationDisplay } from '@/components/ui/duration-display'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
@@ -524,6 +532,9 @@ export default function StructuresPage() {
 	const canManageStructures =
 		user?.is_admin === true || hasAllStructureManagerPermission(permissions)
 	const tableState = useStructureTableUiState((state) => state)
+	const { isPageScrollEnabled, setIsPageScrollEnabled } = useLayoutScrollMode()
+	const isTableGridClamped = !isPageScrollEnabled
+	const [areFiltersOpen, setAreFiltersOpen] = useState(true)
 	const visibleTabs = useMemo(
 		() =>
 			user?.is_admin === true
@@ -896,7 +907,7 @@ export default function StructuresPage() {
 							tableState.filters.typeId,
 							tableState.filters.planetId,
 						]
-	).filter(Boolean).length
+	).reduce((count, value) => count + parseMultiFilter(value).length, 0)
 
 	const renderStructureRows = (items: StructureListItem[]) =>
 		items.map((structure) => {
@@ -1342,6 +1353,25 @@ export default function StructuresPage() {
 			<span className="ml-2">Refresh</span>
 		</Button>
 	)
+	const tableLayoutButton = (
+		<Button
+			variant="ghost"
+			size="sm"
+			className="h-8"
+			type="button"
+			onClick={() => setIsPageScrollEnabled(!isPageScrollEnabled)}
+			aria-pressed={isTableGridClamped}
+			aria-label={
+				isTableGridClamped ? 'Use page scrolling for the table' : 'Clamp the table to the page'
+			}
+			title={
+				isTableGridClamped ? 'Use page scrolling for the table' : 'Clamp the table to the page'
+			}
+		>
+			{isTableGridClamped ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+			<span className="ml-2">{isTableGridClamped ? 'Page scroll' : 'Clamp grid'}</span>
+		</Button>
+	)
 
 	const handleSort = (field: StructureListSortBy) => {
 		setStructureTableSort(field)
@@ -1654,7 +1684,12 @@ export default function StructuresPage() {
 	}
 
 	return (
-		<Container className="flex min-h-0 flex-col space-y-6 py-6 lg:h-full lg:overflow-hidden 2xl:!max-w-none">
+		<Container
+			className={cn(
+				'flex min-h-0 flex-col space-y-6 py-6 2xl:!max-w-none',
+				isTableGridClamped ? 'lg:h-full lg:overflow-hidden' : 'lg:overflow-visible'
+			)}
+		>
 			<PageHeader
 				title="Structures"
 				description="Track visible structures, review their current state, and fuel posture."
@@ -1807,7 +1842,7 @@ export default function StructuresPage() {
 								<p>Estimated aggregate burn rate from the filtered structure set.</p>
 								<p>
 									{summary
-										? `Estimated from ${summary.fuelBurnRateSampleCount} structures with usable fuel history.`
+										? `Estimated from ${summary.fuelBurnRateKnownStructureCount} structures with known service data.`
 										: '-'}
 								</p>
 							</>
@@ -1824,52 +1859,95 @@ export default function StructuresPage() {
 				)}
 			</div>
 
-			<Card className="flex flex-col lg:min-h-0 lg:flex-1">
-				<CardHeader className="pb-3">
-					<div className="flex flex-wrap items-start justify-between gap-4">
-						<div>
-							<CardTitle className="flex items-center gap-2 text-base">
-								<Filter className="h-5 w-5" />
-								Filters
-							</CardTitle>
-							<CardDescription>
-								Choose a structure family to switch the list preset and filters.
-							</CardDescription>
-						</div>
-					</div>
-				</CardHeader>
-				<CardContent className="flex flex-col space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
-					<Tabs
-						value={activeTab}
-						onValueChange={(value) => {
-							if (isStructureTab(value)) {
-								setStructureTableTab(value)
-							}
-						}}
-					>
-						<TabsList className="flex w-full flex-wrap gap-1 border-b-0">
-							{visibleTabs.map((tab) => (
-								<TabsTrigger key={tab.tab} value={tab.tab}>
-									{tab.label}
-								</TabsTrigger>
-							))}
-						</TabsList>
-					</Tabs>
-					{activeFilterCount > 0 && (
-						<div className="flex justify-end">
-							<Button variant="ghost" size="sm" onClick={() => clearStructureTableFilters()}>
-								Clear Filters
-							</Button>
-						</div>
+			<Card className={cn('flex flex-col', isTableGridClamped && 'lg:min-h-0 lg:flex-1')}>
+				<CardContent
+					className={cn(
+						'flex flex-col space-y-4',
+						isTableGridClamped && 'lg:min-h-0 lg:flex-1 lg:overflow-hidden'
 					)}
-					<div className="space-y-4">
-						{isSovereigntyTab
-							? sovereigntyFilterControls
-							: isSkyhooksTab || isMoonDrillsTab
-								? specialFilterControls
-								: commonFilterControls}
+				>
+					<div className="flex items-start gap-4 pt-4">
+						<Tabs
+							value={activeTab}
+							onValueChange={(value) => {
+								if (isStructureTab(value)) {
+									setStructureTableTab(value)
+								}
+							}}
+							className="min-w-0 flex-1"
+						>
+							<TabsList className="flex w-full flex-wrap gap-1 border-b-0">
+								{visibleTabs.map((tab) => (
+									<TabsTrigger key={tab.tab} value={tab.tab}>
+										{tab.label}
+									</TabsTrigger>
+								))}
+							</TabsList>
+						</Tabs>
+						<div className="hidden shrink-0 lg:block">{tableLayoutButton}</div>
 					</div>
-					<div className="flex flex-col space-y-4 border-t border-border/60 pt-4 lg:min-h-0 lg:flex-1">
+					<Accordion
+						type="single"
+						collapsible
+						defaultValue="structure-filters"
+						onValueChange={(value) => setAreFiltersOpen(value === 'structure-filters')}
+						className="w-full"
+					>
+						<AccordionItem
+							value="structure-filters"
+							className="w-full rounded-md border border-border/60 px-3"
+						>
+							<AccordionTrigger className="min-w-0 py-3 text-sm hover:no-underline">
+								<span className="flex min-w-0 items-center gap-2">
+									Filters
+									{activeFilterCount > 0 && (
+										<Badge
+											variant="secondary"
+											className="h-5 min-w-5 justify-center px-1.5 text-xs"
+										>
+											{activeFilterCount}
+										</Badge>
+									)}
+								</span>
+								{activeFilterCount > 0 && (
+									<Button
+										variant="ghost"
+										size="sm"
+										className="ml-auto h-7 shrink-0 px-2 text-xs"
+										onPointerDown={(event) => {
+											event.preventDefault()
+											event.stopPropagation()
+										}}
+										onClick={(event) => {
+											event.preventDefault()
+											event.stopPropagation()
+											clearStructureTableFilters()
+										}}
+									>
+										Clear Filters
+									</Button>
+								)}
+								<span className="ml-2 hidden text-xs font-normal text-muted-foreground sm:inline">
+									Click to {areFiltersOpen ? 'hide' : 'show'}
+								</span>
+							</AccordionTrigger>
+							<AccordionContent>
+								<div className="space-y-4">
+									{isSovereigntyTab
+										? sovereigntyFilterControls
+										: isSkyhooksTab || isMoonDrillsTab
+											? specialFilterControls
+											: commonFilterControls}
+								</div>
+							</AccordionContent>
+						</AccordionItem>
+					</Accordion>
+					<div
+						className={cn(
+							'flex flex-col space-y-4 border-t border-border/60 pt-4',
+							isTableGridClamped && 'lg:min-h-0 lg:flex-1'
+						)}
+					>
 						<div className="border-b p-3">
 							<UserSearchPaginationControls
 								totalCount={pagination?.totalCount ?? 0}
@@ -1884,7 +1962,7 @@ export default function StructuresPage() {
 							/>
 						</div>
 						<TableRefreshFrame
-							className="min-h-0 lg:flex-1"
+							className={cn('min-h-0', isTableGridClamped && 'lg:flex-1')}
 							key={structuresContentKey}
 							isRefreshing={isSoftLoading}
 							refreshMessage="Refreshing structure list..."
@@ -1927,7 +2005,7 @@ export default function StructuresPage() {
 								<Table
 									containerRef={tableScrollContainerRef}
 									onContainerScroll={handleTableScroll}
-									containerClassName="w-full lg:h-full lg:min-h-0"
+									containerClassName={cn('w-full', isTableGridClamped && 'lg:h-full lg:min-h-0')}
 									className={cn(
 										'min-w-[118rem]',
 										isSovereigntyTab && 'min-w-[136rem]',

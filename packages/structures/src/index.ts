@@ -352,7 +352,7 @@ export interface StructureListSummary {
 	lowPower: number
 	reinforced: number
 	estimatedFuelBurnRatePerHour: string | null
-	fuelBurnRateSampleCount: number
+	fuelBurnRateKnownStructureCount: number
 	skyhookHighestFillPercent?: number | null
 	skyhookNextRaidableAt?: string | null
 	skyhookNextRaidablePlanetName?: string | null
@@ -762,15 +762,6 @@ export interface StructureDetailResult extends Omit<StructureListItem, 'canViewD
 	reinforceHour: number | null
 	lastRefilledAt: string | null
 	fuelBurnRate: string | null
-	fuelUsage: {
-		points: Array<{
-			observedAt: string
-			fuelBlockUnits: number | null
-			fuelBurnRatePerHour: number | null
-		}>
-		lastRefilledAt: string | null
-		sampleCount: number
-	} | null
 	sovereignty?: StructureSovereigntySummary | null
 	skyhook?: StructureSkyhookSummary | null
 	moonDrill?: StructureMoonDrillSummary | null

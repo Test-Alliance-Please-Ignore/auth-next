@@ -17,7 +17,6 @@ import {
 	corporationStructureInventory,
 	corporationStructureInventorySnapshots,
 	corporationStructures,
-	structureFuelLog,
 } from '@repo/eve-corporation-data-db-schema'
 import { parseFittingSlotFlag } from '@repo/eve-fitting/flags'
 import { parseStructurePermissionUrn, STRUCTURE_PERMISSION_SCOPE_ALL } from '@repo/groups'
@@ -67,7 +66,6 @@ import {
 	structureModuleConfig,
 	structureStateEvents,
 } from '../db/schema'
-import { buildStructureFuelUsageHistory } from './structure-fuel-history'
 
 import type { DbClient } from '@repo/db-utils'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -101,10 +99,6 @@ import type {
 } from '@repo/structures'
 import type { Env, SessionUser } from '../context'
 import type { DbSchema } from '../db'
-import type {
-	StructureFuelHistorySample,
-	StructureFuelUsageHistory,
-} from './structure-fuel-history'
 
 type StructureSovereigntyFilterableItem = RepoStructureSovereigntyListItem
 
@@ -189,7 +183,7 @@ export interface StructureListSummary {
 	lowPower: number
 	reinforced: number
 	estimatedFuelBurnRatePerHour: string | null
-	fuelBurnRateSampleCount: number
+	fuelBurnRateKnownStructureCount: number
 	skyhookHighestFillPercent?: number | null
 	skyhookNextRaidableAt?: string | null
 	skyhookNextRaidablePlanetName?: string | null
@@ -408,15 +402,6 @@ export interface StructureDetailResult extends Omit<StructureListItem, 'canViewD
 	reinforceHour: number | null
 	lastRefilledAt: string | null
 	fuelBurnRate: string | null
-	fuelUsage: {
-		points: Array<{
-			observedAt: string
-			fuelBlockUnits: number | null
-			fuelBurnRatePerHour: number | null
-		}>
-		lastRefilledAt: string | null
-		sampleCount: number
-	} | null
 	sovereignty?: StructureSovereigntySummary | null
 	skyhook?: StructureSkyhookSummary | null
 	moonDrill?: StructureMoonDrillSummary | null
@@ -1607,14 +1592,6 @@ interface StructureContext {
 	tabData: StructureTabData | null
 	fittingItems: StructureFittingItemSummary[] | null
 	lastRefilledAt: Date | null
-	fuelUsage: StructureFuelUsageHistory | null
-}
-
-const EMPTY_STRUCTURE_FUEL_USAGE_HISTORY: StructureFuelUsageHistory = {
-	points: [],
-	fuelBurnRatePerHour: null,
-	lastRefilledAt: null,
-	sampleCount: 0,
 }
 
 export function getStructureTab(
@@ -1639,19 +1616,6 @@ function buildStructureDetailResult(context: StructureContext): StructureDetailR
 		nextReinforceHour: context.structure.nextReinforceHour,
 		reinforceHour: context.structure.reinforceHour,
 		lastRefilledAt: toIso(context.lastRefilledAt),
-		fuelUsage: context.fuelUsage
-			? {
-					points: context.fuelUsage.points.map((point) => ({
-						observedAt: point.observedAt.toISOString(),
-						fuelBlockUnits: point.fuelBlockUnits,
-						fuelBurnRatePerHour: point.fuelBurnRatePerHour,
-					})),
-					lastRefilledAt: context.fuelUsage.lastRefilledAt
-						? context.fuelUsage.lastRefilledAt.toISOString()
-						: null,
-					sampleCount: context.fuelUsage.sampleCount,
-				}
-			: null,
 		...(context.tabData ?? {}),
 		moonDrill: context.tabData?.moonDrill ?? null,
 		miningExtraction: context.tabData?.miningExtraction ?? null,
@@ -1760,7 +1724,6 @@ async function getStructureContext(
 			},
 			fittingItems,
 			lastRefilledAt: null,
-			fuelUsage: null,
 		}
 	}
 
@@ -1812,7 +1775,6 @@ async function getStructureContext(
 		},
 		fittingItems,
 		lastRefilledAt: structure.lastRefilledAt ?? null,
-		fuelUsage: null,
 	}
 }
 
@@ -1864,7 +1826,7 @@ function emptySovereigntySummary(): RepoStructureSovereigntyListSummary {
 		lowPower: 0,
 		reinforced: 0,
 		estimatedFuelBurnRatePerHour: null,
-		fuelBurnRateSampleCount: 0,
+		fuelBurnRateKnownStructureCount: 0,
 		vulnerable: 0,
 		invulnerable: 0,
 		unknown: 0,
@@ -1882,35 +1844,8 @@ function emptyStructureListSummary(): StructureListSummary {
 		lowPower: 0,
 		reinforced: 0,
 		estimatedFuelBurnRatePerHour: null,
-		fuelBurnRateSampleCount: 0,
+		fuelBurnRateKnownStructureCount: 0,
 	}
-}
-
-async function loadFuelUsageForStructure(
-	db: DbClient<DbSchema>,
-	corporationId: string,
-	structureId: string
-): Promise<StructureFuelUsageHistory | null> {
-	const rows = await db.query.structureFuelLog.findMany({
-		where: and(
-			eq(structureFuelLog.corporationId, corporationId),
-			eq(structureFuelLog.structureId, structureId)
-		),
-		orderBy: desc(structureFuelLog.observedAt),
-	})
-
-	if (rows.length === 0) {
-		return null
-	}
-
-	const samples: StructureFuelHistorySample[] = rows.map((row) => ({
-		structureId: row.structureId,
-		fuelBlockUnits: row.fuelBlockUnits,
-		observedAt: row.observedAt,
-		updatedAt: row.updatedAt,
-	}))
-
-	return buildStructureFuelUsageHistory(samples)
 }
 
 function emptyStructureFilterOptions(): StructureListFilterOptions {
@@ -2696,7 +2631,7 @@ async function buildSkyhookStructureSummaryFromSql(
 		lowPower: 0,
 		reinforced: 0,
 		estimatedFuelBurnRatePerHour: null,
-		fuelBurnRateSampleCount: 0,
+		fuelBurnRateKnownStructureCount: 0,
 		skyhookHighestFillPercent: highestFillResult[0]?.skyhookHighestFillPercent ?? null,
 		skyhookNextRaidableAt: nextRaidableAt,
 		skyhookNextRaidablePlanetName: nextRaidableRow?.planetName ?? null,
@@ -3196,7 +3131,7 @@ async function buildSovereigntyStructureSummaryFromSql(
 		lowPower: 0,
 		reinforced: 0,
 		estimatedFuelBurnRatePerHour: null,
-		fuelBurnRateSampleCount: 0,
+		fuelBurnRateKnownStructureCount: 0,
 		vulnerable: vulnerableResult[0]?.count ?? 0,
 		invulnerable: invulnerableResult[0]?.count ?? 0,
 		unknown: unknownResult[0]?.count ?? 0,
@@ -3349,7 +3284,6 @@ async function loadSovereigntyPageItems(
 			tabData: null,
 			fittingItems: null,
 			lastRefilledAt: null,
-			fuelUsage: null,
 		}
 		return buildSovereigntyListItem({
 			context,
@@ -3814,7 +3748,7 @@ async function buildOperationalStructureSummary(
 					estimatedFuelBurnRatePerHour: sql<
 						string | null
 					>`sum(${operationalStructures.fuelBurnRate})::text`,
-					fuelBurnRateSampleCount: sql<number>`count(${operationalStructures.fuelBurnRate})::int`,
+					fuelBurnRateKnownStructureCount: sql<number>`count(${operationalStructures.fuelBurnRate})::int`,
 				})
 				.from(operationalStructures),
 		])
@@ -3825,7 +3759,7 @@ async function buildOperationalStructureSummary(
 		lowPower: lowPowerResult[0]?.count ?? 0,
 		reinforced: reinforcedResult[0]?.count ?? 0,
 		estimatedFuelBurnRatePerHour: fuelBurnRateResult[0]?.estimatedFuelBurnRatePerHour ?? null,
-		fuelBurnRateSampleCount: fuelBurnRateResult[0]?.fuelBurnRateSampleCount ?? 0,
+		fuelBurnRateKnownStructureCount: fuelBurnRateResult[0]?.fuelBurnRateKnownStructureCount ?? 0,
 	}
 }
 
@@ -4938,12 +4872,6 @@ export async function getStructureDetail(
 	if (!context) {
 		return null
 	}
-	context.fuelUsage =
-		(await loadFuelUsageForStructure(
-			db,
-			context.structure.corporationId,
-			context.structure.structureId
-		)) ?? EMPTY_STRUCTURE_FUEL_USAGE_HISTORY
 	return buildStructureDetailResult(context)
 }
 

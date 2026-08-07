@@ -1,11 +1,6 @@
-import type {
-	StructureListSummary,
-	StructureSkyhookListItem,
-} from '@repo/structures'
-import {
-	SKYHOOK_SECURED_BAY_CAPACITY_M3,
-	SKYHOOK_SURPLUS_BAY_CAPACITY_M3,
-} from '@repo/structures'
+import { SKYHOOK_SECURED_BAY_CAPACITY_M3, SKYHOOK_SURPLUS_BAY_CAPACITY_M3 } from '@repo/structures'
+
+import type { StructureListSummary, StructureSkyhookListItem } from '@repo/structures'
 
 type SkyhookRaidableWindowSelection = {
 	structureId: string
@@ -27,10 +22,10 @@ export function summarizeSkyhooks(
 	items: StructureSkyhookListItem[]
 ): Pick<
 	StructureListSummary,
-		| 'skyhookHighestFillPercent'
-		| 'skyhookNextRaidableAt'
-		| 'skyhookNextRaidablePlanetName'
-		| 'skyhookCurrentRaidableCount'
+	| 'skyhookHighestFillPercent'
+	| 'skyhookNextRaidableAt'
+	| 'skyhookNextRaidablePlanetName'
+	| 'skyhookCurrentRaidableCount'
 > {
 	const nowMs = Date.now()
 	let skyhookHighestFillPercent: number | null = null
@@ -40,8 +35,8 @@ export function summarizeSkyhooks(
 
 	for (const item of items) {
 		const itemHighestFillPercent =
-			((item.securedFillPercent * SKYHOOK_SECURED_BAY_CAPACITY_M3) +
-				(item.unsecuredFillPercent * SKYHOOK_SURPLUS_BAY_CAPACITY_M3)) /
+			(item.securedFillPercent * SKYHOOK_SECURED_BAY_CAPACITY_M3 +
+				item.unsecuredFillPercent * SKYHOOK_SURPLUS_BAY_CAPACITY_M3) /
 			totalCapacity
 		if (Number.isFinite(itemHighestFillPercent)) {
 			skyhookHighestFillPercent =
@@ -55,8 +50,7 @@ export function summarizeSkyhooks(
 		const selectionStartMs = startMs
 		const isExpiredWindow = endMs !== null && nowMs > endMs
 		const isActiveWindow =
-			startMs !== null &&
-			(endMs === null ? nowMs > startMs : nowMs > startMs && nowMs < endMs)
+			startMs !== null && (endMs === null ? nowMs > startMs : nowMs > startMs && nowMs < endMs)
 		const isCurrentlyRaidable = !isExpiredWindow && (item.isRaidable || isActiveWindow)
 
 		if (!isExpiredWindow && selectionStartMs !== null) {
@@ -84,7 +78,9 @@ export function summarizeSkyhooks(
 	return {
 		skyhookHighestFillPercent,
 		skyhookNextRaidableAt:
-			nextRaidableWindow !== null ? new Date(nextRaidableWindow.countdownTargetMs).toISOString() : null,
+			nextRaidableWindow !== null
+				? new Date(nextRaidableWindow.countdownTargetMs).toISOString()
+				: null,
 		skyhookNextRaidablePlanetName: nextRaidableWindow?.planetName ?? null,
 		skyhookCurrentRaidableCount: currentRaidableCount,
 	}
@@ -100,9 +96,10 @@ export function buildSkyhookStructureSummary(
 		lowPower: 0,
 		reinforced: 0,
 		estimatedFuelBurnRatePerHour: null,
-		fuelBurnRateSampleCount: 0,
+		fuelBurnRateKnownStructureCount: 0,
 		skyhookTotalWorkforce:
-			options.skyhookTotalWorkforce ?? items.reduce((total, item) => total + (item.effectiveWorkforce ?? 0), 0),
+			options.skyhookTotalWorkforce ??
+			items.reduce((total, item) => total + (item.effectiveWorkforce ?? 0), 0),
 		...summarizeSkyhooks(items),
 	}
 }

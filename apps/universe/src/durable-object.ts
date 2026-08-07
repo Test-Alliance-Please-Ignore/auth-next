@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 import { alias } from 'drizzle-orm/pg-core'
 
-import { and, eq, ilike, inArray, ne, sql } from '@repo/db-utils'
+import { and, eq, gt, ilike, inArray, ne, sql } from '@repo/db-utils'
 import { getStub, LRUCache } from '@repo/do-utils'
 import { buildPublicEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
 import { logger } from '@repo/hono-helpers'
@@ -12,6 +12,7 @@ import {
 	MAGMATIC_GAS_TYPE_ID,
 	MOON_BASE_MINERAL_TYPE_IDS,
 	MOON_GOO_TYPE_IDS,
+	normalizeUniverseServiceName,
 	selectNearestMoonByPosition,
 	UniverseMoonResourceSchema,
 	UniverseMoonSchema,
@@ -29,11 +30,14 @@ import {
 	moons,
 	typeMaterials,
 	universeConstellations,
+	universeDogmaEffectModifiers,
 	universeNpcStations,
 	universePlanets,
 	universeRegions,
 	universeSolarSystems,
 	universeStargates,
+	universeTypeDogmaAttributes,
+	universeTypeDogmaEffects,
 } from './db/schema'
 import { parseInventory } from './utils/inventory-parser'
 import { resolveMoonRegionIds } from './utils/moon-region-lookup'
@@ -55,6 +59,8 @@ import type {
 	TypeMetadata,
 	Universe,
 	UniverseConstellation,
+	UniverseFuelModuleRule,
+	UniverseFuelRuleResolution,
 	UniverseMoon,
 	UniverseMoonGeography,
 	UniverseMoonResource,
@@ -67,6 +73,7 @@ import type {
 	UniverseSolarSystem,
 	UniverseStargate,
 	UniverseStaticMoon,
+	UniverseStructureFuelModifier,
 } from '@repo/universe'
 import type { Env } from './context'
 
@@ -77,6 +84,14 @@ import type { Env } from './context'
 let allSolarSystemNamesCache: Array<{ id: string; name: string }> | null = null
 let allSolarSystemNamesCacheExpiry = 0
 const UNIVERSE_BATCH_SIZE = 500
+const STRUCTURE_FUEL_RULE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+
+type StructureFuelRuleCache = {
+	expiresAt: number
+	sdeVersion: string | null
+	modulesByServiceName: Map<string, UniverseFuelModuleRule>
+	structureModifiersByTypeId: Map<string, UniverseStructureFuelModifier[]>
+}
 
 function chunkArray<T>(items: readonly T[], size: number): T[][] {
 	const chunks: T[][] = []
@@ -121,6 +136,8 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	private regionsBySystemCache: LRUCache<{ regionId: string; regionName: string }>
 	private regionConnectionsCache: LRUCache<Array<{ fromRegionId: string; toRegionId: string }>>
 	private typeMaterialsCache: LRUCache<TypeMaterial[]>
+	private structureFuelRuleCache: StructureFuelRuleCache | null = null
+	private structureFuelRuleCachePromise: Promise<StructureFuelRuleCache> | null = null
 	private readonly esiRateLimits: EsiRateLimitGuard
 
 	/**
@@ -159,6 +176,185 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		)
 		this.typeMaterialsCache = new LRUCache<TypeMaterial[]>(8000)
 		this.esiRateLimits = new EsiRateLimitGuard(new EsiRateLimitStore(env.ESI_RATE_LIMITS))
+	}
+
+	private async getActiveSdeVersion(): Promise<string | null> {
+		try {
+			const result = await this.db.execute(
+				sql`select version from sde_version order by imported_at desc limit 1`
+			)
+			const row = (result as unknown as { rows?: Array<{ version?: unknown }> }).rows?.[0]
+			return typeof row?.version === 'string' ? row.version : null
+		} catch {
+			return null
+		}
+	}
+
+	private async buildStructureFuelRuleCache(
+		sdeVersion: string | null
+	): Promise<StructureFuelRuleCache> {
+		const fuelAmountAttributes = alias(universeTypeDogmaAttributes, 'fuel_amount_attributes')
+		const moduleRows = await this.db
+			.select({
+				typeId: invTypes.typeId,
+				typeName: invTypes.typeName,
+				serviceGroupId: invTypes.groupId,
+				fuelUnitsPerHour: sql<number>`cast(${fuelAmountAttributes.value} as double precision)`,
+			})
+			.from(invTypes)
+			.innerJoin(
+				fuelAmountAttributes,
+				and(
+					eq(fuelAmountAttributes.typeId, invTypes.typeId),
+					eq(fuelAmountAttributes.attributeId, '2109')
+				)
+			)
+			.where(gt(sql`cast(${fuelAmountAttributes.value} as double precision)`, 0))
+
+		const modulesByServiceName = new Map<string, UniverseFuelModuleRule>()
+		const ambiguousServiceNames = new Set<string>()
+		for (const row of moduleRows) {
+			const name = normalizeUniverseServiceName(row.typeName)
+			if (ambiguousServiceNames.has(name)) {
+				continue
+			}
+			if (modulesByServiceName.has(name)) {
+				modulesByServiceName.delete(name)
+				ambiguousServiceNames.add(name)
+				logger.error('[UniverseDO] Duplicate published fuel service name in SDE', {
+					serviceName: row.typeName,
+					sdeVersion,
+				})
+				continue
+			}
+			modulesByServiceName.set(name, {
+				typeId: row.typeId,
+				typeName: row.typeName,
+				serviceGroupId: row.serviceGroupId,
+				fuelUnitsPerHour: Number(row.fuelUnitsPerHour),
+			})
+		}
+
+		const structureFuelAttributes = alias(universeTypeDogmaAttributes, 'structure_fuel_attributes')
+		const modifierRows = await this.db
+			.select({
+				typeId: invTypes.typeId,
+				serviceGroupId: universeDogmaEffectModifiers.groupId,
+				modifierPercent: sql<number>`cast(${structureFuelAttributes.value} as double precision)`,
+			})
+			.from(invTypes)
+			.innerJoin(
+				structureFuelAttributes,
+				and(
+					eq(structureFuelAttributes.typeId, invTypes.typeId),
+					eq(structureFuelAttributes.attributeId, '2339')
+				)
+			)
+			.innerJoin(
+				universeDogmaEffectModifiers,
+				and(
+					eq(universeDogmaEffectModifiers.modifiedAttributeId, '2109'),
+					eq(universeDogmaEffectModifiers.modifyingAttributeId, '2339'),
+					eq(universeDogmaEffectModifiers.operation, 6),
+					eq(universeDogmaEffectModifiers.func, 'LocationGroupModifier'),
+					eq(universeDogmaEffectModifiers.domain, 'structureID')
+				)
+			)
+			.innerJoin(
+				universeTypeDogmaEffects,
+				and(
+					eq(universeTypeDogmaEffects.typeId, invTypes.typeId),
+					eq(universeTypeDogmaEffects.effectId, universeDogmaEffectModifiers.effectId)
+				)
+			)
+
+		const structureModifiersByTypeId = new Map<string, UniverseStructureFuelModifier[]>()
+		for (const row of modifierRows) {
+			if (row.serviceGroupId === null) {
+				continue
+			}
+			const modifiers = structureModifiersByTypeId.get(row.typeId) ?? []
+			modifiers.push({
+				serviceGroupId: row.serviceGroupId,
+				modifierPercent: Number(row.modifierPercent),
+			})
+			structureModifiersByTypeId.set(row.typeId, modifiers)
+		}
+
+		return {
+			expiresAt: Date.now() + STRUCTURE_FUEL_RULE_CACHE_TTL_MS,
+			sdeVersion,
+			modulesByServiceName,
+			structureModifiersByTypeId,
+		}
+	}
+
+	private async getStructureFuelRuleCache(): Promise<StructureFuelRuleCache> {
+		const sdeVersion = await this.getActiveSdeVersion()
+		if (
+			this.structureFuelRuleCache &&
+			this.structureFuelRuleCache.expiresAt > Date.now() &&
+			this.structureFuelRuleCache.sdeVersion === sdeVersion
+		) {
+			return this.structureFuelRuleCache
+		}
+
+		if (!this.structureFuelRuleCachePromise) {
+			this.structureFuelRuleCachePromise = this.buildStructureFuelRuleCache(sdeVersion).finally(
+				() => {
+					this.structureFuelRuleCachePromise = null
+				}
+			)
+		}
+
+		this.structureFuelRuleCache = await this.structureFuelRuleCachePromise
+		return this.structureFuelRuleCache
+	}
+
+	async resolveStructureFuelRules(
+		structureTypeIds: string[],
+		serviceNames: string[]
+	): Promise<UniverseFuelRuleResolution> {
+		const cache = await this.getStructureFuelRuleCache()
+		const uniqueStructureTypeIds = [...new Set(structureTypeIds)]
+		const uniqueServiceNames = [...new Set(serviceNames)]
+		const knownStructureRows =
+			uniqueStructureTypeIds.length > 0
+				? await this.db
+						.select({ typeId: invTypes.typeId })
+						.from(invTypes)
+						.where(inArray(invTypes.typeId, uniqueStructureTypeIds))
+				: []
+		const knownStructureTypeIds = new Set(knownStructureRows.map((row) => row.typeId))
+
+		const modulesByServiceName: Record<string, UniverseFuelModuleRule | null> = {}
+		const unresolvedServiceNames: string[] = []
+		for (const serviceName of uniqueServiceNames) {
+			const rule = cache.modulesByServiceName.get(normalizeUniverseServiceName(serviceName)) ?? null
+			modulesByServiceName[serviceName] = rule
+			if (rule === null) {
+				unresolvedServiceNames.push(serviceName)
+			}
+		}
+
+		const structureModifiersByTypeId: Record<string, UniverseStructureFuelModifier[]> = {}
+		for (const structureTypeId of uniqueStructureTypeIds) {
+			if (!knownStructureTypeIds.has(structureTypeId)) {
+				continue
+			}
+			structureModifiersByTypeId[structureTypeId] =
+				cache.structureModifiersByTypeId.get(structureTypeId) ?? []
+		}
+
+		return {
+			sdeVersion: cache.sdeVersion,
+			modulesByServiceName,
+			structureModifiersByTypeId,
+			unresolvedServiceNames,
+			missingStructureTypeIds: uniqueStructureTypeIds.filter(
+				(structureTypeId) => !knownStructureTypeIds.has(structureTypeId)
+			),
+		}
 	}
 
 	// ========================================================================

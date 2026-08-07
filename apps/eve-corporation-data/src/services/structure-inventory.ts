@@ -132,3 +132,15 @@ export function summarizeFuelBlockUnitsByStructure(
 
 	return fuelBlockUnitsByStructure
 }
+
+export function findRefilledStructureIds(
+	previousFuelBlockUnitsByStructure: ReadonlyMap<string, number>,
+	currentFuelBlockUnitsByStructure: ReadonlyMap<string, number>
+): string[] {
+	return [...currentFuelBlockUnitsByStructure.entries()]
+		.filter(([structureId, fuelBlockUnits]) => {
+			const previousFuelBlockUnits = previousFuelBlockUnitsByStructure.get(structureId)
+			return previousFuelBlockUnits !== undefined && fuelBlockUnits > previousFuelBlockUnits
+		})
+		.map(([structureId]) => structureId)
+}

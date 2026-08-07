@@ -118,6 +118,10 @@ async function findSdeDataDirectory(rootDir: string, maxDepth = 4): Promise<stri
 		'groups.jsonl',
 		'marketGroups.jsonl',
 		'types.jsonl',
+		'dogmaAttributes.jsonl',
+		'dogmaEffects.jsonl',
+		'dogmaUnits.jsonl',
+		'typeDogma.jsonl',
 	]
 	const hasRequiredFiles = await Promise.all(
 		requiredFiles.map((name) => fileExists(join(rootDir, name)))
@@ -179,7 +183,8 @@ export async function prepareSdeDataDir(): Promise<string> {
 	if (!detectedDir) {
 		throw new Error(
 			`Unable to locate extracted SDE JSONL directory under ${extractRoot}. ` +
-				`Expected files: _sde.jsonl, categories.jsonl, groups.jsonl, marketGroups.jsonl, types.jsonl`
+				`Expected inventory and dogma JSONL files, including _sde.jsonl, categories.jsonl, groups.jsonl, ` +
+				`marketGroups.jsonl, types.jsonl, dogmaAttributes.jsonl, dogmaEffects.jsonl, dogmaUnits.jsonl, and typeDogma.jsonl`
 		)
 	}
 

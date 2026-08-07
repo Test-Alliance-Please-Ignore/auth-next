@@ -39,9 +39,6 @@ type FakeDb = {
 		managedCorporations: {
 			findFirst: ReturnType<typeof vi.fn>
 		}
-		structureFuelLog: {
-			findMany: ReturnType<typeof vi.fn>
-		}
 		structureSkyhooks: {
 			findFirst: ReturnType<typeof vi.fn>
 		}
@@ -155,9 +152,6 @@ function makeDb(
 					name: 'Test Corp',
 					includeInStructureAssetSync: false,
 				}),
-			},
-			structureFuelLog: {
-				findMany: vi.fn().mockResolvedValue([]),
 			},
 			structureSkyhooks: {
 				findFirst: vi.fn().mockResolvedValue(options.skyhook ?? skyhook),

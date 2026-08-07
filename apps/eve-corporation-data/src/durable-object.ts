@@ -25,6 +25,7 @@ import {
 	SKYHOOK_SUPERIONIC_ICE_TYPE_NAME,
 	summarizeSovereigntyReagentBay,
 } from '@repo/structures'
+import { normalizeUniverseServiceName } from '@repo/universe'
 import { parseDateOrNull } from '@repo/worker-utils'
 import { retryWithBackoff } from '@repo/workflow-utils'
 
@@ -47,7 +48,6 @@ import {
 	corporationWalletJournal,
 	corporationWallets,
 	corporationWalletTransactions,
-	structureFuelLog,
 	structureMiningExtractions,
 	structureMoonDrills,
 	structureMoonGeographies,
@@ -59,9 +59,10 @@ import {
 import { dedupeByItemId, syncAssetsPaged } from './services/assets-paging-sync'
 import { DirectorManager } from './services/director-manager'
 import * as esiFetch from './services/esi-fetch'
-import { deriveStructureFuelHistoryMetrics } from './services/structure-fuel-history'
+import { calculateStructureFuelBurnRate } from './services/structure-fuel-calculation'
 import { preserveStructureHydrationFields } from './services/structure-hydration'
 import {
+	findRefilledStructureIds,
 	projectStructureInventoryFromStoredAssets,
 	summarizeFuelBlockUnitsByStructure,
 } from './services/structure-inventory'
@@ -131,13 +132,13 @@ import type { SovereigntyReagentEntry, StructureSovereigntyTransportState } from
 import type {
 	EsiGetStructureResponse,
 	Universe,
+	UniverseFuelModuleRule,
 	UniversePlanetGeography,
 	UniverseRegion,
 	UniverseSolarSystem,
 } from '@repo/universe'
 import type { Env } from './context'
 import type { RawEsiAsset } from './services/assets-paging-sync'
-import type { StructureFuelHistorySample } from './services/structure-fuel-history'
 import type { StructureInventoryRowInput } from './services/structure-inventory'
 
 function isSpecialStructureTab(tab: ReturnType<typeof getStructureTabForTypeId>): boolean {
@@ -2579,21 +2580,23 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		inventoryBatches: AsyncIterable<readonly StructureInventoryRowInput[]>
 	): Promise<number> {
 		const observedAt = new Date()
-		const previousFuelRows = ownedStructureIds.size
-			? await this.getDb().query.structureFuelLog.findMany({
+		const previousFuelSnapshotRows = ownedStructureIds.size
+			? await this.getDb().query.corporationStructures.findMany({
 					where: and(
-						eq(structureFuelLog.corporationId, corporationId),
-						inArray(structureFuelLog.structureId, [...ownedStructureIds])
+						eq(corporationStructures.corporationId, corporationId),
+						inArray(corporationStructures.structureId, [...ownedStructureIds])
 					),
-					orderBy: desc(structureFuelLog.observedAt),
+					columns: {
+						structureId: true,
+						lastFuelBlocks: true,
+					},
 				})
 			: []
 		const previousFuelBlockUnitsByStructure = new Map<string, number>()
-		for (const row of previousFuelRows) {
-			if (previousFuelBlockUnitsByStructure.has(row.structureId)) {
-				continue
+		for (const row of previousFuelSnapshotRows) {
+			if (row.lastFuelBlocks !== null) {
+				previousFuelBlockUnitsByStructure.set(row.structureId, row.lastFuelBlocks)
 			}
-			previousFuelBlockUnitsByStructure.set(row.structureId, row.fuelBlockUnits)
 		}
 		const db = this.getDb()
 		const snapshotId = await this.createStructureInventorySnapshot(corporationId, observedAt)
@@ -2631,109 +2634,45 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			}
 			inventoryRowCount += batch.length
 		}
-		const refilledStructureIds = Array.from(fuelBlockUnitsByStructure.entries())
-			.filter(([structureId, fuelBlockUnits]) => {
-				const previousFuelBlockUnits = previousFuelBlockUnitsByStructure.get(structureId)
-				return previousFuelBlockUnits !== undefined && fuelBlockUnits > previousFuelBlockUnits
-			})
-			.map(([structureId]) => structureId)
+
+		const refilledStructureIds = findRefilledStructureIds(
+			previousFuelBlockUnitsByStructure,
+			fuelBlockUnitsByStructure
+		)
 
 		if (ownedStructureIds.size > 0) {
-			const fuelHistoryRows = Array.from(fuelBlockUnitsByStructure.entries()).map(
-				([structureId, fuelBlockUnits]) => ({
-					corporationId: String(corporationId),
-					structureId,
-					fuelBlockUnits,
-					observedAt,
-					updatedAt: observedAt,
-				})
-			)
-
-			logger.info('[EveCorporationData] Writing structure fuel log snapshot', {
+			logger.info('[EveCorporationData] Processed structure fuel snapshot', {
 				corporationId,
 				ownedStructureCount: ownedStructureIds.size,
 				inventoryRowCount,
-				fuelLogRowCount: fuelHistoryRows.length,
 				refilledStructureCount: refilledStructureIds.length,
-				zeroFuelStructureCount: fuelHistoryRows.filter((row) => row.fuelBlockUnits === 0).length,
+				zeroFuelStructureCount: [...fuelBlockUnitsByStructure.values()].filter(
+					(value) => value === 0
+				).length,
 			})
+		}
 
-			await db.insert(structureFuelLog).values(fuelHistoryRows)
+		await this.finalizeStructureInventorySnapshot(corporationId, snapshotId, observedAt)
 
-			logger.info('[EveCorporationData] Stored structure fuel log snapshot', {
-				corporationId,
-				insertedFuelLogRows: fuelHistoryRows.length,
-				observedAt: observedAt.toISOString(),
-			})
-
-			const fuelHistorySamplesByStructure = new Map<string, StructureFuelHistorySample[]>()
-			for (const row of previousFuelRows) {
-				const samples = fuelHistorySamplesByStructure.get(row.structureId) ?? []
-				samples.push({
-					structureId: row.structureId,
-					fuelBlockUnits: row.fuelBlockUnits,
-					observedAt: row.observedAt,
-					updatedAt: row.updatedAt,
+		if (ownedStructureIds.size > 0) {
+			const snapshotRows = [...fuelBlockUnitsByStructure.entries()]
+			const structureIds = snapshotRows.map(([structureId]) => structureId)
+			await db
+				.update(corporationStructures)
+				.set({
+					lastFuelBlocks: sql`case ${corporationStructures.structureId} ${sql.join(
+						snapshotRows.map(
+							([structureId, fuelBlockUnits]) => sql`when ${structureId} then ${fuelBlockUnits}`
+						),
+						sql` `
+					)} else ${corporationStructures.lastFuelBlocks} end`,
 				})
-				fuelHistorySamplesByStructure.set(row.structureId, samples)
-			}
-			for (const row of fuelHistoryRows) {
-				const samples = fuelHistorySamplesByStructure.get(row.structureId) ?? []
-				samples.push({
-					structureId: row.structureId,
-					fuelBlockUnits: row.fuelBlockUnits,
-					observedAt: row.observedAt,
-					updatedAt: row.updatedAt,
-				})
-				fuelHistorySamplesByStructure.set(row.structureId, samples)
-			}
-
-			const estimatedFuelBurnRateByStructure = new Map<string, string | null>()
-			for (const [structureId, samples] of fuelHistorySamplesByStructure.entries()) {
-				const metrics = deriveStructureFuelHistoryMetrics(samples)
-				estimatedFuelBurnRateByStructure.set(
-					structureId,
-					metrics.fuelBurnRatePerHour === null ? null : metrics.fuelBurnRatePerHour.toFixed(4)
-				)
-			}
-
-			const estimatedFuelBurnRateRows = [...estimatedFuelBurnRateByStructure.entries()]
-			const UPDATE_BATCH_SIZE = STRUCTURE_SNAPSHOT_BATCH_SIZE
-			for (let i = 0; i < estimatedFuelBurnRateRows.length; i += UPDATE_BATCH_SIZE) {
-				const batch = estimatedFuelBurnRateRows.slice(i, i + UPDATE_BATCH_SIZE)
-				const structureIds = batch.map(([structureId]) => structureId)
-				if (batch.every(([, burnRate]) => burnRate === null)) {
-					await db
-						.update(corporationStructures)
-						.set({ fuelBurnRate: null })
-						.where(
-							and(
-								eq(corporationStructures.corporationId, corporationId),
-								inArray(corporationStructures.structureId, structureIds)
-							)
-						)
-					continue
-				}
-
-				await db
-					.update(corporationStructures)
-					.set({
-						fuelBurnRate: sql`case ${corporationStructures.structureId} ${sql.join(
-							batch.map(([structureId, burnRate]) =>
-								burnRate === null
-									? sql`when ${structureId} then null`
-									: sql`when ${structureId} then cast(${burnRate} as numeric)`
-							),
-							sql` `
-						)} else null end`,
-					})
-					.where(
-						and(
-							eq(corporationStructures.corporationId, corporationId),
-							inArray(corporationStructures.structureId, structureIds)
-						)
+				.where(
+					and(
+						eq(corporationStructures.corporationId, corporationId),
+						inArray(corporationStructures.structureId, structureIds)
 					)
-			}
+				)
 		}
 
 		if (refilledStructureIds.length > 0) {
@@ -2747,20 +2686,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					)
 				)
 		}
-
-		await db
-			.delete(structureFuelLog)
-			.where(
-				and(
-					eq(structureFuelLog.corporationId, corporationId),
-					lte(
-						structureFuelLog.observedAt,
-						new Date(observedAt.getTime() - 30 * 24 * 60 * 60 * 1000)
-					)
-				)
-			)
-
-		await this.finalizeStructureInventorySnapshot(corporationId, snapshotId, observedAt)
 
 		return inventoryRowCount
 	}
@@ -2838,6 +2763,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			syncFailureReason: string | null
 			lastSyncedAt: Date | null
 			services: Array<{ name: string; state: string }> | null
+			fuelBurnRate: string | null
 			structureInfo: EsiGetStructureResponse | null
 			updatedAt: Date
 		}>
@@ -2961,10 +2887,83 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				syncFailureReason: hydrated.syncFailureReason,
 				lastSyncedAt: new Date(),
 				services: structure.services || null,
+				fuelBurnRate: existing?.fuelBurnRate ?? null,
 				structureInfo: structureInfo ?? null,
 				updatedAt: new Date(),
 			}
 		})
+	}
+
+	private async resolveStructureFuelBurnRates(
+		corporationId: string,
+		structures: ReadonlyArray<{
+			structureId: string
+			typeId: string
+			services: Array<{ name: string; state: string }> | null
+			fuelBurnRate: string | null
+		}>
+	): Promise<Map<string, string | null>> {
+		const fuelBurnRateByStructure = new Map(
+			structures.map((structure) => [structure.structureId, structure.fuelBurnRate] as const)
+		)
+		if (structures.length === 0) {
+			return fuelBurnRateByStructure
+		}
+
+		const structureTypeIds = [...new Set(structures.map((structure) => structure.typeId))]
+		const serviceNames = [
+			...new Set(
+				structures.flatMap((structure) => (structure.services ?? []).map((service) => service.name))
+			),
+		]
+
+		try {
+			const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
+			const fuelRules = await withRpcResult(
+				universe.resolveStructureFuelRules(structureTypeIds, serviceNames),
+				(result) => ({ ...result })
+			)
+			const modulesByServiceName = new Map<string, UniverseFuelModuleRule>()
+			for (const [serviceName, module] of Object.entries(fuelRules.modulesByServiceName)) {
+				if (module !== null) {
+					modulesByServiceName.set(normalizeUniverseServiceName(serviceName), module)
+				}
+			}
+
+			if (fuelRules.unresolvedServiceNames.length > 0) {
+				logger.warn('[EveCorporationData] Unresolved online structure services', {
+					corporationId,
+					unresolvedServiceNames: fuelRules.unresolvedServiceNames,
+					sdeVersion: fuelRules.sdeVersion,
+				})
+			}
+			if (fuelRules.missingStructureTypeIds.length > 0) {
+				logger.warn('[EveCorporationData] Structure types missing from SDE fuel rules', {
+					corporationId,
+					missingStructureTypeIds: fuelRules.missingStructureTypeIds,
+					sdeVersion: fuelRules.sdeVersion,
+				})
+			}
+
+			for (const structure of structures) {
+				const burnRate = calculateStructureFuelBurnRate(
+					structure.services,
+					modulesByServiceName,
+					fuelRules.structureModifiersByTypeId[structure.typeId] ?? []
+				)
+				fuelBurnRateByStructure.set(
+					structure.structureId,
+					burnRate === null ? null : burnRate.toFixed(4)
+				)
+			}
+		} catch (error) {
+			logger.warn('[EveCorporationData] Failed to resolve deterministic structure fuel rules', {
+				corporationId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+
+		return fuelBurnRateByStructure
 	}
 
 	/**
@@ -2974,6 +2973,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const hydratedStructures = await this.hydrateStructureRows(
 			corporationId,
 			structures as EsiCorporationStructure[]
+		)
+		const fuelBurnRateByStructure = await this.resolveStructureFuelBurnRates(
+			corporationId,
+			hydratedStructures
 		)
 		const structureIds = hydratedStructures.map((structure) => structure.structureId)
 		const existingStructureRows = await this.getDb().query.corporationStructures.findMany({
@@ -2994,10 +2997,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		for (let i = 0; i < hydratedStructures.length; i += BATCH_SIZE) {
 			const batch = hydratedStructures.slice(i, i + BATCH_SIZE)
+			const batchValues = batch.map((structure) => ({
+				...structure,
+				fuelBurnRate: fuelBurnRateByStructure.get(structure.structureId) ?? null,
+			}))
 
 			await this.getDb()
 				.insert(corporationStructures)
-				.values(batch)
+				.values(batchValues)
 				.onConflictDoUpdate({
 					target: corporationStructures.structureId,
 					set: {
@@ -3023,6 +3030,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						syncFailureReason: sql`excluded.sync_failure_reason`,
 						lastSyncedAt: sql`excluded.last_synced_at`,
 						services: sql`excluded.services`,
+						fuelBurnRate: sql`excluded.fuel_burn_rate`,
 						updatedAt: sql`excluded.updated_at`,
 					},
 				})
