@@ -22,7 +22,7 @@ export function MissingEsiKeysGrid(props: {
 	pageCount: number
 	rowCount: number
 }) {
-	const columns = useMemo<MRT_ColumnDef<TaxMissingEsiKeyRow>[]>(
+	const columns = useMemo<Array<MRT_ColumnDef<TaxMissingEsiKeyRow>>>(
 		() => [
 			{
 				accessorKey: 'corporationId',

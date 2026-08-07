@@ -16,10 +16,6 @@ interface SkillSelectorProps {
 	isSubmitting?: boolean
 }
 
-interface SkillToAdd extends AddSkillRequest {
-	skillName?: string
-}
-
 export function SkillSelector({
 	existingSkillIds,
 	onAddSkill,
@@ -141,9 +137,7 @@ export function SkillSelector({
 						inputId="skill-group"
 						options={[
 							{ value: 'all', label: 'All groups' },
-							...skillGroups.map((group) => ({ value: group,
-								label: group,
-							})),
+							...skillGroups.map((group) => ({ value: group, label: group })),
 						]}
 						placeholder="All groups"
 						disabled={isLoading || isSubmitting}
@@ -175,7 +169,8 @@ export function SkillSelector({
 									setSelectedSkill(skill || null)
 								}}
 								inputId="skill-select"
-								options={filteredSkills.map((skill) => ({ value: skill.skillId,
+								options={filteredSkills.map((skill) => ({
+									value: skill.skillId,
 									label: `${skill.name} (${skill.group})`,
 								}))}
 								placeholder="Choose a skill to add..."
@@ -228,9 +223,7 @@ export function SkillSelector({
 										inputId="recommended-level"
 										options={[1, 2, 3, 4, 5]
 											.filter((level) => level >= requiredLevel)
-											.map((level) => ({ value: String(level),
-												label: `Level ${level}`,
-											}))}
+											.map((level) => ({ value: String(level), label: `Level ${level}` }))}
 										disabled={isSubmitting}
 									/>
 									<p className="text-xs text-muted-foreground">

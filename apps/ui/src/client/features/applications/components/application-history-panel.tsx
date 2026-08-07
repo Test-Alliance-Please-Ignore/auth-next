@@ -13,8 +13,8 @@ import { useNavigate, useParams } from 'react-router'
 import { MemberAvatar } from '@/components/member-avatar'
 import { LoadingSpinner } from '@/components/ui/loading'
 
-import { ApplicationStatusBadge } from './application-status-badge'
 import { useCharacterApplicationHistory, useUserApplicationHistory } from '../hooks'
+import { ApplicationStatusBadge } from './application-status-badge'
 
 import type { Application } from '../api'
 
@@ -35,11 +35,7 @@ function HistoryEntry({
 			onClick={() => onNavigate(app.id)}
 			className="flex w-full cursor-pointer items-start gap-4 rounded-lg border p-4 text-left transition-colors hover:bg-accent/50"
 		>
-			<MemberAvatar
-				characterId={app.characterId}
-				characterName={app.characterName}
-				size="md"
-			/>
+			<MemberAvatar characterId={app.characterId} characterName={app.characterName} size="md" />
 			<div className="min-w-0 flex-1 space-y-1">
 				<div className="flex items-center gap-2">
 					<span className="font-medium text-foreground">{app.characterName}</span>
@@ -95,16 +91,26 @@ interface ApplicationHistoryPanelProps {
 	applicationId: string
 }
 
-export function ApplicationHistoryPanel({ characterId, userId, applicationId }: ApplicationHistoryPanelProps) {
+export function ApplicationHistoryPanel({
+	characterId,
+	userId,
+	applicationId,
+}: ApplicationHistoryPanelProps) {
 	const { corporationId } = useParams<{ corporationId: string }>()
 	const navigate = useNavigate()
-	const { data: charHistory, isLoading: charLoading, error: charError } =
-		useCharacterApplicationHistory(characterId, applicationId)
-	const { data: userHistory, isLoading: userLoading, error: userError } =
-		useUserApplicationHistory(userId, applicationId)
+	const {
+		data: charHistory,
+		isLoading: charLoading,
+		error: charError,
+	} = useCharacterApplicationHistory(characterId, applicationId)
+	const {
+		data: userHistory,
+		isLoading: userLoading,
+		error: userError,
+	} = useUserApplicationHistory(userId, applicationId)
 
 	const handleNavigate = (targetApplicationId: string) => {
-		navigate(`/corporations/${corporationId}/applications/${targetApplicationId}`)
+		void navigate(`/corporations/${corporationId}/applications/${targetApplicationId}`)
 	}
 
 	const isLoading = charLoading || userLoading

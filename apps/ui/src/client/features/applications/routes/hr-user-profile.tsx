@@ -1,7 +1,7 @@
-import { useQuery, useQueries } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
+import { AlertCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
-import { AlertCircle } from 'lucide-react'
 
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
@@ -9,34 +9,31 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
 
 import { useHrAccessibleCorporations } from '../../hr/hooks'
+import { applicationsApi } from '../api'
 import {
 	FulcrumBulkScanDialog,
 	FulcrumSingleScanDialog,
 	useFulcrumScanDmPreference,
 } from '../components/fulcrum-scan-dialogs'
 import {
+	UserProfilePageShell,
+	UserProfileStatRow,
+	UserProfileStatsSeparator,
+	UserProfileStatusBadge,
+} from '../components/user-profile-page-shell'
+import {
 	ProfileApplicationHistorySection,
 	ProfileCharactersSection,
 } from '../components/user-profile-sections'
 import {
-	UserProfilePageShell,
-	UserProfileStatRow,
-	UserProfileStatusBadge,
-	UserProfileStatsSeparator,
-} from '../components/user-profile-page-shell'
-import {
-	useHrUserCharacters,
 	useFulcrumUserReports,
+	useHrUserCharacters,
 	useRequestFulcrumReport,
 	useRequestFulcrumReportBatch,
 } from '../hooks'
 import { getPrivateDataUnavailableMessage } from '../utils/private-data'
-import {
-	applicationsApi,
-	type Application,
-	type CharacterReportMetadata,
-	type FulcrumCharacterReportData,
-} from '../api'
+
+import type { Application, CharacterReportMetadata, FulcrumCharacterReportData } from '../api'
 
 interface ReviewerProfileNavigationState {
 	source?: 'applications' | 'members'
@@ -67,7 +64,12 @@ function getLatestReport(character: FulcrumCharacterReportData): CharacterReport
 }
 
 function isForbiddenError(error: unknown): boolean {
-	return Boolean(error && typeof error === 'object' && 'status' in error && (error as { status?: number }).status === 403)
+	return Boolean(
+		error &&
+			typeof error === 'object' &&
+			'status' in error &&
+			(error as { status?: number }).status === 403
+	)
 }
 
 export default function HrUserProfilePage() {
@@ -78,12 +80,10 @@ export default function HrUserProfilePage() {
 	const [requestingCharacterId, setRequestingCharacterId] = useState<string | null>(null)
 	const [isScanningAll, setIsScanningAll] = useState(false)
 	const [scanAllDialogOpen, setScanAllDialogOpen] = useState(false)
-	const [singleScanDialogCharacter, setSingleScanDialogCharacter] = useState<ReviewerCharacterRow | null>(null)
-	const {
-		sendDmForScanRequests,
-		setSendDmForScanRequests,
-		persistSendDmPreference,
-	} = useFulcrumScanDmPreference()
+	const [singleScanDialogCharacter, setSingleScanDialogCharacter] =
+		useState<ReviewerCharacterRow | null>(null)
+	const { sendDmForScanRequests, setSendDmForScanRequests, persistSendDmPreference } =
+		useFulcrumScanDmPreference()
 	const { data: accessibleCorporations, isLoading: accessibleCorporationsLoading } =
 		useHrAccessibleCorporations()
 
@@ -93,8 +93,16 @@ export default function HrUserProfilePage() {
 	const fromApplications = source === 'applications' || returnTo?.includes('/applications')
 	const fromMembers = source === 'members' || returnTo?.includes('/members')
 	const backTarget = returnTo ?? '/hr/users'
-	const breadcrumbMidLabel = fromApplications ? 'Applications' : fromMembers ? 'Members' : 'User Search'
-	const backLabel = fromApplications ? 'Back to Applications' : fromMembers ? 'Back to Members' : 'Back to User Search'
+	const breadcrumbMidLabel = fromApplications
+		? 'Applications'
+		: fromMembers
+			? 'Members'
+			: 'User Search'
+	const backLabel = fromApplications
+		? 'Back to Applications'
+		: fromMembers
+			? 'Back to Members'
+			: 'Back to User Search'
 
 	const applicationsQuery = useQuery<Application[]>({
 		queryKey: ['hr', 'user-profile', userId, 'applications'],
@@ -129,7 +137,8 @@ export default function HrUserProfilePage() {
 	const fulcrumUnavailableMessage =
 		reportError && !reportAccessDenied ? 'Fulcrum data is unavailable right now.' : null
 	const canViewFulcrumReports = reportLoaded
-	const canRequestFulcrumReports = canViewFulcrumReports && (accessibleCorporations?.length ?? 0) > 0
+	const canRequestFulcrumReports =
+		canViewFulcrumReports && (accessibleCorporations?.length ?? 0) > 0
 
 	const sortedApplications = useMemo(() => {
 		if (!applicationsQuery.data) return []
@@ -146,8 +155,11 @@ export default function HrUserProfilePage() {
 				const report = reportCharacterById.get(character.characterId)
 				const latestReport = report ? getLatestReport(report) : null
 				const hasPendingReport =
-					report?.reports.some((entry) => entry.status === 'pending' || entry.status === 'processing') ?? false
-				const isPrimary = index === 0 || sortedApplications[0]?.characterId === character.characterId
+					report?.reports.some(
+						(entry) => entry.status === 'pending' || entry.status === 'processing'
+					) ?? false
+				const isPrimary =
+					index === 0 || sortedApplications[0]?.characterId === character.characterId
 
 				return {
 					characterId: character.characterId,
@@ -206,7 +218,11 @@ export default function HrUserProfilePage() {
 		[...privateDataUnavailableNoteByCharacterId.values()].find((note) => Boolean(note)) ?? null
 
 	const accountName =
-		sortedApplications[0]?.characterName ?? rows.find((row) => row.isPrimary)?.characterName ?? rows[0]?.characterName ?? userId ?? 'Unknown'
+		sortedApplications[0]?.characterName ??
+		rows.find((row) => row.isPrimary)?.characterName ??
+		rows[0]?.characterName ??
+		userId ??
+		'Unknown'
 
 	usePageTitle(accountName ? `${accountName} | HR User Details` : 'HR User Details')
 
@@ -259,7 +275,11 @@ export default function HrUserProfilePage() {
 	}
 
 	if (characterQuery.isLoading && rows.length === 0) {
-		return <div className="flex items-center justify-center min-h-[400px]"><LoadingSpinner size="lg" /></div>
+		return (
+			<div className="flex items-center justify-center min-h-[400px]">
+				<LoadingSpinner size="lg" />
+			</div>
+		)
 	}
 
 	const mainCharacter = rows.find((row) => row.isPrimary) ?? rows[0] ?? null
@@ -382,152 +402,154 @@ export default function HrUserProfilePage() {
 				</>
 			}
 		>
-					{privateDataUnavailableMessage && (
-						<div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-							<div className="flex items-start gap-3">
-								<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-								<div className="space-y-1">
-									<p className="font-medium">Private ESI data is hidden for some characters</p>
-									<p className="text-sm text-amber-800 dark:text-amber-200">
-										{privateDataUnavailableMessage}
-									</p>
-								</div>
-							</div>
+			{privateDataUnavailableMessage && (
+				<div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+					<div className="flex items-start gap-3">
+						<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+						<div className="space-y-1">
+							<p className="font-medium">Private ESI data is hidden for some characters</p>
+							<p className="text-sm text-amber-800 dark:text-amber-200">
+								{privateDataUnavailableMessage}
+							</p>
 						</div>
-					)}
-					{fulcrumAccessDeniedMessage && (
-						<div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-							<div className="flex items-start gap-3">
-								<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-								<div className="space-y-1">
-									<p className="font-medium">Fulcrum reports are hidden for this user</p>
-									<p className="text-sm text-amber-800 dark:text-amber-200">
-										{fulcrumAccessDeniedMessage}
-									</p>
-								</div>
-							</div>
+					</div>
+				</div>
+			)}
+			{fulcrumAccessDeniedMessage && (
+				<div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+					<div className="flex items-start gap-3">
+						<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+						<div className="space-y-1">
+							<p className="font-medium">Fulcrum reports are hidden for this user</p>
+							<p className="text-sm text-amber-800 dark:text-amber-200">
+								{fulcrumAccessDeniedMessage}
+							</p>
 						</div>
-					)}
-					{fulcrumUnavailableMessage && (
-						<div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
-							<div className="flex items-start gap-3">
-								<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-								<div className="space-y-1">
-									<p className="font-medium">Fulcrum data is temporarily unavailable</p>
-									<p className="text-sm text-sky-800 dark:text-sky-200">
-										{fulcrumUnavailableMessage}
-									</p>
-								</div>
-							</div>
+					</div>
+				</div>
+			)}
+			{fulcrumUnavailableMessage && (
+				<div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
+					<div className="flex items-start gap-3">
+						<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+						<div className="space-y-1">
+							<p className="font-medium">Fulcrum data is temporarily unavailable</p>
+							<p className="text-sm text-sky-800 dark:text-sky-200">{fulcrumUnavailableMessage}</p>
 						</div>
-					)}
-					<ProfileCharactersSection
-						characters={rows.map((character) => ({
-							characterId: character.characterId,
-							characterName: character.characterName,
-							hasValidToken: character.hasValidToken,
-							corporationId: character.corporationId,
-							corporationName: character.corporationName,
-							allianceId: character.allianceId,
-							allianceName: character.allianceName,
-							role: character.role,
-							activityStatus: character.activityStatus,
-							isPrimary: character.isPrimary,
-							latestReport: character.latestReport,
-							hasPendingReport: character.hasPendingReport,
-							skillPoints: spByCharacterId.get(character.characterId),
-							walletBalance: walletByCharacterId.get(character.characterId),
-							isMetricsLoading: metricsLoadingByCharacterId.get(character.characterId),
-							privateDataUnavailableNote: privateDataUnavailableNoteByCharacterId.get(character.characterId),
-						}))}
-						fulcrumLoading={canViewFulcrumReports && reportLoading && rows.length === 0}
-						showFulcrumReports={canViewFulcrumReports}
-						showViewDetailsButton
-						isScanAllVisible
-						isScanningAll={isScanningAll}
-						scanAllLabel={isScanningAll ? 'Scanning All...' : `Scan All (${scanEligibleCharacters.length})`}
-						scanAllDisabled={
-							isScanningAll ||
-							requestReport.isPending ||
-							requestReportBatch.isPending ||
-							scanEligibleCharacters.length === 0
-						}
-						canRequestReports={canRequestFulcrumReports}
-						canRequestCharacterReport={canRequestCharacterReport}
-						onScanAll={handleOpenScanAllDialog}
-						isScanPendingFor={(characterId) =>
-							requestReport.isPending && requestingCharacterId === characterId
-						}
-						onViewReport={(character) => {
-							const full = rows.find((row) => row.characterId === character.characterId)
-							if (full?.latestReport?.status === 'completed') {
-								navigate(`/hr/users/${userId}/reports/${full.latestReport.id}`, {
-									state: {
-										characterName: character.characterName,
-										userId: userId ?? undefined,
-										backTo: location.pathname + location.search,
-										backLabel: 'Back to User Details',
-										breadcrumbParentLabel: 'User Details',
-									},
-								})
-							}
-						}}
-						onViewDetails={(character) => {
-							const full = rows.find((row) => row.characterId === character.characterId)
-							if (full) {
-								navigate(`/character/${character.characterId}`, {
-									state: {
-										source: 'hr-member-profile',
-										backTo: `/hr/users/${userId}`,
-										backLabel: 'Back to User Details',
-									},
-								})
-							}
-						}}
-						onScan={(character) => {
-							const full = rows.find((row) => row.characterId === character.characterId)
-							if (full) {
-								handleOpenSingleScanDialog(full)
-							}
-						}}
-					/>
+					</div>
+				</div>
+			)}
+			<ProfileCharactersSection
+				characters={rows.map((character) => ({
+					characterId: character.characterId,
+					characterName: character.characterName,
+					hasValidToken: character.hasValidToken,
+					corporationId: character.corporationId,
+					corporationName: character.corporationName,
+					allianceId: character.allianceId,
+					allianceName: character.allianceName,
+					role: character.role,
+					activityStatus: character.activityStatus,
+					isPrimary: character.isPrimary,
+					latestReport: character.latestReport,
+					hasPendingReport: character.hasPendingReport,
+					skillPoints: spByCharacterId.get(character.characterId),
+					walletBalance: walletByCharacterId.get(character.characterId),
+					isMetricsLoading: metricsLoadingByCharacterId.get(character.characterId),
+					privateDataUnavailableNote: privateDataUnavailableNoteByCharacterId.get(
+						character.characterId
+					),
+				}))}
+				fulcrumLoading={canViewFulcrumReports && reportLoading && rows.length === 0}
+				showFulcrumReports={canViewFulcrumReports}
+				showViewDetailsButton
+				isScanAllVisible
+				isScanningAll={isScanningAll}
+				scanAllLabel={
+					isScanningAll ? 'Scanning All...' : `Scan All (${scanEligibleCharacters.length})`
+				}
+				scanAllDisabled={
+					isScanningAll ||
+					requestReport.isPending ||
+					requestReportBatch.isPending ||
+					scanEligibleCharacters.length === 0
+				}
+				canRequestReports={canRequestFulcrumReports}
+				canRequestCharacterReport={canRequestCharacterReport}
+				onScanAll={handleOpenScanAllDialog}
+				isScanPendingFor={(characterId) =>
+					requestReport.isPending && requestingCharacterId === characterId
+				}
+				onViewReport={(character) => {
+					const full = rows.find((row) => row.characterId === character.characterId)
+					if (full?.latestReport?.status === 'completed') {
+						void navigate(`/hr/users/${userId}/reports/${full.latestReport.id}`, {
+							state: {
+								characterName: character.characterName,
+								userId: userId ?? undefined,
+								backTo: location.pathname + location.search,
+								backLabel: 'Back to User Details',
+								breadcrumbParentLabel: 'User Details',
+							},
+						})
+					}
+				}}
+				onViewDetails={(character) => {
+					const full = rows.find((row) => row.characterId === character.characterId)
+					if (full) {
+						void navigate(`/character/${character.characterId}`, {
+							state: {
+								source: 'hr-member-profile',
+								backTo: `/hr/users/${userId}`,
+								backLabel: 'Back to User Details',
+							},
+						})
+					}
+				}}
+				onScan={(character) => {
+					const full = rows.find((row) => row.characterId === character.characterId)
+					if (full) {
+						handleOpenSingleScanDialog(full)
+					}
+				}}
+			/>
 
-					<ProfileApplicationHistorySection
-						applications={sortedApplications.map((application) => ({
-							id: application.id,
-							corporationId: application.corporationId,
-							corporationName: application.corporationName,
-							characterId: application.characterId,
-							characterName: application.characterName,
-							status: application.status,
-							createdAt: application.createdAt,
-						}))}
-						loading={applicationsQuery.isLoading}
-						onOpenApplication={(application) =>
-							navigate(`/corporations/${application.corporationId}/applications/${application.id}`)
-						}
-					/>
+			<ProfileApplicationHistorySection
+				applications={sortedApplications.map((application) => ({
+					id: application.id,
+					corporationId: application.corporationId,
+					corporationName: application.corporationName,
+					characterId: application.characterId,
+					characterName: application.characterName,
+					status: application.status,
+					createdAt: application.createdAt,
+				}))}
+				loading={applicationsQuery.isLoading}
+				onOpenApplication={(application) =>
+					navigate(`/corporations/${application.corporationId}/applications/${application.id}`)
+				}
+			/>
 
-				{canViewFulcrumReports && (
-					<>
-						<FulcrumBulkScanDialog
-							open={scanAllDialogOpen}
-							onOpenChange={setScanAllDialogOpen}
-							eligibleCount={scanEligibleCharacters.length}
-							sendDmForScanRequests={sendDmForScanRequests}
-							setSendDmForScanRequests={setSendDmForScanRequests}
-							onConfirm={handleConfirmScanAll}
-						/>
-						<FulcrumSingleScanDialog
-							open={singleScanDialogCharacter !== null}
-							onOpenChange={(open) => !open && setSingleScanDialogCharacter(null)}
-							characterName={singleScanDialogCharacter?.characterName ?? 'Character'}
-							sendDmForScanRequests={sendDmForScanRequests}
-							setSendDmForScanRequests={setSendDmForScanRequests}
-							onConfirm={handleConfirmSingleScan}
-						/>
-					</>
-				)}
+			{canViewFulcrumReports && (
+				<>
+					<FulcrumBulkScanDialog
+						open={scanAllDialogOpen}
+						onOpenChange={setScanAllDialogOpen}
+						eligibleCount={scanEligibleCharacters.length}
+						sendDmForScanRequests={sendDmForScanRequests}
+						setSendDmForScanRequests={setSendDmForScanRequests}
+						onConfirm={handleConfirmScanAll}
+					/>
+					<FulcrumSingleScanDialog
+						open={singleScanDialogCharacter !== null}
+						onOpenChange={(open) => !open && setSingleScanDialogCharacter(null)}
+						characterName={singleScanDialogCharacter?.characterName ?? 'Character'}
+						sendDmForScanRequests={sendDmForScanRequests}
+						setSendDmForScanRequests={setSendDmForScanRequests}
+						onConfirm={handleConfirmSingleScan}
+					/>
+				</>
+			)}
 		</UserProfilePageShell>
 	)
 }

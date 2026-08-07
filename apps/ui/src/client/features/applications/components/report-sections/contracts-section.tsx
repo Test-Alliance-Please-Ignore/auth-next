@@ -350,7 +350,7 @@ function FilterButton({
 // Column Definitions
 // ============================================================================
 
-function buildContractColumns(): MRT_ColumnDef<ProcessedContract>[] {
+function buildContractColumns(): Array<MRT_ColumnDef<ProcessedContract>> {
 	return [
 		{
 			accessorKey: 'type',

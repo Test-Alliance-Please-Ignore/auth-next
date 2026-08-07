@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { useIndustryProvider, useUpdateIndustryProvider } from '../hooks'
-import { ENTITY_TYPE_LABELS, IndustryEntityType } from '../types'
+import { ENTITY_TYPE_LABELS } from '../types'
 
 import type { UpdateIndustryProviderRequest } from '../types'
 
@@ -85,7 +85,7 @@ export default function IndustryProviderEditPage() {
 			await updateProvider.mutateAsync({ id: providerId, data })
 			setMessage({ type: 'success', text: 'Provider updated successfully!' })
 			setTimeout(() => {
-				navigate(`/admin/industry-providers/${providerId}`)
+				void navigate(`/admin/industry-providers/${providerId}`)
 			}, 1000)
 		} catch (error) {
 			setMessage({
@@ -235,7 +235,8 @@ export default function IndustryProviderEditPage() {
 							<Button variant="cancel" type="button" onClick={() => navigate(-1)}>
 								Cancel
 							</Button>
-							<Button variant="confirm"
+							<Button
+								variant="confirm"
 								type="submit"
 								loading={updateProvider.isPending}
 								loadingText="Saving..."

@@ -41,7 +41,7 @@ export function UserSearchDialog({ open, onOpenChange }: UserSearchDialogProps) 
 	const users = data?.data || []
 
 	const handleUserSelect = (userId: string) => {
-		navigate(`/admin/users/${userId}`)
+		void navigate(`/admin/users/${userId}`)
 		onOpenChange(false)
 		setSearchQuery('')
 	}

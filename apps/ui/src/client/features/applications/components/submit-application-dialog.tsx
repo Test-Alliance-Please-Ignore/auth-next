@@ -9,6 +9,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -26,7 +27,6 @@ import { useMessage } from '@/hooks/useMessage'
 import { cn } from '@/lib/utils'
 
 import { useSubmitApplication } from '../hooks'
-import { Button } from '@/components/ui/button'
 
 // ============================================================================
 // Types
@@ -116,7 +116,7 @@ export function SubmitApplicationDialog({
 
 		try {
 			clearMessage()
-			const newApplication = await submitMutation.mutateAsync({
+			await submitMutation.mutateAsync({
 				corporationId,
 				characterId: mainCharacterId,
 				applicationText,
@@ -128,7 +128,7 @@ export function SubmitApplicationDialog({
 			// Reset form
 			setSelectedAltIds(new Set())
 			setApplicationText('')
-			navigate('/my-applications')
+			void navigate('/my-applications')
 		} catch (error) {
 			showError(error instanceof Error ? error.message : 'Failed to submit application')
 		}
@@ -189,23 +189,29 @@ export function SubmitApplicationDialog({
 								Select any alt characters you are also applying with.
 							</p>
 							<div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
-								{altCharacters.map((char: { characterId: string; characterName: string; hasValidToken: boolean }) => (
-									<label
-										key={char.characterId}
-										className="flex items-center gap-2 cursor-pointer"
-									>
-										<Checkbox
-											checked={selectedAltIds.has(char.characterId)}
-											onCheckedChange={() => toggleAlt(char.characterId)}
-										/>
-										<span className="text-sm">
-											{char.characterName}
-											{!char.hasValidToken && (
-												<span className="text-muted-foreground"> (No valid token)</span>
-											)}
-										</span>
-									</label>
-								))}
+								{altCharacters.map(
+									(char: {
+										characterId: string
+										characterName: string
+										hasValidToken: boolean
+									}) => (
+										<label
+											key={char.characterId}
+											className="flex items-center gap-2 cursor-pointer"
+										>
+											<Checkbox
+												checked={selectedAltIds.has(char.characterId)}
+												onCheckedChange={() => toggleAlt(char.characterId)}
+											/>
+											<span className="text-sm">
+												{char.characterName}
+												{!char.hasValidToken && (
+													<span className="text-muted-foreground"> (No valid token)</span>
+												)}
+											</span>
+										</label>
+									)
+								)}
 							</div>
 						</div>
 					)}
@@ -256,7 +262,8 @@ export function SubmitApplicationDialog({
 					<Button variant="cancel" onClick={handleCancel} disabled={submitMutation.isPending}>
 						Cancel
 					</Button>
-					<Button variant="confirm"
+					<Button
+						variant="confirm"
 						onClick={handleSubmit}
 						disabled={!isFormValid}
 						loading={submitMutation.isPending}

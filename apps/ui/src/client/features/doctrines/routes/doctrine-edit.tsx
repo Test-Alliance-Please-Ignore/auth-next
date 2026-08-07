@@ -37,14 +37,14 @@ export default function DoctrineEditPage() {
 		try {
 			await updateMutation.mutateAsync({ id, data })
 			toast.success('Doctrine updated')
-			navigate(`/doctrines/${id}`)
+			void navigate(`/doctrines/${id}`)
 		} catch (error) {
 			toast.error(error instanceof Error ? error.message : 'Failed to update doctrine')
 		}
 	}
 
 	const handleCancel = () => {
-		navigate(`/doctrines/${id}`)
+		void navigate(`/doctrines/${id}`)
 	}
 
 	if (isLoading) {

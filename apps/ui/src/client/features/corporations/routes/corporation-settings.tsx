@@ -18,6 +18,7 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Label } from '@/components/ui/label'
@@ -29,7 +30,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
-import { Button } from '@/components/ui/button'
+
 import { useCanAccessCorporation } from '../hooks'
 
 // ============================================================================
@@ -49,14 +50,16 @@ export default function CorporationSettings() {
 	const [fullDescription, setFullDescription] = useState('')
 	const [hasChanges, setHasChanges] = useState(false)
 	const [shortDescError, setShortDescError] = useState('')
-	const { isLoading: accessLoading, userRole, corporation: accessCorp } = useCanAccessCorporation(corporationId ?? '')
+	const {
+		isLoading: accessLoading,
+		userRole,
+		corporation: accessCorp,
+	} = useCanAccessCorporation(corporationId ?? '')
 	const isMemberCorporation = accessCorp?.isMemberCorporation === true
 	const canManageSettings =
 		user?.is_admin === true ||
 		(isMemberCorporation &&
-			(userRole === 'CEO' ||
-				userRole === 'Director' ||
-				userRole === 'hr_admin'))
+			(userRole === 'CEO' || userRole === 'Director' || userRole === 'hr_admin'))
 
 	// Fetch corporation details
 	const {
@@ -113,7 +116,7 @@ export default function CorporationSettings() {
 		onSuccess: (data) => {
 			// Update cache
 			queryClient.setQueryData(['corporations', corporationId], data)
-			queryClient.invalidateQueries({ queryKey: ['corporations', 'browse'] })
+			void queryClient.invalidateQueries({ queryKey: ['corporations', 'browse'] })
 
 			showSuccess('Corporation recruiting settings have been saved successfully.')
 
@@ -230,7 +233,10 @@ export default function CorporationSettings() {
 				title="Recruiting Settings"
 				description={`Configure how ${corporation.name} appears to applicants`}
 				action={
-					<Button variant="ghost" onClick={() => navigate(`/corporations/${corporationId}/members`)}>
+					<Button
+						variant="ghost"
+						onClick={() => navigate(`/corporations/${corporationId}/members`)}
+					>
 						<ArrowLeft className="h-4 w-4" />
 						Back to Manage Corporation
 					</Button>
@@ -322,7 +328,8 @@ export default function CorporationSettings() {
 
 				{/* Actions */}
 				<div className="flex items-center gap-4">
-					<Button variant="primary"
+					<Button
+						variant="primary"
 						type="submit"
 						disabled={updateSettings.isPending || !hasChanges || !!shortDescError}
 						className="w-full sm:w-auto"
@@ -339,7 +346,8 @@ export default function CorporationSettings() {
 							</>
 						)}
 					</Button>
-					<Button variant="ghost"
+					<Button
+						variant="ghost"
 						type="button"
 						onClick={() => navigate(`/corporations/${corporationId}/members`)}
 					>

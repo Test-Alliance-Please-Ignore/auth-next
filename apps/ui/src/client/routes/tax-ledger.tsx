@@ -2,14 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
 import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { FilterField } from '@/components/ui/filter-field'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
-import { Select } from '@/components/ui/select'
 import { Section } from '@/components/ui/section'
+import { Select } from '@/components/ui/select'
 import {
 	useTaxCapabilities,
 	useTaxLedgerEntries,
@@ -34,7 +35,6 @@ import {
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { TaxLedgerEntry } from '@repo/corporation-tax'
-import { Button } from '@/components/ui/button'
 
 const PAGE_SIZE = 50
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
@@ -286,7 +286,7 @@ export default function TaxLedgerPage() {
 		[senderPartyOptions, recipientPartyOptions]
 	)
 
-	const ledgerColumns = useMemo<MRT_ColumnDef<TaxLedgerEntry>[]>(
+	const ledgerColumns = useMemo<Array<MRT_ColumnDef<TaxLedgerEntry>>>(
 		() => [
 			{
 				accessorKey: 'entryDate',
@@ -548,7 +548,9 @@ export default function TaxLedgerPage() {
 							/>
 						</FilterField>
 						<div className="flex items-end md:justify-end">
-							<Button variant="ghost" onClick={resetFilters}>Clear Filters</Button>
+							<Button variant="ghost" onClick={resetFilters}>
+								Clear Filters
+							</Button>
 						</div>
 					</CardContent>
 				</Card>

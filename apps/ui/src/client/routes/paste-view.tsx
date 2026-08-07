@@ -12,8 +12,7 @@ import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { AuthenticationError, AuthorizationError } from '@/lib/api'
-import { apiClient } from '@/lib/api'
+import { apiClient, AuthenticationError, AuthorizationError } from '@/lib/api'
 import toast from '@/lib/toast'
 
 export default function PasteViewPage() {
@@ -92,18 +91,25 @@ export default function PasteViewPage() {
 			{data?.requiresPassword ? (
 				<div className="flex min-h-[calc(100vh-18rem)] items-center justify-center">
 					<Card className="w-full max-w-sm">
-					<CardHeader>
-						<CardTitle>Password Required</CardTitle>
-					</CardHeader>
-					<CardContent className="space-y-3">
-						<Label>Password</Label>
-						<div className="flex items-center gap-2">
-							<Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" />
-							<Button onClick={() => decryptMutation.mutate()} disabled={decryptMutation.isPending || !password}>
-								{decryptMutation.isPending ? 'Accessing...' : 'Access'}
-							</Button>
-						</div>
-					</CardContent>
+						<CardHeader>
+							<CardTitle>Password Required</CardTitle>
+						</CardHeader>
+						<CardContent className="space-y-3">
+							<Label>Password</Label>
+							<div className="flex items-center gap-2">
+								<Input
+									value={password}
+									onChange={(e) => setPassword(e.target.value)}
+									type="password"
+								/>
+								<Button
+									onClick={() => decryptMutation.mutate()}
+									disabled={decryptMutation.isPending || !password}
+								>
+									{decryptMutation.isPending ? 'Accessing...' : 'Access'}
+								</Button>
+							</div>
+						</CardContent>
 					</Card>
 				</div>
 			) : null}

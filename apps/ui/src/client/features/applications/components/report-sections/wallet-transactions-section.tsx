@@ -2,15 +2,15 @@
  * Wallet Transactions Section - MRT data grid with search and pagination
  */
 
-import { MantineReactTable } from 'mantine-react-table'
 import { Loader2 } from 'lucide-react'
+import { MantineReactTable } from 'mantine-react-table'
 import { useMemo } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 
-import { useFulcrumTable } from './use-fulcrum-table'
 import { EntityNameLink } from './entity-name-link'
+import { useFulcrumTable } from './use-fulcrum-table'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { ReportChunkProgress } from '../../hooks'
@@ -44,106 +44,103 @@ function formatIsk(value: string | number): string {
 	return num.toFixed(0)
 }
 
-function buildWalletTransactionColumns(): MRT_ColumnDef<ProcessedWalletTransaction>[] {
+function buildWalletTransactionColumns(): Array<MRT_ColumnDef<ProcessedWalletTransaction>> {
 	return [
-	{
-		accessorKey: 'date',
-		header: 'Date/Time',
-		filterVariant: 'date-range',
-		accessorFn: (row) => new Date(row.date),
-		Cell: ({ row }) => <EveTimeDisplay dateStr={row.original.date} format="compact" />,
-	},
-	{
-		accessorKey: 'is_buy',
-		header: 'Type',
-		enableGlobalFilter: false,
-		filterVariant: 'select',
-		mantineFilterSelectProps: {
-			data: [
-				{ value: 'true', label: 'Buy' },
-				{ value: 'false', label: 'Sell' },
-			],
+		{
+			accessorKey: 'date',
+			header: 'Date/Time',
+			filterVariant: 'date-range',
+			accessorFn: (row) => new Date(row.date),
+			Cell: ({ row }) => <EveTimeDisplay dateStr={row.original.date} format="compact" />,
 		},
-		filterFn: (row, _columnId, filterValue) => {
-			if (!filterValue) return true
-			return String(row.original.is_buy) === filterValue
+		{
+			accessorKey: 'is_buy',
+			header: 'Type',
+			enableGlobalFilter: false,
+			filterVariant: 'select',
+			mantineFilterSelectProps: {
+				data: [
+					{ value: 'true', label: 'Buy' },
+					{ value: 'false', label: 'Sell' },
+				],
+			},
+			filterFn: (row, _columnId, filterValue) => {
+				if (!filterValue) return true
+				return String(row.original.is_buy) === filterValue
+			},
+			Cell: ({ row }) => (
+				<Badge variant={row.original.is_buy ? 'destructive' : 'success'}>
+					{row.original.is_buy ? 'Buy' : 'Sell'}
+				</Badge>
+			),
 		},
-		Cell: ({ row }) => (
-			<Badge variant={row.original.is_buy ? 'destructive' : 'success'}>
-				{row.original.is_buy ? 'Buy' : 'Sell'}
-			</Badge>
-		),
-	},
-	{
-		accessorKey: 'typeName',
-		header: 'Item',
-		filterVariant: 'autocomplete',
-		Cell: ({ row }) => (
-			<span className="font-medium">{row.original.typeName || '-'}</span>
-		),
-	},
-	{
-		accessorKey: 'clientDisplayName',
-		header: 'With',
-		filterVariant: 'autocomplete',
-		accessorFn: (row) => row.clientDisplayName ?? row.clientName ?? '',
-		Cell: ({ row }) => (
-			<EntityNameLink
-				entityId={row.original.client_id}
-				href={row.original.clientDisplayHref}
-			>
-				{row.original.clientDisplayName || row.original.clientName || '-'}
-			</EntityNameLink>
-		),
-	},
-	{
-		accessorKey: 'locationName',
-		header: 'Location',
-		filterVariant: 'autocomplete',
-		Cell: ({ row }) => (
-			<span className="max-w-[200px] truncate block text-muted-foreground">
-				{row.original.locationName || '-'}
-			</span>
-		),
-	},
-	{
-		accessorKey: 'quantity',
-		header: 'Qty',
-		enableGlobalFilter: false,
-		filterVariant: 'range',
-		mantineTableHeadCellProps: { style: { textAlign: 'right' } },
-		Cell: ({ row }) => (
-			<div className="text-right font-mono">{row.original.quantity.toLocaleString()}</div>
-		),
-	},
-	{
-		accessorKey: 'unit_price',
-		header: 'Unit Price',
-		enableGlobalFilter: false,
-		filterVariant: 'range',
-		accessorFn: (row) => {
-			const v = row.unit_price
-			return typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''))
+		{
+			accessorKey: 'typeName',
+			header: 'Item',
+			filterVariant: 'autocomplete',
+			Cell: ({ row }) => <span className="font-medium">{row.original.typeName || '-'}</span>,
 		},
-		mantineTableHeadCellProps: { style: { textAlign: 'right' } },
-		Cell: ({ row }) => (
-			<div className="text-right font-mono text-sm">{formatIsk(row.original.unit_price)}</div>
-		),
-	},
-	{
-		accessorKey: 'totalValue',
-		header: 'Total',
-		enableGlobalFilter: false,
-		filterVariant: 'range',
-		accessorFn: (row) => {
-			const v = row.totalValue
-			return typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''))
+		{
+			accessorKey: 'clientDisplayName',
+			header: 'With',
+			filterVariant: 'autocomplete',
+			accessorFn: (row) => row.clientDisplayName ?? row.clientName ?? '',
+			Cell: ({ row }) => (
+				<EntityNameLink entityId={row.original.client_id} href={row.original.clientDisplayHref}>
+					{row.original.clientDisplayName || row.original.clientName || '-'}
+				</EntityNameLink>
+			),
 		},
-		mantineTableHeadCellProps: { style: { textAlign: 'right' } },
-		Cell: ({ row }) => (
-			<div className="text-right font-mono font-medium">{formatIsk(row.original.totalValue)} ISK</div>
-		),
-	},
+		{
+			accessorKey: 'locationName',
+			header: 'Location',
+			filterVariant: 'autocomplete',
+			Cell: ({ row }) => (
+				<span className="max-w-[200px] truncate block text-muted-foreground">
+					{row.original.locationName || '-'}
+				</span>
+			),
+		},
+		{
+			accessorKey: 'quantity',
+			header: 'Qty',
+			enableGlobalFilter: false,
+			filterVariant: 'range',
+			mantineTableHeadCellProps: { style: { textAlign: 'right' } },
+			Cell: ({ row }) => (
+				<div className="text-right font-mono">{row.original.quantity.toLocaleString()}</div>
+			),
+		},
+		{
+			accessorKey: 'unit_price',
+			header: 'Unit Price',
+			enableGlobalFilter: false,
+			filterVariant: 'range',
+			accessorFn: (row) => {
+				const v = row.unit_price
+				return typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''))
+			},
+			mantineTableHeadCellProps: { style: { textAlign: 'right' } },
+			Cell: ({ row }) => (
+				<div className="text-right font-mono text-sm">{formatIsk(row.original.unit_price)}</div>
+			),
+		},
+		{
+			accessorKey: 'totalValue',
+			header: 'Total',
+			enableGlobalFilter: false,
+			filterVariant: 'range',
+			accessorFn: (row) => {
+				const v = row.totalValue
+				return typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''))
+			},
+			mantineTableHeadCellProps: { style: { textAlign: 'right' } },
+			Cell: ({ row }) => (
+				<div className="text-right font-mono font-medium">
+					{formatIsk(row.original.totalValue)} ISK
+				</div>
+			),
+		},
 	]
 }
 
@@ -154,14 +151,10 @@ export function WalletTransactionsSection({
 	data: ProcessedWalletTransaction[] | WalletTransactionsData | undefined
 	loadingProgress?: ReportChunkProgress
 }) {
-	const data = !rawData
-		? []
-		: Array.isArray(rawData)
-			? rawData
-			: rawData.transactions
-	const truncated = !rawData || Array.isArray(rawData) ? false : rawData.truncated ?? false
+	const data = !rawData ? [] : Array.isArray(rawData) ? rawData : rawData.transactions
+	const truncated = !rawData || Array.isArray(rawData) ? false : (rawData.truncated ?? false)
 	const isLoadingChunks = Boolean(
-		!rawData && loadingProgress && loadingProgress.loadedChunks < loadingProgress.totalChunks,
+		!rawData && loadingProgress && loadingProgress.loadedChunks < loadingProgress.totalChunks
 	)
 	const columns = useMemo(() => buildWalletTransactionColumns(), [])
 
@@ -190,16 +183,17 @@ export function WalletTransactionsSection({
 	// Compute totals across the complete client-side dataset.
 	const { totalBuy, totalSell } = data.reduce(
 		(acc, txn) => {
-			const val = typeof txn.totalValue === 'number'
-				? txn.totalValue
-				: parseFloat(String(txn.totalValue).replace(/,/g, ''))
+			const val =
+				typeof txn.totalValue === 'number'
+					? txn.totalValue
+					: parseFloat(String(txn.totalValue).replace(/,/g, ''))
 			if (!isNaN(val)) {
 				if (txn.is_buy) acc.totalBuy += val
 				else acc.totalSell += val
 			}
 			return acc
 		},
-		{ totalBuy: 0, totalSell: 0 },
+		{ totalBuy: 0, totalSell: 0 }
 	)
 
 	return (
@@ -215,7 +209,9 @@ export function WalletTransactionsSection({
 				</div>
 				<div>
 					<span className="text-muted-foreground">Net: </span>
-					<span className={`font-mono font-semibold ${totalSell - totalBuy >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+					<span
+						className={`font-mono font-semibold ${totalSell - totalBuy >= 0 ? 'text-green-400' : 'text-red-400'}`}
+					>
 						{formatIsk(totalSell - totalBuy)} ISK
 					</span>
 				</div>

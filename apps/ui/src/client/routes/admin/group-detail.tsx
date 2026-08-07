@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import {
 	ArrowLeft,
 	Check,
@@ -23,8 +23,8 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { AttachPermissionDialog } from '@/components/attach-permission-dialog'
 import { EditGroupDescriptionDialog } from '@/components/edit-group-description-dialog'
 import { EditGroupDialog } from '@/components/edit-group-dialog'
-import { EditGroupNameDialog } from '@/components/edit-group-name-dialog'
 import { EditGroupMumbleDialog } from '@/components/edit-group-mumble-dialog'
+import { EditGroupNameDialog } from '@/components/edit-group-name-dialog'
 import { GroupCard } from '@/components/group-card'
 import { GroupPermissionCard } from '@/components/group-permission-card'
 import { GroupPermissionForm } from '@/components/group-permission-form'
@@ -34,14 +34,14 @@ import { PendingInvitationsList } from '@/components/pending-invitations-list'
 import { PendingJoinRequestsList } from '@/components/pending-join-requests-list'
 import { ReassignCategoryDialog } from '@/components/reassign-category-dialog'
 import { TransferOwnershipDialog } from '@/components/transfer-ownership-dialog'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
 	Accordion,
 	AccordionContent,
 	AccordionItem,
 	AccordionTrigger,
 } from '@/components/ui/accordion'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
 	Dialog,
 	DialogContent,
@@ -74,7 +74,6 @@ import {
 	useCreateGroupScopedPermission,
 	useGroupPermissions,
 	useRemoveGroupPermission,
-	useUpdateGroupPermission,
 } from '@/hooks/useGroupPermissions'
 import { useDeleteGroup, useGroup, useUpdateGroup } from '@/hooks/useGroups'
 import {
@@ -83,13 +82,13 @@ import {
 	useRevokeInviteCode,
 } from '@/hooks/useInviteCodes'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { apiClient } from '@/lib/api'
+
 import {
 	groupDiscordRoleAssignmentSections,
 	groupDiscordRoleAssignmentSummary,
 } from './group-discord-role-sections'
 
-import type { GroupDiscordServer, GroupPermissionWithDetails } from '@/lib/api'
+import type { GroupPermissionWithDetails } from '@/lib/api'
 
 export default function GroupDetailPage() {
 	const { groupId } = useParams<{ groupId: string }>()
@@ -121,7 +120,10 @@ export default function GroupDetailPage() {
 	const refreshServerRoles = useRefreshGroupDiscordServerRoles()
 
 	// Invite code hooks
-	const { data: inviteCodes = [] } = useGroupInviteCodes(groupId!, Boolean(group && !isAdminManaged))
+	const { data: inviteCodes = [] } = useGroupInviteCodes(
+		groupId!,
+		Boolean(group && !isAdminManaged)
+	)
 	const createInviteCode = useCreateInviteCode()
 	const revokeInviteCode = useRevokeInviteCode()
 
@@ -130,7 +132,6 @@ export default function GroupDetailPage() {
 	const attachPermission = useAttachPermission()
 	const createCustomPermission = useCreateGroupScopedPermission()
 	const removePermission = useRemoveGroupPermission()
-	const updatePermission = useUpdateGroupPermission()
 
 	// Dialog state
 	const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
@@ -451,7 +452,7 @@ export default function GroupDetailPage() {
 			await navigator.clipboard.writeText(code)
 			setCopiedCode(code)
 			setTimeout(() => setCopiedCode(null), 2000)
-		} catch (error) {
+		} catch {
 			setMessage({
 				type: 'error',
 				text: 'Failed to copy code to clipboard',
@@ -560,7 +561,7 @@ export default function GroupDetailPage() {
 			await deleteGroup.mutateAsync(groupId)
 			setMessage({ type: 'success', text: 'Group deleted successfully!' })
 			setTimeout(() => {
-				navigate('/admin/groups')
+				void navigate('/admin/groups')
 			}, 1000)
 		} catch (error) {
 			setMessage({
@@ -700,195 +701,196 @@ export default function GroupDetailPage() {
 			{/* Invite Codes */}
 			{!isAdminManaged && (
 				<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<div>
-							<div className="flex items-center gap-2">
-								<Ticket className="h-5 w-5 text-primary" />
-								<CardTitle>Invite Codes</CardTitle>
-							</div>
-							<CardDescription>
-								Create reusable invite codes for this group. Codes can be shared to allow users to
-								join without approval.
-							</CardDescription>
-						</div>
-						<Button onClick={() => setShowCreateInviteCodeDialog(true)} size="sm">
-							<Plus className="h-4 w-4" />
-							Create Code
-						</Button>
-					</div>
-				</CardHeader>
-				<CardContent>
-							{inviteCodes.length === 0 ? (
-								<div className="text-center py-8">
-									<Ticket className="mx-auto h-12 w-12 text-muted-foreground" />
-									<h3 className="mt-4 text-sm font-medium">No invite codes</h3>
-									<p className="text-sm text-muted-foreground mt-2">
-										Create an invite code to allow users to join this group
-									</p>
+					<CardHeader>
+						<div className="flex items-center justify-between">
+							<div>
+								<div className="flex items-center gap-2">
+									<Ticket className="h-5 w-5 text-primary" />
+									<CardTitle>Invite Codes</CardTitle>
 								</div>
-					) : (
-						<div className="space-y-3">
-							{inviteCodes.map((inviteCode) => {
-								const isRevoked = inviteCode.revokedAt !== null
-								const isExpired = new Date(inviteCode.expiresAt) < new Date()
-								const isMaxedOut =
-									!isRevoked &&
-									!isExpired &&
-									inviteCode.maxUses !== null && inviteCode.currentUses >= inviteCode.maxUses
-								const statusLabel = isRevoked
-									? 'Revoked'
-									: isExpired
-										? 'Expired'
-										: isMaxedOut
-											? 'Max uses reached'
-											: null
-								const inviteUrl = `${window.location.origin}/invite/${inviteCode.code}`
+								<CardDescription>
+									Create reusable invite codes for this group. Codes can be shared to allow users to
+									join without approval.
+								</CardDescription>
+							</div>
+							<Button onClick={() => setShowCreateInviteCodeDialog(true)} size="sm">
+								<Plus className="h-4 w-4" />
+								Create Code
+							</Button>
+						</div>
+					</CardHeader>
+					<CardContent>
+						{inviteCodes.length === 0 ? (
+							<div className="text-center py-8">
+								<Ticket className="mx-auto h-12 w-12 text-muted-foreground" />
+								<h3 className="mt-4 text-sm font-medium">No invite codes</h3>
+								<p className="text-sm text-muted-foreground mt-2">
+									Create an invite code to allow users to join this group
+								</p>
+							</div>
+						) : (
+							<div className="space-y-3">
+								{inviteCodes.map((inviteCode) => {
+									const isRevoked = inviteCode.revokedAt !== null
+									const isExpired = new Date(inviteCode.expiresAt) < new Date()
+									const isMaxedOut =
+										!isRevoked &&
+										!isExpired &&
+										inviteCode.maxUses !== null &&
+										inviteCode.currentUses >= inviteCode.maxUses
+									const statusLabel = isRevoked
+										? 'Revoked'
+										: isExpired
+											? 'Expired'
+											: isMaxedOut
+												? 'Max uses reached'
+												: null
+									const inviteUrl = `${window.location.origin}/invite/${inviteCode.code}`
 
-								return (
-									<div
-										key={inviteCode.id}
-										className={`rounded-lg border p-4 ${statusLabel ? 'opacity-50' : ''}`}
-									>
-										<div className="flex items-start justify-between">
-											<div className="flex-1 space-y-2">
-												<div className="flex items-center gap-2">
-													<code className="text-sm font-mono bg-muted px-2 py-1 rounded">
-														{inviteCode.code}
-													</code>
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => handleCopyCode(inviteCode.code)}
-														className="h-7 px-2"
-														title="Copy code"
-													>
-														{copiedCode === inviteCode.code ? (
-															<Check className="h-4 w-4 text-green-500" />
-														) : (
-															<Copy className="h-4 w-4" />
+									return (
+										<div
+											key={inviteCode.id}
+											className={`rounded-lg border p-4 ${statusLabel ? 'opacity-50' : ''}`}
+										>
+											<div className="flex items-start justify-between">
+												<div className="flex-1 space-y-2">
+													<div className="flex items-center gap-2">
+														<code className="text-sm font-mono bg-muted px-2 py-1 rounded">
+															{inviteCode.code}
+														</code>
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() => handleCopyCode(inviteCode.code)}
+															className="h-7 px-2"
+															title="Copy code"
+														>
+															{copiedCode === inviteCode.code ? (
+																<Check className="h-4 w-4 text-green-500" />
+															) : (
+																<Copy className="h-4 w-4" />
+															)}
+														</Button>
+														{statusLabel && (
+															<span className="text-xs text-destructive font-medium">
+																{statusLabel}
+															</span>
 														)}
-													</Button>
-													{statusLabel && (
-														<span className="text-xs text-destructive font-medium">
-															{statusLabel}
+													</div>
+													<div className="flex items-center gap-2 text-xs">
+														<code className="bg-muted/50 px-2 py-1 rounded text-muted-foreground truncate max-w-md">
+															{inviteUrl}
+														</code>
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() => handleCopyCode(inviteUrl)}
+															className="h-7 px-2 shrink-0"
+															title="Copy invite URL"
+														>
+															{copiedCode === inviteUrl ? (
+																<Check className="h-4 w-4 text-green-500" />
+															) : (
+																<Copy className="h-4 w-4" />
+															)}
+														</Button>
+													</div>
+													<div className="flex gap-4 text-xs text-muted-foreground">
+														<span>
+															Uses: {inviteCode.currentUses}
+															{inviteCode.maxUses ? ` / ${inviteCode.maxUses}` : ' (unlimited)'}
 														</span>
-													)}
+														<span>
+															Expires: {new Date(inviteCode.expiresAt).toLocaleDateString()}
+														</span>
+														<span>
+															Created: {new Date(inviteCode.createdAt).toLocaleDateString()}
+														</span>
+													</div>
 												</div>
-												<div className="flex items-center gap-2 text-xs">
-													<code className="bg-muted/50 px-2 py-1 rounded text-muted-foreground truncate max-w-md">
-														{inviteUrl}
-													</code>
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => handleCopyCode(inviteUrl)}
-														className="h-7 px-2 shrink-0"
-														title="Copy invite URL"
-													>
-														{copiedCode === inviteUrl ? (
-															<Check className="h-4 w-4 text-green-500" />
-														) : (
-															<Copy className="h-4 w-4" />
-														)}
-													</Button>
-												</div>
-												<div className="flex gap-4 text-xs text-muted-foreground">
-													<span>
-														Uses: {inviteCode.currentUses}
-														{inviteCode.maxUses ? ` / ${inviteCode.maxUses}` : ' (unlimited)'}
-													</span>
-													<span>
-														Expires: {new Date(inviteCode.expiresAt).toLocaleDateString()}
-													</span>
-													<span>
-														Created: {new Date(inviteCode.createdAt).toLocaleDateString()}
-													</span>
-												</div>
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => handleRevokeInviteCode(inviteCode.id)}
+													disabled={revokeInviteCode.isPending}
+												>
+													<Trash2 className="h-4 w-4 text-destructive" />
+												</Button>
 											</div>
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => handleRevokeInviteCode(inviteCode.id)}
-												disabled={revokeInviteCode.isPending}
-											>
-												<Trash2 className="h-4 w-4 text-destructive" />
-											</Button>
 										</div>
-									</div>
-								)
-							})}
-						</div>
-					)}
-
-					{/* Create Invite Code Dialog */}
-					<Dialog open={showCreateInviteCodeDialog} onOpenChange={setShowCreateInviteCodeDialog}>
-						<DialogContent>
-							<DialogHeader>
-								<DialogTitle>Create Invite Code</DialogTitle>
-								<DialogDescription>Configure settings for the new invite code</DialogDescription>
-							</DialogHeader>
-
-							<div className="space-y-4">
-								<div className="space-y-2">
-									<Label htmlFor="max-uses">Max Uses (optional)</Label>
-									<Input
-										id="max-uses"
-										type="number"
-										min="1"
-										placeholder="Unlimited"
-										value={inviteCodeSettings.maxUses ?? ''}
-										onChange={(e) =>
-											setInviteCodeSettings({
-												...inviteCodeSettings,
-												maxUses: e.target.value ? parseInt(e.target.value) : null,
-											})
-										}
-									/>
-									<p className="text-xs text-muted-foreground">Leave empty for unlimited uses</p>
-								</div>
-
-								<div className="space-y-2">
-									<Label htmlFor="expires-in-days">Expires In (days)</Label>
-									<Input
-										id="expires-in-days"
-										type="number"
-										min="1"
-										max="30"
-										value={inviteCodeSettings.expiresInDays}
-										onChange={(e) =>
-											setInviteCodeSettings({
-												...inviteCodeSettings,
-												expiresInDays: parseInt(e.target.value) || 7,
-											})
-										}
-									/>
-									<p className="text-xs text-muted-foreground">Between 1 and 30 days</p>
-								</div>
+									)
+								})}
 							</div>
+						)}
 
-							<DialogFooter>
-								<Button
-									variant="cancel"
-									onClick={() => {
-										setShowCreateInviteCodeDialog(false)
-										setInviteCodeSettings({ maxUses: null, expiresInDays: 7 })
-									}}
-								>
-									Cancel
-								</Button>
-								<Button
-									variant="confirm"
-									onClick={handleCreateInviteCode}
-									loading={createInviteCode.isPending}
-									loadingText="Creating..."
-								>
-									Create Code
-								</Button>
-							</DialogFooter>
-						</DialogContent>
-					</Dialog>
-				</CardContent>
+						{/* Create Invite Code Dialog */}
+						<Dialog open={showCreateInviteCodeDialog} onOpenChange={setShowCreateInviteCodeDialog}>
+							<DialogContent>
+								<DialogHeader>
+									<DialogTitle>Create Invite Code</DialogTitle>
+									<DialogDescription>Configure settings for the new invite code</DialogDescription>
+								</DialogHeader>
+
+								<div className="space-y-4">
+									<div className="space-y-2">
+										<Label htmlFor="max-uses">Max Uses (optional)</Label>
+										<Input
+											id="max-uses"
+											type="number"
+											min="1"
+											placeholder="Unlimited"
+											value={inviteCodeSettings.maxUses ?? ''}
+											onChange={(e) =>
+												setInviteCodeSettings({
+													...inviteCodeSettings,
+													maxUses: e.target.value ? parseInt(e.target.value) : null,
+												})
+											}
+										/>
+										<p className="text-xs text-muted-foreground">Leave empty for unlimited uses</p>
+									</div>
+
+									<div className="space-y-2">
+										<Label htmlFor="expires-in-days">Expires In (days)</Label>
+										<Input
+											id="expires-in-days"
+											type="number"
+											min="1"
+											max="30"
+											value={inviteCodeSettings.expiresInDays}
+											onChange={(e) =>
+												setInviteCodeSettings({
+													...inviteCodeSettings,
+													expiresInDays: parseInt(e.target.value) || 7,
+												})
+											}
+										/>
+										<p className="text-xs text-muted-foreground">Between 1 and 30 days</p>
+									</div>
+								</div>
+
+								<DialogFooter>
+									<Button
+										variant="cancel"
+										onClick={() => {
+											setShowCreateInviteCodeDialog(false)
+											setInviteCodeSettings({ maxUses: null, expiresInDays: 7 })
+										}}
+									>
+										Cancel
+									</Button>
+									<Button
+										variant="confirm"
+										onClick={handleCreateInviteCode}
+										loading={createInviteCode.isPending}
+										loadingText="Creating..."
+									>
+										Create Code
+									</Button>
+								</DialogFooter>
+							</DialogContent>
+						</Dialog>
+					</CardContent>
 				</Card>
 			)}
 
@@ -933,11 +935,7 @@ export default function GroupDetailPage() {
 							)}
 						</div>
 					) : (
-						<Accordion
-							type="multiple"
-							defaultValue={[]}
-							className="space-y-4"
-						>
+						<Accordion type="multiple" defaultValue={[]} className="space-y-4">
 							{groupDiscordServers.map((attachment) => (
 								<AccordionItem
 									key={attachment.id}
@@ -995,7 +993,10 @@ export default function GroupDetailPage() {
 															handleToggleAutoInvite(attachment.id, attachment.autoInvite)
 														}
 													/>
-													<Label htmlFor={`auto-invite-${attachment.id}`} className="cursor-pointer">
+													<Label
+														htmlFor={`auto-invite-${attachment.id}`}
+														className="cursor-pointer"
+													>
 														Auto-Invite
 													</Label>
 												</div>
@@ -1008,7 +1009,10 @@ export default function GroupDetailPage() {
 															handleToggleAutoAssignRoles(attachment.id, attachment.autoAssignRoles)
 														}
 													/>
-													<Label htmlFor={`auto-assign-${attachment.id}`} className="cursor-pointer">
+													<Label
+														htmlFor={`auto-assign-${attachment.id}`}
+														className="cursor-pointer"
+													>
 														Auto-Assign Roles
 													</Label>
 												</div>
@@ -1028,13 +1032,15 @@ export default function GroupDetailPage() {
 														</p>
 														{groupDiscordRoleAssignmentSections.map((section) => {
 															const sectionAssignments = (attachment.roles ?? []).filter(
-																(roleAssignment) => roleAssignment.membershipType === section.membershipType
+																(roleAssignment) =>
+																	roleAssignment.membershipType === section.membershipType
 															)
 															const selectionKey = `${attachment.id}:${section.membershipType}`
 															const availableRoles = discordServer.roles.filter(
 																(role) =>
 																	!attachment.roles?.some(
-																		(roleAssignment) => roleAssignment.discordRole.roleId === role.roleId
+																		(roleAssignment) =>
+																			roleAssignment.discordRole.roleId === role.roleId
 																	)
 															)
 
@@ -1069,10 +1075,7 @@ export default function GroupDetailPage() {
 																					<span>{roleAssignment.discordRole.roleName}</span>
 																					<button
 																						onClick={() =>
-																							handleUnassignRole(
-																								attachment.id,
-																								roleAssignment.id
-																							)
+																							handleUnassignRole(attachment.id, roleAssignment.id)
 																						}
 																						className="ml-1 hover:text-destructive"
 																					>
@@ -1126,9 +1129,9 @@ export default function GroupDetailPage() {
 																			No available roles left to assign.
 																		</p>
 																	)}
-															</div>
-																)
-															})}
+																</div>
+															)
+														})}
 													</div>
 												)
 											})()}

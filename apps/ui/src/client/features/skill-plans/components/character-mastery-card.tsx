@@ -2,7 +2,6 @@ import { CheckCircle2, Star, XCircle } from 'lucide-react'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Card } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 import type { CharacterMasteryCardProps, MasteryStatus } from '../types'

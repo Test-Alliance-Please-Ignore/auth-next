@@ -3,8 +3,6 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
-import { AddBroadcastAddendumDialog } from './add-broadcast-addendum-dialog'
-import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,6 +24,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useAuth } from '@/hooks/useAuth'
 import {
 	useBroadcast,
 	useBroadcastDeliveries,
@@ -33,10 +32,12 @@ import {
 	useDeleteBroadcast,
 	useSendBroadcast,
 } from '@/hooks/useBroadcasts'
-import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { getBroadcastActionVisibility } from '@/lib/broadcast-permissions'
 import { formatDateTimeLocal } from '@/lib/discord-time'
+
+import { AddBroadcastAddendumDialog } from './add-broadcast-addendum-dialog'
+import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 
 import type { BadgeVariant } from '@/components/ui/badge'
 import type { BroadcastStatus, DeliveryStatus } from '@/lib/api'
@@ -199,7 +200,7 @@ export default function BroadcastDetailPage() {
 	const handleDelete = async () => {
 		try {
 			await deleteBroadcast.mutateAsync(broadcast.id)
-			navigate('/broadcasts')
+			void navigate('/broadcasts')
 		} catch (error) {
 			setDeleteDialogOpen(false)
 			setMessage({
@@ -491,7 +492,7 @@ export default function BroadcastDetailPage() {
 									variant="confirm"
 									onClick={() => {
 										setSendBlockedDialogOpen(false)
-										navigate(`/broadcasts/new?draftId=${broadcast.id}`)
+										void navigate(`/broadcasts/new?draftId=${broadcast.id}`)
 									}}
 								>
 									Open for Editing

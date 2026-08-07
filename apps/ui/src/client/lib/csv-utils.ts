@@ -14,7 +14,7 @@ export function buildCsvLine(values: Array<string | number | boolean | null | un
 }
 
 export function buildCsv(
-	headers: Array<string>,
+	headers: string[],
 	rows: Array<Array<string | number | boolean | null | undefined>>
 ): string {
 	return [buildCsvLine(headers), ...rows.map((row) => buildCsvLine(row))].join('\n')

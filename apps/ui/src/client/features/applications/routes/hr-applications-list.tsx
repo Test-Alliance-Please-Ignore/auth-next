@@ -17,6 +17,7 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
@@ -26,14 +27,13 @@ import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { cn } from '@/lib/utils'
 
-import { useHrPermissionCheck } from '../../hr/hooks'
 import { useCanAccessCorporation } from '../../corporations/hooks'
+import { useHrPermissionCheck } from '../../hr/hooks'
 import { ApplicationStatsCard } from '../components/application-stats-card'
 import { ApplicationsTable } from '../components/applications-table'
 import { useApplicationsPaged } from '../hooks'
 
 import type { ApplicationStatus } from '../api'
-import { Button } from '@/components/ui/button'
 
 // ============================================================================
 // Types
@@ -74,8 +74,11 @@ export default function HrApplicationsList() {
 		() => permissions.some((permission) => permission.urn === 'urn:hr:auditor'),
 		[permissions]
 	)
-	const { canAccess: hasCorporationAccess, isLoading: corporationAccessLoading, corporation: accessCorp } =
-		useCanAccessCorporation(corporationId ?? '')
+	const {
+		canAccess: hasCorporationAccess,
+		isLoading: corporationAccessLoading,
+		corporation: accessCorp,
+	} = useCanAccessCorporation(corporationId ?? '')
 	const isMemberCorporation = accessCorp?.isMemberCorporation === true
 
 	// Local state
@@ -102,22 +105,26 @@ export default function HrApplicationsList() {
 	const offset = (page - 1) * pageSize
 
 	// Fetch applications for this corporation (server-side paginated/filterable)
-	const canViewCorporationApplications =
-		user?.is_admin === true || isAuditor || isMemberCorporation
+	const canViewCorporationApplications = user?.is_admin === true || isAuditor || isMemberCorporation
 	const {
 		data: applicationsResult,
 		isLoading: applicationsLoading,
 		isFetching: applicationsFetching,
 		error: applicationsError,
-	} = useApplicationsPaged({
-		corporationId,
-		status: activeFilter === 'all' ? undefined : (activeFilter as ApplicationStatus),
-		search: debouncedSearch.trim() || undefined,
-		limit: pageSize,
-		offset,
-	}, {
-		enabled: canViewCorporationApplications && (user?.is_admin === true || isAuditor || permission?.hasPermission === true),
-	})
+	} = useApplicationsPaged(
+		{
+			corporationId,
+			status: activeFilter === 'all' ? undefined : (activeFilter as ApplicationStatus),
+			search: debouncedSearch.trim() || undefined,
+			limit: pageSize,
+			offset,
+		},
+		{
+			enabled:
+				canViewCorporationApplications &&
+				(user?.is_admin === true || isAuditor || permission?.hasPermission === true),
+		}
+	)
 
 	// Set page title
 	usePageTitle('HR Applications')
@@ -137,7 +144,7 @@ export default function HrApplicationsList() {
 
 	// Handlers
 	const handleApplicationClick = (applicationId: string) => {
-		navigate(`/corporations/${corporationId}/applications/${applicationId}`)
+		void navigate(`/corporations/${corporationId}/applications/${applicationId}`)
 	}
 
 	const handleStatusFilterChange = (status: FilterTab) => {
@@ -173,7 +180,10 @@ export default function HrApplicationsList() {
 
 	// Access denied - no HR role
 	// Check permission - site admins always have access
-	if (!canViewCorporationApplications || (!permission?.hasPermission && !user?.is_admin && !isAuditor)) {
+	if (
+		!canViewCorporationApplications ||
+		(!permission?.hasPermission && !user?.is_admin && !isAuditor)
+	) {
 		return (
 			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
@@ -215,7 +225,9 @@ export default function HrApplicationsList() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="ghost" onClick={() => window.location.reload()}>Try Again</Button>
+						<Button variant="ghost" onClick={() => window.location.reload()}>
+							Try Again
+						</Button>
 					</CardContent>
 				</Card>
 			</Container>

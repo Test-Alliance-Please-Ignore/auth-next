@@ -20,9 +20,9 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 
 import { EntityTypeBadge, StatsDashboard } from '../components'
 import { useIndustryProviders, useIndustryStats, useSetProviderAcceptingOrders } from '../hooks'
-import { ENTITY_TYPE_LABELS, IndustryEntityType } from '../types'
+import { ENTITY_TYPE_LABELS } from '../types'
 
-import type { IndustryProviderFilters } from '../types'
+import type { IndustryEntityType, IndustryProviderFilters } from '../types'
 
 export default function IndustryProvidersPage() {
 	usePageTitle('Admin - Industry Providers')
@@ -192,12 +192,12 @@ export default function IndustryProvidersPage() {
 											</TableCell>
 											<TableCell>
 												{provider.acceptingOrders ? (
-													<Badge  variant="success">
+													<Badge variant="success">
 														<CheckCircle className="mr-1 h-3 w-3" />
 														Yes
 													</Badge>
 												) : (
-													<Badge  variant="destructive">
+													<Badge variant="destructive">
 														<XCircle className="mr-1 h-3 w-3" />
 														No
 													</Badge>

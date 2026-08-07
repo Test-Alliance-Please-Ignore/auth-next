@@ -26,7 +26,6 @@ import {
 	usePlanSkills,
 	useRemoveSkillFromPlan,
 	useSkillPlan,
-	useUpdateSkillLevels,
 	useUpdateSkillPlan,
 } from '../hooks'
 
@@ -61,7 +60,7 @@ export default function SkillPlanDetail() {
 		if (confirm('Are you sure you want to delete this skill plan?')) {
 			try {
 				await deletePlan.mutateAsync(id)
-				navigate('/skill-plans')
+				void navigate('/skill-plans')
 			} catch (error) {
 				console.error('Failed to delete plan:', error)
 			}
@@ -157,14 +156,14 @@ export default function SkillPlanDetail() {
 					{/* Overview Tab */}
 					<TabsContent value="overview" className="space-y-4">
 						<Card>
-						<CardHeader>
-							<div className="flex items-center justify-between gap-3">
-								<CardTitle>Plan Information</CardTitle>
-								<Badge variant={plan.isPublished ? 'default' : 'secondary'}>
-									{plan.isPublished ? 'Published' : 'Draft'}
-								</Badge>
-							</div>
-						</CardHeader>
+							<CardHeader>
+								<div className="flex items-center justify-between gap-3">
+									<CardTitle>Plan Information</CardTitle>
+									<Badge variant={plan.isPublished ? 'default' : 'secondary'}>
+										{plan.isPublished ? 'Published' : 'Draft'}
+									</Badge>
+								</div>
+							</CardHeader>
 							<CardContent className="space-y-4">
 								{/* Description and Maintainer - side by side on desktop, stacked on mobile */}
 								<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -215,7 +214,7 @@ export default function SkillPlanDetail() {
 								title="Your Characters' Readiness"
 								onCharacterClick={(characterId) => {
 									// Navigate to detailed progress view for the character
-									navigate(`/skill-plans/${id}/progress/character/${characterId}`)
+									void navigate(`/skill-plans/${id}/progress/character/${characterId}`)
 								}}
 							/>
 						)}

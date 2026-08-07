@@ -1,13 +1,13 @@
-import { Loader2, RefreshCw } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { Loader2, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router'
 
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { TableRefreshFrame } from '@/components/table-refresh-frame'
 import { Button } from '@/components/ui/button'
-import { DateRangeInput } from '@/components/ui/date-range-input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { DateRangeInput } from '@/components/ui/date-range-input'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { HoverPopover } from '@/components/ui/hover-popover'
 import { PageHeader } from '@/components/ui/page-header'
@@ -21,25 +21,30 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { TableRefreshFrame } from '@/components/table-refresh-frame'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { api } from '@/lib/api'
 import { typeIconUrl } from '@/lib/eve-images'
 
-import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import { CharacterRoleBadge } from '../components/CharacterRoleBadge'
+import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import {
 	setReviewQueueActiveTab,
 	setReviewQueuePage,
 	setReviewQueuePageSize,
 	setReviewQueueSnapshot,
 	toggleReviewQueueSort,
+	updateReviewQueueFilters,
 	useReviewQueueEntityMap,
 	useReviewQueueUiState,
-	updateReviewQueueFilters,
 } from '../state/review-queue-snapshot-store'
-import { formatISKShort, formatRelativeTime, getRequestCharacterRole, isDateRangeWithinOneYear } from '../utils'
+import {
+	formatISKShort,
+	formatRelativeTime,
+	getRequestCharacterRole,
+	isDateRangeWithinOneYear,
+} from '../utils'
 
 import type { RequestStatus, SRPRequestResponse } from '../types'
 
@@ -290,7 +295,13 @@ function ReviewTabContent({
 	const [isExporting, setIsExporting] = useState(false)
 
 	const exportStatusQuery = useQuery({
-		queryKey: ['srp', 'requests', 'paid', 'export-status', pendingExport?.workflowInstanceId ?? null],
+		queryKey: [
+			'srp',
+			'requests',
+			'paid',
+			'export-status',
+			pendingExport?.workflowInstanceId ?? null,
+		],
 		queryFn: () => api.getSrpPaidRequestsCsvExportStatus(pendingExport!.workflowInstanceId),
 		enabled: Boolean(pendingExport?.workflowInstanceId),
 		refetchInterval: (query) => {
@@ -301,7 +312,8 @@ function ReviewTabContent({
 	})
 	const exportStatus = exportStatusQuery.data?.status
 	const isExportPolling =
-		Boolean(pendingExport) && (exportStatus === undefined || exportStatus === 'queued' || exportStatus === 'running')
+		Boolean(pendingExport) &&
+		(exportStatus === undefined || exportStatus === 'queued' || exportStatus === 'running')
 	const isExportBusy = isExporting || isExportPolling
 
 	useEffect(() => {
@@ -397,7 +409,6 @@ function ReviewTabContent({
 		[baseRequests, entities]
 	)
 	const totalCount = effectiveData?.total ?? 0
-	const hasPagination = Math.ceil(totalCount / pageSize) > 1
 	const isSoftLoading = Boolean(effectiveData) && (isLoading || isFetching)
 	const refreshButton = (
 		<Button
@@ -408,7 +419,11 @@ function ReviewTabContent({
 			onClick={() => void refetch()}
 			disabled={isFetching}
 		>
-			{isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+			{isFetching ? (
+				<Loader2 className="h-4 w-4 animate-spin" />
+			) : (
+				<RefreshCw className="h-4 w-4" />
+			)}
 			<span className="ml-2">Refresh</span>
 		</Button>
 	)
@@ -545,7 +560,13 @@ function ReviewTabContent({
 			<TableRefreshFrame
 				isRefreshing={isSoftLoading}
 				refreshMessage="Refreshing recent losses..."
-				errorMessage={error && effectiveData ? (error instanceof Error ? error.message : 'Failed to refresh requests.') : null}
+				errorMessage={
+					error && effectiveData
+						? error instanceof Error
+							? error.message
+							: 'Failed to refresh requests.'
+						: null
+				}
 				onRetry={error && effectiveData ? () => void refetch() : undefined}
 				retryDisabled={isFetching}
 			>
@@ -676,4 +697,4 @@ function ReviewTabContent({
 			</TableRefreshFrame>
 		</div>
 	)
-	}
+}

@@ -208,8 +208,10 @@ export default function CorporationMembersTable({
 			return myCorporationsApi.updateMemberStatus(corporationId, characterId, status)
 		},
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['my-corporations', 'members', corporationId] })
-			queryClient.invalidateQueries({ queryKey: ['my-corporations'] })
+			void queryClient.invalidateQueries({
+				queryKey: ['my-corporations', 'members', corporationId],
+			})
+			void queryClient.invalidateQueries({ queryKey: ['my-corporations'] })
 		},
 	})
 

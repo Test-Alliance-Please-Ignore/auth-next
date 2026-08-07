@@ -3,8 +3,7 @@ import { useEffect, useState } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 
-import type { ReactNode } from 'react'
-import type { ComponentPropsWithoutRef } from 'react'
+import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 
 type PopoverContentProps = ComponentPropsWithoutRef<typeof PopoverContent>
 

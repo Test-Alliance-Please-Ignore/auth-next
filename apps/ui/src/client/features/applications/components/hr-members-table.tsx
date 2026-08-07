@@ -6,22 +6,21 @@
  */
 
 import { Link2, ShieldAlert, XCircle } from 'lucide-react'
-import { MantineReactTable, createMRTColumnHelper, useMantineReactTable } from 'mantine-react-table'
+import { createMRTColumnHelper, MantineReactTable, useMantineReactTable } from 'mantine-react-table'
+import { useMemo } from 'react'
+import { useNavigate } from 'react-router'
 
+import { MemberAvatar } from '@/components/member-avatar'
+import { Badge } from '@/components/ui/badge'
 import {
-	mrtPaperProps,
 	mrtPaginationProps,
+	mrtPaperProps,
 	mrtRowStyle,
 	mrtTableBodyCellProps,
 	mrtTableHeadCellProps,
 	mrtTableHeadProps,
 	mrtTableProps,
 } from '@/lib/mrt-theme'
-import { useMemo } from 'react'
-import { useNavigate } from 'react-router'
-
-import { MemberAvatar } from '@/components/member-avatar'
-import { Badge } from '@/components/ui/badge'
 
 import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { CorporationMember } from '../../corporations/api'
@@ -101,8 +100,7 @@ export function groupByAccount(members: CorporationMember[]): AccountGroup[] {
 
 	for (const [userId, chars] of linked) {
 		const mainName =
-			chars.find((c) => c.mainCharacterName)?.mainCharacterName ??
-			chars[0].characterName
+			chars.find((c) => c.mainCharacterName)?.mainCharacterName ?? chars[0].characterName
 
 		const mainInCorp = chars.find((c) => c.characterName === mainName)
 		const representative = mainInCorp ?? chars[0]
@@ -143,7 +141,7 @@ export function groupByAccount(members: CorporationMember[]): AccountGroup[] {
 
 const col = createMRTColumnHelper<AccountGroup>()
 
-const columns: MRT_ColumnDef<AccountGroup>[] = [
+const columns: Array<MRT_ColumnDef<AccountGroup>> = [
 	col.accessor('mainName', {
 		header: 'Account',
 		size: 280,
@@ -302,7 +300,7 @@ export function HrMembersTable({ members, corporationId }: HrMembersTableProps) 
 			className: 'mrt-grid__row',
 			onClick: () =>
 				navigate(
-					`/corporations/${corporationId}/members/${row.original.accountId}?name=${encodeURIComponent(row.original.mainName)}`,
+					`/corporations/${corporationId}/members/${row.original.accountId}?name=${encodeURIComponent(row.original.mainName)}`
 				),
 			style: { ...mrtRowStyle(row.index), cursor: 'pointer' },
 		}),

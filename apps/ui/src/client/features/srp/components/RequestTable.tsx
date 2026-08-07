@@ -11,8 +11,7 @@ import {
 } from '@/components/ui/table'
 import { typeIconUrl } from '@/lib/eve-images'
 
-import { formatISK, formatRelativeTime } from '../utils'
-import { getRequestCharacterRole } from '../utils'
+import { formatISK, formatRelativeTime, getRequestCharacterRole } from '../utils'
 import { CharacterRoleBadge } from './CharacterRoleBadge'
 import { RequestStatusBadge } from './RequestStatusBadge'
 

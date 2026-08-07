@@ -14,7 +14,7 @@ export function ExportSchedulesGrid(props: {
 	error: unknown
 	entityNames: Record<string, string>
 }) {
-	const columns = useMemo<MRT_ColumnDef<TaxExportSchedule>[]>(
+	const columns = useMemo<Array<MRT_ColumnDef<TaxExportSchedule>>>(
 		() => [
 			{ accessorKey: 'name', header: 'Name', enableSorting: true },
 			{

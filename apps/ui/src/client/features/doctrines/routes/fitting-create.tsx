@@ -46,7 +46,7 @@ export default function FittingCreatePage() {
 		try {
 			const result = await api.previewEft(eftString)
 			setPreview(result)
-		} catch (_err) {
+		} catch {
 			setPreview(null)
 		} finally {
 			setPreviewLoading(false)
@@ -64,10 +64,10 @@ export default function FittingCreatePage() {
 					sortOrder: 0,
 				})
 				toast.success('Fitting created and added to doctrine')
-				navigate(`/doctrines/${doctrineId}`)
+				void navigate(`/doctrines/${doctrineId}`)
 			} else {
 				toast.success('Fitting created')
-				navigate(`/doctrines/fittings/${result.id}`)
+				void navigate(`/doctrines/fittings/${result.id}`)
 			}
 		} catch (error) {
 			toast.error(error instanceof Error ? error.message : 'Failed to create fitting')
@@ -76,9 +76,9 @@ export default function FittingCreatePage() {
 
 	const handleCancel = () => {
 		if (doctrineId) {
-			navigate(`/doctrines/${doctrineId}`)
+			void navigate(`/doctrines/${doctrineId}`)
 		} else {
-			navigate('/doctrines')
+			void navigate('/doctrines')
 		}
 	}
 
@@ -122,8 +122,7 @@ export default function FittingCreatePage() {
 										<Card>
 											<CardContent className="pt-4 pb-4">
 												<p className="text-sm text-amber-400">
-													Could not resolve:{' '}
-													{preview.unresolvedItems.join(', ')}
+													Could not resolve: {preview.unresolvedItems.join(', ')}
 												</p>
 											</CardContent>
 										</Card>

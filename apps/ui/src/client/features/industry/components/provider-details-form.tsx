@@ -4,9 +4,9 @@ import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
-import { ENTITY_TYPE_LABELS, IndustryEntityType } from '../types'
+import { ENTITY_TYPE_LABELS } from '../types'
 
-import type { CreateIndustryProviderRequest } from '../types'
+import type { CreateIndustryProviderRequest, IndustryEntityType } from '../types'
 
 export interface ProviderFormData {
 	name: string

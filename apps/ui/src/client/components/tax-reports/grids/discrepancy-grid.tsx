@@ -24,7 +24,7 @@ export function DiscrepancyGrid(props: {
 	pageCount: number
 	rowCount: number
 }) {
-	const columns = useMemo<MRT_ColumnDef<TaxDiscrepancy>[]>(
+	const columns = useMemo<Array<MRT_ColumnDef<TaxDiscrepancy>>>(
 		() => [
 			{
 				accessorKey: 'corporationId',

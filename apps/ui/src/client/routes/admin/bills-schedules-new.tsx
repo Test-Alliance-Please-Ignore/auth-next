@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
 import { BillEntityPicker } from '@/components/bills/bill-entity-picker'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,7 +16,6 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatScheduleFrequency } from '@/lib/bills-utils'
 
 import type { CreateScheduleInput, EntityType, PayeeType, ScheduleFrequency } from '@repo/bills'
-import { Button } from '@/components/ui/button'
 
 const MS_PER_DAY = 86_400_000
 
@@ -218,7 +218,7 @@ export default function AdminBillsSchedulesNewPage() {
 			await createSchedule.mutateAsync(input)
 			setMessage({ type: 'success', text: 'Schedule created successfully!' })
 			setTimeout(() => {
-				navigate('/admin/bills/schedules')
+				void navigate('/admin/bills/schedules')
 			}, 1500)
 		} catch (error) {
 			console.error('Failed to create schedule:', error)

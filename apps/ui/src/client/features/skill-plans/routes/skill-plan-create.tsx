@@ -35,7 +35,7 @@ export default function SkillPlanCreate() {
 		try {
 			const newPlan = await createPlan.mutateAsync(data as CreateSkillPlanRequest)
 			// Navigate to the new plan's detail page
-			navigate(`/skill-plans/${newPlan.id}`)
+			void navigate(`/skill-plans/${newPlan.id}`)
 		} catch (error) {
 			console.error('Failed to create plan:', error)
 			// In a real app, show a toast notification
@@ -43,7 +43,7 @@ export default function SkillPlanCreate() {
 	}
 
 	const handleCancel = () => {
-		navigate('/skill-plans')
+		void navigate('/skill-plans')
 	}
 
 	if (authLoading) {

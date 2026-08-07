@@ -1,6 +1,6 @@
+import { useQueries } from '@tanstack/react-query'
 import { ArrowLeft, CheckCircle2, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useQueries } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient, BaseApiError } from '@/lib/api'
 import { error as toastError, success as toastSuccess } from '@/lib/toast'
+
 import { useStartTracking } from '../hooks'
 
 import type { TrackingSession } from '../types'
@@ -110,8 +111,7 @@ export default function StartTrackingSession() {
 		: 'Start Tracking'
 	const canShowNewAction = selectedTrackedSession?.status === 'ended'
 	const resolvedSessionName = name.trim()
-	const canSubmit =
-		!!eligible && !!resolvedSessionName && !startTracking.isPending
+	const canSubmit = !!eligible && !!resolvedSessionName && !startTracking.isPending
 
 	useEffect(() => {
 		setConflictingSession(null)
@@ -136,7 +136,7 @@ export default function StartTrackingSession() {
 				action,
 			})
 			toastSuccess('Tracking started')
-			navigate(`/fleet-tracking/${result.sessionId}`)
+			void navigate(`/fleet-tracking/${result.sessionId}`)
 		} catch (err) {
 			if (err instanceof BaseApiError && err.status === 409) {
 				const responseBody = err.requestInfo?.responseBody as
@@ -225,7 +225,9 @@ export default function StartTrackingSession() {
 												{existingSession ? (
 													<div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
 														<span>
-															{existingSession.status === 'active' ? 'Active session:' : 'Existing session:'}{' '}
+															{existingSession.status === 'active'
+																? 'Active session:'
+																: 'Existing session:'}{' '}
 															<span className="text-foreground">{existingSession.name}</span>
 														</span>
 														<span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-700 dark:text-emerald-300">
@@ -267,13 +269,11 @@ export default function StartTrackingSession() {
 						</CardHeader>
 						<CardContent className="space-y-3 text-sm">
 							<div className="text-muted-foreground">
-								This fleet already has an active tracking session. Select a different fleet boss
-								to start a new track, or take over this one from the action buttons below.
+								This fleet already has an active tracking session. Select a different fleet boss to
+								start a new track, or take over this one from the action buttons below.
 							</div>
 							<div className="flex flex-wrap items-center gap-3">
-								<div className="font-medium text-foreground">
-									{conflictingSession.name}
-								</div>
+								<div className="font-medium text-foreground">{conflictingSession.name}</div>
 								<div className="text-muted-foreground">
 									Tracked FC:{' '}
 									<span className="text-foreground">
@@ -281,7 +281,8 @@ export default function StartTrackingSession() {
 									</span>
 								</div>
 								{conflictingSession.currentCommanderCharacterId &&
-								conflictingSession.currentCommanderCharacterId !== conflictingSession.characterId ? (
+								conflictingSession.currentCommanderCharacterId !==
+									conflictingSession.characterId ? (
 									<div className="text-muted-foreground">
 										Current FC:{' '}
 										<span className="text-foreground">
@@ -300,7 +301,13 @@ export default function StartTrackingSession() {
 						<Link to="/fleet-tracking">Cancel</Link>
 					</Button>
 					{canShowNewAction ? (
-						<Button variant="secondary" onClick={() => selectedCharacterId && void startOrTakeOverTracking(selectedCharacterId, 'new')} disabled={!eligible || !resolvedSessionName || startTracking.isPending}>
+						<Button
+							variant="secondary"
+							onClick={() =>
+								selectedCharacterId && void startOrTakeOverTracking(selectedCharacterId, 'new')
+							}
+							disabled={!eligible || !resolvedSessionName || startTracking.isPending}
+						>
 							New
 						</Button>
 					) : null}

@@ -1,13 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api } from '@/lib/api'
 import { permissionKeys } from '@/hooks/usePermissions'
+import { api } from '@/lib/api'
 
 import type {
 	BroadcastStatus,
-	BroadcastTarget,
-	BroadcastTemplate,
-	BroadcastWithDetails,
 	CreateBroadcastRequest,
 	CreateBroadcastTargetRequest,
 	CreateBroadcastTemplateRequest,
@@ -25,7 +22,8 @@ export const broadcastKeys = {
 	template: (id: string) => [...broadcastKeys.templates(), id] as const,
 	templatesFiltered: (targetType?: string, targetId?: string) =>
 		[...broadcastKeys.templates(), 'filter', targetType ?? 'all', targetId ?? 'all'] as const,
-	templatesByTarget: (targetId: string) => [...broadcastKeys.templates(), 'target', targetId] as const,
+	templatesByTarget: (targetId: string) =>
+		[...broadcastKeys.templates(), 'target', targetId] as const,
 	broadcasts: () => [...broadcastKeys.all, 'list'] as const,
 	broadcastsPage: (
 		permissionId: string | undefined,
@@ -112,9 +110,9 @@ export function useUpdateBroadcastTarget() {
 			api.updateBroadcastTarget(id, data),
 		onSuccess: (_, variables) => {
 			// Invalidate all targets lists
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.targets() })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.targets() })
 			// Invalidate specific target
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.target(variables.id) })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.target(variables.id) })
 		},
 	})
 }
@@ -129,7 +127,7 @@ export function useDeleteBroadcastTarget() {
 		mutationFn: (id: string) => api.deleteBroadcastTarget(id),
 		onSuccess: () => {
 			// Invalidate all targets lists
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.targets() })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.targets() })
 		},
 	})
 }
@@ -168,10 +166,10 @@ export function useCreateBroadcastTemplate() {
 		mutationFn: (data: CreateBroadcastTemplateRequest) => api.createBroadcastTemplate(data),
 		onSuccess: (_, variables) => {
 			// Invalidate all templates lists
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.templates() })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.templates() })
 			// Invalidate target-specific list
 			for (const targetId of variables.targetIds ?? []) {
-				queryClient.invalidateQueries({
+				void queryClient.invalidateQueries({
 					queryKey: broadcastKeys.templatesByTarget(targetId),
 				})
 			}
@@ -190,9 +188,9 @@ export function useUpdateBroadcastTemplate() {
 			api.updateBroadcastTemplate(id, data),
 		onSuccess: (_, variables) => {
 			// Invalidate all templates lists
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.templates() })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.templates() })
 			// Invalidate specific template
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.template(variables.id) })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.template(variables.id) })
 		},
 	})
 }
@@ -207,7 +205,7 @@ export function useDeleteBroadcastTemplate() {
 		mutationFn: (id: string) => api.deleteBroadcastTemplate(id),
 		onSuccess: () => {
 			// Invalidate all templates lists
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.templates() })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.templates() })
 		},
 	})
 }
@@ -256,7 +254,7 @@ export function useCreateBroadcast() {
 		mutationFn: (data: CreateBroadcastRequest) => api.createBroadcast(data),
 		onSuccess: () => {
 			// Invalidate all broadcasts lists
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
 		},
 	})
 }
@@ -268,8 +266,8 @@ export function useUpdateBroadcast() {
 		mutationFn: ({ id, data }: { id: string; data: UpdateBroadcastRequest }) =>
 			api.updateBroadcast(id, data),
 		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcast(variables.id) })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcast(variables.id) })
 		},
 	})
 }
@@ -284,11 +282,11 @@ export function useSendBroadcast() {
 		mutationFn: (id: string) => api.sendBroadcast(id),
 		onSuccess: (_, id) => {
 			// Invalidate all broadcasts lists
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
 			// Invalidate specific broadcast
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcast(id) })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcast(id) })
 			// Invalidate deliveries
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.deliveries(id) })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.deliveries(id) })
 		},
 	})
 }
@@ -302,7 +300,7 @@ export function useDeleteBroadcast() {
 	return useMutation({
 		mutationFn: (id: string) => api.deleteBroadcast(id),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
 		},
 	})
 }
@@ -314,7 +312,7 @@ export function useRescindBroadcast() {
 		mutationFn: ({ id, rescindMessage }: { id: string; rescindMessage?: string }) =>
 			api.rescindBroadcast(id, rescindMessage),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
 		},
 	})
 }
@@ -326,7 +324,7 @@ export function useAddBroadcastAddendum() {
 		mutationFn: ({ id, addendumMessage }: { id: string; addendumMessage: string }) =>
 			api.addBroadcastAddendum(id, addendumMessage),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
 		},
 	})
 }

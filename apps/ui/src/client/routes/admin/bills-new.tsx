@@ -238,12 +238,12 @@ export default function AdminBillsNewPage() {
 					text: `Group bill created — ${groupResult.billCount} individual bills issued.`,
 				})
 				setTimeout(() => {
-					navigate(`/admin/bills/group/${encodeURIComponent(groupResult.groupBillId)}`)
+					void navigate(`/admin/bills/group/${encodeURIComponent(groupResult.groupBillId)}`)
 				}, 1500)
 			} else {
 				setMessage({ type: 'success', text: 'Bill created successfully!' })
 				setTimeout(() => {
-					navigate('/admin/bills')
+					void navigate('/admin/bills')
 				}, 1500)
 			}
 		} catch (error) {

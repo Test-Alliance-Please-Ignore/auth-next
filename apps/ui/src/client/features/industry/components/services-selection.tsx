@@ -1,5 +1,4 @@
 import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
 import { SERVICE_TYPE_CATEGORIES, SERVICE_TYPE_LABELS, ServiceType } from '../types'

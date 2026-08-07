@@ -6,17 +6,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 
-import { doctrineKeys, doctrineCategoryKeys, fittingKeys, stagingSystemKeys } from './query-keys'
+import { doctrineCategoryKeys, doctrineKeys, fittingKeys, stagingSystemKeys } from './query-keys'
 
 import type {
 	AddFittingToDoctrineRequest,
 	CreateDoctrineRequest,
 	CreateFittingRequest,
-	UpdateDoctrineRequest,
-	UpdateDoctrineFittingRequest,
-	UpdateFittingRequest,
 	ListDoctrinesFilters,
 	ListFittingsFilters,
+	UpdateDoctrineFittingRequest,
+	UpdateDoctrineRequest,
+	UpdateFittingRequest,
 } from './types'
 
 // ============================================
@@ -59,7 +59,7 @@ export function useCreateDoctrine() {
 	return useMutation({
 		mutationFn: (data: CreateDoctrineRequest) => api.createDoctrine(data),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
+			void queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
 		},
 	})
 }
@@ -74,8 +74,8 @@ export function useUpdateDoctrine() {
 		mutationFn: ({ id, data }: { id: string; data: UpdateDoctrineRequest }) =>
 			api.updateDoctrine(id, data),
 		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
-			queryClient.invalidateQueries({ queryKey: doctrineKeys.detail(variables.id) })
+			void queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
+			void queryClient.invalidateQueries({ queryKey: doctrineKeys.detail(variables.id) })
 		},
 	})
 }
@@ -89,7 +89,7 @@ export function useDeleteDoctrine() {
 	return useMutation({
 		mutationFn: (id: string) => api.deleteDoctrine(id),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
+			void queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
 		},
 	})
 }
@@ -104,7 +104,7 @@ export function useAddFittingToDoctrine() {
 		mutationFn: ({ doctrineId, ...data }: { doctrineId: string } & AddFittingToDoctrineRequest) =>
 			api.addFittingToDoctrine(doctrineId, data),
 		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: doctrineKeys.detail(variables.doctrineId) })
+			void queryClient.invalidateQueries({ queryKey: doctrineKeys.detail(variables.doctrineId) })
 		},
 	})
 }
@@ -119,7 +119,7 @@ export function useRemoveFittingFromDoctrine() {
 		mutationFn: ({ doctrineId, fittingId }: { doctrineId: string; fittingId: string }) =>
 			api.removeFittingFromDoctrine(doctrineId, fittingId),
 		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: doctrineKeys.detail(variables.doctrineId) })
+			void queryClient.invalidateQueries({ queryKey: doctrineKeys.detail(variables.doctrineId) })
 		},
 	})
 }
@@ -141,7 +141,7 @@ export function useUpdateDoctrineFitting() {
 			data: UpdateDoctrineFittingRequest
 		}) => api.updateDoctrineFitting(doctrineId, fittingId, data),
 		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: doctrineKeys.detail(variables.doctrineId) })
+			void queryClient.invalidateQueries({ queryKey: doctrineKeys.detail(variables.doctrineId) })
 		},
 	})
 }
@@ -186,7 +186,7 @@ export function useCreateFitting() {
 	return useMutation({
 		mutationFn: (data: CreateFittingRequest) => api.createFitting(data),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: fittingKeys.all })
+			void queryClient.invalidateQueries({ queryKey: fittingKeys.all })
 		},
 	})
 }
@@ -201,10 +201,10 @@ export function useUpdateFitting() {
 		mutationFn: ({ id, data }: { id: string; data: UpdateFittingRequest }) =>
 			api.updateFitting(id, data),
 		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: fittingKeys.all })
-			queryClient.invalidateQueries({ queryKey: fittingKeys.detail(variables.id) })
+			void queryClient.invalidateQueries({ queryKey: fittingKeys.all })
+			void queryClient.invalidateQueries({ queryKey: fittingKeys.detail(variables.id) })
 			// Also invalidate doctrine queries so category changes reflect in doctrine detail
-			queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
+			void queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
 		},
 	})
 }
@@ -218,7 +218,7 @@ export function useDeleteFitting() {
 	return useMutation({
 		mutationFn: (id: string) => api.deleteFitting(id),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: fittingKeys.all })
+			void queryClient.invalidateQueries({ queryKey: fittingKeys.all })
 		},
 	})
 }
@@ -266,7 +266,7 @@ export function useCreateDoctrineCategory() {
 	return useMutation({
 		mutationFn: (data: { name: string; sortOrder?: number }) => api.createDoctrineCategory(data),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: doctrineCategoryKeys.all })
+			void queryClient.invalidateQueries({ queryKey: doctrineCategoryKeys.all })
 		},
 	})
 }
@@ -278,7 +278,7 @@ export function useUpdateDoctrineCategory() {
 		mutationFn: ({ id, data }: { id: string; data: { name?: string; sortOrder?: number } }) =>
 			api.updateDoctrineCategory(id, data),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: doctrineCategoryKeys.all })
+			void queryClient.invalidateQueries({ queryKey: doctrineCategoryKeys.all })
 		},
 	})
 }
@@ -289,8 +289,8 @@ export function useDeleteDoctrineCategory() {
 	return useMutation({
 		mutationFn: (id: string) => api.deleteDoctrineCategory(id),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: doctrineCategoryKeys.all })
-			queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
+			void queryClient.invalidateQueries({ queryKey: doctrineCategoryKeys.all })
+			void queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
 		},
 	})
 }
@@ -314,7 +314,7 @@ export function useCreateStagingSystem() {
 		mutationFn: (data: { solarSystemId: string; solarSystemName: string; sortOrder?: number }) =>
 			api.createStagingSystem(data),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: stagingSystemKeys.all })
+			void queryClient.invalidateQueries({ queryKey: stagingSystemKeys.all })
 		},
 	})
 }
@@ -323,11 +323,16 @@ export function useUpdateStagingSystem() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ id, data }: { id: string; data: { solarSystemId?: string; solarSystemName?: string; sortOrder?: number } }) =>
-			api.updateStagingSystem(id, data),
+		mutationFn: ({
+			id,
+			data,
+		}: {
+			id: string
+			data: { solarSystemId?: string; solarSystemName?: string; sortOrder?: number }
+		}) => api.updateStagingSystem(id, data),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: stagingSystemKeys.all })
-			queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
+			void queryClient.invalidateQueries({ queryKey: stagingSystemKeys.all })
+			void queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
 		},
 	})
 }
@@ -338,8 +343,8 @@ export function useDeleteStagingSystem() {
 	return useMutation({
 		mutationFn: (id: string) => api.deleteStagingSystem(id),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: stagingSystemKeys.all })
-			queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
+			void queryClient.invalidateQueries({ queryKey: stagingSystemKeys.all })
+			void queryClient.invalidateQueries({ queryKey: doctrineKeys.all })
 		},
 	})
 }
@@ -352,10 +357,17 @@ export function useSetDoctrineStagingSystem() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ doctrineId, stagingSystemId, note }: { doctrineId: string; stagingSystemId: string; note: string }) =>
-			api.setDoctrineStagingSystem(doctrineId, { stagingSystemId, note }),
+		mutationFn: ({
+			doctrineId,
+			stagingSystemId,
+			note,
+		}: {
+			doctrineId: string
+			stagingSystemId: string
+			note: string
+		}) => api.setDoctrineStagingSystem(doctrineId, { stagingSystemId, note }),
 		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: doctrineKeys.detail(variables.doctrineId) })
+			void queryClient.invalidateQueries({ queryKey: doctrineKeys.detail(variables.doctrineId) })
 		},
 	})
 }
@@ -364,10 +376,15 @@ export function useRemoveDoctrineStagingSystem() {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: ({ doctrineId, stagingSystemId }: { doctrineId: string; stagingSystemId: string }) =>
-			api.removeDoctrineStagingSystem(doctrineId, stagingSystemId),
+		mutationFn: ({
+			doctrineId,
+			stagingSystemId,
+		}: {
+			doctrineId: string
+			stagingSystemId: string
+		}) => api.removeDoctrineStagingSystem(doctrineId, stagingSystemId),
 		onSuccess: (_, variables) => {
-			queryClient.invalidateQueries({ queryKey: doctrineKeys.detail(variables.doctrineId) })
+			void queryClient.invalidateQueries({ queryKey: doctrineKeys.detail(variables.doctrineId) })
 		},
 	})
 }

@@ -5,18 +5,12 @@
  */
 
 // Import enums for use in this file
-import {
-	IndustryEntityType,
-	ServiceStatus,
-	ServiceType,
-} from '@/lib/api'
+import { ServiceType } from '@/lib/api'
+
+import type { IndustryEntityType, ServiceStatus } from '@/lib/api'
 
 // Re-export enums as both values AND types
-export {
-	IndustryEntityType,
-	ServiceStatus,
-	ServiceType,
-} from '@/lib/api'
+export { IndustryEntityType, ServiceStatus, ServiceType } from '@/lib/api'
 
 // Re-export types
 export type {

@@ -31,14 +31,14 @@ export default function DoctrineCreatePage() {
 		try {
 			const result = await createMutation.mutateAsync(data as CreateDoctrineRequest)
 			toast.success('Doctrine created')
-			navigate(`/doctrines/${result.id}`)
+			void navigate(`/doctrines/${result.id}`)
 		} catch (error) {
 			toast.error(error instanceof Error ? error.message : 'Failed to create doctrine')
 		}
 	}
 
 	const handleCancel = () => {
-		navigate('/doctrines')
+		void navigate('/doctrines')
 	}
 
 	return (

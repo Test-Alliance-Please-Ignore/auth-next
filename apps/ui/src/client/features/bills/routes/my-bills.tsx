@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 
 import { BillListFilters } from '@/components/bills/bill-list-filters'
 import { BillListGrid } from '@/components/bills/bill-list-grid'
+import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -11,8 +12,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { useMyBillPartySearch, useMyBills } from '../hooks'
 
 import type { MRT_SortingState } from 'mantine-react-table'
-import type { BillListSortDirection, BillListSortField, BillStatus, EntityType } from '@repo/bills'
-import { Button } from '@/components/ui/button'
+import type { BillListSortField, BillStatus, EntityType } from '@repo/bills'
 
 export default function MyBillsPage() {
 	usePageTitle('My Bills')
@@ -169,7 +169,12 @@ export default function MyBillsPage() {
 						void navigate(`/my-bills/${bill.id}`)
 					}}
 					renderActions={(bill) => (
-						<Button variant="primary" size="sm" type="button" onClick={() => navigate(`/my-bills/${bill.id}`)}>
+						<Button
+							variant="primary"
+							size="sm"
+							type="button"
+							onClick={() => navigate(`/my-bills/${bill.id}`)}
+						>
 							View
 						</Button>
 					)}

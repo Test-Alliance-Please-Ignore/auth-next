@@ -23,8 +23,8 @@ import {
 } from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
-
 import { typeIconUrl } from '@/lib/eve-images'
+
 import { useDoctrines, useStagingSystems } from '../hooks'
 
 import type { Doctrine, StagingSystem } from '../types'
@@ -32,8 +32,11 @@ import type { Doctrine, StagingSystem } from '../types'
 /** Group doctrines by category, uncategorized last */
 function groupByCategory(
 	doctrines: Doctrine[]
-): { categoryId: string; categoryName: string; doctrines: Doctrine[] }[] {
-	const map = new Map<string, { categoryName: string; categorySortOrder: number; doctrines: Doctrine[] }>()
+): Array<{ categoryId: string; categoryName: string; doctrines: Doctrine[] }> {
+	const map = new Map<
+		string,
+		{ categoryName: string; categorySortOrder: number; doctrines: Doctrine[] }
+	>()
 	for (const d of doctrines) {
 		const key = d.categoryId || '__uncategorized__'
 		const existing = map.get(key)
@@ -167,14 +170,14 @@ export default function DoctrinesPage() {
 								<TableHeader>
 									<TableRow>
 										<TableHead className="min-w-[200px] text-xs font-semibold">Doctrine</TableHead>
-									{sortedStagingSystems.map((ss) => (
+										{sortedStagingSystems.map((ss) => (
 											<TableHead
 												key={ss.id}
 												className="text-center whitespace-nowrap text-xs font-semibold"
 											>
-											{ss.solarSystemName}
-										</TableHead>
-									))}
+												{ss.solarSystemName}
+											</TableHead>
+										))}
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -215,7 +218,10 @@ function CategoryRows({
 		<>
 			{showCategoryHeader && (
 				<TableRow className="bg-muted/30 hover:bg-muted/30">
-					<TableCell colSpan={totalCols} className="py-2 font-semibold uppercase tracking-wide text-xs text-muted-foreground">
+					<TableCell
+						colSpan={totalCols}
+						className="py-2 font-semibold uppercase tracking-wide text-xs text-muted-foreground"
+					>
 						{categoryName}
 					</TableCell>
 				</TableRow>

@@ -50,7 +50,7 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 			sortOrder,
 		}
 
-		onSubmit(data)
+		void onSubmit(data)
 	}
 
 	const searchShipTypes = async (query: string): Promise<ShipOption[]> => {
@@ -102,9 +102,7 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 					onValueChange={(val) => setCategoryId(val)}
 					placeholder="Select a category..."
 				/>
-				<p className="text-sm text-muted-foreground">
-					Group this doctrine under a category
-				</p>
+				<p className="text-sm text-muted-foreground">Group this doctrine under a category</p>
 			</div>
 
 			{/* Ship Icon */}
@@ -112,11 +110,7 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 				<Label>Ship Icon</Label>
 				<div className="flex items-center gap-3">
 					{shipTypeId && (
-						<img
-							src={typeIconUrl(shipTypeId, 64)}
-							alt="Ship icon"
-							className="h-10 w-10 rounded"
-						/>
+						<img src={typeIconUrl(shipTypeId, 64)} alt="Ship icon" className="h-10 w-10 rounded" />
 					)}
 					<div className="flex-1">
 						<Select<ShipOption>
@@ -132,11 +126,7 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 							queryHintText="Type at least 2 characters to search"
 							renderOption={(option) => (
 								<div className="flex items-center gap-2">
-									<img
-										src={typeIconUrl(option.value, 32)}
-										alt=""
-										className="h-5 w-5 rounded"
-									/>
+									<img src={typeIconUrl(option.value, 32)} alt="" className="h-5 w-5 rounded" />
 									<span>{option.label}</span>
 								</div>
 							)}
@@ -182,4 +172,3 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 		</form>
 	)
 }
-

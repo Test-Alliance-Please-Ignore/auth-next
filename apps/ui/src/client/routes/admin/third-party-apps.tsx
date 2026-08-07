@@ -1,26 +1,19 @@
-import { Check, Copy, Plus, RotateCcw, Trash2 } from 'lucide-react'
-import { useMemo, useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Check, Copy, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
-import {
-	THIRD_PARTY_APP_SUPPORTED_SCOPES,
-	getThirdPartyAppScopeMetadata,
-	type OAuthClientCreateInput,
-	type OAuthClientSummary,
-	type OAuthClientUpdateInput,
-	type ThirdPartyAppScope,
-} from '@repo/admin'
+import { getThirdPartyAppScopeMetadata, THIRD_PARTY_APP_SUPPORTED_SCOPES } from '@repo/admin'
 
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
 	Accordion,
 	AccordionContent,
 	AccordionItem,
 	AccordionTrigger,
 } from '@/components/ui/accordion'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
 	Dialog,
 	DialogContent,
@@ -29,10 +22,10 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { HoverPopover } from '@/components/ui/hover-popover'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { HoverPopover } from '@/components/ui/hover-popover'
-import { Select, type SelectOption } from '@/components/ui/select'
+import { Select } from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -42,15 +35,24 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import toast from '@/lib/toast'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import toast from '@/lib/toast'
+
 import {
-	groupThirdPartyAppScopeOptions,
 	getThirdPartyAppScopeAccessLevel,
+	groupThirdPartyAppScopeOptions,
 	THIRD_PARTY_APP_REQUIRED_SCOPES,
-	type ThirdPartyAppScopeDomainGroup,
-	type ThirdPartyAppScopeRow,
 } from './third-party-apps.helpers'
+
+import type { KeyboardEvent } from 'react'
+import type {
+	OAuthClientCreateInput,
+	OAuthClientSummary,
+	OAuthClientUpdateInput,
+	ThirdPartyAppScope,
+} from '@repo/admin'
+import type { SelectOption } from '@/components/ui/select'
+import type { ThirdPartyAppScopeRow } from './third-party-apps.helpers'
 
 type OAuthClientListResponse = {
 	clients?: OAuthClientSummary[]
@@ -120,12 +122,14 @@ function clientSummaryToFormState(client: OAuthClientSummary): ClientFormState {
 		clientName: client.clientName ?? '',
 		redirectUrisText: client.redirectUris?.join('\n') ?? '',
 		tokenEndpointAuthMethod:
-			client.tokenEndpointAuthMethod === 'client_secret_post' || client.tokenEndpointAuthMethod === 'none'
+			client.tokenEndpointAuthMethod === 'client_secret_post' ||
+			client.tokenEndpointAuthMethod === 'none'
 				? client.tokenEndpointAuthMethod
 				: 'client_secret_basic',
 		grantTypes: new Set(
 			(client.grantTypes ?? ['authorization_code', 'refresh_token']).filter(
-				(grant): grant is OAuthGrantType => grant === 'authorization_code' || grant === 'refresh_token'
+				(grant): grant is OAuthGrantType =>
+					grant === 'authorization_code' || grant === 'refresh_token'
 			)
 		),
 		selectedScopes: new Set([...(client.scopes ?? []), ...THIRD_PARTY_APP_REQUIRED_SCOPES]),
@@ -178,7 +182,10 @@ function ClientAccessSettings({ form, idPrefix, onChange }: ClientAccessSettings
 	return (
 		<div className="grid gap-4 rounded-lg border border-border/60 bg-card/40 p-4 md:grid-cols-2">
 			<div className="space-y-2">
-				<Label htmlFor={`${idPrefix}-token-endpoint-auth-method`} className="inline-flex items-center gap-1.5">
+				<Label
+					htmlFor={`${idPrefix}-token-endpoint-auth-method`}
+					className="inline-flex items-center gap-1.5"
+				>
 					<HoverPopover
 						trigger={<span className="cursor-help">Token Endpoint Authentication</span>}
 						side="top"
@@ -239,13 +246,19 @@ function ClientAccessSettings({ form, idPrefix, onChange }: ClientAccessSettings
 									onCheckedChange={(nextChecked) =>
 										onChange((previous) => ({
 											...previous,
-											grantTypes: updateGrantTypeSet(previous.grantTypes, [grantType], nextChecked === true),
+											grantTypes: updateGrantTypeSet(
+												previous.grantTypes,
+												[grantType],
+												nextChecked === true
+											),
 										}))
 									}
 								/>
 								<div className="space-y-0.5">
 									<HoverPopover
-										trigger={<div className="text-sm font-medium text-foreground cursor-help">{label}</div>}
+										trigger={
+											<div className="text-sm font-medium text-foreground cursor-help">{label}</div>
+										}
 										side="top"
 										align="start"
 										className="w-80 border border-border bg-popover p-3 text-popover-foreground shadow-lg"
@@ -273,7 +286,11 @@ function updateSelectedScopeSet(
 ): Set<ThirdPartyAppScope> {
 	const next = new Set(previous)
 	for (const scope of scopes) {
-		if (THIRD_PARTY_APP_REQUIRED_SCOPES.includes(scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number])) {
+		if (
+			THIRD_PARTY_APP_REQUIRED_SCOPES.includes(
+				scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number]
+			)
+		) {
 			next.add(scope)
 			continue
 		}
@@ -317,13 +334,20 @@ export default function AdminThirdPartyAppsPage() {
 	const queryClient = useQueryClient()
 	const [message, setMessage] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
-	const [createForm, setCreateForm] = useState<ClientFormState>(() => createDefaultClientFormState())
+	const [createForm, setCreateForm] = useState<ClientFormState>(() =>
+		createDefaultClientFormState()
+	)
 	const [editForm, setEditForm] = useState<ClientFormState | null>(null)
 	const [editingClient, setEditingClient] = useState<OAuthClientSummary | null>(null)
 	const [editDialogOpen, setEditDialogOpen] = useState(false)
 	const [secretDialogOpen, setSecretDialogOpen] = useState(false)
-	const [latestSecret, setLatestSecret] = useState<{ clientId: string; clientSecret: string } | null>(null)
-	const [secretCopiedField, setSecretCopiedField] = useState<'clientId' | 'clientSecret' | null>(null)
+	const [latestSecret, setLatestSecret] = useState<{
+		clientId: string
+		clientSecret: string
+	} | null>(null)
+	const [secretCopiedField, setSecretCopiedField] = useState<'clientId' | 'clientSecret' | null>(
+		null
+	)
 
 	const clientsQuery = useQuery({
 		queryKey: ['admin-third-party-oauth-clients'],
@@ -343,11 +367,18 @@ export default function AdminThirdPartyAppsPage() {
 	const esiProxySection = scopeSections.find((section) => section.key === 'esi-proxy')
 	const authPlatformScopeNames = authPlatformSection?.scopes.map((scope) => scope.scope) ?? []
 	const authPlatformOptionalScopeNames = authPlatformScopeNames.filter(
-		(scope) => !THIRD_PARTY_APP_REQUIRED_SCOPES.includes(scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number])
+		(scope) =>
+			!THIRD_PARTY_APP_REQUIRED_SCOPES.includes(
+				scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number]
+			)
 	)
 	const selectedScopeCount = createForm.selectedScopes.size
 
-	const copySecretField = async (value: string, field: 'clientId' | 'clientSecret', label: string) => {
+	const copySecretField = async (
+		value: string,
+		field: 'clientId' | 'clientSecret',
+		label: string
+	) => {
 		await navigator.clipboard.writeText(value)
 		toast.success(`${label} copied`)
 		setSecretCopiedField(field)
@@ -419,7 +450,9 @@ export default function AdminThirdPartyAppsPage() {
 
 	const toggleEditScope = (scope: ThirdPartyAppScope, checked: boolean) => {
 		if (
-			THIRD_PARTY_APP_REQUIRED_SCOPES.includes(scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number])
+			THIRD_PARTY_APP_REQUIRED_SCOPES.includes(
+				scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number]
+			)
 		) {
 			return
 		}
@@ -521,7 +554,9 @@ export default function AdminThirdPartyAppsPage() {
 
 	const toggleScope = (scope: ThirdPartyAppScope, checked: boolean) => {
 		if (
-			THIRD_PARTY_APP_REQUIRED_SCOPES.includes(scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number])
+			THIRD_PARTY_APP_REQUIRED_SCOPES.includes(
+				scope as (typeof THIRD_PARTY_APP_REQUIRED_SCOPES)[number]
+			)
 		) {
 			return
 		}
@@ -556,11 +591,13 @@ export default function AdminThirdPartyAppsPage() {
 	}
 	const authPlatformSelectionState = getScopeSelectionState(authPlatformScopeNames)
 	const esiReadScopeNames =
-		esiProxySection?.scopes.filter((scope) => scope.accessLevel === 'read').map((scope) => scope.scope) ??
-		[]
+		esiProxySection?.scopes
+			.filter((scope) => scope.accessLevel === 'read')
+			.map((scope) => scope.scope) ?? []
 	const esiWriteScopeNames =
-		esiProxySection?.scopes.filter((scope) => scope.accessLevel === 'write').map((scope) => scope.scope) ??
-		[]
+		esiProxySection?.scopes
+			.filter((scope) => scope.accessLevel === 'write')
+			.map((scope) => scope.scope) ?? []
 	const esiReadSelectionState = getScopeSelectionState(esiReadScopeNames)
 	const esiWriteSelectionState = getScopeSelectionState(esiWriteScopeNames)
 	const editAuthPlatformSelectionState = editForm
@@ -572,8 +609,6 @@ export default function AdminThirdPartyAppsPage() {
 	const editEsiWriteSelectionState = editForm
 		? getScopeSelectionState(esiWriteScopeNames, editForm.selectedScopes)
 		: esiWriteSelectionState
-	const createGrantTypes = createForm.grantTypes
-	const editGrantTypes = editForm?.grantTypes ?? createGrantTypes
 
 	const renderScopeRows = (
 		scopes: ThirdPartyAppScopeRow[],
@@ -656,30 +691,6 @@ export default function AdminThirdPartyAppsPage() {
 		</Table>
 	)
 
-	const renderDomainGroups = (domainGroups: ThirdPartyAppScopeDomainGroup[]) => (
-		<Accordion type="multiple" className="space-y-2">
-			{domainGroups.map((domainGroup, index) => (
-				<AccordionItem
-					key={domainGroup.key}
-					value={domainGroup.key}
-					className={`rounded-lg border border-border/60 border-b-0 px-3 ${index % 2 === 0 ? 'bg-background/40' : 'bg-card/60'}`}
-				>
-					<AccordionTrigger className="cursor-pointer py-3 text-sm font-medium text-foreground hover:no-underline">
-						<span className="flex min-w-0 flex-1 items-center gap-2">
-							<span className="truncate">{domainGroup.label}</span>
-							<Badge variant="ghost" className="text-[10px] uppercase tracking-wide">
-								{domainGroup.scopes.length} scopes
-							</Badge>
-						</span>
-					</AccordionTrigger>
-					<AccordionContent className="pb-0">
-						<div className="pb-3">{renderScopeRows(domainGroup.scopes)}</div>
-					</AccordionContent>
-				</AccordionItem>
-			))}
-		</Accordion>
-	)
-
 	return (
 		<div className="space-y-6">
 			<div>
@@ -741,7 +752,7 @@ export default function AdminThirdPartyAppsPage() {
 								setCreateForm((previous) => ({ ...previous, redirectUrisText: event.target.value }))
 							}
 							placeholder={'https://example.app/callback\nhttps://example.app/oauth/callback'}
-							/>
+						/>
 					</div>
 					<ClientAccessSettings
 						form={createForm}
@@ -770,7 +781,10 @@ export default function AdminThirdPartyAppsPage() {
 												role="button"
 												tabIndex={0}
 												onClick={() =>
-													setScopes(authPlatformOptionalScopeNames, !authPlatformSelectionState.allSelected)
+													setScopes(
+														authPlatformOptionalScopeNames,
+														!authPlatformSelectionState.allSelected
+													)
 												}
 												onKeyDown={(event) => {
 													if (event.key === 'Enter' || event.key === ' ') {
@@ -843,12 +857,17 @@ export default function AdminThirdPartyAppsPage() {
 																			: false
 																}
 																onClick={(event) => event.stopPropagation()}
-																onCheckedChange={(checked) => setScopes(accessScopes, checked === true)}
+																onCheckedChange={(checked) =>
+																	setScopes(accessScopes, checked === true)
+																}
 															/>
 															<span className="text-sm font-medium text-foreground">
 																Select all {accessLevel}
 															</span>
-															<Badge variant={accessLevel === 'read' ? 'success' : 'warning'} className="text-xs">
+															<Badge
+																variant={accessLevel === 'read' ? 'success' : 'warning'}
+																className="text-xs"
+															>
 																{selectionState.selectedCount}/{selectionState.totalCount}
 															</Badge>
 														</div>
@@ -868,7 +887,10 @@ export default function AdminThirdPartyAppsPage() {
 													<AccordionTrigger className="py-3 text-sm font-medium text-foreground hover:no-underline">
 														<span className="flex min-w-0 flex-1 items-center gap-2">
 															<span className="truncate">{domainGroup.label}</span>
-															<Badge variant="ghost" className="text-[10px] uppercase tracking-wide">
+															<Badge
+																variant="ghost"
+																className="text-[10px] uppercase tracking-wide"
+															>
 																{domainGroup.scopes.length} scopes
 															</Badge>
 														</span>
@@ -1033,7 +1055,8 @@ export default function AdminThirdPartyAppsPage() {
 									Allowed Scopes
 									<span className="ml-2 text-xs text-muted-foreground">
 										{editForm.selectedScopes.size} selected of{' '}
-										{scopeSections.reduce((total, section) => total + section.scopes.length, 0)} total
+										{scopeSections.reduce((total, section) => total + section.scopes.length, 0)}{' '}
+										total
 									</span>
 								</summary>
 								<div className="mt-4 space-y-4">
@@ -1080,7 +1103,8 @@ export default function AdminThirdPartyAppsPage() {
 														/>
 														<span className="text-sm font-medium text-foreground">Select all</span>
 														<Badge variant="ghost" className="text-xs">
-															{editAuthPlatformSelectionState.selectedCount}/{authPlatformScopeNames.length}
+															{editAuthPlatformSelectionState.selectedCount}/
+															{authPlatformScopeNames.length}
 														</Badge>
 													</div>
 												</div>
@@ -1105,7 +1129,9 @@ export default function AdminThirdPartyAppsPage() {
 													<div className="flex flex-wrap items-center gap-2">
 														{(['read', 'write'] as const).map((accessLevel) => {
 															const selectionState =
-																accessLevel === 'read' ? editEsiReadSelectionState : editEsiWriteSelectionState
+																accessLevel === 'read'
+																	? editEsiReadSelectionState
+																	: editEsiWriteSelectionState
 															const accessScopes =
 																accessLevel === 'read' ? esiReadScopeNames : esiWriteScopeNames
 															return (
@@ -1133,7 +1159,9 @@ export default function AdminThirdPartyAppsPage() {
 																					: false
 																		}
 																		onClick={(event) => event.stopPropagation()}
-																		onCheckedChange={(checked) => setEditScopes(accessScopes, checked === true)}
+																		onCheckedChange={(checked) =>
+																			setEditScopes(accessScopes, checked === true)
+																		}
 																	/>
 																	<span className="text-sm font-medium text-foreground">
 																		Select all {accessLevel}
@@ -1161,14 +1189,21 @@ export default function AdminThirdPartyAppsPage() {
 															<AccordionTrigger className="py-3 text-sm font-medium text-foreground hover:no-underline">
 																<span className="flex min-w-0 flex-1 items-center gap-2">
 																	<span className="truncate">{domainGroup.label}</span>
-																	<Badge variant="ghost" className="text-[10px] uppercase tracking-wide">
+																	<Badge
+																		variant="ghost"
+																		className="text-[10px] uppercase tracking-wide"
+																	>
 																		{domainGroup.scopes.length} scopes
 																	</Badge>
 																</span>
 															</AccordionTrigger>
 															<AccordionContent className="pb-0">
 																<div className="pb-3">
-																	{renderScopeRows(domainGroup.scopes, editForm.selectedScopes, toggleEditScope)}
+																	{renderScopeRows(
+																		domainGroup.scopes,
+																		editForm.selectedScopes,
+																		toggleEditScope
+																	)}
 																</div>
 															</AccordionContent>
 														</AccordionItem>
@@ -1185,7 +1220,11 @@ export default function AdminThirdPartyAppsPage() {
 						<Button variant="secondary" onClick={() => setEditDialogOpen(false)}>
 							Cancel
 						</Button>
-						<Button onClick={handleUpdate} loading={updateClientMutation.isPending} loadingText="Saving...">
+						<Button
+							onClick={handleUpdate}
+							loading={updateClientMutation.isPending}
+							loadingText="Saving..."
+						>
 							Save Changes
 						</Button>
 					</DialogFooter>

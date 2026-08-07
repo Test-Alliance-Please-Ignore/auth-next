@@ -38,7 +38,7 @@ export function SkillPlanCard({
 		if (target.closest('button') || target.closest('a') || target.closest('[role="button"]')) {
 			return
 		}
-		navigate(`/skill-plans/${plan.id}`)
+		void navigate(`/skill-plans/${plan.id}`)
 	}
 
 	const renderReadinessIndicator = () => {

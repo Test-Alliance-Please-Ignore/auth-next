@@ -1,8 +1,8 @@
 import { MantineReactTable, useMantineReactTable } from 'mantine-react-table'
 
 import {
-	mrtPaperProps,
 	mrtPaginationProps,
+	mrtPaperProps,
 	mrtRowStyle,
 	mrtTableBodyCellProps,
 	mrtTableContainerProps,
@@ -21,7 +21,7 @@ import type {
 import type { ReactNode } from 'react'
 
 interface TaxReportDataGridProps<Row extends object> {
-	columns: MRT_ColumnDef<Row>[]
+	columns: Array<MRT_ColumnDef<Row>>
 	rows: Row[]
 	loading?: boolean
 	error?: unknown

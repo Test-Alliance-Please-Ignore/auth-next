@@ -9,31 +9,11 @@ import { useQuery } from '@tanstack/react-query'
 
 import { api } from '../lib/api'
 
-import type {
-	CharacterSkill,
-	EnhancedCharacterSkill,
-	normalizeSkillId,
-	SkillMetadata,
-} from '@repo/eve-types'
+import type { CharacterSkill, EnhancedCharacterSkill, SkillMetadata } from '@repo/eve-types'
 
 /**
  * Categorized skills response from API
  */
-interface CategorizedSkillsResponse {
-	categoryId: string
-	categoryName: string
-	groups?: Array<{
-		groupId: string
-		groupName: string
-		skills?: Array<{
-			id: number | string
-			name: string
-			description?: string
-			rank: number
-		}>
-	}>
-}
-
 /**
  * Fetch and cache skill metadata for a batch of skill IDs
  *
@@ -48,7 +28,7 @@ interface CategorizedSkillsResponse {
  * const skillName = skillMap?.get(3436)?.name // "Shield Management"
  * ```
  */
-export function useSkillMetadata(skillIds: (number | string)[]) {
+export function useSkillMetadata(skillIds: Array<number | string>) {
 	// Normalize and sort IDs for consistent cache key
 	const normalizedIds = skillIds.map((id) => String(id))
 	const sortedIds = [...normalizedIds].sort((a, b) => Number(a) - Number(b))

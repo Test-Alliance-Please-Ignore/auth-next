@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, User } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
@@ -12,7 +11,9 @@ import { LoadingInline } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { api, type LegacyMigrationCandidateCharacter, type LegacyMigrationCandidateNote } from '@/lib/api'
+import { api } from '@/lib/api'
+
+import type { LegacyMigrationCandidateCharacter, LegacyMigrationCandidateNote } from '@/lib/api'
 
 type SelectionState = {
 	characterIds: Set<string>
@@ -27,8 +28,9 @@ function parseConflicts(conflicts: Record<string, unknown>): {
 	crossUserCount: number
 	hasBlacklist: boolean
 } {
-	const crossMatches =
-		Array.isArray(conflicts.crossModernUserQueueMatches) ? conflicts.crossModernUserQueueMatches : []
+	const crossMatches = Array.isArray(conflicts.crossModernUserQueueMatches)
+		? conflicts.crossModernUserQueueMatches
+		: []
 	const blacklistSignals =
 		conflicts && typeof conflicts.blacklistSignals === 'object'
 			? (conflicts.blacklistSignals as Record<string, unknown>)
@@ -44,7 +46,9 @@ function parseConflicts(conflicts: Record<string, unknown>): {
 	}
 }
 
-function formatDiscoverySource(source: 'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'): string {
+function formatDiscoverySource(
+	source: 'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'
+): string {
 	switch (source) {
 		case 'legacy_direct':
 			return 'Legacy Character Match'
@@ -79,7 +83,9 @@ function parseBlacklistAlerts(conflicts: Record<string, unknown>): {
 		reason: string | null
 		blacklistedBy: string | null
 		createdAt: string | null
-		discoverySources: Array<'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'>
+		discoverySources: Array<
+			'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'
+		>
 		preferredSource: 'legacy' | 'tang'
 	}>
 	discordMatches: string[]
@@ -92,12 +98,16 @@ function parseBlacklistAlerts(conflicts: Record<string, unknown>): {
 	const matchedTargets = Array.isArray(blacklistSignals?.matchedTargets)
 		? blacklistSignals.matchedTargets
 		: []
-	const matchingCharactersBlacklisted = Array.isArray(blacklistSignals?.matchingCharactersBlacklisted)
+	const matchingCharactersBlacklisted = Array.isArray(
+		blacklistSignals?.matchingCharactersBlacklisted
+	)
 		? blacklistSignals.matchingCharactersBlacklisted
 		: []
 	const characterNameById = new Map(
 		matchingCharactersBlacklisted
-			.filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === 'object')
+			.filter(
+				(value): value is Record<string, unknown> => Boolean(value) && typeof value === 'object'
+			)
 			.map((value) => {
 				const characterId = String(value.characterId ?? '').trim()
 				const characterName = String(value.characterName ?? '').trim()
@@ -107,7 +117,9 @@ function parseBlacklistAlerts(conflicts: Record<string, unknown>): {
 	)
 
 	const rawMatches = matchedTargets
-		.filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === 'object')
+		.filter(
+			(value): value is Record<string, unknown> => Boolean(value) && typeof value === 'object'
+		)
 		.map((value) => {
 			const parsedEntryMode: 'manual' | 'automatic' | null =
 				value.entryMode === 'manual' || value.entryMode === 'automatic' ? value.entryMode : null
@@ -116,20 +128,29 @@ function parseBlacklistAlerts(conflicts: Record<string, unknown>): {
 			const preferredSource: 'legacy' | 'tang' =
 				value.preferredSource === 'legacy' ? 'legacy' : 'tang'
 			const resolvedCharacterName =
-				targetType === 'character_id' ? characterNameById.get(targetValue.trim()) ?? null : null
+				targetType === 'character_id' ? (characterNameById.get(targetValue.trim()) ?? null) : null
 			return {
 				key: `${targetType}:${targetValue}`,
 				label: resolvedCharacterName ?? targetValue,
 				subLabel: resolvedCharacterName ? targetValue : null,
 				targetType,
-				reason: typeof value.reason === 'string' && value.reason.trim().length > 0 ? value.reason : null,
+				reason:
+					typeof value.reason === 'string' && value.reason.trim().length > 0 ? value.reason : null,
 				entryMode: parsedEntryMode,
 				discoverySources: Array.isArray(value.discoverySources)
-					? value.discoverySources.filter((source): source is 'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association' =>
-						source === 'legacy_direct' ||
-						source === 'legacy_ip_association' ||
-						source === 'tang_direct' ||
-						source === 'tang_ip_association')
+					? value.discoverySources.filter(
+							(
+								source
+							): source is
+								| 'legacy_direct'
+								| 'legacy_ip_association'
+								| 'tang_direct'
+								| 'tang_ip_association' =>
+								source === 'legacy_direct' ||
+								source === 'legacy_ip_association' ||
+								source === 'tang_direct' ||
+								source === 'tang_ip_association'
+						)
 					: [],
 				preferredSource,
 				blacklistedBy:
@@ -163,7 +184,9 @@ function parseBlacklistAlerts(conflicts: Record<string, unknown>): {
 
 	const ipAssociatedMatches = Array.isArray(blacklistSignals?.ipAssociatedBlacklistedUsers)
 		? blacklistSignals.ipAssociatedBlacklistedUsers
-				.filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === 'object')
+				.filter(
+					(value): value is Record<string, unknown> => Boolean(value) && typeof value === 'object'
+				)
 				.map((value) => ({
 					userId: String(value.userId ?? ''),
 					mainCharacterName:
@@ -190,7 +213,9 @@ function formatLegacyDate(value: string | null): string | null {
 	return date.toLocaleString()
 }
 
-function accountStatusVariant(status: string): 'secondary' | 'success' | 'warning' | 'destructive' | 'ghost' {
+function accountStatusVariant(
+	status: string
+): 'secondary' | 'success' | 'warning' | 'destructive' | 'ghost' {
 	if (status === 'applied') return 'success'
 	if (status === 'pending') return 'warning'
 	if (status === 'partially_applied') return 'secondary'
@@ -239,10 +264,18 @@ export default function AdminLegacyMigrationDetailPage() {
 	})
 
 	const detailsQuery = useQuery({
-		queryKey: ['admin', 'legacy-migration-detail', 'queue-details', modernUserId, queueQuery.data?.items],
+		queryKey: [
+			'admin',
+			'legacy-migration-detail',
+			'queue-details',
+			modernUserId,
+			queueQuery.data?.items,
+		],
 		queryFn: async () => {
 			const items = queueQuery.data?.items ?? []
-			const details = await Promise.all(items.map((item) => api.getLegacyMigrationQueueItem(item.id)))
+			const details = await Promise.all(
+				items.map((item) => api.getLegacyMigrationQueueItem(item.id))
+			)
 			return details
 		},
 		enabled: Boolean(queueQuery.data?.items?.length),
@@ -323,7 +356,9 @@ export default function AdminLegacyMigrationDetailPage() {
 				)
 				.map((character) => character.characterId)
 		),
-		noteIds: new Set(notes.filter((note) => !note.alreadyImported).map((note) => note.legacyNoteId)),
+		noteIds: new Set(
+			notes.filter((note) => !note.alreadyImported).map((note) => note.legacyNoteId)
+		),
 		importIpAssociations: true,
 		applyBlacklistToUser: hasBlacklist,
 		markSkipped: false,
@@ -394,7 +429,13 @@ export default function AdminLegacyMigrationDetailPage() {
 		[allDetails]
 	)
 	const linkedOtherUsersQuery = useQuery({
-		queryKey: ['admin', 'legacy-migration-detail', modernUserId, 'linked-other-users', linkedOtherUserIds],
+		queryKey: [
+			'admin',
+			'legacy-migration-detail',
+			modernUserId,
+			'linked-other-users',
+			linkedOtherUserIds,
+		],
 		queryFn: async () => {
 			const rows = await Promise.all(
 				linkedOtherUserIds.map(async (userId) => {
@@ -420,13 +461,21 @@ export default function AdminLegacyMigrationDetailPage() {
 					allDetails
 						.flatMap((detail) => parseBlacklistAlerts(detail.item.conflicts).matches)
 						.map((match) => match.blacklistedBy)
-						.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+						.filter(
+							(value): value is string => typeof value === 'string' && value.trim().length > 0
+						)
 				)
 			),
 		[allDetails]
 	)
 	const blacklistAttributorsQuery = useQuery({
-		queryKey: ['admin', 'legacy-migration-detail', modernUserId, 'blacklist-attributors', blacklistAttributorIds],
+		queryKey: [
+			'admin',
+			'legacy-migration-detail',
+			modernUserId,
+			'blacklist-attributors',
+			blacklistAttributorIds,
+		],
 		queryFn: async () => {
 			const rows = await Promise.all(
 				blacklistAttributorIds.map(async (userId) => {
@@ -452,13 +501,21 @@ export default function AdminLegacyMigrationDetailPage() {
 					allDetails
 						.flatMap((detail) => detail.actions)
 						.map((action) => action.performedByUserId)
-						.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+						.filter(
+							(value): value is string => typeof value === 'string' && value.trim().length > 0
+						)
 				)
 			),
 		[allDetails]
 	)
 	const legacyActionActorsQuery = useQuery({
-		queryKey: ['admin', 'legacy-migration-detail', modernUserId, 'action-actors', legacyActionActorIds],
+		queryKey: [
+			'admin',
+			'legacy-migration-detail',
+			modernUserId,
+			'action-actors',
+			legacyActionActorIds,
+		],
 		queryFn: async () => {
 			const rows = await Promise.all(
 				legacyActionActorIds.map(async (userId) => {
@@ -486,7 +543,9 @@ export default function AdminLegacyMigrationDetailPage() {
 					Back to Legacy Migrations
 				</Button>
 				<Card>
-					<CardContent className="py-6 text-muted-foreground">Loading migration detail...</CardContent>
+					<CardContent className="py-6 text-muted-foreground">
+						Loading migration detail...
+					</CardContent>
 				</Card>
 			</div>
 		)
@@ -512,7 +571,8 @@ export default function AdminLegacyMigrationDetailPage() {
 		<div className="space-y-6">
 			<PageHeader
 				title={
-					modernUserQuery.data?.characters.find((character) => character.is_primary)?.characterName ??
+					modernUserQuery.data?.characters.find((character) => character.is_primary)
+						?.characterName ??
 					primaryItem?.modernUserMainCharacterName ??
 					'Unknown User'
 				}
@@ -548,7 +608,7 @@ export default function AdminLegacyMigrationDetailPage() {
 				</CardHeader>
 				<CardContent>
 					<div className="flex flex-wrap gap-2">
-						{allDetails.map((detail, index) => (
+						{allDetails.map((detail, _index) => (
 							<Button key={detail.item.id} variant="ghost" size="sm" asChild>
 								<a href={`#legacy-account-${detail.item.id}`}>
 									<User className="h-3.5 w-3.5" />
@@ -564,9 +624,7 @@ export default function AdminLegacyMigrationDetailPage() {
 				const { item, candidates } = detail
 				const conflictSummary = parseConflicts(item.conflicts)
 				const blacklistAlerts = parseBlacklistAlerts(item.conflicts)
-				const selection =
-					selectionsByQueueId[item.id] ??
-					defaultSelectionsByQueueId[item.id]
+				const selection = selectionsByQueueId[item.id] ?? defaultSelectionsByQueueId[item.id]
 				const importSummary = `${selection.characterIds.size} character(s), ${selection.noteIds.size} note(s), ${selection.importIpAssociations ? candidates.ipAddressCount : 0} IP(s) selected`
 
 				return (
@@ -578,7 +636,9 @@ export default function AdminLegacyMigrationDetailPage() {
 									{item.legacyAuthUserId}
 								</Badge>
 								<Badge variant={accountStatusVariant(item.status)}>{item.status}</Badge>
-								{conflictSummary.hasBlacklist ? <Badge variant="destructive">Blocklist</Badge> : null}
+								{conflictSummary.hasBlacklist ? (
+									<Badge variant="destructive">Blocklist</Badge>
+								) : null}
 								{conflictSummary.multiMatch ? <Badge variant="warning">Multi-match</Badge> : null}
 								{conflictSummary.crossUserCount > 0 ? (
 									<Badge variant="destructive">Cross-user ({conflictSummary.crossUserCount})</Badge>
@@ -592,37 +652,52 @@ export default function AdminLegacyMigrationDetailPage() {
 										<CardTitle className="text-destructive">Blocklist Alerts</CardTitle>
 									</CardHeader>
 									<CardContent className="space-y-2">
-										{blacklistAlerts.modernUserBlacklisted ? <Badge variant="destructive">Modern user is blocklisted</Badge> : null}
+										{blacklistAlerts.modernUserBlacklisted ? (
+											<Badge variant="destructive">Modern user is blocklisted</Badge>
+										) : null}
 										{blacklistAlerts.discordMatches.length > 0 ? (
-											<Badge variant="destructive">Discord ID blocklist match ({blacklistAlerts.discordMatches.length})</Badge>
+											<Badge variant="destructive">
+												Discord ID blocklist match ({blacklistAlerts.discordMatches.length})
+											</Badge>
 										) : null}
 										{blacklistAlerts.ipAssociatedMatches.length > 0 ? (
 											<Badge variant="destructive">
-												IP-associated blocklist matches ({blacklistAlerts.ipAssociatedMatches.length})
+												IP-associated blocklist matches (
+												{blacklistAlerts.ipAssociatedMatches.length})
 											</Badge>
 										) : null}
 										{blacklistAlerts.matches.map((match) => (
-											<div key={match.key} className="rounded border border-border/90 bg-card/80 p-2.5 text-sm">
+											<div
+												key={match.key}
+												className="rounded border border-border/90 bg-card/80 p-2.5 text-sm"
+											>
 												<div className="flex flex-wrap items-center gap-2">
 													<span className="text-base font-semibold text-destructive">
 														{match.label}{' '}
 														{match.subLabel ? (
-															<span className="text-sm font-mono text-destructive/90">({match.subLabel})</span>
+															<span className="text-sm font-mono text-destructive/90">
+																({match.subLabel})
+															</span>
 														) : null}
 													</span>
 													<div className="flex flex-wrap items-center gap-1">
 														<Badge variant="ghost">{formatTargetType(match.targetType)}</Badge>
-														<Badge variant={match.preferredSource === 'tang' ? 'special' : 'warning'}>
+														<Badge
+															variant={match.preferredSource === 'tang' ? 'special' : 'warning'}
+														>
 															{formatPreferredSource(match.preferredSource)}
 														</Badge>
-														<Badge variant={match.entryMode === 'automatic' ? 'warning' : 'secondary'}>
+														<Badge
+															variant={match.entryMode === 'automatic' ? 'warning' : 'secondary'}
+														>
 															{formatEntryMode(match.entryMode)}
 														</Badge>
 														{match.discoverySources.map((source) => (
 															<Badge
 																key={`${match.key}:${source}`}
 																variant={
-																	source === 'legacy_ip_association' || source === 'tang_ip_association'
+																	source === 'legacy_ip_association' ||
+																	source === 'tang_ip_association'
 																		? 'warning'
 																		: source === 'tang_direct'
 																			? 'success'
@@ -638,7 +713,8 @@ export default function AdminLegacyMigrationDetailPage() {
 													By:{' '}
 													<span className="text-foreground">
 														{match.blacklistedBy
-															? (blacklistAttributorNameById.get(match.blacklistedBy) ?? match.blacklistedBy)
+															? (blacklistAttributorNameById.get(match.blacklistedBy) ??
+																match.blacklistedBy)
 															: 'unknown'}
 													</span>
 													{match.blacklistedBy ? (
@@ -650,22 +726,26 @@ export default function AdminLegacyMigrationDetailPage() {
 													{' • '}
 													Date:{' '}
 													<span className="text-foreground">
-														{match.createdAt ? new Date(match.createdAt).toLocaleString() : 'unknown'}
+														{match.createdAt
+															? new Date(match.createdAt).toLocaleString()
+															: 'unknown'}
 													</span>
 												</div>
 												<div className="mt-1 text-xs text-muted-foreground">
 													Reason:{' '}
-													<span className="text-foreground">
-														{match.reason ?? 'unknown'}
-													</span>
+													<span className="text-foreground">{match.reason ?? 'unknown'}</span>
 												</div>
 											</div>
 										))}
 										{blacklistAlerts.ipAssociatedMatches.map((match) => (
 											<div key={match.userId} className="text-sm">
-												<Badge variant="warning" className="mr-2">IP-linked</Badge>
+												<Badge variant="warning" className="mr-2">
+													IP-linked
+												</Badge>
 												{match.mainCharacterName ?? 'Unknown user'}{' '}
-												<span className="text-xs text-muted-foreground font-mono">({match.userId})</span>
+												<span className="text-xs text-muted-foreground font-mono">
+													({match.userId})
+												</span>
 											</div>
 										))}
 									</CardContent>
@@ -681,7 +761,9 @@ export default function AdminLegacyMigrationDetailPage() {
 									>
 										<div className="min-w-0">
 											<div className="font-medium">{character.characterName}</div>
-											<div className="text-xs font-mono text-muted-foreground">{character.characterId}</div>
+											<div className="text-xs font-mono text-muted-foreground">
+												{character.characterId}
+											</div>
 										</div>
 										{character.alreadyLinkedToModernUser ? (
 											<Badge variant="success">Already linked</Badge>
@@ -712,7 +794,8 @@ export default function AdminLegacyMigrationDetailPage() {
 													onCheckedChange={() =>
 														updateSelection(item.id, (current) => {
 															const nextIds = new Set(current.characterIds)
-															if (nextIds.has(character.characterId)) nextIds.delete(character.characterId)
+															if (nextIds.has(character.characterId))
+																nextIds.delete(character.characterId)
 															else nextIds.add(character.characterId)
 															return { ...current, characterIds: nextIds }
 														})
@@ -875,8 +958,7 @@ export default function AdminLegacyMigrationDetailPage() {
 									) : (
 										[...detail.actions]
 											.sort(
-												(a, b) =>
-													new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+												(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 											)
 											.map((action) => (
 												<div

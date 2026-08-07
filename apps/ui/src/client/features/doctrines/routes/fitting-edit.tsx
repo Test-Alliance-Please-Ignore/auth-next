@@ -41,14 +41,14 @@ export default function FittingEditPage() {
 		try {
 			await updateMutation.mutateAsync({ id, data })
 			toast.success('Fitting updated')
-			navigate(`/doctrines/fittings/${id}${doctrineId ? `?doctrineId=${doctrineId}` : ''}`)
+			void navigate(`/doctrines/fittings/${id}${doctrineId ? `?doctrineId=${doctrineId}` : ''}`)
 		} catch (error) {
 			toast.error(error instanceof Error ? error.message : 'Failed to update fitting')
 		}
 	}
 
 	const handleCancel = () => {
-		navigate(`/doctrines/fittings/${id}${doctrineId ? `?doctrineId=${doctrineId}` : ''}`)
+		void navigate(`/doctrines/fittings/${id}${doctrineId ? `?doctrineId=${doctrineId}` : ''}`)
 	}
 
 	if (isLoading) {

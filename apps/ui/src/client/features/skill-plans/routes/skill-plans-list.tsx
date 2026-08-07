@@ -10,8 +10,8 @@ import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
 import { LoadingPage } from '../../../components/ui/loading'
 import { PageHeader } from '../../../components/ui/page-header'
-import { Select } from '../../../components/ui/select'
 import { Section } from '../../../components/ui/section'
+import { Select } from '../../../components/ui/select'
 import { useAuth } from '../../../hooks/useAuth'
 import { usePageTitle } from '../../../hooks/usePageTitle'
 import { useUserPermissions } from '../../../hooks/useUserPermissions'
@@ -20,18 +20,17 @@ import { CategorySectionHeader } from '../components/category-section-header'
 import { SkillPlanCard } from '../components/skill-plan-card'
 import {
 	skillPlanKeys,
-	useDeleteSkillPlan,
 	useCharacterSkillLevelsForCharacters,
 	useMySkillPlans,
 	useSkillPlanCategories,
 	useSkillPlans,
 } from '../hooks'
+import { groupPlansByCategory } from '../utils/group-by-category'
 import {
 	calculateCharacterProgress,
 	deriveReadinessStatus,
 	summarizeReadinessStatuses,
 } from '../utils/readiness'
-import { groupPlansByCategory } from '../utils/group-by-category'
 
 import type { SkillPlansFilter } from '../types'
 
@@ -74,24 +73,6 @@ export default function SkillPlansList() {
 	})
 
 	const { data: categories, isLoading: categoriesLoading } = useSkillPlanCategories()
-	const deletePlan = useDeleteSkillPlan()
-
-	const handleDelete = async (planId: string) => {
-		if (confirm('Are you sure you want to delete this skill plan?')) {
-			try {
-				await deletePlan.mutateAsync(planId)
-			} catch (error) {
-				console.error('Failed to delete plan:', error)
-				// In a real app, show a toast notification
-			}
-		}
-	}
-
-	const handleClone = (planId: string) => {
-		// TODO: Implement clone functionality
-		console.log('Clone plan:', planId)
-	}
-
 	// Merge default published feed with user's maintained plans (including drafts), deduped by plan id.
 	const mergedPlans = useMemo(() => {
 		const published = plansResponse?.items ?? []
@@ -142,14 +123,17 @@ export default function SkillPlansList() {
 			if (filters.search?.trim()) {
 				const search = filters.search.trim().toLowerCase()
 				const matchesSearch =
-					plan.name.toLowerCase().includes(search) || plan.description.toLowerCase().includes(search)
+					plan.name.toLowerCase().includes(search) ||
+					plan.description.toLowerCase().includes(search)
 				if (!matchesSearch) {
 					return false
 				}
 			}
 
 			if (filters.categoryId) {
-				const belongsToCategory = plan.categories?.some((category) => category.id === filters.categoryId)
+				const belongsToCategory = plan.categories?.some(
+					(category) => category.id === filters.categoryId
+				)
 				if (!belongsToCategory) {
 					return false
 				}
@@ -262,13 +246,10 @@ export default function SkillPlansList() {
 				})
 			})
 
-			result.set(
-				plan.id,
-				{
-					...summarizeReadinessStatuses(statuses),
-					hasNoSkills: false,
-				}
-			)
+			result.set(plan.id, {
+				...summarizeReadinessStatuses(statuses),
+				hasNoSkills: false,
+			})
 		}
 
 		return result
@@ -378,10 +359,10 @@ export default function SkillPlansList() {
 									searchable
 									options={[
 										{ value: 'all', label: 'All Characters' },
-										...((user?.characters ?? []).map((character) => ({
+										...(user?.characters ?? []).map((character) => ({
 											value: character.characterId,
 											label: character.characterName,
-										}))),
+										})),
 									]}
 									placeholder="All Characters"
 								/>

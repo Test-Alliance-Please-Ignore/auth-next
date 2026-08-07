@@ -22,7 +22,11 @@ export function StatsEntitySearch() {
 	const characterOptions = (charSearch.data?.characters ?? []).map((c) => ({
 		value: c.characterId,
 		label: c.characterName,
-		description: c.isPrimary ? undefined : c.ownerMainCharacterName ? `Alt of ${c.ownerMainCharacterName}` : 'Alt',
+		description: c.isPrimary
+			? undefined
+			: c.ownerMainCharacterName
+				? `Alt of ${c.ownerMainCharacterName}`
+				: 'Alt',
 		isPrimary: c.isPrimary,
 	}))
 
@@ -43,7 +47,7 @@ export function StatsEntitySearch() {
 					onValueChange={(value) => {
 						if (!value) return
 						setCharQuery('')
-						navigate(`/fleet-tracking/stats/characters/${value}`)
+						void navigate(`/fleet-tracking/stats/characters/${value}`)
 					}}
 					query={charQuery}
 					onQueryChange={setCharQuery}
@@ -62,10 +66,7 @@ export function StatsEntitySearch() {
 								<div className="truncate font-medium" title={option.label}>
 									{option.label}
 								</div>
-								<Badge
-									variant={option.isPrimary ? 'default' : 'secondary'}
-									className="shrink-0"
-								>
+								<Badge variant={option.isPrimary ? 'default' : 'secondary'} className="shrink-0">
 									{option.isPrimary ? 'Main' : 'Alt'}
 								</Badge>
 							</div>
@@ -88,7 +89,7 @@ export function StatsEntitySearch() {
 					onValueChange={(value) => {
 						if (!value) return
 						setCorpQuery('')
-						navigate(`/fleet-tracking/stats/corporations/${value}`)
+						void navigate(`/fleet-tracking/stats/corporations/${value}`)
 					}}
 					query={corpQuery}
 					onQueryChange={setCorpQuery}
