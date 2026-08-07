@@ -7,6 +7,7 @@ import {
 	computeStructureAccess,
 	getStructureAccessTarget,
 	getStructureDetail,
+	getStructureTab,
 	hasAnyStructureAccess,
 	hasStructureAccessForTab,
 } from '../../../services/structures.service'
@@ -37,9 +38,6 @@ type FakeDb = {
 		}
 		managedCorporations: {
 			findFirst: ReturnType<typeof vi.fn>
-		}
-		structureFuelLog: {
-			findMany: ReturnType<typeof vi.fn>
 		}
 		structureSkyhooks: {
 			findFirst: ReturnType<typeof vi.fn>
@@ -155,9 +153,6 @@ function makeDb(
 					includeInStructureAssetSync: false,
 				}),
 			},
-			structureFuelLog: {
-				findMany: vi.fn().mockResolvedValue([]),
-			},
 			structureSkyhooks: {
 				findFirst: vi.fn().mockResolvedValue(options.skyhook ?? skyhook),
 			},
@@ -200,36 +195,41 @@ function makeDb(
 }
 
 describe('structure permission gating', () => {
+	it('classifies navigation structures in the general Structures family', () => {
+		expect(getStructureTab({ typeId: '35841', typeName: 'Ansiblex Jump Gate' })).toBe('structures')
+		expect(getStructureTab({ typeId: '81826', typeName: 'Metenox Moon Drill' })).toBe('moon-drills')
+	})
+
 	beforeEach(() => {
 		vi.clearAllMocks()
 	})
 
 	it('computes access levels for all-scope roles', () => {
 		const access = computeStructureAccess(['urn:structures:all:viewer'], false)
-		const target = getStructureAccessTarget(access, 'citadels')
+		const target = getStructureAccessTarget(access, 'structures')
 
 		expect(hasAnyStructureAccess(target)).toBe(true)
-		expect(hasStructureAccessForTab(access, 'corp-1', 'citadels')).toBe(true)
-		expect(canViewDetailsStructure(access, 'corp-1', 'citadels')).toBe(false)
-		expect(canViewSensitiveStructure(access, 'corp-1', 'citadels')).toBe(false)
-		expect(canEditStructure(access, 'corp-1', 'citadels')).toBe(false)
+		expect(hasStructureAccessForTab(access, 'corp-1', 'structures')).toBe(true)
+		expect(canViewDetailsStructure(access, 'corp-1', 'structures')).toBe(false)
+		expect(canViewSensitiveStructure(access, 'corp-1', 'structures')).toBe(false)
+		expect(canEditStructure(access, 'corp-1', 'structures')).toBe(false)
 	})
 
 	it('grants details, sensitive, and manager access in the expected order', () => {
 		const detailsAccess = computeStructureAccess(['urn:structures:corp-1:details'], false)
-		expect(canViewDetailsStructure(detailsAccess, 'corp-1', 'citadels')).toBe(true)
-		expect(canViewSensitiveStructure(detailsAccess, 'corp-1', 'citadels')).toBe(false)
-		expect(canEditStructure(detailsAccess, 'corp-1', 'citadels')).toBe(false)
+		expect(canViewDetailsStructure(detailsAccess, 'corp-1', 'structures')).toBe(true)
+		expect(canViewSensitiveStructure(detailsAccess, 'corp-1', 'structures')).toBe(false)
+		expect(canEditStructure(detailsAccess, 'corp-1', 'structures')).toBe(false)
 
 		const sensitiveAccess = computeStructureAccess(['urn:structures:corp-1:sensitive'], false)
-		expect(canViewDetailsStructure(sensitiveAccess, 'corp-1', 'citadels')).toBe(true)
-		expect(canViewSensitiveStructure(sensitiveAccess, 'corp-1', 'citadels')).toBe(true)
-		expect(canEditStructure(sensitiveAccess, 'corp-1', 'citadels')).toBe(false)
+		expect(canViewDetailsStructure(sensitiveAccess, 'corp-1', 'structures')).toBe(true)
+		expect(canViewSensitiveStructure(sensitiveAccess, 'corp-1', 'structures')).toBe(true)
+		expect(canEditStructure(sensitiveAccess, 'corp-1', 'structures')).toBe(false)
 
 		const managerAccess = computeStructureAccess(['urn:structures:corp-1:manager'], false)
-		expect(canViewDetailsStructure(managerAccess, 'corp-1', 'citadels')).toBe(true)
-		expect(canViewSensitiveStructure(managerAccess, 'corp-1', 'citadels')).toBe(true)
-		expect(canEditStructure(managerAccess, 'corp-1', 'citadels')).toBe(true)
+		expect(canViewDetailsStructure(managerAccess, 'corp-1', 'structures')).toBe(true)
+		expect(canViewSensitiveStructure(managerAccess, 'corp-1', 'structures')).toBe(true)
+		expect(canEditStructure(managerAccess, 'corp-1', 'structures')).toBe(true)
 	})
 
 	it('unions access across scopes and corporations', () => {
@@ -238,10 +238,10 @@ describe('structure permission gating', () => {
 			false
 		)
 
-		expect(hasStructureAccessForTab(access, 'corp-1', 'citadels')).toBe(true)
-		expect(hasStructureAccessForTab(access, 'corp-2', 'citadels')).toBe(true)
-		expect(canViewDetailsStructure(access, 'corp-1', 'citadels')).toBe(false)
-		expect(canViewSensitiveStructure(access, 'corp-2', 'citadels')).toBe(true)
+		expect(hasStructureAccessForTab(access, 'corp-1', 'structures')).toBe(true)
+		expect(hasStructureAccessForTab(access, 'corp-2', 'structures')).toBe(true)
+		expect(canViewDetailsStructure(access, 'corp-1', 'structures')).toBe(false)
+		expect(canViewSensitiveStructure(access, 'corp-2', 'structures')).toBe(true)
 	})
 
 	it('returns null for viewer-only detail access and hydrates details for details access', async () => {

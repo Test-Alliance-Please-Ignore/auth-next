@@ -1,21 +1,21 @@
 import type { InventoryParseResult } from '@repo/eve-types'
-
-import type { InvFlag } from './inv-flags'
-import type { InvGroup } from './inv-groups'
-import type { InvType } from './inv-types'
-import type { EveMoonId, UniverseMoon, UniverseMoonWithResources } from './moons'
+import type { UniverseFuelRuleResolution } from './fuel-rules'
 import type {
 	UniverseConstellation,
+	UniverseMoonGeography,
 	UniverseNpcStation,
 	UniversePlanet,
 	UniversePlanetGeography,
-	UniverseRegion,
 	UniversePosition,
-	UniverseMoonGeography,
+	UniverseRegion,
 	UniverseSolarSystem,
 	UniverseStargate,
 	UniverseStaticMoon,
 } from './geography'
+import type { InvFlag } from './inv-flags'
+import type { InvGroup } from './inv-groups'
+import type { InvType } from './inv-types'
+import type { EveMoonId, UniverseMoon, UniverseMoonWithResources } from './moons'
 import type {
 	EsiGetStructureMarketDataResponse,
 	EsiGetStructureResponse,
@@ -58,6 +58,9 @@ export * from './inv-names'
 // Export inventory type metadata types
 export * from './type-metadata'
 
+// Export static-data-derived structure fuel rules
+export * from './fuel-rules'
+
 // Export geography types
 export * from './geography'
 export * from './nearest-moon'
@@ -68,18 +71,48 @@ export const FUEL_BLOCK_TYPE_ID = '4247'
 export const MAGMATIC_GAS_TYPE_ID = '81143'
 export const MOON_BASE_MINERAL_TYPE_IDS = ['35', '36'] as const
 export const MOON_ORE_TYPE_IDS = [
-	'45490', '45491', '45492', '45493',
-	'45494', '45495', '45496', '45497',
-	'45498', '45499', '45500', '45501',
-	'45502', '45503', '45504', '45506',
-	'45510', '45511', '45512', '45513',
+	'45490',
+	'45491',
+	'45492',
+	'45493',
+	'45494',
+	'45495',
+	'45496',
+	'45497',
+	'45498',
+	'45499',
+	'45500',
+	'45501',
+	'45502',
+	'45503',
+	'45504',
+	'45506',
+	'45510',
+	'45511',
+	'45512',
+	'45513',
 ] as const
 export const MOON_GOO_TYPE_IDS = [
-	'16633', '16634', '16635', '16636',
-	'16637', '16638', '16639', '16640',
-	'16641', '16642', '16643', '16644',
-	'16646', '16647', '16648', '16649',
-	'16650', '16651', '16652', '16653',
+	'16633',
+	'16634',
+	'16635',
+	'16636',
+	'16637',
+	'16638',
+	'16639',
+	'16640',
+	'16641',
+	'16642',
+	'16643',
+	'16644',
+	'16646',
+	'16647',
+	'16648',
+	'16649',
+	'16650',
+	'16651',
+	'16652',
+	'16653',
 ] as const
 
 export interface TypeMaterial {
@@ -267,41 +300,31 @@ export interface Universe {
 	 * Resolve static moons by IDs.
 	 * @param moonIds - Array of moon IDs to resolve
 	 */
-	resolveStaticMoonsByIds(
-		moonIds: string[]
-	): Promise<Record<string, UniverseStaticMoon | null>>
+	resolveStaticMoonsByIds(moonIds: string[]): Promise<Record<string, UniverseStaticMoon | null>>
 
 	/**
 	 * Resolve static moons by names.
 	 * @param moonNames - Array of moon names to resolve
 	 */
-	resolveStaticMoonsByNames(
-		moonNames: string[]
-	): Promise<Record<string, UniverseStaticMoon | null>>
+	resolveStaticMoonsByNames(moonNames: string[]): Promise<Record<string, UniverseStaticMoon | null>>
 
 	/**
 	 * Resolve stargates by IDs.
 	 * @param stargateIds - Array of stargate IDs to resolve
 	 */
-	resolveStargatesByIds(
-		stargateIds: string[]
-	): Promise<Record<string, UniverseStargate | null>>
+	resolveStargatesByIds(stargateIds: string[]): Promise<Record<string, UniverseStargate | null>>
 
 	/**
 	 * Resolve stargates by names.
 	 * @param stargateNames - Array of stargate names to resolve
 	 */
-	resolveStargatesByNames(
-		stargateNames: string[]
-	): Promise<Record<string, UniverseStargate | null>>
+	resolveStargatesByNames(stargateNames: string[]): Promise<Record<string, UniverseStargate | null>>
 
 	/**
 	 * Resolve NPC stations by IDs.
 	 * @param stationIds - Array of NPC station IDs to resolve
 	 */
-	resolveNpcStationsByIds(
-		stationIds: string[]
-	): Promise<Record<string, UniverseNpcStation | null>>
+	resolveNpcStationsByIds(stationIds: string[]): Promise<Record<string, UniverseNpcStation | null>>
 
 	/**
 	 * Resolve NPC stations by names.
@@ -335,7 +358,9 @@ export interface Universe {
 	/**
 	 * Get system and moon counts per region (for region overview map).
 	 */
-	getRegionStats(regionIds: string[]): Promise<Record<string, { systemCount: number; moonCount: number }>>
+	getRegionStats(
+		regionIds: string[]
+	): Promise<Record<string, { systemCount: number; moonCount: number }>>
 
 	/**
 	 * Map moon IDs to their region IDs (for aggregating scan coverage by region).
@@ -345,12 +370,16 @@ export interface Universe {
 	/**
 	 * Get region info for a set of solar system IDs (for labelling border nodes on region maps).
 	 */
-	getRegionsBySystemIds(systemIds: string[]): Promise<Record<string, { regionId: string; regionName: string }>>
+	getRegionsBySystemIds(
+		systemIds: string[]
+	): Promise<Record<string, { regionId: string; regionName: string }>>
 
 	/**
 	 * Get unique cross-region stargate connections (for drawing inter-region lines on universe map).
 	 */
-	getRegionConnections(regionIds: string[]): Promise<Array<{ fromRegionId: string; toRegionId: string }>>
+	getRegionConnections(
+		regionIds: string[]
+	): Promise<Array<{ fromRegionId: string; toRegionId: string }>>
 
 	/**
 	 * Returns all published type IDs eligible for daily market price tracking.
@@ -371,4 +400,13 @@ export interface Universe {
 	 * @returns Record mapping each typeId to its list of output materials
 	 */
 	getTypeMaterials(typeIds: string[]): Promise<Record<string, TypeMaterial[]>>
+
+	/**
+	 * Resolve structure service-module fuel rules and structure-specific bonuses
+	 * from the active imported SDE data.
+	 */
+	resolveStructureFuelRules(
+		structureTypeIds: string[],
+		serviceNames: string[]
+	): Promise<UniverseFuelRuleResolution>
 }

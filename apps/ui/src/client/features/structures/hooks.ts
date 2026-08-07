@@ -1,32 +1,29 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { StructureTab } from '@repo/structures'
 
 import { api } from '@/lib/api'
 
 import { structureKeys } from './query-keys'
 
 import type { UseQueryOptions } from '@tanstack/react-query'
+import type { StructureTab } from '@repo/structures'
 import type {
-	StructureCitadelListQuery,
-	StructureCitadelListResponse,
+	StructureListQuery,
+	StructureMainListResponse,
 	StructureMiningCitadelListQuery,
 	StructureMiningCitadelListResponse,
+	StructureModuleConfig,
 	StructureMoonDrillListQuery,
 	StructureMoonDrillListResponse,
-	StructureNavigationListQuery,
-	StructureNavigationListResponse,
 	StructureSkyhookListQuery,
 	StructureSkyhookListResponse,
 	StructureSovereigntyListQuery,
 	StructureSovereigntyListResponse,
-	StructureModuleConfig,
-	UpdateStructureModuleConfigRequest,
 	StructureTabListResponse,
+	UpdateStructureModuleConfigRequest,
 } from '@/lib/api'
 
 type StructureTabQuery =
-	| StructureCitadelListQuery
-	| StructureNavigationListQuery
+	| StructureListQuery
 	| StructureSovereigntyListQuery
 	| StructureSkyhookListQuery
 	| StructureMiningCitadelListQuery
@@ -51,23 +48,14 @@ function createStructureListQueryOptions<TResponse>(
 	} satisfies UseQueryOptions<TResponse>
 }
 
-export function useCitadelStructures(
-	query: StructureCitadelListQuery,
-	options: Pick<UseQueryOptions<StructureCitadelListResponse>, 'enabled'> = {}
+export function useStructures(
+	query: StructureListQuery,
+	options: Pick<UseQueryOptions<StructureMainListResponse>, 'enabled'> = {}
 ) {
-	return useQuery<StructureCitadelListResponse>(
-		createStructureListQueryOptions(structureKeys.citadels(query), () => api.getCitadelStructures(query), options)
-	)
-}
-
-export function useNavigationStructures(
-	query: StructureNavigationListQuery,
-	options: Pick<UseQueryOptions<StructureNavigationListResponse>, 'enabled'> = {}
-) {
-	return useQuery<StructureNavigationListResponse>(
+	return useQuery<StructureMainListResponse>(
 		createStructureListQueryOptions(
-			structureKeys.navigation(query),
-			() => api.getNavigationStructures(query),
+			structureKeys.structures(query),
+			() => api.getStructures(query),
 			options
 		)
 	)
@@ -91,7 +79,11 @@ export function useSkyhookStructures(
 	options: Pick<UseQueryOptions<StructureSkyhookListResponse>, 'enabled'> = {}
 ) {
 	return useQuery<StructureSkyhookListResponse>(
-		createStructureListQueryOptions(structureKeys.skyhooks(query), () => api.getSkyhookStructures(query), options)
+		createStructureListQueryOptions(
+			structureKeys.skyhooks(query),
+			() => api.getSkyhookStructures(query),
+			options
+		)
 	)
 }
 
@@ -113,30 +105,23 @@ export function useMoonDrillStructures(
 	options: Pick<UseQueryOptions<StructureMoonDrillListResponse>, 'enabled'> = {}
 ) {
 	return useQuery<StructureMoonDrillListResponse>(
-		createStructureListQueryOptions(structureKeys.moonDrills(query), () => api.getMoonDrillStructures(query), options)
+		createStructureListQueryOptions(
+			structureKeys.moonDrills(query),
+			() => api.getMoonDrillStructures(query),
+			options
+		)
 	)
-}
-
-export function useStructures(
-	query: StructureCitadelListQuery,
-	options: Pick<UseQueryOptions<StructureCitadelListResponse>, 'enabled'> = {}
-) {
-	return useCitadelStructures(query, options)
 }
 
 export function useStructuresForTab(
 	tab: StructureTab,
 	query: StructureTabQuery,
-	options: Pick<UseQueryOptions<
-		StructureTabListResponse
-	>, 'enabled'> = {}
+	options: Pick<UseQueryOptions<StructureTabListResponse>, 'enabled'> = {}
 ) {
 	const queryKey = (() => {
 		switch (tab) {
-			case 'citadels':
-				return structureKeys.citadels(query)
-			case 'navigation':
-				return structureKeys.navigation(query)
+			case 'structures':
+				return structureKeys.structures(query)
 			case 'sovereignty':
 				return structureKeys.sovereignty(query)
 			case 'skyhooks':
@@ -153,10 +138,8 @@ export function useStructuresForTab(
 		queryKey,
 		queryFn: () => {
 			switch (tab) {
-				case 'citadels':
-					return api.getCitadelStructures(query as StructureCitadelListQuery)
-				case 'navigation':
-					return api.getNavigationStructures(query as StructureNavigationListQuery)
+				case 'structures':
+					return api.getStructures(query as StructureListQuery)
 				case 'sovereignty':
 					return api.getSovereigntyStructures(query as StructureSovereigntyListQuery)
 				case 'skyhooks':

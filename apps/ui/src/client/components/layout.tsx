@@ -1,5 +1,5 @@
 import { Menu } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router'
 
 import { useAuth } from '@/hooks/useAuth'
@@ -11,6 +11,21 @@ import { LoadingSpinner } from './ui/loading'
 
 const SIDEBAR_OPEN_STORAGE_KEY = 'ui.sidebar.open'
 const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)'
+
+interface LayoutScrollContextValue {
+	isPageScrollEnabled: boolean
+	setIsPageScrollEnabled: (enabled: boolean) => void
+}
+
+const LayoutScrollContext = createContext<LayoutScrollContextValue | null>(null)
+
+export function useLayoutScrollMode(): LayoutScrollContextValue {
+	const context = useContext(LayoutScrollContext)
+	if (!context) {
+		throw new Error('useLayoutScrollMode must be used within Layout')
+	}
+	return context
+}
 
 export default function Layout() {
 	const { isAuthenticated, isLoading } = useAuth()
@@ -32,6 +47,8 @@ export default function Layout() {
 	const sidebarOpenRef = useRef(sidebarOpen)
 	const location = useLocation()
 	const isStructuresPage = location.pathname === '/structures'
+	const [isPageScrollEnabled, setIsPageScrollEnabled] = useState(false)
+	const isClampedStructuresPage = isStructuresPage && !isPageScrollEnabled
 
 	useEffect(() => {
 		window.localStorage.setItem(SIDEBAR_OPEN_STORAGE_KEY, sidebarOpen ? '1' : '0')
@@ -79,6 +96,12 @@ export default function Layout() {
 		}
 	}, [isAuthenticated, isLoading, location.pathname, location.search])
 
+	useEffect(() => {
+		if (!isStructuresPage) {
+			setIsPageScrollEnabled(false)
+		}
+	}, [isStructuresPage])
+
 	// Show loading state while checking auth or redirecting
 	if (isLoading || !isAuthenticated) {
 		return (
@@ -89,84 +112,91 @@ export default function Layout() {
 	}
 
 	return (
-		<div
-			className={cn(
-				'relative min-h-screen flex overflow-x-hidden',
-				isStructuresPage && 'lg:h-dvh lg:overflow-hidden'
-			)}
-		>
-			{/* Starfield Background */}
-			<Starfield />
+		<LayoutScrollContext.Provider value={{ isPageScrollEnabled, setIsPageScrollEnabled }}>
+			<div
+				className={cn(
+					'relative min-h-screen flex overflow-x-hidden',
+					isClampedStructuresPage && 'lg:h-dvh lg:overflow-hidden'
+				)}
+			>
+				{/* Starfield Background */}
+				<Starfield />
 
-			{/* Mobile Overlay */}
-			{sidebarOpen && (
-				<div className="fixed inset-0 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
-			)}
+				{/* Mobile Overlay */}
+				{sidebarOpen && (
+					<div className="fixed inset-0 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+				)}
 
-			{/* Sidebar */}
-			<aside
-				className={`
+				{/* Sidebar */}
+				<aside
+					className={`
 					fixed top-0 left-0 h-dvh w-64 z-50
 					border-r border-border/50
 					bg-background/52 backdrop-blur-sm
 					transition-transform duration-300 ease-in-out
 					${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
 				`}
-			>
-				<SidebarNav
-					isSidebarOpen={sidebarOpen}
-					onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-					onNavigate={() => {
-						if (window.matchMedia('(max-width: 1023px)').matches) {
-							setSidebarOpen(false)
-						}
-					}}
-				/>
-			</aside>
+				>
+					<SidebarNav
+						isSidebarOpen={sidebarOpen}
+						onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+						onNavigate={() => {
+							if (window.matchMedia('(max-width: 1023px)').matches) {
+								setSidebarOpen(false)
+							}
+						}}
+					/>
+				</aside>
 
-			{/* Main Content Area */}
-			<div
-				className={cn(
-					'relative z-10 flex-1 flex flex-col min-w-0 overflow-x-hidden overflow-y-auto transition-[padding-left] duration-300 ease-in-out',
-					isStructuresPage && 'lg:min-h-0 lg:overflow-y-hidden',
-					sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
-				)}
-			>
-				{!sidebarOpen ? (
-					<div className="fixed top-6 left-2 z-30">
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon"
-							onClick={() => setSidebarOpen(true)}
-							aria-label="Open navigation"
-							className="h-9 w-9 bg-background/90 backdrop-blur-sm border border-border/50 shadow-sm"
-						>
-							<Menu className="h-4 w-4" />
-						</Button>
-					</div>
-				) : null}
-
-				{/* Page Content */}
-				<main
+				{/* Main Content Area */}
+				<div
 					className={cn(
-						'flex flex-1 flex-col relative z-10 p-4 md:p-6 lg:p-8',
-						isStructuresPage && 'lg:min-h-0 lg:overflow-hidden'
+						'relative z-10 flex-1 flex flex-col min-w-0 overflow-x-hidden overflow-y-auto transition-[padding-left] duration-300 ease-in-out',
+						isClampedStructuresPage && 'lg:min-h-0 lg:overflow-y-hidden',
+						sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
 					)}
 				>
-					<div className={cn('w-full mx-auto max-w-[120rem]', isStructuresPage && 'lg:h-full')}>
-						<Outlet />
-					</div>
-				</main>
+					{!sidebarOpen ? (
+						<div className="fixed top-6 left-2 z-30">
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon"
+								onClick={() => setSidebarOpen(true)}
+								aria-label="Open navigation"
+								className="h-9 w-9 bg-background/90 backdrop-blur-sm border border-border/50 shadow-sm"
+							>
+								<Menu className="h-4 w-4" />
+							</Button>
+						</div>
+					) : null}
 
-				{/* Footer */}
-				<footer className="border-t border-border/50 py-4 relative z-10 bg-background/75 backdrop-blur-sm">
-					<div className="px-4 md:px-6 lg:px-8 text-center text-xs text-muted-foreground">
-						<p>Powered by EVE Online SSO • Built on Cloudflare Workers</p>
-					</div>
-				</footer>
+					{/* Page Content */}
+					<main
+						className={cn(
+							'flex flex-1 flex-col relative z-10 p-4 md:p-6 lg:p-8',
+							isClampedStructuresPage && 'lg:min-h-0 lg:overflow-hidden'
+						)}
+					>
+						<div
+							className={cn(
+								'w-full mx-auto max-w-[120rem]',
+								isClampedStructuresPage && 'lg:h-full'
+							)}
+						>
+							<Outlet />
+						</div>
+					</main>
+
+					{/* Footer */}
+					<footer className="border-t border-border/50 py-4 relative z-10 bg-background/75 backdrop-blur-sm">
+						<div className="px-4 md:px-6 lg:px-8 text-center text-xs text-muted-foreground">
+							<p>Powered by EVE Online SSO • Built on Cloudflare Workers</p>
+						</div>
+					</footer>
+				</div>
 			</div>
-		</div>
+		</LayoutScrollContext.Provider>
 	)
 }
 

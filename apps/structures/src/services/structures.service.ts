@@ -17,7 +17,6 @@ import {
 	corporationStructureInventory,
 	corporationStructureInventorySnapshots,
 	corporationStructures,
-	structureFuelLog,
 } from '@repo/eve-corporation-data-db-schema'
 import { parseFittingSlotFlag } from '@repo/eve-fitting/flags'
 import { parseStructurePermissionUrn, STRUCTURE_PERMISSION_SCOPE_ALL } from '@repo/groups'
@@ -35,7 +34,6 @@ import {
 	METENOX_MOON_DRILL_TYPE_NAME,
 	MINING_CITADEL_TYPE_NAMES,
 	MOON_DRILL_STRUCTURE_TYPE_IDS,
-	NAVIGATION_STRUCTURE_TYPE_IDS,
 	SKYHOOK_MAGMATIC_GAS_TYPE_ID,
 	SKYHOOK_MAGMATIC_GAS_TYPE_NAME,
 	SKYHOOK_SECURED_BAY_CAPACITY_M3,
@@ -58,6 +56,7 @@ import {
 	structureSovereigntyHubs,
 	structureSovereigntySystems,
 } from '@repo/structures-db-schema'
+import { MOON_GOO_TYPE_IDS } from '@repo/universe'
 
 import {
 	structureConfigs,
@@ -67,12 +66,12 @@ import {
 	structureModuleConfig,
 	structureStateEvents,
 } from '../db/schema'
-import { buildStructureFuelUsageHistory } from './structure-fuel-history'
 
 import type { DbClient } from '@repo/db-utils'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { InventoryDisplayBay } from '@repo/inventory-display'
 import type {
+	StructureListQuery as RepoStructureListQuery,
 	StructureMiningCitadelListItem as RepoStructureMiningCitadelListItem,
 	StructureMiningCitadelListResponse as RepoStructureMiningCitadelListResponse,
 	StructureMiningCitadelSummary as RepoStructureMiningCitadelSummary,
@@ -86,12 +85,10 @@ import type {
 	StructureSovereigntyListResponse as RepoStructureSovereigntyListResponse,
 	StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
 	SkyhookReagentStorageState,
-	StructureCitadelListQuery,
 	StructureCommonListSortBy,
 	StructureMiningCitadelListQuery,
 	StructureMoonDrillListQuery,
 	StructureMoonStructureListSortBy,
-	StructureNavigationListQuery,
 	StructureSkyhookListQuery,
 	StructureSkyhookListSortBy,
 	StructureSovereigntyListQuery,
@@ -102,15 +99,12 @@ import type {
 } from '@repo/structures'
 import type { Env, SessionUser } from '../context'
 import type { DbSchema } from '../db'
-import type {
-	StructureFuelHistorySample,
-	StructureFuelUsageHistory,
-} from './structure-fuel-history'
 
 type StructureSovereigntyFilterableItem = RepoStructureSovereigntyListItem
 
 const HOURS_TO_MS = 60 * 60 * 1000
 const STRUCTURE_LIST_PAGE_SIZE_MAX = 100
+const MOON_GOO_VOLUME_M3 = 0.05
 
 type SkyhookStateLabel = 'invulnerable' | 'vulnerable' | 'reinforced'
 
@@ -189,7 +183,7 @@ export interface StructureListSummary {
 	lowPower: number
 	reinforced: number
 	estimatedFuelBurnRatePerHour: string | null
-	fuelBurnRateSampleCount: number
+	fuelBurnRateKnownStructureCount: number
 	skyhookHighestFillPercent?: number | null
 	skyhookNextRaidableAt?: string | null
 	skyhookNextRaidablePlanetName?: string | null
@@ -197,7 +191,7 @@ export interface StructureListSummary {
 	skyhookTotalWorkforce?: number | null
 }
 
-export type StructureListQuery = StructureCitadelListQuery
+export type StructureListQuery = RepoStructureListQuery
 
 export interface StructureListResponse<TItem = StructureListItem> {
 	items: TItem[]
@@ -254,10 +248,6 @@ export interface StructureListItem {
 	estimatedFuelBurnRatePerHour?: string | null
 	updatedAt: string
 	canViewDetails: boolean
-}
-
-export interface StructureNavigationListItem extends StructureListItem {
-	navigationType: StructureTab
 }
 
 export interface StructureSovereigntyHubSummary {
@@ -412,15 +402,6 @@ export interface StructureDetailResult extends Omit<StructureListItem, 'canViewD
 	reinforceHour: number | null
 	lastRefilledAt: string | null
 	fuelBurnRate: string | null
-	fuelUsage: {
-		points: Array<{
-			observedAt: string
-			fuelBlockUnits: number | null
-			fuelBurnRatePerHour: number | null
-		}>
-		lastRefilledAt: string | null
-		sampleCount: number
-	} | null
 	sovereignty?: StructureSovereigntySummary | null
 	skyhook?: StructureSkyhookSummary | null
 	moonDrill?: StructureMoonDrillSummary | null
@@ -480,8 +461,7 @@ export interface UpsertStructureGroupAlertConfigInput {
 }
 
 const STRUCTURE_ACCESS_TABS: StructureTab[] = [
-	'citadels',
-	'navigation',
+	'structures',
 	'sovereignty',
 	'skyhooks',
 	'moon-drills',
@@ -725,7 +705,8 @@ export function computeStructureAccess(roles: string[], isAdmin: boolean): Struc
 		if (parsed.tab === 'all') {
 			addParsedStructurePermissionToTarget(all, parsed)
 		} else {
-			addParsedStructurePermissionToTarget(tabs[parsed.tab], parsed)
+			const structureTab = parsed.tab === 'main' ? 'structures' : parsed.tab
+			addParsedStructurePermissionToTarget(tabs[structureTab], parsed)
 		}
 	}
 
@@ -755,14 +736,7 @@ function toIso(value: unknown): string | null {
 
 type StructureWhereCondition = NonNullable<Parameters<typeof and>[number]>
 
-const NON_CITADEL_TYPE_IDS = [
-	...SOVEREIGNTY_STRUCTURE_TYPE_IDS,
-	...SKYHOOK_STRUCTURE_TYPE_IDS,
-	...NAVIGATION_STRUCTURE_TYPE_IDS,
-	...MOON_DRILL_STRUCTURE_TYPE_IDS,
-]
-
-const NON_CITADEL_TYPE_NAMES = [METENOX_MOON_DRILL_TYPE_NAME]
+const NON_STRUCTURE_TYPE_IDS = [...SOVEREIGNTY_STRUCTURE_TYPE_IDS, ...SKYHOOK_STRUCTURE_TYPE_IDS]
 
 function combineWhereConditions(conditions: Array<StructureWhereCondition | undefined>): any {
 	const defined = conditions.filter(
@@ -775,20 +749,12 @@ function combineWhereConditions(conditions: Array<StructureWhereCondition | unde
 
 function buildStructureFamilyWhere(tab: StructureTab): StructureWhereCondition | undefined {
 	switch (tab) {
-		case 'citadels':
-			return and(
-				notInArray(corporationStructures.typeId, NON_CITADEL_TYPE_IDS),
-				or(
-					isNull(corporationStructures.typeName),
-					notInArray(corporationStructures.typeName, NON_CITADEL_TYPE_NAMES)
-				)
-			)
+		case 'structures':
+			return notInArray(corporationStructures.typeId, NON_STRUCTURE_TYPE_IDS)
 		case 'sovereignty':
 			return inArray(corporationStructures.typeId, [...SOVEREIGNTY_STRUCTURE_TYPE_IDS])
 		case 'skyhooks':
 			return inArray(corporationStructures.typeId, [...SKYHOOK_STRUCTURE_TYPE_IDS])
-		case 'navigation':
-			return inArray(corporationStructures.typeId, [...NAVIGATION_STRUCTURE_TYPE_IDS])
 		case 'mining-citadels':
 			return inArray(corporationStructures.typeName, [...MINING_CITADEL_TYPE_NAMES])
 		case 'moon-drills':
@@ -1089,7 +1055,7 @@ async function loadStructureTabDetailData(
 ): Promise<StructureTabData | null> {
 	const tab = getStructureTab(structure)
 
-	if (tab === 'citadels') {
+	if (tab === 'structures') {
 		return null
 	}
 
@@ -1222,7 +1188,7 @@ async function loadStructureFittingDetailData(
 	structure: StructureSourceRecord
 ): Promise<StructureFittingItemSummary[]> {
 	const structureTab = getStructureTab(structure)
-	if (structureTab !== 'citadels') {
+	if (structureTab !== 'structures') {
 		return []
 	}
 
@@ -1627,14 +1593,6 @@ interface StructureContext {
 	tabData: StructureTabData | null
 	fittingItems: StructureFittingItemSummary[] | null
 	lastRefilledAt: Date | null
-	fuelUsage: StructureFuelUsageHistory | null
-}
-
-const EMPTY_STRUCTURE_FUEL_USAGE_HISTORY: StructureFuelUsageHistory = {
-	points: [],
-	fuelBurnRatePerHour: null,
-	lastRefilledAt: null,
-	sampleCount: 0,
 }
 
 export function getStructureTab(
@@ -1659,19 +1617,6 @@ function buildStructureDetailResult(context: StructureContext): StructureDetailR
 		nextReinforceHour: context.structure.nextReinforceHour,
 		reinforceHour: context.structure.reinforceHour,
 		lastRefilledAt: toIso(context.lastRefilledAt),
-		fuelUsage: context.fuelUsage
-			? {
-					points: context.fuelUsage.points.map((point) => ({
-						observedAt: point.observedAt.toISOString(),
-						fuelBlockUnits: point.fuelBlockUnits,
-						fuelBurnRatePerHour: point.fuelBurnRatePerHour,
-					})),
-					lastRefilledAt: context.fuelUsage.lastRefilledAt
-						? context.fuelUsage.lastRefilledAt.toISOString()
-						: null,
-					sampleCount: context.fuelUsage.sampleCount,
-				}
-			: null,
 		...(context.tabData ?? {}),
 		moonDrill: context.tabData?.moonDrill ?? null,
 		miningExtraction: context.tabData?.miningExtraction ?? null,
@@ -1780,7 +1725,6 @@ async function getStructureContext(
 			},
 			fittingItems,
 			lastRefilledAt: null,
-			fuelUsage: null,
 		}
 	}
 
@@ -1832,7 +1776,6 @@ async function getStructureContext(
 		},
 		fittingItems,
 		lastRefilledAt: structure.lastRefilledAt ?? null,
-		fuelUsage: null,
 	}
 }
 
@@ -1884,7 +1827,7 @@ function emptySovereigntySummary(): RepoStructureSovereigntyListSummary {
 		lowPower: 0,
 		reinforced: 0,
 		estimatedFuelBurnRatePerHour: null,
-		fuelBurnRateSampleCount: 0,
+		fuelBurnRateKnownStructureCount: 0,
 		vulnerable: 0,
 		invulnerable: 0,
 		unknown: 0,
@@ -1902,35 +1845,8 @@ function emptyStructureListSummary(): StructureListSummary {
 		lowPower: 0,
 		reinforced: 0,
 		estimatedFuelBurnRatePerHour: null,
-		fuelBurnRateSampleCount: 0,
+		fuelBurnRateKnownStructureCount: 0,
 	}
-}
-
-async function loadFuelUsageForStructure(
-	db: DbClient<DbSchema>,
-	corporationId: string,
-	structureId: string
-): Promise<StructureFuelUsageHistory | null> {
-	const rows = await db.query.structureFuelLog.findMany({
-		where: and(
-			eq(structureFuelLog.corporationId, corporationId),
-			eq(structureFuelLog.structureId, structureId)
-		),
-		orderBy: desc(structureFuelLog.observedAt),
-	})
-
-	if (rows.length === 0) {
-		return null
-	}
-
-	const samples: StructureFuelHistorySample[] = rows.map((row) => ({
-		structureId: row.structureId,
-		fuelBlockUnits: row.fuelBlockUnits,
-		observedAt: row.observedAt,
-		updatedAt: row.updatedAt,
-	}))
-
-	return buildStructureFuelUsageHistory(samples)
 }
 
 function emptyStructureFilterOptions(): StructureListFilterOptions {
@@ -2716,7 +2632,7 @@ async function buildSkyhookStructureSummaryFromSql(
 		lowPower: 0,
 		reinforced: 0,
 		estimatedFuelBurnRatePerHour: null,
-		fuelBurnRateSampleCount: 0,
+		fuelBurnRateKnownStructureCount: 0,
 		skyhookHighestFillPercent: highestFillResult[0]?.skyhookHighestFillPercent ?? null,
 		skyhookNextRaidableAt: nextRaidableAt,
 		skyhookNextRaidablePlanetName: nextRaidableRow?.planetName ?? null,
@@ -3216,7 +3132,7 @@ async function buildSovereigntyStructureSummaryFromSql(
 		lowPower: 0,
 		reinforced: 0,
 		estimatedFuelBurnRatePerHour: null,
-		fuelBurnRateSampleCount: 0,
+		fuelBurnRateKnownStructureCount: 0,
 		vulnerable: vulnerableResult[0]?.count ?? 0,
 		invulnerable: invulnerableResult[0]?.count ?? 0,
 		unknown: unknownResult[0]?.count ?? 0,
@@ -3369,7 +3285,6 @@ async function loadSovereigntyPageItems(
 			tabData: null,
 			fittingItems: null,
 			lastRefilledAt: null,
-			fuelUsage: null,
 		}
 		return buildSovereigntyListItem({
 			context,
@@ -3464,8 +3379,8 @@ async function loadMoonDrillPageItems(
 	moonDrillStructures: ReturnType<typeof buildMoonDrillStructuresCte>,
 	pageOverride?: number
 ): Promise<RepoStructureMoonDrillListItem[]> {
-	const sortBy = query.sortBy ?? 'fuel'
-	const sortDirection = query.sortDirection ?? 'asc'
+	const sortBy = query.sortBy ?? 'moonMaterials'
+	const sortDirection = query.sortDirection ?? 'desc'
 	const sortOrder = buildMoonStructureSortOrder(sortBy, sortDirection, moonDrillStructures)
 	if (!sortOrder) {
 		return []
@@ -3504,6 +3419,8 @@ async function loadMoonDrillPageItems(
 			updatedAt: moonDrillStructures.updatedAt,
 			fuelBlockUnits: moonDrillStructures.fuelBlockUnits,
 			magmaticGasUnits: moonDrillStructures.magmaticGasUnits,
+			moonMaterialUnits: moonDrillStructures.moonMaterialUnits,
+			moonMaterialVolumeM3: moonDrillStructures.moonMaterialVolumeM3,
 			moonDrillStructureId: moonDrillStructures.moonDrillStructureId,
 			moonId: moonDrillStructures.moonId,
 			moonName: moonDrillStructures.moonName,
@@ -3535,6 +3452,8 @@ async function loadMoonDrillPageItems(
 			moonName: row.moonName ?? null,
 			fuelBlockUnits: row.fuelBlockUnits,
 			magmaticGasUnits: row.magmaticGasUnits,
+			moonMaterialUnits: row.moonMaterialUnits,
+			moonMaterialVolumeM3: row.moonMaterialVolumeM3,
 			syncStatus: hasMoonDrillSnapshot
 				? getSnapshotSyncStatus(row.moonDrillLastSyncedAt)
 				: 'warning',
@@ -3830,7 +3749,7 @@ async function buildOperationalStructureSummary(
 					estimatedFuelBurnRatePerHour: sql<
 						string | null
 					>`sum(${operationalStructures.fuelBurnRate})::text`,
-					fuelBurnRateSampleCount: sql<number>`count(${operationalStructures.fuelBurnRate})::int`,
+					fuelBurnRateKnownStructureCount: sql<number>`count(${operationalStructures.fuelBurnRate})::int`,
 				})
 				.from(operationalStructures),
 		])
@@ -3841,7 +3760,7 @@ async function buildOperationalStructureSummary(
 		lowPower: lowPowerResult[0]?.count ?? 0,
 		reinforced: reinforcedResult[0]?.count ?? 0,
 		estimatedFuelBurnRatePerHour: fuelBurnRateResult[0]?.estimatedFuelBurnRatePerHour ?? null,
-		fuelBurnRateSampleCount: fuelBurnRateResult[0]?.fuelBurnRateSampleCount ?? 0,
+		fuelBurnRateKnownStructureCount: fuelBurnRateResult[0]?.fuelBurnRateKnownStructureCount ?? 0,
 	}
 }
 
@@ -3901,6 +3820,8 @@ function buildMoonStructureSortOrder(
 			return [sortExpression(source.fuelBlockUnits), sortExpression(source.structureId)]
 		case 'magmaticGas':
 			return [sortExpression(source.magmaticGasUnits), sortExpression(source.structureId)]
+		case 'moonMaterials':
+			return [sortExpression(source.moonMaterialUnits), sortExpression(source.structureId)]
 		case 'system':
 			return [
 				sortExpression(sql`coalesce(${source.systemName}, '')`),
@@ -3980,6 +3901,36 @@ function buildMoonDrillStructuresCte(db: DbClient<DbSchema>, corpWhere: any, pla
 						0
 					)::int
 				`.as('magmaticGasUnits'),
+				moonMaterialUnits: sql<number>`
+					coalesce(
+						sum(
+							case
+								when ${and(
+									eq(corporationStructureInventory.locationFlag, 'MoonMaterialBay'),
+									inArray(corporationStructureInventory.typeId, [...MOON_GOO_TYPE_IDS])
+								)}
+									then ${corporationStructureInventory.quantity}
+								else 0
+							end
+						),
+						0
+					)::int
+				`.as('moonMaterialUnits'),
+				moonMaterialVolumeM3: sql<number>`
+					coalesce(
+						sum(
+							case
+								when ${and(
+									eq(corporationStructureInventory.locationFlag, 'MoonMaterialBay'),
+									inArray(corporationStructureInventory.typeId, [...MOON_GOO_TYPE_IDS])
+								)}
+									then ${corporationStructureInventory.quantity} * ${MOON_GOO_VOLUME_M3}::numeric
+								else 0
+							end
+						),
+						0
+					)::float8
+				`.as('moonMaterialVolumeM3'),
 			})
 			.from(corporationStructureInventory)
 			.innerJoin(
@@ -4046,6 +3997,14 @@ function buildMoonDrillStructuresCte(db: DbClient<DbSchema>, corpWhere: any, pla
 				magmaticGasUnits:
 					sql<number>`coalesce(${moonDrillInventoryAggregate.magmaticGasUnits}, 0)`.as(
 						'magmaticGasUnits'
+					),
+				moonMaterialUnits:
+					sql<number>`coalesce(${moonDrillInventoryAggregate.moonMaterialUnits}, 0)`.as(
+						'moonMaterialUnits'
+					),
+				moonMaterialVolumeM3:
+					sql<number>`coalesce(${moonDrillInventoryAggregate.moonMaterialVolumeM3}, 0)`.as(
+						'moonMaterialVolumeM3'
 					),
 				moonDrillStructureId: sql<string | null>`${structureMoonDrills.structureId}`.as(
 					'moonDrillStructureId'
@@ -4338,7 +4297,7 @@ async function listOperationalStructures(
 	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
 	const requestedPage = Math.max(query.page ?? 1, 1)
 
-	if (activeTab === 'citadels' || activeTab === 'navigation') {
+	if (activeTab === 'structures') {
 		const moduleConfig = await getStructureModuleConfig(db)
 		const corpWhere = buildStructureContextsWhere(access, query, activeTab)
 		if (!corpWhere) {
@@ -4482,23 +4441,7 @@ export async function listStructures(
 	user: SessionUser,
 	query: StructureListQuery = {}
 ): Promise<StructureListResponse> {
-	return listOperationalStructures(db, user, query, 'citadels')
-}
-
-export async function listCitadelStructures(
-	db: DbClient<DbSchema>,
-	user: SessionUser,
-	query: StructureCitadelListQuery = {}
-): Promise<StructureListResponse> {
-	return listOperationalStructures(db, user, query, 'citadels')
-}
-
-export async function listNavigationStructures(
-	db: DbClient<DbSchema>,
-	user: SessionUser,
-	query: StructureNavigationListQuery = {}
-): Promise<StructureListResponse> {
-	return listOperationalStructures(db, user, query as StructureListQuery, 'navigation')
+	return listOperationalStructures(db, user, query, 'structures')
 }
 
 export async function listMoonDrillStructures(
@@ -4930,12 +4873,6 @@ export async function getStructureDetail(
 	if (!context) {
 		return null
 	}
-	context.fuelUsage =
-		(await loadFuelUsageForStructure(
-			db,
-			context.structure.corporationId,
-			context.structure.structureId
-		)) ?? EMPTY_STRUCTURE_FUEL_USAGE_HISTORY
 	return buildStructureDetailResult(context)
 }
 

@@ -8,14 +8,12 @@ import {
 	updateAlertDestination,
 } from './services/alert-destinations.service'
 import {
-	listMiningCitadelStructures,
 	deleteStructureGroupAlertConfig,
 	deleteStructureGroupSetting,
-	getStructureModuleConfig,
 	getStructureDetail,
-	listCitadelStructures,
+	getStructureModuleConfig,
+	listMiningCitadelStructures,
 	listMoonDrillStructures,
-	listNavigationStructures,
 	listSkyhookStructures,
 	listSovereigntyStructures,
 	listStructureCorporationGroupDefaults,
@@ -30,32 +28,28 @@ import {
 	upsertStructureGroupSetting,
 } from './services/structures.service'
 
+import type { AlertDestinationType } from '@repo/alert-destinations'
 import type {
 	CreateStructureAlertDestinationRequest,
 	CreateStructureGroupAlertConfigRequest,
-	StructureCitadelListItem,
-	StructureCitadelListResponse,
-	StructureCitadelListQuery,
 	StructureActor,
+	StructureAlertDestination,
+	StructureAlertDestinationRecord,
 	StructureCorporationGroupDefault,
 	StructureDetailResult,
 	StructureGroupAlertConfig,
 	StructureGroupSetting,
+	StructureListQuery,
 	StructureListResponse,
-	StructureMoonDrillListQuery,
-	StructureMoonDrillListResponse,
 	StructureMiningCitadelListQuery,
 	StructureMiningCitadelListResponse,
-	StructureNavigationListQuery,
-	StructureNavigationListResponse,
+	StructureModuleConfig,
+	StructureMoonDrillListQuery,
+	StructureMoonDrillListResponse,
 	StructureSkyhookListQuery,
 	StructureSkyhookListResponse,
 	StructureSovereigntyListQuery,
 	StructureSovereigntyListResponse,
-	StructureListQuery,
-	StructureModuleConfig,
-	StructureAlertDestination,
-	StructureAlertDestinationRecord,
 	StructuresWorker,
 	UpdateStructureAlertDestinationRequest,
 	UpdateStructureConfigInput,
@@ -64,7 +58,6 @@ import type {
 	UpsertStructureCorporationDefaultInput,
 	UpsertStructureGroupSettingInput,
 } from '@repo/structures'
-import type { AlertDestinationType } from '@repo/alert-destinations'
 import type { Env } from './context'
 
 export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements StructuresWorker {
@@ -79,22 +72,8 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 	async listStructures(
 		actor: StructureActor,
 		query: StructureListQuery = {}
-	): Promise<StructureListResponse<StructureCitadelListItem>> {
+	): Promise<StructureListResponse> {
 		return listStructures(this.getDb(), actor, query)
-	}
-
-	async listCitadelStructures(
-		actor: StructureActor,
-		query: StructureCitadelListQuery = {}
-	): Promise<StructureCitadelListResponse> {
-		return listCitadelStructures(this.getDb(), actor, query)
-	}
-
-	async listNavigationStructures(
-		actor: StructureActor,
-		query: StructureNavigationListQuery = {}
-	): Promise<StructureNavigationListResponse> {
-		return listNavigationStructures(this.getDb(), actor, query)
 	}
 
 	async listSovereigntyStructures(

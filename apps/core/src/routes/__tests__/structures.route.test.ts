@@ -1,15 +1,15 @@
 import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import structuresRoutes from '../structures'
-import { getCachedUserPermissions } from '../../lib/groups-cache'
-
 import { DEFAULT_WORKFLOW_RETENTION } from '@repo/workflow-utils'
+
+import { getCachedUserPermissions } from '../../lib/groups-cache'
+import structuresRoutes from '../structures'
 
 import type { SessionUser } from '../../context'
 
 const structuresMocks = vi.hoisted(() => ({
-	listCitadelStructures: vi.fn(),
+	listStructures: vi.fn(),
 	listSkyhookStructures: vi.fn(),
 	getStructureDetail: vi.fn(),
 }))
@@ -17,7 +17,7 @@ const corpDataMocks = vi.hoisted(() => ({
 	rebuildStructureInventorySnapshot: vi.fn(),
 }))
 const corpDataNamespace = vi.hoisted(
-	() => ({ __ns: 'EVE_CORPORATION_DATA' } as unknown as DurableObjectNamespace)
+	() => ({ __ns: 'EVE_CORPORATION_DATA' }) as unknown as DurableObjectNamespace
 )
 
 vi.mock('../../lib/groups-cache', () => ({
@@ -70,7 +70,7 @@ describe('structures routes', () => {
 			structureId: 'structure-1',
 			name: 'Structure One',
 		})
-		structuresMocks.listCitadelStructures.mockResolvedValue({
+		structuresMocks.listStructures.mockResolvedValue({
 			items: [
 				{
 					structureId: 'structure-1',
@@ -218,12 +218,12 @@ describe('structures routes', () => {
 					securedFillPercent: 0,
 					unsecuredFillPercent: 0,
 					reagents: [],
-						reinforcementTimerEnd: null,
-						theftVulnerabilityStart: '2026-07-21T06:00:00.000Z',
-						theftVulnerabilityEnd: '2026-07-21T08:00:00.000Z',
-						isRaidable: false,
-					},
-				],
+					reinforcementTimerEnd: null,
+					theftVulnerabilityStart: '2026-07-21T06:00:00.000Z',
+					theftVulnerabilityEnd: '2026-07-21T08:00:00.000Z',
+					isRaidable: false,
+				},
+			],
 			pagination: {
 				page: 1,
 				pageSize: 25,
@@ -254,15 +254,11 @@ describe('structures routes', () => {
 
 	it('strips updatedAt from list responses before sending them to the browser', async () => {
 		const app = createApp(makeUser())
-		const response = await app.request(
-			'/api/structures/citadels',
-			{},
-			{
-				STRUCTURES: {
-					listCitadelStructures: structuresMocks.listCitadelStructures,
-				},
-			} as any
-		)
+		const response = await app.request('/api/structures', {}, {
+			STRUCTURES: {
+				listStructures: structuresMocks.listStructures,
+			},
+		} as any)
 
 		expect(response.status).toBe(200)
 		const body = (await response.json()) as {

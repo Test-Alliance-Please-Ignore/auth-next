@@ -4,7 +4,6 @@ import {
 	corporationStructureInventory,
 	corporationStructureInventorySnapshots,
 	corporationStructures,
-	structureFuelLog,
 } from '@repo/eve-corporation-data-db-schema'
 
 import * as schema from './schema'
@@ -20,7 +19,6 @@ export const querySchema = {
 	corporationStructures,
 	corporationStructureInventorySnapshots,
 	corporationStructureInventory,
-	structureFuelLog,
 }
 
 export type DbSchema = typeof querySchema

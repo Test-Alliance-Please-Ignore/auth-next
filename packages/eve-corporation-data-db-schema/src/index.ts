@@ -34,6 +34,7 @@ export const corporationStructures = pgTable(
 			precision: 12,
 			scale: 4,
 		}),
+		lastFuelBlocks: integer('last_fuel_blocks'),
 		lastRefilledAt: timestamp('last_refilled_at', { withTimezone: true }),
 		nextReinforceApply: timestamp('next_reinforce_apply', { withTimezone: true }),
 		nextReinforceHour: integer('next_reinforce_hour'),
@@ -121,32 +122,8 @@ export const corporationStructureInventory = pgTable(
 	]
 )
 
-export const structureFuelLog = pgTable(
-	'structure_fuel_log',
-	{
-		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: text('corporation_id')
-			.notNull()
-			.references(() => managedCorporations.corporationId),
-		structureId: text('structure_id')
-			.notNull()
-			.references(() => corporationStructures.structureId, { onDelete: 'cascade' }),
-		fuelBlockUnits: integer('fuel_block_units').notNull(),
-		observedAt: timestamp('observed_at', { withTimezone: true }).notNull(),
-		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-	},
-	(table) => [
-		index('structure_fuel_log_corp_structure_observed_idx').on(
-			table.corporationId,
-			table.structureId,
-			table.observedAt
-		),
-	]
-)
-
 export const schema = {
 	corporationStructures,
 	corporationStructureInventorySnapshots,
 	corporationStructureInventory,
-	structureFuelLog,
 }

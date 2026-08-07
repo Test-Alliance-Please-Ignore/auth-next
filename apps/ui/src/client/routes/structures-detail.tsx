@@ -20,13 +20,12 @@ import { hasAnyStructurePermission, hasStructureDetailsPermission } from '@repo/
 import {
 	getStructureTabForTypeId,
 	isReinforcedStructureState,
-	type StructureSovereigntyTransportSection,
 	STRUCTURE_SYNC_ERROR_STALE_MS,
 	STRUCTURE_SYNC_WARNING_STALE_MS,
 } from '@repo/structures'
 
 import { CorporationLogo } from '@/components/corporation-logo'
-import { StructureFuelUsageChart } from '@/components/structure-fuel-usage-chart'
+import { InventoryBaysTable } from '@/components/inventory-bays-table'
 import { SkyhookStateBadge } from '@/components/skyhook-state-badge'
 import { StructureStateBadge } from '@/components/structure-state-badge'
 import { StructureSyncStatusBadge } from '@/components/structure-sync-status-badge'
@@ -43,7 +42,6 @@ import { Progress } from '@/components/ui/progress'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-import { InventoryBaysTable } from '@/components/inventory-bays-table'
 import {
 	Table,
 	TableBody,
@@ -56,8 +54,8 @@ import { useApiMutation } from '@/hooks/useApiMutation'
 import { useAuth } from '@/hooks/useAuth'
 import { useGroups } from '@/hooks/useGroups'
 import { useSystemDetails } from '@/hooks/useLocationSearch'
-import { usePageTitle } from '@/hooks/usePageTitle'
 import { useNowMs } from '@/hooks/useNowMs'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { api } from '@/lib/api'
 import { formatDateTimeLong } from '@/lib/date-utils'
@@ -68,6 +66,7 @@ import { stripLeadingContextName } from '@/lib/structure-name-utils'
 import toast from '@/lib/toast'
 
 import type { FittingDisplayItem, FittingShipSlotType } from '@repo/eve-fitting/flags'
+import type { StructureSovereigntyTransportSection } from '@repo/structures'
 import type { BadgeVariant } from '@/components/ui/badge'
 import type { SelectOption } from '@/components/ui/select'
 import type {
@@ -178,11 +177,19 @@ function formatNullableNumber(value: number | null | undefined): string {
 	return value.toLocaleString()
 }
 
-function formatEstimatedRemaining(amount: number | null | undefined, burningPerHour: number | null | undefined): string {
+function formatEstimatedRemaining(
+	amount: number | null | undefined,
+	burningPerHour: number | null | undefined
+): string {
 	const amountValue = toFiniteNumber(amount)
 	const burnRate = toFiniteNumber(burningPerHour)
 
-	if (amount === null || amount === undefined || burningPerHour === null || burningPerHour === undefined) {
+	if (
+		amount === null ||
+		amount === undefined ||
+		burningPerHour === null ||
+		burningPerHour === undefined
+	) {
 		return '-'
 	}
 
@@ -323,7 +330,13 @@ function SkyhookBayFillCell({
 	)
 }
 
-function AllianceLogo({ allianceId, allianceName }: { allianceId: string; allianceName?: string | null }) {
+function AllianceLogo({
+	allianceId,
+	allianceName,
+}: {
+	allianceId: string
+	allianceName?: string | null
+}) {
 	const [failed, setFailed] = useState(false)
 
 	if (failed) {
@@ -364,7 +377,10 @@ type ParsedWorkforceTransportSection =
 			systems: []
 	  }
 
-function parseWorkforceTransportSystems(value: unknown, defaultAmount: number | null = null): WorkforceTransportEntry[] {
+function parseWorkforceTransportSystems(
+	value: unknown,
+	defaultAmount: number | null = null
+): WorkforceTransportEntry[] {
 	if (!Array.isArray(value)) {
 		return []
 	}
@@ -494,7 +510,7 @@ function WorkforceTransportSystemName({
 						{systemDetails?.name ?? systemId}
 					</Link>
 				) : (
-					systemDetails?.name ?? systemId
+					(systemDetails?.name ?? systemId)
 				)}
 			</div>
 			<div className="text-xs text-muted-foreground">System ID {systemId}</div>
@@ -640,7 +656,8 @@ export default function StructuresDetailPage() {
 	const { user, isLoading: authLoading } = useAuth()
 	const { permissions, isLoading: permissionsLoading } = useUserPermissions()
 	const canViewStructures = user?.is_admin === true || hasAnyStructurePermission(permissions)
-	const canViewStructureDetails = user?.is_admin === true || hasStructureDetailsPermission(permissions)
+	const canViewStructureDetails =
+		user?.is_admin === true || hasStructureDetailsPermission(permissions)
 	const canAccess = canViewStructureDetails && Boolean(structureId)
 	const {
 		data: structure,
@@ -737,7 +754,12 @@ export default function StructuresDetailPage() {
 	})
 
 	const assetsDebugStatusQuery = useQuery({
-		queryKey: ['structures', structureId, 'assets-debug', pendingAssetsDebug?.workflowInstanceId ?? null],
+		queryKey: [
+			'structures',
+			structureId,
+			'assets-debug',
+			pendingAssetsDebug?.workflowInstanceId ?? null,
+		],
 		queryFn: () =>
 			api.getStructureAssetsDebugStatus(structureId!, pendingAssetsDebug!.workflowInstanceId),
 		enabled: Boolean(pendingAssetsDebug?.workflowInstanceId),
@@ -801,7 +823,9 @@ export default function StructuresDetailPage() {
 	}, [structure])
 	const hasStructureFitting = fittingItems.length > 0
 	const isReinforced = structure ? isReinforcedStructureState(structure.state) : false
-	const structureFamily = structure ? getStructureTabForTypeId(structure.typeId, structure.typeName) : null
+	const structureFamily = structure
+		? getStructureTabForTypeId(structure.typeId, structure.typeName)
+		: null
 	const corporationId = structure?.corporationId ?? ''
 	const hasSovereigntySummary = structureFamily === 'sovereignty' && Boolean(structure?.sovereignty)
 	const hasSkyhookSummary = structureFamily === 'skyhooks' && Boolean(structure?.skyhook)
@@ -950,12 +974,12 @@ export default function StructuresDetailPage() {
 										if (isAssetsDebugBusy) return
 										void debugAssetsMutation.mutateAsync()
 									}}
-										loading={isAssetsDebugBusy}
-										loadingText={isAssetsDebugPolling ? 'Generating...' : 'Queueing...'}
-									>
-										<Search className="h-4 w-4" />
-										Debug Assets
-									</Button>
+									loading={isAssetsDebugBusy}
+									loadingText={isAssetsDebugPolling ? 'Generating...' : 'Queueing...'}
+								>
+									<Search className="h-4 w-4" />
+									Debug Assets
+								</Button>
 								<Button
 									variant="ghost"
 									size="sm"
@@ -972,272 +996,285 @@ export default function StructuresDetailPage() {
 							</div>
 						)}
 					</CardHeader>
-						<CardContent className="space-y-4 text-sm">
-							<div className="grid grid-cols-2 gap-4">
-								<div>
-									<div className="text-muted-foreground">Region</div>
-									<div className="font-medium">
-										{structure.regionName ?? structure.regionId ?? '-'}
-									</div>
+					<CardContent className="space-y-4 text-sm">
+						<div className="grid grid-cols-2 gap-4">
+							<div>
+								<div className="text-muted-foreground">Region</div>
+								<div className="font-medium">
+									{structure.regionName ?? structure.regionId ?? '-'}
 								</div>
-								<div>
-									<div className="text-muted-foreground">System</div>
-									<div className="font-medium">{structure.systemName ?? structure.systemId}</div>
+							</div>
+							<div>
+								<div className="text-muted-foreground">System</div>
+								<div className="font-medium">{structure.systemName ?? structure.systemId}</div>
+							</div>
+							<div>
+								<div className="text-muted-foreground">
+									{hasSovereigntySummary ? 'Controlling Alliance' : 'Type'}
 								</div>
-								<div>
-									<div className="text-muted-foreground">
-										{hasSovereigntySummary ? 'Controlling Alliance' : 'Type'}
-									</div>
-									<div className="font-medium">
-										{hasSovereigntySummary
-											? sovereigntyAllianceId ? (
-													<div className="flex items-center gap-2">
-														<AllianceLogo
-															allianceId={sovereigntyAllianceId}
-															allianceName={sovereigntyAllianceName}
-														/>
-														<span>
-															{sovereigntyAllianceName ?? sovereigntyAllianceId}
-														</span>
-													</div>
-												) : (
-													'-'
-												)
-											: structure.typeName ?? structure.typeId}
-									</div>
-								</div>
-								{!hasSovereigntySummary && !isSkyhookStructure && (
-									<div>
-										<div className="text-muted-foreground">Low Power</div>
-										<div className="font-medium">{structure.lowPower ? 'Yes' : 'No'}</div>
-									</div>
-								)}
-								{!hasSovereigntySummary && !isSkyhookStructure && (
-									<>
-										<div>
-											<div className="text-muted-foreground">Fuel</div>
-											<div className="font-medium">
-												{structure.fuelAmount !== null ? (
-													`${structure.fuelAmount.toLocaleString()} units`
-												) : structure.fuelExpires ? (
-													<DurationDisplay endDate={structure.fuelExpires} format="compact" />
-												) : (
-													'-'
-												)}
-											</div>
-										</div>
-										<div>
-											<div className="text-muted-foreground">Last Refilled</div>
-											<div className="font-medium">
-												{structure.lastRefilledAt ? (
-													<EveTimeDisplay dateStr={structure.lastRefilledAt} format="compact" />
-												) : (
-													'-'
-												)}
-											</div>
-										</div>
-									</>
-								)}
-								{hasSovereigntySummary && (
-									<div>
-										<div className="text-muted-foreground">Claimed Since</div>
-										<div className="font-medium">
-											{structure.sovereignty?.claimedSince ? (
-												<EveTimeDisplay
-													dateStr={structure.sovereignty.claimedSince}
-													format="compact"
+								<div className="font-medium">
+									{hasSovereigntySummary ? (
+										sovereigntyAllianceId ? (
+											<div className="flex items-center gap-2">
+												<AllianceLogo
+													allianceId={sovereigntyAllianceId}
+													allianceName={sovereigntyAllianceName}
 												/>
+												<span>{sovereigntyAllianceName ?? sovereigntyAllianceId}</span>
+											</div>
+										) : (
+											'-'
+										)
+									) : (
+										(structure.typeName ?? structure.typeId)
+									)}
+								</div>
+							</div>
+							{!hasSovereigntySummary && !isSkyhookStructure && (
+								<div>
+									<div className="text-muted-foreground">Low Power</div>
+									<div className="font-medium">{structure.lowPower ? 'Yes' : 'No'}</div>
+								</div>
+							)}
+							{!hasSovereigntySummary && !isSkyhookStructure && (
+								<>
+									<div>
+										<div className="text-muted-foreground">Fuel</div>
+										<div className="font-medium">
+											{structure.fuelAmount !== null ? (
+												`${structure.fuelAmount.toLocaleString()} units`
+											) : structure.fuelExpires ? (
+												<DurationDisplay endDate={structure.fuelExpires} format="compact" />
 											) : (
 												'-'
 											)}
 										</div>
 									</div>
-								)}
-								{hasSovereigntySummary && (
 									<div>
-										<div className="text-muted-foreground">Capital System</div>
+										<div className="text-muted-foreground">Last Refilled</div>
 										<div className="font-medium">
-											{structure.sovereignty?.isCapitalSystem ? 'Yes' : 'No'}
+											{structure.lastRefilledAt ? (
+												<EveTimeDisplay dateStr={structure.lastRefilledAt} format="compact" />
+											) : (
+												'-'
+											)}
 										</div>
 									</div>
-								)}
-								{hasSovereigntySummary && (
 									<div>
-										<div className="text-muted-foreground">Activity Defense Multiplier</div>
+										<div className="text-muted-foreground">Burn / Hr</div>
 										<div className="font-medium">
-											{structure.sovereignty?.activityDefenseMultiplier ?? '-'}
+											{formatBurnRate(
+												structure.fuelBurnRate === null
+													? null
+													: Number.parseFloat(structure.fuelBurnRate)
+											)}
 										</div>
 									</div>
-								)}
+								</>
+							)}
+							{hasSovereigntySummary && (
 								<div>
-									<div className="text-muted-foreground">
-										{hasSovereigntySummary ? 'Vulnerability State' : 'State'}
-									</div>
+									<div className="text-muted-foreground">Claimed Since</div>
 									<div className="font-medium">
-										{hasSovereigntySummary ? (
-											<Badge variant={sovereigntyVulnerabilityState.variant}>
-												{sovereigntyVulnerabilityState.label}
-											</Badge>
-										) : structure.skyhook ? (
-											<SkyhookStateBadge state={structure.skyhook.state} />
+										{structure.sovereignty?.claimedSince ? (
+											<EveTimeDisplay
+												dateStr={structure.sovereignty.claimedSince}
+												format="compact"
+											/>
 										) : (
-											<StructureStateBadge state={structure.state} />
+											'-'
 										)}
 									</div>
 								</div>
+							)}
+							{hasSovereigntySummary && (
 								<div>
+									<div className="text-muted-foreground">Capital System</div>
+									<div className="font-medium">
+										{structure.sovereignty?.isCapitalSystem ? 'Yes' : 'No'}
+									</div>
+								</div>
+							)}
+							{hasSovereigntySummary && (
+								<div>
+									<div className="text-muted-foreground">Activity Defense Multiplier</div>
+									<div className="font-medium">
+										{structure.sovereignty?.activityDefenseMultiplier ?? '-'}
+									</div>
+								</div>
+							)}
+							<div>
+								<div className="text-muted-foreground">
+									{hasSovereigntySummary ? 'Vulnerability State' : 'State'}
+								</div>
+								<div className="font-medium">
+									{hasSovereigntySummary ? (
+										<Badge variant={sovereigntyVulnerabilityState.variant}>
+											{sovereigntyVulnerabilityState.label}
+										</Badge>
+									) : structure.skyhook ? (
+										<SkyhookStateBadge state={structure.skyhook.state} />
+									) : (
+										<StructureStateBadge state={structure.state} />
+									)}
+								</div>
+							</div>
+							<div>
 								<div className="text-muted-foreground">
 									{hasSovereigntySummary ? (
 										'Vulnerability Window'
 									) : isReinforced ? (
 										<Badge variant="destructive">Reinforced until</Badge>
 									) : (
-											'Next State'
-										)}
-									</div>
-									<div className="font-medium">
-										{hasSovereigntySummary ? (
-											structure.sovereignty?.vulnerabilityWindowStart &&
-											structure.sovereignty?.vulnerabilityWindowEnd ? (
-												<span className="inline-flex flex-wrap items-center gap-1">
-													<EveTimeDisplay
-														dateStr={structure.sovereignty.vulnerabilityWindowStart}
-														format="window"
-														className="whitespace-nowrap"
-													/>
-													<span>-</span>
-													<EveTimeDisplay
-														dateStr={structure.sovereignty.vulnerabilityWindowEnd}
-														format="window"
-														className="whitespace-nowrap"
-													/>
-												</span>
-											) : structure.sovereignty?.vulnerabilityWindowEnd ? (
+										'Next State'
+									)}
+								</div>
+								<div className="font-medium">
+									{hasSovereigntySummary ? (
+										structure.sovereignty?.vulnerabilityWindowStart &&
+										structure.sovereignty?.vulnerabilityWindowEnd ? (
+											<span className="inline-flex flex-wrap items-center gap-1">
+												<EveTimeDisplay
+													dateStr={structure.sovereignty.vulnerabilityWindowStart}
+													format="window"
+													className="whitespace-nowrap"
+												/>
+												<span>-</span>
 												<EveTimeDisplay
 													dateStr={structure.sovereignty.vulnerabilityWindowEnd}
 													format="window"
 													className="whitespace-nowrap"
 												/>
-											) : (
-												'-'
-											)
-										) : structure.nextStateAt ? (
-											<EveTimeDisplay dateStr={structure.nextStateAt} format="compact" />
+											</span>
+										) : structure.sovereignty?.vulnerabilityWindowEnd ? (
+											<EveTimeDisplay
+												dateStr={structure.sovereignty.vulnerabilityWindowEnd}
+												format="window"
+												className="whitespace-nowrap"
+											/>
 										) : (
 											'-'
-										)}
-									</div>
-									{hasSovereigntySummary &&
-									(structure.sovereignty?.vulnerabilityWindowStart ||
-										structure.sovereignty?.vulnerabilityWindowEnd) ? (
-										<div className="mt-1 text-xs text-muted-foreground">
-											<LiveSovereigntyVulnerabilityWindow
-												vulnerabilityWindowStart={structure.sovereignty?.vulnerabilityWindowStart}
-												vulnerabilityWindowEnd={structure.sovereignty?.vulnerabilityWindowEnd}
-											/>
-										</div>
-									) : null}
+										)
+									) : structure.nextStateAt ? (
+										<EveTimeDisplay dateStr={structure.nextStateAt} format="compact" />
+									) : (
+										'-'
+									)}
 								</div>
-							</div>
-							<div className="flex flex-wrap gap-2 pt-2">
-								{structure.hidden && <Badge variant="ghost">Hidden</Badge>}
-								{!hasSovereigntySummary && !isSkyhookStructure && structure.lowPowerAllowed && (
-									<Badge variant="success">Low Power Alerts Suppressed</Badge>
-								)}
-								{structure.assignedGroupId && <Badge variant="special">Group Assigned</Badge>}
-							</div>
-								<div className="space-y-3">
-								{!hasSovereigntySummary && !isSkyhookStructure && (
-									<div className="space-y-2">
-										<div className="text-xs uppercase tracking-wider text-muted-foreground">
-											Reinforcement
-											</div>
-											<div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm">
-												<div className="grid gap-3">
-													<div>
-														<div className="text-xs text-muted-foreground">Reinforcement Hour</div>
-														<div className="font-medium">
-															{formatReinforcementHourUtc(structure.reinforceHour)}
-														</div>
-													</div>
-													<div>
-														<div className="text-xs text-muted-foreground">Next Reinforcement Hour</div>
-														<div className="font-medium">
-															{structure.nextReinforceHour !== null
-																? formatReinforcementHourUtc(structure.nextReinforceHour)
-																: '-'}
-														</div>
-													</div>
-													<div>
-														<div className="text-xs text-muted-foreground">
-															Next Reinforcement Applies
-														</div>
-														<div className="font-medium">
-															{structure.nextReinforceApply ? (
-																<EveTimeDisplay dateStr={structure.nextReinforceApply} format="compact" />
-															) : (
-																'-'
-															)}
-														</div>
-													</div>
-												</div>
-										</div>
+								{hasSovereigntySummary &&
+								(structure.sovereignty?.vulnerabilityWindowStart ||
+									structure.sovereignty?.vulnerabilityWindowEnd) ? (
+									<div className="mt-1 text-xs text-muted-foreground">
+										<LiveSovereigntyVulnerabilityWindow
+											vulnerabilityWindowStart={structure.sovereignty?.vulnerabilityWindowStart}
+											vulnerabilityWindowEnd={structure.sovereignty?.vulnerabilityWindowEnd}
+										/>
 									</div>
-								)}
-								{!hasSovereigntySummary && !isSkyhookStructure && (
-									<div className="space-y-2">
-										<div className="text-xs uppercase tracking-wider text-muted-foreground">
-											Structure Services
-										</div>
-										{structure.services.length > 0 ? (
-											<div className="space-y-1.5">
-												{structure.services.map((service) => (
-													<div
-														key={`${service.name}-${service.state}`}
-														className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
-													>
-														<div className="flex min-w-0 items-center gap-2">
-															<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/50 text-muted-foreground">
-																{renderServiceIcon(service.name)}
-															</div>
-															<div className="min-w-0">
-																<div className="truncate text-sm font-medium">{service.name}</div>
-															</div>
-														</div>
-														<Badge variant={serviceBadgeVariant(service.state)} className="shrink-0">
-															{formatServiceStateLabel(service.state)}
-														</Badge>
-													</div>
-												))}
-											</div>
-										) : (
-											<div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-												No structure services were reported for this structure.
-											</div>
-										)}
-									</div>
-								)}
+								) : null}
+							</div>
+						</div>
+						<div className="flex flex-wrap gap-2 pt-2">
+							{structure.hidden && <Badge variant="ghost">Hidden</Badge>}
+							{!hasSovereigntySummary && !isSkyhookStructure && structure.lowPowerAllowed && (
+								<Badge variant="success">Low Power Alerts Suppressed</Badge>
+							)}
+							{structure.assignedGroupId && <Badge variant="special">Group Assigned</Badge>}
+						</div>
+						<div className="space-y-3">
+							{!hasSovereigntySummary && !isSkyhookStructure && (
 								<div className="space-y-2">
 									<div className="text-xs uppercase tracking-wider text-muted-foreground">
-										Sync Status
+										Reinforcement
 									</div>
-									<div className="rounded-lg border border-border/60 p-4">
-										<div className="mb-3 flex flex-wrap items-center gap-2">
-											{!hasSovereigntySummary && structure.includeInStructureAssetSync && (
-												<Badge variant="success">Asset Sync Enabled</Badge>
-											)}
-											<div className="mt-0.5">
-												<StructureSyncStatusBadge
-													status={structure.syncStatus}
-													description={syncDescription}
-												/>
+									<div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm">
+										<div className="grid gap-3">
+											<div>
+												<div className="text-xs text-muted-foreground">Reinforcement Hour</div>
+												<div className="font-medium">
+													{formatReinforcementHourUtc(structure.reinforceHour)}
+												</div>
+											</div>
+											<div>
+												<div className="text-xs text-muted-foreground">Next Reinforcement Hour</div>
+												<div className="font-medium">
+													{structure.nextReinforceHour !== null
+														? formatReinforcementHourUtc(structure.nextReinforceHour)
+														: '-'}
+												</div>
+											</div>
+											<div>
+												<div className="text-xs text-muted-foreground">
+													Next Reinforcement Applies
+												</div>
+												<div className="font-medium">
+													{structure.nextReinforceApply ? (
+														<EveTimeDisplay
+															dateStr={structure.nextReinforceApply}
+															format="compact"
+														/>
+													) : (
+														'-'
+													)}
+												</div>
 											</div>
 										</div>
-										<div className="mt-2 text-sm text-muted-foreground">{syncDescription}</div>
 									</div>
 								</div>
+							)}
+							{!hasSovereigntySummary && !isSkyhookStructure && (
+								<div className="space-y-2">
+									<div className="text-xs uppercase tracking-wider text-muted-foreground">
+										Structure Services
+									</div>
+									{structure.services.length > 0 ? (
+										<div className="space-y-1.5">
+											{structure.services.map((service) => (
+												<div
+													key={`${service.name}-${service.state}`}
+													className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
+												>
+													<div className="flex min-w-0 items-center gap-2">
+														<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/50 text-muted-foreground">
+															{renderServiceIcon(service.name)}
+														</div>
+														<div className="min-w-0">
+															<div className="truncate text-sm font-medium">{service.name}</div>
+														</div>
+													</div>
+													<Badge variant={serviceBadgeVariant(service.state)} className="shrink-0">
+														{formatServiceStateLabel(service.state)}
+													</Badge>
+												</div>
+											))}
+										</div>
+									) : (
+										<div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+											No structure services were reported for this structure.
+										</div>
+									)}
+								</div>
+							)}
+							<div className="space-y-2">
+								<div className="text-xs uppercase tracking-wider text-muted-foreground">
+									Sync Status
+								</div>
+								<div className="rounded-lg border border-border/60 p-4">
+									<div className="mb-3 flex flex-wrap items-center gap-2">
+										{!hasSovereigntySummary && structure.includeInStructureAssetSync && (
+											<Badge variant="success">Asset Sync Enabled</Badge>
+										)}
+										<div className="mt-0.5">
+											<StructureSyncStatusBadge
+												status={structure.syncStatus}
+												description={syncDescription}
+											/>
+										</div>
+									</div>
+									<div className="mt-2 text-sm text-muted-foreground">{syncDescription}</div>
+								</div>
 							</div>
-						</CardContent>
+						</div>
+					</CardContent>
 				</Card>
 
 				<Card>
@@ -1277,16 +1314,16 @@ export default function StructuresDetailPage() {
 							/>
 						</FilterField>
 						<div className="flex items-center justify-end gap-3 pt-2">
-								<Button
-									variant="ghost"
-									onClick={() => {
-										setHidden(structure.hidden)
-										if (!hasSovereigntySummary) {
-											setLowPowerAllowed(structure.lowPowerAllowed)
-										}
-										setAssignedGroupId(structure.assignedGroupId ?? '')
-									}}
-								>
+							<Button
+								variant="ghost"
+								onClick={() => {
+									setHidden(structure.hidden)
+									if (!hasSovereigntySummary) {
+										setLowPowerAllowed(structure.lowPowerAllowed)
+									}
+									setAssignedGroupId(structure.assignedGroupId ?? '')
+								}}
+							>
 								Reset
 							</Button>
 							<Button
@@ -1367,7 +1404,9 @@ export default function StructuresDetailPage() {
 													</div>
 												</div>
 												<Badge
-													variant={upgrade.powerState.toLowerCase() === 'online' ? 'success' : 'ghost'}
+													variant={
+														upgrade.powerState.toLowerCase() === 'online' ? 'success' : 'ghost'
+													}
 													className="shrink-0"
 												>
 													{upgrade.powerState}
@@ -1391,22 +1430,24 @@ export default function StructuresDetailPage() {
 							</CardHeader>
 							<CardContent className="space-y-4">
 								<div className="grid gap-4 md:grid-cols-2 text-sm">
-						<div>
-							<div className="text-muted-foreground">Last Updated</div>
-							<div className="font-medium">
-								{sovereigntyHub?.reagentBayLastUpdated ? (
-									<EveTimeDisplay
-										dateStr={sovereigntyHub.reagentBayLastUpdated}
-										format="compact"
-									/>
-								) : (
-									'-'
-								)}
-							</div>
-						</div>
+									<div>
+										<div className="text-muted-foreground">Last Updated</div>
+										<div className="font-medium">
+											{sovereigntyHub?.reagentBayLastUpdated ? (
+												<EveTimeDisplay
+													dateStr={sovereigntyHub.reagentBayLastUpdated}
+													format="compact"
+												/>
+											) : (
+												'-'
+											)}
+										</div>
+									</div>
 									<div>
 										<div className="text-muted-foreground">Reagent Types</div>
-										<div className="font-medium">{sovereigntyHub?.reagentBay?.reagents.length ?? 0}</div>
+										<div className="font-medium">
+											{sovereigntyHub?.reagentBay?.reagents.length ?? 0}
+										</div>
 									</div>
 								</div>
 								{sovereigntyHub?.reagentBay?.reagents.length ? (
@@ -1434,7 +1475,9 @@ export default function StructuresDetailPage() {
 														</TableCell>
 														<TableCell>{formatNullableNumber(reagent.amount)}</TableCell>
 														<TableCell>{formatNullableNumber(reagent.burningPerHour)}</TableCell>
-														<TableCell>{formatEstimatedRemaining(reagent.amount, reagent.burningPerHour)}</TableCell>
+														<TableCell>
+															{formatEstimatedRemaining(reagent.amount, reagent.burningPerHour)}
+														</TableCell>
 														<TableCell>{formatNullableDateTime(reagent.lastCycle)}</TableCell>
 													</TableRow>
 												))}
@@ -1456,7 +1499,9 @@ export default function StructuresDetailPage() {
 				<Card>
 					<CardHeader>
 						<CardTitle>Skyhook State</CardTitle>
-						<CardDescription>Vulnerability state and ownership context for this skyhook.</CardDescription>
+						<CardDescription>
+							Vulnerability state and ownership context for this skyhook.
+						</CardDescription>
 					</CardHeader>
 					<CardContent className="grid gap-4 md:grid-cols-2 text-sm">
 						<div>
@@ -1480,11 +1525,7 @@ export default function StructuresDetailPage() {
 						<div>
 							<div className="text-muted-foreground">State</div>
 							<div className="font-medium">
-								{structure.skyhook ? (
-									<SkyhookStateBadge state={structure.skyhook.state} />
-								) : (
-									'-'
-								)}
+								{structure.skyhook ? <SkyhookStateBadge state={structure.skyhook.state} /> : '-'}
 							</div>
 						</div>
 						<div className="md:col-span-2">
@@ -1510,32 +1551,34 @@ export default function StructuresDetailPage() {
 						<div>
 							<div className="text-muted-foreground">Theft Vulnerability</div>
 							<div className="font-medium">
-								{structure.skyhook
-									? structure.skyhook.theftVulnerabilityStart &&
-									  structure.skyhook.theftVulnerabilityEnd ? (
-											<span className="inline-flex flex-wrap items-center gap-1">
-												<EveTimeDisplay
-													dateStr={structure.skyhook.theftVulnerabilityStart}
-													format="window"
-													className="whitespace-nowrap"
-												/>
-												<span>-</span>
-												<EveTimeDisplay
-													dateStr={structure.skyhook.theftVulnerabilityEnd}
-													format="window"
-													className="whitespace-nowrap"
-												/>
-											</span>
-										) : structure.skyhook.theftVulnerabilityStart ? (
+								{structure.skyhook ? (
+									structure.skyhook.theftVulnerabilityStart &&
+									structure.skyhook.theftVulnerabilityEnd ? (
+										<span className="inline-flex flex-wrap items-center gap-1">
 											<EveTimeDisplay
 												dateStr={structure.skyhook.theftVulnerabilityStart}
 												format="window"
 												className="whitespace-nowrap"
 											/>
-										) : (
-											'-'
-										)
-									: '-'}
+											<span>-</span>
+											<EveTimeDisplay
+												dateStr={structure.skyhook.theftVulnerabilityEnd}
+												format="window"
+												className="whitespace-nowrap"
+											/>
+										</span>
+									) : structure.skyhook.theftVulnerabilityStart ? (
+										<EveTimeDisplay
+											dateStr={structure.skyhook.theftVulnerabilityStart}
+											format="window"
+											className="whitespace-nowrap"
+										/>
+									) : (
+										'-'
+									)
+								) : (
+									'-'
+								)}
 							</div>
 						</div>
 					</CardContent>
@@ -1546,7 +1589,9 @@ export default function StructuresDetailPage() {
 				<Card>
 					<CardHeader>
 						<CardTitle>Reagents</CardTitle>
-						<CardDescription>Skyhook reagent stock, bay fullness, and last cycle timestamps.</CardDescription>
+						<CardDescription>
+							Skyhook reagent stock, bay fullness, and last cycle timestamps.
+						</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<div className="grid gap-4 md:grid-cols-2 text-sm">
@@ -1664,7 +1709,9 @@ export default function StructuresDetailPage() {
 				<Card>
 					<CardHeader>
 						<CardTitle>Mining Citadel</CardTitle>
-						<CardDescription>Last known moon extraction snapshot for this structure.</CardDescription>
+						<CardDescription>
+							Last known moon extraction snapshot for this structure.
+						</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4 text-sm">
 						{!miningExtraction ? (
@@ -1770,40 +1817,6 @@ export default function StructuresDetailPage() {
 					</Card>
 				) : null}
 			</div>
-
-				{!hasSovereigntySummary && !isSkyhookStructure && (
-					<Card>
-						<CardHeader>
-							<CardTitle>Fuel Usage</CardTitle>
-							<CardDescription>
-								Hourly fuel block count and burn rate over the last 7 days.
-							</CardDescription>
-						</CardHeader>
-						<CardContent className="space-y-5">
-							<div className="grid gap-4 md:grid-cols-3 text-sm">
-								<div>
-									<div className="text-muted-foreground">Current Burn Rate</div>
-									<div className="font-medium">
-										{formatBurnRate(
-											structure.fuelBurnRate === null ? null : Number.parseFloat(structure.fuelBurnRate)
-										)}
-									</div>
-								</div>
-								<div>
-									<div className="text-muted-foreground">Hourly Samples</div>
-									<div className="font-medium">{structure.fuelUsage?.sampleCount ?? 0}</div>
-								</div>
-								<div>
-									<div className="text-muted-foreground">Last Refilled</div>
-									<div className="font-medium">
-										{formatNullableDateTime(structure.fuelUsage?.lastRefilledAt)}
-									</div>
-								</div>
-							</div>
-							<StructureFuelUsageChart points={structure.fuelUsage?.points ?? []} />
-						</CardContent>
-					</Card>
-				)}
 
 			{isAdmin && assetsDebug ? (
 				<Card>

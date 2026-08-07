@@ -1,0 +1,35 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "universe-test",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-30",
+	"compatibility_flags": ["nodejs_compat"],
+	"workers_dev": false,
+	"routes": [],
+	"logpush": false,
+	"vars": {
+		"NAME": "universe",
+		"ENVIRONMENT": "VITEST",
+		"SENTRY_RELEASE": "test"
+	},
+	"kv_namespaces": [
+		{
+			"binding": "ESI_RATE_LIMITS",
+			"id": "40ba8cdb7cb14b8e9bbed35f34faf27b"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "UNIVERSE",
+				"class_name": "Universe"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["Universe"]
+		}
+	]
+}

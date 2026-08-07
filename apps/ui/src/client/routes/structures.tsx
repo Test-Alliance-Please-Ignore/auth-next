@@ -3,8 +3,9 @@ import {
 	ArrowUp,
 	ArrowUpDown,
 	CircleHelp,
-	Filter,
 	Flame,
+	Maximize2,
+	Minimize2,
 	Package,
 	RefreshCcw,
 	Shield,
@@ -32,13 +33,20 @@ import {
 } from '@repo/structures'
 
 import { CorporationLogo } from '@/components/corporation-logo'
+import { useLayoutScrollMode } from '@/components/layout'
 import { SkyhookStateBadge } from '@/components/skyhook-state-badge'
 import { StructureStateBadge } from '@/components/structure-state-badge'
 import { StructureSyncStatusBadge } from '@/components/structure-sync-status-badge'
 import { TableRefreshFrame } from '@/components/table-refresh-frame'
+import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger,
+} from '@/components/ui/accordion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { DurationDisplay } from '@/components/ui/duration-display'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
@@ -63,17 +71,16 @@ import { useNowMs } from '@/hooks/useNowMs'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import {
-	type StructureCitadelListItem,
-	type StructureCitadelListQuery,
 	type StructureListBaseItem,
 	type StructureListFilterOptions,
+	type StructureListItem,
+	type StructureListQuery,
 	type StructureListSortBy,
 	type StructureListSummary,
 	type StructureMiningCitadelListItem,
 	type StructureMiningCitadelListQuery,
 	type StructureMoonDrillListItem,
 	type StructureMoonDrillListQuery,
-	type StructureNavigationListItem,
 	type StructureSkyhookListFilterOptions,
 	type StructureSkyhookListItem,
 	type StructureSkyhookListQuery,
@@ -90,13 +97,12 @@ import { stripLeadingContextName } from '@/lib/structure-name-utils'
 import { cn } from '@/lib/utils'
 
 import {
-	useCitadelStructures,
 	useMiningCitadelStructures,
 	useMoonDrillStructures,
-	useNavigationStructures,
 	useSkyhookStructures,
 	useSovereigntyStructures,
 	useStructureModuleConfig,
+	useStructures,
 } from '../features/structures/hooks'
 import {
 	buildStructureListContentKey,
@@ -121,6 +127,8 @@ const BOOLEAN_FILTER_OPTIONS: SelectOption[] = [
 	{ value: 'false', label: 'No' },
 ]
 const FUEL_BLOCK_ICON_TYPE_ID = Array.from(FUEL_BLOCK_TYPE_IDS)[0] ?? '4051'
+// EVE's Station Vault Container is a clear representative icon for stored Moon Goo.
+const STATION_VAULT_ICON_TYPE_ID = '17367'
 
 function structureSyncStatusDescription(
 	structure: Pick<StructureListBaseItem, 'syncStatus' | 'syncFailureReason' | 'lastSyncedAt'>
@@ -226,11 +234,15 @@ function MoonDrillResourceCell({
 	iconAlt,
 	fallbackIcon: FallbackIcon,
 	value,
+	secondaryValue,
+	secondarySuffix,
 }: {
 	typeId: string
 	iconAlt: string
 	fallbackIcon: typeof Package | typeof Flame
 	value: number | null | undefined
+	secondaryValue?: number | null | undefined
+	secondarySuffix?: string
 }) {
 	const [failed, setFailed] = useState(false)
 
@@ -248,6 +260,11 @@ function MoonDrillResourceCell({
 				/>
 			)}
 			<span className="tabular-nums">{formatNullableNumber(value)}</span>
+			{secondaryValue !== undefined && (
+				<span className="text-muted-foreground">
+					({formatNullableDecimal(secondaryValue)} {secondarySuffix ?? ''})
+				</span>
+			)}
 		</div>
 	)
 }
@@ -515,6 +532,9 @@ export default function StructuresPage() {
 	const canManageStructures =
 		user?.is_admin === true || hasAllStructureManagerPermission(permissions)
 	const tableState = useStructureTableUiState((state) => state)
+	const { isPageScrollEnabled, setIsPageScrollEnabled } = useLayoutScrollMode()
+	const isTableGridClamped = !isPageScrollEnabled
+	const [areFiltersOpen, setAreFiltersOpen] = useState(true)
 	const visibleTabs = useMemo(
 		() =>
 			user?.is_admin === true
@@ -536,11 +556,11 @@ export default function StructuresPage() {
 		}),
 		[tableState.page, tableState.pageSize, tableState.sortDirection]
 	)
-	const commonSortBy = getEffectiveStructureSortByForTab('citadels', tableState.sortBy)
+	const commonSortBy = getEffectiveStructureSortByForTab('structures', tableState.sortBy)
 	const sovereigntySortBy = getEffectiveStructureSortByForTab('sovereignty', tableState.sortBy)
 	const skyhookSortBy = getEffectiveStructureSortByForTab('skyhooks', tableState.sortBy)
 	const moonSortBy = getEffectiveStructureSortByForTab('moon-drills', tableState.sortBy)
-	const commonQuery = useMemo<StructureCitadelListQuery>(
+	const commonQuery = useMemo<StructureListQuery>(
 		() =>
 			({
 				...sharedQuery,
@@ -553,7 +573,7 @@ export default function StructuresPage() {
 				systemId: tableState.filters.systemId,
 				state: tableState.filters.state,
 				typeId: tableState.filters.typeId,
-			}) as StructureCitadelListQuery,
+			}) as StructureListQuery,
 		[sharedQuery, tableState.filters, commonSortBy]
 	)
 	const sovereigntyQuery = useMemo<StructureSovereigntyListQuery>(
@@ -619,11 +639,8 @@ export default function StructuresPage() {
 		[sharedQuery, tableState.filters, moonSortBy]
 	)
 
-	const citadelStructures = useCitadelStructures(commonQuery, {
-		enabled: !authLoading && !permissionsLoading && canViewStructures && activeTab === 'citadels',
-	})
-	const navigationStructures = useNavigationStructures(commonQuery, {
-		enabled: !authLoading && !permissionsLoading && canViewStructures && activeTab === 'navigation',
+	const structuresResponseQuery = useStructures(commonQuery, {
+		enabled: !authLoading && !permissionsLoading && canViewStructures && activeTab === 'structures',
 	})
 	const sovereigntyStructures = useSovereigntyStructures(sovereigntyQuery, {
 		enabled:
@@ -647,10 +664,8 @@ export default function StructuresPage() {
 	const isMoonDrillsTab = activeTab === 'moon-drills'
 	const activeResponse = (() => {
 		switch (activeTab) {
-			case 'citadels':
-				return citadelStructures
-			case 'navigation':
-				return navigationStructures
+			case 'structures':
+				return structuresResponseQuery
 			case 'sovereignty':
 				return sovereigntyStructures
 			case 'skyhooks':
@@ -670,17 +685,15 @@ export default function StructuresPage() {
 	const structures = structuresResponse?.items ?? []
 	const pagination = structuresResponse?.pagination
 	const commonFilterOptions: StructureListFilterOptions | undefined =
-		activeTab === 'citadels'
-			? citadelStructures.data?.filterOptions
-			: activeTab === 'navigation'
-				? navigationStructures.data?.filterOptions
-				: activeTab === 'skyhooks'
-					? skyhookStructures.data?.filterOptions
-					: activeTab === 'mining-citadels'
-						? miningCitadelStructures.data?.filterOptions
-						: activeTab === 'moon-drills'
-							? moonDrillStructures.data?.filterOptions
-							: undefined
+		activeTab === 'structures'
+			? structuresResponseQuery.data?.filterOptions
+			: activeTab === 'skyhooks'
+				? skyhookStructures.data?.filterOptions
+				: activeTab === 'mining-citadels'
+					? miningCitadelStructures.data?.filterOptions
+					: activeTab === 'moon-drills'
+						? moonDrillStructures.data?.filterOptions
+						: undefined
 	const sovereigntyFilterOptions: StructureSovereigntyListFilterOptions | undefined =
 		activeTab === 'sovereignty' ? sovereigntyStructures.data?.filterOptions : undefined
 	const skyhookFilterOptions: StructureSkyhookListFilterOptions | undefined =
@@ -720,7 +733,7 @@ export default function StructuresPage() {
 		}
 
 		if (!visibleTabs.some((tab) => tab.tab === tableState.tab)) {
-			setStructureTableTab(visibleTabs[0]?.tab ?? 'citadels')
+			setStructureTableTab(visibleTabs[0]?.tab ?? 'structures')
 		}
 	}, [tableState.tab, visibleTabs])
 
@@ -894,11 +907,9 @@ export default function StructuresPage() {
 							tableState.filters.typeId,
 							tableState.filters.planetId,
 						]
-	).filter(Boolean).length
+	).reduce((count, value) => count + parseMultiFilter(value).length, 0)
 
-	const renderStructureRows = <T extends StructureCitadelListItem | StructureNavigationListItem>(
-		items: T[]
-	) =>
+	const renderStructureRows = (items: StructureListItem[]) =>
 		items.map((structure) => {
 			const fuelLabel = structure.fuelExpires ? (
 				<DurationDisplay endDate={structure.fuelExpires} maxUnits={3} durationStyle="compact" />
@@ -974,10 +985,6 @@ export default function StructuresPage() {
 				</TableRow>
 			)
 		})
-
-	const renderCitadelRows = (items: StructureCitadelListItem[]) => renderStructureRows(items)
-
-	const renderNavigationRows = (items: StructureNavigationListItem[]) => renderStructureRows(items)
 
 	const renderSovereigntyRows = (items: StructureSovereigntyListItem[]) =>
 		items.map((structure) => {
@@ -1264,6 +1271,16 @@ export default function StructuresPage() {
 					<TableCell>{fuelLabel}</TableCell>
 					<TableCell>
 						<MoonDrillResourceCell
+							typeId={STATION_VAULT_ICON_TYPE_ID}
+							iconAlt="Moon goo"
+							fallbackIcon={Package}
+							value={structure.moonMaterialUnits}
+							secondaryValue={structure.moonMaterialVolumeM3}
+							secondarySuffix="m3"
+						/>
+					</TableCell>
+					<TableCell>
+						<MoonDrillResourceCell
 							typeId={FUEL_BLOCK_ICON_TYPE_ID}
 							iconAlt="Fuel block"
 							fallbackIcon={Package}
@@ -1303,10 +1320,10 @@ export default function StructuresPage() {
 
 	const renderStructuresTableBody = () => {
 		switch (activeTab) {
-			case 'citadels':
-				return <TableBody>{renderCitadelRows(citadelStructures.data?.items ?? [])}</TableBody>
-			case 'navigation':
-				return <TableBody>{renderNavigationRows(navigationStructures.data?.items ?? [])}</TableBody>
+			case 'structures':
+				return (
+					<TableBody>{renderStructureRows(structuresResponseQuery.data?.items ?? [])}</TableBody>
+				)
 			case 'sovereignty':
 				return (
 					<TableBody>{renderSovereigntyRows(sovereigntyStructures.data?.items ?? [])}</TableBody>
@@ -1334,6 +1351,25 @@ export default function StructuresPage() {
 		>
 			<RefreshCcw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
 			<span className="ml-2">Refresh</span>
+		</Button>
+	)
+	const tableLayoutButton = (
+		<Button
+			variant="ghost"
+			size="sm"
+			className="h-8"
+			type="button"
+			onClick={() => setIsPageScrollEnabled(!isPageScrollEnabled)}
+			aria-pressed={isTableGridClamped}
+			aria-label={
+				isTableGridClamped ? 'Use page scrolling for the table' : 'Clamp the table to the page'
+			}
+			title={
+				isTableGridClamped ? 'Use page scrolling for the table' : 'Clamp the table to the page'
+			}
+		>
+			{isTableGridClamped ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+			<span className="ml-2">{isTableGridClamped ? 'Page scroll' : 'Clamp grid'}</span>
 		</Button>
 	)
 
@@ -1380,8 +1416,7 @@ export default function StructuresPage() {
 				return 'type'
 			case 'skyhooks':
 				return 'raidable'
-			case 'citadels':
-			case 'navigation':
+			case 'structures':
 			case 'mining-citadels':
 			case 'moon-drills':
 				return 'type'
@@ -1649,7 +1684,12 @@ export default function StructuresPage() {
 	}
 
 	return (
-		<Container className="flex min-h-0 flex-col space-y-6 py-6 lg:h-full lg:overflow-hidden 2xl:!max-w-none">
+		<Container
+			className={cn(
+				'flex min-h-0 flex-col space-y-6 py-6 2xl:!max-w-none',
+				isTableGridClamped ? 'lg:h-full lg:overflow-hidden' : 'lg:overflow-visible'
+			)}
+		>
 			<PageHeader
 				title="Structures"
 				description="Track visible structures, review their current state, and fuel posture."
@@ -1802,7 +1842,7 @@ export default function StructuresPage() {
 								<p>Estimated aggregate burn rate from the filtered structure set.</p>
 								<p>
 									{summary
-										? `Estimated from ${summary.fuelBurnRateSampleCount} structures with usable fuel history.`
+										? `Estimated from ${summary.fuelBurnRateKnownStructureCount} structures with known service data.`
 										: '-'}
 								</p>
 							</>
@@ -1819,52 +1859,95 @@ export default function StructuresPage() {
 				)}
 			</div>
 
-			<Card className="flex flex-col lg:min-h-0 lg:flex-1">
-				<CardHeader className="pb-3">
-					<div className="flex flex-wrap items-start justify-between gap-4">
-						<div>
-							<CardTitle className="flex items-center gap-2 text-base">
-								<Filter className="h-5 w-5" />
-								Filters
-							</CardTitle>
-							<CardDescription>
-								Choose a structure family to switch the list preset and filters.
-							</CardDescription>
-						</div>
-					</div>
-				</CardHeader>
-				<CardContent className="flex flex-col space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
-					<Tabs
-						value={activeTab}
-						onValueChange={(value) => {
-							if (isStructureTab(value)) {
-								setStructureTableTab(value)
-							}
-						}}
-					>
-						<TabsList className="flex w-full flex-wrap gap-1 border-b-0">
-							{visibleTabs.map((tab) => (
-								<TabsTrigger key={tab.tab} value={tab.tab}>
-									{tab.label}
-								</TabsTrigger>
-							))}
-						</TabsList>
-					</Tabs>
-					{activeFilterCount > 0 && (
-						<div className="flex justify-end">
-							<Button variant="ghost" size="sm" onClick={() => clearStructureTableFilters()}>
-								Clear Filters
-							</Button>
-						</div>
+			<Card className={cn('flex flex-col', isTableGridClamped && 'lg:min-h-0 lg:flex-1')}>
+				<CardContent
+					className={cn(
+						'flex flex-col space-y-4',
+						isTableGridClamped && 'lg:min-h-0 lg:flex-1 lg:overflow-hidden'
 					)}
-					<div className="space-y-4">
-						{isSovereigntyTab
-							? sovereigntyFilterControls
-							: isSkyhooksTab || isMoonDrillsTab
-								? specialFilterControls
-								: commonFilterControls}
+				>
+					<div className="flex items-start gap-4 pt-4">
+						<Tabs
+							value={activeTab}
+							onValueChange={(value) => {
+								if (isStructureTab(value)) {
+									setStructureTableTab(value)
+								}
+							}}
+							className="min-w-0 flex-1"
+						>
+							<TabsList className="flex w-full flex-wrap gap-1 border-b-0">
+								{visibleTabs.map((tab) => (
+									<TabsTrigger key={tab.tab} value={tab.tab}>
+										{tab.label}
+									</TabsTrigger>
+								))}
+							</TabsList>
+						</Tabs>
+						<div className="hidden shrink-0 lg:block">{tableLayoutButton}</div>
 					</div>
-					<div className="flex flex-col space-y-4 border-t border-border/60 pt-4 lg:min-h-0 lg:flex-1">
+					<Accordion
+						type="single"
+						collapsible
+						defaultValue="structure-filters"
+						onValueChange={(value) => setAreFiltersOpen(value === 'structure-filters')}
+						className="w-full"
+					>
+						<AccordionItem
+							value="structure-filters"
+							className="w-full rounded-md border border-border/60 px-3"
+						>
+							<AccordionTrigger className="min-w-0 py-3 text-sm hover:no-underline">
+								<span className="flex min-w-0 items-center gap-2">
+									Filters
+									{activeFilterCount > 0 && (
+										<Badge
+											variant="secondary"
+											className="h-5 min-w-5 justify-center px-1.5 text-xs"
+										>
+											{activeFilterCount}
+										</Badge>
+									)}
+								</span>
+								{activeFilterCount > 0 && (
+									<Button
+										variant="ghost"
+										size="sm"
+										className="ml-auto h-7 shrink-0 px-2 text-xs"
+										onPointerDown={(event) => {
+											event.preventDefault()
+											event.stopPropagation()
+										}}
+										onClick={(event) => {
+											event.preventDefault()
+											event.stopPropagation()
+											clearStructureTableFilters()
+										}}
+									>
+										Clear Filters
+									</Button>
+								)}
+								<span className="ml-2 hidden text-xs font-normal text-muted-foreground sm:inline">
+									Click to {areFiltersOpen ? 'hide' : 'show'}
+								</span>
+							</AccordionTrigger>
+							<AccordionContent>
+								<div className="space-y-4">
+									{isSovereigntyTab
+										? sovereigntyFilterControls
+										: isSkyhooksTab || isMoonDrillsTab
+											? specialFilterControls
+											: commonFilterControls}
+								</div>
+							</AccordionContent>
+						</AccordionItem>
+					</Accordion>
+					<div
+						className={cn(
+							'flex flex-col space-y-4 border-t border-border/60 pt-4',
+							isTableGridClamped && 'lg:min-h-0 lg:flex-1'
+						)}
+					>
 						<div className="border-b p-3">
 							<UserSearchPaginationControls
 								totalCount={pagination?.totalCount ?? 0}
@@ -1879,7 +1962,7 @@ export default function StructuresPage() {
 							/>
 						</div>
 						<TableRefreshFrame
-							className="min-h-0 lg:flex-1"
+							className={cn('min-h-0', isTableGridClamped && 'lg:flex-1')}
 							key={structuresContentKey}
 							isRefreshing={isSoftLoading}
 							refreshMessage="Refreshing structure list..."
@@ -1922,7 +2005,7 @@ export default function StructuresPage() {
 								<Table
 									containerRef={tableScrollContainerRef}
 									onContainerScroll={handleTableScroll}
-									containerClassName="w-full lg:h-full lg:min-h-0"
+									containerClassName={cn('w-full', isTableGridClamped && 'lg:h-full lg:min-h-0')}
 									className={cn(
 										'min-w-[118rem]',
 										isSovereigntyTab && 'min-w-[136rem]',
@@ -1979,6 +2062,7 @@ export default function StructuresPage() {
 													<SortableHead field="name" label="Name" />
 													<SortableHead field="corporation" label="Corporation" />
 													<SortableHead field="fuel" label="Fuel" />
+													<SortableHead field="moonMaterials" label="Moon Goo" />
 													<SortableHead field="fuelBlocks" label="Fuel Blocks" />
 													<SortableHead field="magmaticGas" label="Magmatic Gas" />
 													<SortableHead field="nextStateAt" label="Next State In" />

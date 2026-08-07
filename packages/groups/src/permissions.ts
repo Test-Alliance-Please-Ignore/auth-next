@@ -225,14 +225,17 @@ export type StructurePermissionRole = (typeof STRUCTURE_PERMISSION_ROLES)[number
 
 export const STRUCTURE_PERMISSION_TABS = [
 	'all',
-	'citadels',
-	'navigation',
+	'main',
 	'sovereignty',
 	'skyhooks',
 	'moon-drills',
 	'mining-citadels',
 ] as const
 export type StructurePermissionTab = (typeof STRUCTURE_PERMISSION_TABS)[number]
+export type StructurePermissionUiTab =
+	| 'structures'
+	| 'main'
+	| Exclude<StructurePermissionTab, 'all' | 'main'>
 
 export const STRUCTURE_PERMISSION_SCOPE_ALL = 'all' as const
 export type StructurePermissionScope = string
@@ -337,15 +340,17 @@ export function hasAnyStructurePermission(permissions: PermissionLike[]): boolea
 
 export function hasStructureTabPermission(
 	permissions: PermissionLike[],
-	tab: Exclude<StructurePermissionTab, 'all'>
+	tab: StructurePermissionUiTab
 ): boolean {
+	const permissionTab = tab === 'structures' ? 'main' : tab
+
 	return permissions.some((permission) => {
 		const parsed = parseStructurePermissionUrn(permission.urn)
 		if (!parsed) {
 			return false
 		}
 
-		return parsed.tab === 'all' || parsed.tab === tab
+		return parsed.tab === 'all' || parsed.tab === permissionTab
 	})
 }
 

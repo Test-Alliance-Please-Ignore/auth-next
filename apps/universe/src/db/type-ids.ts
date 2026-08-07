@@ -149,3 +149,111 @@ export const invTypes = pgTable(
 		index('universe_eve_inv_types_market_group_id_idx').on(table.marketGroupId),
 	]
 )
+
+export const universeDogmaUnits = pgTable(
+	'universe_eve_dogma_units',
+	{
+		unitId: text('unit_id').primaryKey(),
+		unitName: text('unit_name').notNull(),
+		displayName: text('display_name'),
+		description: text('description'),
+	},
+	(table) => [
+		index('universe_eve_dogma_units_unit_id_idx').on(table.unitId),
+		index('universe_eve_dogma_units_unit_name_idx').on(table.unitName),
+	]
+)
+
+export const universeDogmaAttributes = pgTable(
+	'universe_eve_dogma_attributes',
+	{
+		attributeId: text('attribute_id').primaryKey(),
+		attributeCategoryId: text('attribute_category_id'),
+		dataType: integer('data_type'),
+		defaultValue: text('default_value'),
+		attributeName: text('attribute_name').notNull(),
+		displayName: text('display_name'),
+		description: text('description'),
+		displayWhenZero: boolean('display_when_zero'),
+		highIsGood: boolean('high_is_good'),
+		published: boolean('published'),
+		stackable: boolean('stackable'),
+		unitId: text('unit_id'),
+	},
+	(table) => [
+		index('universe_eve_dogma_attributes_attribute_id_idx').on(table.attributeId),
+		index('universe_eve_dogma_attributes_attribute_name_idx').on(table.attributeName),
+		index('universe_eve_dogma_attributes_unit_id_idx').on(table.unitId),
+	]
+)
+
+export const universeDogmaEffects = pgTable(
+	'universe_eve_dogma_effects',
+	{
+		effectId: text('effect_id').primaryKey(),
+		effectName: text('effect_name').notNull(),
+		description: text('description'),
+		displayName: text('display_name'),
+		effectCategoryId: integer('effect_category_id'),
+		published: boolean('published'),
+	},
+	(table) => [
+		index('universe_eve_dogma_effects_effect_id_idx').on(table.effectId),
+		index('universe_eve_dogma_effects_effect_name_idx').on(table.effectName),
+	]
+)
+
+export const universeDogmaEffectModifiers = pgTable(
+	'universe_eve_dogma_effect_modifiers',
+	{
+		effectId: text('effect_id').notNull(),
+		modifierIndex: integer('modifier_index').notNull(),
+		domain: text('domain'),
+		func: text('func'),
+		groupId: text('group_id'),
+		modifiedAttributeId: text('modified_attribute_id'),
+		modifyingAttributeId: text('modifying_attribute_id'),
+		operation: integer('operation'),
+		skillTypeId: text('skill_type_id'),
+	},
+	(table) => [
+		primaryKey({ columns: [table.effectId, table.modifierIndex] }),
+		index('universe_eve_dogma_effect_modifiers_effect_id_idx').on(table.effectId),
+		index('universe_eve_dogma_effect_modifiers_target_idx').on(
+			table.modifiedAttributeId,
+			table.modifyingAttributeId,
+			table.operation,
+			table.func,
+			table.groupId
+		),
+	]
+)
+
+export const universeTypeDogmaAttributes = pgTable(
+	'universe_eve_type_dogma_attributes',
+	{
+		typeId: text('type_id').notNull(),
+		attributeId: text('attribute_id').notNull(),
+		value: text('value').notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.typeId, table.attributeId] }),
+		index('universe_eve_type_dogma_attributes_attribute_type_idx').on(
+			table.attributeId,
+			table.typeId
+		),
+	]
+)
+
+export const universeTypeDogmaEffects = pgTable(
+	'universe_eve_type_dogma_effects',
+	{
+		typeId: text('type_id').notNull(),
+		effectId: text('effect_id').notNull(),
+		isDefault: boolean('is_default').notNull().default(false),
+	},
+	(table) => [
+		primaryKey({ columns: [table.typeId, table.effectId] }),
+		index('universe_eve_type_dogma_effects_effect_type_idx').on(table.effectId, table.typeId),
+	]
+)
