@@ -11,6 +11,7 @@
  * - Reusability across different contexts
  */
 
+import { disposeRpcResult, withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { parseDateOrNull } from '@repo/worker-utils'
 import { parseEsiErrorMetadata } from '@repo/workflow-utils'
@@ -91,14 +92,15 @@ export async function fetchPublicInfo(
 	tokenStore: EveTokenStore,
 	corporationId: string
 ): Promise<any> {
-	const response = await tokenStore.fetchPublicEsi<any>(`/corporations/${corporationId}`, {
-		cacheMode: 'no-store',
-	})
-
-	return {
-		corporationId: String(corporationId),
-		...transformPublicInfo(response.data),
-	}
+	return withRpcResult(
+		tokenStore.fetchPublicEsi<any>(`/corporations/${corporationId}`, {
+			cacheMode: 'no-store',
+		}),
+		(response) => ({
+			corporationId: String(corporationId),
+			...transformPublicInfo(response.data),
+		})
+	)
 }
 
 // ========================================================================
@@ -113,13 +115,12 @@ export async function fetchMembers(
 	corporationId: string,
 	characterId: string
 ): Promise<EsiCorporationMembers> {
-	const response = await tokenStore.fetchEsi<number[]>(
-		`/corporations/${corporationId}/members`,
-		characterId,
-		{ cacheMode: 'no-store' }
+	return withRpcResult(
+		tokenStore.fetchEsi<number[]>(`/corporations/${corporationId}/members`, characterId, {
+			cacheMode: 'no-store',
+		}),
+		(response) => transformMembers(response.data)
 	)
-
-	return transformMembers(response.data)
 }
 
 /**
@@ -130,19 +131,20 @@ export async function fetchMemberTracking(
 	corporationId: string,
 	characterId: string
 ): Promise<EsiCorporationMemberTracking[]> {
-	const response = await tokenStore.fetchEsi<
-		Array<{
-			character_id: number
-			base_id?: number
-			location_id?: number
-			logoff_date?: string
-			logon_date?: string
-			ship_type_id?: number
-			start_date?: string
-		}>
-	>(`/corporations/${corporationId}/membertracking`, characterId, { cacheMode: 'no-store' })
-
-	return transformMemberTracking(response.data)
+	return withRpcResult(
+		tokenStore.fetchEsi<
+			Array<{
+				character_id: number
+				base_id?: number
+				location_id?: number
+				logoff_date?: string
+				logon_date?: string
+				ship_type_id?: number
+				start_date?: string
+			}>
+		>(`/corporations/${corporationId}/membertracking`, characterId, { cacheMode: 'no-store' }),
+		(response) => transformMemberTracking(response.data)
+	)
 }
 
 // ========================================================================
@@ -157,13 +159,14 @@ export async function fetchWallets(
 	corporationId: string,
 	characterId: string
 ): Promise<EsiCorporationWallet[]> {
-	const response = await tokenStore.fetchEsi<Array<{ division: number; balance: number }>>(
-		`/corporations/${corporationId}/wallets`,
-		characterId,
-		{ cacheMode: 'no-store' }
+	return withRpcResult(
+		tokenStore.fetchEsi<Array<{ division: number; balance: number }>>(
+			`/corporations/${corporationId}/wallets`,
+			characterId,
+			{ cacheMode: 'no-store' }
+		),
+		(response) => transformWallets(response.data)
 	)
-
-	return transformWallets(response.data)
 }
 
 /**
@@ -191,13 +194,14 @@ export async function fetchWalletJournal(
 		tax_receiver_id?: number
 	}
 
-	const result = await tokenStore.fetchEsiAllPages<RawJournalEntry>(
-		`/corporations/${corporationId}/wallets/${division}/journal`,
-		characterId,
-		{ cacheMode: 'no-store' }
+	return withRpcResult(
+		tokenStore.fetchEsiAllPages<RawJournalEntry>(
+			`/corporations/${corporationId}/wallets/${division}/journal`,
+			characterId,
+			{ cacheMode: 'no-store' }
+		),
+		(result) => transformWalletJournal(result.data)
 	)
-
-	return transformWalletJournal(result.data)
 }
 
 /**
@@ -227,6 +231,41 @@ export async function fetchWalletTransactions(
 		cacheMode: 'no-store',
 	})
 
+	try {
+		return await fetchWalletTransactionsPages(
+			tokenStore,
+			corporationId,
+			division,
+			characterId,
+			response,
+			watermark
+		)
+	} finally {
+		disposeRpcResult(response)
+	}
+}
+
+async function fetchWalletTransactionsPages(
+	tokenStore: EveTokenStore,
+	corporationId: string,
+	division: number,
+	characterId: string,
+	response: {
+		data: Array<{
+			transaction_id: number
+			client_id: number
+			date: string
+			is_buy: boolean
+			is_personal: boolean
+			journal_ref_id: number
+			location_id: number
+			quantity: number
+			type_id: number
+			unit_price: number
+		}>
+	},
+	watermark?: WalletTransactionWatermark
+): Promise<WalletTransactionsFetchResult> {
 	const basePath = `/corporations/${corporationId}/wallets/${division}/transactions`
 	const transactions = new Map<string, EsiCorporationWalletTransaction>()
 	let pageData = transformWalletTransactions(response.data)
@@ -300,7 +339,11 @@ export async function fetchWalletTransactions(
 				characterId,
 				{ cacheMode: 'no-store' }
 			)
-			pageData = transformWalletTransactions(nextResponse.data)
+			try {
+				pageData = transformWalletTransactions(nextResponse.data)
+			} finally {
+				disposeRpcResult(nextResponse)
+			}
 			pagesFetched += 1
 			addPage(pageData)
 
@@ -368,7 +411,11 @@ export async function fetchAssets(
 		{ cacheMode: 'no-store' }
 	)
 
-	return transformAssets(result.data)
+	try {
+		return transformAssets(result.data)
+	} finally {
+		disposeRpcResult(result)
+	}
 }
 
 /**
@@ -397,7 +444,11 @@ export async function fetchStructures(
 		}>
 	>(`/corporations/${corporationId}/structures`, characterId)
 
-	return transformStructures(response.data, corporationId)
+	try {
+		return transformStructures(response.data, corporationId)
+	} finally {
+		disposeRpcResult(response)
+	}
 }
 
 export async function fetchSovereigntySystems(
@@ -451,41 +502,45 @@ export async function fetchSovereigntySystems(
 		{ cacheMode: 'no-store' }
 	)
 
-	return response.data.solar_systems.map((system) => {
-		if ('alliance' in system.claim) {
-			const claim = system.claim.alliance
+	try {
+		return response.data.solar_systems.map((system) => {
+			if ('alliance' in system.claim) {
+				const claim = system.claim.alliance
+				return {
+					system_id: String(system.solar_system_id),
+					claim_type: 'alliance' as const,
+					alliance_id: String(claim.alliance_id),
+					corporation_id: String(claim.corporation_id),
+					claimed_since: claim.claimed_since,
+					is_capital_system: claim.is_capital_system,
+					sovereignty_hub_structure_id: String(claim.sovereignty_hub.id),
+					vulnerability_window: claim.sovereignty_hub.vulnerability_window ?? null,
+					activity_defense_multiplier: String(claim.development.activity_defense_multiplier),
+					military_level: claim.development.military_level,
+					industrial_level: claim.development.industrial_level,
+					strategic_level: claim.development.strategic_level,
+					raw: system as Record<string, unknown>,
+				}
+			}
+
+			if ('faction' in system.claim) {
+				return {
+					system_id: String(system.solar_system_id),
+					claim_type: 'faction' as const,
+					faction_id: String(system.claim.faction.faction_id),
+					raw: system as Record<string, unknown>,
+				}
+			}
+
 			return {
 				system_id: String(system.solar_system_id),
-				claim_type: 'alliance' as const,
-				alliance_id: String(claim.alliance_id),
-				corporation_id: String(claim.corporation_id),
-				claimed_since: claim.claimed_since,
-				is_capital_system: claim.is_capital_system,
-				sovereignty_hub_structure_id: String(claim.sovereignty_hub.id),
-				vulnerability_window: claim.sovereignty_hub.vulnerability_window ?? null,
-				activity_defense_multiplier: String(claim.development.activity_defense_multiplier),
-				military_level: claim.development.military_level,
-				industrial_level: claim.development.industrial_level,
-				strategic_level: claim.development.strategic_level,
+				claim_type: 'unclaimed' as const,
 				raw: system as Record<string, unknown>,
 			}
-		}
-
-		if ('faction' in system.claim) {
-			return {
-				system_id: String(system.solar_system_id),
-				claim_type: 'faction' as const,
-				faction_id: String(system.claim.faction.faction_id),
-				raw: system as Record<string, unknown>,
-			}
-		}
-
-		return {
-			system_id: String(system.solar_system_id),
-			claim_type: 'unclaimed' as const,
-			raw: system as Record<string, unknown>,
-		}
-	})
+		})
+	} finally {
+		disposeRpcResult(response)
+	}
 }
 
 function isRateLimitEsiError(error: unknown): boolean {
@@ -610,41 +665,45 @@ export async function fetchSovereigntyHubs(
 					characterId,
 					{ cacheMode: 'no-store' }
 				)
-				const detail = detailResult.data
+				try {
+					const detail = detailResult.data
 
-				return {
-					structure_id: String(detail.id),
-					corporation_id: corporationId,
-					system_id: String(detail.solar_system_id),
-					name: null,
-					type_id: SOVEREIGNTY_HUB_TYPE_ID,
-					fuel_access_list_id:
-						detail.fuel_access_list_id !== undefined && detail.fuel_access_list_id !== null
-							? String(detail.fuel_access_list_id)
-							: null,
-					reagent_bay: {
-						last_updated: detail.reagent_bay.last_updated,
-						reagents: detail.reagent_bay.reagents.map((reagent) => ({
-							type_id: String(reagent.type_id),
-							amount: reagent.amount,
-							burning_per_hour: reagent.burning_per_hour,
-							last_cycle: reagent.last_cycle,
+					return {
+						structure_id: String(detail.id),
+						corporation_id: corporationId,
+						system_id: String(detail.solar_system_id),
+						name: null,
+						type_id: SOVEREIGNTY_HUB_TYPE_ID,
+						fuel_access_list_id:
+							detail.fuel_access_list_id !== undefined && detail.fuel_access_list_id !== null
+								? String(detail.fuel_access_list_id)
+								: null,
+						reagent_bay: {
+							last_updated: detail.reagent_bay.last_updated,
+							reagents: detail.reagent_bay.reagents.map((reagent) => ({
+								type_id: String(reagent.type_id),
+								amount: reagent.amount,
+								burning_per_hour: reagent.burning_per_hour,
+								last_cycle: reagent.last_cycle,
+							})),
+						},
+						resources: detail.resources,
+						upgrades: detail.upgrades.map((upgrade) => ({
+							type_id: String(upgrade.type_id),
+							power_state: upgrade.power_state,
 						})),
-					},
-					resources: detail.resources,
-					upgrades: detail.upgrades.map((upgrade) => ({
-						type_id: String(upgrade.type_id),
-						power_state: upgrade.power_state,
-					})),
-					vulnerability_window: detail.vulnerability_window ?? null,
-					workforce_transport: {
-						configuration: detail.workforce_transport.configuration,
-						state: detail.workforce_transport.state,
-					},
-					raw: {
-						detail,
-					},
-				} as EsiSovereigntyHub
+						vulnerability_window: detail.vulnerability_window ?? null,
+						workforce_transport: {
+							configuration: detail.workforce_transport.configuration,
+							state: detail.workforce_transport.state,
+						},
+						raw: {
+							detail,
+						},
+					} as EsiSovereigntyHub
+				} finally {
+					disposeRpcResult(detailResult)
+				}
 			})
 		)
 
@@ -767,30 +826,34 @@ export async function fetchCorporationSkyhooks(
 					{ cacheMode: 'no-store' }
 				)
 
-				const detail = detailResult.data
-				const theftVulnerability = detail.theft_vulnerability ?? null
+				try {
+					const detail = detailResult.data
+					const theftVulnerability = detail.theft_vulnerability ?? null
 
-				return {
-					structure_id: String(detail.id),
-					planet_id: String(detail.planet_id),
-					corporation_id: String(corporationId),
-					state: detail.state,
-					is_active: detail.is_active,
-					effective_workforce: detail.effective_workforce ?? null,
-					reagents:
-						detail.reagents?.map((reagent) => ({
-							type_id: String(reagent.type_id),
-							secured_stock: reagent.secured_stock,
-							unsecured_stock: reagent.unsecured_stock,
-							last_cycle: reagent.last_cycle,
-						})) ?? [],
-					reinforcement_timer: detail.reinforcement_timer ?? null,
-					theft_vulnerability: theftVulnerability,
-					raw: {
-						listing: entry,
-						detail,
-					},
-				} as EsiCorporationSkyhook
+					return {
+						structure_id: String(detail.id),
+						planet_id: String(detail.planet_id),
+						corporation_id: String(corporationId),
+						state: detail.state,
+						is_active: detail.is_active,
+						effective_workforce: detail.effective_workforce ?? null,
+						reagents:
+							detail.reagents?.map((reagent) => ({
+								type_id: String(reagent.type_id),
+								secured_stock: reagent.secured_stock,
+								unsecured_stock: reagent.unsecured_stock,
+								last_cycle: reagent.last_cycle,
+							})) ?? [],
+						reinforcement_timer: detail.reinforcement_timer ?? null,
+						theft_vulnerability: theftVulnerability,
+						raw: {
+							listing: entry,
+							detail,
+						},
+					} as EsiCorporationSkyhook
+				} finally {
+					disposeRpcResult(detailResult)
+				}
 			})
 		)
 
@@ -866,14 +929,18 @@ export async function fetchCorporationMiningExtractions(
 		{ cacheMode: 'no-store' }
 	)
 
-	return result.data.map((extraction) => ({
-		structure_id: String(extraction.structure_id),
-		moon_id: String(extraction.moon_id),
-		extraction_start_time: extraction.extraction_start_time,
-		chunk_arrival_time: extraction.chunk_arrival_time,
-		natural_decay_time: extraction.natural_decay_time,
-		raw: extraction as Record<string, unknown>,
-	}))
+	try {
+		return result.data.map((extraction) => ({
+			structure_id: String(extraction.structure_id),
+			moon_id: String(extraction.moon_id),
+			extraction_start_time: extraction.extraction_start_time,
+			chunk_arrival_time: extraction.chunk_arrival_time,
+			natural_decay_time: extraction.natural_decay_time,
+			raw: extraction as Record<string, unknown>,
+		}))
+	} finally {
+		disposeRpcResult(result)
+	}
 }
 
 // ========================================================================
@@ -908,7 +975,11 @@ export async function fetchOrders(
 		}>
 	>(`/corporations/${corporationId}/orders`, characterId, { cacheMode: 'no-store' })
 
-	return transformOrders(response.data)
+	try {
+		return transformOrders(response.data)
+	} finally {
+		disposeRpcResult(response)
+	}
 }
 
 /**
@@ -946,7 +1017,11 @@ export async function fetchContracts(
 		}>
 	>(`/corporations/${corporationId}/contracts`, characterId, { cacheMode: 'no-store' })
 
-	return transformContracts(response.data)
+	try {
+		return transformContracts(response.data)
+	} finally {
+		disposeRpcResult(response)
+	}
 }
 
 /**
@@ -984,7 +1059,11 @@ export async function fetchIndustryJobs(
 		}>
 	>(`/corporations/${corporationId}/industry/jobs`, characterId, { cacheMode: 'no-store' })
 
-	return transformIndustryJobs(response.data)
+	try {
+		return transformIndustryJobs(response.data)
+	} finally {
+		disposeRpcResult(response)
+	}
 }
 
 // ========================================================================
@@ -1006,5 +1085,9 @@ export async function fetchKillmails(
 		}>
 	>(`/corporations/${corporationId}/killmails/recent`, characterId)
 
-	return transformKillmails(response.data)
+	try {
+		return transformKillmails(response.data)
+	} finally {
+		disposeRpcResult(response)
+	}
 }

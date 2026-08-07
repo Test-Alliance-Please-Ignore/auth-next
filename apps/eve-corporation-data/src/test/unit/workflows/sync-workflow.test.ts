@@ -55,6 +55,8 @@ vi.mock('cloudflare:workers', () => {
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: (...args: unknown[]) => getStubMock(...args),
+	withRpcResult: async <T, R>(request: Promise<T>, consume: (result: T) => R | Promise<R>) =>
+		consume(await request),
 }))
 
 vi.mock('@repo/workflow-utils', () => ({

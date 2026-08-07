@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { logger } from '@repo/hono-helpers'
+
 import { DirectorManager } from '../../../services/director-manager'
 
 describe('DirectorManager.selectDirector', () => {
@@ -549,6 +551,69 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 		)
 	})
 
+	it('logs database write context when health persistence fails', async () => {
+		const cause = Object.assign(new Error('connection reset by peer'), {
+			code: 'ECONNRESET',
+			detail: 'upstream connection closed',
+		})
+		const databaseError = Object.assign(new Error('Failed query: update corporation_directors'), {
+			query: 'update corporation_directors set is_healthy = $1 where id = $2',
+			params: [true, 'dir-1'],
+			cause,
+		})
+		const rolesUpsert = vi.fn().mockResolvedValue(undefined)
+		const rolesValues = vi.fn().mockReturnValue({ onConflictDoUpdate: rolesUpsert })
+		const insert = vi.fn().mockReturnValue({ values: rolesValues })
+		const where = vi.fn().mockRejectedValue(databaseError)
+		const set = vi.fn().mockReturnValue({ where })
+		const update = vi.fn().mockReturnValue({ set })
+		const db = {
+			query: {
+				corporationDirectors: {
+					findFirst: vi.fn().mockResolvedValue({
+						id: 'dir-1',
+						characterId: '111',
+					}),
+				},
+			},
+			insert,
+			update,
+		}
+		const tokenStore = {
+			validateToken: vi.fn().mockResolvedValue({
+				characterId: '111',
+				isValid: true,
+				missingScopes: [],
+				scopes: ['publicData'],
+				refreshAttempted: false,
+				refreshSucceeded: false,
+				status: 'valid',
+			}),
+			fetchCharacterAffiliations: vi
+				.fn()
+				.mockResolvedValue([{ character_id: 111, corporation_id: 98000001 }]),
+			fetchEsi: vi.fn().mockResolvedValue({ data: { roles: ['Trader'] } }),
+		}
+		const loggerError = vi.spyOn(logger, 'error').mockImplementation(() => undefined)
+		const manager = new DirectorManager(db as never, '98000001', tokenStore as never)
+		vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
+
+		await expect(manager.verifyDirectorHealth('dir-1')).resolves.toBe(false)
+
+		expect(loggerError).toHaveBeenCalledWith(
+			'[DirectorManager] Director health verification failed',
+			expect.objectContaining({
+				phase: 'health-state-persistence',
+				error: 'Failed query: update corporation_directors',
+				errorQuery: 'update corporation_directors set is_healthy = $1 where id = $2',
+				errorParamsCount: 2,
+				causeMessage: 'connection reset by peer',
+				causeCode: 'ECONNRESET',
+				causeDetail: 'upstream connection closed',
+			})
+		)
+	})
+
 	it('marks unhealthy when required role sets are missing', async () => {
 		const rolesUpsert = vi.fn().mockResolvedValue(undefined)
 		const rolesValues = vi.fn().mockReturnValue({ onConflictDoUpdate: rolesUpsert })
@@ -843,6 +908,49 @@ describe('DirectorManager.verifyAllDirectorsHealth', () => {
 				isVerified: true,
 			})
 		)
+	})
+
+	it('limits concurrent director health checks within a corporation', async () => {
+		const where = vi.fn().mockResolvedValue(undefined)
+		const set = vi.fn().mockReturnValue({ where })
+		const update = vi.fn().mockReturnValue({ set })
+		const manager = new DirectorManager({ update } as never, '98000001', {} as never)
+		const directors = ['dir-1', 'dir-2', 'dir-3'].map((directorId, index) => ({
+			directorId,
+			characterId: String(111 + index),
+			characterName: `Director ${index + 1}`,
+			isHealthy: true,
+			lastHealthCheck: null,
+			lastUsed: null,
+			failureCount: 0,
+			lastFailureReason: null,
+			priority: index + 1,
+		}))
+		vi.spyOn(manager, 'getAllDirectors').mockResolvedValue(directors)
+
+		let activeChecks = 0
+		let maxActiveChecks = 0
+		const releaseChecks: Array<() => void> = []
+		const verifyDirectorHealth = vi
+			.spyOn(manager, 'verifyDirectorHealth')
+			.mockImplementation(async () => {
+				activeChecks++
+				maxActiveChecks = Math.max(maxActiveChecks, activeChecks)
+				await new Promise<void>((resolve) => releaseChecks.push(resolve))
+				activeChecks--
+				return true
+			})
+
+		const verification = manager.verifyAllDirectorsHealth()
+		await vi.waitFor(() => expect(verifyDirectorHealth).toHaveBeenCalledTimes(1))
+		releaseChecks.shift()?.()
+		await vi.waitFor(() => expect(verifyDirectorHealth).toHaveBeenCalledTimes(2))
+		releaseChecks.shift()?.()
+		await vi.waitFor(() => expect(verifyDirectorHealth).toHaveBeenCalledTimes(3))
+		releaseChecks.shift()?.()
+
+		await expect(verification).resolves.toEqual({ verified: 3, failed: 0 })
+		expect(maxActiveChecks).toBe(1)
 	})
 
 	it('marks corporation unverified when all director checks fail', async () => {

@@ -1,5 +1,6 @@
 import { and, asc, eq, sql } from '@repo/db-utils'
-import { logger } from '@repo/hono-helpers'
+import { withRpcResult } from '@repo/do-utils'
+import { logger, toErrorLogDetails } from '@repo/hono-helpers'
 import {
 	classifyEsiCredentialFailure,
 	parseEsiErrorMetadata,
@@ -57,6 +58,9 @@ const PERMANENT_FAILURE_PREFIX = '[PERMANENT]'
 const DIRECTOR_DEPENDENCY_FAILURE_PREFIX = 'Director dependency failure'
 const INVALID_STALE_PERMANENT_MS = 7 * 24 * 60 * 60 * 1000
 const TRANSIENT_DIRECTOR_COOLDOWN_MS = 10 * 60 * 1000
+// A director check fans out through token-store, ESI, and the database. Keep
+// those paths sequential within one corporation to avoid connection bursts.
+const DIRECTOR_HEALTH_CHECK_CONCURRENCY = 1
 
 const FULL_SYNC_REQUIRED_ROLE_SETS: CorporationRole[][] = [
 	['Director'],
@@ -76,6 +80,52 @@ function describeTokenValidationFailure(validation: TokenValidationResult): stri
 	}
 
 	return `Director token validation failed: ${validation.status}`
+}
+
+function getErrorContext(error: unknown): Record<string, unknown> {
+	const details = toErrorLogDetails(error)
+	const root = error && typeof error === 'object' ? (error as Record<string, unknown>) : {}
+	const cause = root.cause && typeof root.cause === 'object' ? root.cause : null
+	const causeRecord = cause as Record<string, unknown> | null
+	const query =
+		typeof root.query === 'string' ? root.query.replace(/\s+/g, ' ').slice(0, 2_000) : undefined
+	const values = {
+		error: details.message,
+		errorName: details.name,
+		errorStack: details.stack,
+		errorCause: details.cause,
+		errorCode: root.code ?? causeRecord?.code,
+		errorDetail: root.detail ?? causeRecord?.detail,
+		errorHint: root.hint ?? causeRecord?.hint,
+		errorSeverity: root.severity ?? causeRecord?.severity,
+		errorPosition: root.position ?? causeRecord?.position,
+		errorQuery: query,
+		errorParamsCount: Array.isArray(root.params) ? root.params.length : undefined,
+		causeName: causeRecord?.name,
+		causeMessage: causeRecord?.message,
+		causeStack: causeRecord?.stack,
+		causeCode: causeRecord?.code,
+		causeDetail: causeRecord?.detail,
+		causeHint: causeRecord?.hint,
+		causeSeverity: causeRecord?.severity,
+	}
+
+	return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined))
+}
+
+async function settleInBatches<T, R>(
+	items: T[],
+	operation: (item: T) => Promise<R>,
+	concurrency: number
+): Promise<Array<PromiseSettledResult<R>>> {
+	const results: Array<PromiseSettledResult<R>> = []
+
+	for (let index = 0; index < items.length; index += concurrency) {
+		const batch = items.slice(index, index + concurrency)
+		results.push(...(await Promise.allSettled(batch.map(operation))))
+	}
+
+	return results
 }
 
 /**
@@ -102,6 +152,8 @@ export class DirectorManager {
 			isVerified: boolean
 		}) => Promise<void>
 	) {}
+
+	private deferHealthSnapshot = false
 
 	/**
 	 * Add a new director for this corporation
@@ -262,7 +314,10 @@ export class DirectorManager {
 			// steps do not run with a director that cannot produce credentials.
 			for (const candidate of healthyDirectors) {
 				try {
-					const tokenInfo = await this.tokenStore.getTokenInfo(candidate.characterId)
+					const tokenInfo = await withRpcResult(
+						this.tokenStore.getTokenInfo(candidate.characterId),
+						(info) => (info ? { ...info } : null)
+					)
 					if (!tokenInfo) {
 						await this.safeRecordFailure(candidate.directorId, 'No token available for director')
 						continue
@@ -277,8 +332,9 @@ export class DirectorManager {
 							)
 							continue
 						}
-						const refreshResult = await this.tokenStore.refreshTokenWithResult(
-							candidate.characterId
+						const refreshResult = await withRpcResult(
+							this.tokenStore.refreshTokenWithResult(candidate.characterId),
+							(result) => ({ ...result })
 						)
 						if (!refreshResult.success) {
 							const reason =
@@ -306,32 +362,36 @@ export class DirectorManager {
 					}
 
 					if (options?.requiredRoleSets && options.requiredRoleSets.length > 0) {
-						const rolesResponse: EsiResponse<EsiCharacterRoles> = await retryWithBackoff(
-							() =>
-								this.tokenStore.fetchEsi(
-									`/characters/${candidate.characterId}/roles`,
-									candidate.characterId,
-									{ cacheMode: 'no-store' }
-								),
-							{
-								onRetry: (attempt, error, delayMs) => {
-									logger.warn(
-										'[DirectorManager] Retrying director role lookup after ESI throttling',
-										{
-											corporationId: this.corporationId,
-											directorId: candidate.directorId,
-											characterId: candidate.characterId,
-											attempt,
-											delayMs,
-											error: error.message,
-										}
-									)
-								},
+						const requiredRoleSets = options.requiredRoleSets
+						const missingRoleSets = await withRpcResult(
+							retryWithBackoff<EsiResponse<EsiCharacterRoles>>(
+								() =>
+									this.tokenStore.fetchEsi(
+										`/characters/${candidate.characterId}/roles`,
+										candidate.characterId,
+										{ cacheMode: 'no-store' }
+									),
+								{
+									onRetry: (attempt, error, delayMs) => {
+										logger.warn(
+											'[DirectorManager] Retrying director role lookup after ESI throttling',
+											{
+												corporationId: this.corporationId,
+												directorId: candidate.directorId,
+												characterId: candidate.characterId,
+												attempt,
+												delayMs,
+												error: error.message,
+											}
+										)
+									},
+								}
+							),
+							(rolesResponse) => {
+								const roleSet = this.buildEffectiveRoleSet(rolesResponse.data)
+								return this.getMissingRoleSets(roleSet, requiredRoleSets)
 							}
 						)
-						const rawRoles = rolesResponse.data
-						const roleSet = this.buildEffectiveRoleSet(rawRoles)
-						const missingRoleSets = this.getMissingRoleSets(roleSet, options.requiredRoleSets)
 						if (missingRoleSets.length > 0) {
 							await this.safeRecordFailure(
 								candidate.directorId,
@@ -407,22 +467,25 @@ export class DirectorManager {
 
 		let affiliations: EsiCharacterAffiliation[]
 		try {
-			affiliations = await retryWithBackoff(
-				() => this.tokenStore.fetchCharacterAffiliations([characterId]),
-				{
-					onRetry: (attempt, error, delayMs) => {
-						logger.warn(
-							'[DirectorManager] Retrying character affiliation lookup after ESI throttling',
-							{
-								corporationId: this.corporationId,
-								characterId,
-								attempt,
-								delayMs,
-								error: error.message,
-							}
-						)
-					},
-				}
+			affiliations = await withRpcResult(
+				retryWithBackoff<EsiCharacterAffiliation[]>(
+					() => this.tokenStore.fetchCharacterAffiliations([characterId]),
+					{
+						onRetry: (attempt, error, delayMs) => {
+							logger.warn(
+								'[DirectorManager] Retrying character affiliation lookup after ESI throttling',
+								{
+									corporationId: this.corporationId,
+									characterId,
+									attempt,
+									delayMs,
+									error: error.message,
+								}
+							)
+						},
+					}
+				),
+				(result) => result.map((affiliation) => ({ ...affiliation }))
 			)
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error)
@@ -538,24 +601,38 @@ export class DirectorManager {
 		options?: { forceUnhealthy?: boolean }
 	): Promise<void> {
 		try {
-			await this.recordFailure(directorId, reason, options)
+			if (options) {
+				await this.recordFailure(directorId, reason, options)
+			} else {
+				await this.recordFailure(directorId, reason)
+			}
 		} catch (error) {
 			logger.error('[DirectorManager] Failed to record director failure', {
 				corporationId: this.corporationId,
 				directorId,
 				reason,
-				error: error instanceof Error ? error.message : String(error),
+				...getErrorContext(error),
 			})
 		}
 	}
 
 	private async syncHealthSnapshot(): Promise<void> {
-		if (!this.onHealthSnapshotChanged) {
+		if (!this.onHealthSnapshotChanged || this.deferHealthSnapshot) {
+			return
+		}
+
+		let healthyDirectorCount: number
+		try {
+			healthyDirectorCount = await this.getHealthyDirectorsCount()
+		} catch (error) {
+			logger.error('[DirectorManager] Failed to count healthy directors for auth snapshot', {
+				corporationId: this.corporationId,
+				...getErrorContext(error),
+			})
 			return
 		}
 
 		try {
-			const healthyDirectorCount = await this.getHealthyDirectorsCount()
 			await this.onHealthSnapshotChanged({
 				corporationId: this.corporationId,
 				healthyDirectorCount,
@@ -564,7 +641,8 @@ export class DirectorManager {
 		} catch (error) {
 			logger.error('[DirectorManager] Failed to propagate corp auth health snapshot', {
 				corporationId: this.corporationId,
-				error: error instanceof Error ? error.message : String(error),
+				healthyDirectorCount,
+				...getErrorContext(error),
 			})
 		}
 	}
@@ -942,8 +1020,15 @@ export class DirectorManager {
 			return false
 		}
 
+		let verificationPhase = 'token-validation'
 		try {
-			const tokenValidation = await this.tokenStore.validateToken(String(director.characterId))
+			const tokenValidation = await withRpcResult(
+				this.tokenStore.validateToken(String(director.characterId)),
+				(result) => ({
+					...result,
+					missingScopes: result.missingScopes ? [...result.missingScopes] : result.missingScopes,
+				})
+			)
 			if (!tokenValidation.isValid) {
 				if (tokenValidation.status === 'transient_error') {
 					await this.recordFailure(
@@ -971,6 +1056,7 @@ export class DirectorManager {
 				return false
 			}
 
+			verificationPhase = 'affiliation-check'
 			const affiliationCheck = await this.checkAffiliation(String(director.characterId))
 			if (!affiliationCheck.matches) {
 				await this.handleAffiliationMismatch({
@@ -983,73 +1069,82 @@ export class DirectorManager {
 			}
 
 			// Fetch character roles from ESI
-			const response: EsiResponse<EsiCharacterRoles> = await retryWithBackoff(
-				() =>
-					this.tokenStore.fetchEsi(
-						`/characters/${director.characterId}/roles`,
-						director.characterId,
-						{ cacheMode: 'no-store' }
-					),
-				{
-					onRetry: (attempt, error, delayMs) => {
-						logger.warn(
-							'[DirectorManager] Retrying director health role check after ESI throttling',
-							{
-								corporationId: this.corporationId,
-								directorId,
-								characterId: director.characterId,
-								attempt,
-								delayMs,
-								error: error.message,
-							}
-						)
-					},
+			verificationPhase = 'roles-fetch'
+			const missingRoleSets = await withRpcResult(
+				retryWithBackoff<EsiResponse<EsiCharacterRoles>>(
+					() =>
+						this.tokenStore.fetchEsi(
+							`/characters/${director.characterId}/roles`,
+							director.characterId,
+							{ cacheMode: 'no-store' }
+						),
+					{
+						onRetry: (attempt, error, delayMs) => {
+							logger.warn(
+								'[DirectorManager] Retrying director health role check after ESI throttling',
+								{
+									corporationId: this.corporationId,
+									directorId,
+									characterId: director.characterId,
+									attempt,
+									delayMs,
+									error: error.message,
+								}
+							)
+						},
+					}
+				),
+				async (response) => {
+					const roles = response.data
+					const roleSet = this.buildEffectiveRoleSet(roles)
+					const requiredRoleSets = options?.requiredRoleSets ?? FULL_SYNC_REQUIRED_ROLE_SETS
+
+					verificationPhase = 'roles-persistence'
+					await this.db
+						.insert(characterCorporationRoles)
+						.values({
+							corporationId: this.corporationId,
+							characterId: String(director.characterId),
+							roles: roles.roles || [],
+							rolesAtHq: roles.roles_at_hq,
+							rolesAtBase: roles.roles_at_base,
+							rolesAtOther: roles.roles_at_other,
+							updatedAt: new Date(),
+						})
+						.onConflictDoUpdate({
+							target: [
+								characterCorporationRoles.corporationId,
+								characterCorporationRoles.characterId,
+							],
+							set: {
+								roles: roles.roles || [],
+								rolesAtHq: roles.roles_at_hq,
+								rolesAtBase: roles.roles_at_base,
+								rolesAtOther: roles.roles_at_other,
+								updatedAt: new Date(),
+							},
+						})
+
+					verificationPhase = 'health-state-persistence'
+					await this.db
+						.update(corporationDirectors)
+						.set({
+							lastHealthCheck: new Date(),
+							isHealthy: true,
+							failureCount: 0,
+							lastFailureReason: null,
+							nextRetryAt: null,
+							permanentFailureAt: null,
+							updatedAt: new Date(),
+						})
+						.where(eq(corporationDirectors.id, directorId))
+
+					verificationPhase = 'health-snapshot'
+					await this.syncHealthSnapshot()
+
+					return this.getMissingRoleSets(roleSet, requiredRoleSets)
 				}
 			)
-
-			const roles = response.data
-			const roleSet = this.buildEffectiveRoleSet(roles)
-			const requiredRoleSets = options?.requiredRoleSets ?? FULL_SYNC_REQUIRED_ROLE_SETS
-			const missingRoleSets = this.getMissingRoleSets(roleSet, requiredRoleSets)
-
-			// Store roles in database
-			await this.db
-				.insert(characterCorporationRoles)
-				.values({
-					corporationId: this.corporationId,
-					characterId: String(director.characterId),
-					roles: roles.roles || [],
-					rolesAtHq: roles.roles_at_hq,
-					rolesAtBase: roles.roles_at_base,
-					rolesAtOther: roles.roles_at_other,
-					updatedAt: new Date(),
-				})
-				.onConflictDoUpdate({
-					target: [characterCorporationRoles.corporationId, characterCorporationRoles.characterId],
-					set: {
-						roles: roles.roles || [],
-						rolesAtHq: roles.roles_at_hq,
-						rolesAtBase: roles.roles_at_base,
-						rolesAtOther: roles.roles_at_other,
-						updatedAt: new Date(),
-					},
-				})
-
-			// Update director health check timestamp
-			await this.db
-				.update(corporationDirectors)
-				.set({
-					lastHealthCheck: new Date(),
-					isHealthy: true,
-					failureCount: 0,
-					lastFailureReason: null,
-					nextRetryAt: null,
-					permanentFailureAt: null,
-					updatedAt: new Date(),
-				})
-				.where(eq(corporationDirectors.id, directorId))
-
-			await this.syncHealthSnapshot()
 
 			if (missingRoleSets.length > 0) {
 				const reason = `Director permission failure: Director missing required roles: ${missingRoleSets
@@ -1066,12 +1161,12 @@ export class DirectorManager {
 
 			return true
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : String(error)
-
 			logger.error('[DirectorManager] Director health verification failed', {
+				corporationId: this.corporationId,
 				directorId,
 				characterId: director.characterId,
-				error: errorMessage,
+				phase: verificationPhase,
+				...getErrorContext(error),
 			})
 
 			const failureReason = classifyEsiCredentialFailure(error)
@@ -1079,7 +1174,7 @@ export class DirectorManager {
 				: this.isDirectorLookupNotFoundFailure(error)
 					? this.buildDirectorLookupFailureReason('verify-director-health', error)
 					: this.buildDirectorDependencyFailureReason('verify-director-health', error)
-			await this.recordFailure(directorId, failureReason)
+			await this.safeRecordFailure(directorId, failureReason)
 			return false
 		}
 	}
@@ -1128,20 +1223,29 @@ export class DirectorManager {
 					)
 				: []
 
-		const results = await Promise.allSettled(
-			nonPermanentDirectors.map(async (director) => {
-				return await this.verifyDirectorHealth(director.directorId)
-			})
-		)
-
-		if (permanentDirectorsToAffiliationCheck.length > 0) {
-			await Promise.allSettled(
-				permanentDirectorsToAffiliationCheck.map(async (director) => {
-					await this.verifyPermanentDirectorAffiliation(director.directorId)
-					return true
-				})
+		let results: Array<PromiseSettledResult<boolean>>
+		this.deferHealthSnapshot = true
+		try {
+			results = await settleInBatches(
+				nonPermanentDirectors,
+				async (director) => await this.verifyDirectorHealth(director.directorId),
+				DIRECTOR_HEALTH_CHECK_CONCURRENCY
 			)
+
+			if (permanentDirectorsToAffiliationCheck.length > 0) {
+				await settleInBatches(
+					permanentDirectorsToAffiliationCheck,
+					async (director) => {
+						await this.verifyPermanentDirectorAffiliation(director.directorId)
+						return true
+					},
+					DIRECTOR_HEALTH_CHECK_CONCURRENCY
+				)
+			}
+		} finally {
+			this.deferHealthSnapshot = false
 		}
+		await this.syncHealthSnapshot()
 
 		// Count verified vs failed
 		let verified = 0

@@ -42,6 +42,8 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: mocks.getStub,
+	withRpcResult: async <T, R>(request: Promise<T>, consume: (result: T) => R | Promise<R>) =>
+		consume(await request),
 }))
 
 function makeDb() {

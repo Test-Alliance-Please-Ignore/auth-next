@@ -15,8 +15,8 @@ import {
 	or,
 	sql,
 } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
-import { logger, TimeCache } from '@repo/hono-helpers'
+import { getStub, withRpcResult } from '@repo/do-utils'
+import { logger, TimeCache, toErrorLogDetails } from '@repo/hono-helpers'
 import {
 	getStructureTabForTypeId,
 	SKYHOOK_MAGMATIC_GAS_TYPE_ID,
@@ -237,6 +237,113 @@ function compareNumericStrings(left: string, right: string): number {
 	}
 }
 
+interface NormalizedDecimal {
+	sign: -1 | 0 | 1
+	digits: string
+	scale: number
+}
+
+function normalizeDecimal(value: unknown): NormalizedDecimal | null {
+	const text = String(value ?? '').trim()
+	const match = /^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))$/.exec(text)
+	if (!match) {
+		return null
+	}
+
+	const sign = match[1] === '-' ? -1 : 1
+	const whole = match[2] ?? '0'
+	let fraction = match[3] ?? match[4] ?? ''
+	while (fraction.endsWith('0')) {
+		fraction = fraction.slice(0, -1)
+	}
+
+	const digits = `${whole}${fraction}`.replace(/^0+(?=\d)/, '')
+	if (/^0+$/.test(digits)) {
+		return { sign: 0, digits: '0', scale: 0 }
+	}
+
+	return {
+		sign,
+		digits,
+		scale: fraction.length,
+	}
+}
+
+function areOppositeAmounts(left: unknown, right: unknown): boolean {
+	const leftAmount = normalizeDecimal(left)
+	const rightAmount = normalizeDecimal(right)
+	if (leftAmount === null || rightAmount === null) {
+		return false
+	}
+
+	return (
+		leftAmount.sign !== 0 &&
+		rightAmount.sign !== 0 &&
+		leftAmount.sign === -rightAmount.sign &&
+		leftAmount.digits === rightAmount.digits &&
+		leftAmount.scale === rightAmount.scale
+	)
+}
+
+function walletJournalMetadata(entry: any): string {
+	return JSON.stringify([
+		entry.context_id ?? null,
+		entry.context_id_type ?? null,
+		entry.date ?? null,
+		entry.description ?? null,
+		entry.first_party_id ?? null,
+		entry.reason ?? null,
+		entry.ref_type ?? null,
+		entry.second_party_id ?? null,
+		entry.tax ?? null,
+		entry.tax_receiver_id ?? null,
+	])
+}
+
+function filterZeroSumJournalPairs(entries: any[]): any[] {
+	const entriesByJournalId = new Map<string, number[]>()
+	for (const [index, entry] of entries.entries()) {
+		const journalId = String(entry.id)
+		const indexes = entriesByJournalId.get(journalId) ?? []
+		indexes.push(index)
+		entriesByJournalId.set(journalId, indexes)
+	}
+
+	const filteredIndexes = new Set<number>()
+	for (const indexes of entriesByJournalId.values()) {
+		for (let leftPosition = 0; leftPosition < indexes.length; leftPosition += 1) {
+			const leftIndex = indexes[leftPosition]
+			if (leftIndex === undefined || filteredIndexes.has(leftIndex)) {
+				continue
+			}
+
+			const left = entries[leftIndex]
+			for (
+				let rightPosition = leftPosition + 1;
+				rightPosition < indexes.length;
+				rightPosition += 1
+			) {
+				const rightIndex = indexes[rightPosition]
+				if (rightIndex === undefined || filteredIndexes.has(rightIndex)) {
+					continue
+				}
+
+				const right = entries[rightIndex]
+				if (
+					walletJournalMetadata(left) === walletJournalMetadata(right) &&
+					areOppositeAmounts(left.amount, right.amount)
+				) {
+					filteredIndexes.add(leftIndex)
+					filteredIndexes.add(rightIndex)
+					break
+				}
+			}
+		}
+	}
+
+	return entries.filter((_, index) => !filteredIndexes.has(index))
+}
+
 function chunkArray<T>(items: readonly T[], size: number): T[][] {
 	const chunks: T[][] = []
 	for (let index = 0; index < items.length; index += size) {
@@ -278,11 +385,13 @@ async function resolveAllianceNames(
 	const resolved = await Promise.all(
 		uniqueAllianceIds.map(async (allianceId) => {
 			try {
-				const response = await tokenStore.fetchPublicEsi<{ name?: string }>(
-					`/alliances/${allianceId}`,
-					{ cacheMode: 'no-store' }
+				const name = await withRpcResult(
+					tokenStore.fetchPublicEsi<{ name?: string }>(`/alliances/${allianceId}`, {
+						cacheMode: 'no-store',
+					}),
+					(response) => response.data.name?.trim() ?? null
 				)
-				return [allianceId, response.data.name?.trim() ?? null] as const
+				return [allianceId, name] as const
 			} catch (error) {
 				logger.warn('[EveCorporationData] Failed to resolve alliance name', {
 					allianceId,
@@ -324,6 +433,15 @@ type SkyhookStorageRow = {
 	lastObservedAt: Date
 	sourceSyncAt: Date
 	lastSyncedAt: Date
+}
+
+function cloneRpcRecord<T>(record: Record<string, T>): Record<string, T> {
+	return Object.fromEntries(
+		Object.entries(record).map(([key, value]) => [
+			key,
+			value !== null && typeof value === 'object' ? { ...value } : value,
+		])
+	) as Record<string, T>
 }
 type SkyhookReagentStorageRow = {
 	structureId: string
@@ -928,26 +1046,30 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		try {
-			const response: EsiResponse<EsiCharacterRoles> = await retryWithBackoff(
-				() =>
-					this.getEveTokenStoreStub().fetchEsi(`/characters/${characterId}/roles`, characterId, {
-						cacheMode: 'no-store',
-					}),
-				{
-					onRetry: (attempt, error, delayMs) => {
-						logger.warn('[EveCorporationData] Retrying role refresh after ESI throttling', {
-							corporationId,
-							characterId,
-							requiredRole,
-							attempt,
-							delayMs,
-							error: error.message,
-						})
-					},
+			return await withRpcResult(
+				retryWithBackoff<EsiResponse<EsiCharacterRoles>>(
+					() =>
+						this.getEveTokenStoreStub().fetchEsi(`/characters/${characterId}/roles`, characterId, {
+							cacheMode: 'no-store',
+						}),
+					{
+						onRetry: (attempt, error, delayMs) => {
+							logger.warn('[EveCorporationData] Retrying role refresh after ESI throttling', {
+								corporationId,
+								characterId,
+								requiredRole,
+								attempt,
+								delayMs,
+								error: error.message,
+							})
+						},
+					}
+				),
+				async (response) => {
+					await this.storeCharacterRolesSnapshot(corporationId, characterId, response.data)
+					return hasRole(response.data)
 				}
 			)
-			await this.storeCharacterRolesSnapshot(corporationId, characterId, response.data)
-			return hasRole(response.data)
 		} catch (error) {
 			logger.warn('[EveCorporationData] Failed to refresh roles while checking corp role', {
 				corporationId,
@@ -1958,33 +2080,41 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		// Sort chronologically before inserting so a partial failure advances the
 		// date watermark as little as possible while still accepting late IDs.
-		const newEntries = entries
-			.filter((entry) => {
-				if (storedMaxJournalId === null) {
-					return true
-				}
+		const candidateEntries = entries.filter((entry) => {
+			if (storedMaxJournalId === null) {
+				return true
+			}
 
-				if (compareNumericStrings(String(entry.id), storedMaxJournalId) > 0) {
-					return true
-				}
+			if (compareNumericStrings(String(entry.id), storedMaxJournalId) > 0) {
+				return true
+			}
 
-				const entryDate = parseDateOrNull(entry.date)
-				return (
-					storedMaxJournalDate !== null && entryDate !== null && entryDate >= storedMaxJournalDate
-				)
+			const entryDate = parseDateOrNull(entry.date)
+			return (
+				storedMaxJournalDate !== null && entryDate !== null && entryDate >= storedMaxJournalDate
+			)
+		})
+		const newEntries = filterZeroSumJournalPairs(candidateEntries)
+
+		if (newEntries.length !== candidateEntries.length) {
+			logger.info('[WalletJournalStore] Filtered zero-sum journal pairs', {
+				corporationId,
+				division,
+				filteredEntries: candidateEntries.length - newEntries.length,
 			})
-			.slice()
-			.sort((left, right) => {
-				const leftDate = parseDateOrNull(left.date)
-				const rightDate = parseDateOrNull(right.date)
-				if (leftDate !== null && rightDate !== null && leftDate.getTime() !== rightDate.getTime()) {
-					return leftDate < rightDate ? -1 : 1
-				}
-				return compareNumericStrings(String(left.id), String(right.id))
-			})
+		}
+
+		const sortedEntries = newEntries.slice().sort((left, right) => {
+			const leftDate = parseDateOrNull(left.date)
+			const rightDate = parseDateOrNull(right.date)
+			if (leftDate !== null && rightDate !== null && leftDate.getTime() !== rightDate.getTime()) {
+				return leftDate < rightDate ? -1 : 1
+			}
+			return compareNumericStrings(String(left.id), String(right.id))
+		})
 		let persistedNewRows = 0
-		for (let i = 0; i < newEntries.length; i += WALLET_JOURNAL_INSERT_BATCH_SIZE) {
-			const batch = newEntries.slice(i, i + WALLET_JOURNAL_INSERT_BATCH_SIZE)
+		for (let i = 0; i < sortedEntries.length; i += WALLET_JOURNAL_INSERT_BATCH_SIZE) {
+			const batch = sortedEntries.slice(i, i + WALLET_JOURNAL_INSERT_BATCH_SIZE)
 			const valuesToInsert = batch.map((entry) => ({
 				corporationId: String(corporationId),
 				division,
@@ -2737,13 +2867,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		const [systemsById, regionsBySystemId, typeNamesById, structureInfos] = await Promise.all([
 			systemIds.length > 0
-				? universe.resolveSolarSystemsByIds(systemIds)
+				? withRpcResult(universe.resolveSolarSystemsByIds(systemIds), cloneRpcRecord)
 				: Promise.resolve({} as Record<string, UniverseSolarSystem | null>),
 			systemIds.length > 0
-				? universe.getRegionsBySystemIds(systemIds)
+				? withRpcResult(universe.getRegionsBySystemIds(systemIds), cloneRpcRecord)
 				: Promise.resolve({} as Record<string, { regionId: string; regionName: string }>),
 			typeIds.length > 0
-				? tokenStore.resolveIds(typeIds)
+				? withRpcResult(tokenStore.resolveIds(typeIds), (names) => ({ ...names }))
 				: Promise.resolve({} as Record<string, string>),
 			characterId
 				? Promise.all(
@@ -2755,9 +2885,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 							try {
 								// Moon-drills need universe hydration so we can later infer the
 								// attached moon from the returned coordinates.
-								return await universe.getStructureInfo(
-									structure.structure_id as EveStructureId,
-									characterId as EveCharacterId
+								return await withRpcResult(
+									universe.getStructureInfo(
+										structure.structure_id as EveStructureId,
+										characterId as EveCharacterId
+									),
+									(structureInfo) => (structureInfo ? { ...structureInfo } : null)
 								)
 							} catch (error) {
 								logger.warn('[EveCorporationData] Failed to hydrate structure name', {
@@ -3070,9 +3203,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					}
 
 					try {
-						const moonGeography = await universe.resolveNearestMoonGeographyBySystemPosition(
-							structure.systemId,
-							structure.structureInfo.position
+						const moonGeography = await withRpcResult(
+							universe.resolveNearestMoonGeographyBySystemPosition(
+								structure.systemId,
+								structure.structureInfo.position
+							),
+							(geography) => (geography ? { ...geography } : null)
 						)
 
 						return buildMoonGeographyStorageRow({
@@ -3480,9 +3616,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		})
 		const systemGeography: Awaited<ReturnType<Universe['resolveSolarSystemsByIds']>> =
 			systems.length > 0
-				? await universe.resolveSolarSystemsByIds([
-						...new Set(systems.map((system) => system.system_id)),
-					])
+				? await withRpcResult(
+						universe.resolveSolarSystemsByIds([
+							...new Set(systems.map((system) => system.system_id)),
+						]),
+						cloneRpcRecord
+					)
 				: {}
 		const regionIds = [
 			...new Set(
@@ -3495,7 +3634,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			),
 		]
 		const regionGeography: Awaited<ReturnType<Universe['resolveRegionsByIds']>> =
-			regionIds.length > 0 ? await universe.resolveRegionsByIds(regionIds) : {}
+			regionIds.length > 0
+				? await withRpcResult(universe.resolveRegionsByIds(regionIds), cloneRpcRecord)
+				: {}
 		const allianceNames = await resolveAllianceNames(
 			tokenStore,
 			systems.flatMap((system) => (system.alliance_id ? [system.alliance_id] : []))
@@ -3838,9 +3979,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
 		const systemGeography: Awaited<ReturnType<Universe['resolveSolarSystemsByIds']>> =
 			newHubs.length > 0
-				? ((await universe.resolveSolarSystemsByIds([
-						...new Set(newHubs.map((hub) => hub.system_id)),
-					])) ?? {})
+				? await withRpcResult(
+						universe.resolveSolarSystemsByIds([...new Set(newHubs.map((hub) => hub.system_id))]),
+						(result) => cloneRpcRecord(result ?? {})
+					)
 				: {}
 		const values: SovereigntyHubInsertRow[] = hubs.map((hub) => {
 			const existing = existingByStructureId.get(hub.structure_id)
@@ -4590,16 +4732,21 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const newSkyhooks = skyhooks.filter((skyhook) => !baseStructureById.has(skyhook.structure_id))
 		const planetGeography: Awaited<ReturnType<Universe['resolvePlanetGeographyByIds']>> =
 			newSkyhooks.length > 0
-				? await universe.resolvePlanetGeographyByIds([
-						...new Set(newSkyhooks.map((skyhook) => skyhook.planet_id)),
-					])
+				? await withRpcResult(
+						universe.resolvePlanetGeographyByIds([
+							...new Set(newSkyhooks.map((skyhook) => skyhook.planet_id)),
+						]),
+						cloneRpcRecord
+					)
 				: {}
 		const resolvedPlanetGeographies = Object.values(planetGeography).filter(
 			(planet): planet is UniversePlanetGeography => planet !== null
 		)
 		const systemIds = [...new Set(resolvedPlanetGeographies.map((planet) => planet.solarSystemId))]
 		const systemGeography: Awaited<ReturnType<Universe['resolveSolarSystemsByIds']>> =
-			systemIds.length > 0 ? await universe.resolveSolarSystemsByIds(systemIds) : {}
+			systemIds.length > 0
+				? await withRpcResult(universe.resolveSolarSystemsByIds(systemIds), cloneRpcRecord)
+				: {}
 		const regionIds = [
 			...new Set(
 				Object.values(systemGeography)
@@ -4609,7 +4756,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			),
 		]
 		const regionGeography: Awaited<ReturnType<Universe['resolveRegionsByIds']>> =
-			regionIds.length > 0 ? await universe.resolveRegionsByIds(regionIds) : {}
+			regionIds.length > 0
+				? await withRpcResult(universe.resolveRegionsByIds(regionIds), cloneRpcRecord)
+				: {}
 
 		const synthesizedRows = skyhooks
 			.map((skyhook) => {
@@ -5214,8 +5363,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				.error('Failed to insert journal entries', {
 					entriesPersisted: persistedNewRows,
 					totalEntries: entries.length,
-					error: error instanceof Error ? error.message : String(error),
-					errorStack: error instanceof Error ? error.stack : undefined,
+					...toErrorLogDetails(error),
 				})
 
 			// Clear cache for this division so next attempt fetches fresh data
@@ -5237,7 +5385,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						operation: 'fetch_wallet_journal',
 					})
 					.error('Failed to clear cache', {
-						error: clearError instanceof Error ? clearError.message : String(clearError),
+						...toErrorLogDetails(clearError),
 					})
 			}
 
@@ -5420,9 +5568,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const syncStartedAt = new Date()
 		const result = await syncAssetsPaged({
 			fetchPage: (page) =>
-				tokenStore.fetchEsi(`${basePath}?page=${page}`, characterId, {
-					cacheMode: 'no-store',
-				}) as Promise<EsiResponse<RawEsiAsset[]>>,
+				withRpcResult(
+					tokenStore.fetchEsi<RawEsiAsset[]>(`${basePath}?page=${page}`, characterId, {
+						cacheMode: 'no-store',
+					}),
+					(response) =>
+						({
+							data: response.data.map((asset) => ({ ...asset })),
+							pages: response.pages,
+							page: response.page,
+						}) as EsiResponse<RawEsiAsset[]>
+				),
 			storeAssets: (assets) => this.storeAssetsPage(corporationId, assets, syncStartedAt),
 			onProgress: ({ page, totalPages, totalAssets }) => {
 				if (page % 10 === 0 || page === totalPages) {
@@ -6409,13 +6565,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
-		const response = await tokenStore.fetchEsi<number[]>(
-			`/corporations/${corporationId}/members`,
-			characterId,
-			{ cacheMode: 'no-store' }
+		const currentMemberIds = await withRpcResult(
+			tokenStore.fetchEsi<number[]>(`/corporations/${corporationId}/members`, characterId, {
+				cacheMode: 'no-store',
+			}),
+			(response) => new Set(response.data.map(String))
 		)
-
-		const currentMemberIds = new Set(response.data.map(String))
 
 		// Fetch all members from database
 		const dbMembers = await this.getDb()

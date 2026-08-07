@@ -6,6 +6,7 @@ export type { DrizzleSqliteDODatabase, SqliteMigrationConfig } from './sqlite-cl
 
 // Fluent, type-safe DO namespace accessor: singleton / per-name / sharded (+ fan-out)
 export { forDO, shardIndex, shardName } from './for-do'
+export { disposeRpcResult, withRpcResult } from './rpc-result'
 export type {
 	AnyDoNamespace,
 	DoClient,
@@ -22,9 +23,10 @@ export type {
  * This helper provides type-safe access to Durable Object stubs when calling
  * across workers using shared interface packages.
  *
- * Only stubs that return RpcTargets (which have a `dispose()` method) will have
- * automatic resource management via the 'using' keyword. Regular DurableObject
- * stubs don't need disposal.
+ * The stub itself does not need disposal. However, every non-primitive value
+ * returned by a cross-worker RPC method must be disposed after its contents are
+ * consumed. Use `withRpcResult` for ordinary Promise-typed interfaces, or the
+ * native `using` syntax when the return type is declared as Disposable.
  *
  * Note: DurableObjectNamespace, DurableObjectId, and DurableObjectStub are expected
  * to be available as global types in the worker environment (from worker-configuration.d.ts)
@@ -32,14 +34,13 @@ export type {
  * @example
  * ```ts
  * import type { EveTokenStore } from '@repo/eve-token-store'
- * import { getStub } from '@repo/do-utils'
+ * import { getStub, withRpcResult } from '@repo/do-utils'
  *
- * // Regular DurableObject stub (no disposal needed)
+ * // Regular DurableObject stub (the stub itself needs no disposal)
  * const stub = getStub<Groups>(c.env.GROUPS, 'default')
- * const groups = await stub.listGroups()
+ * const groups = await withRpcResult(stub.listGroups(), (result) => [...result])
  *
- * // RpcTarget stub (disposal needed - only if stub has dispose method)
- * // Note: Most stubs don't need 'using' - only those that return RpcTargets
+ * // RpcTarget result (native `using` is also valid when the interface exposes it)
  * ```
  */
 export function getStub<T>(

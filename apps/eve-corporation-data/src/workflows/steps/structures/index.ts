@@ -1,4 +1,4 @@
-import { getStub } from '@repo/do-utils'
+import { disposeRpcResult, getStub, withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import * as esiFetch from '../../../services/esi-fetch'
@@ -50,6 +50,28 @@ type PaginatedEsiResponse<T> = {
 	data: T
 	pages?: number
 	page?: number
+}
+
+function detachRpcValue<T>(value: T): T {
+	if (Array.isArray(value)) {
+		return value.map((entry) => detachRpcValue(entry)) as T
+	}
+	if (value !== null && typeof value === 'object') {
+		return Object.fromEntries(
+			Object.entries(value).map(([key, entry]) => [key, detachRpcValue(entry)])
+		) as T
+	}
+	return value
+}
+
+function fetchListingPage<T>(
+	request: Promise<PaginatedEsiResponse<T>>
+): Promise<PaginatedEsiResponse<T>> {
+	return withRpcResult(request, (response) => ({
+		data: detachRpcValue(response.data),
+		pages: response.pages,
+		page: response.page,
+	}))
 }
 
 async function fetchStructureListing<T, E>(
@@ -129,7 +151,7 @@ export async function fetchSovereigntyEnrichment(
 		const tokenStore = createTokenStore(env)
 		let sovereigntySystems = await readSharedSovereigntySystemsForCorporation(env, corporationId)
 		if (!sovereigntySystems) {
-			logger.warn(
+			logger.info(
 				'[StructuresStep] Shared sovereignty snapshot missing or stale; rewarming cache',
 				{
 					corporationId,
@@ -143,19 +165,27 @@ export async function fetchSovereigntyEnrichment(
 		}
 		const sovereigntyHubListing = await fetchStructureListing(
 			(page) =>
-				tokenStore.fetchEsi<{ sovereignty_hubs: Array<{ id: number; solar_system_id: number }> }>(
-					`/corporations/${corporationId}/structures/sovereignty-hubs?page=${page}`,
-					directorCharacterId,
-					{ cacheMode: 'no-store' }
+				fetchListingPage(
+					tokenStore.fetchEsi<{
+						sovereignty_hubs: Array<{ id: number; solar_system_id: number }>
+					}>(
+						`/corporations/${corporationId}/structures/sovereignty-hubs?page=${page}`,
+						directorCharacterId,
+						{ cacheMode: 'no-store' }
+					)
 				),
 			(data) => data.sovereignty_hubs,
 			'sovereignty-hubs'
 		)
 		const liveStructureIds = sovereigntyHubListing.map((hub) => String(hub.id))
-		const priorityQueue = await corpData.getStructurePriorityQueue(
-			corporationId,
-			'sovereignty',
-			liveStructureIds
+		const priorityQueue = await withRpcResult(
+			corpData.getStructurePriorityQueue(corporationId, 'sovereignty', liveStructureIds),
+			(queue) => ({
+				...queue,
+				newStructureIds: [...queue.newStructureIds],
+				pruneCandidateIds: [...queue.pruneCandidateIds],
+				syncPriorities: queue.syncPriorities.map((priority) => ({ ...priority })),
+			})
 		)
 		const prioritizedQueue = buildPriorityQueuedEntries(
 			sovereigntyHubListing,
@@ -193,28 +223,32 @@ export async function fetchSovereigntyEnrichment(
 		const systemGeography = await universe.resolveSolarSystemsByIds([
 			...new Set(collectedHubs.map((hub) => hub.system_id)),
 		])
-		const allianceBySystemId = buildSovereigntyAllianceBySystemId(sovereigntySystems)
-		const enrichedSovereigntyHubs = collectedHubs.map((hub) => ({
-			...hub,
-			system_name: systemGeography[hub.system_id]?.solarSystemName ?? hub.system_name ?? null,
-			controller_alliance_id: allianceBySystemId.get(hub.system_id) ?? null,
-		}))
+		try {
+			const allianceBySystemId = buildSovereigntyAllianceBySystemId(sovereigntySystems)
+			const enrichedSovereigntyHubs = collectedHubs.map((hub) => ({
+				...hub,
+				system_name: systemGeography[hub.system_id]?.solarSystemName ?? hub.system_name ?? null,
+				controller_alliance_id: allianceBySystemId.get(hub.system_id) ?? null,
+			}))
 
-		logger.debug('[StructuresStep] Fetched sovereignty structure enrichment', {
-			corporationId,
-			sovereigntySystems: sovereigntySystems.length,
-			sovereigntyHubs: collectedHubs.length,
-			failureCount,
-		})
+			logger.debug('[StructuresStep] Fetched sovereignty structure enrichment', {
+				corporationId,
+				sovereigntySystems: sovereigntySystems.length,
+				sovereigntyHubs: collectedHubs.length,
+				failureCount,
+			})
 
-		return {
-			sovereigntySystems,
-			sovereigntyHubs: enrichedSovereigntyHubs,
-			pruneCandidateIds: prioritizedQueue.pruneCandidateIds,
-			failures: sovereigntyHubResult.failures,
-			failureCount,
-			rateLimitFailureCount,
-			nonRateLimitFailureCount,
+			return {
+				sovereigntySystems,
+				sovereigntyHubs: enrichedSovereigntyHubs,
+				pruneCandidateIds: prioritizedQueue.pruneCandidateIds,
+				failures: sovereigntyHubResult.failures,
+				failureCount,
+				rateLimitFailureCount,
+				nonRateLimitFailureCount,
+			}
+		} finally {
+			disposeRpcResult(systemGeography)
 		}
 	} catch (error) {
 		if (shouldSuppressDirectorUnhealthyOnStructureEnrichmentAuthFailure(error)) {
@@ -234,19 +268,25 @@ export async function fetchSkyhookEnrichment(
 		const tokenStore = createTokenStore(env)
 		const skyhookListing = await fetchStructureListing(
 			(page) =>
-				tokenStore.fetchEsi<{ skyhooks: Array<{ id: number; planet_id: number }> }>(
-					`/corporations/${corporationId}/structures/skyhooks${page === 1 ? '' : `?page=${page}`}`,
-					directorCharacterId,
-					{ cacheMode: 'no-store' }
+				fetchListingPage(
+					tokenStore.fetchEsi<{ skyhooks: Array<{ id: number; planet_id: number }> }>(
+						`/corporations/${corporationId}/structures/skyhooks${page === 1 ? '' : `?page=${page}`}`,
+						directorCharacterId,
+						{ cacheMode: 'no-store' }
+					)
 				),
 			(data) => data.skyhooks,
 			'skyhooks'
 		)
 		const liveStructureIds = skyhookListing.map((skyhook) => String(skyhook.id))
-		const priorityQueue = await corpData.getStructurePriorityQueue(
-			corporationId,
-			'skyhooks',
-			liveStructureIds
+		const priorityQueue = await withRpcResult(
+			corpData.getStructurePriorityQueue(corporationId, 'skyhooks', liveStructureIds),
+			(queue) => ({
+				...queue,
+				newStructureIds: [...queue.newStructureIds],
+				pruneCandidateIds: [...queue.pruneCandidateIds],
+				syncPriorities: queue.syncPriorities.map((priority) => ({ ...priority })),
+			})
 		)
 		const prioritizedQueue = buildPriorityQueuedEntries(
 			skyhookListing,
@@ -352,9 +392,12 @@ export async function storeSkyhookEnrichment(
 	enrichment: SkyhookEnrichmentData
 ): Promise<SkyhookStoreResult> {
 	const corpData = getCorporationDataStub(env, corporationId)
-	const result = await corpData.storeSkyhooks(corporationId, enrichment.skyhooks, {
-		pruneCandidateIds: enrichment.pruneCandidateIds,
-	})
+	const result = await withRpcResult(
+		corpData.storeSkyhooks(corporationId, enrichment.skyhooks, {
+			pruneCandidateIds: enrichment.pruneCandidateIds,
+		}),
+		({ prunedCount }) => ({ prunedCount })
+	)
 	if (enrichment.failures.length > 0) {
 		await corpData.markStructureEnrichmentFailures(corporationId, 'skyhooks', enrichment.failures)
 	}

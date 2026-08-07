@@ -1,10 +1,15 @@
+import { withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import { createDirectorManager, createTokenStore, getCorporationDataStub } from '../../utils/services'
+import {
+	createDirectorManager,
+	createTokenStore,
+	getCorporationDataStub,
+} from '../../utils/services'
 
+import type { CorporationRole } from '@repo/eve-corporation-data'
 import type { Env } from '../../../context'
 import type { DirectorInfo } from '../../types'
-import type { CorporationRole } from '@repo/eve-corporation-data'
 
 /**
  * Select a healthy director for the corporation
@@ -96,8 +101,10 @@ function hasDirectorAuthority(role: EsiCorporationMemberRole): boolean {
 async function resolveCharacterName(env: Env, characterId: string): Promise<string> {
 	const tokenStore = createTokenStore(env)
 	try {
-		const result = await tokenStore.fetchPublicEsi<{ name?: string }>(`/characters/${characterId}`)
-		return result.data?.name?.trim() || characterId
+		return await withRpcResult(
+			tokenStore.fetchPublicEsi<{ name?: string }>(`/characters/${characterId}`),
+			(result) => result.data?.name?.trim() || characterId
+		)
 	} catch (error) {
 		logger.warn('[DirectorStep] Failed to resolve character name while auto-adding director', {
 			characterId,
@@ -109,16 +116,12 @@ async function resolveCharacterName(env: Env, characterId: string): Promise<stri
 
 async function isCharacterLinkedToUser(env: Env, characterId: string): Promise<boolean> {
 	try {
-		const owner = await env.CORE.getCharacterOwner(characterId)
-		return owner !== null
+		return await withRpcResult(env.CORE.getCharacterOwner(characterId), (owner) => owner !== null)
 	} catch (error) {
-		logger.warn(
-			'[DirectorStep] Failed to verify character ownership while reconciling directors',
-			{
-				characterId,
-				error: error instanceof Error ? error.message : String(error),
-			}
-		)
+		logger.warn('[DirectorStep] Failed to verify character ownership while reconciling directors', {
+			characterId,
+			error: error instanceof Error ? error.message : String(error),
+		})
 		return false
 	}
 }
@@ -135,19 +138,25 @@ export async function reconcileDirectorsFromCorporationRoles(
 ): Promise<{ added: number; removed: number; discovered: number; skippedUnlinked: number }> {
 	const tokenStore = createTokenStore(env)
 	const corpData = getCorporationDataStub(env, corporationId)
-	const rolesResponse = await tokenStore.fetchEsi<EsiCorporationMemberRole[]>(
-		`/corporations/${corporationId}/roles`,
-		directorCharacterId,
-		{ cacheMode: 'no-store' }
+	const authoritativeDirectorIds = await withRpcResult(
+		tokenStore.fetchEsi<EsiCorporationMemberRole[]>(
+			`/corporations/${corporationId}/roles`,
+			directorCharacterId,
+			{ cacheMode: 'no-store' }
+		),
+		(rolesResponse) =>
+			new Set(
+				rolesResponse.data.filter(hasDirectorAuthority).map((row) => String(row.character_id))
+			)
 	)
-
-	const authoritativeDirectorIds = new Set(
-		rolesResponse.data.filter(hasDirectorAuthority).map((row) => String(row.character_id))
+	const existingDirectors = await withRpcResult(corpData.getDirectors(corporationId), (directors) =>
+		directors.map((director) => ({ ...director }))
 	)
-	const existingDirectors = await corpData.getDirectors(corporationId)
 	const existingDirectorIds = new Set(existingDirectors.map((d) => d.characterId))
 
-	const toAdd = [...authoritativeDirectorIds].filter((characterId) => !existingDirectorIds.has(characterId))
+	const toAdd = [...authoritativeDirectorIds].filter(
+		(characterId) => !existingDirectorIds.has(characterId)
+	)
 	const toRemove = existingDirectors
 		.filter((d) => !authoritativeDirectorIds.has(d.characterId))
 		.map((d) => d.characterId)
@@ -157,13 +166,10 @@ export async function reconcileDirectorsFromCorporationRoles(
 		const isLinked = await isCharacterLinkedToUser(env, characterId)
 		if (!isLinked) {
 			skippedUnlinked++
-			logger.info(
-				'[DirectorStep] Skipping auto-add for director candidate without linked user',
-				{
-					corporationId,
-					characterId,
-				}
-			)
+			logger.info('[DirectorStep] Skipping auto-add for director candidate without linked user', {
+				corporationId,
+				characterId,
+			})
 			continue
 		}
 

@@ -17,12 +17,11 @@
 //     whose only member is a guidance string, so every method call fails to
 //     compile with a readable "pass the interface" message.
 //
-// DISPOSAL is deliberately nothing-to-do for plain DO stubs. A DO stub is never
-// itself an RpcTarget in this repo; the one place an RpcTarget appears is a
-// second-hop method return (EveCharacterDataInstance from getInstance()), which
-// the Cloudflare runtime already types Disposable — so `using x = await
-// forDO(ns).byName(id).getInstance(id)` just works and this accessor attaches no
-// Symbol.dispose to anything, and never disposes a stub on the caller's behalf.
+// DISPOSAL belongs to the caller of an RPC method, not to this namespace
+// accessor. The stub itself is not disposed, but every non-primitive value
+// returned by a cross-worker method must be consumed and disposed. Use
+// `withRpcResult` from this package when the shared interface is Promise-typed,
+// or native `using` when the return type is declared as Disposable.
 //
 // CLAUDE.md rule: idFromName / getByName / jurisdiction are called ONLY inside
 // this module (in `route`), never at a call site — including the sharded paths.
@@ -116,9 +115,9 @@ export interface ShardedClient<Stub> {
 	 * Fan `fn` out across all shards concurrently and collect results in shard
 	 * order. Cost is O(N) billed RPC sessions — keep N modest and fan-out
 	 * infrequent. NOTE: `fn` should return serializable data. If a shard method
-	 * returns an RpcTarget, the CALLER owns each returned value and must dispose
-	 * it (`using`) — map() does not, and must not, dispose the shard sessions
-	 * out from under those results.
+	 * returns a non-primitive RPC value, the CALLER owns each returned value and
+	 * must dispose it (`using` or `withRpcResult`) — map() does not, and must not,
+	 * dispose the shard sessions out from under those results.
 	 */
 	map<R>(fn: (stub: Stub, shardIndex: number) => Promise<R> | R): Promise<R[]>
 }
@@ -158,7 +157,9 @@ const LCG_MULT = 2862933555777941757n
 
 function assertShardCount(shards: number): void {
 	if (!Number.isInteger(shards) || shards < 1) {
-		throw new RangeError(`@repo/do-utils: shards must be a positive integer, received ${String(shards)}`)
+		throw new RangeError(
+			`@repo/do-utils: shards must be a positive integer, received ${String(shards)}`
+		)
 	}
 }
 
@@ -197,7 +198,11 @@ export function shardIndex(key: string, shards: number): number {
 }
 
 /** Deterministic shard instance name: `${prefix}:${shardIndex(key, shards)}`. */
-export function shardName(key: string, shards: number, prefix: string = DEFAULT_SHARD_PREFIX): string {
+export function shardName(
+	key: string,
+	shards: number,
+	prefix: string = DEFAULT_SHARD_PREFIX
+): string {
 	return `${prefix}:${shardIndex(key, shards)}`
 }
 
@@ -211,7 +216,10 @@ class ShardedClientImpl<Stub> implements ShardedClient<Stub> {
 	}
 
 	forKey(key: string, options?: StubOptions): Stub {
-		return this.ns.getByName(`${this.prefix}:${shardIndex(key, this.shards)}`, options) as unknown as Stub
+		return this.ns.getByName(
+			`${this.prefix}:${shardIndex(key, this.shards)}`,
+			options
+		) as unknown as Stub
 	}
 
 	shard(index: number, options?: StubOptions): Stub {
@@ -256,7 +264,11 @@ class DoClientImpl<Stub> implements DoClient<Stub> {
 	}
 
 	sharded(options: ShardOptions): ShardedClient<Stub> {
-		return new ShardedClientImpl<Stub>(this.ns, options.shards, options.prefix ?? DEFAULT_SHARD_PREFIX)
+		return new ShardedClientImpl<Stub>(
+			this.ns,
+			options.shards,
+			options.prefix ?? DEFAULT_SHARD_PREFIX
+		)
 	}
 
 	jurisdiction(jurisdiction: DurableObjectJurisdiction): DoClient<Stub> {

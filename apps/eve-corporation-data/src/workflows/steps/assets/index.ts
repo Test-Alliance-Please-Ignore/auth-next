@@ -1,3 +1,4 @@
+import { withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { getCorporationDataStub } from '../../utils/services'
@@ -16,8 +17,14 @@ export async function syncAssets(
 	const corpData = getCorporationDataStub(env, corporationId)
 
 	logger.info('[AssetsStep] Starting structure inventory sync', { corporationId })
-	const result = await corpData.syncAssetsWithDirector(corporationId, directorCharacterId)
-	logger.info('[AssetsStep] Synced structure inventory', { corporationId, count: result.assetsCount })
+	const result = await withRpcResult(
+		corpData.syncAssetsWithDirector(corporationId, directorCharacterId),
+		(result) => ({ assetsCount: result.assetsCount })
+	)
+	logger.info('[AssetsStep] Synced structure inventory', {
+		corporationId,
+		count: result.assetsCount,
+	})
 
 	return {
 		assetsCount: result.assetsCount,

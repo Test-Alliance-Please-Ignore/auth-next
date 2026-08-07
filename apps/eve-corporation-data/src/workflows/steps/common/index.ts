@@ -1,3 +1,4 @@
+import { withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { parseDateOrNull } from '@repo/worker-utils'
 
@@ -181,7 +182,10 @@ export async function triggerTaxProjectionRefresh(
 ): Promise<TriggerTaxProjectionRefreshResult> {
 	const taxStub = getCorporationTaxStub(env)
 	try {
-		const result = await taxStub.triggerProjectionRefreshFromWalletSync(actorUserId, input)
+		const result = await withRpcResult(
+			taxStub.triggerProjectionRefreshFromWalletSync(actorUserId, input),
+			(result) => ({ ...result })
+		)
 
 		logger.info('[CommonStep] Triggered tax projection refresh from wallet sync', {
 			corporationId: input.corporationId,
