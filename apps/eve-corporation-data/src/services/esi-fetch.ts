@@ -12,6 +12,7 @@
  */
 
 import { logger } from '@repo/hono-helpers'
+import { parseDateOrNull } from '@repo/worker-utils'
 import { parseEsiErrorMetadata } from '@repo/workflow-utils'
 
 import {
@@ -45,12 +46,34 @@ import type {
 	EsiCorporationWalletTransaction,
 	EsiSovereigntyHub,
 	EsiSovereigntySystem,
+	WalletTransactionWatermark,
 } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 
 const SOVEREIGNTY_HUB_TYPE_ID = '32458'
 const SOVEREIGNTY_HUB_DETAIL_BATCH_SIZE = 4
 const SKYHOOK_DETAIL_BATCH_SIZE = 4
+const MAX_WALLET_TRANSACTION_PAGES = 100
+
+function compareNumericStrings(left: string, right: string): number {
+	try {
+		const leftBigInt = BigInt(left)
+		const rightBigInt = BigInt(right)
+		if (leftBigInt === rightBigInt) {
+			return 0
+		}
+		return leftBigInt > rightBigInt ? 1 : -1
+	} catch {
+		return left.localeCompare(right, 'en')
+	}
+}
+
+export interface WalletTransactionsFetchResult {
+	transactions: EsiCorporationWalletTransaction[]
+	pagesFetched: number
+	stoppedAtWatermark: boolean
+	truncated: boolean
+}
 
 export interface StructureEnrichmentFailure {
 	structureId: string
@@ -184,8 +207,9 @@ export async function fetchWalletTransactions(
 	tokenStore: EveTokenStore,
 	corporationId: string,
 	division: number,
-	characterId: string
-): Promise<EsiCorporationWalletTransaction[]> {
+	characterId: string,
+	watermark?: WalletTransactionWatermark
+): Promise<WalletTransactionsFetchResult> {
 	const response = await tokenStore.fetchEsi<
 		Array<{
 			transaction_id: number
@@ -203,7 +227,116 @@ export async function fetchWalletTransactions(
 		cacheMode: 'no-store',
 	})
 
-	return transformWalletTransactions(response.data)
+	const basePath = `/corporations/${corporationId}/wallets/${division}/transactions`
+	const transactions = new Map<string, EsiCorporationWalletTransaction>()
+	let pageData = transformWalletTransactions(response.data)
+	let pagesFetched = 1
+	let fromId: string | undefined
+	let watermarkSeen = false
+	let stoppedAtWatermark = false
+	let completed = pageData.length === 0
+	let truncated = false
+
+	const addPage = (entries: EsiCorporationWalletTransaction[]) => {
+		for (const entry of entries) {
+			transactions.set(entry.transaction_id, entry)
+		}
+	}
+
+	const hasWatermarkRow = (entries: EsiCorporationWalletTransaction[]) =>
+		watermark?.maxTransactionId !== null && watermark?.maxTransactionId !== undefined
+			? entries.some((entry) => entry.transaction_id === watermark.maxTransactionId)
+			: false
+
+	const hasRowsAtOrBeyondWatermark = (
+		entries: EsiCorporationWalletTransaction[],
+		cursorId?: string
+	) => {
+		if (!watermark?.maxTransactionId) {
+			return true
+		}
+
+		return entries.some((entry) => {
+			if (entry.transaction_id === cursorId) {
+				return false
+			}
+			if (compareNumericStrings(entry.transaction_id, watermark.maxTransactionId!) > 0) {
+				return true
+			}
+			const transactionDate = parseDateOrNull(entry.date)
+			return (
+				watermark.maxTransactionDate !== null &&
+				transactionDate !== null &&
+				transactionDate >= watermark.maxTransactionDate
+			)
+		})
+	}
+
+	addPage(pageData)
+	if (hasWatermarkRow(pageData)) {
+		watermarkSeen = true
+		if (!hasRowsAtOrBeyondWatermark(pageData)) {
+			stoppedAtWatermark = true
+		}
+	} else {
+		for (let page = 1; page < MAX_WALLET_TRANSACTION_PAGES; page += 1) {
+			if (pageData.length === 0) {
+				completed = true
+				break
+			}
+
+			const nextFromId = pageData.reduce(
+				(min, entry) => (BigInt(entry.transaction_id) < BigInt(min) ? entry.transaction_id : min),
+				pageData[0].transaction_id
+			)
+			if (nextFromId === fromId) {
+				completed = true
+				break
+			}
+			fromId = nextFromId
+
+			const nextResponse = await tokenStore.fetchEsi<typeof response.data>(
+				`${basePath}?from_id=${encodeURIComponent(fromId)}`,
+				characterId,
+				{ cacheMode: 'no-store' }
+			)
+			pageData = transformWalletTransactions(nextResponse.data)
+			pagesFetched += 1
+			addPage(pageData)
+
+			if (hasWatermarkRow(pageData)) {
+				watermarkSeen = true
+			}
+			if (watermarkSeen && !hasRowsAtOrBeyondWatermark(pageData, fromId)) {
+				stoppedAtWatermark = true
+				completed = true
+				break
+			}
+
+			// ESI includes the cursor row in a from_id response. A singleton cursor
+			// response means there is no older data left to request.
+			if (pageData.length === 1 && pageData[0]?.transaction_id === fromId) {
+				completed = true
+				break
+			}
+		}
+
+		if (!completed && !stoppedAtWatermark) {
+			truncated = true
+			logger.warn('[WalletTransactionsFetch] Page safety limit reached', {
+				corporationId,
+				division,
+				pagesFetched,
+			})
+		}
+	}
+
+	return {
+		transactions: [...transactions.values()],
+		pagesFetched,
+		stoppedAtWatermark,
+		truncated,
+	}
 }
 
 // ========================================================================

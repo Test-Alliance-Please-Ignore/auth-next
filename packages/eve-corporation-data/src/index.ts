@@ -436,6 +436,11 @@ export interface WalletTransactionsStoreResult {
 	persistedNewRows: number
 }
 
+export interface WalletTransactionWatermark {
+	maxTransactionId: string | null
+	maxTransactionDate: Date | null
+}
+
 export interface SkyhookStoreResult {
 	prunedCount: number
 }
@@ -1306,8 +1311,17 @@ export interface EveCorporationData {
 	storeWalletTransactions(
 		corporationId: string,
 		division: number,
-		transactions: any[]
+		transactions: any[],
+		watermark?: WalletTransactionWatermark
 	): Promise<WalletTransactionsStoreResult>
+
+	/**
+	 * Read the compact transaction watermarks for all wallet divisions.
+	 * This is used to bound ESI from_id pagination without loading existing rows.
+	 */
+	getWalletTransactionWatermarks(
+		corporationId: string
+	): Promise<Array<{ division: number; watermark: WalletTransactionWatermark }>>
 
 	/**
 	 * Store assets (workflow-friendly)

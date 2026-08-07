@@ -253,6 +253,13 @@
       "when": 1785598539248,
       "tag": "0035_salty_dragon_man",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1786085723613,
+      "tag": "0036_natural_reptil",
+      "breakpoints": true
     }
   ]
 }

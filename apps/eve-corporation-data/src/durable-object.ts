@@ -122,6 +122,7 @@ import type {
 	StructureSyncFailureTarget,
 	StructureSyncPriorityTarget,
 	WalletJournalWindowFilters,
+	WalletTransactionWatermark,
 	WalletTransactionWindowFilters,
 } from '@repo/eve-corporation-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
@@ -220,6 +221,21 @@ const STRUCTURE_SNAPSHOT_BATCH_SIZE = 10
 const STRUCTURE_CLEANUP_BATCH_SIZE = 250
 const INVENTORY_SNAPSHOT_CLEANUP_BATCH_SIZE = 250
 const INVENTORY_SNAPSHOT_CLEANUP_MAX_BATCHES = 4
+const WALLET_JOURNAL_INSERT_BATCH_SIZE = 100
+const WALLET_TRANSACTION_INSERT_BATCH_SIZE = 100
+
+function compareNumericStrings(left: string, right: string): number {
+	try {
+		const leftBigInt = BigInt(left)
+		const rightBigInt = BigInt(right)
+		if (leftBigInt === rightBigInt) {
+			return 0
+		}
+		return leftBigInt > rightBigInt ? 1 : -1
+	} catch {
+		return left.localeCompare(right, 'en')
+	}
+}
 
 function chunkArray<T>(items: readonly T[], size: number): T[][] {
 	const chunks: T[][] = []
@@ -1891,26 +1907,84 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		division: number,
 		entries: any[]
 	): Promise<{ persistedNewRows: number }> {
+		if (entries.length === 0) {
+			return { persistedNewRows: 0 }
+		}
+
+		const db = this.getDb()
+		const [watermark] = await db
+			.select({
+				maxJournalId: sql<string | null>`max(${corporationWalletJournal.journalId}::numeric)::text`,
+				maxJournalDate: sql<Date | string | null>`max(${corporationWalletJournal.date})`,
+			})
+			.from(corporationWalletJournal)
+			.where(
+				and(
+					eq(corporationWalletJournal.corporationId, String(corporationId)),
+					eq(corporationWalletJournal.division, division)
+				)
+			)
+		const storedMaxJournalId = watermark?.maxJournalId ?? null
+		const storedMaxJournalDate = parseDateOrNull(watermark?.maxJournalDate)
+		const fetchedMaxJournalId = entries.reduce<string | null>((max, entry) => {
+			const journalId = String(entry.id)
+			if (max === null || compareNumericStrings(journalId, max) > 0) {
+				return journalId
+			}
+			return max
+		}, null)
+		const fetchedMaxJournalDate = entries.reduce<Date | null>((max, entry) => {
+			const entryDate = parseDateOrNull(entry.date)
+			if (entryDate === null || max === null) {
+				return entryDate ?? max
+			}
+			return entryDate > max ? entryDate : max
+		}, null)
+
+		if (
+			storedMaxJournalId !== null &&
+			fetchedMaxJournalId !== null &&
+			compareNumericStrings(fetchedMaxJournalId, storedMaxJournalId) < 0 &&
+			storedMaxJournalDate !== null &&
+			(fetchedMaxJournalDate === null || fetchedMaxJournalDate < storedMaxJournalDate)
+		) {
+			logger.warn('[WalletJournalStore] ESI response is behind the stored journal watermark', {
+				corporationId,
+				division,
+				storedMaxJournalId,
+				fetchedMaxJournalId,
+			})
+		}
+
+		// Sort chronologically before inserting so a partial failure advances the
+		// date watermark as little as possible while still accepting late IDs.
+		const newEntries = entries
+			.filter((entry) => {
+				if (storedMaxJournalId === null) {
+					return true
+				}
+
+				if (compareNumericStrings(String(entry.id), storedMaxJournalId) > 0) {
+					return true
+				}
+
+				const entryDate = parseDateOrNull(entry.date)
+				return (
+					storedMaxJournalDate !== null && entryDate !== null && entryDate >= storedMaxJournalDate
+				)
+			})
+			.slice()
+			.sort((left, right) => {
+				const leftDate = parseDateOrNull(left.date)
+				const rightDate = parseDateOrNull(right.date)
+				if (leftDate !== null && rightDate !== null && leftDate.getTime() !== rightDate.getTime()) {
+					return leftDate < rightDate ? -1 : 1
+				}
+				return compareNumericStrings(String(left.id), String(right.id))
+			})
 		let persistedNewRows = 0
-		const BATCH_SIZE = 25
-		for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-			const batch = entries.slice(i, i + BATCH_SIZE)
-			const batchJournalIds = batch.map((entry) => String(entry.id))
-			const existingRows =
-				batchJournalIds.length > 0
-					? await this.getDb().query.corporationWalletJournal.findMany({
-							where: and(
-								eq(corporationWalletJournal.corporationId, String(corporationId)),
-								eq(corporationWalletJournal.division, division),
-								inArray(corporationWalletJournal.journalId, batchJournalIds)
-							),
-							columns: {
-								journalId: true,
-							},
-						})
-					: []
-			const existingJournalIds = new Set(existingRows.map((row) => row.journalId))
-			persistedNewRows += batchJournalIds.filter((id) => !existingJournalIds.has(id)).length
+		for (let i = 0; i < newEntries.length; i += WALLET_JOURNAL_INSERT_BATCH_SIZE) {
+			const batch = newEntries.slice(i, i + WALLET_JOURNAL_INSERT_BATCH_SIZE)
 			const valuesToInsert = batch.map((entry) => ({
 				corporationId: String(corporationId),
 				division,
@@ -1930,26 +2004,18 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				updatedAt: new Date(),
 			}))
 
-			await this.getDb()
+			const insertedRows = await db
 				.insert(corporationWalletJournal)
 				.values(valuesToInsert)
-				.onConflictDoUpdate({
+				.onConflictDoNothing({
 					target: [
 						corporationWalletJournal.corporationId,
 						corporationWalletJournal.division,
 						corporationWalletJournal.journalId,
 					],
-					set: {
-						amount: sql`excluded.amount`,
-						balance: sql`excluded.balance`,
-						contextId: sql`excluded.context_id`,
-						contextIdType: sql`excluded.context_id_type`,
-						description: sql`excluded.description`,
-						reason: sql`excluded.reason`,
-						tax: sql`excluded.tax`,
-						updatedAt: sql`excluded.updated_at`,
-					},
 				})
+				.returning({ journalId: corporationWalletJournal.journalId })
+			persistedNewRows += insertedRows.length
 		}
 
 		return { persistedNewRows }
@@ -1961,65 +2027,166 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async storeWalletTransactions(
 		corporationId: string,
 		division: number,
-		transactions: any[]
+		transactions: any[],
+		providedWatermark?: WalletTransactionWatermark
 	): Promise<{ persistedNewRows: number }> {
-		let persistedNewRows = 0
-		const BATCH_SIZE = 25
-		for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
-			const batch = transactions.slice(i, i + BATCH_SIZE)
-			const dedupedBatchByTransactionId = new Map<string, any>()
-			for (const tx of batch) {
-				dedupedBatchByTransactionId.set(String(tx.transaction_id), tx)
+		if (transactions.length === 0) {
+			return { persistedNewRows: 0 }
+		}
+
+		const db = this.getDb()
+		let watermark = providedWatermark
+		if (!watermark) {
+			const [storedWatermark] = await db
+				.select({
+					maxTransactionId: sql<
+						string | null
+					>`max(${corporationWalletTransactions.transactionId}::numeric)::text`,
+					maxTransactionDate: sql<Date | string | null>`max(${corporationWalletTransactions.date})`,
+				})
+				.from(corporationWalletTransactions)
+				.where(
+					and(
+						eq(corporationWalletTransactions.corporationId, String(corporationId)),
+						eq(corporationWalletTransactions.division, division)
+					)
+				)
+			watermark = {
+				maxTransactionId: storedWatermark?.maxTransactionId ?? null,
+				maxTransactionDate: parseDateOrNull(storedWatermark?.maxTransactionDate),
 			}
-			const dedupedBatch = [...dedupedBatchByTransactionId.values()]
-			const batchTransactionIds = [...dedupedBatchByTransactionId.keys()]
-			const existingRows =
-				batchTransactionIds.length > 0
-					? await this.getDb().query.corporationWalletTransactions.findMany({
-							where: and(
-								eq(corporationWalletTransactions.corporationId, String(corporationId)),
-								eq(corporationWalletTransactions.division, division),
-								inArray(corporationWalletTransactions.transactionId, batchTransactionIds)
-							),
-							columns: {
-								transactionId: true,
-							},
-						})
-					: []
-			const existingTransactionIds = new Set(existingRows.map((row) => row.transactionId))
-			persistedNewRows += batchTransactionIds.filter((id) => !existingTransactionIds.has(id)).length
-			const valuesToInsert = dedupedBatch.map((tx) => ({
+		}
+		const storedMaxTransactionId = watermark.maxTransactionId
+		const storedMaxTransactionDate = watermark.maxTransactionDate
+
+		const dedupedTransactions = [
+			...new Map(
+				transactions.map((transaction) => [String(transaction.transaction_id), transaction])
+			).values(),
+		]
+		const fetchedMaxTransactionId = dedupedTransactions.reduce<string | null>(
+			(max, transaction) => {
+				const transactionId = String(transaction.transaction_id)
+				if (max === null || compareNumericStrings(transactionId, max) > 0) {
+					return transactionId
+				}
+				return max
+			},
+			null
+		)
+		const fetchedMaxTransactionDate = dedupedTransactions.reduce<Date | null>(
+			(max, transaction) => {
+				const transactionDate = parseDateOrNull(transaction.date)
+				if (transactionDate === null || max === null) {
+					return transactionDate ?? max
+				}
+				return transactionDate > max ? transactionDate : max
+			},
+			null
+		)
+
+		if (
+			storedMaxTransactionId !== null &&
+			fetchedMaxTransactionId !== null &&
+			compareNumericStrings(fetchedMaxTransactionId, storedMaxTransactionId) < 0 &&
+			storedMaxTransactionDate !== null &&
+			(fetchedMaxTransactionDate === null || fetchedMaxTransactionDate < storedMaxTransactionDate)
+		) {
+			logger.warn(
+				'[WalletTransactionStore] ESI response is behind the stored transaction watermark',
+				{
+					corporationId,
+					division,
+					storedMaxTransactionId,
+					fetchedMaxTransactionId,
+				}
+			)
+		}
+
+		const newTransactions = dedupedTransactions
+			.filter((transaction) => {
+				if (storedMaxTransactionId === null) {
+					return true
+				}
+
+				if (compareNumericStrings(String(transaction.transaction_id), storedMaxTransactionId) > 0) {
+					return true
+				}
+
+				const transactionDate = parseDateOrNull(transaction.date)
+				return (
+					storedMaxTransactionDate !== null &&
+					transactionDate !== null &&
+					transactionDate >= storedMaxTransactionDate
+				)
+			})
+			.sort((left, right) => {
+				const leftDate = parseDateOrNull(left.date)
+				const rightDate = parseDateOrNull(right.date)
+				if (leftDate !== null && rightDate !== null && leftDate.getTime() !== rightDate.getTime()) {
+					return leftDate < rightDate ? -1 : 1
+				}
+				return compareNumericStrings(String(left.transaction_id), String(right.transaction_id))
+			})
+
+		let persistedNewRows = 0
+		for (let i = 0; i < newTransactions.length; i += WALLET_TRANSACTION_INSERT_BATCH_SIZE) {
+			const batch = newTransactions.slice(i, i + WALLET_TRANSACTION_INSERT_BATCH_SIZE)
+			const valuesToInsert = batch.map((tx) => ({
 				corporationId: String(corporationId),
 				division,
-				transactionId: tx.transaction_id,
-				clientId: tx.client_id,
+				transactionId: String(tx.transaction_id),
+				clientId: String(tx.client_id),
 				date: new Date(tx.date),
 				isBuy: tx.is_buy,
 				isPersonal: tx.is_personal,
-				journalRefId: tx.journal_ref_id,
-				locationId: tx.location_id,
+				journalRefId: String(tx.journal_ref_id),
+				locationId: String(tx.location_id),
 				quantity: tx.quantity,
-				typeId: tx.type_id,
-				unitPrice: tx.unit_price,
+				typeId: String(tx.type_id),
+				unitPrice: String(tx.unit_price),
 				updatedAt: new Date(),
 			}))
 
-			await this.getDb()
+			const insertedRows = await db
 				.insert(corporationWalletTransactions)
 				.values(valuesToInsert)
-				.onConflictDoUpdate({
+				.onConflictDoNothing({
 					target: [
 						corporationWalletTransactions.corporationId,
 						corporationWalletTransactions.division,
 						corporationWalletTransactions.transactionId,
 					],
-					set: {
-						updatedAt: sql`excluded.updated_at`,
-					},
 				})
+				.returning({ transactionId: corporationWalletTransactions.transactionId })
+			persistedNewRows += insertedRows.length
 		}
 
 		return { persistedNewRows }
+	}
+
+	async getWalletTransactionWatermarks(
+		corporationId: string
+	): Promise<Array<{ division: number; watermark: WalletTransactionWatermark }>> {
+		const rows = await this.getDb()
+			.select({
+				division: corporationWalletTransactions.division,
+				maxTransactionId: sql<
+					string | null
+				>`max(${corporationWalletTransactions.transactionId}::numeric)::text`,
+				maxTransactionDate: sql<Date | string | null>`max(${corporationWalletTransactions.date})`,
+			})
+			.from(corporationWalletTransactions)
+			.where(eq(corporationWalletTransactions.corporationId, String(corporationId)))
+			.groupBy(corporationWalletTransactions.division)
+
+		return rows.map((row) => ({
+			division: row.division,
+			watermark: {
+				maxTransactionId: row.maxTransactionId,
+				maxTransactionDate: parseDateOrNull(row.maxTransactionDate),
+			},
+		}))
 	}
 
 	/**
@@ -5033,56 +5200,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				entriesToInsert: entries.length,
 			})
 
-		// Batch insert to avoid hitting Cloudflare's 50 subrequest limit
-		// Insert 25 entries at a time to be safe
-		const BATCH_SIZE = 25
-		let insertedCount = 0
-
+		let persistedNewRows = 0
 		try {
-			for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-				const batch = entries.slice(i, i + BATCH_SIZE)
-				const valuesToInsert = batch.map((entry) => ({
-					corporationId: String(corporationId),
-					division,
-					journalId: entry.id,
-					amount: entry.amount,
-					balance: entry.balance,
-					contextId: entry.context_id,
-					contextIdType: entry.context_id_type,
-					date: new Date(entry.date),
-					description: entry.description,
-					firstPartyId: entry.first_party_id,
-					reason: entry.reason,
-					refType: entry.ref_type,
-					secondPartyId: entry.second_party_id,
-					tax: entry.tax,
-					taxReceiverId: entry.tax_receiver_id,
-					updatedAt: new Date(),
-				}))
-
-				await this.getDb()
-					.insert(corporationWalletJournal)
-					.values(valuesToInsert)
-					.onConflictDoUpdate({
-						target: [
-							corporationWalletJournal.corporationId,
-							corporationWalletJournal.division,
-							corporationWalletJournal.journalId,
-						],
-						set: {
-							amount: sql`excluded.amount`,
-							balance: sql`excluded.balance`,
-							contextId: sql`excluded.context_id`,
-							contextIdType: sql`excluded.context_id_type`,
-							description: sql`excluded.description`,
-							reason: sql`excluded.reason`,
-							tax: sql`excluded.tax`,
-							updatedAt: sql`excluded.updated_at`,
-						},
-					})
-
-				insertedCount += batch.length
-			}
+			persistedNewRows = (await this.storeWalletJournal(corporationId, division, entries))
+				.persistedNewRows
 		} catch (error) {
 			logger
 				.withTags({
@@ -5091,7 +5212,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					operation: 'fetch_wallet_journal',
 				})
 				.error('Failed to insert journal entries', {
-					insertedSoFar: insertedCount,
+					entriesPersisted: persistedNewRows,
 					totalEntries: entries.length,
 					error: error instanceof Error ? error.message : String(error),
 					errorStack: error instanceof Error ? error.stack : undefined,
@@ -5130,7 +5251,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				operation: 'fetch_wallet_journal',
 			})
 			.debug('Completed wallet journal fetch and store', {
-				totalInserted: insertedCount,
+				totalInserted: persistedNewRows,
 				totalEntries: entries.length,
 			})
 	}
@@ -5155,12 +5276,20 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.requireCorpRole(corporationId, characterId, ['Accountant', 'Junior_Accountant'])
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const transactions: EsiCorporationWalletTransaction[] = await esiFetch.fetchWalletTransactions(
+		const watermark = (await this.getWalletTransactionWatermarks(corporationId)).find(
+			(entry) => entry.division === division
+		)?.watermark
+		const fetchResult = await esiFetch.fetchWalletTransactions(
 			tokenStore,
 			corporationId,
 			division,
-			characterId
+			characterId,
+			watermark
 		)
+		if (fetchResult.truncated) {
+			throw new Error('Wallet transaction pagination was truncated before persistence')
+		}
+		const transactions: EsiCorporationWalletTransaction[] = fetchResult.transactions
 
 		logger
 			.withTags({
@@ -5170,52 +5299,16 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			})
 			.debug('Fetched wallet transactions from ESI', {
 				totalTransactions: transactions.length,
+				pagesFetched: fetchResult.pagesFetched,
+				stoppedAtWatermark: fetchResult.stoppedAtWatermark,
+				truncated: fetchResult.truncated,
 			})
 
-		// Batch insert to avoid hitting Cloudflare's 50 subrequest limit
-		const BATCH_SIZE = 25
-		let insertedCount = 0
-
+		let persistedNewRows = 0
 		try {
-			for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
-				const batch = transactions.slice(i, i + BATCH_SIZE)
-				const dedupedBatchByTransactionId = new Map<string, EsiCorporationWalletTransaction>()
-				for (const tx of batch) {
-					dedupedBatchByTransactionId.set(String(tx.transaction_id), tx)
-				}
-				const dedupedBatch = [...dedupedBatchByTransactionId.values()]
-				const valuesToInsert = dedupedBatch.map((tx) => ({
-					corporationId: String(corporationId),
-					division,
-					transactionId: tx.transaction_id,
-					clientId: tx.client_id,
-					date: new Date(tx.date),
-					isBuy: tx.is_buy,
-					isPersonal: tx.is_personal,
-					journalRefId: tx.journal_ref_id,
-					locationId: tx.location_id,
-					quantity: tx.quantity,
-					typeId: tx.type_id,
-					unitPrice: tx.unit_price,
-					updatedAt: new Date(),
-				}))
-
-				await this.getDb()
-					.insert(corporationWalletTransactions)
-					.values(valuesToInsert)
-					.onConflictDoUpdate({
-						target: [
-							corporationWalletTransactions.corporationId,
-							corporationWalletTransactions.division,
-							corporationWalletTransactions.transactionId,
-						],
-						set: {
-							updatedAt: sql`excluded.updated_at`,
-						},
-					})
-
-				insertedCount += dedupedBatch.length
-			}
+			persistedNewRows = (
+				await this.storeWalletTransactions(corporationId, division, transactions, watermark)
+			).persistedNewRows
 		} catch (error) {
 			logger
 				.withTags({
@@ -5224,7 +5317,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					operation: 'fetch_wallet_transactions',
 				})
 				.error('Failed to insert transactions', {
-					insertedSoFar: insertedCount,
+					entriesPersisted: persistedNewRows,
 					totalTransactions: transactions.length,
 					error: error instanceof Error ? error.message : String(error),
 					errorStack: error instanceof Error ? error.stack : undefined,
@@ -5263,7 +5356,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				operation: 'fetch_wallet_transactions',
 			})
 			.debug('Completed wallet transactions fetch and store', {
-				totalInserted: insertedCount,
+				totalInserted: persistedNewRows,
 				totalTransactions: transactions.length,
 			})
 	}

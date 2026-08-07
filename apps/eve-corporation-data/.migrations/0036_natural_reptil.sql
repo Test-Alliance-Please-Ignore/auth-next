@@ -1,0 +1,4 @@
+CREATE INDEX "corporation_wallet_journal_corp_div_date_idx" ON "corporation_wallet_journal" USING btree ("corporation_id","division","date");--> statement-breakpoint
+CREATE INDEX "corporation_wallet_journal_corp_div_num_id_idx" ON "corporation_wallet_journal" USING btree ("corporation_id","division",("journal_id"::numeric));--> statement-breakpoint
+CREATE INDEX "corporation_wallet_tx_corp_div_date_idx" ON "corporation_wallet_transactions" USING btree ("corporation_id","division","date");--> statement-breakpoint
+CREATE INDEX "corporation_wallet_tx_corp_div_num_id_idx" ON "corporation_wallet_transactions" USING btree ("corporation_id","division",("transaction_id"::numeric));

@@ -36,6 +36,10 @@ export async function syncWalletTransactions(
 ): Promise<WalletTransactionsSyncResult> {
 	const tokenStore = createTokenStore(env)
 	const corpData = getCorporationDataStub(env, corporationId)
+	const watermarks = await corpData.getWalletTransactionWatermarks(corporationId)
+	const watermarkByDivision = new Map(
+		watermarks.map(({ division, watermark }) => [division, watermark])
+	)
 
 	const results = await Promise.allSettled(
 		WALLET_DIVISIONS.map(async (division, index) => {
@@ -44,17 +48,23 @@ export async function syncWalletTransactions(
 				await sleep(delayMs)
 			}
 
-			const transactions = await esiFetch.fetchWalletTransactions(
+			const fetchResult = await esiFetch.fetchWalletTransactions(
 				tokenStore,
 				corporationId,
 				division,
-				directorCharacterId
+				directorCharacterId,
+				watermarkByDivision.get(division)
 			)
+			if (fetchResult.truncated) {
+				throw new Error('Wallet transaction pagination was truncated before persistence')
+			}
 			const storeResult = await corpData.storeWalletTransactions(
 				corporationId,
 				division,
-				transactions
+				fetchResult.transactions,
+				watermarkByDivision.get(division)
 			)
+			const transactions = fetchResult.transactions
 			const maxTransactionId =
 				transactions.length > 0
 					? transactions.reduce(
