@@ -23,13 +23,13 @@ describe('RPC result lifecycle helpers', () => {
 		expect(dispose).toHaveBeenCalledOnce()
 	})
 
-	it('supports callable dispose methods and ignores primitives', () => {
+	it('ignores ordinary dispose properties and primitives', () => {
 		const dispose = vi.fn()
 
 		disposeRpcResult({ dispose })
 		disposeRpcResult(null)
 		disposeRpcResult('value')
 
-		expect(dispose).toHaveBeenCalledOnce()
+		expect(dispose).not.toHaveBeenCalled()
 	})
 })

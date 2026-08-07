@@ -9,15 +9,15 @@ export function disposeRpcResult(result: unknown): void {
 	}
 
 	const disposableResult = result as Record<PropertyKey, unknown>
-	const symbolDisposer = disposableResult[Symbol.dispose]
-	if (typeof symbolDisposer === 'function') {
-		;(symbolDisposer as () => void).call(result)
-		return
-	}
-
-	const disposer = disposableResult.dispose
-	if (typeof disposer === 'function') {
-		;(disposer as () => void).call(result)
+	// `Symbol.dispose` is an optional runtime capability and is not included in
+	// the lib target of every package that consumes this shared source file.
+	const symbolDispose = Reflect.get(Symbol, 'dispose')
+	if (typeof symbolDispose === 'symbol') {
+		const symbolDisposer = disposableResult[symbolDispose]
+		if (typeof symbolDisposer === 'function') {
+			;(symbolDisposer as () => void).call(result)
+			return
+		}
 	}
 }
 
