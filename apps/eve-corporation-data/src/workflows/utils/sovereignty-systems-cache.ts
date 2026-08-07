@@ -1,3 +1,5 @@
+import { withRpcResult } from '@repo/do-utils'
+
 import * as esiFetch from '../../services/esi-fetch'
 import { createTokenStore, getGlobalCorporationDataStub } from './services'
 
@@ -21,9 +23,12 @@ export async function readSharedSovereigntySystemsForCorporation(
 	corporationId: string
 ): Promise<EsiSovereigntySystem[] | null> {
 	const globalCorpData = getGlobalCorporationDataStub(env)
-	return await globalCorpData.getSharedSovereigntySystemsForCorporation(
-		corporationId,
-		SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
+	return await withRpcResult(
+		globalCorpData.getSharedSovereigntySystemsForCorporation(
+			corporationId,
+			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_TTL_SECONDS
+		),
+		(systems) => systems?.map((system) => ({ ...system })) ?? null
 	)
 }
 

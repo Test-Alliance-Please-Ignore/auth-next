@@ -1,3 +1,4 @@
+import { withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import * as esiFetch from '../../../services/esi-fetch'
@@ -32,7 +33,10 @@ export async function storeMembers(
 	memberIds: MemberIds
 ): Promise<StoreMembersResult> {
 	const corpData = getCorporationDataStub(env, corporationId)
-	const result = await corpData.storeMembers(corporationId, memberIds)
+	const result = await withRpcResult(corpData.storeMembers(corporationId, memberIds), (result) => ({
+		departedMemberIds: [...result.departedMemberIds],
+		addedMemberIds: [...result.addedMemberIds],
+	}))
 
 	logger.info('[MembersStep] Stored members', {
 		corporationId,
@@ -60,10 +64,13 @@ export async function sendMembershipChangedMessages(
 		return
 	}
 
-	await env.CORE.handleCharacterAffiliationChanges(memberIds, {
-		source: 'corp-membership-changed',
-		bypassThrottle: true,
-	})
+	await withRpcResult(
+		env.CORE.handleCharacterAffiliationChanges(memberIds, {
+			source: 'corp-membership-changed',
+			bypassThrottle: true,
+		}),
+		() => undefined
+	)
 
 	logger.info('[MembersStep] Membership changes sent to Core for unified affiliation handling', {
 		count: memberIds.length,

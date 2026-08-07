@@ -1,4 +1,4 @@
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../../db'
@@ -28,10 +28,13 @@ export function createDirectorManager(env: Env, corporationId: string): Director
 		tokenStore,
 		async (characterId, expectedCorporationId, actualCorporationId) => {
 			try {
-				await env.CORE.handleCharacterAffiliationChanges([characterId], {
-					source: `director-affiliation-mismatch:${expectedCorporationId}:${actualCorporationId ?? 'unknown'}`,
-					bypassThrottle: true,
-				})
+				await withRpcResult(
+					env.CORE.handleCharacterAffiliationChanges([characterId], {
+						source: `director-affiliation-mismatch:${expectedCorporationId}:${actualCorporationId ?? 'unknown'}`,
+						bypassThrottle: true,
+					}),
+					() => undefined
+				)
 			} catch (error) {
 				logger.warn('[DirectorManager] Failed to propagate affiliation mismatch to Core', {
 					corporationId: expectedCorporationId,

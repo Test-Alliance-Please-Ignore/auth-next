@@ -1,3 +1,4 @@
+import { withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import * as esiFetch from '../../../services/esi-fetch'
@@ -36,7 +37,14 @@ export async function syncWalletTransactions(
 ): Promise<WalletTransactionsSyncResult> {
 	const tokenStore = createTokenStore(env)
 	const corpData = getCorporationDataStub(env, corporationId)
-	const watermarks = await corpData.getWalletTransactionWatermarks(corporationId)
+	const watermarks = await withRpcResult(
+		corpData.getWalletTransactionWatermarks(corporationId),
+		(watermarks) =>
+			watermarks.map(({ division, watermark }) => ({
+				division,
+				watermark: watermark ? { ...watermark } : undefined,
+			}))
+	)
 	const watermarkByDivision = new Map(
 		watermarks.map(({ division, watermark }) => [division, watermark])
 	)
@@ -58,11 +66,14 @@ export async function syncWalletTransactions(
 			if (fetchResult.truncated) {
 				throw new Error('Wallet transaction pagination was truncated before persistence')
 			}
-			const storeResult = await corpData.storeWalletTransactions(
-				corporationId,
-				division,
-				fetchResult.transactions,
-				watermarkByDivision.get(division)
+			const storeResult = await withRpcResult(
+				corpData.storeWalletTransactions(
+					corporationId,
+					division,
+					fetchResult.transactions,
+					watermarkByDivision.get(division)
+				),
+				(result) => ({ persistedNewRows: result.persistedNewRows })
 			)
 			const transactions = fetchResult.transactions
 			const maxTransactionId =

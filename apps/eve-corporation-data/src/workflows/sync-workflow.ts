@@ -1,6 +1,6 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { logger, withWorkerLogContext } from '@repo/hono-helpers'
 import {
 	classifyEsiCredentialFailure,
@@ -134,8 +134,14 @@ async function syncCoreAuthHealthSnapshot(
 	workflowInstanceId: string
 ): Promise<{ healthyDirectorCount: number; isVerified: boolean }> {
 	const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corporationId)
-	const directors = await corpStub.getDirectors(corporationId)
-	const healthyDirectorCount = directors.filter((director) => director.isHealthy).length
+	const directorSnapshot = await withRpcResult(
+		corpStub.getDirectors(corporationId),
+		(directors) => ({
+			directorCount: directors.length,
+			healthyDirectorCount: directors.filter((director) => director.isHealthy).length,
+		})
+	)
+	const { directorCount, healthyDirectorCount } = directorSnapshot
 	const isVerified = healthyDirectorCount > 0
 	await env.CORE.updateCorporationAuthHealth(corporationId, {
 		healthyDirectorCount,
@@ -147,7 +153,7 @@ async function syncCoreAuthHealthSnapshot(
 		workflowInstanceId,
 		healthyDirectorCount,
 		isVerified,
-		directorCount: directors.length,
+		directorCount,
 	})
 	return { healthyDirectorCount, isVerified }
 }
@@ -173,7 +179,10 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				{ timeout: '30 seconds' },
 				async () => {
 					try {
-						return await corpData.getCorporationSyncConfig(corporationId)
+						return await withRpcResult(
+							corpData.getCorporationSyncConfig(corporationId),
+							(config) => (config ? { ...config } : null)
+						)
 					} catch (error) {
 						logger.warn(
 							'[EveCorporationSyncWorkflow] Failed to load corporation config for asset gating',
@@ -726,10 +735,18 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 									const liveMiningExtractions = fetchedMiningExtractions.filter((extraction) =>
 										miningCitadelStructureIds.has(String(extraction.structure_id))
 									)
-									const priorityQueue = await corpData.getStructurePriorityQueue(
-										corporationId,
-										'mining-extractions' as StructureSyncPriorityTarget,
-										liveMiningExtractions.map((extraction) => String(extraction.structure_id))
+									const priorityQueue = await withRpcResult(
+										corpData.getStructurePriorityQueue(
+											corporationId,
+											'mining-extractions' as StructureSyncPriorityTarget,
+											liveMiningExtractions.map((extraction) => String(extraction.structure_id))
+										),
+										(queue) => ({
+											...queue,
+											newStructureIds: [...queue.newStructureIds],
+											pruneCandidateIds: [...queue.pruneCandidateIds],
+											syncPriorities: queue.syncPriorities.map((priority) => ({ ...priority })),
+										})
 									)
 									const prioritizedMiningExtractions = buildPriorityQueuedEntries(
 										liveMiningExtractions.map((extraction) => ({
@@ -838,6 +855,8 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 											failureCount: sovereigntyEnrichment.failureCount,
 											rateLimitFailureCount: sovereigntyEnrichment.rateLimitFailureCount,
 											nonRateLimitFailureCount: sovereigntyEnrichment.nonRateLimitFailureCount,
+											failureDetails: sovereigntyEnrichment.failures.slice(0, 10),
+											failureDetailsOmitted: Math.max(0, sovereigntyEnrichment.failureCount - 10),
 										}
 									)
 								} else if (sovereigntyEnrichment.rateLimitFailureCount > 0) {
@@ -972,6 +991,8 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 											failureCount: skyhookEnrichment.failureCount,
 											rateLimitFailureCount: skyhookEnrichment.rateLimitFailureCount,
 											nonRateLimitFailureCount: skyhookEnrichment.nonRateLimitFailureCount,
+											failureDetails: skyhookEnrichment.failures.slice(0, 10),
+											failureDetailsOmitted: Math.max(0, skyhookEnrichment.failureCount - 10),
 										}
 									)
 								} else if (skyhookEnrichment.rateLimitFailureCount > 0) {

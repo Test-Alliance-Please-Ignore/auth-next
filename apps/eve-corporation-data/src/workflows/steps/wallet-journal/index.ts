@@ -1,4 +1,5 @@
-import { logger } from '@repo/hono-helpers'
+import { withRpcResult } from '@repo/do-utils'
+import { logger, toErrorLogDetails } from '@repo/hono-helpers'
 
 import * as esiFetch from '../../../services/esi-fetch'
 import { createTokenStore, getCorporationDataStub } from '../../utils/services'
@@ -50,7 +51,10 @@ export async function syncWalletJournal(
 				division,
 				directorCharacterId
 			)
-			const storeResult = await corpData.storeWalletJournal(corporationId, division, entries)
+			const storeResult = await withRpcResult(
+				corpData.storeWalletJournal(corporationId, division, entries),
+				(result) => ({ persistedNewRows: result.persistedNewRows })
+			)
 			const maxJournalId =
 				entries.length > 0
 					? entries.reduce(
@@ -114,10 +118,12 @@ export async function syncWalletJournal(
 	// Log failures (if any) but do not throw to retain previous behavior
 	results.forEach((result, index) => {
 		if (result.status === 'rejected') {
+			const errorDetails = toErrorLogDetails(result.reason)
 			logger.error('[WalletJournalStep] Division failed', {
 				corporationId,
 				division: WALLET_DIVISIONS[index],
-				error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+				...errorDetails,
+				error: errorDetails.message,
 			})
 		}
 	})

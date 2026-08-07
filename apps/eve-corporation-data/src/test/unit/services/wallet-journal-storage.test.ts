@@ -123,4 +123,55 @@ describe('wallet journal storage', () => {
 		const insertedValues = valuesCalls[0]?.[0] as Array<{ journalId: string }>
 		expect(insertedValues.map((row) => row.journalId)).toEqual(['501', '400', '402'])
 	})
+
+	it('filters same-party zero-sum journal pairs regardless of ref type', async () => {
+		const { db, insert } = createDb(null, null, [])
+		const instance = createDoInstance(db)
+		const sharedFields = {
+			balance: 1000,
+			context_id: '666579046',
+			context_id_type: 'industry_job_id',
+			date: '2026-08-07T00:00:00Z',
+			description: 'Industry facility tax',
+			first_party_id: '123',
+			reason: null,
+			ref_type: 'brokers_fee',
+			second_party_id: '123',
+			tax: null,
+			tax_receiver_id: null,
+		}
+
+		const result = await instance.storeWalletJournal('123', 1, [
+			{ id: '100', amount: '-447', ...sharedFields },
+			{ id: '100', amount: '447', ...sharedFields },
+		])
+
+		expect(result).toEqual({ persistedNewRows: 0 })
+		expect(insert).not.toHaveBeenCalled()
+	})
+
+	it('does not filter opposite amounts for different parties', async () => {
+		const { db, insert, values } = createDb(null, null, ['100', '100'])
+		const instance = createDoInstance(db)
+		const sharedFields = {
+			balance: 1000,
+			context_id: '666579046',
+			context_id_type: 'industry_job_id',
+			date: '2026-08-07T00:00:00Z',
+			description: 'Industry facility tax',
+			first_party_id: '123',
+			reason: null,
+			ref_type: 'industry_job_tax',
+			tax: null,
+			tax_receiver_id: null,
+		}
+
+		await instance.storeWalletJournal('123', 1, [
+			{ id: '100', amount: '-447', second_party_id: '456', ...sharedFields },
+			{ id: '100', amount: '447', second_party_id: '789', ...sharedFields },
+		])
+
+		expect(insert).toHaveBeenCalledTimes(1)
+		expect(values).toHaveBeenCalledTimes(1)
+	})
 })

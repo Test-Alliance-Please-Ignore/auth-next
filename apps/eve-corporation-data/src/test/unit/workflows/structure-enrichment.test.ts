@@ -36,6 +36,9 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: mocks.getStubMock,
+	withRpcResult: async <T, R>(request: Promise<T>, consume: (result: T) => R | Promise<R>) =>
+		consume(await request),
+	disposeRpcResult: () => undefined,
 }))
 
 vi.mock('../../../services/esi-fetch', () => ({
