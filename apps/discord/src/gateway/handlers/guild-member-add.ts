@@ -5,8 +5,12 @@ import { logger } from '@repo/hono-helpers'
 import { createDb } from '../../db'
 import { discordUsers } from '../../db/schema'
 
-import type { DiscordGateway } from '../types'
-import type { DiscordGatewayContext, DiscordGatewayEventHandler, DiscordGatewayGuildMemberAddPayload } from '../types'
+import type {
+	DiscordGateway,
+	DiscordGatewayContext,
+	DiscordGatewayEventHandler,
+	DiscordGatewayGuildMemberAddPayload,
+} from '../types'
 
 function resolveDiscordUserId(payload: DiscordGatewayGuildMemberAddPayload): string | null {
 	return payload.member?.user?.id ?? payload.user?.id ?? null
@@ -67,7 +71,10 @@ async function syncDiscordAccess(env: DiscordGatewayContext['env'], coreUserId: 
 	}
 }
 
-async function isManagedGuild(env: DiscordGatewayContext['env'], guildId: string): Promise<boolean> {
+async function isManagedGuild(
+	env: DiscordGatewayContext['env'],
+	guildId: string
+): Promise<boolean> {
 	try {
 		return await env.CORE.isActiveDiscordGuild(guildId)
 	} catch (error) {
@@ -82,7 +89,9 @@ async function isManagedGuild(env: DiscordGatewayContext['env'], guildId: string
 export const guildMemberAddHandler: DiscordGatewayEventHandler<DiscordGatewayGuildMemberAddPayload> =
 	{
 		eventName: 'GUILD_MEMBER_ADD',
-		async handle(context: DiscordGatewayContext<DiscordGatewayGuildMemberAddPayload>): Promise<void> {
+		async handle(
+			context: DiscordGatewayContext<DiscordGatewayGuildMemberAddPayload>
+		): Promise<void> {
 			const discordUserId = resolveDiscordUserId(context.payload)
 			if (!discordUserId) {
 				logger.debug('[DiscordGateway] Ignoring member add without Discord user id', {

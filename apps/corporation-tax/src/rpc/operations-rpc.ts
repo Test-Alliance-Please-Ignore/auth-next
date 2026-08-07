@@ -1,7 +1,5 @@
 import { and, eq } from '@repo/db-utils'
 
-import { managedCorporations, taxAssessments, taxCorporationExclusions, taxRuleGroupAttachments } from '../db/schema'
-
 import type {
 	CreateTaxExportScheduleInput,
 	ListTaxAlertsFilters,
@@ -338,7 +336,10 @@ export class TaxOperationsRpc {
 		actorUserId: string,
 		input: UpsertTaxNotificationDestinationInput
 	): Promise<TaxNotificationDestination> {
-		const destination = await this.ctx.alertService.upsertNotificationDestination(actorUserId, input)
+		const destination = await this.ctx.alertService.upsertNotificationDestination(
+			actorUserId,
+			input
+		)
 		await this.ctx.auditService.logAction({
 			corporationId: undefined,
 			actorUserId,

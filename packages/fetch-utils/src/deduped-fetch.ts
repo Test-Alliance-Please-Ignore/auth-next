@@ -114,7 +114,7 @@ export class DedupedFetch {
 			const fetchPromise = fetch(input, init).finally(() => {
 				// Keep the reservation until callers already queued for key
 				// generation have had a chance to observe it.
-				this.keyGenerationQueue.then(() => {
+				void this.keyGenerationQueue.then(() => {
 					this.inFlight.delete(key)
 					this.stats.inFlight = this.inFlight.size
 					if (this.config.debug) {

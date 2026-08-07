@@ -22,7 +22,7 @@
  *
  * TODO: Remove when migrating to RPC
  */
-import { bigint, boolean, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+import { boolean, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
 
 import { and, eq, ilike, inArray, sql } from '@repo/db-utils'
 

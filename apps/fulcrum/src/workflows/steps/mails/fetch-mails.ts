@@ -1,12 +1,12 @@
 import { getEsiInstanceForCharacter } from '@repo/esi'
+import { logger } from '@repo/hono-helpers'
 
-import { storeOrReturn } from '../../utils/storage'
 import { retryWithBackoff } from '../../utils/retry'
+import { storeOrReturn } from '../../utils/storage'
 import { fetchItemsInBatches } from './mail-content-batching'
 
-import type { Esi, CharacterMail, MailContent, MailingList, MailLabelsResponse } from '@repo/esi'
+import type { CharacterMail, Esi, MailingList, MailLabelsResponse } from '@repo/esi'
 import type { StepResult } from '../../utils/storage'
-import { logger } from '@repo/hono-helpers'
 
 export interface MailWithContent extends CharacterMail {
 	body?: string
@@ -26,7 +26,8 @@ async function fetchAllMailHeaders(esiStub: Esi, characterId: string): Promise<C
 	const allMails: CharacterMail[] = []
 	let lastMailId: string | undefined
 
-	for (let page = 0; page < 20; page++) { // Safety cap at 1000 mails (20 pages × 50)
+	for (let page = 0; page < 20; page++) {
+		// Safety cap at 1000 mails (20 pages × 50)
 		const batch = await retryWithBackoff(
 			async () => await esiStub.fetchCharacterMailPage(characterId, lastMailId),
 			{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 }
@@ -48,7 +49,7 @@ async function fetchAllMailHeaders(esiStub: Esi, characterId: string): Promise<C
 		lastMailId = lowestId
 
 		// Rate limit between pages
-		await new Promise(resolve => setTimeout(resolve, 300))
+		await new Promise((resolve) => setTimeout(resolve, 300))
 	}
 
 	return allMails
@@ -57,18 +58,23 @@ async function fetchAllMailHeaders(esiStub: Esi, characterId: string): Promise<C
 /**
  * Fetch all mail headers, content for each, mailing lists, and labels from ESI
  */
-export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Promise<MailFetchResult> {
+export async function fetchMailsFromEsi(
+	esiStub: Esi,
+	characterId: string
+): Promise<MailFetchResult> {
 	// Fetch all mail headers, mailing lists, and labels in parallel where possible
 	const [allMails, mailingLists, labels] = await Promise.all([
 		fetchAllMailHeaders(esiStub, characterId),
-		retryWithBackoff(
-			async () => await esiStub.fetchMailingLists(characterId),
-			{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 }
-		).catch(() => [] as MailingList[]),
-		retryWithBackoff(
-			async () => await esiStub.fetchMailLabels(characterId),
-			{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 }
-		).catch(() => ({ labels: [], total_unread_count: 0 }) as MailLabelsResponse),
+		retryWithBackoff(async () => await esiStub.fetchMailingLists(characterId), {
+			maxRetries: 3,
+			initialDelayMs: 1000,
+			maxDelayMs: 30000,
+		}).catch(() => [] as MailingList[]),
+		retryWithBackoff(async () => await esiStub.fetchMailLabels(characterId), {
+			maxRetries: 3,
+			initialDelayMs: 1000,
+			maxDelayMs: 30000,
+		}).catch(() => ({ labels: [], total_unread_count: 0 }) as MailLabelsResponse),
 	])
 
 	logger.log(`[fetchMails] Fetched ${allMails.length} mail headers`)
@@ -81,7 +87,9 @@ export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Prom
 	const mailsSkipped = allMails.slice(maxContentFetches)
 
 	if (mailsSkipped.length > 0) {
-		logger.log(`[fetchMails] Capping content fetches to ${maxContentFetches} (skipping ${mailsSkipped.length} oldest mails) due to ESI rate limits`)
+		logger.log(
+			`[fetchMails] Capping content fetches to ${maxContentFetches} (skipping ${mailsSkipped.length} oldest mails) due to ESI rate limits`
+		)
 	}
 
 	// Fetch content in smaller parallel batches to avoid connection pressure.
@@ -97,7 +105,7 @@ export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Prom
 			try {
 				const content = await retryWithBackoff(
 					async () => await esiStub.fetchMailContent(characterId, mail.mail_id!),
-					{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 },
+					{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 }
 				)
 				return { ...mail, body: content.body } as MailWithContent
 			} catch (error) {
@@ -112,7 +120,9 @@ export async function fetchMailsFromEsi(esiStub: Esi, characterId: string): Prom
 		mailsWithContent.push(mail as MailWithContent)
 	}
 
-	logger.log(`[fetchMails] Done: ${mailsWithContent.length} mails total (${mailsWithContent.filter(m => m.body).length} with body, ${mailsSkipped.length} skipped)`)
+	logger.log(
+		`[fetchMails] Done: ${mailsWithContent.length} mails total (${mailsWithContent.filter((m) => m.body).length} with body, ${mailsSkipped.length} skipped)`
+	)
 	return { mails: mailsWithContent, mailingLists, labels }
 }
 

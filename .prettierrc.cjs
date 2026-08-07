@@ -41,6 +41,7 @@ const config = {
 	],
 	importOrder: [...codeImports, ...typeImports],
 	importOrderTypeScriptVersion: '5.8.2',
+	importOrderParserPlugins: ['typescript', 'jsx', 'decorators-legacy'],
 	overrides: [
 		{
 			files: ['*.jsonc', '*.code-workspace'],

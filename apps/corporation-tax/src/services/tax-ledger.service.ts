@@ -732,7 +732,7 @@ export class TaxLedgerService {
 					transactionRows,
 					failed: false,
 				}
-			} catch (_error) {
+			} catch {
 				return {
 					characterId,
 					journalRows: [] as CharacterWalletJournalRow[],

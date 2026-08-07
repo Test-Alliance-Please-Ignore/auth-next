@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, relative, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { relative, resolve } from 'node:path'
 import { cloudflare } from '@cloudflare/vite-plugin'
 import { parse as parseJsonc } from 'jsonc-parser'
 import { defineConfig } from 'vite'
@@ -139,7 +138,6 @@ export const createViteConfig = (currentDir: string, configPath?: string) => {
 	const wranglerConfigPath = configPath ?? resolve(currentDir, 'wrangler.jsonc')
 
 	return defineConfig(({ command }: ConfigEnv): UserConfig => {
-		// eslint-disable-next-line turbo/no-undeclared-env-vars
 		const disableAuxWorkers = process.env.LOCAL_DEV_DISABLE_AUXILIARY_WORKERS === '1'
 
 		// Only use auxiliary worker discovery in dev mode (serve command)

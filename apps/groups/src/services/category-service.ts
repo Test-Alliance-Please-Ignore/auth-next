@@ -1,14 +1,15 @@
 import { and, eq, inArray } from '@repo/db-utils'
+
+import { categories, groupMembers } from '../db/schema'
+import { mapCategory, mapGroup } from './mappers'
+import { canViewCategory, canViewGroup } from './permissions'
+
 import type {
 	Category,
 	CategoryWithGroups,
 	CreateCategoryRequest,
 	UpdateCategoryRequest,
 } from '@repo/groups'
-import { categories, groupMembers } from '../db/schema'
-import { mapCategory, mapGroup } from './mappers'
-import { canViewCategory, canViewGroup } from './permissions'
-
 import type { ServiceContext } from './context'
 
 export class CategoryService {
@@ -22,7 +23,7 @@ export class CategoryService {
 		await this.ctx.env.GROUPS_KV?.delete(cacheKey)
 	}
 
-	async createCategory(data: CreateCategoryRequest, adminUserId: string): Promise<Category> {
+	async createCategory(data: CreateCategoryRequest, _adminUserId: string): Promise<Category> {
 		// Admin-only operation - validation should happen before calling this
 
 		const [category] = await this.ctx.db
@@ -115,7 +116,7 @@ export class CategoryService {
 	async updateCategory(
 		id: string,
 		data: UpdateCategoryRequest,
-		adminUserId: string
+		_adminUserId: string
 	): Promise<Category> {
 		// Admin-only operation
 
@@ -144,7 +145,7 @@ export class CategoryService {
 		return mapCategory(updated)
 	}
 
-	async deleteCategory(id: string, adminUserId: string): Promise<void> {
+	async deleteCategory(id: string, _adminUserId: string): Promise<void> {
 		// Admin-only operation
 		// CASCADE will delete all groups in this category and their relations
 		await this.ctx.db.delete(categories).where(eq(categories.id, id))

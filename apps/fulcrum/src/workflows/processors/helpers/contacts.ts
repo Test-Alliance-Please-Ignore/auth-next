@@ -4,12 +4,12 @@
  */
 
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 
 import type { CharacterContact, EsiTypeResolver } from '@repo/esi'
+import type { CoreBinding } from '../../../types/core-binding'
 import type { CharacterAffiliationCoordinator } from './character-affiliation'
 import type { EntityLinkCoordinator } from './entity-links'
-import type { CoreBinding } from '../../../types/core-binding'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Enriched character contact with resolved names
@@ -42,7 +42,7 @@ export type ProcessedContacts = ProcessedContact[]
  */
 function formatStanding(standing: number): StandingDisplay {
 	const standingValue = Number(standing)
-	
+
 	// Exact 0 gets neutral grey
 	if (standingValue === 0) {
 		return { value: standingValue, label: '0.0' }
@@ -54,33 +54,33 @@ function formatStanding(standing: number): StandingDisplay {
 		// Sky blue: #87CEEB = rgb(135, 206, 235)
 		// Blue: #0000FF = rgb(0, 0, 255)
 		// Navy: #000080 = rgb(0, 0, 128)
-		
-		let r: number, g: number, b: number
-		
+
+		let _r: number, _g: number, _b: number
+
 		if (standingValue <= 1) {
 			// Clamp to sky blue for values <= 1
-			r = 135
-			g = 206
-			b = 235
+			_r = 135
+			_g = 206
+			_b = 235
 		} else if (standingValue >= 10) {
 			// Clamp to navy for values >= 10
-			r = 0
-			g = 0
-			b = 128
+			_r = 0
+			_g = 0
+			_b = 128
 		} else if (standingValue <= 5) {
 			// Interpolate between sky blue (+1) and blue (+5)
 			const t = (standingValue - 1) / (5 - 1) // 0 to 1 as standing goes from 1 to 5
-			r = Math.round(135 + (0 - 135) * t)
-			g = Math.round(206 + (0 - 206) * t)
-			b = Math.round(235 + (255 - 235) * t)
+			_r = Math.round(135 + (0 - 135) * t)
+			_g = Math.round(206 + (0 - 206) * t)
+			_b = Math.round(235 + (255 - 235) * t)
 		} else {
 			// Interpolate between blue (+5) and navy (+10)
 			const t = (standingValue - 5) / (10 - 5) // 0 to 1 as standing goes from 5 to 10
-			r = 0
-			g = 0
-			b = Math.round(255 + (128 - 255) * t)
+			_r = 0
+			_g = 0
+			_b = Math.round(255 + (128 - 255) * t)
 		}
-		
+
 		return { value: standingValue, label: `+${standingValue.toFixed(1)}` }
 	}
 
@@ -89,34 +89,34 @@ function formatStanding(standing: number): StandingDisplay {
 	// Light red: #FFB6C1 = rgb(255, 182, 193)
 	// Red: #FF0000 = rgb(255, 0, 0)
 	// Dark red: #8B0000 = rgb(139, 0, 0)
-	
+
 	const absValue = Math.abs(standingValue)
-	let r: number, g: number, b: number
-	
+	let _r: number, _g: number, _b: number
+
 	if (absValue <= 1) {
 		// Clamp to light red for values >= -1
-		r = 255
-		g = 182
-		b = 193
+		_r = 255
+		_g = 182
+		_b = 193
 	} else if (absValue >= 10) {
 		// Clamp to dark red for values <= -10
-		r = 139
-		g = 0
-		b = 0
+		_r = 139
+		_g = 0
+		_b = 0
 	} else if (absValue <= 5) {
 		// Interpolate between light red (-1) and red (-5)
 		const t = (absValue - 1) / (5 - 1) // 0 to 1 as absValue goes from 1 to 5
-		r = 255
-		g = Math.round(182 + (0 - 182) * t)
-		b = Math.round(193 + (0 - 193) * t)
+		_r = 255
+		_g = Math.round(182 + (0 - 182) * t)
+		_b = Math.round(193 + (0 - 193) * t)
 	} else {
 		// Interpolate between red (-5) and dark red (-10)
 		const t = (absValue - 5) / (10 - 5) // 0 to 1 as absValue goes from 5 to 10
-		r = Math.round(255 + (139 - 255) * t)
-		g = 0
-		b = 0
+		_r = Math.round(255 + (139 - 255) * t)
+		_g = 0
+		_b = 0
 	}
-	
+
 	return { value: standingValue, label: standingValue.toFixed(1) }
 }
 
@@ -139,7 +139,7 @@ export async function enrichContacts(
 	contacts: CharacterContact[],
 	characterId: string,
 	affiliationCoordinator?: CharacterAffiliationCoordinator,
-	entityLinkCoordinator?: EntityLinkCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator
 ): Promise<ProcessedContacts> {
 	if (contacts.length === 0) {
 		return []
@@ -188,7 +188,7 @@ export async function enrichContacts(
 							characterName: nameMap[contact.contact_id],
 							forceCharacter: true,
 						})),
-					'enrichContacts',
+					'enrichContacts'
 				)
 			: {}
 
@@ -200,7 +200,7 @@ export async function enrichContacts(
 						entityId: String(contact.contact_id),
 						entityType: contact.contact_type,
 					})),
-					'enrichContacts',
+					'enrichContacts'
 				)
 			: {}
 

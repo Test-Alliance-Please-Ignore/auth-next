@@ -66,7 +66,7 @@ export interface Skills extends DurableObject {
 	 * @param skillIds - Array of skill IDs to get metadata for
 	 * @returns Array of skill metadata with group and category information
 	 */
-	getSkillsMetadata(skillIds: (string | number)[]): Promise<any[]>
+	getSkillsMetadata(skillIds: Array<string | number>): Promise<any[]>
 
 	/**
 	 * Get all available skills with group information

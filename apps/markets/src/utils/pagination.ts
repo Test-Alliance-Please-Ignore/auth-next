@@ -30,7 +30,7 @@ export function decodeCursor(cursor: string): CursorData {
 		}
 
 		return data
-	} catch (error) {
+	} catch {
 		throw new Error('Invalid pagination cursor')
 	}
 }

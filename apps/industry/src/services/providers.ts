@@ -1,21 +1,19 @@
-import { and, desc, eq, sql } from '@repo/db-utils'
-import {
+import { and, desc, eq } from '@repo/db-utils'
+import { EntityType, ServiceStatus, ServiceType } from '@repo/industry'
+
+import { providerContacts, providerServices, serviceProviders } from '../db/schema'
+
+import type {
 	ContactType,
 	CreateProviderParams,
-	EntityType,
 	ProviderContact,
 	ProviderFilters,
 	ProviderServiceDTO,
 	ProviderStatistics,
 	ServiceProvider,
 	ServiceProviderId,
-	ServiceStatus,
-	ServiceType,
 	UpdateProviderParams,
 } from '@repo/industry'
-
-import { providerContacts, providerServices, serviceProviders } from '../db/schema'
-
 import type { ServiceContext } from './context'
 
 /**
@@ -67,7 +65,7 @@ export class ProviderService {
 	 * List providers with optional filters
 	 */
 	async listProviders(filters: ProviderFilters = {}): Promise<ServiceProvider[]> {
-		const conditions: ReturnType<typeof and>[] = []
+		const conditions: Array<ReturnType<typeof and>> = []
 
 		// Apply filters
 		if (filters.ownerEntityId) {

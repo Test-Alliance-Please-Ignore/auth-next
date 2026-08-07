@@ -6,8 +6,8 @@ import { HR_ROLES, ROLE_HR_ADMIN, ROLE_HR_REVIEWER, ROLE_HR_VIEWER, SERVICE_HR }
 
 import { hrRoles } from '../db/schema'
 
-import type { CreateRoleRequest, Groups, Role } from '@repo/groups'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { CreateRoleRequest, Groups, Role } from '@repo/groups'
 import type { HrRole, HrRoleType, HrRoleUrn } from '@repo/hr'
 import type { ServiceContext } from './context'
 
@@ -31,7 +31,7 @@ export class HrRoleService {
 		hr_viewer: 1,
 	}
 
-	constructor(private ctx: ServiceContext) { }
+	constructor(private ctx: ServiceContext) {}
 
 	async ensureRolesExist(): Promise<void> {
 		const roles = HR_ROLES.map((role) => ({
@@ -44,7 +44,9 @@ export class HrRoleService {
 		try {
 			await groupsStub.batchCreateRoles({ roles })
 			this.logger.info('[HrRoleService.ensureRolesExist] roles created.', { roles })
-		} catch (error) { }
+		} catch {
+			this.logger.debug('[HrRoleService.ensureRolesExist] roles may already exist')
+		}
 	}
 
 	private async lookupRoleByHrRoleType(hrRoleType: HrRoleType): Promise<string> {
@@ -121,8 +123,7 @@ export class HrRoleService {
 				corporationId,
 			})
 			throw error
-		}
-		finally {
+		} finally {
 			this.clearUserAccessCache(userId)
 		}
 	}
@@ -260,9 +261,7 @@ export class HrRoleService {
 
 			// Directors are treated as leadership for access-listing purposes as well,
 			// even when the corporation is not a member corp with full HR tooling.
-			const directorIds = new Set(
-				directors.map((director) => String(director.characterId))
-			)
+			const directorIds = new Set(directors.map((director) => String(director.characterId)))
 			if (userCharacterIds.some((characterId) => directorIds.has(characterId))) {
 				return 'hr_admin'
 			}
@@ -328,9 +327,7 @@ export class HrRoleService {
 	async getUserRoles(userId: string, corporationId?: string): Promise<HrRole[]> {
 		if (!corporationId) {
 			const cacheKey = `hr-user-roles:${userId}`
-			return this.hrUserRolesCache.getOrSet(cacheKey, async () =>
-				this.fetchUserRoles(userId)
-			)
+			return this.hrUserRolesCache.getOrSet(cacheKey, async () => this.fetchUserRoles(userId))
 		}
 		return this.fetchUserRoles(userId, corporationId)
 	}
@@ -350,8 +347,7 @@ export class HrRoleService {
 		})
 		try {
 			const mappedRoles = roleAttachments.map((roleAttachment) => {
-				const resolvedCorporationId =
-					corporationId ?? String(roleAttachment.resourceId ?? '')
+				const resolvedCorporationId = corporationId ?? String(roleAttachment.resourceId ?? '')
 				return {
 					id: roleAttachment.id,
 					corporationId: resolvedCorporationId,
@@ -384,7 +380,7 @@ export class HrRoleService {
 	/**
 	 * Get all HR roles for a corporation
 	 */
-	async getCorporationRoles(corporationId: string, activeOnly = true): Promise<HrRole[]> {
+	async getCorporationRoles(corporationId: string, _activeOnly = true): Promise<HrRole[]> {
 		const groupsStub = getStub<Groups>(this.ctx.env.GROUPS, 'default')
 		const viewerRole = await this.getRoleForType(ROLE_HR_VIEWER)
 		const reviewerRole = await this.getRoleForType(ROLE_HR_REVIEWER)
@@ -455,44 +451,44 @@ export class HrRoleService {
 	async getUserHrCorporations(userId: string): Promise<string[]> {
 		const cacheKey = `hr-corps:${userId}`
 		return this.hrCorporationsCache.getOrSet(cacheKey, async () => {
-		const viewerRole = await this.getRoleForType(ROLE_HR_VIEWER)
-		const reviewerRole = await this.getRoleForType(ROLE_HR_REVIEWER)
-		const adminRole = await this.getRoleForType(ROLE_HR_ADMIN)
-		const groupsStub = getStub<Groups>(this.ctx.env.GROUPS, 'default')
+			const viewerRole = await this.getRoleForType(ROLE_HR_VIEWER)
+			const reviewerRole = await this.getRoleForType(ROLE_HR_REVIEWER)
+			const adminRole = await this.getRoleForType(ROLE_HR_ADMIN)
+			const groupsStub = getStub<Groups>(this.ctx.env.GROUPS, 'default')
 
-		const roleAttachments = await groupsStub.getRolesFor({
-			attachedToType: RoleAttachmentType.USER,
-			attachedToId: userId,
-			resourceType: ResourceType.CORPORATION,
-			roleIds: [viewerRole.id, reviewerRole.id, adminRole.id],
-		})
+			const roleAttachments = await groupsStub.getRolesFor({
+				attachedToType: RoleAttachmentType.USER,
+				attachedToId: userId,
+				resourceType: ResourceType.CORPORATION,
+				roleIds: [viewerRole.id, reviewerRole.id, adminRole.id],
+			})
 
-		const corporationIds = new Set(
-			roleAttachments.map((roleAttachment) => roleAttachment.resourceId as string)
-		)
+			const corporationIds = new Set(
+				roleAttachments.map((roleAttachment) => roleAttachment.resourceId as string)
+			)
 
-		const result = await this.ctx.db.execute(
-			sql`
+			const result = await this.ctx.db.execute(
+				sql`
 				select distinct corporation_id
 				from user_characters
 				where user_id = ${userId}
 					and deleted = false
 					and corporation_id is not null
 			`
-		)
-		const rows = (result as { rows?: Array<{ corporation_id?: unknown }> }).rows ?? []
-		const candidateCorporationIds = rows
-			.map((row) => row.corporation_id)
-			.filter((value): value is string => typeof value === 'string' && value.length > 0)
+			)
+			const rows = (result as { rows?: Array<{ corporation_id?: unknown }> }).rows ?? []
+			const candidateCorporationIds = rows
+				.map((row) => row.corporation_id)
+				.filter((value): value is string => typeof value === 'string' && value.length > 0)
 
-		for (const corporationId of candidateCorporationIds) {
-			const leadershipRole = await this.getLeadershipRoleForCorporation(userId, corporationId)
-			if (leadershipRole) {
-				corporationIds.add(corporationId)
+			for (const corporationId of candidateCorporationIds) {
+				const leadershipRole = await this.getLeadershipRoleForCorporation(userId, corporationId)
+				if (leadershipRole) {
+					corporationIds.add(corporationId)
+				}
 			}
-		}
 
-		return [...corporationIds]
+			return [...corporationIds]
 		})
 	}
 
@@ -519,7 +515,10 @@ export class HrRoleService {
 	/**
 	 * Get corporations where user has at least the specified HR role
 	 */
-	private async getUserHrCorporationsForMinRole(userId: string, minRole: 'hr_admin' | 'hr_reviewer'): Promise<string[]> {
+	private async getUserHrCorporationsForMinRole(
+		userId: string,
+		minRole: 'hr_admin' | 'hr_reviewer'
+	): Promise<string[]> {
 		const roleIds: string[] = []
 		const adminRole = await this.getRoleForType(ROLE_HR_ADMIN)
 		roleIds.push(adminRole.id)

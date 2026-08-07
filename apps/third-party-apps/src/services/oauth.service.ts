@@ -1,3 +1,8 @@
+import { buildOAuthApiMeResponseFromUserDetails } from '@repo/admin'
+import { logger } from '@repo/hono-helpers'
+
+import { getClientMetadata, requestedScopesAreAllowed } from '../oauth-contract'
+
 import type {
 	OAuthAuthorizationAction,
 	OAuthAuthorizationPreview,
@@ -5,19 +10,7 @@ import type {
 	OAuthSessionUser,
 	ThirdPartyAppScope,
 } from '@repo/admin'
-import { buildOAuthApiMeResponseFromUserDetails } from '@repo/admin'
-import { logger } from '@repo/hono-helpers'
-
-import { proxyEsiRequest } from '../esi-proxy'
-import {
-	extractCharacterIdFromEsiPath,
-	isAllowedWritePath,
-	isReadMethod,
-	normalizeEsiProxyPath,
-	requiredScopeForEsiRequest,
-} from '../proxy-policy'
-import { getClientMetadata, requestedScopesAreAllowed } from '../oauth-contract'
-import type { EveTokenStoreClient, Env } from '../context'
+import type { Env } from '../context'
 
 type OAuthGrantProps = {
 	sub: string
@@ -52,23 +45,29 @@ function validateAuthorizeRequestUrl(
 	try {
 		const parsed = new URL(requestUrl)
 		if (parsed.pathname !== '/authorize') {
-			logger.warn('[ThirdPartyApps OAuth] Rejecting authorize request URL with unexpected pathname', {
-				requestUrl,
-				pathname: parsed.pathname,
-				expectedOrigin,
-				environment: env.ENVIRONMENT,
-			})
+			logger.warn(
+				'[ThirdPartyApps OAuth] Rejecting authorize request URL with unexpected pathname',
+				{
+					requestUrl,
+					pathname: parsed.pathname,
+					expectedOrigin,
+					environment: env.ENVIRONMENT,
+				}
+			)
 			return null
 		}
 		if (isAllowedLocalHttpUrl(parsed) && isLocalHttpOrigin(expectedOrigin)) return parsed
 		if (parsed.protocol === 'https:' && parsed.origin === expectedOrigin) return parsed
-		logger.warn('[ThirdPartyApps OAuth] Rejecting authorize request URL with invalid origin or protocol', {
-			requestUrl,
-			origin: parsed.origin,
-			protocol: parsed.protocol,
-			expectedOrigin,
-			environment: env.ENVIRONMENT,
-		})
+		logger.warn(
+			'[ThirdPartyApps OAuth] Rejecting authorize request URL with invalid origin or protocol',
+			{
+				requestUrl,
+				origin: parsed.origin,
+				protocol: parsed.protocol,
+				expectedOrigin,
+				environment: env.ENVIRONMENT,
+			}
+		)
 		return null
 	} catch {
 		logger.warn('[ThirdPartyApps OAuth] Rejecting authorize request URL that failed to parse', {
@@ -80,7 +79,11 @@ function validateAuthorizeRequestUrl(
 	}
 }
 
-function buildProps(user: OAuthSessionUser, scope: ThirdPartyAppScope[], clientId: string): OAuthGrantProps {
+function buildProps(
+	user: OAuthSessionUser,
+	scope: ThirdPartyAppScope[],
+	clientId: string
+): OAuthGrantProps {
 	return {
 		sub: user.id,
 		scope,
@@ -98,11 +101,14 @@ function buildDeniedRedirect(redirectUri: string, state?: string | null): string
 async function parseAuthRequest(env: Env, requestUrl: string, expectedOrigin: string) {
 	const validatedUrl = validateAuthorizeRequestUrl(env, requestUrl, expectedOrigin)
 	if (!validatedUrl) {
-		logger.warn('[ThirdPartyApps OAuth] Authorization request validation failed before provider parsing', {
-			requestUrl,
-			expectedOrigin,
-			environment: env.ENVIRONMENT,
-		})
+		logger.warn(
+			'[ThirdPartyApps OAuth] Authorization request validation failed before provider parsing',
+			{
+				requestUrl,
+				expectedOrigin,
+				environment: env.ENVIRONMENT,
+			}
+		)
 		return null
 	}
 
@@ -251,7 +257,10 @@ export async function resolveOAuthAuthorization(
 	return { redirectTo }
 }
 
-export async function handleThirdPartyAppsInternalRequest(request: Request, env: Env): Promise<Response> {
+export async function handleThirdPartyAppsInternalRequest(
+	request: Request,
+	env: Env
+): Promise<Response> {
 	const url = new URL(request.url)
 	const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
 

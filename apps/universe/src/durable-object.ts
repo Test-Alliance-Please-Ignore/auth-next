@@ -1,11 +1,10 @@
 import { DurableObject } from 'cloudflare:workers'
-
 import { alias } from 'drizzle-orm/pg-core'
 
 import { and, eq, ilike, inArray, ne, sql } from '@repo/db-utils'
 import { getStub, LRUCache } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
 import { buildPublicEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
+import { logger } from '@repo/hono-helpers'
 import {
 	EsiGetStructureMarketDataResponseSchema,
 	EsiGetStructureResponseSchema,
@@ -13,14 +12,13 @@ import {
 	MAGMATIC_GAS_TYPE_ID,
 	MOON_BASE_MINERAL_TYPE_IDS,
 	MOON_GOO_TYPE_IDS,
+	selectNearestMoonByPosition,
 	UniverseMoonResourceSchema,
 	UniverseMoonSchema,
 	UniverseMoonWithResourcesSchema,
-	selectNearestMoonByPosition,
 } from '@repo/universe'
 
 import { createDb } from './db'
-import { resolveMoonRegionIds } from './utils/moon-region-lookup'
 import {
 	invCategories,
 	invFlags,
@@ -38,10 +36,11 @@ import {
 	universeStargates,
 } from './db/schema'
 import { parseInventory } from './utils/inventory-parser'
+import { resolveMoonRegionIds } from './utils/moon-region-lookup'
 
-import type { InventoryParseResult } from '@repo/eve-types'
 import type { EsiTypeResolver } from '@repo/esi'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
+import type { InventoryParseResult } from '@repo/eve-types'
 import type {
 	EsiGetStructureMarketDataResponse,
 	EsiGetStructureMarketDataResponseObject,
@@ -52,22 +51,22 @@ import type {
 	InvFlag,
 	InvGroup,
 	InvType,
+	TypeMaterial,
+	TypeMetadata,
+	Universe,
+	UniverseConstellation,
+	UniverseMoon,
+	UniverseMoonGeography,
+	UniverseMoonResource,
+	UniverseMoonWithResources,
 	UniverseNpcStation,
 	UniversePlanet,
 	UniversePlanetGeography,
-	UniverseConstellation,
+	UniversePosition,
 	UniverseRegion,
 	UniverseSolarSystem,
 	UniverseStargate,
 	UniverseStaticMoon,
-	UniverseMoonGeography,
-	UniversePosition,
-	TypeMaterial,
-	TypeMetadata,
-	Universe,
-	UniverseMoon,
-	UniverseMoonResource,
-	UniverseMoonWithResources,
 } from '@repo/universe'
 import type { Env } from './context'
 
@@ -155,7 +154,9 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		this.systemsByRegionCache = new LRUCache<UniverseSolarSystem[]>(200)
 		this.regionStatsCache = new LRUCache<{ systemCount: number; moonCount: number }>(200)
 		this.regionsBySystemCache = new LRUCache<{ regionId: string; regionName: string }>(2000)
-		this.regionConnectionsCache = new LRUCache<Array<{ fromRegionId: string; toRegionId: string }>>(200)
+		this.regionConnectionsCache = new LRUCache<Array<{ fromRegionId: string; toRegionId: string }>>(
+			200
+		)
 		this.typeMaterialsCache = new LRUCache<TypeMaterial[]>(8000)
 		this.esiRateLimits = new EsiRateLimitGuard(new EsiRateLimitStore(env.ESI_RATE_LIMITS))
 	}
@@ -222,7 +223,6 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		return fallbackIds
 			.map((id) => hydrated[id])
 			.filter((system): system is UniverseSolarSystem => Boolean(system))
-
 	}
 
 	/**
@@ -504,15 +504,15 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 					continue
 				}
 
-					result[moonId] = {
-						moonId: moon.moonId,
-						moonName: moon.moonName,
-						planetId: planet.planetId,
-						planetName: planet.planetName,
-						solarSystemId: planet.solarSystemId,
-						solarSystemName: planet.solarSystemName,
-					}
+				result[moonId] = {
+					moonId: moon.moonId,
+					moonName: moon.moonName,
+					planetId: planet.planetId,
+					planetName: planet.planetName,
+					solarSystemId: planet.solarSystemId,
+					solarSystemName: planet.solarSystemName,
 				}
+			}
 
 			return result
 		} catch (error) {
@@ -835,8 +835,10 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			if (sdeUnresolved.length > 0) {
 				const resolverStub = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
-				const fallbackNames = await resolverStub.resolveIds(sdeUnresolved).catch(() => ({}) as Record<string, string>)
-				const newRows: typeof invTypes.$inferInsert[] = []
+				const fallbackNames = await resolverStub
+					.resolveIds(sdeUnresolved)
+					.catch(() => ({}) as Record<string, string>)
+				const newRows: Array<typeof invTypes.$inferInsert> = []
 				for (const [id, name] of Object.entries(fallbackNames)) {
 					if (name) {
 						const stub: InvType = {
@@ -938,10 +940,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			.from(invTypes)
 			.innerJoin(invGroups, eq(invTypes.groupId, invGroups.groupId))
 			.where(
-				and(
-					eq(invTypes.published, true),
-					inArray(invGroups.categoryId, ['6', '7', '32', '66'])
-				)
+				and(eq(invTypes.published, true), inArray(invGroups.categoryId, ['6', '7', '32', '66']))
 			)
 
 		// Implants (category 20) filtered to attribute enhancers + skill hardwirings
@@ -1046,8 +1045,10 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			if (unresolved.length > 0) {
 				const resolverStub = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
-				const fallbackNames = await resolverStub.resolveIds(unresolved).catch(() => ({}) as Record<string, string>)
-				const newRows: typeof universeRegions.$inferInsert[] = []
+				const fallbackNames = await resolverStub
+					.resolveIds(unresolved)
+					.catch(() => ({}) as Record<string, string>)
+				const newRows: Array<typeof universeRegions.$inferInsert> = []
 				for (const [id, name] of Object.entries(fallbackNames)) {
 					if (name) {
 						const regionData: UniverseRegion = { regionId: id, regionName: name }
@@ -1079,7 +1080,9 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	/**
 	 * Resolve regions by names.
 	 */
-	async resolveRegionsByNames(regionNames: string[]): Promise<Record<string, UniverseRegion | null>> {
+	async resolveRegionsByNames(
+		regionNames: string[]
+	): Promise<Record<string, UniverseRegion | null>> {
 		try {
 			const result: Record<string, UniverseRegion | null> = {}
 			const cacheMisses: string[] = []
@@ -1139,19 +1142,19 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				}
 			}
 
-				if (cacheMisses.length > 0) {
-					let rows: typeof universeConstellations.$inferSelect[] = []
-					try {
-						rows = await this.db
-							.select()
-							.from(universeConstellations)
-							.where(inArray(universeConstellations.constellationId, cacheMisses))
-					} catch (error) {
-						logger.warn(
-							'Constellation DB lookup failed; falling back to ESI for unresolved IDs',
-							error
-						)
-					}
+			if (cacheMisses.length > 0) {
+				let rows: Array<typeof universeConstellations.$inferSelect> = []
+				try {
+					rows = await this.db
+						.select()
+						.from(universeConstellations)
+						.where(inArray(universeConstellations.constellationId, cacheMisses))
+				} catch (error) {
+					logger.warn(
+						'Constellation DB lookup failed; falling back to ESI for unresolved IDs',
+						error
+					)
+				}
 
 				for (const row of rows) {
 					const data: UniverseConstellation = {
@@ -1201,7 +1204,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 					})
 				)
 
-				const newRows: typeof universeConstellations.$inferInsert[] = []
+				const newRows: Array<typeof universeConstellations.$inferInsert> = []
 				for (const settled of fetched) {
 					if (settled.status === 'fulfilled' && settled.value) {
 						const c = settled.value
@@ -1251,19 +1254,19 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				}
 			}
 
-				if (cacheMisses.length > 0) {
-					let systems: typeof universeSolarSystems.$inferSelect[] = []
-					try {
-						systems = await this.db
-							.select()
-							.from(universeSolarSystems)
-							.where(inArray(universeSolarSystems.solarSystemId, cacheMisses))
-					} catch (error) {
-						logger.warn(
-							'Solar system DB lookup failed; falling back to ESI for unresolved IDs',
-							error
-						)
-					}
+			if (cacheMisses.length > 0) {
+				let systems: Array<typeof universeSolarSystems.$inferSelect> = []
+				try {
+					systems = await this.db
+						.select()
+						.from(universeSolarSystems)
+						.where(inArray(universeSolarSystems.solarSystemId, cacheMisses))
+				} catch (error) {
+					logger.warn(
+						'Solar system DB lookup failed; falling back to ESI for unresolved IDs',
+						error
+					)
+				}
 
 				for (const system of systems) {
 					const systemData: UniverseSolarSystem = {
@@ -1323,11 +1326,12 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				for (const s of fetched) {
 					if (s.status === 'fulfilled' && s.value) constellationIds.push(s.value.constellationId)
 				}
-				const constellationMap = constellationIds.length > 0
-					? await this.resolveConstellationsByIds([...new Set(constellationIds)])
-					: {}
+				const constellationMap =
+					constellationIds.length > 0
+						? await this.resolveConstellationsByIds([...new Set(constellationIds)])
+						: {}
 
-				const newRows: typeof universeSolarSystems.$inferInsert[] = []
+				const newRows: Array<typeof universeSolarSystems.$inferInsert> = []
 				for (const settled of fetched) {
 					if (settled.status === 'fulfilled' && settled.value) {
 						const s = settled.value
@@ -1599,10 +1603,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			}
 
 			if (cacheMisses.length > 0) {
-				const moonsRows = await this.db
-					.select()
-					.from(moons)
-					.where(inArray(moons.name, cacheMisses))
+				const moonsRows = await this.db.select().from(moons).where(inArray(moons.name, cacheMisses))
 
 				for (const moon of moonsRows) {
 					const moonData: UniverseStaticMoon = {
@@ -1981,7 +1982,9 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	/**
 	 * Get system and moon counts per region (for region overview map).
 	 */
-	async getRegionStats(regionIds: string[]): Promise<Record<string, { systemCount: number; moonCount: number }>> {
+	async getRegionStats(
+		regionIds: string[]
+	): Promise<Record<string, { systemCount: number; moonCount: number }>> {
 		if (regionIds.length === 0) return {}
 
 		const result: Record<string, { systemCount: number; moonCount: number }> = {}
@@ -2012,7 +2015,10 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 						moonCount: sql<string>`count(${moons.moonId})`.as('moon_count'),
 					})
 					.from(moons)
-					.innerJoin(universeSolarSystems, eq(moons.solarSystemId, universeSolarSystems.solarSystemId))
+					.innerJoin(
+						universeSolarSystems,
+						eq(moons.solarSystemId, universeSolarSystems.solarSystemId)
+					)
 					.where(inArray(universeSolarSystems.regionId, cacheMisses))
 					.groupBy(universeSolarSystems.regionId),
 			])
@@ -2051,7 +2057,9 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	/**
 	 * Get unique cross-region stargate connections (for drawing inter-region lines on universe map).
 	 */
-	async getRegionsBySystemIds(systemIds: string[]): Promise<Record<string, { regionId: string; regionName: string }>> {
+	async getRegionsBySystemIds(
+		systemIds: string[]
+	): Promise<Record<string, { regionId: string; regionName: string }>> {
 		if (systemIds.length === 0) return {}
 		const result: Record<string, { regionId: string; regionName: string }> = {}
 		const cacheMisses: string[] = []
@@ -2084,7 +2092,9 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		return result
 	}
 
-	async getRegionConnections(regionIds: string[]): Promise<Array<{ fromRegionId: string; toRegionId: string }>> {
+	async getRegionConnections(
+		regionIds: string[]
+	): Promise<Array<{ fromRegionId: string; toRegionId: string }>> {
 		if (regionIds.length === 0) return []
 
 		const cachedConnections = new Map<string, Array<{ fromRegionId: string; toRegionId: string }>>()
@@ -2164,7 +2174,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	 * WebSocket message handler (Hibernation API)
 	 * Called when a WebSocket message is received
 	 */
-	async webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): Promise<void> {
+	async webSocketMessage(_ws: WebSocket, _message: ArrayBuffer | string): Promise<void> {
 		// TODO: Implement WebSocket message handling
 	}
 
@@ -2173,10 +2183,10 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	 * Called when a WebSocket connection is closed
 	 */
 	async webSocketClose(
-		ws: WebSocket,
-		code: number,
-		reason: string,
-		wasClean: boolean
+		_ws: WebSocket,
+		_code: number,
+		_reason: string,
+		_wasClean: boolean
 	): Promise<void> {
 		// TODO: Implement cleanup logic
 	}
@@ -2238,8 +2248,6 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	 * Fetch handler for HTTP requests to the Durable Object
 	 */
 	async fetch(request: Request): Promise<Response> {
-		const url = new URL(request.url)
-
 		// WebSocket upgrade handling
 		if (request.headers.get('Upgrade') === 'websocket') {
 			const pair = new WebSocketPair()

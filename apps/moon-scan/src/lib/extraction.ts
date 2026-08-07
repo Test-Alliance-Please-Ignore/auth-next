@@ -10,7 +10,10 @@ export interface ExtractionInput {
 	// typeId → m³ per unit (from Universe DO)
 	oreVolumes: Record<string, number>
 	// typeId → [{ materialTypeId, quantity per batch, batchSize }]
-	reprocessingMap: Record<string, Array<{ materialTypeId: string; quantity: number; batchSize: number }>>
+	reprocessingMap: Record<
+		string,
+		Array<{ materialTypeId: string; quantity: number; batchSize: number }>
+	>
 	// typeId → ISK sell price (from Markets worker)
 	materialPrices: Record<string, number>
 	fuelBlockPrice: number
@@ -43,9 +46,6 @@ export interface ExtractionResult {
 	isPassive: boolean
 }
 
-// Mineral group ID — excluded from Metenox output
-const MINERAL_GROUP_ID = 18
-
 export function calculateExtraction(input: ExtractionInput): ExtractionResult {
 	const {
 		profile,
@@ -73,7 +73,8 @@ export function calculateExtraction(input: ExtractionInput): ExtractionResult {
 
 	if (profile.isPassive) {
 		// Metenox: always 24h, with sec status modifier
-		const secModifier = secStatus < 0 ? parseFloat(profile.nullsecModifier) : parseFloat(profile.lowsecModifier)
+		const secModifier =
+			secStatus < 0 ? parseFloat(profile.nullsecModifier) : parseFloat(profile.lowsecModifier)
 		cycleHours = 24
 		totalVolume = baseRate * secModifier * cycleHours
 		fuelUnits = fuelPerHr * cycleHours

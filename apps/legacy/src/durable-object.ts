@@ -1,10 +1,10 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { and, asc, desc, eq, ilike, inArray, ne, notInArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { and, asc, desc, eq, ilike, inArray, ne, notInArray, or, sql } from '@repo/db-utils'
 import { parseDateOrNull } from '@repo/worker-utils'
+
 import { createDb } from './db'
-import { coreUserCharacters, coreUsers } from './db/schema-core'
 import {
 	legacyAuthApplicationEvents,
 	legacyAuthApplications,
@@ -15,17 +15,16 @@ import {
 	legacyMigrationActions,
 	legacyMigrationQueue,
 } from './db/schema'
+import { coreUserCharacters, coreUsers } from './db/schema-core'
 
-import type { Legacy, LegacyMigrationQueueItem } from '@repo/legacy'
 import type { Core } from '@repo/core'
+import type { Legacy, LegacyMigrationQueueItem } from '@repo/legacy'
 import type { Env } from './context'
 
 export class LegacyDO extends DurableObject<Env> implements Legacy {
 	private db = createDb(this.env.DATABASE_URL)
 
-	private parseSnapshot(
-		value: unknown
-	): {
+	private parseSnapshot(value: unknown): {
 		matchingCharacterIds: Set<string>
 		matchingDiscordUserIds: Set<string>
 		associatedCounts: {
@@ -38,7 +37,9 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 	} {
 		const obj = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 		const matchingCharacters = Array.isArray(obj.matchingCharacters) ? obj.matchingCharacters : []
-		const matchingDiscordAccounts = Array.isArray(obj.matchingDiscordAccounts) ? obj.matchingDiscordAccounts : []
+		const matchingDiscordAccounts = Array.isArray(obj.matchingDiscordAccounts)
+			? obj.matchingDiscordAccounts
+			: []
 		const associatedCounts =
 			obj.associatedCounts && typeof obj.associatedCounts === 'object'
 				? (obj.associatedCounts as Record<string, unknown>)
@@ -47,13 +48,17 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		return {
 			matchingCharacterIds: new Set(
 				matchingCharacters
-					.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+					.filter(
+						(entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object'
+					)
 					.map((entry) => String(entry.characterId ?? ''))
 					.filter(Boolean)
 			),
 			matchingDiscordUserIds: new Set(
 				matchingDiscordAccounts
-					.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+					.filter(
+						(entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object'
+					)
 					.map((entry) => String(entry.discordUserId ?? ''))
 					.filter(Boolean)
 			),
@@ -72,7 +77,9 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		crossModernUserQueueMatchesCount: number
 	} {
 		const obj = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
-		const crossMatches = Array.isArray(obj.crossModernUserQueueMatches) ? obj.crossModernUserQueueMatches : []
+		const crossMatches = Array.isArray(obj.crossModernUserQueueMatches)
+			? obj.crossModernUserQueueMatches
+			: []
 		return {
 			multipleLegacyUsersForModernUser: Boolean(obj.multipleLegacyUsersForModernUser),
 			crossModernUserQueueMatchesCount: crossMatches.length,
@@ -101,10 +108,12 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		if (next.associatedCounts.ipAddresses > existing.associatedCounts.ipAddresses) return true
 		if (next.associatedCounts.notes > existing.associatedCounts.notes) return true
 		if (next.associatedCounts.applications > existing.associatedCounts.applications) return true
-		if (next.associatedCounts.discordAccounts > existing.associatedCounts.discordAccounts) return true
+		if (next.associatedCounts.discordAccounts > existing.associatedCounts.discordAccounts)
+			return true
 
 		if (
-			nextConflicts.crossModernUserQueueMatchesCount > existingConflicts.crossModernUserQueueMatchesCount
+			nextConflicts.crossModernUserQueueMatchesCount >
+			existingConflicts.crossModernUserQueueMatchesCount
 		) {
 			return true
 		}
@@ -143,7 +152,9 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		}
 	}
 
-	async resolveLegacyActorCharacterNames(legacyAuthUserIds: string[]): Promise<Record<string, string>> {
+	async resolveLegacyActorCharacterNames(
+		legacyAuthUserIds: string[]
+	): Promise<Record<string, string>> {
 		const uniqueIds = [...new Set(legacyAuthUserIds.filter(Boolean))]
 		if (uniqueIds.length === 0) return {}
 
@@ -175,9 +186,7 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 
 			const esiOwnerNames = [
 				...new Set(
-					rows
-						.filter((row) => row.source === 'esi_owner')
-						.map((row) => row.characterName)
+					rows.filter((row) => row.source === 'esi_owner').map((row) => row.characterName)
 				),
 			]
 			if (esiOwnerNames.length === 1) {
@@ -202,8 +211,10 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 	}) {
 		const where = []
 		if (filters.status) where.push(eq(legacyMigrationQueue.status, filters.status))
-		if (filters.modernUserId) where.push(eq(legacyMigrationQueue.modernUserId, filters.modernUserId))
-		if (filters.legacyAuthUserId) where.push(eq(legacyMigrationQueue.legacyAuthUserId, filters.legacyAuthUserId))
+		if (filters.modernUserId)
+			where.push(eq(legacyMigrationQueue.modernUserId, filters.modernUserId))
+		if (filters.legacyAuthUserId)
+			where.push(eq(legacyMigrationQueue.legacyAuthUserId, filters.legacyAuthUserId))
 		const whereClause = where.length > 0 ? and(...where) : undefined
 		const offset = (filters.page - 1) * filters.pageSize
 
@@ -228,7 +239,9 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 						columns: { id: true, mainCharacterId: true },
 					})
 				: []
-		const mainCharacterIds = userRows.map((row) => row.mainCharacterId).filter((v): v is string => Boolean(v))
+		const mainCharacterIds = userRows
+			.map((row) => row.mainCharacterId)
+			.filter((v): v is string => Boolean(v))
 		const mainCharacterRows =
 			mainCharacterIds.length > 0
 				? await this.db.query.coreUserCharacters.findMany({
@@ -239,12 +252,15 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		const mainCharacterNameById = new Map(
 			mainCharacterRows.map((row) => [row.characterId, row.characterName ?? null])
 		)
-		const mainCharacterIdByUserId = new Map(userRows.map((row) => [row.id, row.mainCharacterId ?? null]))
+		const mainCharacterIdByUserId = new Map(
+			userRows.map((row) => [row.id, row.mainCharacterId ?? null])
+		)
 		const enrichedRows = rows.map((row) => ({
 			...row,
 			modernUserMainCharacterName:
 				mainCharacterIdByUserId.get(row.modernUserId) != null
-					? (mainCharacterNameById.get(mainCharacterIdByUserId.get(row.modernUserId) as string) ?? null)
+					? (mainCharacterNameById.get(mainCharacterIdByUserId.get(row.modernUserId) as string) ??
+						null)
 					: null,
 		}))
 
@@ -316,7 +332,9 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 					})
 				: []
 		const noteActorIds = [
-			...new Set(notes.map((note) => note.legacyCreatedByUserId).filter((id): id is string => Boolean(id))),
+			...new Set(
+				notes.map((note) => note.legacyCreatedByUserId).filter((id): id is string => Boolean(id))
+			),
 		]
 		const noteActorNames = await this.resolveLegacyActorCharacterNames(noteActorIds)
 		const coreStub = getStub<Core>(this.env.CORE, 'default')
@@ -331,7 +349,8 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		const metadataCharacterIds = characters
 			.filter((character) => linkedByCharacterId.get(character.characterId) !== item.modernUserId)
 			.map((character) => character.characterId)
-		const characterMetadataRows = await coreStub.getLegacyCharacterImportMetadata(metadataCharacterIds)
+		const characterMetadataRows =
+			await coreStub.getLegacyCharacterImportMetadata(metadataCharacterIds)
 		const characterMetadataById = new Map(
 			characterMetadataRows.map((row) => [row.characterId, row])
 		)
@@ -342,13 +361,13 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 				const metadata =
 					linkedUserId === item.modernUserId
 						? {
-							characterName: linkedRow?.characterName ?? character.characterName,
-							corporationId: linkedRow?.corporationId ?? null,
-							corporationName: linkedRow?.corporationName ?? null,
-							allianceId: linkedRow?.allianceId ?? null,
-							allianceName: linkedRow?.allianceName ?? null,
-							isDeleted: linkedRow?.isDeleted ?? false,
-						}
+								characterName: linkedRow?.characterName ?? character.characterName,
+								corporationId: linkedRow?.corporationId ?? null,
+								corporationName: linkedRow?.corporationName ?? null,
+								allianceId: linkedRow?.allianceId ?? null,
+								allianceName: linkedRow?.allianceName ?? null,
+								isDeleted: linkedRow?.isDeleted ?? false,
+							}
 						: characterMetadataById.get(character.characterId)
 				return {
 					characterId: character.characterId,
@@ -360,15 +379,17 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 					allianceName: metadata?.allianceName ?? null,
 					isDeleted: metadata?.isDeleted ?? false,
 					alreadyLinkedToModernUser: linkedUserId === item.modernUserId,
-					linkedToOtherUserId: linkedUserId && linkedUserId !== item.modernUserId ? linkedUserId : null,
+					linkedToOtherUserId:
+						linkedUserId && linkedUserId !== item.modernUserId ? linkedUserId : null,
 				}
 			}),
 			notes: notes.map((note) => ({
 				legacyNoteId: note.legacyNoteId,
 				note: note.note,
 				legacyCreatedByUserId: note.legacyCreatedByUserId ?? null,
-				legacyCreatedByCharacterName:
-					note.legacyCreatedByUserId ? (noteActorNames[note.legacyCreatedByUserId] ?? null) : null,
+				legacyCreatedByCharacterName: note.legacyCreatedByUserId
+					? (noteActorNames[note.legacyCreatedByUserId] ?? null)
+					: null,
 				legacyDateCreated: note.legacyDateCreated ?? null,
 				alreadyImported: importedLegacyNoteIds.has(note.legacyNoteId),
 			})),
@@ -376,28 +397,41 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		}
 		const snapshot = item.candidateSnapshot ?? {}
 		const associatedCounts =
-			snapshot && typeof snapshot === 'object' && snapshot.associatedCounts && typeof snapshot.associatedCounts === 'object'
+			snapshot &&
+			typeof snapshot === 'object' &&
+			snapshot.associatedCounts &&
+			typeof snapshot.associatedCounts === 'object'
 				? (snapshot.associatedCounts as Record<string, unknown>)
 				: {}
 		const sanitizedCandidateSnapshot = {
 			recheckMode:
-				snapshot && typeof snapshot === 'object' && typeof (snapshot as Record<string, unknown>).recheckMode === 'string'
+				snapshot &&
+				typeof snapshot === 'object' &&
+				typeof (snapshot as Record<string, unknown>).recheckMode === 'string'
 					? (snapshot as Record<string, unknown>).recheckMode
 					: undefined,
 			recheckedAt:
-				snapshot && typeof snapshot === 'object' && typeof (snapshot as Record<string, unknown>).recheckedAt === 'string'
+				snapshot &&
+				typeof snapshot === 'object' &&
+				typeof (snapshot as Record<string, unknown>).recheckedAt === 'string'
 					? (snapshot as Record<string, unknown>).recheckedAt
 					: undefined,
 			matchSources:
-				snapshot && typeof snapshot === 'object' && (snapshot as Record<string, unknown>).matchSources
+				snapshot &&
+				typeof snapshot === 'object' &&
+				(snapshot as Record<string, unknown>).matchSources
 					? (snapshot as Record<string, unknown>).matchSources
 					: undefined,
 			modernUserId:
-				snapshot && typeof snapshot === 'object' && typeof (snapshot as Record<string, unknown>).modernUserId === 'string'
+				snapshot &&
+				typeof snapshot === 'object' &&
+				typeof (snapshot as Record<string, unknown>).modernUserId === 'string'
 					? (snapshot as Record<string, unknown>).modernUserId
 					: undefined,
 			recheckVersion:
-				snapshot && typeof snapshot === 'object' && typeof (snapshot as Record<string, unknown>).recheckVersion === 'number'
+				snapshot &&
+				typeof snapshot === 'object' &&
+				typeof (snapshot as Record<string, unknown>).recheckVersion === 'number'
 					? (snapshot as Record<string, unknown>).recheckVersion
 					: undefined,
 			associatedCounts: {
@@ -411,18 +445,17 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		return { item: { ...item, candidateSnapshot: sanitizedCandidateSnapshot }, actions, candidates }
 	}
 
-	async applyMigration(
-		id: string,
-		payload?: Record<string, unknown>,
-		actorUserId?: string | null
-	) {
+	async applyMigration(id: string, payload?: Record<string, unknown>, actorUserId?: string | null) {
 		const existing = await this.db.query.legacyMigrationQueue.findFirst({
 			where: eq(legacyMigrationQueue.id, id),
 		})
 		if (!existing) return null
 		const coreStub = getStub<Core>(this.env.CORE, 'default')
 
-		const applyResults: Record<string, { status: 'applied' | 'skipped' | 'error'; message?: string }> = {}
+		const applyResults: Record<
+			string,
+			{ status: 'applied' | 'skipped' | 'error'; message?: string }
+		> = {}
 		const applyBlacklistToUser = Boolean(payload?.applyBlacklistToUser)
 		const importCharacterLinks = Boolean(payload?.importCharacterLinks)
 		const importNotes = Boolean(payload?.importNotes)
@@ -708,7 +741,11 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			decidedAt: new Date().toISOString(),
 		}
 		const nextStatus: 'pending' | 'partially_applied' | 'applied' | 'dismissed' | 'error' =
-			payload.decision === 'reject' ? 'dismissed' : payload.decision === 'accept' ? 'pending' : existing.status
+			payload.decision === 'reject'
+				? 'dismissed'
+				: payload.decision === 'accept'
+					? 'pending'
+					: existing.status
 		const [updated] = await this.db
 			.update(legacyMigrationQueue)
 			.set({
@@ -728,17 +765,17 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		return { item: updated }
 	}
 
-		async recheckUser(modernUserId: string, actorUserId?: string, options?: { force?: boolean }) {
-			const IP_ASSOCIATION_MAX_GAP_MS = 365 * 24 * 60 * 60 * 1000
-			type IpRange = { firstSeenAt: Date | null; lastSeenAt: Date | null }
-			const getRangeBounds = (range: IpRange): { start: number; end: number } | null => {
-				const first = parseDateOrNull(range.firstSeenAt)
-				const last = parseDateOrNull(range.lastSeenAt)
-				const start = first?.getTime() ?? last?.getTime() ?? null
-				const end = last?.getTime() ?? first?.getTime() ?? null
-				if (start === null || end === null) return null
-				return start <= end ? { start, end } : { start: end, end: start }
-			}
+	async recheckUser(modernUserId: string, actorUserId?: string, options?: { force?: boolean }) {
+		const IP_ASSOCIATION_MAX_GAP_MS = 365 * 24 * 60 * 60 * 1000
+		type IpRange = { firstSeenAt: Date | null; lastSeenAt: Date | null }
+		const getRangeBounds = (range: IpRange): { start: number; end: number } | null => {
+			const first = parseDateOrNull(range.firstSeenAt)
+			const last = parseDateOrNull(range.lastSeenAt)
+			const start = first?.getTime() ?? last?.getTime() ?? null
+			const end = last?.getTime() ?? first?.getTime() ?? null
+			if (start === null || end === null) return null
+			return start <= end ? { start, end } : { start: end, end: start }
+		}
 		const areRangesTemporallyAssociated = (a: IpRange, b: IpRange): boolean => {
 			const aBounds = getRangeBounds(a)
 			const bBounds = getRangeBounds(b)
@@ -812,59 +849,72 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			crossUserRows,
 			allAssociatedCharacters,
 			allAssociatedDiscordAccounts,
-		] =
-			await Promise.all([
-				this.db
-					.select({ legacyAuthUserId: legacyAuthUserIpAddresses.legacyAuthUserId, count: sql<number>`count(*)::int` })
-					.from(legacyAuthUserIpAddresses)
-					.where(inArray(legacyAuthUserIpAddresses.legacyAuthUserId, legacyUserIds))
-					.groupBy(legacyAuthUserIpAddresses.legacyAuthUserId),
-				this.db
-					.select({ legacyAuthUserId: legacyAuthNotes.legacyAuthUserId, count: sql<number>`count(*)::int` })
-					.from(legacyAuthNotes)
-					.where(inArray(legacyAuthNotes.legacyAuthUserId, legacyUserIds))
-					.groupBy(legacyAuthNotes.legacyAuthUserId),
-				this.db
-					.select({ legacyAuthUserId: legacyAuthApplications.legacyAuthUserId, count: sql<number>`count(*)::int` })
-					.from(legacyAuthApplications)
-					.where(inArray(legacyAuthApplications.legacyAuthUserId, legacyUserIds))
-					.groupBy(legacyAuthApplications.legacyAuthUserId),
-				this.db
-					.select({
-						legacyAuthUserId: legacyAuthDiscordAccounts.legacyAuthUserId,
-						count: sql<number>`count(*)::int`,
-					})
-					.from(legacyAuthDiscordAccounts)
-					.where(inArray(legacyAuthDiscordAccounts.legacyAuthUserId, legacyUserIds))
-					.groupBy(legacyAuthDiscordAccounts.legacyAuthUserId),
-				this.db.query.legacyMigrationQueue.findMany({
-					where: and(
-						eq(legacyMigrationQueue.modernUserId, modernUserId),
-						inArray(legacyMigrationQueue.legacyAuthUserId, legacyUserIds)
-					),
-				}),
-				this.db.query.legacyMigrationQueue.findMany({
-					where: and(
-						inArray(legacyMigrationQueue.legacyAuthUserId, legacyUserIds),
-						ne(legacyMigrationQueue.modernUserId, modernUserId),
-						notInArray(legacyMigrationQueue.status, ['dismissed'])
-					),
-					columns: { legacyAuthUserId: true, modernUserId: true, status: true },
-				}),
-				this.db.query.legacyAuthCharacters.findMany({
-					where: inArray(legacyAuthCharacters.legacyAuthUserId, legacyUserIds),
-					columns: { legacyAuthUserId: true, characterId: true, characterName: true },
-				}),
-				this.db.query.legacyAuthDiscordAccounts.findMany({
-					where: inArray(legacyAuthDiscordAccounts.legacyAuthUserId, legacyUserIds),
-					columns: { legacyAuthUserId: true, discordUserId: true },
-				}),
-			])
+		] = await Promise.all([
+			this.db
+				.select({
+					legacyAuthUserId: legacyAuthUserIpAddresses.legacyAuthUserId,
+					count: sql<number>`count(*)::int`,
+				})
+				.from(legacyAuthUserIpAddresses)
+				.where(inArray(legacyAuthUserIpAddresses.legacyAuthUserId, legacyUserIds))
+				.groupBy(legacyAuthUserIpAddresses.legacyAuthUserId),
+			this.db
+				.select({
+					legacyAuthUserId: legacyAuthNotes.legacyAuthUserId,
+					count: sql<number>`count(*)::int`,
+				})
+				.from(legacyAuthNotes)
+				.where(inArray(legacyAuthNotes.legacyAuthUserId, legacyUserIds))
+				.groupBy(legacyAuthNotes.legacyAuthUserId),
+			this.db
+				.select({
+					legacyAuthUserId: legacyAuthApplications.legacyAuthUserId,
+					count: sql<number>`count(*)::int`,
+				})
+				.from(legacyAuthApplications)
+				.where(inArray(legacyAuthApplications.legacyAuthUserId, legacyUserIds))
+				.groupBy(legacyAuthApplications.legacyAuthUserId),
+			this.db
+				.select({
+					legacyAuthUserId: legacyAuthDiscordAccounts.legacyAuthUserId,
+					count: sql<number>`count(*)::int`,
+				})
+				.from(legacyAuthDiscordAccounts)
+				.where(inArray(legacyAuthDiscordAccounts.legacyAuthUserId, legacyUserIds))
+				.groupBy(legacyAuthDiscordAccounts.legacyAuthUserId),
+			this.db.query.legacyMigrationQueue.findMany({
+				where: and(
+					eq(legacyMigrationQueue.modernUserId, modernUserId),
+					inArray(legacyMigrationQueue.legacyAuthUserId, legacyUserIds)
+				),
+			}),
+			this.db.query.legacyMigrationQueue.findMany({
+				where: and(
+					inArray(legacyMigrationQueue.legacyAuthUserId, legacyUserIds),
+					ne(legacyMigrationQueue.modernUserId, modernUserId),
+					notInArray(legacyMigrationQueue.status, ['dismissed'])
+				),
+				columns: { legacyAuthUserId: true, modernUserId: true, status: true },
+			}),
+			this.db.query.legacyAuthCharacters.findMany({
+				where: inArray(legacyAuthCharacters.legacyAuthUserId, legacyUserIds),
+				columns: { legacyAuthUserId: true, characterId: true, characterName: true },
+			}),
+			this.db.query.legacyAuthDiscordAccounts.findMany({
+				where: inArray(legacyAuthDiscordAccounts.legacyAuthUserId, legacyUserIds),
+				columns: { legacyAuthUserId: true, discordUserId: true },
+			}),
+		])
 		const ipRows =
 			legacyUserIds.length > 0
 				? await this.db.query.legacyAuthUserIpAddresses.findMany({
 						where: inArray(legacyAuthUserIpAddresses.legacyAuthUserId, legacyUserIds),
-						columns: { legacyAuthUserId: true, ipAddress: true, firstSeenAt: true, lastSeenAt: true },
+						columns: {
+							legacyAuthUserId: true,
+							ipAddress: true,
+							firstSeenAt: true,
+							lastSeenAt: true,
+						},
 					})
 				: []
 		const uniqueMatchedIps = [...new Set(ipRows.map((row) => row.ipAddress).filter(Boolean))]
@@ -875,7 +925,12 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 							inArray(legacyAuthUserIpAddresses.ipAddress, uniqueMatchedIps),
 							notInArray(legacyAuthUserIpAddresses.legacyAuthUserId, legacyUserIds)
 						),
-						columns: { legacyAuthUserId: true, ipAddress: true, firstSeenAt: true, lastSeenAt: true },
+						columns: {
+							legacyAuthUserId: true,
+							ipAddress: true,
+							firstSeenAt: true,
+							lastSeenAt: true,
+						},
 					})
 				: []
 		const ipNeighborLegacyUserIds = [...new Set(ipNeighborRows.map((row) => row.legacyAuthUserId))]
@@ -915,7 +970,10 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			bucket.push({ discordUserId: row.discordUserId })
 			discordMatchesByLegacyUser.set(row.legacyAuthUserId, bucket)
 		}
-		const allCharactersByLegacyUser = new Map<string, Array<{ characterId: string; characterName: string }>>()
+		const allCharactersByLegacyUser = new Map<
+			string,
+			Array<{ characterId: string; characterName: string }>
+		>()
 		for (const row of allAssociatedCharacters) {
 			const bucket = allCharactersByLegacyUser.get(row.legacyAuthUserId) ?? []
 			bucket.push({ characterId: row.characterId, characterName: row.characterName })
@@ -934,12 +992,12 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			ipAddressesByLegacyUser.set(row.legacyAuthUserId, bucket)
 		}
 		const ipRangeByLegacyUserAndIp = new Map<string, IpRange>()
-			for (const row of [...ipRows, ...ipNeighborRows]) {
-				ipRangeByLegacyUserAndIp.set(`${row.legacyAuthUserId}:${row.ipAddress}`, {
-					firstSeenAt: parseDateOrNull(row.firstSeenAt),
-					lastSeenAt: parseDateOrNull(row.lastSeenAt),
-				})
-			}
+		for (const row of [...ipRows, ...ipNeighborRows]) {
+			ipRangeByLegacyUserAndIp.set(`${row.legacyAuthUserId}:${row.ipAddress}`, {
+				firstSeenAt: parseDateOrNull(row.firstSeenAt),
+				lastSeenAt: parseDateOrNull(row.lastSeenAt),
+			})
+		}
 		const legacyUserIdsByIp = new Map<string, Set<string>>()
 		for (const row of [...ipRows, ...ipNeighborRows]) {
 			const bucket = legacyUserIdsByIp.get(row.ipAddress) ?? new Set<string>()
@@ -953,7 +1011,10 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 				sharedLegacyIpAddresses.add(ipAddress)
 			}
 		}
-		const neighborCharactersByLegacyUser = new Map<string, Array<{ characterId: string; characterName: string }>>()
+		const neighborCharactersByLegacyUser = new Map<
+			string,
+			Array<{ characterId: string; characterName: string }>
+		>()
 		for (const row of ipNeighborCharacters) {
 			const bucket = neighborCharactersByLegacyUser.get(row.legacyAuthUserId) ?? []
 			bucket.push({ characterId: row.characterId, characterName: row.characterName })
@@ -980,13 +1041,17 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 				if (sharedLegacyIpAddresses.has(ipAddress)) {
 					continue
 				}
-				const currentUserIpRange = ipRangeByLegacyUserAndIp.get(`${legacyAuthUserId}:${ipAddress}`) ?? {
+				const currentUserIpRange = ipRangeByLegacyUserAndIp.get(
+					`${legacyAuthUserId}:${ipAddress}`
+				) ?? {
 					firstSeenAt: null,
 					lastSeenAt: null,
 				}
 				for (const legacyUserId of legacyUserIdsByIp.get(ipAddress) ?? new Set<string>()) {
 					if (legacyUserId === legacyAuthUserId) continue
-					const candidateUserIpRange = ipRangeByLegacyUserAndIp.get(`${legacyUserId}:${ipAddress}`) ?? {
+					const candidateUserIpRange = ipRangeByLegacyUserAndIp.get(
+						`${legacyUserId}:${ipAddress}`
+					) ?? {
 						firstSeenAt: null,
 						lastSeenAt: null,
 					}
@@ -1004,15 +1069,35 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 				source: 'legacy_direct' | 'legacy_ip_association' | 'tang_direct'
 			}> = []
 			for (const character of associatedCharacters) {
-				sourceHints.push({ targetType: 'character_id', targetValue: character.characterId, source: 'legacy_direct' })
-				sourceHints.push({ targetType: 'character_name', targetValue: character.characterName, source: 'legacy_direct' })
+				sourceHints.push({
+					targetType: 'character_id',
+					targetValue: character.characterId,
+					source: 'legacy_direct',
+				})
+				sourceHints.push({
+					targetType: 'character_name',
+					targetValue: character.characterName,
+					source: 'legacy_direct',
+				})
 			}
 			for (const discordUserId of associatedDiscordUserIds) {
-				sourceHints.push({ targetType: 'discord_id', targetValue: discordUserId, source: 'legacy_direct' })
+				sourceHints.push({
+					targetType: 'discord_id',
+					targetValue: discordUserId,
+					source: 'legacy_direct',
+				})
 			}
 			for (const character of targetUser.characters) {
-				sourceHints.push({ targetType: 'character_id', targetValue: character.characterId, source: 'tang_direct' })
-				sourceHints.push({ targetType: 'character_name', targetValue: character.characterName, source: 'tang_direct' })
+				sourceHints.push({
+					targetType: 'character_id',
+					targetValue: character.characterId,
+					source: 'tang_direct',
+				})
+				sourceHints.push({
+					targetType: 'character_name',
+					targetValue: character.characterName,
+					source: 'tang_direct',
+				})
 			}
 			if (targetUser.discordUserId) {
 				sourceHints.push({
@@ -1024,12 +1109,24 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 			for (const neighborLegacyUserId of ipNeighborLegacyUsers) {
 				for (const pair of neighborCharactersByLegacyUser.get(neighborLegacyUserId) ?? []) {
 					expandedCharacterPairs.push(pair)
-					sourceHints.push({ targetType: 'character_id', targetValue: pair.characterId, source: 'legacy_ip_association' })
-					sourceHints.push({ targetType: 'character_name', targetValue: pair.characterName, source: 'legacy_ip_association' })
+					sourceHints.push({
+						targetType: 'character_id',
+						targetValue: pair.characterId,
+						source: 'legacy_ip_association',
+					})
+					sourceHints.push({
+						targetType: 'character_name',
+						targetValue: pair.characterName,
+						source: 'legacy_ip_association',
+					})
 				}
 				for (const discordUserId of neighborDiscordByLegacyUser.get(neighborLegacyUserId) ?? []) {
 					expandedDiscordIds.push(discordUserId)
-					sourceHints.push({ targetType: 'discord_id', targetValue: discordUserId, source: 'legacy_ip_association' })
+					sourceHints.push({
+						targetType: 'discord_id',
+						targetValue: discordUserId,
+						source: 'legacy_ip_association',
+					})
 				}
 			}
 			const crossUserMatches = crossUserMap.get(legacyAuthUserId) ?? []
@@ -1124,7 +1221,14 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 				})
 			}
 		}
-		return { ok: true, modernUserId, legacyAuthUserIds: legacyUserIds, created, updated, dismissed: 0 }
+		return {
+			ok: true,
+			modernUserId,
+			legacyAuthUserIds: legacyUserIds,
+			created,
+			updated,
+			dismissed: 0,
+		}
 	}
 
 	async listHistory(filters: {
@@ -1136,7 +1240,8 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		corporationName?: string
 	}) {
 		const where = []
-		if (filters.corporationId) where.push(eq(legacyAuthApplications.corporationId, filters.corporationId))
+		if (filters.corporationId)
+			where.push(eq(legacyAuthApplications.corporationId, filters.corporationId))
 		if (filters.characterIds) {
 			const ids = filters.characterIds
 				.split(',')
@@ -1155,7 +1260,10 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		const [rows, totalRows] = await Promise.all([
 			this.db.query.legacyAuthApplications.findMany({
 				where: whereClause,
-				orderBy: [desc(legacyAuthApplications.applicationDate), desc(legacyAuthApplications.createdAt)],
+				orderBy: [
+					desc(legacyAuthApplications.applicationDate),
+					desc(legacyAuthApplications.createdAt),
+				],
 				limit: filters.pageSize,
 				offset,
 			}),
@@ -1183,13 +1291,14 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		if (!application) return null
 		const events = await this.db.query.legacyAuthApplicationEvents.findMany({
 			where: eq(legacyAuthApplicationEvents.legacyApplicationId, legacyApplicationId),
-			orderBy: [asc(legacyAuthApplicationEvents.eventAt), asc(legacyAuthApplicationEvents.createdAt)],
+			orderBy: [
+				asc(legacyAuthApplicationEvents.eventAt),
+				asc(legacyAuthApplicationEvents.createdAt),
+			],
 		})
 		const actorLegacyIds = [
 			...new Set(
-				events
-					.map((event) => event.legacyActorUserId)
-					.filter((id): id is string => Boolean(id))
+				events.map((event) => event.legacyActorUserId).filter((id): id is string => Boolean(id))
 			),
 		]
 		const actorLegacyCharacterNames = await this.resolveLegacyActorCharacterNames(actorLegacyIds)

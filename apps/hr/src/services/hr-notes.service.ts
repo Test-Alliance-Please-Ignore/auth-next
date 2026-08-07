@@ -2,9 +2,7 @@ import { and, desc, eq, inArray, sql } from '@repo/db-utils'
 
 import { hrNotes } from '../db/schema'
 
-import type { DbClient } from '@repo/db-utils'
 import type { HrNote, HrNotePriority, HrNoteType, NoteFilters } from '@repo/hr'
-import type * as schema from '../db/schema'
 import type { ServiceContext } from './context'
 
 /**
@@ -82,7 +80,7 @@ export class HrNotesService {
 	 * List HR notes with optional filters (admin only)
 	 */
 	async listNotes(filters: NoteFilters): Promise<HrNote[]> {
-		const conditions: ReturnType<typeof and>[] = []
+		const conditions: Array<ReturnType<typeof and>> = []
 
 		// Apply filters
 		if (filters.subjectUserId) {

@@ -13,19 +13,22 @@
 
 import { getStub } from '@repo/do-utils'
 import {
-	CharacterDeletedError,
-	EsiRequestClient,
 	buildEsiUserKey,
 	buildPublicEsiUserKey,
-	type EsiCacheScopeContext,
-	type EsiResponse,
+	CharacterDeletedError,
+	EsiRequestClient,
 } from '@repo/esi'
-import { EveCorporationData } from '@repo/eve-corporation-data'
+import {
+	EsiRateLimitStore,
+	normalizeEsiRouteKey,
+	parseEsiRateLimitHeaders,
+} from '@repo/esi-rate-limit'
 import { logger } from '@repo/hono-helpers'
-import { EsiRateLimitStore, normalizeEsiRouteKey, parseEsiRateLimitHeaders } from '@repo/esi-rate-limit'
 
 import { EsiCache } from './cache'
 
+import type { EsiCacheScopeContext, EsiResponse } from '@repo/esi'
+import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from '../context'
 
@@ -321,22 +324,31 @@ export class EsiFetcher {
 		if (routeGroup) {
 			const bucket = await this.esiRateLimits.getBucketSnapshot(routeGroup, userKey)
 			if (bucket) {
-				const retryAfterSeconds = bucket.retryAfterSeconds ?? Math.max(1, Math.ceil((bucket.expiresAtMs - now) / 1000))
-				throw this.buildRateLimitPreflightError(path, routeKey, 'bucket', retryAfterSeconds, routeGroup)
+				const retryAfterSeconds =
+					bucket.retryAfterSeconds ?? Math.max(1, Math.ceil((bucket.expiresAtMs - now) / 1000))
+				throw this.buildRateLimitPreflightError(
+					path,
+					routeKey,
+					'bucket',
+					retryAfterSeconds,
+					routeGroup
+				)
 			}
 		}
 
 		const routeErrorLimit = await this.esiRateLimits.getRouteErrorLimit(routeKey, userKey)
 		if (routeErrorLimit) {
 			const retryAfterSeconds =
-				routeErrorLimit.retryAfterSeconds ?? Math.max(1, Math.ceil((routeErrorLimit.expiresAtMs - now) / 1000))
+				routeErrorLimit.retryAfterSeconds ??
+				Math.max(1, Math.ceil((routeErrorLimit.expiresAtMs - now) / 1000))
 			throw this.buildRateLimitPreflightError(path, routeKey, 'error_limit', retryAfterSeconds)
 		}
 
 		const routeCooldown = await this.esiRateLimits.getRouteCooldown(routeKey, userKey)
 		if (routeCooldown) {
 			const retryAfterSeconds =
-				routeCooldown.retryAfterSeconds ?? Math.max(1, Math.ceil((routeCooldown.expiresAtMs - now) / 1000))
+				routeCooldown.retryAfterSeconds ??
+				Math.max(1, Math.ceil((routeCooldown.expiresAtMs - now) / 1000))
 			throw this.buildRateLimitPreflightError(path, routeKey, 'route_breaker', retryAfterSeconds)
 		}
 	}
@@ -356,7 +368,9 @@ export class EsiFetcher {
 			routeKey,
 			routeGroup,
 		})
-		return new Error(`ESI request failed: 429 Too Many Requests - {"error":"ESI rate limit active"} | metadata=${metadata}`)
+		return new Error(
+			`ESI request failed: 429 Too Many Requests - {"error":"ESI rate limit active"} | metadata=${metadata}`
+		)
 	}
 
 	private async updateEsiRateLimitState(

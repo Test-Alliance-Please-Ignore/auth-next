@@ -1,6 +1,5 @@
 import { relations, sql } from 'drizzle-orm'
 import {
-	bigint,
 	boolean,
 	index,
 	integer,
@@ -26,7 +25,12 @@ export const visibilityEnum = pgEnum('visibility', ['public', 'hidden', 'system'
 export const categoryPermissionEnum = pgEnum('category_permission', ['anyone', 'admin_only'])
 
 /** Group join modes */
-export const joinModeEnum = pgEnum('join_mode', ['open', 'approval', 'invitation_only', 'admin_managed'])
+export const joinModeEnum = pgEnum('join_mode', [
+	'open',
+	'approval',
+	'invitation_only',
+	'admin_managed',
+])
 
 /** Invitation status */
 export const invitationStatusEnum = pgEnum('invitation_status', [
@@ -88,31 +92,31 @@ export const categories = pgTable(
  *
  * Groups have an owner, can have admins, and members can join based on the join mode.
  */
-	export const groups = pgTable(
-		'groups',
-		{
-			id: uuid('id').defaultRandom().primaryKey(),
-			/** Parent category */
-			categoryId: uuid('category_id')
-				.notNull()
-				.references(() => categories.id, { onDelete: 'cascade' }),
-			/** Group name */
-			name: varchar('name', { length: 255 }).notNull(),
-			/** Group description */
-			description: text('description'),
-			/** Visibility level */
-			visibility: visibilityEnum('visibility').notNull().default('public'),
-			/** How users can join this group */
-			joinMode: joinModeEnum('join_mode').notNull().default('open'),
-			/** Whether this group should be synced to Mumble */
-			mumbleSyncEnabled: boolean('mumble_sync_enabled').notNull().default(false),
-			/** Optional addendum appended to Mumble display names */
-			mumbleTicker: text('mumble_ticker'),
-			/** User ID of the group owner (references core.users.id) */
-			ownerId: varchar('owner_id', { length: 255 }).notNull(),
-			createdAt: timestamp('created_at').defaultNow().notNull(),
-			updatedAt: timestamp('updated_at').defaultNow().notNull(),
-		},
+export const groups = pgTable(
+	'groups',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		/** Parent category */
+		categoryId: uuid('category_id')
+			.notNull()
+			.references(() => categories.id, { onDelete: 'cascade' }),
+		/** Group name */
+		name: varchar('name', { length: 255 }).notNull(),
+		/** Group description */
+		description: text('description'),
+		/** Visibility level */
+		visibility: visibilityEnum('visibility').notNull().default('public'),
+		/** How users can join this group */
+		joinMode: joinModeEnum('join_mode').notNull().default('open'),
+		/** Whether this group should be synced to Mumble */
+		mumbleSyncEnabled: boolean('mumble_sync_enabled').notNull().default(false),
+		/** Optional addendum appended to Mumble display names */
+		mumbleTicker: text('mumble_ticker'),
+		/** User ID of the group owner (references core.users.id) */
+		ownerId: varchar('owner_id', { length: 255 }).notNull(),
+		createdAt: timestamp('created_at').defaultNow().notNull(),
+		updatedAt: timestamp('updated_at').defaultNow().notNull(),
+	},
 	(table) => [
 		index('groups_category_id_idx').on(table.categoryId),
 		index('groups_owner_id_idx').on(table.ownerId),

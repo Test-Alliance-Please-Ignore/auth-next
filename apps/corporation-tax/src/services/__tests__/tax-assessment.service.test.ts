@@ -141,7 +141,7 @@ describe('TaxAssessmentService', () => {
 	})
 
 	const createDiscrepancyAssessmentDb = () => {
-		const insertedDiscrepancies: Array<any> = []
+		const insertedDiscrepancies: any[] = []
 		const localDb = {
 			query: {
 				taxCorporationExclusions: {
@@ -236,7 +236,7 @@ describe('TaxAssessmentService', () => {
 						}
 						if (table === taxDiscrepancies) {
 							return {
-								values: vi.fn((values: Array<any>) => {
+								values: vi.fn((values: any[]) => {
 									insertedDiscrepancies.push(...values)
 									return Promise.resolve()
 								}),
@@ -397,7 +397,7 @@ describe('TaxAssessmentService', () => {
 	})
 
 	it('applies higher-priority active rule when multiple rules match', async () => {
-		const insertedAssessmentLines: Array<any> = []
+		const insertedAssessmentLines: any[] = []
 		const localDb = {
 			query: {
 				taxCorporationExclusions: {
@@ -501,7 +501,7 @@ describe('TaxAssessmentService', () => {
 						if (table === taxAssessmentLines) {
 							return {
 								values: vi.fn((values: any) => {
-									insertedAssessmentLines.push(...(values as Array<any>))
+									insertedAssessmentLines.push(...(values as any[]))
 									return Promise.resolve()
 								}),
 							}
@@ -543,7 +543,7 @@ describe('TaxAssessmentService', () => {
 	})
 
 	it('ignores inactive higher-priority rule by relying on active-only rule query', async () => {
-		const insertedAssessmentLines: Array<any> = []
+		const insertedAssessmentLines: any[] = []
 		const findManyMock = vi.fn().mockResolvedValue([
 			{
 				id: 'rule-low-active',
@@ -636,7 +636,7 @@ describe('TaxAssessmentService', () => {
 						if (table === taxAssessmentLines) {
 							return {
 								values: vi.fn((values: any) => {
-									insertedAssessmentLines.push(...(values as Array<any>))
+									insertedAssessmentLines.push(...(values as any[]))
 									return Promise.resolve()
 								}),
 							}
@@ -685,7 +685,7 @@ describe('TaxAssessmentService', () => {
 	})
 
 	it('treats a 0% rule as exempt income', async () => {
-		const insertedAssessmentLines: Array<any> = []
+		const insertedAssessmentLines: any[] = []
 		const localDb = {
 			query: {
 				taxCorporationExclusions: {
@@ -777,7 +777,7 @@ describe('TaxAssessmentService', () => {
 						if (table === taxAssessmentLines) {
 							return {
 								values: vi.fn((values: any) => {
-									insertedAssessmentLines.push(...(values as Array<any>))
+									insertedAssessmentLines.push(...(values as any[]))
 									return Promise.resolve()
 								}),
 							}
@@ -1273,7 +1273,7 @@ describe('TaxAssessmentService', () => {
 						}
 						if (table === taxMemberContributionProjectionRollups) {
 							return {
-								values: vi.fn((values: Array<any>) => ({
+								values: vi.fn((values: any[]) => ({
 									onConflictDoUpdate: vi.fn(() => {
 										for (const row of values) {
 											const key = [
@@ -1505,7 +1505,7 @@ describe('TaxAssessmentService', () => {
 						}
 						if (table === taxMemberContributionProjectionRollups) {
 							return {
-								values: vi.fn((values: Array<any>) => ({
+								values: vi.fn((values: any[]) => ({
 									onConflictDoUpdate: vi.fn(() => {
 										for (const row of values) {
 											const key = [

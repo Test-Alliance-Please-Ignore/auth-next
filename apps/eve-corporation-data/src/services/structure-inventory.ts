@@ -43,7 +43,7 @@ export function isStructureInventoryLocationFlag(locationFlag: string): boolean 
 function projectStructureInventoryAssetRows(
 	corporationId: string,
 	ownedStructureIds: ReadonlySet<string>,
-	assets: ReadonlyArray<StructureInventoryAssetSource>
+	assets: readonly StructureInventoryAssetSource[]
 ): StructureInventoryRowInput[] {
 	if (ownedStructureIds.size === 0 || assets.length === 0) {
 		return []
@@ -100,14 +100,14 @@ export function filterStructureInventoryAssets(
 export function projectStructureInventoryFromStoredAssets(
 	corporationId: string,
 	ownedStructureIds: ReadonlySet<string>,
-	assets: ReadonlyArray<StructureInventoryAssetSource>
+	assets: readonly StructureInventoryAssetSource[]
 ): StructureInventoryRowInput[] {
 	return projectStructureInventoryAssetRows(corporationId, ownedStructureIds, assets)
 }
 
 export function summarizeFuelBlockUnitsByStructure(
 	ownedStructureIds: ReadonlySet<string>,
-	inventory: ReadonlyArray<StructureInventoryRowInput>
+	inventory: readonly StructureInventoryRowInput[]
 ): Map<string, number> {
 	const fuelBlockUnitsByStructure = new Map<string, number>()
 

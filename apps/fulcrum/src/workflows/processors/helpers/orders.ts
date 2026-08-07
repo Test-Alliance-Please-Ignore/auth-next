@@ -5,12 +5,12 @@
 
 import { getStub } from '@repo/do-utils'
 import { isStructureId } from '@repo/eve-types'
+import { logger } from '@repo/hono-helpers'
 
 import { StructureResolutionCoordinator } from './structure-resolution'
 
-import type { CharacterMarketOrder, Esi, EsiTypeResolver } from '@repo/esi'
+import type { CharacterMarketOrder, EsiTypeResolver } from '@repo/esi'
 import type { Universe } from '@repo/universe'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Enriched market order with resolved names
@@ -37,7 +37,7 @@ export async function enrichMarketOrders(
 	},
 	orders: CharacterMarketOrder[],
 	characterId: string,
-	structureResolutionCoordinator?: StructureResolutionCoordinator,
+	structureResolutionCoordinator?: StructureResolutionCoordinator
 ): Promise<ProcessedMarketOrders> {
 	if (orders.length === 0) {
 		return []
@@ -94,7 +94,9 @@ export async function enrichMarketOrders(
 	const structureLocationIds = uniqueLocationIds.filter((id) => isStructureId(id))
 	const structureNameMap =
 		structureLocationIds.length > 0
-			? await (structureResolutionCoordinator ?? new StructureResolutionCoordinator()).resolveStructureNames(
+			? await (
+					structureResolutionCoordinator ?? new StructureResolutionCoordinator()
+				).resolveStructureNames(
 					{ ESI: env.ESI },
 					characterId,
 					structureLocationIds,
@@ -119,7 +121,7 @@ export async function enrichMarketOrders(
 		const typeMetadata = typeMetadataMap[order.type_id]
 		const state = order.state ?? 'open'
 		const expiresAt = new Date(
-			new Date(order.issued).getTime() + order.duration * 24 * 60 * 60 * 1000,
+			new Date(order.issued).getTime() + order.duration * 24 * 60 * 60 * 1000
 		).toISOString()
 
 		return {

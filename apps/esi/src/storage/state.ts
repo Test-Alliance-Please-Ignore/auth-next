@@ -13,5 +13,5 @@ export function createEsiDb(storage: DurableObjectStorage): EsiDb {
 }
 
 export async function runEsiMigrations(db: EsiDb): Promise<void> {
-	migrate(db, migrations)
+	await migrate(db, migrations)
 }

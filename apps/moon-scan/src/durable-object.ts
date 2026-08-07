@@ -1,22 +1,9 @@
 import { DurableObject } from 'cloudflare:workers'
-
 import { count } from 'drizzle-orm'
 
-import {
-	and,
-	asc,
-	desc,
-	eq,
-	gte,
-	ilike,
-	inArray,
-	isNotNull,
-	isNull,
-	or,
-	sql,
-} from '@repo/db-utils'
-import { FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID } from '@repo/moon-scan'
+import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
+import { FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID } from '@repo/moon-scan'
 
 import { createDb } from './db'
 import {
@@ -29,15 +16,14 @@ import {
 	verifiedMoonSummaries,
 } from './db/schema'
 
-import type { schema } from './db'
 import type {
 	ExtractionSettings,
+	MoonScanDO as IMoonScanDO,
 	LeaderboardEntry,
 	LeaderboardWindow,
-	MoonProfitabilityQueryInputs,
 	MoonCoverageStat,
+	MoonProfitabilityQueryInputs,
 	MoonScan,
-	MoonScanDO as IMoonScanDO,
 	OreRarity,
 	PaginatedScans,
 	ScanFilters,
@@ -49,11 +35,11 @@ import type {
 	VerifiedComposition,
 	VerifiedMoonPage,
 	VerifiedMoonRegionCount,
-	VerifiedMoonSummaryRecord,
 	VerifiedMoonsSortBy,
+	VerifiedMoonSummaryRecord,
 } from '@repo/moon-scan'
-import type { DbClient } from './db'
 import type { Env } from './context'
+import type { DbClient, schema } from './db'
 
 const BATCH_SIZE = 500
 
@@ -79,7 +65,8 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 
 	private async initializeVerifiedMoonSummarySchema(): Promise<void> {
 		try {
-			await this.db.execute(sql.raw(`
+			await this.db.execute(
+				sql.raw(`
 				CREATE TABLE IF NOT EXISTS "moon_verified_moon_summaries" (
 					"moon_id" text PRIMARY KEY NOT NULL,
 					"source_scan_id" text NOT NULL REFERENCES "moon_scans"("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
@@ -95,14 +82,19 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 					"security_status" text,
 					"highest_rarity" text
 				)
-			`))
+			`)
+			)
 		} catch (error) {
 			logger.error('Failed to initialize moon verified summary schema', { error })
 			throw error
 		}
 	}
 
-	async submitScans(scans: SubmitScanInput[], submittedBy: string | null, autoVerify: boolean): Promise<MoonScan[]> {
+	async submitScans(
+		scans: SubmitScanInput[],
+		submittedBy: string | null,
+		autoVerify: boolean
+	): Promise<MoonScan[]> {
 		const results: MoonScan[] = []
 
 		for (const scan of scans) {
@@ -142,13 +134,18 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 						target: verifiedCompositions.moonId,
 						set: {
 							sourceScanId: inserted.id,
-						verifiedAt: new Date(),
-						verifiedBy: submittedBy,
-					},
-				})
+							verifiedAt: new Date(),
+							verifiedBy: submittedBy,
+						},
+					})
 			}
 
-			results.push(await this._buildScan(inserted, scan.ores.map((o) => ({ ...o, id: '', scanId: inserted.id }))))
+			results.push(
+				await this._buildScan(
+					inserted,
+					scan.ores.map((o) => ({ ...o, id: '', scanId: inserted.id }))
+				)
+			)
 		}
 
 		return results
@@ -165,10 +162,7 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 
 		const where = conditions.length > 0 ? and(...conditions) : undefined
 
-		const [{ total }] = await this.db
-			.select({ total: count() })
-			.from(moonScans)
-			.where(where)
+		const [{ total }] = await this.db.select({ total: count() }).from(moonScans).where(where)
 
 		const rows = await this.db
 			.select()
@@ -179,9 +173,10 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 			.offset(offset)
 
 		const scanIds = rows.map((r) => r.id)
-		const ores = scanIds.length > 0
-			? await this.db.select().from(moonScanOres).where(inArray(moonScanOres.scanId, scanIds))
-			: []
+		const ores =
+			scanIds.length > 0
+				? await this.db.select().from(moonScanOres).where(inArray(moonScanOres.scanId, scanIds))
+				: []
 
 		const oresByScanId = new Map<string, typeof ores>()
 		for (const ore of ores) {
@@ -230,7 +225,11 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		return this._buildScan(updated, ores)
 	}
 
-	async verifyScans(scanIds: string[], verifiedBy: string, notes: string | null): Promise<MoonScan[]> {
+	async verifyScans(
+		scanIds: string[],
+		verifiedBy: string,
+		notes: string | null
+	): Promise<MoonScan[]> {
 		const results: MoonScan[] = []
 		for (const scanId of [...new Set(scanIds)]) {
 			results.push(await this.verifyScan(scanId, verifiedBy, notes))
@@ -249,7 +248,11 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		return this._buildScan(updated, ores)
 	}
 
-	async rejectScans(scanIds: string[], verifiedBy: string, notes: string | null): Promise<MoonScan[]> {
+	async rejectScans(
+		scanIds: string[],
+		verifiedBy: string,
+		notes: string | null
+	): Promise<MoonScan[]> {
 		const results: MoonScan[] = []
 		for (const scanId of [...new Set(scanIds)]) {
 			results.push(await this.rejectScan(scanId, verifiedBy, notes))
@@ -271,7 +274,7 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		if (moonIds.length === 0) return []
 
 		const uniqueMoonIds = [...new Set(moonIds)]
-		const vcs: typeof verifiedCompositions.$inferSelect[] = []
+		const vcs: Array<typeof verifiedCompositions.$inferSelect> = []
 		for (const moonIdChunk of chunkArray(uniqueMoonIds, BATCH_SIZE)) {
 			const rows = await this.db
 				.select()
@@ -287,13 +290,13 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 			const rows =
 				scanIdChunk.length > 0
 					? await this.db
-						.select({
-							scanId: moonScanOres.scanId,
-							oreTypeId: moonScanOres.oreTypeId,
-							quantity: moonScanOres.quantity,
-						})
-						.from(moonScanOres)
-						.where(inArray(moonScanOres.scanId, scanIdChunk))
+							.select({
+								scanId: moonScanOres.scanId,
+								oreTypeId: moonScanOres.oreTypeId,
+								quantity: moonScanOres.quantity,
+							})
+							.from(moonScanOres)
+							.where(inArray(moonScanOres.scanId, scanIdChunk))
 					: []
 			allOres.push(...rows)
 		}
@@ -373,20 +376,20 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 
 		const constellations = filters.regionId
 			? await this.db
-				.selectDistinct({
-					constellationId: verifiedMoonSummaries.constellationId,
-					constellationName: verifiedMoonSummaries.constellationName,
-				})
-				.from(verifiedMoonSummaries)
-				.where(eq(verifiedMoonSummaries.regionId, filters.regionId))
-				.orderBy(asc(verifiedMoonSummaries.constellationName))
+					.selectDistinct({
+						constellationId: verifiedMoonSummaries.constellationId,
+						constellationName: verifiedMoonSummaries.constellationName,
+					})
+					.from(verifiedMoonSummaries)
+					.where(eq(verifiedMoonSummaries.regionId, filters.regionId))
+					.orderBy(asc(verifiedMoonSummaries.constellationName))
 			: await this.db
-				.selectDistinct({
-					constellationId: verifiedMoonSummaries.constellationId,
-					constellationName: verifiedMoonSummaries.constellationName,
-				})
-				.from(verifiedMoonSummaries)
-				.orderBy(asc(verifiedMoonSummaries.constellationName))
+					.selectDistinct({
+						constellationId: verifiedMoonSummaries.constellationId,
+						constellationName: verifiedMoonSummaries.constellationName,
+					})
+					.from(verifiedMoonSummaries)
+					.orderBy(asc(verifiedMoonSummaries.constellationName))
 
 		if (filters.profitability) {
 			// Keep the small pricing context as query parameters so compositions stay in SQL.
@@ -410,38 +413,42 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 				type_id: price.typeId,
 				price: price.price,
 			}))
-			const orderColumn = filters.sortBy === 'metenoxProfit'
-				? 'metenox_profit'
-				: filters.sortBy === 'tataraProfit'
-					? 'tatara_profit'
-					: filters.sortBy === 'moonName'
-						? 'moon_name'
-						: filters.sortBy === 'solarSystemName'
-							? 'solar_system_name'
-							: filters.sortBy === 'regionName'
-								? 'region_name'
-								: filters.sortBy === 'securityStatus'
-									? 'security_status_value'
-									: 'rarity_order'
+			const orderColumn =
+				filters.sortBy === 'metenoxProfit'
+					? 'metenox_profit'
+					: filters.sortBy === 'tataraProfit'
+						? 'tatara_profit'
+						: filters.sortBy === 'moonName'
+							? 'moon_name'
+							: filters.sortBy === 'solarSystemName'
+								? 'solar_system_name'
+								: filters.sortBy === 'regionName'
+									? 'region_name'
+									: filters.sortBy === 'securityStatus'
+										? 'security_status_value'
+										: 'rarity_order'
 			const direction = filters.sortDir === 'asc' ? 'asc' : 'desc'
-			const orderSql = sql.raw(
-				`${orderColumn} ${direction} nulls last, moon_name asc, moon_id asc`
-			)
+			const orderSql = sql.raw(`${orderColumn} ${direction} nulls last, moon_name asc, moon_id asc`)
 			const rawConditions = []
 			if (filters.regionId) rawConditions.push(sql`s.region_id = ${filters.regionId}`)
-			if (filters.constellationId) rawConditions.push(sql`s.constellation_id = ${filters.constellationId}`)
+			if (filters.constellationId)
+				rawConditions.push(sql`s.constellation_id = ${filters.constellationId}`)
 			if (filters.rarity && filters.rarity.length > 0) {
 				rawConditions.push(
-					sql`s.highest_rarity in (${sql.join(filters.rarity.map((rarity) => sql`${rarity}`), sql`, `)})`
+					sql`s.highest_rarity in (${sql.join(
+						filters.rarity.map((rarity) => sql`${rarity}`),
+						sql`, `
+					)})`
 				)
 			}
 			if (filters.search) {
 				const search = `%${filters.search.trim()}%`
-				rawConditions.push(sql`(s.moon_name ilike ${search} or s.solar_system_name ilike ${search})`)
+				rawConditions.push(
+					sql`(s.moon_name ilike ${search} or s.solar_system_name ilike ${search})`
+				)
 			}
-			const rawWhere = rawConditions.length > 0
-				? sql`where ${sql.join(rawConditions, sql` and `)}`
-				: sql``
+			const rawWhere =
+				rawConditions.length > 0 ? sql`where ${sql.join(rawConditions, sql` and `)}` : sql``
 			const pricingSql = sql`
 				with pricing_settings as (
 					select
@@ -596,7 +603,11 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 			})
 			.from(verifiedMoonSummaries)
 			.where(where)
-			.orderBy(...orderByColumns, asc(verifiedMoonSummaries.moonName), asc(verifiedMoonSummaries.moonId))
+			.orderBy(
+				...orderByColumns,
+				asc(verifiedMoonSummaries.moonName),
+				asc(verifiedMoonSummaries.moonId)
+			)
 			.limit(filters.pageSize)
 			.offset(offset)
 
@@ -649,9 +660,7 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		return rows.map((row) => row.moonId)
 	}
 
-	async upsertVerifiedMoonSummaries(
-		summaries: VerifiedMoonSummaryRecord[]
-	): Promise<void> {
+	async upsertVerifiedMoonSummaries(summaries: VerifiedMoonSummaryRecord[]): Promise<void> {
 		if (summaries.length === 0) return
 
 		await this.db
@@ -682,17 +691,15 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 	}
 
 	async getLeaderboard(window: LeaderboardWindow): Promise<LeaderboardEntry[]> {
-		const windowFilter = window === 'all'
-			? undefined
-			: window === '7d'
-				? gte(moonScans.submittedAt, sql`now() - interval '7 days'`)
-				: gte(moonScans.submittedAt, sql`now() - interval '30 days'`)
+		const windowFilter =
+			window === 'all'
+				? undefined
+				: window === '7d'
+					? gte(moonScans.submittedAt, sql`now() - interval '7 days'`)
+					: gte(moonScans.submittedAt, sql`now() - interval '30 days'`)
 
 		// Count verified scans per submitter (join on sourceScanId)
-		const conditions = [
-			isNotNull(moonScans.submittedBy),
-			isNotNull(verifiedCompositions.moonId),
-		]
+		const conditions = [isNotNull(moonScans.submittedBy), isNotNull(verifiedCompositions.moonId)]
 		if (windowFilter) conditions.push(windowFilter)
 
 		const rows = await this.db
@@ -707,16 +714,15 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 			.orderBy(desc(count()))
 			.limit(100)
 
-		const characterIds = rows
-			.map((r) => r.characterId)
-			.filter((id): id is string => id !== null)
+		const characterIds = rows.map((r) => r.characterId).filter((id): id is string => id !== null)
 
-		const names = characterIds.length > 0
-			? await this.db
-				.select()
-				.from(characterNameCache)
-				.where(inArray(characterNameCache.characterId, characterIds))
-			: []
+		const names =
+			characterIds.length > 0
+				? await this.db
+						.select()
+						.from(characterNameCache)
+						.where(inArray(characterNameCache.characterId, characterIds))
+				: []
 
 		const nameMap = new Map(names.map((n) => [n.characterId, n.name]))
 
@@ -857,7 +863,9 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		}
 	}
 
-	async updateExtractionSettings(settings: Partial<ExtractionSettings>): Promise<ExtractionSettings> {
+	async updateExtractionSettings(
+		settings: Partial<ExtractionSettings>
+	): Promise<ExtractionSettings> {
 		const current = await this.getExtractionSettings()
 		const merged = { ...current, ...settings }
 
@@ -889,14 +897,19 @@ export class MoonScanDO extends DurableObject<Env> implements IMoonScanDO {
 		return rows.map(this._mapStructureProfile)
 	}
 
-	async updateStructureProfile(id: StructureType, profile: Partial<StructureProfile>): Promise<StructureProfile> {
+	async updateStructureProfile(
+		id: StructureType,
+		profile: Partial<StructureProfile>
+	): Promise<StructureProfile> {
 		const [updated] = await this.db
 			.update(structureProfiles)
 			.set({
 				...(profile.baseVolumePerHr !== undefined && { baseVolumePerHr: profile.baseVolumePerHr }),
 				...(profile.rigBonus !== undefined && { rigBonus: profile.rigBonus }),
 				...(profile.fuelPerHr !== undefined && { fuelPerHr: profile.fuelPerHr }),
-				...(profile.magmaticGasPerHr !== undefined && { magmaticGasPerHr: profile.magmaticGasPerHr }),
+				...(profile.magmaticGasPerHr !== undefined && {
+					magmaticGasPerHr: profile.magmaticGasPerHr,
+				}),
 				...(profile.minCycleDays !== undefined && { minCycleDays: profile.minCycleDays }),
 				...(profile.maxCycleDays !== undefined && { maxCycleDays: profile.maxCycleDays }),
 				...(profile.isPassive !== undefined && { isPassive: profile.isPassive }),

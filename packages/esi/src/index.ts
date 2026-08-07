@@ -1,6 +1,6 @@
 import { getStub } from '@repo/do-utils'
-import { KillmailDetail, killmailDetailSchema } from '@repo/universe'
 
+import type { KillmailDetail } from '@repo/universe'
 import type {
 	AlliancePublicInfo,
 	CharacterAffiliation,
@@ -61,6 +61,7 @@ import type {
 	SaveFittingResponse,
 	StructureInfo,
 } from './types'
+import type { InsurancePlatinumValues, MarketPrice } from './universe-types'
 
 /**
  * @repo/esi
@@ -163,11 +164,7 @@ export interface Esi {
 	fetchCharacterKillmails(characterId: string): Promise<KillmailDetail[]>
 	fetchCharacterClones(characterId: string): Promise<CharacterClones>
 	fetchCharacterImplants(characterId: string): Promise<CharacterImplants>
-	searchCharacter(
-		characterId: string,
-		characterName: string,
-		strict?: boolean
-	): Promise<string[]>
+	searchCharacter(characterId: string, characterName: string, strict?: boolean): Promise<string[]>
 
 	// Corporation endpoints
 	fetchCorporationPublicInfo(corporationId: string): Promise<CorporationPublicInfo>
@@ -209,15 +206,14 @@ export interface Esi {
 	 * Returns platinum-tier cost and payout for each ship type.
 	 * Cached for 24 hours (insurance prices rarely change).
 	 */
-	fetchInsurancePrices(): Promise<import('./universe-types').InsurancePlatinumValues[]>
+	fetchInsurancePrices(): Promise<InsurancePlatinumValues[]>
 
 	/**
 	 * Fetch CCP's universe-wide average and adjusted prices for all tradeable types.
 	 * Public ESI endpoint — no authentication required.
 	 * Cached for 24 hours. Returns ~14k entries covering all tradeable items.
 	 */
-	fetchMarketPrices(): Promise<import('./universe-types').MarketPrice[]>
-
+	fetchMarketPrices(): Promise<MarketPrice[]>
 }
 
 export interface EsiTypeResolver {

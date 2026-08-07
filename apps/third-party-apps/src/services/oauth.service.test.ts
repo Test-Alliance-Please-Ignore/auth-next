@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { buildOAuthApiMeResponse, previewOAuthAuthorization } from './oauth.service'
+
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
 }))
@@ -7,9 +9,6 @@ vi.mock('@repo/do-utils', () => ({
 vi.mock('../esi-proxy', () => ({
 	proxyEsiRequest: vi.fn(),
 }))
-
-import { previewOAuthAuthorization } from './oauth.service'
-import { buildOAuthApiMeResponse } from './oauth.service'
 
 describe('oauth service', () => {
 	it('accepts local loopback authorize urls even when the provider binding env is production-like', async () => {
@@ -50,7 +49,9 @@ describe('oauth service', () => {
 		})
 		expect(parseAuthRequest).toHaveBeenCalledTimes(1)
 		expect(parseAuthRequest.mock.calls[0]?.[0]).toBeInstanceOf(Request)
-		expect(new URL(parseAuthRequest.mock.calls[0]?.[0].url ?? '').origin).toBe('http://127.0.0.1:5173')
+		expect(new URL(parseAuthRequest.mock.calls[0]?.[0].url ?? '').origin).toBe(
+			'http://127.0.0.1:5173'
+		)
 	})
 
 	it('adds a synthesized authnext.invalid email address to the profile response', async () => {

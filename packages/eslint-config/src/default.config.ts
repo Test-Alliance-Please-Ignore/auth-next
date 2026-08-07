@@ -126,6 +126,20 @@ export function getConfig(importMetaUrl: string): Array<Linter.Config<Linter.Rul
 			},
 		},
 
+		// Tooling configuration files are not consistently included by package tsconfigs.
+		// Parse them without project service so both included and excluded configs lint cleanly.
+		{
+			files: ['**/*.config.ts'],
+			languageOptions: {
+				parserOptions: {
+					projectService: false,
+				},
+			},
+			rules: {
+				'@typescript-eslint/no-floating-promises': 'off',
+			},
+		},
+
 		// Import plugin's TypeScript specific rules using FlatCompat
 		// This should apply to the same files as the TypeScript configuration above.
 		// We apply it as a separate configuration object to ensure `files` matches.

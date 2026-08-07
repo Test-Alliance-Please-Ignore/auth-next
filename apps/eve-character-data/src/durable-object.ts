@@ -4,7 +4,8 @@ import { and, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { EveCharacterDataInstance } from '@repo/eve-character-data'
 import { createEveAllianceId, createEveCharacterId, createEveCorporationId } from '@repo/eve-types'
-import { parseJsonResponse } from '@repo/worker-utils'
+import { logger } from '@repo/hono-helpers'
+import { createWorkflowBatch } from '@repo/workflow-utils'
 
 import { createDb } from './db'
 import {
@@ -22,22 +23,20 @@ import {
 	characterWallet,
 	characterWalletJournal,
 } from './db/schema'
-import { buildCharacterSyncWorkflowOptions } from './workflows/build-character-sync-workflow-options'
 import { buildUserSyncWorkflowOptions } from './workflows/build-user-sync-workflow-options'
 
 import type {
 	CharacterAttributesData,
+	CharacterCorporationHistoryData,
 	CharacterKillmailData,
 	CharacterKillmailUpsertData,
-	CharacterCorporationHistoryData,
+	CharacterLossData,
+	CharacterLossItemData,
 	CharacterMarketOrderData,
 	CharacterMarketTransactionData,
 	CharacterMarketTransactionsWindowFilters,
 	CharacterPublicData,
 	CharacterPublicRefreshResult,
-	CharacterLossData,
-	CharacterLossItemData,
-	CharacterSensitiveData,
 	CharacterSkillsData,
 	CharacterSkillsResponse,
 	CharacterWalletJournalData,
@@ -55,8 +54,6 @@ import type {
 } from '@repo/eve-character-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
-import { logger } from '@repo/hono-helpers'
-import { createWorkflowBatch } from '@repo/workflow-utils'
 
 type KillmailItemLike = {
 	flag: number
@@ -96,7 +93,11 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 	private chunkWorkflowInstanceIds(workflowInstanceIds: string[]): string[][] {
 		const chunks: string[][] = []
-		for (let index = 0; index < workflowInstanceIds.length; index += EveCharacterDataDO.MANUAL_BATCH_STORAGE_CHUNK_SIZE) {
+		for (
+			let index = 0;
+			index < workflowInstanceIds.length;
+			index += EveCharacterDataDO.MANUAL_BATCH_STORAGE_CHUNK_SIZE
+		) {
 			chunks.push(
 				workflowInstanceIds.slice(index, index + EveCharacterDataDO.MANUAL_BATCH_STORAGE_CHUNK_SIZE)
 			)
@@ -153,7 +154,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		}))
 	}
 
-	private extractKillmailData(row: typeof characterKillmails.$inferSelect): KillmailPayloadLike | null {
+	private extractKillmailData(
+		row: typeof characterKillmails.$inferSelect
+	): KillmailPayloadLike | null {
 		const raw = row.killmailData
 		if (!raw || typeof raw !== 'object') return null
 		return raw as KillmailPayloadLike
@@ -178,7 +181,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		}
 	}
 
-	private mapKillmailRowToLoss(row: typeof characterKillmails.$inferSelect): CharacterLossData | null {
+	private mapKillmailRowToLoss(
+		row: typeof characterKillmails.$inferSelect
+	): CharacterLossData | null {
 		const killmailData = this.extractKillmailData(row)
 		const victim = killmailData?.victim
 		const shipTypeId = row.shipTypeId ?? victim?.ship_type_id
@@ -232,7 +237,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		try {
 			await this.refreshPublicCharacterData(characterId, forceRefresh)
 			logger.log('EveCharacterData.fetchCharacterData completed successfully')
-		} catch (error) {
+		} catch {
 			logger.error('EveCharacterData.fetchCharacterData failed:', error)
 			throw error
 		}
@@ -321,13 +326,16 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 				throw error
 			}
 
-			logger.info('[EveCharacterDataDO] refreshPublicCharacterData treated missing character as deleted', {
-				characterId,
-				forceRefresh,
-				previousCorporationId: previousCharacterInfo?.corporationId ?? null,
-				previousAllianceId: previousCharacterInfo?.allianceId ?? null,
-				error: errorMessage,
-			})
+			logger.info(
+				'[EveCharacterDataDO] refreshPublicCharacterData treated missing character as deleted',
+				{
+					characterId,
+					forceRefresh,
+					previousCorporationId: previousCharacterInfo?.corporationId ?? null,
+					previousAllianceId: previousCharacterInfo?.allianceId ?? null,
+					error: errorMessage,
+				}
+			)
 
 			return {
 				success: false,
@@ -496,7 +504,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 	async getMostRecentLoss(characterId: string): Promise<CharacterKillmailData | null> {
 		const result = await this.db.query.characterKillmails.findFirst({
-			where: and(eq(characterKillmails.characterId, characterId), eq(characterKillmails.isLoss, true)),
+			where: and(
+				eq(characterKillmails.characterId, characterId),
+				eq(characterKillmails.isLoss, true)
+			),
 			orderBy: [desc(characterKillmails.killmailTime), desc(characterKillmails.killmailId)],
 		})
 
@@ -508,7 +519,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		limit = 1000,
 		cutoff?: Date
 	): Promise<CharacterLossData[]> {
-		const conditions = [eq(characterKillmails.characterId, characterId), eq(characterKillmails.isLoss, true)]
+		const conditions = [
+			eq(characterKillmails.characterId, characterId),
+			eq(characterKillmails.isLoss, true),
+		]
 		if (cutoff) {
 			conditions.push(gte(characterKillmails.killmailTime, cutoff))
 		}
@@ -706,7 +720,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		// Fetch and cache the character data for future lookups
 		try {
 			await this.fetchCharacterData(characterId, false)
-		} catch (error) {
+		} catch {
 			// If we can't fetch character data, still return the ID
 			// The error will be logged by fetchCharacterData
 		}

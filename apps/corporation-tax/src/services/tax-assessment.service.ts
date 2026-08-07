@@ -702,7 +702,7 @@ export class TaxAssessmentService {
 			const stub = getStub<EveCorporationData>(this.eveCorporationDataNamespace, corporationId)
 			const members = await stub.getMembers(corporationId)
 			return new Set(members.map((member) => member.characterId))
-		} catch (_error) {
+		} catch {
 			return new Set<string>()
 		}
 	}
@@ -1056,7 +1056,7 @@ export class TaxAssessmentService {
 			const stub = getStub<EveCorporationData>(this.eveCorporationDataNamespace, corporationId)
 			const metadata = await stub.getCorporationTaxMetadata(corporationId)
 			return metadata?.inGameTaxRateBps ?? null
-		} catch (_error) {
+		} catch {
 			return null
 		}
 	}

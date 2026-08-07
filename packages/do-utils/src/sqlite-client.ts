@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { migrate as drizzleMigrate } from 'drizzle-orm/durable-sqlite/migrator'
+
 import { logger } from '@repo/hono-helpers/logger'
 
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
@@ -80,7 +81,7 @@ export async function migrateSqlite(
 
 		// Drizzle durable-sqlite migrator expects the migrations object directly
 		// This matches the pattern from: https://orm.drizzle.team/docs/connect-cloudflare-do
-		drizzleMigrate(db, migrations)
+		await drizzleMigrate(db, migrations)
 
 		logger.info('[SQLite Migration] Migrations completed successfully')
 	})

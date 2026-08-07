@@ -6,7 +6,6 @@
  */
 
 import { RpcTarget } from 'cloudflare:workers'
-import { z } from 'zod'
 
 import type { EveAllianceId, EveCharacterId, EveCorporationId } from '@repo/eve-types'
 
@@ -411,7 +410,7 @@ export interface CharacterSkillEntry {
  * Character skills response from RPC methods
  */
 export interface CharacterSkillsResponse {
-	skills: Array<CharacterSkillEntry>
+	skills: CharacterSkillEntry[]
 	total_sp: number
 	unallocated_sp?: number
 }
@@ -706,11 +705,7 @@ export interface EveCharacterData {
 
 	getMostRecentLoss(characterId: string): Promise<CharacterKillmailData | null>
 
-	getRecentLosses(
-		characterId: string,
-		limit?: number,
-		cutoff?: Date
-	): Promise<CharacterLossData[]>
+	getRecentLosses(characterId: string, limit?: number, cutoff?: Date): Promise<CharacterLossData[]>
 
 	/**
 	 * Get instance of EveCharacterData Durable Object
@@ -718,7 +713,6 @@ export interface EveCharacterData {
 	 * @returns Instance of EveCharacterData Durable Object
 	 */
 	getInstance(characterId: string): Promise<EveCharacterDataInstance>
-
 }
 
 /**

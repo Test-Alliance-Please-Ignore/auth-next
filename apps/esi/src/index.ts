@@ -6,17 +6,15 @@ import { withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers
 import { EsiDO } from './durable-object'
 import { EsiTypeResolverDO } from './durable-object-id-resolver'
 
-import type { Esi, EsiTypeResolver } from '@repo/esi'
+import type { Esi } from '@repo/esi'
 import type { App } from './context'
 
 const app = new Hono<App>()
-	.use(
-		'*',
-		(c, next) =>
-			withWorkersLogger(c.env.NAME, {
-				environment: c.env.ENVIRONMENT,
-				release: c.env.SENTRY_RELEASE,
-			})(c, next)
+	.use('*', (c, next) =>
+		withWorkersLogger(c.env.NAME, {
+			environment: c.env.ENVIRONMENT,
+			release: c.env.SENTRY_RELEASE,
+		})(c, next)
 	)
 
 	.onError(withOnError())

@@ -119,7 +119,9 @@ async function findSdeDataDirectory(rootDir: string, maxDepth = 4): Promise<stri
 		'marketGroups.jsonl',
 		'types.jsonl',
 	]
-	const hasRequiredFiles = await Promise.all(requiredFiles.map((name) => fileExists(join(rootDir, name))))
+	const hasRequiredFiles = await Promise.all(
+		requiredFiles.map((name) => fileExists(join(rootDir, name)))
+	)
 	if (hasRequiredFiles.every(Boolean)) {
 		return rootDir
 	}
@@ -143,7 +145,6 @@ async function findSdeDataDirectory(rootDir: string, maxDepth = 4): Promise<stri
 }
 
 export async function prepareSdeDataDir(): Promise<string> {
-	// eslint-disable-next-line turbo/no-undeclared-env-vars
 	const configuredDir = process.env.SDE_DATA_DIR
 	if (configuredDir) {
 		return configuredDir

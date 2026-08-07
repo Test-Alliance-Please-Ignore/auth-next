@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { ApplicationService } from '../../services/application.service'
 
@@ -27,17 +27,7 @@ function makeApp(overrides: Record<string, unknown> = {}) {
 }
 
 function makeContext() {
-	const insertValues = vi.fn().mockResolvedValue([])
-	const insertInto = vi.fn().mockReturnValue({ values: insertValues })
-
 	const deleteWhere = vi.fn().mockResolvedValue(undefined)
-	const deleteFrom = vi.fn().mockReturnValue({ where: deleteWhere })
-
-	const activityInsertValues = vi.fn().mockResolvedValue([])
-	const activityInsert = vi.fn().mockReturnValue({ values: activityInsertValues })
-
-	const altsInsertValues = vi.fn().mockResolvedValue([])
-	const altsInsert = vi.fn().mockReturnValue({ values: altsInsertValues })
 
 	const db = {
 		query: {
@@ -48,7 +38,7 @@ function makeContext() {
 				findMany: vi.fn().mockResolvedValue([]),
 			},
 		},
-		insert: vi.fn().mockImplementation((table: unknown) => {
+		insert: vi.fn().mockImplementation(() => {
 			// Return different mocks depending on table reference identity
 			// In practice we'll configure per-test via mockReturnValueOnce
 			return { values: vi.fn().mockResolvedValue([]) }
@@ -90,16 +80,22 @@ describe('ApplicationService.addApplicationAlts', () => {
 		// Second and third calls are activity logs
 		const secondCall = insertValues.mock.calls[1][0]
 		const thirdCall = insertValues.mock.calls[2][0]
-		expect(secondCall).toMatchObject({ action: 'alt_added', newValue: 'alt-2001', metadata: { altCharacterName: 'Alt One' } })
-		expect(thirdCall).toMatchObject({ action: 'alt_added', newValue: 'alt-2002', metadata: { altCharacterName: 'Alt Two' } })
+		expect(secondCall).toMatchObject({
+			action: 'alt_added',
+			newValue: 'alt-2001',
+			metadata: { altCharacterName: 'Alt One' },
+		})
+		expect(thirdCall).toMatchObject({
+			action: 'alt_added',
+			newValue: 'alt-2002',
+			metadata: { altCharacterName: 'Alt Two' },
+		})
 	})
 
 	it('skips alts that already exist on the application', async () => {
 		const db = makeContext().db
 		db.query.applications.findFirst.mockResolvedValue(makeApp())
-		db.query.applicationAlts.findMany.mockResolvedValue([
-			{ characterId: 'alt-2001' },
-		])
+		db.query.applicationAlts.findMany.mockResolvedValue([{ characterId: 'alt-2001' }])
 
 		const insertValues = vi.fn().mockResolvedValue([])
 		db.insert.mockReturnValue({ values: insertValues })
@@ -121,9 +117,7 @@ describe('ApplicationService.addApplicationAlts', () => {
 	it('returns early without touching DB when all alts already exist', async () => {
 		const db = makeContext().db
 		db.query.applications.findFirst.mockResolvedValue(makeApp())
-		db.query.applicationAlts.findMany.mockResolvedValue([
-			{ characterId: 'alt-2001' },
-		])
+		db.query.applicationAlts.findMany.mockResolvedValue([{ characterId: 'alt-2001' }])
 
 		const service = makeService(db)
 		await service.addApplicationAlts('app-1', 'user-1', 'char-1001', 'Main Pilot', [
@@ -214,7 +208,14 @@ describe('ApplicationService.removeApplicationAlt', () => {
 		db.insert.mockReturnValue({ values: insertValues })
 
 		const service = makeService(db)
-		await service.removeApplicationAlt('app-1', 'user-1', 'char-1001', 'Main Pilot', 'alt-2001', 'Alt One')
+		await service.removeApplicationAlt(
+			'app-1',
+			'user-1',
+			'char-1001',
+			'Main Pilot',
+			'alt-2001',
+			'Alt One'
+		)
 
 		expect(deleteWhere).toHaveBeenCalledTimes(1)
 		expect(db.insert).toHaveBeenCalledTimes(1)
@@ -290,7 +291,14 @@ describe('ApplicationService.removeApplicationAlt', () => {
 
 			const service = makeService(db)
 			await expect(
-				service.removeApplicationAlt('app-1', 'user-1', 'char-1001', 'Main Pilot', 'alt-2001', 'Alt One')
+				service.removeApplicationAlt(
+					'app-1',
+					'user-1',
+					'char-1001',
+					'Main Pilot',
+					'alt-2001',
+					'Alt One'
+				)
 			).resolves.toBeUndefined()
 		}
 	)

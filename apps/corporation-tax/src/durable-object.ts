@@ -7,8 +7,6 @@ import { logger, toErrorLogDetails } from '@repo/hono-helpers'
 import { createDb } from './db'
 import {
 	managedCorporations,
-	taxAssessments,
-	taxCorporationExclusions,
 	taxLedgerEntries,
 	taxMemberSummaryVersions,
 	taxRuleGroupAttachments,
@@ -18,8 +16,6 @@ import { TaxLedgerRpc } from './rpc/ledger-rpc'
 import { TaxOperationsRpc } from './rpc/operations-rpc'
 import { TaxReportsRpc } from './rpc/reports-rpc'
 import { TaxRulesRpc } from './rpc/rules-rpc'
-import { planProjectionRefreshFromWalletSync } from './services/projection-refresh-plan'
-import { computeRuleMutationRecalcStart } from './services/projection-rule-freshness'
 import { TaxAlertService } from './services/tax-alert.service'
 import { TaxAssessmentService } from './services/tax-assessment.service'
 import { TaxAuditService } from './services/tax-audit.service'
@@ -87,7 +83,6 @@ import type {
 	TaxMissingEsiKeyRow,
 	TaxNotificationDestination,
 	TaxPagedResult,
-	TaxReportWindowFilters,
 	TaxRollupReportFilters,
 	TaxRuleGroup,
 	TaxRuleGroupAttachment,
@@ -110,9 +105,7 @@ import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Env } from './context'
 import type { CorporationTaxDb } from './db'
 
-const LEDGER_RETENTION_DAYS = 90
 const DEFAULT_ESS_ALERT_THRESHOLD_ISK = 1_000_000_000
-const SCHEDULED_CORPORATION_CONCURRENCY = 5
 const TRIGGERED_INGEST_OVERLAP_WINDOW_MS = 48 * 60 * 60 * 1000
 const TAX_PROJECTION_RETRY_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const TAX_PROJECTION_RETRY_KEY_PREFIX = 'tax-projection-retry-intent:'

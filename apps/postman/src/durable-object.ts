@@ -1,8 +1,9 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { logger } from '@repo/hono-helpers'
+
 import type { Postman } from '@repo/postman'
 import type { Env } from './context'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Postman Durable Object
@@ -28,7 +29,7 @@ export class PostmanDO extends DurableObject<Env, {}> implements Postman {
 	 * WebSocket message handler (Hibernation API)
 	 * Called when a WebSocket message is received
 	 */
-	async webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): Promise<void> {
+	async webSocketMessage(_ws: WebSocket, _message: ArrayBuffer | string): Promise<void> {
 		// TODO: Implement WebSocket message handling
 	}
 
@@ -36,7 +37,12 @@ export class PostmanDO extends DurableObject<Env, {}> implements Postman {
 	 * WebSocket close handler (Hibernation API)
 	 * Called when a WebSocket connection is closed
 	 */
-	async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+	async webSocketClose(
+		_ws: WebSocket,
+		_code: number,
+		_reason: string,
+		_wasClean: boolean
+	): Promise<void> {
 		// TODO: Implement cleanup logic
 	}
 
@@ -60,8 +66,6 @@ export class PostmanDO extends DurableObject<Env, {}> implements Postman {
 	 * Fetch handler for HTTP requests to the Durable Object
 	 */
 	async fetch(request: Request): Promise<Response> {
-		const url = new URL(request.url)
-
 		// WebSocket upgrade handling
 		if (request.headers.get('Upgrade') === 'websocket') {
 			const pair = new WebSocketPair()

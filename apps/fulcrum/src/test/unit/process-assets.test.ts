@@ -3,16 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { processAssets } from '../../workflows/steps/assets/process-assets'
 
 import type { CharacterAsset } from '@repo/esi'
-import type { StepResult } from '../../workflows/utils/storage'
+import type * as StorageUtils from '../../workflows/utils/storage'
 
 const retrieveData = vi.fn()
 const storeOrReturn = vi.fn()
 const enrichAssets = vi.fn()
 
 vi.mock('../../workflows/utils/storage', async () => {
-	const actual = await vi.importActual<typeof import('../../workflows/utils/storage')>(
-		'../../workflows/utils/storage'
-	)
+	const actual = await vi.importActual<typeof StorageUtils>('../../workflows/utils/storage')
 	return {
 		...actual,
 		retrieveData: (...args: unknown[]) => retrieveData(...args),
@@ -24,7 +22,7 @@ vi.mock('../../workflows/processors/helpers/assets', () => ({
 	enrichAssets: (...args: unknown[]) => enrichAssets(...args),
 }))
 
-function makeStepResult(): StepResult {
+function makeStepResult(): StorageUtils.StepResult {
 	return {
 		success: true,
 		source: 'r2',
@@ -34,7 +32,8 @@ function makeStepResult(): StepResult {
 }
 
 function makeAsset(
-	asset: Partial<CharacterAsset> & Pick<CharacterAsset, 'item_id' | 'location_id' | 'location_type' | 'type_id'>
+	asset: Partial<CharacterAsset> &
+		Pick<CharacterAsset, 'item_id' | 'location_id' | 'location_type' | 'type_id'>
 ): CharacterAsset {
 	return {
 		quantity: 1,
@@ -72,29 +71,29 @@ describe('processAssets', () => {
 				location_id: structureId,
 				location_type: 'item',
 				location_flag: 'Hangar',
-					type_id: '3465',
-					is_singleton: true,
-				}),
-				makeAsset({
-					item_id: shipId,
-					location_id: structureId,
-					location_type: 'item',
-					location_flag: 'Hangar',
-					type_id: '582',
-					is_singleton: true,
-				}),
-				makeAsset({
-					item_id: shipModuleId,
-					location_id: shipId,
-					location_type: 'item',
-					location_flag: 'Cargo',
-					type_id: '34',
-				}),
-				makeAsset({
-					item_id: containedItemId,
-					location_id: containerId,
-					location_type: 'item',
-					location_flag: 'Cargo',
+				type_id: '3465',
+				is_singleton: true,
+			}),
+			makeAsset({
+				item_id: shipId,
+				location_id: structureId,
+				location_type: 'item',
+				location_flag: 'Hangar',
+				type_id: '582',
+				is_singleton: true,
+			}),
+			makeAsset({
+				item_id: shipModuleId,
+				location_id: shipId,
+				location_type: 'item',
+				location_flag: 'Cargo',
+				type_id: '34',
+			}),
+			makeAsset({
+				item_id: containedItemId,
+				location_id: containerId,
+				location_type: 'item',
+				location_flag: 'Cargo',
 				type_id: '34',
 			}),
 		]
@@ -109,7 +108,7 @@ describe('processAssets', () => {
 				ESI: {} as DurableObjectNamespace,
 				UNIVERSE: {} as DurableObjectNamespace,
 			},
-			((() => ({} as R2Bucket)) as unknown) as (name: string) => R2Bucket,
+			(() => ({}) as R2Bucket) as unknown as (name: string) => R2Bucket,
 			{} as R2Bucket,
 			'bucket',
 			makeStepResult(),
@@ -120,11 +119,7 @@ describe('processAssets', () => {
 		expect(result.success).toBe(true)
 		expect(enrichAssets).toHaveBeenCalledTimes(1)
 
-		const [, filteredAssets] = enrichAssets.mock.calls[0] as [
-			unknown,
-			CharacterAsset[],
-			string,
-		]
+		const [, filteredAssets] = enrichAssets.mock.calls[0] as [unknown, CharacterAsset[], string]
 
 		expect(filteredAssets.map((asset) => asset.item_id)).toEqual([
 			structureId,

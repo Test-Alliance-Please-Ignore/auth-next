@@ -1,12 +1,28 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, createDbClient, createDbClientWs, desc, eq, isNull, sql } from '@repo/db-utils'
+import { and, createDbClientWs, desc, eq, isNull, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import {
 	esiGetCharacterFleetInformationSchema,
 	esiGetFleetInformationSchema,
 	esiGetFleetMembersSchema,
 } from '@repo/fleets'
+import { logger } from '@repo/hono-helpers'
+
+import {
+	fleetCommanderAccessAnchors,
+	fleetCommanderEvents,
+	fleetMemberHistory,
+	fleetMemberShipEvents,
+	fleetSummaries,
+	fleetTrackingSessionEvents,
+	fleetTrackingSessions,
+	schema,
+} from './db/schema'
+import { computeNextPollDelayMs } from './polling'
+
+import type { EveCharacterData } from '@repo/eve-character-data'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type {
 	EsiGetCharacterFleetInformation,
 	EsiGetFleetInformation,
@@ -15,24 +31,8 @@ import type {
 	FleetMonitorState,
 	FleetMonitorStateRow,
 } from '@repo/fleets'
-import { logger } from '@repo/hono-helpers'
-
-import { Env } from './context'
-import {
-	fleetMemberHistory,
-	fleetMemberShipEvents,
-	fleetCommanderAccessAnchors,
-	fleetCommanderEvents,
-	fleetTrackingSessionEvents,
-	fleetSummaries,
-	fleetTrackingSessions,
-	schema,
-} from './db/schema'
-
-import type { EveCharacterData } from '@repo/eve-character-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { InvType, Universe } from '@repo/universe'
-import { computeNextPollDelayMs } from './polling'
+import type { Env } from './context'
 
 const LIVE_FLEET_ESI_OPTIONS = { cacheMode: 'no-store' } as const
 
@@ -265,7 +265,7 @@ export class FleetMonitorDO extends DurableObject {
 				this.state.storage.sql.exec(`
 					ALTER TABLE monitor_state ADD COLUMN last_checked TEXT
 				`)
-			} catch (error) {
+			} catch {
 				// Column might already exist, which is fine
 				const errorMessage = error instanceof Error ? error.message : String(error)
 				if (!errorMessage.includes('duplicate column')) {
@@ -328,10 +328,8 @@ export class FleetMonitorDO extends DurableObject {
 		// Migration 2 -> 3: Add tracking_session_id and peak_member_count to monitor_state
 		if (currentVersion < 3) {
 			try {
-				this.state.storage.sql.exec(
-					`ALTER TABLE monitor_state ADD COLUMN tracking_session_id TEXT`
-				)
-			} catch (error) {
+				this.state.storage.sql.exec(`ALTER TABLE monitor_state ADD COLUMN tracking_session_id TEXT`)
+			} catch {
 				const message = error instanceof Error ? error.message : String(error)
 				if (!message.includes('duplicate column')) {
 					logger.warn('[FleetMonitor] Could not add tracking_session_id column', {
@@ -385,9 +383,7 @@ export class FleetMonitorDO extends DurableObject {
 				ON CONFLICT(id) DO UPDATE SET version = 4
 			`)
 
-			logger.info(
-				'[FleetMonitor] Migration 3 -> 4 completed (added last_synced_fleet_boss_id)'
-			)
+			logger.info('[FleetMonitor] Migration 3 -> 4 completed (added last_synced_fleet_boss_id)')
 		}
 
 		// Migration 4 -> 5: add TTL metadata so monitor_state can self-expire.
@@ -407,15 +403,18 @@ export class FleetMonitorDO extends DurableObject {
 			// If we have a last_checked timestamp, expire 24h after that check.
 			// Otherwise expire immediately so obsolete pre-TTL rows do not linger.
 			const legacyRows = this.state.storage.sql
-				.exec<{ last_checked: string | null; expires_at: string | null }>(
-					`SELECT last_checked, expires_at FROM monitor_state WHERE id = 1`
-				)
+				.exec<{
+					last_checked: string | null
+					expires_at: string | null
+				}>(`SELECT last_checked, expires_at FROM monitor_state WHERE id = 1`)
 				.toArray()
 			if (legacyRows.length > 0 && legacyRows[0].expires_at === null) {
 				const legacyRow = legacyRows[0]
 				const backfilledExpiresAt =
 					legacyRow.last_checked !== null
-						? new Date(new Date(legacyRow.last_checked).getTime() + FleetMonitorDO.MONITOR_STATE_TTL_MS).toISOString()
+						? new Date(
+								new Date(legacyRow.last_checked).getTime() + FleetMonitorDO.MONITOR_STATE_TTL_MS
+							).toISOString()
 						: new Date(Date.now() - 1000).toISOString()
 				this.state.storage.sql.exec(
 					`UPDATE monitor_state SET expires_at = ? WHERE id = 1`,
@@ -448,12 +447,27 @@ export class FleetMonitorDO extends DurableObject {
 				}
 			}
 
-			addColumn(`ALTER TABLE monitor_state ADD COLUMN member_count INTEGER NOT NULL DEFAULT 0`, 'member_count')
+			addColumn(
+				`ALTER TABLE monitor_state ADD COLUMN member_count INTEGER NOT NULL DEFAULT 0`,
+				'member_count'
+			)
 			addColumn(`ALTER TABLE monitor_state ADD COLUMN motd TEXT`, 'motd')
-			addColumn(`ALTER TABLE monitor_state ADD COLUMN is_free_move INTEGER NOT NULL DEFAULT 0`, 'is_free_move')
-			addColumn(`ALTER TABLE monitor_state ADD COLUMN is_registered INTEGER NOT NULL DEFAULT 0`, 'is_registered')
-			addColumn(`ALTER TABLE monitor_state ADD COLUMN is_voice_enabled INTEGER NOT NULL DEFAULT 0`, 'is_voice_enabled')
-			addColumn(`ALTER TABLE monitor_state ADD COLUMN not_found INTEGER NOT NULL DEFAULT 0`, 'not_found')
+			addColumn(
+				`ALTER TABLE monitor_state ADD COLUMN is_free_move INTEGER NOT NULL DEFAULT 0`,
+				'is_free_move'
+			)
+			addColumn(
+				`ALTER TABLE monitor_state ADD COLUMN is_registered INTEGER NOT NULL DEFAULT 0`,
+				'is_registered'
+			)
+			addColumn(
+				`ALTER TABLE monitor_state ADD COLUMN is_voice_enabled INTEGER NOT NULL DEFAULT 0`,
+				'is_voice_enabled'
+			)
+			addColumn(
+				`ALTER TABLE monitor_state ADD COLUMN not_found INTEGER NOT NULL DEFAULT 0`,
+				'not_found'
+			)
 			addColumn(`ALTER TABLE monitor_state ADD COLUMN not_found_at TEXT`, 'not_found_at')
 
 			this.state.storage.sql.exec(`
@@ -572,7 +586,8 @@ export class FleetMonitorDO extends DurableObject {
 					fleetId,
 					trackingSessionId,
 					previousFleetBossCharacterId:
-						options.previousFleetBossCharacterId ?? (options.resumedExistingSession ? characterId : null),
+						options.previousFleetBossCharacterId ??
+						(options.resumedExistingSession ? characterId : null),
 					currentFleetBossCharacterId: currentFleetBossId,
 					observedAt,
 				})
@@ -609,9 +624,7 @@ export class FleetMonitorDO extends DurableObject {
 					if (initialStatus.members.length > 0 && shouldSeedInitialHistorySnapshot) {
 						const BATCH_SIZE = 20 // Reduced from 50 to avoid parameter limit issues
 						// Resolve corp IDs once for the whole roster.
-						const initialCharIds = new Set(
-							initialStatus.members.map((m) => String(m.character_id))
-						)
+						const initialCharIds = new Set(initialStatus.members.map((m) => String(m.character_id)))
 						let initialCorps: Record<string, string | null> = {}
 						try {
 							initialCorps = await this.resolveCharacterCorps(initialCharIds)
@@ -681,20 +694,23 @@ export class FleetMonitorDO extends DurableObject {
 								await this.db.insert(fleetMemberShipEvents).values(batch)
 							}
 						} catch (error) {
-							const errAny = error as { message?: string; code?: string; stack?: string; detail?: string; constraint?: string }
-							logger.error(
-								`[FleetMonitor ${fleetId}] Failed to seed initial ship events`,
-								{
-									fleetId,
-									trackingSessionId,
-									memberCount: initialStatus.members.length,
-									errorMessage: errAny?.message,
-									errorCode: errAny?.code,
-									errorDetail: errAny?.detail,
-									errorConstraint: errAny?.constraint,
-									errorStack: errAny?.stack,
-								}
-							)
+							const errAny = error as {
+								message?: string
+								code?: string
+								stack?: string
+								detail?: string
+								constraint?: string
+							}
+							logger.error(`[FleetMonitor ${fleetId}] Failed to seed initial ship events`, {
+								fleetId,
+								trackingSessionId,
+								memberCount: initialStatus.members.length,
+								errorMessage: errAny?.message,
+								errorCode: errAny?.code,
+								errorDetail: errAny?.detail,
+								errorConstraint: errAny?.constraint,
+								errorStack: errAny?.stack,
+							})
 						}
 
 						logger.info(
@@ -776,11 +792,12 @@ export class FleetMonitorDO extends DurableObject {
 
 		try {
 			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-			const currentCharacterFleetResponse = await tokenStore.fetchEsi<EsiGetCharacterFleetInformation>(
-				`/characters/${characterId}/fleet/`,
-				characterId,
-				LIVE_FLEET_ESI_OPTIONS
-			)
+			const currentCharacterFleetResponse =
+				await tokenStore.fetchEsi<EsiGetCharacterFleetInformation>(
+					`/characters/${characterId}/fleet/`,
+					characterId,
+					LIVE_FLEET_ESI_OPTIONS
+				)
 			const currentCharacterFleetInfo = esiGetCharacterFleetInformationSchema.parse(
 				currentCharacterFleetResponse.data
 			)
@@ -1961,19 +1978,15 @@ export class FleetMonitorDO extends DurableObject {
 
 		// Resolve all names in parallel for better performance.
 		// Corp lookup runs alongside name lookups; results assigned below.
-		const [
-			characterNamesResult,
-			systemNamesResult,
-			shipTypeNamesResult,
-			characterCorpsResult,
-		] = await Promise.allSettled([
-			allCharacterIds.size > 0 ? this.resolveCharacterNames(allCharacterIds) : {},
-			allSystemIds.size > 0 ? this.resolveSystemNames(allSystemIds) : {},
-			allShipTypeIds.size > 0 ? this.resolveShipTypeNames(allShipTypeIds) : {},
-			allCharacterIds.size > 0
-				? this.resolveCharacterCorps(allCharacterIds)
-				: ({} as Record<string, string | null>),
-		])
+		const [characterNamesResult, systemNamesResult, shipTypeNamesResult, characterCorpsResult] =
+			await Promise.allSettled([
+				allCharacterIds.size > 0 ? this.resolveCharacterNames(allCharacterIds) : {},
+				allSystemIds.size > 0 ? this.resolveSystemNames(allSystemIds) : {},
+				allShipTypeIds.size > 0 ? this.resolveShipTypeNames(allShipTypeIds) : {},
+				allCharacterIds.size > 0
+					? this.resolveCharacterCorps(allCharacterIds)
+					: ({} as Record<string, string | null>),
+			])
 		const resolvedCharacterCorps: Record<string, string | null> = {}
 		if (characterCorpsResult.status === 'fulfilled') {
 			Object.assign(resolvedCharacterCorps, characterCorpsResult.value)
@@ -2175,9 +2188,7 @@ export class FleetMonitorDO extends DurableObject {
 				if (newRows.length > 0) {
 					const BATCH_SIZE = 50
 					for (let i = 0; i < newRows.length; i += BATCH_SIZE) {
-						await this.db
-							.insert(fleetMemberShipEvents)
-							.values(newRows.slice(i, i + BATCH_SIZE))
+						await this.db.insert(fleetMemberShipEvents).values(newRows.slice(i, i + BATCH_SIZE))
 					}
 				}
 
@@ -2188,7 +2199,13 @@ export class FleetMonitorDO extends DurableObject {
 					closedOnLeave: leaves.length,
 				})
 			} catch (error) {
-				const errAny = error as { message?: string; code?: string; stack?: string; detail?: string; constraint?: string }
+				const errAny = error as {
+					message?: string
+					code?: string
+					stack?: string
+					detail?: string
+					constraint?: string
+				}
 				logger.error(`[FleetMonitor ${fleetId}] Failed to write ship events`, {
 					fleetId,
 					trackingSessionId,
@@ -2331,7 +2348,8 @@ export class FleetMonitorDO extends DurableObject {
 			return
 		}
 
-		const effectiveSessionStatus = sessionRow.status === 'active' && !sessionRow.endedAt ? 'active' : 'ended'
+		const effectiveSessionStatus =
+			sessionRow.status === 'active' && !sessionRow.endedAt ? 'active' : 'ended'
 		if (effectiveSessionStatus !== 'active') {
 			logger.info('[FleetMonitor] Session is no longer active; finalizing and stopping monitor', {
 				fleetId,
@@ -2343,12 +2361,13 @@ export class FleetMonitorDO extends DurableObject {
 				fleetBossId: characterId,
 				trackingSessionId,
 				endedAt: sessionRow.endedAt ?? new Date(),
-				endedReason: (sessionRow.endedReason as
-					| 'user_stopped'
-					| 'admin_stopped'
-					| 'fleet_disbanded'
-					| 'esi_error'
-					| 'token_expired') ?? 'fleet_disbanded',
+				endedReason:
+					(sessionRow.endedReason as
+						| 'user_stopped'
+						| 'admin_stopped'
+						| 'fleet_disbanded'
+						| 'esi_error'
+						| 'token_expired') ?? 'fleet_disbanded',
 				endedByUserId: sessionRow.endedByUserId ?? null,
 				peakMemberCount,
 			})
@@ -2411,7 +2430,13 @@ export class FleetMonitorDO extends DurableObject {
 						)
 					}
 				} catch (error) {
-					const errAny = error as { message?: string; code?: string; stack?: string; detail?: string; constraint?: string }
+					const errAny = error as {
+						message?: string
+						code?: string
+						stack?: string
+						detail?: string
+						constraint?: string
+					}
 					logger.error(
 						`[FleetMonitor ${fleetId}] Failed to seed ship-events during legacy recovery`,
 						{
@@ -2522,7 +2547,7 @@ export class FleetMonitorDO extends DurableObject {
 						timestamp TEXT NOT NULL
 					)
 				`)
-			} catch (error) {
+			} catch {
 				// Ignore - table might already exist
 			}
 			this.state.storage.sql.exec(`DELETE FROM error_tracking WHERE error_type = '404'`)
@@ -2700,7 +2725,9 @@ export class FleetMonitorDO extends DurableObject {
 	 * Schedule the next alarm to run after a delay.
 	 * Only schedules if the monitor is properly initialized with valid IDs
 	 */
-	private async scheduleNextAlarm(delayMs: number = FleetMonitorDO.BASE_POLL_INTERVAL_MS): Promise<void> {
+	private async scheduleNextAlarm(
+		delayMs: number = FleetMonitorDO.BASE_POLL_INTERVAL_MS
+	): Promise<void> {
 		// Verify state is valid before scheduling
 		const state = await this.getState()
 		if (!state || !state.isInitialized) {
@@ -2830,8 +2857,6 @@ export class FleetMonitorDO extends DurableObject {
 	 * Fetch handler for HTTP requests to the Durable Object
 	 */
 	async fetch(request: Request): Promise<Response> {
-		const url = new URL(request.url)
-
 		// WebSocket upgrade handling
 		if (request.headers.get('Upgrade') === 'websocket') {
 			const pair = new WebSocketPair()

@@ -1,5 +1,5 @@
 import type { DurableObject } from 'cloudflare:workers'
-import { EsiGetFleetInformation, EsiGetFleetMembers } from './esi'
+import type { EsiGetFleetInformation, EsiGetFleetMembers } from './esi'
 
 /**
  * Fleet details response
@@ -121,7 +121,12 @@ export interface FleetMonitor extends DurableObject {
 	 */
 	endSession(args: {
 		sessionId: string
-		endedReason: 'user_stopped' | 'admin_stopped' | 'fleet_disbanded' | 'esi_error' | 'token_expired'
+		endedReason:
+			| 'user_stopped'
+			| 'admin_stopped'
+			| 'fleet_disbanded'
+			| 'esi_error'
+			| 'token_expired'
 		endedByUserId: string | null
 	}): Promise<void>
 

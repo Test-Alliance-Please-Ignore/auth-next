@@ -1,4 +1,4 @@
-import { createExecutionContext, env as testEnv, waitOnExecutionContext } from 'cloudflare:test'
+import { env as testEnv } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { getStub } from '@repo/do-utils'

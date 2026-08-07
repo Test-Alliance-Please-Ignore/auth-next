@@ -1,17 +1,18 @@
-import { and, eq, inArray } from '@repo/db-utils'
-import type {
-	CreateJoinRequestRequest,
-	GroupJoinRequest,
-	GroupJoinRequestWithDetails,
-} from '@repo/groups'
-import { groupInvitations, groupJoinRequests, groupMembers, groups } from '../db/schema'
+import { and, eq } from '@repo/db-utils'
+
+import { groupJoinRequests, groupMembers, groups } from '../db/schema'
 import { bulkFindMainCharactersByUserIds } from './character-lookup'
 import { mapGroupJoinRequest } from './mappers'
 import { canModerateGroup } from './permissions'
 import { isUserGroupAdmin, isUserMember } from './query-helpers'
 
-import type { MembershipService } from './membership-service' // Needs to access MembershipService for cancel methods
+import type {
+	CreateJoinRequestRequest,
+	GroupJoinRequest,
+	GroupJoinRequestWithDetails,
+} from '@repo/groups'
 import type { ServiceContext } from './context'
+import type { MembershipService } from './membership-service' // Needs to access MembershipService for cancel methods
 
 export class JoinRequestService {
 	constructor(

@@ -1,25 +1,18 @@
-import { and, eq, inArray, sql } from '@repo/db-utils'
-import type {
-	Group,
-	GroupMember,
-	GroupMembershipSummary,
-	GroupWithDetails,
-	ListGroupsFilters,
-	UpdateGroupRequest,
-} from '@repo/groups'
+import { and, eq, inArray } from '@repo/db-utils'
+
 import {
-	categories,
 	groupAdmins,
 	groupInvitations,
 	groupJoinRequests,
 	groupMembers,
 	groups,
 } from '../db/schema'
-import { bulkFindMainCharactersByUserIds, bulkFindMainCharactersWithIdsByUserIds } from './character-lookup'
-import { mapGroup, mapGroupMember } from './mappers'
+import { bulkFindMainCharactersWithIdsByUserIds } from './character-lookup'
+import { mapGroupMember } from './mappers'
 import { canManageGroup, canModerateGroup, canViewGroupMembers } from './permissions'
-import { getGroupMemberCount, isUserGroupAdmin, isUserMember } from './query-helpers'
+import { isUserGroupAdmin, isUserMember } from './query-helpers'
 
+import type { GroupMember, GroupMembershipSummary } from '@repo/groups'
 import type { ServiceContext } from './context'
 
 export class MembershipService {
