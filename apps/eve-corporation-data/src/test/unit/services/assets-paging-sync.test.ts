@@ -148,4 +148,28 @@ describe('syncAssetsPaged', () => {
 		])
 		expect(result).toEqual({ assetsCount: 1 })
 	})
+
+	it('rejects an inconsistent page count instead of marking the asset sync complete', async () => {
+		const fetchPage = vi
+			.fn()
+			.mockResolvedValueOnce({ data: [], page: 1, pages: 2 })
+			.mockResolvedValueOnce({ data: [], page: 2, pages: 3 })
+		const storeAssets = vi.fn().mockResolvedValue(undefined)
+
+		await expect(syncAssetsPaged({ fetchPage, storeAssets })).rejects.toThrow(
+			'changed page count while fetching'
+		)
+		expect(storeAssets).toHaveBeenCalledTimes(1)
+	})
+
+	it('rejects a response for the wrong requested page', async () => {
+		const fetchPage = vi
+			.fn()
+			.mockResolvedValueOnce({ data: [], page: 1, pages: 2 })
+			.mockResolvedValueOnce({ data: [], page: 3, pages: 2 })
+
+		await expect(syncAssetsPaged({ fetchPage, storeAssets: vi.fn() })).rejects.toThrow(
+			'returned page 3 when page 2 was requested'
+		)
+	})
 })

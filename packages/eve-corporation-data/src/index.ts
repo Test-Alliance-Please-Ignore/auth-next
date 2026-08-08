@@ -1368,8 +1368,7 @@ export interface EveCorporationData {
 	 */
 	syncAssetsWithDirector(
 		corporationId: string,
-		directorCharacterId: string,
-		ownedStructureIds?: string[]
+		directorCharacterId: string
 	): Promise<{ assetsCount: number }>
 
 	/**

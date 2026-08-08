@@ -1,0 +1,1 @@
+ALTER TABLE "corporation_structures" ADD COLUMN "last_asset_snapshot_at" timestamp with time zone;

@@ -121,10 +121,11 @@ export function buildStructureListContentKey({
 		case 'moon-drills':
 			pushDefined(parts, filters.corporationId)
 			pushDefined(parts, filters.assignedGroupId)
+			pushDefined(parts, filters.lowPower)
+			pushDefined(parts, filters.lowPowerAllowed)
 			pushDefined(parts, filters.regionId)
 			pushDefined(parts, filters.systemId)
 			pushDefined(parts, filters.state)
-			pushDefined(parts, filters.typeId)
 			pushDefined(parts, filters.planetId)
 			break
 		case 'structures':

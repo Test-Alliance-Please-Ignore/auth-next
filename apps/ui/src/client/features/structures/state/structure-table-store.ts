@@ -253,10 +253,11 @@ const SKYHOOK_TAB_FILTER_FIELDS = [
 const MOON_DRILL_TAB_FILTER_FIELDS = [
 	'corporationId',
 	'assignedGroupId',
+	'lowPower',
+	'lowPowerAllowed',
 	'regionId',
 	'systemId',
 	'state',
-	'typeId',
 ] as const satisfies Array<keyof StructureTableFilters>
 
 const TAB_FILTER_FIELDS: Record<StructureTab, Array<keyof StructureTableFilters>> = {

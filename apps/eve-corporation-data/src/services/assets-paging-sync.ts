@@ -29,13 +29,37 @@ export function dedupeByItemId<T>(items: T[], getItemId: (item: T) => string): T
 	return [...deduped.values()]
 }
 
+function validatePageResponse(
+	response: Pick<EsiResponse<RawEsiAsset[]>, 'page' | 'pages'>,
+	requestedPage: number,
+	totalPages: number
+): void {
+	if (response.page !== undefined && response.page !== requestedPage) {
+		throw new Error(
+			`ESI corporation assets returned page ${response.page} when page ${requestedPage} was requested`
+		)
+	}
+
+	if (response.pages !== undefined && response.pages !== totalPages) {
+		throw new Error(
+			`ESI corporation assets changed page count while fetching: expected ${totalPages}, got ${response.pages}`
+		)
+	}
+}
+
 /**
  * Fetches corporation assets page-by-page and persists each page immediately.
  * This prevents large in-memory arrays or large RPC payloads.
  */
-export async function syncAssetsPaged(deps: AssetsPagingSyncDeps): Promise<{ assetsCount: number }> {
+export async function syncAssetsPaged(
+	deps: AssetsPagingSyncDeps
+): Promise<{ assetsCount: number }> {
 	const firstPageResponse = await deps.fetchPage(1)
 	const totalPages = firstPageResponse.pages ?? 1
+	if (!Number.isInteger(totalPages) || totalPages < 1) {
+		throw new Error(`ESI corporation assets returned an invalid page count: ${totalPages}`)
+	}
+	validatePageResponse(firstPageResponse, 1, totalPages)
 	let totalAssets = 0
 
 	const processPage = async (rawAssets: RawEsiAsset[]): Promise<void> => {
@@ -50,6 +74,7 @@ export async function syncAssetsPaged(deps: AssetsPagingSyncDeps): Promise<{ ass
 
 	for (let page = 2; page <= totalPages; page++) {
 		const pageResponse = await deps.fetchPage(page)
+		validatePageResponse(pageResponse, page, totalPages)
 		await processPage(pageResponse.data)
 		deps.onProgress?.({ page, totalPages, totalAssets })
 	}

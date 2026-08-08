@@ -1033,6 +1033,7 @@ function buildSyntheticSovereigntyStructureRow(
 		fuelExpires: null,
 		fuelAmount: null,
 		fuelBurnRate: null,
+		lastAssetSnapshotAt: null,
 		lastRefilledAt: null,
 		nextReinforceApply: null,
 		nextReinforceHour: null,
@@ -1227,22 +1228,6 @@ async function loadStructureFittingDetailData(
 			errorStack: error instanceof Error ? error.stack : undefined,
 		})
 		return []
-	}
-}
-
-async function loadCorporationAssetsLastSync(
-	env: Env,
-	corporationId: string
-): Promise<Date | null> {
-	try {
-		const corpData = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corporationId)
-		return (await corpData.getCorporationSyncConfig(corporationId))?.assetsLastSync ?? null
-	} catch (error) {
-		logger.warn('[Structures] Failed to load corporation asset sync timestamp', {
-			corporationId,
-			error: error instanceof Error ? error.message : String(error),
-		})
-		return null
 	}
 }
 
@@ -1553,6 +1538,7 @@ type StructureSourceRecord = Pick<
 	| 'fuelExpires'
 	| 'fuelAmount'
 	| 'fuelBurnRate'
+	| 'lastAssetSnapshotAt'
 	| 'lastRefilledAt'
 	| 'nextReinforceApply'
 	| 'nextReinforceHour'
@@ -1583,6 +1569,7 @@ const CORPORATION_STRUCTURE_SELECT_COLUMNS = {
 	fuelExpires: true,
 	fuelAmount: true,
 	fuelBurnRate: true,
+	lastAssetSnapshotAt: true,
 	lastRefilledAt: true,
 	nextReinforceApply: true,
 	nextReinforceHour: true,
@@ -1729,13 +1716,11 @@ async function getStructureContext(
 			loadStructureInventoryDetailData(db, syntheticStructure),
 			loadStructureFittingDetailData(env, syntheticStructure),
 		])
-		const assetsLastSync = await loadCorporationAssetsLastSync(env, sovereigntyHub.corporationId)
-
 		return {
 			structure: syntheticStructure,
 			corporationName: corporation?.name ?? sovereigntyHub.corporationId,
 			includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
-			assetsLastSync,
+			assetsLastSync: null,
 			config: null,
 			canViewDetails,
 			canViewSensitive,
@@ -1777,18 +1762,17 @@ async function getStructureContext(
 		return null
 	}
 
-	const [tabData, inventoryBays, fittingItems, assetsLastSync] = await Promise.all([
+	const [tabData, inventoryBays, fittingItems] = await Promise.all([
 		loadStructureTabDetailData(db, structure),
 		loadStructureInventoryDetailData(db, structure),
 		loadStructureFittingDetailData(env, structure),
-		loadCorporationAssetsLastSync(env, structure.corporationId),
 	])
 
 	return {
 		structure,
 		corporationName: corporation?.name ?? structure.corporationId,
 		includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
-		assetsLastSync,
+		assetsLastSync: structure.lastAssetSnapshotAt ?? null,
 		config: config ?? null,
 		canViewDetails,
 		canViewSensitive,
@@ -4512,7 +4496,7 @@ export async function listMoonDrillStructures(
 
 	const moonDrillStructures = buildMoonDrillStructuresCte(db, corpWhere, query.planetId)
 	const filterOptionsStructures =
-		query.corporationId || query.regionId || query.systemId || query.typeId
+		query.corporationId || query.regionId || query.systemId
 			? buildMoonDrillStructuresCte(
 					db,
 					buildStructureContextsWhere(
@@ -4522,7 +4506,6 @@ export async function listMoonDrillStructures(
 							corporationId: undefined,
 							regionId: undefined,
 							systemId: undefined,
-							typeId: undefined,
 						},
 						'moon-drills'
 					),

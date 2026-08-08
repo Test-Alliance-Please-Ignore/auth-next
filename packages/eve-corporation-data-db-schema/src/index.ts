@@ -35,6 +35,7 @@ export const corporationStructures = pgTable(
 			scale: 4,
 		}),
 		lastFuelBlocks: integer('last_fuel_blocks'),
+		lastAssetSnapshotAt: timestamp('last_asset_snapshot_at', { withTimezone: true }),
 		lastRefilledAt: timestamp('last_refilled_at', { withTimezone: true }),
 		nextReinforceApply: timestamp('next_reinforce_apply', { withTimezone: true }),
 		nextReinforceHour: integer('next_reinforce_hour'),
