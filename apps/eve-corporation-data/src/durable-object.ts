@@ -3549,6 +3549,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		if (activeSnapshotId !== null) {
 			const existingRows = db
 				.select({
+					id: sql<string>`gen_random_uuid()`.as('id'),
 					corporationId: corporationStructureInventory.corporationId,
 					snapshotId: sql<string>`${snapshotId}`.as('snapshotId'),
 					structureId: corporationStructureInventory.structureId,

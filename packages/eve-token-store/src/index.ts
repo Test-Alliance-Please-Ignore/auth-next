@@ -666,7 +666,7 @@ export interface EveTokenStore {
 	 * @param characterId - Character ID for authentication
 	 * @param options - Optional configuration
 	 * @param options.maxConcurrent - Maximum concurrent requests (default: 5)
-	 * @returns Combined data array, total pages, and individual page responses
+	 * @returns Combined data array and total pages
 	 *
 	 * @example
 	 * ```ts
@@ -686,7 +686,6 @@ export interface EveTokenStore {
 	): Promise<{
 		data: T[]
 		pages: number
-		responses: Array<EsiResponse<T[]>>
 	}>
 
 	/**
@@ -696,7 +695,7 @@ export interface EveTokenStore {
 	 * @param basePath - ESI path without page parameter (e.g., '/markets/prices')
 	 * @param options - Optional configuration
 	 * @param options.maxConcurrent - Maximum concurrent requests (default: 5)
-	 * @returns Combined data array, total pages, and individual page responses
+	 * @returns Combined data array and total pages
 	 *
 	 * @example
 	 * ```ts
@@ -714,7 +713,6 @@ export interface EveTokenStore {
 	): Promise<{
 		data: T[]
 		pages: number
-		responses: Array<EsiResponse<T[]>>
 	}>
 
 	/**

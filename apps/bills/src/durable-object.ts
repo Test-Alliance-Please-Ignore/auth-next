@@ -687,12 +687,15 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 			return
 		}
 
-		await createWorkflowBatch(
-			this.env.BILL_DISCORD_NOTIFY,
-			pendingRows.map((row) => ({
-				id: `bill-notify-immediate-${row.id}-${Date.now()}`,
-				params: { notificationEventId: row.id },
-			}))
+		await withRpcResult(
+			createWorkflowBatch(
+				this.env.BILL_DISCORD_NOTIFY,
+				pendingRows.map((row) => ({
+					id: `bill-notify-immediate-${row.id}-${Date.now()}`,
+					params: { notificationEventId: row.id },
+				}))
+			),
+			() => undefined
 		)
 	}
 
