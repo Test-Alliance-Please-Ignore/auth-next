@@ -61,7 +61,10 @@ import { dedupeByItemId, syncAssetsPaged } from './services/assets-paging-sync'
 import { DirectorManager } from './services/director-manager'
 import * as esiFetch from './services/esi-fetch'
 import { calculateStructureFuelBurnRateDetails } from './services/structure-fuel-calculation'
-import { preserveStructureHydrationFields } from './services/structure-hydration'
+import {
+	hasCompleteStructureStaticHydration,
+	preserveStructureHydrationFields,
+} from './services/structure-hydration'
 import {
 	findRefilledStructureIds,
 	projectStructureInventoryFromStoredAssets,
@@ -2666,7 +2669,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		if (ownedStructureIds.size > 0) {
 			const snapshotRows = [...fuelBlockUnitsByStructure.entries()]
 			const structureIds = snapshotRows.map(([structureId]) => structureId)
-			await db
+			const updatedStructures = await db
 				.update(corporationStructures)
 				.set({
 					lastFuelBlocks: sql`case ${corporationStructures.structureId} ${sql.join(
@@ -2675,6 +2678,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						),
 						sql` `
 					)} else ${corporationStructures.lastFuelBlocks} end`,
+					lastAssetSnapshotAt: observedAt,
 				})
 				.where(
 					and(
@@ -2682,6 +2686,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						inArray(corporationStructures.structureId, structureIds)
 					)
 				)
+				.returning({ structureId: corporationStructures.structureId })
+
+			const updatedStructureIds = new Set(updatedStructures.map((row) => row.structureId))
+			const missingStructureIds = structureIds.filter(
+				(structureId) => !updatedStructureIds.has(structureId)
+			)
+			if (missingStructureIds.length > 0) {
+				throw new Error(
+					`Structure inventory snapshot did not cover ${missingStructureIds.length} owned structures for ${corporationId}: ${missingStructureIds.slice(0, 10).join(', ')}`
+				)
+			}
 		}
 
 		if (refilledStructureIds.length > 0) {
@@ -2717,14 +2732,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	async syncAssetsWithDirector(
 		corporationId: string,
-		directorCharacterId: string,
-		ownedStructureIds?: string[]
+		directorCharacterId: string
 	): Promise<{ assetsCount: number }> {
 		this.assertNonNpcCorporation(corporationId)
 		logger.info('[EveCorporationData] syncAssetsWithDirector invoked', {
 			corporationId,
 			directorCharacterId,
-			preloadedOwnedStructureCount: ownedStructureIds?.length ?? null,
 		})
 		const nextAllowedAt = await this.getStructureInventoryNextAllowedAt(corporationId)
 		if (nextAllowedAt) {
@@ -2737,8 +2750,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.requireCorpRole(corporationId, directorCharacterId, ['Director'])
 		const assetsCount = await this.fetchAndStoreStructureInventoryByCharacter(
 			corporationId,
-			directorCharacterId,
-			ownedStructureIds
+			directorCharacterId
 		)
 		return { assetsCount }
 	}
@@ -2791,14 +2803,24 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const existingByStructureId = new Map(
 			existingStructures.map((structure) => [structure.structureId, structure] as const)
 		)
+		const structuresNeedingStaticHydration = structures.filter(
+			(structure) =>
+				!hasCompleteStructureStaticHydration(
+					existingByStructureId.get(structure.structure_id) ?? null
+				)
+		)
 
 		const directorManager = this.createDirectorManager(corporationId)
 		const director = await directorManager.selectDirector()
 		const characterId = director ? String(director.characterId) : null
 		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
 		const tokenStore = this.getEveTokenStoreStub()
-		const systemIds = [...new Set(structures.map((structure) => structure.system_id))]
-		const typeIds = [...new Set(structures.map((structure) => structure.type_id))]
+		const systemIds = [
+			...new Set(structuresNeedingStaticHydration.map((structure) => structure.system_id)),
+		]
+		const typeIds = [
+			...new Set(structuresNeedingStaticHydration.map((structure) => structure.type_id)),
+		]
 
 		const [systemsById, regionsBySystemId, typeNamesById, structureInfos] = await Promise.all([
 			systemIds.length > 0
@@ -2842,19 +2864,21 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		return structures.map((structure, index) => {
 			const structureInfo = structureInfos[index]
+			const existing = existingByStructureId.get(structure.structure_id) ?? null
 			const system = systemsById[structure.system_id]
 			const region = regionsBySystemId[structure.system_id]
-			const existing = existingByStructureId.get(structure.structure_id) ?? null
 			const isSpecialStructure = isSpecialStructureTab(getStructureTabForTypeId(structure.type_id))
 			const resolvedName = structureInfo?.name ?? null
-			const resolvedTypeName = typeNamesById[structure.type_id] ?? null
-			const resolvedSystemName = system?.solarSystemName ?? null
-			const resolvedRegionName = region?.regionName ?? null
+			const resolvedTypeName = existing?.typeName || typeNamesById[structure.type_id] || null
+			const resolvedSystemName = existing?.systemName || system?.solarSystemName || null
+			const resolvedRegionId = existing?.regionId || region?.regionId || null
+			const resolvedRegionName = existing?.regionName || region?.regionName || null
 			const lowPower = !structure.services?.some((service) => service.state === 'online')
 			const hydrationComplete =
 				(isSpecialStructure || resolvedName !== null) &&
 				resolvedTypeName !== null &&
 				resolvedSystemName !== null &&
+				resolvedRegionId !== null &&
 				resolvedRegionName !== null
 			const syncStatus: 'ok' | 'warning' | 'error' = hydrationComplete ? 'ok' : 'warning'
 			const syncFailureReason = hydrationComplete
@@ -2877,7 +2901,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				typeName: hydrated.typeName,
 				systemId: structure.system_id,
 				systemName: hydrated.systemName,
-				regionId: region?.regionId ?? null,
+				regionId: resolvedRegionId,
 				regionName: hydrated.regionName,
 				profileId: structure.profile_id,
 				fuelExpires: structure.fuel_expires ? new Date(structure.fuel_expires) : null,
@@ -3598,6 +3622,22 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		await this.finalizeStructureInventorySnapshot(corporationId, snapshotId, observedAt)
+
+		const [updatedStructure] = await db
+			.update(corporationStructures)
+			.set({ lastAssetSnapshotAt: observedAt })
+			.where(
+				and(
+					eq(corporationStructures.corporationId, corporationId),
+					eq(corporationStructures.structureId, String(structureId))
+				)
+			)
+			.returning({ structureId: corporationStructures.structureId })
+		if (!updatedStructure) {
+			throw new Error(
+				`Failed to mark structure inventory snapshot as current for ${corporationId}/${structureId}`
+			)
+		}
 
 		try {
 			await this.refreshStoredStructureFuelBurnRates(corporationId, [String(structureId)])
@@ -5870,18 +5910,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			characterId,
 		})
 
-		return await this.fetchAndStoreStructureInventoryByCharacter(
-			corporationId,
-			characterId,
-			undefined,
-			{ forceRefresh }
-		)
+		return await this.fetchAndStoreStructureInventoryByCharacter(corporationId, characterId, {
+			forceRefresh,
+		})
 	}
 
 	private async fetchAndStoreStructureInventoryByCharacter(
 		corporationId: string,
 		characterId: string,
-		ownedStructureIdsOverride?: string[],
 		options?: { forceRefresh?: boolean }
 	): Promise<number> {
 		const config = await this.getDb().query.corporationConfig.findFirst({
@@ -5899,12 +5935,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			}
 		}
 
-		let ownedStructureIds =
-			ownedStructureIdsOverride !== undefined
-				? new Set(ownedStructureIdsOverride.map(String))
-				: await this.getOwnedStructureIds(corporationId)
+		let ownedStructureIds = await this.getOwnedStructureIds(corporationId)
 
-		if (ownedStructureIdsOverride === undefined && ownedStructureIds.size === 0) {
+		if (ownedStructureIds.size === 0) {
 			logger.warn(
 				'[EveCorporationData] No owned structures available for inventory filtering; attempting a structures refresh',
 				{ corporationId }

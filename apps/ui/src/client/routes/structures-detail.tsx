@@ -36,7 +36,6 @@ import { Container } from '@/components/ui/container'
 import { DurationDisplay } from '@/components/ui/duration-display'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { FilterField } from '@/components/ui/filter-field'
-import { HoverPopover } from '@/components/ui/hover-popover'
 import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Progress } from '@/components/ui/progress'
@@ -122,6 +121,43 @@ function structureSyncStatusDescription(
 	return lastSyncedAt
 		? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. The latest corporation-data sync completed successfully and the stored snapshot is current.`
 		: 'The latest corporation-data sync completed successfully and the stored snapshot is current.'
+}
+
+type AssetSyncStatus = 'ok' | 'warning' | 'error' | 'disabled'
+
+function assetSyncStatus(enabled: boolean, lastAssetSnapshotAt: string | null): AssetSyncStatus {
+	if (!enabled) return 'disabled'
+	if (!lastAssetSnapshotAt) return 'error'
+
+	const parsed = new Date(lastAssetSnapshotAt)
+	if (Number.isNaN(parsed.getTime())) return 'error'
+
+	const ageMs = Math.max(0, Date.now() - parsed.getTime())
+	if (ageMs >= STRUCTURE_SYNC_ERROR_STALE_MS) return 'error'
+	if (ageMs >= STRUCTURE_SYNC_WARNING_STALE_MS) return 'warning'
+	return 'ok'
+}
+
+function assetSyncStatusDescription(enabled: boolean, lastAssetSnapshotAt: string | null): string {
+	if (!enabled) return 'Asset sync is disabled for this corporation.'
+	if (!lastAssetSnapshotAt) {
+		return 'Asset sync is enabled, but no successful inventory snapshot has been recorded.'
+	}
+
+	const parsed = new Date(lastAssetSnapshotAt)
+	if (Number.isNaN(parsed.getTime())) {
+		return 'The last asset snapshot timestamp was invalid, so the inventory snapshot cannot be trusted.'
+	}
+
+	const ageMs = Math.max(0, Date.now() - parsed.getTime())
+	const stalenessNote =
+		ageMs >= STRUCTURE_SYNC_ERROR_STALE_MS
+			? 'This snapshot is more than 24 hours old and should be treated as stale.'
+			: ageMs >= STRUCTURE_SYNC_WARNING_STALE_MS
+				? 'This snapshot is more than 12 hours old and may be stale.'
+				: 'The stored inventory snapshot is current.'
+
+	return `Last successful asset snapshot at ${formatDateTimeLong(lastAssetSnapshotAt)}. ${stalenessNote}`
 }
 
 function serviceBadgeVariant(state: string): BadgeVariant {
@@ -911,6 +947,14 @@ export default function StructuresDetailPage() {
 		structure.syncFailureReason,
 		structure.lastSyncedAt
 	)
+	const assetsSyncStatus = assetSyncStatus(
+		structure.includeInStructureAssetSync,
+		structure.assetsLastSync
+	)
+	const assetsSyncDescription = assetSyncStatusDescription(
+		structure.includeInStructureAssetSync,
+		structure.assetsLastSync
+	)
 
 	const handleSave = async () => {
 		await updateMutation.mutateAsync({
@@ -1261,33 +1305,23 @@ export default function StructuresDetailPage() {
 								</div>
 								<div className="rounded-lg border border-border/60 p-4">
 									<div className="mb-3 flex flex-wrap items-center gap-2">
-										{!hasSovereigntySummary && structure.includeInStructureAssetSync && (
-											<HoverPopover
-												align="start"
-												side="top"
-												className="w-80 space-y-2"
-												trigger={
-													<span className="inline-flex cursor-help">
-														<Badge variant="success">Asset Sync Enabled</Badge>
-													</span>
-												}
-											>
-												<div className="space-y-1">
-													<div className="text-sm font-medium">Asset Sync</div>
-													<div className="text-sm text-muted-foreground">
-														{structure.assetsLastSync
-															? `Last successful asset sync at ${formatDateTimeLong(structure.assetsLastSync)}.`
-															: 'No successful asset sync has been recorded.'}
-													</div>
-												</div>
-											</HoverPopover>
+										<StructureSyncStatusBadge
+											label="Structure"
+											status={structure.syncStatus}
+											description={syncDescription}
+										/>
+										{!hasSovereigntySummary && (
+											<>
+												<span aria-hidden className="text-sm text-muted-foreground">
+													-
+												</span>
+												<StructureSyncStatusBadge
+													label="Assets"
+													status={assetsSyncStatus}
+													description={assetsSyncDescription}
+												/>
+											</>
 										)}
-										<div className="mt-0.5">
-											<StructureSyncStatusBadge
-												status={structure.syncStatus}
-												description={syncDescription}
-											/>
-										</div>
 									</div>
 									<div className="mt-2 text-sm text-muted-foreground">{syncDescription}</div>
 								</div>

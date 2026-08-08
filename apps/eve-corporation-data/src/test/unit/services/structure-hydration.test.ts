@@ -1,8 +1,34 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+	hasCompleteStructureStaticHydration,
 	preserveStructureHydrationFields,
 } from '../../../services/structure-hydration'
+
+describe('hasCompleteStructureStaticHydration', () => {
+	it('recognizes a fully hydrated existing structure', () => {
+		expect(
+			hasCompleteStructureStaticHydration({
+				typeName: 'Athanor',
+				systemName: 'Torrinos',
+				regionId: '10000016',
+				regionName: 'Lonetrek',
+			})
+		).toBe(true)
+	})
+
+	it('requires all immutable geography and type fields', () => {
+		expect(
+			hasCompleteStructureStaticHydration({
+				typeName: 'Athanor',
+				systemName: 'Torrinos',
+				regionId: null,
+				regionName: 'Lonetrek',
+			})
+		).toBe(false)
+		expect(hasCompleteStructureStaticHydration(null)).toBe(false)
+	})
+})
 
 describe('preserveStructureHydrationFields', () => {
 	it('keeps previously resolved fields when the latest hydration attempt is partial', () => {

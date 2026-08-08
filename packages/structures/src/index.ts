@@ -802,11 +802,8 @@ export interface StructureMoonStructureListQuery
 	extends StructureListPagingQuery<StructureMoonStructureListSortBy>,
 		StructureMoonStructureListFilters {}
 
-export interface StructureMoonDrillListQuery extends StructureMoonStructureListQuery {
-	corporationId?: string
-	systemId?: string
-	planetId?: string
-}
+export interface StructureMoonDrillListQuery
+	extends Omit<StructureMoonStructureListQuery, 'typeId'> {}
 
 export interface StructureMiningCitadelListQuery extends StructureMoonStructureListQuery {
 	corporationId?: string

@@ -519,7 +519,7 @@ function AllianceLogo({
 	)
 }
 
-type PrimaryStructureFilterSlot = 'type' | 'raidable'
+type PrimaryStructureFilterSlot = 'type' | 'raidable' | null
 
 export default function StructuresPage() {
 	usePageTitle('Structures')
@@ -630,10 +630,11 @@ export default function StructuresPage() {
 				sortBy: moonSortBy,
 				corporationId: tableState.filters.corporationId,
 				assignedGroupId: tableState.filters.assignedGroupId,
+				lowPower: tableState.filters.lowPower,
+				lowPowerAllowed: tableState.filters.lowPowerAllowed,
 				regionId: tableState.filters.regionId,
 				systemId: tableState.filters.systemId,
 				state: tableState.filters.state,
-				typeId: tableState.filters.typeId,
 				planetId: tableState.filters.planetId,
 			}) as StructureMoonDrillListQuery,
 		[sharedQuery, tableState.filters, moonSortBy]
@@ -893,7 +894,8 @@ export default function StructuresPage() {
 							tableState.filters.regionId,
 							tableState.filters.systemId,
 							tableState.filters.state,
-							tableState.filters.typeId,
+							tableState.filters.lowPower,
+							tableState.filters.lowPowerAllowed,
 							tableState.filters.planetId,
 						]
 					: [
@@ -937,7 +939,6 @@ export default function StructuresPage() {
 								<div className="truncate font-medium">{structure.name}</div>
 								{structure.hidden && <Badge variant="ghost">Hidden</Badge>}
 							</div>
-							<div className="text-xs text-muted-foreground">{structure.structureId}</div>
 						</TableCell>
 					)}
 					<TableCell className="max-w-[18rem]">
@@ -1296,6 +1297,16 @@ export default function StructuresPage() {
 						/>
 					</TableCell>
 					<TableCell>
+						<Badge variant={structure.lowPower ? 'warning' : 'ghost'}>
+							{structure.lowPower ? 'Yes' : 'No'}
+						</Badge>
+					</TableCell>
+					<TableCell>
+						<Badge variant={structure.lowPowerAllowed ? 'success' : 'ghost'}>
+							{structure.lowPowerAllowed ? 'Yes' : 'No'}
+						</Badge>
+					</TableCell>
+					<TableCell>
 						{structure.nextStateAt ? (
 							<DurationDisplay
 								endDate={structure.nextStateAt}
@@ -1418,8 +1429,9 @@ export default function StructuresPage() {
 				return 'raidable'
 			case 'structures':
 			case 'mining-citadels':
-			case 'moon-drills':
 				return 'type'
+			case 'moon-drills':
+				return null
 		}
 		throw new Error(`Unsupported structures tab for primary filter: ${activeTab}`)
 	})()
@@ -1453,6 +1465,8 @@ export default function StructuresPage() {
 						/>
 					</FilterField>
 				)
+			case null:
+				return null
 		}
 	})()
 	const sovereigntyFilterControls = (
@@ -1663,6 +1677,30 @@ export default function StructuresPage() {
 					searchable
 				/>
 			</FilterField>
+			{isMoonDrillsTab && (
+				<>
+					<FilterField label="Low Power">
+						<Select
+							options={withAllOption(BOOLEAN_FILTER_OPTIONS, 'All Power Statuses')}
+							value={tableState.filters.lowPower ?? ''}
+							onValueChange={(value) =>
+								setStructureTableFilters({ lowPower: toBooleanFilterValue(value) })
+							}
+							placeholder="All Power Statuses"
+						/>
+					</FilterField>
+					<FilterField label="Low Power Allowed">
+						<Select
+							options={withAllOption(BOOLEAN_FILTER_OPTIONS, 'All LP Preferences')}
+							value={tableState.filters.lowPowerAllowed ?? ''}
+							onValueChange={(value) =>
+								setStructureTableFilters({ lowPowerAllowed: toBooleanFilterValue(value) })
+							}
+							placeholder="All LP Preferences"
+						/>
+					</FilterField>
+				</>
+			)}
 			<FilterField label="Group">
 				<Select
 					options={assignedGroupOptions}
@@ -2007,7 +2045,7 @@ export default function StructuresPage() {
 									onContainerScroll={handleTableScroll}
 									containerClassName={cn('w-full', isTableGridClamped && 'lg:h-full lg:min-h-0')}
 									className={cn(
-										'min-w-[118rem]',
+										'min-w-[118rem] whitespace-nowrap',
 										isSovereigntyTab && 'min-w-[136rem]',
 										isSkyhooksTab && 'min-w-[132rem]',
 										isMiningCitadelTab && 'min-w-[124rem]'
@@ -2065,6 +2103,8 @@ export default function StructuresPage() {
 													<SortableHead field="moonMaterials" label="Moon Goo" />
 													<SortableHead field="fuelBlocks" label="Fuel Blocks" />
 													<SortableHead field="magmaticGas" label="Magmatic Gas" />
+													<TableHead>LP</TableHead>
+													<TableHead>LP Allowed</TableHead>
 													<SortableHead field="nextStateAt" label="Next State In" />
 													<TableHead>Group</TableHead>
 													<TableHead>Sync</TableHead>
