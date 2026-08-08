@@ -3,7 +3,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose'
 import * as z4 from 'zod/v4/core'
 
 import { and, asc, eq, gt, inArray, isNull, lt, lte, or } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { EsiRequestClient } from '@repo/esi'
 import { buildEsiUserKey, buildPublicEsiUserKey, EsiRateLimitStore } from '@repo/esi-rate-limit'
 import {
@@ -1966,11 +1966,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 
 		const esiStub = getStub<EsiHelperStub>(this.env.ESI, 'default')
-		return await esiStub
-			.fetchCharacterAffiliation(String(normalizedIds[0]), normalizedIds.map(String), {
+		return await withRpcResult(
+			esiStub.fetchCharacterAffiliation(String(normalizedIds[0]), normalizedIds.map(String), {
 				cacheMode: 'no-store',
-			})
-			.then((affiliations) =>
+			}),
+			(affiliations) =>
 				affiliations.map((affiliation) => ({
 					character_id: Number.parseInt(String(affiliation.character_id), 10),
 					corporation_id: Number.parseInt(String(affiliation.corporation_id), 10),
@@ -1981,7 +1981,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 						? Number.parseInt(String(affiliation.faction_id), 10)
 						: undefined,
 				}))
-			)
+		)
 	}
 
 	/**
@@ -2027,7 +2027,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	): Promise<{
 		data: T[]
 		pages: number
-		responses: Array<EsiResponse<T[]>>
 	}> {
 		const maxConcurrent = options?.maxConcurrent ?? 5
 		const cacheMode = options?.cacheMode ?? 'default'
@@ -2043,14 +2042,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		})
 
 		const totalPages = firstResponse.pages ?? 1
-		const responses: Array<EsiResponse<T[]>> = [firstResponse]
-
 		// If there's only one page, return early
 		if (totalPages === 1) {
 			return {
 				data: firstResponse.data,
 				pages: totalPages,
-				responses,
 			}
 		}
 
@@ -2071,18 +2067,15 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			remainingResponses.push(...batchResponses)
 		}
 
-		responses.push(...remainingResponses)
-
 		// Combine all data from all pages
-		const allData: T[] = []
-		for (const response of responses) {
-			allData.push(...response.data)
-		}
+		const allData = [
+			...firstResponse.data,
+			...remainingResponses.flatMap((response) => response.data),
+		]
 
 		return {
 			data: allData,
 			pages: totalPages,
-			responses,
 		}
 	}
 
@@ -2096,7 +2089,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	): Promise<{
 		data: T[]
 		pages: number
-		responses: Array<EsiResponse<T[]>>
 	}> {
 		const maxConcurrent = options?.maxConcurrent ?? 5
 
@@ -2109,14 +2101,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const firstResponse = await this.fetchPublicEsi<T[]>(firstPagePath)
 
 		const totalPages = firstResponse.pages ?? 1
-		const responses: Array<EsiResponse<T[]>> = [firstResponse]
-
 		// If there's only one page, return early
 		if (totalPages === 1) {
 			return {
 				data: firstResponse.data,
 				pages: totalPages,
-				responses,
 			}
 		}
 
@@ -2135,18 +2124,15 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			remainingResponses.push(...batchResponses)
 		}
 
-		responses.push(...remainingResponses)
-
 		// Combine all data from all pages
-		const allData: T[] = []
-		for (const response of responses) {
-			allData.push(...response.data)
-		}
+		const allData = [
+			...firstResponse.data,
+			...remainingResponses.flatMap((response) => response.data),
+		]
 
 		return {
 			data: allData,
 			pages: totalPages,
-			responses,
 		}
 	}
 
@@ -2516,7 +2502,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 */
 	async resolveNames(names: string[]): Promise<Record<string, string>> {
 		const resolver = getStub<EsiTypeResolverHelperStub>(this.env.ESI_TYPE_RESOLVER, 'default')
-		return await resolver.resolveNames(names)
+		return await withRpcResult(resolver.resolveNames(names), (nameMap) => ({ ...nameMap }))
 	}
 
 	/**
@@ -2524,7 +2510,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 */
 	async resolveIds(ids: string[]): Promise<Record<string, string>> {
 		const resolver = getStub<EsiTypeResolverHelperStub>(this.env.ESI_TYPE_RESOLVER, 'default')
-		return await resolver.resolveIds(ids)
+		return await withRpcResult(resolver.resolveIds(ids), (nameMap) => ({ ...nameMap }))
 	}
 
 	/**
@@ -2544,7 +2530,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 
 		const esiStub = getStub<EsiHelperStub>(this.env.ESI, 'default')
-		return await esiStub.searchCharacter(tokens[0].characterId, characterName, strict)
+		return await withRpcResult(
+			esiStub.searchCharacter(tokens[0].characterId, characterName, strict),
+			(characterIds) => [...characterIds]
+		)
 	}
 
 	/**

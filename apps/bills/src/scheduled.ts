@@ -83,17 +83,20 @@ async function refreshBillPayments(env: Env, options: { scheduledTimeMs: number 
 		const batchResults = await Promise.allSettled(
 			batches.map(async (batch, batchIndex) => {
 				try {
-					const instances = await createWorkflowBatch(env.BILL_PAYMENT_STATUS_CHECK, batch)
+					const instancesCreated = await withRpcResult(
+						createWorkflowBatch(env.BILL_PAYMENT_STATUS_CHECK, batch),
+						(instances) => instances.length
+					)
 
 					refreshLogger.info('[Bills] Created workflow batch', {
 						batchIndex: batchIndex + 1,
 						totalBatches: batches.length,
-						instancesCreated: instances.length,
+						instancesCreated,
 					})
 
 					return {
 						success: true,
-						instancesCreated: instances.length,
+						instancesCreated,
 						batchIndex,
 						batchSize: batch.length,
 					}
@@ -208,15 +211,18 @@ async function enqueueDueSchedules(env: Env, options: { scheduledTimeMs: number 
 		const batchResults = await Promise.allSettled(
 			batches.map(async (batch, batchIndex) => {
 				try {
-					const instances = await createWorkflowBatch(env.BILLS_SCHEDULE_EXECUTOR, batch)
+					const instancesCreated = await withRpcResult(
+						createWorkflowBatch(env.BILLS_SCHEDULE_EXECUTOR, batch),
+						(instances) => instances.length
+					)
 					scheduleLogger.info('[Bills] Created schedule workflow batch', {
 						batchIndex: batchIndex + 1,
 						totalBatches: batches.length,
-						instancesCreated: instances.length,
+						instancesCreated,
 					})
 					return {
 						success: true,
-						instancesCreated: instances.length,
+						instancesCreated,
 						batchSize: batch.length,
 					}
 				} catch (error) {
@@ -369,8 +375,10 @@ async function dispatchPendingNotificationWorkflows(
 		let created = 0
 		for (let i = 0; i < workflowOptions.length; i += BATCH_SIZE) {
 			const batch = workflowOptions.slice(i, i + BATCH_SIZE)
-			const instances = await createWorkflowBatch(env.BILL_DISCORD_NOTIFY, batch)
-			created += instances.length
+			created += await withRpcResult(
+				createWorkflowBatch(env.BILL_DISCORD_NOTIFY, batch),
+				(instances) => instances.length
+			)
 		}
 
 		notifyLogger.info('[Bills] Dispatched bill notification workflows', {

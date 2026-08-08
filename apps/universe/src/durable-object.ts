@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 import { alias } from 'drizzle-orm/pg-core'
 
 import { and, eq, gt, ilike, inArray, ne, sql } from '@repo/db-utils'
-import { getStub, LRUCache } from '@repo/do-utils'
+import { getStub, LRUCache, withRpcResult } from '@repo/do-utils'
 import { buildPublicEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
 import { logger } from '@repo/hono-helpers'
 import {
@@ -44,7 +44,7 @@ import { parseInventory } from './utils/inventory-parser'
 import { resolveMoonRegionIds } from './utils/moon-region-lookup'
 
 import type { EsiTypeResolver } from '@repo/esi'
-import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { InventoryParseResult } from '@repo/eve-types'
 import type {
 	EsiGetStructureMarketDataResponse,
@@ -430,12 +430,14 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		// then hydrate full system rows through resolveSolarSystemsByIds (which backfills DB/cache).
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		if (!allSolarSystemNamesCache || allSolarSystemNamesCacheExpiry <= Date.now()) {
-			const idsResult = await tokenStoreStub.fetchPublicEsi<number[]>(
-				'/latest/universe/systems/?datasource=tranquility'
+			const ids = await withRpcResult(
+				tokenStoreStub.fetchPublicEsi<number[]>('/latest/universe/systems/?datasource=tranquility'),
+				(idsResult) => idsResult.data.map((id) => String(id))
 			)
-			const ids = idsResult.data.map((id) => String(id))
 			const resolverStub = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
-			const namesById = await resolverStub.resolveIds(ids)
+			const namesById = await withRpcResult(resolverStub.resolveIds(ids), (result) => ({
+				...result,
+			}))
 			allSolarSystemNamesCache = ids
 				.map((id) => ({ id, name: namesById[id] }))
 				.filter((row) => Boolean(row.name))
@@ -524,16 +526,14 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				authorizedCharacterId,
 			})
 
-			const response: EsiResponse<EsiGetStructureResponse> = await tokenStoreStub.fetchEsi(
-				`/universe/structures/${String(structureId)}`,
-				String(authorizedCharacterId),
-				{ cacheMode: 'no-store' }
+			return await withRpcResult(
+				tokenStoreStub.fetchEsi(
+					`/universe/structures/${String(structureId)}`,
+					String(authorizedCharacterId),
+					{ cacheMode: 'no-store' }
+				),
+				(response) => EsiGetStructureResponseSchema.parse(response.data)
 			)
-
-			// Validate the response using the schema
-			const validatedData = EsiGetStructureResponseSchema.parse(response.data)
-
-			return validatedData
 		} catch (error) {
 			// If the structure doesn't exist, the character doesn't have access, or token is invalid, return null
 			logger.error(
@@ -572,16 +572,14 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				structureId ? String(structureId) : 'default'
 			)
 			// fetchEsiAllPages expects the element type, not the array type
-			const result = await tokenStoreStub.fetchEsiAllPages<EsiGetStructureMarketDataResponseObject>(
-				`/markets/structures/${String(structureId)}`,
-				String(authorizedCharacterId),
-				{ cacheMode: 'no-store' }
+			return await withRpcResult(
+				tokenStoreStub.fetchEsiAllPages<EsiGetStructureMarketDataResponseObject>(
+					`/markets/structures/${String(structureId)}`,
+					String(authorizedCharacterId),
+					{ cacheMode: 'no-store' }
+				),
+				(result) => EsiGetStructureMarketDataResponseSchema.parse(result.data)
 			)
-
-			// Validate the combined data using the schema (array of orders)
-			const validatedData = EsiGetStructureMarketDataResponseSchema.parse(result.data)
-
-			return validatedData
 		} catch (error) {
 			// If the structure doesn't exist, the character doesn't have access, or token is invalid, return null
 			logger.error(
@@ -1067,9 +1065,10 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			if (sdeUnresolved.length > 0) {
 				const resolverStub = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
-				const fallbackNames = await resolverStub
-					.resolveIds(sdeUnresolved)
-					.catch(() => ({}) as Record<string, string>)
+				const fallbackNames = await withRpcResult(
+					resolverStub.resolveIds(sdeUnresolved),
+					(result) => ({ ...result })
+				).catch(() => ({}) as Record<string, string>)
 				const newRows: Array<typeof invTypes.$inferInsert> = []
 				for (const [id, name] of Object.entries(fallbackNames)) {
 					if (name) {
@@ -1277,9 +1276,10 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 			if (unresolved.length > 0) {
 				const resolverStub = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
-				const fallbackNames = await resolverStub
-					.resolveIds(unresolved)
-					.catch(() => ({}) as Record<string, string>)
+				const fallbackNames = await withRpcResult(
+					resolverStub.resolveIds(unresolved),
+					(result) => ({ ...result })
+				).catch(() => ({}) as Record<string, string>)
 				const newRows: Array<typeof universeRegions.$inferInsert> = []
 				for (const [id, name] of Object.entries(fallbackNames)) {
 					if (name) {
