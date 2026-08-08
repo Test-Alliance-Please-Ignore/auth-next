@@ -1913,7 +1913,7 @@ export default function StructuresPage() {
 									<Button
 										variant="ghost"
 										size="sm"
-										className="ml-auto h-7 shrink-0 px-2 text-xs"
+										className="ml-3 h-7 shrink-0 px-2 text-xs"
 										onPointerDown={(event) => {
 											event.preventDefault()
 											event.stopPropagation()
@@ -1927,7 +1927,7 @@ export default function StructuresPage() {
 										Clear Filters
 									</Button>
 								)}
-								<span className="ml-2 hidden text-xs font-normal text-muted-foreground sm:inline">
+								<span className="ml-auto mr-3 hidden text-xs font-normal text-muted-foreground sm:inline">
 									Click to {areFiltersOpen ? 'hide' : 'show'}
 								</span>
 							</AccordionTrigger>

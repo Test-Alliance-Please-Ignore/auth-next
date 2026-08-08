@@ -1,7 +1,7 @@
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
-import { sql } from 'drizzle-orm'
+import { notInArray, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { createDb } from '../db'
@@ -20,6 +20,15 @@ import {
 	universeTypeDogmaEffects,
 } from '../db/schema'
 import {
+	FUEL_DOGMA_ATTRIBUTE_IDS,
+	isFuelDogmaAttribute,
+	isFuelModifier,
+	selectStructureDogmaTypeIds,
+	STRUCTURE_CATEGORY_ID,
+	STRUCTURE_MODULE_CATEGORY_ID,
+} from './sde-fuel-selection'
+import {
+	forEachSdeJsonlRow,
 	getEnglishName,
 	prepareSdeDataDir,
 	readSdeJsonlTable,
@@ -164,8 +173,6 @@ type InvType = z.output<typeof invTypeSchema>
 type DogmaEffect = z.output<typeof dogmaEffectSchema>
 type DogmaUnit = z.output<typeof dogmaUnitSchema>
 type DogmaAttribute = z.output<typeof dogmaAttributeSchema>
-type TypeDogma = z.output<typeof typeDogmaSchema>
-
 type SeedFlag = {
 	flagId: string
 	flagName: string
@@ -174,6 +181,7 @@ type SeedFlag = {
 }
 
 const PROGRESS_INTERVAL = 5000
+const ALL_DOGMA_FLAG = '--all-dogma'
 
 type SeedFlagDefinition = {
 	flagId: string
@@ -241,11 +249,13 @@ function getOptionalEnglishText(
 	return getEnglishName(value, '')
 }
 
-function createProgressReporter(typeLabel: string, total: number): (processed: number) => void {
+function createProgressReporter(typeLabel: string, total?: number): (processed: number) => void {
 	let nextProgressAt = PROGRESS_INTERVAL
 	return (processed: number) => {
-		while (processed >= nextProgressAt && total > 0) {
-			console.log(`  ... ${typeLabel}: ${Math.min(processed, total)}/${total}`)
+		while (processed >= nextProgressAt && (total === undefined || total > 0)) {
+			const progress =
+				total === undefined ? `${processed}` : `${Math.min(processed, total)}/${total}`
+			console.log(`  ... ${typeLabel}: ${progress}`)
 			nextProgressAt += PROGRESS_INTERVAL
 		}
 	}
@@ -291,10 +301,22 @@ async function importCategories(db: ReturnType<typeof createDb>, sdeDataDir: str
 	console.log(`  ✓ ${rows.length} categories`)
 }
 
-async function importGroups(db: ReturnType<typeof createDb>, sdeDataDir: string) {
+async function importGroups(
+	db: ReturnType<typeof createDb>,
+	sdeDataDir: string
+): Promise<Map<string, number>> {
 	console.log('Importing inventory groups...')
 	const raw = await readSdeJsonlTable<z.input<typeof invGroupSchema>>(sdeDataDir, 'groups.jsonl')
 	const data = z.array(invGroupSchema).parse(raw)
+	const structureGroupCategories = new Map(
+		data
+			.filter(
+				(group) =>
+					group.categoryID === STRUCTURE_CATEGORY_ID ||
+					group.categoryID === STRUCTURE_MODULE_CATEGORY_ID
+			)
+			.map((group) => [group._key.toString(), group.categoryID] as const)
+	)
 	const rows = data.map((group: InvGroup) => {
 		const groupId = group._key.toString()
 		return {
@@ -336,6 +358,7 @@ async function importGroups(db: ReturnType<typeof createDb>, sdeDataDir: string)
 	}
 
 	console.log(`  ✓ ${rows.length} groups`)
+	return structureGroupCategories
 }
 
 async function importMarketGroups(db: ReturnType<typeof createDb>, sdeDataDir: string) {
@@ -382,16 +405,19 @@ async function importMarketGroups(db: ReturnType<typeof createDb>, sdeDataDir: s
 	console.log(`  ✓ ${rows.length} market groups`)
 }
 
-async function importTypes(db: ReturnType<typeof createDb>, sdeDataDir: string) {
+async function importTypes(
+	db: ReturnType<typeof createDb>,
+	sdeDataDir: string,
+	structureGroupCategories: Map<string, number>
+) {
 	console.log('Importing inventory types...')
 	const raw = await readSdeJsonlTable<z.input<typeof invTypeSchema>>(sdeDataDir, 'types.jsonl')
 	const data = z.array(invTypeSchema).parse(raw)
 	const rows = data.map((type: InvType) => {
-		const typeId = type._key.toString()
 		return {
-			typeId,
+			typeId: type._key.toString(),
 			groupId: type.groupID.toString(),
-			typeName: getEnglishName(type.name, `Unknown Type (${typeId})`),
+			typeName: getEnglishName(type.name, `Unknown Type (${type._key})`),
 			description: getOptionalEnglishText(type.description) ?? '',
 			mass: (type.mass ?? 0).toString(),
 			volume: (type.volume ?? 0).toString(),
@@ -406,6 +432,10 @@ async function importTypes(db: ReturnType<typeof createDb>, sdeDataDir: string) 
 			graphicId: type.graphicID?.toString() ?? '0',
 		}
 	})
+	const structureDogmaTypeIds = selectStructureDogmaTypeIds(
+		structureGroupCategories,
+		data.map((type) => ({ typeId: type._key.toString(), groupId: type.groupID.toString() }))
+	)
 
 	const reportProgress = createProgressReporter('types', rows.length)
 	const BATCH_SIZE = 500
@@ -438,7 +468,11 @@ async function importTypes(db: ReturnType<typeof createDb>, sdeDataDir: string) 
 		reportProgress(processed)
 	}
 
+	console.log(
+		`  ... fuel dogma candidates: ${structureDogmaTypeIds.structureTypeIds.size} structures, ${structureDogmaTypeIds.dogmaTypeIds.size - structureDogmaTypeIds.structureTypeIds.size} structure modules`
+	)
 	console.log(`  ✓ ${rows.length} types`)
+	return structureDogmaTypeIds
 }
 
 async function importDogmaUnits(db: ReturnType<typeof createDb>, sdeDataDir: string) {
@@ -481,30 +515,42 @@ async function importDogmaUnits(db: ReturnType<typeof createDb>, sdeDataDir: str
 	console.log(`  ✓ ${rows.length} dogma units`)
 }
 
-async function importDogmaAttributes(db: ReturnType<typeof createDb>, sdeDataDir: string) {
+async function importDogmaAttributes(
+	db: ReturnType<typeof createDb>,
+	sdeDataDir: string,
+	allDogma: boolean
+) {
 	console.log('Importing dogma attributes...')
 	const raw = await readSdeJsonlTable<z.input<typeof dogmaAttributeSchema>>(
 		sdeDataDir,
 		'dogmaAttributes.jsonl'
 	)
 	const data = z.array(dogmaAttributeSchema).parse(raw)
-	const rows = data.map((attribute: DogmaAttribute) => {
-		const attributeId = attribute._key.toString()
-		return {
-			attributeId,
-			attributeCategoryId: attribute.attributeCategoryID?.toString() ?? null,
-			dataType: attribute.dataType ?? null,
-			defaultValue: attribute.defaultValue?.toString() ?? null,
-			attributeName: attribute.name,
-			displayName: getEnglishName(attribute.displayName, '') || null,
-			description: getOptionalEnglishText(attribute.description),
-			displayWhenZero: attribute.displayWhenZero ?? null,
-			highIsGood: attribute.highIsGood ?? null,
-			published: attribute.published ?? null,
-			stackable: attribute.stackable ?? null,
-			unitId: attribute.unitID?.toString() ?? null,
-		}
-	})
+	const rows = data
+		.filter((attribute) => isFuelDogmaAttribute(attribute._key.toString(), allDogma))
+		.map((attribute: DogmaAttribute) => {
+			const attributeId = attribute._key.toString()
+			return {
+				attributeId,
+				attributeCategoryId: attribute.attributeCategoryID?.toString() ?? null,
+				dataType: attribute.dataType ?? null,
+				defaultValue: attribute.defaultValue?.toString() ?? null,
+				attributeName: attribute.name,
+				displayName: getEnglishName(attribute.displayName, '') || null,
+				description: getOptionalEnglishText(attribute.description),
+				displayWhenZero: attribute.displayWhenZero ?? null,
+				highIsGood: attribute.highIsGood ?? null,
+				published: attribute.published ?? null,
+				stackable: attribute.stackable ?? null,
+				unitId: attribute.unitID?.toString() ?? null,
+			}
+		})
+
+	if (!allDogma) {
+		await db
+			.delete(universeDogmaAttributes)
+			.where(notInArray(universeDogmaAttributes.attributeId, [...FUEL_DOGMA_ATTRIBUTE_IDS]))
+	}
 
 	const reportProgress = createProgressReporter('dogma attributes', rows.length)
 	const BATCH_SIZE = 500
@@ -537,36 +583,71 @@ async function importDogmaAttributes(db: ReturnType<typeof createDb>, sdeDataDir
 	console.log(`  ✓ ${rows.length} dogma attributes`)
 }
 
-async function importDogmaEffects(db: ReturnType<typeof createDb>, sdeDataDir: string) {
+async function importDogmaEffects(
+	db: ReturnType<typeof createDb>,
+	sdeDataDir: string,
+	allDogma: boolean
+): Promise<Set<string>> {
 	console.log('Importing dogma effects and modifiers...')
 	const raw = await readSdeJsonlTable<z.input<typeof dogmaEffectSchema>>(
 		sdeDataDir,
 		'dogmaEffects.jsonl'
 	)
 	const data = z.array(dogmaEffectSchema).parse(raw)
-	const effectRows = data.map((effect: DogmaEffect) => ({
-		effectId: effect._key.toString(),
-		effectName: effect.name ?? `Unknown Effect (${effect._key})`,
-		description: getOptionalEnglishText(effect.description),
-		displayName: getEnglishName(effect.displayName, '') || null,
-		effectCategoryId: effect.effectCategoryID ?? null,
-		published: effect.published === undefined ? null : toBoolean(effect.published),
-	}))
-	const modifierRows = data.flatMap((effect: DogmaEffect) =>
-		(effect.modifierInfo ?? []).map((modifier, modifierIndex) => ({
+	const fuelEffectIds = new Set(
+		data
+			.filter((effect) => allDogma || effect.modifierInfo?.some(isFuelModifier))
+			.map((effect) => effect._key.toString())
+	)
+	if (!allDogma) {
+		console.log(`  ... fuel dogma effects selected: ${fuelEffectIds.size}`)
+	}
+	const effectRows = data
+		.filter((effect) => fuelEffectIds.has(effect._key.toString()))
+		.map((effect: DogmaEffect) => ({
 			effectId: effect._key.toString(),
-			modifierIndex,
-			domain: modifier.domain ?? null,
-			func: modifier.func ?? null,
-			groupId: modifier.groupID?.toString() ?? null,
-			modifiedAttributeId: modifier.modifiedAttributeID?.toString() ?? null,
-			modifyingAttributeId: modifier.modifyingAttributeID?.toString() ?? null,
-			operation: modifier.operation ?? null,
-			skillTypeId: modifier.skillTypeID?.toString() ?? null,
+			effectName: effect.name ?? `Unknown Effect (${effect._key})`,
+			description: getOptionalEnglishText(effect.description),
+			displayName: getEnglishName(effect.displayName, '') || null,
+			effectCategoryId: effect.effectCategoryID ?? null,
+			published: effect.published === undefined ? null : toBoolean(effect.published),
 		}))
+	const modifierRows = data.flatMap((effect: DogmaEffect) =>
+		(effect.modifierInfo ?? []).flatMap((modifier, modifierIndex) =>
+			allDogma || isFuelModifier(modifier)
+				? [
+						{
+							effectId: effect._key.toString(),
+							modifierIndex,
+							domain: modifier.domain ?? null,
+							func: modifier.func ?? null,
+							groupId: modifier.groupID?.toString() ?? null,
+							modifiedAttributeId: modifier.modifiedAttributeID?.toString() ?? null,
+							modifyingAttributeId: modifier.modifyingAttributeID?.toString() ?? null,
+							operation: modifier.operation ?? null,
+							skillTypeId: modifier.skillTypeID?.toString() ?? null,
+						},
+					]
+				: []
+		)
 	)
 
+	if (!allDogma) {
+		if (fuelEffectIds.size === 0) {
+			await db.delete(universeDogmaEffects)
+			await db.delete(universeDogmaEffectModifiers)
+		} else {
+			const effectIds = [...fuelEffectIds]
+			await db
+				.delete(universeDogmaEffects)
+				.where(notInArray(universeDogmaEffects.effectId, effectIds))
+			await db.delete(universeDogmaEffectModifiers)
+		}
+	}
+
 	const BATCH_SIZE = 500
+	const effectProgress = createProgressReporter('dogma effects', effectRows.length)
+	let effectsProcessed = 0
 	for (let i = 0; i < effectRows.length; i += BATCH_SIZE) {
 		const batch = effectRows.slice(i, i + BATCH_SIZE)
 		await db
@@ -582,8 +663,12 @@ async function importDogmaEffects(db: ReturnType<typeof createDb>, sdeDataDir: s
 					published: sql`excluded.published`,
 				},
 			})
+		effectsProcessed += batch.length
+		effectProgress(effectsProcessed)
 	}
 
+	const modifierProgress = createProgressReporter('dogma modifiers', modifierRows.length)
+	let modifiersProcessed = 0
 	for (let i = 0; i < modifierRows.length; i += BATCH_SIZE) {
 		const batch = modifierRows.slice(i, i + BATCH_SIZE)
 		await db
@@ -601,36 +686,75 @@ async function importDogmaEffects(db: ReturnType<typeof createDb>, sdeDataDir: s
 					skillTypeId: sql`excluded.skill_type_id`,
 				},
 			})
+		modifiersProcessed += batch.length
+		modifierProgress(modifiersProcessed)
 	}
 
 	console.log(`  ✓ ${effectRows.length} dogma effects and ${modifierRows.length} modifiers`)
+	return fuelEffectIds
 }
 
-async function importTypeDogma(db: ReturnType<typeof createDb>, sdeDataDir: string) {
-	console.log('Importing type dogma attributes and effects...')
-	const raw = await readSdeJsonlTable<z.input<typeof typeDogmaSchema>>(
-		sdeDataDir,
-		'typeDogma.jsonl'
-	)
-	const data = z.array(typeDogmaSchema).parse(raw)
-	const attributeRows = data.flatMap((type: TypeDogma) =>
-		(type.dogmaAttributes ?? []).map((attribute) => ({
-			typeId: type._key.toString(),
-			attributeId: attribute.attributeID.toString(),
-			value: attribute.value.toString(),
-		}))
-	)
-	const effectRows = data.flatMap((type: TypeDogma) =>
-		(type.dogmaEffects ?? []).map((effect) => ({
-			typeId: type._key.toString(),
-			effectId: effect.effectID.toString(),
-			isDefault: effect.isDefault,
-		}))
+async function importTypeDogma(
+	db: ReturnType<typeof createDb>,
+	sdeDataDir: string,
+	allDogma: boolean,
+	structureDogmaTypeIds: Set<string>,
+	structureTypeIds: Set<string>,
+	fuelEffectIds: Set<string>
+) {
+	console.log(
+		`Importing type dogma attributes and effects (${allDogma ? 'all types' : 'structure fuel subset'})...`
 	)
 
+	if (!allDogma) {
+		if (structureDogmaTypeIds.size === 0) {
+			await db.delete(universeTypeDogmaAttributes)
+		} else {
+			await db
+				.delete(universeTypeDogmaAttributes)
+				.where(
+					or(
+						notInArray(universeTypeDogmaAttributes.typeId, [...structureDogmaTypeIds]),
+						notInArray(universeTypeDogmaAttributes.attributeId, [...FUEL_DOGMA_ATTRIBUTE_IDS])
+					)
+				)
+		}
+
+		if (structureTypeIds.size === 0 || fuelEffectIds.size === 0) {
+			await db.delete(universeTypeDogmaEffects)
+		} else {
+			await db
+				.delete(universeTypeDogmaEffects)
+				.where(
+					or(
+						notInArray(universeTypeDogmaEffects.typeId, [...structureTypeIds]),
+						notInArray(universeTypeDogmaEffects.effectId, [...fuelEffectIds])
+					)
+				)
+		}
+	}
+
 	const BATCH_SIZE = 500
-	for (let i = 0; i < attributeRows.length; i += BATCH_SIZE) {
-		const batch = attributeRows.slice(i, i + BATCH_SIZE)
+	const attributeRows: Array<{
+		typeId: string
+		attributeId: string
+		value: string
+	}> = []
+	const effectRows: Array<{
+		typeId: string
+		effectId: string
+		isDefault: boolean
+	}> = []
+	let attributeCount = 0
+	let effectCount = 0
+	let sourceRowCount = 0
+
+	const attributeProgress = createProgressReporter('type dogma attributes')
+	const effectProgress = createProgressReporter('type dogma effects')
+
+	const flushAttributes = async () => {
+		if (attributeRows.length === 0) return
+		const batch = attributeRows.splice(0, attributeRows.length)
 		await db
 			.insert(universeTypeDogmaAttributes)
 			.values(batch)
@@ -638,10 +762,13 @@ async function importTypeDogma(db: ReturnType<typeof createDb>, sdeDataDir: stri
 				target: [universeTypeDogmaAttributes.typeId, universeTypeDogmaAttributes.attributeId],
 				set: { value: sql`excluded.value` },
 			})
+		attributeCount += batch.length
+		attributeProgress(attributeCount)
 	}
 
-	for (let i = 0; i < effectRows.length; i += BATCH_SIZE) {
-		const batch = effectRows.slice(i, i + BATCH_SIZE)
+	const flushEffects = async () => {
+		if (effectRows.length === 0) return
+		const batch = effectRows.splice(0, effectRows.length)
 		await db
 			.insert(universeTypeDogmaEffects)
 			.values(batch)
@@ -649,9 +776,60 @@ async function importTypeDogma(db: ReturnType<typeof createDb>, sdeDataDir: stri
 				target: [universeTypeDogmaEffects.typeId, universeTypeDogmaEffects.effectId],
 				set: { isDefault: sql`excluded.is_default` },
 			})
+		effectCount += batch.length
+		effectProgress(effectCount)
 	}
 
-	console.log(`  ✓ ${attributeRows.length} type dogma attributes and ${effectRows.length} effects`)
+	await forEachSdeJsonlRow<z.input<typeof typeDogmaSchema>>(
+		sdeDataDir,
+		'typeDogma.jsonl',
+		async (raw, index) => {
+			sourceRowCount = index + 1
+			if (sourceRowCount % PROGRESS_INTERVAL === 0) {
+				console.log(`  ... type dogma source rows: ${sourceRowCount}`)
+			}
+
+			const type = typeDogmaSchema.parse(raw)
+			const typeId = type._key.toString()
+			if (!allDogma && !structureDogmaTypeIds.has(typeId)) {
+				return
+			}
+
+			for (const attribute of type.dogmaAttributes ?? []) {
+				if (!isFuelDogmaAttribute(attribute.attributeID.toString(), allDogma)) {
+					continue
+				}
+				attributeRows.push({
+					typeId,
+					attributeId: attribute.attributeID.toString(),
+					value: attribute.value.toString(),
+				})
+				if (attributeRows.length >= BATCH_SIZE) {
+					await flushAttributes()
+				}
+			}
+
+			if (!allDogma && !structureTypeIds.has(typeId)) {
+				return
+			}
+			for (const effect of type.dogmaEffects ?? []) {
+				const effectId = effect.effectID.toString()
+				if (!allDogma && !fuelEffectIds.has(effectId)) {
+					continue
+				}
+				effectRows.push({ typeId, effectId, isDefault: effect.isDefault })
+				if (effectRows.length >= BATCH_SIZE) {
+					await flushEffects()
+				}
+			}
+		}
+	)
+
+	await flushAttributes()
+	await flushEffects()
+	console.log(
+		`  ✓ ${attributeCount} type dogma attributes and ${effectCount} effects from ${sourceRowCount} source rows`
+	)
 }
 
 function resolveSeedFlag(
@@ -774,12 +952,25 @@ async function storeSdeVersion(
 }
 
 async function main() {
+	const args = new Set(process.argv.slice(2))
+	if (args.has('--help')) {
+		console.log(`Usage: pnpm run import:sde-inventory [${ALL_DOGMA_FLAG}]`)
+		console.log('By default, only structure fuel dogma data is imported.')
+		console.log(`${ALL_DOGMA_FLAG} imports all type dogma attributes and effects.`)
+		return
+	}
+	const unknownArgs = [...args].filter((arg) => arg !== ALL_DOGMA_FLAG)
+	if (unknownArgs.length > 0) {
+		throw new Error(`Unknown arguments: ${unknownArgs.join(', ')}`)
+	}
+	const allDogma = args.has(ALL_DOGMA_FLAG)
 	const databaseUrl = process.env.DATABASE_URL_MIGRATIONS
 	if (!databaseUrl) {
 		throw new Error('DATABASE_URL_MIGRATIONS environment variable is required')
 	}
 
 	console.log('Starting SDE inventory data import...')
+	console.log(`Dogma import mode: ${allDogma ? 'all data' : 'structure fuel subset'}`)
 	const sdeDataDir = await prepareSdeDataDir()
 	const sdeMetadata = await readSdeMetadata(sdeDataDir)
 	console.log(`Reading from: ${sdeDataDir}`)
@@ -787,14 +978,21 @@ async function main() {
 	const db = createDb(databaseUrl)
 
 	await importCategories(db, sdeDataDir)
-	await importGroups(db, sdeDataDir)
+	const structureGroupCategories = await importGroups(db, sdeDataDir)
 	await importMarketGroups(db, sdeDataDir)
-	await importTypes(db, sdeDataDir)
+	const structureDogmaTypeIds = await importTypes(db, sdeDataDir, structureGroupCategories)
 	await importTypeMaterials(db, sdeDataDir)
 	await importDogmaUnits(db, sdeDataDir)
-	await importDogmaAttributes(db, sdeDataDir)
-	await importDogmaEffects(db, sdeDataDir)
-	await importTypeDogma(db, sdeDataDir)
+	await importDogmaAttributes(db, sdeDataDir, allDogma)
+	const fuelEffectIds = await importDogmaEffects(db, sdeDataDir, allDogma)
+	await importTypeDogma(
+		db,
+		sdeDataDir,
+		allDogma,
+		structureDogmaTypeIds.dogmaTypeIds,
+		structureDogmaTypeIds.structureTypeIds,
+		fuelEffectIds
+	)
 	await importFlags(db, sdeDataDir)
 	await storeSdeVersion(db, sdeMetadata)
 

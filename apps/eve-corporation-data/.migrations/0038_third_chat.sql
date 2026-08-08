@@ -1,0 +1,1 @@
+CREATE INDEX "corporation_assets_corp_location_idx" ON "corporation_assets" USING btree ("corporation_id","location_id","location_type","location_flag");

@@ -9,6 +9,10 @@ const findPaymentsForBillMock = vi.fn()
 const checkPaymentStatusMock = vi.fn()
 const updateCheckTimestampMock = vi.fn()
 const getStubMock = vi.fn()
+const withRpcResultMock = vi.fn(
+	async (request: Promise<unknown>, consume: (result: unknown) => unknown | Promise<unknown>) =>
+		consume(await request)
+)
 
 vi.mock('cloudflare:workers', () => {
 	class WorkflowEntrypoint<Env = unknown> {
@@ -46,6 +50,8 @@ vi.mock('../../../workflows/steps/update-check-timestamp', () => ({
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: (...args: unknown[]) => getStubMock(...args),
+	withRpcResult: (request: Promise<unknown>, consume: (result: unknown) => unknown) =>
+		withRpcResultMock(request, consume),
 }))
 
 type MockContext = {

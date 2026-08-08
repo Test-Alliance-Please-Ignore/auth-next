@@ -519,6 +519,7 @@ export interface CorporationConfigData extends CorporationLastSyncData {
 export interface CorporationSyncConfigData {
 	includeInBackgroundRefresh: boolean
 	includeInStructureAssetSync: boolean
+	assetsLastSync: Date | null
 	structuresLastSync: Date | null
 }
 

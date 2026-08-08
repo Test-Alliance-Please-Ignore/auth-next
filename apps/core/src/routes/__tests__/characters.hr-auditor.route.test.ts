@@ -376,5 +376,6 @@ describe('character detail access for HR page viewers', () => {
 		expect(body.characterName).toBe('Target Pilot')
 		expect(body.totalSp).toBe(123456)
 		expect(hoisted.core.queueImmunitasAccessAlert).not.toHaveBeenCalled()
+		expect(hoisted.groups.getUserPermissions).not.toHaveBeenCalled()
 	})
 })

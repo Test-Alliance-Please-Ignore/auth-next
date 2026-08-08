@@ -1,7 +1,7 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 import { eq, sql } from 'drizzle-orm'
 
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { formatISK } from '@repo/worker-utils'
 
 import { createDb } from '../db'
@@ -184,9 +184,12 @@ export class BillDiscordNotifyWorkflow extends WorkflowEntrypoint<
 				const payeeName =
 					bill.payeeId && bill.payeeId.trim().length > 0
 						? ((
-								await getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global').resolveIds([
-									bill.payeeId,
-								])
+								await withRpcResult(
+									getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global').resolveIds([
+										bill.payeeId,
+									]),
+									(names) => ({ ...names })
+								)
 							)[bill.payeeId] ?? bill.payeeId)
 						: 'Unknown'
 
@@ -200,7 +203,10 @@ export class BillDiscordNotifyWorkflow extends WorkflowEntrypoint<
 				})
 
 				const discord = getStub<Discord>(this.env.DISCORD, 'default')
-				const result = await discord.sendDirectMessage(eventRow.recipientUserId, message)
+				const result = await withRpcResult(
+					discord.sendDirectMessage(eventRow.recipientUserId, message),
+					(result) => ({ ...result })
+				)
 				if (!result.success) {
 					return {
 						success: false as const,

@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process'
-import { promises as fs } from 'node:fs'
+import { createReadStream, promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { createInterface } from 'node:readline'
 import { promisify } from 'node:util'
 
 const CCP_SDE_JSONL_URL =
@@ -57,6 +58,31 @@ export async function readSdeJsonlTable<T>(sdeDataDir: string, jsonlName: string
 		.map((line) => line.trim())
 		.filter((line) => line.length > 0)
 		.map((line) => JSON.parse(line) as T)
+}
+
+export async function forEachSdeJsonlRow<T>(
+	sdeDataDir: string,
+	jsonlName: string,
+	onRow: (row: T, index: number) => Promise<void> | void
+): Promise<void> {
+	const jsonlPath = join(sdeDataDir, jsonlName)
+	if (!(await fileExists(jsonlPath))) {
+		throw new Error(`Could not find required JSONL file ${jsonlName} in ${sdeDataDir}`)
+	}
+
+	const input = createReadStream(jsonlPath, { encoding: 'utf-8' })
+	const lines = createInterface({ input, crlfDelay: Infinity })
+	let index = 0
+
+	for await (const line of lines) {
+		const trimmed = line.trim()
+		if (!trimmed) {
+			continue
+		}
+
+		await onRow(JSON.parse(trimmed) as T, index)
+		index += 1
+	}
 }
 
 export async function readSdeMetadata(sdeDataDir: string): Promise<SdeMetadata | null> {

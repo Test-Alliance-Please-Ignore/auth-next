@@ -58,6 +58,43 @@ describe('esi structure enrichment ownership handling', () => {
 		expect(systems).toEqual([])
 	})
 
+	it('detaches nested sovereignty data before disposing the RPC response', async () => {
+		const system = {
+			solar_system_id: 30000142,
+			claim: {
+				alliance: {
+					alliance_id: 99000001,
+					corporation_id: 98000001,
+					claimed_since: '2026-07-01T00:00:00.000Z',
+					is_capital_system: false,
+					sovereignty_hub: { id: 81001 },
+					development: {
+						activity_defense_multiplier: 1,
+						military_level: 3,
+						industrial_level: 2,
+						strategic_level: 1,
+					},
+				},
+			},
+		}
+		const response = {
+			data: { solar_systems: [system] },
+			[Symbol.dispose]: vi.fn(() => {
+				Object.assign(system, { claim: { unclaimed: true } })
+			}),
+		}
+		const tokenStore = {
+			fetchPublicEsi: vi.fn().mockResolvedValue(response),
+		}
+
+		const systems = await fetchSovereigntySystems(tokenStore as never)
+
+		expect(response[Symbol.dispose]).toHaveBeenCalledOnce()
+		expect((systems[0] as unknown as { raw: Record<string, unknown> }).raw).toMatchObject({
+			claim: { alliance: { alliance_id: 99000001 } },
+		})
+	})
+
 	it('fetches skyhook detail from the corp skyhook endpoints and maps the requesting corporation id', async () => {
 		const tokenStore = {
 			fetchEsi: vi

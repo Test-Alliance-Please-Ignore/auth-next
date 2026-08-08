@@ -1,14 +1,14 @@
 import { and, eq, inArray, isNull, lte, or } from 'drizzle-orm'
 
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { logger, withWorkerLogContext } from '@repo/hono-helpers'
 import { createWorkflowBatch } from '@repo/workflow-utils'
 
 import { createDb } from './db'
 import { billNotificationEvents, bills, billSchedules } from './db/schema'
 
-import type { Env } from './context'
 import type { Bills } from '@repo/bills'
+import type { Env } from './context'
 
 /**
  * Refreshes bill payment status by scheduling workflows for all open bills
@@ -308,9 +308,12 @@ async function enqueueDueSoonNotifications(
 		const billsStub = getStub<Bills>(env.BILLS, 'default')
 		const results = await Promise.allSettled(
 			dueSoonBillIds.map((billId) =>
-				billsStub.enqueueBillNotificationEvent(billId, 'due_24h', {
-					source: 'scheduled_due_soon_sweep',
-				})
+				withRpcResult(
+					billsStub.enqueueBillNotificationEvent(billId, 'due_24h', {
+						source: 'scheduled_due_soon_sweep',
+					}),
+					() => undefined
+				)
 			)
 		)
 		const succeeded = results.filter((r) => r.status === 'fulfilled').length

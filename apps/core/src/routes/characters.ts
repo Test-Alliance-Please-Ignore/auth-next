@@ -502,14 +502,15 @@ app.get('/:characterId/private', requireAuth(), async (c) => {
 app.get('/:characterId/skills', requireAuth(), async (c) => {
 	const characterIdStr = c.req.param('characterId')
 	const characterId = createEveCharacterId(characterIdStr)
-	const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr)
+	const user = c.get('user')!
+	const isActualOwner = user.characters.some(
+		(character) => character.characterId.toString() === characterIdStr
+	)
 
-	if (accessOrResponse instanceof Response) {
-		return accessOrResponse
-	}
-
-	const access = accessOrResponse
-	if (!access.isActualOwner && !access.isAdmin) {
+	// This endpoint only permits the character owner or a site admin. Avoid the
+	// shared-character resolver here because it performs unrelated HR/corporate
+	// access checks for every concurrent skills request.
+	if (!isActualOwner && !user.is_admin) {
 		return c.json({ error: 'You do not have permission to view this character' }, 403)
 	}
 
