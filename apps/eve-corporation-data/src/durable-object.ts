@@ -9,6 +9,7 @@ import {
 	gte,
 	inArray,
 	isNotNull,
+	like,
 	lt,
 	lte,
 	ne,
@@ -59,7 +60,7 @@ import {
 import { dedupeByItemId, syncAssetsPaged } from './services/assets-paging-sync'
 import { DirectorManager } from './services/director-manager'
 import * as esiFetch from './services/esi-fetch'
-import { calculateStructureFuelBurnRate } from './services/structure-fuel-calculation'
+import { calculateStructureFuelBurnRateDetails } from './services/structure-fuel-calculation'
 import { preserveStructureHydrationFields } from './services/structure-hydration'
 import {
 	findRefilledStructureIds,
@@ -224,6 +225,8 @@ const INVENTORY_SNAPSHOT_CLEANUP_BATCH_SIZE = 250
 const INVENTORY_SNAPSHOT_CLEANUP_MAX_BATCHES = 4
 const WALLET_JOURNAL_INSERT_BATCH_SIZE = 100
 const WALLET_TRANSACTION_INSERT_BATCH_SIZE = 100
+const STRUCTURE_FUEL_SYNC_FAILURE_REASON =
+	'Some online service modules could not be identified for fuel consumption purposes'
 
 function compareNumericStrings(left: string, right: string): number {
 	try {
@@ -884,10 +887,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		try {
-			await this.env.CORE.handleCharacterAffiliationChanges([characterId], {
-				source: `director-affiliation-mismatch:${expectedCorporationId}:${actualCorporationId ?? 'unknown'}`,
-				bypassThrottle: true,
-			})
+			await withRpcResult(
+				this.env.CORE.handleCharacterAffiliationChanges([characterId], {
+					source: `director-affiliation-mismatch:${expectedCorporationId}:${actualCorporationId ?? 'unknown'}`,
+					bypassThrottle: true,
+				}),
+				() => undefined
+			)
 		} catch (error) {
 			logger.warn('[EveCorporationData] Failed to propagate director affiliation mismatch', {
 				characterId,
@@ -1158,6 +1164,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async getCorporationSyncConfig(corporationId: string): Promise<{
 		includeInBackgroundRefresh: boolean
 		includeInStructureAssetSync: boolean
+		assetsLastSync: Date | null
 		structuresLastSync: Date | null
 	} | null> {
 		const config = await this.getDb().query.corporationConfig.findFirst({
@@ -1165,6 +1172,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			columns: {
 				includeInBackgroundRefresh: true,
 				includeInStructureAssetSync: true,
+				assetsLastSync: true,
 				structuresLastSync: true,
 			},
 		})
@@ -1176,6 +1184,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		return {
 			includeInBackgroundRefresh: config.includeInBackgroundRefresh,
 			includeInStructureAssetSync: config.includeInStructureAssetSync,
+			assetsLastSync: config.assetsLastSync,
 			structuresLastSync: config.structuresLastSync,
 		}
 	}
@@ -2902,31 +2911,86 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			services: Array<{ name: string; state: string }> | null
 			fuelBurnRate: string | null
 		}>
-	): Promise<Map<string, string | null>> {
-		const fuelBurnRateByStructure = new Map(
-			structures.map((structure) => [structure.structureId, structure.fuelBurnRate] as const)
+	): Promise<
+		Map<
+			string,
+			{
+				fuelBurnRate: string | null
+				unresolvedServiceNames: string[]
+				unresolvedModuleTypeIds: string[]
+			}
+		>
+	> {
+		const fuelBurnRateByStructure = new Map<
+			string,
+			{
+				fuelBurnRate: string | null
+				unresolvedServiceNames: string[]
+				unresolvedModuleTypeIds: string[]
+			}
+		>(
+			structures.map(
+				(structure) =>
+					[
+						structure.structureId,
+						{
+							fuelBurnRate: structure.fuelBurnRate,
+							unresolvedServiceNames: [],
+							unresolvedModuleTypeIds: [],
+						},
+					] as const
+			)
 		)
 		if (structures.length === 0) {
 			return fuelBurnRateByStructure
 		}
 
 		const structureTypeIds = [...new Set(structures.map((structure) => structure.typeId))]
+		let serviceModuleTypeIdsByStructureId = new Map<string, string[]>()
+		try {
+			serviceModuleTypeIdsByStructureId = await this.getStructureServiceModuleTypeIds(
+				corporationId,
+				structures.map((structure) => structure.structureId)
+			)
+		} catch (error) {
+			logger.warn('[EveCorporationData] Failed to read stored structure service modules', {
+				corporationId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+		const serviceModuleTypeIds = [
+			...new Set([...serviceModuleTypeIdsByStructureId.values()].flatMap((typeIds) => typeIds)),
+		]
 		const serviceNames = [
 			...new Set(
-				structures.flatMap((structure) => (structure.services ?? []).map((service) => service.name))
+				structures.flatMap((structure) => {
+					if ((serviceModuleTypeIdsByStructureId.get(structure.structureId)?.length ?? 0) > 0) {
+						return []
+					}
+
+					return (structure.services ?? [])
+						.filter((service) => service.state.trim().toLowerCase() === 'online')
+						.map((service) => service.name)
+				})
 			),
 		]
 
 		try {
 			const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
 			const fuelRules = await withRpcResult(
-				universe.resolveStructureFuelRules(structureTypeIds, serviceNames),
+				universe.resolveStructureFuelRules(structureTypeIds, serviceNames, serviceModuleTypeIds),
 				(result) => ({ ...result })
 			)
 			const modulesByServiceName = new Map<string, UniverseFuelModuleRule>()
+			const modulesByTypeId = new Map<string, UniverseFuelModuleRule>()
 			for (const [serviceName, module] of Object.entries(fuelRules.modulesByServiceName)) {
 				if (module !== null) {
 					modulesByServiceName.set(normalizeUniverseServiceName(serviceName), module)
+				}
+			}
+			for (const [typeId, module] of Object.entries(fuelRules.modulesByTypeId)) {
+				if (module !== null) {
+					modulesByTypeId.set(typeId, module)
 				}
 			}
 
@@ -2946,15 +3010,39 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			}
 
 			for (const structure of structures) {
-				const burnRate = calculateStructureFuelBurnRate(
+				const installedModuleTypeIds =
+					serviceModuleTypeIdsByStructureId.get(structure.structureId) ?? []
+				const fuelResult = calculateStructureFuelBurnRateDetails(
 					structure.services,
 					modulesByServiceName,
-					fuelRules.structureModifiersByTypeId[structure.typeId] ?? []
+					fuelRules.structureModifiersByTypeId[structure.typeId] ?? [],
+					fuelRules.builtInModulesByStructureTypeId[structure.typeId] ?? null,
+					installedModuleTypeIds,
+					modulesByTypeId
 				)
-				fuelBurnRateByStructure.set(
-					structure.structureId,
-					burnRate === null ? null : burnRate.toFixed(4)
-				)
+				if (
+					fuelResult.unresolvedServiceNames.length > 0 ||
+					fuelResult.unresolvedModuleTypeIds.length > 0
+				) {
+					logger.warn(
+						'[EveCorporationData] Some online service modules could not be identified for fuel consumption',
+						{
+							corporationId,
+							structureId: structure.structureId,
+							structureTypeId: structure.typeId,
+							unresolvedServiceNames: fuelResult.unresolvedServiceNames,
+							unresolvedModuleTypeIds: fuelResult.unresolvedModuleTypeIds,
+							installedModuleTypeIds,
+							sdeVersion: fuelRules.sdeVersion,
+						}
+					)
+				}
+				fuelBurnRateByStructure.set(structure.structureId, {
+					fuelBurnRate:
+						fuelResult.fuelBurnRate === null ? null : fuelResult.fuelBurnRate.toFixed(4),
+					unresolvedServiceNames: fuelResult.unresolvedServiceNames,
+					unresolvedModuleTypeIds: fuelResult.unresolvedModuleTypeIds,
+				})
 			}
 		} catch (error) {
 			logger.warn('[EveCorporationData] Failed to resolve deterministic structure fuel rules', {
@@ -2964,6 +3052,110 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		return fuelBurnRateByStructure
+	}
+
+	private async getStructureServiceModuleTypeIds(
+		corporationId: string,
+		structureIds: readonly string[]
+	): Promise<Map<string, string[]>> {
+		if (structureIds.length === 0) {
+			return new Map()
+		}
+
+		const rows = await this.getDb()
+			.select({
+				structureId: corporationAssets.locationId,
+				typeId: corporationAssets.typeId,
+			})
+			.from(corporationAssets)
+			.where(
+				and(
+					eq(corporationAssets.corporationId, corporationId),
+					eq(corporationAssets.locationType, 'item'),
+					inArray(corporationAssets.locationId, [...structureIds]),
+					like(corporationAssets.locationFlag, 'ServiceSlot%')
+				)
+			)
+
+		const typeIdsByStructureId = new Map<string, string[]>()
+		for (const row of rows) {
+			const typeIds = typeIdsByStructureId.get(row.structureId) ?? []
+			if (!typeIds.includes(row.typeId)) {
+				typeIds.push(row.typeId)
+			}
+			typeIdsByStructureId.set(row.structureId, typeIds)
+		}
+
+		return typeIdsByStructureId
+	}
+
+	private async refreshStoredStructureFuelBurnRates(
+		corporationId: string,
+		structureIds?: readonly string[]
+	): Promise<void> {
+		const conditions = [eq(corporationStructures.corporationId, corporationId)]
+		if (structureIds && structureIds.length > 0) {
+			conditions.push(inArray(corporationStructures.structureId, [...structureIds]))
+		}
+		const structures = await this.getDb().query.corporationStructures.findMany({
+			where: and(...conditions),
+			columns: {
+				structureId: true,
+				typeId: true,
+				services: true,
+				fuelBurnRate: true,
+				syncStatus: true,
+				syncFailureReason: true,
+			},
+		})
+		if (structures.length === 0) {
+			return
+		}
+
+		const fuelBurnRateByStructure = await this.resolveStructureFuelBurnRates(
+			corporationId,
+			structures
+		)
+		const rows = [...fuelBurnRateByStructure.entries()]
+		if (rows.length === 0) {
+			return
+		}
+
+		await this.getDb()
+			.update(corporationStructures)
+			.set({
+				fuelBurnRate: sql`case ${corporationStructures.structureId} ${sql.join(
+					rows.map(([structureId, result]) => sql`when ${structureId} then ${result.fuelBurnRate}`),
+					sql` `
+				)} else ${corporationStructures.fuelBurnRate} end`,
+				syncStatus: sql`case ${corporationStructures.structureId} ${sql.join(
+					rows.map(([structureId, result]) => {
+						return result.unresolvedServiceNames.length > 0 ||
+							result.unresolvedModuleTypeIds.length > 0
+							? sql`when ${structureId} then ${'error'}`
+							: sql`when ${structureId} then case when ${corporationStructures.syncFailureReason} = ${STRUCTURE_FUEL_SYNC_FAILURE_REASON} then ${'ok'} else ${corporationStructures.syncStatus} end`
+					}),
+					sql` `
+				)} else ${corporationStructures.syncStatus} end`,
+				syncFailureReason: sql`case ${corporationStructures.structureId} ${sql.join(
+					rows.map(([structureId, result]) => {
+						return result.unresolvedServiceNames.length > 0 ||
+							result.unresolvedModuleTypeIds.length > 0
+							? sql`when ${structureId} then ${STRUCTURE_FUEL_SYNC_FAILURE_REASON}`
+							: sql`when ${structureId} then case when ${corporationStructures.syncFailureReason} = ${STRUCTURE_FUEL_SYNC_FAILURE_REASON} then null else ${corporationStructures.syncFailureReason} end`
+					}),
+					sql` `
+				)} else ${corporationStructures.syncFailureReason} end`,
+			})
+			.where(
+				and(
+					eq(corporationStructures.corporationId, corporationId),
+					inArray(
+						corporationStructures.structureId,
+						rows.map(([structureId]) => structureId)
+					)
+				)
+			)
 	}
 
 	/**
@@ -2997,10 +3189,21 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		for (let i = 0; i < hydratedStructures.length; i += BATCH_SIZE) {
 			const batch = hydratedStructures.slice(i, i + BATCH_SIZE)
-			const batchValues = batch.map((structure) => ({
-				...structure,
-				fuelBurnRate: fuelBurnRateByStructure.get(structure.structureId) ?? null,
-			}))
+			const batchValues = batch.map((structure) => {
+				const fuelResult = fuelBurnRateByStructure.get(structure.structureId)
+				const hasUnresolvedFuelModules =
+					(fuelResult?.unresolvedServiceNames.length ?? 0) > 0 ||
+					(fuelResult?.unresolvedModuleTypeIds.length ?? 0) > 0
+
+				return {
+					...structure,
+					syncStatus: hasUnresolvedFuelModules ? 'error' : structure.syncStatus,
+					syncFailureReason: hasUnresolvedFuelModules
+						? STRUCTURE_FUEL_SYNC_FAILURE_REASON
+						: structure.syncFailureReason,
+					fuelBurnRate: fuelResult?.fuelBurnRate ?? null,
+				}
+			})
 
 			await this.getDb()
 				.insert(corporationStructures)
@@ -3395,6 +3598,19 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		await this.finalizeStructureInventorySnapshot(corporationId, snapshotId, observedAt)
 
+		try {
+			await this.refreshStoredStructureFuelBurnRates(corporationId, [String(structureId)])
+		} catch (error) {
+			logger.warn(
+				'[EveCorporationData] Failed to refresh structure fuel rate after inventory rebuild',
+				{
+					corporationId,
+					structureId: String(structureId),
+					error: error instanceof Error ? error.message : String(error),
+				}
+			)
+		}
+
 		logger.info('[EveCorporationData] Rebuilt structure inventory snapshot from stored assets', {
 			corporationId,
 			structureId: String(structureId),
@@ -3522,7 +3738,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 			if (characterIds.length > 0) {
 				try {
-					const result = await this.env.CORE.addPendingDiscordRefreshesForCharacters(characterIds)
+					const result = await withRpcResult(
+						this.env.CORE.addPendingDiscordRefreshesForCharacters(characterIds),
+						(result) => ({ ...result })
+					)
 					logger.info(
 						'[EveCorporationData] Queued Discord refresh after alliance affiliation change',
 						{
@@ -5610,6 +5829,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		logger.debug('[fetchAndStoreAssets] Pruned stale asset rows after successful sync', {
 			corporationId,
 		})
+		try {
+			await this.refreshStoredStructureFuelBurnRates(corporationId)
+		} catch (error) {
+			logger.warn('[EveCorporationData] Failed to refresh structure fuel rates after asset sync', {
+				corporationId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
 
 		return result.assetsCount
 	}
@@ -6962,7 +7189,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await Promise.all(
 			directors.map(async (director) => {
 				try {
-					const tokenInfo = await tokenStoreStub.getTokenInfo(director.characterId)
+					const tokenInfo = await withRpcResult(
+						tokenStoreStub.getTokenInfo(director.characterId),
+						(info) => (info ? { isExpired: info.isExpired, scopes: [...info.scopes] } : null)
+					)
 					if (!tokenInfo || tokenInfo.isExpired) {
 						return
 					}

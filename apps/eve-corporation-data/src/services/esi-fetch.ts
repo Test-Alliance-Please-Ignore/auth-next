@@ -56,6 +56,18 @@ const SOVEREIGNTY_HUB_DETAIL_BATCH_SIZE = 4
 const SKYHOOK_DETAIL_BATCH_SIZE = 4
 const MAX_WALLET_TRANSACTION_PAGES = 100
 
+function detachRpcValue<T>(value: T): T {
+	if (Array.isArray(value)) {
+		return value.map((entry) => detachRpcValue(entry)) as T
+	}
+	if (value !== null && typeof value === 'object') {
+		return Object.fromEntries(
+			Object.entries(value).map(([key, entry]) => [key, detachRpcValue(entry)])
+		) as T
+	}
+	return value
+}
+
 function compareNumericStrings(left: string, right: string): number {
 	try {
 		const leftBigInt = BigInt(left)
@@ -504,10 +516,11 @@ export async function fetchSovereigntySystems(
 
 	try {
 		return response.data.solar_systems.map((system) => {
-			if ('alliance' in system.claim) {
-				const claim = system.claim.alliance
+			const detachedSystem = detachRpcValue(system)
+			if ('alliance' in detachedSystem.claim) {
+				const claim = detachedSystem.claim.alliance
 				return {
-					system_id: String(system.solar_system_id),
+					system_id: String(detachedSystem.solar_system_id),
 					claim_type: 'alliance' as const,
 					alliance_id: String(claim.alliance_id),
 					corporation_id: String(claim.corporation_id),
@@ -519,23 +532,23 @@ export async function fetchSovereigntySystems(
 					military_level: claim.development.military_level,
 					industrial_level: claim.development.industrial_level,
 					strategic_level: claim.development.strategic_level,
-					raw: system as Record<string, unknown>,
+					raw: detachedSystem as Record<string, unknown>,
 				}
 			}
 
-			if ('faction' in system.claim) {
+			if ('faction' in detachedSystem.claim) {
 				return {
-					system_id: String(system.solar_system_id),
+					system_id: String(detachedSystem.solar_system_id),
 					claim_type: 'faction' as const,
-					faction_id: String(system.claim.faction.faction_id),
-					raw: system as Record<string, unknown>,
+					faction_id: String(detachedSystem.claim.faction.faction_id),
+					raw: detachedSystem as Record<string, unknown>,
 				}
 			}
 
 			return {
-				system_id: String(system.solar_system_id),
+				system_id: String(detachedSystem.solar_system_id),
 				claim_type: 'unclaimed' as const,
-				raw: system as Record<string, unknown>,
+				raw: detachedSystem as Record<string, unknown>,
 			}
 		})
 	} finally {
@@ -666,7 +679,7 @@ export async function fetchSovereigntyHubs(
 					{ cacheMode: 'no-store' }
 				)
 				try {
-					const detail = detailResult.data
+					const detail = detachRpcValue(detailResult.data)
 
 					return {
 						structure_id: String(detail.id),
@@ -827,7 +840,7 @@ export async function fetchCorporationSkyhooks(
 				)
 
 				try {
-					const detail = detailResult.data
+					const detail = detachRpcValue(detailResult.data)
 					const theftVulnerability = detail.theft_vulnerability ?? null
 
 					return {
@@ -930,14 +943,17 @@ export async function fetchCorporationMiningExtractions(
 	)
 
 	try {
-		return result.data.map((extraction) => ({
-			structure_id: String(extraction.structure_id),
-			moon_id: String(extraction.moon_id),
-			extraction_start_time: extraction.extraction_start_time,
-			chunk_arrival_time: extraction.chunk_arrival_time,
-			natural_decay_time: extraction.natural_decay_time,
-			raw: extraction as Record<string, unknown>,
-		}))
+		return result.data.map((extraction) => {
+			const detachedExtraction = detachRpcValue(extraction)
+			return {
+				structure_id: String(detachedExtraction.structure_id),
+				moon_id: String(detachedExtraction.moon_id),
+				extraction_start_time: detachedExtraction.extraction_start_time,
+				chunk_arrival_time: detachedExtraction.chunk_arrival_time,
+				natural_decay_time: detachedExtraction.natural_decay_time,
+				raw: detachedExtraction as Record<string, unknown>,
+			}
+		})
 	} finally {
 		disposeRpcResult(result)
 	}

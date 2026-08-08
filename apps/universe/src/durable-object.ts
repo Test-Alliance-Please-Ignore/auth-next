@@ -13,6 +13,7 @@ import {
 	MOON_BASE_MINERAL_TYPE_IDS,
 	MOON_GOO_TYPE_IDS,
 	normalizeUniverseServiceName,
+	resolveUniverseFuelModuleRule,
 	selectNearestMoonByPosition,
 	UniverseMoonResourceSchema,
 	UniverseMoonSchema,
@@ -90,6 +91,8 @@ type StructureFuelRuleCache = {
 	expiresAt: number
 	sdeVersion: string | null
 	modulesByServiceName: Map<string, UniverseFuelModuleRule>
+	modulesByTypeId: Map<string, UniverseFuelModuleRule>
+	builtInModulesByStructureTypeId: Map<string, UniverseFuelModuleRule | null>
 	structureModifiersByTypeId: Map<string, UniverseStructureFuelModifier[]>
 }
 
@@ -212,8 +215,16 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			.where(gt(sql`cast(${fuelAmountAttributes.value} as double precision)`, 0))
 
 		const modulesByServiceName = new Map<string, UniverseFuelModuleRule>()
+		const modulesByTypeId = new Map<string, UniverseFuelModuleRule>()
 		const ambiguousServiceNames = new Set<string>()
 		for (const row of moduleRows) {
+			const module = {
+				typeId: row.typeId,
+				typeName: row.typeName,
+				serviceGroupId: row.serviceGroupId,
+				fuelUnitsPerHour: Number(row.fuelUnitsPerHour),
+			}
+			modulesByTypeId.set(row.typeId, module)
 			const name = normalizeUniverseServiceName(row.typeName)
 			if (ambiguousServiceNames.has(name)) {
 				continue
@@ -227,12 +238,22 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				})
 				continue
 			}
-			modulesByServiceName.set(name, {
-				typeId: row.typeId,
-				typeName: row.typeName,
-				serviceGroupId: row.serviceGroupId,
-				fuelUnitsPerHour: Number(row.fuelUnitsPerHour),
+			modulesByServiceName.set(name, module)
+		}
+
+		const builtInModuleRows = await this.db
+			.select({
+				structureTypeId: universeTypeDogmaAttributes.typeId,
+				moduleTypeId: universeTypeDogmaAttributes.value,
 			})
+			.from(universeTypeDogmaAttributes)
+			.where(eq(universeTypeDogmaAttributes.attributeId, '2792'))
+		const builtInModulesByStructureTypeId = new Map<string, UniverseFuelModuleRule | null>()
+		for (const row of builtInModuleRows) {
+			const module = modulesByTypeId.get(row.moduleTypeId)
+			if (module) {
+				builtInModulesByStructureTypeId.set(row.structureTypeId, module)
+			}
 		}
 
 		const structureFuelAttributes = alias(universeTypeDogmaAttributes, 'structure_fuel_attributes')
@@ -285,6 +306,8 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			expiresAt: Date.now() + STRUCTURE_FUEL_RULE_CACHE_TTL_MS,
 			sdeVersion,
 			modulesByServiceName,
+			modulesByTypeId,
+			builtInModulesByStructureTypeId,
 			structureModifiersByTypeId,
 		}
 	}
@@ -313,11 +336,13 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 	async resolveStructureFuelRules(
 		structureTypeIds: string[],
-		serviceNames: string[]
+		serviceNames: string[],
+		serviceModuleTypeIds: string[] = []
 	): Promise<UniverseFuelRuleResolution> {
 		const cache = await this.getStructureFuelRuleCache()
 		const uniqueStructureTypeIds = [...new Set(structureTypeIds)]
 		const uniqueServiceNames = [...new Set(serviceNames)]
+		const uniqueServiceModuleTypeIds = [...new Set(serviceModuleTypeIds)]
 		const knownStructureRows =
 			uniqueStructureTypeIds.length > 0
 				? await this.db
@@ -328,13 +353,22 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		const knownStructureTypeIds = new Set(knownStructureRows.map((row) => row.typeId))
 
 		const modulesByServiceName: Record<string, UniverseFuelModuleRule | null> = {}
+		const modulesByTypeId: Record<string, UniverseFuelModuleRule | null> = {}
+		const builtInModulesByStructureTypeId: Record<string, UniverseFuelModuleRule | null> = {}
 		const unresolvedServiceNames: string[] = []
 		for (const serviceName of uniqueServiceNames) {
-			const rule = cache.modulesByServiceName.get(normalizeUniverseServiceName(serviceName)) ?? null
+			const rule = resolveUniverseFuelModuleRule(serviceName, cache.modulesByServiceName)
 			modulesByServiceName[serviceName] = rule
 			if (rule === null) {
 				unresolvedServiceNames.push(serviceName)
 			}
+		}
+		for (const moduleTypeId of uniqueServiceModuleTypeIds) {
+			modulesByTypeId[moduleTypeId] = cache.modulesByTypeId.get(moduleTypeId) ?? null
+		}
+		for (const structureTypeId of uniqueStructureTypeIds) {
+			builtInModulesByStructureTypeId[structureTypeId] =
+				cache.builtInModulesByStructureTypeId.get(structureTypeId) ?? null
 		}
 
 		const structureModifiersByTypeId: Record<string, UniverseStructureFuelModifier[]> = {}
@@ -349,6 +383,8 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		return {
 			sdeVersion: cache.sdeVersion,
 			modulesByServiceName,
+			modulesByTypeId,
+			builtInModulesByStructureTypeId,
 			structureModifiersByTypeId,
 			unresolvedServiceNames,
 			missingStructureTypeIds: uniqueStructureTypeIds.filter(

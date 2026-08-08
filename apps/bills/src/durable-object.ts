@@ -1,11 +1,12 @@
 import { DurableObject } from 'cloudflare:workers'
 import { and, eq, isNull, lte } from 'drizzle-orm'
 
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { logger, toErrorLogDetails } from '@repo/hono-helpers'
 import { createWorkflowBatch } from '@repo/workflow-utils'
 
 import { createDb } from './db'
+import { billNotificationEvents, bills } from './db/schema'
 import { BillService } from './services/bill.service'
 import { ScheduleService } from './services/schedule.service'
 import { TemplateService } from './services/template.service'
@@ -13,13 +14,13 @@ import { generateUuidV7 } from './utils/uuid'
 
 import type {
 	Bill,
-	BillMetadata,
-	BillNotificationEventType,
 	BillExternalRef,
 	BillFilters,
 	BillIntegrationView,
 	BillListPage,
 	BillListQuery,
+	BillMetadata,
+	BillNotificationEventType,
 	BillPartySearchQuery,
 	BillPartySearchRow,
 	Bills,
@@ -54,7 +55,6 @@ import type {
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Groups } from '@repo/groups'
 import type { Env } from './context'
-import { billNotificationEvents, bills } from './db/schema'
 import type { billPayments } from './db/schema'
 
 /**
@@ -356,11 +356,17 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return this.billService.deleteBill(actorUserId, billId)
 	}
 
-	async issueGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult> {
+	async issueGroupBill(
+		actorUserId: string,
+		groupBillId: string
+	): Promise<GroupBillOperationResult> {
 		return this.billService.issueGroupBill(actorUserId, groupBillId)
 	}
 
-	async cancelGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult> {
+	async cancelGroupBill(
+		actorUserId: string,
+		groupBillId: string
+	): Promise<GroupBillOperationResult> {
 		return this.billService.cancelGroupBill(actorUserId, groupBillId)
 	}
 
@@ -371,7 +377,10 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return this.billService.revertGroupBillToDraft(actorUserId, groupBillId)
 	}
 
-	async deleteGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult> {
+	async deleteGroupBill(
+		actorUserId: string,
+		groupBillId: string
+	): Promise<GroupBillOperationResult> {
 		return this.billService.deleteGroupBill(actorUserId, groupBillId)
 	}
 
@@ -540,8 +549,22 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 				const groupBillId = crypto.randomUUID()
 				const groupsStub = getStub<Groups>(this.env.GROUPS, 'default')
 				const [group, members] = await Promise.all([
-					groupsStub.getGroup(scheduleResult.payerId, scheduleResult.ownerId),
-					groupsStub.getGroupMembers(scheduleResult.payerId, scheduleResult.ownerId),
+					withRpcResult(
+						groupsStub.getGroup(scheduleResult.payerId, scheduleResult.ownerId),
+						(result) =>
+							result
+								? {
+										...result,
+										adminUserIds: result.adminUserIds
+											? [...result.adminUserIds]
+											: result.adminUserIds,
+									}
+								: null
+					),
+					withRpcResult(
+						groupsStub.getGroupMembers(scheduleResult.payerId, scheduleResult.ownerId),
+						(result) => result.map((member) => ({ ...member }))
+					),
 				])
 
 				if (!group) {
@@ -664,7 +687,8 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 			return
 		}
 
-		await createWorkflowBatch(this.env.BILL_DISCORD_NOTIFY, 
+		await createWorkflowBatch(
+			this.env.BILL_DISCORD_NOTIFY,
 			pendingRows.map((row) => ({
 				id: `bill-notify-immediate-${row.id}-${Date.now()}`,
 				params: { notificationEventId: row.id },
@@ -672,11 +696,14 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		)
 	}
 
-	private async resolveIssuedNotificationRecipients(
-		bill: { payerId: string; payerType: EntityType }
-	): Promise<string[]> {
+	private async resolveIssuedNotificationRecipients(bill: {
+		payerId: string
+		payerType: EntityType
+	}): Promise<string[]> {
 		if (bill.payerType === 'character') {
-			const owner = await this.env.CORE.getCharacterOwner(bill.payerId)
+			const owner = await withRpcResult(this.env.CORE.getCharacterOwner(bill.payerId), (owner) =>
+				owner ? { ...owner } : null
+			)
 			return owner?.userId ? [owner.userId] : []
 		}
 
@@ -687,8 +714,8 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		const corpId = bill.payerId
 		const corpStub = getStub<EveCorporationData>(this.env.EVE_CORPORATION_DATA, corpId)
 		const [corpInfo, directors] = await Promise.all([
-			corpStub.getCorporationInfo(corpId),
-			corpStub.getDirectors(corpId),
+			withRpcResult(corpStub.getCorporationInfo(corpId), (info) => (info ? { ...info } : null)),
+			withRpcResult(corpStub.getDirectors(corpId), (rows) => rows.map((row) => ({ ...row }))),
 		])
 
 		const characterIds = new Set<string>()
@@ -705,7 +732,11 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		}
 
 		const owners = await Promise.all(
-			[...characterIds].map(async (characterId) => this.env.CORE.getCharacterOwner(characterId))
+			[...characterIds].map((characterId) =>
+				withRpcResult(this.env.CORE.getCharacterOwner(characterId), (owner) =>
+					owner ? { ...owner } : null
+				)
+			)
 		)
 		const userIds = new Set<string>()
 		for (const owner of owners) {

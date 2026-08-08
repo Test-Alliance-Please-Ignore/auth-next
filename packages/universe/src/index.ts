@@ -407,6 +407,7 @@ export interface Universe {
 	 */
 	resolveStructureFuelRules(
 		structureTypeIds: string[],
-		serviceNames: string[]
+		serviceNames: string[],
+		serviceModuleTypeIds?: string[]
 	): Promise<UniverseFuelRuleResolution>
 }

@@ -1,6 +1,6 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { Bills } from '@repo/bills'
@@ -40,7 +40,9 @@ export class BillScheduleExecutorWorkflow extends WorkflowEntrypoint<Env, { sche
 			},
 			async () => {
 				const billsStub = getStub<Bills>(this.env.BILLS, 'default')
-				return await billsStub.executeSchedule(scheduleId)
+				return await withRpcResult(billsStub.executeSchedule(scheduleId), (result) => ({
+					...result,
+				}))
 			}
 		)
 

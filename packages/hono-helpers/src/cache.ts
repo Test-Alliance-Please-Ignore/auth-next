@@ -18,6 +18,7 @@ export class TimeCache<T> {
 			timestamp: number
 		}
 	>()
+	private pending = new Map<string, Promise<T>>()
 
 	/**
 	 * @param ttlMs - Time to live in milliseconds
@@ -37,9 +38,23 @@ export class TimeCache<T> {
 			return cached
 		}
 
-		const value = await compute()
-		this.set(key, value)
-		return value
+		const pending = this.pending.get(key)
+		if (pending) {
+			return pending
+		}
+
+		const computation = Promise.resolve()
+			.then(compute)
+			.then((value) => {
+				this.set(key, value)
+				return value
+			})
+			.finally(() => {
+				this.pending.delete(key)
+			})
+
+		this.pending.set(key, computation)
+		return computation
 	}
 
 	/**

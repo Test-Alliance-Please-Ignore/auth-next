@@ -1,6 +1,6 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers'
 
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
@@ -174,21 +174,30 @@ export class BillPaymentStatusCheckWorkflow extends WorkflowEntrypoint<Env, Work
 					async () => {
 						const billsStub = getStub<BillsNotificationStub>(this.env.BILLS, 'default')
 						if (paymentStatusResult.overdueMarked) {
-							await billsStub.enqueueBillNotificationEvent(billId, 'overdue', {
-								source: 'bill_payment_status_workflow',
-							})
+							await withRpcResult(
+								billsStub.enqueueBillNotificationEvent(billId, 'overdue', {
+									source: 'bill_payment_status_workflow',
+								}),
+								() => undefined
+							)
 						}
 						if (paymentStatusResult.markedPaid) {
-							await billsStub.enqueueBillNotificationEvent(billId, 'paid', {
-								source: 'bill_payment_status_workflow',
-							})
+							await withRpcResult(
+								billsStub.enqueueBillNotificationEvent(billId, 'paid', {
+									source: 'bill_payment_status_workflow',
+								}),
+								() => undefined
+							)
 						}
 						if (shouldSyncTaxAssessment) {
 							const taxStub = getStub<CorporationTaxSyncStub>(this.env.CORPORATION_TAX, 'default')
-							await taxStub.syncBillStatus(TAX_SYNC_ACTOR, {
-								id: billId,
-								status: paymentStatusResult.statusAfter as BillStatus,
-							})
+							await withRpcResult(
+								taxStub.syncBillStatus(TAX_SYNC_ACTOR, {
+									id: billId,
+									status: paymentStatusResult.statusAfter as BillStatus,
+								}),
+								() => undefined
+							)
 						}
 					}
 				)

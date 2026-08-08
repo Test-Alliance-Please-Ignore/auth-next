@@ -748,6 +748,7 @@ export interface StructureFittingItem {
 
 export interface StructureDetailResult extends Omit<StructureListItem, 'canViewDetails'> {
 	includeInStructureAssetSync: boolean
+	assetsLastSync: string | null
 	canViewSensitive: boolean
 	canEdit: boolean
 	services: Array<{

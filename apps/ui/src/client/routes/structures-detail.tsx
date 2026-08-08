@@ -36,6 +36,7 @@ import { Container } from '@/components/ui/container'
 import { DurationDisplay } from '@/components/ui/duration-display'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { FilterField } from '@/components/ui/filter-field'
+import { HoverPopover } from '@/components/ui/hover-popover'
 import { LoadingPage } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Progress } from '@/components/ui/progress'
@@ -1261,7 +1262,25 @@ export default function StructuresDetailPage() {
 								<div className="rounded-lg border border-border/60 p-4">
 									<div className="mb-3 flex flex-wrap items-center gap-2">
 										{!hasSovereigntySummary && structure.includeInStructureAssetSync && (
-											<Badge variant="success">Asset Sync Enabled</Badge>
+											<HoverPopover
+												align="start"
+												side="top"
+												className="w-80 space-y-2"
+												trigger={
+													<span className="inline-flex cursor-help">
+														<Badge variant="success">Asset Sync Enabled</Badge>
+													</span>
+												}
+											>
+												<div className="space-y-1">
+													<div className="text-sm font-medium">Asset Sync</div>
+													<div className="text-sm text-muted-foreground">
+														{structure.assetsLastSync
+															? `Last successful asset sync at ${formatDateTimeLong(structure.assetsLastSync)}.`
+															: 'No successful asset sync has been recorded.'}
+													</div>
+												</div>
+											</HoverPopover>
 										)}
 										<div className="mt-0.5">
 											<StructureSyncStatusBadge

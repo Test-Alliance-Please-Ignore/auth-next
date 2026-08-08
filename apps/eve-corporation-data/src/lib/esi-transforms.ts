@@ -99,7 +99,10 @@ export function transformAssets(assets: any[]): EsiCorporationAsset[] {
 	}))
 }
 
-export function transformStructures(structures: any[], corporationId: string): EsiCorporationStructure[] {
+export function transformStructures(
+	structures: any[],
+	corporationId: string
+): EsiCorporationStructure[] {
 	return structures.map((structure) => ({
 		structure_id: String(structure.structure_id),
 		corporation_id: String(corporationId),
@@ -114,7 +117,9 @@ export function transformStructures(structures: any[], corporationId: string): E
 		state_timer_end: structure.state_timer_end,
 		state_timer_start: structure.state_timer_start,
 		unanchors_at: structure.unanchors_at,
-		services: structure.services,
+		services: structure.services?.map((service: { name: string; state: string }) => ({
+			...service,
+		})),
 	}))
 }
 
@@ -157,9 +162,7 @@ export function transformContracts(contracts: any[]): EsiCorporationContract[] {
 		issuer_id: String(contract.issuer_id),
 		price: contract.price,
 		reward: contract.reward,
-		start_location_id: contract.start_location_id
-			? String(contract.start_location_id)
-			: undefined,
+		start_location_id: contract.start_location_id ? String(contract.start_location_id) : undefined,
 		status: contract.status,
 		title: contract.title,
 		type: contract.type,

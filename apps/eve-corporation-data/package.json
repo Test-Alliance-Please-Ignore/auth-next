@@ -15,6 +15,7 @@
 		"deploy": "run-wrangler-deploy",
 		"dev": "run-vite-dev",
 		"diagnose-sovereignty": "tsx ./src/scripts/diagnose-sovereignty.ts",
+		"diagnose-structure-services": "tsx ./src/scripts/diagnose-structure-services.ts",
 		"fix:workers-types": "run-wrangler-types",
 		"preview": "run-vite-preview",
 		"query-killmails": "tsx ./src/scripts/query-killmails.ts",

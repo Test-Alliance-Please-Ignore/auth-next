@@ -394,7 +394,15 @@ export const corporationAssets = pgTable(
 		isBlueprintCopy: boolean('is_blueprint_copy').default(false),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.corporationId, table.itemId)]
+	(table) => [
+		unique().on(table.corporationId, table.itemId),
+		index('corporation_assets_corp_location_idx').on(
+			table.corporationId,
+			table.locationId,
+			table.locationType,
+			table.locationFlag
+		),
+	]
 )
 
 /**
