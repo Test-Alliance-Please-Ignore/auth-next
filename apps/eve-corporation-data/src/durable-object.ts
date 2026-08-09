@@ -124,6 +124,7 @@ import type {
 	SkyhookStoreResult,
 	SkyhookSyncPriority,
 	SovereigntyHubSyncPriority,
+	StructureInventorySyncResult,
 	StructureSyncFailureTarget,
 	StructureSyncPriorityTarget,
 	WalletJournalWindowFilters,
@@ -2733,7 +2734,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async syncAssetsWithDirector(
 		corporationId: string,
 		directorCharacterId: string
-	): Promise<{ assetsCount: number }> {
+	): Promise<StructureInventorySyncResult> {
 		this.assertNonNpcCorporation(corporationId)
 		logger.info('[EveCorporationData] syncAssetsWithDirector invoked', {
 			corporationId,
@@ -2745,14 +2746,17 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				corporationId,
 				nextAllowedAt: nextAllowedAt.toISOString(),
 			})
-			return { assetsCount: 0 }
+			return {
+				assetsCount: 0,
+				snapshotUpdated: false,
+				skipReason: 'cooldown',
+				ownedStructureCount: null,
+				fetchedAssetCount: 0,
+				inventoryRowCount: 0,
+			}
 		}
 		await this.requireCorpRole(corporationId, directorCharacterId, ['Director'])
-		const assetsCount = await this.fetchAndStoreStructureInventoryByCharacter(
-			corporationId,
-			directorCharacterId
-		)
-		return { assetsCount }
+		return await this.fetchAndStoreStructureInventoryByCharacter(corporationId, directorCharacterId)
 	}
 
 	private async hydrateStructureRows(
@@ -5885,7 +5889,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	private async fetchAndStoreStructureInventory(
 		corporationId: string,
 		forceRefresh = false
-	): Promise<number> {
+	): Promise<StructureInventorySyncResult> {
 		if (!forceRefresh) {
 			const nextAllowedAt = await this.getStructureInventoryNextAllowedAt(corporationId)
 			if (nextAllowedAt) {
@@ -5893,7 +5897,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					corporationId,
 					nextAllowedAt: nextAllowedAt.toISOString(),
 				})
-				return 0
+				return {
+					assetsCount: 0,
+					snapshotUpdated: false,
+					skipReason: 'cooldown',
+					ownedStructureCount: null,
+					fetchedAssetCount: 0,
+					inventoryRowCount: 0,
+				}
 			}
 		}
 
@@ -5919,7 +5930,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		corporationId: string,
 		characterId: string,
 		options?: { forceRefresh?: boolean }
-	): Promise<number> {
+	): Promise<StructureInventorySyncResult> {
 		const config = await this.getDb().query.corporationConfig.findFirst({
 			where: eq(corporationConfig.corporationId, corporationId),
 		})
@@ -5931,11 +5942,19 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					lastSyncAt: config.assetsLastSync.toISOString(),
 					nextAllowedAt: nextAllowedAt.toISOString(),
 				})
-				return 0
+				return {
+					assetsCount: 0,
+					snapshotUpdated: false,
+					skipReason: 'cooldown',
+					ownedStructureCount: null,
+					fetchedAssetCount: 0,
+					inventoryRowCount: 0,
+				}
 			}
 		}
 
 		let ownedStructureIds = await this.getOwnedStructureIds(corporationId)
+		let structureRefreshFailed = false
 
 		if (ownedStructureIds.size === 0) {
 			logger.warn(
@@ -5947,6 +5966,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				await this.fetchAndStoreStructures(corporationId, true)
 				ownedStructureIds = await this.getOwnedStructureIds(corporationId)
 			} catch (error) {
+				structureRefreshFailed = true
 				logger.warn(
 					'[EveCorporationData] Structures refresh fallback failed before inventory filtering',
 					{
@@ -5958,6 +5978,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		if (ownedStructureIds.size === 0) {
+			if (structureRefreshFailed) {
+				throw new Error(
+					`Unable to determine owned structures for ${corporationId}; refusing to clear or timestamp the inventory snapshot`
+				)
+			}
+
 			logger.info(
 				'[EveCorporationData] No owned structures found; clearing structure inventory snapshot',
 				{
@@ -5966,7 +5992,14 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			)
 			await this.storeStructureInventory(corporationId, [])
 			await this.updateCorporationSyncTimestamp(corporationId, 'assetsLastSync')
-			return 0
+			return {
+				assetsCount: 0,
+				snapshotUpdated: true,
+				skipReason: 'no-owned-structures',
+				ownedStructureCount: 0,
+				fetchedAssetCount: 0,
+				inventoryRowCount: 0,
+			}
 		}
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
@@ -5978,7 +6011,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					ownedStructureCount: ownedStructureIds.size,
 				}
 			)
-			const result = await this.fetchAndStoreAssetsByCharacter(corporationId, characterId)
+			const fetchedAssetCount = await this.fetchAndStoreAssetsByCharacter(
+				corporationId,
+				characterId
+			)
 			const inventoryCount = await this.storeStructureInventoryBatches(
 				corporationId,
 				ownedStructureIds,
@@ -5987,11 +6023,18 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			await this.updateCorporationSyncTimestamp(corporationId, 'assetsLastSync')
 			logger.info('[EveCorporationData] Stored structure inventory snapshot', {
 				corporationId,
-				fetchedAssetCount: result,
+				fetchedAssetCount,
 				storedInventoryCount: inventoryCount,
 			})
 
-			return inventoryCount
+			return {
+				assetsCount: inventoryCount,
+				snapshotUpdated: true,
+				skipReason: null,
+				ownedStructureCount: ownedStructureIds.size,
+				fetchedAssetCount,
+				inventoryRowCount: inventoryCount,
+			}
 		} catch (error) {
 			logger.error(
 				'[fetchAndStoreStructureInventory] Failed to store structure inventory snapshot',

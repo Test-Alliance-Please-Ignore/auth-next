@@ -1096,7 +1096,14 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				})
 				assetsSync = {
 					dataType: 'assets',
-					stats: { assetsCount: result.assetsCount },
+					stats: {
+						assetsCount: result.assetsCount,
+						assetsSnapshotUpdated: result.snapshotUpdated,
+						assetsSyncSkipReason: result.skipReason,
+						assetsOwnedStructureCount: result.ownedStructureCount,
+						assetsFetchedCount: result.fetchedAssetCount,
+						assetsInventoryRowCount: result.inventoryRowCount,
+					},
 				}
 			}
 
@@ -1195,7 +1202,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				.filter((result): result is NonNullable<typeof result> => result !== null)
 				.reduce((acc, result) => ({ ...acc, ...result.stats }), {} as SyncStats)
 			const syncedDataTypesForTimestamps = syncedDataTypes.filter(
-				(dataType) => dataType !== 'structures' || structureSyncCompleted
+				(dataType) => dataType !== 'assets' && (dataType !== 'structures' || structureSyncCompleted)
 			)
 
 			const walletJournalFetched = walletJournalSync?.stats.walletJournalFetchedCount ?? 0

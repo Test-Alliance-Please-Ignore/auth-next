@@ -1092,6 +1092,15 @@ export interface CorporationAuthStatus {
  * }
  * ```
  */
+export interface StructureInventorySyncResult {
+	assetsCount: number
+	snapshotUpdated: boolean
+	skipReason: 'cooldown' | 'no-owned-structures' | null
+	ownedStructureCount: number | null
+	fetchedAssetCount: number
+	inventoryRowCount: number
+}
+
 export interface EveCorporationData {
 	// ========================================================================
 	// CONFIGURATION METHODS
@@ -1364,12 +1373,12 @@ export interface EveCorporationData {
 	 *
 	 * @param corporationId - The corporation ID
 	 * @param directorCharacterId - Character ID to authenticate ESI requests
-	 * @returns Count of assets fetched/stored
+	 * @returns Snapshot outcome and asset/inventory counts
 	 */
 	syncAssetsWithDirector(
 		corporationId: string,
 		directorCharacterId: string
-	): Promise<{ assetsCount: number }>
+	): Promise<StructureInventorySyncResult>
 
 	/**
 	 * Store structures (workflow-friendly)

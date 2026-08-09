@@ -49,6 +49,11 @@ export interface SyncStats {
 	contractsCount?: number
 	industryJobsCount?: number
 	killmailsCount?: number
+	assetsSnapshotUpdated?: boolean
+	assetsSyncSkipReason?: 'cooldown' | 'no-owned-structures' | null
+	assetsOwnedStructureCount?: number | null
+	assetsFetchedCount?: number
+	assetsInventoryRowCount?: number
 }
 
 /**

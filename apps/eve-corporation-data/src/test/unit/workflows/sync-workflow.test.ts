@@ -249,7 +249,7 @@ describe('EveCorporationSyncWorkflow', () => {
 			'structures',
 			'Station Manager access required'
 		)
-		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', ['assets', 'skyhooks'])
+		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', ['skyhooks'])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 		expect(corpDataStub.getCorporationSyncConfig).toHaveBeenCalledWith('693378155')
 	})
@@ -328,7 +328,7 @@ describe('EveCorporationSyncWorkflow', () => {
 			'structures',
 			'Station Manager access required'
 		)
-		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', ['assets', 'skyhooks'])
+		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', ['skyhooks'])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 		expect(corpDataStub.getCorporationSyncConfig).toHaveBeenCalledWith('693378155')
 	})
@@ -400,7 +400,6 @@ describe('EveCorporationSyncWorkflow', () => {
 		})
 
 		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', [
-			'assets',
 			'structures',
 			'skyhooks',
 		])
@@ -550,7 +549,6 @@ describe('EveCorporationSyncWorkflow', () => {
 		])
 		expect(syncAssetsMock).toHaveBeenCalledWith(env, '693378155', '900000001')
 		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', [
-			'assets',
 			'structures',
 			'skyhooks',
 		])
@@ -998,7 +996,6 @@ describe('EveCorporationSyncWorkflow', () => {
 		expect(storeSkyhookEnrichmentMock).toHaveBeenCalled()
 		expect(fetchMiningExtractionEnrichmentMock).toHaveBeenCalled()
 		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', [
-			'assets',
 			'structures',
 			'skyhooks',
 		])
