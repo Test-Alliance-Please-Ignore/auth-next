@@ -3,11 +3,10 @@ import { logger } from '@repo/hono-helpers'
 
 import { getCorporationDataStub } from '../../utils/services'
 
+import type { StructureInventorySyncResult } from '@repo/eve-corporation-data'
 import type { Env } from '../../../context'
 
-export interface AssetsSyncResult {
-	assetsCount: number
-}
+export type AssetsSyncResult = StructureInventorySyncResult
 
 export async function syncAssets(
 	env: Env,
@@ -19,14 +18,25 @@ export async function syncAssets(
 	logger.info('[AssetsStep] Starting structure inventory sync', { corporationId })
 	const result = await withRpcResult(
 		corpData.syncAssetsWithDirector(corporationId, directorCharacterId),
-		(result) => ({ assetsCount: result.assetsCount })
+		(result) => ({ ...result })
 	)
-	logger.info('[AssetsStep] Synced structure inventory', {
+	logger.info('[AssetsStep] Structure inventory sync completed', {
 		corporationId,
-		count: result.assetsCount,
-	})
-
-	return {
 		assetsCount: result.assetsCount,
+		snapshotUpdated: result.snapshotUpdated,
+		skipReason: result.skipReason,
+		ownedStructureCount: result.ownedStructureCount,
+		fetchedAssetCount: result.fetchedAssetCount,
+		inventoryRowCount: result.inventoryRowCount,
+	})
+	if (result.skipReason === 'no-owned-structures') {
+		logger.warn(
+			'[AssetsStep] Structure inventory snapshot was cleared because no owned structures were found',
+			{
+				corporationId,
+			}
+		)
 	}
+
+	return result
 }
