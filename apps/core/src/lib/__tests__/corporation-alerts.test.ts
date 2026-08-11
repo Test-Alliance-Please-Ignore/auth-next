@@ -117,6 +117,7 @@ describe('corporation alerts embed builder', () => {
 		const message = buildCorporationApplicationApplicantUpdateMessage({
 			applicationId: 'app-123',
 			corporationName: 'Rift Coalition',
+			status: 'accepted',
 			updateType: 'message',
 			updatedAt: '2026-06-11T12:30:00.000Z',
 		})
@@ -128,6 +129,7 @@ describe('corporation alerts embed builder', () => {
 				{
 					title: 'Your corporation application to Rift Coalition received an update',
 					description: '[View your application](https://pleaseignore.app/my-applications/app-123)',
+					fields: [{ name: 'Current Status', value: 'Accepted', inline: true }],
 					timestamp: '2026-06-11T12:30:00.000Z',
 				},
 			],

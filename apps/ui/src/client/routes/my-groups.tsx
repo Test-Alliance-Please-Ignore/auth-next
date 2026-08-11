@@ -1,9 +1,9 @@
 import { Crown, Shield, Users } from 'lucide-react'
 import { useNavigate } from 'react-router'
 
-import { MyGroupsCard } from '@/components/my-groups-card'
+import { MyGroupsTable } from '@/components/my-groups-table'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
@@ -67,59 +67,30 @@ export default function MyGroupsPage() {
 
 				{/* Owned Groups */}
 				{ownedGroups.length > 0 && (
-					<Card variant="default">
-						<CardHeader>
-							<CardTitle>Owned Groups</CardTitle>
-							<CardDescription>Groups you created and manage</CardDescription>
-						</CardHeader>
-						<CardContent className="space-y-3">
-							{ownedGroups.map((membership) => (
-								<MyGroupsCard
-									key={membership.groupId}
-									membership={membership}
-									onClick={() => navigate(`/groups/${membership.groupId}`)}
-								/>
-							))}
-						</CardContent>
-					</Card>
+					<MyGroupsTable
+						title="Owned Groups"
+						description="Groups you created and manage"
+						memberships={ownedGroups}
+						showActions={false}
+					/>
 				)}
 
 				{/* Admin Groups */}
 				{adminGroups.length > 0 && (
-					<Card variant="default">
-						<CardHeader>
-							<CardTitle>Admin Roles</CardTitle>
-							<CardDescription>Groups where you are an administrator</CardDescription>
-						</CardHeader>
-						<CardContent className="space-y-3">
-							{adminGroups.map((membership) => (
-								<MyGroupsCard
-									key={membership.groupId}
-									membership={membership}
-									onClick={() => navigate(`/groups/${membership.groupId}`)}
-								/>
-							))}
-						</CardContent>
-					</Card>
+					<MyGroupsTable
+						title="Admin Roles"
+						description="Groups where you are an administrator"
+						memberships={adminGroups}
+					/>
 				)}
 
 				{/* Member Groups */}
 				{memberGroups.length > 0 && (
-					<Card variant="default">
-						<CardHeader>
-							<CardTitle>Member Groups</CardTitle>
-							<CardDescription>Groups you are a member of</CardDescription>
-						</CardHeader>
-						<CardContent className="space-y-3">
-							{memberGroups.map((membership) => (
-								<MyGroupsCard
-									key={membership.groupId}
-									membership={membership}
-									onClick={() => navigate(`/groups/${membership.groupId}`)}
-								/>
-							))}
-						</CardContent>
-					</Card>
+					<MyGroupsTable
+						title="Member Groups"
+						description="Groups you are a member of"
+						memberships={memberGroups}
+					/>
 				)}
 
 				{/* Empty State */}

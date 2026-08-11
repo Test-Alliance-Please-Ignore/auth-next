@@ -1,6 +1,7 @@
 import { ALERT_DESTINATION_TYPES } from './alert-routing'
 
 import type { DiscordEmbed, MessageContent } from '@repo/discord'
+import type { ApplicationStatus } from '@repo/hr'
 import type {
 	AlertDestinationRecord,
 	AlertDestinationType,
@@ -82,8 +83,18 @@ export type CorporationApplicationApplicantUpdateType = 'message' | 'review_note
 export interface CorporationApplicationApplicantUpdatePayload {
 	applicationId: string
 	corporationName: string
+	status: ApplicationStatus
 	updateType: CorporationApplicationApplicantUpdateType
 	updatedAt: string
+}
+
+const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
+	pending: 'Pending',
+	under_review: 'Under Review',
+	accepted: 'Accepted',
+	completed: 'Completed',
+	rejected: 'Rejected',
+	withdrawn: 'Withdrawn',
 }
 
 function buildApplicationFields(
@@ -190,6 +201,13 @@ export function buildCorporationApplicationApplicantUpdateMessage(
 				title: `Your corporation application to ${payload.corporationName} received an update`,
 				description: `[View your application](${applicationUrl})`,
 				color: DISCORD_ALERT_COLORS.applicationUpdate,
+				fields: [
+					{
+						name: 'Current Status',
+						value: APPLICATION_STATUS_LABELS[payload.status],
+						inline: true,
+					},
+				],
 				timestamp: payload.updatedAt,
 			},
 		],

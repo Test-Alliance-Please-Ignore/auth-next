@@ -1,44 +1,22 @@
 import { LogOut } from 'lucide-react'
-import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from '@/components/ui/dialog'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useLeaveGroup } from '@/hooks/useGroups'
 
 import type { GroupWithDetails } from '@/lib/api'
 
+type LeaveableGroup = Pick<GroupWithDetails, 'id' | 'name' | 'isMember' | 'isOwner' | 'joinMode'>
+
 interface LeaveButtonProps {
-	group: GroupWithDetails
+	group: LeaveableGroup
 	onSuccess?: () => void
+	compact?: boolean
 }
 
-export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
-	const [confirmOpen, setConfirmOpen] = useState(false)
-	const [errorMessage, setErrorMessage] = useState<string | null>(null)
+export function LeaveButton({ group, onSuccess, compact = false }: LeaveButtonProps) {
 	const leaveGroup = useLeaveGroup()
-
-	const handleLeave = async () => {
-		setErrorMessage(null)
-		try {
-			await leaveGroup.mutateAsync(group.id)
-			setConfirmOpen(false)
-			onSuccess?.()
-		} catch (error) {
-			console.error('Failed to leave group:', error)
-			if (error instanceof Error) {
-				setErrorMessage(error.message)
-			} else {
-				setErrorMessage('Failed to leave group. Please try again.')
-			}
-		}
-	}
+	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
 	if (!group.isMember) {
 		return null
@@ -46,7 +24,7 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 
 	if (group.isOwner) {
 		return (
-			<Button disabled variant="ghost">
+			<Button disabled variant="ghost" size={compact ? 'sm' : undefined}>
 				You are the owner
 			</Button>
 		)
@@ -54,7 +32,7 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 
 	if (group.joinMode === 'admin_managed') {
 		return (
-			<Button disabled variant="ghost">
+			<Button disabled variant="ghost" size={compact ? 'sm' : undefined}>
 				Managed by Admins
 			</Button>
 		)
@@ -62,39 +40,33 @@ export function LeaveButton({ group, onSuccess }: LeaveButtonProps) {
 
 	return (
 		<>
-			<Button variant="destructive" onClick={() => setConfirmOpen(true)}>
+			<Button
+				variant={compact ? 'danger' : 'destructive'}
+				size={compact ? 'sm' : undefined}
+				showIcon={compact ? false : undefined}
+				onClick={() =>
+					requestConfirmation({
+						title: `Leave ${group.name}?`,
+						description:
+							'Are you sure you want to leave this group? You will need to rejoin or be re-invited to access group content again.',
+						confirmLabel: 'Leave Group',
+						intent: 'destructive',
+						confirmButtonVariant: 'danger',
+						onConfirm: async () => {
+							try {
+								await leaveGroup.mutateAsync(group.id)
+								onSuccess?.()
+							} catch {
+								// useLeaveGroup reports the failure through the shared toast handler.
+							}
+						},
+					})
+				}
+			>
 				<LogOut className="h-4 w-4" />
-				Leave Group
+				{compact ? 'Leave' : 'Leave Group'}
 			</Button>
-
-			<Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Leave {group.name}?</DialogTitle>
-						<DialogDescription>
-							Are you sure you want to leave this group? You will need to rejoin or be re-invited to
-							access group content again.
-						</DialogDescription>
-					</DialogHeader>
-					{errorMessage && (
-						<div className="rounded-md border border-destructive bg-destructive/10 p-3">
-							<p className="text-sm text-destructive">{errorMessage}</p>
-						</div>
-					)}
-					<DialogFooter>
-						<Button variant="cancel" onClick={() => setConfirmOpen(false)} disabled={leaveGroup.isPending}>
-							Cancel
-						</Button>
-						<Button variant="destructive"
-							onClick={handleLeave}
-							loading={leaveGroup.isPending}
-							loadingText="Leaving..."
-						>
-							Leave Group
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+			{confirmationDialog}
 		</>
 	)
 }

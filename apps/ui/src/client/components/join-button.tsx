@@ -19,9 +19,10 @@ import type { GroupWithDetails } from '@/lib/api'
 interface JoinButtonProps {
 	group: GroupWithDetails
 	onSuccess?: () => void
+	compact?: boolean
 }
 
-export function JoinButton({ group, onSuccess }: JoinButtonProps) {
+export function JoinButton({ group, onSuccess, compact = false }: JoinButtonProps) {
 	const [dialogOpen, setDialogOpen] = useState(false)
 	const [reason, setReason] = useState('')
 	const joinGroup = useJoinGroup()
@@ -93,9 +94,21 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 
 	return (
 		<>
-			<Button onClick={handleJoinOpen} disabled={isLoading}>
+			<Button
+				variant={compact ? (group.joinMode === 'open' ? 'success' : 'primary') : undefined}
+				size={compact ? 'sm' : undefined}
+				showIcon={compact ? false : undefined}
+				onClick={handleJoinOpen}
+				disabled={isLoading}
+			>
 				<UserPlus className="h-4 w-4" />
-				{group.joinMode === 'open' ? 'Join Group' : 'Request to Join'}
+				{compact
+					? group.joinMode === 'open'
+						? 'Join'
+						: 'Apply'
+					: group.joinMode === 'open'
+						? 'Join Group'
+						: 'Request to Join'}
 			</Button>
 
 			{/* Join Request Dialog */}
@@ -123,7 +136,8 @@ export function JoinButton({ group, onSuccess }: JoinButtonProps) {
 						<Button variant="cancel" onClick={() => setDialogOpen(false)} disabled={isLoading}>
 							Cancel
 						</Button>
-						<Button variant="confirm"
+						<Button
+							variant="confirm"
 							onClick={handleSubmitRequest}
 							disabled={isLoading}
 							loading={isLoading}

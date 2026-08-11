@@ -646,10 +646,15 @@ describe('corporations members access matrix', () => {
 			{
 				id: 'target-user-1',
 				mainCharacterId: '3001',
+				discordUserId: 'discord-user-1',
 			},
 		] as any)
+		discordStub.getDiscordUserStatus.mockResolvedValue({
+			username: 'PilotDiscord',
+		} as any)
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.HR) return hrStub as any
+			if (binding === env.DISCORD) return discordStub as any
 			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
 			if (binding === env.EVE_TOKEN_STORE) {
@@ -683,14 +688,14 @@ describe('corporations members access matrix', () => {
 		const csv = await res.text()
 		const lines = csv.trim().split('\n')
 		expect(lines[0]).toBe(
-			'Character Name,Character ID,Role,HR Role,ESI Status,Auth Account UUID,Auth Account Primary Character Name,Auth Account Primary Character ID,Activity Status,Last Login,Join Date'
+			'Character Name,Character ID,Role,HR Role,ESI Status,Auth Account UUID,Auth Account Primary Character Name,Auth Account Primary Character ID,Discord User ID,Discord Username,Activity Status,Last Login,Join Date'
 		)
 		expect(lines).toHaveLength(3)
 		expect(lines[1]).toContain(
-			'Pilot One,2001,Member,hr_admin,ESI Valid,target-user-1,Captain Main,3001,unknown,Never,2026-04-01T00:00:00.000Z'
+			'Pilot One,2001,Member,hr_admin,ESI Valid,target-user-1,Captain Main,3001,discord-user-1,PilotDiscord,unknown,Never,2026-04-01T00:00:00.000Z'
 		)
 		expect(lines[2]).toContain(
-			'Pilot Two,2002,Member,,Unlinked,,,,unknown,Never,2026-04-01T00:00:00.000Z'
+			'Pilot Two,2002,Member,,Unlinked,,,,,,unknown,Never,2026-04-01T00:00:00.000Z'
 		)
 		expect(lines[0]).not.toContain('Alliance')
 		expect(lines[0]).not.toContain('Location')

@@ -48,6 +48,7 @@ function getHrStub(c: Context<App>): Hr {
 function queueApplicationApplicantUpdateNotification(
 	c: Context<App>,
 	application: Pick<Application, 'id' | 'userId' | 'corporationId'>,
+	status: Application['status'],
 	updateType: 'message' | 'review_note',
 	updatedAt: Date
 ): void {
@@ -68,6 +69,7 @@ function queueApplicationApplicantUpdateNotification(
 				buildCorporationApplicationApplicantUpdateMessage({
 					applicationId: application.id,
 					corporationName: corporation?.name ?? application.corporationId,
+					status,
 					updateType,
 					updatedAt: updatedAt.toISOString(),
 				})
@@ -824,6 +826,7 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 			queueApplicationApplicantUpdateNotification(
 				c,
 				applicationBeforeUpdate,
+				status,
 				'review_note',
 				new Date()
 			)
@@ -847,6 +850,19 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 				c.executionCtx,
 				'hr-application-first-time-accepted-alert',
 				async () => {
+					const currentApplication = await hr.getApplication(applicationId, user.id, {
+						isAdmin: user.is_admin,
+						isAuditor,
+					})
+					if (currentApplication.status !== 'accepted') {
+						logger.info('[HR] Skipping stale first-time acceptance alert', {
+							applicationId,
+							corporationId: applicationBeforeUpdate.corporationId,
+							currentStatus: currentApplication.status,
+						})
+						return
+					}
+
 					await dispatchCorporationAlert(c.env, db, {
 						corporationId: applicationBeforeUpdate.corporationId,
 						alertType: 'corp_application_first_time_accepted',
@@ -1280,7 +1296,13 @@ app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 		)
 
 		if (!isApplicant) {
-			queueApplicationApplicantUpdateNotification(c, application, 'message', result.createdAt)
+			queueApplicationApplicantUpdateNotification(
+				c,
+				application,
+				application.status,
+				'message',
+				result.createdAt
+			)
 		}
 
 		// Enrich the returned message with sender character name

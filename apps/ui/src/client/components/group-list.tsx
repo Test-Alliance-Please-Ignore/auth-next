@@ -1,5 +1,5 @@
-import { ExternalLink, UserPlus, Users } from 'lucide-react'
-import { memo, useCallback } from 'react'
+import { ExternalLink, Users } from 'lucide-react'
+import { memo } from 'react'
 import { Link } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -12,10 +12,10 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useJoinGroup } from '@/hooks/useGroups'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { cn } from '@/lib/utils'
 
+import { GroupMembershipAction } from './group-membership-action'
 import { JoinModeBadge } from './join-mode-badge'
 import { VisibilityBadge } from './visibility-badge'
 
@@ -29,25 +29,7 @@ interface GroupListProps {
 
 // Memoized row component to prevent unnecessary re-renders
 const GroupRow = memo(
-	({
-		group,
-		onJoin,
-		isJoining,
-		isAdminContext,
-	}: {
-		group: GroupWithDetails
-		onJoin: (groupId: string, groupName: string) => void
-		isJoining: boolean
-		isAdminContext?: boolean
-	}) => {
-		const handleJoinClick = useCallback(
-			(e: React.MouseEvent) => {
-				e.stopPropagation()
-				onJoin(group.id, group.name)
-			},
-			[group.id, group.name, onJoin]
-		)
-
+	({ group, isAdminContext }: { group: GroupWithDetails; isAdminContext?: boolean }) => {
 		const groupDetailUrl = isAdminContext ? `/admin/groups/${group.id}` : `/groups/${group.id}`
 
 		return (
@@ -75,12 +57,7 @@ const GroupRow = memo(
 				</TableCell>
 				<TableCell className="text-right">
 					<div className="flex items-center justify-end gap-2">
-						{group.joinMode === 'open' && !group.isMember && (
-							<Button variant="primary" size="sm" disabled={isJoining} onClick={handleJoinClick}>
-								<UserPlus className="h-4 w-4" />
-								{isJoining ? 'Joining...' : 'Quick Join'}
-							</Button>
-						)}
+						<GroupMembershipAction group={group} />
 						<Button variant="ghost" size="sm" asChild title="View details">
 							<Link to={groupDetailUrl}>
 								<ExternalLink className="h-4 w-4" />
@@ -101,22 +78,6 @@ export const GroupList = memo(function GroupList({
 	isAdminContext,
 }: GroupListProps) {
 	const isMobile = useMediaQuery('(max-width: 768px)')
-	const joinGroup = useJoinGroup()
-
-	// Memoize the join handler to prevent recreating on every render
-	const handleJoinGroup = useCallback(
-		(groupId: string, groupName: string) => {
-			joinGroup.mutate(groupId, {
-				onSuccess: () => {
-					alert(`Successfully joined ${groupName}!`)
-				},
-				onError: (error: Error) => {
-					alert(`Failed to join: ${error.message}`)
-				},
-			})
-		},
-		[joinGroup]
-	)
 
 	if (isLoading) {
 		return (
@@ -187,34 +148,13 @@ export const GroupList = memo(function GroupList({
 										<JoinModeBadge joinMode={group.joinMode} />
 									</div>
 
-									<div className="flex items-center justify-end pt-2 border-t border-border/50">
-										{group.joinMode === 'open' && !group.isMember ? (
-											<Button
-												variant="primary"
-												size="sm"
-												disabled={joinGroup.isPending}
-												onClick={(e) => {
-													e.stopPropagation()
-													joinGroup.mutate(group.id, {
-														onSuccess: () => {
-															alert(`Successfully joined ${group.name}!`)
-														},
-														onError: (error: Error) => {
-															alert(`Failed to join: ${error.message}`)
-														},
-													})
-												}}
-											>
-												<UserPlus className="h-4 w-4" />
-												{joinGroup.isPending ? 'Joining...' : 'Quick Join'}
-											</Button>
-										) : (
-											<Button variant="ghost" size="sm" asChild title="View details">
-												<Link to={groupDetailUrl}>
-													<ExternalLink className="h-4 w-4" />
-												</Link>
-											</Button>
-										)}
+									<div className="flex items-center justify-end gap-2 border-t border-border/50 pt-2">
+										<GroupMembershipAction group={group} />
+										<Button variant="ghost" size="sm" asChild title="View details">
+											<Link to={groupDetailUrl}>
+												<ExternalLink className="h-4 w-4" />
+											</Link>
+										</Button>
 									</div>
 								</div>
 							</CardContent>
@@ -240,13 +180,7 @@ export const GroupList = memo(function GroupList({
 				</TableHeader>
 				<TableBody>
 					{groups.map((group) => (
-						<GroupRow
-							key={group.id}
-							group={group}
-							onJoin={handleJoinGroup}
-							isJoining={joinGroup.isPending}
-							isAdminContext={isAdminContext}
-						/>
+						<GroupRow key={group.id} group={group} isAdminContext={isAdminContext} />
 					))}
 				</TableBody>
 			</Table>

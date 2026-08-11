@@ -857,6 +857,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 			groupId: membership.groupId,
 			groupName: membership.group.name,
 			categoryName: membership.group.category.name,
+			joinMode: membership.group.joinMode,
 			isOwner: membership.group.ownerId === userId,
 			isAdmin: adminGroupIds.has(membership.groupId),
 			mumbleSyncEnabled: membership.group.mumbleSyncEnabled,
