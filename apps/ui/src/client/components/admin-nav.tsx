@@ -28,6 +28,8 @@ import { Link, useLocation } from 'react-router'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
+import { Badge } from './ui/badge'
+
 interface AdminNavProps {
 	onNavigate?: () => void
 }
@@ -268,9 +270,13 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 							<span className="flex items-center gap-2">
 								{item.label}
 								{item.href === '/admin/legacy-migrations' && pendingLegacyMigrationsCount > 0 ? (
-									<span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold leading-none text-destructive-foreground ring-1 ring-destructive/80">
+									<Badge
+										variant="destructive"
+										solid
+										className="h-5 min-w-5 border-0 px-1.5 text-[10px] leading-none ring-1 ring-destructive/80"
+									>
 										{pendingLegacyMigrationsCount > 99 ? '99+' : pendingLegacyMigrationsCount}
-									</span>
+									</Badge>
 								) : null}
 							</span>
 						</Link>

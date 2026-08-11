@@ -40,10 +40,14 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 		sessionId: 'session-1',
 		characters: [],
 		is_admin: false,
-		roles: [],
+		roles: ['urn:structures:all:viewer'],
 		discordUserId: null,
 		...overrides,
 	}
+}
+
+function makeUserWithoutStructureAccess(overrides: Partial<SessionUser> = {}): SessionUser {
+	return makeUser({ roles: [], ...overrides })
 }
 
 function createApp(user?: SessionUser) {
@@ -63,7 +67,9 @@ function createApp(user?: SessionUser) {
 describe('structures routes', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
-		vi.mocked(getCachedUserPermissions).mockResolvedValue([])
+		vi.mocked(getCachedUserPermissions).mockResolvedValue([
+			{ urn: 'urn:structures:all:viewer' },
+		] as never)
 		structuresMocks.getStructureDetail.mockResolvedValue({
 			corporationId: 'corp-1',
 			corporationName: 'Test Corp',
@@ -250,6 +256,31 @@ describe('structures routes', () => {
 				reinforced: 0,
 			},
 		})
+	})
+
+	it('rejects structure data requests without any structure permission scope', async () => {
+		vi.mocked(getCachedUserPermissions).mockResolvedValue([])
+		const app = createApp(makeUserWithoutStructureAccess())
+		const response = await app.request('/api/structures')
+
+		expect(response.status).toBe(403)
+		expect(await response.json()).toEqual({ error: 'Structure permission required' })
+	})
+
+	it('rejects the structure capability endpoint without any structure permission scope', async () => {
+		vi.mocked(getCachedUserPermissions).mockResolvedValue([])
+		const app = createApp(makeUserWithoutStructureAccess())
+		const response = await app.request('/api/structures/access')
+
+		expect(response.status).toBe(403)
+		expect(await response.json()).toEqual({ error: 'Structure permission required' })
+	})
+
+	it('requires authentication for the structure access capability endpoint', async () => {
+		const response = await createApp().request('/api/structures/access')
+
+		expect(response.status).toBe(401)
+		expect(await response.json()).toEqual({ error: 'Unauthorized' })
 	})
 
 	it('strips updatedAt from list responses before sending them to the browser', async () => {
