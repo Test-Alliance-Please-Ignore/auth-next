@@ -101,6 +101,7 @@ import {
 	useMoonDrillStructures,
 	useSkyhookStructures,
 	useSovereigntyStructures,
+	useStructureAccess,
 	useStructureModuleConfig,
 	useStructures,
 } from '../features/structures/hooks'
@@ -524,11 +525,16 @@ type PrimaryStructureFilterSlot = 'type' | 'raidable' | null
 export default function StructuresPage() {
 	usePageTitle('Structures')
 
-	const { user, isLoading: authLoading } = useAuth()
+	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const navigate = useNavigate()
 	const { data: groups = [] } = useGroups({ limit: 100 })
 	const { permissions, isLoading: permissionsLoading } = useUserPermissions()
-	const canViewStructures = user?.is_admin === true || hasAnyStructurePermission(permissions)
+	const { data: structureAccess, isLoading: structureAccessLoading } = useStructureAccess({
+		enabled: isAuthenticated && !authLoading,
+	})
+	const hasImplicitSensitiveAccess = structureAccess?.hasImplicitSensitiveAccess === true
+	const canViewStructures =
+		user?.is_admin === true || hasAnyStructurePermission(permissions) || hasImplicitSensitiveAccess
 	const canManageStructures =
 		user?.is_admin === true || hasAllStructureManagerPermission(permissions)
 	const tableState = useStructureTableUiState((state) => state)
@@ -537,10 +543,10 @@ export default function StructuresPage() {
 	const [areFiltersOpen, setAreFiltersOpen] = useState(true)
 	const visibleTabs = useMemo(
 		() =>
-			user?.is_admin === true
+			user?.is_admin === true || hasImplicitSensitiveAccess
 				? STRUCTURE_TABS
 				: STRUCTURE_TABS.filter((tab) => hasStructureTabPermission(permissions, tab.tab)),
-		[user, permissions]
+		[user, permissions, hasImplicitSensitiveAccess]
 	)
 	const activeTab = visibleTabs.some((tab) => tab.tab === tableState.tab)
 		? tableState.tab
@@ -641,22 +647,44 @@ export default function StructuresPage() {
 	)
 
 	const structuresResponseQuery = useStructures(commonQuery, {
-		enabled: !authLoading && !permissionsLoading && canViewStructures && activeTab === 'structures',
+		enabled:
+			!authLoading &&
+			!permissionsLoading &&
+			!structureAccessLoading &&
+			canViewStructures &&
+			activeTab === 'structures',
 	})
 	const sovereigntyStructures = useSovereigntyStructures(sovereigntyQuery, {
 		enabled:
-			!authLoading && !permissionsLoading && canViewStructures && activeTab === 'sovereignty',
+			!authLoading &&
+			!permissionsLoading &&
+			!structureAccessLoading &&
+			canViewStructures &&
+			activeTab === 'sovereignty',
 	})
 	const skyhookStructures = useSkyhookStructures(skyhookQuery, {
-		enabled: !authLoading && !permissionsLoading && canViewStructures && activeTab === 'skyhooks',
+		enabled:
+			!authLoading &&
+			!permissionsLoading &&
+			!structureAccessLoading &&
+			canViewStructures &&
+			activeTab === 'skyhooks',
 	})
 	const miningCitadelStructures = useMiningCitadelStructures(miningCitadelQuery, {
 		enabled:
-			!authLoading && !permissionsLoading && canViewStructures && activeTab === 'mining-citadels',
+			!authLoading &&
+			!permissionsLoading &&
+			!structureAccessLoading &&
+			canViewStructures &&
+			activeTab === 'mining-citadels',
 	})
 	const moonDrillStructures = useMoonDrillStructures(moonDrillQuery, {
 		enabled:
-			!authLoading && !permissionsLoading && canViewStructures && activeTab === 'moon-drills',
+			!authLoading &&
+			!permissionsLoading &&
+			!structureAccessLoading &&
+			canViewStructures &&
+			activeTab === 'moon-drills',
 	})
 
 	const isSovereigntyTab = activeTab === 'sovereignty'
@@ -1717,7 +1745,7 @@ export default function StructuresPage() {
 		</div>
 	)
 
-	if (!authLoading && !permissionsLoading && !canViewStructures) {
+	if (!authLoading && !permissionsLoading && !structureAccessLoading && !canViewStructures) {
 		return <Navigate to="/dashboard" replace />
 	}
 

@@ -65,6 +65,8 @@ import { getSovereigntyVulnerabilityWindowDisplay } from '@/lib/sovereignty-vuln
 import { stripLeadingContextName } from '@/lib/structure-name-utils'
 import toast from '@/lib/toast'
 
+import { useStructureAccess } from '../features/structures/hooks'
+
 import type { FittingDisplayItem, FittingShipSlotType } from '@repo/eve-fitting/flags'
 import type { StructureSovereigntyTransportSection } from '@repo/structures'
 import type { BadgeVariant } from '@/components/ui/badge'
@@ -690,12 +692,19 @@ function structureFittingItemsToDisplayItems(
 export default function StructuresDetailPage() {
 	const { structureId } = useParams<{ structureId: string }>()
 	const queryClient = useQueryClient()
-	const { user, isLoading: authLoading } = useAuth()
+	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { permissions, isLoading: permissionsLoading } = useUserPermissions()
-	const canViewStructures = user?.is_admin === true || hasAnyStructurePermission(permissions)
+	const { data: structureAccess, isLoading: structureAccessLoading } = useStructureAccess({
+		enabled: isAuthenticated && !authLoading,
+	})
+	const hasImplicitSensitiveAccess = structureAccess?.hasImplicitSensitiveAccess === true
+	const canViewStructures =
+		user?.is_admin === true || hasAnyStructurePermission(permissions) || hasImplicitSensitiveAccess
 	const canViewStructureDetails =
-		user?.is_admin === true || hasStructureDetailsPermission(permissions)
-	const canAccess = canViewStructureDetails && Boolean(structureId)
+		user?.is_admin === true ||
+		hasStructureDetailsPermission(permissions) ||
+		hasImplicitSensitiveAccess
+	const canAccess = !structureAccessLoading && canViewStructureDetails && Boolean(structureId)
 	const {
 		data: structure,
 		isLoading,
@@ -906,11 +915,17 @@ export default function StructuresDetailPage() {
 			])
 		)
 	}, [sovereigntyStructures])
-	if (!authLoading && !permissionsLoading && !canViewStructures) {
+	if (!authLoading && !permissionsLoading && !structureAccessLoading && !canViewStructures) {
 		return <Navigate to="/dashboard" replace />
 	}
 
-	if (!authLoading && !permissionsLoading && canViewStructures && !canViewStructureDetails) {
+	if (
+		!authLoading &&
+		!permissionsLoading &&
+		!structureAccessLoading &&
+		canViewStructures &&
+		!canViewStructureDetails
+	) {
 		return <Navigate to="/structures" replace />
 	}
 

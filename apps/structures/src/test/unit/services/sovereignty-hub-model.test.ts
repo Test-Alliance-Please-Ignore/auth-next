@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { getStructureDetail, listSovereigntyStructures } from '../../../services/structures.service'
+import {
+	buildSovereigntyWhere,
+	computeStructureAccess,
+	getStructureDetail,
+	listSovereigntyStructures,
+} from '../../../services/structures.service'
 
 const mocks = vi.hoisted(() => {
 	const getStubMock = vi.fn()
@@ -540,6 +545,16 @@ function makeDb() {
 }
 
 describe('sovereignty hub model', () => {
+	it('scopes sovereignty queries to the corporations allowed for the sovereignty tab', () => {
+		const access = computeStructureAccess(['urn:structures:corp-1:sensitive'], false)
+		const condition = buildSovereigntyWhere(access, {}) as { queryChunks?: unknown[] }
+		const chunks = condition.queryChunks ?? []
+
+		expect(
+			chunks.some((chunk) => String((chunk as { value?: unknown }).value ?? '') === ' in ')
+		).toBe(true)
+	})
+
 	it('lists sovereignty hubs without requiring corporation structures rows', async () => {
 		const db = makeDb()
 		mocks.getStubMock.mockReturnValue(db.universeStub)

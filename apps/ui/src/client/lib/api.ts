@@ -1063,6 +1063,10 @@ export interface StructureListResponse<TItem = StructureListItem> {
 }
 
 export interface StructureMainListResponse extends StructureListResponse<StructureListItem> {}
+export interface StructureAccessSummary {
+	canView: boolean
+	hasImplicitSensitiveAccess: boolean
+}
 export type StructureSovereigntyListResponse = RepoStructureSovereigntyListResponse
 export type StructureSkyhookListResponse = RepoStructureSkyhookListResponse
 export type StructureMoonDrillListResponse = RepoStructureMoonDrillListResponse
@@ -3609,6 +3613,10 @@ export class ApiClient {
 		if (query.typeId) params.set('typeId', query.typeId)
 		const queryString = params.toString()
 		return this.get(`/structures${queryString ? `?${queryString}` : ''}`)
+	}
+
+	async getStructureAccess(): Promise<StructureAccessSummary> {
+		return this.get('/structures/access')
 	}
 
 	async getSovereigntyStructures(

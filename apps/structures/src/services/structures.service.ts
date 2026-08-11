@@ -717,6 +717,72 @@ export function computeStructureAccess(roles: string[], isAdmin: boolean): Struc
 	}
 }
 
+function addImplicitSensitiveAccess(
+	access: StructureAccessScope,
+	corporationIds: Iterable<string>
+): StructureAccessScope {
+	for (const tab of STRUCTURE_ACCESS_TABS) {
+		const target = access.tabs[tab]
+		for (const corporationId of corporationIds) {
+			target.viewCorporationIds.add(corporationId)
+			target.detailsCorporationIds.add(corporationId)
+			target.sensitiveCorporationIds.add(corporationId)
+		}
+	}
+
+	return access
+}
+
+export async function resolveStructureAccess(
+	db: DbClient<DbSchema>,
+	user: SessionUser
+): Promise<StructureAccessScope> {
+	const access = computeStructureAccess(user.roles, user.is_admin)
+	if (user.is_admin || !user.implicitSensitiveCorporationIds?.length) {
+		return access
+	}
+
+	const requestedCorporationIds = [
+		...new Set(
+			user.implicitSensitiveCorporationIds.filter(
+				(corporationId) => corporationId.trim().length > 0
+			)
+		),
+	]
+	if (requestedCorporationIds.length === 0) {
+		return access
+	}
+
+	try {
+		const eligibleCorporations = await db.query.managedCorporations.findMany({
+			where: and(
+				inArray(managedCorporations.corporationId, requestedCorporationIds),
+				eq(managedCorporations.isActive, true),
+				eq(managedCorporations.includeInStructureAssetSync, true),
+				eq(managedCorporations.isAltCorp, false),
+				or(
+					eq(managedCorporations.isMemberCorporation, true),
+					eq(managedCorporations.isSpecialPurpose, true)
+				)
+			),
+			columns: {
+				corporationId: true,
+			},
+		})
+
+		return addImplicitSensitiveAccess(
+			access,
+			eligibleCorporations.map((corporation) => corporation.corporationId)
+		)
+	} catch (error) {
+		logger.warn('[StructureAccess] Failed to revalidate implicit corporation access', {
+			userId: user.id,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return access
+	}
+}
+
 export function canManageStructureModule(user: SessionUser): boolean {
 	const access = computeStructureAccess(user.roles, user.is_admin)
 	return user.is_admin || access.all.managerAll
@@ -1640,7 +1706,7 @@ async function getStructureContext(
 	} = {}
 ): Promise<StructureContext | null> {
 	const requireDetailsPermission = options.requireDetailsPermission ?? false
-	const access = computeStructureAccess(user.roles, user.is_admin)
+	const access = await resolveStructureAccess(db, user)
 	const accessibleCorporations = getAccessibleCorporationIds(access)
 	const structure = await db.query.corporationStructures.findFirst({
 		columns: CORPORATION_STRUCTURE_SELECT_COLUMNS,
@@ -2859,11 +2925,23 @@ function buildSovereigntyStructuresCte(db: DbClient<DbSchema>, corpWhere: any) {
 	)
 }
 
-function buildSovereigntyWhere(
+export function buildSovereigntyWhere(
 	access: StructureAccessScope,
 	query: StructureSovereigntyListQuery
 ): any {
 	const conditions: StructureWhereCondition[] = []
+	const accessibleCorporations = getAccessibleCorporationIds(access, 'sovereignty')
+	if (!accessibleCorporations.hasGlobalAccess) {
+		if (accessibleCorporations.corporationIds.size === 0) {
+			conditions.push(sql`false`)
+		} else {
+			conditions.push(
+				inArray(structureSovereigntySystems.corporationId, [
+					...accessibleCorporations.corporationIds,
+				])
+			)
+		}
+	}
 	addDelimitedFilterCondition(
 		conditions,
 		structureSovereigntySystems.corporationId,
@@ -4284,7 +4362,7 @@ async function listOperationalStructures(
 	query: StructureListQuery = {},
 	activeTab: StructureTab
 ): Promise<StructureListResponse> {
-	const access = computeStructureAccess(user.roles, user.is_admin)
+	const access = await resolveStructureAccess(db, user)
 	const tabAccess = getStructureAccessTarget(access, activeTab)
 	if (!hasAnyStructureAccess(tabAccess)) {
 		return {
@@ -4457,7 +4535,7 @@ export async function listMoonDrillStructures(
 	user: SessionUser,
 	query: StructureMoonDrillListQuery = {}
 ): Promise<RepoStructureMoonDrillListResponse> {
-	const access = computeStructureAccess(user.roles, user.is_admin)
+	const access = await resolveStructureAccess(db, user)
 	const accessForTab = getStructureAccessTarget(access, 'moon-drills')
 	if (!hasAnyStructureAccess(accessForTab)) {
 		return {
@@ -4687,7 +4765,7 @@ export async function listSovereigntyStructures(
 	user: SessionUser,
 	query: StructureSovereigntyListQuery = {}
 ): Promise<RepoStructureSovereigntyListResponse> {
-	const access = computeStructureAccess(user.roles, user.is_admin)
+	const access = await resolveStructureAccess(db, user)
 	const accessibleCorporations = getAccessibleCorporationIds(access)
 	if (!accessibleCorporations.hasGlobalAccess && accessibleCorporations.corporationIds.size === 0) {
 		return {
@@ -4784,7 +4862,7 @@ export async function listMiningCitadelStructures(
 	user: SessionUser,
 	query: StructureMiningCitadelListQuery = {}
 ): Promise<RepoStructureMiningCitadelListResponse> {
-	const access = computeStructureAccess(user.roles, user.is_admin)
+	const access = await resolveStructureAccess(db, user)
 	const accessForTab = getStructureAccessTarget(access, 'mining-citadels')
 	if (!hasAnyStructureAccess(accessForTab)) {
 		return {
@@ -4895,7 +4973,7 @@ export async function updateStructureConfig(
 		return null
 	}
 
-	const access = computeStructureAccess(user.roles, user.is_admin)
+	const access = await resolveStructureAccess(db, user)
 	const structureTab = getStructureTab(context.structure)
 	const canEdit =
 		user.is_admin || canEditStructure(access, context.structure.corporationId, structureTab)

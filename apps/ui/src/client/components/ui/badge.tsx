@@ -19,9 +19,48 @@ const badgeVariants = cva(
 				ghost: 'bg-muted/50 text-muted-foreground border-border',
 				special: 'bg-purple-500/20 text-purple-500 border-purple-500/30',
 			},
+			solid: {
+				true: '',
+				false: '',
+			},
 		},
+		compoundVariants: [
+			{
+				variant: 'default',
+				solid: true,
+				class: 'bg-primary text-primary-foreground border-primary',
+			},
+			{
+				variant: 'secondary',
+				solid: true,
+				class: 'bg-secondary text-secondary-foreground border-secondary',
+			},
+			{
+				variant: 'success',
+				solid: true,
+				class: 'bg-success text-success-foreground border-success',
+			},
+			{
+				variant: 'warning',
+				solid: true,
+				class: 'bg-warning text-warning-foreground border-warning',
+			},
+			{
+				variant: 'gold',
+				solid: true,
+				class: 'bg-amber-400 text-amber-950 border-amber-400',
+			},
+			{
+				variant: 'destructive',
+				solid: true,
+				class: 'bg-destructive text-destructive-foreground border-destructive',
+			},
+			{ variant: 'ghost', solid: true, class: 'bg-muted text-foreground border-border' },
+			{ variant: 'special', solid: true, class: 'bg-purple-500 text-white border-purple-500' },
+		],
 		defaultVariants: {
 			variant: 'default',
+			solid: false,
 		},
 	}
 )
@@ -35,9 +74,17 @@ export interface BadgeProps
 	iconPosition?: 'left' | 'right'
 }
 
-function Badge({ className, variant, icon: Icon, iconPosition = 'left', children, ...props }: BadgeProps) {
+function Badge({
+	className,
+	variant,
+	solid,
+	icon: Icon,
+	iconPosition = 'left',
+	children,
+	...props
+}: BadgeProps) {
 	return (
-		<div className={cn(badgeVariants({ variant }), Icon && 'gap-1', className)} {...props}>
+		<div className={cn(badgeVariants({ variant, solid }), Icon && 'gap-1', className)} {...props}>
 			{Icon && iconPosition === 'left' && <Icon className="h-3 w-3 shrink-0" />}
 			{children}
 			{Icon && iconPosition === 'right' && <Icon className="h-3 w-3 shrink-0" />}

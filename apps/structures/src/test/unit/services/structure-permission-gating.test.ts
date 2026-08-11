@@ -10,6 +10,7 @@ import {
 	getStructureTab,
 	hasAnyStructureAccess,
 	hasStructureAccessForTab,
+	resolveStructureAccess,
 } from '../../../services/structures.service'
 
 vi.mock('@repo/do-utils', () => ({
@@ -38,6 +39,7 @@ type FakeDb = {
 		}
 		managedCorporations: {
 			findFirst: ReturnType<typeof vi.fn>
+			findMany: ReturnType<typeof vi.fn>
 		}
 		structureSkyhooks: {
 			findFirst: ReturnType<typeof vi.fn>
@@ -152,6 +154,7 @@ function makeDb(
 					name: 'Test Corp',
 					includeInStructureAssetSync: false,
 				}),
+				findMany: vi.fn().mockResolvedValue([]),
 			},
 			structureSkyhooks: {
 				findFirst: vi.fn().mockResolvedValue(options.skyhook ?? skyhook),
@@ -242,6 +245,31 @@ describe('structure permission gating', () => {
 		expect(hasStructureAccessForTab(access, 'corp-2', 'structures')).toBe(true)
 		expect(canViewDetailsStructure(access, 'corp-1', 'structures')).toBe(false)
 		expect(canViewSensitiveStructure(access, 'corp-2', 'structures')).toBe(true)
+	})
+
+	it('merges implicit sensitive access across every tab without granting edits', async () => {
+		const db = makeDb()
+		db.query.managedCorporations.findMany.mockResolvedValue([{ corporationId: 'corp-1' }])
+
+		const access = await resolveStructureAccess(db as never, {
+			id: 'user-ceo',
+			is_admin: false,
+			roles: [],
+			implicitSensitiveCorporationIds: ['corp-1'],
+		})
+
+		for (const tab of [
+			'structures',
+			'sovereignty',
+			'skyhooks',
+			'mining-citadels',
+			'moon-drills',
+		] as const) {
+			expect(hasStructureAccessForTab(access, 'corp-1', tab)).toBe(true)
+			expect(canViewDetailsStructure(access, 'corp-1', tab)).toBe(true)
+			expect(canViewSensitiveStructure(access, 'corp-1', tab)).toBe(true)
+			expect(canEditStructure(access, 'corp-1', tab)).toBe(false)
+		}
 	})
 
 	it('returns null for viewer-only detail access and hydrates details for details access', async () => {

@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import { getStub } from '@repo/do-utils'
-import { hasAllStructureManagerPermission } from '@repo/groups'
+import { hasAllStructureManagerPermission, hasAnyStructurePermission } from '@repo/groups'
 import {
 	STRUCTURE_COMMON_LIST_SORT_FIELDS,
 	STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS,
@@ -12,6 +12,7 @@ import {
 import { createWorkflow } from '@repo/workflow-utils'
 
 import { getCachedUserPermissions } from '../lib/groups-cache'
+import { getImplicitStructureAccessCorporationIds } from '../lib/structure-access'
 import {
 	buildStructureAssetsDebugExportKey,
 	buildStructureAssetsDebugFileName,
@@ -108,13 +109,40 @@ async function getStructureActor(c: Context<App>) {
 	}
 
 	const permissions = await getCachedUserPermissions(c.env, user.id)
+	const implicitSensitiveCorporationIds = await getImplicitStructureAccessCorporationIds(
+		c.env,
+		c.get('db'),
+		user.id
+	)
 
 	return {
 		id: user.id,
 		is_admin: user.is_admin,
 		roles: permissions.map((permission) => permission.urn),
+		implicitSensitiveCorporationIds,
 	}
 }
+
+function hasStructureApiAccess(actor: Awaited<ReturnType<typeof getStructureActor>>): boolean {
+	return (
+		actor.is_admin ||
+		hasAnyStructurePermission(actor.roles.map((urn) => ({ urn }))) ||
+		(actor.implicitSensitiveCorporationIds?.length ?? 0) > 0
+	)
+}
+
+app.use('*', async (c, next) => {
+	if (!c.get('user')) {
+		return next()
+	}
+
+	const actor = await getStructureActor(c)
+	if (!hasStructureApiAccess(actor)) {
+		return c.json({ error: 'Structure permission required' }, 403)
+	}
+
+	return next()
+})
 
 async function canManageStructures(c: Context<App>): Promise<boolean> {
 	const user = c.get('user')
@@ -349,6 +377,18 @@ app.get('/moon-drills', async (c) => {
 
 app.get('/mining-citadels', async (c) => {
 	return handleMiningCitadelsStructuresRequest(c)
+})
+
+app.get('/access', async (c) => {
+	if (!c.get('user')) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const actor = await getStructureActor(c)
+	return c.json({
+		canView: hasStructureApiAccess(actor),
+		hasImplicitSensitiveAccess: (actor.implicitSensitiveCorporationIds?.length ?? 0) > 0,
+	})
 })
 
 app.post('/:structureId/assets-debug', async (c) => {

@@ -39,6 +39,7 @@ import { canAccessMumble } from '@/features/mumble/access'
 import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
 import { useSrpPaymentMismatchAlerts } from '@/features/srp/hooks'
 import { useReviewQueueStatusCount } from '@/features/srp/state/review-queue-snapshot-store'
+import { useStructureAccess } from '@/features/structures/hooks'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { usePendingInvitations } from '@/hooks/useGroups'
@@ -77,13 +78,17 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const { data: leadershipCorporationAccess } = useCorporationAccess()
 	const { data: hrCorporations } = useHrAccessibleCorporations()
 	const { permissions, hasAnyPermission } = useUserPermissions()
+	const { data: structureAccess } = useStructureAccess({ enabled: Boolean(user) })
 	const moonScanPermissions = useMoonScanPermissions()
 	const isSiteAdmin = user?.is_admin === true
 	const isAllianceMember = user?.roles?.includes(ROLE_CORE_ALLIANCE_MEMBER) ?? false
 	const canSeeAllianceMemberNav = isSiteAdmin || isAllianceMember
 	const { data: invitations } = usePendingInvitations({ enabled: canSeeAllianceMemberNav })
 	const { isEnabled: isMumbleFeatureEnabled } = useMumbleFeatureEnabled()
-	const canViewStructures = isSiteAdmin || hasAnyStructurePermission(permissions)
+	const canViewStructures =
+		isSiteAdmin ||
+		hasAnyStructurePermission(permissions) ||
+		structureAccess?.hasImplicitSensitiveAccess === true
 	const hasSrpManagerPermission = hasAnyPermission('urn:srp:manager')
 	const hasSrpPayerPermission = hasAnyPermission('urn:srp:payer')
 	const hasSrpReviewerPermission = hasAnyPermission('urn:srp:reviewer')
@@ -669,9 +674,13 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 													<span className="inline-flex items-center gap-2 leading-none">
 														<span>{child.label}</span>
 														{child.badge ? (
-															<span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-semibold leading-none text-destructive-foreground ring-1 ring-destructive/80">
+															<Badge
+																variant="destructive"
+																solid
+																className="h-5 min-w-5 border-0 px-1.5 text-[10px] leading-none ring-1 ring-destructive/80"
+															>
 																{child.badge > 99 ? '99+' : child.badge}
-															</span>
+															</Badge>
 														) : null}
 													</span>
 												</Link>
@@ -726,7 +735,8 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 							{item.badge && (
 								<Badge
 									variant="destructive"
-									className="h-5 min-w-[20px] px-1 text-[10px] flex items-center justify-center"
+									solid
+									className="h-5 min-w-5 border-0 px-1.5 text-[10px] leading-none ring-1 ring-destructive/80"
 								>
 									{item.badge}
 								</Badge>

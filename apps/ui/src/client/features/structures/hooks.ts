@@ -7,6 +7,7 @@ import { structureKeys } from './query-keys'
 import type { UseQueryOptions } from '@tanstack/react-query'
 import type { StructureTab } from '@repo/structures'
 import type {
+	StructureAccessSummary,
 	StructureListQuery,
 	StructureMainListResponse,
 	StructureMiningCitadelListQuery,
@@ -32,6 +33,19 @@ type StructureTabQuery =
 const STRUCTURE_LIST_STALE_TIME = 1000 * 60 * 15
 const STRUCTURE_LIST_GC_TIME = 1000 * 60 * 60
 const STRUCTURE_CONFIG_STALE_TIME = 1000 * 60 * 30
+const STRUCTURE_ACCESS_STALE_TIME = 1000 * 30
+
+export function useStructureAccess(
+	options: Pick<UseQueryOptions<StructureAccessSummary>, 'enabled'> = {}
+) {
+	return useQuery<StructureAccessSummary>({
+		queryKey: structureKeys.access(),
+		queryFn: () => api.getStructureAccess(),
+		staleTime: STRUCTURE_ACCESS_STALE_TIME,
+		gcTime: STRUCTURE_ACCESS_STALE_TIME,
+		enabled: options.enabled ?? true,
+	})
+}
 
 function createStructureListQueryOptions<TResponse>(
 	queryKey: readonly unknown[],

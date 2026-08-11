@@ -188,6 +188,8 @@ export interface StructureActor {
 	id: string
 	is_admin: boolean
 	roles: string[]
+	/** Server-derived corporations receiving implicit sensitive read access. */
+	implicitSensitiveCorporationIds?: string[]
 }
 
 export interface StructureListPagingQuery<
