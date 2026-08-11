@@ -37,6 +37,7 @@ import type { App } from '../../context'
 const app = new Hono<App>()
 const MS_PER_DAY = 86_400_000
 const ACTIVE_MEMBER_THRESHOLD_MS = 7 * MS_PER_DAY
+const DISCORD_USERNAME_LOOKUP_BATCH_SIZE = 25
 
 /**
  * Cache duration for corporation member data (5 minutes)
@@ -809,6 +810,8 @@ function buildCorporationMembersCsv(
 		'Auth Account UUID',
 		'Auth Account Primary Character Name',
 		'Auth Account Primary Character ID',
+		'Discord User ID',
+		'Discord Username',
 		'Activity Status',
 		'Last Login',
 		'Join Date',
@@ -823,6 +826,8 @@ function buildCorporationMembersCsv(
 		member.authUserId || '',
 		member.mainCharacterName || '',
 		member.mainCharacterId || '',
+		member.discordUserId || '',
+		member.discordUsername || '',
 		member.activityStatus,
 		member.lastLogin || 'Never',
 		member.joinDate,
@@ -880,6 +885,39 @@ async function hydrateCorporationMembers(
 	const userIdToMainCharacterId = new Map(
 		linkedUsers.map((user) => [user.id, user.mainCharacterId])
 	)
+	const userIdToDiscordUserId = new Map(
+		linkedUsers.map((user) => [user.id, user.discordUserId ?? null])
+	)
+	const userIdToDiscordUsername = new Map<string, string | null>()
+	const discordUsers = linkedUsers.filter((user) => user.discordUserId)
+	if (discordUsers.length > 0) {
+		const discordStub = getStub<Discord>(c.env.DISCORD, 'default')
+		for (
+			let offset = 0;
+			offset < discordUsers.length;
+			offset += DISCORD_USERNAME_LOOKUP_BATCH_SIZE
+		) {
+			const batch = discordUsers.slice(offset, offset + DISCORD_USERNAME_LOOKUP_BATCH_SIZE)
+			const statuses = await Promise.all(
+				batch.map(async (user) => {
+					try {
+						const status = await discordStub.getDiscordUserStatus(user.id)
+						return { userId: user.id, username: status?.username ?? null }
+					} catch (error) {
+						logger.warn('[Corporations] Failed to resolve Discord username for member export', {
+							userId: user.id,
+							discordUserId: user.discordUserId,
+							error: error instanceof Error ? error.message : String(error),
+						})
+						return { userId: user.id, username: null }
+					}
+				})
+			)
+			for (const status of statuses) {
+				userIdToDiscordUsername.set(status.userId, status.username)
+			}
+		}
+	}
 	const hrStub = getStub<Hr>(c.env.HR, 'default')
 	const blacklistStatuses =
 		memberCharacterIds.length > 0 ? await hrStub.checkCharactersBlacklisted(memberCharacterIds) : {}
@@ -911,6 +949,10 @@ async function hydrateCorporationMembers(
 			mainCharacterName: linkedChar?.userId
 				? userIdToMainCharacterName.get(linkedChar.userId)
 				: undefined,
+			discordUserId: linkedChar?.userId ? userIdToDiscordUserId.get(linkedChar.userId) : null,
+			discordUsername: linkedChar?.userId
+				? (userIdToDiscordUsername.get(linkedChar.userId) ?? null)
+				: null,
 			status: linkedChar?.status,
 			joinDate: tracking?.startDate?.toISOString() || member.updatedAt.toISOString(),
 			lastEsiUpdate: member.updatedAt.toISOString(),

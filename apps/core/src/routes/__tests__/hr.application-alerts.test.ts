@@ -96,6 +96,30 @@ function createDb() {
 	}
 }
 
+function makeApplication(status: 'pending' | 'accepted' | 'rejected' = 'pending') {
+	return {
+		id: 'app-1',
+		corporationId: 'corp-1',
+		userId: 'user-1',
+		characterId: 'main-1',
+		characterName: 'Main Pilot',
+		applicationText: 'Let me in.',
+		status,
+		reviewedBy: null,
+		reviewedByCharacterName: null,
+		reviewedAt: null,
+		reviewNotes: null,
+		createdAt: new Date('2026-06-11T12:00:00.000Z'),
+		updatedAt: new Date('2026-06-11T12:00:00.000Z'),
+		lastStaffInteractionAt: null,
+		altCharacterIds: ['alt-1'],
+		isFirstApplication: true,
+		recommendations: [],
+		recommendationCount: 0,
+		activityLog: [],
+	}
+}
+
 function createApp(user?: SessionUser, db?: ReturnType<typeof createDb>) {
 	const app = new Hono<{ Bindings: any; Variables: { user?: SessionUser; db?: any } }>()
 
@@ -133,27 +157,7 @@ describe('HR application submission alerts', () => {
 			sentCount: 1,
 			failedCount: 0,
 		})
-		serviceMocks.getApplication.mockResolvedValue({
-			id: 'app-1',
-			corporationId: 'corp-1',
-			userId: 'user-1',
-			characterId: 'main-1',
-			characterName: 'Main Pilot',
-			applicationText: 'Let me in.',
-			status: 'pending',
-			reviewedBy: null,
-			reviewedByCharacterName: null,
-			reviewedAt: null,
-			reviewNotes: null,
-			createdAt: new Date('2026-06-11T12:00:00.000Z'),
-			updatedAt: new Date('2026-06-11T12:00:00.000Z'),
-			lastStaffInteractionAt: null,
-			altCharacterIds: ['alt-1'],
-			isFirstApplication: true,
-			recommendations: [],
-			recommendationCount: 0,
-			activityLog: [],
-		})
+		serviceMocks.getApplication.mockResolvedValue(makeApplication())
 	})
 
 	it('dispatches a corp application alert after submission', async () => {
@@ -208,6 +212,9 @@ describe('HR application submission alerts', () => {
 	})
 
 	it('dispatches a first-time acceptance alert after acceptance', async () => {
+		serviceMocks.getApplication
+			.mockResolvedValueOnce(makeApplication())
+			.mockResolvedValue(makeApplication('accepted'))
 		const app = createApp(makeUser({ is_admin: true }), createDb())
 		const executionCtx = createExecutionContext()
 		const response = await app.request(
@@ -255,6 +262,30 @@ describe('HR application submission alerts', () => {
 		)
 	})
 
+	it('does not send an acceptance alert after the application has since been rejected', async () => {
+		serviceMocks.getApplication
+			.mockResolvedValueOnce(makeApplication())
+			.mockResolvedValue(makeApplication('rejected'))
+		const app = createApp(makeUser({ is_admin: true }), createDb())
+		const executionCtx = createExecutionContext()
+		const response = await app.request(
+			'/api/hr/applications/app-1',
+			{
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					status: 'accepted',
+					reviewNotes: 'Looks good initially.',
+				}),
+			},
+			{ HR: { name: 'HR' } } as any,
+			executionCtx
+		)
+
+		expect(response.status).toBe(200)
+		expect(serviceMocks.dispatchCorporationAlert).not.toHaveBeenCalled()
+	})
+
 	it.each(['rejected', 'withdrawn', 'completed'] as const)(
 		'does not dispatch a first-time acceptance alert when the application is %s',
 		async (status) => {
@@ -290,6 +321,64 @@ describe('HR application submission alerts', () => {
 			expect(serviceMocks.waitUntilWithTelemetry).not.toHaveBeenCalled()
 		}
 	)
+
+	it('notifies the applicant with the rejected status instead of accepted', async () => {
+		serviceMocks.getApplication.mockResolvedValueOnce({
+			id: 'app-1',
+			corporationId: 'corp-1',
+			userId: 'applicant-1',
+			characterId: 'main-1',
+			characterName: 'Main Pilot',
+			applicationText: 'Let me in.',
+			status: 'pending',
+			reviewedBy: null,
+			reviewedByCharacterName: null,
+			reviewedAt: null,
+			reviewNotes: null,
+			createdAt: new Date('2026-06-11T12:00:00.000Z'),
+			updatedAt: new Date('2026-06-11T12:00:00.000Z'),
+			lastStaffInteractionAt: null,
+			altCharacterIds: [],
+			isFirstApplication: true,
+			recommendations: [],
+			recommendationCount: 0,
+			activityLog: [],
+		})
+
+		const app = createApp(makeUser({ id: 'hr-1', is_admin: true }), createDb())
+		const executionCtx = createExecutionContext()
+		const response = await app.request(
+			'/api/hr/applications/app-1',
+			{
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					status: 'rejected',
+					reviewNotes: 'This application does not meet the requirements.',
+				}),
+			},
+			{ HR: { name: 'HR' }, DISCORD: { name: 'DISCORD' } } as any,
+			executionCtx
+		)
+
+		expect(response.status).toBe(200)
+		expect(serviceMocks.dispatchCorporationAlert).not.toHaveBeenCalled()
+		expect(serviceMocks.sendDirectMessage).toHaveBeenCalledWith(
+			'applicant-1',
+			expect.objectContaining({
+				embeds: [
+					expect.objectContaining({
+						fields: [
+							expect.objectContaining({
+								name: 'Current Status',
+								value: 'Rejected',
+							}),
+						],
+					}),
+				],
+			})
+		)
+	})
 
 	it('does not dispatch a first-time acceptance alert for repeat applications', async () => {
 		serviceMocks.getApplication.mockResolvedValueOnce({

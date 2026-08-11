@@ -267,6 +267,7 @@ export interface GroupMembershipSummary {
 	groupId: string
 	groupName: string
 	categoryName: string
+	joinMode?: JoinMode
 	isOwner: boolean
 	isAdmin: boolean
 	mumbleSyncEnabled: boolean
