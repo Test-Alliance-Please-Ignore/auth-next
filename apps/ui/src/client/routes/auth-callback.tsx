@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
+import { shouldUseFullPageAuthRedirect } from '@/lib/auth-redirect'
 
 interface CallbackResponse {
 	success?: boolean
@@ -88,10 +89,11 @@ export default function AuthCallbackPage() {
 					// Use redirect URL if present, otherwise go to dashboard
 					const destination = response.redirectUrl || '/dashboard'
 
-					// If redirect URL starts with /invite/, /login, or other server routes,
-					// do a full page reload instead of SPA navigation
-					if (destination.startsWith('/invite/') || destination.startsWith('/login')) {
-						window.location.href = destination
+					// Absolute destinations, including the third-party OAuth /authorize URL, must
+					// use a browser navigation. React Router treats an absolute URL passed to
+					// navigate() as a route-relative path (for example, /auth/callback/https:/...).
+					if (shouldUseFullPageAuthRedirect(destination)) {
+						window.location.assign(destination)
 					} else {
 						void navigate(destination)
 					}
