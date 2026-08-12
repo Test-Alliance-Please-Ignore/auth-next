@@ -3,6 +3,7 @@ export interface InventoryDisplayItem {
 	typeName?: string | null
 	quantity: number
 	stackCount: number
+	estimatedValue?: number | null
 }
 
 export interface InventoryDisplayBay {
@@ -10,6 +11,7 @@ export interface InventoryDisplayBay {
 	label: string
 	totalQuantity: number
 	totalStacks: number
+	totalEstimatedValue?: number | null
 	items: InventoryDisplayItem[]
 }
 

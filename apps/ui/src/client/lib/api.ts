@@ -24,6 +24,7 @@ import type {
 	StructureMiningCitadelListQuery as RepoStructureMiningCitadelListQuery,
 	StructureMiningCitadelListResponse as RepoStructureMiningCitadelListResponse,
 	StructureMiningCitadelSummary as RepoStructureMiningCitadelSummary,
+	StructureMoonComposition as RepoStructureMoonComposition,
 	StructureMoonDrillListItem as RepoStructureMoonDrillListItem,
 	StructureMoonDrillListQuery as RepoStructureMoonDrillListQuery,
 	StructureMoonDrillListResponse as RepoStructureMoonDrillListResponse,
@@ -979,6 +980,7 @@ export interface StructureSkyhookSummary {
 
 export type StructureMoonDrillSummary = RepoStructureMoonDrillSummary
 export type StructureMiningCitadelSummary = RepoStructureMiningCitadelSummary
+export type StructureMoonComposition = RepoStructureMoonComposition
 export type StructureMiningCitadelExtractionHistory = RepoStructureMiningCitadelExtractionHistory
 
 export type StructureSovereigntyListItem = RepoStructureSovereigntyListItem
@@ -1014,6 +1016,13 @@ export interface StructureFittingItem {
 	isConsumable?: boolean
 }
 
+export interface StructureFittingSlotCapacities {
+	high: number
+	mid: number
+	low: number
+	rig: number
+}
+
 export interface StructureDetailResult extends Omit<StructureListItem, 'canViewDetails'> {
 	includeInStructureAssetSync: boolean
 	assetsLastSync: string | null
@@ -1035,9 +1044,12 @@ export interface StructureDetailResult extends Omit<StructureListItem, 'canViewD
 	skyhook?: StructureSkyhookSummary | null
 	moonDrill?: StructureMoonDrillSummary | null
 	miningExtraction?: StructureMiningCitadelSummary | null
+	miningExtractionComposition?: StructureMoonComposition | null
+	moonComposition?: StructureMoonComposition | null
 	miningExtractionHistory?: StructureMiningCitadelExtractionHistory[]
 	inventoryBays?: StructureInventoryBay[]
 	fittingItems?: StructureFittingItem[]
+	fittingSlotCapacities?: StructureFittingSlotCapacities | null
 }
 
 export interface StructureAssetsDebugResult {

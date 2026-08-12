@@ -34,6 +34,7 @@
 		"@repo/groups": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/inventory-display": "workspace:*",
+		"@repo/markets": "workspace:*",
 		"@repo/moon-scan": "workspace:*",
 		"@repo/structure-states": "workspace:*",
 		"@repo/structures": "workspace:*",

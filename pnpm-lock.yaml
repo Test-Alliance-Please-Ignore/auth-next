@@ -2398,6 +2398,9 @@ importers:
       '@repo/inventory-display':
         specifier: workspace:*
         version: link:../../packages/inventory-display
+      '@repo/markets':
+        specifier: workspace:*
+        version: link:../../packages/markets
       '@repo/moon-scan':
         specifier: workspace:*
         version: link:../../packages/moon-scan

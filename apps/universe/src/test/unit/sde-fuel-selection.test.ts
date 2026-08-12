@@ -6,8 +6,10 @@ import {
 	isFuelModifier,
 	selectStructureDogmaTypeIds,
 	STRUCTURE_CATEGORY_ID,
+	STRUCTURE_DOGMA_ATTRIBUTE_IDS,
 	STRUCTURE_MODULE_CATEGORY_ID,
 	STRUCTURE_SERVICE_MODULE_ATTRIBUTE_ID,
+	STRUCTURE_SLOT_DOGMA_ATTRIBUTE_IDS,
 } from '../../scripts/sde-fuel-selection'
 
 describe('SDE fuel selection', () => {
@@ -78,12 +80,17 @@ describe('SDE fuel selection', () => {
 		)
 	})
 
-	it('retains only fuel attributes in the default import mode', () => {
+	it('retains structure fuel and fitting attributes in the default import mode', () => {
 		expect(STRUCTURE_SERVICE_MODULE_ATTRIBUTE_ID).toBe('2792')
 		expect(FUEL_DOGMA_ATTRIBUTE_IDS).toEqual(['2108', '2109', '2110', '2339', '2792'])
 		for (const attributeId of FUEL_DOGMA_ATTRIBUTE_IDS) {
 			expect(isFuelDogmaAttribute(attributeId, false)).toBe(true)
 		}
+		expect(STRUCTURE_SLOT_DOGMA_ATTRIBUTE_IDS).toEqual(['12', '13', '14', '1137'])
+		expect(STRUCTURE_DOGMA_ATTRIBUTE_IDS).toEqual([
+			...FUEL_DOGMA_ATTRIBUTE_IDS,
+			...STRUCTURE_SLOT_DOGMA_ATTRIBUTE_IDS,
+		])
 		expect(isFuelDogmaAttribute('9999', false)).toBe(false)
 		expect(isFuelDogmaAttribute('9999', true)).toBe(true)
 	})

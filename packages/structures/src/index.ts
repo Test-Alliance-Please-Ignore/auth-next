@@ -449,6 +449,7 @@ export interface StructureInventoryItem {
 	typeName?: string | null
 	quantity: number
 	stackCount: number
+	estimatedValue?: number | null
 }
 
 export interface StructureInventoryBay {
@@ -456,6 +457,7 @@ export interface StructureInventoryBay {
 	label: string
 	totalQuantity: number
 	totalStacks: number
+	totalEstimatedValue?: number | null
 	items: StructureInventoryItem[]
 }
 
@@ -737,7 +739,34 @@ export interface StructureMoonComposition {
 		typeId: string
 		typeName: string | null
 		quantity: string
+		rarity: string | null
 	}>
+	profitability?: {
+		structureType: 'tatara' | 'metenox'
+		cycleDays: number
+		grossIsk: string
+		fuelCost: string
+		magmaticGasCost: string | null
+		profit: string
+		ores: Array<{
+			oreTypeId: string
+			oreName: string
+			quantity: string
+			rarity: string | null
+			totalOreValue: string
+			refinesTo: Array<{
+				materialTypeId: string
+				materialName: string
+				quantity: number
+				batchSize: number
+				batchQty: number
+				unitSellPrice: string
+				totalValue: string
+				materialRarity: string | null
+			}>
+		}>
+	} | null
+	pricingSnapshotDate?: string | null
 }
 
 export interface StructureMiningCitadelSummary extends StructureMoonGeography {
@@ -767,6 +796,13 @@ export interface StructureFittingItem {
 	isConsumable?: boolean
 }
 
+export interface StructureFittingSlotCapacities {
+	high: number
+	mid: number
+	low: number
+	rig: number
+}
+
 export interface StructureDetailResult extends Omit<StructureListItem, 'canViewDetails'> {
 	includeInStructureAssetSync: boolean
 	assetsLastSync: string | null
@@ -788,9 +824,12 @@ export interface StructureDetailResult extends Omit<StructureListItem, 'canViewD
 	skyhook?: StructureSkyhookSummary | null
 	moonDrill?: StructureMoonDrillSummary | null
 	miningExtraction?: StructureMiningCitadelSummary | null
+	miningExtractionComposition?: StructureMoonComposition | null
+	moonComposition?: StructureMoonComposition | null
 	miningExtractionHistory?: StructureMiningCitadelExtractionHistory[]
 	inventoryBays?: StructureInventoryBay[]
 	fittingItems?: StructureFittingItem[]
+	fittingSlotCapacities?: StructureFittingSlotCapacities | null
 }
 
 export interface StructureListResponse<TItem = StructureListItem> {

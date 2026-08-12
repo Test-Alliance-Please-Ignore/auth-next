@@ -8,6 +8,11 @@ export const FUEL_DOGMA_ATTRIBUTE_IDS: readonly string[] = [
 	'2339',
 	STRUCTURE_SERVICE_MODULE_ATTRIBUTE_ID,
 ]
+export const STRUCTURE_SLOT_DOGMA_ATTRIBUTE_IDS: readonly string[] = ['12', '13', '14', '1137']
+export const STRUCTURE_DOGMA_ATTRIBUTE_IDS: readonly string[] = [
+	...FUEL_DOGMA_ATTRIBUTE_IDS,
+	...STRUCTURE_SLOT_DOGMA_ATTRIBUTE_IDS,
+]
 
 export type SdeFuelType = {
 	typeId: string
@@ -48,7 +53,7 @@ export function selectStructureDogmaTypeIds(
 }
 
 export function isFuelDogmaAttribute(attributeId: string, allDogma: boolean): boolean {
-	return allDogma || FUEL_DOGMA_ATTRIBUTE_IDS.includes(attributeId)
+	return allDogma || STRUCTURE_DOGMA_ATTRIBUTE_IDS.includes(attributeId)
 }
 
 export function isFuelModifier(modifier: SdeFuelModifier): boolean {

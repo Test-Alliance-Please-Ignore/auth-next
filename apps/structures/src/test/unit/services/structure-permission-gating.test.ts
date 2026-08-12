@@ -211,6 +211,90 @@ describe('structure permission gating', () => {
 		expect(getStructureTab({ typeId: '81826', typeName: 'Metenox Moon Drill' })).toBe('moon-drills')
 	})
 
+	it('shows moon drill geography without requiring a separate moon drill row', async () => {
+		const db = makeDb({
+			structure: {
+				structureId: 'structure-1',
+				corporationId: 'corp-1',
+				name: 'Moon Drill One',
+				typeId: '81826',
+				typeName: 'Metenox Moon Drill',
+				systemId: '30000142',
+				systemName: 'Jita',
+				regionId: '10000002',
+				regionName: 'The Forge',
+				state: 'online',
+				nextReinforceApply: null,
+				stateTimerEnd: null,
+				unanchorsAt: null,
+				fuelExpires: null,
+				fuelAmount: null,
+				fuelBurnRate: null,
+				lowPower: false,
+				syncStatus: 'ok',
+				syncFailureReason: null,
+				lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
+				updatedAt: new Date('2026-01-01T00:00:00Z'),
+			},
+		})
+		db.query.structureMoonGeographies.findFirst.mockResolvedValue({
+			structureId: 'structure-1',
+			corporationId: 'corp-1',
+			moonId: '40129194',
+			moonName: 'Moon 1',
+			planetId: '40129193',
+			planetName: 'Planet 1',
+			systemId: '30000142',
+			systemName: 'Jita',
+		})
+		const env = {
+			MOON_SCAN: {},
+			UNIVERSE: {},
+		}
+		const moonScan = {
+			getVerifiedComposition: vi.fn().mockResolvedValue({
+				moonId: '40129194',
+				sourceScanId: 'scan-1',
+				verifiedAt: '2026-07-31T00:00:00.000Z',
+				verifiedBy: null,
+				ores: [{ oreTypeId: '45490', quantity: '0.25' }],
+			}),
+		}
+		const universe = {
+			resolveTypeNamesByIds: vi.fn().mockResolvedValue({
+				'45490': { typeName: 'Chromite' },
+			}),
+		}
+		vi.mocked(getStub).mockImplementation((namespace) => {
+			if (namespace === env.MOON_SCAN) return moonScan as never
+			return universe as never
+		})
+
+		const result = await getStructureDetail(
+			env as never,
+			db as never,
+			{
+				id: 'user-details',
+				is_admin: false,
+				roles: ['urn:structures:all:details'],
+			},
+			'structure-1'
+		)
+
+		expect(result?.moonDrill).toEqual({
+			moonId: '40129194',
+			moonName: 'Moon 1',
+			planetId: '40129193',
+			planetName: 'Planet 1',
+			systemId: '30000142',
+			systemName: 'Jita',
+		})
+		expect(moonScan.getVerifiedComposition).toHaveBeenCalledWith('40129194')
+		expect(result?.moonComposition?.ores).toEqual([
+			{ typeId: '45490', typeName: 'Chromite', quantity: '0.25', rarity: 'R4' },
+		])
+	})
+
 	beforeEach(() => {
 		vi.clearAllMocks()
 	})
@@ -482,19 +566,43 @@ describe('structure permission gating', () => {
 				verifiedBy: null,
 				ores: [{ oreTypeId: '45490', quantity: '0.25' }],
 			}),
+			getExtractionSettings: vi.fn().mockResolvedValue({
+				defaultReprocessingYield: '0.5',
+				defaultCycleDays: 30,
+				fuelBlockPriceOverride: '2',
+				magmaticGasPriceOverride: null,
+			}),
+			getStructureProfiles: vi.fn().mockResolvedValue([
+				{
+					id: 'tatara',
+					baseVolumePerHr: '1',
+					rigBonus: '0',
+					fuelPerHr: '1',
+					magmaticGasPerHr: '99',
+					isPassive: false,
+					nullsecModifier: '1',
+					lowsecModifier: '1',
+				},
+			]),
 		}
 		const universe = {
+			getTypeMaterials: vi.fn().mockResolvedValue({ '45490': [] }),
 			resolveTypeNamesByIds: vi.fn().mockResolvedValue({
 				'45490': { typeName: 'Chromite' },
 			}),
 		}
+		const markets = {
+			getBatchMarketDataAtTime: vi.fn().mockResolvedValue({ prices: [], missingTypeIds: [] }),
+		}
 		const env = {
 			MOON_SCAN: {},
+			MARKETS: {},
 			UNIVERSE: {},
 			EVE_CORPORATION_DATA: {},
 		}
 		vi.mocked(getStub).mockImplementation((namespace) => {
 			if (namespace === env.MOON_SCAN) return moonScan as never
+			if (namespace === env.MARKETS) return markets as never
 			return universe as never
 		})
 
@@ -511,8 +619,18 @@ describe('structure permission gating', () => {
 
 		expect(moonScan.getVerifiedComposition).toHaveBeenCalledWith('40129194')
 		expect(universe.resolveTypeNamesByIds).toHaveBeenCalledWith(['45490'])
-		expect(result?.miningExtraction?.composition).toEqual({
-			ores: [{ typeId: '45490', typeName: 'Chromite', quantity: '0.25' }],
+		expect(result?.miningExtraction?.composition).toMatchObject({
+			ores: [{ typeId: '45490', typeName: 'Chromite', quantity: '0.25', rarity: 'R4' }],
+			profitability: {
+				structureType: 'tatara',
+				cycleDays: 30,
+				fuelCost: '1440',
+				grossIsk: '0',
+				profit: '-1440',
+			},
 		})
+		expect(result?.miningExtractionComposition?.ores).toEqual([
+			{ typeId: '45490', typeName: 'Chromite', quantity: '0.25', rarity: 'R4' },
+		])
 	})
 })

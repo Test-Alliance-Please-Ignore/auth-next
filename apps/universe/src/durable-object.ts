@@ -15,6 +15,7 @@ import {
 	normalizeUniverseServiceName,
 	resolveUniverseFuelModuleRule,
 	selectNearestMoonByPosition,
+	TYPE_SLOT_DOGMA_ATTRIBUTE_IDS,
 	UniverseMoonResourceSchema,
 	UniverseMoonSchema,
 	UniverseMoonWithResourcesSchema,
@@ -58,6 +59,7 @@ import type {
 	InvType,
 	TypeMaterial,
 	TypeMetadata,
+	TypeSlotCapacities,
 	Universe,
 	UniverseConstellation,
 	UniverseFuelModuleRule,
@@ -139,6 +141,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	private regionsBySystemCache: LRUCache<{ regionId: string; regionName: string }>
 	private regionConnectionsCache: LRUCache<Array<{ fromRegionId: string; toRegionId: string }>>
 	private typeMaterialsCache: LRUCache<TypeMaterial[]>
+	private typeSlotCapacitiesCache: LRUCache<TypeSlotCapacities>
 	private structureFuelRuleCache: StructureFuelRuleCache | null = null
 	private structureFuelRuleCachePromise: Promise<StructureFuelRuleCache> | null = null
 	private readonly esiRateLimits: EsiRateLimitGuard
@@ -178,6 +181,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			200
 		)
 		this.typeMaterialsCache = new LRUCache<TypeMaterial[]>(8000)
+		this.typeSlotCapacitiesCache = new LRUCache<TypeSlotCapacities>(2000)
 		this.esiRateLimits = new EsiRateLimitGuard(new EsiRateLimitStore(env.ESI_RATE_LIMITS))
 	}
 
@@ -1154,6 +1158,64 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			logger.error('Failed to resolve type metadata', error)
 			throw error
 		}
+	}
+
+	/** Resolve fitting slot capacities from the SDE type dogma attributes. */
+	async resolveTypeSlotCapacitiesByIds(
+		typeIds: string[]
+	): Promise<Record<string, TypeSlotCapacities>> {
+		if (typeIds.length === 0) return {}
+		if (typeIds.length > 1000) throw new Error('Maximum 1000 typeIds allowed per request')
+
+		const result: Record<string, TypeSlotCapacities> = {}
+		const missingTypeIds: string[] = []
+		for (const typeId of new Set(typeIds)) {
+			const cached = this.typeSlotCapacitiesCache.get(typeId)
+			if (cached) {
+				result[typeId] = cached
+			} else {
+				missingTypeIds.push(typeId)
+			}
+		}
+
+		if (missingTypeIds.length === 0) return result
+
+		const rows = await this.db
+			.select({
+				typeId: universeTypeDogmaAttributes.typeId,
+				attributeId: universeTypeDogmaAttributes.attributeId,
+				value: universeTypeDogmaAttributes.value,
+			})
+			.from(universeTypeDogmaAttributes)
+			.where(
+				and(
+					inArray(universeTypeDogmaAttributes.typeId, missingTypeIds),
+					inArray(
+						universeTypeDogmaAttributes.attributeId,
+						Object.values(TYPE_SLOT_DOGMA_ATTRIBUTE_IDS)
+					)
+				)
+			)
+
+		const capacitiesByTypeId = new Map<string, TypeSlotCapacities>()
+		for (const typeId of missingTypeIds) {
+			capacitiesByTypeId.set(typeId, { high: 0, mid: 0, low: 0, rig: 0 })
+		}
+		for (const row of rows) {
+			const capacities = capacitiesByTypeId.get(row.typeId)
+			if (!capacities) continue
+			const value = Math.max(0, Math.trunc(Number(row.value)))
+			if (row.attributeId === '14') capacities.high = value
+			if (row.attributeId === '13') capacities.mid = value
+			if (row.attributeId === '12') capacities.low = value
+			if (row.attributeId === '1137') capacities.rig = value
+		}
+
+		for (const [typeId, capacities] of capacitiesByTypeId) {
+			this.typeSlotCapacitiesCache.set(typeId, capacities)
+			result[typeId] = capacities
+		}
+		return result
 	}
 
 	/**
