@@ -30,6 +30,11 @@
 				"name": "UNIVERSE",
 				"class_name": "Universe",
 				"script_name": "universe"
+			},
+			{
+				"name": "MOON_SCAN",
+				"class_name": "MoonScanDO",
+				"script_name": "moon-scan"
 			}
 		]
 	}

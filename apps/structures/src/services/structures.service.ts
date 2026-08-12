@@ -48,6 +48,7 @@ import {
 	STRUCTURE_SYNC_WARNING_STALE_MS,
 } from '@repo/structures'
 import {
+	structureMiningExtractionHistory,
 	structureMiningExtractions,
 	structureMoonDrills,
 	structureMoonGeographies,
@@ -70,11 +71,14 @@ import {
 import type { DbClient } from '@repo/db-utils'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { InventoryDisplayBay } from '@repo/inventory-display'
+import type { MoonScanDO } from '@repo/moon-scan'
 import type {
 	StructureListQuery as RepoStructureListQuery,
+	StructureMiningCitadelExtractionHistory as RepoStructureMiningCitadelExtractionHistory,
 	StructureMiningCitadelListItem as RepoStructureMiningCitadelListItem,
 	StructureMiningCitadelListResponse as RepoStructureMiningCitadelListResponse,
 	StructureMiningCitadelSummary as RepoStructureMiningCitadelSummary,
+	StructureMoonComposition as RepoStructureMoonComposition,
 	StructureMoonDrillListItem as RepoStructureMoonDrillListItem,
 	StructureMoonDrillListResponse as RepoStructureMoonDrillListResponse,
 	StructureMoonDrillSummary as RepoStructureMoonDrillSummary,
@@ -97,6 +101,7 @@ import type {
 	StructureSovereigntyTransportState,
 	StructureTab,
 } from '@repo/structures'
+import type { Universe } from '@repo/universe'
 import type { Env, SessionUser } from '../context'
 import type { DbSchema } from '../db'
 
@@ -355,6 +360,7 @@ export interface StructureMoonDrillSummary {
 }
 
 export interface StructureMiningCitadelSummary {
+	extractionId: string | null
 	moonId: string
 	moonName: string | null
 	planetId: string | null
@@ -364,6 +370,7 @@ export interface StructureMiningCitadelSummary {
 	extractionStartTime: string | null
 	chunkArrivalTime: string | null
 	naturalDecayTime: string | null
+	composition?: RepoStructureMoonComposition | null
 }
 
 export type StructureInventoryItemSummary = InventoryDisplayBay['items'][number]
@@ -383,6 +390,7 @@ interface StructureTabData {
 	skyhook?: StructureSkyhookSummary | null
 	moonDrill?: StructureMoonDrillSummary | null
 	miningExtraction?: StructureMiningCitadelSummary | null
+	miningExtractionHistory?: RepoStructureMiningCitadelExtractionHistory[]
 	inventoryBays?: StructureInventoryBaySummary[]
 }
 
@@ -407,6 +415,7 @@ export interface StructureDetailResult extends Omit<StructureListItem, 'canViewD
 	skyhook?: StructureSkyhookSummary | null
 	moonDrill?: StructureMoonDrillSummary | null
 	miningExtraction?: StructureMiningCitadelSummary | null
+	miningExtractionHistory?: RepoStructureMiningCitadelExtractionHistory[]
 	inventoryBays?: StructureInventoryBaySummary[]
 	fittingItems?: StructureFittingItemSummary[]
 }
@@ -1021,13 +1030,25 @@ function summarizeStructureMoonDrill(
 
 function summarizeStructureMiningCitadel(
 	miningExtraction: typeof structureMiningExtractions.$inferSelect | null,
-	moonGeography: typeof structureMoonGeographies.$inferSelect | null
+	moonGeography: typeof structureMoonGeographies.$inferSelect | null,
+	composition: RepoStructureMoonComposition | null = null,
+	extractionHistory: Array<typeof structureMiningExtractionHistory.$inferSelect> = []
 ): RepoStructureMiningCitadelSummary | null {
 	if (!miningExtraction || !moonGeography) {
 		return null
 	}
 
 	return {
+		extractionId:
+			extractionHistory.find(
+				(history) =>
+					history.structureId === miningExtraction.structureId &&
+					history.moonId === moonGeography.moonId &&
+					history.extractionStartTime?.getTime() ===
+						miningExtraction.extractionStartTime?.getTime() &&
+					history.chunkArrivalTime?.getTime() === miningExtraction.chunkArrivalTime?.getTime() &&
+					history.naturalDecayTime?.getTime() === miningExtraction.naturalDecayTime?.getTime()
+			)?.id ?? null,
 		moonId: moonGeography.moonId,
 		moonName: moonGeography.moonName ?? null,
 		planetId: moonGeography.planetId ?? null,
@@ -1043,6 +1064,53 @@ function summarizeStructureMiningCitadel(
 		naturalDecayTime: miningExtraction.naturalDecayTime
 			? miningExtraction.naturalDecayTime.toISOString()
 			: null,
+		composition,
+	}
+}
+
+function summarizeStructureMiningCitadelExtractionHistory(
+	extraction: typeof structureMiningExtractionHistory.$inferSelect
+): RepoStructureMiningCitadelExtractionHistory {
+	return {
+		id: extraction.id,
+		moonId: extraction.moonId,
+		extractionStartTime: extraction.extractionStartTime.toISOString(),
+		chunkArrivalTime: extraction.chunkArrivalTime.toISOString(),
+		naturalDecayTime: extraction.naturalDecayTime.toISOString(),
+		firstObservedAt: extraction.firstObservedAt.toISOString(),
+	}
+}
+
+async function loadMiningCitadelMoonComposition(
+	env: Env,
+	moonId: string,
+	structureId: string
+): Promise<RepoStructureMoonComposition | null> {
+	try {
+		const moonScan = getStub<MoonScanDO>(env.MOON_SCAN, 'default')
+		const composition = await moonScan.getVerifiedComposition(moonId)
+		if (!composition) {
+			return null
+		}
+
+		const typeIds = [...new Set(composition.ores.map((ore) => ore.oreTypeId))]
+		const universe = getStub<Universe>(env.UNIVERSE, 'default')
+		const typeNames = typeIds.length > 0 ? await universe.resolveTypeNamesByIds(typeIds) : {}
+
+		return {
+			ores: composition.ores.map((ore) => ({
+				typeId: ore.oreTypeId,
+				typeName: typeNames[ore.oreTypeId]?.typeName ?? null,
+				quantity: ore.quantity,
+			})),
+		}
+	} catch (error) {
+		logger.warn('[Structures] Failed to enrich mining citadel moon composition', {
+			moonId,
+			structureId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return null
 	}
 }
 
@@ -1118,6 +1186,7 @@ function buildSyntheticSovereigntyStructureRow(
 }
 
 async function loadStructureTabDetailData(
+	env: Env,
 	db: DbClient<DbSchema>,
 	structure: StructureSourceRecord
 ): Promise<StructureTabData | null> {
@@ -1178,19 +1247,39 @@ async function loadStructureTabDetailData(
 	}
 
 	if (tab === 'mining-citadels') {
-		const [miningExtractionRow, moonGeographyRow] = await Promise.all([
+		const [miningExtractionRow, moonGeographyRow, extractionHistoryRows] = await Promise.all([
 			db.query.structureMiningExtractions.findFirst({
 				where: eq(structureMiningExtractions.structureId, structure.structureId),
 			}),
 			db.query.structureMoonGeographies.findFirst({
 				where: eq(structureMoonGeographies.structureId, structure.structureId),
 			}),
+			db.query.structureMiningExtractionHistory.findMany({
+				where: eq(structureMiningExtractionHistory.structureId, structure.structureId),
+				orderBy: [desc(structureMiningExtractionHistory.extractionStartTime)],
+			}),
 		])
+		const composition =
+			miningExtractionRow && moonGeographyRow
+				? await loadMiningCitadelMoonComposition(
+						env,
+						moonGeographyRow.moonId,
+						structure.structureId
+					)
+				: null
 		return {
 			miningExtraction:
 				miningExtractionRow && moonGeographyRow
-					? summarizeStructureMiningCitadel(miningExtractionRow, moonGeographyRow)
+					? summarizeStructureMiningCitadel(
+							miningExtractionRow,
+							moonGeographyRow,
+							composition,
+							extractionHistoryRows
+						)
 					: null,
+			miningExtractionHistory: extractionHistoryRows.map(
+				summarizeStructureMiningCitadelExtractionHistory
+			),
 		}
 	}
 
@@ -1778,7 +1867,7 @@ async function getStructureContext(
 			user.is_admin || canEditStructure(access, sovereigntyHub.corporationId, structureTab)
 
 		const [tabData, inventoryBays, fittingItems] = await Promise.all([
-			loadStructureTabDetailData(db, syntheticStructure),
+			loadStructureTabDetailData(env, db, syntheticStructure),
 			loadStructureInventoryDetailData(db, syntheticStructure),
 			loadStructureFittingDetailData(env, syntheticStructure),
 		])
@@ -1829,7 +1918,7 @@ async function getStructureContext(
 	}
 
 	const [tabData, inventoryBays, fittingItems] = await Promise.all([
-		loadStructureTabDetailData(db, structure),
+		loadStructureTabDetailData(env, db, structure),
 		loadStructureInventoryDetailData(db, structure),
 		loadStructureFittingDetailData(env, structure),
 	])

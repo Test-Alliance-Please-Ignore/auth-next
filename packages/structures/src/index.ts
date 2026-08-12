@@ -732,10 +732,29 @@ export interface StructureSkyhookSummary {
 
 export interface StructureMoonDrillSummary extends StructureMoonGeography {}
 
+export interface StructureMoonComposition {
+	ores: Array<{
+		typeId: string
+		typeName: string | null
+		quantity: string
+	}>
+}
+
 export interface StructureMiningCitadelSummary extends StructureMoonGeography {
+	extractionId: string | null
 	extractionStartTime: string | null
 	chunkArrivalTime: string | null
 	naturalDecayTime: string | null
+	composition?: StructureMoonComposition | null
+}
+
+export interface StructureMiningCitadelExtractionHistory {
+	id: string
+	moonId: string
+	extractionStartTime: string
+	chunkArrivalTime: string
+	naturalDecayTime: string
+	firstObservedAt: string
 }
 
 export interface StructureFittingItem {
@@ -769,6 +788,7 @@ export interface StructureDetailResult extends Omit<StructureListItem, 'canViewD
 	skyhook?: StructureSkyhookSummary | null
 	moonDrill?: StructureMoonDrillSummary | null
 	miningExtraction?: StructureMiningCitadelSummary | null
+	miningExtractionHistory?: StructureMiningCitadelExtractionHistory[]
 	inventoryBays?: StructureInventoryBay[]
 	fittingItems?: StructureFittingItem[]
 }

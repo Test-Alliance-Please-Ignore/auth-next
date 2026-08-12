@@ -49,6 +49,7 @@ import {
 	corporationWalletJournal,
 	corporationWallets,
 	corporationWalletTransactions,
+	structureMiningExtractionHistory,
 	structureMiningExtractions,
 	structureMoonDrills,
 	structureMoonGeographies,
@@ -5279,9 +5280,48 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		miningExtractions: EsiCorporationMiningExtraction[],
 		options: {
 			pruneCandidateIds?: readonly string[]
+			historyExtractions?: readonly EsiCorporationMiningExtraction[]
 		} = {}
 	): Promise<void> {
 		const now = new Date()
+		const historyValues = (options.historyExtractions ?? miningExtractions).flatMap(
+			(extraction) => {
+				const extractionStartTime = parseDateOrNull(extraction.extraction_start_time)
+				const chunkArrivalTime = parseDateOrNull(extraction.chunk_arrival_time)
+				const naturalDecayTime = parseDateOrNull(extraction.natural_decay_time)
+				if (!extraction.moon_id || !extractionStartTime || !chunkArrivalTime || !naturalDecayTime) {
+					return []
+				}
+
+				return [
+					{
+						structureId: String(extraction.structure_id),
+						corporationId,
+						moonId: String(extraction.moon_id),
+						extractionStartTime,
+						chunkArrivalTime,
+						naturalDecayTime,
+						firstObservedAt: now,
+					},
+				]
+			}
+		)
+		const BATCH_SIZE = STRUCTURE_SNAPSHOT_BATCH_SIZE
+		for (let i = 0; i < historyValues.length; i += BATCH_SIZE) {
+			const batch = historyValues.slice(i, i + BATCH_SIZE)
+			await this.getDb()
+				.insert(structureMiningExtractionHistory)
+				.values(batch)
+				.onConflictDoNothing({
+					target: [
+						structureMiningExtractionHistory.structureId,
+						structureMiningExtractionHistory.extractionStartTime,
+						structureMiningExtractionHistory.chunkArrivalTime,
+						structureMiningExtractionHistory.naturalDecayTime,
+					],
+				})
+		}
+
 		const hasExplicitPruneCandidates = options.pruneCandidateIds !== undefined
 		const existingRows = hasExplicitPruneCandidates
 			? []
@@ -5312,7 +5352,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const departedStructureIds = hasExplicitPruneCandidates
 			? [...new Set(options.pruneCandidateIds?.map((structureId) => String(structureId)) ?? [])]
 			: filterPrunableStructureIds(existingRows, currentStructureIds, now)
-		const BATCH_SIZE = STRUCTURE_SNAPSHOT_BATCH_SIZE
 		for (let i = 0; i < values.length; i += BATCH_SIZE) {
 			const batch = values.slice(i, i + BATCH_SIZE)
 			await this.getDb()

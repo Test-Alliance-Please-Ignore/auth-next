@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getStub } from '@repo/do-utils'
+
 import {
 	canEditStructure,
 	canViewDetailsStructure,
@@ -52,6 +54,9 @@ type FakeDb = {
 		}
 		structureMiningExtractions: {
 			findFirst: ReturnType<typeof vi.fn>
+		}
+		structureMiningExtractionHistory: {
+			findMany: ReturnType<typeof vi.fn>
 		}
 		structureMoonGeographies: {
 			findFirst: ReturnType<typeof vi.fn>
@@ -177,6 +182,9 @@ function makeDb(
 			},
 			structureMiningExtractions: {
 				findFirst: vi.fn().mockResolvedValue(null),
+			},
+			structureMiningExtractionHistory: {
+				findMany: vi.fn().mockResolvedValue([]),
 			},
 			structureMoonGeographies: {
 				findFirst: vi.fn().mockResolvedValue(null),
@@ -419,5 +427,92 @@ describe('structure permission gating', () => {
 
 		expect(result?.skyhook?.state).toBe('reinforced')
 		expect(result?.skyhook?.reinforcementTimerEnd).toBe(reinforcementTimerEnd)
+	})
+
+	it('enriches an active mining extraction with the verified moon composition', async () => {
+		const miningStructure = {
+			structureId: 'mining-1',
+			corporationId: 'corp-1',
+			name: 'Mining One',
+			typeId: '35835',
+			typeName: 'Athanor',
+			systemId: '30005196',
+			systemName: 'Ahbazon',
+			regionId: '10000001',
+			regionName: 'Domain',
+			state: 'online',
+			nextReinforceApply: null,
+			stateTimerEnd: null,
+			unanchorsAt: null,
+			fuelExpires: null,
+			fuelAmount: null,
+			fuelBurnRate: null,
+			lowPower: false,
+			syncStatus: 'ok',
+			syncFailureReason: null,
+			lastSyncedAt: new Date('2026-01-01T00:00:00Z'),
+			updatedAt: new Date('2026-01-01T00:00:00Z'),
+		}
+		const db = makeDb({ structure: miningStructure })
+		const miningExtraction = {
+			structureId: 'mining-1',
+			corporationId: 'corp-1',
+			extractionStartTime: new Date('2026-08-01T00:00:00Z'),
+			chunkArrivalTime: new Date('2026-08-02T00:00:00Z'),
+			naturalDecayTime: new Date('2026-08-02T03:00:00Z'),
+		}
+		const moonGeography = {
+			structureId: 'mining-1',
+			corporationId: 'corp-1',
+			moonId: '40129194',
+			moonName: 'Moon 1',
+			planetId: '40129193',
+			planetName: 'Planet 1',
+			systemId: '30005196',
+			systemName: 'Ahbazon',
+		}
+		db.query.structureMiningExtractions.findFirst.mockResolvedValue(miningExtraction)
+		db.query.structureMoonGeographies.findFirst.mockResolvedValue(moonGeography)
+
+		const moonScan = {
+			getVerifiedComposition: vi.fn().mockResolvedValue({
+				moonId: '40129194',
+				sourceScanId: 'scan-1',
+				verifiedAt: '2026-07-31T00:00:00.000Z',
+				verifiedBy: null,
+				ores: [{ oreTypeId: '45490', quantity: '0.25' }],
+			}),
+		}
+		const universe = {
+			resolveTypeNamesByIds: vi.fn().mockResolvedValue({
+				'45490': { typeName: 'Chromite' },
+			}),
+		}
+		const env = {
+			MOON_SCAN: {},
+			UNIVERSE: {},
+			EVE_CORPORATION_DATA: {},
+		}
+		vi.mocked(getStub).mockImplementation((namespace) => {
+			if (namespace === env.MOON_SCAN) return moonScan as never
+			return universe as never
+		})
+
+		const result = await getStructureDetail(
+			env as never,
+			db as never,
+			{
+				id: 'user-details',
+				is_admin: false,
+				roles: ['urn:structures:all:details'],
+			},
+			'mining-1'
+		)
+
+		expect(moonScan.getVerifiedComposition).toHaveBeenCalledWith('40129194')
+		expect(universe.resolveTypeNamesByIds).toHaveBeenCalledWith(['45490'])
+		expect(result?.miningExtraction?.composition).toEqual({
+			ores: [{ typeId: '45490', typeName: 'Chromite', quantity: '0.25' }],
+		})
 	})
 })

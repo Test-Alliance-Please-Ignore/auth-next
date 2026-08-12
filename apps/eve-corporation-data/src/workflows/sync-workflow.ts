@@ -76,7 +76,7 @@ import type {
 } from './types'
 
 const STEP_RETRY_OPTIONS = esiRetryOptions
-const MINING_CITADEL_STRUCTURE_TYPE_IDS = new Set(['35833', '35834'])
+const MINING_CITADEL_STRUCTURE_TYPE_IDS = new Set(['35835', '35836'])
 
 function isMiningCitadelStructure(structure: Pick<EsiCorporationStructure, 'type_id'>): boolean {
 	return MINING_CITADEL_STRUCTURE_TYPE_IDS.has(structure.type_id)
@@ -763,7 +763,10 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 										this.env,
 										corporationId,
 										prioritizedMiningExtractions,
-										{ pruneCandidateIds: priorityQueue.pruneCandidateIds }
+										{
+											pruneCandidateIds: priorityQueue.pruneCandidateIds,
+											historyExtractions: liveMiningExtractions,
+										}
 									)
 								} catch (error) {
 									const metadata =

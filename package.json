@@ -4,9 +4,11 @@
 	"private": true,
 	"sideEffects": false,
 	"scripts": {
+		"capture:eve-sso": "node scripts/capture-eve-sso.mjs",
 		"check:deps": "runx check --deps",
 		"check:format": "runx check --format",
 		"check:lint:all": "run-eslint",
+		"diagnose:corporation-mining-extractions": "node scripts/diagnose-corporation-mining-extractions.mjs",
 		"diagnose:sovereignty-alliance": "node scripts/diagnose-sovereignty-alliance.mjs",
 		"test": "vitest",
 		"test:ci": "run-vitest-ci"

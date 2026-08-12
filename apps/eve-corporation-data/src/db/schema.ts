@@ -15,6 +15,7 @@ import {
 } from 'drizzle-orm/pg-core'
 
 import {
+	structureMiningExtractionHistory,
 	structureMiningExtractions,
 	structureMoonDrills,
 	structureMoonGeographies,
@@ -28,6 +29,7 @@ export {
 	structureMoonDrills,
 	structureMoonGeographies,
 	structureMiningExtractions,
+	structureMiningExtractionHistory,
 	structureSkyhookReagents,
 	structureSkyhooks,
 	structureSovereigntyHubs,
@@ -699,6 +701,7 @@ export const schema = {
 	structureMoonDrills,
 	structureMoonGeographies,
 	structureMiningExtractions,
+	structureMiningExtractionHistory,
 	corporationStructureInventorySnapshots,
 	corporationStructureInventory,
 }

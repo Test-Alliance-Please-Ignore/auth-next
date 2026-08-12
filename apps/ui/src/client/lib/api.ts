@@ -19,6 +19,7 @@ import type {
 	StructureCommonListSortBy as RepoStructureCommonListSortBy,
 	StructureListQuery as RepoStructureListQuery,
 	StructureListSummary as RepoStructureListSummary,
+	StructureMiningCitadelExtractionHistory as RepoStructureMiningCitadelExtractionHistory,
 	StructureMiningCitadelListItem as RepoStructureMiningCitadelListItem,
 	StructureMiningCitadelListQuery as RepoStructureMiningCitadelListQuery,
 	StructureMiningCitadelListResponse as RepoStructureMiningCitadelListResponse,
@@ -978,6 +979,7 @@ export interface StructureSkyhookSummary {
 
 export type StructureMoonDrillSummary = RepoStructureMoonDrillSummary
 export type StructureMiningCitadelSummary = RepoStructureMiningCitadelSummary
+export type StructureMiningCitadelExtractionHistory = RepoStructureMiningCitadelExtractionHistory
 
 export type StructureSovereigntyListItem = RepoStructureSovereigntyListItem
 
@@ -1033,6 +1035,7 @@ export interface StructureDetailResult extends Omit<StructureListItem, 'canViewD
 	skyhook?: StructureSkyhookSummary | null
 	moonDrill?: StructureMoonDrillSummary | null
 	miningExtraction?: StructureMiningCitadelSummary | null
+	miningExtractionHistory?: StructureMiningCitadelExtractionHistory[]
 	inventoryBays?: StructureInventoryBay[]
 	fittingItems?: StructureFittingItem[]
 }

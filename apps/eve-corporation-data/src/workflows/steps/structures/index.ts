@@ -435,7 +435,10 @@ export async function storeMiningExtractionEnrichment(
 	env: Env,
 	corporationId: string,
 	enrichment: MiningExtractionsData,
-	options: { pruneCandidateIds?: readonly string[] } = {}
+	options: {
+		pruneCandidateIds?: readonly string[]
+		historyExtractions?: ReadonlyArray<MiningExtractionsData[number]>
+	} = {}
 ): Promise<void> {
 	const corpData = getCorporationDataStub(env, corporationId)
 	await corpData.storeMiningExtractions(corporationId, enrichment, options)
