@@ -342,6 +342,35 @@ export const structureMiningExtractions = pgTable(
 	]
 )
 
+export const structureMiningExtractionHistory = pgTable(
+	'structure_mining_extraction_history',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		structureId: text('structure_id')
+			.notNull()
+			.references(() => corporationStructures.structureId, { onDelete: 'cascade' }),
+		corporationId: text('corporation_id')
+			.notNull()
+			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
+		moonId: text('moon_id').notNull(),
+		extractionStartTime: timestamp('extraction_start_time', { withTimezone: true }).notNull(),
+		chunkArrivalTime: timestamp('chunk_arrival_time', { withTimezone: true }).notNull(),
+		naturalDecayTime: timestamp('natural_decay_time', { withTimezone: true }).notNull(),
+		firstObservedAt: timestamp('first_observed_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique('sm_extract_hist_identity_key').on(
+			table.structureId,
+			table.extractionStartTime,
+			table.chunkArrivalTime,
+			table.naturalDecayTime
+		),
+		index('sm_citadel_extract_hist_structure_idx').on(table.structureId),
+		index('sm_citadel_extract_hist_corp_idx').on(table.corporationId),
+		index('sm_citadel_extract_hist_start_idx').on(table.extractionStartTime),
+	]
+)
+
 export const structureGroupAlertConfigs = pgTable(
 	'structure_group_alert_configs',
 	{
@@ -380,5 +409,6 @@ export const schema = {
 	structureMoonDrills,
 	structureMoonGeographies,
 	structureMiningExtractions,
+	structureMiningExtractionHistory,
 	structureGroupAlertConfigs,
 }

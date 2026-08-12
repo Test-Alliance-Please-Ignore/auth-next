@@ -1567,7 +1567,10 @@ export interface EveCorporationData {
 	storeMiningExtractions(
 		corporationId: string,
 		extractions: EsiCorporationMiningExtraction[],
-		options?: { pruneCandidateIds?: readonly string[] }
+		options?: {
+			pruneCandidateIds?: readonly string[]
+			historyExtractions?: readonly EsiCorporationMiningExtraction[]
+		}
 	): Promise<void>
 
 	/**

@@ -878,13 +878,45 @@ export default function StructuresDetailPage() {
 	const isSkyhookStructure = structureFamily === 'skyhooks'
 	const hasMoonDrillSummary = structureFamily === 'moon-drills' && Boolean(structure?.moonDrill)
 	const hasMiningExtractionSummary =
-		structureFamily === 'mining-citadels' && Boolean(structure?.miningExtraction)
+		structureFamily === 'mining-citadels' &&
+		(Boolean(structure?.miningExtraction) || (structure?.miningExtractionHistory?.length ?? 0) > 0)
 	const moonDrill = structure?.moonDrill ?? null
 	const miningExtraction = structure?.miningExtraction ?? null
+	const miningExtractionHistory = structure?.miningExtractionHistory ?? []
+	const hasStructure = Boolean(structure)
+	const [selectedExtractionId, setSelectedExtractionId] = useState<string | null>(null)
+	const currentExtractionId = miningExtraction?.extractionId ?? null
+	const firstExtractionId = miningExtractionHistory[0]?.id ?? null
+	const selectedHistoricalExtraction = miningExtractionHistory.find(
+		(extraction) => extraction.id === selectedExtractionId
+	)
+	const selectedExtraction =
+		selectedHistoricalExtraction ??
+		(selectedExtractionId === null || selectedExtractionId === currentExtractionId
+			? miningExtraction
+			: null)
+	const extractionOptions = useMemo<SelectOption[]>(() => {
+		return miningExtractionHistory.map((extraction) => ({
+			value: extraction.id,
+			label:
+				extraction.id === currentExtractionId
+					? `Current extraction (${formatNullableDateTime(extraction.extractionStartTime)})`
+					: `${formatNullableDateTime(extraction.extractionStartTime)} - ${formatNullableDateTime(extraction.naturalDecayTime)}`,
+			description: `Chunk arrival: ${formatNullableDateTime(extraction.chunkArrivalTime)}`,
+		}))
+	}, [currentExtractionId, miningExtractionHistory])
 	const sovereigntyHub = structure?.sovereignty?.hub ?? null
 	const sovereigntyAllianceId = structure?.sovereignty?.allianceId ?? null
 	const sovereigntyAllianceName = structure?.sovereignty?.allianceName ?? null
 	const sovereigntyVulnerabilityState = getSovereigntyVulnerabilityState(structure?.sovereignty)
+
+	useEffect(() => {
+		if (!hasStructure) {
+			setSelectedExtractionId(null)
+			return
+		}
+		setSelectedExtractionId(currentExtractionId ?? firstExtractionId)
+	}, [currentExtractionId, firstExtractionId, hasStructure, structureId])
 	const { data: sovereigntyStructures = [] } = useQuery({
 		queryKey: ['structures', 'sovereignty', corporationId],
 		queryFn: async () => {
@@ -1777,14 +1809,24 @@ export default function StructuresDetailPage() {
 				<Card>
 					<CardHeader>
 						<CardTitle>Mining Citadel</CardTitle>
-						<CardDescription>
-							Last known moon extraction snapshot for this structure.
-						</CardDescription>
+						<CardDescription>Recorded extraction periods for this structure.</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4 text-sm">
-						{!miningExtraction ? (
+						{extractionOptions.length > 0 ? (
+							<div>
+								<div className="mb-1 text-muted-foreground">Extraction period</div>
+								<Select
+									options={extractionOptions}
+									value={selectedExtractionId ?? ''}
+									onValueChange={(value) => setSelectedExtractionId(value)}
+									placeholder="Select an extraction period"
+									showValueHint
+								/>
+							</div>
+						) : null}
+						{!selectedExtraction ? (
 							<div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-yellow-50">
-								Mining extraction snapshot has not been ingested yet for this structure.
+								No mining extraction period is currently selected for this structure.
 							</div>
 						) : null}
 						<div className="grid gap-4 md:grid-cols-2">
@@ -1792,8 +1834,10 @@ export default function StructuresDetailPage() {
 								<div className="text-muted-foreground">Moon</div>
 								<div className="font-medium">
 									{stripLeadingContextName(
-										miningExtraction?.moonName ?? miningExtraction?.moonId,
-										miningExtraction?.planetName
+										miningExtraction?.moonName ??
+											selectedHistoricalExtraction?.moonId ??
+											miningExtraction?.moonId,
+										miningExtraction?.planetName ?? null
 									)}
 								</div>
 							</div>
@@ -1812,22 +1856,49 @@ export default function StructuresDetailPage() {
 							<div>
 								<div className="text-muted-foreground">Extraction Start</div>
 								<div className="font-medium">
-									{formatNullableDateTime(miningExtraction?.extractionStartTime)}
+									{formatNullableDateTime(selectedExtraction?.extractionStartTime ?? null)}
 								</div>
 							</div>
 							<div>
 								<div className="text-muted-foreground">Chunk Arrival</div>
 								<div className="font-medium">
-									{formatNullableDateTime(miningExtraction?.chunkArrivalTime)}
+									{formatNullableDateTime(selectedExtraction?.chunkArrivalTime ?? null)}
 								</div>
 							</div>
 							<div>
 								<div className="text-muted-foreground">Natural Decay</div>
 								<div className="font-medium">
-									{formatNullableDateTime(miningExtraction?.naturalDecayTime)}
+									{formatNullableDateTime(selectedExtraction?.naturalDecayTime ?? null)}
 								</div>
 							</div>
 						</div>
+						{selectedExtraction === miningExtraction && miningExtraction?.composition ? (
+							<div className="rounded-md border border-border/60 bg-muted/20">
+								<div className="border-b border-border/60 px-3 py-2">
+									<div className="font-medium">Current Moon Composition</div>
+								</div>
+								<Table>
+									<TableHeader>
+										<TableRow>
+											<TableHead>Mineral</TableHead>
+											<TableHead className="text-right">Composition</TableHead>
+										</TableRow>
+									</TableHeader>
+									<TableBody>
+										{[...miningExtraction.composition.ores]
+											.sort((left, right) => Number(right.quantity) - Number(left.quantity))
+											.map((ore) => (
+												<TableRow key={ore.typeId}>
+													<TableCell>{ore.typeName ?? `Type ${ore.typeId}`}</TableCell>
+													<TableCell className="text-right tabular-nums">
+														{(Number(ore.quantity) * 100).toFixed(2)}%
+													</TableCell>
+												</TableRow>
+											))}
+									</TableBody>
+								</Table>
+							</div>
+						) : null}
 					</CardContent>
 				</Card>
 			)}

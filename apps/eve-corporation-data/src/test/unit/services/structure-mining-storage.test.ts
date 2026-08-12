@@ -6,7 +6,8 @@ import { EveCorporationDataDO } from '../../../durable-object'
 const mocks = vi.hoisted(() => {
 	const findMany = vi.fn()
 	const onConflictDoUpdate = vi.fn()
-	const values = vi.fn(() => ({ onConflictDoUpdate }))
+	const onConflictDoNothing = vi.fn()
+	const values = vi.fn(() => ({ onConflictDoUpdate, onConflictDoNothing }))
 	const insert = vi.fn(() => ({ values }))
 	const deleteWhere = vi.fn().mockResolvedValue(undefined)
 	const deleteMock = vi.fn(() => ({ where: deleteWhere }))
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => {
 	return {
 		findMany,
 		onConflictDoUpdate,
+		onConflictDoNothing,
 		values,
 		insert,
 		deleteMock,
@@ -91,6 +93,7 @@ describe('storeMiningExtractions', () => {
 
 		expect(mocks.resolveMoonGeographyByIds).not.toHaveBeenCalled()
 		expect(mocks.insert).toHaveBeenCalled()
+		expect(mocks.onConflictDoNothing).toHaveBeenCalled()
 		expect(mocks.values).toHaveBeenCalledWith([
 			expect.objectContaining({
 				structureId: 'structure-1',
@@ -99,6 +102,51 @@ describe('storeMiningExtractions', () => {
 				sourceSyncAt: expect.any(Date),
 			}),
 		])
+	})
+
+	it('records every complete live extraction without pruning history', async () => {
+		vi.clearAllMocks()
+		const doInstance = new EveCorporationDataDO(
+			{} as DurableObjectState,
+			{
+				DATABASE_URL: 'postgres://example',
+				UNIVERSE: {} as never,
+				EVE_TOKEN_STORE: {} as never,
+			} as never
+		)
+
+		await doInstance.storeMiningExtractions(
+			'corp-1',
+			[
+				{
+					structure_id: 'structure-1',
+					moon_id: 'moon-1',
+					extraction_start_time: '2026-07-01T00:00:00.000Z',
+					chunk_arrival_time: '2026-07-02T00:00:00.000Z',
+					natural_decay_time: '2026-07-03T00:00:00.000Z',
+					raw: {},
+				},
+				{
+					structure_id: 'structure-2',
+					moon_id: 'moon-2',
+					extraction_start_time: '2026-07-04T00:00:00.000Z',
+					chunk_arrival_time: '2026-07-05T00:00:00.000Z',
+					natural_decay_time: '2026-07-06T00:00:00.000Z',
+					raw: {},
+				},
+			] as never,
+			{ pruneCandidateIds: [] }
+		)
+
+		expect(mocks.onConflictDoNothing).toHaveBeenCalledWith({
+			target: expect.any(Array),
+		})
+		expect(mocks.values).toHaveBeenCalledWith(
+			expect.arrayContaining([
+				expect.objectContaining({ structureId: 'structure-1', moonId: 'moon-1' }),
+				expect.objectContaining({ structureId: 'structure-2', moonId: 'moon-2' }),
+			])
+		)
 	})
 
 	it('clears stale mining extraction rows when the ESI extraction list is empty', async () => {

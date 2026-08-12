@@ -751,7 +751,7 @@ describe('EveCorporationSyncWorkflow', () => {
 		fetchStructuresMock.mockResolvedValue([
 			{
 				structure_id: '1000001',
-				type_id: '35833',
+				type_id: '35835',
 			},
 		])
 		fetchSovereigntyEnrichmentMock.mockResolvedValue(null)
@@ -818,7 +818,14 @@ describe('EveCorporationSyncWorkflow', () => {
 					structure_id: '1000001',
 				},
 			],
-			{ pruneCandidateIds: [] }
+			{
+				pruneCandidateIds: [],
+				historyExtractions: [
+					{
+						structure_id: '1000001',
+					},
+				],
+			}
 		)
 		expect(syncAssetsMock).toHaveBeenCalledWith(env, '693378155', '900000001')
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
@@ -848,7 +855,7 @@ describe('EveCorporationSyncWorkflow', () => {
 		fetchStructuresMock.mockResolvedValue([
 			{
 				structure_id: '2000001',
-				type_id: '35833',
+				type_id: '35835',
 			},
 		])
 		fetchSovereigntyEnrichmentMock.mockResolvedValue(null)
@@ -933,7 +940,7 @@ describe('EveCorporationSyncWorkflow', () => {
 		fetchStructuresMock.mockResolvedValue([
 			{
 				structure_id: '1000001',
-				type_id: '35833',
+				type_id: '35835',
 			},
 		])
 		fetchSovereigntyEnrichmentMock.mockResolvedValue(null)
