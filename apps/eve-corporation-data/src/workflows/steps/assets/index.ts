@@ -30,7 +30,7 @@ export async function syncAssets(
 		inventoryRowCount: result.inventoryRowCount,
 	})
 	if (result.skipReason === 'no-owned-structures') {
-		logger.warn(
+		logger.info(
 			'[AssetsStep] Structure inventory snapshot was cleared because no owned structures were found',
 			{
 				corporationId,

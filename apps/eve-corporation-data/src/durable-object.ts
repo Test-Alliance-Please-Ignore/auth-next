@@ -5996,7 +5996,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		let structureRefreshFailed = false
 
 		if (ownedStructureIds.size === 0) {
-			logger.warn(
+			logger.info(
 				'[EveCorporationData] No owned structures available for inventory filtering; attempting a structures refresh',
 				{ corporationId }
 			)
