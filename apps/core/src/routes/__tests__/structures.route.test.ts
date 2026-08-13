@@ -267,13 +267,16 @@ describe('structures routes', () => {
 		expect(await response.json()).toEqual({ error: 'Structure permission required' })
 	})
 
-	it('rejects the structure capability endpoint without any structure permission scope', async () => {
+	it('returns no structure access for users without a structure permission scope', async () => {
 		vi.mocked(getCachedUserPermissions).mockResolvedValue([])
 		const app = createApp(makeUserWithoutStructureAccess())
 		const response = await app.request('/api/structures/access')
 
-		expect(response.status).toBe(403)
-		expect(await response.json()).toEqual({ error: 'Structure permission required' })
+		expect(response.status).toBe(200)
+		expect(await response.json()).toEqual({
+			canView: false,
+			hasImplicitSensitiveAccess: false,
+		})
 	})
 
 	it('requires authentication for the structure access capability endpoint', async () => {
