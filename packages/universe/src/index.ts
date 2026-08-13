@@ -22,7 +22,7 @@ import type {
 	EveCharacterId,
 	EveStructureId,
 } from './structure'
-import type { TypeMetadata } from './type-metadata'
+import type { TypeMetadata, TypeSlotCapacities } from './type-metadata'
 
 /**
  * @repo/universe
@@ -245,6 +245,11 @@ export interface Universe {
 	 * @returns Record mapping type IDs to metadata
 	 */
 	resolveTypeMetadataByIds(typeIds: string[]): Promise<Record<string, TypeMetadata>>
+
+	/**
+	 * Resolve static fitting slot capacities from SDE dogma attributes by type ID.
+	 */
+	resolveTypeSlotCapacitiesByIds(typeIds: string[]): Promise<Record<string, TypeSlotCapacities>>
 
 	/**
 	 * Parse inventory text and return structured item metadata.

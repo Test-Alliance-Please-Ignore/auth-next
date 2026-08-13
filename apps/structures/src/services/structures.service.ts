@@ -23,6 +23,14 @@ import { parseStructurePermissionUrn, STRUCTURE_PERMISSION_SCOPE_ALL } from '@re
 import { logger } from '@repo/hono-helpers'
 import { summarizeInventoryRows } from '@repo/inventory-display'
 import {
+	calculateStructureProfitability,
+	FUEL_BLOCK_TYPE_ID,
+	getOreVolume,
+	MAGMATIC_GAS_TYPE_ID,
+	ORE_TYPE_RARITY,
+	parseVolumeM3,
+} from '@repo/moon-scan'
+import {
 	FUEL_BLOCK_TYPE_IDS,
 	getSkyhookFullness,
 	getSkyhookReagentEntriesFromStorageState,
@@ -71,6 +79,7 @@ import {
 import type { DbClient } from '@repo/db-utils'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { InventoryDisplayBay } from '@repo/inventory-display'
+import type { Markets } from '@repo/markets'
 import type { MoonScanDO } from '@repo/moon-scan'
 import type {
 	StructureListQuery as RepoStructureListQuery,
@@ -90,6 +99,7 @@ import type {
 	StructureSovereigntyListSummary as RepoStructureSovereigntyListSummary,
 	SkyhookReagentStorageState,
 	StructureCommonListSortBy,
+	StructureFittingSlotCapacities,
 	StructureMiningCitadelListQuery,
 	StructureMoonDrillListQuery,
 	StructureMoonStructureListSortBy,
@@ -101,7 +111,7 @@ import type {
 	StructureSovereigntyTransportState,
 	StructureTab,
 } from '@repo/structures'
-import type { Universe } from '@repo/universe'
+import type { InvType, Universe } from '@repo/universe'
 import type { Env, SessionUser } from '../context'
 import type { DbSchema } from '../db'
 
@@ -390,6 +400,8 @@ interface StructureTabData {
 	skyhook?: StructureSkyhookSummary | null
 	moonDrill?: StructureMoonDrillSummary | null
 	miningExtraction?: StructureMiningCitadelSummary | null
+	miningExtractionComposition?: RepoStructureMoonComposition | null
+	moonComposition?: RepoStructureMoonComposition | null
 	miningExtractionHistory?: RepoStructureMiningCitadelExtractionHistory[]
 	inventoryBays?: StructureInventoryBaySummary[]
 }
@@ -415,9 +427,12 @@ export interface StructureDetailResult extends Omit<StructureListItem, 'canViewD
 	skyhook?: StructureSkyhookSummary | null
 	moonDrill?: StructureMoonDrillSummary | null
 	miningExtraction?: StructureMiningCitadelSummary | null
+	miningExtractionComposition?: RepoStructureMoonComposition | null
+	moonComposition?: RepoStructureMoonComposition | null
 	miningExtractionHistory?: RepoStructureMiningCitadelExtractionHistory[]
 	inventoryBays?: StructureInventoryBaySummary[]
 	fittingItems?: StructureFittingItemSummary[]
+	fittingSlotCapacities?: StructureFittingSlotCapacities | null
 }
 
 export interface UpdateStructureConfigInput {
@@ -1011,10 +1026,9 @@ function summarizeStructureSkyhook(
 }
 
 function summarizeStructureMoonDrill(
-	moonDrill: typeof structureMoonDrills.$inferSelect | null,
 	moonGeography: typeof structureMoonGeographies.$inferSelect | null
 ): RepoStructureMoonDrillSummary | null {
-	if (!moonDrill || !moonGeography) {
+	if (!moonGeography) {
 		return null
 	}
 
@@ -1081,10 +1095,11 @@ function summarizeStructureMiningCitadelExtractionHistory(
 	}
 }
 
-async function loadMiningCitadelMoonComposition(
+async function loadStructureMoonComposition(
 	env: Env,
 	moonId: string,
-	structureId: string
+	structureId: string,
+	structureType: 'tatara' | 'metenox'
 ): Promise<RepoStructureMoonComposition | null> {
 	try {
 		const moonScan = getStub<MoonScanDO>(env.MOON_SCAN, 'default')
@@ -1093,19 +1108,98 @@ async function loadMiningCitadelMoonComposition(
 			return null
 		}
 
-		const typeIds = [...new Set(composition.ores.map((ore) => ore.oreTypeId))]
+		const oreTypeIds = [...new Set(composition.ores.map((ore) => ore.oreTypeId))]
 		const universe = getStub<Universe>(env.UNIVERSE, 'default')
-		const typeNames = typeIds.length > 0 ? await universe.resolveTypeNamesByIds(typeIds) : {}
+		let typeNames = await universe.resolveTypeNamesByIds(oreTypeIds)
+		let profitability: ReturnType<typeof calculateStructureProfitability> = null
+		let pricingSnapshotDate: string | null = null
+		try {
+			const markets = getStub<Markets>(env.MARKETS, 'region-10000002')
+			const [settings, profiles, typeMaterialsMap] = await Promise.all([
+				moonScan.getExtractionSettings(),
+				moonScan.getStructureProfiles(),
+				oreTypeIds.length > 0
+					? universe.getTypeMaterials(oreTypeIds)
+					: Promise.resolve(
+							{} as Record<string, Array<{ materialTypeId: string; quantity: number }>>
+						),
+			])
+			const materialTypeIds = [
+				...new Set(
+					Object.values(typeMaterialsMap).flatMap((materials) =>
+						materials.map((material) => material.materialTypeId)
+					)
+				),
+			]
+			typeNames = await universe.resolveTypeNamesByIds([...oreTypeIds, ...materialTypeIds])
+			const priceTypeIds = [
+				...new Set([...materialTypeIds, FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID]),
+			]
+			const priceResponse = await markets.getBatchMarketDataAtTime({
+				regionId: 'universe' as Parameters<Markets['getBatchMarketDataAtTime']>[0]['regionId'],
+				typeIds: priceTypeIds as Parameters<Markets['getBatchMarketDataAtTime']>[0]['typeIds'],
+				atTime: new Date(),
+			})
+			profitability = calculateStructureProfitability(
+				composition,
+				{
+					...settings,
+					profiles,
+					typeMaterials: Object.entries(typeMaterialsMap).flatMap(([oreTypeId, materials]) =>
+						materials.map((material) => ({ ...material, oreTypeId }))
+					),
+					materialVolumes: Object.fromEntries(
+						materialTypeIds.map((typeId) => [typeId, parseVolumeM3(typeNames[typeId]?.volume)])
+					),
+					oreVolumes: Object.fromEntries(
+						oreTypeIds.map((typeId) => [
+							typeId,
+							parseVolumeM3(typeNames[typeId]?.volume, getOreVolume(typeId)) ??
+								getOreVolume(typeId),
+						])
+					),
+					prices: priceResponse.prices
+						.filter((price) => price.bestSellPrice !== null)
+						.map((price) => ({ typeId: price.typeId, price: Number(price.bestSellPrice) })),
+				},
+				structureType
+			)
+			pricingSnapshotDate = priceResponse.prices[0]?.snapshotTime
+				? new Date(priceResponse.prices[0].snapshotTime).toISOString().slice(0, 10)
+				: null
+		} catch (error) {
+			logger.warn('[Structures] Failed to enrich moon composition pricing', {
+				moonId,
+				structureId,
+				structureType,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
 
 		return {
 			ores: composition.ores.map((ore) => ({
 				typeId: ore.oreTypeId,
 				typeName: typeNames[ore.oreTypeId]?.typeName ?? null,
 				quantity: ore.quantity,
+				rarity: ORE_TYPE_RARITY[ore.oreTypeId] ?? null,
 			})),
+			profitability: profitability
+				? {
+						...profitability,
+						ores: profitability.ores.map((ore) => ({
+							...ore,
+							oreName: typeNames[ore.oreTypeId]?.typeName ?? ore.oreName,
+							refinesTo: ore.refinesTo.map((material) => ({
+								...material,
+								materialName: typeNames[material.materialTypeId]?.typeName ?? material.materialName,
+							})),
+						})),
+					}
+				: null,
+			pricingSnapshotDate,
 		}
 	} catch (error) {
-		logger.warn('[Structures] Failed to enrich mining citadel moon composition', {
+		logger.warn('[Structures] Failed to enrich structure moon composition', {
 			moonId,
 			structureId,
 			error: error instanceof Error ? error.message : String(error),
@@ -1230,19 +1324,20 @@ async function loadStructureTabDetailData(
 	}
 
 	if (tab === 'moon-drills') {
-		const [moonDrillRow, moonGeographyRow] = await Promise.all([
-			db.query.structureMoonDrills.findFirst({
-				where: eq(structureMoonDrills.structureId, structure.structureId),
-			}),
-			db.query.structureMoonGeographies.findFirst({
-				where: eq(structureMoonGeographies.structureId, structure.structureId),
-			}),
-		])
+		const moonGeographyRow = await db.query.structureMoonGeographies.findFirst({
+			where: eq(structureMoonGeographies.structureId, structure.structureId),
+		})
+		const composition = moonGeographyRow
+			? await loadStructureMoonComposition(
+					env,
+					moonGeographyRow.moonId,
+					structure.structureId,
+					'metenox'
+				)
+			: null
 		return {
-			moonDrill:
-				moonDrillRow && moonGeographyRow
-					? summarizeStructureMoonDrill(moonDrillRow, moonGeographyRow)
-					: null,
+			moonDrill: summarizeStructureMoonDrill(moonGeographyRow ?? null),
+			moonComposition: composition,
 		}
 	}
 
@@ -1259,14 +1354,14 @@ async function loadStructureTabDetailData(
 				orderBy: [desc(structureMiningExtractionHistory.extractionStartTime)],
 			}),
 		])
-		const composition =
-			miningExtractionRow && moonGeographyRow
-				? await loadMiningCitadelMoonComposition(
-						env,
-						moonGeographyRow.moonId,
-						structure.structureId
-					)
-				: null
+		const composition = moonGeographyRow
+			? await loadStructureMoonComposition(
+					env,
+					moonGeographyRow.moonId,
+					structure.structureId,
+					'tatara'
+				)
+			: null
 		return {
 			miningExtraction:
 				miningExtractionRow && moonGeographyRow
@@ -1277,6 +1372,8 @@ async function loadStructureTabDetailData(
 							extractionHistoryRows
 						)
 					: null,
+			miningExtractionComposition: composition,
+			moonComposition: composition,
 			miningExtractionHistory: extractionHistoryRows.map(
 				summarizeStructureMiningCitadelExtractionHistory
 			),
@@ -1287,6 +1384,7 @@ async function loadStructureTabDetailData(
 }
 
 async function loadStructureInventoryDetailData(
+	env: Env,
 	db: DbClient<DbSchema>,
 	structure: StructureSourceRecord
 ): Promise<StructureInventoryBaySummary[]> {
@@ -1312,7 +1410,87 @@ async function loadStructureInventoryDetailData(
 			eq(corporationStructureInventory.structureId, structure.structureId)
 		),
 	})
-	return summarizeInventoryRows(rows)
+	const moonMaterialTypeIds = [
+		...new Set(
+			rows.filter((row) => row.locationFlag === 'MoonMaterialBay').map((row) => row.typeId)
+		),
+	]
+	let moonMaterialTypeDetails: Record<string, InvType | null> = {}
+	if (moonMaterialTypeIds.length > 0) {
+		try {
+			const universe = getStub<Universe>(env.UNIVERSE, 'default')
+			moonMaterialTypeDetails = await universe.resolveTypeNamesByIds(moonMaterialTypeIds)
+		} catch (error) {
+			logger.warn('[Structures] Failed to enrich moon material inventory volumes', {
+				corporationId: structure.corporationId,
+				structureId: structure.structureId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+	const enrichedRows = rows.map((row) => {
+		if (row.locationFlag !== 'MoonMaterialBay') {
+			return row
+		}
+
+		const typeDetails = moonMaterialTypeDetails[row.typeId]
+		const unitVolumeM3 = typeDetails ? Number.parseFloat(typeDetails.volume) : null
+		return {
+			...row,
+			typeName: typeDetails?.typeName ?? null,
+			unitVolumeM3: Number.isFinite(unitVolumeM3) ? unitVolumeM3 : null,
+		}
+	})
+	const bays = summarizeInventoryRows(enrichedRows)
+	const moonMaterialBay = bays.find((bay) => bay.locationFlag === 'MoonMaterialBay')
+	if (!moonMaterialBay || moonMaterialBay.items.length === 0) {
+		return bays
+	}
+
+	try {
+		const markets = getStub<Markets>(env.MARKETS, 'region-10000002')
+		const typeIds = moonMaterialBay.items.map((item) => item.typeId)
+		const priceResponse = await markets.getBatchMarketDataAtTime({
+			regionId: 'universe' as Parameters<Markets['getBatchMarketDataAtTime']>[0]['regionId'],
+			typeIds: typeIds as Parameters<Markets['getBatchMarketDataAtTime']>[0]['typeIds'],
+			atTime: new Date(),
+		})
+		const priceByTypeId = new Map(
+			priceResponse.prices.map((price) => [
+				price.typeId,
+				price.bestSellPrice === null ? null : Number(price.bestSellPrice),
+			])
+		)
+		const pricedItems = moonMaterialBay.items.map((item) => {
+			const unitPrice = priceByTypeId.get(item.typeId)
+			return {
+				...item,
+				estimatedValue:
+					unitPrice === null || unitPrice === undefined ? null : unitPrice * item.quantity,
+			}
+		})
+		const pricedValues = pricedItems
+			.map((item) => item.estimatedValue)
+			.filter((value): value is number => value !== null)
+
+		return bays.map((bay) =>
+			bay.locationFlag === 'MoonMaterialBay'
+				? {
+						...bay,
+						items: pricedItems,
+						totalEstimatedValue:
+							pricedValues.length > 0 ? pricedValues.reduce((sum, value) => sum + value, 0) : null,
+					}
+				: bay
+		)
+	} catch (error) {
+		logger.warn('[Structures] Failed to enrich moon material inventory prices', {
+			corporationId: structure.corporationId,
+			structureId: structure.structureId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return bays
+	}
 }
 
 const STRUCTURE_FITTING_SLOT_ORDER: Array<StructureFittingItemSummary['flagName']> = [
@@ -1343,47 +1521,71 @@ function compareStructureFittingItems(
 async function loadStructureFittingDetailData(
 	env: Env,
 	structure: StructureSourceRecord
-): Promise<StructureFittingItemSummary[]> {
-	const structureTab = getStructureTab(structure)
-	if (structureTab !== 'structures') {
-		return []
-	}
+): Promise<{
+	items: StructureFittingItemSummary[]
+	slotCapacities: StructureFittingSlotCapacities | null
+}> {
+	const corpData = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, structure.corporationId)
+	const universe = getStub<Universe>(env.UNIVERSE, 'default')
+	const [rawAssets, slotCapacityResult] = await Promise.all([
+		typeof corpData?.searchAssets === 'function'
+			? corpData
+					.searchAssets(structure.corporationId, {
+						locationId: structure.structureId,
+						locationType: 'item',
+					})
+					.catch((error) => {
+						logger.error(
+							'[loadStructureFittingDetailData] Failed to load structure fitting items',
+							{
+								corporationId: structure.corporationId,
+								structureId: structure.structureId,
+								error: error instanceof Error ? error.message : String(error),
+								errorStack: error instanceof Error ? error.stack : undefined,
+							}
+						)
+						return []
+					})
+			: Promise.resolve([]),
+		typeof universe?.resolveTypeSlotCapacitiesByIds === 'function'
+			? universe
+					.resolveTypeSlotCapacitiesByIds([structure.typeId])
+					.then((capacities) => capacities[structure.typeId] ?? null)
+					.catch((error) => {
+						logger.error(
+							'[loadStructureFittingDetailData] Failed to resolve structure slot capacities',
+							{
+								corporationId: structure.corporationId,
+								structureId: structure.structureId,
+								typeId: structure.typeId,
+								error: error instanceof Error ? error.message : String(error),
+								errorStack: error instanceof Error ? error.stack : undefined,
+							}
+						)
+						return null
+					})
+			: Promise.resolve(null),
+	])
 
-	try {
-		const corpData = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, structure.corporationId)
-		const rawAssets = await corpData.searchAssets(structure.corporationId, {
-			locationId: structure.structureId,
-			locationType: 'item',
+	const items = rawAssets
+		.flatMap((asset) => {
+			const slot = parseFittingSlotFlag(asset.locationFlag)
+			if (!slot) return []
+
+			return [
+				{
+					locationFlag: asset.locationFlag,
+					slotIndex: slot.slotIndex,
+					flagName: slot.flagName,
+					typeId: asset.typeId,
+					typeName: null,
+					quantity: asset.quantity,
+				},
+			]
 		})
+		.sort(compareStructureFittingItems)
 
-		return rawAssets
-			.flatMap((asset) => {
-				const slot = parseFittingSlotFlag(asset.locationFlag)
-				if (!slot) {
-					return []
-				}
-
-				return [
-					{
-						locationFlag: asset.locationFlag,
-						slotIndex: slot.slotIndex,
-						flagName: slot.flagName,
-						typeId: asset.typeId,
-						typeName: null,
-						quantity: asset.quantity,
-					},
-				]
-			})
-			.sort(compareStructureFittingItems)
-	} catch (error) {
-		logger.error('[loadStructureFittingDetailData] Failed to load structure fitting items', {
-			corporationId: structure.corporationId,
-			structureId: structure.structureId,
-			error: error instanceof Error ? error.message : String(error),
-			errorStack: error instanceof Error ? error.stack : undefined,
-		})
-		return []
-	}
+	return { items, slotCapacities: slotCapacityResult }
 }
 
 export async function assertStructureGroupConfigured(
@@ -1752,6 +1954,7 @@ interface StructureContext {
 	canEdit: boolean
 	tabData: StructureTabData | null
 	fittingItems: StructureFittingItemSummary[] | null
+	fittingSlotCapacities: StructureFittingSlotCapacities | null
 	lastRefilledAt: Date | null
 }
 
@@ -1781,7 +1984,9 @@ function buildStructureDetailResult(context: StructureContext): StructureDetailR
 		...(context.tabData ?? {}),
 		moonDrill: context.tabData?.moonDrill ?? null,
 		miningExtraction: context.tabData?.miningExtraction ?? null,
+		miningExtractionComposition: context.tabData?.miningExtractionComposition ?? null,
 		fittingItems: context.fittingItems ?? [],
+		fittingSlotCapacities: context.fittingSlotCapacities,
 	}
 }
 
@@ -1866,9 +2071,9 @@ async function getStructureContext(
 		const canEdit =
 			user.is_admin || canEditStructure(access, sovereigntyHub.corporationId, structureTab)
 
-		const [tabData, inventoryBays, fittingItems] = await Promise.all([
+		const [tabData, inventoryBays, fittingData] = await Promise.all([
 			loadStructureTabDetailData(env, db, syntheticStructure),
-			loadStructureInventoryDetailData(db, syntheticStructure),
+			loadStructureInventoryDetailData(env, db, syntheticStructure),
 			loadStructureFittingDetailData(env, syntheticStructure),
 		])
 		return {
@@ -1884,7 +2089,8 @@ async function getStructureContext(
 				...(tabData ?? {}),
 				inventoryBays,
 			},
-			fittingItems,
+			fittingItems: fittingData.items,
+			fittingSlotCapacities: fittingData.slotCapacities,
 			lastRefilledAt: null,
 		}
 	}
@@ -1917,9 +2123,9 @@ async function getStructureContext(
 		return null
 	}
 
-	const [tabData, inventoryBays, fittingItems] = await Promise.all([
+	const [tabData, inventoryBays, fittingData] = await Promise.all([
 		loadStructureTabDetailData(env, db, structure),
-		loadStructureInventoryDetailData(db, structure),
+		loadStructureInventoryDetailData(env, db, structure),
 		loadStructureFittingDetailData(env, structure),
 	])
 
@@ -1936,7 +2142,8 @@ async function getStructureContext(
 			...(tabData ?? {}),
 			inventoryBays,
 		},
-		fittingItems,
+		fittingItems: fittingData.items,
+		fittingSlotCapacities: fittingData.slotCapacities,
 		lastRefilledAt: structure.lastRefilledAt ?? null,
 	}
 }
@@ -3459,6 +3666,7 @@ async function loadSovereigntyPageItems(
 			canEdit,
 			tabData: null,
 			fittingItems: null,
+			fittingSlotCapacities: null,
 			lastRefilledAt: null,
 		}
 		return buildSovereigntyListItem({

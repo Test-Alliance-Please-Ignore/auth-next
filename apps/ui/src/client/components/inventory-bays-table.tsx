@@ -1,6 +1,5 @@
 import { ChevronDown, ChevronRight, ChevronsUpDown, Search } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,8 +11,10 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { formatISK } from '@/lib/format-utils'
 import { cn } from '@/lib/utils'
 
+import type { ReactNode } from 'react'
 import type { InventoryDisplayBay, InventoryDisplayItem } from '@repo/inventory-display'
 
 export interface InventoryBaysTableProps {
@@ -29,6 +30,18 @@ function formatCount(value: number): string {
 	return value.toLocaleString()
 }
 
+function formatVolumeM3(value: number | null | undefined): string {
+	if (value === null || value === undefined) {
+		return '-'
+	}
+
+	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} m³`
+}
+
+function formatEstimatedValue(value: number | null | undefined): string {
+	return value === null || value === undefined ? '-' : formatISK(value, { showDecimals: false })
+}
+
 export function InventoryBaysTable({
 	bays,
 	emptyLabel = 'No inventory recorded for this structure.',
@@ -40,6 +53,20 @@ export function InventoryBaysTable({
 	const [search, setSearch] = useState('')
 	const [expandedBays, setExpandedBays] = useState<Set<string>>(new Set())
 
+	useEffect(() => {
+		if (bays.length === 0) {
+			return
+		}
+
+		setExpandedBays((previous) => {
+			const next = new Set(previous)
+			for (const bay of bays) {
+				next.add(bay.locationFlag)
+			}
+			return next.size === previous.size ? previous : next
+		})
+	}, [bays])
+
 	const visibleBays = useMemo(() => {
 		const query = search.trim().toLowerCase()
 		if (!query) {
@@ -48,7 +75,8 @@ export function InventoryBaysTable({
 
 		return bays
 			.map((bay) => {
-				const bayMatches = bay.label.toLowerCase().includes(query) || bay.locationFlag.toLowerCase().includes(query)
+				const bayMatches =
+					bay.label.toLowerCase().includes(query) || bay.locationFlag.toLowerCase().includes(query)
 				const items = bay.items.filter((item) => {
 					return (
 						item.typeId.toLowerCase().includes(query) ||
@@ -141,11 +169,10 @@ export function InventoryBaysTable({
 			</div>
 
 			<div className="overflow-hidden rounded-lg border border-border/60">
-				<Table>
+				<Table className="text-xs">
 					<TableHeader>
 						<TableRow className="bg-muted/40">
 							<TableHead>Bay</TableHead>
-							<TableHead className="text-right">Stacks</TableHead>
 							<TableHead className="text-right">Units</TableHead>
 						</TableRow>
 					</TableHeader>
@@ -153,6 +180,7 @@ export function InventoryBaysTable({
 						{visibleBays.length > 0 ? (
 							visibleBays.map((bay) => {
 								const isExpanded = expandedBays.has(bay.locationFlag)
+								const showMoonMaterialDetails = bay.locationFlag === 'MoonMaterialBay'
 								return (
 									<Fragment key={bay.locationFlag}>
 										<TableRow
@@ -162,54 +190,80 @@ export function InventoryBaysTable({
 											<TableCell>
 												<div className="flex items-start gap-2">
 													<div className="mt-0.5 text-muted-foreground">
-														{isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+														{isExpanded ? (
+															<ChevronDown className="h-4 w-4" />
+														) : (
+															<ChevronRight className="h-4 w-4" />
+														)}
 													</div>
-											<div className="min-w-0">
-												<div className="font-medium">{bay.label}</div>
-											</div>
-										</div>
-									</TableCell>
-											<TableCell className="text-right font-mono">{formatCount(bay.totalStacks)}</TableCell>
-											<TableCell className="text-right font-mono">{formatCount(bay.totalQuantity)}</TableCell>
+													<div className="min-w-0">
+														<div className="font-medium">{bay.label}</div>
+													</div>
+												</div>
+											</TableCell>
+											<TableCell className="text-right font-mono">
+												{formatCount(bay.totalQuantity)}
+											</TableCell>
 										</TableRow>
-											{isExpanded ? (
-												<TableRow className="bg-muted/20">
-												<TableCell colSpan={3} className="px-0 py-0">
+										{isExpanded ? (
+											<TableRow className="bg-muted/20">
+												<TableCell colSpan={2} className="px-0 py-0">
 													<div className="border-l-2 border-muted px-4 py-3">
-														<Table>
+														<Table className="text-xs">
 															<TableHeader>
 																<TableRow className="bg-transparent">
 																	<TableHead>Item</TableHead>
 																	<TableHead className="text-right">Qty</TableHead>
-																	<TableHead className="text-right">Stacks</TableHead>
+																	{showMoonMaterialDetails ? (
+																		<>
+																			<TableHead className="text-right">Volume</TableHead>
+																			<TableHead className="text-right">Value</TableHead>
+																		</>
+																	) : null}
 																</TableRow>
 															</TableHeader>
 															<TableBody>
 																{bay.items.length > 0 ? (
 																	bay.items.map((item) => (
 																		<TableRow key={`${bay.locationFlag}-${item.typeId}`}>
-																				<TableCell>
-																					<div className="flex items-start gap-2">
-																						{renderItemIcon ? (
-																							<div className="mt-0.5 shrink-0">{renderItemIcon(item)}</div>
-																						) : null}
-																						<div className="min-w-0">
-																							<div className="font-medium">{item.typeName ?? item.typeId}</div>
-																							{renderItemDetails ? (
-																								<div className="text-xs text-muted-foreground">
-																									{renderItemDetails(item)}
-																								</div>
-																							) : null}
+																			<TableCell>
+																				<div className="flex items-center gap-2">
+																					{renderItemIcon ? (
+																						<div className="shrink-0">{renderItemIcon(item)}</div>
+																					) : null}
+																					<div className="min-w-0">
+																						<div className="font-medium">
+																							{item.typeName ?? item.typeId}
 																						</div>
+																						{renderItemDetails ? (
+																							<div className="text-xs text-muted-foreground">
+																								{renderItemDetails(item)}
+																							</div>
+																						) : null}
 																					</div>
+																				</div>
+																			</TableCell>
+																			<TableCell className="text-right font-mono">
+																				{formatCount(item.quantity)}
+																			</TableCell>
+																			{showMoonMaterialDetails ? (
+																				<TableCell className="text-right font-mono">
+																					{formatVolumeM3(item.volumeM3)}
 																				</TableCell>
-																			<TableCell className="text-right font-mono">{formatCount(item.quantity)}</TableCell>
-																			<TableCell className="text-right font-mono">{formatCount(item.stackCount)}</TableCell>
+																			) : null}
+																			{showMoonMaterialDetails ? (
+																				<TableCell className="text-right font-mono">
+																					{formatEstimatedValue(item.estimatedValue)}
+																				</TableCell>
+																			) : null}
 																		</TableRow>
 																	))
 																) : (
 																	<TableRow>
-																		<TableCell colSpan={3} className="text-sm italic text-muted-foreground">
+																		<TableCell
+																			colSpan={showMoonMaterialDetails ? 4 : 2}
+																			className="text-sm italic text-muted-foreground"
+																		>
 																			No items matched the current search.
 																		</TableCell>
 																	</TableRow>
@@ -225,7 +279,7 @@ export function InventoryBaysTable({
 							})
 						) : (
 							<TableRow>
-								<TableCell colSpan={3} className="py-8 text-center text-sm text-muted-foreground">
+								<TableCell colSpan={2} className="py-8 text-center text-sm text-muted-foreground">
 									No inventory bays matched the current search.
 								</TableCell>
 							</TableRow>

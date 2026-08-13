@@ -1,9 +1,23 @@
-import { MOON_GOO_TYPE_IDS, MOON_ORE_TYPE_IDS } from './reprocessing'
+import {
+	FUEL_BLOCK_TYPE_ID,
+	getOreVolume,
+	MAGMATIC_GAS_TYPE_ID,
+	MOON_GOO_TYPE_IDS,
+	MOON_ORE_TYPE_IDS,
+} from './reprocessing'
 
 export type { ParsedOre, ParsedScan, ParseResult } from './parser'
 export { parseMoonScanTsv } from './parser'
 
-export { FUEL_BLOCK_TYPE_ID, MAGMATIC_GAS_TYPE_ID, MOON_GOO_TYPE_IDS, MOON_ORE_TYPE_IDS, MOON_ORE_VOLUME_M3, getOreVolume } from './reprocessing'
+export {
+	FUEL_BLOCK_TYPE_ID,
+	MAGMATIC_GAS_TYPE_ID,
+	MOON_GOO_TYPE_IDS,
+	MOON_ORE_TYPE_IDS,
+	MOON_ORE_VOLUME_M3,
+	getOreVolume,
+	parseVolumeM3,
+} from './reprocessing'
 
 export type MoonScanStatus = 'pending' | 'verified' | 'rejected'
 export type MoonScanSource = 'user' | 'system'
@@ -39,10 +53,12 @@ export interface VerifiedMoonSummaryRecord extends VerifiedMoonSummary {
 }
 
 export interface VerifiedMoonPage {
-	items: Array<VerifiedMoonSummary & {
-		metenoxProfit?: string | null
-		tataraProfit?: string | null
-	}>
+	items: Array<
+		VerifiedMoonSummary & {
+			metenoxProfit?: string | null
+			tataraProfit?: string | null
+		}
+	>
 	total: number
 	page: number
 	pageSize: number
@@ -68,6 +84,7 @@ export interface MoonProfitabilityQueryInputs {
 		materialTypeId: string
 		quantity: number
 	}>
+	materialVolumes: Record<string, number | null>
 	oreVolumes: Record<string, number>
 	prices: Array<{
 		typeId: string
@@ -222,6 +239,10 @@ export interface OreRefineProduct {
 	batchQty: number
 	unitSellPrice: string
 	totalValue: string
+	/** Total output volume for this material during the calculated structure cycle. */
+	volumeM3: number | null
+	/** Output volume for the material's per-100-ore batch. */
+	volumePer100M3: number | null
 	/** Rarity of this material's source ore, for coloring the badge */
 	materialRarity: string | null
 }
@@ -230,9 +251,15 @@ export interface OreWithProfitability {
 	oreTypeId: string
 	oreName: string
 	quantity: string
+	/** Calculated raw ore units processed during the structure cycle. */
+	oreUnits: number
 	rarity: string | null
 	refinesTo: OreRefineProduct[]
 	totalOreValue: string
+	/** Total raw ore volume for this ore during the calculated structure cycle. */
+	oreVolumeM3: number
+	/** Total refined-material volume for this ore during the calculated structure cycle. */
+	volumeM3: number | null
 }
 
 export interface StructureProfitability {
@@ -252,9 +279,127 @@ export interface MoonProfitability {
 	pricingSnapshotDate: string | null
 }
 
+/**
+ * Calculate the profitability estimate for one structure profile from a
+ * verified moon composition. Names are intentionally left as type IDs here;
+ * callers that have universe data can resolve display names without making
+ * the calculation depend on a second data source.
+ */
+export function calculateStructureProfitability(
+	composition: VerifiedComposition,
+	inputs: MoonProfitabilityQueryInputs,
+	structureType: StructureType
+): StructureProfitability | null {
+	const profile = inputs.profiles.find((candidate) => candidate.id === structureType)
+	if (!profile) return null
+
+	const typeMaterials = new Map<
+		string,
+		Array<MoonProfitabilityQueryInputs['typeMaterials'][number]>
+	>()
+	for (const material of inputs.typeMaterials) {
+		const materials = typeMaterials.get(material.oreTypeId) ?? []
+		materials.push(material)
+		typeMaterials.set(material.oreTypeId, materials)
+	}
+
+	const prices = new Map(inputs.prices.map((price) => [price.typeId, price.price]))
+	const reprocessingYield = Number.parseFloat(inputs.defaultReprocessingYield)
+	const cycleHours = (profile.isPassive ? 1 : inputs.defaultCycleDays) * 24
+	const baseVolumePerHour = Number.parseFloat(profile.baseVolumePerHr)
+	const rigBonus = Number.parseFloat(profile.rigBonus)
+	const securityModifier = profile.isPassive ? Number.parseFloat(profile.nullsecModifier) : 1
+	const totalVolume = baseVolumePerHour * (1 + rigBonus) * securityModifier * cycleHours
+
+	const ores = composition.ores
+		.map((ore) => {
+			const configuredOreVolume = inputs.oreVolumes[ore.oreTypeId]
+			const oreVolumeM3 =
+				Number.isFinite(configuredOreVolume) && configuredOreVolume > 0
+					? configuredOreVolume
+					: getOreVolume(ore.oreTypeId)
+			const oreUnits = (totalVolume * Number.parseFloat(ore.quantity)) / oreVolumeM3
+			const refinesTo = (typeMaterials.get(ore.oreTypeId) ?? [])
+				.filter(
+					(material) => !(profile.isPassive && ['35', '36'].includes(material.materialTypeId))
+				)
+				.map((material) => {
+					const units = Math.floor(
+						Math.floor(oreUnits / 100) * material.quantity * reprocessingYield
+					)
+					const unitSellPrice = prices.get(material.materialTypeId) ?? 0
+					const unitVolumeM3 = inputs.materialVolumes[material.materialTypeId] ?? null
+					return {
+						materialTypeId: material.materialTypeId,
+						materialName: material.materialTypeId,
+						quantity: units,
+						batchSize: 100,
+						batchQty: material.quantity,
+						unitSellPrice: String(unitSellPrice),
+						totalValue: String(units * unitSellPrice),
+						volumeM3: unitVolumeM3 === null ? null : units * unitVolumeM3,
+						volumePer100M3: unitVolumeM3 === null ? null : material.quantity * unitVolumeM3,
+						materialRarity: null,
+					}
+				})
+			const totalOreValue = refinesTo.reduce(
+				(sum, material) => sum + Number(material.totalValue),
+				0
+			)
+			return {
+				oreTypeId: ore.oreTypeId,
+				oreName: ore.oreTypeId,
+				quantity: ore.quantity,
+				oreUnits: Math.floor(oreUnits),
+				rarity: ORE_TYPE_RARITY[ore.oreTypeId] ?? null,
+				refinesTo,
+				totalOreValue: String(totalOreValue),
+				oreVolumeM3: totalVolume * Number.parseFloat(ore.quantity),
+				volumeM3: refinesTo.some((material) => material.volumeM3 === null)
+					? null
+					: refinesTo.reduce((sum, material) => sum + (material.volumeM3 ?? 0), 0),
+			}
+		})
+		.sort(
+			(left, right) =>
+				(RARITY_ORDER[right.rarity as OreRarity] ?? 0) -
+				(RARITY_ORDER[left.rarity as OreRarity] ?? 0)
+		)
+
+	const grossIsk = ores.reduce((sum, ore) => sum + Number(ore.totalOreValue), 0)
+	const fuelUnits = Number.parseFloat(profile.fuelPerHr) * cycleHours
+	const magmaticGasUnits = profile.isPassive
+		? Number.parseFloat(profile.magmaticGasPerHr ?? '0') * cycleHours
+		: 0
+	const fuelPriceOverride = Number.parseFloat(inputs.fuelBlockPriceOverride ?? '')
+	const magmaticGasPriceOverride = Number.parseFloat(inputs.magmaticGasPriceOverride ?? '')
+	const fuelPrice =
+		fuelPriceOverride > 0 ? fuelPriceOverride : (prices.get(FUEL_BLOCK_TYPE_ID) ?? 0)
+	const magmaticGasPrice =
+		magmaticGasPriceOverride > 0
+			? magmaticGasPriceOverride
+			: (prices.get(MAGMATIC_GAS_TYPE_ID) ?? 0)
+	const fuelCost = fuelUnits * fuelPrice
+	const magmaticGasCost = magmaticGasUnits * magmaticGasPrice
+
+	return {
+		structureType,
+		cycleDays: profile.isPassive ? 1 : inputs.defaultCycleDays,
+		grossIsk: String(Math.round(grossIsk)),
+		fuelCost: String(Math.round(fuelCost)),
+		magmaticGasCost: profile.isPassive ? String(Math.round(magmaticGasCost)) : null,
+		profit: String(Math.round(grossIsk - fuelCost - magmaticGasCost)),
+		ores,
+	}
+}
+
 export interface MoonScanDO {
 	// Scans
-	submitScans(scans: SubmitScanInput[], submittedBy: string | null, autoVerify: boolean): Promise<MoonScan[]>
+	submitScans(
+		scans: SubmitScanInput[],
+		submittedBy: string | null,
+		autoVerify: boolean
+	): Promise<MoonScan[]>
 	getScans(filters: ScanFilters): Promise<PaginatedScans>
 	getScan(scanId: string): Promise<MoonScan | null>
 	verifyScan(scanId: string, verifiedBy: string, notes: string | null): Promise<MoonScan>
@@ -294,6 +439,9 @@ export interface MoonScanDO {
 	getExtractionSettings(): Promise<ExtractionSettings>
 	updateExtractionSettings(settings: Partial<ExtractionSettings>): Promise<ExtractionSettings>
 	getStructureProfiles(): Promise<StructureProfile[]>
-	updateStructureProfile(id: StructureType, profile: Partial<StructureProfile>): Promise<StructureProfile>
+	updateStructureProfile(
+		id: StructureType,
+		profile: Partial<StructureProfile>
+	): Promise<StructureProfile>
 	cacheCharacterName(characterId: string, name: string): Promise<void>
 }

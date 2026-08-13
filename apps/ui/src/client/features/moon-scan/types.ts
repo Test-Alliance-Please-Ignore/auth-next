@@ -166,6 +166,8 @@ export interface OreRefineProduct {
 	batchQty: number
 	unitSellPrice: string
 	totalValue: string
+	volumeM3: number | null
+	volumePer100M3: number | null
 	materialRarity: string | null
 }
 
@@ -173,9 +175,12 @@ export interface OreWithProfitability {
 	oreTypeId: string
 	oreName: string
 	quantity: string
+	oreUnits: number
 	rarity: string | null
 	refinesTo: OreRefineProduct[]
 	totalOreValue: string
+	oreVolumeM3: number
+	volumeM3: number | null
 }
 
 export interface StructureProfitability {

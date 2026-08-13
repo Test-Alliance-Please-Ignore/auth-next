@@ -6,6 +6,7 @@ export type Env = {
 	DATABASE_URL: string
 	EVE_CORPORATION_DATA: DurableObjectNamespace
 	MOON_SCAN: DurableObjectNamespace
+	MARKETS: DurableObjectNamespace
 	UNIVERSE: DurableObjectNamespace
 	NAME: string
 	ENVIRONMENT: string

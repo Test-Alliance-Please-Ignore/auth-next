@@ -20,11 +20,11 @@ import {
 	universeTypeDogmaEffects,
 } from '../db/schema'
 import {
-	FUEL_DOGMA_ATTRIBUTE_IDS,
 	isFuelDogmaAttribute,
 	isFuelModifier,
 	selectStructureDogmaTypeIds,
 	STRUCTURE_CATEGORY_ID,
+	STRUCTURE_DOGMA_ATTRIBUTE_IDS,
 	STRUCTURE_MODULE_CATEGORY_ID,
 } from './sde-fuel-selection'
 import {
@@ -549,7 +549,7 @@ async function importDogmaAttributes(
 	if (!allDogma) {
 		await db
 			.delete(universeDogmaAttributes)
-			.where(notInArray(universeDogmaAttributes.attributeId, [...FUEL_DOGMA_ATTRIBUTE_IDS]))
+			.where(notInArray(universeDogmaAttributes.attributeId, [...STRUCTURE_DOGMA_ATTRIBUTE_IDS]))
 	}
 
 	const reportProgress = createProgressReporter('dogma attributes', rows.length)
@@ -715,7 +715,7 @@ async function importTypeDogma(
 				.where(
 					or(
 						notInArray(universeTypeDogmaAttributes.typeId, [...structureDogmaTypeIds]),
-						notInArray(universeTypeDogmaAttributes.attributeId, [...FUEL_DOGMA_ATTRIBUTE_IDS])
+						notInArray(universeTypeDogmaAttributes.attributeId, [...STRUCTURE_DOGMA_ATTRIBUTE_IDS])
 					)
 				)
 		}

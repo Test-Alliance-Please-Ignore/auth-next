@@ -2,6 +2,8 @@ import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
+import { summarizeInventoryRows } from '@repo/inventory-display'
+import { calculateStructureProfitability } from '@repo/moon-scan'
 
 import { getCachedUserPermissions } from '../../lib/groups-cache'
 import { clearMoonScanPricingCaches, moonScanRoutes } from '../moon-scan'
@@ -200,6 +202,80 @@ describe('moon-scan profitability and batching behavior', () => {
 		})
 	})
 
+	it('aggregates inventory volume and preserves unknown volume as unavailable', () => {
+		const [bay] = summarizeInventoryRows([
+			{
+				locationFlag: 'MoonMaterialBay',
+				typeId: '16633',
+				quantity: 100,
+				unitVolumeM3: 0.05,
+			},
+			{
+				locationFlag: 'MoonMaterialBay',
+				typeId: '16633',
+				quantity: 20,
+				unitVolumeM3: 0.05,
+			},
+		])
+
+		expect(bay?.items[0]?.volumeM3).toBe(6)
+
+		const [incompleteBay] = summarizeInventoryRows([
+			{
+				locationFlag: 'MoonMaterialBay',
+				typeId: '16633',
+				quantity: 100,
+				unitVolumeM3: 0.05,
+			},
+			{
+				locationFlag: 'MoonMaterialBay',
+				typeId: '16633',
+				quantity: 20,
+				unitVolumeM3: null,
+			},
+		])
+
+		expect(incompleteBay?.items[0]?.volumeM3).toBeNull()
+	})
+
+	it('falls back to canonical ore volume and avoids invalid material volume output', () => {
+		const result = calculateStructureProfitability(
+			{
+				moonId: 'moon-1',
+				sourceScanId: 'scan-1',
+				verifiedAt: '2026-05-01T00:00:00.000Z',
+				verifiedBy: null,
+				ores: [{ oreTypeId: '45490', quantity: '1' }],
+			},
+			{
+				defaultReprocessingYield: '1',
+				defaultCycleDays: 1,
+				fuelBlockPriceOverride: null,
+				magmaticGasPriceOverride: null,
+				profiles: [
+					{
+						id: 'tatara',
+						baseVolumePerHr: '1000',
+						rigBonus: '0',
+						fuelPerHr: '10',
+						magmaticGasPerHr: null,
+						nullsecModifier: '1',
+						isPassive: false,
+					},
+				],
+				typeMaterials: [{ oreTypeId: '45490', materialTypeId: '16633', quantity: 100 }],
+				materialVolumes: {},
+				oreVolumes: { '45490': 0 },
+				prices: [],
+			},
+			'tatara'
+		)
+
+		expect(result?.ores[0]?.oreUnits).toBe(2400)
+		expect(result?.ores[0]?.refinesTo[0]?.volumeM3).toBeNull()
+		expect(result?.ores[0]?.volumeM3).toBeNull()
+	})
+
 	it('uses batched moon lookup for region detail (no per-system moon RPC)', async () => {
 		universeStub.getSystemsByRegionId.mockResolvedValue([
 			{ solarSystemId: 'sys-low', solarSystemName: 'Low', securityStatus: '0.5' },
@@ -352,12 +428,19 @@ describe('moon-scan profitability and batching behavior', () => {
 			'45490': [{ materialTypeId: '16633', quantity: 100 }],
 		})
 		universeStub.resolveTypeNamesByIds.mockResolvedValue({
-			'45490': { typeId: '45490', typeName: 'Bitumens', groupId: '1', groupName: 'Moon Ore' },
+			'45490': {
+				typeId: '45490',
+				typeName: 'Bitumens',
+				groupId: '1',
+				groupName: 'Moon Ore',
+				volume: '10',
+			},
 			'16633': {
 				typeId: '16633',
 				typeName: 'Hydrocarbons',
 				groupId: '2',
 				groupName: 'Moon Materials',
+				volume: '0.05',
 			},
 		})
 		marketsStub.getBatchMarketDataAtTime.mockResolvedValue({
@@ -376,6 +459,11 @@ describe('moon-scan profitability and batching behavior', () => {
 					structureType: 'tatara' | 'metenox'
 					fuelCost: string
 					magmaticGasCost: string | null
+					ores: Array<{
+						refinesTo: Array<{ volumeM3: number; volumePer100M3: number }>
+						oreUnits: number
+						oreVolumeM3: number
+					}>
 				}>
 			} | null
 		}
@@ -388,6 +476,10 @@ describe('moon-scan profitability and batching behavior', () => {
 		expect(tatara?.fuelCost).toBe('239760')
 		expect(metenox?.fuelCost).toBe('119880')
 		expect(metenox?.magmaticGasCost).toBe('26640')
+		expect(tatara?.ores[0]?.oreUnits).toBe(2400)
+		expect(tatara?.ores[0]?.oreVolumeM3).toBe(24000)
+		expect(tatara?.ores[0]?.refinesTo[0]?.volumePer100M3).toBe(5)
+		expect(tatara?.ores[0]?.refinesTo[0]?.volumeM3).toBe(120)
 	})
 
 	it('prices discovered refine materials in verified moon list flow', async () => {

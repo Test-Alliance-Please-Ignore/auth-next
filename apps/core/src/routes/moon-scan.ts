@@ -12,6 +12,7 @@ import {
 	MOON_ORE_TYPE_IDS,
 	ORE_TYPE_RARITY,
 	parseMoonScanTsv,
+	parseVolumeM3,
 	RARITY_ORDER,
 } from '@repo/moon-scan'
 import { buildCsvLine, createR2MultipartTextWriter } from '@repo/worker-utils'
@@ -38,7 +39,7 @@ import type {
 	VerifiedMoonsSortBy,
 	VerifiedMoonSummaryRecord,
 } from '@repo/moon-scan'
-import type { Universe, UniverseSolarSystem } from '@repo/universe'
+import type { InvType, Universe, UniverseSolarSystem } from '@repo/universe'
 import type { App } from '../context'
 
 // ─── Permission URNs ─────────────────────────────────────────────────────────
@@ -375,7 +376,8 @@ type MoonPricingInputs = {
 	profiles: Awaited<ReturnType<MoonScanDO['getStructureProfiles']>>
 	typeMaterialsMap: Record<string, Array<{ materialTypeId: string; quantity: number }>>
 	priceMap: Record<string, number>
-	typeNamesMap: Record<string, { typeName: string } | null>
+	typeNamesMap: Record<string, InvType | null>
+	materialVolumes: Record<string, number | null>
 	oreVolumes: Record<string, number>
 	pricingSnapshotDate: string | null
 }
@@ -570,7 +572,7 @@ function getMoonProfitabilityInputsFromComposition(
 				.map((ore) => {
 					const liveMaterials = inputs.typeMaterialsMap[ore.oreTypeId] ?? []
 					const fraction = parseFloat(ore.quantity)
-					const oreUnits = (totalVolume * fraction) / getOreVolume(ore.oreTypeId)
+					const oreUnits = (totalVolume * fraction) / (inputs.oreVolumes[ore.oreTypeId] ?? 0)
 
 					const refinesTo = liveMaterials
 						.filter((mat) => !(isPassive && MINERAL_TYPE_IDS.has(mat.materialTypeId)))
@@ -578,6 +580,7 @@ function getMoonProfitabilityInputsFromComposition(
 							const batchQty = mat.quantity
 							const units = Math.floor(Math.floor(oreUnits / 100) * batchQty * reprocessingYield)
 							const unitSellPrice = inputs.priceMap[mat.materialTypeId] ?? 0
+							const unitVolumeM3 = inputs.materialVolumes[mat.materialTypeId] ?? null
 							return {
 								materialTypeId: mat.materialTypeId,
 								materialName:
@@ -587,6 +590,8 @@ function getMoonProfitabilityInputsFromComposition(
 								batchQty,
 								unitSellPrice: String(unitSellPrice),
 								totalValue: String(units * unitSellPrice),
+								volumeM3: unitVolumeM3 === null ? null : units * unitVolumeM3,
+								volumePer100M3: unitVolumeM3 === null ? null : mat.quantity * unitVolumeM3,
 								materialRarity: null,
 							}
 						})
@@ -601,9 +606,14 @@ function getMoonProfitabilityInputsFromComposition(
 						oreTypeId: ore.oreTypeId,
 						oreName: inputs.typeNamesMap[ore.oreTypeId]?.typeName ?? ore.oreTypeId,
 						quantity: ore.quantity,
+						oreUnits: Math.floor(oreUnits),
 						rarity: ORE_TYPE_RARITY[ore.oreTypeId] ?? null,
 						refinesTo,
 						totalOreValue: String(totalOreValue),
+						oreVolumeM3: totalVolume * fraction,
+						volumeM3: refinesTo.some((material) => material.volumeM3 === null)
+							? null
+							: refinesTo.reduce((sum, material) => sum + (material.volumeM3 ?? 0), 0),
 					}
 				})
 				.sort(
@@ -717,6 +727,7 @@ function toMoonProfitabilityQueryInputs(inputs: MoonPricingInputs): MoonProfitab
 		typeMaterials: Object.entries(inputs.typeMaterialsMap).flatMap(([oreTypeId, materials]) =>
 			materials.map((material) => ({ ...material, oreTypeId }))
 		),
+		materialVolumes: inputs.materialVolumes,
 		oreVolumes: inputs.oreVolumes,
 		prices: Object.entries(inputs.priceMap).map(([typeId, price]) => ({ typeId, price })),
 	}
@@ -776,7 +787,7 @@ async function getMoonPricingInputsForOreTypeIds(
 				}),
 				typeIdsForNames.length > 0
 					? universe.resolveTypeNamesByIds(typeIdsForNames)
-					: Promise.resolve({} as Record<string, { typeName: string } | null>),
+					: Promise.resolve({} as Record<string, InvType | null>),
 			])
 
 			const priceMap: Record<string, number> = {}
@@ -790,8 +801,15 @@ async function getMoonPricingInputsForOreTypeIds(
 				typeMaterialsMap,
 				priceMap,
 				typeNamesMap,
+				materialVolumes: Object.fromEntries(
+					materialTypeIds.map((typeId) => [typeId, parseVolumeM3(typeNamesMap[typeId]?.volume)])
+				),
 				oreVolumes: Object.fromEntries(
-					uniqueOreTypeIds.map((typeId) => [typeId, getOreVolume(typeId)])
+					uniqueOreTypeIds.map((typeId) => [
+						typeId,
+						parseVolumeM3(typeNamesMap[typeId]?.volume, getOreVolume(typeId)) ??
+							getOreVolume(typeId),
+					])
 				),
 				pricingSnapshotDate: getPricingSnapshotDate(effectivePricingRevision),
 			}
