@@ -30,6 +30,14 @@ function formatCount(value: number): string {
 	return value.toLocaleString()
 }
 
+function formatVolumeM3(value: number | null | undefined): string {
+	if (value === null || value === undefined) {
+		return '-'
+	}
+
+	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} m³`
+}
+
 function formatEstimatedValue(value: number | null | undefined): string {
 	return value === null || value === undefined ? '-' : formatISK(value, { showDecimals: false })
 }
@@ -161,7 +169,7 @@ export function InventoryBaysTable({
 			</div>
 
 			<div className="overflow-hidden rounded-lg border border-border/60">
-				<Table>
+				<Table className="text-xs">
 					<TableHeader>
 						<TableRow className="bg-muted/40">
 							<TableHead>Bay</TableHead>
@@ -172,7 +180,7 @@ export function InventoryBaysTable({
 						{visibleBays.length > 0 ? (
 							visibleBays.map((bay) => {
 								const isExpanded = expandedBays.has(bay.locationFlag)
-								const showPrices = bay.locationFlag === 'MoonMaterialBay'
+								const showMoonMaterialDetails = bay.locationFlag === 'MoonMaterialBay'
 								return (
 									<Fragment key={bay.locationFlag}>
 										<TableRow
@@ -201,13 +209,16 @@ export function InventoryBaysTable({
 											<TableRow className="bg-muted/20">
 												<TableCell colSpan={2} className="px-0 py-0">
 													<div className="border-l-2 border-muted px-4 py-3">
-														<Table>
+														<Table className="text-xs">
 															<TableHeader>
 																<TableRow className="bg-transparent">
 																	<TableHead>Item</TableHead>
 																	<TableHead className="text-right">Qty</TableHead>
-																	{showPrices ? (
-																		<TableHead className="text-right">Price</TableHead>
+																	{showMoonMaterialDetails ? (
+																		<>
+																			<TableHead className="text-right">Volume</TableHead>
+																			<TableHead className="text-right">Value</TableHead>
+																		</>
 																	) : null}
 																</TableRow>
 															</TableHeader>
@@ -216,11 +227,9 @@ export function InventoryBaysTable({
 																	bay.items.map((item) => (
 																		<TableRow key={`${bay.locationFlag}-${item.typeId}`}>
 																			<TableCell>
-																				<div className="flex items-start gap-2">
+																				<div className="flex items-center gap-2">
 																					{renderItemIcon ? (
-																						<div className="mt-0.5 shrink-0">
-																							{renderItemIcon(item)}
-																						</div>
+																						<div className="shrink-0">{renderItemIcon(item)}</div>
 																					) : null}
 																					<div className="min-w-0">
 																						<div className="font-medium">
@@ -237,7 +246,12 @@ export function InventoryBaysTable({
 																			<TableCell className="text-right font-mono">
 																				{formatCount(item.quantity)}
 																			</TableCell>
-																			{showPrices ? (
+																			{showMoonMaterialDetails ? (
+																				<TableCell className="text-right font-mono">
+																					{formatVolumeM3(item.volumeM3)}
+																				</TableCell>
+																			) : null}
+																			{showMoonMaterialDetails ? (
 																				<TableCell className="text-right font-mono">
 																					{formatEstimatedValue(item.estimatedValue)}
 																				</TableCell>
@@ -247,7 +261,7 @@ export function InventoryBaysTable({
 																) : (
 																	<TableRow>
 																		<TableCell
-																			colSpan={showPrices ? 3 : 2}
+																			colSpan={showMoonMaterialDetails ? 4 : 2}
 																			className="text-sm italic text-muted-foreground"
 																		>
 																			No items matched the current search.

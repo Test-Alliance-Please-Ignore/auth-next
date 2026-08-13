@@ -28,6 +28,7 @@ import {
 	getOreVolume,
 	MAGMATIC_GAS_TYPE_ID,
 	ORE_TYPE_RARITY,
+	parseVolumeM3,
 } from '@repo/moon-scan'
 import {
 	FUEL_BLOCK_TYPE_IDS,
@@ -110,7 +111,7 @@ import type {
 	StructureSovereigntyTransportState,
 	StructureTab,
 } from '@repo/structures'
-import type { Universe } from '@repo/universe'
+import type { InvType, Universe } from '@repo/universe'
 import type { Env, SessionUser } from '../context'
 import type { DbSchema } from '../db'
 
@@ -1147,8 +1148,15 @@ async function loadStructureMoonComposition(
 					typeMaterials: Object.entries(typeMaterialsMap).flatMap(([oreTypeId, materials]) =>
 						materials.map((material) => ({ ...material, oreTypeId }))
 					),
+					materialVolumes: Object.fromEntries(
+						materialTypeIds.map((typeId) => [typeId, parseVolumeM3(typeNames[typeId]?.volume)])
+					),
 					oreVolumes: Object.fromEntries(
-						oreTypeIds.map((typeId) => [typeId, getOreVolume(typeId)])
+						oreTypeIds.map((typeId) => [
+							typeId,
+							parseVolumeM3(typeNames[typeId]?.volume, getOreVolume(typeId)) ??
+								getOreVolume(typeId),
+						])
 					),
 					prices: priceResponse.prices
 						.filter((price) => price.bestSellPrice !== null)
@@ -1402,7 +1410,38 @@ async function loadStructureInventoryDetailData(
 			eq(corporationStructureInventory.structureId, structure.structureId)
 		),
 	})
-	const bays = summarizeInventoryRows(rows)
+	const moonMaterialTypeIds = [
+		...new Set(
+			rows.filter((row) => row.locationFlag === 'MoonMaterialBay').map((row) => row.typeId)
+		),
+	]
+	let moonMaterialTypeDetails: Record<string, InvType | null> = {}
+	if (moonMaterialTypeIds.length > 0) {
+		try {
+			const universe = getStub<Universe>(env.UNIVERSE, 'default')
+			moonMaterialTypeDetails = await universe.resolveTypeNamesByIds(moonMaterialTypeIds)
+		} catch (error) {
+			logger.warn('[Structures] Failed to enrich moon material inventory volumes', {
+				corporationId: structure.corporationId,
+				structureId: structure.structureId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+	const enrichedRows = rows.map((row) => {
+		if (row.locationFlag !== 'MoonMaterialBay') {
+			return row
+		}
+
+		const typeDetails = moonMaterialTypeDetails[row.typeId]
+		const unitVolumeM3 = typeDetails ? Number.parseFloat(typeDetails.volume) : null
+		return {
+			...row,
+			typeName: typeDetails?.typeName ?? null,
+			unitVolumeM3: Number.isFinite(unitVolumeM3) ? unitVolumeM3 : null,
+		}
+	})
+	const bays = summarizeInventoryRows(enrichedRows)
 	const moonMaterialBay = bays.find((bay) => bay.locationFlag === 'MoonMaterialBay')
 	if (!moonMaterialBay || moonMaterialBay.items.length === 0) {
 		return bays

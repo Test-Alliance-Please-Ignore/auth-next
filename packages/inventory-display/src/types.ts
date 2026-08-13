@@ -3,6 +3,8 @@ export interface InventoryDisplayItem {
 	typeName?: string | null
 	quantity: number
 	stackCount: number
+	/** Total volume for the aggregated quantity, in cubic metres. */
+	volumeM3?: number | null
 	estimatedValue?: number | null
 }
 
@@ -20,4 +22,6 @@ export interface InventoryRowLike {
 	typeId: string
 	quantity: number
 	typeName?: string | null
+	/** Unit volume for one item, in cubic metres. */
+	unitVolumeM3?: number | null
 }

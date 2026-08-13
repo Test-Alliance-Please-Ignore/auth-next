@@ -1,5 +1,6 @@
 import {
 	FUEL_BLOCK_TYPE_ID,
+	getOreVolume,
 	MAGMATIC_GAS_TYPE_ID,
 	MOON_GOO_TYPE_IDS,
 	MOON_ORE_TYPE_IDS,
@@ -15,6 +16,7 @@ export {
 	MOON_ORE_TYPE_IDS,
 	MOON_ORE_VOLUME_M3,
 	getOreVolume,
+	parseVolumeM3,
 } from './reprocessing'
 
 export type MoonScanStatus = 'pending' | 'verified' | 'rejected'
@@ -82,6 +84,7 @@ export interface MoonProfitabilityQueryInputs {
 		materialTypeId: string
 		quantity: number
 	}>
+	materialVolumes: Record<string, number | null>
 	oreVolumes: Record<string, number>
 	prices: Array<{
 		typeId: string
@@ -236,6 +239,10 @@ export interface OreRefineProduct {
 	batchQty: number
 	unitSellPrice: string
 	totalValue: string
+	/** Total output volume for this material during the calculated structure cycle. */
+	volumeM3: number | null
+	/** Output volume for the material's per-100-ore batch. */
+	volumePer100M3: number | null
 	/** Rarity of this material's source ore, for coloring the badge */
 	materialRarity: string | null
 }
@@ -244,9 +251,15 @@ export interface OreWithProfitability {
 	oreTypeId: string
 	oreName: string
 	quantity: string
+	/** Calculated raw ore units processed during the structure cycle. */
+	oreUnits: number
 	rarity: string | null
 	refinesTo: OreRefineProduct[]
 	totalOreValue: string
+	/** Total raw ore volume for this ore during the calculated structure cycle. */
+	oreVolumeM3: number
+	/** Total refined-material volume for this ore during the calculated structure cycle. */
+	volumeM3: number | null
 }
 
 export interface StructureProfitability {
@@ -300,8 +313,12 @@ export function calculateStructureProfitability(
 
 	const ores = composition.ores
 		.map((ore) => {
-			const oreUnits =
-				(totalVolume * Number.parseFloat(ore.quantity)) / (inputs.oreVolumes[ore.oreTypeId] ?? 0)
+			const configuredOreVolume = inputs.oreVolumes[ore.oreTypeId]
+			const oreVolumeM3 =
+				Number.isFinite(configuredOreVolume) && configuredOreVolume > 0
+					? configuredOreVolume
+					: getOreVolume(ore.oreTypeId)
+			const oreUnits = (totalVolume * Number.parseFloat(ore.quantity)) / oreVolumeM3
 			const refinesTo = (typeMaterials.get(ore.oreTypeId) ?? [])
 				.filter(
 					(material) => !(profile.isPassive && ['35', '36'].includes(material.materialTypeId))
@@ -311,6 +328,7 @@ export function calculateStructureProfitability(
 						Math.floor(oreUnits / 100) * material.quantity * reprocessingYield
 					)
 					const unitSellPrice = prices.get(material.materialTypeId) ?? 0
+					const unitVolumeM3 = inputs.materialVolumes[material.materialTypeId] ?? null
 					return {
 						materialTypeId: material.materialTypeId,
 						materialName: material.materialTypeId,
@@ -319,6 +337,8 @@ export function calculateStructureProfitability(
 						batchQty: material.quantity,
 						unitSellPrice: String(unitSellPrice),
 						totalValue: String(units * unitSellPrice),
+						volumeM3: unitVolumeM3 === null ? null : units * unitVolumeM3,
+						volumePer100M3: unitVolumeM3 === null ? null : material.quantity * unitVolumeM3,
 						materialRarity: null,
 					}
 				})
@@ -330,9 +350,14 @@ export function calculateStructureProfitability(
 				oreTypeId: ore.oreTypeId,
 				oreName: ore.oreTypeId,
 				quantity: ore.quantity,
+				oreUnits: Math.floor(oreUnits),
 				rarity: ORE_TYPE_RARITY[ore.oreTypeId] ?? null,
 				refinesTo,
 				totalOreValue: String(totalOreValue),
+				oreVolumeM3: totalVolume * Number.parseFloat(ore.quantity),
+				volumeM3: refinesTo.some((material) => material.volumeM3 === null)
+					? null
+					: refinesTo.reduce((sum, material) => sum + (material.volumeM3 ?? 0), 0),
 			}
 		})
 		.sort(

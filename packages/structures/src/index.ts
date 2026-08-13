@@ -449,6 +449,7 @@ export interface StructureInventoryItem {
 	typeName?: string | null
 	quantity: number
 	stackCount: number
+	volumeM3?: number | null
 	estimatedValue?: number | null
 }
 
@@ -752,8 +753,10 @@ export interface StructureMoonComposition {
 			oreTypeId: string
 			oreName: string
 			quantity: string
+			oreUnits: number
 			rarity: string | null
 			totalOreValue: string
+			oreVolumeM3: number
 			refinesTo: Array<{
 				materialTypeId: string
 				materialName: string
@@ -762,8 +765,11 @@ export interface StructureMoonComposition {
 				batchQty: number
 				unitSellPrice: string
 				totalValue: string
+				volumeM3: number | null
+				volumePer100M3: number | null
 				materialRarity: string | null
 			}>
+			volumeM3: number | null
 		}>
 	} | null
 	pricingSnapshotDate?: string | null

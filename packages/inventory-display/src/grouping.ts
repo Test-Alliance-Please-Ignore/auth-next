@@ -114,6 +114,13 @@ export function summarizeInventoryRows(rows: InventoryRowLike[]): InventoryDispl
 				if (existing) {
 					existing.quantity += row.quantity
 					existing.stackCount += 1
+					if (existing.volumeM3 !== null && existing.volumeM3 !== undefined) {
+						if (row.unitVolumeM3 === null || row.unitVolumeM3 === undefined) {
+							existing.volumeM3 = null
+						} else {
+							existing.volumeM3 += row.quantity * row.unitVolumeM3
+						}
+					}
 					if (existing.typeName === undefined && row.typeName !== undefined) {
 						existing.typeName = row.typeName
 					}
@@ -123,6 +130,10 @@ export function summarizeInventoryRows(rows: InventoryRowLike[]): InventoryDispl
 						typeName: row.typeName ?? undefined,
 						quantity: row.quantity,
 						stackCount: 1,
+						volumeM3:
+							row.unitVolumeM3 === null || row.unitVolumeM3 === undefined
+								? null
+								: row.quantity * row.unitVolumeM3,
 					})
 				}
 			}
@@ -139,7 +150,8 @@ export function summarizeInventoryRows(rows: InventoryRowLike[]): InventoryDispl
 			}
 		})
 		.sort((left, right) => {
-			const orderDiff = getInventoryBayOrder(left.locationFlag) - getInventoryBayOrder(right.locationFlag)
+			const orderDiff =
+				getInventoryBayOrder(left.locationFlag) - getInventoryBayOrder(right.locationFlag)
 			if (orderDiff !== 0) {
 				return orderDiff
 			}
