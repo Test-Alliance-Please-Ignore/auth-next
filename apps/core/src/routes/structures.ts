@@ -136,6 +136,13 @@ app.use('*', async (c, next) => {
 		return next()
 	}
 
+	// The capability endpoint is used by the authenticated application shell to
+	// decide whether to render the Structures navigation. It must be able to
+	// return `canView: false`; it does not expose structure data.
+	if (c.req.path === '/access' || c.req.path === '/api/structures/access') {
+		return next()
+	}
+
 	const actor = await getStructureActor(c)
 	if (!hasStructureApiAccess(actor)) {
 		return c.json({ error: 'Structure permission required' }, 403)
