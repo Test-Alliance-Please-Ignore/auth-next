@@ -1800,7 +1800,7 @@ describe('corporation-tax routes', () => {
 		routeStubs({ corporationTaxStub, characterDataStub })
 
 		const response = await app.request(
-			'/api/corporation-tax/corporations/1234/member-summary?fromDate=2026-03-01T00:00:00.000Z&toDate=2026-03-31T23:59:59.999Z&topRefTypesLimit=3',
+			'/api/corporation-tax/corporations/1234/member-summary?fromDate=2026-03-01T00:00:00.000Z&toDate=2026-03-31T23:59:59.999Z&topRefTypesLimit=3&refTypes=bounty_prizes,ess_escrow_transfer',
 			{},
 			env
 		)
@@ -1812,6 +1812,7 @@ describe('corporation-tax routes', () => {
 		expect(corporationTaxStub.getMemberSummaryReport).toHaveBeenCalledWith({
 			corporationId: '1234',
 			characterIds: ['7001'],
+			refTypes: ['bounty_prizes', 'ess_escrow_transfer'],
 			fromDate: new Date('2026-03-01T00:00:00.000Z'),
 			toDate: new Date('2026-03-31T23:59:59.999Z'),
 			topRefTypesLimit: 3,
@@ -1842,6 +1843,7 @@ describe('corporation-tax routes', () => {
 		expect(corporationTaxStub.getMemberSummaryReport).toHaveBeenCalledWith({
 			corporationId: '1234',
 			characterIds: ['7001'],
+			refTypes: undefined,
 			fromDate: undefined,
 			toDate: undefined,
 			topRefTypesLimit: undefined,
@@ -1901,6 +1903,7 @@ describe('corporation-tax routes', () => {
 		expect(corporationTaxStub.getMemberSummaryReport).toHaveBeenCalledWith({
 			corporationId: '1234',
 			characterIds: ['81234567'],
+			refTypes: undefined,
 			fromDate: undefined,
 			toDate: undefined,
 			topRefTypesLimit: undefined,

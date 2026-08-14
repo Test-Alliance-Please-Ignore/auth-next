@@ -1,7 +1,15 @@
-import { createMRTColumnHelper } from 'mantine-react-table'
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { useState } from 'react'
 
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { formatTaxDateTime } from '@/lib/tax-date'
 import {
 	formatTaxIskFull,
@@ -11,28 +19,91 @@ import {
 	TaxEntityDisplay,
 } from '@/lib/tax-display'
 
-import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
 import type { TaxMemberSummary } from '@repo/corporation-tax'
 
 const UNATTRIBUTED_CHARACTER_ID = '__unattributed__'
+
+type MemberSummarySortField =
+	| 'characterId'
+	| 'contributionIncome'
+	| 'taxableContributionIncome'
+	| 'assessmentCount'
+	| 'lastAssessmentAt'
 
 type MemberSummaryReportGridProps = {
 	rows: TaxMemberSummary[]
 	loading?: boolean
 	error?: unknown
 	entityNames: Record<string, string>
-	sorting: MRT_SortingState
-	onSortingChange: (sorting: MRT_SortingState) => void
-	pagination: { pageIndex: number; pageSize: number }
-	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
-	pageCount: number
-	rowCount: number
+	sortBy: MemberSummarySortField
+	sortDir: 'asc' | 'desc'
+	onSortChange: (field: MemberSummarySortField) => void
+	page: number
+	pageSize: number
+	onPageChange: (page: number) => void
+	onPageSizeChange: (pageSize: number) => void
+	totalRows: number
+}
+
+function MemberSummaryPagination({
+	totalRows,
+	page,
+	pageSize,
+	onPageChange,
+	onPageSizeChange,
+	loading,
+}: Pick<
+	MemberSummaryReportGridProps,
+	'totalRows' | 'page' | 'pageSize' | 'onPageChange' | 'onPageSizeChange' | 'loading'
+>) {
+	return (
+		<UserSearchPaginationControls
+			totalCount={totalRows}
+			page={page + 1}
+			pageSize={pageSize}
+			onPageChange={(nextPage) => onPageChange(nextPage - 1)}
+			onPageSizeChange={onPageSizeChange}
+			pageSizeOptions={[25, 50, 100]}
+			itemLabel="members"
+			nextButtonLoading={loading}
+		/>
+	)
 }
 
 function parseIsk(value: string): number {
 	const normalized = value.trim().replace(/,/g, '')
 	const parsed = Number(normalized)
 	return Number.isFinite(parsed) ? parsed : 0
+}
+
+function SortableHead({
+	label,
+	field,
+	sortBy,
+	sortDir,
+	onSortChange,
+}: {
+	label: string
+	field: MemberSummarySortField
+	sortBy: MemberSummarySortField
+	sortDir: 'asc' | 'desc'
+	onSortChange: (field: MemberSummarySortField) => void
+}) {
+	const isActive = sortBy === field
+	const SortIcon = !isActive ? ArrowUpDown : sortDir === 'asc' ? ArrowUp : ArrowDown
+
+	return (
+		<TableHead>
+			<button
+				type="button"
+				className="inline-flex items-center gap-1.5 text-left hover:text-foreground"
+				onClick={() => onSortChange(field)}
+			>
+				{label}
+				<SortIcon aria-hidden className="h-3.5 w-3.5" />
+			</button>
+		</TableHead>
+	)
 }
 
 function SourceSplitSegment({
@@ -91,28 +162,18 @@ function SourceSplitSegment({
 	)
 }
 
-function TopSourceBreakdown({
-	topRefTypes,
-}: {
-	topRefTypes: Array<{
-		refType: string
-		contributionAmount?: string
-		taxableAmount: string
-		lineCount?: number
-	}>
-}) {
+function TopSourceBreakdown({ topRefTypes }: { topRefTypes: TaxMemberSummary['topRefTypes'] }) {
 	if (topRefTypes.length === 0) {
 		return <span>-</span>
 	}
 
-	const segmentWeights = topRefTypes.map((source) => {
-		const contributionValue = parseIsk(source.contributionAmount ?? source.taxableAmount)
-		return Math.max(1, contributionValue)
-	})
+	const segmentWeights = topRefTypes.map((source) =>
+		Math.max(1, parseIsk(source.contributionAmount))
+	)
 	const totalWeight = segmentWeights.reduce((sum, value) => sum + value, 0)
 
 	return (
-		<div>
+		<div className="min-w-[15rem] text-xs">
 			<div className="flex h-5 w-full overflow-hidden rounded bg-muted">
 				{topRefTypes.map((source, index) => {
 					const weight = segmentWeights[index] ?? 1
@@ -123,7 +184,7 @@ function TopSourceBreakdown({
 							key={`${source.refType}:${index}:segment`}
 							color={getTaxRefTypeColor(source.refType)}
 							label={label}
-							amount={source.taxableAmount}
+							amount={source.contributionAmount}
 							share={share}
 							widthPercent={share}
 						/>
@@ -135,69 +196,104 @@ function TopSourceBreakdown({
 }
 
 export function MemberSummaryReportGrid(props: MemberSummaryReportGridProps) {
-	const columnHelper = createMRTColumnHelper<TaxMemberSummary>()
-	const columns: Array<MRT_ColumnDef<TaxMemberSummary>> = [
-		columnHelper.accessor('characterId', {
-			id: 'characterId',
-			header: 'Character',
-			enableSorting: true,
-			Cell: ({ row }) =>
-				row.original.characterId === UNATTRIBUTED_CHARACTER_ID ? (
-					<div className="font-medium">Unattributed</div>
-				) : (
-					<TaxEntityDisplay entityId={row.original.characterId} entityNames={props.entityNames} />
-				),
-		}),
-		columnHelper.accessor('contributionIncome', {
-			id: 'contributionIncome',
-			header: 'Contribution',
-			enableSorting: true,
-			Cell: ({ cell }) => formatTaxIskFull(cell.getValue()),
-		}),
-		columnHelper.accessor('taxableContributionIncome', {
-			id: 'taxableContributionIncome',
-			header: 'Taxable',
-			enableSorting: true,
-			Cell: ({ cell }) => formatTaxIskFull(cell.getValue()),
-		}),
-		columnHelper.accessor('assessmentCount', {
-			id: 'assessmentCount',
-			header: 'Assessments',
-			enableSorting: true,
-			Cell: ({ cell }) => formatTaxNumber(cell.getValue()),
-		}),
-		columnHelper.accessor('lastAssessmentAt', {
-			id: 'lastAssessmentAt',
-			header: 'Last Assessment',
-			enableSorting: true,
-			Cell: ({ cell }) => formatTaxDateTime(cell.getValue()),
-		}),
-		columnHelper.display({
-			id: 'sourceSplit',
-			header: 'Source Split',
-			enableSorting: false,
-			size: 300,
-			Cell: ({ row }) => (
-				<div className="min-w-[15rem] text-xs">
-					<TopSourceBreakdown topRefTypes={row.original.topRefTypes} />
-				</div>
-			),
-		}),
-	]
+	const errorMessage =
+		props.error instanceof Error ? props.error.message : 'Unable to load member summary.'
 
 	return (
-		<TaxReportDataGrid
-			columns={columns}
-			rows={props.rows}
-			loading={props.loading}
-			error={props.error}
-			emptyMessage="No member contribution records were found for the selected scope and period."
-			sorting={props.sorting}
-			onSortingChange={props.onSortingChange}
-			pagination={props.pagination}
-			onPaginationChange={props.onPaginationChange}
-			pageCount={props.pageCount}
-			rowCount={props.rowCount}
-		/>
+		<div className="space-y-3">
+			{props.error ? <div className="text-sm text-destructive">{errorMessage}</div> : null}
+			<MemberSummaryPagination {...props} />
+			<div className="relative overflow-hidden rounded-md border border-border">
+				<Table className="min-w-[70rem]">
+					<TableHeader>
+						<TableRow>
+							<SortableHead
+								label="Character"
+								field="characterId"
+								sortBy={props.sortBy}
+								sortDir={props.sortDir}
+								onSortChange={props.onSortChange}
+							/>
+							<SortableHead
+								label="Contribution"
+								field="contributionIncome"
+								sortBy={props.sortBy}
+								sortDir={props.sortDir}
+								onSortChange={props.onSortChange}
+							/>
+							<SortableHead
+								label="Taxable"
+								field="taxableContributionIncome"
+								sortBy={props.sortBy}
+								sortDir={props.sortDir}
+								onSortChange={props.onSortChange}
+							/>
+							<SortableHead
+								label="Assessments"
+								field="assessmentCount"
+								sortBy={props.sortBy}
+								sortDir={props.sortDir}
+								onSortChange={props.onSortChange}
+							/>
+							<SortableHead
+								label="Last Assessment"
+								field="lastAssessmentAt"
+								sortBy={props.sortBy}
+								sortDir={props.sortDir}
+								onSortChange={props.onSortChange}
+							/>
+							<TableHead>Source Split</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{props.rows.length > 0 ? (
+							props.rows.map((row) => (
+								<TableRow key={row.characterId}>
+									<TableCell>
+										{row.characterId === UNATTRIBUTED_CHARACTER_ID ? (
+											<div className="font-medium">Unattributed</div>
+										) : (
+											<TaxEntityDisplay
+												entityId={row.characterId}
+												entityNames={props.entityNames}
+											/>
+										)}
+									</TableCell>
+									<TableCell className="whitespace-nowrap">
+										{formatTaxIskFull(row.contributionIncome)}
+									</TableCell>
+									<TableCell className="whitespace-nowrap">
+										{formatTaxIskFull(row.taxableContributionIncome)}
+									</TableCell>
+									<TableCell className="whitespace-nowrap">
+										{formatTaxNumber(row.assessmentCount)}
+									</TableCell>
+									<TableCell className="whitespace-nowrap">
+										{formatTaxDateTime(row.lastAssessmentAt)}
+									</TableCell>
+									<TableCell>
+										<TopSourceBreakdown topRefTypes={row.topRefTypes} />
+									</TableCell>
+								</TableRow>
+							))
+						) : (
+							<TableRow>
+								<TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+									{props.loading
+										? 'Loading member contribution records...'
+										: 'No member contribution records were found for the selected scope and period.'}
+								</TableCell>
+							</TableRow>
+						)}
+					</TableBody>
+				</Table>
+				{props.loading && props.rows.length > 0 ? (
+					<div className="absolute inset-0 flex items-center justify-center bg-background/45 text-sm text-muted-foreground backdrop-blur-[1px]">
+						Loading...
+					</div>
+				) : null}
+			</div>
+			<MemberSummaryPagination {...props} />
+		</div>
 	)
 }

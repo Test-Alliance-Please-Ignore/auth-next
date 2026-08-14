@@ -464,12 +464,14 @@ function buildDemoState(seed: number) {
 					{
 						refType: 'bounty_prizes',
 						lineCount: 8 + index,
+						contributionAmount: amount(9_850_000_000 + index * 1_120_000_000),
 						taxableAmount: amount(9_850_000_000 + index * 1_120_000_000),
 						taxAmount: amount(738_750_000 + index * 84_000_000),
 					},
 					{
 						refType: 'ess_escrow_transfer',
 						lineCount: 2 + index,
+						contributionAmount: amount(1_480_000_000 + index * 280_000_000),
 						taxableAmount: amount(1_480_000_000 + index * 280_000_000),
 						taxAmount: amount(140_600_000 + index * 26_600_000),
 					},
@@ -1928,6 +1930,7 @@ export const taxDemoApi = {
 		corporationId: string,
 		filters?: {
 			characterQuery?: string
+			refTypes?: string[]
 			limit?: number
 			offset?: number
 			sortBy?:
@@ -1956,11 +1959,25 @@ export const taxDemoApi = {
 			}
 			return true
 		})
+		if (filters?.refTypes?.length) {
+			rows = rows.map((row) => ({
+				...row,
+				topRefTypes: row.topRefTypes.filter((source) => filters.refTypes?.includes(source.refType)),
+			}))
+		}
 		rows = sortRows(rows as any, filters?.sortBy, filters?.sortDir ?? 'desc') as TaxMemberSummary[]
 		return withLatency({
 			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
 			totalRows: rows.length,
 		})
+	},
+	async getTaxableIncomeRefTypes(corporationId: string) {
+		const hasDemoRows = ensureDemoState().memberSummary.some(
+			(row) => row.corporationId === corporationId
+		)
+		return withLatency(
+			hasDemoRows ? ['bounty_prizes', 'ess_escrow_transfer'] : []
+		)
 	},
 	async requestExport(input: {
 		corporationId?: string

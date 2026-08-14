@@ -39,6 +39,7 @@ export {
 	useTaxMemberSummary,
 	useTaxMissingEsiKeysReport,
 	useTaxSummaryReport,
+	useTaxableIncomeRefTypes,
 	useTaxTopIncomeSourcesMonthlyReport,
 	useTaxTopIncomeSourcesReport,
 	useTaxTotalTaxesReport,

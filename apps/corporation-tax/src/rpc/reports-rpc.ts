@@ -75,4 +75,8 @@ export class TaxReportsRpc {
 	): Promise<TaxPagedResult<TaxMemberSummary>> {
 		return this.ctx.reportService.getMemberSummaryReport(filters)
 	}
+
+	getTaxableIncomeRefTypes(corporationId: string): Promise<string[]> {
+		return this.ctx.reportService.getTaxableIncomeRefTypes(corporationId)
+	}
 }

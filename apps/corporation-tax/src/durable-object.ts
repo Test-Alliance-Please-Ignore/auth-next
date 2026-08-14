@@ -735,6 +735,12 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		)
 	}
 
+	async getTaxableIncomeRefTypes(corporationId: string): Promise<string[]> {
+		return this.rpcGuard('getTaxableIncomeRefTypes', { corporationId }, () =>
+			this.reportsRpc.getTaxableIncomeRefTypes(corporationId)
+		)
+	}
+
 	async requestExport(actorUserId: string, input: RequestTaxExportInput): Promise<TaxExportRecord> {
 		return this.operationsRpc.requestExport(actorUserId, input)
 	}

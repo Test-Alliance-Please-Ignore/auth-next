@@ -632,7 +632,7 @@ export type TaxMemberComplianceStatus = 'underpaid' | 'paid' | 'overpaid' | 'no_
 export interface TaxMemberSummaryTopRefType {
 	refType: string
 	lineCount: number
-	contributionAmount?: string
+	contributionAmount: string
 	taxableAmount: string
 	taxAmount: string
 }
@@ -652,6 +652,7 @@ export interface TaxMemberSummary {
 export interface TaxMemberSummaryReportFilters {
 	corporationId: string
 	characterIds?: string[]
+	refTypes?: string[]
 	fromDate?: Date
 	toDate?: Date
 	topRefTypesLimit?: number

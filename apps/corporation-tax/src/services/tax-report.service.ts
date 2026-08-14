@@ -1,3 +1,4 @@
+import { filterTaxIncomeRefTypes, TAX_INCOME_REF_TYPES } from '@repo/corporation-tax'
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
@@ -13,6 +14,7 @@ import {
 	taxMemberContributionProjectionRollups,
 	taxMemberSummaryVersions,
 	taxRuleGroupAttachments,
+	taxRuleSets,
 } from '../db/schema'
 import {
 	formatCenti as formatMoneyCenti,
@@ -46,6 +48,8 @@ import type {
 } from '@repo/corporation-tax'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { CorporationTaxDb } from '../db'
+
+const UNATTRIBUTED_CHARACTER_ID = '__unattributed__'
 
 export class TaxReportService {
 	private readonly MEMBER_SUMMARY_CACHE_TTL_MS = 30 * 60 * 1000
@@ -608,16 +612,44 @@ export class TaxReportService {
 	async getMemberSummaryReport(
 		filters: TaxMemberSummaryReportFilters
 	): Promise<TaxPagedResult<TaxMemberSummary>> {
+		const rollupReadSupported = this.supportsMemberSummaryRollupRead()
 		const requestedCharacterIds = Array.from(
 			new Set<string>((filters.characterIds ?? []).map((value) => value.trim()).filter(Boolean))
 		)
-		const memberCharacterIds = await this.getCorporationMemberIds(filters.corporationId)
+		// Privileged corporation-wide rollup reads are already scoped by corporation_id.
+		// Only resolve the DO-backed active-member roster when an individual scope is
+		// requested or when the legacy non-rollup path still needs it.
+		const memberCharacterIds =
+			rollupReadSupported && requestedCharacterIds.length === 0
+				? []
+				: await this.getCorporationMemberIds(filters.corporationId)
 		const memberIdSet = new Set(memberCharacterIds)
 		const scopedRequestedCharacterIds =
 			requestedCharacterIds.length > 0
 				? requestedCharacterIds.filter((characterId) => memberIdSet.has(characterId))
 				: []
 		const includeUnattributedRow = true
+		const refTypes = filterTaxIncomeRefTypes(filters.refTypes)
+
+		if (rollupReadSupported) {
+			if (requestedCharacterIds.length > 0 && scopedRequestedCharacterIds.length === 0) {
+				return { rows: [], totalRows: 0 }
+			}
+
+			return this.getMemberSummaryFromRollupsSql({
+				corporationId: filters.corporationId,
+				characterIds: requestedCharacterIds.length > 0 ? scopedRequestedCharacterIds : undefined,
+				includeUnattributedRow,
+				refTypes,
+				fromDate: filters.fromDate,
+				toDate: filters.toDate,
+				topRefTypesLimit: filters.topRefTypesLimit,
+				limit: filters.limit,
+				offset: filters.offset,
+				sortBy: filters.sortBy,
+				sortDirection: filters.sortDirection,
+			})
+		}
 
 		const cacheKey = this.toMemberSummaryCacheKey(filters)
 		const nowMs = Date.now()
@@ -687,6 +719,7 @@ export class TaxReportService {
 				scopedCharacterIdSet,
 				includeUnattributedRow,
 				topRefTypesLimit,
+				refTypes,
 			})
 			if (rollupRows.length > 0) {
 				this.setMemberSummaryCache(cacheKey, {
@@ -992,6 +1025,30 @@ export class TaxReportService {
 		)
 	}
 
+	async getTaxableIncomeRefTypes(corporationId: string): Promise<string[]> {
+		const attachments = await this.db
+			.select({ ruleGroupId: taxRuleGroupAttachments.ruleGroupId })
+			.from(taxRuleGroupAttachments)
+			.where(eq(taxRuleGroupAttachments.corporationId, corporationId))
+
+		const ruleGroupIds = attachments.map((row) => row.ruleGroupId)
+		if (ruleGroupIds.length === 0) {
+			return []
+		}
+
+		const rules = await this.db.query.taxRuleSets.findMany({
+			where: and(inArray(taxRuleSets.ruleGroupId, ruleGroupIds), eq(taxRuleSets.isActive, true)),
+			orderBy: [desc(taxRuleSets.priority), desc(taxRuleSets.createdAt)],
+		})
+
+		return TAX_INCOME_REF_TYPES.filter((refType) => {
+			const effectiveRule = rules.find(
+				(rule) => rule.appliesToRefType === null || rule.appliesToRefType === refType
+			)
+			return (effectiveRule?.taxRateBps ?? 0) > 0
+		})
+	}
+
 	private async hasMemberSummaryRollupUpdatesSince(
 		filters: TaxMemberSummaryReportFilters,
 		cachedAtMs: number
@@ -1034,6 +1091,225 @@ export class TaxReportService {
 		return Boolean(finalizedUpdate || projectionUpdate)
 	}
 
+	private async getMemberSummaryFromRollupsSql(input: {
+		corporationId: string
+		characterIds?: string[]
+		includeUnattributedRow: boolean
+		refTypes?: string[]
+		fromDate?: Date
+		toDate?: Date
+		topRefTypesLimit?: number
+		limit?: number
+		offset?: number
+		sortBy?: TaxMemberSummaryReportFilters['sortBy']
+		sortDirection?: TaxMemberSummaryReportFilters['sortDirection']
+	}): Promise<TaxPagedResult<TaxMemberSummary>> {
+		const fromDay = input.fromDate ? this.toUtcDay(input.fromDate) : undefined
+		const toDay = input.toDate ? this.toUtcDay(input.toDate) : undefined
+		const buildRollupWhere = (alias: string) => {
+			const refTypeFilter = input.refTypes?.length
+				? sql`AND ${sql.raw(alias)}.ref_type IN (${sql.join(
+						input.refTypes.map((refType) => sql`${refType}`),
+						sql`, `
+					)})`
+				: sql``
+			const characterFilter = input.characterIds?.length
+				? sql`AND (
+					${sql.raw(alias)}.character_id IN (${sql.join(
+						input.characterIds.map((characterId) => sql`${characterId}`),
+						sql`, `
+					)})
+					${input.includeUnattributedRow ? sql`OR ${sql.raw(alias)}.character_id = ${UNATTRIBUTED_CHARACTER_ID}` : sql``}
+				)`
+				: sql``
+			return sql`
+				${sql.raw(alias)}.corporation_id = ${input.corporationId}
+				${fromDay ? sql`AND ${sql.raw(alias)}.rollup_date >= ${fromDay}` : sql``}
+				${toDay ? sql`AND ${sql.raw(alias)}.rollup_date <= ${toDay}` : sql``}
+				${characterFilter}
+				${refTypeFilter}
+			`
+		}
+		const finalizedWhere = buildRollupWhere('finalized')
+		const projectionWhere = sql`
+			${buildRollupWhere('projection')}
+			AND NOT EXISTS (
+				SELECT 1
+				FROM ${taxMemberContributionFinalizedRollups} AS finalized_match
+				WHERE finalized_match.corporation_id = projection.corporation_id
+					AND finalized_match.period_start = projection.period_start
+					AND finalized_match.period_end = projection.period_end
+					AND finalized_match.rollup_date = projection.rollup_date
+					AND finalized_match.character_id = projection.character_id
+					AND finalized_match.ref_type = projection.ref_type
+			)
+		`
+		const rollupCte = sql`
+			WITH rollup_rows AS (
+				SELECT
+					finalized.character_id,
+					finalized.ref_type,
+					finalized.contribution_income,
+					finalized.taxable_contribution_income,
+					finalized.assessment_count,
+					finalized.source_row_count,
+					finalized.last_assessment_at
+				FROM ${taxMemberContributionFinalizedRollups} AS finalized
+				WHERE ${finalizedWhere}
+				UNION ALL
+				SELECT
+					projection.character_id,
+					projection.ref_type,
+					projection.contribution_income,
+					projection.taxable_contribution_income,
+					projection.assessment_count,
+					projection.source_row_count,
+					projection.last_assessment_at
+				FROM ${taxMemberContributionProjectionRollups} AS projection
+				WHERE ${projectionWhere}
+			), character_totals AS (
+				SELECT
+					character_id,
+					SUM(contribution_income::numeric) AS contribution_income,
+					SUM(taxable_contribution_income::numeric) AS taxable_contribution_income,
+					MAX(assessment_count)::int AS assessment_count,
+					MAX(last_assessment_at) AS last_assessment_at
+				FROM rollup_rows
+				GROUP BY character_id
+			)
+		`
+		const sourceRollupCte = sql`
+			WITH rollup_rows AS (
+				SELECT
+					finalized.character_id,
+					finalized.ref_type,
+					finalized.contribution_income,
+					finalized.taxable_contribution_income,
+					finalized.source_row_count
+				FROM ${taxMemberContributionFinalizedRollups} AS finalized
+				WHERE ${finalizedWhere}
+				UNION ALL
+				SELECT
+					projection.character_id,
+					projection.ref_type,
+					projection.contribution_income,
+					projection.taxable_contribution_income,
+					projection.source_row_count
+				FROM ${taxMemberContributionProjectionRollups} AS projection
+				WHERE ${projectionWhere}
+			)
+		`
+		const sortColumn = (() => {
+			switch (input.sortBy) {
+				case 'characterId':
+					return 'character_id'
+				case 'taxableContributionIncome':
+					return 'taxable_contribution_income'
+				case 'assessmentCount':
+					return 'assessment_count'
+				case 'lastAssessmentAt':
+					return 'last_assessment_at'
+				case 'contributionIncome':
+				default:
+					return 'contribution_income'
+			}
+		})()
+		const sortDirection = input.sortDirection === 'asc' ? 'ASC' : 'DESC'
+		const limit = Math.min(Math.max(input.limit ?? 50, 1), 200)
+		const offset = Math.max(input.offset ?? 0, 0)
+
+		const pageResult = await this.db.execute(sql`
+			${rollupCte}
+			SELECT
+				character_id,
+				contribution_income,
+				taxable_contribution_income,
+				assessment_count,
+				last_assessment_at,
+				COUNT(*) OVER()::int AS total_rows
+			FROM character_totals
+			ORDER BY ${sql.raw(sortColumn)} ${sql.raw(sortDirection)}, character_id ASC
+			LIMIT ${limit}
+			OFFSET ${offset}
+		`)
+		const pageRows = pageResult.rows as Array<Record<string, unknown>>
+		let totalRows = Number(pageRows[0]?.total_rows ?? 0)
+		if (pageRows.length === 0 && offset > 0) {
+			const countResult = await this.db.execute(sql`
+				${rollupCte}
+				SELECT COUNT(*)::int AS total_rows
+				FROM character_totals
+			`)
+			totalRows = Number((countResult.rows as Array<Record<string, unknown>>)[0]?.total_rows ?? 0)
+		}
+		const pageCharacterIds = pageRows.map((row) => String(row.character_id))
+		const topRefTypeTotals = new Map<
+			string,
+			Array<{
+				refType: string
+				lineCount: number
+				contributionAmount: string
+				taxableAmount: string
+			}>
+		>()
+
+		if (pageCharacterIds.length > 0) {
+			const sourceResult = await this.db.execute(sql`
+				${sourceRollupCte}
+				SELECT
+					character_id,
+					ref_type,
+					SUM(contribution_income::numeric) AS contribution_income,
+					SUM(taxable_contribution_income::numeric) AS taxable_contribution_income,
+					SUM(source_row_count)::int AS line_count
+				FROM rollup_rows
+				WHERE character_id IN (${sql.join(
+					pageCharacterIds.map((characterId) => sql`${characterId}`),
+					sql`, `
+				)})
+				GROUP BY character_id, ref_type
+				ORDER BY character_id ASC, SUM(contribution_income::numeric) DESC, ref_type ASC
+			`)
+			for (const row of sourceResult.rows as Array<Record<string, unknown>>) {
+				const characterId = String(row.character_id)
+				const sourceRows = topRefTypeTotals.get(characterId) ?? []
+				if (input.topRefTypesLimit === undefined || sourceRows.length < input.topRefTypesLimit) {
+					sourceRows.push({
+						refType: String(row.ref_type),
+						lineCount: Number(row.line_count ?? 0),
+						contributionAmount: String(row.contribution_income ?? '0'),
+						taxableAmount: String(row.taxable_contribution_income ?? '0'),
+					})
+				}
+				topRefTypeTotals.set(characterId, sourceRows)
+			}
+		}
+
+		return {
+			rows: pageRows.map((row) => {
+				const characterId = String(row.character_id)
+				const topRefTypes = topRefTypeTotals.get(characterId) ?? []
+				return {
+					corporationId: input.corporationId,
+					characterId,
+					fromDate: input.fromDate ?? null,
+					toDate: input.toDate ?? null,
+					assessmentCount: Number(row.assessment_count ?? 0),
+					contributionIncome: String(row.contribution_income ?? '0'),
+					taxableContributionIncome: String(row.taxable_contribution_income ?? '0'),
+					lastAssessmentAt: row.last_assessment_at
+						? new Date(String(row.last_assessment_at))
+						: null,
+					topRefTypes: topRefTypes.map((source) => ({
+						...source,
+						taxAmount: source.taxableAmount,
+					})),
+				}
+			}),
+			totalRows,
+		}
+	}
+
 	private async getMemberSummaryFromRollups(input: {
 		corporationId: string
 		fromDate?: Date
@@ -1042,6 +1318,7 @@ export class TaxReportService {
 		scopedCharacterIdSet: Set<string>
 		includeUnattributedRow: boolean
 		topRefTypesLimit: number | null
+		refTypes?: string[]
 	}): Promise<TaxMemberSummary[]> {
 		const fromDay = input.fromDate ? this.toUtcDay(input.fromDate) : undefined
 		const toDay = input.toDate ? this.toUtcDay(input.toDate) : undefined
@@ -1061,6 +1338,14 @@ export class TaxReportService {
 		if (toDay) {
 			finalizedConditions.push(lte(taxMemberContributionFinalizedRollups.rollupDate, toDay))
 			projectionConditions.push(lte(taxMemberContributionProjectionRollups.rollupDate, toDay))
+		}
+		if (input.refTypes && input.refTypes.length > 0) {
+			finalizedConditions.push(
+				inArray(taxMemberContributionFinalizedRollups.refType, input.refTypes)
+			)
+			projectionConditions.push(
+				inArray(taxMemberContributionProjectionRollups.refType, input.refTypes)
+			)
 		}
 
 		const [fetchedFinalizedRows, fetchedProjectionRows] = await Promise.all([
@@ -1283,6 +1568,7 @@ export class TaxReportService {
 			filters.fromDate?.toISOString() ?? '',
 			filters.toDate?.toISOString() ?? '',
 			filters.topRefTypesLimit ?? '',
+			filterTaxIncomeRefTypes(filters.refTypes)?.join(',') ?? '',
 		].join('|')
 	}
 

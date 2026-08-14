@@ -472,6 +472,11 @@ export interface CorporationTax {
 	): Promise<TaxPagedResult<TaxMemberSummary>>
 
 	/**
+	 * Income types whose effective active rule for a corporation is taxable.
+	 */
+	getTaxableIncomeRefTypes(corporationId: string): Promise<string[]>
+
+	/**
 	 * Request a tax report export run.
 	 */
 	requestExport(actorUserId: string, input: RequestTaxExportInput): Promise<TaxExportRecord>

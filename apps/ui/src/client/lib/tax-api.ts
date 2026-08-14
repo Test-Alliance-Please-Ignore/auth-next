@@ -81,6 +81,7 @@ export type TaxReportFilters = TaxRollupReportQueryFilters
 
 export interface TaxMemberSummaryFilters {
 	characterQuery?: string
+	refTypes?: string[]
 	fromDate?: string
 	toDate?: string
 	topRefTypesLimit?: number
@@ -802,6 +803,7 @@ export class CorporationTaxApiClient extends ApiClient {
 		if (this.shouldUseDemo()) return taxDemoApi.getMemberSummary(corporationId, filters)
 		const params = new URLSearchParams()
 		if (filters?.characterQuery) params.set('character', filters.characterQuery)
+		if (filters?.refTypes?.length) params.set('refTypes', filters.refTypes.join(','))
 		if (filters?.fromDate) params.set('fromDate', filters.fromDate)
 		if (filters?.toDate) params.set('toDate', filters.toDate)
 		if (filters?.topRefTypesLimit !== undefined)
@@ -814,6 +816,17 @@ export class CorporationTaxApiClient extends ApiClient {
 		return this.get(
 			`${TAX_API_BASE}/corporations/${corporationId}/member-summary${query ? `?${query}` : ''}`
 		)
+	}
+
+	async getTaxableIncomeRefTypes(corporationId: string): Promise<string[]> {
+		if (!corporationId?.trim()) {
+			throw new Error('Corporation id is required for taxable income types')
+		}
+		if (this.shouldUseDemo()) return taxDemoApi.getTaxableIncomeRefTypes(corporationId)
+		const result = await this.get<{ refTypes: string[] }>(
+			`${TAX_API_BASE}/corporations/${corporationId}/member-summary/taxable-ref-types`
+		)
+		return result.refTypes
 	}
 
 	async requestExport(input: {

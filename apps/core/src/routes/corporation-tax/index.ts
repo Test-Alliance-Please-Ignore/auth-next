@@ -2293,6 +2293,14 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 	const corporationId = c.req.param('corporationId')
 	const characterQueryRaw = (c.req.query('character') ?? c.req.query('characterId') ?? '').trim()
 	const characterQuery = characterQueryRaw.length > 0 ? characterQueryRaw : undefined
+	const refTypes = (c.req.query('refTypes') ?? '')
+		.split(',')
+		.map((value) => value.trim())
+		.filter(Boolean)
+	if (refTypes.some((value) => !isTaxIncomeRefType(value))) {
+		return c.json({ error: 'refTypes must only include valid tax income ref types' }, 400)
+	}
+	const selectedRefTypes = refTypes.length > 0 ? refTypes : undefined
 	const fromDate = parseDateQueryParam(c.req.query('fromDate'))
 	const toDate = parseDateQueryParam(c.req.query('toDate'))
 	const topRefTypesLimit = parseIntegerQueryParam(c.req.query('topRefTypesLimit'))
@@ -2339,6 +2347,7 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 			const result = await stub.getMemberSummaryReport({
 				corporationId,
 				characterIds: resolvedTargets.targetCharacterIds,
+				refTypes: selectedRefTypes,
 				fromDate: fromDate ?? undefined,
 				toDate: toDate ?? undefined,
 				topRefTypesLimit: topRefTypesLimit ?? undefined,
@@ -2364,6 +2373,33 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 			corporationId,
 		})
 		return c.json({ error: 'Failed to fetch member summary' }, 500)
+	}
+})
+
+app.get('/corporations/:corporationId/member-summary/taxable-ref-types', requireAuth(), async (c) => {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	const corporationId = c.req.param('corporationId')
+	if (!(await canReadTaxFeature(c.env, user, corporationId))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	try {
+		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+		try {
+			return c.json({ refTypes: await stub.getTaxableIncomeRefTypes(corporationId) })
+		} finally {
+			disposeRpcStub(stub)
+		}
+	} catch (error) {
+		logTaxRouteError(c, 'Error fetching taxable corporation tax income types', error, {
+			userId: user.id,
+			corporationId,
+		})
+		return c.json({ error: 'Failed to fetch taxable income types' }, 500)
 	}
 })
 

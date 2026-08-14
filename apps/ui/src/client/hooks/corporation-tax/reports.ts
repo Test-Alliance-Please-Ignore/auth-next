@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { corporationTaxApi } from '@/lib/tax-api'
 
@@ -107,6 +107,7 @@ export function useTaxMemberSummary(
 	corporationId: string | undefined,
 	filters?: {
 		characterQuery?: string
+		refTypes?: string[]
 		fromDate?: string
 		toDate?: string
 		topRefTypesLimit?: number
@@ -130,7 +131,22 @@ export function useTaxMemberSummary(
 			}
 			return corporationTaxApi.getMemberSummary(corporationId, filters)
 		},
+		placeholderData: keepPreviousData,
 		staleTime: 1000 * 60 * 10,
 		enabled: Boolean(corporationId) && (filters?.enabled ?? true),
+	})
+}
+
+export function useTaxableIncomeRefTypes(corporationId: string | undefined, enabled = true) {
+	return useQuery({
+		queryKey: corporationTaxKeys.memberSummaryTaxableRefTypes(corporationId ?? 'none'),
+		queryFn: () => {
+			if (!corporationId) {
+				throw new Error('Corporation id is required for taxable income types')
+			}
+			return corporationTaxApi.getTaxableIncomeRefTypes(corporationId)
+		},
+		staleTime: 1000 * 60 * 10,
+		enabled: Boolean(corporationId) && enabled,
 	})
 }
