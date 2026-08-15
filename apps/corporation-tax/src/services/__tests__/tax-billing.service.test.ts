@@ -55,6 +55,11 @@ describe('TaxBillingService scope guardrails', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		mockDb = {
+			select: vi.fn(() => ({
+				from: vi.fn(() => ({
+					where: vi.fn().mockResolvedValue([{ count: 2 }]),
+				})),
+			})),
 			query: {
 				taxAssessments: {
 					findFirst: vi.fn(),
@@ -130,20 +135,16 @@ describe('TaxBillingService scope guardrails', () => {
 	})
 
 	it('ignores non-corporation rows when building corporation bill history', async () => {
-		mockDb.query.taxAssessments.findMany.mockResolvedValue([
-			makeAssessment({
-				id: 'assessment-corp',
-				billId: 'bill-corp',
-				billStatus: 'issued',
-			}),
-			makeAssessment({
-				id: 'assessment-char',
-				assessmentScope: 'character',
-				scopeId: '7001',
-				billId: 'bill-char',
-				billStatus: 'issued',
-			}),
-		])
+		mockDb.query.taxAssessments.findMany.mockImplementation(async (query: { where?: unknown }) => {
+			expect(query.where).toBeDefined()
+			return [
+				makeAssessment({
+					id: 'assessment-corp',
+					billId: 'bill-corp',
+					billStatus: 'issued',
+				}),
+			]
+		})
 
 		const billsStub = {
 			getBillTimelines: vi.fn().mockResolvedValue({
@@ -166,10 +167,49 @@ describe('TaxBillingService scope guardrails', () => {
 		const service = new TaxBillingService(mockDb, {} as DurableObjectNamespace)
 		const result = await service.getCorporationBillStatusHistory('98000001')
 
-		expect(result).toHaveLength(1)
-		expect(result[0]?.assessment.id).toBe('assessment-corp')
+		expect(result.rows).toHaveLength(1)
+		expect(result.rows[0]?.assessment.id).toBe('assessment-corp')
 		expect(billsStub.getBillTimelines).toHaveBeenCalledTimes(1)
 		expect(billsStub.getBillTimelines).toHaveBeenCalledWith(['bill-corp'])
+	})
+
+	it('pages corporation billing events in Bills without loading all assessment bill IDs', async () => {
+		const billsStub = {
+			listBillStatusEventsByPayerPage: vi.fn().mockResolvedValue({
+				rows: [
+					{
+						id: 'event-1',
+						billId: 'bill-1',
+						eventType: 'issued',
+						fromStatus: 'draft',
+						toStatus: 'issued',
+						actorUserId: 'actor-1',
+						metadata: null,
+						createdAt: new Date('2026-04-01T00:00:00.000Z'),
+						externalSourceType: 'corporation_tax_assessment',
+						externalSourceId: 'assessment-1',
+					},
+				],
+				rowCount: 1,
+			}),
+		}
+		getStubMock.mockReturnValue(billsStub)
+
+		const service = new TaxBillingService(mockDb, {} as DurableObjectNamespace)
+		const result = await service.getCorporationBillEventHistory('98000001', 25, 0)
+
+		expect(result.rows).toHaveLength(1)
+		expect(result.rows[0]?.assessmentId).toBe('assessment-1')
+		expect(billsStub.listBillStatusEventsByPayerPage).toHaveBeenCalledWith({
+			payerId: '98000001',
+			payerType: 'corporation',
+			externalSourceType: 'corporation_tax_assessment',
+			limit: 25,
+			offset: 0,
+			sortBy: 'createdAt',
+			sortDir: 'desc',
+		})
+		expect(mockDb.query.taxAssessments.findMany).not.toHaveBeenCalled()
 	})
 
 	it('skips non-corporation rows during bulk status sync', async () => {

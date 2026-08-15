@@ -7,6 +7,7 @@ import type {
 	TaxAssessment,
 	TaxAssessmentWithBillHistory,
 	TaxBillingEventHistoryRow,
+	TaxBillingEventSortBy,
 	TaxBillStateSyncInput,
 	TaxCorporationBillingConfig,
 	TaxPagedResult,
@@ -121,16 +122,24 @@ export class TaxBillingRpc {
 		corporationId: string,
 		limit?: number,
 		offset?: number
-	): Promise<TaxAssessmentWithBillHistory[]> {
+	): Promise<TaxPagedResult<TaxAssessmentWithBillHistory>> {
 		return this.ctx.billingService.getCorporationBillStatusHistory(corporationId, limit, offset)
 	}
 
 	async getCorporationBillEventHistory(
 		corporationId: string,
 		limit?: number,
-		offset?: number
+		offset?: number,
+		sortBy?: TaxBillingEventSortBy,
+		sortDir?: 'asc' | 'desc'
 	): Promise<TaxPagedResult<TaxBillingEventHistoryRow>> {
-		return this.ctx.billingService.getCorporationBillEventHistory(corporationId, limit, offset)
+		return this.ctx.billingService.getCorporationBillEventHistory(
+			corporationId,
+			limit,
+			offset,
+			sortBy,
+			sortDir
+		)
 	}
 
 	async getAssessmentBillStatusHistory(

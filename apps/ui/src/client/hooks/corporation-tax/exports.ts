@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { corporationTaxApi } from '@/lib/tax-api'
 
@@ -12,11 +12,21 @@ export function useTaxExports(filters?: {
 	status?: TaxExportStatus
 	limit?: number
 	offset?: number
+	sortBy?:
+		| 'requestedAt'
+		| 'corporationId'
+		| 'reportType'
+		| 'format'
+		| 'status'
+		| 'rowCount'
+		| 'completedAt'
+	sortDir?: 'asc' | 'desc'
 	enabled?: boolean
 }) {
 	return useQuery({
 		queryKey: corporationTaxKeys.exports(filters),
 		queryFn: () => corporationTaxApi.listExports(filters),
+		placeholderData: keepPreviousData,
 		staleTime: 1000 * 30,
 		enabled: filters?.enabled ?? true,
 	})
@@ -49,11 +59,22 @@ export function useTaxExportSchedules(filters?: {
 	activeOnly?: boolean
 	limit?: number
 	offset?: number
+	sortBy?:
+		| 'name'
+		| 'corporationId'
+		| 'reportType'
+		| 'format'
+		| 'frequency'
+		| 'isActive'
+		| 'nextRunAt'
+		| 'lastRunAt'
+	sortDir?: 'asc' | 'desc'
 	enabled?: boolean
 }) {
 	return useQuery({
 		queryKey: corporationTaxKeys.exportSchedules(filters),
 		queryFn: () => corporationTaxApi.listExportSchedules(filters),
+		placeholderData: keepPreviousData,
 		staleTime: 1000 * 30,
 		enabled: filters?.enabled ?? true,
 	})

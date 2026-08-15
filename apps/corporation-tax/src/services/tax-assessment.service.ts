@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import {
@@ -27,6 +27,7 @@ import type {
 	RunTaxAssessmentForPeriodResult,
 	TaxAssessment,
 	TaxAssessmentLine,
+	TaxAssessmentPage,
 	TaxAssessmentScope,
 	TaxAssessmentStatus,
 	TaxDiscrepancy,
@@ -68,13 +69,14 @@ export class TaxAssessmentService {
 	private readonly TAX_DELTA_DISCREPANCY_THRESHOLD_BPS = 500
 	private readonly CLASSIFICATION_RULE_NAME_MAX_LENGTH = 48
 	private readonly ASSESSMENT_LINE_INSERT_BATCH_SIZE = 50
+	private readonly ID_FILTER_BATCH_SIZE = 1_000
 
 	constructor(
 		private db: CorporationTaxDb,
 		private eveCorporationDataNamespace: DurableObjectNamespace
 	) {}
 
-	async listAssessments(filters?: ListTaxAssessmentsFilters): Promise<TaxAssessment[]> {
+	async listAssessments(filters?: ListTaxAssessmentsFilters): Promise<TaxAssessmentPage> {
 		const conditions = []
 
 		if (filters?.corporationId) {
@@ -89,6 +91,15 @@ export class TaxAssessmentService {
 		if (filters?.withBillOnly) {
 			conditions.push(isNotNull(taxAssessments.billId))
 		}
+		if (filters?.unbilledOnly) {
+			conditions.push(
+				and(
+					isNull(taxAssessments.billId),
+					ne(taxAssessments.status, 'draft'),
+					ne(taxAssessments.status, 'excluded')
+				)
+			)
+		}
 		if (filters?.periodStart) {
 			conditions.push(gte(taxAssessments.taxPeriodStart, filters.periodStart))
 		}
@@ -99,14 +110,58 @@ export class TaxAssessmentService {
 		const limit = Math.min(Math.max(filters?.limit ?? 50, 1), 200)
 		const offset = Math.max(filters?.offset ?? 0, 0)
 
+		const where = conditions.length ? and(...conditions) : undefined
+		const sortDirection = filters?.sortDir === 'asc' ? asc : desc
+		const sortColumn =
+			filters?.sortBy === 'assessmentScope'
+				? taxAssessments.assessmentScope
+				: filters?.sortBy === 'scopeId'
+					? taxAssessments.scopeId
+					: filters?.sortBy === 'status'
+						? taxAssessments.status
+						: filters?.sortBy === 'taxDue'
+							? taxAssessments.taxDue
+							: filters?.sortBy === 'taxDelta'
+								? taxAssessments.taxDelta
+								: taxAssessments.taxPeriodEnd
+		const sortOrder =
+			filters?.sortBy === 'taxDue'
+				? filters.sortDir === 'asc'
+					? sql`CAST(${taxAssessments.taxDue} AS numeric) ASC`
+					: sql`CAST(${taxAssessments.taxDue} AS numeric) DESC`
+				: filters?.sortBy === 'taxDelta'
+					? filters.sortDir === 'asc'
+						? sql`CAST(${taxAssessments.taxDelta} AS numeric) ASC`
+						: sql`CAST(${taxAssessments.taxDelta} AS numeric) DESC`
+					: sortDirection(sortColumn)
+		const [{ count: totalRows }] = await this.db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(taxAssessments)
+			.where(where)
+
 		const rows = await this.db.query.taxAssessments.findMany({
-			where: conditions.length ? and(...conditions) : undefined,
-			orderBy: [desc(taxAssessments.taxPeriodEnd), desc(taxAssessments.createdAt)],
+			where,
+			orderBy: [sortOrder, desc(taxAssessments.createdAt), desc(taxAssessments.id)],
 			limit,
 			offset,
 		})
 
-		return rows.map((row) => this.toAssessment(row))
+		const [summary] = await this.db
+			.select({
+				corporationAssessmentCount: sql<number>`count(*) filter (where ${taxAssessments.assessmentScope} = 'corporation')::int`,
+				unbilledAssessmentCount: sql<number>`count(*) filter (where ${taxAssessments.assessmentScope} = 'corporation' and ${taxAssessments.billId} is null and ${taxAssessments.status} not in ('draft', 'excluded'))::int`,
+				overdueAssessmentCount: sql<number>`count(*) filter (where ${taxAssessments.assessmentScope} = 'corporation' and ${taxAssessments.billStatus} = 'overdue')::int`,
+			})
+			.from(taxAssessments)
+			.where(where)
+
+		return {
+			rows: rows.map((row) => this.toAssessment(row)),
+			totalRows: Number(totalRows ?? 0),
+			corporationAssessmentCount: Number(summary?.corporationAssessmentCount ?? 0),
+			unbilledAssessmentCount: Number(summary?.unbilledAssessmentCount ?? 0),
+			overdueAssessmentCount: Number(summary?.overdueAssessmentCount ?? 0),
+		} satisfies TaxAssessmentPage
 	}
 
 	async getAssessmentById(assessmentId: string): Promise<TaxAssessment | null> {
@@ -143,24 +198,18 @@ export class TaxAssessmentService {
 			lte(taxLedgerEntries.entryDate, input.periodEnd)
 		)
 
-		const attachedRuleGroups = await this.db.query.taxRuleGroupAttachments.findMany({
-			where: eq(taxRuleGroupAttachments.corporationId, input.corporationId),
-			columns: {
-				ruleGroupId: true,
-			},
-			limit: 500,
+		const activeRuleSets = await this.db.query.taxRuleSets.findMany({
+			where: and(
+				sql`EXISTS (
+					SELECT 1
+					FROM ${taxRuleGroupAttachments}
+					WHERE ${taxRuleGroupAttachments.ruleGroupId} = ${taxRuleSets.ruleGroupId}
+						AND ${taxRuleGroupAttachments.corporationId} = ${input.corporationId}
+				)`,
+				eq(taxRuleSets.isActive, true)
+			),
+			orderBy: [desc(taxRuleSets.priority), desc(taxRuleSets.createdAt)],
 		})
-		const attachedRuleGroupIds = attachedRuleGroups.map((row) => row.ruleGroupId)
-		const activeRuleSets =
-			attachedRuleGroupIds.length === 0
-				? []
-				: await this.db.query.taxRuleSets.findMany({
-						where: and(
-							inArray(taxRuleSets.ruleGroupId, attachedRuleGroupIds),
-							eq(taxRuleSets.isActive, true)
-						),
-						orderBy: [desc(taxRuleSets.priority), desc(taxRuleSets.createdAt)],
-					})
 
 		const compiledRules = activeRuleSets.map((ruleSet) => ({
 			ruleSetId: ruleSet.id,
@@ -449,13 +498,14 @@ export class TaxAssessmentService {
 				.map((assessment) => assessment.id)
 
 			if (staleAssessmentIds.length > 0) {
-				await tx
-					.delete(taxDiscrepancies)
-					.where(inArray(taxDiscrepancies.assessmentId, staleAssessmentIds))
-				await tx
-					.delete(taxAssessmentLines)
-					.where(inArray(taxAssessmentLines.assessmentId, staleAssessmentIds))
-				await tx.delete(taxAssessments).where(inArray(taxAssessments.id, staleAssessmentIds))
+				for (let start = 0; start < staleAssessmentIds.length; start += this.ID_FILTER_BATCH_SIZE) {
+					const idBatch = staleAssessmentIds.slice(start, start + this.ID_FILTER_BATCH_SIZE)
+					await tx.delete(taxDiscrepancies).where(inArray(taxDiscrepancies.assessmentId, idBatch))
+					await tx
+						.delete(taxAssessmentLines)
+						.where(inArray(taxAssessmentLines.assessmentId, idBatch))
+					await tx.delete(taxAssessments).where(inArray(taxAssessments.id, idBatch))
+				}
 			}
 
 			const persistedByScopeKey = new Map<string, typeof taxAssessments.$inferSelect>()
@@ -514,12 +564,13 @@ export class TaxAssessmentService {
 				(assessment) => assessment.id
 			)
 			if (assessmentIds.length > 0) {
-				await tx
-					.delete(taxAssessmentLines)
-					.where(inArray(taxAssessmentLines.assessmentId, assessmentIds))
-				await tx
-					.delete(taxDiscrepancies)
-					.where(inArray(taxDiscrepancies.assessmentId, assessmentIds))
+				for (let start = 0; start < assessmentIds.length; start += this.ID_FILTER_BATCH_SIZE) {
+					const idBatch = assessmentIds.slice(start, start + this.ID_FILTER_BATCH_SIZE)
+					await tx
+						.delete(taxAssessmentLines)
+						.where(inArray(taxAssessmentLines.assessmentId, idBatch))
+					await tx.delete(taxDiscrepancies).where(inArray(taxDiscrepancies.assessmentId, idBatch))
+				}
 			}
 
 			const scopedLineValues: Array<typeof taxAssessmentLines.$inferInsert> = []
@@ -812,9 +863,12 @@ export class TaxAssessmentService {
 			)
 			.map((row: { id: string }) => row.id)
 		if (staleIds.length > 0) {
-			await tx
-				.delete(taxMemberContributionProjectionRollups)
-				.where(inArray(taxMemberContributionProjectionRollups.id, staleIds))
+			for (let start = 0; start < staleIds.length; start += this.ID_FILTER_BATCH_SIZE) {
+				const idBatch = staleIds.slice(start, start + this.ID_FILTER_BATCH_SIZE)
+				await tx
+					.delete(taxMemberContributionProjectionRollups)
+					.where(inArray(taxMemberContributionProjectionRollups.id, idBatch))
+			}
 		}
 	}
 
@@ -886,9 +940,12 @@ export class TaxAssessmentService {
 			)
 			.map((row: { id: string }) => row.id)
 		if (staleIds.length > 0) {
-			await tx
-				.delete(taxMemberContributionFinalizedRollups)
-				.where(inArray(taxMemberContributionFinalizedRollups.id, staleIds))
+			for (let start = 0; start < staleIds.length; start += this.ID_FILTER_BATCH_SIZE) {
+				const idBatch = staleIds.slice(start, start + this.ID_FILTER_BATCH_SIZE)
+				await tx
+					.delete(taxMemberContributionFinalizedRollups)
+					.where(inArray(taxMemberContributionFinalizedRollups.id, idBatch))
+			}
 		}
 	}
 

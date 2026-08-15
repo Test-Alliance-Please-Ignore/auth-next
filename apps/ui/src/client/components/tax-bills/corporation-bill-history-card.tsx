@@ -1,129 +1,129 @@
 import { useMemo } from 'react'
 
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
+import { TaxReportTable } from '@/components/tax-report-table'
+import { billStatusBadgeVariant } from '@/components/tax-reports/grids/shared'
 import { useReportGridState } from '@/components/tax-reports/use-report-grid-state'
 import { Badge } from '@/components/ui/badge'
 import { useTaxCorporationBillEventHistory } from '@/hooks/corporation-tax'
 import { formatTaxDate } from '@/lib/tax-date'
 
-import { billStatusBadgeVariant } from './helpers'
+import type {
+	TaxBillingEventHistoryRow,
+	TaxBillingEventSortBy,
+	TaxBillStatus,
+} from '@repo/corporation-tax'
 
-import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
-import type { BillStatus } from '@repo/bills'
-import type { TaxBillingEventHistoryRow } from '@repo/corporation-tax'
-
-type CorporationBillHistoryCardProps = {
+export function CorporationBillHistoryCard(props: {
 	effectiveCorporationId: string | null
 	canView: boolean
-}
-
-export function CorporationBillHistoryCard({
-	effectiveCorporationId,
-	canView,
-}: CorporationBillHistoryCardProps) {
+}) {
 	const grid = useReportGridState({
 		defaultSortBy: 'createdAt',
 		defaultSortDir: 'desc',
 		defaultPageSize: 25,
-		resetOn: { effectiveCorporationId },
+		resetOn: props.effectiveCorporationId,
 	})
-	const { data, isLoading, error } = useTaxCorporationBillEventHistory(
-		effectiveCorporationId ?? undefined,
-		{
-			limit: grid.limit,
-			offset: grid.offset,
-			enabled: canView,
-		}
-	)
-	const billHistoryRows = data?.rows ?? []
-	const rowCount = data?.totalRows ?? 0
-	const pageCount = grid.pageCountFor(rowCount)
-
-	const columns = useMemo<Array<MRT_ColumnDef<TaxBillingEventHistoryRow>>>(
+	const {
+		data,
+		isFetching: isLoading,
+		error,
+	} = useTaxCorporationBillEventHistory(props.effectiveCorporationId ?? undefined, {
+		limit: grid.limit,
+		offset: grid.offset,
+		sortBy: grid.sortBy as TaxBillingEventSortBy,
+		sortDir: grid.sortDir,
+		enabled: props.canView,
+	})
+	const rows = data?.rows ?? []
+	const columns = useMemo(
 		() => [
 			{
 				id: 'createdAt',
-				accessorFn: (row) => new Date(row.createdAt).getTime(),
 				header: 'Event Time',
-				enableSorting: true,
-				sortingFn: 'basic',
-				Cell: ({ row }) => formatTaxDate(row.original.createdAt),
+				sortable: true,
+				cell: (row: TaxBillingEventHistoryRow) => formatTaxDate(row.createdAt),
 			},
 			{
-				accessorKey: 'eventType',
+				id: 'eventType',
 				header: 'Event',
-				enableSorting: true,
+				sortable: true,
+				cell: (row: TaxBillingEventHistoryRow) => row.eventType,
 			},
 			{
 				id: 'billId',
-				accessorFn: (row) => row.billId,
 				header: 'Bill',
-				enableSorting: true,
-				Cell: ({ row }) => <span className="font-mono text-xs">{row.original.billId}</span>,
+				sortable: true,
+				cell: (row: TaxBillingEventHistoryRow) => (
+					<span className="font-mono text-xs">{row.billId}</span>
+				),
 			},
 			{
 				id: 'assessmentId',
-				accessorFn: (row) => row.assessmentId,
 				header: 'Assessment',
-				enableSorting: true,
-				Cell: ({ row }) => <span className="font-mono text-xs">{row.original.assessmentId}</span>,
+				sortable: true,
+				cell: (row: TaxBillingEventHistoryRow) => (
+					<span className="font-mono text-xs">{row.assessmentId}</span>
+				),
 			},
 			{
 				id: 'statusTransition',
-				accessorFn: (row) => `${row.fromStatus ?? ''}:${row.toStatus ?? ''}`,
 				header: 'Transition',
-				enableSorting: true,
-				Cell: ({ row }) => {
-					if (!row.original.fromStatus && !row.original.toStatus) {
-						return '-'
-					}
-					const fromStatus = row.original.fromStatus as BillStatus | null
-					const toStatus = row.original.toStatus as BillStatus | null
+				sortable: false,
+				cell: (row: TaxBillingEventHistoryRow) => {
+					if (!row.fromStatus && !row.toStatus) return '-'
 					return (
 						<div className="flex items-center gap-2">
-							<Badge variant={billStatusBadgeVariant(fromStatus ?? 'unbilled')}>
-								{row.original.fromStatus ?? 'none'}
+							<Badge
+								variant={billStatusBadgeVariant(
+									(row.fromStatus as TaxBillStatus | null) ?? 'draft'
+								)}
+							>
+								{row.fromStatus ?? 'none'}
 							</Badge>
 							<span className="text-muted-foreground">→</span>
-							<Badge variant={billStatusBadgeVariant(toStatus ?? 'unbilled')}>
-								{row.original.toStatus ?? 'none'}
+							<Badge
+								variant={billStatusBadgeVariant((row.toStatus as TaxBillStatus | null) ?? 'draft')}
+							>
+								{row.toStatus ?? 'none'}
 							</Badge>
 						</div>
 					)
 				},
 			},
 			{
-				id: 'actor',
-				accessorFn: (row) => row.actorUserId ?? '',
+				id: 'actorUserId',
 				header: 'Actor',
-				enableSorting: true,
-				Cell: ({ row }) => (
-					<span className="font-mono text-xs">{row.original.actorUserId ?? '-'}</span>
+				sortable: true,
+				cell: (row: TaxBillingEventHistoryRow) => (
+					<span className="font-mono text-xs">{row.actorUserId ?? '-'}</span>
 				),
 			},
 		],
 		[]
 	)
-	const sorting: MRT_SortingState = useMemo(() => [{ id: 'createdAt', desc: true }], [])
 
-	const content = !effectiveCorporationId ? (
-		<div className="py-8 text-sm text-muted-foreground">
-			Select a corporation to view assessment bill history.
-		</div>
-	) : (
-		<TaxReportDataGrid
+	if (!props.effectiveCorporationId) {
+		return (
+			<div className="py-8 text-sm text-muted-foreground">
+				Select a corporation to view assessment bill history.
+			</div>
+		)
+	}
+
+	return (
+		<TaxReportTable
 			columns={columns}
-			rows={billHistoryRows}
+			rows={rows}
 			loading={isLoading}
 			error={error}
-			sorting={sorting}
+			emptyMessage="No bill history entries were found for this corporation."
 			pagination={grid.pagination}
 			onPaginationChange={grid.onPaginationChange}
-			rowCount={rowCount}
-			pageCount={pageCount}
-			emptyMessage="No bill history entries were found for this corporation."
+			rowCount={data?.totalRows ?? 0}
+			itemLabel="events"
+			sorting={grid.sorting}
+			onSortingChange={grid.onSortingChange}
+			getRowKey={(row) => row.id}
 		/>
 	)
-
-	return <div>{content}</div>
 }

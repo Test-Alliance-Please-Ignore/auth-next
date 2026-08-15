@@ -1,71 +1,70 @@
 import { useMemo } from 'react'
 
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
+import { TaxReportTable } from '@/components/tax-report-table'
+import { Badge } from '@/components/ui/badge'
 import { formatTaxDateTime } from '@/lib/tax-date'
-import { formatTaxNumber, TaxEntityDisplay } from '@/lib/tax-display'
+import { formatTaxNumber, TaxCorporationDisplay } from '@/lib/tax-display'
 
-import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
 import type { TaxMissingEsiKeyRow } from '@repo/corporation-tax'
+import type { TaxReportSortingState } from '@/lib/tax-report-utils'
 
 export function MissingEsiKeysGrid(props: {
 	rows: TaxMissingEsiKeyRow[]
 	loading: boolean
 	error: unknown
 	entityNames: Record<string, string>
-	sorting: MRT_SortingState
-	onSortingChange: (sorting: MRT_SortingState) => void
-	pagination: {
-		pageIndex: number
-		pageSize: number
-	}
+	sorting: TaxReportSortingState
+	onSortingChange: (sorting: TaxReportSortingState) => void
+	pagination: { pageIndex: number; pageSize: number }
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
-	pageCount: number
 	rowCount: number
 }) {
-	const columns = useMemo<Array<MRT_ColumnDef<TaxMissingEsiKeyRow>>>(
+	const columns = useMemo(
 		() => [
 			{
-				accessorKey: 'corporationId',
+				id: 'corporationId',
 				header: 'Corporation',
-				enableSorting: true,
-				Cell: ({ row }) => (
-					<TaxEntityDisplay entityId={row.original.corporationId} entityNames={props.entityNames} />
+				sortable: true,
+				cell: (row: TaxMissingEsiKeyRow) => (
+					<TaxCorporationDisplay
+						corporationId={row.corporationId}
+						entityNames={props.entityNames}
+					/>
 				),
 			},
 			{
-				accessorKey: 'isConfigured',
+				id: 'isConfigured',
 				header: 'Configured',
-				enableSorting: false,
-				Cell: ({ row }) => (row.original.isConfigured ? 'yes' : 'no'),
+				cell: (row: TaxMissingEsiKeyRow) => (row.isConfigured ? 'yes' : 'no'),
 			},
 			{
-				accessorKey: 'missingRequiredScopes',
+				id: 'missingRequiredScopes',
 				header: 'Required Scopes',
-				enableSorting: false,
-				Cell: ({ row }) =>
-					row.original.missingRequiredScopes.length > 0
-						? row.original.missingRequiredScopes.join(', ')
-						: 'complete',
+				cell: (row: TaxMissingEsiKeyRow) =>
+					row.missingRequiredScopes.length > 0 ? row.missingRequiredScopes.join(', ') : 'complete',
 			},
 			{
-				accessorKey: 'healthyDirectorCount',
+				id: 'healthyDirectorCount',
 				header: 'Healthy Directors',
-				enableSorting: true,
-				Cell: ({ row }) =>
-					`${formatTaxNumber(row.original.healthyDirectorCount)}/${formatTaxNumber(row.original.directorCount)}`,
+				sortable: true,
+				cell: (row: TaxMissingEsiKeyRow) => (
+					<Badge variant={row.healthyDirectorCount > 0 ? 'success' : 'destructive'}>
+						{`${formatTaxNumber(row.healthyDirectorCount)}/${formatTaxNumber(row.directorCount)}`}
+					</Badge>
+				),
 			},
 			{
-				accessorKey: 'lastVerified',
+				id: 'lastVerified',
 				header: 'Last Verified',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxDateTime(row.original.lastVerified),
+				sortable: true,
+				cell: (row: TaxMissingEsiKeyRow) => formatTaxDateTime(row.lastVerified),
 			},
 		],
 		[props.entityNames]
 	)
 
 	return (
-		<TaxReportDataGrid
+		<TaxReportTable
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
@@ -75,8 +74,9 @@ export function MissingEsiKeysGrid(props: {
 			onSortingChange={props.onSortingChange}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
-			pageCount={props.pageCount}
 			rowCount={props.rowCount}
+			itemLabel="corporations"
+			getRowKey={(row) => row.corporationId}
 		/>
 	)
 }

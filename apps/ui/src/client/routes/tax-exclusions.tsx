@@ -6,8 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
-import { Select } from '@/components/ui/select'
 import { Section } from '@/components/ui/section'
+import { Select } from '@/components/ui/select'
 import {
 	Table,
 	TableBody,
@@ -41,7 +41,7 @@ export default function TaxExclusionsPage() {
 		data: exclusions = [],
 		isLoading: exclusionsLoading,
 		error: exclusionsError,
-	} = useTaxExclusions({ limit: 500, enabled: canManage })
+	} = useTaxExclusions({ limit: 200, enabled: canManage })
 	const upsertMutation = useUpsertTaxExclusion()
 	const deleteMutation = useDeleteTaxExclusion()
 
@@ -108,10 +108,7 @@ export default function TaxExclusionsPage() {
 			selectableCorporations.map((corporation) => {
 				const corporationId = corporation.corporationId
 				const name = corporationNameById.get(corporationId) ?? `Corporation ${corporationId}`
-				return { value: corporationId,
-					label: name,
-					description: corporationId,
-				}
+				return { value: corporationId, label: name, description: corporationId }
 			}),
 		[corporationNameById, selectableCorporations]
 	)
@@ -171,7 +168,8 @@ export default function TaxExclusionsPage() {
 								disabled={!selectedCorporationId}
 							/>
 						</div>
-						<Button variant="primary"
+						<Button
+							variant="primary"
 							type="button"
 							onClick={() => {
 								if (!selectedCorporationId) return

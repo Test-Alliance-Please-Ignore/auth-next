@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { corporationTaxApi } from '@/lib/tax-api'
 
@@ -56,11 +56,14 @@ export function useTaxAuditLog(filters?: {
 	toDate?: string
 	limit?: number
 	offset?: number
+	sortBy?: 'createdAt' | 'corporationId' | 'actorUserId' | 'action'
+	sortDir?: 'asc' | 'desc'
 	enabled?: boolean
 }) {
 	return useQuery({
 		queryKey: corporationTaxKeys.auditLogList(filters),
 		queryFn: () => corporationTaxApi.listAuditLog(filters),
+		placeholderData: keepPreviousData,
 		staleTime: 1000 * 30,
 		enabled: filters?.enabled ?? true,
 	})

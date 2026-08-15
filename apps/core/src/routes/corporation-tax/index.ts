@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
 import { isTaxIncomeRefType } from '@repo/corporation-tax'
-import { and, desc, eq, ilike, inArray, or } from '@repo/db-utils'
+import { and, desc, eq, ilike, or } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger, TimeCache } from '@repo/hono-helpers'
 
@@ -48,7 +48,7 @@ const ledgerPartiesCache = new TimeCache<
 		recipientCount: number
 		lastSeenAt: Date
 	}>
->(60_000)
+>(5 * 60_000)
 
 function normalizeLedgerPartySearchText(value: string): string {
 	return value
@@ -560,7 +560,7 @@ app.get('/corporations/:corporationId/payee-corporations/search', requireAuth(),
 /**
  * GET /corporation-tax/corporations/:corporationId/divisions
  * List known wallet divisions for a corporation.
- * Requires tax viewer+ permission, or CEO/director self-service access for that corporation.
+ * Requires a global tax auditor or tax administrator permission.
  */
 app.get('/corporations/:corporationId/divisions', requireAuth(), async (c) => {
 	const user = c.get('user')
@@ -987,16 +987,25 @@ app.get('/corporations/:corporationId/assessments', requireAuth(), async (c) => 
 	}
 
 	const corporationId = c.req.param('corporationId')
-	const canManage = await canManageTaxFeature(c.env, user, corporationId)
-	if (!canManage) {
+	const canRead = await canReadTaxFeature(c.env, user, corporationId)
+	if (!canRead) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
 	const status = c.req.query('status')
 	const assessmentScope = c.req.query('assessmentScope')
 	const withBillOnly = parseBooleanQueryParam(c.req.query('withBillOnly'))
+	const unbilledOnly = parseBooleanQueryParam(c.req.query('unbilledOnly'))
 	const limit = parseIntegerQueryParam(c.req.query('limit'))
 	const offset = parseIntegerQueryParam(c.req.query('offset'))
+	const sortBy = c.req.query('sortBy')
+	const sortDir = c.req.query('sortDir') === 'asc' ? 'asc' : 'desc'
+	if (limit !== undefined && (limit < 1 || limit > 200)) {
+		return c.json({ error: 'limit must be an integer between 1 and 200' }, 400)
+	}
+	if (offset !== undefined && offset < 0) {
+		return c.json({ error: 'offset must be an integer >= 0' }, 400)
+	}
 
 	try {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
@@ -1017,8 +1026,19 @@ app.get('/corporations/:corporationId/assessments', requireAuth(), async (c) => 
 					? assessmentScope
 					: undefined,
 			withBillOnly,
+			unbilledOnly,
 			limit,
 			offset,
+			sortBy:
+				sortBy === 'taxPeriodEnd' ||
+				sortBy === 'assessmentScope' ||
+				sortBy === 'scopeId' ||
+				sortBy === 'status' ||
+				sortBy === 'taxDue' ||
+				sortBy === 'taxDelta'
+					? sortBy
+					: undefined,
+			sortDir,
 		})
 		return c.json(assessments)
 	} catch (error) {
@@ -1032,7 +1052,7 @@ app.get('/corporations/:corporationId/assessments', requireAuth(), async (c) => 
 
 /**
  * POST /corporation-tax/corporations/:corporationId/assessments/run
- * Compute or recompute a corporation-level assessment for a period.
+ * Queue a corporation-level assessment for a period.
  */
 app.post('/corporations/:corporationId/assessments/run', requireAuth(), async (c) => {
 	const user = c.get('user')
@@ -1067,19 +1087,53 @@ app.post('/corporations/:corporationId/assessments/run', requireAuth(), async (c
 
 	try {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		const result = await stub.runAssessmentForPeriod(user.id, {
+		const result = await stub.startAssessmentWorkflow(user.id, {
 			corporationId,
 			periodStart,
 			periodEnd,
 			// Static override: keep assessments corporation-wallet only for now.
 			includeCharacterWallets: false,
 		})
-		return c.json(result)
+		return c.json(result, 202)
 	} catch (error) {
-		logTaxRouteError(c, 'Error running tax assessment for period', error, { userId: user.id })
-		return c.json({ error: 'Failed to run tax assessment for period' }, 500)
+		logTaxRouteError(c, 'Error queueing tax assessment for period', error, { userId: user.id })
+		return c.json({ error: 'Failed to queue tax assessment for period' }, 500)
 	}
 })
+
+/**
+ * GET /corporation-tax/corporations/:corporationId/assessments/runs/:workflowInstanceId
+ * Read the status of a queued assessment workflow.
+ */
+app.get(
+	'/corporations/:corporationId/assessments/runs/:workflowInstanceId',
+	requireAuth(),
+	async (c) => {
+		const user = c.get('user')
+		if (!user) {
+			return c.json({ error: 'Unauthorized' }, 401)
+		}
+
+		const corporationId = c.req.param('corporationId')
+		const workflowInstanceId = c.req.param('workflowInstanceId')
+		const canRun = await canManageTaxFeature(c.env, user, corporationId)
+		if (!canRun) {
+			return c.json({ error: 'Forbidden' }, 403)
+		}
+
+		try {
+			const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+			return c.json(await stub.getAssessmentWorkflowStatus(corporationId, workflowInstanceId))
+		} catch (error) {
+			logTaxRouteError(c, 'Error reading tax assessment workflow status', error, {
+				userId: user.id,
+				corporationId,
+				workflowInstanceId,
+			})
+			return c.json({ error: 'Failed to read tax assessment workflow status' }, 500)
+		}
+	}
+)
 
 /**
  * POST /corporation-tax/corporations/:corporationId/assessments/rebuild-finalized
@@ -1162,7 +1216,6 @@ app.get(
 
 		const limit = parseIntegerQueryParam(c.req.query('limit'))
 		const offset = parseIntegerQueryParam(c.req.query('offset'))
-
 		try {
 			const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
 			const lines = await stub.listAssessmentLines({
@@ -1443,6 +1496,26 @@ app.get('/corporations/:corporationId/ledger/entries', requireAuth(), async (c) 
 	const division = parseIntegerQueryParam(c.req.query('division'))
 	const limit = parseIntegerQueryParam(c.req.query('limit'))
 	const offset = parseIntegerQueryParam(c.req.query('offset'))
+	const sortByQuery = c.req.query('sortBy')
+	const ledgerSortFields = new Set(['entryDate', 'amount', 'division', 'refType', 'sourceType'])
+	if (sortByQuery && !ledgerSortFields.has(sortByQuery)) {
+		return c.json(
+			{ error: 'sortBy must be one of: entryDate, amount, division, refType, sourceType' },
+			400
+		)
+	}
+	const sortBy = sortByQuery as
+		| 'entryDate'
+		| 'amount'
+		| 'division'
+		| 'refType'
+		| 'sourceType'
+		| undefined
+	const sortDirQuery = parseSortDirectionQueryParam(c.req.query('sortDir'))
+	if (sortDirQuery === null) {
+		return c.json({ error: "sortDir must be 'asc' or 'desc'" }, 400)
+	}
+	const sortDir = sortDirQuery ?? 'desc'
 	const refTypes = c.req
 		.query('refTypes')
 		?.split(',')
@@ -1503,6 +1576,8 @@ app.get('/corporations/:corporationId/ledger/entries', requireAuth(), async (c) 
 				maxAmount: c.req.query('maxAmount') || undefined,
 				limit: limit ?? undefined,
 				offset: offset ?? undefined,
+				sortBy,
+				sortDir,
 			})
 			return c.json(entries)
 		} finally {
@@ -2054,7 +2129,7 @@ app.get('/corporations/:corporationId/bills/history', requireAuth(), async (c) =
 	}
 
 	const corporationId = c.req.param('corporationId')
-	const canRead = await canAuditTaxFeature(c.env, user, corporationId)
+	const canRead = await canReadTaxFeature(c.env, user, corporationId)
 	if (!canRead) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
@@ -2086,17 +2161,30 @@ app.get('/corporations/:corporationId/bills/history/events', requireAuth(), asyn
 	}
 
 	const corporationId = c.req.param('corporationId')
-	const canRead = await canAuditTaxFeature(c.env, user, corporationId)
+	const canRead = await canReadTaxFeature(c.env, user, corporationId)
 	if (!canRead) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
 
 	const limit = parseIntegerQueryParam(c.req.query('limit'))
 	const offset = parseIntegerQueryParam(c.req.query('offset'))
+	const sortBy = c.req.query('sortBy')
+	const sortDir = c.req.query('sortDir') === 'asc' ? 'asc' : 'desc'
 
 	try {
 		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		const history = await stub.getCorporationBillEventHistory(corporationId, limit, offset)
+		const history = await stub.getCorporationBillEventHistory(
+			corporationId,
+			limit,
+			offset,
+			sortBy === 'createdAt' ||
+				sortBy === 'eventType' ||
+				sortBy === 'billId' ||
+				sortBy === 'actorUserId'
+				? sortBy
+				: undefined,
+			sortDir
+		)
 		return c.json(history)
 	} catch (error) {
 		logTaxRouteError(c, 'Error fetching corporation tax bill event history', error, {
@@ -2122,7 +2210,7 @@ app.get(
 
 		const corporationId = c.req.param('corporationId')
 		const assessmentId = c.req.param('assessmentId')
-		const canRead = await canAuditTaxFeature(c.env, user, corporationId)
+		const canRead = await canReadTaxFeature(c.env, user, corporationId)
 		if (!canRead) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
@@ -2220,11 +2308,12 @@ async function resolveMemberSummaryTargets(input: {
 			return { targetCharacterIds }
 		}
 
-		const scopedCharacterIds = [...allowedCharacterIds]
-		if (scopedCharacterIds.length === 0) {
+		const allowedCharacterIdSet = new Set(allowedCharacterIds)
+		if (allowedCharacterIdSet.size === 0) {
 			return { targetCharacterIds: [] }
 		}
 
+		const maxCharacterSearchResults = 100
 		const matchedCharacterIds = new Set<string>()
 
 		try {
@@ -2232,7 +2321,10 @@ async function resolveMemberSummaryTargets(input: {
 			try {
 				const searchResultIds = await tokenStoreStub.searchCharacter(characterQuery, false)
 				for (const characterId of searchResultIds) {
-					if (scopedCharacterIds.includes(characterId)) {
+					if (
+						matchedCharacterIds.size < maxCharacterSearchResults &&
+						allowedCharacterIdSet.has(characterId)
+					) {
 						matchedCharacterIds.add(characterId)
 					}
 				}
@@ -2249,24 +2341,32 @@ async function resolveMemberSummaryTargets(input: {
 
 		const db = c.get('db')
 		if (db) {
+			const characterSearchConditions = [
+				ilike(userCharacters.characterName, `${characterQuery}%`),
+				eq(userCharacters.status, 'active'),
+				eq(userCharacters.isDeleted, false),
+			]
+			if (canReadWithTaxScopes) {
+				characterSearchConditions.push(eq(userCharacters.corporationId, corporationId))
+			} else {
+				characterSearchConditions.push(eq(userCharacters.userId, user.id))
+			}
+
 			const rows = await db
 				.select({
 					characterId: userCharacters.characterId,
 				})
 				.from(userCharacters)
-				.where(
-					and(
-						inArray(userCharacters.characterId, scopedCharacterIds),
-						ilike(userCharacters.characterName, `${characterQuery}%`)
-					)
-				)
+				.where(and(...characterSearchConditions))
 				.limit(100)
 			for (const row of rows) {
-				matchedCharacterIds.add(row.characterId)
+				if (allowedCharacterIdSet.has(row.characterId)) {
+					matchedCharacterIds.add(row.characterId)
+				}
 			}
 		}
 
-		const targetCharacterIds = Array.from(matchedCharacterIds)
+		const targetCharacterIds = Array.from(matchedCharacterIds).slice(0, maxCharacterSearchResults)
 		if (!canReadWithTaxScopes && targetCharacterIds.length === 0) {
 			return { response: c.json({ error: 'Forbidden' }, 403) }
 		}
@@ -2376,32 +2476,36 @@ app.get('/corporations/:corporationId/member-summary', requireAuth(), async (c) 
 	}
 })
 
-app.get('/corporations/:corporationId/member-summary/taxable-ref-types', requireAuth(), async (c) => {
-	const user = c.get('user')
-	if (!user) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
-
-	const corporationId = c.req.param('corporationId')
-	if (!(await canReadTaxFeature(c.env, user, corporationId))) {
-		return c.json({ error: 'Forbidden' }, 403)
-	}
-
-	try {
-		const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-		try {
-			return c.json({ refTypes: await stub.getTaxableIncomeRefTypes(corporationId) })
-		} finally {
-			disposeRpcStub(stub)
+app.get(
+	'/corporations/:corporationId/member-summary/taxable-ref-types',
+	requireAuth(),
+	async (c) => {
+		const user = c.get('user')
+		if (!user) {
+			return c.json({ error: 'Unauthorized' }, 401)
 		}
-	} catch (error) {
-		logTaxRouteError(c, 'Error fetching taxable corporation tax income types', error, {
-			userId: user.id,
-			corporationId,
-		})
-		return c.json({ error: 'Failed to fetch taxable income types' }, 500)
+
+		const corporationId = c.req.param('corporationId')
+		if (!(await canReadTaxFeature(c.env, user, corporationId))) {
+			return c.json({ error: 'Forbidden' }, 403)
+		}
+
+		try {
+			const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+			try {
+				return c.json({ refTypes: await stub.getTaxableIncomeRefTypes(corporationId) })
+			} finally {
+				disposeRpcStub(stub)
+			}
+		} catch (error) {
+			logTaxRouteError(c, 'Error fetching taxable corporation tax income types', error, {
+				userId: user.id,
+				corporationId,
+			})
+			return c.json({ error: 'Failed to fetch taxable income types' }, 500)
+		}
 	}
-})
+)
 
 registerCorporationTaxReportsRoutes(app)
 registerCorporationTaxAlertsRoutes(app, { validateDiscordDestinationInput })

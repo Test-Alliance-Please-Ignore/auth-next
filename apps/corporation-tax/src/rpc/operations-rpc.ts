@@ -16,6 +16,7 @@ import type {
 	TaxExportRecord,
 	TaxExportSchedule,
 	TaxNotificationDestination,
+	TaxPagedResult,
 	TaxScheduledOperationsResult,
 	TriggerTaxAlertInput,
 	TriggerTaxProjectionRefreshInput,
@@ -93,7 +94,7 @@ export class TaxOperationsRpc {
 		return created
 	}
 
-	listExports(filters?: ListTaxExportsFilters): Promise<TaxExportRecord[]> {
+	listExports(filters?: ListTaxExportsFilters): Promise<TaxPagedResult<TaxExportRecord>> {
 		return this.ctx.exportService.listExports(filters)
 	}
 
@@ -128,7 +129,9 @@ export class TaxOperationsRpc {
 		return schedule
 	}
 
-	listExportSchedules(filters?: ListTaxExportSchedulesFilters): Promise<TaxExportSchedule[]> {
+	listExportSchedules(
+		filters?: ListTaxExportSchedulesFilters
+	): Promise<TaxPagedResult<TaxExportSchedule>> {
 		return this.ctx.exportService.listExportSchedules(filters)
 	}
 

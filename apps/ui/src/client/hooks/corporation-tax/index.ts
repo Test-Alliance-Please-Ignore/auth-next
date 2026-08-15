@@ -50,6 +50,8 @@ export {
 	useDeleteTaxBillingConfig,
 	useIssueTaxBillsForPeriod,
 	useRetractTaxAssessmentBill,
+	useRunTaxAssessmentForPeriod,
+	useTaxAssessmentWorkflowStatus,
 	useSearchTaxBillingPayeeCharacters,
 	useSearchTaxBillingPayeeCorporations,
 	useSetDefaultTaxBillingConfig,

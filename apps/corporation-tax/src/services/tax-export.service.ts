@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, lte } from '@repo/db-utils'
+import { and, asc, desc, eq, lte, sql } from '@repo/db-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { taxExports, taxExportSchedules } from '../db/schema'
@@ -12,6 +12,7 @@ import type {
 	TaxExportRecord,
 	TaxExportReportType,
 	TaxExportSchedule,
+	TaxPagedResult,
 	TaxReportWindowFilters,
 } from '@repo/corporation-tax'
 import type { CorporationTaxDb } from '../db'
@@ -75,7 +76,7 @@ export class TaxExportService {
 		}
 	}
 
-	async listExports(filters: ListTaxExportsFilters = {}): Promise<TaxExportRecord[]> {
+	async listExports(filters: ListTaxExportsFilters = {}): Promise<TaxPagedResult<TaxExportRecord>> {
 		const conditions = []
 		if (filters.corporationId) {
 			conditions.push(eq(taxExports.corporationId, filters.corporationId))
@@ -89,14 +90,34 @@ export class TaxExportService {
 
 		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
 		const offset = Math.max(filters.offset ?? 0, 0)
+		const where = conditions.length > 0 ? and(...conditions) : undefined
+		const sortDirection = filters.sortDir === 'asc' ? asc : desc
+		const sortColumn =
+			filters.sortBy === 'corporationId'
+				? taxExports.corporationId
+				: filters.sortBy === 'reportType'
+					? taxExports.reportType
+					: filters.sortBy === 'format'
+						? taxExports.format
+						: filters.sortBy === 'status'
+							? taxExports.status
+							: filters.sortBy === 'rowCount'
+								? taxExports.rowCount
+								: filters.sortBy === 'completedAt'
+									? taxExports.completedAt
+									: taxExports.requestedAt
+		const [{ count: totalRows }] = await this.db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(taxExports)
+			.where(where)
 		const rows = await this.db.query.taxExports.findMany({
-			where: conditions.length > 0 ? and(...conditions) : undefined,
-			orderBy: [desc(taxExports.requestedAt)],
+			where,
+			orderBy: [sortDirection(sortColumn), desc(taxExports.id)],
 			limit,
 			offset,
 		})
 
-		return rows.map((row) => this.toExportRecord(row))
+		return { rows: rows.map((row) => this.toExportRecord(row)), totalRows: Number(totalRows ?? 0) }
 	}
 
 	async getExportById(exportId: string): Promise<TaxExportRecord | null> {
@@ -202,7 +223,7 @@ export class TaxExportService {
 
 	async listExportSchedules(
 		filters: ListTaxExportSchedulesFilters = {}
-	): Promise<TaxExportSchedule[]> {
+	): Promise<TaxPagedResult<TaxExportSchedule>> {
 		const conditions = []
 		if (filters.corporationId) {
 			conditions.push(eq(taxExportSchedules.corporationId, filters.corporationId))
@@ -213,14 +234,39 @@ export class TaxExportService {
 
 		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
 		const offset = Math.max(filters.offset ?? 0, 0)
+		const where = conditions.length > 0 ? and(...conditions) : undefined
+		const sortDirection = filters.sortDir === 'asc' ? asc : desc
+		const sortColumn =
+			filters.sortBy === 'name'
+				? taxExportSchedules.name
+				: filters.sortBy === 'corporationId'
+					? taxExportSchedules.corporationId
+					: filters.sortBy === 'reportType'
+						? taxExportSchedules.reportType
+						: filters.sortBy === 'format'
+							? taxExportSchedules.format
+							: filters.sortBy === 'frequency'
+								? taxExportSchedules.frequency
+								: filters.sortBy === 'isActive'
+									? taxExportSchedules.isActive
+									: filters.sortBy === 'lastRunAt'
+										? taxExportSchedules.lastRunAt
+										: taxExportSchedules.nextRunAt
+		const [{ count: totalRows }] = await this.db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(taxExportSchedules)
+			.where(where)
 		const rows = await this.db.query.taxExportSchedules.findMany({
-			where: conditions.length > 0 ? and(...conditions) : undefined,
-			orderBy: [desc(taxExportSchedules.nextRunAt)],
+			where,
+			orderBy: [sortDirection(sortColumn), desc(taxExportSchedules.id)],
 			limit,
 			offset,
 		})
 
-		return rows.map((row) => this.toExportSchedule(row))
+		return {
+			rows: rows.map((row) => this.toExportSchedule(row)),
+			totalRows: Number(totalRows ?? 0),
+		}
 	}
 
 	async runDueExportSchedules(
@@ -302,8 +348,62 @@ export class TaxExportService {
 	}
 
 	private async computeExportRowCount(input: RequestTaxExportInput): Promise<number> {
-		const rows = await this.getReportRows(input)
-		return rows.length
+		const filters = this.toReportWindowFilters(input.filters ?? null, input.corporationId)
+		switch (input.reportType) {
+			case 'summary':
+				return 1
+			case 'total_taxes_by_corporation':
+				return (
+					await this.reportService.getTotalTaxesByCorporationReport({
+						...filters,
+						limit: 1,
+						offset: 0,
+					})
+				).totalRows
+			case 'top_income_sources':
+				return (
+					await this.reportService.getTopIncomeSourcesReport({
+						...filters,
+						limit: 200,
+						offset: 0,
+					})
+				).length
+			case 'ess_payout':
+				return (
+					await this.reportService.getEssPayoutReport({
+						...filters,
+						limit: 1,
+						offset: 0,
+					})
+				).totalRows
+			case 'compliance_over_time':
+				return (
+					await this.reportService.getComplianceOverTimeReportPage({
+						...filters,
+						limit: 1,
+						offset: 0,
+					})
+				).totalRows
+			case 'discrepancies':
+				return (
+					await this.reportService.getTaxDiscrepancyReport({
+						...filters,
+						onlyOpen: this.readBoolean(input.filters, 'onlyOpen'),
+						limit: 1,
+						offset: 0,
+					})
+				).totalRows
+			case 'bill_status':
+				return (
+					await this.reportService.getBillStatusReport({
+						...filters,
+						limit: 1,
+						offset: 0,
+					})
+				).totalRows
+			default:
+				return 0
+		}
 	}
 
 	private async getReportRows(input: {
@@ -319,38 +419,77 @@ export class TaxExportService {
 				return [this.toSerializableRecord(row)]
 			}
 			case 'total_taxes_by_corporation': {
-				const report = await this.reportService.getTotalTaxesByCorporationReport(reportFilters)
-				return report.rows.map((row) => this.toSerializableRecord(row))
+				const rows = await this.getAllPagedRows(
+					(filters) => this.reportService.getTotalTaxesByCorporationReport(filters),
+					reportFilters
+				)
+				return rows.map((row) => this.toSerializableRecord(row))
 			}
 			case 'top_income_sources': {
-				const rows = await this.reportService.getTopIncomeSourcesReport(reportFilters)
+				const rows = await this.reportService.getTopIncomeSourcesReport({
+					...reportFilters,
+					limit: 200,
+					offset: 0,
+				})
 				return rows.map((row) => this.toSerializableRecord(row))
 			}
 			case 'ess_payout': {
-				const report = await this.reportService.getEssPayoutReport(reportFilters)
-				return report.rows.map((row) => this.toSerializableRecord(row))
+				const rows = await this.getAllPagedRows(
+					(filters) => this.reportService.getEssPayoutReport(filters),
+					reportFilters
+				)
+				return rows.map((row) => this.toSerializableRecord(row))
 			}
 			case 'compliance_over_time': {
-				const rows = await this.reportService.getComplianceOverTimeReport(reportFilters)
+				const rows = await this.getAllPagedRows(
+					(filters) => this.reportService.getComplianceOverTimeReportPage(filters),
+					reportFilters,
+					3650
+				)
 				return rows.map((row) => this.toSerializableRecord(row))
 			}
 			case 'discrepancies': {
-				const report = await this.reportService.getTaxDiscrepancyReport({
-					corporationId: reportFilters.corporationId,
-					fromDate: reportFilters.fromDate,
-					toDate: reportFilters.toDate,
-					onlyOpen: this.readBoolean(input.filters, 'onlyOpen'),
-					limit: reportFilters.limit,
-					offset: reportFilters.offset,
-				})
-				return report.rows.map((row) => this.toSerializableRecord(row))
+				const rows = await this.getAllPagedRows(
+					(filters) =>
+						this.reportService.getTaxDiscrepancyReport({
+							...filters,
+							onlyOpen: this.readBoolean(input.filters, 'onlyOpen'),
+						}),
+					reportFilters
+				)
+				return rows.map((row) => this.toSerializableRecord(row))
 			}
 			case 'bill_status': {
-				const report = await this.reportService.getBillStatusReport(reportFilters)
-				return report.rows.map((row) => this.toSerializableRecord(row))
+				const rows = await this.getAllPagedRows(
+					(filters) => this.reportService.getBillStatusReport(filters),
+					reportFilters
+				)
+				return rows.map((row) => this.toSerializableRecord(row))
 			}
 			default:
 				return []
+		}
+	}
+
+	private async getAllPagedRows<T>(
+		fetchPage: (filters: TaxReportWindowFilters) => Promise<TaxPagedResult<T>>,
+		filters: TaxReportWindowFilters,
+		pageSize = 200
+	): Promise<T[]> {
+		const rows: T[] = []
+		let offset = 0
+
+		while (true) {
+			const page = await fetchPage({
+				...filters,
+				limit: pageSize,
+				offset,
+			})
+			rows.push(...page.rows)
+			if (rows.length >= page.totalRows || page.rows.length === 0) {
+				return rows
+			}
+			offset += page.rows.length
 		}
 	}
 

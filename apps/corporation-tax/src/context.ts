@@ -1,3 +1,4 @@
+import type { TaxAssessmentWorkflowParams } from '@repo/corporation-tax'
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 import type { createDb } from './db'
@@ -10,6 +11,7 @@ export type Env = SharedHonoEnv & {
 	EVE_CORPORATION_DATA: DurableObjectNamespace
 	EVE_CHARACTER_DATA: DurableObjectNamespace
 	DISCORD: DurableObjectNamespace
+	TAX_ASSESSMENT_WORKFLOW: Workflow<TaxAssessmentWorkflowParams>
 }
 
 export type Variables = SharedHonoVariables & {

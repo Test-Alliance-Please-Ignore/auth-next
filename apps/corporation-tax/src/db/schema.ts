@@ -183,6 +183,7 @@ export const taxAssessments = pgTable(
 		index('tax_assessments_period_start_idx').on(table.taxPeriodStart),
 		index('tax_assessments_period_end_idx').on(table.taxPeriodEnd),
 		index('tax_assessments_bill_id_idx').on(table.billId),
+		index('tax_assess_corp_end_id_idx').on(table.corporationId, table.taxPeriodEnd, table.id),
 	]
 )
 
@@ -258,6 +259,7 @@ export const taxDiscrepancies = pgTable(
 		index('tax_discrepancies_assessment_id_idx').on(table.assessmentId),
 		index('tax_discrepancies_discrepancy_type_idx').on(table.discrepancyType),
 		index('tax_discrepancies_severity_idx').on(table.severity),
+		index('tax_disc_corp_created_id_idx').on(table.corporationId, table.createdAt, table.id),
 	]
 )
 
@@ -413,6 +415,7 @@ export const taxLedgerEntries = pgTable(
 		index('tax_ledger_entries_corporation_id_idx').on(table.corporationId),
 		index('tax_ledger_entries_ref_type_idx').on(table.refType),
 		index('tax_ledger_entries_entry_date_idx').on(table.entryDate),
+		index('tax_ledger_corp_date_id_idx').on(table.corporationId, table.entryDate, table.id),
 	]
 )
 
@@ -485,6 +488,7 @@ export const taxMemberContributionProjectionRollups = pgTable(
 			table.refType,
 			table.rollupDate
 		),
+		index('tax_proj_corp_date_end_idx').on(table.corporationId, table.rollupDate, table.periodEnd),
 	]
 )
 
@@ -539,6 +543,7 @@ export const taxMemberContributionFinalizedRollups = pgTable(
 			table.rollupDate
 		),
 		index('tax_member_final_rollups_assessment_id_idx').on(table.finalizedAssessmentId),
+		index('tax_final_corp_date_end_idx').on(table.corporationId, table.rollupDate, table.periodEnd),
 	]
 )
 

@@ -18,8 +18,8 @@ import type {
 	ListTaxLedgerPartiesFilters,
 	RunTaxAssessmentForPeriodInput,
 	RunTaxAssessmentForPeriodResult,
-	TaxAssessment,
 	TaxAssessmentLine,
+	TaxAssessmentPage,
 	TaxDiscrepancy,
 	TaxLedgerEntry,
 	TaxLedgerIngestionHealth,
@@ -27,6 +27,7 @@ import type {
 	TaxLedgerParty,
 	TaxLedgerRetentionResult,
 	TaxLedgerWindowFilters,
+	TaxPagedResult,
 	TriggerTaxProjectionRefreshInput,
 	TriggerTaxProjectionRefreshResult,
 } from '@repo/corporation-tax'
@@ -230,7 +231,7 @@ export class TaxLedgerRpc {
 	async listLedgerEntries(
 		corporationId: string,
 		filters?: TaxLedgerWindowFilters
-	): Promise<TaxLedgerEntry[]> {
+	): Promise<TaxPagedResult<TaxLedgerEntry>> {
 		return this.ctx.ledgerService.listLedgerEntries(corporationId, filters)
 	}
 
@@ -267,7 +268,7 @@ export class TaxLedgerRpc {
 		return result
 	}
 
-	async listAssessments(filters?: ListTaxAssessmentsFilters): Promise<TaxAssessment[]> {
+	async listAssessments(filters?: ListTaxAssessmentsFilters): Promise<TaxAssessmentPage> {
 		return this.ctx.assessmentService.listAssessments(filters)
 	}
 

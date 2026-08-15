@@ -8,6 +8,7 @@ import {
 	compareStrings,
 } from './tax-report-sorting'
 
+import type { SQL } from 'drizzle-orm'
 import type { TaxBillStatusReportRow, TaxMissingEsiKeyRow } from '@repo/corporation-tax'
 import type { SortDirection } from './tax-report-sorting'
 
@@ -19,7 +20,11 @@ export type BillStatusSortableRow = TaxBillStatusReportRow & {
 	sortDueDate: Date | null
 }
 
-export function resolveTotalTaxesOrderBy(sortBy: string, sortDirection: SortDirection) {
+export function resolveTotalTaxesOrderBy(
+	sortBy: string,
+	sortDirection: SortDirection,
+	taxableItemCountExpr: SQL
+) {
 	const direction = sortDirection === 'asc' ? asc : desc
 	const paidPerAssessmentExpr = sql`COALESCE((
 		SELECT SUM(CAST(bp.amount AS numeric))
@@ -30,8 +35,8 @@ export function resolveTotalTaxesOrderBy(sortBy: string, sortDirection: SortDire
 		corporationId: () => [direction(taxAssessments.corporationId)],
 		taxableItemCount: () => [
 			sortDirection === 'asc'
-				? sql`COALESCE(SUM((SELECT COUNT(*) FROM tax_assessment_lines tal WHERE tal.assessment_id = ${taxAssessments.id})), 0) ASC`
-				: sql`COALESCE(SUM((SELECT COUNT(*) FROM tax_assessment_lines tal WHERE tal.assessment_id = ${taxAssessments.id})), 0) DESC`,
+				? sql`${taxableItemCountExpr} ASC`
+				: sql`${taxableItemCountExpr} DESC`,
 			direction(taxAssessments.corporationId),
 		],
 		assessmentCount: () => [

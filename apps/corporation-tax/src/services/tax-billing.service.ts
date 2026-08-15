@@ -13,6 +13,7 @@ import type {
 	TaxAssessment,
 	TaxAssessmentWithBillHistory,
 	TaxBillingEventHistoryRow,
+	TaxBillingEventSortBy,
 	TaxBillStateSyncInput,
 	TaxBillStatus,
 	TaxCorporationBillingConfig,
@@ -595,98 +596,88 @@ export class TaxBillingService {
 		corporationId: string,
 		limit = 25,
 		offset = 0
-	): Promise<TaxAssessmentWithBillHistory[]> {
+	): Promise<TaxPagedResult<TaxAssessmentWithBillHistory>> {
 		const boundedLimit = Math.min(Math.max(limit, 1), 100)
 		const boundedOffset = Math.max(offset, 0)
+		const baseWhere = and(
+			eq(taxAssessments.corporationId, corporationId),
+			eq(taxAssessments.assessmentScope, 'corporation'),
+			isNotNull(taxAssessments.billId)
+		)
+		const [{ count: totalRows }] = await this.db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(taxAssessments)
+			.where(baseWhere)
 		const assessments = await this.db.query.taxAssessments.findMany({
-			where: and(
-				eq(taxAssessments.corporationId, corporationId),
-				eq(taxAssessments.assessmentScope, 'corporation')
-			),
+			where: baseWhere,
 			orderBy: [desc(taxAssessments.taxPeriodEnd), desc(taxAssessments.createdAt)],
 			limit: boundedLimit,
 			offset: boundedOffset,
 		})
 
-		const billedAssessments = assessments.filter(
-			(assessment) => assessment.assessmentScope === 'corporation' && assessment.billId
-		)
+		const billedAssessments = assessments
 		if (billedAssessments.length === 0) {
-			return []
+			return { rows: [], totalRows: Number(totalRows ?? 0) }
 		}
 
 		const bills = getStub<Bills>(this.billsNamespace, 'default')
 		const billIds = billedAssessments.map((assessment) => assessment.billId!)
 		const timelinesByBillId = await bills.getBillTimelines(billIds)
 
-		return billedAssessments.map((assessment) => ({
-			assessment: this.toAssessment(assessment),
-			timeline: (timelinesByBillId[assessment.billId!] ?? []).map((event) => ({
-				id: event.id,
-				billId: event.billId,
-				eventType: event.eventType,
-				fromStatus: event.fromStatus,
-				toStatus: event.toStatus,
-				actorUserId: event.actorUserId,
-				metadata: event.metadata,
-				createdAt: event.createdAt,
+		return {
+			rows: billedAssessments.map((assessment) => ({
+				assessment: this.toAssessment(assessment),
+				timeline: (timelinesByBillId[assessment.billId!] ?? []).map((event) => ({
+					id: event.id,
+					billId: event.billId,
+					eventType: event.eventType,
+					fromStatus: event.fromStatus,
+					toStatus: event.toStatus,
+					actorUserId: event.actorUserId,
+					metadata: event.metadata,
+					createdAt: event.createdAt,
+				})),
 			})),
-		}))
+			totalRows: Number(totalRows ?? 0),
+		}
 	}
 
 	async getCorporationBillEventHistory(
 		corporationId: string,
 		limit = 25,
-		offset = 0
+		offset = 0,
+		sortBy: TaxBillingEventSortBy = 'createdAt',
+		sortDir: 'asc' | 'desc' = 'desc'
 	): Promise<TaxPagedResult<TaxBillingEventHistoryRow>> {
 		const boundedLimit = Math.min(Math.max(limit, 1), 200)
 		const boundedOffset = Math.max(offset, 0)
-		const billedAssessments = await this.db.query.taxAssessments.findMany({
-			where: and(
-				eq(taxAssessments.corporationId, corporationId),
-				eq(taxAssessments.assessmentScope, 'corporation'),
-				isNotNull(taxAssessments.billId)
-			),
-			columns: { id: true, billId: true },
-		})
-		if (billedAssessments.length === 0) {
-			return { rows: [], totalRows: 0 }
-		}
-
-		const assessmentIdByBillId = new Map<string, string>()
-		for (const assessment of billedAssessments) {
-			if (assessment.billId && !assessmentIdByBillId.has(assessment.billId)) {
-				assessmentIdByBillId.set(assessment.billId, assessment.id)
-			}
-		}
-		const billIds = [...assessmentIdByBillId.keys()]
-		if (billIds.length === 0) {
-			return { rows: [], totalRows: 0 }
-		}
-
 		const bills = getStub<Bills>(this.billsNamespace, 'default')
-		const page = await bills.listBillStatusEventsPage({
-			billIds,
+		const page = await bills.listBillStatusEventsByPayerPage({
+			payerId: corporationId,
+			payerType: 'corporation',
+			externalSourceType: 'corporation_tax_assessment',
 			limit: boundedLimit,
 			offset: boundedOffset,
+			sortBy,
+			sortDir,
 		})
 
-		const scopedRows: TaxBillingEventHistoryRow[] = []
-		for (const event of page.rows) {
-			const assessmentId = assessmentIdByBillId.get(event.billId)
-			if (!assessmentId) continue
-			scopedRows.push({
-				id: event.id,
-				billId: event.billId,
-				assessmentId,
-				eventType: event.eventType,
-				fromStatus: event.fromStatus,
-				toStatus: event.toStatus,
-				actorUserId: event.actorUserId,
-				metadata: event.metadata,
-				createdAt: event.createdAt,
-			})
-		}
+		const scopedRows: TaxBillingEventHistoryRow[] = page.rows.flatMap((event) => {
+			if (!event.externalSourceId) return []
+			return [
+				{
+					id: event.id,
+					billId: event.billId,
+					assessmentId: event.externalSourceId,
+					eventType: event.eventType,
+					fromStatus: event.fromStatus,
+					toStatus: event.toStatus,
+					actorUserId: event.actorUserId,
+					metadata: event.metadata,
+					createdAt: event.createdAt,
+				},
+			]
+		})
 
 		return {
 			rows: scopedRows,

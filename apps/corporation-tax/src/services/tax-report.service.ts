@@ -21,7 +21,6 @@ import {
 	parseDecimalToCenti as parseMoneyToCenti,
 } from './tax-money'
 import {
-	billStatusSortComparators,
 	missingEsiSortComparators,
 	resolveDiscrepancyOrderBy,
 	resolveEssOrderBy,
@@ -46,14 +45,20 @@ import type {
 	TaxTopIncomeSourceRow,
 	TaxTotalTaxesByCorporationRow,
 } from '@repo/corporation-tax'
-import type { EveCorporationData } from '@repo/eve-corporation-data'
+import type { CorporationAuthStatus, EveCorporationData } from '@repo/eve-corporation-data'
 import type { CorporationTaxDb } from '../db'
 
 const UNATTRIBUTED_CHARACTER_ID = '__unattributed__'
 
 export class TaxReportService {
+	private readonly REPORT_CORPORATION_ID_INLINE_LIMIT = 100
+	private readonly REPORT_CORPORATION_IDS_CACHE_TTL_MS = 5 * 60 * 1000
 	private readonly MEMBER_SUMMARY_CACHE_TTL_MS = 30 * 60 * 1000
 	private readonly MEMBER_SUMMARY_CACHE_MAX_ENTRIES = 500
+	private readonly ESI_AUTH_STATUS_CACHE_TTL_MS = 5 * 60 * 1000
+	private readonly ESI_AUTH_FAILURE_CACHE_TTL_MS = 30 * 1000
+	private readonly ESI_AUTH_STATUS_CACHE_MAX_ENTRIES = 1000
+	private readonly ESI_AUTH_STATUS_CONCURRENCY = 4
 	private memberSummaryCacheHits = 0
 	private memberSummaryCacheMisses = 0
 	private memberSummaryCacheDeltaChecks = 0
@@ -67,6 +72,17 @@ export class TaxReportService {
 			finalizedVersion: number
 		}
 	>()
+	private readonly esiAuthStatusCache = new Map<
+		string,
+		{
+			status: CorporationAuthStatus | null
+			expiresAtMs: number
+		}
+	>()
+	private dataBackedCorporationIdsCache: {
+		ids: string[]
+		expiresAtMs: number
+	} | null = null
 
 	constructor(
 		private db: CorporationTaxDb,
@@ -179,7 +195,18 @@ export class TaxReportService {
 		const sortBy = filters.sortBy ?? 'taxDue'
 		const sortDirection = toSortDirection(filters.sortDirection, 'desc')
 		const where = this.buildAssessmentWhere(filters, corporationIds, 'corporation')
-		const taxableItemCountExpr = sql<number>`COALESCE(SUM((SELECT COUNT(*) FROM tax_assessment_lines tal WHERE tal.assessment_id = ${taxAssessments.id})), 0)`
+		const assessmentLineCounts = this.db
+			.select({
+				assessmentId: taxAssessmentLines.assessmentId,
+				taxableItemCount:
+					sql<number>`COUNT(*) FILTER (WHERE CAST(${taxAssessmentLines.taxableAmount} AS numeric) > 0)::int`.as(
+						'taxable_item_count'
+					),
+			})
+			.from(taxAssessmentLines)
+			.groupBy(taxAssessmentLines.assessmentId)
+			.as('assessment_line_counts')
+		const taxableItemCountExpr = sql<number>`COALESCE(SUM(COALESCE(${assessmentLineCounts.taxableItemCount}, 0)), 0)`
 		const assessmentCountExpr = sql<number>`COUNT(*)`
 		const billedAssessmentCountExpr = sql<number>`SUM(CASE WHEN ${taxAssessments.billId} IS NOT NULL THEN 1 ELSE 0 END)`
 		const underpaidCountExpr = sql<number>`SUM(CASE WHEN ${taxAssessments.status} = 'underpaid' THEN 1 ELSE 0 END)`
@@ -197,7 +224,7 @@ export class TaxReportService {
 		const taxPaidExpr = sql<string>`COALESCE(SUM(${paidPerAssessmentExpr}), 0)::text`
 		const taxDeltaExpr = sql<string>`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric) - ${paidPerAssessmentExpr}), 0)::text`
 		const lastAssessmentAtExpr = sql<Date | null>`MAX(${taxAssessments.taxPeriodEnd})`
-		const orderBy = resolveTotalTaxesOrderBy(sortBy, sortDirection)
+		const orderBy = resolveTotalTaxesOrderBy(sortBy, sortDirection, taxableItemCountExpr)
 
 		const [rows, totalRowsResult] = await Promise.all([
 			this.db
@@ -218,6 +245,7 @@ export class TaxReportService {
 					lastAssessmentAt: lastAssessmentAtExpr,
 				})
 				.from(taxAssessments)
+				.leftJoin(assessmentLineCounts, eq(assessmentLineCounts.assessmentId, taxAssessments.id))
 				.where(where)
 				.groupBy(taxAssessments.corporationId)
 				.orderBy(...orderBy)
@@ -302,6 +330,10 @@ export class TaxReportService {
 			return []
 		}
 
+		if (filters.incomeMode === 'assessed') {
+			return this.getAssessedIncomeSourcesMonthlyReport(filters, corporationIds)
+		}
+
 		const monthStartExpr = sql<Date>`date_trunc('month', ${taxLedgerEntries.entryDate})`
 		const where = and(
 			this.buildLedgerWhere(filters, corporationIds),
@@ -329,6 +361,93 @@ export class TaxReportService {
 			entryCount: this.toInteger(row.entryCount),
 			essEntryCount: this.toInteger(row.essEntryCount),
 			totalIncome: this.formatCenti(this.parseDecimalToCenti(row.totalIncome)),
+		}))
+	}
+
+	private async getAssessedIncomeSourcesMonthlyReport(
+		filters: TaxRollupReportFilters,
+		corporationIds: string[]
+	): Promise<TaxTopIncomeSourceMonthlyRow[]> {
+		const fromDay = filters.fromDate ? this.toUtcDay(filters.fromDate) : undefined
+		const toDay = filters.toDate ? this.toUtcDay(filters.toDate) : undefined
+		const refTypes = filterTaxIncomeRefTypes(filters.refTypes)
+		const buildCorporationCondition = (alias: 'finalized' | 'projection') => {
+			const corporationColumn = sql.raw(`${alias}.corporation_id`)
+			if (corporationIds.length <= this.REPORT_CORPORATION_ID_INLINE_LIMIT) {
+				return sql`${corporationColumn} IN (${sql.join(
+					corporationIds.map((corporationId) => sql`${corporationId}`),
+					sql`, `
+				)})`
+			}
+
+			return sql`${corporationColumn} IN (
+				SELECT corporation_id FROM ${taxAssessments}
+				UNION
+				SELECT corporation_id FROM ${taxLedgerEntries}
+				UNION
+				SELECT corporation_id FROM ${taxDiscrepancies}
+			)`
+		}
+		const buildRollupWhere = (alias: 'finalized' | 'projection') => sql`
+			${buildCorporationCondition(alias)}
+			${fromDay ? sql`AND ${sql.raw(`${alias}.rollup_date`)} >= ${fromDay}` : sql``}
+			${toDay ? sql`AND ${sql.raw(`${alias}.rollup_date`)} <= ${toDay}` : sql``}
+			${
+				refTypes?.length
+					? sql`AND ${sql.raw(`${alias}.ref_type`)} IN (${sql.join(
+							refTypes.map((refType) => sql`${refType}`),
+							sql`, `
+						)})`
+					: sql``
+			}
+			AND CAST(${sql.raw(`${alias}.taxable_contribution_income`)} AS numeric) > 0
+		`
+
+		const result = await this.db.execute(sql`
+			WITH assessed_rows AS (
+				SELECT
+					finalized.rollup_date,
+					finalized.ref_type,
+					finalized.source_row_count,
+					finalized.taxable_contribution_income
+				FROM ${taxMemberContributionFinalizedRollups} AS finalized
+				WHERE ${buildRollupWhere('finalized')}
+				UNION ALL
+				SELECT
+					projection.rollup_date,
+					projection.ref_type,
+					projection.source_row_count,
+					projection.taxable_contribution_income
+				FROM ${taxMemberContributionProjectionRollups} AS projection
+				WHERE ${buildRollupWhere('projection')}
+					AND NOT EXISTS (
+						SELECT 1
+						FROM ${taxMemberContributionFinalizedRollups} AS finalized_match
+						WHERE finalized_match.corporation_id = projection.corporation_id
+							AND finalized_match.period_start = projection.period_start
+							AND finalized_match.period_end = projection.period_end
+							AND finalized_match.rollup_date = projection.rollup_date
+							AND finalized_match.character_id = projection.character_id
+							AND finalized_match.ref_type = projection.ref_type
+					)
+			)
+			SELECT
+				date_trunc('month', rollup_date) AS month_start,
+				ref_type,
+				SUM(source_row_count)::int AS entry_count,
+				SUM(CASE WHEN ref_type = 'ess_escrow_transfer' THEN source_row_count ELSE 0 END)::int AS ess_entry_count,
+				COALESCE(SUM(CAST(taxable_contribution_income AS numeric)), 0)::text AS total_income
+			FROM assessed_rows
+			GROUP BY date_trunc('month', rollup_date), ref_type
+			ORDER BY date_trunc('month', rollup_date) ASC, total_income DESC, ref_type ASC
+		`)
+
+		return (result.rows as Array<Record<string, unknown>>).map((row) => ({
+			monthStart: new Date(String(row.month_start)),
+			refType: String(row.ref_type),
+			entryCount: this.toInteger(String(row.entry_count ?? '0')),
+			essEntryCount: this.toInteger(String(row.ess_entry_count ?? '0')),
+			totalIncome: this.formatCenti(this.parseDecimalToCenti(String(row.total_income ?? '0'))),
 		}))
 	}
 
@@ -422,6 +541,77 @@ export class TaxReportService {
 		})
 	}
 
+	async getComplianceOverTimeReportPage(
+		filters: TaxRollupReportFilters = {}
+	): Promise<TaxPagedResult<TaxCompliancePoint>> {
+		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
+		if (corporationIds.length === 0) {
+			return { rows: [], totalRows: 0 }
+		}
+
+		const offset = Math.max(filters.offset ?? 0, 0)
+		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 3650)
+		const rollupDateExpr = sql<Date>`date_trunc('day', ${taxAssessments.taxPeriodEnd})`
+		const paidPerAssessmentExpr = sql`COALESCE((
+			SELECT SUM(CAST(bp.amount AS numeric))
+			FROM bill_payments bp
+			WHERE bp.bill_id = ${taxAssessments.billId}
+		), 0)`
+		const taxDueExpr = sql`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric)), 0)`
+		const taxPaidExpr = sql`COALESCE(SUM(${paidPerAssessmentExpr}), 0)`
+		const taxDeltaExpr = sql`COALESCE(SUM(CAST(${taxAssessments.taxDue} AS numeric) - ${paidPerAssessmentExpr}), 0)`
+		const entryCountExpr = sql<number>`COUNT(*)`
+		const sortDirection = filters.sortDirection === 'asc' ? 'ASC' : 'DESC'
+		const sortExpression =
+			filters.sortBy === 'taxDue'
+				? taxDueExpr
+				: filters.sortBy === 'taxPaid'
+					? taxPaidExpr
+					: filters.sortBy === 'taxDelta'
+						? taxDeltaExpr
+						: filters.sortBy === 'entryCount'
+							? entryCountExpr
+							: rollupDateExpr
+		const orderBy = sql`${sortExpression} ${sql.raw(sortDirection)}, ${rollupDateExpr} ASC`
+		const where = this.buildAssessmentWhere(filters, corporationIds, 'corporation')
+		const [rows, countRows] = await Promise.all([
+			this.db
+				.select({
+					rollupDate: rollupDateExpr,
+					entryCount: entryCountExpr,
+					taxDue: sql<string>`${taxDueExpr}::text`,
+					taxPaid: sql<string>`${taxPaidExpr}::text`,
+				})
+				.from(taxAssessments)
+				.where(where)
+				.groupBy(rollupDateExpr)
+				.orderBy(orderBy)
+				.limit(limit)
+				.offset(offset),
+			this.db
+				.select({
+					count: sql<number>`COUNT(DISTINCT ${rollupDateExpr})`,
+				})
+				.from(taxAssessments)
+				.where(where),
+		])
+
+		return {
+			rows: rows.map((row) => {
+				const taxDueCenti = this.parseDecimalToCenti(row.taxDue)
+				const taxPaidCenti = this.parseDecimalToCenti(row.taxPaid)
+				return {
+					rollupDate: new Date(row.rollupDate),
+					taxDue: this.formatCenti(taxDueCenti),
+					taxPaid: this.formatCenti(taxPaidCenti),
+					taxDelta: this.formatCenti(taxDueCenti - taxPaidCenti),
+					entryCount: this.toInteger(row.entryCount),
+				}
+			}),
+			totalRows: this.toInteger(countRows[0]?.count ?? 0),
+		}
+	}
+
 	async getTaxDiscrepancyReport(
 		filters: ListTaxDiscrepancyReportFilters = {}
 	): Promise<TaxPagedResult<TaxDiscrepancy>> {
@@ -472,11 +662,12 @@ export class TaxReportService {
 	async getMissingEsiKeysReport(
 		filters: ListTaxMissingEsiKeyReportFilters = {}
 	): Promise<TaxPagedResult<TaxMissingEsiKeyRow>> {
-		const corporationIds = await this.listKnownCorporationIds()
+		const corporationIds = await this.listTaxProcessableCorporationIds()
+		const statuses = await this.getCorporationEsiAuthStatuses(corporationIds)
 
 		const missingRows: TaxMissingEsiKeyRow[] = []
 		for (const corporationId of corporationIds) {
-			const status = await this.getCorporationEsiAuthStatus(corporationId)
+			const status = statuses.get(corporationId) ?? null
 			const hasMissingCoverage =
 				!status ||
 				!status.isConfigured ||
@@ -524,44 +715,82 @@ export class TaxReportService {
 		if (corporationIds.length === 0) {
 			return { rows: [], totalRows: 0 }
 		}
+
 		const paidPerAssessmentExpr = sql`COALESCE((
 			SELECT SUM(CAST(bp.amount AS numeric))
 			FROM bill_payments bp
 			WHERE bp.bill_id = ${taxAssessments.billId}
 		), 0)`
-
-		const rows = await this.db
-			.select({
-				assessmentId: taxAssessments.id,
-				corporationId: taxAssessments.corporationId,
-				taxPeriodStart: taxAssessments.taxPeriodStart,
-				taxPeriodEnd: taxAssessments.taxPeriodEnd,
-				billId: taxAssessments.billId,
-				billStatus: sql<string>`COALESCE(${taxAssessments.billStatus}, 'draft')`,
-				issueDate: sql<Date | null>`(
+		const issueDateExpr = sql<Date | null>`(
 					SELECT MIN(bse.created_at)
 					FROM bill_status_events bse
 					WHERE bse.bill_id = ${taxAssessments.billId}
 						AND bse.event_type = 'issued'
-				)`,
-				dueDate: sql<Date | null>`(
+				)`
+		const dueDateExpr = sql<Date | null>`(
 					SELECT b.due_date
 					FROM bills b
 					WHERE b.id = ${taxAssessments.billId}
-				)`,
-				taxDue: taxAssessments.taxDue,
-				taxPaid: sql<string>`${paidPerAssessmentExpr}::text`,
-				taxDelta: sql<string>`(CAST(${taxAssessments.taxDue} AS numeric) - ${paidPerAssessmentExpr})::text`,
-			})
-			.from(taxAssessments)
-			.where(
-				and(
-					this.buildAssessmentWhere(filters, corporationIds, 'corporation'),
-					isNotNull(taxAssessments.billId)
-				)
-			)
+				)`
+		const taxPaidExpr = sql`${paidPerAssessmentExpr}`
+		const taxDeltaExpr = sql`(CAST(${taxAssessments.taxDue} AS numeric) - ${paidPerAssessmentExpr})`
+		const where = and(
+			this.buildAssessmentWhere(filters, corporationIds, 'corporation'),
+			isNotNull(taxAssessments.billId)
+		)
+		const offset = Math.max(filters.offset ?? 0, 0)
+		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
+		const sortBy = filters.sortBy ?? 'dueDate'
+		const sortDirection = toSortDirection(filters.sortDirection, 'asc')
+		const direction = sortDirection === 'asc' ? 'ASC' : 'DESC'
+		const sortExpression =
+			sortBy === 'assessmentId'
+				? taxAssessments.id
+				: sortBy === 'corporationId'
+					? taxAssessments.corporationId
+					: sortBy === 'taxPeriodStart'
+						? taxAssessments.taxPeriodStart
+						: sortBy === 'taxPeriodEnd'
+							? taxAssessments.taxPeriodEnd
+							: sortBy === 'billStatus'
+								? sql`COALESCE(${taxAssessments.billStatus}, 'draft')`
+								: sortBy === 'issueDate'
+									? issueDateExpr
+									: sortBy === 'taxPaid'
+										? taxPaidExpr
+										: sortBy === 'taxDelta'
+											? taxDeltaExpr
+											: sortBy === 'taxDue'
+												? sql`CAST(${taxAssessments.taxDue} AS numeric)`
+												: dueDateExpr
+		const orderBy = sql`${sortExpression} ${sql.raw(direction)} NULLS LAST, ${taxAssessments.id} ASC`
+		const [rows, totalRowsResult] = await Promise.all([
+			this.db
+				.select({
+					assessmentId: taxAssessments.id,
+					corporationId: taxAssessments.corporationId,
+					taxPeriodStart: taxAssessments.taxPeriodStart,
+					taxPeriodEnd: taxAssessments.taxPeriodEnd,
+					billId: taxAssessments.billId,
+					billStatus: sql<string>`COALESCE(${taxAssessments.billStatus}, 'draft')`,
+					issueDate: issueDateExpr,
+					dueDate: dueDateExpr,
+					taxDue: taxAssessments.taxDue,
+					taxPaid: sql<string>`${taxPaidExpr}::text`,
+					taxDelta: sql<string>`${taxDeltaExpr}::text`,
+				})
+				.from(taxAssessments)
+				.where(where)
+				.orderBy(orderBy)
+				.limit(limit)
+				.offset(offset),
+			this.db
+				.select({ count: sql<number>`COUNT(*)` })
+				.from(taxAssessments)
+				.where(where),
+		])
 
-		const grouped = rows.map((row) => ({
+		const pagedRows = rows.map((row) => ({
 			assessmentId: row.assessmentId,
 			corporationId: row.corporationId,
 			taxPeriodStart: new Date(row.taxPeriodStart),
@@ -576,36 +805,10 @@ export class TaxReportService {
 			taxDueCenti: this.parseDecimalToCenti(row.taxDue).toString(),
 			taxPaidCenti: this.parseDecimalToCenti(row.taxPaid).toString(),
 			taxDeltaCenti: this.parseDecimalToCenti(row.taxDelta).toString(),
-			sortDueCenti: this.parseDecimalToCenti(row.taxDue),
-			sortPaidCenti: this.parseDecimalToCenti(row.taxPaid),
-			sortDeltaCenti: this.parseDecimalToCenti(row.taxDelta),
-			sortIssueDate: this.toDateOrNull(row.issueDate),
-			sortDueDate: this.toDateOrNull(row.dueDate),
 		}))
-
-		const offset = Math.max(filters.offset ?? 0, 0)
-		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
-		const sortBy = filters.sortBy ?? 'dueDate'
-		const sortDirection = toSortDirection(filters.sortDirection, 'asc')
-		const comparator =
-			billStatusSortComparators[sortBy as keyof typeof billStatusSortComparators] ??
-			billStatusSortComparators.dueDate
-		const pagedRows = grouped
-			.sort((a, b) => comparator(a, b, sortDirection))
-			.slice(offset, offset + limit)
-			.map(
-				({
-					sortDueCenti: _sortDueCenti,
-					sortPaidCenti: _sortPaidCenti,
-					sortDeltaCenti: _sortDeltaCenti,
-					sortIssueDate: _sortIssueDate,
-					sortDueDate: _sortDueDate,
-					...row
-				}) => row
-			)
 		return {
 			rows: pagedRows,
-			totalRows: grouped.length,
+			totalRows: this.toInteger(totalRowsResult[0]?.count ?? 0),
 		}
 	}
 
@@ -1025,28 +1228,69 @@ export class TaxReportService {
 		)
 	}
 
-	async getTaxableIncomeRefTypes(corporationId: string): Promise<string[]> {
-		const attachments = await this.db
-			.select({ ruleGroupId: taxRuleGroupAttachments.ruleGroupId })
-			.from(taxRuleGroupAttachments)
-			.where(eq(taxRuleGroupAttachments.corporationId, corporationId))
+	async getTaxableIncomeRefTypes(corporationId?: string): Promise<string[]> {
+		const corporationIds = await this.resolveReportCorporationIds(corporationId)
+		if (corporationIds.length === 0) {
+			return []
+		}
 
-		const ruleGroupIds = attachments.map((row) => row.ruleGroupId)
+		const attachments = await this.db
+			.select({
+				corporationId: taxRuleGroupAttachments.corporationId,
+				ruleGroupId: taxRuleGroupAttachments.ruleGroupId,
+			})
+			.from(taxRuleGroupAttachments)
+			.where(
+				this.buildCorporationIdCondition(taxRuleGroupAttachments.corporationId, corporationIds)
+			)
+
+		const ruleGroupIds = [...new Set(attachments.map((row) => row.ruleGroupId))]
 		if (ruleGroupIds.length === 0) {
 			return []
 		}
 
+		const ruleGroupCondition =
+			ruleGroupIds.length <= this.REPORT_CORPORATION_ID_INLINE_LIMIT
+				? inArray(taxRuleSets.ruleGroupId, ruleGroupIds)
+				: sql`${taxRuleSets.ruleGroupId} IN (
+					SELECT DISTINCT rule_group_id
+					FROM ${taxRuleGroupAttachments}
+					WHERE ${this.buildCorporationIdCondition(taxRuleGroupAttachments.corporationId, corporationIds)}
+				)`
 		const rules = await this.db.query.taxRuleSets.findMany({
-			where: and(inArray(taxRuleSets.ruleGroupId, ruleGroupIds), eq(taxRuleSets.isActive, true)),
+			where: and(ruleGroupCondition, eq(taxRuleSets.isActive, true)),
 			orderBy: [desc(taxRuleSets.priority), desc(taxRuleSets.createdAt)],
 		})
 
-		return TAX_INCOME_REF_TYPES.filter((refType) => {
-			const effectiveRule = rules.find(
-				(rule) => rule.appliesToRefType === null || rule.appliesToRefType === refType
+		const rulesByGroup = new Map<string, typeof rules>()
+		for (const rule of rules) {
+			const groupRules = rulesByGroup.get(rule.ruleGroupId) ?? []
+			groupRules.push(rule)
+			rulesByGroup.set(rule.ruleGroupId, groupRules)
+		}
+
+		const taxableRefTypes = new Set<string>()
+		for (const corporationId of corporationIds) {
+			const corporationGroupIds = new Set(
+				attachments
+					.filter((attachment) => attachment.corporationId === corporationId)
+					.map((attachment) => attachment.ruleGroupId)
 			)
-			return (effectiveRule?.taxRateBps ?? 0) > 0
-		})
+			// Preserve the database priority ordering across all rule groups attached
+			// to a corporation when resolving the effective rule for each ref type.
+			const corporationRules = rules.filter((rule) => corporationGroupIds.has(rule.ruleGroupId))
+
+			for (const refType of TAX_INCOME_REF_TYPES) {
+				const effectiveRule = corporationRules.find(
+					(rule) => rule.appliesToRefType === null || rule.appliesToRefType === refType
+				)
+				if ((effectiveRule?.taxRateBps ?? 0) > 0) {
+					taxableRefTypes.add(refType)
+				}
+			}
+		}
+
+		return TAX_INCOME_REF_TYPES.filter((refType) => taxableRefTypes.has(refType))
 	}
 
 	private async hasMemberSummaryRollupUpdatesSince(
@@ -1149,9 +1393,10 @@ export class TaxReportService {
 				SELECT
 					finalized.character_id,
 					finalized.ref_type,
+					finalized.period_start,
+					finalized.period_end,
 					finalized.contribution_income,
 					finalized.taxable_contribution_income,
-					finalized.assessment_count,
 					finalized.source_row_count,
 					finalized.last_assessment_at
 				FROM ${taxMemberContributionFinalizedRollups} AS finalized
@@ -1160,9 +1405,10 @@ export class TaxReportService {
 				SELECT
 					projection.character_id,
 					projection.ref_type,
+					projection.period_start,
+					projection.period_end,
 					projection.contribution_income,
 					projection.taxable_contribution_income,
-					projection.assessment_count,
 					projection.source_row_count,
 					projection.last_assessment_at
 				FROM ${taxMemberContributionProjectionRollups} AS projection
@@ -1172,7 +1418,7 @@ export class TaxReportService {
 					character_id,
 					SUM(contribution_income::numeric) AS contribution_income,
 					SUM(taxable_contribution_income::numeric) AS taxable_contribution_income,
-					MAX(assessment_count)::int AS assessment_count,
+					COUNT(DISTINCT (period_start, period_end))::int AS assessment_count,
 					MAX(last_assessment_at) AS last_assessment_at
 				FROM rollup_rows
 				GROUP BY character_id
@@ -1183,6 +1429,8 @@ export class TaxReportService {
 				SELECT
 					finalized.character_id,
 					finalized.ref_type,
+					finalized.period_start,
+					finalized.period_end,
 					finalized.contribution_income,
 					finalized.taxable_contribution_income,
 					finalized.source_row_count
@@ -1192,6 +1440,8 @@ export class TaxReportService {
 				SELECT
 					projection.character_id,
 					projection.ref_type,
+					projection.period_start,
+					projection.period_end,
 					projection.contribution_income,
 					projection.taxable_contribution_income,
 					projection.source_row_count
@@ -1363,9 +1613,9 @@ export class TaxReportService {
 			{
 				characterId: string
 				refType: string
+				assessmentPeriods: Set<string>
 				contributionIncomeCenti: bigint
 				taxableContributionIncomeCenti: bigint
-				assessmentCount: number
 				lineCount: number
 				lastAssessmentAt: Date | null
 			}
@@ -1374,9 +1624,10 @@ export class TaxReportService {
 			rollupDate: Date
 			characterId: string
 			refType: string
+			periodStart: Date
+			periodEnd: Date
 			contributionIncome: string
 			taxableContributionIncome: string
-			assessmentCount: number
 			sourceRowCount: number
 			lastAssessmentAt: Date | null
 		}) => {
@@ -1394,17 +1645,19 @@ export class TaxReportService {
 			const current = rolled.get(key) ?? {
 				characterId: row.characterId,
 				refType: row.refType,
+				assessmentPeriods: new Set<string>(),
 				contributionIncomeCenti: 0n,
 				taxableContributionIncomeCenti: 0n,
-				assessmentCount: 0,
 				lineCount: 0,
 				lastAssessmentAt: null,
 			}
+			current.assessmentPeriods.add(
+				`${row.periodStart.toISOString()}:${row.periodEnd.toISOString()}`
+			)
 			current.contributionIncomeCenti += this.parseDecimalToCenti(row.contributionIncome)
 			current.taxableContributionIncomeCenti += this.parseDecimalToCenti(
 				row.taxableContributionIncome
 			)
-			current.assessmentCount = Math.max(current.assessmentCount, row.assessmentCount)
 			current.lineCount += row.sourceRowCount
 			current.lastAssessmentAt =
 				!current.lastAssessmentAt ||
@@ -1424,6 +1677,7 @@ export class TaxReportService {
 		const byCharacter = new Map<
 			string,
 			{
+				assessmentPeriods: Set<string>
 				assessmentCount: number
 				contributionIncomeCenti: bigint
 				taxableContributionIncomeCenti: bigint
@@ -1440,6 +1694,7 @@ export class TaxReportService {
 		>()
 		for (const row of rolled.values()) {
 			const current = byCharacter.get(row.characterId) ?? {
+				assessmentPeriods: new Set<string>(),
 				assessmentCount: 0,
 				contributionIncomeCenti: 0n,
 				taxableContributionIncomeCenti: 0n,
@@ -1453,7 +1708,10 @@ export class TaxReportService {
 					}
 				>(),
 			}
-			current.assessmentCount = Math.max(current.assessmentCount, row.assessmentCount)
+			for (const period of row.assessmentPeriods) {
+				current.assessmentPeriods.add(period)
+			}
+			current.assessmentCount = current.assessmentPeriods.size
 			current.contributionIncomeCenti += row.contributionIncomeCenti
 			current.taxableContributionIncomeCenti += row.taxableContributionIncomeCenti
 			current.lastAssessmentAt =
@@ -1774,15 +2032,25 @@ export class TaxReportService {
 		corporationIds: string[],
 		assessmentScope?: 'corporation' | 'division' | 'character'
 	) {
-		const conditions = [inArray(taxAssessments.corporationId, corporationIds)]
+		const conditions = [
+			this.buildCorporationIdCondition(taxAssessments.corporationId, corporationIds),
+		]
 		if (assessmentScope) {
 			conditions.push(eq(taxAssessments.assessmentScope, assessmentScope))
 		}
-		if (filters.fromDate) {
-			conditions.push(gte(taxAssessments.taxPeriodStart, filters.fromDate))
-		}
-		if (filters.toDate) {
-			conditions.push(lte(taxAssessments.taxPeriodEnd, filters.toDate))
+		// Assessments are normally monthly, while report filters may be arbitrary
+		// date ranges. Include any assessment whose period overlaps the requested
+		// window instead of requiring the entire assessment to fit inside it.
+		if (filters.fromDate && filters.toDate) {
+			const overlapCondition = and(
+				lte(taxAssessments.taxPeriodStart, filters.toDate),
+				gte(taxAssessments.taxPeriodEnd, filters.fromDate)
+			)
+			if (overlapCondition) conditions.push(overlapCondition)
+		} else if (filters.fromDate) {
+			conditions.push(gte(taxAssessments.taxPeriodEnd, filters.fromDate))
+		} else if (filters.toDate) {
+			conditions.push(lte(taxAssessments.taxPeriodStart, filters.toDate))
 		}
 		return and(...conditions)
 	}
@@ -1800,7 +2068,9 @@ export class TaxReportService {
 		corporationIds: string[],
 		options: { essOnly: boolean }
 	) {
-		const conditions = [inArray(taxLedgerEntries.corporationId, corporationIds)]
+		const conditions = [
+			this.buildCorporationIdCondition(taxLedgerEntries.corporationId, corporationIds),
+		]
 		if (options.essOnly) {
 			conditions.push(eq(taxLedgerEntries.refType, 'ess_escrow_transfer'))
 		}
@@ -1810,6 +2080,10 @@ export class TaxReportService {
 		if (filters.toDate) {
 			conditions.push(lte(taxLedgerEntries.entryDate, filters.toDate))
 		}
+		const refTypes = filterTaxIncomeRefTypes(filters.refTypes)
+		if (refTypes?.length) {
+			conditions.push(inArray(taxLedgerEntries.refType, refTypes))
+		}
 		return and(...conditions)
 	}
 
@@ -1817,7 +2091,9 @@ export class TaxReportService {
 		filters: { corporationId?: string; fromDate?: Date; toDate?: Date; onlyOpen?: boolean },
 		corporationIds: string[]
 	) {
-		const conditions = [inArray(taxDiscrepancies.corporationId, corporationIds)]
+		const conditions = [
+			this.buildCorporationIdCondition(taxDiscrepancies.corporationId, corporationIds),
+		]
 		if (filters.fromDate) {
 			conditions.push(gte(taxDiscrepancies.createdAt, filters.fromDate))
 		}
@@ -1862,7 +2138,36 @@ export class TaxReportService {
 		return this.listDataBackedCorporationIds()
 	}
 
+	private buildCorporationIdCondition(
+		column:
+			| typeof taxAssessments.corporationId
+			| typeof taxLedgerEntries.corporationId
+			| typeof taxDiscrepancies.corporationId
+			| typeof taxRuleGroupAttachments.corporationId,
+		corporationIds: string[]
+	) {
+		if (corporationIds.length <= this.REPORT_CORPORATION_ID_INLINE_LIMIT) {
+			return inArray(column, corporationIds)
+		}
+
+		// Global report scope is the union of corporations with persisted tax data.
+		// Keep that set construction in PostgreSQL instead of serializing a growing
+		// corporation roster into hundreds of query parameters.
+		return sql`${column} IN (
+			SELECT corporation_id FROM ${taxAssessments}
+			UNION
+			SELECT corporation_id FROM ${taxLedgerEntries}
+			UNION
+			SELECT corporation_id FROM ${taxDiscrepancies}
+		)`
+	}
+
 	private async listDataBackedCorporationIds(): Promise<string[]> {
+		const cached = this.dataBackedCorporationIdsCache
+		if (cached && cached.expiresAtMs > Date.now()) {
+			return cached.ids
+		}
+
 		const [assessmentRows, ledgerRows, discrepancyRows] = await Promise.all([
 			this.db
 				.select({
@@ -1884,13 +2189,18 @@ export class TaxReportService {
 				.groupBy(taxDiscrepancies.corporationId),
 		])
 
-		return Array.from(
+		const ids = Array.from(
 			new Set([
 				...assessmentRows.map((row) => row.corporationId),
 				...ledgerRows.map((row) => row.corporationId),
 				...discrepancyRows.map((row) => row.corporationId),
 			])
 		).sort((a, b) => a.localeCompare(b))
+		this.dataBackedCorporationIdsCache = {
+			ids,
+			expiresAtMs: Date.now() + this.REPORT_CORPORATION_IDS_CACHE_TTL_MS,
+		}
+		return ids
 	}
 
 	private async listKnownCorporationIds(corporationId?: string): Promise<string[]> {
@@ -1906,6 +2216,57 @@ export class TaxReportService {
 			.where(eq(managedCorporations.isActive, true))
 			.groupBy(managedCorporations.corporationId)
 		return rows.map((row) => row.corporationId)
+	}
+
+	/**
+	 * Match the corporation scope used by scheduled tax assessments. Keeping this
+	 * query in the database avoids checking ESI coverage for inactive, excluded,
+	 * or non-member corporations that cannot produce a tax assessment.
+	 */
+	private async listTaxProcessableCorporationIds(): Promise<string[]> {
+		const rows = await this.db
+			.select({ corporationId: managedCorporations.corporationId })
+			.from(managedCorporations)
+			.innerJoin(
+				taxRuleGroupAttachments,
+				eq(taxRuleGroupAttachments.corporationId, managedCorporations.corporationId)
+			)
+			.leftJoin(
+				taxCorporationExclusions,
+				eq(taxCorporationExclusions.corporationId, managedCorporations.corporationId)
+			)
+			.where(
+				and(
+					eq(managedCorporations.isActive, true),
+					eq(managedCorporations.isMemberCorporation, true),
+					isNull(taxCorporationExclusions.corporationId)
+				)
+			)
+			.groupBy(managedCorporations.corporationId)
+
+		return rows.map((row) => row.corporationId)
+	}
+
+	private async getCorporationEsiAuthStatuses(
+		corporationIds: string[]
+	): Promise<Map<string, CorporationAuthStatus | null>> {
+		const statuses = new Map<string, CorporationAuthStatus | null>()
+		let nextIndex = 0
+		const workerCount = Math.min(this.ESI_AUTH_STATUS_CONCURRENCY, corporationIds.length)
+
+		await Promise.all(
+			Array.from({ length: workerCount }, async () => {
+				while (nextIndex < corporationIds.length) {
+					const corporationId = corporationIds[nextIndex++]
+					if (!corporationId) {
+						continue
+					}
+					statuses.set(corporationId, await this.getCorporationEsiAuthStatus(corporationId))
+				}
+			})
+		)
+
+		return statuses
 	}
 
 	private async listExclusions(corporationId?: string) {
@@ -1943,26 +2304,43 @@ export class TaxReportService {
 		return Array.from(byCorporationId.values())
 	}
 
-	private async getCorporationEsiAuthStatus(corporationId: string) {
+	private async getCorporationEsiAuthStatus(
+		corporationId: string
+	): Promise<CorporationAuthStatus | null> {
+		const cached = this.esiAuthStatusCache.get(corporationId)
+		if (cached && cached.expiresAtMs > Date.now()) {
+			return cached.status
+		}
+
 		try {
 			const stub = getStub<EveCorporationData>(this.eveCorporationDataNamespace, corporationId)
 			const status = await stub.getCorporationAuthStatus(corporationId)
-			return {
-				isConfigured: status.isConfigured,
-				isVerified: status.isVerified,
-				lastVerified: status.lastVerified,
-				directorCount: status.directorCount,
-				healthyDirectorCount: status.healthyDirectorCount,
-				requiredScopes: status.requiredScopes,
-				missingRequiredScopes: status.missingRequiredScopes,
-				hasRequiredScopes: status.hasRequiredScopes,
-				hasCorporationWalletScope: status.hasCorporationWalletScope,
-				hasCharacterWalletScope: status.hasCharacterWalletScope,
-				hasCorporationMembershipScope: status.hasCorporationMembershipScope,
-				grantedScopeCount: status.grantedScopeCount,
-			}
+			this.cacheCorporationEsiAuthStatus(corporationId, {
+				status,
+				expiresAtMs: Date.now() + this.ESI_AUTH_STATUS_CACHE_TTL_MS,
+			})
+			return status
 		} catch {
+			this.cacheCorporationEsiAuthStatus(corporationId, {
+				status: null,
+				expiresAtMs: Date.now() + this.ESI_AUTH_FAILURE_CACHE_TTL_MS,
+			})
 			return null
+		}
+	}
+
+	private cacheCorporationEsiAuthStatus(
+		corporationId: string,
+		entry: { status: CorporationAuthStatus | null; expiresAtMs: number }
+	): void {
+		this.esiAuthStatusCache.delete(corporationId)
+		this.esiAuthStatusCache.set(corporationId, entry)
+		while (this.esiAuthStatusCache.size > this.ESI_AUTH_STATUS_CACHE_MAX_ENTRIES) {
+			const oldestCorporationId = this.esiAuthStatusCache.keys().next().value
+			if (!oldestCorporationId) {
+				break
+			}
+			this.esiAuthStatusCache.delete(oldestCorporationId)
 		}
 	}
 

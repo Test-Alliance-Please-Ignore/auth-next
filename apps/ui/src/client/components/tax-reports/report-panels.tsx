@@ -1,6 +1,9 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
 import { ExportHistoryGrid, ExportSchedulesGrid } from '@/components/tax-reports/grids'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import {
@@ -14,7 +17,6 @@ import {
 import { FilterField } from '@/components/ui/filter-field'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { Button } from '@/components/ui/button'
 import { formatTaxIskCompact } from '@/lib/tax-display'
 
 import type { ReactNode } from 'react'
@@ -24,6 +26,8 @@ import type {
 	TaxExportSchedule,
 	TaxSummaryReport,
 } from '@repo/corporation-tax'
+import type { TaxReportQuickRange } from '@/lib/tax-date'
+import type { TaxReportSortingState } from '@/lib/tax-report-utils'
 
 interface TaxPanelCardProps {
 	title: string
@@ -60,6 +64,9 @@ interface TaxReportFiltersCardProps {
 	fromDate: string
 	toDate: string
 	onDateRangeChange: (next: { fromDate: string; toDate: string }) => void
+	onMoveMonth: (monthOffset: number) => void
+	onSelectQuickRange: (range: TaxReportQuickRange) => void
+	onReset: () => void
 	accessibleCorporations: Array<{ corporationId: string; name: string }>
 	effectiveCorporationId?: string
 	selectedCorporationId?: string
@@ -74,14 +81,60 @@ export function TaxReportFiltersCard(props: TaxReportFiltersCardProps) {
 			description="These filters apply to the active report and are persisted into export payloads."
 			contentClassName="grid gap-3 md:grid-cols-4"
 		>
-			<FilterField label="Date range">
-				<DateRangeInput
-					value={{ fromDate: props.fromDate, toDate: props.toDate }}
-					onChange={props.onDateRangeChange}
-					placeholder="Date range"
-				/>
+			<FilterField label="Date range" className="md:col-span-2">
+				<div className="flex items-center gap-1">
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						showIcon={false}
+						className="h-10 w-10 shrink-0 p-0"
+						aria-label="Previous month"
+						onClick={() => props.onMoveMonth(-1)}
+					>
+						<ChevronLeft className="h-4 w-4" aria-hidden="true" />
+					</Button>
+					<DateRangeInput
+						value={{ fromDate: props.fromDate, toDate: props.toDate }}
+						onChange={props.onDateRangeChange}
+						placeholder="Date range"
+						className="min-w-0 flex-1 [&_.themed-date-picker__input]:h-10 [&_.themed-date-picker__input]:w-full"
+					/>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						showIcon={false}
+						className="h-10 w-10 shrink-0 p-0"
+						aria-label="Next month"
+						onClick={() => props.onMoveMonth(1)}
+					>
+						<ChevronRight className="h-4 w-4" aria-hidden="true" />
+					</Button>
+				</div>
+				<div className="flex flex-wrap gap-1.5 pt-1">
+					{[
+						{ range: 'current-month' as const, label: 'Current month' },
+						{ range: 'previous-month' as const, label: 'Previous month' },
+						{ range: 'last-3-months' as const, label: 'Last 3 months' },
+						{ range: 'last-6-months' as const, label: 'Last 6 months' },
+						{ range: 'last-year' as const, label: 'Last year' },
+					].map((option) => (
+						<Button
+							key={option.range}
+							type="button"
+							variant="ghost"
+							size="sm"
+							showIcon={false}
+							className="h-7 px-2 text-xs"
+							onClick={() => props.onSelectQuickRange(option.range)}
+						>
+							{option.label}
+						</Button>
+					))}
+				</div>
 			</FilterField>
-			<FilterField label="Corporation">
+			<FilterField label="Corporation" className="md:col-span-2">
 				<TaxCorporationScopeSelector
 					corporations={props.accessibleCorporations}
 					effectiveCorporationId={props.effectiveCorporationId}
@@ -92,6 +145,11 @@ export function TaxReportFiltersCard(props: TaxReportFiltersCardProps) {
 					className="sm:max-w-none"
 				/>
 			</FilterField>
+			<div className="flex justify-end md:col-span-4">
+				<Button type="button" variant="ghost" size="sm" showIcon={false} onClick={props.onReset}>
+					Reset filters
+				</Button>
+			</div>
 		</TaxPanelCard>
 	)
 }
@@ -165,6 +223,11 @@ export function TaxExportHistoryPanel(props: {
 	downloadError: unknown
 	downloading: boolean
 	onDownload: (exportId: string) => void
+	pagination: { pageIndex: number; pageSize: number }
+	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
+	rowCount: number
+	sorting: TaxReportSortingState
+	onSortingChange: (sorting: TaxReportSortingState) => void
 }) {
 	return (
 		<TaxPanelCard
@@ -186,6 +249,11 @@ export function TaxExportHistoryPanel(props: {
 				entityNames={props.entityNames}
 				downloading={props.downloading}
 				onDownload={props.onDownload}
+				pagination={props.pagination}
+				onPaginationChange={props.onPaginationChange}
+				rowCount={props.rowCount}
+				sorting={props.sorting}
+				onSortingChange={props.onSortingChange}
 			/>
 			{props.downloadError ? (
 				<div className="text-sm text-destructive">
@@ -204,6 +272,11 @@ export function TaxExportSchedulesPanel(props: {
 	error: unknown
 	entityNames: Record<string, string>
 	createScheduleError: unknown
+	pagination: { pageIndex: number; pageSize: number }
+	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
+	rowCount: number
+	sorting: TaxReportSortingState
+	onSortingChange: (sorting: TaxReportSortingState) => void
 }) {
 	return (
 		<TaxPanelCard
@@ -223,6 +296,11 @@ export function TaxExportSchedulesPanel(props: {
 				loading={props.loading}
 				error={props.error}
 				entityNames={props.entityNames}
+				pagination={props.pagination}
+				onPaginationChange={props.onPaginationChange}
+				rowCount={props.rowCount}
+				sorting={props.sorting}
+				onSortingChange={props.onSortingChange}
 			/>
 		</TaxPanelCard>
 	)
@@ -272,7 +350,8 @@ export function TaxExportDialog(props: {
 						<Select
 							value={props.selectedExportFormat}
 							onValueChange={(value) => props.onSelectExportFormat(value as TaxExportFormat)}
-							options={props.exportFormatOptions.map((option) => ({ value: option.value,
+							options={props.exportFormatOptions.map((option) => ({
+								value: option.value,
 								label: option.label,
 							}))}
 							placeholder="Format"
@@ -283,7 +362,8 @@ export function TaxExportDialog(props: {
 					<Button variant="cancel" showIcon={false} onClick={() => props.onOpenChange(false)}>
 						Cancel
 					</Button>
-					<Button variant="primary"
+					<Button
+						variant="primary"
 						onClick={props.onSubmit}
 						disabled={!props.canExport || !props.canSubmit || props.submitting}
 					>
@@ -334,7 +414,8 @@ export function TaxScheduleDialog(props: {
 						<Select
 							value={props.selectedScheduleFormat}
 							onValueChange={(value) => props.onSelectScheduleFormat(value as TaxExportFormat)}
-							options={props.exportFormatOptions.map((option) => ({ value: option.value,
+							options={props.exportFormatOptions.map((option) => ({
+								value: option.value,
 								label: option.label,
 							}))}
 							placeholder="Format"
@@ -344,7 +425,8 @@ export function TaxScheduleDialog(props: {
 							onValueChange={(value) =>
 								props.onSelectScheduleFrequency(value as 'weekly' | 'monthly')
 							}
-							options={props.scheduleFrequencyOptions.map((option) => ({ value: option.value,
+							options={props.scheduleFrequencyOptions.map((option) => ({
+								value: option.value,
 								label: option.label,
 							}))}
 							placeholder="Frequency"
@@ -365,7 +447,8 @@ export function TaxScheduleDialog(props: {
 					<Button variant="cancel" showIcon={false} onClick={() => props.onOpenChange(false)}>
 						Cancel
 					</Button>
-					<Button variant="primary"
+					<Button
+						variant="primary"
 						onClick={props.onSubmit}
 						disabled={!props.canCreateSchedule || !props.canSubmit || props.submitting}
 					>

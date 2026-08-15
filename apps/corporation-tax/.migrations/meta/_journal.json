@@ -1,27 +1,34 @@
 {
-	"version": "7",
-	"dialect": "postgresql",
-	"entries": [
-		{
-			"idx": 0,
-			"version": "7",
-			"when": 1774176427050,
-			"tag": "0000_corporation_tax_initial",
-			"breakpoints": true
-		},
-		{
-			"idx": 1,
-			"version": "7",
-			"when": 1774241268730,
-			"tag": "0001_tax_alerts_reconcile",
-			"breakpoints": true
-		},
-		{
-			"idx": 2,
-			"version": "7",
-			"when": 1774261693000,
-			"tag": "0002_drop_portal_tax_rate_bps",
-			"breakpoints": true
-		}
-	]
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1774176427050,
+      "tag": "0000_corporation_tax_initial",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1774241268730,
+      "tag": "0001_tax_alerts_reconcile",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774261693000,
+      "tag": "0002_drop_portal_tax_rate_bps",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786750391208,
+      "tag": "0003_misty_star_brand",
+      "breakpoints": true
+    }
+  ]
 }

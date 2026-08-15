@@ -5,6 +5,7 @@ import { formatTaxIskCompact } from '@/lib/tax-display'
 import { parseTaxAmount } from '@/lib/tax-report-utils'
 
 import type { TaxCompliancePoint } from '@repo/corporation-tax'
+import type { TaxReportSortingState } from '@/lib/tax-report-utils'
 
 interface TaxReportSelectorProps {
 	selectedReportView: string
@@ -27,7 +28,8 @@ export function TaxReportSelector(props: TaxReportSelectorProps) {
 					query={props.reportSelectorQuery}
 					onQueryChange={props.onReportSelectorQueryChange}
 					searchable
-					options={props.visibleReportOptions.map((option) => ({ value: option.value,
+					options={props.visibleReportOptions.map((option) => ({
+						value: option.value,
 						label: option.label,
 					}))}
 					placeholder="Choose report"
@@ -55,8 +57,13 @@ export function TaxComplianceReportSection(props: {
 	error: unknown
 	rows: TaxCompliancePoint[]
 	chartRows: TaxCompliancePoint[]
+	sorting: TaxReportSortingState
+	onSortingChange: (sorting: TaxReportSortingState) => void
+	pagination: { pageIndex: number; pageSize: number }
+	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
+	rowCount: number
 }) {
-	if (props.loading) {
+	if (props.loading && props.rows.length === 0 && props.chartRows.length === 0) {
 		return <div className="py-8 text-sm text-muted-foreground">Loading compliance trend...</div>
 	}
 
@@ -68,7 +75,7 @@ export function TaxComplianceReportSection(props: {
 		)
 	}
 
-	if (props.rows.length === 0) {
+	if (props.rows.length === 0 && props.chartRows.length === 0) {
 		return (
 			<div className="py-8 text-sm text-muted-foreground">
 				No compliance trend points available.
@@ -180,7 +187,16 @@ export function TaxComplianceReportSection(props: {
 				</div>
 			</div>
 
-			<ComplianceGrid rows={props.rows} loading={false} error={null} />
+			<ComplianceGrid
+				rows={props.rows}
+				loading={props.loading}
+				error={null}
+				sorting={props.sorting}
+				onSortingChange={props.onSortingChange}
+				pagination={props.pagination}
+				onPaginationChange={props.onPaginationChange}
+				rowCount={props.rowCount}
+			/>
 		</div>
 	)
 }

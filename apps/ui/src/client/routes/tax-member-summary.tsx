@@ -20,27 +20,10 @@ import {
 } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { getCurrentMonthDateRange } from '@/lib/tax-date'
+import { getCurrentMonthDateRange, shiftMonthRange } from '@/lib/tax-date'
 import { formatTaxIskCompact, formatTaxNumber, TAX_REF_TYPE_OPTIONS } from '@/lib/tax-display'
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
-
-function toDateInputValue(date: Date): string {
-	return date.toISOString().slice(0, 10)
-}
-
-function shiftMonthRange(
-	fromDate: string,
-	monthOffset: number
-): { fromDate: string; toDate: string } {
-	const anchor = fromDate ? new Date(`${fromDate}T00:00:00.000Z`) : new Date()
-	const year = anchor.getUTCFullYear()
-	const month = anchor.getUTCMonth() + monthOffset
-	return {
-		fromDate: toDateInputValue(new Date(Date.UTC(year, month, 1))),
-		toDate: toDateInputValue(new Date(Date.UTC(year, month + 1, 0))),
-	}
-}
 
 export default function TaxMemberSummaryPage() {
 	usePageTitle('Tax Member Summary')
@@ -274,29 +257,31 @@ export default function TaxMemberSummaryPage() {
 								</div>
 							</div>
 							<div className="space-y-2">
-								<div className="flex h-5 items-center justify-between gap-2">
-									<div className="text-sm font-medium">Income Types</div>
+								<div className="text-sm font-medium">Income Types</div>
+								<div className="flex items-center gap-2">
+									<div className="min-w-0 flex-1">
+										<Select
+											options={TAX_REF_TYPE_OPTIONS}
+											values={incomeTypes}
+											onValuesChange={setIncomeTypes}
+											multiple
+											searchable
+											placeholder="All income types"
+											inputClassName="h-10"
+											contentClassName="w-[min(20rem,calc(100vw-2rem))] min-w-[min(20rem,calc(100vw-2rem))]"
+										/>
+									</div>
 									<Button
 										type="button"
-										variant="ghost"
-										size="sm"
+										variant="secondary"
+										className="h-10 shrink-0"
 										showIcon={false}
-										className="h-5 px-1.5 text-xs"
 										disabled={taxableIncomeTypes.length === 0}
 										onClick={() => setIncomeTypes(taxableIncomeTypes)}
 									>
 										Taxable only
 									</Button>
 								</div>
-								<Select
-									options={TAX_REF_TYPE_OPTIONS}
-									values={incomeTypes}
-									onValuesChange={setIncomeTypes}
-									multiple
-									searchable
-									placeholder="All income types"
-									inputClassName="h-10"
-								/>
 							</div>
 							<div className="space-y-2">
 								<div className="h-5" aria-hidden="true" />
@@ -317,7 +302,7 @@ export default function TaxMemberSummaryPage() {
 											setRefreshToken((value) => value + 1)
 										}}
 										disabled={isRefreshing}
-										variant="ghost"
+										variant="primary"
 										className="h-10 w-28"
 									>
 										{isRefreshing ? 'Refreshing…' : 'Refresh'}

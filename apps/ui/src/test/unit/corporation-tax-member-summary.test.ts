@@ -9,6 +9,7 @@ const { useQueryMock } = vi.hoisted(() => ({
 
 vi.mock('@tanstack/react-query', () => ({
 	useQuery: (...args: unknown[]) => useQueryMock(...args),
+	keepPreviousData: Symbol('keepPreviousData'),
 }))
 
 describe('useTaxMemberSummary', () => {

@@ -10,7 +10,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
-import { formatTaxDateTime } from '@/lib/tax-date'
+import { formatMonthYear } from '@/lib/date-utils'
 import {
 	formatTaxIskFull,
 	formatTaxNumber,
@@ -236,7 +236,7 @@ export function MemberSummaryReportGrid(props: MemberSummaryReportGridProps) {
 								onSortChange={props.onSortChange}
 							/>
 							<SortableHead
-								label="Last Assessment"
+								label="Most Recent Assessment"
 								field="lastAssessmentAt"
 								sortBy={props.sortBy}
 								sortDir={props.sortDir}
@@ -269,7 +269,7 @@ export function MemberSummaryReportGrid(props: MemberSummaryReportGridProps) {
 										{formatTaxNumber(row.assessmentCount)}
 									</TableCell>
 									<TableCell className="whitespace-nowrap">
-										{formatTaxDateTime(row.lastAssessmentAt)}
+										{row.lastAssessmentAt ? formatMonthYear(row.lastAssessmentAt) : '-'}
 									</TableCell>
 									<TableCell>
 										<TopSourceBreakdown topRefTypes={row.topRefTypes} />

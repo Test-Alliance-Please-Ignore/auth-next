@@ -6,11 +6,30 @@ import { corporationTaxKeys } from './keys'
 
 import type { TaxRollupReportQueryOptions } from './types'
 
+const TAX_REPORT_LIVE_STALE_TIME = 1000 * 60 * 5
+const TAX_REPORT_HISTORICAL_STALE_TIME = 1000 * 60 * 15
+
+function getTaxReportStaleTime(filters?: TaxRollupReportQueryOptions): number {
+	if (!filters?.toDate) {
+		return TAX_REPORT_LIVE_STALE_TIME
+	}
+
+	const toDate = Date.parse(filters.toDate)
+	if (!Number.isFinite(toDate)) {
+		return TAX_REPORT_LIVE_STALE_TIME
+	}
+
+	const now = new Date()
+	const currentMonthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+	return toDate < currentMonthStart ? TAX_REPORT_HISTORICAL_STALE_TIME : TAX_REPORT_LIVE_STALE_TIME
+}
+
 export function useTaxBillStatusReport(filters?: TaxRollupReportQueryOptions) {
 	return useQuery({
 		queryKey: corporationTaxKeys.billStatusReport(filters),
 		queryFn: () => corporationTaxApi.getBillStatusReport(filters),
-		staleTime: 1000 * 30,
+		placeholderData: keepPreviousData,
+		staleTime: getTaxReportStaleTime(filters),
 		enabled: filters?.enabled ?? true,
 	})
 }
@@ -19,7 +38,8 @@ export function useTaxTotalTaxesReport(filters?: TaxRollupReportQueryOptions) {
 	return useQuery({
 		queryKey: corporationTaxKeys.totalTaxesReport(filters),
 		queryFn: () => corporationTaxApi.getTotalTaxesReport(filters),
-		staleTime: 1000 * 30,
+		placeholderData: keepPreviousData,
+		staleTime: getTaxReportStaleTime(filters),
 		enabled: filters?.enabled ?? true,
 	})
 }
@@ -28,7 +48,8 @@ export function useTaxTopIncomeSourcesReport(filters?: TaxRollupReportQueryOptio
 	return useQuery({
 		queryKey: corporationTaxKeys.topIncomeReport(filters),
 		queryFn: () => corporationTaxApi.getTopIncomeSourcesReport(filters),
-		staleTime: 1000 * 30,
+		placeholderData: keepPreviousData,
+		staleTime: getTaxReportStaleTime(filters),
 		enabled: filters?.enabled ?? true,
 	})
 }
@@ -37,7 +58,8 @@ export function useTaxTopIncomeSourcesMonthlyReport(filters?: TaxRollupReportQue
 	return useQuery({
 		queryKey: corporationTaxKeys.topIncomeMonthlyReport(filters),
 		queryFn: () => corporationTaxApi.getTopIncomeSourcesMonthlyReport(filters),
-		staleTime: 1000 * 30,
+		placeholderData: keepPreviousData,
+		staleTime: getTaxReportStaleTime(filters),
 		enabled: filters?.enabled ?? true,
 	})
 }
@@ -46,7 +68,8 @@ export function useTaxEssPayoutReport(filters?: TaxRollupReportQueryOptions) {
 	return useQuery({
 		queryKey: corporationTaxKeys.essPayoutReport(filters),
 		queryFn: () => corporationTaxApi.getEssPayoutReport(filters),
-		staleTime: 1000 * 30,
+		placeholderData: keepPreviousData,
+		staleTime: getTaxReportStaleTime(filters),
 		enabled: filters?.enabled ?? true,
 	})
 }
@@ -55,7 +78,8 @@ export function useTaxComplianceReport(filters?: TaxRollupReportQueryOptions) {
 	return useQuery({
 		queryKey: corporationTaxKeys.complianceReport(filters),
 		queryFn: () => corporationTaxApi.getComplianceReport(filters),
-		staleTime: 1000 * 30,
+		placeholderData: keepPreviousData,
+		staleTime: getTaxReportStaleTime(filters),
 		enabled: filters?.enabled ?? true,
 	})
 }
@@ -74,7 +98,8 @@ export function useTaxDiscrepancyReport(filters?: {
 	return useQuery({
 		queryKey: corporationTaxKeys.discrepancyReport(filters),
 		queryFn: () => corporationTaxApi.getDiscrepancyReport(filters),
-		staleTime: 1000 * 30,
+		placeholderData: keepPreviousData,
+		staleTime: getTaxReportStaleTime(filters),
 		enabled: filters?.enabled ?? true,
 	})
 }
@@ -89,7 +114,8 @@ export function useTaxMissingEsiKeysReport(filters?: {
 	return useQuery({
 		queryKey: corporationTaxKeys.missingEsiKeysReport(filters),
 		queryFn: () => corporationTaxApi.getMissingEsiKeysReport(filters),
-		staleTime: 1000 * 30,
+		placeholderData: keepPreviousData,
+		staleTime: 1000 * 60 * 5,
 		enabled: filters?.enabled ?? true,
 	})
 }
@@ -98,7 +124,7 @@ export function useTaxSummaryReport(filters?: TaxRollupReportQueryOptions) {
 	return useQuery({
 		queryKey: corporationTaxKeys.summary(filters),
 		queryFn: () => corporationTaxApi.getSummaryReport(filters),
-		staleTime: 1000 * 30,
+		staleTime: getTaxReportStaleTime(filters),
 		enabled: filters?.enabled ?? true,
 	})
 }
@@ -141,12 +167,9 @@ export function useTaxableIncomeRefTypes(corporationId: string | undefined, enab
 	return useQuery({
 		queryKey: corporationTaxKeys.memberSummaryTaxableRefTypes(corporationId ?? 'none'),
 		queryFn: () => {
-			if (!corporationId) {
-				throw new Error('Corporation id is required for taxable income types')
-			}
 			return corporationTaxApi.getTaxableIncomeRefTypes(corporationId)
 		},
 		staleTime: 1000 * 60 * 10,
-		enabled: Boolean(corporationId) && enabled,
+		enabled,
 	})
 }

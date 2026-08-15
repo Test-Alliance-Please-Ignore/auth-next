@@ -1,7 +1,7 @@
-import { createMRTColumnHelper } from 'mantine-react-table'
 import { useMemo, useState } from 'react'
 
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
+import { TaxReportTable } from '@/components/tax-report-table'
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -10,10 +10,10 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { formatTaxDateTime } from '@/lib/tax-date'
+import { TaxCorporationDisplay } from '@/lib/tax-display'
 
-import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { TaxAuditLogEntry } from '@repo/corporation-tax'
-import { Button } from '@/components/ui/button'
+import type { TaxReportSortingState } from '@/lib/tax-report-utils'
 
 type TaxAuditLogGridProps = {
 	rows: TaxAuditLogEntry[]
@@ -21,9 +21,10 @@ type TaxAuditLogGridProps = {
 	error?: unknown
 	entityNames: Record<string, string>
 	actorDisplayNames: Record<string, string>
+	sorting: TaxReportSortingState
+	onSortingChange: (sorting: TaxReportSortingState) => void
 	pagination: { pageIndex: number; pageSize: number }
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
-	pageCount: number
 	rowCount: number
 }
 
@@ -202,26 +203,25 @@ export function TaxAuditLogGrid(props: TaxAuditLogGridProps) {
 		[selectedEntry]
 	)
 
-	const columnHelper = createMRTColumnHelper<TaxAuditLogEntry>()
-	const columns: Array<MRT_ColumnDef<TaxAuditLogEntry>> = [
-		columnHelper.accessor('createdAt', {
+	const columns = [
+		{
 			id: 'createdAt',
 			header: 'Time',
-			enableSorting: false,
-			Cell: ({ row }) => formatTaxDateTime(row.original.createdAt),
-		}),
-		columnHelper.accessor('action', {
+			sortable: true,
+			cell: (row: TaxAuditLogEntry) => formatTaxDateTime(row.createdAt),
+		},
+		{
 			id: 'action',
 			header: 'Action',
-			enableSorting: false,
-			Cell: ({ row }) => <span className="font-medium">{row.original.action}</span>,
-		}),
-		columnHelper.accessor('actorUserId', {
+			sortable: true,
+			cell: (row: TaxAuditLogEntry) => <span className="font-medium">{row.action}</span>,
+		},
+		{
 			id: 'actorUserId',
 			header: 'Actor',
-			enableSorting: false,
-			Cell: ({ row }) => {
-				const actorUserId = row.original.actorUserId
+			sortable: true,
+			cell: (row: TaxAuditLogEntry) => {
+				const actorUserId = row.actorUserId
 				const actorName = props.actorDisplayNames[actorUserId]
 				return (
 					<div className="flex flex-col">
@@ -232,47 +232,52 @@ export function TaxAuditLogGrid(props: TaxAuditLogGridProps) {
 					</div>
 				)
 			},
-		}),
-		columnHelper.accessor('corporationId', {
+		},
+		{
 			id: 'corporationId',
 			header: 'Corporation',
-			enableSorting: false,
-			Cell: ({ row }) => {
-				const corporationId = row.original.corporationId
+			sortable: true,
+			cell: (row: TaxAuditLogEntry) => {
+				const corporationId = row.corporationId
 				if (!corporationId) {
 					return <span>Global</span>
 				}
-				return <span>{props.entityNames[corporationId] ?? corporationId}</span>
+				return (
+					<TaxCorporationDisplay corporationId={corporationId} entityNames={props.entityNames} />
+				)
 			},
-		}),
-		columnHelper.display({
+		},
+		{
 			id: 'actions',
 			header: 'Actions',
-			enableSorting: false,
-			Cell: ({ row }) => (
-				<Button variant="ghost"
+			cell: (row: TaxAuditLogEntry) => (
+				<Button
+					variant="ghost"
 					type="button"
 					className="h-8 px-3"
-					onClick={() => setSelectedEntry(row.original)}
+					onClick={() => setSelectedEntry(row)}
 				>
 					View
 				</Button>
 			),
-		}),
+		},
 	]
 
 	return (
 		<>
-			<TaxReportDataGrid
+			<TaxReportTable
 				columns={columns}
 				rows={props.rows}
 				loading={props.loading}
 				error={props.error}
 				emptyMessage="No audit entries matched the selected filters."
+				sorting={props.sorting}
+				onSortingChange={props.onSortingChange}
 				pagination={props.pagination}
 				onPaginationChange={props.onPaginationChange}
-				pageCount={props.pageCount}
 				rowCount={props.rowCount}
+				itemLabel="audit entries"
+				getRowKey={(row) => row.id}
 			/>
 
 			<Dialog

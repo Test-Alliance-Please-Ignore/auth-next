@@ -111,6 +111,8 @@ export const corporationTaxKeys = {
 			offset?: number
 		}
 	) => [...corporationTaxKeys.all, 'assessments', corporationId, filters] as const,
+	assessmentWorkflow: (corporationId: string, workflowInstanceId: string) =>
+		[...corporationTaxKeys.all, 'assessment-workflow', corporationId, workflowInstanceId] as const,
 	ledgerEntries: (
 		corporationId: string,
 		filters?: {

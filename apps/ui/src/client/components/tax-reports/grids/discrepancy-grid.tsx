@@ -1,59 +1,66 @@
 import { useMemo } from 'react'
 
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
+import { TaxReportTable } from '@/components/tax-report-table'
 import { formatTaxDateTime } from '@/lib/tax-date'
-import { TaxEntityDisplay } from '@/lib/tax-display'
+import { TaxCorporationDisplay } from '@/lib/tax-display'
 
 import { toJsonPreview } from './shared'
 
-import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
 import type { TaxDiscrepancy } from '@repo/corporation-tax'
+import type { TaxReportSortingState } from '@/lib/tax-report-utils'
 
 export function DiscrepancyGrid(props: {
 	rows: TaxDiscrepancy[]
 	loading: boolean
 	error: unknown
 	entityNames: Record<string, string>
-	sorting: MRT_SortingState
-	onSortingChange: (sorting: MRT_SortingState) => void
-	pagination: {
-		pageIndex: number
-		pageSize: number
-	}
+	sorting: TaxReportSortingState
+	onSortingChange: (sorting: TaxReportSortingState) => void
+	pagination: { pageIndex: number; pageSize: number }
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
-	pageCount: number
 	rowCount: number
 }) {
-	const columns = useMemo<Array<MRT_ColumnDef<TaxDiscrepancy>>>(
+	const columns = useMemo(
 		() => [
 			{
-				accessorKey: 'corporationId',
+				id: 'corporationId',
 				header: 'Corporation',
-				enableSorting: true,
-				Cell: ({ row }) => (
-					<TaxEntityDisplay entityId={row.original.corporationId} entityNames={props.entityNames} />
+				sortable: true,
+				cell: (row: TaxDiscrepancy) => (
+					<TaxCorporationDisplay
+						corporationId={row.corporationId}
+						entityNames={props.entityNames}
+					/>
 				),
 			},
-			{ accessorKey: 'discrepancyType', header: 'Type', enableSorting: true },
-			{ accessorKey: 'severity', header: 'Severity', enableSorting: true },
 			{
-				accessorKey: 'assessmentId',
+				id: 'discrepancyType',
+				header: 'Type',
+				sortable: true,
+				cell: (row: TaxDiscrepancy) => row.discrepancyType,
+			},
+			{
+				id: 'severity',
+				header: 'Severity',
+				sortable: true,
+				cell: (row: TaxDiscrepancy) => row.severity,
+			},
+			{
+				id: 'assessmentId',
 				header: 'Assessment',
-				enableSorting: false,
-				Cell: ({ row }) => row.original.assessmentId ?? '-',
+				cell: (row: TaxDiscrepancy) => row.assessmentId ?? '-',
 			},
 			{
-				accessorKey: 'createdAt',
+				id: 'createdAt',
 				header: 'Created',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxDateTime(row.original.createdAt),
+				sortable: true,
+				cell: (row: TaxDiscrepancy) => formatTaxDateTime(row.createdAt),
 			},
 			{
-				accessorKey: 'details',
+				id: 'details',
 				header: 'Details',
-				enableSorting: false,
-				Cell: ({ row }) => (
-					<div className="max-w-[24rem] truncate">{toJsonPreview(row.original.details)}</div>
+				cell: (row: TaxDiscrepancy) => (
+					<div className="max-w-[24rem] truncate">{toJsonPreview(row.details)}</div>
 				),
 			},
 		],
@@ -61,7 +68,7 @@ export function DiscrepancyGrid(props: {
 	)
 
 	return (
-		<TaxReportDataGrid
+		<TaxReportTable
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
@@ -71,8 +78,9 @@ export function DiscrepancyGrid(props: {
 			onSortingChange={props.onSortingChange}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
-			pageCount={props.pageCount}
 			rowCount={props.rowCount}
+			itemLabel="discrepancies"
+			getRowKey={(row) => row.id}
 		/>
 	)
 }

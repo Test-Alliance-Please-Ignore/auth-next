@@ -1,69 +1,71 @@
 import { useMemo } from 'react'
 
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
+import { TaxReportTable } from '@/components/tax-report-table'
 import { formatTaxDateTime } from '@/lib/tax-date'
-import { formatTaxDivisionLabel, formatTaxIskFull, TaxEntityDisplay } from '@/lib/tax-display'
+import {
+	formatTaxDivisionLabel,
+	formatTaxIskFull,
+	TaxCorporationDisplay,
+	TaxEntityDisplay,
+} from '@/lib/tax-display'
 
-import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
 import type { TaxEssPayoutRow } from '@repo/corporation-tax'
+import type { TaxReportSortingState } from '@/lib/tax-report-utils'
 
 export function EssPayoutGrid(props: {
 	rows: TaxEssPayoutRow[]
 	loading: boolean
 	error: unknown
 	entityNames: Record<string, string>
-	sorting: MRT_SortingState
-	onSortingChange: (sorting: MRT_SortingState) => void
-	pagination: {
-		pageIndex: number
-		pageSize: number
-	}
+	sorting: TaxReportSortingState
+	onSortingChange: (sorting: TaxReportSortingState) => void
+	pagination: { pageIndex: number; pageSize: number }
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
-	pageCount: number
 	rowCount: number
 }) {
-	const columns = useMemo<Array<MRT_ColumnDef<TaxEssPayoutRow>>>(
+	const columns = useMemo(
 		() => [
 			{
-				accessorKey: 'entryDate',
+				id: 'entryDate',
 				header: 'Date',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxDateTime(row.original.entryDate),
+				sortable: true,
+				cell: (row: TaxEssPayoutRow) => formatTaxDateTime(row.entryDate),
 			},
 			{
-				accessorKey: 'corporationId',
+				id: 'corporationId',
 				header: 'Corporation',
-				enableSorting: true,
-				Cell: ({ row }) => (
-					<TaxEntityDisplay entityId={row.original.corporationId} entityNames={props.entityNames} />
+				sortable: true,
+				cell: (row: TaxEssPayoutRow) => (
+					<TaxCorporationDisplay
+						corporationId={row.corporationId}
+						entityNames={props.entityNames}
+					/>
 				),
 			},
 			{
-				accessorKey: 'division',
+				id: 'division',
 				header: 'Division',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxDivisionLabel(row.original.division),
+				sortable: true,
+				cell: (row: TaxEssPayoutRow) => formatTaxDivisionLabel(row.division),
 			},
 			{
-				accessorKey: 'amount',
+				id: 'amount',
 				header: 'Amount',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxIskFull(row.original.amount),
+				sortable: true,
+				cell: (row: TaxEssPayoutRow) => formatTaxIskFull(row.amount),
 			},
 			{
-				accessorKey: 'firstPartyId',
+				id: 'firstPartyId',
 				header: 'Sender',
-				enableSorting: false,
-				Cell: ({ row }) => (
-					<TaxEntityDisplay entityId={row.original.firstPartyId} entityNames={props.entityNames} />
+				cell: (row: TaxEssPayoutRow) => (
+					<TaxEntityDisplay entityId={row.firstPartyId} entityNames={props.entityNames} />
 				),
 			},
 			{
-				accessorKey: 'secondPartyId',
+				id: 'secondPartyId',
 				header: 'Recipient',
-				enableSorting: false,
-				Cell: ({ row }) => (
-					<TaxEntityDisplay entityId={row.original.secondPartyId} entityNames={props.entityNames} />
+				cell: (row: TaxEssPayoutRow) => (
+					<TaxEntityDisplay entityId={row.secondPartyId} entityNames={props.entityNames} />
 				),
 			},
 		],
@@ -71,7 +73,7 @@ export function EssPayoutGrid(props: {
 	)
 
 	return (
-		<TaxReportDataGrid
+		<TaxReportTable
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
@@ -81,8 +83,9 @@ export function EssPayoutGrid(props: {
 			onSortingChange={props.onSortingChange}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
-			pageCount={props.pageCount}
 			rowCount={props.rowCount}
+			itemLabel="ESS rows"
+			getRowKey={(row) => row.id}
 		/>
 	)
 }

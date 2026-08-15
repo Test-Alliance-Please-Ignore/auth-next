@@ -1,30 +1,23 @@
-import { createMRTColumnHelper } from 'mantine-react-table'
 import { useMemo } from 'react'
 
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
-import { Badge } from '@/components/ui/badge'
-import { formatTaxDate } from '@/lib/tax-date'
-import { formatTaxIskFull, TaxEntityDisplay } from '@/lib/tax-display'
-
-import { billStatusBadgeVariant } from './shared'
-
-import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
-import type { TaxBillStatusReportRow } from '@repo/corporation-tax'
+import { BillStatusBadge } from '@/components/bills/bill-status-badge'
+import { TaxReportTable } from '@/components/tax-report-table'
 import { Button } from '@/components/ui/button'
+import { formatTaxDate } from '@/lib/tax-date'
+import { formatTaxIskFull, TaxCorporationDisplay } from '@/lib/tax-display'
+
+import type { TaxBillStatusReportRow } from '@repo/corporation-tax'
+import type { TaxReportSortingState } from '@/lib/tax-report-utils'
 
 export function BillStatusReportGrid(props: {
 	rows: TaxBillStatusReportRow[]
 	loading: boolean
 	error: unknown
 	entityNames: Record<string, string>
-	sorting: MRT_SortingState
-	onSortingChange: (sorting: MRT_SortingState) => void
-	pagination: {
-		pageIndex: number
-		pageSize: number
-	}
+	sorting: TaxReportSortingState
+	onSortingChange: (sorting: TaxReportSortingState) => void
+	pagination: { pageIndex: number; pageSize: number }
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
-	pageCount: number
 	rowCount: number
 	canManage?: boolean
 	onSyncBillStatus?: (assessmentId: string) => void
@@ -32,92 +25,96 @@ export function BillStatusReportGrid(props: {
 	syncBillPending?: boolean
 	retractBillPending?: boolean
 }) {
-	const columnHelper = createMRTColumnHelper<TaxBillStatusReportRow>()
-	const columns = useMemo<Array<MRT_ColumnDef<TaxBillStatusReportRow>>>(
+	const columns = useMemo(
 		() => [
-			columnHelper.accessor('billStatus', {
+			{
+				id: 'billStatus',
 				header: 'Bill Status',
-				enableSorting: true,
-				Cell: ({ row }) => (
-					<Badge variant={billStatusBadgeVariant(row.original.billStatus)}>
-						{row.original.billStatus}
-					</Badge>
-				),
-			}),
-			columnHelper.accessor('corporationId', {
+				sortable: true,
+				cell: (row: TaxBillStatusReportRow) => <BillStatusBadge status={row.billStatus} />,
+			},
+			{
+				id: 'corporationId',
 				header: 'Corporation',
-				enableSorting: true,
-				Cell: ({ row }) => (
-					<TaxEntityDisplay entityId={row.original.corporationId} entityNames={props.entityNames} />
+				sortable: true,
+				cell: (row: TaxBillStatusReportRow) => (
+					<TaxCorporationDisplay
+						corporationId={row.corporationId}
+						entityNames={props.entityNames}
+					/>
 				),
-			}),
-			columnHelper.accessor('taxPeriodStart', {
+			},
+			{
+				id: 'taxPeriodStart',
 				header: 'Period Start',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxDate(row.original.taxPeriodStart),
-			}),
-			columnHelper.accessor('taxPeriodEnd', {
+				sortable: true,
+				cell: (row: TaxBillStatusReportRow) => formatTaxDate(row.taxPeriodStart),
+			},
+			{
+				id: 'taxPeriodEnd',
 				header: 'Period End',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxDate(row.original.taxPeriodEnd),
-			}),
-			columnHelper.accessor('issueDate', {
+				sortable: true,
+				cell: (row: TaxBillStatusReportRow) => formatTaxDate(row.taxPeriodEnd),
+			},
+			{
+				id: 'issueDate',
 				header: 'Issue Date',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxDate(row.original.issueDate),
-			}),
-			columnHelper.accessor('dueDate', {
+				sortable: true,
+				cell: (row: TaxBillStatusReportRow) => formatTaxDate(row.issueDate),
+			},
+			{
+				id: 'dueDate',
 				header: 'Due Date',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxDate(row.original.dueDate),
-			}),
-			columnHelper.accessor('taxDueCenti', {
+				sortable: true,
+				cell: (row: TaxBillStatusReportRow) => formatTaxDate(row.dueDate),
+			},
+			{
 				id: 'taxDue',
 				header: 'Tax Due',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxIskFull(row.original.taxDue),
-			}),
-			columnHelper.accessor('taxPaidCenti', {
+				sortable: true,
+				cell: (row: TaxBillStatusReportRow) => formatTaxIskFull(row.taxDue),
+			},
+			{
 				id: 'taxPaid',
 				header: 'Tax Paid',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxIskFull(row.original.taxPaid),
-			}),
-			columnHelper.accessor('taxDeltaCenti', {
+				sortable: true,
+				cell: (row: TaxBillStatusReportRow) => formatTaxIskFull(row.taxPaid),
+			},
+			{
 				id: 'taxDelta',
 				header: 'Delta',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxIskFull(row.original.taxDelta),
-			}),
-			columnHelper.display({
+				sortable: true,
+				cell: (row: TaxBillStatusReportRow) => formatTaxIskFull(row.taxDelta),
+			},
+			{
 				id: 'actions',
 				header: 'Actions',
-				enableSorting: false,
-				Cell: ({ row }) => {
-					const billStatus = row.original.billStatus
-					const canSync = billStatus === 'issued' || billStatus === 'overdue'
-					const canRetract = billStatus === 'issued' || billStatus === 'overdue'
+				className: 'text-right',
+				headerClassName: 'text-right',
+				cell: (row: TaxBillStatusReportRow) => {
+					const canSync = row.billStatus === 'issued' || row.billStatus === 'overdue'
+					const canRetract = canSync
 					const busy = props.syncBillPending || props.retractBillPending
-					if (!props.canManage) {
-						return <span className="text-xs text-muted-foreground">-</span>
-					}
+					if (!props.canManage) return <span className="text-xs text-muted-foreground">-</span>
 					return (
 						<div className="flex items-center justify-end gap-2">
 							{canSync ? (
-								<Button variant="primary"
+								<Button
+									variant="primary"
 									size="sm"
 									disabled={Boolean(busy) || !props.onSyncBillStatus}
-									onClick={() => props.onSyncBillStatus?.(row.original.assessmentId)}
+									onClick={() => props.onSyncBillStatus?.(row.assessmentId)}
 								>
 									{props.syncBillPending ? 'Syncing...' : 'Sync'}
 								</Button>
 							) : null}
 							{canRetract ? (
-								<Button variant="destructive"
+								<Button
+									variant="destructive"
 									size="sm"
 									showIcon={false}
 									disabled={Boolean(busy) || !props.onRetractBill}
-									onClick={() => props.onRetractBill?.(row.original.assessmentId)}
+									onClick={() => props.onRetractBill?.(row.assessmentId)}
 								>
 									{props.retractBillPending ? 'Retracting...' : 'Retract'}
 								</Button>
@@ -128,19 +125,20 @@ export function BillStatusReportGrid(props: {
 						</div>
 					)
 				},
-			}),
+			},
 		],
 		[
-			columnHelper,
 			props.canManage,
 			props.entityNames,
+			props.onRetractBill,
+			props.onSyncBillStatus,
 			props.retractBillPending,
 			props.syncBillPending,
 		]
 	)
 
 	return (
-		<TaxReportDataGrid
+		<TaxReportTable
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
@@ -150,9 +148,9 @@ export function BillStatusReportGrid(props: {
 			onSortingChange={props.onSortingChange}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
-			pageCount={props.pageCount}
 			rowCount={props.rowCount}
-			pinnedRightColumnIds={['actions']}
+			itemLabel="bills"
+			getRowKey={(row) => row.assessmentId}
 		/>
 	)
 }

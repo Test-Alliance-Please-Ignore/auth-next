@@ -1,6 +1,5 @@
-import type { MRT_SortingState } from 'mantine-react-table'
-
 export type SortDirection = 'asc' | 'desc'
+export type TaxReportSortingState = Array<{ id: string; desc: boolean }>
 
 export function toStartOfDayIso(dateText: string): string {
 	return new Date(`${dateText}T00:00:00.000Z`).toISOString()
@@ -65,12 +64,12 @@ export function downloadBase64File(
 	URL.revokeObjectURL(url)
 }
 
-export function toSorting(sortBy?: string, sortDir?: SortDirection): MRT_SortingState {
+export function toSorting(sortBy?: string, sortDir?: SortDirection): TaxReportSortingState {
 	return sortBy ? [{ id: sortBy, desc: sortDir === 'desc' }] : []
 }
 
 export function applySorting(
-	sorting: MRT_SortingState,
+	sorting: TaxReportSortingState,
 	defaultSortBy: string,
 	defaultSortDir: SortDirection,
 	setSortBy: (value: string) => void,

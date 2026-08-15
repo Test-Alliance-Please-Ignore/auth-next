@@ -1,82 +1,98 @@
 import { useMemo } from 'react'
 
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
+import { TaxReportTable } from '@/components/tax-report-table'
 import { Badge } from '@/components/ui/badge'
 import { formatTaxDateTime } from '@/lib/tax-date'
-import { TaxEntityDisplay } from '@/lib/tax-display'
+import { TaxCorporationDisplay } from '@/lib/tax-display'
 
-import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { TaxExportSchedule } from '@repo/corporation-tax'
+import type { TaxReportSortingState } from '@/lib/tax-report-utils'
 
 export function ExportSchedulesGrid(props: {
 	rows: TaxExportSchedule[]
 	loading: boolean
 	error: unknown
 	entityNames: Record<string, string>
+	pagination: { pageIndex: number; pageSize: number }
+	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
+	rowCount: number
+	sorting: TaxReportSortingState
+	onSortingChange: (sorting: TaxReportSortingState) => void
 }) {
-	const columns = useMemo<Array<MRT_ColumnDef<TaxExportSchedule>>>(
+	const columns = useMemo(
 		() => [
-			{ accessorKey: 'name', header: 'Name', enableSorting: true },
+			{ id: 'name', header: 'Name', sortable: true, cell: (row: TaxExportSchedule) => row.name },
 			{
-				accessorKey: 'corporationId',
+				id: 'corporationId',
 				header: 'Corporation',
-				enableSorting: true,
-				Cell: ({ row }) =>
-					row.original.corporationId ? (
-						<TaxEntityDisplay
-							entityId={row.original.corporationId}
+				sortable: true,
+				cell: (row: TaxExportSchedule) =>
+					row.corporationId ? (
+						<TaxCorporationDisplay
+							corporationId={row.corporationId}
 							entityNames={props.entityNames}
 						/>
 					) : (
 						'Global'
 					),
 			},
-			{ accessorKey: 'reportType', header: 'Report', enableSorting: true },
 			{
-				accessorKey: 'format',
-				header: 'Format',
-				enableSorting: true,
-				Cell: ({ row }) => row.original.format.toUpperCase(),
+				id: 'reportType',
+				header: 'Report',
+				sortable: true,
+				cell: (row: TaxExportSchedule) => row.reportType,
 			},
-			{ accessorKey: 'frequency', header: 'Frequency', enableSorting: true },
 			{
-				accessorKey: 'isActive',
+				id: 'format',
+				header: 'Format',
+				sortable: true,
+				cell: (row: TaxExportSchedule) => row.format.toUpperCase(),
+			},
+			{
+				id: 'frequency',
+				header: 'Frequency',
+				sortable: true,
+				cell: (row: TaxExportSchedule) => row.frequency,
+			},
+			{
+				id: 'isActive',
 				header: 'Active',
-				enableSorting: true,
-				Cell: ({ row }) => (
-					<Badge variant={row.original.isActive ? 'default' : 'secondary'}>
-						{row.original.isActive ? 'active' : 'paused'}
+				sortable: true,
+				cell: (row: TaxExportSchedule) => (
+					<Badge variant={row.isActive ? 'default' : 'secondary'}>
+						{row.isActive ? 'active' : 'paused'}
 					</Badge>
 				),
 			},
 			{
 				id: 'nextRunAt',
-				accessorFn: (row) =>
-					row.nextRunAt ? new Date(row.nextRunAt).getTime() : Number.NEGATIVE_INFINITY,
 				header: 'Next Run',
-				enableSorting: true,
-				sortingFn: 'basic',
-				Cell: ({ row }) => formatTaxDateTime(row.original.nextRunAt),
+				sortable: true,
+				cell: (row: TaxExportSchedule) => formatTaxDateTime(row.nextRunAt),
 			},
 			{
 				id: 'lastRunAt',
-				accessorFn: (row) =>
-					row.lastRunAt ? new Date(row.lastRunAt).getTime() : Number.NEGATIVE_INFINITY,
 				header: 'Last Run',
-				enableSorting: true,
-				sortingFn: 'basic',
-				Cell: ({ row }) => formatTaxDateTime(row.original.lastRunAt),
+				sortable: true,
+				cell: (row: TaxExportSchedule) => formatTaxDateTime(row.lastRunAt),
 			},
 		],
 		[props.entityNames]
 	)
 	return (
-		<TaxReportDataGrid
+		<TaxReportTable
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
 			error={props.error}
 			emptyMessage="No export schedules found."
+			pagination={props.pagination}
+			onPaginationChange={props.onPaginationChange}
+			rowCount={props.rowCount}
+			itemLabel="schedules"
+			sorting={props.sorting}
+			onSortingChange={props.onSortingChange}
+			getRowKey={(row) => row.id}
 		/>
 	)
 }

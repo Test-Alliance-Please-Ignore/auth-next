@@ -1,5 +1,7 @@
 import { TAX_INCOME_REF_TYPES } from '@repo/corporation-tax'
 
+import { CorporationLogo } from '@/components/corporation-logo'
+
 import type { TaxAlert, TaxExportReportType } from '@repo/corporation-tax'
 
 const FULL_ISK_FORMATTER = new Intl.NumberFormat('en-US', {
@@ -298,6 +300,36 @@ export function TaxEntityDisplay({
 		<div className="leading-tight">
 			<div>{resolvedName}</div>
 			<div className="font-mono text-[11px] text-muted-foreground">{entityId}</div>
+		</div>
+	)
+}
+
+export function TaxCorporationDisplay({
+	corporationId,
+	entityNames,
+	emptyLabel = '-',
+}: {
+	corporationId: string | null | undefined
+	entityNames?: Record<string, string>
+	emptyLabel?: string
+}) {
+	if (!corporationId) {
+		return <>{emptyLabel}</>
+	}
+
+	const corporationName = entityNames?.[corporationId]
+
+	return (
+		<div className="flex min-w-0 items-center gap-2">
+			<CorporationLogo corporationId={corporationId} corporationName={corporationName} />
+			<div className="min-w-0 leading-tight">
+				<div className="truncate" title={corporationName ?? corporationId}>
+					{corporationName ?? corporationId}
+				</div>
+				{corporationName ? (
+					<div className="font-mono text-[11px] text-muted-foreground">{corporationId}</div>
+				) : null}
+			</div>
 		</div>
 	)
 }

@@ -20,6 +20,13 @@
 	"triggers": {
 		"crons": ["0 2 * * *"]
 	},
+	"workflows": [
+		{
+			"name": "tax-assessment",
+			"binding": "TAX_ASSESSMENT_WORKFLOW",
+			"class_name": "TaxAssessmentWorkflow"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{

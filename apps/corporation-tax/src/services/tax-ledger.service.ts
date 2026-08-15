@@ -1,5 +1,5 @@
 import { filterTaxIncomeRefTypes, isTaxIncomeRefType } from '@repo/corporation-tax'
-import { and, desc, eq, gte, inArray, isNotNull, lt, lte, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { taxLedgerEntries, taxMemberSummaryVersions, taxSyncCheckpoints } from '../db/schema'
@@ -16,6 +16,7 @@ import type {
 	TaxLedgerRetentionResult,
 	TaxLedgerSourceType,
 	TaxLedgerWindowFilters,
+	TaxPagedResult,
 	TaxSyncCheckpoint,
 } from '@repo/corporation-tax'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -435,7 +436,7 @@ export class TaxLedgerService {
 	async listLedgerEntries(
 		corporationId: string,
 		filters: TaxLedgerWindowFilters = {}
-	): Promise<TaxLedgerEntry[]> {
+	): Promise<TaxPagedResult<TaxLedgerEntry>> {
 		const limit = Math.min(Math.max(filters.limit ?? 1000, 1), 10000)
 		const offset = Math.max(filters.offset ?? 0, 0)
 		const conditions = [eq(taxLedgerEntries.corporationId, corporationId)]
@@ -481,31 +482,59 @@ export class TaxLedgerService {
 			conditions.push(sql`CAST(${taxLedgerEntries.amount} AS numeric) <= ${maxAmount}`)
 		}
 
+		const [{ count: totalRows }] = await this.db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(taxLedgerEntries)
+			.where(and(...conditions))
+
 		const rows = await this.db.query.taxLedgerEntries.findMany({
 			where: and(...conditions),
-			orderBy: [desc(taxLedgerEntries.entryDate)],
+			orderBy: [
+				filters.sortBy === 'amount'
+					? filters.sortDir === 'asc'
+						? sql`CAST(${taxLedgerEntries.amount} AS numeric) ASC`
+						: sql`CAST(${taxLedgerEntries.amount} AS numeric) DESC`
+					: filters.sortBy === 'division'
+						? filters.sortDir === 'asc'
+							? asc(taxLedgerEntries.division)
+							: desc(taxLedgerEntries.division)
+						: filters.sortBy === 'refType'
+							? filters.sortDir === 'asc'
+								? asc(taxLedgerEntries.refType)
+								: desc(taxLedgerEntries.refType)
+							: filters.sortBy === 'sourceType'
+								? filters.sortDir === 'asc'
+									? asc(taxLedgerEntries.sourceType)
+									: desc(taxLedgerEntries.sourceType)
+								: filters.sortDir === 'asc'
+									? asc(taxLedgerEntries.entryDate)
+									: desc(taxLedgerEntries.entryDate),
+			],
 			limit,
 			offset,
 		})
 
-		return rows.map((row) => ({
-			id: row.id,
-			corporationId: row.corporationId,
-			sourceType: row.sourceType,
-			sourcePrimaryId: row.sourcePrimaryId,
-			sourceSecondaryId: row.sourceSecondaryId,
-			characterId: this.extractCharacterId(row),
-			division: row.division,
-			refType: row.refType,
-			amount: row.amount,
-			balance: row.balance,
-			direction: row.direction as TaxLedgerDirection,
-			firstPartyId: row.firstPartyId,
-			secondPartyId: row.secondPartyId,
-			entryDate: row.entryDate,
-			createdAt: row.createdAt,
-			updatedAt: row.updatedAt,
-		}))
+		return {
+			totalRows: Number(totalRows ?? 0),
+			rows: rows.map((row) => ({
+				id: row.id,
+				corporationId: row.corporationId,
+				sourceType: row.sourceType,
+				sourcePrimaryId: row.sourcePrimaryId,
+				sourceSecondaryId: row.sourceSecondaryId,
+				characterId: this.extractCharacterId(row),
+				division: row.division,
+				refType: row.refType,
+				amount: row.amount,
+				balance: row.balance,
+				direction: row.direction as TaxLedgerDirection,
+				firstPartyId: row.firstPartyId,
+				secondPartyId: row.secondPartyId,
+				entryDate: row.entryDate,
+				createdAt: row.createdAt,
+				updatedAt: row.updatedAt,
+			})),
+		}
 	}
 
 	async listLedgerParties(

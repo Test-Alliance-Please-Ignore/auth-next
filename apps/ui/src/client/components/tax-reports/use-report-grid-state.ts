@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { applySorting, toSorting } from '@/lib/tax-report-utils'
 
-import type { MRT_SortingState } from 'mantine-react-table'
-import type { SortDirection } from '@/lib/tax-report-utils'
+import type { SortDirection, TaxReportSortingState } from '@/lib/tax-report-utils'
 
 interface UseReportGridStateOptions {
 	defaultSortBy: string
@@ -20,11 +19,10 @@ interface UseReportGridStateResult {
 	sortDir: SortDirection
 	limit: number
 	offset: number
-	sorting: MRT_SortingState
+	sorting: TaxReportSortingState
 	pagination: { pageIndex: number; pageSize: number }
-	onSortingChange: (next: MRT_SortingState) => void
+	onSortingChange: (next: TaxReportSortingState) => void
 	onPaginationChange: (next: { pageIndex: number; pageSize: number }) => void
-	pageCountFor: (rowCount: number) => number
 }
 
 export function useReportGridState(options: UseReportGridStateOptions): UseReportGridStateResult {
@@ -52,7 +50,7 @@ export function useReportGridState(options: UseReportGridStateOptions): UseRepor
 
 	const sorting = useMemo(() => toSorting(sortBy, sortDir), [sortBy, sortDir])
 
-	const onSortingChange = (next: MRT_SortingState) => {
+	const onSortingChange = (next: TaxReportSortingState) => {
 		applySorting(next, defaultSortBy, defaultSortDir, setSortBy, setSortDir, () => setPage(0))
 	}
 
@@ -74,6 +72,5 @@ export function useReportGridState(options: UseReportGridStateOptions): UseRepor
 		pagination,
 		onSortingChange,
 		onPaginationChange,
-		pageCountFor: (rowCount: number) => Math.max(1, Math.ceil(rowCount / pageSize)),
 	}
 }

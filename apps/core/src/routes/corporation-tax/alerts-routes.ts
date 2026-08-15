@@ -3,7 +3,7 @@ import { getStub } from '@repo/do-utils'
 
 import { userCharacters, users } from '../../db/schema'
 import { requireAuth } from '../../middleware/session'
-import { canManageTaxFeature, canReadTaxFeature } from '../../middleware/tax-permissions'
+import { canManageTaxFeature } from '../../middleware/tax-permissions'
 import {
 	disposeRpcStub,
 	filterAlertsForUser,
@@ -395,8 +395,7 @@ export function registerCorporationTaxAlertsRoutes(
 			return c.json({ error: 'Unauthorized' }, 401)
 		}
 
-		const corporationId = c.req.query('corporationId') || undefined
-		const canRead = await canReadTaxFeature(c.env, user, corporationId)
+		const canRead = await canManageTaxFeature(c.env, user)
 		if (!canRead) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
@@ -421,6 +420,9 @@ export function registerCorporationTaxAlertsRoutes(
 					.filter(Boolean)
 			)
 		)
+		if (ids.length > 100) {
+			return c.json({ error: 'ids must contain no more than 100 user IDs' }, 400)
+		}
 
 		if (!q && ids.length === 0) {
 			return c.json([])
@@ -471,7 +473,8 @@ export function registerCorporationTaxAlertsRoutes(
 		} catch (error) {
 			logTaxRouteError(c, 'Error searching tax audit actors', error, {
 				userId: user.id,
-				corporationId: corporationId ?? null,
+				query: q ?? null,
+				requestedIdCount: ids.length,
 			})
 			return c.json({ error: 'Failed to search tax audit actors' }, 500)
 		}

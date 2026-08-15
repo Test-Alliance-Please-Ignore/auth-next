@@ -1,6 +1,5 @@
 import { RefreshCcw } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import toast from '@/lib/toast'
 
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
 import { Badge } from '@/components/ui/badge'
@@ -46,8 +45,9 @@ import {
 	formatTaxAlertPayloadSummary,
 	formatTaxAlertTypeLabel,
 	formatTaxNumber,
-	TaxEntityDisplay,
+	TaxCorporationDisplay,
 } from '@/lib/tax-display'
+import toast from '@/lib/toast'
 
 import type { TaxAlert, TaxAlertSeverity, TaxAlertStatus } from '@repo/corporation-tax'
 
@@ -228,7 +228,8 @@ export default function TaxAlertsPage() {
 				description="Monitor discrepancy alerts and delivery status for corporation tax automation."
 				action={
 					canRetryFailedDeliveries ? (
-						<Button variant="ghost"
+						<Button
+							variant="ghost"
 							onClick={() => retryMutation.mutate(100)}
 							disabled={retryMutation.isPending}
 						>
@@ -284,7 +285,8 @@ export default function TaxAlertsPage() {
 												? `${currentDestination.name} • Guild ${currentDestination.guildId} • Channel ${currentDestination.channelId}`
 												: 'No Discord destination configured'}
 								</div>
-								<Button variant="ghost"
+								<Button
+									variant="ghost"
 									onClick={() => {
 										setDestinationName(currentDestination?.name ?? '')
 										setGuildId(currentDestination?.guildId ?? '')
@@ -379,8 +381,8 @@ export default function TaxAlertsPage() {
 												</TableCell>
 												<TableCell>
 													{alert.corporationId ? (
-														<TaxEntityDisplay
-															entityId={alert.corporationId}
+														<TaxCorporationDisplay
+															corporationId={alert.corporationId}
 															entityNames={entityNames}
 														/>
 													) : (
@@ -401,7 +403,8 @@ export default function TaxAlertsPage() {
 												<TableCell>
 													<div className="flex gap-2">
 														{canAcknowledge && alert.status === 'open' ? (
-															<Button variant="primary"
+															<Button
+																variant="primary"
 																size="sm"
 																onClick={() => acknowledgeMutation.mutate(alert.id)}
 																disabled={acknowledgeMutation.isPending}
@@ -410,7 +413,8 @@ export default function TaxAlertsPage() {
 															</Button>
 														) : null}
 														{canResolve && alert.status !== 'resolved' ? (
-															<Button variant="confirm"
+															<Button
+																variant="confirm"
 																size="sm"
 																showIcon={false}
 																onClick={() => resolveMutation.mutate(alert.id)}
@@ -469,14 +473,16 @@ export default function TaxAlertsPage() {
 								</div>
 							</div>
 							<DialogFooter>
-								<Button variant="cancel"
+								<Button
+									variant="cancel"
 									type="button"
 									showIcon={false}
 									onClick={() => setDestinationModalOpen(false)}
 								>
 									Cancel
 								</Button>
-								<Button variant="primary"
+								<Button
+									variant="primary"
 									type="button"
 									disabled={upsertDestinationMutation.isPending}
 									onClick={() => void handleSaveDestination()}

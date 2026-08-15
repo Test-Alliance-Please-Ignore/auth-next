@@ -74,7 +74,13 @@ function getStackSegmentPath(input: {
 	].join(' ')
 }
 
-export function TopIncomeSourcesMonthlyChart({ rows }: { rows: TaxTopIncomeSourceMonthlyRow[] }) {
+export function TopIncomeSourcesMonthlyChart({
+	rows,
+	incomeMode,
+}: {
+	rows: TaxTopIncomeSourceMonthlyRow[]
+	incomeMode: 'total' | 'assessed'
+}) {
 	const [hoveredSegment, setHoveredSegment] = useState<{
 		key: string
 		x: number
@@ -132,7 +138,11 @@ export function TopIncomeSourcesMonthlyChart({ rows }: { rows: TaxTopIncomeSourc
 	const baselineY = MONTHLY_INCOME_CHART_HEIGHT - 28
 	const drawableHeight = MONTHLY_INCOME_CHART_HEIGHT - 56
 	const maxTotal = Math.max(chartData.maxMonthTotal, 1)
-	const formatter = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' })
+	const formatter = new Intl.DateTimeFormat('en-US', {
+		month: 'short',
+		year: 'numeric',
+		timeZone: 'UTC',
+	})
 	const colorMap = new Map<string, string>(
 		chartData.refTypes.map((refType) => [refType, getTaxRefTypeColor(refType)])
 	)
@@ -145,7 +155,7 @@ export function TopIncomeSourcesMonthlyChart({ rows }: { rows: TaxTopIncomeSourc
 						viewBox={`0 0 ${chartWidth} ${MONTHLY_INCOME_CHART_HEIGHT}`}
 						className="h-72 min-w-[680px] w-full"
 						role="img"
-						aria-label="Monthly taxable inflow stacked by income type"
+						aria-label={`${incomeMode === 'assessed' ? 'Monthly assessed tax' : 'Monthly total income'} stacked by income type`}
 					>
 						<line
 							x1={36}
