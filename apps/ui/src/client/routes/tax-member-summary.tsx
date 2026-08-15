@@ -1,26 +1,30 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
 import { MemberSummaryGridCard } from '@/components/tax-member-summary/member-summary-grid-card'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
-import { Button } from '@/components/ui/button'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
+import { Select } from '@/components/ui/select'
 import { useCorporationAccess } from '@/features/corporations'
 import {
+	useTaxableIncomeRefTypes,
 	useTaxCapabilities,
 	useTaxCorporations,
 	useTaxSummaryReport,
 } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { getCurrentMonthDateRange } from '@/lib/tax-date'
-import { formatTaxIskCompact, formatTaxNumber } from '@/lib/tax-display'
+import { getCurrentMonthDateRange, shiftMonthRange } from '@/lib/tax-date'
+import { formatTaxIskCompact, formatTaxNumber, TAX_REF_TYPE_OPTIONS } from '@/lib/tax-display'
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
+
 export default function TaxMemberSummaryPage() {
 	usePageTitle('Tax Member Summary')
 
@@ -28,10 +32,11 @@ export default function TaxMemberSummaryPage() {
 	const canReadWithUrn = globalCapabilities?.global.canRead ?? false
 	const { data: corporationAccess, isLoading: corporationAccessLoading } = useCorporationAccess()
 
-	const { data: corporationSettings = [], isLoading: corporationSettingsLoading } = useTaxCorporations({
-		limit: 1000,
-		enabled: canReadWithUrn,
-	})
+	const { data: corporationSettings = [], isLoading: corporationSettingsLoading } =
+		useTaxCorporations({
+			limit: 1000,
+			enabled: canReadWithUrn,
+		})
 	const isCorporationScopeLoading =
 		globalCapabilitiesLoading || corporationAccessLoading || corporationSettingsLoading
 
@@ -67,10 +72,16 @@ export default function TaxMemberSummaryPage() {
 			}
 		}
 		return Array.from(map.entries()).map(([corporationId, name]) => ({ corporationId, name }))
-	}, [isCorporationScopeLoading, corporationAccess?.corporations, corporationSettings, resolvedCorporationNames])
+	}, [
+		isCorporationScopeLoading,
+		corporationAccess?.corporations,
+		corporationSettings,
+		resolvedCorporationNames,
+	])
 
 	const [selectedCorporationId, setSelectedCorporationId] = useState<string | undefined>(undefined)
 	const [characterQuery, setCharacterQuery] = useState('')
+	const [incomeTypes, setIncomeTypes] = useState<string[]>([])
 	const [fromDate, setFromDate] = useState(DEFAULT_MONTH_RANGE.fromDate)
 	const [toDate, setToDate] = useState(DEFAULT_MONTH_RANGE.toDate)
 	const [refreshToken, setRefreshToken] = useState(0)
@@ -119,6 +130,26 @@ export default function TaxMemberSummaryPage() {
 		canReadWithUrn ||
 		(scopedCapabilities?.scoped.canRead ?? false) ||
 		(corporationAccess?.hasAccess ?? false)
+	const { data: taxableIncomeTypes = [] } = useTaxableIncomeRefTypes(
+		effectiveCorporationId,
+		canViewMemberSummary
+	)
+	const hasActiveFilters =
+		characterQuery.trim().length > 0 ||
+		incomeTypes.length > 0 ||
+		fromDate !== DEFAULT_MONTH_RANGE.fromDate ||
+		toDate !== DEFAULT_MONTH_RANGE.toDate
+	const clearFilters = () => {
+		setCharacterQuery('')
+		setIncomeTypes([])
+		setFromDate(DEFAULT_MONTH_RANGE.fromDate)
+		setToDate(DEFAULT_MONTH_RANGE.toDate)
+	}
+	const moveMonth = (monthOffset: number) => {
+		const nextRange = shiftMonthRange(fromDate, monthOffset)
+		setFromDate(nextRange.fromDate)
+		setToDate(nextRange.toDate)
+	}
 
 	const fromDateIso = fromDate ? new Date(`${fromDate}T00:00:00.000Z`).toISOString() : undefined
 	const toDateIso = toDate ? new Date(`${toDate}T23:59:59.999Z`).toISOString() : undefined
@@ -176,29 +207,46 @@ export default function TaxMemberSummaryPage() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-2">
-						<div className="hidden md:grid md:grid-cols-2 md:gap-3">
-							<div className="text-sm font-medium">Date Range</div>
-							<div className="grid grid-cols-[1fr_auto] gap-3">
+						<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+							<div className="space-y-2">
+								<div className="text-sm font-medium">Date Range</div>
+								<div className="flex items-center gap-1">
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										showIcon={false}
+										className="h-10 w-10 shrink-0 p-0"
+										aria-label="Previous month"
+										onClick={() => moveMonth(-1)}
+									>
+										<ChevronLeft className="h-4 w-4" aria-hidden="true" />
+									</Button>
+									<DateRangeInput
+										value={{ fromDate, toDate }}
+										onChange={({ fromDate: nextFromDate, toDate: nextToDate }) => {
+											setFromDate(nextFromDate)
+											setToDate(nextToDate)
+										}}
+										placeholder="Date range"
+										className="min-w-0 flex-1 [&_.themed-date-picker__input]:h-10 [&_.themed-date-picker__input]:w-full"
+									/>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										showIcon={false}
+										className="h-10 w-10 shrink-0 p-0"
+										aria-label="Next month"
+										onClick={() => moveMonth(1)}
+									>
+										<ChevronRight className="h-4 w-4" aria-hidden="true" />
+									</Button>
+								</div>
+							</div>
+							<div className="space-y-2">
 								<div className="text-sm font-medium">Character</div>
-								<div />
-							</div>
-						</div>
-						<div className="grid gap-3 md:grid-cols-2">
-							<div className="space-y-2 md:space-y-0">
-								<div className="text-sm font-medium md:hidden">Date Range</div>
-								<DateRangeInput
-									value={{ fromDate, toDate }}
-									onChange={({ fromDate: nextFromDate, toDate: nextToDate }) => {
-										setFromDate(nextFromDate)
-										setToDate(nextToDate)
-									}}
-									placeholder="Date range"
-									className="[&_.themed-date-picker__input]:h-10"
-								/>
-							</div>
-							<div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
 								<div className="space-y-2 md:space-y-0">
-									<div className="text-sm font-medium md:hidden">Character</div>
 									<Input
 										value={characterQuery}
 										onChange={(event) => setCharacterQuery(event.target.value)}
@@ -207,18 +255,59 @@ export default function TaxMemberSummaryPage() {
 										className="h-10"
 									/>
 								</div>
-								<Button
-									type="button"
-									onClick={() => {
-										void refetchSummaryReport()
-										setRefreshToken((value) => value + 1)
-									}}
-									disabled={isRefreshing}
-									variant="ghost"
-									className="h-10"
-								>
-									{isRefreshing ? 'Refreshing…' : 'Refresh'}
-								</Button>
+							</div>
+							<div className="space-y-2">
+								<div className="text-sm font-medium">Income Types</div>
+								<div className="flex items-center gap-2">
+									<div className="min-w-0 flex-1">
+										<Select
+											options={TAX_REF_TYPE_OPTIONS}
+											values={incomeTypes}
+											onValuesChange={setIncomeTypes}
+											multiple
+											searchable
+											placeholder="All income types"
+											inputClassName="h-10"
+											contentClassName="w-[min(20rem,calc(100vw-2rem))] min-w-[min(20rem,calc(100vw-2rem))]"
+										/>
+									</div>
+									<Button
+										type="button"
+										variant="secondary"
+										className="h-10 shrink-0"
+										showIcon={false}
+										disabled={taxableIncomeTypes.length === 0}
+										onClick={() => setIncomeTypes(taxableIncomeTypes)}
+									>
+										Taxable only
+									</Button>
+								</div>
+							</div>
+							<div className="space-y-2">
+								<div className="h-5" aria-hidden="true" />
+								<div className="flex justify-end gap-2">
+									<Button
+										type="button"
+										variant="ghost"
+										className="h-10"
+										onClick={clearFilters}
+										disabled={!hasActiveFilters}
+									>
+										Clear Filters
+									</Button>
+									<Button
+										type="button"
+										onClick={() => {
+											void refetchSummaryReport()
+											setRefreshToken((value) => value + 1)
+										}}
+										disabled={isRefreshing}
+										variant="primary"
+										className="h-10 w-28"
+									>
+										{isRefreshing ? 'Refreshing…' : 'Refresh'}
+									</Button>
+								</div>
 							</div>
 						</div>
 					</CardContent>
@@ -267,6 +356,7 @@ export default function TaxMemberSummaryPage() {
 					canViewSummary={canViewMemberSummary}
 					canSearchCharacter={canSearchCharacter}
 					characterQuery={characterQuery}
+					refTypes={incomeTypes}
 					fromDateIso={fromDateIso}
 					toDateIso={toDateIso}
 					refreshToken={refreshToken}

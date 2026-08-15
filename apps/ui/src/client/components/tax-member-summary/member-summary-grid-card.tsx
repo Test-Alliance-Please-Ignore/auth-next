@@ -18,6 +18,7 @@ type MemberSummaryGridCardProps = {
 	canViewSummary: boolean
 	canSearchCharacter: boolean
 	characterQuery: string
+	refTypes: string[]
 	fromDateIso?: string
 	toDateIso?: string
 	refreshToken: number
@@ -42,6 +43,7 @@ export function MemberSummaryGridCard(props: MemberSummaryGridCardProps) {
 			fromDateIso: props.fromDateIso,
 			toDateIso: props.toDateIso,
 			characterQuery: props.characterQuery,
+			refTypes: props.refTypes,
 		},
 	})
 
@@ -51,6 +53,7 @@ export function MemberSummaryGridCard(props: MemberSummaryGridCardProps) {
 			characterQuery: props.canSearchCharacter
 				? props.characterQuery.trim() || undefined
 				: undefined,
+			refTypes: props.refTypes.length > 0 ? props.refTypes : undefined,
 			fromDate: props.fromDateIso,
 			toDate: props.toDateIso,
 			limit: grid.limit,
@@ -76,7 +79,6 @@ export function MemberSummaryGridCard(props: MemberSummaryGridCardProps) {
 
 	const rows = useMemo(() => data?.rows ?? [], [data?.rows])
 	const totalRows = data?.totalRows ?? 0
-	const pageCount = grid.pageCountFor(totalRows)
 
 	const entityIds = useMemo(() => {
 		const ids = new Set<string>()
@@ -121,7 +123,8 @@ export function MemberSummaryGridCard(props: MemberSummaryGridCardProps) {
 					<div className="space-y-1">
 						<CardTitle>Member Contribution Summary</CardTitle>
 						<CardDescription>
-							Aggregated from corporation wallet entries attributed to members in the selected period.
+							Aggregated from corporation wallet entries attributed to members in the selected
+							period.
 						</CardDescription>
 					</div>
 				</div>
@@ -145,12 +148,20 @@ export function MemberSummaryGridCard(props: MemberSummaryGridCardProps) {
 						loading={isLoading || isFetching}
 						error={error}
 						entityNames={entityNames}
-						sorting={grid.sorting}
-						onSortingChange={grid.onSortingChange}
-						pagination={grid.pagination}
-						onPaginationChange={grid.onPaginationChange}
-						pageCount={pageCount}
-						rowCount={totalRows}
+						sortBy={grid.sortBy as Parameters<typeof MemberSummaryReportGrid>[0]['sortBy']}
+						sortDir={grid.sortDir}
+						onSortChange={(field) => {
+							grid.onSortingChange([
+								{ id: field, desc: grid.sortBy === field ? grid.sortDir !== 'asc' : true },
+							])
+						}}
+						page={grid.page}
+						pageSize={grid.pageSize}
+						onPageChange={(page) =>
+							grid.onPaginationChange({ pageIndex: page, pageSize: grid.pageSize })
+						}
+						onPageSizeChange={(pageSize) => grid.onPaginationChange({ pageIndex: 0, pageSize })}
+						totalRows={totalRows}
 					/>
 				)}
 			</CardContent>

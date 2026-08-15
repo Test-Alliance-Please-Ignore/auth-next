@@ -1,66 +1,65 @@
-import { createMRTColumnHelper } from 'mantine-react-table'
 import { useMemo } from 'react'
 
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
-import { formatTaxIskFull, formatTaxNumber, TaxEntityDisplay } from '@/lib/tax-display'
+import { TaxReportTable } from '@/components/tax-report-table'
+import { formatTaxIskFull, formatTaxNumber, TaxCorporationDisplay } from '@/lib/tax-display'
 
-import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
 import type { TaxTotalTaxesByCorporationRow } from '@repo/corporation-tax'
+import type { TaxReportSortingState } from '@/lib/tax-report-utils'
 
 export function TotalTaxesReportGrid(props: {
 	rows: TaxTotalTaxesByCorporationRow[]
 	loading: boolean
 	error: unknown
 	entityNames: Record<string, string>
-	sorting: MRT_SortingState
-	onSortingChange: (sorting: MRT_SortingState) => void
-	pagination: {
-		pageIndex: number
-		pageSize: number
-	}
+	sorting: TaxReportSortingState
+	onSortingChange: (sorting: TaxReportSortingState) => void
+	pagination: { pageIndex: number; pageSize: number }
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
-	pageCount: number
 	rowCount: number
 }) {
-	const columnHelper = createMRTColumnHelper<TaxTotalTaxesByCorporationRow>()
-	const columns = useMemo<Array<MRT_ColumnDef<TaxTotalTaxesByCorporationRow>>>(
+	const columns = useMemo(
 		() => [
-			columnHelper.accessor('corporationId', {
+			{
+				id: 'corporationId',
 				header: 'Corporation',
-				enableSorting: true,
-				Cell: ({ row }) => (
-					<TaxEntityDisplay entityId={row.original.corporationId} entityNames={props.entityNames} />
+				sortable: true,
+				cell: (row: TaxTotalTaxesByCorporationRow) => (
+					<TaxCorporationDisplay
+						corporationId={row.corporationId}
+						entityNames={props.entityNames}
+					/>
 				),
-			}),
-			columnHelper.accessor('taxableItemCount', {
+			},
+			{
+				id: 'taxableItemCount',
 				header: 'Taxable Items',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxNumber(row.original.taxableItemCount),
-			}),
-			columnHelper.accessor('taxDueCenti', {
+				sortable: true,
+				cell: (row: TaxTotalTaxesByCorporationRow) => formatTaxNumber(row.taxableItemCount),
+			},
+			{
 				id: 'taxDue',
 				header: 'Tax Due',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxIskFull(row.original.taxDue),
-			}),
-			columnHelper.accessor('taxPaidCenti', {
+				sortable: true,
+				cell: (row: TaxTotalTaxesByCorporationRow) => formatTaxIskFull(row.taxDue),
+			},
+			{
 				id: 'taxPaid',
 				header: 'Tax Paid',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxIskFull(row.original.taxPaid),
-			}),
-			columnHelper.accessor('taxDeltaCenti', {
+				sortable: true,
+				cell: (row: TaxTotalTaxesByCorporationRow) => formatTaxIskFull(row.taxPaid),
+			},
+			{
 				id: 'taxDelta',
 				header: 'Delta',
-				enableSorting: true,
-				Cell: ({ row }) => formatTaxIskFull(row.original.taxDelta),
-			}),
+				sortable: true,
+				cell: (row: TaxTotalTaxesByCorporationRow) => formatTaxIskFull(row.taxDelta),
+			},
 		],
-		[columnHelper, props.entityNames]
+		[props.entityNames]
 	)
 
 	return (
-		<TaxReportDataGrid
+		<TaxReportTable
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
@@ -70,8 +69,9 @@ export function TotalTaxesReportGrid(props: {
 			onSortingChange={props.onSortingChange}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
-			pageCount={props.pageCount}
 			rowCount={props.rowCount}
+			itemLabel="corporations"
+			getRowKey={(row) => row.corporationId}
 		/>
 	)
 }

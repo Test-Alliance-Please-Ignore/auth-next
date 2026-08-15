@@ -56,7 +56,7 @@ export function useTaxCapabilities(corporationId?: string, enabled = true) {
 	return useQuery({
 		queryKey: corporationTaxKeys.capabilities(corporationId),
 		queryFn: () => corporationTaxApi.getCapabilities(corporationId),
-		staleTime: 1000 * 30,
+		staleTime: 1000 * 60 * 5,
 		enabled,
 	})
 }
@@ -90,13 +90,13 @@ export function useTaxCorporations(filters?: {
 	const taxCorporationsQuery = useQuery({
 		queryKey: corporationTaxKeys.corporationList(filters),
 		queryFn: () => corporationTaxApi.listCorporations(filters),
-		staleTime: 1000 * 30,
+		staleTime: 1000 * 60 * 10,
 		enabled: enabled && scopeMode === 'admin',
 	})
 	const demoCorporationsQuery = useQuery({
 		queryKey: [...corporationTaxKeys.corporationList(filters), 'demo'],
 		queryFn: () => taxDemoApi.listCorporations(filters),
-		staleTime: 1000 * 30,
+		staleTime: 1000 * 60 * 10,
 		enabled: enabled && demoEnabled,
 	})
 
@@ -158,7 +158,7 @@ export function useTaxWalletDivisions(corporationId: string | undefined, enabled
 	return useQuery({
 		queryKey: corporationTaxKeys.walletDivisions(corporationId ?? 'none'),
 		queryFn: () => corporationTaxApi.listWalletDivisions(corporationId!),
-		staleTime: 1000 * 60 * 5,
+		staleTime: 1000 * 60 * 30,
 		enabled: Boolean(corporationId) && enabled,
 	})
 }
@@ -167,7 +167,7 @@ export function useTaxExclusions(filters?: { limit?: number; offset?: number; en
 	return useQuery({
 		queryKey: corporationTaxKeys.exclusionsList(filters),
 		queryFn: () => corporationTaxApi.listExclusions(filters),
-		staleTime: 1000 * 30,
+		staleTime: 1000 * 60 * 5,
 		enabled: filters?.enabled ?? true,
 	})
 }

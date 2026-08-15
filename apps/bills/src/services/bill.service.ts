@@ -20,6 +20,8 @@ import type {
 	BillStatistics,
 	BillStatus,
 	BillStatusEvent,
+	BillStatusEventByPayerPage,
+	BillStatusEventByPayerPageQuery,
 	BillStatusEventPage,
 	BillStatusEventPageQuery,
 	BillStatusEventType,
@@ -293,7 +295,18 @@ export class BillService {
 
 		const rows = await this.db.query.billStatusEvents.findMany({
 			where: inArray(billStatusEvents.billId, normalizedBillIds),
-			orderBy: (events, operators) => [operators.desc(events.createdAt), operators.desc(events.id)],
+			orderBy: (events, operators) => [
+				(query.sortDir === 'asc' ? operators.asc : operators.desc)(
+					query.sortBy === 'eventType'
+						? events.eventType
+						: query.sortBy === 'billId'
+							? events.billId
+							: query.sortBy === 'actorUserId'
+								? events.actorUserId
+								: events.createdAt
+				),
+				operators.desc(events.id),
+			],
 			limit: normalizedLimit,
 			offset: normalizedOffset,
 		})
@@ -308,6 +321,65 @@ export class BillService {
 				actorUserId: event.actorUserId,
 				metadata: event.metadata ?? null,
 				createdAt: event.createdAt,
+			})),
+			rowCount,
+		}
+	}
+
+	async listBillStatusEventsByPayerPage(
+		query: BillStatusEventByPayerPageQuery
+	): Promise<BillStatusEventByPayerPage> {
+		const normalizedLimit = Number.isFinite(query.limit)
+			? Math.max(1, Math.min(200, Math.floor(query.limit)))
+			: 25
+		const normalizedOffset = Number.isFinite(query.offset)
+			? Math.max(0, Math.floor(query.offset))
+			: 0
+		const conditions = [eq(bills.payerId, query.payerId), eq(bills.payerType, query.payerType)]
+		if (query.externalSourceType) {
+			conditions.push(eq(bills.externalSourceType, query.externalSourceType))
+		}
+		const where = and(...conditions)
+		const countRows = await this.db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(billStatusEvents)
+			.innerJoin(bills, eq(billStatusEvents.billId, bills.id))
+			.where(where)
+		const rowCount = countRows[0]?.count ?? 0
+		if (rowCount === 0) return { rows: [], rowCount }
+
+		const rows = await this.db
+			.select({ event: billStatusEvents, bill: bills })
+			.from(billStatusEvents)
+			.innerJoin(bills, eq(billStatusEvents.billId, bills.id))
+			.where(where)
+			.orderBy(
+				(query.sortDir === 'asc' ? asc : desc)(
+					query.sortBy === 'eventType'
+						? billStatusEvents.eventType
+						: query.sortBy === 'billId'
+							? billStatusEvents.billId
+							: query.sortBy === 'actorUserId'
+								? billStatusEvents.actorUserId
+								: billStatusEvents.createdAt
+				),
+				desc(billStatusEvents.id)
+			)
+			.limit(normalizedLimit)
+			.offset(normalizedOffset)
+
+		return {
+			rows: rows.map(({ event, bill }) => ({
+				id: event.id,
+				billId: event.billId,
+				eventType: event.eventType,
+				fromStatus: event.fromStatus,
+				toStatus: event.toStatus,
+				actorUserId: event.actorUserId,
+				metadata: event.metadata ?? null,
+				createdAt: event.createdAt,
+				externalSourceType: bill.externalSourceType,
+				externalSourceId: bill.externalSourceId,
 			})),
 			rowCount,
 		}

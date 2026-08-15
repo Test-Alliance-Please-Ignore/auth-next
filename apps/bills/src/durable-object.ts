@@ -28,6 +28,8 @@ import type {
 	BillScheduleWithDetails,
 	BillStatistics,
 	BillStatusEvent,
+	BillStatusEventByPayerPage,
+	BillStatusEventByPayerPageQuery,
 	BillStatusEventPage,
 	BillStatusEventPageQuery,
 	BillTemplate,
@@ -181,6 +183,12 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 
 	async listBillStatusEventsPage(query: BillStatusEventPageQuery): Promise<BillStatusEventPage> {
 		return this.billService.listBillStatusEventsPage(query)
+	}
+
+	async listBillStatusEventsByPayerPage(
+		query: BillStatusEventByPayerPageQuery
+	): Promise<BillStatusEventByPayerPage> {
+		return this.billService.listBillStatusEventsByPayerPage(query)
 	}
 
 	async updateBill(actorUserId: string, billId: string, data: UpdateBillInput): Promise<Bill> {

@@ -16,10 +16,11 @@ import {
 	TopIncomeSourcesReportSection,
 	TotalTaxesReportSection,
 } from '@/components/tax-reports/report-sections'
+import { Button } from '@/components/ui/button'
+
 import type { TaxExportFormat, TaxExportReportType } from '@repo/corporation-tax'
 import type { TaxRollupReportQueryFilters } from '@/hooks/corporation-tax'
 import type { SortDirection } from '@/lib/tax-report-utils'
-import { Button } from '@/components/ui/button'
 
 export type TaxReportView = TaxExportReportType | 'missing_esi_keys'
 
@@ -102,14 +103,16 @@ export function TaxReportWorkspace({
 				description={selectedReportDescription}
 				actions={
 					<>
-						<Button variant="ghost"
+						<Button
+							variant="ghost"
 							onClick={() => setExportModalOpen(true)}
 							disabled={!canExport || !activeReportIsExportable}
 						>
 							<Download className="h-4 w-4" />
 							Export
 						</Button>
-						<Button variant="ghost"
+						<Button
+							variant="ghost"
 							onClick={() => setScheduleModalOpen(true)}
 							disabled={!canCreateSchedule || !activeReportIsExportable}
 						>
@@ -185,7 +188,9 @@ export function TaxReportWorkspace({
 				canSubmit={Boolean(activeExportReportType)}
 				submitting={exportSubmitting}
 				onSubmit={() => {
-					void Promise.resolve(onSubmitExport()).then(() => setExportModalOpen(false))
+					void Promise.resolve(onSubmitExport())
+						.then(() => setExportModalOpen(false))
+						.catch(() => undefined)
 				}}
 			/>
 
@@ -206,7 +211,9 @@ export function TaxReportWorkspace({
 				canSubmit={Boolean(activeExportReportType)}
 				submitting={scheduleSubmitting}
 				onSubmit={() => {
-					void Promise.resolve(onSubmitSchedule()).then(() => setScheduleModalOpen(false))
+					void Promise.resolve(onSubmitSchedule())
+						.then(() => setScheduleModalOpen(false))
+						.catch(() => undefined)
 				}}
 			/>
 		</>

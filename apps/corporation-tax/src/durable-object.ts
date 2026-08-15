@@ -3,6 +3,7 @@ import { DurableObject } from 'cloudflare:workers'
 import { and, eq, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger, toErrorLogDetails } from '@repo/hono-helpers'
+import { createWorkflow } from '@repo/workflow-utils'
 
 import { createDb } from './db'
 import {
@@ -59,9 +60,14 @@ import type {
 	TaxAlert,
 	TaxAssessment,
 	TaxAssessmentLine,
+	TaxAssessmentPage,
 	TaxAssessmentWithBillHistory,
+	TaxAssessmentWorkflowOutput,
+	TaxAssessmentWorkflowStartResult,
+	TaxAssessmentWorkflowStatusResult,
 	TaxAuditLogEntry,
 	TaxBillingEventHistoryRow,
+	TaxBillingEventSortBy,
 	TaxBillStateSyncInput,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
@@ -109,9 +115,40 @@ const DEFAULT_ESS_ALERT_THRESHOLD_ISK = 1_000_000_000
 const TRIGGERED_INGEST_OVERLAP_WINDOW_MS = 48 * 60 * 60 * 1000
 const TAX_PROJECTION_RETRY_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const TAX_PROJECTION_RETRY_KEY_PREFIX = 'tax-projection-retry-intent:'
+const TAX_ASSESSMENT_WORKFLOW_RESERVATION_TTL_SECONDS = 60 * 60
+const TAX_ASSESSMENT_WORKFLOW_RESERVATION_PREFIX = 'tax-assessment-workflow:'
+
+function isTaxAssessmentWorkflowOutput(value: unknown): value is TaxAssessmentWorkflowOutput {
+	if (!value || typeof value !== 'object') return false
+	const output = value as Partial<TaxAssessmentWorkflowOutput>
+	return (
+		output.status === 'completed' &&
+		typeof output.assessmentId === 'string' &&
+		typeof output.lineCount === 'number' &&
+		typeof output.discrepancyCount === 'number'
+	)
+}
+
+function normalizeTaxAssessmentWorkflowStatus(
+	status: string,
+	output: TaxAssessmentWorkflowOutput | null
+): TaxAssessmentWorkflowStatusResult['status'] {
+	if (output?.status === 'completed') return 'completed'
+	if (status === 'complete') return 'completed'
+	if (status === 'errored' || status === 'terminated') return 'failed'
+	if (status === 'queued' || status === 'running' || status === 'paused' || status === 'waiting') {
+		return status
+	}
+	return 'unknown'
+}
 
 type TaxProjectionRetryIntentEnvelope = {
 	value: string
+	expiresAt: number
+}
+
+type TaxAssessmentWorkflowReservation = {
+	workflowInstanceId: string
 	expiresAt: number
 }
 export class CorporationTaxDO extends DurableObject<Env, {}> implements CorporationTax {
@@ -504,7 +541,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 	async listLedgerEntries(
 		corporationId: string,
 		filters?: TaxLedgerWindowFilters
-	): Promise<TaxLedgerEntry[]> {
+	): Promise<TaxPagedResult<TaxLedgerEntry>> {
 		return this.rpcGuard(
 			'listLedgerEntries',
 			{
@@ -534,7 +571,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		return this.ledgerRpc.trimLedgerEntries(actorUserId, corporationId, retentionDays)
 	}
 
-	async listAssessments(filters?: ListTaxAssessmentsFilters): Promise<TaxAssessment[]> {
+	async listAssessments(filters?: ListTaxAssessmentsFilters): Promise<TaxAssessmentPage> {
 		return this.ledgerRpc.listAssessments(filters)
 	}
 
@@ -543,6 +580,107 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		input: RunTaxAssessmentForPeriodInput
 	): Promise<RunTaxAssessmentForPeriodResult> {
 		return this.ledgerRpc.runAssessmentForPeriod(actorUserId, input)
+	}
+
+	async startAssessmentWorkflow(
+		actorUserId: string,
+		input: RunTaxAssessmentForPeriodInput
+	): Promise<TaxAssessmentWorkflowStartResult> {
+		if (
+			!Number.isFinite(input.periodStart.getTime()) ||
+			!Number.isFinite(input.periodEnd.getTime()) ||
+			input.periodStart >= input.periodEnd
+		) {
+			throw new Error('Assessment period must contain valid, ordered dates')
+		}
+
+		const reservationKey = this.getTaxAssessmentWorkflowReservationKey(input)
+		const workflowInstanceId = `tax-assessment-${input.corporationId}-${Date.now()}-${crypto.randomUUID()}`
+		const reservation = await this.state.storage.transaction(async (transaction) => {
+			const existing = await transaction.get<TaxAssessmentWorkflowReservation>(reservationKey)
+			if (existing && existing.expiresAt > Date.now()) return existing
+			const next = {
+				workflowInstanceId,
+				expiresAt: Date.now() + TAX_ASSESSMENT_WORKFLOW_RESERVATION_TTL_SECONDS * 1000,
+			}
+			await transaction.put(reservationKey, next)
+			return next
+		})
+
+		if (reservation.workflowInstanceId !== workflowInstanceId) {
+			return {
+				workflowInstanceId: reservation.workflowInstanceId,
+				corporationId: input.corporationId,
+				periodStart: input.periodStart.toISOString(),
+				periodEnd: input.periodEnd.toISOString(),
+				status: 'queued',
+			}
+		}
+
+		try {
+			await createWorkflow(this.env.TAX_ASSESSMENT_WORKFLOW, {
+				id: workflowInstanceId,
+				params: {
+					actorUserId,
+					corporationId: input.corporationId,
+					periodStart: input.periodStart.toISOString(),
+					periodEnd: input.periodEnd.toISOString(),
+					includeCharacterWallets: input.includeCharacterWallets ?? false,
+				},
+			})
+		} catch (error) {
+			await this.state.storage.delete(reservationKey)
+			throw error
+		}
+
+		return {
+			workflowInstanceId,
+			corporationId: input.corporationId,
+			periodStart: input.periodStart.toISOString(),
+			periodEnd: input.periodEnd.toISOString(),
+			status: 'queued',
+		}
+	}
+
+	private getTaxAssessmentWorkflowReservationKey(input: RunTaxAssessmentForPeriodInput): string {
+		return [
+			TAX_ASSESSMENT_WORKFLOW_RESERVATION_PREFIX,
+			input.corporationId,
+			input.periodStart.getTime(),
+			input.periodEnd.getTime(),
+			input.includeCharacterWallets ? 'characters' : 'corporation',
+		].join(':')
+	}
+
+	async getAssessmentWorkflowStatus(
+		corporationId: string,
+		workflowInstanceId: string
+	): Promise<TaxAssessmentWorkflowStatusResult> {
+		if (!workflowInstanceId.startsWith(`tax-assessment-${corporationId}-`)) {
+			throw new Error('Assessment workflow does not belong to this corporation')
+		}
+
+		const workflowInstance = await this.env.TAX_ASSESSMENT_WORKFLOW.get(workflowInstanceId)
+		const raw = await workflowInstance.status()
+		const output = isTaxAssessmentWorkflowOutput(raw.output) ? raw.output : null
+
+		if (raw.error) {
+			this.logger.error('[CorporationTaxDO] Assessment workflow failed', {
+				corporationId,
+				workflowInstanceId,
+				error: raw.error,
+			})
+		}
+
+		return {
+			workflowInstanceId,
+			status: normalizeTaxAssessmentWorkflowStatus(raw.status, output),
+			rawStatus: raw.status,
+			output,
+			error: raw.error
+				? { name: 'TaxAssessmentWorkflowError', message: 'Assessment workflow failed' }
+				: null,
+		}
 	}
 
 	async rebuildFinalizedRollupsForPeriod(
@@ -595,16 +733,24 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		corporationId: string,
 		limit?: number,
 		offset?: number
-	): Promise<TaxAssessmentWithBillHistory[]> {
+	): Promise<TaxPagedResult<TaxAssessmentWithBillHistory>> {
 		return this.billingRpc.getCorporationBillStatusHistory(corporationId, limit, offset)
 	}
 
 	async getCorporationBillEventHistory(
 		corporationId: string,
 		limit?: number,
-		offset?: number
+		offset?: number,
+		sortBy?: TaxBillingEventSortBy,
+		sortDir?: 'asc' | 'desc'
 	): Promise<TaxPagedResult<TaxBillingEventHistoryRow>> {
-		return this.billingRpc.getCorporationBillEventHistory(corporationId, limit, offset)
+		return this.billingRpc.getCorporationBillEventHistory(
+			corporationId,
+			limit,
+			offset,
+			sortBy,
+			sortDir
+		)
 	}
 
 	async getAssessmentBillStatusHistory(
@@ -709,6 +855,12 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		return this.reportsRpc.getComplianceOverTimeReport(filters)
 	}
 
+	async getComplianceOverTimeReportPage(
+		filters?: TaxRollupReportFilters
+	): Promise<TaxPagedResult<TaxCompliancePoint>> {
+		return this.reportsRpc.getComplianceOverTimeReportPage(filters)
+	}
+
 	async getTaxDiscrepancyReport(
 		filters?: ListTaxDiscrepancyReportFilters
 	): Promise<TaxPagedResult<TaxDiscrepancy>> {
@@ -735,11 +887,17 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		)
 	}
 
+	async getTaxableIncomeRefTypes(corporationId?: string): Promise<string[]> {
+		return this.rpcGuard('getTaxableIncomeRefTypes', { corporationId }, () =>
+			this.reportsRpc.getTaxableIncomeRefTypes(corporationId)
+		)
+	}
+
 	async requestExport(actorUserId: string, input: RequestTaxExportInput): Promise<TaxExportRecord> {
 		return this.operationsRpc.requestExport(actorUserId, input)
 	}
 
-	async listExports(filters?: ListTaxExportsFilters): Promise<TaxExportRecord[]> {
+	async listExports(filters?: ListTaxExportsFilters): Promise<TaxPagedResult<TaxExportRecord>> {
 		return this.operationsRpc.listExports(filters)
 	}
 
@@ -758,7 +916,9 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 		return this.operationsRpc.createExportSchedule(actorUserId, input)
 	}
 
-	async listExportSchedules(filters?: ListTaxExportSchedulesFilters): Promise<TaxExportSchedule[]> {
+	async listExportSchedules(
+		filters?: ListTaxExportSchedulesFilters
+	): Promise<TaxPagedResult<TaxExportSchedule>> {
 		return this.operationsRpc.listExportSchedules(filters)
 	}
 
@@ -1288,7 +1448,7 @@ export class CorporationTaxDO extends DurableObject<Env, {}> implements Corporat
 			toDate: input?.toDate,
 			limit: 10_000,
 		})
-		const totalEssIncome = rows.reduce((sum, row) => {
+		const totalEssIncome = rows.rows.reduce((sum, row) => {
 			const amount = Number(row.amount)
 			if (!Number.isFinite(amount) || amount <= 0) {
 				return sum

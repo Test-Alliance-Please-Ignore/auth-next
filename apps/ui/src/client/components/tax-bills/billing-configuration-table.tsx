@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
 	Table,
 	TableBody,
@@ -7,10 +8,9 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { TaxEntityDisplay } from '@/lib/tax-display'
+import { TaxCorporationDisplay, TaxEntityDisplay } from '@/lib/tax-display'
 
 import type { TaxCorporationBillingConfig } from '@repo/corporation-tax'
-import { Button } from '@/components/ui/button'
 
 type BillingConfigurationTableProps = {
 	canIssue: boolean
@@ -78,7 +78,17 @@ export function BillingConfigurationTable({
 										<Badge variant="ghost" className="capitalize">
 											{config.billingPayeeType}
 										</Badge>
-										<TaxEntityDisplay entityId={config.billingPayeeId} entityNames={entityNames} />
+										{config.billingPayeeType === 'corporation' ? (
+											<TaxCorporationDisplay
+												corporationId={config.billingPayeeId}
+												entityNames={entityNames}
+											/>
+										) : (
+											<TaxEntityDisplay
+												entityId={config.billingPayeeId}
+												entityNames={entityNames}
+											/>
+										)}
 									</div>
 								) : (
 									'-'
@@ -89,21 +99,24 @@ export function BillingConfigurationTable({
 							{canIssue ? (
 								<TableCell className="text-right">
 									<div className="flex items-center justify-end gap-2">
-										<Button variant="ghost"
+										<Button
+											variant="ghost"
 											size="sm"
 											disabled={actionsDisabled}
 											onClick={() => onEdit(config)}
 										>
 											Edit
 										</Button>
-										<Button variant="primary"
+										<Button
+											variant="primary"
 											size="sm"
 											disabled={actionsDisabled || config.isDefault}
 											onClick={() => onSetDefault(config.id)}
 										>
 											Set Default
 										</Button>
-										<Button variant="destructive"
+										<Button
+											variant="destructive"
 											size="sm"
 											showIcon={false}
 											disabled={actionsDisabled || config.isDefault}

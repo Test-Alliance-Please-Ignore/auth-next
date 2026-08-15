@@ -82,10 +82,32 @@ export interface BillStatusEventPageQuery {
 	billIds: string[]
 	limit: number
 	offset: number
+	sortBy?: 'createdAt' | 'eventType' | 'billId' | 'actorUserId'
+	sortDir?: 'asc' | 'desc'
 }
 
 export interface BillStatusEventPage {
 	rows: BillStatusEvent[]
+	rowCount: number
+}
+
+export interface BillStatusEventByPayerPageQuery {
+	payerId: string
+	payerType: EntityType
+	externalSourceType?: string
+	limit: number
+	offset: number
+	sortBy?: 'createdAt' | 'eventType' | 'billId' | 'actorUserId'
+	sortDir?: 'asc' | 'desc'
+}
+
+export interface BillStatusEventByPayerRow extends BillStatusEvent {
+	externalSourceType: string | null
+	externalSourceId: string | null
+}
+
+export interface BillStatusEventByPayerPage {
+	rows: BillStatusEventByPayerRow[]
 	rowCount: number
 }
 
@@ -517,6 +539,9 @@ export interface Bills {
 
 	/** Get bill status timeline events for a bill set with pagination */
 	listBillStatusEventsPage(query: BillStatusEventPageQuery): Promise<BillStatusEventPage>
+	listBillStatusEventsByPayerPage(
+		query: BillStatusEventByPayerPageQuery
+	): Promise<BillStatusEventByPayerPage>
 
 	/** Update a bill (permissions enforced by caller route; blocked when paid or any payments exist) */
 	updateBill(actorUserId: string, billId: string, data: UpdateBillInput): Promise<Bill>
@@ -564,7 +589,10 @@ export interface Bills {
 	cancelGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult>
 
 	/** Revert all eligible sub-bills sharing a groupBillId to draft */
-	revertGroupBillToDraft(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult>
+	revertGroupBillToDraft(
+		actorUserId: string,
+		groupBillId: string
+	): Promise<GroupBillOperationResult>
 
 	/** Delete all eligible (draft) sub-bills sharing a groupBillId */
 	deleteGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult>

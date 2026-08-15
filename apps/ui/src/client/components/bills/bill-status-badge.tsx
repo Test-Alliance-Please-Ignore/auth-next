@@ -4,11 +4,12 @@ import { formatBillStatus, getBillStatusColor } from '@/lib/bills-utils'
 import type { BillStatus } from '@repo/bills'
 
 interface BillStatusBadgeProps {
-	status: BillStatus
+	status: BillStatus | 'unbilled'
 }
 
 export function BillStatusBadge({ status }: BillStatusBadgeProps) {
-	const variant = getBillStatusColor(status)
+	const variant = status === 'unbilled' ? 'ghost' : getBillStatusColor(status)
+	const label = status === 'unbilled' ? 'Unbilled' : formatBillStatus(status)
 
-	return <Badge variant={variant}>{formatBillStatus(status)}</Badge>
+	return <Badge variant={variant}>{label}</Badge>
 }

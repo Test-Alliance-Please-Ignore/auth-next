@@ -17,9 +17,12 @@ function createSelectMock(
 			from: ReturnType<typeof vi.fn>
 			where: ReturnType<typeof vi.fn>
 			groupBy: ReturnType<typeof vi.fn>
+			innerJoin: ReturnType<typeof vi.fn>
+			leftJoin: ReturnType<typeof vi.fn>
 			orderBy: ReturnType<typeof vi.fn>
 			limit: ReturnType<typeof vi.fn>
 			offset: ReturnType<typeof vi.fn>
+			as: ReturnType<typeof vi.fn>
 			then: <TResult1 = unknown, TResult2 = never>(
 				onfulfilled?:
 					| ((
@@ -32,9 +35,12 @@ function createSelectMock(
 			from: vi.fn(() => chain),
 			where: vi.fn(() => chain),
 			groupBy: vi.fn(() => chain),
+			innerJoin: vi.fn(() => chain),
+			leftJoin: vi.fn(() => chain),
 			orderBy: vi.fn(() => chain),
 			limit: vi.fn(() => chain),
 			offset: vi.fn(() => chain),
+			as: vi.fn(() => chain),
 			then: (onfulfilled, onrejected) => Promise.resolve(rows).then(onfulfilled, onrejected),
 		}
 		return chain
@@ -107,11 +113,42 @@ describe('TaxReportService report scoping', () => {
 		expect(mockDb.query.taxLedgerEntries.findMany).not.toHaveBeenCalled()
 	})
 
+	it('reads assessed monthly income from assessment rollups', async () => {
+		mockDb.execute = vi.fn().mockResolvedValue({
+			rows: [
+				{
+					month_start: '2026-07-01T00:00:00.000Z',
+					ref_type: 'bounty_prizes',
+					entry_count: 12,
+					ess_entry_count: 0,
+					total_income: '123.45',
+				},
+			],
+		})
+
+		const service = new TaxReportService(mockDb, {} as any)
+		const rows = await service.getTopIncomeSourcesMonthlyReport({
+			corporationId: '1001',
+			incomeMode: 'assessed',
+		})
+
+		expect(rows).toEqual([
+			expect.objectContaining({
+				monthStart: new Date('2026-07-01T00:00:00.000Z'),
+				refType: 'bounty_prizes',
+				entryCount: 12,
+				totalIncome: '123.45',
+			}),
+		])
+		expect(mockDb.execute).toHaveBeenCalledOnce()
+	})
+
 	it('aggregates total taxes by corporation from data-backed scope and applies paging', async () => {
 		mockDb.select = createSelectMock([
 			[{ corporationId: '1001' }],
 			[{ corporationId: '1001' }],
 			[{ corporationId: '1001' }],
+			[],
 			[
 				{
 					corporationId: '1001',
@@ -153,6 +190,69 @@ describe('TaxReportService report scoping', () => {
 				taxDelta: '50.00',
 			}),
 		])
+	})
+
+	it('counts distinct assessment periods in member rollups', async () => {
+		const characterId = '2123456789'
+		const finalizedRows = [
+			{
+				rollupDate: new Date('2026-06-30T00:00:00.000Z'),
+				characterId,
+				refType: 'bounty_prizes',
+				periodStart: new Date('2026-06-01T00:00:00.000Z'),
+				periodEnd: new Date('2026-06-30T23:59:59.999Z'),
+				contributionIncome: '100.00',
+				taxableContributionIncome: '100.00',
+				sourceRowCount: 1,
+				lastAssessmentAt: new Date('2026-07-01T00:00:00.000Z'),
+			},
+			{
+				rollupDate: new Date('2026-06-30T00:00:00.000Z'),
+				characterId,
+				refType: 'bounty_prizes',
+				periodStart: new Date('2026-06-01T00:00:00.000Z'),
+				periodEnd: new Date('2026-06-30T23:59:59.999Z'),
+				contributionIncome: '50.00',
+				taxableContributionIncome: '50.00',
+				sourceRowCount: 1,
+				lastAssessmentAt: new Date('2026-07-01T00:00:00.000Z'),
+			},
+			{
+				rollupDate: new Date('2026-07-31T00:00:00.000Z'),
+				characterId,
+				refType: 'bounty_prizes',
+				periodStart: new Date('2026-07-01T00:00:00.000Z'),
+				periodEnd: new Date('2026-07-31T23:59:59.999Z'),
+				contributionIncome: '75.00',
+				taxableContributionIncome: '75.00',
+				sourceRowCount: 1,
+				lastAssessmentAt: new Date('2026-08-01T00:00:00.000Z'),
+			},
+		]
+		mockDb.query.taxMemberContributionFinalizedRollups = {
+			findMany: vi.fn().mockResolvedValue(finalizedRows),
+		}
+		mockDb.query.taxMemberContributionProjectionRollups = {
+			findMany: vi.fn().mockResolvedValue([]),
+		}
+
+		const service = new TaxReportService(mockDb, {} as any)
+		const rows = await (service as any).getMemberSummaryFromRollups({
+			corporationId: '1001',
+			scopedCharacterIds: [],
+			scopedCharacterIdSet: new Set<string>(),
+			includeUnattributedRow: false,
+			topRefTypesLimit: 5,
+		})
+
+		expect(rows).toHaveLength(1)
+		expect(rows[0]).toEqual(
+			expect.objectContaining({
+				characterId,
+				assessmentCount: 2,
+				contributionIncome: '225.00',
+			})
+		)
 	})
 
 	it('uses SQL-counted totalRows for ESS payouts with the same scoped filters', async () => {
@@ -219,6 +319,7 @@ describe('TaxReportService report scoping', () => {
 					taxDelta: '250.00',
 				},
 			],
+			[{ count: 1 }],
 		])
 
 		const service = new TaxReportService(mockDb, {} as any)
@@ -242,5 +343,43 @@ describe('TaxReportService report scoping', () => {
 				taxDelta: '250.00',
 			}),
 		])
+	})
+
+	it('checks ESI coverage only for active, taxable member corporations', async () => {
+		mockDb.select = createSelectMock([[{ corporationId: '1001' }, { corporationId: '1002' }]])
+		const status = {
+			corporationId: '1001',
+			isConfigured: true,
+			isVerified: true,
+			lastVerified: new Date('2026-08-01T00:00:00.000Z'),
+			directorCount: 1,
+			healthyDirectorCount: 1,
+			requiredScopes: ['esi-corporations.read_wallets.v1'],
+			missingRequiredScopes: [],
+			hasRequiredScopes: true,
+			hasCorporationWalletScope: true,
+			hasCharacterWalletScope: false,
+			hasCorporationMembershipScope: true,
+			grantedScopeCount: 2,
+		}
+		getStubMock.mockImplementation((_namespace: unknown, corporationId: string) => ({
+			getCorporationAuthStatus: vi
+				.fn()
+				.mockResolvedValue(
+					corporationId === '1001' ? status : { ...status, corporationId, isConfigured: false }
+				),
+		}))
+
+		const service = new TaxReportService(mockDb, {} as any)
+		const report = await service.getMissingEsiKeysReport()
+
+		expect(report.totalRows).toBe(1)
+		expect(report.rows).toEqual([
+			expect.objectContaining({
+				corporationId: '1002',
+				isConfigured: false,
+			}),
+		])
+		expect(getStubMock).toHaveBeenCalledTimes(2)
 	})
 })

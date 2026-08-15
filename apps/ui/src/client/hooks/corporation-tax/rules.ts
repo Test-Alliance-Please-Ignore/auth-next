@@ -15,7 +15,7 @@ export function useTaxRuleSets(filters?: {
 	return useQuery({
 		queryKey: corporationTaxKeys.rules(filters),
 		queryFn: () => corporationTaxApi.listRuleSets(filters),
-		staleTime: 1000 * 30,
+		staleTime: 1000 * 60 * 15,
 		enabled: hasFilter && (filters?.enabled ?? true),
 	})
 }
@@ -80,7 +80,7 @@ export function useTaxRuleGroups(filters?: {
 	return useQuery({
 		queryKey: corporationTaxKeys.ruleGroups(filters),
 		queryFn: () => corporationTaxApi.listRuleGroups(filters),
-		staleTime: 1000 * 30,
+		staleTime: 1000 * 60 * 15,
 		enabled: filters?.enabled ?? true,
 	})
 }
@@ -124,7 +124,7 @@ export function useTaxRuleGroupAttachments(ruleGroupId: string | undefined, enab
 	return useQuery({
 		queryKey: corporationTaxKeys.ruleGroupAttachments(ruleGroupId ?? 'none'),
 		queryFn: () => corporationTaxApi.listRuleGroupAttachments(ruleGroupId!),
-		staleTime: 1000 * 30,
+		staleTime: 1000 * 60 * 15,
 		enabled: Boolean(ruleGroupId) && enabled,
 	})
 }

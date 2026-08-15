@@ -1,5 +1,5 @@
 import { isTaxIncomeRefType } from '@repo/corporation-tax'
-import { and, asc, desc, eq, gte, inArray } from '@repo/db-utils'
+import { and, asc, desc, eq, gte, sql } from '@repo/db-utils'
 
 import { taxRuleGroupAttachments, taxRuleGroups, taxRuleSets } from '../db/schema'
 
@@ -145,15 +145,12 @@ export class TaxRulesService {
 		if (filters?.ruleGroupId) {
 			whereConditions.push(eq(taxRuleSets.ruleGroupId, filters.ruleGroupId))
 		} else if (filters?.corporationId) {
-			const attachmentRows = await this.db
-				.select({ ruleGroupId: taxRuleGroupAttachments.ruleGroupId })
-				.from(taxRuleGroupAttachments)
-				.where(eq(taxRuleGroupAttachments.corporationId, filters.corporationId))
-			const attachedGroupIds = attachmentRows.map((row) => row.ruleGroupId)
-			if (attachedGroupIds.length === 0) {
-				return []
-			}
-			whereConditions.push(inArray(taxRuleSets.ruleGroupId, attachedGroupIds))
+			whereConditions.push(sql`EXISTS (
+				SELECT 1
+				FROM ${taxRuleGroupAttachments}
+				WHERE ${taxRuleGroupAttachments.ruleGroupId} = ${taxRuleSets.ruleGroupId}
+					AND ${taxRuleGroupAttachments.corporationId} = ${filters.corporationId}
+			)`)
 		}
 
 		const rows = await this.db.query.taxRuleSets.findMany({
@@ -180,8 +177,17 @@ export class TaxRulesService {
 		if (groupIds.length === 0) {
 			return null
 		}
+
 		const earliestRule = await this.db.query.taxRuleSets.findFirst({
-			where: and(inArray(taxRuleSets.ruleGroupId, groupIds), gte(taxRuleSets.updatedAt, since)),
+			where: and(
+				sql`EXISTS (
+					SELECT 1
+					FROM ${taxRuleGroupAttachments}
+					WHERE ${taxRuleGroupAttachments.ruleGroupId} = ${taxRuleSets.ruleGroupId}
+						AND ${taxRuleGroupAttachments.corporationId} = ${corporationId}
+				)`,
+				gte(taxRuleSets.updatedAt, since)
+			),
 			orderBy: [asc(taxRuleSets.updatedAt)],
 			columns: { updatedAt: true },
 		})

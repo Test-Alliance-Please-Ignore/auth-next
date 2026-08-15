@@ -245,6 +245,18 @@ export async function canAuditTaxFeature(
 	})
 }
 
+/** Read-only corporation-scoped reports may use the same scoped access model as the dashboard. */
+export async function canReadTaxReports(
+	env: App['Bindings'],
+	user: SessionUser,
+	corporationId?: string
+): Promise<boolean> {
+	if (!corporationId?.trim()) {
+		return canAuditTaxFeature(env, user)
+	}
+	return canReadTaxFeature(env, user, corporationId)
+}
+
 export async function canManageTaxFeature(
 	env: App['Bindings'],
 	user: SessionUser,

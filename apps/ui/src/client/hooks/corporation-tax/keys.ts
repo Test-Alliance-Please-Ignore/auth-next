@@ -111,6 +111,8 @@ export const corporationTaxKeys = {
 			offset?: number
 		}
 	) => [...corporationTaxKeys.all, 'assessments', corporationId, filters] as const,
+	assessmentWorkflow: (corporationId: string, workflowInstanceId: string) =>
+		[...corporationTaxKeys.all, 'assessment-workflow', corporationId, workflowInstanceId] as const,
 	ledgerEntries: (
 		corporationId: string,
 		filters?: {
@@ -149,6 +151,7 @@ export const corporationTaxKeys = {
 		corporationId: string,
 		filters?: {
 			characterQuery?: string
+			refTypes?: string[]
 			fromDate?: string
 			toDate?: string
 			topRefTypesLimit?: number
@@ -163,6 +166,8 @@ export const corporationTaxKeys = {
 			sortDir?: 'asc' | 'desc'
 		}
 	) => [...corporationTaxKeys.all, 'member-summary', corporationId, filters] as const,
+	memberSummaryTaxableRefTypes: (corporationId: string) =>
+		[...corporationTaxKeys.all, 'member-summary-taxable-ref-types', corporationId] as const,
 	exports: (filters?: {
 		corporationId?: string
 		format?: TaxExportFormat

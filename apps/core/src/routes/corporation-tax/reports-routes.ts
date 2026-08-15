@@ -2,7 +2,7 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { requireAuth } from '../../middleware/session'
-import { canAuditTaxFeature } from '../../middleware/tax-permissions'
+import { canAuditTaxFeature, canReadTaxReports } from '../../middleware/tax-permissions'
 import {
 	parseBooleanQueryParam,
 	parseDateQueryParam,
@@ -94,7 +94,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: parsed.error }, 400)
 		}
 
-		const canRead = await canAuditTaxFeature(c.env, user, parsed.filters?.corporationId)
+		const canRead = await canReadTaxReports(c.env, user, parsed.filters?.corporationId)
 		if (!canRead) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
@@ -129,7 +129,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: parsed.error }, 400)
 		}
 
-		const canRead = await canAuditTaxFeature(c.env, user, parsed.filters?.corporationId)
+		const canRead = await canReadTaxReports(c.env, user, parsed.filters?.corporationId)
 		if (!canRead) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
@@ -162,7 +162,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: parsed.error }, 400)
 		}
 
-		const canRead = await canAuditTaxFeature(c.env, user, parsed.filters?.corporationId)
+		const canRead = await canReadTaxReports(c.env, user, parsed.filters?.corporationId)
 		if (!canRead) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
@@ -177,6 +177,30 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 				corporationId: parsed.filters?.corporationId,
 			})
 			return c.json({ error: 'Failed to fetch top income sources report' }, 500)
+		}
+	})
+
+	app.get('/reports/taxable-ref-types', requireAuth(), async (c) => {
+		const user = c.get('user')
+		if (!user) {
+			return c.json({ error: 'Unauthorized' }, 401)
+		}
+
+		const corporationId = c.req.query('corporationId')?.trim() || undefined
+		if (!(await canReadTaxReports(c.env, user, corporationId))) {
+			return c.json({ error: 'Forbidden' }, 403)
+		}
+
+		try {
+			const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
+			const refTypes = await stub.getTaxableIncomeRefTypes(corporationId)
+			return c.json({ refTypes })
+		} catch (error) {
+			logTaxReportsRouteError(c, 'Error fetching taxable report income types', error, {
+				userId: user.id,
+				corporationId,
+			})
+			return c.json({ error: 'Failed to fetch taxable income types' }, 500)
 		}
 	})
 
@@ -195,7 +219,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: parsed.error }, 400)
 		}
 
-		const canRead = await canAuditTaxFeature(c.env, user, parsed.filters?.corporationId)
+		const canRead = await canReadTaxReports(c.env, user, parsed.filters?.corporationId)
 		if (!canRead) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
@@ -230,7 +254,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: parsed.error }, 400)
 		}
 
-		const canRead = await canAuditTaxFeature(c.env, user, parsed.filters?.corporationId)
+		const canRead = await canReadTaxReports(c.env, user, parsed.filters?.corporationId)
 		if (!canRead) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
@@ -258,19 +282,22 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: 'Unauthorized' }, 401)
 		}
 
-		const parsed = parseRollupReportFiltersFromQuery(c.req)
+		const parsed = parseRollupReportFiltersFromQuery(c.req, {
+			allowedSortFields: ['rollupDate', 'taxDue', 'taxPaid', 'taxDelta', 'entryCount'],
+			maxLimit: 3650,
+		})
 		if (parsed.error) {
 			return c.json({ error: parsed.error }, 400)
 		}
 
-		const canRead = await canAuditTaxFeature(c.env, user, parsed.filters?.corporationId)
+		const canRead = await canReadTaxReports(c.env, user, parsed.filters?.corporationId)
 		if (!canRead) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
 
 		try {
 			const stub = getStub<CorporationTax>(c.env.CORPORATION_TAX, 'default')
-			const report = await stub.getComplianceOverTimeReport(parsed.filters)
+			const report = await stub.getComplianceOverTimeReportPage(parsed.filters)
 			return c.json(report)
 		} catch (error) {
 			logTaxReportsRouteError(c, 'Error fetching tax compliance report', error, {
@@ -331,7 +358,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			)
 		}
 
-		const canRead = await canAuditTaxFeature(c.env, user, corporationId)
+		const canRead = await canReadTaxReports(c.env, user, corporationId)
 		if (!canRead) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
@@ -431,7 +458,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: parsed.error }, 400)
 		}
 
-		const canRead = await canAuditTaxFeature(c.env, user, parsed.filters?.corporationId)
+		const canRead = await canReadTaxReports(c.env, user, parsed.filters?.corporationId)
 		if (!canRead) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
@@ -548,6 +575,8 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 		const status = c.req.query('status')
 		const limit = parseIntegerQueryParam(c.req.query('limit'))
 		const offset = parseIntegerQueryParam(c.req.query('offset'))
+		const sortBy = c.req.query('sortBy')
+		const sortDir = parseSortDirectionQueryParam(c.req.query('sortDir'))
 
 		if (format !== undefined && !TAX_EXPORT_FORMATS.has(format)) {
 			return c.json({ error: "format must be 'csv' or 'xlsx'" }, 400)
@@ -570,6 +599,21 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 		if (offset !== undefined && offset < 0) {
 			return c.json({ error: 'offset must be an integer >= 0' }, 400)
 		}
+		if (sortDir === null) {
+			return c.json({ error: "sortDir must be 'asc' or 'desc'" }, 400)
+		}
+		const exportSortFields = [
+			'requestedAt',
+			'corporationId',
+			'reportType',
+			'format',
+			'status',
+			'rowCount',
+			'completedAt',
+		] as const
+		if (sortBy && !exportSortFields.includes(sortBy as (typeof exportSortFields)[number])) {
+			return c.json({ error: `sortBy must be one of: ${exportSortFields.join(', ')}` }, 400)
+		}
 
 		const canRead = await canAuditTaxFeature(c.env, user, corporationId)
 		if (!canRead) {
@@ -584,6 +628,8 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 				status: status as 'queued' | 'running' | 'completed' | 'failed' | undefined,
 				limit,
 				offset,
+				sortBy: sortBy as (typeof exportSortFields)[number] | undefined,
+				sortDir: sortDir ?? undefined,
 			})
 			return c.json(exportsList)
 		} catch (error) {
@@ -743,6 +789,8 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 		const activeOnly = parseBooleanQueryParam(c.req.query('activeOnly'))
 		const limit = parseIntegerQueryParam(c.req.query('limit'))
 		const offset = parseIntegerQueryParam(c.req.query('offset'))
+		const sortBy = c.req.query('sortBy')
+		const sortDir = parseSortDirectionQueryParam(c.req.query('sortDir'))
 
 		if ((c.req.query('activeOnly') ?? '') !== '' && activeOnly === undefined) {
 			return c.json({ error: 'activeOnly must be true/false' }, 400)
@@ -752,6 +800,22 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 		}
 		if (offset !== undefined && offset < 0) {
 			return c.json({ error: 'offset must be an integer >= 0' }, 400)
+		}
+		if (sortDir === null) {
+			return c.json({ error: "sortDir must be 'asc' or 'desc'" }, 400)
+		}
+		const scheduleSortFields = [
+			'name',
+			'corporationId',
+			'reportType',
+			'format',
+			'frequency',
+			'isActive',
+			'nextRunAt',
+			'lastRunAt',
+		] as const
+		if (sortBy && !scheduleSortFields.includes(sortBy as (typeof scheduleSortFields)[number])) {
+			return c.json({ error: `sortBy must be one of: ${scheduleSortFields.join(', ')}` }, 400)
 		}
 
 		const canRead = await canAuditTaxFeature(c.env, user, corporationId)
@@ -766,6 +830,8 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 				activeOnly,
 				limit,
 				offset,
+				sortBy: sortBy as (typeof scheduleSortFields)[number] | undefined,
+				sortDir: sortDir ?? undefined,
 			})
 			return c.json(schedules)
 		} catch (error) {

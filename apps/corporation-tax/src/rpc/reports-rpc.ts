@@ -52,6 +52,12 @@ export class TaxReportsRpc {
 		return this.ctx.reportService.getComplianceOverTimeReport(filters)
 	}
 
+	getComplianceOverTimeReportPage(
+		filters?: TaxRollupReportFilters
+	): Promise<TaxPagedResult<TaxCompliancePoint>> {
+		return this.ctx.reportService.getComplianceOverTimeReportPage(filters)
+	}
+
 	getTaxDiscrepancyReport(
 		filters?: ListTaxDiscrepancyReportFilters
 	): Promise<TaxPagedResult<TaxDiscrepancy>> {
@@ -74,5 +80,9 @@ export class TaxReportsRpc {
 		filters: TaxMemberSummaryReportFilters
 	): Promise<TaxPagedResult<TaxMemberSummary>> {
 		return this.ctx.reportService.getMemberSummaryReport(filters)
+	}
+
+	getTaxableIncomeRefTypes(corporationId?: string): Promise<string[]> {
+		return this.ctx.reportService.getTaxableIncomeRefTypes(corporationId)
 	}
 }

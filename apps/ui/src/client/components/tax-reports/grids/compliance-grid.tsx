@@ -1,80 +1,72 @@
-import { createMRTColumnHelper } from 'mantine-react-table'
 import { useMemo } from 'react'
 
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
+import { TaxReportTable } from '@/components/tax-report-table'
 import { formatTaxDateTime } from '@/lib/tax-date'
 import { formatTaxIskFull, formatTaxNumber } from '@/lib/tax-display'
 
-import { compareBigIntValues, parseDecimalToCentiBigInt } from './shared'
-
-import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { TaxCompliancePoint } from '@repo/corporation-tax'
+import type { TaxReportSortingState } from '@/lib/tax-report-utils'
 
 export function ComplianceGrid(props: {
 	rows: TaxCompliancePoint[]
 	loading: boolean
 	error: unknown
+	sorting: TaxReportSortingState
+	onSortingChange: (sorting: TaxReportSortingState) => void
+	pagination: { pageIndex: number; pageSize: number }
+	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
+	rowCount: number
 }) {
-	const columnHelper = createMRTColumnHelper<TaxCompliancePoint>()
-	const columns = useMemo<Array<MRT_ColumnDef<TaxCompliancePoint>>>(
+	const columns = useMemo(
 		() => [
-			columnHelper.accessor((row) => new Date(row.rollupDate).getTime(), {
+			{
 				id: 'rollupDate',
 				header: 'Date',
-				enableSorting: true,
-				sortingFn: 'basic',
-				Cell: ({ row }) => formatTaxDateTime(row.original.rollupDate),
-			}),
-			columnHelper.accessor('taxDue', {
+				sortable: true,
+				cell: (row: TaxCompliancePoint) => formatTaxDateTime(row.rollupDate),
+			},
+			{
 				id: 'taxDue',
 				header: 'Tax Due',
-				enableSorting: true,
-				sortingFn: (rowA, rowB) =>
-					compareBigIntValues(
-						parseDecimalToCentiBigInt(rowA.original.taxDue),
-						parseDecimalToCentiBigInt(rowB.original.taxDue)
-					),
-				Cell: ({ row }) => formatTaxIskFull(row.original.taxDue),
-			}),
-			columnHelper.accessor('taxPaid', {
+				sortable: true,
+				cell: (row: TaxCompliancePoint) => formatTaxIskFull(row.taxDue),
+			},
+			{
 				id: 'taxPaid',
 				header: 'Tax Paid',
-				enableSorting: true,
-				sortingFn: (rowA, rowB) =>
-					compareBigIntValues(
-						parseDecimalToCentiBigInt(rowA.original.taxPaid),
-						parseDecimalToCentiBigInt(rowB.original.taxPaid)
-					),
-				Cell: ({ row }) => formatTaxIskFull(row.original.taxPaid),
-			}),
-			columnHelper.accessor('taxDelta', {
+				sortable: true,
+				cell: (row: TaxCompliancePoint) => formatTaxIskFull(row.taxPaid),
+			},
+			{
 				id: 'taxDelta',
 				header: 'Delta',
-				enableSorting: true,
-				sortingFn: (rowA, rowB) =>
-					compareBigIntValues(
-						parseDecimalToCentiBigInt(rowA.original.taxDelta),
-						parseDecimalToCentiBigInt(rowB.original.taxDelta)
-					),
-				Cell: ({ row }) => formatTaxIskFull(row.original.taxDelta),
-			}),
-			columnHelper.accessor('entryCount', {
+				sortable: true,
+				cell: (row: TaxCompliancePoint) => formatTaxIskFull(row.taxDelta),
+			},
+			{
+				id: 'entryCount',
 				header: 'Entries',
-				enableSorting: true,
-				sortingFn: 'basic',
-				Cell: ({ row }) => formatTaxNumber(row.original.entryCount),
-			}),
+				sortable: true,
+				cell: (row: TaxCompliancePoint) => formatTaxNumber(row.entryCount),
+			},
 		],
-		[columnHelper]
+		[]
 	)
 
 	return (
-		<TaxReportDataGrid
+		<TaxReportTable
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
 			error={props.error}
 			emptyMessage="No compliance trend points available."
+			sorting={props.sorting}
+			onSortingChange={props.onSortingChange}
+			pagination={props.pagination}
+			onPaginationChange={props.onPaginationChange}
+			rowCount={props.rowCount}
+			itemLabel="periods"
+			getRowKey={(row) => row.rollupDate.toISOString()}
 		/>
 	)
 }

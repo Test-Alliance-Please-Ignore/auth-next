@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import type {
 	CreateTaxCorporationBillingConfigInput,
 	IssueBillsForPeriodResult,
+	RunTaxAssessmentForPeriodResult,
 	SyncCorporationBillStatusesResult,
 	TaxAlert,
 	TaxAlertSeverity,
@@ -464,12 +465,14 @@ function buildDemoState(seed: number) {
 					{
 						refType: 'bounty_prizes',
 						lineCount: 8 + index,
+						contributionAmount: amount(9_850_000_000 + index * 1_120_000_000),
 						taxableAmount: amount(9_850_000_000 + index * 1_120_000_000),
 						taxAmount: amount(738_750_000 + index * 84_000_000),
 					},
 					{
 						refType: 'ess_escrow_transfer',
 						lineCount: 2 + index,
+						contributionAmount: amount(1_480_000_000 + index * 280_000_000),
 						taxableAmount: amount(1_480_000_000 + index * 280_000_000),
 						taxAmount: amount(140_600_000 + index * 26_600_000),
 					},
@@ -852,6 +855,7 @@ function updateDemoConfig(input?: Partial<DemoTaxConfig> | null): DemoTaxConfig 
 function filterLedgerEntries(rows: TaxLedgerEntry[], filters?: TaxReportFilters): TaxLedgerEntry[] {
 	return rows.filter((row) => {
 		if (filters?.corporationId && row.corporationId !== filters.corporationId) return false
+		if (filters?.refTypes?.length && !filters.refTypes.includes(row.refType)) return false
 		if (!matchesDate(row.entryDate, filters?.fromDate, filters?.toDate)) return false
 		return true
 	})
@@ -1441,8 +1445,11 @@ export const taxDemoApi = {
 			status?: string
 			assessmentScope?: string
 			withBillOnly?: boolean
+			unbilledOnly?: boolean
 			limit?: number
 			offset?: number
+			sortBy?: 'taxPeriodEnd' | 'assessmentScope' | 'scopeId' | 'status' | 'taxDue' | 'taxDelta'
+			sortDir?: 'asc' | 'desc'
 		}
 	) {
 		const rows = ensureDemoState().assessments.filter((row) => {
@@ -1450,13 +1457,64 @@ export const taxDemoApi = {
 			if (filters?.status && row.status !== filters.status) return false
 			if (filters?.assessmentScope && row.assessmentScope !== filters.assessmentScope) return false
 			if (filters?.withBillOnly && !row.billId) return false
+			if (
+				filters?.unbilledOnly &&
+				(row.billId || row.status === 'draft' || row.status === 'excluded')
+			)
+				return false
 			return true
 		})
-		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
+		const sortedRows = sortRows(rows, filters?.sortBy, filters?.sortDir)
+		const corporationRows = rows.filter((row) => row.assessmentScope === 'corporation')
+		return withLatency({
+			rows: applyLimitOffset(sortedRows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+			corporationAssessmentCount: corporationRows.length,
+			unbilledAssessmentCount: corporationRows.filter(
+				(row) => !row.billId && row.status !== 'draft' && row.status !== 'excluded'
+			).length,
+			overdueAssessmentCount: corporationRows.filter((row) => row.billStatus === 'overdue').length,
+		})
+	},
+	async runAssessmentForPeriod(
+		corporationId: string,
+		input: { periodStart: string; periodEnd: string }
+	): Promise<RunTaxAssessmentForPeriodResult> {
+		const state = ensureDemoState()
+		const assessment = state.assessments.find(
+			(row) => row.corporationId === corporationId && row.assessmentScope === 'corporation'
+		)
+		if (!assessment) {
+			throw new Error('No demo corporation assessment is available')
+		}
+
+		const now = new Date()
+		return withLatency({
+			assessment,
+			period: {
+				id: `period-${corporationId}-${input.periodStart}`,
+				corporationId,
+				periodStart: new Date(input.periodStart),
+				periodEnd: new Date(input.periodEnd),
+				status: 'assessed',
+				closedAt: null,
+				createdAt: now,
+				updatedAt: now,
+			},
+			lineCount: 0,
+			discrepancyCount: 0,
+			divisionSummaries: [],
+			refTypeSummaries: [],
+		})
 	},
 	async getLedgerEntries(
 		corporationId: string,
-		filters?: TaxReportFilters & { sourceTypes?: string[]; characterId?: string }
+		filters?: TaxReportFilters & {
+			sourceTypes?: string[]
+			characterId?: string
+			sortBy?: 'entryDate' | 'amount' | 'division' | 'refType' | 'sourceType'
+			sortDir?: 'asc' | 'desc'
+		}
 	) {
 		const rows = filterLedgerEntries(
 			ensureDemoState().ledgerEntries.filter((row) => row.corporationId === corporationId),
@@ -1468,7 +1526,11 @@ export const taxDemoApi = {
 				return false
 			return true
 		})
-		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
+		const sortedRows = sortRows(rows, filters?.sortBy, filters?.sortDir)
+		return withLatency({
+			rows: applyLimitOffset(sortedRows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+		})
 	},
 	async getLedgerParties(
 		corporationId: string,
@@ -1773,19 +1835,22 @@ export const taxDemoApi = {
 		corporationId: string,
 		filters?: { limit?: number; offset?: number }
 	) {
-		return withLatency(
-			applyLimitOffset(
-				ensureDemoState().billHistory.filter(
-					(row) => row.assessment?.corporationId === corporationId
-				),
-				filters?.limit,
-				filters?.offset
-			)
+		const rows = ensureDemoState().billHistory.filter(
+			(row) => row.assessment?.corporationId === corporationId
 		)
+		return withLatency({
+			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+		})
 	},
 	async getCorporationBillEventHistory(
 		corporationId: string,
-		filters?: { limit?: number; offset?: number }
+		filters?: {
+			limit?: number
+			offset?: number
+			sortBy?: 'createdAt' | 'eventType' | 'billId' | 'actorUserId'
+			sortDir?: 'asc' | 'desc'
+		}
 	): Promise<TaxPagedResult<TaxBillingEventHistoryRow>> {
 		const rows = ensureDemoState()
 			.billHistory.filter((row) => row.assessment?.corporationId === corporationId)
@@ -1802,11 +1867,9 @@ export const taxDemoApi = {
 					createdAt: event.createdAt,
 				}))
 			)
-			.sort(
-				(left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
-			)
+		const sortedRows = sortRows(rows, filters?.sortBy ?? 'createdAt', filters?.sortDir ?? 'desc')
 		return withLatency({
-			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
+			rows: applyLimitOffset(sortedRows, filters?.limit, filters?.offset),
 			totalRows: rows.length,
 		})
 	},
@@ -1839,7 +1902,7 @@ export const taxDemoApi = {
 			}
 		>()
 		for (const row of rows) {
-			const amount = parseAmount(row.amount)
+			const amount = parseAmount(row.amount) * (filters?.incomeMode === 'assessed' ? 0.075 : 1)
 			if (amount <= 0) continue
 			const monthStart = new Date(
 				Date.UTC(row.entryDate.getUTCFullYear(), row.entryDate.getUTCMonth(), 1)
@@ -1886,8 +1949,12 @@ export const taxDemoApi = {
 		})
 	},
 	async getComplianceReport(filters?: TaxReportFilters) {
-		const rows = deriveComplianceRows(ensureDemoState(), filters)
-		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
+		let rows = deriveComplianceRows(ensureDemoState(), filters)
+		rows = sortRows(rows as any, filters?.sortBy, filters?.sortDir) as TaxCompliancePoint[]
+		return withLatency({
+			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+		})
 	},
 	async getDiscrepancyReport(filters?: {
 		corporationId?: string
@@ -1928,6 +1995,7 @@ export const taxDemoApi = {
 		corporationId: string,
 		filters?: {
 			characterQuery?: string
+			refTypes?: string[]
 			limit?: number
 			offset?: number
 			sortBy?:
@@ -1956,11 +2024,23 @@ export const taxDemoApi = {
 			}
 			return true
 		})
+		if (filters?.refTypes?.length) {
+			rows = rows.map((row) => ({
+				...row,
+				topRefTypes: row.topRefTypes.filter((source) => filters.refTypes?.includes(source.refType)),
+			}))
+		}
 		rows = sortRows(rows as any, filters?.sortBy, filters?.sortDir ?? 'desc') as TaxMemberSummary[]
 		return withLatency({
 			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
 			totalRows: rows.length,
 		})
+	},
+	async getTaxableIncomeRefTypes(corporationId?: string) {
+		const hasDemoRows = corporationId
+			? ensureDemoState().memberSummary.some((row) => row.corporationId === corporationId)
+			: ensureDemoState().memberSummary.length > 0
+		return withLatency(hasDemoRows ? ['bounty_prizes', 'ess_escrow_transfer'] : [])
 	},
 	async requestExport(input: {
 		corporationId?: string
@@ -1988,6 +2068,15 @@ export const taxDemoApi = {
 		status?: TaxExportStatus
 		limit?: number
 		offset?: number
+		sortBy?:
+			| 'requestedAt'
+			| 'corporationId'
+			| 'reportType'
+			| 'format'
+			| 'status'
+			| 'rowCount'
+			| 'completedAt'
+		sortDir?: 'asc' | 'desc'
 	}) {
 		const rows = ensureDemoState().exports.filter((row) => {
 			if (filters?.corporationId && row.corporationId !== filters.corporationId) return false
@@ -1995,7 +2084,11 @@ export const taxDemoApi = {
 			if (filters?.status && row.status !== filters.status) return false
 			return true
 		})
-		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
+		const sortedRows = sortRows(rows, filters?.sortBy, filters?.sortDir)
+		return withLatency({
+			rows: applyLimitOffset(sortedRows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+		})
 	},
 	async getExportArtifact(exportId: string) {
 		const record =
@@ -2039,13 +2132,27 @@ export const taxDemoApi = {
 		activeOnly?: boolean
 		limit?: number
 		offset?: number
+		sortBy?:
+			| 'name'
+			| 'corporationId'
+			| 'reportType'
+			| 'format'
+			| 'frequency'
+			| 'isActive'
+			| 'nextRunAt'
+			| 'lastRunAt'
+		sortDir?: 'asc' | 'desc'
 	}) {
 		const rows = ensureDemoState().schedules.filter((row) => {
 			if (filters?.corporationId && row.corporationId !== filters.corporationId) return false
 			if (filters?.activeOnly && !row.isActive) return false
 			return true
 		})
-		return withLatency(applyLimitOffset(rows, filters?.limit, filters?.offset))
+		const sortedRows = sortRows(rows, filters?.sortBy, filters?.sortDir)
+		return withLatency({
+			rows: applyLimitOffset(sortedRows, filters?.limit, filters?.offset),
+			totalRows: rows.length,
+		})
 	},
 	async listAuditLog(filters?: {
 		corporationId?: string
@@ -2055,6 +2162,8 @@ export const taxDemoApi = {
 		toDate?: string
 		limit?: number
 		offset?: number
+		sortBy?: 'createdAt' | 'corporationId' | 'actorUserId' | 'action'
+		sortDir?: 'asc' | 'desc'
 	}) {
 		const rows = ensureDemoState().auditLog.filter((row) => {
 			if (filters?.corporationId && row.corporationId !== filters.corporationId) return false
@@ -2065,8 +2174,9 @@ export const taxDemoApi = {
 			if (filters?.toDate && row.createdAt > new Date(filters.toDate)) return false
 			return true
 		})
+		const sortedRows = sortRows(rows, filters?.sortBy, filters?.sortDir)
 		return withLatency({
-			rows: applyLimitOffset(rows, filters?.limit, filters?.offset),
+			rows: applyLimitOffset(sortedRows, filters?.limit, filters?.offset),
 			totalRows: rows.length,
 		})
 	},

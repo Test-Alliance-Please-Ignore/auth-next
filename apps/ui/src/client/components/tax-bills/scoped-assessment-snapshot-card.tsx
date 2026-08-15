@@ -1,91 +1,112 @@
 import { useMemo } from 'react'
 
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
+import { TaxReportTable } from '@/components/tax-report-table'
+import { useReportGridState } from '@/components/tax-reports/use-report-grid-state'
+import { useTaxAssessments } from '@/hooks/corporation-tax'
 import { formatTaxDate } from '@/lib/tax-date'
 import { formatTaxIskFull, TaxEntityDisplay } from '@/lib/tax-display'
 
-import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { TaxAssessment } from '@repo/corporation-tax'
 
 type ScopedAssessmentSnapshotCardProps = {
 	effectiveCorporationId: string | null
-	assessmentsLoading: boolean
-	assessmentsError: unknown
-	assessments: TaxAssessment[]
 	entityNames: Record<string, string>
+	canView: boolean
 }
 
 export function ScopedAssessmentSnapshotCard({
 	effectiveCorporationId,
-	assessmentsLoading,
-	assessmentsError,
-	assessments,
 	entityNames,
+	canView,
 }: ScopedAssessmentSnapshotCardProps) {
-	const columns = useMemo<Array<MRT_ColumnDef<TaxAssessment>>>(
+	const grid = useReportGridState({
+		defaultSortBy: 'taxPeriodEnd',
+		defaultSortDir: 'desc',
+		defaultPageSize: 25,
+		resetOn: effectiveCorporationId,
+	})
+	const {
+		data,
+		isFetching: isLoading,
+		error,
+	} = useTaxAssessments(effectiveCorporationId ?? undefined, {
+		limit: grid.limit,
+		offset: grid.offset,
+		sortBy: grid.sortBy as
+			| 'taxPeriodEnd'
+			| 'assessmentScope'
+			| 'scopeId'
+			| 'status'
+			| 'taxDue'
+			| 'taxDelta',
+		sortDir: grid.sortDir,
+		enabled: canView,
+	})
+	const assessments = data?.rows ?? []
+	const columns = useMemo(
 		() => [
 			{
-				accessorKey: 'assessmentScope',
+				id: 'assessmentScope',
 				header: 'Scope',
-				enableSorting: true,
+				sortable: true,
+				cell: (row: TaxAssessment) => row.assessmentScope,
 			},
 			{
-				accessorKey: 'scopeId',
+				id: 'scopeId',
 				header: 'Scope ID',
-				enableSorting: true,
-				Cell: ({ row }) => {
-					if (row.original.assessmentScope === 'division') {
-						return row.original.scopeId
-					}
-					return <TaxEntityDisplay entityId={row.original.scopeId} entityNames={entityNames} />
-				},
+				sortable: true,
+				cell: (row: TaxAssessment) =>
+					row.assessmentScope === 'division' ? (
+						row.scopeId
+					) : (
+						<TaxEntityDisplay entityId={row.scopeId} entityNames={entityNames} />
+					),
 			},
-			{
-				accessorKey: 'status',
-				header: 'Status',
-				enableSorting: true,
-			},
+			{ id: 'status', header: 'Status', sortable: true, cell: (row: TaxAssessment) => row.status },
 			{
 				id: 'taxDue',
-				accessorFn: (row) => Number(row.taxDue),
 				header: 'Tax Due',
-				enableSorting: true,
-				sortingFn: 'basic',
-				Cell: ({ row }) => formatTaxIskFull(row.original.taxDue),
+				sortable: true,
+				cell: (row: TaxAssessment) => formatTaxIskFull(row.taxDue),
 			},
 			{
 				id: 'taxDelta',
-				accessorFn: (row) => Number(row.taxDelta),
 				header: 'Delta',
-				enableSorting: true,
-				sortingFn: 'basic',
-				Cell: ({ row }) => formatTaxIskFull(row.original.taxDelta),
+				sortable: true,
+				cell: (row: TaxAssessment) => formatTaxIskFull(row.taxDelta),
 			},
 			{
 				id: 'taxPeriodEnd',
-				accessorFn: (row) => new Date(row.taxPeriodEnd).getTime(),
 				header: 'Period End',
-				enableSorting: true,
-				sortingFn: 'basic',
-				Cell: ({ row }) => formatTaxDate(row.original.taxPeriodEnd),
+				sortable: true,
+				cell: (row: TaxAssessment) => formatTaxDate(row.taxPeriodEnd),
 			},
 		],
 		[entityNames]
 	)
 
-	const content = !effectiveCorporationId ? (
-		<div className="py-8 text-sm text-muted-foreground">
-			Select a corporation to view scoped assessments.
-		</div>
-	) : (
-		<TaxReportDataGrid
+	if (!effectiveCorporationId) {
+		return (
+			<div className="py-8 text-sm text-muted-foreground">
+				Select a corporation to view scoped assessments.
+			</div>
+		)
+	}
+
+	return (
+		<TaxReportTable
 			columns={columns}
 			rows={assessments}
-			loading={assessmentsLoading}
-			error={assessmentsError}
+			loading={isLoading}
+			error={error}
 			emptyMessage="No assessments found for the selected corporation."
+			pagination={grid.pagination}
+			onPaginationChange={grid.onPaginationChange}
+			rowCount={data?.totalRows ?? 0}
+			itemLabel="assessments"
+			sorting={grid.sorting}
+			onSortingChange={grid.onSortingChange}
+			getRowKey={(row) => row.id}
 		/>
 	)
-
-	return <div className="space-y-4">{content}</div>
 }

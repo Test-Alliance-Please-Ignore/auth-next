@@ -1,13 +1,13 @@
 import { useMemo } from 'react'
 
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
+import { TaxReportTable } from '@/components/tax-report-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatTaxDateTime } from '@/lib/tax-date'
-import { formatTaxNumber, TaxEntityDisplay } from '@/lib/tax-display'
+import { formatTaxNumber, TaxCorporationDisplay } from '@/lib/tax-display'
 
-import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { TaxExportRecord } from '@repo/corporation-tax'
+import type { TaxReportSortingState } from '@/lib/tax-report-utils'
 
 export function ExportHistoryGrid(props: {
 	rows: TaxExportRecord[]
@@ -16,89 +16,99 @@ export function ExportHistoryGrid(props: {
 	entityNames: Record<string, string>
 	onDownload: (exportId: string) => void
 	downloading: boolean
+	pagination: { pageIndex: number; pageSize: number }
+	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
+	rowCount: number
+	sorting: TaxReportSortingState
+	onSortingChange: (sorting: TaxReportSortingState) => void
 }) {
-	const columns = useMemo<Array<MRT_ColumnDef<TaxExportRecord>>>(
+	const columns = useMemo(
 		() => [
 			{
 				id: 'requestedAt',
-				accessorFn: (row) => new Date(row.requestedAt).getTime(),
 				header: 'Requested At',
-				enableSorting: true,
-				sortingFn: 'basic',
-				Cell: ({ row }) => formatTaxDateTime(row.original.requestedAt),
+				sortable: true,
+				cell: (row: TaxExportRecord) => formatTaxDateTime(row.requestedAt),
 			},
 			{
-				accessorKey: 'corporationId',
+				id: 'corporationId',
 				header: 'Corporation',
-				enableSorting: true,
-				Cell: ({ row }) =>
-					row.original.corporationId ? (
-						<TaxEntityDisplay
-							entityId={row.original.corporationId}
+				sortable: true,
+				cell: (row: TaxExportRecord) =>
+					row.corporationId ? (
+						<TaxCorporationDisplay
+							corporationId={row.corporationId}
 							entityNames={props.entityNames}
 						/>
 					) : (
 						'Global'
 					),
 			},
-			{ accessorKey: 'reportType', header: 'Report', enableSorting: true },
 			{
-				accessorKey: 'format',
-				header: 'Format',
-				enableSorting: true,
-				Cell: ({ row }) => row.original.format.toUpperCase(),
+				id: 'reportType',
+				header: 'Report',
+				sortable: true,
+				cell: (row: TaxExportRecord) => row.reportType,
 			},
 			{
-				accessorKey: 'status',
+				id: 'format',
+				header: 'Format',
+				sortable: true,
+				cell: (row: TaxExportRecord) => row.format.toUpperCase(),
+			},
+			{
+				id: 'status',
 				header: 'Status',
-				enableSorting: true,
-				Cell: ({ row }) => (
-					<Badge variant={row.original.status === 'failed' ? 'destructive' : 'ghost'}>
-						{row.original.status}
-					</Badge>
+				sortable: true,
+				cell: (row: TaxExportRecord) => (
+					<Badge variant={row.status === 'failed' ? 'destructive' : 'ghost'}>{row.status}</Badge>
 				),
 			},
 			{
-				accessorKey: 'rowCount',
+				id: 'rowCount',
 				header: 'Rows',
-				enableSorting: true,
-				sortingFn: 'basic',
-				Cell: ({ row }) => formatTaxNumber(row.original.rowCount),
+				sortable: true,
+				cell: (row: TaxExportRecord) => formatTaxNumber(row.rowCount),
 			},
 			{
 				id: 'completedAt',
-				accessorFn: (row) =>
-					row.completedAt ? new Date(row.completedAt).getTime() : Number.NEGATIVE_INFINITY,
 				header: 'Completed',
-				enableSorting: true,
-				sortingFn: 'basic',
-				Cell: ({ row }) => formatTaxDateTime(row.original.completedAt),
+				sortable: true,
+				cell: (row: TaxExportRecord) => formatTaxDateTime(row.completedAt),
 			},
 			{
 				id: 'download',
 				header: 'Download',
-				enableSorting: false,
-				Cell: ({ row }) => (
+				className: 'text-right',
+				headerClassName: 'text-right',
+				cell: (row: TaxExportRecord) => (
 					<Button
 						variant="ghost"
 						size="sm"
-						disabled={row.original.status !== 'completed' || props.downloading}
-						onClick={() => props.onDownload(row.original.id)}
+						disabled={row.status !== 'completed' || props.downloading}
+						onClick={() => props.onDownload(row.id)}
 					>
 						{props.downloading ? 'Preparing...' : 'Download'}
 					</Button>
 				),
 			},
 		],
-		[props.entityNames, props.downloading, props.onDownload]
+		[props.downloading, props.entityNames, props.onDownload]
 	)
 	return (
-		<TaxReportDataGrid
+		<TaxReportTable
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
 			error={props.error}
 			emptyMessage="No export runs found."
+			pagination={props.pagination}
+			onPaginationChange={props.onPaginationChange}
+			rowCount={props.rowCount}
+			itemLabel="exports"
+			sorting={props.sorting}
+			onSortingChange={props.onSortingChange}
+			getRowKey={(row) => row.id}
 		/>
 	)
 }

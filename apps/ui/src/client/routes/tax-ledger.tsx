@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
+import { TaxReportTable } from '@/components/tax-report-table'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -33,8 +33,8 @@ import {
 	TaxEntityDisplay,
 } from '@/lib/tax-display'
 
-import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { TaxLedgerEntry } from '@repo/corporation-tax'
+import type { TaxReportSortingState } from '@/lib/tax-report-utils'
 
 const PAGE_SIZE = 50
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
@@ -84,6 +84,10 @@ export default function TaxLedgerPage() {
 	} = useTaxCorporationAccessScope(false)
 	const [page, setPage] = useState(0)
 	const [pageSize, setPageSize] = useState(PAGE_SIZE)
+	const [sortBy, setSortBy] = useState<
+		'entryDate' | 'amount' | 'division' | 'refType' | 'sourceType'
+	>('entryDate')
+	const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 	const [fromDate, setFromDate] = useState(DEFAULT_MONTH_RANGE.fromDate)
 	const [toDate, setToDate] = useState(DEFAULT_MONTH_RANGE.toDate)
 	const [divisionFilter, setDivisionFilter] = useState(ALL_DIVISIONS_VALUE)
@@ -215,8 +219,8 @@ export default function TaxLedgerPage() {
 	])
 
 	const {
-		data: ledgerEntries = [],
-		isLoading: ledgerLoading,
+		data: ledgerPage,
+		isFetching: ledgerLoading,
 		error: ledgerError,
 	} = useTaxLedgerEntries(effectiveCorporationId, {
 		division: divisionValue,
@@ -229,12 +233,21 @@ export default function TaxLedgerPage() {
 		minAmount: minAmountValue,
 		limit: pageSize,
 		offset: page * pageSize,
+		sortBy,
+		sortDir,
 		enabled: canView && Boolean(effectiveCorporationId),
 	})
 
-	const hasNextPage = ledgerEntries.length === pageSize
-	const approximateRowCount = page * pageSize + ledgerEntries.length + (hasNextPage ? 1 : 0)
-	const pageCount = Math.max(1, Math.ceil(approximateRowCount / pageSize))
+	const ledgerEntries = ledgerPage?.rows ?? []
+	const ledgerRowCount = ledgerPage?.totalRows ?? 0
+	const ledgerSorting: TaxReportSortingState = [{ id: sortBy, desc: sortDir === 'desc' }]
+	const onLedgerSortingChange = (next: TaxReportSortingState) => {
+		const first = next[0]
+		if (!first) return
+		setSortBy(first.id as typeof sortBy)
+		setSortDir(first.desc ? 'desc' : 'asc')
+		setPage(0)
+	}
 
 	const ledgerEntityIds = useMemo(() => {
 		const ids = new Set<string>()
@@ -286,60 +299,58 @@ export default function TaxLedgerPage() {
 		[senderPartyOptions, recipientPartyOptions]
 	)
 
-	const ledgerColumns = useMemo<Array<MRT_ColumnDef<TaxLedgerEntry>>>(
+	const ledgerColumns = useMemo(
 		() => [
 			{
-				accessorKey: 'entryDate',
+				id: 'entryDate',
 				header: 'Date',
-				enableSorting: false,
-				Cell: ({ row }) => formatTaxDateTime(row.original.entryDate),
+				sortable: true,
+				cell: (row: TaxLedgerEntry) => formatTaxDateTime(row.entryDate),
 			},
 			{
-				accessorKey: 'refType',
+				id: 'refType',
 				header: 'Income Type',
-				enableSorting: false,
-				Cell: ({ row }) => (
+				sortable: true,
+				cell: (row: TaxLedgerEntry) => (
 					<div className="flex items-center gap-2">
 						<span
 							className="h-2.5 w-2.5 rounded-full"
-							style={{ backgroundColor: getTaxRefTypeColor(row.original.refType) }}
+							style={{ backgroundColor: getTaxRefTypeColor(row.refType) }}
 						/>
-						<span>{formatTaxRefTypeLabel(row.original.refType)}</span>
+						<span>{formatTaxRefTypeLabel(row.refType)}</span>
 					</div>
 				),
 			},
 			{
-				accessorKey: 'amount',
+				id: 'amount',
 				header: 'Amount',
-				enableSorting: false,
-				Cell: ({ row }) => formatTaxIskFull(row.original.amount),
+				sortable: true,
+				cell: (row: TaxLedgerEntry) => formatTaxIskFull(row.amount),
 			},
 			{
-				accessorKey: 'division',
+				id: 'division',
 				header: 'Division',
-				enableSorting: false,
-				Cell: ({ row }) => formatTaxDivisionLabel(row.original.division),
+				sortable: true,
+				cell: (row: TaxLedgerEntry) => formatTaxDivisionLabel(row.division),
 			},
 			{
-				accessorKey: 'sourceType',
+				id: 'sourceType',
 				header: 'Source',
-				enableSorting: false,
-				Cell: ({ row }) => formatTaxLedgerSourceTypeLabel(row.original.sourceType),
+				sortable: true,
+				cell: (row: TaxLedgerEntry) => formatTaxLedgerSourceTypeLabel(row.sourceType),
 			},
 			{
-				accessorKey: 'firstPartyId',
+				id: 'firstPartyId',
 				header: 'Sender',
-				enableSorting: false,
-				Cell: ({ row }) => (
-					<TaxEntityDisplay entityId={row.original.firstPartyId} entityNames={entityNames} />
+				cell: (row: TaxLedgerEntry) => (
+					<TaxEntityDisplay entityId={row.firstPartyId} entityNames={entityNames} />
 				),
 			},
 			{
-				accessorKey: 'secondPartyId',
+				id: 'secondPartyId',
 				header: 'Recipient',
-				enableSorting: false,
-				Cell: ({ row }) => (
-					<TaxEntityDisplay entityId={row.original.secondPartyId} entityNames={entityNames} />
+				cell: (row: TaxLedgerEntry) => (
+					<TaxEntityDisplay entityId={row.secondPartyId} entityNames={entityNames} />
 				),
 			},
 		],
@@ -565,28 +576,23 @@ export default function TaxLedgerPage() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						{ledgerLoading ? (
-							<div className="py-8 text-sm text-muted-foreground">Loading ledger entries...</div>
-						) : ledgerError ? (
-							<div className="py-8 text-sm text-destructive">
-								{ledgerError instanceof Error
-									? ledgerError.message
-									: 'Failed to load ledger entries'}
-							</div>
-						) : (
-							<TaxReportDataGrid
-								columns={ledgerColumns}
-								rows={ledgerEntries}
-								emptyMessage="No ledger entries found."
-								pagination={{ pageIndex: page, pageSize }}
-								onPaginationChange={(next) => {
-									setPageSize(next.pageSize)
-									setPage(next.pageSize === pageSize ? Math.max(0, next.pageIndex) : 0)
-								}}
-								pageCount={pageCount}
-								rowCount={approximateRowCount}
-							/>
-						)}
+						<TaxReportTable
+							columns={ledgerColumns}
+							rows={ledgerEntries}
+							loading={ledgerLoading}
+							error={ledgerError}
+							emptyMessage="No ledger entries found."
+							sorting={ledgerSorting}
+							onSortingChange={onLedgerSortingChange}
+							pagination={{ pageIndex: page, pageSize }}
+							onPaginationChange={(next) => {
+								setPageSize(next.pageSize)
+								setPage(next.pageSize === pageSize ? Math.max(0, next.pageIndex) : 0)
+							}}
+							rowCount={ledgerRowCount}
+							itemLabel="ledger entries"
+							getRowKey={(row) => row.id}
+						/>
 					</CardContent>
 				</Card>
 			</Section>

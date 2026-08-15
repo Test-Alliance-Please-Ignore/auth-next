@@ -10,9 +10,13 @@ import type {
 	TaxAlertSeverity,
 	TaxAlertStatus,
 	TaxAssessment,
+	TaxAssessmentPage,
 	TaxAssessmentWithBillHistory,
+	TaxAssessmentWorkflowStartResult,
+	TaxAssessmentWorkflowStatusResult,
 	TaxAuditLogEntry,
 	TaxBillingEventHistoryRow,
+	TaxBillingEventSortBy,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
 	TaxCorporationBillingConfig,
@@ -72,6 +76,18 @@ export interface TaxAuditActorSearchFilters {
 	limit?: number
 }
 
+export interface ListTaxAuditLogFilters {
+	corporationId?: string
+	actorUserId?: string
+	action?: string
+	fromDate?: string
+	toDate?: string
+	limit?: number
+	offset?: number
+	sortBy?: 'createdAt' | 'corporationId' | 'actorUserId' | 'action'
+	sortDir?: 'asc' | 'desc'
+}
+
 export interface TaxAuditActorSearchRow {
 	userId: string
 	name: string | null
@@ -81,6 +97,7 @@ export type TaxReportFilters = TaxRollupReportQueryFilters
 
 export interface TaxMemberSummaryFilters {
 	characterQuery?: string
+	refTypes?: string[]
 	fromDate?: string
 	toDate?: string
 	topRefTypesLimit?: number
@@ -113,6 +130,8 @@ export interface TaxLedgerFilters {
 	maxAmount?: string
 	limit?: number
 	offset?: number
+	sortBy?: 'entryDate' | 'amount' | 'division' | 'refType' | 'sourceType'
+	sortDir?: 'asc' | 'desc'
 }
 
 export interface TaxLedgerPartySearchFilters {
@@ -135,6 +154,15 @@ export interface ListTaxExportsFilters {
 	status?: TaxExportStatus
 	limit?: number
 	offset?: number
+	sortBy?:
+		| 'requestedAt'
+		| 'corporationId'
+		| 'reportType'
+		| 'format'
+		| 'status'
+		| 'rowCount'
+		| 'completedAt'
+	sortDir?: 'asc' | 'desc'
 }
 
 export interface ListTaxExportSchedulesFilters {
@@ -142,6 +170,16 @@ export interface ListTaxExportSchedulesFilters {
 	activeOnly?: boolean
 	limit?: number
 	offset?: number
+	sortBy?:
+		| 'name'
+		| 'corporationId'
+		| 'reportType'
+		| 'format'
+		| 'frequency'
+		| 'isActive'
+		| 'nextRunAt'
+		| 'lastRunAt'
+	sortDir?: 'asc' | 'desc'
 }
 
 export interface ListTaxDiscrepancyReportFilters {
@@ -206,8 +244,11 @@ export interface ListTaxAssessmentsFilters {
 	status?: 'draft' | 'underpaid' | 'paid' | 'overpaid' | 'excluded'
 	assessmentScope?: 'corporation' | 'division' | 'character'
 	withBillOnly?: boolean
+	unbilledOnly?: boolean
 	limit?: number
 	offset?: number
+	sortBy?: 'taxPeriodEnd' | 'assessmentScope' | 'scopeId' | 'status' | 'taxDue' | 'taxDelta'
+	sortDir?: 'asc' | 'desc'
 }
 
 export interface CreateTaxRuleSetInput {
@@ -222,16 +263,6 @@ export interface CreateTaxRuleSetInput {
 export interface CreateTaxRuleGroupInput {
 	name: string
 	description?: string | null
-}
-
-export interface ListTaxAuditLogFilters {
-	corporationId?: string
-	actorUserId?: string
-	action?: string
-	fromDate?: string
-	toDate?: string
-	limit?: number
-	offset?: number
 }
 
 export interface ListTaxNotificationDestinationsFilters {
@@ -260,6 +291,8 @@ export class CorporationTaxApiClient extends ApiClient {
 		if (filters.corporationId) params.set('corporationId', filters.corporationId)
 		if (filters.fromDate) params.set('fromDate', filters.fromDate)
 		if (filters.toDate) params.set('toDate', filters.toDate)
+		if (filters.refTypes?.length) params.set('refTypes', filters.refTypes.join(','))
+		if (filters.incomeMode) params.set('incomeMode', filters.incomeMode)
 		if (filters.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters.offset !== undefined) params.set('offset', String(filters.offset))
 		if (filters.sortBy) params.set('sortBy', filters.sortBy)
@@ -494,25 +527,72 @@ export class CorporationTaxApiClient extends ApiClient {
 	async listAssessments(
 		corporationId: string,
 		filters?: ListTaxAssessmentsFilters
-	): Promise<TaxAssessment[]> {
+	): Promise<TaxAssessmentPage> {
 		if (this.shouldUseDemo()) return taxDemoApi.listAssessments(corporationId, filters)
 		const params = new URLSearchParams()
 		if (filters?.status) params.set('status', filters.status)
 		if (filters?.assessmentScope) params.set('assessmentScope', filters.assessmentScope)
 		if (filters?.withBillOnly !== undefined)
 			params.set('withBillOnly', String(filters.withBillOnly))
+		if (filters?.unbilledOnly !== undefined)
+			params.set('unbilledOnly', String(filters.unbilledOnly))
 		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
+		if (filters?.sortBy) params.set('sortBy', filters.sortBy)
+		if (filters?.sortDir) params.set('sortDir', filters.sortDir)
 		const query = params.toString()
 		return this.get(
 			`${TAX_API_BASE}/corporations/${corporationId}/assessments${query ? `?${query}` : ''}`
 		)
 	}
 
+	async runAssessmentForPeriod(
+		corporationId: string,
+		input: { periodStart: string; periodEnd: string }
+	): Promise<TaxAssessmentWorkflowStartResult> {
+		if (this.shouldUseDemo()) {
+			await taxDemoApi.runAssessmentForPeriod(corporationId, input)
+			return {
+				workflowInstanceId: `demo-tax-assessment-${corporationId}-${Date.now()}`,
+				corporationId,
+				periodStart: input.periodStart,
+				periodEnd: input.periodEnd,
+				status: 'queued',
+			}
+		}
+		return this.post(`${TAX_API_BASE}/corporations/${corporationId}/assessments/run`, {
+			...input,
+			includeCharacterWallets: false,
+		})
+	}
+
+	async getAssessmentWorkflowStatus(
+		corporationId: string,
+		workflowInstanceId: string
+	): Promise<TaxAssessmentWorkflowStatusResult> {
+		if (this.shouldUseDemo()) {
+			return {
+				workflowInstanceId,
+				status: 'completed',
+				rawStatus: 'complete',
+				output: {
+					status: 'completed',
+					assessmentId: `demo-assessment-${corporationId}`,
+					lineCount: 0,
+					discrepancyCount: 0,
+				},
+				error: null,
+			}
+		}
+		return this.get(
+			`${TAX_API_BASE}/corporations/${corporationId}/assessments/runs/${workflowInstanceId}`
+		)
+	}
+
 	async getLedgerEntries(
 		corporationId: string,
 		filters?: TaxLedgerFilters
-	): Promise<TaxLedgerEntry[]> {
+	): Promise<TaxPagedResult<TaxLedgerEntry>> {
 		if (this.shouldUseDemo()) return taxDemoApi.getLedgerEntries(corporationId, filters as any)
 		const params = new URLSearchParams()
 		if (filters?.division !== undefined) params.set('division', String(filters.division))
@@ -531,6 +611,8 @@ export class CorporationTaxApiClient extends ApiClient {
 		if (filters?.maxAmount) params.set('maxAmount', filters.maxAmount)
 		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
+		if (filters?.sortBy) params.set('sortBy', filters.sortBy)
+		if (filters?.sortDir) params.set('sortDir', filters.sortDir)
 
 		const query = params.toString()
 		return this.get(
@@ -682,7 +764,7 @@ export class CorporationTaxApiClient extends ApiClient {
 	async getCorporationBillHistory(
 		corporationId: string,
 		filters?: { limit?: number; offset?: number }
-	): Promise<TaxAssessmentWithBillHistory[]> {
+	): Promise<TaxPagedResult<TaxAssessmentWithBillHistory>> {
 		if (this.shouldUseDemo()) return taxDemoApi.getCorporationBillHistory(corporationId, filters)
 		const params = new URLSearchParams()
 		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
@@ -696,13 +778,20 @@ export class CorporationTaxApiClient extends ApiClient {
 
 	async getCorporationBillEventHistory(
 		corporationId: string,
-		filters?: { limit?: number; offset?: number }
+		filters?: {
+			limit?: number
+			offset?: number
+			sortBy?: TaxBillingEventSortBy
+			sortDir?: 'asc' | 'desc'
+		}
 	): Promise<TaxPagedResult<TaxBillingEventHistoryRow>> {
 		if (this.shouldUseDemo())
 			return taxDemoApi.getCorporationBillEventHistory(corporationId, filters)
 		const params = new URLSearchParams()
 		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
+		if (filters?.sortBy) params.set('sortBy', filters.sortBy)
+		if (filters?.sortDir) params.set('sortDir', filters.sortDir)
 		const query = params.toString()
 
 		return this.get(
@@ -754,7 +843,9 @@ export class CorporationTaxApiClient extends ApiClient {
 		return this.get(`${TAX_API_BASE}/reports/ess${query ? `?${query}` : ''}`)
 	}
 
-	async getComplianceReport(filters?: TaxReportFilters): Promise<TaxCompliancePoint[]> {
+	async getComplianceReport(
+		filters?: TaxReportFilters
+	): Promise<TaxPagedResult<TaxCompliancePoint>> {
 		if (this.shouldUseDemo()) return taxDemoApi.getComplianceReport(filters)
 		const params = new URLSearchParams()
 		this.appendTaxReportFilters(params, filters)
@@ -802,6 +893,7 @@ export class CorporationTaxApiClient extends ApiClient {
 		if (this.shouldUseDemo()) return taxDemoApi.getMemberSummary(corporationId, filters)
 		const params = new URLSearchParams()
 		if (filters?.characterQuery) params.set('character', filters.characterQuery)
+		if (filters?.refTypes?.length) params.set('refTypes', filters.refTypes.join(','))
 		if (filters?.fromDate) params.set('fromDate', filters.fromDate)
 		if (filters?.toDate) params.set('toDate', filters.toDate)
 		if (filters?.topRefTypesLimit !== undefined)
@@ -816,6 +908,15 @@ export class CorporationTaxApiClient extends ApiClient {
 		)
 	}
 
+	async getTaxableIncomeRefTypes(corporationId?: string): Promise<string[]> {
+		if (this.shouldUseDemo()) return taxDemoApi.getTaxableIncomeRefTypes(corporationId)
+		const endpoint = corporationId
+			? `${TAX_API_BASE}/corporations/${corporationId}/member-summary/taxable-ref-types`
+			: `${TAX_API_BASE}/reports/taxable-ref-types`
+		const result = await this.get<{ refTypes: string[] }>(endpoint)
+		return result.refTypes
+	}
+
 	async requestExport(input: {
 		corporationId?: string
 		format: TaxExportFormat
@@ -827,7 +928,7 @@ export class CorporationTaxApiClient extends ApiClient {
 		return this.post(`${TAX_API_BASE}/exports`, input)
 	}
 
-	async listExports(filters?: ListTaxExportsFilters): Promise<TaxExportRecord[]> {
+	async listExports(filters?: ListTaxExportsFilters): Promise<TaxPagedResult<TaxExportRecord>> {
 		if (this.shouldUseDemo()) return taxDemoApi.listExports(filters)
 		const params = new URLSearchParams()
 		if (filters?.corporationId) params.set('corporationId', filters.corporationId)
@@ -835,6 +936,8 @@ export class CorporationTaxApiClient extends ApiClient {
 		if (filters?.status) params.set('status', filters.status)
 		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
+		if (filters?.sortBy) params.set('sortBy', filters.sortBy)
+		if (filters?.sortDir) params.set('sortDir', filters.sortDir)
 		const query = params.toString()
 		return this.get(`${TAX_API_BASE}/exports${query ? `?${query}` : ''}`)
 	}
@@ -858,13 +961,17 @@ export class CorporationTaxApiClient extends ApiClient {
 		return this.post(`${TAX_API_BASE}/export-schedules`, input)
 	}
 
-	async listExportSchedules(filters?: ListTaxExportSchedulesFilters): Promise<TaxExportSchedule[]> {
+	async listExportSchedules(
+		filters?: ListTaxExportSchedulesFilters
+	): Promise<TaxPagedResult<TaxExportSchedule>> {
 		if (this.shouldUseDemo()) return taxDemoApi.listExportSchedules(filters)
 		const params = new URLSearchParams()
 		if (filters?.corporationId) params.set('corporationId', filters.corporationId)
 		if (filters?.activeOnly !== undefined) params.set('activeOnly', String(filters.activeOnly))
 		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
+		if (filters?.sortBy) params.set('sortBy', filters.sortBy)
+		if (filters?.sortDir) params.set('sortDir', filters.sortDir)
 		const query = params.toString()
 		return this.get(`${TAX_API_BASE}/export-schedules${query ? `?${query}` : ''}`)
 	}
@@ -879,6 +986,8 @@ export class CorporationTaxApiClient extends ApiClient {
 		if (filters?.toDate) params.set('toDate', filters.toDate)
 		if (filters?.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters?.offset !== undefined) params.set('offset', String(filters.offset))
+		if (filters?.sortBy) params.set('sortBy', filters.sortBy)
+		if (filters?.sortDir) params.set('sortDir', filters.sortDir)
 		const query = params.toString()
 		return this.get(`${TAX_API_BASE}/audit-log${query ? `?${query}` : ''}`)
 	}

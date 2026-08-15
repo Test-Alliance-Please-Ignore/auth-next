@@ -33,7 +33,11 @@ export function BillStatusTab({
 		defaultPageSize: 25,
 		resetOn: { effectiveCorporationId },
 	})
-	const { data, isLoading, error } = useTaxBillStatusReport({
+	const {
+		data,
+		isFetching: isLoading,
+		error,
+	} = useTaxBillStatusReport({
 		corporationId: effectiveCorporationId ?? undefined,
 		limit: grid.limit,
 		offset: grid.offset,
@@ -44,7 +48,6 @@ export function BillStatusTab({
 
 	const rows = data?.rows ?? []
 	const totalRows = data?.totalRows ?? 0
-	const pageCount = grid.pageCountFor(totalRows)
 
 	return (
 		<div className="space-y-3">
@@ -58,7 +61,6 @@ export function BillStatusTab({
 				onSortingChange={grid.onSortingChange}
 				pagination={grid.pagination}
 				onPaginationChange={grid.onPaginationChange}
-				pageCount={pageCount}
 				rowCount={totalRows}
 				syncBillPending={syncBillPending}
 				retractBillPending={retractBillPending}

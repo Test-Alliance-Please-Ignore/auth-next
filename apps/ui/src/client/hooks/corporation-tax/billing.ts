@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
 
 import { corporationTaxApi } from '@/lib/tax-api'
 
@@ -15,6 +16,7 @@ export function useTaxCorporationBillHistory(
 	return useQuery({
 		queryKey: corporationTaxKeys.billHistory(corporationId ?? 'none', filters),
 		queryFn: () => corporationTaxApi.getCorporationBillHistory(corporationId!, filters),
+		placeholderData: keepPreviousData,
 		staleTime: 1000 * 30,
 		enabled: Boolean(corporationId) && (filters?.enabled ?? true),
 	})
@@ -25,12 +27,15 @@ export function useTaxCorporationBillEventHistory(
 	filters?: {
 		limit?: number
 		offset?: number
+		sortBy?: 'createdAt' | 'eventType' | 'billId' | 'actorUserId'
+		sortDir?: 'asc' | 'desc'
 		enabled?: boolean
 	}
 ) {
 	return useQuery({
 		queryKey: corporationTaxKeys.billEventHistory(corporationId ?? 'none', filters),
 		queryFn: () => corporationTaxApi.getCorporationBillEventHistory(corporationId!, filters),
+		placeholderData: keepPreviousData,
 		staleTime: 1000 * 30,
 		enabled: Boolean(corporationId) && (filters?.enabled ?? true),
 	})
@@ -40,7 +45,7 @@ export function useTaxBillingConfigs(corporationId: string | undefined, enabled 
 	return useQuery({
 		queryKey: corporationTaxKeys.billingConfigs(corporationId ?? 'none'),
 		queryFn: () => corporationTaxApi.listBillingConfigs(corporationId!),
-		staleTime: 1000 * 30,
+		staleTime: 1000 * 60 * 15,
 		enabled: Boolean(corporationId) && enabled,
 	})
 }
@@ -82,17 +87,72 @@ export function useTaxAssessments(
 		status?: 'draft' | 'underpaid' | 'paid' | 'overpaid' | 'excluded'
 		assessmentScope?: 'corporation' | 'division' | 'character'
 		withBillOnly?: boolean
+		unbilledOnly?: boolean
 		limit?: number
 		offset?: number
+		sortBy?: 'taxPeriodEnd' | 'assessmentScope' | 'scopeId' | 'status' | 'taxDue' | 'taxDelta'
+		sortDir?: 'asc' | 'desc'
 		enabled?: boolean
 	}
 ) {
 	return useQuery({
 		queryKey: corporationTaxKeys.assessments(corporationId ?? 'none', filters),
 		queryFn: () => corporationTaxApi.listAssessments(corporationId!, filters),
-		staleTime: 1000 * 30,
+		placeholderData: keepPreviousData,
+		staleTime: 1000 * 60 * 2,
 		enabled: Boolean(corporationId) && (filters?.enabled ?? true),
 	})
+}
+
+export function useRunTaxAssessmentForPeriod() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (input: { corporationId: string; periodStart: string; periodEnd: string }) =>
+			corporationTaxApi.runAssessmentForPeriod(input.corporationId, {
+				periodStart: input.periodStart,
+				periodEnd: input.periodEnd,
+			}),
+		onSuccess: (result) => {
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.all,
+			})
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.assessments(result.corporationId),
+			})
+		},
+	})
+}
+
+export function useTaxAssessmentWorkflowStatus(
+	corporationId: string | undefined,
+	workflowInstanceId: string | undefined
+) {
+	const queryClient = useQueryClient()
+	const query = useQuery({
+		queryKey: corporationTaxKeys.assessmentWorkflow(
+			corporationId ?? 'none',
+			workflowInstanceId ?? 'none'
+		),
+		queryFn: () =>
+			corporationTaxApi.getAssessmentWorkflowStatus(corporationId!, workflowInstanceId!),
+		enabled: Boolean(corporationId && workflowInstanceId),
+		staleTime: 0,
+		refetchInterval: (query) => {
+			const status = query.state.data?.status
+			return status === 'queued' || status === 'running' || status === 'waiting' ? 2000 : false
+		},
+		refetchOnWindowFocus: true,
+	})
+
+	useEffect(() => {
+		if (query.data?.status === 'completed' && corporationId) {
+			void queryClient.invalidateQueries({
+				queryKey: corporationTaxKeys.assessments(corporationId),
+			})
+		}
+	}, [corporationId, query.data?.status, queryClient])
+
+	return query
 }
 
 export function useTaxLedgerEntries(
@@ -115,13 +175,16 @@ export function useTaxLedgerEntries(
 		maxAmount?: string
 		limit?: number
 		offset?: number
+		sortBy?: 'entryDate' | 'amount' | 'division' | 'refType' | 'sourceType'
+		sortDir?: 'asc' | 'desc'
 		enabled?: boolean
 	}
 ) {
 	return useQuery({
 		queryKey: corporationTaxKeys.ledgerEntries(corporationId ?? 'none', filters),
 		queryFn: () => corporationTaxApi.getLedgerEntries(corporationId!, filters),
-		staleTime: 1000 * 30,
+		placeholderData: keepPreviousData,
+		staleTime: 1000 * 60 * 2,
 		enabled: Boolean(corporationId) && (filters?.enabled ?? true),
 	})
 }

@@ -20,17 +20,21 @@ import {
 	useCreateTaxBillForAssessment,
 	useIssueTaxBillsForPeriod,
 	useRetractTaxAssessmentBill,
+	useRunTaxAssessmentForPeriod,
 	useSyncTaxAssessmentBillStatus,
 	useSyncTaxCorporationBillStatuses,
 	useTaxAssessments,
+	useTaxAssessmentWorkflowStatus,
 	useTaxCapabilities,
 } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
-import { getCurrentMonthDateRange } from '@/lib/tax-date'
+import { getCurrentMonthDateRange, getMonthDateRange, getMonthPeriodOptions } from '@/lib/tax-date'
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
+const DEFAULT_MONTH_VALUE = DEFAULT_MONTH_RANGE.fromDate.slice(0, 7)
+const TAX_ASSESSMENT_MONTH_OPTIONS = getMonthPeriodOptions(24)
 
 export default function TaxBillsPage() {
 	usePageTitle('Tax Billing')
@@ -44,6 +48,7 @@ export default function TaxBillsPage() {
 		setSelectedCorporationId,
 		effectiveCorporationId,
 	} = useTaxCorporationAccessScope(canAdminScope)
+	const [monthValue, setMonthValue] = useState(DEFAULT_MONTH_VALUE)
 	const [periodStartDate, setPeriodStartDate] = useState(DEFAULT_MONTH_RANGE.fromDate)
 	const [periodEndDate, setPeriodEndDate] = useState(DEFAULT_MONTH_RANGE.toDate)
 	const [retractingAssessmentId, setRetractingAssessmentId] = useState<string | null>(null)
@@ -52,18 +57,14 @@ export default function TaxBillsPage() {
 		effectiveCorporationId,
 		Boolean(effectiveCorporationId)
 	)
-	const canViewScoped = scopedCapabilities?.scoped.canAudit ?? false
+	const canViewScoped = scopedCapabilities?.scoped.canRead ?? false
 	const canView = canAdminScope || canViewScoped
 	const canIssue =
 		(globalCapabilities?.global.canManage ?? false) ||
 		(scopedCapabilities?.scoped.canManage ?? false)
 
-	const {
-		data: assessments = [],
-		isLoading: assessmentsLoading,
-		error: assessmentsError,
-	} = useTaxAssessments(effectiveCorporationId, {
-		limit: 500,
+	const { data: assessmentsPage } = useTaxAssessments(effectiveCorporationId, {
+		limit: 25,
 		enabled: canView,
 	})
 
@@ -71,20 +72,17 @@ export default function TaxBillsPage() {
 	const syncAssessmentMutation = useSyncTaxAssessmentBillStatus()
 	const retractAssessmentMutation = useRetractTaxAssessmentBill()
 	const issuePeriodMutation = useIssueTaxBillsForPeriod()
+	const runAssessmentMutation = useRunTaxAssessmentForPeriod()
+	const assessmentWorkflowStatusQuery = useTaxAssessmentWorkflowStatus(
+		effectiveCorporationId,
+		runAssessmentMutation.data?.workflowInstanceId
+	)
 	const syncCorporationMutation = useSyncTaxCorporationBillStatuses()
 
-	const corporationAssessments = assessments.filter(
-		(assessment) => assessment.assessmentScope === 'corporation'
-	)
-	const totalAssessments = corporationAssessments.length
-	const unbilledAssessmentRows = corporationAssessments.filter(
-		(assessment) =>
-			!assessment.billId && assessment.status !== 'draft' && assessment.status !== 'excluded'
-	)
-	const unbilledAssessmentCount = unbilledAssessmentRows.length
-	const overdueAssessments = corporationAssessments.filter(
-		(assessment) => assessment.billStatus === 'overdue'
-	).length
+	const assessments = assessmentsPage?.rows ?? []
+	const totalAssessments = assessmentsPage?.corporationAssessmentCount ?? 0
+	const unbilledAssessmentCount = assessmentsPage?.unbilledAssessmentCount ?? 0
+	const overdueAssessments = assessmentsPage?.overdueAssessmentCount ?? 0
 
 	const entityIds = useMemo(() => {
 		const ids = new Set<string>()
@@ -95,7 +93,14 @@ export default function TaxBillsPage() {
 		return [...ids]
 	}, [assessments])
 
-	const { data: entityNames = {} } = useEntityNames(entityIds, { enabled: canView })
+	const { data: resolvedEntityNames = {} } = useEntityNames(entityIds, { enabled: canView })
+	const entityNames = useMemo(() => {
+		const names = { ...resolvedEntityNames }
+		for (const corporation of accessibleCorporations) {
+			if (corporation.name) names[corporation.corporationId] = corporation.name
+		}
+		return names
+	}, [accessibleCorporations, resolvedEntityNames])
 	const retractableAssessment = assessments.find((row) => row.id === retractingAssessmentId)
 
 	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
@@ -133,20 +138,24 @@ export default function TaxBillsPage() {
 					overdueAssessments={overdueAssessments}
 				/>
 
-				<BillingConfigurationCard
-					effectiveCorporationId={effectiveCorporationId}
-					canIssue={canIssue}
-					canView={canView}
-				/>
+				{canAdminScope && (
+					<BillingConfigurationCard
+						effectiveCorporationId={effectiveCorporationId}
+						canIssue={canIssue}
+						canView={canAdminScope}
+					/>
+				)}
 
 				<BillingOperationsCard
 					effectiveCorporationId={effectiveCorporationId ?? null}
 					canIssue={canIssue}
-					periodStartDate={periodStartDate}
-					periodEndDate={periodEndDate}
-					onPeriodChange={({ fromDate, toDate }) => {
-						setPeriodStartDate(fromDate)
-						setPeriodEndDate(toDate)
+					monthValue={monthValue}
+					monthOptions={TAX_ASSESSMENT_MONTH_OPTIONS}
+					onMonthChange={(nextMonthValue) => {
+						const range = getMonthDateRange(nextMonthValue)
+						setMonthValue(nextMonthValue)
+						setPeriodStartDate(range.fromDate)
+						setPeriodEndDate(range.toDate)
 					}}
 					onSyncCorporation={() => {
 						if (!effectiveCorporationId) return
@@ -169,13 +178,24 @@ export default function TaxBillsPage() {
 					issuePeriodPending={issuePeriodMutation.isPending}
 					issuePeriodResult={issuePeriodMutation.data}
 					issuePeriodError={issuePeriodMutation.error}
+					onRunAssessment={() => {
+						if (!effectiveCorporationId || !periodStartDate || !periodEndDate) return
+						runAssessmentMutation.mutate({
+							corporationId: effectiveCorporationId,
+							periodStart: new Date(`${periodStartDate}T00:00:00.000Z`).toISOString(),
+							periodEnd: new Date(`${periodEndDate}T23:59:59.999Z`).toISOString(),
+						})
+					}}
+					runAssessmentPending={runAssessmentMutation.isPending}
+					runAssessmentResult={assessmentWorkflowStatusQuery.data?.output ?? undefined}
+					runAssessmentStatus={assessmentWorkflowStatusQuery.data?.status}
+					runAssessmentWorkflowError={assessmentWorkflowStatusQuery.data?.error ?? null}
+					runAssessmentError={runAssessmentMutation.error}
 				/>
 
 				<UnbilledAssessmentsCard
 					effectiveCorporationId={effectiveCorporationId ?? null}
-					assessmentsLoading={assessmentsLoading}
-					assessmentsError={assessmentsError}
-					unbilledAssessmentRows={unbilledAssessmentRows}
+					canView={canView}
 					canIssue={canIssue}
 					createBillPending={createBillMutation.isPending}
 					createBillError={createBillMutation.error}
@@ -229,10 +249,8 @@ export default function TaxBillsPage() {
 							<TabsContent value="assessments" className="mt-2">
 								<ScopedAssessmentSnapshotCard
 									effectiveCorporationId={effectiveCorporationId ?? null}
-									assessmentsLoading={assessmentsLoading}
-									assessmentsError={assessmentsError}
-									assessments={assessments}
 									entityNames={entityNames}
+									canView={canView}
 								/>
 							</TabsContent>
 

@@ -90,6 +90,8 @@ function makeCorporationTaxStub() {
 		listLedgerEntries: vi.fn(),
 		listLedgerParties: vi.fn(),
 		runAssessmentForPeriod: vi.fn(),
+		startAssessmentWorkflow: vi.fn(),
+		getAssessmentWorkflowStatus: vi.fn(),
 		rebuildFinalizedRollupsForPeriod: vi.fn(),
 		createBillsForAssessment: vi.fn(),
 		syncAssessmentBillStatus: vi.fn(),
@@ -729,14 +731,18 @@ describe('corporation-tax routes', () => {
 		expect(corporationTaxStub.runAssessmentForPeriod).not.toHaveBeenCalled()
 	})
 
-	it('forwards run-assessment payload as parsed dates', async () => {
+	it('queues run-assessment payload as parsed dates', async () => {
 		const user = makeUser()
 		const app = createApp(user)
 		const corporationTaxStub = makeCorporationTaxStub()
 		const featuresStub = { checkFlag: vi.fn().mockResolvedValue(true) }
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
-		corporationTaxStub.runAssessmentForPeriod.mockResolvedValue({
-			assessment: { id: 'assessment-1' },
+		corporationTaxStub.startAssessmentWorkflow.mockResolvedValue({
+			workflowInstanceId: 'tax-assessment-4002-run-1',
+			corporationId: '4002',
+			periodStart: '2026-03-01T00:00:00.000Z',
+			periodEnd: '2026-03-31T00:00:00.000Z',
+			status: 'queued',
 		})
 		routeStubs({ corporationTaxStub, featuresStub })
 
@@ -753,11 +759,17 @@ describe('corporation-tax routes', () => {
 			env
 		)
 
-		expect(response.status).toBe(200)
-		expect(await response.json()).toEqual({ assessment: { id: 'assessment-1' } })
-		expect(corporationTaxStub.runAssessmentForPeriod).toHaveBeenCalledTimes(1)
+		expect(response.status).toBe(202)
+		expect(await response.json()).toEqual({
+			workflowInstanceId: 'tax-assessment-4002-run-1',
+			corporationId: '4002',
+			periodStart: '2026-03-01T00:00:00.000Z',
+			periodEnd: '2026-03-31T00:00:00.000Z',
+			status: 'queued',
+		})
+		expect(corporationTaxStub.startAssessmentWorkflow).toHaveBeenCalledTimes(1)
 
-		const [actorUserId, payload] = corporationTaxStub.runAssessmentForPeriod.mock.calls[0]
+		const [actorUserId, payload] = corporationTaxStub.startAssessmentWorkflow.mock.calls[0]
 		expect(actorUserId).toBe(user.id)
 		expect(payload.corporationId).toBe('4002')
 		expect(payload.periodStart).toBeInstanceOf(Date)
@@ -856,7 +868,10 @@ describe('corporation-tax routes', () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
-		corporationTaxStub.listLedgerEntries.mockResolvedValue([{ id: 'ledger-1' }])
+		corporationTaxStub.listLedgerEntries.mockResolvedValue({
+			rows: [{ id: 'ledger-1' }],
+			totalRows: 1,
+		})
 		routeStubs({ corporationTaxStub })
 
 		const response = await app.request(
@@ -866,7 +881,7 @@ describe('corporation-tax routes', () => {
 		)
 
 		expect(response.status).toBe(200)
-		expect(await response.json()).toEqual([{ id: 'ledger-1' }])
+		expect(await response.json()).toEqual({ rows: [{ id: 'ledger-1' }], totalRows: 1 })
 		expect(corporationTaxStub.listLedgerEntries).toHaveBeenCalledWith('4002', {
 			division: undefined,
 			sourceTypes: ['character_wallet_journal', 'character_wallet_transaction'],
@@ -880,6 +895,8 @@ describe('corporation-tax routes', () => {
 			maxAmount: undefined,
 			limit: 20,
 			offset: 3,
+			sortBy: undefined,
+			sortDir: 'desc',
 		})
 	})
 
@@ -1800,7 +1817,7 @@ describe('corporation-tax routes', () => {
 		routeStubs({ corporationTaxStub, characterDataStub })
 
 		const response = await app.request(
-			'/api/corporation-tax/corporations/1234/member-summary?fromDate=2026-03-01T00:00:00.000Z&toDate=2026-03-31T23:59:59.999Z&topRefTypesLimit=3',
+			'/api/corporation-tax/corporations/1234/member-summary?fromDate=2026-03-01T00:00:00.000Z&toDate=2026-03-31T23:59:59.999Z&topRefTypesLimit=3&refTypes=bounty_prizes,ess_escrow_transfer',
 			{},
 			env
 		)
@@ -1812,6 +1829,7 @@ describe('corporation-tax routes', () => {
 		expect(corporationTaxStub.getMemberSummaryReport).toHaveBeenCalledWith({
 			corporationId: '1234',
 			characterIds: ['7001'],
+			refTypes: ['bounty_prizes', 'ess_escrow_transfer'],
 			fromDate: new Date('2026-03-01T00:00:00.000Z'),
 			toDate: new Date('2026-03-31T23:59:59.999Z'),
 			topRefTypesLimit: 3,
@@ -1842,6 +1860,7 @@ describe('corporation-tax routes', () => {
 		expect(corporationTaxStub.getMemberSummaryReport).toHaveBeenCalledWith({
 			corporationId: '1234',
 			characterIds: ['7001'],
+			refTypes: undefined,
 			fromDate: undefined,
 			toDate: undefined,
 			topRefTypesLimit: undefined,
@@ -1901,6 +1920,7 @@ describe('corporation-tax routes', () => {
 		expect(corporationTaxStub.getMemberSummaryReport).toHaveBeenCalledWith({
 			corporationId: '1234',
 			characterIds: ['81234567'],
+			refTypes: undefined,
 			fromDate: undefined,
 			toDate: undefined,
 			topRefTypesLimit: undefined,

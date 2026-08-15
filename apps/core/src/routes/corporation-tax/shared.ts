@@ -310,12 +310,14 @@ export function parseRollupReportFiltersFromQuery(
 	request: {
 		query: (key: string) => string | undefined
 	},
-	options?: { allowedSortFields?: readonly string[] }
+	options?: { allowedSortFields?: readonly string[]; maxLimit?: number }
 ): {
 	filters?: {
 		corporationId?: string
 		fromDate?: Date
 		toDate?: Date
+		refTypes?: string[]
+		incomeMode?: 'total' | 'assessed'
 		limit?: number
 		offset?: number
 		sortBy?: string
@@ -326,10 +328,16 @@ export function parseRollupReportFiltersFromQuery(
 	const corporationId = request.query('corporationId') || undefined
 	const fromDate = parseDateQueryParam(request.query('fromDate'))
 	const toDate = parseDateQueryParam(request.query('toDate'))
+	const refTypes = request
+		.query('refTypes')
+		?.split(',')
+		.map((value) => value.trim())
+		.filter(Boolean)
 	const limit = parseIntegerQueryParam(request.query('limit'))
 	const offset = parseIntegerQueryParam(request.query('offset'))
 	const sortBy = request.query('sortBy') || undefined
 	const sortDirection = parseSortDirectionQueryParam(request.query('sortDir'))
+	const incomeMode = request.query('incomeMode') || undefined
 
 	if (fromDate === null) {
 		return { error: 'fromDate must be a valid ISO date string' }
@@ -340,14 +348,20 @@ export function parseRollupReportFiltersFromQuery(
 	if (fromDate && toDate && fromDate > toDate) {
 		return { error: 'fromDate must be before or equal to toDate' }
 	}
-	if (limit !== undefined && (limit < 1 || limit > 200)) {
-		return { error: 'limit must be an integer between 1 and 200' }
+	if (refTypes && refTypes.some((value) => !isTaxIncomeRefType(value))) {
+		return { error: 'refTypes must only include valid tax income ref types' }
+	}
+	if (limit !== undefined && (limit < 1 || limit > (options?.maxLimit ?? 200))) {
+		return { error: `limit must be an integer between 1 and ${options?.maxLimit ?? 200}` }
 	}
 	if (offset !== undefined && offset < 0) {
 		return { error: 'offset must be an integer >= 0' }
 	}
 	if (sortDirection === null) {
 		return { error: "sortDir must be 'asc' or 'desc'" }
+	}
+	if (incomeMode && incomeMode !== 'total' && incomeMode !== 'assessed') {
+		return { error: "incomeMode must be 'total' or 'assessed'" }
 	}
 	if (sortBy && options?.allowedSortFields && !options.allowedSortFields.includes(sortBy)) {
 		return { error: `sortBy must be one of: ${options.allowedSortFields.join(', ')}` }
@@ -358,6 +372,8 @@ export function parseRollupReportFiltersFromQuery(
 			corporationId,
 			fromDate: fromDate ?? undefined,
 			toDate: toDate ?? undefined,
+			refTypes: refTypes && refTypes.length > 0 ? refTypes : undefined,
+			incomeMode: incomeMode as 'total' | 'assessed' | undefined,
 			limit: limit ?? undefined,
 			offset: offset ?? undefined,
 			sortBy: sortBy ?? undefined,
@@ -435,6 +451,8 @@ export function parseAuditLogFiltersFromQuery(request: {
 		toDate?: Date
 		limit?: number
 		offset?: number
+		sortBy?: 'createdAt' | 'corporationId' | 'actorUserId' | 'action'
+		sortDir?: 'asc' | 'desc'
 	}
 	error?: string
 } {
@@ -445,6 +463,8 @@ export function parseAuditLogFiltersFromQuery(request: {
 	const toDate = parseDateQueryParam(request.query('toDate'))
 	const limit = parseIntegerQueryParam(request.query('limit'))
 	const offset = parseIntegerQueryParam(request.query('offset'))
+	const sortBy = request.query('sortBy') || undefined
+	const sortDir = parseSortDirectionQueryParam(request.query('sortDir'))
 
 	if (fromDate === null) {
 		return { error: 'fromDate must be a valid ISO date string' }
@@ -461,6 +481,12 @@ export function parseAuditLogFiltersFromQuery(request: {
 	if (offset !== undefined && offset < 0) {
 		return { error: 'offset must be an integer greater than or equal to 0' }
 	}
+	if (sortDir === null) {
+		return { error: "sortDir must be 'asc' or 'desc'" }
+	}
+	if (sortBy && !['createdAt', 'corporationId', 'actorUserId', 'action'].includes(sortBy)) {
+		return { error: 'sortBy must be one of: createdAt, corporationId, actorUserId, action' }
+	}
 
 	return {
 		filters: {
@@ -471,6 +497,8 @@ export function parseAuditLogFiltersFromQuery(request: {
 			toDate: toDate ?? undefined,
 			limit: limit ?? undefined,
 			offset: offset ?? undefined,
+			sortBy: sortBy as 'createdAt' | 'corporationId' | 'actorUserId' | 'action' | undefined,
+			sortDir: sortDir ?? undefined,
 		},
 	}
 }

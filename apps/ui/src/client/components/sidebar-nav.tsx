@@ -485,6 +485,13 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			) ||
 			hasAnyPermission('urn:tax:auditor', 'urn:tax:admin') ||
 			!!corporationAccess?.hasAccess
+		const canReadScopedTaxReports =
+			permissions.some(
+				(permission) => extractCorporationIdFromTaxViewerScopedUrn(permission.urn) !== null
+			) ||
+			(leadershipCorporationAccess?.corporations ?? []).some(
+				(corporation) => corporation.userRole === 'CEO' || corporation.userRole === 'Director'
+			)
 		const canAuditTaxFeature = isSiteAdmin || hasAnyPermission('urn:tax:auditor', 'urn:tax:admin')
 		const canManageTaxFeature = isSiteAdmin || hasAnyPermission('urn:tax:admin')
 		const { data: openTaxAlerts = [] } = useTaxAlerts({
@@ -501,11 +508,14 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 				href: '/tax/member-summary',
 			})
 
-			if (canAuditTaxFeature) {
+			if (canAuditTaxFeature || canReadScopedTaxReports) {
 				taxItems.push({
 					label: 'Reports',
 					href: '/tax/reports',
 				})
+			}
+
+			if (canAuditTaxFeature) {
 				taxItems.push({
 					label: 'Billing',
 					href: '/tax/bills',

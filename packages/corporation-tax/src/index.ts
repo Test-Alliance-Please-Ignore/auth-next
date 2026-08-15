@@ -35,9 +35,13 @@ import type {
 	TaxAlert,
 	TaxAssessment,
 	TaxAssessmentLine,
+	TaxAssessmentPage,
 	TaxAssessmentWithBillHistory,
+	TaxAssessmentWorkflowStartResult,
+	TaxAssessmentWorkflowStatusResult,
 	TaxAuditLogEntry,
 	TaxBillingEventHistoryRow,
+	TaxBillingEventSortBy,
 	TaxBillStateSyncInput,
 	TaxBillStatusReportRow,
 	TaxCompliancePoint,
@@ -48,6 +52,7 @@ import type {
 	TaxExportArtifact,
 	TaxExportRecord,
 	TaxExportSchedule,
+	TaxIncomeDisplayMode,
 	TaxLedgerEntry,
 	TaxLedgerIngestionHealth,
 	TaxLedgerIngestionResult,
@@ -199,7 +204,7 @@ export interface CorporationTax {
 	/**
 	 * List tax assessments.
 	 */
-	listAssessments(filters?: ListTaxAssessmentsFilters): Promise<TaxAssessment[]>
+	listAssessments(filters?: ListTaxAssessmentsFilters): Promise<TaxAssessmentPage>
 
 	/**
 	 * Compute or recompute corporation tax assessment for a period.
@@ -208,6 +213,22 @@ export interface CorporationTax {
 		actorUserId: string,
 		input: RunTaxAssessmentForPeriodInput
 	): Promise<RunTaxAssessmentForPeriodResult>
+
+	/**
+	 * Queue a long-running assessment for asynchronous execution.
+	 */
+	startAssessmentWorkflow(
+		actorUserId: string,
+		input: RunTaxAssessmentForPeriodInput
+	): Promise<TaxAssessmentWorkflowStartResult>
+
+	/**
+	 * Read the status of a previously queued assessment workflow.
+	 */
+	getAssessmentWorkflowStatus(
+		corporationId: string,
+		workflowInstanceId: string
+	): Promise<TaxAssessmentWorkflowStatusResult>
 
 	/**
 	 * Explicit closed-period finalized rollup rebuild/backfill command.
@@ -269,7 +290,7 @@ export interface CorporationTax {
 		corporationId: string,
 		limit?: number,
 		offset?: number
-	): Promise<TaxAssessmentWithBillHistory[]>
+	): Promise<TaxPagedResult<TaxAssessmentWithBillHistory>>
 
 	/**
 	 * Get billing-domain event history for a corporation's billed corporation-scope assessments.
@@ -277,7 +298,9 @@ export interface CorporationTax {
 	getCorporationBillEventHistory(
 		corporationId: string,
 		limit?: number,
-		offset?: number
+		offset?: number,
+		sortBy?: TaxBillingEventSortBy,
+		sortDir?: 'asc' | 'desc'
 	): Promise<TaxPagedResult<TaxBillingEventHistoryRow>>
 
 	/**
@@ -385,7 +408,7 @@ export interface CorporationTax {
 	listLedgerEntries(
 		corporationId: string,
 		filters?: TaxLedgerWindowFilters
-	): Promise<TaxLedgerEntry[]>
+	): Promise<TaxPagedResult<TaxLedgerEntry>>
 
 	/**
 	 * List distinct sender/recipient entity IDs present in ledger entries.
@@ -442,6 +465,9 @@ export interface CorporationTax {
 	 * Tax compliance trend points over time.
 	 */
 	getComplianceOverTimeReport(filters?: TaxRollupReportFilters): Promise<TaxCompliancePoint[]>
+	getComplianceOverTimeReportPage(
+		filters?: TaxRollupReportFilters
+	): Promise<TaxPagedResult<TaxCompliancePoint>>
 
 	/**
 	 * Tax discrepancy report with optional open-only filtering.
@@ -472,6 +498,11 @@ export interface CorporationTax {
 	): Promise<TaxPagedResult<TaxMemberSummary>>
 
 	/**
+	 * Income types whose effective active rule for a corporation is taxable.
+	 */
+	getTaxableIncomeRefTypes(corporationId?: string): Promise<string[]>
+
+	/**
 	 * Request a tax report export run.
 	 */
 	requestExport(actorUserId: string, input: RequestTaxExportInput): Promise<TaxExportRecord>
@@ -479,7 +510,7 @@ export interface CorporationTax {
 	/**
 	 * List export run history.
 	 */
-	listExports(filters?: ListTaxExportsFilters): Promise<TaxExportRecord[]>
+	listExports(filters?: ListTaxExportsFilters): Promise<TaxPagedResult<TaxExportRecord>>
 
 	/**
 	 * Get one export record by id.
@@ -502,7 +533,9 @@ export interface CorporationTax {
 	/**
 	 * List export schedules.
 	 */
-	listExportSchedules(filters?: ListTaxExportSchedulesFilters): Promise<TaxExportSchedule[]>
+	listExportSchedules(
+		filters?: ListTaxExportSchedulesFilters
+	): Promise<TaxPagedResult<TaxExportSchedule>>
 
 	/**
 	 * Run scheduled export + alert retry operations for the tax domain.
@@ -604,7 +637,9 @@ export type {
 	TaxLedgerRetentionResult,
 	TaxLedgerWindowFilters,
 	TaxAssessment,
+	TaxAssessmentPage,
 	TaxBillingEventHistoryRow,
+	TaxBillingEventSortBy,
 	TaxAssessmentScope,
 	TaxAssessmentStatus,
 	TaxAssessmentWithBillHistory,
@@ -620,6 +655,7 @@ export type {
 	TaxBillingPayeeType,
 	TaxCorporationEsiAuthStatus,
 	TaxCompliancePoint,
+	TaxComplianceSortBy,
 	TaxCorporationBillingConfig,
 	TaxCorporationExclusion,
 	TaxNotificationDestination,
@@ -628,6 +664,10 @@ export type {
 	TaxRuleGroupAttachment,
 	TaxRuleSet,
 	TaxScheduledOperationsResult,
+	TaxAssessmentWorkflowOutput,
+	TaxAssessmentWorkflowParams,
+	TaxAssessmentWorkflowStartResult,
+	TaxAssessmentWorkflowStatusResult,
 	TaxSyncCheckpoint,
 	TaxSummaryReport,
 	TaxTopIncomeSourceMonthlyRow,
@@ -642,6 +682,7 @@ export type {
 	TaxRollupReportFilters,
 	TaxReportWindowFilters,
 	TaxMemberSummaryTopRefType,
+	TaxIncomeDisplayMode,
 	TriggerTaxProjectionRefreshInput,
 	TriggerTaxProjectionRefreshResult,
 	TriggerTaxAlertInput,

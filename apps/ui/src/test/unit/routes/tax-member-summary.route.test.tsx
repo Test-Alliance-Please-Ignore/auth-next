@@ -1,8 +1,9 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import TaxMemberSummaryPage from '@/routes/tax-member-summary'
+
+import type { ReactNode } from 'react'
 
 const {
 	useCorporationAccessMock,
@@ -11,6 +12,7 @@ const {
 	useTaxCapabilitiesMock,
 	useTaxCorporationsMock,
 	useTaxSummaryReportMock,
+	useTaxableIncomeRefTypesMock,
 } = vi.hoisted(() => ({
 	useCorporationAccessMock: vi.fn(),
 	useEntityNamesMock: vi.fn(),
@@ -18,6 +20,7 @@ const {
 	useTaxCapabilitiesMock: vi.fn(),
 	useTaxCorporationsMock: vi.fn(),
 	useTaxSummaryReportMock: vi.fn(),
+	useTaxableIncomeRefTypesMock: vi.fn(),
 }))
 
 vi.mock('@/features/corporations', () => ({
@@ -36,6 +39,7 @@ vi.mock('@/hooks/corporation-tax', () => ({
 	useTaxCapabilities: (...args: unknown[]) => useTaxCapabilitiesMock(...args),
 	useTaxCorporations: (...args: unknown[]) => useTaxCorporationsMock(...args),
 	useTaxSummaryReport: (...args: unknown[]) => useTaxSummaryReportMock(...args),
+	useTaxableIncomeRefTypes: (...args: unknown[]) => useTaxableIncomeRefTypesMock(...args),
 }))
 
 vi.mock('@/components/tax-corporation-scope-selector', () => ({
@@ -137,6 +141,7 @@ describe('TaxMemberSummaryPage corporation scope gating', () => {
 			isLoading: false,
 			refetch: vi.fn(),
 		})
+		useTaxableIncomeRefTypesMock.mockReturnValue({ data: [] })
 
 		const html = renderToStaticMarkup(<TaxMemberSummaryPage />)
 
@@ -193,6 +198,7 @@ describe('TaxMemberSummaryPage corporation scope gating', () => {
 			isLoading: false,
 			refetch: vi.fn(),
 		})
+		useTaxableIncomeRefTypesMock.mockReturnValue({ data: [] })
 
 		const html = renderToStaticMarkup(<TaxMemberSummaryPage />)
 

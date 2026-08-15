@@ -7,6 +7,7 @@ import {
 	TaxSummaryCards,
 } from '@/components/tax-reports/report-panels'
 import { TaxReportWorkspace } from '@/components/tax-reports/report-workspace'
+import { useReportGridState } from '@/components/tax-reports/use-report-grid-state'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
@@ -23,10 +24,17 @@ import {
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
-import { getCurrentMonthDateRange } from '@/lib/tax-date'
+import {
+	getCurrentMonthDateRange,
+	getCurrentMonthWindowRange,
+	getPreviousCompletedMonthRange,
+	shiftMonthRange,
+} from '@/lib/tax-date'
 import { downloadBase64File, toEndOfDayIso, toStartOfDayIso } from '@/lib/tax-report-utils'
+import toast from '@/lib/toast'
 
 import type { TaxExportFormat, TaxExportReportType } from '@repo/corporation-tax'
+import type { TaxReportQuickRange } from '@/lib/tax-date'
 import type { SortDirection } from '@/lib/tax-report-utils'
 
 type TaxReportView = TaxExportReportType | 'missing_esi_keys'
@@ -47,7 +55,7 @@ const reportViewOptions: Array<{
 	{
 		value: 'top_income_sources',
 		label: 'Income Sources',
-		description: 'Taxable inflow grouped by income type.',
+		description: 'Income or assessed tax grouped by income type.',
 		exportable: true,
 	},
 	{
@@ -76,7 +84,7 @@ const reportViewOptions: Array<{
 	},
 	{
 		value: 'missing_esi_keys',
-		label: 'Missing ESI Keys',
+		label: 'ESI Coverage',
 		description: 'Corporations with incomplete ESI key or scope coverage.',
 		exportable: false,
 		requiresAdminScope: true,
@@ -120,6 +128,28 @@ export default function TaxReportsPage() {
 	const [scheduleFrequency, setScheduleFrequency] = useState<'weekly' | 'monthly'>('weekly')
 	const [fromDate, setFromDate] = useState(DEFAULT_MONTH_RANGE.fromDate)
 	const [toDate, setToDate] = useState(DEFAULT_MONTH_RANGE.toDate)
+	const moveMonth = (monthOffset: number) => {
+		const nextRange = shiftMonthRange(fromDate, monthOffset)
+		setFromDate(nextRange.fromDate)
+		setToDate(nextRange.toDate)
+	}
+	const selectQuickRange = (range: TaxReportQuickRange) => {
+		const nextRange =
+			range === 'current-month'
+				? getCurrentMonthDateRange()
+				: range === 'previous-month'
+					? getPreviousCompletedMonthRange(1)
+					: getCurrentMonthWindowRange(
+							range === 'last-3-months' ? 3 : range === 'last-6-months' ? 6 : 12
+						)
+		setFromDate(nextRange.fromDate)
+		setToDate(nextRange.toDate)
+	}
+	const resetFilters = () => {
+		setFromDate(DEFAULT_MONTH_RANGE.fromDate)
+		setToDate(DEFAULT_MONTH_RANGE.toDate)
+		setSelectedCorporationId(undefined)
+	}
 	const [totalTaxesExportSort, setTotalTaxesExportSort] = useState<{
 		sortBy: string
 		sortDir: SortDirection
@@ -141,16 +171,27 @@ export default function TaxReportsPage() {
 		sortBy: 'createdAt',
 		sortDir: 'desc',
 	})
+	const exportGrid = useReportGridState({
+		defaultSortBy: 'requestedAt',
+		defaultSortDir: 'desc',
+		defaultPageSize: 25,
+		resetOn: effectiveCorporationId,
+	})
+	const scheduleGrid = useReportGridState({
+		defaultSortBy: 'nextRunAt',
+		defaultSortDir: 'desc',
+		defaultPageSize: 25,
+		resetOn: effectiveCorporationId,
+	})
 
 	const { data: scopedCapabilities, isLoading: scopedCapabilitiesLoading } = useTaxCapabilities(
 		effectiveCorporationId,
 		Boolean(effectiveCorporationId)
 	)
-	const canAuditScoped = scopedCapabilities?.scoped.canAudit ?? false
-	const canManageScoped = canAuditScoped
-	const canView = canAdminScope || canAuditScoped
-	const canExport = canAdminExport || canAuditScoped
-	const canCreateSchedule = canAdminManageSchedules || canManageScoped
+	const canReadScoped = scopedCapabilities?.scoped.canRead ?? false
+	const canView = canAdminScope || canReadScoped
+	const canExport = canAdminExport
+	const canCreateSchedule = canAdminManageSchedules
 
 	const visibleReportOptions = useMemo(
 		() => reportViewOptions.filter((option) => !option.requiresAdminScope || canAdminScope),
@@ -197,25 +238,48 @@ export default function TaxReportsPage() {
 	})
 
 	const {
-		data: exportsList = [],
-		isLoading: exportsLoading,
+		data: exportsPage,
+		isFetching: exportsLoading,
 		error: exportsError,
 	} = useTaxExports({
 		corporationId: effectiveCorporationId,
-		limit: 100,
+		limit: exportGrid.limit,
+		offset: exportGrid.offset,
+		sortBy: exportGrid.sortBy as
+			| 'requestedAt'
+			| 'corporationId'
+			| 'reportType'
+			| 'format'
+			| 'status'
+			| 'rowCount'
+			| 'completedAt',
+		sortDir: exportGrid.sortDir,
 		enabled: canView,
 	})
 
 	const {
-		data: schedules = [],
-		isLoading: schedulesLoading,
+		data: schedulesPage,
+		isFetching: schedulesLoading,
 		error: schedulesError,
 	} = useTaxExportSchedules({
 		corporationId: effectiveCorporationId,
 		activeOnly: false,
-		limit: 100,
+		limit: scheduleGrid.limit,
+		offset: scheduleGrid.offset,
+		sortBy: scheduleGrid.sortBy as
+			| 'name'
+			| 'corporationId'
+			| 'reportType'
+			| 'format'
+			| 'frequency'
+			| 'isActive'
+			| 'nextRunAt'
+			| 'lastRunAt',
+		sortDir: scheduleGrid.sortDir,
 		enabled: canView,
 	})
+	const exportsList = exportsPage?.rows ?? []
+	const schedules = schedulesPage?.rows ?? []
 
 	const requestExportMutation = useRequestTaxExport()
 	const createScheduleMutation = useCreateTaxExportSchedule()
@@ -301,6 +365,9 @@ export default function TaxReportsPage() {
 				<TaxReportFiltersCard
 					fromDate={fromDate}
 					toDate={toDate}
+					onMoveMonth={moveMonth}
+					onSelectQuickRange={selectQuickRange}
+					onReset={resetFilters}
 					onDateRangeChange={({ fromDate: nextFromDate, toDate: nextToDate }) => {
 						setFromDate(nextFromDate)
 						setToDate(nextToDate)
@@ -352,13 +419,23 @@ export default function TaxReportsPage() {
 					scheduleSubmitting={createScheduleMutation.isPending}
 					onSubmitExport={async () => {
 						if (!activeExportReportType) return
-						await requestExportMutation.mutateAsync({
-							corporationId: effectiveCorporationId,
-							format: selectedExportFormat,
-							reportType: activeExportReportType,
-							filters: exportFilters,
-							sourceEsiVersion: 'esi-v1',
-						})
+						try {
+							await requestExportMutation.mutateAsync({
+								corporationId: effectiveCorporationId,
+								format: selectedExportFormat,
+								reportType: activeExportReportType,
+								filters: exportFilters,
+								sourceEsiVersion: 'esi-v1',
+							})
+							toast.success('Tax export request submitted', {
+								description: 'The export will appear in Recent Exports when it is ready.',
+							})
+						} catch (error) {
+							toast.error('Failed to request tax export', {
+								description: error instanceof Error ? error.message : 'Please try again.',
+							})
+							throw error
+						}
 					}}
 					onSubmitSchedule={async () => {
 						if (!activeExportReportType) return
@@ -388,6 +465,11 @@ export default function TaxReportsPage() {
 							},
 						})
 					}
+					pagination={exportGrid.pagination}
+					onPaginationChange={exportGrid.onPaginationChange}
+					rowCount={exportsPage?.totalRows ?? 0}
+					sorting={exportGrid.sorting}
+					onSortingChange={exportGrid.onSortingChange}
 				/>
 
 				<TaxExportSchedulesPanel
@@ -396,6 +478,11 @@ export default function TaxReportsPage() {
 					error={schedulesError}
 					entityNames={entityNames}
 					createScheduleError={createScheduleMutation.error}
+					pagination={scheduleGrid.pagination}
+					onPaginationChange={scheduleGrid.onPaginationChange}
+					rowCount={schedulesPage?.totalRows ?? 0}
+					sorting={scheduleGrid.sorting}
+					onSortingChange={scheduleGrid.onSortingChange}
 				/>
 			</Section>
 		</Container>

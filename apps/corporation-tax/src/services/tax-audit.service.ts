@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, lte, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, gte, ilike, lte, sql } from '@repo/db-utils'
 
 import { taxAuditLog } from '../db/schema'
 
@@ -52,10 +52,19 @@ export class TaxAuditService {
 		const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200)
 		const offset = Math.max(filters.offset ?? 0, 0)
 		const where = conditions.length > 0 ? and(...conditions) : undefined
+		const sortDirection = filters.sortDir === 'asc' ? asc : desc
+		const sortColumn =
+			filters.sortBy === 'corporationId'
+				? taxAuditLog.corporationId
+				: filters.sortBy === 'actorUserId'
+					? taxAuditLog.actorUserId
+					: filters.sortBy === 'action'
+						? taxAuditLog.action
+						: taxAuditLog.createdAt
 		const [rows, countRows] = await Promise.all([
 			this.db.query.taxAuditLog.findMany({
 				where,
-				orderBy: [desc(taxAuditLog.createdAt)],
+				orderBy: [sortDirection(sortColumn), desc(taxAuditLog.id)],
 				limit,
 				offset,
 			}),

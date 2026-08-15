@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
-import { Select } from '@/components/ui/select'
 import { Section } from '@/components/ui/section'
+import { Select } from '@/components/ui/select'
 import { useTaxAuditActors, useTaxAuditLog, useTaxCapabilities } from '@/hooks/corporation-tax'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useEntityNames } from '@/hooks/useEntityNames'
@@ -53,7 +53,7 @@ export default function TaxAuditLogPage() {
 
 	const {
 		data: auditLogPage,
-		isLoading,
+		isFetching: isLoading,
 		error,
 	} = useTaxAuditLog({
 		corporationId: effectiveCorporationId,
@@ -61,11 +61,12 @@ export default function TaxAuditLogPage() {
 		action: actionFilter.trim() || undefined,
 		limit: grid.limit,
 		offset: grid.offset,
+		sortBy: grid.sortBy as 'createdAt' | 'corporationId' | 'actorUserId' | 'action',
+		sortDir: grid.sortDir,
 		enabled: canView,
 	})
 	const auditLogRows = auditLogPage?.rows ?? []
 	const totalRows = auditLogPage?.totalRows ?? 0
-	const pageCount = grid.pageCountFor(totalRows)
 
 	const corporationIds = useMemo(
 		() =>
@@ -115,7 +116,8 @@ export default function TaxAuditLogPage() {
 	}, [resolvedActors])
 	const actorSearchOptions = useMemo(
 		() =>
-			actorSearchResults.map((actor) => ({ value: actor.userId,
+			actorSearchResults.map((actor) => ({
+				value: actor.userId,
 				label: actor.name ?? actor.userId,
 				description: actor.name ? actor.userId : undefined,
 			})),
@@ -199,29 +201,18 @@ export default function TaxAuditLogPage() {
 						<CardDescription>Most recent entries first.</CardDescription>
 					</CardHeader>
 					<CardContent>
-						{isLoading ? (
-							<div className="py-8 text-sm text-muted-foreground">Loading audit log...</div>
-						) : error ? (
-							<div className="py-8 text-sm text-destructive">
-								{error instanceof Error ? error.message : 'Failed to load tax audit log'}
-							</div>
-						) : auditLogRows.length === 0 ? (
-							<div className="py-8 text-sm text-muted-foreground">
-								No audit entries matched the selected filters.
-							</div>
-						) : (
-							<TaxAuditLogGrid
-								rows={auditLogRows}
-								loading={isLoading}
-								error={error}
-								entityNames={entityNames}
-								actorDisplayNames={actorDisplayNames}
-								pagination={grid.pagination}
-								onPaginationChange={grid.onPaginationChange}
-								pageCount={pageCount}
-								rowCount={totalRows}
-							/>
-						)}
+						<TaxAuditLogGrid
+							rows={auditLogRows}
+							loading={isLoading}
+							error={error}
+							entityNames={entityNames}
+							actorDisplayNames={actorDisplayNames}
+							sorting={grid.sorting}
+							onSortingChange={grid.onSortingChange}
+							pagination={grid.pagination}
+							onPaginationChange={grid.onPaginationChange}
+							rowCount={totalRows}
+						/>
 					</CardContent>
 				</Card>
 			</Section>

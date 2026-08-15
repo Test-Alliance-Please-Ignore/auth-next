@@ -55,6 +55,8 @@ export interface ListTaxAuditLogFilters {
 	toDate?: Date
 	limit?: number
 	offset?: number
+	sortBy?: 'createdAt' | 'corporationId' | 'actorUserId' | 'action'
+	sortDir?: 'asc' | 'desc'
 }
 
 export interface TaxRuleSet {
@@ -200,10 +202,19 @@ export interface ListTaxAssessmentsFilters {
 	status?: TaxAssessmentStatus
 	assessmentScope?: TaxAssessmentScope
 	withBillOnly?: boolean
+	unbilledOnly?: boolean
 	periodStart?: Date
 	periodEnd?: Date
 	limit?: number
 	offset?: number
+	sortBy?: 'taxPeriodEnd' | 'assessmentScope' | 'scopeId' | 'status' | 'taxDue' | 'taxDelta'
+	sortDir?: 'asc' | 'desc'
+}
+
+export interface TaxAssessmentPage extends TaxPagedResult<TaxAssessment> {
+	corporationAssessmentCount: number
+	unbilledAssessmentCount: number
+	overdueAssessmentCount: number
 }
 
 export interface RunTaxAssessmentForPeriodInput {
@@ -211,6 +222,37 @@ export interface RunTaxAssessmentForPeriodInput {
 	periodStart: Date
 	periodEnd: Date
 	includeCharacterWallets?: boolean
+}
+
+export interface TaxAssessmentWorkflowParams {
+	actorUserId: string
+	corporationId: string
+	periodStart: string
+	periodEnd: string
+	includeCharacterWallets?: boolean
+}
+
+export interface TaxAssessmentWorkflowOutput {
+	status: 'completed'
+	assessmentId: string
+	lineCount: number
+	discrepancyCount: number
+}
+
+export interface TaxAssessmentWorkflowStartResult {
+	workflowInstanceId: string
+	corporationId: string
+	periodStart: string
+	periodEnd: string
+	status: 'queued'
+}
+
+export interface TaxAssessmentWorkflowStatusResult {
+	workflowInstanceId: string
+	status: 'queued' | 'running' | 'paused' | 'waiting' | 'completed' | 'failed' | 'unknown'
+	rawStatus: string
+	output: TaxAssessmentWorkflowOutput | null
+	error: { name: string; message: string } | null
 }
 
 export interface RunTaxAssessmentForPeriodResult {
@@ -296,6 +338,8 @@ export interface TaxBillingEventHistoryRow {
 	metadata: Record<string, string | number | boolean | null> | null
 	createdAt: Date
 }
+
+export type TaxBillingEventSortBy = 'createdAt' | 'eventType' | 'billId' | 'actorUserId'
 
 export interface IssueBillsForPeriodInput {
 	corporationId: string
@@ -429,6 +473,8 @@ export interface TaxLedgerWindowFilters {
 	maxAmount?: string
 	limit?: number
 	offset?: number
+	sortBy?: 'entryDate' | 'amount' | 'division' | 'refType' | 'sourceType'
+	sortDir?: 'asc' | 'desc'
 }
 
 export interface ListTaxLedgerPartiesFilters {
@@ -516,11 +562,15 @@ export interface TaxRollupReportFilters {
 	corporationId?: string
 	fromDate?: Date
 	toDate?: Date
+	refTypes?: string[]
+	incomeMode?: TaxIncomeDisplayMode
 	limit?: number
 	offset?: number
 	sortBy?: string
 	sortDirection?: 'asc' | 'desc'
 }
+
+export type TaxIncomeDisplayMode = 'total' | 'assessed'
 
 export interface TaxPagedResult<TRow> {
 	rows: TRow[]
@@ -599,6 +649,8 @@ export interface TaxCompliancePoint {
 	entryCount: number
 }
 
+export type TaxComplianceSortBy = 'rollupDate' | 'taxDue' | 'taxPaid' | 'taxDelta' | 'entryCount'
+
 export interface TaxMissingEsiKeyRow {
 	corporationId: string
 	isConfigured: boolean
@@ -632,7 +684,7 @@ export type TaxMemberComplianceStatus = 'underpaid' | 'paid' | 'overpaid' | 'no_
 export interface TaxMemberSummaryTopRefType {
 	refType: string
 	lineCount: number
-	contributionAmount?: string
+	contributionAmount: string
 	taxableAmount: string
 	taxAmount: string
 }
@@ -652,6 +704,7 @@ export interface TaxMemberSummary {
 export interface TaxMemberSummaryReportFilters {
 	corporationId: string
 	characterIds?: string[]
+	refTypes?: string[]
 	fromDate?: Date
 	toDate?: Date
 	topRefTypesLimit?: number
@@ -710,6 +763,15 @@ export interface ListTaxExportsFilters {
 	status?: TaxExportStatus
 	limit?: number
 	offset?: number
+	sortBy?:
+		| 'requestedAt'
+		| 'corporationId'
+		| 'reportType'
+		| 'format'
+		| 'status'
+		| 'rowCount'
+		| 'completedAt'
+	sortDir?: 'asc' | 'desc'
 }
 
 export interface TaxExportRecord {
@@ -759,6 +821,16 @@ export interface ListTaxExportSchedulesFilters {
 	activeOnly?: boolean
 	limit?: number
 	offset?: number
+	sortBy?:
+		| 'name'
+		| 'corporationId'
+		| 'reportType'
+		| 'format'
+		| 'frequency'
+		| 'isActive'
+		| 'nextRunAt'
+		| 'lastRunAt'
+	sortDir?: 'asc' | 'desc'
 }
 
 export interface TaxExportSchedule {

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 import {
 	BillStatusReportGrid,
@@ -10,7 +10,10 @@ import {
 import { TaxComplianceReportSection } from '@/components/tax-reports/report-display'
 import { TopIncomeSourcesMonthlyChart } from '@/components/tax-reports/top-income-sources-monthly-chart'
 import { useReportGridState } from '@/components/tax-reports/use-report-grid-state'
+import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import {
+	useTaxableIncomeRefTypes,
 	useTaxBillStatusReport,
 	useTaxComplianceReport,
 	useTaxDiscrepancyReport,
@@ -20,6 +23,7 @@ import {
 	useTaxTotalTaxesReport,
 } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
+import { TAX_REF_TYPE_OPTIONS } from '@/lib/tax-display'
 
 import type { TaxRollupReportQueryFilters } from '@/lib/tax-report-types'
 import type { SortDirection } from '@/lib/tax-report-utils'
@@ -39,7 +43,11 @@ export function TotalTaxesReportSection(props: {
 		onSortChange: props.onSortChange,
 	})
 
-	const { data, isLoading, error } = useTaxTotalTaxesReport({
+	const {
+		data,
+		isFetching: isLoading,
+		error,
+	} = useTaxTotalTaxesReport({
 		...props.filters,
 		limit: gridState.limit,
 		offset: gridState.offset,
@@ -49,7 +57,6 @@ export function TotalTaxesReportSection(props: {
 	})
 	const rows = data?.rows ?? []
 	const totalRows = data?.totalRows ?? 0
-	const pageCount = gridState.pageCountFor(totalRows)
 	const entityIds = useMemo(() => rows.map((row) => row.corporationId), [rows])
 	const { data: entityNames = {} } = useEntityNames(entityIds, { enabled: props.enabled })
 
@@ -63,7 +70,6 @@ export function TotalTaxesReportSection(props: {
 			onSortingChange={gridState.onSortingChange}
 			pagination={gridState.pagination}
 			onPaginationChange={gridState.onPaginationChange}
-			pageCount={pageCount}
 			rowCount={totalRows}
 		/>
 	)
@@ -73,27 +79,83 @@ export function TopIncomeSourcesReportSection(props: {
 	filters: TaxRollupReportQueryFilters
 	enabled: boolean
 }) {
+	const [incomeTypes, setIncomeTypes] = useState<string[]>([])
+	const [incomeMode, setIncomeMode] = useState<'total' | 'assessed'>('total')
+	const { data: taxableIncomeTypes = [] } = useTaxableIncomeRefTypes(
+		props.filters.corporationId,
+		props.enabled
+	)
 	const {
 		data = [],
 		isLoading,
 		error,
 	} = useTaxTopIncomeSourcesMonthlyReport({
 		...props.filters,
+		refTypes: incomeTypes,
+		incomeMode,
 		enabled: props.enabled,
 	})
 
-	if (isLoading) {
-		return <div className="py-8 text-sm text-muted-foreground">Loading income sources...</div>
-	}
-
-	if (error) {
-		return (
-			<div className="py-8 text-sm text-destructive">
-				{error instanceof Error ? error.message : 'Failed to load income sources report'}
+	return (
+		<div className="space-y-4">
+			<div className="max-w-3xl space-y-2">
+				<div className="text-sm font-medium">Income Types</div>
+				<div className="flex items-center gap-2">
+					<div className="min-w-0 flex-1">
+						<Select
+							options={TAX_REF_TYPE_OPTIONS}
+							values={incomeTypes}
+							onValuesChange={setIncomeTypes}
+							multiple
+							searchable
+							placeholder="All income types"
+							inputClassName="h-10"
+							contentClassName="w-[min(20rem,calc(100vw-2rem))] min-w-[min(20rem,calc(100vw-2rem))]"
+						/>
+					</div>
+					<Button
+						type="button"
+						variant="secondary"
+						className="h-10 shrink-0"
+						showIcon={false}
+						disabled={taxableIncomeTypes.length === 0}
+						onClick={() => setIncomeTypes(taxableIncomeTypes)}
+					>
+						Taxable only
+					</Button>
+					<Button
+						type="button"
+						variant="secondary"
+						className="h-10 shrink-0"
+						showIcon={false}
+						onClick={() => setIncomeMode((current) => (current === 'total' ? 'assessed' : 'total'))}
+					>
+						{incomeMode === 'total' ? 'Show Assessed' : 'Show Total'}
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						className="h-10 shrink-0"
+						showIcon={false}
+						disabled={incomeTypes.length === 0}
+						onClick={() => setIncomeTypes([])}
+					>
+						Reset
+					</Button>
+				</div>
 			</div>
-		)
-	}
-	return <TopIncomeSourcesMonthlyChart rows={data} />
+
+			{isLoading ? (
+				<div className="py-8 text-sm text-muted-foreground">Loading income sources...</div>
+			) : error ? (
+				<div className="py-8 text-sm text-destructive">
+					{error instanceof Error ? error.message : 'Failed to load income sources report'}
+				</div>
+			) : (
+				<TopIncomeSourcesMonthlyChart rows={data} incomeMode={incomeMode} />
+			)}
+		</div>
+	)
 }
 
 export function EssPayoutReportSection(props: {
@@ -109,7 +171,11 @@ export function EssPayoutReportSection(props: {
 		onSortChange: props.onSortChange,
 	})
 
-	const { data, isLoading, error } = useTaxEssPayoutReport({
+	const {
+		data,
+		isFetching: isLoading,
+		error,
+	} = useTaxEssPayoutReport({
 		...props.filters,
 		limit: gridState.limit,
 		offset: gridState.offset,
@@ -119,7 +185,6 @@ export function EssPayoutReportSection(props: {
 	})
 	const rows = data?.rows ?? []
 	const totalRows = data?.totalRows ?? 0
-	const pageCount = gridState.pageCountFor(totalRows)
 	const entityIds = useMemo(() => {
 		const ids = new Set<string>()
 		for (const row of rows) {
@@ -141,7 +206,6 @@ export function EssPayoutReportSection(props: {
 			onSortingChange={gridState.onSortingChange}
 			pagination={gridState.pagination}
 			onPaginationChange={gridState.onPaginationChange}
-			pageCount={pageCount}
 			rowCount={totalRows}
 		/>
 	)
@@ -160,7 +224,11 @@ export function DiscrepancyReportSection(props: {
 		onSortChange: props.onSortChange,
 	})
 
-	const { data, isLoading, error } = useTaxDiscrepancyReport({
+	const {
+		data,
+		isFetching: isLoading,
+		error,
+	} = useTaxDiscrepancyReport({
 		corporationId: props.filters.corporationId,
 		fromDate: props.filters.fromDate,
 		toDate: props.filters.toDate,
@@ -173,7 +241,6 @@ export function DiscrepancyReportSection(props: {
 	})
 	const rows = data?.rows ?? []
 	const totalRows = data?.totalRows ?? 0
-	const pageCount = gridState.pageCountFor(totalRows)
 	const entityIds = useMemo(() => rows.map((row) => row.corporationId), [rows])
 	const { data: entityNames = {} } = useEntityNames(entityIds, { enabled: props.enabled })
 
@@ -187,7 +254,6 @@ export function DiscrepancyReportSection(props: {
 			onSortingChange={gridState.onSortingChange}
 			pagination={gridState.pagination}
 			onPaginationChange={gridState.onPaginationChange}
-			pageCount={pageCount}
 			rowCount={totalRows}
 		/>
 	)
@@ -206,7 +272,11 @@ export function BillStatusReportSection(props: {
 		onSortChange: props.onSortChange,
 	})
 
-	const { data, isLoading, error } = useTaxBillStatusReport({
+	const {
+		data,
+		isFetching: isLoading,
+		error,
+	} = useTaxBillStatusReport({
 		...props.filters,
 		limit: gridState.limit,
 		offset: gridState.offset,
@@ -216,7 +286,6 @@ export function BillStatusReportSection(props: {
 	})
 	const rows = data?.rows ?? []
 	const totalRows = data?.totalRows ?? 0
-	const pageCount = gridState.pageCountFor(totalRows)
 	const entityIds = useMemo(() => rows.map((row) => row.corporationId), [rows])
 	const { data: entityNames = {} } = useEntityNames(entityIds, { enabled: props.enabled })
 
@@ -230,7 +299,6 @@ export function BillStatusReportSection(props: {
 			onSortingChange={gridState.onSortingChange}
 			pagination={gridState.pagination}
 			onPaginationChange={gridState.onPaginationChange}
-			pageCount={pageCount}
 			rowCount={totalRows}
 		/>
 	)
@@ -240,23 +308,52 @@ export function ComplianceOverTimeReportSection(props: {
 	filters: TaxRollupReportQueryFilters
 	enabled: boolean
 }) {
+	const gridState = useReportGridState({
+		defaultSortBy: 'rollupDate',
+		defaultSortDir: 'asc',
+		defaultPageSize: REPORT_PAGE_SIZE_DEFAULT,
+		resetOn: props.filters,
+	})
+
 	const {
-		data: rows = [],
-		isLoading,
-		error,
+		data: chartPage,
+		isFetching: chartLoading,
+		error: chartError,
 	} = useTaxComplianceReport({
 		...props.filters,
+		limit: 3650,
+		offset: 0,
+		sortBy: 'rollupDate',
+		sortDir: 'asc',
+		enabled: props.enabled,
+	})
+	const {
+		data: tablePage,
+		isFetching: tableLoading,
+		error: tableError,
+	} = useTaxComplianceReport({
+		...props.filters,
+		limit: gridState.limit,
+		offset: gridState.offset,
+		sortBy: gridState.sortBy,
+		sortDir: gridState.sortDir,
 		enabled: props.enabled,
 	})
 
-	const chartRows = useMemo(() => rows, [rows])
+	const chartRows = useMemo(() => chartPage?.rows ?? [], [chartPage?.rows])
+	const rows = tablePage?.rows ?? []
 
 	return (
 		<TaxComplianceReportSection
-			loading={isLoading}
-			error={error}
+			loading={chartLoading || tableLoading}
+			error={chartError ?? tableError}
 			rows={rows}
 			chartRows={chartRows}
+			sorting={gridState.sorting}
+			onSortingChange={gridState.onSortingChange}
+			pagination={gridState.pagination}
+			onPaginationChange={gridState.onPaginationChange}
+			rowCount={tablePage?.totalRows ?? 0}
 		/>
 	)
 }
@@ -268,7 +365,11 @@ export function MissingEsiKeysReportSection(props: { enabled: boolean }) {
 		defaultPageSize: REPORT_PAGE_SIZE_DEFAULT,
 	})
 
-	const { data, isLoading, error } = useTaxMissingEsiKeysReport({
+	const {
+		data,
+		isFetching: isLoading,
+		error,
+	} = useTaxMissingEsiKeysReport({
 		limit: gridState.limit,
 		offset: gridState.offset,
 		sortBy: gridState.sortBy,
@@ -277,7 +378,6 @@ export function MissingEsiKeysReportSection(props: { enabled: boolean }) {
 	})
 	const rows = data?.rows ?? []
 	const totalRows = data?.totalRows ?? 0
-	const pageCount = gridState.pageCountFor(totalRows)
 	const entityIds = useMemo(() => rows.map((row) => row.corporationId), [rows])
 	const { data: entityNames = {} } = useEntityNames(entityIds, { enabled: props.enabled })
 
@@ -291,7 +391,6 @@ export function MissingEsiKeysReportSection(props: { enabled: boolean }) {
 			onSortingChange={gridState.onSortingChange}
 			pagination={gridState.pagination}
 			onPaginationChange={gridState.onPaginationChange}
-			pageCount={pageCount}
 			rowCount={totalRows}
 		/>
 	)
