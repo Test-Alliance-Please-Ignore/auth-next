@@ -1,9 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef } from 'react'
 
-import { NotFoundError, api } from '@/lib/api'
-
-import type { UpdateSRPConfig } from '@repo/srp'
+import { api, NotFoundError } from '@/lib/api'
 
 import { srpKeys } from './query-keys'
 import {
@@ -31,18 +29,23 @@ import {
 	upsertRequestAcrossReviewQueueSnapshots,
 } from './state/review-queue-snapshot-store'
 
+import type { UpdateSRPConfig } from '@repo/srp'
+import type { FittingWithItems } from '@/lib/api'
+import type {
+	LossListEntry,
+	MyRequestsQueryData,
+	RecentLossesQueryData,
+} from './state/cache-updates'
 import type {
 	CommentVisibility,
+	RecentLossesResponse,
 	RequestListResponse,
 	RequestStatus,
-	RecentLossesResponse,
 	SRPCommentResponse,
-	SRPRequestResponse,
 	SRPPaymentMismatchAlert,
+	SRPRequestResponse,
 	SRPReviewSubmission,
 } from './types'
-import type { FittingWithItems } from '@/lib/api'
-import type { LossListEntry, MyRequestsQueryData, RecentLossesQueryData } from './state/cache-updates'
 
 function setLossStateAcrossCaches(
 	queryClient: ReturnType<typeof useQueryClient>,
@@ -53,10 +56,7 @@ function setLossStateAcrossCaches(
 			predicate: (query) => isSrpLossesQueryKey(query.queryKey),
 		},
 		(old) =>
-			patchLossesForRequest(
-				old as LossListEntry[] | RecentLossesQueryData | undefined,
-				request
-			)
+			patchLossesForRequest(old as LossListEntry[] | RecentLossesQueryData | undefined, request)
 	)
 }
 
@@ -64,8 +64,9 @@ function setRequestStatusAcrossCaches(
 	queryClient: ReturnType<typeof useQueryClient>,
 	request: SRPRequestResponse
 ): void {
-	queryClient.setQueryData(srpKeys.request(request.id), (existing: SRPRequestResponse | undefined) =>
-		existing ? { ...existing, ...request } : request
+	queryClient.setQueryData(
+		srpKeys.request(request.id),
+		(existing: SRPRequestResponse | undefined) => (existing ? { ...existing, ...request } : request)
 	)
 	queryClient.setQueriesData(
 		{
@@ -370,7 +371,7 @@ export function useSRPStats(params?: {
 export function useRefreshKillmails() {
 	const queryClient = useQueryClient()
 	return useMutation({
-		mutationFn: () => api.refreshLosses(),
+		mutationFn: (characterIds?: string[]) => api.refreshLosses(characterIds),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: srpKeys.lossRefreshStatus() })
 		},
@@ -400,7 +401,9 @@ export function useDoctrineFittingsForShip(shipTypeId: string | undefined) {
 			const candidates = await api.getFittings({ shipTypeId })
 			if (candidates.length === 0) return []
 			const uniqueCandidateIds = [...new Set(candidates.map((fitting) => fitting.id))]
-			const full = await Promise.all(uniqueCandidateIds.map((fittingId) => api.getFitting(fittingId)))
+			const full = await Promise.all(
+				uniqueCandidateIds.map((fittingId) => api.getFitting(fittingId))
+			)
 			const uniqueById = new Map(full.map((fitting) => [fitting.id, fitting]))
 			return [...uniqueById.values()]
 		},
@@ -571,7 +574,7 @@ export function useWithdrawRequest() {
 	return useMutation({
 		mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
 			api.withdrawSRPRequest(id, notes ? { notes } : undefined),
-	onSuccess: (request: SRPRequestResponse) => {
+		onSuccess: (request: SRPRequestResponse) => {
 			updateOverlayRequestStatus({
 				requestId: request.id,
 				requestStatus: request.requestStatus,
@@ -663,15 +666,15 @@ export function useAddComment() {
 				createdAt: nowIso,
 			}
 
-			queryClient.setQueryData<SRPCommentResponse[]>(srpKeys.comments(requestId, true), (old = []) => [
-				...old,
-				optimisticComment,
-			])
+			queryClient.setQueryData<SRPCommentResponse[]>(
+				srpKeys.comments(requestId, true),
+				(old = []) => [...old, optimisticComment]
+			)
 			if (data.visibility === 'public') {
-				queryClient.setQueryData<SRPCommentResponse[]>(srpKeys.comments(requestId, false), (old = []) => [
-					...old,
-					optimisticComment,
-				])
+				queryClient.setQueryData<SRPCommentResponse[]>(
+					srpKeys.comments(requestId, false),
+					(old = []) => [...old, optimisticComment]
+				)
 			}
 
 			return { previousPublic, previousInternal, requestId, tempId }
@@ -684,11 +687,19 @@ export function useAddComment() {
 		onSuccess: (
 			comment: SRPCommentResponse,
 			variables: { requestId: string; data: { content: string; visibility: CommentVisibility } },
-			context: { previousPublic?: SRPCommentResponse[]; previousInternal?: SRPCommentResponse[]; requestId: string; tempId: string } | undefined
+			context:
+				| {
+						previousPublic?: SRPCommentResponse[]
+						previousInternal?: SRPCommentResponse[]
+						requestId: string
+						tempId: string
+				  }
+				| undefined
 		) => {
 			if (context) {
-				queryClient.setQueryData<SRPCommentResponse[]>(srpKeys.comments(variables.requestId, true), (old = []) =>
-					old.map((row) => (row.id === context.tempId ? comment : row))
+				queryClient.setQueryData<SRPCommentResponse[]>(
+					srpKeys.comments(variables.requestId, true),
+					(old = []) => old.map((row) => (row.id === context.tempId ? comment : row))
 				)
 				if (variables.data.visibility === 'public') {
 					queryClient.setQueryData<SRPCommentResponse[]>(
@@ -743,17 +754,19 @@ export function useMarkPaid() {
 			})
 			transitionRequestStatusAcrossReviewQueueSnapshots(id, 'paid')
 			let approvedAmountDelta = 0
-			const pendingPaymentQueries = queryClient.getQueriesData<{ requests?: SRPRequestResponse[] }>({
-				predicate: (query) => {
-					const key = query.queryKey
-					return (
-						Array.isArray(key) &&
-						key[0] === 'srp' &&
-						key[1] === 'payments' &&
-						key[2] === 'pending'
-					)
-				},
-			})
+			const pendingPaymentQueries = queryClient.getQueriesData<{ requests?: SRPRequestResponse[] }>(
+				{
+					predicate: (query) => {
+						const key = query.queryKey
+						return (
+							Array.isArray(key) &&
+							key[0] === 'srp' &&
+							key[1] === 'payments' &&
+							key[2] === 'pending'
+						)
+					},
+				}
+			)
 			for (const [, value] of pendingPaymentQueries) {
 				const request = value?.requests?.find((entry) => entry.id === id)
 				if (!request) continue

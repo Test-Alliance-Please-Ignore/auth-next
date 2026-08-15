@@ -797,6 +797,83 @@ describe('srp routes - permissions', () => {
 		})
 	})
 
+	it('passes only selected linked characters to recent loss refreshes', async () => {
+		const app = createApp(
+			makeUser({
+				id: 'loss-refresh-selected',
+				characters: [
+					{
+						id: 'char-link-1',
+						characterOwnerHash: 'owner-hash-1',
+						characterId: '7001',
+						characterName: 'Pilot One',
+						is_primary: true,
+						hasValidToken: true,
+					},
+					{
+						id: 'char-link-2',
+						characterOwnerHash: 'owner-hash-2',
+						characterId: '7002',
+						characterName: 'Pilot Two',
+						is_primary: false,
+						hasValidToken: true,
+					},
+				],
+			})
+		)
+
+		const response = await app.request(
+			'/api/srp/losses/refresh',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ characterIds: ['7002'] }),
+			},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(refreshCoordinatorStub.startRecentLossRefresh).toHaveBeenCalledWith(
+			'loss-refresh-selected',
+			[{ characterId: '7002', characterName: 'Pilot Two' }],
+			30
+		)
+	})
+
+	it('rejects recent loss refreshes for characters not linked to the user', async () => {
+		const app = createApp(
+			makeUser({
+				id: 'loss-refresh-unlinked',
+				characters: [
+					{
+						id: 'char-link-1',
+						characterOwnerHash: 'owner-hash-1',
+						characterId: '7001',
+						characterName: 'Pilot One',
+						is_primary: true,
+						hasValidToken: true,
+					},
+				],
+			})
+		)
+
+		const response = await app.request(
+			'/api/srp/losses/refresh',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ characterIds: ['9999'] }),
+			},
+			env
+		)
+
+		expect(response.status).toBe(400)
+		expect(await response.json()).toEqual({
+			error: 'One or more selected characters are not linked to this user: 9999',
+		})
+		expect(refreshCoordinatorStub.startRecentLossRefresh).not.toHaveBeenCalled()
+	})
+
 	it('returns current recent-loss refresh status', async () => {
 		const app = createApp(makeUser({ id: 'loss-refresh-status' }))
 		refreshCoordinatorStub.getRecentLossRefreshStatus.mockResolvedValue({
