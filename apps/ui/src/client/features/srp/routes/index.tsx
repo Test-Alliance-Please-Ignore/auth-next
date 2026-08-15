@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 
+import { TableRefreshFrame } from '@/components/table-refresh-frame'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
-import { TableRefreshFrame } from '@/components/table-refresh-frame'
+import { Select } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
 import {
 	LossTable,
-	RecentLossRefreshButton,
 	RecentLossesStatusAlerts,
+	RecentLossRefreshButton,
 } from '../components/LossTable'
 import { RequestTable } from '../components/RequestTable'
 import {
@@ -22,25 +25,43 @@ import {
 	useRefreshKillmails,
 	useSRPConfig,
 } from '../hooks'
-import {
-	setRecentLossesPage,
-	setRecentLossesPageSize,
-	setRecentLossesSnapshot,
-	useRecentLossesUiState,
-} from '../state/recent-losses-store'
+import { useSrpCharacterSelection } from '../state/character-selection'
 import {
 	setMyRequestsPage,
 	setMyRequestsPageSize,
 	setMyRequestsSnapshot,
 	useMyRequestsUiState,
 } from '../state/my-requests-store'
+import {
+	setRecentLossesPage,
+	setRecentLossesPageSize,
+	setRecentLossesSnapshot,
+	useRecentLossesUiState,
+} from '../state/recent-losses-store'
 
 import type { LossWithSRPStatus, RecentLossesResponse } from '../types'
 
 export default function SRPIndex() {
 	usePageTitle('SRP')
+	const { user } = useAuth()
 	const { data: config } = useSRPConfig()
 	const [activeTab, setActiveTab] = useState<'losses' | 'requests'>('losses')
+	const characterOptions = useMemo(
+		() =>
+			(user?.characters ?? []).map((character) => ({
+				value: character.characterId,
+				label: character.characterName,
+			})),
+		[user?.characters]
+	)
+	const {
+		selectedCharacterIds,
+		setSelectedCharacterIds,
+		isLoaded: characterSelectionLoaded,
+	} = useSrpCharacterSelection(
+		user?.id,
+		characterOptions.map((character) => character.value)
+	)
 	const lossPage = useRecentLossesUiState((state) => state.page)
 	const lossPageSize = useRecentLossesUiState((state) => state.pageSize)
 	const requestPage = useMyRequestsUiState((state) => state.page)
@@ -59,7 +80,7 @@ export default function SRPIndex() {
 			offset: (lossPage - 1) * lossPageSize,
 		},
 		{
-			enabled: activeTab === 'losses',
+			enabled: activeTab === 'losses' && Boolean(user?.id),
 		}
 	)
 	const lossOffset = (lossPage - 1) * lossPageSize
@@ -131,7 +152,9 @@ export default function SRPIndex() {
 	const lossRefreshAction = (
 		<RecentLossRefreshButton
 			isRefreshing={refreshMutation.isPending || lossesFetching}
-			onRefresh={() => refreshMutation.mutate()}
+			onRefresh={() =>
+				refreshMutation.mutate(selectedCharacterIds.length > 0 ? selectedCharacterIds : undefined)
+			}
 			refreshStatus={refreshStatusQuery.data?.status ?? null}
 			refreshCooldownUntil={refreshStatusQuery.data?.cooldownUntil ?? null}
 		/>
@@ -186,6 +209,37 @@ export default function SRPIndex() {
 											refreshErrorMessage={lossRefreshErrorMessage}
 											loadFailures={effectiveLossesData?.failedCharacters ?? loadFailures}
 										/>
+										<div className="w-full space-y-2 md:w-1/2">
+											<div className="text-sm font-medium">Characters to fetch</div>
+											<div className="flex min-w-0 gap-2">
+												<div className="min-w-0 flex-1">
+													<Select
+														options={characterOptions}
+														values={selectedCharacterIds}
+														onValuesChange={setSelectedCharacterIds}
+														multiple
+														searchable
+														placeholder="All characters"
+														disabled={!characterSelectionLoaded}
+														inputClassName="h-10"
+														contentClassName="w-[min(28rem,calc(100vw-2rem))] min-w-[min(28rem,calc(100vw-2rem))]"
+													/>
+												</div>
+												<Button
+													type="button"
+													variant="ghost"
+													size="sm"
+													showIcon={false}
+													disabled={!characterSelectionLoaded || selectedCharacterIds.length === 0}
+													onClick={() => setSelectedCharacterIds([])}
+												>
+													Reset
+												</Button>
+											</div>
+											<p className="text-xs text-muted-foreground">
+												Leave empty to fetch losses for all characters.
+											</p>
+										</div>
 										<TableRefreshFrame
 											isRefreshing={lossGridRefreshing || refreshMutation.isPending}
 											refreshMessage="Refreshing recent losses..."
@@ -203,7 +257,7 @@ export default function SRPIndex() {
 													}}
 													dismissingKillmailId={
 														dismissLossMutation.isPending
-															? dismissLossMutation.variables?.killmailId ?? null
+															? (dismissLossMutation.variables?.killmailId ?? null)
 															: null
 													}
 												/>
@@ -217,7 +271,7 @@ export default function SRPIndex() {
 													}}
 													dismissingKillmailId={
 														dismissLossMutation.isPending
-															? dismissLossMutation.variables?.killmailId ?? null
+															? (dismissLossMutation.variables?.killmailId ?? null)
 															: null
 													}
 												/>
@@ -232,7 +286,9 @@ export default function SRPIndex() {
 									<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-center">
 										<p className="text-sm text-red-500">Failed to load requests</p>
 										<p className="text-xs text-muted-foreground">
-											{requestLoadError instanceof Error ? requestLoadError.message : 'Unknown error'}
+											{requestLoadError instanceof Error
+												? requestLoadError.message
+												: 'Unknown error'}
 										</p>
 									</div>
 								) : !effectiveRequestsData && requestGridLoading ? (

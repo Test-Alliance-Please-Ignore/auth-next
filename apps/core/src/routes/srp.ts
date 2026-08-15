@@ -109,6 +109,33 @@ function isValidSrpRequestId(requestId: string): boolean {
 	return SRP_REQUEST_ID_PATTERN.test(requestId)
 }
 
+function resolveSrpCharacters(user: App['Variables']['user'], rawCharacterIds?: string) {
+	const characters = (user?.characters ?? []).map((character) => ({
+		characterId: character.characterId,
+		characterName: character.characterName,
+	}))
+	const normalizedRawIds = rawCharacterIds?.trim()
+	if (!normalizedRawIds) return { characters }
+
+	const requestedIds = [
+		...new Set(
+			normalizedRawIds
+				.split(',')
+				.map((id) => id.trim())
+				.filter(Boolean)
+		),
+	]
+	const characterById = new Map(characters.map((character) => [character.characterId, character]))
+	const invalidIds = requestedIds.filter((characterId) => !characterById.has(characterId))
+	if (invalidIds.length > 0) {
+		return {
+			error: `One or more selected characters are not linked to this user: ${invalidIds.join(', ')}`,
+		}
+	}
+
+	return { characters: requestedIds.map((characterId) => characterById.get(characterId)!) }
+}
+
 function normalizeUtcStartOfDay(date: Date): Date {
 	return new Date(
 		Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0)
@@ -712,7 +739,7 @@ srp.use('*', async (c, next) => {
 // =============================================================================
 
 /**
- * Get recent losses for all user's characters with SRP status.
+ * Get recent losses for selected user characters, or all when omitted, with SRP status.
  * The backend configuration is the source of truth for the lookback window.
  */
 srp.get('/losses', async (c) => {
@@ -730,10 +757,9 @@ srp.get('/losses', async (c) => {
 		return c.json({ error: pagination.error }, pagination.status)
 	}
 
-	// Get all character IDs for the user
-	const characters = user.characters.map((char) => ({
-		characterId: char.characterId,
-		characterName: char.characterName,
+	const characters = user.characters.map((character) => ({
+		characterId: character.characterId,
+		characterName: character.characterName,
 	}))
 
 	if (characters.length === 0) {
@@ -797,12 +823,30 @@ srp.post('/losses/:killmailId/dismiss', async (c) => {
 })
 
 /**
- * Trigger killmail refresh for all of the user's characters
+ * Trigger killmail refresh for selected user characters, or all when omitted
  * POST /api/srp/losses/refresh
  * Starts the background workflow and returns its handle for polling.
  */
 srp.post('/losses/refresh', async (c) => {
 	const user = c.get('user')!
+	let body: { characterIds?: unknown } = {}
+	try {
+		body = await c.req.json<{ characterIds?: unknown }>()
+	} catch {
+		// An empty request body is equivalent to selecting all characters.
+	}
+	const rawCharacterIds = Array.isArray(body.characterIds)
+		? body.characterIds.every((id) => typeof id === 'string')
+			? body.characterIds.join(',')
+			: undefined
+		: undefined
+	if (body.characterIds !== undefined && rawCharacterIds === undefined) {
+		return c.json({ error: 'characterIds must be an array of strings' }, 400)
+	}
+	const characterSelection = resolveSrpCharacters(user, rawCharacterIds)
+	if ('error' in characterSelection) {
+		return c.json({ error: characterSelection.error }, 400)
+	}
 	const srpStub = getStub<Srp>(c.env.SRP, 'default')
 	const refreshCoordinator = getStub<RecentLossRefreshCoordinator>(
 		c.env.SRP_RECENT_LOSS_REFRESH_COORDINATOR,
@@ -811,10 +855,7 @@ srp.post('/losses/refresh', async (c) => {
 	const config = await srpStub.getConfig()
 	const refreshAttempt = await refreshCoordinator.startRecentLossRefresh(
 		user.id,
-		user.characters.map((char) => ({
-			characterId: char.characterId,
-			characterName: char.characterName,
-		})),
+		characterSelection.characters,
 		config?.maxLossAgeDays ?? 30
 	)
 	if (!refreshAttempt.allowed) {

@@ -4,7 +4,8 @@ export const srpKeys = {
 	all: ['srp'] as const,
 
 	// Losses
-	losses: (params?: { limit?: number; offset?: number }) => [...srpKeys.all, 'losses', params] as const,
+	losses: (params?: { limit?: number; offset?: number }) =>
+		[...srpKeys.all, 'losses', params] as const,
 	lossRefreshStatus: () => [...srpKeys.losses(), 'refresh-status'] as const,
 
 	// Requests
@@ -24,8 +25,7 @@ export const srpKeys = {
 			dateFrom?: string
 			dateTo?: string
 		}
-	) =>
-		[...srpKeys.requests(), 'by-status', status, params] as const,
+	) => [...srpKeys.requests(), 'by-status', status, params] as const,
 
 	// Pending reviews
 	pending: () => [...srpKeys.all, 'pending'] as const,

@@ -5128,7 +5128,7 @@ export class ApiClient {
 		return this.get(`/srp/stats${query ? `?${query}` : ''}`)
 	}
 
-	async refreshLosses(): Promise<{
+	async refreshLosses(characterIds?: string[]): Promise<{
 		allowed: boolean
 		retryAfterMs: number
 		cooldownUntil: string
@@ -5136,7 +5136,7 @@ export class ApiClient {
 		status?: 'queued' | 'running' | 'completed' | 'failed'
 		totalCharacters?: number
 	}> {
-		return this.post('/srp/losses/refresh', {})
+		return this.post('/srp/losses/refresh', characterIds?.length ? { characterIds } : {})
 	}
 
 	async getRecentLossRefreshStatus(): Promise<{
