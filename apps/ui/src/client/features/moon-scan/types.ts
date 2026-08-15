@@ -7,6 +7,7 @@ export type OreRarity = 'R4' | 'R8' | 'R16' | 'R32' | 'R64'
 export interface MoonScanOre {
 	oreTypeId: string
 	quantity: string
+	oreTypeName?: string
 }
 
 export interface ScanQueueOre extends MoonScanOre {
@@ -119,6 +120,7 @@ export interface JumpLink {
 
 export interface RegionDetail {
 	regionId: string
+	regionName?: string
 	systems: RegionSystemEntry[]
 	jumpLinks: JumpLink[]
 	borderRegions: Record<string, { regionId: string; regionName: string }>
@@ -156,6 +158,8 @@ export interface StaticMoon {
 	moonName: string
 	solarSystemId: string
 	solarSystemName: string
+	regionName?: string
+	constellationName?: string
 }
 
 export interface OreRefineProduct {

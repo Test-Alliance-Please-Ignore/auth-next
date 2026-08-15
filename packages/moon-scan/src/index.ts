@@ -123,6 +123,7 @@ export const RARITY_ORDER: Record<OreRarity, number> = { R4: 1, R8: 2, R16: 3, R
 export interface MoonScanOre {
 	oreTypeId: string
 	quantity: string
+	oreTypeName?: string
 }
 
 export interface MoonScan {

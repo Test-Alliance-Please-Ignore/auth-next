@@ -1,6 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { useMemo } from 'react'
+import { Link, useLocation, useParams, useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
@@ -48,17 +48,28 @@ function CoverageBar({ moonCount, verifiedCount }: { moonCount: number; verified
 
 export default function RegionPage() {
 	const { regionId } = useParams<{ regionId: string }>()
+	const location = useLocation()
+	const [searchParams, setSearchParams] = useSearchParams()
 	const { canView } = useMoonScanPermissions()
-	const [systemSearch, setSystemSearch] = useState('')
+	const systemSearch = searchParams.get('system') ?? ''
+	const navigationState =
+		location.state && typeof location.state === 'object'
+			? (location.state as { regionName?: unknown })
+			: null
+	const immediateRegionName =
+		typeof navigationState?.regionName === 'string' ? navigationState.regionName : null
 
 	const { data: regionsData } = useMoonRegions(canView)
 	const { data: detail, isLoading, error } = useMoonRegionDetail(regionId!, canView)
 
 	const regionName =
-		regionsData?.regions.find((r) => r.regionId === regionId)?.regionName ?? regionId
+		immediateRegionName ??
+		detail?.regionName ??
+		regionsData?.regions.find((r) => r.regionId === regionId)?.regionName ??
+		'Region'
 	usePageTitle(regionName ? `Region — ${regionName}` : 'Region')
 	const dotlanFile = useMemo(
-		() => (regionName && regionName !== regionId ? regionNameToFile(regionName) : ''),
+		() => (regionName !== 'Region' ? regionNameToFile(regionName) : ''),
 		[regionId, regionName]
 	)
 	const { data: coords, error: coordsError } = useDotlanRegionCoords(
@@ -90,6 +101,12 @@ export default function RegionPage() {
 		a.solarSystemName.localeCompare(b.solarSystemName)
 	)
 	const normalizedSystemSearch = systemSearch.trim().toLowerCase()
+	const updateSystemSearch = (value: string) => {
+		const next = new URLSearchParams(searchParams)
+		if (value.trim()) next.set('system', value)
+		else next.delete('system')
+		setSearchParams(next, { replace: true })
+	}
 	const filteredSystems = normalizedSystemSearch
 		? sortedSystems.filter((s) => s.solarSystemName.toLowerCase().includes(normalizedSystemSearch))
 		: sortedSystems
@@ -101,7 +118,7 @@ export default function RegionPage() {
 	return (
 		<Container>
 			<PageHeader
-				title={regionName as string}
+				title={regionName}
 				action={
 					<div className="flex flex-col items-end gap-2">
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -178,6 +195,7 @@ export default function RegionPage() {
 						jumpLinks={detail.jumpLinks}
 						coords={coords}
 						borderRegions={detail.borderRegions}
+						from={`${location.pathname}${location.search}`}
 						highlightedSystemIds={highlightedSystemIds}
 					/>
 				</div>
@@ -198,7 +216,7 @@ export default function RegionPage() {
 							</div>
 							<Input
 								value={systemSearch}
-								onChange={(e) => setSystemSearch(e.target.value)}
+								onChange={(e) => updateSystemSearch(e.target.value)}
 								placeholder="Filter systems..."
 								className="h-8 w-full sm:w-64"
 							/>
@@ -228,6 +246,10 @@ export default function RegionPage() {
 												{eligible ? (
 													<Link
 														to={`/moon-scan/system/${sys.solarSystemId}`}
+														state={{
+															from: `${location.pathname}${location.search}`,
+															systemName: sys.solarSystemName,
+														}}
 														className="font-medium hover:underline"
 													>
 														{sys.solarSystemName}
