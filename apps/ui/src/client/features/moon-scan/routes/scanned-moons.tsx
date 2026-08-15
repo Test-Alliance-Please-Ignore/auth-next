@@ -1,9 +1,9 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, useLocation, useSearchParams } from 'react-router'
 
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { TableRefreshFrame } from '@/components/table-refresh-frame'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -21,19 +21,19 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { TableRefreshFrame } from '@/components/table-refresh-frame'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatISK } from '@/lib/format-utils'
 import toast from '@/lib/toast'
 
-import { RARITY_COLORS } from '../ore-rarities'
 import {
 	downloadScannedMoonsExport,
 	getScannedMoonsExportStatus,
 	requestScannedMoonsExport,
 } from '../api'
-import { useScannedMoons, useMoonRegions } from '../hooks'
+import { useMoonRegions, useScannedMoons } from '../hooks'
+import { RARITY_COLORS } from '../ore-rarities'
 import { useMoonScanPermissions } from '../permissions'
 import { parseSecurityStatus, securityStatusTextClass } from '../security-status'
 
@@ -50,6 +50,41 @@ type SortBy =
 	| 'tataraProfit'
 type SortDir = 'asc' | 'desc'
 type ViewMode = 'grouped' | 'ungrouped'
+
+const SORT_BY_VALUES: readonly SortBy[] = [
+	'moonName',
+	'solarSystemName',
+	'regionName',
+	'securityStatus',
+	'highestRarity',
+	'metenoxProfit',
+	'tataraProfit',
+]
+
+function parseSortBy(value: string | null): SortBy {
+	return value && SORT_BY_VALUES.includes(value as SortBy) ? (value as SortBy) : 'moonName'
+}
+
+function parseSortDir(value: string | null): SortDir {
+	return value === 'desc' ? 'desc' : 'asc'
+}
+
+function parsePage(value: string | null): number {
+	const page = Number(value)
+	return Number.isInteger(page) && page > 0 ? page : 1
+}
+
+function parsePageSize(value: string | null): number {
+	const pageSize = Number(value)
+	return [25, 50, 100].includes(pageSize) ? pageSize : 50
+}
+
+function parseRarities(value: string | null): OreRarity[] {
+	if (!value) return []
+	return value
+		.split(',')
+		.filter((rarity): rarity is OreRarity => RARITY_VALUES.includes(rarity as OreRarity))
+}
 
 function RarityBadge({ rarity }: { rarity: OreRarity }) {
 	return (
@@ -72,17 +107,34 @@ function ProfitCell({ value }: { value: string | null }) {
 	)
 }
 
-function MoonRow({ moon }: { moon: ScannedMoonEntry }) {
+function MoonRow({ moon, backTo }: { moon: ScannedMoonEntry; backTo: string }) {
 	const sec = parseSecurityStatus(moon.securityStatus)
 	return (
 		<TableRow>
 			<TableCell>
-				<Link to={`/moon-scan/moon/${moon.moonId}`} className="hover:underline text-foreground font-medium">
+				<Link
+					to={`/moon-scan/moon/${moon.moonId}`}
+					state={{
+						from: backTo,
+						moonName: moon.moonName,
+						solarSystemName: moon.solarSystemName,
+						regionName: moon.regionName,
+					}}
+					className="font-medium text-foreground hover:underline"
+				>
 					{moon.moonName}
 				</Link>
 			</TableCell>
 			<TableCell>
-				<Link to={`/moon-scan/system/${moon.solarSystemId}`} className="hover:underline text-muted-foreground text-sm">
+				<Link
+					to={`/moon-scan/system/${moon.solarSystemId}`}
+					state={{
+						from: backTo,
+						systemName: moon.solarSystemName,
+						regionName: moon.regionName,
+					}}
+					className="hover:underline text-muted-foreground text-sm"
+				>
 					{moon.solarSystemName}
 				</Link>
 			</TableCell>
@@ -91,7 +143,11 @@ function MoonRow({ moon }: { moon: ScannedMoonEntry }) {
 				{sec === null ? '—' : sec.toFixed(1)}
 			</TableCell>
 			<TableCell>
-				{moon.highestRarity ? <RarityBadge rarity={moon.highestRarity as OreRarity} /> : <span className="text-muted-foreground">—</span>}
+				{moon.highestRarity ? (
+					<RarityBadge rarity={moon.highestRarity as OreRarity} />
+				) : (
+					<span className="text-muted-foreground">—</span>
+				)}
 			</TableCell>
 			<TableCell className="text-right tabular-nums">
 				<ProfitCell value={moon.metenoxProfit} />
@@ -105,25 +161,47 @@ function MoonRow({ moon }: { moon: ScannedMoonEntry }) {
 
 export default function ScannedMoonsPage() {
 	usePageTitle('Scanned Moons')
+	const location = useLocation()
+	const [searchParams, setSearchParams] = useSearchParams()
+	const moonDetailBackTo = `${location.pathname}${location.search}`
 
 	const { canView } = useMoonScanPermissions()
 
-	const [selectedRarities, setSelectedRarities] = useState<OreRarity[]>([])
-	const [regionFilter, setRegionFilter] = useState<string>('all')
-	const [constellationFilter, setConstellationFilter] = useState<string>('all')
-	const [search, setSearch] = useState('')
-	const [page, setPage] = useState(1)
-	const [pageSize, setPageSize] = useState(50)
-	const [sortBy, setSortBy] = useState<SortBy>('moonName')
-	const [sortDir, setSortDir] = useState<SortDir>('asc')
+	const regionFilter = searchParams.get('regionId') ?? 'all'
+	const constellationFilter = searchParams.get('constellationId') ?? 'all'
+	const search = searchParams.get('search') ?? ''
+	const page = parsePage(searchParams.get('page'))
+	const pageSize = parsePageSize(searchParams.get('pageSize'))
+	const selectedRarities = parseRarities(searchParams.get('rarity'))
+	const sortBy = parseSortBy(searchParams.get('sortBy'))
+	const sortDir = parseSortDir(searchParams.get('sortDir'))
 	const [viewMode, setViewMode] = useState<ViewMode>('grouped')
 	const [collapsedConstellations, setCollapsedConstellations] = useState<Set<string>>(new Set())
-	const [pendingExport, setPendingExport] = useState<{ workflowInstanceId: string; fileName: string } | null>(null)
+	const [pendingExport, setPendingExport] = useState<{
+		workflowInstanceId: string
+		fileName: string
+	} | null>(null)
 	const [isExporting, setIsExporting] = useState(false)
 	const debouncedSearch = useDebounce(search, 400)
+	const updateUrl = useCallback(
+		(updates: Record<string, string | null>) => {
+			const next = new URLSearchParams(searchParams)
+			for (const [key, value] of Object.entries(updates)) {
+				if (value === null || value === '') next.delete(key)
+				else next.set(key, value)
+			}
+			setSearchParams(next, { replace: true })
+		},
+		[searchParams, setSearchParams]
+	)
 
 	const exportStatusQuery = useQuery({
-		queryKey: ['moon-scan', 'verified-moons', 'export-status', pendingExport?.workflowInstanceId ?? null],
+		queryKey: [
+			'moon-scan',
+			'verified-moons',
+			'export-status',
+			pendingExport?.workflowInstanceId ?? null,
+		],
 		queryFn: () => getScannedMoonsExportStatus(pendingExport!.workflowInstanceId),
 		enabled: Boolean(pendingExport?.workflowInstanceId),
 		refetchInterval: (query) => {
@@ -134,7 +212,8 @@ export default function ScannedMoonsPage() {
 	})
 	const exportStatus = exportStatusQuery.data?.status
 	const isExportPolling =
-		Boolean(pendingExport) && (exportStatus === undefined || exportStatus === 'queued' || exportStatus === 'running')
+		Boolean(pendingExport) &&
+		(exportStatus === undefined || exportStatus === 'queued' || exportStatus === 'running')
 	const isExportBusy = isExporting || isExportPolling
 
 	useEffect(() => {
@@ -165,22 +244,25 @@ export default function ScannedMoonsPage() {
 	}, [exportStatusQuery.data, pendingExport])
 
 	const toggleRarity = (rarity: OreRarity) => {
-		setSelectedRarities((prev) =>
-			prev.includes(rarity) ? prev.filter((r) => r !== rarity) : [...prev, rarity]
-		)
-		setPage(1)
+		const nextRarities = selectedRarities.includes(rarity)
+			? selectedRarities.filter((r) => r !== rarity)
+			: [...selectedRarities, rarity]
+		updateUrl({ rarity: nextRarities.length > 0 ? nextRarities.join(',') : null, page: '1' })
 	}
 
-	const { data, isLoading, isFetching, error } = useScannedMoons({
-		page,
-		pageSize,
-		regionId: regionFilter,
-		constellationId: constellationFilter,
-		rarities: selectedRarities,
-		search: debouncedSearch,
-		sortBy,
-		sortDir,
-	}, canView)
+	const { data, isLoading, isFetching, error } = useScannedMoons(
+		{
+			page,
+			pageSize,
+			regionId: regionFilter,
+			constellationId: constellationFilter,
+			rarities: selectedRarities,
+			search: debouncedSearch,
+			sortBy,
+			sortDir,
+		},
+		canView
+	)
 	const { data: regionsData } = useMoonRegions(canView)
 
 	const regions = useMemo(() => {
@@ -205,7 +287,10 @@ export default function ScannedMoonsPage() {
 
 	const groupedItems = useMemo(() => {
 		const items = data?.items ?? []
-		const groups = new Map<string, { constellationId: string; constellationName: string; moons: ScannedMoonEntry[] }>()
+		const groups = new Map<
+			string,
+			{ constellationId: string; constellationName: string; moons: ScannedMoonEntry[] }
+		>()
 		for (const moon of items) {
 			const key = moon.constellationId || '_unknown'
 			let group = groups.get(key)
@@ -233,21 +318,28 @@ export default function ScannedMoonsPage() {
 
 	const totalCount = data?.total ?? 0
 	const hasPagination = Math.ceil(totalCount / pageSize) > 1
+	const hasActiveFilters =
+		regionFilter !== 'all' ||
+		constellationFilter !== 'all' ||
+		search.length > 0 ||
+		selectedRarities.length > 0
 	const hasExportScope = regionFilter !== 'all' || constellationFilter !== 'all'
 	const canExportCsv = canView && hasExportScope
 	const exportHelpMessage = 'Select a region or constellation to export this scope.'
 	const toggleSort = (column: SortBy) => {
-		if (sortBy === column) {
-			setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))
-		} else {
-			setSortBy(column)
-			setSortDir('asc')
-		}
-		setPage(1)
+		updateUrl({
+			sortBy: column,
+			sortDir: sortBy === column && sortDir === 'asc' ? 'desc' : 'asc',
+			page: '1',
+		})
 	}
 	const SortIndicator = ({ column }: { column: SortBy }) => {
 		if (sortBy !== column) return null
-		return sortDir === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+		return sortDir === 'asc' ? (
+			<ArrowUp className="h-3.5 w-3.5" />
+		) : (
+			<ArrowDown className="h-3.5 w-3.5" />
+		)
 	}
 	const SortableHead = ({
 		label,
@@ -276,10 +368,9 @@ export default function ScannedMoonsPage() {
 			totalCount={totalCount}
 			page={page}
 			pageSize={pageSize}
-			onPageChange={setPage}
+			onPageChange={(nextPage) => updateUrl({ page: String(nextPage) })}
 			onPageSizeChange={(size) => {
-				setPageSize(size)
-				setPage(1)
+				updateUrl({ pageSize: String(size), page: '1' })
 			}}
 			itemLabel="moons"
 		/>
@@ -323,7 +414,10 @@ export default function ScannedMoonsPage() {
 	if (!canView) {
 		return (
 			<Container>
-				<PageHeader title="Scanned Moons" description="You do not have permission to view moon data." />
+				<PageHeader
+					title="Scanned Moons"
+					description="You do not have permission to view moon data."
+				/>
 			</Container>
 		)
 	}
@@ -336,7 +430,9 @@ export default function ScannedMoonsPage() {
 				action={
 					<div className="flex items-center gap-3">
 						{isExportPolling && (
-							<span className="text-xs text-muted-foreground">Waiting for export to generate...</span>
+							<span className="text-xs text-muted-foreground">
+								Waiting for export to generate...
+							</span>
 						)}
 						{!canExportCsv && !isExportBusy ? (
 							<HoverPopover
@@ -375,77 +471,80 @@ export default function ScannedMoonsPage() {
 				<div className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-500">
 					Failed to load moon data
 				</div>
-				)}
+			)}
 
 			{/* Filters */}
 			<div className="mt-section flex flex-wrap items-center gap-3">
-					{/* Rarity multi-select chips */}
-					<div className="flex items-center gap-1 rounded-md border bg-card p-1">
-						<button
-							type="button"
-							onClick={() => {
-								setSelectedRarities([])
-								setPage(1)
-							}}
-							className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-								selectedRarities.length === 0
-									? 'bg-muted text-foreground'
-									: 'text-muted-foreground hover:text-foreground'
-							}`}
-						>
-							All
-						</button>
-						{RARITY_VALUES.map((rarity) => {
-							const active = selectedRarities.includes(rarity)
-							return (
-								<button
-									key={rarity}
-									type="button"
-									onClick={() => toggleRarity(rarity)}
-									aria-pressed={active}
-									className={`rounded px-2.5 py-1 text-xs font-semibold transition-colors ${
-										active ? 'text-white' : 'hover:bg-muted/50'
-									}`}
-									style={{
-										color: active ? '#fff' : RARITY_COLORS[rarity],
-										backgroundColor: active ? RARITY_COLORS[rarity] : undefined,
-									}}
-								>
-									{rarity}
-								</button>
-							)
-						})}
-					</div>
+				{/* Rarity multi-select chips */}
+				<div className="flex items-center gap-1 rounded-md border bg-card p-1">
+					<button
+						type="button"
+						onClick={() => {
+							updateUrl({ rarity: null, page: '1' })
+						}}
+						className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+							selectedRarities.length === 0
+								? 'bg-muted text-foreground'
+								: 'text-muted-foreground hover:text-foreground'
+						}`}
+					>
+						All
+					</button>
+					{RARITY_VALUES.map((rarity) => {
+						const active = selectedRarities.includes(rarity)
+						return (
+							<button
+								key={rarity}
+								type="button"
+								onClick={() => toggleRarity(rarity)}
+								aria-pressed={active}
+								className={`rounded px-2.5 py-1 text-xs font-semibold transition-colors ${
+									active ? 'text-white' : 'hover:bg-muted/50'
+								}`}
+								style={{
+									color: active ? '#fff' : RARITY_COLORS[rarity],
+									backgroundColor: active ? RARITY_COLORS[rarity] : undefined,
+								}}
+							>
+								{rarity}
+							</button>
+						)
+					})}
+				</div>
 
 				{/* Region dropdown */}
-					<Select
-						value={regionFilter}
-						onValueChange={(value) => {
-							setRegionFilter(value)
-							setConstellationFilter('all')
-							setPage(1)
-						}}
-						options={regionOptions}
-						searchable
-						placeholder="Filter region..."
-						className="w-56"
-						inputClassName="h-9"
-					/>
+				<Select
+					value={regionFilter}
+					onValueChange={(value) => {
+						updateUrl({
+							regionId: value === 'all' ? null : value,
+							constellationId: null,
+							page: '1',
+						})
+					}}
+					options={regionOptions}
+					searchable
+					placeholder="Filter region..."
+					className="w-56"
+					inputClassName="h-9"
+				/>
 
 				{/* Constellation dropdown */}
-					<Select
-						value={constellationFilter}
-						onValueChange={(value) => {
-							setConstellationFilter(value)
-							setPage(1)
-						}}
-						options={constellationOptions}
-						searchable
-						placeholder="Filter constellation..."
-						className="w-56"
-						inputClassName="h-9"
-						disabled={constellationOptions.length <= 1}
-					/>
+				<Select
+					value={constellationFilter}
+					onValueChange={(value) => {
+						updateUrl({
+							constellationId: value === 'all' ? null : value,
+							page: '1',
+						})
+					}}
+					options={constellationOptions}
+					searchable
+					placeholder="Filter constellation..."
+					className="w-56"
+					inputClassName="h-9"
+					disabled={constellationOptions.length <= 1}
+				/>
 
 				{/* Name / system search */}
 				<Input
@@ -453,10 +552,27 @@ export default function ScannedMoonsPage() {
 					placeholder="Search moon or system…"
 					value={search}
 					onChange={(e) => {
-						setSearch(e.target.value)
-						setPage(1)
+						updateUrl({ search: e.target.value, page: '1' })
 					}}
 				/>
+
+				<Button
+					type="button"
+					variant="ghost"
+					size="sm"
+					onClick={() =>
+						updateUrl({
+							regionId: null,
+							constellationId: null,
+							search: null,
+							rarity: null,
+							page: null,
+						})
+					}
+					disabled={!hasActiveFilters}
+				>
+					Clear Filters
+				</Button>
 
 				{/* Grouped / ungrouped view toggle */}
 				<div className="flex items-center gap-1 rounded-md border bg-card p-1">
@@ -477,15 +593,16 @@ export default function ScannedMoonsPage() {
 					))}
 				</div>
 
-			{!isLoading && data?.pricingSnapshotDate && (
-				<span className="ml-auto flex items-center gap-x-2 text-xs text-muted-foreground">
-					<span>Pricing Source: Global Daily Average</span>
-					<span aria-hidden="true">•</span>
-					<span className="flex items-center gap-1">
-						Snapshot: <EveTimeDisplay dateStr={`${data.pricingSnapshotDate}T00:00:00Z`} format="date" />
+				{!isLoading && data?.pricingSnapshotDate && (
+					<span className="ml-auto flex items-center gap-x-2 text-xs text-muted-foreground">
+						<span>Pricing Source: Global Daily Average</span>
+						<span aria-hidden="true">•</span>
+						<span className="flex items-center gap-1">
+							Snapshot:{' '}
+							<EveTimeDisplay dateStr={`${data.pricingSnapshotDate}T00:00:00Z`} format="date" />
+						</span>
 					</span>
-				</span>
-			)}
+				)}
 			</div>
 
 			<Card className="mt-4 overflow-hidden">
@@ -528,34 +645,38 @@ export default function ScannedMoonsPage() {
 										</TableRow>
 									))
 								: viewMode === 'ungrouped'
-									? (data?.items ?? []).map((moon) => <MoonRow key={moon.moonId} moon={moon} />)
+									? (data?.items ?? []).map((moon) => (
+											<MoonRow key={moon.moonId} moon={moon} backTo={moonDetailBackTo} />
+										))
 									: groupedItems.map((group) => {
-										const collapsed = collapsedConstellations.has(group.constellationId)
-										return (
-											<Fragment key={group.constellationId || '_unknown'}>
-												<TableRow
-													className="bg-muted/30 cursor-pointer hover:bg-muted/40"
-													onClick={() => toggleConstellationCollapse(group.constellationId)}
-												>
-													<TableCell colSpan={7} className="py-2">
-														<div className="flex items-center gap-2 text-sm font-medium">
-															{collapsed ? (
-																<ChevronRight className="h-4 w-4 text-muted-foreground" />
-															) : (
-																<ChevronDown className="h-4 w-4 text-muted-foreground" />
-															)}
-															<span>{group.constellationName}</span>
-															<span className="text-xs font-normal text-muted-foreground">
-																{group.moons.length} moon{group.moons.length === 1 ? '' : 's'}
-															</span>
-														</div>
-													</TableCell>
-												</TableRow>
-												{!collapsed &&
-													group.moons.map((moon) => <MoonRow key={moon.moonId} moon={moon} />)}
-											</Fragment>
-										)
-									})}
+											const collapsed = collapsedConstellations.has(group.constellationId)
+											return (
+												<Fragment key={group.constellationId || '_unknown'}>
+													<TableRow
+														className="bg-muted/30 cursor-pointer hover:bg-muted/40"
+														onClick={() => toggleConstellationCollapse(group.constellationId)}
+													>
+														<TableCell colSpan={7} className="py-2">
+															<div className="flex items-center gap-2 text-sm font-medium">
+																{collapsed ? (
+																	<ChevronRight className="h-4 w-4 text-muted-foreground" />
+																) : (
+																	<ChevronDown className="h-4 w-4 text-muted-foreground" />
+																)}
+																<span>{group.constellationName}</span>
+																<span className="text-xs font-normal text-muted-foreground">
+																	{group.moons.length} moon{group.moons.length === 1 ? '' : 's'}
+																</span>
+															</div>
+														</TableCell>
+													</TableRow>
+													{!collapsed &&
+														group.moons.map((moon) => (
+															<MoonRow key={moon.moonId} moon={moon} backTo={moonDetailBackTo} />
+														))}
+												</Fragment>
+											)
+										})}
 							{!isLoading && (data?.items.length ?? 0) === 0 && (
 								<TableRow>
 									<TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">

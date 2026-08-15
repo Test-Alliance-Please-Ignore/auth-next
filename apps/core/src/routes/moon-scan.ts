@@ -425,6 +425,7 @@ type VerifiedMoonRegionCount = Awaited<
 
 type MoonRegionResponse = {
 	regionId: string
+	regionName: string
 	systems: Array<{
 		solarSystemId: string
 		solarSystemName: string
@@ -450,6 +451,33 @@ type MoonSystemResponse = {
 		isVerified: boolean
 		composition: VerifiedComposition | null
 	}>
+}
+
+async function hydrateCompositionOres(
+	universe: Universe,
+	compositions: VerifiedComposition[]
+): Promise<VerifiedComposition[]> {
+	const oreTypeIds = [
+		...new Set(compositions.flatMap((composition) => composition.ores.map((ore) => ore.oreTypeId))),
+	]
+	if (oreTypeIds.length === 0) return compositions
+
+	let typeNames: Record<string, InvType | null> = {}
+	try {
+		typeNames = await universe.resolveTypeNamesByIds(oreTypeIds)
+	} catch (error) {
+		logger.warn('[moon-scan] failed to hydrate composition ore names; returning IDs', {
+			error,
+			oreTypeIds,
+		})
+	}
+	return compositions.map((composition) => ({
+		...composition,
+		ores: composition.ores.map((ore) => ({
+			...ore,
+			oreTypeName: typeNames[ore.oreTypeId]?.typeName ?? ore.oreTypeId,
+		})),
+	}))
 }
 
 type MoonLeaderboardResponse = Awaited<ReturnType<MoonScanDO['getLeaderboard']>>
@@ -1074,8 +1102,20 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 	const universe = getUniverseStub(c.env)
 	const moonScan = getMoonScanStub(c.env)
 
-	// Get all systems and stargates for the region
-	const systems = await universe.getSystemsByRegionId(regionId)
+	// Get all systems and static region metadata for the response payload.
+	const [systems, regionData]: [
+		Awaited<ReturnType<Universe['getSystemsByRegionId']>>,
+		Record<string, { regionId: string; regionName: string } | null>,
+	] = await Promise.all([
+		universe.getSystemsByRegionId(regionId),
+		universe.resolveRegionsByIds([regionId]).catch((error) => {
+			logger.warn('[moon-scan] failed to hydrate region name; returning region ID', {
+				error,
+				regionId,
+			})
+			return {} as Record<string, { regionId: string; regionName: string } | null>
+		}),
+	])
 
 	const [stargates, moonsBySystem] = await Promise.all([
 		universe.getStargatesBySystemIds(systems.map((s) => s.solarSystemId)),
@@ -1123,6 +1163,7 @@ moonScanRoutes.get('/moons/region/:regionId', async (c) => {
 
 	const response: MoonRegionResponse = {
 		regionId,
+		regionName: regionData[regionId]?.regionName ?? regionId,
 		systems: systems.map((s) => ({
 			solarSystemId: s.solarSystemId,
 			solarSystemName: s.solarSystemName,
@@ -1167,7 +1208,8 @@ moonScanRoutes.get('/moons/system/:systemId', async (c) => {
 
 	const verifiedMoonIds = compositions.filter((c) => c.isVerified).map((c) => c.moonId)
 	const verifiedComps = await moonScan.getVerifiedCompositions(verifiedMoonIds)
-	const verifiedCompMap = new Map(verifiedComps.map((v) => [v.moonId, v]))
+	const hydratedComps = await hydrateCompositionOres(universe, verifiedComps)
+	const verifiedCompMap = new Map(hydratedComps.map((v) => [v.moonId, v]))
 
 	const response: MoonSystemResponse = {
 		system: {
@@ -1485,12 +1527,9 @@ moonScanRoutes.get('/moons/:moonId', async (c) => {
 	if (!moon) return c.json({ error: 'Moon not found' }, 404)
 
 	// Enrich moon with system name
-	const systemsById = await universe.resolveSolarSystemsByIds([moon.solarSystemId])
+	const systemsById = await universe.resolveSolarSystemGeographyByIds([moon.solarSystemId])
 	const system = systemsById[moon.solarSystemId]
-
-	const profitability = composition
-		? await computeProfitability(composition, c.env, moonScan)
-		: null
+	if (!system) return c.json({ error: 'System not found' }, 404)
 
 	// Resolve character IDs to names via the cache
 	const characterIds = [
@@ -1499,24 +1538,50 @@ moonScanRoutes.get('/moons/:moonId', async (c) => {
 			...(composition?.verifiedBy ? [composition.verifiedBy] : []),
 		]),
 	]
-	const nameMap = await moonScan.resolveCharacterNames(characterIds)
-
+	const scanOreTypeIds = [
+		...new Set(scans.items.flatMap((scan) => scan.ores.map((ore) => ore.oreTypeId))),
+	]
+	const [hydratedComposition, profitability, nameMap, scanTypeNames] = await Promise.all([
+		composition
+			? hydrateCompositionOres(universe, [composition]).then(([value]) => value ?? null)
+			: null,
+		composition ? computeProfitability(composition, c.env, moonScan) : null,
+		moonScan.resolveCharacterNames(characterIds),
+		scanOreTypeIds.length > 0
+			? universe.resolveTypeNamesByIds(scanOreTypeIds).catch((error) => {
+					logger.warn('[moon-scan] failed to hydrate scan ore names; returning IDs', {
+						error,
+						scanOreTypeIds,
+					})
+					return {} as Record<string, InvType | null>
+				})
+			: ({} as Record<string, InvType | null>),
+	])
 	const enrichedScans = scans.items.map((s) => ({
 		...s,
+		ores: s.ores.map((ore) => ({
+			...ore,
+			oreTypeName: scanTypeNames[ore.oreTypeId]?.typeName ?? ore.oreTypeId,
+		})),
 		submittedByName: s.submittedBy ? (nameMap[s.submittedBy] ?? s.submittedBy) : null,
 	}))
 
-	const enrichedComposition = composition
+	const enrichedComposition = hydratedComposition
 		? {
-				...composition,
-				verifiedByName: composition.verifiedBy
-					? (nameMap[composition.verifiedBy] ?? composition.verifiedBy)
+				...hydratedComposition,
+				verifiedByName: hydratedComposition.verifiedBy
+					? (nameMap[hydratedComposition.verifiedBy] ?? hydratedComposition.verifiedBy)
 					: null,
 			}
 		: null
 
 	return c.json({
-		moon: { ...moon, solarSystemName: system?.solarSystemName ?? '' },
+		moon: {
+			...moon,
+			solarSystemName: system.solarSystemName,
+			regionName: system.regionName,
+			constellationName: system.constellationName,
+		},
 		scans: enrichedScans,
 		composition: enrichedComposition,
 		profitability,

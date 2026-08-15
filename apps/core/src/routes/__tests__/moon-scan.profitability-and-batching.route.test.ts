@@ -153,6 +153,7 @@ describe('moon-scan profitability and batching behavior', () => {
 			getMoonsBySystemId: vi.fn().mockResolvedValue([]),
 			getRegionsBySystemIds: vi.fn().mockResolvedValue({}),
 			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
+			resolveSolarSystemGeographyByIds: vi.fn().mockResolvedValue({}),
 			resolveStaticMoonsByIds: vi.fn().mockResolvedValue({}),
 			getMoonRegionIds: vi.fn().mockResolvedValue({}),
 			resolveRegionsByIds: vi.fn().mockResolvedValue({}),
@@ -336,6 +337,45 @@ describe('moon-scan profitability and batching behavior', () => {
 		expect(body.moons.find((m) => m.moonId === 'moon-2')?.composition).toBeNull()
 	})
 
+	it('returns composition IDs when ore name hydration is unavailable', async () => {
+		universeStub.resolveSolarSystemsByIds.mockResolvedValue({
+			'sys-1': { solarSystemId: 'sys-1', solarSystemName: 'Jita', securityStatus: '0.5' },
+		})
+		universeStub.resolveTypeNamesByIds.mockRejectedValue(
+			new Error('Universe temporarily unavailable')
+		)
+		universeStub.getMoonsBySystemId.mockResolvedValue([
+			{ moonId: 'moon-1', moonName: 'Moon 1', solarSystemId: 'sys-1' },
+		])
+		moonScanStub.getMoonCoverage.mockResolvedValue([
+			{ moonId: 'moon-1', hasScans: true, isVerified: true },
+		])
+		moonScanStub.getVerifiedCompositions.mockResolvedValue([
+			{
+				moonId: 'moon-1',
+				sourceScanId: 'scan-1',
+				verifiedAt: '2026-05-01T00:00:00.000Z',
+				verifiedBy: null,
+				ores: [{ oreTypeId: '45490', quantity: '1' }],
+			},
+		])
+
+		const app = createApp(makeUser())
+		const res = await app.request('/api/moon-scan/moons/system/sys-1', {}, env)
+		const body = (await res.json()) as {
+			moons: Array<{
+				composition: { ores: Array<{ oreTypeId: string; oreTypeName?: string }> } | null
+			}>
+		}
+
+		expect(res.status).toBe(200)
+		expect(body.moons[0]?.composition?.ores[0]).toEqual({
+			oreTypeId: '45490',
+			oreTypeName: '45490',
+			quantity: '1',
+		})
+	})
+
 	it('uses the database-backed page query for both pagination and profitability sorting', async () => {
 		moonScanStub.getVerifiedMoonPage.mockResolvedValue({
 			items: [
@@ -421,8 +461,16 @@ describe('moon-scan profitability and batching behavior', () => {
 		universeStub.resolveStaticMoonsByIds.mockResolvedValue({
 			'moon-1': { moonId: 'moon-1', moonName: 'Moon 1', solarSystemId: 'sys-1' },
 		})
-		universeStub.resolveSolarSystemsByIds.mockResolvedValue({
-			'sys-1': { solarSystemId: 'sys-1', solarSystemName: 'Jita', securityStatus: '0.5' },
+		universeStub.resolveSolarSystemGeographyByIds.mockResolvedValue({
+			'sys-1': {
+				solarSystemId: 'sys-1',
+				solarSystemName: 'Jita',
+				regionId: 'region-1',
+				regionName: 'The Forge',
+				constellationId: 'const-1',
+				constellationName: 'Kimotoro',
+				securityStatus: '0.5',
+			},
 		})
 		universeStub.getTypeMaterials.mockResolvedValue({
 			'45490': [{ materialTypeId: '16633', quantity: 100 }],

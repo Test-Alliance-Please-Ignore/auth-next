@@ -1,5 +1,5 @@
 import { ArrowLeft } from 'lucide-react'
-import { Link, useParams } from 'react-router'
+import { Link, useLocation, useParams } from 'react-router'
 
 import { MoonProfitabilityTable } from '@/components/moon-profitability-table'
 import { Badge } from '@/components/ui/badge'
@@ -198,10 +198,25 @@ function ProfitabilityCard({
 
 export default function MoonPage() {
 	const { moonId } = useParams<{ moonId: string }>()
+	const location = useLocation()
+	const navigationState =
+		location.state && typeof location.state === 'object'
+			? (location.state as {
+					from?: unknown
+					systemFrom?: unknown
+					moonName?: unknown
+					solarSystemName?: unknown
+				})
+			: null
+	const immediateMoonName =
+		typeof navigationState?.moonName === 'string' ? navigationState.moonName : null
+	const immediateSystemName =
+		typeof navigationState?.solarSystemName === 'string' ? navigationState.solarSystemName : null
 	const { canView } = useMoonScanPermissions()
 
 	const { data: detail, isLoading, error } = useMoonDetail(moonId!, canView)
-	usePageTitle(detail?.moon?.moonName ? `${detail.moon.moonName} — Moon` : 'Moon Detail')
+	const resolvedMoonName = detail?.moon?.moonName ?? immediateMoonName
+	usePageTitle(resolvedMoonName ? `${resolvedMoonName} — Moon` : 'Moon Detail')
 
 	if (!canView) {
 		return (
@@ -216,11 +231,31 @@ export default function MoonPage() {
 	const moon = detail?.moon
 	const composition = detail?.composition
 	const profitability = detail?.profitability
+	const backTo =
+		typeof navigationState?.from === 'string' && navigationState.from.startsWith('/moon-scan')
+			? navigationState.from
+			: moon?.solarSystemId
+				? `/moon-scan/system/${moon.solarSystemId}`
+				: '/moon-scan'
+	const backLabel = backTo.startsWith('/moon-scan/scanned')
+		? 'Back to Scanned Moons'
+		: backTo.startsWith('/moon-scan/system/')
+			? 'Back to System'
+			: 'Back to Regions'
+	const systemNavigationState = backTo.startsWith('/moon-scan/system/')
+		? {
+				from:
+					typeof navigationState?.systemFrom === 'string'
+						? navigationState.systemFrom
+						: '/moon-scan',
+				systemName: immediateSystemName,
+			}
+		: undefined
 
 	return (
 		<Container>
 			<PageHeader
-				title={moon?.moonName ?? moonId!}
+				title={moon?.moonName ?? immediateMoonName ?? 'Moon'}
 				description={moon ? `Moon ID: ${moon.moonId}` : undefined}
 				action={
 					<div className="flex flex-col items-end gap-2">
@@ -231,29 +266,24 @@ export default function MoonPage() {
 							{moon?.solarSystemId && (
 								<>
 									<span>/</span>
-									<Link to={`/moon-scan/system/${moon.solarSystemId}`} className="hover:underline">
-										{moon.solarSystemName || 'System'}
+									<Link
+										to={`/moon-scan/system/${moon.solarSystemId}`}
+										state={systemNavigationState}
+										className="hover:underline"
+									>
+										{moon.solarSystemName || immediateSystemName || 'System'}
 									</Link>
 								</>
 							)}
 							<span>/</span>
-							<span>{moon?.moonName ?? moonId}</span>
+							<span>{moon?.moonName ?? immediateMoonName ?? 'Moon'}</span>
 						</div>
-						{moon?.solarSystemId ? (
-							<Button variant="ghost" size="sm" asChild>
-								<Link to={`/moon-scan/system/${moon.solarSystemId}`}>
-									<ArrowLeft className="mr-2 h-4 w-4" />
-									Back to System
-								</Link>
-							</Button>
-						) : (
-							<Button variant="ghost" size="sm" asChild>
-								<Link to="/moon-scan">
-									<ArrowLeft className="mr-2 h-4 w-4" />
-									Back to Regions
-								</Link>
-							</Button>
-						)}
+						<Button variant="ghost" size="sm" asChild>
+							<Link to={backTo} state={systemNavigationState}>
+								<ArrowLeft className="mr-2 h-4 w-4" />
+								{backLabel}
+							</Link>
+						</Button>
 					</div>
 				}
 			/>

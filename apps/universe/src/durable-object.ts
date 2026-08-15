@@ -74,6 +74,7 @@ import type {
 	UniversePosition,
 	UniverseRegion,
 	UniverseSolarSystem,
+	UniverseSolarSystemGeography,
 	UniverseStargate,
 	UniverseStaticMoon,
 	UniverseStructureFuelModifier,
@@ -1666,6 +1667,53 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			logger.error('Failed to resolve solar systems by IDs', error)
 			throw error
 		}
+	}
+
+	/**
+	 * Resolve solar systems with their related geography names in one RPC response.
+	 * Name lookups are best-effort because the system record itself is still useful
+	 * when a geography cache or fallback resolver is temporarily unavailable.
+	 */
+	async resolveSolarSystemGeographyByIds(
+		solarSystemIds: string[]
+	): Promise<Record<string, UniverseSolarSystemGeography | null>> {
+		if (solarSystemIds.length === 0) return {}
+
+		const systems = await this.resolveSolarSystemsByIds([...new Set(solarSystemIds)])
+		const resolvedSystems = Object.values(systems).filter(
+			(system): system is UniverseSolarSystem => system !== null
+		)
+		const regionIds = [...new Set(resolvedSystems.map((system) => system.regionId))]
+		const constellationIds = [...new Set(resolvedSystems.map((system) => system.constellationId))]
+		const [regions, constellations] = await Promise.all([
+			this.resolveRegionsByIds(regionIds).catch((error) => {
+				logger.warn('Failed to resolve system region names; returning region IDs', error)
+				return {} as Record<string, UniverseRegion | null>
+			}),
+			this.resolveConstellationsByIds(constellationIds).catch((error) => {
+				logger.warn(
+					'Failed to resolve system constellation names; returning constellation IDs',
+					error
+				)
+				return {} as Record<string, UniverseConstellation | null>
+			}),
+		])
+
+		return Object.fromEntries(
+			solarSystemIds.map((solarSystemId) => {
+				const system = systems[solarSystemId]
+				if (!system) return [solarSystemId, null]
+				return [
+					solarSystemId,
+					{
+						...system,
+						regionName: regions[system.regionId]?.regionName ?? system.regionId,
+						constellationName:
+							constellations[system.constellationId]?.constellationName ?? system.constellationId,
+					},
+				]
+			})
+		) as Record<string, UniverseSolarSystemGeography | null>
 	}
 
 	/**

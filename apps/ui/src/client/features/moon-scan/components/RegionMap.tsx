@@ -14,6 +14,7 @@ interface Props {
 	jumpLinks: JumpLink[]
 	coords: DotlanCoords
 	borderRegions: Record<string, { regionId: string; regionName: string }>
+	from: string
 	highlightedSystemIds?: Set<string>
 }
 
@@ -22,8 +23,8 @@ interface Props {
 // The visual rect center is at coord + (OX, OY).
 const RW = 58
 const RH = 16
-const OX = 29    // half cell width → horizontal center
-const OY = 14.5  // cell center height (rect at y+3.5, size 22, center = y+14.5)
+const OX = 29 // half cell width → horizontal center
+const OY = 14.5 // cell center height (rect at y+3.5, size 22, center = y+14.5)
 
 function sysFill(moonCount: number, verifiedCount: number, scannedCount: number): string {
 	if (moonCount === 0) return '#151c24'
@@ -62,6 +63,7 @@ export function RegionMap({
 	jumpLinks,
 	coords,
 	borderRegions = {},
+	from,
 	highlightedSystemIds,
 }: Props) {
 	const navigate = useNavigate()
@@ -75,7 +77,9 @@ export function RegionMap({
 	// Border nodes = systems in the dotlan JSON that aren't in this region,
 	// but only those with an actual stargate connection in jumpLinks.
 	const borderSystemIds = new Set(
-		jumpLinks.flatMap((l) => [l.from, l.to]).filter((id) => !systemIds.has(id) && id in coordSystems)
+		jumpLinks
+			.flatMap((l) => [l.from, l.to])
+			.filter((id) => !systemIds.has(id) && id in coordSystems)
 	)
 	// Expand the viewbox so nodes at the edges get equal breathing room on all sides.
 	const PAD = 20
@@ -83,7 +87,8 @@ export function RegionMap({
 	const minX = (allCoords.length ? Math.min(...allCoords.map((p) => p[0])) : 0) - RW / 2 - PAD
 	const minY = (allCoords.length ? Math.min(...allCoords.map((p) => p[1])) : 0) + OY - RH / 2 - PAD
 	const maxX = (allCoords.length ? Math.max(...allCoords.map((p) => p[0])) : 1024) + RW / 2 + PAD
-	const maxY = (allCoords.length ? Math.max(...allCoords.map((p) => p[1])) : 768) + OY + RH / 2 + PAD
+	const maxY =
+		(allCoords.length ? Math.max(...allCoords.map((p) => p[1])) : 768) + OY + RH / 2 + PAD
 	const [vx, vy, vw, vh] = [minX, minY, maxX - minX, maxY - minY]
 
 	function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
@@ -142,7 +147,12 @@ export function RegionMap({
 						<g
 							key={`border-${sysId}`}
 							style={{ cursor: region ? 'pointer' : 'default' }}
-							onClick={() => region && navigate(`/moon-scan/region/${region.regionId}`)}
+							onClick={() =>
+								region &&
+								navigate(`/moon-scan/region/${region.regionId}`, {
+									state: { regionName: region.regionName },
+								})
+							}
 						>
 							<rect
 								x={cx - RW / 2}
@@ -192,7 +202,12 @@ export function RegionMap({
 							key={sysId}
 							opacity={dimmed ? 0.2 : 1}
 							style={{ cursor: eligible ? 'pointer' : 'default' }}
-							onClick={() => eligible && navigate(`/moon-scan/system/${sysId}`)}
+							onClick={() =>
+								eligible &&
+								navigate(`/moon-scan/system/${sysId}`, {
+									state: { from, systemName: sys.solarSystemName },
+								})
+							}
 							onMouseEnter={() =>
 								setTooltip({
 									name: sys.solarSystemName,
@@ -254,8 +269,7 @@ export function RegionMap({
 						zIndex: 10,
 					}}
 				>
-					<span style={{ color: '#3d9ae8', fontWeight: 600 }}>{tooltip.name}</span>
-					{' '}
+					<span style={{ color: '#3d9ae8', fontWeight: 600 }}>{tooltip.name}</span>{' '}
 					<span style={{ color: '#6b7c8f' }}>({tooltip.sec})</span>
 					{tooltip.moonCount > 0 ? (
 						<>
@@ -264,8 +278,11 @@ export function RegionMap({
 							{tooltip.moonCount}
 							{'  '}
 							<span style={{ color: '#6b7c8f' }}>Verified: </span>
-							{tooltip.verifiedCount}
-							{' '}({tooltip.moonCount > 0 ? Math.round(tooltip.verifiedCount / tooltip.moonCount * 100) : 0}%)
+							{tooltip.verifiedCount} (
+							{tooltip.moonCount > 0
+								? Math.round((tooltip.verifiedCount / tooltip.moonCount) * 100)
+								: 0}
+							%)
 						</>
 					) : null}
 				</div>
@@ -274,23 +291,38 @@ export function RegionMap({
 			{/* Legend */}
 			<div className="flex flex-wrap items-center gap-4 border-t px-3 py-2 text-xs text-muted-foreground">
 				<span className="flex items-center gap-1.5">
-					<span className="inline-block h-3 w-8 rounded" style={{ background: '#1a3320', border: '1px solid #28a745' }} />
+					<span
+						className="inline-block h-3 w-8 rounded"
+						style={{ background: '#1a3320', border: '1px solid #28a745' }}
+					/>
 					100% Verified
 				</span>
 				<span className="flex items-center gap-1.5">
-					<span className="inline-block h-3 w-8 rounded" style={{ background: '#332a10', border: '1px solid #c89b20' }} />
+					<span
+						className="inline-block h-3 w-8 rounded"
+						style={{ background: '#332a10', border: '1px solid #c89b20' }}
+					/>
 					Partially Scanned
 				</span>
 				<span className="flex items-center gap-1.5">
-					<span className="inline-block h-3 w-8 rounded" style={{ background: '#1e2830', border: '1px solid #4a5a6a' }} />
+					<span
+						className="inline-block h-3 w-8 rounded"
+						style={{ background: '#1e2830', border: '1px solid #4a5a6a' }}
+					/>
 					Has Moons
 				</span>
 				<span className="flex items-center gap-1.5">
-					<span className="inline-block h-3 w-8 rounded" style={{ background: '#151c24', border: '1px solid #2a3644' }} />
+					<span
+						className="inline-block h-3 w-8 rounded"
+						style={{ background: '#151c24', border: '1px solid #2a3644' }}
+					/>
 					No Moons
 				</span>
 				<span className="flex items-center gap-1.5">
-					<span className="inline-block h-3 w-8 rounded" style={{ background: '#0d1a26', border: '1px dashed #3a5a7a' }} />
+					<span
+						className="inline-block h-3 w-8 rounded"
+						style={{ background: '#0d1a26', border: '1px dashed #3a5a7a' }}
+					/>
 					Other Region
 				</span>
 				<span className="text-muted-foreground/60">Click eligible system to view details</span>

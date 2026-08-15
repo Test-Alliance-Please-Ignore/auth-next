@@ -9,6 +9,7 @@ import type {
 	UniversePosition,
 	UniverseRegion,
 	UniverseSolarSystem,
+	UniverseSolarSystemGeography,
 	UniverseStargate,
 	UniverseStaticMoon,
 } from './geography'
@@ -280,6 +281,12 @@ export interface Universe {
 	resolveSolarSystemsByIds(
 		solarSystemIds: string[]
 	): Promise<Record<string, UniverseSolarSystem | null>>
+	/**
+	 * Resolve solar systems and their related constellation/region names in one RPC response.
+	 */
+	resolveSolarSystemGeographyByIds(
+		solarSystemIds: string[]
+	): Promise<Record<string, UniverseSolarSystemGeography | null>>
 
 	/**
 	 * Resolve solar systems by names.

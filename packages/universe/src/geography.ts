@@ -27,6 +27,14 @@ export interface UniverseSolarSystem {
 }
 
 /**
+ * Solar system metadata with the related constellation and region names.
+ */
+export interface UniverseSolarSystemGeography extends UniverseSolarSystem {
+	constellationName: string
+	regionName: string
+}
+
+/**
  * 3D position metadata.
  */
 export interface UniversePosition {
