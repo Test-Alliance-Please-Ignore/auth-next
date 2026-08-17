@@ -130,6 +130,6 @@ describe('DEFAULT_WORKFLOW_RETENTION', () => {
 
 	it('uses the shortest documented duration for both success and error retention', () => {
 		expect(DEFAULT_WORKFLOW_RETENTION.successRetention).toBe('1 hour')
-		expect(DEFAULT_WORKFLOW_RETENTION.errorRetention).toBe('7 days')
+		expect(DEFAULT_WORKFLOW_RETENTION.errorRetention).toBe('3 days')
 	})
 })

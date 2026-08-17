@@ -37,14 +37,15 @@ export interface WorkflowRetentionPolicy {
  * `retention` entirely — so `wrangler dev` and every vitest-pool-workers test here are
  * blind to this field, and a shorter value cannot be validated before deploy.
  *
- * `errorRetention: '7 days'` matches the Workers Logs window. Retained error state is
- * currently the only per-step failure attribution that exists, because no workflow in this
- * repo reports to Sentry (`withSentry` wraps the Hono app; workflow classes are exported
- * outside it). Shorten only once workflow errors reach Sentry.
+ * `errorRetention: '3 days'` keeps failed instance state available long enough for routine
+ * diagnosis while matching the shortest documented Workers plan retention window. Retained
+ * error state is currently the only per-step failure attribution that exists, because no
+ * workflow in this repo reports to Sentry (`withSentry` wraps the Hono app; workflow classes
+ * are exported outside it).
  */
 export const DEFAULT_WORKFLOW_RETENTION = {
 	successRetention: '1 hour',
-	errorRetention: '7 days',
+	errorRetention: '3 days',
 } as const satisfies WorkflowRetentionPolicy
 
 /**

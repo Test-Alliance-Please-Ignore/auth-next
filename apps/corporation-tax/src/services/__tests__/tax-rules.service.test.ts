@@ -112,7 +112,9 @@ describe('TaxRulesService', () => {
 		const mockDb = {
 			select: vi.fn(() => ({
 				from: vi.fn(() => ({
-					where: vi.fn().mockResolvedValue([{ ruleGroupId: 'group-1' }]),
+					where: vi.fn(() => ({
+						orderBy: vi.fn().mockResolvedValue([{ ruleGroupId: 'group-1' }]),
+					})),
 				})),
 			})),
 			query: {

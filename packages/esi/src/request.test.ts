@@ -117,8 +117,20 @@ describe('ESI request helpers', () => {
 
 	it('revalidates stale cached responses with etag and updates the cache on 304', async () => {
 		const cache = {
-			getCachedResponse: vi.fn().mockImplementation(async (_scope, _path, _page, includeExpired) => {
-				if (includeExpired) {
+			getCachedResponse: vi
+				.fn()
+				.mockImplementation(async (_scope, _path, _page, includeExpired) => {
+					if (includeExpired) {
+						return {
+							data: [{ character_id: 1 }],
+							expiresAt: new Date(Date.now() - 1_000),
+							etag: 'etag-1',
+							pages: null,
+							page: null,
+							lastModified: new Date(Date.now() - 60_000),
+						}
+					}
+
 					return {
 						data: [{ character_id: 1 }],
 						expiresAt: new Date(Date.now() - 1_000),
@@ -127,17 +139,7 @@ describe('ESI request helpers', () => {
 						page: null,
 						lastModified: new Date(Date.now() - 60_000),
 					}
-				}
-
-				return {
-					data: [{ character_id: 1 }],
-					expiresAt: new Date(Date.now() - 1_000),
-					etag: 'etag-1',
-					pages: null,
-					page: null,
-					lastModified: new Date(Date.now() - 60_000),
-				}
-			}),
+				}),
 			setCachedResponse: vi.fn(),
 		}
 
@@ -207,6 +209,33 @@ describe('ESI request helpers', () => {
 		expect(fetchImpl).toHaveBeenCalledTimes(1)
 	})
 
+	it('can disable upstream rate-limit retries for latency-sensitive requests', async () => {
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response('{"error":"rate limited"}', {
+				status: 429,
+				statusText: 'Too Many Requests',
+				headers: { 'Retry-After': '60' },
+			})
+		)
+		const client = new EsiRequestClient({
+			rateLimits: new EsiRateLimitStore(new MemoryKv() as never),
+			fetchImpl: fetchSpy as typeof fetch,
+		})
+
+		await expect(
+			client.request({
+				path: '/characters/111/roles',
+				userKey: 'character:111',
+				cacheMode: 'no-store',
+				maxRetries: 0,
+				parse: async (response) => response.json(),
+				buildError: () => new Error('rate limited'),
+			})
+		).rejects.toThrow('rate limited')
+
+		expect(fetchSpy).toHaveBeenCalledTimes(1)
+	})
+
 	it('treats bucket limits as a sliding window and only blocks when remaining is exhausted', async () => {
 		const fetchSpy = vi
 			.fn()
@@ -224,34 +253,34 @@ describe('ESI request helpers', () => {
 					})
 				)
 			)
-				.mockImplementationOnce(() =>
-					Promise.resolve(
-						new Response(JSON.stringify([{ character_id: 1 }]), {
-							status: 200,
-							headers: {
-								'Content-Type': 'application/json',
-								'X-Ratelimit-Group': 'char-asset',
-								'X-Ratelimit-Limit': '3/1m',
-								'X-Ratelimit-Remaining': '0',
-								'X-Ratelimit-Used': '3',
-							},
-						})
-					)
+			.mockImplementationOnce(() =>
+				Promise.resolve(
+					new Response(JSON.stringify([{ character_id: 1 }]), {
+						status: 200,
+						headers: {
+							'Content-Type': 'application/json',
+							'X-Ratelimit-Group': 'char-asset',
+							'X-Ratelimit-Limit': '3/1m',
+							'X-Ratelimit-Remaining': '0',
+							'X-Ratelimit-Used': '3',
+						},
+					})
 				)
-				.mockImplementationOnce(() =>
-					Promise.resolve(
-						new Response(JSON.stringify([{ character_id: 1 }]), {
-							status: 200,
-							headers: {
-								'Content-Type': 'application/json',
-								'X-Ratelimit-Group': 'char-asset',
-								'X-Ratelimit-Limit': '3/1m',
-								'X-Ratelimit-Remaining': '1',
-								'X-Ratelimit-Used': '2',
-							},
-						})
-					)
+			)
+			.mockImplementationOnce(() =>
+				Promise.resolve(
+					new Response(JSON.stringify([{ character_id: 1 }]), {
+						status: 200,
+						headers: {
+							'Content-Type': 'application/json',
+							'X-Ratelimit-Group': 'char-asset',
+							'X-Ratelimit-Limit': '3/1m',
+							'X-Ratelimit-Remaining': '1',
+							'X-Ratelimit-Used': '2',
+						},
+					})
 				)
+			)
 
 		const client = new EsiRequestClient({
 			rateLimits: new EsiRateLimitStore(new MemoryKv() as never),

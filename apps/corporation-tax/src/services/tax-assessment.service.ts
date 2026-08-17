@@ -198,18 +198,23 @@ export class TaxAssessmentService {
 			lte(taxLedgerEntries.entryDate, input.periodEnd)
 		)
 
-		const activeRuleSets = await this.db.query.taxRuleSets.findMany({
-			where: and(
-				sql`EXISTS (
-					SELECT 1
-					FROM ${taxRuleGroupAttachments}
-					WHERE ${taxRuleGroupAttachments.ruleGroupId} = ${taxRuleSets.ruleGroupId}
-						AND ${taxRuleGroupAttachments.corporationId} = ${input.corporationId}
-				)`,
-				eq(taxRuleSets.isActive, true)
-			),
-			orderBy: [desc(taxRuleSets.priority), desc(taxRuleSets.createdAt)],
+		const attachedRuleGroups = await this.db.query.taxRuleGroupAttachments.findMany({
+			where: eq(taxRuleGroupAttachments.corporationId, input.corporationId),
+			columns: { ruleGroupId: true },
 		})
+		const attachedRuleGroupIds = [
+			...new Set(attachedRuleGroups.map((attachment) => attachment.ruleGroupId)),
+		]
+		const activeRuleSets =
+			attachedRuleGroupIds.length === 0
+				? []
+				: await this.db.query.taxRuleSets.findMany({
+						where: and(
+							inArray(taxRuleSets.ruleGroupId, attachedRuleGroupIds),
+							eq(taxRuleSets.isActive, true)
+						),
+						orderBy: [desc(taxRuleSets.priority), desc(taxRuleSets.createdAt)],
+					})
 
 		const compiledRules = activeRuleSets.map((ruleSet) => ({
 			ruleSetId: ruleSet.id,

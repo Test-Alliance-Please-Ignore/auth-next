@@ -245,6 +245,8 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			{
 				body: characterIds.map((id) => parseInt(id, 10)),
 				cacheMode,
+				maxRetries: options?.maxRetries,
+				timeoutMs: options?.timeoutMs,
 				maxLocalCacheTtl: cacheMode === 'no-store' ? undefined : REVALIDATE_5_MIN,
 				method: 'POST',
 				persistGlobalCache: false,
