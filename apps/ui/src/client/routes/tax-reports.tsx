@@ -196,7 +196,7 @@ export default function TaxReportsPage() {
 	)
 	const canReadScoped = scopedCapabilities?.scoped.canRead ?? false
 	const canView = canAdminScope || canReadScoped
-	const canExport = canAdminExport
+	const canExport = canAdminExport || canReadScoped
 	const canCreateSchedule = canAdminManageSchedules
 
 	const visibleReportOptions = useMemo(

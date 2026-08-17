@@ -520,8 +520,17 @@ export class TaxReportService {
 	}
 
 	private buildCharacterCorporationCondition(corporationIds: string[]) {
+		const currentMemberCorporationCondition = sql`EXISTS (
+			SELECT 1
+			FROM managed_corporations mc
+			WHERE mc.corporation_id = cpi.corporation_id
+				AND mc.is_active = TRUE
+				AND mc.is_member_corporation = TRUE
+		)`
+
 		if (corporationIds.length <= this.REPORT_CORPORATION_ID_INLINE_LIMIT) {
-			return sql`cpi.corporation_id IN (${sql.join(
+			return sql`${currentMemberCorporationCondition}
+			AND cpi.corporation_id IN (${sql.join(
 				corporationIds.map((corporationId) => sql`${corporationId}`),
 				sql`, `
 			)})`
@@ -531,6 +540,7 @@ export class TaxReportService {
 			SELECT corporation_id
 			FROM managed_corporations
 			WHERE is_active = TRUE
+				AND is_member_corporation = TRUE
 		)`
 	}
 
@@ -538,9 +548,25 @@ export class TaxReportService {
 		filters: TaxRollupReportFilters
 	): Promise<string[]> {
 		if (filters.walletSource === 'character' && !filters.corporationId) {
-			return this.listKnownCorporationIds()
+			return this.listMemberCorporationIds()
 		}
 		return this.resolveReportCorporationIds(filters.corporationId)
+	}
+
+	private async listMemberCorporationIds(): Promise<string[]> {
+		const rows = await this.db
+			.select({
+				corporationId: managedCorporations.corporationId,
+			})
+			.from(managedCorporations)
+			.where(
+				and(
+					eq(managedCorporations.isActive, true),
+					eq(managedCorporations.isMemberCorporation, true)
+				)
+			)
+			.groupBy(managedCorporations.corporationId)
+		return rows.map((row) => row.corporationId)
 	}
 
 	private async getAssessedIncomeSourcesMonthlyReport(

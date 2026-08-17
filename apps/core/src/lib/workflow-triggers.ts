@@ -21,6 +21,7 @@ export interface TriggerUserRefreshOptions {
 	refreshMode?: 'scheduled' | 'event' | 'manual'
 	suppressDiscordRefresh?: boolean
 	forceTokenValidation?: boolean
+	includeWalletJournal?: boolean
 }
 
 export interface TriggerUserRefreshResult {
@@ -228,6 +229,7 @@ export async function triggerUserRefreshWorkflow({
 	refreshMode = 'scheduled',
 	suppressDiscordRefresh = false,
 	forceTokenValidation = false,
+	includeWalletJournal = false,
 }: TriggerUserRefreshOptions): Promise<TriggerUserRefreshResult> {
 	try {
 		const userRecord = await db.query.users.findFirst({
@@ -251,7 +253,13 @@ export async function triggerUserRefreshWorkflow({
 
 		const instance = await createWorkflow(env.USER_REFRESH_WORKFLOW, {
 			id: createUserRefreshWorkflowId(source, userId),
-			params: { userId, refreshMode, suppressDiscordRefresh, forceTokenValidation },
+			params: {
+				userId,
+				refreshMode,
+				suppressDiscordRefresh,
+				forceTokenValidation,
+				includeWalletJournal,
+			},
 		})
 
 		logger.info('[WorkflowTrigger] Triggered user refresh workflow', {
@@ -261,6 +269,7 @@ export async function triggerUserRefreshWorkflow({
 			refreshMode,
 			suppressDiscordRefresh,
 			forceTokenValidation,
+			includeWalletJournal,
 			workflowInstanceId: instance.id,
 		})
 		return {

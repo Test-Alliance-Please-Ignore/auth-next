@@ -99,10 +99,39 @@ export function TopIncomeSourcesReportSection(props: {
 
 	return (
 		<div className="space-y-4">
-			<div className="max-w-3xl space-y-2">
+			<div className="w-full space-y-2">
 				<div className="text-sm font-medium">Income Types</div>
-				<div className="flex items-center gap-2">
-					<div className="min-w-0 flex-1">
+				<div className="flex flex-wrap items-center gap-2">
+					<div
+						className="flex shrink-0 items-center rounded-md border border-border bg-card p-1"
+						role="group"
+						aria-label="Wallet source"
+					>
+						{(['character', 'corporation'] as const).map((walletSource) => {
+							const isSelected = props.controls.walletSource === walletSource
+							return (
+								<Button
+									key={walletSource}
+									type="button"
+									variant={isSelected ? 'primary' : 'ghost'}
+									size="sm"
+									className="h-8 rounded-sm border-0 px-3 shadow-none hover:shadow-none"
+									showIcon={false}
+									aria-pressed={isSelected}
+									onClick={() =>
+										props.onControlsChange({
+											...props.controls,
+											walletSource,
+											incomeMode: 'total',
+										})
+									}
+								>
+									{walletSource === 'character' ? 'Character' : 'Corporation'}
+								</Button>
+							)
+						})}
+					</div>
+					<div className="w-[min(20rem,100%)] min-w-0 shrink-0">
 						<Select
 							options={TAX_REF_TYPE_OPTIONS}
 							values={props.controls.refTypes}
@@ -125,24 +154,6 @@ export function TopIncomeSourcesReportSection(props: {
 						}
 					>
 						Taxable only
-					</Button>
-					<Button
-						type="button"
-						variant="secondary"
-						className="h-10 shrink-0"
-						showIcon={false}
-						onClick={() =>
-							props.onControlsChange({
-								...props.controls,
-								walletSource:
-									props.controls.walletSource === 'corporation' ? 'character' : 'corporation',
-								incomeMode: 'total',
-							})
-						}
-					>
-						{props.controls.walletSource === 'corporation'
-							? 'Show Player Wallets'
-							: 'Show Corporation Wallets'}
 					</Button>
 					{props.controls.walletSource === 'corporation' ? (
 						<Button

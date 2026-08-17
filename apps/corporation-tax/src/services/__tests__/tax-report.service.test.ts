@@ -230,6 +230,8 @@ describe('TaxReportService report scoping', () => {
 		expect(queryText).toContain('CAST(cwj.amount AS numeric) > 0')
 		expect(queryText).toContain('cmt.is_buy = FALSE')
 		expect(queryText).toContain('CAST(cmt.unit_price AS numeric) * cmt.quantity > 0')
+		expect(queryText).toContain('mc.is_active = TRUE')
+		expect(queryText).toContain('mc.is_member_corporation = TRUE')
 	})
 
 	it('aggregates total taxes by corporation from data-backed scope and applies paging', async () => {
