@@ -1,7 +1,9 @@
-import type { CSSProperties } from 'react'
+import { X } from 'lucide-react'
 
-import { cn } from '@/lib/utils'
 import { characterPortraitUrl } from '@/lib/eve-images'
+import { cn } from '@/lib/utils'
+
+import type { CSSProperties } from 'react'
 
 interface MemberAvatarProps {
 	characterId?: string | number
@@ -10,6 +12,7 @@ interface MemberAvatarProps {
 	className?: string
 	style?: CSSProperties
 	imageSize?: 64 | 128 | 256 | 512
+	isBlacklisted?: boolean
 }
 
 const sizeClasses = {
@@ -31,19 +34,24 @@ export function MemberAvatar({
 	className,
 	style,
 	imageSize,
+	isBlacklisted = false,
 }: MemberAvatarProps) {
 	const sizeClass = sizeClasses[size]
 	const portraitSize = imageSize ?? 64
 
 	return (
-		<div className={cn(sizeClass, 'flex-shrink-0 overflow-hidden rounded-md', className)} style={style}>
+		<div
+			className={cn(sizeClass, 'relative flex-shrink-0 overflow-hidden rounded-md', className)}
+			style={style}
+		>
 			{characterId ? (
 				<img
 					src={characterPortraitUrl(characterId, portraitSize)}
 					alt={characterName || 'Character portrait'}
 					className={cn(
 						'h-full w-full rounded-md',
-						size === 'auto' ? 'object-contain' : 'object-cover'
+						size === 'auto' ? 'object-contain' : 'object-cover',
+						isBlacklisted && 'grayscale'
 					)}
 					loading="lazy"
 				/>
@@ -51,6 +59,12 @@ export function MemberAvatar({
 				<div className="h-full w-full rounded bg-muted flex items-center justify-center text-muted-foreground text-xs">
 					?
 				</div>
+			)}
+			{isBlacklisted && (
+				<X
+					className="pointer-events-none absolute inset-0 m-auto h-[78%] w-[78%] stroke-[3] text-red-500 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]"
+					aria-hidden="true"
+				/>
 			)}
 		</div>
 	)

@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import { and, eq, ilike, inArray, or } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { captureException, logger } from '@repo/hono-helpers'
 import { APPLICATION_STATUSES } from '@repo/hr'
 
@@ -17,13 +17,23 @@ import { getIpHashMatches, getUserIpHistory } from '../lib/ip-history'
 import { getUserCorporationAffiliationIds } from '../lib/user-corporation-affiliations'
 import { validatePagination } from '../lib/validation'
 import { requireAdmin, requireAuth } from '../middleware/session'
+import { CoreRpcService } from '../services/core-rpc.service'
 import { dispatchCorporationAlert } from '../services/corporation-alerts.service'
 
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
 import type { Discord } from '@repo/discord'
 import type { Esi, EsiTypeResolver } from '@repo/esi'
-import type { Application, ApplicationFilters, Hr, HrNote, NoteFilters } from '@repo/hr'
+import type {
+	Application,
+	ApplicationDetail,
+	ApplicationFilters,
+	BlacklistTargetCheckItem,
+	Hr,
+	HrAccessContext,
+	HrNote,
+	NoteFilters,
+} from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
 import type { App } from '../context'
 
@@ -43,6 +53,36 @@ const upsertApplicationStaffNoteSchema = z.object({
  */
 function getHrStub(c: Context<App>): Hr {
 	return getStub<Hr>(c.env.HR, 'default')
+}
+
+function toPlainApplication<T extends Application>(application: T): T {
+	const detail = application as unknown as ApplicationDetail
+	return {
+		...application,
+		altCharacterIds: application.altCharacterIds
+			? [...application.altCharacterIds]
+			: application.altCharacterIds,
+		...(Array.isArray(detail.recommendations)
+			? { recommendations: detail.recommendations.map((recommendation) => ({ ...recommendation })) }
+			: {}),
+		...(Array.isArray(detail.activityLog)
+			? {
+					activityLog: detail.activityLog.map((entry) => ({
+						...entry,
+						metadata: entry.metadata ? { ...entry.metadata } : null,
+					})),
+				}
+			: {}),
+	} as T
+}
+
+async function getApplicationSnapshot(
+	hr: Hr,
+	applicationId: string,
+	userId: string,
+	access: HrAccessContext
+): Promise<ApplicationDetail> {
+	return withRpcResult(hr.getApplication(applicationId, userId, access), toPlainApplication)
 }
 
 function queueApplicationApplicantUpdateNotification(
@@ -119,8 +159,9 @@ async function resolveApplicationDiscordUsername(
 
 	try {
 		const discordStub = getStub<Discord>(c.env.DISCORD, 'default')
-		const status = await discordStub.getDiscordUserStatus(userId)
-		return status?.username ?? null
+		return await withRpcResult(discordStub.getDiscordUserStatus(userId), (status) =>
+			status ? (status.username ?? null) : null
+		)
 	} catch {
 		return null
 	}
@@ -247,13 +288,34 @@ async function resolveUserPrimaryCharacterIdentity(
 /**
  * Enrich a list of applications with resolved corporation and reviewer names.
  */
-async function enrichApplications<T extends { corporationId: string; reviewedBy: string | null }>(
+async function enrichApplications<
+	T extends {
+		corporationId: string
+		reviewedBy: string | null
+		userId: string
+		characterId: string
+	},
+>(
 	items: T[],
 	resolver: { resolveIds: (ids: string[]) => Promise<Record<string, string>> },
-	db: NonNullable<Context<App>['var']['db']>
-): Promise<Array<T & { corporationName: string; reviewedByCharacterName: string | null }>> {
+	db: NonNullable<Context<App>['var']['db']>,
+	hr: Hr
+): Promise<
+	Array<
+		T & {
+			corporationName: string
+			reviewedByCharacterName: string | null
+			isUserBlacklisted: boolean
+			isCharacterBlacklisted: boolean
+			isBlacklisted: boolean
+		}
+	>
+> {
 	const corpIds = [...new Set(items.map((a) => a.corporationId))]
-	const corpNames = corpIds.length > 0 ? await resolver.resolveIds(corpIds) : {}
+	const corpNames =
+		corpIds.length > 0
+			? await withRpcResult(resolver.resolveIds(corpIds), (result) => ({ ...result }))
+			: {}
 	const managedCorpNames =
 		corpIds.length > 0
 			? await db.query.managedCorporations.findMany({
@@ -279,10 +341,43 @@ async function enrichApplications<T extends { corporationId: string; reviewedBy:
 	const reviewerIds = items.map((a) => a.reviewedBy).filter((id): id is string => id !== null)
 	const reviewerNames = await resolveUserCharacterNames(db, reviewerIds)
 
+	const blacklistTargets: BlacklistTargetCheckItem[] = [
+		...new Set(items.map((application) => application.userId)),
+	].map((userId) => ({ targetType: 'user', targetValue: userId }))
+	blacklistTargets.push(
+		...[...new Set(items.map((application) => application.characterId))].map((characterId) => ({
+			targetType: 'character_id' as const,
+			targetValue: characterId,
+		}))
+	)
+
+	let blacklistedTargets = new Set<string>()
+	try {
+		const blacklistResults =
+			blacklistTargets.length > 0
+				? await withRpcResult(hr.checkBlacklistTargets(blacklistTargets), (result) => [...result])
+				: []
+		blacklistedTargets = new Set(
+			blacklistResults
+				.filter((result) => result.isBlacklisted)
+				.map((result) => `${result.targetType}:${result.targetValue}`)
+		)
+	} catch (error) {
+		logger.warn('[HR] Failed to load application blacklist statuses', {
+			applicationCount: items.length,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
+
 	return items.map((a) => ({
 		...a,
 		corporationName: corpNameMap.get(a.corporationId) ?? `Corporation ${a.corporationId}`,
 		reviewedByCharacterName: a.reviewedBy ? (reviewerNames[a.reviewedBy] ?? null) : null,
+		isUserBlacklisted: blacklistedTargets.has(`user:${a.userId}`),
+		isCharacterBlacklisted: blacklistedTargets.has(`character_id:${a.characterId}`),
+		isBlacklisted:
+			blacklistedTargets.has(`user:${a.userId}`) ||
+			blacklistedTargets.has(`character_id:${a.characterId}`),
 	}))
 }
 
@@ -470,7 +565,10 @@ async function getHrRoleManagementAccess(
 	})
 
 	const esiStub = getStub<Esi>(c.env.ESI, 'default')
-	const corporationInfo = await esiStub.fetchCorporationPublicInfo(corporationId)
+	const corporationInfo = await withRpcResult(
+		esiStub.fetchCorporationPublicInfo(corporationId),
+		(result) => (result ? { ...result } : result)
+	)
 	const isCeo = corporationInfo && userCharacterSet.has(corporationInfo.ceo_id)
 
 	if (isCeo) {
@@ -645,7 +743,7 @@ app.get('/applications', requireAuth(), async (c) => {
 		})
 
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
-		const enriched = await enrichApplications(applications, resolver, db)
+		const enriched = await enrichApplications(applications, resolver, db, hr)
 
 		return c.json(enriched)
 	} catch (error) {
@@ -712,7 +810,7 @@ app.get('/applications/paged', requireAuth(), async (c) => {
 		})
 
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
-		const enriched = await enrichApplications(result.items, resolver, db)
+		const enriched = await enrichApplications(result.items, resolver, db, hr)
 
 		return c.json({
 			items: enriched,
@@ -730,6 +828,45 @@ app.get('/applications/paged', requireAuth(), async (c) => {
 })
 
 /**
+ * GET /api/hr/applications/counts
+ * Return pending and under-review counts for the current user's accessible
+ * active member corporations. Corporation scope is resolved server-side.
+ */
+app.get('/applications/counts', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const db = c.get('db')
+
+	if (!db) {
+		return c.json({ error: 'Database not available' }, 500)
+	}
+
+	try {
+		const memberCorporations = await db.query.managedCorporations.findMany({
+			where: and(
+				eq(managedCorporations.isActive, true),
+				eq(managedCorporations.isMemberCorporation, true)
+			),
+			columns: { corporationId: true },
+		})
+		const memberCorporationIds = memberCorporations.map((corporation) => corporation.corporationId)
+
+		const isAuditor = user.is_admin ? false : await hasHrAuditorPermission(c)
+		const hr = getHrStub(c)
+		const counts = await hr.getApplicationCountsByCorporation(memberCorporationIds, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor,
+		})
+
+		return c.json({ corporations: counts })
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to count applications' },
+			500
+		)
+	}
+})
+
+/**
  * GET /api/hr/applications/:id
  * Get a single application with recommendations
  */
@@ -740,7 +877,7 @@ app.get('/applications/:id', requireAuth(), async (c) => {
 	try {
 		const hr = getHrStub(c)
 		const isAuditor = await hasHrAuditorPermission(c)
-		const application = await hr.getApplication(applicationId, user.id, {
+		const application = await getApplicationSnapshot(hr, applicationId, user.id, {
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
@@ -760,7 +897,12 @@ app.get('/applications/:id', requireAuth(), async (c) => {
 
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const db = c.get('db')!
-		const [enriched] = await enrichApplications([{ ...application, discordUsername }], resolver, db)
+		const [enriched] = await enrichApplications(
+			[{ ...application, discordUsername }],
+			resolver,
+			db,
+			hr
+		)
 
 		return c.json(enriched)
 	} catch (error) {
@@ -795,7 +937,7 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 	try {
 		const hr = getHrStub(c)
 		const isAuditor = await hasHrAuditorPermission(c)
-		const applicationBeforeUpdate = await hr.getApplication(applicationId, user.id, {
+		const applicationBeforeUpdate = await getApplicationSnapshot(hr, applicationId, user.id, {
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
@@ -850,7 +992,7 @@ app.patch('/applications/:id', requireAuth(), async (c) => {
 				c.executionCtx,
 				'hr-application-first-time-accepted-alert',
 				async () => {
-					const currentApplication = await hr.getApplication(applicationId, user.id, {
+					const currentApplication = await getApplicationSnapshot(hr, applicationId, user.id, {
 						isAdmin: user.is_admin,
 						isAuditor,
 					})
@@ -1171,7 +1313,7 @@ app.patch('/applications/:applicationId/recommendations/:id', requireAuth(), asy
 
 	try {
 		const hr = getHrStub(c)
-		const application = await hr.getApplication(applicationId, user.id, {
+		const application = await getApplicationSnapshot(hr, applicationId, user.id, {
 			isAdmin: user.is_admin,
 			isAuditor: false,
 		})
@@ -1218,7 +1360,7 @@ app.delete('/applications/:applicationId/recommendations/:id', requireAuth(), as
 
 	try {
 		const hr = getHrStub(c)
-		const application = await hr.getApplication(applicationId, user.id, {
+		const application = await getApplicationSnapshot(hr, applicationId, user.id, {
 			isAdmin: user.is_admin,
 			isAuditor: false,
 		})
@@ -1259,7 +1401,7 @@ app.post('/applications/:applicationId/messages', requireAuth(), async (c) => {
 		const hr = getHrStub(c)
 
 		// Check if sender is the applicant — if not, require hr_reviewer
-		const application = await hr.getApplication(applicationId, user.id, {
+		const application = await getApplicationSnapshot(hr, applicationId, user.id, {
 			isAdmin: user.is_admin,
 			isAuditor: false,
 		})
@@ -1363,7 +1505,7 @@ app.get('/applications/:applicationId/messages/count', requireAuth(), async (c) 
 	try {
 		const hr = getHrStub(c)
 		const isAuditor = await hasHrAuditorPermission(c)
-		const application = await hr.getApplication(applicationId, user.id, {
+		const application = await getApplicationSnapshot(hr, applicationId, user.id, {
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
@@ -1404,7 +1546,7 @@ app.get('/applications/:applicationId/staff-notes', requireAuth(), async (c) => 
 	try {
 		const hr = getHrStub(c)
 		const isAuditor = await hasHrAuditorPermission(c)
-		const application = await hr.getApplication(applicationId, user.id, {
+		const application = await getApplicationSnapshot(hr, applicationId, user.id, {
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
@@ -1451,7 +1593,7 @@ app.post('/applications/:applicationId/staff-notes', requireAuth(), async (c) =>
 	try {
 		const hr = getHrStub(c)
 		const isAuditor = await hasHrAuditorPermission(c)
-		const application = await hr.getApplication(applicationId, user.id, {
+		const application = await getApplicationSnapshot(hr, applicationId, user.id, {
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
@@ -1511,7 +1653,7 @@ app.patch('/applications/:applicationId/staff-notes/:noteId', requireAuth(), asy
 	try {
 		const hr = getHrStub(c)
 		const isAuditor = await hasHrAuditorPermission(c)
-		const application = await hr.getApplication(applicationId, user.id, {
+		const application = await getApplicationSnapshot(hr, applicationId, user.id, {
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
@@ -1578,7 +1720,7 @@ app.delete('/applications/:applicationId/staff-notes/:noteId', requireAuth(), as
 	try {
 		const hr = getHrStub(c)
 		const isAuditor = await hasHrAuditorPermission(c)
-		const application = await hr.getApplication(applicationId, user.id, {
+		const application = await getApplicationSnapshot(hr, applicationId, user.id, {
 			isAdmin: user.is_admin,
 			isAuditor,
 		})
@@ -2176,7 +2318,9 @@ app.post('/:corporationId/roles', requireAuth(), async (c) => {
 
 	// Get character name
 	const coreStub = getCoreStub(c)
-	const characterOwner = await coreStub.getCharacterOwner(characterId)
+	const characterOwner = await withRpcResult(coreStub.getCharacterOwner(characterId), (result) =>
+		result ? { ...result } : result
+	)
 
 	if (!characterOwner) {
 		return c.json({ error: 'Character not linked to any user' }, 404)
@@ -2467,6 +2611,86 @@ app.delete('/:corporationId/roles/:roleId', requireAuth(), async (c) => {
 // ==================== Auditor Routes ====================
 
 /**
+ * GET /api/hr/users/search
+ * Search the surface-level user directory for an authenticated HR user.
+ * HR access is required, but results are intentionally not corporation-scoped.
+ */
+app.get('/users/search', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database not available' }, 500)
+
+	const search = c.req.query('search')?.trim() ?? ''
+	const limit = c.req.query('limit') ? parseInt(c.req.query('limit')!, 10) : 10
+	const offset = c.req.query('offset') ? parseInt(c.req.query('offset')!, 10) : 0
+	if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+		return c.json({ error: 'limit must be between 1 and 50' }, 400)
+	}
+	if (!Number.isInteger(offset) || offset < 0) {
+		return c.json({ error: 'offset must be a non-negative integer' }, 400)
+	}
+	if (search.length < 2) {
+		return c.json({ error: 'search must be at least 2 characters' }, 400)
+	}
+
+	try {
+		const hasGlobalHrSearchAccess =
+			user.is_admin || (await hasHrAuditorPermissionForUser({ env: c.env, userId: user.id }))
+		if (!hasGlobalHrSearchAccess) {
+			const corporationIds = await withRpcResult(
+				getHrStub(c).getUserHrCorporations(user.id),
+				(ids) => [...new Set(ids)]
+			)
+			if (corporationIds.length === 0) return c.json({ error: 'Forbidden' }, 403)
+		}
+		const result = await new CoreRpcService(db, c.env).searchUsersForHrAccess({
+			search,
+			limit,
+			offset,
+		})
+
+		const blacklistTargets = result.users.flatMap((entry) => [
+			{ targetType: 'user' as const, targetValue: entry.summary.id },
+			...entry.characters.map((character) => ({
+				targetType: 'character_id' as const,
+				targetValue: character.characterId,
+			})),
+		])
+		const blacklistStatuses = new Map(
+			(blacklistTargets.length > 0
+				? await withRpcResult(getHrStub(c).checkBlacklistTargets(blacklistTargets), (statuses) =>
+						statuses.map((status) => ({ ...status }))
+					)
+				: []
+			).map(
+				(status) => [`${status.targetType}:${status.targetValue}`, status.isBlacklisted] as const
+			)
+		)
+
+		return c.json({
+			...result,
+			users: result.users.map((entry) => ({
+				summary: {
+					...entry.summary,
+					isBlacklisted: blacklistStatuses.get(`user:${entry.summary.id}`) ?? false,
+				},
+				characters: entry.characters.map((character) => ({
+					...character,
+					isBlacklisted: blacklistStatuses.get(`character_id:${character.characterId}`) ?? false,
+				})),
+			})),
+		})
+	} catch (error) {
+		logger.error('[HR] Failed to search users within HR scope', {
+			userId: user.id,
+			search,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to search users' }, 500)
+	}
+})
+
+/**
  * GET /api/hr/audit/users
  * Search users across all corporations — requires urn:hr:auditor permission or site admin
  */
@@ -2482,7 +2706,41 @@ app.get('/audit/users', requireAuth(), async (c) => {
 
 	try {
 		const result = await c.env.ADMIN.searchUsers({ search, limit, offset }, user.id)
-		return c.json(result)
+		const characterIds = [
+			...new Set(
+				result.users.flatMap((summary) =>
+					[summary.mainCharacterId, summary.matchedCharacterId].filter(
+						(characterId): characterId is string => Boolean(characterId)
+					)
+				)
+			),
+		]
+		let blacklistStatuses: Record<string, boolean> = {}
+		try {
+			if (characterIds.length > 0) {
+				blacklistStatuses = await withRpcResult(
+					getHrStub(c).checkCharactersBlacklisted(characterIds),
+					(result) => ({ ...result })
+				)
+			}
+		} catch (error) {
+			logger.error('[HR Audit] Failed to load blocklist statuses for user search', {
+				userId: user.id,
+				characterCount: characterIds.length,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+
+		return c.json({
+			...result,
+			users: result.users.map((summary) => ({
+				...summary,
+				mainCharacterIsBlacklisted: blacklistStatuses[summary.mainCharacterId] ?? false,
+				matchedCharacterIsBlacklisted: summary.matchedCharacterId
+					? (blacklistStatuses[summary.matchedCharacterId] ?? false)
+					: null,
+			})),
+		})
 	} catch (error) {
 		logger.error('[HR Audit] Failed to search users', {
 			userId: user.id,
@@ -2551,6 +2809,30 @@ app.get('/audit/users/:userId/ip-history', requireAuth(), async (c) => {
 })
 
 /**
+ * GET /api/hr/users/:userId/blocklist-status
+ * Return the account-level blocklist state for HR profile surfaces.
+ */
+app.get('/users/:userId/blocklist-status', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	if (!user.is_admin && !(await hasAnyHrAccess(c))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	const targetUserId = c.req.param('userId')
+	try {
+		const isBlacklisted = await getHrStub(c).isUserBlacklisted(targetUserId)
+		return c.json({ isBlacklisted })
+	} catch (error) {
+		logger.error('[HR] Failed to get user blocklist status', {
+			userId: user.id,
+			targetUserId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to get user blocklist status' }, 500)
+	}
+})
+
+/**
  * GET /api/hr/users/:userId/characters
  * Return HR-owned character summary data for profile pages and application ESI overlays.
  */
@@ -2564,9 +2846,32 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 
 	try {
 		const core = getCoreStub(c)
-		const characters = await core.getUserCharacters(targetUserId, false)
+		const characters = await withRpcResult(core.getUserCharacters(targetUserId, false), (result) =>
+			result.map((character) => ({ ...character }))
+		)
+		let blacklistStatuses: Record<string, boolean> = {}
+		try {
+			const characterIds = characters.map((character) => character.characterId)
+			if (characterIds.length > 0) {
+				blacklistStatuses = await withRpcResult(
+					getHrStub(c).checkCharactersBlacklisted(characterIds),
+					(result) => ({ ...result })
+				)
+			}
+		} catch (error) {
+			logger.error('[HR] Failed to load blocklist statuses for user characters', {
+				userId: user.id,
+				targetUserId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
 
-		return c.json(characters)
+		return c.json(
+			characters.map((character) => ({
+				...character,
+				isBlacklisted: blacklistStatuses[character.characterId] ?? false,
+			}))
+		)
 	} catch (error) {
 		logger.error('[HR] Failed to get user characters', {
 			userId: user.id,

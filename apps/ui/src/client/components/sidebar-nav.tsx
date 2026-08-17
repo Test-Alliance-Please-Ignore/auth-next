@@ -287,7 +287,9 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			})
 		}
 
-		if (isAuditor || isSiteAdmin) {
+		const canUseCorporationUserSearch =
+			isAuditor || isSiteAdmin || (hrCorporations?.length ?? 0) > 0
+		if (canUseCorporationUserSearch) {
 			hrItems.push({
 				label: 'User Search',
 				href: '/hr/users',

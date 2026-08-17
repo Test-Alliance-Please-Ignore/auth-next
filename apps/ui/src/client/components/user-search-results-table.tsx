@@ -1,6 +1,7 @@
 import { ExternalLink, Users } from 'lucide-react'
 import { Link } from 'react-router'
 
+import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,7 +13,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
-import { characterPortraitUrl } from '@/lib/eve-images'
+import { cn } from '@/lib/utils'
 
 type SearchResultUser = {
 	id: string
@@ -24,6 +25,8 @@ type SearchResultUser = {
 	discordUsername: string | null
 	matchedCharacterId: string | null
 	matchedCharacterName: string | null
+	mainCharacterIsBlacklisted?: boolean
+	matchedCharacterIsBlacklisted?: boolean | null
 	createdAt: string
 	updatedAt: string
 }
@@ -64,25 +67,38 @@ export function UserSearchResultsTable({
 					const displayName = isAltMatch
 						? `${user.matchedCharacterName}${user.mainCharacterName ? ` (${user.mainCharacterName})` : ''}`
 						: user.mainCharacterName || user.matchedCharacterName || 'Unknown Character'
+					const isDisplayedCharacterBlacklisted = isAltMatch
+						? user.matchedCharacterIsBlacklisted
+						: user.mainCharacterIsBlacklisted
 
 					return (
 						<TableRow key={user.id}>
 							<TableCell>
 								<div className="flex items-center gap-3">
-									<img
-										src={characterPortraitUrl(portraitCharacterId, 64)}
-										alt={displayName}
+									<MemberAvatar
+										characterId={portraitCharacterId}
+										characterName={displayName}
+										isBlacklisted={Boolean(isDisplayedCharacterBlacklisted)}
+										size="auto"
 										className="h-10 w-10 rounded-full"
 									/>
 									<div>
 										<Link
 											to={userDetailsPath(user.id)}
-											className="inline-flex items-center gap-2 font-medium hover:text-primary transition-colors"
+											className={cn(
+												'inline-flex items-center gap-2 font-medium hover:text-primary transition-colors',
+												isDisplayedCharacterBlacklisted && 'text-red-500'
+											)}
 										>
 											{displayName}
 											{isAltMatch && <Badge variant="default">Alt</Badge>}
+											{isDisplayedCharacterBlacklisted && (
+												<Badge variant="destructive">Blocklisted</Badge>
+											)}
 										</Link>
-										<div className="text-xs text-muted-foreground">ID: {user.id.slice(0, 8)}...</div>
+										<div className="text-xs text-muted-foreground">
+											ID: {user.id.slice(0, 8)}...
+										</div>
 									</div>
 								</div>
 							</TableCell>
@@ -118,9 +134,7 @@ export function UserSearchResultsTable({
 									<span className="text-sm text-muted-foreground">Not linked</span>
 								)}
 							</TableCell>
-							<TableCell>
-								{user.is_admin && <Badge variant="default">Admin</Badge>}
-							</TableCell>
+							<TableCell>{user.is_admin && <Badge variant="default">Admin</Badge>}</TableCell>
 							<TableCell>
 								<div className="text-sm" title={formatDateTime(user.updatedAt)}>
 									{formatRelativeTime(user.updatedAt)}

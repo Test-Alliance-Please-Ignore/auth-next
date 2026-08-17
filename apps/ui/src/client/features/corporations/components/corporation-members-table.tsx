@@ -18,12 +18,15 @@ import {
 	User,
 } from 'lucide-react'
 import { useCallback, useState } from 'react'
+import { Link } from 'react-router'
 
 import { EsiStatusBadge, getEsiStatusBadgeState } from '@/components/esi-status-badge'
+import { MemberAvatar } from '@/components/member-avatar'
 import { TableRefreshFrame } from '@/components/table-refresh-frame'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select } from '@/components/ui/select'
@@ -37,7 +40,6 @@ import {
 } from '@/components/ui/table'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { useMessage } from '@/hooks/useMessage'
-import { characterPortraitUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
 
 import {
@@ -50,7 +52,7 @@ import {
 import { myCorporationsApi } from '../api'
 import { EmeritusConfirmationDialog } from './emeritus-confirmation-dialog'
 
-import type { SetStateAction } from 'react'
+import type { KeyboardEvent, MouseEvent, SetStateAction } from 'react'
 import type { HrRoleType } from '../../hr'
 import type {
 	CorporationMember,
@@ -174,6 +176,7 @@ export default function CorporationMembersTable({
 	const { showSuccess, showError } = useMessage()
 
 	const searchQuery = query.search ?? ''
+	const mainsOnly = query.mainsOnly ?? false
 	const authFilter = query.authFilter ?? 'all'
 	const activityFilter = query.activityFilter ?? 'all'
 	const roleFilter = query.roleFilter ?? 'all'
@@ -181,6 +184,37 @@ export default function CorporationMembersTable({
 	const sortOrder = query.sortOrder ?? 'asc'
 	const currentPage = pagination?.page ?? 1
 	const paginatedMembers = members
+
+	const getMemberHref = (member: CorporationMember): string =>
+		member.hasAuthAccount && member.authUserId
+			? `/corporations/${corporationId}/members/${member.authUserId}`
+			: `/character/${member.characterId}`
+
+	const handleMemberRowClick = (
+		event: MouseEvent<HTMLTableRowElement>,
+		member: CorporationMember
+	) => {
+		if ((event.target as HTMLElement).closest('a, button, input, [role="button"]')) return
+
+		const href = getMemberHref(member)
+		if (event.ctrlKey || event.metaKey || event.button === 1) {
+			event.preventDefault()
+			window.open(href, '_blank', 'noopener,noreferrer')
+			return
+		}
+
+		onMemberClick?.(member)
+	}
+
+	const handleMemberRowKeyDown = (
+		event: KeyboardEvent<HTMLTableRowElement>,
+		member: CorporationMember
+	) => {
+		if (event.key !== 'Enter' && event.key !== ' ') return
+		if ((event.target as HTMLElement).closest('button, input, [role="button"]')) return
+		event.preventDefault()
+		onMemberClick?.(member)
+	}
 
 	// HR dialog states
 	const [grantDialogMember, setGrantDialogMember] = useState<CorporationMember | null>(null)
@@ -449,6 +483,20 @@ export default function CorporationMembersTable({
 						]}
 						className="w-[140px]"
 					/>
+
+					<label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-sm">
+						<Checkbox
+							checked={mainsOnly}
+							onCheckedChange={(checked) =>
+								onQueryChange((prev) => ({
+									...prev,
+									page: 1,
+									mainsOnly: checked === true,
+								}))
+							}
+						/>
+						<span>Show mains only</span>
+					</label>
 				</div>
 			</Card>
 
@@ -476,25 +524,35 @@ export default function CorporationMembersTable({
 								<TableRow
 									key={member.characterId}
 									className={cn(
-										'hover:bg-muted/50 cursor-pointer',
+										'cursor-pointer hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
 										!member.hasAuthAccount && 'bg-yellow-500/5'
 									)}
-									onClick={() => onMemberClick?.(member)}
+									role="link"
+									tabIndex={0}
+									onClick={(event) => handleMemberRowClick(event, member)}
+									onAuxClick={(event) => handleMemberRowClick(event, member)}
+									onKeyDown={(event) => handleMemberRowKeyDown(event, member)}
 								>
 									<TableCell>
 										<div className="flex items-center gap-3">
-											<img
-												src={characterPortraitUrl(member.characterId, 64)}
-												alt={`${member.characterName}'s portrait`}
-												loading="lazy"
-												onError={(e) => {
-													;(e.currentTarget as HTMLImageElement).src =
-														'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"%3E%3Crect fill="%23404040" width="64" height="64"/%3E%3Ctext x="50%25" y="50%25" font-family="Arial" font-size="24" fill="%23bfbfbf" text-anchor="middle" dominant-baseline="middle"%3E?%3C/text%3E%3C/svg%3E'
-												}}
-												className="w-8 h-8 rounded-full border border-border"
+											<MemberAvatar
+												characterId={member.characterId}
+												characterName={member.characterName}
+												isBlacklisted={member.isBlacklisted}
+												size="sm"
+												className="rounded-full border border-border"
 											/>
 											<div>
-												<div className="font-medium">{member.characterName}</div>
+												<Link
+													to={getMemberHref(member)}
+													onClick={(event) => event.stopPropagation()}
+													className={cn(
+														'font-medium hover:underline',
+														member.isBlacklisted && 'text-red-500'
+													)}
+												>
+													{member.characterName}
+												</Link>
 												{member.locationSystem && (
 													<div className="text-xs text-muted-foreground">
 														{member.locationSystem}

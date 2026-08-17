@@ -11,6 +11,7 @@ const hoisted = vi.hoisted(() => ({
 	hrMocks: {
 		listApplications: vi.fn(),
 		getApplication: vi.fn(),
+		checkBlacklistTargets: vi.fn(),
 	},
 	resolverMocks: {
 		resolveIds: vi.fn(),
@@ -22,6 +23,8 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
+	withRpcResult: async <T, R>(rpcCall: Promise<T>, consume: (result: T) => R | Promise<R>) =>
+		consume(await rpcCall),
 }))
 
 vi.mock('../../lib/hr-access', () => ({
@@ -84,6 +87,7 @@ describe('HR application hydration', () => {
 				return {
 					listApplications: hoisted.hrMocks.listApplications,
 					getApplication: hoisted.hrMocks.getApplication,
+					checkBlacklistTargets: hoisted.hrMocks.checkBlacklistTargets,
 				}
 			}
 			if (binding?.name === 'ESI_TYPE_RESOLVER') {
@@ -94,6 +98,7 @@ describe('HR application hydration', () => {
 			throw new Error(`Unexpected binding: ${binding?.name ?? 'unknown'}`)
 		})
 		hoisted.resolverMocks.resolveIds.mockResolvedValue({})
+		hoisted.hrMocks.checkBlacklistTargets.mockResolvedValue([])
 	})
 
 	it('falls back to managed corporation names for application lists', async () => {
@@ -118,22 +123,41 @@ describe('HR application hydration', () => {
 				isFirstApplication: true,
 			},
 		])
+		hoisted.hrMocks.checkBlacklistTargets.mockResolvedValue([
+			{
+				targetType: 'user',
+				targetValue: 'user-1',
+				isBlacklisted: true,
+				reason: 'test',
+				createdAt: null,
+				blacklistedBy: null,
+				entryMode: 'manual',
+			},
+			{
+				targetType: 'character_id',
+				targetValue: 'char-1',
+				isBlacklisted: true,
+				reason: 'test',
+				createdAt: null,
+				blacklistedBy: null,
+				entryMode: 'manual',
+			},
+		])
 
 		const app = createApp(makeUser(), db)
-		const response = await app.request(
-			'/api/hr/applications',
-			{},
-			{
-				HR: { name: 'HR' },
-				ESI_TYPE_RESOLVER: { name: 'ESI_TYPE_RESOLVER' },
-			} as any
-		)
+		const response = await app.request('/api/hr/applications', {}, {
+			HR: { name: 'HR' },
+			ESI_TYPE_RESOLVER: { name: 'ESI_TYPE_RESOLVER' },
+		} as any)
 
 		expect(response.status).toBe(200)
 		expect(await response.json()).toEqual([
 			expect.objectContaining({
 				corporationId: 'corp-1',
 				corporationName: 'Managed Corp',
+				isUserBlacklisted: true,
+				isCharacterBlacklisted: true,
+				isBlacklisted: true,
 			}),
 		])
 	})
@@ -163,14 +187,10 @@ describe('HR application hydration', () => {
 		})
 
 		const app = createApp(makeUser(), db)
-		const response = await app.request(
-			'/api/hr/applications/app-1',
-			{},
-			{
-				HR: { name: 'HR' },
-				ESI_TYPE_RESOLVER: { name: 'ESI_TYPE_RESOLVER' },
-			} as any
-		)
+		const response = await app.request('/api/hr/applications/app-1', {}, {
+			HR: { name: 'HR' },
+			ESI_TYPE_RESOLVER: { name: 'ESI_TYPE_RESOLVER' },
+		} as any)
 
 		expect(response.status).toBe(200)
 		expect(await response.json()).toEqual(

@@ -4,22 +4,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getStub } from '@repo/do-utils'
 
 import { getCachedUserPermissions } from '../../lib/groups-cache'
-import { CoreRpcService } from '../../services/core-rpc.service'
 import corporationsRoutes from '../corporations'
 
 import type { SessionUser } from '../../context'
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
+	withRpcResult: async <T, R>(rpcCall: Promise<T>, consume: (result: T) => R | Promise<R>) =>
+		consume(await rpcCall),
 }))
 
 vi.mock('../../lib/groups-cache', () => ({
 	getCachedUserPermissions: vi.fn(),
 }))
 
-vi.mock('../../services/core-rpc.service', () => ({
-	CoreRpcService: vi.fn(),
-}))
+vi.mock('../../services/core-rpc.service', () => ({}))
 
 const getStubMock = vi.mocked(getStub)
 const getCachedUserPermissionsMock = vi.mocked(getCachedUserPermissions)
@@ -161,10 +160,6 @@ describe('corporations members access matrix', () => {
 		getCorporationRoles: ReturnType<typeof vi.fn>
 		fetchCoreData: ReturnType<typeof vi.fn>
 	}
-	let coreStub: {
-		searchUsers: ReturnType<typeof vi.fn>
-		getUserDetails: ReturnType<typeof vi.fn>
-	}
 	let charStub: {
 		getCharacterInfo: ReturnType<typeof vi.fn>
 	}
@@ -189,18 +184,6 @@ describe('corporations members access matrix', () => {
 		charStub = {
 			getCharacterInfo: vi.fn().mockResolvedValue(null),
 		}
-		coreStub = {
-			searchUsers: vi.fn().mockResolvedValue({
-				users: [],
-				total: 0,
-				limit: 10,
-				offset: 0,
-			}),
-			getUserDetails: vi.fn().mockResolvedValue(null),
-		}
-		vi.mocked(CoreRpcService).mockImplementation(function () {
-			return coreStub as any
-		})
 		tokenStoreStub = makeTokenStoreStub()
 		corpStub = {
 			getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: '9999', allianceId: null }),
@@ -453,6 +436,10 @@ describe('corporations members access matrix', () => {
 				hasValidToken: false,
 			},
 		])
+		dbStub.query.users.findMany.mockResolvedValue([
+			{ id: 'target-user-a', mainCharacterId: '2001' },
+			{ id: 'target-user-b', mainCharacterId: '2003' },
+		] as any)
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.HR) return hrStub as any
 			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
@@ -531,6 +518,24 @@ describe('corporations members access matrix', () => {
 				linkedUsers: 2,
 			},
 		})
+
+		const mainsResponse = await app.request(
+			'/api/corporations/1001/members?mainsOnly=true&sortField=name&sortOrder=asc',
+			{},
+			env
+		)
+		expect(mainsResponse.status).toBe(200)
+		const mainsBody = (await mainsResponse.json()) as {
+			items: Array<{ characterId: string; mainCharacterId?: string }>
+			pagination: { totalItems: number }
+		}
+		expect(new Set(mainsBody.items.map((member) => member.characterId))).toEqual(
+			new Set(['2001', '2003'])
+		)
+		expect(mainsBody.items.every((member) => member.characterId === member.mainCharacterId)).toBe(
+			true
+		)
+		expect(mainsBody.pagination.totalItems).toBe(2)
 	})
 
 	it('sorts auth account rows by auth account id first and esi status second', async () => {
@@ -871,178 +876,6 @@ describe('corporations members access matrix', () => {
 			partial: 2,
 			none: 0,
 			unlinked: 0,
-		})
-	})
-
-	it('returns a user search dialog payload with all linked characters', async () => {
-		getCachedUserPermissionsMock.mockResolvedValue([
-			{
-				permissionId: 'perm-auditor',
-				urn: 'urn:hr:auditor',
-				name: 'HR Auditor',
-				description: null,
-				category: null,
-				groupId: 'g-1',
-				groupName: 'HR',
-				targetType: 'all_members',
-				source: 'global',
-			},
-		] as any)
-
-		dbStub.query.managedCorporations.findFirst.mockResolvedValue({
-			corporationId: '1001',
-			name: 'Alpha Corp',
-			ticker: 'ALP',
-			isActive: true,
-			isMemberCorporation: true,
-		} as any)
-
-		coreStub.searchUsers.mockResolvedValue({
-			users: [
-				{
-					id: 'user-1',
-					mainCharacterId: '1001',
-					mainCharacterName: 'Main Pilot',
-					characterCount: 2,
-					is_admin: false,
-					discordUserId: 'discord-1',
-					discordUsername: 'pilot#1234',
-					matchedCharacterId: '2002',
-					matchedCharacterName: 'Alt Pilot',
-					matchedBy: 'character_name',
-					createdAt: new Date('2026-04-01T00:00:00.000Z'),
-					updatedAt: new Date('2026-04-02T00:00:00.000Z'),
-				},
-			],
-			total: 1,
-			limit: 10,
-			offset: 0,
-		})
-		coreStub.getUserDetails.mockResolvedValue({
-			id: 'user-1',
-			mainCharacterId: '1001',
-			is_admin: false,
-			discordUserId: 'discord-1',
-			discord: null,
-			characters: [
-				{
-					characterId: '1001',
-					characterName: 'Main Pilot',
-					characterOwnerHash: 'hash-main',
-					corporationId: '1001',
-					corporationName: 'Alpha Corp',
-					allianceId: '5001',
-					allianceName: 'Alliance One',
-					is_primary: true,
-					linkedAt: new Date('2026-04-01T00:00:00.000Z'),
-					hasValidToken: true,
-					isBlacklisted: false,
-				},
-				{
-					characterId: '2002',
-					characterName: 'Alt Pilot',
-					characterOwnerHash: 'hash-alt',
-					corporationId: '2001',
-					corporationName: 'Bravo Corp',
-					allianceId: null,
-					allianceName: null,
-					is_primary: false,
-					linkedAt: new Date('2026-04-01T00:00:00.000Z'),
-					hasValidToken: false,
-					isBlacklisted: true,
-				},
-			],
-			groupMemberships: [],
-			permissionGrants: [],
-			createdAt: new Date('2026-04-01T00:00:00.000Z'),
-			updatedAt: new Date('2026-04-02T00:00:00.000Z'),
-		} as any)
-
-		const app = createApp({ user: makeUser(), db: dbStub })
-		const res = await app.request(
-			'/api/corporations/1001/members/user-search?search=pilot&limit=10&offset=0',
-			{},
-			env
-		)
-
-		expect(res.status).toBe(200)
-		const body = (await res.json()) as {
-			users: Array<{
-				summary: { id: string; matchedCharacterId: string | null; mainCharacterName: string | null }
-				details: {
-					characters: Array<{
-						characterId: string
-						corporationName?: string | null
-						allianceName?: string | null
-						is_primary: boolean
-					}>
-				} | null
-			}>
-			total: number
-			limit: number
-			offset: number
-		}
-
-		expect(body.total).toBe(1)
-		expect(body.limit).toBe(10)
-		expect(body.offset).toBe(0)
-		expect(body.users).toHaveLength(1)
-		expect(body.users[0].summary).toMatchObject({
-			id: 'user-1',
-			matchedCharacterId: '2002',
-			mainCharacterName: 'Main Pilot',
-		})
-		expect(body.users[0].details?.characters).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					characterId: '1001',
-					corporationName: 'Alpha Corp',
-					allianceName: 'Alliance One',
-					is_primary: true,
-				}),
-				expect.objectContaining({
-					characterId: '2002',
-					corporationName: 'Bravo Corp',
-					allianceName: null,
-					is_primary: false,
-				}),
-			])
-		)
-	})
-
-	it('denies user search for non-member corporations', async () => {
-		getCachedUserPermissionsMock.mockResolvedValue([
-			{
-				permissionId: 'perm-auditor',
-				urn: 'urn:hr:auditor',
-				name: 'HR Auditor',
-				description: null,
-				category: null,
-				groupId: 'g-1',
-				groupName: 'HR',
-				targetType: 'all_members',
-				source: 'global',
-			},
-		] as any)
-
-		dbStub.query.managedCorporations.findFirst.mockResolvedValue({
-			corporationId: '1001',
-			name: 'Alpha Corp',
-			ticker: 'ALP',
-			isActive: true,
-			isMemberCorporation: false,
-		} as any)
-
-		const app = createApp({ user: makeUser(), db: dbStub })
-		const res = await app.request(
-			'/api/corporations/1001/members/user-search?search=pilot&limit=10&offset=0',
-			{},
-			env
-		)
-
-		expect(res.status).toBe(403)
-		expect(await res.json()).toEqual({
-			error: 'User search is only available for member corporations',
 		})
 	})
 

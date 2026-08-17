@@ -10,6 +10,8 @@ import type { SessionUser } from '../../context'
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
+	withRpcResult: async <T, R>(rpcCall: Promise<T>, consume: (result: T) => R | Promise<R>) =>
+		consume(await rpcCall),
 }))
 
 vi.mock('../../lib/groups-cache', () => ({
@@ -18,6 +20,15 @@ vi.mock('../../lib/groups-cache', () => ({
 
 const getStubMock = vi.mocked(getStub)
 const getCachedUserPermissionsMock = vi.mocked(getCachedUserPermissions)
+const { searchUsersForHrAccessMock } = vi.hoisted(() => ({
+	searchUsersForHrAccessMock: vi.fn(),
+}))
+
+vi.mock('../../services/core-rpc.service', () => ({
+	CoreRpcService: class {
+		searchUsersForHrAccess = searchUsersForHrAccessMock
+	},
+}))
 
 function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 	return {
@@ -45,7 +56,10 @@ function makeHrStub() {
 	return {
 		getUserRoles: vi.fn().mockResolvedValue([]),
 		getUserHrCorporations: vi.fn().mockResolvedValue([]),
+		isUserBlacklisted: vi.fn().mockResolvedValue(false),
 		checkPermission: vi.fn().mockResolvedValue(false),
+		checkCharactersBlacklisted: vi.fn().mockResolvedValue({}),
+		checkBlacklistTargets: vi.fn().mockResolvedValue([]),
 		listApplications: vi.fn().mockResolvedValue([]),
 		listApplicationsPaged: vi.fn().mockResolvedValue({
 			items: [],
@@ -60,6 +74,7 @@ function makeHrStub() {
 				withdrawn: 0,
 			},
 		}),
+		getApplicationCountsByCorporation: vi.fn().mockResolvedValue([]),
 		getApplication: vi.fn().mockResolvedValue({
 			id: 'app-1',
 			userId: 'target-user-1',
@@ -247,10 +262,7 @@ function makeDbStub() {
 	}
 }
 
-function createApp(opts: {
-	user?: SessionUser
-	db?: ReturnType<typeof makeDbStub>
-}) {
+function createApp(opts: { user?: SessionUser; db?: ReturnType<typeof makeDbStub> }) {
 	const app = new Hono<{
 		Bindings: any
 		Variables: {
@@ -279,22 +291,21 @@ describe('hr route access matrix', () => {
 		ESI_TYPE_RESOLVER: { name: 'ESI_TYPE_RESOLVER' },
 		ESI: { name: 'ESI' },
 		CORE: {
-			getCharacterOwner: vi.fn().mockResolvedValue({
-				userId: 'target-user-1',
-			}),
+			getCharacterOwner: vi.fn().mockResolvedValue({ userId: 'target-user-1' }),
+			getUserCharacters: vi.fn().mockResolvedValue([]),
 		},
 		ADMIN: {
 			searchUsers: vi.fn().mockResolvedValue({ users: [], total: 0 }),
 			getUserDetails: vi.fn().mockResolvedValue(null),
-	},
-	LEGACY: {
-		listHistory: vi.fn().mockResolvedValue({
-			items: [],
-			pagination: { total: 0, page: 1, pageSize: 25 },
-		}),
-		getHistoryApplication: vi.fn().mockResolvedValue(null),
-	},
-} as any
+		},
+		LEGACY: {
+			listHistory: vi.fn().mockResolvedValue({
+				items: [],
+				pagination: { total: 0, page: 1, pageSize: 25 },
+			}),
+			getHistoryApplication: vi.fn().mockResolvedValue(null),
+		},
+	} as any
 
 	let hrStub: ReturnType<typeof makeHrStub>
 	let resolverStub: ReturnType<typeof makeResolverStub>
@@ -309,6 +320,7 @@ describe('hr route access matrix', () => {
 		dbStub = makeDbStub()
 
 		getCachedUserPermissionsMock.mockResolvedValue([])
+		searchUsersForHrAccessMock.mockResolvedValue({ users: [], total: 0, limit: 10, offset: 0 })
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.HR) return hrStub as any
 			if (binding === env.ESI_TYPE_RESOLVER) return resolverStub as any
@@ -560,6 +572,65 @@ describe('hr route access matrix', () => {
 		)
 	})
 
+	it('uses one grouped application-count request for auditor-visible member corporations', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+		hrStub.getApplicationCountsByCorporation.mockResolvedValue([
+			{ corporationId: '1001', pending: 2, underReview: 1 },
+		])
+		dbStub.query.managedCorporations.findMany.mockResolvedValue([
+			{
+				corporationId: '1001',
+				isActive: true,
+				isMemberCorporation: true,
+			},
+		] as any)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/applications/counts', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({
+			corporations: [{ corporationId: '1001', pending: 2, underReview: 1 }],
+		})
+		expect(hrStub.getApplicationCountsByCorporation).toHaveBeenCalledTimes(1)
+		expect(hrStub.getApplicationCountsByCorporation).toHaveBeenCalledWith(['1001'], 'user-1', {
+			isAdmin: false,
+			isAuditor: true,
+		})
+	})
+
+	it('passes only active member corporations to the HR authorization boundary', async () => {
+		hrStub.getUserHrCorporations.mockResolvedValue(['1001', '2001'])
+		dbStub.query.managedCorporations.findMany.mockResolvedValue([
+			{
+				corporationId: '1001',
+				isActive: true,
+				isMemberCorporation: true,
+			},
+		] as any)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/applications/counts', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(hrStub.getApplicationCountsByCorporation).toHaveBeenCalledWith(['1001'], 'user-1', {
+			isAdmin: false,
+			isAuditor: false,
+		})
+	})
+
 	it('passes auditor=true into listApplicationsPaged for auditors', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([
 			{
@@ -575,7 +646,11 @@ describe('hr route access matrix', () => {
 			},
 		] as any)
 		const app = createApp({ user: makeUser(), db: dbStub })
-		const res = await app.request('/api/hr/applications/paged?corporationId=1001&limit=10&offset=0', {}, env)
+		const res = await app.request(
+			'/api/hr/applications/paged?corporationId=1001&limit=10&offset=0',
+			{},
+			env
+		)
 
 		expect(res.status).toBe(200)
 		expect(hrStub.listApplicationsPaged).toHaveBeenCalledWith(
@@ -597,7 +672,11 @@ describe('hr route access matrix', () => {
 			},
 		])
 		const app = createApp({ user: makeUser(), db: dbStub })
-		const res = await app.request('/api/hr/applications/paged?corporationId=2001&limit=10&offset=0', {}, env)
+		const res = await app.request(
+			'/api/hr/applications/paged?corporationId=2001&limit=10&offset=0',
+			{},
+			env
+		)
 
 		expect(res.status).toBe(403)
 		expect(await res.json()).toEqual({
@@ -619,7 +698,11 @@ describe('hr route access matrix', () => {
 		])
 
 		const app = createApp({ user: makeUser(), db: dbStub })
-		const res = await app.request('/api/hr/applications?corporationId=2001&userId=target-user-1', {}, env)
+		const res = await app.request(
+			'/api/hr/applications?corporationId=2001&userId=target-user-1',
+			{},
+			env
+		)
 
 		expect(res.status).toBe(200)
 		expect(hrStub.listApplications).toHaveBeenCalledWith(
@@ -631,7 +714,11 @@ describe('hr route access matrix', () => {
 
 	it('passes admin=true into listApplicationsPaged for site admins', async () => {
 		const app = createApp({ user: makeUser({ is_admin: true }), db: dbStub })
-		const res = await app.request('/api/hr/applications/paged?corporationId=1001&limit=10&offset=0', {}, env)
+		const res = await app.request(
+			'/api/hr/applications/paged?corporationId=1001&limit=10&offset=0',
+			{},
+			env
+		)
 
 		expect(res.status).toBe(200)
 		expect(hrStub.listApplicationsPaged).toHaveBeenCalledWith(
@@ -655,7 +742,11 @@ describe('hr route access matrix', () => {
 			],
 		})
 		const app = createApp({ user: ceoUser, db: dbStub })
-		const res = await app.request('/api/hr/applications/paged?corporationId=1001&limit=10&offset=0', {}, env)
+		const res = await app.request(
+			'/api/hr/applications/paged?corporationId=1001&limit=10&offset=0',
+			{},
+			env
+		)
 
 		expect(res.status).toBe(200)
 		expect(hrStub.listApplicationsPaged).toHaveBeenCalledWith(
@@ -705,12 +796,10 @@ describe('hr route access matrix', () => {
 
 		const detailRes = await app.request('/api/hr/recommendations/applications/app-1', {}, env)
 		expect(detailRes.status).toBe(200)
-		expect(hrStub.getApplicationForRecommender).toHaveBeenCalledWith(
-			'app-1',
-			'user-1',
-			['1001'],
-			{ isAdmin: false, isAuditor: false }
-		)
+		expect(hrStub.getApplicationForRecommender).toHaveBeenCalledWith('app-1', 'user-1', ['1001'], {
+			isAdmin: false,
+			isAuditor: false,
+		})
 
 		const submitRes = await app.request(
 			'/api/hr/applications/app-1/recommendations',
@@ -768,7 +857,8 @@ describe('hr route access matrix', () => {
 		const detailRes = await app.request('/api/hr/recommendations/applications/app-2', {}, env)
 		expect(detailRes.status).toBe(403)
 		expect(await detailRes.json()).toEqual({
-			error: 'Access denied. Recommendations are only available for member corporations you are attached to.',
+			error:
+				'Access denied. Recommendations are only available for member corporations you are attached to.',
 		})
 
 		const submitRes = await app.request(
@@ -788,7 +878,8 @@ describe('hr route access matrix', () => {
 
 		expect(submitRes.status).toBe(403)
 		expect(await submitRes.json()).toEqual({
-			error: 'Access denied. Recommendations are only available for member corporations you are attached to.',
+			error:
+				'Access denied. Recommendations are only available for member corporations you are attached to.',
 		})
 		expect(hrStub.addRecommendation).not.toHaveBeenCalled()
 	})
@@ -825,12 +916,10 @@ describe('hr route access matrix', () => {
 
 		const detailRes = await app.request('/api/hr/recommendations/applications/app-1', {}, env)
 		expect(detailRes.status).toBe(200)
-		expect(hrStub.getApplicationForRecommender).toHaveBeenCalledWith(
-			'app-1',
-			'user-1',
-			[],
-			{ isAdmin: false, isAuditor: true }
-		)
+		expect(hrStub.getApplicationForRecommender).toHaveBeenCalledWith('app-1', 'user-1', [], {
+			isAdmin: false,
+			isAuditor: true,
+		})
 
 		const submitRes = await app.request(
 			'/api/hr/applications/app-1/recommendations',
@@ -1130,6 +1219,101 @@ describe('hr route access matrix', () => {
 		expect(res.status).toBe(403)
 	})
 
+	it('denies HR user search without HR access', async () => {
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/users/search?search=pilot', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(searchUsersForHrAccessMock).not.toHaveBeenCalled()
+	})
+
+	it('requires at least two search characters before querying the directory', async () => {
+		const app = createApp({ user: makeUser({ is_admin: true }), db: dbStub })
+		const oneCharacter = await app.request('/api/hr/users/search?search=a', {}, env)
+		const empty = await app.request('/api/hr/users/search', {}, env)
+
+		expect(oneCharacter.status).toBe(400)
+		expect(empty.status).toBe(400)
+		expect(searchUsersForHrAccessMock).not.toHaveBeenCalled()
+	})
+
+	it('uses HR access only as the search gate and does not scope results to a corporation', async () => {
+		hrStub.getUserHrCorporations.mockResolvedValue(['1001', '2001', 'not-managed'])
+		searchUsersForHrAccessMock.mockResolvedValue({
+			users: [
+				{
+					summary: {
+						id: 'target-user-1',
+						mainCharacterId: '1001',
+						mainCharacterName: 'Main Pilot',
+						characterCount: 1,
+						is_admin: false,
+						discordUserId: null,
+						discordUsername: null,
+						matchedCharacterId: '1001',
+						matchedCharacterName: 'Main Pilot',
+						matchedBy: 'main_character_name',
+						createdAt: new Date(),
+						updatedAt: new Date(),
+					},
+					characters: [
+						{
+							characterId: '1001',
+							characterName: 'Main Pilot',
+							corporationId: '1001',
+							corporationName: 'Alpha Corp',
+							allianceId: null,
+							allianceName: null,
+							is_primary: true,
+							hasValidToken: true,
+						},
+					],
+				},
+			],
+			total: 1,
+			limit: 10,
+			offset: 0,
+		})
+		hrStub.checkBlacklistTargets.mockResolvedValue([
+			{
+				targetType: 'user',
+				targetValue: 'target-user-1',
+				isBlacklisted: true,
+				reason: null,
+				createdAt: null,
+				blacklistedBy: null,
+				entryMode: null,
+			},
+			{
+				targetType: 'character_id',
+				targetValue: '1001',
+				isBlacklisted: true,
+				reason: null,
+				createdAt: null,
+				blacklistedBy: null,
+				entryMode: null,
+			},
+		])
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/users/search?search=pilot', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(searchUsersForHrAccessMock).toHaveBeenCalledWith({
+			search: 'pilot',
+			limit: 10,
+			offset: 0,
+		})
+		expect(await res.json()).toMatchObject({
+			users: [
+				{
+					summary: { id: 'target-user-1', isBlacklisted: true },
+					characters: [{ characterId: '1001', isBlacklisted: true }],
+				},
+			],
+		})
+	})
+
 	it('allows /audit/users for auditor', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([
 			{
@@ -1152,6 +1336,90 @@ describe('hr route access matrix', () => {
 			{ search: 'pilot', limit: 10, offset: 5 },
 			'user-1'
 		)
+	})
+
+	it('includes blocklist status for displayed auditor-search characters', async () => {
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{
+				permissionId: 'perm-auditor',
+				urn: 'urn:hr:auditor',
+				name: 'HR Auditor',
+				description: null,
+				category: null,
+				groupId: 'g-1',
+				groupName: 'HR',
+				targetType: 'all_members',
+				source: 'global',
+			},
+		] as any)
+		env.ADMIN.searchUsers.mockResolvedValue({
+			users: [
+				{
+					id: 'target-user-1',
+					mainCharacterId: '1001',
+					mainCharacterName: 'Main Pilot',
+					characterCount: 2,
+					is_admin: false,
+					discordUserId: null,
+					discordUsername: null,
+					matchedCharacterId: '2002',
+					matchedCharacterName: 'Alt Pilot',
+					matchedBy: 'character_name',
+					createdAt: new Date(),
+					updatedAt: new Date(),
+				},
+			],
+			total: 1,
+			limit: 25,
+			offset: 0,
+		})
+		hrStub.checkCharactersBlacklisted.mockResolvedValue({ '1001': false, '2002': true })
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/audit/users?search=pilot', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject({
+			users: [
+				{
+					mainCharacterIsBlacklisted: false,
+					matchedCharacterIsBlacklisted: true,
+				},
+			],
+		})
+		expect(hrStub.checkCharactersBlacklisted).toHaveBeenCalledWith(['1001', '2002'])
+	})
+
+	it('includes blocklist status on HR user character summaries', async () => {
+		env.CORE.getUserCharacters.mockResolvedValue([
+			{
+				characterId: '1001',
+				characterName: 'Main Pilot',
+				hasValidToken: true,
+				isDeleted: false,
+				corporationId: '1001',
+				corporationName: 'Alpha Corp',
+			},
+		])
+		hrStub.checkCharactersBlacklisted.mockResolvedValue({ '1001': true })
+
+		const app = createApp({ user: makeUser({ is_admin: true }), db: dbStub })
+		const res = await app.request('/api/hr/users/target-user-1/characters', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toMatchObject([{ characterId: '1001', isBlacklisted: true }])
+		expect(hrStub.checkCharactersBlacklisted).toHaveBeenCalledWith(['1001'])
+	})
+
+	it('includes account-level blocklist status for HR user profiles', async () => {
+		hrStub.isUserBlacklisted.mockResolvedValue(true)
+
+		const app = createApp({ user: makeUser({ is_admin: true }), db: dbStub })
+		const res = await app.request('/api/hr/users/target-user-1/blocklist-status', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ isBlacklisted: true })
+		expect(hrStub.isUserBlacklisted).toHaveBeenCalledWith('target-user-1')
 	})
 
 	it('allows auditors to create hr notes via hasAnyHrAccess', async () => {
@@ -1257,7 +1525,13 @@ describe('hr route access matrix', () => {
 			env
 		)
 		expect(reviewerRes.status).toBe(201)
-		expect(hrStub.grantRole).toHaveBeenCalledWith('1001', 'target-user-1', 'hr_reviewer', 'user-1', undefined)
+		expect(hrStub.grantRole).toHaveBeenCalledWith(
+			'1001',
+			'target-user-1',
+			'hr_reviewer',
+			'user-1',
+			undefined
+		)
 
 		const adminRes = await app.request(
 			'/api/hr/1001/roles',
@@ -1315,7 +1589,13 @@ describe('hr route access matrix', () => {
 		)
 
 		expect(res.status).toBe(201)
-		expect(hrStub.grantRole).toHaveBeenCalledWith('1001', 'target-user-1', 'hr_admin', 'user-1', undefined)
+		expect(hrStub.grantRole).toHaveBeenCalledWith(
+			'1001',
+			'target-user-1',
+			'hr_admin',
+			'user-1',
+			undefined
+		)
 	})
 
 	it('denies HR role management for alt corporations even for site admins', async () => {

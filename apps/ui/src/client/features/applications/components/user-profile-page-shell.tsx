@@ -1,10 +1,8 @@
-import type { ReactNode } from 'react'
-import { Link } from 'react-router'
 import { ArrowLeft } from 'lucide-react'
+import { Link } from 'react-router'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
-import type { BadgeVariant } from '@/components/ui/badge'
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -17,6 +15,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Separator } from '@/components/ui/separator'
+import { cn } from '@/lib/utils'
+
+import type { ReactNode } from 'react'
+import type { BadgeVariant } from '@/components/ui/badge'
 
 export function UserProfilePageShell({
 	rootLabel,
@@ -28,6 +30,8 @@ export function UserProfilePageShell({
 	userId,
 	mainCharacterId,
 	mainCharacterName,
+	isMainCharacterBlacklisted = false,
+	isAccountBlacklisted = false,
 	sidebarBadges,
 	sidebarStats,
 	sidebarFooter,
@@ -42,6 +46,8 @@ export function UserProfilePageShell({
 	userId: string
 	mainCharacterId?: string | null
 	mainCharacterName?: string | null
+	isMainCharacterBlacklisted?: boolean
+	isAccountBlacklisted?: boolean
 	sidebarBadges?: ReactNode
 	sidebarStats?: ReactNode
 	sidebarFooter?: ReactNode
@@ -82,11 +88,19 @@ export function UserProfilePageShell({
 									<MemberAvatar
 										characterId={mainCharacterId}
 										characterName={mainCharacterName}
+										isBlacklisted={isMainCharacterBlacklisted}
 										size="lg"
 									/>
 								)}
 								<div className="space-y-1">
-									<h1 className="text-xl font-bold">{accountName}</h1>
+									<h1
+										className={cn(
+											'text-xl font-bold',
+											(isMainCharacterBlacklisted || isAccountBlacklisted) && 'text-red-500'
+										)}
+									>
+										{accountName}
+									</h1>
 									<p className="font-mono text-xs text-muted-foreground">User ID: {userId}</p>
 								</div>
 								<div className="flex flex-wrap items-center justify-center gap-2">
@@ -98,9 +112,7 @@ export function UserProfilePageShell({
 
 					{sidebarStats ? (
 						<Card>
-							<CardContent className="space-y-3 pt-6">
-								{sidebarStats}
-							</CardContent>
+							<CardContent className="space-y-3 pt-6">{sidebarStats}</CardContent>
 						</Card>
 					) : null}
 
@@ -113,13 +125,7 @@ export function UserProfilePageShell({
 	)
 }
 
-export function UserProfileStatRow({
-	label,
-	value,
-}: {
-	label: string
-	value: ReactNode
-}) {
+export function UserProfileStatRow({ label, value }: { label: string; value: ReactNode }) {
 	return (
 		<div className="flex justify-between text-sm">
 			<span className="text-muted-foreground">{label}</span>

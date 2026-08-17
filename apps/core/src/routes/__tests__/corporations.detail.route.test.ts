@@ -9,19 +9,21 @@ import type { SessionUser } from '../../context'
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
+	withRpcResult: async <T, R>(rpcCall: Promise<T>, consume: (result: T) => R | Promise<R>) =>
+		consume(await rpcCall),
 }))
 
 vi.mock('../../middleware/session', () => ({
 	requireAuth:
 		() =>
-			async (_c: unknown, next: () => Promise<void>): Promise<void> => {
-				await next()
-			},
+		async (_c: unknown, next: () => Promise<void>): Promise<void> => {
+			await next()
+		},
 	requireAdmin:
 		() =>
-			async (_c: unknown, next: () => Promise<void>): Promise<void> => {
-				await next()
-			},
+		async (_c: unknown, next: () => Promise<void>): Promise<void> => {
+			await next()
+		},
 }))
 
 const getStubMock = vi.mocked(getStub)
@@ -83,10 +85,9 @@ describe('corporations detail route', () => {
 			},
 		}
 		const corpStub = {
-			getHealthyDirectors: vi.fn().mockResolvedValue([
-				{ directorId: 'dir-1' },
-				{ directorId: 'dir-2' },
-			]),
+			getHealthyDirectors: vi
+				.fn()
+				.mockResolvedValue([{ directorId: 'dir-1' }, { directorId: 'dir-2' }]),
 			getConfiguration: vi.fn().mockResolvedValue({
 				corporationId: 'corp-1',
 				isVerified: false,

@@ -1,4 +1,4 @@
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { TimeCache } from '@repo/hono-helpers'
 
 import type {
@@ -61,7 +61,12 @@ export async function getCachedUserPermissions(
 	const cacheKey = `permissions:${userId}`
 	return permissionsCache.getOrSet(cacheKey, async () => {
 		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
-		return await groupsStub.getUserPermissions(userId)
+		return withRpcResult(groupsStub.getUserPermissions(userId), (result) =>
+			result.map((permission) => ({
+				...permission,
+				category: permission.category ? { ...permission.category } : null,
+			}))
+		)
 	})
 }
 
@@ -75,7 +80,9 @@ export async function getCachedUserMemberships(
 	const cacheKey = `memberships:${userId}`
 	return membershipsCache.getOrSet(cacheKey, async () => {
 		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
-		return await groupsStub.getUserMemberships(userId)
+		return withRpcResult(groupsStub.getUserMemberships(userId), (result) =>
+			result.map((membership) => ({ ...membership }))
+		)
 	})
 }
 
@@ -90,7 +97,15 @@ export async function getCachedGroup(
 	const cacheKey = `group:${groupId}:${userId}`
 	return groupsCache.getOrSet(cacheKey, async () => {
 		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
-		return await groupsStub.getGroup(groupId, userId)
+		return withRpcResult(groupsStub.getGroup(groupId, userId), (result) =>
+			result
+				? {
+						...result,
+						category: { ...result.category },
+						adminUserIds: result.adminUserIds ? [...result.adminUserIds] : result.adminUserIds,
+					}
+				: null
+		)
 	})
 }
 
@@ -104,7 +119,12 @@ export async function getCachedCharacterPermissions(
 	const cacheKey = `character-permissions:${characterId}`
 	return characterPermissionsCache.getOrSet(cacheKey, async () => {
 		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
-		return await groupsStub.getCharacterPermissions(characterId)
+		return withRpcResult(groupsStub.getCharacterPermissions(characterId), (result) =>
+			result.map((permission) => ({
+				...permission,
+				category: permission.category ? { ...permission.category } : null,
+			}))
+		)
 	})
 }
 
@@ -118,10 +138,17 @@ export async function getCachedUserRoles(
 	const cacheKey = `roles:${userId}`
 	return rolesCache.getOrSet(cacheKey, async () => {
 		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
-		return await groupsStub.getRolesFor({
-			attachedToType: 'user' as RoleAttachmentType,
-			attachedToId: userId,
-		})
+		return withRpcResult(
+			groupsStub.getRolesFor({
+				attachedToType: 'user' as RoleAttachmentType,
+				attachedToId: userId,
+			}),
+			(result) =>
+				result.map((attachment) => ({
+					...attachment,
+					role: { ...attachment.role },
+				}))
+		)
 	})
 }
 
@@ -131,7 +158,12 @@ export async function getCachedUserRoles(
 export async function getCachedGlobalPermissions(env: GroupsEnv): Promise<PermissionWithDetails[]> {
 	return globalPermissionsCache.getOrSet('permissions:global', async () => {
 		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
-		return await groupsStub.listPermissions()
+		return withRpcResult(groupsStub.listPermissions(), (result) =>
+			result.map((permission) => ({
+				...permission,
+				category: permission.category ? { ...permission.category } : null,
+			}))
+		)
 	})
 }
 

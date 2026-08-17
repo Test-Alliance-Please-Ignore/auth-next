@@ -17,6 +17,11 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Hr } from '@repo/hr'
 import type { App, SessionUser } from '../context'
 
+/** Public image requests do not need session resolution or its RPC lookups. */
+export function shouldBypassSessionMiddleware(pathname: string): boolean {
+	return pathname === '/images' || pathname.startsWith('/images/')
+}
+
 /**
  * Session middleware
  *
@@ -25,6 +30,10 @@ import type { App, SessionUser } from '../context'
  */
 export const sessionMiddleware = (): MiddlewareHandler<App> => {
 	return async (c, next) => {
+		if (shouldBypassSessionMiddleware(c.req.path)) {
+			return next()
+		}
+
 		// Get session token from Authorization header or cookie
 		const authHeader = c.req.header('Authorization')
 		const cookieToken = getCookie(c, 'session')

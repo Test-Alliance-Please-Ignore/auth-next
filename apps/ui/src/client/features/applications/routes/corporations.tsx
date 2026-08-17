@@ -1,26 +1,27 @@
-import { useQueries } from '@tanstack/react-query'
 import { AlertCircle, Building2, FileText, Settings2, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Label } from '@/components/ui/label'
-import { Progress } from '@/components/ui/progress'
-import { Skeleton } from '@/components/ui/skeleton'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
+import { Progress } from '@/components/ui/progress'
 import { Select } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useHrAccessibleCorporations } from '@/features/hr'
 import { HrRoleBadge } from '@/features/hr/components/hr-role-badge'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
-
 import { corporationLogoUrl } from '@/lib/eve-images'
-import { applicationsApi } from '../api'
-import { Button } from '@/components/ui/button'
-import { useCorporationAccess, useMyCorporations } from '../../corporations/hooks'
+
+import { useCorporationAccess, useCorporationCoverage } from '../../corporations/hooks'
+import { useCorporationApplicationCounts } from '../hooks'
+
+import type { CorporationCoverageStats } from '../../corporations/api'
 
 type CorporationTypeFilter = 'member' | 'alt' | 'special'
 
@@ -46,19 +47,14 @@ function matchesCorporationType(
 	return corporation.isSpecialPurpose
 }
 
-interface CorporationCoverageStats {
-	memberCount: number
-	linkedMemberCount: number
-	unlinkedMemberCount: number
-	validEsiKeyMemberCount: number
-}
-
 function CorporationCoverageBars({ coverage }: { coverage: CorporationCoverageStats }) {
 	const authLinkedUnits = coverage.linkedMemberCount + coverage.unlinkedMemberCount
 	const authLinkedPercentage =
 		authLinkedUnits > 0 ? Math.round((coverage.linkedMemberCount / authLinkedUnits) * 100) : 0
 	const esiCoveragePercentage =
-		coverage.memberCount > 0 ? Math.round((coverage.validEsiKeyMemberCount / coverage.memberCount) * 100) : 0
+		coverage.memberCount > 0
+			? Math.round((coverage.validEsiKeyMemberCount / coverage.memberCount) * 100)
+			: 0
 
 	return (
 		<div className="w-44 space-y-2">
@@ -96,15 +92,18 @@ export default function CorporationsPage() {
 		() => permissions.some((permission) => permission.urn === 'urn:hr:auditor'),
 		[permissions]
 	)
-	const [corporationTypeFilter, setCorporationTypeFilter] =
-		useState<CorporationTypeFilter | null>(null)
+	const [corporationTypeFilter, setCorporationTypeFilter] = useState<CorporationTypeFilter | null>(
+		null
+	)
 	const {
 		data: corporations = [],
 		isLoading: corporationsLoading,
 		error,
 	} = useHrAccessibleCorporations()
 	const { data: corporationAccess } = useCorporationAccess()
-	const { data: myCorporations = [] } = useMyCorporations()
+	const { data: corporationCoverage } = useCorporationCoverage()
+	const { data: applicationCounts = [], isLoading: applicationCountsLoading } =
+		useCorporationApplicationCounts()
 	const availableCorporationTypes = useMemo(() => {
 		const types = new Set<CorporationTypeFilter>()
 		for (const corporation of corporations) {
@@ -116,9 +115,8 @@ export default function CorporationsPage() {
 	}, [corporations])
 	const defaultCorporationTypeFilter = useMemo(() => {
 		return (
-			CORPORATION_TYPE_OPTIONS.find((option) =>
-				availableCorporationTypes.includes(option.value)
-			)?.value ?? null
+			CORPORATION_TYPE_OPTIONS.find((option) => availableCorporationTypes.includes(option.value))
+				?.value ?? null
 		)
 	}, [availableCorporationTypes])
 	const canFilterCorporations =
@@ -126,6 +124,16 @@ export default function CorporationsPage() {
 	const accessibleCorporationIds = useMemo(
 		() => new Set((corporationAccess?.corporations ?? []).map((corp) => corp.corporationId)),
 		[corporationAccess]
+	)
+	const coverageByCorporationId = useMemo(
+		() =>
+			new Map(
+				(corporationCoverage?.corporations ?? []).map((coverage) => [
+					coverage.corporationId,
+					coverage,
+				])
+			),
+		[corporationCoverage]
 	)
 
 	useEffect(() => {
@@ -142,7 +150,7 @@ export default function CorporationsPage() {
 	])
 
 	const activeCorporationTypeFilter = canFilterCorporations
-		? corporationTypeFilter ?? defaultCorporationTypeFilter
+		? (corporationTypeFilter ?? defaultCorporationTypeFilter)
 		: null
 
 	const visibleCorporations = useMemo(() => {
@@ -156,22 +164,10 @@ export default function CorporationsPage() {
 			matchesCorporationType(corporation, activeCorporationTypeFilter)
 		)
 	}, [activeCorporationTypeFilter, canFilterCorporations, corporations])
-	const applicationQueries = useQueries({
-		queries: visibleCorporations.map((corporation) => {
-			const canViewApplications =
-				corporation.isMemberCorporation &&
-				(user?.is_admin === true ||
-					isAuditor ||
-					accessibleCorporationIds.has(corporation.corporationId))
-			return {
-				queryKey: ['hr', 'corporation-application-counts', corporation.corporationId],
-				queryFn: () => applicationsApi.getApplications({ corporationId: corporation.corporationId }),
-				staleTime: 1000 * 30, // 30s
-				gcTime: 1000 * 60 * 2, // 2m
-				enabled: Boolean(corporation.corporationId && canViewApplications),
-			}
-		}),
-	})
+	const applicationCountsByCorporationId = useMemo(
+		() => new Map(applicationCounts.map((counts) => [counts.corporationId, counts])),
+		[applicationCounts]
+	)
 
 	usePageTitle('Corporations')
 
@@ -203,7 +199,9 @@ export default function CorporationsPage() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
-						<Button variant="ghost" onClick={() => window.location.reload()}>Try Again</Button>
+						<Button variant="ghost" onClick={() => window.location.reload()}>
+							Try Again
+						</Button>
 					</CardContent>
 				</Card>
 			</Container>
@@ -262,31 +260,25 @@ export default function CorporationsPage() {
 			) : null}
 
 			<div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-				{visibleCorporations.map((corporation, index) => {
-					const applicationQuery = applicationQueries[index]
-					const applications = applicationQuery?.data ?? []
-					const myCorporation = myCorporations.find((c) => c.corporationId === corporation.corporationId)
+				{visibleCorporations.map((corporation) => {
 					const corporationAccessEntry = (corporationAccess?.corporations ?? []).find(
 						(corp) => corp.corporationId === corporation.corporationId
 					)
-					const coverageStats: CorporationCoverageStats | null = myCorporation ?? corporationAccessEntry ?? null
+					const coverageStats = coverageByCorporationId.get(corporation.corporationId) ?? null
 					const canAccessMembers =
 						user?.is_admin === true ||
 						isAuditor ||
 						accessibleCorporationIds.has(corporation.corporationId)
-						const canViewApplications =
-							corporation.isMemberCorporation &&
-							(user?.is_admin === true ||
-								isAuditor ||
-								accessibleCorporationIds.has(corporation.corporationId))
-						const canConfigureCorporation =
-							user?.is_admin === true || corporationAccessEntry?.userRole === 'CEO'
-						const pendingCount = canViewApplications
-							? applications.filter((application) => application.status === 'pending').length
-							: 0
-					const underReviewCount = canViewApplications
-						? applications.filter((application) => application.status === 'under_review').length
-						: 0
+					const canViewApplications =
+						corporation.isMemberCorporation &&
+						(user?.is_admin === true ||
+							isAuditor ||
+							accessibleCorporationIds.has(corporation.corporationId))
+					const canConfigureCorporation =
+						user?.is_admin === true || corporationAccessEntry?.userRole === 'CEO'
+					const applicationCounts = applicationCountsByCorporationId.get(corporation.corporationId)
+					const pendingCount = canViewApplications ? (applicationCounts?.pending ?? 0) : 0
+					const underReviewCount = canViewApplications ? (applicationCounts?.underReview ?? 0) : 0
 					const hasVisibleCounts = canViewApplications && (pendingCount > 0 || underReviewCount > 0)
 
 					return (
@@ -327,33 +319,38 @@ export default function CorporationsPage() {
 												</Link>
 											</Button>
 										)}
-											{canViewApplications && (
-												<Button variant={canAccessMembers ? 'ghost' : 'primary'} asChild className="w-full sm:w-auto">
-													<Link to={`/corporations/${corporation.corporationId}/applications`}>
-														<FileText className="h-4 w-4" />
-														Applications
-													</Link>
-												</Button>
-											)}
-											{canConfigureCorporation && (
-												<Button variant="ghost" asChild className="w-full sm:w-auto">
-													<Link to={`/corporations/${corporation.corporationId}/settings`}>
-														<Settings2 className="h-4 w-4" />
-														Configure
-													</Link>
-												</Button>
-											)}
-										</div>
+										{canViewApplications && (
+											<Button
+												variant={canAccessMembers ? 'ghost' : 'primary'}
+												asChild
+												className="w-full sm:w-auto"
+											>
+												<Link to={`/corporations/${corporation.corporationId}/applications`}>
+													<FileText className="h-4 w-4" />
+													Applications
+												</Link>
+											</Button>
+										)}
+										{canConfigureCorporation && (
+											<Button variant="ghost" asChild className="w-full sm:w-auto">
+												<Link to={`/corporations/${corporation.corporationId}/settings`}>
+													<Settings2 className="h-4 w-4" />
+													Configure
+												</Link>
+											</Button>
+										)}
 									</div>
+								</div>
 								<div className="justify-self-end self-end">
-									{applicationQuery?.isLoading ? (
-										<div className="flex gap-2">
-											<Skeleton className="h-5 w-20" />
-										</div>
-										) : hasVisibleCounts || coverageStats ? (
+									{coverageStats ||
+									hasVisibleCounts ||
+									(canViewApplications && applicationCountsLoading) ? (
 										<div className="flex flex-col items-end gap-2">
 											{coverageStats && <CorporationCoverageBars coverage={coverageStats} />}
 											<div className="flex flex-wrap items-center justify-end gap-2">
+												{canViewApplications && applicationCountsLoading && (
+													<Skeleton className="h-5 w-20" />
+												)}
 												{pendingCount > 0 && (
 													<Badge variant="warning">Pending: {pendingCount}</Badge>
 												)}

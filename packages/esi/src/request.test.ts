@@ -46,6 +46,42 @@ describe('ESI request helpers', () => {
 		)
 	})
 
+	it('fetches and combines all X-Pages results', async () => {
+		const fetchSpy = vi.fn().mockImplementation((url: string) => {
+			const page = new URL(url).searchParams.get('page')
+			const rows = page === '1' ? [{ id: 1 }] : [{ id: 2 }]
+			return Promise.resolve(
+				new Response(JSON.stringify(rows), {
+					status: 200,
+					headers: {
+						'Content-Type': 'application/json',
+						'X-Pages': '2',
+					},
+				})
+			)
+		})
+		const client = new EsiRequestClient({
+			rateLimits: new EsiRateLimitStore(new MemoryKv() as never),
+			fetchImpl: fetchSpy,
+		})
+
+		const response = await client.requestPaginated<{ id: number }>({
+			path: '/characters/123/wallet/journal',
+			userKey: 'character:123',
+			cacheMode: 'no-store',
+			parse: async (res) => (await res.json()) as Array<{ id: number }>,
+			buildError: () => new Error('unexpected'),
+		})
+
+		expect(response.data).toEqual([{ id: 1 }, { id: 2 }])
+		expect(response.pages).toBe(2)
+		expect(fetchSpy).toHaveBeenCalledTimes(2)
+		expect(fetchSpy.mock.calls.map(([url]) => new URL(url).searchParams.get('page'))).toEqual([
+			'1',
+			'2',
+		])
+	})
+
 	it('returns cached responses without fetching when the cache is fresh', async () => {
 		const cache = {
 			getCachedResponse: vi.fn().mockResolvedValue({

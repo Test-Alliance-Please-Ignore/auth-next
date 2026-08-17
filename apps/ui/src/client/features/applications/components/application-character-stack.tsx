@@ -1,9 +1,12 @@
+import { X } from 'lucide-react'
 import { useRef, useState } from 'react'
 
+import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
 import { characterPortraitUrl } from '@/lib/eve-images'
+import { cn } from '@/lib/utils'
 
 import { CharacterRoleBadge } from './character-role-badge'
 
@@ -16,6 +19,7 @@ export interface ApplicationCharacterStackProps {
 	mainCharacterName: string
 	altCharacterIds: string[]
 	altCharacterNames: Record<string, string>
+	blacklistedCharacterIds?: string[]
 	size?: 'sm' | 'md' | 'lg'
 }
 
@@ -62,7 +66,11 @@ function placeholderPos(cfg: SizeConfig) {
 	}
 }
 
-function containerSize(cfg: SizeConfig, visibleCount: number, hasPlaceholder: boolean): { width: number; height: number } {
+function containerSize(
+	cfg: SizeConfig,
+	visibleCount: number,
+	hasPlaceholder: boolean
+): { width: number; height: number } {
 	let w = cfg.mainPx
 	let h = cfg.mainPx
 
@@ -92,6 +100,7 @@ export function ApplicationCharacterStack({
 	mainCharacterName,
 	altCharacterIds,
 	altCharacterNames,
+	blacklistedCharacterIds = [],
 	size = 'lg',
 }: ApplicationCharacterStackProps) {
 	const [open, setOpen] = useState(false)
@@ -103,6 +112,7 @@ export function ApplicationCharacterStack({
 	// Show a blank placeholder slot when there are more alts than we can show as portraits
 	const showPlaceholder = altCount > MAX_PORTRAIT_ALTS
 	const { width: cw, height: ch } = containerSize(cfg, visibleAlts.length, showPlaceholder)
+	const blacklistedIds = new Set(blacklistedCharacterIds)
 
 	const clearClose = () => {
 		if (closeTimeoutRef.current !== null) {
@@ -111,7 +121,10 @@ export function ApplicationCharacterStack({
 		}
 	}
 
-	const openPopover = () => { clearClose(); setOpen(true) }
+	const openPopover = () => {
+		clearClose()
+		setOpen(true)
+	}
 	const closePopoverSoon = () => {
 		clearClose()
 		closeTimeoutRef.current = window.setTimeout(() => setOpen(false), 80)
@@ -129,16 +142,24 @@ export function ApplicationCharacterStack({
 					onBlur={closePopoverSoon}
 				>
 					{/* Blank placeholder slot (behind all portraits) — shown when 4+ alts */}
-					{showPlaceholder && (() => {
-						const { x, y } = placeholderPos(cfg)
-						const px = altPx(cfg, MAX_PORTRAIT_ALTS)
-						return (
-							<div
-								style={{ position: 'absolute', left: x, top: y, width: px, height: px, zIndex: 0 }}
-								className="rounded border-2 border-background bg-muted shadow-md"
-							/>
-						)
-					})()}
+					{showPlaceholder &&
+						(() => {
+							const { x, y } = placeholderPos(cfg)
+							const px = altPx(cfg, MAX_PORTRAIT_ALTS)
+							return (
+								<div
+									style={{
+										position: 'absolute',
+										left: x,
+										top: y,
+										width: px,
+										height: px,
+										zIndex: 0,
+									}}
+									className="rounded border-2 border-background bg-muted shadow-md"
+								/>
+							)
+						})()}
 
 					{/* Alt portraits — rendered back-to-front so earlier alts sit in front */}
 					{[...visibleAlts].reverse().map((altId, reverseIdx) => {
@@ -146,10 +167,8 @@ export function ApplicationCharacterStack({
 						const { x, y } = altPos(cfg, i)
 						const px = altPx(cfg, i)
 						return (
-							<img
+							<div
 								key={altId}
-								src={characterPortraitUrl(altId, 32)}
-								alt={altCharacterNames[altId] ?? altId}
 								style={{
 									position: 'absolute',
 									left: x,
@@ -158,16 +177,29 @@ export function ApplicationCharacterStack({
 									height: px,
 									zIndex: MAX_PORTRAIT_ALTS - i,
 								}}
-								className="rounded object-cover border-2 border-background shadow-md"
-								loading="lazy"
-							/>
+								className="relative"
+							>
+								<img
+									src={characterPortraitUrl(altId, 32)}
+									alt={altCharacterNames[altId] ?? altId}
+									className={cn(
+										'h-full w-full rounded object-cover border-2 border-background shadow-md',
+										blacklistedIds.has(altId) && 'grayscale'
+									)}
+									loading="lazy"
+								/>
+								{blacklistedIds.has(altId) && (
+									<X
+										className="pointer-events-none absolute inset-0 m-auto h-[75%] w-[75%] stroke-[3] text-red-500 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]"
+										aria-hidden="true"
+									/>
+								)}
+							</div>
 						)
 					})}
 
 					{/* Main portrait — frontmost */}
-					<img
-						src={characterPortraitUrl(mainCharacterId, cfg.portraitPx)}
-						alt={mainCharacterName}
+					<div
 						style={{
 							position: 'absolute',
 							left: 0,
@@ -176,9 +208,24 @@ export function ApplicationCharacterStack({
 							height: cfg.mainPx,
 							zIndex: MAX_PORTRAIT_ALTS + 1,
 						}}
-						className="rounded object-cover shadow-lg"
-						loading="lazy"
-					/>
+						className="relative"
+					>
+						<img
+							src={characterPortraitUrl(mainCharacterId, cfg.portraitPx)}
+							alt={mainCharacterName}
+							className={cn(
+								'h-full w-full rounded object-cover shadow-lg',
+								blacklistedIds.has(mainCharacterId) && 'grayscale'
+							)}
+							loading="lazy"
+						/>
+						{blacklistedIds.has(mainCharacterId) && (
+							<X
+								className="pointer-events-none absolute inset-0 m-auto h-[78%] w-[78%] stroke-[3] text-red-500 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]"
+								aria-hidden="true"
+							/>
+						)}
+					</div>
 
 					{/* Persistent alt count badge — anchored to bottom-right corner of main portrait */}
 					{altCount > 0 && (
@@ -212,14 +259,21 @@ export function ApplicationCharacterStack({
 							Main Character
 						</p>
 						<div className="flex items-center gap-2">
-							<img
-								src={characterPortraitUrl(mainCharacterId, 32)}
-								alt={mainCharacterName}
-								className="h-8 w-8 rounded object-cover"
-								loading="lazy"
+							<MemberAvatar
+								characterId={mainCharacterId}
+								characterName={mainCharacterName}
+								isBlacklisted={blacklistedIds.has(mainCharacterId)}
+								size="sm"
 							/>
 							<span className="inline-flex min-w-0 items-center gap-2">
-								<span className="truncate text-sm font-medium">{mainCharacterName}</span>
+								<span
+									className={cn(
+										'truncate text-sm font-medium',
+										blacklistedIds.has(mainCharacterId) && 'text-red-500'
+									)}
+								>
+									{mainCharacterName}
+								</span>
 								<CharacterRoleBadge role="main" />
 							</span>
 						</div>
@@ -235,14 +289,21 @@ export function ApplicationCharacterStack({
 								<div className="space-y-2">
 									{altCharacterIds.map((altId) => (
 										<div key={altId} className="flex items-center gap-2">
-											<img
-												src={characterPortraitUrl(altId, 32)}
-												alt={altCharacterNames[altId] ?? altId}
-												className="h-8 w-8 rounded object-cover"
-												loading="lazy"
+											<MemberAvatar
+												characterId={altId}
+												characterName={altCharacterNames[altId] ?? altId}
+												isBlacklisted={blacklistedIds.has(altId)}
+												size="sm"
 											/>
 											<span className="inline-flex min-w-0 items-center gap-2">
-												<span className="truncate text-sm">{altCharacterNames[altId] ?? altId}</span>
+												<span
+													className={cn(
+														'truncate text-sm',
+														blacklistedIds.has(altId) && 'text-red-500'
+													)}
+												>
+													{altCharacterNames[altId] ?? altId}
+												</span>
 												<CharacterRoleBadge role="alt" />
 											</span>
 										</div>

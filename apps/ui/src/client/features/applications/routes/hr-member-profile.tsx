@@ -34,6 +34,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { apiClient } from '@/lib/api'
+import { cn } from '@/lib/utils'
 
 import { useCanAccessCorporation, useCorporationMemberAccount } from '../../corporations/hooks'
 import { useHrPermissionCheck } from '../../hr/hooks'
@@ -78,6 +79,7 @@ interface UnifiedCharacter {
 		corporationName?: string | null
 		allianceId?: string | null
 		allianceName?: string | null
+		isBlacklisted?: boolean
 	}
 	report?: FulcrumCharacterReportData
 }
@@ -438,10 +440,18 @@ export default function HrMemberProfile() {
 								<MemberAvatar
 									characterId={representative.characterId}
 									characterName={accountName}
+									isBlacklisted={representative.isBlacklisted}
 									size="lg"
 								/>
 								<div className="space-y-1">
-									<h1 className="text-xl font-bold">{accountName}</h1>
+									<h1
+										className={cn(
+											'text-xl font-bold',
+											(representative.isBlacklisted || account.hasBlacklisted) && 'text-red-500'
+										)}
+									>
+										{accountName}
+									</h1>
 									<p className="text-sm text-muted-foreground">{representative.corporationName}</p>
 									{representative.allianceName && (
 										<p className="text-xs text-muted-foreground">{representative.allianceName}</p>
@@ -567,7 +577,7 @@ export default function HrMemberProfile() {
 							role: char.member?.role ?? char.report?.role ?? null,
 							activityStatus: char.member?.activityStatus ?? char.report?.activityStatus ?? null,
 							isExternal: !char.isInCorp,
-							isBlacklisted: char.member?.isBlacklisted,
+							isBlacklisted: char.member?.isBlacklisted ?? char.hr?.isBlacklisted,
 							lastLogin: char.member?.lastLogin,
 							joinDate: char.member?.joinDate,
 							skillPoints: spByCharacterId.get(char.characterId),
@@ -648,8 +658,8 @@ export default function HrMemberProfile() {
 						loading={appsLoading}
 						linked={account.isLinked}
 						emptyText="No applications found"
-						onOpenApplication={(application) =>
-							navigate(`/corporations/${corporationId}/applications/${application.id}`)
+						getApplicationHref={(application) =>
+							`/corporations/${corporationId}/applications/${application.id}`
 						}
 					/>
 				</div>

@@ -25,6 +25,7 @@ import type {
 	BlacklistTargetCheckResult,
 	CharacterIdNameBlacklistResult,
 	CharacterIdNamePair,
+	CorporationApplicationCounts,
 	CreateCharacterBlacklistParams,
 	CreateDiscordBlacklistParams,
 	CreateUserBlacklistParams,
@@ -166,6 +167,24 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		return await this.applicationService.listApplicationsPaged(
 			filters,
 			userId,
+			access.isAdmin,
+			access.isAuditor,
+			userHrCorporations
+		)
+	}
+
+	async getApplicationCountsByCorporation(
+		corporationIds: string[],
+		userId: string,
+		access: { isAdmin: boolean; isAuditor: boolean }
+	): Promise<CorporationApplicationCounts[]> {
+		const userHrCorporations =
+			access.isAdmin || access.isAuditor
+				? []
+				: await this.hrRoleService.getUserHrCorporations(userId)
+
+		return await this.applicationService.getApplicationCountsByCorporation(
+			corporationIds,
 			access.isAdmin,
 			access.isAuditor,
 			userHrCorporations

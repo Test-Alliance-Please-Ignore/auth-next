@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { Hono } from 'hono'
 
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { isOpenApplicationStatus } from '@repo/hr'
 
@@ -36,6 +36,20 @@ function getHrStub(c: Context<App>): Hr {
 
 function getCoreStub(c: Context<App>): Core {
 	return getStub<Core>(c.env.CORE, 'default')
+}
+
+async function getReportAccessSnapshot(
+	fulcrum: Fulcrum,
+	reportId: string
+): Promise<{ status: string; requestorCorporationId: string } | null> {
+	return withRpcResult(fulcrum.getReportStatus(reportId), (report) =>
+		report
+			? {
+					status: report.status,
+					requestorCorporationId: report.requestorCorporationId,
+				}
+			: null
+	)
 }
 
 function getExecutionContextOrNull(c: Context<App>): Pick<ExecutionContext, 'waitUntil'> | null {
@@ -85,9 +99,11 @@ async function getCharacterCorporationId(
 	characterId: string
 ): Promise<string | null> {
 	const characterStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
-	const characterInstance = await characterStub.getInstance(characterId)
-	const characterInfo = await characterInstance.getCharacterInfo()
-	return characterInfo?.corporationId ? String(characterInfo.corporationId) : null
+	return withRpcResult(characterStub.getInstance(characterId), (characterInstance) =>
+		withRpcResult(characterInstance.getCharacterInfo(), (characterInfo) =>
+			characterInfo?.corporationId ? String(characterInfo.corporationId) : null
+		)
+	)
 }
 
 type FulcrumCorporationResolution = {
@@ -101,10 +117,13 @@ async function resolveApplicationFulcrumCorporationForTargetUser(
 	requestor: SessionUser,
 	targetUserId: string
 ): Promise<FulcrumCorporationResolution> {
-	const applications = await hr.listApplications({ userId: targetUserId }, requestor.id, {
-		isAdmin: false,
-		isAuditor: false,
-	})
+	const applications = await withRpcResult(
+		hr.listApplications({ userId: targetUserId }, requestor.id, {
+			isAdmin: false,
+			isAuditor: false,
+		}),
+		(result) => result.map((application) => ({ ...application }))
+	)
 
 	let sawPermission = false
 	let sawOpenApplication = false
@@ -159,7 +178,9 @@ async function resolveSharedFulcrumCorporationForTargetUser(
 	targetUserId: string
 ): Promise<FulcrumSharedCorporationResolution> {
 	const core = getCoreStub(c)
-	const corporations = await core.getUserCorporations(targetUserId)
+	const corporations = await withRpcResult(core.getUserCorporations(targetUserId), (result) =>
+		result.map((corporation) => ({ ...corporation }))
+	)
 	if (corporations.length === 0) {
 		return {
 			corporationId: null,
@@ -253,9 +274,18 @@ async function buildFulcrumCharacterReportRows(
 			const snapshotPromise = (async () => {
 				const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corpId)
 				const [corpInfo, directors, memberTracking] = await Promise.all([
-					corpStub.getCorporationInfo(corpId),
-					corpStub.getDirectors(corpId),
-					corpStub.getMemberTracking(corpId),
+					withRpcResult(corpStub.getCorporationInfo(corpId), (result) =>
+						result ? { ceoId: result.ceoId } : null
+					),
+					withRpcResult(corpStub.getDirectors(corpId), (result) =>
+						result.map((director) => ({ characterId: director.characterId }))
+					),
+					withRpcResult(corpStub.getMemberTracking(corpId), (result) =>
+						result.map((tracking) => ({
+							characterId: tracking.characterId,
+							logonDate: tracking.logonDate,
+						}))
+					),
 				])
 
 				return {
@@ -276,7 +306,10 @@ async function buildFulcrumCharacterReportRows(
 		characters.map(async (char) => {
 			let reports: Awaited<ReturnType<Fulcrum['listReports']>> = []
 			try {
-				reports = await fulcrum.listReports({ characterId: char.characterId }, 50)
+				reports = await withRpcResult(
+					fulcrum.listReports({ characterId: char.characterId }, 50),
+					(result) => result.map((report) => ({ ...report }))
+				)
 			} catch (error) {
 				logger.warn('[Fulcrum] Failed to list reports for character while building user data', {
 					userId,
@@ -325,10 +358,13 @@ async function resolveFallbackFulcrumCorporationId(
 	targetUserId: string,
 	characterId: string
 ): Promise<string | null> {
-	const applications = await hr.listApplications({ userId: targetUserId }, requestor.id, {
-		isAdmin: requestor.is_admin,
-		isAuditor: await isHrAuditorUser(c, requestor),
-	})
+	const applications = await withRpcResult(
+		hr.listApplications({ userId: targetUserId }, requestor.id, {
+			isAdmin: requestor.is_admin,
+			isAuditor: await isHrAuditorUser(c, requestor),
+		}),
+		(result) => result.map((application) => ({ ...application }))
+	)
 	const applicationCorporationId = applications[0]?.corporationId ?? null
 	if (applicationCorporationId) {
 		return applicationCorporationId
@@ -344,8 +380,13 @@ async function isMemberCorpCeo(c: Context<App>, characterId: string): Promise<bo
 	}
 
 	const characterStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
-	const characterInstance = await characterStub.getInstance(characterId)
-	const characterInfo = await characterInstance.getCharacterInfo()
+	const characterInfo = await withRpcResult(
+		characterStub.getInstance(characterId),
+		(characterInstance) =>
+			withRpcResult(characterInstance.getCharacterInfo(), (result) =>
+				result ? { corporationId: result.corporationId } : null
+			)
+	)
 	if (!characterInfo?.corporationId) {
 		return false
 	}
@@ -360,7 +401,9 @@ async function isMemberCorpCeo(c: Context<App>, characterId: string): Promise<bo
 	}
 
 	const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-	const corpInfo = await corpStub.getCorporationInfo(corporationId)
+	const corpInfo = await withRpcResult(corpStub.getCorporationInfo(corporationId), (result) =>
+		result ? { ceoId: result.ceoId } : null
+	)
 	return corpInfo?.ceoId === characterId
 }
 
@@ -433,7 +476,9 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 		}
 
 		const core = getCoreStub(c)
-		const characters = await core.getUserCharacters(userId, false)
+		const characters = await withRpcResult(core.getUserCharacters(userId, false), (result) =>
+			result.map((character) => ({ ...character }))
+		)
 		const reportRows = await buildFulcrumCharacterReportRows(c, userId, characters)
 		const results = reportRows.map((row, index) => {
 			const char = characters[index]
@@ -491,7 +536,9 @@ app.get('/users/:userId/reports', requireAuth(), async (c) => {
 		}
 
 		const core = getCoreStub(c)
-		const characters = await core.getUserCharacters(userId, false)
+		const characters = await withRpcResult(core.getUserCharacters(userId, false), (result) =>
+			result.map((character) => ({ ...character }))
+		)
 		const reportRows = await buildFulcrumCharacterReportRows(c, userId, characters)
 
 		return c.json(reportRows)
@@ -560,7 +607,9 @@ app.get('/characters/:characterId/reports', requireAuth(), async (c) => {
 		}
 
 		const fulcrum = getFulcrumStub(c)
-		const reports = await fulcrum.listReports({ characterId }, 50)
+		const reports = await withRpcResult(fulcrum.listReports({ characterId }, 50), (result) =>
+			result.map((report) => ({ ...report }))
+		)
 
 		return c.json(reports)
 	} catch (error) {
@@ -879,15 +928,18 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 				)
 			}
 			const fulcrum = getFulcrumStub(c)
-			const result = await fulcrum.createBulkCharacterReports({
-				characterIds: body.characterIds,
-				requestorUserId: user.id,
-				requestorCorporationId: resolvedCorporationId,
-				requestSource: body.requestSource,
-				applicationId: body.applicationId,
-				targetUserId: resolvedTargetUserId,
-				sendDm: body.sendDm ?? true,
-			})
+			const result = await withRpcResult(
+				fulcrum.createBulkCharacterReports({
+					characterIds: body.characterIds,
+					requestorUserId: user.id,
+					requestorCorporationId: resolvedCorporationId,
+					requestSource: body.requestSource,
+					applicationId: body.applicationId,
+					targetUserId: resolvedTargetUserId,
+					sendDm: body.sendDm ?? true,
+				}),
+				(value) => ({ ...value })
+			)
 
 			logger.info('[Fulcrum] Bulk report batch requested', {
 				batchId: result.batchId,
@@ -948,15 +1000,18 @@ app.post('/reports/batch', requireAuth(), async (c) => {
 		}
 
 		const fulcrum = getFulcrumStub(c)
-		const result = await fulcrum.createBulkCharacterReports({
-			characterIds: body.characterIds,
-			requestorUserId: user.id,
-			requestorCorporationId: resolvedCorporationId,
-			requestSource: body.requestSource,
-			applicationId: body.applicationId,
-			sendDm: body.sendDm ?? true,
-			targetUserId: resolvedTargetUserId ?? user.id,
-		})
+		const result = await withRpcResult(
+			fulcrum.createBulkCharacterReports({
+				characterIds: body.characterIds,
+				requestorUserId: user.id,
+				requestorCorporationId: resolvedCorporationId,
+				requestSource: body.requestSource,
+				applicationId: body.applicationId,
+				sendDm: body.sendDm ?? true,
+				targetUserId: resolvedTargetUserId ?? user.id,
+			}),
+			(value) => ({ ...value })
+		)
 
 		logger.info('[Fulcrum] Bulk report batch requested', {
 			batchId: result.batchId,
@@ -996,7 +1051,7 @@ app.get('/reports/:reportId/sections', requireAuth(), async (c) => {
 
 	try {
 		const fulcrum = getFulcrumStub(c)
-		const report = await fulcrum.getReportStatus(reportId)
+		const report = await getReportAccessSnapshot(fulcrum, reportId)
 
 		if (!report) {
 			return c.json({ error: 'Report not found' }, 404)
@@ -1018,12 +1073,12 @@ app.get('/reports/:reportId/sections', requireAuth(), async (c) => {
 			return c.json({ error: 'Report not ready', status: report.status }, 400)
 		}
 
-		const manifest = await fulcrum.getReportSections(reportId)
-		if (!manifest) {
-			return c.json({ error: 'Report manifest not found' }, 404)
-		}
-
-		return c.json(manifest)
+		return withRpcResult(fulcrum.getReportSections(reportId), (manifest) => {
+			if (!manifest) {
+				return c.json({ error: 'Report manifest not found' }, 404)
+			}
+			return c.json(manifest)
+		})
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to get report sections' },
@@ -1049,7 +1104,7 @@ app.get('/reports/:reportId/sections/:section', requireAuth(), async (c) => {
 
 	try {
 		const fulcrum = getFulcrumStub(c)
-		const report = await fulcrum.getReportStatus(reportId)
+		const report = await getReportAccessSnapshot(fulcrum, reportId)
 
 		if (!report) {
 			return c.json({ error: 'Report not found' }, 404)
@@ -1092,21 +1147,20 @@ app.get('/reports/:reportId/sections/:section', requireAuth(), async (c) => {
 		}
 
 		if (page === undefined) {
-			const manifest = await fulcrum.getReportSections(reportId)
+			const manifest = await withRpcResult(fulcrum.getReportSections(reportId), (result) =>
+				result ? { sections: { ...result.sections } } : null
+			)
 			if ((manifest?.sections[section]?.chunks ?? 0) > 0) {
 				return c.json({ error: 'A page parameter is required for chunked report sections' }, 400)
 			}
 		}
 
-		const data =
+		return withRpcResult(
 			page === undefined && pageSize === undefined
-				? await fulcrum.getReportSectionData(reportId, section)
-				: await fulcrum.getReportSectionData(reportId, section, page, pageSize)
-		if (!data) {
-			return c.json({ error: 'Section data not found' }, 404)
-		}
-
-		return c.json(data)
+				? fulcrum.getReportSectionData(reportId, section)
+				: fulcrum.getReportSectionData(reportId, section, page, pageSize),
+			(data) => (data ? c.json(data) : c.json({ error: 'Section data not found' }, 404))
+		)
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to get section data' },
@@ -1127,7 +1181,7 @@ app.get('/reports/:reportId/mails/:mailId/content', requireAuth(), async (c) => 
 
 	try {
 		const fulcrum = getFulcrumStub(c)
-		const report = await fulcrum.getReportStatus(reportId)
+		const report = await getReportAccessSnapshot(fulcrum, reportId)
 
 		if (!report) {
 			return c.json({ error: 'Report not found' }, 404)

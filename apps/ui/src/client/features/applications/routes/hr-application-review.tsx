@@ -9,8 +9,8 @@
 import { useQueries } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, ArrowLeft, Briefcase, Lock } from 'lucide-react'
-import { useState } from 'react'
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
+import { useEffect, useState } from 'react'
+import { Link, Navigate, useParams, useSearchParams } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
 import {
@@ -34,6 +34,7 @@ import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
 import toast from '@/lib/toast'
+import { cn } from '@/lib/utils'
 
 import { useCanAccessCorporation } from '../../corporations/hooks'
 import { useHrPermissionCheck } from '../../hr/hooks'
@@ -58,6 +59,7 @@ import {
 	useDeleteHRNote,
 	useHRNote,
 	useHRNotes,
+	useHrUserBlocklistStatus,
 	useHrUserCharacters,
 	useMessageCount,
 	useRecommendations,
@@ -81,9 +83,16 @@ export default function HrApplicationReview() {
 		corporationId: string
 		applicationId: string
 	}>()
-	const navigate = useNavigate()
 	const [searchParams] = useSearchParams()
-	const initialTab = searchParams.get('tab') || 'details'
+	const tabStorageKey = `hr-application-review-tab:${corporationId ?? ''}:${applicationId ?? ''}`
+	const [activeTab, setActiveTab] = useState(() => {
+		const requestedTab = searchParams.get('tab')
+		if (requestedTab) return requestedTab
+		if (typeof window !== 'undefined') {
+			return window.sessionStorage.getItem(tabStorageKey) ?? 'details'
+		}
+		return 'details'
+	})
 	const { user, isAuthenticated, isLoading: authLoading, permissions } = useAuth()
 	const isAuditor = permissions.some((permission) => permission.urn === 'urn:hr:auditor')
 	const {
@@ -145,6 +154,9 @@ export default function HrApplicationReview() {
 	const { data: hrCharacters = [] } = useHrUserCharacters(application?.userId ?? '', {
 		enabled: !!application?.userId && canViewCorporationApplications,
 	})
+	const { data: userBlocklistStatus } = useHrUserBlocklistStatus(application?.userId ?? '', {
+		enabled: !!application?.userId && canViewCorporationApplications,
+	})
 	const canViewApplicationPrivateData =
 		!!application &&
 		canViewCorporationApplications &&
@@ -157,6 +169,28 @@ export default function HrApplicationReview() {
 		currentRole: permission?.currentRole,
 		isAdmin: user?.is_admin === true,
 	})
+	const canShowStaffTabs = Boolean(user?.is_admin || permission?.hasPermission)
+
+	useEffect(() => {
+		if (typeof window === 'undefined') return
+		window.sessionStorage.setItem(tabStorageKey, activeTab)
+	}, [activeTab, tabStorageKey])
+
+	useEffect(() => {
+		const alwaysAvailableTabs = new Set([
+			'details',
+			'alts',
+			'recommendations',
+			'history',
+			'messages',
+			'prior-apps',
+		])
+		const isAvailable =
+			alwaysAvailableTabs.has(activeTab) ||
+			(canShowStaffTabs && (activeTab === 'staff-notes' || activeTab === 'global-notes')) ||
+			(canShowFulcrumTab && activeTab === 'fulcrum')
+		if (!isAvailable) setActiveTab('details')
+	}, [activeTab, canShowFulcrumTab, canShowStaffTabs])
 	const applicationActionRole = resolveApplicationActionRole({
 		isSiteAdmin: user?.is_admin === true,
 		corporationRole: accessUserRole,
@@ -325,7 +359,7 @@ export default function HrApplicationReview() {
 				<AccessDeniedCard
 					message="You don't have HR permissions for this corporation. Contact an HR Admin to request access."
 					backLabel={`Back to ${rootCorporationsLabel}`}
-					onBack={() => navigate(rootCorporationsPath)}
+					backHref={rootCorporationsPath}
 				/>
 			</Container>
 		)
@@ -445,6 +479,14 @@ export default function HrApplicationReview() {
 							mainCharacterName={application.characterName}
 							altCharacterIds={altCharacterIds}
 							altCharacterNames={altCharacterNames}
+							blacklistedCharacterIds={[
+								...(hrCharacterById.get(application.characterId)?.isBlacklisted
+									? [application.characterId]
+									: []),
+								...altCharacterIds.filter((characterId) =>
+									Boolean(hrCharacterById.get(characterId)?.isBlacklisted)
+								),
+							]}
 							size="lg"
 						/>
 
@@ -455,12 +497,22 @@ export default function HrApplicationReview() {
 									<Link
 										to={memberProfilePath}
 										state={memberProfileState}
-										className="truncate text-left transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
+										className={cn(
+											'truncate text-left transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm',
+											hrCharacterById.get(application.characterId)?.isBlacklisted && 'text-red-500'
+										)}
 									>
 										{application.characterName}
 									</Link>
 								) : (
-									<span className="min-w-0 truncate">{application.characterName}</span>
+									<span
+										className={cn(
+											'min-w-0 truncate',
+											hrCharacterById.get(application.characterId)?.isBlacklisted && 'text-red-500'
+										)}
+									>
+										{application.characterName}
+									</span>
 								)}
 								{application.isFirstApplication !== undefined && (
 									<Badge
@@ -468,6 +520,11 @@ export default function HrApplicationReview() {
 										className="h-5 shrink-0 px-1.5 text-[10px] font-semibold leading-none"
 									>
 										{application.isFirstApplication ? 'First' : 'Repeat'}
+									</Badge>
+								)}
+								{userBlocklistStatus?.isBlacklisted && (
+									<Badge variant="destructive" className="h-5 shrink-0 px-1.5 text-[10px]">
+										Blocklisted
 									</Badge>
 								)}
 								{altCharacterIds.length > 0 && (
@@ -500,7 +557,7 @@ export default function HrApplicationReview() {
 			</Card>
 
 			{/* Tabbed Content */}
-			<Tabs defaultValue={initialTab} className="space-y-6">
+			<Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
 				<TabsList className="w-full flex-wrap gap-2 sm:w-auto sm:flex-nowrap">
 					<TabsTrigger value="details" className={reviewTabTriggerClassName}>
 						Details
@@ -649,6 +706,9 @@ export default function HrApplicationReview() {
 								<CharacterIdentitySummary
 									characterId={application.characterId}
 									characterName={application.characterName}
+									isBlacklisted={Boolean(
+										hrCharacterById.get(application.characterId)?.isBlacklisted
+									)}
 									hasValidToken={esiStateByCharacterId[application.characterId]}
 									corporationId={
 										hrCharacterById.get(application.characterId)?.corporationId ?? null
@@ -663,6 +723,13 @@ export default function HrApplicationReview() {
 									isMetricsLoading={metricsLoadingByCharacterId[application.characterId]}
 									enableCopyName
 									isNameCopied={copiedCharacterIds.has(application.characterId)}
+									nameBadges={
+										hrCharacterById.get(application.characterId)?.isBlacklisted ? (
+											<Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
+												Blocklisted
+											</Badge>
+										) : undefined
+									}
 									onCopyName={() =>
 										void markCharacterNameCopied(application.characterId, application.characterName)
 									}
@@ -690,6 +757,7 @@ export default function HrApplicationReview() {
 											<CharacterIdentitySummary
 												characterId={charId}
 												characterName={altCharacterNames[charId] ?? charId}
+												isBlacklisted={Boolean(hrCharacterById.get(charId)?.isBlacklisted)}
 												hasValidToken={esiStateByCharacterId[charId]}
 												corporationId={hrCharacterById.get(charId)?.corporationId ?? null}
 												corporationName={hrCharacterById.get(charId)?.corporationName ?? null}
@@ -698,6 +766,13 @@ export default function HrApplicationReview() {
 												skillPoints={spByCharacterId[charId]}
 												walletBalance={walletByCharacterId[charId]}
 												isMetricsLoading={metricsLoadingByCharacterId[charId]}
+												nameBadges={
+													hrCharacterById.get(charId)?.isBlacklisted ? (
+														<Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
+															Blocklisted
+														</Badge>
+													) : undefined
+												}
 												enableCopyName
 												isNameCopied={copiedCharacterIds.has(charId)}
 												onCopyName={() =>

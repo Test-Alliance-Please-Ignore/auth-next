@@ -12,6 +12,8 @@ import {
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
+	withRpcResult: async <T, R>(rpcCall: Promise<T>, consume: (result: T) => R | Promise<R>) =>
+		consume(await rpcCall),
 }))
 
 vi.mock('../../db', () => ({
@@ -182,9 +184,9 @@ describe('syncUsersMumbleGroups', () => {
 			isUserBlacklisted: vi.fn().mockResolvedValue(false),
 		}
 		const groupsStub = {
-			getUserMemberships: vi.fn().mockResolvedValue([
-				{ groupName: 'Fleet', mumbleSyncEnabled: true },
-			]),
+			getUserMemberships: vi
+				.fn()
+				.mockResolvedValue([{ groupName: 'Fleet', mumbleSyncEnabled: true }]),
 			getRolesFor: vi.fn().mockResolvedValue([]),
 		}
 		const mumbleStub = {
@@ -403,9 +405,11 @@ describe('syncUsersMumbleProfiles', () => {
 			}),
 		}
 		const groupsStub = {
-			getUserMemberships: vi.fn().mockResolvedValue([
-				{ groupName: 'Fleet', mumbleSyncEnabled: true, mumbleTicker: 'fc-123!' },
-			]),
+			getUserMemberships: vi
+				.fn()
+				.mockResolvedValue([
+					{ groupName: 'Fleet', mumbleSyncEnabled: true, mumbleTicker: 'fc-123!' },
+				]),
 			getRolesFor: vi.fn().mockResolvedValue([]),
 		}
 
@@ -459,9 +463,11 @@ describe('syncUsersMumbleProfiles', () => {
 			}),
 		}
 		const groupsStub = {
-			getUserMemberships: vi.fn().mockResolvedValue([
-				{ groupName: 'Fleet', mumbleSyncEnabled: true, mumbleTicker: 'fc-123!' },
-			]),
+			getUserMemberships: vi
+				.fn()
+				.mockResolvedValue([
+					{ groupName: 'Fleet', mumbleSyncEnabled: true, mumbleTicker: 'fc-123!' },
+				]),
 			getRolesFor: vi.fn().mockResolvedValue([]),
 		}
 

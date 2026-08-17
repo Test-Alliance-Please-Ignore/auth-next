@@ -9,6 +9,7 @@ import { managedCorporations, userCharacters } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
 import { isNpcCorporationId } from '../lib/corporation-id'
 import { getDiscordStatus } from '../lib/discord-helpers'
+import { hasHrAuditorPermission } from '../lib/hr-access'
 import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
@@ -26,6 +27,7 @@ import type { App } from '../context'
  */
 const CACHE_TTL = 5 * 60 // 5 minutes in seconds
 const CORPORATION_ACCESS_CACHE_TTL = 30 // 30 seconds
+const CORPORATION_COVERAGE_CACHE_TTL = 15 * 60 // 15 minutes in seconds
 
 function filterManagedNonNpcCorps<T extends { corporationId: string }>(rows: T[]): T[] {
 	return rows.filter((row) => !isNpcCorporationId(row.corporationId))
@@ -48,6 +50,10 @@ function getUserCorpsCacheKey(userId: string): string {
 
 function getCorporationAccessCacheKey(userId: string): string {
 	return `https://cache.local/users/${userId}/corporation-access`
+}
+
+function getCorporationCoverageCacheKey(corporationId: string): string {
+	return `https://cache.local/corporations/${corporationId}/esi-coverage`
 }
 
 /**
@@ -440,8 +446,9 @@ users.get('/has-corporation-access', async (c) => {
 		const charCorpPromises = characters.map(async (character) => {
 			const charStub = getStub<Rpc.Provider<EveCharacterData>>(c.env.EVE_CHARACTER_DATA, 'default')
 			try {
-				using charData = await charStub.getCharacterInfo(character.characterId)
-				return charData ? String(charData.corporationId) : null
+				return withRpcResult(charStub.getCharacterInfo(character.characterId), (result) =>
+					result ? String(result.corporationId) : null
+				)
 			} catch {
 				return null
 			}
@@ -461,14 +468,12 @@ users.get('/has-corporation-access', async (c) => {
 				)
 				try {
 					const [corpInfo, directors] = await Promise.all([
-						(async () => {
-							using result = await corpStub.getCorporationInfo(corpId)
-							return result ? { ceoId: result.ceoId } : null
-						})(),
-						(async () => {
-							using result = await corpStub.getDirectors(corpId)
-							return result.map((director) => ({ characterId: director.characterId }))
-						})(),
+						withRpcResult(corpStub.getCorporationInfo(corpId), (result) =>
+							result ? { ceoId: result.ceoId } : null
+						),
+						withRpcResult(corpStub.getDirectors(corpId), (result) =>
+							result.map((director) => ({ characterId: director.characterId }))
+						),
 					])
 
 					// Check if any character is CEO or director
@@ -492,7 +497,9 @@ users.get('/has-corporation-access', async (c) => {
 		// Also check if user has any HR roles
 		const hrStub = getStub<Rpc.Provider<Hr>>(c.env.HR, 'default')
 		try {
-			using hrCorpIds = await hrStub.getUserHrCorporations(user.id)
+			const hrCorpIds = await withRpcResult(hrStub.getUserHrCorporations(user.id), (result) => [
+				...result,
+			])
 			if (hrCorpIds.length > 0) {
 				return c.json({ hasAccess: true })
 			}
@@ -534,10 +541,6 @@ users.get('/corporation-access', async (c) => {
 				isMemberCorporation: boolean
 				isAltCorp: boolean
 				isSpecialPurpose: boolean
-				memberCount: number
-				linkedMemberCount: number
-				unlinkedMemberCount: number
-				validEsiKeyMemberCount: number
 			}>
 		}>(cacheKey)
 		if (cached) {
@@ -584,10 +587,6 @@ users.get('/corporation-access', async (c) => {
 			isMemberCorporation: boolean
 			isAltCorp: boolean
 			isSpecialPurpose: boolean
-			memberCount: number
-			linkedMemberCount: number
-			unlinkedMemberCount: number
-			validEsiKeyMemberCount: number
 		}> = []
 
 		if (characters.length > 0 && managedCorps.length > 0) {
@@ -726,10 +725,6 @@ users.get('/corporation-access', async (c) => {
 							isMemberCorporation: corp.isMemberCorporation,
 							isAltCorp: corp.isAltCorp,
 							isSpecialPurpose: corp.isSpecialPurpose,
-							memberCount: 0,
-							linkedMemberCount: 0,
-							unlinkedMemberCount: 0,
-							validEsiKeyMemberCount: 0,
 						}
 					}
 				} catch (error) {
@@ -762,10 +757,6 @@ users.get('/corporation-access', async (c) => {
 					isMemberCorporation: corp.isMemberCorporation,
 					isAltCorp: corp.isAltCorp,
 					isSpecialPurpose: corp.isSpecialPurpose,
-					memberCount: 0,
-					linkedMemberCount: 0,
-					unlinkedMemberCount: 0,
-					validEsiKeyMemberCount: 0,
 				})
 			}
 		}
@@ -821,10 +812,6 @@ users.get('/corporation-access', async (c) => {
 						isMemberCorporation: corp.isMemberCorporation,
 						isAltCorp: corp.isAltCorp,
 						isSpecialPurpose: corp.isSpecialPurpose,
-						memberCount: 0,
-						linkedMemberCount: 0,
-						unlinkedMemberCount: 0,
-						validEsiKeyMemberCount: 0,
 					}
 				})
 
@@ -834,85 +821,16 @@ users.get('/corporation-access', async (c) => {
 			}
 		}
 
-		const accessibleCorpData = await Promise.all(
-			accessibleCorporations.map(async (corp) => {
-				try {
-					const corpStub = getStub<Rpc.Provider<EveCorporationData>>(
-						c.env.EVE_CORPORATION_DATA,
-						corp.corporationId
-					)
-					return await withRpcResult(corpStub.getMembers(corp.corporationId), (members) => ({
-						corporationId: corp.corporationId,
-						members: members.map((member) => ({
-							characterId: String(member.characterId),
-						})),
-					}))
-				} catch (error) {
-					logger.warn('[Corporation Access] Failed to hydrate corporation stats', {
-						corporationId: corp.corporationId,
-						error: error instanceof Error ? error.message : String(error),
-					})
-					return {
-						corporationId: corp.corporationId,
-						members: [],
-					}
-				}
-			})
-		)
-
-		const accessibleMemberCharIds = new Set<string>()
-		for (const corpData of accessibleCorpData) {
-			for (const member of corpData.members) {
-				accessibleMemberCharIds.add(String(member.characterId))
-			}
-		}
-
-		const accessibleLinkedCharacters =
-			accessibleMemberCharIds.size > 0
-				? await db.query.userCharacters.findMany({
-						where: inArray(userCharacters.characterId, Array.from(accessibleMemberCharIds)),
-						columns: {
-							characterId: true,
-							userId: true,
-							status: true,
-							hasValidToken: true,
-						},
-					})
-				: []
-
-		const accessibleEmeritusCharacterIds = new Set(
-			accessibleLinkedCharacters
-				.filter((character) => character.status === 'emeritus')
-				.map((character) => character.characterId)
-		)
-
-		const accessibleCorporationsWithStats = accessibleCorporations.map((corp) => {
-			const corpData = accessibleCorpData.find((item) => item.corporationId === corp.corporationId)
-			const stats = buildCorporationMemberStats(
-				corpData?.members ?? [],
-				accessibleLinkedCharacters,
-				accessibleEmeritusCharacterIds
-			)
-
-			return {
-				...corp,
-				memberCount: stats.memberCount,
-				linkedMemberCount: stats.linkedMemberCount,
-				unlinkedMemberCount: stats.unlinkedMemberCount,
-				validEsiKeyMemberCount: stats.validEsiKeyMemberCount,
-			}
-		})
-
 		const result = {
-			hasAccess: accessibleCorporationsWithStats.length > 0,
-			corporations: accessibleCorporationsWithStats,
+			hasAccess: accessibleCorporations.length > 0,
+			corporations: accessibleCorporations,
 		}
 
 		logger.info('[Corporation Access] Access check complete', {
 			userId: user.id,
 			hasAccess: result.hasAccess,
-			corporationCount: accessibleCorporationsWithStats.length,
-			corporations: accessibleCorporationsWithStats.map((c) => ({
+			corporationCount: accessibleCorporations.length,
+			corporations: accessibleCorporations.map((c) => ({
 				corporationId: c.corporationId,
 				name: c.name,
 				userRole: c.userRole,
@@ -924,6 +842,145 @@ users.get('/corporation-access', async (c) => {
 	} catch (error) {
 		logger.error('Error checking corporation access:', error)
 		return c.json({ error: 'Failed to check corporation access' }, 500)
+	}
+})
+
+/**
+ * GET /users/corporation-coverage
+ *
+ * Return ESI coverage statistics for corporations visible to the current user.
+ * Access is resolved independently from the statistics, while each
+ * corporation's counts are cached for reuse by other authorized users.
+ */
+users.get('/corporation-coverage', async (c) => {
+	const user = c.get('user')!
+	const db = c.get('db') || createDb(c.env.DATABASE_URL)
+
+	try {
+		const managedCorps = filterManagedNonNpcCorps(
+			await db.query.managedCorporations.findMany({
+				where: and(
+					eq(managedCorporations.isActive, true),
+					or(
+						eq(managedCorporations.isMemberCorporation, true),
+						eq(managedCorporations.isAltCorp, true),
+						eq(managedCorporations.isSpecialPurpose, true)
+					)
+				),
+				columns: { corporationId: true },
+			})
+		)
+
+		let corporationIds: string[]
+		const isSiteAdminOrAuditor =
+			user.is_admin || (await hasHrAuditorPermission({ env: c.env, userId: user.id }))
+
+		if (isSiteAdminOrAuditor) {
+			corporationIds = managedCorps.map((corporation) => corporation.corporationId)
+		} else {
+			const hrStub = getStub<Rpc.Provider<Hr>>(c.env.HR, 'default')
+			const hrCorporationIds = await withRpcResult(
+				hrStub.getUserHrCorporations(user.id),
+				(result) => [...result]
+			)
+			const managedCorporationIds = new Set(
+				managedCorps.map((corporation) => corporation.corporationId)
+			)
+			corporationIds = [...new Set(hrCorporationIds)].filter((corporationId) =>
+				managedCorporationIds.has(corporationId)
+			)
+		}
+
+		const coverageByCorporationId = new Map<string, CorporationMemberStats>()
+		const uncachedCorporationIds: string[] = []
+
+		await Promise.all(
+			corporationIds.map(async (corporationId) => {
+				const cached = await getCachedJson<CorporationMemberStats>(
+					getCorporationCoverageCacheKey(corporationId)
+				)
+				if (cached) {
+					coverageByCorporationId.set(corporationId, cached)
+				} else {
+					uncachedCorporationIds.push(corporationId)
+				}
+			})
+		)
+
+		const uncachedCorporationMembers = await Promise.all(
+			uncachedCorporationIds.map(async (corporationId) => {
+				try {
+					const corpStub = getStub<Rpc.Provider<EveCorporationData>>(
+						c.env.EVE_CORPORATION_DATA,
+						corporationId
+					)
+					const members = await withRpcResult(corpStub.getMembers(corporationId), (result) =>
+						result.map((member) => ({ characterId: String(member.characterId) }))
+					)
+					return { corporationId, members }
+				} catch (error) {
+					logger.warn('[Corporation Coverage] Failed to fetch corporation members', {
+						corporationId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+					return null
+				}
+			})
+		)
+
+		const memberCharacterIds = new Set<string>()
+		for (const corporation of uncachedCorporationMembers) {
+			if (!corporation) continue
+			for (const member of corporation.members) memberCharacterIds.add(member.characterId)
+		}
+
+		const linkedCharacters =
+			memberCharacterIds.size > 0
+				? await db.query.userCharacters.findMany({
+						where: inArray(userCharacters.characterId, [...memberCharacterIds]),
+						columns: {
+							characterId: true,
+							userId: true,
+							status: true,
+							hasValidToken: true,
+						},
+					})
+				: []
+		const emeritusCharacterIds = new Set(
+			linkedCharacters
+				.filter((character) => character.status === 'emeritus')
+				.map((character) => character.characterId)
+		)
+
+		await Promise.all(
+			uncachedCorporationMembers.map(async (corporation) => {
+				if (!corporation) return
+				const stats = buildCorporationMemberStats(
+					corporation.members,
+					linkedCharacters,
+					emeritusCharacterIds
+				)
+				coverageByCorporationId.set(corporation.corporationId, stats)
+				await cacheJson(
+					getCorporationCoverageCacheKey(corporation.corporationId),
+					stats,
+					CORPORATION_COVERAGE_CACHE_TTL
+				)
+			})
+		)
+
+		return c.json({
+			corporations: corporationIds.flatMap((corporationId) => {
+				const coverage = coverageByCorporationId.get(corporationId)
+				return coverage ? [{ corporationId, ...coverage }] : []
+			}),
+		})
+	} catch (error) {
+		logger.error('[Corporation Coverage] Failed to load coverage statistics', {
+			userId: user.id,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return c.json({ error: 'Failed to load corporation coverage' }, 500)
 	}
 })
 
@@ -982,7 +1039,16 @@ users.get('/my-corporations', async (c) => {
 						c.env.EVE_CORPORATION_DATA,
 						corp.corporationId
 					)
-					using coreData = await corpStub.getCoreData(corp.corporationId)
+					const coreData = await withRpcResult(
+						corpStub.getCoreData(corp.corporationId),
+						(result) =>
+							result
+								? {
+										...result,
+										members: result.members?.map((member) => ({ ...member })),
+									}
+								: null
+					)
 					const linkedChars =
 						coreData?.members && coreData.members.length > 0
 							? await db.query.userCharacters.findMany({
@@ -1068,7 +1134,10 @@ users.get('/my-corporations', async (c) => {
 		await Promise.all(
 			characters.map(async (char) => {
 				try {
-					using charData = await charStub.getCharacterInfo(char.characterId)
+					const charData = await withRpcResult(
+						charStub.getCharacterInfo(char.characterId),
+						(result) => (result ? { corporationId: result.corporationId } : null)
+					)
 					if (charData) {
 						characterDataMap.set(char.characterId, {
 							corporationId: charData.corporationId,
@@ -1106,24 +1175,21 @@ users.get('/my-corporations', async (c) => {
 
 				// Fetch all corp data in parallel for each corporation
 				const [corpInfo, directors, coreData] = await Promise.all([
-					(async () => {
-						using result = await corpStub.getCorporationInfo(corp.corporationId)
-						return result ? { ceoId: result.ceoId, allianceId: result.allianceId } : null
-					})(),
-					(async () => {
-						using result = await corpStub.getDirectors(corp.corporationId)
-						return result.map((director) => ({ characterId: director.characterId }))
-					})(),
-					(async () => {
-						using result = await corpStub.getCoreData(corp.corporationId)
-						return result
+					withRpcResult(corpStub.getCorporationInfo(corp.corporationId), (result) =>
+						result ? { ceoId: result.ceoId, allianceId: result.allianceId } : null
+					),
+					withRpcResult(corpStub.getDirectors(corp.corporationId), (result) =>
+						result.map((director) => ({ characterId: director.characterId }))
+					),
+					withRpcResult(corpStub.getCoreData(corp.corporationId), (result) =>
+						result
 							? {
 									members: result.members?.map((member) => ({
 										characterId: member.characterId,
 									})),
 								}
 							: null
-					})(),
+					),
 				])
 
 				return { corp, corpInfo, directors, coreData }

@@ -72,6 +72,44 @@ export interface HrAccessibleCorporation {
 	isSpecialPurpose: boolean
 }
 
+export interface HrUserSearchCharacter {
+	characterId: string
+	characterName: string
+	corporationId: string | null
+	corporationName: string | null
+	allianceId: string | null
+	allianceName: string | null
+	is_primary: boolean
+	hasValidToken: boolean
+	isBlacklisted: boolean
+}
+
+export interface HrUserSearchSummary {
+	id: string
+	mainCharacterId: string
+	mainCharacterName: string | null
+	characterCount: number
+	is_admin: boolean
+	discordUserId: string | null
+	discordUsername: string | null
+	matchedCharacterId: string | null
+	matchedCharacterName: string | null
+	isBlacklisted: boolean
+	matchedBy: string | null
+	createdAt: string
+	updatedAt: string
+}
+
+export interface HrUserSearchResult {
+	users: Array<{
+		summary: HrUserSearchSummary
+		characters: HrUserSearchCharacter[]
+	}>
+	total: number
+	limit: number
+	offset: number
+}
+
 /**
  * HR Role capabilities for UI display
  */
@@ -95,6 +133,17 @@ export const HR_ROLE_NAMES: Record<HrRoleType, string> = {
  * HR API methods
  */
 export const hrApi = {
+	/** Search surface-level users within the authenticated user's HR scope. */
+	async searchUsers(query: { search?: string; limit?: number; offset?: number } = {}) {
+		const params = new URLSearchParams()
+		if (query.search) params.set('search', query.search)
+		if (query.limit !== undefined) params.set('limit', String(query.limit))
+		if (query.offset !== undefined) params.set('offset', String(query.offset))
+		return apiClient.get<HrUserSearchResult>(
+			`/hr/users/search${params.toString() ? `?${params.toString()}` : ''}`
+		)
+	},
+
 	/**
 	 * Grant an HR role to a user
 	 */

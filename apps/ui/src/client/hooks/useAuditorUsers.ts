@@ -20,6 +20,8 @@ export interface AuditorUserSummary {
 	discordUsername: string | null
 	matchedCharacterId: string | null
 	matchedCharacterName: string | null
+	mainCharacterIsBlacklisted: boolean
+	matchedCharacterIsBlacklisted: boolean | null
 	createdAt: string
 	updatedAt: string
 }
@@ -35,6 +37,7 @@ export interface AuditorUserDetails {
 	id: string
 	mainCharacterId: string
 	is_admin: boolean
+	isBlacklisted: boolean
 	discordUserId: string | null
 	discord: {
 		userId: string
@@ -49,6 +52,7 @@ export interface AuditorUserDetails {
 		characterName: string
 		is_primary: boolean
 		hasValidToken: boolean
+		isBlacklisted: boolean
 	}>
 	groupMemberships: Array<{
 		groupId: string

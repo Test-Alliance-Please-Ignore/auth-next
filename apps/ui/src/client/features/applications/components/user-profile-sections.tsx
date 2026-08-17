@@ -9,6 +9,7 @@ import {
 	User,
 	Users,
 } from 'lucide-react'
+import { Link } from 'react-router'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
@@ -34,7 +35,7 @@ export interface SharedProfileCharacter {
 	role?: 'CEO' | 'Director' | 'Member' | null
 	activityStatus?: 'active' | 'inactive' | 'unknown' | null
 	isPrimary?: boolean
-	isBlacklisted?: boolean
+	isBlacklisted?: boolean | null
 	lastLogin?: string
 	joinDate?: string
 	locationSystem?: string
@@ -58,6 +59,11 @@ export interface SharedProfileApplication {
 	createdAt: string
 }
 
+interface ProfileNavigationTarget {
+	to: string
+	state?: Record<string, unknown>
+}
+
 export function ProfileCharactersSection({
 	characters,
 	fulcrumLoading = false,
@@ -73,7 +79,9 @@ export function ProfileCharactersSection({
 	isScanPendingFor,
 	onScan,
 	onViewReport,
+	getReportTarget,
 	onViewDetails,
+	getDetailsTarget,
 	noDataText = 'No linked characters found',
 }: {
 	characters: SharedProfileCharacter[]
@@ -89,8 +97,10 @@ export function ProfileCharactersSection({
 	onScanAll?: () => void
 	isScanPendingFor?: (characterId: string) => boolean
 	onScan: (character: SharedProfileCharacter) => void
-	onViewReport: (character: SharedProfileCharacter) => void
+	onViewReport?: (character: SharedProfileCharacter) => void
+	getReportTarget?: (character: SharedProfileCharacter) => ProfileNavigationTarget
 	onViewDetails?: (character: SharedProfileCharacter) => void
+	getDetailsTarget?: (character: SharedProfileCharacter) => ProfileNavigationTarget
 	noDataText?: string
 }) {
 	return (
@@ -126,22 +136,40 @@ export function ProfileCharactersSection({
 						{characters.map((character) => {
 							const isScanPending = isScanPendingFor?.(character.characterId) ?? false
 							const canRequestCharacter = canRequestCharacterReport?.(character) ?? true
+							const reportTarget =
+								character.latestReport?.status === 'completed' && character.corporationId
+									? getReportTarget?.(character)
+									: undefined
 							return (
 								<div
 									key={character.characterId}
 									className="card-gradient relative space-y-2 rounded-lg border border-border/50 bg-card px-3 py-2 shadow-elevated"
 								>
-									{showViewDetailsButton && onViewDetails && (
+									{showViewDetailsButton && (getDetailsTarget || onViewDetails) && (
 										<div className="absolute right-2 top-2">
-											<Button variant="ghost" size="sm" onClick={() => onViewDetails(character)}>
-												<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-												View Details
-											</Button>
+											{getDetailsTarget ? (
+												<Button asChild variant="ghost" size="sm">
+													<Link {...getDetailsTarget(character)}>
+														<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+														View Details
+													</Link>
+												</Button>
+											) : (
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => onViewDetails?.(character)}
+												>
+													<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+													View Details
+												</Button>
+											)}
 										</div>
 									)}
 									<CharacterIdentitySummary
 										characterId={character.characterId}
 										characterName={character.characterName}
+										isBlacklisted={character.isBlacklisted ?? false}
 										hasValidToken={character.hasValidToken}
 										corporationId={character.corporationId}
 										corporationName={character.corporationName}
@@ -215,54 +243,79 @@ export function ProfileCharactersSection({
 									</div>
 									{showFulcrumReports && (
 										<div className="flex items-center gap-2">
-											<div
-												className={cn(
-													'flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs',
-													character.latestReport?.status === 'completed' &&
-														character.corporationId &&
+											{reportTarget ? (
+												<Link
+													to={reportTarget.to}
+													state={reportTarget.state}
+													className={cn(
+														'flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs',
 														'cursor-pointer transition-colors hover:bg-muted/50'
-												)}
-												onClick={() => onViewReport(character)}
-											>
-												<Scan className="h-3 w-3 shrink-0 text-muted-foreground" />
-												<span className="shrink-0 font-medium text-muted-foreground">
-													Fulcrum Report
-												</span>
-												<span className="shrink-0 text-muted-foreground">·</span>
-												{character.latestReport ? (
-													character.latestReport.status === 'completed' ? (
-														<>
-															<span className="truncate text-foreground">
-																View latest report (
+													)}
+												>
+													<Scan className="h-3 w-3 shrink-0 text-muted-foreground" />
+													<span className="shrink-0 font-medium text-muted-foreground">
+														Fulcrum Report
+													</span>
+													<span className="shrink-0 text-muted-foreground">·</span>
+													<span className="truncate text-foreground">
+														View latest report (
+														{formatDistanceToNow(new Date(character.latestReport!.createdAt), {
+															addSuffix: true,
+														})}
+														)
+													</span>
+													<ExternalLink className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" />
+												</Link>
+											) : (
+												<div
+													className={cn(
+														'flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs',
+														character.latestReport?.status === 'completed' &&
+															character.corporationId &&
+															'cursor-pointer transition-colors hover:bg-muted/50'
+													)}
+													onClick={() => onViewReport?.(character)}
+												>
+													<Scan className="h-3 w-3 shrink-0 text-muted-foreground" />
+													<span className="shrink-0 font-medium text-muted-foreground">
+														Fulcrum Report
+													</span>
+													<span className="shrink-0 text-muted-foreground">·</span>
+													{character.latestReport ? (
+														character.latestReport.status === 'completed' ? (
+															<>
+																<span className="truncate text-foreground">
+																	View latest report (
+																	{formatDistanceToNow(new Date(character.latestReport.createdAt), {
+																		addSuffix: true,
+																	})}
+																	)
+																</span>
+																<ExternalLink className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" />
+															</>
+														) : character.latestReport.status === 'pending' ||
+														  character.latestReport.status === 'processing' ? (
+															<span className="truncate text-muted-foreground">
+																Processing... (
 																{formatDistanceToNow(new Date(character.latestReport.createdAt), {
 																	addSuffix: true,
 																})}
 																)
 															</span>
-															<ExternalLink className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" />
-														</>
-													) : character.latestReport.status === 'pending' ||
-													  character.latestReport.status === 'processing' ? (
-														<span className="truncate text-muted-foreground">
-															Processing... (
-															{formatDistanceToNow(new Date(character.latestReport.createdAt), {
-																addSuffix: true,
-															})}
-															)
-														</span>
+														) : (
+															<span className="truncate text-muted-foreground">
+																Failed (
+																{formatDistanceToNow(new Date(character.latestReport.createdAt), {
+																	addSuffix: true,
+																})}
+																)
+															</span>
+														)
 													) : (
-														<span className="truncate text-muted-foreground">
-															Failed (
-															{formatDistanceToNow(new Date(character.latestReport.createdAt), {
-																addSuffix: true,
-															})}
-															)
-														</span>
-													)
-												) : (
-													<span className="truncate text-muted-foreground">No report yet</span>
-												)}
-											</div>
+														<span className="truncate text-muted-foreground">No report yet</span>
+													)}
+												</div>
+											)}
 
 											<Button
 												variant={character.latestReport ? 'ghost' : 'primary'}
@@ -390,14 +443,14 @@ export function ProfileApplicationHistorySection({
 	applications,
 	loading = false,
 	linked = true,
-	onOpenApplication,
+	getApplicationHref,
 	emptyText = 'No application history',
 	unlinkedText = 'Unregistered member — no application data',
 }: {
 	applications: SharedProfileApplication[]
 	loading?: boolean
 	linked?: boolean
-	onOpenApplication: (application: SharedProfileApplication) => void
+	getApplicationHref: (application: SharedProfileApplication) => string
 	emptyText?: string
 	unlinkedText?: string
 }) {
@@ -427,10 +480,10 @@ export function ProfileApplicationHistorySection({
 					) : applications.length > 0 ? (
 						<div className="space-y-2">
 							{applications.map((application) => (
-								<div
+								<Link
 									key={application.id}
+									to={getApplicationHref(application)}
 									className="flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
-									onClick={() => onOpenApplication(application)}
 								>
 									<div className="flex items-center gap-3">
 										<MemberAvatar
@@ -449,7 +502,7 @@ export function ProfileApplicationHistorySection({
 										<ApplicationStatusBadge status={application.status} size="sm" />
 										<ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
 									</div>
-								</div>
+								</Link>
 							))}
 						</div>
 					) : (

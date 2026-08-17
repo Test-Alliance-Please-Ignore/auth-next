@@ -1,15 +1,17 @@
-import { useLayoutEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
 import { Check, Copy } from 'lucide-react'
+import { useLayoutEffect, useRef, useState } from 'react'
 
-import { MemberAvatar } from '@/components/member-avatar'
+import { formatSkillPoints } from '@repo/eve-types'
+
 import { EsiStatusBadge } from '@/components/esi-status-badge'
+import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { allianceLogoUrl, corporationLogoUrl } from '@/lib/eve-images'
 import { formatISKShort } from '@/lib/format-utils'
 import { cn } from '@/lib/utils'
-import { formatSkillPoints } from '@repo/eve-types'
+
+import type { ReactNode } from 'react'
 
 interface CharacterSpWalletLineProps {
 	skillPoints: number | null | undefined
@@ -34,6 +36,7 @@ interface CharacterIdentitySummaryProps {
 	privateDataUnavailableNote?: string | null
 	portraitSize?: 'sm' | 'md' | 'lg' | 'xl' | 'auto'
 	nameBadges?: ReactNode
+	isBlacklisted?: boolean
 	enableCopyName?: boolean
 	isNameCopied?: boolean
 	onCopyName?: () => void
@@ -99,6 +102,7 @@ export function CharacterIdentitySummary({
 	isMetricsLoading = false,
 	portraitSize = 'auto',
 	nameBadges,
+	isBlacklisted = false,
 	enableCopyName = false,
 	isNameCopied = false,
 	onCopyName,
@@ -123,13 +127,24 @@ export function CharacterIdentitySummary({
 		const observer = new ResizeObserver(update)
 		observer.observe(element)
 		return () => observer.disconnect()
-	}, [isAutoPortrait, showMetrics, isMetricsLoading, characterName, corporationName, allianceName, nameBadges, skillPoints, walletBalance])
+	}, [
+		isAutoPortrait,
+		showMetrics,
+		isMetricsLoading,
+		characterName,
+		corporationName,
+		allianceName,
+		nameBadges,
+		skillPoints,
+		walletBalance,
+	])
 
 	return (
 		<div className={cn('flex min-w-0 items-start gap-3', className)}>
 			<MemberAvatar
 				characterId={characterId}
 				characterName={characterName}
+				isBlacklisted={isBlacklisted}
 				size={portraitSize}
 				imageSize={
 					isAutoPortrait && detailsHeight != null
@@ -139,9 +154,9 @@ export function CharacterIdentitySummary({
 				style={
 					isAutoPortrait && detailsHeight != null
 						? {
-							height: detailsHeight,
-							width: detailsHeight,
-						}
+								height: detailsHeight,
+								width: detailsHeight,
+							}
 						: undefined
 				}
 			/>
@@ -155,14 +170,24 @@ export function CharacterIdentitySummary({
 								event.stopPropagation()
 								onCopyName()
 							}}
-							className="truncate text-left text-lg font-semibold text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm cursor-copy"
+							className={cn(
+								'truncate text-left text-lg font-semibold transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm cursor-copy',
+								isBlacklisted ? 'text-red-500' : 'text-foreground'
+							)}
 							aria-label={`Copy ${characterName} to clipboard`}
 							title={isNameCopied ? 'Copied' : 'Copy character name'}
 						>
 							{characterName}
 						</button>
 					) : (
-						<p className="truncate text-lg font-semibold text-foreground">{characterName}</p>
+						<p
+							className={cn(
+								'truncate text-lg font-semibold',
+								isBlacklisted ? 'text-red-500' : 'text-foreground'
+							)}
+						>
+							{characterName}
+						</p>
 					)}
 					{enableCopyName && onCopyName ? (
 						<button
@@ -208,7 +233,11 @@ export function CharacterIdentitySummary({
 							>
 								{corporationName}
 							</span>
-							{npcCorp && <Badge variant="ghost" className="h-5 px-1.5 text-[10px]">NPC Corp</Badge>}
+							{npcCorp && (
+								<Badge variant="ghost" className="h-5 px-1.5 text-[10px]">
+									NPC Corp
+								</Badge>
+							)}
 						</div>
 					) : (
 						<span className="text-xs text-muted-foreground">Corporation unknown</span>
