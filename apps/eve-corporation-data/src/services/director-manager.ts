@@ -136,6 +136,24 @@ async function settleInBatches<T, R>(
 	return { results, skippedCount }
 }
 
+function compareDirectorVerificationStaleness(a: DirectorHealth, b: DirectorHealth): number {
+	// A director that has never completed a health check must be considered
+	// staler than one with any recorded check, regardless of configured priority.
+	const aHasHealthCheck = a.lastHealthCheck !== null
+	const bHasHealthCheck = b.lastHealthCheck !== null
+	if (aHasHealthCheck !== bHasHealthCheck) return aHasHealthCheck ? 1 : -1
+
+	const aHealthCheck = a.lastHealthCheck?.getTime() ?? Number.NEGATIVE_INFINITY
+	const bHealthCheck = b.lastHealthCheck?.getTime() ?? Number.NEGATIVE_INFINITY
+	const aUpdatedAt = a.updatedAt?.getTime() ?? Number.NEGATIVE_INFINITY
+	const bUpdatedAt = b.updatedAt?.getTime() ?? Number.NEGATIVE_INFINITY
+	const aLastAttempt = Math.max(aHealthCheck, aUpdatedAt)
+	const bLastAttempt = Math.max(bHealthCheck, bUpdatedAt)
+	if (aLastAttempt !== bLastAttempt) return aLastAttempt - bLastAttempt
+
+	return a.priority - b.priority || a.directorId.localeCompare(b.directorId)
+}
+
 /**
  * DirectorManager handles director selection, health tracking, and failover logic
  */
@@ -1238,14 +1256,16 @@ export class DirectorManager {
 			}
 		}
 
-		const nonPermanentDirectors = activeDirectors
+		const nonPermanentDirectors = [...activeDirectors].sort(compareDirectorVerificationStaleness)
 		const permanentDirectorsToAffiliationCheck =
 			!includePermanent && bypassPermanentFailures
-				? directors.filter(
-						(director) =>
-							this.isPermanentlyFailed(director) &&
-							!(director.nextRetryAt && director.nextRetryAt.getTime() > now)
-					)
+				? directors
+						.filter(
+							(director) =>
+								this.isPermanentlyFailed(director) &&
+								!(director.nextRetryAt && director.nextRetryAt.getTime() > now)
+						)
+						.sort(compareDirectorVerificationStaleness)
 				: []
 
 		const deadlineMs =
