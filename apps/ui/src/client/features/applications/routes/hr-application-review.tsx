@@ -6,6 +6,7 @@
  * Requires HR Viewer role minimum.
  */
 
+import { useQueries } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useState } from 'react'
@@ -31,6 +32,7 @@ import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { apiClient } from '@/lib/api'
 import toast from '@/lib/toast'
 
 import { useCanAccessCorporation } from '../../corporations/hooks'
@@ -62,7 +64,10 @@ import {
 } from '../hooks'
 import { resolveApplicationActionRole } from '../utils/application-action-role'
 import { canViewFulcrumTab } from '../utils/fulcrum-access'
-import { FORBIDDEN_PRIVATE_DATA_MESSAGE } from '../utils/private-data'
+import {
+	FORBIDDEN_PRIVATE_DATA_MESSAGE,
+	getPrivateDataUnavailableMessage,
+} from '../utils/private-data'
 
 // ============================================================================
 // Component
@@ -169,6 +174,18 @@ export default function HrApplicationReview() {
 
 	// Fetch total SP for main character + alts
 	const allCharacterIds = application ? [application.characterId, ...altCharacterIds] : []
+	const characterDetailQueries = useQueries({
+		queries: allCharacterIds.map((characterId) => ({
+			queryKey: ['character', characterId, 'application-review-private'],
+			queryFn: () => apiClient.getCharacterPrivateDetail(characterId),
+			enabled: canViewApplicationPrivateData,
+			retry: false,
+			staleTime: 5 * 60 * 1000,
+			meta: {
+				suppressErrorToast: true,
+			},
+		})),
+	})
 	const markCharacterNameCopied = async (characterId: string, characterName: string) => {
 		if (!characterName.trim()) return
 		try {
@@ -186,14 +203,20 @@ export default function HrApplicationReview() {
 	const spByCharacterId: Record<string, number | null> = {}
 	const walletByCharacterId: Record<string, string | null> = {}
 	const metricsLoadingByCharacterId: Record<string, boolean> = {}
+	const privateDataUnavailableNotes: string[] = []
 	for (let i = 0; i < allCharacterIds.length; i++) {
-		spByCharacterId[allCharacterIds[i]] = null
-		walletByCharacterId[allCharacterIds[i]] = null
-		metricsLoadingByCharacterId[allCharacterIds[i]] = false
+		const characterId = allCharacterIds[i]
+		const query = characterDetailQueries[i]
+		const detail = query?.data
+		spByCharacterId[characterId] = detail?.skills?.totalSp ?? null
+		walletByCharacterId[characterId] = detail?.private?.wallet?.balance ?? null
+		metricsLoadingByCharacterId[characterId] = (query?.isPending ?? false) && detail == null
+		const unavailableMessage = getPrivateDataUnavailableMessage(query?.error)
+		if (unavailableMessage) privateDataUnavailableNotes.push(unavailableMessage)
 	}
 	const privateDataUnavailableMessage = !canViewApplicationPrivateData
 		? FORBIDDEN_PRIVATE_DATA_MESSAGE
-		: null
+		: (privateDataUnavailableNotes[0] ?? null)
 	const hrCharacterTokenStateById = new Map(
 		hrCharacters.map((character) => [character.characterId, character.hasValidToken])
 	)
