@@ -70,6 +70,8 @@ export interface EsiRequestOptions<T> {
 	extraHeaders?: Record<string, string>
 	contentType?: string | false
 	timeoutMs?: number
+	/** Override the client retry count for this request. Zero means no retry. */
+	maxRetries?: number
 	maxLocalCacheTtl?: number
 	persistGlobalCache?: boolean
 	onResponse?: (context: EsiRequestResponseContext) => Promise<void> | void
@@ -328,6 +330,7 @@ export class EsiRequestClient {
 			hasAccessToken: Boolean(accessToken),
 		})
 
+		const maxRetries = Math.max(0, options.maxRetries ?? this.maxRetries)
 		let retryCount = 0
 		let response: Response
 		const fetchImpl = this.fetchImpl
@@ -377,7 +380,7 @@ export class EsiRequestClient {
 			})
 
 			if (response.status === 420 || response.status === 429) {
-				if (retryCount >= this.maxRetries - 1) {
+				if (retryCount >= maxRetries - 1) {
 					this.debug('ESI request exhausted retries', {
 						path: options.path,
 						routeKey,

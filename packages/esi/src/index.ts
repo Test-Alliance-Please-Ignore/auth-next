@@ -78,6 +78,8 @@ export * from './request'
 
 export interface EsiRequestOptions {
 	cacheMode?: 'default' | 'no-store'
+	maxRetries?: number
+	timeoutMs?: number
 }
 
 /**

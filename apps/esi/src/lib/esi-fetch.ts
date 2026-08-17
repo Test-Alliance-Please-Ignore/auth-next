@@ -56,6 +56,10 @@ export interface FetchEsiOptions<B = unknown> {
 	 * Useful for long-cached endpoints where data might change (e.g., character names).
 	 */
 	maxLocalCacheTtl?: number
+	/** Override the underlying ESI request retry count for latency-sensitive calls. */
+	maxRetries?: number
+	/** Abort the underlying ESI fetch after this many milliseconds. */
+	timeoutMs?: number
 }
 
 // ========================================================================
@@ -492,6 +496,8 @@ export class EsiFetcher {
 			method,
 			accessToken,
 			jsonBody: options?.body,
+			timeoutMs: options?.timeoutMs,
+			maxRetries: options?.maxRetries,
 			maxLocalCacheTtl: options?.maxLocalCacheTtl,
 			persistGlobalCache: options?.persistGlobalCache ?? true,
 			parse: (response) => this.parseJsonBodySafe<T>(response, path),

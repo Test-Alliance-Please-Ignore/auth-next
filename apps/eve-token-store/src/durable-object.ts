@@ -58,7 +58,7 @@ type EsiHelperStub = {
 	fetchCharacterAffiliation(
 		characterId: string,
 		characterIds: string[],
-		options?: { cacheMode?: 'default' | 'no-store' }
+		options?: { cacheMode?: 'default' | 'no-store'; maxRetries?: number; timeoutMs?: number }
 	): Promise<EsiCharacterAffiliation[]>
 	searchCharacter(characterId: string, characterName: string, strict?: boolean): Promise<string[]>
 }
@@ -1777,7 +1777,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	async fetchEsi<T>(
 		path: string,
 		characterId: string,
-		options?: { cacheMode?: 'default' | 'no-store' }
+		options?: { cacheMode?: 'default' | 'no-store'; maxRetries?: number; timeoutMs?: number }
 	): Promise<EsiResponse<T>> {
 		const cacheMode = options?.cacheMode ?? 'default'
 		const scope = { scope: 'character', scopeId: characterId } as const
@@ -1850,6 +1850,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			cacheMode,
 			cachedResponse: cached,
 			accessToken: accessTokenResult.accessToken,
+			timeoutMs: options?.timeoutMs,
+			maxRetries: options?.maxRetries,
 			maxLocalCacheTtl: EveTokenStoreDO.MAX_CACHE_TTL_SECONDS,
 			onResponse: async ({ response: esiResponse }) => {
 				await this.updateAuthenticatedEsiDynamicBudgetFromHeaders(
@@ -1959,7 +1961,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 	}
 
-	async fetchCharacterAffiliations(characterIds: string[]): Promise<EsiCharacterAffiliation[]> {
+	async fetchCharacterAffiliations(
+		characterIds: string[],
+		options?: { cacheMode?: 'default' | 'no-store'; maxRetries?: number; timeoutMs?: number }
+	): Promise<EsiCharacterAffiliation[]> {
 		const normalizedIds = this.normalizeCharacterIds(characterIds)
 		if (normalizedIds.length === 0) {
 			throw new Error('fetchCharacterAffiliations requires at least one valid character ID')
@@ -1968,7 +1973,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		const esiStub = getStub<EsiHelperStub>(this.env.ESI, 'default')
 		return await withRpcResult(
 			esiStub.fetchCharacterAffiliation(String(normalizedIds[0]), normalizedIds.map(String), {
-				cacheMode: 'no-store',
+				cacheMode: options?.cacheMode ?? 'no-store',
+				maxRetries: options?.maxRetries,
+				timeoutMs: options?.timeoutMs,
 			}),
 			(affiliations) =>
 				affiliations.map((affiliation) => ({

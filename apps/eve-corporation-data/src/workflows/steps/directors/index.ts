@@ -77,6 +77,9 @@ export async function verifyAllDirectorsHealth(
 	const directorManager = createDirectorManager(env, corporationId)
 	return await directorManager.verifyAllDirectorsHealth({
 		bypassPermanentFailures: true,
+		// Leave room within the one-minute Workflow step for the final snapshot
+		// and RPC completion instead of allowing ESI backoff to hit the runtime limit.
+		maxDurationMs: 45_000,
 	})
 }
 

@@ -61,6 +61,8 @@ const TRANSIENT_DIRECTOR_COOLDOWN_MS = 10 * 60 * 1000
 // A director check fans out through token-store, ESI, and the database. Keep
 // those paths sequential within one corporation to avoid connection bursts.
 const DIRECTOR_HEALTH_CHECK_CONCURRENCY = 1
+const DIRECTOR_HEALTH_REQUEST_TIMEOUT_MS = 8_000
+const DIRECTOR_HEALTH_REQUEST_MAX_RETRIES = 0
 
 const FULL_SYNC_REQUIRED_ROLE_SETS: CorporationRole[][] = [
 	['Director'],
@@ -116,16 +118,22 @@ function getErrorContext(error: unknown): Record<string, unknown> {
 async function settleInBatches<T, R>(
 	items: T[],
 	operation: (item: T) => Promise<R>,
-	concurrency: number
-): Promise<Array<PromiseSettledResult<R>>> {
+	concurrency: number,
+	deadlineMs?: number
+): Promise<{ results: Array<PromiseSettledResult<R>>; skippedCount: number }> {
 	const results: Array<PromiseSettledResult<R>> = []
+	let skippedCount = 0
 
 	for (let index = 0; index < items.length; index += concurrency) {
+		if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+			skippedCount = items.length - index
+			break
+		}
 		const batch = items.slice(index, index + concurrency)
 		results.push(...(await Promise.allSettled(batch.map(operation))))
 	}
 
-	return results
+	return { results, skippedCount }
 }
 
 /**
@@ -369,9 +377,14 @@ export class DirectorManager {
 									this.tokenStore.fetchEsi(
 										`/characters/${candidate.characterId}/roles`,
 										candidate.characterId,
-										{ cacheMode: 'no-store' }
+										{
+											cacheMode: 'no-store',
+											maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
+											timeoutMs: DIRECTOR_HEALTH_REQUEST_TIMEOUT_MS,
+										}
 									),
 								{
+									maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
 									onRetry: (attempt, error, delayMs) => {
 										logger.warn(
 											'[DirectorManager] Retrying director role lookup after ESI throttling',
@@ -469,8 +482,14 @@ export class DirectorManager {
 		try {
 			affiliations = await withRpcResult(
 				retryWithBackoff<EsiCharacterAffiliation[]>(
-					() => this.tokenStore.fetchCharacterAffiliations([characterId]),
+					() =>
+						this.tokenStore.fetchCharacterAffiliations([characterId], {
+							cacheMode: 'no-store',
+							maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
+							timeoutMs: DIRECTOR_HEALTH_REQUEST_TIMEOUT_MS,
+						}),
 					{
+						maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
 						onRetry: (attempt, error, delayMs) => {
 							logger.warn(
 								'[DirectorManager] Retrying character affiliation lookup after ESI throttling',
@@ -1076,9 +1095,14 @@ export class DirectorManager {
 						this.tokenStore.fetchEsi(
 							`/characters/${director.characterId}/roles`,
 							director.characterId,
-							{ cacheMode: 'no-store' }
+							{
+								cacheMode: 'no-store',
+								maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
+								timeoutMs: DIRECTOR_HEALTH_REQUEST_TIMEOUT_MS,
+							}
 						),
 					{
+						maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
 						onRetry: (attempt, error, delayMs) => {
 							logger.warn(
 								'[DirectorManager] Retrying director health role check after ESI throttling',
@@ -1185,6 +1209,7 @@ export class DirectorManager {
 	async verifyAllDirectorsHealth(options?: {
 		includePermanent?: boolean
 		bypassPermanentFailures?: boolean
+		maxDurationMs?: number
 	}): Promise<{ verified: number; failed: number }> {
 		const directors = await this.getAllDirectors()
 		const now = Date.now()
@@ -1223,27 +1248,44 @@ export class DirectorManager {
 					)
 				: []
 
+		const deadlineMs =
+			options?.maxDurationMs !== undefined
+				? Date.now() + Math.max(0, options.maxDurationMs)
+				: undefined
 		let results: Array<PromiseSettledResult<boolean>>
+		let skippedCount = 0
 		this.deferHealthSnapshot = true
 		try {
-			results = await settleInBatches(
+			const verification = await settleInBatches(
 				nonPermanentDirectors,
 				async (director) => await this.verifyDirectorHealth(director.directorId),
-				DIRECTOR_HEALTH_CHECK_CONCURRENCY
+				DIRECTOR_HEALTH_CHECK_CONCURRENCY,
+				deadlineMs
 			)
+			results = verification.results
+			skippedCount += verification.skippedCount
 
 			if (permanentDirectorsToAffiliationCheck.length > 0) {
-				await settleInBatches(
+				const affiliationVerification = await settleInBatches(
 					permanentDirectorsToAffiliationCheck,
 					async (director) => {
 						await this.verifyPermanentDirectorAffiliation(director.directorId)
 						return true
 					},
-					DIRECTOR_HEALTH_CHECK_CONCURRENCY
+					DIRECTOR_HEALTH_CHECK_CONCURRENCY,
+					deadlineMs
 				)
+				skippedCount += affiliationVerification.skippedCount
 			}
 		} finally {
 			this.deferHealthSnapshot = false
+		}
+		if (skippedCount > 0) {
+			logger.warn('[DirectorManager] Director health verification budget exhausted', {
+				corporationId: this.corporationId,
+				skippedCount,
+				maxDurationMs: options?.maxDurationMs,
+			})
 		}
 		await this.syncHealthSnapshot()
 
@@ -1257,7 +1299,7 @@ export class DirectorManager {
 				failed++
 			}
 		}
-		failed += directors.length - nonPermanentDirectors.length
+		failed = directors.length - verified
 
 		// Update corporation config verification status
 		await this.db

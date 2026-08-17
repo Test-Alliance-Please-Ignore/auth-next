@@ -263,7 +263,10 @@ describe('DirectorManager.checkAffiliation', () => {
 
 		const result = await (manager as any).checkAffiliation('111')
 
-		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(['111'])
+		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(
+			['111'],
+			expect.objectContaining({ maxRetries: 0, timeoutMs: 8000 })
+		)
 		expect(result).toEqual({ matches: true, corporationId: '98000001' })
 	})
 
@@ -276,7 +279,10 @@ describe('DirectorManager.checkAffiliation', () => {
 		await expect((manager as any).checkAffiliation('111')).rejects.toThrow(
 			'Director affiliation lookup returned no affiliations for character 111'
 		)
-		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(['111'])
+		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(
+			['111'],
+			expect.objectContaining({ maxRetries: 0, timeoutMs: 8000 })
+		)
 	})
 
 	it('throws a hard error when the affiliation lookup returns 404', async () => {
@@ -294,7 +300,10 @@ describe('DirectorManager.checkAffiliation', () => {
 		await expect((manager as any).checkAffiliation('111')).rejects.toThrow(
 			'Director affiliation lookup returned 404 for character 111'
 		)
-		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(['111'])
+		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(
+			['111'],
+			expect.objectContaining({ maxRetries: 0, timeoutMs: 8000 })
+		)
 	})
 })
 
@@ -530,10 +539,19 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 
 		expect(result).toBe(true)
 		expect(tokenStore.validateToken).toHaveBeenCalledWith('111')
-		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(['111'])
-		expect(tokenStore.fetchEsi).toHaveBeenCalledWith('/characters/111/roles', '111', {
-			cacheMode: 'no-store',
-		})
+		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(
+			['111'],
+			expect.objectContaining({ maxRetries: 0, timeoutMs: 8000 })
+		)
+		expect(tokenStore.fetchEsi).toHaveBeenCalledWith(
+			'/characters/111/roles',
+			'111',
+			expect.objectContaining({
+				cacheMode: 'no-store',
+				maxRetries: 0,
+				timeoutMs: 8000,
+			})
+		)
 		expect(rolesValues).toHaveBeenCalledWith(
 			expect.objectContaining({
 				corporationId: '98000001',

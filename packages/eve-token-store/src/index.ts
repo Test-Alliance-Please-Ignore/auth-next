@@ -579,7 +579,7 @@ export interface EveTokenStore {
 	fetchEsi<T>(
 		path: string,
 		characterId: string,
-		options?: { cacheMode?: 'default' | 'no-store' }
+		options?: { cacheMode?: 'default' | 'no-store'; maxRetries?: number; timeoutMs?: number }
 	): Promise<EsiResponse<T>>
 
 	/**
@@ -627,7 +627,10 @@ export interface EveTokenStore {
 	 * @param characterIds - One or more EVE character IDs
 	 * @returns Affiliation entries for provided character IDs
 	 */
-	fetchCharacterAffiliations(characterIds: string[]): Promise<EsiCharacterAffiliation[]>
+	fetchCharacterAffiliations(
+		characterIds: string[],
+		options?: { cacheMode?: 'default' | 'no-store'; maxRetries?: number; timeoutMs?: number }
+	): Promise<EsiCharacterAffiliation[]>
 
 	/**
 	 * Fetch public data from ESI with a schema
