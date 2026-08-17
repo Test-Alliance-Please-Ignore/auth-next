@@ -143,6 +143,97 @@ describe('TaxReportService report scoping', () => {
 		expect(mockDb.execute).toHaveBeenCalledOnce()
 	})
 
+	it('aggregates assessed income sources for the non-monthly export shape', async () => {
+		mockDb.execute = vi.fn().mockResolvedValue({
+			rows: [
+				{
+					month_start: '2026-07-01T00:00:00.000Z',
+					ref_type: 'bounty_prizes',
+					entry_count: 3,
+					ess_entry_count: 0,
+					total_income: '100.00',
+				},
+				{
+					month_start: '2026-08-01T00:00:00.000Z',
+					ref_type: 'bounty_prizes',
+					entry_count: 2,
+					ess_entry_count: 0,
+					total_income: '25.50',
+				},
+				{
+					month_start: '2026-08-01T00:00:00.000Z',
+					ref_type: 'ess_escrow_transfer',
+					entry_count: 1,
+					ess_entry_count: 1,
+					total_income: '200.00',
+				},
+			],
+		})
+
+		const service = new TaxReportService(mockDb, {} as any)
+		const rows = await service.getTopIncomeSourcesReport({
+			corporationId: '1001',
+			incomeMode: 'assessed',
+		})
+
+		expect(rows).toEqual([
+			{
+				refType: 'ess_escrow_transfer',
+				entryCount: 1,
+				essEntryCount: 1,
+				totalIncome: '200.00',
+			},
+			{
+				refType: 'bounty_prizes',
+				entryCount: 5,
+				essEntryCount: 0,
+				totalIncome: '125.50',
+			},
+		])
+	})
+
+	it('aggregates current character wallet income with positive-only predicates', async () => {
+		mockDb.execute = vi.fn().mockResolvedValue({
+			rows: [
+				{
+					month_start: '2026-07-01T00:00:00.000Z',
+					ref_type: 'bounty_prizes',
+					entry_count: 3,
+					ess_entry_count: 0,
+					total_income: '450.00',
+				},
+				{
+					month_start: '2026-07-01T00:00:00.000Z',
+					ref_type: 'market_transaction',
+					entry_count: 1,
+					ess_entry_count: 0,
+					total_income: '125.00',
+				},
+			],
+		})
+
+		const service = new TaxReportService(mockDb, {} as any)
+		const rows = await service.getTopIncomeSourcesMonthlyReport({
+			corporationId: '1001',
+			walletSource: 'character',
+			fromDate: new Date('2026-07-01T00:00:00.000Z'),
+			toDate: new Date('2026-07-31T23:59:59.999Z'),
+		})
+
+		expect(rows).toEqual([
+			expect.objectContaining({ refType: 'bounty_prizes', totalIncome: '450.00' }),
+			expect.objectContaining({ refType: 'market_transaction', totalIncome: '125.00' }),
+		])
+		expect(mockDb.execute).toHaveBeenCalledOnce()
+		const query = mockDb.execute.mock.calls[0][0]
+		const queryText = JSON.stringify(query.queryChunks)
+		expect(queryText).toContain('CAST(cwj.amount AS numeric) > 0')
+		expect(queryText).toContain('cmt.is_buy = FALSE')
+		expect(queryText).toContain('CAST(cmt.unit_price AS numeric) * cmt.quantity > 0')
+		expect(queryText).toContain('mc.is_active = TRUE')
+		expect(queryText).toContain('mc.is_member_corporation = TRUE')
+	})
+
 	it('aggregates total taxes by corporation from data-backed scope and applies paging', async () => {
 		mockDb.select = createSelectMock([
 			[{ corporationId: '1001' }],

@@ -528,7 +528,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: 'sourceEsiVersion must be a string or null' }, 400)
 		}
 
-		const canExport = await canAuditTaxFeature(c.env, user, corporationId)
+		const canExport = await canReadTaxReports(c.env, user, corporationId)
 		if (!canExport) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
@@ -615,7 +615,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 			return c.json({ error: `sortBy must be one of: ${exportSortFields.join(', ')}` }, 400)
 		}
 
-		const canRead = await canAuditTaxFeature(c.env, user, corporationId)
+		const canRead = await canReadTaxReports(c.env, user, corporationId)
 		if (!canRead) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
@@ -663,7 +663,7 @@ export function registerCorporationTaxReportsRoutes(app: Hono<App>): void {
 				return c.json({ error: 'Export not found' }, 404)
 			}
 
-			const canRead = await canAuditTaxFeature(c.env, user, record.corporationId ?? undefined)
+			const canRead = await canReadTaxReports(c.env, user, record.corporationId ?? undefined)
 			if (!canRead) {
 				return c.json({ error: 'Forbidden' }, 403)
 			}

@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm'
 
 import { ROLE_CORE_ALLIANCE_MEMBER, ROLE_CORE_CORP_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
 import { esiRetryOptions } from '@repo/workflow-utils'
 
 import { createDb } from '../db'
@@ -26,7 +27,6 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
 import type { Core } from '@repo/core'
 import type { Env } from '../context'
 import type { WorkflowContext } from './context'
-import { logger } from '@repo/hono-helpers'
 
 const CHARACTER_REFRESH_CONCURRENCY = 5
 const CHARACTER_STEP_OPTIONS = { ...esiRetryOptions, timeout: '1 minute' as const }
@@ -186,6 +186,8 @@ export interface UserRefreshWorkflowParams {
 	refreshMode?: 'scheduled' | 'event' | 'manual'
 	suppressDiscordRefresh?: boolean
 	forceTokenValidation?: boolean
+	/** Admin-triggered refreshes may include the member-corporation wallet journal. */
+	includeWalletJournal?: boolean
 }
 
 /**
@@ -206,7 +208,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 		workflowInstanceId: string,
 		refreshMode: UserRefreshWorkflowParams['refreshMode'] = 'scheduled',
 		suppressDiscordRefresh: boolean = false,
-		forceTokenValidation: boolean = false
+		forceTokenValidation: boolean = false,
+		includeWalletJournal: boolean = false
 	): WorkflowContext {
 		return {
 			env: this.env,
@@ -216,6 +219,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			refreshMode,
 			suppressDiscordRefresh,
 			forceTokenValidation,
+			includeWalletJournal,
 		}
 	}
 
@@ -226,6 +230,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 		refreshMode: UserRefreshWorkflowParams['refreshMode'],
 		suppressDiscordRefresh: boolean,
 		forceTokenValidation: boolean,
+		includeWalletJournal: boolean,
 		characterId: string
 	): Promise<CharacterRefreshOutcome> {
 		logger.log('[Workflow] Character refresh started', {
@@ -244,7 +249,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						workflowInstanceId,
 						refreshMode,
 						suppressDiscordRefresh,
-						forceTokenValidation
+						forceTokenValidation,
+						includeWalletJournal
 					)
 					return updateCharacterPublicInfo(ctx, characterId)
 				}
@@ -260,7 +266,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 							workflowInstanceId,
 							refreshMode,
 							suppressDiscordRefresh,
-							forceTokenValidation
+							forceTokenValidation,
+							includeWalletJournal
 						)
 						return reconcileCharacterCorporationMembership(ctx, characterId, null)
 					}
@@ -282,7 +289,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						workflowInstanceId,
 						refreshMode,
 						suppressDiscordRefresh,
-						forceTokenValidation
+						forceTokenValidation,
+						includeWalletJournal
 					)
 					return reconcileCharacterCorporationMembership(
 						ctx,
@@ -301,7 +309,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						workflowInstanceId,
 						refreshMode,
 						suppressDiscordRefresh,
-						forceTokenValidation
+						forceTokenValidation,
+						includeWalletJournal
 					)
 					return tryCharacterAuthenticatedFetch(ctx, characterId)
 				}
@@ -357,6 +366,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			refreshMode = 'scheduled',
 			suppressDiscordRefresh = false,
 			forceTokenValidation = false,
+			includeWalletJournal = false,
 		} = event.payload
 		const workflowInstanceId = event.instanceId
 
@@ -454,6 +464,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						refreshMode,
 						suppressDiscordRefresh,
 						forceTokenValidation,
+						includeWalletJournal,
 						character.characterId
 					)
 			)

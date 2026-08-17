@@ -7,11 +7,9 @@
 
 export interface Core {
 	getCharacterOwner(characterId: string): Promise<{ userId: string; isPrimary: boolean } | null>
+	isMemberCorporation(corporationId: string): Promise<boolean>
 	getUserCharacterIds(userId: string): Promise<string[]>
-	listUsersWithActiveCharactersPage(input: {
-		limit: number
-		offset: number
-	}): Promise<{
+	listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{
 		users: Array<{
 			userId: string
 			characterIds: string[]
@@ -154,7 +152,11 @@ export interface Core {
 	legacyImportCharacterLinks(input: {
 		modernUserId: string
 		legacyAuthUserId: string
-		characters: Array<{ characterId: string; characterName: string; source?: 'legacy_primary' | 'esi_owner' | 'xml_account' }>
+		characters: Array<{
+			characterId: string
+			characterName: string
+			source?: 'legacy_primary' | 'esi_owner' | 'xml_account'
+		}>
 	}): Promise<{
 		inserted: number
 		alreadyLinkedToUser: number
@@ -182,10 +184,7 @@ export interface Core {
 			lastSeenAt?: string | null
 		}>
 	}): Promise<{ imported: number; failed: number; totalRequested: number }>
-	getImportedLegacyNoteIdsForUser(
-		userId: string,
-		legacyNoteIds: string[]
-	): Promise<string[]>
+	getImportedLegacyNoteIdsForUser(userId: string, legacyNoteIds: string[]): Promise<string[]>
 	getLegacyCharacterImportMetadata(characterIds: string[]): Promise<
 		Array<{
 			characterId: string
@@ -233,7 +232,9 @@ export interface Core {
 			createdAt: Date | null
 			blacklistedBy: string | null
 			entryMode: 'manual' | 'automatic' | null
-			discoverySources: Array<'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'>
+			discoverySources: Array<
+				'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'
+			>
 			preferredSource: 'legacy' | 'tang'
 		}>
 		matchingCharactersBlacklisted: Array<{
@@ -244,7 +245,9 @@ export interface Core {
 			createdAt: Date | null
 			blacklistedBy: string | null
 			entryMode: 'manual' | 'automatic' | null
-			discoverySources: Array<'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'>
+			discoverySources: Array<
+				'legacy_direct' | 'legacy_ip_association' | 'tang_direct' | 'tang_ip_association'
+			>
 			preferredSource: 'legacy' | 'tang'
 		}>
 		matchingDiscordUserIdsBlacklisted: string[]

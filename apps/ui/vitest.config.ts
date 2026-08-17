@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
 	plugins: [
 		cloudflareTest({
-			wrangler: { configPath: `${__dirname}/wrangler.jsonc` },
+			wrangler: { configPath: `${__dirname}/wrangler.test.jsonc` },
 			miniflare: {
 				bindings: {
 					ENVIRONMENT: 'VITEST',
@@ -13,5 +13,7 @@ export default defineConfig({
 		}),
 	],
 
-	test: {},
+	test: {
+		include: ['src/test/integration/**/*.test.ts'],
+	},
 })

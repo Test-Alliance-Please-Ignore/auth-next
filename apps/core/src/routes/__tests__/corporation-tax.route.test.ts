@@ -1578,6 +1578,47 @@ describe('corporation-tax routes', () => {
 		})
 	})
 
+	it('creates scoped export requests for a corporation viewer', async () => {
+		const user = makeUser()
+		const app = createApp(user)
+		const corporationTaxStub = makeCorporationTaxStub()
+		const characterDataStub = {
+			getCharacterInfo: vi.fn().mockResolvedValue({ corporationId: '1234' }),
+		}
+		getCachedUserPermissionsMock.mockResolvedValue([
+			{ urn: buildTaxViewerScopedUrn('1234') },
+		] as any)
+		corporationTaxStub.requestExport.mockResolvedValue({
+			id: 'export-2',
+			status: 'completed',
+		})
+		routeStubs({ corporationTaxStub, characterDataStub })
+
+		const response = await app.request(
+			'/api/corporation-tax/exports',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					corporationId: '1234',
+					format: 'csv',
+					reportType: 'top_income_sources',
+					filters: { walletSource: 'character' },
+				}),
+			},
+			env
+		)
+
+		expect(response.status).toBe(201)
+		expect(corporationTaxStub.requestExport).toHaveBeenCalledWith(user.id, {
+			corporationId: '1234',
+			format: 'csv',
+			reportType: 'top_income_sources',
+			filters: { walletSource: 'character' },
+			sourceEsiVersion: undefined,
+		})
+	})
+
 	it('forbids export artifact download when user lacks tax read permissions', async () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()

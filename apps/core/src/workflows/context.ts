@@ -14,6 +14,7 @@ export interface WorkflowContext {
 	refreshMode: 'scheduled' | 'event' | 'manual'
 	suppressDiscordRefresh?: boolean
 	forceTokenValidation?: boolean
+	includeWalletJournal?: boolean
 }
 
 /**

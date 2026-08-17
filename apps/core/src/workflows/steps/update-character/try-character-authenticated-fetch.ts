@@ -2,11 +2,11 @@
  * Validate authenticated character access for refresh-sensitive workflows.
  */
 
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 import { getStub } from '@repo/do-utils'
 
-import { userCharacters } from '../../../db/schema'
+import { managedCorporations, userCharacters } from '../../../db/schema'
 import {
 	didTokenTransitionFromValidToInvalid,
 	queueTokenInvalidationAlertsForUser,
@@ -67,6 +67,7 @@ export async function tryCharacterAuthenticatedFetch(
 
 	const existingCharacter = await ctx.db.query.userCharacters.findFirst({
 		where: eq(userCharacters.characterId, characterId),
+		columns: { corporationId: true, hasValidToken: true },
 	})
 
 	const { previousHasValidToken, nextHasValidToken, validation } =
@@ -143,6 +144,47 @@ export async function tryCharacterAuthenticatedFetch(
 				status: downgradedToken ? 'invalid_token' : validation.status,
 				success: false,
 				tokenInvalidated: downgradedToken && previousHasValidToken === true,
+			}
+		}
+
+		if (ctx.includeWalletJournal) {
+			try {
+				const memberCorporation = existingCharacter?.corporationId
+					? await ctx.db.query.managedCorporations.findFirst({
+							where: and(
+								eq(managedCorporations.corporationId, existingCharacter.corporationId),
+								eq(managedCorporations.isMemberCorporation, true)
+							),
+							columns: { corporationId: true },
+						})
+					: null
+
+				if (memberCorporation) {
+					await eveCharacterData.fetchWalletJournal(characterId, true)
+					logger.info('[Workflow] Refreshed character wallet journal', {
+						characterId,
+						corporationId: memberCorporation.corporationId,
+					})
+				} else {
+					logger.info('[Workflow] Skipped character wallet journal for non-member corporation', {
+						characterId,
+						corporationId: existingCharacter?.corporationId ?? null,
+					})
+				}
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				logger.error('[Workflow] Failed to refresh character wallet journal', {
+					characterId,
+					error: errorMessage,
+					errorDetails: extractErrorDetails(error),
+				})
+				return {
+					characterId,
+					error: errorMessage,
+					status: validation.status,
+					success: false,
+					tokenInvalidated: false,
+				}
 			}
 		}
 	}

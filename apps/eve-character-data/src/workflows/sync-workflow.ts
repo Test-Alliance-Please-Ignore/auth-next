@@ -72,6 +72,8 @@ function extractErrorDetails(error: unknown): Record<string, unknown> {
  * Data Types Synced:
  * 1. Public info (no auth required)
  * 2. Authenticated data (skills, attributes, wallet balance) - requires token
+ * 3. Character wallet journal and market transactions - requires a token and
+ *    an active member-corporation affiliation
  */
 export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharacterSyncParams> {
 	async run(event: WorkflowEvent<EveCharacterSyncParams>, step: WorkflowStep) {
@@ -93,6 +95,11 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 		const requestedTypes = dataTypes ? new Set<EveCharacterSyncDataType>(dataTypes) : null
 		const shouldSync = (type: EveCharacterSyncDataType) =>
 			!requestedTypes || requestedTypes.size === 0 || requestedTypes.has(type)
+		const shouldSyncAuthenticatedData = shouldSync('authenticated')
+		const shouldSyncWalletJournal = shouldSync('wallet-journal')
+		const shouldSyncMarketTransactions = shouldSync('market-transactions')
+		const shouldSyncAuthenticatedSources =
+			shouldSyncAuthenticatedData || shouldSyncWalletJournal || shouldSyncMarketTransactions
 
 		logger.info('[EveCharacterSyncWorkflow] Starting character sync', {
 			userId: userId ?? null,
@@ -123,6 +130,9 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 			publicInfoSuccess: 0,
 			authenticatedSuccess: 0,
 			authenticatedSkippedNoToken: 0,
+			walletJournalSuccess: 0,
+			marketTransactionsSuccess: 0,
+			walletDataSkippedNotMember: 0,
 			characterFailures: 0,
 		}
 
@@ -313,32 +323,58 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 					)
 				}
 
-				if (shouldSync('authenticated') && !characterMarkedDeleted) {
+				if (shouldSyncAuthenticatedSources && !characterMarkedDeleted) {
 					if (!tokenValidation.hasValidToken) {
-						syncStats.authenticatedSkippedNoToken++
+						if (shouldSyncAuthenticatedData) {
+							syncStats.authenticatedSkippedNoToken++
+						}
 					} else {
 						const authenticatedDataResult = await step.do(
-							`fetch-authenticated-data-${stepSuffix}`,
+							`fetch-authenticated-sources-${stepSuffix}`,
 							{
 								...esiRetryOptions,
 								timeout: '1 minute',
 							},
 							() =>
 								withEsiRetryClassification('fetch-authenticated-data', async () => {
-									logger.debug('[Step] Fetching authenticated data', {
+									logger.debug('[Step] Fetching authenticated sources', {
 										characterId,
 										userId: userId ?? null,
 									})
 									return await refreshAuthenticatedData.refreshAuthenticatedData(
 										this.env,
-										characterId
+										characterId,
+										{
+											includeAuthenticatedData: shouldSyncAuthenticatedData,
+											includeWalletJournal: shouldSyncWalletJournal,
+											includeMarketTransactions: shouldSyncMarketTransactions,
+											corporationId: publicInfoResult?.currentCorporationId,
+										}
 									)
 								})
 						)
 						if (authenticatedDataResult.success) {
-							syncStats.authenticatedSuccess++
+							if (shouldSyncAuthenticatedData) {
+								syncStats.authenticatedSuccess++
+							}
+							if (authenticatedDataResult.walletJournalRefreshed) {
+								syncStats.walletJournalSuccess++
+							}
+							if (authenticatedDataResult.marketTransactionsRefreshed) {
+								syncStats.marketTransactionsSuccess++
+							}
+							if (
+								authenticatedDataResult.walletDataSkipReason === 'not_member_corporation' &&
+								(shouldSyncWalletJournal ||
+									shouldSyncMarketTransactions ||
+									shouldSyncAuthenticatedData)
+							) {
+								syncStats.walletDataSkippedNotMember++
+							}
 						} else {
-							syncStats.authenticatedSkippedNoToken++
+							if (shouldSyncAuthenticatedData) {
+								syncStats.authenticatedSkippedNoToken++
+							}
 						}
 					}
 				}

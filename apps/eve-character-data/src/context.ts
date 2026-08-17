@@ -5,6 +5,7 @@ import type { EveCharacterSyncParams } from './workflows/sync-workflow'
 
 interface CoreWorker {
 	listUsersWithActiveCharacters(): Promise<Array<{ userId: string; characterIds: string[] }>>
+	isMemberCorporation(corporationId: string): Promise<boolean>
 	listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{
 		users: Array<{ userId: string; characterIds: string[] }>
 		totalCount: number

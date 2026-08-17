@@ -18,9 +18,9 @@ import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from '
 import { CoreDO } from './durable-object'
 import { waitUntilWithTelemetry } from './lib/background-task'
 import { cleanupExpiredExportArtifacts } from './lib/export-retention'
+import { getFleetParticipationExportBucket } from './lib/fleet-participation-export'
 import { IMMUNITAS_ALERT_DRAIN_CRON } from './lib/immunitas-alerts'
 import { getStructureAssetsDebugBucket } from './lib/structure-assets-debug'
-import { getFleetParticipationExportBucket } from './lib/fleet-participation-export'
 import { TOKEN_INVALID_ALERT_DRAIN_CRON } from './lib/token-invalid-alerts'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { csrfProtection } from './middleware/csrf'
@@ -348,6 +348,10 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	 */
 	async getUserCharacterIds(userId: string): Promise<string[]> {
 		return this.getService().getUserCharacterIds(userId)
+	}
+
+	async isMemberCorporation(corporationId: string): Promise<boolean> {
+		return this.getService().isMemberCorporation(corporationId)
 	}
 
 	/**

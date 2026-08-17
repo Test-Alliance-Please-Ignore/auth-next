@@ -8,6 +8,17 @@ import type { Env } from '../../context'
 export interface RefreshAuthenticatedDataResult {
 	success: boolean
 	hasValidToken: boolean
+	walletDataAllowed: boolean
+	walletDataSkipReason?: 'missing_corporation' | 'not_member_corporation'
+	walletJournalRefreshed: boolean
+	marketTransactionsRefreshed: boolean
+}
+
+export interface RefreshAuthenticatedDataOptions {
+	includeAuthenticatedData: boolean
+	includeWalletJournal: boolean
+	includeMarketTransactions: boolean
+	corporationId?: string | null
 }
 
 /**
@@ -17,7 +28,8 @@ export interface RefreshAuthenticatedDataResult {
  */
 export async function refreshAuthenticatedData(
 	env: Env,
-	characterId: string
+	characterId: string,
+	options: RefreshAuthenticatedDataOptions
 ): Promise<RefreshAuthenticatedDataResult> {
 	const normalizedCharacterId = String(characterId)
 
@@ -35,19 +47,68 @@ export async function refreshAuthenticatedData(
 			return {
 				success: false,
 				hasValidToken: false,
+				walletDataAllowed: false,
+				walletJournalRefreshed: false,
+				marketTransactionsRefreshed: false,
 			}
 		}
 
-		// Fetch and store authenticated data (skills, attributes, wallet balance)
-		await characterDataStub.fetchAuthenticatedData(normalizedCharacterId, true)
+		const characterInfo =
+			options.corporationId === undefined
+				? await characterDataStub.getCharacterInfo(normalizedCharacterId)
+				: null
+		const corporationId =
+			options.corporationId !== undefined
+				? options.corporationId
+				: (characterInfo?.corporationId ?? null)
+		const walletDataAllowed =
+			corporationId !== null && (await env.CORE.isMemberCorporation(String(corporationId)))
+		const walletDataSkipReason =
+			corporationId === null
+				? 'missing_corporation'
+				: walletDataAllowed
+					? undefined
+					: 'not_member_corporation'
+
+		if (options.includeAuthenticatedData) {
+			// Skills and attributes remain available for all characters. Wallet balance
+			// is restricted to the same member-corporation scope as wallet history.
+			await characterDataStub.fetchAuthenticatedData(normalizedCharacterId, true, {
+				includeSkills: true,
+				includeAttributes: true,
+				includeWallet: walletDataAllowed,
+			})
+		}
+
+		let walletJournalRefreshed = false
+		let marketTransactionsRefreshed = false
+		if (walletDataAllowed) {
+			if (options.includeWalletJournal) {
+				await characterDataStub.fetchWalletJournal(normalizedCharacterId, true)
+				walletJournalRefreshed = true
+			}
+			if (options.includeMarketTransactions) {
+				await characterDataStub.fetchMarketTransactions(normalizedCharacterId, true)
+				marketTransactionsRefreshed = true
+			}
+		}
 
 		logger.info('[refreshAuthenticatedData] Authenticated data refreshed', {
 			characterId: normalizedCharacterId,
+			corporationId: corporationId ? String(corporationId) : null,
+			walletDataAllowed,
+			walletDataSkipReason,
+			walletJournalRefreshed,
+			marketTransactionsRefreshed,
 		})
 
 		return {
 			success: true,
 			hasValidToken: true,
+			walletDataAllowed,
+			walletDataSkipReason,
+			walletJournalRefreshed,
+			marketTransactionsRefreshed,
 		}
 	} catch (error) {
 		// If token-related error, return non-fatal result
@@ -60,6 +121,9 @@ export async function refreshAuthenticatedData(
 			return {
 				success: false,
 				hasValidToken: false,
+				walletDataAllowed: false,
+				walletJournalRefreshed: false,
+				marketTransactionsRefreshed: false,
 			}
 		}
 

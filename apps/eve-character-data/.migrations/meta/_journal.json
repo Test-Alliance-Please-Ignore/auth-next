@@ -57,6 +57,13 @@
       "when": 1785598517674,
       "tag": "0007_shiny_shadowcat",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786929634270,
+      "tag": "0008_smart_ogun",
+      "breakpoints": true
     }
   ]
 }

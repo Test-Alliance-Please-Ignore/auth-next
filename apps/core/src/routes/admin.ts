@@ -1402,6 +1402,7 @@ app.post('/users/:userId/sync', requireAuth(), requireAdmin(), async (c) => {
 			bypassThrottle: true,
 			refreshMode: 'manual',
 			forceTokenValidation: true,
+			includeWalletJournal: true,
 		})
 		if (triggerResult.status === 'failed') {
 			return c.json(

@@ -1,6 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "eve-character-data",
+	"name": "ui-test",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-07-30",
 	"compatibility_flags": ["nodejs_compat"],
@@ -14,21 +14,14 @@
 			"invocation_logs": false
 		}
 	},
+	"assets": {
+		"binding": "ASSETS",
+		"directory": "./dist/client",
+		"not_found_handling": "single-page-application"
+	},
 	"vars": {
-		"NAME": "eve-character-data"
-	},
-	"durable_objects": {
-		"bindings": [
-			{
-				"name": "EVE_CHARACTER_DATA",
-				"class_name": "EveCharacterData"
-			}
-		]
-	},
-	"migrations": [
-		{
-			"tag": "v1",
-			"new_sqlite_classes": ["EveCharacterData"]
-		}
-	]
+		"NAME": "ui",
+		"ENVIRONMENT": "VITEST",
+		"SENTRY_RELEASE": "test"
+	}
 }

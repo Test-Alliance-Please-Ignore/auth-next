@@ -77,9 +77,11 @@ function getStackSegmentPath(input: {
 export function TopIncomeSourcesMonthlyChart({
 	rows,
 	incomeMode,
+	walletSource,
 }: {
 	rows: TaxTopIncomeSourceMonthlyRow[]
 	incomeMode: 'total' | 'assessed'
+	walletSource: 'corporation' | 'character'
 }) {
 	const [hoveredSegment, setHoveredSegment] = useState<{
 		key: string
@@ -155,7 +157,7 @@ export function TopIncomeSourcesMonthlyChart({
 						viewBox={`0 0 ${chartWidth} ${MONTHLY_INCOME_CHART_HEIGHT}`}
 						className="h-72 min-w-[680px] w-full"
 						role="img"
-						aria-label={`${incomeMode === 'assessed' ? 'Monthly assessed tax' : 'Monthly total income'} stacked by income type`}
+						aria-label={`${incomeMode === 'assessed' ? 'Monthly assessed tax' : 'Monthly total income'} from ${walletSource === 'character' ? 'player' : 'corporation'} wallets, stacked by income type`}
 					>
 						<line
 							x1={36}

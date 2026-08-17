@@ -6,6 +6,7 @@ import type { WorkflowContext } from '../../context'
 
 const validateToken = vi.fn()
 const fetchAuthenticatedData = vi.fn().mockResolvedValue(undefined)
+const fetchWalletJournal = vi.fn().mockResolvedValue(undefined)
 const queueTokenInvalidationAlerts = vi.fn().mockResolvedValue({
 	added: 1,
 	skipped: 0,
@@ -16,11 +17,16 @@ vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(() => ({
 		validateToken,
 		fetchAuthenticatedData,
+		fetchWalletJournal,
 		queueTokenInvalidationAlerts,
 	})),
 }))
 
-function createDbRecorder(existingHasValidToken: boolean | null = null) {
+function createDbRecorder(
+	existingHasValidToken: boolean | null = null,
+	corporationId: string | null = null,
+	memberCorporation: { corporationId: string } | null = null
+) {
 	const updates: unknown[] = []
 	const where = vi.fn().mockResolvedValue(undefined)
 	const set = vi.fn((payload: unknown) => {
@@ -30,13 +36,18 @@ function createDbRecorder(existingHasValidToken: boolean | null = null) {
 	const update = vi.fn(() => ({ set }))
 	const findFirst = vi.fn().mockResolvedValue({
 		hasValidToken: existingHasValidToken,
+		corporationId,
 	})
+	const findMemberCorporation = vi.fn().mockResolvedValue(memberCorporation)
 
 	return {
 		db: {
 			query: {
 				userCharacters: {
 					findFirst,
+				},
+				managedCorporations: {
+					findFirst: findMemberCorporation,
 				},
 			},
 			update,
@@ -46,6 +57,7 @@ function createDbRecorder(existingHasValidToken: boolean | null = null) {
 		set,
 		updates,
 		where,
+		findMemberCorporation,
 	}
 }
 
@@ -68,6 +80,7 @@ describe('tryCharacterAuthenticatedFetch', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		fetchAuthenticatedData.mockResolvedValue(undefined)
+		fetchWalletJournal.mockResolvedValue(undefined)
 		queueTokenInvalidationAlerts.mockResolvedValue({
 			added: 1,
 			skipped: 0,
@@ -99,6 +112,27 @@ describe('tryCharacterAuthenticatedFetch', () => {
 			hasValidToken: true,
 		})
 		expect(queueTokenInvalidationAlerts).not.toHaveBeenCalled()
+	})
+
+	it('refreshes the wallet journal for an admin sync in a member corporation', async () => {
+		validateToken.mockResolvedValue({
+			characterId: '123',
+			isValid: true,
+			missingScopes: [],
+			refreshAttempted: false,
+			refreshSucceeded: false,
+			scopes: ['esi-wallet.read_character_wallet.v1'],
+			status: 'valid',
+		})
+		const recorder = createDbRecorder(false, '987654321', { corporationId: '987654321' })
+		const context = createCtx(recorder.db as unknown as WorkflowContext['db'])
+		context.includeWalletJournal = true
+
+		const result = await tryCharacterAuthenticatedFetch(context, '123')
+
+		expect(result.success).toBe(true)
+		expect(fetchWalletJournal).toHaveBeenCalledWith('123', true)
+		expect(recorder.findMemberCorporation).toHaveBeenCalled()
 	})
 
 	it('marks the character token invalid when required scopes are missing', async () => {

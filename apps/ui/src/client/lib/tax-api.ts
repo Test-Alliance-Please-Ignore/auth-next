@@ -293,6 +293,7 @@ export class CorporationTaxApiClient extends ApiClient {
 		if (filters.toDate) params.set('toDate', filters.toDate)
 		if (filters.refTypes?.length) params.set('refTypes', filters.refTypes.join(','))
 		if (filters.incomeMode) params.set('incomeMode', filters.incomeMode)
+		if (filters.walletSource) params.set('walletSource', filters.walletSource)
 		if (filters.limit !== undefined) params.set('limit', String(filters.limit))
 		if (filters.offset !== undefined) params.set('offset', String(filters.offset))
 		if (filters.sortBy) params.set('sortBy', filters.sortBy)
