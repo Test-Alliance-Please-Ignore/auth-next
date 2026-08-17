@@ -971,6 +971,57 @@ describe('DirectorManager.verifyAllDirectorsHealth', () => {
 		expect(maxActiveChecks).toBe(1)
 	})
 
+	it('prioritizes never-checked and stalest directors before recently checked ones', async () => {
+		const where = vi.fn().mockResolvedValue(undefined)
+		const set = vi.fn().mockReturnValue({ where })
+		const update = vi.fn().mockReturnValue({ set })
+		const manager = new DirectorManager({ update } as never, '98000001', {} as never)
+		const now = Date.now()
+
+		vi.spyOn(manager, 'getAllDirectors').mockResolvedValue([
+			{
+				directorId: 'recent',
+				characterId: '111',
+				characterName: 'Recently attempted',
+				isHealthy: true,
+				lastHealthCheck: new Date(now - 7 * 24 * 60 * 60 * 1000),
+				lastUsed: null,
+				failureCount: 0,
+				lastFailureReason: null,
+				priority: 1,
+				updatedAt: new Date(now - 60 * 60 * 1000),
+			},
+			{
+				directorId: 'never',
+				characterId: '222',
+				characterName: 'Never checked',
+				isHealthy: true,
+				lastHealthCheck: null,
+				lastUsed: null,
+				failureCount: 0,
+				lastFailureReason: null,
+				priority: 100,
+			},
+			{
+				directorId: 'old',
+				characterId: '333',
+				characterName: 'Old check',
+				isHealthy: true,
+				lastHealthCheck: new Date(now - 2 * 24 * 60 * 60 * 1000),
+				lastUsed: null,
+				failureCount: 0,
+				lastFailureReason: null,
+				priority: 50,
+			},
+		])
+		const verifyDirectorHealth = vi.spyOn(manager, 'verifyDirectorHealth').mockResolvedValue(true)
+
+		await expect(manager.verifyAllDirectorsHealth()).resolves.toEqual({ verified: 3, failed: 0 })
+		expect(verifyDirectorHealth).toHaveBeenNthCalledWith(1, 'never')
+		expect(verifyDirectorHealth).toHaveBeenNthCalledWith(2, 'old')
+		expect(verifyDirectorHealth).toHaveBeenNthCalledWith(3, 'recent')
+	})
+
 	it('marks corporation unverified when all director checks fail', async () => {
 		const where = vi.fn().mockResolvedValue(undefined)
 		const set = vi.fn().mockReturnValue({ where })

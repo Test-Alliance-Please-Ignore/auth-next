@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
 import { and, eq, inArray, or } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
@@ -617,11 +617,14 @@ users.get('/corporation-access', async (c) => {
 						c.env.EVE_CORPORATION_DATA,
 						'default'
 					)
-					using missingCorpMap = await corpStub.getCorporationIdsByCharacterIds(missingCharacterIds)
-
-					for (const [characterId, corporationId] of Object.entries(missingCorpMap)) {
-						characterCorpMap.set(characterId, corporationId)
-					}
+					await withRpcResult(
+						corpStub.getCorporationIdsByCharacterIds(missingCharacterIds),
+						(missingCorpMap) => {
+							for (const [characterId, corporationId] of Object.entries(missingCorpMap)) {
+								characterCorpMap.set(characterId, corporationId)
+							}
+						}
+					)
 				} catch (error) {
 					logger.warn('[Corporation Access] Error fetching missing character corporation IDs', {
 						error: error instanceof Error ? error.message : String(error),
@@ -666,14 +669,12 @@ users.get('/corporation-access', async (c) => {
 					// Get corporation info and directors in parallel while disposing each result
 					// within the async scope that owns it.
 					const [corpInfo, directors] = await Promise.all([
-						(async () => {
-							using result = await corpStub.getCorporationInfo(corp.corporationId)
-							return result ? { ceoId: result.ceoId } : null
-						})(),
-						(async () => {
-							using result = await corpStub.getDirectors(corp.corporationId)
-							return result.map((director) => ({ characterId: director.characterId }))
-						})(),
+						withRpcResult(corpStub.getCorporationInfo(corp.corporationId), (result) =>
+							result ? { ceoId: result.ceoId } : null
+						),
+						withRpcResult(corpStub.getDirectors(corp.corporationId), (result) =>
+							result.map((director) => ({ characterId: director.characterId }))
+						),
 					])
 
 					// Create director lookup Set for O(1) checks
@@ -773,7 +774,9 @@ users.get('/corporation-access', async (c) => {
 		if (!user.is_admin) {
 			const accessibleCorpIds = new Set(accessibleCorporations.map((c) => c.corporationId))
 			const hrStub = getStub<Rpc.Provider<Hr>>(c.env.HR, 'default')
-			using hrCorpIds = await hrStub.getUserHrCorporations(user.id)
+			const hrCorpIds = await withRpcResult(hrStub.getUserHrCorporations(user.id), (result) => [
+				...result,
+			])
 			const managedCorpById = new Map(managedCorps.map((corp) => [corp.corporationId, corp]))
 			const uniqueHrCorpIds = [...new Set(hrCorpIds)].filter((id) => {
 				if (accessibleCorpIds.has(id)) return false
@@ -786,7 +789,9 @@ users.get('/corporation-access', async (c) => {
 					hr_reviewer: 2,
 					hr_viewer: 1,
 				}
-				using explicitHrRoles = await hrStub.getUserRoles(user.id)
+				const explicitHrRoles = await withRpcResult(hrStub.getUserRoles(user.id), (result) => [
+					...result,
+				])
 				const highestExplicitRoleByCorp = new Map<
 					string,
 					'hr_admin' | 'hr_reviewer' | 'hr_viewer'
@@ -836,13 +841,12 @@ users.get('/corporation-access', async (c) => {
 						c.env.EVE_CORPORATION_DATA,
 						corp.corporationId
 					)
-					using members = await corpStub.getMembers(corp.corporationId)
-					return {
+					return await withRpcResult(corpStub.getMembers(corp.corporationId), (members) => ({
 						corporationId: corp.corporationId,
 						members: members.map((member) => ({
 							characterId: String(member.characterId),
 						})),
-					}
+					}))
 				} catch (error) {
 					logger.warn('[Corporation Access] Failed to hydrate corporation stats', {
 						corporationId: corp.corporationId,

@@ -9,6 +9,20 @@ import type { SessionUser } from '../../context'
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
+	withRpcResult: async (rpcCall: Promise<unknown>, consume: (result: any) => unknown) => {
+		const result = await rpcCall
+		try {
+			return await consume(result)
+		} finally {
+			if (result !== null && (typeof result === 'object' || typeof result === 'function')) {
+				const disposeSymbol = Reflect.get(Symbol, 'dispose')
+				if (typeof disposeSymbol === 'symbol') {
+					const disposer = Reflect.get(result, disposeSymbol)
+					if (typeof disposer === 'function') disposer.call(result)
+				}
+			}
+		}
+	},
 }))
 
 const getStubMock = vi.mocked(getStub)
@@ -233,6 +247,36 @@ describe('users corporation access', () => {
 		expect(hrStub.getUserRoles).toHaveBeenCalledWith('user-1')
 		expect(corpStub.getMembers).toHaveBeenCalledWith('1001')
 		expect(charStub.getCharacterInfo).not.toHaveBeenCalled()
+	})
+
+	it('disposes RPC results for the full corporation access response', async () => {
+		dbStub.query.userCharacters.findMany.mockResolvedValueOnce([
+			{
+				characterId: '2001',
+				characterName: 'Alpha One',
+				corporationId: '1001',
+				status: 'active',
+				hasValidToken: true,
+			},
+		] as any)
+
+		const corporationResult = makeRpcResult({ ceoId: '2001' })
+		const directorsResult = makeRpcResult([])
+		const hrCorporationsResult = makeRpcResult([])
+		const membersResult = makeRpcResult([{ characterId: '2001' }])
+		corpStub.getCorporationInfo.mockResolvedValue(corporationResult.value)
+		corpStub.getDirectors.mockResolvedValue(directorsResult.value)
+		corpStub.getMembers.mockResolvedValue(membersResult.value)
+		hrStub.getUserHrCorporations.mockResolvedValue(hrCorporationsResult.value)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/users/corporation-access', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(corporationResult.dispose).toHaveBeenCalledOnce()
+		expect(directorsResult.dispose).toHaveBeenCalledOnce()
+		expect(hrCorporationsResult.dispose).toHaveBeenCalledOnce()
+		expect(membersResult.dispose).toHaveBeenCalledOnce()
 	})
 
 	it('returns all managed corporations for site admins without character lookups', async () => {
