@@ -14,6 +14,7 @@ import type {
 	TaxExportSchedule,
 	TaxPagedResult,
 	TaxReportWindowFilters,
+	TaxRollupReportFilters,
 } from '@repo/corporation-tax'
 import type { CorporationTaxDb } from '../db'
 import type { TaxReportService } from './tax-report.service'
@@ -363,7 +364,7 @@ export class TaxExportService {
 			case 'top_income_sources':
 				return (
 					await this.reportService.getTopIncomeSourcesReport({
-						...filters,
+						...this.toRollupReportFilters(input.filters ?? null, input.corporationId),
 						limit: 200,
 						offset: 0,
 					})
@@ -427,7 +428,7 @@ export class TaxExportService {
 			}
 			case 'top_income_sources': {
 				const rows = await this.reportService.getTopIncomeSourcesReport({
-					...reportFilters,
+					...this.toRollupReportFilters(input.filters, input.corporationId),
 					limit: 200,
 					offset: 0,
 				})
@@ -521,6 +522,21 @@ export class TaxExportService {
 				this.readString(filters, 'sortDirection') === 'desc'
 					? (this.readString(filters, 'sortDirection') as 'asc' | 'desc')
 					: undefined,
+		}
+	}
+
+	private toRollupReportFilters(
+		filters: Record<string, unknown> | null | undefined,
+		corporationId?: string
+	): TaxRollupReportFilters {
+		const reportFilters = this.toReportWindowFilters(filters, corporationId)
+		const incomeMode = this.readString(filters, 'incomeMode')
+		const walletSource = this.readString(filters, 'walletSource')
+		return {
+			...reportFilters,
+			incomeMode: incomeMode === 'total' || incomeMode === 'assessed' ? incomeMode : undefined,
+			walletSource:
+				walletSource === 'corporation' || walletSource === 'character' ? walletSource : undefined,
 		}
 	}
 

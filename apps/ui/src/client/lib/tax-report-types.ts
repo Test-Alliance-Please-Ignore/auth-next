@@ -4,6 +4,7 @@ export type TaxRollupReportQueryFilters = {
 	toDate?: string
 	refTypes?: string[]
 	incomeMode?: 'total' | 'assessed'
+	walletSource?: 'corporation' | 'character'
 	limit?: number
 	offset?: number
 	sortBy?: string
@@ -12,4 +13,10 @@ export type TaxRollupReportQueryFilters = {
 
 export type TaxRollupReportQueryOptions = TaxRollupReportQueryFilters & {
 	enabled?: boolean
+}
+
+export type TaxIncomeSourceControls = {
+	refTypes: string[]
+	incomeMode: 'total' | 'assessed'
+	walletSource: 'corporation' | 'character'
 }

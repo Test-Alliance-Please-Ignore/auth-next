@@ -374,6 +374,19 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		return characters.map((character) => character.characterId)
 	}
 
+	async isMemberCorporation(corporationId: string): Promise<boolean> {
+		return this.getDb()
+			.query.managedCorporations.findFirst({
+				where: and(
+					eq(managedCorporations.corporationId, corporationId),
+					eq(managedCorporations.isActive, true),
+					eq(managedCorporations.isMemberCorporation, true)
+				),
+				columns: { corporationId: true },
+			})
+			.then((corporation) => corporation !== undefined)
+	}
+
 	async listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{
 		users: Array<{ userId: string; characterIds: string[] }>
 		totalCount: number

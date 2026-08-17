@@ -35,6 +35,7 @@ import toast from '@/lib/toast'
 
 import type { TaxExportFormat, TaxExportReportType } from '@repo/corporation-tax'
 import type { TaxReportQuickRange } from '@/lib/tax-date'
+import type { TaxIncomeSourceControls } from '@/lib/tax-report-types'
 import type { SortDirection } from '@/lib/tax-report-utils'
 
 type TaxReportView = TaxExportReportType | 'missing_esi_keys'
@@ -126,6 +127,11 @@ export default function TaxReportsPage() {
 	const [selectedScheduleFormat, setSelectedScheduleFormat] = useState<TaxExportFormat>('csv')
 	const [scheduleName, setScheduleName] = useState('Weekly Tax Summary')
 	const [scheduleFrequency, setScheduleFrequency] = useState<'weekly' | 'monthly'>('weekly')
+	const [incomeSourceControls, setIncomeSourceControls] = useState<TaxIncomeSourceControls>({
+		refTypes: [],
+		incomeMode: 'total',
+		walletSource: 'corporation',
+	})
 	const [fromDate, setFromDate] = useState(DEFAULT_MONTH_RANGE.fromDate)
 	const [toDate, setToDate] = useState(DEFAULT_MONTH_RANGE.toDate)
 	const moveMonth = (monthOffset: number) => {
@@ -292,6 +298,11 @@ export default function TaxReportsPage() {
 		if (toDateIso) filters.toDate = toDateIso
 
 		switch (activeExportReportType) {
+			case 'top_income_sources':
+				filters.refTypes = incomeSourceControls.refTypes
+				filters.incomeMode = incomeSourceControls.incomeMode
+				filters.walletSource = incomeSourceControls.walletSource
+				break
 			case 'total_taxes_by_corporation':
 				filters.sortBy = totalTaxesExportSort.sortBy
 				filters.sortDirection = totalTaxesExportSort.sortDir
@@ -315,6 +326,7 @@ export default function TaxReportsPage() {
 		essExportSort,
 		effectiveCorporationId,
 		fromDateIso,
+		incomeSourceControls,
 		toDateIso,
 		totalTaxesExportSort,
 	])
@@ -326,8 +338,21 @@ export default function TaxReportsPage() {
 		)
 		if (fromDate) items.push(`From ${fromDate}`)
 		if (toDate) items.push(`To ${toDate}`)
+		if (activeExportReportType === 'top_income_sources') {
+			items.push(
+				incomeSourceControls.walletSource === 'character'
+					? 'Source: Player wallets'
+					: 'Source: Corporation wallets'
+			)
+			if (incomeSourceControls.incomeMode === 'assessed') {
+				items.push('Mode: Assessed')
+			}
+			if (incomeSourceControls.refTypes.length > 0) {
+				items.push(`Income types: ${incomeSourceControls.refTypes.length} selected`)
+			}
+		}
 		return items
-	}, [effectiveCorporationId, fromDate, toDate])
+	}, [activeExportReportType, effectiveCorporationId, fromDate, incomeSourceControls, toDate])
 
 	const reportEntityIds = useMemo(() => {
 		const ids = new Set<string>()
@@ -399,6 +424,8 @@ export default function TaxReportsPage() {
 					activeReportIsExportable={activeReportIsExportable}
 					activeExportReportType={activeExportReportType}
 					reportWindowFilters={reportWindowFilters}
+					incomeSourceControls={incomeSourceControls}
+					onIncomeSourceControlsChange={setIncomeSourceControls}
 					onTotalTaxesSortChange={(sortBy, sortDir) => setTotalTaxesExportSort({ sortBy, sortDir })}
 					onEssSortChange={(sortBy, sortDir) => setEssExportSort({ sortBy, sortDir })}
 					onDiscrepancySortChange={(sortBy, sortDir) =>

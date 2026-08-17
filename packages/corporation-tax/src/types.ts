@@ -564,6 +564,7 @@ export interface TaxRollupReportFilters {
 	toDate?: Date
 	refTypes?: string[]
 	incomeMode?: TaxIncomeDisplayMode
+	walletSource?: TaxWalletSource
 	limit?: number
 	offset?: number
 	sortBy?: string
@@ -571,6 +572,7 @@ export interface TaxRollupReportFilters {
 }
 
 export type TaxIncomeDisplayMode = 'total' | 'assessed'
+export type TaxWalletSource = 'corporation' | 'character'
 
 export interface TaxPagedResult<TRow> {
 	rows: TRow[]

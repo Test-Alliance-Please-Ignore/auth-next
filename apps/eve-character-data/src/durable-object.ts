@@ -1,10 +1,11 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { and, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
+import { disposeRpcResult, getStub } from '@repo/do-utils'
 import { EveCharacterDataInstance } from '@repo/eve-character-data'
 import { createEveAllianceId, createEveCharacterId, createEveCorporationId } from '@repo/eve-types'
 import { logger } from '@repo/hono-helpers'
+import { parseDateOrNull } from '@repo/worker-utils'
 import { createWorkflowBatch } from '@repo/workflow-utils'
 
 import { createDb } from './db'
@@ -48,9 +49,9 @@ import type {
 	EsiCharacterSkills,
 	EsiCorporationHistoryEntry,
 	EsiMarketOrder,
-	EsiMarketTransaction,
 	EsiWalletJournalEntry,
 	EveCharacterData,
+	FetchAuthenticatedDataOptions,
 } from '@repo/eve-character-data'
 import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
@@ -69,6 +70,52 @@ type KillmailPayloadLike = {
 		character_id?: number | string
 		ship_type_id?: number | string
 		items?: KillmailItemLike[]
+	}
+}
+
+const WALLET_JOURNAL_INSERT_BATCH_SIZE = 100
+const WALLET_TRANSACTION_INSERT_BATCH_SIZE = 100
+const MAX_WALLET_TRANSACTION_PAGES = 100
+
+type RawCharacterWalletJournalEntry = {
+	id: number
+	date: string
+	ref_type: string
+	amount: number
+	balance?: number
+	description: string
+	first_party_id?: number
+	second_party_id?: number
+	reason?: string
+	tax?: number
+	tax_receiver_id?: number
+	context_id?: number
+	context_id_type?: string
+}
+
+type RawCharacterMarketTransaction = {
+	transaction_id: number
+	date: string
+	type_id: number
+	quantity: number
+	unit_price: number
+	client_id: number
+	location_id: number
+	is_buy: boolean
+	is_personal: boolean
+	journal_ref_id: number
+}
+
+function compareNumericStrings(left: string, right: string): number {
+	try {
+		const leftBigInt = BigInt(left)
+		const rightBigInt = BigInt(right)
+		if (leftBigInt === rightBigInt) {
+			return 0
+		}
+		return leftBigInt > rightBigInt ? 1 : -1
+	} catch {
+		return left.localeCompare(right, 'en')
 	}
 }
 
@@ -386,7 +433,11 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	/**
 	 * Fetch and store authenticated character data
 	 */
-	async fetchAuthenticatedData(characterId: string, forceRefresh = false): Promise<void> {
+	async fetchAuthenticatedData(
+		characterId: string,
+		forceRefresh = false,
+		options: FetchAuthenticatedDataOptions = {}
+	): Promise<void> {
 		// Authenticated tables reference character_public_info via FK.
 		// Ensure the parent row exists for authenticated-only sync runs.
 		let existingPublicInfo: { characterId: string } | undefined
@@ -410,9 +461,15 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		// Keep authenticated fetches sequential to avoid tripping Cloudflare connection limits
 		// when token-store / ESI / DB work overlaps too aggressively in a single refresh pass.
-		await this.fetchAndStoreSkills(characterId, forceRefresh)
-		await this.fetchAndStoreAttributes(characterId, forceRefresh)
-		await this.fetchAndStoreWallet(characterId, forceRefresh)
+		if (options.includeSkills ?? true) {
+			await this.fetchAndStoreSkills(characterId, forceRefresh)
+		}
+		if (options.includeAttributes ?? true) {
+			await this.fetchAndStoreAttributes(characterId, forceRefresh)
+		}
+		if (options.includeWallet ?? true) {
+			await this.fetchAndStoreWallet(characterId, forceRefresh)
+		}
 	}
 
 	/**
@@ -1189,118 +1246,96 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	private async fetchAndStoreWalletJournal(
 		characterId: string,
 		_forceRefresh = false
-	): Promise<CharacterWalletJournalData[]> {
+	): Promise<void> {
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		// ESI returns numbers for IDs, but we need strings
-		const response = await tokenStoreStub.fetchEsi<
-			Array<{
-				id: number
-				date: string
-				ref_type: string
-				amount: number
-				balance?: number
-				description: string
-				first_party_id?: number
-				second_party_id?: number
-				reason?: string
-				tax?: number
-				tax_receiver_id?: number
-				context_id?: number
-				context_id_type?: string
-			}>
-		>(`/characters/${String(characterId)}/wallet/journal`, String(characterId), {
-			cacheMode: 'no-store',
-		})
+		const response = await tokenStoreStub.fetchEsiAllPages<RawCharacterWalletJournalEntry>(
+			`/characters/${String(characterId)}/wallet/journal`,
+			String(characterId),
+			{ cacheMode: 'no-store' }
+		)
 
-		const rawEntries = response.data
-
-		// Convert numeric IDs to strings
-		const entries: EsiWalletJournalEntry[] = rawEntries.map((entry) => ({
-			id: entry.id,
-			date: entry.date,
-			ref_type: entry.ref_type,
-			amount: entry.amount,
-			balance: entry.balance,
-			description: entry.description,
-			first_party_id: entry.first_party_id ?? undefined,
-			second_party_id: entry.second_party_id ?? undefined,
-			reason: entry.reason,
-			tax: entry.tax,
-			tax_receiver_id: entry.tax_receiver_id ?? undefined,
-			context_id: entry.context_id ?? undefined,
-			context_id_type: entry.context_id_type,
-		}))
-
-		// Upsert each entry
-		for (const entry of entries) {
-			await this.db
-				.insert(characterWalletJournal)
-				.values({
-					characterId,
-					journalId: String(entry.id),
-					date: new Date(entry.date),
-					refType: entry.ref_type,
-					amount: entry.amount.toString(),
-					balance: entry.balance?.toString() ?? '0',
-					description: entry.description,
-					firstPartyId:
-						entry.first_party_id !== undefined ? String(entry.first_party_id) : undefined,
-					secondPartyId:
-						entry.second_party_id !== undefined ? String(entry.second_party_id) : undefined,
-					reason: entry.reason,
-					tax: entry.tax?.toString(),
-					taxReceiverId:
-						entry.tax_receiver_id !== undefined ? String(entry.tax_receiver_id) : undefined,
-					contextId: entry.context_id !== undefined ? String(entry.context_id) : undefined,
-					contextIdType: entry.context_id_type,
-					updatedAt: new Date(),
-				})
-				.onConflictDoUpdate({
-					target: [characterWalletJournal.characterId, characterWalletJournal.journalId],
-					set: {
-						date: new Date(entry.date),
-						refType: entry.ref_type,
-						amount: entry.amount.toString(),
-						balance: entry.balance?.toString() ?? '0',
+		let entries: EsiWalletJournalEntry[]
+		try {
+			entries = response.data
+				.map(
+					(entry): EsiWalletJournalEntry => ({
+						id: entry.id,
+						date: entry.date,
+						ref_type: entry.ref_type,
+						amount: entry.amount,
+						balance: entry.balance,
 						description: entry.description,
-						firstPartyId:
-							entry.first_party_id !== undefined ? String(entry.first_party_id) : undefined,
-						secondPartyId:
-							entry.second_party_id !== undefined ? String(entry.second_party_id) : undefined,
+						first_party_id: entry.first_party_id ?? undefined,
+						second_party_id: entry.second_party_id ?? undefined,
 						reason: entry.reason,
-						tax: entry.tax?.toString(),
-						taxReceiverId:
-							entry.tax_receiver_id !== undefined ? String(entry.tax_receiver_id) : undefined,
-						contextId: entry.context_id !== undefined ? String(entry.context_id) : undefined,
-						contextIdType: entry.context_id_type,
-						updatedAt: new Date(),
-					},
-				})
+						tax: entry.tax,
+						tax_receiver_id: entry.tax_receiver_id ?? undefined,
+						context_id: entry.context_id ?? undefined,
+						context_id_type: entry.context_id_type,
+					})
+				)
+				.filter((entry) => parseDateOrNull(entry.date) !== null)
+		} finally {
+			disposeRpcResult(response)
 		}
 
-		const results = await this.db.query.characterWalletJournal.findMany({
-			where: eq(characterWalletJournal.characterId, characterId),
+		const [watermark] = await this.db
+			.select({
+				maxJournalId: sql<string | null>`max(${characterWalletJournal.journalId}::numeric)::text`,
+				maxJournalDate: sql<Date | string | null>`max(${characterWalletJournal.date})`,
+			})
+			.from(characterWalletJournal)
+			.where(eq(characterWalletJournal.characterId, characterId))
+		const storedMaxJournalId = watermark?.maxJournalId ?? null
+		const storedMaxJournalDate = parseDateOrNull(watermark?.maxJournalDate)
+
+		const candidateEntries = entries.filter((entry) => {
+			if (storedMaxJournalId === null) {
+				return true
+			}
+			if (compareNumericStrings(String(entry.id), storedMaxJournalId) > 0) {
+				return true
+			}
+			const entryDate = parseDateOrNull(entry.date)
+			return (
+				storedMaxJournalDate !== null && entryDate !== null && entryDate >= storedMaxJournalDate
+			)
+		})
+		const newEntries = candidateEntries.sort((left, right) => {
+			const leftDate = parseDateOrNull(left.date)
+			const rightDate = parseDateOrNull(right.date)
+			if (leftDate !== null && rightDate !== null && leftDate.getTime() !== rightDate.getTime()) {
+				return leftDate < rightDate ? -1 : 1
+			}
+			return compareNumericStrings(String(left.id), String(right.id))
 		})
 
-		return results.map((r) => ({
-			id: r.id,
-			characterId: createEveCharacterId(r.characterId),
-			journalId: String(r.journalId),
-			date: new Date(r.date),
-			refType: r.refType,
-			amount: r.amount,
-			balance: String(r.balance),
-			description: r.description,
-			firstPartyId: r.firstPartyId ?? undefined,
-			secondPartyId: r.secondPartyId ?? undefined,
-			reason: r.reason ?? undefined,
-			tax: r.tax ?? undefined,
-			taxReceiverId: r.taxReceiverId ?? undefined,
-			contextId: r.contextId ?? undefined,
-			contextIdType: r.contextIdType ?? undefined,
-			createdAt: r.createdAt,
-			updatedAt: r.updatedAt,
-		}))
+		for (let index = 0; index < newEntries.length; index += WALLET_JOURNAL_INSERT_BATCH_SIZE) {
+			const batch = newEntries.slice(index, index + WALLET_JOURNAL_INSERT_BATCH_SIZE)
+			const values = batch.map((entry) => ({
+				characterId,
+				journalId: String(entry.id),
+				date: parseDateOrNull(entry.date) as Date,
+				refType: entry.ref_type,
+				amount: String(entry.amount),
+				balance: entry.balance !== undefined ? String(entry.balance) : '0',
+				description: entry.description,
+				firstPartyId: entry.first_party_id !== undefined ? String(entry.first_party_id) : null,
+				secondPartyId: entry.second_party_id !== undefined ? String(entry.second_party_id) : null,
+				reason: entry.reason ?? null,
+				tax: entry.tax !== undefined ? String(entry.tax) : null,
+				taxReceiverId: entry.tax_receiver_id !== undefined ? String(entry.tax_receiver_id) : null,
+				contextId: entry.context_id !== undefined ? String(entry.context_id) : null,
+				contextIdType: entry.context_id_type ?? null,
+				updatedAt: new Date(),
+			}))
+			await this.db
+				.insert(characterWalletJournal)
+				.values(values)
+				.onConflictDoNothing({
+					target: [characterWalletJournal.characterId, characterWalletJournal.journalId],
+				})
+		}
 	}
 
 	/**
@@ -1309,89 +1344,192 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	private async fetchAndStoreMarketTransactions(
 		characterId: string,
 		_forceRefresh = false
-	): Promise<CharacterMarketTransactionData[]> {
+	): Promise<void> {
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		// ESI returns numbers for IDs, but we need strings
-		const response = await tokenStoreStub.fetchEsi<
-			Array<{
-				transaction_id: number
-				date: string
-				type_id: number
-				quantity: number
-				unit_price: number
-				client_id: number
-				location_id: number
-				is_buy: boolean
-				is_personal: boolean
-				journal_ref_id: number
-			}>
-		>(`/characters/${String(characterId)}/wallet/transactions`, String(characterId), {
-			cacheMode: 'no-store',
-		})
+		const [watermark] = await this.db
+			.select({
+				maxTransactionId: sql<
+					string | null
+				>`max(${characterMarketTransactions.transactionId}::numeric)::text`,
+				maxTransactionDate: sql<Date | string | null>`max(${characterMarketTransactions.date})`,
+			})
+			.from(characterMarketTransactions)
+			.where(eq(characterMarketTransactions.characterId, characterId))
+		const storedMaxTransactionId = watermark?.maxTransactionId ?? null
+		const storedMaxTransactionDate = parseDateOrNull(watermark?.maxTransactionDate)
 
-		const rawTransactions = response.data
+		const basePath = `/characters/${String(characterId)}/wallet/transactions`
+		const transactionsById = new Map<string, RawCharacterMarketTransaction>()
+		let pageData: RawCharacterMarketTransaction[]
+		let pagesFetched = 1
+		let fromId: string | undefined
+		let watermarkSeen = false
+		let completed = false
+		let stoppedAtWatermark = false
 
-		// ESI returns numeric IDs
-		const transactions: EsiMarketTransaction[] = rawTransactions
+		const addPage = (entries: RawCharacterMarketTransaction[]) => {
+			for (const entry of entries) {
+				transactionsById.set(String(entry.transaction_id), entry)
+			}
+		}
+		const hasWatermarkRow = (entries: RawCharacterMarketTransaction[]) =>
+			storedMaxTransactionId !== null &&
+			entries.some((entry) => String(entry.transaction_id) === storedMaxTransactionId)
+		const hasRowsAtOrBeyondWatermark = (
+			entries: RawCharacterMarketTransaction[],
+			cursorId?: string
+		) => {
+			if (!storedMaxTransactionId) {
+				return true
+			}
 
-		// Upsert each transaction
-		for (const txn of transactions) {
+			return entries.some((entry) => {
+				const transactionId = String(entry.transaction_id)
+				if (transactionId === cursorId) {
+					return false
+				}
+				if (compareNumericStrings(transactionId, storedMaxTransactionId) > 0) {
+					return true
+				}
+				const transactionDate = parseDateOrNull(entry.date)
+				return (
+					storedMaxTransactionDate !== null &&
+					transactionDate !== null &&
+					transactionDate >= storedMaxTransactionDate
+				)
+			})
+		}
+
+		const firstResponse = await tokenStoreStub.fetchEsi<RawCharacterMarketTransaction[]>(
+			basePath,
+			String(characterId),
+			{ cacheMode: 'no-store' }
+		)
+		try {
+			pageData = firstResponse.data.map((entry) => ({ ...entry }))
+		} finally {
+			disposeRpcResult(firstResponse)
+		}
+		addPage(pageData)
+
+		if (hasWatermarkRow(pageData)) {
+			watermarkSeen = true
+			if (!hasRowsAtOrBeyondWatermark(pageData)) {
+				stoppedAtWatermark = true
+				completed = true
+			}
+		}
+
+		for (let page = 1; !completed && page < MAX_WALLET_TRANSACTION_PAGES; page += 1) {
+			if (pageData.length === 0) {
+				completed = true
+				break
+			}
+
+			const nextFromId = pageData.reduce(
+				(min, entry) => (BigInt(entry.transaction_id) < BigInt(min) ? entry.transaction_id : min),
+				pageData[0]!.transaction_id
+			)
+			if (String(nextFromId) === fromId) {
+				completed = true
+				break
+			}
+			fromId = String(nextFromId)
+
+			const nextResponse = await tokenStoreStub.fetchEsi<RawCharacterMarketTransaction[]>(
+				`${basePath}?from_id=${encodeURIComponent(fromId)}`,
+				String(characterId),
+				{ cacheMode: 'no-store' }
+			)
+			try {
+				pageData = nextResponse.data.map((entry) => ({ ...entry }))
+			} finally {
+				disposeRpcResult(nextResponse)
+			}
+			pagesFetched += 1
+			addPage(pageData)
+
+			if (hasWatermarkRow(pageData)) {
+				watermarkSeen = true
+			}
+			if (watermarkSeen && !hasRowsAtOrBeyondWatermark(pageData, fromId)) {
+				stoppedAtWatermark = true
+				completed = true
+				break
+			}
+
+			// ESI includes the cursor row in a from_id response. A singleton cursor
+			// response means there is no older data left to request.
+			if (pageData.length === 1 && String(pageData[0]!.transaction_id) === fromId) {
+				completed = true
+				break
+			}
+		}
+
+		if (!completed && !stoppedAtWatermark) {
+			logger.warn('[CharacterWalletTransactions] Page safety limit reached', {
+				characterId,
+				pagesFetched,
+			})
+		}
+
+		const transactions = [...transactionsById.values()].filter(
+			(transaction) => parseDateOrNull(transaction.date) !== null
+		)
+		const newTransactions = transactions
+			.filter((transaction) => {
+				if (storedMaxTransactionId === null) {
+					return true
+				}
+				if (compareNumericStrings(String(transaction.transaction_id), storedMaxTransactionId) > 0) {
+					return true
+				}
+				const transactionDate = parseDateOrNull(transaction.date)
+				return (
+					storedMaxTransactionDate !== null &&
+					transactionDate !== null &&
+					transactionDate >= storedMaxTransactionDate
+				)
+			})
+			.sort((left, right) => {
+				const leftDate = parseDateOrNull(left.date)
+				const rightDate = parseDateOrNull(right.date)
+				if (leftDate !== null && rightDate !== null && leftDate.getTime() !== rightDate.getTime()) {
+					return leftDate < rightDate ? -1 : 1
+				}
+				return compareNumericStrings(String(left.transaction_id), String(right.transaction_id))
+			})
+
+		for (
+			let index = 0;
+			index < newTransactions.length;
+			index += WALLET_TRANSACTION_INSERT_BATCH_SIZE
+		) {
+			const batch = newTransactions.slice(index, index + WALLET_TRANSACTION_INSERT_BATCH_SIZE)
+			const values = batch.map((transaction) => ({
+				characterId,
+				transactionId: String(transaction.transaction_id),
+				date: parseDateOrNull(transaction.date) as Date,
+				typeId: String(transaction.type_id),
+				quantity: transaction.quantity,
+				unitPrice: String(transaction.unit_price),
+				clientId: String(transaction.client_id),
+				locationId: String(transaction.location_id),
+				isBuy: transaction.is_buy,
+				isPersonal: transaction.is_personal,
+				journalRefId: String(transaction.journal_ref_id),
+				updatedAt: new Date(),
+			}))
 			await this.db
 				.insert(characterMarketTransactions)
-				.values({
-					characterId,
-					transactionId: String(txn.transaction_id),
-					date: new Date(txn.date),
-					typeId: String(txn.type_id),
-					quantity: txn.quantity,
-					unitPrice: txn.unit_price.toString(),
-					clientId: String(txn.client_id),
-					locationId: String(txn.location_id),
-					isBuy: txn.is_buy,
-					isPersonal: txn.is_personal,
-					journalRefId: String(txn.journal_ref_id),
-					updatedAt: new Date(),
-				})
-				.onConflictDoUpdate({
+				.values(values)
+				.onConflictDoNothing({
 					target: [
 						characterMarketTransactions.characterId,
 						characterMarketTransactions.transactionId,
 					],
-					set: {
-						date: new Date(txn.date),
-						typeId: String(txn.type_id),
-						quantity: txn.quantity,
-						unitPrice: txn.unit_price.toString(),
-						clientId: String(txn.client_id),
-						locationId: String(txn.location_id),
-						isBuy: txn.is_buy,
-						isPersonal: txn.is_personal,
-						journalRefId: String(txn.journal_ref_id),
-						updatedAt: new Date(),
-					},
 				})
 		}
-
-		const results = await this.db.query.characterMarketTransactions.findMany({
-			where: eq(characterMarketTransactions.characterId, characterId),
-		})
-
-		return results.map((r) => ({
-			id: r.id,
-			characterId: createEveCharacterId(r.characterId),
-			transactionId: String(r.transactionId),
-			date: new Date(r.date),
-			typeId: r.typeId,
-			quantity: r.quantity,
-			unitPrice: r.unitPrice,
-			clientId: String(r.clientId),
-			locationId: String(r.locationId),
-			isBuy: r.isBuy,
-			isPersonal: r.isPersonal,
-			journalRefId: r.journalRefId,
-			createdAt: r.createdAt,
-			updatedAt: r.updatedAt,
-		}))
 	}
 
 	/**

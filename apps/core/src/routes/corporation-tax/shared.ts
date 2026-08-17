@@ -318,6 +318,7 @@ export function parseRollupReportFiltersFromQuery(
 		toDate?: Date
 		refTypes?: string[]
 		incomeMode?: 'total' | 'assessed'
+		walletSource?: 'corporation' | 'character'
 		limit?: number
 		offset?: number
 		sortBy?: string
@@ -338,6 +339,7 @@ export function parseRollupReportFiltersFromQuery(
 	const sortBy = request.query('sortBy') || undefined
 	const sortDirection = parseSortDirectionQueryParam(request.query('sortDir'))
 	const incomeMode = request.query('incomeMode') || undefined
+	const walletSource = request.query('walletSource') || undefined
 
 	if (fromDate === null) {
 		return { error: 'fromDate must be a valid ISO date string' }
@@ -363,6 +365,12 @@ export function parseRollupReportFiltersFromQuery(
 	if (incomeMode && incomeMode !== 'total' && incomeMode !== 'assessed') {
 		return { error: "incomeMode must be 'total' or 'assessed'" }
 	}
+	if (walletSource && walletSource !== 'corporation' && walletSource !== 'character') {
+		return { error: "walletSource must be 'corporation' or 'character'" }
+	}
+	if (walletSource === 'character' && incomeMode === 'assessed') {
+		return { error: "incomeMode 'assessed' is only available for corporation wallets" }
+	}
 	if (sortBy && options?.allowedSortFields && !options.allowedSortFields.includes(sortBy)) {
 		return { error: `sortBy must be one of: ${options.allowedSortFields.join(', ')}` }
 	}
@@ -374,6 +382,7 @@ export function parseRollupReportFiltersFromQuery(
 			toDate: toDate ?? undefined,
 			refTypes: refTypes && refTypes.length > 0 ? refTypes : undefined,
 			incomeMode: incomeMode as 'total' | 'assessed' | undefined,
+			walletSource: walletSource as 'corporation' | 'character' | undefined,
 			limit: limit ?? undefined,
 			offset: offset ?? undefined,
 			sortBy: sortBy ?? undefined,

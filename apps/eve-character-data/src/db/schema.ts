@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import {
 	boolean,
 	index,
@@ -18,22 +19,26 @@ import {
 /**
  * Character public information
  */
-export const characterPublicInfo = pgTable('character_public_info', {
-	characterId: text('character_id').primaryKey(),
-	name: text('name').notNull(),
-	corporationId: text('corporation_id').notNull(),
-	allianceId: text('alliance_id'),
-	birthday: text('birthday').notNull(),
-	raceId: text('race_id').notNull(),
-	bloodlineId: text('bloodline_id').notNull(),
-	securityStatus: real('security_status'),
-	description: text('description'),
-	gender: text('gender').notNull().$type<'male' | 'female'>(),
-	factionId: text('faction_id'),
-	title: text('title'),
-	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-})
+export const characterPublicInfo = pgTable(
+	'character_public_info',
+	{
+		characterId: text('character_id').primaryKey(),
+		name: text('name').notNull(),
+		corporationId: text('corporation_id').notNull(),
+		allianceId: text('alliance_id'),
+		birthday: text('birthday').notNull(),
+		raceId: text('race_id').notNull(),
+		bloodlineId: text('bloodline_id').notNull(),
+		securityStatus: real('security_status'),
+		description: text('description'),
+		gender: text('gender').notNull().$type<'male' | 'female'>(),
+		factionId: text('faction_id'),
+		title: text('title'),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [index('character_public_info_corp_idx').on(table.corporationId)]
+)
 
 /**
  * Character corporation history
@@ -209,6 +214,11 @@ export const characterWalletJournal = pgTable(
 			table.reason,
 			table.date
 		),
+		index('character_wallet_journal_char_num_id_idx').using(
+			'btree',
+			table.characterId,
+			sql`(${table.journalId}::numeric)`
+		),
 	]
 )
 
@@ -236,7 +246,15 @@ export const characterMarketTransactions = pgTable(
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 	},
-	(table) => [unique().on(table.characterId, table.transactionId)]
+	(table) => [
+		unique().on(table.characterId, table.transactionId),
+		index('character_market_tx_char_date_idx').on(table.characterId, table.date),
+		index('character_market_tx_char_num_id_idx').using(
+			'btree',
+			table.characterId,
+			sql`(${table.transactionId}::numeric)`
+		),
+	]
 )
 
 /**

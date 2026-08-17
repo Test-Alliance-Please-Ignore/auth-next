@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 
 import type { TaxExportFormat, TaxExportReportType } from '@repo/corporation-tax'
 import type { TaxRollupReportQueryFilters } from '@/hooks/corporation-tax'
+import type { TaxIncomeSourceControls } from '@/lib/tax-report-types'
 import type { SortDirection } from '@/lib/tax-report-utils'
 
 export type TaxReportView = TaxExportReportType | 'missing_esi_keys'
@@ -38,6 +39,8 @@ export function TaxReportWorkspace({
 	activeReportIsExportable,
 	activeExportReportType,
 	reportWindowFilters,
+	incomeSourceControls,
+	onIncomeSourceControlsChange,
 	onTotalTaxesSortChange,
 	onEssSortChange,
 	onDiscrepancySortChange,
@@ -70,6 +73,8 @@ export function TaxReportWorkspace({
 	activeReportIsExportable: boolean
 	activeExportReportType: TaxExportReportType | null
 	reportWindowFilters: TaxRollupReportQueryFilters
+	incomeSourceControls: TaxIncomeSourceControls
+	onIncomeSourceControlsChange: (controls: TaxIncomeSourceControls) => void
 	onTotalTaxesSortChange: (sortBy: string, sortDir: SortDirection) => void
 	onEssSortChange: (sortBy: string, sortDir: SortDirection) => void
 	onDiscrepancySortChange: (sortBy: string, sortDir: SortDirection) => void
@@ -140,7 +145,12 @@ export function TaxReportWorkspace({
 				) : null}
 
 				{selectedReportView === 'top_income_sources' ? (
-					<TopIncomeSourcesReportSection filters={reportWindowFilters} enabled={canView} />
+					<TopIncomeSourcesReportSection
+						filters={reportWindowFilters}
+						enabled={canView}
+						controls={incomeSourceControls}
+						onControlsChange={onIncomeSourceControlsChange}
+					/>
 				) : null}
 
 				{selectedReportView === 'ess_payout' ? (

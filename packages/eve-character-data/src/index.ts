@@ -29,6 +29,12 @@ export type EveCharacterSyncDataType =
 	| 'mining-ledger'
 	| 'open-market-orders'
 
+export interface FetchAuthenticatedDataOptions {
+	includeSkills?: boolean
+	includeAttributes?: boolean
+	includeWallet?: boolean
+}
+
 /**
  * ESI Response Types
  */
@@ -527,7 +533,11 @@ export interface EveCharacterData {
 	 * @param characterId - EVE character ID
 	 * @param forceRefresh - Force refresh even if cached
 	 */
-	fetchAuthenticatedData(characterId: string, forceRefresh?: boolean): Promise<void>
+	fetchAuthenticatedData(
+		characterId: string,
+		forceRefresh?: boolean,
+		options?: FetchAuthenticatedDataOptions
+	): Promise<void>
 
 	/**
 	 * Fetch and store wallet journal entries (requires token)
@@ -743,8 +753,11 @@ export class EveCharacterDataInstance extends RpcTarget {
 		await this.characterDataObject.fetchCorporationHistory(this.characterId)
 	}
 
-	async fetchAuthenticatedData(forceRefresh?: boolean): Promise<void> {
-		await this.characterDataObject.fetchAuthenticatedData(this.characterId, forceRefresh)
+	async fetchAuthenticatedData(
+		forceRefresh?: boolean,
+		options?: FetchAuthenticatedDataOptions
+	): Promise<void> {
+		await this.characterDataObject.fetchAuthenticatedData(this.characterId, forceRefresh, options)
 	}
 
 	async fetchWalletJournal(forceRefresh?: boolean): Promise<void> {

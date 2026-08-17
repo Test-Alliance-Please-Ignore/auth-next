@@ -49,6 +49,10 @@ import type { CorporationAuthStatus, EveCorporationData } from '@repo/eve-corpor
 import type { CorporationTaxDb } from '../db'
 
 const UNATTRIBUTED_CHARACTER_ID = '__unattributed__'
+const CORPORATION_WALLET_SOURCE_TYPES = [
+	'corporation_wallet_journal',
+	'corporation_wallet_transaction',
+] as const
 
 export class TaxReportService {
 	private readonly REPORT_CORPORATION_ID_INLINE_LIMIT = 100
@@ -287,15 +291,59 @@ export class TaxReportService {
 	async getTopIncomeSourcesReport(
 		filters: TaxRollupReportFilters = {}
 	): Promise<TaxTopIncomeSourceRow[]> {
-		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
+		const corporationIds = await this.resolveIncomeReportCorporationIds(filters)
 		if (corporationIds.length === 0) {
 			return []
+		}
+		if (filters.incomeMode === 'assessed') {
+			if (filters.walletSource === 'character') {
+				throw new Error("incomeMode 'assessed' is only available for corporation wallets")
+			}
+
+			const monthlyRows = await this.getAssessedIncomeSourcesMonthlyReport(filters, corporationIds)
+			const totals = new Map<
+				string,
+				{ entryCount: number; essEntryCount: number; totalIncomeCenti: bigint }
+			>()
+			for (const row of monthlyRows) {
+				const current = totals.get(row.refType) ?? {
+					entryCount: 0,
+					essEntryCount: 0,
+					totalIncomeCenti: 0n,
+				}
+				current.entryCount += row.entryCount
+				current.essEntryCount += row.essEntryCount
+				current.totalIncomeCenti += this.parseDecimalToCenti(row.totalIncome)
+				totals.set(row.refType, current)
+			}
+
+			const offset = Math.max(filters.offset ?? 0, 0)
+			const limit = Math.min(Math.max(filters.limit ?? 20, 1), 200)
+			return [...totals.entries()]
+				.sort(([leftRefType, left], [rightRefType, right]) => {
+					if (left.totalIncomeCenti !== right.totalIncomeCenti) {
+						return left.totalIncomeCenti > right.totalIncomeCenti ? -1 : 1
+					}
+					return leftRefType.localeCompare(rightRefType)
+				})
+				.slice(offset, offset + limit)
+				.map(([refType, row]) => ({
+					refType,
+					entryCount: row.entryCount,
+					essEntryCount: row.essEntryCount,
+					totalIncome: this.formatCenti(row.totalIncomeCenti),
+				}))
 		}
 
 		const offset = Math.max(filters.offset ?? 0, 0)
 		const limit = Math.min(Math.max(filters.limit ?? 20, 1), 200)
+		if (filters.walletSource === 'character') {
+			return this.getCharacterIncomeSourcesReport({ ...filters, limit, offset }, corporationIds)
+		}
+
 		const where = and(
 			this.buildLedgerWhere(filters, corporationIds),
+			inArray(taxLedgerEntries.sourceType, CORPORATION_WALLET_SOURCE_TYPES),
 			sql`CAST(${taxLedgerEntries.amount} AS numeric) > 0`
 		)
 		const rows = await this.db
@@ -325,18 +373,25 @@ export class TaxReportService {
 	async getTopIncomeSourcesMonthlyReport(
 		filters: TaxRollupReportFilters = {}
 	): Promise<TaxTopIncomeSourceMonthlyRow[]> {
-		const corporationIds = await this.resolveReportCorporationIds(filters.corporationId)
+		const corporationIds = await this.resolveIncomeReportCorporationIds(filters)
 		if (corporationIds.length === 0) {
 			return []
 		}
 
+		if (filters.walletSource === 'character' && filters.incomeMode === 'assessed') {
+			throw new Error("incomeMode 'assessed' is only available for corporation wallets")
+		}
 		if (filters.incomeMode === 'assessed') {
 			return this.getAssessedIncomeSourcesMonthlyReport(filters, corporationIds)
+		}
+		if (filters.walletSource === 'character') {
+			return this.getCharacterIncomeSourcesMonthlyReport(filters, corporationIds)
 		}
 
 		const monthStartExpr = sql<Date>`date_trunc('month', ${taxLedgerEntries.entryDate})`
 		const where = and(
 			this.buildLedgerWhere(filters, corporationIds),
+			inArray(taxLedgerEntries.sourceType, CORPORATION_WALLET_SOURCE_TYPES),
 			sql`CAST(${taxLedgerEntries.amount} AS numeric) > 0`
 		)
 		const rows = await this.db
@@ -362,6 +417,130 @@ export class TaxReportService {
 			essEntryCount: this.toInteger(row.essEntryCount),
 			totalIncome: this.formatCenti(this.parseDecimalToCenti(row.totalIncome)),
 		}))
+	}
+
+	private async getCharacterIncomeSourcesReport(
+		filters: TaxRollupReportFilters,
+		corporationIds: string[]
+	): Promise<TaxTopIncomeSourceRow[]> {
+		const result = await this.db.execute(
+			this.buildCharacterIncomeQuery(filters, corporationIds, false)
+		)
+		return (result.rows as Array<Record<string, unknown>>).map((row) => ({
+			refType: String(row.ref_type),
+			entryCount: this.toInteger(String(row.entry_count ?? 0)),
+			essEntryCount: this.toInteger(String(row.ess_entry_count ?? 0)),
+			totalIncome: this.formatCenti(this.parseDecimalToCenti(String(row.total_income ?? '0'))),
+		}))
+	}
+
+	private async getCharacterIncomeSourcesMonthlyReport(
+		filters: TaxRollupReportFilters,
+		corporationIds: string[]
+	): Promise<TaxTopIncomeSourceMonthlyRow[]> {
+		const result = await this.db.execute(
+			this.buildCharacterIncomeQuery(filters, corporationIds, true)
+		)
+		return (result.rows as Array<Record<string, unknown>>).map((row) => ({
+			monthStart: new Date(String(row.month_start)),
+			refType: String(row.ref_type),
+			entryCount: this.toInteger(String(row.entry_count ?? 0)),
+			essEntryCount: this.toInteger(String(row.ess_entry_count ?? 0)),
+			totalIncome: this.formatCenti(this.parseDecimalToCenti(String(row.total_income ?? '0'))),
+		}))
+	}
+
+	private buildCharacterIncomeQuery(
+		filters: TaxRollupReportFilters,
+		corporationIds: string[],
+		monthly: boolean
+	) {
+		const refTypes = filterTaxIncomeRefTypes(filters.refTypes)
+		const journalRefTypeCondition = refTypes?.length
+			? sql`AND cwj.ref_type IN (${sql.join(
+					refTypes.map((refType) => sql`${refType}`),
+					sql`, `
+				)})`
+			: sql``
+		const includeMarketTransactions = !refTypes || refTypes.includes('market_transaction')
+		const transactionRefTypeCondition = includeMarketTransactions ? sql`` : sql`AND FALSE`
+		const fromJournalCondition = filters.fromDate ? sql`AND cwj.date >= ${filters.fromDate}` : sql``
+		const toJournalCondition = filters.toDate ? sql`AND cwj.date <= ${filters.toDate}` : sql``
+		const fromTransactionCondition = filters.fromDate
+			? sql`AND cmt.date >= ${filters.fromDate}`
+			: sql``
+		const toTransactionCondition = filters.toDate ? sql`AND cmt.date <= ${filters.toDate}` : sql``
+		const corporationCondition = this.buildCharacterCorporationCondition(corporationIds)
+
+		return sql`
+			WITH player_income AS (
+				SELECT
+					cwj.date AS entry_date,
+					cwj.ref_type,
+					CAST(cwj.amount AS numeric) AS amount
+				FROM character_wallet_journal cwj
+				INNER JOIN character_public_info cpi
+					ON cpi.character_id = cwj.character_id
+				WHERE ${corporationCondition}
+					${fromJournalCondition}
+					${toJournalCondition}
+					${journalRefTypeCondition}
+					AND CAST(cwj.amount AS numeric) > 0
+
+				UNION ALL
+
+				SELECT
+					cmt.date AS entry_date,
+					'market_transaction' AS ref_type,
+					CAST(cmt.unit_price AS numeric) * cmt.quantity AS amount
+				FROM character_market_transactions cmt
+				INNER JOIN character_public_info cpi
+					ON cpi.character_id = cmt.character_id
+				WHERE ${corporationCondition}
+					AND cmt.is_buy = FALSE
+					${fromTransactionCondition}
+					${toTransactionCondition}
+					${transactionRefTypeCondition}
+					AND CAST(cmt.unit_price AS numeric) * cmt.quantity > 0
+			)
+			SELECT
+				${monthly ? sql`date_trunc('month', entry_date) AS month_start,` : sql``}
+				ref_type,
+				COUNT(*)::int AS entry_count,
+				SUM(CASE WHEN ref_type = 'ess_escrow_transfer' THEN 1 ELSE 0 END)::int AS ess_entry_count,
+				COALESCE(SUM(amount), 0)::text AS total_income
+			FROM player_income
+			WHERE amount > 0
+			GROUP BY ${monthly ? sql`date_trunc('month', entry_date), ` : sql``}ref_type
+			ORDER BY ${monthly ? sql`date_trunc('month', entry_date) ASC, ` : sql``}
+				COALESCE(SUM(amount), 0) DESC,
+				ref_type ASC
+			${monthly ? sql`` : sql`LIMIT ${filters.limit ?? 20} OFFSET ${filters.offset ?? 0}`}
+		`
+	}
+
+	private buildCharacterCorporationCondition(corporationIds: string[]) {
+		if (corporationIds.length <= this.REPORT_CORPORATION_ID_INLINE_LIMIT) {
+			return sql`cpi.corporation_id IN (${sql.join(
+				corporationIds.map((corporationId) => sql`${corporationId}`),
+				sql`, `
+			)})`
+		}
+
+		return sql`cpi.corporation_id IN (
+			SELECT corporation_id
+			FROM managed_corporations
+			WHERE is_active = TRUE
+		)`
+	}
+
+	private async resolveIncomeReportCorporationIds(
+		filters: TaxRollupReportFilters
+	): Promise<string[]> {
+		if (filters.walletSource === 'character' && !filters.corporationId) {
+			return this.listKnownCorporationIds()
+		}
+		return this.resolveReportCorporationIds(filters.corporationId)
 	}
 
 	private async getAssessedIncomeSourcesMonthlyReport(

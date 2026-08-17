@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
 import {
 	BillStatusReportGrid,
@@ -25,7 +25,7 @@ import {
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { TAX_REF_TYPE_OPTIONS } from '@/lib/tax-display'
 
-import type { TaxRollupReportQueryFilters } from '@/lib/tax-report-types'
+import type { TaxIncomeSourceControls, TaxRollupReportQueryFilters } from '@/lib/tax-report-types'
 import type { SortDirection } from '@/lib/tax-report-utils'
 
 const REPORT_PAGE_SIZE_DEFAULT = 25
@@ -78,9 +78,9 @@ export function TotalTaxesReportSection(props: {
 export function TopIncomeSourcesReportSection(props: {
 	filters: TaxRollupReportQueryFilters
 	enabled: boolean
+	controls: TaxIncomeSourceControls
+	onControlsChange: (controls: TaxIncomeSourceControls) => void
 }) {
-	const [incomeTypes, setIncomeTypes] = useState<string[]>([])
-	const [incomeMode, setIncomeMode] = useState<'total' | 'assessed'>('total')
 	const { data: taxableIncomeTypes = [] } = useTaxableIncomeRefTypes(
 		props.filters.corporationId,
 		props.enabled
@@ -91,8 +91,9 @@ export function TopIncomeSourcesReportSection(props: {
 		error,
 	} = useTaxTopIncomeSourcesMonthlyReport({
 		...props.filters,
-		refTypes: incomeTypes,
-		incomeMode,
+		refTypes: props.controls.refTypes,
+		incomeMode: props.controls.incomeMode,
+		walletSource: props.controls.walletSource,
 		enabled: props.enabled,
 	})
 
@@ -104,8 +105,8 @@ export function TopIncomeSourcesReportSection(props: {
 					<div className="min-w-0 flex-1">
 						<Select
 							options={TAX_REF_TYPE_OPTIONS}
-							values={incomeTypes}
-							onValuesChange={setIncomeTypes}
+							values={props.controls.refTypes}
+							onValuesChange={(refTypes) => props.onControlsChange({ ...props.controls, refTypes })}
 							multiple
 							searchable
 							placeholder="All income types"
@@ -119,7 +120,9 @@ export function TopIncomeSourcesReportSection(props: {
 						className="h-10 shrink-0"
 						showIcon={false}
 						disabled={taxableIncomeTypes.length === 0}
-						onClick={() => setIncomeTypes(taxableIncomeTypes)}
+						onClick={() =>
+							props.onControlsChange({ ...props.controls, refTypes: taxableIncomeTypes })
+						}
 					>
 						Taxable only
 					</Button>
@@ -128,17 +131,42 @@ export function TopIncomeSourcesReportSection(props: {
 						variant="secondary"
 						className="h-10 shrink-0"
 						showIcon={false}
-						onClick={() => setIncomeMode((current) => (current === 'total' ? 'assessed' : 'total'))}
+						onClick={() =>
+							props.onControlsChange({
+								...props.controls,
+								walletSource:
+									props.controls.walletSource === 'corporation' ? 'character' : 'corporation',
+								incomeMode: 'total',
+							})
+						}
 					>
-						{incomeMode === 'total' ? 'Show Assessed' : 'Show Total'}
+						{props.controls.walletSource === 'corporation'
+							? 'Show Player Wallets'
+							: 'Show Corporation Wallets'}
 					</Button>
+					{props.controls.walletSource === 'corporation' ? (
+						<Button
+							type="button"
+							variant="secondary"
+							className="h-10 shrink-0"
+							showIcon={false}
+							onClick={() =>
+								props.onControlsChange({
+									...props.controls,
+									incomeMode: props.controls.incomeMode === 'total' ? 'assessed' : 'total',
+								})
+							}
+						>
+							{props.controls.incomeMode === 'total' ? 'Show Assessed' : 'Show Total'}
+						</Button>
+					) : null}
 					<Button
 						type="button"
 						variant="ghost"
 						className="h-10 shrink-0"
 						showIcon={false}
-						disabled={incomeTypes.length === 0}
-						onClick={() => setIncomeTypes([])}
+						disabled={props.controls.refTypes.length === 0}
+						onClick={() => props.onControlsChange({ ...props.controls, refTypes: [] })}
 					>
 						Reset
 					</Button>
@@ -152,7 +180,11 @@ export function TopIncomeSourcesReportSection(props: {
 					{error instanceof Error ? error.message : 'Failed to load income sources report'}
 				</div>
 			) : (
-				<TopIncomeSourcesMonthlyChart rows={data} incomeMode={incomeMode} />
+				<TopIncomeSourcesMonthlyChart
+					rows={data}
+					incomeMode={props.controls.incomeMode}
+					walletSource={props.controls.walletSource}
+				/>
 			)}
 		</div>
 	)

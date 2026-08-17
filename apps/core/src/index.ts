@@ -350,6 +350,10 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		return this.getService().getUserCharacterIds(userId)
 	}
 
+	async isMemberCorporation(corporationId: string): Promise<boolean> {
+		return this.getService().isMemberCorporation(corporationId)
+	}
+
 	/**
 	 * List a page of users that currently have at least one active linked character.
 	 */

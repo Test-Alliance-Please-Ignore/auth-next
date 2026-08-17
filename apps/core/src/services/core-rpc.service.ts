@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import { discordServers, userCharacters, users } from '../db/schema'
+import { discordServers, managedCorporations, userCharacters, users } from '../db/schema'
 import {
 	clearCorporationDirectorHealthCache,
 	clearCorporationSyncStatusCache,
@@ -711,6 +711,23 @@ export class CoreRpcService {
 		})
 
 		return characters.map((character) => character.characterId)
+	}
+
+	/**
+	 * Whether wallet data may be ingested for a character affiliated with a
+	 * corporation currently configured as an active member corporation.
+	 */
+	async isMemberCorporation(corporationId: string): Promise<boolean> {
+		const corporation = await this.db.query.managedCorporations.findFirst({
+			where: and(
+				eq(managedCorporations.corporationId, corporationId),
+				eq(managedCorporations.isActive, true),
+				eq(managedCorporations.isMemberCorporation, true)
+			),
+			columns: { corporationId: true },
+		})
+
+		return corporation !== undefined
 	}
 
 	async listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{

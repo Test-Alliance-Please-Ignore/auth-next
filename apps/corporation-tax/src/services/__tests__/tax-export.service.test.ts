@@ -3,6 +3,54 @@ import { describe, expect, it, vi } from 'vitest'
 import { TaxExportService } from '../tax-export.service'
 
 describe('TaxExportService runDueExportSchedules', () => {
+	it('passes income source selectors to the income sources report', async () => {
+		const getTopIncomeSourcesReport = vi.fn().mockResolvedValue([])
+		const service = new TaxExportService({} as any, { getTopIncomeSourcesReport } as any)
+
+		await (service as any).getReportRows({
+			reportType: 'top_income_sources',
+			corporationId: '1001',
+			filters: {
+				fromDate: '2026-07-01T00:00:00.000Z',
+				toDate: '2026-08-31T23:59:59.999Z',
+				refTypes: ['bounty_prizes'],
+				incomeMode: 'assessed',
+				walletSource: 'corporation',
+			},
+		})
+
+		expect(getTopIncomeSourcesReport).toHaveBeenCalledWith({
+			corporationId: '1001',
+			fromDate: new Date('2026-07-01T00:00:00.000Z'),
+			toDate: new Date('2026-08-31T23:59:59.999Z'),
+			refTypes: ['bounty_prizes'],
+			incomeMode: 'assessed',
+			walletSource: 'corporation',
+			limit: 200,
+			offset: 0,
+		})
+	})
+
+	it('passes player wallet income source selection to the export report', async () => {
+		const getTopIncomeSourcesReport = vi.fn().mockResolvedValue([])
+		const service = new TaxExportService({} as any, { getTopIncomeSourcesReport } as any)
+
+		await (service as any).getReportRows({
+			reportType: 'top_income_sources',
+			filters: {
+				walletSource: 'character',
+				incomeMode: 'total',
+			},
+		})
+
+		expect(getTopIncomeSourcesReport).toHaveBeenCalledWith({
+			incomeMode: 'total',
+			walletSource: 'character',
+			limit: 200,
+			offset: 0,
+		})
+	})
+
 	it('returns processed count and failure details for failed schedules', async () => {
 		const scheduleRows = [
 			{

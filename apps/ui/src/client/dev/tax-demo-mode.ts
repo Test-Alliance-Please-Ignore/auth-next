@@ -855,6 +855,10 @@ function updateDemoConfig(input?: Partial<DemoTaxConfig> | null): DemoTaxConfig 
 function filterLedgerEntries(rows: TaxLedgerEntry[], filters?: TaxReportFilters): TaxLedgerEntry[] {
 	return rows.filter((row) => {
 		if (filters?.corporationId && row.corporationId !== filters.corporationId) return false
+		if (filters?.walletSource === 'character' && !row.sourceType.startsWith('character_wallet_'))
+			return false
+		if (filters?.walletSource !== 'character' && !row.sourceType.startsWith('corporation_wallet_'))
+			return false
 		if (filters?.refTypes?.length && !filters.refTypes.includes(row.refType)) return false
 		if (!matchesDate(row.entryDate, filters?.fromDate, filters?.toDate)) return false
 		return true
