@@ -16,6 +16,7 @@
 		}
 	},
 	"vars": {},
+	"analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "nuauth_analytics" }],
 	"kv_namespaces": [
 		{
 			"binding": "ESI_RATE_LIMITS",

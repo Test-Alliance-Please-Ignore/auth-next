@@ -8,6 +8,7 @@ export type Env = SharedHonoEnv & {
 	ESI: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
+	ANALYTICS: AnalyticsEngineDataset
 
 	// EVE SSO OAuth Configuration
 	// These secrets should be set via: wrangler secret put <SECRET_NAME>

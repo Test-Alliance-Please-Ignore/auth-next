@@ -13,6 +13,7 @@
 		"@neondatabase/api-client": "2.7.3",
 		"@neondatabase/serverless": "1.0.2",
 		"@repo/hono-helpers": "workspace:*",
+		"@repo/worker-utils": "workspace:*",
 		"drizzle-orm": "0.45.2"
 	},
 	"devDependencies": {
