@@ -21,10 +21,10 @@ export function createDb(
 	useWebSocket = true
 ): EveTokenStoreDbClient {
 	if (useWebSocket) {
-		return createDbClientWs(databaseUrl, schema, ctx)
+		return createDbClientWs(databaseUrl, schema)
 	}
 
-	return createDbClient(databaseUrl, schema, undefined, ctx)
+	return createDbClient(databaseUrl, schema)
 }
 
 export { schema }
