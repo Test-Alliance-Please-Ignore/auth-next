@@ -88,6 +88,7 @@ export function TopIncomeSourcesReportSection(props: {
 	const {
 		data = [],
 		isLoading,
+		isFetching,
 		error,
 	} = useTaxTopIncomeSourcesMonthlyReport({
 		...props.filters,
@@ -184,9 +185,9 @@ export function TopIncomeSourcesReportSection(props: {
 				</div>
 			</div>
 
-			{isLoading ? (
+			{isLoading && data.length === 0 ? (
 				<div className="py-8 text-sm text-muted-foreground">Loading income sources...</div>
-			) : error ? (
+			) : error && data.length === 0 ? (
 				<div className="py-8 text-sm text-destructive">
 					{error instanceof Error ? error.message : 'Failed to load income sources report'}
 				</div>
@@ -195,6 +196,7 @@ export function TopIncomeSourcesReportSection(props: {
 					rows={data}
 					incomeMode={props.controls.incomeMode}
 					walletSource={props.controls.walletSource}
+					loading={isFetching}
 				/>
 			)}
 		</div>

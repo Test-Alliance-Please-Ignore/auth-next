@@ -1248,11 +1248,31 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		_forceRefresh = false
 	): Promise<void> {
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const response = await tokenStoreStub.fetchEsiAllPages<RawCharacterWalletJournalEntry>(
-			`/characters/${String(characterId)}/wallet/journal`,
-			String(characterId),
-			{ cacheMode: 'no-store' }
-		)
+		const [watermark] = await this.db
+			.select({
+				maxJournalId: sql<string | null>`max(${characterWalletJournal.journalId}::numeric)::text`,
+				maxJournalDate: sql<Date | string | null>`max(${characterWalletJournal.date})`,
+			})
+			.from(characterWalletJournal)
+			.where(eq(characterWalletJournal.characterId, characterId))
+		const storedMaxJournalId = watermark?.maxJournalId ?? null
+		const storedMaxJournalDate = parseDateOrNull(watermark?.maxJournalDate)
+		const journalPath = `/characters/${String(characterId)}/wallet/journal`
+		const response = storedMaxJournalId
+			? await tokenStoreStub.fetchEsiPagesUntilWatermark<RawCharacterWalletJournalEntry>(
+					journalPath,
+					String(characterId),
+					{
+						maxId: storedMaxJournalId,
+						maxDate: storedMaxJournalDate,
+					},
+					{ cacheMode: 'no-store' }
+				)
+			: await tokenStoreStub.fetchEsiAllPages<RawCharacterWalletJournalEntry>(
+					journalPath,
+					String(characterId),
+					{ cacheMode: 'no-store' }
+				)
 
 		let entries: EsiWalletJournalEntry[]
 		try {
@@ -1278,16 +1298,6 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		} finally {
 			disposeRpcResult(response)
 		}
-
-		const [watermark] = await this.db
-			.select({
-				maxJournalId: sql<string | null>`max(${characterWalletJournal.journalId}::numeric)::text`,
-				maxJournalDate: sql<Date | string | null>`max(${characterWalletJournal.date})`,
-			})
-			.from(characterWalletJournal)
-			.where(eq(characterWalletJournal.characterId, characterId))
-		const storedMaxJournalId = watermark?.maxJournalId ?? null
-		const storedMaxJournalDate = parseDateOrNull(watermark?.maxJournalDate)
 
 		const candidateEntries = entries.filter((entry) => {
 			if (storedMaxJournalId === null) {

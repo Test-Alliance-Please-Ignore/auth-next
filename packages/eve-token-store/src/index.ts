@@ -692,6 +692,23 @@ export interface EveTokenStore {
 	}>
 
 	/**
+	 * Fetch paginated ESI rows from newest to oldest until a journal-style
+	 * watermark has been reached. Without a watermark this falls back to the
+	 * regular full-pagination behavior.
+	 */
+	fetchEsiPagesUntilWatermark<T extends { id: string | number; date?: string | Date }>(
+		basePath: string,
+		characterId: string,
+		watermark?: { maxId: string | null; maxDate: Date | string | null },
+		options?: { cacheMode?: 'default' | 'no-store' }
+	): Promise<{
+		data: T[]
+		pages: number
+		pagesFetched: number
+		stoppedAtWatermark: boolean
+	}>
+
+	/**
 	 * Fetch all pages from a paginated public ESI endpoint (unauthenticated)
 	 * Automatically fetches all pages in parallel and returns combined results
 	 *

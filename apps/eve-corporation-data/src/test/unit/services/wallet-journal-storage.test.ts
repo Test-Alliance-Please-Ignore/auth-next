@@ -109,6 +109,20 @@ describe('wallet journal storage', () => {
 		expect(insert).not.toHaveBeenCalled()
 	})
 
+	it('uses a supplied watermark without re-reading it from the database', async () => {
+		const { db, insert, select, values } = createDb('2', '2026-08-05T00:00:00Z', ['3'])
+		const instance = createDoInstance(db)
+
+		await instance.storeWalletJournal('123', 1, [journalEntry('3')], {
+			maxJournalId: '2',
+			maxJournalDate: new Date('2026-08-05T00:00:00Z'),
+		})
+
+		expect(select).not.toHaveBeenCalled()
+		expect(insert).toHaveBeenCalledOnce()
+		expect(values).toHaveBeenCalledOnce()
+	})
+
 	it('accepts late higher IDs and wrapped lower IDs', async () => {
 		const { db, values } = createDb('500', '2026-08-05T00:00:00Z', ['501', '400', '402'])
 		const instance = createDoInstance(db)

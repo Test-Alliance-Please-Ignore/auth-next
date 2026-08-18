@@ -13,7 +13,7 @@ import {
 	hasAllScopes,
 } from '@repo/eve-token-store'
 import { logger, toErrorLogDetails } from '@repo/hono-helpers'
-import { parseJsonResponse } from '@repo/worker-utils'
+import { parseDateOrNull, parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
 import { eveCharacters, eveTokens } from './db/schema'
@@ -2116,6 +2116,93 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		return {
 			data: allData,
 			pages: totalPages,
+		}
+	}
+
+	async fetchEsiPagesUntilWatermark<T extends { id: string | number; date?: string | Date }>(
+		basePath: string,
+		characterId: string,
+		watermark?: { maxId: string | null; maxDate: Date | string | null },
+		options?: { cacheMode?: 'default' | 'no-store' }
+	): Promise<{
+		data: T[]
+		pages: number
+		pagesFetched: number
+		stoppedAtWatermark: boolean
+	}> {
+		if (!watermark?.maxId) {
+			const result = await this.fetchEsiAllPages<T>(basePath, characterId, options)
+			return {
+				...result,
+				pagesFetched: result.pages,
+				stoppedAtWatermark: false,
+			}
+		}
+
+		const cleanPath = basePath.replace(/[?&]page=\d+/, '')
+		const separator = cleanPath.includes('?') ? '&' : '?'
+		const totalPagesResponse = await this.fetchEsi<T[]>(
+			`${cleanPath}${separator}page=1`,
+			characterId,
+			options
+		)
+		const totalPages = totalPagesResponse.pages ?? 1
+		const entries = [...totalPagesResponse.data]
+		let pagesFetched = 1
+		let stoppedAtWatermark = false
+		let watermarkSeen = false
+		const maxDate = parseDateOrNull(watermark.maxDate)
+
+		const compareNumericIds = (left: string, right: string): number => {
+			try {
+				const leftValue = BigInt(left)
+				const rightValue = BigInt(right)
+				return leftValue === rightValue ? 0 : leftValue > rightValue ? 1 : -1
+			} catch {
+				return left.localeCompare(right, 'en')
+			}
+		}
+
+		const hasRowsAtOrBeyondWatermark = (pageEntries: T[]): boolean =>
+			pageEntries.some((entry) => {
+				const entryId = String(entry.id)
+				if (entryId === watermark.maxId) return false
+				if (compareNumericIds(entryId, watermark.maxId!) > 0) return true
+				const entryDate = parseDateOrNull(entry.date)
+				return maxDate !== null && entryDate !== null && entryDate >= maxDate
+			})
+
+		const inspectPage = (pageEntries: T[]): boolean => {
+			if (pageEntries.some((entry) => String(entry.id) === watermark.maxId)) {
+				watermarkSeen = true
+			}
+			return watermarkSeen && !hasRowsAtOrBeyondWatermark(pageEntries)
+		}
+
+		if (inspectPage(totalPagesResponse.data)) {
+			stoppedAtWatermark = true
+		} else {
+			for (let page = 2; page <= totalPages; page += 1) {
+				const response = await this.fetchEsi<T[]>(
+					`${cleanPath}${separator}page=${page}`,
+					characterId,
+					options
+				)
+				pagesFetched += 1
+				entries.push(...response.data)
+
+				if (inspectPage(response.data)) {
+					stoppedAtWatermark = true
+					break
+				}
+			}
+		}
+
+		return {
+			data: entries,
+			pages: totalPages,
+			pagesFetched,
+			stoppedAtWatermark,
 		}
 	}
 

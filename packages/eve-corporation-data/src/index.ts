@@ -432,6 +432,11 @@ export interface WalletJournalStoreResult {
 	persistedNewRows: number
 }
 
+export interface WalletJournalWatermark {
+	maxJournalId: string | null
+	maxJournalDate: Date | null
+}
+
 export interface WalletTransactionsStoreResult {
 	persistedNewRows: number
 }
@@ -1309,8 +1314,14 @@ export interface EveCorporationData {
 	storeWalletJournal(
 		corporationId: string,
 		division: number,
-		entries: any[]
+		entries: any[],
+		watermark?: WalletJournalWatermark
 	): Promise<WalletJournalStoreResult>
+
+	/** Read compact journal watermarks for all wallet divisions. */
+	getWalletJournalWatermarks(
+		corporationId: string
+	): Promise<Array<{ division: number; watermark: WalletJournalWatermark }>>
 
 	/**
 	 * Store wallet transactions (workflow-friendly)
