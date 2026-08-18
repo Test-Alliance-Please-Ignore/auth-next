@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, createDbClientWs, desc, eq, isNull, sql } from '@repo/db-utils'
+import { and, createDbClient, desc, eq, isNull, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import {
 	esiGetCharacterFleetInformationSchema,
@@ -80,7 +80,7 @@ async function resolveFleetBossAccessCharacterId(
 }
 
 async function syncFleetBossAccess(
-	db: ReturnType<typeof createDbClientWs<typeof schema>>,
+	db: ReturnType<typeof createDbClient<typeof schema>>,
 	args: {
 		fleetId: string
 		trackingSessionId: string
@@ -163,7 +163,7 @@ async function syncFleetBossAccess(
 export class FleetMonitorDO extends DurableObject {
 	private static readonly BASE_POLL_INTERVAL_MS = 10 * 1000
 	private static readonly MONITOR_STATE_TTL_MS = 24 * 60 * 60 * 1000
-	private db: ReturnType<typeof createDbClientWs<typeof schema>>
+	private db: ReturnType<typeof createDbClient<typeof schema>>
 	private finalizeSessionPromise: Promise<void> | null = null
 	// In-memory caches for ID to name mappings
 	private characterNameCache = new Map<string, string>()
@@ -180,7 +180,7 @@ export class FleetMonitorDO extends DurableObject {
 		public env: Env
 	) {
 		super(state, env)
-		this.db = createDbClientWs(this.env.DATABASE_URL, schema)
+		this.db = createDbClient(this.env.DATABASE_URL, schema)
 
 		// Initialize SQLite schema and run migrations
 		this.initializeSchema()
