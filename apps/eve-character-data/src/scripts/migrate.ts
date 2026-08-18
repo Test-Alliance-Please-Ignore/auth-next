@@ -2,7 +2,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from 'dotenv'
 
-import { migrateWs } from '@repo/db-utils'
+import { migrate } from '@repo/db-utils'
 
 import drizzleConfig from '../../drizzle.config'
 import { createDb } from '../db'
@@ -33,7 +33,7 @@ async function main() {
 		migrationsFolder: drizzleConfig.out || './.migrations',
 	}
 
-	await migrateWs(db, migrationConfig)
+	await migrate(db, migrationConfig)
 
 	console.log('Migrations completed successfully!')
 	process.exit(0)
