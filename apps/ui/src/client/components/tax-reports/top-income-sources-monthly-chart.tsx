@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { formatTaxIskCompact, formatTaxRefTypeLabel, getTaxRefTypeColor } from '@/lib/tax-display'
@@ -78,10 +79,12 @@ export function TopIncomeSourcesMonthlyChart({
 	rows,
 	incomeMode,
 	walletSource,
+	loading = false,
 }: {
 	rows: TaxTopIncomeSourceMonthlyRow[]
 	incomeMode: 'total' | 'assessed'
 	walletSource: 'corporation' | 'character'
+	loading?: boolean
 }) {
 	const [hoveredSegment, setHoveredSegment] = useState<{
 		key: string
@@ -129,7 +132,12 @@ export function TopIncomeSourcesMonthlyChart({
 	}, [rows])
 
 	if (chartData.months.length === 0 || chartData.refTypes.length === 0) {
-		return <div className="py-8 text-sm text-muted-foreground">No income sources found.</div>
+		return (
+			<div className="relative rounded border bg-muted/20 p-3" aria-busy={loading}>
+				<div className="py-8 text-sm text-muted-foreground">No income sources found.</div>
+				{loading ? <ChartLoadingOverlay /> : null}
+			</div>
+		)
 	}
 
 	const chartWidth =
@@ -151,7 +159,7 @@ export function TopIncomeSourcesMonthlyChart({
 
 	return (
 		<div className="space-y-4">
-			<div className="rounded border bg-muted/20 p-3">
+			<div className="relative rounded border bg-muted/20 p-3" aria-busy={loading}>
 				<div className="overflow-x-auto">
 					<svg
 						viewBox={`0 0 ${chartWidth} ${MONTHLY_INCOME_CHART_HEIGHT}`}
@@ -407,7 +415,16 @@ export function TopIncomeSourcesMonthlyChart({
 						</div>
 					))}
 				</div>
+				{loading ? <ChartLoadingOverlay /> : null}
 			</div>
+		</div>
+	)
+}
+
+function ChartLoadingOverlay() {
+	return (
+		<div className="absolute inset-0 z-10 flex items-center justify-center rounded bg-background/60 backdrop-blur-[1px]">
+			<Loader2 aria-label="Loading" className="h-6 w-6 animate-spin text-primary" />
 		</div>
 	)
 }

@@ -37,6 +37,17 @@ export async function syncWalletJournal(
 ): Promise<WalletJournalSyncResult> {
 	const tokenStore = createTokenStore(env)
 	const corpData = getCorporationDataStub(env, corporationId)
+	const watermarks = await withRpcResult(
+		corpData.getWalletJournalWatermarks(corporationId),
+		(watermarks) =>
+			watermarks.map(({ division, watermark }) => ({
+				division,
+				watermark: watermark ? { ...watermark } : undefined,
+			}))
+	)
+	const watermarkByDivision = new Map(
+		watermarks.map(({ division, watermark }) => [division, watermark])
+	)
 
 	const results = await Promise.allSettled(
 		WALLET_DIVISIONS.map(async (division, index) => {
@@ -49,10 +60,16 @@ export async function syncWalletJournal(
 				tokenStore,
 				corporationId,
 				division,
-				directorCharacterId
+				directorCharacterId,
+				watermarkByDivision.get(division)
 			)
 			const storeResult = await withRpcResult(
-				corpData.storeWalletJournal(corporationId, division, entries),
+				corpData.storeWalletJournal(
+					corporationId,
+					division,
+					entries,
+					watermarkByDivision.get(division)
+				),
 				(result) => ({ persistedNewRows: result.persistedNewRows })
 			)
 			const maxJournalId =

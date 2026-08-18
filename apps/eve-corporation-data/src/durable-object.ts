@@ -128,6 +128,7 @@ import type {
 	StructureInventorySyncResult,
 	StructureSyncFailureTarget,
 	StructureSyncPriorityTarget,
+	WalletJournalWatermark,
 	WalletJournalWindowFilters,
 	WalletTransactionWatermark,
 	WalletTransactionWindowFilters,
@@ -2042,27 +2043,37 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async storeWalletJournal(
 		corporationId: string,
 		division: number,
-		entries: any[]
+		entries: any[],
+		providedWatermark?: WalletJournalWatermark
 	): Promise<{ persistedNewRows: number }> {
 		if (entries.length === 0) {
 			return { persistedNewRows: 0 }
 		}
 
 		const db = this.getDb()
-		const [watermark] = await db
-			.select({
-				maxJournalId: sql<string | null>`max(${corporationWalletJournal.journalId}::numeric)::text`,
-				maxJournalDate: sql<Date | string | null>`max(${corporationWalletJournal.date})`,
-			})
-			.from(corporationWalletJournal)
-			.where(
-				and(
-					eq(corporationWalletJournal.corporationId, String(corporationId)),
-					eq(corporationWalletJournal.division, division)
+		let watermark = providedWatermark
+		if (!watermark) {
+			const [storedWatermark] = await db
+				.select({
+					maxJournalId: sql<
+						string | null
+					>`max(${corporationWalletJournal.journalId}::numeric)::text`,
+					maxJournalDate: sql<Date | string | null>`max(${corporationWalletJournal.date})`,
+				})
+				.from(corporationWalletJournal)
+				.where(
+					and(
+						eq(corporationWalletJournal.corporationId, String(corporationId)),
+						eq(corporationWalletJournal.division, division)
+					)
 				)
-			)
-		const storedMaxJournalId = watermark?.maxJournalId ?? null
-		const storedMaxJournalDate = parseDateOrNull(watermark?.maxJournalDate)
+			watermark = {
+				maxJournalId: storedWatermark?.maxJournalId ?? null,
+				maxJournalDate: parseDateOrNull(storedWatermark?.maxJournalDate),
+			}
+		}
+		const storedMaxJournalId = watermark.maxJournalId
+		const storedMaxJournalDate = watermark.maxJournalDate
 		const fetchedMaxJournalId = entries.reduce<string | null>((max, entry) => {
 			const journalId = String(entry.id)
 			if (max === null || compareNumericStrings(journalId, max) > 0) {
@@ -2164,6 +2175,28 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		return { persistedNewRows }
+	}
+
+	async getWalletJournalWatermarks(
+		corporationId: string
+	): Promise<Array<{ division: number; watermark: WalletJournalWatermark }>> {
+		const rows = await this.getDb()
+			.select({
+				division: corporationWalletJournal.division,
+				maxJournalId: sql<string | null>`max(${corporationWalletJournal.journalId}::numeric)::text`,
+				maxJournalDate: sql<Date | string | null>`max(${corporationWalletJournal.date})`,
+			})
+			.from(corporationWalletJournal)
+			.where(eq(corporationWalletJournal.corporationId, String(corporationId)))
+			.groupBy(corporationWalletJournal.division)
+
+		return rows.map((row) => ({
+			division: row.division,
+			watermark: {
+				maxJournalId: row.maxJournalId,
+				maxJournalDate: parseDateOrNull(row.maxJournalDate),
+			},
+		}))
 	}
 
 	/**
@@ -5633,11 +5666,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		await this.requireCorpRole(corporationId, characterId, ['Accountant', 'Junior_Accountant'])
 
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const watermark = (await this.getWalletJournalWatermarks(corporationId)).find(
+			(entry) => entry.division === division
+		)?.watermark
 		const entries = await esiFetch.fetchWalletJournal(
 			tokenStore,
 			corporationId,
 			division,
-			characterId
+			characterId,
+			watermark
 		)
 
 		logger
@@ -5662,8 +5699,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		let persistedNewRows = 0
 		try {
-			persistedNewRows = (await this.storeWalletJournal(corporationId, division, entries))
-				.persistedNewRows
+			persistedNewRows = (
+				await this.storeWalletJournal(corporationId, division, entries, watermark)
+			).persistedNewRows
 		} catch (error) {
 			logger
 				.withTags({

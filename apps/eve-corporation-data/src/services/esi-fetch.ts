@@ -47,6 +47,7 @@ import type {
 	EsiCorporationWalletTransaction,
 	EsiSovereigntyHub,
 	EsiSovereigntySystem,
+	WalletJournalWatermark,
 	WalletTransactionWatermark,
 } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
@@ -188,7 +189,8 @@ export async function fetchWalletJournal(
 	tokenStore: EveTokenStore,
 	corporationId: string,
 	division: number,
-	characterId: string
+	characterId: string,
+	watermark?: WalletJournalWatermark
 ): Promise<EsiCorporationWalletJournalEntry[]> {
 	type RawJournalEntry = {
 		id: number
@@ -206,14 +208,22 @@ export async function fetchWalletJournal(
 		tax_receiver_id?: number
 	}
 
-	return withRpcResult(
-		tokenStore.fetchEsiAllPages<RawJournalEntry>(
-			`/corporations/${corporationId}/wallets/${division}/journal`,
-			characterId,
-			{ cacheMode: 'no-store' }
-		),
-		(result) => transformWalletJournal(result.data)
-	)
+	const basePath = `/corporations/${corporationId}/wallets/${division}/journal`
+	const response = watermark?.maxJournalId
+		? tokenStore.fetchEsiPagesUntilWatermark<RawJournalEntry>(
+				basePath,
+				characterId,
+				{
+					maxId: watermark.maxJournalId,
+					maxDate: watermark.maxJournalDate,
+				},
+				{ cacheMode: 'no-store' }
+			)
+		: tokenStore.fetchEsiAllPages<RawJournalEntry>(basePath, characterId, {
+				cacheMode: 'no-store',
+			})
+
+	return withRpcResult(response, (result) => transformWalletJournal(result.data))
 }
 
 /**
