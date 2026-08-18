@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 import { and, asc, eq, ilike, isNull, like, or } from 'drizzle-orm'
 
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { EftParser } from '@repo/eve-parsers'
 
 import { createDb } from './db'
@@ -26,8 +26,8 @@ import type {
 	SetDoctrineStagingRequest,
 	StagingSystem,
 	UpdateCategoryRequest,
-	UpdateDoctrineRequest,
 	UpdateDoctrineFittingRequest,
+	UpdateDoctrineRequest,
 	UpdateFittingRequest,
 	UpdateStagingSystemRequest,
 } from '@repo/doctrines'
@@ -137,7 +137,10 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 
 	async getStagingSystems(): Promise<StagingSystem[]> {
 		return await this.db.query.doctrinesStagingSystems.findMany({
-			orderBy: [asc(schema.doctrinesStagingSystems.sortOrder), asc(schema.doctrinesStagingSystems.solarSystemName)],
+			orderBy: [
+				asc(schema.doctrinesStagingSystems.sortOrder),
+				asc(schema.doctrinesStagingSystems.solarSystemName),
+			],
 		})
 	}
 
@@ -282,7 +285,10 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 		return doctrine?.name ?? null
 	}
 
-	async updateDoctrine(id: string, data: UpdateDoctrineRequest & { updatedBy?: string }): Promise<Doctrine> {
+	async updateDoctrine(
+		id: string,
+		data: UpdateDoctrineRequest & { updatedBy?: string }
+	): Promise<Doctrine> {
 		const updates: Partial<typeof schema.doctrinesDoctrines.$inferInsert> = {
 			updatedAt: new Date(),
 		}
@@ -422,13 +428,11 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 		if (filters.srpEligible !== undefined) {
 			conditions.push(eq(schema.doctrinesFittings.srpEligible, filters.srpEligible))
 		}
-			if (filters.search) {
-				const nameMatch = ilike(schema.doctrinesFittings.name, `%${filters.search}%`)
-				const shipMatch = ilike(schema.doctrinesFittings.shipName, `%${filters.search}%`)
-				conditions.push(
-					or(nameMatch, shipMatch) ?? nameMatch
-				)
-			}
+		if (filters.search) {
+			const nameMatch = ilike(schema.doctrinesFittings.name, `%${filters.search}%`)
+			const shipMatch = ilike(schema.doctrinesFittings.shipName, `%${filters.search}%`)
+			conditions.push(or(nameMatch, shipMatch) ?? nameMatch)
+		}
 
 		const whereClause = conditions.length > 0 ? and(...conditions) : undefined
 
@@ -568,14 +572,20 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 
 	async addFittingToDoctrine(doctrineId: string, data: AddFittingToDoctrineRequest): Promise<void> {
 		const doctrine = await this.db.query.doctrinesDoctrines.findFirst({
-			where: and(eq(schema.doctrinesDoctrines.id, doctrineId), isNull(schema.doctrinesDoctrines.deletedAt)),
+			where: and(
+				eq(schema.doctrinesDoctrines.id, doctrineId),
+				isNull(schema.doctrinesDoctrines.deletedAt)
+			),
 		})
 		if (!doctrine) {
 			throw new Error('Doctrine not found')
 		}
 
 		const fitting = await this.db.query.doctrinesFittings.findFirst({
-			where: and(eq(schema.doctrinesFittings.id, data.fittingId), isNull(schema.doctrinesFittings.deletedAt)),
+			where: and(
+				eq(schema.doctrinesFittings.id, data.fittingId),
+				isNull(schema.doctrinesFittings.deletedAt)
+			),
 		})
 		if (!fitting) {
 			throw new Error('Fitting not found')
@@ -636,9 +646,15 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 	// DOCTRINE-STAGING RELATIONSHIP
 	// ============================================
 
-	async setDoctrineStagingSystem(doctrineId: string, data: SetDoctrineStagingRequest): Promise<void> {
+	async setDoctrineStagingSystem(
+		doctrineId: string,
+		data: SetDoctrineStagingRequest
+	): Promise<void> {
 		const doctrine = await this.db.query.doctrinesDoctrines.findFirst({
-			where: and(eq(schema.doctrinesDoctrines.id, doctrineId), isNull(schema.doctrinesDoctrines.deletedAt)),
+			where: and(
+				eq(schema.doctrinesDoctrines.id, doctrineId),
+				isNull(schema.doctrinesDoctrines.deletedAt)
+			),
 		})
 		if (!doctrine) {
 			throw new Error('Doctrine not found')
@@ -652,7 +668,10 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 				note: data.note,
 			})
 			.onConflictDoUpdate({
-				target: [schema.doctrinesDoctrineStagingSystems.doctrineId, schema.doctrinesDoctrineStagingSystems.stagingSystemId],
+				target: [
+					schema.doctrinesDoctrineStagingSystems.doctrineId,
+					schema.doctrinesDoctrineStagingSystems.stagingSystemId,
+				],
 				set: { note: data.note },
 			})
 	}
@@ -674,8 +693,9 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 
 	async searchShipTypes(query: string): Promise<Array<{ typeId: string; typeName: string }>> {
 		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
-		const results = await universeStub.searchTypes(query, 20)
-		return results.map((r) => ({ typeId: r.typeId, typeName: r.typeName }))
+		return withRpcResult(universeStub.searchShipTypes(query, 20), (results) =>
+			results.map((result) => ({ ...result }))
+		)
 	}
 
 	// ============================================
@@ -692,5 +712,4 @@ export class DoctrinesDO extends DurableObject<Env> implements Doctrines {
 			unresolvedItems: parsed.unresolvedItems,
 		}
 	}
-
 }
