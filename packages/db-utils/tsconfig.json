@@ -5,5 +5,5 @@
 		"rootDir": "src",
 		"module": "ESNext"
 	},
-	"include": ["src/**/*"]
+	"include": ["src/**/*", "worker-configuration.d.ts"]
 }
