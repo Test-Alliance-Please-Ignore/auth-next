@@ -41,44 +41,16 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v6
       - name: Check for non-doc changes
         id: filter
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          # Empty on merge_group; the script then fails safe to running everything.
           PR: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-
-          # merge_group has no PR and cannot be path-filtered by GitHub — always run
-          # the full check on the exact commit that is about to land.
-          if [ -z "${PR:-}" ]; then
-            echo 'Not a pull_request event — running full checks.'
-            echo 'code=true' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          files="$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')"
-
-          # Anything left after dropping the ignorable paths means real code changed.
-          # A mixed doc+code PR therefore still runs, same as paths-ignore did.
-          code="$(printf '%s\n' "$files" | grep -Ev \
-            -e '\.md$' \
-            -e '^docs/' \
-            -e '^\.changeset/' \
-            -e '^\.vscode/' \
-            -e '^\.cursor/' \
-            -e '^\.claude/' \
-            -e '^\.editorconfig$' \
-            || true)"
-
-          if [ -n "$code" ]; then
-            echo 'Code changed — running checks.'
-            echo 'code=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'Only docs/config changed — skipping checks.'
-            echo 'code=false' >> "$GITHUB_OUTPUT"
-          fi
+        run: node scripts/ci/detect-code-changes.mjs
 
   check:
     name: Check

@@ -19,6 +19,10 @@ export default [
 		rules: {
 			'@typescript-eslint/no-floating-promises': 'off',
 			'no-undef': 'off',
+			// These scripts run directly via `node`, never as a turbo task, so their
+			// CI env vars (GITHUB_OUTPUT, the change-detection inputs) don't belong
+			// in turbo.json — declaring them there would needlessly bust build caches.
+			'turbo/no-undeclared-env-vars': 'off',
 		},
 	},
 	{
