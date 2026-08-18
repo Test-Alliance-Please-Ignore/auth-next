@@ -6,7 +6,7 @@
  */
 
 import { ArrowLeft } from 'lucide-react'
-import { useLocation, useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
 
 import {
 	Breadcrumb,
@@ -18,75 +18,88 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
+import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
 
+import { useCorporationMemberAccount } from '../../corporations/hooks'
 import { FulcrumReportViewer } from '../components/fulcrum-report-viewer'
+import { useApplication, useHrUserCharacters, useReportSections } from '../hooks'
 
 export default function FulcrumReportPage() {
-	const { reportId, userId: routeUserId, corporationId: routeCorporationId, applicationId: routeApplicationId } = useParams<{
+	const {
+		reportId,
+		userId: routeUserId,
+		corporationId: routeCorporationId,
+		applicationId: routeApplicationId,
+		accountId: routeAccountId,
+	} = useParams<{
 		reportId: string
 		userId?: string
 		corporationId?: string
 		applicationId?: string
+		accountId?: string
 	}>()
-	const location = useLocation()
 	const navigate = useNavigate()
-	const { hasAnyPermission } = useUserPermissions()
-	const isAuditor = hasAnyPermission('urn:hr:auditor')
+	const userId = routeUserId
+	const corporationId = routeCorporationId
+	const applicationId = routeApplicationId
+	const accountId = routeAccountId
 
-	const state = location.state as
-		| {
-			characterName?: string
-			returnTo?: string
-			userId?: string
-			corporationId?: string
-			backLabel?: string
-			breadcrumbParentLabel?: string
-		}
-		| null
-	const query = new URLSearchParams(location.search)
-	const characterName = state?.characterName ?? query.get('characterName') ?? undefined
-	const returnTo = state?.returnTo ?? query.get('returnTo') ?? undefined
-	const userId = routeUserId ?? state?.userId ?? query.get('userId') ?? undefined
-	const corporationId = routeCorporationId ?? state?.corporationId ?? query.get('corporationId') ?? undefined
-	const applicationId = routeApplicationId ?? query.get('applicationId') ?? undefined
+	const reportSource =
+		applicationId && corporationId
+			? 'application'
+			: accountId && corporationId
+				? 'member'
+				: userId
+					? 'user'
+					: null
+	const { data: application } = useApplication(applicationId ?? '', {
+		enabled: reportSource === 'application',
+	})
+	const { data: memberAccount } = useCorporationMemberAccount(corporationId ?? '', accountId ?? '')
+	const { data: userCharacters = [] } = useHrUserCharacters(userId ?? '', {
+		enabled: reportSource === 'user',
+	})
+	const { data: manifest } = useReportSections(reportId ?? '', !!reportId)
+	const { data: characterNames = {} } = useEntityNames(
+		manifest?.characterId ? [manifest.characterId] : [],
+		{ enabled: !!manifest?.characterId }
+	)
 
-	const routeScopedBackPath = applicationId && corporationId
-		? `/corporations/${corporationId}/applications/${applicationId}`
-		: userId
-			? `/hr/users/${userId}`
-			: undefined
-
-	const roleBasedBackPath = isAuditor && userId
-		? `/hr/users/${userId}`
-		: corporationId && userId
-			? `/corporations/${corporationId}/members/${userId}`
-			: '/corporations'
-
-	const backPath = returnTo ?? routeScopedBackPath ?? roleBasedBackPath
-	const isUserProfileBackPath = backPath.includes('/members/')
-		|| backPath.includes('/hr/users/')
-		|| backPath.includes('/hr/auditor/users/')
-	const isApplicationBackPath = backPath.includes('/applications/')
-	const backLabel =
-		state?.backLabel
-		?? query.get('backLabel')
-		?? (isApplicationBackPath
-			? 'Back to Application'
-			: isUserProfileBackPath
-				? 'Back to User Profile'
-				: 'Back to Corporations')
-	const breadcrumbParentLabel =
-		state?.breadcrumbParentLabel
-		?? query.get('breadcrumbParentLabel')
-		?? (isApplicationBackPath ? 'Application' : isUserProfileBackPath ? 'User Profile' : 'Reports')
-
+	const characterName = manifest?.characterId ? characterNames[manifest.characterId] : undefined
+	const sourceUserName =
+		reportSource === 'application'
+			? application?.characterName
+			: reportSource === 'member'
+				? memberAccount?.account.mainName
+				: userCharacters[0]?.characterName
+	const displaySourceUserName = sourceUserName ?? characterName
+	const backPath =
+		reportSource === 'application'
+			? `/corporations/${corporationId}/applications/${applicationId}`
+			: reportSource === 'member'
+				? `/corporations/${corporationId}/members/${accountId}`
+				: reportSource === 'user'
+					? `/hr/users/${userId}`
+					: null
 	usePageTitle(characterName ? `Report - ${characterName}` : 'Character Report')
 
-	if (!reportId) {
+	if (!reportId || !backPath) {
 		return null
 	}
+
+	const backLabel =
+		reportSource === 'application'
+			? 'Back to Application'
+			: reportSource === 'member'
+				? 'Back to Member Profile'
+				: 'Back to User Profile'
+	const breadcrumbParentLabel =
+		reportSource === 'application'
+			? 'Application'
+			: reportSource === 'member'
+				? 'Members'
+				: 'User Profile'
 
 	return (
 		<Container>
@@ -95,13 +108,17 @@ export default function FulcrumReportPage() {
 				<Breadcrumb>
 					<BreadcrumbList>
 						<BreadcrumbItem>
-							<BreadcrumbLink to={backPath}>
-								{breadcrumbParentLabel}
-							</BreadcrumbLink>
+							<BreadcrumbLink to={backPath}>{breadcrumbParentLabel}</BreadcrumbLink>
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
-							<BreadcrumbPage>{characterName ? `${characterName} Report` : 'Character Report'}</BreadcrumbPage>
+							<BreadcrumbPage>{displaySourceUserName ?? breadcrumbParentLabel}</BreadcrumbPage>
+						</BreadcrumbItem>
+						<BreadcrumbSeparator />
+						<BreadcrumbItem>
+							<BreadcrumbPage>
+								{characterName ? `${characterName} Report` : 'Character Report'}
+							</BreadcrumbPage>
 						</BreadcrumbItem>
 					</BreadcrumbList>
 				</Breadcrumb>

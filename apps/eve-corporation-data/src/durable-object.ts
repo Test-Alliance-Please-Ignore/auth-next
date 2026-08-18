@@ -223,6 +223,9 @@ const SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_KEY = 'shared:sovereignty-systems
 const SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_SECONDS = 2 * 60
 const ORBITAL_SKYHOOK_TYPE_ID = '81080'
 const STRUCTURE_ENRICHMENT_PRIORITY_LIMIT = 100
+// Keep asset upserts bounded while avoiding one database round trip per small slice.
+// Ten persisted fields per row keeps 500 rows well below PostgreSQL's parameter limit.
+const CORPORATION_ASSET_INSERT_BATCH_SIZE = 500
 const STRUCTURE_INVENTORY_ASSET_BATCH_SIZE = 250
 const STRUCTURE_SNAPSHOT_BATCH_SIZE = 10
 const STRUCTURE_CLEANUP_BATCH_SIZE = 250
@@ -2347,9 +2350,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		observedAt: Date
 	): Promise<void> {
 		const dedupedAssets = dedupeByItemId(assets, (asset) => String(asset.item_id))
-		const BATCH_SIZE = 25
-		for (let i = 0; i < dedupedAssets.length; i += BATCH_SIZE) {
-			const batch = dedupedAssets.slice(i, i + BATCH_SIZE)
+		for (let i = 0; i < dedupedAssets.length; i += CORPORATION_ASSET_INSERT_BATCH_SIZE) {
+			const batch = dedupedAssets.slice(i, i + CORPORATION_ASSET_INSERT_BATCH_SIZE)
 			const valuesToInsert = batch.map((asset) => ({
 				corporationId: String(corporationId),
 				itemId: asset.item_id,

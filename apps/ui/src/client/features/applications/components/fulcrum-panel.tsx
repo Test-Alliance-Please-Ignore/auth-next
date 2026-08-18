@@ -9,7 +9,7 @@
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, Clock, ExternalLink, FileText, Loader2, RefreshCw, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -24,7 +24,6 @@ import {
 } from '@/components/ui/dialog'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
-import { CharacterIdentitySummary } from './character-identity-summary'
 
 import {
 	useFulcrumUserReports,
@@ -32,6 +31,7 @@ import {
 	useRequestFulcrumReport,
 	useRequestFulcrumReportBatch,
 } from '../hooks'
+import { CharacterIdentitySummary } from './character-identity-summary'
 
 import type { CharacterReportMetadata } from '../api'
 
@@ -68,7 +68,7 @@ function getReportStatusBadge(status: string) {
 function getLatestReport(reports: CharacterReportMetadata[]): CharacterReportMetadata | null {
 	if (reports.length === 0) return null
 	return reports.reduce((latest, r) =>
-		new Date(r.createdAt) > new Date(latest.createdAt) ? r : latest,
+		new Date(r.createdAt) > new Date(latest.createdAt) ? r : latest
 	)
 }
 
@@ -83,17 +83,8 @@ function canRequestNewReport(reports: CharacterReportMetadata[]): boolean {
 interface CharacterReportCardProps {
 	character: PanelCharacterRow
 	onRequest: () => void
-	getReportTarget: (reportId: string, characterName: string) => {
-		pathname: string
-		search: string
-		state: {
-			characterName: string
-			userId: string
-			corporationId: string
-			returnTo: string
-			backLabel: string
-			breadcrumbParentLabel: string
-		}
+	getReportTarget: (reportId: string) => {
+		to: string
 	}
 	isRequesting: boolean
 	requestingCharacterId: string | null
@@ -123,7 +114,10 @@ function CharacterReportCard({
 }: CharacterReportCardProps) {
 	const latestReport = getLatestReport(character.reports)
 	const isThisRequesting =
-		isRequesting && (requestingCharacterId === null || requestingCharacterId === character.characterId)
+		isRequesting &&
+		(requestingCharacterId === null || requestingCharacterId === character.characterId)
+	const reportTarget =
+		latestReport?.status === 'completed' ? getReportTarget(latestReport.id) : null
 
 	return (
 		<div className="card-gradient flex items-start gap-4 rounded-lg border border-border/50 bg-card p-4 shadow-elevated">
@@ -152,8 +146,7 @@ function CharacterReportCard({
 						{latestReport.status === 'completed' && latestReport.expiresAt && (
 							<div className="flex items-center gap-1 text-xs text-muted-foreground">
 								<Clock className="h-3 w-3" />
-								Expires{' '}
-								{formatDistanceToNow(new Date(latestReport.expiresAt), { addSuffix: true })}
+								Expires {formatDistanceToNow(new Date(latestReport.expiresAt), { addSuffix: true })}
 							</div>
 						)}
 
@@ -178,9 +171,9 @@ function CharacterReportCard({
 
 			{/* Actions */}
 			<div className="flex flex-col gap-2">
-				{latestReport?.status === 'completed' && (
+				{reportTarget && (
 					<Button asChild variant="ghost" size="sm">
-						<Link to={getReportTarget(latestReport.id, character.characterName)}>
+						<Link to={reportTarget.to}>
 							<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
 							View
 						</Link>
@@ -216,7 +209,7 @@ function CharacterReportCard({
 interface FulcrumPanelProps {
 	userId: string
 	corporationId: string
-	applicationId?: string
+	applicationId: string
 	mainCharacterId?: string
 	altCharacterIds?: string[]
 	canRequestCharacterReport?: (character: PanelCharacterRow) => boolean
@@ -232,7 +225,6 @@ export function FulcrumPanel({
 	canRequestCharacterReport,
 	enabled = true,
 }: FulcrumPanelProps) {
-	const { corporationId: routeCorporationId } = useParams<{ corporationId: string }>()
 	const { data: reportCharacters = [], isLoading, error } = useFulcrumUserReports(userId, enabled)
 	const { data: hrCharacters = [] } = useHrUserCharacters(userId, {
 		enabled: !!userId && enabled,
@@ -271,7 +263,8 @@ export function FulcrumPanel({
 	const requestReportBatch = useRequestFulcrumReportBatch()
 	const [sendDmForScanRequests, setSendDmForScanRequests] = useState(getInitialSendDmPreference)
 	const [scanAllDialogOpen, setScanAllDialogOpen] = useState(false)
-	const [scanSingleDialogCharacter, setScanSingleDialogCharacter] = useState<PanelCharacterRow | null>(null)
+	const [scanSingleDialogCharacter, setScanSingleDialogCharacter] =
+		useState<PanelCharacterRow | null>(null)
 	const [isRequestingAll, setIsRequestingAll] = useState(false)
 
 	if (!enabled) {
@@ -295,36 +288,9 @@ export function FulcrumPanel({
 		})
 	}
 
-	const getReportTarget = (reportId: string, characterName: string) => {
-		const resolvedCorporationId = routeCorporationId ?? corporationId
-		const returnTo = applicationId
-			? `/corporations/${resolvedCorporationId}/applications/${applicationId}`
-			: `/corporations/${resolvedCorporationId}/members/${userId}`
-		const backLabel = applicationId ? 'Back to Application' : 'Back to User Profile'
-		const breadcrumbParentLabel = applicationId ? 'Application' : 'User Profile'
-		const search = new URLSearchParams({
-			characterName,
-			userId,
-			corporationId,
-			returnTo,
-			backLabel,
-			breadcrumbParentLabel,
-		}).toString()
-		return {
-			pathname: applicationId
-				? `/corporations/${resolvedCorporationId}/applications/${applicationId}/reports/${reportId}`
-				: `/fulcrum/reports/${reportId}`,
-			search: `?${search}`,
-			state: {
-				characterName,
-				userId,
-				corporationId,
-				returnTo,
-				backLabel,
-				breadcrumbParentLabel,
-			},
-		}
-	}
+	const getReportTarget = (reportId: string) => ({
+		to: `/corporations/${corporationId}/applications/${applicationId}/reports/${reportId}`,
+	})
 
 	if (isLoading) {
 		return (
@@ -353,12 +319,17 @@ export function FulcrumPanel({
 
 	const requestableCharacters = characters.filter(
 		(character) =>
-			canRequestNewReport(character.reports) &&
-			(canRequestCharacterReport?.(character) ?? true)
+			canRequestNewReport(character.reports) && (canRequestCharacterReport?.(character) ?? true)
 	)
 
 	const handleConfirmSingle = () => {
-		if (!scanSingleDialogCharacter || isRequestingAll || requestReport.isPending || requestReportBatch.isPending) return
+		if (
+			!scanSingleDialogCharacter ||
+			isRequestingAll ||
+			requestReport.isPending ||
+			requestReportBatch.isPending
+		)
+			return
 		persistSendDmPreference(sendDmForScanRequests)
 		const characterId = scanSingleDialogCharacter.characterId
 		setScanSingleDialogCharacter(null)
@@ -366,7 +337,13 @@ export function FulcrumPanel({
 	}
 
 	const handleConfirmRequestAll = async () => {
-		if (requestableCharacters.length === 0 || isRequestingAll || requestReport.isPending || requestReportBatch.isPending) return
+		if (
+			requestableCharacters.length === 0 ||
+			isRequestingAll ||
+			requestReport.isPending ||
+			requestReportBatch.isPending
+		)
+			return
 		persistSendDmPreference(sendDmForScanRequests)
 		setScanAllDialogOpen(false)
 		setIsRequestingAll(true)
@@ -409,7 +386,8 @@ export function FulcrumPanel({
 		setScanAllDialogOpen(true)
 	}
 
-	const isAnyRequestPending = requestReport.isPending || requestReportBatch.isPending || isRequestingAll
+	const isAnyRequestPending =
+		requestReport.isPending || requestReportBatch.isPending || isRequestingAll
 
 	// Split characters into application chars (main + alts) and other chars
 	const applicationCharacterIds = mainCharacterId
@@ -430,11 +408,11 @@ export function FulcrumPanel({
 				onRequest={() => handleOpenSingleDialog(character)}
 				getReportTarget={getReportTarget}
 				isRequesting={isAnyRequestPending}
-				canRequest={canRequestNewReport(character.reports) && (canRequestCharacterReport?.(character) ?? true)}
+				canRequest={
+					canRequestNewReport(character.reports) && (canRequestCharacterReport?.(character) ?? true)
+				}
 				requestingCharacterId={
-					requestReport.isPending
-						? (requestReport.variables?.characterId ?? null)
-						: null
+					requestReport.isPending ? (requestReport.variables?.characterId ?? null) : null
 				}
 			/>
 		))
@@ -466,9 +444,7 @@ export function FulcrumPanel({
 				</>
 			)}
 
-			{applicationCharacters.length > 0 && otherCharacters.length > 0 && (
-				<Separator />
-			)}
+			{applicationCharacters.length > 0 && otherCharacters.length > 0 && <Separator />}
 
 			{otherCharacters.length > 0 && (
 				<>
@@ -514,15 +490,16 @@ export function FulcrumPanel({
 				</DialogContent>
 			</Dialog>
 
-			<Dialog open={scanSingleDialogCharacter !== null} onOpenChange={(open) => !open && setScanSingleDialogCharacter(null)}>
+			<Dialog
+				open={scanSingleDialogCharacter !== null}
+				onOpenChange={(open) => !open && setScanSingleDialogCharacter(null)}
+			>
 				<DialogContent className="sm:max-w-[500px]">
 					<DialogHeader>
 						<DialogTitle>
 							Generate Report For {scanSingleDialogCharacter?.characterName ?? 'Character'}?
 						</DialogTitle>
-						<DialogDescription>
-							This will queue one character report.
-						</DialogDescription>
+						<DialogDescription>This will queue one character report.</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-2">
 						<label

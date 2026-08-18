@@ -498,13 +498,6 @@ export default function HrUserProfilePage() {
 				}
 				getReportTarget={(character) => ({
 					to: `/hr/users/${userId}/reports/${character.latestReport!.id}`,
-					state: {
-						characterName: character.characterName,
-						userId: userId ?? undefined,
-						backTo: location.pathname + location.search,
-						backLabel: 'Back to User Details',
-						breadcrumbParentLabel: 'User Details',
-					},
 				})}
 				getDetailsTarget={(character) => ({
 					to: `/character/${character.characterId}`,

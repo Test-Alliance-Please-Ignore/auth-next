@@ -86,6 +86,22 @@ function CorporationCoverageBars({ coverage }: { coverage: CorporationCoverageSt
 	)
 }
 
+function CorporationCoverageBarsSkeleton() {
+	return (
+		<div className="w-44 space-y-2" aria-label="Loading ESI coverage">
+			{Array.from({ length: 2 }, (_, index) => (
+				<div className="space-y-1" key={index}>
+					<div className="flex items-center justify-between gap-2">
+						<Skeleton className="h-3 w-28" />
+						<Skeleton className="h-3 w-10" />
+					</div>
+					<Skeleton className="h-1.5 w-full" />
+				</div>
+			))}
+		</div>
+	)
+}
+
 export default function CorporationsPage() {
 	const { user, isAuthenticated, isLoading: authLoading, permissions } = useAuth()
 	const isAuditor = useMemo(
@@ -101,7 +117,8 @@ export default function CorporationsPage() {
 		error,
 	} = useHrAccessibleCorporations()
 	const { data: corporationAccess } = useCorporationAccess()
-	const { data: corporationCoverage } = useCorporationCoverage()
+	const { data: corporationCoverage, isLoading: corporationCoverageLoading } =
+		useCorporationCoverage()
 	const { data: applicationCounts = [], isLoading: applicationCountsLoading } =
 		useCorporationApplicationCounts()
 	const availableCorporationTypes = useMemo(() => {
@@ -343,10 +360,15 @@ export default function CorporationsPage() {
 								</div>
 								<div className="justify-self-end self-end">
 									{coverageStats ||
+									corporationCoverageLoading ||
 									hasVisibleCounts ||
 									(canViewApplications && applicationCountsLoading) ? (
 										<div className="flex flex-col items-end gap-2">
-											{coverageStats && <CorporationCoverageBars coverage={coverageStats} />}
+											{coverageStats ? (
+												<CorporationCoverageBars coverage={coverageStats} />
+											) : corporationCoverageLoading ? (
+												<CorporationCoverageBarsSkeleton />
+											) : null}
 											<div className="flex flex-wrap items-center justify-end gap-2">
 												{canViewApplications && applicationCountsLoading && (
 													<Skeleton className="h-5 w-20" />
