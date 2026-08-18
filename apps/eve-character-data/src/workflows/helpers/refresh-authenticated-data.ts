@@ -34,7 +34,7 @@ export async function refreshAuthenticatedData(
 	const normalizedCharacterId = String(characterId)
 
 	// Create fresh stubs for this operation
-	const characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, normalizedCharacterId)
+	const characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'default')
 	const tokenStoreStub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
 
 	try {

@@ -876,7 +876,7 @@ export class FleetMonitorDO extends DurableObject {
 			// Resolve the live fleet boss name independently of the ESI source so
 			// the display and access paths stay aligned even across leadership
 			// handoffs.
-			const characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, liveFleetBossId)
+			const characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, 'default')
 			const characterInfo = await characterStub.getCharacterInfo(liveFleetBossId)
 
 			// Resolve ship type IDs, character IDs, system IDs, and station IDs to names if members are available
@@ -1509,10 +1509,12 @@ export class FleetMonitorDO extends DurableObject {
 		}
 
 		if (uncachedIds.length > 0) {
+			// One shared stub: EveCharacterData keeps all state in Postgres and takes the
+			// character ID per call, so a stub per ID would only multiply Durable Objects.
+			const stub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, 'default')
 			// Issue all character-info lookups in parallel; tolerate per-character failures.
 			const results = await Promise.allSettled(
 				uncachedIds.map(async (id) => {
-					const stub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, id)
 					const info = await stub.getCharacterInfo(id)
 					return { id, corporationId: info?.corporationId ?? null }
 				})

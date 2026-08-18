@@ -819,10 +819,7 @@ auth.get('/callback', async (c) => {
 		triggerLegacyMigrationRecheck(c, stateUserId)
 
 		// Fetch character data in background (non-blocking)
-		const eveCharacterDataStub = getStub<EveCharacterData>(
-			c.env.EVE_CHARACTER_DATA,
-			typeof characterId === 'string' ? characterId : String(characterId)
-		)
+		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 		waitUntilWithTelemetry(
 			c.executionCtx,
 			'auth.link-character.refresh',
@@ -985,10 +982,7 @@ auth.get('/callback', async (c) => {
 		await activityService.logLogin(user.id, characterId, getRequestMetadata(c))
 
 		// Fetch character data in background (non-blocking)
-		const eveCharacterDataStub = getStub<EveCharacterData>(
-			c.env.EVE_CHARACTER_DATA,
-			typeof characterId === 'string' ? characterId : String(characterId)
-		)
+		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 		waitUntilWithTelemetry(
 			c.executionCtx,
 			'auth.login.refresh',
@@ -1245,10 +1239,7 @@ auth.post('/claim-main', async (c) => {
 	triggerLegacyMigrationRecheck(c, user.id)
 
 	// Fetch character data in background (non-blocking)
-	const eveCharacterDataStub = getStub<EveCharacterData>(
-		c.env.EVE_CHARACTER_DATA,
-		typeof characterId === 'string' ? characterId : String(characterId)
-	)
+	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 	waitUntilWithTelemetry(
 		c.executionCtx,
 		'auth.claim-main.refresh',

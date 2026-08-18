@@ -248,7 +248,7 @@ async function getMemberCharacterIdsInCorporation(
 		const memberships = await Promise.all(
 			characterIds.map(async (characterId) => {
 				try {
-					const characterStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
+					const characterStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 					const characterInfo = await characterStub.getCharacterInfo(characterId)
 					if (!characterInfo || String(characterInfo.corporationId) !== corporationId) {
 						return null

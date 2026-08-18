@@ -426,10 +426,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 
 		// Get fleet boss name
-		const characterStub = getStub<EveCharacterData>(
-			this.env.EVE_CHARACTER_DATA,
-			invitation.fleetBossId
-		)
+		const characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, 'default')
 		const characterInfo = await characterStub.getCharacterInfo(invitation.fleetBossId)
 
 		return {
@@ -494,7 +491,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			members = undefined
 		}
 
-		const characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
+		const characterStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, 'default')
 		const characterInfo = await characterStub.getCharacterInfo(characterId)
 
 		// Resolve ship type IDs, character IDs, system IDs, and station IDs to names if members are available

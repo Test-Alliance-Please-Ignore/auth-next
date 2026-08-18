@@ -77,10 +77,7 @@ export class DkpService {
 		// Strategy 1: Try eve-character-data Durable Object (most reliable, ESI-backed)
 		if (this.eveCharacterDataNamespace) {
 			try {
-				const charStub = getStub<EveCharacterData>(
-					this.eveCharacterDataNamespace,
-					params.characterId
-				)
+				const charStub = getStub<EveCharacterData>(this.eveCharacterDataNamespace, 'default')
 				const characterInfo = await charStub.getCharacterInfo(params.characterId)
 
 				if (characterInfo) {
@@ -228,8 +225,9 @@ export class DkpService {
 		// Get unique names
 		const uniqueNames = [...new Set(names)]
 
-		// Get eve-character-data stub (use any character ID as the DO is stateless for search)
-		const charDataStub = getStub<EveCharacterData>(this.eveCharacterDataNamespace, '0')
+		// Get eve-character-data stub. The DO keeps all state in Postgres and takes the
+		// character ID per call, so every caller shares the one 'default' instance.
+		const charDataStub = getStub<EveCharacterData>(this.eveCharacterDataNamespace, 'default')
 
 		// Resolve each name
 		for (const name of uniqueNames) {

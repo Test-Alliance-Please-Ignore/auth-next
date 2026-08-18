@@ -650,7 +650,7 @@ export async function provisionTempopGuest(
 	}
 
 	// Fetch identity + affiliation (no persistence to core tables).
-	const characterStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
+	const characterStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'default')
 	const publicData = await characterStub.refreshPublicCharacterData(characterId, false)
 	const characterName = publicData.characterName ?? `Pilot ${characterId}`
 	const corporationId = publicData.currentCorporationId ?? null

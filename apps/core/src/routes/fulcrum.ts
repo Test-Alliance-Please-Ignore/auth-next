@@ -98,7 +98,7 @@ async function getCharacterCorporationId(
 	c: Context<App>,
 	characterId: string
 ): Promise<string | null> {
-	const characterStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
+	const characterStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 	return withRpcResult(characterStub.getInstance(characterId), (characterInstance) =>
 		withRpcResult(characterInstance.getCharacterInfo(), (characterInfo) =>
 			characterInfo?.corporationId ? String(characterInfo.corporationId) : null
@@ -379,7 +379,7 @@ async function isMemberCorpCeo(c: Context<App>, characterId: string): Promise<bo
 		throw new Error('Database not available')
 	}
 
-	const characterStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
+	const characterStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 	const characterInfo = await withRpcResult(
 		characterStub.getInstance(characterId),
 		(characterInstance) =>

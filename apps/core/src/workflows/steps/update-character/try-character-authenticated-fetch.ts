@@ -63,7 +63,7 @@ export async function tryCharacterAuthenticatedFetch(
 }> {
 	const logger = getWorkflowLogger(ctx, 'validate-character-token')
 	const eveTokenStore = getStub<EveTokenStore>(ctx.env.EVE_TOKEN_STORE, 'default')
-	const eveCharacterData = getStub<EveCharacterData>(ctx.env.EVE_CHARACTER_DATA, characterId)
+	const eveCharacterData = getStub<EveCharacterData>(ctx.env.EVE_CHARACTER_DATA, 'default')
 
 	const existingCharacter = await ctx.db.query.userCharacters.findFirst({
 		where: eq(userCharacters.characterId, characterId),
