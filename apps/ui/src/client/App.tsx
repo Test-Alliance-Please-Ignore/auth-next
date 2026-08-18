@@ -8,6 +8,8 @@ import { installTaxDemoWindow } from './dev/tax-demo-mode'
 import { useAuth } from './hooks/useAuth'
 import { useSessionSync } from './hooks/useSessionSync'
 import { useUserPermissions } from './hooks/useUserPermissions'
+import { logApiError } from './lib/api'
+import toast from './lib/toast'
 import AuthCallbackPage from './routes/auth-callback'
 import BroadcastDetailPage from './routes/broadcast-detail'
 import BroadcastsPage from './routes/broadcasts'
@@ -25,16 +27,14 @@ import InvitationsPage from './routes/invitations'
 import LandingPage from './routes/landing'
 import LegacyAuthCallbackPage from './routes/legacy-auth-callback'
 import MumblePage from './routes/mumble'
-import OAuthAuthorizePage from './routes/oauth-authorize'
 import MyGroupsPage from './routes/my-groups'
-import PasteViewPage from './routes/paste-view'
-import TempopGuestPage from './routes/tempop-guest'
+import OAuthAuthorizePage from './routes/oauth-authorize'
 import PasteEditPage from './routes/paste-edit'
+import PasteViewPage from './routes/paste-view'
 import PastesPage from './routes/pastes'
 import { adminRouteElements } from './routes/route-groups/admin-routes'
 import { taxRouteElements } from './routes/route-groups/tax-routes'
-import { logApiError } from './lib/api'
-import toast from './lib/toast'
+import TempopGuestPage from './routes/tempop-guest'
 
 const CorporationMembers = lazy(() => import('./features/corporations/routes/corporation-members'))
 const CorporationSettings = lazy(
@@ -89,9 +89,7 @@ const TrackingSessionDetail = lazy(
 	() => import('./features/fleet-tracking/routes/tracking-session-detail')
 )
 const SessionTimeline = lazy(() => import('./features/fleet-tracking/routes/session-timeline'))
-const MemberShipHistory = lazy(
-	() => import('./features/fleet-tracking/routes/member-ship-history')
-)
+const MemberShipHistory = lazy(() => import('./features/fleet-tracking/routes/member-ship-history'))
 const FleetStatsOverview = lazy(() => import('./features/fleet-tracking/routes/stats-overview'))
 const FleetCharacterStats = lazy(() => import('./features/fleet-tracking/routes/character-stats'))
 const FleetUserStats = lazy(() => import('./features/fleet-tracking/routes/user-stats'))
@@ -432,7 +430,7 @@ export default function App() {
 								}
 							/>
 							<Route
-								path="/fulcrum/reports/:reportId"
+								path="/corporations/:corporationId/members/:accountId/reports/:reportId"
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<FulcrumReport />
@@ -447,10 +445,7 @@ export default function App() {
 									</Suspense>
 								}
 							/>
-							<Route
-								path="/hr/users/:userId"
-								element={<HrUserProfileRoute />}
-							/>
+							<Route path="/hr/users/:userId" element={<HrUserProfileRoute />} />
 							<Route
 								path="/hr/users/:userId/reports/:reportId"
 								element={

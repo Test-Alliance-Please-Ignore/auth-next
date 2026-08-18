@@ -611,19 +611,13 @@ export default function HrMemberProfile() {
 							(requestReport.variables as { characterId?: string } | undefined)?.characterId ===
 								characterId
 						}
-						onViewReport={(character) => {
-							if (character.latestReport?.status !== 'completed') return
-							void navigate(`/fulcrum/reports/${character.latestReport.id}`, {
-								state: {
-									characterName: character.characterName,
-									userId: accountId,
-									corporationId,
-									returnTo: `/corporations/${corporationId}/members/${accountId}`,
-									backLabel: 'Back to User Profile',
-									breadcrumbParentLabel: 'User Profile',
-								},
-							})
-						}}
+						getReportTarget={
+							corporationId && accountId
+								? (character) => ({
+										to: `/corporations/${corporationId}/members/${accountId}/reports/${character.latestReport!.id}`,
+									})
+								: undefined
+						}
 						onScan={(character) => {
 							if (!character.corporationId || !authUserId) return
 							requestReport.mutate({
