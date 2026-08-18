@@ -3,6 +3,7 @@ import { createDbClient, createDbClientWs } from '@repo/db-utils'
 import * as schema from './schema'
 
 import type { DbClient, DbClientWs } from '@repo/db-utils'
+import type { Env } from '../context'
 
 type EveTokenStoreDbClient = DbClient<typeof schema> | DbClientWs<typeof schema>
 
@@ -14,12 +15,16 @@ type EveTokenStoreDbClient = DbClient<typeof schema> | DbClientWs<typeof schema>
  * @param useWebSocket - Whether to use the Neon WebSocket driver
  * @returns A configured Drizzle database client
  */
-export function createDb(databaseUrl: string, useWebSocket = true): EveTokenStoreDbClient {
+export function createDb(
+	ctx: Env,
+	databaseUrl: string,
+	useWebSocket = true
+): EveTokenStoreDbClient {
 	if (useWebSocket) {
-		return createDbClientWs(databaseUrl, schema)
+		return createDbClientWs(databaseUrl, schema, ctx)
 	}
 
-	return createDbClient(databaseUrl, schema)
+	return createDbClient(databaseUrl, schema, undefined, ctx)
 }
 
 export { schema }

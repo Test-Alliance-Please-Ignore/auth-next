@@ -11,6 +11,9 @@
 		"test": "run-vitest",
 		"test:focused": "run-vitest"
 	},
+	"dependencies": {
+		"@repo/hono-helpers": "workspace:*"
+	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "0.19.1",
 		"@repo/eslint-config": "workspace:*",
