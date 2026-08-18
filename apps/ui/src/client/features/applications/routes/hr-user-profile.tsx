@@ -1,7 +1,7 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { AlertCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
+import { Navigate, useLocation, useParams } from 'react-router'
 
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
@@ -27,11 +27,13 @@ import {
 } from '../components/user-profile-sections'
 import {
 	useFulcrumUserReports,
+	useHrUserBlocklistStatus,
 	useHrUserCharacters,
 	useRequestFulcrumReport,
 	useRequestFulcrumReportBatch,
 } from '../hooks'
 import { getPrivateDataUnavailableMessage } from '../utils/private-data'
+import { getApplicationProfileNavigationFromReferrer } from '../utils/profile-navigation'
 
 import type { Application, CharacterReportMetadata, FulcrumCharacterReportData } from '../api'
 
@@ -52,6 +54,7 @@ interface ReviewerCharacterRow {
 	role: 'CEO' | 'Director' | 'Member' | null
 	activityStatus: 'active' | 'inactive' | 'unknown' | null
 	hasValidToken: boolean | null
+	isBlacklisted: boolean | null | undefined
 	latestReport: CharacterReportMetadata | null
 	hasPendingReport: boolean
 }
@@ -75,7 +78,6 @@ function isForbiddenError(error: unknown): boolean {
 export default function HrUserProfilePage() {
 	const { userId } = useParams<{ userId: string }>()
 	const location = useLocation()
-	const navigate = useNavigate()
 	const { isAuthenticated, isLoading: authLoading } = useAuth()
 	const [requestingCharacterId, setRequestingCharacterId] = useState<string | null>(null)
 	const [isScanningAll, setIsScanningAll] = useState(false)
@@ -87,7 +89,9 @@ export default function HrUserProfilePage() {
 	const { data: accessibleCorporations, isLoading: accessibleCorporationsLoading } =
 		useHrAccessibleCorporations()
 
-	const navigationState = location.state as ReviewerProfileNavigationState | null
+	const [referrerNavigationState] = useState(getApplicationProfileNavigationFromReferrer)
+	const navigationState =
+		(location.state as ReviewerProfileNavigationState | null) ?? referrerNavigationState
 	const source = navigationState?.source
 	const returnTo = navigationState?.returnTo
 	const fromApplications = source === 'applications' || returnTo?.includes('/applications')
@@ -117,6 +121,9 @@ export default function HrUserProfilePage() {
 	})
 
 	const characterQuery = useHrUserCharacters(userId ?? '', {
+		enabled: !!userId,
+	})
+	const { data: userBlocklistStatus } = useHrUserBlocklistStatus(userId ?? '', {
 		enabled: !!userId,
 	})
 
@@ -172,6 +179,7 @@ export default function HrUserProfilePage() {
 					role: report?.role ?? null,
 					activityStatus: report?.activityStatus ?? null,
 					hasValidToken: character.hasValidToken,
+					isBlacklisted: character.isBlacklisted,
 					latestReport,
 					hasPendingReport,
 				}
@@ -389,6 +397,13 @@ export default function HrUserProfilePage() {
 			userId={userId}
 			mainCharacterId={mainCharacter?.characterId}
 			mainCharacterName={mainCharacter?.characterName}
+			isMainCharacterBlacklisted={Boolean(mainCharacter?.isBlacklisted)}
+			isAccountBlacklisted={Boolean(userBlocklistStatus?.isBlacklisted)}
+			sidebarBadges={
+				userBlocklistStatus?.isBlacklisted ? (
+					<UserProfileStatusBadge variant="destructive">Blocklisted</UserProfileStatusBadge>
+				) : undefined
+			}
 			sidebarStats={
 				<>
 					<UserProfileStatRow label="Characters" value={rows.length} />
@@ -451,6 +466,7 @@ export default function HrUserProfilePage() {
 					role: character.role,
 					activityStatus: character.activityStatus,
 					isPrimary: character.isPrimary,
+					isBlacklisted: character.isBlacklisted,
 					latestReport: character.latestReport,
 					hasPendingReport: character.hasPendingReport,
 					skillPoints: spByCharacterId.get(character.characterId),
@@ -480,32 +496,24 @@ export default function HrUserProfilePage() {
 				isScanPendingFor={(characterId) =>
 					requestReport.isPending && requestingCharacterId === characterId
 				}
-				onViewReport={(character) => {
-					const full = rows.find((row) => row.characterId === character.characterId)
-					if (full?.latestReport?.status === 'completed') {
-						void navigate(`/hr/users/${userId}/reports/${full.latestReport.id}`, {
-							state: {
-								characterName: character.characterName,
-								userId: userId ?? undefined,
-								backTo: location.pathname + location.search,
-								backLabel: 'Back to User Details',
-								breadcrumbParentLabel: 'User Details',
-							},
-						})
-					}
-				}}
-				onViewDetails={(character) => {
-					const full = rows.find((row) => row.characterId === character.characterId)
-					if (full) {
-						void navigate(`/character/${character.characterId}`, {
-							state: {
-								source: 'hr-member-profile',
-								backTo: `/hr/users/${userId}`,
-								backLabel: 'Back to User Details',
-							},
-						})
-					}
-				}}
+				getReportTarget={(character) => ({
+					to: `/hr/users/${userId}/reports/${character.latestReport!.id}`,
+					state: {
+						characterName: character.characterName,
+						userId: userId ?? undefined,
+						backTo: location.pathname + location.search,
+						backLabel: 'Back to User Details',
+						breadcrumbParentLabel: 'User Details',
+					},
+				})}
+				getDetailsTarget={(character) => ({
+					to: `/character/${character.characterId}`,
+					state: {
+						source: 'hr-member-profile',
+						backTo: `/hr/users/${userId}`,
+						backLabel: 'Back to User Details',
+					},
+				})}
 				onScan={(character) => {
 					const full = rows.find((row) => row.characterId === character.characterId)
 					if (full) {
@@ -525,8 +533,8 @@ export default function HrUserProfilePage() {
 					createdAt: application.createdAt,
 				}))}
 				loading={applicationsQuery.isLoading}
-				onOpenApplication={(application) =>
-					navigate(`/corporations/${application.corporationId}/applications/${application.id}`)
+				getApplicationHref={(application) =>
+					`/corporations/${application.corporationId}/applications/${application.id}`
 				}
 			/>
 

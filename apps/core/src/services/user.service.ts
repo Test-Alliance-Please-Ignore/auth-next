@@ -1,4 +1,5 @@
 import { and, asc, eq } from '@repo/db-utils'
+import { logger, toErrorLogDetails } from '@repo/hono-helpers'
 
 import { userCharacters, userPreferences, users } from '../db/schema'
 
@@ -10,7 +11,6 @@ import type {
 	UserProfileDTO,
 } from '@repo/core'
 import type { createDb } from '../db'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Thrown when a character cannot be claimed because it is already attached to an account.
@@ -156,13 +156,30 @@ export class UserService {
 	 * Get full user profile with characters and preferences
 	 * Optimized to fetch all data in parallel rather than sequentially
 	 */
-	async getUserProfile(userId: string, options?: { includeDeleted?: boolean }): Promise<UserProfileDTO> {
+	async getUserProfile(
+		userId: string,
+		options?: { includeDeleted?: boolean }
+	): Promise<UserProfileDTO> {
 		const includeDeleted = options?.includeDeleted === true
 		const characterWhere = includeDeleted
 			? eq(userCharacters.userId, userId)
 			: and(eq(userCharacters.userId, userId), eq(userCharacters.isDeleted, false))
 
-		// Execute all 3 queries in parallel for better performance
+		// Preferences are optional profile metadata. Keep their failure isolated so a
+		// transient preferences query does not prevent session authentication.
+		const preferencesPromise = this.db.query.userPreferences
+			.findFirst({
+				where: eq(userPreferences.userId, userId),
+			})
+			.catch((error) => {
+				logger.warn('[UserService] Preferences query failed; using defaults', {
+					userId,
+					...toErrorLogDetails(error),
+				})
+				return null
+			})
+
+		// Execute all profile queries in parallel for better performance.
 		let user, characters, preferences
 		try {
 			;[user, characters, preferences] = await Promise.all([
@@ -184,15 +201,12 @@ export class UserService {
 						linkedAt: true,
 					},
 				}),
-				this.db.query.userPreferences.findFirst({
-					where: eq(userPreferences.userId, userId),
-				}),
+				preferencesPromise,
 			])
 		} catch (error) {
 			logger.error('[UserService] Database query failed', {
 				userId,
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
+				...toErrorLogDetails(error),
 			})
 			throw error
 		}
@@ -202,7 +216,9 @@ export class UserService {
 			throw new Error('User not found')
 		}
 
-		const activeCharacters = includeDeleted ? characters : characters.filter((char) => !char.isDeleted)
+		const activeCharacters = includeDeleted
+			? characters
+			: characters.filter((char) => !char.isDeleted)
 
 		const charactersDTO: UserCharacterDTO[] = activeCharacters.map((char) => ({
 			id: char.id,

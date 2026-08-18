@@ -2,7 +2,7 @@ import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, ArrowLeft, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router'
+import { Link, Navigate, useLocation, useParams } from 'react-router'
 
 import { CopyableMetaPill } from '@/components/copyable-meta-pill'
 import { IpHistoryCard } from '@/components/ip-history-card'
@@ -43,6 +43,7 @@ import {
 	useRequestFulcrumReportBatch,
 } from '../hooks'
 import { getPrivateDataUnavailableMessage } from '../utils/private-data'
+import { getApplicationProfileNavigationFromReferrer } from '../utils/profile-navigation'
 
 import type { CharacterReportMetadata, FulcrumCharacterReportData } from '../api'
 
@@ -63,6 +64,7 @@ interface AuditorCharacterRow {
 	role: 'CEO' | 'Director' | 'Member' | null
 	activityStatus: 'active' | 'inactive' | 'unknown' | null
 	hasValidToken: boolean | null
+	isBlacklisted: boolean
 	latestReport: CharacterReportMetadata | null
 	hasPendingReport: boolean
 }
@@ -77,7 +79,6 @@ function getLatestReport(character: FulcrumCharacterReportData): CharacterReport
 export default function HrAuditorUserProfilePage() {
 	const { userId } = useParams<{ userId: string }>()
 	const location = useLocation()
-	const navigate = useNavigate()
 	const queryClient = useQueryClient()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasAnyPermission } = useUserPermissions()
@@ -141,7 +142,9 @@ export default function HrAuditorUserProfilePage() {
 		)
 	}, [applications])
 
-	const navigationState = location.state as AuditorProfileNavigationState | null
+	const [referrerNavigationState] = useState(getApplicationProfileNavigationFromReferrer)
+	const navigationState =
+		(location.state as AuditorProfileNavigationState | null) ?? referrerNavigationState
 	const source = navigationState?.source
 	const returnTo = navigationState?.returnTo
 	const fromApplications = source === 'applications' || returnTo?.includes('/applications')
@@ -190,6 +193,7 @@ export default function HrAuditorUserProfilePage() {
 					allianceName: hrCharacter?.allianceName ?? null,
 					role: reportCharacter?.role ?? null,
 					activityStatus: reportCharacter?.activityStatus ?? null,
+					isBlacklisted: userCharacter?.isBlacklisted ?? hrCharacter?.isBlacklisted ?? false,
 					latestReport,
 					hasPendingReport,
 					hasValidToken: userCharacter?.hasValidToken ?? hrCharacter?.hasValidToken ?? null,
@@ -345,32 +349,6 @@ export default function HrAuditorUserProfilePage() {
 		)
 	}
 
-	const handleViewDetails = (character: AuditorCharacterRow) => {
-		void navigate(`/character/${character.characterId}`, {
-			state: {
-				source: 'hr-auditor-user-profile',
-				backTo: `/hr/users/${userId}`,
-				backLabel: 'Back to User Details',
-				corporationId: character.corporationId ?? undefined,
-			},
-		})
-	}
-
-	const handleViewLatestReport = (character: AuditorCharacterRow) => {
-		if (character.latestReport?.status !== 'completed' || !character.corporationId) return
-		const returnTo = `${location.pathname}${location.search}`
-		void navigate(`/hr/users/${userId}/reports/${character.latestReport.id}`, {
-			state: {
-				characterName: character.characterName,
-				userId: userId ?? undefined,
-				corporationId: character.corporationId,
-				returnTo,
-				backLabel: 'Back to User Profile',
-				breadcrumbParentLabel: 'User Profile',
-			},
-		})
-	}
-
 	const scanEligibleCharacters = rows.filter(
 		(character) =>
 			!!character.corporationId &&
@@ -454,10 +432,15 @@ export default function HrAuditorUserProfilePage() {
 			userId={userDetails.id}
 			mainCharacterId={mainCharacter?.characterId}
 			mainCharacterName={mainCharacter?.characterName}
+			isMainCharacterBlacklisted={Boolean(mainCharacter?.isBlacklisted)}
+			isAccountBlacklisted={Boolean(userDetails.isBlacklisted)}
 			sidebarBadges={
 				<>
 					{userDetails.is_admin && (
 						<UserProfileStatusBadge variant="default">Site Admin</UserProfileStatusBadge>
+					)}
+					{userDetails.isBlacklisted && (
+						<UserProfileStatusBadge variant="destructive">Blocklisted</UserProfileStatusBadge>
 					)}
 					{userDetails.discordUserId ? (
 						<UserProfileStatusBadge variant="success">Discord Linked</UserProfileStatusBadge>
@@ -529,6 +512,7 @@ export default function HrAuditorUserProfilePage() {
 							role: character.role,
 							activityStatus: character.activityStatus,
 							isPrimary: character.isPrimary,
+							isBlacklisted: character.isBlacklisted,
 							latestReport: character.latestReport,
 							hasPendingReport: character.hasPendingReport,
 							skillPoints: spByCharacterId.get(character.characterId),
@@ -559,14 +543,25 @@ export default function HrAuditorUserProfilePage() {
 						isScanPendingFor={(characterId) =>
 							requestReport.isPending && requestingCharacterId === characterId
 						}
-						onViewReport={(character) => {
-							const full = rows.find((row) => row.characterId === character.characterId)
-							if (full) handleViewLatestReport(full)
-						}}
-						onViewDetails={(character) => {
-							const full = rows.find((row) => row.characterId === character.characterId)
-							if (full) handleViewDetails(full)
-						}}
+						getReportTarget={(character) => ({
+							to: `/hr/users/${userId}/reports/${character.latestReport!.id}`,
+							state: {
+								characterName: character.characterName,
+								userId: userId ?? undefined,
+								returnTo: `${location.pathname}${location.search}`,
+								backLabel: 'Back to User Profile',
+								breadcrumbParentLabel: 'User Profile',
+							},
+						})}
+						getDetailsTarget={(character) => ({
+							to: `/character/${character.characterId}`,
+							state: {
+								source: 'hr-auditor-user-profile',
+								backTo: `/hr/users/${userId}`,
+								backLabel: 'Back to User Details',
+								corporationId: character.corporationId ?? undefined,
+							},
+						})}
 						onScan={(character) => {
 							const full = rows.find((row) => row.characterId === character.characterId)
 							if (full) handleOpenSingleScanDialog(full)
@@ -592,8 +587,8 @@ export default function HrAuditorUserProfilePage() {
 							createdAt: application.createdAt,
 						}))}
 						loading={appsLoading}
-						onOpenApplication={(application) =>
-							navigate(`/corporations/${application.corporationId}/applications/${application.id}`)
+						getApplicationHref={(application) =>
+							`/corporations/${application.corporationId}/applications/${application.id}`
 						}
 					/>
 					<IpHistoryCard

@@ -628,7 +628,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 
 	@UseCharacterAuth
 	async fetchCharacterWalletJournal(characterId: string): Promise<CharacterWalletJournalEntry[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterWalletJournalEntry[]>(
+		const result = await this.esiFetcher.fetchEsiPaginated<EsiCharacterWalletJournalEntry>(
 			`/characters/${characterId}/wallet/journal`,
 			{ cacheMode: 'no-store' }
 		)
@@ -772,7 +772,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		corporationId: string,
 		division: number
 	): Promise<CorporationWalletJournalEntry[]> {
-		const result = await this.esiFetcher.fetchEsi<EsiCorporationWalletJournalEntry[]>(
+		const result = await this.esiFetcher.fetchEsiPaginated<EsiCorporationWalletJournalEntry>(
 			`/corporations/${corporationId}/wallets/${division}/journal`,
 			{ cacheMode: 'no-store' }
 		)

@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 
 import { useApiMutation } from '@/hooks/useApiMutation'
+import { useAuth } from '@/hooks/useAuth'
 import { apiClient } from '@/lib/api'
 
 import { applicationsApi, fulcrumApi } from './api'
@@ -23,6 +24,7 @@ import type {
 	ApplicationsParams,
 	ApplicationStaffNote,
 	CharacterReportMetadata,
+	CorporationApplicationCounts,
 	CreateTemplateRequest,
 	FulcrumCharacterData,
 	FulcrumCharacterReportData,
@@ -101,6 +103,7 @@ const REPORT_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 export const hrUserKeys = {
 	all: ['hr', 'users'] as const,
 	characters: (userId: string) => [...hrUserKeys.all, userId, 'characters'] as const,
+	blocklistStatus: (userId: string) => [...hrUserKeys.all, userId, 'blocklist-status'] as const,
 }
 
 export interface HrUserCharacterData {
@@ -112,6 +115,7 @@ export interface HrUserCharacterData {
 	corporationName?: string | null
 	allianceId?: string | null
 	allianceName?: string | null
+	isBlacklisted?: boolean
 }
 
 // ============================================================================
@@ -131,6 +135,19 @@ export function useApplications(params?: ApplicationsParams, options?: { enabled
 		staleTime: 1000 * 60 * 2, // 2 minutes
 		gcTime: 1000 * 60 * 5, // 5 minutes
 		enabled: options?.enabled ?? true,
+	})
+}
+
+export function useCorporationApplicationCounts(options?: { enabled?: boolean }) {
+	const { user } = useAuth()
+	const userId = user?.id ?? null
+
+	return useQuery<CorporationApplicationCounts[]>({
+		queryKey: [...applicationKeys.all, 'corporation-counts', userId],
+		queryFn: () => applicationsApi.getApplicationCountsByCorporation(),
+		staleTime: 1000 * 30,
+		gcTime: 1000 * 60 * 2,
+		enabled: (options?.enabled ?? true) && userId !== null,
 	})
 }
 
@@ -282,6 +299,19 @@ export function useHrUserCharacters(userId: string, options?: { enabled?: boolea
 	return useQuery<HrUserCharacterData[]>({
 		queryKey: hrUserKeys.characters(userId),
 		queryFn: () => apiClient.get(`/hr/users/${userId}/characters`),
+		staleTime: 1000 * 30,
+		gcTime: 1000 * 60 * 3,
+		enabled: options?.enabled ?? !!userId,
+		meta: {
+			suppressErrorToast: true,
+		},
+	})
+}
+
+export function useHrUserBlocklistStatus(userId: string, options?: { enabled?: boolean }) {
+	return useQuery<{ isBlacklisted: boolean }>({
+		queryKey: hrUserKeys.blocklistStatus(userId),
+		queryFn: () => apiClient.get(`/hr/users/${userId}/blocklist-status`),
 		staleTime: 1000 * 30,
 		gcTime: 1000 * 60 * 3,
 		enabled: options?.enabled ?? !!userId,

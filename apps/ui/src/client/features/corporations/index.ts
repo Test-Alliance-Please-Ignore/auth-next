@@ -9,7 +9,13 @@
 export * from './hooks'
 
 // Re-export API types for use in other parts of the app
-export type { CorporationMember, MyCorporation, CorporationAccessResult } from './api'
+export type {
+	CorporationAccessResult,
+	CorporationCoverageResult,
+	CorporationCoverageStats,
+	CorporationMember,
+	MyCorporation,
+} from './api'
 
 // Re-export helper functions
 export {

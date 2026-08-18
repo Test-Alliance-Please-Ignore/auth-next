@@ -2,30 +2,49 @@ import { Search, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router'
 
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
-import { UserSearchResultsTable } from '@/components/user-search-results-table'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { UserSearchResultsTable } from '@/components/user-search-results-table'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useAuditorUsers } from '../../../hooks/useAuditorUsers'
+import { HrUserSearchContent } from '../components/hr-user-search-content'
 
 export default function HrAuditorUsersPage() {
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasAnyPermission } = useUserPermissions()
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
 
+	usePageTitle('User Search')
+
+	if (!authLoading && !isAuthenticated) {
+		return <Navigate to="/login" replace />
+	}
+
+	if (authLoading) {
+		return (
+			<Container>
+				<div className="flex min-h-[320px] items-center justify-center">
+					<LoadingSpinner size="lg" />
+				</div>
+			</Container>
+		)
+	}
+
+	return isAuditor || user?.is_admin ? <HrAuditorUsersAdminPage /> : <HrScopedUsersPage />
+}
+
+function HrAuditorUsersAdminPage() {
 	const [searchQuery, setSearchQuery] = useState('')
 	const [debouncedQuery, setDebouncedQuery] = useState('')
 	const [page, setPage] = useState(1)
 	const [pageSize, setPageSize] = useState<number>(25)
-
-	usePageTitle('User Search')
 
 	useEffect(() => {
 		const timer = setTimeout(() => {
@@ -42,48 +61,16 @@ export default function HrAuditorUsersPage() {
 		offset,
 	})
 
-	if (!authLoading && !isAuthenticated) {
-		return <Navigate to="/login" replace />
-	}
-
-	if (authLoading) {
-		return (
-			<Container>
-				<div className="flex items-center justify-center min-h-[320px]">
-					<LoadingSpinner size="lg" />
-				</div>
-			</Container>
-		)
-	}
-
-	if (!isAuditor && !user?.is_admin) {
-		return (
-			<Container>
-				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-					<CardHeader className="text-center">
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
-						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							HR Auditor permission is required to access this page.
-						</CardDescription>
-					</CardHeader>
-				</Card>
-			</Container>
-		)
-	}
-
 	const users = data?.users ?? []
 	const total = data?.total ?? 0
 	const totalPages = Math.ceil(total / pageSize)
 	const hasPagination = totalPages > 1
 
 	return (
-		<Container>
-			<PageHeader
-				title="User Search"
-				description="Search all users for HR audit purposes"
-			/>
+		<Container className="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+			<PageHeader title="User Search" description="Search all users for HR audit purposes" />
 
-			<div className="mt-6 space-y-4">
+			<div className="mt-6 flex flex-col space-y-4 lg:min-h-0 lg:flex-1">
 				{/* Search */}
 				<Card>
 					<CardContent className="pt-6">
@@ -100,7 +87,7 @@ export default function HrAuditorUsersPage() {
 				</Card>
 
 				{/* Results */}
-				<Card>
+				<Card className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
 					<CardHeader>
 						<div className="space-y-4">
 							<div>
@@ -108,12 +95,8 @@ export default function HrAuditorUsersPage() {
 									<Users className="h-5 w-5" />
 									Users
 								</CardTitle>
-							<CardDescription>
-									{isLoading
-										? 'Searching...'
-										: debouncedQuery
-											? 'Search results'
-											: 'All users'}
+								<CardDescription>
+									{isLoading ? 'Searching...' : debouncedQuery ? 'Search results' : 'All users'}
 								</CardDescription>
 							</div>
 							<UserSearchPaginationControls
@@ -128,7 +111,7 @@ export default function HrAuditorUsersPage() {
 							/>
 						</div>
 					</CardHeader>
-					<CardContent>
+					<CardContent className="lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
 						{isLoading ? (
 							<div className="flex justify-center py-8">
 								<LoadingSpinner size="md" />
@@ -138,10 +121,12 @@ export default function HrAuditorUsersPage() {
 								{debouncedQuery ? 'No users match your search' : 'Enter a search term above'}
 							</p>
 						) : (
-							<UserSearchResultsTable
-								users={users}
-								userDetailsPath={(userId) => `/hr/users/${userId}`}
-							/>
+							<div className="lg:min-h-0 lg:flex-1 lg:overflow-auto">
+								<UserSearchResultsTable
+									users={users}
+									userDetailsPath={(userId) => `/hr/users/${userId}`}
+								/>
+							</div>
 						)}
 						{!isLoading && users.length > 0 && hasPagination && (
 							<div className="mt-4 border-t border-border pt-4">
@@ -159,6 +144,21 @@ export default function HrAuditorUsersPage() {
 						)}
 					</CardContent>
 				</Card>
+			</div>
+		</Container>
+	)
+}
+
+function HrScopedUsersPage() {
+	return (
+		<Container className="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+			<PageHeader
+				title="User Search"
+				description="Search surface-level users and linked characters within your HR access scope."
+			/>
+
+			<div className="mt-6 flex min-h-0 flex-1 flex-col">
+				<HrUserSearchContent fillAvailableHeight />
 			</div>
 		</Container>
 	)

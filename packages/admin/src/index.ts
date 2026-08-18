@@ -152,6 +152,7 @@ export interface UserDetails {
 	id: string
 	mainCharacterId: string
 	is_admin: boolean
+	isBlacklisted: boolean
 	discordUserId: string | null
 	discord: DiscordStatus | null
 	characters: CharacterSummary[]
@@ -471,18 +472,28 @@ function parseEsiScope(scope: (typeof THIRD_PARTY_APP_ESI_SCOPES)[number]): {
 }
 
 function describeEsiAction(action: string): string {
-	if (action.startsWith('read_')) return `Read ${action.slice('read_'.length).replaceAll('_', ' ')}.`
-	if (action.startsWith('write_')) return `Modify ${action.slice('write_'.length).replaceAll('_', ' ')}.`
-	if (action.startsWith('send_')) return `Send ${action.slice('send_'.length).replaceAll('_', ' ')}.`
-	if (action.startsWith('respond_')) return `Respond to ${action.slice('respond_'.length).replaceAll('_', ' ')}.`
-	if (action.startsWith('track_')) return `Track ${action.slice('track_'.length).replaceAll('_', ' ')}.`
-	if (action.startsWith('open_')) return `Open ${action.slice('open_'.length).replaceAll('_', ' ')} in the EVE client.`
-	if (action.startsWith('manage_')) return `Manage ${action.slice('manage_'.length).replaceAll('_', ' ')}.`
-	if (action.startsWith('organize_')) return `Organize ${action.slice('organize_'.length).replaceAll('_', ' ')}.`
+	if (action.startsWith('read_'))
+		return `Read ${action.slice('read_'.length).replaceAll('_', ' ')}.`
+	if (action.startsWith('write_'))
+		return `Modify ${action.slice('write_'.length).replaceAll('_', ' ')}.`
+	if (action.startsWith('send_'))
+		return `Send ${action.slice('send_'.length).replaceAll('_', ' ')}.`
+	if (action.startsWith('respond_'))
+		return `Respond to ${action.slice('respond_'.length).replaceAll('_', ' ')}.`
+	if (action.startsWith('track_'))
+		return `Track ${action.slice('track_'.length).replaceAll('_', ' ')}.`
+	if (action.startsWith('open_'))
+		return `Open ${action.slice('open_'.length).replaceAll('_', ' ')} in the EVE client.`
+	if (action.startsWith('manage_'))
+		return `Manage ${action.slice('manage_'.length).replaceAll('_', ' ')}.`
+	if (action.startsWith('organize_'))
+		return `Organize ${action.slice('organize_'.length).replaceAll('_', ' ')}.`
 	return titleCase(action)
 }
 
-function buildEsiScopeMetadata(scope: (typeof THIRD_PARTY_APP_ESI_SCOPES)[number]): ThirdPartyAppScopeMetadata {
+function buildEsiScopeMetadata(
+	scope: (typeof THIRD_PARTY_APP_ESI_SCOPES)[number]
+): ThirdPartyAppScopeMetadata {
 	const { domain, action } = parseEsiScope(scope)
 	const domainLabel = ESI_DOMAIN_LABELS[domain] ?? titleCase(domain)
 	const actionLabel = titleCase(action)
@@ -717,9 +728,7 @@ export function normalizeSidebarExternalLinkIconName(
 	return null
 }
 
-export function resolveSidebarExternalLinkIconName(
-	value: string
-): SidebarExternalLinkIconName {
+export function resolveSidebarExternalLinkIconName(value: string): SidebarExternalLinkIconName {
 	return normalizeSidebarExternalLinkIconName(value) ?? 'external-link'
 }
 
@@ -783,10 +792,7 @@ export interface SidebarExternalLinkUpdateInput {
 export interface ThirdPartyAppsAdminWorker {
 	listClients(options?: OAuthClientListOptions): Promise<OAuthClientListResult>
 	createClient(input: OAuthClientCreateInput): Promise<OAuthClientSummary>
-	updateClient(
-		clientId: string,
-		input: OAuthClientUpdateInput
-	): Promise<OAuthClientSummary | null>
+	updateClient(clientId: string, input: OAuthClientUpdateInput): Promise<OAuthClientSummary | null>
 	deleteClient(clientId: string): Promise<void>
 	regenerateClientSecret(clientId: string): Promise<OAuthClientSecretResult | null>
 	previewAuthorization(

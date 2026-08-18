@@ -47,8 +47,10 @@ export default function Layout() {
 	const sidebarOpenRef = useRef(sidebarOpen)
 	const location = useLocation()
 	const isStructuresPage = location.pathname === '/structures'
+	const isHrUserSearchPage = location.pathname === '/hr/users'
 	const [isPageScrollEnabled, setIsPageScrollEnabled] = useState(false)
 	const isClampedStructuresPage = isStructuresPage && !isPageScrollEnabled
+	const isClampedRoute = isClampedStructuresPage || isHrUserSearchPage
 
 	useEffect(() => {
 		window.localStorage.setItem(SIDEBAR_OPEN_STORAGE_KEY, sidebarOpen ? '1' : '0')
@@ -116,7 +118,7 @@ export default function Layout() {
 			<div
 				className={cn(
 					'relative min-h-screen flex overflow-x-hidden',
-					isClampedStructuresPage && 'lg:h-dvh lg:overflow-hidden'
+					isClampedRoute && 'lg:h-dvh lg:overflow-hidden'
 				)}
 			>
 				{/* Starfield Background */}
@@ -152,7 +154,7 @@ export default function Layout() {
 				<div
 					className={cn(
 						'relative z-10 flex-1 flex flex-col min-w-0 overflow-x-hidden overflow-y-auto transition-[padding-left] duration-300 ease-in-out',
-						isClampedStructuresPage && 'lg:min-h-0 lg:overflow-y-hidden',
+						isClampedRoute && 'lg:min-h-0 lg:overflow-y-hidden',
 						sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'
 					)}
 				>
@@ -175,15 +177,10 @@ export default function Layout() {
 					<main
 						className={cn(
 							'flex flex-1 flex-col relative z-10 p-4 md:p-6 lg:p-8',
-							isClampedStructuresPage && 'lg:min-h-0 lg:overflow-hidden'
+							isClampedRoute && 'lg:min-h-0 lg:overflow-hidden'
 						)}
 					>
-						<div
-							className={cn(
-								'w-full mx-auto max-w-[120rem]',
-								isClampedStructuresPage && 'lg:h-full'
-							)}
-						>
+						<div className={cn('w-full mx-auto max-w-[120rem]', isClampedRoute && 'lg:h-full')}>
 							<Outlet />
 						</div>
 					</main>

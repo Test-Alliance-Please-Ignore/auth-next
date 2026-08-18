@@ -50,6 +50,9 @@ export interface Application {
 	recommendationCount?: number
 	altCharacterIds?: string[]
 	isFirstApplication?: boolean
+	isUserBlacklisted?: boolean
+	isCharacterBlacklisted?: boolean
+	isBlacklisted?: boolean
 }
 
 export interface ApplicationStaffNote {
@@ -219,6 +222,12 @@ export interface ApplicationsListResult {
 	}
 }
 
+export interface CorporationApplicationCounts {
+	corporationId: string
+	pending: number
+	underReview: number
+}
+
 /**
  * Request body for submitting an application
  */
@@ -368,6 +377,13 @@ export const applicationsApi = {
 		return apiClient.get(`/hr/applications/paged${query ? `?${query}` : ''}`)
 	},
 
+	async getApplicationCountsByCorporation(): Promise<CorporationApplicationCounts[]> {
+		const result = await apiClient.get<{ corporations: CorporationApplicationCounts[] }>(
+			'/hr/applications/counts'
+		)
+		return result.corporations
+	},
+
 	/**
 	 * Get a single application by ID
 	 */
@@ -498,10 +514,7 @@ export const applicationsApi = {
 	/**
 	 * Send a message for an application
 	 */
-	async sendMessage(
-		applicationId: string,
-		data: SendMessageRequest
-	): Promise<ApplicationMessage> {
+	async sendMessage(applicationId: string, data: SendMessageRequest): Promise<ApplicationMessage> {
 		return apiClient.post(`/hr/applications/${applicationId}/messages`, data)
 	},
 
@@ -624,10 +637,7 @@ export const applicationsApi = {
 	/**
 	 * Update a message template
 	 */
-	async updateTemplate(
-		templateId: string,
-		data: UpdateTemplateRequest
-	): Promise<MessageTemplate> {
+	async updateTemplate(templateId: string, data: UpdateTemplateRequest): Promise<MessageTemplate> {
 		return apiClient.patch(`/hr/templates/${templateId}`, data)
 	},
 
@@ -808,10 +818,10 @@ export const fulcrumApi = {
 	 */
 	async getUserCharactersWithReports(
 		userId: string,
-		corporationId: string,
+		corporationId: string
 	): Promise<FulcrumCharacterData[]> {
 		return apiClient.get(
-			`/fulcrum/users/${userId}/characters?corporationId=${encodeURIComponent(corporationId)}`,
+			`/fulcrum/users/${userId}/characters?corporationId=${encodeURIComponent(corporationId)}`
 		)
 	},
 
@@ -838,7 +848,7 @@ export const fulcrumApi = {
 		characterId: string,
 		requestSource: ReportRequestSource,
 		applicationId?: string,
-		sendDm = true,
+		sendDm = true
 	): Promise<{ reportId: string; status: string }> {
 		return apiClient.post(`/fulcrum/characters/${characterId}/reports`, {
 			requestSource,
@@ -856,7 +866,7 @@ export const fulcrumApi = {
 		characterIds: string[],
 		requestSource: ReportRequestSource,
 		applicationId?: string,
-		sendDm = true,
+		sendDm = true
 	): Promise<{ batchId: string; status: string }> {
 		return apiClient.post('/fulcrum/reports/batch', {
 			characterIds,
@@ -880,7 +890,7 @@ export const fulcrumApi = {
 		reportId: string,
 		section: ReportSectionName,
 		page?: number,
-		pageSize?: number,
+		pageSize?: number
 	): Promise<T> {
 		const params = new URLSearchParams()
 		if (page !== undefined) params.set('page', String(page))
@@ -892,10 +902,7 @@ export const fulcrumApi = {
 	/**
 	 * Fetch a single mail's content on-demand from ESI
 	 */
-	async fetchMailContent(
-		reportId: string,
-		mailId: string,
-	): Promise<{ body: string }> {
+	async fetchMailContent(reportId: string, mailId: string): Promise<{ body: string }> {
 		return apiClient.get(`/fulcrum/reports/${reportId}/mails/${mailId}/content`)
 	},
 }

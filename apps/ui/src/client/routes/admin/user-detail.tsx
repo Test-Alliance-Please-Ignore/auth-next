@@ -24,6 +24,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { IpHistoryCard } from '@/components/ip-history-card'
+import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -71,7 +72,6 @@ import { useCorporations } from '@/hooks/useCorporations'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { api } from '@/lib/api'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
-import { characterPortraitUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
 
 import type { BlacklistTargetType, DiscordRefreshOutput } from '@/lib/api'
@@ -576,9 +576,12 @@ export default function UserDetailPage() {
 				<CardContent className="pt-6">
 					<div className="flex items-start gap-6">
 						{primaryCharacter ? (
-							<img
-								src={characterPortraitUrl(primaryCharacter.characterId, 128)}
-								alt={primaryCharacterName || 'Unknown'}
+							<MemberAvatar
+								characterId={primaryCharacter.characterId}
+								characterName={primaryCharacterName}
+								isBlacklisted={Boolean(primaryCharacter.isBlacklisted)}
+								size="auto"
+								imageSize={128}
 								className="h-24 w-24 rounded-full"
 							/>
 						) : (
@@ -590,7 +593,14 @@ export default function UserDetailPage() {
 							<div className="flex items-start justify-between">
 								<div>
 									<div className="flex items-center justify-between gap-2">
-										<h2 className="text-2xl font-bold">{primaryCharacterName || 'Unknown'}</h2>
+										<h2
+											className={cn(
+												'text-2xl font-bold',
+												(activeBlacklist || primaryCharacter?.isBlacklisted) && 'text-red-500'
+											)}
+										>
+											{primaryCharacterName || 'Unknown'}
+										</h2>
 										{user.is_admin && (
 											<Badge variant="default">
 												<Shield className="h-3 w-3 mr-1" />
@@ -1139,13 +1149,19 @@ export default function UserDetailPage() {
 								>
 									<TableCell>
 										<div className="flex items-center gap-3">
-											<img
-												src={characterPortraitUrl(character.characterId, 64)}
-												alt={character.characterName}
+											<MemberAvatar
+												characterId={character.characterId}
+												characterName={character.characterName}
+												isBlacklisted={character.isBlacklisted}
+												size="auto"
 												className="h-10 w-10 rounded-full"
 											/>
 											<div>
-												<div className="font-medium">{character.characterName}</div>
+												<div
+													className={cn('font-medium', character.isBlacklisted && 'text-red-500')}
+												>
+													{character.characterName}
+												</div>
 												<div className="text-xs text-muted-foreground">{character.characterId}</div>
 												<div className="mt-1 flex gap-2">
 													{character.is_primary && <Badge variant="default">Primary</Badge>}

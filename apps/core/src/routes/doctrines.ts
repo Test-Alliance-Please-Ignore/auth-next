@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import {
 	AddFittingToDoctrineSchema,
 	CreateCategorySchema,
@@ -112,7 +112,10 @@ doctrines.get('/search/types', async (c) => {
 	}
 
 	const doctrinesStub = getStub<Doctrines>(c.env.DOCTRINES, 'default')
-	const results = await doctrinesStub.searchShipTypes(q.trim().slice(0, 500))
+	const results = await withRpcResult(
+		doctrinesStub.searchShipTypes(q.trim().slice(0, 500)),
+		(value) => value.map((result) => ({ ...result }))
+	)
 
 	return c.json(results)
 })

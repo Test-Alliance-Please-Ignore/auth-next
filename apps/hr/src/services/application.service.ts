@@ -15,6 +15,7 @@ import type {
 	ApplicationFilters,
 	ApplicationListResult,
 	ApplicationStatus,
+	CorporationApplicationCounts,
 	HrAccessContext,
 	RecommendableApplication,
 	RecommendationSentiment,
@@ -305,6 +306,62 @@ export class ApplicationService {
 			offset,
 			counts,
 		}
+	}
+
+	async getApplicationCountsByCorporation(
+		corporationIds: string[],
+		isAdmin: boolean,
+		isAuditor: boolean,
+		userHrCorporations: string[] = []
+	): Promise<CorporationApplicationCounts[]> {
+		const requestedCorporationIds = [...new Set(corporationIds)]
+		if (requestedCorporationIds.length === 0) return []
+
+		const authorizedCorporationIds =
+			isAdmin || isAuditor
+				? requestedCorporationIds
+				: requestedCorporationIds.filter((corporationId) =>
+						userHrCorporations.includes(corporationId)
+					)
+
+		const countsByCorporation = new Map<string, CorporationApplicationCounts>(
+			authorizedCorporationIds.map((corporationId) => [
+				corporationId,
+				{
+					corporationId,
+					pending: 0,
+					underReview: 0,
+				},
+			])
+		)
+
+		if (authorizedCorporationIds.length === 0) {
+			return [...countsByCorporation.values()]
+		}
+
+		const rows = await this.ctx.db
+			.select({
+				corporationId: applications.corporationId,
+				status: applications.status,
+				total: sql<number>`count(*)::int`,
+			})
+			.from(applications)
+			.where(
+				and(
+					inArray(applications.corporationId, authorizedCorporationIds),
+					inArray(applications.status, ['pending', 'under_review'])
+				)
+			)
+			.groupBy(applications.corporationId, applications.status)
+
+		for (const row of rows) {
+			const counts = countsByCorporation.get(row.corporationId)
+			if (!counts) continue
+			if (row.status === 'pending') counts.pending = row.total
+			if (row.status === 'under_review') counts.underReview = row.total
+		}
+
+		return [...countsByCorporation.values()]
 	}
 
 	/**

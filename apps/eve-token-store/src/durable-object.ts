@@ -166,10 +166,30 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			// Initialize the SQLite-backed cache tables before the DO can serve requests.
 			// This avoids cache clear/read paths racing a cold start and resetting the object.
 			await this.initializeEsiCache()
-		})
 
-		// Schedule alarm for token refresh (check every 5 minutes)
-		void this.state.storage.setAlarm(Date.now() + 5 * 60 * 1000)
+			// Do not overwrite an existing alarm during a DO restart or relocation.
+			// Keeping the existing alarm also preserves Cloudflare's automatic retry state.
+			if ((await state.storage.getAlarm()) === null) {
+				await this.scheduleRefreshAlarm(TOKEN_REFRESH_ALARM_INTERVAL_MS, 'constructor')
+			}
+		})
+	}
+
+	private async scheduleRefreshAlarm(delayMs: number, source: string): Promise<void> {
+		try {
+			await this.state.storage.setAlarm(Date.now() + delayMs)
+		} catch (error) {
+			// A relocation can make the current isolate's storage handle invalid. Re-throw
+			// so Cloudflare retries the alarm on the object's new machine.
+			logger
+				.withTags({ operation: 'scheduleRefreshAlarm', source })
+				.warn('Failed to schedule token refresh alarm; allowing platform retry', {
+					delayMs,
+					error: error instanceof Error ? error.message : String(error),
+					errorDetails: toErrorLogDetails(error),
+				})
+			throw error
+		}
 	}
 
 	/**
@@ -267,7 +287,22 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	}
 
 	private async getTokenRefreshCooldownUntil(characterId: string): Promise<number> {
-		return (await this.state.storage.get<number>(this.getTokenRefreshCooldownKey(characterId))) ?? 0
+		const storageKey = this.getTokenRefreshCooldownKey(characterId)
+		try {
+			const value = await this.state.storage.get<number>(storageKey)
+			return typeof value === 'number' && Number.isFinite(value) ? value : 0
+		} catch (error) {
+			// The cooldown is advisory. A transient DO storage failure must not turn a
+			// usable refresh token into a failed refresh attempt.
+			logger
+				.withTags({ operation: 'getTokenRefreshCooldownUntil', characterId })
+				.warn('Failed to read token refresh cooldown; continuing without persisted cooldown', {
+					storageKey,
+					error: error instanceof Error ? error.message : String(error),
+					errorDetails: toErrorLogDetails(error),
+				})
+			return 0
+		}
 	}
 
 	private async setTokenRefreshCooldownUntil(
@@ -280,13 +315,12 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		} catch (error) {
 			logger
 				.withTags({ operation: 'setTokenRefreshCooldownUntil', characterId })
-				.error('Failed to persist token refresh cooldown to Durable Object storage', {
+				.warn('Failed to persist token refresh cooldown to Durable Object storage', {
 					storageKey,
 					cooldownUntil: new Date(cooldownUntilMs).toISOString(),
 					error: error instanceof Error ? error.message : String(error),
 					errorDetails: toErrorLogDetails(error),
 				})
-			throw error
 		}
 	}
 
@@ -297,12 +331,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		} catch (error) {
 			logger
 				.withTags({ operation: 'clearTokenRefreshCooldown', characterId })
-				.error('Failed to clear token refresh cooldown from Durable Object storage', {
+				.warn('Failed to clear token refresh cooldown from Durable Object storage', {
 					storageKey,
 					error: error instanceof Error ? error.message : String(error),
 					errorDetails: toErrorLogDetails(error),
 				})
-			throw error
 		}
 	}
 
@@ -2584,7 +2617,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			processedBatchSize === TOKEN_REFRESH_ALARM_BATCH_SIZE
 				? TOKEN_REFRESH_ALARM_CONTINUE_DELAY_MS
 				: TOKEN_REFRESH_ALARM_INTERVAL_MS
-		await this.state.storage.setAlarm(Date.now() + nextAlarmDelayMs)
+		await this.scheduleRefreshAlarm(nextAlarmDelayMs, 'alarm')
 	}
 
 	/**

@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { and, eq, ilike, isNotNull, sql } from '@repo/db-utils'
+import { and, eq, ilike, inArray, isNotNull, sql } from '@repo/db-utils'
 import {
 	buildDiscordWebhookMessagePayload,
 	DISCORD_CHANNEL_TYPE,
@@ -34,6 +34,7 @@ import type {
 	DiscordRegisteredSlashCommand,
 	DiscordSlashCommandDefinition,
 	DiscordTokenResponse,
+	DiscordUserStatus,
 	MessageContent,
 	SendMessageResult,
 } from '@repo/discord'
@@ -368,6 +369,38 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 			createdAt: user.createdAt,
 			updatedAt: user.updatedAt,
 		}
+	}
+
+	/**
+	 * Get Discord statuses for multiple core users with one indexed query.
+	 */
+	async getDiscordUserStatuses(coreUserIds: string[]): Promise<Record<string, DiscordUserStatus>> {
+		const ids = [...new Set(coreUserIds)].filter(Boolean)
+		if (ids.length === 0) return {}
+
+		const users = await this.db.query.discordUsers.findMany({
+			where: inArray(discordUsers.coreUserId, ids),
+		})
+
+		return Object.fromEntries(
+			users
+				.filter((user): user is typeof user & { coreUserId: string } => user.coreUserId !== null)
+				.map((user) => [
+					user.coreUserId,
+					{
+						userId: user.userId,
+						username: user.username,
+						discriminator: user.discriminator,
+						coreUserId: user.coreUserId,
+						authRevoked: user.authRevoked,
+						authRevokedAt: user.authRevokedAt,
+						lastSuccessfulAuth: user.lastSuccessfulAuth,
+						lastRefreshed: user.lastRefreshed,
+						createdAt: user.createdAt,
+						updatedAt: user.updatedAt,
+					},
+				])
+		)
 	}
 
 	/**

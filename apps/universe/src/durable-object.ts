@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 import { alias } from 'drizzle-orm/pg-core'
 
-import { and, eq, gt, ilike, inArray, ne, sql } from '@repo/db-utils'
+import { and, asc, eq, gt, ilike, inArray, ne, sql } from '@repo/db-utils'
 import { getStub, LRUCache, withRpcResult } from '@repo/do-utils'
 import { buildPublicEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
 import { logger } from '@repo/hono-helpers'
@@ -88,6 +88,7 @@ import type { Env } from './context'
 let allSolarSystemNamesCache: Array<{ id: string; name: string }> | null = null
 let allSolarSystemNamesCacheExpiry = 0
 const UNIVERSE_BATCH_SIZE = 500
+const EVE_SHIP_CATEGORY_ID = '6'
 const STRUCTURE_FUEL_RULE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 
 type StructureFuelRuleCache = {
@@ -2493,8 +2494,7 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	}
 
 	/**
-	 * Search for types by name (partial LIKE match)
-	 * Only returns published types. Results ordered by name.
+	 * Search for types by name (partial LIKE match).
 	 */
 	async searchTypes(query: string, limit: number = 20): Promise<InvType[]> {
 		if (!query || query.trim().length < 2) return []
@@ -2506,6 +2506,35 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 			.limit(limit)
 
 		return results.map((r) => ({ ...r }))
+	}
+
+	/**
+	 * Search published ship types by name (partial LIKE match).
+	 * Category 6 is the SDE category for ships; joining through inventory groups
+	 * keeps modules, structures, rigs, and other published types out of this UI.
+	 */
+	async searchShipTypes(
+		query: string,
+		limit: number = 20
+	): Promise<Array<{ typeId: string; typeName: string }>> {
+		if (!query || query.trim().length < 2) return []
+
+		return this.db
+			.select({
+				typeId: invTypes.typeId,
+				typeName: invTypes.typeName,
+			})
+			.from(invTypes)
+			.innerJoin(invGroups, eq(invTypes.groupId, invGroups.groupId))
+			.where(
+				and(
+					ilike(invTypes.typeName, `%${query}%`),
+					eq(invTypes.published, true),
+					eq(invGroups.categoryId, EVE_SHIP_CATEGORY_ID)
+				)
+			)
+			.orderBy(asc(invTypes.typeName))
+			.limit(limit)
 	}
 
 	// ========================================================================

@@ -44,6 +44,8 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
+	withRpcResult: async <T, R>(rpcCall: Promise<T>, consume: (result: T) => R | Promise<R>) =>
+		consume(await rpcCall),
 }))
 
 const backgroundTasks: Array<Promise<unknown>> = []

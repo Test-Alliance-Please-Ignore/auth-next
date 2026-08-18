@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
 import { and, asc, desc, eq, ilike, inArray, or, sql } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { buildCsvLine } from '@repo/worker-utils'
 
@@ -18,7 +18,6 @@ import {
 } from '../../lib/corporation-list-cache'
 import { getCachedUserPermissions } from '../../lib/groups-cache'
 import { requireAdmin, requireAuth } from '../../middleware/session'
-import { CoreRpcService } from '../../services/core-rpc.service'
 import corporationsAlertsRoutes from './alerts-routes'
 import corporationsDirectorsRoutes from './directors-routes'
 import corporationsDiscordRoutes from './discord-routes'
@@ -38,6 +37,13 @@ const app = new Hono<App>()
 const MS_PER_DAY = 86_400_000
 const ACTIVE_MEMBER_THRESHOLD_MS = 7 * MS_PER_DAY
 const DISCORD_USERNAME_LOOKUP_BATCH_SIZE = 25
+
+function cloneRpcResult<T>(result: T): T {
+	if (result === null || (typeof result !== 'object' && typeof result !== 'function')) {
+		return result
+	}
+	return structuredClone(result)
+}
 
 /**
  * Cache duration for corporation member data (5 minutes)
@@ -222,18 +228,6 @@ type CorporationMemberListItem = {
 	isBlacklisted: boolean
 }
 
-type CorporationUserSearchEntry = {
-	summary: Awaited<ReturnType<CoreRpcService['searchUsers']>>['users'][number]
-	details: NonNullable<Awaited<ReturnType<CoreRpcService['getUserDetails']>>>
-}
-
-type CorporationUserSearchResponse = {
-	users: CorporationUserSearchEntry[]
-	total: number
-	limit: number
-	offset: number
-}
-
 type MembersAuthFilter =
 	| 'all'
 	| 'linked'
@@ -251,6 +245,7 @@ type MembersQuery = {
 	page: number
 	limit: number
 	search: string
+	mainsOnly: boolean
 	authFilter: MembersAuthFilter
 	coverageFilter: MembersCoverageFilter
 	activityFilter: MembersActivityFilter
@@ -414,6 +409,7 @@ function hasAnyMembersQueryParams(c: Context<App>): boolean {
 		typeof c.req.query('page') === 'string' ||
 		typeof c.req.query('limit') === 'string' ||
 		typeof c.req.query('search') === 'string' ||
+		typeof c.req.query('mainsOnly') === 'string' ||
 		typeof c.req.query('authFilter') === 'string' ||
 		typeof c.req.query('activityFilter') === 'string' ||
 		typeof c.req.query('roleFilter') === 'string' ||
@@ -434,6 +430,7 @@ function parseMembersQuery(c: Context<App>): MembersQuery {
 	const page = parsePositiveInt(c.req.query('page'), 1)
 	const limit = Math.min(parsePositiveInt(c.req.query('limit'), 50), 200)
 	const search = (c.req.query('search') ?? '').trim().toLowerCase()
+	const mainsOnly = parseBoolean(c.req.query('mainsOnly'))
 	const authFilterRaw = c.req.query('authFilter')
 	const coverageFilterRaw = c.req.query('coverageFilter')
 	const activityFilterRaw = c.req.query('activityFilter')
@@ -482,6 +479,7 @@ function parseMembersQuery(c: Context<App>): MembersQuery {
 		page,
 		limit,
 		search,
+		mainsOnly,
 		authFilter,
 		coverageFilter,
 		activityFilter,
@@ -494,12 +492,19 @@ function parseMembersQuery(c: Context<App>): MembersQuery {
 function canUseBackendPaginatedMembersPath(query: MembersQuery): boolean {
 	return (
 		!query.search &&
+		!query.mainsOnly &&
 		query.authFilter === 'all' &&
 		query.coverageFilter === 'all' &&
 		query.activityFilter === 'all' &&
 		query.roleFilter === 'all' &&
 		query.sortField === 'role' &&
 		query.sortOrder === 'asc'
+	)
+}
+
+function isMainCharacterMember(member: CorporationMemberListItem): boolean {
+	return Boolean(
+		member.hasAuthAccount && member.mainCharacterId && member.characterId === member.mainCharacterId
 	)
 }
 
@@ -539,6 +544,7 @@ function filterSortAndPaginateMembers(
 	}
 
 	const filtered = [...members]
+		.filter((member) => !query.mainsOnly || isMainCharacterMember(member))
 		.filter((member) => {
 			if (!query.search) return true
 			return (
@@ -700,6 +706,7 @@ function filterSortMembers(
 	}
 
 	const filtered = [...members]
+		.filter((member) => !query.mainsOnly || isMainCharacterMember(member))
 		.filter((member) => {
 			if (!query.search) return true
 			return (
@@ -849,8 +856,18 @@ async function hydrateCorporationMembers(
 	}
 
 	const [corpInfo, coreData] = await Promise.all([
-		corpStub.getCorporationInfo(corporationId),
-		corpStub.getCoreData(corporationId),
+		withRpcResult(corpStub.getCorporationInfo(corporationId), (result) =>
+			result ? { ...result } : null
+		),
+		withRpcResult(corpStub.getCoreData(corporationId), (result) =>
+			result
+				? {
+						...result,
+						members: result.members?.map((member) => ({ ...member })),
+						memberTracking: result.memberTracking?.map((member) => ({ ...member })),
+					}
+				: null
+		),
 	])
 
 	if (!coreData || !coreData.members) {
@@ -865,10 +882,16 @@ async function hydrateCorporationMembers(
 				})
 			: []
 	const linkedCharacterMap = new Map(linkedCharacters.map((row) => [row.characterId, row]))
-	const directors = await corpStub.getDirectors(corporationId)
+	const directors = await withRpcResult(corpStub.getDirectors(corporationId), (result) =>
+		result.map((director) => ({ ...director }))
+	)
 	const directorIds = new Set(directors.map((director) => director.characterId))
 	const characterNameMap =
-		memberCharacterIds.length > 0 ? await tokenStoreStub.resolveIds(memberCharacterIds) : {}
+		memberCharacterIds.length > 0
+			? await withRpcResult(tokenStoreStub.resolveIds(memberCharacterIds), (result) => ({
+					...result,
+				}))
+			: {}
 	const linkedUserIds = [...new Set(linkedCharacters.map((row) => row.userId))]
 	const linkedUsers =
 		linkedUserIds.length > 0
@@ -878,7 +901,11 @@ async function hydrateCorporationMembers(
 			: []
 	const mainCharacterIds = linkedUsers.map((user) => user.mainCharacterId)
 	const mainCharacterNameMap =
-		mainCharacterIds.length > 0 ? await tokenStoreStub.resolveIds(mainCharacterIds) : {}
+		mainCharacterIds.length > 0
+			? await withRpcResult(tokenStoreStub.resolveIds(mainCharacterIds), (result) => ({
+					...result,
+				}))
+			: {}
 	const userIdToMainCharacterName = new Map(
 		linkedUsers.map((user) => [user.id, mainCharacterNameMap[user.mainCharacterId] || 'Unknown'])
 	)
@@ -901,7 +928,10 @@ async function hydrateCorporationMembers(
 			const statuses = await Promise.all(
 				batch.map(async (user) => {
 					try {
-						const status = await discordStub.getDiscordUserStatus(user.id)
+						const status = await withRpcResult(
+							discordStub.getDiscordUserStatus(user.id),
+							(result) => (result ? { username: result.username } : null)
+						)
 						return { userId: user.id, username: status?.username ?? null }
 					} catch (error) {
 						logger.warn('[Corporations] Failed to resolve Discord username for member export', {
@@ -920,7 +950,11 @@ async function hydrateCorporationMembers(
 	}
 	const hrStub = getStub<Hr>(c.env.HR, 'default')
 	const blacklistStatuses =
-		memberCharacterIds.length > 0 ? await hrStub.checkCharactersBlacklisted(memberCharacterIds) : {}
+		memberCharacterIds.length > 0
+			? await withRpcResult(hrStub.checkCharactersBlacklisted(memberCharacterIds), (result) => ({
+					...result,
+				}))
+			: {}
 	const now = Date.now()
 
 	return coreData.members.map((member) => {
@@ -1061,8 +1095,12 @@ async function checkCorporationAccess(
 	let userRole: 'CEO' | 'Director' | null = null
 	const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 	const [corpInfo, directors] = await Promise.all([
-		corpStub.getCorporationInfo(corporationId),
-		corpStub.getDirectors(corporationId),
+		withRpcResult(corpStub.getCorporationInfo(corporationId), (result) =>
+			result ? { ceoId: result.ceoId } : null
+		),
+		withRpcResult(corpStub.getDirectors(corporationId), (result) =>
+			result.map((director) => ({ characterId: director.characterId }))
+		),
 	])
 	const directorIds = new Set(directors.map((d) => d.characterId))
 
@@ -1100,7 +1138,10 @@ async function checkCorporationAccess(
 		try {
 			// Check if character is in this corporation
 			const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, character.characterId)
-			const charData = await charStub.getCharacterInfo(character.characterId)
+			const charData = await withRpcResult(
+				charStub.getCharacterInfo(character.characterId),
+				(result) => (result ? { corporationId: result.corporationId } : null)
+			)
 
 			// Skip if character is not in the target corporation
 			if (!charData || String(charData.corporationId) !== corporationId) {
@@ -1788,7 +1829,9 @@ app.get('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 		let doConfig = null
 		try {
 			const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-			doConfig = await stub.getConfiguration()
+			doConfig = await withRpcResult(stub.getConfiguration(), (result) =>
+				result ? { ...result } : null
+			)
 		} catch (error) {
 			logger.error('Error fetching DO config:', error)
 		}
@@ -1874,14 +1917,33 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 					)
 
 					// First, get all permissions to find the TEST alliance permission ID
-					const allPermissions = await groupsStub.listPermissions()
+					const allPermissions = await withRpcResult(groupsStub.listPermissions(), (result) =>
+						result.map((permission) => ({
+							...permission,
+							category: permission.category ? { ...permission.category } : null,
+						}))
+					)
 					const testAlliancePermission = allPermissions.find((p) => p.urn === testAllianceUrn)
 
 					if (testAlliancePermission) {
 						// Check if permission is already attached
-						const existingPermissions = await groupsStub.listCorporationPermissions(corporationId)
+						const existingPermissions = await withRpcResult(
+							groupsStub.listCorporationPermissions(corporationId),
+							(result) =>
+								result.map((permission) => ({
+									...permission,
+									permission: permission.permission
+										? {
+												...permission.permission,
+												category: permission.permission.category
+													? { ...permission.permission.category }
+													: null,
+											}
+										: null,
+								}))
+						)
 						const alreadyAttached = existingPermissions.some(
-							(cp) => cp.permission.urn === testAllianceUrn
+							(cp) => cp.permission?.urn === testAllianceUrn
 						)
 
 						if (!alreadyAttached) {
@@ -1919,9 +1981,23 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 					)
 
 					// Get corporation permissions to find the one to remove
-					const corpPermissions = await groupsStub.listCorporationPermissions(corporationId)
+					const corpPermissions = await withRpcResult(
+						groupsStub.listCorporationPermissions(corporationId),
+						(result) =>
+							result.map((permission) => ({
+								...permission,
+								permission: permission.permission
+									? {
+											...permission.permission,
+											category: permission.permission.category
+												? { ...permission.permission.category }
+												: null,
+										}
+									: null,
+							}))
+					)
 					const testAllianceCorpPermission = corpPermissions.find(
-						(cp) => cp.permission.urn === testAllianceUrn
+						(cp) => cp.permission?.urn === testAllianceUrn
 					)
 
 					if (testAllianceCorpPermission) {
@@ -2096,7 +2172,7 @@ app.post('/:corporationId/verify', requireAuth(), requireAdmin(), async (c) => {
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 
 		logger.info('[Corporations] Verifying corporation access', { corporationId })
-		const verification = await stub.verifyAccess(corporationId)
+		const verification = await withRpcResult(stub.verifyAccess(corporationId), cloneRpcResult)
 
 		const healthyDirectorCount = await stub.getHealthyDirectorCount(corporationId)
 
@@ -2255,54 +2331,72 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 		logger.info('[Corporations] Fetching all data from DO', { corporationId })
 		const [publicInfo, coreData, financialData, assetsData, marketData, killmails] =
 			await Promise.all([
-				stub.getCorporationInfo(corporationId).catch((e: unknown) => {
-					logger.error('[Corporations] getCorporationInfo failed', {
-						corporationId,
-						error: e instanceof Error ? e.message : String(e),
-						stack: e instanceof Error ? e.stack : undefined,
-					})
-					return null
-				}),
-				stub.getCoreData(corporationId).catch((e: unknown) => {
-					logger.error('[Corporations] getCoreData failed', {
-						corporationId,
-						error: e instanceof Error ? e.message : String(e),
-						stack: e instanceof Error ? e.stack : undefined,
-					})
-					return null
-				}),
-				stub.getFinancialData(corporationId).catch((e: unknown) => {
-					logger.error('[Corporations] getFinancialData failed', {
-						corporationId,
-						error: e instanceof Error ? e.message : String(e),
-						stack: e instanceof Error ? e.stack : undefined,
-					})
-					return null
-				}),
-				stub.getAssetsData(corporationId).catch((e: unknown) => {
-					logger.error('[Corporations] getAssetsData failed', {
-						corporationId,
-						error: e instanceof Error ? e.message : String(e),
-						stack: e instanceof Error ? e.stack : undefined,
-					})
-					return null
-				}),
-				stub.getMarketData(corporationId).catch((e: unknown) => {
-					logger.error('[Corporations] getMarketData failed', {
-						corporationId,
-						error: e instanceof Error ? e.message : String(e),
-						stack: e instanceof Error ? e.stack : undefined,
-					})
-					return null
-				}),
-				stub.getKillmails(corporationId, 10).catch((e: unknown) => {
-					logger.error('[Corporations] getKillmails failed', {
-						corporationId,
-						error: e instanceof Error ? e.message : String(e),
-						stack: e instanceof Error ? e.stack : undefined,
-					})
-					return []
-				}),
+				withRpcResult(
+					stub.getCorporationInfo(corporationId).catch((e: unknown) => {
+						logger.error('[Corporations] getCorporationInfo failed', {
+							corporationId,
+							error: e instanceof Error ? e.message : String(e),
+							stack: e instanceof Error ? e.stack : undefined,
+						})
+						return null
+					}),
+					cloneRpcResult
+				),
+				withRpcResult(
+					stub.getCoreData(corporationId).catch((e: unknown) => {
+						logger.error('[Corporations] getCoreData failed', {
+							corporationId,
+							error: e instanceof Error ? e.message : String(e),
+							stack: e instanceof Error ? e.stack : undefined,
+						})
+						return null
+					}),
+					cloneRpcResult
+				),
+				withRpcResult(
+					stub.getFinancialData(corporationId).catch((e: unknown) => {
+						logger.error('[Corporations] getFinancialData failed', {
+							corporationId,
+							error: e instanceof Error ? e.message : String(e),
+							stack: e instanceof Error ? e.stack : undefined,
+						})
+						return null
+					}),
+					cloneRpcResult
+				),
+				withRpcResult(
+					stub.getAssetsData(corporationId).catch((e: unknown) => {
+						logger.error('[Corporations] getAssetsData failed', {
+							corporationId,
+							error: e instanceof Error ? e.message : String(e),
+							stack: e instanceof Error ? e.stack : undefined,
+						})
+						return null
+					}),
+					cloneRpcResult
+				),
+				withRpcResult(
+					stub.getMarketData(corporationId).catch((e: unknown) => {
+						logger.error('[Corporations] getMarketData failed', {
+							corporationId,
+							error: e instanceof Error ? e.message : String(e),
+							stack: e instanceof Error ? e.stack : undefined,
+						})
+						return null
+					}),
+					cloneRpcResult
+				),
+				withRpcResult(
+					stub.getKillmails(corporationId, 10).catch((e: unknown) => {
+						logger.error('[Corporations] getKillmails failed', {
+							corporationId,
+							error: e instanceof Error ? e.message : String(e),
+							stack: e instanceof Error ? e.stack : undefined,
+						})
+						return []
+					}),
+					cloneRpcResult
+				),
 			])
 
 		logger.info('[Corporations] Data fetched successfully', {
@@ -2410,7 +2504,11 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
 		const hrRoles =
-			query.sortField === 'hrRole' ? await hrStub.getCorporationRoles(corporationId, true) : []
+			query.sortField === 'hrRole'
+				? await withRpcResult(hrStub.getCorporationRoles(corporationId, true), (result) =>
+						result.map((role) => ({ ...role }))
+					)
+				: []
 		const hrRoleMap =
 			hrRoles.length > 0 ? new Map(hrRoles.map((role) => [role.userId, role.role])) : undefined
 
@@ -2421,38 +2519,46 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				'function'
 
 		if (useBackendPagination) {
-			const paged = await (
-				corpStub as unknown as {
-					getMembersPaginated: (
-						corporationId: string,
-						page: number,
-						limit: number
-					) => Promise<{
-						items: Array<{
-							characterId: string
-							role: 'CEO' | 'Director' | 'Member'
-							joinDate: Date | null
-							lastLogin: Date | null
-							lastEsiUpdate: Date
-							activityStatus: 'active' | 'inactive' | 'unknown'
-						}>
-						pagination: {
-							page: number
+			const paged = await withRpcResult(
+				(
+					corpStub as unknown as {
+						getMembersPaginated: (
+							corporationId: string,
+							page: number,
 							limit: number
-							totalItems: number
-							totalPages: number
-							hasNextPage: boolean
-							hasPreviousPage: boolean
-						}
-						summary: {
-							total: number
-							active: number
-							inactive: number
-							directors: number
-						}
-					}>
-				}
-			).getMembersPaginated(corporationId, query.page, query.limit)
+						) => Promise<{
+							items: Array<{
+								characterId: string
+								role: 'CEO' | 'Director' | 'Member'
+								joinDate: Date | null
+								lastLogin: Date | null
+								lastEsiUpdate: Date
+								activityStatus: 'active' | 'inactive' | 'unknown'
+							}>
+							pagination: {
+								page: number
+								limit: number
+								totalItems: number
+								totalPages: number
+								hasNextPage: boolean
+								hasPreviousPage: boolean
+							}
+							summary: {
+								total: number
+								active: number
+								inactive: number
+								directors: number
+							}
+						}>
+					}
+				).getMembersPaginated(corporationId, query.page, query.limit),
+				(result) => ({
+					...result,
+					items: result.items.map((item) => ({ ...item })),
+					pagination: { ...result.pagination },
+					summary: { ...result.summary },
+				})
+			)
 
 			const pageCharacterIds = paged.items.map((item) => item.characterId)
 			const linkedCharacters =
@@ -2463,7 +2569,11 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					: []
 			const linkedCharacterMap = new Map(linkedCharacters.map((row) => [row.characterId, row]))
 			const characterNameMap =
-				pageCharacterIds.length > 0 ? await tokenStoreStub.resolveIds(pageCharacterIds) : {}
+				pageCharacterIds.length > 0
+					? await withRpcResult(tokenStoreStub.resolveIds(pageCharacterIds), (result) => ({
+							...result,
+						}))
+					: {}
 
 			const linkedUserIds = [...new Set(linkedCharacters.map((row) => row.userId))]
 			const linkedUsers =
@@ -2474,14 +2584,22 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					: []
 			const mainCharacterIds = linkedUsers.map((u) => u.mainCharacterId)
 			const mainCharacterNameMap =
-				mainCharacterIds.length > 0 ? await tokenStoreStub.resolveIds(mainCharacterIds) : {}
+				mainCharacterIds.length > 0
+					? await withRpcResult(tokenStoreStub.resolveIds(mainCharacterIds), (result) => ({
+							...result,
+						}))
+					: {}
 			const userIdToMainCharacterName = new Map(
 				linkedUsers.map((u) => [u.id, mainCharacterNameMap[u.mainCharacterId] || 'Unknown'])
 			)
 			const userIdToMainCharacterId = new Map(linkedUsers.map((u) => [u.id, u.mainCharacterId]))
 
 			const blacklistStatuses =
-				pageCharacterIds.length > 0 ? await hrStub.checkCharactersBlacklisted(pageCharacterIds) : {}
+				pageCharacterIds.length > 0
+					? await withRpcResult(hrStub.checkCharactersBlacklisted(pageCharacterIds), (result) => ({
+							...result,
+						}))
+					: {}
 
 			// These are lightweight member-summary fields used by list/search pages.
 			// They intentionally stop short of private character hydration so they
@@ -2544,7 +2662,10 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				totalCharacters: 0,
 			}
 			try {
-				const coverageMemberRows = await corpStub.getMembers(corporationId)
+				const coverageMemberRows = await withRpcResult(
+					corpStub.getMembers(corporationId),
+					(result) => result.map((member) => ({ characterId: String(member.characterId) }))
+				)
 				const coverageMemberIds = coverageMemberRows.map((row) => String(row.characterId))
 				const coverageLinkedCharacters =
 					coverageMemberIds.length > 0
@@ -2598,15 +2719,27 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 				search: query.search,
 			})
 			const response = returnUnpaginated
-				? buildUnpaginatedMembersResponse(cached)
+				? buildUnpaginatedMembersResponse(
+						query.mainsOnly ? cached.filter(isMainCharacterMember) : cached
+					)
 				: filterSortAndPaginateMembers(cached, query, hrRoleMap)
 			return c.json(response)
 		}
 
 		// Get corporation members from DO
 		const [corpInfo, coreData] = await Promise.all([
-			corpStub.getCorporationInfo(corporationId),
-			corpStub.getCoreData(corporationId),
+			withRpcResult(corpStub.getCorporationInfo(corporationId), (result) =>
+				result ? { ...result } : null
+			),
+			withRpcResult(corpStub.getCoreData(corporationId), (result) =>
+				result
+					? {
+							...result,
+							members: result.members?.map((member) => ({ ...member })),
+							memberTracking: result.memberTracking?.map((member) => ({ ...member })),
+						}
+					: null
+			),
 		])
 
 		if (!coreData || !coreData.members) {
@@ -2627,12 +2760,17 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		const linkedCharacterMap = new Map(linkedCharacters.map((c) => [c.characterId, c]))
 
 		// Fetch directors list once for role determination
-		const directors = await corpStub.getDirectors(corporationId)
+		const directors = await withRpcResult(corpStub.getDirectors(corporationId), (result) =>
+			result.map((director) => ({ ...director }))
+		)
 		const directorIds = new Set(directors.map((d) => d.characterId))
 
 		// Batch resolve all character names using ESI bulk endpoint
 		// Character ID → name mappings are cached for 1 year (essentially permanent)
-		const characterNameMap = await tokenStoreStub.resolveIds(memberCharacterIds)
+		const characterNameMap = await withRpcResult(
+			tokenStoreStub.resolveIds(memberCharacterIds),
+			(result) => ({ ...result })
+		)
 
 		logger.info('[Corporations Members] Resolved character names', {
 			corporationId,
@@ -2653,7 +2791,11 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		// Resolve main character IDs to character names
 		const mainCharacterIds = linkedUsers.map((u) => u.mainCharacterId)
 		const mainCharacterNameMap =
-			mainCharacterIds.length > 0 ? await tokenStoreStub.resolveIds(mainCharacterIds) : {}
+			mainCharacterIds.length > 0
+				? await withRpcResult(tokenStoreStub.resolveIds(mainCharacterIds), (result) => ({
+						...result,
+					}))
+				: {}
 
 		// Create a map from userId to main character name
 		const userIdToMainCharacterName = new Map(
@@ -2670,7 +2812,9 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		// Bulk check blacklist status for all members
 		const blacklistStatuses =
 			memberCharacterIds.length > 0
-				? await hrStub.checkCharactersBlacklisted(memberCharacterIds)
+				? await withRpcResult(hrStub.checkCharactersBlacklisted(memberCharacterIds), (result) => ({
+						...result,
+					}))
 				: {}
 
 		// Process members with comprehensive data
@@ -2746,7 +2890,9 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		await cacheJson(cacheKey, membersWithDetails, CACHE_TTL)
 
 		const response = returnUnpaginated
-			? buildUnpaginatedMembersResponse(membersWithDetails)
+			? buildUnpaginatedMembersResponse(
+					query.mainsOnly ? membersWithDetails.filter(isMainCharacterMember) : membersWithDetails
+				)
 			: filterSortAndPaginateMembers(membersWithDetails, query, hrRoleMap)
 		return c.json(response)
 	} catch (error) {
@@ -2813,7 +2959,9 @@ app.get('/:corporationId/members/export', requireAuth(), async (c) => {
 			corpStub,
 			tokenStoreStub
 		)
-		const hrRoles = await hrStub.getCorporationRoles(corporationId, true)
+		const hrRoles = await withRpcResult(hrStub.getCorporationRoles(corporationId, true), (result) =>
+			result.map((role) => ({ ...role }))
+		)
 		const hrRoleMap = new Map(hrRoles.map((role) => [role.userId, role.role]))
 		const filteredMembers = filterSortMembers(members, query, hrRoleMap)
 		const csv = buildCorporationMembersCsv(filteredMembers, hrRoleMap)
@@ -2839,105 +2987,6 @@ app.get('/:corporationId/members/export', requireAuth(), async (c) => {
 			stack: error instanceof Error ? error.stack : undefined,
 		})
 		return c.json({ error: 'Failed to export corporation members' }, 500)
-	}
-})
-
-/**
- * GET /corporations/:corporationId/members/user-search
- * Search users for the corp member lookup dialog.
- */
-app.get('/:corporationId/members/user-search', requireAuth(), async (c) => {
-	const corporationId = c.req.param('corporationId')
-	const user = c.get('user')!
-	const db = c.get('db')
-	const search = (c.req.query('search') ?? '').trim()
-	const limit = Math.min(parsePositiveInt(c.req.query('limit'), 10), 50)
-	const parsedOffset = Number.parseInt(c.req.query('offset') ?? '', 10)
-	const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0
-
-	if (!db) {
-		return c.json({ error: 'Database not available' }, 500)
-	}
-
-	try {
-		const managedCorp = await db.query.managedCorporations.findFirst({
-			where: and(
-				eq(managedCorporations.corporationId, corporationId),
-				eq(managedCorporations.isActive, true)
-			),
-		})
-
-		if (!managedCorp) {
-			return c.json({ error: 'Corporation not found or not managed' }, 404)
-		}
-		if (!managedCorp.isMemberCorporation) {
-			return c.json({ error: 'User search is only available for member corporations' }, 403)
-		}
-
-		let userRole: 'admin' | 'CEO' | 'Director' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
-		try {
-			userRole = await resolveCorporationMembersAccess(c, corporationId, managedCorp)
-		} catch (error) {
-			if (error instanceof Error && error.message === MEMBERS_ACCESS_DENIED_MESSAGE) {
-				return c.json({ error: error.message }, 403)
-			}
-			throw error
-		}
-
-		logger.info('[Corporations] User search request', {
-			corporationId,
-			userId: user.id,
-			search,
-			limit,
-			offset,
-			userRole,
-		})
-
-		if (search.length === 0) {
-			return c.json({
-				users: [],
-				total: 0,
-				limit,
-				offset,
-			} satisfies CorporationUserSearchResponse)
-		}
-
-		const coreService = new CoreRpcService(db, c.env)
-		const result = await coreService.searchUsers({
-			search,
-			limit,
-			offset,
-		})
-
-		const usersWithDetails = (
-			await Promise.all(
-				result.users.map(async (summary) => {
-					const details = await coreService.getUserDetails(summary.id)
-					if (!details) {
-						return null
-					}
-					return {
-						summary,
-						details,
-					}
-				})
-			)
-		).filter((entry): entry is CorporationUserSearchEntry => entry !== null)
-
-		return c.json({
-			users: usersWithDetails,
-			total: result.total,
-			limit: result.limit,
-			offset: result.offset,
-		} satisfies CorporationUserSearchResponse)
-	} catch (error) {
-		logger.error('[Corporations] Error searching users for corporation member dialog', {
-			corporationId,
-			userId: user.id,
-			error: error instanceof Error ? error.message : String(error),
-			stack: error instanceof Error ? error.stack : undefined,
-		})
-		return c.json({ error: 'Failed to search users' }, 500)
 	}
 })
 
@@ -3000,10 +3049,24 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 		const [corpInfo, coreData, currentMembers, directors] = await Promise.all([
-			corpStub.getCorporationInfo(corporationId),
-			corpStub.getCoreData(corporationId),
-			corpStub.getMembers(corporationId),
-			corpStub.getDirectors(corporationId),
+			withRpcResult(corpStub.getCorporationInfo(corporationId), (result) =>
+				result ? { ...result } : null
+			),
+			withRpcResult(corpStub.getCoreData(corporationId), (result) =>
+				result
+					? {
+							...result,
+							members: result.members?.map((member) => ({ ...member })),
+							memberTracking: result.memberTracking?.map((member) => ({ ...member })),
+						}
+					: null
+			),
+			withRpcResult(corpStub.getMembers(corporationId), (result) =>
+				result.map((member) => ({ ...member }))
+			),
+			withRpcResult(corpStub.getDirectors(corporationId), (result) =>
+				result.map((director) => ({ ...director }))
+			),
 		])
 
 		const directorIds = new Set(directors.map((d) => d.characterId))
@@ -3020,18 +3083,27 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 		}
 
 		const characterIds = matchingMembers.map((member) => String(member.characterId))
-		const characterNameMap = await tokenStoreStub.resolveIds(characterIds)
+		const characterNameMap = await withRpcResult(
+			tokenStoreStub.resolveIds(characterIds),
+			(result) => ({
+				...result,
+			})
+		)
 
 		const linkedUser = await db.query.users.findFirst({
 			where: eq(users.id, accountId),
 		})
 		const discordUsername =
 			linkedUser?.discordUserId && accountId
-				? ((await getStub<Discord>(c.env.DISCORD, 'default').getDiscordUserStatus(accountId))
-						?.username ?? null)
+				? await withRpcResult(
+						getStub<Discord>(c.env.DISCORD, 'default').getDiscordUserStatus(accountId),
+						(result) => result?.username ?? null
+					)
 				: null
 		const mainCharacterNameMap = linkedUser?.mainCharacterId
-			? await tokenStoreStub.resolveIds([linkedUser.mainCharacterId])
+			? await withRpcResult(tokenStoreStub.resolveIds([linkedUser.mainCharacterId]), (result) => ({
+					...result,
+				}))
 			: {}
 		const mainCharacterName = linkedUser?.mainCharacterId
 			? (mainCharacterNameMap[linkedUser.mainCharacterId] ?? undefined)
@@ -3039,7 +3111,11 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
 		const blacklistStatuses =
-			characterIds.length > 0 ? await hrStub.checkCharactersBlacklisted(characterIds) : {}
+			characterIds.length > 0
+				? await withRpcResult(hrStub.checkCharactersBlacklisted(characterIds), (result) => ({
+						...result,
+					}))
+				: {}
 
 		const memberRows: CorporationMemberListItem[] = matchingMembers.map((member) => {
 			const characterId = String(member.characterId)
@@ -3254,7 +3330,9 @@ app.patch('/:corporationId/members/:characterId/status', requireAuth(), async (c
 
 		// Get corporation info to check if character is CEO
 		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-		const corpInfo = await corpStub.getCorporationInfo(corporationId)
+		const corpInfo = await withRpcResult(corpStub.getCorporationInfo(corporationId), (result) =>
+			result ? { ceoId: result.ceoId } : null
+		)
 
 		// Prevent marking CEO as emeritus
 		if (corpInfo && String(corpInfo.ceoId) === characterId && status === 'emeritus') {
@@ -3274,7 +3352,13 @@ app.patch('/:corporationId/members/:characterId/status', requireAuth(), async (c
 		}
 
 		// Verify character is actually a member of this corporation
-		const coreData = await corpStub.getCoreData(corporationId)
+		const coreData = await withRpcResult(corpStub.getCoreData(corporationId), (result) =>
+			result
+				? {
+						members: result.members?.map((member) => ({ characterId: member.characterId })),
+					}
+				: null
+		)
 		const isMember = coreData?.members.some((m) => String(m.characterId) === characterId)
 
 		if (!isMember) {

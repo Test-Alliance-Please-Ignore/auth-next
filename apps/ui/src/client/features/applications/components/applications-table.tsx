@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 
 import { MemberAvatar } from '@/components/member-avatar'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
 	mrtPaperProps,
@@ -70,16 +71,25 @@ function buildColumns(
 							characterId={row.original.characterId}
 							characterName={row.original.characterName}
 							size="sm"
+							isBlacklisted={row.original.isBlacklisted === true}
 						/>
 						<div className="flex flex-col min-w-0">
 							<span className="inline-flex min-w-0 items-center gap-2">
 								<Link
 									to={href}
 									onClick={(event) => event.stopPropagation()}
-									className="truncate text-left font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+									className={cn(
+										'truncate text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+										row.original.isBlacklisted ? 'text-red-500' : 'text-foreground'
+									)}
 								>
 									{row.original.characterName}
 								</Link>
+								{row.original.isBlacklisted && (
+									<Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
+										Blocklisted
+									</Badge>
+								)}
 								{row.original.isFirstApplication !== undefined && (
 									<span
 										className={cn(

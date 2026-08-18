@@ -233,6 +233,12 @@ export interface Universe {
 	 */
 	searchTypes(query: string, limit?: number): Promise<InvType[]>
 
+	/** Search published ship types by name for ship-picker UIs. */
+	searchShipTypes(
+		query: string,
+		limit?: number
+	): Promise<Array<{ typeId: string; typeName: string }>>
+
 	/**
 	 * Resolve multiple type details by their IDs
 	 * @param typeIds - Array of type IDs to resolve

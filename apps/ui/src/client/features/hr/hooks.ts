@@ -8,6 +8,7 @@ import type {
 	CheckHrPermissionRequest,
 	GrantHrRoleRequest,
 	HrAccessibleCorporation,
+	HrUserSearchResult,
 	RevokeHrRoleRequest,
 } from './api'
 
@@ -20,6 +21,23 @@ export const hrKeys = {
 	roles: (corporationId: string) => [...hrKeys.all, 'roles', corporationId] as const,
 	permission: (corporationId: string) => [...hrKeys.all, 'permission', corporationId] as const,
 	corporations: () => [...hrKeys.all, 'corporations'] as const,
+	userSearch: (query: { search?: string; limit?: number; offset?: number }) =>
+		[...hrKeys.all, 'user-search', query] as const,
+}
+
+export function useHrUserSearch(
+	query: { search?: string; limit?: number; offset?: number },
+	options?: { enabled?: boolean }
+) {
+	return useQuery<HrUserSearchResult>({
+		queryKey: hrKeys.userSearch(query),
+		queryFn: () => hrApi.searchUsers(query),
+		placeholderData: (previousData) => previousData,
+		staleTime: 30 * 1000,
+		gcTime: 3 * 60 * 1000,
+		enabled: options?.enabled ?? true,
+		meta: { suppressErrorToast: true },
+	})
 }
 
 /**

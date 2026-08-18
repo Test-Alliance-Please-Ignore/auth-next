@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { discordServers, managedCorporations, userCharacters, users } from '../db/schema'
@@ -41,6 +41,228 @@ export class CoreRpcService {
 	) {}
 
 	/**
+	 * Search the surface-level user directory for an authenticated HR caller.
+	 * The route controls access; this query is intentionally not corporation-scoped.
+	 */
+	async searchUsersForHrAccess(params: { search?: string; limit?: number; offset?: number }) {
+		const limit = Math.min(Math.max(params.limit ?? 10, 1), 50)
+		const offset = Math.max(params.offset ?? 0, 0)
+		const rawSearch = params.search?.trim() ?? ''
+		const search = rawSearch.length > 0 ? rawSearch : null
+		const searchLike = search ? `%${search}%` : null
+		const lowerSearch = search?.toLowerCase() ?? null
+		const isSearchUuid =
+			search !== null &&
+			/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(search)
+		const isSearchNumeric = search !== null && /^\d+$/.test(search)
+		const discordUsernameMatchedCoreUserIds = new Set<string>()
+		if (search) {
+			try {
+				const discordStub = getStub<Discord>(this.env.DISCORD, 'default')
+				const discordMatches = await withRpcResult(
+					discordStub.searchCoreUsersByUsername(search, 200),
+					(matches) => matches.map((match) => ({ ...match }))
+				)
+				for (const match of discordMatches) {
+					discordUsernameMatchedCoreUserIds.add(match.coreUserId)
+				}
+			} catch (error) {
+				logger.error('[CoreRpcService.searchUsersForHrAccess] Discord username search failed', {
+					search,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
+		const hasActiveCharacter = sql<boolean>`exists (
+			select 1
+			from user_characters uc
+			where uc.user_id = ${users.id}
+			and uc.deleted = false
+		)`
+		let whereCondition: SQL<unknown> = hasActiveCharacter
+
+		if (search && searchLike) {
+			const conditions: Array<SQL<unknown>> = [
+				and(ilike(users.legacyAuthUserUsername, searchLike), hasActiveCharacter) as SQL<unknown>,
+				eq(users.discordUserId, search),
+				sql<boolean>`exists (
+					select 1
+					from user_characters uc
+					where uc.user_id = ${users.id}
+					and uc.deleted = false
+					and (
+						uc.character_name ilike ${searchLike}
+						${isSearchNumeric ? sql`or uc.character_id = ${search}` : sql``}
+					)
+				)`,
+			]
+
+			if (isSearchUuid) conditions.push(eq(users.id, search))
+			if (discordUsernameMatchedCoreUserIds.size > 0) {
+				conditions.push(inArray(users.id, [...discordUsernameMatchedCoreUserIds]))
+			}
+
+			whereCondition = and(hasActiveCharacter, or(...conditions)) as SQL<unknown>
+		}
+
+		const paginatedUsers = await this.db
+			.select({
+				id: users.id,
+				mainCharacterId: users.mainCharacterId,
+				is_admin: users.is_admin,
+				discordUserId: users.discordUserId,
+				createdAt: users.createdAt,
+				updatedAt: users.updatedAt,
+			})
+			.from(users)
+			.where(whereCondition)
+			.orderBy(desc(users.updatedAt), desc(users.createdAt))
+			.limit(limit)
+			.offset(offset)
+
+		const pageUserIds = paginatedUsers.map((user) => user.id)
+		const pageCharacters =
+			pageUserIds.length > 0
+				? await this.db.query.userCharacters.findMany({
+						where: and(
+							inArray(userCharacters.userId, pageUserIds),
+							eq(userCharacters.isDeleted, false)
+						),
+						columns: {
+							userId: true,
+							characterId: true,
+							characterName: true,
+							corporationId: true,
+							corporationName: true,
+							allianceId: true,
+							allianceName: true,
+							is_primary: true,
+							hasValidToken: true,
+						},
+					})
+				: []
+
+		const charactersByUserId = new Map<string, typeof pageCharacters>()
+		for (const character of pageCharacters) {
+			const characters = charactersByUserId.get(character.userId) ?? []
+			characters.push(character)
+			charactersByUserId.set(character.userId, characters)
+		}
+
+		const discordUsernameByUserId = new Map<string, string>()
+		if (pageUserIds.length > 0) {
+			try {
+				const discordStub = getStub<Discord>(this.env.DISCORD, 'default')
+				const statuses = await withRpcResult(
+					discordStub.getDiscordUserStatuses(pageUserIds),
+					(result) =>
+						new Map(
+							Object.entries(result).map(([userId, status]) => [userId, status.username] as const)
+						)
+				)
+				for (const user of paginatedUsers) {
+					const username = statuses.get(user.id)
+					if (username) discordUsernameByUserId.set(user.id, username)
+				}
+			} catch (error) {
+				logger.error('[CoreRpcService.searchUsersForHrAccess] Discord status lookup failed', {
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
+		const usersWithCharacters = paginatedUsers.map((user) => {
+			const characters = [...(charactersByUserId.get(user.id) ?? [])].sort((a, b) => {
+				if (a.is_primary !== b.is_primary) return a.is_primary ? -1 : 1
+				return a.characterName.localeCompare(b.characterName)
+			})
+			const matched = search
+				? (characters
+						.map((character) => {
+							const lowerName = character.characterName.toLowerCase()
+							const score =
+								isSearchNumeric && character.characterId === search
+									? 400
+									: lowerName === lowerSearch
+										? 300
+										: lowerSearch && lowerName.startsWith(lowerSearch)
+											? 200
+											: lowerSearch && lowerName.includes(lowerSearch)
+												? 100
+												: 0
+							return { character, score }
+						})
+						.filter((entry) => entry.score > 0)
+						.sort((a, b) => b.score - a.score)[0]?.character ?? null)
+				: null
+			const displayCharacter = characters[0]
+			const matchedBy:
+				| 'main_character_name'
+				| 'character_name'
+				| 'character_id'
+				| 'user_id'
+				| 'discord_user_id'
+				| 'discord_username'
+				| 'legacy_auth_username'
+				| null = !search
+				? null
+				: isSearchUuid && user.id === search
+					? 'user_id'
+					: user.discordUserId === search
+						? 'discord_user_id'
+						: discordUsernameMatchedCoreUserIds.has(user.id)
+							? 'discord_username'
+							: matched
+								? isSearchNumeric && matched.characterId === search
+									? 'character_id'
+									: matched.is_primary
+										? 'main_character_name'
+										: 'character_name'
+								: 'legacy_auth_username'
+
+			return {
+				summary: {
+					id: user.id,
+					mainCharacterId: displayCharacter.characterId,
+					mainCharacterName: displayCharacter.characterName,
+					characterCount: characters.length,
+					is_admin: user.is_admin,
+					discordUserId: user.discordUserId,
+					discordUsername: discordUsernameByUserId.get(user.id) ?? null,
+					matchedCharacterId: matched?.characterId ?? null,
+					matchedCharacterName: matched?.characterName ?? null,
+					matchedBy,
+					createdAt: user.createdAt,
+					updatedAt: user.updatedAt,
+				},
+				characters: characters.map((character) => ({
+					characterId: character.characterId,
+					characterName: character.characterName,
+					corporationId: character.corporationId,
+					corporationName: character.corporationName,
+					allianceId: character.allianceId,
+					allianceName: character.allianceName,
+					is_primary: character.is_primary,
+					hasValidToken: character.hasValidToken === true,
+				})),
+			}
+		})
+
+		const totalResult = await this.db
+			.select({ count: sql<number>`count(*)` })
+			.from(users)
+			.where(whereCondition)
+
+		return {
+			users: usersWithCharacters,
+			total: Number(totalResult[0]?.count ?? 0),
+			limit,
+			offset,
+		}
+	}
+
+	/**
 	 * Search users with pagination
 	 */
 	async searchUsers(params: SearchUsersParams): Promise<SearchUsersResult> {
@@ -58,7 +280,10 @@ export class CoreRpcService {
 		if (search) {
 			try {
 				const discordStub = getStub<Discord>(this.env.DISCORD, 'default')
-				const discordMatches = await discordStub.searchCoreUsersByUsername(search, 200)
+				const discordMatches = await withRpcResult(
+					discordStub.searchCoreUsersByUsername(search, 200),
+					(matches) => matches.map((match) => ({ ...match }))
+				)
 				for (const match of discordMatches) {
 					discordUsernameMatchedCoreUserIds.add(match.coreUserId)
 				}
@@ -220,22 +445,17 @@ export class CoreRpcService {
 		if (pageUserIds.length > 0) {
 			try {
 				const discordStub = getStub<Discord>(this.env.DISCORD, 'default')
-				const statuses = await Promise.all(
-					paginatedUsers.map(async (user) => {
-						if (!user.discordUserId) {
-							return { userId: user.id, username: null }
-						}
-						try {
-							const status = await discordStub.getDiscordUserStatus(user.id)
-							return { userId: user.id, username: status?.username ?? null }
-						} catch {
-							return { userId: user.id, username: null }
-						}
-					})
+				const statuses = await withRpcResult(
+					discordStub.getDiscordUserStatuses(pageUserIds),
+					(result) =>
+						new Map(
+							Object.entries(result).map(([userId, status]) => [userId, status.username] as const)
+						)
 				)
-				for (const status of statuses) {
-					if (status.username) {
-						discordUsernameByUserId.set(status.userId, status.username)
+				for (const user of paginatedUsers) {
+					const username = statuses.get(user.id)
+					if (username) {
+						discordUsernameByUserId.set(user.id, username)
 					}
 				}
 			} catch (error) {
@@ -310,7 +530,10 @@ export class CoreRpcService {
 	/**
 	 * Get detailed user information
 	 */
-	async getUserDetails(userId: string): Promise<UserDetails | null> {
+	async getUserDetails(
+		userId: string,
+		options: { includeUserBlacklist?: boolean } = {}
+	): Promise<UserDetails | null> {
 		// 1. Query user
 		const user = await this.db.query.users.findFirst({
 			where: eq(users.id, userId),
@@ -334,13 +557,25 @@ export class CoreRpcService {
 
 		// 5. Bulk check blacklist status for all characters
 		const characterIds = chars.map((c) => c.characterId)
-		const blacklistStatuses =
-			characterIds.length > 0 ? await hrStub.checkCharactersBlacklisted(characterIds) : {}
+		const blacklistStatusPromise: Promise<Record<string, boolean>> =
+			characterIds.length > 0
+				? withRpcResult(hrStub.checkCharactersBlacklisted(characterIds), (result) => ({
+						...result,
+					}))
+				: Promise.resolve({})
+		const [blacklistStatuses, isBlacklisted] = await Promise.all([
+			blacklistStatusPromise,
+			options.includeUserBlacklist === false
+				? Promise.resolve(false)
+				: hrStub.isUserBlacklisted(userId),
+		])
 
 		// 5.5 Fetch group memberships for admin visibility.
 		let groupMemberships: UserDetails['groupMemberships'] = []
 		try {
-			const memberships = await groupsStub.getUserMemberships(userId)
+			const memberships = await withRpcResult(groupsStub.getUserMemberships(userId), (result) =>
+				result.map((membership) => ({ ...membership }))
+			)
 			groupMemberships = memberships.map((membership) => ({
 				groupId: membership.groupId,
 				groupName: membership.groupName,
@@ -354,7 +589,9 @@ export class CoreRpcService {
 		// 5.6 Fetch resolved permission grants for admin visibility.
 		let permissionGrants: UserDetails['permissionGrants'] = []
 		try {
-			const grants = await groupsStub.getUserPermissionGrants(userId)
+			const grants = await withRpcResult(groupsStub.getUserPermissionGrants(userId), (result) =>
+				result.map((grant) => ({ ...grant }))
+			)
 			permissionGrants = grants.map((grant) => ({
 				permissionId: grant.permissionId ?? null,
 				urn: grant.urn,
@@ -409,7 +646,9 @@ export class CoreRpcService {
 		if (user.discordUserId) {
 			try {
 				const discordStub = getStub<Discord>(this.env.DISCORD, 'default')
-				const status = await discordStub.getDiscordUserStatus(userId)
+				const status = await withRpcResult(discordStub.getDiscordUserStatus(userId), (result) =>
+					result ? { ...result } : null
+				)
 				if (status) {
 					discordStatus = {
 						userId: status.userId,
@@ -430,6 +669,7 @@ export class CoreRpcService {
 			id: user.id,
 			mainCharacterId: user.mainCharacterId,
 			is_admin: user.is_admin,
+			isBlacklisted,
 			discordUserId: user.discordUserId,
 			discord: discordStatus,
 			characters: characterSummaries,

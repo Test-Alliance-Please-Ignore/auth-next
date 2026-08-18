@@ -10,6 +10,8 @@ import type { SessionUser } from '../../context'
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
+	withRpcResult: async <T, R>(rpcCall: Promise<T>, consume: (result: T) => R | Promise<R>) =>
+		consume(await rpcCall),
 }))
 
 vi.mock('../../lib/groups-cache', () => ({

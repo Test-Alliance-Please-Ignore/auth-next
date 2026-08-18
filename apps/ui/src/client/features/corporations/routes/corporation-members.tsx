@@ -14,7 +14,7 @@ import {
 	Search,
 	Settings,
 } from 'lucide-react'
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router'
 
 import {
@@ -54,6 +54,81 @@ const CorporationMembersTable = lazy(() => import('../components/corporation-mem
 const MEMBERS_SEARCH_DEBOUNCE_MS = 400
 type MembersCoverageFilter = NonNullable<CorporationMembersQuery['coverageFilter']>
 
+const DEFAULT_MEMBERS_QUERY: CorporationMembersQuery = {
+	page: 1,
+	limit: 25,
+	search: '',
+	mainsOnly: false,
+	authFilter: 'all',
+	coverageFilter: 'all',
+	activityFilter: 'all',
+	roleFilter: 'all',
+	sortField: 'role',
+	sortOrder: 'asc',
+}
+
+function readMembersQuery(corporationId: string | undefined): CorporationMembersQuery {
+	if (!corporationId || typeof window === 'undefined') return DEFAULT_MEMBERS_QUERY
+
+	try {
+		const raw = window.sessionStorage.getItem(`corporation-members-query:${corporationId}`)
+		if (!raw) return DEFAULT_MEMBERS_QUERY
+		const saved = JSON.parse(raw) as Partial<CorporationMembersQuery>
+		const authFilter = [
+			'all',
+			'linked_valid',
+			'linked_invalid',
+			'linked_unknown',
+			'unlinked',
+		].includes(saved.authFilter ?? '')
+			? saved.authFilter
+			: 'all'
+		const coverageFilter = ['all', 'full', 'partial', 'none', 'unlinked'].includes(
+			saved.coverageFilter ?? ''
+		)
+			? saved.coverageFilter
+			: 'all'
+		const activityFilter = ['all', 'active', 'inactive', 'unknown'].includes(
+			saved.activityFilter ?? ''
+		)
+			? saved.activityFilter
+			: 'all'
+		const roleFilter = ['all', 'CEO', 'Director', 'Member'].includes(saved.roleFilter ?? '')
+			? saved.roleFilter
+			: 'all'
+		const sortField = [
+			'name',
+			'role',
+			'hrRole',
+			'auth',
+			'activity',
+			'lastLogin',
+			'joinDate',
+		].includes(saved.sortField ?? '')
+			? saved.sortField
+			: 'role'
+		const sortOrder = saved.sortOrder === 'desc' ? 'desc' : 'asc'
+		const limitValue = saved.limit ?? 25
+		const limit = [10, 25, 50, 100].includes(limitValue) ? limitValue : 25
+
+		return {
+			...DEFAULT_MEMBERS_QUERY,
+			page: 1,
+			limit,
+			search: typeof saved.search === 'string' ? saved.search : '',
+			mainsOnly: saved.mainsOnly === true,
+			authFilter,
+			coverageFilter,
+			activityFilter,
+			roleFilter,
+			sortField,
+			sortOrder,
+		}
+	} catch {
+		return DEFAULT_MEMBERS_QUERY
+	}
+}
+
 /**
  * Main Corporation Members Component
  */
@@ -77,17 +152,17 @@ export default function CorporationMembers() {
 	const [isRefreshing, setIsRefreshing] = useState(false)
 	const [isExporting, setIsExporting] = useState(false)
 	const [isUserSearchOpen, setIsUserSearchOpen] = useState(false)
-	const [membersQuery, setMembersQuery] = useState<CorporationMembersQuery>({
-		page: 1,
-		limit: 25,
-		search: '',
-		authFilter: 'all',
-		coverageFilter: 'all',
-		activityFilter: 'all',
-		roleFilter: 'all',
-		sortField: 'role',
-		sortOrder: 'asc',
-	})
+	const [membersQuery, setMembersQuery] = useState<CorporationMembersQuery>(() =>
+		readMembersQuery(corporationId)
+	)
+	useEffect(() => {
+		if (!corporationId || typeof window === 'undefined') return
+		const { page: _page, ...filters } = membersQuery
+		window.sessionStorage.setItem(
+			`corporation-members-query:${corporationId}`,
+			JSON.stringify(filters)
+		)
+	}, [corporationId, membersQuery])
 	const debouncedSearch = useDebounce(membersQuery.search ?? '', MEMBERS_SEARCH_DEBOUNCE_MS)
 	const effectiveMembersQuery = useMemo(
 		() => ({
@@ -607,12 +682,8 @@ export default function CorporationMembers() {
 				/>
 			</Suspense>
 
-			{canUseUserSearchTool && corporationId && (
-				<CorporationUserSearchDialog
-					corporationId={corporationId}
-					open={isUserSearchOpen}
-					onOpenChange={setIsUserSearchOpen}
-				/>
+			{canUseUserSearchTool && (
+				<CorporationUserSearchDialog open={isUserSearchOpen} onOpenChange={setIsUserSearchOpen} />
 			)}
 		</Container>
 	)

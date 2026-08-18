@@ -3,9 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
 
+import { hasHrAuditorPermission } from '../../lib/hr-access'
 import usersRoutes from '../users'
 
 import type { SessionUser } from '../../context'
+
+vi.mock('../../lib/hr-access', () => ({
+	hasHrAuditorPermission: vi.fn().mockResolvedValue(false),
+}))
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
@@ -26,6 +31,7 @@ vi.mock('@repo/do-utils', () => ({
 }))
 
 const getStubMock = vi.mocked(getStub)
+const hasHrAuditorPermissionMock = vi.mocked(hasHrAuditorPermission)
 
 function makeRpcResult<T extends object>(
 	value: T
@@ -102,7 +108,9 @@ describe('users corporation access', () => {
 	}
 
 	beforeEach(() => {
+		vi.unstubAllGlobals()
 		vi.clearAllMocks()
+		hasHrAuditorPermissionMock.mockResolvedValue(false)
 
 		dbStub = {
 			query: {
@@ -236,16 +244,12 @@ describe('users corporation access', () => {
 					isMemberCorporation: true,
 					isAltCorp: false,
 					isSpecialPurpose: false,
-					memberCount: 4,
-					linkedMemberCount: 2,
-					unlinkedMemberCount: 1,
-					validEsiKeyMemberCount: 3,
 				},
 			],
 		})
 		expect(hrStub.getUserHrCorporations).toHaveBeenCalledWith('user-1')
 		expect(hrStub.getUserRoles).toHaveBeenCalledWith('user-1')
-		expect(corpStub.getMembers).toHaveBeenCalledWith('1001')
+		expect(corpStub.getMembers).not.toHaveBeenCalled()
 		expect(charStub.getCharacterInfo).not.toHaveBeenCalled()
 	})
 
@@ -263,10 +267,8 @@ describe('users corporation access', () => {
 		const corporationResult = makeRpcResult({ ceoId: '2001' })
 		const directorsResult = makeRpcResult([])
 		const hrCorporationsResult = makeRpcResult([])
-		const membersResult = makeRpcResult([{ characterId: '2001' }])
 		corpStub.getCorporationInfo.mockResolvedValue(corporationResult.value)
 		corpStub.getDirectors.mockResolvedValue(directorsResult.value)
-		corpStub.getMembers.mockResolvedValue(membersResult.value)
 		hrStub.getUserHrCorporations.mockResolvedValue(hrCorporationsResult.value)
 
 		const app = createApp({ user: makeUser(), db: dbStub })
@@ -276,7 +278,7 @@ describe('users corporation access', () => {
 		expect(corporationResult.dispose).toHaveBeenCalledOnce()
 		expect(directorsResult.dispose).toHaveBeenCalledOnce()
 		expect(hrCorporationsResult.dispose).toHaveBeenCalledOnce()
-		expect(membersResult.dispose).toHaveBeenCalledOnce()
+		expect(corpStub.getMembers).not.toHaveBeenCalled()
 	})
 
 	it('returns all managed corporations for site admins without character lookups', async () => {
@@ -303,10 +305,6 @@ describe('users corporation access', () => {
 					isMemberCorporation: true,
 					isAltCorp: false,
 					isSpecialPurpose: false,
-					memberCount: 1,
-					linkedMemberCount: 0,
-					unlinkedMemberCount: 1,
-					validEsiKeyMemberCount: 0,
 				},
 				{
 					corporationId: '2001',
@@ -318,10 +316,6 @@ describe('users corporation access', () => {
 					isMemberCorporation: false,
 					isAltCorp: true,
 					isSpecialPurpose: false,
-					memberCount: 1,
-					linkedMemberCount: 0,
-					unlinkedMemberCount: 1,
-					validEsiKeyMemberCount: 0,
 				},
 				{
 					corporationId: '3001',
@@ -333,17 +327,13 @@ describe('users corporation access', () => {
 					isMemberCorporation: false,
 					isAltCorp: false,
 					isSpecialPurpose: true,
-					memberCount: 1,
-					linkedMemberCount: 0,
-					unlinkedMemberCount: 1,
-					validEsiKeyMemberCount: 0,
 				},
 			],
 		})
 		expect(charStub.getCharacterInfo).not.toHaveBeenCalled()
 		expect(corpStub.getCorporationInfo).not.toHaveBeenCalled()
 		expect(corpStub.getDirectors).not.toHaveBeenCalled()
-		expect(corpStub.getMembers).toHaveBeenCalledTimes(3)
+		expect(corpStub.getMembers).not.toHaveBeenCalled()
 	})
 
 	it('disposes RPC results when checking quick corporation access', async () => {
@@ -374,5 +364,64 @@ describe('users corporation access', () => {
 		expect(corporationResult.dispose).toHaveBeenCalledOnce()
 		expect(directorsResult.dispose).toHaveBeenCalledOnce()
 		expect(hrCorporationsResult.dispose).toHaveBeenCalledOnce()
+	})
+
+	it('returns coverage only for corporations in the user HR scope', async () => {
+		hrStub.getUserHrCorporations.mockResolvedValue(['1001'])
+		corpStub.getMembers.mockResolvedValue([
+			{ characterId: '2001' },
+			{ characterId: '2002' },
+			{ characterId: '2003' },
+			{ characterId: '2004' },
+		])
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{ characterId: '2001', userId: 'user-a', status: 'active', hasValidToken: true },
+			{ characterId: '2002', userId: 'user-a', status: 'active', hasValidToken: false },
+			{ characterId: '2003', userId: 'user-b', status: 'active', hasValidToken: true },
+		])
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/users/corporation-coverage', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({
+			corporations: [
+				{
+					corporationId: '1001',
+					memberCount: 4,
+					linkedMemberCount: 2,
+					unlinkedMemberCount: 1,
+					validEsiKeyMemberCount: 2,
+				},
+			],
+		})
+		expect(corpStub.getMembers).toHaveBeenCalledWith('1001')
+		expect(hrStub.getUserHrCorporations).toHaveBeenCalledWith('user-1')
+	})
+
+	it('reuses the corporation coverage cache across users', async () => {
+		const responses = new Map<string, Response>()
+		vi.stubGlobal('caches', {
+			default: {
+				match: vi.fn(async (key: string) => responses.get(key)?.clone()),
+				put: vi.fn(async (key: string, response: Response) => {
+					responses.set(key, response.clone())
+				}),
+			},
+		})
+		hrStub.getUserHrCorporations.mockResolvedValue(['1001'])
+		corpStub.getMembers.mockResolvedValue([{ characterId: '2001' }])
+		dbStub.query.userCharacters.findMany.mockResolvedValue([
+			{ characterId: '2001', userId: 'user-a', status: 'active', hasValidToken: true },
+		])
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const firstResponse = await app.request('/api/users/corporation-coverage', {}, env)
+		const secondResponse = await app.request('/api/users/corporation-coverage', {}, env)
+
+		expect(firstResponse.status).toBe(200)
+		expect(secondResponse.status).toBe(200)
+		expect(corpStub.getMembers).toHaveBeenCalledTimes(1)
+		expect(dbStub.query.userCharacters.findMany).toHaveBeenCalledTimes(1)
 	})
 })

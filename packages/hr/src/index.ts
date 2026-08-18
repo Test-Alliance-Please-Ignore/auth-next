@@ -423,6 +423,12 @@ export interface ApplicationListResult {
 	}
 }
 
+export interface CorporationApplicationCounts {
+	corporationId: string
+	pending: number
+	underReview: number
+}
+
 /**
  * Filters for listing HR notes
  */
@@ -514,6 +520,15 @@ export interface Hr extends DurableObject {
 	): Promise<ApplicationListResult>
 
 	/**
+	 * Count open applications grouped by corporation without loading application rows.
+	 */
+	getApplicationCountsByCorporation(
+		corporationIds: string[],
+		userId: string,
+		access: HrAccessContext
+	): Promise<CorporationApplicationCounts[]>
+
+	/**
 	 * Get a single application with recommendations
 	 * @param applicationId - Application ID to retrieve
 	 * @param userId - ID of the requesting user
@@ -550,7 +565,12 @@ export interface Hr extends DurableObject {
 	 * @param characterId - Character ID of user withdrawing
 	 * @param characterName - Character name for activity log
 	 */
-	withdrawApplication(applicationId: string, userId: string, characterId: string, characterName: string): Promise<void>
+	withdrawApplication(
+		applicationId: string,
+		userId: string,
+		characterId: string,
+		characterName: string
+	): Promise<void>
 
 	/**
 	 * Add an alt character to a pending application (applicant only)

@@ -479,6 +479,11 @@ export interface Discord {
 	getDiscordUserStatus(coreUserId: string): Promise<DiscordUserStatus | null>
 
 	/**
+	 * Get Discord statuses for multiple core users in one database query.
+	 */
+	getDiscordUserStatuses(coreUserIds: string[]): Promise<Record<string, DiscordUserStatus>>
+
+	/**
 	 * Update the last refreshed timestamp for a Discord user
 	 * @param coreUserId - Core user ID
 	 */

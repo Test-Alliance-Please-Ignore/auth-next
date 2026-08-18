@@ -5,6 +5,7 @@
 import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -17,10 +18,12 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
+import { isNpcCharacterContact } from '../../utils/contacts'
+import { formatStandingLabel, getStandingColorClass } from '../../utils/standing'
 import { BlacklistHighlight } from './blacklist-highlighting'
 import { EntityNameLink } from './entity-name-link'
+
 import type { BlacklistHighlights } from './blacklist-highlighting'
-import { formatStandingLabel, getStandingColorClass } from '../../utils/standing'
 
 interface ProcessedContact {
 	contact_id: number
@@ -76,7 +79,7 @@ function FilterButton({
 				'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
 				active
 					? 'bg-primary text-primary-foreground'
-					: 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground',
+					: 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
 			)}
 		>
 			{children}
@@ -119,12 +122,12 @@ export function ContactsSection({
 
 		if (search.trim()) {
 			const q = search.toLowerCase()
-				result = result.filter(
-					(c) =>
-						c.contactDisplayName?.toLowerCase().includes(q) ||
-						c.contactName?.toLowerCase().includes(q) ||
-						c.contact_type?.toLowerCase().includes(q),
-				)
+			result = result.filter(
+				(c) =>
+					c.contactDisplayName?.toLowerCase().includes(q) ||
+					c.contactName?.toLowerCase().includes(q) ||
+					c.contact_type?.toLowerCase().includes(q)
+			)
 		}
 
 		return result
@@ -161,7 +164,7 @@ export function ContactsSection({
 								>
 									<span className="capitalize">{type}</span>
 								</FilterButton>
-							),
+							)
 					)}
 				</div>
 
@@ -208,9 +211,7 @@ export function ContactsSection({
 			{/* Results */}
 			<p className="text-sm text-muted-foreground">
 				{filtered.length} contact{filtered.length !== 1 ? 's' : ''}
-				{search || typeFilter !== 'all' || standingFilter !== 'all'
-					? ` (of ${data.length})`
-					: ''}
+				{search || typeFilter !== 'all' || standingFilter !== 'all' ? ` (of ${data.length})` : ''}
 			</p>
 
 			{filtered.length === 0 ? (
@@ -230,25 +231,25 @@ export function ContactsSection({
 						<TableBody>
 							{visible.map((contact) => (
 								<TableRow key={contact.contact_id}>
-								<TableCell
-									className={cn(
-										'font-medium',
-									)}
-								>
-									<BlacklistHighlight
-										value={contact.contact_id}
-										blacklist={blacklistHighlights}
-									>
-										<EntityNameLink
-											entityId={contact.contact_id}
-											entityType={contact.contact_type}
-											href={contact.contactDisplayHref}
-											className="hover:underline underline-offset-2"
-										>
-											{contact.contactDisplayName || contact.contactName || `ID: ${contact.contact_id}`}
-										</EntityNameLink>
-									</BlacklistHighlight>
-								</TableCell>
+									<TableCell className={cn('font-medium')}>
+										<BlacklistHighlight value={contact.contact_id} blacklist={blacklistHighlights}>
+											<EntityNameLink
+												entityId={contact.contact_id}
+												entityType={contact.contact_type}
+												href={contact.contactDisplayHref}
+												className="hover:underline underline-offset-2"
+											>
+												{contact.contactDisplayName ||
+													contact.contactName ||
+													`ID: ${contact.contact_id}`}
+											</EntityNameLink>
+											{isNpcCharacterContact(contact) ? (
+												<Badge variant="secondary" className="ml-2 px-1.5 py-0 text-[10px]">
+													NPC
+												</Badge>
+											) : null}
+										</BlacklistHighlight>
+									</TableCell>
 									<TableCell className="text-sm capitalize text-muted-foreground">
 										{contact.contact_type?.replace('_', ' ') || '-'}
 									</TableCell>
@@ -256,7 +257,7 @@ export function ContactsSection({
 										<span
 											className={cn(
 												'font-mono text-sm font-semibold',
-												getStandingColorClass(contact.standing),
+												getStandingColorClass(contact.standing)
 											)}
 										>
 											{formatStandingLabel(contact.standing)}
@@ -278,11 +279,7 @@ export function ContactsSection({
 					>
 						Show more
 					</Button>
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={() => setVisibleCount(filtered.length)}
-					>
+					<Button variant="ghost" size="sm" onClick={() => setVisibleCount(filtered.length)}>
 						Show all ({filtered.length})
 					</Button>
 				</div>
