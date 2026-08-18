@@ -143,7 +143,11 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		super(state, env)
 		// Local Vite dev is the only environment exhibiting the CONNECT failure
 		// on this path, so use Neon HTTP there and keep WebSockets elsewhere.
-		const useWebSocket = env.ENVIRONMENT !== 'development'
+
+		// turning off to see if this is the cause of our duration issues
+		// const useWebSocket = env.ENVIRONMENT !== 'development'
+		const useWebSocket = false
+
 		this.db = createDb(env, env.DATABASE_URL, useWebSocket)
 		this.esiRateLimits = new EsiRateLimitStore(env.ESI_RATE_LIMITS)
 		this.esiRequestClient = new EsiRequestClient({
