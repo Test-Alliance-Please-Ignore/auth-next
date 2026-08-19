@@ -1428,6 +1428,17 @@ export interface EveCorporationData {
 	): Promise<EsiSovereigntySystem[] | null>
 
 	/**
+	 * Read fresh shared sovereignty systems for the requested corporation and system IDs.
+	 * This avoids scanning the corporation's complete cached sovereignty slice when only
+	 * the systems from a live hub listing are needed.
+	 */
+	getSharedSovereigntySystemsByIds(
+		corporationId: string,
+		systemIds: readonly string[],
+		maxAgeSeconds?: number
+	): Promise<EsiSovereigntySystem[] | null>
+
+	/**
 	 * Read the entire shared sovereignty system snapshot if it is still fresh.
 	 */
 	getSharedSovereigntySystemsSnapshot(

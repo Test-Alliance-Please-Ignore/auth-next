@@ -33,6 +33,21 @@ export async function readSharedSovereigntySystemsForCorporation(
 }
 
 /**
+ * Read only the cached sovereignty systems referenced by a live hub listing.
+ */
+export async function readSharedSovereigntySystemsByIds(
+	env: Env,
+	corporationId: string,
+	systemIds: readonly string[]
+): Promise<EsiSovereigntySystem[] | null> {
+	const globalCorpData = getGlobalCorporationDataStub(env)
+	return await withRpcResult(
+		globalCorpData.getSharedSovereigntySystemsByIds(corporationId, systemIds),
+		(systems) => systems?.map((system) => ({ ...system })) ?? null
+	)
+}
+
+/**
  * Ensure the full sovereignty snapshot is available before structure fanout.
  */
 export async function ensureSharedSovereigntySystems(env: Env): Promise<void> {

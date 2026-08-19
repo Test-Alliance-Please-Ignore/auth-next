@@ -6,6 +6,7 @@ const SOVEREIGNTY_HUB_TYPE_ID = '32458'
 
 const mocks = vi.hoisted(() => {
 	const fetchSovereigntyHubsMock = vi.fn()
+	const readSharedSovereigntySystemsByIdsMock = vi.fn()
 	const readSharedSovereigntySystemsForCorporationMock = vi.fn()
 	const refreshSharedSovereigntySystemsMock = vi.fn()
 	const resolveSolarSystemsByIdsMock = vi.fn()
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => {
 
 	return {
 		fetchSovereigntyHubsMock,
+		readSharedSovereigntySystemsByIdsMock,
 		readSharedSovereigntySystemsForCorporationMock,
 		refreshSharedSovereigntySystemsMock,
 		resolveSolarSystemsByIdsMock,
@@ -59,6 +61,8 @@ vi.mock('../../../workflows/utils/services', () => ({
 }))
 
 vi.mock('../../../workflows/utils/sovereignty-systems-cache', () => ({
+	readSharedSovereigntySystemsByIds: (...args: unknown[]) =>
+		mocks.readSharedSovereigntySystemsByIdsMock(...args),
 	readSharedSovereigntySystemsForCorporation: (...args: unknown[]) =>
 		mocks.readSharedSovereigntySystemsForCorporationMock(...args),
 	refreshSharedSovereigntySystems: (...args: unknown[]) =>
@@ -87,12 +91,12 @@ describe('fetchSovereigntyEnrichment', () => {
 			},
 			pages: 1,
 		})
-		mocks.readSharedSovereigntySystemsForCorporationMock.mockResolvedValue([
+		mocks.readSharedSovereigntySystemsByIdsMock.mockResolvedValue([
 			{
 				system_id: '30000142',
 				claim_type: 'alliance',
 				alliance_id: '123456789',
-				corporation_id: '987654321',
+				corporation_id: 'corp-1',
 				claimed_since: '2026-07-12T19:36:46.834Z',
 				is_capital_system: false,
 				sovereignty_hub_structure_id: 'hub-1',
@@ -172,11 +176,13 @@ describe('fetchSovereigntyEnrichment', () => {
 				pruneCandidateIds: ['departed-hub'],
 			}
 		)
-		expect(mocks.readSharedSovereigntySystemsForCorporationMock).toHaveBeenCalledWith(
+		expect(mocks.readSharedSovereigntySystemsForCorporationMock).not.toHaveBeenCalled()
+		expect(mocks.readSharedSovereigntySystemsByIdsMock).toHaveBeenCalledWith(
 			{
 				UNIVERSE: {},
 			},
-			'corp-1'
+			'corp-1',
+			['30000142']
 		)
 		expect(mocks.getStubMock).toHaveBeenCalledWith({}, 'default')
 		expect(mocks.resolveSolarSystemsByIdsMock).toHaveBeenCalledWith(['30000142'])
@@ -197,6 +203,7 @@ describe('fetchSovereigntyEnrichment', () => {
 			syncPriorities: [],
 		})
 		mocks.readSharedSovereigntySystemsForCorporationMock.mockResolvedValue([])
+		mocks.readSharedSovereigntySystemsByIdsMock.mockReset()
 		mocks.fetchEsiMock.mockRejectedValue(
 			new Error(
 				'ESI request failed: 401 Unauthorized - {"error":"missing scope"} | metadata={"status":401,"path":"/corporations/123/structures/sovereignty-hubs/"}'
@@ -218,5 +225,62 @@ describe('fetchSovereigntyEnrichment', () => {
 			expect(error).toBeInstanceOf(Error)
 			expect((error as { target?: string }).target).toBe('sovereignty-hubs')
 		})
+	})
+
+	it('uses the corporation-scoped cache fallback when no live hubs are listed', async () => {
+		mocks.createTokenStoreMock.mockReturnValue({
+			fetchEsi: mocks.fetchEsiMock,
+		})
+		mocks.fetchEsiMock.mockResolvedValueOnce({
+			data: { sovereignty_hubs: [] },
+			pages: 1,
+		})
+		mocks.readSharedSovereigntySystemsForCorporationMock.mockResolvedValue([
+			{
+				system_id: '30000142',
+				claim_type: 'alliance',
+				alliance_id: '123456789',
+				corporation_id: 'corp-1',
+				claimed_since: null,
+				is_capital_system: false,
+				sovereignty_hub_structure_id: null,
+				vulnerability_window: null,
+				activity_defense_multiplier: '1.0000',
+				military_level: 1,
+				industrial_level: 1,
+				strategic_level: 1,
+				raw: { claim: {} },
+			},
+		])
+		mocks.getStructurePriorityQueueMock.mockResolvedValueOnce({
+			newStructureIds: [],
+			pruneCandidateIds: [],
+			syncPriorities: [],
+		})
+		mocks.fetchSovereigntyHubsMock.mockResolvedValueOnce({
+			sovereigntyHubs: [],
+			pruneCandidateIds: [],
+			failures: [],
+			failureCount: 0,
+			rateLimitFailureCount: 0,
+			nonRateLimitFailureCount: 0,
+		})
+
+		const result = await fetchSovereigntyEnrichment(
+			{
+				UNIVERSE: {} as never,
+			} as never,
+			'corp-1',
+			'character-1'
+		)
+
+		expect(mocks.readSharedSovereigntySystemsForCorporationMock).toHaveBeenCalledWith(
+			{
+				UNIVERSE: {},
+			},
+			'corp-1'
+		)
+		expect(mocks.readSharedSovereigntySystemsByIdsMock).not.toHaveBeenCalled()
+		expect(result?.sovereigntySystems).toHaveLength(1)
 	})
 })

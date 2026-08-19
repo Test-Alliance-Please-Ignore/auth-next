@@ -216,9 +216,12 @@ const CHARACTER_WALLET_SCOPE = 'esi-wallet.read_character_wallet.v1'
 const CORPORATION_MEMBERSHIP_SCOPE = 'esi-corporations.read_corporation_membership.v1'
 const NPC_CORPORATION_ID_MIN = 1_000_000
 const NPC_CORPORATION_ID_MAX = 1_999_999
-const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY = 'shared:sovereignty-systems:observed-at'
-const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_COUNT_KEY = 'shared:sovereignty-systems:count'
+// Bump the metadata keys when the row-key layout changes so existing DOs lazily
+// rebuild the snapshot and remove rows written by the previous layout.
+const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY = 'shared:sovereignty-systems:v2:observed-at'
+const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_COUNT_KEY = 'shared:sovereignty-systems:v2:count'
 const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX = 'shared:sovereignty-systems:row:'
+const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_CORPORATION_ROW_PREFIX = `${SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX}corporation:`
 const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_MAX_AGE_SECONDS = 60 * 60
 const SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_KEY = 'shared:sovereignty-systems:refresh-lease'
 const SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_SECONDS = 2 * 60
@@ -425,6 +428,25 @@ type SharedSovereigntySystemsRefreshLease = {
 	token: string
 	expiresAtMs: number
 	acquiredAtMs: number
+}
+
+function getSharedSovereigntySystemCacheKey(system: EsiSovereigntySystem): string {
+	const corporationScope = system.corporation_id
+		? `${SHARED_SOVEREIGNTY_SYSTEMS_CACHE_CORPORATION_ROW_PREFIX}${system.corporation_id}`
+		: `${SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX}unscoped`
+
+	return `${corporationScope}:system:${system.system_id}`
+}
+
+function getSharedSovereigntyCorporationRowPrefix(corporationId: string): string {
+	return `${SHARED_SOVEREIGNTY_SYSTEMS_CACHE_CORPORATION_ROW_PREFIX}${corporationId}:`
+}
+
+function getSharedSovereigntySystemCacheKeyForCorporation(
+	corporationId: string,
+	systemId: string
+): string {
+	return `${getSharedSovereigntyCorporationRowPrefix(corporationId)}system:${systemId}`
 }
 type SkyhookStorageRow = {
 	structureId: string
@@ -4049,10 +4071,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	async storeSharedSovereigntySystems(systems: EsiSovereigntySystem[]): Promise<void> {
 		const observedAt = new Date().toISOString()
 		const rowEntries = Object.fromEntries(
-			systems.map((system) => [
-				`${SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX}${system.system_id}`,
-				system,
-			])
+			systems.map((system) => [getSharedSovereigntySystemCacheKey(system), system])
 		)
 
 		await this.state.storage.transaction(async (txn) => {
@@ -4115,10 +4134,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const observedAtRaw = await this.state.storage.get<string>(
 			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY
 		)
-		const cachedSystemCount = await this.state.storage.get<number>(
-			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_COUNT_KEY
-		)
-		if (!observedAtRaw || cachedSystemCount === undefined) {
+		if (!observedAtRaw) {
 			return null
 		}
 
@@ -4128,11 +4144,40 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		const rows = await this.state.storage.list<EsiSovereigntySystem>({
-			prefix: SHARED_SOVEREIGNTY_SYSTEMS_CACHE_ROW_PREFIX,
+			prefix: getSharedSovereigntyCorporationRowPrefix(corporationId),
 		})
-		if (rows.size !== cachedSystemCount) {
+		return [...rows.values()].filter(
+			(system) => system.claim_type === 'alliance' && system.corporation_id === corporationId
+		)
+	}
+
+	async getSharedSovereigntySystemsByIds(
+		corporationId: string,
+		systemIds: readonly string[],
+		maxAgeSeconds = SHARED_SOVEREIGNTY_SYSTEMS_CACHE_MAX_AGE_SECONDS
+	): Promise<EsiSovereigntySystem[] | null> {
+		const observedAtRaw = await this.state.storage.get<string>(
+			SHARED_SOVEREIGNTY_SYSTEMS_CACHE_META_KEY
+		)
+		if (!observedAtRaw) {
 			return null
 		}
+
+		const observedAt = parseDateOrNull(observedAtRaw)
+		if (!observedAt || Date.now() - observedAt.getTime() > maxAgeSeconds * 1000) {
+			return null
+		}
+
+		const uniqueSystemIds = [...new Set(systemIds.map((systemId) => String(systemId)))]
+		if (uniqueSystemIds.length === 0) {
+			return []
+		}
+
+		const rows = await this.state.storage.get<EsiSovereigntySystem>(
+			uniqueSystemIds.map((systemId) =>
+				getSharedSovereigntySystemCacheKeyForCorporation(corporationId, systemId)
+			)
+		)
 		return [...rows.values()].filter(
 			(system) => system.claim_type === 'alliance' && system.corporation_id === corporationId
 		)
