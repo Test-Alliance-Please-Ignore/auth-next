@@ -358,7 +358,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	}
 
 	private async getCharacterDataInstance(characterId: string) {
-		const charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
+		const charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, 'default')
 		return await charStub.getInstance(characterId)
 	}
 

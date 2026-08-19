@@ -181,14 +181,13 @@ export async function resolveCharacterAccessContext(
 				targetOwner ? await resolveSharedCorporationCandidates(c, user, targetOwner) : []
 
 			if (candidateCorporations.length > 0) {
+				// One shared stub for every character: EveCharacterData is Postgres-backed and
+				// takes the character ID per call, so keying by character only multiplies objects.
+				const userCharStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 				const viewerCharacterResults = await Promise.all(
 					user.characters.map(async (userChar) => {
 						try {
-							const userCharStub = getStub<EveCharacterData>(
-								c.env.EVE_CHARACTER_DATA,
-								userChar.characterId
-							)
-							const userCharInstance = await userCharStub.getInstance(userChar.characterId)
+							using userCharInstance = await userCharStub.getInstance(userChar.characterId)
 							const userCharInfo = await userCharInstance.getCharacterInfo()
 							return {
 								characterId: userChar.characterId,

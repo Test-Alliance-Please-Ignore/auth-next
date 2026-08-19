@@ -81,7 +81,7 @@ export async function hasCorporationSelfServiceAccess(
 		const directorIds = new Set(directors.map((director) => director.characterId))
 		for (const characterId of characterIds) {
 			try {
-				const characterStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
+				const characterStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'default')
 				const characterInfo = await characterStub.getCharacterInfo(characterId)
 				if (!characterInfo || String(characterInfo.corporationId) !== corporationId) {
 					continue
@@ -158,7 +158,7 @@ export async function hasCorporationMembershipAccess(
 
 		for (const characterId of characterIds) {
 			try {
-				const characterStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
+				const characterStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'default')
 				const characterInfo = await characterStub.getCharacterInfo(characterId)
 				if (characterInfo && String(characterInfo.corporationId) === corporationId) {
 					return true

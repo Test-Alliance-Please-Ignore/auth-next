@@ -319,7 +319,7 @@ export async function checkAndUpdateDirectorStatus(
 ): Promise<{ updated: boolean; reason?: string }> {
 	try {
 		// Get the character data stub
-		const characterDataStub = getStub<EveCharacterData>(eveCharacterDataNamespace, characterId)
+		const characterDataStub = getStub<EveCharacterData>(eveCharacterDataNamespace, 'default')
 
 		// Fetch corporation roles
 		const roles = await characterDataStub.fetchCorporationRoles(characterId, false)

@@ -41,7 +41,7 @@ export async function hydrateCharacterAffiliation(
 	params: CharacterAffiliationHydrationParams
 ): Promise<HydratedCharacterAffiliation> {
 	const { db, env, characterId, executionCtx } = params
-	const eveCharacterData = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
+	const eveCharacterData = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'default')
 
 	const publicRefreshResult = await eveCharacterData.refreshPublicCharacterData(characterId, false)
 

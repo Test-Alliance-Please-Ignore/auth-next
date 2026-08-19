@@ -3054,7 +3054,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		logger.log('[getCharacterPermissions] Fetching permissions for character', { characterId })
 
 		// Resolve character's corporation via EveCharacterData DO
-		const charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, characterId)
+		const charStub = getStub<EveCharacterData>(this.env.EVE_CHARACTER_DATA, 'default')
 		const charInfo = await charStub.getCharacterInfo(characterId)
 
 		if (!charInfo || !charInfo.corporationId) {

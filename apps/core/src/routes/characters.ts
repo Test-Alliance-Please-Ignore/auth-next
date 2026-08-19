@@ -318,8 +318,8 @@ app.get('/:characterId/private', requireAuth(), async (c) => {
 	}
 
 	const access = accessOrResponse
-	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
-	const eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
+	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+	using eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
 	const eveTokenStore = c.get('eveTokenStore')
 
 	if (!eveTokenStore) {
@@ -514,8 +514,8 @@ app.get('/:characterId/skills', requireAuth(), async (c) => {
 		return c.json({ error: 'You do not have permission to view this character' }, 403)
 	}
 
-	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
-	const eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
+	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+	using eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
 
 	try {
 		let info = await eveCharacterData.getCharacterInfo()
@@ -551,8 +551,8 @@ app.get('/:characterId/skills', requireAuth(), async (c) => {
 app.get('/:characterId', requireAuth(), async (c) => {
 	const characterIdStr = c.req.param('characterId')
 	const characterId = createEveCharacterId(characterIdStr)
-	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
-	const eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
+	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+	using eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
 
 	try {
 		const [initialInfo, initialCorporationHistory, attributes, lastUpdated] = await Promise.all([
@@ -699,8 +699,8 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 	}
 
 	// Get EVE Character Data DO stub
-	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, characterId)
-	const eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
+	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+	using eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
 
 	// Get EVE Token Store DO stub for authenticated data
 	const eveTokenStoreStub = c.get('eveTokenStore')

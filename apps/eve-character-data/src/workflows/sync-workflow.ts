@@ -255,7 +255,7 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 									async () => {
 										const characterDataStub = getStub<EveCharacterData>(
 											this.env.EVE_CHARACTER_DATA,
-											characterId
+											'default'
 										)
 										logger.debug('[Step] Fetching corporation history', {
 											characterId,

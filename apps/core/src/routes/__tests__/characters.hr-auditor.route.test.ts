@@ -35,6 +35,8 @@ const hoisted = vi.hoisted(() => ({
 		getSensitiveData: vi.fn(),
 		fetchCharacterData: vi.fn(),
 		refreshPublicCharacterData: vi.fn(),
+		// Real RpcTarget stubs are disposable; routes declare them with `using`.
+		[Symbol.dispose]: vi.fn(),
 	},
 	skills: {
 		getAllSkills: vi.fn(),

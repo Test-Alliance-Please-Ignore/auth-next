@@ -44,7 +44,7 @@ export async function refreshPublicInfo(
 	const normalizedCharacterId = String(characterId)
 
 	// Create fresh stubs for this operation
-	const characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, normalizedCharacterId)
+	const characterDataStub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, 'default')
 
 	logger.info('[refreshPublicInfo] Starting public info refresh', {
 		characterId: normalizedCharacterId,

@@ -1134,10 +1134,10 @@ async function checkCorporationAccess(
 	// This keeps correctness while minimizing slow EVE_CHARACTER_DATA round-trips.
 	const unresolvedAffiliationCharacters = userChars.filter((character) => !character.corporationId)
 
+	const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 	for (const character of unresolvedAffiliationCharacters) {
 		try {
 			// Check if character is in this corporation
-			const charStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, character.characterId)
 			const charData = await withRpcResult(
 				charStub.getCharacterInfo(character.characterId),
 				(result) => (result ? { corporationId: result.corporationId } : null)

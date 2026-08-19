@@ -40,7 +40,7 @@ export async function updateCharacterPublicInfo(
 	affiliationChanged: boolean
 }> {
 	const logger = getWorkflowLogger(ctx, 'update-character-public-info')
-	const eveCharDataStub = getStub<EveCharacterData>(ctx.env.EVE_CHARACTER_DATA, characterId)
+	const eveCharDataStub = getStub<EveCharacterData>(ctx.env.EVE_CHARACTER_DATA, 'default')
 
 	const publicRefreshResult = await eveCharDataStub.refreshPublicCharacterData(characterId, false)
 
