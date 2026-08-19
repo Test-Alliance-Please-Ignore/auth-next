@@ -30,6 +30,7 @@ import { typeIconUrl } from '@/lib/eve-images'
 import { CharacterRoleBadge } from '../components/CharacterRoleBadge'
 import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import {
+	clearReviewQueueFilters,
 	setReviewQueueActiveTab,
 	setReviewQueuePage,
 	setReviewQueuePageSize,
@@ -109,7 +110,7 @@ export default function ReviewQueue() {
 
 			<Card className="mt-section">
 				<CardContent className="space-y-4 p-4">
-					<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+					<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
 						<Select
 							options={[]}
 							value={filters.characterName ?? ''}
@@ -195,6 +196,23 @@ export default function ReviewQueue() {
 							placeholder="Loss date range"
 							className="[&_.themed-date-picker__input]:h-10"
 						/>
+						<div className="flex items-end justify-end">
+							<Button
+								type="button"
+								variant="secondary"
+								size="sm"
+								onClick={clearReviewQueueFilters}
+								disabled={
+									!filters.characterName &&
+									!filters.shipTypeName &&
+									!filters.solarSystemName &&
+									!filters.dateFrom &&
+									!filters.dateTo
+								}
+							>
+								Clear Filters
+							</Button>
+						</div>
 					</div>
 
 					<Tabs value={activeTab} onValueChange={handleTabChange}>
