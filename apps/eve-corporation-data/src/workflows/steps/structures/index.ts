@@ -5,6 +5,7 @@ import * as esiFetch from '../../../services/esi-fetch'
 import { buildPriorityQueuedEntries } from '../../../services/structure-priority'
 import { createTokenStore, getCorporationDataStub } from '../../utils/services'
 import {
+	readSharedSovereigntySystemsByIds,
 	readSharedSovereigntySystemsForCorporation,
 	refreshSharedSovereigntySystems,
 } from '../../utils/sovereignty-systems-cache'
@@ -149,20 +150,6 @@ export async function fetchSovereigntyEnrichment(
 	try {
 		const corpData = getCorporationDataStub(env, corporationId)
 		const tokenStore = createTokenStore(env)
-		let sovereigntySystems = await readSharedSovereigntySystemsForCorporation(env, corporationId)
-		if (!sovereigntySystems) {
-			logger.info(
-				'[StructuresStep] Shared sovereignty snapshot missing or stale; rewarming cache',
-				{
-					corporationId,
-				}
-			)
-			await refreshSharedSovereigntySystems(env)
-			sovereigntySystems = await readSharedSovereigntySystemsForCorporation(env, corporationId)
-			if (!sovereigntySystems) {
-				throw new Error('Complete shared sovereignty snapshot was unavailable after refresh')
-			}
-		}
 		const sovereigntyHubListing = await fetchStructureListing(
 			(page) =>
 				fetchListingPage(
@@ -177,6 +164,29 @@ export async function fetchSovereigntyEnrichment(
 			(data) => data.sovereignty_hubs,
 			'sovereignty-hubs'
 		)
+		const liveSystemIds = [
+			...new Set(sovereigntyHubListing.map((hub) => String(hub.solar_system_id))),
+		]
+		let sovereigntySystems =
+			liveSystemIds.length > 0
+				? await readSharedSovereigntySystemsByIds(env, corporationId, liveSystemIds)
+				: await readSharedSovereigntySystemsForCorporation(env, corporationId)
+		if (!sovereigntySystems) {
+			logger.info(
+				'[StructuresStep] Shared sovereignty snapshot missing or stale; rewarming cache',
+				{
+					corporationId,
+				}
+			)
+			await refreshSharedSovereigntySystems(env)
+			sovereigntySystems =
+				liveSystemIds.length > 0
+					? await readSharedSovereigntySystemsByIds(env, corporationId, liveSystemIds)
+					: await readSharedSovereigntySystemsForCorporation(env, corporationId)
+			if (!sovereigntySystems) {
+				throw new Error('Complete shared sovereignty snapshot was unavailable after refresh')
+			}
+		}
 		const liveStructureIds = sovereigntyHubListing.map((hub) => String(hub.id))
 		const priorityQueue = await withRpcResult(
 			corpData.getStructurePriorityQueue(corporationId, 'sovereignty', liveStructureIds),
