@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import {
 	__resetReviewQueueSnapshotStoreForTests,
+	clearReviewQueueFilters,
 	getReviewQueueUiState,
 	restoreReviewQueueStateFromRollback,
 	setReviewQueueActiveTab,
@@ -9,8 +10,8 @@ import {
 	setReviewQueuePageSize,
 	setReviewQueueSnapshot,
 	snapshotReviewQueueStateForRollback,
-	transitionRequestStatusAcrossReviewQueueSnapshots,
 	toggleReviewQueueSort,
+	transitionRequestStatusAcrossReviewQueueSnapshots,
 	updateReviewQueueFilters,
 } from '@/features/srp/state/review-queue-snapshot-store'
 
@@ -46,10 +47,12 @@ describe('srp review queue snapshot store', () => {
 
 	it('tracks active tab, resets page, and uses the tab default sort direction', () => {
 		setReviewQueuePage(4)
+		updateReviewQueueFilters({ characterName: 'Alpha' })
 		setReviewQueueActiveTab('approved')
 		const state = getReviewQueueUiState()
 		expect(state.activeTab).toBe('approved')
 		expect(state.page).toBe(1)
+		expect(state.filters).toEqual({})
 		expect(state.sortDirection).toBe('desc')
 	})
 
@@ -58,6 +61,15 @@ describe('srp review queue snapshot store', () => {
 		updateReviewQueueFilters({ characterName: 'Alpha' })
 		expect(getReviewQueueUiState().page).toBe(1)
 		expect(getReviewQueueUiState().filters.characterName).toBe('Alpha')
+	})
+
+	it('clears filters and resets the page', () => {
+		setReviewQueuePage(3)
+		updateReviewQueueFilters({ characterName: 'Alpha', dateFrom: '2026-01-01' })
+		clearReviewQueueFilters()
+		const state = getReviewQueueUiState()
+		expect(state.filters).toEqual({})
+		expect(state.page).toBe(1)
 	})
 
 	it('keeps page size changes and resets page', () => {
@@ -81,9 +93,12 @@ describe('srp review queue snapshot store', () => {
 		)
 		transitionRequestStatusAcrossReviewQueueSnapshots('111', 'approved')
 		const state = snapshotReviewQueueStateForRollback()
-		expect(Object.values(state.snapshots).find((entry) => entry.status === 'pending')?.data.requests).toHaveLength(0)
 		expect(
-			Object.values(state.snapshots).find((entry) => entry.status === 'approved')?.data.requests[0]?.requestStatus
+			Object.values(state.snapshots).find((entry) => entry.status === 'pending')?.data.requests
+		).toHaveLength(0)
+		expect(
+			Object.values(state.snapshots).find((entry) => entry.status === 'approved')?.data.requests[0]
+				?.requestStatus
 		).toBe('approved')
 		expect(state.entities['111']?.requestStatus).toBe('approved')
 	})

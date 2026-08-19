@@ -1,7 +1,7 @@
 import { createStore } from '@tanstack/store'
 import { useSyncExternalStore } from 'react'
 
-import type { RequestStatus, RequestListResponse, SRPRequestResponse } from '../types'
+import type { RequestListResponse, RequestStatus, SRPRequestResponse } from '../types'
 
 export type ReviewQueueParams = {
 	limit?: number
@@ -194,7 +194,8 @@ function readStateFromStorage(): ReviewQueueStoreState {
 						...parsed.ui,
 						filters: normalizeParams(parsed.ui?.filters ?? {}),
 						sortDirection:
-							parsed.ui?.sortDirection ?? getDefaultSortDirectionForStatus(parsed.ui?.activeTab ?? 'pending'),
+							parsed.ui?.sortDirection ??
+							getDefaultSortDirectionForStatus(parsed.ui?.activeTab ?? 'pending'),
 					},
 					snapshots,
 					entities: parsed.entities ?? {},
@@ -237,9 +238,7 @@ reviewQueueStore.subscribe(() => {
 	emitChange()
 })
 
-function updateState(
-	updater: (previous: ReviewQueueStoreState) => ReviewQueueStoreState
-): void {
+function updateState(updater: (previous: ReviewQueueStoreState) => ReviewQueueStoreState): void {
 	reviewQueueStore.setState((previous) => {
 		const next = updater(previous)
 		if (next === previous) return previous
@@ -280,6 +279,7 @@ export function setReviewQueueActiveTab(nextTab: RequestStatus): void {
 		ui: {
 			...previous.ui,
 			activeTab: nextTab,
+			filters: {},
 			page: 1,
 			sortDirection: getDefaultSortDirectionForStatus(nextTab),
 		},
@@ -291,7 +291,9 @@ export function updateReviewQueueFilters(
 ): void {
 	updateState((previous) => {
 		const nextFilters =
-			typeof patch === 'function' ? patch(previous.ui.filters) : { ...previous.ui.filters, ...patch }
+			typeof patch === 'function'
+				? patch(previous.ui.filters)
+				: { ...previous.ui.filters, ...patch }
 		return {
 			...previous,
 			ui: {
@@ -301,6 +303,17 @@ export function updateReviewQueueFilters(
 			},
 		}
 	})
+}
+
+export function clearReviewQueueFilters(): void {
+	updateState((previous) => ({
+		...previous,
+		ui: {
+			...previous.ui,
+			filters: {},
+			page: 1,
+		},
+	}))
 }
 
 export function setReviewQueuePage(page: number): void {
@@ -410,10 +423,7 @@ export function clearReviewQueueSnapshots(): void {
 	}))
 }
 
-function matchesSnapshotFilters(
-	request: SRPRequestResponse,
-	params: ReviewQueueParams
-): boolean {
+function matchesSnapshotFilters(request: SRPRequestResponse, params: ReviewQueueParams): boolean {
 	if (params.characterName && request.characterName !== params.characterName) return false
 	if (params.shipTypeName && request.shipTypeName !== params.shipTypeName) return false
 	if (params.solarSystemName && request.solarSystemName !== params.solarSystemName) return false
@@ -442,7 +452,8 @@ export function upsertRequestAcrossReviewQueueSnapshots(request: SRPRequestRespo
 		for (const [key, entry] of Object.entries(previous.snapshots)) {
 			const currentRequests = Array.isArray(entry.data.requests) ? entry.data.requests : []
 			let nextRequests = currentRequests
-			let nextTotal = typeof entry.data.total === 'number' ? entry.data.total : currentRequests.length
+			let nextTotal =
+				typeof entry.data.total === 'number' ? entry.data.total : currentRequests.length
 
 			const idx = currentRequests.findIndex((row) => row.id === request.id)
 			const shouldInclude =
@@ -476,7 +487,10 @@ export function upsertRequestAcrossReviewQueueSnapshots(request: SRPRequestRespo
 					requests: nextRequests,
 					total: nextTotal,
 				},
-				updatedAt: nextRequests === entry.data.requests && nextTotal === entry.data.total ? entry.updatedAt : Date.now(),
+				updatedAt:
+					nextRequests === entry.data.requests && nextTotal === entry.data.total
+						? entry.updatedAt
+						: Date.now(),
 			}
 		}
 
@@ -567,7 +581,8 @@ export function transitionRequestStatusAcrossReviewQueueSnapshots(
 				data: {
 					...entry.data,
 					requests: limit ? nextRequests.slice(0, limit) : nextRequests,
-					total: (typeof entry.data.total === 'number' ? entry.data.total : currentRequests.length) + 1,
+					total:
+						(typeof entry.data.total === 'number' ? entry.data.total : currentRequests.length) + 1,
 				},
 				updatedAt: Date.now(),
 			}
