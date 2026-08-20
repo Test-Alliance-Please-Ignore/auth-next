@@ -19,10 +19,6 @@ import {
 } from './lib/access-token-cache'
 import { runSingleFlight } from './lib/async-single-flight'
 import {
-	isLegacyCachePurgeConfirmed,
-	LEGACY_CACHE_PURGE_CONFIRMATION,
-} from './lib/legacy-storage-maintenance'
-import {
 	classifySsoError,
 	isPermanentRefreshFailure,
 	isPermanentTokenDecryptionFailure,
@@ -37,9 +33,6 @@ import type {
 	EveMetadata,
 	EveTokenResponse,
 	EveTokenStore,
-	EveTokenStoreLegacyCachePurgeResult,
-	EveTokenStoreStorageInventory,
-	EveTokenStoreStorageTableReport,
 	EveVerifyResponse,
 	PublicDataVerifyResult,
 	TokenInfo,
@@ -99,17 +92,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	private jwksUri: string | null = null
 	private metadata: CachedEveMetadata | null = null
 	private readonly refreshInFlight = new Map<string, Promise<TokenRefreshResult>>()
-	private static readonly LEGACY_CACHE_TABLES = [
-		{
-			table: 'esi_cache',
-			payloadColumn: 'response_data',
-		} as const,
-		{
-			table: 'entity_cache',
-			payloadColumn: 'entity_data',
-		} as const,
-	]
-
 	/**
 	 * Initialize the Durable Object
 	 */
@@ -440,119 +422,6 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 					errorDetails: toErrorLogDetails(error),
 				})
 		}
-	}
-
-	/**
-	 * TEMPORARY ONE-TIME MAINTENANCE RPC.
-	 *
-	 * This deliberately reports aggregate metadata only. It is not part of the
-	 * token lifecycle contract and must be removed after the legacy cache purge.
-	 */
-	async inspectLegacyStorage(): Promise<EveTokenStoreStorageInventory> {
-		const [databasePageCount] = [
-			...this.state.storage.sql.exec<{ page_count: number }>('PRAGMA page_count'),
-		]
-		const [databasePageSize] = [
-			...this.state.storage.sql.exec<{ page_size: number }>('PRAGMA page_size'),
-		]
-		const [accessTokenCache] = [
-			...this.state.storage.sql.exec<{ row_count: number }>(
-				'SELECT COUNT(*) AS row_count FROM access_token_cache'
-			),
-		]
-		const legacyCacheTables = await Promise.all(
-			EveTokenStoreDO.LEGACY_CACHE_TABLES.map((definition) =>
-				this.getLegacyCacheTableReport(definition.table, definition.payloadColumn)
-			)
-		)
-
-		return {
-			databaseBytes: (databasePageCount?.page_count ?? 0) * (databasePageSize?.page_size ?? 0),
-			legacyCacheTables,
-			accessTokenCacheRowCount: accessTokenCache?.row_count ?? 0,
-			oauthMetadataPresent: (await this.state.storage.get('eve:oauth:metadata')) !== undefined,
-		}
-	}
-
-	private async getLegacyCacheTableReport(
-		table: (typeof EveTokenStoreDO.LEGACY_CACHE_TABLES)[number]['table'],
-		payloadColumn: (typeof EveTokenStoreDO.LEGACY_CACHE_TABLES)[number]['payloadColumn']
-	): Promise<EveTokenStoreStorageTableReport> {
-		const [tableRow] = [
-			...this.state.storage.sql.exec<{ name: string }>(
-				`SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?`,
-				table
-			),
-		]
-		if (!tableRow) {
-			return {
-				table,
-				exists: false,
-				rowCount: 0,
-				payloadBytes: 0,
-				minExpiresAt: null,
-				maxExpiresAt: null,
-			}
-		}
-
-		const [stats] = [
-			...this.state.storage.sql.exec<{
-				row_count: number
-				payload_bytes: number
-				min_expires_at: number | null
-				max_expires_at: number | null
-			}>(
-				`SELECT
-					COUNT(*) AS row_count,
-					COALESCE(SUM(length(${payloadColumn})), 0) AS payload_bytes,
-					MIN(expires_at) AS min_expires_at,
-					MAX(expires_at) AS max_expires_at
-				 FROM ${table}`
-			),
-		]
-
-		return {
-			table,
-			exists: true,
-			rowCount: stats?.row_count ?? 0,
-			payloadBytes: stats?.payload_bytes ?? 0,
-			minExpiresAt: stats?.min_expires_at ?? null,
-			maxExpiresAt: stats?.max_expires_at ?? null,
-		}
-	}
-
-	/**
-	 * TEMPORARY ONE-TIME MAINTENANCE RPC.
-	 *
-	 * The confirmation is intentionally separate from the route secret. Both
-	 * controls must be correct before the obsolete tables can be dropped.
-	 * Current token cache, metadata, cooldown keys, and Neon records are not
-	 * touched. Remove this method with inspectLegacyStorage() after verification.
-	 */
-	async purgeLegacyCache(confirmation: string): Promise<EveTokenStoreLegacyCachePurgeResult> {
-		if (!isLegacyCachePurgeConfirmed(confirmation)) {
-			throw new Error(
-				`Invalid maintenance confirmation; expected ${LEGACY_CACHE_PURGE_CONFIRMATION}`
-			)
-		}
-
-		const before = await this.inspectLegacyStorage()
-		this.state.storage.sql.exec(`
-			DROP TABLE IF EXISTS esi_cache;
-			DROP TABLE IF EXISTS entity_cache;
-		`)
-		const after = await this.inspectLegacyStorage()
-
-		logger
-			.withTags({ operation: 'purgeLegacyCache' })
-			.info('Legacy token-store cache tables purged', {
-				beforeDatabaseBytes: before.databaseBytes,
-				afterDatabaseBytes: after.databaseBytes,
-				beforeRows: before.legacyCacheTables.reduce((sum, table) => sum + table.rowCount, 0),
-				afterRows: after.legacyCacheTables.reduce((sum, table) => sum + table.rowCount, 0),
-			})
-
-		return { before, after }
 	}
 
 	/**

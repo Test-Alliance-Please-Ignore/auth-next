@@ -327,32 +327,6 @@ export interface CallbackResult {
 }
 
 /**
- * Temporary diagnostics for the one-time purge of legacy token-store cache
- * tables. Remove these types and RPC methods with the maintenance endpoint
- * after the production purge has been verified.
- */
-export interface EveTokenStoreStorageTableReport {
-	table: 'esi_cache' | 'entity_cache'
-	exists: boolean
-	rowCount: number
-	payloadBytes: number
-	minExpiresAt: number | null
-	maxExpiresAt: number | null
-}
-
-export interface EveTokenStoreStorageInventory {
-	databaseBytes: number
-	legacyCacheTables: EveTokenStoreStorageTableReport[]
-	accessTokenCacheRowCount: number
-	oauthMetadataPresent: boolean
-}
-
-export interface EveTokenStoreLegacyCachePurgeResult {
-	before: EveTokenStoreStorageInventory
-	after: EveTokenStoreStorageInventory
-}
-
-/**
  * Public RPC interface for EveTokenStore Durable Object
  *
  * All public methods defined here will be available to call via RPC
@@ -506,16 +480,4 @@ export interface EveTokenStore {
 	 * Mark a character's ESI data sync as successfully completed.
 	 */
 	markCharacterDataSyncComplete(characterId: string): Promise<void>
-
-	/**
-	 * TEMPORARY MAINTENANCE RPC. Remove after the legacy cache purge is complete.
-	 * Reports only metadata and aggregate sizes; never returns cache contents.
-	 */
-	inspectLegacyStorage(): Promise<EveTokenStoreStorageInventory>
-
-	/**
-	 * TEMPORARY MAINTENANCE RPC. Remove with inspectLegacyStorage().
-	 * Purges only the obsolete ESI response/entity cache tables.
-	 */
-	purgeLegacyCache(confirmation: string): Promise<EveTokenStoreLegacyCachePurgeResult>
 }

@@ -224,6 +224,7 @@ import type { EsiDb } from './storage/state'
 const REVALIDATE_15_MIN = 900 // 15 minutes - for frequently-changing public info
 const REVALIDATE_5_MIN = 300 // 5 minutes - for security-relevant affiliation lookups
 const REVALIDATE_1_HOUR = 3600 // 1 hour - for less frequent updates
+// These routes are served from ESI's unversioned root. The /latest prefix returns 404.
 const STRUCTURE_ENRICHMENT_COMPATIBILITY_DATE = '2026-05-19'
 
 /**
@@ -1065,6 +1066,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 				{
 					cacheMode: 'no-store',
 					compatibilityDate: STRUCTURE_ENRICHMENT_COMPATIBILITY_DATE,
+					includeVersionPath: false,
 				}
 			)
 		)
@@ -1081,6 +1083,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 				{
 					cacheMode: 'no-store',
 					compatibilityDate: STRUCTURE_ENRICHMENT_COMPATIBILITY_DATE,
+					includeVersionPath: false,
 				}
 			)
 		).data
@@ -1102,6 +1105,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 				{
 					cacheMode: 'no-store',
 					compatibilityDate: STRUCTURE_ENRICHMENT_COMPATIBILITY_DATE,
+					includeVersionPath: false,
 				}
 			)
 		)
@@ -1118,6 +1122,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 				{
 					cacheMode: 'no-store',
 					compatibilityDate: STRUCTURE_ENRICHMENT_COMPATIBILITY_DATE,
+					includeVersionPath: false,
 				}
 			)
 		).data
@@ -1391,6 +1396,8 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		return (
 			await this.esiFetcher.fetchEsi<EsiSovereigntySystemsResponse>('/sovereignty/systems', {
 				cacheMode: 'no-store',
+				compatibilityDate: STRUCTURE_ENRICHMENT_COMPATIBILITY_DATE,
+				includeVersionPath: false,
 			})
 		).data
 	}

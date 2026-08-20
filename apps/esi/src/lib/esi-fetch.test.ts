@@ -59,6 +59,36 @@ describe('EsiFetcher cache policy', () => {
 		expect(cache.setCachedResponse).not.toHaveBeenCalled()
 	})
 
+	it('forwards unversioned route options for ESI endpoints outside /latest', async () => {
+		const fetcher = new EsiFetcher(
+			{} as DurableObjectState,
+			{
+				ESI_GLOBAL_CACHE: {} as KVNamespace,
+				ESI_RATE_LIMITS: {} as KVNamespace,
+			} as Env
+		)
+		const request = vi.fn().mockResolvedValue({ data: { solar_systems: [] } })
+		;(fetcher as unknown as { requestClient: { request: typeof request } }).requestClient = {
+			request,
+		}
+
+		await fetcher.withPublicContext(() =>
+			fetcher.fetchEsi('/sovereignty/systems', {
+				cacheMode: 'no-store',
+				compatibilityDate: '2026-05-19',
+				includeVersionPath: false,
+			})
+		)
+
+		expect(request).toHaveBeenCalledWith(
+			expect.objectContaining({
+				path: '/sovereignty/systems',
+				compatibilityDate: '2026-05-19',
+				includeVersionPath: false,
+			})
+		)
+	})
+
 	it('keeps concurrent authenticated calls isolated on the same physical shard', async () => {
 		const fetcher = new EsiFetcher(
 			{} as DurableObjectState,
