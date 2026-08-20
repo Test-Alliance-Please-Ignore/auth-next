@@ -3146,6 +3146,76 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		return fuelBurnRateByStructure
 	}
 
+	/**
+	 * Move current structure projections before the new owner's normal enrichment
+	 * runs. Historical state and extraction rows intentionally keep their
+	 * original corporation so ownership changes do not rewrite history.
+	 */
+	private async transferCurrentStructureProjections(
+		corporationId: string,
+		structureIds: readonly string[]
+	): Promise<void> {
+		if (structureIds.length === 0) {
+			return
+		}
+
+		const db = this.getDb()
+		await db
+			.update(structureMoonDrills)
+			.set({ corporationId })
+			.where(
+				and(
+					inArray(structureMoonDrills.structureId, [...structureIds]),
+					ne(structureMoonDrills.corporationId, corporationId)
+				)
+			)
+		await db
+			.update(structureMoonGeographies)
+			.set({ corporationId })
+			.where(
+				and(
+					inArray(structureMoonGeographies.structureId, [...structureIds]),
+					ne(structureMoonGeographies.corporationId, corporationId)
+				)
+			)
+		await db
+			.update(structureSkyhooks)
+			.set({ corporationId })
+			.where(
+				and(
+					inArray(structureSkyhooks.structureId, [...structureIds]),
+					ne(structureSkyhooks.corporationId, corporationId)
+				)
+			)
+		await db
+			.update(structureSkyhookReagents)
+			.set({ corporationId })
+			.where(
+				and(
+					inArray(structureSkyhookReagents.structureId, [...structureIds]),
+					ne(structureSkyhookReagents.corporationId, corporationId)
+				)
+			)
+		await db
+			.update(structureSovereigntyHubs)
+			.set({ corporationId })
+			.where(
+				and(
+					inArray(structureSovereigntyHubs.structureId, [...structureIds]),
+					ne(structureSovereigntyHubs.corporationId, corporationId)
+				)
+			)
+		await db
+			.update(structureMiningExtractions)
+			.set({ corporationId })
+			.where(
+				and(
+					inArray(structureMiningExtractions.structureId, [...structureIds]),
+					ne(structureMiningExtractions.corporationId, corporationId)
+				)
+			)
+	}
+
 	private async getStructureServiceModuleTypeIds(
 		corporationId: string,
 		structureIds: readonly string[]
@@ -3258,29 +3328,85 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			corporationId,
 			structures as EsiCorporationStructure[]
 		)
+		const ownershipConfirmedStructures = hydratedStructures.filter((structure) => {
+			const observedOwnerId = structure.structureInfo?.owner_id
+			if (!observedOwnerId || observedOwnerId === corporationId) {
+				return true
+			}
+
+			logger.info('[EveCorporationData] Ignoring stale structure listing after ownership change', {
+				corporationId,
+				structureId: structure.structureId,
+				observedOwnerId,
+			})
+			return false
+		})
 		const fuelBurnRateByStructure = await this.resolveStructureFuelBurnRates(
 			corporationId,
-			hydratedStructures
+			ownershipConfirmedStructures
 		)
-		const structureIds = hydratedStructures.map((structure) => structure.structureId)
+		const structureIds = [
+			...new Set(ownershipConfirmedStructures.map((structure) => structure.structureId)),
+		]
 		const existingStructureRows = await this.getDb().query.corporationStructures.findMany({
-			where: eq(corporationStructures.corporationId, corporationId),
+			where:
+				structureIds.length > 0
+					? or(
+							eq(corporationStructures.corporationId, corporationId),
+							inArray(corporationStructures.structureId, structureIds)
+						)
+					: eq(corporationStructures.corporationId, corporationId),
 			columns: {
 				structureId: true,
+				corporationId: true,
 				typeId: true,
 				updatedAt: true,
 			},
 		})
+		const transferredStructures = existingStructureRows.filter(
+			(row) => structureIds.includes(row.structureId) && row.corporationId !== corporationId
+		)
+
+		if (transferredStructures.length > 0) {
+			const transferredStructureIds = transferredStructures.map((row) => row.structureId)
+			await this.transferCurrentStructureProjections(corporationId, transferredStructureIds)
+			await this.getDb()
+				.delete(corporationStructureInventory)
+				.where(
+					and(
+						inArray(corporationStructureInventory.structureId, transferredStructureIds),
+						ne(corporationStructureInventory.corporationId, corporationId)
+					)
+				)
+			await this.getDb()
+				.delete(corporationAssets)
+				.where(
+					and(
+						inArray(corporationAssets.locationId, transferredStructureIds),
+						ne(corporationAssets.corporationId, corporationId)
+					)
+				)
+
+			logger.info('[EveCorporationData] Structure ownership transfer detected', {
+				corporationId,
+				transferredCount: transferredStructures.length,
+				transferredStructureIds,
+				previousCorporationIds: [...new Set(transferredStructures.map((row) => row.corporationId))],
+			})
+		}
+
 		const currentStructureIds = new Set(structureIds)
 		const departedStructureIds = filterPrunableStructureIds(
-			existingStructureRows.filter((row) => row.typeId !== ORBITAL_SKYHOOK_TYPE_ID),
+			existingStructureRows.filter(
+				(row) => row.corporationId === corporationId && row.typeId !== ORBITAL_SKYHOOK_TYPE_ID
+			),
 			currentStructureIds,
 			new Date()
 		)
 		const BATCH_SIZE = STRUCTURE_SNAPSHOT_BATCH_SIZE
 
-		for (let i = 0; i < hydratedStructures.length; i += BATCH_SIZE) {
-			const batch = hydratedStructures.slice(i, i + BATCH_SIZE)
+		for (let i = 0; i < ownershipConfirmedStructures.length; i += BATCH_SIZE) {
+			const batch = ownershipConfirmedStructures.slice(i, i + BATCH_SIZE)
 			const batchValues = batch.map((structure) => {
 				const fuelResult = fuelBurnRateByStructure.get(structure.structureId)
 				const hasUnresolvedFuelModules =
@@ -3303,6 +3429,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				.onConflictDoUpdate({
 					target: corporationStructures.structureId,
 					set: {
+						corporationId: sql`excluded.corporation_id`,
 						name: sql`excluded.name`,
 						typeId: sql`excluded.type_id`,
 						typeName: sql`excluded.type_name`,
@@ -3341,8 +3468,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					)
 				)
 		})
-		await this.storeMoonGeographies(corporationId, hydratedStructures)
-		await this.storeMoonDrills(corporationId, hydratedStructures)
+		await this.storeMoonGeographies(corporationId, ownershipConfirmedStructures)
+		await this.storeMoonDrills(corporationId, ownershipConfirmedStructures)
 	}
 
 	private async storeMoonDrills(

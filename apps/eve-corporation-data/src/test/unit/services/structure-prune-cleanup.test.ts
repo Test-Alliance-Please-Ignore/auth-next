@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+	corporationAssets,
+	corporationStructureInventory,
 	corporationStructures,
 	structureMoonDrills,
 	structureMoonGeographies,
@@ -58,7 +60,7 @@ function makeDb() {
 	const insert = vi.fn(() => ({ values }))
 	const corporationStructuresFindMany = vi
 		.fn()
-		.mockResolvedValue([{ structureId: 'stale-structure' }])
+		.mockResolvedValue([{ structureId: 'stale-structure', corporationId: 'corp-1' }])
 	const structureSkyhooksFindMany = vi.fn().mockResolvedValue([{ structureId: 'stale-structure' }])
 	const structureMiningExtractionsFindMany = vi
 		.fn()
@@ -103,6 +105,7 @@ function makeDb() {
 		_returning: returning,
 		_set: set,
 		_values: values,
+		_onConflictDoUpdate: onConflictDoUpdate,
 		_execute: execute,
 	}
 }
@@ -154,6 +157,110 @@ describe('structure prune cleanup', () => {
 			db._values.mock.calls[0][0].map((row: { structureId: string }) => row.structureId)
 		).toEqual(['moon-1', 'moon-2'])
 		expect(db.delete).toHaveBeenCalledWith(structureMoonDrills)
+	})
+
+	it('moves transferred structures to the new corporation and clears old inventory projections', async () => {
+		const db = makeDb()
+		db.query.corporationStructures.findMany = vi
+			.fn()
+			.mockResolvedValueOnce([
+				{
+					structureId: 'transferred-structure',
+					corporationId: 'old-corp',
+				},
+			])
+			.mockResolvedValueOnce([])
+		db.query.structureMoonGeographies.findMany = vi.fn().mockResolvedValue([])
+		db.query.structureMoonDrills.findMany = vi.fn().mockResolvedValue([])
+		const instance = createDoInstance(db)
+
+		;(instance as any).hydrateStructureRows = vi.fn().mockResolvedValue([
+			{
+				corporationId: 'new-corp',
+				structureId: 'transferred-structure',
+				name: 'Transferred Structure',
+				typeId: '35832',
+				typeName: 'Astrahus',
+				systemId: '30000142',
+				systemName: 'Jita',
+				regionId: '10000002',
+				regionName: 'The Forge',
+				profileId: 'profile-1',
+				fuelExpires: null,
+				fuelAmount: null,
+				nextReinforceApply: null,
+				nextReinforceHour: null,
+				reinforceHour: null,
+				state: 'online',
+				stateTimerEnd: null,
+				stateTimerStart: null,
+				unanchorsAt: null,
+				lowPower: false,
+				syncStatus: 'ok',
+				syncFailureReason: null,
+				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
+				services: null,
+				fuelBurnRate: null,
+				structureInfo: null,
+				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
+			},
+		])
+		;(instance as any).resolveStructureFuelBurnRates = vi.fn().mockResolvedValue(new Map())
+
+		await instance.storeStructures('new-corp', [
+			{
+				structure_id: 'transferred-structure',
+				type_id: '35832',
+				system_id: '30000142',
+				profile_id: 'profile-1',
+				state: 'online',
+			},
+		])
+
+		expect(db.delete).toHaveBeenCalledWith(corporationStructureInventory)
+		expect(db.delete).toHaveBeenCalledWith(corporationAssets)
+		expect(db._values).toHaveBeenCalledWith([
+			expect.objectContaining({
+				corporationId: 'new-corp',
+				structureId: 'transferred-structure',
+			}),
+		])
+		expect(db._onConflictDoUpdate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				set: expect.objectContaining({ corporationId: expect.anything() }),
+			})
+		)
+	})
+
+	it('does not reattach a structure from a stale former-owner listing', async () => {
+		const db = makeDb()
+		db.query.corporationStructures.findMany = vi.fn().mockResolvedValue([])
+		db.query.structureMoonGeographies.findMany = vi.fn().mockResolvedValue([])
+		db.query.structureMoonDrills.findMany = vi.fn().mockResolvedValue([])
+		const instance = createDoInstance(db)
+
+		;(instance as any).hydrateStructureRows = vi.fn().mockResolvedValue([
+			{
+				corporationId: 'old-corp',
+				structureId: 'transferred-structure',
+				typeId: '35832',
+				typeName: 'Astrahus',
+				structureInfo: { owner_id: 'new-corp' },
+			},
+		])
+		;(instance as any).resolveStructureFuelBurnRates = vi.fn().mockResolvedValue(new Map())
+
+		await instance.storeStructures('old-corp', [
+			{
+				structure_id: 'transferred-structure',
+				type_id: '35832',
+				system_id: '30000142',
+				profile_id: 'profile-1',
+				state: 'online',
+			},
+		])
+
+		expect(db.insert).not.toHaveBeenCalled()
 	})
 
 	it('prunes stale skyhook and mining snapshots when structures disappear from a successful sync', async () => {

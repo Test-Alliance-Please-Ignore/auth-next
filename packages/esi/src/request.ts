@@ -119,6 +119,10 @@ export interface EsiRequestResponseContext {
 export interface EsiRequestOptions<T> {
 	path: string
 	userKey: string
+	/** Override the ESI compatibility date for this request. */
+	compatibilityDate?: string
+	/** Include the configured ESI version path, such as `/latest`. */
+	includeVersionPath?: boolean
 	cacheScope?: EsiCacheScopeContext
 	cacheMode?: 'default' | 'no-store'
 	method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -150,11 +154,16 @@ export interface EsiRequestClientOptions {
 	}
 	baseUrl?: string
 	compatibilityDate?: string
+	/** Version path used when `includeVersionPath` is enabled. */
+	versionPath?: string
+	/** Default for request-level `includeVersionPath` options. */
+	includeVersionPath?: boolean
 	maxRetries?: number
 	fetchImpl?: typeof fetch
 }
 
-const DEFAULT_BASE_URL = 'https://esi.evetech.net/latest'
+const DEFAULT_BASE_URL = 'https://esi.evetech.net'
+const DEFAULT_VERSION_PATH = '/latest'
 const DEFAULT_COMPATIBILITY_DATE = '2025-11-06'
 const DEFAULT_MAX_RETRIES = 5
 const DEFAULT_PUBLIC_SCOPE: EsiCacheScopeContext = {
@@ -274,26 +283,70 @@ function buildRequestInit(options: {
 	return requestInit
 }
 
+function normalizePath(path: string): string {
+	return `/${path.replace(/^\/+/, '')}`
+}
+
+function normalizeVersionPath(versionPath: string): string {
+	const normalized = normalizePath(versionPath).replace(/\/+$/, '')
+	if (normalized === '/') {
+		throw new TypeError('ESI version path cannot be empty')
+	}
+	return normalized
+}
+
+function stripPathPrefix(value: string, prefix: string): string {
+	if (value === prefix) return ''
+	if (value.startsWith(`${prefix}/`)) return value.slice(prefix.length)
+	return value
+}
+
+function stripVersionPathFromBaseUrl(baseUrl: string, versionPath: string): string {
+	const url = new URL(baseUrl)
+	const basePath = stripPathPrefix(url.pathname, versionPath)
+	url.pathname = basePath
+	url.search = ''
+	url.hash = ''
+	return url.toString().replace(/\/$/, '')
+}
+
 export class EsiRequestClient {
 	private readonly rateLimitGuard: EsiRateLimitGuard
 	private readonly baseUrl: string
 	private readonly compatibilityDate: string
+	private readonly versionPath: string
+	private readonly includeVersionPath: boolean
 	private readonly maxRetries: number
 	private readonly fetchImpl: typeof fetch
 
 	constructor(private readonly options: EsiRequestClientOptions) {
 		this.rateLimitGuard = new EsiRateLimitGuard(options.rateLimits)
-		this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL
+		this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '')
 		this.compatibilityDate = options.compatibilityDate ?? DEFAULT_COMPATIBILITY_DATE
+		this.versionPath = normalizeVersionPath(options.versionPath ?? DEFAULT_VERSION_PATH)
+		this.includeVersionPath = options.includeVersionPath ?? true
 		this.maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES
 		this.fetchImpl = options.fetchImpl ?? fetch
+	}
+
+	private buildUrl(path: string, includeVersionPath: boolean): string {
+		const normalizedPath = normalizePath(path)
+		const baseUrl = stripVersionPathFromBaseUrl(this.baseUrl, this.versionPath)
+		const requestPath = stripPathPrefix(normalizedPath, this.versionPath)
+		const versionPrefix = includeVersionPath ? this.versionPath : ''
+		return `${baseUrl}${versionPrefix}${requestPath}`
 	}
 
 	private getCacheScope(scope?: EsiCacheScopeContext): EsiCacheScopeContext {
 		return scope ?? DEFAULT_PUBLIC_SCOPE
 	}
 
-	private async getCachePath(path: string, method: string, jsonBody?: unknown): Promise<string> {
+	private async getCachePath(
+		path: string,
+		method: string,
+		jsonBody?: unknown,
+		variant?: string
+	): Promise<string> {
 		let cachePath = removePageFromPath(path)
 
 		if (method === 'POST' && jsonBody !== undefined) {
@@ -302,7 +355,7 @@ export class EsiRequestClient {
 			cachePath = `${cachePath}:body:${bodyHash}`
 		}
 
-		return cachePath
+		return variant ? `${cachePath}:${variant}` : cachePath
 	}
 
 	private async readResponseErrorBody(response: Response): Promise<string> {
@@ -336,8 +389,14 @@ export class EsiRequestClient {
 		const cacheMode = options.cacheMode ?? 'default'
 		const method = options.method ?? (options.jsonBody !== undefined ? 'POST' : 'GET')
 		const persistGlobalCache = options.persistGlobalCache ?? true
+		const compatibilityDate = options.compatibilityDate ?? this.compatibilityDate
+		const includeVersionPath = options.includeVersionPath ?? this.includeVersionPath
+		const cacheVariant =
+			compatibilityDate === this.compatibilityDate && includeVersionPath === this.includeVersionPath
+				? undefined
+				: `compatibility:${compatibilityDate}:version:${includeVersionPath ? this.versionPath : 'none'}`
 		const cachePage = extractPageFromPath(options.path) ?? undefined
-		const cachePath = await this.getCachePath(options.path, method, options.jsonBody)
+		const cachePath = await this.getCachePath(options.path, method, options.jsonBody, cacheVariant)
 
 		const providedCached = options.cachedResponse ?? null
 		let cached: EsiResponse<T> | null = providedCached
@@ -403,14 +462,14 @@ export class EsiRequestClient {
 				contentType: options.contentType,
 				timeoutMs: options.timeoutMs,
 				cachedEtag,
-				compatibilityDate: this.compatibilityDate,
+				compatibilityDate,
 			})
 
 			try {
 				response = await this.rateLimitGuard.withResponseRateLimit(
 					options.path,
 					userKey,
-					async () => fetchImpl(`${this.baseUrl}${options.path}`, requestInit)
+					async () => fetchImpl(this.buildUrl(options.path, includeVersionPath), requestInit)
 				)
 			} catch (error) {
 				this.debug('ESI request blocked before fetch', {

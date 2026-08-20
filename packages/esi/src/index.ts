@@ -100,6 +100,8 @@ export interface EsiRequestOptions {
 	cacheMode?: 'default' | 'no-store'
 	maxRetries?: number
 	timeoutMs?: number
+	compatibilityDate?: string
+	includeVersionPath?: boolean
 }
 
 /** Compact result for a domain-owned watermark traversal. */

@@ -45,6 +45,10 @@ import type { Env } from '../context'
  */
 export interface FetchEsiOptions<B = unknown> {
 	method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+	/** Override the ESI compatibility date for this request. */
+	compatibilityDate?: string
+	/** Include the ESI version path configured on the request client. */
+	includeVersionPath?: boolean
 	/** Request body for mutation requests. */
 	body?: B
 	/** Cache policy for this request. Stateful/auth-sensitive endpoints should use `no-store`. */
@@ -286,6 +290,8 @@ export class EsiFetcher {
 		return await this.requestClient.request<T>({
 			path,
 			userKey: context.userKey,
+			compatibilityDate: options?.compatibilityDate,
+			includeVersionPath: options?.includeVersionPath,
 			cacheScope,
 			cacheMode,
 			method,
@@ -385,6 +391,8 @@ export class EsiFetcher {
 		return await this.requestClient.requestPaginated<T>({
 			path,
 			userKey: context.userKey,
+			compatibilityDate: options?.compatibilityDate,
+			includeVersionPath: options?.includeVersionPath,
 			cacheScope,
 			cacheMode: options?.cacheMode ?? 'default',
 			method,
