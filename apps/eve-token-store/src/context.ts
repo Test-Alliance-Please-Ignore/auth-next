@@ -17,8 +17,6 @@ export type Env = SharedHonoEnv & {
 	EVE_SSO_CALLBACK_URL: string
 	/** Encryption key for storing tokens (32-byte hex string) */
 	ENCRYPTION_KEY: string
-	/** Temporary secret for the one-time legacy cache maintenance endpoint. */
-	EVE_TOKEN_STORE_MAINTENANCE_SECRET?: string
 }
 
 /** Variables can be extended */
