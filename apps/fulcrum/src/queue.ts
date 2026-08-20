@@ -3,13 +3,15 @@
  * Handles asynchronous report creation via CHARACTER_REPORTS_QUEUE
  */
 
-import { logger, withWorkerLogContext } from '@repo/hono-helpers'
 import { DEFAULT_RETENTION_DAYS, RETENTION_POLICIES } from '@repo/fulcrum'
+import { logger, withWorkerLogContext } from '@repo/hono-helpers'
 import { createWorkflow } from '@repo/workflow-utils'
+
 import { createDb } from './db'
 import * as queries from './db/queries'
 import { sendReportFailedDM } from './lib/discord-webhook'
 import { resolveReportMetadata } from './lib/report-metadata'
+
 import type { Env } from './context'
 import type { WorkflowParams } from './workflows/character-report.workflow.js'
 
@@ -35,7 +37,7 @@ export interface CharacterReportQueueMessage {
 export async function handleCharacterReportsQueue(
 	batch: MessageBatch<CharacterReportQueueMessage>,
 	env: Env,
-	_ctx: ExecutionContext,
+	_ctx: ExecutionContext
 ): Promise<void> {
 	await withWorkerLogContext('fulcrum-queue', env, async () => {
 		const db = createDb(env.DATABASE_URL)
@@ -53,8 +55,7 @@ export async function handleCharacterReportsQueue(
 					targetUserId,
 					expiresAt,
 					sendDm = true,
-				} =
-					message.body
+				} = message.body
 
 				queueLogger.info('Processing report request', {
 					reportId,
@@ -63,7 +64,9 @@ export async function handleCharacterReportsQueue(
 				})
 
 				// Compute retention from server-side policy
-				const retentionDays = RETENTION_POLICIES[requestSource as keyof typeof RETENTION_POLICIES] ?? DEFAULT_RETENTION_DAYS
+				const retentionDays =
+					RETENTION_POLICIES[requestSource as keyof typeof RETENTION_POLICIES] ??
+					DEFAULT_RETENTION_DAYS
 
 				// Create database record
 				await queries.createCharacterReport(db, {
@@ -111,8 +114,7 @@ export async function handleCharacterReportsQueue(
 				})
 
 				// Update database to mark report as failed
-				const { reportId, characterId, requestorUserId, requestorCorporationId } =
-					message.body
+				const { reportId, characterId, requestorUserId, requestorCorporationId } = message.body
 
 				try {
 					await queries.updateReportStatus(db, reportId, 'failed', {
@@ -141,8 +143,7 @@ export async function handleCharacterReportsQueue(
 						} catch (dmError) {
 							queueLogger.error('Failed to send report failed DM', {
 								reportId,
-								error:
-									dmError instanceof Error ? dmError.message : String(dmError),
+								error: dmError instanceof Error ? dmError.message : String(dmError),
 							})
 						}
 					}

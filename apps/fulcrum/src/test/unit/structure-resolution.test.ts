@@ -48,4 +48,19 @@ describe('structure resolution', () => {
 		expect(second).toEqual({})
 		expect(fetchStructureInfo).toHaveBeenCalledTimes(1)
 	})
+
+	it('uses stored corporation names before attempting authenticated ESI lookup', async () => {
+		const state = new StructureResolutionCoordinator()
+
+		const result = await state.resolveStructureNames(
+			{ ESI: {} as DurableObjectNamespace },
+			'93665130',
+			['1055096892244'],
+			'test-structure-resolution',
+			{ '1055096892244': 'Private Structure' }
+		)
+
+		expect(result).toEqual({ '1055096892244': 'Private Structure' })
+		expect(fetchStructureInfo).not.toHaveBeenCalled()
+	})
 })

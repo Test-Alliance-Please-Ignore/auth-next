@@ -27,7 +27,8 @@ export class StructureResolutionCoordinator {
 		},
 		characterId: string,
 		structureIds: Iterable<string>,
-		label: string
+		label: string,
+		knownStructureNames: Readonly<Record<string, string>> = {}
 	): Promise<Record<string, string>> {
 		const resolved: Record<string, string> = {}
 		const esiStub = getEsiInstanceForCharacter(env.ESI, characterId)
@@ -39,6 +40,13 @@ export class StructureResolutionCoordinator {
 			processed += 1
 
 			if (this.deniedStructureIds.has(structureId)) {
+				continue
+			}
+
+			const knownName = knownStructureNames[structureId]
+			if (knownName) {
+				this.resolvedStructureNames.set(structureId, knownName)
+				resolved[structureId] = knownName
 				continue
 			}
 

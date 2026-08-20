@@ -4,10 +4,7 @@ import { createWorkflow } from '@repo/workflow-utils'
 
 import { createDb } from '../db'
 import * as queries from '../db/queries'
-import {
-	sendBatchReportFinishedDM,
-	sendBatchReportStartedDM,
-} from '../lib/discord-webhook'
+import { sendBatchReportFinishedDM, sendBatchReportStartedDM } from '../lib/discord-webhook'
 import { resolveBatchReportMetadata } from '../lib/report-metadata'
 
 import type { ReportRequestSource } from '@repo/fulcrum'
@@ -65,7 +62,7 @@ export async function runBulkCharacterReportWorkflow(
 	env: RunnerEnv,
 	stepDo: StepDo,
 	batchId: string,
-	payload: BulkCharacterReportWorkflowParams,
+	payload: BulkCharacterReportWorkflowParams
 ) {
 	return await withWorkerLogContext('bulk-character-report-workflow', env, async () => {
 		const {
@@ -91,7 +88,7 @@ export async function runBulkCharacterReportWorkflow(
 					env as any,
 					requestorUserId,
 					requestorCorporationId,
-					targetUserId,
+					targetUserId
 				)
 				if (!metadata) return
 				await sendBatchReportStartedDM(env as any, requestorUserId, {
@@ -113,7 +110,10 @@ export async function runBulkCharacterReportWorkflow(
 			const refs = await Promise.all(
 				dedupedCharacterIds.map(async (characterId): Promise<ChildReportRef> => {
 					try {
-						const existingInProgress = await queries.getInProgressReportForCharacter(db, characterId)
+						const existingInProgress = await queries.getInProgressReportForCharacter(
+							db,
+							characterId
+						)
 						if (existingInProgress) {
 							return {
 								characterId,
@@ -155,9 +155,10 @@ export async function runBulkCharacterReportWorkflow(
 								workflowInstanceId: childWorkflowInstance.id,
 							}
 						} catch (workflowStartError) {
-							const message = workflowStartError instanceof Error
-								? workflowStartError.message
-								: String(workflowStartError)
+							const message =
+								workflowStartError instanceof Error
+									? workflowStartError.message
+									: String(workflowStartError)
 							await queries.updateReportStatus(db, reportId, 'failed', {
 								errorMessage: `Failed to start child workflow: ${message}`.slice(0, 500),
 							})
@@ -198,16 +199,14 @@ export async function runBulkCharacterReportWorkflow(
 							workflowInstanceId: null,
 						}
 					}
-				}),
+				})
 			)
 
 			return refs
 		})
 
 		await stepDo('wait-for-child-workflows', STEP, async () => {
-			const pending = new Map<string, ChildReportRef>(
-				childRefs.map((ref) => [ref.reportId, ref]),
-			)
+			const pending = new Map<string, ChildReportRef>(childRefs.map((ref) => [ref.reportId, ref]))
 			let guard = 0
 
 			while (pending.size > 0 && guard < 720) {
@@ -243,7 +242,7 @@ export async function runBulkCharacterReportWorkflow(
 								error: error instanceof Error ? error.message : String(error),
 							})
 						}
-					}),
+					})
 				)
 
 				if (pending.size > 0) {
@@ -285,7 +284,7 @@ export async function runBulkCharacterReportWorkflow(
 					env as any,
 					requestorUserId,
 					requestorCorporationId,
-					targetUserId,
+					targetUserId
 				)
 				if (!metadata) return
 				await sendBatchReportFinishedDM(
@@ -299,7 +298,7 @@ export async function runBulkCharacterReportWorkflow(
 						targetMainCharacterId: metadata.targetMainCharacterId,
 						targetMainCharacterName: metadata.targetMainCharacterName,
 					},
-					finalSummary,
+					finalSummary
 				)
 			})
 		}

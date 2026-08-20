@@ -1,11 +1,14 @@
+import { logger } from '@repo/hono-helpers'
+
+import { enrichWalletJournalEntries } from '../../processors/helpers/wallet-journal'
+import { retrieveData, storeOrReturn } from '../../utils/storage'
+
 import type { CharacterWalletJournalEntry } from '@repo/esi'
+import type { CoreBinding } from '../../../types/core-binding'
 import type { CharacterAffiliationCoordinator } from '../../processors/helpers/character-affiliation'
 import type { EntityLinkCoordinator } from '../../processors/helpers/entity-links'
 import type { StructureResolutionCoordinator } from '../../processors/helpers/structure-resolution'
-import type { CoreBinding } from '../../../types/core-binding'
-import { retrieveData, storeOrReturn, type StepResult } from '../../utils/storage'
-import { enrichWalletJournalEntries } from '../../processors/helpers/wallet-journal'
-import { logger } from '@repo/hono-helpers'
+import type { StepResult } from '../../utils/storage'
 
 export async function processWalletJournal(
 	env: {
@@ -22,7 +25,7 @@ export async function processWalletJournal(
 	characterId: string,
 	structureResolutionCoordinator?: StructureResolutionCoordinator,
 	affiliationCoordinator?: CharacterAffiliationCoordinator,
-	entityLinkCoordinator?: EntityLinkCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator
 ): Promise<StepResult> {
 	try {
 		if (!fetchResult.success) {
@@ -66,9 +69,10 @@ export async function processWalletJournal(
 			env,
 			entries,
 			characterId,
+			{ resolveStructureNames: false },
 			structureResolutionCoordinator,
 			affiliationCoordinator,
-			entityLinkCoordinator,
+			entityLinkCoordinator
 		)
 
 		logger.log('[processWalletJournal] Enrichment complete', {
@@ -89,7 +93,7 @@ export async function processWalletJournal(
 			bucketName,
 			workflowInstanceId,
 			'process-wallet-journal',
-			enrichedData,
+			enrichedData
 		)
 	} catch (error) {
 		return {

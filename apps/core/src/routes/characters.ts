@@ -342,7 +342,7 @@ app.get('/:characterId/private', requireAuth(), async (c) => {
 					source: 'characters.private',
 				})
 			if (executionCtx) {
-				await waitUntilWithTelemetry(executionCtx, 'characters.immunitas-profile-alert', queueAlert)
+				waitUntilWithTelemetry(executionCtx, 'characters.immunitas-profile-alert', queueAlert)
 			} else {
 				await queueAlert()
 			}
