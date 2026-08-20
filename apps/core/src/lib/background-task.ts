@@ -44,37 +44,39 @@ export function waitUntilWithTelemetry(
 		})
 	}, warnAfterMs)
 
-	executionCtx.waitUntil(
-		(async () => {
-			if (verbose) {
-				logger.debug('[BackgroundTask] started', {
-					label,
-					...metadata,
-				})
-			}
+	// Register the promise before invoking the task. This matters for RPC and request
+	// contexts: the platform must know about the work before any task-side I/O starts.
+	const backgroundPromise = Promise.resolve().then(async () => {
+		if (verbose) {
+			logger.debug('[BackgroundTask] started', {
+				label,
+				...metadata,
+			})
+		}
 
-			try {
-				await task()
-				settled = true
-				if (verbose) {
-					logger.debug('[BackgroundTask] completed', {
-						label,
-						durationMs: Date.now() - startedAt,
-						...metadata,
-					})
-				}
-			} catch (error) {
-				settled = true
-				logger.error('[BackgroundTask] failed', {
+		try {
+			await task()
+			settled = true
+			if (verbose) {
+				logger.debug('[BackgroundTask] completed', {
 					label,
 					durationMs: Date.now() - startedAt,
-					error: error instanceof Error ? error.message : String(error),
 					...metadata,
 				})
-				throw error
-			} finally {
-				clearTimeout(warningTimer)
 			}
-		})()
-	)
+		} catch (error) {
+			settled = true
+			logger.error('[BackgroundTask] failed', {
+				label,
+				durationMs: Date.now() - startedAt,
+				error: error instanceof Error ? error.message : String(error),
+				...metadata,
+			})
+			throw error
+		} finally {
+			clearTimeout(warningTimer)
+		}
+	})
+
+	executionCtx.waitUntil(backgroundPromise)
 }

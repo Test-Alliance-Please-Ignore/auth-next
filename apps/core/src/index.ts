@@ -76,7 +76,6 @@ import usersRoutes from './routes/users'
 import { CoreRpcService } from './services/core-rpc.service'
 import {
 	buildDiscordInteractionRouting,
-	ensureDiscordCommandRegistryLoaded,
 	executeDiscordSlashCommand,
 } from './services/discord-commands.service'
 import {
@@ -316,13 +315,6 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 
 	constructor(ctx: ExecutionContext, env: Env) {
 		super(ctx, env)
-		const db = createDb(env.DATABASE_URL)
-		waitUntilWithTelemetry(
-			ctx,
-			'core.command-registry-warm',
-			() => ensureDiscordCommandRegistryLoaded(db, env),
-			{}
-		)
 	}
 
 	/**

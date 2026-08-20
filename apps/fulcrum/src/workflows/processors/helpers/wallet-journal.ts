@@ -43,6 +43,15 @@ export interface ProcessedWalletJournalEntry extends CharacterWalletJournalEntry
 
 export type ProcessedWalletJournalEntries = ProcessedWalletJournalEntry[]
 
+export interface WalletJournalEnrichmentOptions {
+	/**
+	 * Structure names are presentation-only. Keep this disabled unless a caller
+	 * explicitly needs them; party/context IDs remain available in the raw row.
+	 */
+	resolveStructureNames?: boolean
+	knownStructureNames?: Readonly<Record<string, string>>
+}
+
 export async function enrichWalletJournalEntries(
 	env: {
 		ESI_TYPE_RESOLVER: DurableObjectNamespace
@@ -52,6 +61,7 @@ export async function enrichWalletJournalEntries(
 	},
 	entries: CharacterWalletJournalEntry[],
 	characterId: string,
+	options: WalletJournalEnrichmentOptions = {},
 	structureResolutionCoordinator?: StructureResolutionCoordinator,
 	affiliationCoordinator?: CharacterAffiliationCoordinator,
 	entityLinkCoordinator?: EntityLinkCoordinator
@@ -81,7 +91,10 @@ export async function enrichWalletJournalEntries(
 
 		const contextId = normalizeIdToString(entry.context_id)
 		if (contextId) {
-			if (entry.context_id_type === 'structure_id' || isStructureId(contextId)) {
+			if (
+				options.resolveStructureNames &&
+				(entry.context_id_type === 'structure_id' || isStructureId(contextId))
+			) {
 				structureIds.add(contextId)
 			} else if (RESOLVABLE_CONTEXT_TYPES.has(entry.context_id_type ?? '')) {
 				idsToResolve.add(contextId)
@@ -104,14 +117,15 @@ export async function enrichWalletJournalEntries(
 	}
 
 	const structureNameMap =
-		structureIds.size > 0
+		options.resolveStructureNames && structureIds.size > 0
 			? await (
 					structureResolutionCoordinator ?? new StructureResolutionCoordinator()
 				).resolveStructureNames(
 					{ ESI: env.ESI },
 					characterId,
 					structureIds,
-					'enrichWalletJournalEntries'
+					'enrichWalletJournalEntries',
+					options.knownStructureNames
 				)
 			: {}
 
@@ -177,7 +191,7 @@ export async function enrichWalletJournalEntries(
 				)
 			: {}
 
-	if (structureIds.size > 0) {
+	if (options.resolveStructureNames && structureIds.size > 0) {
 		logger.log('[enrichWalletJournalEntries] Structure resolution complete', {
 			requested: structureIds.size,
 			resolved: Object.keys(structureNameMap).length,
