@@ -1,8 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { getStub } from '@repo/do-utils'
-import { EsiRequestClient } from '@repo/esi'
-import { buildEsiUserKey, EsiRateLimitStore } from '@repo/esi-rate-limit'
+import { EsiRequestError, getEsiInstanceForCharacter } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
@@ -16,19 +14,8 @@ import type {
 	FreightRouteStatus,
 	UpdateFreightRouteInput,
 } from '@repo/freight'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
 import type { FreightDb } from './db'
-
-class FreightOpenContractError extends Error {
-	constructor(
-		message: string,
-		public readonly status: number
-	) {
-		super(message)
-		this.name = 'FreightOpenContractError'
-	}
-}
 
 /**
  * Freight Durable Object
@@ -39,8 +26,6 @@ class FreightOpenContractError extends Error {
 export class FreightDO extends DurableObject<Env, {}> implements Freight {
 	private db: FreightDb
 	private routeService: RouteService
-	private readonly esiRateLimits: EsiRateLimitStore
-	private readonly esiRequestClient: EsiRequestClient
 
 	constructor(
 		public state: DurableObjectState,
@@ -53,12 +38,6 @@ export class FreightDO extends DurableObject<Env, {}> implements Freight {
 
 		// Initialize services
 		this.routeService = new RouteService(this.db)
-		this.esiRateLimits = new EsiRateLimitStore(env.ESI_RATE_LIMITS)
-		this.esiRequestClient = new EsiRequestClient({
-			rateLimits: this.esiRateLimits,
-			debugLogger: logger,
-			compatibilityDate: '2025-09-30',
-		})
 	}
 
 	/**
@@ -102,34 +81,13 @@ export class FreightDO extends DurableObject<Env, {}> implements Freight {
 		characterName: string,
 		contractId: number
 	): Promise<FreightOpenContractResult> {
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const accessToken = await tokenStore.getAccessToken(characterId)
-
-		if (!accessToken) {
-			return {
-				success: false,
-				error: 'token_unavailable',
-				message: `Could not authorize ${characterName}. Please re-link this character.`,
-				characterName,
-			}
-		}
-
 		try {
-			const response = await this.esiRequestClient.request<Response>({
-				path: `/ui/openwindow/contract/?contract_id=${contractId}`,
-				userKey: buildEsiUserKey(this.env.EVE_SSO_CLIENT_ID, characterId),
-				cacheMode: 'no-store',
-				method: 'POST',
-				accessToken,
-				parse: async (esiResponse) => esiResponse,
-				buildError: ({ response, body, path }) =>
-					new FreightOpenContractError(
-						`ESI request failed: ${response.status} ${response.statusText || 'Request Failed'} - ${body || 'Unknown ESI error'} | path=${path}`,
-						response.status
-					),
-			})
+			const response = await getEsiInstanceForCharacter(
+				this.env.ESI,
+				characterId
+			).openContractWindow(characterId, String(contractId))
 
-			if (response.data.status === 204) {
+			if (response.meta.status === 204) {
 				return {
 					success: true,
 					characterName,
@@ -137,18 +95,19 @@ export class FreightDO extends DurableObject<Env, {}> implements Freight {
 			}
 
 			logger.warn('ESI openwindow/contract returned non-204', {
-				status: response.data.status,
+				status: response.meta.status,
 				contractId,
 				characterId,
 			})
 			return {
 				success: false,
 				error: 'client_unreachable',
-				message: 'Could not reach an online EVE client. Make sure the game is running and logged in on your main character.',
+				message:
+					'Could not reach an online EVE client. Make sure the game is running and logged in on your main character.',
 				characterName,
 			}
 		} catch (error) {
-			if (error instanceof Error && error.message.includes('ESI rate limit active')) {
+			if (error instanceof EsiRequestError && error.context.status === 429) {
 				return {
 					success: false,
 					error: 'esi_rate_limited',
@@ -157,8 +116,17 @@ export class FreightDO extends DurableObject<Env, {}> implements Freight {
 				}
 			}
 
-			if (error instanceof FreightOpenContractError) {
-				if (error.status === 403) {
+			if (error instanceof EsiRequestError) {
+				if (error.context.status === 401) {
+					return {
+						success: false,
+						error: 'token_unavailable',
+						message: `Could not authorize ${characterName}. Please re-link this character.`,
+						characterName,
+					}
+				}
+
+				if (error.context.status === 403) {
 					return {
 						success: false,
 						error: 'scope_missing',
@@ -167,19 +135,11 @@ export class FreightDO extends DurableObject<Env, {}> implements Freight {
 					}
 				}
 
-				if (error.status === 429) {
-					return {
-						success: false,
-						error: 'esi_rate_limited',
-						message: 'ESI is temporarily rate limited. Please retry shortly.',
-						characterName,
-					}
-				}
-
 				return {
 					success: false,
 					error: 'client_unreachable',
-					message: 'Could not reach an online EVE client. Make sure the game is running and logged in on your main character.',
+					message:
+						'Could not reach an online EVE client. Make sure the game is running and logged in on your main character.',
 					characterName,
 				}
 			}
@@ -193,7 +153,8 @@ export class FreightDO extends DurableObject<Env, {}> implements Freight {
 			return {
 				success: false,
 				error: 'client_unreachable',
-				message: 'Could not reach an online EVE client. Make sure the game is running and logged in on your main character.',
+				message:
+					'Could not reach an online EVE client. Make sure the game is running and logged in on your main character.',
 				characterName,
 			}
 		}

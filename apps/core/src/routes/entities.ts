@@ -6,7 +6,7 @@ import { logger } from '@repo/hono-helpers'
 import { requireAuth } from '../middleware/session'
 import { EntityResolverService } from '../services/entity-resolver.service'
 
-import type { EveTokenStore } from '@repo/eve-token-store'
+import type { EsiTypeResolver } from '@repo/esi'
 import type { App } from '../context'
 
 const app = new Hono<App>()
@@ -38,8 +38,9 @@ app.post('/names', requireAuth(), async (c) => {
 			return c.json({ error: 'Too many ids; maximum 200 per request' }, 400)
 		}
 
-		const eveTokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-		const resolver = new EntityResolverService(eveTokenStore)
+		const resolver = new EntityResolverService(
+			getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+		)
 		const resolvedNames = await resolver.resolveEntityNames(ids)
 		return c.json(Object.fromEntries(resolvedNames.entries()))
 	} catch (error) {

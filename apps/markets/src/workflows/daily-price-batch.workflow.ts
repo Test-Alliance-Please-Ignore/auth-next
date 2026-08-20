@@ -2,16 +2,16 @@ import { WorkflowEntrypoint } from 'cloudflare:workers'
 
 import { sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import type { Esi } from '@repo/esi'
-import type { Universe } from '@repo/universe'
+import { getPublicEsiInstance } from '@repo/esi'
+import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { insuranceDailyPrices, marketDailyPrices } from '../db/schema'
+import { PRICE_INSERT_BATCH_SIZE, splitIntoBatches } from '../utils/batching'
 
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers'
+import type { Universe } from '@repo/universe'
 import type { Env } from '../context'
-import { logger } from '@repo/hono-helpers'
-import { PRICE_INSERT_BATCH_SIZE, splitIntoBatches } from '../utils/batching'
 
 export interface DailyPriceBatchParams {
 	/** Target date in 'YYYY-MM-DD' format */
@@ -52,7 +52,7 @@ export class DailyPriceBatchWorkflow extends WorkflowEntrypoint<Env, DailyPriceB
 					return
 				}
 
-				const esiStub = getStub<Esi>(this.env.ESI, 'global')
+				const esiStub = getPublicEsiInstance(this.env.ESI)
 
 				// Both calls are served from ESI DO cache after the first caller each hour
 				const [allMarketPrices, allInsurancePrices] = await Promise.all([

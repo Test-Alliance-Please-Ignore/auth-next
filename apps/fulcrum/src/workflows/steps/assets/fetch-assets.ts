@@ -14,7 +14,7 @@ import type { StepResult } from '../../utils/storage'
  * Separated for testability
  */
 export async function fetchAssetsFromEsi(esiStub: Esi, characterId: string) {
-	return await esiStub.fetchCharacterAssets(characterId)
+	return await esiStub.fetchCharacterAssets(characterId, { cacheMode: 'no-store' })
 }
 
 /**
@@ -37,7 +37,6 @@ export async function fetchAssets(
 	try {
 		// Get character-specific ESI stub for caching
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
-		stub.setDefaultCacheMode('no-store')
 
 		// Fetch assets from ESI
 		const data = await fetchAssetsFromEsi(stub, characterId)

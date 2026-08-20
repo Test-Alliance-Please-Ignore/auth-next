@@ -1,7 +1,7 @@
 import { logger } from '@repo/hono-helpers'
 
 import * as esiFetch from '../../../services/esi-fetch'
-import { createTokenStore, getCorporationDataStub } from '../../utils/services'
+import { getCorporationDataStub, getCorporationEsi } from '../../utils/services'
 
 import type { Env } from '../../../context'
 
@@ -12,8 +12,11 @@ export async function fetchMemberTracking(
 	corporationId: string,
 	directorCharacterId: string
 ): Promise<MemberTrackingData> {
-	const tokenStore = createTokenStore(env)
-	const trackingData = await esiFetch.fetchMemberTracking(tokenStore, corporationId, directorCharacterId)
+	const trackingData = await esiFetch.fetchMemberTracking(
+		getCorporationEsi(env, corporationId),
+		corporationId,
+		directorCharacterId
+	)
 
 	logger.debug('[MemberTrackingStep] Fetched member tracking', {
 		corporationId,
@@ -36,4 +39,3 @@ export async function storeMemberTracking(
 		count: memberTracking.length,
 	})
 }
-

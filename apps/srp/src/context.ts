@@ -1,7 +1,7 @@
 import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
-import type { SrpRecentLossRefreshWorkflowParams } from './workflows/recent-loss-refresh.workflow'
 import type { createDb } from './db'
+import type { SrpRecentLossRefreshWorkflowParams } from './workflows/recent-loss-refresh.workflow'
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
@@ -15,8 +15,7 @@ export type Env = SharedHonoEnv & {
 	EVE_CHARACTER_DATA: DurableObjectNamespace
 	EVE_CORPORATION_DATA: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
-	ESI_GLOBAL_CACHE: KVNamespace
-	ESI_RATE_LIMITS: KVNamespace
+	ESI: DurableObjectNamespace
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
 	UNIVERSE: DurableObjectNamespace
 	EVE_SSO_CLIENT_ID: string

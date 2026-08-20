@@ -20,7 +20,6 @@ describe('members step affiliation routing', () => {
 
 		expect(handleCharacterAffiliationChanges).toHaveBeenCalledWith(['100', '101'], {
 			source: 'corp-membership-changed',
-			bypassThrottle: true,
 		})
 	})
 

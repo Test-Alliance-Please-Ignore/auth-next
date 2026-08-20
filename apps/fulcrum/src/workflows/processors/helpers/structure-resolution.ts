@@ -1,8 +1,6 @@
-import { getStub } from '@repo/do-utils'
-import { parseEsiErrorMetadata, retryWithBackoff } from '@repo/workflow-utils'
-
-import type { Esi } from '@repo/esi'
+import { getEsiInstanceForCharacter } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
+import { parseEsiErrorMetadata, retryWithBackoff } from '@repo/workflow-utils'
 
 function getErrorStatus(error: unknown): number | null {
 	if (!(error instanceof Error)) return null
@@ -32,7 +30,7 @@ export class StructureResolutionCoordinator {
 		label: string
 	): Promise<Record<string, string>> {
 		const resolved: Record<string, string> = {}
-		const esiStub = getStub<Esi>(env.ESI, 'global')
+		const esiStub = getEsiInstanceForCharacter(env.ESI, characterId)
 		const DELAY_MS = 200
 		const uniqueStructureIds = Array.from(new Set(structureIds))
 		let processed = 0

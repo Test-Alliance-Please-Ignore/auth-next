@@ -32,9 +32,9 @@ import {
 } from './shared'
 
 import type { CorporationTax } from '@repo/corporation-tax'
+import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Features } from '@repo/features'
 import type { App, SessionUser } from '../../context'
 
@@ -1415,8 +1415,8 @@ app.get('/corporations/:corporationId/ledger/parties', requireAuth(), async (c) 
 			let resolvedNames: Record<string, string> = {}
 			if (entityIds.length > 0) {
 				try {
-					const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-					resolvedNames = await tokenStoreStub.resolveIds(entityIds)
+					const typeResolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+					resolvedNames = await typeResolver.resolveIds(entityIds)
 				} catch (error) {
 					logger.warn('[CorporationTax] Failed to resolve ledger party entity names', {
 						corporationId,
@@ -2315,29 +2315,6 @@ async function resolveMemberSummaryTargets(input: {
 
 		const maxCharacterSearchResults = 100
 		const matchedCharacterIds = new Set<string>()
-
-		try {
-			const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-			try {
-				const searchResultIds = await tokenStoreStub.searchCharacter(characterQuery, false)
-				for (const characterId of searchResultIds) {
-					if (
-						matchedCharacterIds.size < maxCharacterSearchResults &&
-						allowedCharacterIdSet.has(characterId)
-					) {
-						matchedCharacterIds.add(characterId)
-					}
-				}
-			} finally {
-				disposeRpcStub(tokenStoreStub)
-			}
-		} catch (error) {
-			logger.warn('[CorporationTax] Failed ESI character search for member summary', {
-				corporationId,
-				characterQuery,
-				error: error instanceof Error ? error.message : String(error),
-			})
-		}
 
 		const db = c.get('db')
 		if (db) {

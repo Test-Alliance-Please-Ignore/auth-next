@@ -18,11 +18,10 @@ export async function fetchOrders(
 	bucket: R2Bucket,
 	bucketName: string,
 	characterId: string,
-	workflowInstanceId: string,
+	workflowInstanceId: string
 ): Promise<StepResult> {
 	try {
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
-		stub.setDefaultCacheMode('no-store')
 		const data = await fetchOrdersFromEsi(stub, characterId)
 		return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-orders', data)
 	} catch (error) {

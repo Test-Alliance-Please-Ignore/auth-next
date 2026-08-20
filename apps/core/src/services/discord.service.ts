@@ -1,6 +1,7 @@
 import { and, eq, inArray } from '@repo/db-utils'
 import { DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID, getDiscordStub } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
+import { getPublicEsiInstance } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
@@ -16,7 +17,6 @@ import {
 
 import type { DiscordProfile, JoinServerResult } from '@repo/discord'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { Env } from '../context'
@@ -552,7 +552,10 @@ export async function getTemporaryRoleIdsByGuild(
 					(await assignments.listPendingRemovalAssignments(guildId, undefined, coreUserId)) ?? []
 				// Pending assignments retain their historical role IDs so expiry cleanup
 				// still removes a role after its managed-role record is deactivated.
-				assignmentRowsByGuild.set(guildId, { active: activeAssignments, pending: pendingAssignments })
+				assignmentRowsByGuild.set(guildId, {
+					active: activeAssignments,
+					pending: pendingAssignments,
+				})
 			} catch (error) {
 				failedGuildIds.add(guildId)
 				logger.error('[Discord] Failed to resolve temporary role assignments for guild', {
@@ -862,7 +865,6 @@ async function getPrimaryCharacterTickerSources(
 	}
 
 	const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, 'default')
-	const tokenStoreStub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
 	let corpTicker: string | null = null
 	try {
 		const corpInfo = await corpStub.getCorporationInfo(primaryCharacter.corporationId)
@@ -881,7 +883,9 @@ async function getPrimaryCharacterTickerSources(
 	let allianceTicker: string | null = null
 	if (primaryCharacter.allianceId) {
 		try {
-			const allianceInfo = await tokenStoreStub.getAllianceById(primaryCharacter.allianceId)
+			const allianceInfo = await getPublicEsiInstance(env.ESI).fetchAlliancePublicInfo(
+				primaryCharacter.allianceId
+			)
 			allianceTicker = allianceInfo?.ticker ?? null
 		} catch (error) {
 			logger.warn(

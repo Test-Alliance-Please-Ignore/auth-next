@@ -50,7 +50,7 @@ export type ProcessedAssets = ProcessedAsset[]
  * Uses ESI Type Resolver to batch resolve all IDs at once
  * Fetches structure info for location IDs classified as structures
  *
- * @param env - Worker environment with ESI_TYPE_RESOLVER and EVE_TOKEN_STORE bindings
+ * @param env - Worker environment with ESI_TYPE_RESOLVER, ESI, and UNIVERSE bindings
  * @param assets - Character assets from ESI worker
  * @param characterId - Character ID for authenticated structure lookups
  * @returns Enriched assets with resolved names

@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 import { max } from 'drizzle-orm'
 
 import { and, desc, eq, gt, inArray, sql } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
+import { getEsiInstanceForCharacter, getPublicEsiInstance } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 import { GetRegionMarketDataResponseObjectSchema } from '@repo/markets'
 
@@ -16,15 +16,12 @@ import {
 } from './db/schema'
 import { getSnapshotDeleteCount } from './utils/snapshot-retention'
 
-import type { Esi } from '@repo/esi'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type {
 	GetBatchMarketDataAtTimeInput,
 	GetBatchMarketDataInput,
 	GetBatchMarketDataResponse,
 	GetRegionMarketDataInput,
 	GetRegionMarketDataResponse,
-	GetRegionMarketDataResponseObject,
 	LatestMarketPrice,
 	Markets,
 } from '@repo/markets'
@@ -633,45 +630,19 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		logger.log(`[fetchAndStoreSnapshot] Snapshot created: ${snapshot.id}`)
 
 		try {
-			// Fetch stream from ESI via EveTokenStore
-			logger.log(`[fetchAndStoreSnapshot] Getting token store stub`)
-			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-			logger.log(`[fetchAndStoreSnapshot] Calling fetchPublicEsiAllPagesStream`)
-			const stream = await tokenStore.fetchPublicEsiAllPagesStream(`/markets/${regionId}/orders`)
-			logger.log(`[fetchAndStoreSnapshot] Stream received, starting to read`)
-
-			// Decode stream as text
-			const reader = stream.pipeThrough(new TextDecoderStream()).getReader()
-
-			let buffer = ''
-			let ordersToInsert: Array<typeof marketOrders.$inferInsert> = []
+			const esi = getPublicEsiInstance(this.env.ESI)
+			const firstPage = await esi.fetchRegionMarketOrdersPage(regionId, 1)
+			const totalPages = firstPage.meta.pages ?? 1
 			let totalOrders = 0
-			const BATCH_SIZE = 1000
 
-			// Read stream line by line
-			while (true) {
-				const { done, value } = await reader.read()
+			for (let page = 1; page <= totalPages; page++) {
+				const rawOrders =
+					page === 1 ? firstPage.data : (await esi.fetchRegionMarketOrdersPage(regionId, page)).data
+				const ordersToInsert: Array<typeof marketOrders.$inferInsert> = []
 
-				if (done) {
-					break
-				}
-
-				// Accumulate chunks and split by newlines
-				buffer += value
-				const lines = buffer.split('\n')
-				buffer = lines.pop() || '' // Keep incomplete line in buffer
-
-				for (const line of lines) {
-					if (!line.trim()) {
-						continue
-					}
-
+				for (const rawOrder of rawOrders) {
 					try {
-						// Parse and validate each order
-						const rawOrder = JSON.parse(line)
 						const validatedOrder = GetRegionMarketDataResponseObjectSchema.parse(rawOrder)
-
-						// Convert to database format
 						ordersToInsert.push({
 							snapshotId: snapshot.id,
 							sourceLocationId: snapshot.locationId,
@@ -690,27 +661,19 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 							issued: validatedOrder.issued,
 							range: validatedOrder.range,
 						})
-
-						totalOrders++
-
-						// Insert in batches to avoid memory buildup
-						if (ordersToInsert.length >= BATCH_SIZE) {
-							await this.db.insert(marketOrders).values(ordersToInsert)
-							ordersToInsert = [] // Clear for next batch
-						}
 					} catch (parseError) {
-						// Log parse error but continue processing
-						logger.error('Failed to parse order:', parseError, line.substring(0, 100))
+						logger.error('Failed to parse region market order', {
+							regionId,
+							page,
+							error: parseError instanceof Error ? parseError.message : String(parseError),
+						})
 					}
 				}
-			}
 
-			// Insert remaining orders
-			if (ordersToInsert.length > 0) {
-				logger.log(
-					`[fetchAndStoreSnapshot] Inserting final batch of ${ordersToInsert.length} orders`
-				)
-				await this.db.insert(marketOrders).values(ordersToInsert)
+				if (ordersToInsert.length > 0) {
+					await this.db.insert(marketOrders).values(ordersToInsert)
+					totalOrders += ordersToInsert.length
+				}
 			}
 
 			logger.log(`[fetchAndStoreSnapshot] Total orders processed: ${totalOrders}`)
@@ -789,71 +752,54 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 		logger.log(`[fetchAndStoreStructureSnapshot] Snapshot created: ${snapshot.id}`)
 
 		try {
-			// Fetch from ESI via EveTokenStore (authenticated)
-			logger.log(`[fetchAndStoreStructureSnapshot] Getting token store stub`)
-			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-			logger.log(`[fetchAndStoreStructureSnapshot] Calling fetchEsi`)
-
-			// Structure markets endpoint returns all orders in single page
-			const response = await tokenStore.fetchEsi<GetRegionMarketDataResponseObject[]>(
-				`/markets/structures/${structureId}/`,
-				characterId,
-				{ cacheMode: 'no-store' }
-			)
-
-			logger.log(
-				`[fetchAndStoreStructureSnapshot] Response received, processing ${response.data.length} orders`
-			)
+			const esi = getEsiInstanceForCharacter(this.env.ESI, characterId)
+			const firstPage = await esi.fetchStructureMarketOrdersPage(characterId, structureId, 1)
+			const totalPages = firstPage.meta.pages ?? 1
 
 			// Process and insert orders in batches
-			let ordersToInsert: Array<typeof marketOrders.$inferInsert> = []
 			let totalOrders = 0
-			const BATCH_SIZE = 1000
 
-			for (const rawOrder of response.data) {
-				try {
-					// Validate order
-					const validatedOrder = GetRegionMarketDataResponseObjectSchema.parse(rawOrder)
+			for (let page = 1; page <= totalPages; page++) {
+				const rawOrders =
+					page === 1
+						? firstPage.data
+						: (await esi.fetchStructureMarketOrdersPage(characterId, structureId, page)).data
+				const ordersToInsert: Array<typeof marketOrders.$inferInsert> = []
 
-					// Convert to database format
-					ordersToInsert.push({
-						snapshotId: snapshot.id,
-						sourceLocationId: snapshot.locationId,
-						sourceLocationType: snapshot.locationType,
-						snapshotTime: snapshot.snapshotTime,
-						orderId: validatedOrder.order_id,
-						typeId: validatedOrder.type_id,
-						locationId: validatedOrder.location_id,
-						systemId: validatedOrder.system_id,
-						price: validatedOrder.price.toString(),
-						volumeRemain: validatedOrder.volume_remain,
-						volumeTotal: validatedOrder.volume_total,
-						minVolume: validatedOrder.min_volume,
-						isBuyOrder: validatedOrder.is_buy_order,
-						duration: validatedOrder.duration,
-						issued: validatedOrder.issued,
-						range: validatedOrder.range,
-					})
+				for (const rawOrder of rawOrders) {
+					try {
+						// Validate order
+						const validatedOrder = GetRegionMarketDataResponseObjectSchema.parse(rawOrder)
 
-					totalOrders++
-
-					// Insert in batches to avoid memory buildup
-					if (ordersToInsert.length >= BATCH_SIZE) {
-						await this.db.insert(marketOrders).values(ordersToInsert)
-						ordersToInsert = [] // Clear for next batch
+						// Convert to database format
+						ordersToInsert.push({
+							snapshotId: snapshot.id,
+							sourceLocationId: snapshot.locationId,
+							sourceLocationType: snapshot.locationType,
+							snapshotTime: snapshot.snapshotTime,
+							orderId: validatedOrder.order_id,
+							typeId: validatedOrder.type_id,
+							locationId: validatedOrder.location_id,
+							systemId: validatedOrder.system_id,
+							price: validatedOrder.price.toString(),
+							volumeRemain: validatedOrder.volume_remain,
+							volumeTotal: validatedOrder.volume_total,
+							minVolume: validatedOrder.min_volume,
+							isBuyOrder: validatedOrder.is_buy_order,
+							duration: validatedOrder.duration,
+							issued: validatedOrder.issued,
+							range: validatedOrder.range,
+						})
+					} catch (parseError) {
+						// Log parse error but continue processing
+						logger.error('Failed to parse order:', parseError)
 					}
-				} catch (parseError) {
-					// Log parse error but continue processing
-					logger.error('Failed to parse order:', parseError)
 				}
-			}
 
-			// Insert remaining orders
-			if (ordersToInsert.length > 0) {
-				logger.log(
-					`[fetchAndStoreStructureSnapshot] Inserting final batch of ${ordersToInsert.length} orders`
-				)
-				await this.db.insert(marketOrders).values(ordersToInsert)
+				if (ordersToInsert.length > 0) {
+					await this.db.insert(marketOrders).values(ordersToInsert)
+					totalOrders += ordersToInsert.length
+				}
 			}
 
 			logger.log(`[fetchAndStoreStructureSnapshot] Total orders processed: ${totalOrders}`)
@@ -1474,7 +1420,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			logger.warn(
 				`[getMarketPricesForTypes] no historic data for ${missing.length} type(s) on ${priceDate}, using ESI cache`
 			)
-			const esiStub = getStub<Esi>(this.env.ESI, 'global')
+			const esiStub = getPublicEsiInstance(this.env.ESI)
 			const all = await esiStub.fetchMarketPrices()
 			const esiMap = new Map(all.map((p) => [p.typeId, p]))
 			for (const typeId of missing) {
@@ -1546,7 +1492,7 @@ export class MarketsDO extends DurableObject<Env, {}> implements Markets {
 			logger.warn(
 				`[getInsurancePricesForTypes] no historic insurance data for ${missing.length} type(s) on/before ${priceDate}, using ESI cache`
 			)
-			const esiStub = getStub<Esi>(this.env.ESI, 'global')
+			const esiStub = getPublicEsiInstance(this.env.ESI)
 			const all = await esiStub.fetchInsurancePrices()
 			const esiMap = new Map(all.map((p) => [p.typeId, p]))
 			for (const typeId of missing) {

@@ -7,12 +7,12 @@ import {
 
 const mocks = vi.hoisted(() => {
 	const fetchSovereigntySystemsMock = vi.fn()
-	const createTokenStoreMock = vi.fn()
+	const getPublicEsiMock = vi.fn()
 	const getGlobalCorporationDataStubMock = vi.fn()
 
 	return {
 		fetchSovereigntySystemsMock,
-		createTokenStoreMock,
+		getPublicEsiMock,
 		getGlobalCorporationDataStubMock,
 	}
 })
@@ -22,7 +22,7 @@ vi.mock('../../../services/esi-fetch', () => ({
 }))
 
 vi.mock('../../../workflows/utils/services', () => ({
-	createTokenStore: (...args: unknown[]) => mocks.createTokenStoreMock(...args),
+	getPublicEsi: (...args: unknown[]) => mocks.getPublicEsiMock(...args),
 	getGlobalCorporationDataStub: (...args: unknown[]) =>
 		mocks.getGlobalCorporationDataStubMock(...args),
 }))
@@ -49,7 +49,7 @@ describe('ensureSharedSovereigntySystems', () => {
 		const releaseSharedSovereigntySystemsRefreshLeaseMock = vi.fn()
 		const storeSharedSovereigntySystemsMock = vi.fn()
 
-		mocks.createTokenStoreMock.mockReturnValue({})
+		mocks.getPublicEsiMock.mockReturnValue({})
 		mocks.fetchSovereigntySystemsMock.mockResolvedValue([{ system_id: '30000142' }])
 		mocks.getGlobalCorporationDataStubMock.mockReturnValue({
 			hasFreshSharedSovereigntySystems: hasFreshSharedSovereigntySystemsMock,
@@ -77,7 +77,7 @@ describe('refreshSharedSovereigntySystems', () => {
 		const releaseSharedSovereigntySystemsRefreshLeaseMock = vi.fn()
 		const storeSharedSovereigntySystemsMock = vi.fn()
 
-		mocks.createTokenStoreMock.mockReturnValue({})
+		mocks.getPublicEsiMock.mockReturnValue({})
 		mocks.fetchSovereigntySystemsMock.mockResolvedValue([{ system_id: '30000142' }])
 		mocks.getGlobalCorporationDataStubMock.mockReturnValue({
 			acquireSharedSovereigntySystemsRefreshLease: acquireSharedSovereigntySystemsRefreshLeaseMock,

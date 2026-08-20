@@ -5,8 +5,7 @@ import type { createDb } from './db'
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	UNIVERSE: DurableObjectNamespace
-	EVE_TOKEN_STORE: DurableObjectNamespace
-	ESI_RATE_LIMITS: KVNamespace
+	ESI: DurableObjectNamespace
 	ESI_TYPE_RESOLVER: DurableObjectNamespace
 }
 

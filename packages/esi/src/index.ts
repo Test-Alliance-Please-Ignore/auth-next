@@ -1,6 +1,16 @@
-import { getStub } from '@repo/do-utils'
+import { forDO } from '@repo/do-utils'
 
-import type { KillmailDetail } from '@repo/universe'
+import type { EsiGetStructureMarketDataResponseObject, KillmailDetail } from '@repo/universe'
+import type { EsiCorporationAsset } from './corporation-types'
+import type { EsiResponse, EsiResult } from './request'
+import type {
+	EsiCorporationMiningExtraction,
+	EsiCorporationSkyhookDetail,
+	EsiCorporationSkyhookListingResponse,
+	EsiSovereigntyHubDetail,
+	EsiSovereigntyHubListingResponse,
+	EsiSovereigntySystemsResponse,
+} from './structure-types'
 import type {
 	AlliancePublicInfo,
 	CharacterAffiliation,
@@ -15,6 +25,7 @@ import type {
 	CharacterContract,
 	CharacterContractItem,
 	CharacterFitting,
+	CharacterFleetInformation,
 	CharacterImplants,
 	CharacterKillmailBasic,
 	CharacterLocation,
@@ -23,6 +34,7 @@ import type {
 	CharacterMarketTransaction,
 	CharacterMiningLedger,
 	CharacterNotification,
+	CharacterOnlineStatus,
 	CharacterPlanet,
 	CharacterPublicInfo,
 	CharacterRoles,
@@ -55,6 +67,14 @@ import type {
 	CorporationWallet,
 	CorporationWalletJournalEntry,
 	CorporationWalletTransaction,
+	EsiCharacterSearchResponse,
+	EsiMarketOrder,
+	EsiUniverseConstellation,
+	EsiUniverseSolarSystem,
+	EsiUniverseStation,
+	EsiUniverseType,
+	FleetInformation,
+	FleetMembers,
 	MailContent,
 	MailingList,
 	MailLabelsResponse,
@@ -82,6 +102,47 @@ export interface EsiRequestOptions {
 	timeoutMs?: number
 }
 
+/** Compact result for a domain-owned watermark traversal. */
+export interface EsiWatermarkPageResult<T> {
+	data: T[]
+	pages: number
+	pagesFetched: number
+	stoppedAtWatermark: boolean
+}
+
+/**
+ * Fixed physical shard count for authenticated ESI traffic.
+ *
+ * Changing either value changes routing and creates a new set of Durable
+ * Objects, so these values are intentionally source-controlled rather than
+ * configurable per deployment.
+ */
+export const ESI_AUTH_SHARD_COUNT = 16
+export const ESI_AUTH_SHARD_PREFIX = 'esi-auth'
+
+/**
+ * Canonical EVE entity IDs are positive decimal integers. Keeping this
+ * normalization at the routing boundary prevents duplicate shard, cache, and
+ * rate-limit identities for the same character or corporation.
+ */
+export function canonicalizeEsiEntityId(
+	value: string | number,
+	entityType: 'character' | 'corporation'
+): string {
+	if (typeof value === 'number') {
+		if (!Number.isSafeInteger(value) || value < 1) {
+			throw new TypeError(`Invalid ESI ${entityType} ID`)
+		}
+		return String(value)
+	}
+
+	const id = value.trim()
+	if (!/^[1-9]\d*$/.test(id)) {
+		throw new TypeError(`Invalid ESI ${entityType} ID`)
+	}
+	return id
+}
+
 /**
  * Public RPC interface for Esi Durable Object
  *
@@ -91,16 +152,13 @@ export interface EsiRequestOptions {
  * @example
  * ```ts
  * import type { Esi } from '@repo/esi'
- * import { getStub } from '@repo/do-utils'
+ * import { getPublicEsiInstance } from '@repo/esi'
  *
- * const stub = getStub<Esi>(env.ESI, 'default')
+ * const stub = getPublicEsiInstance(env.ESI)
  * const members = await stub.fetchCorporationMembers(corporationId)
  * ```
  */
 export interface Esi {
-	// Cache control
-	setDefaultCacheMode(mode: 'default' | 'no-store'): void
-
 	// Character endpoints
 	fetchCharacterAffiliation(
 		characterId: string,
@@ -111,15 +169,28 @@ export interface Esi {
 		characterId: string,
 		options?: EsiRequestOptions
 	): Promise<CharacterPublicInfo>
-	fetchCharacterNotifications(characterId: string): Promise<CharacterNotification[]>
+	fetchCharacterNotifications(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterNotification[]>
 	fetchCharacterAgentResearch(characterId: string): Promise<CharacterAgentResearch[]>
-	fetchCharacterAssets(characterId: string): Promise<CharacterAsset[]>
-	fetchCharacterAssetNames(characterId: string, itemIds: string[]): Promise<CharacterAssetName[]>
+	fetchCharacterAssets(characterId: string, options?: EsiRequestOptions): Promise<CharacterAsset[]>
+	fetchCharacterAssetNames(
+		characterId: string,
+		itemIds: string[],
+		options?: EsiRequestOptions
+	): Promise<CharacterAssetName[]>
 	fetchCharacterAttributes(characterId: string): Promise<CharacterAttributes>
 	fetchCharacterBlueprints(characterId: string): Promise<CharacterBlueprint[]>
 	fetchCharacterCalendar(characterId: string): Promise<CharacterCalendar[]>
-	fetchCharacterContacts(characterId: string): Promise<CharacterContact[]>
-	fetchCharacterContracts(characterId: string): Promise<CharacterContract[]>
+	fetchCharacterContacts(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterContact[]>
+	fetchCharacterContracts(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterContract[]>
 	fetchContractItems(characterId: string, contractId: string): Promise<CharacterContractItem[]>
 	fetchCharacterFittings(characterId: string): Promise<CharacterFitting[]>
 	saveCharacterFitting(
@@ -132,17 +203,29 @@ export interface Esi {
 		}
 	): Promise<SaveFittingResponse>
 	fetchCharacterLocation(characterId: string): Promise<CharacterLocation>
-	fetchCharacterMail(characterId: string): Promise<CharacterMail[]>
-	fetchCharacterMailPage(characterId: string, lastMailId?: string): Promise<CharacterMail[]>
-	fetchMailContent(characterId: string, mailId: string): Promise<MailContent>
-	fetchMailingLists(characterId: string): Promise<MailingList[]>
-	fetchMailLabels(characterId: string): Promise<MailLabelsResponse>
+	fetchCharacterOnlineStatus(characterId: string): Promise<CharacterOnlineStatus>
+	fetchCharacterMail(characterId: string, options?: EsiRequestOptions): Promise<CharacterMail[]>
+	fetchCharacterMailPage(
+		characterId: string,
+		lastMailId?: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterMail[]>
+	fetchMailContent(
+		characterId: string,
+		mailId: string,
+		options?: EsiRequestOptions
+	): Promise<MailContent>
+	fetchMailingLists(characterId: string, options?: EsiRequestOptions): Promise<MailingList[]>
+	fetchMailLabels(characterId: string, options?: EsiRequestOptions): Promise<MailLabelsResponse>
 	fetchCharacterMiningLedger(characterId: string): Promise<CharacterMiningLedger[]>
 	fetchCharacterPlanets(characterId: string): Promise<CharacterPlanet[]>
-	fetchCharacterRoles(characterId: string): Promise<CharacterRoles>
+	fetchCharacterRoles(characterId: string, options?: EsiRequestOptions): Promise<CharacterRoles>
 	fetchCharacterShip(characterId: string): Promise<CharacterShip>
-	fetchCharacterSkillQueue(characterId: string): Promise<CharacterSkillQueue[]>
-	fetchCharacterSkills(characterId: string): Promise<CharacterSkills>
+	fetchCharacterSkillQueue(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterSkillQueue[]>
+	fetchCharacterSkills(characterId: string, options?: EsiRequestOptions): Promise<CharacterSkills>
 	fetchCharacterStandings(characterId: string): Promise<CharacterStanding[]>
 	fetchCharacterTitles(characterId: string): Promise<CharacterTitle[]>
 	fetchCorporationHistory(characterId: string): Promise<CorporationHistoryEntry[]>
@@ -153,6 +236,11 @@ export interface Esi {
 		fromId?: string
 	): Promise<CharacterMarketTransaction[]>
 	fetchCharacterWalletJournal(characterId: string): Promise<CharacterWalletJournalEntry[]>
+	fetchCharacterWalletJournalUntilWatermark(
+		characterId: string,
+		watermark: { maxId: string | null; maxDate: string | null }
+	): Promise<EsiWatermarkPageResult<CharacterWalletJournalEntry>>
+	fetchCharacterWalletBalance(characterId: string): Promise<number>
 	fetchCharacterBasicKillmails(characterId: string): Promise<CharacterKillmailBasic[]>
 	fetchCharacterBasicKillmailPage(
 		characterId: string,
@@ -164,8 +252,21 @@ export interface Esi {
 		killmailHash: string
 	): Promise<KillmailDetail | null>
 	fetchCharacterKillmails(characterId: string): Promise<KillmailDetail[]>
-	fetchCharacterClones(characterId: string): Promise<CharacterClones>
-	fetchCharacterImplants(characterId: string): Promise<CharacterImplants>
+	fetchCharacterFleetInformation(
+		characterId: string
+	): Promise<EsiResponse<CharacterFleetInformation>>
+	fetchFleetInformation(
+		characterId: string,
+		fleetId: string
+	): Promise<EsiResponse<FleetInformation>>
+	fetchFleetMembers(characterId: string, fleetId: string): Promise<EsiResponse<FleetMembers>>
+	inviteFleetMember(characterId: string, fleetId: string, memberCharacterId: string): Promise<void>
+	kickFleetMember(characterId: string, fleetId: string, memberCharacterId: string): Promise<void>
+	fetchCharacterClones(characterId: string, options?: EsiRequestOptions): Promise<CharacterClones>
+	fetchCharacterImplants(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterImplants>
 	searchCharacter(characterId: string, characterName: string, strict?: boolean): Promise<string[]>
 
 	// Corporation endpoints
@@ -179,12 +280,45 @@ export interface Esi {
 		corporationId: string,
 		division: number
 	): Promise<CorporationWalletJournalEntry[]>
+	fetchCorporationWalletJournalUntilWatermark(
+		corporationId: string,
+		division: number,
+		watermark: { maxId: string | null; maxDate: string | null }
+	): Promise<EsiWatermarkPageResult<CorporationWalletJournalEntry>>
 	fetchCorporationWalletTransactions(
 		corporationId: string,
 		division: number
 	): Promise<CorporationWalletTransaction[]>
+	fetchCorporationWalletTransactionsPage(
+		corporationId: string,
+		division: number,
+		fromId?: string
+	): Promise<CorporationWalletTransaction[]>
 	fetchCorporationAssets(corporationId: string): Promise<CorporationAsset[]>
+	fetchCorporationAssetsPage(
+		corporationId: string,
+		page: number
+	): Promise<EsiResult<EsiCorporationAsset[]>>
 	fetchCorporationStructures(corporationId: string): Promise<CorporationStructure[]>
+	fetchCorporationSovereigntyHubsPage(
+		corporationId: string,
+		page: number
+	): Promise<EsiResult<EsiSovereigntyHubListingResponse>>
+	fetchCorporationSovereigntyHubDetail(
+		corporationId: string,
+		structureId: string
+	): Promise<EsiSovereigntyHubDetail>
+	fetchCorporationSkyhooksPage(
+		corporationId: string,
+		page: number
+	): Promise<EsiResult<EsiCorporationSkyhookListingResponse>>
+	fetchCorporationSkyhookDetail(
+		corporationId: string,
+		structureId: string
+	): Promise<EsiCorporationSkyhookDetail>
+	fetchCorporationMiningExtractions(
+		corporationId: string
+	): Promise<EsiCorporationMiningExtraction[]>
 	fetchCorporationOrders(corporationId: string): Promise<CorporationOrder[]>
 	fetchCorporationContracts(corporationId: string): Promise<CorporationContract[]>
 	fetchCorporationIndustryJobs(corporationId: string): Promise<CorporationIndustryJob[]>
@@ -201,6 +335,26 @@ export interface Esi {
 
 	// Universe endpoints
 	fetchStructureInfo(characterId: string, structureId: string): Promise<StructureInfo | null>
+	fetchStructureMarketOrdersPage(
+		characterId: string,
+		structureId: string,
+		page: number
+	): Promise<EsiResult<EsiGetStructureMarketDataResponseObject[]>>
+	fetchCharacterSearch(
+		characterId: string,
+		input: {
+			categories: Array<'solar_system' | 'station' | 'structure'>
+			search: string
+			strict?: boolean
+		}
+	): Promise<EsiCharacterSearchResponse>
+	fetchUniverseSolarSystemIds(): Promise<number[]>
+	fetchUniverseSolarSystem(systemId: string): Promise<EsiUniverseSolarSystem>
+	fetchUniverseConstellation(constellationId: string): Promise<EsiUniverseConstellation>
+	fetchUniverseStation(stationId: string): Promise<EsiUniverseStation>
+	fetchUniverseType(typeId: string): Promise<EsiUniverseType>
+	openContractWindow(characterId: string, contractId: string): Promise<EsiResult<null>>
+	fetchRegionMarketOrdersPage(regionId: string, page: number): Promise<EsiResult<EsiMarketOrder[]>>
 
 	/**
 	 * Fetch insurance prices for all insurable ship types.
@@ -216,6 +370,7 @@ export interface Esi {
 	 * Cached for 24 hours. Returns ~14k entries covering all tradeable items.
 	 */
 	fetchMarketPrices(): Promise<MarketPrice[]>
+	fetchSovereigntySystems(): Promise<EsiSovereigntySystemsResponse>
 }
 
 export interface EsiTypeResolver {
@@ -255,13 +410,10 @@ export interface EsiTypeResolver {
 }
 
 /**
- * Get an ESI instance for a given ID
- * @param env - The environment object
- * @param id - The ID of the ESI instance
- * @returns The ESI instance
+ * Get the singleton used for public ESI calls.
  */
-export const getEsiInstance = (esiBinding: DurableObjectNamespace, id: string) =>
-	getStub<Esi>(esiBinding, id)
+export const getPublicEsiInstance = (esiBinding: DurableObjectNamespace) =>
+	forDO<Esi>(esiBinding).singleton()
 
 /**
  * Get an ESI instance for a given character ID
@@ -272,7 +424,10 @@ export const getEsiInstance = (esiBinding: DurableObjectNamespace, id: string) =
 export const getEsiInstanceForCharacter = (
 	esiBinding: DurableObjectNamespace,
 	characterId: string
-) => getEsiInstance(esiBinding, characterId)
+) =>
+	forDO<Esi>(esiBinding)
+		.sharded({ shards: ESI_AUTH_SHARD_COUNT, prefix: ESI_AUTH_SHARD_PREFIX })
+		.forKey(`character:${canonicalizeEsiEntityId(characterId, 'character')}`)
 
 /**
  * Get an ESI instance for a given corporation ID
@@ -283,4 +438,7 @@ export const getEsiInstanceForCharacter = (
 export const getEsiInstanceForCorporation = (
 	esiBinding: DurableObjectNamespace,
 	corporationId: string
-) => getEsiInstance(esiBinding, corporationId)
+) =>
+	forDO<Esi>(esiBinding)
+		.sharded({ shards: ESI_AUTH_SHARD_COUNT, prefix: ESI_AUTH_SHARD_PREFIX })
+		.forKey(`corporation:${canonicalizeEsiEntityId(corporationId, 'corporation')}`)

@@ -17,6 +17,11 @@ import {
 	sql,
 } from '@repo/db-utils'
 import { getStub, withRpcResult } from '@repo/do-utils'
+import {
+	getEsiInstanceForCharacter,
+	getEsiInstanceForCorporation,
+	getPublicEsiInstance,
+} from '@repo/esi'
 import { logger, TimeCache, toErrorLogDetails } from '@repo/hono-helpers'
 import {
 	getStructureTabForTypeId,
@@ -73,6 +78,7 @@ import {
 } from './services/structure-inventory'
 
 import type { SQL } from 'drizzle-orm'
+import type { EsiTypeResolver } from '@repo/esi'
 import type {
 	CharacterCorporationRolesData,
 	CorporationAccessVerification,
@@ -133,7 +139,7 @@ import type {
 	WalletTransactionWatermark,
 	WalletTransactionWindowFilters,
 } from '@repo/eve-corporation-data'
-import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { EveCharacterId, EveStructureId } from '@repo/eve-types'
 import type { SovereigntyReagentEntry, StructureSovereigntyTransportState } from '@repo/structures'
 import type {
@@ -145,7 +151,6 @@ import type {
 	UniverseSolarSystem,
 } from '@repo/universe'
 import type { Env } from './context'
-import type { RawEsiAsset } from './services/assets-paging-sync'
 import type { StructureInventoryRowInput } from './services/structure-inventory'
 
 function isSpecialStructureTab(tab: ReturnType<typeof getStructureTabForTypeId>): boolean {
@@ -390,7 +395,7 @@ function parseNumberOrNull(value: unknown): number | null {
 }
 
 async function resolveAllianceNames(
-	tokenStore: EveTokenStore,
+	esi: DurableObjectNamespace,
 	allianceIds: readonly string[]
 ): Promise<Map<string, string | null>> {
 	const uniqueAllianceIds = [...new Set(allianceIds.filter((value) => value.length > 0))]
@@ -401,12 +406,8 @@ async function resolveAllianceNames(
 	const resolved = await Promise.all(
 		uniqueAllianceIds.map(async (allianceId) => {
 			try {
-				const name = await withRpcResult(
-					tokenStore.fetchPublicEsi<{ name?: string }>(`/alliances/${allianceId}`, {
-						cacheMode: 'no-store',
-					}),
-					(response) => response.data.name?.trim() ?? null
-				)
+				const name =
+					(await getPublicEsiInstance(esi).fetchAlliancePublicInfo(allianceId)).name?.trim() ?? null
 				return [allianceId, name] as const
 			} catch (error) {
 				logger.warn('[EveCorporationData] Failed to resolve alliance name', {
@@ -723,7 +724,8 @@ function addHours(date: Date, hours: number): Date {
  * EveCorporationData Durable Object
  *
  * Each corporation gets its own Durable Object instance for data isolation.
- * Uses PostgreSQL for persistent storage and eve-token-store for ESI access.
+ * Uses PostgreSQL for persistent storage and the shared ESI service for ESI
+ * transport. Token-store remains responsible for OAuth and token lifecycle.
  *
  * Instance ID pattern: `{corporationId}`
  * Example: `98000001`
@@ -894,7 +896,18 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						error: error instanceof Error ? error.message : String(error),
 					})
 				}
-			}
+			},
+			async (characterId, options) =>
+				await getEsiInstanceForCharacter(this.env.ESI, characterId).fetchCharacterRoles(
+					characterId,
+					options
+				),
+			async (characterIds, options) =>
+				await getPublicEsiInstance(this.env.ESI).fetchCharacterAffiliation(
+					characterIds[0] ?? '0',
+					characterIds,
+					options
+				)
 		)
 	}
 
@@ -921,7 +934,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			await withRpcResult(
 				this.env.CORE.handleCharacterAffiliationChanges([characterId], {
 					source: `director-affiliation-mismatch:${expectedCorporationId}:${actualCorporationId ?? 'unknown'}`,
-					bypassThrottle: true,
 				}),
 				() => undefined
 			)
@@ -1084,30 +1096,24 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		try {
-			return await withRpcResult(
-				retryWithBackoff<EsiResponse<EsiCharacterRoles>>(
-					() =>
-						this.getEveTokenStoreStub().fetchEsi(`/characters/${characterId}/roles`, characterId, {
-							cacheMode: 'no-store',
-						}),
-					{
-						onRetry: (attempt, error, delayMs) => {
-							logger.warn('[EveCorporationData] Retrying role refresh after ESI throttling', {
-								corporationId,
-								characterId,
-								requiredRole,
-								attempt,
-								delayMs,
-								error: error.message,
-							})
-						},
-					}
-				),
-				async (response) => {
-					await this.storeCharacterRolesSnapshot(corporationId, characterId, response.data)
-					return hasRole(response.data)
+			const roles = await retryWithBackoff<EsiCharacterRoles>(
+				() =>
+					getEsiInstanceForCharacter(this.env.ESI, characterId).fetchCharacterRoles(characterId),
+				{
+					onRetry: (attempt, error, delayMs) => {
+						logger.warn('[EveCorporationData] Retrying role refresh after ESI throttling', {
+							corporationId,
+							characterId,
+							requiredRole,
+							attempt,
+							delayMs,
+							error: error.message,
+						})
+					},
 				}
 			)
+			await this.storeCharacterRolesSnapshot(corporationId, characterId, roles)
+			return hasRole(roles)
 		} catch (error) {
 			logger.warn('[EveCorporationData] Failed to refresh roles while checking corp role', {
 				corporationId,
@@ -1758,8 +1764,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 * Store public corporation info (workflow-friendly)
 	 * Takes pre-fetched data and stores it in the database
 	 */
-	async storePublicInfo(corporationId: string, publicInfo: any): Promise<void> {
-		await this.upsertPublicInfo(corporationId, publicInfo as CorporationPublicData)
+	async storePublicInfo(corporationId: string, publicInfo: CorporationPublicData): Promise<void> {
+		await this.upsertPublicInfo(corporationId, publicInfo)
 	}
 
 	/**
@@ -2876,7 +2882,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const director = await directorManager.selectDirector()
 		const characterId = director ? String(director.characterId) : null
 		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
-		const tokenStore = this.getEveTokenStoreStub()
+		const typeResolver = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
 		const systemIds = [
 			...new Set(structuresNeedingStaticHydration.map((structure) => structure.system_id)),
 		]
@@ -2892,7 +2898,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				? withRpcResult(universe.getRegionsBySystemIds(systemIds), cloneRpcRecord)
 				: Promise.resolve({} as Record<string, { regionId: string; regionName: string }>),
 			typeIds.length > 0
-				? withRpcResult(tokenStore.resolveIds(typeIds), (names) => ({ ...names }))
+				? typeResolver.resolveIds(typeIds)
 				: Promise.resolve({} as Record<string, string>),
 			characterId
 				? Promise.all(
@@ -3825,10 +3831,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			columns: { allianceId: true },
 		})
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const data = await esiFetch.fetchPublicInfo(tokenStore, corporationId)
+		const data = await esiFetch.fetchPublicInfo(getPublicEsiInstance(this.env.ESI), corporationId)
 
-		await this.upsertPublicInfo(corporationId, data as CorporationPublicData)
+		await this.upsertPublicInfo(corporationId, data)
 
 		const previousAllianceId = previousInfo?.allianceId ?? null
 		const nextAllianceId = data.allianceId ?? null
@@ -3842,11 +3847,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			if (characterIds.length > 0) {
 				try {
 					const result = await withRpcResult(
-						this.env.CORE.addPendingDiscordRefreshesForCharacters(characterIds),
+						this.env.CORE.queueUserRefreshesForCharacters(characterIds),
 						(result) => ({ ...result })
 					)
 					logger.info(
-						'[EveCorporationData] Queued Discord refresh after alliance affiliation change',
+						'[EveCorporationData] Queued user refresh after alliance affiliation change',
 						{
 							corporationId,
 							previousAllianceId,
@@ -3858,7 +3863,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					)
 				} catch (error) {
 					logger.error(
-						'[EveCorporationData] Failed to queue Discord refresh after alliance affiliation change',
+						'[EveCorporationData] Failed to queue user refresh after alliance affiliation change',
 						{
 							corporationId,
 							previousAllianceId,
@@ -3937,7 +3942,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	): Promise<void> {
 		const now = new Date()
 		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const existingRows = await this.getDb().query.structureSovereigntySystems.findMany({
 			where: eq(structureSovereigntySystems.corporationId, corporationId),
 			columns: {
@@ -3968,7 +3972,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				? await withRpcResult(universe.resolveRegionsByIds(regionIds), cloneRpcRecord)
 				: {}
 		const allianceNames = await resolveAllianceNames(
-			tokenStore,
+			this.env.ESI,
 			systems.flatMap((system) => (system.alliance_id ? [system.alliance_id] : []))
 		)
 		const values = systems.map((system) => {
@@ -4308,9 +4312,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			...new Set((options.pruneCandidateIds ?? []).map((id) => String(id))),
 		]
 		const liveStructureIds = [...new Set(hubs.map((hub) => hub.structure_id))]
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const controllerAllianceNames = await resolveAllianceNames(
-			tokenStore,
+			this.env.ESI,
 			hubs.flatMap((hub) => (hub.controller_alliance_id ? [hub.controller_alliance_id] : []))
 		)
 		const existingRows =
@@ -5470,10 +5473,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	 */
 	private async fetchAndStoreMembers(corporationId: string, _forceRefresh = false): Promise<void> {
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 
 		const memberIds: EsiCorporationMembers = await esiFetch.fetchMembers(
-			tokenStore,
+			getEsiInstanceForCorporation(this.env.ESI, corporationId),
 			corporationId,
 			characterId
 		)
@@ -5592,9 +5594,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.requireCorpRole(corporationId, characterId, ['Director'])
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const trackingData: EsiCorporationMemberTracking[] = await esiFetch.fetchMemberTracking(
-			tokenStore,
+			getEsiInstanceForCorporation(this.env.ESI, corporationId),
 			corporationId,
 			characterId
 		)
@@ -5669,8 +5670,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.requireCorpRole(corporationId, characterId, ['Accountant', 'Junior_Accountant'])
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const wallets = await esiFetch.fetchWallets(tokenStore, corporationId, characterId)
+		const wallets = await esiFetch.fetchWallets(
+			getEsiInstanceForCorporation(this.env.ESI, corporationId),
+			corporationId,
+			characterId
+		)
 
 		if (wallets.length > 0) {
 			const values = wallets.map((wallet) => ({
@@ -5712,12 +5716,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.requireCorpRole(corporationId, characterId, ['Accountant', 'Junior_Accountant'])
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const watermark = (await this.getWalletJournalWatermarks(corporationId)).find(
 			(entry) => entry.division === division
 		)?.watermark
 		const entries = await esiFetch.fetchWalletJournal(
-			tokenStore,
+			getEsiInstanceForCorporation(this.env.ESI, corporationId),
 			corporationId,
 			division,
 			characterId,
@@ -5762,28 +5765,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					...toErrorLogDetails(error),
 				})
 
-			// Clear cache for this division so next attempt fetches fresh data
-			const path = `/corporations/${corporationId}/wallets/${division}/journal`
-			try {
-				await tokenStore.clearEsiCache(path, characterId)
-				logger
-					.withTags({
-						corporationId,
-						division,
-						operation: 'fetch_wallet_journal',
-					})
-					.debug('Cleared ESI cache after error', { path })
-			} catch (clearError) {
-				logger
-					.withTags({
-						corporationId,
-						division,
-						operation: 'fetch_wallet_journal',
-					})
-					.error('Failed to clear cache', {
-						...toErrorLogDetails(clearError),
-					})
-			}
+			// Wallet journal reads are no-store, so retries cannot reuse stale data.
 
 			throw error
 		}
@@ -5819,12 +5801,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.requireCorpRole(corporationId, characterId, ['Accountant', 'Junior_Accountant'])
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const watermark = (await this.getWalletTransactionWatermarks(corporationId)).find(
 			(entry) => entry.division === division
 		)?.watermark
 		const fetchResult = await esiFetch.fetchWalletTransactions(
-			tokenStore,
+			getEsiInstanceForCorporation(this.env.ESI, corporationId),
 			corporationId,
 			division,
 			characterId,
@@ -5867,28 +5848,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					errorStack: error instanceof Error ? error.stack : undefined,
 				})
 
-			// Clear cache for this division so next attempt fetches fresh data
-			const path = `/corporations/${corporationId}/wallets/${division}/transactions`
-			try {
-				await tokenStore.clearEsiCache(path, characterId)
-				logger
-					.withTags({
-						corporationId,
-						division,
-						operation: 'fetch_wallet_transactions',
-					})
-					.debug('Cleared ESI cache after error', { path })
-			} catch (clearError) {
-				logger
-					.withTags({
-						corporationId,
-						division,
-						operation: 'fetch_wallet_transactions',
-					})
-					.error('Failed to clear cache', {
-						error: clearError instanceof Error ? clearError.message : String(clearError),
-					})
-			}
+			// Wallet transaction reads are no-store, so retries cannot reuse stale data.
 
 			throw error
 		}
@@ -5925,7 +5885,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		})
 
 		try {
-			const insertedCount = await this.fetchAndStoreAssetsByCharacter(corporationId, characterId)
+			const insertedCount = await this.fetchAndStoreAssetsByCharacter(corporationId)
 			logger.debug('[fetchAndStoreAssets] Completed asset fetch and store', {
 				corporationId,
 				totalInserted: insertedCount,
@@ -5938,43 +5898,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				error: error instanceof Error ? error.message : String(error),
 				errorStack: error instanceof Error ? error.stack : undefined,
 			})
-
-			// Clear cache for this endpoint so next attempt fetches fresh data
-			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-			const path = `/corporations/${corporationId}/assets`
-			try {
-				await tokenStore.clearEsiCache(path, characterId)
-				logger.debug('[fetchAndStoreAssets] Cleared ESI cache after error', { path })
-			} catch (clearError) {
-				logger.error('[fetchAndStoreAssets] Failed to clear cache', {
-					error: clearError instanceof Error ? clearError.message : String(clearError),
-				})
-			}
-
 			throw error
 		}
 	}
 
-	private async fetchAndStoreAssetsByCharacter(
-		corporationId: string,
-		characterId: string
-	): Promise<number> {
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const basePath = `/corporations/${corporationId}/assets`
+	private async fetchAndStoreAssetsByCharacter(corporationId: string): Promise<number> {
+		const esi = getEsiInstanceForCorporation(this.env.ESI, corporationId)
 		const syncStartedAt = new Date()
 		const result = await syncAssetsPaged({
-			fetchPage: (page) =>
-				withRpcResult(
-					tokenStore.fetchEsi<RawEsiAsset[]>(`${basePath}?page=${page}`, characterId, {
-						cacheMode: 'no-store',
-					}),
-					(response) =>
-						({
-							data: response.data.map((asset) => ({ ...asset })),
-							pages: response.pages,
-							page: response.page,
-						}) as EsiResponse<RawEsiAsset[]>
-				),
+			fetchPage: (page) => esi.fetchCorporationAssetsPage(corporationId, page),
 			storeAssets: (assets) => this.storeAssetsPage(corporationId, assets, syncStartedAt),
 			onProgress: ({ page, totalPages, totalAssets }) => {
 				if (page % 10 === 0 || page === totalPages) {
@@ -6126,7 +6058,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			}
 		}
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		try {
 			logger.info(
 				'[EveCorporationData] fetchAndStoreStructureInventoryByCharacter: Refreshing raw assets and rebuilding structure inventory',
@@ -6135,10 +6066,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					ownedStructureCount: ownedStructureIds.size,
 				}
 			)
-			const fetchedAssetCount = await this.fetchAndStoreAssetsByCharacter(
-				corporationId,
-				characterId
-			)
+			const fetchedAssetCount = await this.fetchAndStoreAssetsByCharacter(corporationId)
 			const inventoryCount = await this.storeStructureInventoryBatches(
 				corporationId,
 				ownedStructureIds,
@@ -6169,17 +6097,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				}
 			)
 
-			const path = `/corporations/${corporationId}/assets`
-			try {
-				await tokenStore.clearEsiCache(path, characterId)
-				logger.debug('[fetchAndStoreStructureInventory] Cleared ESI cache after error', {
-					path,
-				})
-			} catch (clearError) {
-				logger.error('[fetchAndStoreStructureInventory] Failed to clear cache', {
-					error: clearError instanceof Error ? clearError.message : String(clearError),
-				})
-			}
+			// Asset reads are no-store, so retries cannot reuse stale data.
 
 			throw error
 		}
@@ -6195,9 +6113,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.requireCorpRole(corporationId, characterId, ['Station_Manager'])
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const structures: EsiCorporationStructure[] = await esiFetch.fetchStructures(
-			tokenStore,
+			getEsiInstanceForCorporation(this.env.ESI, corporationId),
 			corporationId,
 			characterId
 		)
@@ -6216,9 +6133,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			'Trader',
 		])
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const orders: EsiCorporationOrder[] = await esiFetch.fetchOrders(
-			tokenStore,
+			getEsiInstanceForCorporation(this.env.ESI, corporationId),
 			corporationId,
 			characterId
 		)
@@ -6271,9 +6187,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.requireCorpRole(corporationId, characterId, ['Director'])
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const contracts: EsiCorporationContract[] = await esiFetch.fetchContracts(
-			tokenStore,
+			getEsiInstanceForCorporation(this.env.ESI, corporationId),
 			corporationId,
 			characterId
 		)
@@ -6369,9 +6284,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.requireCorpRole(corporationId, characterId, ['Factory_Manager'])
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const jobs: EsiCorporationIndustryJob[] = await esiFetch.fetchIndustryJobs(
-			tokenStore,
+			getEsiInstanceForCorporation(this.env.ESI, corporationId),
 			corporationId,
 			characterId
 		)
@@ -6434,9 +6348,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.requireCorpRole(corporationId, characterId, ['Director'])
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const killmails: EsiCorporationKillmail[] = await esiFetch.fetchKillmails(
-			tokenStore,
+			getEsiInstanceForCorporation(this.env.ESI, corporationId),
 			corporationId,
 			characterId
 		)
@@ -6998,14 +6911,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		characterIds: string[]
 	}> {
 		// Fetch current members from ESI
-		const { characterId } = await this.getConfiguredCharacter(corporationId)
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-
-		const currentMemberIds = await withRpcResult(
-			tokenStore.fetchEsi<number[]>(`/corporations/${corporationId}/members`, characterId, {
-				cacheMode: 'no-store',
-			}),
-			(response) => new Set(response.data.map(String))
+		const currentMemberIds = new Set(
+			await getEsiInstanceForCorporation(this.env.ESI, corporationId).fetchCorporationMembers(
+				corporationId
+			)
 		)
 
 		// Fetch all members from database

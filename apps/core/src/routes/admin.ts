@@ -8,9 +8,9 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
+import { buildOAuthApiMeResponseFromUserDetails } from '@repo/admin'
 import { and, desc, eq, gt, ilike, inArray, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { buildOAuthApiMeResponseFromUserDetails } from '@repo/admin'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
@@ -33,6 +33,7 @@ import {
 } from '../services/mumble.service'
 import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
+import thirdPartyAppsRoutes from './admin/third-party-apps'
 
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
@@ -42,9 +43,8 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
-import type { SRPRequestResponse, Srp } from '@repo/srp'
+import type { Srp, SRPRequestResponse } from '@repo/srp'
 import type { App } from '../context'
-import thirdPartyAppsRoutes from './admin/third-party-apps'
 
 const app = new Hono<App>()
 const DISCORD_SNOWFLAKE_REGEX = /^\d{17,20}$/
@@ -1050,36 +1050,49 @@ app.post('/users/:userId/discord/join-servers', requireAuth(), requireAdmin(), a
 	return c.json({ status: 'queued', workflowInstanceId: result.workflowInstanceId }, 202)
 })
 
-app.get('/users/:userId/discord/join-servers/:workflowInstanceId', requireAuth(), requireAdmin(), async (c) => {
-	const userId = c.req.param('userId')
-	const workflowInstanceId = c.req.param('workflowInstanceId')
-	try {
-		const workflow = await c.env.USER_DISCORD_REFRESH_WORKFLOW.get(workflowInstanceId)
-		const status = await workflow.status()
-		const output = status.output ?? null
-		if (!output || typeof output !== 'object' || !('userId' in output) || output.userId !== userId) {
-			if (normalizeWorkflowStatus(status.status) !== 'queued' && normalizeWorkflowStatus(status.status) !== 'running') {
-				return c.json({ error: 'Workflow not found' }, 404)
+app.get(
+	'/users/:userId/discord/join-servers/:workflowInstanceId',
+	requireAuth(),
+	requireAdmin(),
+	async (c) => {
+		const userId = c.req.param('userId')
+		const workflowInstanceId = c.req.param('workflowInstanceId')
+		try {
+			const workflow = await c.env.USER_DISCORD_REFRESH_WORKFLOW.get(workflowInstanceId)
+			const status = await workflow.status()
+			const output = status.output ?? null
+			if (
+				!output ||
+				typeof output !== 'object' ||
+				!('userId' in output) ||
+				output.userId !== userId
+			) {
+				if (
+					normalizeWorkflowStatus(status.status) !== 'queued' &&
+					normalizeWorkflowStatus(status.status) !== 'running'
+				) {
+					return c.json({ error: 'Workflow not found' }, 404)
+				}
 			}
+			const outputStatus =
+				output && typeof output === 'object' && 'status' in output
+					? String((output as { status?: string }).status ?? '')
+					: undefined
+			return c.json({
+				workflowInstanceId,
+				status: normalizeWorkflowStatus(status.status, outputStatus),
+				output,
+			})
+		} catch (error) {
+			logger.error('Error reading admin Discord access refresh status:', {
+				userId,
+				workflowInstanceId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return c.json({ error: 'Unable to read Discord access refresh status' }, 502)
 		}
-		const outputStatus =
-			output && typeof output === 'object' && 'status' in output
-				? String((output as { status?: string }).status ?? '')
-				: undefined
-		return c.json({
-			workflowInstanceId,
-			status: normalizeWorkflowStatus(status.status, outputStatus),
-			output,
-		})
-	} catch (error) {
-		logger.error('Error reading admin Discord access refresh status:', {
-			userId,
-			workflowInstanceId,
-			error: error instanceof Error ? error.message : String(error),
-		})
-		return c.json({ error: 'Unable to read Discord access refresh status' }, 502)
 	}
-})
+)
 
 /**
  * GET /admin/users/:userId/discord/inspect
@@ -1742,8 +1755,8 @@ app.post('/blacklist/character', requireAuth(), requireAdmin(), async (c) => {
 			metadata,
 		})
 
-	// Find all users with this character or name and auto-blacklist them
-	const usersWithChar = await db.query.userCharacters.findMany({
+		// Find all users with this character or name and auto-blacklist them
+		const usersWithChar = await db.query.userCharacters.findMany({
 			where: characterId
 				? eq(userCharacters.characterId, characterId)
 				: resolvedCharacterName
@@ -2266,6 +2279,8 @@ app.post(
 			const result = await coreStub.addPendingDiscordRefreshes(uniqueUserIds, {
 				source: refreshSource,
 				force,
+				allowRemoval: true,
+				hardStripAllRoles: corpAttachments.length === 0,
 			})
 
 			// Log the action for throttle tracking

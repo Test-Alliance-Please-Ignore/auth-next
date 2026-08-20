@@ -1,7 +1,7 @@
 import { withRpcResult } from '@repo/do-utils'
 
 import * as esiFetch from '../../services/esi-fetch'
-import { createTokenStore, getGlobalCorporationDataStub } from './services'
+import { getGlobalCorporationDataStub, getPublicEsi } from './services'
 
 import type { EsiSovereigntySystem } from '@repo/eve-corporation-data'
 import type { Env } from '../../context'
@@ -69,8 +69,7 @@ export async function refreshSharedSovereigntySystems(env: Env): Promise<void> {
 
 	if (leaseToken) {
 		try {
-			const tokenStore = createTokenStore(env)
-			const sovereigntySystems = await esiFetch.fetchSovereigntySystems(tokenStore)
+			const sovereigntySystems = await esiFetch.fetchSovereigntySystems(getPublicEsi(env))
 			await globalCorpData.storeSharedSovereigntySystems(sovereigntySystems)
 		} finally {
 			await globalCorpData.releaseSharedSovereigntySystemsRefreshLease(leaseToken)

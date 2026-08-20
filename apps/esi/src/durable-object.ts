@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { toEsiResult } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 import { killmailDetailSchema } from '@repo/universe'
 
@@ -79,6 +80,7 @@ import type {
 	CharacterContract,
 	CharacterContractItem,
 	CharacterFitting,
+	CharacterFleetInformation,
 	CharacterImplants,
 	CharacterKillmailBasic,
 	CharacterLocation,
@@ -87,6 +89,7 @@ import type {
 	CharacterMarketTransaction,
 	CharacterMiningLedger,
 	CharacterNotification,
+	CharacterOnlineStatus,
 	CharacterPlanet,
 	CharacterPublicInfo,
 	CharacterRoles,
@@ -143,6 +146,7 @@ import type {
 	EsiCharacterPlanet,
 	EsiCharacterPublicInfo,
 	EsiCharacterRoles,
+	EsiCharacterSearchResponse,
 	EsiCharacterShip,
 	EsiCharacterSkillQueue,
 	EsiCharacterSkills,
@@ -163,10 +167,13 @@ import type {
 	EsiCorporationMemberRole,
 	EsiCorporationMembers,
 	EsiCorporationMemberTracking,
+	EsiCorporationMiningExtraction,
 	EsiCorporationOrder,
 	EsiCorporationPublicInfo,
 	EsiCorporationRole,
 	EsiCorporationShareholder,
+	EsiCorporationSkyhookDetail,
+	EsiCorporationSkyhookListingResponse,
 	EsiCorporationStanding,
 	EsiCorporationStructure,
 	EsiCorporationTitle,
@@ -177,10 +184,24 @@ import type {
 	EsiMailContent,
 	EsiMailingList,
 	EsiMailLabelsResponse,
+	EsiMarketOrder,
 	EsiMarketPrice,
 	EsiRequestOptions,
+	EsiResponse,
+	EsiResult,
 	EsiSaveFittingRequest,
+	EsiSovereigntyHubDetail,
+	EsiSovereigntyHubListingResponse,
+	EsiSovereigntySystemsResponse,
 	EsiStructureInfo,
+	EsiUniverseConstellation,
+	EsiUniverseSolarSystem,
+	EsiUniverseStation,
+	EsiUniverseType,
+	EsiWatermarkPageResult,
+	FleetInformation,
+	FleetMemberInvitation,
+	FleetMembers,
 	InsurancePlatinumValues,
 	MailContent,
 	MailingList,
@@ -189,7 +210,7 @@ import type {
 	SaveFittingResponse,
 	StructureInfo,
 } from '@repo/esi'
-import type { KillmailDetail } from '@repo/universe'
+import type { EsiGetStructureMarketDataResponseObject, KillmailDetail } from '@repo/universe'
 import type { Env } from './context'
 import type { EsiDb } from './storage/state'
 
@@ -227,10 +248,6 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		void state.blockConcurrencyWhile(async () => {
 			await runEsiMigrations(this.storage)
 		})
-	}
-
-	setDefaultCacheMode(mode: 'default' | 'no-store'): void {
-		this.esiFetcher.setDefaultCacheMode(mode)
 	}
 
 	@UsePublicAuth
@@ -291,6 +308,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterPublicInfo>(
 			`/characters/${characterId}`,
 			{
+				...options,
 				cacheMode: options?.cacheMode ?? 'default',
 				maxLocalCacheTtl: REVALIDATE_15_MIN,
 			}
@@ -315,9 +333,13 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
-	async fetchCharacterNotifications(characterId: string): Promise<CharacterNotification[]> {
+	async fetchCharacterNotifications(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterNotification[]> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterNotification[]>(
-			`/characters/${characterId}/notifications`
+			`/characters/${characterId}/notifications`,
+			options
 		)
 		return transformCharacterNotifications(result.data)
 	}
@@ -331,9 +353,13 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
-	async fetchCharacterAssets(characterId: string): Promise<CharacterAsset[]> {
+	async fetchCharacterAssets(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterAsset[]> {
 		const result = await this.esiFetcher.fetchEsiPaginated<EsiCharacterAsset>(
-			`/characters/${characterId}/assets`
+			`/characters/${characterId}/assets`,
+			options
 		)
 		return transformCharacterAsset(result.data)
 	}
@@ -341,7 +367,8 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	@UseCharacterAuth
 	async fetchCharacterAssetNames(
 		characterId: string,
-		itemIds: string[]
+		itemIds: string[],
+		options?: EsiRequestOptions
 	): Promise<CharacterAssetName[]> {
 		if (itemIds.length === 0) return []
 
@@ -354,6 +381,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			const result = await this.esiFetcher.fetchEsi<EsiCharacterAssetName[], number[]>(
 				`/characters/${characterId}/assets/names/`,
 				{
+					...options,
 					method: 'POST',
 					body: batch.map((id) => parseInt(id, 10)),
 					persistGlobalCache: false,
@@ -393,17 +421,25 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
-	async fetchCharacterContacts(characterId: string): Promise<CharacterContact[]> {
+	async fetchCharacterContacts(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterContact[]> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterContact[]>(
-			`/characters/${characterId}/contacts`
+			`/characters/${characterId}/contacts`,
+			options
 		)
 		return transformCharacterContact(result.data)
 	}
 
 	@UseCharacterAuth
-	async fetchCharacterContracts(characterId: string): Promise<CharacterContract[]> {
+	async fetchCharacterContracts(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterContract[]> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterContract[]>(
-			`/characters/${characterId}/contracts`
+			`/characters/${characterId}/contracts`,
+			options
 		)
 		return transformCharacterContract(result.data)
 	}
@@ -468,42 +504,75 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
-	async fetchCharacterMail(characterId: string): Promise<CharacterMail[]> {
+	async fetchCharacterOnlineStatus(characterId: string): Promise<CharacterOnlineStatus> {
+		const result = await this.esiFetcher.fetchEsi<CharacterOnlineStatus>(
+			`/characters/${characterId}/online`,
+			{ cacheMode: 'no-store' }
+		)
+		if (!result.data) {
+			throw new Error(`No character online status found for character ID: ${characterId}`)
+		}
+		return result.data
+	}
+
+	@UseCharacterAuth
+	async fetchCharacterMail(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterMail[]> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterMail[]>(
-			`/characters/${characterId}/mail`
+			`/characters/${characterId}/mail`,
+			options
 		)
 		return transformCharacterMail(result.data)
 	}
 
 	@UseCharacterAuth
-	async fetchCharacterMailPage(characterId: string, lastMailId?: string): Promise<CharacterMail[]> {
+	async fetchCharacterMailPage(
+		characterId: string,
+		lastMailId?: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterMail[]> {
 		const path = lastMailId
 			? `/characters/${characterId}/mail?last_mail_id=${lastMailId}`
 			: `/characters/${characterId}/mail`
-		const result = await this.esiFetcher.fetchEsi<EsiCharacterMail[]>(path)
+		const result = await this.esiFetcher.fetchEsi<EsiCharacterMail[]>(path, options)
 		return transformCharacterMail(result.data)
 	}
 
 	@UseCharacterAuth
-	async fetchMailContent(characterId: string, mailId: string): Promise<MailContent> {
+	async fetchMailContent(
+		characterId: string,
+		mailId: string,
+		options?: EsiRequestOptions
+	): Promise<MailContent> {
 		const result = await this.esiFetcher.fetchEsi<EsiMailContent>(
-			`/characters/${characterId}/mail/${mailId}`
+			`/characters/${characterId}/mail/${mailId}`,
+			options
 		)
 		return transformMailContent(result.data)
 	}
 
 	@UseCharacterAuth
-	async fetchMailingLists(characterId: string): Promise<MailingList[]> {
+	async fetchMailingLists(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<MailingList[]> {
 		const result = await this.esiFetcher.fetchEsi<EsiMailingList[]>(
-			`/characters/${characterId}/mail/lists`
+			`/characters/${characterId}/mail/lists`,
+			options
 		)
 		return transformMailingLists(result.data)
 	}
 
 	@UseCharacterAuth
-	async fetchMailLabels(characterId: string): Promise<MailLabelsResponse> {
+	async fetchMailLabels(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<MailLabelsResponse> {
 		const result = await this.esiFetcher.fetchEsi<EsiMailLabelsResponse>(
-			`/characters/${characterId}/mail/labels`
+			`/characters/${characterId}/mail/labels`,
+			options
 		)
 		return transformMailLabels(result.data)
 	}
@@ -525,10 +594,13 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
-	async fetchCharacterRoles(characterId: string): Promise<CharacterRoles> {
+	async fetchCharacterRoles(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterRoles> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterRoles>(
 			`/characters/${characterId}/roles`,
-			{ cacheMode: 'no-store' }
+			{ ...options, cacheMode: 'no-store' }
 		)
 		if (!result.data) {
 			throw new Error(`No character roles found for character ID: ${characterId}`)
@@ -549,17 +621,25 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
-	async fetchCharacterSkillQueue(characterId: string): Promise<CharacterSkillQueue[]> {
+	async fetchCharacterSkillQueue(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterSkillQueue[]> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterSkillQueue[]>(
-			`/characters/${characterId}/skillqueue`
+			`/characters/${characterId}/skillqueue`,
+			options
 		)
 		return transformCharacterSkillQueue(result.data)
 	}
 
 	@UseCharacterAuth
-	async fetchCharacterSkills(characterId: string): Promise<CharacterSkills> {
+	async fetchCharacterSkills(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterSkills> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterSkills>(
-			`/characters/${characterId}/skills`
+			`/characters/${characterId}/skills`,
+			options
 		)
 		if (!result.data) {
 			throw new Error(`No character skills found for character ID: ${characterId}`)
@@ -636,6 +716,31 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	}
 
 	@UseCharacterAuth
+	async fetchCharacterWalletJournalUntilWatermark(
+		characterId: string,
+		watermark: { maxId: string | null; maxDate: string | null }
+	): Promise<EsiWatermarkPageResult<CharacterWalletJournalEntry>> {
+		const result =
+			await this.esiFetcher.fetchEsiPagesUntilWatermark<EsiCharacterWalletJournalEntry>(
+				`/characters/${characterId}/wallet/journal`,
+				watermark,
+				{ cacheMode: 'no-store' }
+			)
+		return {
+			...result,
+			data: transformCharacterWalletJournal(result.data),
+		}
+	}
+
+	@UseCharacterAuth
+	async fetchCharacterWalletBalance(characterId: string): Promise<number> {
+		const result = await this.esiFetcher.fetchEsi<number>(`/characters/${characterId}/wallet`, {
+			cacheMode: 'no-store',
+		})
+		return result.data
+	}
+
+	@UseCharacterAuth
 	async fetchCharacterBasicKillmails(characterId: string): Promise<CharacterKillmailBasic[]> {
 		const result = await this.esiFetcher.fetchEsiPaginated<EsiCharacterKillmail>(
 			`/characters/${characterId}/killmails/recent`
@@ -692,18 +797,86 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		return killmails.filter((km): km is Exclude<(typeof killmails)[number], null> => km !== null)
 	}
 
+	/** Live fleet state is never cached: leadership and member state can change between polls. */
 	@UseCharacterAuth
-	async fetchCharacterClones(characterId: string): Promise<CharacterClones> {
+	async fetchCharacterFleetInformation(
+		characterId: string
+	): Promise<EsiResponse<CharacterFleetInformation>> {
+		return await this.esiFetcher.fetchEsi<CharacterFleetInformation>(
+			`/characters/${characterId}/fleet/`,
+			{ cacheMode: 'no-store' }
+		)
+	}
+
+	@UseCharacterAuth
+	async fetchFleetInformation(
+		characterId: string,
+		fleetId: string
+	): Promise<EsiResponse<FleetInformation>> {
+		return await this.esiFetcher.fetchEsi<FleetInformation>(`/fleets/${fleetId}/`, {
+			cacheMode: 'no-store',
+		})
+	}
+
+	@UseCharacterAuth
+	async fetchFleetMembers(
+		characterId: string,
+		fleetId: string
+	): Promise<EsiResponse<FleetMembers>> {
+		return await this.esiFetcher.fetchEsi<FleetMembers>(`/fleets/${fleetId}/members/`, {
+			cacheMode: 'no-store',
+		})
+	}
+
+	/** Fleet mutations are uncached but share authenticated rate-limit policy. */
+	@UseCharacterAuth
+	async inviteFleetMember(
+		characterId: string,
+		fleetId: string,
+		memberCharacterId: string
+	): Promise<void> {
+		await this.esiFetcher.fetchEsi<null, FleetMemberInvitation>(`/fleets/${fleetId}/members/`, {
+			method: 'POST',
+			body: {
+				character_id: Number.parseInt(memberCharacterId, 10),
+				role: 'squad_member',
+			},
+			cacheMode: 'no-store',
+		})
+	}
+
+	@UseCharacterAuth
+	async kickFleetMember(
+		characterId: string,
+		fleetId: string,
+		memberCharacterId: string
+	): Promise<void> {
+		await this.esiFetcher.fetchEsi<null>(`/fleets/${fleetId}/members/${memberCharacterId}/`, {
+			method: 'DELETE',
+			cacheMode: 'no-store',
+		})
+	}
+
+	@UseCharacterAuth
+	async fetchCharacterClones(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterClones> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterClones>(
-			`/characters/${characterId}/clones`
+			`/characters/${characterId}/clones`,
+			options
 		)
 		return transformCharacterClones(result.data)
 	}
 
 	@UseCharacterAuth
-	async fetchCharacterImplants(characterId: string): Promise<CharacterImplants> {
+	async fetchCharacterImplants(
+		characterId: string,
+		options?: EsiRequestOptions
+	): Promise<CharacterImplants> {
 		const result = await this.esiFetcher.fetchEsi<EsiCharacterImplants>(
-			`/characters/${characterId}/implants`
+			`/characters/${characterId}/implants`,
+			options
 		)
 		return transformCharacterImplants(result.data)
 	}
@@ -779,6 +952,24 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		return transformCorporationWalletJournal(result.data)
 	}
 
+	@UseCorporationAuth
+	async fetchCorporationWalletJournalUntilWatermark(
+		corporationId: string,
+		division: number,
+		watermark: { maxId: string | null; maxDate: string | null }
+	): Promise<EsiWatermarkPageResult<CorporationWalletJournalEntry>> {
+		const result =
+			await this.esiFetcher.fetchEsiPagesUntilWatermark<EsiCorporationWalletJournalEntry>(
+				`/corporations/${corporationId}/wallets/${division}/journal`,
+				watermark,
+				{ cacheMode: 'no-store' }
+			)
+		return {
+			...result,
+			data: transformCorporationWalletJournal(result.data),
+		}
+	}
+
 	/**
 	 * Retrieves wallet transactions for a specific division.
 	 * @param corporationId - The EVE corporation identifier.
@@ -797,6 +988,21 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		return transformCorporationWalletTransactions(result.data)
 	}
 
+	@UseCorporationAuth
+	async fetchCorporationWalletTransactionsPage(
+		corporationId: string,
+		division: number,
+		fromId?: string
+	): Promise<CorporationWalletTransaction[]> {
+		const path = fromId
+			? `/corporations/${corporationId}/wallets/${division}/transactions?from_id=${encodeURIComponent(fromId)}`
+			: `/corporations/${corporationId}/wallets/${division}/transactions`
+		const result = await this.esiFetcher.fetchEsi<EsiCorporationWalletTransaction[]>(path, {
+			cacheMode: 'no-store',
+		})
+		return transformCorporationWalletTransactions(result.data)
+	}
+
 	/**
 	 * Retrieves the full corporation asset manifest.
 	 * @param corporationId - The EVE corporation identifier.
@@ -811,6 +1017,23 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		return transformCorporationAssets(result.data)
 	}
 
+	/** One page at a time keeps corporation asset ingestion payloads bounded. */
+	@UseCorporationAuth
+	async fetchCorporationAssetsPage(
+		corporationId: string,
+		page: number
+	): Promise<EsiResult<EsiCorporationAsset[]>> {
+		if (!Number.isSafeInteger(page) || page < 1) {
+			throw new TypeError('ESI corporation asset page must be a positive integer')
+		}
+		return toEsiResult(
+			await this.esiFetcher.fetchEsi<EsiCorporationAsset[]>(
+				`/corporations/${corporationId}/assets?page=${page}`,
+				{ cacheMode: 'no-store' }
+			)
+		)
+	}
+
 	/**
 	 * Retrieves corporation-owned structures including fuel and status data.
 	 * @param corporationId - The EVE corporation identifier.
@@ -822,6 +1045,78 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			`/corporations/${corporationId}/structures`
 		)
 		return transformCorporationStructures(result.data)
+	}
+
+	/** One sovereignty-hub listing page; domain code retains its own traversal policy. */
+	@UseCorporationAuth
+	async fetchCorporationSovereigntyHubsPage(
+		corporationId: string,
+		page: number
+	): Promise<EsiResult<EsiSovereigntyHubListingResponse>> {
+		if (!Number.isSafeInteger(page) || page < 1) {
+			throw new TypeError('ESI sovereignty hub page must be a positive integer')
+		}
+		return toEsiResult(
+			await this.esiFetcher.fetchEsi<EsiSovereigntyHubListingResponse>(
+				`/corporations/${corporationId}/structures/sovereignty-hubs?page=${page}`,
+				{ cacheMode: 'no-store' }
+			)
+		)
+	}
+
+	@UseCorporationAuth
+	async fetchCorporationSovereigntyHubDetail(
+		corporationId: string,
+		structureId: string
+	): Promise<EsiSovereigntyHubDetail> {
+		return (
+			await this.esiFetcher.fetchEsi<EsiSovereigntyHubDetail>(
+				`/corporations/${corporationId}/structures/sovereignty-hubs/${structureId}`,
+				{ cacheMode: 'no-store' }
+			)
+		).data
+	}
+
+	/** One skyhook listing page; domain code retains its own traversal policy. */
+	@UseCorporationAuth
+	async fetchCorporationSkyhooksPage(
+		corporationId: string,
+		page: number
+	): Promise<EsiResult<EsiCorporationSkyhookListingResponse>> {
+		if (!Number.isSafeInteger(page) || page < 1) {
+			throw new TypeError('ESI skyhook page must be a positive integer')
+		}
+		const query = page === 1 ? '' : `?page=${page}`
+		return toEsiResult(
+			await this.esiFetcher.fetchEsi<EsiCorporationSkyhookListingResponse>(
+				`/corporations/${corporationId}/structures/skyhooks${query}`,
+				{ cacheMode: 'no-store' }
+			)
+		)
+	}
+
+	@UseCorporationAuth
+	async fetchCorporationSkyhookDetail(
+		corporationId: string,
+		structureId: string
+	): Promise<EsiCorporationSkyhookDetail> {
+		return (
+			await this.esiFetcher.fetchEsi<EsiCorporationSkyhookDetail>(
+				`/corporations/${corporationId}/structures/skyhooks/${structureId}`,
+				{ cacheMode: 'no-store' }
+			)
+		).data
+	}
+
+	@UseCorporationAuth
+	async fetchCorporationMiningExtractions(
+		corporationId: string
+	): Promise<EsiCorporationMiningExtraction[]> {
+		const result = await this.esiFetcher.fetchEsiPaginated<EsiCorporationMiningExtraction>(
+			`/corporation/${corporationId}/mining/extractions`,
+			{ cacheMode: 'no-store' }
+		)
+		return result.data
 	}
 
 	/**
@@ -885,6 +1180,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 * @param corporationId - The EVE corporation identifier.
 	 * @returns Public corporation information.
 	 */
+	@UsePublicAuth
 	async fetchCorporationPublicInfo(corporationId: string): Promise<CorporationPublicInfo> {
 		const result = await this.esiFetcher.fetchEsi<EsiCorporationPublicInfo>(
 			`/corporations/${corporationId}`,
@@ -902,6 +1198,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 * @param allianceId - The EVE alliance identifier.
 	 * @returns Public alliance information.
 	 */
+	@UsePublicAuth
 	async fetchAlliancePublicInfo(allianceId: string): Promise<AlliancePublicInfo> {
 		const result = await this.esiFetcher.fetchEsi<EsiAlliancePublicInfo>(
 			`/alliances/${allianceId}`,
@@ -1043,6 +1340,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	 * Public ESI endpoint — no authentication required.
 	 * Cached for 24 hours since insurance prices rarely change.
 	 */
+	@UsePublicAuth
 	async fetchInsurancePrices(): Promise<InsurancePlatinumValues[]> {
 		const result = await this.esiFetcher.fetchEsi<EsiInsurancePrices[]>('/insurance/prices', {
 			cacheScopeOverride: { scope: 'global', scopeId: 'global' },
@@ -1059,6 +1357,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		})
 	}
 
+	@UsePublicAuth
 	async fetchMarketPrices(): Promise<MarketPrice[]> {
 		const result = await this.esiFetcher.fetchEsi<EsiMarketPrice[]>('/markets/prices', {
 			cacheScopeOverride: { scope: 'global', scopeId: 'global' },
@@ -1070,6 +1369,15 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			averagePrice: entry.average_price ?? null,
 			adjustedPrice: entry.adjusted_price ?? null,
 		}))
+	}
+
+	@UsePublicAuth
+	async fetchSovereigntySystems(): Promise<EsiSovereigntySystemsResponse> {
+		return (
+			await this.esiFetcher.fetchEsi<EsiSovereigntySystemsResponse>('/sovereignty/systems', {
+				cacheMode: 'no-store',
+			})
+		).data
 	}
 
 	@UseCharacterAuth
@@ -1106,5 +1414,106 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			// Re-throw other errors
 			throw error
 		}
+	}
+
+	@UseCharacterAuth
+	async fetchStructureMarketOrdersPage(
+		characterId: string,
+		structureId: string,
+		page: number
+	): Promise<EsiResult<EsiGetStructureMarketDataResponseObject[]>> {
+		if (!Number.isSafeInteger(page) || page < 1) {
+			throw new Error('Structure market order page must be a positive integer')
+		}
+
+		return toEsiResult(
+			await this.esiFetcher.fetchEsi<EsiGetStructureMarketDataResponseObject[]>(
+				`/markets/structures/${structureId}?page=${page}`,
+				{ cacheMode: 'no-store' }
+			)
+		)
+	}
+
+	@UseCharacterAuth
+	async fetchCharacterSearch(
+		characterId: string,
+		input: {
+			categories: Array<'solar_system' | 'station' | 'structure'>
+			search: string
+			strict?: boolean
+		}
+	): Promise<EsiCharacterSearchResponse> {
+		const categories = [...new Set(input.categories)].sort()
+		if (categories.length === 0 || !input.search.trim()) {
+			return {}
+		}
+
+		const params = new URLSearchParams({
+			categories: categories.join(','),
+			search: input.search.trim(),
+			strict: String(input.strict ?? false),
+		})
+		return (
+			await this.esiFetcher.fetchEsi<EsiCharacterSearchResponse>(
+				`/characters/${characterId}/search?${params.toString()}`
+			)
+		).data
+	}
+
+	@UsePublicAuth
+	async fetchUniverseSolarSystemIds(): Promise<number[]> {
+		return (await this.esiFetcher.fetchEsi<number[]>('/universe/systems')).data
+	}
+
+	@UsePublicAuth
+	async fetchUniverseSolarSystem(systemId: string): Promise<EsiUniverseSolarSystem> {
+		return (await this.esiFetcher.fetchEsi<EsiUniverseSolarSystem>(`/universe/systems/${systemId}`))
+			.data
+	}
+
+	@UsePublicAuth
+	async fetchUniverseConstellation(constellationId: string): Promise<EsiUniverseConstellation> {
+		return (
+			await this.esiFetcher.fetchEsi<EsiUniverseConstellation>(
+				`/universe/constellations/${constellationId}`
+			)
+		).data
+	}
+
+	@UsePublicAuth
+	async fetchUniverseStation(stationId: string): Promise<EsiUniverseStation> {
+		return (await this.esiFetcher.fetchEsi<EsiUniverseStation>(`/universe/stations/${stationId}`))
+			.data
+	}
+
+	@UsePublicAuth
+	async fetchUniverseType(typeId: string): Promise<EsiUniverseType> {
+		return (await this.esiFetcher.fetchEsi<EsiUniverseType>(`/universe/types/${typeId}`)).data
+	}
+
+	@UseCharacterAuth
+	async openContractWindow(characterId: string, contractId: string): Promise<EsiResult<null>> {
+		return toEsiResult(
+			await this.esiFetcher.fetchEsi<null>(
+				`/ui/openwindow/contract?contract_id=${encodeURIComponent(contractId)}`,
+				{ method: 'POST', cacheMode: 'no-store' }
+			)
+		)
+	}
+
+	@UsePublicAuth
+	async fetchRegionMarketOrdersPage(
+		regionId: string,
+		page: number
+	): Promise<EsiResult<EsiMarketOrder[]>> {
+		if (!Number.isSafeInteger(page) || page < 1) {
+			throw new Error('Region market order page must be a positive integer')
+		}
+
+		return toEsiResult(
+			await this.esiFetcher.fetchEsi<EsiMarketOrder[]>(`/markets/${regionId}/orders?page=${page}`, {
+				cacheMode: 'no-store',
+			})
+		)
 	}
 }

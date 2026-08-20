@@ -133,6 +133,7 @@ describe('corporations members access matrix', () => {
 		EVE_CHARACTER_DATA: { name: 'EVE_CHARACTER_DATA' },
 		EVE_CORPORATION_DATA: { name: 'EVE_CORPORATION_DATA' },
 		EVE_TOKEN_STORE: { name: 'EVE_TOKEN_STORE' },
+		ESI_TYPE_RESOLVER: { name: 'ESI_TYPE_RESOLVER' },
 		DISCORD: { name: 'DISCORD' },
 		GROUPS: { name: 'GROUPS' },
 		HR: { name: 'HR' },
@@ -212,7 +213,7 @@ describe('corporations members access matrix', () => {
 			if (binding === env.EVE_CORPORATION_DATA) {
 				return corpStub as any
 			}
-			if (binding === env.EVE_TOKEN_STORE) {
+			if (binding === env.EVE_TOKEN_STORE || binding === env.ESI_TYPE_RESOLVER) {
 				return tokenStoreStub as any
 			}
 			throw new Error('Unexpected binding')
@@ -444,7 +445,7 @@ describe('corporations members access matrix', () => {
 			if (binding === env.HR) return hrStub as any
 			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
-			if (binding === env.EVE_TOKEN_STORE) {
+			if (binding === env.EVE_TOKEN_STORE || binding === env.ESI_TYPE_RESOLVER) {
 				return makeTokenStoreStub({
 					resolveIds: vi
 						.fn()
@@ -576,7 +577,7 @@ describe('corporations members access matrix', () => {
 			if (binding === env.HR) return hrStub as any
 			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
-			if (binding === env.EVE_TOKEN_STORE) {
+			if (binding === env.EVE_TOKEN_STORE || binding === env.ESI_TYPE_RESOLVER) {
 				return makeTokenStoreStub({
 					resolveIds: vi
 						.fn()
@@ -662,7 +663,7 @@ describe('corporations members access matrix', () => {
 			if (binding === env.DISCORD) return discordStub as any
 			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
-			if (binding === env.EVE_TOKEN_STORE) {
+			if (binding === env.EVE_TOKEN_STORE || binding === env.ESI_TYPE_RESOLVER) {
 				return makeTokenStoreStub({
 					resolveIds: vi
 						.fn()
@@ -736,7 +737,7 @@ describe('corporations members access matrix', () => {
 			if (binding === env.HR) return hrStub as any
 			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
-			if (binding === env.EVE_TOKEN_STORE) {
+			if (binding === env.EVE_TOKEN_STORE || binding === env.ESI_TYPE_RESOLVER) {
 				return makeTokenStoreStub({
 					resolveIds: vi
 						.fn()
@@ -829,7 +830,7 @@ describe('corporations members access matrix', () => {
 			if (binding === env.HR) return hrStub as any
 			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
-			if (binding === env.EVE_TOKEN_STORE) {
+			if (binding === env.EVE_TOKEN_STORE || binding === env.ESI_TYPE_RESOLVER) {
 				return makeTokenStoreStub({
 					resolveIds: vi
 						.fn()
@@ -908,7 +909,7 @@ describe('corporations members access matrix', () => {
 			if (binding === env.HR) return hrStub as any
 			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
-			if (binding === env.EVE_TOKEN_STORE) {
+			if (binding === env.EVE_TOKEN_STORE || binding === env.ESI_TYPE_RESOLVER) {
 				return makeTokenStoreStub({
 					validateToken: vi.fn().mockResolvedValue({
 						characterId: '2001',

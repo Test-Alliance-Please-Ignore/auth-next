@@ -30,6 +30,7 @@
 		"@repo/corporation-tax": "workspace:*",
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
+		"@repo/esi": "workspace:*",
 		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
 		"@repo/eve-types": "workspace:*",

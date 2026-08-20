@@ -24,7 +24,6 @@
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/esi": "workspace:*",
-		"@repo/eve-token-store": "workspace:*",
 		"@repo/eve-types": "workspace:*",
 		"@repo/features": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",

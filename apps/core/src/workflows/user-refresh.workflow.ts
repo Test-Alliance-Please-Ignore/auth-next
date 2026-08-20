@@ -183,6 +183,8 @@ function summarizeCoreAttachmentDelta(
  */
 export interface UserRefreshWorkflowParams {
 	userId: string
+	/** Originating event for structured downstream refresh diagnostics. */
+	source?: string
 	refreshMode?: 'scheduled' | 'event' | 'manual'
 	suppressDiscordRefresh?: boolean
 	forceTokenValidation?: boolean
@@ -363,6 +365,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 	): Promise<UserRefreshWorkflowResult> {
 		const {
 			userId,
+			source = 'user-refresh',
 			refreshMode = 'scheduled',
 			suppressDiscordRefresh = false,
 			forceTokenValidation = false,
@@ -370,10 +373,11 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 		} = event.payload
 		const workflowInstanceId = event.instanceId
 
-		const logContext = { userId, workflowInstanceId, refreshMode, forceTokenValidation }
+		const logContext = { userId, workflowInstanceId, source, refreshMode, forceTokenValidation }
 		const steps: Record<string, WorkflowStepStatus> = {}
 		let characterOutcomes: CharacterRefreshOutcome[] = []
 		let characterCount = 0
+		let coreAttachmentChanged = false
 
 		await step.do('init-workflow', async () => {
 			return {
@@ -587,7 +591,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 						...attachUserRolesResult.allianceRoleAttachments,
 					]
 				)
-				const coreAttachmentChanged =
+				coreAttachmentChanged =
 					coreAttachmentDelta.addedCoreAttachments > 0 ||
 					coreAttachmentDelta.removedCoreAttachments > 0
 				logger.log('[Workflow] Core role attachment reconciliation delta', {
@@ -627,22 +631,6 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 							error: error instanceof Error ? error.message : String(error),
 						}
 					)
-				}
-
-				if (coreAttachmentChanged && !suppressDiscordRefresh) {
-					await step.do('queue-role-attachment-discord-refresh', async () => {
-						const coreStub = getStub<Core>(this.env.CORE, 'default')
-						return coreStub.addPendingDiscordRefreshes([userId], {
-							source: 'user-role-attachments-changed',
-							force: true,
-							userRefreshWorkflowInstanceIdByUserId: {
-								[userId]: workflowInstanceId,
-							},
-						})
-					})
-					steps['queue-role-attachment-discord-refresh'] = 'ok'
-				} else if (coreAttachmentChanged) {
-					steps['queue-role-attachment-discord-refresh'] = 'skipped'
 				}
 
 				if (coreAttachmentChanged || groupCleanupResult.shouldStripGroups) {
@@ -701,6 +689,29 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			const hasStepFailures = Object.values(steps).includes('failed')
 			const hasCharacterFailures =
 				summary.transientFailedAfterRetries > 0 || summary.permanentFailed > 0
+			const shouldQueueDiscordRefresh =
+				!suppressDiscordRefresh && (summary.affiliationChanged > 0 || coreAttachmentChanged)
+
+			if (shouldQueueDiscordRefresh) {
+				await step.do(
+					'queue-ready-discord-refresh',
+					{
+						retries: { limit: 3, delay: '5 seconds', backoff: 'exponential' },
+						timeout: '30 seconds',
+					},
+					async () => {
+						const coreStub = getStub<Core>(this.env.CORE, 'default')
+						return coreStub.addPendingDiscordRefreshes([userId], {
+							source,
+							force: true,
+							allowRemoval: true,
+						})
+					}
+				)
+				steps['queue-ready-discord-refresh'] = 'ok'
+			} else {
+				steps['queue-ready-discord-refresh'] = 'skipped'
+			}
 
 			return {
 				status: hasStepFailures || hasCharacterFailures ? 'completed_with_errors' : 'completed',

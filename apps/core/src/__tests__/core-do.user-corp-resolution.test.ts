@@ -1,17 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import {
-	getEsiInstance,
-	getEsiInstanceForCharacter,
-	getEsiInstanceForCorporation,
-} from '@repo/esi'
+import { getPublicEsiInstance } from '@repo/esi'
 
 import { CoreDO } from '../durable-object'
 
 vi.mock('@repo/esi', () => ({
-	getEsiInstance: vi.fn(),
-	getEsiInstanceForCorporation: vi.fn(),
-	getEsiInstanceForCharacter: vi.fn(),
+	getPublicEsiInstance: vi.fn(),
 }))
 
 function createDbMock() {
@@ -66,9 +60,11 @@ describe('CoreDO user corporation and alliance resolution', () => {
 		;(core as any).env = { ESI: {} }
 		;(core as any).getDb = vi.fn().mockReturnValue(dbMock)
 
-		vi.mocked(getEsiInstanceForCharacter).mockReturnValue(characterStub as any)
-		vi.mocked(getEsiInstanceForCorporation).mockReturnValue(corpStub as any)
-		vi.mocked(getEsiInstance).mockReturnValue(allianceStub as any)
+		vi.mocked(getPublicEsiInstance).mockReturnValue({
+			...characterStub,
+			...corpStub,
+			...allianceStub,
+		} as any)
 	})
 
 	it('merges affiliation ids over stale public character info', async () => {
@@ -231,9 +227,7 @@ describe('CoreDO user corporation and alliance resolution', () => {
 
 		const result = await core.getUserCorporationsBatch(['user-1', 'user-2'])
 
-		expect(result.get('user-1')).toEqual([
-			{ corporationId: '2002', corporationName: 'Beta Corp' },
-		])
+		expect(result.get('user-1')).toEqual([{ corporationId: '2002', corporationName: 'Beta Corp' }])
 		expect(result.get('user-2')).toEqual([{ corporationId: '3003', corporationName: 'Gamma Corp' }])
 		expect(characterStub.fetchCharacterAffiliation).toHaveBeenCalledTimes(3)
 	})

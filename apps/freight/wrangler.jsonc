@@ -21,18 +21,12 @@
 				"class_name": "Freight"
 			},
 			{
-				"name": "EVE_TOKEN_STORE",
-				"class_name": "EveTokenStore",
-				"script_name": "eve-token-store"
+				"name": "ESI",
+				"class_name": "Esi",
+				"script_name": "esi"
 			}
 		]
 	},
-	"kv_namespaces": [
-		{
-			"binding": "ESI_RATE_LIMITS",
-			"id": "40ba8cdb7cb14b8e9bbed35f34faf27b"
-		}
-	],
 	"migrations": [
 		{
 			"tag": "v1",

@@ -30,6 +30,7 @@ import { shouldTreatSensitiveDataAsLive } from './characters-utils'
 
 import type { Context } from 'hono'
 import type { Core as CoreRpc } from '@repo/core'
+import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { App } from '../context'
 
@@ -320,13 +321,6 @@ app.get('/:characterId/private', requireAuth(), async (c) => {
 	const access = accessOrResponse
 	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
 	using eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
-	const eveTokenStore = c.get('eveTokenStore')
-
-	if (!eveTokenStore) {
-		logger.error('eveTokenStore not found in context!')
-		return c.json({ error: 'Token store not initialized' }, 500)
-	}
-
 	try {
 		const targetOwner = access.targetOwner
 		if (targetOwner && shouldBlockCharacterPrivateAccess(access)) {
@@ -447,7 +441,9 @@ app.get('/:characterId/private', requireAuth(), async (c) => {
 				}
 
 				if (locationIds.length > 0) {
-					const resolver = new EntityResolverService(eveTokenStore)
+					const resolver = new EntityResolverService(
+						getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+					)
 					const locationNames = await resolver.resolveEntityNames(locationIds)
 
 					response.private = {
@@ -607,13 +603,9 @@ app.get('/:characterId', requireAuth(), async (c) => {
 		}
 
 		const access = accessOrResponse
-		const eveTokenStore = c.get('eveTokenStore')
-		if (!eveTokenStore) {
-			logger.error('eveTokenStore not found in context!')
-			return c.json({ error: 'Token store not initialized' }, 500)
-		}
-
-		const resolver = new EntityResolverService(eveTokenStore)
+		const resolver = new EntityResolverService(
+			getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+		)
 		const idsToResolve: string[] = [String(info.corporationId)]
 		if (info.allianceId) {
 			idsToResolve.push(String(info.allianceId))
@@ -863,6 +855,7 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 						db!,
 						c.env.EVE_CHARACTER_DATA,
 						c.env.EVE_TOKEN_STORE,
+						c.env.ESI,
 						c.env.EVE_CORPORATION_DATA
 					),
 				{

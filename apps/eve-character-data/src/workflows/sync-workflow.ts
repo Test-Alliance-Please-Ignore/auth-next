@@ -413,7 +413,6 @@ export class EveCharacterSyncWorkflow extends WorkflowEntrypoint<Env, EveCharact
 								trigger === 'api'
 									? 'eve-character-sync-manual-reconcile'
 									: 'eve-character-sync-affiliation-change',
-							bypassThrottle: true,
 						}
 					)
 					logger.info('[EveCharacterSyncWorkflow] Core affiliation cascade result', {

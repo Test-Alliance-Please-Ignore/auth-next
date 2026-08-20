@@ -11,27 +11,15 @@
  * - Reusability across different contexts
  */
 
-import { disposeRpcResult, withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { parseDateOrNull } from '@repo/worker-utils'
 import { parseEsiErrorMetadata } from '@repo/workflow-utils'
 
-import {
-	transformAssets,
-	transformContracts,
-	transformIndustryJobs,
-	transformKillmails,
-	transformMembers,
-	transformMemberTracking,
-	transformOrders,
-	transformPublicInfo,
-	transformStructures,
-	transformWalletJournal,
-	transformWallets,
-	transformWalletTransactions,
-} from '../lib/esi-transforms'
+import { transformAssets } from '../lib/esi-transforms'
 
+import type { Esi } from '@repo/esi'
 import type {
+	CorporationPublicData,
 	EsiCorporationAsset,
 	EsiCorporationContract,
 	EsiCorporationIndustryJob,
@@ -50,24 +38,11 @@ import type {
 	WalletJournalWatermark,
 	WalletTransactionWatermark,
 } from '@repo/eve-corporation-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
 
 const SOVEREIGNTY_HUB_TYPE_ID = '32458'
 const SOVEREIGNTY_HUB_DETAIL_BATCH_SIZE = 4
 const SKYHOOK_DETAIL_BATCH_SIZE = 4
 const MAX_WALLET_TRANSACTION_PAGES = 100
-
-function detachRpcValue<T>(value: T): T {
-	if (Array.isArray(value)) {
-		return value.map((entry) => detachRpcValue(entry)) as T
-	}
-	if (value !== null && typeof value === 'object') {
-		return Object.fromEntries(
-			Object.entries(value).map(([key, entry]) => [key, detachRpcValue(entry)])
-		) as T
-	}
-	return value
-}
 
 function compareNumericStrings(left: string, right: string): number {
 	try {
@@ -102,18 +77,29 @@ export interface StructureEnrichmentFailure {
  * Fetch public corporation information from ESI
  */
 export async function fetchPublicInfo(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string
-): Promise<any> {
-	return withRpcResult(
-		tokenStore.fetchPublicEsi<any>(`/corporations/${corporationId}`, {
-			cacheMode: 'no-store',
-		}),
-		(response) => ({
-			corporationId: String(corporationId),
-			...transformPublicInfo(response.data),
-		})
-	)
+): Promise<CorporationPublicData> {
+	const data = await esi.fetchCorporationPublicInfo(corporationId)
+
+	return {
+		corporationId,
+		name: data.name,
+		ticker: data.ticker,
+		ceoId: data.ceo_id,
+		creatorId: data.creator_id,
+		dateFounded: parseDateOrNull(data.date_founded),
+		description: data.description ?? null,
+		homeStationId: data.home_station_id ?? null,
+		memberCount: Number(data.member_count ?? 0),
+		shares: data.shares ?? null,
+		taxRate: data.tax_rate,
+		url: data.url ?? null,
+		allianceId: data.alliance_id ?? null,
+		factionId: data.faction_id ?? null,
+		warEligible: data.war_eligible ?? false,
+		updatedAt: new Date(),
+	}
 }
 
 // ========================================================================
@@ -124,40 +110,22 @@ export async function fetchPublicInfo(
  * Fetch corporation members from ESI
  */
 export async function fetchMembers(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
-	characterId: string
+	_characterId: string
 ): Promise<EsiCorporationMembers> {
-	return withRpcResult(
-		tokenStore.fetchEsi<number[]>(`/corporations/${corporationId}/members`, characterId, {
-			cacheMode: 'no-store',
-		}),
-		(response) => transformMembers(response.data)
-	)
+	return await esi.fetchCorporationMembers(corporationId)
 }
 
 /**
  * Fetch member tracking data from ESI
  */
 export async function fetchMemberTracking(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
-	characterId: string
+	_characterId: string
 ): Promise<EsiCorporationMemberTracking[]> {
-	return withRpcResult(
-		tokenStore.fetchEsi<
-			Array<{
-				character_id: number
-				base_id?: number
-				location_id?: number
-				logoff_date?: string
-				logon_date?: string
-				ship_type_id?: number
-				start_date?: string
-			}>
-		>(`/corporations/${corporationId}/membertracking`, characterId, { cacheMode: 'no-store' }),
-		(response) => transformMemberTracking(response.data)
-	)
+	return await esi.fetchCorporationMemberTracking(corporationId)
 }
 
 // ========================================================================
@@ -168,129 +136,54 @@ export async function fetchMemberTracking(
  * Fetch corporation wallets from ESI
  */
 export async function fetchWallets(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
-	characterId: string
+	_characterId: string
 ): Promise<EsiCorporationWallet[]> {
-	return withRpcResult(
-		tokenStore.fetchEsi<Array<{ division: number; balance: number }>>(
-			`/corporations/${corporationId}/wallets`,
-			characterId,
-			{ cacheMode: 'no-store' }
-		),
-		(response) => transformWallets(response.data)
-	)
+	return await esi.fetchCorporationWallets(corporationId)
 }
 
 /**
  * Fetch wallet journal for a division from ESI
  */
 export async function fetchWalletJournal(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
 	division: number,
-	characterId: string,
+	_characterId: string,
 	watermark?: WalletJournalWatermark
 ): Promise<EsiCorporationWalletJournalEntry[]> {
-	type RawJournalEntry = {
-		id: number
-		amount?: number
-		balance?: number
-		context_id?: number
-		context_id_type?: string
-		date: string
-		description: string
-		first_party_id?: number
-		reason?: string
-		ref_type: string
-		second_party_id?: number
-		tax?: number
-		tax_receiver_id?: number
+	if (!watermark?.maxJournalId) {
+		return await esi.fetchCorporationWalletJournal(corporationId, division)
 	}
-
-	const basePath = `/corporations/${corporationId}/wallets/${division}/journal`
-	const response = watermark?.maxJournalId
-		? tokenStore.fetchEsiPagesUntilWatermark<RawJournalEntry>(
-				basePath,
-				characterId,
-				{
-					maxId: watermark.maxJournalId,
-					maxDate: watermark.maxJournalDate,
-				},
-				{ cacheMode: 'no-store' }
-			)
-		: tokenStore.fetchEsiAllPages<RawJournalEntry>(basePath, characterId, {
-				cacheMode: 'no-store',
-			})
-
-	return withRpcResult(response, (result) => transformWalletJournal(result.data))
+	const result = await esi.fetchCorporationWalletJournalUntilWatermark(corporationId, division, {
+		maxId: watermark.maxJournalId,
+		maxDate: watermark.maxJournalDate?.toISOString() ?? null,
+	})
+	return result.data
 }
 
 /**
  * Fetch wallet transactions for a division from ESI
  */
 export async function fetchWalletTransactions(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
 	division: number,
-	characterId: string,
+	_characterId: string,
 	watermark?: WalletTransactionWatermark
 ): Promise<WalletTransactionsFetchResult> {
-	const response = await tokenStore.fetchEsi<
-		Array<{
-			transaction_id: number
-			client_id: number
-			date: string
-			is_buy: boolean
-			is_personal: boolean
-			journal_ref_id: number
-			location_id: number
-			quantity: number
-			type_id: number
-			unit_price: number
-		}>
-	>(`/corporations/${corporationId}/wallets/${division}/transactions`, characterId, {
-		cacheMode: 'no-store',
-	})
-
-	try {
-		return await fetchWalletTransactionsPages(
-			tokenStore,
-			corporationId,
-			division,
-			characterId,
-			response,
-			watermark
-		)
-	} finally {
-		disposeRpcResult(response)
-	}
+	return await fetchWalletTransactionsPages(esi, corporationId, division, watermark)
 }
 
 async function fetchWalletTransactionsPages(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
 	division: number,
-	characterId: string,
-	response: {
-		data: Array<{
-			transaction_id: number
-			client_id: number
-			date: string
-			is_buy: boolean
-			is_personal: boolean
-			journal_ref_id: number
-			location_id: number
-			quantity: number
-			type_id: number
-			unit_price: number
-		}>
-	},
 	watermark?: WalletTransactionWatermark
 ): Promise<WalletTransactionsFetchResult> {
-	const basePath = `/corporations/${corporationId}/wallets/${division}/transactions`
 	const transactions = new Map<string, EsiCorporationWalletTransaction>()
-	let pageData = transformWalletTransactions(response.data)
+	let pageData = await esi.fetchCorporationWalletTransactionsPage(corporationId, division)
 	let pagesFetched = 1
 	let fromId: string | undefined
 	let watermarkSeen = false
@@ -356,16 +249,7 @@ async function fetchWalletTransactionsPages(
 			}
 			fromId = nextFromId
 
-			const nextResponse = await tokenStore.fetchEsi<typeof response.data>(
-				`${basePath}?from_id=${encodeURIComponent(fromId)}`,
-				characterId,
-				{ cacheMode: 'no-store' }
-			)
-			try {
-				pageData = transformWalletTransactions(nextResponse.data)
-			} finally {
-				disposeRpcResult(nextResponse)
-			}
+			pageData = await esi.fetchCorporationWalletTransactionsPage(corporationId, division, fromId)
 			pagesFetched += 1
 			addPage(pageData)
 
@@ -412,158 +296,64 @@ async function fetchWalletTransactionsPages(
  * Fetch corporation assets from ESI (paginated)
  */
 export async function fetchAssets(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
-	characterId: string
+	_characterId: string
 ): Promise<EsiCorporationAsset[]> {
-	type RawAsset = {
-		item_id: number
-		is_singleton: boolean
-		location_flag: string
-		location_id: number
-		location_type: string
-		quantity: number
-		type_id: number
-		is_blueprint_copy?: boolean
-	}
-
-	const result = await tokenStore.fetchEsiAllPages<RawAsset>(
-		`/corporations/${corporationId}/assets`,
-		characterId,
-		{ cacheMode: 'no-store' }
-	)
-
-	try {
-		return transformAssets(result.data)
-	} finally {
-		disposeRpcResult(result)
-	}
+	return transformAssets(await esi.fetchCorporationAssets(corporationId))
 }
 
 /**
  * Fetch corporation structures from ESI
  */
 export async function fetchStructures(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
-	characterId: string
+	_characterId: string
 ): Promise<EsiCorporationStructure[]> {
-	const response = await tokenStore.fetchEsi<
-		Array<{
-			structure_id: number
-			type_id: number
-			system_id: number
-			profile_id: number
-			fuel_expires?: string
-			next_reinforce_apply?: string
-			next_reinforce_hour?: number
-			reinforce_hour?: number
-			state: string
-			state_timer_end?: string
-			state_timer_start?: string
-			unanchors_at?: string
-			services?: Array<{ name: string; state: string }>
-		}>
-	>(`/corporations/${corporationId}/structures`, characterId)
-
-	try {
-		return transformStructures(response.data, corporationId)
-	} finally {
-		disposeRpcResult(response)
-	}
+	return (await esi.fetchCorporationStructures(corporationId)).map((structure) => ({
+		...structure,
+		corporation_id: corporationId,
+	}))
 }
 
-export async function fetchSovereigntySystems(
-	tokenStore: EveTokenStore
-): Promise<EsiSovereigntySystem[]> {
-	type RawSovereigntySystemsResponse = {
-		solar_systems: Array<
-			| {
-					solar_system_id: number
-					claim: {
-						alliance: {
-							alliance_id: number
-							corporation_id: number
-							claimed_since: string
-							is_capital_system: boolean
-							sovereignty_hub: {
-								id: number
-								vulnerability_window?: {
-									start: string
-									end: string
-								}
-							}
-							development: {
-								activity_defense_multiplier: number
-								military_level: number
-								industrial_level: number
-								strategic_level: number
-							}
-						}
-					}
-			  }
-			| {
-					solar_system_id: number
-					claim: {
-						faction: {
-							faction_id: number
-						}
-					}
-			  }
-			| {
-					solar_system_id: number
-					claim: {
-						unclaimed: boolean
-					}
-			  }
-		>
-	}
-
-	const response = await tokenStore.fetchPublicEsi<RawSovereigntySystemsResponse>(
-		'/sovereignty/systems',
-		{ cacheMode: 'no-store' }
-	)
-
-	try {
-		return response.data.solar_systems.map((system) => {
-			const detachedSystem = detachRpcValue(system)
-			if ('alliance' in detachedSystem.claim) {
-				const claim = detachedSystem.claim.alliance
-				return {
-					system_id: String(detachedSystem.solar_system_id),
-					claim_type: 'alliance' as const,
-					alliance_id: String(claim.alliance_id),
-					corporation_id: String(claim.corporation_id),
-					claimed_since: claim.claimed_since,
-					is_capital_system: claim.is_capital_system,
-					sovereignty_hub_structure_id: String(claim.sovereignty_hub.id),
-					vulnerability_window: claim.sovereignty_hub.vulnerability_window ?? null,
-					activity_defense_multiplier: String(claim.development.activity_defense_multiplier),
-					military_level: claim.development.military_level,
-					industrial_level: claim.development.industrial_level,
-					strategic_level: claim.development.strategic_level,
-					raw: detachedSystem as Record<string, unknown>,
-				}
-			}
-
-			if ('faction' in detachedSystem.claim) {
-				return {
-					system_id: String(detachedSystem.solar_system_id),
-					claim_type: 'faction' as const,
-					faction_id: String(detachedSystem.claim.faction.faction_id),
-					raw: detachedSystem as Record<string, unknown>,
-				}
-			}
-
+export async function fetchSovereigntySystems(esi: Esi): Promise<EsiSovereigntySystem[]> {
+	const response = await esi.fetchSovereigntySystems()
+	return response.solar_systems.map((system) => {
+		if ('alliance' in system.claim) {
+			const claim = system.claim.alliance
 			return {
-				system_id: String(detachedSystem.solar_system_id),
-				claim_type: 'unclaimed' as const,
-				raw: detachedSystem as Record<string, unknown>,
+				system_id: String(system.solar_system_id),
+				claim_type: 'alliance' as const,
+				alliance_id: String(claim.alliance_id),
+				corporation_id: String(claim.corporation_id),
+				claimed_since: claim.claimed_since,
+				is_capital_system: claim.is_capital_system,
+				sovereignty_hub_structure_id: String(claim.sovereignty_hub.id),
+				vulnerability_window: claim.sovereignty_hub.vulnerability_window ?? null,
+				activity_defense_multiplier: String(claim.development.activity_defense_multiplier),
+				military_level: claim.development.military_level,
+				industrial_level: claim.development.industrial_level,
+				strategic_level: claim.development.strategic_level,
+				raw: system as Record<string, unknown>,
 			}
-		})
-	} finally {
-		disposeRpcResult(response)
-	}
+		}
+
+		if ('faction' in system.claim) {
+			return {
+				system_id: String(system.solar_system_id),
+				claim_type: 'faction' as const,
+				faction_id: String(system.claim.faction.faction_id),
+				raw: system as Record<string, unknown>,
+			}
+		}
+
+		return {
+			system_id: String(system.solar_system_id),
+			claim_type: 'unclaimed' as const,
+			raw: system as Record<string, unknown>,
+		}
+	})
 }
 
 function isRateLimitEsiError(error: unknown): boolean {
@@ -573,9 +363,8 @@ function isRateLimitEsiError(error: unknown): boolean {
 }
 
 export async function fetchSovereigntyHubs(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
-	characterId: string,
 	options: {
 		prioritizedEntries: ReadonlyArray<{
 			index: number
@@ -591,76 +380,6 @@ export async function fetchSovereigntyHubs(
 	rateLimitFailureCount: number
 	nonRateLimitFailureCount: number
 }> {
-	type RawSovereigntyHubDetail = {
-		id: number
-		solar_system_id: number
-		fuel_access_list_id?: number | null
-		reagent_bay: {
-			last_updated: string
-			reagents: Array<{
-				type_id: number
-				amount: number
-				burning_per_hour: number
-				last_cycle: string
-			}>
-		}
-		resources: {
-			power: {
-				allocated: number
-				available: number
-			}
-			workforce: {
-				allocated: number
-				available: number
-			}
-		}
-		upgrades: Array<{
-			type_id: number
-			power_state: string
-		}>
-		vulnerability_window?: {
-			start: string
-			end: string
-		} | null
-		workforce_transport: {
-			configuration:
-				| {
-						import: {
-							sources: Array<{
-								solar_system_id: number
-							}>
-						}
-				  }
-				| {
-						export: {
-							amount: number
-							solar_system_id?: number
-						}
-				  }
-				| {
-						transit: boolean | null
-				  }
-			state:
-				| {
-						import: {
-							sources: Array<{
-								amount: number
-								solar_system_id: number
-							}>
-						}
-				  }
-				| {
-						export: {
-							amount: number
-							solar_system_id?: number
-						}
-				  }
-				| {
-						transit: boolean | null
-				  }
-		}
-	}
-
 	const prioritizedHubs = options.prioritizedEntries
 	if (prioritizedHubs.length === 0) {
 		return {
@@ -683,50 +402,44 @@ export async function fetchSovereigntyHubs(
 		let rateLimitEncountered = false
 		const settled = await Promise.allSettled(
 			batch.map(async ({ entry }) => {
-				const detailResult = await tokenStore.fetchEsi<RawSovereigntyHubDetail>(
-					`/corporations/${corporationId}/structures/sovereignty-hubs/${entry.id}`,
-					characterId,
-					{ cacheMode: 'no-store' }
+				const detail = await esi.fetchCorporationSovereigntyHubDetail(
+					corporationId,
+					String(entry.id)
 				)
-				try {
-					const detail = detachRpcValue(detailResult.data)
 
-					return {
-						structure_id: String(detail.id),
-						corporation_id: corporationId,
-						system_id: String(detail.solar_system_id),
-						name: null,
-						type_id: SOVEREIGNTY_HUB_TYPE_ID,
-						fuel_access_list_id:
-							detail.fuel_access_list_id !== undefined && detail.fuel_access_list_id !== null
-								? String(detail.fuel_access_list_id)
-								: null,
-						reagent_bay: {
-							last_updated: detail.reagent_bay.last_updated,
-							reagents: detail.reagent_bay.reagents.map((reagent) => ({
-								type_id: String(reagent.type_id),
-								amount: reagent.amount,
-								burning_per_hour: reagent.burning_per_hour,
-								last_cycle: reagent.last_cycle,
-							})),
-						},
-						resources: detail.resources,
-						upgrades: detail.upgrades.map((upgrade) => ({
-							type_id: String(upgrade.type_id),
-							power_state: upgrade.power_state,
+				return {
+					structure_id: String(detail.id),
+					corporation_id: corporationId,
+					system_id: String(detail.solar_system_id),
+					name: null,
+					type_id: SOVEREIGNTY_HUB_TYPE_ID,
+					fuel_access_list_id:
+						detail.fuel_access_list_id !== undefined && detail.fuel_access_list_id !== null
+							? String(detail.fuel_access_list_id)
+							: null,
+					reagent_bay: {
+						last_updated: detail.reagent_bay.last_updated,
+						reagents: detail.reagent_bay.reagents.map((reagent) => ({
+							type_id: String(reagent.type_id),
+							amount: reagent.amount,
+							burning_per_hour: reagent.burning_per_hour,
+							last_cycle: reagent.last_cycle,
 						})),
-						vulnerability_window: detail.vulnerability_window ?? null,
-						workforce_transport: {
-							configuration: detail.workforce_transport.configuration,
-							state: detail.workforce_transport.state,
-						},
-						raw: {
-							detail,
-						},
-					} as EsiSovereigntyHub
-				} finally {
-					disposeRpcResult(detailResult)
-				}
+					},
+					resources: detail.resources,
+					upgrades: detail.upgrades.map((upgrade) => ({
+						type_id: String(upgrade.type_id),
+						power_state: upgrade.power_state,
+					})),
+					vulnerability_window: detail.vulnerability_window ?? null,
+					workforce_transport: {
+						configuration: detail.workforce_transport.configuration,
+						state: detail.workforce_transport.state,
+					},
+					raw: {
+						detail,
+					},
+				} as EsiSovereigntyHub
 			})
 		)
 
@@ -781,9 +494,8 @@ export async function fetchSovereigntyHubs(
 }
 
 export async function fetchCorporationSkyhooks(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
-	characterId: string,
 	options: {
 		prioritizedEntries: ReadonlyArray<{
 			index: number
@@ -799,27 +511,6 @@ export async function fetchCorporationSkyhooks(
 	rateLimitFailureCount: number
 	nonRateLimitFailureCount: number
 }> {
-	type RawCorporationSkyhookDetail = {
-		id: number
-		planet_id: number
-		state: string
-		is_active: boolean
-		effective_workforce?: number | null
-		reagents?: Array<{
-			type_id: number
-			secured_stock: number
-			unsecured_stock: number
-			last_cycle: string
-		}>
-		reinforcement_timer?: {
-			end: string
-		} | null
-		theft_vulnerability?: {
-			start: string
-			end: string
-		} | null
-	}
-
 	const prioritizedListing = options.prioritizedEntries
 
 	if (prioritizedListing.length === 0) {
@@ -843,40 +534,30 @@ export async function fetchCorporationSkyhooks(
 		let rateLimitEncountered = false
 		const settled = await Promise.allSettled(
 			batch.map(async ({ entry }) => {
-				const detailResult = await tokenStore.fetchEsi<RawCorporationSkyhookDetail>(
-					`/corporations/${corporationId}/structures/skyhooks/${entry.id}`,
-					characterId,
-					{ cacheMode: 'no-store' }
-				)
+				const detail = await esi.fetchCorporationSkyhookDetail(corporationId, String(entry.id))
+				const theftVulnerability = detail.theft_vulnerability ?? null
 
-				try {
-					const detail = detachRpcValue(detailResult.data)
-					const theftVulnerability = detail.theft_vulnerability ?? null
-
-					return {
-						structure_id: String(detail.id),
-						planet_id: String(detail.planet_id),
-						corporation_id: String(corporationId),
-						state: detail.state,
-						is_active: detail.is_active,
-						effective_workforce: detail.effective_workforce ?? null,
-						reagents:
-							detail.reagents?.map((reagent) => ({
-								type_id: String(reagent.type_id),
-								secured_stock: reagent.secured_stock,
-								unsecured_stock: reagent.unsecured_stock,
-								last_cycle: reagent.last_cycle,
-							})) ?? [],
-						reinforcement_timer: detail.reinforcement_timer ?? null,
-						theft_vulnerability: theftVulnerability,
-						raw: {
-							listing: entry,
-							detail,
-						},
-					} as EsiCorporationSkyhook
-				} finally {
-					disposeRpcResult(detailResult)
-				}
+				return {
+					structure_id: String(detail.id),
+					planet_id: String(detail.planet_id),
+					corporation_id: String(corporationId),
+					state: detail.state,
+					is_active: detail.is_active,
+					effective_workforce: detail.effective_workforce ?? null,
+					reagents:
+						detail.reagents?.map((reagent) => ({
+							type_id: String(reagent.type_id),
+							secured_stock: reagent.secured_stock,
+							unsecured_stock: reagent.unsecured_stock,
+							last_cycle: reagent.last_cycle,
+						})) ?? [],
+					reinforcement_timer: detail.reinforcement_timer ?? null,
+					theft_vulnerability: theftVulnerability,
+					raw: {
+						listing: entry,
+						detail,
+					},
+				} as EsiCorporationSkyhook
 			})
 		)
 
@@ -934,39 +615,21 @@ export async function fetchCorporationSkyhooks(
  * Fetch corporation mining extraction timers from ESI for mining citadels.
  */
 export async function fetchCorporationMiningExtractions(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
-	characterId: string
+	_characterId: string
 ): Promise<EsiCorporationMiningExtraction[]> {
-	type RawCorporationMiningExtraction = {
-		structure_id: number
-		moon_id: number
-		extraction_start_time: string
-		chunk_arrival_time: string
-		natural_decay_time: string
-	}
-
-	const result = await tokenStore.fetchEsiAllPages<RawCorporationMiningExtraction>(
-		`/corporation/${corporationId}/mining/extractions`,
-		characterId,
-		{ cacheMode: 'no-store' }
-	)
-
-	try {
-		return result.data.map((extraction) => {
-			const detachedExtraction = detachRpcValue(extraction)
-			return {
-				structure_id: String(detachedExtraction.structure_id),
-				moon_id: String(detachedExtraction.moon_id),
-				extraction_start_time: detachedExtraction.extraction_start_time,
-				chunk_arrival_time: detachedExtraction.chunk_arrival_time,
-				natural_decay_time: detachedExtraction.natural_decay_time,
-				raw: detachedExtraction as Record<string, unknown>,
-			}
-		})
-	} finally {
-		disposeRpcResult(result)
-	}
+	const result = await esi.fetchCorporationMiningExtractions(corporationId)
+	return result.map((extraction) => {
+		return {
+			structure_id: String(extraction.structure_id),
+			moon_id: String(extraction.moon_id),
+			extraction_start_time: extraction.extraction_start_time,
+			chunk_arrival_time: extraction.chunk_arrival_time,
+			natural_decay_time: extraction.natural_decay_time,
+			raw: extraction as unknown as Record<string, unknown>,
+		}
+	})
 }
 
 // ========================================================================
@@ -977,119 +640,33 @@ export async function fetchCorporationMiningExtractions(
  * Fetch corporation market orders from ESI
  */
 export async function fetchOrders(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
-	characterId: string
+	_characterId: string
 ): Promise<EsiCorporationOrder[]> {
-	const response = await tokenStore.fetchEsi<
-		Array<{
-			order_id: number
-			duration: number
-			escrow?: number
-			is_buy_order: boolean
-			issued: string
-			issued_by: number
-			location_id: number
-			min_volume?: number
-			price: number
-			range: string
-			region_id: number
-			type_id: number
-			volume_remain: number
-			volume_total: number
-			wallet_division: number
-		}>
-	>(`/corporations/${corporationId}/orders`, characterId, { cacheMode: 'no-store' })
-
-	try {
-		return transformOrders(response.data)
-	} finally {
-		disposeRpcResult(response)
-	}
+	return await esi.fetchCorporationOrders(corporationId)
 }
 
 /**
  * Fetch corporation contracts from ESI
  */
 export async function fetchContracts(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
-	characterId: string
+	_characterId: string
 ): Promise<EsiCorporationContract[]> {
-	const response = await tokenStore.fetchEsi<
-		Array<{
-			contract_id: number
-			acceptor_id?: number
-			assignee_id: number
-			availability: string
-			buyout?: number
-			collateral?: number
-			date_accepted?: string
-			date_completed?: string
-			date_expired: string
-			date_issued: string
-			days_to_complete?: number
-			end_location_id?: number
-			for_corporation: boolean
-			issuer_corporation_id: number
-			issuer_id: number
-			price?: number
-			reward?: number
-			start_location_id?: number
-			status: string
-			title?: string
-			type: string
-			volume?: number
-		}>
-	>(`/corporations/${corporationId}/contracts`, characterId, { cacheMode: 'no-store' })
-
-	try {
-		return transformContracts(response.data)
-	} finally {
-		disposeRpcResult(response)
-	}
+	return await esi.fetchCorporationContracts(corporationId)
 }
 
 /**
  * Fetch corporation industry jobs from ESI
  */
 export async function fetchIndustryJobs(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
-	characterId: string
+	_characterId: string
 ): Promise<EsiCorporationIndustryJob[]> {
-	const response = await tokenStore.fetchEsi<
-		Array<{
-			job_id: number
-			installer_id: number
-			facility_id: number
-			location_id: number
-			activity_id: number
-			blueprint_id: number
-			blueprint_type_id: number
-			blueprint_location_id: number
-			output_location_id: number
-			runs: number
-			cost?: number
-			licensed_runs?: number
-			probability?: number
-			product_type_id?: number
-			status: string
-			duration: number
-			start_date: string
-			end_date: string
-			pause_date?: string
-			completed_date?: string
-			completed_character_id?: number
-			successful_runs?: number
-		}>
-	>(`/corporations/${corporationId}/industry/jobs`, characterId, { cacheMode: 'no-store' })
-
-	try {
-		return transformIndustryJobs(response.data)
-	} finally {
-		disposeRpcResult(response)
-	}
+	return await esi.fetchCorporationIndustryJobs(corporationId)
 }
 
 // ========================================================================
@@ -1100,20 +677,9 @@ export async function fetchIndustryJobs(
  * Fetch corporation killmails from ESI
  */
 export async function fetchKillmails(
-	tokenStore: EveTokenStore,
+	esi: Esi,
 	corporationId: string,
-	characterId: string
+	_characterId: string
 ): Promise<EsiCorporationKillmail[]> {
-	const response = await tokenStore.fetchEsi<
-		Array<{
-			killmail_id: number
-			killmail_hash: string
-		}>
-	>(`/corporations/${corporationId}/killmails/recent`, characterId)
-
-	try {
-		return transformKillmails(response.data)
-	} finally {
-		disposeRpcResult(response)
-	}
+	return await esi.fetchCorporationKillmails(corporationId)
 }

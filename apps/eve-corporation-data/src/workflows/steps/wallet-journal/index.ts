@@ -2,7 +2,7 @@ import { withRpcResult } from '@repo/do-utils'
 import { logger, toErrorLogDetails } from '@repo/hono-helpers'
 
 import * as esiFetch from '../../../services/esi-fetch'
-import { createTokenStore, getCorporationDataStub } from '../../utils/services'
+import { getCorporationDataStub, getCorporationEsi } from '../../utils/services'
 import { getWalletDivisionJitterMs, sleep } from '../../utils/wallet-fanout'
 
 import type { Env } from '../../../context'
@@ -35,7 +35,7 @@ export async function syncWalletJournal(
 	corporationId: string,
 	directorCharacterId: string
 ): Promise<WalletJournalSyncResult> {
-	const tokenStore = createTokenStore(env)
+	const esi = getCorporationEsi(env, corporationId)
 	const corpData = getCorporationDataStub(env, corporationId)
 	const watermarks = await withRpcResult(
 		corpData.getWalletJournalWatermarks(corporationId),
@@ -57,7 +57,7 @@ export async function syncWalletJournal(
 			}
 
 			const entries = await esiFetch.fetchWalletJournal(
-				tokenStore,
+				esi,
 				corporationId,
 				division,
 				directorCharacterId,

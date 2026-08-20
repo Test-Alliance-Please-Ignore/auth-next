@@ -17,5 +17,12 @@ export * from './corporation-types'
 // Export all alliance types
 export * from './alliance-types'
 
+// Export fleet types without depending on @repo/fleets, which consumes this
+// package's shared ESI transport helpers.
+export * from './fleet-types'
+
+// Export sovereignty and structure-enrichment endpoint types.
+export * from './structure-types'
+
 // Export all universe types
 export * from './universe-types'

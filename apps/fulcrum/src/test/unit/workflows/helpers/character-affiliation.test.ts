@@ -6,25 +6,18 @@ const {
 	fetchAlliancePublicInfo,
 	fetchCharacterAffiliation,
 	fetchCorporationPublicInfo,
+	getPublicEsiInstance,
 	getIdClassification,
 } = vi.hoisted(() => ({
 	fetchAlliancePublicInfo: vi.fn(),
 	fetchCharacterAffiliation: vi.fn(),
 	fetchCorporationPublicInfo: vi.fn(),
+	getPublicEsiInstance: vi.fn(),
 	getIdClassification: vi.fn(),
 }))
 
-vi.mock('@repo/do-utils', () => ({
-	getStub: vi.fn((namespace: { kind?: string }) => {
-		if (namespace?.kind === 'esi') {
-			return {
-				fetchAlliancePublicInfo,
-				fetchCharacterAffiliation,
-				fetchCorporationPublicInfo,
-			}
-		}
-		return {}
-	}),
+vi.mock('@repo/esi', () => ({
+	getPublicEsiInstance,
 }))
 
 vi.mock('@repo/eve-types', () => ({
@@ -41,6 +34,11 @@ describe('CharacterAffiliationCoordinator', () => {
 		fetchCharacterAffiliation.mockReset()
 		fetchCorporationPublicInfo.mockReset()
 		getIdClassification.mockReset()
+		getPublicEsiInstance.mockReturnValue({
+			fetchAlliancePublicInfo,
+			fetchCharacterAffiliation,
+			fetchCorporationPublicInfo,
+		})
 		getIdClassification.mockReturnValue({ type: 'character' })
 	})
 
@@ -57,7 +55,7 @@ describe('CharacterAffiliationCoordinator', () => {
 			env,
 			'9000',
 			[{ characterId: '1001', characterName: 'Pilot', forceCharacter: true }],
-			'test-character-affiliation',
+			'test-character-affiliation'
 		)
 
 		expect(first).toEqual({
@@ -68,7 +66,7 @@ describe('CharacterAffiliationCoordinator', () => {
 			env,
 			'9000',
 			[{ characterId: '1001', characterName: 'Changed Name', forceCharacter: true }],
-			'test-character-affiliation',
+			'test-character-affiliation'
 		)
 
 		expect(second).toEqual({
@@ -90,7 +88,7 @@ describe('CharacterAffiliationCoordinator', () => {
 			env,
 			'9000',
 			[{ characterId: '1002', characterName: 'Pilot Two', forceCharacter: true }],
-			'test-character-affiliation',
+			'test-character-affiliation'
 		)
 
 		expect(result).toEqual({
@@ -109,7 +107,7 @@ describe('CharacterAffiliationCoordinator', () => {
 			env,
 			'9000',
 			[{ characterId: '2002', characterName: 'Corporate Entity' }],
-			'test-character-affiliation',
+			'test-character-affiliation'
 		)
 
 		expect(result).toEqual({

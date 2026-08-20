@@ -2,7 +2,7 @@
  * Fetch public character information from ESI
  */
 
-import { getEsiInstanceForCharacter } from '@repo/esi'
+import { getPublicEsiInstance } from '@repo/esi'
 
 import { storeOrReturn } from '../../utils/storage'
 
@@ -37,8 +37,7 @@ export async function fetchPublicInfo(
 	try {
 		// Get character-specific ESI stub — honour ESI cache-control headers for public info
 		// (name, race, birthday are immutable-ish; no-store is wasteful here)
-		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
-		stub.setDefaultCacheMode('default')
+		const stub = getPublicEsiInstance(esiBinding)
 
 		// Fetch public info from ESI
 		const data = await fetchFromEsi(stub, characterId)

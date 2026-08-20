@@ -1,10 +1,19 @@
 import { cloudflareTest } from '@cloudflare/vitest-pool-workers'
 import { defineConfig } from 'vitest/config'
 
-const stubWorker = (name: string) => ({
+const stubWorker = (name: string, durableObjectClasses: string[]) => ({
 	name,
 	modules: true,
-	script: `export default { fetch() { return new Response('stub') } }`,
+	script: [
+		"import { DurableObject } from 'cloudflare:workers'",
+		...durableObjectClasses.map(
+			(className) => `export class ${className} extends DurableObject {}`
+		),
+		"export default { fetch() { return new Response('stub') } }",
+	].join('\n'),
+	durableObjects: Object.fromEntries(
+		durableObjectClasses.map((className) => [className, className])
+	),
 })
 
 export default defineConfig({
@@ -16,11 +25,13 @@ export default defineConfig({
 					ENVIRONMENT: 'VITEST',
 				},
 				workers: [
-					stubWorker('markets'),
-					stubWorker('eve-character-data'),
-					stubWorker('eve-corporation-data'),
-					stubWorker('eve-token-store'),
-					stubWorker('esi'),
+					stubWorker('markets', ['Markets']),
+					stubWorker('eve-character-data', ['EveCharacterData']),
+					stubWorker('eve-corporation-data', ['EveCorporationData']),
+					stubWorker('eve-token-store', ['EveTokenStore']),
+					stubWorker('esi', ['Esi', 'EsiTypeResolver']),
+					stubWorker('universe', ['Universe']),
+					stubWorker('discord', ['Discord']),
 				],
 			},
 		}),

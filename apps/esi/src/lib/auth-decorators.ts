@@ -3,26 +3,16 @@
  * Automatically authenticates with character or corporation before method execution.
  */
 
+import { canonicalizeEsiEntityId } from '@repo/esi'
+
 type EsiDOInstance = {
 	esiFetcher: {
-		authenticateWithCharacter: (characterId: string) => Promise<void>
-		authenticateWithCorporation: (corporationId: string) => Promise<void>
-		clearAuthentication: () => Promise<void>
+		withCharacterContext: <T>(characterId: string, operation: () => Promise<T>) => Promise<T>
+		withCorporationContext: <T>(corporationId: string, operation: () => Promise<T>) => Promise<T>
+		withPublicContext: <T>(operation: () => Promise<T>) => Promise<T>
 	}
 }
 
-function validateCharacterId(characterId: string | number): string {
-	if (!characterId) {
-		throw new Error('Character ID is required')
-	}
-	if (typeof characterId === 'number') {
-		return String(characterId)
-	}
-	if (typeof characterId !== 'string') {
-		throw new Error('Character ID must be a string or number got: ' + typeof characterId)
-	}
-	return characterId
-}
 /**
  * Decorator that authenticates with a character before method execution.
  * Expects the first parameter to be the characterId (string).
@@ -35,9 +25,11 @@ export function UseCharacterAuth(
 	const originalMethod = descriptor.value
 
 	descriptor.value = async function (this: EsiDOInstance, characterId: string, ...args: unknown[]) {
-		const validatedCharacterId = validateCharacterId(characterId)
-		await this.esiFetcher.authenticateWithCharacter(validatedCharacterId)
-		return originalMethod.apply(this, [characterId, ...args])
+		const validatedCharacterId = canonicalizeEsiEntityId(characterId, 'character')
+		return await this.esiFetcher.withCharacterContext(
+			validatedCharacterId,
+			async () => await originalMethod.apply(this, [validatedCharacterId, ...args])
+		)
 	}
 
 	return descriptor
@@ -59,16 +51,18 @@ export function UseCorporationAuth(
 		corporationId: string,
 		...args: unknown[]
 	) {
-		await this.esiFetcher.authenticateWithCorporation(corporationId)
-		return originalMethod.apply(this, [corporationId, ...args])
+		const validatedCorporationId = canonicalizeEsiEntityId(corporationId, 'corporation')
+		return await this.esiFetcher.withCorporationContext(
+			validatedCorporationId,
+			async () => await originalMethod.apply(this, [validatedCorporationId, ...args])
+		)
 	}
 
 	return descriptor
 }
 
 /**
- * Decorator that clears authentication after method execution.
- * Useful for cleaning up authentication state after method completion.
+ * Decorator that executes a method in a public ESI context.
  */
 export function UsePublicAuth(
 	_target: unknown,
@@ -78,12 +72,9 @@ export function UsePublicAuth(
 	const originalMethod = descriptor.value
 
 	descriptor.value = async function (this: EsiDOInstance, ...args: unknown[]) {
-		try {
-			await this.esiFetcher.clearAuthentication()
-			return await originalMethod.apply(this, args)
-		} finally {
-			await this.esiFetcher.clearAuthentication()
-		}
+		return await this.esiFetcher.withPublicContext(
+			async () => await originalMethod.apply(this, args)
+		)
 	}
 
 	return descriptor

@@ -856,6 +856,7 @@ auth.get('/callback', async (c) => {
 				stateUserId,
 				db,
 				c.env.EVE_TOKEN_STORE,
+				c.env.ESI,
 				c.env.EVE_CORPORATION_DATA
 			)
 		} catch (error) {
@@ -1032,6 +1033,7 @@ auth.get('/callback', async (c) => {
 				user.id,
 				db,
 				c.env.EVE_TOKEN_STORE,
+				c.env.ESI,
 				c.env.EVE_CORPORATION_DATA
 			)
 		} catch (error) {
@@ -1277,6 +1279,7 @@ auth.post('/claim-main', async (c) => {
 			user.id,
 			db,
 			c.env.EVE_TOKEN_STORE,
+			c.env.ESI,
 			c.env.EVE_CORPORATION_DATA
 		)
 	} catch (error) {

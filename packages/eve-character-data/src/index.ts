@@ -459,10 +459,10 @@ export interface CharacterWalletSyncHealth {
  *
  * @example
  * ```ts
+ * import { getStub } from '@repo/do-utils'
  * import type { EveCharacterData } from '@repo/eve-character-data'
  *
- * const id = env.EVE_CHARACTER_DATA.idFromString(characterId.toString())
- * const stub = env.EVE_CHARACTER_DATA.get(id)
+ * const stub = getStub<EveCharacterData>(env.EVE_CHARACTER_DATA, characterId)
  * await stub.fetchCharacterData(characterId)
  * ```
  */

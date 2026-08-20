@@ -19,16 +19,17 @@ describe('Markets Worker', () => {
 		expect(text).toContain('Markets')
 	})
 
-	it('can call Durable Object via example endpoint', async () => {
-		const request = new Request('http://example.com/example?id=test-1')
+	it('can call the region alarm Durable Object endpoint', async () => {
+		const request = new Request('http://example.com/region/10000002/alarm/status')
 		const ctx = createExecutionContext()
 		const response = await worker.fetch(request, env, ctx)
 		await waitOnExecutionContext(ctx)
 
 		expect(response.status).toBe(200)
 		const data = await response.json()
-		expect(data).toHaveProperty('id', 'test-1')
-		expect(data).toHaveProperty('result')
+		expect(data).toHaveProperty('isActive', false)
+		expect(data).toHaveProperty('locationId')
+		expect(data).toHaveProperty('locationType')
 	})
 })
 

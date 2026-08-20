@@ -1,4 +1,9 @@
 import { getStub, withRpcResult } from '@repo/do-utils'
+import {
+	getEsiInstanceForCharacter,
+	getEsiInstanceForCorporation,
+	getPublicEsiInstance,
+} from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../../db'
@@ -16,6 +21,19 @@ export function createTokenStore(env: Env): EveTokenStore {
 	return getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
 }
 
+/** ESI is the only owner of ESI request, cache, and rate-limit policy. */
+export function getCorporationEsi(env: Env, corporationId: string) {
+	return getEsiInstanceForCorporation(env.ESI, corporationId)
+}
+
+export function getCharacterEsi(env: Env, characterId: string) {
+	return getEsiInstanceForCharacter(env.ESI, characterId)
+}
+
+export function getPublicEsi(env: Env) {
+	return getPublicEsiInstance(env.ESI)
+}
+
 /**
  * Create a DirectorManager instance for a specific corporation
  */
@@ -31,7 +49,6 @@ export function createDirectorManager(env: Env, corporationId: string): Director
 				await withRpcResult(
 					env.CORE.handleCharacterAffiliationChanges([characterId], {
 						source: `director-affiliation-mismatch:${expectedCorporationId}:${actualCorporationId ?? 'unknown'}`,
-						bypassThrottle: true,
 					}),
 					() => undefined
 				)
@@ -66,7 +83,15 @@ export function createDirectorManager(env: Env, corporationId: string): Director
 					error: error instanceof Error ? error.message : String(error),
 				})
 			}
-		}
+		},
+		async (characterId, options) =>
+			await getCharacterEsi(env, characterId).fetchCharacterRoles(characterId, options),
+		async (characterIds, options) =>
+			await getPublicEsi(env).fetchCharacterAffiliation(
+				characterIds[0] ?? '0',
+				characterIds,
+				options
+			)
 	)
 }
 

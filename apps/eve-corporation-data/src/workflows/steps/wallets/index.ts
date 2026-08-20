@@ -1,7 +1,7 @@
 import { logger } from '@repo/hono-helpers'
 
 import * as esiFetch from '../../../services/esi-fetch'
-import { createTokenStore, getCorporationDataStub } from '../../utils/services'
+import { getCorporationDataStub, getCorporationEsi } from '../../utils/services'
 
 import type { Env } from '../../../context'
 
@@ -12,8 +12,11 @@ export async function fetchWallets(
 	corporationId: string,
 	directorCharacterId: string
 ): Promise<WalletsData> {
-	const tokenStore = createTokenStore(env)
-	const wallets = await esiFetch.fetchWallets(tokenStore, corporationId, directorCharacterId)
+	const wallets = await esiFetch.fetchWallets(
+		getCorporationEsi(env, corporationId),
+		corporationId,
+		directorCharacterId
+	)
 
 	logger.debug('[WalletsStep] Fetched wallets', {
 		corporationId,
@@ -33,4 +36,3 @@ export async function storeWallets(
 
 	logger.info('[WalletsStep] Stored wallets', { corporationId, count: wallets.length })
 }
-

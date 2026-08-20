@@ -1,7 +1,8 @@
 import { getStub } from '@repo/do-utils'
+import { getEsiInstanceForCharacter, getPublicEsiInstance } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 
-import type { EveTokenStore } from '@repo/eve-token-store'
+import type { Esi, EsiTypeResolver } from '@repo/esi'
 import type { Env } from '../context'
 
 const AUTH_CHARACTER_ID = '2114114257' // Test Auth character
@@ -71,27 +72,21 @@ export interface EsiStructureDetails {
 }
 
 /**
- * ESI Search Response
- */
-interface EsiSearchResponse {
-	solar_system?: number[]
-	station?: number[]
-	structure?: number[]
-}
-
-/**
  * ESI Service
  *
- * Handles interaction with EVE Online ESI API for location searches and lookups.
- * Uses EveTokenStore for ESI requests with built-in caching and authentication.
+ * Handles EVE ESI location searches and lookups through the shared ESI boundary.
  */
 export class EsiService {
 	private cache: Map<string, { data: unknown; expiresAt: number }>
-	private tokenStore: EveTokenStore
+	private readonly authenticatedEsi: Esi
+	private readonly publicEsi: Esi
+	private readonly typeResolver: EsiTypeResolver
 
 	constructor(env: Env) {
 		this.cache = new Map()
-		this.tokenStore = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+		this.authenticatedEsi = getEsiInstanceForCharacter(env.ESI, AUTH_CHARACTER_ID)
+		this.publicEsi = getPublicEsiInstance(env.ESI)
+		this.typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
 	}
 
 	/**
@@ -168,8 +163,7 @@ export class EsiService {
 		logger.info('Loading all system names from ESI...')
 
 		// Step 1: Get all system IDs (public endpoint, no auth)
-		const idsResult = await this.tokenStore.fetchPublicEsi<number[]>('/latest/universe/systems/')
-		const allIds = idsResult.data
+		const allIds = await this.publicEsi.fetchUniverseSolarSystemIds()
 		logger.info('Loaded system IDs', { count: allIds.length })
 
 		// Step 2: Resolve names in batches of 1000 via resolveIds
@@ -178,7 +172,7 @@ export class EsiService {
 
 		for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
 			const batch = allIds.slice(i, i + BATCH_SIZE)
-			const nameMap = await this.tokenStore.resolveIds(batch.map(String))
+			const nameMap = await this.typeResolver.resolveIds(batch.map(String))
 
 			for (const [id, name] of Object.entries(nameMap)) {
 				systems.push({ id: parseInt(id), name })
@@ -203,24 +197,14 @@ export class EsiService {
 		}
 
 		try {
-			// Search for stations using ESI character search endpoint
-			const searchPath = `/latest/characters/${AUTH_CHARACTER_ID}/search/?categories=station&search=${encodeURIComponent(query)}&strict=false`
-			logger.info('searchStations: calling fetchEsi', {
-				searchPath,
-				characterId: AUTH_CHARACTER_ID,
+			const searchResponse = await this.authenticatedEsi.fetchCharacterSearch(AUTH_CHARACTER_ID, {
+				categories: ['station'],
+				search: query,
+				strict: false,
 			})
-
-			const searchResult = await this.tokenStore.fetchEsi<EsiSearchResponse>(
-				searchPath,
-				AUTH_CHARACTER_ID
-			)
 			logger.info('searchStations: got response', {
-				cached: searchResult.cached,
-				hasData: !!searchResult.data,
-				stationCount: searchResult.data.station?.length || 0,
+				stationCount: searchResponse.station?.length || 0,
 			})
-
-			const searchResponse = searchResult.data
 
 			if (!searchResponse.station || searchResponse.station.length === 0) {
 				logger.info('searchStations: no results found')
@@ -300,24 +284,14 @@ export class EsiService {
 		}
 
 		try {
-			// Search for structures using ESI character search endpoint
-			const searchPath = `/latest/characters/${AUTH_CHARACTER_ID}/search/?categories=structure&search=${encodeURIComponent(query)}&strict=false`
-			logger.info('searchStructures: calling fetchEsi', {
-				searchPath,
-				characterId: AUTH_CHARACTER_ID,
+			const searchResponse = await this.authenticatedEsi.fetchCharacterSearch(AUTH_CHARACTER_ID, {
+				categories: ['structure'],
+				search: query,
+				strict: false,
 			})
-
-			const searchResult = await this.tokenStore.fetchEsi<EsiSearchResponse>(
-				searchPath,
-				AUTH_CHARACTER_ID
-			)
 			logger.info('searchStructures: got response', {
-				cached: searchResult.cached,
-				hasData: !!searchResult.data,
-				structureCount: searchResult.data.structure?.length || 0,
+				structureCount: searchResponse.structure?.length || 0,
 			})
-
-			const searchResponse = searchResult.data
 
 			if (!searchResponse.structure || searchResponse.structure.length === 0) {
 				logger.info('searchStructures: no results found')
@@ -399,9 +373,16 @@ export class EsiService {
 			return cached.data as EsiSystemDetails
 		}
 
-		const path = `/latest/universe/systems/${systemId}/`
-		const result = await this.tokenStore.fetchPublicEsi<EsiSystemDetails>(path)
-		const data = result.data
+		const system = await this.publicEsi.fetchUniverseSolarSystem(systemId)
+		const data: EsiSystemDetails = {
+			system_id: system.solar_system_id,
+			name: system.name,
+			constellation_id: system.constellation_id,
+			security_status: system.security_status,
+			star_id: system.star_id,
+			stargates: system.stargates,
+			stations: system.stations,
+		}
 
 		// Cache for 30 minutes (systems are static)
 		this.cache.set(cacheKey, {
@@ -423,9 +404,7 @@ export class EsiService {
 			return cached.data as EsiConstellationDetails
 		}
 
-		const path = `/latest/universe/constellations/${constellationId}/`
-		const result = await this.tokenStore.fetchPublicEsi<EsiConstellationDetails>(path)
-		const data = result.data
+		const data = await this.publicEsi.fetchUniverseConstellation(constellationId)
 
 		// Cache for 30 minutes (constellations are static)
 		this.cache.set(cacheKey, {
@@ -447,9 +426,14 @@ export class EsiService {
 			return cached.data as EsiStationDetails
 		}
 
-		const path = `/latest/universe/stations/${stationId}/`
-		const result = await this.tokenStore.fetchEsi<EsiStationDetails>(path, AUTH_CHARACTER_ID)
-		const data = result.data
+		const station = await this.publicEsi.fetchUniverseStation(stationId)
+		const data: EsiStationDetails = {
+			station_id: station.station_id,
+			name: station.name,
+			system_id: station.solar_system_id,
+			type_id: station.type_id,
+			owner: station.owner,
+		}
 
 		// Cache for 30 minutes (stations are static)
 		this.cache.set(cacheKey, {
@@ -471,9 +455,17 @@ export class EsiService {
 			return cached.data as EsiStructureDetails
 		}
 
-		const path = `/latest/universe/structures/${structureId}/`
-		const result = await this.tokenStore.fetchEsi<EsiStructureDetails>(path, AUTH_CHARACTER_ID)
-		const data = result.data
+		const structure = await this.authenticatedEsi.fetchStructureInfo(AUTH_CHARACTER_ID, structureId)
+		if (!structure) {
+			throw new Error(`Structure ${structureId} was not found or is inaccessible`)
+		}
+		const data: EsiStructureDetails = {
+			structure_id: Number(structureId),
+			name: structure.name,
+			solar_system_id: Number(structure.solar_system_id),
+			type_id: structure.type_id ? Number(structure.type_id) : undefined,
+			owner_id: structure.owner_id ? Number(structure.owner_id) : undefined,
+		}
 
 		// Cache for 5 minutes (structures can change)
 		this.cache.set(cacheKey, {
@@ -495,7 +487,7 @@ export class EsiService {
 		try {
 			// Convert number IDs to strings for resolveIds
 			const stringIds = ids.map((id) => id.toString())
-			const names = await this.tokenStore.resolveIds(stringIds)
+			const names = await this.typeResolver.resolveIds(stringIds)
 
 			// Convert back to number keys
 			return Object.fromEntries(Object.entries(names).map(([id, name]) => [parseInt(id), name]))

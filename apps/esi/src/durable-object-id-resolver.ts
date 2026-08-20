@@ -3,6 +3,7 @@ import { DurableObject } from 'cloudflare:workers'
 import { getStub } from '@repo/do-utils'
 import {
 	EsiRequestClient,
+	getEsiInstanceForCharacter,
 	getIdClassification,
 	isStructureId,
 	normalizeEntityType,
@@ -15,7 +16,7 @@ import {
 } from '@repo/esi-rate-limit'
 import { logger } from '@repo/hono-helpers'
 
-import type { Esi, EsiTypeResolver, IdRangeType } from '@repo/esi'
+import type { EsiTypeResolver, IdRangeType } from '@repo/esi'
 import type { Universe } from '@repo/universe'
 import type { Env } from './context'
 
@@ -663,7 +664,9 @@ export class EsiTypeResolverDO extends DurableObject<Env> implements EsiTypeReso
 
 		const result: Record<string, string> = {}
 
-		const esiStub = withCharacterId ? getStub<Esi>(this.env.ESI, withCharacterId) : null
+		const esiStub = withCharacterId
+			? getEsiInstanceForCharacter(this.env.ESI, withCharacterId)
+			: null
 
 		await forEachWithConcurrency(
 			structureIds,

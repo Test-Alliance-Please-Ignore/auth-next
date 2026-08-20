@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
+import { getPublicEsiInstance } from '@repo/esi'
 
 import { getCachedUserPermissions } from '../../lib/groups-cache'
 import hrRoutes from '../hr'
@@ -14,11 +15,16 @@ vi.mock('@repo/do-utils', () => ({
 		consume(await rpcCall),
 }))
 
+vi.mock('@repo/esi', () => ({
+	getPublicEsiInstance: vi.fn(),
+}))
+
 vi.mock('../../lib/groups-cache', () => ({
 	getCachedUserPermissions: vi.fn(),
 }))
 
 const getStubMock = vi.mocked(getStub)
+const getPublicEsiInstanceMock = vi.mocked(getPublicEsiInstance)
 const getCachedUserPermissionsMock = vi.mocked(getCachedUserPermissions)
 const { searchUsersForHrAccessMock } = vi.hoisted(() => ({
 	searchUsersForHrAccessMock: vi.fn(),
@@ -321,6 +327,7 @@ describe('hr route access matrix', () => {
 
 		getCachedUserPermissionsMock.mockResolvedValue([])
 		searchUsersForHrAccessMock.mockResolvedValue({ users: [], total: 0, limit: 10, offset: 0 })
+		getPublicEsiInstanceMock.mockReturnValue(esiStub as any)
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.HR) return hrStub as any
 			if (binding === env.ESI_TYPE_RESOLVER) return resolverStub as any

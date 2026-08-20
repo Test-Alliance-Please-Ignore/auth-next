@@ -1,15 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { reconcileDirectorsFromCorporationRoles, selectDirector } from '../../../workflows/steps/directors'
+import {
+	reconcileDirectorsFromCorporationRoles,
+	selectDirector,
+} from '../../../workflows/steps/directors'
 
-const createTokenStoreMock = vi.fn()
 const getCorporationDataStubMock = vi.fn()
 const createDirectorManagerMock = vi.fn()
+const getCorporationEsiMock = vi.fn()
+const getPublicEsiMock = vi.fn()
 
 vi.mock('../../../workflows/utils/services', () => ({
 	createDirectorManager: (...args: unknown[]) => createDirectorManagerMock(...args),
-	createTokenStore: (...args: unknown[]) => createTokenStoreMock(...args),
 	getCorporationDataStub: (...args: unknown[]) => getCorporationDataStubMock(...args),
+	getCorporationEsi: (...args: unknown[]) => getCorporationEsiMock(...args),
+	getPublicEsi: (...args: unknown[]) => getPublicEsiMock(...args),
 }))
 
 describe('selectDirector workflow step', () => {
@@ -44,18 +49,18 @@ describe('reconcileDirectorsFromCorporationRoles', () => {
 	})
 
 	it('adds promoted directors and removes demoted directors from configured set', async () => {
-		createTokenStoreMock.mockReturnValue({
-			fetchEsi: vi.fn().mockResolvedValue({
-				data: [
-					{ character_id: 1001, roles: ['Director'] },
-					{ character_id: 1003, roles: ['CEO'] },
-					{ character_id: 1004, roles: ['Trader'] },
-				],
-			}),
-			fetchPublicEsi: vi
+		getCorporationEsiMock.mockReturnValue({
+			fetchCorporationMemberRoles: vi.fn().mockResolvedValue([
+				{ character_id: '1001', roles: ['Director'] },
+				{ character_id: '1003', roles: ['CEO'] },
+				{ character_id: '1004', roles: ['Trader'] },
+			]),
+		})
+		getPublicEsiMock.mockReturnValue({
+			fetchCharacterPublicInfo: vi
 				.fn()
-				.mockResolvedValueOnce({ data: { name: 'New Director A' } })
-				.mockResolvedValueOnce({ data: { name: 'New Director B' } }),
+				.mockResolvedValueOnce({ name: 'New Director A' })
+				.mockResolvedValueOnce({ name: 'New Director B' }),
 		})
 
 		const addDirector = vi.fn().mockResolvedValue(undefined)
@@ -89,14 +94,14 @@ describe('reconcileDirectorsFromCorporationRoles', () => {
 	})
 
 	it('accepts hierarchy roles from positional arrays and leaves unchanged directors intact', async () => {
-		createTokenStoreMock.mockReturnValue({
-			fetchEsi: vi.fn().mockResolvedValue({
-				data: [
-					{ character_id: 2001, roles_at_hq: ['Director'] },
-					{ character_id: 2002, roles_at_other: ['CEO'] },
-				],
-			}),
-			fetchPublicEsi: vi.fn().mockResolvedValue({ data: { name: '2002' } }),
+		getCorporationEsiMock.mockReturnValue({
+			fetchCorporationMemberRoles: vi.fn().mockResolvedValue([
+				{ character_id: '2001', roles_at_hq: ['Director'] },
+				{ character_id: '2002', roles_at_other: ['CEO'] },
+			]),
+		})
+		getPublicEsiMock.mockReturnValue({
+			fetchCharacterPublicInfo: vi.fn().mockResolvedValue({ name: '2002' }),
 		})
 
 		const addDirector = vi.fn().mockResolvedValue(undefined)
@@ -115,9 +120,7 @@ describe('reconcileDirectorsFromCorporationRoles', () => {
 
 		const env = {
 			CORE: {
-				getCharacterOwner: vi
-					.fn()
-					.mockResolvedValueOnce({ userId: 'user-2002', isPrimary: false }),
+				getCharacterOwner: vi.fn().mockResolvedValueOnce({ userId: 'user-2002', isPrimary: false }),
 			},
 		} as any
 		const result = await reconcileDirectorsFromCorporationRoles(env, '98000001', '90000001')
@@ -128,11 +131,10 @@ describe('reconcileDirectorsFromCorporationRoles', () => {
 	})
 
 	it('skips auto-adding promoted directors that are not linked to any user', async () => {
-		createTokenStoreMock.mockReturnValue({
-			fetchEsi: vi.fn().mockResolvedValue({
-				data: [{ character_id: 3001, roles: ['Director'] }],
-			}),
-			fetchPublicEsi: vi.fn(),
+		getCorporationEsiMock.mockReturnValue({
+			fetchCorporationMemberRoles: vi
+				.fn()
+				.mockResolvedValue([{ character_id: '3001', roles: ['Director'] }]),
 		})
 
 		const addDirector = vi.fn().mockResolvedValue(undefined)

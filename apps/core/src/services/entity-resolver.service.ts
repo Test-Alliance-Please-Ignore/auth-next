@@ -1,17 +1,17 @@
 import { logger } from '@repo/hono-helpers'
 
-import type { EveTokenStore } from '@repo/eve-token-store'
+import type { EsiTypeResolver } from '@repo/esi'
 
 /**
  * EntityResolverService
  *
  * Utility service for resolving EVE Online entity IDs to human-readable names.
- * Uses the EVE Token Store Durable Object's bulk resolution capabilities.
+ * Uses the ESI type resolver's bulk resolution capability.
  */
 export class EntityResolverService {
 	private nameCache: Map<string, string>
 
-	constructor(private eveTokenStore: EveTokenStore) {
+	constructor(private readonly esiTypeResolver: EsiTypeResolver) {
 		this.nameCache = new Map()
 	}
 
@@ -33,7 +33,7 @@ export class EntityResolverService {
 		// If we have uncached IDs, fetch them
 		if (uncachedIds.length > 0) {
 			try {
-				const resolved = await this.eveTokenStore.resolveIds(uncachedIds)
+				const resolved = await this.esiTypeResolver.resolveIds(uncachedIds)
 
 				// Store in cache
 				for (const [id, name] of Object.entries(resolved)) {

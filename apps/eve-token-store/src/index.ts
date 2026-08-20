@@ -4,18 +4,26 @@ import { getStub } from '@repo/do-utils'
 import { logger, withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers'
 
 import { EveTokenStoreDO } from './durable-object'
+import {
+	hasMaintenanceSecret,
+	isLegacyCachePurgeConfirmed,
+	LEGACY_CACHE_PURGE_CONFIRMATION,
+} from './lib/legacy-storage-maintenance'
 
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { App } from './context'
 
+// TEMPORARY ONE-TIME MAINTENANCE ROUTE.
+// Remove this route and its secret after the legacy cache purge is verified.
+const LEGACY_CACHE_MAINTENANCE_PATH = '/evesso/_maintenance/storage'
+const MAINTENANCE_SECRET_HEADER = 'X-Eve-Token-Store-Maintenance-Secret'
+
 const app = new Hono<App>()
-	.use(
-		'*',
-		(c, next) =>
-			withWorkersLogger(c.env.NAME, {
-				environment: c.env.ENVIRONMENT,
-				release: c.env.SENTRY_RELEASE,
-			})(c, next)
+	.use('*', (c, next) =>
+		withWorkersLogger(c.env.NAME, {
+			environment: c.env.ENVIRONMENT,
+			release: c.env.SENTRY_RELEASE,
+		})(c, next)
 	)
 
 	.onError(withOnError())
@@ -150,6 +158,68 @@ const app = new Hono<App>()
 				},
 				500
 			)
+		}
+	})
+
+	/**
+	 * TEMPORARY ONE-TIME MAINTENANCE ROUTE.
+	 *
+	 * GET inventories aggregate storage metadata. POST drops only the explicitly
+	 * allowlisted legacy cache tables after requiring a second confirmation.
+	 * This route is intentionally outside the normal application API surface.
+	 */
+	.get(LEGACY_CACHE_MAINTENANCE_PATH, async (c) => {
+		if (
+			!hasMaintenanceSecret(
+				c.env.EVE_TOKEN_STORE_MAINTENANCE_SECRET,
+				c.req.header(MAINTENANCE_SECRET_HEADER)
+			)
+		) {
+			return c.json({ error: 'Not found' }, 404)
+		}
+
+		try {
+			const stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+			const inventory = await stub.inspectLegacyStorage()
+			c.header('Cache-Control', 'no-store')
+			return c.json(inventory)
+		} catch (error) {
+			logger
+				.withTags({ operation: 'inspectLegacyStorage' })
+				.error('Legacy storage inspection failed', error)
+			return c.json({ error: 'Storage inspection failed' }, 500)
+		}
+	})
+	.post(LEGACY_CACHE_MAINTENANCE_PATH, async (c) => {
+		if (
+			!hasMaintenanceSecret(
+				c.env.EVE_TOKEN_STORE_MAINTENANCE_SECRET,
+				c.req.header(MAINTENANCE_SECRET_HEADER)
+			)
+		) {
+			return c.json({ error: 'Not found' }, 404)
+		}
+
+		const body = await c.req.json<{ action?: string; confirmation?: string }>().catch(() => null)
+		if (body?.action !== 'purge-legacy-cache' || !isLegacyCachePurgeConfirmed(body.confirmation)) {
+			return c.json(
+				{
+					error: 'Invalid maintenance request',
+					requiredAction: 'purge-legacy-cache',
+					requiredConfirmation: LEGACY_CACHE_PURGE_CONFIRMATION,
+				},
+				400
+			)
+		}
+
+		try {
+			const stub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+			const result = await stub.purgeLegacyCache(body.confirmation ?? '')
+			c.header('Cache-Control', 'no-store')
+			return c.json(result)
+		} catch (error) {
+			logger.withTags({ operation: 'purgeLegacyCache' }).error('Legacy storage purge failed', error)
+			return c.json({ error: 'Storage purge failed' }, 500)
 		}
 	})
 

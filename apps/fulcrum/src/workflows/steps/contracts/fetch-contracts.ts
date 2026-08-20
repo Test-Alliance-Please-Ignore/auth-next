@@ -14,7 +14,7 @@ import type { StepResult } from '../../utils/storage'
  * Separated for testability
  */
 export async function fetchContractsFromEsi(esiStub: Esi, characterId: string) {
-	return await esiStub.fetchCharacterContracts(characterId)
+	return await esiStub.fetchCharacterContracts(characterId, { cacheMode: 'no-store' })
 }
 
 /**
@@ -32,11 +32,10 @@ export async function fetchContracts(
 	bucket: R2Bucket,
 	bucketName: string,
 	characterId: string,
-	workflowInstanceId: string,
+	workflowInstanceId: string
 ): Promise<StepResult> {
 	try {
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
-		stub.setDefaultCacheMode('no-store')
 		const data = await fetchContractsFromEsi(stub, characterId)
 		return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-contracts', data)
 	} catch (error) {

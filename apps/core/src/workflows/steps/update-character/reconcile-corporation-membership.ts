@@ -3,7 +3,6 @@ import { getStub } from '@repo/do-utils'
 import { triggerMumbleRefreshWorkflow } from '../../../lib/workflow-triggers'
 import { getWorkflowLogger } from '../../context'
 
-import type { Core } from '@repo/core'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { WorkflowContext } from '../../context'
 
@@ -33,21 +32,6 @@ export async function reconcileCharacterCorporationMembership(
 		result.removedFromCorporationIds.length > 0 || result.addedToCorporationId !== null
 
 	if (membershipChanged) {
-		// This workflow run already reconciles core attachments via attach-user-roles.
-		// Queue downstream Discord role refresh unless explicitly suppressed.
-		// The core cron drains this queue using the workflow instance ID, which
-		// keeps the refresh tied to the persisted affiliation state from this run.
-		if (!ctx.suppressDiscordRefresh) {
-			const coreStub = getStub<Core>(ctx.env.CORE, 'default')
-			await coreStub.addPendingDiscordRefreshes([ctx.userId], {
-				source: 'corp-membership-reconciled',
-				force: true,
-				userRefreshWorkflowInstanceIdByUserId: {
-					[ctx.userId]: ctx.workflowInstanceId,
-				},
-			})
-		}
-
 		await triggerMumbleRefreshWorkflow({
 			env: ctx.env,
 			userIds: [ctx.userId],

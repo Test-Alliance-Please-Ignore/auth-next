@@ -1,7 +1,5 @@
-import { getStub } from '@repo/do-utils'
+import { getPublicEsiInstance } from '@repo/esi'
 import { getIdClassification } from '@repo/eve-types'
-
-import type { Esi } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 
 export interface CharacterAffiliationDisplayCandidate {
@@ -57,7 +55,7 @@ export class CharacterAffiliationCoordinator {
 		},
 		characterId: string,
 		candidates: CharacterAffiliationDisplayCandidate[],
-		label: string,
+		label: string
 	): Promise<Record<string, string>> {
 		if (candidates.length === 0) {
 			return {}
@@ -104,7 +102,7 @@ export class CharacterAffiliationCoordinator {
 		const affiliationByCharacterId = new Map<string, CharacterAffiliationRecord>()
 
 		try {
-			const esiStub = getStub<Esi>(env.ESI, 'default')
+			const esiStub = getPublicEsiInstance(env.ESI)
 			for (const batch of chunk(missingCharacterIds, 1000)) {
 				const affiliations = await esiStub.fetchCharacterAffiliation(characterId, batch, {
 					cacheMode: 'default',
@@ -159,14 +157,16 @@ export class CharacterAffiliationCoordinator {
 			ESI: DurableObjectNamespace
 		},
 		corporationIds: Set<string>,
-		label: string,
+		label: string
 	): Promise<void> {
-		const unresolved = [...corporationIds].filter((corporationId) => !this.corporationTickerCache.has(corporationId))
+		const unresolved = [...corporationIds].filter(
+			(corporationId) => !this.corporationTickerCache.has(corporationId)
+		)
 		if (unresolved.length === 0) {
 			return
 		}
 
-		const esiStub = getStub<Esi>(env.ESI, 'default')
+		const esiStub = getPublicEsiInstance(env.ESI)
 		for (const batch of chunk(unresolved, 25)) {
 			await Promise.all(
 				batch.map(async (corporationId) => {
@@ -180,7 +180,7 @@ export class CharacterAffiliationCoordinator {
 							error: error instanceof Error ? error.message : String(error),
 						})
 					}
-				}),
+				})
 			)
 		}
 	}
@@ -190,14 +190,16 @@ export class CharacterAffiliationCoordinator {
 			ESI: DurableObjectNamespace
 		},
 		allianceIds: Set<string>,
-		label: string,
+		label: string
 	): Promise<void> {
-		const unresolved = [...allianceIds].filter((allianceId) => !this.allianceTickerCache.has(allianceId))
+		const unresolved = [...allianceIds].filter(
+			(allianceId) => !this.allianceTickerCache.has(allianceId)
+		)
 		if (unresolved.length === 0) {
 			return
 		}
 
-		const esiStub = getStub<Esi>(env.ESI, 'default')
+		const esiStub = getPublicEsiInstance(env.ESI)
 		for (const batch of chunk(unresolved, 25)) {
 			await Promise.all(
 				batch.map(async (allianceId) => {
@@ -211,7 +213,7 @@ export class CharacterAffiliationCoordinator {
 							error: error instanceof Error ? error.message : String(error),
 						})
 					}
-				}),
+				})
 			)
 		}
 	}

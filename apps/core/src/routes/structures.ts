@@ -23,8 +23,8 @@ import { normalizeWorkflowStatus } from '../lib/workflow-status'
 import { EntityResolverService } from '../services/entity-resolver.service'
 
 import type { Context } from 'hono'
+import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type {
 	StructureCommonListSortBy,
 	StructureDetailResult,
@@ -203,7 +203,7 @@ async function enrichStructureDetailTypeNames(
 		const allianceNameMap =
 			allianceIds.length > 0
 				? await new EntityResolverService(
-						getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+						getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
 					).resolveEntityNames(allianceIds)
 				: new Map<string, string>()
 		const nextSovereignty = sovereignty
@@ -229,7 +229,7 @@ async function enrichStructureDetailTypeNames(
 	const universe = getUniverseStub(env)
 	const allianceResolver =
 		allianceIds.length > 0
-			? new EntityResolverService(getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default'))
+			? new EntityResolverService(getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global'))
 			: null
 	const typeNameMap: Record<string, string> = {}
 	const typeMetaMap: Record<string, TypeMetadata> = {}
@@ -340,7 +340,7 @@ async function enrichSovereigntyStructureListResponse(
 	}
 
 	const allianceNameMap = await new EntityResolverService(
-		getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
+		getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
 	).resolveEntityNames(allianceIds)
 
 	return {

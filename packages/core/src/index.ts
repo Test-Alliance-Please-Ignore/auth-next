@@ -97,27 +97,32 @@ export interface Core {
 		options?: {
 			source?: string
 			force?: boolean
-			userRefreshWorkflowInstanceIdByUserId?: Record<string, string>
+			allowRemoval?: boolean
+			hardStripAllRoles?: boolean
 		}
+	): Promise<{ pendingCount: number; added: number; skipped: number }>
+	queueUserRefreshes(
+		userIds: string[],
+		options?: { source?: string; force?: boolean }
 	): Promise<{ pendingCount: number; added: number; skipped: number }>
 	handleCharacterAffiliationChange(
 		characterId: string,
-		options?: { source?: string; bypassThrottle?: boolean }
+		options?: { source?: string }
 	): Promise<{
 		usersMatched: number
-		workflowsTriggered: number
-		discordUsersQueued: number
+		refreshUsersQueued: number
 	}>
 	handleCharacterAffiliationChanges(
 		characterIds: string[],
-		options?: { source?: string; bypassThrottle?: boolean }
+		options?: { source?: string }
 	): Promise<{
 		usersMatched: number
-		workflowsTriggered: number
-		discordUsersQueued: number
+		refreshUsersQueued: number
 	}>
-	processPendingDiscordRefreshes(): Promise<{
-		processed: number
+	processPendingRefreshes(): Promise<{
+		refreshesProcessed: number
+		refreshesTriggered: number
+		discordProcessed: number
 		triggered: number
 		failed: number
 	}>

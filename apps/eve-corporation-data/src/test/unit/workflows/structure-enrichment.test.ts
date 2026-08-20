@@ -14,11 +14,11 @@ const mocks = vi.hoisted(() => {
 	const getMissingStructureIdsForPriorityQueueMock = vi.fn()
 	const getStructureIdsMissingFromLiveListingMock = vi.fn()
 	const getStructurePriorityQueueMock = vi.fn()
-	const fetchEsiMock = vi.fn()
+	const fetchCorporationSovereigntyHubsPageMock = vi.fn()
+	const getCorporationEsiMock = vi.fn()
 	const getStubMock = vi.fn(() => ({
 		resolveSolarSystemsByIds: resolveSolarSystemsByIdsMock,
 	}))
-	const createTokenStoreMock = vi.fn()
 
 	return {
 		fetchSovereigntyHubsMock,
@@ -30,9 +30,9 @@ const mocks = vi.hoisted(() => {
 		getMissingStructureIdsForPriorityQueueMock,
 		getStructureIdsMissingFromLiveListingMock,
 		getStructurePriorityQueueMock,
-		fetchEsiMock,
+		fetchCorporationSovereigntyHubsPageMock,
+		getCorporationEsiMock,
 		getStubMock,
-		createTokenStoreMock,
 	}
 })
 
@@ -48,7 +48,7 @@ vi.mock('../../../services/esi-fetch', () => ({
 }))
 
 vi.mock('../../../workflows/utils/services', () => ({
-	createTokenStore: (...args: unknown[]) => mocks.createTokenStoreMock(...args),
+	getCorporationEsi: (...args: unknown[]) => mocks.getCorporationEsiMock(...args),
 	getCorporationDataStub: vi.fn(() => ({
 		getSovereigntyHubSyncPriorities: (...args: unknown[]) =>
 			mocks.getSovereigntyHubSyncPrioritiesMock(...args),
@@ -71,8 +71,8 @@ vi.mock('../../../workflows/utils/sovereignty-systems-cache', () => ({
 
 describe('fetchSovereigntyEnrichment', () => {
 	it('enriches sovereignty hub names from resolved solar systems before persistence', async () => {
-		mocks.createTokenStoreMock.mockReturnValue({
-			fetchEsi: mocks.fetchEsiMock,
+		mocks.getCorporationEsiMock.mockReturnValue({
+			fetchCorporationSovereigntyHubsPage: mocks.fetchCorporationSovereigntyHubsPageMock,
 		})
 		mocks.getStructurePriorityQueueMock.mockResolvedValueOnce({
 			newStructureIds: [],
@@ -85,11 +85,11 @@ describe('fetchSovereigntyEnrichment', () => {
 				},
 			],
 		})
-		mocks.fetchEsiMock.mockResolvedValueOnce({
+		mocks.fetchCorporationSovereigntyHubsPageMock.mockResolvedValueOnce({
 			data: {
 				sovereignty_hubs: [{ id: 1, solar_system_id: 30000142 }],
 			},
-			pages: 1,
+			meta: { pages: 1, page: 1 },
 		})
 		mocks.readSharedSovereigntySystemsByIdsMock.mockResolvedValue([
 			{
@@ -157,10 +157,9 @@ describe('fetchSovereigntyEnrichment', () => {
 
 		expect(mocks.fetchSovereigntyHubsMock).toHaveBeenCalledWith(
 			{
-				fetchEsi: mocks.fetchEsiMock,
+				fetchCorporationSovereigntyHubsPage: mocks.fetchCorporationSovereigntyHubsPageMock,
 			},
 			'corp-1',
-			'character-1',
 			{
 				prioritizedEntries: [
 					{
@@ -194,8 +193,8 @@ describe('fetchSovereigntyEnrichment', () => {
 	})
 
 	it('bubbles sovereignty scope mismatches so the workflow can surface sync failure state', async () => {
-		mocks.createTokenStoreMock.mockReturnValue({
-			fetchEsi: mocks.fetchEsiMock,
+		mocks.getCorporationEsiMock.mockReturnValue({
+			fetchCorporationSovereigntyHubsPage: mocks.fetchCorporationSovereigntyHubsPageMock,
 		})
 		mocks.getStructurePriorityQueueMock.mockResolvedValueOnce({
 			newStructureIds: [],
@@ -204,7 +203,7 @@ describe('fetchSovereigntyEnrichment', () => {
 		})
 		mocks.readSharedSovereigntySystemsForCorporationMock.mockResolvedValue([])
 		mocks.readSharedSovereigntySystemsByIdsMock.mockReset()
-		mocks.fetchEsiMock.mockRejectedValue(
+		mocks.fetchCorporationSovereigntyHubsPageMock.mockRejectedValue(
 			new Error(
 				'ESI request failed: 401 Unauthorized - {"error":"missing scope"} | metadata={"status":401,"path":"/corporations/123/structures/sovereignty-hubs/"}'
 			)
@@ -228,12 +227,12 @@ describe('fetchSovereigntyEnrichment', () => {
 	})
 
 	it('uses the corporation-scoped cache fallback when no live hubs are listed', async () => {
-		mocks.createTokenStoreMock.mockReturnValue({
-			fetchEsi: mocks.fetchEsiMock,
+		mocks.getCorporationEsiMock.mockReturnValue({
+			fetchCorporationSovereigntyHubsPage: mocks.fetchCorporationSovereigntyHubsPageMock,
 		})
-		mocks.fetchEsiMock.mockResolvedValueOnce({
+		mocks.fetchCorporationSovereigntyHubsPageMock.mockResolvedValueOnce({
 			data: { sovereignty_hubs: [] },
-			pages: 1,
+			meta: { pages: 1, page: 1 },
 		})
 		mocks.readSharedSovereigntySystemsForCorporationMock.mockResolvedValue([
 			{

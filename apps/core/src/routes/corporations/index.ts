@@ -26,9 +26,9 @@ import corporationsPermissionsRoutes from './permissions-routes'
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
 import type { Discord } from '@repo/discord'
+import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type { App } from '../../context'
@@ -848,7 +848,7 @@ async function hydrateCorporationMembers(
 	corporationId: string,
 	managedCorp: { name: string },
 	corpStub: EveCorporationData,
-	tokenStoreStub: EveTokenStore
+	typeResolver: EsiTypeResolver
 ): Promise<CorporationMemberListItem[]> {
 	const db = c.get('db')
 	if (!db) {
@@ -887,11 +887,7 @@ async function hydrateCorporationMembers(
 	)
 	const directorIds = new Set(directors.map((director) => director.characterId))
 	const characterNameMap =
-		memberCharacterIds.length > 0
-			? await withRpcResult(tokenStoreStub.resolveIds(memberCharacterIds), (result) => ({
-					...result,
-				}))
-			: {}
+		memberCharacterIds.length > 0 ? await typeResolver.resolveIds(memberCharacterIds) : {}
 	const linkedUserIds = [...new Set(linkedCharacters.map((row) => row.userId))]
 	const linkedUsers =
 		linkedUserIds.length > 0
@@ -901,11 +897,7 @@ async function hydrateCorporationMembers(
 			: []
 	const mainCharacterIds = linkedUsers.map((user) => user.mainCharacterId)
 	const mainCharacterNameMap =
-		mainCharacterIds.length > 0
-			? await withRpcResult(tokenStoreStub.resolveIds(mainCharacterIds), (result) => ({
-					...result,
-				}))
-			: {}
+		mainCharacterIds.length > 0 ? await typeResolver.resolveIds(mainCharacterIds) : {}
 	const userIdToMainCharacterName = new Map(
 		linkedUsers.map((user) => [user.id, mainCharacterNameMap[user.mainCharacterId] || 'Unknown'])
 	)
@@ -2038,6 +2030,8 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 					const queueResult = await coreStub.addPendingDiscordRefreshes(uniqueUserIds, {
 						source: isMemberCorporation ? 'corp-member-flag-enabled' : 'corp-member-flag-disabled',
 						force: true,
+						allowRemoval: true,
+						hardStripAllRoles: !isMemberCorporation,
 					})
 					logger.info('[Corporations] Queued Discord refresh after member-corp status change', {
 						corporationId,
@@ -2501,7 +2495,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		const cacheKey = getCorpMembersCacheKey(corporationId)
 		const cached = await getCachedJson<CorporationMemberListItem[]>(cacheKey)
 		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const typeResolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
 		const hrRoles =
 			query.sortField === 'hrRole'
@@ -2569,11 +2563,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					: []
 			const linkedCharacterMap = new Map(linkedCharacters.map((row) => [row.characterId, row]))
 			const characterNameMap =
-				pageCharacterIds.length > 0
-					? await withRpcResult(tokenStoreStub.resolveIds(pageCharacterIds), (result) => ({
-							...result,
-						}))
-					: {}
+				pageCharacterIds.length > 0 ? await typeResolver.resolveIds(pageCharacterIds) : {}
 
 			const linkedUserIds = [...new Set(linkedCharacters.map((row) => row.userId))]
 			const linkedUsers =
@@ -2584,11 +2574,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 					: []
 			const mainCharacterIds = linkedUsers.map((u) => u.mainCharacterId)
 			const mainCharacterNameMap =
-				mainCharacterIds.length > 0
-					? await withRpcResult(tokenStoreStub.resolveIds(mainCharacterIds), (result) => ({
-							...result,
-						}))
-					: {}
+				mainCharacterIds.length > 0 ? await typeResolver.resolveIds(mainCharacterIds) : {}
 			const userIdToMainCharacterName = new Map(
 				linkedUsers.map((u) => [u.id, mainCharacterNameMap[u.mainCharacterId] || 'Unknown'])
 			)
@@ -2767,10 +2753,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 
 		// Batch resolve all character names using ESI bulk endpoint
 		// Character ID → name mappings are cached for 1 year (essentially permanent)
-		const characterNameMap = await withRpcResult(
-			tokenStoreStub.resolveIds(memberCharacterIds),
-			(result) => ({ ...result })
-		)
+		const characterNameMap = await typeResolver.resolveIds(memberCharacterIds)
 
 		logger.info('[Corporations Members] Resolved character names', {
 			corporationId,
@@ -2791,11 +2774,7 @@ app.get('/:corporationId/members', requireAuth(), async (c) => {
 		// Resolve main character IDs to character names
 		const mainCharacterIds = linkedUsers.map((u) => u.mainCharacterId)
 		const mainCharacterNameMap =
-			mainCharacterIds.length > 0
-				? await withRpcResult(tokenStoreStub.resolveIds(mainCharacterIds), (result) => ({
-						...result,
-					}))
-				: {}
+			mainCharacterIds.length > 0 ? await typeResolver.resolveIds(mainCharacterIds) : {}
 
 		// Create a map from userId to main character name
 		const userIdToMainCharacterName = new Map(
@@ -2950,14 +2929,14 @@ app.get('/:corporationId/members/export', requireAuth(), async (c) => {
 		})
 
 		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const typeResolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const hrStub = getStub<Hr>(c.env.HR, 'default')
 		const members = await hydrateCorporationMembers(
 			c,
 			corporationId,
 			managedCorp,
 			corpStub,
-			tokenStoreStub
+			typeResolver
 		)
 		const hrRoles = await withRpcResult(hrStub.getCorporationRoles(corporationId, true), (result) =>
 			result.map((role) => ({ ...role }))
@@ -3047,7 +3026,7 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 
 		const memberCharIdSet = new Set(linkedCharacters.map((row) => row.characterId))
 		const corpStub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
-		const tokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const typeResolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const [corpInfo, coreData, currentMembers, directors] = await Promise.all([
 			withRpcResult(corpStub.getCorporationInfo(corporationId), (result) =>
 				result ? { ...result } : null
@@ -3084,7 +3063,7 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 
 		const characterIds = matchingMembers.map((member) => String(member.characterId))
 		const characterNameMap = await withRpcResult(
-			tokenStoreStub.resolveIds(characterIds),
+			typeResolver.resolveIds(characterIds),
 			(result) => ({
 				...result,
 			})
@@ -3101,7 +3080,7 @@ app.get('/:corporationId/members/:accountId', requireAuth(), async (c) => {
 					)
 				: null
 		const mainCharacterNameMap = linkedUser?.mainCharacterId
-			? await withRpcResult(tokenStoreStub.resolveIds([linkedUser.mainCharacterId]), (result) => ({
+			? await withRpcResult(typeResolver.resolveIds([linkedUser.mainCharacterId]), (result) => ({
 					...result,
 				}))
 			: {}

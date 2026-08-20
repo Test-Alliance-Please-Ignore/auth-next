@@ -2,7 +2,7 @@ import { withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import * as esiFetch from '../../../services/esi-fetch'
-import { createTokenStore, getCorporationDataStub } from '../../utils/services'
+import { getCorporationDataStub, getCorporationEsi } from '../../utils/services'
 
 import type { Env } from '../../../context'
 
@@ -19,8 +19,11 @@ export async function fetchMembers(
 	corporationId: string,
 	directorCharacterId: string
 ): Promise<MemberIds> {
-	const tokenStore = createTokenStore(env)
-	const members = await esiFetch.fetchMembers(tokenStore, corporationId, directorCharacterId)
+	const members = await esiFetch.fetchMembers(
+		getCorporationEsi(env, corporationId),
+		corporationId,
+		directorCharacterId
+	)
 
 	logger.debug('[MembersStep] Fetched members', { corporationId, count: members.length })
 
@@ -67,7 +70,6 @@ export async function sendMembershipChangedMessages(
 	await withRpcResult(
 		env.CORE.handleCharacterAffiliationChanges(memberIds, {
 			source: 'corp-membership-changed',
-			bypassThrottle: true,
 		}),
 		() => undefined
 	)
