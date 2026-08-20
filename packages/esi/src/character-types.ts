@@ -657,6 +657,14 @@ export interface CharacterLocation {
 	structure_id?: string
 }
 
+/** ESI GET /characters/{character_id}/online/ response. */
+export interface CharacterOnlineStatus {
+	last_login?: string
+	last_logout?: string
+	logins?: number
+	online: boolean
+}
+
 export interface CharacterMail {
 	from?: string
 	is_read?: boolean

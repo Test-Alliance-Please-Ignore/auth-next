@@ -6,7 +6,6 @@
  */
 
 import type { createRemoteJWKSet } from 'jose'
-import type * as z4 from 'zod/v4/core'
 import type { EveCharacterId } from '@repo/eve-types'
 
 /**
@@ -328,108 +327,29 @@ export interface CallbackResult {
 }
 
 /**
- * Response from ESI with cache metadata
+ * Temporary diagnostics for the one-time purge of legacy token-store cache
+ * tables. Remove these types and RPC methods with the maintenance endpoint
+ * after the production purge has been verified.
  */
-export interface EsiResponse<T> {
-	/** The response data from ESI */
-	data: T
-	/** Whether this response came from cache */
-	cached: boolean
-	/** When the cached response expires */
-	expiresAt: Date
-	/** ETag header from ESI for conditional requests */
-	etag?: string
-	/** Total number of pages (from X-Pages header) */
-	pages?: number
-	/** Current page number (from URL parameter) */
-	page?: number
+export interface EveTokenStoreStorageTableReport {
+	table: 'esi_cache' | 'entity_cache'
+	exists: boolean
+	rowCount: number
+	payloadBytes: number
+	minExpiresAt: number | null
+	maxExpiresAt: number | null
 }
 
-/**
- * ESI Corporation Response
- * https://esi.evetech.net/ui/#/Corporation/get_corporations_corporation_id
- */
-export interface EsiCorporation {
-	/** Corporation ID */
-	corporation_id: string
-	/** Corporation name */
-	name: string
-	/** Corporation ticker */
-	ticker: string
-	/** CEO character ID */
-	ceo_id: string
-	/** Alliance ID (if in alliance) */
-	alliance_id?: string
-	/** Corporation description */
-	description?: string
-	/** Member count */
-	member_count: number
-	/** Tax rate */
-	tax_rate: number
-	/** Creation date */
-	date_founded?: string
-	/** Creator character ID */
-	creator_id: string
-	/** Home station ID */
-	home_station_id?: string
-	/** Shares */
-	shares?: number
-	/** URL */
-	url?: string
-	/** War eligible */
-	war_eligible?: boolean
+export interface EveTokenStoreStorageInventory {
+	databaseBytes: number
+	legacyCacheTables: EveTokenStoreStorageTableReport[]
+	accessTokenCacheRowCount: number
+	oauthMetadataPresent: boolean
 }
 
-/**
- * ESI Alliance Response
- * https://esi.evetech.net/ui/#/Alliance/get_alliances_alliance_id
- */
-export interface EsiAlliance {
-	/** Alliance ID */
-	alliance_id: string
-	/** Alliance name */
-	name: string
-	/** Alliance ticker */
-	ticker: string
-	/** Executor corporation ID */
-	executor_corporation_id: string
-	/** Creator corporation ID */
-	creator_corporation_id: string
-	/** Creator character ID */
-	creator_id: string
-	/** Date founded */
-	date_founded: string
-	/** Faction ID (if factional warfare alliance) */
-	faction_id?: string
-}
-
-/**
- * Character Affiliation response entry.
- *
- * This matches the normalized contract we expose to callers and keeps the
- * affiliation shape consistent with the rest of the codebase that consumes it.
- */
-export interface EsiCharacterAffiliation {
-	/** Character ID */
-	character_id: number
-	/** Corporation ID */
-	corporation_id: number
-	/** Alliance ID (if in alliance) */
-	alliance_id?: number
-	/** Faction ID (if in faction warfare) */
-	faction_id?: number
-}
-
-/**
- * Entity name/ID pair for bulk resolution
- */
-export interface EntityNameInfo {
-	/** Entity ID */
-	id: string
-	/** Entity name */
-	name: string
-	/** Entity category (alliance, character, corporation, etc.) */
-	category: string
+export interface EveTokenStoreLegacyCachePurgeResult {
+	before: EveTokenStoreStorageInventory
+	after: EveTokenStoreStorageInventory
 }
 
 /**
@@ -440,11 +360,10 @@ export interface EntityNameInfo {
  *
  * @example
  * ```ts
+ * import { getStub } from '@repo/do-utils'
  * import type { EveTokenStore } from '@repo/eve-token-store'
  *
- * // Get the Durable Object stub
- * const id = env.EVE_TOKEN_STORE.idFromName('default')
- * const stub = env.EVE_TOKEN_STORE.get(id) as DurableObjectStub<EveTokenStore>
+ * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
  *
  * // Start login flow
  * const authUrl = await stub.startLoginFlow()
@@ -534,6 +453,12 @@ export interface EveTokenStore {
 	getAccessToken(characterId: string): Promise<string | null>
 
 	/**
+	 * Determine whether an access token can be issued without exposing token
+	 * material to the caller. This may refresh a token inside the safety margin.
+	 */
+	hasUsableAccessToken(characterId: string): Promise<boolean>
+
+	/**
 	 * Revoke and delete a token
 	 * @param characterId - EVE character ID
 	 * @returns Whether revocation was successful
@@ -557,334 +482,11 @@ export interface EveTokenStore {
 	listTokens(): Promise<TokenInfo[]>
 
 	/**
-	 * Fetch data from ESI for this character (ESI Gateway)
-	 * Automatically handles authentication if token is available for the character
-	 * Caches responses according to ESI cache headers
-	 *
-	 * @param path - ESI path (e.g., '/characters/{character_id}/skills')
-	 * @param characterId - Character ID (used for authentication and path interpolation)
-	 * @returns ESI response with cache metadata
-	 *
-	 * @example
-	 * ```ts
-	 * const tokenStoreId = env.EVE_TOKEN_STORE.idFromString(characterId.toString())
-	 * const stub = env.EVE_TOKEN_STORE.get(tokenStoreId)
-	 * const response = await stub.fetchEsi<EsiCharacterSkills>(
-	 *   `/characters/${characterId}/skills`,
-	 *   characterId
-	 * )
-	 * ```
+	 * Select a non-deleted, refreshable character that can authorize an ESI
+	 * character-search request. This exposes token lifecycle state only; callers
+	 * perform the ESI request through the shared ESI service.
 	 */
-	fetchEsi<T>(path: string, characterId: string): Promise<EsiResponse<T>>
-	fetchEsi<T>(
-		path: string,
-		characterId: string,
-		options?: { cacheMode?: 'default' | 'no-store'; maxRetries?: number; timeoutMs?: number }
-	): Promise<EsiResponse<T>>
-
-	/**
-	 * Fetch data from ESI for this character (ESI Gateway) with a schema
-	 * Automatically handles authentication if token is available for the character
-	 * Caches responses according to ESI cache headers
-	 *
-	 * @param path - ESI path (e.g., '/characters/{character_id}/skills')
-	 * @param characterId - Character ID (used for authentication and path interpolation)
-	 * @param schema - Zod schema to parse the response data
-	 * @returns ESI response with cache metadata
-	 **/
-	fetchEsiWithSchema<S extends z4.$ZodType>(
-		path: string,
-		characterId: string,
-		schema: S
-	): Promise<EsiResponse<z4.output<S>>>
-
-	/**
-	 * Fetch public data from ESI (unauthenticated ESI Gateway)
-	 * For public endpoints that don't require authentication
-	 * Caches responses according to ESI cache headers
-	 *
-	 * @param path - ESI path (e.g., '/universe/types/587' or '/markets/prices')
-	 * @returns ESI response with cache metadata
-	 *
-	 * @example
-	 * ```ts
-	 * const tokenStoreId = env.EVE_TOKEN_STORE.idFromName('default')
-	 * const stub = env.EVE_TOKEN_STORE.get(tokenStoreId)
-	 * const response = await stub.fetchPublicEsi<EsiMarketPrices>(
-	 *   '/markets/prices'
-	 * )
-	 * ```
-	 */
-	fetchPublicEsi<T>(
-		path: string,
-		options?: { cacheMode?: 'default' | 'no-store' }
-	): Promise<EsiResponse<T>>
-
-	/**
-	 * Fetch character affiliation data from ESI.
-	 * Uses POST /characters/affiliation with token-store caching and ETag support.
-	 *
-	 * @param characterIds - One or more EVE character IDs
-	 * @returns Affiliation entries for provided character IDs
-	 */
-	fetchCharacterAffiliations(
-		characterIds: string[],
-		options?: { cacheMode?: 'default' | 'no-store'; maxRetries?: number; timeoutMs?: number }
-	): Promise<EsiCharacterAffiliation[]>
-
-	/**
-	 * Fetch public data from ESI with a schema
-	 * @param path - ESI path (e.g., '/universe/types/587' or '/markets/prices')
-	 * @param schema - Zod schema to parse the response data
-	 * @returns ESI response with cache metadata
-	 */
-	fetchPublicEsiWithSchema<S extends z4.$ZodType>(
-		path: string,
-		schema: S
-	): Promise<EsiResponse<z4.output<S>>>
-	/**
-	 * Clear ESI cache for a specific path
-	 * Use this when you need to force a fresh fetch on the next request
-	 *
-	 * @param path - ESI path to clear from cache
-	 * @param characterId - Character ID for authenticated cache (optional for public cache)
-	 * @returns Number of cache entries cleared
-	 *
-	 * @example
-	 * ```ts
-	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * // Clear authenticated cache
-	 * await stub.clearEsiCache('/corporations/123/wallets/1/journal', '2119123456')
-	 * // Clear public cache
-	 * await stub.clearEsiCache('/markets/prices')
-	 * ```
-	 */
-	clearEsiCache(path: string, characterId?: string): Promise<number>
-
-	/**
-	 * Fetch all pages from a paginated ESI endpoint (authenticated)
-	 * Automatically fetches all pages in parallel and returns combined results
-	 *
-	 * @param basePath - ESI path without page parameter (e.g., '/corporations/{corporation_id}/assets')
-	 * @param characterId - Character ID for authentication
-	 * @param options - Optional configuration
-	 * @param options.maxConcurrent - Maximum concurrent requests (default: 5)
-	 * @returns Combined data array and total pages
-	 *
-	 * @example
-	 * ```ts
-	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * const result = await stub.fetchEsiAllPages<Asset[]>(
-	 *   `/corporations/${corporationId}/assets`,
-	 *   characterId,
-	 *   { maxConcurrent: 10 }
-	 * )
-	 * logger.info(`Fetched ${result.data.length} items across ${result.pages} pages`)
-	 * ```
-	 */
-	fetchEsiAllPages<T>(
-		basePath: string,
-		characterId: string,
-		options?: { maxConcurrent?: number; cacheMode?: 'default' | 'no-store' }
-	): Promise<{
-		data: T[]
-		pages: number
-	}>
-
-	/**
-	 * Fetch paginated ESI rows from newest to oldest until a journal-style
-	 * watermark has been reached. Without a watermark this falls back to the
-	 * regular full-pagination behavior.
-	 */
-	fetchEsiPagesUntilWatermark<T extends { id: string | number; date?: string | Date }>(
-		basePath: string,
-		characterId: string,
-		watermark?: { maxId: string | null; maxDate: Date | string | null },
-		options?: { cacheMode?: 'default' | 'no-store' }
-	): Promise<{
-		data: T[]
-		pages: number
-		pagesFetched: number
-		stoppedAtWatermark: boolean
-	}>
-
-	/**
-	 * Fetch all pages from a paginated public ESI endpoint (unauthenticated)
-	 * Automatically fetches all pages in parallel and returns combined results
-	 *
-	 * @param basePath - ESI path without page parameter (e.g., '/markets/prices')
-	 * @param options - Optional configuration
-	 * @param options.maxConcurrent - Maximum concurrent requests (default: 5)
-	 * @returns Combined data array and total pages
-	 *
-	 * @example
-	 * ```ts
-	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * const result = await stub.fetchPublicEsiAllPages<MarketOrder[]>(
-	 *   `/markets/10000002/orders`,
-	 *   { maxConcurrent: 10 }
-	 * )
-	 * logger.info(`Fetched ${result.data.length} orders across ${result.pages} pages`)
-	 * ```
-	 */
-	fetchPublicEsiAllPages<T>(
-		basePath: string,
-		options?: { maxConcurrent?: number }
-	): Promise<{
-		data: T[]
-		pages: number
-	}>
-
-	/**
-	 * Fetch all pages from a paginated public ESI endpoint as a stream (unauthenticated)
-	 * Returns a ReadableStream that yields newline-delimited JSON for each order
-	 * Use this for large datasets (>32MiB) to bypass RPC size limits
-	 *
-	 * @param basePath - ESI path without page parameter (e.g., '/markets/10000002/orders')
-	 * @param options - Optional configuration
-	 * @param options.maxConcurrent - Maximum concurrent requests (default: 5)
-	 * @returns ReadableStream of Uint8Array containing newline-delimited JSON
-	 *
-	 * @example
-	 * ```ts
-	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * const stream = await stub.fetchPublicEsiAllPagesStream(
-	 *   `/markets/10000002/orders`,
-	 *   { maxConcurrent: 10 }
-	 * )
-	 *
-	 * // Decode and parse line by line
-	 * const reader = stream.pipeThrough(new TextDecoderStream()).getReader()
-	 * let buffer = ''
-	 * while (true) {
-	 *   const { done, value } = await reader.read()
-	 *   if (done) break
-	 *   buffer += value
-	 *   const lines = buffer.split('\n')
-	 *   buffer = lines.pop() || ''
-	 *   for (const line of lines) {
-	 *     if (line.trim()) {
-	 *       const order = JSON.parse(line)
-	 *       // Process order...
-	 *     }
-	 *   }
-	 * }
-	 * ```
-	 */
-	fetchPublicEsiAllPagesStream(
-		basePath: string,
-		options?: { maxConcurrent?: number }
-	): Promise<ReadableStream<Uint8Array>>
-
-	/**
-	 * Get corporation information by ID
-	 * Automatically caches results in SQLite storage
-	 *
-	 * @param corporationId - EVE corporation ID
-	 * @returns Corporation information or null if not found
-	 *
-	 * @example
-	 * ```ts
-	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * const corp = await stub.getCorporationById('98012345')
-	 * ```
-	 */
-	getCorporationById(corporationId: string): Promise<EsiCorporation | null>
-
-	/**
-	 * Get alliance information by ID
-	 * Automatically caches results in SQLite storage
-	 *
-	 * @param allianceId - EVE alliance ID
-	 * @returns Alliance information or null if not found
-	 *
-	 * @example
-	 * ```ts
-	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * const alliance = await stub.getAllianceById('99000001')
-	 * ```
-	 */
-	getAllianceById(allianceId: string): Promise<EsiAlliance | null>
-
-	/**
-	 * Get corporation information by name
-	 * Uses bulk name resolution and caches results
-	 *
-	 * @param name - Corporation name (case-sensitive)
-	 * @returns Corporation information or null if not found
-	 *
-	 * @example
-	 * ```ts
-	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * const corp = await stub.getCorporationByName('Jita Holding Corporation')
-	 * ```
-	 */
-	getCorporationByName(name: string): Promise<EsiCorporation | null>
-
-	/**
-	 * Get alliance information by name
-	 * Uses bulk name resolution and caches results
-	 *
-	 * @param name - Alliance name (case-sensitive)
-	 * @returns Alliance information or null if not found
-	 *
-	 * @example
-	 * ```ts
-	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * const alliance = await stub.getAllianceByName('Goonswarm Federation')
-	 * ```
-	 */
-	getAllianceByName(name: string): Promise<EsiAlliance | null>
-
-	/**
-	 * Resolve multiple entity names to IDs
-	 * Supports alliances, characters, corporations, systems, etc.
-	 * Caches results for future lookups
-	 *
-	 * @param names - Array of entity names to resolve
-	 * @returns Map of name to ID for found entities
-	 *
-	 * @example
-	 * ```ts
-	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * const nameMap = await stub.resolveNames(['Jita', 'Goonswarm Federation'])
-	 * // Returns: { 'Jita': '30000142', 'Goonswarm Federation': '1354830081' }
-	 * ```
-	 */
-	resolveNames(names: string[]): Promise<Record<string, string>>
-
-	/**
-	 * Resolve multiple entity IDs to names
-	 * Supports alliances, characters, corporations, systems, etc.
-	 * Caches results for future lookups
-	 *
-	 * @param ids - Array of entity IDs to resolve
-	 * @returns Map of ID to name for found entities
-	 *
-	 * @example
-	 * ```ts
-	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * const idMap = await stub.resolveIds(['30000142', '1354830081'])
-	 * // Returns: { '30000142': 'Jita', '1354830081': 'Goonswarm Federation' }
-	 * ```
-	 */
-	resolveIds(ids: string[]): Promise<Record<string, string>>
-
-	/**
-	 * Search for a character by name using ESI
-	 *
-	 * @param characterName - Character name to search for
-	 * @param strict - If true, only exact matches are returned (default: true)
-	 * @returns Array of character IDs matching the search, or empty array if none found
-	 *
-	 * @example
-	 * ```ts
-	 * const stub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-	 * const ids = await stub.searchCharacter('Ozzie Dreadnaught', true)
-	 * // Returns: ['123456789'] or []
-	 * ```
-	 */
-	searchCharacter(characterName: string, strict?: boolean): Promise<string[]>
+	getCharacterSearchAccessCharacterId(): Promise<string | null>
 
 	/**
 	 * Get a batch of characters to refresh
@@ -904,4 +506,16 @@ export interface EveTokenStore {
 	 * Mark a character's ESI data sync as successfully completed.
 	 */
 	markCharacterDataSyncComplete(characterId: string): Promise<void>
+
+	/**
+	 * TEMPORARY MAINTENANCE RPC. Remove after the legacy cache purge is complete.
+	 * Reports only metadata and aggregate sizes; never returns cache contents.
+	 */
+	inspectLegacyStorage(): Promise<EveTokenStoreStorageInventory>
+
+	/**
+	 * TEMPORARY MAINTENANCE RPC. Remove with inspectLegacyStorage().
+	 * Purges only the obsolete ESI response/entity cache tables.
+	 */
+	purgeLegacyCache(confirmation: string): Promise<EveTokenStoreLegacyCachePurgeResult>
 }

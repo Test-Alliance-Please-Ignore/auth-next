@@ -13,47 +13,37 @@ const rawJournalEntry = (id: number) => ({
 
 describe('wallet journal ESI pagination', () => {
 	it('uses bounded pagination when a journal watermark exists', async () => {
-		const fetchEsiPagesUntilWatermark = vi.fn().mockResolvedValue({
+		const fetchCorporationWalletJournalUntilWatermark = vi.fn().mockResolvedValue({
 			data: [rawJournalEntry(101), rawJournalEntry(100)],
 			pages: 5,
 			pagesFetched: 2,
 			stoppedAtWatermark: true,
 		})
-		const fetchEsiAllPages = vi.fn()
-		const tokenStore = { fetchEsiPagesUntilWatermark, fetchEsiAllPages }
+		const fetchCorporationWalletJournal = vi.fn()
+		const esi = { fetchCorporationWalletJournalUntilWatermark, fetchCorporationWalletJournal }
 
-		const result = await fetchWalletJournal(tokenStore as never, '123', 1, '456', {
+		const result = await fetchWalletJournal(esi as never, '123', 1, '456', {
 			maxJournalId: '100',
 			maxJournalDate: new Date('2026-08-05T00:00:00Z'),
 		})
 
-		expect(fetchEsiPagesUntilWatermark).toHaveBeenCalledWith(
-			'/corporations/123/wallets/1/journal',
-			'456',
-			{
-				maxId: '100',
-				maxDate: new Date('2026-08-05T00:00:00Z'),
-			},
-			{ cacheMode: 'no-store' }
-		)
-		expect(fetchEsiAllPages).not.toHaveBeenCalled()
-		expect(result.map((entry) => entry.id)).toEqual(['101', '100'])
+		expect(fetchCorporationWalletJournalUntilWatermark).toHaveBeenCalledWith('123', 1, {
+			maxId: '100',
+			maxDate: '2026-08-05T00:00:00.000Z',
+		})
+		expect(fetchCorporationWalletJournal).not.toHaveBeenCalled()
+		expect(result.map((entry) => entry.id)).toEqual([101, 100])
 	})
 
 	it('uses full pagination when no journal watermark exists', async () => {
-		const fetchEsiPagesUntilWatermark = vi.fn()
-		const fetchEsiAllPages = vi.fn().mockResolvedValue({
-			data: [rawJournalEntry(100)],
-			pages: 1,
-		})
-		const tokenStore = { fetchEsiPagesUntilWatermark, fetchEsiAllPages }
+		const fetchCorporationWalletJournalUntilWatermark = vi.fn()
+		const fetchCorporationWalletJournal = vi.fn().mockResolvedValue([rawJournalEntry(100)])
+		const esi = { fetchCorporationWalletJournalUntilWatermark, fetchCorporationWalletJournal }
 
-		const result = await fetchWalletJournal(tokenStore as never, '123', 1, '456')
+		const result = await fetchWalletJournal(esi as never, '123', 1, '456')
 
-		expect(fetchEsiAllPages).toHaveBeenCalledWith('/corporations/123/wallets/1/journal', '456', {
-			cacheMode: 'no-store',
-		})
-		expect(fetchEsiPagesUntilWatermark).not.toHaveBeenCalled()
-		expect(result.map((entry) => entry.id)).toEqual(['100'])
+		expect(fetchCorporationWalletJournal).toHaveBeenCalledWith('123', 1)
+		expect(fetchCorporationWalletJournalUntilWatermark).not.toHaveBeenCalled()
+		expect(result.map((entry) => entry.id)).toEqual([100])
 	})
 })

@@ -103,6 +103,54 @@ const groups = await stub.listGroups()
 - **Consistency:** Single pattern used across the entire codebase
 - **Maintainability:** Easier to update if Durable Object access patterns change
 
+### ESI Ownership And Routing
+
+**CRITICAL:** `eve-token-store` owns OAuth and token lifecycle only. It must
+not issue raw ESI requests, own ESI response caches, or implement ESI
+rate-limit/breaker policy. `apps/esi` is the single internal owner of typed ESI
+transport, request policy, response caching, ETag handling, and shared ESI
+rate-limit/breaker state.
+
+```typescript
+import {
+	getEsiInstanceForCharacter,
+	getEsiInstanceForCorporation,
+	getPublicEsiInstance,
+} from '@repo/esi'
+
+// Public data uses the explicit public ESI instance.
+const publicEsi = getPublicEsiInstance(env.ESI)
+const corporation = await publicEsi.fetchCorporationPublicInfo(corporationId)
+
+// Authenticated reads use bounded routing. Never construct ESI stub names.
+const characterEsi = getEsiInstanceForCharacter(env.ESI, characterId)
+const skills = await characterEsi.fetchCharacterSkills(characterId)
+
+const corporationEsi = getEsiInstanceForCorporation(env.ESI, corporationId)
+const members = await corporationEsi.fetchCorporationMembers(corporationId)
+```
+
+Rules:
+
+1. Use `getPublicEsiInstance`, `getEsiInstanceForCharacter`, or
+   `getEsiInstanceForCorporation`; do not call `getStub(env.ESI, ...)` for
+   authenticated ESI requests.
+2. The authenticated ESI pool has exactly 16 fixed shards. Logical character
+   and corporation IDs choose a shard; callers never choose a shard or pass
+   token/cache/rate-limit keys.
+3. Typed ESI methods return serializable data or an explicit `EsiResult<T>`
+   when a caller needs safe transport metadata. Handle `EsiRequestError` for
+   status, retry-after, and rate-limit diagnostics. Do not reintroduce generic
+   raw fetch/path APIs outside `apps/esi`.
+4. Token-store access-token methods are lifecycle capabilities. They are for
+   ESI internals and explicitly documented token-availability checks only;
+   domain workers must never receive bearer or refresh token material.
+5. Domain workers own watermarks, pagination stop conditions, persistence, and
+   business projections. ESI owns typed page retrieval and transport policy.
+6. Use `ESI_TYPE_RESOLVER` for bulk ID/name hydration instead of ESI transport
+   workarounds. Preserve Universe's database/SDE/LRU-first strategy, Fleet's
+   explicit live `no-store` reads, and third-party application cache isolation.
+
 ### Durable Objects Method Pattern
 **CRITICAL:** NEVER rely on `state.id` for entity ID resolution. ALWAYS pass entity IDs explicitly as parameters to RPC methods.
 

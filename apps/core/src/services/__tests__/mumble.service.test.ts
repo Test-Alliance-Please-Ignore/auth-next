@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
+import { getPublicEsiInstance } from '@repo/esi'
 
 import { createDb } from '../../db'
 import {
@@ -16,11 +17,16 @@ vi.mock('@repo/do-utils', () => ({
 		consume(await rpcCall),
 }))
 
+vi.mock('@repo/esi', () => ({
+	getPublicEsiInstance: vi.fn(),
+}))
+
 vi.mock('../../db', () => ({
 	createDb: vi.fn(),
 }))
 
 const getStubMock = vi.mocked(getStub)
+const getPublicEsiInstanceMock = vi.mocked(getPublicEsiInstance)
 const createDbMock = vi.mocked(createDb)
 
 const USER_ID = '123e4567-e89b-12d3-a456-426614174000'
@@ -531,7 +537,7 @@ describe('provisionTempopGuest', () => {
 		DATABASE_URL: 'postgres://example',
 		EVE_CHARACTER_DATA: {},
 		EVE_CORPORATION_DATA: {},
-		EVE_TOKEN_STORE: {},
+		ESI: {},
 		MUMBLE: {},
 		MUMBLE_SERVER_ID: 'srv',
 		MUMBLE_HOST: 'voice.test',
@@ -574,11 +580,12 @@ describe('provisionTempopGuest', () => {
 				ticker: 'Corp',
 			}),
 		}
-		const tokenStoreStub = {
-			getAllianceById: vi.fn().mockResolvedValue({
+		const esiStub = {
+			fetchAlliancePublicInfo: vi.fn().mockResolvedValue({
 				ticker: 'Alliance',
 			}),
 		}
+		getPublicEsiInstanceMock.mockReturnValue(esiStub as any)
 		const mumbleStub = {
 			provisionAccount: vi.fn().mockResolvedValue({
 				account: { loginName: 'Temp_Pilot' },
@@ -590,7 +597,6 @@ describe('provisionTempopGuest', () => {
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.EVE_CHARACTER_DATA) return characterStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
-			if (binding === env.EVE_TOKEN_STORE) return tokenStoreStub as any
 			if (binding === env.MUMBLE) return mumbleStub as any
 			throw new Error('unexpected stub binding')
 		})
@@ -602,7 +608,7 @@ describe('provisionTempopGuest', () => {
 
 		expect(characterStub.refreshPublicCharacterData).toHaveBeenCalledWith('char-1', false)
 		expect(corpStub.getCorporationInfo).toHaveBeenCalledWith('corp-1')
-		expect(tokenStoreStub.getAllianceById).toHaveBeenCalledWith('ally-1')
+		expect(esiStub.fetchAlliancePublicInfo).toHaveBeenCalledWith('ally-1')
 		expect(mumbleStub.provisionAccount).toHaveBeenCalledWith('srv', {
 			subjectId: 'tempop:tempop-1:char-1',
 			loginName: 'Temp_Pilot',
@@ -666,9 +672,10 @@ describe('provisionTempopGuest', () => {
 				ticker: 'Corp',
 			}),
 		}
-		const tokenStoreStub = {
-			getAllianceById: vi.fn(),
+		const esiStub = {
+			fetchAlliancePublicInfo: vi.fn(),
 		}
+		getPublicEsiInstanceMock.mockReturnValue(esiStub as any)
 		const mumbleStub = {
 			provisionAccount: vi.fn().mockResolvedValue({
 				account: { loginName: 'Temp_Pilot' },
@@ -680,7 +687,6 @@ describe('provisionTempopGuest', () => {
 		getStubMock.mockImplementation((binding: unknown) => {
 			if (binding === env.EVE_CHARACTER_DATA) return characterStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
-			if (binding === env.EVE_TOKEN_STORE) return tokenStoreStub as any
 			if (binding === env.MUMBLE) return mumbleStub as any
 			throw new Error('unexpected stub binding')
 		})
@@ -692,7 +698,7 @@ describe('provisionTempopGuest', () => {
 
 		expect(characterStub.refreshPublicCharacterData).toHaveBeenCalledWith('char-1', false)
 		expect(corpStub.getCorporationInfo).toHaveBeenCalledWith('corp-1')
-		expect(tokenStoreStub.getAllianceById).not.toHaveBeenCalled()
+		expect(esiStub.fetchAlliancePublicInfo).not.toHaveBeenCalled()
 		expect(mumbleStub.provisionAccount).toHaveBeenCalledWith('srv', {
 			subjectId: 'tempop:tempop-1:char-1',
 			loginName: 'Temp_Pilot',

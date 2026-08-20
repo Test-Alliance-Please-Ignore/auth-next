@@ -1,0 +1,97 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "fulcrum-test",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-30",
+	"compatibility_flags": ["nodejs_compat"],
+	"workers_dev": false,
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "FULCRUM",
+				"class_name": "Fulcrum"
+			},
+			{
+				"name": "MARKETS",
+				"class_name": "Markets",
+				"script_name": "markets"
+			},
+			{
+				"name": "ESI",
+				"class_name": "Esi",
+				"script_name": "esi"
+			},
+			{
+				"name": "ESI_TYPE_RESOLVER",
+				"class_name": "EsiTypeResolver",
+				"script_name": "esi"
+			},
+			{
+				"name": "EVE_TOKEN_STORE",
+				"class_name": "EveTokenStore",
+				"script_name": "eve-token-store"
+			},
+			{
+				"name": "UNIVERSE",
+				"class_name": "Universe",
+				"script_name": "universe"
+			},
+			{
+				"name": "DISCORD",
+				"class_name": "Discord",
+				"script_name": "discord"
+			},
+			{
+				"name": "HR",
+				"class_name": "Hr",
+				"script_name": "hr"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["Fulcrum"]
+		}
+	],
+	"workflows": [
+		{
+			"name": "character-report-workflow",
+			"binding": "CHARACTER_REPORT_WORKFLOW",
+			"class_name": "CharacterReportWorkflow"
+		},
+		{
+			"name": "bulk-character-report-workflow",
+			"binding": "BULK_CHARACTER_REPORT_WORKFLOW",
+			"class_name": "BulkCharacterReportWorkflow"
+		}
+	],
+	"queues": {
+		"producers": [
+			{
+				"queue": "character-reports-queue",
+				"binding": "CHARACTER_REPORTS_QUEUE"
+			}
+		],
+		"consumers": [
+			{
+				"queue": "character-reports-queue",
+				"max_batch_size": 10,
+				"max_batch_timeout": 30
+			}
+		]
+	},
+	"r2_buckets": [
+		{
+			"binding": "CHARACTER_REPORTS",
+			"bucket_name": "fulcrum-test-reports"
+		}
+	],
+	"services": [
+		{
+			"binding": "CORE",
+			"service": "core",
+			"entrypoint": "CoreWorker"
+		}
+	]
+}

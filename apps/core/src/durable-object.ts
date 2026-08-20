@@ -3,7 +3,7 @@ import { DurableObject } from 'cloudflare:workers'
 import { CORE_ROLES, SERVICE_CORE } from '@repo/core'
 import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { getEsiInstance, getEsiInstanceForCharacter, getEsiInstanceForCorporation } from '@repo/esi'
+import { getPublicEsiInstance } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
@@ -37,12 +37,26 @@ import { updateCharacterPublicInfo } from './workflows/steps/update-character'
 
 import type { Core } from '@repo/core'
 import type { Discord } from '@repo/discord'
-import type { CharacterAffiliation, CharacterPublicInfo } from '@repo/esi'
+import type { CharacterAffiliation, CharacterPublicInfo, EsiTypeResolver } from '@repo/esi'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { CreateRoleRequest, Groups } from '@repo/groups'
 import type { BlacklistTargetCheckItem, BlacklistTargetType, Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
 import type { Env } from './context'
+
+type PendingDiscordRefresh = {
+	expiresAt: number
+	processed: boolean
+	source: string
+	allowRemoval: boolean
+	hardStripAllRoles: boolean
+}
+
+type PendingUserRefresh = {
+	expiresAt: number
+	processed: boolean
+	source: string
+}
 
 export class CoreDO extends DurableObject<Env> implements Core {
 	private readonly logger = logger.withTags({ service: 'core-durable-object' })
@@ -51,31 +65,23 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	private static cachedIpHashKey: CryptoKey | null = null
 
 	/**
-	 * In-memory map of userIds pending Discord refresh.
+	 * Discord work is only queued after its prerequisite state is already
+	 * persisted. User refresh requests use a separate queue below.
 	 *
 	 * - Entries are added with processed=false and a 15-minute TTL.
 	 * - The TTL acts as a deduplication window: re-adding a userId before it
 	 *   expires is a no-op, whether or not it has already been processed.
 	 * - The cron picks up processed=false entries, marks them processed=true,
 	 *   then triggers workflows. Subsequent cron runs skip already-processed entries.
-	 * - If a user is pre-checked as not having linked Discord, that user is
-	 *   evicted from the pending set immediately after user-refresh completion
-	 *   (no TTL wait).
 	 * - Expired entries are pruned on each cron run.
 	 * - State is persisted to DO storage so it survives evictions and redeploys.
 	 *   The in-memory map is the working copy; storage is the source of truth on cold start.
 	 */
-	private pendingDiscordRefreshes = new Map<
-		string,
-		{
-			expiresAt: number
-			processed: boolean
-			source?: string
-			userRefreshWorkflowInstanceId?: string
-		}
-	>()
+	private pendingDiscordRefreshes = new Map<string, PendingDiscordRefresh>()
+	private pendingUserRefreshes = new Map<string, PendingUserRefresh>()
 	private static readonly PENDING_TTL_MS = 15 * 60 * 1000 // 15 minutes
 	private static readonly STORAGE_PREFIX = 'pending-discord:'
+	private static readonly USER_REFRESH_STORAGE_PREFIX = 'pending-user-refresh:'
 	private pendingTokenInvalidationAlerts = new Map<
 		string,
 		{
@@ -120,6 +126,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			await Promise.all([
 				this.ensureRolesExist(),
 				this.loadPendingDiscordRefreshes(),
+				this.loadPendingUserRefreshes(),
 				this.loadPendingImmunitasAccessAlerts(),
 				this.loadPendingTokenInvalidationAlerts(),
 			])
@@ -128,12 +135,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	}
 
 	private async loadPendingDiscordRefreshes(): Promise<void> {
-		const stored = await this.state.storage.list<{
-			expiresAt: number
-			processed: boolean
-			source?: string
-			userRefreshWorkflowInstanceId?: string
-		}>({
+		const stored = await this.state.storage.list<PendingDiscordRefresh>({
 			prefix: CoreDO.STORAGE_PREFIX,
 		})
 		for (const [key, value] of stored) {
@@ -141,12 +143,30 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			this.pendingDiscordRefreshes.set(userId, {
 				expiresAt: value.expiresAt,
 				processed: value.processed,
-				source: value.source,
-				userRefreshWorkflowInstanceId: value.userRefreshWorkflowInstanceId,
+				source: value.source ?? 'unknown',
+				allowRemoval: value.allowRemoval ?? true,
+				hardStripAllRoles: value.hardStripAllRoles ?? false,
 			})
 		}
 		this.logger.info('[CoreDO] Loaded pending Discord refreshes from storage', {
 			count: this.pendingDiscordRefreshes.size,
+		})
+	}
+
+	private async loadPendingUserRefreshes(): Promise<void> {
+		const stored = await this.state.storage.list<PendingUserRefresh>({
+			prefix: CoreDO.USER_REFRESH_STORAGE_PREFIX,
+		})
+		for (const [key, value] of stored) {
+			const userId = key.slice(CoreDO.USER_REFRESH_STORAGE_PREFIX.length)
+			this.pendingUserRefreshes.set(userId, {
+				expiresAt: value.expiresAt,
+				processed: value.processed,
+				source: value.source ?? 'character-affiliation-changed',
+			})
+		}
+		this.logger.info('[CoreDO] Loaded pending user refreshes from storage', {
+			count: this.pendingUserRefreshes.size,
 		})
 	}
 
@@ -290,7 +310,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	}
 
 	private async getCharacterInfo(characterId: string): Promise<CharacterPublicInfo | null> {
-		const instance = getEsiInstanceForCharacter(this.env.ESI, characterId)
+		const instance = getPublicEsiInstance(this.env.ESI)
 		const [publicInfoResult, affiliationResult] = await Promise.allSettled([
 			instance.fetchCharacterPublicInfo(characterId),
 			instance.fetchCharacterAffiliation(characterId, [characterId]),
@@ -320,13 +340,13 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	}
 
 	private async getCorporationName(corporationId: string): Promise<string | null> {
-		const instance = getEsiInstanceForCorporation(this.env.ESI, corporationId)
+		const instance = getPublicEsiInstance(this.env.ESI)
 		const corporationInfo = await instance.fetchCorporationPublicInfo(corporationId)
 		return corporationInfo?.name ?? null
 	}
 
 	private async getAllianceName(allianceId: string): Promise<string | null> {
-		const instance = getEsiInstance(this.env.ESI, allianceId)
+		const instance = getPublicEsiInstance(this.env.ESI)
 		const allianceInfo = await instance.fetchAlliancePublicInfo(allianceId)
 		return allianceInfo?.name ?? null
 	}
@@ -1299,7 +1319,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			},
 		})
 		const existingByCharacterId = new Map(existingRows.map((row) => [row.characterId, row]))
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+		const typeResolver = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
 
 		const resolveIsDeletedError = (error: unknown): boolean => {
 			if (!(error instanceof Error)) return false
@@ -1359,7 +1379,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 					.filter((value): value is string => Boolean(value))
 			),
 		]
-		const resolvedNames = idsToResolve.length > 0 ? await tokenStore.resolveIds(idsToResolve) : {}
+		const resolvedNames = idsToResolve.length > 0 ? await typeResolver.resolveIds(idsToResolve) : {}
 
 		return baseRows.map((row) => ({
 			...row,
@@ -1837,61 +1857,78 @@ export class CoreDO extends DurableObject<Env> implements Core {
 
 	async handleCharacterAffiliationChange(
 		characterId: string,
-		options?: { source?: string; bypassThrottle?: boolean }
+		options?: { source?: string }
 	): Promise<{
 		usersMatched: number
-		workflowsTriggered: number
-		discordUsersQueued: number
+		refreshUsersQueued: number
 	}> {
 		return this.handleCharacterAffiliationChanges([characterId], options)
 	}
 
 	async handleCharacterAffiliationChanges(
 		characterIds: string[],
-		options?: { source?: string; bypassThrottle?: boolean }
+		options?: { source?: string }
 	): Promise<{
 		usersMatched: number
-		workflowsTriggered: number
-		discordUsersQueued: number
+		refreshUsersQueued: number
 	}> {
 		const normalizedCharacterIds = [...new Set(characterIds.map((id) => String(id)))]
 		const uniqueUserIds = await this.resolveUserIdsForCharacterIds(normalizedCharacterIds)
-		const db = this.getDb()
-		let workflowsTriggered = 0
-		const workflowInstanceIdByUserId: Record<string, string> = {}
-
-		for (const userId of uniqueUserIds) {
-			const result = await triggerUserRefreshWorkflow({
-				db,
-				env: this.env,
-				userId,
-				source: options?.source ?? 'character-affiliation-changed',
-				bypassThrottle: options?.bypassThrottle ?? true,
-				refreshMode: 'event',
-			})
-			if (result.triggered) {
-				workflowsTriggered++
-				if (result.workflowInstanceId) {
-					workflowInstanceIdByUserId[userId] = result.workflowInstanceId
-				}
-			}
-		}
-
-		await this.addPendingDiscordRefreshes(uniqueUserIds, {
+		const queueResult = await this.queueUserRefreshes(uniqueUserIds, {
 			source: options?.source ?? 'character-affiliation-changed',
 			force: true,
-			userRefreshWorkflowInstanceIdByUserId: workflowInstanceIdByUserId,
 		})
 
 		return {
 			usersMatched: uniqueUserIds.length,
-			workflowsTriggered,
-			discordUsersQueued: uniqueUserIds.length,
+			refreshUsersQueued: queueResult.added,
 		}
 	}
 
 	/**
-	 * Add userIds to the pending Discord refresh map.
+	 * Queue user reconciliation without waiting for it. The workflow publishes a
+	 * ready Discord refresh only after it persists affiliation and role changes.
+	 */
+	async queueUserRefreshes(
+		userIds: string[],
+		options?: { source?: string; force?: boolean }
+	): Promise<{ pendingCount: number; added: number; skipped: number }> {
+		const now = Date.now()
+		const source = options?.source ?? 'character-affiliation-changed'
+		const force = options?.force === true
+		const expiresAt = now + CoreDO.PENDING_TTL_MS
+		const toStore: Record<string, PendingUserRefresh> = {}
+		let added = 0
+		let skipped = 0
+
+		for (const userId of userIds) {
+			const existing = this.pendingUserRefreshes.get(userId)
+			if (!force && existing && existing.expiresAt > now) {
+				skipped++
+				continue
+			}
+			const entry: PendingUserRefresh = { expiresAt, processed: false, source }
+			this.pendingUserRefreshes.set(userId, entry)
+			toStore[`${CoreDO.USER_REFRESH_STORAGE_PREFIX}${userId}`] = entry
+			added++
+		}
+
+		if (added > 0) {
+			await this.state.storage.put(toStore)
+		}
+
+		this.logger.info('[CoreDO] Queued user refreshes', {
+			added,
+			skipped,
+			source,
+			force,
+			pendingCount: this.pendingUserRefreshes.size,
+		})
+		return { pendingCount: this.pendingUserRefreshes.size, added, skipped }
+	}
+
+	/**
+	 * Add ready Discord work to the batching queue.
 	 * If a userId already has a non-expired entry (processed or not), it is skipped —
 	 * the TTL window acts as the deduplication guard.
 	 */
@@ -1900,23 +1937,17 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		options?: {
 			source?: string
 			force?: boolean
-			userRefreshWorkflowInstanceIdByUserId?: Record<string, string>
+			allowRemoval?: boolean
+			hardStripAllRoles?: boolean
 		}
 	): Promise<{ pendingCount: number; added: number; skipped: number }> {
 		const now = Date.now()
 		const expiresAt = now + CoreDO.PENDING_TTL_MS
 		const source = options?.source ?? 'corp-membership-changed'
 		const force = options?.force === true
-		const toStore: Record<
-			string,
-			{
-				expiresAt: number
-				processed: boolean
-				source?: string
-				userRefreshWorkflowInstanceId?: string
-			}
-		> = {}
-		const workflowIdByUserId = options?.userRefreshWorkflowInstanceIdByUserId ?? {}
+		const allowRemoval = options?.allowRemoval ?? true
+		const hardStripAllRoles = options?.hardStripAllRoles ?? false
+		const toStore: Record<string, PendingDiscordRefresh> = {}
 		let added = 0
 		let skipped = 0
 
@@ -1927,11 +1958,12 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				skipped++
 				continue
 			}
-			const entry = {
+			const entry: PendingDiscordRefresh = {
 				expiresAt,
 				processed: false,
 				source,
-				userRefreshWorkflowInstanceId: workflowIdByUserId[userId],
+				allowRemoval: existing?.allowRemoval || allowRemoval,
+				hardStripAllRoles: existing?.hardStripAllRoles || hardStripAllRoles,
 			}
 			this.pendingDiscordRefreshes.set(userId, entry)
 			toStore[`${CoreDO.STORAGE_PREFIX}${userId}`] = entry
@@ -2224,287 +2256,172 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		})
 	}
 
-	private async waitForUserRefreshWorkflowCompletion(workflowInstanceId: string): Promise<{
-		status: 'completed' | 'completed_with_errors' | 'failed' | 'unknown'
-		affiliationChanged: boolean
-	}> {
-		const POLL_INTERVAL_MS = 1500
-		const MAX_WAIT_MS = 60 * 1000
-		const startedAt = Date.now()
+	private async markPendingEntriesProcessed<T extends { processed: boolean }>(
+		entries: Map<string, T>,
+		storagePrefix: string
+	): Promise<Array<{ userId: string; entry: T }>> {
+		const pending: Array<{ userId: string; entry: T }> = []
+		const toStore: Record<string, T> = {}
 
-		try {
-			const instance = await this.env.USER_REFRESH_WORKFLOW.get(workflowInstanceId)
-			while (Date.now() - startedAt < MAX_WAIT_MS) {
-				const status = await instance.status()
-				const runState = status.status
-				if (runState === 'running' || runState === 'queued' || runState === 'waiting') {
-					await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
-					continue
-				}
-
-				const outputStatus =
-					status.output && typeof status.output === 'object' && 'status' in status.output
-						? (status.output as { status?: string }).status
-						: undefined
-				const outputAffiliationChanged =
-					status.output &&
-					typeof status.output === 'object' &&
-					'summary' in status.output &&
-					(status.output as { summary?: { affiliationChanged?: number } }).summary
-						?.affiliationChanged
-				const affiliationChanged =
-					typeof outputAffiliationChanged === 'number' && outputAffiliationChanged > 0
-
-				if (
-					outputStatus === 'completed' ||
-					outputStatus === 'completed_with_errors' ||
-					outputStatus === 'failed'
-				) {
-					return { status: outputStatus, affiliationChanged }
-				}
-
-				if (runState === 'complete' && outputStatus === undefined) {
-					return { status: 'unknown', affiliationChanged: false }
-				}
-
-				if (runState === 'errored') {
-					return { status: 'failed', affiliationChanged: false }
-				}
-
-				return { status: 'unknown', affiliationChanged: false }
+		for (const [userId, entry] of entries) {
+			if (!entry.processed) {
+				entry.processed = true
+				pending.push({ userId, entry })
+				toStore[`${storagePrefix}${userId}`] = entry
 			}
-		} catch (error) {
-			this.logger.warn('[CoreDO] Failed while waiting for user refresh workflow completion', {
-				workflowInstanceId,
-				error: error instanceof Error ? error.message : String(error),
-			})
-			return { status: 'unknown', affiliationChanged: false }
 		}
 
-		this.logger.warn('[CoreDO] Timed out waiting for user refresh workflow completion', {
-			workflowInstanceId,
-			maxWaitMs: MAX_WAIT_MS,
-		})
-		return { status: 'unknown', affiliationChanged: false }
+		if (pending.length > 0) {
+			await this.state.storage.put(toStore)
+		}
+
+		return pending
 	}
 
-	/**
-	 * Drain the pending set and trigger Discord refresh + user refresh workflows.
-	 * Processes in staggered chunks to avoid overwhelming the Discord API.
-	 * Called by the scheduled handler (cron).
-	 */
-	async processPendingDiscordRefreshes(): Promise<{
-		processed: number
-		triggered: number
-		failed: number
-	}> {
-		const now = Date.now()
-
-		// Prune expired entries from both in-memory map and storage
+	private async pruneExpiredPendingEntries<T extends { expiresAt: number }>(
+		entries: Map<string, T>,
+		storagePrefix: string,
+		now: number
+	): Promise<void> {
 		const expiredKeys: string[] = []
-		for (const [userId, entry] of this.pendingDiscordRefreshes) {
+		for (const [userId, entry] of entries) {
 			if (entry.expiresAt <= now) {
-				this.pendingDiscordRefreshes.delete(userId)
-				expiredKeys.push(`${CoreDO.STORAGE_PREFIX}${userId}`)
+				entries.delete(userId)
+				expiredKeys.push(`${storagePrefix}${userId}`)
 			}
 		}
 		if (expiredKeys.length > 0) {
 			await this.state.storage.delete(expiredKeys)
 		}
+	}
 
-		// Collect unprocessed entries and mark them processed before triggering.
-		// Persist the processed flag to storage first so that if the DO is evicted
-		// mid-run, a cold-start won't re-trigger the same workflows on the next cron.
-		const toProcess: string[] = []
-		const toStore: Record<
-			string,
-			{
-				expiresAt: number
-				processed: boolean
-				source?: string
-				userRefreshWorkflowInstanceId?: string
-			}
-		> = {}
-		const sourceByUserId = new Map<string, string>()
-		for (const [userId, entry] of this.pendingDiscordRefreshes) {
-			if (!entry.processed) {
-				entry.processed = true
-				toProcess.push(userId)
-				sourceByUserId.set(userId, entry.source ?? 'corp-membership-changed')
-				toStore[`${CoreDO.STORAGE_PREFIX}${userId}`] = entry
-			}
-		}
+	/**
+	 * Drain the two-stage refresh pipeline. A user-refresh request starts durable
+	 * reconciliation work and returns immediately; the workflow later publishes a
+	 * ready Discord job after state has been persisted.
+	 */
+	async processPendingRefreshes(): Promise<{
+		refreshesProcessed: number
+		refreshesTriggered: number
+		discordProcessed: number
+		triggered: number
+		failed: number
+	}> {
+		const now = Date.now()
+		await Promise.all([
+			this.pruneExpiredPendingEntries(
+				this.pendingUserRefreshes,
+				CoreDO.USER_REFRESH_STORAGE_PREFIX,
+				now
+			),
+			this.pruneExpiredPendingEntries(this.pendingDiscordRefreshes, CoreDO.STORAGE_PREFIX, now),
+		])
 
-		if (toProcess.length === 0) {
-			return { processed: 0, triggered: 0, failed: 0 }
-		}
-
-		await this.state.storage.put(toStore)
-
-		this.logger.info('[CoreDO] Processing pending Discord refreshes', { count: toProcess.length })
-
-		const userIds = toProcess
+		const pendingUserRefreshes = await this.markPendingEntriesProcessed(
+			this.pendingUserRefreshes,
+			CoreDO.USER_REFRESH_STORAGE_PREFIX
+		)
+		const pendingDiscordRefreshes = await this.markPendingEntriesProcessed(
+			this.pendingDiscordRefreshes,
+			CoreDO.STORAGE_PREFIX
+		)
 
 		const db = this.getDb()
-		// Spread workflows across a 10-minute window using per-workflow jitter,
-		// matching the existing refresh pipeline. All workflows are created immediately;
-		// each sleeps for its own random duration before executing.
-		const JITTER_MAX_SECONDS = 600
+		const refreshResults = await Promise.allSettled(
+			pendingUserRefreshes.map(({ userId, entry }) =>
+				triggerUserRefreshWorkflow({
+					db,
+					env: this.env,
+					userId,
+					source: entry.source,
+					bypassThrottle: true,
+					refreshMode: 'event',
+				})
+			)
+		)
 
-		const results = await Promise.allSettled(
-			userIds.map(async (userId) => {
-				const pendingEntry = this.pendingDiscordRefreshes.get(userId)
-				const preRefreshUser = await db.query.users.findFirst({
+		let refreshesTriggered = 0
+		let failedCount = 0
+		for (const [index, result] of refreshResults.entries()) {
+			const userId = pendingUserRefreshes[index]?.userId
+			if (result.status === 'fulfilled' && result.value.triggered) {
+				refreshesTriggered++
+				continue
+			}
+			failedCount++
+			this.logger.error('[CoreDO] Failed to trigger queued user refresh', {
+				userId,
+				source: pendingUserRefreshes[index]?.entry.source,
+				error:
+					result.status === 'rejected'
+						? result.reason instanceof Error
+							? result.reason.message
+							: String(result.reason)
+						: (result.value.error ?? result.value.status),
+			})
+		}
+
+		const JITTER_MAX_SECONDS = 600
+		const discordResults = await Promise.allSettled(
+			pendingDiscordRefreshes.map(async ({ userId, entry }) => {
+				const user = await db.query.users.findFirst({
 					where: eq(users.id, userId),
 					columns: { discordUserId: true },
 				})
-				const hadLinkedDiscordBeforeRefresh = !!preRefreshUser?.discordUserId
-
-				const preTriggeredWorkflowInstanceId = pendingEntry?.userRefreshWorkflowInstanceId
-				const userRefreshResult = preTriggeredWorkflowInstanceId
-					? {
-							status: 'already-triggered',
-							triggered: true,
-							workflowInstanceId: preTriggeredWorkflowInstanceId,
-							error: undefined,
-						}
-					: await triggerUserRefreshWorkflow({
-							db,
-							env: this.env,
-							userId,
-							source: sourceByUserId.get(userId) ?? 'corp-membership-changed',
-							bypassThrottle: true,
-							refreshMode: 'event',
-						})
-
-				if (userRefreshResult.status === 'failed' || !userRefreshResult.triggered) {
-					return {
-						userId,
-						userRefreshResult,
-						discordResult: null,
-						skippedNoDiscord: false,
-						precheckedNoDiscord: !hadLinkedDiscordBeforeRefresh,
-						userRefreshCompletionStatus: 'unknown' as const,
-						affiliationChanged: false,
-					}
+				if (!user?.discordUserId) {
+					await this.evictPendingDiscordRefresh(userId, 'no-linked-discord')
+					return { kind: 'skipped' as const }
 				}
-
-				let userRefreshCompletionStatus:
-					| 'completed'
-					| 'completed_with_errors'
-					| 'failed'
-					| 'unknown' = 'unknown'
-				let affiliationChanged = false
-				if (userRefreshResult.workflowInstanceId) {
-					const completion = await this.waitForUserRefreshWorkflowCompletion(
-						userRefreshResult.workflowInstanceId
-					)
-					userRefreshCompletionStatus = completion.status
-					affiliationChanged = completion.affiliationChanged
-				}
-
-				if (!hadLinkedDiscordBeforeRefresh) {
-					await this.evictPendingDiscordRefresh(userId, 'no-linked-discord-after-user-refresh')
-					return {
-						userId,
-						userRefreshResult,
-						discordResult: null,
-						skippedNoDiscord: true,
-						precheckedNoDiscord: true,
-						userRefreshCompletionStatus,
-						affiliationChanged,
-					}
-				}
-
-				if (!affiliationChanged) {
-					await this.evictPendingDiscordRefresh(
-						userId,
-						'no-core-affiliation-change-after-user-refresh'
-					)
-					return {
-						userId,
-						userRefreshResult,
-						discordResult: null,
-						skippedNoDiscord: false,
-						precheckedNoDiscord: false,
-						userRefreshCompletionStatus,
-						affiliationChanged,
-					}
-				}
-
-				const jitterDelaySeconds = Math.floor(Math.random() * JITTER_MAX_SECONDS)
-				const source = sourceByUserId.get(userId) ?? 'corp-membership-changed'
-				const hardStripAllRoles =
-					source === 'corp-member-flag-disabled' ||
-					source === 'corp-discord-attachment-detached-none-remaining' ||
-					source === 'corp-admin-refresh-no-attachments'
-				const discordResult = await triggerDiscordRefreshWorkflow({
-					env: this.env,
-					userId,
-					source,
-					allowRemoval: true,
-					hardStripAllRoles,
-					jitterDelaySeconds,
-				})
 
 				return {
-					userId,
-					userRefreshResult,
-					discordResult,
-					skippedNoDiscord: false,
-					precheckedNoDiscord: false,
-					userRefreshCompletionStatus,
-					affiliationChanged,
+					kind: 'result' as const,
+					result: await triggerDiscordRefreshWorkflow({
+						env: this.env,
+						userId,
+						source: entry.source,
+						allowRemoval: entry.allowRemoval,
+						hardStripAllRoles: entry.hardStripAllRoles,
+						jitterDelaySeconds: Math.floor(Math.random() * JITTER_MAX_SECONDS),
+					}),
 				}
 			})
 		)
 
-		let triggeredCount = 0
-		let failedCount = 0
-
-		for (const result of results) {
-			if (result.status === 'rejected') {
-				// Unexpected — the per-user async fn should not throw
+		let discordTriggered = 0
+		for (const [index, result] of discordResults.entries()) {
+			if (result.status === 'fulfilled') {
+				if (result.value.kind === 'skipped') {
+					continue
+				}
+				if (result.value.result.triggered) {
+					discordTriggered++
+					continue
+				}
 				failedCount++
-				this.logger.error('[CoreDO] Unexpected error triggering workflows for user', {
-					error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+				this.logger.error('[CoreDO] Failed to trigger queued Discord refresh', {
+					userId: pendingDiscordRefreshes[index]?.userId,
+					source: pendingDiscordRefreshes[index]?.entry.source,
+					error: result.value.result.error ?? result.value.result.status,
 				})
 				continue
 			}
-			const {
-				userId,
-				discordResult,
-				userRefreshResult,
-				skippedNoDiscord,
-				precheckedNoDiscord,
-				userRefreshCompletionStatus,
-				affiliationChanged,
-			} = result.value
-			const refreshOk = userRefreshResult.triggered
-			const discordOk = !!discordResult?.triggered
-			if (discordOk || refreshOk) {
-				triggeredCount++
-			} else {
-				failedCount++
-				this.logger.error('[CoreDO] Failed to trigger workflows for user', {
-					userId,
-					discord: discordResult?.status ?? 'skipped',
-					userRefresh: userRefreshResult.status,
-					skippedNoDiscord,
-					precheckedNoDiscord,
-					userRefreshCompletionStatus,
-					affiliationChanged,
-				})
-			}
+			failedCount++
+			this.logger.error('[CoreDO] Failed to trigger queued Discord refresh', {
+				userId: pendingDiscordRefreshes[index]?.userId,
+				source: pendingDiscordRefreshes[index]?.entry.source,
+				error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+			})
 		}
 
-		this.logger.info('[CoreDO] Pending Discord refreshes complete', {
-			processed: userIds.length,
-			triggered: triggeredCount,
+		const result = {
+			refreshesProcessed: pendingUserRefreshes.length,
+			refreshesTriggered,
+			discordProcessed: pendingDiscordRefreshes.length,
+			triggered: refreshesTriggered + discordTriggered,
 			failed: failedCount,
-		})
-
-		return { processed: userIds.length, triggered: triggeredCount, failed: failedCount }
+		}
+		this.logger.info('[CoreDO] Processed queued user and Discord refreshes', result)
+		return result
 	}
 
 	/**

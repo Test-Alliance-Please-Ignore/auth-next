@@ -7,10 +7,11 @@ export type Env = SharedHonoEnv & {
 	FLEETS: DurableObjectNamespace
 	FLEET_MONITOR: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
+	ESI: DurableObjectNamespace
+	ESI_TYPE_RESOLVER: DurableObjectNamespace
 	EVE_CHARACTER_DATA: DurableObjectNamespace
 	EVE_CORPORATION_DATA: DurableObjectNamespace
 	UNIVERSE: DurableObjectNamespace
-	ESI_RATE_LIMITS: KVNamespace
 	EVE_SSO_CLIENT_ID: string
 }
 

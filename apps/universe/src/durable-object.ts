@@ -3,7 +3,7 @@ import { alias } from 'drizzle-orm/pg-core'
 
 import { and, asc, eq, gt, ilike, inArray, ne, sql } from '@repo/db-utils'
 import { getStub, LRUCache, withRpcResult } from '@repo/do-utils'
-import { buildPublicEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
+import { getEsiInstanceForCharacter, getPublicEsiInstance } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 import {
 	EsiGetStructureMarketDataResponseSchema,
@@ -45,11 +45,9 @@ import { parseInventory } from './utils/inventory-parser'
 import { resolveMoonRegionIds } from './utils/moon-region-lookup'
 
 import type { EsiTypeResolver } from '@repo/esi'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { InventoryParseResult } from '@repo/eve-types'
 import type {
 	EsiGetStructureMarketDataResponse,
-	EsiGetStructureMarketDataResponseObject,
 	EsiGetStructureResponse,
 	EveCharacterId,
 	EveMoonId,
@@ -146,7 +144,6 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	private typeSlotCapacitiesCache: LRUCache<TypeSlotCapacities>
 	private structureFuelRuleCache: StructureFuelRuleCache | null = null
 	private structureFuelRuleCachePromise: Promise<StructureFuelRuleCache> | null = null
-	private readonly esiRateLimits: EsiRateLimitGuard
 
 	/**
 	 * Initialize the Durable Object
@@ -184,7 +181,6 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		)
 		this.typeMaterialsCache = new LRUCache<TypeMaterial[]>(8000)
 		this.typeSlotCapacitiesCache = new LRUCache<TypeSlotCapacities>(2000)
-		this.esiRateLimits = new EsiRateLimitGuard(new EsiRateLimitStore(env.ESI_RATE_LIMITS))
 	}
 
 	private async getActiveSdeVersion(): Promise<string | null> {
@@ -434,11 +430,9 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 
 		// Fallback: if SDE-backed DB lookup missed, search via ESI universe IDs + name resolution,
 		// then hydrate full system rows through resolveSolarSystemsByIds (which backfills DB/cache).
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		if (!allSolarSystemNamesCache || allSolarSystemNamesCacheExpiry <= Date.now()) {
-			const ids = await withRpcResult(
-				tokenStoreStub.fetchPublicEsi<number[]>('/latest/universe/systems/?datasource=tranquility'),
-				(idsResult) => idsResult.data.map((id) => String(id))
+			const ids = (await getPublicEsiInstance(this.env.ESI).fetchUniverseSolarSystemIds()).map(
+				String
 			)
 			const resolverStub = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
 			const namesById = await withRpcResult(resolverStub.resolveIds(ids), (result) => ({
@@ -522,24 +516,16 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		authorizedCharacterId: EveCharacterId
 	): Promise<EsiGetStructureResponse | null> {
 		try {
-			const tokenStoreStub = getStub<EveTokenStore>(
-				this.env.EVE_TOKEN_STORE,
-				structureId ? String(structureId) : 'default'
-			)
-
 			logger.info('[UniverseDO] Fetching structure info', {
 				structureId,
 				authorizedCharacterId,
 			})
 
-			return await withRpcResult(
-				tokenStoreStub.fetchEsi(
-					`/universe/structures/${String(structureId)}`,
-					String(authorizedCharacterId),
-					{ cacheMode: 'no-store' }
-				),
-				(response) => EsiGetStructureResponseSchema.parse(response.data)
-			)
+			const structure = await getEsiInstanceForCharacter(
+				this.env.ESI,
+				String(authorizedCharacterId)
+			).fetchStructureInfo(String(authorizedCharacterId), String(structureId))
+			return structure ? EsiGetStructureResponseSchema.parse(structure) : null
 		} catch (error) {
 			// If the structure doesn't exist, the character doesn't have access, or token is invalid, return null
 			logger.error(
@@ -573,19 +559,25 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		authorizedCharacterId: EveCharacterId
 	): Promise<EsiGetStructureMarketDataResponse | null> {
 		try {
-			const tokenStoreStub = getStub<EveTokenStore>(
-				this.env.EVE_TOKEN_STORE,
-				structureId ? String(structureId) : 'default'
+			const esi = getEsiInstanceForCharacter(this.env.ESI, String(authorizedCharacterId))
+			const firstPage = await esi.fetchStructureMarketOrdersPage(
+				String(authorizedCharacterId),
+				String(structureId),
+				1
 			)
-			// fetchEsiAllPages expects the element type, not the array type
-			return await withRpcResult(
-				tokenStoreStub.fetchEsiAllPages<EsiGetStructureMarketDataResponseObject>(
-					`/markets/structures/${String(structureId)}`,
-					String(authorizedCharacterId),
-					{ cacheMode: 'no-store' }
-				),
-				(result) => EsiGetStructureMarketDataResponseSchema.parse(result.data)
-			)
+			const orders = [...firstPage.data]
+			for (let page = 2; page <= (firstPage.meta.pages ?? 1); page++) {
+				orders.push(
+					...(
+						await esi.fetchStructureMarketOrdersPage(
+							String(authorizedCharacterId),
+							String(structureId),
+							page
+						)
+					).data
+				)
+			}
+			return EsiGetStructureMarketDataResponseSchema.parse(orders)
 		} catch (error) {
 			// If the structure doesn't exist, the character doesn't have access, or token is invalid, return null
 			logger.error(
@@ -1474,29 +1466,15 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				.map(([id]) => id)
 
 			if (unresolved.length > 0) {
+				const publicEsi = getPublicEsiInstance(this.env.ESI)
 				const fetched = await Promise.allSettled(
 					unresolved.map(async (id) => {
-						return await this.esiRateLimits.request({
-							path: `/latest/universe/constellations/${id}/?datasource=tranquility`,
-							userKey: buildPublicEsiUserKey(),
-							method: 'GET',
-							parse: async (response) => {
-								const data = (await response.json()) as {
-									constellation_id: number
-									name: string
-									region_id: number
-								}
-								return {
-									constellationId: String(data.constellation_id),
-									constellationName: data.name,
-									regionId: String(data.region_id),
-								} satisfies UniverseConstellation
-							},
-							buildError: ({ response, body, path }) =>
-								new Error(
-									`ESI request failed: ${response.status} ${response.statusText || 'Request Failed'} - ${body || 'Unknown ESI error'} | path=${path}`
-								),
-						})
+						const data = await publicEsi.fetchUniverseConstellation(id)
+						return {
+							constellationId: String(data.constellation_id),
+							constellationName: data.name,
+							regionId: String(data.region_id),
+						} satisfies UniverseConstellation
 					})
 				)
 
@@ -1589,31 +1567,16 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 				.map(([id]) => id)
 
 			if (unresolved.length > 0) {
+				const publicEsi = getPublicEsiInstance(this.env.ESI)
 				const fetched = await Promise.allSettled(
 					unresolved.map(async (id) => {
-						return await this.esiRateLimits.request({
-							path: `/latest/universe/systems/${id}/?datasource=tranquility`,
-							userKey: buildPublicEsiUserKey(),
-							method: 'GET',
-							parse: async (response) => {
-								const data = (await response.json()) as {
-									system_id: number
-									name: string
-									constellation_id: number
-									security_status: number
-								}
-								return {
-									systemId: String(data.system_id),
-									systemName: data.name,
-									constellationId: String(data.constellation_id),
-									securityStatus: String(data.security_status),
-								}
-							},
-							buildError: ({ response, body, path }) =>
-								new Error(
-									`ESI request failed: ${response.status} ${response.statusText || 'Request Failed'} - ${body || 'Unknown ESI error'} | path=${path}`
-								),
-						})
+						const data = await publicEsi.fetchUniverseSolarSystem(id)
+						return {
+							systemId: String(data.solar_system_id),
+							systemName: data.name,
+							constellationId: String(data.constellation_id),
+							securityStatus: String(data.security_status),
+						}
 					})
 				)
 

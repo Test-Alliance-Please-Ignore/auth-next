@@ -26,8 +26,6 @@
 		"@neondatabase/serverless": "1.0.2",
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
-		"@repo/esi": "workspace:*",
-		"@repo/esi-rate-limit": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
 		"@repo/eve-types": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
@@ -35,8 +33,7 @@
 		"drizzle-orm": "0.45.2",
 		"hono": "4.12.27",
 		"jose": "6.2.2",
-		"workers-tagged-logger": "0.13.7",
-		"zod": "4.1.12"
+		"workers-tagged-logger": "0.13.7"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "1.47.0",

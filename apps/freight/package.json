@@ -24,8 +24,6 @@
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
 		"@repo/esi": "workspace:*",
-		"@repo/esi-rate-limit": "workspace:*",
-		"@repo/eve-token-store": "workspace:*",
 		"@repo/freight": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"drizzle-orm": "0.45.2",

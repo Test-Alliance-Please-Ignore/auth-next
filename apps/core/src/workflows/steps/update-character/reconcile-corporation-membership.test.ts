@@ -5,13 +5,11 @@ import { reconcileCharacterCorporationMembership } from './reconcile-corporation
 import type { WorkflowContext } from '../../context'
 
 const reconcileCharacterCorporationMembershipMock = vi.fn()
-const addPendingDiscordRefreshes = vi.fn()
 const hoisted = vi.hoisted(() => ({
 	triggerMumbleRefreshWorkflow: vi.fn(),
 }))
 
 const EVE_CORPORATION_DATA_NS = Symbol('EVE_CORPORATION_DATA')
-const CORE_NS = Symbol('CORE')
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn((namespace: symbol) => {
@@ -19,9 +17,6 @@ vi.mock('@repo/do-utils', () => ({
 			return {
 				reconcileCharacterCorporationMembership: reconcileCharacterCorporationMembershipMock,
 			}
-		}
-		if (namespace === CORE_NS) {
-			return { addPendingDiscordRefreshes }
 		}
 		return {}
 	}),
@@ -35,7 +30,6 @@ function createCtx(): WorkflowContext {
 	return {
 		db: {} as WorkflowContext['db'],
 		env: {
-			CORE: CORE_NS as unknown as WorkflowContext['env']['CORE'],
 			EVE_CORPORATION_DATA:
 				EVE_CORPORATION_DATA_NS as unknown as WorkflowContext['env']['EVE_CORPORATION_DATA'],
 		} as WorkflowContext['env'],
@@ -50,7 +44,7 @@ describe('reconcileCharacterCorporationMembership', () => {
 		vi.clearAllMocks()
 	})
 
-	it('queues a Discord refresh when membership changed', async () => {
+	it('triggers a Mumble refresh when membership changed', async () => {
 		reconcileCharacterCorporationMembershipMock.mockResolvedValue({
 			removedFromCorporationIds: ['1234'],
 			addedToCorporationId: '5678',
@@ -59,13 +53,6 @@ describe('reconcileCharacterCorporationMembership', () => {
 		const ctx = createCtx()
 		const result = await reconcileCharacterCorporationMembership(ctx, '9001', '5678')
 
-		expect(addPendingDiscordRefreshes).toHaveBeenCalledWith(['user-123'], {
-			source: 'corp-membership-reconciled',
-			force: true,
-			userRefreshWorkflowInstanceIdByUserId: {
-				'user-123': 'wf-123',
-			},
-		})
 		expect(hoisted.triggerMumbleRefreshWorkflow).toHaveBeenCalledWith({
 			env: ctx.env,
 			userIds: ['user-123'],
@@ -77,7 +64,7 @@ describe('reconcileCharacterCorporationMembership', () => {
 		})
 	})
 
-	it('does not queue a Discord refresh when membership did not change', async () => {
+	it('does not trigger downstream refreshes when membership did not change', async () => {
 		reconcileCharacterCorporationMembershipMock.mockResolvedValue({
 			removedFromCorporationIds: [],
 			addedToCorporationId: null,
@@ -85,7 +72,6 @@ describe('reconcileCharacterCorporationMembership', () => {
 
 		await reconcileCharacterCorporationMembership(createCtx(), '9001', '5678')
 
-		expect(addPendingDiscordRefreshes).not.toHaveBeenCalled()
 		expect(hoisted.triggerMumbleRefreshWorkflow).not.toHaveBeenCalled()
 	})
 })

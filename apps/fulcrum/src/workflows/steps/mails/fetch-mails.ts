@@ -29,7 +29,8 @@ async function fetchAllMailHeaders(esiStub: Esi, characterId: string): Promise<C
 	for (let page = 0; page < 20; page++) {
 		// Safety cap at 1000 mails (20 pages × 50)
 		const batch = await retryWithBackoff(
-			async () => await esiStub.fetchCharacterMailPage(characterId, lastMailId),
+			async () =>
+				await esiStub.fetchCharacterMailPage(characterId, lastMailId, { cacheMode: 'no-store' }),
 			{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 }
 		)
 
@@ -65,16 +66,22 @@ export async function fetchMailsFromEsi(
 	// Fetch all mail headers, mailing lists, and labels in parallel where possible
 	const [allMails, mailingLists, labels] = await Promise.all([
 		fetchAllMailHeaders(esiStub, characterId),
-		retryWithBackoff(async () => await esiStub.fetchMailingLists(characterId), {
-			maxRetries: 3,
-			initialDelayMs: 1000,
-			maxDelayMs: 30000,
-		}).catch(() => [] as MailingList[]),
-		retryWithBackoff(async () => await esiStub.fetchMailLabels(characterId), {
-			maxRetries: 3,
-			initialDelayMs: 1000,
-			maxDelayMs: 30000,
-		}).catch(() => ({ labels: [], total_unread_count: 0 }) as MailLabelsResponse),
+		retryWithBackoff(
+			async () => await esiStub.fetchMailingLists(characterId, { cacheMode: 'no-store' }),
+			{
+				maxRetries: 3,
+				initialDelayMs: 1000,
+				maxDelayMs: 30000,
+			}
+		).catch(() => [] as MailingList[]),
+		retryWithBackoff(
+			async () => await esiStub.fetchMailLabels(characterId, { cacheMode: 'no-store' }),
+			{
+				maxRetries: 3,
+				initialDelayMs: 1000,
+				maxDelayMs: 30000,
+			}
+		).catch(() => ({ labels: [], total_unread_count: 0 }) as MailLabelsResponse),
 	])
 
 	logger.log(`[fetchMails] Fetched ${allMails.length} mail headers`)
@@ -104,7 +111,8 @@ export async function fetchMailsFromEsi(
 			if (!mail.mail_id) return mail as MailWithContent
 			try {
 				const content = await retryWithBackoff(
-					async () => await esiStub.fetchMailContent(characterId, mail.mail_id!),
+					async () =>
+						await esiStub.fetchMailContent(characterId, mail.mail_id!, { cacheMode: 'no-store' }),
 					{ maxRetries: 3, initialDelayMs: 1000, maxDelayMs: 30000 }
 				)
 				return { ...mail, body: content.body } as MailWithContent
@@ -145,7 +153,6 @@ export async function fetchMails(
 ): Promise<StepResult> {
 	try {
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
-		stub.setDefaultCacheMode('no-store')
 		const data = await fetchMailsFromEsi(stub, characterId)
 		// Store in R2
 		return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-mails', data)

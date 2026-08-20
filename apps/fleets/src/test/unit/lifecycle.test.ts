@@ -686,6 +686,32 @@ describe('fleet lifecycle management', () => {
 		expect(db.captures.inserts.filter((entry) => entry.table === fleetSummaries)).toHaveLength(1)
 	})
 
+	it('closes an active session when restored data has no monitor state', async () => {
+		const db = createDbMock({
+			selectResults: [[{ fleetId: '123', characterId: '42' }]],
+			insertResults: [undefined],
+			updateResults: [undefined, undefined],
+		})
+		const monitor = createFleetMonitorDo(db)
+
+		await monitor.endSession({
+			sessionId: 'session-1',
+			endedReason: 'user_stopped',
+			endedByUserId: 'user-1',
+		})
+
+		expect(
+			db.captures.inserts.filter((entry) => entry.table === fleetTrackingSessionEvents)
+		).toHaveLength(1)
+		expect(
+			db.captures.updates.filter((entry) => entry.table === fleetMemberShipEvents)
+		).toHaveLength(1)
+		expect(
+			db.captures.updates.filter((entry) => entry.table === fleetTrackingSessions)
+		).toHaveLength(1)
+		expect(db.captures.inserts.filter((entry) => entry.table === fleetSummaries)).toHaveLength(0)
+	})
+
 	it('sweeps stale fleet monitors discovered through ended sessions and historical fleet refs', async () => {
 		const db = createDbMock({
 			selectResults: [

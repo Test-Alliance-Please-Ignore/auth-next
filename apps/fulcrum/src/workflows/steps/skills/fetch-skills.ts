@@ -15,8 +15,8 @@ import type { StepResult } from '../../utils/storage'
  */
 export async function fetchSkillsFromEsi(esiStub: Esi, characterId: string) {
 	const [skills, skillQueue] = await Promise.all([
-		esiStub.fetchCharacterSkills(characterId),
-		esiStub.fetchCharacterSkillQueue(characterId),
+		esiStub.fetchCharacterSkills(characterId, { cacheMode: 'no-store' }),
+		esiStub.fetchCharacterSkillQueue(characterId, { cacheMode: 'no-store' }),
 	])
 	return { skills, skillQueue }
 }
@@ -36,11 +36,10 @@ export async function fetchSkills(
 	bucket: R2Bucket,
 	bucketName: string,
 	characterId: string,
-	workflowInstanceId: string,
+	workflowInstanceId: string
 ): Promise<StepResult> {
 	try {
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
-		stub.setDefaultCacheMode('no-store')
 		const data = await fetchSkillsFromEsi(stub, characterId)
 		return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-skills', data)
 	} catch (error) {

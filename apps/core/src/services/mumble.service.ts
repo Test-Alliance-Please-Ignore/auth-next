@@ -1,6 +1,7 @@
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { and, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { getPublicEsiInstance } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 import { parseMumbleError } from '@repo/mumble'
 
@@ -12,7 +13,6 @@ import { hasMemberCorporationAttachment } from '../lib/service-eligibility'
 
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
 import type {
@@ -673,8 +673,7 @@ export async function provisionTempopGuest(
 	}
 	if (allianceId) {
 		try {
-			const tokenStoreStub = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')
-			const allianceInfo = await tokenStoreStub.getAllianceById(allianceId)
+			const allianceInfo = await getPublicEsiInstance(env.ESI).fetchAlliancePublicInfo(allianceId)
 			allianceTicker = normalizeMumbleTicker(allianceInfo?.ticker)
 		} catch (error) {
 			logger.warn('[Mumble] Failed to resolve temp-op guest alliance ticker', {

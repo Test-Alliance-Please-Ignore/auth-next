@@ -17,12 +17,71 @@ export type EsiCacheScopeContext = {
 
 export interface EsiResponse<T> {
 	data: T
+	/** Upstream HTTP status when observed; cache-only entries omit it. */
+	status?: number
 	expiresAt: Date | null
 	etag: string | null
 	pages: number | null
 	page: number | null
 	lastModified?: Date
 	cached?: boolean
+	/** True only when this call conditionally revalidated a prior cached response. */
+	revalidated?: boolean
+}
+
+/** Serializable response metadata that typed RPC callers may consume. */
+export interface EsiResultMeta {
+	status: number
+	etag: string | null
+	expiresAt: string | null
+	lastModified: string | null
+	pages: number | null
+	page: number | null
+	cached: boolean
+	revalidated: boolean
+}
+
+/**
+ * Optional endpoint-specific result envelope. ESI retains the raw Response,
+ * cache keys, headers, and request policy; callers receive only safe metadata.
+ */
+export interface EsiResult<T> {
+	data: T
+	meta: EsiResultMeta
+}
+
+/** Safe operational error context for typed ESI callers. */
+export class EsiRequestError extends Error {
+	constructor(
+		message: string,
+		readonly context: {
+			status: number
+			routeKey: string
+			retryAfterMs: number | null
+			errorLimitRemain: number | null
+			errorLimitResetAt: string | null
+			upstreamRequestId: string | null
+		}
+	) {
+		super(message)
+		this.name = 'EsiRequestError'
+	}
+}
+
+export function toEsiResult<T>(response: EsiResponse<T>): EsiResult<T> {
+	return {
+		data: response.data,
+		meta: {
+			status: response.status ?? 200,
+			etag: response.etag,
+			expiresAt: response.expiresAt?.toISOString() ?? null,
+			lastModified: response.lastModified?.toISOString() ?? null,
+			pages: response.pages,
+			page: response.page,
+			cached: response.cached ?? false,
+			revalidated: response.revalidated ?? false,
+		},
+	}
 }
 
 export interface EsiCacheAdapter {
@@ -441,6 +500,7 @@ export class EsiRequestClient {
 			const newExpiresAt = parseEsiCacheExpiry(response.headers)
 			const updatedResponse: EsiResponse<T> = {
 				data: expiredCached.data,
+				status: response.status,
 				expiresAt: newExpiresAt,
 				etag: expiredCached.etag,
 				pages: expiredCached.pages,
@@ -459,7 +519,7 @@ export class EsiRequestClient {
 				)
 			}
 
-			return { ...updatedResponse, cached: true }
+			return { ...updatedResponse, cached: true, revalidated: true }
 		}
 
 		if (!response.ok) {
@@ -482,6 +542,7 @@ export class EsiRequestClient {
 
 		const esiResponse: EsiResponse<T> = {
 			data,
+			status: response.status,
 			expiresAt,
 			etag: etag ?? null,
 			pages,

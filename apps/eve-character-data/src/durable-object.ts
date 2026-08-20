@@ -1,7 +1,8 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { and, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
-import { disposeRpcResult, getStub } from '@repo/do-utils'
+import { getStub } from '@repo/do-utils'
+import { getEsiInstanceForCharacter, getPublicEsiInstance } from '@repo/esi'
 import { EveCharacterDataInstance } from '@repo/eve-character-data'
 import { createEveAllianceId, createEveCharacterId, createEveCorporationId } from '@repo/eve-types'
 import { logger } from '@repo/hono-helpers'
@@ -26,6 +27,7 @@ import {
 } from './db/schema'
 import { buildUserSyncWorkflowOptions } from './workflows/build-user-sync-workflow-options'
 
+import type { CharacterMarketTransaction } from '@repo/esi'
 import type {
 	CharacterAttributesData,
 	CharacterCorporationHistoryData,
@@ -43,17 +45,13 @@ import type {
 	CharacterWalletJournalData,
 	CharacterWalletJournalWindowFilters,
 	CharacterWalletSyncHealth,
-	EsiCharacterAttributes,
 	EsiCharacterPublicInfo,
 	EsiCharacterRoles,
-	EsiCharacterSkills,
-	EsiCorporationHistoryEntry,
-	EsiMarketOrder,
 	EsiWalletJournalEntry,
 	EveCharacterData,
 	FetchAuthenticatedDataOptions,
 } from '@repo/eve-character-data'
-import type { EsiResponse, EveTokenStore } from '@repo/eve-token-store'
+import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Env } from './context'
 
 type KillmailItemLike = {
@@ -77,35 +75,6 @@ const WALLET_JOURNAL_INSERT_BATCH_SIZE = 100
 const WALLET_TRANSACTION_INSERT_BATCH_SIZE = 100
 const MAX_WALLET_TRANSACTION_PAGES = 100
 
-type RawCharacterWalletJournalEntry = {
-	id: number
-	date: string
-	ref_type: string
-	amount: number
-	balance?: number
-	description: string
-	first_party_id?: number
-	second_party_id?: number
-	reason?: string
-	tax?: number
-	tax_receiver_id?: number
-	context_id?: number
-	context_id_type?: string
-}
-
-type RawCharacterMarketTransaction = {
-	transaction_id: number
-	date: string
-	type_id: number
-	quantity: number
-	unit_price: number
-	client_id: number
-	location_id: number
-	is_buy: boolean
-	is_personal: boolean
-	journal_ref_id: number
-}
-
 function compareNumericStrings(left: string, right: string): number {
 	try {
 		const leftBigInt = BigInt(left)
@@ -122,8 +91,9 @@ function compareNumericStrings(left: string, right: string): number {
 /**
  * EveCharacterData Durable Object
  *
- * This Durable Object stores character data from ESI in PostgreSQL
- * Uses eve-token-store as ESI gateway for fetching data
+ * This Durable Object stores character data from ESI in PostgreSQL.
+ * Authenticated transport is provided by the shared ESI service; token-store
+ * remains responsible for OAuth and access-token lifecycle only.
  */
 export class EveCharacterDataDO extends DurableObject<Env> implements EveCharacterData {
 	private db: ReturnType<typeof createDb>
@@ -600,18 +570,14 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Called when the character detail page loads, not during daily sync
 	 */
 	async fetchLocation(characterId: string): Promise<void> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const response = await tokenStoreStub.fetchEsi<{
-			solar_system_id: number
-			station_id?: number
-			structure_id?: number
-		}>(`/characters/${String(characterId)}/location`, String(characterId), {
-			cacheMode: 'no-store',
-		})
+		const response = await getEsiInstanceForCharacter(
+			this.env.ESI,
+			characterId
+		).fetchCharacterLocation(characterId)
 
-		const solarSystemId = String(response.data.solar_system_id)
-		const stationId = response.data.station_id ? String(response.data.station_id) : null
-		const structureId = response.data.structure_id ? String(response.data.structure_id) : null
+		const solarSystemId = response.solar_system_id
+		const stationId = response.station_id ?? null
+		const structureId = response.structure_id ?? null
 
 		try {
 			await this.db
@@ -643,17 +609,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 	 * Called when the character detail page loads, not during daily sync
 	 */
 	async fetchStatus(characterId: string): Promise<void> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const response = await tokenStoreStub.fetchEsi<{
-			last_login?: string
-			last_logout?: string
-			logins?: number
-			online: boolean
-		}>(`/characters/${String(characterId)}/online`, String(characterId), {
-			cacheMode: 'no-store',
-		})
-
-		const { online, last_login, last_logout, logins } = response.data
+		const { online, last_login, last_logout, logins } = await getEsiInstanceForCharacter(
+			this.env.ESI,
+			characterId
+		).fetchCharacterOnlineStatus(characterId)
 
 		try {
 			await this.db
@@ -691,14 +650,9 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		_forceRefresh = false
 	): Promise<EsiCharacterRoles | null> {
 		try {
-			const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-			const response: EsiResponse<EsiCharacterRoles> = await tokenStoreStub.fetchEsi(
-				`/characters/${String(characterId)}/roles`,
-				String(characterId),
-				{ cacheMode: 'no-store' }
+			return await getEsiInstanceForCharacter(this.env.ESI, characterId).fetchCharacterRoles(
+				characterId
 			)
-
-			return response.data
 		} catch (error) {
 			// If the character doesn't have the required scope or token is invalid, return null
 			logger.error(
@@ -764,8 +718,14 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 
 		// Fall back to ESI search
 		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-
-		const characterIds = await tokenStoreStub.searchCharacter(characterName, exact)
+		const accessCharacterId = await tokenStoreStub.getCharacterSearchAccessCharacterId()
+		if (!accessCharacterId) {
+			return null
+		}
+		const characterIds = await getEsiInstanceForCharacter(
+			this.env.ESI,
+			accessCharacterId
+		).searchCharacter(accessCharacterId, characterName, exact)
 
 		if (characterIds.length === 0) {
 			return null
@@ -806,19 +766,16 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterPublicData | null> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const existingPublicInfo = await this.db.query.characterPublicInfo.findFirst({
 			where: eq(characterPublicInfo.characterId, characterId),
 		})
-		if (_forceRefresh) {
-			await tokenStoreStub.clearEsiCache(`/characters/${String(characterId)}`)
-		}
-
 		// Fetch public info and affiliation in parallel. Affiliation has a shorter ESI
 		// cache (~1h vs 24h) so we prefer it for corporation_id/alliance_id when available.
+		const publicEsi = getPublicEsiInstance(this.env.ESI)
+		const fetchOptions = _forceRefresh ? { cacheMode: 'no-store' as const } : undefined
 		const [publicInfoResponse, affiliationResponse] = await Promise.allSettled([
-			tokenStoreStub.fetchPublicEsi<EsiCharacterPublicInfo>(`/characters/${String(characterId)}`),
-			tokenStoreStub.fetchCharacterAffiliations([characterId]),
+			publicEsi.fetchCharacterPublicInfo(characterId, fetchOptions),
+			publicEsi.fetchCharacterAffiliation(characterId, [characterId], fetchOptions),
 		])
 
 		const affiliation =
@@ -904,7 +861,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			return (await this.getCharacterInfo(characterId))!
 		}
 
-		const data: EsiCharacterPublicInfo = publicInfoResponse.value.data
+		const data: EsiCharacterPublicInfo = publicInfoResponse.value
 
 		// Prefer affiliation data for corporation/alliance — shorter ESI cache means fresher data.
 		let corporationId = String(data.corporation_id)
@@ -972,30 +929,15 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterCorporationHistoryData[]> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for IDs, but we need strings
 		// This endpoint is public per the ESI OpenAPI spec — no auth required
-		const response = await tokenStoreStub.fetchPublicEsi<
-			Array<{
-				corporation_id: number
-				is_deleted?: boolean
-				record_id: number
-				start_date: string
-			}>
-		>(`/characters/${String(characterId)}/corporationhistory`)
-
-		const rawEntries = response.data
-
-		// Convert numeric IDs to strings
-		const entries: EsiCorporationHistoryEntry[] = rawEntries.map((entry) => ({
-			corporation_id: entry.corporation_id,
-			is_deleted: entry.is_deleted,
-			record_id: entry.record_id,
-			start_date: entry.start_date,
-		}))
+		const rawEntries = await getEsiInstanceForCharacter(
+			this.env.ESI,
+			characterId
+		).fetchCorporationHistory(characterId)
 
 		// Upsert each entry
-		for (const entry of entries) {
+		for (const entry of rawEntries) {
 			await this.db
 				.insert(characterCorporationHistory)
 				.values({
@@ -1040,23 +982,13 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterSkillsData> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		// ESI returns numbers for skill_id, but we need strings
-		const response = await tokenStoreStub.fetchEsi<{
-			skills: Array<{
-				active_skill_level: number
-				skill_id: number
-				skillpoints_in_skill: number
-				trained_skill_level: number
-			}>
-			total_sp: number
-			unallocated_sp?: number
-		}>(`/characters/${String(characterId)}/skills`, String(characterId))
+		const rawData = await getEsiInstanceForCharacter(
+			this.env.ESI,
+			characterId
+		).fetchCharacterSkills(characterId)
 
-		const rawData = response.data
-
-		// ESI returns numeric skill_id
-		const data: EsiCharacterSkills = rawData
+		const data = rawData
 
 		// Upsert to database (convert skill_id to string for storage)
 		try {
@@ -1120,13 +1052,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterAttributesData> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const response: EsiResponse<EsiCharacterAttributes> = await tokenStoreStub.fetchEsi(
-			`/characters/${String(characterId)}/attributes`,
-			String(characterId)
-		)
-
-		const data = response.data
+		const data = await getEsiInstanceForCharacter(
+			this.env.ESI,
+			characterId
+		).fetchCharacterAttributes(characterId)
 
 		// Upsert to database
 		try {
@@ -1195,14 +1124,11 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<{ characterId: string; balance: string; createdAt: Date; updatedAt: Date }> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const response = await tokenStoreStub.fetchEsi<number>(
-			`/characters/${String(characterId)}/wallet`,
-			String(characterId),
-			{ cacheMode: 'no-store' }
+		const balance = String(
+			await getEsiInstanceForCharacter(this.env.ESI, characterId).fetchCharacterWalletBalance(
+				characterId
+			)
 		)
-
-		const balance = String(response.data)
 		try {
 			await this.db
 				.insert(characterWallet)
@@ -1247,7 +1173,6 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<void> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const [watermark] = await this.db
 			.select({
 				maxJournalId: sql<string | null>`max(${characterWalletJournal.journalId}::numeric)::text`,
@@ -1257,47 +1182,33 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			.where(eq(characterWalletJournal.characterId, characterId))
 		const storedMaxJournalId = watermark?.maxJournalId ?? null
 		const storedMaxJournalDate = parseDateOrNull(watermark?.maxJournalDate)
-		const journalPath = `/characters/${String(characterId)}/wallet/journal`
-		const response = storedMaxJournalId
-			? await tokenStoreStub.fetchEsiPagesUntilWatermark<RawCharacterWalletJournalEntry>(
-					journalPath,
-					String(characterId),
-					{
-						maxId: storedMaxJournalId,
-						maxDate: storedMaxJournalDate,
-					},
-					{ cacheMode: 'no-store' }
-				)
-			: await tokenStoreStub.fetchEsiAllPages<RawCharacterWalletJournalEntry>(
-					journalPath,
-					String(characterId),
-					{ cacheMode: 'no-store' }
-				)
-
-		let entries: EsiWalletJournalEntry[]
-		try {
-			entries = response.data
-				.map(
-					(entry): EsiWalletJournalEntry => ({
-						id: entry.id,
-						date: entry.date,
-						ref_type: entry.ref_type,
-						amount: entry.amount,
-						balance: entry.balance,
-						description: entry.description,
-						first_party_id: entry.first_party_id ?? undefined,
-						second_party_id: entry.second_party_id ?? undefined,
-						reason: entry.reason,
-						tax: entry.tax,
-						tax_receiver_id: entry.tax_receiver_id ?? undefined,
-						context_id: entry.context_id ?? undefined,
-						context_id_type: entry.context_id_type,
-					})
-				)
-				.filter((entry) => parseDateOrNull(entry.date) !== null)
-		} finally {
-			disposeRpcResult(response)
-		}
+		const response = await getEsiInstanceForCharacter(
+			this.env.ESI,
+			characterId
+		).fetchCharacterWalletJournalUntilWatermark(characterId, {
+			maxId: storedMaxJournalId,
+			maxDate: storedMaxJournalDate?.toISOString() ?? null,
+		})
+		const entries: EsiWalletJournalEntry[] = response.data
+			.map((entry) => ({
+				id: Number(entry.id),
+				date: entry.date,
+				ref_type: entry.ref_type,
+				amount: Number(entry.amount),
+				balance: entry.balance === undefined ? undefined : Number(entry.balance),
+				description: entry.description,
+				first_party_id:
+					entry.first_party_id === undefined ? undefined : Number(entry.first_party_id),
+				second_party_id:
+					entry.second_party_id === undefined ? undefined : Number(entry.second_party_id),
+				reason: entry.reason,
+				tax: entry.tax === undefined ? undefined : Number(entry.tax),
+				tax_receiver_id:
+					entry.tax_receiver_id === undefined ? undefined : Number(entry.tax_receiver_id),
+				context_id: entry.context_id === undefined ? undefined : Number(entry.context_id),
+				context_id_type: entry.context_id_type,
+			}))
+			.filter((entry) => parseDateOrNull(entry.date) !== null)
 
 		const candidateEntries = entries.filter((entry) => {
 			if (storedMaxJournalId === null) {
@@ -1355,7 +1266,6 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<void> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		const [watermark] = await this.db
 			.select({
 				maxTransactionId: sql<
@@ -1368,25 +1278,25 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		const storedMaxTransactionId = watermark?.maxTransactionId ?? null
 		const storedMaxTransactionDate = parseDateOrNull(watermark?.maxTransactionDate)
 
-		const basePath = `/characters/${String(characterId)}/wallet/transactions`
-		const transactionsById = new Map<string, RawCharacterMarketTransaction>()
-		let pageData: RawCharacterMarketTransaction[]
+		const esi = getEsiInstanceForCharacter(this.env.ESI, characterId)
+		const transactionsById = new Map<string, CharacterMarketTransaction>()
+		let pageData: CharacterMarketTransaction[]
 		let pagesFetched = 1
 		let fromId: string | undefined
 		let watermarkSeen = false
 		let completed = false
 		let stoppedAtWatermark = false
 
-		const addPage = (entries: RawCharacterMarketTransaction[]) => {
+		const addPage = (entries: CharacterMarketTransaction[]) => {
 			for (const entry of entries) {
 				transactionsById.set(String(entry.transaction_id), entry)
 			}
 		}
-		const hasWatermarkRow = (entries: RawCharacterMarketTransaction[]) =>
+		const hasWatermarkRow = (entries: CharacterMarketTransaction[]) =>
 			storedMaxTransactionId !== null &&
 			entries.some((entry) => String(entry.transaction_id) === storedMaxTransactionId)
 		const hasRowsAtOrBeyondWatermark = (
-			entries: RawCharacterMarketTransaction[],
+			entries: CharacterMarketTransaction[],
 			cursorId?: string
 		) => {
 			if (!storedMaxTransactionId) {
@@ -1410,16 +1320,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			})
 		}
 
-		const firstResponse = await tokenStoreStub.fetchEsi<RawCharacterMarketTransaction[]>(
-			basePath,
-			String(characterId),
-			{ cacheMode: 'no-store' }
-		)
-		try {
-			pageData = firstResponse.data.map((entry) => ({ ...entry }))
-		} finally {
-			disposeRpcResult(firstResponse)
-		}
+		pageData = await esi.fetchCharacterMarketTransactionsPage(characterId)
 		addPage(pageData)
 
 		if (hasWatermarkRow(pageData)) {
@@ -1446,16 +1347,7 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			}
 			fromId = String(nextFromId)
 
-			const nextResponse = await tokenStoreStub.fetchEsi<RawCharacterMarketTransaction[]>(
-				`${basePath}?from_id=${encodeURIComponent(fromId)}`,
-				String(characterId),
-				{ cacheMode: 'no-store' }
-			)
-			try {
-				pageData = nextResponse.data.map((entry) => ({ ...entry }))
-			} finally {
-				disposeRpcResult(nextResponse)
-			}
+			pageData = await esi.fetchCharacterMarketTransactionsPage(characterId, fromId)
 			pagesFetched += 1
 			addPage(pageData)
 
@@ -1549,38 +1441,10 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 		characterId: string,
 		_forceRefresh = false
 	): Promise<CharacterMarketOrderData[]> {
-		const tokenStoreStub = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		// ESI returns numbers for IDs, but we need strings
-		const response = await tokenStoreStub.fetchEsi<
-			Array<{
-				order_id: number
-				type_id: number
-				location_id: number
-				is_buy_order?: boolean
-				price: number
-				volume_total: number
-				volume_remain: number
-				issued: string
-				state: 'open' | 'closed' | 'expired' | 'cancelled'
-				min_volume?: number
-				range?: string
-				duration?: number
-				escrow?: number
-				region_id?: number
-			}>
-		>(`/characters/${String(characterId)}/orders`, String(characterId), {
-			cacheMode: 'no-store',
-		})
-
-		const rawOrders = response.data
-
-		// ESI returns numeric IDs, normalize optional fields to required
-		const orders: EsiMarketOrder[] = rawOrders.map((order) => ({
-			...order,
-			range: order.range ?? 'station',
-			duration: order.duration ?? 0,
-			region_id: order.region_id ?? 0,
-		}))
+		const orders = await getEsiInstanceForCharacter(
+			this.env.ESI,
+			characterId
+		).fetchCharacterMarketOrders(characterId)
 
 		// Upsert each order
 		for (const order of orders) {

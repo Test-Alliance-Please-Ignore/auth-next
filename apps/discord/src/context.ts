@@ -1,5 +1,5 @@
-import type { HonoApp } from '@repo/hono-helpers'
 import type { DiscordInteractionResponse } from '@repo/discord'
+import type { HonoApp } from '@repo/hono-helpers'
 import type { SharedHonoEnv, SharedHonoVariables } from '@repo/hono-helpers/src/types'
 import type { createDb } from './db'
 
@@ -125,7 +125,8 @@ export type Env = SharedHonoEnv & {
 			options?: {
 				source?: string
 				force?: boolean
-				userRefreshWorkflowInstanceIdByUserId?: Record<string, string>
+				allowRemoval?: boolean
+				hardStripAllRoles?: boolean
 			}
 		): Promise<{ pendingCount: number; added: number; skipped: number }>
 	}

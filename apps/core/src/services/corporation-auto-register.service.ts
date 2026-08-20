@@ -1,5 +1,6 @@
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { getEsiInstanceForCharacter, getPublicEsiInstance } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 
 import { managedCorporations } from '../db/schema'
@@ -37,6 +38,7 @@ export async function autoRegisterDirectorCorporation(
 	userId: string,
 	db: ReturnType<typeof createDb>,
 	eveTokenStoreNamespace: DurableObjectNamespace,
+	esiNamespace: DurableObjectNamespace,
 	eveCorporationDataNamespace: DurableObjectNamespace
 ): Promise<AutoRegistrationResult> {
 	// Ensure characterId is a string (it might be passed as a number from some call sites)
@@ -44,6 +46,8 @@ export async function autoRegisterDirectorCorporation(
 
 	// Create token store stub inside the function to avoid serialization issues
 	const tokenStore: EveTokenStore = getStub<EveTokenStore>(eveTokenStoreNamespace, 'default')
+	const characterEsi = getEsiInstanceForCharacter(esiNamespace, characterId)
+	const publicEsi = getPublicEsiInstance(esiNamespace)
 
 	try {
 		// Step 1: Check if token has the required scope
@@ -69,14 +73,11 @@ export async function autoRegisterDirectorCorporation(
 		// Step 2: Fetch character's corporation roles
 		let roles: string[]
 		try {
-			const rolesResponse = await tokenStore.fetchEsi<{
-				roles?: string[]
-				roles_at_hq?: string[]
-				roles_at_base?: string[]
-				roles_at_other?: string[]
-			}>(`/characters/${characterId}/roles`, characterId, { cacheMode: 'no-store' })
+			const rolesResponse = await characterEsi.fetchCharacterRoles(characterId, {
+				cacheMode: 'no-store',
+			})
 
-			roles = rolesResponse.data.roles || []
+			roles = rolesResponse.roles || []
 		} catch (error) {
 			logger.error('[AutoReg] Failed to fetch character roles', {
 				characterId,
@@ -99,13 +100,10 @@ export async function autoRegisterDirectorCorporation(
 		// Step 4: Get character's corporation ID
 		let corporationId: string
 		try {
-			const characterInfo = await tokenStore.fetchPublicEsi<{
-				corporation_id: number
-				name: string
-			}>(`/characters/${characterId}/`)
+			const characterInfo = await publicEsi.fetchCharacterPublicInfo(characterId)
 
 			// ESI returns numbers, convert to string (and ensure it stays a string)
-			corporationId = String(characterInfo.data.corporation_id)
+			corporationId = String(characterInfo.corporation_id)
 		} catch (error) {
 			logger.error('[AutoReg] Failed to fetch character info', {
 				characterId,
@@ -121,15 +119,7 @@ export async function autoRegisterDirectorCorporation(
 		let corpName: string
 		let corpTicker: string
 		try {
-			const corpInfo = await tokenStore.getCorporationById(corporationId)
-
-			if (!corpInfo) {
-				logger.error('[AutoReg] Corporation not found', { corporationId })
-				return {
-					success: false,
-					reason: 'failed_to_fetch_corporation_info',
-				}
-			}
+			const corpInfo = await publicEsi.fetchCorporationPublicInfo(corporationId)
 
 			corpName = corpInfo.name
 			corpTicker = corpInfo.ticker
@@ -315,6 +305,7 @@ export async function checkAndUpdateDirectorStatus(
 	db: ReturnType<typeof createDb>,
 	eveCharacterDataNamespace: DurableObjectNamespace,
 	eveTokenStoreNamespace: DurableObjectNamespace,
+	esiNamespace: DurableObjectNamespace,
 	eveCorporationDataNamespace: DurableObjectNamespace
 ): Promise<{ updated: boolean; reason?: string }> {
 	try {
@@ -339,6 +330,7 @@ export async function checkAndUpdateDirectorStatus(
 				userId,
 				db,
 				eveTokenStoreNamespace,
+				esiNamespace,
 				eveCorporationDataNamespace
 			)
 

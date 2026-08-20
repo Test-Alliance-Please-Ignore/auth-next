@@ -1,7 +1,7 @@
 import { transformAssets } from '../lib/esi-transforms'
 
-import type { EsiCorporationAsset } from '@repo/eve-corporation-data'
-import type { EsiResponse } from '@repo/eve-token-store'
+import type { EsiResult } from '@repo/esi'
+import type { EsiCorporationAsset as StoredCorporationAsset } from '@repo/eve-corporation-data'
 
 export type RawEsiAsset = {
 	item_id: number
@@ -15,8 +15,8 @@ export type RawEsiAsset = {
 }
 
 export interface AssetsPagingSyncDeps {
-	fetchPage: (page: number) => Promise<EsiResponse<RawEsiAsset[]>>
-	storeAssets: (assets: EsiCorporationAsset[]) => Promise<void>
+	fetchPage: (page: number) => Promise<EsiResult<RawEsiAsset[]>>
+	storeAssets: (assets: StoredCorporationAsset[]) => Promise<void>
 	onProgress?: (progress: { page: number; totalPages: number; totalAssets: number }) => void
 }
 
@@ -30,19 +30,19 @@ export function dedupeByItemId<T>(items: T[], getItemId: (item: T) => string): T
 }
 
 function validatePageResponse(
-	response: Pick<EsiResponse<RawEsiAsset[]>, 'page' | 'pages'>,
+	response: Pick<EsiResult<RawEsiAsset[]>, 'meta'>,
 	requestedPage: number,
 	totalPages: number
 ): void {
-	if (response.page !== undefined && response.page !== requestedPage) {
+	if (response.meta.page !== null && response.meta.page !== requestedPage) {
 		throw new Error(
-			`ESI corporation assets returned page ${response.page} when page ${requestedPage} was requested`
+			`ESI corporation assets returned page ${response.meta.page} when page ${requestedPage} was requested`
 		)
 	}
 
-	if (response.pages !== undefined && response.pages !== totalPages) {
+	if (response.meta.pages !== null && response.meta.pages !== totalPages) {
 		throw new Error(
-			`ESI corporation assets changed page count while fetching: expected ${totalPages}, got ${response.pages}`
+			`ESI corporation assets changed page count while fetching: expected ${totalPages}, got ${response.meta.pages}`
 		)
 	}
 }
@@ -55,7 +55,7 @@ export async function syncAssetsPaged(
 	deps: AssetsPagingSyncDeps
 ): Promise<{ assetsCount: number }> {
 	const firstPageResponse = await deps.fetchPage(1)
-	const totalPages = firstPageResponse.pages ?? 1
+	const totalPages = firstPageResponse.meta.pages ?? 1
 	if (!Number.isInteger(totalPages) || totalPages < 1) {
 		throw new Error(`ESI corporation assets returned an invalid page count: ${totalPages}`)
 	}

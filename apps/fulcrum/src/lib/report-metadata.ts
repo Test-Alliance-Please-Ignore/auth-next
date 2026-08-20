@@ -1,9 +1,10 @@
 import { getStub } from '@repo/do-utils'
+import { getPublicEsiInstance } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 
-import type { Esi, EsiTypeResolver } from '@repo/esi'
-import type { WebhookMetadata } from './discord-webhook'
+import type { EsiTypeResolver } from '@repo/esi'
 import type { Env } from '../context'
+import type { WebhookMetadata } from './discord-webhook'
 
 /**
  * Resolve all metadata needed for webhook notifications
@@ -35,7 +36,8 @@ export async function resolveReportMetadata(
 			try {
 				const typeResolverStub = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
 				const nameMap = await typeResolverStub.resolveIds([subjectCharacterId])
-				resolvedSubjectCharacterName = nameMap[subjectCharacterId] ?? `Character ${subjectCharacterId}`
+				resolvedSubjectCharacterName =
+					nameMap[subjectCharacterId] ?? `Character ${subjectCharacterId}`
 			} catch (error) {
 				logger.warn('[Report Metadata] Failed to resolve subject character name', {
 					reportId,
@@ -50,7 +52,7 @@ export async function resolveReportMetadata(
 		let corporationTicker = `Corp ${requestorCorporationId}`
 
 		try {
-			const esiStub = getStub<Esi>(env.ESI, requestorCorporationId)
+			const esiStub = getPublicEsiInstance(env.ESI)
 			const corpInfo = await esiStub.fetchCorporationPublicInfo(requestorCorporationId)
 
 			if (corpInfo?.ticker) {
@@ -94,7 +96,7 @@ export async function resolveBatchReportMetadata(
 	env: Env,
 	requestorUserId: string,
 	requestorCorporationId: string,
-	targetUserId?: string,
+	targetUserId?: string
 ): Promise<BatchReportResolvedMetadata | null> {
 	try {
 		const requestorMainCharacterName = await env.CORE.getUserMainCharacterName(requestorUserId)
@@ -108,7 +110,7 @@ export async function resolveBatchReportMetadata(
 
 		let corporationTicker = `Corp ${requestorCorporationId}`
 		try {
-			const esiStub = getStub<Esi>(env.ESI, requestorCorporationId)
+			const esiStub = getPublicEsiInstance(env.ESI)
 			const corpInfo = await esiStub.fetchCorporationPublicInfo(requestorCorporationId)
 			if (corpInfo?.ticker) {
 				corporationTicker = corpInfo.ticker

@@ -11,7 +11,7 @@ function makeDb() {
 function makeDependencies() {
 	return {
 		db: makeDb(),
-		eveTokenStore: { getAccessToken: vi.fn() },
+		eveTokenStore: { hasUsableAccessToken: vi.fn() },
 		eveCharacterData: { getCharacterInfo: vi.fn() },
 		coreWorker: {
 			deleteUser: vi.fn(),
@@ -120,7 +120,7 @@ describe('AdminService', () => {
 			corporationId: 123,
 			updatedAt: new Date('2026-01-01T00:00:00Z'),
 		})
-		dependencies.eveTokenStore.getAccessToken.mockResolvedValue('token')
+		dependencies.eveTokenStore.hasUsableAccessToken.mockResolvedValue(true)
 		const service = new AdminService(
 			dependencies.db as any,
 			dependencies.eveTokenStore as any,
@@ -136,5 +136,7 @@ describe('AdminService', () => {
 			hasValidToken: true,
 			owner: { userId: 'user-1' },
 		})
+		expect(dependencies.eveTokenStore.hasUsableAccessToken).toHaveBeenCalledWith('char-1')
+		expect(dependencies.eveTokenStore).not.toHaveProperty('getAccessToken')
 	})
 })

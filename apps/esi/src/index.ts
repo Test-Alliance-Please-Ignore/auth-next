@@ -1,12 +1,11 @@
 import { Hono } from 'hono'
 
-import { getStub } from '@repo/do-utils'
+import { getEsiInstanceForCorporation } from '@repo/esi'
 import { withNotFound, withOnError, withWorkersLogger } from '@repo/hono-helpers'
 
 import { EsiDO } from './durable-object'
 import { EsiTypeResolverDO } from './durable-object-id-resolver'
 
-import type { Esi } from '@repo/esi'
 import type { App } from './context'
 
 const app = new Hono<App>()
@@ -27,7 +26,7 @@ const app = new Hono<App>()
 	// Test endpoints for querying ESI data
 	.get('/test/members/:corporationId', async (c) => {
 		const corporationId = c.req.param('corporationId')
-		const stub = getStub<Esi>(c.env.ESI, 'default')
+		const stub = getEsiInstanceForCorporation(c.env.ESI, corporationId)
 
 		try {
 			const members = await stub.fetchCorporationMembers(corporationId)
@@ -44,7 +43,7 @@ const app = new Hono<App>()
 
 	.get('/test/member-tracking/:corporationId', async (c) => {
 		const corporationId = c.req.param('corporationId')
-		const stub = getStub<Esi>(c.env.ESI, 'default')
+		const stub = getEsiInstanceForCorporation(c.env.ESI, corporationId)
 
 		try {
 			const memberTracking = await stub.fetchCorporationMemberTracking(corporationId)
@@ -61,7 +60,7 @@ const app = new Hono<App>()
 
 	.get('/test/wallets/:corporationId', async (c) => {
 		const corporationId = c.req.param('corporationId')
-		const stub = getStub<Esi>(c.env.ESI, 'default')
+		const stub = getEsiInstanceForCorporation(c.env.ESI, corporationId)
 
 		try {
 			const wallets = await stub.fetchCorporationWallets(corporationId)
@@ -84,7 +83,7 @@ const app = new Hono<App>()
 			return c.json({ error: 'Invalid division parameter' }, 400)
 		}
 
-		const stub = getStub<Esi>(c.env.ESI, 'default')
+		const stub = getEsiInstanceForCorporation(c.env.ESI, corporationId)
 
 		try {
 			const journal = await stub.fetchCorporationWalletJournal(corporationId, division)
@@ -107,7 +106,7 @@ const app = new Hono<App>()
 			return c.json({ error: 'Invalid division parameter' }, 400)
 		}
 
-		const stub = getStub<Esi>(c.env.ESI, 'default')
+		const stub = getEsiInstanceForCorporation(c.env.ESI, corporationId)
 
 		try {
 			const transactions = await stub.fetchCorporationWalletTransactions(corporationId, division)
@@ -124,7 +123,7 @@ const app = new Hono<App>()
 
 	.get('/test/assets/:corporationId', async (c) => {
 		const corporationId = c.req.param('corporationId')
-		const stub = getStub<Esi>(c.env.ESI, 'default')
+		const stub = getEsiInstanceForCorporation(c.env.ESI, corporationId)
 
 		try {
 			const assets = await stub.fetchCorporationAssets(corporationId)
@@ -141,7 +140,7 @@ const app = new Hono<App>()
 
 	.get('/test/structures/:corporationId', async (c) => {
 		const corporationId = c.req.param('corporationId')
-		const stub = getStub<Esi>(c.env.ESI, 'default')
+		const stub = getEsiInstanceForCorporation(c.env.ESI, corporationId)
 
 		try {
 			const structures = await stub.fetchCorporationStructures(corporationId)
@@ -158,7 +157,7 @@ const app = new Hono<App>()
 
 	.get('/test/orders/:corporationId', async (c) => {
 		const corporationId = c.req.param('corporationId')
-		const stub = getStub<Esi>(c.env.ESI, 'default')
+		const stub = getEsiInstanceForCorporation(c.env.ESI, corporationId)
 
 		try {
 			const orders = await stub.fetchCorporationOrders(corporationId)
@@ -175,7 +174,7 @@ const app = new Hono<App>()
 
 	.get('/test/contracts/:corporationId', async (c) => {
 		const corporationId = c.req.param('corporationId')
-		const stub = getStub<Esi>(c.env.ESI, 'default')
+		const stub = getEsiInstanceForCorporation(c.env.ESI, corporationId)
 
 		try {
 			const contracts = await stub.fetchCorporationContracts(corporationId)
@@ -192,7 +191,7 @@ const app = new Hono<App>()
 
 	.get('/test/industry-jobs/:corporationId', async (c) => {
 		const corporationId = c.req.param('corporationId')
-		const stub = getStub<Esi>(c.env.ESI, 'default')
+		const stub = getEsiInstanceForCorporation(c.env.ESI, corporationId)
 
 		try {
 			const jobs = await stub.fetchCorporationIndustryJobs(corporationId)
@@ -209,7 +208,7 @@ const app = new Hono<App>()
 
 	.get('/test/killmails/:corporationId', async (c) => {
 		const corporationId = c.req.param('corporationId')
-		const stub = getStub<Esi>(c.env.ESI, 'default')
+		const stub = getEsiInstanceForCorporation(c.env.ESI, corporationId)
 
 		try {
 			const killmails = await stub.fetchCorporationKillmails(corporationId)

@@ -4,13 +4,13 @@
  */
 
 import { getEsiInstanceForCharacter } from '@repo/esi'
+import { logger } from '@repo/hono-helpers'
 
 import { shipTypeIds } from '../../processors/helpers/ship-types'
 import { retrieveData, storeOrReturn } from '../../utils/storage'
 
 import type { CharacterAsset } from '@repo/esi'
 import type { StepResult } from '../../utils/storage'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Map of item_id → custom name
@@ -30,100 +30,99 @@ export type AssetNameMap = Record<string, string>
  * @returns StepResult with asset name map { item_id: customName }
  */
 export async function fetchAssetNames(
-    esiBinding: DurableObjectNamespace,
-    getBucket: (name: string) => R2Bucket,
-    bucket: R2Bucket,
-    bucketName: string,
-    fetchAssetsResult: StepResult,
-    workflowInstanceId: string,
-    characterId: string,
+	esiBinding: DurableObjectNamespace,
+	getBucket: (name: string) => R2Bucket,
+	bucket: R2Bucket,
+	bucketName: string,
+	fetchAssetsResult: StepResult,
+	workflowInstanceId: string,
+	characterId: string
 ): Promise<StepResult> {
-    try {
-        if (!fetchAssetsResult.success) {
-            return {
-                source: 'none',
-                success: false,
-                error: 'Fetch assets failed: ' + (fetchAssetsResult as any).error,
-            }
-        }
+	try {
+		if (!fetchAssetsResult.success) {
+			return {
+				source: 'none',
+				success: false,
+				error: 'Fetch assets failed: ' + (fetchAssetsResult as any).error,
+			}
+		}
 
-        // Retrieve raw assets to find which items to get names for
-        const data = await retrieveData(getBucket, fetchAssetsResult)
-        if (!data) {
-            return {
-                source: 'none',
-                success: false,
-                error: 'No assets data retrieved',
-            }
-        }
+		// Retrieve raw assets to find which items to get names for
+		const data = await retrieveData(getBucket, fetchAssetsResult)
+		if (!data) {
+			return {
+				source: 'none',
+				success: false,
+				error: 'No assets data retrieved',
+			}
+		}
 
-        const assets = data as CharacterAsset[]
-        if (!Array.isArray(assets)) {
-            return {
-                source: 'none',
-                success: false,
-                error: 'Invalid assets structure',
-            }
-        }
+		const assets = data as CharacterAsset[]
+		if (!Array.isArray(assets)) {
+			return {
+				source: 'none',
+				success: false,
+				error: 'Invalid assets structure',
+			}
+		}
 
-        // Singleton items can have custom names — ships and containers
-        // Ship-related bay contents can also carry custom names, so we include
-        // any singleton item that is either a ship type or is stored in a
-        // named hangar / bay slot. This keeps fitted ship labels stable when
-        // the parent location is a citadel or a ship maintenance bay.
-        const nameableItemIds = assets
-            .filter((a) =>
-                a.is_singleton &&
-                (
-                    shipTypeIds.has(a.type_id) ||
-                    a.location_flag === 'Hangar' ||
-                    a.location_flag.startsWith('ShipHangar') ||
-                    a.location_flag.startsWith('SpecializedShipHold') ||
-                    a.location_flag.startsWith('SpecializedSmallShipHold') ||
-                    a.location_flag.startsWith('SpecializedMediumShipHold') ||
-                    a.location_flag.startsWith('SpecializedLargeShipHold') ||
-                    a.location_flag.startsWith('SpecializedIndustrialShipHold')
-                )
-            )
-            .map((a) => a.item_id)
+		// Singleton items can have custom names — ships and containers
+		// Ship-related bay contents can also carry custom names, so we include
+		// any singleton item that is either a ship type or is stored in a
+		// named hangar / bay slot. This keeps fitted ship labels stable when
+		// the parent location is a citadel or a ship maintenance bay.
+		const nameableItemIds = assets
+			.filter(
+				(a) =>
+					a.is_singleton &&
+					(shipTypeIds.has(a.type_id) ||
+						a.location_flag === 'Hangar' ||
+						a.location_flag.startsWith('ShipHangar') ||
+						a.location_flag.startsWith('SpecializedShipHold') ||
+						a.location_flag.startsWith('SpecializedSmallShipHold') ||
+						a.location_flag.startsWith('SpecializedMediumShipHold') ||
+						a.location_flag.startsWith('SpecializedLargeShipHold') ||
+						a.location_flag.startsWith('SpecializedIndustrialShipHold'))
+			)
+			.map((a) => a.item_id)
 
-        logger.log('[fetchAssetNames] Fetching custom names', {
-            totalAssets: assets.length,
-            nameableItemIds: nameableItemIds.length,
-        })
+		logger.log('[fetchAssetNames] Fetching custom names', {
+			totalAssets: assets.length,
+			nameableItemIds: nameableItemIds.length,
+		})
 
-        const nameMap: AssetNameMap = {}
+		const nameMap: AssetNameMap = {}
 
-        if (nameableItemIds.length > 0) {
-            const stub = getEsiInstanceForCharacter(esiBinding, characterId)
-            stub.setDefaultCacheMode('no-store')
+		if (nameableItemIds.length > 0) {
+			const stub = getEsiInstanceForCharacter(esiBinding, characterId)
+			// ESI limits to 1000 item IDs per request
+			const BATCH_SIZE = 1000
+			for (let i = 0; i < nameableItemIds.length; i += BATCH_SIZE) {
+				const batch = nameableItemIds.slice(i, i + BATCH_SIZE)
+				const names = await stub.fetchCharacterAssetNames(characterId, batch, {
+					cacheMode: 'no-store',
+				})
 
-            // ESI limits to 1000 item IDs per request
-            const BATCH_SIZE = 1000
-            for (let i = 0; i < nameableItemIds.length; i += BATCH_SIZE) {
-                const batch = nameableItemIds.slice(i, i + BATCH_SIZE)
-                const names = await stub.fetchCharacterAssetNames(characterId, batch)
+				for (const entry of names) {
+					// Only store non-empty custom names that differ from default type names
+					if (entry.name && entry.name.trim().length > 0) {
+						nameMap[entry.item_id] = entry.name
+					}
+				}
+			}
+		}
 
-                for (const entry of names) {
-                    // Only store non-empty custom names that differ from default type names
-                    if (entry.name && entry.name.trim().length > 0) {
-                        nameMap[entry.item_id] = entry.name
-                    }
-                }
-            }
-        }
+		logger.log('[fetchAssetNames] Custom names fetched', {
+			requestedCount: nameableItemIds.length,
+			namedCount: Object.keys(nameMap).length,
+		})
 
-        logger.log('[fetchAssetNames] Custom names fetched', {
-            requestedCount: nameableItemIds.length,
-            namedCount: Object.keys(nameMap).length,
-        })
-
-        return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-asset-names', nameMap)
-    } catch (error) {
-        logger.error('[fetchAssetNames] Error:', {
-            error: error instanceof Error ? error.message : String(error),
-        })
-        // Non-critical — return empty map so report generation continues without custom names
-        return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-asset-names', {})
-    }
+		return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-asset-names', nameMap)
+	} catch (error) {
+		logger.error('[fetchAssetNames] Error:', {
+			error: error instanceof Error ? error.message : String(error),
+		})
+		// Non-critical — return empty map so report generation continues without custom names
+		return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-asset-names', {})
+	}
 }

@@ -278,7 +278,7 @@ describe('structure prune cleanup', () => {
 		const instance = createDoInstance(db)
 
 		const resolveNearestMoonGeographyBySystemPosition = vi.fn().mockResolvedValue(null)
-		mocks.getStub.mockReturnValue({
+		mocks.getStub.mockReset().mockReturnValue({
 			resolvePlanetGeographyByIds: vi.fn(),
 			resolveSolarSystemsByIds: vi.fn(),
 			resolveRegionsByIds: vi.fn(),
@@ -378,8 +378,7 @@ describe('structure prune cleanup', () => {
 		const db = makeDb()
 		const instance = createDoInstance(db)
 
-		mocks.getStub.mockReturnValueOnce({} as never)
-		mocks.getStub.mockReturnValueOnce({
+		mocks.getStub.mockReturnValue({
 			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({
 				'30000142': {
 					solarSystemName: 'Jita',
@@ -564,7 +563,7 @@ describe('structure prune cleanup', () => {
 			},
 		])
 
-		mocks.getStub.mockReturnValue({
+		mocks.getStub.mockReset().mockReturnValue({
 			resolvePlanetGeographyByIds: vi.fn().mockResolvedValue({
 				401: null,
 			}),

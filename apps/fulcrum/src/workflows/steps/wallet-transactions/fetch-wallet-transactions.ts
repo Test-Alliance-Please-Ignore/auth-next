@@ -38,7 +38,7 @@ export async function fetchWalletTransactionsFromEsi(
 		// Use the smallest transaction_id as the cursor for the next page
 		const minId = pageData.reduce(
 			(min, tx) => (BigInt(tx.transaction_id) < BigInt(min) ? tx.transaction_id : min),
-			pageData[0].transaction_id,
+			pageData[0].transaction_id
 		)
 		fromId = minId
 
@@ -63,7 +63,6 @@ export async function fetchWalletTransactions(
 ): Promise<StepResult> {
 	try {
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
-		stub.setDefaultCacheMode('no-store')
 		const { transactions, truncated } = await fetchWalletTransactionsFromEsi(stub, characterId)
 
 		return await storeOrReturn(

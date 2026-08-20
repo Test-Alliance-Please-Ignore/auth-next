@@ -5,10 +5,10 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import {
-	corporationDiscordServerRoles,
 	corporationDiscordServerNicknameConfigs,
-	corporationDiscordServerScenarioRoles,
+	corporationDiscordServerRoles,
 	corporationDiscordServers,
+	corporationDiscordServerScenarioRoles,
 	discordRoles,
 	discordServers,
 	userCharacters,
@@ -65,7 +65,11 @@ function normalizeTickerInput(value: unknown): string | null {
 		return null
 	}
 
-	const normalized = value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5)
+	const normalized = value
+		.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, '')
+		.slice(0, 5)
 	return normalized || null
 }
 
@@ -94,8 +98,7 @@ function buildScenarioRoleUpdateValues(
 		if (roleValue !== undefined) {
 			values[bucket.roleField] = roleValue === null ? null : (roleValue as string)
 		} else if (existing) {
-			values[bucket.roleField] =
-				(existing[bucket.roleField] as string | null | undefined) ?? null
+			values[bucket.roleField] = (existing[bucket.roleField] as string | null | undefined) ?? null
 		} else {
 			values[bucket.roleField] = null
 		}
@@ -169,19 +172,14 @@ function flattenCorporationDiscordAttachment(attachment: any) {
 		...attachment,
 		allianceGuestRoleId: scenarioRolesByBucket.get('alliance_guest')?.discordRoleId ?? null,
 		allianceGuestAutoApply: scenarioRolesByBucket.get('alliance_guest')?.autoApply ?? false,
-		nonAllianceGuestRoleId:
-			scenarioRolesByBucket.get('non_alliance_guest')?.discordRoleId ?? null,
-		nonAllianceGuestAutoApply:
-			scenarioRolesByBucket.get('non_alliance_guest')?.autoApply ?? false,
+		nonAllianceGuestRoleId: scenarioRolesByBucket.get('non_alliance_guest')?.discordRoleId ?? null,
+		nonAllianceGuestAutoApply: scenarioRolesByBucket.get('non_alliance_guest')?.autoApply ?? false,
 		corpMemberNicknameEnabled: nicknameConfigsByBucket.get('corp_member')?.enabled ?? false,
-		corpMemberNicknameSource:
-			nicknameConfigsByBucket.get('corp_member')?.source ?? 'corp',
+		corpMemberNicknameSource: nicknameConfigsByBucket.get('corp_member')?.source ?? 'corp',
 		corpMemberNicknameCustomTicker:
 			nicknameConfigsByBucket.get('corp_member')?.customTicker ?? null,
-		allianceGuestNicknameEnabled:
-			nicknameConfigsByBucket.get('alliance_guest')?.enabled ?? false,
-		allianceGuestNicknameSource:
-			nicknameConfigsByBucket.get('alliance_guest')?.source ?? 'corp',
+		allianceGuestNicknameEnabled: nicknameConfigsByBucket.get('alliance_guest')?.enabled ?? false,
+		allianceGuestNicknameSource: nicknameConfigsByBucket.get('alliance_guest')?.source ?? 'corp',
 		allianceGuestNicknameCustomTicker:
 			nicknameConfigsByBucket.get('alliance_guest')?.customTicker ?? null,
 		nonAllianceGuestNicknameEnabled:
@@ -216,7 +214,11 @@ async function fetchCorporationDiscordAttachments(db: any, corporationId: string
 	return attachments.map(flattenCorporationDiscordAttachment)
 }
 
-async function fetchCorporationDiscordAttachment(db: any, corporationId: string, attachmentId: string) {
+async function fetchCorporationDiscordAttachment(
+	db: any,
+	corporationId: string,
+	attachmentId: string
+) {
 	const attachment = await db.query.corporationDiscordServers.findFirst({
 		where: and(
 			eq(corporationDiscordServers.id, attachmentId),
@@ -257,7 +259,9 @@ async function validateScenarioRoleSelections(
 	})
 
 	for (const roleId of uniqueRoleIds) {
-		const role = roles.find((candidate: { id: string; discordServerId: string }) => candidate.id === roleId)
+		const role = roles.find(
+			(candidate: { id: string; discordServerId: string }) => candidate.id === roleId
+		)
 		if (!role) {
 			throw new Error(`Role ${roleId} not found`)
 		}
@@ -351,15 +355,13 @@ app.post('/:corporationId/discord-servers', requireAuth(), requireAdmin(), async
 			{
 				corporationDiscordServerId: attachment.id,
 				bucket: 'alliance_guest',
-				discordRoleId:
-					(scenarioValues.allianceGuestRoleId as string | null | undefined) ?? null,
+				discordRoleId: (scenarioValues.allianceGuestRoleId as string | null | undefined) ?? null,
 				autoApply: (scenarioValues.allianceGuestAutoApply as boolean | undefined) ?? false,
 			},
 			{
 				corporationDiscordServerId: attachment.id,
 				bucket: 'non_alliance_guest',
-				discordRoleId:
-					(scenarioValues.nonAllianceGuestRoleId as string | null | undefined) ?? null,
+				discordRoleId: (scenarioValues.nonAllianceGuestRoleId as string | null | undefined) ?? null,
 				autoApply: (scenarioValues.nonAllianceGuestAutoApply as boolean | undefined) ?? false,
 			},
 		])
@@ -369,10 +371,8 @@ app.post('/:corporationId/discord-servers', requireAuth(), requireAdmin(), async
 				corporationDiscordServerId: attachment.id,
 				bucket: bucket.bucket,
 				enabled: (nicknameValues[bucket.enabledField] as boolean | undefined) ?? false,
-				source:
-					(nicknameValues[bucket.sourceField] as NicknameTickerSource | undefined) ?? 'corp',
-				customTicker:
-					(nicknameValues[bucket.customField] as string | null | undefined) ?? null,
+				source: (nicknameValues[bucket.sourceField] as NicknameTickerSource | undefined) ?? 'corp',
+				customTicker: (nicknameValues[bucket.customField] as string | null | undefined) ?? null,
 			}))
 		)
 
@@ -474,7 +474,10 @@ app.put(
 				.where(eq(corporationDiscordServers.id, attachmentId))
 				.returning()
 
-			const scenarioValues = buildScenarioRoleUpdateValues(body, existing as Record<string, unknown>)
+			const scenarioValues = buildScenarioRoleUpdateValues(
+				body,
+				existing as Record<string, unknown>
+			)
 			await db
 				.delete(corporationDiscordServerScenarioRoles)
 				.where(eq(corporationDiscordServerScenarioRoles.corporationDiscordServerId, attachmentId))
@@ -482,8 +485,7 @@ app.put(
 				scenarioRoleBucketFields.map((bucket) => ({
 					corporationDiscordServerId: attachmentId,
 					bucket: bucket.bucket,
-					discordRoleId:
-						(scenarioValues[bucket.roleField] as string | null | undefined) ?? null,
+					discordRoleId: (scenarioValues[bucket.roleField] as string | null | undefined) ?? null,
 					autoApply: (scenarioValues[bucket.autoApplyField] as boolean | undefined) ?? false,
 				}))
 			)
@@ -522,13 +524,13 @@ app.put(
 			return c.json({ error: 'Database not available' }, 500)
 		}
 
-			try {
-				const body = (await c.req.json()) as Record<string, unknown>
-				const existing = await fetchCorporationDiscordAttachment(db, corporationId, attachmentId)
+		try {
+			const body = (await c.req.json()) as Record<string, unknown>
+			const existing = await fetchCorporationDiscordAttachment(db, corporationId, attachmentId)
 
-				if (!existing) {
-					return c.json({ error: 'Discord server attachment not found' }, 404)
-				}
+			if (!existing) {
+				return c.json({ error: 'Discord server attachment not found' }, 404)
+			}
 
 			const nicknameValues = buildNicknameUpdateValues(body, existing as Record<string, unknown>)
 
@@ -548,9 +550,9 @@ app.put(
 					corporationDiscordServerId: attachmentId,
 					bucket: bucket.bucket,
 					enabled: (nicknameValues[bucket.enabledField] as boolean | undefined) ?? false,
-					source: (nicknameValues[bucket.sourceField] as NicknameTickerSource | undefined) ?? 'corp',
-					customTicker:
-						(nicknameValues[bucket.customField] as string | null | undefined) ?? null,
+					source:
+						(nicknameValues[bucket.sourceField] as NicknameTickerSource | undefined) ?? 'corp',
+					customTicker: (nicknameValues[bucket.customField] as string | null | undefined) ?? null,
 				}))
 			)
 
@@ -621,6 +623,8 @@ app.delete(
 				await coreStub.addPendingDiscordRefreshes(uniqueUserIds, {
 					source,
 					force: true,
+					allowRemoval: true,
+					hardStripAllRoles: remainingAttachments.length === 0,
 				})
 			}
 

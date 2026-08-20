@@ -2,21 +2,23 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { UsePublicAuth } from './auth-decorators'
 
+vi.mock('@repo/do-utils', () => ({ forDO: vi.fn() }))
+
 describe('UsePublicAuth', () => {
-	it('clears authentication before and after public method execution', async () => {
-		const clearAuthentication = vi.fn().mockResolvedValue(undefined)
+	it('executes public methods within an isolated public context', async () => {
+		const withPublicContext = vi.fn(async <T>(operation: () => Promise<T>) => await operation())
 		const calls: string[] = []
 
 		const target = {
 			esiFetcher: {
-				clearAuthentication,
+				withPublicContext,
 			},
 		}
 
 		const descriptor: PropertyDescriptor = {
 			value: async function (this: typeof target) {
 				calls.push('method')
-				expect(clearAuthentication).toHaveBeenCalledTimes(1)
+				expect(withPublicContext).toHaveBeenCalledTimes(1)
 			},
 		}
 
@@ -25,6 +27,6 @@ describe('UsePublicAuth', () => {
 		await descriptor.value.call(target)
 
 		expect(calls).toEqual(['method'])
-		expect(clearAuthentication).toHaveBeenCalledTimes(2)
+		expect(withPublicContext).toHaveBeenCalledTimes(1)
 	})
 })

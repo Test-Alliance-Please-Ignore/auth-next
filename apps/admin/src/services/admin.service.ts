@@ -157,11 +157,10 @@ export class AdminService {
 			return null
 		}
 
-		// 4. Check token validity (getAccessToken auto-refreshes if needed)
+		// 4. Check token validity without exposing bearer-token material to this worker.
 		let hasValidToken = false
 		try {
-			const accessToken = await this.eveTokenStore.getAccessToken(characterId)
-			hasValidToken = accessToken !== null
+			hasValidToken = await this.eveTokenStore.hasUsableAccessToken(characterId)
 		} catch (error) {
 			logger.error(`Failed to check token for character ${characterId}:`, error)
 		}

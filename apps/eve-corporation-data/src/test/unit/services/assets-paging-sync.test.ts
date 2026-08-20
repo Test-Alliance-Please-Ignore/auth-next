@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { syncAssetsPaged } from '../../../services/assets-paging-sync'
 
+const meta = (pages: number, page: number | null = null) => ({
+	status: 200,
+	etag: null,
+	expiresAt: null,
+	lastModified: null,
+	pages,
+	page,
+	cached: false,
+	revalidated: false,
+})
+
 describe('syncAssetsPaged', () => {
 	it('stores assets incrementally page-by-page and returns total count', async () => {
 		const fetchPage = vi
@@ -18,7 +29,7 @@ describe('syncAssetsPaged', () => {
 						type_id: 34,
 					},
 				],
-				pages: 3,
+				meta: meta(3, 1),
 			})
 			.mockResolvedValueOnce({
 				data: [
@@ -32,7 +43,7 @@ describe('syncAssetsPaged', () => {
 						type_id: 35,
 					},
 				],
-				pages: 3,
+				meta: meta(3, 2),
 			})
 			.mockResolvedValueOnce({
 				data: [
@@ -46,7 +57,7 @@ describe('syncAssetsPaged', () => {
 						type_id: 36,
 					},
 				],
-				pages: 3,
+				meta: meta(3, 3),
 			})
 		const storeAssets = vi.fn().mockResolvedValue(undefined)
 
@@ -85,7 +96,7 @@ describe('syncAssetsPaged', () => {
 					type_id: 35,
 				},
 			],
-			pages: 1,
+			meta: meta(1, 1),
 		})
 		const storeAssets = vi.fn().mockResolvedValue(undefined)
 		const onProgress = vi.fn()
@@ -124,7 +135,7 @@ describe('syncAssetsPaged', () => {
 					type_id: 35,
 				},
 			],
-			pages: 1,
+			meta: meta(1, 1),
 		})
 		const storeAssets = vi.fn().mockResolvedValue(undefined)
 
@@ -152,8 +163,8 @@ describe('syncAssetsPaged', () => {
 	it('rejects an inconsistent page count instead of marking the asset sync complete', async () => {
 		const fetchPage = vi
 			.fn()
-			.mockResolvedValueOnce({ data: [], page: 1, pages: 2 })
-			.mockResolvedValueOnce({ data: [], page: 2, pages: 3 })
+			.mockResolvedValueOnce({ data: [], meta: meta(2, 1) })
+			.mockResolvedValueOnce({ data: [], meta: meta(3, 2) })
 		const storeAssets = vi.fn().mockResolvedValue(undefined)
 
 		await expect(syncAssetsPaged({ fetchPage, storeAssets })).rejects.toThrow(
@@ -165,8 +176,8 @@ describe('syncAssetsPaged', () => {
 	it('rejects a response for the wrong requested page', async () => {
 		const fetchPage = vi
 			.fn()
-			.mockResolvedValueOnce({ data: [], page: 1, pages: 2 })
-			.mockResolvedValueOnce({ data: [], page: 3, pages: 2 })
+			.mockResolvedValueOnce({ data: [], meta: meta(2, 1) })
+			.mockResolvedValueOnce({ data: [], meta: meta(2, 3) })
 
 		await expect(syncAssetsPaged({ fetchPage, storeAssets: vi.fn() })).rejects.toThrow(
 			'returned page 3 when page 2 was requested'

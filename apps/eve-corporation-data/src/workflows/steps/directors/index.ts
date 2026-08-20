@@ -3,8 +3,9 @@ import { logger } from '@repo/hono-helpers'
 
 import {
 	createDirectorManager,
-	createTokenStore,
 	getCorporationDataStub,
+	getCorporationEsi,
+	getPublicEsi,
 } from '../../utils/services'
 
 import type { CorporationRole } from '@repo/eve-corporation-data'
@@ -84,7 +85,7 @@ export async function verifyAllDirectorsHealth(
 }
 
 type EsiCorporationMemberRole = {
-	character_id: number
+	character_id: string
 	roles?: string[]
 	roles_at_hq?: string[]
 	roles_at_base?: string[]
@@ -102,12 +103,9 @@ function hasDirectorAuthority(role: EsiCorporationMemberRole): boolean {
 }
 
 async function resolveCharacterName(env: Env, characterId: string): Promise<string> {
-	const tokenStore = createTokenStore(env)
 	try {
-		return await withRpcResult(
-			tokenStore.fetchPublicEsi<{ name?: string }>(`/characters/${characterId}`),
-			(result) => result.data?.name?.trim() || characterId
-		)
+		const character = await getPublicEsi(env).fetchCharacterPublicInfo(characterId)
+		return character.name.trim() || characterId
 	} catch (error) {
 		logger.warn('[DirectorStep] Failed to resolve character name while auto-adding director', {
 			characterId,
@@ -137,20 +135,14 @@ async function isCharacterLinkedToUser(env: Env, characterId: string): Promise<b
 export async function reconcileDirectorsFromCorporationRoles(
 	env: Env,
 	corporationId: string,
-	directorCharacterId: string
+	_directorCharacterId: string
 ): Promise<{ added: number; removed: number; discovered: number; skippedUnlinked: number }> {
-	const tokenStore = createTokenStore(env)
 	const corpData = getCorporationDataStub(env, corporationId)
-	const authoritativeDirectorIds = await withRpcResult(
-		tokenStore.fetchEsi<EsiCorporationMemberRole[]>(
-			`/corporations/${corporationId}/roles`,
-			directorCharacterId,
-			{ cacheMode: 'no-store' }
-		),
-		(rolesResponse) =>
-			new Set(
-				rolesResponse.data.filter(hasDirectorAuthority).map((row) => String(row.character_id))
-			)
+	const corporationRoles = await getCorporationEsi(env, corporationId).fetchCorporationMemberRoles(
+		corporationId
+	)
+	const authoritativeDirectorIds = new Set(
+		corporationRoles.filter(hasDirectorAuthority).map((row) => String(row.character_id))
 	)
 	const existingDirectors = await withRpcResult(corpData.getDirectors(corporationId), (directors) =>
 		directors.map((director) => ({ ...director }))

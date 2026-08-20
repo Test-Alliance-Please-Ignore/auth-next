@@ -4,10 +4,7 @@ import type { createDb } from './db'
 
 export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
-	ESI_RATE_LIMITS: KVNamespace
-	ESI: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
-	ESI_TYPE_RESOLVER: DurableObjectNamespace
 	ANALYTICS: AnalyticsEngineDataset
 
 	// EVE SSO OAuth Configuration
@@ -20,6 +17,8 @@ export type Env = SharedHonoEnv & {
 	EVE_SSO_CALLBACK_URL: string
 	/** Encryption key for storing tokens (32-byte hex string) */
 	ENCRYPTION_KEY: string
+	/** Temporary secret for the one-time legacy cache maintenance endpoint. */
+	EVE_TOKEN_STORE_MAINTENANCE_SECRET?: string
 }
 
 /** Variables can be extended */

@@ -2,7 +2,7 @@
  * Fetch character corporation history from ESI
  */
 
-import { getEsiInstanceForCharacter } from '@repo/esi'
+import { getPublicEsiInstance } from '@repo/esi'
 
 import { storeOrReturn } from '../../utils/storage'
 
@@ -32,12 +32,11 @@ export async function fetchCorpHistory(
 	bucket: R2Bucket,
 	bucketName: string,
 	characterId: string,
-	workflowInstanceId: string,
+	workflowInstanceId: string
 ): Promise<StepResult> {
 	try {
 		// Corp history is a public ESI endpoint — honour cache-control headers
-		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
-		stub.setDefaultCacheMode('default')
+		const stub = getPublicEsiInstance(esiBinding)
 		const data = await fetchCorpHistoryFromEsi(stub, characterId)
 		return await storeOrReturn(bucket, bucketName, workflowInstanceId, 'fetch-corp-history', data)
 	} catch (error) {

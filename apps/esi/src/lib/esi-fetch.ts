@@ -11,12 +11,15 @@
  * - Reusability across different contexts
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks'
+
 import { getStub } from '@repo/do-utils'
 import {
 	buildEsiUserKey,
 	buildPublicEsiUserKey,
 	CharacterDeletedError,
 	EsiRequestClient,
+	EsiRequestError,
 } from '@repo/esi'
 import {
 	EsiRateLimitStore,
@@ -24,6 +27,7 @@ import {
 	parseEsiRateLimitHeaders,
 } from '@repo/esi-rate-limit'
 import { logger } from '@repo/hono-helpers'
+import { parseDateOrNull } from '@repo/worker-utils'
 
 import { EsiCache } from './cache'
 
@@ -40,8 +44,8 @@ import type { Env } from '../context'
  * Options for fetchEsi and fetchEsiPaginated
  */
 export interface FetchEsiOptions<B = unknown> {
-	method?: 'GET' | 'POST'
-	/** Request body for POST requests */
+	method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+	/** Request body for mutation requests. */
 	body?: B
 	/** Cache policy for this request. Stateful/auth-sensitive endpoints should use `no-store`. */
 	cacheMode?: 'default' | 'no-store'
@@ -62,16 +66,21 @@ export interface FetchEsiOptions<B = unknown> {
 	timeoutMs?: number
 }
 
+/** Authentication and cache policy for one inbound ESI RPC call. */
+type EsiRequestContext = {
+	authCharacterId: string | null
+	cacheScope: EsiCacheScopeContext
+	userKey: string
+}
+
 // ========================================================================
 // PUBLIC DATA FETCHING
 // ========================================================================
 export class EsiFetcher {
-	private characterId: string | null = null
 	private cache: EsiCache
-	private cacheScope: EsiCacheScopeContext | null = null
-	private defaultCacheMode: 'default' | 'no-store' = 'default'
 	private readonly esiRateLimits: EsiRateLimitStore
 	private readonly requestClient: EsiRequestClient
+	private readonly requestContext = new AsyncLocalStorage<EsiRequestContext>()
 
 	private static readonly PUBLIC_SCOPE: EsiCacheScopeContext = {
 		scope: 'public',
@@ -92,52 +101,61 @@ export class EsiFetcher {
 		})
 	}
 
-	setDefaultCacheMode(mode: 'default' | 'no-store'): void {
-		this.defaultCacheMode = mode
-	}
-
-	async clearAuthentication(): Promise<void> {
-		this.characterId = null
-		this.cacheScope = null
-	}
-
-	async authenticateWithCorporation(corporationId: string): Promise<void> {
-		logger.info(`[EsiFetcher] Authenticating with corporation: ${corporationId}`)
-
+	async withCorporationContext<T>(corporationId: string, operation: () => Promise<T>): Promise<T> {
 		const corporationData = getStub<EveCorporationData>(
 			this.env.EVE_CORPORATION_DATA,
 			corporationId
 		)
-
-		logger.info(`[EsiFetcher] Getting load-balanced director for corporation: ${corporationId}`)
 		const directorId = await corporationData.getLoadBalancedDirector(corporationId)
-		logger.info(`[EsiFetcher] Load-balanced director: ${directorId}`)
-
 		if (!directorId) {
 			throw new Error('No director found for corporation')
 		}
-		await this.authenticateWithCharacter(directorId)
-		this.cacheScope = { scope: 'corporation', scopeId: corporationId }
+
+		return await this.requestContext.run(
+			{
+				authCharacterId: directorId,
+				cacheScope: { scope: 'corporation', scopeId: corporationId },
+				userKey: buildEsiUserKey(this.env.EVE_SSO_CLIENT_ID, directorId),
+			},
+			operation
+		)
 	}
 
-	async authenticateWithCharacter(characterId: string): Promise<void> {
-		logger.info(`[EsiFetcher] Authenticating with character: ${characterId}`)
-		if (typeof characterId !== 'string') {
-			throw new Error('Character ID must be a string')
-		}
-		if (!characterId) {
-			throw new Error('Character ID is required')
-		}
-		this.characterId = characterId
-		this.cacheScope = { scope: 'character', scopeId: characterId }
+	async withCharacterContext<T>(characterId: string, operation: () => Promise<T>): Promise<T> {
+		if (!characterId) throw new Error('Character ID is required')
+
+		return await this.requestContext.run(
+			{
+				authCharacterId: characterId,
+				cacheScope: { scope: 'character', scopeId: characterId },
+				userKey: buildEsiUserKey(this.env.EVE_SSO_CLIENT_ID, characterId),
+			},
+			operation
+		)
 	}
 
-	async fetchBearerToken(): Promise<string> {
-		if (!this.characterId) {
-			throw new Error('No character ID authenticated')
+	async withPublicContext<T>(operation: () => Promise<T>): Promise<T> {
+		return await this.requestContext.run(
+			{
+				authCharacterId: null,
+				cacheScope: EsiFetcher.PUBLIC_SCOPE,
+				userKey: buildPublicEsiUserKey(),
+			},
+			operation
+		)
+	}
+
+	private getRequestContext(): EsiRequestContext {
+		const context = this.requestContext.getStore()
+		if (!context) {
+			throw new Error('ESI request attempted outside an authentication context')
 		}
+		return context
+	}
+
+	private async fetchBearerToken(characterId: string): Promise<string> {
 		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const token = await tokenStore.getAccessToken(this.characterId)
+		const token = await tokenStore.getAccessToken(characterId)
 		if (!token) {
 			throw new Error('No token found for character')
 		}
@@ -145,63 +163,8 @@ export class EsiFetcher {
 	}
 
 	// ========================================================================
-	// HELPER METHODS
+	// RESPONSE HANDLING
 	// ========================================================================
-
-	/** Maximum cache TTL: 12 hours (in milliseconds) */
-	private static readonly MAX_CACHE_TTL_MS = 12 * 60 * 60 * 1000
-
-	/**
-	 * Parse cache expiry from ESI response headers
-	 * Checks Expires header first, then Cache-Control max-age, defaults to 5 minutes
-	 * IMPORTANT: Caps all cache TTLs to 12 hours maximum regardless of ESI headers
-	 */
-	private parseEsiCacheExpiry(headers: Headers): Date {
-		const now = Date.now()
-		const maxExpiry = now + EsiFetcher.MAX_CACHE_TTL_MS
-		let expiresAt: Date
-
-		// Check Expires header first
-		const expires = headers.get('Expires')
-		if (expires) {
-			expiresAt = new Date(expires)
-		} else {
-			// Check Cache-Control header
-			const cacheControl = headers.get('Cache-Control')
-			if (cacheControl) {
-				const maxAgeMatch = cacheControl.match(/max-age=(\d+)/)
-				if (maxAgeMatch) {
-					expiresAt = new Date(now + parseInt(maxAgeMatch[1], 10) * 1000)
-				} else {
-					// Default: 5 minutes
-					expiresAt = new Date(now + 5 * 60 * 1000)
-				}
-			} else {
-				// Default: 5 minutes
-				expiresAt = new Date(now + 5 * 60 * 1000)
-			}
-		}
-
-		// Cap at 12 hours maximum
-		if (expiresAt.getTime() > maxExpiry) {
-			return new Date(maxExpiry)
-		}
-
-		return expiresAt
-	}
-
-	/**
-	 * Parse X-Pages header from ESI response
-	 * Returns null if header is not present or invalid
-	 */
-	private parseXPages(headers: Headers): number | null {
-		const xPages = headers.get('X-Pages')
-		if (!xPages) {
-			return null
-		}
-		const pages = parseInt(xPages, 10)
-		return isNaN(pages) ? null : pages
-	}
 
 	/**
 	 * Parse JSON response bodies with defensive error handling so unexpected
@@ -237,227 +200,65 @@ export class EsiFetcher {
 	}
 
 	/**
-	 * Handle rate limiting by waiting for Retry-After header
-	 * Throws error if max retries exceeded
+	 * Build the same structured error for single-page and paginated requests.
+	 * Keeping this in one place ensures callers can consistently classify ESI
+	 * failures regardless of which transport helper they use.
 	 */
-	private async handleRateLimit(response: Response, retryCount: number): Promise<void> {
-		const maxRetries = 5
-		if (retryCount >= maxRetries) {
-			throw new Error(`Rate limit exceeded after ${maxRetries} retries. Status: ${response.status}`)
-		}
-
-		// Use Retry-After header if available, otherwise use exponential backoff
-		const retryAfter = response.headers.get('Retry-After')
-		let waitSeconds: number
-
-		if (retryAfter) {
-			waitSeconds = parseInt(retryAfter, 10)
-		} else {
-			// Exponential backoff: 1s, 2s, 4s, 8s, 16s
-			const baseDelay = 1
-			const backoffMultiplier = 2
-			waitSeconds = Math.min(baseDelay * Math.pow(backoffMultiplier, retryCount), 60) // Cap at 60s
-		}
-
-		logger.info(
-			`[EsiFetcher] Rate limited (${response.status}), waiting ${waitSeconds}s before retry ${retryCount + 1}/${maxRetries}`
-		)
-		await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000))
-	}
-
-	/**
-	 * Build request headers for ESI API calls
-	 * Includes authentication, compatibility date, content type for POST, and ETag if provided
-	 */
-	private async buildRequestHeaders(
-		cachedEtag: string | null,
-		method: 'GET' | 'POST' = 'GET'
-	): Promise<{ headers: Record<string, string>; authenticated: boolean }> {
-		const headers: Record<string, string> = {
-			'X-Compatibility-Date': '2025-11-06',
-			Accept: 'application/json',
-		}
-		let authenticated = false
-
-		// Add Content-Type for POST requests
-		if (method === 'POST') {
-			headers['Content-Type'] = 'application/json'
-		}
-
-		// Add authentication if character is authenticated
-		if (this.characterId) {
-			try {
-				const token = await this.fetchBearerToken()
-				headers['Authorization'] = `Bearer ${token}`
-				authenticated = true
-			} catch (error) {
-				// If token fetch fails, continue without auth (for public endpoints)
-				logger.warn('[EsiFetcher] Failed to fetch bearer token, continuing without auth', {
-					error: error instanceof Error ? error.message : String(error),
-				})
-			}
-		}
-
-		// Add ETag for conditional request
-		if (cachedEtag) {
-			headers['If-None-Match'] = cachedEtag
-		}
-
-		return { headers, authenticated }
-	}
-
-	/**
-	 * Get the active cache scope (defaults to public if unauthenticated)
-	 */
-	private getActiveCacheScope(): EsiCacheScopeContext {
-		return this.cacheScope ?? EsiFetcher.PUBLIC_SCOPE
-	}
-
-	private getRateLimitUserKey(authenticated: boolean): string {
-		if (authenticated && this.characterId) {
-			return buildEsiUserKey(this.env.EVE_SSO_CLIENT_ID, this.characterId)
-		}
-		return buildPublicEsiUserKey()
-	}
-
-	private async assertEsiRateLimitAllowance(path: string, userKey: string): Promise<void> {
-		const routeKey = normalizeEsiRouteKey(path)
-		const now = Date.now()
-
-		const routeGroup = await this.esiRateLimits.getRouteGroup(routeKey)
-		if (routeGroup) {
-			const bucket = await this.esiRateLimits.getBucketSnapshot(routeGroup, userKey)
-			if (bucket) {
-				const retryAfterSeconds =
-					bucket.retryAfterSeconds ?? Math.max(1, Math.ceil((bucket.expiresAtMs - now) / 1000))
-				throw this.buildRateLimitPreflightError(
-					path,
-					routeKey,
-					'bucket',
-					retryAfterSeconds,
-					routeGroup
-				)
-			}
-		}
-
-		const routeErrorLimit = await this.esiRateLimits.getRouteErrorLimit(routeKey, userKey)
-		if (routeErrorLimit) {
-			const retryAfterSeconds =
-				routeErrorLimit.retryAfterSeconds ??
-				Math.max(1, Math.ceil((routeErrorLimit.expiresAtMs - now) / 1000))
-			throw this.buildRateLimitPreflightError(path, routeKey, 'error_limit', retryAfterSeconds)
-		}
-
-		const routeCooldown = await this.esiRateLimits.getRouteCooldown(routeKey, userKey)
-		if (routeCooldown) {
-			const retryAfterSeconds =
-				routeCooldown.retryAfterSeconds ??
-				Math.max(1, Math.ceil((routeCooldown.expiresAtMs - now) / 1000))
-			throw this.buildRateLimitPreflightError(path, routeKey, 'route_breaker', retryAfterSeconds)
-		}
-	}
-
-	private buildRateLimitPreflightError(
+	private async buildEsiRequestError(
 		path: string,
-		routeKey: string,
-		circuitBreaker: 'error_limit' | 'bucket' | 'route_breaker',
-		retryAfterSeconds: number,
-		routeGroup?: string
-	): Error {
-		const metadata = JSON.stringify({
-			status: 429,
+		response: Response,
+		body: string
+	): Promise<Error> {
+		if (response.status === 404 && body.includes('Character has been deleted')) {
+			const charMatch = path.match(/\/characters\/(\d+)/)
+			if (charMatch) {
+				const deletedCharId = charMatch[1]
+				try {
+					const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
+					await tokenStore.markCharacterDeleted(deletedCharId)
+				} catch (markError) {
+					logger.warn('[EsiFetcher] Failed to mark character as deleted', {
+						characterId: deletedCharId,
+						error: markError instanceof Error ? markError.message : String(markError),
+					})
+				}
+				return new CharacterDeletedError(deletedCharId)
+			}
+		}
+
+		logger.error('[EsiFetcher] ESI request failed', {
 			path,
-			retryAfterSeconds,
-			circuitBreaker,
-			routeKey,
-			routeGroup,
+			status: response.status,
+			statusText: response.statusText,
+			errorText: body || 'Unknown error',
 		})
-		return new Error(
-			`ESI request failed: 429 Too Many Requests - {"error":"ESI rate limit active"} | metadata=${metadata}`
-		)
-	}
-
-	private async updateEsiRateLimitState(
-		path: string,
-		headers: Headers,
-		status: number,
-		userKey: string
-	): Promise<void> {
-		const routeKey = normalizeEsiRouteKey(path)
-		const snapshot = parseEsiRateLimitHeaders(headers)
-		const now = Date.now()
-
-		if (snapshot.group) {
-			await this.esiRateLimits.rememberRouteGroup(routeKey, snapshot.group)
+		const rateLimit = parseEsiRateLimitHeaders(response.headers)
+		const retryAfterMs =
+			typeof rateLimit.retryAfterSeconds === 'number' ? rateLimit.retryAfterSeconds * 1_000 : null
+		const errorLimitResetAt =
+			typeof rateLimit.errorLimitResetSeconds === 'number'
+				? new Date(Date.now() + rateLimit.errorLimitResetSeconds * 1_000).toISOString()
+				: null
+		const metadata = {
+			status: response.status,
+			path,
+			retryAfterSeconds: rateLimit.retryAfterSeconds ?? null,
+			errorLimitRemain: rateLimit.errorLimitRemain ?? null,
+			errorLimitResetSeconds: rateLimit.errorLimitResetSeconds ?? null,
 		}
 
-		if (snapshot.errorLimitRemain !== undefined && snapshot.errorLimitResetSeconds !== undefined) {
-			await this.esiRateLimits.putRouteErrorLimit({
-				userKey,
-				routeKey,
-				remaining: snapshot.errorLimitRemain,
-				limit: snapshot.errorLimitRemain,
-				used: snapshot.used,
-				windowSeconds: snapshot.errorLimitResetSeconds,
-				retryAfterSeconds: snapshot.retryAfterSeconds,
-				observedAtMs: now,
-				expiresAtMs: now + snapshot.errorLimitResetSeconds * 1000,
-			})
-			return
-		}
-
-		if (snapshot.group && snapshot.limit !== undefined && snapshot.windowSeconds !== undefined) {
-			const remaining = snapshot.remaining ?? snapshot.limit
-			const used = snapshot.used ?? Math.max(0, snapshot.limit - remaining)
-			await this.esiRateLimits.putBucketSnapshot({
-				group: snapshot.group,
-				userKey,
-				routeKey,
-				status,
-				limit: snapshot.limit,
-				remaining,
-				used,
-				windowSeconds: snapshot.windowSeconds,
-				retryAfterSeconds: snapshot.retryAfterSeconds,
-				observedAtMs: now,
-				expiresAtMs: now + snapshot.windowSeconds * 1000,
-			})
-			return
-		}
-
-		if (status === 429) {
-			const retryAfterSeconds = snapshot.retryAfterSeconds ?? snapshot.errorLimitResetSeconds
-			if (retryAfterSeconds !== undefined) {
-				await this.esiRateLimits.putRouteCooldown({
-					userKey,
-					routeKey,
-					retryAfterSeconds,
-					observedAtMs: now,
-					expiresAtMs: now + retryAfterSeconds * 1000,
-				})
+		return new EsiRequestError(
+			`ESI request failed: ${response.status} ${response.statusText} - ${body || 'Unknown error'} | metadata=${JSON.stringify(metadata)}`,
+			{
+				status: response.status,
+				routeKey: normalizeEsiRouteKey(path),
+				retryAfterMs,
+				errorLimitRemain: rateLimit.errorLimitRemain ?? null,
+				errorLimitResetAt,
+				upstreamRequestId:
+					response.headers.get('X-Request-ID') ?? response.headers.get('X-Correlation-ID') ?? null,
 			}
-		}
-	}
-
-	/**
-	 * Extract page number from URL path
-	 */
-	private extractPageFromPath(path: string): number | null {
-		const pageMatch = path.match(/[?&]page=(\d+)/)
-		return pageMatch ? parseInt(pageMatch[1], 10) : null
-	}
-
-	/**
-	 * Remove page parameter from path for cache key generation
-	 */
-	private removePageFromPath(path: string): string {
-		// Remove page parameter from query string
-		let cleaned = path.replace(/[?&]page=\d+/, '')
-		// Clean up trailing ? or & if they're now at the end
-		cleaned = cleaned.replace(/[?&]$/, '')
-		// If we removed ?page=X and now have & at the start, replace with ?
-		cleaned = cleaned.replace(/^([^?]*)&/, '$1?')
-		return cleaned
+		)
 	}
 
 	// ========================================================================
@@ -474,23 +275,17 @@ export class EsiFetcher {
 		path: string,
 		options?: FetchEsiOptions<B>
 	): Promise<EsiResponse<T>> {
-		const cacheScope = options?.cacheScopeOverride ?? this.getActiveCacheScope()
-		const cacheMode = options?.cacheMode ?? this.defaultCacheMode
+		const context = this.getRequestContext()
+		const cacheScope = options?.cacheScopeOverride ?? context.cacheScope
+		const cacheMode = options?.cacheMode ?? 'default'
 		const method = options?.method ?? 'GET'
-		const accessToken = this.characterId
-			? await this.fetchBearerToken().catch((error) => {
-					logger.warn('[EsiFetcher] Failed to fetch bearer token, continuing without auth', {
-						error: error instanceof Error ? error.message : String(error),
-					})
-					return null
-				})
+		const accessToken = context.authCharacterId
+			? await this.fetchBearerToken(context.authCharacterId)
 			: null
-		const authenticated = accessToken !== null
-		const userKey = this.getRateLimitUserKey(authenticated)
 
 		return await this.requestClient.request<T>({
 			path,
-			userKey,
+			userKey: context.userKey,
 			cacheScope,
 			cacheMode,
 			method,
@@ -499,37 +294,75 @@ export class EsiFetcher {
 			timeoutMs: options?.timeoutMs,
 			maxRetries: options?.maxRetries,
 			maxLocalCacheTtl: options?.maxLocalCacheTtl,
-			persistGlobalCache: options?.persistGlobalCache ?? true,
+			persistGlobalCache: options?.persistGlobalCache ?? context.authCharacterId === null,
 			parse: (response) => this.parseJsonBodySafe<T>(response, path),
-			buildError: async ({ response, body }) => {
-				if (response.status === 404 && body.includes('Character has been deleted')) {
-					const charMatch = path.match(/\/characters\/(\d+)/)
-					if (charMatch) {
-						const deletedCharId = charMatch[1]
-						try {
-							const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-							await tokenStore.markCharacterDeleted(deletedCharId)
-						} catch (markError) {
-							logger.warn('[EsiFetcher] Failed to mark character as deleted', {
-								characterId: deletedCharId,
-								error: markError instanceof Error ? markError.message : String(markError),
-							})
-						}
-						throw new CharacterDeletedError(deletedCharId)
-					}
-				}
-
-				logger.error('[EsiFetcher] ESI request failed', {
-					path,
-					status: response.status,
-					statusText: response.statusText,
-					errorText: body || 'Unknown error',
-				})
-				return new Error(
-					`ESI request failed: ${response.status} ${response.statusText} - ${body || 'Unknown error'}`
-				)
-			},
+			buildError: ({ response, body }) => this.buildEsiRequestError(path, response, body),
 		})
+	}
+
+	/**
+	 * Fetch newest-first pages until a domain-provided watermark is reached.
+	 * The caller owns the watermark and deduplication; ESI owns request policy.
+	 */
+	async fetchEsiPagesUntilWatermark<T extends { id: string | number; date?: string | Date }>(
+		basePath: string,
+		watermark: { maxId: string | null; maxDate: string | null },
+		options?: FetchEsiOptions
+	): Promise<{ data: T[]; pages: number; pagesFetched: number; stoppedAtWatermark: boolean }> {
+		if (!watermark.maxId) {
+			const result = await this.fetchEsiPaginated<T>(basePath, options)
+			return {
+				data: result.data,
+				pages: result.pages ?? 1,
+				pagesFetched: result.pages ?? 1,
+				stoppedAtWatermark: false,
+			}
+		}
+
+		const cleanPath = basePath.replace(/[?&]page=\d+/, '')
+		const separator = cleanPath.includes('?') ? '&' : '?'
+		const firstPage = await this.fetchEsi<T[]>(`${cleanPath}${separator}page=1`, options)
+		const pages = firstPage.pages ?? 1
+		const data = [...firstPage.data]
+		const maxDate = parseDateOrNull(watermark.maxDate)
+		let pagesFetched = 1
+		let watermarkSeen = false
+
+		const compareNumericIds = (left: string, right: string): number => {
+			const leftValue = BigInt(left)
+			const rightValue = BigInt(right)
+			return leftValue === rightValue ? 0 : leftValue > rightValue ? 1 : -1
+		}
+		const reachedWatermark = (entries: T[]): boolean => {
+			if (entries.some((entry) => String(entry.id) === watermark.maxId)) {
+				watermarkSeen = true
+			}
+			if (!watermarkSeen) {
+				return false
+			}
+			return !entries.some((entry) => {
+				const entryId = String(entry.id)
+				if (entryId === watermark.maxId) return false
+				if (compareNumericIds(entryId, watermark.maxId!) > 0) return true
+				const entryDate = parseDateOrNull(entry.date)
+				return maxDate !== null && entryDate !== null && entryDate >= maxDate
+			})
+		}
+
+		if (reachedWatermark(firstPage.data)) {
+			return { data, pages, pagesFetched, stoppedAtWatermark: true }
+		}
+
+		for (let page = 2; page <= pages; page += 1) {
+			const response = await this.fetchEsi<T[]>(`${cleanPath}${separator}page=${page}`, options)
+			pagesFetched += 1
+			data.push(...response.data)
+			if (reachedWatermark(response.data)) {
+				return { data, pages, pagesFetched, stoppedAtWatermark: true }
+			}
+		}
+
+		return { data, pages, pagesFetched, stoppedAtWatermark: false }
 	}
 
 	/**
@@ -542,58 +375,27 @@ export class EsiFetcher {
 		path: string,
 		options?: FetchEsiOptions<B>
 	): Promise<EsiResponse<T[]>> {
-		const cacheScope = options?.cacheScopeOverride ?? this.getActiveCacheScope()
+		const context = this.getRequestContext()
+		const cacheScope = options?.cacheScopeOverride ?? context.cacheScope
 		const method = options?.method ?? 'GET'
-		const accessToken = this.characterId
-			? await this.fetchBearerToken().catch((error) => {
-					logger.warn('[EsiFetcher] Failed to fetch bearer token, continuing without auth', {
-						error: error instanceof Error ? error.message : String(error),
-					})
-					return null
-				})
+		const accessToken = context.authCharacterId
+			? await this.fetchBearerToken(context.authCharacterId)
 			: null
-		const authenticated = accessToken !== null
-		const userKey = this.getRateLimitUserKey(authenticated)
 
 		return await this.requestClient.requestPaginated<T>({
 			path,
-			userKey,
+			userKey: context.userKey,
 			cacheScope,
-			cacheMode: options?.cacheMode ?? this.defaultCacheMode,
+			cacheMode: options?.cacheMode ?? 'default',
 			method,
 			accessToken,
 			jsonBody: options?.body,
+			timeoutMs: options?.timeoutMs,
+			maxRetries: options?.maxRetries,
 			maxLocalCacheTtl: options?.maxLocalCacheTtl,
-			persistGlobalCache: options?.persistGlobalCache ?? true,
+			persistGlobalCache: options?.persistGlobalCache ?? context.authCharacterId === null,
 			parse: (response) => this.parseJsonBodySafe<T[]>(response, path),
-			buildError: async ({ response, body }) => {
-				if (response.status === 404 && body.includes('Character has been deleted')) {
-					const charMatch = path.match(/\/characters\/(\d+)/)
-					if (charMatch) {
-						const deletedCharId = charMatch[1]
-						try {
-							const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-							await tokenStore.markCharacterDeleted(deletedCharId)
-						} catch (markError) {
-							logger.warn('[EsiFetcher] Failed to mark character as deleted', {
-								characterId: deletedCharId,
-								error: markError instanceof Error ? markError.message : String(markError),
-							})
-						}
-						throw new CharacterDeletedError(deletedCharId)
-					}
-				}
-
-				logger.error('[EsiFetcher] ESI request failed', {
-					path,
-					status: response.status,
-					statusText: response.statusText,
-					errorText: body || 'Unknown error',
-				})
-				return new Error(
-					`ESI request failed: ${response.status} ${response.statusText} - ${body || 'Unknown error'}`
-				)
-			},
+			buildError: ({ response, body }) => this.buildEsiRequestError(path, response, body),
 		})
 	}
 }

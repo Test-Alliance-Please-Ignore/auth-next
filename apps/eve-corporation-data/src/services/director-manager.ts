@@ -9,13 +9,14 @@ import {
 
 import { characterCorporationRoles, corporationConfig, corporationDirectors } from '../db/schema'
 
-import type { CorporationRole, EsiCharacterRoles } from '@repo/eve-corporation-data'
 import type {
-	EsiCharacterAffiliation,
+	CharacterAffiliation,
+	CharacterRoles,
+	EsiRequestOptions,
 	EsiResponse,
-	EveTokenStore,
-	TokenValidationResult,
-} from '@repo/eve-token-store'
+} from '@repo/esi'
+import type { CorporationRole } from '@repo/eve-corporation-data'
+import type { EveTokenStore, TokenValidationResult } from '@repo/eve-token-store'
 import type { createDb } from '../db'
 
 /**
@@ -63,6 +64,16 @@ const TRANSIENT_DIRECTOR_COOLDOWN_MS = 10 * 60 * 1000
 const DIRECTOR_HEALTH_CHECK_CONCURRENCY = 1
 const DIRECTOR_HEALTH_REQUEST_TIMEOUT_MS = 8_000
 const DIRECTOR_HEALTH_REQUEST_MAX_RETRIES = 0
+
+type DirectorRoleReader = (
+	characterId: string,
+	options: EsiRequestOptions
+) => Promise<CharacterRoles>
+
+type CharacterAffiliationReader = (
+	characterIds: string[],
+	options: EsiRequestOptions
+) => Promise<CharacterAffiliation[]>
 
 const FULL_SYNC_REQUIRED_ROLE_SETS: CorporationRole[][] = [
 	['Director'],
@@ -176,7 +187,13 @@ export class DirectorManager {
 			corporationId: string
 			healthyDirectorCount: number
 			isVerified: boolean
-		}) => Promise<void>
+		}) => Promise<void>,
+		private readonly fetchCharacterRoles: DirectorRoleReader = async () => {
+			throw new Error('DirectorManager requires a typed ESI character roles reader')
+		},
+		private readonly fetchCharacterAffiliations: CharacterAffiliationReader = async () => {
+			throw new Error('DirectorManager requires a typed ESI character affiliation reader')
+		}
 	) {}
 
 	private deferHealthSnapshot = false
@@ -389,44 +406,36 @@ export class DirectorManager {
 
 					if (options?.requiredRoleSets && options.requiredRoleSets.length > 0) {
 						const requiredRoleSets = options.requiredRoleSets
-						const missingRoleSets = await withRpcResult(
-							retryWithBackoff<EsiResponse<EsiCharacterRoles>>(
-								() =>
-									this.tokenStore.fetchEsi(
-										`/characters/${candidate.characterId}/roles`,
-										candidate.characterId,
-										{
-											cacheMode: 'no-store',
-											maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
-											timeoutMs: DIRECTOR_HEALTH_REQUEST_TIMEOUT_MS,
-										}
-									),
-								{
+						const missingRoleSets = await retryWithBackoff(
+							() =>
+								this.fetchCharacterRoles(candidate.characterId, {
+									cacheMode: 'no-store',
 									maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
-									onRetry: (attempt, error, delayMs) => {
-										logger.warn(
-											'[DirectorManager] Retrying director role lookup after ESI throttling',
-											{
-												corporationId: this.corporationId,
-												directorId: candidate.directorId,
-												characterId: candidate.characterId,
-												attempt,
-												delayMs,
-												error: error.message,
-											}
-										)
-									},
-								}
-							),
-							(rolesResponse) => {
-								const roleSet = this.buildEffectiveRoleSet(rolesResponse.data)
-								return this.getMissingRoleSets(roleSet, requiredRoleSets)
+									timeoutMs: DIRECTOR_HEALTH_REQUEST_TIMEOUT_MS,
+								}),
+							{
+								maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
+								onRetry: (attempt, error, delayMs) => {
+									logger.warn(
+										'[DirectorManager] Retrying director role lookup after ESI throttling',
+										{
+											corporationId: this.corporationId,
+											directorId: candidate.directorId,
+											characterId: candidate.characterId,
+											attempt,
+											delayMs,
+											error: error.message,
+										}
+									)
+								},
 							}
 						)
-						if (missingRoleSets.length > 0) {
+						const roleSet = this.buildEffectiveRoleSet(missingRoleSets)
+						const missingRequiredRoleSets = this.getMissingRoleSets(roleSet, requiredRoleSets)
+						if (missingRequiredRoleSets.length > 0) {
 							await this.safeRecordFailure(
 								candidate.directorId,
-								`Director permission failure: Director missing required roles for selection: ${missingRoleSets.map((set) => `[${set.join('|')}]`).join(', ')}`,
+								`Director permission failure: Director missing required roles for selection: ${missingRequiredRoleSets.map((set) => `[${set.join('|')}]`).join(', ')}`,
 								{ forceUnhealthy: true }
 							)
 							continue
@@ -496,33 +505,30 @@ export class DirectorManager {
 			return { matches: false, corporationId: null }
 		}
 
-		let affiliations: EsiCharacterAffiliation[]
+		let affiliations: CharacterAffiliation[]
 		try {
-			affiliations = await withRpcResult(
-				retryWithBackoff<EsiCharacterAffiliation[]>(
-					() =>
-						this.tokenStore.fetchCharacterAffiliations([characterId], {
-							cacheMode: 'no-store',
-							maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
-							timeoutMs: DIRECTOR_HEALTH_REQUEST_TIMEOUT_MS,
-						}),
-					{
+			affiliations = await retryWithBackoff<CharacterAffiliation[]>(
+				() =>
+					this.fetchCharacterAffiliations([characterId], {
+						cacheMode: 'no-store',
 						maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
-						onRetry: (attempt, error, delayMs) => {
-							logger.warn(
-								'[DirectorManager] Retrying character affiliation lookup after ESI throttling',
-								{
-									corporationId: this.corporationId,
-									characterId,
-									attempt,
-									delayMs,
-									error: error.message,
-								}
-							)
-						},
-					}
-				),
-				(result) => result.map((affiliation) => ({ ...affiliation }))
+						timeoutMs: DIRECTOR_HEALTH_REQUEST_TIMEOUT_MS,
+					}),
+				{
+					maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
+					onRetry: (attempt, error, delayMs) => {
+						logger.warn(
+							'[DirectorManager] Retrying character affiliation lookup after ESI throttling',
+							{
+								corporationId: this.corporationId,
+								characterId,
+								attempt,
+								delayMs,
+								error: error.message,
+							}
+						)
+					},
+				}
 			)
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error)
@@ -538,9 +544,7 @@ export class DirectorManager {
 				`Director affiliation lookup returned no affiliations for character ${characterId}`
 			)
 		}
-		const affiliation = affiliations.find(
-			(entry) => entry.character_id === Number.parseInt(characterId, 10)
-		)
+		const affiliation = affiliations.find((entry) => String(entry.character_id) === characterId)
 		if (!affiliation) {
 			throw new Error(`Director affiliation lookup did not include character ${characterId}`)
 		}
@@ -612,7 +616,7 @@ export class DirectorManager {
 		}
 	}
 
-	private buildEffectiveRoleSet(roles: EsiCharacterRoles): Set<string> {
+	private buildEffectiveRoleSet(roles: CharacterRoles): Set<string> {
 		return new Set([
 			...(roles.roles || []),
 			...(roles.roles_at_hq || []),
@@ -1107,87 +1111,74 @@ export class DirectorManager {
 
 			// Fetch character roles from ESI
 			verificationPhase = 'roles-fetch'
-			const missingRoleSets = await withRpcResult(
-				retryWithBackoff<EsiResponse<EsiCharacterRoles>>(
-					() =>
-						this.tokenStore.fetchEsi(
-							`/characters/${director.characterId}/roles`,
-							director.characterId,
-							{
-								cacheMode: 'no-store',
-								maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
-								timeoutMs: DIRECTOR_HEALTH_REQUEST_TIMEOUT_MS,
-							}
-						),
-					{
+			const roles = await retryWithBackoff(
+				() =>
+					this.fetchCharacterRoles(String(director.characterId), {
+						cacheMode: 'no-store',
 						maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
-						onRetry: (attempt, error, delayMs) => {
-							logger.warn(
-								'[DirectorManager] Retrying director health role check after ESI throttling',
-								{
-									corporationId: this.corporationId,
-									directorId,
-									characterId: director.characterId,
-									attempt,
-									delayMs,
-									error: error.message,
-								}
-							)
-						},
-					}
-				),
-				async (response) => {
-					const roles = response.data
-					const roleSet = this.buildEffectiveRoleSet(roles)
-					const requiredRoleSets = options?.requiredRoleSets ?? FULL_SYNC_REQUIRED_ROLE_SETS
-
-					verificationPhase = 'roles-persistence'
-					await this.db
-						.insert(characterCorporationRoles)
-						.values({
-							corporationId: this.corporationId,
-							characterId: String(director.characterId),
-							roles: roles.roles || [],
-							rolesAtHq: roles.roles_at_hq,
-							rolesAtBase: roles.roles_at_base,
-							rolesAtOther: roles.roles_at_other,
-							updatedAt: new Date(),
-						})
-						.onConflictDoUpdate({
-							target: [
-								characterCorporationRoles.corporationId,
-								characterCorporationRoles.characterId,
-							],
-							set: {
-								roles: roles.roles || [],
-								rolesAtHq: roles.roles_at_hq,
-								rolesAtBase: roles.roles_at_base,
-								rolesAtOther: roles.roles_at_other,
-								updatedAt: new Date(),
-							},
-						})
-
-					verificationPhase = 'health-state-persistence'
-					await this.db
-						.update(corporationDirectors)
-						.set({
-							lastHealthCheck: new Date(),
-							isHealthy: true,
-							failureCount: 0,
-							lastFailureReason: null,
-							nextRetryAt: null,
-							permanentFailureAt: null,
-							updatedAt: new Date(),
-						})
-						.where(eq(corporationDirectors.id, directorId))
-
-					verificationPhase = 'health-snapshot'
-					await this.syncHealthSnapshot()
-
-					return this.getMissingRoleSets(roleSet, requiredRoleSets)
+						timeoutMs: DIRECTOR_HEALTH_REQUEST_TIMEOUT_MS,
+					}),
+				{
+					maxRetries: DIRECTOR_HEALTH_REQUEST_MAX_RETRIES,
+					onRetry: (attempt, error, delayMs) => {
+						logger.warn(
+							'[DirectorManager] Retrying director health role check after ESI throttling',
+							{
+								corporationId: this.corporationId,
+								directorId,
+								characterId: director.characterId,
+								attempt,
+								delayMs,
+								error: error.message,
+							}
+						)
+					},
 				}
 			)
+			const roleSet = this.buildEffectiveRoleSet(roles)
+			const requiredRoleSets = options?.requiredRoleSets ?? FULL_SYNC_REQUIRED_ROLE_SETS
 
+			verificationPhase = 'roles-persistence'
+			await this.db
+				.insert(characterCorporationRoles)
+				.values({
+					corporationId: this.corporationId,
+					characterId: String(director.characterId),
+					roles: roles.roles || [],
+					rolesAtHq: roles.roles_at_hq,
+					rolesAtBase: roles.roles_at_base,
+					rolesAtOther: roles.roles_at_other,
+					updatedAt: new Date(),
+				})
+				.onConflictDoUpdate({
+					target: [characterCorporationRoles.corporationId, characterCorporationRoles.characterId],
+					set: {
+						roles: roles.roles || [],
+						rolesAtHq: roles.roles_at_hq,
+						rolesAtBase: roles.roles_at_base,
+						rolesAtOther: roles.roles_at_other,
+						updatedAt: new Date(),
+					},
+				})
+
+			verificationPhase = 'health-state-persistence'
+			await this.db
+				.update(corporationDirectors)
+				.set({
+					lastHealthCheck: new Date(),
+					isHealthy: true,
+					failureCount: 0,
+					lastFailureReason: null,
+					nextRetryAt: null,
+					permanentFailureAt: null,
+					updatedAt: new Date(),
+				})
+				.where(eq(corporationDirectors.id, directorId))
+
+			verificationPhase = 'health-snapshot'
+			await this.syncHealthSnapshot()
+
+			const missingRoleSets = this.getMissingRoleSets(roleSet, requiredRoleSets)
 			if (missingRoleSets.length > 0) {
 				const reason = `Director permission failure: Director missing required roles: ${missingRoleSets
 					.map((set) => `[${set.join('|')}]`)

@@ -220,9 +220,9 @@ export default {
 			const scheduledLogger = logger.withTags({ component: 'core-scheduled' })
 			const coreStub = getStub<Core>(env.CORE, 'default')
 			if (event.cron === DISCORD_REFRESH_CRON) {
-				const result = await coreStub.processPendingDiscordRefreshes()
-				if (result.processed > 0) {
-					scheduledLogger.info('[Core:Scheduled] Processed pending Discord refreshes', result)
+				const result = await coreStub.processPendingRefreshes()
+				if (result.refreshesProcessed > 0 || result.discordProcessed > 0) {
+					scheduledLogger.info('[Core:Scheduled] Processed pending refreshes', result)
 				}
 			}
 
@@ -1093,13 +1093,13 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	}
 
 	/**
-	 * Ingest character IDs for pending Discord refresh.
-	 * Resolves characterIds → userIds, deduplicates, and adds to the Core DO's
-	 * in-memory pending set. Processing happens on the next cron tick.
+	 * Ingest character IDs for pending user refresh.
+	 * Resolves characterIds → userIds and batches user refresh workflows on the
+	 * next cron tick. The workflow emits Discord work only after persistence.
 	 *
 	 * Called by eve-corporation-data when corp membership changes are detected.
 	 */
-	async addPendingDiscordRefreshesForCharacters(
+	async queueUserRefreshesForCharacters(
 		characterIds: string[]
 	): Promise<{ usersQueued: number; pendingCount: number }> {
 		if (characterIds.length === 0) {
@@ -1121,7 +1121,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		}
 
 		const coreStub = getStub<Core>(this.env.CORE, 'default')
-		const result = await coreStub.addPendingDiscordRefreshes(uniqueUserIds, {
+		const result = await coreStub.queueUserRefreshes(uniqueUserIds, {
 			source: 'corp-membership-changed',
 		})
 
@@ -1146,19 +1146,17 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 	 * Handle an observed character affiliation change signal from external workers.
 	 *
 	 * This triggers the same downstream consistency path used for normal corp-change
-	 * detection: user refresh workflow (affiliation persistence + role attachments)
-	 * and pending Discord refresh queue updates.
+	 * detection: a batched user refresh workflow, which publishes downstream
+	 * Discord work after it has persisted affiliation and role changes.
 	 */
 	async handleCharacterAffiliationChange(
 		characterId: string,
 		options?: {
 			source?: string
-			bypassThrottle?: boolean
 		}
 	): Promise<{
 		usersMatched: number
-		workflowsTriggered: number
-		discordUsersQueued: number
+		refreshUsersQueued: number
 	}> {
 		return this.handleCharacterAffiliationChanges([characterId], options)
 	}
@@ -1173,39 +1171,22 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		characterIds: string[],
 		options?: {
 			source?: string
-			bypassThrottle?: boolean
 		}
 	): Promise<{
 		usersMatched: number
-		workflowsTriggered: number
-		discordUsersQueued: number
+		refreshUsersQueued: number
 	}> {
 		const normalizedCharacterIds = [...new Set(characterIds.map((id) => String(id)))]
 		const uniqueUserIds = await this.resolveUserIdsForCharacterIds(normalizedCharacterIds)
-		let workflowsTriggered = 0
-		const db = createDb(this.env.DATABASE_URL)
-
-		for (const userId of uniqueUserIds) {
-			const result = await triggerUserRefreshWorkflow({
-				db,
-				env: this.env,
-				userId,
-				source: options?.source ?? 'character-affiliation-changed',
-				bypassThrottle: options?.bypassThrottle ?? true,
-				refreshMode: 'event',
-			})
-			if (result.triggered) {
-				workflowsTriggered++
-			}
-		}
-
-		const discordQueueResult =
-			await this.addPendingDiscordRefreshesForCharacters(normalizedCharacterIds)
+		const coreStub = getStub<Core>(this.env.CORE, 'default')
+		const queueResult = await coreStub.queueUserRefreshes(uniqueUserIds, {
+			source: options?.source ?? 'character-affiliation-changed',
+			force: true,
+		})
 
 		return {
 			usersMatched: uniqueUserIds.length,
-			workflowsTriggered,
-			discordUsersQueued: discordQueueResult.usersQueued,
+			refreshUsersQueued: queueResult.added,
 		}
 	}
 }

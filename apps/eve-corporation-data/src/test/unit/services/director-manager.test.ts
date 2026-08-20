@@ -78,18 +78,22 @@ describe('DirectorManager.selectDirector', () => {
 		const tokenStore = {
 			getTokenInfo: vi.fn().mockResolvedValue({ isExpired: false }),
 			refreshToken: vi.fn().mockResolvedValue(true),
-			fetchEsi: vi
-				.fn()
-				.mockResolvedValueOnce({
-					data: { roles: ['Trader'] },
-				})
-				.mockResolvedValueOnce({
-					data: {
-						roles: ['Director', 'Accountant', 'Station_Manager', 'Factory_Manager', 'Trader'],
-					},
-				}),
 		}
-		const manager = new DirectorManager({} as never, '98000001', tokenStore as never)
+		const fetchCharacterRoles = vi
+			.fn()
+			.mockResolvedValueOnce({ roles: ['Trader'] })
+			.mockResolvedValueOnce({
+				roles: ['Director', 'Accountant', 'Station_Manager', 'Factory_Manager', 'Trader'],
+			})
+		const manager = new DirectorManager(
+			{} as never,
+			'98000001',
+			tokenStore as never,
+			undefined,
+			undefined,
+			undefined,
+			fetchCharacterRoles
+		)
 
 		vi.spyOn(manager as any, 'getHealthyDirectors').mockResolvedValue([
 			{
@@ -253,17 +257,24 @@ describe('DirectorManager.checkAffiliation', () => {
 		vi.clearAllMocks()
 	})
 
-	it('uses token store affiliation RPC and matches corporation', async () => {
-		const tokenStore = {
-			fetchCharacterAffiliations: vi
-				.fn()
-				.mockResolvedValue([{ character_id: 111, corporation_id: 98000001 }]),
-		}
-		const manager = new DirectorManager({} as never, '98000001', tokenStore as never)
+	it('uses the typed ESI affiliation reader and matches corporation', async () => {
+		const fetchCharacterAffiliations = vi
+			.fn()
+			.mockResolvedValue([{ character_id: '111', corporation_id: '98000001' }])
+		const manager = new DirectorManager(
+			{} as never,
+			'98000001',
+			{} as never,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			fetchCharacterAffiliations
+		)
 
 		const result = await (manager as any).checkAffiliation('111')
 
-		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(
+		expect(fetchCharacterAffiliations).toHaveBeenCalledWith(
 			['111'],
 			expect.objectContaining({ maxRetries: 0, timeoutMs: 8000 })
 		)
@@ -271,36 +282,50 @@ describe('DirectorManager.checkAffiliation', () => {
 	})
 
 	it('throws when the affiliation payload does not include the character', async () => {
-		const tokenStore = {
-			fetchCharacterAffiliations: vi.fn().mockResolvedValue([]),
-		}
-		const manager = new DirectorManager({} as never, '98000001', tokenStore as never)
+		const fetchCharacterAffiliations = vi.fn().mockResolvedValue([])
+		const manager = new DirectorManager(
+			{} as never,
+			'98000001',
+			{} as never,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			fetchCharacterAffiliations
+		)
 
 		await expect((manager as any).checkAffiliation('111')).rejects.toThrow(
 			'Director affiliation lookup returned no affiliations for character 111'
 		)
-		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(
+		expect(fetchCharacterAffiliations).toHaveBeenCalledWith(
 			['111'],
 			expect.objectContaining({ maxRetries: 0, timeoutMs: 8000 })
 		)
 	})
 
 	it('throws a hard error when the affiliation lookup returns 404', async () => {
-		const tokenStore = {
-			fetchCharacterAffiliations: vi
-				.fn()
-				.mockRejectedValue(
-					new Error(
-						'ESI request failed: 404 Not Found - not found | metadata={"status":404,"path":"/characters/affiliation"}'
-					)
-				),
-		}
-		const manager = new DirectorManager({} as never, '98000001', tokenStore as never)
+		const fetchCharacterAffiliations = vi
+			.fn()
+			.mockRejectedValue(
+				new Error(
+					'ESI request failed: 404 Not Found - not found | metadata={"status":404,"path":"/characters/affiliation"}'
+				)
+			)
+		const manager = new DirectorManager(
+			{} as never,
+			'98000001',
+			{} as never,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			fetchCharacterAffiliations
+		)
 
 		await expect((manager as any).checkAffiliation('111')).rejects.toThrow(
 			'Director affiliation lookup returned 404 for character 111'
 		)
-		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(
+		expect(fetchCharacterAffiliations).toHaveBeenCalledWith(
 			['111'],
 			expect.objectContaining({ maxRetries: 0, timeoutMs: 8000 })
 		)
@@ -524,14 +549,24 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			fetchCharacterAffiliations: vi
 				.fn()
 				.mockResolvedValue([{ character_id: 111, corporation_id: 98000001 }]),
-			fetchEsi: vi.fn().mockResolvedValue({
-				data: {
-					roles: ['Trader'],
-					roles_at_hq: ['Station_Manager'],
-				},
-			}),
 		}
-		const manager = new DirectorManager(db as never, '98000001', tokenStore as never)
+		const fetchCharacterRoles = vi.fn().mockResolvedValue({
+			roles: ['Trader'],
+			roles_at_hq: ['Station_Manager'],
+		})
+		const fetchCharacterAffiliations = vi
+			.fn()
+			.mockResolvedValue([{ character_id: '111', corporation_id: '98000001' }])
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			tokenStore as never,
+			undefined,
+			undefined,
+			undefined,
+			fetchCharacterRoles,
+			fetchCharacterAffiliations
+		)
 
 		const result = await manager.verifyDirectorHealth('dir-1', {
 			requiredRoleSets: [['Station_Manager'], ['Trader', 'Accountant']],
@@ -539,12 +574,11 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 
 		expect(result).toBe(true)
 		expect(tokenStore.validateToken).toHaveBeenCalledWith('111')
-		expect(tokenStore.fetchCharacterAffiliations).toHaveBeenCalledWith(
+		expect(fetchCharacterAffiliations).toHaveBeenCalledWith(
 			['111'],
 			expect.objectContaining({ maxRetries: 0, timeoutMs: 8000 })
 		)
-		expect(tokenStore.fetchEsi).toHaveBeenCalledWith(
-			'/characters/111/roles',
+		expect(fetchCharacterRoles).toHaveBeenCalledWith(
 			'111',
 			expect.objectContaining({
 				cacheMode: 'no-store',
@@ -610,10 +644,21 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			fetchCharacterAffiliations: vi
 				.fn()
 				.mockResolvedValue([{ character_id: 111, corporation_id: 98000001 }]),
-			fetchEsi: vi.fn().mockResolvedValue({ data: { roles: ['Trader'] } }),
 		}
 		const loggerError = vi.spyOn(logger, 'error').mockImplementation(() => undefined)
-		const manager = new DirectorManager(db as never, '98000001', tokenStore as never)
+		const fetchCharacterAffiliations = vi
+			.fn()
+			.mockResolvedValue([{ character_id: '111', corporation_id: '98000001' }])
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			tokenStore as never,
+			undefined,
+			undefined,
+			undefined,
+			vi.fn().mockResolvedValue({ roles: ['Trader'] }),
+			fetchCharacterAffiliations
+		)
 		vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
 
 		await expect(manager.verifyDirectorHealth('dir-1')).resolves.toBe(false)
@@ -664,13 +709,20 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			fetchCharacterAffiliations: vi
 				.fn()
 				.mockResolvedValue([{ character_id: 111, corporation_id: 98000001 }]),
-			fetchEsi: vi.fn().mockResolvedValue({
-				data: {
-					roles: ['Trader'],
-				},
-			}),
 		}
-		const manager = new DirectorManager(db as never, '98000001', tokenStore as never)
+		const fetchCharacterAffiliations = vi
+			.fn()
+			.mockResolvedValue([{ character_id: '111', corporation_id: '98000001' }])
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			tokenStore as never,
+			undefined,
+			undefined,
+			undefined,
+			vi.fn().mockResolvedValue({ roles: ['Trader'] }),
+			fetchCharacterAffiliations
+		)
 		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
 
 		const result = await manager.verifyDirectorHealth('dir-1', {
@@ -773,9 +825,20 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			fetchCharacterAffiliations: vi
 				.fn()
 				.mockResolvedValue([{ character_id: 111, corporation_id: 98000001 }]),
-			fetchEsi: vi.fn().mockRejectedValue(new Error('ESI request failed: 403 Forbidden')),
 		}
-		const manager = new DirectorManager(db as never, '98000001', tokenStore as never)
+		const fetchCharacterAffiliations = vi
+			.fn()
+			.mockResolvedValue([{ character_id: '111', corporation_id: '98000001' }])
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			tokenStore as never,
+			undefined,
+			undefined,
+			undefined,
+			vi.fn().mockRejectedValue(new Error('ESI request failed: 403 Forbidden')),
+			fetchCharacterAffiliations
+		)
 		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
 
 		const result = await manager.verifyDirectorHealth('dir-1')
@@ -809,9 +872,18 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 				status: 'missing_scopes',
 			}),
 			fetchCharacterAffiliations: vi.fn(),
-			fetchEsi: vi.fn(),
 		}
-		const manager = new DirectorManager(db as never, '98000001', tokenStore as never)
+		const fetchCharacterAffiliations = vi.fn()
+		const manager = new DirectorManager(
+			db as never,
+			'98000001',
+			tokenStore as never,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			fetchCharacterAffiliations
+		)
 		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
 		const removeDirector = vi.spyOn(manager, 'removeDirector').mockResolvedValue(undefined)
 
@@ -819,8 +891,7 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 
 		expect(result).toBe(false)
 		expect(tokenStore.validateToken).toHaveBeenCalledWith('111')
-		expect(tokenStore.fetchCharacterAffiliations).not.toHaveBeenCalled()
-		expect(tokenStore.fetchEsi).not.toHaveBeenCalled()
+		expect(fetchCharacterAffiliations).not.toHaveBeenCalled()
 		expect(removeDirector).not.toHaveBeenCalled()
 		expect(recordFailure).toHaveBeenCalledWith(
 			'dir-1',
@@ -854,13 +925,19 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			fetchCharacterAffiliations: vi
 				.fn()
 				.mockResolvedValue([{ character_id: 111, corporation_id: 98000002 }]),
-			fetchEsi: vi.fn(),
 		}
+		const fetchCharacterAffiliations = vi
+			.fn()
+			.mockResolvedValue([{ character_id: '111', corporation_id: '98000002' }])
 		const manager = new DirectorManager(
 			db as never,
 			'98000001',
 			tokenStore as never,
-			onAffiliationMismatch
+			onAffiliationMismatch,
+			undefined,
+			undefined,
+			undefined,
+			fetchCharacterAffiliations
 		)
 		const removeDirector = vi.spyOn(manager, 'removeDirector').mockResolvedValue(undefined)
 		const recordFailure = vi.spyOn(manager, 'recordFailure').mockResolvedValue(undefined)
@@ -875,7 +952,6 @@ describe('DirectorManager.verifyDirectorHealth', () => {
 			{ forceUnhealthy: true }
 		)
 		expect(removeDirector).toHaveBeenCalledWith('111')
-		expect(tokenStore.fetchEsi).not.toHaveBeenCalled()
 	})
 })
 

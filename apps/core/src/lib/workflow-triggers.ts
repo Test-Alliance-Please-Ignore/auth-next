@@ -255,6 +255,7 @@ export async function triggerUserRefreshWorkflow({
 			id: createUserRefreshWorkflowId(source, userId),
 			params: {
 				userId,
+				source,
 				refreshMode,
 				suppressDiscordRefresh,
 				forceTokenValidation,

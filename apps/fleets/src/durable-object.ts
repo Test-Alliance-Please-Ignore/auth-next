@@ -18,7 +18,7 @@ import {
 	sql,
 } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { buildEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
+import { getEsiInstanceForCharacter } from '@repo/esi'
 import { createEveCharacterId } from '@repo/eve-types'
 import {
 	esiGetCharacterFleetInformationSchema,
@@ -43,15 +43,14 @@ import {
 	schema,
 } from './db/schema'
 
+import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCharacterData } from '@repo/eve-character-data'
-import type { EveTokenStore } from '@repo/eve-token-store'
 import type { EveCharacterId } from '@repo/eve-types'
 import type {
 	CharacterFleetSessionsPage,
 	CharacterRecentSessionRow,
 	CharacterStatsResult,
 	CorpRollupRow,
-	EsiGetCharacterFleetInformation,
 	EsiGetFleetInformation,
 	EsiGetFleetMembers,
 	FleetDetailsResponse,
@@ -87,7 +86,6 @@ import type {
 import type { Universe } from '@repo/universe'
 import type { Env } from './context'
 
-const LIVE_FLEET_ESI_OPTIONS = { cacheMode: 'no-store' } as const
 const MAX_FLEET_DURATION_MINUTES = 24 * 60
 const MAX_FLEET_DURATION_MS = MAX_FLEET_DURATION_MINUTES * 60_000
 const FLEET_NON_SHIP_TYPE_IDS_SQL = sql.join(
@@ -107,32 +105,6 @@ const FLEET_NON_SHIP_TYPE_ID_SET = new Set<number>(FLEET_NON_SHIP_TYPE_IDS)
  */
 export class FleetsDO extends DurableObject implements Fleets {
 	private db: ReturnType<typeof createDbClient<typeof schema>>
-	private readonly esiRateLimits: EsiRateLimitGuard
-
-	private formatFleetKickError(response: Pick<Response, 'status'>, details = ''): string {
-		let parsedDetails = details
-		if (parsedDetails) {
-			try {
-				const parsed = JSON.parse(parsedDetails) as { error?: string; message?: string }
-				parsedDetails = parsed.error || parsed.message || parsedDetails
-			} catch {
-				// keep raw body text when it's not JSON
-			}
-		}
-
-		switch (response.status) {
-			case 401:
-				return 'Unauthorized ESI token for fleet commander'
-			case 403:
-				return 'Fleet commander token lacks permission to remove this member'
-			case 404:
-				return 'Fleet or member not found (member may have already left)'
-			case 422:
-				return parsedDetails || 'ESI rejected the member removal request'
-			default:
-				return parsedDetails || `ESI returned ${response.status}`
-		}
-	}
 
 	private isEsiRateLimitError(error: unknown): boolean {
 		return error instanceof Error && error.message.includes('ESI rate limit active')
@@ -147,7 +119,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 	) {
 		super(state, env)
 		this.db = createDbClient(this.env.DATABASE_URL, schema)
-		this.esiRateLimits = new EsiRateLimitGuard(new EsiRateLimitStore(this.env.ESI_RATE_LIMITS))
 	}
 
 	/**
@@ -231,8 +202,6 @@ export class FleetsDO extends DurableObject implements Fleets {
 	}
 
 	async getCharacterFleetInformation(characterId: EveCharacterId): Promise<FleetInformation> {
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-
 		logger.info('[Fleets DO] Getting fleet information for character', { characterId })
 
 		try {
@@ -242,11 +211,10 @@ export class FleetsDO extends DurableObject implements Fleets {
 				endpoint: `/characters/${characterId}/fleet/`,
 			})
 
-			const response = await tokenStore.fetchEsi<EsiGetCharacterFleetInformation>(
-				`/characters/${characterId}/fleet/`,
-				characterId,
-				LIVE_FLEET_ESI_OPTIONS
-			)
+			const response = await getEsiInstanceForCharacter(
+				this.env.ESI,
+				characterId
+			).fetchCharacterFleetInformation(characterId)
 
 			// Validate the response locally using the schema
 			const validatedData = esiGetCharacterFleetInformationSchema.parse(response.data)
@@ -328,16 +296,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 		expiresInHours: number = 24,
 		maxUses?: number
 	): Promise<QuickJoinCreationResult> {
-		// Verify the fleet boss actually owns the fleet
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-
 		// Check fleet info to verify boss
 		try {
-			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
-				`/fleets/${fleetId}/`,
-				fleetBossId,
-				LIVE_FLEET_ESI_OPTIONS
-			)
+			const fleetResponse = await getEsiInstanceForCharacter(
+				this.env.ESI,
+				fleetBossId
+			).fetchFleetInformation(fleetBossId, fleetId)
 			esiGetFleetInformationSchema.parse(fleetResponse.data)
 		} catch {
 			throw new Error('Unable to verify fleet ownership')
@@ -411,14 +375,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 
 		// Get fleet details
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		let fleetInfo: EsiGetFleetInformation | undefined
 		try {
-			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
-				`/fleets/${invitation.fleetId}/`,
-				invitation.fleetBossId,
-				LIVE_FLEET_ESI_OPTIONS
-			)
+			const fleetResponse = await getEsiInstanceForCharacter(
+				this.env.ESI,
+				invitation.fleetBossId
+			).fetchFleetInformation(invitation.fleetBossId, invitation.fleetId)
 			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
 		} catch {
 			// Fleet info fetch failed, but invitation is valid
@@ -467,23 +429,20 @@ export class FleetsDO extends DurableObject implements Fleets {
 			}
 		}
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-
-		const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
-			`/fleets/${fleetId}/`,
-			characterId,
-			LIVE_FLEET_ESI_OPTIONS
-		)
+		const fleetResponse = await getEsiInstanceForCharacter(
+			this.env.ESI,
+			characterId
+		).fetchFleetInformation(characterId, fleetId)
 		const fleetInfo: EsiGetFleetInformation = esiGetFleetInformationSchema.parse(fleetResponse.data)
+		const typeResolver = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
 
 		let members: EsiGetFleetMembers | undefined
 		let memberCount = 0
 		try {
-			const membersResponse = await tokenStore.fetchEsi<EsiGetFleetMembers>(
-				`/fleets/${fleetId}/members/`,
-				characterId,
-				LIVE_FLEET_ESI_OPTIONS
-			)
+			const membersResponse = await getEsiInstanceForCharacter(
+				this.env.ESI,
+				characterId
+			).fetchFleetMembers(characterId, fleetId)
 			members = esiGetFleetMembersSchema.parse(membersResponse.data)
 			memberCount = members.length
 		} catch (error) {
@@ -522,7 +481,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				if (characterId && !uniqueCharacterIds.includes(characterId)) {
 					uniqueCharacterIds.push(characterId)
 				}
-				const characterNames = await tokenStore.resolveIds(uniqueCharacterIds)
+				const characterNames = await typeResolver.resolveIds(uniqueCharacterIds)
 				resolvedCharacterNames = characterNames
 			} catch (error) {
 				logger.warn(`[Fleets DO] Failed to resolve character names`, {
@@ -534,7 +493,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 			try {
 				// Resolve system IDs to names
 				const uniqueSystemIds = [...new Set(members.map((m) => String(m.solar_system_id)))]
-				const systemNames = await tokenStore.resolveIds(uniqueSystemIds)
+				const systemNames = await typeResolver.resolveIds(uniqueSystemIds)
 				resolvedSystemNames = systemNames
 			} catch (error) {
 				logger.warn(`[Fleets DO] Failed to resolve system names`, {
@@ -552,7 +511,7 @@ export class FleetsDO extends DurableObject implements Fleets {
 				const uniqueStationIds = [...new Set(stationIds.map((id) => String(id)))]
 
 				if (uniqueStationIds.length > 0) {
-					const stationNames = await tokenStore.resolveIds(uniqueStationIds)
+					const stationNames = await typeResolver.resolveIds(uniqueStationIds)
 					resolvedStationNames = stationNames
 				}
 			} catch (error) {
@@ -594,14 +553,11 @@ export class FleetsDO extends DurableObject implements Fleets {
 		const { invitation } = validation
 
 		// Check if character is already in the fleet
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-
 		try {
-			const membersResponse = await tokenStore.fetchEsi<EsiGetFleetMembers>(
-				`/fleets/${invitation.fleetId}/members/`,
-				invitation.fleetBossId,
-				LIVE_FLEET_ESI_OPTIONS
-			)
+			const membersResponse = await getEsiInstanceForCharacter(
+				this.env.ESI,
+				invitation.fleetBossId
+			).fetchFleetMembers(invitation.fleetBossId, invitation.fleetId)
 
 			// Debug logging to see raw ESI response
 			logger.log(
@@ -631,33 +587,14 @@ export class FleetsDO extends DurableObject implements Fleets {
 			logger.error('Failed to check fleet members:', error)
 		}
 
-		// Create fleet invitation using FC's credentials
-		// Note: ESI fleet invitation endpoint needs custom fetch since it's a POST
+		// Create the invitation through the shared ESI transport so mutations use
+		// the same token, rate-limit, and retry policy as every other ESI call.
 		try {
-			// We need to make a direct ESI call for POST operations
-			const accessToken = await tokenStore.getAccessToken(invitation.fleetBossId)
-			if (!accessToken) {
-				return {
-					success: false,
-					error: 'Fleet commander ESI access expired',
-				}
-			}
-
-			await this.esiRateLimits.request({
-				path: `/latest/fleets/${invitation.fleetId}/members/?datasource=tranquility`,
-				userKey: buildEsiUserKey(this.env.EVE_SSO_CLIENT_ID, invitation.fleetBossId),
-				method: 'POST',
-				accessToken,
-				jsonBody: {
-					character_id: parseInt(joiningCharacterId),
-					role: 'squad_member',
-				},
-				parse: async () => undefined,
-				buildError: ({ response, body, path }) =>
-					new Error(
-						`ESI request failed: ${response.status} ${response.statusText || 'Request Failed'} - ${body || 'Unknown ESI error'} | path=${path}`
-					),
-			})
+			await getEsiInstanceForCharacter(this.env.ESI, invitation.fleetBossId).inviteFleetMember(
+				invitation.fleetBossId,
+				invitation.fleetId,
+				joiningCharacterId
+			)
 		} catch (error) {
 			if (this.isEsiRateLimitError(error)) {
 				return {
@@ -718,14 +655,12 @@ export class FleetsDO extends DurableObject implements Fleets {
 		}
 
 		// Check with ESI
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		let isActive = false
 		try {
-			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
-				`/fleets/${fleetId}/`,
-				characterId,
-				LIVE_FLEET_ESI_OPTIONS
-			)
+			const fleetResponse = await getEsiInstanceForCharacter(
+				this.env.ESI,
+				characterId
+			).fetchFleetInformation(characterId, fleetId)
 			// Validate the response to ensure it's valid fleet data
 			esiGetFleetInformationSchema.parse(fleetResponse.data)
 			isActive = true
@@ -777,15 +712,13 @@ export class FleetsDO extends DurableObject implements Fleets {
 			}
 		}
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
 		let fleetInfo: EsiGetFleetInformation | null = null
 
 		try {
-			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
-				`/fleets/${fleetId}/`,
-				characterId,
-				LIVE_FLEET_ESI_OPTIONS
-			)
+			const fleetResponse = await getEsiInstanceForCharacter(
+				this.env.ESI,
+				characterId
+			).fetchFleetInformation(characterId, fleetId)
 			fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
 		} catch {
 			fleetInfo = null
@@ -1835,8 +1768,10 @@ export class FleetsDO extends DurableObject implements Fleets {
 		)
 		let commanderCharacterNames: Record<string, string> = {}
 		try {
-			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-			commanderCharacterNames = await tokenStore.resolveIds(commanderCharacterIds)
+			commanderCharacterNames = await getStub<EsiTypeResolver>(
+				this.env.ESI_TYPE_RESOLVER,
+				'global'
+			).resolveIds(commanderCharacterIds)
 		} catch (error) {
 			logger.warn('[FleetsDO] Failed to resolve SRP commander names', {
 				sessionId,
@@ -2163,27 +2098,14 @@ export class FleetsDO extends DurableObject implements Fleets {
 			}))
 		}
 
-		const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-		const accessToken = await tokenStore.getAccessToken(session.characterId)
-		if (!accessToken) {
-			return uniqueMemberIds.map((characterId) => ({
-				characterId,
-				success: false,
-				error: 'Fleet commander ESI access expired',
-			}))
-		}
-
 		const results: KickTrackingSessionMemberResult[] = []
 		for (const memberCharacterId of uniqueMemberIds) {
 			try {
-				await this.esiRateLimits.request({
-					path: `/latest/fleets/${session.fleetId}/members/${memberCharacterId}/?datasource=tranquility`,
-					userKey: buildEsiUserKey(this.env.EVE_SSO_CLIENT_ID, session.characterId),
-					method: 'DELETE',
-					accessToken,
-					parse: async () => undefined,
-					buildError: ({ response, body }) => new Error(this.formatFleetKickError(response, body)),
-				})
+				await getEsiInstanceForCharacter(this.env.ESI, session.characterId).kickFleetMember(
+					session.characterId,
+					session.fleetId,
+					memberCharacterId
+				)
 
 				results.push({ characterId: memberCharacterId, success: true })
 			} catch (error) {

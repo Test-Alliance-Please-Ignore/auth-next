@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, asc, desc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
-import { buildPublicEsiUserKey, EsiRateLimitGuard, EsiRateLimitStore } from '@repo/esi-rate-limit'
+import { getPublicEsiInstance } from '@repo/esi'
 import { createEveRegionId, createEveTypeId } from '@repo/eve-types'
 import { logger } from '@repo/hono-helpers'
 import {
@@ -11,7 +11,6 @@ import {
 	MAX_SRP_LOSS_AGE_DAYS,
 	roundToMillion,
 } from '@repo/srp'
-import { parseJsonResponse } from '@repo/worker-utils'
 
 import { createDb } from './db'
 import {
@@ -195,7 +194,6 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 	private static readonly RECENT_LOSS_DETAIL_CONCURRENCY = 5
 	private db: ReturnType<typeof createDb>
 	private readonly storage: DurableObjectStorage
-	private readonly esiRateLimits: EsiRateLimitGuard
 	private readonly killmailEsi: SrpKillmailEsiClient
 	private readonly shipSlotCapacityCache = new Map<
 		string,
@@ -216,7 +214,6 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		super(state, env)
 		this.db = createDb(env.DATABASE_URL)
 		this.storage = state.storage
-		this.esiRateLimits = new EsiRateLimitGuard(new EsiRateLimitStore(env.ESI_RATE_LIMITS))
 		this.killmailEsi = new SrpKillmailEsiClient(env)
 	}
 
@@ -2327,22 +2324,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const fallback = DEFAULT_NON_POD_SLOT_CAPACITIES
 
 		try {
-			const data = await this.esiRateLimits.request({
-				path: `/latest/universe/types/${encodeURIComponent(shipTypeId)}/?datasource=tranquility&language=en`,
-				userKey: buildPublicEsiUserKey(),
-				method: 'GET',
-				timeoutMs: 10_000,
-				parse: async (response) =>
-					await parseJsonResponse<{
-						dogma_attributes?: Array<{ attribute_id?: number; value?: number }>
-					}>(response as Response, {
-						context: `ESI universe type ${shipTypeId}`,
-					}),
-				buildError: ({ response, body, path }) =>
-					new Error(
-						`ESI request failed: ${response.status} ${response.statusText || 'Request Failed'} - ${body || 'Unknown ESI error'} | path=${path}`
-					),
-			})
+			const data = await getPublicEsiInstance(this.env.ESI).fetchUniverseType(shipTypeId)
 			const resolved = parseShipSlotCapacitiesFromDogmaAttributes(data.dogma_attributes)
 
 			this.shipSlotCapacityCache.set(shipTypeId, {

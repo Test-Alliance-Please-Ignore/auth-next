@@ -4,8 +4,8 @@ import { StructureResolutionCoordinator } from '../../workflows/processors/helpe
 
 const fetchStructureInfo = vi.fn()
 
-vi.mock('@repo/do-utils', () => ({
-	getStub: vi.fn(() => ({
+vi.mock('@repo/esi', () => ({
+	getEsiInstanceForCharacter: vi.fn(() => ({
 		fetchStructureInfo,
 	})),
 }))
@@ -23,7 +23,7 @@ describe('structure resolution', () => {
 	it('caches forbidden structures and skips future lookups in the same report', async () => {
 		const state = new StructureResolutionCoordinator()
 		const deniedError = new Error(
-			'ESI request failed: 403 Forbidden - {"error":"access denied"} | metadata={"status":403,"path":"/latest/universe/structures/123/"}',
+			'ESI request failed: 403 Forbidden - {"error":"access denied"} | metadata={"status":403,"path":"/latest/universe/structures/123/"}'
 		)
 		fetchStructureInfo.mockRejectedValue(deniedError)
 
@@ -31,7 +31,7 @@ describe('structure resolution', () => {
 			{ ESI: {} as DurableObjectNamespace },
 			'93665130',
 			['123'],
-			'test-structure-resolution',
+			'test-structure-resolution'
 		)
 
 		expect(first).toEqual({})
@@ -42,7 +42,7 @@ describe('structure resolution', () => {
 			{ ESI: {} as DurableObjectNamespace },
 			'93665130',
 			['123'],
-			'test-structure-resolution',
+			'test-structure-resolution'
 		)
 
 		expect(second).toEqual({})

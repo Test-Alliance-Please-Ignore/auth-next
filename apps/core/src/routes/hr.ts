@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { and, eq, ilike, inArray, or } from '@repo/db-utils'
 import { getStub, withRpcResult } from '@repo/do-utils'
+import { getPublicEsiInstance } from '@repo/esi'
 import { captureException, logger } from '@repo/hono-helpers'
 import { APPLICATION_STATUSES } from '@repo/hr'
 
@@ -23,7 +24,7 @@ import { dispatchCorporationAlert } from '../services/corporation-alerts.service
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
 import type { Discord } from '@repo/discord'
-import type { Esi, EsiTypeResolver } from '@repo/esi'
+import type { EsiTypeResolver } from '@repo/esi'
 import type {
 	Application,
 	ApplicationDetail,
@@ -564,7 +565,7 @@ async function getHrRoleManagementAccess(
 		userCharacterCount: userChars.length,
 	})
 
-	const esiStub = getStub<Esi>(c.env.ESI, 'default')
+	const esiStub = getPublicEsiInstance(c.env.ESI)
 	const corporationInfo = await withRpcResult(
 		esiStub.fetchCorporationPublicInfo(corporationId),
 		(result) => (result ? { ...result } : result)

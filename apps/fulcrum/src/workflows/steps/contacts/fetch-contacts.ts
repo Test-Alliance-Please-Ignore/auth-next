@@ -14,7 +14,7 @@ import type { StepResult } from '../../utils/storage'
  * Separated for testability
  */
 export async function fetchContactsFromEsi(esiStub: Esi, characterId: string) {
-	return await esiStub.fetchCharacterContacts(characterId)
+	return await esiStub.fetchCharacterContacts(characterId, { cacheMode: 'no-store' })
 }
 
 /**
@@ -37,7 +37,6 @@ export async function fetchContacts(
 	try {
 		// Get character-specific ESI stub for caching
 		const stub = getEsiInstanceForCharacter(esiBinding, characterId)
-		stub.setDefaultCacheMode('no-store')
 
 		// Fetch contacts from ESI
 		const data = await fetchContactsFromEsi(stub, characterId)
@@ -52,4 +51,3 @@ export async function fetchContacts(
 		}
 	}
 }
-

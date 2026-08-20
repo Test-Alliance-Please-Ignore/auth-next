@@ -74,10 +74,11 @@ function createEnv(): Env {
 		FLEETS: {} as DurableObjectNamespace,
 		FLEET_MONITOR: {} as DurableObjectNamespace,
 		EVE_TOKEN_STORE: {} as DurableObjectNamespace,
+		ESI: {} as DurableObjectNamespace,
+		ESI_TYPE_RESOLVER: {} as DurableObjectNamespace,
 		EVE_CHARACTER_DATA: {} as DurableObjectNamespace,
 		EVE_CORPORATION_DATA: {} as DurableObjectNamespace,
 		UNIVERSE: {} as DurableObjectNamespace,
-		ESI_RATE_LIMITS: {} as KVNamespace,
 		EVE_SSO_CLIENT_ID: 'client-id',
 	}
 }

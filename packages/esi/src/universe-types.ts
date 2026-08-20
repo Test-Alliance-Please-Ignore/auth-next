@@ -25,6 +25,61 @@ export interface EsiStructureInfo {
 	type_id: number
 }
 
+/** GET /universe/systems/{solar_system_id} */
+export interface EsiUniverseSolarSystem {
+	constellation_id: number
+	name: string
+	security_status: number
+	solar_system_id: number
+	star_id?: number
+	stargates?: number[]
+	stations?: number[]
+}
+
+/** GET /universe/constellations/{constellation_id} */
+export interface EsiUniverseConstellation {
+	constellation_id: number
+	name: string
+	region_id: number
+}
+
+/** GET /universe/stations/{station_id} */
+export interface EsiUniverseStation {
+	name: string
+	owner?: number
+	solar_system_id: number
+	station_id: number
+	type_id?: number
+}
+
+/** GET /universe/types/{type_id}; callers may use the dogma subset for SDE fallbacks. */
+export interface EsiUniverseType {
+	dogma_attributes?: Array<{ attribute_id?: number; value?: number }>
+}
+
+/** GET /characters/{character_id}/search */
+export interface EsiCharacterSearchResponse {
+	solar_system?: number[]
+	station?: number[]
+	structure?: number[]
+}
+
+/** Public and structure market order rows returned by ESI market endpoints. */
+export interface EsiMarketOrder {
+	duration: number
+	is_buy_order: boolean
+	issued: string
+	location_id: number
+	min_volume: number
+	order_id: number
+	price: number
+	range: string
+	system_id?: number
+	type_id: number
+	volume_remain: number
+	volume_total: number
+}
+
 // ============================================================================
 // UNIVERSE TYPES - TRANSFORMED
 // ============================================================================

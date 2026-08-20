@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 
 import { and, createDbClient, desc, eq, isNull, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { getEsiInstanceForCharacter } from '@repo/esi'
 import {
 	esiGetCharacterFleetInformationSchema,
 	esiGetFleetInformationSchema,
@@ -21,11 +22,10 @@ import {
 } from './db/schema'
 import { computeNextPollDelayMs } from './polling'
 
+import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type {
-	EsiGetCharacterFleetInformation,
-	EsiGetFleetInformation,
 	EsiGetFleetMembers,
 	FleetDetailsResponse,
 	FleetMonitorState,
@@ -33,8 +33,6 @@ import type {
 } from '@repo/fleets'
 import type { InvType, Universe } from '@repo/universe'
 import type { Env } from './context'
-
-const LIVE_FLEET_ESI_OPTIONS = { cacheMode: 'no-store' } as const
 
 /**
  * Normalize station_id to ensure it's either a number or null
@@ -71,8 +69,8 @@ async function resolveFleetBossAccessCharacterId(
 		return { accessCharacterId: currentCharacterId, switchedToFleetBoss: false }
 	}
 
-	const accessToken = await tokenStore.getAccessToken(fleetBossCharacterId)
-	if (accessToken === null) {
+	const hasUsableAccessToken = await tokenStore.hasUsableAccessToken(fleetBossCharacterId)
+	if (!hasUsableAccessToken) {
 		return { accessCharacterId: currentCharacterId, switchedToFleetBoss: false }
 	}
 
@@ -792,12 +790,10 @@ export class FleetMonitorDO extends DurableObject {
 
 		try {
 			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-			const currentCharacterFleetResponse =
-				await tokenStore.fetchEsi<EsiGetCharacterFleetInformation>(
-					`/characters/${characterId}/fleet/`,
-					characterId,
-					LIVE_FLEET_ESI_OPTIONS
-				)
+			const currentCharacterFleetResponse = await getEsiInstanceForCharacter(
+				this.env.ESI,
+				characterId
+			).fetchCharacterFleetInformation(characterId)
 			const currentCharacterFleetInfo = esiGetCharacterFleetInformationSchema.parse(
 				currentCharacterFleetResponse.data
 			)
@@ -843,26 +839,30 @@ export class FleetMonitorDO extends DurableObject {
 			}
 
 			// Fetch fleet info
-			const fleetResponse = await tokenStore.fetchEsi<EsiGetFleetInformation>(
-				`/fleets/${fleetId}/`,
-				accessCharacterId,
-				LIVE_FLEET_ESI_OPTIONS
-			)
+			const fleetResponse = await getEsiInstanceForCharacter(
+				this.env.ESI,
+				accessCharacterId
+			).fetchFleetInformation(accessCharacterId, fleetId)
 			const fleetInfo = esiGetFleetInformationSchema.parse(fleetResponse.data)
-			let nextPollAt = fleetResponse.expiresAt
+			// Live fleet endpoints are no-store and may omit an Expires header.
+			// Keep the monitor cadence bounded instead of relying on a nullable
+			// transport cache timestamp.
+			let nextPollAt = fleetResponse.expiresAt ?? new Date(Date.now() + 10_000)
 
 			// Fetch fleet members
 			let members: EsiGetFleetMembers | undefined
 			let memberCount = 0
 			try {
-				const membersResponse = await tokenStore.fetchEsi<EsiGetFleetMembers>(
-					`/fleets/${fleetId}/members/`,
-					accessCharacterId,
-					LIVE_FLEET_ESI_OPTIONS
-				)
+				const membersResponse = await getEsiInstanceForCharacter(
+					this.env.ESI,
+					accessCharacterId
+				).fetchFleetMembers(accessCharacterId, fleetId)
 				members = esiGetFleetMembersSchema.parse(membersResponse.data)
 				memberCount = members.length
-				if (membersResponse.expiresAt.getTime() > nextPollAt.getTime()) {
+				if (
+					membersResponse.expiresAt !== null &&
+					membersResponse.expiresAt.getTime() > nextPollAt.getTime()
+				) {
 					nextPollAt = membersResponse.expiresAt
 				}
 			} catch (error) {
@@ -1141,8 +1141,43 @@ export class FleetMonitorDO extends DurableObject {
 	}): Promise<void> {
 		const state = await this.getState()
 		if (!state || !state.isInitialized) {
-			logger.warn('[FleetMonitor endSession] No active state; nothing to do', {
+			// Durable Object storage is intentionally separate from the PostgreSQL
+			// session record. This lets a restored database close an active session
+			// even when its original monitor state was not restored with it.
+			const [session] = await this.db
+				.select({
+					fleetId: fleetTrackingSessions.fleetId,
+					characterId: fleetTrackingSessions.characterId,
+				})
+				.from(fleetTrackingSessions)
+				.where(
+					and(
+						eq(fleetTrackingSessions.id, args.sessionId),
+						eq(fleetTrackingSessions.status, 'active'),
+						isNull(fleetTrackingSessions.endedAt)
+					)
+				)
+				.limit(1)
+
+			if (!session?.fleetId) {
+				logger.info('[FleetMonitor endSession] No active session found without monitor state', {
+					sessionId: args.sessionId,
+				})
+				return
+			}
+
+			logger.info('[FleetMonitor endSession] Recovering session without monitor state', {
 				sessionId: args.sessionId,
+				fleetId: session.fleetId,
+			})
+			await this.finalizeSession({
+				fleetId: session.fleetId,
+				fleetBossId: session.characterId,
+				trackingSessionId: args.sessionId,
+				endedAt: new Date(),
+				endedReason: args.endedReason,
+				endedByUserId: args.endedByUserId,
+				peakMemberCount: 0,
 			})
 			return
 		}
@@ -1478,8 +1513,10 @@ export class FleetMonitorDO extends DurableObject {
 
 		// Resolve uncached IDs
 		if (uncachedIds.length > 0) {
-			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-			const characterNames = await tokenStore.resolveIds(uncachedIds)
+			const characterNames = await getStub<EsiTypeResolver>(
+				this.env.ESI_TYPE_RESOLVER,
+				'global'
+			).resolveIds(uncachedIds)
 			for (const [id, name] of Object.entries(characterNames)) {
 				resolved[id] = name
 				this.characterNameCache.set(id, name)
@@ -1552,8 +1589,10 @@ export class FleetMonitorDO extends DurableObject {
 
 		// Resolve uncached IDs
 		if (uncachedIds.length > 0) {
-			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-			const systemNames = await tokenStore.resolveIds(uncachedIds)
+			const systemNames = await getStub<EsiTypeResolver>(
+				this.env.ESI_TYPE_RESOLVER,
+				'global'
+			).resolveIds(uncachedIds)
 			for (const [id, name] of Object.entries(systemNames)) {
 				resolved[id] = name
 				this.systemNameCache.set(id, name)
@@ -1631,8 +1670,10 @@ export class FleetMonitorDO extends DurableObject {
 
 		// Resolve uncached IDs
 		if (uncachedIds.length > 0) {
-			const tokenStore = getStub<EveTokenStore>(this.env.EVE_TOKEN_STORE, 'default')
-			const stationNames = await tokenStore.resolveIds(uncachedIds)
+			const stationNames = await getStub<EsiTypeResolver>(
+				this.env.ESI_TYPE_RESOLVER,
+				'global'
+			).resolveIds(uncachedIds)
 			for (const [id, name] of Object.entries(stationNames)) {
 				resolved[id] = name
 				this.stationNameCache.set(id, name)

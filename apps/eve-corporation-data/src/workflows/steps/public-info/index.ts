@@ -1,15 +1,14 @@
 import { logger } from '@repo/hono-helpers'
 
 import * as esiFetch from '../../../services/esi-fetch'
-import { createTokenStore, getCorporationDataStub } from '../../utils/services'
+import { getCorporationDataStub, getPublicEsi } from '../../utils/services'
 
 import type { Env } from '../../../context'
 
 export type PublicInfo = Awaited<ReturnType<typeof esiFetch.fetchPublicInfo>>
 
 export async function fetchPublicInfo(env: Env, corporationId: string): Promise<PublicInfo> {
-	const tokenStore = createTokenStore(env)
-	const info = await esiFetch.fetchPublicInfo(tokenStore, corporationId)
+	const info = await esiFetch.fetchPublicInfo(getPublicEsi(env), corporationId)
 
 	logger.debug('[PublicInfoStep] Fetched public info', {
 		corporationId,
@@ -29,4 +28,3 @@ export async function storePublicInfo(
 
 	logger.debug('[PublicInfoStep] Stored public info', { corporationId })
 }
-

@@ -1,7 +1,7 @@
 import { logger } from '@repo/hono-helpers'
 
 import * as esiFetch from '../../../services/esi-fetch'
-import { createTokenStore, getCorporationDataStub } from '../../utils/services'
+import { getCorporationDataStub, getCorporationEsi } from '../../utils/services'
 
 import type { Env } from '../../../context'
 
@@ -12,8 +12,11 @@ export async function fetchIndustryJobs(
 	corporationId: string,
 	directorCharacterId: string
 ): Promise<IndustryJobsData> {
-	const tokenStore = createTokenStore(env)
-	const jobs = await esiFetch.fetchIndustryJobs(tokenStore, corporationId, directorCharacterId)
+	const jobs = await esiFetch.fetchIndustryJobs(
+		getCorporationEsi(env, corporationId),
+		corporationId,
+		directorCharacterId
+	)
 
 	logger.debug('[IndustryJobsStep] Fetched industry jobs', {
 		corporationId,
@@ -36,4 +39,3 @@ export async function storeIndustryJobs(
 		count: industryJobs.length,
 	})
 }
-

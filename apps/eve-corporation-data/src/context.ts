@@ -26,30 +26,22 @@ export interface CoreWorker {
 		}
 	): Promise<void>
 	getCharacterOwner(characterId: string): Promise<{ userId: string; isPrimary: boolean } | null>
-	addPendingDiscordRefreshesForCharacters(
+	queueUserRefreshesForCharacters(
 		characterIds: string[]
 	): Promise<{ usersQueued: number; pendingCount: number }>
 	handleCharacterAffiliationChange(
 		characterId: string,
-		options?: {
-			source?: string
-			bypassThrottle?: boolean
-		}
+		options?: { source?: string }
 	): Promise<{
 		usersMatched: number
-		workflowsTriggered: number
-		discordUsersQueued: number
+		refreshUsersQueued: number
 	}>
 	handleCharacterAffiliationChanges(
 		characterIds: string[],
-		options?: {
-			source?: string
-			bypassThrottle?: boolean
-		}
+		options?: { source?: string }
 	): Promise<{
 		usersMatched: number
-		workflowsTriggered: number
-		discordUsersQueued: number
+		refreshUsersQueued: number
 	}>
 }
 
@@ -60,6 +52,8 @@ export type Env = SharedHonoEnv & {
 	EVE_CORPORATION_DATA: DurableObjectNamespace
 	CORPORATION_TAX: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
+	ESI: DurableObjectNamespace
+	ESI_TYPE_RESOLVER: DurableObjectNamespace
 	UNIVERSE: DurableObjectNamespace
 	/** KV cache for directors and other data */
 	CACHE: KVNamespace

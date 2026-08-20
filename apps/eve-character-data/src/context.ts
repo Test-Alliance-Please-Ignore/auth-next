@@ -18,25 +18,17 @@ interface CoreWorker {
 	}>
 	handleCharacterAffiliationChange(
 		characterId: string,
-		options?: {
-			source?: string
-			bypassThrottle?: boolean
-		}
+		options?: { source?: string }
 	): Promise<{
 		usersMatched: number
-		workflowsTriggered: number
-		discordUsersQueued: number
+		refreshUsersQueued: number
 	}>
 	handleCharacterAffiliationChanges(
 		characterIds: string[],
-		options?: {
-			source?: string
-			bypassThrottle?: boolean
-		}
+		options?: { source?: string }
 	): Promise<{
 		usersMatched: number
-		workflowsTriggered: number
-		discordUsersQueued: number
+		refreshUsersQueued: number
 	}>
 	queueTokenInvalidationAlerts(input: {
 		userId: string
@@ -69,6 +61,7 @@ export type Env = SharedHonoEnv & {
 	CORE: CoreWorker
 	EVE_CHARACTER_DATA: DurableObjectNamespace
 	EVE_TOKEN_STORE: DurableObjectNamespace
+	ESI: DurableObjectNamespace
 	/** Workflow binding for character sync */
 	EVE_CHARACTER_SYNC: Workflow<EveCharacterSyncParams>
 }

@@ -7,7 +7,6 @@ export type Env = SharedHonoEnv & {
 	DATABASE_URL: string
 	MARKETS: DurableObjectNamespace
 	UNIVERSE: DurableObjectNamespace
-	EVE_TOKEN_STORE: DurableObjectNamespace
 	ESI: DurableObjectNamespace
 	FEATURES?: DurableObjectNamespace
 	DAILY_PRICE_BATCH_WORKFLOW: Workflow<DailyPriceBatchParams>

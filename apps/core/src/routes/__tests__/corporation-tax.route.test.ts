@@ -26,7 +26,7 @@ const env = {
 	CORPORATION_TAX: { name: 'CORPORATION_TAX' },
 	EVE_CORPORATION_DATA: { name: 'EVE_CORPORATION_DATA' },
 	EVE_CHARACTER_DATA: { name: 'EVE_CHARACTER_DATA' },
-	EVE_TOKEN_STORE: { name: 'EVE_TOKEN_STORE' },
+	ESI_TYPE_RESOLVER: { name: 'ESI_TYPE_RESOLVER' },
 	GROUPS: { name: 'GROUPS' },
 	FEATURES: { name: 'FEATURES' },
 } as any
@@ -142,8 +142,7 @@ function routeStubs(params: {
 	characterDataStub?: {
 		getCharacterInfo: ReturnType<typeof vi.fn>
 	}
-	tokenStoreStub?: {
-		searchCharacter: ReturnType<typeof vi.fn>
+	typeResolverStub?: {
 		resolveIds?: ReturnType<typeof vi.fn>
 	}
 }) {
@@ -160,8 +159,8 @@ function routeStubs(params: {
 		if (binding === env.EVE_CHARACTER_DATA) {
 			return params.characterDataStub
 		}
-		if (binding === env.EVE_TOKEN_STORE) {
-			return params.tokenStoreStub
+		if (binding === env.ESI_TYPE_RESOLVER) {
+			return params.typeResolverStub
 		}
 		throw new Error('Unexpected durable object binding in test')
 	})
@@ -922,8 +921,7 @@ describe('corporation-tax routes', () => {
 	it('returns ledger parties with resolved names', async () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
-		const tokenStoreStub = {
-			searchCharacter: vi.fn(),
+		const typeResolverStub = {
 			resolveIds: vi.fn().mockResolvedValue({
 				'9001': 'Ariadne Voss',
 				'9002': 'Talon Mere',
@@ -944,7 +942,7 @@ describe('corporation-tax routes', () => {
 				lastSeenAt: new Date('2026-03-19T00:00:00.000Z'),
 			},
 		])
-		routeStubs({ corporationTaxStub, tokenStoreStub })
+		routeStubs({ corporationTaxStub, typeResolverStub })
 
 		const response = await app.request(
 			'/api/corporation-tax/corporations/4002/ledger/parties?fromDate=2026-03-01T00:00:00.000Z&toDate=2026-03-31T23:59:59.999Z&limit=25',
@@ -970,14 +968,13 @@ describe('corporation-tax routes', () => {
 			toDate: new Date('2026-03-31T23:59:59.999Z'),
 			limit: 2000,
 		})
-		expect(tokenStoreStub.resolveIds).toHaveBeenCalledWith(['9001', '9002'])
+		expect(typeResolverStub.resolveIds).toHaveBeenCalledWith(['9001', '9002'])
 	})
 
 	it('filters ledger parties by query using resolved names', async () => {
 		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
-		const tokenStoreStub = {
-			searchCharacter: vi.fn(),
+		const typeResolverStub = {
 			resolveIds: vi.fn().mockResolvedValue({
 				'9001': 'Ariadne Voss',
 				'9002': 'Talon Mere',
@@ -998,7 +995,7 @@ describe('corporation-tax routes', () => {
 				lastSeenAt: new Date('2026-03-19T00:00:00.000Z'),
 			},
 		])
-		routeStubs({ corporationTaxStub, tokenStoreStub })
+		routeStubs({ corporationTaxStub, typeResolverStub })
 
 		const response = await app.request(
 			'/api/corporation-tax/corporations/4002/ledger/parties?q=tal&limit=10',
@@ -1928,7 +1925,6 @@ describe('corporation-tax routes', () => {
 	})
 
 	it('resolves member summary character name search from corporation membership, including unlinked members', async () => {
-		const app = createApp(makeUser())
 		const corporationTaxStub = makeCorporationTaxStub()
 		const corporationDataStub = {
 			getCorporationInfo: vi.fn(),
@@ -1938,14 +1934,21 @@ describe('corporation-tax routes', () => {
 		const characterDataStub = {
 			getCharacterInfo: vi.fn().mockResolvedValue({ characterId: '7001', corporationId: '1234' }),
 		}
-		const tokenStoreStub = {
-			searchCharacter: vi.fn().mockResolvedValue(['81234567', '99999999']),
+		const db = {
+			select: vi.fn().mockReturnValue({
+				from: vi.fn().mockReturnValue({
+					where: vi.fn().mockReturnValue({
+						limit: vi.fn().mockResolvedValue([{ characterId: '81234567' }]),
+					}),
+				}),
+			}),
 		}
+		const app = createApp(makeUser(), db)
 		corporationTaxStub.getMemberSummaryReport.mockResolvedValue([
 			{ corporationId: '1234', characterId: '81234567', assessmentCount: 1 },
 		])
 		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:tax:admin' }] as any)
-		routeStubs({ corporationTaxStub, corporationDataStub, characterDataStub, tokenStoreStub })
+		routeStubs({ corporationTaxStub, corporationDataStub, characterDataStub })
 
 		const response = await app.request(
 			'/api/corporation-tax/corporations/1234/member-summary?character=zen',
@@ -1957,7 +1960,7 @@ describe('corporation-tax routes', () => {
 		expect(await response.json()).toEqual([
 			{ corporationId: '1234', characterId: '81234567', assessmentCount: 1 },
 		])
-		expect(tokenStoreStub.searchCharacter).toHaveBeenCalledWith('zen', false)
+		expect(db.select).toHaveBeenCalledTimes(1)
 		expect(corporationTaxStub.getMemberSummaryReport).toHaveBeenCalledWith({
 			corporationId: '1234',
 			characterIds: ['81234567'],
