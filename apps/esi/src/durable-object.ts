@@ -224,6 +224,7 @@ import type { EsiDb } from './storage/state'
 const REVALIDATE_15_MIN = 900 // 15 minutes - for frequently-changing public info
 const REVALIDATE_5_MIN = 300 // 5 minutes - for security-relevant affiliation lookups
 const REVALIDATE_1_HOUR = 3600 // 1 hour - for less frequent updates
+const STRUCTURE_ENRICHMENT_COMPATIBILITY_DATE = '2026-05-19'
 
 /**
  * Durable Object responsible for authenticated ESI fetches on behalf of a character or corporation.
@@ -262,6 +263,8 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			{
 				body: characterIds.map((id) => parseInt(id, 10)),
 				cacheMode,
+				compatibilityDate: options?.compatibilityDate,
+				includeVersionPath: options?.includeVersionPath,
 				maxRetries: options?.maxRetries,
 				timeoutMs: options?.timeoutMs,
 				maxLocalCacheTtl: cacheMode === 'no-store' ? undefined : REVALIDATE_5_MIN,
@@ -1059,7 +1062,10 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		return toEsiResult(
 			await this.esiFetcher.fetchEsi<EsiSovereigntyHubListingResponse>(
 				`/corporations/${corporationId}/structures/sovereignty-hubs?page=${page}`,
-				{ cacheMode: 'no-store' }
+				{
+					cacheMode: 'no-store',
+					compatibilityDate: STRUCTURE_ENRICHMENT_COMPATIBILITY_DATE,
+				}
 			)
 		)
 	}
@@ -1072,7 +1078,10 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		return (
 			await this.esiFetcher.fetchEsi<EsiSovereigntyHubDetail>(
 				`/corporations/${corporationId}/structures/sovereignty-hubs/${structureId}`,
-				{ cacheMode: 'no-store' }
+				{
+					cacheMode: 'no-store',
+					compatibilityDate: STRUCTURE_ENRICHMENT_COMPATIBILITY_DATE,
+				}
 			)
 		).data
 	}
@@ -1090,7 +1099,10 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		return toEsiResult(
 			await this.esiFetcher.fetchEsi<EsiCorporationSkyhookListingResponse>(
 				`/corporations/${corporationId}/structures/skyhooks${query}`,
-				{ cacheMode: 'no-store' }
+				{
+					cacheMode: 'no-store',
+					compatibilityDate: STRUCTURE_ENRICHMENT_COMPATIBILITY_DATE,
+				}
 			)
 		)
 	}
@@ -1103,7 +1115,10 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		return (
 			await this.esiFetcher.fetchEsi<EsiCorporationSkyhookDetail>(
 				`/corporations/${corporationId}/structures/skyhooks/${structureId}`,
-				{ cacheMode: 'no-store' }
+				{
+					cacheMode: 'no-store',
+					compatibilityDate: STRUCTURE_ENRICHMENT_COMPATIBILITY_DATE,
+				}
 			)
 		).data
 	}

@@ -82,6 +82,59 @@ describe('ESI request helpers', () => {
 		])
 	})
 
+	it('allows request-level compatibility dates and version prefix control', async () => {
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		)
+		const client = new EsiRequestClient({
+			rateLimits: new EsiRateLimitStore(new MemoryKv() as never),
+			fetchImpl: fetchSpy,
+			baseUrl: 'https://esi.test/latest',
+		})
+
+		await client.request({
+			path: '/latest/corporations/123/structures/skyhooks',
+			userKey: 'corporation:123',
+			cacheMode: 'no-store',
+			compatibilityDate: '2026-05-19',
+			includeVersionPath: false,
+			parse: async (response) => response.json() as Promise<{ ok: boolean }>,
+			buildError: () => new Error('unexpected'),
+		})
+
+		const [url, requestInit] = fetchSpy.mock.calls[0] as [string, RequestInit]
+		expect(url).toBe('https://esi.test/corporations/123/structures/skyhooks')
+		expect(new Headers(requestInit.headers).get('X-Compatibility-Date')).toBe('2026-05-19')
+	})
+
+	it('keeps the configured version prefix by default and avoids duplicate prefixes', async () => {
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		)
+		const client = new EsiRequestClient({
+			rateLimits: new EsiRateLimitStore(new MemoryKv() as never),
+			fetchImpl: fetchSpy,
+			baseUrl: 'https://esi.test',
+			versionPath: '/latest',
+		})
+
+		await client.request({
+			path: '/latest/universe/types/34',
+			userKey: 'public',
+			cacheMode: 'no-store',
+			parse: async (response) => response.json() as Promise<{ ok: boolean }>,
+			buildError: () => new Error('unexpected'),
+		})
+
+		expect(fetchSpy.mock.calls[0]?.[0]).toBe('https://esi.test/latest/universe/types/34')
+	})
+
 	it('returns cached responses without fetching when the cache is fresh', async () => {
 		const cache = {
 			getCachedResponse: vi.fn().mockResolvedValue({
