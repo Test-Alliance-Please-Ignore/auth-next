@@ -28,6 +28,7 @@ import type {
 	SkillPlan,
 	SkillPlanCategory,
 	SkillPlanSummary,
+	SkillPlanVisibilityOptions,
 	Skills,
 } from '@repo/skills'
 import type { Env } from './context'
@@ -623,38 +624,51 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 		return result.length > 0
 	}
 
-	/**
-	 * List published skill plans
-	 * @param categoryId - Optional category ID to filter by
-	 * @param options - Pagination options (limit and offset)
-	 * @returns Paginated list of published skill plans
-	 */
+	/** List published plans for callers that do not need private visibility. */
 	async listPublishedPlans(
 		categoryId?: string,
 		options?: PaginationOptions
 	): Promise<PaginatedResult<SkillPlanSummary>> {
+		return this.listVisiblePlans({ ...options, categoryId })
+	}
+
+	/**
+	 * List plans using the visibility boundary supplied by the API layer.
+	 * The DO does not resolve users or group memberships; it only applies the
+	 * resulting maintainer IDs and the site-admin all-plans flag to SQL.
+	 */
+	async listVisiblePlans(
+		options?: SkillPlanVisibilityOptions
+	): Promise<PaginatedResult<SkillPlanSummary>> {
 		const limit = options?.limit ?? 50
 		const offset = options?.offset ?? 0
-
-		// Get total count first
-		const countQuery = sql`
-			SELECT COUNT(DISTINCT sp.id)::int as total
-			FROM ${skillPlans} sp
-			WHERE sp.is_published = true
-			${
-				categoryId
-					? sql`AND EXISTS (
+		const categoryId = options?.categoryId
+		const maintainerIds = options?.maintainerIds ?? []
+		const maintainerCondition =
+			maintainerIds.length > 0
+				? sql` OR sp.maintainer_id IN (${sql.join(
+						maintainerIds.map((id) => sql`${id}`),
+						sql`, `
+					)})`
+				: sql``
+		const visibilityCondition = options?.includeAll
+			? sql``
+			: sql`AND (sp.is_published = true ${maintainerCondition})`
+		const categoryCondition = categoryId
+			? sql`AND EXISTS (
 				SELECT 1 FROM ${skillPlanCategoryMappings} cm2
 				WHERE cm2.plan_id = sp.id AND cm2.category_id = ${categoryId}
 			)`
-					: sql``
-			}
+			: sql``
+
+		const countQuery = sql`
+			SELECT COUNT(DISTINCT sp.id)::int as total
+			FROM ${skillPlans} sp
+			WHERE true ${visibilityCondition} ${categoryCondition}
 		`
 		const countResult = await this.db.execute(countQuery)
 		const total = (countResult.rows[0] as any)?.total || 0
 
-		// Build the SQL query with aggregation to avoid N+1 queries
-		// This query performs LEFT JOINs and aggregates data in a single database roundtrip
 		const query = sql`
 			SELECT
 				sp.id,
@@ -682,15 +696,7 @@ export class SkillsDO extends DurableObject<Env, {}> implements Skills {
 			LEFT JOIN ${skillPlanSkills} sps ON sp.id = sps.plan_id
 			LEFT JOIN ${skillPlanCategoryMappings} cm ON sp.id = cm.plan_id
 			LEFT JOIN ${skillPlanCategories} c ON cm.category_id = c.id
-			WHERE sp.is_published = true
-			${
-				categoryId
-					? sql`AND EXISTS (
-				SELECT 1 FROM ${skillPlanCategoryMappings} cm2
-				WHERE cm2.plan_id = sp.id AND cm2.category_id = ${categoryId}
-			)`
-					: sql``
-			}
+			WHERE true ${visibilityCondition} ${categoryCondition}
 			GROUP BY sp.id
 			ORDER BY sp.updated_at DESC
 			LIMIT ${limit}

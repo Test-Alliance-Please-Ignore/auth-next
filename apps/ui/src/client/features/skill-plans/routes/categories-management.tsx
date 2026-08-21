@@ -1,6 +1,6 @@
-import { Edit2, Plus, Settings, Trash2 } from 'lucide-react'
+import { ArrowLeft, Edit2, Plus, Settings, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { Navigate } from 'react-router'
+import { Link, Navigate } from 'react-router'
 
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
@@ -118,6 +118,14 @@ export default function CategoriesManagement() {
 			<PageHeader
 				title="Manage Categories"
 				description="Create and manage categories for organizing skill plans"
+				action={
+					<Button variant="ghost" size="sm" asChild>
+						<Link to="/skill-plans">
+							<ArrowLeft className="h-4 w-4" />
+							Back to Plans
+						</Link>
+					</Button>
+				}
 			/>
 
 			<Section>

@@ -8,6 +8,14 @@ export interface PaginationOptions {
 	offset?: number
 }
 
+export interface SkillPlanVisibilityOptions extends PaginationOptions {
+	categoryId?: string
+	/** Include every plan. This is reserved for site-admin callers. */
+	includeAll?: boolean
+	/** Include unpublished plans maintained by any of these identifiers. */
+	maintainerIds?: string[]
+}
+
 /**
  * Paginated result wrapper
  */

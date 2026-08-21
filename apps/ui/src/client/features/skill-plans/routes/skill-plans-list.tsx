@@ -1,6 +1,6 @@
 import { useQueries } from '@tanstack/react-query'
 import { Plus, Search, Settings } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 
 import { Button } from '../../../components/ui/button'
@@ -48,22 +48,12 @@ export default function SkillPlansList() {
 	const canEditSkillPlans =
 		!!user && (canCreatePlans || canManageCategories || hasPermission('urn:skill-plans:manage-all'))
 	const [filters, setFilters] = useState<SkillPlansFilter>({
-		published: true, // Default to published plans
+		published: undefined, // The backend limits this to statuses the user may see.
 		search: '',
 		categoryId: undefined,
 		maintainer: 'all',
 	})
 	const [selectedCharacterId, setSelectedCharacterId] = useState<string>('all')
-
-	useEffect(() => {
-		if (!canEditSkillPlans) {
-			setFilters((prev) => ({
-				...prev,
-				published: true,
-				myPlansOnly: false,
-			}))
-		}
-	}, [canEditSkillPlans])
 
 	const { data: plansResponse, isLoading: plansLoading } = useSkillPlans({
 		categoryId: filters.categoryId,
@@ -112,7 +102,9 @@ export default function SkillPlansList() {
 	// Filter plans client-side because backend list endpoint only supports category filtering
 	const filteredPlans = useMemo(() => {
 		return mergedPlans.filter((plan) => {
-			if (!canEditSkillPlans && !plan.isPublished) {
+			// Draft visibility is decided by the backend. Keep only a defensive
+			// client-side guard for responses that do not grant modification access.
+			if (!plan.isPublished && !plan.canModify) {
 				return false
 			}
 
@@ -157,7 +149,6 @@ export default function SkillPlansList() {
 			return `${type}:${plan.maintainerId}` === filters.maintainer
 		})
 	}, [
-		canEditSkillPlans,
 		filters.categoryId,
 		filters.maintainer,
 		filters.myPlansOnly,
@@ -168,6 +159,8 @@ export default function SkillPlansList() {
 	])
 
 	const totalPlans = mergedPlans.length
+	const showPublicationState =
+		canEditSkillPlans || mergedPlans.some((plan) => plan.canModify && !plan.isPublished)
 
 	// Group filtered plans by category
 	const groupedPlans = useMemo(() => {
@@ -469,7 +462,7 @@ export default function SkillPlansList() {
 													characterReadiness={readinessByPlanId.get(plan.id)}
 													hasNoSkills={readinessByPlanId.get(plan.id)?.hasNoSkills || false}
 													isReadinessLoading={readinessLoadingByPlanId.get(plan.id) || false}
-													showPublicationState={canEditSkillPlans}
+													showPublicationState={showPublicationState}
 													readinessIndicator={readinessIndicatorByPlanId.get(plan.id)}
 												/>
 											))}
