@@ -19,6 +19,7 @@ import type {
 	SkillPlan,
 	SkillPlanCategory,
 	SkillPlanSummary,
+	SkillPlanVisibilityOptions,
 } from './types'
 
 export type {
@@ -36,6 +37,7 @@ export type {
 	SkillPlanCategory,
 	SkillPlanSkill,
 	SkillPlanSummary,
+	SkillPlanVisibilityOptions,
 } from './types'
 
 /**
@@ -144,6 +146,13 @@ export interface Skills extends DurableObject {
 		categoryId?: string,
 		options?: PaginationOptions
 	): Promise<PaginatedResult<SkillPlanSummary>>
+
+	/**
+	 * List plans visible to a caller. Published plans are always included;
+	 * unpublished plans are included only when maintained by one of the supplied
+	 * identifiers, unless includeAll is explicitly enabled for site admins.
+	 */
+	listVisiblePlans(options?: SkillPlanVisibilityOptions): Promise<PaginatedResult<SkillPlanSummary>>
 
 	/**
 	 * List skill plans by owner

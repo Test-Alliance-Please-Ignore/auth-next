@@ -32,8 +32,13 @@ async function hasSkillPlanPermission(
 export async function canModifyPlan(
 	plan: PlanForAuth,
 	userId: string,
-	env: GroupsEnv
+	env: GroupsEnv,
+	isSiteAdmin = false
 ): Promise<boolean> {
+	if (isSiteAdmin) {
+		return true
+	}
+
 	// Global override: users with manage-all can modify any plan.
 	if (await hasSkillPlanPermission(env, userId, 'urn:skill-plans:manage-all')) {
 		return true
@@ -61,10 +66,11 @@ export async function canModifyPlan(
 export async function canDeletePlan(
 	plan: PlanForAuth,
 	userId: string,
-	env: GroupsEnv
+	env: GroupsEnv,
+	isSiteAdmin = false
 ): Promise<boolean> {
 	// Maintainers and users with manage-all can delete.
-	return canModifyPlan(plan, userId, env)
+	return canModifyPlan(plan, userId, env, isSiteAdmin)
 }
 
 /**
@@ -75,8 +81,18 @@ export async function canDeletePlan(
 export async function canViewPlan(
 	plan: PlanForAuth,
 	userId: string,
-	env: GroupsEnv
+	env: GroupsEnv,
+	isSiteAdmin = false
 ): Promise<boolean> {
+	if (isSiteAdmin) {
+		return true
+	}
+
+	// The global management permission includes unpublished-plan visibility.
+	if (await hasSkillPlanPermission(env, userId, 'urn:skill-plans:manage-all')) {
+		return true
+	}
+
 	// Published plans are visible to all alliance members
 	if (plan.isPublished) {
 		return true

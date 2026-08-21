@@ -238,40 +238,51 @@ const skillPlansRoutes = new Hono<App>()
 
 		try {
 			if (myPlans && user.mainCharacterId) {
-				// Get plans maintained by the user
-				const result = await skillsStub.listPlansByOwner(user.mainCharacterId, { limit, offset })
-				return c.json(result)
-			} else {
-				// Get published plans, optionally filtered by category
-				const result = await skillsStub.listPublishedPlans(categoryId, { limit, offset })
-				const db = createDb(c.env.DATABASE_URL)
-
-				// Add permission flags and maintainer name for each plan
-				const plansWithPermissions = await Promise.all(
-					result.items.map(async (plan) => {
-						const canModify = await canModifyPlan(plan, user.id, c.env)
-						const canDelete = await canDeletePlan(plan, user.id, c.env)
-						const maintainerType = plan.maintainerId?.startsWith('group:')
-							? ('group' as const)
-							: ('user' as const)
-						const maintainerName = plan.maintainerId
-							? await resolveMaintainerName(plan.maintainerId, user.id, c.env, db)
-							: 'System'
-						return {
-							...plan,
-							canModify,
-							canDelete,
-							maintainerType,
-							maintainerName,
-						}
-					})
-				)
-
-				return c.json({
-					...result,
-					items: plansWithPermissions,
-				})
+				return c.json(await skillsStub.listPlansByOwner(user.mainCharacterId, { limit, offset }))
 			}
+
+			const canManageAll = await hasSkillPlanPermission(c.env, user, 'urn:skill-plans:manage-all')
+			const memberships = canManageAll ? [] : await getCachedUserMemberships(c.env, user.id)
+			const maintainerIds = [
+				user.id,
+				...memberships.map((membership) => `group:${membership.groupId}`),
+			]
+
+			// The Skills DO applies the visibility predicate before pagination. This
+			// prevents manageable drafts from being lost behind a published-only page.
+			const result = await skillsStub.listVisiblePlans({
+				categoryId,
+				limit,
+				offset,
+				includeAll: canManageAll,
+				maintainerIds,
+			})
+			const db = createDb(c.env.DATABASE_URL)
+
+			const plansWithPermissions = await Promise.all(
+				result.items.map(async (plan) => {
+					const canModify = await canModifyPlan(plan, user.id, c.env, user.is_admin)
+					const canDelete = await canDeletePlan(plan, user.id, c.env, user.is_admin)
+					const maintainerType = plan.maintainerId?.startsWith('group:')
+						? ('group' as const)
+						: ('user' as const)
+					const maintainerName = plan.maintainerId
+						? await resolveMaintainerName(plan.maintainerId, user.id, c.env, db)
+						: 'System'
+					return {
+						...plan,
+						canModify,
+						canDelete,
+						maintainerType,
+						maintainerName,
+					}
+				})
+			)
+
+			return c.json({
+				...result,
+				items: plansWithPermissions,
+			})
 		} catch (error) {
 			logger.error('Failed to list skill plans:', error)
 			return c.json({ error: 'Failed to list skill plans' }, 500)
@@ -332,10 +343,11 @@ const skillPlansRoutes = new Hono<App>()
 					const maintainerName = plan.maintainerId
 						? await resolveMaintainerName(plan.maintainerId, user.id, c.env, db)
 						: 'System'
+					const canModify = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 					return {
 						...plan,
-						canModify: true, // User can modify plans they maintain
-						canDelete: true, // User can delete plans they maintain
+						canModify,
+						canDelete: await canDeletePlan(plan, user.id, c.env, user.is_admin),
 						maintainerType,
 						maintainerName,
 					}
@@ -372,7 +384,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check view permission (same as viewing the plan)
-		const allowed = await canViewPlan(plan, user.id, c.env)
+		const allowed = await canViewPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -422,7 +434,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check if user can view the plan (if private)
-		const canView = await canViewPlan(plan, user.id, c.env)
+		const canView = await canViewPlan(plan, user.id, c.env, user.is_admin)
 		if (!canView) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -524,7 +536,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check if user can view the plan (if private)
-		const canView = await canViewPlan(plan, user.id, c.env)
+		const canView = await canViewPlan(plan, user.id, c.env, user.is_admin)
 		if (!canView) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -621,14 +633,14 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check view permission
-		const allowed = await canViewPlan(plan, user.id, c.env)
+		const allowed = await canViewPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
 
 		// Add permission flags for the UI
-		const canModify = await canModifyPlan(plan, user.id, c.env)
-		const canDelete = await canDeletePlan(plan, user.id, c.env)
+		const canModify = await canModifyPlan(plan, user.id, c.env, user.is_admin)
+		const canDelete = await canDeletePlan(plan, user.id, c.env, user.is_admin)
 
 		// Add maintainer name for display
 		const db = createDb(c.env.DATABASE_URL)
@@ -723,7 +735,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -780,7 +792,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check deletion permission
-		const allowed = await canDeletePlan(plan, user.id, c.env)
+		const allowed = await canDeletePlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -819,7 +831,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -896,7 +908,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1013,7 +1025,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1091,7 +1103,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1134,7 +1146,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1175,7 +1187,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check modification permission
-		const allowed = await canModifyPlan(plan, user.id, c.env)
+		const allowed = await canModifyPlan(plan, user.id, c.env, user.is_admin)
 		if (!allowed) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
@@ -1241,7 +1253,7 @@ const skillPlansRoutes = new Hono<App>()
 		}
 
 		// Check if user can view the plan (if private)
-		const canView = await canViewPlan(plan, user.id, c.env)
+		const canView = await canViewPlan(plan, user.id, c.env, user.is_admin)
 		if (!canView) {
 			return c.json({ error: 'Permission denied' }, 403)
 		}
