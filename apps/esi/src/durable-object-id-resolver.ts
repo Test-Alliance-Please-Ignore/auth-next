@@ -3,7 +3,6 @@ import { DurableObject } from 'cloudflare:workers'
 import { getStub } from '@repo/do-utils'
 import {
 	EsiRequestClient,
-	getEsiInstanceForCharacter,
 	getIdClassification,
 	isStructureId,
 	normalizeEntityType,
@@ -647,26 +646,21 @@ export class EsiTypeResolverDO extends DurableObject<Env> implements EsiTypeReso
 	}
 
 	/**
-	 * Resolves structure IDs to names via authenticated ESI calls or cache
-	 * If character ID is provided, attempts authenticated fetch
-	 * Falls back to cache, then to default message if unavailable
+	 * Resolves structure IDs from the shared entity cache.
+	 *
+	 * Authenticated structure hydration belongs to the caller's domain workflow.
+	 * Keeping it out of this generic resolver avoids a nested resolver -> ESI DO
+	 * -> token-store DO chain, while still allowing dedicated structure workflows
+	 * to use their authenticated ESI client directly.
 	 * @param structureIds - Array of structure IDs to resolve
-	 * @param withCharacterId - Optional character ID for authenticated structure lookups
 	 * @returns Map of structure ID to display name
 	 */
-	private async resolveStructureNames(
-		structureIds: string[],
-		withCharacterId?: string
-	): Promise<Record<string, string>> {
+	private async resolveStructureNames(structureIds: string[]): Promise<Record<string, string>> {
 		if (structureIds.length === 0) {
 			return {}
 		}
 
 		const result: Record<string, string> = {}
-
-		const esiStub = withCharacterId
-			? getEsiInstanceForCharacter(this.env.ESI, withCharacterId)
-			: null
 
 		await forEachWithConcurrency(
 			structureIds,
@@ -679,31 +673,7 @@ export class EsiTypeResolverDO extends DurableObject<Env> implements EsiTypeReso
 					return
 				}
 
-				// If character ID is provided, try authenticated fetch
-				if (withCharacterId && esiStub) {
-					try {
-						const structureInfo = await esiStub.fetchStructureInfo(withCharacterId, structureId)
-						if (structureInfo) {
-							const structureName = structureInfo.name
-							result[structureId] = structureName
-							// Cache the result
-							const cacheKey = this.getEntityCacheKey(structureId)
-							await this.setLocalEntityName(cacheKey, structureName)
-							await this.setGlobalEntityName(cacheKey, structureName)
-							return
-						}
-					} catch (error) {
-						logger
-							.withTags({
-								structureId,
-								characterId: withCharacterId,
-								error: error instanceof Error ? error.message : String(error),
-							})
-							.warn('Failed to fetch structure info')
-					}
-				}
-
-				// If not cached and no character or fetch failed, return default message
+				// Private structure names are hydrated by dedicated domain workflows.
 				result[structureId] = 'Structure (Unknown or no access)'
 			}
 		)
@@ -936,7 +906,7 @@ export class EsiTypeResolverDO extends DurableObject<Env> implements EsiTypeReso
 		}
 	}
 
-	async resolveIds(ids: string[], withCharacterId?: string): Promise<Record<string, string>> {
+	async resolveIds(ids: string[]): Promise<Record<string, string>> {
 		if (ids.length === 0) {
 			return {}
 		}
@@ -1051,10 +1021,7 @@ export class EsiTypeResolverDO extends DurableObject<Env> implements EsiTypeReso
 		Object.assign(result, fetched)
 
 		// Resolve structure names
-		const structureNames = await this.resolveStructureNames(
-			Array.from(structureIds),
-			withCharacterId
-		)
+		const structureNames = await this.resolveStructureNames(Array.from(structureIds))
 		Object.assign(result, structureNames)
 
 		return result

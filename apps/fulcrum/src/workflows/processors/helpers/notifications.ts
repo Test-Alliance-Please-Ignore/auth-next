@@ -7,6 +7,7 @@ import type {
     CharacterAffiliationDisplayCandidate,
 } from './character-affiliation'
 import type { EntityLinkCoordinator } from './entity-links'
+import type { StructureResolutionCoordinator } from './structure-resolution'
 import type { CoreBinding } from '../../../types/core-binding'
 import { logger } from '@repo/hono-helpers'
 
@@ -159,6 +160,7 @@ export async function enrichNotifications(
     characterId?: string,
     affiliationCoordinator?: CharacterAffiliationCoordinator,
     entityLinkCoordinator?: EntityLinkCoordinator,
+    structureResolutionCoordinator?: StructureResolutionCoordinator,
 ): Promise<EnrichedNotificationData> {
     if (notifications.length === 0) {
         return { notifications: [], types: [] }
@@ -181,15 +183,42 @@ export async function enrichNotifications(
         idsToResolve.add(id)
     }
 
+    const structureIds = parsed
+        .flatMap((notification) =>
+            Object.entries(notification.parsedText ?? {})
+                .filter(([key, value]) => key.toLowerCase().includes('structureid') && isPlausibleId(value))
+                .map(([, value]) => value)
+        )
+        .filter((id, index, values) => values.indexOf(id) === index)
+
     // Batch-resolve all IDs in one call
     let nameMap: Record<string, string> = {}
     if (idsToResolve.size > 0) {
         try {
             const typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
-            nameMap = await typeResolver.resolveIds(Array.from(idsToResolve), characterId)
+            nameMap = await typeResolver.resolveIds(Array.from(idsToResolve))
         } catch (error) {
             logger.error('Failed to resolve IDs for notifications:', error)
         }
+    }
+
+    if (structureResolutionCoordinator && characterId && structureIds.length > 0) {
+        const knownStructureNames = Object.fromEntries(
+            structureIds
+                .filter((structureId) => {
+                    const name = nameMap[structureId]
+                    return Boolean(name && name !== 'Structure (Unknown or no access)')
+                })
+                .map((structureId) => [structureId, nameMap[structureId]])
+        )
+        const structureNames = await structureResolutionCoordinator.resolveStructureNames(
+            { ESI: env.ESI },
+            characterId,
+            structureIds,
+            'enrichNotifications',
+            knownStructureNames,
+        )
+        Object.assign(nameMap, structureNames)
     }
 
     const senderDisplayNameMap =

@@ -116,7 +116,7 @@ export async function findFittedShips(
 		}
 	}
 
-	const locationNameMap = await typeResolver.resolveIds([...stationLocationIds], characterId)
+	const locationNameMap = await typeResolver.resolveIds([...stationLocationIds])
 	const structureNameMap =
 		structureLocationIds.size > 0
 			? await (
@@ -275,7 +275,7 @@ export async function findShipItems(
 			? []
 			: [resolvedLocation?.locationId ?? ship.location_id]
 	const idsToResolve = Array.from(new Set([...allTypeIds, ...locationIds]))
-	const nameMap = await stub.resolveIds(idsToResolve, characterId)
+	const nameMap = await stub.resolveIds(idsToResolve)
 	// Ensure shipName is always a string - fallback to typeId if resolution failed
 	const shipName = nameMap[ship.type_id] || ship.type_id
 	const locationId = resolvedLocation?.locationId ?? ship.location_id

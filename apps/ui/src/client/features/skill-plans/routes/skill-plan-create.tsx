@@ -1,5 +1,7 @@
-import { Navigate, useNavigate } from 'react-router'
+import { ArrowLeft } from 'lucide-react'
+import { Link, Navigate, useNavigate } from 'react-router'
 
+import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { Container } from '../../../components/ui/container'
 import { LoadingPage } from '../../../components/ui/loading'
@@ -55,6 +57,14 @@ export default function SkillPlanCreate() {
 			<PageHeader
 				title="Create Skill Plan"
 				description="Create a new skill training plan for EVE Online"
+				action={
+					<Button variant="ghost" size="sm" asChild>
+						<Link to="/skill-plans">
+							<ArrowLeft className="h-4 w-4" />
+							Back to Plans
+						</Link>
+					</Button>
+				}
 			/>
 
 			<Section>

@@ -65,7 +65,7 @@ export async function enrichMarketOrders(
 	})
 
 	const typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
-	const nameMap = await typeResolver.resolveIds(idsToResolve, characterId)
+	const nameMap = await typeResolver.resolveIds(idsToResolve)
 
 	const typeMetadataMap: Record<
 		string,

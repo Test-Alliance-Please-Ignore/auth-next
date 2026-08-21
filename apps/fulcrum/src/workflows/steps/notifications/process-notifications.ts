@@ -2,6 +2,7 @@ import { retrieveData, storeOrReturn, type StepResult } from '../../utils/storag
 import { enrichNotifications } from '../../processors/helpers/notifications'
 import type { CharacterAffiliationCoordinator } from '../../processors/helpers/character-affiliation'
 import type { EntityLinkCoordinator } from '../../processors/helpers/entity-links'
+import type { StructureResolutionCoordinator } from '../../processors/helpers/structure-resolution'
 import type { CoreBinding } from '../../../types/core-binding'
 import type { NotificationFetchResult } from './fetch-notifications'
 import { logger } from '@repo/hono-helpers'
@@ -21,6 +22,7 @@ export async function processNotifications(
     characterId: string,
     affiliationCoordinator?: CharacterAffiliationCoordinator,
     entityLinkCoordinator?: EntityLinkCoordinator,
+    structureResolutionCoordinator?: StructureResolutionCoordinator,
 ): Promise<StepResult> {
     try {
         if (!fetchResult.success) {
@@ -53,6 +55,7 @@ export async function processNotifications(
             characterId,
             affiliationCoordinator,
             entityLinkCoordinator,
+            structureResolutionCoordinator,
         )
 
         logger.log('[processNotifications] Enrichment complete', {
