@@ -99,14 +99,19 @@ export interface TriggerUserRefreshResult {
 	error?: string
 }
 
-export function createUserRefreshWorkflowId(source: string, userId: string): string {
+export function createUserRefreshWorkflowId(
+	source: string,
+	userId: string,
+	now = Date.now(),
+	deduplicate = true
+): string {
 	const normalizedSource = source
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, '-')
 		.replace(/^-+|-+$/g, '')
 	const sourceToken = (normalizedSource || 'unknown').slice(0, 16)
 	const userToken = userId.replace(/-/g, '').slice(0, 12)
-	const timeToken = Date.now().toString(36)
+	const timeToken = deduplicate ? Math.floor(now / THROTTLE_MS).toString(36) : now.toString(36)
 	return `user-refresh-${sourceToken}-${userToken}-${timeToken}`
 }
 
@@ -314,22 +319,47 @@ export async function triggerUserRefreshWorkflow({
 			return { status: 'throttled', triggered: false }
 		}
 
-		await db
-			.update(users)
-			.set({ lastRefreshWorkflowAttempt: new Date() })
-			.where(eq(users.id, userId))
+		const now = Date.now()
+		const workflowId = createUserRefreshWorkflowId(source, userId, now, !bypassThrottle)
+		let instance: { id: string }
+		try {
+			instance = await createWorkflow(env.USER_REFRESH_WORKFLOW, {
+				id: workflowId,
+				params: {
+					userId,
+					source,
+					refreshMode,
+					suppressDiscordRefresh,
+					forceTokenValidation,
+					includeWalletJournal,
+				},
+			})
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			if (!/already exists|already been created|duplicate/i.test(errorMessage)) {
+				throw error
+			}
 
-		const instance = await createWorkflow(env.USER_REFRESH_WORKFLOW, {
-			id: createUserRefreshWorkflowId(source, userId),
-			params: {
+			// A normal trigger may race another request in the same throttle
+			// window. The deterministic workflow ID makes that race harmless.
+			await db
+				.update(users)
+				.set({ lastRefreshWorkflowAttempt: new Date(now) })
+				.where(eq(users.id, userId))
+			logger.info('[WorkflowTrigger] Deduplicated user refresh workflow', {
 				userId,
 				source,
-				refreshMode,
-				suppressDiscordRefresh,
-				forceTokenValidation,
-				includeWalletJournal,
-			},
-		})
+				workflowInstanceId: workflowId,
+			})
+			return { status: 'throttled', triggered: false }
+		}
+
+		// Commit the throttle watermark only after the workflow service accepts
+		// the instance. A failed enqueue must remain retryable.
+		await db
+			.update(users)
+			.set({ lastRefreshWorkflowAttempt: new Date(now) })
+			.where(eq(users.id, userId))
 
 		logger.info('[WorkflowTrigger] Triggered user refresh workflow', {
 			userId,

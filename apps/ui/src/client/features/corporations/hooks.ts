@@ -7,6 +7,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
+
 import { useAuth } from '@/hooks/useAuth'
 
 import { myCorporationsApi } from './api'
@@ -40,6 +42,12 @@ export const corporationKeys = {
 	coverage: () => [...corporationKeys.all, 'coverage'] as const,
 }
 
+function canUseCorporationAccess(
+	user: { is_admin?: boolean; roles?: string[] } | null | undefined
+) {
+	return user?.is_admin === true || user?.roles?.includes(ROLE_CORE_ALLIANCE_MEMBER) === true
+}
+
 // ============================================================================
 // Hooks
 // ============================================================================
@@ -51,13 +59,16 @@ export const corporationKeys = {
 export function useHasCorporationAccess() {
 	const { user } = useAuth()
 	const userId = user?.id ?? null
+	const hasCorporationAccessCapability = canUseCorporationAccess(user)
 
 	return useQuery({
-		queryKey: ['my-corporations', 'has-access', userId],
+		queryKey: ['my-corporations', 'has-access', userId, hasCorporationAccessCapability],
 		queryFn: () => myCorporationsApi.hasAccess(),
 		staleTime: 1000 * 60 * 5, // 5 minutes
 		gcTime: 1000 * 60 * 10, // 10 minutes
-		enabled: userId !== null,
+		// The API is alliance-member scoped. Do not probe it for authenticated
+		// sessions that cannot use the surrounding corporation features.
+		enabled: userId !== null && hasCorporationAccessCapability,
 	})
 }
 
@@ -92,13 +103,14 @@ export function formatCorporationRoleLabel(
 export function useCorporationAccess() {
 	const { user } = useAuth()
 	const userId = user?.id ?? null
+	const hasCorporationAccessCapability = canUseCorporationAccess(user)
 
 	return useQuery<CorporationAccessResult>({
-		queryKey: [...corporationKeys.access(), userId],
+		queryKey: [...corporationKeys.access(), userId, hasCorporationAccessCapability],
 		queryFn: () => myCorporationsApi.checkAccess(),
 		staleTime: 1000 * 60 * 5, // 5 minutes
 		gcTime: 1000 * 60 * 10, // 10 minutes (formerly cacheTime)
-		enabled: userId !== null,
+		enabled: userId !== null && hasCorporationAccessCapability,
 	})
 }
 
@@ -109,13 +121,14 @@ export function useCorporationAccess() {
 export function useCorporationCoverage() {
 	const { user } = useAuth()
 	const userId = user?.id ?? null
+	const hasCorporationAccessCapability = canUseCorporationAccess(user)
 
 	return useQuery({
-		queryKey: [...corporationKeys.coverage(), userId],
+		queryKey: [...corporationKeys.coverage(), userId, hasCorporationAccessCapability],
 		queryFn: () => myCorporationsApi.getCoverage(),
 		staleTime: 10 * 60 * 1000,
 		gcTime: 30 * 60 * 1000,
-		enabled: userId !== null,
+		enabled: userId !== null && hasCorporationAccessCapability,
 	})
 }
 
@@ -125,13 +138,14 @@ export function useCorporationCoverage() {
 export function useMyCorporations() {
 	const { user } = useAuth()
 	const userId = user?.id ?? null
+	const hasCorporationAccessCapability = canUseCorporationAccess(user)
 
 	return useQuery<MyCorporation[]>({
-		queryKey: [...corporationKeys.list(), userId],
+		queryKey: [...corporationKeys.list(), userId, hasCorporationAccessCapability],
 		queryFn: () => myCorporationsApi.getMyCorporations(),
 		staleTime: 1000 * 60 * 2, // 2 minutes
 		gcTime: 1000 * 60 * 5, // 5 minutes
-		enabled: userId !== null,
+		enabled: userId !== null && hasCorporationAccessCapability,
 	})
 }
 

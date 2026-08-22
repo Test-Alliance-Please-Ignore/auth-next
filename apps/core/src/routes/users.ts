@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { and, eq, inArray, or } from '@repo/db-utils'
 import { getStub, withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
@@ -397,122 +398,129 @@ users.post('/me/characters/:characterId/set-primary', async (c) => {
  * Quick check if user has any CEO/director access (for UI navigation).
  * This is a lighter-weight version that just returns true/false.
  */
-users.get('/has-corporation-access', async (c) => {
-	const user = c.get('user')!
-	const db = c.get('db') || createDb(c.env.DATABASE_URL)
+users.get(
+	'/has-corporation-access',
+	requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }),
+	async (c) => {
+		const user = c.get('user')!
+		const db = c.get('db') || createDb(c.env.DATABASE_URL)
 
-	try {
-		// Site admins have access to all corporations
-		if (user.is_admin) {
-			return c.json({ hasAccess: true })
-		}
-
-		// Get all user's characters
-		const characters = await db.query.userCharacters.findMany({
-			where: eq(userCharacters.userId, user.id),
-			columns: {
-				characterId: true,
-				characterName: true,
-				corporationId: true,
-				hasValidToken: true,
-				status: true,
-			},
-		})
-
-		if (!characters.length) {
-			return c.json({ hasAccess: false })
-		}
-
-		// Get all active managed corporations that can be led by the current user.
-		const managedCorps = filterManagedNonNpcCorps(
-			await db.query.managedCorporations.findMany({
-				where: and(
-					eq(managedCorporations.isActive, true),
-					or(
-						eq(managedCorporations.isMemberCorporation, true),
-						eq(managedCorporations.isAltCorp, true),
-						eq(managedCorporations.isSpecialPurpose, true)
-					)
-				),
-			})
-		)
-
-		if (!managedCorps.length) {
-			return c.json({ hasAccess: false })
-		}
-
-		// Fetch corporation IDs for ALL characters (not just first 10)
-		// This ensures we check all managed corporations the user has characters in
-		const charCorpPromises = characters.map(async (character) => {
-			const charStub = getStub<Rpc.Provider<EveCharacterData>>(c.env.EVE_CHARACTER_DATA, 'default')
-			try {
-				return withRpcResult(charStub.getCharacterInfo(character.characterId), (result) =>
-					result ? String(result.corporationId) : null
-				)
-			} catch {
-				return null
-			}
-		})
-
-		const characterCorpIds = await Promise.all(charCorpPromises)
-		const uniqueCorpIds = new Set(characterCorpIds.filter((id) => id !== null))
-
-		// Check if any of these corps are managed and user has a role
-		for (const corpId of uniqueCorpIds) {
-			const managedCorp = managedCorps.find((c) => c.corporationId === corpId)
-			if (managedCorp) {
-				// Found a managed corp - quick check for any role
-				const corpStub = getStub<Rpc.Provider<EveCorporationData>>(
-					c.env.EVE_CORPORATION_DATA,
-					corpId
-				)
-				try {
-					const [corpInfo, directors] = await Promise.all([
-						withRpcResult(corpStub.getCorporationInfo(corpId), (result) =>
-							result ? { ceoId: result.ceoId } : null
-						),
-						withRpcResult(corpStub.getDirectors(corpId), (result) =>
-							result.map((director) => ({ characterId: director.characterId }))
-						),
-					])
-
-					// Check if any character is CEO or director
-					for (const char of characters) {
-						const isCeo = corpInfo && String(corpInfo.ceoId) === char.characterId
-						const matchedDirector = directors.find((d) => d.characterId === char.characterId)
-
-						if (isCeo) {
-							return c.json({ hasAccess: true })
-						}
-						if (matchedDirector) {
-							return c.json({ hasAccess: true })
-						}
-					}
-				} catch {
-					continue
-				}
-			}
-		}
-
-		// Also check if user has any HR roles
-		const hrStub = getStub<Rpc.Provider<Hr>>(c.env.HR, 'default')
 		try {
-			const hrCorpIds = await withRpcResult(hrStub.getUserHrCorporations(user.id), (result) => [
-				...result,
-			])
-			if (hrCorpIds.length > 0) {
+			// Site admins have access to all corporations
+			if (user.is_admin) {
 				return c.json({ hasAccess: true })
 			}
-		} catch {
-			// Ignore HR check failures
-		}
 
-		return c.json({ hasAccess: false })
-	} catch (error) {
-		logger.error('Error checking corporation access:', error)
-		return c.json({ hasAccess: false })
+			// Get all user's characters
+			const characters = await db.query.userCharacters.findMany({
+				where: eq(userCharacters.userId, user.id),
+				columns: {
+					characterId: true,
+					characterName: true,
+					corporationId: true,
+					hasValidToken: true,
+					status: true,
+				},
+			})
+
+			if (!characters.length) {
+				return c.json({ hasAccess: false })
+			}
+
+			// Get all active managed corporations that can be led by the current user.
+			const managedCorps = filterManagedNonNpcCorps(
+				await db.query.managedCorporations.findMany({
+					where: and(
+						eq(managedCorporations.isActive, true),
+						or(
+							eq(managedCorporations.isMemberCorporation, true),
+							eq(managedCorporations.isAltCorp, true),
+							eq(managedCorporations.isSpecialPurpose, true)
+						)
+					),
+				})
+			)
+
+			if (!managedCorps.length) {
+				return c.json({ hasAccess: false })
+			}
+
+			// Fetch corporation IDs for ALL characters (not just first 10)
+			// This ensures we check all managed corporations the user has characters in
+			const charCorpPromises = characters.map(async (character) => {
+				const charStub = getStub<Rpc.Provider<EveCharacterData>>(
+					c.env.EVE_CHARACTER_DATA,
+					'default'
+				)
+				try {
+					return withRpcResult(charStub.getCharacterInfo(character.characterId), (result) =>
+						result ? String(result.corporationId) : null
+					)
+				} catch {
+					return null
+				}
+			})
+
+			const characterCorpIds = await Promise.all(charCorpPromises)
+			const uniqueCorpIds = new Set(characterCorpIds.filter((id) => id !== null))
+
+			// Check if any of these corps are managed and user has a role
+			for (const corpId of uniqueCorpIds) {
+				const managedCorp = managedCorps.find((c) => c.corporationId === corpId)
+				if (managedCorp) {
+					// Found a managed corp - quick check for any role
+					const corpStub = getStub<Rpc.Provider<EveCorporationData>>(
+						c.env.EVE_CORPORATION_DATA,
+						corpId
+					)
+					try {
+						const [corpInfo, directors] = await Promise.all([
+							withRpcResult(corpStub.getCorporationInfo(corpId), (result) =>
+								result ? { ceoId: result.ceoId } : null
+							),
+							withRpcResult(corpStub.getDirectors(corpId), (result) =>
+								result.map((director) => ({ characterId: director.characterId }))
+							),
+						])
+
+						// Check if any character is CEO or director
+						for (const char of characters) {
+							const isCeo = corpInfo && String(corpInfo.ceoId) === char.characterId
+							const matchedDirector = directors.find((d) => d.characterId === char.characterId)
+
+							if (isCeo) {
+								return c.json({ hasAccess: true })
+							}
+							if (matchedDirector) {
+								return c.json({ hasAccess: true })
+							}
+						}
+					} catch {
+						continue
+					}
+				}
+			}
+
+			// Also check if user has any HR roles
+			const hrStub = getStub<Rpc.Provider<Hr>>(c.env.HR, 'default')
+			try {
+				const hrCorpIds = await withRpcResult(hrStub.getUserHrCorporations(user.id), (result) => [
+					...result,
+				])
+				if (hrCorpIds.length > 0) {
+					return c.json({ hasAccess: true })
+				}
+			} catch {
+				// Ignore HR check failures
+			}
+
+			return c.json({ hasAccess: false })
+		} catch (error) {
+			logger.error('Error checking corporation access:', error)
+			return c.json({ hasAccess: false })
+		}
 	}
-})
+)
 
 /**
  * GET /users/corporation-access
@@ -521,7 +529,7 @@ users.get('/has-corporation-access', async (c) => {
  * Returns list of corporations where user has leadership roles.
  * This is the full check that returns all accessible corporations.
  */
-users.get('/corporation-access', async (c) => {
+users.get('/corporation-access', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
 
@@ -852,7 +860,7 @@ users.get('/corporation-access', async (c) => {
  * Access is resolved independently from the statistics, while each
  * corporation's counts are cached for reuse by other authorized users.
  */
-users.get('/corporation-coverage', async (c) => {
+users.get('/corporation-coverage', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
 
@@ -992,7 +1000,7 @@ users.get('/corporation-coverage', async (c) => {
  * Optimized to eliminate N+1 queries and parallelize all I/O operations.
  * Cached for 5 minutes to improve performance.
  */
-users.get('/my-corporations', async (c) => {
+users.get('/my-corporations', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), async (c) => {
 	const user = c.get('user')!
 	const db = c.get('db') || createDb(c.env.DATABASE_URL)
 

@@ -483,21 +483,26 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		}
 
 		const canReadTaxFeature =
-			isSiteAdmin ||
-			permissions.some(
-				(permission) => extractCorporationIdFromTaxViewerScopedUrn(permission.urn) !== null
-			) ||
-			hasAnyPermission('urn:tax:auditor', 'urn:tax:admin') ||
-			!!corporationAccess?.hasAccess
+			canSeeAllianceMemberNav &&
+			(isSiteAdmin ||
+				permissions.some(
+					(permission) => extractCorporationIdFromTaxViewerScopedUrn(permission.urn) !== null
+				) ||
+				hasAnyPermission('urn:tax:auditor', 'urn:tax:admin') ||
+				!!corporationAccess?.hasAccess)
 		const canReadScopedTaxReports =
-			permissions.some(
+			canSeeAllianceMemberNav &&
+			(permissions.some(
 				(permission) => extractCorporationIdFromTaxViewerScopedUrn(permission.urn) !== null
 			) ||
-			(leadershipCorporationAccess?.corporations ?? []).some(
-				(corporation) => corporation.userRole === 'CEO' || corporation.userRole === 'Director'
-			)
-		const canAuditTaxFeature = isSiteAdmin || hasAnyPermission('urn:tax:auditor', 'urn:tax:admin')
-		const canManageTaxFeature = isSiteAdmin || hasAnyPermission('urn:tax:admin')
+				(leadershipCorporationAccess?.corporations ?? []).some(
+					(corporation) => corporation.userRole === 'CEO' || corporation.userRole === 'Director'
+				))
+		const canAuditTaxFeature =
+			canSeeAllianceMemberNav &&
+			(isSiteAdmin || hasAnyPermission('urn:tax:auditor', 'urn:tax:admin'))
+		const canManageTaxFeature =
+			canSeeAllianceMemberNav && (isSiteAdmin || hasAnyPermission('urn:tax:admin'))
 		const { data: openTaxAlerts = [] } = useTaxAlerts({
 			status: 'open',
 			limit: 200,

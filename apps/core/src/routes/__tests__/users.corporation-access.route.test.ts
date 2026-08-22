@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 
 import { hasHrAuditorPermission } from '../../lib/hr-access'
@@ -48,7 +49,7 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 		sessionId: 'session-1',
 		characters: [],
 		is_admin: false,
-		roles: [],
+		roles: [ROLE_CORE_ALLIANCE_MEMBER],
 		discordUserId: null,
 		...overrides,
 	}
@@ -251,6 +252,15 @@ describe('users corporation access', () => {
 		expect(hrStub.getUserRoles).toHaveBeenCalledWith('user-1')
 		expect(corpStub.getMembers).not.toHaveBeenCalled()
 		expect(charStub.getCharacterInfo).not.toHaveBeenCalled()
+	})
+
+	it('denies corporation access endpoints without the alliance-member role', async () => {
+		const app = createApp({ user: makeUser({ roles: [] }), db: dbStub })
+
+		const response = await app.request('/api/users/corporation-access', {}, env)
+
+		expect(response.status).toBe(403)
+		expect(dbStub.query.managedCorporations.findMany).not.toHaveBeenCalled()
 	})
 
 	it('disposes RPC results for the full corporation access response', async () => {
