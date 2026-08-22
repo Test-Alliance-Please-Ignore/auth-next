@@ -283,11 +283,21 @@ async function triggerDirectorHealthRecheckAfterTokenReauth(
 	// the bounded user-refresh workflow performs the next public refresh.
 	let corporationId = hydratedCorporationId ?? null
 	if (!corporationId) {
-		const storedCharacter = await db.query.userCharacters?.findFirst?.({
-			where: eq(userCharacters.characterId, characterId),
-			columns: { corporationId: true },
-		})
-		corporationId = storedCharacter?.corporationId ?? null
+		try {
+			const storedCharacter = await db.query.userCharacters?.findFirst?.({
+				where: eq(userCharacters.characterId, characterId),
+				columns: { corporationId: true },
+			})
+			corporationId = storedCharacter?.corporationId ?? null
+		} catch (error) {
+			// Director verification is ancillary to authentication. A transient
+			// database failure must not turn a successful SSO exchange into a
+			// failed login; the next bounded refresh/recheck can try again.
+			logger.warn('[Auth] Failed to load stored affiliation for director health recheck', {
+				characterId,
+				error: toErrorMessage(error),
+			})
+		}
 	}
 
 	if (!corporationId || corporationId === '1000001') {
