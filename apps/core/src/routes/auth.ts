@@ -5,28 +5,23 @@ import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { assertEveCharacterId } from '@repo/eve-types'
 import { captureException, logger, toErrorMessage } from '@repo/hono-helpers'
-import { createWorkflow } from '@repo/workflow-utils'
 
 import { createDb } from '../db'
-import {
-	managedCorporations,
-	mumbleTempops,
-	oauthStates,
-	userCharacters,
-	users,
-} from '../db/schema'
+import { mumbleTempops, oauthStates, userCharacters, users } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
 import { getDiscordStatus } from '../lib/discord-helpers'
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { extractClientIp, recordUserIpAddress } from '../lib/ip-tracking'
-import { createUserRefreshWorkflowId } from '../lib/workflow-triggers'
+import {
+	triggerDirectorHealthRecheckWorkflow,
+	triggerUserRefreshWorkflow,
+} from '../lib/workflow-triggers'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
 import { AuthService } from '../services/auth.service'
 import { hydrateCharacterAffiliation } from '../services/character-affiliation-hydration.service'
 import { reconcileUserCoreMembershipRoles } from '../services/core-role-reconciliation.service'
 import { autoRegisterDirectorCorporation } from '../services/corporation-auto-register.service'
-import { recheckDirectorHealthAfterTokenReauth } from '../services/director-health-recheck.service'
 import { storeCredentialHandoff } from '../services/mumble-tempop.service'
 import { provisionTempopGuest } from '../services/mumble.service'
 import { SessionService } from '../services/session.service'
@@ -34,16 +29,11 @@ import { CharacterAlreadyClaimedError, UserService } from '../services/user.serv
 
 import type { Context } from 'hono'
 import type { RequestMetadata, UserProfileDTO } from '@repo/core'
-import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { BlacklistEntry, Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
 import type { App } from '../context'
 import type { ClaimMainOAuthMetadata, OAuthStateMetadata, TempopOAuthMetadata } from '../db/schema'
-import type {
-	DirectorHealthRecheckStub,
-	ManagedCorporationSummary,
-} from '../services/director-health-recheck.service'
 
 /**
  * Authentication routes
@@ -242,9 +232,10 @@ async function hydrateAndReconcileUserRoles(
 	db: ReturnType<typeof createDb>,
 	userId: string,
 	characterId: string
-): Promise<void> {
+): Promise<Awaited<ReturnType<typeof hydrateCharacterAffiliation>> | null> {
+	let affiliation: Awaited<ReturnType<typeof hydrateCharacterAffiliation>> | null = null
 	try {
-		await hydrateCharacterAffiliation({
+		affiliation = await hydrateCharacterAffiliation({
 			db,
 			env: c.env,
 			characterId,
@@ -252,7 +243,7 @@ async function hydrateAndReconcileUserRoles(
 			executionCtx: c.executionCtx,
 		})
 	} catch (error) {
-		logger.error('[Auth] Failed to hydrate character affiliation at link-time', {
+		logger.error('[Auth] Failed to hydrate character affiliation during auth flow', {
 			userId,
 			characterId,
 			error: toErrorMessage(error),
@@ -276,89 +267,54 @@ async function hydrateAndReconcileUserRoles(
 			error: toErrorMessage(error),
 		})
 	}
+
+	return affiliation
 }
 
-async function scheduleDirectorHealthRecheckAfterTokenReauth(
+async function triggerDirectorHealthRecheckAfterTokenReauth(
 	c: Context<App>,
 	db: ReturnType<typeof createDb>,
 	characterId: string,
-	characterName: string
+	characterName: string,
+	hydratedCorporationId?: string | null
 ): Promise<void> {
-	try {
-		const corporations: ManagedCorporationSummary[] = await db.query.managedCorporations.findMany({
-			where: eq(managedCorporations.isActive, true),
-			columns: {
-				corporationId: true,
-				name: true,
-			},
-		})
-
-		if (corporations.length === 0) {
-			return
-		}
-		const result = await recheckDirectorHealthAfterTokenReauth({
-			characterId,
-			characterName,
-			corporations,
-			getCorporationStub: (corporationId): DirectorHealthRecheckStub =>
-				getStub<DirectorHealthRecheckStub>(c.env.EVE_CORPORATION_DATA, corporationId),
-			updateManagedCorporationHealth: async ({ corporationId, healthyDirectorCount }) => {
-				await db
-					.update(managedCorporations)
-					.set({
-						healthyDirectorCount,
-						isVerified: healthyDirectorCount > 0,
-						lastVerified: new Date(),
-						updatedAt: new Date(),
-					})
-					.where(eq(managedCorporations.corporationId, corporationId))
-			},
-		})
-
-		if (result.matchedCorporations.length === 0) {
-			return
-		}
-
-		if (result.matchedCorporations.length > 1) {
-			logger.warn('[Auth] Character is configured as director in multiple corporations', {
+	// Initial link/claim flows pass the affiliation returned by their required
+	// public hydration. Existing login flows use the persisted affiliation while
+	// the bounded user-refresh workflow performs the next public refresh.
+	let corporationId = hydratedCorporationId ?? null
+	if (!corporationId) {
+		try {
+			const storedCharacter = await db.query.userCharacters?.findFirst?.({
+				where: eq(userCharacters.characterId, characterId),
+				columns: { corporationId: true },
+			})
+			corporationId = storedCharacter?.corporationId ?? null
+		} catch (error) {
+			// Director verification is ancillary to authentication. A transient
+			// database failure must not turn a successful SSO exchange into a
+			// failed login; the next bounded refresh/recheck can try again.
+			logger.warn('[Auth] Failed to load stored affiliation for director health recheck', {
 				characterId,
-				characterName,
-				corporationIds: result.matchedCorporations,
+				error: toErrorMessage(error),
 			})
 		}
-
-		for (const corporationId of result.verifiedCorporations) {
-			logger.log('[Auth] Director recovered after token reauth', {
-				characterId,
-				characterName,
-				corporationId,
-			})
-		}
-	} catch (error) {
-		logger.error('[Auth] Failed to schedule director health recheck after token reauth', {
-			characterId,
-			characterName,
-			error: toErrorMessage(error),
-		})
 	}
-}
 
-function triggerDirectorHealthRecheckAfterTokenReauth(
-	c: Context<App>,
-	db: ReturnType<typeof createDb>,
-	characterId: string,
-	characterName: string
-): void {
-	waitUntilWithTelemetry(
-		c.executionCtx,
-		'auth.director-health-recheck',
-		() => scheduleDirectorHealthRecheckAfterTokenReauth(c, db, characterId, characterName),
-		{
+	if (!corporationId || corporationId === '1000001') {
+		logger.info('[Auth] Skipping director health recheck without a valid corporation affiliation', {
 			characterId,
-			characterName,
-			source: 'oauth-callback',
-		}
-	)
+			corporationId,
+		})
+		return
+	}
+
+	await triggerDirectorHealthRecheckWorkflow({
+		env: c.env,
+		characterId,
+		characterName,
+		corporationId,
+		source: 'oauth-callback',
+	})
 }
 
 function triggerLegacyMigrationRecheck(c: Context<App>, userId: string): void {
@@ -740,18 +696,27 @@ auth.get('/callback', async (c) => {
 		const existingUser = await userService.getUserByCharacterId(characterId)
 		if (existingUser) {
 			if (existingUser.id === stateUserId) {
-				await hydrateAndReconcileUserRoles(c, db, stateUserId, characterId)
+				const affiliation = await hydrateAndReconcileUserRoles(c, db, stateUserId, characterId)
 				const existingCharacter = user.characters.find((char) => char.characterId === characterId)
 				await db
 					.update(userCharacters)
 					.set({ hasValidToken: true, updatedAt: new Date() })
 					.where(eq(userCharacters.characterId, characterId))
-				triggerDirectorHealthRecheckAfterTokenReauth(
+				await triggerDirectorHealthRecheckAfterTokenReauth(
 					c,
 					db,
 					characterId,
-					characterInfo.characterName
+					characterInfo.characterName,
+					affiliation?.corporationId
 				)
+				await triggerUserRefreshWorkflow({
+					db,
+					env: c.env,
+					userId: stateUserId,
+					source: 'character-token-updated',
+					bypassThrottle: true,
+					refreshMode: 'event',
+				})
 
 				// Character already linked to this user - token has been updated, just return success
 				return c.json({
@@ -806,46 +771,32 @@ auth.get('/callback', async (c) => {
 			characterId: characterInfo.characterId,
 			characterName: characterInfo.characterName,
 		})
-		await hydrateAndReconcileUserRoles(c, db, stateUserId, characterId)
+		const affiliation = await hydrateAndReconcileUserRoles(c, db, stateUserId, characterId)
 
 		// Update token validity cache (token was just received from SSO)
 		await db
 			.update(userCharacters)
 			.set({ hasValidToken: true })
 			.where(eq(userCharacters.characterId, characterId))
-		triggerDirectorHealthRecheckAfterTokenReauth(c, db, characterId, characterInfo.characterName)
+		await triggerDirectorHealthRecheckAfterTokenReauth(
+			c,
+			db,
+			characterId,
+			characterInfo.characterName,
+			affiliation?.corporationId
+		)
 
 		await activityService.logCharacterLinked(stateUserId, characterId, getRequestMetadata(c))
 		triggerLegacyMigrationRecheck(c, stateUserId)
 
-		// Fetch character data in background (non-blocking)
-		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
-		waitUntilWithTelemetry(
-			c.executionCtx,
-			'auth.link-character.refresh',
-			async () => {
-				// Fetch public character data
-				await eveCharacterDataStub.fetchCharacterData(String(characterId), false)
-
-				// Fetch authenticated data (skills, attributes, etc.)
-				await eveCharacterDataStub.fetchAuthenticatedData(String(characterId), false)
-
-				await db
-					.update(users)
-					.set({ lastRefreshWorkflowAttempt: new Date() })
-					.where(eq(users.id, stateUserId))
-
-				await createWorkflow(c.env.USER_REFRESH_WORKFLOW, {
-					id: createUserRefreshWorkflowId('link', stateUserId),
-					params: { userId: stateUserId, refreshMode: 'event' },
-				})
-			},
-			{
-				userId: stateUserId,
-				characterId: String(characterId),
-				source: 'link-character',
-			}
-		)
+		await triggerUserRefreshWorkflow({
+			db,
+			env: c.env,
+			userId: stateUserId,
+			source: 'link-character',
+			bypassThrottle: true,
+			refreshMode: 'event',
+		})
 
 		// Auto-register corporation if character is a director
 		let autoRegResult
@@ -978,51 +929,22 @@ auth.get('/callback', async (c) => {
 			.update(userCharacters)
 			.set({ hasValidToken: true })
 			.where(eq(userCharacters.characterId, characterId))
-		triggerDirectorHealthRecheckAfterTokenReauth(c, db, characterId, characterInfo.characterName)
+		await triggerDirectorHealthRecheckAfterTokenReauth(
+			c,
+			db,
+			characterId,
+			characterInfo.characterName
+		)
 
 		await activityService.logLogin(user.id, characterId, getRequestMetadata(c))
 
-		// Fetch character data in background (non-blocking)
-		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
-		waitUntilWithTelemetry(
-			c.executionCtx,
-			'auth.login.refresh',
-			async () => {
-				// Fetch public character data
-				await eveCharacterDataStub.fetchCharacterData(String(characterId), false)
-
-				// Fetch authenticated data (skills, attributes, etc.)
-				await eveCharacterDataStub.fetchAuthenticatedData(String(characterId), false)
-
-				// Trigger user refresh workflow (throttled to every 5 minutes)
-				const THROTTLE_MS = 5 * 60 * 1000 // 5 minutes
-				const userRecord = await db.query.users.findFirst({
-					where: eq(users.id, user.id),
-					columns: { lastRefreshWorkflowAttempt: true },
-				})
-
-				const shouldTrigger =
-					!userRecord?.lastRefreshWorkflowAttempt ||
-					Date.now() - userRecord.lastRefreshWorkflowAttempt.getTime() > THROTTLE_MS
-
-				if (shouldTrigger) {
-					await db
-						.update(users)
-						.set({ lastRefreshWorkflowAttempt: new Date() })
-						.where(eq(users.id, user.id))
-
-					await createWorkflow(c.env.USER_REFRESH_WORKFLOW, {
-						id: createUserRefreshWorkflowId('login', user.id),
-						params: { userId: user.id, refreshMode: 'event' },
-					})
-				}
-			},
-			{
-				userId: user.id,
-				characterId: String(characterId),
-				source: 'login',
-			}
-		)
+		await triggerUserRefreshWorkflow({
+			db,
+			env: c.env,
+			userId: user.id,
+			source: 'login',
+			refreshMode: 'event',
+		})
 
 		// Auto-register corporation if character is a director
 		let autoRegResult
@@ -1220,13 +1142,20 @@ auth.post('/claim-main', async (c) => {
 		throw error
 	}
 
-	await hydrateAndReconcileUserRoles(c, db, user.id, tokenInfo.characterId)
+	const affiliation = await hydrateAndReconcileUserRoles(c, db, user.id, tokenInfo.characterId)
 
 	// Update token validity cache (token was just received from SSO)
 	await db
 		.update(userCharacters)
 		.set({ hasValidToken: true })
 		.where(eq(userCharacters.characterId, tokenInfo.characterId))
+	await triggerDirectorHealthRecheckAfterTokenReauth(
+		c,
+		db,
+		tokenInfo.characterId,
+		tokenInfo.characterName,
+		affiliation?.corporationId
+	)
 
 	// Create session
 	const session = await authService.createSession({
@@ -1240,35 +1169,14 @@ auth.post('/claim-main', async (c) => {
 	await activityService.logLogin(user.id, tokenInfo.characterId, getRequestMetadata(c))
 	triggerLegacyMigrationRecheck(c, user.id)
 
-	// Fetch character data in background (non-blocking)
-	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
-	waitUntilWithTelemetry(
-		c.executionCtx,
-		'auth.claim-main.refresh',
-		async () => {
-			// Fetch public character data
-			await eveCharacterDataStub.fetchCharacterData(String(tokenInfo.characterId), false)
-
-			// Fetch authenticated data (skills, attributes, etc.)
-			await eveCharacterDataStub.fetchAuthenticatedData(String(tokenInfo.characterId), false)
-
-			// Trigger user refresh workflow for new user
-			await db
-				.update(users)
-				.set({ lastRefreshWorkflowAttempt: new Date() })
-				.where(eq(users.id, user.id))
-
-			await createWorkflow(c.env.USER_REFRESH_WORKFLOW, {
-				id: createUserRefreshWorkflowId('login', user.id),
-				params: { userId: user.id, refreshMode: 'event' },
-			})
-		},
-		{
-			userId: user.id,
-			characterId: tokenInfo.characterId,
-			source: 'claim-main',
-		}
-	)
+	await triggerUserRefreshWorkflow({
+		db,
+		env: c.env,
+		userId: user.id,
+		source: 'claim-main',
+		bypassThrottle: true,
+		refreshMode: 'event',
+	})
 
 	// Auto-register corporation if character is a director
 	let autoRegResult

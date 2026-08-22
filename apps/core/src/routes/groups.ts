@@ -14,7 +14,7 @@ import {
 	triggerDiscordRefreshWorkflow,
 	triggerMumbleRefreshWorkflow,
 } from '../lib/workflow-triggers'
-import { requireAdmin, requireAuth } from '../middleware/session'
+import { requireAdmin, requireAllianceMember, requireAuth } from '../middleware/session'
 import {
 	dispatchGroupApplicationSubmittedAlert,
 	dispatchGroupInvitationAlert,
@@ -31,7 +31,7 @@ import type { App } from '../context'
  * Session middleware loads user into context.
  */
 const groups = new Hono<App>()
-groups.use('*', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }))
+groups.use('*', requireAllianceMember())
 
 function parseDiscordRoleMembershipType(value: unknown): 'member' | 'owner_admin' | null {
 	if (value === undefined) {

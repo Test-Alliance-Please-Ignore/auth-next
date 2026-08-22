@@ -346,6 +346,14 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 		return this.getService().isMemberCorporation(corporationId)
 	}
 
+	async getMemberCorporationIds(corporationIds: string[]): Promise<string[]> {
+		return this.getService().getMemberCorporationIds(corporationIds)
+	}
+
+	async isUserAllianceMember(userId: string): Promise<boolean> {
+		return this.getService().isUserAllianceMember(userId)
+	}
+
 	/**
 	 * List a page of users that currently have at least one active linked character.
 	 */
@@ -1191,6 +1199,7 @@ export { TemporaryRoleAssignmentsDO as TemporaryRoleAssignments }
 
 // Export Workflow class
 export { UserRefreshWorkflow } from './workflows/user-refresh.workflow'
+export { DirectorHealthRecheckWorkflow } from './workflows/director-health-recheck.workflow'
 export { UserDiscordRefreshWorkflow } from './workflows/user-discord-refresh.workflow'
 export { DiscordMemberAuditWorkflow } from './workflows/discord-member-audit.workflow'
 export { UserMumbleRefreshWorkflow } from './workflows/user-mumble-refresh.workflow'

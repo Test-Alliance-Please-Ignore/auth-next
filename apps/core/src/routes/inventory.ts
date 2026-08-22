@@ -9,7 +9,7 @@ import { Hono } from 'hono'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import { requireAuth } from '../middleware/session'
+import { requireAllianceMember } from '../middleware/session'
 
 import type { InventoryParseResult } from '@repo/eve-types'
 import type { Universe } from '@repo/universe'
@@ -18,7 +18,7 @@ import type { App } from '../context'
 const app = new Hono<App>()
 
 // Require authentication for all inventory routes
-app.use('*', requireAuth())
+app.use('*', requireAllianceMember())
 
 /**
  * POST /inventory/parse

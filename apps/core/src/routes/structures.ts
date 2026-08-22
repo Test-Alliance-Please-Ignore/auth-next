@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 import { hasAllStructureManagerPermission, hasAnyStructurePermission } from '@repo/groups'
 import {
@@ -118,6 +119,7 @@ async function getStructureActor(c: Context<App>) {
 	return {
 		id: user.id,
 		is_admin: user.is_admin,
+		isAllianceMember: user.is_admin || user.roles.includes(ROLE_CORE_ALLIANCE_MEMBER),
 		roles: permissions.map((permission) => permission.urn),
 		implicitSensitiveCorporationIds,
 	}
@@ -125,9 +127,10 @@ async function getStructureActor(c: Context<App>) {
 
 function hasStructureApiAccess(actor: Awaited<ReturnType<typeof getStructureActor>>): boolean {
 	return (
-		actor.is_admin ||
-		hasAnyStructurePermission(actor.roles.map((urn) => ({ urn }))) ||
-		(actor.implicitSensitiveCorporationIds?.length ?? 0) > 0
+		actor.isAllianceMember &&
+		(actor.is_admin ||
+			hasAnyStructurePermission(actor.roles.map((urn) => ({ urn }))) ||
+			(actor.implicitSensitiveCorporationIds?.length ?? 0) > 0)
 	)
 }
 

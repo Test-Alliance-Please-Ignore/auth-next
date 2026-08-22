@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
+
 import predictionMarketsRoutes from '../prediction-markets'
 
 import type { SessionUser } from '../../context'
@@ -13,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 // requireAuth → pass-through; the test injects the session user directly.
 vi.mock('../../middleware/session', () => ({
 	requireAuth: () => async (_c: unknown, next: () => Promise<void>) => next(),
+	requireAllianceMember: () => async (_c: unknown, next: () => Promise<void>) => next(),
 }))
 vi.mock('../../lib/market-permissions', () => ({
 	hasMarketPermission: mocks.hasMarketPermission,
@@ -30,7 +33,7 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 		sessionId: 'session-1',
 		characters: [],
 		is_admin: false,
-		roles: [],
+		roles: [ROLE_CORE_ALLIANCE_MEMBER],
 		discordUserId: null,
 		...overrides,
 	}

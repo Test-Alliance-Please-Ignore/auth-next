@@ -17,7 +17,7 @@ import {
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { validatePagination } from '../lib/validation'
 import { normalizeWorkflowStatus } from '../lib/workflow-status'
-import { requireAuth } from '../middleware/session'
+import { requireAllianceMember, requireAuth } from '../middleware/session'
 import { hasCorporationSelfServiceAccess } from '../middleware/tax-permissions'
 
 import type { Context } from 'hono'
@@ -38,7 +38,7 @@ import type { App } from '../context'
 const app = new Hono<App>()
 
 // All fleet endpoints require authentication
-app.use('*', requireAuth())
+app.use('*', requireAuth(), requireAllianceMember())
 
 /**
  * GET /fleets/character/:characterId

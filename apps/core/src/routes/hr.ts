@@ -17,7 +17,7 @@ import {
 import { getIpHashMatches, getUserIpHistory } from '../lib/ip-history'
 import { getUserCorporationAffiliationIds } from '../lib/user-corporation-affiliations'
 import { validatePagination } from '../lib/validation'
-import { requireAdmin, requireAuth } from '../middleware/session'
+import { requireAdmin, requireAllianceMember, requireAuth } from '../middleware/session'
 import { CoreRpcService } from '../services/core-rpc.service'
 import { dispatchCorporationAlert } from '../services/corporation-alerts.service'
 
@@ -39,6 +39,30 @@ import type { Legacy } from '@repo/legacy'
 import type { App } from '../context'
 
 const app = new Hono<App>()
+
+// Internal HR directory and audit surfaces require the alliance capability in
+// addition to their narrower HR permissions. Applicant-facing routes remain
+// authenticated-only so users can still manage their own applications.
+app.use('/corporations', requireAllianceMember())
+app.use('/corporations/*', requireAllianceMember())
+app.use('/users', requireAllianceMember())
+app.use('/users/*', requireAllianceMember())
+app.use('/audit', requireAllianceMember())
+app.use('/audit/*', requireAllianceMember())
+app.use('/legacy', requireAllianceMember())
+app.use('/legacy/*', requireAllianceMember())
+app.use('/recommendations', requireAllianceMember())
+app.use('/recommendations/*', requireAllianceMember())
+app.use('/templates', requireAllianceMember())
+app.use('/templates/*', requireAllianceMember())
+app.use('/notes', requireAllianceMember())
+app.use('/notes/*', requireAllianceMember())
+app.use('/roles', requireAllianceMember())
+app.use('/roles/*', requireAllianceMember())
+app.use('/:corporationId/templates', requireAllianceMember())
+app.use('/:corporationId/templates/*', requireAllianceMember())
+app.use('/:corporationId/roles', requireAllianceMember())
+app.use('/:corporationId/roles/*', requireAllianceMember())
 
 const updateApplicationSchema = z.object({
 	status: z.enum(APPLICATION_STATUSES),

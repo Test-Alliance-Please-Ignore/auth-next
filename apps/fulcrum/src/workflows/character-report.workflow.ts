@@ -488,7 +488,9 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 						fetchNotificationsResult,
 						workflowInstanceId,
 						characterId,
-						characterAffiliationCoordinator
+						characterAffiliationCoordinator,
+						undefined,
+						structureResolutionCoordinator
 					)
 			)
 

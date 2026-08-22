@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 
 import { getCachedUserPermissions } from '../../lib/groups-cache'
@@ -49,7 +50,7 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 			},
 		],
 		is_admin: false,
-		roles: [],
+		roles: [ROLE_CORE_ALLIANCE_MEMBER],
 		discordUserId: null,
 		...overrides,
 	}

@@ -263,6 +263,11 @@
 			"class_name": "UserRefreshWorkflow"
 		},
 		{
+			"name": "director-health-recheck-workflow",
+			"binding": "DIRECTOR_HEALTH_RECHECK_WORKFLOW",
+			"class_name": "DirectorHealthRecheckWorkflow"
+		},
+		{
 			"name": "user-discord-refresh-workflow",
 			"binding": "USER_DISCORD_REFRESH_WORKFLOW",
 			"class_name": "UserDiscordRefreshWorkflow"

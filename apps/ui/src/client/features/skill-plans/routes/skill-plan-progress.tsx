@@ -30,16 +30,17 @@ export default function SkillPlanProgress() {
 
 	return (
 		<Container>
-			<div className="mb-4">
-				<Button variant="ghost" size="sm" asChild>
-					<Link to={`/skill-plans/${id}`}>
-						<ArrowLeft className="h-4 w-4" />
-						Back to Plan
-					</Link>
-				</Button>
-			</div>
-
-			<PageHeader title={`Progress Check: ${plan.name}`} />
+			<PageHeader
+				title={`Progress Check: ${plan.name}`}
+				action={
+					<Button variant="ghost" size="sm" asChild>
+						<Link to={`/skill-plans/${id}`}>
+							<ArrowLeft className="h-4 w-4" />
+							Back to Plan
+						</Link>
+					</Button>
+				}
+			/>
 
 			<Section className="mt-8">
 				<ProgressChecker planId={id} planName={plan.name} initialCharacterId={characterId} />

@@ -129,7 +129,7 @@ export async function enrichAssets(
 	})
 
 	const typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
-	const nameMap = await typeResolver.resolveIds(allIdsToResolve, characterId)
+	const nameMap = await typeResolver.resolveIds(allIdsToResolve)
 
 	// Fetch type metadata (market group and category) for all unique type IDs
 	const typeMetadataMap: Record<

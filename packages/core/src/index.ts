@@ -8,6 +8,8 @@
 export interface Core {
 	getCharacterOwner(characterId: string): Promise<{ userId: string; isPrimary: boolean } | null>
 	isMemberCorporation(corporationId: string): Promise<boolean>
+	getMemberCorporationIds(corporationIds: string[]): Promise<string[]>
+	isUserAllianceMember(userId: string): Promise<boolean>
 	getUserCharacterIds(userId: string): Promise<string[]>
 	listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{
 		users: Array<{

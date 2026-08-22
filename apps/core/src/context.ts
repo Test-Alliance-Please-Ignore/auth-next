@@ -14,6 +14,7 @@ import type { Skills } from '@repo/skills'
 import type { StructuresWorker } from '@repo/structures'
 import type { createDb } from './db'
 import type { CsvExportWorkflowParams } from './workflows/csv-export.workflow'
+import type { DirectorHealthRecheckWorkflowParams } from './workflows/director-health-recheck.workflow'
 import type { DiscordMemberAuditWorkflowParams } from './workflows/discord-member-audit.workflow'
 import type { ServiceAccessAuditWorkflowParams } from './workflows/service-access-audit.workflow'
 import type { UserDiscordRefreshWorkflowParams } from './workflows/user-discord-refresh.workflow'
@@ -76,6 +77,8 @@ export type Env = SharedHonoEnv & {
 	CORE: DurableObjectNamespace
 	/** User Refresh Workflow binding */
 	USER_REFRESH_WORKFLOW: Workflow<UserRefreshWorkflowParams>
+	/** Post-authentication director health verification workflow */
+	DIRECTOR_HEALTH_RECHECK_WORKFLOW: Workflow<DirectorHealthRecheckWorkflowParams>
 	/** User Discord Refresh Workflow binding */
 	USER_DISCORD_REFRESH_WORKFLOW: Workflow<UserDiscordRefreshWorkflowParams>
 	/** Discord Member Audit Workflow binding */

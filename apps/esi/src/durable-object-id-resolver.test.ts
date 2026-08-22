@@ -176,4 +176,31 @@ describe('EsiTypeResolverDO local-first resolution', () => {
 		expect(fetchSpy).toHaveBeenCalledTimes(1)
 		expect(universeStub.resolveRegionsByIds).toHaveBeenCalledWith(['10000002'])
 	})
+
+	it('does not make nested ESI calls for uncached structure IDs', async () => {
+		const { resolver, env } = await createResolver()
+		const structureId = '1055230334468'
+		const universeStub = {
+			resolveTypeNamesByIds: vi.fn().mockResolvedValue({}),
+			resolveRegionsByIds: vi.fn().mockResolvedValue({}),
+			resolveSolarSystemsByIds: vi.fn().mockResolvedValue({}),
+			resolveNpcStationsByIds: vi.fn().mockResolvedValue({}),
+			resolveStargatesByIds: vi.fn().mockResolvedValue({}),
+			resolvePlanetsByIds: vi.fn().mockResolvedValue({}),
+			resolveStaticMoonsByIds: vi.fn().mockResolvedValue({}),
+		}
+
+		const mockedGetStub = vi.mocked(getStub)
+		mockedGetStub.mockImplementation((binding) => {
+			if (binding === env.UNIVERSE) return universeStub as never
+			if (binding === env.ESI) {
+				throw new Error('Structure resolution must not call the ESI namespace')
+			}
+			throw new Error('Unexpected binding in test')
+		})
+
+		await expect(resolver.resolveIds([structureId])).resolves.toEqual({
+			[structureId]: 'Structure (Unknown or no access)',
+		})
+	})
 })

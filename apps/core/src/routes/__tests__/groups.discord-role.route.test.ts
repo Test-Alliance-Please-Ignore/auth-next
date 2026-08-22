@@ -12,20 +12,25 @@ vi.mock('@repo/do-utils', () => ({
 }))
 
 vi.mock('../../middleware/session', () => ({
+	requireAllianceMember:
+		() =>
+		async (_c: unknown, next: () => Promise<void>): Promise<void> => {
+			await next()
+		},
 	requireAuth:
 		() =>
-			async (_c: unknown, next: () => Promise<void>): Promise<void> => {
-				await next()
-			},
+		async (_c: unknown, next: () => Promise<void>): Promise<void> => {
+			await next()
+		},
 	requireAdmin:
 		() =>
-			async (c: any, next: () => Promise<void>): Promise<Response | void> => {
-				const user = c.get('user')
-				if (!user?.is_admin) {
-					return c.json({ error: 'Forbidden' }, 403)
-				}
-				await next()
-			},
+		async (c: any, next: () => Promise<void>): Promise<Response | void> => {
+			const user = c.get('user')
+			if (!user?.is_admin) {
+				return c.json({ error: 'Forbidden' }, 403)
+			}
+			await next()
+		},
 }))
 
 const getStubMock = vi.mocked(getStub)

@@ -11,6 +11,8 @@ const hoisted = vi.hoisted(() => {
 		groupsBinding: {} as DurableObjectNamespace,
 		mocks: {
 			getUserCharacters: vi.fn(),
+			isMemberCorporation: vi.fn(),
+			getMemberCorporationIds: vi.fn(),
 			batchCreateRoles: vi.fn(),
 			replaceCoreMembershipRolesForUser: vi.fn(),
 			clearUserRolesCache: vi.fn(),
@@ -23,6 +25,8 @@ vi.mock('@repo/do-utils', () => ({
 		if (binding === hoisted.coreBinding) {
 			return {
 				getUserCharacters: hoisted.mocks.getUserCharacters,
+				isMemberCorporation: hoisted.mocks.isMemberCorporation,
+				getMemberCorporationIds: hoisted.mocks.getMemberCorporationIds,
 			}
 		}
 		return {
@@ -39,6 +43,10 @@ vi.mock('../../lib/groups-cache', () => ({
 describe('reconcileUserCoreMembershipRoles', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
+		hoisted.mocks.isMemberCorporation.mockResolvedValue(true)
+		hoisted.mocks.getMemberCorporationIds.mockImplementation(
+			async (corporationIds: string[]) => corporationIds
+		)
 	})
 
 	it('deduplicates desired role targets and clears role cache', async () => {
@@ -129,6 +137,45 @@ describe('reconcileUserCoreMembershipRoles', () => {
 		expect(hoisted.mocks.replaceCoreMembershipRolesForUser).toHaveBeenCalledWith({
 			userId: 'user-2',
 			roles: [],
+		})
+	})
+
+	it('does not grant alliance membership for an alliance character in a non-member corporation', async () => {
+		hoisted.mocks.getUserCharacters.mockResolvedValue([
+			{
+				characterId: '1',
+				characterName: 'A',
+				isDeleted: false,
+				corporationId: '999',
+				allianceId: '200',
+			},
+		])
+		hoisted.mocks.getMemberCorporationIds.mockResolvedValue([])
+		hoisted.mocks.batchCreateRoles.mockResolvedValue([])
+		hoisted.mocks.replaceCoreMembershipRolesForUser.mockResolvedValue({
+			roleAttachments: [],
+			desiredCount: 1,
+			attachedCount: 1,
+			detachedCount: 0,
+		})
+
+		await reconcileUserCoreMembershipRoles(
+			{
+				CORE: hoisted.coreBinding,
+				GROUPS: hoisted.groupsBinding,
+			},
+			'user-3'
+		)
+
+		expect(hoisted.mocks.replaceCoreMembershipRolesForUser).toHaveBeenCalledWith({
+			userId: 'user-3',
+			roles: [
+				{
+					roleName: ROLE_CORE_CORP_MEMBER,
+					resourceId: '999',
+					resourceType: ResourceType.CORPORATION,
+				},
+			],
 		})
 	})
 })

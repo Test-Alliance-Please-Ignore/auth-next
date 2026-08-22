@@ -9,7 +9,7 @@ import { managedCorporations, userCharacters, users } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { queueImmunitasAccessAlertForUser } from '../lib/immunitas-alerts'
-import { requireAuth } from '../middleware/session'
+import { requireAllianceMember, requireAuth } from '../middleware/session'
 
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
@@ -20,6 +20,7 @@ import type { Hr } from '@repo/hr'
 import type { App, SessionUser } from '../context'
 
 const app = new Hono<App>()
+app.use('*', requireAuth(), requireAllianceMember())
 const MS_PER_DAY = 86_400_000
 
 // ============================================================================

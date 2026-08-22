@@ -160,19 +160,17 @@ export default function SkillPlanEdit() {
 			<PageHeader
 				title={`Edit: ${plan.name}`}
 				description="Modify plan details and manage skills"
-			/>
-
-			<Section>
-				{/* Navigation buttons */}
-				<div className="flex justify-between items-center mb-6">
-					<Button variant="ghost" asChild>
+				action={
+					<Button variant="ghost" size="sm" asChild>
 						<Link to={`/skill-plans/${id}`}>
 							<ArrowLeft className="h-4 w-4" />
 							Back to Plan
 						</Link>
 					</Button>
-				</div>
+				}
+			/>
 
+			<Section>
 				{/* Tabs for different sections */}
 				<Tabs value={activeTab} onValueChange={setActiveTab}>
 					<TabsList>

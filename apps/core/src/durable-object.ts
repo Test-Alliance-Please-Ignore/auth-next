@@ -1,9 +1,10 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { CORE_ROLES, SERVICE_CORE } from '@repo/core'
+import { CORE_ROLES, ROLE_CORE_ALLIANCE_MEMBER, SERVICE_CORE } from '@repo/core'
 import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from '@repo/db-utils'
-import { getStub } from '@repo/do-utils'
+import { getStub, withRpcResult } from '@repo/do-utils'
 import { getPublicEsiInstance } from '@repo/esi'
+import { RoleAttachmentType } from '@repo/groups'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
@@ -405,6 +406,60 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				columns: { corporationId: true },
 			})
 			.then((corporation) => corporation !== undefined)
+	}
+
+	async getMemberCorporationIds(corporationIds: string[]): Promise<string[]> {
+		if (corporationIds.length === 0) {
+			return []
+		}
+
+		const corporations = await this.getDb()
+			.select({ corporationId: managedCorporations.corporationId })
+			.from(managedCorporations)
+			.where(
+				and(
+					inArray(managedCorporations.corporationId, corporationIds),
+					eq(managedCorporations.isActive, true),
+					eq(managedCorporations.isMemberCorporation, true)
+				)
+			)
+
+		return corporations.map((corporation) => corporation.corporationId)
+	}
+
+	async isUserAllianceMember(userId: string): Promise<boolean> {
+		// Keep the capability tied to both persisted role assignment and current
+		// eligible affiliation. Membership flags alone do not grant the URN.
+		const groupsStub = getStub<Groups>(this.env.GROUPS, 'default')
+		const roleAttachments = await withRpcResult(
+			groupsStub.getRolesFor({
+				attachedToType: RoleAttachmentType.USER,
+				attachedToId: userId,
+			}),
+			(result) => result.map((attachment) => attachment.role.name)
+		)
+		if (!roleAttachments.includes(ROLE_CORE_ALLIANCE_MEMBER)) {
+			return false
+		}
+
+		const [match] = await this.getDb()
+			.select({ characterId: userCharacters.characterId })
+			.from(userCharacters)
+			.innerJoin(
+				managedCorporations,
+				eq(managedCorporations.corporationId, userCharacters.corporationId)
+			)
+			.where(
+				and(
+					eq(userCharacters.userId, userId),
+					eq(userCharacters.isDeleted, false),
+					eq(managedCorporations.isActive, true),
+					eq(managedCorporations.isMemberCorporation, true)
+				)
+			)
+			.limit(1)
+
+		return match !== undefined
 	}
 
 	async listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{

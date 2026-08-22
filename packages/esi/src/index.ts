@@ -408,7 +408,7 @@ export interface EsiTypeResolver {
 	 * // Returns: { '30000142': 'Jita', '1354830081': 'Goonswarm Federation' }
 	 * ```
 	 */
-	resolveIds(ids: string[], withCharacterId?: string): Promise<Record<string, string>>
+	resolveIds(ids: string[]): Promise<Record<string, string>>
 }
 
 /**

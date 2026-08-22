@@ -7,10 +7,78 @@ import { isMumbleFeatureEnabled } from './mumble-feature'
 
 import type { Env } from '../context'
 import type { createDb } from '../db'
+import type { DirectorHealthRecheckWorkflowParams } from '../workflows/director-health-recheck.workflow'
 import type { UserDiscordRefreshWorkflowParams } from '../workflows/user-discord-refresh.workflow'
 import type { UserMumbleRefreshWorkflowParams } from '../workflows/user-mumble-refresh.workflow'
 
 const THROTTLE_MS = 5 * 60 * 1000 // 5 minutes
+const DIRECTOR_HEALTH_RECHECK_WINDOW_MS = 5 * 60 * 1000
+
+export function createDirectorHealthRecheckWorkflowId(
+	characterId: string,
+	corporationId: string,
+	now = Date.now()
+): string {
+	const windowToken = Math.floor(now / DIRECTOR_HEALTH_RECHECK_WINDOW_MS).toString(36)
+	return `director-health-recheck-${characterId}-${corporationId}-${windowToken}`
+}
+
+export interface TriggerDirectorHealthRecheckOptions {
+	env: Env
+	characterId: string
+	characterName: string
+	corporationId: string
+	source: string
+}
+
+/**
+ * Queue the post-authentication director verification outside the request.
+ * The caller resolves the character's current corporation before enqueueing, so
+ * the workflow does not fan out across unrelated corporation Durable Objects.
+ */
+export async function triggerDirectorHealthRecheckWorkflow({
+	env,
+	characterId,
+	characterName,
+	corporationId,
+	source,
+}: TriggerDirectorHealthRecheckOptions): Promise<void> {
+	try {
+		const params: DirectorHealthRecheckWorkflowParams = {
+			characterId,
+			characterName,
+			corporationId,
+			source,
+		}
+		const instance = await createWorkflow(env.DIRECTOR_HEALTH_RECHECK_WORKFLOW, {
+			id: createDirectorHealthRecheckWorkflowId(characterId, corporationId),
+			params,
+		})
+
+		logger.info('[WorkflowTrigger] Triggered director health recheck workflow', {
+			characterId,
+			characterName,
+			source,
+			workflowInstanceId: instance.id,
+		})
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error)
+		if (/already exists|already been created|duplicate/i.test(errorMessage)) {
+			logger.info('[WorkflowTrigger] Deduplicated director health recheck workflow', {
+				characterId,
+				corporationId,
+				source,
+			})
+			return
+		}
+		logger.error('[WorkflowTrigger] Failed to trigger director health recheck workflow', {
+			characterId,
+			characterName,
+			source,
+			error: errorMessage,
+		})
+	}
+}
 
 export interface TriggerUserRefreshOptions {
 	db: ReturnType<typeof createDb>
@@ -31,14 +99,19 @@ export interface TriggerUserRefreshResult {
 	error?: string
 }
 
-export function createUserRefreshWorkflowId(source: string, userId: string): string {
+export function createUserRefreshWorkflowId(
+	source: string,
+	userId: string,
+	now = Date.now(),
+	deduplicate = true
+): string {
 	const normalizedSource = source
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, '-')
 		.replace(/^-+|-+$/g, '')
 	const sourceToken = (normalizedSource || 'unknown').slice(0, 16)
 	const userToken = userId.replace(/-/g, '').slice(0, 12)
-	const timeToken = Date.now().toString(36)
+	const timeToken = deduplicate ? Math.floor(now / THROTTLE_MS).toString(36) : now.toString(36)
 	return `user-refresh-${sourceToken}-${userToken}-${timeToken}`
 }
 
@@ -217,8 +290,8 @@ export async function triggerMumbleRefreshWorkflow({
 
 /**
  * Trigger user refresh workflow with throttling.
- * Returns immediately - does not block on workflow creation.
- * Logs errors but does not throw.
+ * Resolves after the workflow has been created (or the trigger has failed).
+ * Logs errors but does not throw, so callers can safely await the short enqueue operation.
  */
 export async function triggerUserRefreshWorkflow({
 	db,
@@ -246,22 +319,47 @@ export async function triggerUserRefreshWorkflow({
 			return { status: 'throttled', triggered: false }
 		}
 
-		await db
-			.update(users)
-			.set({ lastRefreshWorkflowAttempt: new Date() })
-			.where(eq(users.id, userId))
+		const now = Date.now()
+		const workflowId = createUserRefreshWorkflowId(source, userId, now, !bypassThrottle)
+		let instance: { id: string }
+		try {
+			instance = await createWorkflow(env.USER_REFRESH_WORKFLOW, {
+				id: workflowId,
+				params: {
+					userId,
+					source,
+					refreshMode,
+					suppressDiscordRefresh,
+					forceTokenValidation,
+					includeWalletJournal,
+				},
+			})
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			if (!/already exists|already been created|duplicate/i.test(errorMessage)) {
+				throw error
+			}
 
-		const instance = await createWorkflow(env.USER_REFRESH_WORKFLOW, {
-			id: createUserRefreshWorkflowId(source, userId),
-			params: {
+			// A normal trigger may race another request in the same throttle
+			// window. The deterministic workflow ID makes that race harmless.
+			await db
+				.update(users)
+				.set({ lastRefreshWorkflowAttempt: new Date(now) })
+				.where(eq(users.id, userId))
+			logger.info('[WorkflowTrigger] Deduplicated user refresh workflow', {
 				userId,
 				source,
-				refreshMode,
-				suppressDiscordRefresh,
-				forceTokenValidation,
-				includeWalletJournal,
-			},
-		})
+				workflowInstanceId: workflowId,
+			})
+			return { status: 'throttled', triggered: false }
+		}
+
+		// Commit the throttle watermark only after the workflow service accepts
+		// the instance. A failed enqueue must remain retryable.
+		await db
+			.update(users)
+			.set({ lastRefreshWorkflowAttempt: new Date(now) })
+			.where(eq(users.id, userId))
 
 		logger.info('[WorkflowTrigger] Triggered user refresh workflow', {
 			userId,

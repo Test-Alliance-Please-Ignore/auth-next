@@ -1,5 +1,7 @@
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from '@repo/db-utils'
 import { getStub, withRpcResult } from '@repo/do-utils'
+import { RoleAttachmentType } from '@repo/groups'
 import { logger } from '@repo/hono-helpers'
 
 import { discordServers, managedCorporations, userCharacters, users } from '../db/schema'
@@ -968,6 +970,61 @@ export class CoreRpcService {
 		})
 
 		return corporation !== undefined
+	}
+
+	async getMemberCorporationIds(corporationIds: string[]): Promise<string[]> {
+		if (corporationIds.length === 0) {
+			return []
+		}
+
+		const corporations = await this.db
+			.select({ corporationId: managedCorporations.corporationId })
+			.from(managedCorporations)
+			.where(
+				and(
+					inArray(managedCorporations.corporationId, corporationIds),
+					eq(managedCorporations.isActive, true),
+					eq(managedCorporations.isMemberCorporation, true)
+				)
+			)
+
+		return corporations.map((corporation) => corporation.corporationId)
+	}
+
+	/** Whether a user currently has an active linked character in a member corporation. */
+	async isUserAllianceMember(userId: string): Promise<boolean> {
+		// Corporation eligibility and the alliance-member URN are separate
+		// sources of truth. A corporation flag must never synthesize the role.
+		const groupsStub = getStub<Groups>(this.env.GROUPS, 'default')
+		const roleAttachments = await withRpcResult(
+			groupsStub.getRolesFor({
+				attachedToType: RoleAttachmentType.USER,
+				attachedToId: userId,
+			}),
+			(result) => result.map((attachment) => ({ roleName: attachment.role.name }))
+		)
+		if (!roleAttachments.some((attachment) => attachment.roleName === ROLE_CORE_ALLIANCE_MEMBER)) {
+			return false
+		}
+
+		const [match] = await this.db
+			.select({ characterId: userCharacters.characterId })
+			.from(userCharacters)
+			.innerJoin(
+				managedCorporations,
+				eq(managedCorporations.corporationId, userCharacters.corporationId)
+			)
+			.where(
+				and(
+					eq(userCharacters.userId, userId),
+					eq(userCharacters.isDeleted, false),
+					eq(managedCorporations.isActive, true),
+					eq(managedCorporations.isMemberCorporation, true)
+				)
+			)
+			.limit(1)
+
+		return match !== undefined
 	}
 
 	async listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{

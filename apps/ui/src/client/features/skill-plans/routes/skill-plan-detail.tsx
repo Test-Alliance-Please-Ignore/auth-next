@@ -99,16 +99,18 @@ export default function SkillPlanDetail() {
 
 	return (
 		<Container>
-			<div className="mb-4">
-				<Button variant="ghost" size="sm" asChild>
-					<Link to="/skill-plans">
-						<ArrowLeft className="h-4 w-4" />
-						Back to Plans
-					</Link>
-				</Button>
-			</div>
-
-			<PageHeader title={plan.name} description={plan.description} />
+			<PageHeader
+				title={plan.name}
+				description={plan.description}
+				action={
+					<Button variant="ghost" size="sm" asChild>
+						<Link to="/skill-plans">
+							<ArrowLeft className="h-4 w-4" />
+							Back to Plans
+						</Link>
+					</Button>
+				}
+			/>
 
 			<Section>
 				{/* Action buttons */}
