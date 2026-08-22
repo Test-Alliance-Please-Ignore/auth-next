@@ -6,7 +6,7 @@ import { getStub } from '@repo/do-utils'
 import { logger, TimeCache } from '@repo/hono-helpers'
 
 import { discordServers, managedCorporations, userCharacters } from '../../db/schema'
-import { requireAuth } from '../../middleware/session'
+import { requireAllianceMember, requireAuth } from '../../middleware/session'
 import {
 	canAuditTaxFeature,
 	canManageTaxFeature,
@@ -135,6 +135,7 @@ app.use('*', async (c, next) => {
 	}
 	await next()
 })
+app.use('*', requireAllianceMember())
 
 async function validateBillingPayeeSelection(
 	db: App['Variables']['db'],

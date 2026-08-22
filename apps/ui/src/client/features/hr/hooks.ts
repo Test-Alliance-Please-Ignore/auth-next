@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
+
 import { useAuth } from '@/hooks/useAuth'
 
 import { hrApi } from './api'
@@ -82,12 +84,16 @@ export function useHrPermissionCheck(request: CheckHrPermissionRequest | null) {
 export function useHrAccessibleCorporations(options?: { enabled?: boolean }) {
 	const { user } = useAuth()
 	const userId = user?.id ?? null
+	const canUseMemberHrSurface =
+		user?.is_admin === true || user?.roles?.includes(ROLE_CORE_ALLIANCE_MEMBER) === true
 
 	return useQuery<HrAccessibleCorporation[]>({
 		queryKey: [...hrKeys.corporations(), userId],
 		queryFn: () => hrApi.listAccessibleCorporations(),
 		staleTime: 5 * 60 * 1000,
-		enabled: (options?.enabled ?? true) && userId !== null,
+		// /hr/corporations is alliance-member gated. Do not issue a request for
+		// sessions that cannot access the internal HR surface.
+		enabled: (options?.enabled ?? true) && userId !== null && canUseMemberHrSurface,
 	})
 }
 

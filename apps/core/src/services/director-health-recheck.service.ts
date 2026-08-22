@@ -1,3 +1,5 @@
+import { withRpcResult } from '@repo/do-utils'
+
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 
 export type ManagedCorporationSummary = {
@@ -32,6 +34,52 @@ export interface DirectorHealthRecheckResult {
 	verifiedCorporations: string[]
 }
 
+export interface DirectorHealthRecheckCorporationDeps {
+	characterId: string
+	corporationId: string
+	getCorporationStub: (corporationId: string) => DirectorHealthRecheckStub
+	updateManagedCorporationHealth: (params: {
+		corporationId: string
+		healthyDirectorCount: number
+	}) => Promise<void>
+}
+
+export interface DirectorHealthRecheckCorporationResult {
+	matched: boolean
+	verified: boolean
+	healthyDirectorCount?: number
+}
+
+export async function recheckDirectorHealthForCorporation(
+	deps: DirectorHealthRecheckCorporationDeps
+): Promise<DirectorHealthRecheckCorporationResult> {
+	const corpStub = deps.getCorporationStub(deps.corporationId)
+	const directors = await withRpcResult(corpStub.getDirectors(deps.corporationId), (result) => [
+		...result,
+	])
+	const director = directors.find((entry) => entry.characterId === deps.characterId)
+	if (!director) {
+		return { matched: false, verified: false }
+	}
+
+	const verified = await corpStub.verifyDirectorHealth(deps.corporationId, director.directorId)
+	if (!verified) {
+		return { matched: true, verified: false }
+	}
+
+	const refreshedDirectors = await withRpcResult(
+		corpStub.getDirectors(deps.corporationId),
+		(result) => [...result]
+	)
+	const healthyDirectorCount = refreshedDirectors.filter((entry) => entry.isHealthy).length
+	await deps.updateManagedCorporationHealth({
+		corporationId: deps.corporationId,
+		healthyDirectorCount,
+	})
+
+	return { matched: true, verified: true, healthyDirectorCount }
+}
+
 export async function recheckDirectorHealthAfterTokenReauth(
 	deps: DirectorHealthRecheckDeps
 ): Promise<DirectorHealthRecheckResult> {
@@ -39,30 +87,14 @@ export async function recheckDirectorHealthAfterTokenReauth(
 	const verifiedCorporations: string[] = []
 
 	for (const corporation of deps.corporations) {
-		const corpStub = deps.getCorporationStub(corporation.corporationId)
-		const directors = await corpStub.getDirectors(corporation.corporationId)
-		const director = directors.find((entry) => entry.characterId === deps.characterId)
-		if (!director) {
-			continue
-		}
-
-		matchedCorporations.push(corporation.corporationId)
-
-		const verified = await corpStub.verifyDirectorHealth(
-			corporation.corporationId,
-			director.directorId
-		)
-		if (!verified) {
-			continue
-		}
-
-		const refreshedDirectors = await corpStub.getDirectors(corporation.corporationId)
-		const healthyDirectorCount = refreshedDirectors.filter((entry) => entry.isHealthy).length
-		await deps.updateManagedCorporationHealth({
+		const result = await recheckDirectorHealthForCorporation({
+			characterId: deps.characterId,
 			corporationId: corporation.corporationId,
-			healthyDirectorCount,
+			getCorporationStub: deps.getCorporationStub,
+			updateManagedCorporationHealth: deps.updateManagedCorporationHealth,
 		})
-		verifiedCorporations.push(corporation.corporationId)
+		if (result.matched) matchedCorporations.push(corporation.corporationId)
+		if (result.verified) verifiedCorporations.push(corporation.corporationId)
 	}
 
 	return {

@@ -21,6 +21,11 @@ vi.mock('../../middleware/session', () => ({
 		async (_c: unknown, next: () => Promise<void>): Promise<void> => {
 			await next()
 		},
+	requireAllianceMember:
+		() =>
+		async (_c: unknown, next: () => Promise<void>): Promise<void> => {
+			await next()
+		},
 }))
 
 vi.mock('../../lib/groups-cache', () => ({

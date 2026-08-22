@@ -13,7 +13,7 @@ import { Hono } from 'hono'
 import { logger } from '@repo/hono-helpers'
 
 import { hasMarketPermission } from '../lib/market-permissions'
-import { requireAuth } from '../middleware/session'
+import { requireAllianceMember } from '../middleware/session'
 import {
 	createAndPublishMarket,
 	createMarketCreatorSchema,
@@ -26,7 +26,7 @@ import type { App } from '../context'
 const app = new Hono<App>()
 
 // A valid session is required for every member endpoint (the per-tier gate is per-route below).
-app.use('*', requireAuth())
+app.use('*', requireAllianceMember())
 
 // POST /markets — a member with urn:markets:creator (or manager/admin) creates a market. `createdBy`
 // comes from the session, never the client. The creator may bet on their own market but can't resolve

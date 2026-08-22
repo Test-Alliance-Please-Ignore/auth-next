@@ -2,7 +2,7 @@ import { getCookie } from 'hono/cookie'
 
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
-import { logger } from '@repo/hono-helpers'
+import { logger, TimeCache } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { waitUntilWithTelemetry } from '../lib/background-task'
@@ -13,6 +13,7 @@ import { SessionService } from '../services/session.service'
 import { UserService } from '../services/user.service'
 
 import type { MiddlewareHandler } from 'hono'
+import type { Core } from '@repo/core'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Hr } from '@repo/hr'
 import type { App, SessionUser } from '../context'
@@ -76,7 +77,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			const isAdminRoute = c.req.path.startsWith('/api/admin/')
 
 			// Execute independent operations in parallel for better performance
-			const [userProfile, isBlacklisted, roleAttachments] = await Promise.all([
+			const [userProfile, isBlacklisted, roleAttachments, isAllianceMember] = await Promise.all([
 				userService.getUserProfile(userId),
 				getStub<Hr>(c.env.HR, 'default').isUserBlacklisted(userId),
 				isAdminRoute
@@ -85,6 +86,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 							logger.error('Error fetching user roles:', error)
 							return []
 						}),
+				isAdminRoute ? Promise.resolve(false) : hasCurrentAllianceMembership(c.env, userId),
 			])
 
 			// SECURITY: Check blacklist first (fail fast)
@@ -96,7 +98,17 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			}
 
 			// Extract role names (URNs) from attachments
-			const userRoles = roleAttachments.map((attachment) => attachment.role.name)
+			const userRoles = roleAttachments
+				.filter(
+					(attachment) => attachment.role.name !== ROLE_CORE_ALLIANCE_MEMBER || isAllianceMember
+				)
+				.map((attachment) => attachment.role.name)
+			if (
+				(userProfile.is_admin || isAllianceMember) &&
+				!userRoles.includes(ROLE_CORE_ALLIANCE_MEMBER)
+			) {
+				userRoles.push(ROLE_CORE_ALLIANCE_MEMBER)
+			}
 
 			// Build session user object (Discord status can be loaded on-demand via getDiscordStatus())
 			const sessionUser: SessionUser = {
@@ -160,6 +172,18 @@ export type RoleRequirement =
 	| { all: string[] } // Multiple roles with AND logic (user must have all)
 	| { any: string[] } // Multiple roles with OR logic (explicit)
 
+const allianceMembershipCache = new TimeCache<boolean>(15 * 1000)
+
+async function hasCurrentAllianceMembership(
+	env: App['Bindings'],
+	userId: string
+): Promise<boolean> {
+	return allianceMembershipCache.getOrSet(`alliance-member:${userId}`, async () => {
+		const core = getStub<Core>(env.CORE, 'default')
+		return core.isUserAllianceMember(userId)
+	})
+}
+
 /**
  * Require authentication middleware with optional role-based access control
  *
@@ -191,6 +215,13 @@ export const requireAuth = (requiredRoles?: RoleRequirement): MiddlewareHandler<
 		// Check authentication
 		if (!user) {
 			return c.json({ error: 'Unauthorized' }, 401)
+		}
+
+		// Site administrators are the platform-wide authority. Preserve the
+		// existing role-based route declarations while allowing them to pass
+		// capability guards without requiring derived membership attachments.
+		if (user.is_admin) {
+			return next()
 		}
 
 		// If no role requirements, just check authentication
@@ -268,6 +299,13 @@ export const requireAllianceMember = (): MiddlewareHandler<App> => {
 		if (!user) {
 			return c.json({ error: 'Unauthorized' }, 401)
 		}
+		if (user.is_admin) {
+			return next()
+		}
+		// sessionMiddleware derives this role from the current corporation
+		// affiliation. Keeping the route check role-based avoids an additional
+		// Core RPC on every protected request while preserving that source-of-truth
+		// validation at session construction time.
 		if (!user.roles.includes(ROLE_CORE_ALLIANCE_MEMBER)) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}

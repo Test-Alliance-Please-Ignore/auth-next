@@ -1,14 +1,13 @@
 import { Hono } from 'hono'
 
 import { getBroadcastSystemTemplateToken } from '@repo/broadcasts'
-import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { and, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 
 import { createDb, schema } from '../db'
 import { getCachedUserPermissions } from '../lib/groups-cache'
 import { validatePagination } from '../lib/validation'
-import { requireAuth } from '../middleware/session'
+import { requireAllianceMember } from '../middleware/session'
 import {
 	buildBroadcastPermissionContext,
 	canAccessBroadcastPermissionId,
@@ -538,7 +537,7 @@ async function getUserBroadcastPermissionContext(
 const broadcasts = new Hono<App>()
 
 // Apply authentication middleware to all routes
-broadcasts.use('*', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }))
+broadcasts.use('*', requireAllianceMember())
 
 // =============================================================================
 // BROADCAST TARGETS

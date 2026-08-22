@@ -2,6 +2,8 @@ import { Search, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
@@ -9,17 +11,26 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { UserSearchResultsTable } from '@/components/user-search-results-table'
+import { useHrAccessibleCorporations } from '@/features/hr'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 import { useAuditorUsers } from '../../../hooks/useAuditorUsers'
+import { AccessDeniedCard } from '../components/access-denied-card'
 import { HrUserSearchContent } from '../components/hr-user-search-content'
 
 export default function HrAuditorUsersPage() {
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasAnyPermission } = useUserPermissions()
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
+	const isSiteAdmin = user?.is_admin === true
+	const isAllianceMember = user?.roles?.includes(ROLE_CORE_ALLIANCE_MEMBER) === true
+	const isGlobalHrSearchUser = isSiteAdmin || isAuditor
+	const { data: hrCorporations = [], isLoading: hrCorporationsLoading } =
+		useHrAccessibleCorporations({
+			enabled: isAllianceMember && !isGlobalHrSearchUser,
+		})
 
 	usePageTitle('User Search')
 
@@ -37,7 +48,43 @@ export default function HrAuditorUsersPage() {
 		)
 	}
 
-	return isAuditor || user?.is_admin ? <HrAuditorUsersAdminPage /> : <HrScopedUsersPage />
+	if (!isAllianceMember && !isSiteAdmin) {
+		return (
+			<Container>
+				<AccessDeniedCard
+					title="Alliance Membership Required"
+					message="User Search is available only to members of an active alliance corporation."
+					backHref="/dashboard"
+					backLabel="Back to Dashboard"
+				/>
+			</Container>
+		)
+	}
+
+	if (!isGlobalHrSearchUser && hrCorporationsLoading) {
+		return (
+			<Container>
+				<div className="flex min-h-[320px] items-center justify-center">
+					<LoadingSpinner size="lg" />
+				</div>
+			</Container>
+		)
+	}
+
+	if (!isGlobalHrSearchUser && hrCorporations.length === 0) {
+		return (
+			<Container>
+				<AccessDeniedCard
+					title="HR Access Required"
+					message="User Search requires an active HR role for at least one accessible corporation."
+					backHref="/dashboard"
+					backLabel="Back to Dashboard"
+				/>
+			</Container>
+		)
+	}
+
+	return isGlobalHrSearchUser ? <HrAuditorUsersAdminPage /> : <HrScopedUsersPage />
 }
 
 function HrAuditorUsersAdminPage() {

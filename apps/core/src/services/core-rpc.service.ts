@@ -970,6 +970,47 @@ export class CoreRpcService {
 		return corporation !== undefined
 	}
 
+	async getMemberCorporationIds(corporationIds: string[]): Promise<string[]> {
+		if (corporationIds.length === 0) {
+			return []
+		}
+
+		const corporations = await this.db
+			.select({ corporationId: managedCorporations.corporationId })
+			.from(managedCorporations)
+			.where(
+				and(
+					inArray(managedCorporations.corporationId, corporationIds),
+					eq(managedCorporations.isActive, true),
+					eq(managedCorporations.isMemberCorporation, true)
+				)
+			)
+
+		return corporations.map((corporation) => corporation.corporationId)
+	}
+
+	/** Whether a user currently has an active linked character in a member corporation. */
+	async isUserAllianceMember(userId: string): Promise<boolean> {
+		const [match] = await this.db
+			.select({ characterId: userCharacters.characterId })
+			.from(userCharacters)
+			.innerJoin(
+				managedCorporations,
+				eq(managedCorporations.corporationId, userCharacters.corporationId)
+			)
+			.where(
+				and(
+					eq(userCharacters.userId, userId),
+					eq(userCharacters.isDeleted, false),
+					eq(managedCorporations.isActive, true),
+					eq(managedCorporations.isMemberCorporation, true)
+				)
+			)
+			.limit(1)
+
+		return match !== undefined
+	}
+
 	async listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{
 		users: Array<{ userId: string; characterIds: string[] }>
 		totalCount: number

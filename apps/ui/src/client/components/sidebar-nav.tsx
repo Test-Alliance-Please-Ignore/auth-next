@@ -76,13 +76,15 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const logout = useLogout()
 	const { data: corporationAccess } = useHasCorporationAccess()
 	const { data: leadershipCorporationAccess } = useCorporationAccess()
-	const { data: hrCorporations } = useHrAccessibleCorporations()
 	const { permissions, hasAnyPermission } = useUserPermissions()
-	const { data: structureAccess } = useStructureAccess({ enabled: Boolean(user) })
-	const moonScanPermissions = useMoonScanPermissions()
 	const isSiteAdmin = user?.is_admin === true
 	const isAllianceMember = user?.roles?.includes(ROLE_CORE_ALLIANCE_MEMBER) ?? false
 	const canSeeAllianceMemberNav = isSiteAdmin || isAllianceMember
+	const { data: hrCorporations } = useHrAccessibleCorporations({
+		enabled: canSeeAllianceMemberNav,
+	})
+	const { data: structureAccess } = useStructureAccess({ enabled: Boolean(user) })
+	const moonScanPermissions = useMoonScanPermissions()
 	const { data: invitations } = usePendingInvitations({ enabled: canSeeAllianceMemberNav })
 	const { isEnabled: isMumbleFeatureEnabled } = useMumbleFeatureEnabled()
 	const canViewStructures =
@@ -275,7 +277,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			!(corporationAccess?.hasAccess ?? false) && ((hrCorporations?.length ?? 0) > 0 || isAuditor)
 		const isOnCorpHrRoute = /^\/corporations\/[^/]+\/hr/.test(location.pathname)
 
-		if (hasCorporationModuleAccess) {
+		if (canSeeAllianceMemberNav && hasCorporationModuleAccess) {
 			hrItems.push({
 				label: 'Corporations',
 				href: '/corporations',
@@ -289,14 +291,14 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 
 		const canUseCorporationUserSearch =
 			isAuditor || isSiteAdmin || (hrCorporations?.length ?? 0) > 0
-		if (canUseCorporationUserSearch) {
+		if (canSeeAllianceMemberNav && canUseCorporationUserSearch) {
 			hrItems.push({
 				label: 'User Search',
 				href: '/hr/users',
 			})
 		}
 
-		if (canSeeLegacyApplications) {
+		if (canSeeAllianceMemberNav && canSeeLegacyApplications) {
 			hrItems.push({
 				label: 'Legacy Applications',
 				href: '/hr/legacy-history',
@@ -311,7 +313,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		})
 	}
 
-	if (canSeeFleetTrackingList || canSeeFleetTrackingStats) {
+	if (canSeeAllianceMemberNav && (canSeeFleetTrackingList || canSeeFleetTrackingStats)) {
 		const fleetTrackingItems: SidebarNavItem[] = []
 		if (canSeeFleetTrackingList) {
 			fleetTrackingItems.push({ label: 'Fleets', href: '/fleet-tracking' })

@@ -42,6 +42,14 @@ export async function reconcileUserCoreMembershipRoles(
 	})
 
 	const characters = await coreStub.getUserCharacters(userId)
+	const corporationIds = [
+		...new Set(
+			characters
+				.map((character) => character.corporationId)
+				.filter((corporationId): corporationId is string => Boolean(corporationId))
+		),
+	]
+	const memberCorporationIds = new Set(await coreStub.getMemberCorporationIds(corporationIds))
 
 	const seen = new Set<string>()
 	const roleTargets: Array<{
@@ -62,7 +70,11 @@ export async function reconcileUserCoreMembershipRoles(
 				})
 			}
 		}
-		if (character.allianceId) {
+		if (
+			character.allianceId &&
+			character.corporationId &&
+			memberCorporationIds.has(character.corporationId)
+		) {
 			const key = `${ROLE_CORE_ALLIANCE_MEMBER}|${character.allianceId}|${ResourceType.ALLIANCE}`
 			if (!seen.has(key)) {
 				seen.add(key)

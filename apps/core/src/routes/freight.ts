@@ -1,7 +1,8 @@
 /**
  * Freight routes - Administrative operations for managing freight routes
  *
- * All endpoints require authentication and admin privileges.
+ * All endpoints require alliance membership; management operations additionally
+ * require the freight manager permission or site-admin access.
  * These endpoints call the Freight Durable Object via RPC.
  */
 
@@ -55,6 +56,8 @@ async function isFreightManager(
 }
 
 const app = new Hono<App>()
+
+app.use('*', requireAuth(), requireAllianceMember())
 
 /**
  * GET /freight/routes/active

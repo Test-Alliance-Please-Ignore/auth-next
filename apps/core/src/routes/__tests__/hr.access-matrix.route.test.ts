@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 import { getPublicEsiInstance } from '@repo/esi'
 
@@ -52,7 +53,7 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 			},
 		],
 		is_admin: false,
-		roles: [],
+		roles: [ROLE_CORE_ALLIANCE_MEMBER],
 		discordUserId: null,
 		...overrides,
 	}
@@ -1319,6 +1320,15 @@ describe('hr route access matrix', () => {
 				},
 			],
 		})
+	})
+
+	it('denies HR directory access to an HR user without alliance membership', async () => {
+		hrStub.getUserHrCorporations.mockResolvedValue(['1001'])
+		const app = createApp({ user: makeUser({ roles: [] }), db: dbStub })
+		const res = await app.request('/api/hr/users/search?search=pilot', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(searchUsersForHrAccessMock).not.toHaveBeenCalled()
 	})
 
 	it('allows /audit/users for auditor', async () => {
