@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 
 import { eq } from '@repo/db-utils'
-import { getStub, withRpcResult } from '@repo/do-utils'
+import { getStub } from '@repo/do-utils'
 import { assertEveCharacterId } from '@repo/eve-types'
 import { captureException, logger, toErrorMessage } from '@repo/hono-helpers'
 
@@ -29,7 +29,6 @@ import { CharacterAlreadyClaimedError, UserService } from '../services/user.serv
 
 import type { Context } from 'hono'
 import type { RequestMetadata, UserProfileDTO } from '@repo/core'
-import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { BlacklistEntry, Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
@@ -233,9 +232,10 @@ async function hydrateAndReconcileUserRoles(
 	db: ReturnType<typeof createDb>,
 	userId: string,
 	characterId: string
-): Promise<void> {
+): Promise<Awaited<ReturnType<typeof hydrateCharacterAffiliation>> | null> {
+	let affiliation: Awaited<ReturnType<typeof hydrateCharacterAffiliation>> | null = null
 	try {
-		await hydrateCharacterAffiliation({
+		affiliation = await hydrateCharacterAffiliation({
 			db,
 			env: c.env,
 			characterId,
@@ -243,7 +243,7 @@ async function hydrateAndReconcileUserRoles(
 			executionCtx: c.executionCtx,
 		})
 	} catch (error) {
-		logger.error('[Auth] Failed to hydrate character affiliation at link-time', {
+		logger.error('[Auth] Failed to hydrate character affiliation during auth flow', {
 			userId,
 			characterId,
 			error: toErrorMessage(error),
@@ -267,29 +267,21 @@ async function hydrateAndReconcileUserRoles(
 			error: toErrorMessage(error),
 		})
 	}
+
+	return affiliation
 }
 
 async function triggerDirectorHealthRecheckAfterTokenReauth(
 	c: Context<App>,
 	db: ReturnType<typeof createDb>,
 	characterId: string,
-	characterName: string
+	characterName: string,
+	hydratedCorporationId?: string | null
 ): Promise<void> {
-	let corporationId: string | null = null
-	try {
-		const characterData = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
-		const publicRefresh = await withRpcResult(
-			characterData.refreshPublicCharacterData(characterId, true),
-			(result) => ({ ...result })
-		)
-		corporationId = publicRefresh.currentCorporationId ?? null
-	} catch (error) {
-		logger.warn('[Auth] Failed to refresh character affiliation for director health recheck', {
-			characterId,
-			error: toErrorMessage(error),
-		})
-	}
-
+	// Initial link/claim flows pass the affiliation returned by their required
+	// public hydration. Existing login flows use the persisted affiliation while
+	// the bounded user-refresh workflow performs the next public refresh.
+	let corporationId = hydratedCorporationId ?? null
 	if (!corporationId) {
 		const storedCharacter = await db.query.userCharacters?.findFirst?.({
 			where: eq(userCharacters.characterId, characterId),
@@ -694,7 +686,7 @@ auth.get('/callback', async (c) => {
 		const existingUser = await userService.getUserByCharacterId(characterId)
 		if (existingUser) {
 			if (existingUser.id === stateUserId) {
-				await hydrateAndReconcileUserRoles(c, db, stateUserId, characterId)
+				const affiliation = await hydrateAndReconcileUserRoles(c, db, stateUserId, characterId)
 				const existingCharacter = user.characters.find((char) => char.characterId === characterId)
 				await db
 					.update(userCharacters)
@@ -704,7 +696,8 @@ auth.get('/callback', async (c) => {
 					c,
 					db,
 					characterId,
-					characterInfo.characterName
+					characterInfo.characterName,
+					affiliation?.corporationId
 				)
 				await triggerUserRefreshWorkflow({
 					db,
@@ -768,7 +761,7 @@ auth.get('/callback', async (c) => {
 			characterId: characterInfo.characterId,
 			characterName: characterInfo.characterName,
 		})
-		await hydrateAndReconcileUserRoles(c, db, stateUserId, characterId)
+		const affiliation = await hydrateAndReconcileUserRoles(c, db, stateUserId, characterId)
 
 		// Update token validity cache (token was just received from SSO)
 		await db
@@ -779,7 +772,8 @@ auth.get('/callback', async (c) => {
 			c,
 			db,
 			characterId,
-			characterInfo.characterName
+			characterInfo.characterName,
+			affiliation?.corporationId
 		)
 
 		await activityService.logCharacterLinked(stateUserId, characterId, getRequestMetadata(c))
@@ -1138,7 +1132,7 @@ auth.post('/claim-main', async (c) => {
 		throw error
 	}
 
-	await hydrateAndReconcileUserRoles(c, db, user.id, tokenInfo.characterId)
+	const affiliation = await hydrateAndReconcileUserRoles(c, db, user.id, tokenInfo.characterId)
 
 	// Update token validity cache (token was just received from SSO)
 	await db
@@ -1149,7 +1143,8 @@ auth.post('/claim-main', async (c) => {
 		c,
 		db,
 		tokenInfo.characterId,
-		tokenInfo.characterName
+		tokenInfo.characterName,
+		affiliation?.corporationId
 	)
 
 	// Create session

@@ -1,8 +1,23 @@
 import { describe, expect, it } from 'vitest'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
+
+import { resolveSessionRoles } from '../../middleware/session'
 import { buildAuthSessionResponse, shouldUseSecureSessionCookie } from '../auth'
 
 describe('/auth/session response shaping', () => {
+	it('requires an explicit alliance role attachment in addition to current membership', () => {
+		const attachment = (name: string) => ({ role: { name } })
+
+		expect(resolveSessionRoles([attachment('urn:service:other:role')], true)).toEqual([
+			'urn:service:other:role',
+		])
+		expect(resolveSessionRoles([attachment(ROLE_CORE_ALLIANCE_MEMBER)], false)).toEqual([])
+		expect(resolveSessionRoles([attachment(ROLE_CORE_ALLIANCE_MEMBER)], true)).toEqual([
+			ROLE_CORE_ALLIANCE_MEMBER,
+		])
+	})
+
 	it('preserves resolved structure permissions in the session payload', () => {
 		const response = buildAuthSessionResponse(
 			{

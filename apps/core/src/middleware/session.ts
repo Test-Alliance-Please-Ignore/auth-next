@@ -77,17 +77,29 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			const isAdminRoute = c.req.path.startsWith('/api/admin/')
 
 			// Execute independent operations in parallel for better performance
-			const [userProfile, isBlacklisted, roleAttachments, isAllianceMember] = await Promise.all([
-				userService.getUserProfile(userId),
-				getStub<Hr>(c.env.HR, 'default').isUserBlacklisted(userId),
-				isAdminRoute
-					? Promise.resolve([])
-					: getCachedUserRoles(c.env, userId).catch((error) => {
-							logger.error('Error fetching user roles:', error)
-							return []
-						}),
-				isAdminRoute ? Promise.resolve(false) : hasCurrentAllianceMembership(c.env, userId),
-			])
+			const [userProfile, isBlacklisted, roleAttachments, isCurrentAllianceMember] =
+				await Promise.all([
+					userService.getUserProfile(userId),
+					getStub<Hr>(c.env.HR, 'default').isUserBlacklisted(userId),
+					isAdminRoute
+						? Promise.resolve([])
+						: getCachedUserRoles(c.env, userId).catch((error) => {
+								logger.error('Error fetching user roles:', error)
+								return []
+							}),
+					isAdminRoute
+						? Promise.resolve(false)
+						: hasCurrentAllianceMembership(c.env, userId).catch((error) => {
+								// A membership lookup failure must not erase an otherwise valid
+								// authenticated session. Protected routes fail closed when this is
+								// false, while personal routes remain available.
+								logger.warn('Failed to resolve current alliance membership', {
+									userId,
+									error: error instanceof Error ? error.message : String(error),
+								})
+								return false
+							}),
+				])
 
 			// SECURITY: Check blacklist first (fail fast)
 			if (isBlacklisted) {
@@ -98,17 +110,7 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			}
 
 			// Extract role names (URNs) from attachments
-			const userRoles = roleAttachments
-				.filter(
-					(attachment) => attachment.role.name !== ROLE_CORE_ALLIANCE_MEMBER || isAllianceMember
-				)
-				.map((attachment) => attachment.role.name)
-			if (
-				(userProfile.is_admin || isAllianceMember) &&
-				!userRoles.includes(ROLE_CORE_ALLIANCE_MEMBER)
-			) {
-				userRoles.push(ROLE_CORE_ALLIANCE_MEMBER)
-			}
+			const userRoles = resolveSessionRoles(roleAttachments, isCurrentAllianceMember)
 
 			// Build session user object (Discord status can be loaded on-demand via getDiscordStatus())
 			const sessionUser: SessionUser = {
@@ -171,6 +173,28 @@ export type RoleRequirement =
 	| string[] // Multiple roles with OR logic (user must have at least one)
 	| { all: string[] } // Multiple roles with AND logic (user must have all)
 	| { any: string[] } // Multiple roles with OR logic (explicit)
+
+type SessionRoleAttachment = {
+	role: {
+		name: string
+	}
+}
+
+/**
+ * Keep the alliance capability tied to both sources of truth: the current
+ * corporation eligibility check and an actual alliance-member role attachment.
+ * Membership alone must not synthesize a permission that was never granted.
+ */
+export function resolveSessionRoles(
+	roleAttachments: SessionRoleAttachment[],
+	isCurrentAllianceMember: boolean
+): string[] {
+	return roleAttachments
+		.filter(
+			(attachment) => attachment.role.name !== ROLE_CORE_ALLIANCE_MEMBER || isCurrentAllianceMember
+		)
+		.map((attachment) => attachment.role.name)
+}
 
 const allianceMembershipCache = new TimeCache<boolean>(15 * 1000)
 

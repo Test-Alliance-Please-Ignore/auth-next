@@ -75,7 +75,11 @@ export class DirectorHealthRecheckWorkflow extends WorkflowEntrypoint<
 	async run(
 		event: WorkflowEvent<DirectorHealthRecheckWorkflowParams>,
 		step: WorkflowStep
-	): Promise<{ status: 'completed'; characterId: string; results: CorporationRecheckResult[] }> {
+	): Promise<{
+		status: 'completed' | 'completed_with_failures'
+		characterId: string
+		results: CorporationRecheckResult[]
+	}> {
 		const { characterId, characterName, corporationId, source } = event.payload
 		const workflowInstanceId = event.instanceId
 		const corporations = await step.do('load-active-corporation', async () =>
@@ -126,6 +130,10 @@ export class DirectorHealthRecheckWorkflow extends WorkflowEntrypoint<
 			failedCorporationCount: results.filter((result) => result.error).length,
 		})
 
-		return { status: 'completed', characterId, results }
+		return {
+			status: results.some((result) => result.error) ? 'completed_with_failures' : 'completed',
+			characterId,
+			results,
+		}
 	}
 }
