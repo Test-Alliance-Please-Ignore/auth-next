@@ -991,40 +991,20 @@ export class CoreRpcService {
 		return corporations.map((corporation) => corporation.corporationId)
 	}
 
-	/** Whether a user currently has an active linked character in a member corporation. */
+	/** Whether the user holds the persisted alliance-member capability role. */
 	async isUserAllianceMember(userId: string): Promise<boolean> {
-		// Corporation eligibility and the alliance-member URN are separate
-		// sources of truth. A corporation flag must never synthesize the role.
+		// The persisted Groups role is the authorization source of truth. Core
+		// membership reconciliation attaches/removes this role when character
+		// affiliations change; do not add a second live corporation lookup here.
 		const groupsStub = getStub<Groups>(this.env.GROUPS, 'default')
 		const roleAttachments = await withRpcResult(
 			groupsStub.getRolesFor({
 				attachedToType: RoleAttachmentType.USER,
 				attachedToId: userId,
 			}),
-			(result) => result.map((attachment) => ({ roleName: attachment.role.name }))
+			(result) => result.map((attachment) => attachment.role.name)
 		)
-		if (!roleAttachments.some((attachment) => attachment.roleName === ROLE_CORE_ALLIANCE_MEMBER)) {
-			return false
-		}
-
-		const [match] = await this.db
-			.select({ characterId: userCharacters.characterId })
-			.from(userCharacters)
-			.innerJoin(
-				managedCorporations,
-				eq(managedCorporations.corporationId, userCharacters.corporationId)
-			)
-			.where(
-				and(
-					eq(userCharacters.userId, userId),
-					eq(userCharacters.isDeleted, false),
-					eq(managedCorporations.isActive, true),
-					eq(managedCorporations.isMemberCorporation, true)
-				)
-			)
-			.limit(1)
-
-		return match !== undefined
+		return roleAttachments.includes(ROLE_CORE_ALLIANCE_MEMBER)
 	}
 
 	async listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{

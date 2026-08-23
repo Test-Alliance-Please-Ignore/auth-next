@@ -637,7 +637,7 @@ describe('fleet lifecycle management', () => {
 							is_initialized: 1,
 							last_checked: '2026-07-20T00:00:00.000Z',
 							peak_member_count: 4,
-							expires_at: '2026-08-23T00:00:00.000Z',
+							expires_at: new Date(Date.now() + 60_000).toISOString(),
 							member_count: 4,
 							motd: 'Test motd',
 							is_free_move: 1,

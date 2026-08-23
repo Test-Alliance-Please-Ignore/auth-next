@@ -6,14 +6,13 @@ import { resolveSessionRoles } from '../../middleware/session'
 import { buildAuthSessionResponse, shouldUseSecureSessionCookie } from '../auth'
 
 describe('/auth/session response shaping', () => {
-	it('requires an explicit alliance role attachment in addition to current membership', () => {
+	it('uses persisted role attachments as the session capability source', () => {
 		const attachment = (name: string) => ({ role: { name } })
 
-		expect(resolveSessionRoles([attachment('urn:service:other:role')], true)).toEqual([
+		expect(resolveSessionRoles([attachment('urn:service:other:role')])).toEqual([
 			'urn:service:other:role',
 		])
-		expect(resolveSessionRoles([attachment(ROLE_CORE_ALLIANCE_MEMBER)], false)).toEqual([])
-		expect(resolveSessionRoles([attachment(ROLE_CORE_ALLIANCE_MEMBER)], true)).toEqual([
+		expect(resolveSessionRoles([attachment(ROLE_CORE_ALLIANCE_MEMBER)])).toEqual([
 			ROLE_CORE_ALLIANCE_MEMBER,
 		])
 	})
