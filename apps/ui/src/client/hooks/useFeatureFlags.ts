@@ -9,7 +9,8 @@ export function useFeatureFlags() {
 		queryKey: flagsQueryKey,
 		queryFn: () => api.getFeatureFlags(),
 		staleTime: 1000 * 60 * 5, // 5 minutes
-		// Default all flags to true so UI renders normally on error/loading
+		// Keep the response shape stable while loading. Consumers that gate routes
+		// must also honor isPlaceholderData before treating a flag as resolved.
 		placeholderData: {} as Record<string, boolean>,
 	})
 }

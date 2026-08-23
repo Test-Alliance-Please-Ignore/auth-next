@@ -428,8 +428,9 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	}
 
 	async isUserAllianceMember(userId: string): Promise<boolean> {
-		// Keep the capability tied to both persisted role assignment and current
-		// eligible affiliation. Membership flags alone do not grant the URN.
+		// The persisted Groups role is the authorization source of truth. Core
+		// membership reconciliation attaches/removes this role when character
+		// affiliations change; do not add a second live corporation lookup here.
 		const groupsStub = getStub<Groups>(this.env.GROUPS, 'default')
 		const roleAttachments = await withRpcResult(
 			groupsStub.getRolesFor({
@@ -441,25 +442,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		if (!roleAttachments.includes(ROLE_CORE_ALLIANCE_MEMBER)) {
 			return false
 		}
-
-		const [match] = await this.getDb()
-			.select({ characterId: userCharacters.characterId })
-			.from(userCharacters)
-			.innerJoin(
-				managedCorporations,
-				eq(managedCorporations.corporationId, userCharacters.corporationId)
-			)
-			.where(
-				and(
-					eq(userCharacters.userId, userId),
-					eq(userCharacters.isDeleted, false),
-					eq(managedCorporations.isActive, true),
-					eq(managedCorporations.isMemberCorporation, true)
-				)
-			)
-			.limit(1)
-
-		return match !== undefined
+		return true
 	}
 
 	async listUsersWithActiveCharactersPage(input: { limit: number; offset: number }): Promise<{

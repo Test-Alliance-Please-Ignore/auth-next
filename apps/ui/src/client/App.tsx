@@ -2,6 +2,8 @@ import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-qu
 import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router'
 
+import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
+
 import Layout from './components/layout'
 import { LoadingPage } from './components/ui/loading'
 import { installTaxDemoWindow } from './dev/tax-demo-mode'
@@ -248,6 +250,27 @@ function NavigatePasteRootToLogin() {
 	return <LoadingPage label="Redirecting to login..." />
 }
 
+/**
+ * Prevent alliance-member feature pages from mounting data hooks before the
+ * session capability is known. API routes remain authoritative; this is only
+ * a deep-link guard that avoids transient 403 requests.
+ */
+function AllianceMemberRoute({ children }: { children: React.ReactNode }) {
+	const { user, isAuthenticated, isLoading } = useAuth()
+
+	if (isLoading) {
+		return <LoadingPage label="Loading..." />
+	}
+
+	if (!isAuthenticated) {
+		return null
+	}
+
+	const canAccess =
+		user?.is_admin === true || user?.roles?.includes(ROLE_CORE_ALLIANCE_MEMBER) === true
+	return canAccess ? children : <Navigate to="/dashboard" replace />
+}
+
 export default function App() {
 	return (
 		<QueryClientProvider client={queryClient}>
@@ -297,7 +320,14 @@ export default function App() {
 								}
 							/>
 							<Route path="/my-groups" element={<MyGroupsPage />} />
-							<Route path="/mumble" element={<MumblePage />} />
+							<Route
+								path="/mumble"
+								element={
+									<AllianceMemberRoute>
+										<MumblePage />
+									</AllianceMemberRoute>
+								}
+							/>
 							<Route path="/prediction-markets" element={<PredictionMarketCreatePage />} />
 							<Route path="/pastes" element={<PastesPage />} />
 							<Route path="/pastes/:id/edit" element={<PasteEditPage />} />
@@ -496,9 +526,30 @@ export default function App() {
 								element={<NavigateHrAuditorUserGroupsToHrUsers />}
 							/>
 							<Route path="/invitations" element={<InvitationsPage />} />
-							<Route path="/broadcasts" element={<BroadcastsPage />} />
-							<Route path="/broadcasts/new" element={<BroadcastsNewPage />} />
-							<Route path="/broadcasts/:broadcastId" element={<BroadcastDetailPage />} />
+							<Route
+								path="/broadcasts"
+								element={
+									<AllianceMemberRoute>
+										<BroadcastsPage />
+									</AllianceMemberRoute>
+								}
+							/>
+							<Route
+								path="/broadcasts/new"
+								element={
+									<AllianceMemberRoute>
+										<BroadcastsNewPage />
+									</AllianceMemberRoute>
+								}
+							/>
+							<Route
+								path="/broadcasts/:broadcastId"
+								element={
+									<AllianceMemberRoute>
+										<BroadcastDetailPage />
+									</AllianceMemberRoute>
+								}
+							/>
 
 							{/* Utilities routes */}
 							<Route path="/inventory-parser" element={<InventoryParserPage />} />

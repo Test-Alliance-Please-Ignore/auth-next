@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
 
 import { useFeatureFlags } from '@/hooks/useFeatureFlags'
 
@@ -9,16 +9,17 @@ export const MUMBLE_FEATURE_FLAG_KEY = 'mumble.enabled'
 
 export function useMumbleFeatureEnabled() {
 	const queryClient = useQueryClient()
-	const { data, isLoading } = useFeatureFlags()
+	const { data, isLoading, isPlaceholderData } = useFeatureFlags()
 	const isEnabled = data?.[MUMBLE_FEATURE_FLAG_KEY] === true
+	const isResolving = isLoading || isPlaceholderData
 
 	useEffect(() => {
-		if (isLoading || isEnabled) return
+		if (isResolving || isEnabled) return
 		void queryClient.removeQueries({ queryKey: mumbleKeys.all })
-	}, [isEnabled, isLoading, queryClient])
+	}, [isEnabled, isResolving, queryClient])
 
 	return {
 		isEnabled,
-		isLoading,
+		isLoading: isResolving,
 	}
 }

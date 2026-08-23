@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 
@@ -35,6 +36,7 @@ export default function AuthCallbackPage() {
 	usePageTitle('Authenticating')
 	const [searchParams] = useSearchParams()
 	const navigate = useNavigate()
+	const queryClient = useQueryClient()
 	const [error, setError] = useState<string | null>(null)
 	const hasCalledCallback = useRef(false)
 
@@ -69,10 +71,18 @@ export default function AuthCallbackPage() {
 					`/auth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`
 				)
 
+				// The app's session query can have completed before this callback set the
+				// session cookie. Reset and await it before navigating, otherwise a cached
+				// unauthenticated response can redirect a valid deep link to the dashboard.
+				const refreshSession = async () => {
+					await queryClient.resetQueries({ queryKey: ['auth', 'session'] })
+				}
+
 				if (response.characterLinked) {
 					// Character was successfully linked (new link or token refresh).
 					// Always flag dashboard to refetch auth/session immediately so linked characters
 					// and token state are reflected without waiting for stale cache expiry.
+					await refreshSession()
 					const destination = '/dashboard?tokenUpdated=1'
 					void navigate(destination)
 				} else if (response.requiresClaimMain && response.characterInfo && response.claimTicket) {
@@ -87,6 +97,7 @@ export default function AuthCallbackPage() {
 				} else if (response.success) {
 					// Existing user logging in - session cookie set by server
 					// Use redirect URL if present, otherwise go to dashboard
+					await refreshSession()
 					const destination = response.redirectUrl || '/dashboard'
 
 					// Absolute destinations, including the third-party OAuth /authorize URL, must
@@ -107,7 +118,7 @@ export default function AuthCallbackPage() {
 		}
 
 		void handleCallback()
-	}, [searchParams, navigate])
+	}, [navigate, queryClient, searchParams])
 
 	if (error) {
 		return (
