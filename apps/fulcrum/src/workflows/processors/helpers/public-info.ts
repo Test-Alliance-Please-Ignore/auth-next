@@ -1,10 +1,11 @@
 import { getStub } from '@repo/do-utils'
+import { logger } from '@repo/hono-helpers'
+
 import { stripHtmlToPlainText } from './html-stripper'
-import type { EntityLinkCoordinator } from './entity-links'
 
 import type { CharacterPublicInfo, EsiTypeResolver } from '@repo/esi'
 import type { CoreBinding } from '../../../types/core-binding'
-import { logger } from '@repo/hono-helpers'
+import type { EntityLinkCoordinator } from './entity-links'
 
 /**
  * Data enrichment functions for public character information
@@ -35,6 +36,8 @@ export interface ProcessedPublicInfo {
 	factionName?: string
 	description?: string
 	title?: string
+	totalSp?: number
+	walletBalance?: number | null
 	processedAt: string
 }
 
@@ -50,7 +53,7 @@ export async function enrichPublicInfo(
 	env: { ESI_TYPE_RESOLVER: DurableObjectNamespace; CORE: CoreBinding },
 	data: CharacterPublicInfo,
 	characterId: string,
-	entityLinkCoordinator?: EntityLinkCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator
 ): Promise<ProcessedPublicInfo> {
 	// Collect all IDs that need resolution
 	const idsToResolve: string[] = [data.corporation_id]
@@ -86,7 +89,7 @@ export async function enrichPublicInfo(
 						{ entityId: data.corporation_id, entityType: 'corporation' },
 						...(data.alliance_id ? [{ entityId: data.alliance_id, entityType: 'alliance' }] : []),
 					],
-					'enrichPublicInfo',
+					'enrichPublicInfo'
 				)
 			: {}
 

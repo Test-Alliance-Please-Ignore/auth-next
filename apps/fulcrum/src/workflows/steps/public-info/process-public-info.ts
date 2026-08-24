@@ -3,11 +3,18 @@
  * Resolves IDs to human-readable names using ESI Type Resolver
  */
 
-import type { CharacterPublicInfo } from '@repo/esi'
-import { retrieveData, storeOrReturn, type StepResult } from '../../utils/storage'
 import { enrichPublicInfo } from '../../processors/helpers/public-info'
-import type { EntityLinkCoordinator } from '../../processors/helpers/entity-links'
+import { retrieveData, storeOrReturn } from '../../utils/storage'
+
+import type { CharacterPublicInfo } from '@repo/esi'
 import type { CoreBinding } from '../../../types/core-binding'
+import type { EntityLinkCoordinator } from '../../processors/helpers/entity-links'
+import type { StepResult } from '../../utils/storage'
+
+interface FetchedAccountData {
+	skills?: { total_sp?: number }
+	walletBalance?: number | null
+}
 
 /**
  * Process public character info by enriching with resolved names
@@ -29,7 +36,7 @@ export async function processPublicInfo(
 	fetchResult: StepResult,
 	workflowInstanceId: string,
 	characterId: string,
-	entityLinkCoordinator?: EntityLinkCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator
 ): Promise<StepResult> {
 	try {
 		// Check if fetch was successful
@@ -70,7 +77,7 @@ export async function processPublicInfo(
 			bucketName,
 			workflowInstanceId,
 			'process-public-info',
-			enrichedData,
+			enrichedData
 		)
 	} catch (error) {
 		return {
@@ -78,5 +85,45 @@ export async function processPublicInfo(
 			success: false,
 			error: error instanceof Error ? error.message : String(error),
 		}
+	}
+}
+
+/**
+ * Add authenticated metrics collected by the skills step to the persisted
+ * public-info section used by the report overview.
+ */
+export async function addAccountSummaryToPublicInfo(
+	getBucket: (name: string) => R2Bucket,
+	bucket: R2Bucket,
+	bucketName: string,
+	publicInfoResult: StepResult,
+	accountDataResult: StepResult,
+	workflowInstanceId: string
+): Promise<StepResult> {
+	try {
+		if (!publicInfoResult.success || !accountDataResult.success) return publicInfoResult
+
+		const publicInfo = await retrieveData<Record<string, unknown>>(getBucket, publicInfoResult)
+		const accountData = await retrieveData<FetchedAccountData>(getBucket, accountDataResult)
+		if (!publicInfo || !accountData) return publicInfoResult
+
+		const totalSp = accountData.skills?.total_sp
+		const walletBalance = accountData.walletBalance
+		if (totalSp === undefined && walletBalance === undefined) return publicInfoResult
+
+		return await storeOrReturn(
+			bucket,
+			bucketName,
+			workflowInstanceId,
+			'process-public-info-account-summary',
+			{
+				...publicInfo,
+				...(totalSp !== undefined ? { totalSp } : {}),
+				...(walletBalance !== undefined ? { walletBalance } : {}),
+			}
+		)
+	} catch {
+		// The base public-info section remains valid if optional metrics cannot be merged.
+		return publicInfoResult
 	}
 }

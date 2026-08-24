@@ -14,11 +14,21 @@ import type { StepResult } from '../../utils/storage'
  * Separated for testability
  */
 export async function fetchSkillsFromEsi(esiStub: Esi, characterId: string) {
-	const [skills, skillQueue] = await Promise.all([
+	const [skillsResult, skillQueueResult, walletBalanceResult] = await Promise.allSettled([
 		esiStub.fetchCharacterSkills(characterId, { cacheMode: 'no-store' }),
 		esiStub.fetchCharacterSkillQueue(characterId, { cacheMode: 'no-store' }),
+		esiStub.fetchCharacterWalletBalance(characterId),
 	])
-	return { skills, skillQueue }
+
+	if (skillsResult.status === 'rejected') throw skillsResult.reason
+	if (skillQueueResult.status === 'rejected') throw skillQueueResult.reason
+
+	return {
+		skills: skillsResult.value,
+		skillQueue: skillQueueResult.value,
+		// Wallet access is optional. A missing wallet scope must not discard skills.
+		walletBalance: walletBalanceResult.status === 'fulfilled' ? walletBalanceResult.value : null,
+	}
 }
 
 /**

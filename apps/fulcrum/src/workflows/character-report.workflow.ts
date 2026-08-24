@@ -34,7 +34,11 @@ import { processFittedShips } from './steps/fitted-ships'
 import { fetchMails, processMails } from './steps/mails'
 import { fetchNotifications, processNotifications } from './steps/notifications'
 import { fetchOrders, processOrders } from './steps/orders'
-import { fetchPublicInfo, processPublicInfo } from './steps/public-info'
+import {
+	addAccountSummaryToPublicInfo,
+	fetchPublicInfo,
+	processPublicInfo,
+} from './steps/public-info'
 import { fetchSkills, processSkills } from './steps/skills'
 import { fetchWalletJournal, processWalletJournal } from './steps/wallet-journal'
 import { fetchWalletTransactions, processWalletTransactions } from './steps/wallet-transactions'
@@ -189,7 +193,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 			)
 
 			// Step 3: Process public info
-			const processResult = await doStep('process-public-info', STEP, () =>
+			let processResult = await doStep('process-public-info', STEP, () =>
 				processPublicInfo(
 					this.env,
 					getBucket,
@@ -439,6 +443,19 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 				)
 			)
 
+			// Keep authenticated metrics in the same persisted section as the
+			// public character details shown on the overview tab.
+			processResult = await doStep('process-public-info-account-summary', STEP, () =>
+				addAccountSummaryToPublicInfo(
+					getBucket,
+					this.env.CHARACTER_REPORTS,
+					'CHARACTER_REPORTS',
+					processResult,
+					fetchSkillsResult,
+					workflowInstanceId
+				)
+			)
+
 			// Step 22: Fetch contracts from ESI
 			const fetchContractsResult = await doStep('fetch-contracts-data', ESI_STEP, () =>
 				fetchContracts(
@@ -489,8 +506,7 @@ export class CharacterReportWorkflow extends WorkflowEntrypoint<Env, WorkflowPar
 						workflowInstanceId,
 						characterId,
 						characterAffiliationCoordinator,
-						undefined,
-						structureResolutionCoordinator
+						undefined
 					)
 			)
 
