@@ -187,6 +187,21 @@ login.get('/', async (c) => {
 						line-height: 1.6;
 					}
 
+					.account-warning-box {
+						background: hsl(0 72% 51% / 0.12);
+						border-left: 3px solid hsl(0 72% 51%);
+						padding: 16px;
+						border-radius: 8px;
+						margin-bottom: 16px;
+					}
+
+					.account-warning-title {
+						font-size: 14px;
+						font-weight: 600;
+						color: hsl(0 84% 68%);
+						margin-bottom: 8px;
+					}
+
 					.button {
 						display: block;
 						width: 100%;
@@ -279,6 +294,14 @@ login.get('/', async (c) => {
 							<p class="info-text">
 								You are about to login using EVE Online's secure Single Sign-On (SSO) system. This
 								ensures your credentials stay safe and are never shared with third parties.
+							</p>
+						</div>
+
+						<div class="account-warning-box">
+							<div class="account-warning-title">Important: Do Not Create a Second Account</div>
+							<p class="warning-text">
+								You are about to create a new TEST Auth account. If you have created an Auth account
+								before, do not create another one. Multiple Auth accounts cause problems later.
 							</p>
 						</div>
 
