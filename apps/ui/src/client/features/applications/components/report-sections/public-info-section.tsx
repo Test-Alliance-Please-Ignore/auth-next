@@ -4,9 +4,13 @@
 
 import { ExternalLink } from 'lucide-react'
 
+import { formatSkillPoints } from '@repo/eve-types'
+
 import { MemberAvatar } from '@/components/member-avatar'
 import { Card, CardContent } from '@/components/ui/card'
 import { allianceLogoUrl, corporationLogoUrl } from '@/lib/eve-images'
+import { formatISKShort } from '@/lib/format-utils'
+
 import { EntityNameLink } from './entity-name-link'
 
 interface ProcessedPublicInfo {
@@ -30,6 +34,8 @@ interface ProcessedPublicInfo {
 	factionName?: string
 	description?: string
 	title?: string
+	totalSp?: number
+	walletBalance?: number | null
 	processedAt: string
 }
 
@@ -51,14 +57,23 @@ function SimpleInfoRow({ label, value }: { label: string; value?: string | null 
 	)
 }
 
+function NumericInfoRow({
+	label,
+	value,
+	format,
+}: {
+	label: string
+	value?: number | null
+	format: (value: number) => string
+}) {
+	if (value == null) return null
+	return <SimpleInfoRow label={label} value={format(value)} />
+}
+
 export function PublicInfoHeader({ data }: { data: ProcessedPublicInfo }) {
 	return (
 		<div className="flex items-center gap-4">
-			<MemberAvatar
-				characterId={data.characterId}
-				characterName={data.characterName}
-				size="lg"
-			/>
+			<MemberAvatar characterId={data.characterId} characterName={data.characterName} size="lg" />
 			<div>
 				<h3 className="text-xl font-bold text-foreground">
 					<EntityNameLink entityId={data.characterId} href={data.characterDisplayHref}>
@@ -78,6 +93,16 @@ export function PublicInfoCard({ data }: { data: ProcessedPublicInfo }) {
 		<Card variant="flat">
 			<CardContent className="pt-4">
 				<div className="divide-y divide-border">
+					<NumericInfoRow
+						label="Skill Points"
+						value={data.totalSp}
+						format={(value) => formatSkillPoints(value)}
+					/>
+					<NumericInfoRow
+						label="Wallet Balance"
+						value={data.walletBalance}
+						format={(value) => formatISKShort(value)}
+					/>
 					<SimpleInfoRow label="Birthday" value={new Date(data.birthday).toLocaleDateString()} />
 					<SimpleInfoRow label="Race" value={data.raceName} />
 					<SimpleInfoRow label="Bloodline" value={data.bloodlineName} />
@@ -98,15 +123,9 @@ export function PublicInfoCard({ data }: { data: ProcessedPublicInfo }) {
 					)}
 					{data.allianceId && (
 						<InfoRow label="Alliance">
-							<img
-								src={allianceLogoUrl(data.allianceId, 32)}
-								alt=""
-								className="h-5 w-5 rounded"
-							/>
+							<img src={allianceLogoUrl(data.allianceId, 32)} alt="" className="h-5 w-5 rounded" />
 							<EntityNameLink entityId={data.allianceId} href={data.allianceDisplayHref}>
-								<span className="text-sm font-medium text-foreground">
-									{data.allianceName}
-								</span>
+								<span className="text-sm font-medium text-foreground">{data.allianceName}</span>
 							</EntityNameLink>
 						</InfoRow>
 					)}

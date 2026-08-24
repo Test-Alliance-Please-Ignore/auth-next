@@ -1,29 +1,28 @@
 import { getStub } from '@repo/do-utils'
-import { normalizeIdToString } from '@repo/eve-types'
-
-import type { EsiTypeResolver, CharacterNotification } from '@repo/esi'
-import type {
-    CharacterAffiliationCoordinator,
-    CharacterAffiliationDisplayCandidate,
-} from './character-affiliation'
-import type { EntityLinkCoordinator } from './entity-links'
-import type { StructureResolutionCoordinator } from './structure-resolution'
-import type { CoreBinding } from '../../../types/core-binding'
+import { isStructureId, normalizeIdToString } from '@repo/eve-types'
 import { logger } from '@repo/hono-helpers'
 
+import type { CharacterNotification, EsiTypeResolver } from '@repo/esi'
+import type { CoreBinding } from '../../../types/core-binding'
+import type {
+	CharacterAffiliationCoordinator,
+	CharacterAffiliationDisplayCandidate,
+} from './character-affiliation'
+import type { EntityLinkCoordinator } from './entity-links'
+
 export interface ProcessedNotification extends CharacterNotification {
-    senderName?: string
-    senderDisplayName?: string
-    senderDisplayHref?: string
-    /** Parsed text content as key-value pairs (IDs resolved to names where possible) */
-    parsedText?: Record<string, string>
-    processedAt: string
+	senderName?: string
+	senderDisplayName?: string
+	senderDisplayHref?: string
+	/** Parsed text content as key-value pairs (IDs resolved to names where possible) */
+	parsedText?: Record<string, string>
+	processedAt: string
 }
 
 export interface EnrichedNotificationData {
-    notifications: ProcessedNotification[]
-    /** Distinct notification types present */
-    types: string[]
+	notifications: ProcessedNotification[]
+	/** Distinct notification types present */
+	types: string[]
 }
 
 /**
@@ -36,60 +35,82 @@ export interface EnrichedNotificationData {
  *   corpStationID: *id001
  */
 function parseNotificationText(text?: string): Record<string, string> | undefined {
-    if (!text) return undefined
-    const result: Record<string, string> = {}
-    const anchors: Record<string, string> = {}
-    const lines = text.split('\n')
-    for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
-        const colonIdx = trimmed.indexOf(':')
-        if (colonIdx > 0) {
-            const key = trimmed.slice(0, colonIdx).trim()
-            let value = trimmed.slice(colonIdx + 1).trim()
+	if (!text) return undefined
+	const result: Record<string, string> = {}
+	const anchors: Record<string, string> = {}
+	const lines = text.split('\n')
+	for (const line of lines) {
+		const trimmed = line.trim()
+		if (!trimmed) continue
+		const colonIdx = trimmed.indexOf(':')
+		if (colonIdx > 0) {
+			const key = trimmed.slice(0, colonIdx).trim()
+			let value = trimmed.slice(colonIdx + 1).trim()
 
-            // Handle YAML anchor: "&id001 1051346234914" → store anchor and extract value
-            const anchorMatch = value.match(/^&(\S+)\s+(.+)$/)
-            if (anchorMatch) {
-                anchors[anchorMatch[1]] = anchorMatch[2]
-                value = anchorMatch[2]
-            }
+			// Handle YAML anchor: "&id001 1051346234914" → store anchor and extract value
+			const anchorMatch = value.match(/^&(\S+)\s+(.+)$/)
+			if (anchorMatch) {
+				anchors[anchorMatch[1]] = anchorMatch[2]
+				value = anchorMatch[2]
+			}
 
-            // Handle YAML reference: "*id001" → resolve to anchor value
-            const refMatch = value.match(/^\*(\S+)$/)
-            if (refMatch && anchors[refMatch[1]]) {
-                value = anchors[refMatch[1]]
-            }
+			// Handle YAML reference: "*id001" → resolve to anchor value
+			const refMatch = value.match(/^\*(\S+)$/)
+			if (refMatch && anchors[refMatch[1]]) {
+				value = anchors[refMatch[1]]
+			}
 
-            if (key) result[key] = value
-        } else {
-            // Line without colon — store as-is
-            result[trimmed] = ''
-        }
-    }
-    return Object.keys(result).length > 0 ? result : undefined
+			if (key) result[key] = value
+		} else {
+			// Line without colon — store as-is
+			result[trimmed] = ''
+		}
+	}
+	return Object.keys(result).length > 0 ? result : undefined
 }
 
 // Keys whose values are known to be EVE entity/type IDs worth resolving.
 // Matched case-insensitively against parsedText keys.
 const ID_KEY_SUFFIXES = [
-    'corpid', 'corporationid', 'allianceid', 'charid', 'characterid',
-    'typeid', 'solarsystemid', 'systemid', 'stationid', 'structureid',
-    'factionid', 'aggressorid', 'declaredbyid', 'againstid', 'defenderid',
-    'attackerid', 'senderid', 'ownerid', 'victimid', 'locationid',
-    'shiptypeid', 'destroyerid', 'podkillerid', 'clonestationid',
-    'ceoid', 'quitterid', 'opponentid', 'allyid', 'mercid',
-    'offeredid', 'entityid', 'constellationid', 'planetid',
-    'invokingcharid',
+	'corpid',
+	'corporationid',
+	'allianceid',
+	'charid',
+	'characterid',
+	'typeid',
+	'solarsystemid',
+	'systemid',
+	'stationid',
+	'structureid',
+	'factionid',
+	'aggressorid',
+	'declaredbyid',
+	'againstid',
+	'defenderid',
+	'attackerid',
+	'senderid',
+	'ownerid',
+	'victimid',
+	'locationid',
+	'shiptypeid',
+	'destroyerid',
+	'podkillerid',
+	'clonestationid',
+	'ceoid',
+	'quitterid',
+	'opponentid',
+	'allyid',
+	'mercid',
+	'offeredid',
+	'entityid',
+	'constellationid',
+	'planetid',
+	'invokingcharid',
 ]
 
 // Keys that end in "ID" but do NOT represent resolvable EVE entities.
 // These would poison /universe/names/ batches causing entire batches to fail.
-const NON_ENTITY_ID_KEYS = new Set([
-    'killmailid',
-    'warnegotiationid',
-    'itemid',
-])
+const NON_ENTITY_ID_KEYS = new Set(['killmailid', 'warnegotiationid', 'itemid'])
 
 /**
  * Check if a parsedText key looks like it contains an entity ID.
@@ -97,9 +118,9 @@ const NON_ENTITY_ID_KEYS = new Set([
  * excluding known non-entity keys.
  */
 function isIdKey(key: string): boolean {
-    const lower = key.toLowerCase()
-    if (NON_ENTITY_ID_KEYS.has(lower)) return false
-    return ID_KEY_SUFFIXES.some((suffix) => lower === suffix || lower.endsWith(suffix))
+	const lower = key.toLowerCase()
+	if (NON_ENTITY_ID_KEYS.has(lower)) return false
+	return ID_KEY_SUFFIXES.some((suffix) => lower === suffix || lower.endsWith(suffix))
 }
 
 /**
@@ -108,179 +129,154 @@ function isIdKey(key: string): boolean {
  * Allows up to 13 digits to cover structure IDs (1T–2T range).
  */
 function isPlausibleId(value: string): boolean {
-    if (!value || value.length > 13) return false
-    const num = Number(value)
-    return Number.isInteger(num) && num > 0 && num < 2_000_000_000_000
+	if (!value || value.length > 13) return false
+	const num = Number(value)
+	return Number.isInteger(num) && num > 0 && num < 2_000_000_000_000
 }
 
 /**
  * Collect all entity IDs from parsedText that need resolution.
  */
 function collectParsedTextIds(
-    notifications: Array<{ parsedText?: Record<string, string> }>,
+	notifications: Array<{ parsedText?: Record<string, string> }>
 ): Set<string> {
-    const ids = new Set<string>()
-    for (const n of notifications) {
-        if (!n.parsedText) continue
-        for (const [key, value] of Object.entries(n.parsedText)) {
-            if (isIdKey(key) && isPlausibleId(value)) {
-                ids.add(value)
-            }
-        }
-    }
-    return ids
+	const ids = new Set<string>()
+	for (const n of notifications) {
+		if (!n.parsedText) continue
+		for (const [key, value] of Object.entries(n.parsedText)) {
+			if (isIdKey(key) && isPlausibleId(value)) {
+				ids.add(value)
+			}
+		}
+	}
+	return ids
 }
 
 /**
  * Replace raw IDs in parsedText with resolved names.
  */
 function annotateParsedText(
-    parsedText: Record<string, string>,
-    nameMap: Record<string, string>,
+	parsedText: Record<string, string>,
+	nameMap: Record<string, string>
 ): Record<string, string> {
-    const result: Record<string, string> = {}
-    for (const [key, value] of Object.entries(parsedText)) {
-        if (isIdKey(key) && isPlausibleId(value) && nameMap[value]) {
-            result[key] = `${nameMap[value]} (${value})`
-        } else {
-            result[key] = value
-        }
-    }
-    return result
+	const result: Record<string, string> = {}
+	for (const [key, value] of Object.entries(parsedText)) {
+		if (isIdKey(key) && isPlausibleId(value) && nameMap[value]) {
+			result[key] = `${nameMap[value]} (${value})`
+		} else {
+			result[key] = value
+		}
+	}
+	return result
 }
 
 export async function enrichNotifications(
-    env: {
-        ESI_TYPE_RESOLVER: DurableObjectNamespace
-        ESI: DurableObjectNamespace
-        EVE_TOKEN_STORE: DurableObjectNamespace
-        CORE: CoreBinding
-    },
-    notifications: CharacterNotification[],
-    characterId?: string,
-    affiliationCoordinator?: CharacterAffiliationCoordinator,
-    entityLinkCoordinator?: EntityLinkCoordinator,
-    structureResolutionCoordinator?: StructureResolutionCoordinator,
+	env: {
+		ESI_TYPE_RESOLVER: DurableObjectNamespace
+		ESI: DurableObjectNamespace
+		EVE_TOKEN_STORE: DurableObjectNamespace
+		CORE: CoreBinding
+	},
+	notifications: CharacterNotification[],
+	characterId?: string,
+	affiliationCoordinator?: CharacterAffiliationCoordinator,
+	entityLinkCoordinator?: EntityLinkCoordinator
 ): Promise<EnrichedNotificationData> {
-    if (notifications.length === 0) {
-        return { notifications: [], types: [] }
-    }
+	if (notifications.length === 0) {
+		return { notifications: [], types: [] }
+	}
 
-    // First pass: parse all notification text
-    const parsed = notifications.map((n) => ({
-        ...n,
-        parsedText: parseNotificationText(n.text),
-    }))
+	// First pass: parse all notification text
+	const parsed = notifications.map((n) => ({
+		...n,
+		parsedText: parseNotificationText(n.text),
+	}))
 
-    // Collect all IDs to resolve: sender IDs + IDs from parsedText
-    const idsToResolve = new Set<string>()
-    for (const n of parsed) {
-        const senderId = normalizeIdToString(n.sender_id)
-        if (senderId) idsToResolve.add(senderId)
-    }
-    const parsedTextIds = collectParsedTextIds(parsed)
-    for (const id of parsedTextIds) {
-        idsToResolve.add(id)
-    }
+	// Collect all IDs to resolve: sender IDs + IDs from parsedText
+	const idsToResolve = new Set<string>()
+	for (const n of parsed) {
+		const senderId = normalizeIdToString(n.sender_id)
+		if (senderId) idsToResolve.add(senderId)
+	}
+	// Structure IDs in notification text are intentionally left raw. Resolving
+	// them requires authenticated per-structure requests and commonly returns
+	// 403 for structures the character cannot access.
+	const parsedTextIds = Array.from(collectParsedTextIds(parsed)).filter((id) => !isStructureId(id))
+	for (const id of parsedTextIds) {
+		idsToResolve.add(id)
+	}
 
-    const structureIds = parsed
-        .flatMap((notification) =>
-            Object.entries(notification.parsedText ?? {})
-                .filter(([key, value]) => key.toLowerCase().includes('structureid') && isPlausibleId(value))
-                .map(([, value]) => value)
-        )
-        .filter((id, index, values) => values.indexOf(id) === index)
+	// Batch-resolve all IDs in one call
+	let nameMap: Record<string, string> = {}
+	if (idsToResolve.size > 0) {
+		try {
+			const typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
+			nameMap = await typeResolver.resolveIds(Array.from(idsToResolve))
+		} catch (error) {
+			logger.error('Failed to resolve IDs for notifications:', error)
+		}
+	}
 
-    // Batch-resolve all IDs in one call
-    let nameMap: Record<string, string> = {}
-    if (idsToResolve.size > 0) {
-        try {
-            const typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
-            nameMap = await typeResolver.resolveIds(Array.from(idsToResolve))
-        } catch (error) {
-            logger.error('Failed to resolve IDs for notifications:', error)
-        }
-    }
+	const senderDisplayNameMap =
+		affiliationCoordinator && notifications.length > 0
+			? await affiliationCoordinator.resolveDisplayNames(
+					{ ESI: env.ESI },
+					characterId ?? 'default',
+					(() => {
+						const candidates: CharacterAffiliationDisplayCandidate[] = []
+						for (const notification of parsed) {
+							if (notification.sender_type !== 'character') continue
+							const senderId = normalizeIdToString(notification.sender_id)
+							if (senderId && nameMap[senderId]) {
+								candidates.push({
+									characterId: senderId,
+									characterName: nameMap[senderId],
+									forceCharacter: true,
+								})
+							}
+						}
+						return candidates
+					})(),
+					'enrichNotifications'
+				)
+			: {}
 
-    if (structureResolutionCoordinator && characterId && structureIds.length > 0) {
-        const knownStructureNames = Object.fromEntries(
-            structureIds
-                .filter((structureId) => {
-                    const name = nameMap[structureId]
-                    return Boolean(name && name !== 'Structure (Unknown or no access)')
-                })
-                .map((structureId) => [structureId, nameMap[structureId]])
-        )
-        const structureNames = await structureResolutionCoordinator.resolveStructureNames(
-            { ESI: env.ESI },
-            characterId,
-            structureIds,
-            'enrichNotifications',
-            knownStructureNames,
-        )
-        Object.assign(nameMap, structureNames)
-    }
+	const displayHrefMap =
+		entityLinkCoordinator && notifications.length > 0
+			? await entityLinkCoordinator.resolveDisplayHrefs(
+					env.CORE,
+					notifications.map((notification) => ({
+						entityId: String(notification.sender_id ?? ''),
+						entityType: notification.sender_type ?? null,
+					})),
+					'enrichNotifications'
+				)
+			: {}
 
-    const senderDisplayNameMap =
-        affiliationCoordinator && notifications.length > 0
-            ? await affiliationCoordinator.resolveDisplayNames(
-                    { ESI: env.ESI },
-                    characterId ?? 'default',
-                    (() => {
-                        const candidates: CharacterAffiliationDisplayCandidate[] = []
-                        for (const notification of parsed) {
-                            if (notification.sender_type !== 'character') continue
-                            const senderId = normalizeIdToString(notification.sender_id)
-                            if (senderId && nameMap[senderId]) {
-                                candidates.push({
-                                    characterId: senderId,
-                                    characterName: nameMap[senderId],
-                                    forceCharacter: true,
-                                })
-                            }
-                        }
-                        return candidates
-                    })(),
-                    'enrichNotifications',
-                )
-            : {}
+	// Second pass: build processed notifications with resolved names
+	const processed: ProcessedNotification[] = parsed.map((n) => {
+		const senderId = normalizeIdToString(n.sender_id)
+		return {
+			...n,
+			senderName: senderId ? nameMap[senderId] : undefined,
+			senderDisplayName: senderId
+				? (senderDisplayNameMap[senderId] ?? nameMap[senderId])
+				: undefined,
+			senderDisplayHref: senderId ? displayHrefMap[senderId] : undefined,
+			parsedText: n.parsedText ? annotateParsedText(n.parsedText, nameMap) : undefined,
+			processedAt: new Date().toISOString(),
+		}
+	})
 
-    const displayHrefMap =
-        entityLinkCoordinator && notifications.length > 0
-            ? await entityLinkCoordinator.resolveDisplayHrefs(
-                    env.CORE,
-                    notifications.map((notification) => ({
-                        entityId: String(notification.sender_id ?? ''),
-                        entityType: notification.sender_type ?? null,
-                    })),
-                    'enrichNotifications',
-                )
-            : {}
+	// Sort newest first
+	processed.sort((a, b) => {
+		const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0
+		const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0
+		return timeB - timeA
+	})
 
-    // Second pass: build processed notifications with resolved names
-    const processed: ProcessedNotification[] = parsed.map((n) => {
-        const senderId = normalizeIdToString(n.sender_id)
-        return {
-            ...n,
-            senderName: senderId ? nameMap[senderId] : undefined,
-            senderDisplayName: senderId ? senderDisplayNameMap[senderId] ?? nameMap[senderId] : undefined,
-            senderDisplayHref: senderId ? displayHrefMap[senderId] : undefined,
-            parsedText: n.parsedText
-                ? annotateParsedText(n.parsedText, nameMap)
-                : undefined,
-            processedAt: new Date().toISOString(),
-        }
-    })
+	// Collect distinct types
+	const types = [...new Set(processed.map((n) => n.type))].sort()
 
-    // Sort newest first
-    processed.sort((a, b) => {
-        const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0
-        const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0
-        return timeB - timeA
-    })
-
-    // Collect distinct types
-    const types = [...new Set(processed.map((n) => n.type))].sort()
-
-    return { notifications: processed, types }
+	return { notifications: processed, types }
 }
