@@ -1,5 +1,5 @@
 import { AlertTriangle, ExternalLink, RefreshCw, UserPlus } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { DiscordCard } from '@/components/discord-card'
@@ -22,25 +22,10 @@ export default function DashboardPage() {
 	const navigate = useNavigate()
 	const [searchParams, setSearchParams] = useSearchParams()
 	const [isLinkingCharacter, setIsLinkingCharacter] = useState(false)
-	const [isLinkingLegacyAuth, setIsLinkingLegacyAuth] = useState(false)
 	const [reauthorizingCharacters, setReauthorizingCharacters] = useState<Set<string>>(new Set())
 	const [refreshingCharacters, setRefreshingCharacters] = useState<Set<string>>(new Set())
 	const [mainCharacterDetails, setMainCharacterDetails] = useState<any>(null)
 	const [creatingInvites, setCreatingInvites] = useState<Set<string>>(new Set())
-
-	// Calculate the "growth factor" for the legacy card prank (December 1-31)
-	const legacyCardGrowth = useMemo(() => {
-		const now = new Date()
-		const month = now.getMonth() // 0-indexed, so December = 11
-		const day = now.getDate()
-
-		// Only active in December
-		if (month !== 11) return null
-
-		// Calculate progress: day 1 = 0%, day 31 = 100%
-		const progress = Math.min((day - 1) / 30, 1)
-		return progress
-	}, [])
 
 	// Fetch main character details when user loads
 	useEffect(() => {
@@ -124,23 +109,6 @@ export default function DashboardPage() {
 		} catch (error) {
 			console.error('Failed to start character linking flow:', error)
 			setIsLinkingCharacter(false)
-			// TODO: Show error toast
-		}
-	}
-
-	const handleLinkLegacyAuth = async () => {
-		setIsLinkingLegacyAuth(true)
-		try {
-			// Start legacy auth linking flow
-			const response = await apiClient.post<{ authorizationUrl: string; state: string }>(
-				'/auth/legacy-auth/start'
-			)
-
-			// Redirect to legacy auth OIDC server
-			window.location.href = response.authorizationUrl
-		} catch (error) {
-			console.error('Failed to start legacy auth linking flow:', error)
-			setIsLinkingLegacyAuth(false)
 			// TODO: Show error toast
 		}
 	}
@@ -374,95 +342,6 @@ export default function DashboardPage() {
 						<DiscordCard user={user} />
 					</div>
 				</div>
-
-				{/* Legacy Auth Linking Card - Show when not linked */}
-				{user && (!user.legacyAuth?.isLinked || !user.legacyAuth) && (
-					<div
-						className="mt-6 transition-all duration-500"
-						style={
-							legacyCardGrowth !== null
-								? {
-										position: legacyCardGrowth > 0.5 ? 'fixed' : 'relative',
-										top: legacyCardGrowth > 0.5 ? `${50 - legacyCardGrowth * 50}%` : undefined,
-										left: legacyCardGrowth > 0.5 ? `${50 - legacyCardGrowth * 50}%` : undefined,
-										width: legacyCardGrowth > 0.5 ? `${legacyCardGrowth * 100}%` : undefined,
-										height: legacyCardGrowth > 0.5 ? `${legacyCardGrowth * 100}vh` : undefined,
-										transform: `scale(${1 + legacyCardGrowth * 0.5})`,
-										transformOrigin: 'center',
-										zIndex: legacyCardGrowth > 0.3 ? 50 : undefined,
-									}
-								: undefined
-						}
-					>
-						<Card
-							variant="default"
-							className="h-full"
-							style={
-								legacyCardGrowth !== null
-									? {
-											fontSize: `${1 + legacyCardGrowth * 2}rem`,
-											padding: `${legacyCardGrowth * 2}rem`,
-										}
-									: undefined
-							}
-						>
-							<CardHeader>
-								<CardTitle
-									className="md:text-2xl"
-									style={
-										legacyCardGrowth !== null
-											? { fontSize: `${1.25 + legacyCardGrowth * 3}rem` }
-											: undefined
-									}
-								>
-									Legacy Account
-								</CardTitle>
-								<CardDescription
-									style={
-										legacyCardGrowth !== null
-											? { fontSize: `${0.875 + legacyCardGrowth * 1.5}rem` }
-											: undefined
-									}
-								>
-									Link your legacy auth account to preserve your account history
-								</CardDescription>
-							</CardHeader>
-							<CardContent>
-								<div className="flex items-center justify-between gap-4 flex-wrap">
-									<div className="flex-1 min-w-0">
-										<p
-											className="text-muted-foreground"
-											style={
-												legacyCardGrowth !== null
-													? { fontSize: `${0.875 + legacyCardGrowth * 1}rem` }
-													: undefined
-											}
-										>
-											Connect your legacy account to maintain access to your historical data and
-											settings.
-										</p>
-									</div>
-									<Button
-										variant="ghost"
-										className="glow-hover border-border/50 bg-muted/50 hover:bg-muted whitespace-nowrap"
-										onClick={handleLinkLegacyAuth}
-										disabled={isLinkingLegacyAuth}
-										style={
-											legacyCardGrowth !== null
-												? {
-														fontSize: `${0.875 + legacyCardGrowth * 1.5}rem`,
-														padding: `${0.5 + legacyCardGrowth * 1}rem ${1 + legacyCardGrowth * 2}rem`,
-													}
-												: undefined
-										}
-									>
-										{isLinkingLegacyAuth ? 'Redirecting...' : 'Link Legacy Account'}
-									</Button>
-								</div>
-							</CardContent>
-						</Card>
-					</div>
-				)}
 			</Section>
 
 			<div className="my-8" />
@@ -524,25 +403,16 @@ export default function DashboardPage() {
 													</h3>
 													<div className="flex items-center gap-2 mt-1">
 														{character.characterId === user.mainCharacterId && (
-															<Badge
-																variant="default"
-																className="text-xs"
-															>
+															<Badge variant="default" className="text-xs">
 																Main
 															</Badge>
 														)}
 														{character.hasValidToken ? (
-															<Badge
-																variant="success"
-																className="text-xs"
-															>
+															<Badge variant="success" className="text-xs">
 																Valid
 															</Badge>
 														) : (
-															<Badge
-																variant="destructive"
-																className="text-xs"
-															>
+															<Badge variant="destructive" className="text-xs">
 																Please refresh
 															</Badge>
 														)}

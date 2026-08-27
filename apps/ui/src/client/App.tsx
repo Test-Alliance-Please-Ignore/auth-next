@@ -27,7 +27,6 @@ import GroupsPage from './routes/groups'
 import InventoryParserPage from './routes/inventory-parser'
 import InvitationsPage from './routes/invitations'
 import LandingPage from './routes/landing'
-import LegacyAuthCallbackPage from './routes/legacy-auth-callback'
 import MumblePage from './routes/mumble'
 import MyGroupsPage from './routes/my-groups'
 import OAuthAuthorizePage from './routes/oauth-authorize'
@@ -281,7 +280,6 @@ export default function App() {
 						<Route path="/" element={<LandingPage />} />
 						<Route path="/auth/callback" element={<AuthCallbackPage />} />
 						<Route path="/discord/callback" element={<DiscordCallbackPage />} />
-						<Route path="/legacy-auth/callback" element={<LegacyAuthCallbackPage />} />
 						<Route path="/claim-main" element={<ClaimMainPage />} />
 						<Route path="/authorize" element={<OAuthAuthorizePage />} />
 						<Route path="/paste" element={<NavigatePasteRootToLogin />} />
