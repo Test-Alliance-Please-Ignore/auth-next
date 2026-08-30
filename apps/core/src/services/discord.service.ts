@@ -14,6 +14,7 @@ import {
 	userCharacters,
 	users,
 } from '../db/schema'
+import { enforceBlacklistedMumbleAccess } from './mumble.service'
 
 import type { DiscordProfile, JoinServerResult } from '@repo/discord'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -188,6 +189,11 @@ export async function handleTokens(
 					triggeredByDiscordUserId: discordUserId,
 				},
 			})
+			await enforceBlacklistedMumbleAccess(
+				env,
+				coreUserId,
+				'Auto-blacklisted while linking a blacklisted Discord account'
+			)
 			await blacklistLinkedCharacterTargetsForUser(
 				db,
 				hrStub,

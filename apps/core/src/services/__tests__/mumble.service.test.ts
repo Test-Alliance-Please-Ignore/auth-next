@@ -6,6 +6,7 @@ import { getPublicEsiInstance } from '@repo/esi'
 import { createDb } from '../../db'
 import {
 	deriveLoginName,
+	enforceBlacklistedMumbleAccess,
 	provisionTempopGuest,
 	syncUsersMumbleGroups,
 	syncUsersMumbleProfiles,
@@ -376,6 +377,35 @@ describe('syncUsersMumbleGroups', () => {
 	})
 })
 
+describe('enforceBlacklistedMumbleAccess', () => {
+	it('deletes the user account instead of only revoking its groups', async () => {
+		const env = {
+			FEATURES: {},
+			MUMBLE: {},
+			MUMBLE_SERVER_ID: 'srv',
+		} as any
+		const featuresStub = {
+			checkFlag: vi.fn().mockResolvedValue(true),
+		}
+		const mumbleStub = {
+			deleteAccounts: vi.fn().mockResolvedValue({
+				deleted: ['user-1'],
+				notFound: [],
+				queued: [],
+			}),
+		}
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.FEATURES) return featuresStub as any
+			if (binding === env.MUMBLE) return mumbleStub as any
+			throw new Error('unexpected stub binding')
+		})
+
+		await enforceBlacklistedMumbleAccess(env, 'user-1', 'test-blacklist')
+
+		expect(mumbleStub.deleteAccounts).toHaveBeenCalledWith('srv', ['user-1'])
+	})
+})
+
 describe('syncUsersMumbleProfiles', () => {
 	const env = {
 		DATABASE_URL: 'postgres://example',
@@ -612,7 +642,7 @@ describe('provisionTempopGuest', () => {
 		expect(mumbleStub.provisionAccount).toHaveBeenCalledWith('srv', {
 			subjectId: 'tempop:tempop-1:char-1',
 			loginName: 'Temp_Pilot',
-			displayName: '[T] Temp Pilot [ALLIA] [TP1]',
+			displayName: '[T] Temp Pilot [Alliance] [TP1]',
 			groups: ['TempOp'],
 			comment: 'tempop tempop-1',
 		})
@@ -623,7 +653,7 @@ describe('provisionTempopGuest', () => {
 				characterName: 'Temp Pilot',
 				corporationId: 'corp-1',
 				allianceId: 'ally-1',
-				corpTicker: 'CORP',
+				corpTicker: 'Corp',
 				subjectId: 'tempop:tempop-1:char-1',
 				loginName: 'Temp_Pilot',
 				status: 'active',
@@ -702,7 +732,7 @@ describe('provisionTempopGuest', () => {
 		expect(mumbleStub.provisionAccount).toHaveBeenCalledWith('srv', {
 			subjectId: 'tempop:tempop-1:char-1',
 			loginName: 'Temp_Pilot',
-			displayName: '[T] Temp Pilot [CORP] [TP1]',
+			displayName: '[T] Temp Pilot [Corp] [TP1]',
 			groups: ['TempOp'],
 			comment: 'tempop tempop-1',
 		})
@@ -713,7 +743,7 @@ describe('provisionTempopGuest', () => {
 				characterName: 'Temp Pilot',
 				corporationId: 'corp-1',
 				allianceId: null,
-				corpTicker: 'CORP',
+				corpTicker: 'Corp',
 				subjectId: 'tempop:tempop-1:char-1',
 				loginName: 'Temp_Pilot',
 				status: 'active',

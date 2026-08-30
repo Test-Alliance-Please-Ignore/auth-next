@@ -1086,8 +1086,10 @@ export type StructureSovereigntyListResponse = RepoStructureSovereigntyListRespo
 export type StructureSkyhookListResponse = RepoStructureSkyhookListResponse
 export type StructureMoonDrillListResponse = RepoStructureMoonDrillListResponse
 export type StructureMiningCitadelListResponse = RepoStructureMiningCitadelListResponse
+export type StructurePosListResponse = StructureListResponse<StructureListItem>
 export type StructureTabListResponse =
 	| StructureMainListResponse
+	| StructurePosListResponse
 	| StructureSovereigntyListResponse
 	| StructureSkyhookListResponse
 	| StructureMiningCitadelListResponse
@@ -3628,6 +3630,24 @@ export class ApiClient {
 		if (query.typeId) params.set('typeId', query.typeId)
 		const queryString = params.toString()
 		return this.get(`/structures${queryString ? `?${queryString}` : ''}`)
+	}
+
+	async getPosStructures(query: StructureListQuery = {}): Promise<StructurePosListResponse> {
+		const params = new URLSearchParams()
+		if (query.page) params.set('page', String(query.page))
+		if (query.pageSize) params.set('pageSize', String(query.pageSize))
+		if (query.sortBy) params.set('sortBy', query.sortBy)
+		if (query.sortDirection) params.set('sortDirection', query.sortDirection)
+		if (query.corporationId) params.set('corporationId', query.corporationId)
+		if (query.assignedGroupId) params.set('assignedGroupId', query.assignedGroupId)
+		if (query.lowPower) params.set('lowPower', query.lowPower)
+		if (query.lowPowerAllowed) params.set('lowPowerAllowed', query.lowPowerAllowed)
+		if (query.regionId) params.set('regionId', query.regionId)
+		if (query.systemId) params.set('systemId', query.systemId)
+		if (query.state) params.set('state', query.state)
+		if (query.typeId) params.set('typeId', query.typeId)
+		const queryString = params.toString()
+		return this.get(`/structures/poses${queryString ? `?${queryString}` : ''}`)
 	}
 
 	async getStructureAccess(): Promise<StructureAccessSummary> {

@@ -12,6 +12,7 @@
  */
 
 import { logger } from '@repo/hono-helpers'
+import { FUEL_BLOCK_TYPE_IDS } from '@repo/structures'
 import { parseDateOrNull } from '@repo/worker-utils'
 import { parseEsiErrorMetadata } from '@repo/workflow-utils'
 
@@ -42,6 +43,8 @@ import type {
 const SOVEREIGNTY_HUB_TYPE_ID = '32458'
 const SOVEREIGNTY_HUB_DETAIL_BATCH_SIZE = 4
 const SKYHOOK_DETAIL_BATCH_SIZE = 4
+const POS_DETAIL_BATCH_SIZE = 4
+const MAX_POS_PAGES = 100
 const MAX_WALLET_TRANSACTION_PAGES = 100
 
 function compareNumericStrings(left: string, right: string): number {
@@ -67,6 +70,22 @@ export interface WalletTransactionsFetchResult {
 export interface StructureEnrichmentFailure {
 	structureId: string
 	failureReason: string
+}
+
+export interface StructuresFetchResult {
+	structures: EsiCorporationStructure[]
+	/** False means the caller must not prune previously stored POS rows. */
+	posListingComplete: boolean
+	/** Present when the POS listing could not be completed and must be surfaced by the workflow. */
+	posListingFailureReason?: string
+}
+
+export interface PosDetailEnrichmentResult {
+	details: Array<{ structureId: string; fuelAmount: number }>
+	failures: StructureEnrichmentFailure[]
+	failureCount: number
+	rateLimitFailureCount: number
+	nonRateLimitFailureCount: number
 }
 
 // ========================================================================
@@ -306,15 +325,205 @@ export async function fetchAssets(
 /**
  * Fetch corporation structures from ESI
  */
-export async function fetchStructures(
+
+export async function fetchUpwellStructures(
 	esi: Esi,
-	corporationId: string,
-	_characterId: string
+	corporationId: string
 ): Promise<EsiCorporationStructure[]> {
 	return (await esi.fetchCorporationStructures(corporationId)).map((structure) => ({
 		...structure,
 		corporation_id: corporationId,
 	}))
+}
+
+/** Fetch POS structures with a credential that is known to have the Director role. */
+export async function fetchPosStructures(
+	esi: Esi,
+	corporationId: string,
+	posDirectorCharacterId: string
+): Promise<StructuresFetchResult> {
+	if (!posDirectorCharacterId) {
+		throw new Error('No Director credential available for POS listing')
+	}
+
+	let firstPage: Awaited<ReturnType<Esi['fetchCorporationStarbasesPage']>>
+	let starbases: Awaited<ReturnType<Esi['fetchCorporationStarbasesPage']>>['data']
+	try {
+		firstPage = await esi.fetchCorporationStarbasesPageWithCharacter(
+			corporationId,
+			posDirectorCharacterId,
+			1
+		)
+		starbases = [...firstPage.data]
+		const totalPages = Math.max(firstPage.meta.pages ?? 1, 1)
+		if (totalPages > MAX_POS_PAGES) {
+			throw new Error(`POS listing exceeded the supported page limit of ${MAX_POS_PAGES}`)
+		}
+		for (let page = 2; page <= totalPages; page += 1) {
+			const response = await esi.fetchCorporationStarbasesPageWithCharacter(
+				corporationId,
+				posDirectorCharacterId,
+				page
+			)
+			if (response.meta.pages !== undefined && response.meta.pages !== totalPages) {
+				throw new Error(
+					`POS listing changed page count while fetching: expected ${totalPages}, got ${response.meta.pages}`
+				)
+			}
+			starbases.push(...response.data)
+		}
+	} catch (error) {
+		const failureReason = error instanceof Error ? error.message : String(error)
+		logger.warn('[StructuresStep] POS listing unavailable', {
+			corporationId,
+			error: failureReason,
+		})
+		throw error
+	}
+
+	let namesById = new Map<string, string>()
+	if (starbases.length > 0) {
+		try {
+			const names = await esi.fetchCorporationAssetNames(
+				corporationId,
+				starbases.map((starbase) => String(starbase.starbase_id))
+			)
+			namesById = new Map(names.map((entry) => [entry.item_id, entry.name]))
+		} catch (error) {
+			logger.info('[StructuresStep] POS names unavailable; using structure IDs as fallback', {
+				corporationId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+
+	const posStructures = starbases.map((starbase) => {
+		const structureId = String(starbase.starbase_id)
+		return {
+			structure_id: structureId,
+			corporation_id: corporationId,
+			type_id: String(starbase.type_id),
+			system_id: String(starbase.system_id),
+			profile_id: 'pos',
+			state: starbase.state ?? 'offline',
+			state_timer_start: starbase.onlined_since,
+			state_timer_end: starbase.reinforced_until,
+			unanchors_at: starbase.unanchor_at,
+			moon_id: starbase.moon_id !== undefined ? String(starbase.moon_id) : undefined,
+			name: namesById.get(structureId) ?? null,
+		}
+	})
+
+	logger.debug('[StructuresStep] Fetched structures', {
+		corporationId,
+		posCount: posStructures.length,
+		posListingComplete: true,
+	})
+
+	return { structures: posStructures, posListingComplete: true }
+}
+
+export async function fetchStructures(
+	esi: Esi,
+	corporationId: string,
+	_stationManagerCharacterId: string,
+	posDirectorCharacterId: string | null = _stationManagerCharacterId
+): Promise<StructuresFetchResult> {
+	const upwellStructures = await fetchUpwellStructures(esi, corporationId)
+	if (!posDirectorCharacterId) {
+		return {
+			structures: upwellStructures,
+			posListingComplete: false,
+			posListingFailureReason: 'No Director credential available for POS listing',
+		}
+	}
+	try {
+		const posResult = await fetchPosStructures(esi, corporationId, posDirectorCharacterId)
+		return {
+			structures: [...upwellStructures, ...posResult.structures],
+			posListingComplete: posResult.posListingComplete,
+			posListingFailureReason: posResult.posListingFailureReason,
+		}
+	} catch (error) {
+		const failureReason = error instanceof Error ? error.message : String(error)
+		return {
+			structures: upwellStructures,
+			posListingComplete: false,
+			posListingFailureReason: failureReason,
+		}
+	}
+}
+
+/** Fetch only the POS details selected by the persisted oldest-first queue. */
+export async function fetchPosDetailEnrichment(
+	esi: Esi,
+	corporationId: string,
+	options: {
+		directorCharacterId: string
+		prioritizedEntries: ReadonlyArray<{
+			index: number
+			entry: { id: string | number; system_id: string | number }
+		}>
+	}
+): Promise<PosDetailEnrichmentResult> {
+	const details: Array<{ index: number; detail: { structureId: string; fuelAmount: number } }> = []
+	const failures: Array<{ structureId: string; error: string }> = []
+	let rateLimitFailureCount = 0
+	let nonRateLimitFailureCount = 0
+
+	for (let index = 0; index < options.prioritizedEntries.length; index += POS_DETAIL_BATCH_SIZE) {
+		const batch = options.prioritizedEntries.slice(index, index + POS_DETAIL_BATCH_SIZE)
+		let rateLimitEncountered = false
+		const settled = await Promise.allSettled(
+			batch.map(async ({ entry }) => {
+				const structureId = String(entry.id)
+				const detail = await esi.fetchCorporationStarbaseDetailWithCharacter(
+					corporationId,
+					options.directorCharacterId,
+					structureId,
+					String(entry.system_id)
+				)
+				return {
+					structureId,
+					fuelAmount: detail.fuels
+						.filter((fuel) => FUEL_BLOCK_TYPE_IDS.has(String(fuel.type_id)))
+						.reduce((total, fuel) => total + fuel.quantity, 0),
+				}
+			})
+		)
+
+		for (let resultIndex = 0; resultIndex < settled.length; resultIndex += 1) {
+			const result = settled[resultIndex]
+			const source = batch[resultIndex]
+			if (result.status === 'fulfilled') {
+				details.push({ index: source.index, detail: result.value })
+				continue
+			}
+			if (isRateLimitEsiError(result.reason)) {
+				rateLimitFailureCount += 1
+				rateLimitEncountered = true
+			} else {
+				nonRateLimitFailureCount += 1
+			}
+			failures.push({
+				structureId: String(source.entry.id),
+				error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+			})
+		}
+
+		if (rateLimitEncountered) break
+	}
+
+	return {
+		details: details.sort((left, right) => left.index - right.index).map(({ detail }) => detail),
+		failures: failures.map(({ structureId, error }) => ({
+			structureId,
+			failureReason: error.slice(0, 1000),
+		})),
+		failureCount: failures.length,
+		rateLimitFailureCount,
+		nonRateLimitFailureCount,
+	}
 }
 
 export async function fetchSovereigntySystems(esi: Esi): Promise<EsiSovereigntySystem[]> {

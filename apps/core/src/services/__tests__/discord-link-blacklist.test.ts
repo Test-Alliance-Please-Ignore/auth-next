@@ -7,6 +7,7 @@ import { handleTokens } from '../discord.service'
 const {
 	createDbMock,
 	discordStubMethods,
+	enforceBlacklistedMumbleAccessMock,
 	hrStubMethods,
 	oauthStatesFindFirstMock,
 	usersUpdateReturningMock,
@@ -16,6 +17,7 @@ const {
 	discordStubMethods: {
 		linkAccountWithTokens: vi.fn(),
 	},
+	enforceBlacklistedMumbleAccessMock: vi.fn(),
 	hrStubMethods: {
 		isDiscordUserBlacklisted: vi.fn(),
 		isUserBlacklisted: vi.fn(),
@@ -47,6 +49,10 @@ vi.mock('@repo/hono-helpers', () => ({
 		warn: vi.fn(),
 		error: vi.fn(),
 	},
+}))
+
+vi.mock('../mumble.service', () => ({
+	enforceBlacklistedMumbleAccess: enforceBlacklistedMumbleAccessMock,
 }))
 
 const env = {
@@ -100,6 +106,7 @@ describe('discord link blacklist enforcement', () => {
 		hrStubMethods.getBlacklistsForDiscordUser.mockResolvedValue([])
 		hrStubMethods.createUserBlacklist.mockResolvedValue({ id: 'auto-user-blacklist-1' })
 		hrStubMethods.createCharacterBlacklist.mockResolvedValue({ id: 'auto-char-blacklist-1' })
+		enforceBlacklistedMumbleAccessMock.mockResolvedValue(undefined)
 	})
 
 	it('auto-blacklists and blocks linking when Discord account is blacklisted', async () => {
@@ -129,6 +136,11 @@ describe('discord link blacklist enforcement', () => {
 				triggeredBy: 'discord-blacklist-entry-1',
 				isAutoBlacklist: true,
 			})
+		)
+		expect(enforceBlacklistedMumbleAccessMock).toHaveBeenCalledWith(
+			env,
+			'core-user-1',
+			'Auto-blacklisted while linking a blacklisted Discord account'
 		)
 		expect(usersUpdateReturningMock).not.toHaveBeenCalled()
 	})

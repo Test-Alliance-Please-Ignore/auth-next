@@ -13,6 +13,8 @@ const STRUCTURE_INVENTORY_LOCATION_FLAG_PREFIXES = [
 	'MoonMaterialBay',
 ] as const
 
+const POS_INVENTORY_LOCATION_FLAGS = new Set(['AutoFit', 'SecondaryStorage'])
+
 export interface StructureInventoryRowInput {
 	corporationId: string
 	structureId: string
@@ -43,7 +45,8 @@ export function isStructureInventoryLocationFlag(locationFlag: string): boolean 
 function projectStructureInventoryAssetRows(
 	corporationId: string,
 	ownedStructureIds: ReadonlySet<string>,
-	assets: readonly StructureInventoryAssetSource[]
+	assets: readonly StructureInventoryAssetSource[],
+	posStructureIds: ReadonlySet<string> = new Set()
 ): StructureInventoryRowInput[] {
 	if (ownedStructureIds.size === 0 || assets.length === 0) {
 		return []
@@ -58,7 +61,10 @@ function projectStructureInventoryAssetRows(
 			return []
 		}
 
-		if (!isStructureInventoryLocationFlag(asset.locationFlag)) {
+		const isPosInventoryAsset =
+			posStructureIds.has(String(asset.locationId)) &&
+			POS_INVENTORY_LOCATION_FLAGS.has(asset.locationFlag)
+		if (!isStructureInventoryLocationFlag(asset.locationFlag) && !isPosInventoryAsset) {
 			return []
 		}
 
@@ -80,7 +86,8 @@ function projectStructureInventoryAssetRows(
 export function filterStructureInventoryAssets(
 	corporationId: string,
 	ownedStructureIds: ReadonlySet<string>,
-	assets: EsiCorporationAsset[]
+	assets: EsiCorporationAsset[],
+	posStructureIds?: ReadonlySet<string>
 ): StructureInventoryRowInput[] {
 	return projectStructureInventoryAssetRows(
 		corporationId,
@@ -93,16 +100,23 @@ export function filterStructureInventoryAssets(
 			locationType: asset.location_type,
 			quantity: asset.quantity,
 			typeId: String(asset.type_id),
-		}))
+		})),
+		posStructureIds
 	)
 }
 
 export function projectStructureInventoryFromStoredAssets(
 	corporationId: string,
 	ownedStructureIds: ReadonlySet<string>,
-	assets: readonly StructureInventoryAssetSource[]
+	assets: readonly StructureInventoryAssetSource[],
+	posStructureIds?: ReadonlySet<string>
 ): StructureInventoryRowInput[] {
-	return projectStructureInventoryAssetRows(corporationId, ownedStructureIds, assets)
+	return projectStructureInventoryAssetRows(
+		corporationId,
+		ownedStructureIds,
+		assets,
+		posStructureIds
+	)
 }
 
 export function summarizeFuelBlockUnitsByStructure(

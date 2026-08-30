@@ -8,6 +8,9 @@ import type { WorkflowStep } from 'cloudflare:workers'
 const getStubMock = vi.fn()
 const syncAssetsMock = vi.fn()
 const fetchStructuresMock = vi.fn()
+const fetchUpwellStructuresMock = vi.fn()
+const fetchPosStructuresMock = vi.fn()
+const fetchPosDetailEnrichmentMock = vi.fn()
 const fetchSovereigntyEnrichmentMock = vi.fn()
 const fetchSkyhookEnrichmentMock = vi.fn()
 const fetchMiningExtractionEnrichmentMock = vi.fn()
@@ -94,6 +97,9 @@ vi.mock('../../../workflows/steps/directors', () => ({
 
 vi.mock('../../../workflows/steps/structures', () => ({
 	fetchStructures: (...args: unknown[]) => fetchStructuresMock(...args),
+	fetchUpwellStructures: (...args: unknown[]) => fetchUpwellStructuresMock(...args),
+	fetchPosStructures: (...args: unknown[]) => fetchPosStructuresMock(...args),
+	fetchPosDetailEnrichment: (...args: unknown[]) => fetchPosDetailEnrichmentMock(...args),
 	fetchSovereigntyEnrichment: (...args: unknown[]) => fetchSovereigntyEnrichmentMock(...args),
 	fetchSkyhookEnrichment: (...args: unknown[]) => fetchSkyhookEnrichmentMock(...args),
 	fetchMiningExtractionEnrichment: (...args: unknown[]) =>
@@ -135,6 +141,13 @@ function createStep() {
 }
 
 function createWorkflowEnv() {
+	fetchStructuresMock.mockResolvedValue({ structures: [], posListingComplete: true })
+	fetchUpwellStructuresMock.mockImplementation(async (...args: unknown[]) => {
+		const result = await fetchStructuresMock(...args)
+		return result.structures
+	})
+	fetchPosStructuresMock.mockResolvedValue({ structures: [], posListingComplete: true })
+	fetchPosDetailEnrichmentMock.mockResolvedValue(null)
 	const corpDataNamespace = { __ns: 'EVE_CORPORATION_DATA' } as unknown as DurableObjectNamespace
 	const updateCorporationAuthHealth = vi.fn().mockResolvedValue(undefined)
 	const corpDataStub = {
@@ -347,12 +360,15 @@ describe('EveCorporationSyncWorkflow', () => {
 			characterName: 'Director One',
 		})
 		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue(undefined)
-		fetchStructuresMock.mockResolvedValue([
-			{
-				structure_id: 'structure-1',
-				type_id: '35832',
-			},
-		])
+		fetchStructuresMock.mockResolvedValue({
+			structures: [
+				{
+					structure_id: 'structure-1',
+					type_id: '35832',
+				},
+			],
+			posListingComplete: true,
+		})
 		fetchSovereigntyEnrichmentMock.mockResolvedValue(null)
 		fetchSkyhookEnrichmentMock.mockRejectedValue(new Error('skyhook boom'))
 		storeStructuresMock.mockResolvedValue(undefined)
@@ -421,12 +437,15 @@ describe('EveCorporationSyncWorkflow', () => {
 			characterName: 'Director One',
 		})
 		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue(undefined)
-		fetchStructuresMock.mockResolvedValue([
-			{
-				structure_id: 'structure-1',
-				type_id: '35832',
-			},
-		])
+		fetchStructuresMock.mockResolvedValue({
+			structures: [
+				{
+					structure_id: 'structure-1',
+					type_id: '35832',
+				},
+			],
+			posListingComplete: true,
+		})
 		storeStructuresMock.mockRejectedValue(new Error('database write failed'))
 		markStructureSyncFailureReasonMock.mockResolvedValue(undefined)
 		syncAssetsMock.mockResolvedValue({ assetsCount: 1 })
@@ -493,12 +512,15 @@ describe('EveCorporationSyncWorkflow', () => {
 			characterName: 'Director One',
 		})
 		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue(undefined)
-		fetchStructuresMock.mockResolvedValue([
-			{
-				structure_id: 'structure-1',
-				type_id: '35832',
-			},
-		])
+		fetchStructuresMock.mockResolvedValue({
+			structures: [
+				{
+					structure_id: 'structure-1',
+					type_id: '35832',
+				},
+			],
+			posListingComplete: true,
+		})
 		storeStructuresMock.mockResolvedValue(undefined)
 		syncAssetsMock.mockResolvedValue({ assetsCount: 1 })
 		updateSyncTimestampsMock.mockResolvedValue(undefined)
@@ -541,12 +563,15 @@ describe('EveCorporationSyncWorkflow', () => {
 		})
 
 		expect(storeStructuresMock).toHaveBeenCalledTimes(1)
-		expect(storeStructuresMock).toHaveBeenCalledWith(env, '693378155', [
-			{
-				structure_id: 'structure-1',
-				type_id: '35832',
-			},
-		])
+		expect(storeStructuresMock).toHaveBeenCalledWith(env, '693378155', {
+			structures: [
+				{
+					structure_id: 'structure-1',
+					type_id: '35832',
+				},
+			],
+			posListingComplete: true,
+		})
 		expect(syncAssetsMock).toHaveBeenCalledWith(env, '693378155', '900000001')
 		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', [
 			'structures',
@@ -569,12 +594,15 @@ describe('EveCorporationSyncWorkflow', () => {
 			characterName: 'Director One',
 		})
 		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue(undefined)
-		fetchStructuresMock.mockResolvedValue([
-			{
-				structure_id: 'structure-1',
-				type_id: '35832',
-			},
-		])
+		fetchStructuresMock.mockResolvedValue({
+			structures: [
+				{
+					structure_id: 'structure-1',
+					type_id: '35832',
+				},
+			],
+			posListingComplete: true,
+		})
 		fetchSovereigntyEnrichmentMock.mockResolvedValue(null)
 		fetchSkyhookEnrichmentMock.mockResolvedValue({
 			skyhooks: [
@@ -654,12 +682,15 @@ describe('EveCorporationSyncWorkflow', () => {
 			characterName: 'Director One',
 		})
 		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue(undefined)
-		fetchStructuresMock.mockResolvedValue([
-			{
-				structure_id: 'structure-1',
-				type_id: '32458',
-			},
-		])
+		fetchStructuresMock.mockResolvedValue({
+			structures: [
+				{
+					structure_id: 'structure-1',
+					type_id: '32458',
+				},
+			],
+			posListingComplete: true,
+		})
 		fetchSovereigntyEnrichmentMock.mockRejectedValue(
 			new StructureEnrichmentScopeMismatchError(
 				'sovereignty-hubs',
@@ -718,7 +749,10 @@ describe('EveCorporationSyncWorkflow', () => {
 			'sovereignty-hubs',
 			'Sovereignty hub enrichment requires updated director scopes.'
 		)
-		expect(selectDirectorMock).toHaveBeenCalledTimes(1)
+		expect(selectDirectorMock).toHaveBeenCalledTimes(2)
+		expect(selectDirectorMock).toHaveBeenNthCalledWith(2, env, '693378155', {
+			requiredRoleSets: [['Director']],
+		})
 		expect(updateSyncTimestampsMock).toHaveBeenCalledWith(env, '693378155', ['skyhooks'])
 		expect(updateCorporationAuthHealth).toHaveBeenCalled()
 	})
@@ -748,12 +782,15 @@ describe('EveCorporationSyncWorkflow', () => {
 			characterName: 'Director One',
 		})
 		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue(undefined)
-		fetchStructuresMock.mockResolvedValue([
-			{
-				structure_id: '1000001',
-				type_id: '35835',
-			},
-		])
+		fetchStructuresMock.mockResolvedValue({
+			structures: [
+				{
+					structure_id: '1000001',
+					type_id: '35835',
+				},
+			],
+			posListingComplete: true,
+		})
 		fetchSovereigntyEnrichmentMock.mockResolvedValue(null)
 		fetchSkyhookEnrichmentMock.mockResolvedValue(null)
 		fetchMiningExtractionEnrichmentMock.mockResolvedValue([
@@ -852,12 +889,15 @@ describe('EveCorporationSyncWorkflow', () => {
 			characterName: 'Director One',
 		})
 		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue(undefined)
-		fetchStructuresMock.mockResolvedValue([
-			{
-				structure_id: '2000001',
-				type_id: '35835',
-			},
-		])
+		fetchStructuresMock.mockResolvedValue({
+			structures: [
+				{
+					structure_id: '2000001',
+					type_id: '35835',
+				},
+			],
+			posListingComplete: true,
+		})
 		fetchSovereigntyEnrichmentMock.mockResolvedValue(null)
 		fetchSkyhookEnrichmentMock.mockResolvedValue(null)
 		fetchMiningExtractionEnrichmentMock.mockRejectedValue(new Error('boom'))
@@ -937,12 +977,15 @@ describe('EveCorporationSyncWorkflow', () => {
 			characterName: 'Director One',
 		})
 		reconcileDirectorsFromCorporationRolesMock.mockResolvedValue(undefined)
-		fetchStructuresMock.mockResolvedValue([
-			{
-				structure_id: '1000001',
-				type_id: '35835',
-			},
-		])
+		fetchStructuresMock.mockResolvedValue({
+			structures: [
+				{
+					structure_id: '1000001',
+					type_id: '35835',
+				},
+			],
+			posListingComplete: true,
+		})
 		fetchSovereigntyEnrichmentMock.mockResolvedValue(null)
 		storeStructuresMock.mockResolvedValue(undefined)
 		storeSovereigntyEnrichmentMock.mockResolvedValue(undefined)

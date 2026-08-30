@@ -25,6 +25,7 @@ import {
 import { logger, TimeCache, toErrorLogDetails } from '@repo/hono-helpers'
 import {
 	getStructureTabForTypeId,
+	POS_STRUCTURE_TYPE_IDS,
 	SKYHOOK_MAGMATIC_GAS_TYPE_ID,
 	SKYHOOK_MAGMATIC_GAS_TYPE_NAME,
 	SKYHOOK_SUPERIONIC_ICE_TYPE_ID,
@@ -50,6 +51,7 @@ import {
 	corporationPublicInfo,
 	corporationStructureInventory,
 	corporationStructureInventorySnapshots,
+	corporationStructurePosDetails,
 	corporationStructures,
 	corporationWalletJournal,
 	corporationWallets,
@@ -76,6 +78,7 @@ import {
 	projectStructureInventoryFromStoredAssets,
 	summarizeFuelBlockUnitsByStructure,
 } from './services/structure-inventory'
+import { STRUCTURE_ENRICHMENT_PRIORITY_LIMIT } from './services/structure-priority'
 
 import type { SQL } from 'drizzle-orm'
 import type { EsiTypeResolver } from '@repo/esi'
@@ -90,6 +93,7 @@ import type {
 	CorporationContractSortBy,
 	CorporationContractsPageData,
 	CorporationCoreData,
+	CorporationDataSummaryCounts,
 	CorporationFinancialData,
 	CorporationIndustryJobData,
 	CorporationKillmailData,
@@ -132,7 +136,9 @@ import type {
 	SkyhookSyncPriority,
 	SovereigntyHubSyncPriority,
 	StructureInventorySyncResult,
+	StructureStoreOptions,
 	StructureSyncFailureTarget,
+	StructureSyncPriority,
 	StructureSyncPriorityTarget,
 	WalletJournalWatermark,
 	WalletJournalWindowFilters,
@@ -146,6 +152,7 @@ import type {
 	EsiGetStructureResponse,
 	Universe,
 	UniverseFuelModuleRule,
+	UniverseMoonGeography,
 	UniversePlanetGeography,
 	UniverseRegion,
 	UniverseSolarSystem,
@@ -154,7 +161,7 @@ import type { Env } from './context'
 import type { StructureInventoryRowInput } from './services/structure-inventory'
 
 function isSpecialStructureTab(tab: ReturnType<typeof getStructureTabForTypeId>): boolean {
-	return tab === 'sovereignty' || tab === 'skyhooks'
+	return tab === 'sovereignty' || tab === 'skyhooks' || tab === 'poses'
 }
 
 function minutesAgo(minutes: number): Date {
@@ -231,7 +238,6 @@ const SHARED_SOVEREIGNTY_SYSTEMS_CACHE_MAX_AGE_SECONDS = 60 * 60
 const SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_KEY = 'shared:sovereignty-systems:refresh-lease'
 const SHARED_SOVEREIGNTY_SYSTEMS_REFRESH_LEASE_SECONDS = 2 * 60
 const ORBITAL_SKYHOOK_TYPE_ID = '81080'
-const STRUCTURE_ENRICHMENT_PRIORITY_LIMIT = 100
 // Keep asset upserts bounded while avoiding one database round trip per small slice.
 // Ten persisted fields per row keeps 500 rows well below PostgreSQL's parameter limit.
 const CORPORATION_ASSET_INSERT_BATCH_SIZE = 500
@@ -688,7 +694,7 @@ function buildMoonGeographyStorageRow(input: {
 		},
 		'structureId' | 'corporationId' | 'systemId' | 'systemName' | 'structureInfo'
 	>
-	moonGeography: Awaited<ReturnType<Universe['resolveNearestMoonGeographyBySystemPosition']>> | null
+	moonGeography: UniverseMoonGeography | null
 	observedAt: Date
 }): MoonGeographyStorageRow | null {
 	const { corporationId, structure, moonGeography, observedAt } = input
@@ -2456,6 +2462,18 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		return new Set(rows.map((row) => row.structureId))
 	}
 
+	private async getOwnedPosStructureIds(corporationId: string): Promise<Set<string>> {
+		const rows = await this.getDb().query.corporationStructures.findMany({
+			where: and(
+				eq(corporationStructures.corporationId, corporationId),
+				inArray(corporationStructures.typeId, [...POS_STRUCTURE_TYPE_IDS])
+			),
+			columns: { structureId: true },
+		})
+
+		return new Set(rows.map((row) => row.structureId))
+	}
+
 	private async getActiveStructureInventorySnapshotId(
 		corporationId: string
 	): Promise<string | null> {
@@ -2588,7 +2606,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 	private async *iterateStructureInventoryFromStoredAssets(
 		corporationId: string,
-		ownedStructureIds: ReadonlySet<string>
+		ownedStructureIds: ReadonlySet<string>,
+		posStructureIds: ReadonlySet<string> = new Set()
 	): AsyncGenerator<StructureInventoryRowInput[], void, undefined> {
 		for (const structureId of ownedStructureIds) {
 			let lastItemId: string | null = null
@@ -2622,7 +2641,12 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					break
 				}
 
-				yield projectStructureInventoryFromStoredAssets(corporationId, ownedStructureIds, rawAssets)
+				yield projectStructureInventoryFromStoredAssets(
+					corporationId,
+					ownedStructureIds,
+					rawAssets,
+					posStructureIds
+				)
 
 				lastItemId = rawAssets[rawAssets.length - 1]?.itemId ?? null
 				if (rawAssets.length < STRUCTURE_INVENTORY_ASSET_BATCH_SIZE || lastItemId === null) {
@@ -2936,12 +2960,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			const system = systemsById[structure.system_id]
 			const region = regionsBySystemId[structure.system_id]
 			const isSpecialStructure = isSpecialStructureTab(getStructureTabForTypeId(structure.type_id))
-			const resolvedName = structureInfo?.name ?? null
+			const resolvedName = structure.name ?? structureInfo?.name ?? null
 			const resolvedTypeName = existing?.typeName || typeNamesById[structure.type_id] || null
 			const resolvedSystemName = existing?.systemName || system?.solarSystemName || null
 			const resolvedRegionId = existing?.regionId || region?.regionId || null
 			const resolvedRegionName = existing?.regionName || region?.regionName || null
-			const lowPower = !structure.services?.some((service) => service.state === 'online')
+			const lowPower =
+				getStructureTabForTypeId(structure.type_id) === 'poses'
+					? false
+					: !structure.services?.some((service) => service.state === 'online')
 			const hydrationComplete =
 				(isSpecialStructure || resolvedName !== null) &&
 				resolvedTypeName !== null &&
@@ -2973,7 +3000,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				regionName: hydrated.regionName,
 				profileId: structure.profile_id,
 				fuelExpires: structure.fuel_expires ? new Date(structure.fuel_expires) : null,
-				fuelAmount: null,
+				fuelAmount:
+					structure.fuel_amount ??
+					(getStructureTabForTypeId(structure.type_id) === 'poses'
+						? (existing?.fuelAmount ?? null)
+						: null),
 				nextReinforceApply: structure.next_reinforce_apply
 					? new Date(structure.next_reinforce_apply)
 					: null,
@@ -3033,16 +3064,19 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					] as const
 			)
 		)
-		if (structures.length === 0) {
+		const fuelStructures = structures.filter(
+			(structure) => getStructureTabForTypeId(structure.typeId) !== 'poses'
+		)
+		if (fuelStructures.length === 0) {
 			return fuelBurnRateByStructure
 		}
 
-		const structureTypeIds = [...new Set(structures.map((structure) => structure.typeId))]
+		const structureTypeIds = [...new Set(fuelStructures.map((structure) => structure.typeId))]
 		let serviceModuleTypeIdsByStructureId = new Map<string, string[]>()
 		try {
 			serviceModuleTypeIdsByStructureId = await this.getStructureServiceModuleTypeIds(
 				corporationId,
-				structures.map((structure) => structure.structureId)
+				fuelStructures.map((structure) => structure.structureId)
 			)
 		} catch (error) {
 			logger.warn('[EveCorporationData] Failed to read stored structure service modules', {
@@ -3055,7 +3089,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		]
 		const serviceNames = [
 			...new Set(
-				structures.flatMap((structure) => {
+				fuelStructures.flatMap((structure) => {
 					if ((serviceModuleTypeIdsByStructureId.get(structure.structureId)?.length ?? 0) > 0) {
 						return []
 					}
@@ -3101,7 +3135,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				})
 			}
 
-			for (const structure of structures) {
+			for (const structure of fuelStructures) {
 				const installedModuleTypeIds =
 					serviceModuleTypeIdsByStructureId.get(structure.structureId) ?? []
 				const fuelResult = calculateStructureFuelBurnRateDetails(
@@ -3323,7 +3357,20 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 	/**
 	 * Store structures (workflow-friendly)
 	 */
-	async storeStructures(corporationId: string, structures: any[]): Promise<void> {
+	async storeStructures(
+		corporationId: string,
+		structures: any[],
+		options: StructureStoreOptions = {}
+	): Promise<void> {
+		const directMoonIdsByStructureId = new Map(
+			structures.map(
+				(structure) =>
+					[
+						String(structure.structure_id),
+						structure.moon_id !== undefined ? String(structure.moon_id) : null,
+					] as const
+			)
+		)
 		const hydratedStructures = await this.hydrateStructureRows(
 			corporationId,
 			structures as EsiCorporationStructure[]
@@ -3360,6 +3407,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				structureId: true,
 				corporationId: true,
 				typeId: true,
+				fuelAmount: true,
 				updatedAt: true,
 			},
 		})
@@ -3386,6 +3434,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						ne(corporationAssets.corporationId, corporationId)
 					)
 				)
+			const transferredPosStructureIds = transferredStructures
+				.filter((row) => POS_STRUCTURE_TYPE_IDS.has(row.typeId))
+				.map((row) => row.structureId)
+			if (transferredPosStructureIds.length > 0) {
+				await this.getDb()
+					.update(corporationStructurePosDetails)
+					.set({ corporationId })
+					.where(inArray(corporationStructurePosDetails.structureId, transferredPosStructureIds))
+			}
 
 			logger.info('[EveCorporationData] Structure ownership transfer detected', {
 				corporationId,
@@ -3398,7 +3455,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const currentStructureIds = new Set(structureIds)
 		const departedStructureIds = filterPrunableStructureIds(
 			existingStructureRows.filter(
-				(row) => row.corporationId === corporationId && row.typeId !== ORBITAL_SKYHOOK_TYPE_ID
+				(row) =>
+					row.corporationId === corporationId &&
+					row.typeId !== ORBITAL_SKYHOOK_TYPE_ID &&
+					((options.posListingComplete ?? true) || !POS_STRUCTURE_TYPE_IDS.has(row.typeId))
 			),
 			currentStructureIds,
 			new Date()
@@ -3408,6 +3468,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		for (let i = 0; i < ownershipConfirmedStructures.length; i += BATCH_SIZE) {
 			const batch = ownershipConfirmedStructures.slice(i, i + BATCH_SIZE)
 			const batchValues = batch.map((structure) => {
+				const existing = existingStructureRows.find(
+					(row) => row.structureId === structure.structureId
+				)
 				const fuelResult = fuelBurnRateByStructure.get(structure.structureId)
 				const hasUnresolvedFuelModules =
 					(fuelResult?.unresolvedServiceNames.length ?? 0) > 0 ||
@@ -3419,6 +3482,9 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					syncFailureReason: hasUnresolvedFuelModules
 						? STRUCTURE_FUEL_SYNC_FAILURE_REASON
 						: structure.syncFailureReason,
+					fuelAmount:
+						structure.fuelAmount ??
+						(POS_STRUCTURE_TYPE_IDS.has(structure.typeId) ? (existing?.fuelAmount ?? null) : null),
 					fuelBurnRate: fuelResult?.fuelBurnRate ?? null,
 				}
 			})
@@ -3468,8 +3534,76 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					)
 				)
 		})
-		await this.storeMoonGeographies(corporationId, ownershipConfirmedStructures)
+		await this.storeMoonGeographies(
+			corporationId,
+			ownershipConfirmedStructures,
+			directMoonIdsByStructureId
+		)
 		await this.storeMoonDrills(corporationId, ownershipConfirmedStructures)
+	}
+
+	/** Store POS detail state without replacing the base structure snapshot. */
+	async storePosDetailEnrichment(
+		corporationId: string,
+		details: Array<{ structureId: string; fuelAmount: number }>
+	): Promise<void> {
+		const uniqueDetails = [
+			...new Map(details.map((detail) => [String(detail.structureId), detail] as const)).values(),
+		]
+		const now = new Date()
+
+		for (let index = 0; index < uniqueDetails.length; index += STRUCTURE_CLEANUP_BATCH_SIZE) {
+			const batch = uniqueDetails.slice(index, index + STRUCTURE_CLEANUP_BATCH_SIZE)
+			const structureIds = batch.map(({ structureId }) => String(structureId))
+			const fuelCases = sql.join(
+				batch.map(
+					({ structureId, fuelAmount }) => sql`when ${String(structureId)} then ${fuelAmount}`
+				),
+				sql` `
+			)
+
+			const updatedStructures = await this.getDb()
+				.update(corporationStructures)
+				.set({
+					fuelAmount: sql<number>`case ${corporationStructures.structureId} ${fuelCases} else ${corporationStructures.fuelAmount} end`,
+				})
+				.where(
+					and(
+						eq(corporationStructures.corporationId, corporationId),
+						inArray(corporationStructures.structureId, structureIds),
+						inArray(corporationStructures.typeId, [...POS_STRUCTURE_TYPE_IDS])
+					)
+				)
+				.returning({ structureId: corporationStructures.structureId })
+			const updatedStructureIds = new Set(updatedStructures.map(({ structureId }) => structureId))
+			const persistedBatch = batch.filter(({ structureId }) =>
+				updatedStructureIds.has(String(structureId))
+			)
+			if (persistedBatch.length === 0) {
+				continue
+			}
+
+			await this.getDb()
+				.insert(corporationStructurePosDetails)
+				.values(
+					persistedBatch.map(({ structureId }) => ({
+						structureId: String(structureId),
+						corporationId,
+						lastAttemptedSyncAt: now,
+						lastSyncedAt: now,
+						syncFailureReason: null,
+					}))
+				)
+				.onConflictDoUpdate({
+					target: corporationStructurePosDetails.structureId,
+					set: {
+						corporationId: sql`excluded.corporation_id`,
+						lastAttemptedSyncAt: sql`excluded.last_attempted_sync_at`,
+						lastSyncedAt: sql`excluded.last_synced_at`,
+						syncFailureReason: null,
+					},
+				})
+		}
 	}
 
 	private async storeMoonDrills(
@@ -3583,14 +3717,19 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			systemId: string
 			systemName: string | null
 			structureInfo: EsiGetStructureResponse | null
-		}>
+		}>,
+		directMoonIdsByStructureId: ReadonlyMap<string, string | null> = new Map()
 	): Promise<void> {
 		const now = new Date()
-		const moonGeographyStructures = structures.filter((structure) =>
-			['moon-drills', 'mining-citadels'].includes(
-				getStructureTabForTypeId(structure.typeId, structure.typeName)
+		const moonGeographyStructures = structures.filter((structure) => {
+			const tab = getStructureTabForTypeId(structure.typeId, structure.typeName)
+			return (
+				tab === 'moon-drills' ||
+				tab === 'mining-citadels' ||
+				(tab === 'poses' &&
+					(directMoonIdsByStructureId.get(structure.structureId) ?? null) !== null)
 			)
-		)
+		})
 
 		const existingRows = await this.getDb().query.structureMoonGeographies.findMany({
 			where: eq(structureMoonGeographies.corporationId, corporationId),
@@ -3625,21 +3764,34 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		const universe = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const directMoonIds = [
+			...new Set(
+				newMoonGeographyStructures
+					.map((structure) => directMoonIdsByStructureId.get(structure.structureId) ?? null)
+					.filter((moonId): moonId is string => moonId !== null && moonId.length > 0)
+			),
+		]
+		const moonGeographiesById =
+			directMoonIds.length > 0
+				? await withRpcResult(universe.resolveMoonGeographyByIds(directMoonIds), cloneRpcRecord)
+				: {}
 		const synthesizedRows = (
 			await Promise.all(
 				newMoonGeographyStructures.map(async (structure) => {
-					if (!structure.structureInfo) {
-						return null
-					}
-
 					try {
-						const moonGeography = await withRpcResult(
-							universe.resolveNearestMoonGeographyBySystemPosition(
-								structure.systemId,
-								structure.structureInfo.position
-							),
-							(geography) => (geography ? { ...geography } : null)
-						)
+						const directMoonId = directMoonIdsByStructureId.get(structure.structureId) ?? null
+						const moonGeography =
+							directMoonId !== null
+								? (moonGeographiesById[directMoonId] ?? null)
+								: structure.structureInfo
+									? await withRpcResult(
+											universe.resolveNearestMoonGeographyBySystemPosition(
+												structure.systemId,
+												structure.structureInfo.position
+											),
+											(geography) => (geography ? { ...geography } : null)
+										)
+									: null
 
 						return buildMoonGeographyStorageRow({
 							corporationId,
@@ -3760,6 +3912,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		this.assertNonNpcCorporation(corporationId)
 
 		const ownedStructureIds = new Set([String(structureId)])
+		const posStructureIds = await this.getOwnedPosStructureIds(corporationId)
 		const db = this.getDb()
 		const activeSnapshotId = await this.getActiveStructureInventorySnapshotId(corporationId)
 		const observedAt = new Date()
@@ -3795,7 +3948,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		let inventoryCount = 0
 		for await (const batch of this.iterateStructureInventoryFromStoredAssets(
 			corporationId,
-			ownedStructureIds
+			ownedStructureIds,
+			posStructureIds
 		)) {
 			if (batch.length > 0) {
 				await db.insert(corporationStructureInventory).values(
@@ -4565,7 +4719,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 	private async getTypeScopedStructureSyncPriorities(params: {
 		corporationId: string
-		targetTable: 'sovereignty' | 'skyhooks' | 'moon-drills' | 'mining-extractions'
+		targetTable: 'poses' | 'sovereignty' | 'skyhooks' | 'moon-drills' | 'mining-extractions'
 		structureIds?: readonly string[]
 	}): Promise<
 		Array<{
@@ -4591,6 +4745,53 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}> = []
 
 		while (true) {
+			if (targetTable === 'poses') {
+				const batch = await this.getDb()
+					.select({
+						structureId: corporationStructures.structureId,
+						lastAttemptedSyncAt: corporationStructurePosDetails.lastAttemptedSyncAt,
+						lastSyncedAt: corporationStructurePosDetails.lastSyncedAt,
+					})
+					.from(corporationStructures)
+					.leftJoin(
+						corporationStructurePosDetails,
+						eq(corporationStructurePosDetails.structureId, corporationStructures.structureId)
+					)
+					.where(
+						and(
+							eq(corporationStructures.corporationId, corporationId),
+							inArray(corporationStructures.typeId, [...POS_STRUCTURE_TYPE_IDS]),
+							...(liveStructureIds
+								? [inArray(corporationStructures.structureId, liveStructureIds)]
+								: []),
+							sql`(${corporationStructurePosDetails.lastSyncedAt} is null or ${corporationStructurePosDetails.lastSyncedAt} < ${successCutoff})`,
+							sql`coalesce(${corporationStructurePosDetails.lastAttemptedSyncAt}, to_timestamp(0)) < ${attemptCutoff}`
+						)
+					)
+					.orderBy(
+						asc(sql`coalesce(${corporationStructurePosDetails.lastSyncedAt}, to_timestamp(0))`),
+						asc(
+							sql`coalesce(${corporationStructurePosDetails.lastAttemptedSyncAt}, to_timestamp(0))`
+						),
+						asc(corporationStructures.structureId)
+					)
+					.limit(STRUCTURE_ENRICHMENT_PRIORITY_LIMIT)
+					.offset(rows.length)
+
+				if (batch.length === 0) {
+					break
+				}
+
+				rows.push(
+					...batch.map((row) => ({
+						structureId: row.structureId,
+						lastAttemptedSyncAt: row.lastAttemptedSyncAt ?? null,
+						lastSyncedAt: row.lastSyncedAt ?? null,
+					}))
+				)
+				continue
+			}
+
 			const batch =
 				targetTable === 'sovereignty'
 					? await this.getDb().query.structureSovereigntyHubs.findMany({
@@ -4703,7 +4904,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 	private async claimStructureSyncAttempts(params: {
 		corporationId: string
-		targetTable: 'sovereignty' | 'skyhooks' | 'moon-drills' | 'mining-extractions'
+		targetTable: 'poses' | 'sovereignty' | 'skyhooks' | 'moon-drills' | 'mining-extractions'
 		structureIds: readonly string[]
 	}): Promise<string[]> {
 		const { corporationId, targetTable, structureIds } = params
@@ -4715,6 +4916,48 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const now = new Date()
 		const successCutoff = new Date(now.getTime() - 60 * 60 * 1000)
 		const attemptCutoff = new Date(now.getTime() - 15 * 60 * 1000)
+		if (targetTable === 'poses') {
+			// Claim missing sidecars and existing stale rows in one statement. The
+			// conflict predicate is evaluated against the current row, so a second
+			// caller cannot claim a POS after another caller has claimed it.
+			const rows = await this.getDb()
+				.insert(corporationStructurePosDetails)
+				.select(
+					this.getDb()
+						.select({
+							structureId: corporationStructures.structureId,
+							corporationId: corporationStructures.corporationId,
+							lastAttemptedSyncAt: sql<Date>`${now}`.as('last_attempted_sync_at'),
+						})
+						.from(corporationStructures)
+						.leftJoin(
+							corporationStructurePosDetails,
+							eq(corporationStructurePosDetails.structureId, corporationStructures.structureId)
+						)
+						.where(
+							and(
+								eq(corporationStructures.corporationId, corporationId),
+								inArray(corporationStructures.structureId, uniqueStructureIds),
+								inArray(corporationStructures.typeId, [...POS_STRUCTURE_TYPE_IDS]),
+								sql`(${corporationStructurePosDetails.lastSyncedAt} is null or ${corporationStructurePosDetails.lastSyncedAt} < ${successCutoff})`,
+								sql`coalesce(${corporationStructurePosDetails.lastAttemptedSyncAt}, to_timestamp(0)) < ${attemptCutoff}`
+							)
+						)
+				)
+				.onConflictDoUpdate({
+					target: corporationStructurePosDetails.structureId,
+					set: {
+						corporationId: sql`excluded.corporation_id`,
+						lastAttemptedSyncAt: sql`excluded.last_attempted_sync_at`,
+					},
+					setWhere: and(
+						sql`(${corporationStructurePosDetails.lastSyncedAt} is null or ${corporationStructurePosDetails.lastSyncedAt} < ${successCutoff})`,
+						sql`coalesce(${corporationStructurePosDetails.lastAttemptedSyncAt}, to_timestamp(0)) < ${attemptCutoff}`
+					),
+				})
+				.returning({ structureId: corporationStructurePosDetails.structureId })
+			return rows.map((row) => row.structureId)
+		}
 		if (targetTable === 'sovereignty') {
 			const rows = await this.getDb()
 				.update(structureSovereigntyHubs)
@@ -4780,11 +5023,27 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 	private async getTypeScopedStructureIds(params: {
 		corporationId: string
-		targetTable: 'sovereignty' | 'skyhooks' | 'moon-drills' | 'mining-extractions'
+		targetTable: 'poses' | 'sovereignty' | 'skyhooks' | 'moon-drills' | 'mining-extractions'
 		updatedBefore?: Date
 	}): Promise<string[]> {
 		const { corporationId, targetTable, updatedBefore } = params
 		switch (targetTable) {
+			case 'poses':
+				return (
+					await this.getDb().query.corporationStructures.findMany({
+						where: updatedBefore
+							? and(
+									eq(corporationStructures.corporationId, corporationId),
+									inArray(corporationStructures.typeId, [...POS_STRUCTURE_TYPE_IDS]),
+									sql`${corporationStructures.updatedAt} < ${updatedBefore}`
+								)
+							: and(
+									eq(corporationStructures.corporationId, corporationId),
+									inArray(corporationStructures.typeId, [...POS_STRUCTURE_TYPE_IDS])
+								),
+						columns: { structureId: true },
+					})
+				).map((row) => row.structureId)
 			case 'sovereignty':
 				return (
 					await this.getDb().query.structureSovereigntyHubs.findMany({
@@ -4846,7 +5105,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 	private async getTypeScopedMissingStructureIds(params: {
 		corporationId: string
-		targetTable: 'sovereignty' | 'skyhooks' | 'moon-drills' | 'mining-extractions'
+		targetTable: 'poses' | 'sovereignty' | 'skyhooks' | 'moon-drills' | 'mining-extractions'
 		structureIds: string[]
 	}): Promise<string[]> {
 		const { corporationId, targetTable, structureIds } = params
@@ -4861,13 +5120,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		)
 
 		const targetTableRef =
-			targetTable === 'sovereignty'
-				? structureSovereigntyHubs
-				: targetTable === 'skyhooks'
-					? structureSkyhooks
-					: targetTable === 'moon-drills'
-						? structureMoonDrills
-						: structureMiningExtractions
+			targetTable === 'poses'
+				? corporationStructures
+				: targetTable === 'sovereignty'
+					? structureSovereigntyHubs
+					: targetTable === 'skyhooks'
+						? structureSkyhooks
+						: targetTable === 'moon-drills'
+							? structureMoonDrills
+							: structureMiningExtractions
 
 		const result = await this.getDb().execute<{ structureId: string }>(sql`
 			with live_ids(structure_id, position) as (
@@ -4878,6 +5139,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			left join ${targetTableRef}
 				on ${targetTableRef.corporationId} = ${corporationId}
 				and ${targetTableRef.structureId} = live_ids.structure_id
+				${targetTable === 'poses' ? sql`and ${inArray(corporationStructures.typeId, [...POS_STRUCTURE_TYPE_IDS])}` : sql``}
 			where ${targetTableRef.structureId} is null
 			order by live_ids.position asc
 		`)
@@ -4959,13 +5221,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const liveStructureIds = [...new Set(structureIds.map((structureId) => String(structureId)))]
 		const pruneBefore = new Date(Date.now() - STRUCTURE_PRUNE_GRACE_MS)
 		const targetTableRef =
-			targetTable === 'sovereignty'
-				? structureSovereigntyHubs
-				: targetTable === 'skyhooks'
-					? structureSkyhooks
-					: targetTable === 'moon-drills'
-						? structureMoonDrills
-						: structureMiningExtractions
+			targetTable === 'poses'
+				? corporationStructures
+				: targetTable === 'sovereignty'
+					? structureSovereigntyHubs
+					: targetTable === 'skyhooks'
+						? structureSkyhooks
+						: targetTable === 'moon-drills'
+							? structureMoonDrills
+							: structureMiningExtractions
 
 		if (liveStructureIds.length === 0) {
 			return await this.getTypeScopedStructureIds({
@@ -4986,6 +5250,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			select ${targetTableRef.structureId} as "structureId"
 			from ${targetTableRef}
 			where ${targetTableRef.corporationId} = ${corporationId}
+				${targetTable === 'poses' ? sql`and ${inArray(corporationStructures.typeId, [...POS_STRUCTURE_TYPE_IDS])}` : sql``}
 				and ${targetTableRef.updatedAt} < ${pruneBefore}
 				and not exists (
 					select 1
@@ -5002,6 +5267,20 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		return await this.getTypeScopedStructureIds({
 			corporationId,
 			targetTable: 'sovereignty',
+		})
+	}
+
+	async getPosSyncPriorities(corporationId: string): Promise<StructureSyncPriority[]> {
+		return await this.getTypeScopedStructureSyncPriorities({
+			corporationId,
+			targetTable: 'poses',
+		})
+	}
+
+	async getPosStructureIds(corporationId: string): Promise<string[]> {
+		return await this.getTypeScopedStructureIds({
+			corporationId,
+			targetTable: 'poses',
 		})
 	}
 
@@ -5051,24 +5330,44 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 	async markStructureEnrichmentSyncFailure(
 		corporationId: string,
-		target: 'sovereignty-hubs' | 'skyhooks',
+		target: 'sovereignty-hubs' | 'skyhooks' | 'poses',
 		failureReason: string
 	): Promise<void> {
 		const mappedTarget: StructureSyncFailureTarget =
-			target === 'sovereignty-hubs' ? 'sovereignty' : 'skyhooks'
+			target === 'sovereignty-hubs' ? 'sovereignty' : target === 'skyhooks' ? 'skyhooks' : 'poses'
 		await this.markStructureSyncFailureReason(corporationId, mappedTarget, failureReason)
 	}
 
 	async markStructureEnrichmentFailures(
 		corporationId: string,
-		target: 'sovereignty-hubs' | 'skyhooks',
+		target: 'sovereignty-hubs' | 'skyhooks' | 'poses',
 		failures: Array<{ structureId: string; failureReason: string }>
 	): Promise<void> {
-		const uniqueFailures = [
+		let uniqueFailures = [
 			...new Map(
 				failures.map((failure) => [String(failure.structureId), failure] as const)
 			).values(),
 		]
+		if (target === 'poses' && uniqueFailures.length > 0) {
+			const structureIds = uniqueFailures.map(({ structureId }) => String(structureId))
+			const posRows = await this.getDb()
+				.select({ structureId: corporationStructures.structureId })
+				.from(corporationStructures)
+				.where(
+					and(
+						eq(corporationStructures.corporationId, corporationId),
+						inArray(corporationStructures.structureId, structureIds),
+						inArray(corporationStructures.typeId, [...POS_STRUCTURE_TYPE_IDS])
+					)
+				)
+			const posStructureIds = new Set(posRows.map(({ structureId }) => structureId))
+			uniqueFailures = uniqueFailures.filter(({ structureId }) =>
+				posStructureIds.has(String(structureId))
+			)
+		}
+		if (uniqueFailures.length === 0) {
+			return
+		}
 		const now = new Date()
 
 		for (let index = 0; index < uniqueFailures.length; index += STRUCTURE_CLEANUP_BATCH_SIZE) {
@@ -5080,6 +5379,28 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				sql` `
 			)
 			const structureIds = batch.map(({ structureId }) => String(structureId))
+
+			if (target === 'poses') {
+				await this.getDb()
+					.insert(corporationStructurePosDetails)
+					.values(
+						batch.map(({ structureId, failureReason }) => ({
+							structureId: String(structureId),
+							corporationId,
+							lastAttemptedSyncAt: now,
+							syncFailureReason: failureReason,
+						}))
+					)
+					.onConflictDoUpdate({
+						target: corporationStructurePosDetails.structureId,
+						set: {
+							corporationId: sql`excluded.corporation_id`,
+							lastAttemptedSyncAt: sql`excluded.last_attempted_sync_at`,
+							syncFailureReason: sql`excluded.sync_failure_reason`,
+						},
+					})
+				continue
+			}
 
 			if (target === 'sovereignty-hubs') {
 				await this.getDb()
@@ -5129,6 +5450,25 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 						.set({ syncFailureReason: failureReason })
 						.where(eq(corporationStructures.corporationId, corporationId))
 					return
+				case 'poses': {
+					const posRows = await this.getDb()
+						.select({ structureId: corporationStructures.structureId })
+						.from(corporationStructures)
+						.where(
+							and(
+								eq(corporationStructures.corporationId, corporationId),
+								inArray(corporationStructures.typeId, [...POS_STRUCTURE_TYPE_IDS])
+							)
+						)
+					if (posRows.length > 0) {
+						await this.markStructureEnrichmentFailures(
+							corporationId,
+							'poses',
+							posRows.map(({ structureId }) => ({ structureId, failureReason }))
+						)
+					}
+					return
+				}
 				case 'sovereignty':
 					await this.getDb()
 						.update(structureSovereigntyHubs)
@@ -6137,6 +6477,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		}
 
 		let ownedStructureIds = await this.getOwnedStructureIds(corporationId)
+		let posStructureIds = await this.getOwnedPosStructureIds(corporationId)
 		let structureRefreshFailed = false
 
 		if (ownedStructureIds.size === 0) {
@@ -6148,6 +6489,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			try {
 				await this.fetchAndStoreStructures(corporationId, true)
 				ownedStructureIds = await this.getOwnedStructureIds(corporationId)
+				posStructureIds = await this.getOwnedPosStructureIds(corporationId)
 			} catch (error) {
 				structureRefreshFailed = true
 				logger.warn(
@@ -6197,7 +6539,11 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			const inventoryCount = await this.storeStructureInventoryBatches(
 				corporationId,
 				ownedStructureIds,
-				this.iterateStructureInventoryFromStoredAssets(corporationId, ownedStructureIds)
+				this.iterateStructureInventoryFromStoredAssets(
+					corporationId,
+					ownedStructureIds,
+					posStructureIds
+				)
 			)
 			await this.updateCorporationSyncTimestamp(corporationId, 'assetsLastSync')
 			logger.info('[EveCorporationData] Stored structure inventory snapshot', {
@@ -6240,13 +6586,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 		const { characterId } = await this.getConfiguredCharacter(corporationId)
 		await this.requireCorpRole(corporationId, characterId, ['Station_Manager'])
 
-		const structures: EsiCorporationStructure[] = await esiFetch.fetchStructures(
+		const structures = await esiFetch.fetchStructures(
 			getEsiInstanceForCorporation(this.env.ESI, corporationId),
 			corporationId,
 			characterId
 		)
 
-		await this.storeStructures(corporationId, structures)
+		await this.storeStructures(corporationId, structures.structures, {
+			posListingComplete: structures.posListingComplete,
+		})
 	}
 
 	/**
@@ -7736,6 +8084,134 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			assets,
 			structures,
 			structureInventory,
+		}
+	}
+
+	/** Return summary cardinalities without materializing row payloads across RPC. */
+	async getDataSummaryCounts(corporationId: string): Promise<CorporationDataSummaryCounts | null> {
+		const db = this.getDb()
+		const activeSnapshotId = await this.getActiveStructureInventorySnapshotId(corporationId)
+		const [
+			memberCountRows,
+			trackingCountRows,
+			walletCountRows,
+			journalCountRows,
+			transactionCountRows,
+			assetCountRows,
+			structureCountRows,
+			inventoryCountRows,
+			orderCountRows,
+			contractCountRows,
+			industryJobCountRows,
+			killmailCountRows,
+		] = await Promise.all([
+			db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(corporationMembers)
+				.where(eq(corporationMembers.corporationId, corporationId)),
+			db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(corporationMemberTracking)
+				.where(eq(corporationMemberTracking.corporationId, corporationId)),
+			db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(corporationWallets)
+				.where(eq(corporationWallets.corporationId, corporationId)),
+			db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(corporationWalletJournal)
+				.where(eq(corporationWalletJournal.corporationId, corporationId)),
+			db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(corporationWalletTransactions)
+				.where(eq(corporationWalletTransactions.corporationId, corporationId)),
+			db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(corporationAssets)
+				.where(eq(corporationAssets.corporationId, corporationId)),
+			db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(corporationStructures)
+				.where(eq(corporationStructures.corporationId, corporationId)),
+			activeSnapshotId
+				? db
+						.select({ count: sql<number>`count(*)::int` })
+						.from(corporationStructureInventory)
+						.where(
+							and(
+								eq(corporationStructureInventory.corporationId, corporationId),
+								eq(corporationStructureInventory.snapshotId, activeSnapshotId)
+							)
+						)
+				: Promise.resolve([{ count: 0 }]),
+			db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(corporationOrders)
+				.where(eq(corporationOrders.corporationId, corporationId)),
+			db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(corporationContracts)
+				.where(
+					or(
+						eq(corporationContracts.assigneeId, corporationId),
+						eq(corporationContracts.issuerId, corporationId)
+					)
+				),
+			db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(corporationIndustryJobs)
+				.where(eq(corporationIndustryJobs.corporationId, corporationId)),
+			db
+				.select({ count: sql<number>`count(*)::int` })
+				.from(corporationKillmails)
+				.where(eq(corporationKillmails.corporationId, corporationId)),
+		])
+
+		const memberCount = Number(memberCountRows[0]?.count ?? 0)
+		const trackingCount = Number(trackingCountRows[0]?.count ?? 0)
+		const walletCount = Number(walletCountRows[0]?.count ?? 0)
+		const journalCount = Number(journalCountRows[0]?.count ?? 0)
+		const transactionCount = Number(transactionCountRows[0]?.count ?? 0)
+		const assetCount = Number(assetCountRows[0]?.count ?? 0)
+		const structureCount = Number(structureCountRows[0]?.count ?? 0)
+		const inventoryCount = Number(inventoryCountRows[0]?.count ?? 0)
+		const orderCount = Number(orderCountRows[0]?.count ?? 0)
+		const contractCount = Number(contractCountRows[0]?.count ?? 0)
+		const industryJobCount = Number(industryJobCountRows[0]?.count ?? 0)
+		const killmailCount = Number(killmailCountRows[0]?.count ?? 0)
+
+		if (
+			memberCount === 0 &&
+			trackingCount === 0 &&
+			walletCount === 0 &&
+			journalCount === 0 &&
+			transactionCount === 0 &&
+			assetCount === 0 &&
+			structureCount === 0 &&
+			inventoryCount === 0 &&
+			orderCount === 0 &&
+			contractCount === 0 &&
+			industryJobCount === 0 &&
+			killmailCount === 0
+		) {
+			return null
+		}
+
+		return {
+			coreData: { memberCount, trackingCount },
+			financialData:
+				walletCount === 0 && journalCount === 0 && transactionCount === 0
+					? null
+					: { walletCount, journalCount, transactionCount },
+			assetsData:
+				assetCount === 0 && structureCount === 0 && inventoryCount === 0
+					? null
+					: { assetCount, structureCount },
+			marketData:
+				orderCount === 0 && contractCount === 0 && industryJobCount === 0
+					? null
+					: { orderCount, contractCount, industryJobCount },
+			killmailCount,
 		}
 	}
 

@@ -101,3 +101,57 @@ export interface EsiCorporationMiningExtraction {
 	chunk_arrival_time: string
 	natural_decay_time: string
 }
+
+/** GET /corporations/{corporation_id}/starbases */
+export interface EsiCorporationStarbase {
+	starbase_id: number
+	type_id: number
+	system_id: number
+	moon_id?: number
+	state?: 'offline' | 'online' | 'onlining' | 'reinforced' | 'unanchoring'
+	onlined_since?: string
+	reinforced_until?: string
+	unanchor_at?: string
+}
+
+/** GET /corporations/{corporation_id}/starbases/{starbase_id} */
+export interface EsiCorporationStarbaseDetail {
+	allow_alliance_members: boolean
+	allow_corporation_members: boolean
+	anchor:
+		| 'alliance_member'
+		| 'config_starbase_equipment_role'
+		| 'corporation_member'
+		| 'starbase_fuel_technician_role'
+	attack_if_at_war: boolean
+	attack_if_other_security_status_dropping: boolean
+	attack_security_status_threshold?: number
+	attack_standing_threshold?: number
+	fuel_bay_take:
+		| 'alliance_member'
+		| 'config_starbase_equipment_role'
+		| 'corporation_member'
+		| 'starbase_fuel_technician_role'
+	fuel_bay_view:
+		| 'alliance_member'
+		| 'config_starbase_equipment_role'
+		| 'corporation_member'
+		| 'starbase_fuel_technician_role'
+	use_alliance_standings: boolean
+	offline:
+		| 'alliance_member'
+		| 'config_starbase_equipment_role'
+		| 'corporation_member'
+		| 'starbase_fuel_technician_role'
+	online:
+		| 'alliance_member'
+		| 'config_starbase_equipment_role'
+		| 'corporation_member'
+		| 'starbase_fuel_technician_role'
+	unanchor:
+		| 'alliance_member'
+		| 'config_starbase_equipment_role'
+		| 'corporation_member'
+		| 'starbase_fuel_technician_role'
+	fuels: Array<{ type_id: number; quantity: number }>
+}

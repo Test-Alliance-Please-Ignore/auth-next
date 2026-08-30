@@ -167,6 +167,10 @@ export interface EsiCorporationStructure {
 		name: string
 		state: string
 	}>
+	/** ESI starbases expose their anchored moon directly. */
+	moon_id?: string
+	name?: string | null
+	fuel_amount?: number | null
 }
 
 /**
@@ -470,8 +474,14 @@ export interface StructurePriorityQueue {
 	syncPriorities: StructureSyncPriority[]
 }
 
+export interface StructureStoreOptions {
+	/** Existing POS rows are preserved when the live POS listing was incomplete. */
+	posListingComplete?: boolean
+}
+
 export type StructureSyncFailureTarget =
 	| 'structures'
+	| 'poses'
 	| 'sovereignty'
 	| 'skyhooks'
 	| 'moon-drills'
@@ -481,6 +491,7 @@ export type StructureSyncFailureTarget =
  * Targets for live-list based structure-priority queries.
  */
 export type StructureSyncPriorityTarget =
+	| 'poses'
 	| 'sovereignty'
 	| 'skyhooks'
 	| 'moon-drills'
@@ -754,7 +765,7 @@ export interface CorporationStructureData {
 /**
  * Targets for structure-enrichment sync status updates.
  */
-export type StructureEnrichmentSyncTarget = 'sovereignty-hubs' | 'skyhooks'
+export type StructureEnrichmentSyncTarget = 'sovereignty-hubs' | 'skyhooks' | 'poses'
 
 /**
  * Filters supported by corporation structure snapshot reads.
@@ -929,6 +940,28 @@ export interface CorporationAssetsData {
 	assets: CorporationAssetData[]
 	structures: CorporationStructureData[]
 	structureInventory: CorporationStructureInventoryData[]
+}
+
+export interface CorporationDataSummaryCounts {
+	coreData: {
+		memberCount: number
+		trackingCount: number
+	}
+	financialData: {
+		walletCount: number
+		journalCount: number
+		transactionCount: number
+	} | null
+	assetsData: {
+		assetCount: number
+		structureCount: number
+	} | null
+	marketData: {
+		orderCount: number
+		contractCount: number
+		industryJobCount: number
+	} | null
+	killmailCount: number
 }
 
 /**
@@ -1396,7 +1429,17 @@ export interface EveCorporationData {
 	 * @param corporationId - The corporation ID
 	 * @param structures - Pre-fetched structures from ESI
 	 */
-	storeStructures(corporationId: string, structures: any[]): Promise<void>
+	storeStructures(
+		corporationId: string,
+		structures: any[],
+		options?: StructureStoreOptions
+	): Promise<void>
+
+	/** Store successful POS detail responses without replacing the base structure snapshot. */
+	storePosDetailEnrichment(
+		corporationId: string,
+		details: Array<{ structureId: string; fuelAmount: number }>
+	): Promise<void>
 
 	/**
 	 * Store sovereignty system snapshots (workflow-friendly)
@@ -1515,6 +1558,12 @@ export interface EveCorporationData {
 	 */
 	getSovereigntyHubStructureIds(corporationId: string): Promise<string[]>
 
+	/** Read the current POS detail sync priority order for a corporation. */
+	getPosSyncPriorities(corporationId: string): Promise<StructureSyncPriority[]>
+
+	/** Read the current POS structure IDs for a corporation. */
+	getPosStructureIds(corporationId: string): Promise<string[]>
+
 	/**
 	 * Read the current moon-drill sync priority order for a corporation.
 	 */
@@ -1539,7 +1588,7 @@ export interface EveCorporationData {
 	 */
 	markStructureEnrichmentFailures(
 		corporationId: string,
-		target: Extract<StructureEnrichmentSyncTarget, 'sovereignty-hubs' | 'skyhooks'>,
+		target: Extract<StructureEnrichmentSyncTarget, 'sovereignty-hubs' | 'skyhooks' | 'poses'>,
 		failures: Array<{ structureId: string; failureReason: string }>
 	): Promise<void>
 
@@ -1911,6 +1960,9 @@ export interface EveCorporationData {
 	 * @returns Assets data or null if not found
 	 */
 	getAssetsData(corporationId: string): Promise<CorporationAssetsData | null>
+
+	/** Get SQL-backed counts for the corporation data summary cards. */
+	getDataSummaryCounts(corporationId: string): Promise<CorporationDataSummaryCounts | null>
 
 	/**
 	 * Get corporation market orders

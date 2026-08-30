@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { buildSkyhookBaseStructureRow, buildSkyhookStorageRow } from '../../../durable-object'
 import {
 	fetchCorporationSkyhooks,
+	fetchPosDetailEnrichment,
 	fetchSovereigntyHubs,
 	fetchSovereigntySystems,
 	fetchStructures,
@@ -23,13 +24,18 @@ describe('esi structure enrichment ownership handling', () => {
 					state: 'shield_vulnerable',
 				},
 			]),
+			fetchCorporationStarbasesPageWithCharacter: vi.fn().mockResolvedValue({
+				data: [],
+				meta: { pages: 1 },
+			}),
 		}
 
 		const structures = await fetchStructures(esi as never, '98000001', '211')
 
 		expect(esi.fetchCorporationStructures).toHaveBeenCalledWith('98000001')
-		expect(structures).toHaveLength(1)
-		expect(structures[0]).toMatchObject({
+		expect(structures.posListingComplete).toBe(true)
+		expect(structures.structures).toHaveLength(1)
+		expect(structures.structures[0]).toMatchObject({
 			structure_id: '1001',
 			corporation_id: '98000001',
 			type_id: '35833',
@@ -37,6 +43,156 @@ describe('esi structure enrichment ownership handling', () => {
 			profile_id: '60012345',
 			state: 'shield_vulnerable',
 		})
+	})
+
+	it('adds paginated POSes with detail fuel and best-effort asset names', async () => {
+		const esi = {
+			fetchCorporationStructures: vi.fn().mockResolvedValue([]),
+			fetchCorporationStarbasesPageWithCharacter: vi
+				.fn()
+				.mockResolvedValueOnce({
+					data: [
+						{
+							starbase_id: 9001,
+							type_id: 12235,
+							system_id: 30000142,
+							moon_id: 40100001,
+							state: 'online',
+							onlined_since: '2026-08-01T00:00:00.000Z',
+						},
+					],
+					meta: { pages: 2 },
+				})
+				.mockResolvedValueOnce({
+					data: [
+						{
+							starbase_id: 9002,
+							type_id: 12236,
+							system_id: 30000143,
+							state: 'unanchoring',
+							unanchor_at: '2026-08-10T00:00:00.000Z',
+						},
+					],
+					meta: { pages: 2 },
+				}),
+			fetchCorporationStarbaseDetailWithCharacter: vi
+				.fn()
+				.mockImplementation(async (_corpId: string, id: string) => ({
+					allow_alliance_members: false,
+					allow_corporation_members: true,
+					anchor: 'corporation_member',
+					attack_if_at_war: false,
+					attack_if_other_security_status_dropping: false,
+					fuel_bay_take: 'corporation_member',
+					fuel_bay_view: 'corporation_member',
+					offline: 'corporation_member',
+					online: 'corporation_member',
+					unanchor: 'corporation_member',
+					use_alliance_standings: false,
+					fuels:
+						id === '9001'
+							? [
+									{ type_id: 4246, quantity: 120 },
+									{ type_id: 16275, quantity: 500 },
+								]
+							: [{ type_id: 4051, quantity: 80 }],
+				})),
+			fetchCorporationAssetNames: vi
+				.fn()
+				.mockResolvedValue([{ item_id: '9001', name: 'POS Alpha' }]),
+		}
+
+		const structures = await fetchStructures(esi as never, '98000001', '211')
+
+		expect(esi.fetchCorporationStarbasesPageWithCharacter).toHaveBeenNthCalledWith(
+			1,
+			'98000001',
+			'211',
+			1
+		)
+		expect(esi.fetchCorporationStarbasesPageWithCharacter).toHaveBeenNthCalledWith(
+			2,
+			'98000001',
+			'211',
+			2
+		)
+		expect(esi.fetchCorporationStarbaseDetailWithCharacter).not.toHaveBeenCalled()
+		expect(esi.fetchCorporationAssetNames).toHaveBeenCalledWith('98000001', ['9001', '9002'])
+		expect(structures.posListingComplete).toBe(true)
+		expect(structures.structures).toMatchObject([
+			{
+				structure_id: '9001',
+				corporation_id: '98000001',
+				type_id: '12235',
+				profile_id: 'pos',
+				moon_id: '40100001',
+				state: 'online',
+				name: 'POS Alpha',
+			},
+			{
+				structure_id: '9002',
+				corporation_id: '98000001',
+				type_id: '12236',
+				profile_id: 'pos',
+				state: 'unanchoring',
+				name: null,
+			},
+		])
+	})
+
+	it('prioritizes POS details and stops after rate-limit pressure', async () => {
+		const esi = {
+			fetchCorporationStarbaseDetailWithCharacter: vi
+				.fn()
+				.mockResolvedValueOnce({ fuels: [{ type_id: 4246, quantity: 120 }] })
+				.mockRejectedValueOnce(new Error('ESI request failed: 429 Too Many Requests'))
+				.mockResolvedValueOnce({ fuels: [{ type_id: 4051, quantity: 80 }] })
+				.mockResolvedValueOnce({ fuels: [{ type_id: 4246, quantity: 40 }] }),
+		}
+
+		const result = await fetchPosDetailEnrichment(esi as never, '98000001', {
+			directorCharacterId: '211',
+			prioritizedEntries: [
+				{ index: 1, entry: { id: '9002', system_id: '30000143' } },
+				{ index: 0, entry: { id: '9001', system_id: '30000142' } },
+				{ index: 2, entry: { id: '9003', system_id: '30000144' } },
+				{ index: 3, entry: { id: '9004', system_id: '30000145' } },
+				{ index: 4, entry: { id: '9005', system_id: '30000146' } },
+			],
+		})
+
+		expect(esi.fetchCorporationStarbaseDetailWithCharacter).toHaveBeenCalledTimes(4)
+		expect(result.details).toEqual([
+			{ structureId: '9002', fuelAmount: 120 },
+			{ structureId: '9003', fuelAmount: 80 },
+			{ structureId: '9004', fuelAmount: 40 },
+		])
+		expect(result.rateLimitFailureCount).toBe(1)
+		expect(result.nonRateLimitFailureCount).toBe(0)
+		expect(result.failures).toEqual([
+			{ structureId: '9001', failureReason: 'ESI request failed: 429 Too Many Requests' },
+		])
+	})
+
+	it('marks the POS listing incomplete when a page cannot be fetched', async () => {
+		const esi = {
+			fetchCorporationStructures: vi.fn().mockResolvedValue([]),
+			fetchCorporationAssetNames: vi.fn(),
+			fetchCorporationStarbasesPageWithCharacter: vi
+				.fn()
+				.mockResolvedValueOnce({
+					data: [{ starbase_id: 9001, type_id: 12235, system_id: 30000142 }],
+					meta: { pages: 2 },
+				})
+				.mockRejectedValueOnce(new Error('ESI request failed: 503 Service Unavailable')),
+		}
+
+		const result = await fetchStructures(esi as never, '98000001', '211')
+
+		expect(result.posListingComplete).toBe(false)
+		expect(result.posListingFailureReason).toBe('ESI request failed: 503 Service Unavailable')
+		expect(result.structures).toEqual([])
+		expect(esi.fetchCorporationAssetNames).not.toHaveBeenCalled()
 	})
 
 	it('uses the typed public ESI sovereignty endpoint', async () => {

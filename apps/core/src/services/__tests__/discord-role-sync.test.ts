@@ -16,6 +16,10 @@ import {
 	updateUserDiscordRoles,
 } from '../discord.service'
 
+vi.mock('../mumble.service', () => ({
+	enforceBlacklistedMumbleAccess: vi.fn(),
+}))
+
 /**
  * Discord Role Sync Tests
  *

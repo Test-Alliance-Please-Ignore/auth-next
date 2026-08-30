@@ -323,6 +323,73 @@ describe('structure prune cleanup', () => {
 		])
 	})
 
+	it('preserves existing POS rows and detail fuel when the listing is incomplete', async () => {
+		const db = makeDb()
+		db.query.corporationStructures.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'pos-1',
+				corporationId: 'corp-1',
+				typeId: '12235',
+				fuelAmount: 55,
+				updatedAt: new Date('2026-07-01T00:00:00.000Z'),
+			},
+		])
+		const instance = createDoInstance(db)
+		;(instance as any).hydrateStructureRows = vi.fn().mockResolvedValue([
+			{
+				corporationId: 'corp-1',
+				structureId: 'pos-1',
+				name: 'POS One',
+				typeId: '12235',
+				typeName: 'Control Tower',
+				systemId: '30000142',
+				systemName: 'Jita',
+				regionId: '10000002',
+				regionName: 'The Forge',
+				profileId: 'pos',
+				fuelExpires: null,
+				fuelAmount: null,
+				nextReinforceApply: null,
+				nextReinforceHour: null,
+				reinforceHour: null,
+				state: 'online',
+				stateTimerEnd: null,
+				stateTimerStart: null,
+				unanchorsAt: null,
+				lowPower: false,
+				syncStatus: 'ok',
+				syncFailureReason: null,
+				lastSyncedAt: new Date(),
+				services: null,
+				fuelBurnRate: null,
+				structureInfo: null,
+				updatedAt: new Date(),
+			},
+		])
+		;(instance as any).resolveStructureFuelBurnRates = vi.fn().mockResolvedValue(new Map())
+		;(instance as any).storeMoonGeographies = vi.fn()
+		;(instance as any).storeMoonDrills = vi.fn()
+
+		await instance.storeStructures(
+			'corp-1',
+			[
+				{
+					structure_id: 'pos-1',
+					type_id: '12235',
+					system_id: '30000142',
+					profile_id: 'pos',
+					state: 'online',
+				},
+			],
+			{ posListingComplete: false }
+		)
+
+		expect(db.delete).not.toHaveBeenCalledWith(corporationStructures)
+		expect(db._values).toHaveBeenCalledWith([
+			expect.objectContaining({ structureId: 'pos-1', fuelAmount: 55 }),
+		])
+	})
+
 	it('keeps recently seen structures and their dependent snapshots during the prune grace period', async () => {
 		const db = makeDb()
 		const instance = createDoInstance(db)
@@ -479,6 +546,49 @@ describe('structure prune cleanup', () => {
 		expect(resolveNearestMoonGeographyBySystemPosition).not.toHaveBeenCalled()
 		expect(db.insert).not.toHaveBeenCalled()
 		expect(db.delete).not.toHaveBeenCalled()
+	})
+
+	it('stores POS moon geography from the direct starbase moon id', async () => {
+		const db = makeDb()
+		const resolveMoonGeographyByIds = vi.fn().mockResolvedValue({
+			'40100001': {
+				moonId: '40100001',
+				moonName: 'Jita IV - Moon 1',
+				planetId: 'planets-1',
+				planetName: 'Jita IV',
+				solarSystemId: '30000142',
+				solarSystemName: 'Jita',
+			},
+		})
+		mocks.getStub.mockReturnValue({ resolveMoonGeographyByIds } as never)
+		const instance = createDoInstance(db)
+
+		await (instance as any).storeMoonGeographies(
+			'corp-1',
+			[
+				{
+					structureId: 'pos-1',
+					corporationId: 'corp-1',
+					typeId: '12235',
+					typeName: 'Control Tower',
+					systemId: '30000142',
+					systemName: 'Jita',
+					structureInfo: null,
+				},
+			],
+			new Map([['pos-1', '40100001']])
+		)
+
+		expect(resolveMoonGeographyByIds).toHaveBeenCalledWith(['40100001'])
+		expect(db.insert).toHaveBeenCalledWith(structureMoonGeographies)
+		expect(db._values).toHaveBeenCalledWith([
+			expect.objectContaining({
+				structureId: 'pos-1',
+				moonId: '40100001',
+				planetId: 'planets-1',
+				systemId: '30000142',
+			}),
+		])
 	})
 
 	it('stores sovereignty hub names using resolved solar system names', async () => {

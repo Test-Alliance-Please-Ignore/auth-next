@@ -209,6 +209,7 @@ describe('structure permission gating', () => {
 	it('classifies navigation structures in the general Structures family', () => {
 		expect(getStructureTab({ typeId: '35841', typeName: 'Ansiblex Jump Gate' })).toBe('structures')
 		expect(getStructureTab({ typeId: '81826', typeName: 'Metenox Moon Drill' })).toBe('moon-drills')
+		expect(getStructureTab({ typeId: '12235', typeName: 'Control Tower' })).toBe('poses')
 	})
 
 	it('shows moon drill geography without requiring a separate moon drill row', async () => {
@@ -354,6 +355,7 @@ describe('structure permission gating', () => {
 			'structures',
 			'sovereignty',
 			'skyhooks',
+			'poses',
 			'mining-citadels',
 			'moon-drills',
 		] as const) {

@@ -11,6 +11,7 @@ import type { SessionUser } from '../../context'
 
 const structuresMocks = vi.hoisted(() => ({
 	listStructures: vi.fn(),
+	listPosStructures: vi.fn(),
 	listSkyhookStructures: vi.fn(),
 	getStructureDetail: vi.fn(),
 }))
@@ -300,6 +301,54 @@ describe('structures routes', () => {
 			items: Array<Record<string, unknown>>
 		}
 		expect(body.items[0]).not.toHaveProperty('updatedAt')
+	})
+
+	it('routes POS list requests through the POS-specific worker method', async () => {
+		structuresMocks.listPosStructures.mockResolvedValue({
+			items: [],
+			pagination: {
+				page: 1,
+				pageSize: 25,
+				totalCount: 0,
+				totalPages: 1,
+				hasNextPage: false,
+				hasPreviousPage: false,
+			},
+			filterOptions: {
+				corporations: [],
+				regions: [],
+				systems: [],
+				states: [],
+				types: [],
+				assignedGroups: [],
+				alliances: [],
+				planets: [],
+				raidableStates: [],
+			},
+			summary: { total: 0, lowFuel: 0, lowPower: 0, reinforced: 0 },
+		})
+
+		const app = createApp(makeUser())
+		const response = await app.request(
+			'/api/structures/poses?sortBy=name&sortDirection=desc&page=2&pageSize=10',
+			{},
+			{
+				STRUCTURES: {
+					listPosStructures: structuresMocks.listPosStructures,
+				},
+			} as any
+		)
+
+		expect(response.status).toBe(200)
+		expect(structuresMocks.listPosStructures).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.objectContaining({
+				page: 2,
+				pageSize: 10,
+				sortBy: 'name',
+				sortDirection: 'desc',
+			})
+		)
 	})
 
 	it.each([

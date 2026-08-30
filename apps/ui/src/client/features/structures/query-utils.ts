@@ -64,6 +64,7 @@ export function getEffectiveStructureSortByForTab(
 ): StructureListSortBy {
 	switch (tab) {
 		case 'structures':
+		case 'poses':
 		case 'mining-citadels':
 			return getCommonSortBy(sortBy)
 		case 'moon-drills':
@@ -129,6 +130,7 @@ export function buildStructureListContentKey({
 			pushDefined(parts, filters.planetId)
 			break
 		case 'structures':
+		case 'poses':
 		case 'mining-citadels':
 			pushDefined(parts, filters.corporationId)
 			pushDefined(parts, filters.assignedGroupId)

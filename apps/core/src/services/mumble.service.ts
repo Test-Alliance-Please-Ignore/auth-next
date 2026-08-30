@@ -76,7 +76,15 @@ export function deriveLoginName(characterName: string, userId: string): string {
 	return `user_${userId.replace(/-/g, '').slice(0, 8)}`
 }
 
-function normalizeMumbleTicker(ticker?: string | null): string | null {
+function preserveCanonicalMumbleTicker(ticker?: string | null): string | null {
+	if (typeof ticker !== 'string' || ticker.trim().length === 0) {
+		return null
+	}
+
+	return ticker
+}
+
+function normalizeCustomMumbleTicker(ticker?: string | null): string | null {
 	const normalized = ticker
 		?.trim()
 		.toUpperCase()
@@ -130,14 +138,14 @@ async function buildMumbleIdentity(env: Env, userId: string): Promise<MumbleIden
 			? (async () => {
 					const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corporationId)
 					const corpInfo = await corpStub.getCorporationInfo(corporationId)
-					return normalizeMumbleTicker(corpInfo?.ticker)
+					return preserveCanonicalMumbleTicker(corpInfo?.ticker)
 				})()
 			: Promise.resolve(null),
 		(async () => {
 			const memberships = await getStub<Groups>(env.GROUPS, 'default').getUserMemberships(userId)
 			return memberships
 				.filter((membership) => membership.mumbleSyncEnabled)
-				.map((membership) => normalizeMumbleTicker(membership.mumbleTicker))
+				.map((membership) => normalizeCustomMumbleTicker(membership.mumbleTicker))
 				.filter((ticker): ticker is string => ticker !== null)
 				.sort((left, right) => left.localeCompare(right))
 		})(),
@@ -388,59 +396,29 @@ export async function syncUsersMumbleGroups(
 }
 
 /**
- * Revoke a blacklisted user's Mumble access.
+ * Delete a blacklisted user's Mumble account.
  *
- * This intentionally strips all groups and rotates the password, but it never
- * reveals the new password. Existing sessions should already be invalidated by
- * the blacklist flow; the password reset prevents reuse if credentials were
- * previously known.
+ * Account deletion is stronger than stripping groups or rotating a password:
+ * it removes the provisioned account entirely. The Mumble worker makes this
+ * idempotent and queues control-plane failures for retry, while this helper
+ * keeps blacklist persistence independent from Mumble availability.
  */
 export async function enforceBlacklistedMumbleAccess(
 	env: Env,
 	userId: string,
 	reason = 'user-blacklisted'
 ): Promise<void> {
-	if (!(await isMumbleFeatureEnabled(env))) {
-		logger.info('[Mumble] Skipped blacklist enforcement because feature is disabled', {
-			userId,
-			reason,
-		})
+	const result = await deleteMumbleAccounts(env, [userId])
+	if (!result) {
 		return
 	}
 
-	const account = await getMumbleAccount(env, userId).catch((error) => {
-		logger.error('[Mumble] Failed to read account during blacklist enforcement', {
-			userId,
-			reason,
-			error: error instanceof Error ? error.message : String(error),
-		})
-		return null
-	})
-	if (!account) {
-		return
-	}
-
-	await syncUsersMumbleGroups(env, [userId], reason, {
-		forceEmptyGroups: true,
-	}).catch((error) => {
-		logger.error('[Mumble] Failed to strip groups for blacklisted user', {
-			userId,
-			reason,
-			error: error instanceof Error ? error.message : String(error),
-		})
-	})
-
-	await resetMumblePassword(env, userId).catch((error) => {
-		logger.error('[Mumble] Failed to rotate password for blacklisted user', {
-			userId,
-			reason,
-			error: error instanceof Error ? error.message : String(error),
-		})
-	})
-
-	logger.info('[Mumble] Enforced blacklisted access', {
+	logger.info('[Mumble] Deleted blacklisted user account', {
 		userId,
 		reason,
+		deleted: result.deleted,
+		notFound: result.notFound,
+		queued: result.queued,
 	})
 }
 
@@ -662,7 +640,7 @@ export async function provisionTempopGuest(
 		try {
 			const corpStub = getStub<EveCorporationData>(env.EVE_CORPORATION_DATA, corporationId)
 			const corpInfo = await corpStub.getCorporationInfo(corporationId)
-			corpTicker = normalizeMumbleTicker(corpInfo?.ticker)
+			corpTicker = preserveCanonicalMumbleTicker(corpInfo?.ticker)
 		} catch (error) {
 			logger.warn('[Mumble] Failed to resolve temp-op guest corp ticker', {
 				characterId,
@@ -674,7 +652,7 @@ export async function provisionTempopGuest(
 	if (allianceId) {
 		try {
 			const allianceInfo = await getPublicEsiInstance(env.ESI).fetchAlliancePublicInfo(allianceId)
-			allianceTicker = normalizeMumbleTicker(allianceInfo?.ticker)
+			allianceTicker = preserveCanonicalMumbleTicker(allianceInfo?.ticker)
 		} catch (error) {
 			logger.warn('[Mumble] Failed to resolve temp-op guest alliance ticker', {
 				characterId,

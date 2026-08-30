@@ -44,7 +44,10 @@ vi.mock('../../services/corporation-auto-register.service', () => ({
 vi.mock('../../services/director-health-recheck.service', () => ({
 	recheckDirectorHealthAfterTokenReauth: vi.fn(),
 }))
-vi.mock('../../services/mumble.service', () => ({ provisionTempopGuest: vi.fn() }))
+vi.mock('../../services/mumble.service', () => ({
+	enforceBlacklistedMumbleAccess: vi.fn(),
+	provisionTempopGuest: vi.fn(),
+}))
 vi.mock('../../services/mumble-tempop.service', () => ({ storeCredentialHandoff: vi.fn() }))
 vi.mock('@repo/workflow-utils', () => ({ createWorkflow: vi.fn() }))
 

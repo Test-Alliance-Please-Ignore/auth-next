@@ -48,6 +48,7 @@ const DEFAULT_SORT_BY: StructureListSortBy = 'fuel'
 const DEFAULT_SORT_DIRECTION: StructureListSortDirection = 'asc'
 const ALL_STRUCTURE_TABS: StructureTab[] = [
 	'structures',
+	'poses',
 	'sovereignty',
 	'skyhooks',
 	'mining-citadels',
@@ -262,6 +263,7 @@ const MOON_DRILL_TAB_FILTER_FIELDS = [
 
 const TAB_FILTER_FIELDS: Record<StructureTab, Array<keyof StructureTableFilters>> = {
 	structures: [...COMMON_TAB_FILTER_FIELDS],
+	poses: [...COMMON_TAB_FILTER_FIELDS],
 	sovereignty: [
 		'corporationId',
 		'assignedGroupId',
@@ -277,6 +279,7 @@ const TAB_FILTER_FIELDS: Record<StructureTab, Array<keyof StructureTableFilters>
 
 function normalizeTab(tab: unknown): StructureTab {
 	return tab === 'sovereignty' ||
+		tab === 'poses' ||
 		tab === 'skyhooks' ||
 		tab === 'mining-citadels' ||
 		tab === 'moon-drills'

@@ -126,6 +126,48 @@ describe('structure inventory filtering', () => {
 		])
 	})
 
+	it('includes POS storage locations only for POS structures', () => {
+		const inventory = filterStructureInventoryAssets(
+			'98000001',
+			new Set(['pos-1', 'upwell-1']),
+			[
+				{
+					item_id: '1',
+					is_singleton: false,
+					location_flag: 'AutoFit',
+					location_id: 'pos-1',
+					location_type: 'item',
+					quantity: 10,
+					type_id: '4051',
+				},
+				{
+					item_id: '2',
+					is_singleton: false,
+					location_flag: 'SecondaryStorage',
+					location_id: 'pos-1',
+					location_type: 'item',
+					quantity: 20,
+					type_id: '16275',
+				},
+				{
+					item_id: '3',
+					is_singleton: false,
+					location_flag: 'AutoFit',
+					location_id: 'upwell-1',
+					location_type: 'item',
+					quantity: 30,
+					type_id: '4051',
+				},
+			],
+			new Set(['pos-1'])
+		)
+
+		expect(inventory.map(({ locationFlag, quantity }) => ({ locationFlag, quantity }))).toEqual([
+			{ locationFlag: 'AutoFit', quantity: 10 },
+			{ locationFlag: 'SecondaryStorage', quantity: 20 },
+		])
+	})
+
 	it('projects stored raw assets into structure inventory rows', () => {
 		const inventory = projectStructureInventoryFromStoredAssets('98000001', new Set(['1001']), [
 			{

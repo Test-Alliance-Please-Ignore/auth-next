@@ -99,6 +99,7 @@ import { cn } from '@/lib/utils'
 import {
 	useMiningCitadelStructures,
 	useMoonDrillStructures,
+	usePosStructures,
 	useSkyhookStructures,
 	useSovereigntyStructures,
 	useStructureAccess,
@@ -120,6 +121,7 @@ import {
 } from '../features/structures/state/structure-table-store'
 
 import type { KeyboardEvent, MouseEvent, ReactNode, UIEvent } from 'react'
+import type { StructureCommonListSortBy } from '@repo/structures'
 import type { SelectOption } from '@/components/ui/select'
 
 const UNASSIGNED_GROUP_VALUE = '__unassigned__'
@@ -566,6 +568,10 @@ export default function StructuresPage() {
 	const sovereigntySortBy = getEffectiveStructureSortByForTab('sovereignty', tableState.sortBy)
 	const skyhookSortBy = getEffectiveStructureSortByForTab('skyhooks', tableState.sortBy)
 	const moonSortBy = getEffectiveStructureSortByForTab('moon-drills', tableState.sortBy)
+	const posSortBy = getEffectiveStructureSortByForTab(
+		'poses',
+		tableState.sortBy
+	) as StructureCommonListSortBy
 	const commonQuery = useMemo<StructureListQuery>(
 		() =>
 			({
@@ -686,6 +692,17 @@ export default function StructuresPage() {
 			canViewStructures &&
 			activeTab === 'moon-drills',
 	})
+	const posStructures = usePosStructures(
+		{ ...commonQuery, sortBy: posSortBy },
+		{
+			enabled:
+				!authLoading &&
+				!permissionsLoading &&
+				!structureAccessLoading &&
+				canViewStructures &&
+				activeTab === 'poses',
+		}
+	)
 
 	const isSovereigntyTab = activeTab === 'sovereignty'
 	const isSkyhooksTab = activeTab === 'skyhooks'
@@ -703,6 +720,8 @@ export default function StructuresPage() {
 				return miningCitadelStructures
 			case 'moon-drills':
 				return moonDrillStructures
+			case 'poses':
+				return posStructures
 		}
 	})()
 	const structuresResponse = activeResponse.data
@@ -722,7 +741,9 @@ export default function StructuresPage() {
 					? miningCitadelStructures.data?.filterOptions
 					: activeTab === 'moon-drills'
 						? moonDrillStructures.data?.filterOptions
-						: undefined
+						: activeTab === 'poses'
+							? posStructures.data?.filterOptions
+							: undefined
 	const sovereigntyFilterOptions: StructureSovereigntyListFilterOptions | undefined =
 		activeTab === 'sovereignty' ? sovereigntyStructures.data?.filterOptions : undefined
 	const skyhookFilterOptions: StructureSkyhookListFilterOptions | undefined =
@@ -1377,6 +1398,8 @@ export default function StructuresPage() {
 				)
 			case 'moon-drills':
 				return <TableBody>{renderMoonDrillRows(moonDrillStructures.data?.items ?? [])}</TableBody>
+			case 'poses':
+				return <TableBody>{renderStructureRows(posStructures.data?.items ?? [])}</TableBody>
 		}
 	}
 
@@ -1457,6 +1480,7 @@ export default function StructuresPage() {
 				return 'raidable'
 			case 'structures':
 			case 'mining-citadels':
+			case 'poses':
 				return 'type'
 			case 'moon-drills':
 				return null

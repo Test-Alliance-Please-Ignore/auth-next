@@ -4,7 +4,12 @@ import { toEsiResult } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 import { killmailDetailSchema } from '@repo/universe'
 
-import { UseCharacterAuth, UseCorporationAuth, UsePublicAuth } from './lib/auth-decorators'
+import {
+	UseCharacterAuth,
+	UseCorporationAuth,
+	UseCorporationAuthWithCharacter,
+	UsePublicAuth,
+} from './lib/auth-decorators'
 import { EsiFetcher } from './lib/esi-fetch'
 import {
 	transformAlliancePublicInfo,
@@ -37,6 +42,7 @@ import {
 	transformCharacterTitle,
 	transformCharacterWalletJournal,
 	transformContractItems,
+	transformCorporationAssetNames,
 	transformCorporationAssets,
 	transformCorporationContact,
 	transformCorporationContracts,
@@ -100,6 +106,7 @@ import type {
 	CharacterTitle,
 	CharacterWalletJournalEntry,
 	CorporationAsset,
+	CorporationAssetName,
 	CorporationContact,
 	CorporationContract,
 	CorporationDivision,
@@ -155,6 +162,7 @@ import type {
 	EsiCharacterWalletJournalEntry,
 	EsiContractItem,
 	EsiCorporationAsset,
+	EsiCorporationAssetName,
 	EsiCorporationContact,
 	EsiCorporationContract,
 	EsiCorporationDivision,
@@ -175,6 +183,8 @@ import type {
 	EsiCorporationSkyhookDetail,
 	EsiCorporationSkyhookListingResponse,
 	EsiCorporationStanding,
+	EsiCorporationStarbase,
+	EsiCorporationStarbaseDetail,
 	EsiCorporationStructure,
 	EsiCorporationTitle,
 	EsiCorporationWallet,
@@ -1038,6 +1048,30 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		)
 	}
 
+	/** Resolve owner-defined names for POS item IDs without exposing raw ESI transport. */
+	@UseCorporationAuth
+	async fetchCorporationAssetNames(
+		corporationId: string,
+		itemIds: string[],
+		options?: EsiRequestOptions
+	): Promise<CorporationAssetName[]> {
+		if (itemIds.length === 0) return []
+		const names: CorporationAssetName[] = []
+		for (let index = 0; index < itemIds.length; index += 1000) {
+			const batch = itemIds.slice(index, index + 1000)
+			const result = await this.esiFetcher.fetchEsi<EsiCorporationAssetName[], number[]>(
+				`/corporations/${corporationId}/assets/names`,
+				{
+					...options,
+					method: 'POST',
+					body: batch.map((itemId) => Number.parseInt(itemId, 10)),
+				}
+			)
+			names.push(...transformCorporationAssetNames(result.data))
+		}
+		return names
+	}
+
 	/**
 	 * Retrieves corporation-owned structures including fuel and status data.
 	 * @param corporationId - The EVE corporation identifier.
@@ -1049,6 +1083,80 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 			`/corporations/${corporationId}/structures`
 		)
 		return transformCorporationStructures(result.data)
+	}
+
+	/** One POS listing page; the corporation domain owns pagination and persistence. */
+	@UseCorporationAuth
+	async fetchCorporationStarbasesPage(
+		corporationId: string,
+		page: number
+	): Promise<EsiResult<EsiCorporationStarbase[]>> {
+		return await this.fetchCorporationStarbasesPageRequest(corporationId, page)
+	}
+
+	/** One POS listing page using the explicitly selected Director credential. */
+	@UseCorporationAuthWithCharacter
+	async fetchCorporationStarbasesPageWithCharacter(
+		corporationId: string,
+		_characterId: string,
+		page: number
+	): Promise<EsiResult<EsiCorporationStarbase[]>> {
+		return await this.fetchCorporationStarbasesPageRequest(corporationId, page)
+	}
+
+	private async fetchCorporationStarbasesPageRequest(
+		corporationId: string,
+		page: number
+	): Promise<EsiResult<EsiCorporationStarbase[]>> {
+		if (!Number.isSafeInteger(page) || page < 1) {
+			throw new TypeError('ESI corporation starbase page must be a positive integer')
+		}
+		const query = page === 1 ? '' : `?page=${page}`
+		return toEsiResult(
+			await this.esiFetcher.fetchEsi<EsiCorporationStarbase[]>(
+				`/corporations/${corporationId}/starbases${query}`,
+				{
+					compatibilityDate: STRUCTURE_ENRICHMENT_COMPATIBILITY_DATE,
+					includeVersionPath: false,
+				}
+			)
+		)
+	}
+
+	@UseCorporationAuth
+	async fetchCorporationStarbaseDetail(
+		corporationId: string,
+		starbaseId: string,
+		systemId: string
+	): Promise<EsiCorporationStarbaseDetail> {
+		return await this.fetchCorporationStarbaseDetailRequest(corporationId, starbaseId, systemId)
+	}
+
+	/** POS detail using the explicitly selected Director credential. */
+	@UseCorporationAuthWithCharacter
+	async fetchCorporationStarbaseDetailWithCharacter(
+		corporationId: string,
+		_characterId: string,
+		starbaseId: string,
+		systemId: string
+	): Promise<EsiCorporationStarbaseDetail> {
+		return await this.fetchCorporationStarbaseDetailRequest(corporationId, starbaseId, systemId)
+	}
+
+	private async fetchCorporationStarbaseDetailRequest(
+		corporationId: string,
+		starbaseId: string,
+		systemId: string
+	): Promise<EsiCorporationStarbaseDetail> {
+		return (
+			await this.esiFetcher.fetchEsi<EsiCorporationStarbaseDetail>(
+				`/corporations/${corporationId}/starbases/${starbaseId}?system_id=${systemId}`,
+				{
+					compatibilityDate: STRUCTURE_ENRICHMENT_COMPATIBILITY_DATE,
+					includeVersionPath: false,
+				}
+			)
+		).data
 	}
 
 	/** One sovereignty-hub listing page; domain code retains its own traversal policy. */

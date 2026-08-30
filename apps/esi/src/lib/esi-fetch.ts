@@ -17,6 +17,7 @@ import { getStub } from '@repo/do-utils'
 import {
 	buildEsiUserKey,
 	buildPublicEsiUserKey,
+	canonicalizeEsiEntityId,
 	CharacterDeletedError,
 	EsiRequestClient,
 	EsiRequestError,
@@ -105,12 +106,18 @@ export class EsiFetcher {
 		})
 	}
 
-	async withCorporationContext<T>(corporationId: string, operation: () => Promise<T>): Promise<T> {
+	async withCorporationContext<T>(
+		corporationId: string,
+		operation: () => Promise<T>,
+		authCharacterId?: string
+	): Promise<T> {
 		const corporationData = getStub<EveCorporationData>(
 			this.env.EVE_CORPORATION_DATA,
 			corporationId
 		)
-		const directorId = await corporationData.getLoadBalancedDirector(corporationId)
+		const directorId = authCharacterId
+			? canonicalizeEsiEntityId(authCharacterId, 'character')
+			: await corporationData.getLoadBalancedDirector(corporationId)
 		if (!directorId) {
 			throw new Error('No director found for corporation')
 		}

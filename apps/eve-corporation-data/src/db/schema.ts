@@ -464,6 +464,27 @@ export const corporationStructures = pgTable(
 	]
 )
 
+/** POS-only enrichment state kept separate from the shared structure snapshot. */
+export const corporationStructurePosDetails = pgTable(
+	'corporation_structure_pos_details',
+	{
+		structureId: text('structure_id')
+			.primaryKey()
+			.references(() => corporationStructures.structureId, { onDelete: 'cascade' }),
+		corporationId: text('corporation_id').notNull(),
+		lastAttemptedSyncAt: timestamp('last_attempted_sync_at', { withTimezone: true }),
+		lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+		syncFailureReason: text('sync_failure_reason'),
+	},
+	(table) => [
+		index('corp_pos_detail_sync_idx').on(
+			table.corporationId,
+			table.lastSyncedAt,
+			table.lastAttemptedSyncAt
+		),
+	]
+)
+
 export const corporationStructureInventorySnapshots = pgTable(
 	'corporation_structure_inventory_snapshots',
 	{
@@ -690,6 +711,7 @@ export const schema = {
 	corporationWalletTransactions,
 	corporationAssets,
 	corporationStructures,
+	corporationStructurePosDetails,
 	corporationOrders,
 	corporationContracts,
 	corporationIndustryJobs,
