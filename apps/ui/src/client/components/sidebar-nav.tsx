@@ -3,6 +3,7 @@ import {
 	BookOpen,
 	Briefcase,
 	Building2,
+	CalendarClock,
 	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
@@ -40,6 +41,7 @@ import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
 import { useSrpPaymentMismatchAlerts } from '@/features/srp/hooks'
 import { useReviewQueueStatusCount } from '@/features/srp/state/review-queue-snapshot-store'
 import { useStructureAccess } from '@/features/structures/hooks'
+import { canViewTimerboard } from '@/features/timerboard/permissions'
 import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { usePendingInvitations } from '@/hooks/useGroups'
@@ -246,6 +248,14 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			icon: LayoutDashboard,
 		},
 	]
+
+	if (canViewTimerboard(permissions, isSiteAdmin)) {
+		navItems.push({
+			label: 'Timerboard',
+			href: '/timerboard',
+			icon: CalendarClock,
+		})
+	}
 
 	// HR section - always visible with at least My Applications and Join
 	{

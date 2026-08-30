@@ -40,6 +40,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency: ${{ github.workflow }}
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: timerboard_test
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d timerboard_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v7
@@ -64,6 +77,26 @@ jobs:
         run: bun turbo check:ci
       - name: Focused Tests
         run: bun runx ci test
+      - name: Migrate Core Integration Database
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/timerboard_test
+        run: |
+          set -euo pipefail
+          for migration in apps/core/.migrations/*.sql; do
+            psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+      - name: Core PostgreSQL Integration Tests
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/timerboard_test
+        run: pnpm -F core test:integration
+      - name: Migrate Core Database
+        run: pnpm -F core db:migrate
+        env:
+          DATABASE_URL_MIGRATIONS: ${{ secrets.CORE_DATABASE_URL_MIGRATIONS }}
+      - name: Seed Timerboard Permissions
+        run: pnpm -F groups db:seed-timerboard-permissions
+        env:
+          DATABASE_URL_MIGRATIONS: ${{ secrets.GROUPS_DATABASE_URL_MIGRATIONS }}
       - name: Deploy
         run: bun turbo deploy
         env:

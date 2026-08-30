@@ -48,6 +48,17 @@ import type {
 } from '@repo/structures'
 import type { TrackingSession } from '../features/fleet-tracking/types'
 import type { RecentLossesResponse, RequestListResponse } from '../features/srp/types'
+import type {
+	CreateTimerboardEntryInput,
+	TimerboardActivity,
+	TimerboardAssignmentCandidate,
+	TimerboardAssignmentInput,
+	TimerboardEntry,
+	TimerboardListQuery,
+	TimerboardListResponse,
+	TimerState,
+	UpdateTimerboardEntryInput,
+} from '../features/timerboard/types'
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 const API_REQUEST_TIMEOUT_MS = 30_000
@@ -169,6 +180,17 @@ export class ValidationError extends BaseApiError {
 	) {
 		super(message, 400, requestInfo)
 		this.name = 'ValidationError'
+	}
+}
+
+export class ConflictError<T = unknown> extends BaseApiError {
+	constructor(
+		message: string,
+		public current: T | undefined,
+		requestInfo?: ApiRequestDebugInfo
+	) {
+		super(message, 409, requestInfo)
+		this.name = 'ConflictError'
 	}
 }
 
@@ -2766,6 +2788,15 @@ export class ApiClient {
 						logApiError(error)
 						throw error
 					}
+					case 409: {
+						const current =
+							errorData && typeof errorData === 'object' && 'current' in errorData
+								? (errorData as { current?: unknown }).current
+								: undefined
+						const error = new ConflictError(errorMessage, current, requestInfo)
+						logApiError(error)
+						throw error
+					}
 					case 500:
 					case 502:
 					case 503:
@@ -2817,6 +2848,7 @@ export class ApiClient {
 				error instanceof AuthenticationError ||
 				error instanceof AuthorizationError ||
 				error instanceof ValidationError ||
+				error instanceof ConflictError ||
 				error instanceof NotFoundError ||
 				error instanceof ServerError
 			) {
@@ -3612,6 +3644,64 @@ export class ApiClient {
 
 	async deleteAdminSidebarExternalLink(id: string): Promise<{ success: boolean }> {
 		return this.delete(`/admin/navigation/external-links/${id}`)
+	}
+
+	async getTimerboardEntries(query: TimerboardListQuery = {}): Promise<TimerboardListResponse> {
+		const params = new URLSearchParams()
+		if (query.state?.length) params.set('state', query.state.join(','))
+		if (query.kind) params.set('kind', query.kind)
+		if (query.priority) params.set('priority', query.priority)
+		if (query.side) params.set('side', query.side)
+		if (query.system) params.set('system', query.system)
+		if (query.assignedToMe) params.set('assignedToMe', 'true')
+		if (query.from) params.set('from', query.from)
+		if (query.to) params.set('to', query.to)
+		if (query.page) params.set('page', String(query.page))
+		if (query.pageSize) params.set('pageSize', String(query.pageSize))
+		const queryString = params.toString()
+		return this.get(`/timerboard${queryString ? `?${queryString}` : ''}`)
+	}
+
+	async getTimerboardEntry(entryId: string): Promise<TimerboardEntry> {
+		return this.get(`/timerboard/${entryId}`)
+	}
+
+	async searchTimerboardAssignmentCandidates(
+		search: string,
+		limit = 20
+	): Promise<TimerboardAssignmentCandidate[]> {
+		const params = new URLSearchParams({ search, limit: String(limit) })
+		return this.get(`/timerboard/assignment-candidates?${params.toString()}`)
+	}
+
+	async createTimerboardEntry(input: CreateTimerboardEntryInput): Promise<TimerboardEntry> {
+		return this.post('/timerboard', input)
+	}
+
+	async updateTimerboardEntry(
+		entryId: string,
+		input: UpdateTimerboardEntryInput
+	): Promise<TimerboardEntry> {
+		return this.patch(`/timerboard/${entryId}`, input)
+	}
+
+	async setTimerboardEntryState(
+		entryId: string,
+		state: TimerState,
+		expectedVersion: number
+	): Promise<TimerboardEntry> {
+		return this.post(`/timerboard/${entryId}/state`, { state, expectedVersion })
+	}
+
+	async assignTimerboardEntry(
+		entryId: string,
+		input: TimerboardAssignmentInput
+	): Promise<TimerboardEntry> {
+		return this.post(`/timerboard/${entryId}/assignment`, input)
+	}
+
+	async getTimerboardActivity(entryId: string): Promise<TimerboardActivity[]> {
+		return this.get(`/timerboard/${entryId}/activity`)
 	}
 
 	async getStructures(query: StructureListQuery = {}): Promise<StructureMainListResponse> {

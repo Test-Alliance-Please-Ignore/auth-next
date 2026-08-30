@@ -1,6 +1,7 @@
 import { relations, sql } from 'drizzle-orm'
 import {
 	boolean,
+	check,
 	index,
 	inet,
 	integer,
@@ -14,6 +15,13 @@ import {
 	varchar,
 } from 'drizzle-orm/pg-core'
 
+import {
+	TIMERBOARD_ACTIVITY_ACTIONS,
+	TIMERBOARD_KINDS,
+	TIMERBOARD_PRIORITIES,
+	TIMERBOARD_SIDES,
+	TIMERBOARD_STATES,
+} from '@repo/core'
 import { alertDestinations } from '@repo/core-db-schema'
 
 export { alertDestinations }
@@ -1729,6 +1737,95 @@ export const serviceAccessAuditRowsRelations = relations(serviceAccessAuditRows,
 	}),
 }))
 
+export const timerboardEntries = pgTable(
+	'timerboard_entries',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		kind: text('kind', {
+			enum: TIMERBOARD_KINDS,
+		}).notNull(),
+		title: varchar('title', { length: 160 }).notNull(),
+		priority: text('priority', { enum: TIMERBOARD_PRIORITIES }).notNull().default('normal'),
+		side: text('side', { enum: TIMERBOARD_SIDES }).notNull().default('unknown'),
+		startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+		endsAt: timestamp('ends_at', { withTimezone: true }),
+		state: text('state', { enum: TIMERBOARD_STATES }).notNull().default('planned'),
+		systemId: text('system_id'),
+		systemName: varchar('system_name', { length: 120 }),
+		entityId: text('entity_id'),
+		entityType: varchar('entity_type', { length: 80 }),
+		entityName: varchar('entity_name', { length: 160 }),
+		assignedUserId: uuid('assigned_user_id').references(() => users.id, {
+			onDelete: 'set null',
+		}),
+		assignedCharacterId: text('assigned_character_id'),
+		assignedCharacterName: varchar('assigned_character_name', { length: 255 }),
+		notes: varchar('notes', { length: 2000 }),
+		sourceKind: text('source_kind', { enum: ['manual'] })
+			.notNull()
+			.default('manual'),
+		sourceReference: text('source_reference'),
+		createdByUserId: uuid('created_by_user_id')
+			.notNull()
+			.references(() => users.id),
+		updatedByUserId: uuid('updated_by_user_id')
+			.notNull()
+			.references(() => users.id),
+		version: integer('version').notNull().default(1),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(table) => [
+		check(
+			'timerboard_entries_window_check',
+			sql`${table.endsAt} IS NULL OR ${table.endsAt} > ${table.startsAt}`
+		),
+		index('timerboard_entries_state_starts_at_idx').on(table.state, table.startsAt),
+		index('timerboard_entries_updated_at_idx').on(table.updatedAt),
+		index('timerboard_entries_assigned_user_id_idx').on(table.assignedUserId),
+	]
+)
+
+export const timerboardActivity = pgTable(
+	'timerboard_activity',
+	{
+		id: uuid('id').defaultRandom().primaryKey(),
+		entryId: uuid('entry_id')
+			.notNull()
+			.references(() => timerboardEntries.id, { onDelete: 'cascade' }),
+		actorUserId: uuid('actor_user_id')
+			.notNull()
+			.references(() => users.id),
+		action: text('action', {
+			enum: TIMERBOARD_ACTIVITY_ACTIONS,
+		}).notNull(),
+		payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(table) => [index('timerboard_activity_entry_created_at_idx').on(table.entryId, table.createdAt)]
+)
+
+export const timerboardEntriesRelations = relations(timerboardEntries, ({ one, many }) => ({
+	assignedUser: one(users, {
+		fields: [timerboardEntries.assignedUserId],
+		references: [users.id],
+		relationName: 'timerboardAssignedUser',
+	}),
+	activity: many(timerboardActivity),
+}))
+
+export const timerboardActivityRelations = relations(timerboardActivity, ({ one }) => ({
+	entry: one(timerboardEntries, {
+		fields: [timerboardActivity.entryId],
+		references: [timerboardEntries.id],
+	}),
+	actor: one(users, {
+		fields: [timerboardActivity.actorUserId],
+		references: [users.id],
+		relationName: 'timerboardActivityActor',
+	}),
+}))
+
 /**
  * Export schema for db client
  */
@@ -1764,6 +1861,8 @@ export const schema = {
 	mumbleTempopCredentialHandoffs,
 	serviceAccessAuditRuns,
 	serviceAccessAuditRows,
+	timerboardEntries,
+	timerboardActivity,
 	usersRelations,
 	userCharactersRelations,
 	userSessionsRelations,
@@ -1792,6 +1891,8 @@ export const schema = {
 	mumbleTempopGuestsRelations,
 	serviceAccessAuditRunsRelations,
 	serviceAccessAuditRowsRelations,
+	timerboardEntriesRelations,
+	timerboardActivityRelations,
 }
 
 /**

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { assignTemporaryRole, removeTemporaryRole } from '../discord-temporary-roles.service'
 
+import type * as CoreModule from '@repo/core'
+
 const { assignmentStub, discordStub } = vi.hoisted(() => ({
 	assignmentStub: {
 		listActiveAssignments: vi.fn(),
@@ -22,7 +24,10 @@ const { assignmentStub, discordStub } = vi.hoisted(() => ({
 vi.mock('@repo/do-utils', () => ({ getStub: vi.fn(() => assignmentStub) }))
 vi.mock('@repo/discord', () => ({ getDiscordStub: vi.fn(() => discordStub) }))
 vi.mock('@repo/db-utils', () => ({ eq: vi.fn() }))
-vi.mock('@repo/core', () => ({ ROLE_CORE_ALLIANCE_MEMBER: 'Alliance Member' }))
+vi.mock('@repo/core', async (importOriginal) => ({
+	...(await importOriginal<typeof CoreModule>()),
+	ROLE_CORE_ALLIANCE_MEMBER: 'Alliance Member',
+}))
 vi.mock('../../lib/groups-cache', () => ({ getCachedUserRoles: vi.fn() }))
 
 const role = {
