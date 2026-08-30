@@ -4928,6 +4928,10 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 							structureId: corporationStructures.structureId,
 							corporationId: corporationStructures.corporationId,
 							lastAttemptedSyncAt: sql<Date>`${now}`.as('last_attempted_sync_at'),
+							// INSERT ... SELECT requires the complete sidecar column set in
+							// table order. These are populated after a successful POS fetch.
+							lastSyncedAt: sql<Date | null>`null`.as('last_synced_at'),
+							syncFailureReason: sql<string | null>`null`.as('sync_failure_reason'),
 						})
 						.from(corporationStructures)
 						.leftJoin(

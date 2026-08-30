@@ -103,6 +103,13 @@ describe('EveCorporationDataDO asset refresh', () => {
 		).resolves.toEqual(['pos-1'])
 
 		expect(insertSelect).toHaveBeenCalledOnce()
+		expect(Object.keys(select.mock.calls[0]?.[0] ?? {})).toEqual([
+			'structureId',
+			'corporationId',
+			'lastAttemptedSyncAt',
+			'lastSyncedAt',
+			'syncFailureReason',
+		])
 		expect(onConflictDoUpdate).toHaveBeenCalledWith(
 			expect.objectContaining({
 				target: expect.anything(),
