@@ -2449,8 +2449,14 @@ function buildOperationalStructuresSelectQuery(db: DbClient<DbSchema>, corpWhere
 			syncStatus: corporationStructures.syncStatus,
 			syncFailureReason: corporationStructures.syncFailureReason,
 			lastSyncedAt: corporationStructures.lastSyncedAt,
-			posDetailLastSyncedAt: corporationStructurePosDetails.lastSyncedAt,
-			posDetailSyncFailureReason: corporationStructurePosDetails.syncFailureReason,
+			// The base structure table has columns with the same database names. Explicit
+			// aliases are required because this projection is reused as a derived table.
+			posDetailLastSyncedAt: sql<Date | null>`${corporationStructurePosDetails.lastSyncedAt}`.as(
+				'posDetailLastSyncedAt'
+			),
+			posDetailSyncFailureReason: sql<
+				string | null
+			>`${corporationStructurePosDetails.syncFailureReason}`.as('posDetailSyncFailureReason'),
 			updatedAt: corporationStructures.updatedAt,
 		})
 		.from(corporationStructures)
