@@ -76,6 +76,7 @@ const HrLegacyHistoryDetailPage = lazy(() => import('./routes/hr-legacy-history-
 const StructuresPage = lazy(() => import('./routes/structures'))
 const StructuresDetailPage = lazy(() => import('./routes/structures-detail'))
 const StructuresConfigPage = lazy(() => import('./routes/structures-config'))
+const TimerboardPage = lazy(() => import('./routes/timerboard'))
 const PredictionMarketCreatePage = lazy(
 	() => import('./features/prediction-markets/routes/prediction-market-create')
 )
@@ -331,6 +332,14 @@ export default function App() {
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<StructuresConfigPage />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/timerboard"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<TimerboardPage />
 									</Suspense>
 								}
 							/>
