@@ -117,9 +117,12 @@ export function transformStructures(
 		state_timer_end: structure.state_timer_end,
 		state_timer_start: structure.state_timer_start,
 		unanchors_at: structure.unanchors_at,
+		name: structure.name ?? null,
+		fuel_amount: structure.fuel_amount ?? null,
 		services: structure.services?.map((service: { name: string; state: string }) => ({
 			...service,
 		})),
+		moon_id: structure.moon_id !== undefined ? String(structure.moon_id) : undefined,
 	}))
 }
 

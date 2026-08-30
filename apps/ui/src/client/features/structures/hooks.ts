@@ -15,6 +15,7 @@ import type {
 	StructureModuleConfig,
 	StructureMoonDrillListQuery,
 	StructureMoonDrillListResponse,
+	StructurePosListResponse,
 	StructureSkyhookListQuery,
 	StructureSkyhookListResponse,
 	StructureSovereigntyListQuery,
@@ -127,6 +128,19 @@ export function useMoonDrillStructures(
 	)
 }
 
+export function usePosStructures(
+	query: StructureListQuery,
+	options: Pick<UseQueryOptions<StructurePosListResponse>, 'enabled'> = {}
+) {
+	return useQuery<StructurePosListResponse>(
+		createStructureListQueryOptions(
+			structureKeys.poses(query),
+			() => api.getPosStructures(query),
+			options
+		)
+	)
+}
+
 export function useStructuresForTab(
 	tab: StructureTab,
 	query: StructureTabQuery,
@@ -144,6 +158,8 @@ export function useStructuresForTab(
 				return structureKeys.miningCitadels(query)
 			case 'moon-drills':
 				return structureKeys.moonDrills(query)
+			case 'poses':
+				return structureKeys.poses(query)
 		}
 		throw new Error(`Unknown structures tab: ${tab}`)
 	})()
@@ -162,6 +178,8 @@ export function useStructuresForTab(
 					return api.getMiningCitadelStructures(query as StructureMiningCitadelListQuery)
 				case 'moon-drills':
 					return api.getMoonDrillStructures(query as StructureMoonDrillListQuery)
+				case 'poses':
+					return api.getPosStructures(query as StructureListQuery)
 			}
 			throw new Error(`Unknown structures tab: ${tab}`)
 		},

@@ -14,6 +14,7 @@ import {
 	getStructureModuleConfig,
 	listMiningCitadelStructures,
 	listMoonDrillStructures,
+	listPosStructures,
 	listSkyhookStructures,
 	listSovereigntyStructures,
 	listStructureCorporationGroupDefaults,
@@ -74,6 +75,13 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 		query: StructureListQuery = {}
 	): Promise<StructureListResponse> {
 		return listStructures(this.getDb(), actor, query)
+	}
+
+	async listPosStructures(
+		actor: StructureActor,
+		query: StructureListQuery = {}
+	): Promise<StructureListResponse> {
+		return listPosStructures(this.getDb(), actor, query)
 	}
 
 	async listSovereigntyStructures(

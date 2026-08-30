@@ -34,6 +34,7 @@ import {
 import { validateAndSyncCharacterTokenValidityBatchTransitions } from './lib/token-validity'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { processExpiredTempops } from './services/mumble-tempop.service'
+import { enforceBlacklistedMumbleAccess } from './services/mumble.service'
 import { updateCharacterPublicInfo } from './workflows/steps/update-character'
 
 import type { Core } from '@repo/core'
@@ -974,6 +975,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			blacklistedBy: input.blacklistedBy,
 			metadata: input.metadata,
 		})
+		await enforceBlacklistedMumbleAccess(this.env, input.userId, 'User blacklisted')
 		return { entryId: entry.id }
 	}
 

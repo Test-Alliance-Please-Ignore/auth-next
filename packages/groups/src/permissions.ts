@@ -228,6 +228,7 @@ export const STRUCTURE_PERMISSION_TABS = [
 	'main',
 	'sovereignty',
 	'skyhooks',
+	'poses',
 	'moon-drills',
 	'mining-citadels',
 ] as const

@@ -2,7 +2,10 @@ import { disposeRpcResult, getStub, withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import * as esiFetch from '../../../services/esi-fetch'
-import { buildPriorityQueuedEntries } from '../../../services/structure-priority'
+import {
+	buildPriorityQueuedEntries,
+	STRUCTURE_ENRICHMENT_PRIORITY_LIMIT,
+} from '../../../services/structure-priority'
 import { getCorporationDataStub, getCorporationEsi } from '../../utils/services'
 import {
 	readSharedSovereigntySystemsByIds,
@@ -42,6 +45,14 @@ export interface SovereigntyEnrichmentData {
 export interface SkyhookEnrichmentData {
 	skyhooks: CorporationSkyhooksData['skyhooks']
 	pruneCandidateIds: string[]
+	failures: StructureEnrichmentFailure[]
+	failureCount: number
+	rateLimitFailureCount: number
+	nonRateLimitFailureCount: number
+}
+
+export interface PosDetailEnrichmentData {
+	details: esiFetch.PosDetailEnrichmentResult['details']
 	failures: StructureEnrichmentFailure[]
 	failureCount: number
 	rateLimitFailureCount: number
@@ -102,20 +113,43 @@ function buildSovereigntyAllianceBySystemId(
 export async function fetchStructures(
 	env: Env,
 	corporationId: string,
-	directorCharacterId: string
+	directorCharacterId: string,
+	posDirectorCharacterId: string | null = directorCharacterId
 ): Promise<StructuresData> {
 	const structures = await esiFetch.fetchStructures(
 		getCorporationEsi(env, corporationId),
 		corporationId,
-		directorCharacterId
+		directorCharacterId,
+		posDirectorCharacterId
 	)
 
 	logger.debug('[StructuresStep] Fetched structures', {
 		corporationId,
-		count: structures.length,
+		count: structures.structures.length,
+		posListingComplete: structures.posListingComplete,
 	})
 
 	return structures
+}
+
+export async function fetchUpwellStructures(
+	env: Env,
+	corporationId: string,
+	_directorCharacterId: string
+): Promise<StructuresData['structures']> {
+	return await esiFetch.fetchUpwellStructures(getCorporationEsi(env, corporationId), corporationId)
+}
+
+export async function fetchPosStructures(
+	env: Env,
+	corporationId: string,
+	directorCharacterId: string
+): Promise<StructuresData> {
+	return await esiFetch.fetchPosStructures(
+		getCorporationEsi(env, corporationId),
+		corporationId,
+		directorCharacterId
+	)
 }
 
 export async function storeStructures(
@@ -124,12 +158,97 @@ export async function storeStructures(
 	structures: StructuresData
 ): Promise<void> {
 	const corpData = getCorporationDataStub(env, corporationId)
-	await corpData.storeStructures(corporationId, structures)
+	await corpData.storeStructures(corporationId, structures.structures, {
+		posListingComplete: structures.posListingComplete,
+	})
 
 	logger.info('[StructuresStep] Stored structures', {
 		corporationId,
-		count: structures.length,
+		count: structures.structures.length,
 	})
+}
+
+export async function fetchPosDetailEnrichment(
+	env: Env,
+	corporationId: string,
+	structures: StructuresData,
+	directorCharacterId: string
+): Promise<PosDetailEnrichmentData | null> {
+	if (!structures.posListingComplete) {
+		logger.info('[StructuresStep] Skipping POS detail enrichment because listing was incomplete', {
+			corporationId,
+		})
+		return null
+	}
+
+	const posStructures = structures.structures.filter((structure) => structure.profile_id === 'pos')
+	if (posStructures.length === 0) {
+		return null
+	}
+
+	const corpData = getCorporationDataStub(env, corporationId)
+	const priorityQueue = await withRpcResult(
+		corpData.getStructurePriorityQueue(
+			corporationId,
+			'poses',
+			posStructures.map((structure) => String(structure.structure_id))
+		),
+		(queue) => ({
+			...queue,
+			newStructureIds: [...queue.newStructureIds],
+			pruneCandidateIds: [...queue.pruneCandidateIds],
+			syncPriorities: queue.syncPriorities.map((priority) => ({ ...priority })),
+		})
+	)
+	const prioritizedEntries = buildPriorityQueuedEntries(
+		posStructures.map((structure) => ({
+			id: String(structure.structure_id),
+			structure,
+		})),
+		priorityQueue.newStructureIds,
+		priorityQueue.syncPriorities,
+		{
+			pruneCandidateIds: priorityQueue.pruneCandidateIds,
+			maxEntries: STRUCTURE_ENRICHMENT_PRIORITY_LIMIT,
+		}
+	).entries
+	const result = await esiFetch.fetchPosDetailEnrichment(
+		getCorporationEsi(env, corporationId),
+		corporationId,
+		{
+			directorCharacterId,
+			prioritizedEntries: prioritizedEntries.map(({ index, entry }) => ({
+				index,
+				entry: {
+					id: entry.id,
+					system_id: entry.structure.system_id,
+				},
+			})),
+		}
+	)
+
+	logger.debug('[StructuresStep] Fetched POS detail enrichment', {
+		corporationId,
+		posCount: posStructures.length,
+		detailCount: result.details.length,
+		failureCount: result.failureCount,
+	})
+
+	return result
+}
+
+export async function storePosDetailEnrichment(
+	env: Env,
+	corporationId: string,
+	enrichment: PosDetailEnrichmentData
+): Promise<void> {
+	const corpData = getCorporationDataStub(env, corporationId)
+	if (enrichment.details.length > 0) {
+		await corpData.storePosDetailEnrichment(corporationId, enrichment.details)
+	}
+	if (enrichment.failures.length > 0) {
+		await corpData.markStructureEnrichmentFailures(corporationId, 'poses', enrichment.failures)
+	}
 }
 
 export async function fetchSovereigntyEnrichment(

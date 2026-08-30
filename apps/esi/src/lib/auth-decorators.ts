@@ -8,7 +8,11 @@ import { canonicalizeEsiEntityId } from '@repo/esi'
 type EsiDOInstance = {
 	esiFetcher: {
 		withCharacterContext: <T>(characterId: string, operation: () => Promise<T>) => Promise<T>
-		withCorporationContext: <T>(corporationId: string, operation: () => Promise<T>) => Promise<T>
+		withCorporationContext: <T>(
+			corporationId: string,
+			operation: () => Promise<T>,
+			authCharacterId?: string
+		) => Promise<T>
 		withPublicContext: <T>(operation: () => Promise<T>) => Promise<T>
 	}
 }
@@ -55,6 +59,39 @@ export function UseCorporationAuth(
 		return await this.esiFetcher.withCorporationContext(
 			validatedCorporationId,
 			async () => await originalMethod.apply(this, [validatedCorporationId, ...args])
+		)
+	}
+
+	return descriptor
+}
+
+/**
+ * Decorator for corporation endpoints that must use a specific character's
+ * token instead of a load-balanced corporation credential.
+ *
+ * The method signature is `(corporationId, characterId, ...args)` so the
+ * authentication identity is explicit at the RPC boundary.
+ */
+export function UseCorporationAuthWithCharacter(
+	_target: unknown,
+	_propertyKey: string,
+	descriptor: PropertyDescriptor
+): PropertyDescriptor {
+	const originalMethod = descriptor.value
+
+	descriptor.value = async function (
+		this: EsiDOInstance,
+		corporationId: string,
+		characterId: string,
+		...args: unknown[]
+	) {
+		const validatedCorporationId = canonicalizeEsiEntityId(corporationId, 'corporation')
+		const validatedCharacterId = canonicalizeEsiEntityId(characterId, 'character')
+		return await this.esiFetcher.withCorporationContext(
+			validatedCorporationId,
+			async () =>
+				await originalMethod.apply(this, [validatedCorporationId, validatedCharacterId, ...args]),
+			validatedCharacterId
 		)
 	}
 

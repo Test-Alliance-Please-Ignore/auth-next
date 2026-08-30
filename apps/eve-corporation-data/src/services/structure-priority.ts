@@ -4,6 +4,9 @@ export type SyncPriorityLike = {
 	lastSyncedAt: Date | null
 }
 
+/** Maximum number of enrichment requests released by one workflow pass. */
+export const STRUCTURE_ENRICHMENT_PRIORITY_LIMIT = 100
+
 export function buildPriorityQueuedEntries<
 	T extends { id: string | number },
 	P extends SyncPriorityLike,
@@ -13,6 +16,7 @@ export function buildPriorityQueuedEntries<
 	syncPriorities: readonly P[] = [],
 	options: {
 		pruneCandidateIds: readonly string[]
+		maxEntries?: number
 	}
 ): {
 	entries: Array<{ index: number; entry: T; priority: P | null }>
@@ -48,9 +52,14 @@ export function buildPriorityQueuedEntries<
 	const pruneCandidateIds = [
 		...new Set(options.pruneCandidateIds.map((structureId) => String(structureId))),
 	]
+	const orderedEntries = [...newEntries, ...prioritizedEntries]
+	const maxEntries =
+		options.maxEntries === undefined
+			? orderedEntries.length
+			: Math.max(0, Math.floor(options.maxEntries))
 
 	return {
-		entries: [...newEntries, ...prioritizedEntries],
+		entries: orderedEntries.slice(0, maxEntries),
 		pruneCandidateIds,
 	}
 }

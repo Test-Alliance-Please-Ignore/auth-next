@@ -43,4 +43,22 @@ describe('buildPriorityQueuedEntries', () => {
 		expect(result.entries.map(({ entry }) => entry.id)).toEqual(['live-due'])
 		expect(result.pruneCandidateIds).toEqual([])
 	})
+
+	it('bounds the queue without dropping prune candidates', () => {
+		const result = buildPriorityQueuedEntries(
+			[{ id: 'new-1' }, { id: 'new-2' }, { id: 'oldest' }],
+			['new-1', 'new-2'],
+			[
+				{
+					structureId: 'oldest',
+					lastAttemptedSyncAt: null,
+					lastSyncedAt: new Date('2026-07-22T00:00:00.000Z'),
+				},
+			],
+			{ pruneCandidateIds: ['gone'], maxEntries: 2 }
+		)
+
+		expect(result.entries.map(({ entry }) => entry.id)).toEqual(['new-1', 'new-2'])
+		expect(result.pruneCandidateIds).toEqual(['gone'])
+	})
 })

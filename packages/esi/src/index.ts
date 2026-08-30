@@ -7,6 +7,8 @@ import type {
 	EsiCorporationMiningExtraction,
 	EsiCorporationSkyhookDetail,
 	EsiCorporationSkyhookListingResponse,
+	EsiCorporationStarbase,
+	EsiCorporationStarbaseDetail,
 	EsiSovereigntyHubDetail,
 	EsiSovereigntyHubListingResponse,
 	EsiSovereigntySystemsResponse,
@@ -45,6 +47,7 @@ import type {
 	CharacterTitle,
 	CharacterWalletJournalEntry,
 	CorporationAsset,
+	CorporationAssetName,
 	CorporationContact,
 	CorporationContract,
 	CorporationDivision,
@@ -301,7 +304,32 @@ export interface Esi {
 		corporationId: string,
 		page: number
 	): Promise<EsiResult<EsiCorporationAsset[]>>
+	fetchCorporationAssetNames(
+		corporationId: string,
+		itemIds: string[],
+		options?: EsiRequestOptions
+	): Promise<CorporationAssetName[]>
 	fetchCorporationStructures(corporationId: string): Promise<CorporationStructure[]>
+	fetchCorporationStarbasesPage(
+		corporationId: string,
+		page: number
+	): Promise<EsiResult<EsiCorporationStarbase[]>>
+	fetchCorporationStarbasesPageWithCharacter(
+		corporationId: string,
+		characterId: string,
+		page: number
+	): Promise<EsiResult<EsiCorporationStarbase[]>>
+	fetchCorporationStarbaseDetail(
+		corporationId: string,
+		starbaseId: string,
+		systemId: string
+	): Promise<EsiCorporationStarbaseDetail>
+	fetchCorporationStarbaseDetailWithCharacter(
+		corporationId: string,
+		characterId: string,
+		starbaseId: string,
+		systemId: string
+	): Promise<EsiCorporationStarbaseDetail>
 	fetchCorporationSovereigntyHubsPage(
 		corporationId: string,
 		page: number

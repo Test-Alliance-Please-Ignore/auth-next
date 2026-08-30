@@ -1,3 +1,5 @@
+import { logger } from '@repo/hono-helpers'
+
 import type {
 	AlliancePublicInfo,
 	CharacterAffiliation,
@@ -30,6 +32,7 @@ import type {
 	CharacterTitle,
 	CharacterWalletJournalEntry,
 	CorporationAsset,
+	CorporationAssetName,
 	CorporationContact,
 	CorporationContract,
 	CorporationDivision,
@@ -51,8 +54,8 @@ import type {
 	CorporationWallet,
 	CorporationWalletJournalEntry,
 	CorporationWalletTransaction,
-	EsiCharacterAffiliation,
 	EsiAlliancePublicInfo,
+	EsiCharacterAffiliation,
 	EsiCharacterAgentResearch,
 	EsiCharacterAsset,
 	EsiCharacterAssetName,
@@ -82,6 +85,7 @@ import type {
 	EsiCharacterWalletJournalEntry,
 	EsiContractItem,
 	EsiCorporationAsset,
+	EsiCorporationAssetName,
 	EsiCorporationContact,
 	EsiCorporationContract,
 	EsiCorporationDivision,
@@ -112,7 +116,6 @@ import type {
 	MailLabelsResponse,
 	StructureInfo,
 } from '@repo/esi'
-import { logger } from '@repo/hono-helpers'
 
 export function transformCharacterAffiliation(
 	data: EsiCharacterAffiliation[]
@@ -247,6 +250,15 @@ export function transformCorporationAssets(assets: EsiCorporationAsset[]): Corpo
 		item_id: String(asset.item_id),
 		location_id: String(asset.location_id),
 		type_id: String(asset.type_id),
+	}))
+}
+
+export function transformCorporationAssetNames(
+	names: EsiCorporationAssetName[]
+): CorporationAssetName[] {
+	return names.map((entry) => ({
+		item_id: String(entry.item_id),
+		name: entry.name,
 	}))
 }
 

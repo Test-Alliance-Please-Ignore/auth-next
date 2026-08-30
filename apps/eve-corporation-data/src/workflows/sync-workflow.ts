@@ -37,12 +37,15 @@ import { fetchOrders, storeOrders } from './steps/orders'
 import { fetchPublicInfo, storePublicInfo } from './steps/public-info'
 import {
 	fetchMiningExtractionEnrichment,
+	fetchPosDetailEnrichment,
+	fetchPosStructures,
 	fetchSkyhookEnrichment,
 	fetchSovereigntyEnrichment,
-	fetchStructures,
+	fetchUpwellStructures,
 	markStructureEnrichmentSyncFailure,
 	markStructureSyncFailureReason,
 	storeMiningExtractionEnrichment,
+	storePosDetailEnrichment,
 	storeSkyhookEnrichment,
 	storeSovereigntyEnrichment,
 	storeStructures,
@@ -283,6 +286,20 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 
 			const shouldSyncAuthenticated = (type: EveCorporationSyncDataType) =>
 				director !== null && shouldSync(type)
+			let posDirector: DirectorInfo | null = null
+			if (shouldSyncAuthenticated('structures')) {
+				posDirector = await step.do(
+					'select-pos-director',
+					{
+						retries: { limit: 3, delay: '2 seconds', backoff: 'exponential' },
+						timeout: '30 seconds',
+					},
+					async () =>
+						await selectDirector(this.env, corporationId, {
+							requiredRoleSets: [['Director']],
+						})
+				)
+			}
 
 			const buildDirectorFailureReason = (
 				stepName: string,
@@ -354,10 +371,14 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				stepName: string
 				timeout: '1 minute' | '5 minutes' | '10 minutes' | '20 minutes'
 				requiredRoles?: string[]
+				requiredRoleSets?: CorporationRole[][]
+				initialDirector?: DirectorInfo
+				onDirectorChanged?: (director: DirectorInfo) => void
 				persistResult?: boolean
 				run: (directorCharacterId: string) => Promise<T>
 			}): Promise<T> => {
-				if (!director) {
+				let stepDirector = params.initialDirector ?? director
+				if (!stepDirector) {
 					throw new Error(`No director available for authenticated step: ${params.stepName}`)
 				}
 
@@ -365,7 +386,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 				const persistResult = params.persistResult ?? true
 				const execute = async (): Promise<T> =>
 					(await withEsiRetryClassification(params.stepName, () =>
-						params.run(director!.characterId)
+						params.run(stepDirector!.characterId)
 					)) as T
 
 				try {
@@ -394,17 +415,23 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						{
 							corporationId,
 							stepName: params.stepName,
-							directorId: director.directorId,
-							directorCharacterId: director.characterId,
+							directorId: stepDirector.directorId,
+							directorCharacterId: stepDirector.characterId,
 							error: errorMessage,
 							failureReason,
 						}
 					)
 
 					await step.do(`record-director-failure-${params.stepName}`, {}, () =>
-						recordDirectorFailure(this.env, corporationId, director!.directorId, failureReason, {
-							forceUnhealthy: true,
-						})
+						recordDirectorFailure(
+							this.env,
+							corporationId,
+							stepDirector!.directorId,
+							failureReason,
+							{
+								forceUnhealthy: true,
+							}
+						)
 					)
 
 					const replacementDirector = await step.do(
@@ -413,18 +440,25 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 							retries: { limit: 3, delay: '2 seconds', backoff: 'exponential' },
 							timeout: '30 seconds',
 						},
-						() => selectDirector(this.env, corporationId, { requiredRoleSets })
+						() =>
+							selectDirector(this.env, corporationId, {
+								requiredRoleSets: params.requiredRoleSets ?? requiredRoleSets,
+							})
 					)
 
 					if (!replacementDirector) {
 						throw error
 					}
 
-					director = replacementDirector
+					stepDirector = replacementDirector
+					params.onDirectorChanged?.(replacementDirector)
+					if (!params.initialDirector) {
+						director = replacementDirector
+					}
 					if (!persistResult) {
 						return await withEsiRetryClassification(
 							`${params.stepName}-with-failover-director`,
-							() => params.run(director!.characterId)
+							() => params.run(stepDirector!.characterId)
 						)
 					}
 
@@ -433,7 +467,7 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						stepOptions,
 						async () =>
 							(await withEsiRetryClassification(`${params.stepName}-with-failover-director`, () =>
-								params.run(director!.characterId)
+								params.run(stepDirector!.characterId)
 							)) as any
 					)) as T
 				}
@@ -704,20 +738,157 @@ export class EveCorporationSyncWorkflow extends WorkflowEntrypoint<Env, EveCorpo
 						try {
 							await ensureSharedSovereigntySystems(this.env)
 
-							const structures = await runDirectorStepWithFailover({
+							const upwellStructures = await runDirectorStepWithFailover({
 								stepName: 'fetch-structures',
 								timeout: '5 minutes',
 								requiredRoles: ['Station_Manager'],
 								persistResult: false,
 								run: (directorCharacterId) =>
-									fetchStructures(this.env, corporationId, directorCharacterId),
+									fetchUpwellStructures(this.env, corporationId, directorCharacterId),
 							})
-							structuresCount = structures.length
+							let posStructures: Awaited<ReturnType<typeof fetchPosStructures>> | null = null
+							if (posDirector) {
+								try {
+									posStructures = await runDirectorStepWithFailover({
+										stepName: 'fetch-pos-structures',
+										timeout: '5 minutes',
+										requiredRoles: ['Director'],
+										requiredRoleSets: [['Director']],
+										initialDirector: posDirector,
+										onDirectorChanged: (replacementDirector) => {
+											posDirector = replacementDirector
+										},
+										persistResult: false,
+										run: (directorCharacterId) =>
+											fetchPosStructures(this.env, corporationId, directorCharacterId),
+									})
+								} catch (error) {
+									posStructures = {
+										structures: [],
+										posListingComplete: false,
+										posListingFailureReason: error instanceof Error ? error.message : String(error),
+									}
+								}
+							} else {
+								posStructures = {
+									structures: [],
+									posListingComplete: false,
+									posListingFailureReason: 'No Director credential available for POS listing',
+								}
+							}
+							const structures = {
+								structures: [...upwellStructures, ...(posStructures?.structures ?? [])],
+								posListingComplete: posStructures?.posListingComplete ?? false,
+								posListingFailureReason: posStructures?.posListingFailureReason,
+							}
+							structuresCount = structures.structures.length
 
 							await storeStructures(this.env, corporationId, structures)
+							if (!structures.posListingComplete) {
+								structureSyncHadFailure = true
+								const failureReason =
+									structures.posListingFailureReason ?? 'POS listing was incomplete'
+								try {
+									await markStructureSyncFailureReason(
+										this.env,
+										corporationId,
+										'poses',
+										failureReason
+									)
+								} catch (markError) {
+									logger.warn(
+										'[EveCorporationSyncWorkflow] POS listing failure reason could not be persisted',
+										{
+											corporationId,
+											error: markError instanceof Error ? markError.message : String(markError),
+										}
+									)
+								}
+								logger.warn('[EveCorporationSyncWorkflow] POS listing incomplete', {
+									corporationId,
+									failureReason,
+								})
+							}
+
+							try {
+								const posDetailEnrichment = await runDirectorStepWithFailover({
+									stepName: 'fetch-structure-pos-detail-enrichment',
+									timeout: '10 minutes',
+									requiredRoles: ['Director'],
+									persistResult: false,
+									run: (directorCharacterId) =>
+										fetchPosDetailEnrichment(
+											this.env,
+											corporationId,
+											structures,
+											directorCharacterId
+										),
+									initialDirector: posDirector ?? undefined,
+									requiredRoleSets: [['Director']],
+								})
+
+								if (posDetailEnrichment) {
+									await storePosDetailEnrichment(this.env, corporationId, posDetailEnrichment)
+									if (posDetailEnrichment.nonRateLimitFailureCount > 0) {
+										structureSyncHadFailure = true
+										logger.warn(
+											'[EveCorporationSyncWorkflow] POS detail enrichment completed with partial failures',
+											{
+												corporationId,
+												successCount: posDetailEnrichment.details.length,
+												failureCount: posDetailEnrichment.failureCount,
+												rateLimitFailureCount: posDetailEnrichment.rateLimitFailureCount,
+												nonRateLimitFailureCount: posDetailEnrichment.nonRateLimitFailureCount,
+												failureDetails: posDetailEnrichment.failures.slice(0, 10),
+												failureDetailsOmitted: Math.max(0, posDetailEnrichment.failureCount - 10),
+											}
+										)
+									} else if (posDetailEnrichment.rateLimitFailureCount > 0) {
+										logger.warn(
+											'[EveCorporationSyncWorkflow] POS detail enrichment hit rate-limit pressure; preserving successful rows',
+											{
+												corporationId,
+												successCount: posDetailEnrichment.details.length,
+												rateLimitFailureCount: posDetailEnrichment.rateLimitFailureCount,
+											}
+										)
+									}
+								}
+							} catch (error) {
+								const metadata =
+									error instanceof Error ? parseEsiErrorMetadata(error.message) : null
+								const isRateLimitError = metadata?.status === 429
+								structureSyncHadFailure ||= !isRateLimitError
+								if (!isRateLimitError) {
+									try {
+										await markStructureSyncFailureReason(
+											this.env,
+											corporationId,
+											'poses',
+											error instanceof Error ? error.message : String(error)
+										)
+									} catch (markError) {
+										logger.warn(
+											'[EveCorporationSyncWorkflow] POS detail failure reason could not be persisted',
+											{
+												corporationId,
+												error: markError instanceof Error ? markError.message : String(markError),
+											}
+										)
+									}
+								}
+								logger.warn(
+									'[EveCorporationSyncWorkflow] POS detail enrichment failed; continuing with the last successful details',
+									{
+										corporationId,
+										error: error instanceof Error ? error.message : String(error),
+										isRateLimitError,
+									}
+								)
+							}
 
 							const miningCitadelStructureIds = new Set(
-								structures
+								structures.structures
 									.filter((structure) => isMiningCitadelStructure(structure))
 									.map((structure) => String(structure.structure_id))
 							)

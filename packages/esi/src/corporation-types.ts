@@ -24,6 +24,12 @@ export interface EsiCorporationAsset {
 	is_blueprint_copy?: boolean
 }
 
+/** POST /corporations/{corporation_id}/assets/names */
+export interface EsiCorporationAssetName {
+	item_id: number
+	name: string
+}
+
 /**
  * ESI Corporation Contact
  * GET /corporations/{corporation_id}/contacts
@@ -347,6 +353,12 @@ export interface CorporationAsset {
 	is_blueprint_copy?: boolean
 }
 
+/** Transformed corporation asset name (IDs as strings). */
+export interface CorporationAssetName {
+	item_id: string
+	name: string
+}
+
 export interface CorporationContract {
 	contract_id: string
 	acceptor_id?: string
@@ -453,6 +465,8 @@ export interface CorporationStructure {
 		name: string
 		state: string
 	}>
+	name?: string | null
+	fuel_amount?: number | null
 }
 
 export interface CorporationWallet {

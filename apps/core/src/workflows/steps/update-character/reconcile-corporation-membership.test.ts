@@ -7,6 +7,7 @@ import type { WorkflowContext } from '../../context'
 const reconcileCharacterCorporationMembershipMock = vi.fn()
 const hoisted = vi.hoisted(() => ({
 	triggerMumbleRefreshWorkflow: vi.fn(),
+	deleteMumbleAccounts: vi.fn(),
 }))
 
 const EVE_CORPORATION_DATA_NS = Symbol('EVE_CORPORATION_DATA')
@@ -26,9 +27,33 @@ vi.mock('../../../lib/workflow-triggers', () => ({
 	triggerMumbleRefreshWorkflow: hoisted.triggerMumbleRefreshWorkflow,
 }))
 
-function createCtx(): WorkflowContext {
+vi.mock('../../../services/mumble.service', () => ({
+	deleteMumbleAccounts: hoisted.deleteMumbleAccounts,
+}))
+
+function createCtx(options?: {
+	isAdmin?: boolean
+	memberCorporationIds?: string[]
+}): WorkflowContext {
+	const memberCorporationIds = options?.memberCorporationIds ?? ['5678']
+	const isAdmin = options?.isAdmin ?? false
+
 	return {
-		db: {} as WorkflowContext['db'],
+		db: {
+			query: {
+				users: {
+					findFirst: vi.fn().mockResolvedValue({ is_admin: isAdmin }),
+				},
+				userCharacters: {
+					findMany: vi.fn().mockResolvedValue([{ corporationId: memberCorporationIds[0] ?? null }]),
+				},
+				managedCorporations: {
+					findMany: vi
+						.fn()
+						.mockResolvedValue(memberCorporationIds.map((corporationId) => ({ corporationId }))),
+				},
+			},
+		} as unknown as WorkflowContext['db'],
 		env: {
 			EVE_CORPORATION_DATA:
 				EVE_CORPORATION_DATA_NS as unknown as WorkflowContext['env']['EVE_CORPORATION_DATA'],
@@ -42,6 +67,7 @@ function createCtx(): WorkflowContext {
 describe('reconcileCharacterCorporationMembership', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
+		hoisted.deleteMumbleAccounts.mockResolvedValue({ deleted: [], notFound: [], queued: [] })
 	})
 
 	it('triggers a Mumble refresh when membership changed', async () => {
@@ -58,6 +84,7 @@ describe('reconcileCharacterCorporationMembership', () => {
 			userIds: ['user-123'],
 			source: 'corp-membership-reconciled',
 		})
+		expect(hoisted.deleteMumbleAccounts).not.toHaveBeenCalled()
 		expect(result).toEqual({
 			removedFromCorporationIds: ['1234'],
 			addedToCorporationId: '5678',
@@ -73,5 +100,38 @@ describe('reconcileCharacterCorporationMembership', () => {
 		await reconcileCharacterCorporationMembership(createCtx(), '9001', '5678')
 
 		expect(hoisted.triggerMumbleRefreshWorkflow).not.toHaveBeenCalled()
+		expect(hoisted.deleteMumbleAccounts).not.toHaveBeenCalled()
+	})
+
+	it('deletes the Mumble account when the user loses their final qualifying membership', async () => {
+		reconcileCharacterCorporationMembershipMock.mockResolvedValue({
+			removedFromCorporationIds: ['1234'],
+			addedToCorporationId: null,
+		})
+
+		await reconcileCharacterCorporationMembership(
+			createCtx({ memberCorporationIds: [] }),
+			'9001',
+			null
+		)
+
+		expect(hoisted.deleteMumbleAccounts).toHaveBeenCalledWith(expect.anything(), ['user-123'])
+		expect(hoisted.triggerMumbleRefreshWorkflow).not.toHaveBeenCalled()
+	})
+
+	it('retains the Mumble account for site admins without a qualifying membership', async () => {
+		reconcileCharacterCorporationMembershipMock.mockResolvedValue({
+			removedFromCorporationIds: ['1234'],
+			addedToCorporationId: null,
+		})
+
+		await reconcileCharacterCorporationMembership(
+			createCtx({ isAdmin: true, memberCorporationIds: [] }),
+			'9001',
+			null
+		)
+
+		expect(hoisted.deleteMumbleAccounts).not.toHaveBeenCalled()
+		expect(hoisted.triggerMumbleRefreshWorkflow).toHaveBeenCalled()
 	})
 })

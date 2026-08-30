@@ -42,6 +42,7 @@ import {
 	METENOX_MOON_DRILL_TYPE_NAME,
 	MINING_CITADEL_TYPE_NAMES,
 	MOON_DRILL_STRUCTURE_TYPE_IDS,
+	POS_STRUCTURE_TYPE_IDS,
 	SKYHOOK_MAGMATIC_GAS_TYPE_ID,
 	SKYHOOK_MAGMATIC_GAS_TYPE_NAME,
 	SKYHOOK_SECURED_BAY_CAPACITY_M3,
@@ -68,6 +69,7 @@ import {
 import { MOON_GOO_TYPE_IDS } from '@repo/universe'
 
 import {
+	corporationStructurePosDetails,
 	structureConfigs,
 	structureCorporationGroupDefaults,
 	structureGroupAlertConfigs,
@@ -487,6 +489,7 @@ export interface UpsertStructureGroupAlertConfigInput {
 
 const STRUCTURE_ACCESS_TABS: StructureTab[] = [
 	'structures',
+	'poses',
 	'sovereignty',
 	'skyhooks',
 	'moon-drills',
@@ -827,7 +830,11 @@ function toIso(value: unknown): string | null {
 
 type StructureWhereCondition = NonNullable<Parameters<typeof and>[number]>
 
-const NON_STRUCTURE_TYPE_IDS = [...SOVEREIGNTY_STRUCTURE_TYPE_IDS, ...SKYHOOK_STRUCTURE_TYPE_IDS]
+const NON_STRUCTURE_TYPE_IDS = [
+	...SOVEREIGNTY_STRUCTURE_TYPE_IDS,
+	...SKYHOOK_STRUCTURE_TYPE_IDS,
+	...POS_STRUCTURE_TYPE_IDS,
+]
 
 function combineWhereConditions(conditions: Array<StructureWhereCondition | undefined>): any {
 	const defined = conditions.filter(
@@ -842,6 +849,8 @@ function buildStructureFamilyWhere(tab: StructureTab): StructureWhereCondition |
 	switch (tab) {
 		case 'structures':
 			return notInArray(corporationStructures.typeId, NON_STRUCTURE_TYPE_IDS)
+		case 'poses':
+			return inArray(corporationStructures.typeId, [...POS_STRUCTURE_TYPE_IDS])
 		case 'sovereignty':
 			return inArray(corporationStructures.typeId, [...SOVEREIGNTY_STRUCTURE_TYPE_IDS])
 		case 'skyhooks':
@@ -2095,17 +2104,24 @@ async function getStructureContext(
 		}
 	}
 
-	const config = await db.query.structureConfigs.findFirst({
-		where: eq(structureConfigs.structureId, structureId),
-	})
-	const corporation = await db.query.managedCorporations.findFirst({
-		where: eq(managedCorporations.corporationId, structure.corporationId),
-		columns: {
-			corporationId: true,
-			name: true,
-			includeInStructureAssetSync: true,
-		},
-	})
+	const [config, corporation, posDetail] = await Promise.all([
+		db.query.structureConfigs.findFirst({
+			where: eq(structureConfigs.structureId, structureId),
+		}),
+		db.query.managedCorporations.findFirst({
+			where: eq(managedCorporations.corporationId, structure.corporationId),
+			columns: {
+				corporationId: true,
+				name: true,
+				includeInStructureAssetSync: true,
+			},
+		}),
+		POS_STRUCTURE_TYPE_IDS.has(structure.typeId)
+			? db.query.corporationStructurePosDetails.findFirst({
+					where: eq(corporationStructurePosDetails.structureId, structureId),
+				})
+			: Promise.resolve(null),
+	])
 	const structureTab = getStructureTab(structure)
 	if (!hasStructureAccessForTab(access, structure.corporationId, structureTab)) {
 		return null
@@ -2123,15 +2139,17 @@ async function getStructureContext(
 		return null
 	}
 
+	const structureWithSyncStatus = applyPosDetailSyncStatus(structure, posDetail ?? null)
+
 	const [tabData, inventoryBays, fittingData] = await Promise.all([
-		loadStructureTabDetailData(env, db, structure),
-		loadStructureInventoryDetailData(env, db, structure),
-		loadStructureFittingDetailData(env, structure),
+		loadStructureTabDetailData(env, db, structureWithSyncStatus),
+		loadStructureInventoryDetailData(env, db, structureWithSyncStatus),
+		loadStructureFittingDetailData(env, structureWithSyncStatus),
 	])
 
 	return {
-		structure,
-		corporationName: corporation?.name ?? structure.corporationId,
+		structure: structureWithSyncStatus,
+		corporationName: corporation?.name ?? structureWithSyncStatus.corporationId,
 		includeInStructureAssetSync: corporation?.includeInStructureAssetSync ?? false,
 		assetsLastSync: structure.lastAssetSnapshotAt ?? null,
 		config: config ?? null,
@@ -2268,6 +2286,8 @@ type OperationalStructureRow = {
 	syncStatus: string
 	syncFailureReason: string | null
 	lastSyncedAt: Date | null
+	posDetailLastSyncedAt?: Date | null
+	posDetailSyncFailureReason?: string | null
 	updatedAt: Date
 }
 
@@ -2287,6 +2307,7 @@ function buildOperationalStructureListItem(
 	canViewDetails: boolean
 ): StructureListItem {
 	const nextStateAt = row.stateTimerEnd ?? row.nextReinforceApply ?? row.unanchorsAt
+	const syncMetadata = getOperationalStructureSyncMetadata(row)
 
 	return {
 		structureId: row.structureId,
@@ -2308,12 +2329,9 @@ function buildOperationalStructureListItem(
 		hidden: row.hidden ?? false,
 		lowPowerAllowed: row.lowPowerAllowed ?? false,
 		assignedGroupId: row.assignedGroupId,
-		syncStatus: getStructureSyncStatus(
-			row.syncStatus as StructureListItem['syncStatus'],
-			row.lastSyncedAt
-		),
-		syncFailureReason: row.syncFailureReason,
-		lastSyncedAt: toIso(row.lastSyncedAt),
+		syncStatus: syncMetadata.status,
+		syncFailureReason: syncMetadata.failureReason,
+		lastSyncedAt: toIso(syncMetadata.lastSyncedAt),
 		updatedAt: toIso(row.updatedAt) ?? new Date().toISOString(),
 		canViewDetails,
 	}
@@ -2431,10 +2449,22 @@ function buildOperationalStructuresSelectQuery(db: DbClient<DbSchema>, corpWhere
 			syncStatus: corporationStructures.syncStatus,
 			syncFailureReason: corporationStructures.syncFailureReason,
 			lastSyncedAt: corporationStructures.lastSyncedAt,
+			// The base structure table has columns with the same database names. Explicit
+			// aliases are required because this projection is reused as a derived table.
+			posDetailLastSyncedAt: sql<Date | null>`${corporationStructurePosDetails.lastSyncedAt}`.as(
+				'posDetailLastSyncedAt'
+			),
+			posDetailSyncFailureReason: sql<
+				string | null
+			>`${corporationStructurePosDetails.syncFailureReason}`.as('posDetailSyncFailureReason'),
 			updatedAt: corporationStructures.updatedAt,
 		})
 		.from(corporationStructures)
 		.leftJoin(structureConfigs, eq(structureConfigs.structureId, corporationStructures.structureId))
+		.leftJoin(
+			corporationStructurePosDetails,
+			eq(corporationStructurePosDetails.structureId, corporationStructures.structureId)
+		)
 		.leftJoin(
 			managedCorporations,
 			eq(managedCorporations.corporationId, corporationStructures.corporationId)
@@ -4680,7 +4710,7 @@ async function listOperationalStructures(
 	const pageSize = Math.min(Math.max(query.pageSize ?? 25, 1), STRUCTURE_LIST_PAGE_SIZE_MAX)
 	const requestedPage = Math.max(query.page ?? 1, 1)
 
-	if (activeTab === 'structures') {
+	if (activeTab === 'structures' || activeTab === 'poses') {
 		const moduleConfig = await getStructureModuleConfig(db)
 		const corpWhere = buildStructureContextsWhere(access, query, activeTab)
 		if (!corpWhere) {
@@ -4827,6 +4857,14 @@ export async function listStructures(
 	return listOperationalStructures(db, user, query, 'structures')
 }
 
+export async function listPosStructures(
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	query: StructureListQuery = {}
+): Promise<StructureListResponse> {
+	return listOperationalStructures(db, user, query, 'poses')
+}
+
 export async function listMoonDrillStructures(
 	db: DbClient<DbSchema>,
 	user: SessionUser,
@@ -4944,6 +4982,75 @@ function getStructureSyncStatus(
 		return 'warning'
 	}
 	return 'ok'
+}
+
+function getOperationalStructureSyncMetadata(row: {
+	typeId: string
+	syncStatus: string
+	syncFailureReason: string | null
+	lastSyncedAt: Date | null
+	posDetailLastSyncedAt?: Date | null
+	posDetailSyncFailureReason?: string | null
+}): {
+	status: StructureListItem['syncStatus']
+	failureReason: string | null
+	lastSyncedAt: Date | null
+} {
+	const baseStatus = getStructureSyncStatus(
+		row.syncStatus as StructureListItem['syncStatus'],
+		row.lastSyncedAt
+	)
+	if (!POS_STRUCTURE_TYPE_IDS.has(row.typeId)) {
+		return {
+			status: baseStatus,
+			failureReason: row.syncFailureReason,
+			lastSyncedAt: row.lastSyncedAt,
+		}
+	}
+
+	const detailFailureReason = row.posDetailSyncFailureReason ?? null
+	const detailStatus = detailFailureReason
+		? 'error'
+		: getSnapshotSyncStatus(row.posDetailLastSyncedAt ?? null)
+	const status =
+		baseStatus === 'error' || detailStatus === 'error'
+			? 'error'
+			: baseStatus === 'warning' || detailStatus === 'warning'
+				? 'warning'
+				: 'ok'
+
+	return {
+		status,
+		failureReason: detailFailureReason ?? row.syncFailureReason,
+		lastSyncedAt: row.posDetailLastSyncedAt ?? row.lastSyncedAt,
+	}
+}
+
+function applyPosDetailSyncStatus(
+	structure: StructureSourceRecord,
+	posDetail: {
+		lastSyncedAt: Date | null
+		syncFailureReason: string | null
+	} | null
+): StructureSourceRecord {
+	if (!POS_STRUCTURE_TYPE_IDS.has(structure.typeId)) {
+		return structure
+	}
+
+	const syncMetadata = getOperationalStructureSyncMetadata({
+		typeId: structure.typeId,
+		syncStatus: structure.syncStatus,
+		syncFailureReason: structure.syncFailureReason,
+		lastSyncedAt: structure.lastSyncedAt,
+		posDetailLastSyncedAt: posDetail?.lastSyncedAt ?? null,
+		posDetailSyncFailureReason: posDetail?.syncFailureReason ?? null,
+	})
+	return {
+		...structure,
+		syncStatus: syncMetadata.status,
+		syncFailureReason: syncMetadata.failureReason,
+		lastSyncedAt: syncMetadata.lastSyncedAt,
+	}
 }
 
 function buildStructureRowIdentity(

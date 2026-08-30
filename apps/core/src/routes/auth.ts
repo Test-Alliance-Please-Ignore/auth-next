@@ -23,7 +23,7 @@ import { hydrateCharacterAffiliation } from '../services/character-affiliation-h
 import { reconcileUserCoreMembershipRoles } from '../services/core-role-reconciliation.service'
 import { autoRegisterDirectorCorporation } from '../services/corporation-auto-register.service'
 import { storeCredentialHandoff } from '../services/mumble-tempop.service'
-import { provisionTempopGuest } from '../services/mumble.service'
+import { enforceBlacklistedMumbleAccess, provisionTempopGuest } from '../services/mumble.service'
 import { SessionService } from '../services/session.service'
 import { CharacterAlreadyClaimedError, UserService } from '../services/user.service'
 
@@ -749,6 +749,11 @@ auth.get('/callback', async (c) => {
 				triggeredBy: charBlacklistTrigger.id,
 				isAutoBlacklist: true,
 			})
+			await enforceBlacklistedMumbleAccess(
+				c.env,
+				stateUserId,
+				'Auto-blacklisted while linking a blacklisted character'
+			)
 			await blacklistUserLinkedTargets(
 				db,
 				hrStub,
@@ -892,6 +897,11 @@ auth.get('/callback', async (c) => {
 				triggeredBy: charBlacklistTrigger.id,
 				isAutoBlacklist: true,
 			})
+			await enforceBlacklistedMumbleAccess(
+				c.env,
+				user.id,
+				'Auto-blacklisted during login with a blacklisted character'
+			)
 			await blacklistUserLinkedTargets(
 				db,
 				hrStub,

@@ -186,6 +186,39 @@ describe('EsiFetcher cache policy', () => {
 		})
 	})
 
+	it('uses an explicitly supplied character for corporation authentication', async () => {
+		const fetcher = new EsiFetcher(
+			{} as DurableObjectState,
+			{
+				ESI_GLOBAL_CACHE: {} as KVNamespace,
+				ESI_RATE_LIMITS: {} as KVNamespace,
+				EVE_SSO_CLIENT_ID: 'test-client',
+			} as Env
+		)
+		const getLoadBalancedDirector = vi.fn().mockResolvedValue('3003')
+		const request = vi.fn(async (options: Record<string, unknown>) => ({ data: options }))
+
+		vi.mocked(getStub).mockReturnValue({
+			getLoadBalancedDirector,
+			getAccessToken: vi.fn(async (characterId: string) => `token:${characterId}`),
+		} as never)
+		;(fetcher as unknown as { requestClient: { request: typeof request } }).requestClient = {
+			request,
+		}
+
+		const result = await fetcher.withCorporationContext(
+			'4004',
+			async () => await fetcher.fetchEsi<Record<string, unknown>>('/corporations/4004/starbases'),
+			'5005'
+		)
+
+		expect(getLoadBalancedDirector).not.toHaveBeenCalled()
+		expect(result.data).toMatchObject({
+			accessToken: 'token:5005',
+			cacheScope: { scope: 'corporation', scopeId: '4004' },
+		})
+	})
+
 	it('preserves structured ESI error context for paginated failures', async () => {
 		const fetcher = new EsiFetcher(
 			{} as DurableObjectState,

@@ -2322,116 +2322,49 @@ app.get('/:corporationId/data', requireAuth(), requireAdmin(), async (c) => {
 		})
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 
-		logger.info('[Corporations] Fetching all data from DO', { corporationId })
-		const [publicInfo, coreData, financialData, assetsData, marketData, killmails] =
-			await Promise.all([
-				withRpcResult(
-					stub.getCorporationInfo(corporationId).catch((e: unknown) => {
-						logger.error('[Corporations] getCorporationInfo failed', {
-							corporationId,
-							error: e instanceof Error ? e.message : String(e),
-							stack: e instanceof Error ? e.stack : undefined,
-						})
-						return null
-					}),
-					cloneRpcResult
-				),
-				withRpcResult(
-					stub.getCoreData(corporationId).catch((e: unknown) => {
-						logger.error('[Corporations] getCoreData failed', {
-							corporationId,
-							error: e instanceof Error ? e.message : String(e),
-							stack: e instanceof Error ? e.stack : undefined,
-						})
-						return null
-					}),
-					cloneRpcResult
-				),
-				withRpcResult(
-					stub.getFinancialData(corporationId).catch((e: unknown) => {
-						logger.error('[Corporations] getFinancialData failed', {
-							corporationId,
-							error: e instanceof Error ? e.message : String(e),
-							stack: e instanceof Error ? e.stack : undefined,
-						})
-						return null
-					}),
-					cloneRpcResult
-				),
-				withRpcResult(
-					stub.getAssetsData(corporationId).catch((e: unknown) => {
-						logger.error('[Corporations] getAssetsData failed', {
-							corporationId,
-							error: e instanceof Error ? e.message : String(e),
-							stack: e instanceof Error ? e.stack : undefined,
-						})
-						return null
-					}),
-					cloneRpcResult
-				),
-				withRpcResult(
-					stub.getMarketData(corporationId).catch((e: unknown) => {
-						logger.error('[Corporations] getMarketData failed', {
-							corporationId,
-							error: e instanceof Error ? e.message : String(e),
-							stack: e instanceof Error ? e.stack : undefined,
-						})
-						return null
-					}),
-					cloneRpcResult
-				),
-				withRpcResult(
-					stub.getKillmails(corporationId, 10).catch((e: unknown) => {
-						logger.error('[Corporations] getKillmails failed', {
-							corporationId,
-							error: e instanceof Error ? e.message : String(e),
-							stack: e instanceof Error ? e.stack : undefined,
-						})
-						return []
-					}),
-					cloneRpcResult
-				),
-			])
+		logger.info('[Corporations] Fetching data summary from DO', { corporationId })
+		const [publicInfo, dataSummaryCounts] = await Promise.all([
+			withRpcResult(
+				stub.getCorporationInfo(corporationId).catch((e: unknown) => {
+					logger.error('[Corporations] getCorporationInfo failed', {
+						corporationId,
+						error: e instanceof Error ? e.message : String(e),
+						stack: e instanceof Error ? e.stack : undefined,
+					})
+					return null
+				}),
+				cloneRpcResult
+			),
+			withRpcResult(
+				stub.getDataSummaryCounts(corporationId).catch((e: unknown) => {
+					logger.error('[Corporations] getDataSummaryCounts failed', {
+						corporationId,
+						error: e instanceof Error ? e.message : String(e),
+						stack: e instanceof Error ? e.stack : undefined,
+					})
+					return null
+				}),
+				cloneRpcResult
+			),
+		])
 
 		logger.info('[Corporations] Data fetched successfully', {
 			corporationId,
 			hasPublicInfo: !!publicInfo,
-			hasCoreData: !!coreData,
-			hasFinancialData: !!financialData,
-			hasAssetsData: !!assetsData,
-			hasMarketData: !!marketData,
-			killmailsCount: killmails.length,
+			hasCoreData: !!publicInfo && !!dataSummaryCounts,
+			hasFinancialData: !!dataSummaryCounts?.financialData,
+			hasAssetsData: !!dataSummaryCounts?.assetsData,
+			hasMarketData: !!dataSummaryCounts?.marketData,
+			killmailsCount: dataSummaryCounts?.killmailCount ?? 0,
 		})
 
 		const responseData = {
 			publicInfo,
-			coreData: coreData
-				? {
-						memberCount: coreData.members.length,
-						trackingCount: coreData.memberTracking.length,
-					}
-				: null,
-			financialData: financialData
-				? {
-						walletCount: financialData.wallets.length,
-						journalCount: financialData.journalEntries.length,
-						transactionCount: financialData.transactions.length,
-					}
-				: null,
-			assetsData: assetsData
-				? {
-						assetCount: assetsData.assets.length,
-						structureCount: assetsData.structures.length,
-					}
-				: null,
-			marketData: marketData
-				? {
-						orderCount: marketData.orders.length,
-						contractCount: marketData.contracts.length,
-						industryJobCount: marketData.industryJobs.length,
-					}
-				: null,
-			killmailCount: killmails.length,
+			coreData: publicInfo && dataSummaryCounts ? dataSummaryCounts.coreData : null,
+			financialData: dataSummaryCounts?.financialData ?? null,
+			assetsData: dataSummaryCounts?.assetsData ?? null,
+			marketData: dataSummaryCounts?.marketData ?? null,
+			killmailCount: dataSummaryCounts?.killmailCount ?? 0,
 		}
 
 		return c.json(responseData)

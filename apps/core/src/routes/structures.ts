@@ -373,6 +373,10 @@ app.get('/', async (c) => {
 	return handleStructuresRequest(c)
 })
 
+app.get('/poses', async (c) => {
+	return handlePosStructuresRequest(c)
+})
+
 app.get('/sovereignty', async (c) => {
 	return handleSovereigntyStructuresRequest(c)
 })
@@ -590,6 +594,43 @@ async function handleStructuresRequest(c: Context<App>): Promise<Response> {
 		return c.json(
 			{
 				error: error instanceof Error ? error.message : 'Failed to list structures',
+			},
+			error instanceof z.ZodError ? 400 : 500
+		)
+	}
+}
+
+async function handlePosStructuresRequest(c: Context<App>): Promise<Response> {
+	const user = c.get('user')
+	if (!user) {
+		return c.json({ error: 'Unauthorized' }, 401)
+	}
+
+	try {
+		const query = structureListQuerySchema.parse({
+			page: c.req.query('page'),
+			pageSize: c.req.query('pageSize'),
+			sortBy: (c.req.query('sortBy') || undefined) as StructureCommonListSortBy | undefined,
+			sortDirection: c.req.query('sortDirection') || undefined,
+			corporationId: c.req.query('corporationId') || undefined,
+			assignedGroupId: c.req.query('assignedGroupId') || undefined,
+			lowPower: c.req.query('lowPower') || undefined,
+			lowPowerAllowed: c.req.query('lowPowerAllowed') || undefined,
+			regionId: c.req.query('regionId') || undefined,
+			systemId: c.req.query('systemId') || undefined,
+			state: c.req.query('state') || undefined,
+			typeId: c.req.query('typeId') || undefined,
+		}) as StructureListQuery
+
+		return c.json(
+			stripUpdatedAtFromStructureListResponse(
+				await c.env.STRUCTURES.listPosStructures(await getStructureActor(c), query)
+			)
+		)
+	} catch (error) {
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : 'Failed to list POSes',
 			},
 			error instanceof z.ZodError ? 400 : 500
 		)

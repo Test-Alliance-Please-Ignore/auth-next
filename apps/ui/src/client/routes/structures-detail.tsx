@@ -876,8 +876,8 @@ export default function StructuresDetailPage() {
 		structure?.fittingSlotCapacities ?? { high: 0, mid: 0, low: 0, rig: 0 }
 	const hasStructureFitting =
 		fittingItems.length > 0 ||
-		structure?.fittingSlotCapacities == null ||
-		Object.values(fittingSlotCapacities).some((capacity) => capacity > 0)
+		(structure?.fittingSlotCapacities != null &&
+			Object.values(fittingSlotCapacities).some((capacity) => capacity > 0))
 	const isReinforced = structure ? isReinforcedStructureState(structure.state) : false
 	const structureFamily = structure
 		? getStructureTabForTypeId(structure.typeId, structure.typeName)
@@ -887,6 +887,7 @@ export default function StructuresDetailPage() {
 	const hasSkyhookSummary = structureFamily === 'skyhooks' && Boolean(structure?.skyhook)
 	const isSkyhookStructure = structureFamily === 'skyhooks'
 	const isMoonDrillStructure = structureFamily === 'moon-drills'
+	const isPosStructure = structureFamily === 'poses'
 	const hasMiningExtractionSummary =
 		structureFamily === 'mining-citadels' &&
 		(Boolean(structure?.miningExtraction) ||
@@ -1137,7 +1138,7 @@ export default function StructuresDetailPage() {
 										)}
 									</div>
 								</div>
-								{!hasSovereigntySummary && !isSkyhookStructure && (
+								{!hasSovereigntySummary && !isSkyhookStructure && !isPosStructure && (
 									<div>
 										<div className="text-muted-foreground">Low Power</div>
 										<div className="font-medium">{structure.lowPower ? 'Yes' : 'No'}</div>
@@ -1282,13 +1283,16 @@ export default function StructuresDetailPage() {
 							</div>
 							<div className="flex flex-wrap gap-2 pt-2">
 								{structure.hidden && <Badge variant="ghost">Hidden</Badge>}
-								{!hasSovereigntySummary && !isSkyhookStructure && structure.lowPowerAllowed && (
-									<Badge variant="success">Low Power Alerts Suppressed</Badge>
-								)}
+								{!hasSovereigntySummary &&
+									!isSkyhookStructure &&
+									!isPosStructure &&
+									structure.lowPowerAllowed && (
+										<Badge variant="success">Low Power Alerts Suppressed</Badge>
+									)}
 								{structure.assignedGroupId && <Badge variant="special">Group Assigned</Badge>}
 							</div>
 							<div className="space-y-3">
-								{!hasSovereigntySummary && !isSkyhookStructure && (
+								{!hasSovereigntySummary && !isSkyhookStructure && !isPosStructure && (
 									<div className="space-y-2">
 										<div className="text-xs uppercase tracking-wider text-muted-foreground">
 											Reinforcement
@@ -1330,7 +1334,7 @@ export default function StructuresDetailPage() {
 										</div>
 									</div>
 								)}
-								{!hasSovereigntySummary && !isSkyhookStructure && (
+								{!hasSovereigntySummary && !isSkyhookStructure && structureFamily !== 'poses' && (
 									<div className="space-y-2">
 										<div className="text-xs uppercase tracking-wider text-muted-foreground">
 											Structure Services
@@ -1414,7 +1418,7 @@ export default function StructuresDetailPage() {
 								</div>
 								<Switch checked={hidden} onCheckedChange={setHidden} />
 							</div>
-							{!hasSovereigntySummary && !isSkyhookStructure && (
+							{!hasSovereigntySummary && !isSkyhookStructure && !isPosStructure && (
 								<div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-4">
 									<div>
 										<div className="font-medium">Low Power Allowed</div>

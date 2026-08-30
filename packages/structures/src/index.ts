@@ -6,6 +6,7 @@ export type CorporationAlertDestinationType =
 	| 'group'
 export type StructureTab =
 	| 'structures'
+	| 'poses'
 	| 'sovereignty'
 	| 'skyhooks'
 	| 'mining-citadels'
@@ -108,6 +109,52 @@ export const METENOX_MOON_DRILL_TYPE_ID = '81826'
 export const METENOX_MOON_DRILL_TYPE_NAME = 'Metenox Moon Drill'
 export const MINING_CITADEL_TYPE_NAMES = new Set(['Athanor', 'Tatara'])
 
+/** ESI starbases are not returned by /corporations/{id}/structures. */
+export const POS_STRUCTURE_TYPE_IDS = new Set([
+	'12235',
+	'12236',
+	'16213',
+	'16214',
+	'20059',
+	'20060',
+	'20061',
+	'20062',
+	'20063',
+	'20064',
+	'20065',
+	'20066',
+	'27530',
+	'27532',
+	'27533',
+	'27535',
+	'27536',
+	'27538',
+	'27539',
+	'27540',
+	'27589',
+	'27591',
+	'27592',
+	'27594',
+	'27595',
+	'27597',
+	'27598',
+	'27600',
+	'27601',
+	'27603',
+	'27604',
+	'27606',
+	'27607',
+	'27609',
+	'27610',
+	'27612',
+	'27780',
+	'27782',
+	'27784',
+	'27786',
+	'27788',
+	'27790',
+])
+
 export const SOVEREIGNTY_STRUCTURE_TYPE_IDS = new Set([SOVEREIGNTY_HUB_TYPE_ID])
 export const SKYHOOK_STRUCTURE_TYPE_IDS = new Set([ORBITAL_SKYHOOK_TYPE_ID])
 export const NAVIGATION_STRUCTURE_TYPE_IDS = new Set([
@@ -126,11 +173,12 @@ export const STRUCTURE_REINFORCED_STATES = new Set([
 ])
 
 export const STRUCTURE_TABS: StructureTabDefinition[] = [
-	{ tab: 'structures', label: 'Structures' },
+	{ tab: 'structures', label: 'Upwell Structures' },
 	{ tab: 'sovereignty', label: 'Sovereignty' },
 	{ tab: 'skyhooks', label: 'Skyhooks' },
 	{ tab: 'mining-citadels', label: 'Mining Citadels' },
 	{ tab: 'moon-drills', label: 'Moon Drills' },
+	{ tab: 'poses', label: 'POSes' },
 ]
 
 const STRUCTURE_TAB_VALUES = new Set<string>(STRUCTURE_TABS.map((definition) => definition.tab))
@@ -160,6 +208,10 @@ export function getStructureTabForTypeId(
 ): StructureTab {
 	const normalized = normalizeStructureTypeId(typeId)
 	const normalizedName = (typeName ?? '').trim()
+
+	if (POS_STRUCTURE_TYPE_IDS.has(normalized)) {
+		return 'poses'
+	}
 
 	if (
 		normalizedName === METENOX_MOON_DRILL_TYPE_NAME ||
@@ -948,6 +1000,10 @@ export interface UpdateStructureGroupAlertConfigRequest {
 
 export interface StructuresWorker {
 	listStructures(actor: StructureActor, query?: StructureListQuery): Promise<StructureListResponse>
+	listPosStructures(
+		actor: StructureActor,
+		query?: StructureListQuery
+	): Promise<StructureListResponse>
 	listSovereigntyStructures(
 		actor: StructureActor,
 		query?: StructureSovereigntyListQuery
