@@ -12,6 +12,7 @@
 		"db:migrate": "tsx ./src/scripts/migrate.ts",
 		"db:push": "drizzle-kit push",
 		"db:seed-moon-permissions": "tsx ./src/scripts/seed-moon-permissions.ts",
+		"db:seed-timerboard-permissions": "tsx ./src/scripts/seed-timerboard-permissions.ts",
 		"db:studio": "drizzle-kit studio",
 		"deploy": "run-wrangler-deploy",
 		"dev": "run-vite-dev",

@@ -71,6 +71,7 @@ import skillsRoutes from './routes/skills'
 import srpRoutes from './routes/srp'
 import publicSrpRoutes from './routes/srp-public'
 import structuresRoutes from './routes/structures'
+import timerboardRoutes from './routes/timerboard'
 import universeRoutes from './routes/universe'
 import usersRoutes from './routes/users'
 import { CoreRpcService } from './services/core-rpc.service'
@@ -196,6 +197,7 @@ const app = new Hono<App>()
 	.route('/api/srp', srpRoutes)
 	.route('/api/moon-scan', moonScanRoutes)
 	.route('/api/structures', structuresRoutes)
+	.route('/api/timerboard', timerboardRoutes)
 	.route('/api/navigation', navigationLinksRoutes)
 	.route('/api/mumble', mumbleRoutes)
 	.route('/api/mumble-tempop', mumbleTempopRoutes)
