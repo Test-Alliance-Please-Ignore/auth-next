@@ -19,7 +19,13 @@ export function calculateRoleChanges(params: {
 	rolesAdded: string[]
 	rolesRemoved: string[]
 } {
-	const { currentRoleIds, requestedRoleIds, managedRoleIds, preserveRoleIds = [], isAddOnlyMode } = params
+	const {
+		currentRoleIds,
+		requestedRoleIds,
+		managedRoleIds,
+		preserveRoleIds = [],
+		isAddOnlyMode,
+	} = params
 	const preserveRoleSet = new Set(preserveRoleIds)
 
 	// Calculate new roles based on mode:
@@ -72,4 +78,19 @@ export function augmentRequestedRoleIdsForRefresh(params: {
 	}
 
 	return [...new Set(augmented)]
+}
+
+/**
+ * Returns requested roles that are not explicitly authorized by the caller's
+ * managed-role or preservation allowlists. Role assignment must fail closed
+ * rather than trusting a caller-provided role set.
+ */
+export function findUnmanagedRequestedRoleIds(params: {
+	requestedRoleIds: string[]
+	managedRoleIds: string[]
+	preserveRoleIds?: string[]
+}): string[] {
+	const allowedRoleIds = new Set([...params.managedRoleIds, ...(params.preserveRoleIds ?? [])])
+
+	return [...new Set(params.requestedRoleIds.filter((roleId) => !allowedRoleIds.has(roleId)))]
 }

@@ -360,7 +360,7 @@ export async function unlinkUser(env: Env, userId: string): Promise<boolean> {
  * @param cache - Optional cache Map to store results (scoped to request)
  * @returns Set of Discord role IDs managed by the system
  */
-async function getAllManagedRolesForGuild(
+export async function getAllManagedRolesForGuild(
 	db: ReturnType<typeof createDb>,
 	env: Env,
 	guildId: string,
@@ -545,6 +545,7 @@ export async function getTemporaryRoleIdsByGuild(
 			typeof assignments.listPendingRemovalAssignments !== 'function'
 		) {
 			failedGuildIds.add(guildId)
+			preserveAllCurrentRolesGuildIds.add(guildId)
 			continue
 		}
 		assignmentStubs.set(guildId, assignments)
@@ -564,6 +565,10 @@ export async function getTemporaryRoleIdsByGuild(
 				})
 			} catch (error) {
 				failedGuildIds.add(guildId)
+				// The assignment source is authoritative for temporary grants. If it
+				// cannot be read, preserve the member's current roles rather than
+				// treating every configured role as a temporary role to add.
+				preserveAllCurrentRolesGuildIds.add(guildId)
 				logger.error('[Discord] Failed to resolve temporary role assignments for guild', {
 					userId: coreUserId,
 					guildId,
@@ -580,9 +585,10 @@ export async function getTemporaryRoleIdsByGuild(
 	const hasAssignments = Array.from(assignmentRowsByGuild.values()).some(
 		({ active, pending }) => active.length > 0 || pending.length > 0
 	)
-	// Resolve configured role IDs after an assignment-source failure so the refresh
-	// can preserve temporary roles instead of treating the failed read as empty state.
-	if (hasAssignments || failedGuildIds.size > 0) {
+	// Resolve configured role IDs only when assignment rows exist. A failed
+	// assignment source is handled by preserving current roles below; the full
+	// configured-role inventory must never become an assignment list.
+	if (hasAssignments) {
 		try {
 			configuredRoles = await db.query.discordRoles.findMany({
 				with: { discordServer: { columns: { guildId: true, isActive: true } } },
@@ -2318,9 +2324,6 @@ export async function updateUserDiscordRoles(
 						guildId: guild.guildId,
 						roleIds: guild.expectedRoleIds,
 						managedRoleIds,
-						preserveRoleIds: guild.temporaryRoleSourceUnavailable
-							? [...(temporaryRoleState.configuredRoleIdsByGuild.get(guild.guildId) ?? [])]
-							: [],
 						preserveAllCurrentRoles: temporaryRoleState.preserveAllCurrentRolesGuildIds.has(
 							guild.guildId
 						),
@@ -2396,9 +2399,7 @@ export async function updateUserDiscordRoles(
 			success: result.success,
 			errorMessage: result.errorMessage,
 			warningMessages: guildData?.temporaryRoleSourceUnavailable
-				? [
-						'Temporary role assignments could not be checked; configured managed roles were preserved.',
-					]
+				? ['Temporary role assignments could not be checked; existing roles were preserved.']
 				: [],
 		}
 	})
@@ -3038,6 +3039,7 @@ async function calculateUserRolesForServer(
 	}
 
 	const roleIds = new Set<string>()
+	const groupRoleDbIds = new Set<string>()
 
 	// Get user's characters
 	const userChars = await db.query.userCharacters.findMany({
@@ -3137,12 +3139,12 @@ async function calculateUserRolesForServer(
 					for (const roleId of membership.isMember
 						? getGroupMemberRoleDbIds(attachmentConfig)
 						: []) {
-						roleIds.add(roleId)
+						groupRoleDbIds.add(roleId)
 					}
 					for (const roleId of membership.isOwnerAdmin
 						? getGroupOwnerAdminRoleDbIds(attachmentConfig)
 						: []) {
-						roleIds.add(roleId)
+						groupRoleDbIds.add(roleId)
 					}
 				} catch (e) {
 					// Attachment config not found, skip
@@ -3159,6 +3161,21 @@ async function calculateUserRolesForServer(
 			serverId,
 			error: String(error),
 		})
+	}
+
+	if (groupRoleDbIds.size > 0) {
+		const groupRoles = await db.query.discordRoles.findMany({
+			where: and(
+				inArray(discordRoles.id, Array.from(groupRoleDbIds)),
+				eq(discordRoles.discordServerId, serverId),
+				eq(discordRoles.isActive, true)
+			),
+			columns: { roleId: true },
+		})
+
+		for (const role of groupRoles) {
+			roleIds.add(role.roleId)
+		}
 	}
 
 	// === AUTO-APPLY ROLES ===

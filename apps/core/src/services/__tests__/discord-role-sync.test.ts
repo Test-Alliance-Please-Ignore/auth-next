@@ -164,7 +164,7 @@ describe('temporary role cleanup source resolution', () => {
 		expect(result.cleanupRoleIdsByGuild.has('guild-1')).toBe(false)
 	})
 
-	it('loads configured role IDs when the assignment source is unavailable', async () => {
+	it('preserves current roles when the assignment source is unavailable', async () => {
 		temporaryAssignmentsStub.listActiveAssignments.mockRejectedValue(new Error('DO unavailable'))
 		dbQueryMocks.discordRoles.findMany.mockResolvedValue([
 			{ roleId: 'temporary-role-1', discordServer: { guildId: 'guild-1', isActive: true } },
@@ -173,8 +173,8 @@ describe('temporary role cleanup source resolution', () => {
 		const result = await getTemporaryRoleIdsByGuild(mockDb as any, mockEnv, ['guild-1'], 'user-1')
 
 		expect(result.failedGuildIds).toContain('guild-1')
-		expect(result.configuredRoleIdsByGuild.get('guild-1')).toEqual(new Set(['temporary-role-1']))
-		expect(result.preserveAllCurrentRolesGuildIds).not.toContain('guild-1')
+		expect(result.configuredRoleIdsByGuild.get('guild-1')).toBeUndefined()
+		expect(result.preserveAllCurrentRolesGuildIds).toContain('guild-1')
 	})
 })
 
@@ -2168,6 +2168,67 @@ describe('syncUserDiscordAccess', () => {
 })
 
 describe('updateUserDiscordRoles matrix', () => {
+	it('does not grant all configured roles when temporary-role storage is unavailable', async () => {
+		discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue(['guild-1'])
+		dbQueryMocks.discordServers.findMany.mockResolvedValue([
+			makeDiscordServer({ guildId: 'guild-1' }),
+		])
+
+		dbQueryMocks.corporationDiscordServers.findMany
+			.mockResolvedValueOnce([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					guildId: 'guild-1',
+					roleIds: ['corp-role'],
+				}),
+			])
+			.mockResolvedValueOnce([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					discordServerId: 'ds-1',
+					guildId: 'guild-1',
+				}),
+			])
+			.mockResolvedValueOnce([
+				makeCorpAttachment({
+					corporationId: 'corp-1',
+					discordServerId: 'ds-1',
+					guildId: 'guild-1',
+					roleIds: ['corp-role'],
+				}),
+			])
+
+		groupsStubMethods.getGroupsWithDiscordAutoInvite.mockResolvedValue([])
+		groupsStubMethods.getGroupsByDiscordServer.mockResolvedValue([])
+		temporaryAssignmentsStub.listActiveAssignments.mockRejectedValue(new Error('DO unavailable'))
+		dbQueryMocks.discordRoles.findMany.mockImplementation(async (query: any) => {
+			if (query?.with?.discordServer?.columns) {
+				return [
+					{ roleId: 'corp-role', discordServer: { guildId: 'guild-1', isActive: true } },
+					{
+						roleId: 'unrelated-managed-role',
+						discordServer: { guildId: 'guild-1', isActive: true },
+					},
+				]
+			}
+			return []
+		})
+		dbQueryMocks.discordServers.findFirst.mockResolvedValue(
+			makeDiscordServer({ id: 'ds-1', guildId: 'guild-1' })
+		)
+		discordStubMethods.updateUserRoles.mockResolvedValue([
+			{ guildId: 'guild-1', success: true, rolesAdded: [], rolesRemoved: [] },
+		])
+
+		await updateUserDiscordRoles(mockEnv, 'user-1', undefined, true)
+
+		const request = discordStubMethods.updateUserRoles.mock.calls[0][1][0]
+		expect(request.roleIds).toEqual(['corp-role'])
+		expect(request.preserveAllCurrentRoles).toBe(true)
+		expect(request.preserveRoleIds).toBeUndefined()
+		expect(request.roleIds).not.toContain('unrelated-managed-role')
+	})
+
 	it('should still assign corp roles when autoInvite is disabled', async () => {
 		discordStubMethods.checkGuildMembershipWithBot.mockResolvedValue(['guild-1'])
 		dbQueryMocks.discordServers.findMany.mockResolvedValue([
