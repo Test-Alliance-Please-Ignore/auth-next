@@ -15,6 +15,7 @@ import {
 	triggerMumbleRefreshWorkflow,
 } from '../lib/workflow-triggers'
 import { requireAdmin, requireAllianceMember, requireAuth } from '../middleware/session'
+import { getAllManagedRolesForGuild } from '../services/discord.service'
 import {
 	dispatchGroupApplicationSubmittedAlert,
 	dispatchGroupInvitationAlert,
@@ -2142,6 +2143,15 @@ groups.post(
 				})
 			}
 
+			// Pass the complete server-scoped managed-role allowlist to the Discord
+			// worker. The group roles are only one managed source on a guild.
+			const managedRoleIds = [
+				...new Set([
+					...(await getAllManagedRolesForGuild(db, c.env, config.guildId)),
+					...config.roleIds,
+				]),
+			]
+
 			// Call Discord DO to invite and refresh roles for each member
 			const discordDO = getStub<Discord>(c.env.DISCORD, 'default')
 
@@ -2171,6 +2181,7 @@ groups.post(
 							{
 								guildId: config.guildId,
 								roleIds: config.roleIds,
+								managedRoleIds,
 							},
 						],
 						true

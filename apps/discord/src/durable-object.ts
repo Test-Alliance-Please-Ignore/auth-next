@@ -20,7 +20,11 @@ import { discordTokens, discordUsers } from './db/schema'
 import { DiscordGatewayClient } from './gateway/client'
 import { createDiscordRateLimitKvStore } from './lib/discord-rate-limit-store'
 import { DiscordBotService, fetchWithRetry } from './services/discord-bot.service'
-import { augmentRequestedRoleIdsForRefresh, calculateRoleChanges } from './utils/role-calculation'
+import {
+	augmentRequestedRoleIdsForRefresh,
+	calculateRoleChanges,
+	findUnmanagedRequestedRoleIds,
+} from './utils/role-calculation'
 
 import type {
 	Discord,
@@ -1201,16 +1205,38 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 								})
 							}
 							const managedRoleIds = req.managedRoleIds || []
+							const preserveRoleIds = [
+								DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID,
+								...(req.preserveRoleIds ?? []),
+								...(req.preserveAllCurrentRoles ? currentRoleIds : []),
+							]
+							const unmanagedRequestedRoleIds = findUnmanagedRequestedRoleIds({
+								requestedRoleIds,
+								managedRoleIds,
+								preserveRoleIds,
+							})
+
+							if (unmanagedRequestedRoleIds.length > 0) {
+								logger.error('[DiscordDO] Refusing role update with unmanaged role IDs', {
+									guildId: req.guildId,
+									userId: user.userId,
+									requestedRoleCount: requestedRoleIds.length,
+									managedRoleCount: managedRoleIds.length,
+									unmanagedRoleIds: unmanagedRequestedRoleIds,
+								})
+								return {
+									guildId: req.guildId,
+									success: false,
+									errorMessage: 'Role update contained unmanaged role IDs',
+								}
+							}
+
 							// Calculate role changes using testable helper function
 							const roleChanges = calculateRoleChanges({
 								currentRoleIds,
 								requestedRoleIds,
 								managedRoleIds,
-								preserveRoleIds: [
-									DISCORD_EXCLUDED_AUTH_GIGACHAD_ROLE_ID,
-									...(req.preserveRoleIds ?? []),
-									...(req.preserveAllCurrentRoles ? currentRoleIds : []),
-								],
+								preserveRoleIds,
 								isAddOnlyMode,
 							})
 							newRoleIds = roleChanges.newRoleIds
