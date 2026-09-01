@@ -245,6 +245,15 @@ export interface TokenInfo {
 }
 
 /**
+ * A decrypted refresh token for a character selected by a trusted internal
+ * integration. This capability must not be exposed to browser-facing routes.
+ */
+export interface DecryptedRefreshToken {
+	characterId: string
+	refreshToken: string
+}
+
+/**
  * Token validation outcome for refresh and auth-sensitive workflows.
  *
  * This is intentionally aligned to SSO/token state rather than success of a
@@ -405,6 +414,13 @@ export interface EveTokenStore {
 	 * @returns Token info or null if not found
 	 */
 	getTokenInfo(characterId: string): Promise<TokenInfo | null>
+
+	/**
+	 * Resolve stored refresh tokens for a trusted internal integration.
+	 * Token-store remains responsible for decryption; callers must authenticate
+	 * the downstream request before returning these values externally.
+	 */
+	getRefreshTokensForIntegration(characterIds: string[]): Promise<DecryptedRefreshToken[]>
 
 	/**
 	 * Validate that a character token is present, refreshable/verifiable, and

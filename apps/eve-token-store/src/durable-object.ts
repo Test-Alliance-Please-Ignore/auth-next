@@ -30,6 +30,7 @@ import type {
 	AuthorizationUrlResponse,
 	CachedEveMetadata,
 	CallbackResult,
+	DecryptedRefreshToken,
 	EveMetadata,
 	EveTokenResponse,
 	EveTokenStore,
@@ -922,6 +923,56 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			isExpired,
 			hasRefreshToken: Boolean(tokenRecord.refreshToken),
 		}
+	}
+
+	/**
+	 * Resolve a bounded batch of refresh tokens for a trusted internal
+	 * integration. The database stores encrypted values; plaintext never leaves
+	 * this method except through the explicitly authorized RPC caller.
+	 */
+	async getRefreshTokensForIntegration(characterIds: string[]): Promise<DecryptedRefreshToken[]> {
+		const uniqueCharacterIds = [...new Set(characterIds.map((characterId) => String(characterId)))]
+		if (uniqueCharacterIds.length === 0) return []
+		if (uniqueCharacterIds.length > 100) {
+			throw new Error('Refresh token lookup is limited to 100 characters per request')
+		}
+
+		const rows = await this.db
+			.select({
+				characterId: eveCharacters.characterId,
+				refreshToken: eveTokens.refreshToken,
+			})
+			.from(eveCharacters)
+			.innerJoin(eveTokens, eq(eveTokens.characterId, eveCharacters.id))
+			.where(
+				and(
+					inArray(eveCharacters.characterId, uniqueCharacterIds),
+					isNull(eveCharacters.deletedAt),
+					isNotNull(eveTokens.refreshToken),
+					isNull(eveTokens.invalidSince),
+					isNull(eveTokens.permanentInvalidAt)
+				)
+			)
+			.orderBy(desc(eveTokens.updatedAt), asc(eveTokens.id))
+
+		const resolvedByCharacterId = new Map<string, DecryptedRefreshToken>()
+		for (const row of rows) {
+			if (!row.refreshToken || resolvedByCharacterId.has(row.characterId)) continue
+			try {
+				resolvedByCharacterId.set(row.characterId, {
+					characterId: row.characterId,
+					refreshToken: await this.decrypt(row.refreshToken),
+				})
+			} catch (error) {
+				logger
+					.withTags({ operation: 'getRefreshTokensForIntegration', characterId: row.characterId })
+					.error('Failed to decrypt refresh token for internal integration', {
+						error: error instanceof Error ? error.message : String(error),
+					})
+			}
+		}
+
+		return [...resolvedByCharacterId.values()]
 	}
 
 	/**

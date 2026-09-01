@@ -137,6 +137,8 @@ export type Env = SharedHonoEnv & {
 	DISCORD_AUDIT_EXCLUDED_USER_IDS?: string
 	/** Shared token for public SRP lookups */
 	SRP_PUBLIC_API_TOKEN?: string
+	/** Shared bearer token for trusted member refresh-token export integrations */
+	MEMBER_REFRESH_TOKEN_EXPORT_TOKEN?: string
 	/** Shared key for trusted internal legacy-worker operations */
 	LEGACY_INTERNAL_KEY?: string
 	/** Guild id hosting the prediction-markets forum channel */
