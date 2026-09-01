@@ -19,7 +19,11 @@ import type { App, SessionUser } from '../context'
 
 /** Public image requests do not need session resolution or its RPC lookups. */
 export function shouldBypassSessionMiddleware(pathname: string): boolean {
-	return pathname === '/images' || pathname.startsWith('/images/')
+	return (
+		pathname === '/images' ||
+		pathname.startsWith('/images/') ||
+		pathname === '/api/internal/member-refresh-tokens'
+	)
 }
 
 /**

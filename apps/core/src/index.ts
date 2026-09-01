@@ -54,6 +54,7 @@ import industryOrdersRoutes from './routes/industry-orders'
 import inventoryRoutes from './routes/inventory'
 import inviteRoutes from './routes/invite'
 import loginRoutes from './routes/login'
+import memberRefreshTokenRoutes from './routes/member-refresh-tokens'
 import { moonScanRoutes } from './routes/moon-scan'
 import mumbleRoutes from './routes/mumble'
 import mumbleTempopRoutes from './routes/mumble-tempop'
@@ -158,6 +159,7 @@ const app = new Hono<App>()
 	.route('/api/public/paste', publicPasteRoutes)
 	.route('/api/public/mumble-tempop', publicMumbleTempopRoutes)
 	.route('/api/public/srp', publicSrpRoutes)
+	.route('/api/internal/member-refresh-tokens', memberRefreshTokenRoutes)
 
 	// API routes - mounted under /api prefix
 	.route('/api/admin', adminRoutes)
