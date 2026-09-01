@@ -330,6 +330,13 @@
       "when": 1785336834346,
       "tag": "0046_worthless_wallflower",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1788297251953,
+      "tag": "0047_hesitant_firelord",
+      "breakpoints": true
     }
   ]
 }
