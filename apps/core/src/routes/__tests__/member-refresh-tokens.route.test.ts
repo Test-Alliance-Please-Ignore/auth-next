@@ -43,11 +43,11 @@ function makeDatabase() {
 	}
 }
 
-describe('member refresh token export route', () => {
+describe('member access token export route', () => {
 	let db: ReturnType<typeof makeDatabase>
 	let failCorporationData = false
 	const tokenStore = {
-		getRefreshTokensForIntegration: vi.fn(),
+		getAccessTokensForIntegration: vi.fn(),
 	}
 
 	beforeEach(() => {
@@ -119,8 +119,12 @@ describe('member refresh token export route', () => {
 			hasValidToken: true,
 		}))
 		db.query.userCharacters.findMany.mockResolvedValue(characters)
-		tokenStore.getRefreshTokensForIntegration.mockImplementation(async (characterIds: string[]) =>
-			characterIds.map((characterId) => ({ characterId, refreshToken: `refresh-${characterId}` }))
+		tokenStore.getAccessTokensForIntegration.mockImplementation(async (characterIds: string[]) =>
+			characterIds.map((characterId) => ({
+				characterId,
+				accessToken: `access-${characterId}`,
+				expiresAt: '2026-09-01T00:00:00.000Z',
+			}))
 		)
 
 		const response = await createApp().request(
@@ -141,9 +145,11 @@ describe('member refresh token export route', () => {
 			'director',
 			'director',
 		])
-		expect(body.corporations[0].tokens.every((token: any) => token.refreshToken)).toBe(true)
-		expect(tokenStore.getRefreshTokensForIntegration).toHaveBeenCalledTimes(2)
-		const firstLookup = tokenStore.getRefreshTokensForIntegration.mock.calls[0][0] as string[]
+		expect(body.corporations[0].tokens.every((token: any) => token.accessToken)).toBe(true)
+		expect(body.corporations[0].tokens.every((token: any) => token.expiresAt)).toBe(true)
+		expect(body.corporations[0].tokens.every((token: any) => !token.refreshToken)).toBe(true)
+		expect(tokenStore.getAccessTokensForIntegration).toHaveBeenCalledTimes(1)
+		const firstLookup = tokenStore.getAccessTokensForIntegration.mock.calls[0][0] as string[]
 		expect(firstLookup.slice(0, 2)).toEqual(['1010', '1011'])
 		expect(new Set(firstLookup)).toEqual(
 			new Set(characters.map((character) => character.characterId))
@@ -159,8 +165,12 @@ describe('member refresh token export route', () => {
 			{ characterId: '1001', characterName: 'Member 2', userId: 'user-2', hasValidToken: true },
 			{ characterId: '1002', characterName: 'Member 3', userId: 'user-3', hasValidToken: true },
 		])
-		tokenStore.getRefreshTokensForIntegration.mockImplementation(async (characterIds: string[]) =>
-			characterIds.map((characterId) => ({ characterId, refreshToken: `refresh-${characterId}` }))
+		tokenStore.getAccessTokensForIntegration.mockImplementation(async (characterIds: string[]) =>
+			characterIds.map((characterId) => ({
+				characterId,
+				accessToken: `access-${characterId}`,
+				expiresAt: '2026-09-01T00:00:00.000Z',
+			}))
 		)
 
 		type CryptoApi = {
@@ -217,8 +227,12 @@ describe('member refresh token export route', () => {
 				hasValidToken: false,
 			},
 		])
-		tokenStore.getRefreshTokensForIntegration.mockImplementation(async (characterIds: string[]) =>
-			characterIds.map((characterId) => ({ characterId, refreshToken: `refresh-${characterId}` }))
+		tokenStore.getAccessTokensForIntegration.mockImplementation(async (characterIds: string[]) =>
+			characterIds.map((characterId) => ({
+				characterId,
+				accessToken: `access-${characterId}`,
+				expiresAt: '2026-09-01T00:00:00.000Z',
+			}))
 		)
 
 		getStubMock.mockImplementation((binding: unknown) => {
@@ -247,7 +261,7 @@ describe('member refresh token export route', () => {
 
 		const body = (await response.json()) as any
 		expect(body.corporations[0].tokens).toMatchObject([{ characterId: '1000', role: 'member' }])
-		expect(tokenStore.getRefreshTokensForIntegration).toHaveBeenCalledWith(['1000'])
+		expect(tokenStore.getAccessTokensForIntegration).toHaveBeenCalledWith(['1000'])
 	})
 
 	it('deduplicates token rows and does not expose internal errors', async () => {
@@ -257,9 +271,9 @@ describe('member refresh token export route', () => {
 		db.query.userCharacters.findMany.mockResolvedValue([
 			{ characterId: '1000', characterName: 'Character', userId: 'user-1', hasValidToken: true },
 		])
-		tokenStore.getRefreshTokensForIntegration.mockResolvedValue([
-			{ characterId: '1000', refreshToken: 'refresh-first' },
-			{ characterId: '1000', refreshToken: 'refresh-second' },
+		tokenStore.getAccessTokensForIntegration.mockResolvedValue([
+			{ characterId: '1000', accessToken: 'access-first', expiresAt: '2026-09-01T00:00:00.000Z' },
+			{ characterId: '1000', accessToken: 'access-second', expiresAt: '2026-09-01T00:00:00.000Z' },
 		])
 
 		const response = await createApp().request(
@@ -273,9 +287,7 @@ describe('member refresh token export route', () => {
 
 		const body = (await response.json()) as any
 		expect(body.corporations[0].tokens).toHaveLength(1)
-		expect(['refresh-first', 'refresh-second']).toContain(
-			body.corporations[0].tokens[0].refreshToken
-		)
+		expect(['access-first', 'access-second']).toContain(body.corporations[0].tokens[0].accessToken)
 
 		failCorporationData = true
 		const failedResponse = await createApp().request(
@@ -287,9 +299,7 @@ describe('member refresh token export route', () => {
 			env
 		)
 		const failedBody = (await failedResponse.json()) as any
-		expect(failedBody.errors[0].error).toBe(
-			'Unable to retrieve refresh tokens for this corporation'
-		)
+		expect(failedBody.errors[0].error).toBe('Unable to retrieve access tokens for this corporation')
 		expect(JSON.stringify(failedBody)).not.toContain('SELECT refresh_token')
 	})
 

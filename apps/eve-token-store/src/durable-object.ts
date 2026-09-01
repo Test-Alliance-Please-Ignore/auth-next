@@ -30,7 +30,7 @@ import type {
 	AuthorizationUrlResponse,
 	CachedEveMetadata,
 	CallbackResult,
-	DecryptedRefreshToken,
+	DecryptedAccessToken,
 	EveMetadata,
 	EveTokenResponse,
 	EveTokenStore,
@@ -54,6 +54,7 @@ const METADATA_TTL_MS = 5 * 60 * 1000
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
 const TOKEN_REFRESH_COOLDOWN_PREFIX = 'token:refresh:cooldown:'
 const TOKEN_REFRESH_TRANSIENT_COOLDOWN_MS = 5 * 60 * 1000
+const ACCESS_TOKEN_INTEGRATION_CONCURRENCY = 4
 
 async function parseJsonResponse<T>(response: Response, context: string): Promise<T> {
 	try {
@@ -67,6 +68,7 @@ type AccessTokenLookupResult =
 	| {
 			status: 'ok'
 			accessToken: string
+			expiresAt: Date
 	  }
 	| {
 			status:
@@ -354,7 +356,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 		}
 	}
 
-	private async getWarmAccessToken(characterId: string): Promise<string | null> {
+	private async getWarmAccessToken(
+		characterId: string
+	): Promise<{ accessToken: string; expiresAt: Date } | null> {
 		try {
 			const rows = [
 				...this.state.storage.sql.exec<{
@@ -372,7 +376,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				return null
 			}
 
-			return await this.decrypt(cached.encrypted_access_token)
+			return {
+				accessToken: await this.decrypt(cached.encrypted_access_token),
+				expiresAt: new Date(cached.expires_at),
+			}
 		} catch (error) {
 			logger
 				.withTags({ operation: 'getWarmAccessToken', characterId })
@@ -926,53 +933,46 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	}
 
 	/**
-	 * Resolve a bounded batch of refresh tokens for a trusted internal
-	 * integration. The database stores encrypted values; plaintext never leaves
-	 * this method except through the explicitly authorized RPC caller.
+	 * Resolve a bounded batch of currently usable access tokens for a trusted
+	 * internal integration. This reuses the warm cache and demand-driven refresh
+	 * path so plaintext refresh tokens never leave the token-store domain.
 	 */
-	async getRefreshTokensForIntegration(characterIds: string[]): Promise<DecryptedRefreshToken[]> {
+	async getAccessTokensForIntegration(characterIds: string[]): Promise<DecryptedAccessToken[]> {
 		const uniqueCharacterIds = [...new Set(characterIds.map((characterId) => String(characterId)))]
 		if (uniqueCharacterIds.length === 0) return []
 		if (uniqueCharacterIds.length > 100) {
-			throw new Error('Refresh token lookup is limited to 100 characters per request')
+			throw new Error('Access token lookup is limited to 100 characters per request')
 		}
 
-		const rows = await this.db
-			.select({
-				characterId: eveCharacters.characterId,
-				refreshToken: eveTokens.refreshToken,
-			})
+		const eligibleRows = await this.db
+			.select({ characterId: eveCharacters.characterId })
 			.from(eveCharacters)
 			.innerJoin(eveTokens, eq(eveTokens.characterId, eveCharacters.id))
 			.where(
 				and(
 					inArray(eveCharacters.characterId, uniqueCharacterIds),
 					isNull(eveCharacters.deletedAt),
-					isNotNull(eveTokens.refreshToken),
 					isNull(eveTokens.invalidSince),
 					isNull(eveTokens.permanentInvalidAt)
 				)
 			)
-			.orderBy(desc(eveTokens.updatedAt), asc(eveTokens.id))
 
-		const resolvedByCharacterId = new Map<string, DecryptedRefreshToken>()
-		for (const row of rows) {
-			if (!row.refreshToken || resolvedByCharacterId.has(row.characterId)) continue
-			try {
-				resolvedByCharacterId.set(row.characterId, {
-					characterId: row.characterId,
-					refreshToken: await this.decrypt(row.refreshToken),
-				})
-			} catch (error) {
-				logger
-					.withTags({ operation: 'getRefreshTokensForIntegration', characterId: row.characterId })
-					.error('Failed to decrypt refresh token for internal integration', {
-						error: error instanceof Error ? error.message : String(error),
-					})
+		const eligibleCharacterIds = eligibleRows.map((row) => row.characterId)
+		const results = await mapWithConcurrency(
+			eligibleCharacterIds,
+			ACCESS_TOKEN_INTEGRATION_CONCURRENCY,
+			async (characterId) => {
+				const result = await this.getAccessTokenResult(characterId)
+				if (result.status !== 'ok') return null
+				return {
+					characterId,
+					accessToken: result.accessToken,
+					expiresAt: result.expiresAt.toISOString(),
+				}
 			}
-		}
+		)
 
-		return [...resolvedByCharacterId.values()]
+		return results.filter((result): result is DecryptedAccessToken => result !== null)
 	}
 
 	/**
@@ -1333,7 +1333,8 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			if (warmAccessToken) {
 				return {
 					status: 'ok',
-					accessToken: warmAccessToken,
+					accessToken: warmAccessToken.accessToken,
+					expiresAt: warmAccessToken.expiresAt,
 				}
 			}
 
@@ -1413,6 +1414,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 				return {
 					status: 'ok',
 					accessToken: decryptedToken,
+					expiresAt: updatedToken.expiresAt,
 				}
 			}
 
@@ -1421,6 +1423,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			return {
 				status: 'ok',
 				accessToken: decryptedToken,
+				expiresAt: tokenRecord.expiresAt,
 			}
 		} catch (error) {
 			logger
@@ -1960,4 +1963,24 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			.set({ lastDataSyncAt: new Date() })
 			.where(eq(eveCharacters.characterId, String(characterId)))
 	}
+}
+
+async function mapWithConcurrency<T, R>(
+	items: readonly T[],
+	concurrency: number,
+	mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+	const results = new Array<R>(items.length)
+	let nextIndex = 0
+
+	async function runWorker(): Promise<void> {
+		while (true) {
+			const index = nextIndex++
+			if (index >= items.length) return
+			results[index] = await mapper(items[index])
+		}
+	}
+
+	await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => runWorker()))
+	return results
 }
