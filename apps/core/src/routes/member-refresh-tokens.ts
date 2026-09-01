@@ -32,6 +32,13 @@ type CorporationCandidates = {
 	candidates: Candidate[]
 }
 
+type Database = ReturnType<typeof createDb>
+
+type IntegrationAuthFailure = {
+	error: string
+	status: 401 | 500
+}
+
 function getBearerToken(authorization: string | undefined): string | null {
 	if (!authorization?.startsWith('Bearer ')) return null
 	const token = authorization.slice('Bearer '.length).trim()
@@ -53,6 +60,41 @@ function parseRequestedCorporationIds(url: URL): { ids: string[] | null; error?:
 		return { ids: null, error: 'Corporation IDs must be numeric EVE IDs' }
 	}
 	return { ids }
+}
+
+function getIntegrationAuthFailure(
+	expectedToken: string | undefined,
+	authorization: string | undefined
+): IntegrationAuthFailure | null {
+	if (!expectedToken) {
+		return { error: 'Member refresh token export is not configured', status: 500 }
+	}
+	if (getBearerToken(authorization) !== expectedToken) {
+		return { error: 'Unauthorized', status: 401 }
+	}
+	return null
+}
+
+async function findEligibleCorporations(
+	database: Database,
+	requestedIds: string[] | null
+): Promise<Corporation[]> {
+	return (await database.query.managedCorporations.findMany({
+		where: and(
+			eq(managedCorporations.isActive, true),
+			or(
+				eq(managedCorporations.isMemberCorporation, true),
+				eq(managedCorporations.isSpecialPurpose, true)
+			),
+			...(requestedIds
+				? [or(...requestedIds.map((id) => eq(managedCorporations.corporationId, id)))]
+				: [])
+		),
+		columns: {
+			corporationId: true,
+			name: true,
+		},
+	})) as Corporation[]
 }
 
 function orderCandidates(
@@ -132,35 +174,34 @@ async function getAccessTokensInBatches(
 
 const app = new Hono<App>()
 
+app.get('/corporations', async (c) => {
+	const authFailure = getIntegrationAuthFailure(
+		c.env.MEMBER_REFRESH_TOKEN_EXPORT_TOKEN?.trim(),
+		c.req.header('Authorization')
+	)
+	if (authFailure) return c.json({ error: authFailure.error }, authFailure.status)
+
+	const database = c.get('db') ?? createDb(c.env.DATABASE_URL)
+	const corporations = await findEligibleCorporations(database, null)
+	return c.json(
+		{ corporationIds: corporations.map((corporation) => corporation.corporationId) },
+		200,
+		{ 'Cache-Control': 'no-store' }
+	)
+})
+
 app.get('/', async (c) => {
-	const expectedToken = c.env.MEMBER_REFRESH_TOKEN_EXPORT_TOKEN?.trim()
-	if (!expectedToken) {
-		return c.json({ error: 'Member refresh token export is not configured' }, 500)
-	}
-	if (getBearerToken(c.req.header('Authorization')) !== expectedToken) {
-		return c.json({ error: 'Unauthorized' }, 401)
-	}
+	const authFailure = getIntegrationAuthFailure(
+		c.env.MEMBER_REFRESH_TOKEN_EXPORT_TOKEN?.trim(),
+		c.req.header('Authorization')
+	)
+	if (authFailure) return c.json({ error: authFailure.error }, authFailure.status)
 
 	const parsed = parseRequestedCorporationIds(new URL(c.req.url))
 	if (parsed.error) return c.json({ error: parsed.error }, 400)
 
 	const database = c.get('db') ?? createDb(c.env.DATABASE_URL)
-	const corporations = await database.query.managedCorporations.findMany({
-		where: and(
-			eq(managedCorporations.isActive, true),
-			or(
-				eq(managedCorporations.isMemberCorporation, true),
-				eq(managedCorporations.isSpecialPurpose, true)
-			),
-			...(parsed.ids
-				? [or(...parsed.ids.map((id) => eq(managedCorporations.corporationId, id)))]
-				: [])
-		),
-		columns: {
-			corporationId: true,
-			name: true,
-		},
-	})
+	const corporations = await findEligibleCorporations(database, parsed.ids)
 
 	const tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
 	const corporationCandidates = await mapWithConcurrency(

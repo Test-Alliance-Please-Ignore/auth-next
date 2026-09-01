@@ -806,76 +806,6 @@ export const corporationDiscordInvites = pgTable(
 )
 
 /**
- * Corporation Alert Destinations
- *
- * Generic alert routing configuration scoped to a corporation and alert type.
- * A single alert type can fan out to multiple destinations, and future destination
- * types can be introduced without schema churn.
- */
-export const corporationAlertDestinations = pgTable(
-	'corporation_alert_destinations',
-	{
-		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: text('corporation_id')
-			.notNull()
-			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
-		alertType: text('alert_type').notNull(),
-		destinationType: text('destination_type').notNull(),
-		discordServerId: uuid('discord_server_id').references(() => discordServers.id, {
-			onDelete: 'cascade',
-		}),
-		channelId: text('channel_id'),
-		coreUserId: uuid('core_user_id').references(() => users.id, { onDelete: 'cascade' }),
-		destinationConfig: jsonb('destination_config')
-			.$type<Record<string, unknown>>()
-			.notNull()
-			.default({}),
-		isEnabled: boolean('is_enabled').notNull().default(true),
-		createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
-		updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
-		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-	},
-	(table) => [
-		index('corp_alert_destinations_corp_id_idx').on(table.corporationId),
-		index('corp_alert_destinations_alert_type_idx').on(table.alertType),
-		index('corp_alert_destinations_enabled_idx').on(table.isEnabled),
-		index('corp_alert_destinations_corp_alert_type_idx').on(table.corporationId, table.alertType),
-	]
-)
-
-/**
- * Corporation Alert Configs
- *
- * Corporation-owned alert-type configuration that references shared destinations.
- */
-export const corporationAlertConfigs = pgTable(
-	'corporation_alert_configs',
-	{
-		id: uuid('id').defaultRandom().primaryKey(),
-		corporationId: text('corporation_id')
-			.notNull()
-			.references(() => managedCorporations.corporationId, { onDelete: 'cascade' }),
-		alertType: text('alert_type').notNull(),
-		destinationIds: uuid('destination_ids').array().notNull().default([]),
-		config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
-		isEnabled: boolean('is_enabled').notNull().default(true),
-		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-	},
-	(table) => [
-		index('corporation_alert_configs_corp_idx').on(table.corporationId),
-		index('corporation_alert_configs_alert_type_idx').on(table.alertType),
-		index('corporation_alert_configs_enabled_idx').on(table.isEnabled),
-		index('corporation_alert_configs_corp_alert_type_idx').on(table.corporationId, table.alertType),
-		unique('corporation_alert_configs_corp_alert_type_unique').on(
-			table.corporationId,
-			table.alertType
-		),
-	]
-)
-
-/**
  * Discord Member Audit Runs
  *
  * Persisted async audit snapshots per Discord server.
@@ -1294,28 +1224,6 @@ export const corporationDiscordInvitesRelations = relations(
 		}),
 		user: one(users, {
 			fields: [corporationDiscordInvites.userId],
-			references: [users.id],
-		}),
-	})
-)
-
-export const corporationAlertDestinationsRelations = relations(
-	corporationAlertDestinations,
-	({ one }) => ({
-		corporation: one(managedCorporations, {
-			fields: [corporationAlertDestinations.corporationId],
-			references: [managedCorporations.corporationId],
-		}),
-		discordServer: one(discordServers, {
-			fields: [corporationAlertDestinations.discordServerId],
-			references: [discordServers.id],
-		}),
-		createdByUser: one(users, {
-			fields: [corporationAlertDestinations.createdBy],
-			references: [users.id],
-		}),
-		updatedByUser: one(users, {
-			fields: [corporationAlertDestinations.updatedBy],
 			references: [users.id],
 		}),
 	})
@@ -1755,8 +1663,6 @@ export const schema = {
 	corporationDiscordServerRoles,
 	corporationDiscordInvites,
 	alertDestinations,
-	corporationAlertDestinations,
-	corporationAlertConfigs,
 	dkpTransactions,
 	dkpDecayConfig,
 	mumbleTempops,
@@ -1784,7 +1690,6 @@ export const schema = {
 	corporationDiscordServerNicknameConfigsRelations,
 	corporationDiscordServerRolesRelations,
 	corporationDiscordInvitesRelations,
-	corporationAlertDestinationsRelations,
 	alertDestinationsRelations,
 	dkpTransactionsRelations,
 	dkpDecayConfigRelations,

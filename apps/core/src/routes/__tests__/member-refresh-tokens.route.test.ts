@@ -107,6 +107,26 @@ describe('member access token export route', () => {
 		})
 	})
 
+	it('lists active member and special-purpose corporation IDs', async () => {
+		db.query.managedCorporations.findMany.mockResolvedValue([
+			{ corporationId: '100', name: 'Member Corp' },
+			{ corporationId: '200', name: 'Special Corp' },
+		])
+
+		const response = await createApp().request(
+			'/api/internal/member-refresh-tokens/corporations',
+			{
+				method: 'GET',
+				headers: { Authorization: 'Bearer expected-token' },
+			},
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(response.headers.get('Cache-Control')).toBe('no-store')
+		expect(await response.json()).toEqual({ corporationIds: ['100', '200'] })
+	})
+
 	it('selects directors first and caps each corporation at fifteen tokens', async () => {
 		db.query.managedCorporations.findMany.mockResolvedValue([
 			{ corporationId: '100', name: 'Member Corp' },

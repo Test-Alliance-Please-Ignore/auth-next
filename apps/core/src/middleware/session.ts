@@ -22,7 +22,8 @@ export function shouldBypassSessionMiddleware(pathname: string): boolean {
 	return (
 		pathname === '/images' ||
 		pathname.startsWith('/images/') ||
-		pathname === '/api/internal/member-refresh-tokens'
+		pathname === '/api/internal/member-refresh-tokens' ||
+		pathname.startsWith('/api/internal/member-refresh-tokens/')
 	)
 }
 
