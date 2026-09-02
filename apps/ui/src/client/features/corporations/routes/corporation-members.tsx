@@ -144,6 +144,7 @@ export default function CorporationMembers() {
 		canAccess: hasCorpAccess,
 		isLoading: accessLoading,
 		userRole,
+		hrRole,
 		corporation: accessCorp,
 	} = useCanAccessCorporation(corporationId!)
 	const canAccess = hasCorpAccess || isAuditor
@@ -180,9 +181,8 @@ export default function CorporationMembers() {
 
 	// Determine capability flags based on user role
 	const isLeadership = userRole === 'CEO' || userRole === 'Director' || userRole === 'admin'
-	const isHrAdmin = userRole === 'hr_admin'
-	const isHrOnly =
-		userRole === 'hr_admin' || userRole === 'hr_reviewer' || userRole === 'hr_viewer' || isAuditor
+	const isHrAdmin = hrRole === 'hr_admin'
+	const isHrOnly = Boolean(hrRole) || isAuditor
 	const isMemberCorporation =
 		corporation?.isMemberCorporation ?? accessCorp?.isMemberCorporation ?? false
 
@@ -195,10 +195,8 @@ export default function CorporationMembers() {
 
 	// Can manage HR roles: member corp only, with CEO/admin/hr_admin access
 	const canManageHrRoles = useMemo(() => {
-		return (
-			isMemberCorporation && (userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin')
-		)
-	}, [isMemberCorporation, userRole])
+		return isMemberCorporation && (userRole === 'CEO' || userRole === 'admin' || isHrAdmin)
+	}, [isMemberCorporation, isHrAdmin, userRole])
 	const { data: hrRoles, isLoading: hrRolesLoading } = useHrRoles(corporationId!, {
 		enabled: canManageHrRoles,
 	})
@@ -206,7 +204,7 @@ export default function CorporationMembers() {
 		() =>
 			!isMemberCorporation
 				? ([] as const)
-				: userRole === 'CEO'
+				: userRole === 'CEO' || userRole === 'admin'
 					? (['hr_admin', 'hr_reviewer', 'hr_viewer'] as const)
 					: (['hr_reviewer', 'hr_viewer'] as const),
 		[isMemberCorporation, userRole]
@@ -462,10 +460,15 @@ export default function CorporationMembers() {
 							View and manage all members of {corpTicker ? `[${corpTicker}]` : 'this corporation'}
 							{corpAllianceName && ` • Alliance: ${corpAllianceName}`}
 						</p>
-						{userRole && (
+						{(userRole || hrRole) && (
 							<p className="text-sm text-muted-foreground mt-1">
 								Your role:{' '}
-								<span className="font-medium">{formatCorporationRoleLabel(userRole)}</span>
+								<span className="font-medium">
+									{[userRole, hrRole]
+										.filter((role, index, roles) => role !== null && roles.indexOf(role) === index)
+										.map((role) => formatCorporationRoleLabel(role))
+										.join(' / ')}
+								</span>
 							</p>
 						)}
 					</div>
@@ -509,7 +512,7 @@ export default function CorporationMembers() {
 						{canUseHrTools ? (
 							<CardDescription>
 								{isHrOnly && !isLeadership
-									? `You have ${formatCorporationRoleLabel(userRole ?? 'hr_viewer')} access for this corporation`
+									? `You have ${formatCorporationRoleLabel(hrRole ?? 'hr_viewer')} access for this corporation`
 									: userRole === 'CEO'
 										? 'You have CEO access to all HR features'
 										: 'You have site admin access to all HR features'}
