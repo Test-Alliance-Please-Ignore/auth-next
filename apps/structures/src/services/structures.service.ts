@@ -32,6 +32,7 @@ import {
 } from '@repo/moon-scan'
 import {
 	FUEL_BLOCK_TYPE_IDS,
+	getEstimatedSovereigntyReagent,
 	getSkyhookFullness,
 	getSkyhookReagentEntriesFromStorageState,
 	getSkyhookReagentSummaryFromStorageState,
@@ -39,6 +40,7 @@ import {
 	getSovereigntyReagentBayReagents,
 	getSovereigntyReagentBaySummary,
 	getStructureTabForTypeId,
+	isSovereigntyReagentBaySnapshot,
 	METENOX_MOON_DRILL_TYPE_NAME,
 	MINING_CITADEL_TYPE_NAMES,
 	MOON_DRILL_STRUCTURE_TYPE_IDS,
@@ -903,8 +905,15 @@ function buildHiddenVisibilityWhere(
 function summarizeStructureSovereigntyHub(
 	hub: typeof structureSovereigntyHubs.$inferSelect
 ): StructureSovereigntyHubSummary {
-	const reagentBaySummary = getSovereigntyReagentBaySummary(hub.reagentBay)
-	const reagents = getSovereigntyReagentBayReagents(hub.reagentBay)
+	const referenceTimeMs = Date.now()
+	const reagentBaySummary = getSovereigntyReagentBaySummary(hub.reagentBay, referenceTimeMs)
+	const rawReagents = getSovereigntyReagentBayReagents(hub.reagentBay)
+	const lastUpdated = isSovereigntyReagentBaySnapshot(hub.reagentBay)
+		? hub.reagentBay.lastUpdated
+		: (hub.reagentBayLastUpdated?.toISOString() ?? null)
+	const reagents = rawReagents.map((reagent) =>
+		getEstimatedSovereigntyReagent(reagent, lastUpdated, referenceTimeMs)
+	)
 
 	return {
 		controllerAllianceId: hub.controllerAllianceId ?? null,
@@ -919,7 +928,10 @@ function summarizeStructureSovereigntyHub(
 		superionicIceQuantity: reagentBaySummary?.superionicIceQuantity ?? 0,
 		superionicIceBurningPerHour: reagentBaySummary?.superionicIceBurningPerHour ?? 0,
 		superionicIceEstimatedDepletionAt: reagentBaySummary?.superionicIceEstimatedDepletionAt ?? null,
-		reagentBay: hub.reagentBay,
+		reagentBay: {
+			lastUpdated: lastUpdated ?? '',
+			reagents,
+		},
 		resources: hub.resources,
 		upgrades: hub.upgrades,
 		workforceTransport:
@@ -3053,25 +3065,53 @@ function buildSovereigntyReagentMetricSql(
 	const summaryValue = sql<
 		string | null
 	>`nullif(${source.reagentBay} -> 'summary' ->> ${summaryField}, '')`
+	const reagentArray = sql`
+		case
+			when jsonb_typeof(${source.reagentBay}) = 'object'
+				and jsonb_typeof(${source.reagentBay} -> 'reagents') = 'array'
+				then ${source.reagentBay} -> 'reagents'
+			when jsonb_typeof(${source.reagentBay}) = 'array' then ${source.reagentBay}
+			else '[]'::jsonb
+		end
+	`
+	const snapshotLastUpdated = sql`
+		nullif(${source.reagentBay} ->> 'lastUpdated', '')::timestamptz
+	`
 	const arrayValue = sql<number>`
 		(
-			select coalesce(sum((reagent ->> ${reagentField})::numeric), 0)
-			from jsonb_array_elements(
+			select coalesce(sum(
 				case
-					when jsonb_typeof(${source.reagentBay}) = 'object'
-						and jsonb_typeof(${source.reagentBay} -> 'reagents') = 'array'
-						then ${source.reagentBay} -> 'reagents'
-					when jsonb_typeof(${source.reagentBay}) = 'array' then ${source.reagentBay}
-					else '[]'::jsonb
+					when ${reagentField === 'amount' ? sql`jsonb_typeof(${source.reagentBay}) = 'object' and ${snapshotLastUpdated} is not null and nullif(reagent ->> 'amount', '')::numeric is not null and nullif(reagent ->> 'burningPerHour', '')::numeric > 0` : sql`false`}
+						then floor(
+							greatest(
+								((reagent ->> 'amount')::numeric)
+								- greatest(extract(epoch from (now() - ${snapshotLastUpdated})) / 3600, 0)
+									* ((reagent ->> 'burningPerHour')::numeric),
+								0
+							)
+						)
+					when ${reagentField === 'amount' ? sql`true` : sql`false`}
+						then floor((reagent ->> 'amount')::numeric)
+					else (reagent ->> 'burningPerHour')::numeric
 				end
-			) as reagent
+			), 0)
+			from jsonb_array_elements(${reagentArray}) as reagent
 			where reagent ->> 'typeId' = ${typeId}
 		)
 	`
 
-	return sql<number>`
-		coalesce(nullif(((${summaryValue})::numeric), 'NaN'::numeric), ${arrayValue})
+	const hasReagentArray = sql`
+		jsonb_typeof(${source.reagentBay}) = 'array'
+		or (
+			jsonb_typeof(${source.reagentBay}) = 'object'
+			and jsonb_typeof(${source.reagentBay} -> 'reagents') = 'array'
+		)
 	`
+
+	return sql<number>`coalesce(
+		case when ${hasReagentArray} then ${arrayValue} else nullif(((${summaryValue})::numeric), 'NaN'::numeric) end,
+		0
+	)`
 }
 
 function buildSovereigntySummaryDateSql(source: any, field: string) {

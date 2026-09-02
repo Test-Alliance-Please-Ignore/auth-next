@@ -318,6 +318,8 @@ export interface StructureSovereigntyReagent {
 	amount: number
 	burningPerHour: number
 	lastCycle: string
+	estimatedAmount?: number
+	estimatedDepletionAt?: string | null
 }
 
 export interface StructureSovereigntyTransportEntry {

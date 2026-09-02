@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+	estimateSovereigntyReagentAmount,
+	getEstimatedSovereigntyReagent,
+	getSovereigntyReagentBaySummary,
+} from '@repo/structures'
+
+import {
 	buildSovereigntyWhere,
 	computeStructureAccess,
 	getStructureDetail,
@@ -545,6 +551,60 @@ function makeDb() {
 }
 
 describe('sovereignty hub model', () => {
+	it('projects reagent amounts from the ESI baseline at query time', () => {
+		const referenceTimeMs = Date.parse('2026-09-02T12:00:00.000Z')
+		const reagent = {
+			typeId: '81143',
+			amount: 100,
+			burningPerHour: 10,
+			lastCycle: '2026-09-02T08:00:00.000Z',
+		}
+		const lastUpdated = '2026-09-02T06:00:00.000Z'
+
+		expect(estimateSovereigntyReagentAmount(reagent, lastUpdated, referenceTimeMs)).toBe(40)
+		expect(getEstimatedSovereigntyReagent(reagent, lastUpdated, referenceTimeMs)).toMatchObject({
+			estimatedAmount: 40,
+			estimatedDepletionAt: '2026-09-02T16:00:00.000Z',
+		})
+
+		const summary = getSovereigntyReagentBaySummary(
+			{
+				lastUpdated,
+				summary: {
+					reagentCount: 1,
+					magmaticGasQuantity: 100,
+					magmaticGasBurningPerHour: 10,
+					magmaticGasEstimatedDepletionAt: '2026-09-02T22:00:00.000Z',
+					superionicIceQuantity: 0,
+					superionicIceBurningPerHour: 0,
+					superionicIceEstimatedDepletionAt: null,
+				},
+				reagents: [reagent],
+			},
+			referenceTimeMs
+		)
+		expect(summary?.magmaticGasQuantity).toBe(40)
+		expect(summary?.magmaticGasEstimatedDepletionAt).toBe('2026-09-02T16:00:00.000Z')
+
+		expect(
+			estimateSovereigntyReagentAmount(reagent, '2026-09-02T13:00:00.000Z', referenceTimeMs)
+		).toBe(100)
+		expect(
+			estimateSovereigntyReagentAmount(
+				{ ...reagent, amount: 100.5 },
+				'2026-09-02T06:00:00.000Z',
+				referenceTimeMs
+			)
+		).toBe(40)
+		expect(
+			estimateSovereigntyReagentAmount(
+				{ ...reagent, amount: 100.5, burningPerHour: 0 },
+				lastUpdated,
+				referenceTimeMs
+			)
+		).toBe(100)
+	})
+
 	it('scopes sovereignty queries to the corporations allowed for the sovereignty tab', () => {
 		const access = computeStructureAccess(['urn:structures:corp-1:sensitive'], false)
 		const condition = buildSovereigntyWhere(access, {}) as { queryChunks?: unknown[] }

@@ -130,9 +130,13 @@ type AssetSyncStatus = 'ok' | 'warning' | 'error' | 'disabled'
 
 function assetSyncStatus(enabled: boolean, lastAssetSnapshotAt: string | null): AssetSyncStatus {
 	if (!enabled) return 'disabled'
-	if (!lastAssetSnapshotAt) return 'error'
+	return snapshotSyncStatus(lastAssetSnapshotAt)
+}
 
-	const parsed = new Date(lastAssetSnapshotAt)
+function snapshotSyncStatus(lastSnapshotAt: string | null): Exclude<AssetSyncStatus, 'disabled'> {
+	if (!lastSnapshotAt) return 'error'
+
+	const parsed = new Date(lastSnapshotAt)
 	if (Number.isNaN(parsed.getTime())) return 'error'
 
 	const ageMs = Math.max(0, Date.now() - parsed.getTime())
@@ -143,13 +147,17 @@ function assetSyncStatus(enabled: boolean, lastAssetSnapshotAt: string | null): 
 
 function assetSyncStatusDescription(enabled: boolean, lastAssetSnapshotAt: string | null): string {
 	if (!enabled) return 'Asset sync is disabled for this corporation.'
-	if (!lastAssetSnapshotAt) {
-		return 'Asset sync is enabled, but no successful inventory snapshot has been recorded.'
+	return snapshotSyncStatusDescription('asset', lastAssetSnapshotAt)
+}
+
+function snapshotSyncStatusDescription(label: string, lastSnapshotAt: string | null): string {
+	if (!lastSnapshotAt) {
+		return `No ${label} snapshot timestamp has been recorded.`
 	}
 
-	const parsed = new Date(lastAssetSnapshotAt)
+	const parsed = new Date(lastSnapshotAt)
 	if (Number.isNaN(parsed.getTime())) {
-		return 'The last asset snapshot timestamp was invalid, so the inventory snapshot cannot be trusted.'
+		return `The last ${label} snapshot timestamp was invalid, so the snapshot cannot be trusted.`
 	}
 
 	const ageMs = Math.max(0, Date.now() - parsed.getTime())
@@ -158,9 +166,9 @@ function assetSyncStatusDescription(enabled: boolean, lastAssetSnapshotAt: strin
 			? 'This snapshot is more than 24 hours old and should be treated as stale.'
 			: ageMs >= STRUCTURE_SYNC_WARNING_STALE_MS
 				? 'This snapshot is more than 12 hours old and may be stale.'
-				: 'The stored inventory snapshot is current.'
+				: `The stored ${label} snapshot is current.`
 
-	return `Last successful asset snapshot at ${formatDateTimeLong(lastAssetSnapshotAt)}. ${stalenessNote}`
+	return `Last ${label} snapshot at ${formatDateTimeLong(lastSnapshotAt)}. ${stalenessNote}`
 }
 
 function serviceBadgeVariant(state: string): BadgeVariant {
@@ -219,6 +227,11 @@ function formatEveTimeLabel(value: string | null | undefined): string {
 function formatNullableNumber(value: number | null | undefined): string {
 	if (value === null || value === undefined) return '-'
 	return value.toLocaleString()
+}
+
+function formatApproximateNumber(value: number | null | undefined): string {
+	if (value === null || value === undefined) return '-'
+	return `~${value.toLocaleString()}`
 }
 
 function formatEstimatedRemaining(
@@ -1017,6 +1030,13 @@ export default function StructuresDetailPage() {
 		structure.includeInStructureAssetSync,
 		structure.assetsLastSync
 	)
+	const reagentBaySyncStatus = snapshotSyncStatus(
+		structure.sovereignty?.hub?.reagentBayLastUpdated ?? null
+	)
+	const reagentBaySyncDescription = `${snapshotSyncStatusDescription(
+		'reagent-bay',
+		structure.sovereignty?.hub?.reagentBayLastUpdated ?? null
+	)} Reagent quantities and remaining times are approximations calculated from that ESI baseline and its reported burn rate.`
 
 	const handleSave = async () => {
 		await updateMutation.mutateAsync({
@@ -1393,6 +1413,18 @@ export default function StructuresDetailPage() {
 													/>
 												</>
 											)}
+											{hasSovereigntySummary && structure.sovereignty?.hub && (
+												<>
+													<span aria-hidden className="text-sm text-muted-foreground">
+														-
+													</span>
+													<StructureSyncStatusBadge
+														label="Reagent Bay"
+														status={reagentBaySyncStatus}
+														description={reagentBaySyncDescription}
+													/>
+												</>
+											)}
 										</div>
 										<div className="mt-2 text-sm text-muted-foreground">{syncDescription}</div>
 									</div>
@@ -1580,7 +1612,7 @@ export default function StructuresDetailPage() {
 												<TableHeader>
 													<TableRow>
 														<TableHead>Reagent</TableHead>
-														<TableHead>Amount</TableHead>
+														<TableHead>Est. Amount</TableHead>
 														<TableHead>Burn / Hr</TableHead>
 														<TableHead>Est. Remaining</TableHead>
 														<TableHead>Last Cycle</TableHead>
@@ -1597,10 +1629,24 @@ export default function StructuresDetailPage() {
 																	</span>
 																</div>
 															</TableCell>
-															<TableCell>{formatNullableNumber(reagent.amount)}</TableCell>
+															<TableCell>
+																{formatApproximateNumber(reagent.estimatedAmount ?? reagent.amount)}
+															</TableCell>
 															<TableCell>{formatNullableNumber(reagent.burningPerHour)}</TableCell>
 															<TableCell>
-																{formatEstimatedRemaining(reagent.amount, reagent.burningPerHour)}
+																{reagent.estimatedDepletionAt ? (
+																	<DurationDisplay
+																		endDate={reagent.estimatedDepletionAt}
+																		maxUnits={3}
+																		durationStyle="compact"
+																		format="compact"
+																	/>
+																) : (
+																	formatEstimatedRemaining(
+																		reagent.estimatedAmount ?? reagent.amount,
+																		reagent.burningPerHour
+																	)
+																)}
 															</TableCell>
 															<TableCell>{formatNullableDateTime(reagent.lastCycle)}</TableCell>
 														</TableRow>

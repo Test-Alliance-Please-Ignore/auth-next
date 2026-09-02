@@ -30,7 +30,6 @@ import {
 	SKYHOOK_MAGMATIC_GAS_TYPE_NAME,
 	SKYHOOK_SUPERIONIC_ICE_TYPE_ID,
 	SKYHOOK_SUPERIONIC_ICE_TYPE_NAME,
-	summarizeSovereigntyReagentBay,
 } from '@repo/structures'
 import { normalizeUniverseServiceName } from '@repo/universe'
 import { parseDateOrNull } from '@repo/worker-utils'
@@ -4655,7 +4654,6 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				reagentBayLastUpdated: parseDateOrNull(hub.reagent_bay.last_updated) ?? null,
 				reagentBay: {
 					lastUpdated: hub.reagent_bay.last_updated,
-					summary: summarizeSovereigntyReagentBay(reagents),
 					reagents,
 				},
 				resources: hub.resources,

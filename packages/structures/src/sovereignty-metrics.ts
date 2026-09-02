@@ -11,6 +11,9 @@ export interface SovereigntyReagentEntry {
 	amount: number
 	burningPerHour: number
 	lastCycle: string
+	/** Query-time projection; omitted from the persisted ESI snapshot. */
+	estimatedAmount?: number
+	estimatedDepletionAt?: string | null
 }
 
 export interface SovereigntyReagentSummary {
@@ -29,24 +32,81 @@ export interface SovereigntyReagentBaySnapshot {
 	reagents: SovereigntyReagentEntry[]
 }
 
-export type SovereigntyReagentBaySnapshotValue = SovereigntyReagentEntry[] | SovereigntyReagentBaySnapshot
+export type SovereigntyReagentBaySnapshotValue =
+	| SovereigntyReagentEntry[]
+	| SovereigntyReagentBaySnapshot
+
+function parseTimestampMs(value: string | null | undefined): number | null {
+	if (!value) {
+		return null
+	}
+
+	const timestampMs = Date.parse(value)
+	return Number.isFinite(timestampMs) ? timestampMs : null
+}
 
 function estimateReagentDepletionAt(
 	quantity: number,
 	burningPerHour: number,
 	referenceTimeMs: number
 ): string | null {
-	if (!Number.isFinite(quantity) || !Number.isFinite(burningPerHour) || burningPerHour <= 0) {
+	if (
+		quantity <= 0 ||
+		!Number.isFinite(quantity) ||
+		!Number.isFinite(burningPerHour) ||
+		burningPerHour <= 0
+	) {
 		return null
 	}
 
 	return new Date(referenceTimeMs + (quantity / burningPerHour) * 60 * 60 * 1000).toISOString()
 }
 
+/**
+ * ESI's reagent amount is a point-in-time baseline, not a live counter.
+ * Project it forward using the reported burn rate while never allowing a
+ * future or malformed timestamp to increase the reported amount.
+ */
+export function estimateSovereigntyReagentAmount(
+	reagent: Pick<SovereigntyReagentEntry, 'amount' | 'burningPerHour'>,
+	lastUpdated: string | null | undefined,
+	referenceTimeMs = Date.now()
+): number {
+	const amount = Number.isFinite(reagent.amount) ? Math.floor(Math.max(0, reagent.amount)) : 0
+	const burningPerHour = reagent.burningPerHour
+	const snapshotTimeMs = parseTimestampMs(lastUpdated)
+
+	if (snapshotTimeMs === null || !Number.isFinite(burningPerHour) || burningPerHour <= 0) {
+		return amount
+	}
+
+	const elapsedHours = Math.max(0, referenceTimeMs - snapshotTimeMs) / (60 * 60 * 1000)
+	return Math.floor(Math.max(0, amount - elapsedHours * burningPerHour))
+}
+
+export function getEstimatedSovereigntyReagent(
+	reagent: SovereigntyReagentEntry,
+	lastUpdated: string | null | undefined,
+	referenceTimeMs = Date.now()
+): SovereigntyReagentEntry {
+	const estimatedAmount = estimateSovereigntyReagentAmount(reagent, lastUpdated, referenceTimeMs)
+
+	return {
+		...reagent,
+		estimatedAmount,
+		estimatedDepletionAt: estimateReagentDepletionAt(
+			estimatedAmount,
+			reagent.burningPerHour,
+			referenceTimeMs
+		),
+	}
+}
+
 export function summarizeSovereigntyReagentStats(
 	reagents: readonly SovereigntyReagentEntry[],
 	match: { typeId: string; typeName: string },
-	referenceTimeMs: number
+	referenceTimeMs: number,
+	lastUpdated?: string | null
 ): {
 	quantity: number
 	burningPerHour: number
@@ -62,7 +122,11 @@ export function summarizeSovereigntyReagentStats(
 				return accumulator
 			}
 
-			accumulator.quantity += reagent.amount
+			accumulator.quantity += estimateSovereigntyReagentAmount(
+				reagent,
+				lastUpdated,
+				referenceTimeMs
+			)
 			accumulator.burningPerHour += reagent.burningPerHour
 			return accumulator
 		},
@@ -81,7 +145,8 @@ export function summarizeSovereigntyReagentStats(
 
 export function summarizeSovereigntyReagentBay(
 	reagents: readonly SovereigntyReagentEntry[],
-	referenceTimeMs = Date.now()
+	referenceTimeMs = Date.now(),
+	lastUpdated?: string | null
 ): SovereigntyReagentSummary {
 	const magmaticGasStats = summarizeSovereigntyReagentStats(
 		reagents,
@@ -89,7 +154,8 @@ export function summarizeSovereigntyReagentBay(
 			typeId: SKYHOOK_MAGMATIC_GAS_TYPE_ID,
 			typeName: SKYHOOK_MAGMATIC_GAS_TYPE_NAME,
 		},
-		referenceTimeMs
+		referenceTimeMs,
+		lastUpdated
 	)
 	const superionicIceStats = summarizeSovereigntyReagentStats(
 		reagents,
@@ -97,7 +163,8 @@ export function summarizeSovereigntyReagentBay(
 			typeId: SKYHOOK_SUPERIONIC_ICE_TYPE_ID,
 			typeName: SKYHOOK_SUPERIONIC_ICE_TYPE_NAME,
 		},
-		referenceTimeMs
+		referenceTimeMs,
+		lastUpdated
 	)
 
 	return {
@@ -124,11 +191,14 @@ export function getSovereigntyReagentBayReagents(
 }
 
 export function getSovereigntyReagentBaySummary(
-	value: SovereigntyReagentBaySnapshotValue
+	value: SovereigntyReagentBaySnapshotValue,
+	referenceTimeMs = Date.now()
 ): SovereigntyReagentSummary | null {
 	if (Array.isArray(value)) {
-		return summarizeSovereigntyReagentBay(value)
+		return summarizeSovereigntyReagentBay(value, referenceTimeMs)
 	}
 
-	return value.summary ?? summarizeSovereigntyReagentBay(value.reagents)
+	// Do not reuse the persisted summary: it was calculated when the snapshot
+	// was ingested and cannot account for elapsed reagent burn.
+	return summarizeSovereigntyReagentBay(value.reagents, referenceTimeMs, value.lastUpdated)
 }
