@@ -82,8 +82,11 @@ type CorporationAccessScope = {
 type CorporationAccessScopeResponse = {
 	hasAccess: boolean
 	userRole: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer' | null
+	hrRole: 'hr_admin' | 'hr_reviewer' | 'hr_viewer' | null
 	corporation: CorporationAccessScope | null
 }
+
+type ExplicitCorporationHrRole = 'hr_admin' | 'hr_reviewer' | 'hr_viewer'
 
 async function hasMemberCorpHrPermission(
 	c: Context<App>,
@@ -132,6 +135,42 @@ async function resolveCorporationMembersAccess(
 }
 
 /**
+ * Resolve an explicitly granted HR role without treating leadership inference
+ * as an HR assignment. Leadership remains available through `userRole`.
+ */
+async function resolveExplicitCorporationHrRole(
+	c: Context<App>,
+	corporationId: string,
+	managedCorp: MemberCorpHrAccess | null
+): Promise<ExplicitCorporationHrRole | null> {
+	if (!managedCorp?.isMemberCorporation) {
+		return null
+	}
+
+	const user = c.get('user')!
+	const hr = getStub<Hr>(c.env.HR, 'default')
+
+	try {
+		return await withRpcResult(hr.getUserRoles(user.id, corporationId), (roles) => {
+			const explicitRoles = roles.filter((role) => role.grantedBy !== 'leadership-inference')
+			if (explicitRoles.some((role) => role.role === 'hr_admin')) return 'hr_admin'
+			if (explicitRoles.some((role) => role.role === 'hr_reviewer')) return 'hr_reviewer'
+			if (explicitRoles.some((role) => role.role === 'hr_viewer')) return 'hr_viewer'
+			return null
+		})
+	} catch (error) {
+		// A capability decoration failure must not remove already-resolved
+		// leadership access from the page.
+		logger.warn('[Corporations] Failed to resolve explicit HR role', {
+			corporationId,
+			userId: user.id,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return null
+	}
+}
+
+/**
  * GET /corporations/:corporationId/access
  * Corp-scoped access check used by single-corporation screens.
  * Returns the corporation metadata needed for page-level gating plus the access role.
@@ -165,6 +204,7 @@ app.get('/:corporationId/access', requireAuth(), async (c) => {
 			const response: CorporationAccessScopeResponse = {
 				hasAccess: false,
 				userRole: null,
+				hrRole: null,
 				corporation: null,
 			}
 			return c.json(response)
@@ -174,10 +214,14 @@ app.get('/:corporationId/access', requireAuth(), async (c) => {
 			const userRole = await resolveCorporationMembersAccess(c, corporationId, {
 				isMemberCorporation: managedCorp.isMemberCorporation,
 			})
+			const hrRole = await resolveExplicitCorporationHrRole(c, corporationId, {
+				isMemberCorporation: managedCorp.isMemberCorporation,
+			})
 
 			const response: CorporationAccessScopeResponse = {
 				hasAccess: true,
 				userRole,
+				hrRole,
 				corporation: managedCorp,
 			}
 			return c.json(response)
@@ -189,6 +233,7 @@ app.get('/:corporationId/access', requireAuth(), async (c) => {
 			const response: CorporationAccessScopeResponse = {
 				hasAccess: false,
 				userRole: null,
+				hrRole: null,
 				corporation: managedCorp,
 			}
 			return c.json(response)

@@ -89,6 +89,7 @@ describe('corporations access route', () => {
 	}
 	let hrStub: {
 		checkPermission: ReturnType<typeof vi.fn>
+		getUserRoles: ReturnType<typeof vi.fn>
 	}
 	let corpStub: {
 		getCorporationInfo: ReturnType<typeof vi.fn>
@@ -126,6 +127,7 @@ describe('corporations access route', () => {
 		}
 		hrStub = {
 			checkPermission: vi.fn().mockResolvedValue(false),
+			getUserRoles: vi.fn().mockResolvedValue([]),
 		}
 		corpStub = {
 			getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: '1001' } as any),
@@ -149,6 +151,7 @@ describe('corporations access route', () => {
 		expect(await response.json()).toEqual({
 			hasAccess: true,
 			userRole: 'CEO',
+			hrRole: null,
 			corporation: {
 				corporationId: '1001',
 				name: 'Alpha Corp',
@@ -169,6 +172,7 @@ describe('corporations access route', () => {
 		expect(await response.json()).toEqual({
 			hasAccess: true,
 			userRole: 'admin',
+			hrRole: null,
 			corporation: {
 				corporationId: '1001',
 				name: 'Alpha Corp',
@@ -194,6 +198,7 @@ describe('corporations access route', () => {
 		expect(await response.json()).toEqual({
 			hasAccess: true,
 			userRole: 'Director',
+			hrRole: null,
 			corporation: {
 				corporationId: '1001',
 				name: 'Alpha Corp',
@@ -204,6 +209,30 @@ describe('corporations access route', () => {
 			},
 		})
 		expect(charStub.getCharacterInfo).not.toHaveBeenCalled()
+	})
+
+	it('preserves director access while exposing an explicit HR admin role', async () => {
+		corpStub.getCorporationInfo.mockResolvedValue({ ceoId: '9999' } as any)
+		corpStub.getDirectors.mockResolvedValue([{ characterId: '1001' }] as any)
+		hrStub.getUserRoles.mockResolvedValue([{ role: 'hr_admin', grantedBy: 'user-2' }])
+
+		const app = createApp(makeUser(), dbStub)
+		const response = await app.request('/api/corporations/1001/access', {}, env)
+
+		expect(response.status).toBe(200)
+		expect(await response.json()).toEqual({
+			hasAccess: true,
+			userRole: 'Director',
+			hrRole: 'hr_admin',
+			corporation: {
+				corporationId: '1001',
+				name: 'Alpha Corp',
+				ticker: 'ALP',
+				isMemberCorporation: true,
+				isAltCorp: false,
+				isSpecialPurpose: false,
+			},
+		})
 	})
 
 	it('returns HR admin access for member corporations', async () => {
@@ -218,6 +247,7 @@ describe('corporations access route', () => {
 		])
 		getCachedUserPermissionsMock.mockResolvedValue([])
 		hrStub.checkPermission.mockResolvedValue(true)
+		hrStub.getUserRoles.mockResolvedValue([{ role: 'hr_admin', grantedBy: 'user-2' }])
 
 		const app = createApp(makeUser(), dbStub)
 		const response = await app.request('/api/corporations/1001/access', {}, env)
@@ -226,6 +256,7 @@ describe('corporations access route', () => {
 		expect(await response.json()).toEqual({
 			hasAccess: true,
 			userRole: 'hr_admin',
+			hrRole: 'hr_admin',
 			corporation: {
 				corporationId: '1001',
 				name: 'Alpha Corp',
@@ -252,6 +283,7 @@ describe('corporations access route', () => {
 			async (_userId: string, _corporationId: string, requiredRole: string) =>
 				requiredRole === 'hr_viewer' || requiredRole === 'hr_reviewer'
 		)
+		hrStub.getUserRoles.mockResolvedValue([{ role: 'hr_reviewer', grantedBy: 'user-2' }])
 
 		const app = createApp(makeUser(), dbStub)
 		const response = await app.request('/api/corporations/1001/access', {}, env)
@@ -260,6 +292,7 @@ describe('corporations access route', () => {
 		expect(await response.json()).toEqual({
 			hasAccess: true,
 			userRole: 'hr_reviewer',
+			hrRole: 'hr_reviewer',
 			corporation: {
 				corporationId: '1001',
 				name: 'Alpha Corp',
@@ -291,6 +324,7 @@ describe('corporations access route', () => {
 		expect(await response.json()).toEqual({
 			hasAccess: true,
 			userRole: 'hr_viewer',
+			hrRole: null,
 			corporation: {
 				corporationId: '1001',
 				name: 'Alpha Corp',
@@ -321,6 +355,7 @@ describe('corporations access route', () => {
 		expect(await response.json()).toEqual({
 			hasAccess: false,
 			userRole: null,
+			hrRole: null,
 			corporation: {
 				corporationId: '1001',
 				name: 'Alpha Corp',
@@ -343,6 +378,7 @@ describe('corporations access route', () => {
 		expect(await response.json()).toEqual({
 			hasAccess: false,
 			userRole: null,
+			hrRole: null,
 			corporation: null,
 		})
 		expect(corpStub.getCorporationInfo).not.toHaveBeenCalled()

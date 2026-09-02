@@ -78,6 +78,7 @@ export default function HrRolesManagement() {
 		canAccess,
 		isLoading: accessLoading,
 		userRole,
+		hrRole,
 		corporation: accessCorp,
 	} = useCanAccessCorporation(corporationId!)
 	const { data: corporation, isLoading: corpLoading } = useMyCorporation(corporationId!)
@@ -112,9 +113,9 @@ export default function HrRolesManagement() {
 	// Check if current user can manage HR roles (CEO, site admin, or HR admin)
 	const canManageHrRoles = useMemo(() => {
 		return (
-			isMemberCorporation && (userRole === 'CEO' || userRole === 'admin' || userRole === 'hr_admin')
+			isMemberCorporation && (userRole === 'CEO' || userRole === 'admin' || hrRole === 'hr_admin')
 		)
-	}, [isMemberCorporation, userRole])
+	}, [isMemberCorporation, hrRole, userRole])
 	const canRevokeHrAdmin = useMemo(
 		() => isMemberCorporation && (userRole === 'CEO' || userRole === 'admin'),
 		[isMemberCorporation, userRole]
@@ -441,10 +442,15 @@ export default function HrRolesManagement() {
 							Manage HR roles for {corp?.name || 'this corporation'}
 							{corp?.ticker && ` [${corp.ticker}]`}
 						</p>
-						{userRole && (
+						{(userRole || hrRole) && (
 							<p className="text-sm text-muted-foreground mt-1">
 								Your role:{' '}
-								<span className="font-medium">{formatCorporationRoleLabel(userRole)}</span>
+								<span className="font-medium">
+									{[userRole, hrRole]
+										.filter((role, index, roles) => role !== null && roles.indexOf(role) === index)
+										.map((role) => formatCorporationRoleLabel(role))
+										.join(' / ')}
+								</span>
 							</p>
 						)}
 					</div>

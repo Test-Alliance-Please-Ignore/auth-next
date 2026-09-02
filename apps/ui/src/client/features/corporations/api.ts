@@ -202,6 +202,7 @@ export interface CorporationCoverageResult {
 export interface CorporationScopedAccessResult {
 	hasAccess: boolean
 	userRole: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer' | null
+	hrRole: 'hr_admin' | 'hr_reviewer' | 'hr_viewer' | null
 	corporation: Pick<
 		ManagedCorporation,
 		'corporationId' | 'name' | 'ticker' | 'isMemberCorporation' | 'isAltCorp' | 'isSpecialPurpose'

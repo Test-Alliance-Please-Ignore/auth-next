@@ -331,6 +331,7 @@ export function useCanAccessCorporation(corporationId: string) {
 	const canAccess = access?.hasAccess ?? false
 	const corporation = access?.corporation ?? undefined
 	const userRole = access?.userRole ?? undefined
+	const hrRole = access?.hrRole ?? undefined
 
-	return { canAccess, userRole, corporation, isLoading, isFetching }
+	return { canAccess, userRole, hrRole, corporation, isLoading, isFetching }
 }
