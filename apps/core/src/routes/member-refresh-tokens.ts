@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 
-import { and, eq, or } from '@repo/db-utils'
+import { and, eq, notInArray, or, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -18,19 +18,11 @@ const CORPORATION_CONCURRENCY = 4
 
 type Candidate = {
 	characterId: string
-	characterName: string
-	userId: string
-	role: 'director' | 'member'
 }
 
 type Corporation = {
 	corporationId: string
 	name: string
-}
-
-type CorporationCandidates = {
-	corporation: Corporation
-	candidates: Candidate[]
 }
 
 type Database = ReturnType<typeof createDb>
@@ -118,30 +110,30 @@ async function findEligibleCorporations(
 	})) as Corporation[]
 }
 
-function shuffleCandidates(
-	characters: Array<{ characterId: string; characterName: string; userId: string }>,
-	directorIds: Set<string>
-): Candidate[] {
-	const uniqueCharacters = [
-		...new Map(characters.map((character) => [character.characterId, character])).values(),
+async function findRandomCandidates(
+	database: Database,
+	corporationId: string,
+	excludedCharacterIds: readonly string[],
+	limit: number
+): Promise<Candidate[]> {
+	const conditions = [
+		eq(userCharacters.corporationId, corporationId),
+		eq(userCharacters.isDeleted, false),
+		eq(userCharacters.status, 'active'),
+		eq(userCharacters.hasValidToken, true),
 	]
-	const candidates = uniqueCharacters.map((character) => ({
-		characterId: character.characterId,
-		characterName: character.characterName,
-		userId: character.userId,
-		role: directorIds.has(character.characterId) ? ('director' as const) : ('member' as const),
-	}))
-
-	for (let index = candidates.length - 1; index > 0; index -= 1) {
-		const random = new Uint32Array(1)
-		crypto.getRandomValues(random)
-		const swapIndex = random[0] % (index + 1)
-		const current = candidates[index]
-		candidates[index] = candidates[swapIndex]
-		candidates[swapIndex] = current
+	if (excludedCharacterIds.length > 0) {
+		conditions.push(notInArray(userCharacters.characterId, [...excludedCharacterIds]))
 	}
 
-	return candidates
+	return (await database.query.userCharacters.findMany({
+		where: and(...conditions),
+		columns: {
+			characterId: true,
+		},
+		orderBy: sql`random()`,
+		limit,
+	})) as Candidate[]
 }
 
 async function mapWithConcurrency<T, R>(
@@ -165,25 +157,36 @@ async function mapWithConcurrency<T, R>(
 }
 
 async function resolveCorporationTokens(
+	database: Database,
 	tokenStore: EveTokenStore,
 	corporationData: EveCorporationData,
 	corporationId: string,
-	candidates: readonly Candidate[],
 	count: number
 ): Promise<Array<Candidate & DecryptedAccessToken>> {
 	const selected: Array<Candidate & DecryptedAccessToken> = []
+	const attemptedCharacterIds = new Set<string>()
 
-	// Process shuffled candidates in bounded batches. A token-store failure for
-	// one character is represented by an omitted result, so later candidates
-	// continue filling the requested count.
-	for (let offset = 0; offset < candidates.length && selected.length < count; ) {
+	// Let PostgreSQL choose a bounded random batch. Candidates that are no longer
+	// members or cannot produce an access token are excluded from replacements.
+	while (selected.length < count) {
 		const remaining = count - selected.length
-		const batch = candidates.slice(offset, offset + Math.min(TOKEN_BATCH_SIZE, remaining))
-		offset += batch.length
-		const membershipByCharacterId = await corporationData.getCorporationIdsByCharacterIds(
-			batch.map((candidate) => candidate.characterId)
+		const batch = await findRandomCandidates(
+			database,
+			corporationId,
+			[...attemptedCharacterIds],
+			Math.min(TOKEN_BATCH_SIZE, remaining)
 		)
-		const currentMemberCandidates = batch.filter(
+		if (batch.length === 0) break
+		const freshBatch = batch.filter(
+			(candidate) => !attemptedCharacterIds.has(candidate.characterId)
+		)
+		if (freshBatch.length === 0) break
+		for (const candidate of freshBatch) attemptedCharacterIds.add(candidate.characterId)
+
+		const membershipByCharacterId = await corporationData.getCorporationIdsByCharacterIds(
+			freshBatch.map((candidate) => candidate.characterId)
+		)
+		const currentMemberCandidates = freshBatch.filter(
 			(candidate) => membershipByCharacterId[candidate.characterId] === corporationId
 		)
 		if (currentMemberCandidates.length === 0) continue
@@ -248,13 +251,16 @@ app.get('/', async (c) => {
 	const corporations = await findEligibleCorporations(database, parsed.ids)
 
 	const tokenStore = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
-	const corporationCandidates = await mapWithConcurrency(
+	const resolvedCorporations = await mapWithConcurrency(
 		corporations as Corporation[],
 		CORPORATION_CONCURRENCY,
 		async (
 			corporation
 		): Promise<
-			| { result: CorporationCandidates; error: null }
+			| {
+					result: { corporation: Corporation; candidates: Array<Candidate & DecryptedAccessToken> }
+					error: null
+			  }
 			| { result: null; error: { corporationId: string; error: string } }
 		> => {
 			try {
@@ -262,39 +268,22 @@ app.get('/', async (c) => {
 					c.env.EVE_CORPORATION_DATA,
 					corporation.corporationId
 				)
-				const [characters, directors] = await Promise.all([
-					database.query.userCharacters.findMany({
-						where: and(
-							eq(userCharacters.corporationId, corporation.corporationId),
-							eq(userCharacters.isDeleted, false),
-							eq(userCharacters.status, 'active'),
-							eq(userCharacters.hasValidToken, true)
-						),
-						columns: {
-							characterId: true,
-							characterName: true,
-							userId: true,
-							hasValidToken: true,
-						},
-					}),
-					corporationData.getDirectors(corporation.corporationId),
-				])
-
-				const directorIds = new Set(directors.map((director) => director.characterId))
-				const candidates = shuffleCandidates(
-					characters.filter((character) => character.hasValidToken === true),
-					directorIds
+				const tokens = await resolveCorporationTokens(
+					database,
+					tokenStore,
+					corporationData,
+					corporation.corporationId,
+					requestedCount.count
 				)
-
 				return {
 					result: {
 						corporation,
-						candidates,
+						candidates: tokens,
 					},
 					error: null,
 				}
 			} catch (error) {
-				logger.error('[MemberAccessTokenExport] Failed to load corporation candidates', {
+				logger.error('[MemberAccessTokenExport] Failed to resolve corporation access tokens', {
 					corporationId: corporation.corporationId,
 					error: error instanceof Error ? error.message : String(error),
 				})
@@ -302,45 +291,6 @@ app.get('/', async (c) => {
 					result: null,
 					error: {
 						corporationId: corporation.corporationId,
-						error: 'Unable to retrieve access tokens for this corporation',
-					},
-				}
-			}
-		}
-	)
-	const resolvedCorporations = await mapWithConcurrency(
-		corporationCandidates,
-		CORPORATION_CONCURRENCY,
-		async (entry) => {
-			if (!entry.result) return entry
-			const corporationData = getStub<EveCorporationData>(
-				c.env.EVE_CORPORATION_DATA,
-				entry.result.corporation.corporationId
-			)
-			try {
-				const tokens = await resolveCorporationTokens(
-					tokenStore,
-					corporationData,
-					entry.result.corporation.corporationId,
-					entry.result.candidates,
-					requestedCount.count
-				)
-				return {
-					result: {
-						corporation: entry.result.corporation,
-						candidates: tokens,
-					},
-					error: null,
-				}
-			} catch (error) {
-				logger.error('[MemberAccessTokenExport] Failed to resolve corporation access tokens', {
-					corporationId: entry.result.corporation.corporationId,
-					error: error instanceof Error ? error.message : String(error),
-				})
-				return {
-					result: null,
-					error: {
-						corporationId: entry.result.corporation.corporationId,
 						error: 'Unable to retrieve access tokens for this corporation',
 					},
 				}
