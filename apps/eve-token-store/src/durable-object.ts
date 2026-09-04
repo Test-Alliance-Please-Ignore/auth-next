@@ -35,6 +35,7 @@ import type {
 	EveTokenResponse,
 	EveTokenStore,
 	EveVerifyResponse,
+	IntegrationAccessTokenOptions,
 	PublicDataVerifyResult,
 	TokenInfo,
 	TokenRefreshResult,
@@ -937,7 +938,10 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * internal integration. This reuses the warm cache and demand-driven refresh
 	 * path so plaintext refresh tokens never leave the token-store domain.
 	 */
-	async getAccessTokensForIntegration(characterIds: string[]): Promise<DecryptedAccessToken[]> {
+	async getAccessTokensForIntegration(
+		characterIds: string[],
+		options: IntegrationAccessTokenOptions = {}
+	): Promise<DecryptedAccessToken[]> {
 		const uniqueCharacterIds = [...new Set(characterIds.map((characterId) => String(characterId)))]
 		if (uniqueCharacterIds.length === 0) return []
 		if (uniqueCharacterIds.length > 100) {
@@ -962,7 +966,7 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 			eligibleCharacterIds,
 			ACCESS_TOKEN_INTEGRATION_CONCURRENCY,
 			async (characterId) => {
-				const result = await this.getAccessTokenResult(characterId)
+				const result = await this.getAccessTokenResult(characterId, options)
 				if (result.status !== 'ok') return null
 				return {
 					characterId,
@@ -1327,14 +1331,19 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 	 * Internal access-token lookup that preserves retryable refresh failures so
 	 * authenticated callers can distinguish transient outages from hard auth loss.
 	 */
-	private async getAccessTokenResult(characterId: string): Promise<AccessTokenLookupResult> {
+	private async getAccessTokenResult(
+		characterId: string,
+		options: IntegrationAccessTokenOptions = {}
+	): Promise<AccessTokenLookupResult> {
 		try {
-			const warmAccessToken = await this.getWarmAccessToken(characterId)
-			if (warmAccessToken) {
-				return {
-					status: 'ok',
-					accessToken: warmAccessToken.accessToken,
-					expiresAt: warmAccessToken.expiresAt,
+			if (!options.forceRefresh) {
+				const warmAccessToken = await this.getWarmAccessToken(characterId)
+				if (warmAccessToken) {
+					return {
+						status: 'ok',
+						accessToken: warmAccessToken.accessToken,
+						expiresAt: warmAccessToken.expiresAt,
+					}
 				}
 			}
 
@@ -1373,10 +1382,9 @@ export class EveTokenStoreDO extends DurableObject<Env> implements EveTokenStore
 
 			// Check if token is expired
 			const now = new Date()
-			const requiresRefresh = !isWarmAccessTokenUsable(
-				tokenRecord.expiresAt.getTime(),
-				now.getTime()
-			)
+			const requiresRefresh =
+				options.forceRefresh ||
+				!isWarmAccessTokenUsable(tokenRecord.expiresAt.getTime(), now.getTime())
 
 			if (requiresRefresh) {
 				if (!tokenRecord.refreshToken) {

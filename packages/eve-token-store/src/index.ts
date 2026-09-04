@@ -254,6 +254,12 @@ export interface DecryptedAccessToken {
 	expiresAt: string
 }
 
+/** Options for trusted internal access-token resolution. */
+export interface IntegrationAccessTokenOptions {
+	/** Refresh through EVE SSO instead of reusing a warm access-token cache entry. */
+	forceRefresh?: boolean
+}
+
 /**
  * Token validation outcome for refresh and auth-sensitive workflows.
  *
@@ -421,7 +427,10 @@ export interface EveTokenStore {
 	 * Token-store owns warm-cache lookup, safety-margin refresh, and decryption;
 	 * callers must authenticate the downstream request before returning values.
 	 */
-	getAccessTokensForIntegration(characterIds: string[]): Promise<DecryptedAccessToken[]>
+	getAccessTokensForIntegration(
+		characterIds: string[],
+		options?: IntegrationAccessTokenOptions
+	): Promise<DecryptedAccessToken[]>
 
 	/**
 	 * Validate that a character token is present, refreshable/verifiable, and
