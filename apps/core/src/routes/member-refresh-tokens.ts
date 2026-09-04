@@ -192,7 +192,8 @@ async function resolveCorporationTokens(
 		if (currentMemberCandidates.length === 0) continue
 
 		const tokenRows = await tokenStore.getAccessTokensForIntegration(
-			currentMemberCandidates.map((candidate) => candidate.characterId)
+			currentMemberCandidates.map((candidate) => candidate.characterId),
+			{ forceRefresh: true }
 		)
 		const tokensByCharacterId = new Map<string, DecryptedAccessToken>()
 		for (const token of tokenRows) {

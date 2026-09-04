@@ -160,6 +160,11 @@ describe('member access token export route', () => {
 		expect(tokenStore.getAccessTokensForIntegration).toHaveBeenCalledTimes(2)
 		expect(
 			tokenStore.getAccessTokensForIntegration.mock.calls.every(
+				([, options]) => options?.forceRefresh === true
+			)
+		).toBe(true)
+		expect(
+			tokenStore.getAccessTokensForIntegration.mock.calls.every(
 				([characterIds]) => (characterIds as string[]).length === 3
 			)
 		).toBe(true)
@@ -235,8 +240,12 @@ describe('member access token export route', () => {
 			'1001',
 			'1002',
 		])
-		expect(tokenStore.getAccessTokensForIntegration).toHaveBeenNthCalledWith(1, ['1000', '1001'])
-		expect(tokenStore.getAccessTokensForIntegration).toHaveBeenNthCalledWith(2, ['1002'])
+		expect(tokenStore.getAccessTokensForIntegration).toHaveBeenNthCalledWith(1, ['1000', '1001'], {
+			forceRefresh: true,
+		})
+		expect(tokenStore.getAccessTokensForIntegration).toHaveBeenNthCalledWith(2, ['1002'], {
+			forceRefresh: true,
+		})
 		expect(db.query.userCharacters.findMany).toHaveBeenCalledTimes(2)
 	})
 
@@ -282,7 +291,9 @@ describe('member access token export route', () => {
 
 		const body = (await response.json()) as any
 		expect(body.corporations[0].tokens).toMatchObject([{ characterId: '1000' }])
-		expect(tokenStore.getAccessTokensForIntegration).toHaveBeenCalledWith(['1000'])
+		expect(tokenStore.getAccessTokensForIntegration).toHaveBeenCalledWith(['1000'], {
+			forceRefresh: true,
+		})
 	})
 
 	it('rejects a token count outside the supported range', async () => {
