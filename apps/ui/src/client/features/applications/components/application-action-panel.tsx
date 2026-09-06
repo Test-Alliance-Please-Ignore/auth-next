@@ -85,6 +85,8 @@ export function ApplicationActionPanel({
 	const canAccept = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
 	const canComplete = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
 	const canReject = userRole && ['hr_admin', 'hr_reviewer'].includes(userRole)
+	const roleValue: string | null = userRole
+	const isViewer = roleValue === 'hr_viewer'
 
 	// Handle template selection - confirm if text already exists
 	const handleSelectTemplate = (template: MessageTemplate) => {
@@ -331,9 +333,10 @@ export function ApplicationActionPanel({
 						</Button>
 					)}
 
-					{/* Accept - Admin Only */}
+					{/* Accept - Reviewer or Admin */}
 					{canAccept && (
-						<Button variant="confirm"
+						<Button
+							variant="confirm"
 							onClick={handleAcceptClick}
 							disabled={
 								disabled ||
@@ -364,9 +367,10 @@ export function ApplicationActionPanel({
 						</Button>
 					)}
 
-					{/* Reject - Admin Only */}
+					{/* Reject - Reviewer or Admin */}
 					{canReject && (
-						<Button variant="destructive"
+						<Button
+							variant="destructive"
 							onClick={handleRejectClick}
 							disabled={disabled || updateStatusMutation.isPending}
 							className="flex-1"
@@ -379,10 +383,11 @@ export function ApplicationActionPanel({
 				{/* Role Information */}
 				<div className="pt-4 border-t">
 					<p className="text-xs text-muted-foreground">
-						<strong>Your Role:</strong> {userRole === 'hr_admin' ? 'HR Admin' : 'HR Reviewer'}
-						{userRole === 'hr_reviewer' && (
+						<strong>Your Role:</strong>{' '}
+						{userRole === 'hr_admin' ? 'HR Admin' : isViewer ? 'HR Viewer' : 'HR Reviewer'}
+						{isViewer && (
 							<span className="block mt-1">
-								Note: Only HR Admins can accept or reject applications.
+								Only HR reviewers and HR admins can change application statuses.
 							</span>
 						)}
 					</p>
@@ -408,7 +413,8 @@ export function ApplicationActionPanel({
 						>
 							Cancel
 						</Button>
-						<Button variant="confirm"
+						<Button
+							variant="confirm"
 							onClick={handleAcceptConfirm}
 							loading={updateStatusMutation.isPending}
 							loadingText="Accepting..."
@@ -442,7 +448,8 @@ export function ApplicationActionPanel({
 						>
 							Cancel
 						</Button>
-						<Button variant="destructive"
+						<Button
+							variant="destructive"
 							onClick={handleRejectConfirm}
 							loading={updateStatusMutation.isPending}
 							loadingText="Rejecting..."
