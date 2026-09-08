@@ -71,12 +71,16 @@ export default function HrAuditorUsersPage() {
 		)
 	}
 
-	if (!isGlobalHrSearchUser && hrCorporations.length === 0) {
+	const hasMemberCorporationHrAccess = hrCorporations.some(
+		(corporation) => corporation.isMemberCorporation
+	)
+
+	if (!isGlobalHrSearchUser && !hasMemberCorporationHrAccess) {
 		return (
 			<Container>
 				<AccessDeniedCard
 					title="HR Access Required"
-					message="User Search requires an active HR role for at least one accessible corporation."
+					message="User Search requires HR access for at least one active member corporation."
 					backHref="/dashboard"
 					backLabel="Back to Dashboard"
 				/>

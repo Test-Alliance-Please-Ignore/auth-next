@@ -383,7 +383,7 @@ describe('hr route access matrix', () => {
 		expect(await res.json()).toEqual({ hasPermission: true, currentRole: 'hr_admin' })
 	})
 
-	it('returns all active corporations as hr_viewer for auditor on /corporations', async () => {
+	it('returns only active member corporations as hr_viewer for auditor on /corporations', async () => {
 		getCachedUserPermissionsMock.mockResolvedValue([
 			{
 				permissionId: 'perm-auditor',
@@ -411,28 +411,10 @@ describe('hr route access matrix', () => {
 				isSpecialPurpose: false,
 				currentRole: 'hr_viewer',
 			},
-			{
-				corporationId: '2001',
-				name: 'Bravo Corp',
-				ticker: 'BRV',
-				isMemberCorporation: false,
-				isAltCorp: true,
-				isSpecialPurpose: false,
-				currentRole: 'hr_viewer',
-			},
-			{
-				corporationId: '3001',
-				name: 'Charlie Corp',
-				ticker: 'CHR',
-				isMemberCorporation: false,
-				isAltCorp: false,
-				isSpecialPurpose: true,
-				currentRole: 'hr_viewer',
-			},
 		])
 	})
 
-	it('returns all active corporations as hr_admin for site admin on /corporations', async () => {
+	it('returns only active member corporations as hr_admin for site admin on /corporations', async () => {
 		const app = createApp({ user: makeUser({ is_admin: true }), db: dbStub })
 		const res = await app.request('/api/hr/corporations', {}, env)
 
@@ -445,24 +427,6 @@ describe('hr route access matrix', () => {
 				isMemberCorporation: true,
 				isAltCorp: false,
 				isSpecialPurpose: false,
-				currentRole: 'hr_admin',
-			},
-			{
-				corporationId: '2001',
-				name: 'Bravo Corp',
-				ticker: 'BRV',
-				isMemberCorporation: false,
-				isAltCorp: true,
-				isSpecialPurpose: false,
-				currentRole: 'hr_admin',
-			},
-			{
-				corporationId: '3001',
-				name: 'Charlie Corp',
-				ticker: 'CHR',
-				isMemberCorporation: false,
-				isAltCorp: false,
-				isSpecialPurpose: true,
 				currentRole: 'hr_admin',
 			},
 		])
@@ -530,24 +494,6 @@ describe('hr route access matrix', () => {
 				isAltCorp: false,
 				isSpecialPurpose: false,
 				currentRole: 'hr_viewer',
-			},
-			{
-				corporationId: '2001',
-				name: 'Bravo Corp',
-				ticker: 'BRV',
-				isMemberCorporation: false,
-				isAltCorp: true,
-				isSpecialPurpose: false,
-				currentRole: 'hr_reviewer',
-			},
-			{
-				corporationId: '3001',
-				name: 'Charlie Corp',
-				ticker: 'CHR',
-				isMemberCorporation: false,
-				isAltCorp: false,
-				isSpecialPurpose: true,
-				currentRole: 'hr_admin',
 			},
 		])
 		expect(hrStub.getUserRoles).toHaveBeenCalledTimes(1)
@@ -1228,6 +1174,25 @@ describe('hr route access matrix', () => {
 	})
 
 	it('denies HR user search without HR access', async () => {
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/users/search?search=pilot', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(searchUsersForHrAccessMock).not.toHaveBeenCalled()
+	})
+
+	it('denies HR user search when access exists only for non-member corporations', async () => {
+		hrStub.getUserHrCorporations.mockResolvedValue(['2001', '3001'])
+		dbStub.query.managedCorporations.findMany.mockResolvedValueOnce([
+			{
+				corporationId: '1001',
+				name: 'Alpha Corp',
+				ticker: 'ALP',
+				isMemberCorporation: true,
+				isAltCorp: false,
+				isSpecialPurpose: false,
+			},
+		])
 		const app = createApp({ user: makeUser(), db: dbStub })
 		const res = await app.request('/api/hr/users/search?search=pilot', {}, env)
 
