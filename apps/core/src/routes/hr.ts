@@ -499,6 +499,24 @@ async function hasExplicitMemberCorpHrAccess(c: Context<App>): Promise<boolean> 
 	)
 }
 
+/**
+ * User search is a member-corporation surface. The HR service also reports
+ * inferred leadership access for alt and special-purpose corporations, so
+ * filter its corporation list against the active member-corporation set.
+ */
+async function hasMemberCorporationHrAccess(c: Context<App>): Promise<boolean> {
+	const user = c.get('user')!
+	const memberCorporationIds = new Set(await getActiveMemberCorporationIds(c))
+	if (memberCorporationIds.size === 0) {
+		return false
+	}
+
+	const corporationIds = await withRpcResult(getHrStub(c).getUserHrCorporations(user.id), (ids) => [
+		...new Set(ids),
+	])
+	return corporationIds.some((corporationId) => memberCorporationIds.has(corporationId))
+}
+
 async function hasHrAuditorPermission(c: Context<App>): Promise<boolean> {
 	const user = c.get('user')!
 	return hasHrAuditorPermissionForUser({
@@ -1810,11 +1828,7 @@ app.get('/corporations', requireAuth(), async (c) => {
 			const corporations = await db.query.managedCorporations.findMany({
 				where: and(
 					eq(managedCorporations.isActive, true),
-					or(
-						eq(managedCorporations.isMemberCorporation, true),
-						eq(managedCorporations.isAltCorp, true),
-						eq(managedCorporations.isSpecialPurpose, true)
-					)
+					eq(managedCorporations.isMemberCorporation, true)
 				),
 				columns: {
 					corporationId: true,
@@ -1825,7 +1839,7 @@ app.get('/corporations', requireAuth(), async (c) => {
 					isSpecialPurpose: true,
 				},
 			})
-			return corporations
+			return corporations.filter((corporation) => corporation.isMemberCorporation)
 		}
 
 		if (user.is_admin) {
@@ -1867,7 +1881,11 @@ app.get('/corporations', requireAuth(), async (c) => {
 		const corporationMap = new Map(
 			(
 				await db.query.managedCorporations.findMany({
-					where: inArray(managedCorporations.corporationId, [...new Set(corporationIds)]),
+					where: and(
+						eq(managedCorporations.isActive, true),
+						eq(managedCorporations.isMemberCorporation, true),
+						inArray(managedCorporations.corporationId, [...new Set(corporationIds)])
+					),
 					columns: {
 						corporationId: true,
 						name: true,
@@ -1877,10 +1895,11 @@ app.get('/corporations', requireAuth(), async (c) => {
 						isSpecialPurpose: true,
 					},
 				})
-			).map((corp) => [corp.corporationId, corp])
+			)
+				.filter((corp) => corp.isMemberCorporation)
+				.map((corp) => [corp.corporationId, corp])
 		)
-		// Keep all active managed corporations that the HR service says the user can access.
-		// That includes inferred CEO/director leadership access for alt/special purpose corps.
+		// Keep only active member corporations that the HR service says the user can access.
 		const uniqueCorporationIds = [...new Set(corporationIds)].filter((corporationId) =>
 			corporationMap.has(corporationId)
 		)
@@ -2638,7 +2657,8 @@ app.delete('/:corporationId/roles/:roleId', requireAuth(), async (c) => {
 /**
  * GET /api/hr/users/search
  * Search the surface-level user directory for an authenticated HR user.
- * HR access is required, but results are intentionally not corporation-scoped.
+ * Access requires HR/leadership access to an active member corporation, but
+ * results are intentionally not corporation-scoped.
  */
 app.get('/users/search', requireAuth(), async (c) => {
 	const user = c.get('user')!
@@ -2662,11 +2682,7 @@ app.get('/users/search', requireAuth(), async (c) => {
 		const hasGlobalHrSearchAccess =
 			user.is_admin || (await hasHrAuditorPermissionForUser({ env: c.env, userId: user.id }))
 		if (!hasGlobalHrSearchAccess) {
-			const corporationIds = await withRpcResult(
-				getHrStub(c).getUserHrCorporations(user.id),
-				(ids) => [...new Set(ids)]
-			)
-			if (corporationIds.length === 0) return c.json({ error: 'Forbidden' }, 403)
+			if (!(await hasMemberCorporationHrAccess(c))) return c.json({ error: 'Forbidden' }, 403)
 		}
 		const result = await new CoreRpcService(db, c.env).searchUsersForHrAccess({
 			search,

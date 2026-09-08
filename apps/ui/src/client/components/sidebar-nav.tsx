@@ -78,6 +78,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const { data: leadershipCorporationAccess } = useCorporationAccess()
 	const { permissions, hasAnyPermission } = useUserPermissions()
 	const isSiteAdmin = user?.is_admin === true
+	const isAuditor = hasAnyPermission('urn:hr:auditor')
 	const isAllianceMember = user?.roles?.includes(ROLE_CORE_ALLIANCE_MEMBER) ?? false
 	const canSeeAllianceMemberNav = isSiteAdmin || isAllianceMember
 	const { data: hrCorporations } = useHrAccessibleCorporations({
@@ -266,7 +267,6 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			})
 		}
 
-		const isAuditor = hasAnyPermission('urn:hr:auditor')
 		const hasCorporationModuleAccess =
 			(corporationAccess?.hasAccess ?? false) || (hrCorporations?.length ?? 0) > 0 || isAuditor
 		const canSeeLegacyApplications =
@@ -290,7 +290,9 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		}
 
 		const canUseCorporationUserSearch =
-			isAuditor || isSiteAdmin || (hrCorporations?.length ?? 0) > 0
+			isAuditor ||
+			isSiteAdmin ||
+			(hrCorporations?.some((corporation) => corporation.isMemberCorporation) ?? false)
 		if (canSeeAllianceMemberNav && canUseCorporationUserSearch) {
 			hrItems.push({
 				label: 'User Search',
