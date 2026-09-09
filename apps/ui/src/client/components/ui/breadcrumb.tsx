@@ -2,12 +2,17 @@ import { ChevronRight } from 'lucide-react'
 import * as React from 'react'
 import { Link } from 'react-router'
 
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 const Breadcrumb = React.forwardRef<HTMLElement, React.ComponentPropsWithoutRef<'nav'>>(
-	({ className, ...props }, ref) => (
-		<nav ref={ref} aria-label="breadcrumb" className={cn('', className)} {...props} />
-	)
+	({ className, ...props }, ref) => {
+		const { t } = useAppTranslation()
+
+		return (
+			<nav ref={ref} aria-label={t('common.breadcrumb')} className={cn('', className)} {...props} />
+		)
+	}
 )
 Breadcrumb.displayName = 'Breadcrumb'
 
@@ -76,16 +81,20 @@ const BreadcrumbSeparator = ({ children, className, ...props }: React.ComponentP
 )
 BreadcrumbSeparator.displayName = 'BreadcrumbSeparator'
 
-const BreadcrumbEllipsis = ({ className, ...props }: React.ComponentProps<'span'>) => (
-	<span
-		role="presentation"
-		aria-hidden="true"
-		className={cn('flex h-9 w-9 items-center justify-center', className)}
-		{...props}
-	>
-		<span className="sr-only">More</span>⋯
-	</span>
-)
+const BreadcrumbEllipsis = ({ className, ...props }: React.ComponentProps<'span'>) => {
+	const { t } = useAppTranslation()
+
+	return (
+		<span
+			role="presentation"
+			aria-hidden="true"
+			className={cn('flex h-9 w-9 items-center justify-center', className)}
+			{...props}
+		>
+			<span className="sr-only">{t('common.more')}</span>⋯
+		</span>
+	)
+}
 BreadcrumbEllipsis.displayName = 'BreadcrumbEllipsis'
 
 export {

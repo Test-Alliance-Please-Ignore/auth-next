@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import * as React from 'react'
 
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 export const popoverListScrollButtonClass =
@@ -24,6 +25,8 @@ export function PopoverListScrollButton({
 	visible = true,
 	className,
 }: PopoverListScrollButtonProps) {
+	const { t } = useAppTranslation()
+
 	return (
 		<button
 			type="button"
@@ -37,7 +40,7 @@ export function PopoverListScrollButton({
 			)}
 			onMouseDown={(e) => e.preventDefault()}
 			onClick={onClick}
-			aria-label={direction === 'up' ? 'Scroll up' : 'Scroll down'}
+			aria-label={direction === 'up' ? t('common.scrollUp') : t('common.scrollDown')}
 			aria-hidden={!visible}
 			tabIndex={visible ? 0 : -1}
 		>

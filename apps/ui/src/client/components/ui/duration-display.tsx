@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 
+import { useNowMs } from '@/hooks/useNowMs'
+import { useAppTranslation } from '@/i18n'
 import { formatDateTimeWithZone, formatUtcDateTime } from '@/lib/date-utils'
 import { formatDurationUntil } from '@/lib/duration-utils'
-import { useNowMs } from '@/hooks/useNowMs'
 import { cn } from '@/lib/utils'
 
 import { Popover, PopoverAnchor, PopoverContent } from './popover'
@@ -24,6 +25,7 @@ function DurationDisplayContent({
 	maxUnits = 3,
 	referenceTimeMs,
 }: DurationDisplayProps & { referenceTimeMs: number }) {
+	const { t } = useAppTranslation()
 	const [open, setOpen] = useState(false)
 	const closeTimeoutRef = useRef<number | null>(null)
 
@@ -47,14 +49,14 @@ function DurationDisplayContent({
 	}
 
 	const formattedDuration = formatDurationUntil(endDate, {
-		expiredLabel: 'Expired',
+		expiredLabel: t('duration.expired'),
 		maxUnits,
 		style: durationStyle,
 		referenceTimeMs,
 	})
 
 	const formattedVisible =
-		format === 'full' ? `${formattedDuration} remaining` : formattedDuration
+		format === 'full' ? t('duration.remaining', { duration: formattedDuration }) : formattedDuration
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
@@ -78,11 +80,15 @@ function DurationDisplayContent({
 			>
 				<div className="space-y-3">
 					<div className="space-y-1">
-						<p className="text-[11px] uppercase tracking-wide text-muted-foreground">Local Time</p>
+						<p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+							{t('duration.localTime')}
+						</p>
 						<p className="text-sm">{formatDateTimeWithZone(endDate)}</p>
 					</div>
 					<div className="space-y-1">
-						<p className="text-[11px] uppercase tracking-wide text-muted-foreground">EVE Time</p>
+						<p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+							{t('duration.eveTime')}
+						</p>
 						<p className="text-sm">{formatUtcDateTime(endDate)}</p>
 					</div>
 				</div>

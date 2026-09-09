@@ -21,6 +21,14 @@ export const commonCatalog = defineCatalog(
 			scrollDown: 'Scroll down',
 			noAdditionalContext: 'No additional context available.',
 			notAvailable: 'N/A',
+			breadcrumb: 'Breadcrumb',
+			more: 'More',
+			unknownLocation: 'Unknown location',
+			regionSuffix: ' (Region)',
+			locationType: {
+				structure: 'Structure',
+				system: 'System',
+			},
 			esiStatus: {
 				valid: 'ESI Valid',
 				invalid: 'ESI Invalid',
@@ -46,8 +54,8 @@ export const commonCatalog = defineCatalog(
 			noLocations: 'No locations found',
 		},
 		currency: {
-			point: '{{value}} point',
-			points: '{{value}} points',
+			points_one: '{{value}} point',
+			points_other: '{{value}} points',
 		},
 		duration: {
 			units: {
@@ -106,6 +114,14 @@ export const commonCatalog = defineCatalog(
 			scrollDown: 'Nach unten scrollen',
 			noAdditionalContext: 'Keine zusätzlichen Informationen verfügbar.',
 			notAvailable: 'k. A.',
+			breadcrumb: 'Navigationspfad',
+			more: 'Mehr',
+			unknownLocation: 'Unbekannter Ort',
+			regionSuffix: ' (Region)',
+			locationType: {
+				structure: 'Struktur',
+				system: 'System',
+			},
 			esiStatus: {
 				valid: 'ESI gültig',
 				invalid: 'ESI ungültig',
@@ -131,8 +147,8 @@ export const commonCatalog = defineCatalog(
 			noLocations: 'Keine Orte gefunden',
 		},
 		currency: {
-			point: '{{value}} Punkt',
-			points: '{{value}} Punkte',
+			points_one: '{{value}} Punkt',
+			points_other: '{{value}} Punkte',
 		},
 		duration: {
 			units: {
@@ -191,6 +207,14 @@ export const commonCatalog = defineCatalog(
 			scrollDown: '아래로 스크롤',
 			noAdditionalContext: '추가 정보를 사용할 수 없습니다.',
 			notAvailable: '해당 없음',
+			breadcrumb: '이동 경로',
+			more: '더 보기',
+			unknownLocation: '알 수 없는 위치',
+			regionSuffix: ' (지역)',
+			locationType: {
+				structure: '구조물',
+				system: '성계',
+			},
 			esiStatus: {
 				valid: 'ESI 유효',
 				invalid: 'ESI 무효',
@@ -216,8 +240,8 @@ export const commonCatalog = defineCatalog(
 			noLocations: '위치를 찾을 수 없습니다',
 		},
 		currency: {
-			point: '{{value}}포인트',
-			points: '{{value}}포인트',
+			points_one: '{{value}}포인트',
+			points_other: '{{value}}포인트',
 		},
 		duration: {
 			units: {

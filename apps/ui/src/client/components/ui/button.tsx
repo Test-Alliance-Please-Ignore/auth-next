@@ -3,6 +3,7 @@ import { cva } from 'class-variance-authority'
 import { AlertTriangle, Check, CheckCircle, Loader2, X } from 'lucide-react'
 import * as React from 'react'
 
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import type { VariantProps } from 'class-variance-authority'
@@ -140,6 +141,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 		},
 		ref
 	) => {
+		const { t } = useAppTranslation()
 		const isDisabled = disabled || loading
 		const DefaultIcon = variant ? VARIANT_DEFAULT_ICONS[variant] : undefined
 		const effectiveShowIcon = DefaultIcon !== undefined ? (showIcon ?? true) : false
@@ -170,7 +172,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 				{loading ? (
 					<>
 						<Loader2 className="h-4 w-4 animate-spin" />
-						{loadingText ?? 'Processing...'}
+						{loadingText ?? t('common.processing')}
 					</>
 				) : (
 					<>

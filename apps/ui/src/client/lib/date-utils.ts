@@ -1,12 +1,25 @@
 /**
  * Date utility functions for formatting dates consistently across the application
  */
+import { formatRelativeTime as formatRelativeTimeValue, getActiveLocale, i18n } from '@/i18n'
+
 type DateInput = string | Date | null | undefined
 
-function parseDate(value: DateInput): Date | null {
+function parseDate(value: DateInput, dateOnlyTimeZone: 'local' | 'UTC' = 'local'): Date | null {
 	if (!value) return null
-	const date = typeof value === 'string' ? new Date(value) : value
+	const dateOnly = typeof value === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null
+	const date = dateOnly
+		? dateOnlyTimeZone === 'UTC'
+			? new Date(Date.UTC(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])))
+			: new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+		: typeof value === 'string'
+			? new Date(value)
+			: value
 	return Number.isNaN(date.getTime()) ? null : date
+}
+
+function notAvailable(): string {
+	return i18n.t('common.notAvailable')
 }
 
 function formatWithOptions(
@@ -14,9 +27,9 @@ function formatWithOptions(
 	options: Intl.DateTimeFormatOptions,
 	fallback: string
 ): string {
-	const date = parseDate(value)
+	const date = parseDate(value, options.timeZone === 'UTC' ? 'UTC' : 'local')
 	if (!date) return fallback
-	return new Intl.DateTimeFormat('en-US', options).format(date)
+	return new Intl.DateTimeFormat(getActiveLocale(), options).format(date)
 }
 
 /**
@@ -32,7 +45,7 @@ export function formatDate(dateString: DateInput, options?: Intl.DateTimeFormatO
 		day: 'numeric',
 		...options,
 	}
-	return formatWithOptions(dateString, defaultOptions, 'N/A')
+	return formatWithOptions(dateString, defaultOptions, notAvailable())
 }
 
 /**
@@ -50,7 +63,7 @@ export function formatDateTime(dateString: DateInput): string {
 			hour: '2-digit',
 			minute: '2-digit',
 		},
-		'N/A'
+		notAvailable()
 	)
 }
 
@@ -61,23 +74,24 @@ export function formatDateTime(dateString: DateInput): string {
  */
 export function formatRelativeTime(dateString: DateInput): string {
 	const date = parseDate(dateString)
-	if (!date) return 'N/A'
+	if (!date) return notAvailable()
 
-	const now = new Date()
-	const diffMs = now.getTime() - date.getTime()
-	const diffSeconds = Math.floor(diffMs / 1000)
+	const diffMs = date.getTime() - Date.now()
+	const direction = diffMs < 0 ? -1 : 1
+	const absoluteDiffMs = Math.abs(diffMs)
+	const diffSeconds = Math.floor(absoluteDiffMs / 1000)
 	const diffMinutes = Math.floor(diffSeconds / 60)
 	const diffHours = Math.floor(diffMinutes / 60)
 	const diffDays = Math.floor(diffHours / 24)
 
 	if (diffSeconds < 60) {
-		return 'just now'
+		return formatRelativeTimeValue(0, 'second')
 	} else if (diffMinutes < 60) {
-		return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`
+		return formatRelativeTimeValue(direction * diffMinutes, 'minute')
 	} else if (diffHours < 24) {
-		return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`
+		return formatRelativeTimeValue(direction * diffHours, 'hour')
 	} else if (diffDays < 7) {
-		return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`
+		return formatRelativeTimeValue(direction * diffDays, 'day')
 	} else {
 		return formatDate(date)
 	}
@@ -111,7 +125,7 @@ export function formatDateLong(dateString: string | Date | null | undefined): st
 			hour: '2-digit',
 			minute: '2-digit',
 		},
-		'N/A'
+		notAvailable()
 	)
 }
 
@@ -123,7 +137,7 @@ export function formatDateNumeric(dateString: DateInput): string {
 			month: '2-digit',
 			day: '2-digit',
 		},
-		'N/A'
+		notAvailable()
 	)
 }
 
@@ -134,7 +148,7 @@ export function formatMonthDay(dateString: DateInput): string {
 			month: 'short',
 			day: 'numeric',
 		},
-		'N/A'
+		notAvailable()
 	)
 }
 
@@ -146,7 +160,7 @@ export function formatMonthYear(dateString: DateInput): string {
 			year: 'numeric',
 			timeZone: 'UTC',
 		},
-		'N/A'
+		notAvailable()
 	)
 }
 
@@ -157,7 +171,7 @@ export function formatTime(dateString: DateInput): string {
 			hour: '2-digit',
 			minute: '2-digit',
 		},
-		'N/A'
+		notAvailable()
 	)
 }
 
@@ -172,7 +186,7 @@ export function formatDateTimeWithSeconds(dateString: DateInput): string {
 			minute: '2-digit',
 			second: '2-digit',
 		},
-		'N/A'
+		notAvailable()
 	)
 }
 
@@ -183,7 +197,7 @@ export function formatDateTimeLong(dateString: DateInput): string {
 			dateStyle: 'long',
 			timeStyle: 'short',
 		},
-		'N/A'
+		notAvailable()
 	)
 }
 
@@ -194,7 +208,7 @@ export function formatDateTimeFull(dateString: DateInput): string {
 			dateStyle: 'full',
 			timeStyle: 'long',
 		},
-		'N/A'
+		notAvailable()
 	)
 }
 
@@ -209,7 +223,7 @@ export function formatDateTimeWithZone(dateString: DateInput): string {
 			minute: '2-digit',
 			timeZoneName: 'short',
 		},
-		'N/A'
+		notAvailable()
 	)
 }
 
@@ -235,6 +249,6 @@ export function formatUtcDateTime(dateString: DateInput, compact = false): strin
 					hour12: false,
 					timeZone: 'UTC',
 				},
-		'N/A'
+		notAvailable()
 	)
 }

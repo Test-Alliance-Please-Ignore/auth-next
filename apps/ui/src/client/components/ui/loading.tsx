@@ -1,3 +1,4 @@
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 interface LoadingSpinnerProps {
@@ -10,11 +11,9 @@ interface LoadingSpinnerProps {
  * Centralized loading spinner component
  * Provides consistent loading UI across the application
  */
-export function LoadingSpinner({
-	size = 'md',
-	label = 'Loading...',
-	className,
-}: LoadingSpinnerProps) {
+export function LoadingSpinner({ size = 'md', label, className }: LoadingSpinnerProps) {
+	const { t } = useAppTranslation()
+	const resolvedLabel = label ?? t('common.loading')
 	const sizeClasses = {
 		sm: 'h-8 w-8',
 		md: 'h-12 w-12',
@@ -26,7 +25,7 @@ export function LoadingSpinner({
 			className={cn('flex items-center justify-center', className)}
 			role="status"
 			aria-live="polite"
-			aria-label={label}
+			aria-label={resolvedLabel}
 		>
 			<div className="text-center">
 				<svg
@@ -50,9 +49,9 @@ export function LoadingSpinner({
 						d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
 					/>
 				</svg>
-				{label && (
+				{resolvedLabel && (
 					<p className="mt-4 text-muted-foreground text-sm" aria-hidden="true">
-						{label}
+						{resolvedLabel}
 					</p>
 				)}
 			</div>

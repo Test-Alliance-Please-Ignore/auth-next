@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { useLocationSearch } from '@/hooks/useLocationSearch'
+import { useAppTranslation } from '@/i18n'
 
 import { Badge } from './badge'
 import { Label } from './label'
@@ -21,10 +22,11 @@ export function LocationSearch({
 	label,
 	value,
 	onChange,
-	placeholder = 'Search for a system or station...',
+	placeholder,
 	required = false,
 	error,
 }: LocationSearchProps) {
+	const { t } = useAppTranslation()
 	const inputId = `location-search-${label}`
 	const [query, setQuery] = useState('')
 	const [hasInteracted, setHasInteracted] = useState(false)
@@ -95,25 +97,27 @@ export function LocationSearch({
 					}}
 					searchable
 					searchDelegate={() =>
-						results.map((result) => ({ value: result.id,
+						results.map((result) => ({
+							value: result.id,
 							label: result.name,
 							description: `${result.systemName} (${result.regionName})`,
 							result,
 						}))
 					}
-					options={results.map((result) => ({ value: result.id,
+					options={results.map((result) => ({
+						value: result.id,
 						label: result.name,
 						description: `${result.systemName} (${result.regionName})`,
 						result,
 					}))}
 					minQueryLength={2}
 					debounceMs={0}
-					placeholder={placeholder}
+					placeholder={placeholder ?? t('common.locationSearch')}
 					loading={query.length >= 2 && isLoading}
 					inputClassName={error ? 'border-destructive' : ''}
-					queryHintText="Type at least 2 characters"
-					loadingText="Searching..."
-					emptyText="No locations found"
+					queryHintText={t('common.locationSearchHint')}
+					loadingText={t('common.searching')}
+					emptyText={t('common.noLocations')}
 					getOptionSearchText={(option) =>
 						`${option.label} ${option.description ?? ''} ${option.result.type}`
 					}

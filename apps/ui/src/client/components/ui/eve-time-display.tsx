@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 
+import { i18n, useAppTranslation } from '@/i18n'
 import { formatDate, formatDateTimeWithZone, formatUtcDateTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -11,27 +12,31 @@ interface EveTimeDisplayProps {
 	format?: 'full' | 'compact' | 'date' | 'window'
 }
 
-function formatEveDateTime(dateStr: string, format: 'full' | 'compact' | 'date' | 'window'): string {
+function formatEveDateTime(
+	dateStr: string,
+	format: 'full' | 'compact' | 'date' | 'window'
+): string {
 	if (format === 'date') {
-		return `${formatDate(dateStr)} EVE`
+		return i18n.t('duration.eveTimeShort', { date: formatDate(dateStr) })
 	}
 
 	if (format === 'compact') {
 		const formatted = formatUtcDateTime(dateStr, true)
-		return `${formatted} EVE`
+		return i18n.t('duration.eveTimeShort', { date: formatted })
 	}
 
 	if (format === 'window') {
 		const formatted = formatUtcDateTime(dateStr, true)
-		return `${formatted} EVE`
+		return i18n.t('duration.eveTimeShort', { date: formatted })
 	}
 
 	const formatted = formatUtcDateTime(dateStr)
 
-	return `${formatted} EVE Time`
+	return i18n.t('duration.eveTimeFull', { date: formatted })
 }
 
 export function EveTimeDisplay({ dateStr, className, format = 'full' }: EveTimeDisplayProps) {
+	const { t } = useAppTranslation()
 	const [open, setOpen] = useState(false)
 	const closeTimeoutRef = useRef<number | null>(null)
 
@@ -75,7 +80,9 @@ export function EveTimeDisplay({ dateStr, className, format = 'full' }: EveTimeD
 				onMouseLeave={closePopoverSoon}
 			>
 				<div className="space-y-1">
-					<p className="text-[11px] uppercase tracking-wide text-muted-foreground">Local Time</p>
+					<p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+						{t('duration.localTime')}
+					</p>
 					<p className="text-sm">{formatDateTimeWithZone(dateStr)}</p>
 				</div>
 			</PopoverContent>
