@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
+import { z } from 'zod'
 
-import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
+import { ROLE_CORE_ALLIANCE_MEMBER, USER_LOCALES } from '@repo/core'
 import { and, asc, eq, inArray, or } from '@repo/db-utils'
 import { getStub, withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
@@ -32,6 +33,31 @@ import type { App } from '../context'
 const CACHE_TTL = 5 * 60 // 5 minutes in seconds
 const CORPORATION_ACCESS_CACHE_TTL = 30 // 30 seconds
 const CORPORATION_COVERAGE_CACHE_TTL = 15 * 60 // 15 minutes in seconds
+
+const userPreferencesUpdateSchema = z
+	.object({
+		locale: z.enum(USER_LOCALES).optional(),
+	})
+	.passthrough()
+
+/**
+ * Keep the established `{ preferences: ... }` request shape compatible while
+ * also accepting a direct partial object. Unknown keys remain intact so newer
+ * clients can coexist with older workers.
+ */
+export function parseUserPreferencesUpdate(
+	body: unknown
+): { success: true; data: UserPreferencesDTO } | { success: false; error: z.ZodError } {
+	const candidate =
+		body !== null && typeof body === 'object' && !Array.isArray(body) && 'preferences' in body
+			? body.preferences
+			: body
+	const parsed = userPreferencesUpdateSchema.safeParse(candidate)
+
+	return parsed.success
+		? { success: true, data: parsed.data as UserPreferencesDTO }
+		: { success: false, error: parsed.error }
+}
 
 function filterManagedNonNpcCorps<T extends { corporationId: string }>(rows: T[]): T[] {
 	return rows.filter((row) => !isNpcCorporationId(row.corporationId))
@@ -228,6 +254,40 @@ users.get('/me', async (c) => {
 		legacyAuth,
 		createdAt: profile.createdAt,
 		updatedAt: profile.updatedAt,
+	})
+})
+
+/**
+ * PATCH /users/me/preferences
+ *
+ * Update user preferences.
+ */
+users.patch('/me/preferences', async (c) => {
+	const user = c.get('user')!
+	const body = await c.req.json().catch(() => null)
+
+	const db = c.get('db') || createDb(c.env.DATABASE_URL)
+	const userService = new UserService(db)
+	const activityService = new ActivityService(db)
+
+	const parsedPreferences = parseUserPreferencesUpdate(body)
+	if (!parsedPreferences.success) {
+		return c.json(
+			{
+				error: 'Invalid preferences',
+				fields: parsedPreferences.error.flatten().fieldErrors,
+			},
+			400
+		)
+	}
+
+	// Merge the validated partial update with stored preferences in the service.
+	const updated = await userService.updatePreferences(user.id, parsedPreferences.data)
+
+	await activityService.logPreferencesUpdated(user.id, getRequestMetadata(c))
+
+	return c.json({
+		preferences: updated,
 	})
 })
 

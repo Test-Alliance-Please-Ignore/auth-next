@@ -51,6 +51,24 @@ export interface UserSessionDTO {
 }
 
 /**
+ * User preferences DTO
+ */
+export const USER_LOCALES = ['en', 'de', 'ko'] as const
+
+export type UserLocale = (typeof USER_LOCALES)[number]
+
+export interface UserPreferencesDTO {
+	/** The explicit locale chosen by the user for first-party application UI. */
+	locale?: UserLocale
+	theme?: 'light' | 'dark' | 'auto'
+	notifications?: {
+		email?: boolean
+		push?: boolean
+	}
+	[key: string]: unknown
+}
+
+/**
  * User profile DTO (full user data)
  */
 export interface UserProfileDTO {

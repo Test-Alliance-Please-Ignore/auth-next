@@ -8,6 +8,7 @@ import type {
 	CreateUserOptions,
 	LinkCharacterOptions,
 	UserCharacterDTO,
+	UserPreferencesDTO,
 	UserProfileDTO,
 } from '@repo/core'
 import type { createDb } from '../db'
@@ -22,6 +23,20 @@ export class CharacterAlreadyClaimedError extends Error {
 	constructor(message: string) {
 		super(message)
 		this.name = 'CharacterAlreadyClaimedError'
+	}
+}
+
+/**
+ * Preferences are a forward-compatible JSON object. Update only the fields a
+ * caller supplied so a locale change never erases unrelated settings.
+ */
+export function mergeUserPreferences(
+	existing: UserPreferencesDTO | null | undefined,
+	updates: UserPreferencesDTO
+): UserPreferencesDTO {
+	return {
+		...(existing ?? {}),
+		...updates,
 	}
 }
 
@@ -374,6 +389,40 @@ export class UserService {
 		clearUserProfileCache(userId)
 
 		return true
+	}
+
+	/**
+	 * Update user preferences
+	 */
+	async updatePreferences(
+		userId: string,
+		preferences: UserPreferencesDTO
+	): Promise<UserPreferencesDTO> {
+		// Check if preferences exist
+		const existing = await this.db.query.userPreferences.findFirst({
+			where: eq(userPreferences.userId, userId),
+		})
+
+		const mergedPreferences = mergeUserPreferences(existing?.preferences, preferences)
+
+		if (existing) {
+			// Update existing
+			await this.db
+				.update(userPreferences)
+				.set({
+					preferences: mergedPreferences,
+					updatedAt: new Date(),
+				})
+				.where(eq(userPreferences.userId, userId))
+		} else {
+			// Create new
+			await this.db.insert(userPreferences).values({
+				userId,
+				preferences: mergedPreferences,
+			})
+		}
+
+		return mergedPreferences
 	}
 
 	/**

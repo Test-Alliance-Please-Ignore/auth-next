@@ -25,6 +25,7 @@ describe('/auth/session response shaping', () => {
 				characters: [],
 				is_admin: false,
 				roles: ['urn:service:core:role:alliance-member'],
+				preferences: { locale: 'de' },
 				discord: null as never,
 				legacyAuth: {
 					userId: null,
@@ -56,6 +57,7 @@ describe('/auth/session response shaping', () => {
 				characters: [],
 				is_admin: false,
 				roles: ['urn:service:core:role:alliance-member'],
+				preferences: { locale: 'de' },
 				discord: null,
 				legacyAuth: {
 					userId: null,
