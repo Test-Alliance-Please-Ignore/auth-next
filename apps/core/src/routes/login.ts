@@ -177,19 +177,42 @@ login.get('/', async (c) => {
 						color: hsl(210 10% 70%);
 					}
 
+					.locale-control {
+						position: relative;
+					}
+
 					.locale-select,
 					.locale-apply {
-						height: 36px;
+						height: 40px;
 						border: 1px solid hsl(220 12% 28%);
 						border-radius: 6px;
 						background: hsl(220 14% 18%);
 						color: hsl(210 12% 95%);
 						font: inherit;
+						box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+						transition:
+							border-color 0.15s,
+							box-shadow 0.15s;
 					}
 
 					.locale-select {
-						min-width: 130px;
-						padding: 0 10px;
+						min-width: 150px;
+						appearance: none;
+						padding: 0 36px 0 12px;
+						font-size: 14px;
+						color-scheme: dark;
+						cursor: pointer;
+					}
+
+					.locale-chevron {
+						position: absolute;
+						top: 50%;
+						right: 12px;
+						width: 16px;
+						height: 16px;
+						transform: translateY(-50%);
+						pointer-events: none;
+						color: hsl(210 10% 70%);
 					}
 
 					.locale-apply {
@@ -203,6 +226,10 @@ login.get('/', async (c) => {
 					.locale-apply:focus-visible {
 						outline: 2px solid hsl(205 85% 58%);
 						outline-offset: 2px;
+					}
+
+					.locale-select:hover {
+						border-color: hsl(220 12% 38%);
 					}
 
 					.locale-apply:hover {
@@ -370,17 +397,28 @@ login.get('/', async (c) => {
 						<form class="locale-form" method="get" action="/login">
 							<div class="locale-field">
 								<label class="locale-label" for="login-locale">${messages.languageLabel}</label>
-								<select class="locale-select" id="login-locale" name="locale">
-									<option value="en" ${selectedAttribute(locale, 'en')}>
-										${LOGIN_LOCALE_NAMES.en}
-									</option>
-									<option value="de" ${selectedAttribute(locale, 'de')}>
-										${LOGIN_LOCALE_NAMES.de}
-									</option>
-									<option value="ko" ${selectedAttribute(locale, 'ko')}>
-										${LOGIN_LOCALE_NAMES.ko}
-									</option>
-								</select>
+								<div class="locale-control">
+									<select class="locale-select" id="login-locale" name="locale">
+										<option value="en" ${selectedAttribute(locale, 'en')}>
+											${LOGIN_LOCALE_NAMES.en}
+										</option>
+										<option value="de" ${selectedAttribute(locale, 'de')}>
+											${LOGIN_LOCALE_NAMES.de}
+										</option>
+										<option value="ko" ${selectedAttribute(locale, 'ko')}>
+											${LOGIN_LOCALE_NAMES.ko}
+										</option>
+									</select>
+									<svg class="locale-chevron" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+										<path
+											d="m7 15 5 5 5-5M7 9l5-5 5 5"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+								</div>
 							</div>
 							${redirectUrl
 								? html`<input type="hidden" name="redirect" value="${redirectUrl}" />`

@@ -117,6 +117,9 @@ describe('login route', () => {
 		expect(body).toContain("loginLocaleSelect.addEventListener('change'")
 		expect(body).toContain('localeForm.requestSubmit()')
 		expect(body).toContain('<noscript>')
+		expect(body).toContain('<div class="locale-control">')
+		expect(body).toContain('class="locale-chevron"')
+		expect(body).toContain('aria-hidden="true"')
 	})
 
 	it('redirects authenticated users to the requested redirect target by default', async () => {
