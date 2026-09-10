@@ -548,8 +548,8 @@ export const shellCatalog = defineCatalog(
 			redirecting: '이동하는 중…',
 			main: '메인',
 			valid: '유효함',
-			pleaseRefresh: '새로고침 필요',
-			reauthorize: '토큰 재승인',
+			pleaseRefresh: '재연결 필요',
+			reauthorize: '재연결 (클릭)',
 		},
 		inventoryParser: {
 			title: '인벤토리 파서',
