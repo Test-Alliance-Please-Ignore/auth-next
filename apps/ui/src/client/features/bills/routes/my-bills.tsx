@@ -1,6 +1,6 @@
 import { Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link } from 'react-router'
 
 import { getBillingIssuerScopeFromUrns, isManualBill } from '@repo/bills'
 
@@ -47,7 +47,6 @@ import type { BillListSortingState } from '@/components/bills/bill-list-types'
 
 export default function MyBillsPage() {
 	usePageTitle('Bills')
-	const navigate = useNavigate()
 	const { permissions, isAdmin } = useUserPermissions()
 	const canIssueBills = hasBillingIssuerPermission(permissions, isAdmin)
 	const { isPageScrollEnabled, setIsPageScrollEnabled } = useLayoutScrollMode()
@@ -244,16 +243,13 @@ export default function MyBillsPage() {
 					pagination={pagination}
 					onPaginationChange={setPagination}
 					rowCount={billPage.data?.rowCount ?? 0}
-					rowHref={getBillHref}
+					rowInteraction={{ type: 'link', getHref: getBillHref }}
 					paginationLeadingAction={
 						<TableLayoutToggle
 							isClamped={isTableGridClamped}
 							onToggle={() => setIsPageScrollEnabled(!isPageScrollEnabled)}
 						/>
 					}
-					onRowClick={(bill) => {
-						void navigate(getBillHref(bill))
-					}}
 					renderActions={(bill) => <OwnedBillActions bill={bill} />}
 					emptyMessage="No bills found for the current filters."
 				/>

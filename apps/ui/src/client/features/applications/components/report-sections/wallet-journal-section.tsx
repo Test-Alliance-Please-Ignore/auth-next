@@ -1,19 +1,19 @@
 /**
- * Wallet Journal Section - MRT data grid with search and pagination
+ * Wallet Journal Section with search, filters, and pagination.
  */
 
 import { Loader2 } from 'lucide-react'
-import { MantineReactTable } from 'mantine-react-table'
 import { useMemo, useState } from 'react'
 
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
+import { HoverPopover } from '@/components/ui/hover-popover'
 import { Select } from '@/components/ui/select'
 
 import { EntityNameLink } from './entity-name-link'
-import { useFulcrumTable } from './use-fulcrum-table'
+import { FulcrumDataTable } from './fulcrum-data-table'
 
-import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { ReportChunkProgress } from '../../hooks'
+import type { FulcrumDataTableColumn } from './fulcrum-data-table'
 
 interface ProcessedWalletJournalEntry {
 	id: string
@@ -52,101 +52,98 @@ function isHighlightedJournalType(entry: ProcessedWalletJournalEntry): boolean {
 	)
 }
 
-function buildWalletJournalColumns(): Array<MRT_ColumnDef<ProcessedWalletJournalEntry>> {
+function buildWalletJournalColumns(): Array<FulcrumDataTableColumn<ProcessedWalletJournalEntry>> {
 	return [
 		{
-			accessorKey: 'date',
+			id: 'date',
 			header: 'Date/Time',
-			filterVariant: 'date-range',
-			accessorFn: (row) => new Date(row.date),
-			Cell: ({ row }) => <EveTimeDisplay dateStr={row.original.date} format="compact" />,
+			getValue: (row) => new Date(row.date),
+			filter: { kind: 'date-range' },
+			cell: (row) => <EveTimeDisplay dateStr={row.date} format="compact" />,
 		},
 		{
-			accessorKey: 'refTypeLabel',
+			id: 'refTypeLabel',
 			header: 'Type',
-			filterVariant: 'multi-select',
-			enableColumnFilter: true,
-			mantineFilterMultiSelectProps: {
-				comboboxProps: { withinPortal: true },
-			},
-			Cell: ({ row }) => row.original.refTypeLabel || '-',
+			getValue: (row) => row.refTypeLabel,
+			filter: { kind: 'multi-select' },
+			cell: (row) => row.refTypeLabel || '-',
 		},
 		{
-			accessorKey: 'firstPartyDisplayName',
+			id: 'firstPartyDisplayName',
 			header: 'From',
-			filterVariant: 'autocomplete',
-			accessorFn: (row) => row.firstPartyDisplayName ?? row.firstPartyName ?? '',
-			Cell: ({ row }) => (
+			getValue: (row) => row.firstPartyDisplayName ?? row.firstPartyName,
+			filter: { kind: 'autocomplete' },
+			cell: (row) => (
 				<span
-					className={
-						isHighlightedJournalType(row.original) ? 'font-semibold text-foreground' : undefined
-					}
+					className={isHighlightedJournalType(row) ? 'font-semibold text-foreground' : undefined}
 				>
-					<EntityNameLink
-						entityId={row.original.first_party_id}
-						href={row.original.firstPartyDisplayHref}
-					>
-						{row.original.firstPartyDisplayName || row.original.firstPartyName || '-'}
+					<EntityNameLink entityId={row.first_party_id} href={row.firstPartyDisplayHref}>
+						{row.firstPartyDisplayName || row.firstPartyName || '-'}
 					</EntityNameLink>
 				</span>
 			),
 		},
 		{
-			accessorKey: 'secondPartyDisplayName',
+			id: 'secondPartyDisplayName',
 			header: 'To',
-			filterVariant: 'autocomplete',
-			accessorFn: (row) => row.secondPartyDisplayName ?? row.secondPartyName ?? '',
-			Cell: ({ row }) => (
+			getValue: (row) => row.secondPartyDisplayName ?? row.secondPartyName,
+			filter: { kind: 'autocomplete' },
+			cell: (row) => (
 				<span
-					className={
-						isHighlightedJournalType(row.original) ? 'font-semibold text-foreground' : undefined
-					}
+					className={isHighlightedJournalType(row) ? 'font-semibold text-foreground' : undefined}
 				>
-					<EntityNameLink
-						entityId={row.original.second_party_id}
-						href={row.original.secondPartyDisplayHref}
-					>
-						{row.original.secondPartyDisplayName || row.original.secondPartyName || '-'}
+					<EntityNameLink entityId={row.second_party_id} href={row.secondPartyDisplayHref}>
+						{row.secondPartyDisplayName || row.secondPartyName || '-'}
 					</EntityNameLink>
 				</span>
 			),
 		},
 		{
-			accessorKey: 'description',
+			id: 'description',
 			header: 'Description',
-			Cell: ({ row }) => (
-				<span className="max-w-[200px] truncate block text-muted-foreground">
-					{row.original.description || '-'}
-				</span>
-			),
+			getValue: (row) => row.description,
+			cell: (row) =>
+				row.description ? (
+					<HoverPopover
+						trigger={
+							<span className="block max-w-[200px] truncate text-muted-foreground">
+								{row.description}
+							</span>
+						}
+						className="max-w-[min(32rem,calc(100vw-2rem))] whitespace-normal break-words"
+					>
+						<p className="text-sm text-foreground">{row.description}</p>
+					</HoverPopover>
+				) : (
+					<span className="block max-w-[200px] truncate text-muted-foreground">-</span>
+				),
 		},
 		{
-			accessorKey: 'amount',
+			id: 'amount',
 			header: 'Amount',
-			enableGlobalFilter: false,
-			filterVariant: 'range',
-			mantineTableHeadCellProps: { style: { textAlign: 'right' } },
-			Cell: ({ row }) => (
+			getValue: (row) => row.amount,
+			globalFilter: false,
+			filter: { kind: 'range' },
+			headerClassName: 'text-right',
+			className: 'text-right',
+			cell: (row) => (
 				<div
-					className={`text-right font-mono font-medium ${
-						row.original.amount != null && row.original.amount < 0
-							? 'text-red-400'
-							: 'text-green-400'
+					className={`font-mono font-medium ${
+						row.amount != null && row.amount < 0 ? 'text-red-400' : 'text-green-400'
 					}`}
 				>
-					{row.original.amountFormatted || '-'}
+					{row.amountFormatted || '-'}
 				</div>
 			),
 		},
 		{
-			accessorKey: 'balanceFormatted',
+			id: 'balanceFormatted',
 			header: 'Balance',
-			enableGlobalFilter: false,
-			enableColumnFilter: false,
-			mantineTableHeadCellProps: { style: { textAlign: 'right' } },
-			Cell: ({ row }) => (
-				<div className="text-right font-mono text-sm">{row.original.balanceFormatted || '-'}</div>
-			),
+			getValue: (row) => row.balanceFormatted,
+			globalFilter: false,
+			headerClassName: 'text-right',
+			className: 'text-right',
+			cell: (row) => <div className="font-mono text-sm">{row.balanceFormatted || '-'}</div>,
 		},
 	]
 }
@@ -188,43 +185,47 @@ export function WalletJournalSection({
 		[rows, refTypeFilter]
 	)
 
-	const table = useFulcrumTable({
-		columns,
-		data: filteredData,
-		emptyMessage: isLoadingChunks ? 'Loading journal entries...' : 'No journal entries found.',
-		searchPlaceholder: 'Search journal...',
-		pageSize: 100,
-		compactRows: true,
-		getRowClassName: (row) => (isHighlightedJournalType(row) ? 'bg-amber-500/10' : undefined),
-		renderTopToolbarCustomActions: () => (
-			<div className="ml-auto flex items-center gap-2">
-				{isLoadingChunks && (
-					<span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-						<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-						Loading chunks {loadingProgress?.loadedChunks ?? 0}/{loadingProgress?.totalChunks ?? 0}
+	const table = (
+		<FulcrumDataTable
+			columns={columns}
+			rows={filteredData}
+			emptyMessage={isLoadingChunks ? 'Loading journal entries...' : 'No journal entries found.'}
+			searchPlaceholder="Search journal..."
+			pageSize={100}
+			compactRows
+			getRowKey={(entry) => entry.id}
+			getRowClassName={(row) => (isHighlightedJournalType(row) ? '!bg-amber-500/10' : undefined)}
+			customActions={
+				<div className="ml-auto flex items-center gap-2">
+					{isLoadingChunks && (
+						<span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+							<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+							Loading chunks {loadingProgress?.loadedChunks ?? 0}/
+							{loadingProgress?.totalChunks ?? 0}
+						</span>
+					)}
+					<label
+						htmlFor="journal-ref-type-filter"
+						className="text-xs font-medium text-muted-foreground"
+					>
+						Transaction Type
+					</label>
+					<Select
+						inputId="journal-ref-type-filter"
+						value={refTypeFilter}
+						onValueChange={(value) => setRefTypeFilter(value)}
+						options={refTypeOptions}
+						searchable
+						placeholder="All Types"
+						className="w-56"
+					/>
+					<span className="text-xs text-muted-foreground">
+						{filteredData.length} / {rows.length}
 					</span>
-				)}
-				<label
-					htmlFor="journal-ref-type-filter"
-					className="text-xs font-medium text-muted-foreground"
-				>
-					Transaction Type
-				</label>
-				<Select
-					inputId="journal-ref-type-filter"
-					value={refTypeFilter}
-					onValueChange={(value) => setRefTypeFilter(value)}
-					options={refTypeOptions}
-					searchable
-					placeholder="All Types"
-					className="w-56"
-				/>
-				<span className="text-xs text-muted-foreground">
-					{filteredData.length} / {rows.length}
-				</span>
-			</div>
-		),
-	})
+				</div>
+			}
+		/>
+	)
 
 	if (rows.length === 0 && !isLoadingChunks) {
 		return <p className="text-sm text-muted-foreground">No journal entries found.</p>
@@ -244,9 +245,7 @@ export function WalletJournalSection({
 			<p className="text-xs text-muted-foreground italic">
 				Note: ESI only returns journal entries from the last 30 days.
 			</p>
-			<div className="tax-report-grid">
-				<MantineReactTable table={table} />
-			</div>
+			{table}
 		</div>
 	)
 }

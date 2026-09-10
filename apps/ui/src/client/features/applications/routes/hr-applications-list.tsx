@@ -7,7 +7,7 @@
 
 import { AlertCircle, ArrowLeft } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Navigate, useNavigate, useParams } from 'react-router'
+import { Link, Navigate, useParams } from 'react-router'
 
 import {
 	Breadcrumb,
@@ -68,7 +68,6 @@ const FILTER_TABS: FilterTabConfig[] = [
  */
 export default function HrApplicationsList() {
 	const { corporationId } = useParams<{ corporationId: string }>()
-	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading, permissions } = useAuth()
 	const isAuditor = useMemo(
 		() => permissions.some((permission) => permission.urn === 'urn:hr:auditor'),
@@ -141,11 +140,6 @@ export default function HrApplicationsList() {
 		}),
 		[applicationsResult]
 	)
-
-	// Handlers
-	const handleApplicationClick = (applicationId: string) => {
-		void navigate(`/corporations/${corporationId}/applications/${applicationId}`)
-	}
 
 	const handleStatusFilterChange = (status: FilterTab) => {
 		setActiveFilter(status)
@@ -319,7 +313,6 @@ export default function HrApplicationsList() {
 				applications={applications}
 				loading={applicationsLoading || applicationsFetching}
 				getApplicationHref={(app) => `/corporations/${corporationId}/applications/${app.id}`}
-				onApplicationClick={(app) => handleApplicationClick(app.id)}
 				canManage={permission?.hasPermission || false}
 				totalCount={applicationsResult?.total ?? 0}
 				page={page}

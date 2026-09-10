@@ -902,6 +902,14 @@ describe('Worker', () => {
 
 ## React Development Guidelines
 
+### Table Component Standard
+
+Use `DataTable` from `apps/ui/src/client/components/data-table.tsx` for sortable, paginated, or otherwise reusable frontend tables. Do not create feature-specific table wrappers that duplicate its sorting, loading, empty-state, row rendering, or pagination behavior.
+
+`DataTable` uses the shared `UserSearchPaginationControls` and `SortableTableHead` automatically. Define columns with `DataTableColumn<Row>`, provide a stable `getRowKey`, and pass controlled `sorting` and `pagination` state when the backend owns ordering or pagination. Use the mutually exclusive `rowInteraction` modes `{ type: 'link', getHref }` for row navigation/new-tab support or `{ type: 'click', onClick }` for callback rows. Use `renderExpandedRow`, sticky columns, and `getRowClassName` for other row behavior rather than reimplementing table mechanics.
+
+The default surface is the canonical card layout. Use `variant="plain"` only when the table is already contained by a parent card and the existing plain bordered layout must be preserved. Use `errorMessage` only when a feature needs a domain-specific fallback; API errors should still be rendered from the error object when available. Do not add MRT or another table-grid dependency.
+
 **CRITICAL: NEVER Silence React Lint Errors**
 
 React lint rules exist to prevent serious bugs. **ALWAYS fix the underlying issue instead of silencing the warning.**

@@ -10,6 +10,7 @@ import { formatDateTime } from '@/lib/date-utils'
 
 import type { ReactNode } from 'react'
 import type { BillWithDetails } from '@repo/bills'
+import type { DataTableRowInteraction } from '@/components/data-table'
 import type { BillListSortingState } from './bill-list-types'
 
 export function BillListGrid(props: {
@@ -27,8 +28,7 @@ export function BillListGrid(props: {
 	renderActions?: (bill: BillWithDetails) => ReactNode
 	renderExpandedGroupBill?: (bill: BillWithDetails) => ReactNode
 	emptyMessage?: string
-	onRowClick?: (bill: BillWithDetails) => void
-	rowHref?: (bill: BillWithDetails) => string
+	rowInteraction?: DataTableRowInteraction<BillWithDetails>
 	paginationLeadingAction?: ReactNode
 	clamped?: boolean
 }) {
@@ -48,7 +48,7 @@ export function BillListGrid(props: {
 			{
 				id: 'title',
 				header: 'Title',
-				link: props.rowHref,
+				link: props.rowInteraction?.type === 'link' ? props.rowInteraction.getHref : undefined,
 				cell: (bill: BillWithDetails) => (
 					<div className="flex items-center gap-2">
 						<span>{bill.title}</span>
@@ -135,7 +135,7 @@ export function BillListGrid(props: {
 					]
 				: []),
 		],
-		[props.renderActions, props.rowHref]
+		[props.renderActions, props.rowInteraction]
 	)
 
 	return (
@@ -159,10 +159,9 @@ export function BillListGrid(props: {
 			rowCount={props.rowCount}
 			itemLabel="bills"
 			getRowKey={(bill) => bill.id}
-			rowLink={props.rowHref}
+			rowInteraction={props.rowInteraction}
 			paginationLeadingAction={props.paginationLeadingAction}
 			clamped={props.clamped}
-			onRowClick={props.onRowClick}
 			renderExpandedRow={props.renderExpandedGroupBill}
 			getRowCanExpand={(bill) => Boolean(bill.groupBillTotalCount != null && bill.groupBillId)}
 		/>

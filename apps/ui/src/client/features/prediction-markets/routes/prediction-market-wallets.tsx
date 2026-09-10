@@ -9,15 +9,15 @@ import { DepositDialog } from '../components/deposit-dialog'
 import { WalletListGrid } from '../components/wallet-list-grid'
 import { useWallets } from '../hooks'
 
+import type { DataTableSortingState } from '@/components/data-table'
 import type { AdminWalletRow } from '../types'
-import type { MRT_SortingState } from 'mantine-react-table'
 
 export default function PredictionMarketWallets() {
 	usePageTitle('Admin - Prediction Market Wallets')
 	const navigate = useNavigate()
 
 	const [search, setSearch] = useState('')
-	const [sorting, setSorting] = useState<MRT_SortingState>([{ id: 'balance', desc: true }])
+	const [sorting, setSorting] = useState<DataTableSortingState>([{ id: 'balance', desc: true }])
 	const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 25 })
 	const [depositTarget, setDepositTarget] = useState<AdminWalletRow | null>(null)
 	const [depositOpen, setDepositOpen] = useState(false)
@@ -34,7 +34,6 @@ export default function PredictionMarketWallets() {
 	})
 
 	const total = data?.total ?? 0
-	const pageCount = Math.max(1, Math.ceil(total / Math.max(1, pagination.pageSize)))
 
 	const openDeposit = (wallet: AdminWalletRow | null) => {
 		setDepositTarget(wallet)
@@ -76,7 +75,6 @@ export default function PredictionMarketWallets() {
 				}}
 				pagination={pagination}
 				onPaginationChange={setPagination}
-				pageCount={pageCount}
 				rowCount={total}
 				onDeposit={(wallet) => openDeposit(wallet)}
 				onViewLedger={(wallet) => navigate(`/admin/prediction-markets/wallets/${wallet.userId}`)}

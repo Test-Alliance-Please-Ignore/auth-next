@@ -1,26 +1,26 @@
-import { createMRTColumnHelper } from 'mantine-react-table'
 import { useMemo } from 'react'
 
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
+import { DataTable } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { formatDateTime } from '@/lib/date-utils'
 import { characterPortraitUrl } from '@/lib/eve-images'
 import { formatPoints } from '@/lib/format-utils'
 
+import type {
+	DataTableColumn,
+	DataTablePagination,
+	DataTableSortingState,
+} from '@/components/data-table'
 import type { AdminWalletRow } from '../types'
-import type { MRT_ColumnDef, MRT_SortingState } from 'mantine-react-table'
-
-const columnHelper = createMRTColumnHelper<AdminWalletRow>()
 
 export interface WalletListGridProps {
 	rows: AdminWalletRow[]
 	loading?: boolean
 	error?: unknown
-	sorting: MRT_SortingState
-	onSortingChange: (sorting: MRT_SortingState) => void
-	pagination: { pageIndex: number; pageSize: number }
-	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
-	pageCount: number
+	sorting: DataTableSortingState
+	onSortingChange: (sorting: DataTableSortingState) => void
+	pagination: DataTablePagination
+	onPaginationChange: (pagination: DataTablePagination) => void
 	rowCount: number
 	onDeposit: (wallet: AdminWalletRow) => void
 	onViewLedger: (wallet: AdminWalletRow) => void
@@ -29,17 +29,16 @@ export interface WalletListGridProps {
 export function WalletListGrid(props: WalletListGridProps) {
 	const { onDeposit, onViewLedger } = props
 
-	const columns = useMemo<Array<MRT_ColumnDef<AdminWalletRow>>>(
+	const columns = useMemo<Array<DataTableColumn<AdminWalletRow>>>(
 		() => [
-			columnHelper.accessor((row) => row.userName || row.userId, {
+			{
 				id: 'user',
 				header: 'User',
-				enableSorting: false,
-				Cell: ({ row }) => (
+				cell: (wallet) => (
 					<div className="flex items-center gap-2">
-						{row.original.mainCharacterId ? (
+						{wallet.mainCharacterId ? (
 							<img
-								src={characterPortraitUrl(row.original.mainCharacterId, 32)}
+								src={characterPortraitUrl(wallet.mainCharacterId, 32)}
 								alt=""
 								width={28}
 								height={28}
@@ -48,58 +47,55 @@ export function WalletListGrid(props: WalletListGridProps) {
 						) : (
 							<div className="h-7 w-7 shrink-0 rounded-full bg-muted" />
 						)}
-						<span>{row.original.userName || row.original.userId}</span>
+						<span>{wallet.userName || wallet.userId}</span>
 					</div>
 				),
-			}),
-			columnHelper.accessor('userId', {
+			},
+			{
 				id: 'userId',
 				header: 'User ID',
-				enableSorting: true,
-				Cell: ({ row }) => (
-					<span className="font-mono text-xs text-muted-foreground">{row.original.userId}</span>
+				sortable: true,
+				cell: (wallet) => (
+					<span className="font-mono text-xs text-muted-foreground">{wallet.userId}</span>
 				),
-			}),
-			columnHelper.accessor('balance', {
+			},
+			{
 				id: 'balance',
 				header: 'Balance',
-				enableSorting: true,
-				mantineTableHeadCellProps: { style: { textAlign: 'right' } },
-				mantineTableBodyCellProps: { style: { textAlign: 'right' } },
-				Cell: ({ row }) => <span className="font-mono">{formatPoints(row.original.balance)}</span>,
-			}),
-			columnHelper.accessor('updatedAt', {
+				sortable: true,
+				headerClassName: 'text-right',
+				className: 'text-right',
+				cell: (wallet) => <span className="font-mono">{formatPoints(wallet.balance)}</span>,
+			},
+			{
 				id: 'updatedAt',
 				header: 'Updated',
-				enableSorting: true,
-				Cell: ({ row }) => formatDateTime(row.original.updatedAt),
-			}),
-			columnHelper.display({
+				sortable: true,
+				cell: (wallet) => formatDateTime(wallet.updatedAt),
+			},
+			{
 				id: 'actions',
 				header: 'Actions',
-				enableSorting: false,
-				size: 200,
-				minSize: 180,
-				maxSize: 240,
-				mantineTableHeadCellProps: { style: { textAlign: 'center', whiteSpace: 'nowrap' } },
-				mantineTableBodyCellProps: { style: { textAlign: 'right', whiteSpace: 'nowrap' } },
-				Cell: ({ row }) => (
-					<div className="flex justify-end gap-2">
-						<Button variant="primary" size="sm" onClick={() => onDeposit(row.original)}>
+				headerClassName: 'text-center',
+				className: 'text-right',
+				sticky: 'right',
+				cell: (wallet) => (
+					<div className="flex justify-end gap-2 whitespace-nowrap">
+						<Button variant="primary" size="sm" onClick={() => onDeposit(wallet)}>
 							Deposit
 						</Button>
-						<Button variant="ghost" size="sm" onClick={() => onViewLedger(row.original)}>
+						<Button variant="ghost" size="sm" onClick={() => onViewLedger(wallet)}>
 							View ledger
 						</Button>
 					</div>
 				),
-			}),
+			},
 		],
 		[onDeposit, onViewLedger]
 	)
 
 	return (
-		<TaxReportDataGrid
+		<DataTable
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
@@ -109,9 +105,9 @@ export function WalletListGrid(props: WalletListGridProps) {
 			onSortingChange={props.onSortingChange}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
-			pageCount={props.pageCount}
 			rowCount={props.rowCount}
-			pinnedRightColumnIds={['actions']}
+			itemLabel="wallets"
+			getRowKey={(wallet) => wallet.userId}
 		/>
 	)
 }

@@ -1,9 +1,8 @@
 /**
- * Contracts Section - MRT data grid with expandable details and filter buttons
+ * Contracts Section with expandable details and filter buttons.
  */
 
 import { Package, Truck } from 'lucide-react'
-import { MantineReactTable } from 'mantine-react-table'
 import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -19,9 +18,9 @@ import {
 import { cn } from '@/lib/utils'
 
 import { EntityNameLink } from './entity-name-link'
-import { useFulcrumTable } from './use-fulcrum-table'
+import { FulcrumDataTable } from './fulcrum-data-table'
 
-import type { MRT_ColumnDef } from 'mantine-react-table'
+import type { FulcrumDataTableColumn } from './fulcrum-data-table'
 
 // ============================================================================
 // Types
@@ -350,90 +349,88 @@ function FilterButton({
 // Column Definitions
 // ============================================================================
 
-function buildContractColumns(): Array<MRT_ColumnDef<ProcessedContract>> {
+function buildContractColumns(): Array<FulcrumDataTableColumn<ProcessedContract>> {
 	return [
 		{
-			accessorKey: 'type',
+			id: 'type',
 			header: 'Type',
-			filterVariant: 'multi-select',
-			mantineFilterMultiSelectProps: {
-				data: Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label })),
+			getValue: (row) => row.type,
+			filter: {
+				kind: 'multi-select',
+				options: Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label })),
 			},
-			Cell: ({ row }) => <TypeBadge type={row.original.type} />,
+			cell: (row) => <TypeBadge type={row.type} />,
 		},
 		{
-			accessorKey: 'status',
+			id: 'status',
 			header: 'Status',
-			filterVariant: 'multi-select',
-			mantineFilterMultiSelectProps: {
-				data: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })),
+			getValue: (row) => row.status,
+			filter: {
+				kind: 'multi-select',
+				options: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })),
 			},
-			Cell: ({ row }) => <StatusBadge status={row.original.status} />,
+			cell: (row) => <StatusBadge status={row.status} />,
 		},
 		{
-			accessorKey: 'issuerDisplayName',
+			id: 'issuerDisplayName',
 			header: 'From',
-			filterVariant: 'autocomplete',
-			accessorFn: (row) => row.issuerDisplayName ?? row.issuerName ?? '',
-			Cell: ({ row }) => (
-				<EntityNameLink entityId={row.original.issuer_id} href={row.original.issuerDisplayHref}>
-					{row.original.issuerDisplayName || row.original.issuerName || '-'}
+			getValue: (row) => row.issuerDisplayName ?? row.issuerName,
+			filter: { kind: 'autocomplete' },
+			cell: (row) => (
+				<EntityNameLink entityId={row.issuer_id} href={row.issuerDisplayHref}>
+					{row.issuerDisplayName || row.issuerName || '-'}
 				</EntityNameLink>
 			),
 		},
 		{
-			accessorKey: 'acceptorDisplayName',
+			id: 'acceptorDisplayName',
 			header: 'To',
-			filterVariant: 'autocomplete',
-			accessorFn: (row) =>
+			getValue: (row) =>
 				row.acceptorDisplayName ??
 				row.acceptorName ??
 				row.assigneeDisplayName ??
 				row.assigneeName ??
 				'',
-			Cell: ({ row }) => (
+			filter: { kind: 'autocomplete' },
+			cell: (row) => (
 				<EntityNameLink
-					entityId={row.original.acceptor_id ?? row.original.assignee_id}
-					href={row.original.acceptorDisplayHref ?? row.original.assigneeDisplayHref}
+					entityId={row.acceptor_id ?? row.assignee_id}
+					href={row.acceptorDisplayHref ?? row.assigneeDisplayHref}
 				>
-					{row.original.acceptorDisplayName ||
-						row.original.acceptorName ||
-						row.original.assigneeDisplayName ||
-						row.original.assigneeName ||
+					{row.acceptorDisplayName ||
+						row.acceptorName ||
+						row.assigneeDisplayName ||
+						row.assigneeName ||
 						'-'}
 				</EntityNameLink>
 			),
 		},
 		{
-			accessorKey: 'title',
+			id: 'title',
 			header: 'Title / Info',
-			Cell: ({ row }) => (
-				<span className="max-w-[200px] truncate block">
-					{row.original.title || contractSummary(row.original)}
-				</span>
+			getValue: (row) => row.title || contractSummary(row),
+			cell: (row) => (
+				<span className="max-w-[200px] truncate block">{row.title || contractSummary(row)}</span>
 			),
 		},
 		{
-			accessorKey: 'price',
+			id: 'price',
 			header: 'Price',
-			enableGlobalFilter: false,
-			filterVariant: 'range',
-			accessorFn: (row) => row.price ?? row.reward ?? 0,
-			mantineTableHeadCellProps: { style: { textAlign: 'right' } },
-			Cell: ({ row }) => (
-				<div className="text-right tabular-nums">
-					{formatIsk(row.original.price || row.original.reward)}
-				</div>
-			),
+			getValue: (row) => row.price ?? row.reward ?? 0,
+			globalFilter: false,
+			filter: { kind: 'range' },
+			headerClassName: 'text-right',
+			className: 'text-right',
+			cell: (row) => <div className="tabular-nums">{formatIsk(row.price || row.reward)}</div>,
 		},
 		{
-			accessorKey: 'date_issued',
+			id: 'date_issued',
 			header: 'Issued',
-			filterVariant: 'date-range',
-			accessorFn: (row) => new Date(row.date_issued),
-			Cell: ({ row }) => (
+			getValue: (row) => new Date(row.date_issued),
+			filter: { kind: 'date-range' },
+			cell: (row) => (
 				<span className="text-muted-foreground whitespace-nowrap">
-					{new Date(row.original.date_issued).toLocaleDateString()}
+					{new Date(row.date_issued).toLocaleDateString()}
 				</span>
 			),
 		},
@@ -475,14 +472,18 @@ export function ContractsSection({ data }: { data: ProcessedContract[] }) {
 		return result
 	}, [data, typeFilter, statusFilter])
 
-	const table = useFulcrumTable({
-		columns: contractColumns,
-		data: filtered,
-		emptyMessage: 'No contracts match the current filters',
-		searchPlaceholder: 'Search contracts...',
-		compactRows: true,
-		renderDetailPanel: ({ row }) => <ContractDetails contract={row.original} />,
-	})
+	const table = (
+		<FulcrumDataTable
+			columns={contractColumns}
+			rows={filtered}
+			emptyMessage="No contracts match the current filters"
+			searchPlaceholder="Search contracts..."
+			pageSize={25}
+			compactRows
+			getRowKey={(contract) => contract.contract_id}
+			renderExpandedRow={(contract) => <ContractDetails contract={contract} />}
+		/>
+	)
 
 	if (data.length === 0) {
 		return <p className="text-sm text-muted-foreground">No contracts found.</p>
@@ -571,10 +572,8 @@ export function ContractsSection({ data }: { data: ProcessedContract[] }) {
 				</div>
 			</div>
 
-			{/* Data Grid */}
-			<div className="tax-report-grid">
-				<MantineReactTable table={table} />
-			</div>
+			{/* Data table */}
+			{table}
 
 			<p className="text-xs text-muted-foreground">
 				Showing {filtered.length} of {data.length} contracts

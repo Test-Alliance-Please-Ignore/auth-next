@@ -1,7 +1,7 @@
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { useState } from 'react'
 
 import {
+	SortableTableHead,
 	Table,
 	TableBody,
 	TableCell,
@@ -90,19 +90,14 @@ function SortableHead({
 	onSortChange: (field: MemberSummarySortField) => void
 }) {
 	const isActive = sortBy === field
-	const SortIcon = !isActive ? ArrowUpDown : sortDir === 'asc' ? ArrowUp : ArrowDown
 
 	return (
-		<TableHead>
-			<button
-				type="button"
-				className="inline-flex items-center gap-1.5 text-left hover:text-foreground"
-				onClick={() => onSortChange(field)}
-			>
-				{label}
-				<SortIcon aria-hidden className="h-3.5 w-3.5" />
-			</button>
-		</TableHead>
+		<SortableTableHead
+			onSort={() => onSortChange(field)}
+			direction={isActive ? sortDir : undefined}
+		>
+			{label}
+		</SortableTableHead>
 	)
 }
 

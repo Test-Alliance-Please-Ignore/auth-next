@@ -3,14 +3,14 @@
  * buy and sell subsections.
  */
 
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Package, Search } from 'lucide-react'
+import { ChevronDown, ChevronRight, Package, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
 
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
+import { Input } from '@/components/ui/input'
 import {
+	SortableTableHead,
 	Table,
 	TableBody,
 	TableCell,
@@ -19,6 +19,8 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { typeIconUrl } from '@/lib/eve-images'
+
+import type { Dispatch, SetStateAction } from 'react'
 
 interface ProcessedMarketOrder {
 	order_id: string
@@ -41,7 +43,15 @@ interface ProcessedMarketOrder {
 	processedAt: string
 }
 
-type OrderSortField = 'item' | 'price' | 'total' | 'remain' | 'issued' | 'expires' | 'state' | 'escrow'
+type OrderSortField =
+	| 'item'
+	| 'price'
+	| 'total'
+	| 'remain'
+	| 'issued'
+	| 'expires'
+	| 'state'
+	| 'escrow'
 
 function formatIsk(value: number): string {
 	if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B ISK`
@@ -51,7 +61,9 @@ function formatIsk(value: number): string {
 }
 
 function normalizeOrderState(state?: string): string {
-	const normalized = String(state ?? 'active').toLowerCase().trim()
+	const normalized = String(state ?? 'active')
+		.toLowerCase()
+		.trim()
 	if (!normalized || normalized === 'unknown' || normalized === 'open') {
 		return 'active'
 	}
@@ -61,18 +73,38 @@ function normalizeOrderState(state?: string): string {
 function OrderStateBadge({ state }: { state?: string }) {
 	const normalized = normalizeOrderState(state)
 	if (normalized === 'active') {
-		return <Badge variant="success" className="text-[10px] capitalize">{normalized}</Badge>
+		return (
+			<Badge variant="success" className="text-[10px] capitalize">
+				{normalized}
+			</Badge>
+		)
 	}
 	if (normalized === 'closed') {
-		return <Badge variant="destructive" className="text-[10px] capitalize">{normalized}</Badge>
+		return (
+			<Badge variant="destructive" className="text-[10px] capitalize">
+				{normalized}
+			</Badge>
+		)
 	}
 	if (normalized === 'expired') {
-		return <Badge variant="warning" className="text-[10px] capitalize">{normalized}</Badge>
+		return (
+			<Badge variant="warning" className="text-[10px] capitalize">
+				{normalized}
+			</Badge>
+		)
 	}
 	if (normalized === 'cancelled') {
-		return <Badge variant="destructive" className="text-[10px] capitalize">{normalized}</Badge>
+		return (
+			<Badge variant="destructive" className="text-[10px] capitalize">
+				{normalized}
+			</Badge>
+		)
 	}
-	return <Badge variant="ghost" className="text-[10px] capitalize">{normalized}</Badge>
+	return (
+		<Badge variant="ghost" className="text-[10px] capitalize">
+			{normalized}
+		</Badge>
+	)
 }
 
 function OrderIcon({ typeId }: { typeId: string }) {
@@ -162,26 +194,23 @@ function OrderTable({
 		})
 	}, [orders, sortField, sortOrder])
 
-	const renderSortIcon = (field: OrderSortField) => {
-		if (sortField !== field) return <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
-		return sortOrder === 'asc' ? (
-			<ArrowUp className="h-3 w-3 text-muted-foreground" />
-		) : (
-			<ArrowDown className="h-3 w-3 text-muted-foreground" />
-		)
-	}
-
-	const SortableHead = ({ field, label, alignRight = false }: { field: OrderSortField; label: string; alignRight?: boolean }) => (
-		<TableHead className={alignRight ? 'text-right' : undefined}>
-			<button
-				type="button"
-				onClick={() => onSort(field)}
-				className={`inline-flex items-center gap-1.5 ${alignRight ? 'justify-end' : ''}`}
-			>
-				<span>{label}</span>
-				{renderSortIcon(field)}
-			</button>
-		</TableHead>
+	const SortableHead = ({
+		field,
+		label,
+		alignRight = false,
+	}: {
+		field: OrderSortField
+		label: string
+		alignRight?: boolean
+	}) => (
+		<SortableTableHead
+			className={alignRight ? 'text-right' : undefined}
+			buttonClassName={alignRight ? 'w-full justify-end' : undefined}
+			onSort={() => onSort(field)}
+			direction={sortField === field ? sortOrder : undefined}
+		>
+			{label}
+		</SortableTableHead>
 	)
 
 	return (
@@ -189,10 +218,26 @@ function OrderTable({
 			<div className="flex flex-wrap items-center gap-2">
 				<h4 className="text-sm font-semibold text-foreground">{title}</h4>
 				<Badge variant="secondary">{orders.length}</Badge>
-				{stateCounts.active && <Badge variant="success" className="text-[10px] capitalize">{stateCounts.active} active</Badge>}
-				{stateCounts.closed && <Badge variant="ghost" className="text-[10px] capitalize">{stateCounts.closed} closed</Badge>}
-				{stateCounts.expired && <Badge variant="warning" className="text-[10px] capitalize">{stateCounts.expired} expired</Badge>}
-				{stateCounts.cancelled && <Badge variant="destructive" className="text-[10px] capitalize">{stateCounts.cancelled} cancelled</Badge>}
+				{stateCounts.active && (
+					<Badge variant="success" className="text-[10px] capitalize">
+						{stateCounts.active} active
+					</Badge>
+				)}
+				{stateCounts.closed && (
+					<Badge variant="ghost" className="text-[10px] capitalize">
+						{stateCounts.closed} closed
+					</Badge>
+				)}
+				{stateCounts.expired && (
+					<Badge variant="warning" className="text-[10px] capitalize">
+						{stateCounts.expired} expired
+					</Badge>
+				)}
+				{stateCounts.cancelled && (
+					<Badge variant="destructive" className="text-[10px] capitalize">
+						{stateCounts.cancelled} cancelled
+					</Badge>
+				)}
 				<span className="text-xs text-muted-foreground">
 					Visible notional: {formatIsk(totalNotional)}
 				</span>
@@ -223,9 +268,7 @@ function OrderTable({
 											<OrderIcon typeId={order.type_id} />
 											<div className="min-w-0 space-y-0.5">
 												<div className="truncate">{order.typeName || order.type_id}</div>
-												<div className="text-xs text-muted-foreground">
-													Range: {order.range}
-												</div>
+												<div className="text-xs text-muted-foreground">Range: {order.range}</div>
 											</div>
 										</div>
 									</TableCell>
@@ -348,7 +391,7 @@ export function OrdersSection({ data }: { data: ProcessedMarketOrder[] }) {
 	const makeSortHandler = (
 		currentField: OrderSortField,
 		setField: Dispatch<SetStateAction<OrderSortField>>,
-		setOrder: Dispatch<SetStateAction<'asc' | 'desc'>>,
+		setOrder: Dispatch<SetStateAction<'asc' | 'desc'>>
 	) => {
 		return (field: OrderSortField) => {
 			if (currentField === field) {
@@ -385,7 +428,7 @@ export function OrdersSection({ data }: { data: ProcessedMarketOrder[] }) {
 					const totalOrders = group.buyOrders.length + group.sellOrders.length
 					const totalNotional = [...group.buyOrders, ...group.sellOrders].reduce(
 						(sum, order) => sum + order.price * order.volume_remain,
-						0,
+						0
 					)
 
 					return (

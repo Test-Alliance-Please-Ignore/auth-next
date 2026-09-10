@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import { TaxReportTable } from '@/components/tax-report-table'
+import { DataTable } from '@/components/data-table'
 import { formatTaxDateTime } from '@/lib/tax-date'
 import { TaxCorporationDisplay } from '@/lib/tax-display'
 
@@ -68,7 +68,9 @@ export function DiscrepancyGrid(props: {
 	)
 
 	return (
-		<TaxReportTable
+		<DataTable
+			variant="plain"
+			errorMessage="Failed to load report"
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}

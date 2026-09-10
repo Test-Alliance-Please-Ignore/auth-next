@@ -8,7 +8,6 @@ import { ErrorBoundary } from './components/error-boundary'
 
 import '@mantine/core/styles.css'
 import '@mantine/dates/styles.css'
-import 'mantine-react-table/styles.css'
 import './styles/globals.css'
 
 // Handle chunk loading errors (e.g., when assets change after deployment)

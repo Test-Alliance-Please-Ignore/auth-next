@@ -10,7 +10,6 @@ export default defineConfig({
 			'@mantine/core': path.resolve(__dirname, './node_modules/@mantine/core'),
 			'@mantine/dates': path.resolve(__dirname, './node_modules/@mantine/dates'),
 			'@mantine/hooks': path.resolve(__dirname, './node_modules/@mantine/hooks'),
-			'mantine-react-table': path.resolve(__dirname, './node_modules/mantine-react-table'),
 		},
 	},
 	server: {

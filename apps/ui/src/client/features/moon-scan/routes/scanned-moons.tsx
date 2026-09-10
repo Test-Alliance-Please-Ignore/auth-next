@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 
@@ -14,10 +14,10 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
+	SortableTableHead,
 	Table,
 	TableBody,
 	TableCell,
-	TableHead,
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
@@ -333,14 +333,6 @@ export default function ScannedMoonsPage() {
 			page: '1',
 		})
 	}
-	const SortIndicator = ({ column }: { column: SortBy }) => {
-		if (sortBy !== column) return null
-		return sortDir === 'asc' ? (
-			<ArrowUp className="h-3.5 w-3.5" />
-		) : (
-			<ArrowDown className="h-3.5 w-3.5" />
-		)
-	}
 	const SortableHead = ({
 		label,
 		column,
@@ -352,16 +344,14 @@ export default function ScannedMoonsPage() {
 		className?: string
 		alignRight?: boolean
 	}) => (
-		<TableHead className={className}>
-			<button
-				type="button"
-				onClick={() => toggleSort(column)}
-				className={`inline-flex items-center gap-1.5 hover:text-foreground ${alignRight ? 'w-full justify-end' : ''}`}
-			>
-				<span>{label}</span>
-				<SortIndicator column={column} />
-			</button>
-		</TableHead>
+		<SortableTableHead
+			className={className}
+			buttonClassName={alignRight ? 'w-full justify-end' : undefined}
+			onSort={() => toggleSort(column)}
+			direction={sortBy === column ? sortDir : undefined}
+		>
+			{label}
+		</SortableTableHead>
 	)
 	const renderPaginationControls = () => (
 		<UserSearchPaginationControls
