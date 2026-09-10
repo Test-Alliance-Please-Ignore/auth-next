@@ -16,8 +16,6 @@ import {
 
 import { alertDestinations } from '@repo/core-db-schema'
 
-import type { UserLocale } from '@repo/core'
-
 export { alertDestinations }
 
 /**
@@ -243,7 +241,6 @@ export const userPreferences = pgTable('user_preferences', {
 	/** JSONB preferences object */
 	preferences: jsonb('preferences')
 		.$type<{
-			locale?: UserLocale
 			theme?: 'light' | 'dark' | 'auto'
 			notifications?: {
 				email?: boolean

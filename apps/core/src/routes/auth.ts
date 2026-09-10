@@ -28,7 +28,7 @@ import { SessionService } from '../services/session.service'
 import { CharacterAlreadyClaimedError, UserService } from '../services/user.service'
 
 import type { Context } from 'hono'
-import type { RequestMetadata, UserPreferencesDTO, UserProfileDTO } from '@repo/core'
+import type { RequestMetadata, UserProfileDTO } from '@repo/core'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { BlacklistEntry, Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
@@ -128,7 +128,6 @@ interface AuthSessionUserView {
 	}>
 	is_admin: boolean
 	roles: string[]
-	preferences: UserPreferencesDTO
 	discord: Awaited<ReturnType<typeof getDiscordStatus>>
 	legacyAuth: {
 		userId: string | null
@@ -1328,7 +1327,6 @@ auth.get('/session', async (c) => {
 				characters: user.characters,
 				is_admin: user.is_admin,
 				roles: user.roles,
-				preferences: profile.preferences,
 				discord: discordStatus,
 				legacyAuth,
 			},

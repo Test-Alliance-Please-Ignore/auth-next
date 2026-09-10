@@ -27,20 +27,6 @@ export class CharacterAlreadyClaimedError extends Error {
 }
 
 /**
- * Preferences are a forward-compatible JSON object. Update only the fields a
- * caller supplied so a locale change never erases unrelated settings.
- */
-export function mergeUserPreferences(
-	existing: UserPreferencesDTO | null | undefined,
-	updates: UserPreferencesDTO
-): UserPreferencesDTO {
-	return {
-		...(existing ?? {}),
-		...updates,
-	}
-}
-
-/**
  * User Service
  *
  * Handles user CRUD operations, character linking, and user profile management.
@@ -403,14 +389,12 @@ export class UserService {
 			where: eq(userPreferences.userId, userId),
 		})
 
-		const mergedPreferences = mergeUserPreferences(existing?.preferences, preferences)
-
 		if (existing) {
 			// Update existing
 			await this.db
 				.update(userPreferences)
 				.set({
-					preferences: mergedPreferences,
+					preferences,
 					updatedAt: new Date(),
 				})
 				.where(eq(userPreferences.userId, userId))
@@ -418,11 +402,11 @@ export class UserService {
 			// Create new
 			await this.db.insert(userPreferences).values({
 				userId,
-				preferences: mergedPreferences,
+				preferences,
 			})
 		}
 
-		return mergedPreferences
+		return preferences
 	}
 
 	/**

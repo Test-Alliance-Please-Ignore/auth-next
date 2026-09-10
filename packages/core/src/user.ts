@@ -51,15 +51,14 @@ export interface UserSessionDTO {
 }
 
 /**
- * User preferences DTO
+ * Supported UI locales shared by the SPA and server-rendered login page.
  */
 export const USER_LOCALES = ['en', 'de', 'ko'] as const
 
 export type UserLocale = (typeof USER_LOCALES)[number]
 
+/** User preferences DTO. UI locale selection is stored only in the browser. */
 export interface UserPreferencesDTO {
-	/** The explicit locale chosen by the user for first-party application UI. */
-	locale?: UserLocale
 	theme?: 'light' | 'dark' | 'auto'
 	notifications?: {
 		email?: boolean
