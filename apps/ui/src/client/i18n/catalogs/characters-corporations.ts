@@ -703,7 +703,7 @@ export const charactersCorporationsCatalog = defineCatalog(
 				removeAction: 'Emeritus-Status entfernen',
 			},
 			list: {
-				memberCorporations: 'Mitglieds-Corporations',
+				memberCorporations: 'Vollmitglieder',
 				altCorporations: 'Alt-Corporations',
 				specialPurposeCorporations: 'Spezial-Corporations',
 				authLinkedUsers: 'Mit Auth-Konto verknüpfte Benutzer',

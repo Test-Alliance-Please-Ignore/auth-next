@@ -213,6 +213,16 @@ describe('localized identity routes', () => {
 		)
 	})
 
+	it('uses the approved German full-member corporation filter label', async () => {
+		await setAppLocale('de', { persistLocal: false })
+		state.isAdmin = true
+		const html = render('/corporations', '/corporations', <CorporationsPage />)
+		expect(html).toContain('id="corporation-type-filter"')
+		expect(html).toContain('Vollmitglieder')
+		expect(html).not.toContain('Mitglieds-Corporations')
+		expect(html).toContain('Original Corp')
+	})
+
 	it('renders settings fields with translated accessible labels and denies unauthorized access', async () => {
 		await setAppLocale('ko', { persistLocal: false })
 		const allowed = render(
