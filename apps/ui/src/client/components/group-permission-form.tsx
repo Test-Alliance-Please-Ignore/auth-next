@@ -2,12 +2,15 @@ import { Check, XCircle } from 'lucide-react'
 import { useState } from 'react'
 
 import { PermissionTargetBadge } from '@/components/permission-target-badge'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Button } from '@/components/ui/button'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
+import type { FormEvent } from 'react'
+import type { AppTranslationKey } from '@/i18n'
 import type {
 	CreateGroupScopedPermissionRequest,
 	GroupPermissionWithDetails,
@@ -35,6 +38,7 @@ export function GroupPermissionForm({
 	onCancel,
 	isSubmitting,
 }: GroupPermissionFormProps) {
+	const { t } = useAppTranslation()
 	const isEditing = !!permission
 
 	const [formData, setFormData] = useState<CreateGroupScopedPermissionRequest>({
@@ -46,33 +50,34 @@ export function GroupPermissionForm({
 	})
 
 	const [errors, setErrors] = useState<
-		Partial<Record<keyof CreateGroupScopedPermissionRequest, string>>
+		Partial<Record<keyof CreateGroupScopedPermissionRequest, AppTranslationKey>>
 	>({})
 	const [urnTouched, setUrnTouched] = useState(false)
 
-	const validateUrn = (urn: string): string | null => {
+	const validateUrn = (urn: string): AppTranslationKey | null => {
 		if (!urn.trim()) {
-			return 'URN is required'
+			return 'groups.permissions.urnRequired'
 		}
 
 		if (!urn.startsWith('urn:')) {
-			return "URN must start with 'urn:'"
+			return 'groups.permissions.urnPrefix'
 		}
 
 		const parts = urn.split(':')
 		if (parts.length < 3) {
-			return 'URN must have at least 2 parts after "urn:" (e.g., urn:namespace:action)'
+			return 'groups.permissions.urnParts'
 		}
 
 		if (!URN_REGEX.test(urn)) {
-			return 'URN can only contain lowercase letters, numbers, hyphens, and underscores'
+			return 'groups.permissions.urnCharacters'
 		}
 
 		return null
 	}
 
 	const validate = (): boolean => {
-		const newErrors: Partial<Record<keyof CreateGroupScopedPermissionRequest, string>> = {}
+		const newErrors: Partial<Record<keyof CreateGroupScopedPermissionRequest, AppTranslationKey>> =
+			{}
 
 		// Validate URN
 		const urnError = validateUrn(formData.urn)
@@ -82,21 +87,21 @@ export function GroupPermissionForm({
 
 		// Validate name
 		if (!formData.name.trim()) {
-			newErrors.name = 'Display name is required'
+			newErrors.name = 'groups.permissions.nameRequired'
 		} else if (formData.name.length > 255) {
-			newErrors.name = 'Name must be 255 characters or less'
+			newErrors.name = 'groups.form.nameTooLong'
 		}
 
 		// Validate description
 		if (formData.description && formData.description.length > 1000) {
-			newErrors.description = 'Description must be 1000 characters or less'
+			newErrors.description = 'groups.form.descriptionTooLong'
 		}
 
 		setErrors(newErrors)
 		return Object.keys(newErrors).length === 0
 	}
 
-	const handleSubmit = async (e: React.FormEvent) => {
+	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault()
 
 		console.log('Form submitted', formData)
@@ -136,7 +141,7 @@ export function GroupPermissionForm({
 		<form onSubmit={handleSubmit} className="space-y-4">
 			<div className="space-y-2">
 				<Label htmlFor="urn">
-					URN (Unique Resource Name) <span className="text-destructive">*</span>
+					{t('groups.permissions.urnLabel')} <span className="text-destructive">*</span>
 				</Label>
 				<div className="relative">
 					<Input
@@ -165,34 +170,36 @@ export function GroupPermissionForm({
 				</div>
 				{urnError && urnTouched && (
 					<p id="urn-error" className="text-sm text-destructive" role="alert">
-						{urnError}
+						{t(urnError)}
 					</p>
 				)}
 				{!urnError && (
 					<p id="urn-help" className="text-sm text-muted-foreground">
-						Format: urn:namespace:action (or more parts as needed, lowercase, hyphens, underscores)
-						{isEditing && <span className="ml-2 text-xs">(URN cannot be changed)</span>}
+						{t('groups.permissions.urnHint')}
+						{isEditing && (
+							<span className="ml-2 text-xs">{t('groups.permissions.urnUnchangeable')}</span>
+						)}
 					</p>
 				)}
 			</div>
 
 			<div className="space-y-2">
 				<Label htmlFor="name">
-					Display Name <span className="text-destructive">*</span>
+					{t('groups.permissions.displayName')} <span className="text-destructive">*</span>
 				</Label>
 				<Input
 					id="name"
 					value={formData.name}
 					onChange={(e) => setFormData({ ...formData, name: (e.target as HTMLInputElement).value })}
-					placeholder="Fleet Commander"
+					placeholder={t('groups.permissions.namePlaceholder')}
 					disabled={isSubmitting}
 				/>
-				{errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+				{errors.name && <p className="text-sm text-destructive">{t(errors.name)}</p>}
 			</div>
 
 			<div className="space-y-2">
 				<Label htmlFor="target-type">
-					Target Type <span className="text-destructive">*</span>
+					{t('groups.permissions.targetType')} <span className="text-destructive">*</span>
 				</Label>
 				<Select
 					value={formData.targetType}
@@ -201,45 +208,46 @@ export function GroupPermissionForm({
 					}
 					inputId="target-type"
 					options={[
-						{ value: 'all_members', label: 'All Members' },
-						{ value: 'all_admins', label: 'All Admins' },
-						{ value: 'owner_only', label: 'Owner Only' },
-						{ value: 'owner_and_admins',
-							label: 'Owner & Admins',
-						},
+						{ value: 'all_members', label: t('groups.permissions.targets.all_members') },
+						{ value: 'all_admins', label: t('groups.permissions.targets.all_admins') },
+						{ value: 'owner_only', label: t('groups.permissions.targets.owner_only') },
+						{ value: 'owner_and_admins', label: t('groups.permissions.targets.owner_and_admins') },
 					]}
 					disabled={isSubmitting}
 				/>
-				<p className="text-xs text-muted-foreground">
-					Who in the group should receive this permission?
-				</p>
+				<p className="text-xs text-muted-foreground">{t('groups.permissions.targetHint')}</p>
 				<div className="pt-2">
 					<PermissionTargetBadge target={formData.targetType} />
 				</div>
 			</div>
 
 			<div className="space-y-2">
-				<Label htmlFor="description">Description (optional)</Label>
+				<Label htmlFor="description">{t('groups.permissions.descriptionLabel')}</Label>
 				<textarea
 					id="description"
 					value={formData.description || ''}
 					onChange={(e) =>
 						setFormData({ ...formData, description: (e.target as HTMLTextAreaElement).value })
 					}
-					placeholder="Ability to lead and organize fleet operations"
+					placeholder={t('groups.permissions.descriptionPlaceholder')}
 					disabled={isSubmitting}
 					className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 					rows={3}
 				/>
-				{errors.description && <p className="text-sm text-destructive">{errors.description}</p>}
+				{errors.description && <p className="text-sm text-destructive">{t(errors.description)}</p>}
 			</div>
 
 			<div className="flex justify-end gap-2 pt-4">
 				<Button variant="cancel" type="button" onClick={onCancel} disabled={isSubmitting}>
-					Cancel
+					{t('common.cancel')}
 				</Button>
-				<Button variant="confirm" type="submit" loading={isSubmitting} loadingText="Saving...">
-					{isEditing ? 'Update Permission' : 'Create Permission'}
+				<Button
+					variant="confirm"
+					type="submit"
+					loading={isSubmitting}
+					loadingText={t('groups.edit.saving')}
+				>
+					{isEditing ? t('groups.permissions.update') : t('groups.permissions.create')}
 				</Button>
 			</div>
 		</form>

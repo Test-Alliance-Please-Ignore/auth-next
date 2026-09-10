@@ -1,12 +1,15 @@
 import { useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { useAppTranslation } from '@/i18n'
 
+import type { FormEvent } from 'react'
+import type { AppTranslationKey } from '@/i18n'
 import type { Category, CreateGroupRequest } from '@/lib/api'
-import { Button } from '@/components/ui/button'
 
 interface GroupFormProps {
 	categories: Category[]
@@ -23,6 +26,7 @@ export function GroupForm({
 	isSubmitting,
 	canEditAdminManaged = false,
 }: GroupFormProps) {
+	const { t } = useAppTranslation()
 	const [formData, setFormData] = useState<CreateGroupRequest>({
 		categoryId: '',
 		name: '',
@@ -31,30 +35,32 @@ export function GroupForm({
 		joinMode: 'open',
 	})
 
-	const [errors, setErrors] = useState<Partial<Record<keyof CreateGroupRequest, string>>>({})
+	const [errors, setErrors] = useState<
+		Partial<Record<keyof CreateGroupRequest, AppTranslationKey>>
+	>({})
 
 	const validate = (): boolean => {
-		const newErrors: Partial<Record<keyof CreateGroupRequest, string>> = {}
+		const newErrors: Partial<Record<keyof CreateGroupRequest, AppTranslationKey>> = {}
 
 		if (!formData.categoryId) {
-			newErrors.categoryId = 'Category is required'
+			newErrors.categoryId = 'groups.form.categoryRequired'
 		}
 
 		if (!formData.name.trim()) {
-			newErrors.name = 'Name is required'
+			newErrors.name = 'groups.form.nameRequired'
 		} else if (formData.name.length > 255) {
-			newErrors.name = 'Name must be 255 characters or less'
+			newErrors.name = 'groups.form.nameTooLong'
 		}
 
 		if (formData.description && formData.description.length > 1000) {
-			newErrors.description = 'Description must be 1000 characters or less'
+			newErrors.description = 'groups.form.descriptionTooLong'
 		}
 
 		setErrors(newErrors)
 		return Object.keys(newErrors).length === 0
 	}
 
-	const handleSubmit = (e: React.FormEvent) => {
+	const handleSubmit = (e: FormEvent) => {
 		e.preventDefault()
 		if (validate()) {
 			onSubmit(formData)
@@ -66,55 +72,53 @@ export function GroupForm({
 			{/* Category Select */}
 			<div className="space-y-2">
 				<Label htmlFor="categoryId">
-					Category <span className="text-destructive">*</span>
+					{t('groups.category')} <span className="text-destructive">*</span>
 				</Label>
 				<Select
 					value={formData.categoryId}
 					onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
 					inputId="categoryId"
-					options={categories.map((category) => ({ value: category.id,
-						label: category.name,
-					}))}
-					placeholder="Select a category"
+					options={categories.map((category) => ({ value: category.id, label: category.name }))}
+					placeholder={t('groups.form.selectCategory')}
 					disabled={isSubmitting}
 				/>
-				{errors.categoryId && <p className="text-sm text-destructive">{errors.categoryId}</p>}
+				{errors.categoryId && <p className="text-sm text-destructive">{t(errors.categoryId)}</p>}
 			</div>
 
 			{/* Name Input */}
 			<div className="space-y-2">
 				<Label htmlFor="name">
-					Name <span className="text-destructive">*</span>
+					{t('groups.form.name')} <span className="text-destructive">*</span>
 				</Label>
 				<Input
 					id="name"
 					value={formData.name}
 					onChange={(e) => setFormData({ ...formData, name: (e.target as HTMLInputElement).value })}
-					placeholder="Enter group name"
+					placeholder={t('groups.form.namePlaceholder')}
 					disabled={isSubmitting}
 				/>
-				{errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+				{errors.name && <p className="text-sm text-destructive">{t(errors.name)}</p>}
 			</div>
 
 			{/* Description Textarea */}
 			<div className="space-y-2">
-				<Label htmlFor="description">Description</Label>
+				<Label htmlFor="description">{t('groups.form.description')}</Label>
 				<Textarea
 					id="description"
 					value={formData.description || ''}
 					onChange={(e) =>
 						setFormData({ ...formData, description: (e.target as HTMLTextAreaElement).value })
 					}
-					placeholder="Enter group description (optional)"
+					placeholder={t('groups.form.descriptionPlaceholder')}
 					disabled={isSubmitting}
 					rows={3}
 				/>
-				{errors.description && <p className="text-sm text-destructive">{errors.description}</p>}
+				{errors.description && <p className="text-sm text-destructive">{t(errors.description)}</p>}
 			</div>
 
 			{/* Visibility Select */}
 			<div className="space-y-2">
-				<Label htmlFor="visibility">Visibility</Label>
+				<Label htmlFor="visibility">{t('groups.visibility')}</Label>
 				<Select
 					value={formData.visibility}
 					onValueChange={(value) =>
@@ -122,15 +126,9 @@ export function GroupForm({
 					}
 					inputId="visibility"
 					options={[
-						{ value: 'public',
-							label: 'Public (visible to all logged-in users)',
-						},
-						{ value: 'hidden',
-							label: "Hidden (members know they're in it)",
-						},
-						{ value: 'system',
-							label: 'System (invisible to members)',
-						},
+						{ value: 'public', label: t('groups.form.public') },
+						{ value: 'hidden', label: t('groups.form.hidden') },
+						{ value: 'system', label: t('groups.form.system') },
 					]}
 					disabled={isSubmitting}
 				/>
@@ -138,7 +136,7 @@ export function GroupForm({
 
 			{/* Join Mode Select */}
 			<div className="space-y-2">
-				<Label htmlFor="joinMode">Join Mode</Label>
+				<Label htmlFor="joinMode">{t('groups.joinMode')}</Label>
 				<Select
 					value={formData.joinMode}
 					onValueChange={(value) =>
@@ -149,20 +147,16 @@ export function GroupForm({
 					}
 					inputId="joinMode"
 					options={[
-						{ value: 'open', label: 'Open (anyone can join)' },
-						{ value: 'approval',
-							label: 'Approval (requires admin approval)',
-						},
-						{ value: 'invitation_only',
-							label: 'Invitation Only (invite required)',
-						},
+						{ value: 'open', label: t('groups.form.open') },
+						{ value: 'approval', label: t('groups.form.approval') },
+						{ value: 'invitation_only', label: t('groups.form.invitationOnly') },
 						...(canEditAdminManaged
 							? [
 									{
 										value: 'admin_managed',
-										label: 'Admin managed (site admins add members)',
+										label: t('groups.form.adminManaged'),
 									},
-							  ]
+								]
 							: []),
 					]}
 					disabled={isSubmitting}
@@ -172,10 +166,15 @@ export function GroupForm({
 			{/* Form Actions */}
 			<div className="flex justify-end gap-2 pt-4">
 				<Button variant="cancel" type="button" onClick={onCancel} disabled={isSubmitting}>
-					Cancel
+					{t('common.cancel')}
 				</Button>
-				<Button variant="confirm" type="submit" loading={isSubmitting} loadingText="Creating...">
-					Create Group
+				<Button
+					variant="confirm"
+					type="submit"
+					loading={isSubmitting}
+					loadingText={t('groups.form.creating')}
+				>
+					{t('groups.form.create')}
 				</Button>
 			</div>
 		</form>

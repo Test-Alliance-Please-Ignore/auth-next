@@ -33,8 +33,10 @@ import {
 } from '@/hooks/useInviteCodes'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatDate, formatNumber, useAppTranslation } from '@/i18n'
 
 export default function GroupDetailPage() {
+	const { t } = useAppTranslation()
 	const { groupId } = useParams<{ groupId: string }>()
 	const navigate = useNavigate()
 	const { user } = useAuth()
@@ -49,12 +51,15 @@ export default function GroupDetailPage() {
 	const toggleAdmin = useToggleAdmin()
 
 	// Invite code hooks
-	const { data: inviteCodes = [] } = useGroupInviteCodes(groupId!, canManageGroup && !isAdminManaged)
+	const { data: inviteCodes = [] } = useGroupInviteCodes(
+		groupId!,
+		canManageGroup && !isAdminManaged
+	)
 	const createInviteCode = useCreateInviteCode()
 	const revokeInviteCode = useRevokeInviteCode()
 
 	// Set dynamic page title based on group name
-	usePageTitle(group?.name || 'Group Details')
+	usePageTitle(group?.name || t('groupDetail.title'))
 
 	// Dialog state
 	const [transferDialogOpen, setTransferDialogOpen] = useState(false)
@@ -110,7 +115,10 @@ export default function GroupDetailPage() {
 	const handleRemoveMember = (userId: string) => {
 		const member = members?.find((m) => m.userId === userId)
 		if (member) {
-			setMemberToRemove({ userId, name: member.mainCharacterName || 'Unknown' })
+			setMemberToRemove({
+				userId,
+				name: member.mainCharacterName || '',
+			})
 			setRemoveMemberDialogOpen(true)
 		}
 	}
@@ -120,11 +128,15 @@ export default function GroupDetailPage() {
 
 		try {
 			await removeMember.mutateAsync({ groupId, userId: memberToRemove.userId })
-			showSuccess(`${memberToRemove.name} has been removed from the group`)
+			showSuccess(
+				t('groupDetail.memberRemoved', {
+					name: memberToRemove.name || t('groupDetail.unknownUser'),
+				})
+			)
 			setRemoveMemberDialogOpen(false)
 			setMemberToRemove(null)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to remove member')
+			showError(error instanceof Error ? error.message : t('groupDetail.removeFailed'))
 		}
 	}
 
@@ -136,20 +148,21 @@ export default function GroupDetailPage() {
 
 		try {
 			await toggleAdmin.mutateAsync({ groupId, userId, isCurrentlyAdmin })
+			const name = member.mainCharacterName || t('groupDetail.memberFallback')
 			showSuccess(
 				isCurrentlyAdmin
-					? `${member.mainCharacterName || 'Member'} is no longer a group admin`
-					: `${member.mainCharacterName || 'Member'} is now a group admin`
+					? t('groupDetail.adminRemoved', { name })
+					: t('groupDetail.adminAdded', { name })
 			)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update admin status')
+			showError(error instanceof Error ? error.message : t('groupDetail.adminUpdateFailed'))
 		}
 	}
 
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center min-h-[400px]">
-				<p className="text-muted-foreground">Loading group details...</p>
+				<p className="text-muted-foreground">{t('groupDetail.loading')}</p>
 			</div>
 		)
 	}
@@ -157,10 +170,10 @@ export default function GroupDetailPage() {
 	if (!group) {
 		return (
 			<div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
-				<p className="text-muted-foreground">Group not found</p>
+				<p className="text-muted-foreground">{t('groupDetail.notFound')}</p>
 				<Button onClick={() => navigate('/groups')}>
 					<ArrowLeft className="h-4 w-4" />
-					Back to Groups
+					{t('groupDetail.back')}
 				</Button>
 			</div>
 		)
@@ -172,7 +185,7 @@ export default function GroupDetailPage() {
 				{/* Back Button */}
 				<Button variant="ghost" onClick={() => navigate('/groups')}>
 					<ArrowLeft className="h-4 w-4" />
-					Back to Groups
+					{t('groupDetail.back')}
 				</Button>
 
 				{/* Group Info */}
@@ -182,8 +195,8 @@ export default function GroupDetailPage() {
 				{!group.isOwner && (
 					<Card>
 						<CardHeader>
-							<CardTitle>Actions</CardTitle>
-							<CardDescription>Manage your membership in this group</CardDescription>
+							<CardTitle>{t('groupDetail.actions')}</CardTitle>
+							<CardDescription>{t('groupDetail.actionsDescription')}</CardDescription>
 						</CardHeader>
 						<CardContent className="flex gap-3">
 							<JoinButton
@@ -208,9 +221,12 @@ export default function GroupDetailPage() {
 						<CardHeader>
 							<CardTitle className="flex items-center gap-2">
 								<Users className="h-5 w-5" />
-								Members ({group.memberCount || 0})
+								{t('groupDetail.members', {
+									count: group.memberCount || 0,
+									formattedCount: formatNumber(group.memberCount || 0),
+								})}
 							</CardTitle>
-							<CardDescription>Manage members of this group</CardDescription>
+							<CardDescription>{t('groupDetail.membersDescription')}</CardDescription>
 						</CardHeader>
 						<CardContent>
 							<MemberList
@@ -230,7 +246,9 @@ export default function GroupDetailPage() {
 				{canManageGroup && !isAdminManaged && <PendingJoinRequestsList groupId={groupId!} />}
 
 				{/* Invite Member Form - Owner/Admin Only */}
-				{canManageGroup && <InviteMemberForm group={group} allowDirectAdd={user?.is_admin ?? false} />}
+				{canManageGroup && (
+					<InviteMemberForm group={group} allowDirectAdd={user?.is_admin ?? false} />
+				)}
 
 				{/* Invite Codes - Owner/Admin Only */}
 				{canManageGroup && !isAdminManaged && (
@@ -240,54 +258,52 @@ export default function GroupDetailPage() {
 								<div>
 									<div className="flex items-center gap-2">
 										<Ticket className="h-5 w-5 text-primary" />
-										<CardTitle>Invite Codes</CardTitle>
+										<CardTitle>{t('groupDetail.inviteCodes.title')}</CardTitle>
 									</div>
-									<CardDescription>
-										Create reusable invite codes for this group. Codes can be shared to allow users
-										to join without approval.
-									</CardDescription>
+									<CardDescription>{t('groupDetail.inviteCodes.description')}</CardDescription>
 								</div>
 								<Button onClick={() => setShowCreateInviteCodeDialog(true)} size="sm">
 									<Plus className="h-4 w-4" />
-									Create Code
+									{t('groupDetail.inviteCodes.create')}
 								</Button>
 							</div>
 						</CardHeader>
 						<CardContent>
-					{inviteCodes.length === 0 ? (
-						<div className="text-center py-8">
-							<Ticket className="mx-auto h-12 w-12 text-muted-foreground" />
-							<h3 className="mt-4 text-sm font-medium">No invite codes</h3>
-							<p className="text-sm text-muted-foreground mt-2">
-								Create an invite code to allow users to join this group
-							</p>
-						</div>
+							{inviteCodes.length === 0 ? (
+								<div className="text-center py-8">
+									<Ticket className="mx-auto h-12 w-12 text-muted-foreground" />
+									<h3 className="mt-4 text-sm font-medium">{t('groupDetail.inviteCodes.empty')}</h3>
+									<p className="text-sm text-muted-foreground mt-2">
+										{t('groupDetail.inviteCodes.emptyDescription')}
+									</p>
+								</div>
 							) : (
-						<div className="space-y-3">
-							{inviteCodes.map((inviteCode) => {
-								const isRevoked = inviteCode.revokedAt !== null
-								const isExpired = new Date(inviteCode.expiresAt) < new Date()
-								const isMaxedOut =
-									!isRevoked &&
-									!isExpired &&
-									inviteCode.maxUses !== null && inviteCode.currentUses >= inviteCode.maxUses
-								const statusLabel = isRevoked
-									? 'Revoked'
-									: isExpired
-										? 'Expired'
-										: isMaxedOut
-											? 'Max uses reached'
-											: null
-								const inviteUrl = `${window.location.origin}/invite/${inviteCode.code}`
+								<div className="space-y-3">
+									{inviteCodes.map((inviteCode) => {
+										const isRevoked = inviteCode.revokedAt !== null
+										const isExpired = new Date(inviteCode.expiresAt) < new Date()
+										const isMaxedOut =
+											!isRevoked &&
+											!isExpired &&
+											inviteCode.maxUses !== null &&
+											inviteCode.currentUses >= inviteCode.maxUses
+										const statusLabel = isRevoked
+											? t('groupDetail.inviteCodes.revoked')
+											: isExpired
+												? t('duration.expired')
+												: isMaxedOut
+													? t('groupDetail.inviteCodes.maxUsesReached')
+													: null
+										const inviteUrl = `${window.location.origin}/invite/${inviteCode.code}`
 
-								return (
-									<div
-										key={inviteCode.id}
-										className={`rounded-lg border p-4 ${statusLabel ? 'opacity-50' : ''}`}
-									>
-										<div className="flex items-start justify-between">
-											<div className="flex-1 space-y-2">
-												<div className="flex items-center gap-2">
+										return (
+											<div
+												key={inviteCode.id}
+												className={`rounded-lg border p-4 ${statusLabel ? 'opacity-50' : ''}`}
+											>
+												<div className="flex items-start justify-between">
+													<div className="flex-1 space-y-2">
+														<div className="flex items-center gap-2">
 															<code className="text-sm font-mono bg-muted px-2 py-1 rounded">
 																{inviteCode.code}
 															</code>
@@ -296,20 +312,21 @@ export default function GroupDetailPage() {
 																size="sm"
 																onClick={() => handleCopyCode(inviteCode.code)}
 																className="h-7 px-2"
-																title="Copy code"
+																title={t('groupDetail.inviteCodes.copyCode')}
+																aria-label={t('groupDetail.inviteCodes.copyCode')}
 															>
-														{copiedCode === inviteCode.code ? (
-															<Check className="h-4 w-4 text-green-500" />
-														) : (
-															<Copy className="h-4 w-4" />
-														)}
-													</Button>
-													{statusLabel && (
-														<span className="text-xs text-destructive font-medium">
-															{statusLabel}
-														</span>
-													)}
-												</div>
+																{copiedCode === inviteCode.code ? (
+																	<Check className="h-4 w-4 text-green-500" />
+																) : (
+																	<Copy className="h-4 w-4" />
+																)}
+															</Button>
+															{statusLabel && (
+																<span className="text-xs text-destructive font-medium">
+																	{statusLabel}
+																</span>
+															)}
+														</div>
 														<div className="flex items-center gap-2 text-xs">
 															<code className="bg-muted/50 px-2 py-1 rounded text-muted-foreground truncate max-w-md">
 																{inviteUrl}
@@ -319,7 +336,8 @@ export default function GroupDetailPage() {
 																size="sm"
 																onClick={() => handleCopyCode(inviteUrl)}
 																className="h-7 px-2 shrink-0"
-																title="Copy invite URL"
+																title={t('groupDetail.inviteCodes.copyUrl')}
+																aria-label={t('groupDetail.inviteCodes.copyUrl')}
 															>
 																{copiedCode === inviteUrl ? (
 																	<Check className="h-4 w-4 text-green-500" />
@@ -330,14 +348,24 @@ export default function GroupDetailPage() {
 														</div>
 														<div className="flex gap-4 text-xs text-muted-foreground">
 															<span>
-																Uses: {inviteCode.currentUses}
-																{inviteCode.maxUses ? ` / ${inviteCode.maxUses}` : ' (unlimited)'}
+																{inviteCode.maxUses
+																	? t('groupDetail.inviteCodes.usesLimited', {
+																			current: formatNumber(inviteCode.currentUses),
+																			maximum: formatNumber(inviteCode.maxUses),
+																		})
+																	: t('groupDetail.inviteCodes.usesUnlimited', {
+																			current: formatNumber(inviteCode.currentUses),
+																		})}
 															</span>
 															<span>
-																Expires: {new Date(inviteCode.expiresAt).toLocaleDateString()}
+																{t('groupDetail.inviteCodes.expires', {
+																	date: formatDate(inviteCode.expiresAt),
+																})}
 															</span>
 															<span>
-																Created: {new Date(inviteCode.createdAt).toLocaleDateString()}
+																{t('groupDetail.inviteCodes.created', {
+																	date: formatDate(inviteCode.createdAt),
+																})}
 															</span>
 														</div>
 													</div>
@@ -345,6 +373,9 @@ export default function GroupDetailPage() {
 														variant="ghost"
 														size="sm"
 														onClick={() => handleRevokeInviteCode(inviteCode.id)}
+														aria-label={t('groupDetail.inviteCodes.revoke', {
+															code: inviteCode.code,
+														})}
 														disabled={revokeInviteCode.isPending}
 													>
 														<Trash2 className="h-4 w-4 text-destructive" />
@@ -363,20 +394,20 @@ export default function GroupDetailPage() {
 							>
 								<DialogContent>
 									<DialogHeader>
-										<DialogTitle>Create Invite Code</DialogTitle>
+										<DialogTitle>{t('groupDetail.inviteCodes.createTitle')}</DialogTitle>
 										<DialogDescription>
-											Configure settings for the new invite code
+											{t('groupDetail.inviteCodes.createDescription')}
 										</DialogDescription>
 									</DialogHeader>
 
 									<div className="space-y-4">
 										<div className="space-y-2">
-											<Label htmlFor="max-uses">Max Uses (optional)</Label>
+											<Label htmlFor="max-uses">{t('groupDetail.inviteCodes.maxUses')}</Label>
 											<Input
 												id="max-uses"
 												type="number"
 												min="1"
-												placeholder="Unlimited"
+												placeholder={t('groupDetail.inviteCodes.unlimited')}
 												value={inviteCodeSettings.maxUses ?? ''}
 												onChange={(e) =>
 													setInviteCodeSettings({
@@ -386,12 +417,14 @@ export default function GroupDetailPage() {
 												}
 											/>
 											<p className="text-xs text-muted-foreground">
-												Leave empty for unlimited uses
+												{t('groupDetail.inviteCodes.maxUsesHint')}
 											</p>
 										</div>
 
 										<div className="space-y-2">
-											<Label htmlFor="expires-in-days">Expires In (days)</Label>
+											<Label htmlFor="expires-in-days">
+												{t('groupDetail.inviteCodes.expiresInDays')}
+											</Label>
 											<Input
 												id="expires-in-days"
 												type="number"
@@ -405,25 +438,29 @@ export default function GroupDetailPage() {
 													})
 												}
 											/>
-											<p className="text-xs text-muted-foreground">Between 1 and 30 days</p>
+											<p className="text-xs text-muted-foreground">
+												{t('groupDetail.inviteCodes.expiryHint')}
+											</p>
 										</div>
 									</div>
 
 									<DialogFooter>
-										<Button variant="cancel"
+										<Button
+											variant="cancel"
 											onClick={() => {
 												setShowCreateInviteCodeDialog(false)
 												setInviteCodeSettings({ maxUses: null, expiresInDays: 7 })
 											}}
 										>
-											Cancel
+											{t('common.cancel')}
 										</Button>
-										<Button variant="confirm"
+										<Button
+											variant="confirm"
 											onClick={handleCreateInviteCode}
 											loading={createInviteCode.isPending}
-											loadingText="Creating..."
+											loadingText={t('groupDetail.inviteCodes.creating')}
 										>
-											Create Code
+											{t('groupDetail.inviteCodes.create')}
 										</Button>
 									</DialogFooter>
 								</DialogContent>
@@ -438,17 +475,14 @@ export default function GroupDetailPage() {
 						<CardHeader>
 							<CardTitle className="flex items-center gap-2">
 								<UserCog className="h-5 w-5" />
-								Transfer Ownership
+								{t('groupDetail.transfer.title')}
 							</CardTitle>
-							<CardDescription>
-								Transfer ownership of this group to another member. You will become a group admin
-								after the transfer.
-							</CardDescription>
+							<CardDescription>{t('groupDetail.transfer.cardDescription')}</CardDescription>
 						</CardHeader>
 						<CardContent>
 							<Button variant="ghost" onClick={() => setTransferDialogOpen(true)}>
 								<UserCog className="h-4 w-4" />
-								Transfer Ownership
+								{t('groupDetail.transfer.title')}
 							</Button>
 						</CardContent>
 					</Card>
@@ -458,20 +492,24 @@ export default function GroupDetailPage() {
 				<Dialog open={removeMemberDialogOpen} onOpenChange={setRemoveMemberDialogOpen}>
 					<DialogContent>
 						<DialogHeader>
-							<DialogTitle>Remove Member</DialogTitle>
+							<DialogTitle>{t('groupDetail.remove.title')}</DialogTitle>
 							<DialogDescription>
-								Are you sure you want to remove {memberToRemove?.name} from this group? This action
-								cannot be undone.
+								{t('groupDetail.remove.description', {
+									name: memberToRemove?.name || t('groupDetail.unknownUser'),
+								})}
 							</DialogDescription>
 						</DialogHeader>
 						<DialogFooter>
-							<Button variant="cancel" onClick={() => setRemoveMemberDialogOpen(false)}>Cancel</Button>
-							<Button variant="destructive"
+							<Button variant="cancel" onClick={() => setRemoveMemberDialogOpen(false)}>
+								{t('common.cancel')}
+							</Button>
+							<Button
+								variant="destructive"
 								onClick={handleConfirmRemove}
 								loading={removeMember.isPending}
-								loadingText="Removing..."
+								loadingText={t('groupDetail.remove.removing')}
 							>
-								Remove Member
+								{t('groupDetail.remove.submit')}
 							</Button>
 						</DialogFooter>
 					</DialogContent>

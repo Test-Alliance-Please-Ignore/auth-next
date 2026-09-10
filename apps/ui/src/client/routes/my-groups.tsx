@@ -9,16 +9,18 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { useUserMemberships } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatNumber, useAppTranslation } from '@/i18n'
 
 export default function MyGroupsPage() {
-	usePageTitle('My Groups')
+	const { t } = useAppTranslation()
+	usePageTitle(t('myGroups.title'))
 	const navigate = useNavigate()
 	const { data: memberships, isLoading } = useUserMemberships()
 
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center min-h-[400px]">
-				<p className="text-muted-foreground">Loading your groups...</p>
+				<p className="text-muted-foreground">{t('myGroups.loading')}</p>
 			</div>
 		)
 	}
@@ -29,38 +31,38 @@ export default function MyGroupsPage() {
 
 	return (
 		<Container>
-			<PageHeader title="My Groups" description="Manage your group memberships" />
+			<PageHeader title={t('myGroups.title')} description={t('myGroups.description')} />
 
 			<Section>
 				{/* Stats */}
 				<div className="grid gap-4 md:grid-cols-3">
 					<Card variant="default">
 						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-							<CardTitle className="text-sm font-medium">Total Groups</CardTitle>
+							<CardTitle className="text-sm font-medium">{t('myGroups.total')}</CardTitle>
 							<Users className="h-4 w-4 text-muted-foreground" />
 						</CardHeader>
 						<CardContent>
-							<div className="text-2xl font-bold">{memberships?.length || 0}</div>
+							<div className="text-2xl font-bold">{formatNumber(memberships?.length || 0)}</div>
 						</CardContent>
 					</Card>
 
 					<Card variant="default">
 						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-							<CardTitle className="text-sm font-medium">Owned</CardTitle>
+							<CardTitle className="text-sm font-medium">{t('myGroups.owned')}</CardTitle>
 							<Crown className="h-4 w-4 text-muted-foreground" />
 						</CardHeader>
 						<CardContent>
-							<div className="text-2xl font-bold">{ownedGroups.length}</div>
+							<div className="text-2xl font-bold">{formatNumber(ownedGroups.length)}</div>
 						</CardContent>
 					</Card>
 
 					<Card variant="default">
 						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-							<CardTitle className="text-sm font-medium">Admin Roles</CardTitle>
+							<CardTitle className="text-sm font-medium">{t('myGroups.adminRoles')}</CardTitle>
 							<Shield className="h-4 w-4 text-muted-foreground" />
 						</CardHeader>
 						<CardContent>
-							<div className="text-2xl font-bold">{adminGroups.length}</div>
+							<div className="text-2xl font-bold">{formatNumber(adminGroups.length)}</div>
 						</CardContent>
 					</Card>
 				</div>
@@ -68,8 +70,8 @@ export default function MyGroupsPage() {
 				{/* Owned Groups */}
 				{ownedGroups.length > 0 && (
 					<MyGroupsTable
-						title="Owned Groups"
-						description="Groups you created and manage"
+						title={t('myGroups.ownedGroups')}
+						description={t('myGroups.ownedDescription')}
 						memberships={ownedGroups}
 						showActions={false}
 					/>
@@ -78,8 +80,8 @@ export default function MyGroupsPage() {
 				{/* Admin Groups */}
 				{adminGroups.length > 0 && (
 					<MyGroupsTable
-						title="Admin Roles"
-						description="Groups where you are an administrator"
+						title={t('myGroups.adminRoles')}
+						description={t('myGroups.adminDescription')}
 						memberships={adminGroups}
 					/>
 				)}
@@ -87,8 +89,8 @@ export default function MyGroupsPage() {
 				{/* Member Groups */}
 				{memberGroups.length > 0 && (
 					<MyGroupsTable
-						title="Member Groups"
-						description="Groups you are a member of"
+						title={t('myGroups.memberGroups')}
+						description={t('myGroups.memberDescription')}
 						memberships={memberGroups}
 					/>
 				)}
@@ -100,13 +102,12 @@ export default function MyGroupsPage() {
 							<div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
 								<Users className="h-10 w-10 text-muted-foreground" />
 							</div>
-							<h3 className="text-xl font-semibold mb-2">No Groups Yet</h3>
+							<h3 className="text-xl font-semibold mb-2">{t('myGroups.emptyHeading')}</h3>
 							<p className="text-muted-foreground mb-6 max-w-md mx-auto">
-								You haven't joined any groups yet. Browse available groups to connect with other EVE
-								Online players and participate in activities.
+								{t('myGroups.emptyDescription')}
 							</p>
 							<Button onClick={() => navigate('/groups')} size="lg">
-								Browse Available Groups
+								{t('myGroups.browse')}
 							</Button>
 						</CardContent>
 					</Card>

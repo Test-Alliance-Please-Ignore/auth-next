@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge'
+import { useAppTranslation } from '@/i18n'
 
 import type { Visibility } from '@/lib/api'
 
@@ -8,18 +9,19 @@ interface VisibilityBadgeProps {
 }
 
 export function VisibilityBadge({ visibility, className }: VisibilityBadgeProps) {
+	const { t } = useAppTranslation()
 	const config = {
 		public: {
 			variant: 'default' as const,
-			label: 'Public',
+			label: t('groups.badges.public'),
 		},
 		hidden: {
 			variant: 'secondary' as const,
-			label: 'Hidden',
+			label: t('groups.badges.hidden'),
 		},
 		system: {
 			variant: 'destructive' as const,
-			label: 'System',
+			label: t('groups.badges.system'),
 		},
 	}
 

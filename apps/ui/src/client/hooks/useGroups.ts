@@ -1,17 +1,24 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { i18n } from '@/i18n'
 import { api } from '@/lib/api'
 
 import { useApiMutation } from './useApiMutation'
 
 import type {
 	CreateGroupRequest,
-	Group,
 	CreateJoinRequestRequest,
+	Group,
 	GroupsFilters,
 	GroupWithDetails,
 	UpdateGroupRequest,
 } from '@/lib/api'
+
+function formatGroupMutationError(error: unknown): string {
+	return error instanceof Error && error.message
+		? error.message
+		: i18n.t('groups.notifications.failed')
+}
 
 // Query keys
 export const groupKeys = {
@@ -66,8 +73,9 @@ export function useCreateGroup() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: (data: CreateGroupRequest) => api.createGroup(data),
-		successMessage: (group) => `Group "${group.name}" created successfully`,
+		successMessage: (group) => i18n.t('groups.notifications.created', { name: group.name }),
 		onSuccess: async (createdGroup) => {
 			const matchesFilters = (group: Group, filters: GroupsFilters | undefined): boolean => {
 				if (!filters) return true
@@ -91,7 +99,9 @@ export function useCreateGroup() {
 				const filters = key.length >= 4 ? (key[3] as GroupsFilters | undefined) : undefined
 				if (!matchesFilters(createdGroup, filters)) continue
 				if (cached.some((group) => group.id === createdGroup.id)) continue
-				const category = cached.find((group) => group.categoryId === createdGroup.categoryId)?.category
+				const category = cached.find(
+					(group) => group.categoryId === createdGroup.categoryId
+				)?.category
 				if (!category) continue
 				const optimisticGroup: GroupWithDetails = {
 					...createdGroup,
@@ -124,9 +134,10 @@ export function useUpdateGroup() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: ({ id, data }: { id: string; data: UpdateGroupRequest }) =>
 			api.updateGroup(id, data),
-		successMessage: 'Group settings saved',
+		successMessage: () => i18n.t('groups.notifications.saved'),
 		onSuccess: (updatedGroup) => {
 			// Invalidate all group lists (they may have different filters)
 			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
@@ -158,8 +169,9 @@ export function useDeleteGroup() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: (id: string) => api.deleteGroup(id),
-		successMessage: 'Group deleted',
+		successMessage: () => i18n.t('groups.notifications.deleted'),
 		onSuccess: (_, deletedId) => {
 			// Invalidate all group lists
 			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
@@ -195,8 +207,9 @@ export function useJoinGroup() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: (groupId: string) => api.joinGroup(groupId),
-		successMessage: 'You have joined the group',
+		successMessage: () => i18n.t('groups.notifications.joined'),
 		onSuccess: () => {
 			// Invalidate group lists and user memberships
 			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
@@ -212,8 +225,9 @@ export function useLeaveGroup() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: (groupId: string) => api.leaveGroup(groupId),
-		successMessage: 'You have left the group',
+		successMessage: () => i18n.t('groups.notifications.left'),
 		onSuccess: () => {
 			// Invalidate group lists and user memberships
 			void queryClient.invalidateQueries({ queryKey: groupKeys.lists() })
@@ -229,13 +243,16 @@ export function useAddGroupMember() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: ({ groupId, characterName }: { groupId: string; characterName: string }) =>
 			api.addGroupMember(groupId, characterName),
-		successMessage: 'Member added successfully',
+		successMessage: () => i18n.t('groups.notifications.memberAdded'),
 		onSuccess: async (_, variables) => {
 			await Promise.all([
 				queryClient.invalidateQueries({ queryKey: groupKeys.detail(variables.groupId) }),
-				queryClient.invalidateQueries({ queryKey: ['admin', 'group-members', 'list', variables.groupId] }),
+				queryClient.invalidateQueries({
+					queryKey: ['admin', 'group-members', 'list', variables.groupId],
+				}),
 				queryClient.invalidateQueries({ queryKey: groupKeys.all }),
 			])
 		},
@@ -249,8 +266,9 @@ export function useCreateJoinRequest() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: (data: CreateJoinRequestRequest) => api.createJoinRequest(data),
-		successMessage: 'Join request submitted',
+		successMessage: () => i18n.t('groups.notifications.requestSubmitted'),
 		onSuccess: () => {
 			// Invalidate group details to show pending request status
 			void queryClient.invalidateQueries({ queryKey: groupKeys.details() })
@@ -276,8 +294,9 @@ export function useApproveJoinRequest() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: (requestId: string) => api.approveJoinRequest(requestId),
-		successMessage: 'Join request approved',
+		successMessage: () => i18n.t('groups.notifications.requestApproved'),
 		onSuccess: () => {
 			// Invalidate join requests and group details
 			void queryClient.invalidateQueries({ queryKey: ['groups'] })
@@ -292,8 +311,9 @@ export function useRejectJoinRequest() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: (requestId: string) => api.rejectJoinRequest(requestId),
-		successMessage: 'Join request rejected',
+		successMessage: () => i18n.t('groups.notifications.requestRejected'),
 		onSuccess: () => {
 			// Invalidate join requests
 			void queryClient.invalidateQueries({ queryKey: ['groups'] })
@@ -319,8 +339,9 @@ export function useAcceptInvitation() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: (invitationId: string) => api.acceptInvitation(invitationId),
-		successMessage: 'Invitation accepted',
+		successMessage: () => i18n.t('groups.notifications.invitationAccepted'),
 		onSuccess: () => {
 			// Invalidate invitations, memberships, and auth session permissions.
 			void queryClient.invalidateQueries({ queryKey: groupKeys.invitations() })
@@ -338,8 +359,9 @@ export function useDeclineInvitation() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: (invitationId: string) => api.declineInvitation(invitationId),
-		successMessage: 'Invitation declined',
+		successMessage: () => i18n.t('groups.notifications.invitationDeclined'),
 		onSuccess: () => {
 			// Invalidate invitations
 			void queryClient.invalidateQueries({ queryKey: groupKeys.invitations() })
@@ -354,8 +376,10 @@ export function useRedeemInviteCode() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: (code: string) => api.redeemInviteCode(code),
-		successMessage: (response) => `You have joined "${response.group.name}"`,
+		successMessage: (response) =>
+			i18n.t('groups.notifications.codeRedeemed', { name: response.group.name }),
 		onSuccess: () => {
 			// Invalidate memberships/lists and refresh auth session permissions.
 			void queryClient.invalidateQueries({ queryKey: groupKeys.userMemberships() })
@@ -395,9 +419,11 @@ export function useCreateInvitation() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: ({ groupId, characterName }: { groupId: string; characterName: string }) =>
 			api.createInvitation(groupId, characterName),
-		successMessage: (_, { characterName }) => `Invitation sent to ${characterName}`,
+		successMessage: (_, { characterName }) =>
+			i18n.t('groupDetail.inviteMember.invited', { name: characterName }),
 		onSuccess: (_, { groupId }) => {
 			// Invalidate group invitations list
 			void queryClient.invalidateQueries({ queryKey: groupKeys.groupInvitations(groupId) })
@@ -414,9 +440,10 @@ export function useCancelInvitation() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: ({ invitationId }: { invitationId: string; groupId: string }) =>
 			api.cancelInvitation(invitationId),
-		successMessage: 'Invitation cancelled',
+		successMessage: () => i18n.t('groups.notifications.invitationCancelled'),
 		onSuccess: (_, { groupId }) => {
 			void queryClient.invalidateQueries({ queryKey: groupKeys.groupInvitations(groupId) })
 		},
@@ -430,9 +457,10 @@ export function useTransferOwnership() {
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
+		errorMessage: formatGroupMutationError,
 		mutationFn: ({ groupId, newOwnerId }: { groupId: string; newOwnerId: string }) =>
 			api.transferGroupOwnership(groupId, newOwnerId),
-		successMessage: 'Group ownership transferred',
+		successMessage: () => i18n.t('groups.notifications.transferred'),
 		onSuccess: (_, { groupId }) => {
 			// Invalidate group details (ownership changed)
 			void queryClient.invalidateQueries({ queryKey: groupKeys.detail(groupId) })

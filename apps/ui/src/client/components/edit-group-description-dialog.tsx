@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -11,9 +12,9 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useUpdateGroup } from '@/hooks/useGroups'
+import { formatNumber, useAppTranslation } from '@/i18n'
 
 import type { GroupWithDetails } from '@/lib/api'
-import { Button } from '@/components/ui/button'
 
 interface EditGroupDescriptionDialogProps {
 	group: GroupWithDetails
@@ -28,6 +29,7 @@ export function EditGroupDescriptionDialog({
 	onOpenChange,
 	onSuccess,
 }: EditGroupDescriptionDialogProps) {
+	const { t } = useAppTranslation()
 	const [description, setDescription] = useState<string>(group.description || '')
 	const updateGroup = useUpdateGroup()
 
@@ -62,39 +64,45 @@ export function EditGroupDescriptionDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>Edit Group Description</DialogTitle>
+					<DialogTitle>{t('groups.edit.descriptionTitle')}</DialogTitle>
 					<DialogDescription>
-						Update the description for "{group.name}". This will be visible to all members.
+						{t('groups.edit.descriptionDescription', { name: group.name })}
 					</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-4">
 					<div className="space-y-2">
-						<Label htmlFor="group-description">Description</Label>
+						<Label htmlFor="group-description">{t('groups.form.description')}</Label>
 						<Textarea
 							id="group-description"
 							value={description}
 							onChange={(e) => setDescription(e.target.value)}
-							placeholder="Enter group description (optional)"
+							placeholder={t('groups.form.descriptionPlaceholder')}
 							disabled={updateGroup.isPending}
 							rows={5}
 							maxLength={500}
 						/>
-						<p className="text-xs text-muted-foreground">{description.length}/500 characters</p>
+						<p className="text-xs text-muted-foreground">
+							{t('groups.edit.characterCount', {
+								current: formatNumber(description.length),
+								maximum: formatNumber(500),
+							})}
+						</p>
 					</div>
 				</div>
 
 				<DialogFooter>
 					<Button variant="cancel" onClick={handleCancel} disabled={updateGroup.isPending}>
-						Cancel
+						{t('common.cancel')}
 					</Button>
-					<Button variant="confirm"
+					<Button
+						variant="confirm"
 						onClick={handleSave}
 						loading={updateGroup.isPending}
-						loadingText="Saving..."
+						loadingText={t('groups.edit.saving')}
 						disabled={isUnchanged}
 					>
-						Save Changes
+						{t('groups.edit.save')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

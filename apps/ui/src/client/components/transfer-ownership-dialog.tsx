@@ -1,6 +1,8 @@
 import { AlertTriangle, UserCog } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Trans } from 'react-i18next'
 
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -11,9 +13,9 @@ import {
 } from '@/components/ui/dialog'
 import { Select } from '@/components/ui/select'
 import { useTransferOwnership } from '@/hooks/useGroups'
+import { useAppTranslation } from '@/i18n'
 
 import type { GroupMember, GroupWithDetails } from '@/lib/api'
-import { Button } from '@/components/ui/button'
 
 interface TransferOwnershipDialogProps {
 	group: GroupWithDetails
@@ -32,8 +34,9 @@ export function TransferOwnershipDialog({
 	onSuccess,
 	initialSelectedUserId,
 }: TransferOwnershipDialogProps) {
+	const { t } = useAppTranslation()
 	const [selectedUserId, setSelectedUserId] = useState<string>('')
-	const [errorMessage, setErrorMessage] = useState<string | null>(null)
+	const [errorMessage, setErrorMessage] = useState<Error | 'failed' | null>(null)
 	const transferOwnership = useTransferOwnership()
 
 	// Sync internal state when dialog opens with a pre-selected user
@@ -60,9 +63,9 @@ export function TransferOwnershipDialog({
 		} catch (error) {
 			console.error('Failed to transfer ownership:', error)
 			if (error instanceof Error) {
-				setErrorMessage(error.message)
+				setErrorMessage(error)
 			} else {
-				setErrorMessage('Failed to transfer ownership. Please try again.')
+				setErrorMessage('failed')
 			}
 		}
 	}
@@ -81,32 +84,43 @@ export function TransferOwnershipDialog({
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<UserCog className="h-5 w-5" />
-						Transfer Ownership
+						{t('groupDetail.transfer.title')}
 					</DialogTitle>
 					<DialogDescription>
-						Transfer ownership of <strong>{group.name}</strong> to another member. This action
-						cannot be undone.
+						<Trans
+							i18nKey="groupDetail.transfer.dialogDescription"
+							values={{ group: group.name }}
+							components={{ strong: <strong /> }}
+						/>
 					</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-4">
 					{/* Member Selection */}
 					<div className="space-y-2">
-						<label className="text-sm font-medium">New Owner</label>
+						<label htmlFor="group-new-owner" className="text-sm font-medium">
+							{t('groupDetail.transfer.newOwner')}
+						</label>
 						<Select
+							inputId="group-new-owner"
 							value={selectedUserId}
 							onValueChange={setSelectedUserId}
-							options={eligibleMembers.map((member) => ({ value: member.userId,
-								label: member.mainCharacterName || 'Unknown User',
+							options={eligibleMembers.map((member) => ({
+								value: member.userId,
+								label: member.mainCharacterName || t('groupDetail.unknownUser'),
 							}))}
-							placeholder="Select a member..."
+							placeholder={t('groupDetail.transfer.selectMember')}
 						/>
 					</div>
 
 					{/* Error Message */}
 					{errorMessage && (
 						<div className="rounded-md border border-destructive bg-destructive/10 p-3">
-							<p className="text-sm text-destructive">{errorMessage}</p>
+							<p className="text-sm text-destructive">
+								{errorMessage instanceof Error
+									? errorMessage.message
+									: t('groupDetail.transfer.failed')}
+							</p>
 						</div>
 					)}
 
@@ -117,15 +131,21 @@ export function TransferOwnershipDialog({
 								<AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
 								<div className="text-sm space-y-1">
 									<p className="font-medium text-amber-700 dark:text-amber-400">
-										What will happen:
+										{t('groupDetail.transfer.whatHappens')}
 									</p>
 									<ul className="list-disc list-inside text-muted-foreground space-y-1">
 										<li>
-											<strong>{selectedMember.mainCharacterName}</strong> will become the new owner
+											<Trans
+												i18nKey="groupDetail.transfer.newOwnerOutcome"
+												values={{
+													name: selectedMember.mainCharacterName || t('groupDetail.unknownUser'),
+												}}
+												components={{ strong: <strong /> }}
+											/>
 										</li>
-										<li>You will be automatically made a group admin</li>
-										<li>The new owner will have full control over the group</li>
-										<li>This change cannot be undone (you must ask them to transfer back)</li>
+										<li>{t('groupDetail.transfer.currentOwnerOutcome')}</li>
+										<li>{t('groupDetail.transfer.controlOutcome')}</li>
+										<li>{t('groupDetail.transfer.irreversibleOutcome')}</li>
 									</ul>
 								</div>
 							</div>
@@ -134,21 +154,23 @@ export function TransferOwnershipDialog({
 				</div>
 
 				<DialogFooter>
-					<Button variant="cancel"
+					<Button
+						variant="cancel"
 						onClick={() => handleOpenChange(false)}
 						disabled={transferOwnership.isPending}
 					>
-						Cancel
+						{t('common.cancel')}
 					</Button>
-					<Button variant="confirm"
+					<Button
+						variant="confirm"
 						onClick={handleTransfer}
 						disabled={!selectedUserId}
 						loading={transferOwnership.isPending}
-						loadingText="Transferring..."
+						loadingText={t('groupDetail.transfer.transferring')}
 						showIcon={false}
 					>
 						<UserCog className="h-4 w-4" />
-						Transfer Ownership
+						{t('groupDetail.transfer.title')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

@@ -1,6 +1,7 @@
 import { Crown, ShieldCheck, Users } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { i18n, useAppTranslation } from '@/i18n'
 
 import type { PermissionTarget } from '@/lib/api'
 
@@ -11,38 +12,39 @@ interface PermissionTargetBadgeProps {
 
 const targetConfig = {
 	all_members: {
-		label: 'All Members',
+		labelKey: 'groups.permissions.targets.all_members',
 		variant: 'default' as const,
 		icon: Users,
-		description: 'Every member of the group',
+		descriptionKey: 'groups.permissions.targetDescriptions.all_members',
 	},
 	all_admins: {
-		label: 'All Admins',
+		labelKey: 'groups.permissions.targets.all_admins',
 		variant: 'success' as const,
 		icon: ShieldCheck,
-		description: 'All group administrators',
+		descriptionKey: 'groups.permissions.targetDescriptions.all_admins',
 	},
 	owner_only: {
-		label: 'Owner Only',
+		labelKey: 'groups.permissions.targets.owner_only',
 		variant: 'destructive' as const,
 		icon: Crown,
-		description: 'Only the group owner',
+		descriptionKey: 'groups.permissions.targetDescriptions.owner_only',
 	},
 	owner_and_admins: {
-		label: 'Owner & Admins',
+		labelKey: 'groups.permissions.targets.owner_and_admins',
 		variant: 'warning' as const,
 		icon: ShieldCheck,
-		description: 'Group owner and all admins',
+		descriptionKey: 'groups.permissions.targetDescriptions.owner_and_admins',
 	},
 } as const
 
 export function PermissionTargetBadge({ target, size = 'md' }: PermissionTargetBadgeProps) {
-	const { label, variant, icon: Icon } = targetConfig[target]
+	const { t } = useAppTranslation()
+	const { labelKey, variant, icon: Icon } = targetConfig[target]
 
 	return (
 		<Badge variant={variant} className={size === 'sm' ? 'text-xs' : ''}>
 			<Icon className={size === 'sm' ? 'w-3 h-3 mr-1' : 'w-4 h-4 mr-1.5'} />
-			{label}
+			{t(labelKey)}
 		</Badge>
 	)
 }
@@ -52,5 +54,5 @@ export { targetConfig }
 
 // Helper to get target description for preview text
 export function getTargetDescription(target: PermissionTarget): string {
-	return targetConfig[target].description.toLowerCase()
+	return i18n.t(targetConfig[target].descriptionKey)
 }

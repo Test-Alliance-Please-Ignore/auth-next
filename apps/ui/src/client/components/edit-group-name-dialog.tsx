@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -11,9 +12,9 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useUpdateGroup } from '@/hooks/useGroups'
+import { useAppTranslation } from '@/i18n'
 
 import type { GroupWithDetails } from '@/lib/api'
-import { Button } from '@/components/ui/button'
 
 interface EditGroupNameDialogProps {
 	group: GroupWithDetails
@@ -28,6 +29,7 @@ export function EditGroupNameDialog({
 	onOpenChange,
 	onSuccess,
 }: EditGroupNameDialogProps) {
+	const { t } = useAppTranslation()
 	const [groupName, setGroupName] = useState<string>(group.name)
 	const updateGroup = useUpdateGroup()
 
@@ -62,38 +64,39 @@ export function EditGroupNameDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>Edit Group Name</DialogTitle>
+					<DialogTitle>{t('groups.edit.nameTitle')}</DialogTitle>
 					<DialogDescription>
-						Change the name of "{group.name}". This will be visible to all members.
+						{t('groups.edit.nameDescription', { name: group.name })}
 					</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-4">
 					<div className="space-y-2">
-						<Label htmlFor="group-name">Group Name</Label>
+						<Label htmlFor="group-name">{t('groups.groupName')}</Label>
 						<Input
 							id="group-name"
 							value={groupName}
 							onChange={(e) => setGroupName(e.target.value)}
-							placeholder="Enter group name"
+							placeholder={t('groups.form.namePlaceholder')}
 							disabled={updateGroup.isPending}
 							maxLength={100}
 						/>
-						{isInvalid && <p className="text-xs text-destructive">Group name cannot be empty</p>}
+						{isInvalid && <p className="text-xs text-destructive">{t('groups.edit.nameEmpty')}</p>}
 					</div>
 				</div>
 
 				<DialogFooter>
 					<Button variant="cancel" onClick={handleCancel} disabled={updateGroup.isPending}>
-						Cancel
+						{t('common.cancel')}
 					</Button>
-					<Button variant="confirm"
+					<Button
+						variant="confirm"
 						onClick={handleSave}
 						loading={updateGroup.isPending}
-						loadingText="Saving..."
+						loadingText={t('groups.edit.saving')}
 						disabled={isUnchanged || isInvalid}
 					>
-						Save Changes
+						{t('groups.edit.save')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

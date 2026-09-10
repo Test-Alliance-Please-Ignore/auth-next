@@ -6,28 +6,42 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useRedeemInviteCode } from '@/hooks/useGroups'
+import { useAppTranslation } from '@/i18n'
+
+import type { FormEvent } from 'react'
+import type { AppTranslationKey } from '@/i18n'
 
 interface InviteCodeRedemptionProps {
 	onSuccess?: () => void
 }
 
 export function InviteCodeRedemption({ onSuccess }: InviteCodeRedemptionProps) {
+	const { t } = useAppTranslation()
 	const [code, setCode] = useState('')
-	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [message, setMessage] = useState<{
+		type: 'success' | 'error'
+		text?: string
+		key?: AppTranslationKey
+		name?: string
+	} | null>(null)
 	const redeemCode = useRedeemInviteCode()
 
-	const handleRedeem = async (e: React.FormEvent) => {
+	const handleRedeem = async (e: FormEvent) => {
 		e.preventDefault()
 		setMessage(null)
 
 		if (!code.trim()) {
-			setMessage({ type: 'error', text: 'Please enter an invite code' })
+			setMessage({ type: 'error', key: 'groups.inviteCode.required' })
 			return
 		}
 
 		try {
 			const result = await redeemCode.mutateAsync(code.trim())
-			setMessage({ type: 'success', text: result.message })
+			setMessage({
+				type: 'success',
+				key: 'groups.notifications.codeRedeemed',
+				name: result.group.name,
+			})
 			setCode('')
 			onSuccess?.()
 			setTimeout(() => setMessage(null), 5000)
@@ -35,7 +49,7 @@ export function InviteCodeRedemption({ onSuccess }: InviteCodeRedemptionProps) {
 			if (error instanceof Error) {
 				setMessage({ type: 'error', text: error.message })
 			} else {
-				setMessage({ type: 'error', text: 'Failed to redeem invite code' })
+				setMessage({ type: 'error', key: 'groups.inviteCode.failed' })
 			}
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -46,19 +60,19 @@ export function InviteCodeRedemption({ onSuccess }: InviteCodeRedemptionProps) {
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
 					<Ticket className="h-5 w-5" />
-					Redeem Invite Code
+					{t('groups.inviteCode.title')}
 				</CardTitle>
-				<CardDescription>Enter an invite code to join a group</CardDescription>
+				<CardDescription>{t('groups.inviteCode.description')}</CardDescription>
 			</CardHeader>
 			<CardContent>
 				<form onSubmit={handleRedeem} className="space-y-4">
 					<div className="space-y-2">
-						<Label htmlFor="invite-code">Invite Code</Label>
+						<Label htmlFor="invite-code">{t('groups.inviteCode.label')}</Label>
 						<Input
 							id="invite-code"
 							value={code}
 							onChange={(e) => setCode((e.target as HTMLInputElement).value)}
-							placeholder="Enter invite code"
+							placeholder={t('groups.inviteCode.placeholder')}
 							disabled={redeemCode.isPending}
 						/>
 					</div>
@@ -71,12 +85,14 @@ export function InviteCodeRedemption({ onSuccess }: InviteCodeRedemptionProps) {
 									: 'bg-primary/10 text-primary border border-primary'
 							}`}
 						>
-							{message.text}
+							{message.key ? t(message.key, { name: message.name }) : message.text}
 						</div>
 					)}
 
 					<Button type="submit" disabled={redeemCode.isPending} className="w-full">
-						{redeemCode.isPending ? 'Redeeming...' : 'Redeem Code'}
+						{redeemCode.isPending
+							? t('groups.inviteCode.redeeming')
+							: t('groups.inviteCode.redeem')}
 					</Button>
 				</form>
 			</CardContent>

@@ -4,6 +4,8 @@ import { PermissionTargetBadge } from '@/components/permission-target-badge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { formatDate, useAppTranslation } from '@/i18n'
+
 import type { GroupPermissionWithDetails } from '@/lib/api'
 
 interface GroupPermissionCardProps {
@@ -19,9 +21,11 @@ export function GroupPermissionCard({
 	onRemove,
 	showActions = true,
 }: GroupPermissionCardProps) {
+	const { t } = useAppTranslation()
 	const isGlobalPermission = !!permission.permission
 	const isCustomPermission = !!permission.customUrn
-	const hasDanglingGlobalReference = !permission.permission && !!permission.permissionId && !permission.customUrn
+	const hasDanglingGlobalReference =
+		!permission.permission && !!permission.permissionId && !permission.customUrn
 
 	// Resolve display values
 	const urn = isGlobalPermission
@@ -32,13 +36,13 @@ export function GroupPermissionCard({
 	const name = isGlobalPermission
 		? permission.permission?.name
 		: hasDanglingGlobalReference
-			? 'Missing Global Permission'
+			? t('groups.permissions.missingTitle')
 			: permission.customName
 	const description = isGlobalPermission
 		? permission.permission?.description
 		: hasDanglingGlobalReference
-			? 'This attachment references a global permission that could not be resolved.'
-		: permission.customDescription
+			? t('groups.permissions.missingDescription')
+			: permission.customDescription
 
 	return (
 		<Card className="p-4 hover:bg-accent/50 transition-colors">
@@ -51,17 +55,17 @@ export function GroupPermissionCard({
 						{isGlobalPermission && (
 							<Badge variant="ghost" className="text-xs gap-1">
 								<Globe className="w-3 h-3" />
-								Global
+								{t('groups.permissions.global')}
 							</Badge>
 						)}
 						{isCustomPermission && (
 							<Badge variant="secondary" className="text-xs">
-								Custom
+								{t('groups.permissions.custom')}
 							</Badge>
 						)}
 						{hasDanglingGlobalReference && (
 							<Badge variant="destructive" className="text-xs">
-								Missing
+								{t('groups.permissions.missing')}
 							</Badge>
 						)}
 						{isGlobalPermission && permission.permission?.category && (
@@ -79,9 +83,15 @@ export function GroupPermissionCard({
 
 					{/* Metadata */}
 					<div className="flex gap-3 text-xs text-muted-foreground">
-						<span>Created: {new Date(permission.createdAt).toLocaleDateString()}</span>
+						<span>
+							{t('groupDetail.inviteCodes.created', { date: formatDate(permission.createdAt) })}
+						</span>
 						<span>•</span>
-						<span>By: {permission.createdByName ?? permission.createdBy}</span>
+						<span>
+							{t('groups.permissions.by', {
+								name: permission.createdByName ?? permission.createdBy,
+							})}
+						</span>
 					</div>
 				</div>
 
@@ -89,12 +99,22 @@ export function GroupPermissionCard({
 				{showActions && (
 					<div className="flex items-center gap-2">
 						{onEdit && (
-							<Button variant="ghost" size="sm" onClick={() => onEdit(permission)}>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={() => onEdit(permission)}
+								aria-label={t('groups.permissions.edit')}
+							>
 								<Edit2 className="h-4 w-4" />
 							</Button>
 						)}
 						{onRemove && (
-							<Button variant="destructive" size="sm" onClick={() => onRemove(permission)}>
+							<Button
+								variant="destructive"
+								size="sm"
+								onClick={() => onRemove(permission)}
+								aria-label={t('groups.permissions.remove')}
+							>
 								<Trash2 className="h-4 w-4" />
 							</Button>
 						)}
