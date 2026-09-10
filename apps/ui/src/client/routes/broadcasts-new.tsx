@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
+
 import { parseBroadcastSrpMode } from '@repo/broadcasts'
 
 import { Button } from '@/components/ui/button'
@@ -10,45 +11,42 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import {
-	useBroadcastTargets,
-	useBroadcast,
-	useBroadcastTemplates,
-	useCreateBroadcast,
-	useSendBroadcast,
-	useUpdateBroadcast,
-} from '@/hooks/useBroadcasts'
-import { useAuth } from '@/hooks/useAuth'
-import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
-import { usePageTitle } from '@/hooks/usePageTitle'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { BroadcastPreviewPane } from '@/features/broadcasts/components/broadcast-preview-pane'
 import { DiscordTimestampHelperDialog } from '@/features/broadcasts/components/discord-timestamp-helper-dialog'
-import { useDoctrines, useStagingSystems } from '@/features/doctrines/hooks'
 import {
 	getInitialDoctrineFieldState,
 	resolveDoctrineSelectionFromValue,
 } from '@/features/broadcasts/components/system-doctrine-field'
-import {
-	FLEET_COMMANDER_CUSTOM_VALUE,
-} from '@/features/broadcasts/components/system-fleet-commander-field'
-import { TemplateFieldsEditor } from '@/features/broadcasts/components/template-fields-editor'
-import { generateSrpTokenAtFormLoad } from '@/features/broadcasts/srp-token-generator'
+import { FLEET_COMMANDER_CUSTOM_VALUE } from '@/features/broadcasts/components/system-fleet-commander-field'
 import {
 	getInitialStagingFieldState,
 	resolveStagingSelectionFromValue,
 } from '@/features/broadcasts/components/system-staging-field'
+import { TemplateFieldsEditor } from '@/features/broadcasts/components/template-fields-editor'
 import { useBroadcastDraftInitializer } from '@/features/broadcasts/hooks/use-broadcast-draft-initializer'
 import { renderBroadcastTemplateMessage } from '@/features/broadcasts/message-template-renderer'
+import { generateSrpTokenAtFormLoad } from '@/features/broadcasts/srp-token-generator'
 import {
 	autoResizeTextarea,
 	parseBooleanField,
 	resolveFleetCommanderSelectionFromFields,
 } from '@/features/broadcasts/utils'
+import { useDoctrines, useStagingSystems } from '@/features/doctrines/hooks'
+import { useAuth } from '@/hooks/useAuth'
+import {
+	useBroadcast,
+	useBroadcastTargets,
+	useBroadcastTemplates,
+	useCreateBroadcast,
+	useSendBroadcast,
+	useUpdateBroadcast,
+} from '@/hooks/useBroadcasts'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
+import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
 
 const DISCORD_MESSAGE_MAX_LENGTH = 2000
 const FROGSIREN_EMOTE = '<:fs:1496199804470952080>'
-
 
 function wrapWithFrogsirenBanner(message: string): string {
 	const banner = Array.from({ length: 16 }, () => FROGSIREN_EMOTE).join(' ')
@@ -106,35 +104,41 @@ export default function NewBroadcastPage() {
 	const selectedTarget = targets?.find((t) => t.id === selectedTargetId)
 
 	// Fetch templates scoped to the selected target/type
-	const { data: templates } = useBroadcastTemplates(selectedTarget?.type, selectedTargetId || undefined)
+	const { data: templates } = useBroadcastTemplates(
+		selectedTarget?.type,
+		selectedTargetId || undefined
+	)
 	const { data: doctrines = [] } = useDoctrines()
 	const { data: stagingSystems = [] } = useStagingSystems()
 
 	// Message state
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
-	const handleMentionLevelChange = useCallback((value: string) => {
-		const nextLevel = value as typeof mentionLevel
-		if (nextLevel !== 'everyone') {
-			setMentionLevel(nextLevel)
-			return
-		}
+	const handleMentionLevelChange = useCallback(
+		(value: string) => {
+			const nextLevel = value as typeof mentionLevel
+			if (nextLevel !== 'everyone') {
+				setMentionLevel(nextLevel)
+				return
+			}
 
-		// Declining the confirmation should default to @here.
-		setMentionLevel('here')
-		requestConfirmation({
-			title: 'Ping @everyone?',
-			description:
-				'Are you sure you want to ping @everyone? This is sent to offline people as well. Prefer @here instead.',
-			confirmLabel: 'Yes, Ping @everyone',
-			cancelLabel: "It's not that important",
-			confirmButtonVariant: 'danger',
-			cancelButtonVariant: 'confirm',
-			onConfirm: () => {
-				setMentionLevel('everyone')
-			},
-		})
-	}, [requestConfirmation])
+			// Declining the confirmation should default to @here.
+			setMentionLevel('here')
+			requestConfirmation({
+				title: 'Ping @everyone?',
+				description:
+					'Are you sure you want to ping @everyone? This is sent to offline people as well. Prefer @here instead.',
+				confirmLabel: 'Yes, Ping @everyone',
+				cancelLabel: "It's not that important",
+				confirmButtonVariant: 'danger',
+				cancelButtonVariant: 'confirm',
+				onConfirm: () => {
+					setMentionLevel('everyone')
+				},
+			})
+		},
+		[requestConfirmation]
+	)
 
 	useBroadcastDraftInitializer({
 		isEditMode,
@@ -156,19 +160,19 @@ export default function NewBroadcastPage() {
 		selectedTemplateId === 'custom' ? null : templates?.find((t) => t.id === selectedTemplateId)
 	const canCreateFleetTracking = isAdmin || hasPermission('urn:fleet-tracking:create')
 	const senderCharacterName =
-		user?.characters.find((character) => character.characterId === user.mainCharacterId)?.characterName ??
-		'Unknown Sender'
+		user?.characters.find((character) => character.characterId === user.mainCharacterId)
+			?.characterName ?? 'Unknown Sender'
 	const renderedOutboundMessage = useMemo(() => {
 		if (!selectedTarget) return ''
 
 		let message = selectedTemplate
 			? [
-				messageParts.prefix.trim(),
-				renderBroadcastTemplateMessage(selectedTemplate.messageTemplate, templateFields, true),
-				messageParts.suffix.trim(),
-			]
-				.filter(Boolean)
-				.join('\n\n')
+					messageParts.prefix.trim(),
+					renderBroadcastTemplateMessage(selectedTemplate.messageTemplate, templateFields, true),
+					messageParts.suffix.trim(),
+				]
+					.filter(Boolean)
+					.join('\n\n')
 			: customMessage
 
 		message = convertUnixTimestampsForPreview(message)
@@ -199,89 +203,92 @@ export default function NewBroadcastPage() {
 	const renderedOutboundLength = renderedOutboundMessage.length
 	const isOverRenderedMessageLimit = renderedOutboundLength > DISCORD_MESSAGE_MAX_LENGTH
 	// Initialize template fields when template is selected
-	const handleTemplateChange = useCallback((templateId: string) => {
-		setSelectedTemplateId(templateId)
-		if (templateId === 'custom') {
-			setTemplateFields({})
-			setMessageParts({ prefix: '', suffix: '' })
-			setTemplateFieldSelections({})
-			return
-		}
-		const template = templates?.find((t) => t.id === templateId)
-		if (template) {
-			// Initialize fields with empty values
-			const initialFields: Record<string, string> = {}
-			const initialSelections: Record<string, string> = {}
-			template.fieldSchema.forEach((field) => {
-				if (field.type === 'system_doctrine') {
-					const doctrineState = getInitialDoctrineFieldState()
-					initialSelections[field.name] = doctrineState.selection
-					initialFields[field.name] = doctrineState.value
-					initialFields.__doctrineId = ''
-					return
-				}
-
-				if (field.type === 'system_staging') {
-					const stagingState = getInitialStagingFieldState(stagingSystems)
-					initialSelections[field.name] = stagingState.selection
-					initialFields[field.name] = stagingState.value
-					return
-				}
-
-				if (field.type === 'select') {
-					const firstOption = field.options?.[0] ?? ''
-					initialSelections[field.name] = firstOption
-					initialFields[field.name] = firstOption
-					return
-				}
-
-				if (field.type === 'system_srp') {
-					initialFields[field.name] = 'blanket'
-					initialFields.__srpToken = generateSrpTokenAtFormLoad()
-					return
-				}
-
-				if (field.type === 'system_frogsiren') {
-					initialFields[field.name] = 'false'
-					return
-				}
-
-				if (field.type === 'system_fleet_tracking') {
-					// Preserve commander-derived defaults when the template schema
-					// orders fleet-tracking before/after fleet-commander.
-					if (initialFields.__fleetTrackingEnabled === undefined) {
-						initialFields.__fleetTrackingEnabled = 'false'
+	const handleTemplateChange = useCallback(
+		(templateId: string) => {
+			setSelectedTemplateId(templateId)
+			if (templateId === 'custom') {
+				setTemplateFields({})
+				setMessageParts({ prefix: '', suffix: '' })
+				setTemplateFieldSelections({})
+				return
+			}
+			const template = templates?.find((t) => t.id === templateId)
+			if (template) {
+				// Initialize fields with empty values
+				const initialFields: Record<string, string> = {}
+				const initialSelections: Record<string, string> = {}
+				template.fieldSchema.forEach((field) => {
+					if (field.type === 'system_doctrine') {
+						const doctrineState = getInitialDoctrineFieldState()
+						initialSelections[field.name] = doctrineState.selection
+						initialFields[field.name] = doctrineState.value
+						initialFields.__doctrineId = ''
+						return
 					}
-					if (initialFields.__fleetTrackingCharacterId === undefined) {
-						initialFields.__fleetTrackingCharacterId = ''
-					}
-					if (initialFields.__fleetTrackingCharacterName === undefined) {
-						initialFields.__fleetTrackingCharacterName = ''
-					}
-					return
-				}
 
-				if (field.type === 'system_fleet_commander') {
-					const fleetCommanderState = resolveFleetCommanderSelectionFromFields({
-						characters: user?.characters ?? [],
-						mainCharacterId: user?.mainCharacterId,
-						value: '',
-						characterId: '',
-					})
-					initialSelections[field.name] = fleetCommanderState.selection
-					initialFields[field.name] = fleetCommanderState.value
-					initialFields.__fleetTrackingCharacterId = fleetCommanderState.trackingCharacterId
-					initialFields.__fleetTrackingCharacterName = fleetCommanderState.trackingCharacterName
-					return
-				}
+					if (field.type === 'system_staging') {
+						const stagingState = getInitialStagingFieldState(stagingSystems)
+						initialSelections[field.name] = stagingState.selection
+						initialFields[field.name] = stagingState.value
+						return
+					}
 
-				initialFields[field.name] = ''
-			})
-			setTemplateFields(initialFields)
-			setTemplateFieldSelections(initialSelections)
-			setMessageParts({ prefix: '', suffix: '' })
-		}
-	}, [stagingSystems, templates, user?.characters, user?.mainCharacterId])
+					if (field.type === 'select') {
+						const firstOption = field.options?.[0] ?? ''
+						initialSelections[field.name] = firstOption
+						initialFields[field.name] = firstOption
+						return
+					}
+
+					if (field.type === 'system_srp') {
+						initialFields[field.name] = 'blanket'
+						initialFields.__srpToken = generateSrpTokenAtFormLoad()
+						return
+					}
+
+					if (field.type === 'system_frogsiren') {
+						initialFields[field.name] = 'false'
+						return
+					}
+
+					if (field.type === 'system_fleet_tracking') {
+						// Preserve commander-derived defaults when the template schema
+						// orders fleet-tracking before/after fleet-commander.
+						if (initialFields.__fleetTrackingEnabled === undefined) {
+							initialFields.__fleetTrackingEnabled = 'true'
+						}
+						if (initialFields.__fleetTrackingCharacterId === undefined) {
+							initialFields.__fleetTrackingCharacterId = ''
+						}
+						if (initialFields.__fleetTrackingCharacterName === undefined) {
+							initialFields.__fleetTrackingCharacterName = ''
+						}
+						return
+					}
+
+					if (field.type === 'system_fleet_commander') {
+						const fleetCommanderState = resolveFleetCommanderSelectionFromFields({
+							characters: user?.characters ?? [],
+							mainCharacterId: user?.mainCharacterId,
+							value: '',
+							characterId: '',
+						})
+						initialSelections[field.name] = fleetCommanderState.selection
+						initialFields[field.name] = fleetCommanderState.value
+						initialFields.__fleetTrackingCharacterId = fleetCommanderState.trackingCharacterId
+						initialFields.__fleetTrackingCharacterName = fleetCommanderState.trackingCharacterName
+						return
+					}
+
+					initialFields[field.name] = ''
+				})
+				setTemplateFields(initialFields)
+				setTemplateFieldSelections(initialSelections)
+				setMessageParts({ prefix: '', suffix: '' })
+			}
+		},
+		[stagingSystems, templates, user?.characters, user?.mainCharacterId]
+	)
 
 	const updateTemplateField = (fieldName: string, value: string) => {
 		setTemplateFields((current) => ({
@@ -359,13 +366,13 @@ export default function NewBroadcastPage() {
 				continue
 			}
 
-				if (field.type === 'system_srp') {
-					const currentValue = templateFields[field.name]
-					if (currentValue === undefined || currentValue.trim().length === 0) {
-						updateTemplateField(field.name, 'blanket')
-						changed = true
-					}
-					const mode = parseBroadcastSrpMode(currentValue)
+			if (field.type === 'system_srp') {
+				const currentValue = templateFields[field.name]
+				if (currentValue === undefined || currentValue.trim().length === 0) {
+					updateTemplateField(field.name, 'blanket')
+					changed = true
+				}
+				const mode = parseBroadcastSrpMode(currentValue)
 				const currentToken = (templateFields.__srpToken ?? '').trim()
 				if (mode !== 'disabled' && currentToken.length === 0) {
 					updateTemplateField('__srpToken', generateSrpTokenAtFormLoad())
@@ -388,7 +395,7 @@ export default function NewBroadcastPage() {
 
 			if (field.type === 'system_fleet_tracking') {
 				if (templateFields.__fleetTrackingEnabled === undefined) {
-					updateTemplateField('__fleetTrackingEnabled', 'false')
+					updateTemplateField('__fleetTrackingEnabled', 'true')
 					changed = true
 				}
 				if (templateFields.__fleetTrackingCharacterId === undefined) {
@@ -420,10 +427,7 @@ export default function NewBroadcastPage() {
 					(templateFields.__fleetTrackingCharacterId ?? '') !==
 					fleetCommanderState.trackingCharacterId
 				) {
-					updateTemplateField(
-						'__fleetTrackingCharacterId',
-						fleetCommanderState.trackingCharacterId
-					)
+					updateTemplateField('__fleetTrackingCharacterId', fleetCommanderState.trackingCharacterId)
 					changed = true
 				}
 				if (
@@ -528,8 +532,7 @@ export default function NewBroadcastPage() {
 				: await createBroadcast.mutateAsync(payload)
 			const sendResult = await sendBroadcast.mutateAsync(isEditMode ? draftId : broadcast.id)
 			if (!sendResult.success) {
-				const errorText =
-					sendResult.delivery.errorMessage || 'Failed to send broadcast'
+				const errorText = sendResult.delivery.errorMessage || 'Failed to send broadcast'
 				throw new Error(errorText)
 			}
 
@@ -541,10 +544,7 @@ export default function NewBroadcastPage() {
 					type: 'success',
 					text: 'Broadcast sent — opening tracking session…',
 				})
-				setTimeout(
-					() => navigate(`/fleet-tracking/${sendResult.trackingSessionId}`),
-					1200
-				)
+				setTimeout(() => navigate(`/fleet-tracking/${sendResult.trackingSessionId}`), 1200)
 				return
 			}
 			if (sendResult.trackingError) {
@@ -605,9 +605,7 @@ export default function NewBroadcastPage() {
 			<PageHeader
 				title={isEditMode ? 'Edit Draft Broadcast' : 'New Broadcast'}
 				description={
-					isEditMode
-						? 'Update this draft before sending'
-						: 'Send a message to a broadcast target'
+					isEditMode ? 'Update this draft before sending' : 'Send a message to a broadcast target'
 				}
 				action={
 					<Button variant="cancel" onClick={() => navigate('/broadcasts')} size="default">
