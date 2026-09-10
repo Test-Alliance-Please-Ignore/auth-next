@@ -23,6 +23,10 @@
 			{
 				"name": "TEMPORARY_ROLE_ASSIGNMENTS",
 				"class_name": "TemporaryRoleAssignments"
+			},
+			{
+				"name": "BILLING_SCOPE_CACHE",
+				"class_name": "BillingScopeCacheDO"
 			}
 		]
 	},
@@ -34,6 +38,10 @@
 		{
 			"tag": "v2",
 			"new_sqlite_classes": ["TemporaryRoleAssignments"]
+		},
+		{
+			"tag": "v3",
+			"new_classes": ["BillingScopeCacheDO"]
 		}
 	]
 }

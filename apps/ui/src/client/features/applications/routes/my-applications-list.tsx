@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { PageHeader } from '@/components/ui/page-header'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { cn } from '@/lib/utils'
@@ -150,16 +151,10 @@ export default function MyApplicationsList() {
 	// Main content
 	return (
 		<Container>
-			{/* Header */}
-			<div className="mb-8">
-				<h1 className="text-3xl font-bold flex items-center gap-3">
-					<Briefcase className="h-8 w-8" />
-					My Applications
-				</h1>
-				<p className="text-muted-foreground mt-2">
-					Track and manage your job applications to corporations
-				</p>
-			</div>
+			<PageHeader
+				title="My Applications"
+				description="Track and manage your job applications to corporations"
+			/>
 
 			{/* Statistics Cards */}
 			<div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-6">

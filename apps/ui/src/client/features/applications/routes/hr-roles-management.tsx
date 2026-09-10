@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import {
 	Table,
@@ -430,20 +431,16 @@ export default function HrRolesManagement() {
 				</BreadcrumbList>
 			</Breadcrumb>
 
-			{/* Header */}
-			<div className="mb-6">
-				<div className="flex items-start justify-between">
-					<div>
-						<h1 className="text-3xl font-bold flex items-center gap-3">
-							<Shield className="h-8 w-8" />
-							HR Role Management
-						</h1>
-						<p className="text-muted-foreground mt-2">
+			<PageHeader
+				title="HR Role Management"
+				description={
+					<>
+						<div>
 							Manage HR roles for {corp?.name || 'this corporation'}
 							{corp?.ticker && ` [${corp.ticker}]`}
-						</p>
+						</div>
 						{(userRole || hrRole) && (
-							<p className="text-sm text-muted-foreground mt-1">
+							<div className="text-sm mt-1">
 								Your role:{' '}
 								<span className="font-medium">
 									{[userRole, hrRole]
@@ -451,9 +448,11 @@ export default function HrRolesManagement() {
 										.map((role) => formatCorporationRoleLabel(role))
 										.join(' / ')}
 								</span>
-							</p>
+							</div>
 						)}
-					</div>
+					</>
+				}
+				action={
 					<div className="flex items-center gap-2">
 						<Button onClick={() => setAssignUserDialogOpen(true)}>Assign User</Button>
 						<Button variant="ghost" asChild>
@@ -463,8 +462,8 @@ export default function HrRolesManagement() {
 							</Link>
 						</Button>
 					</div>
-				</div>
-			</div>
+				}
+			/>
 
 			{/* HR Roles Table */}
 			<Card>

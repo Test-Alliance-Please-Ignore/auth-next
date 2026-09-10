@@ -32,8 +32,9 @@ import { Link, useLocation } from 'react-router'
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { hasAnyStructurePermission } from '@repo/groups'
 
+import { hasBillingIssuerPermission } from '@/features/bills/issuer-access'
 import { useCorporationAccess, useHasCorporationAccess } from '@/features/corporations'
-import { useHrAccessibleCorporations } from '@/features/hr'
+import { hasExplicitMemberCorporationHrRole, useHrAccessibleCorporations } from '@/features/hr'
 import { useMoonScanPermissions } from '@/features/moon-scan/permissions'
 import { canAccessMumble } from '@/features/mumble/access'
 import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
@@ -81,6 +82,8 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
 	const isAllianceMember = user?.roles?.includes(ROLE_CORE_ALLIANCE_MEMBER) ?? false
 	const canSeeAllianceMemberNav = isSiteAdmin || isAllianceMember
+	const canIssueBills = hasBillingIssuerPermission(permissions, isSiteAdmin)
+	const canSeeBills = canSeeAllianceMemberNav || canIssueBills
 	const { data: hrCorporations } = useHrAccessibleCorporations({
 		enabled: canSeeAllianceMemberNav,
 	})
@@ -178,6 +181,12 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const isFreightRoute =
 		location.pathname === '/freight' || location.pathname.startsWith('/freight/')
 	const isSrpRoute = location.pathname === '/srp' || location.pathname.startsWith('/srp/')
+	const isBillsRoute =
+		location.pathname === '/my-bills' ||
+		location.pathname.startsWith('/my-bills/') ||
+		location.pathname === '/bills/issue' ||
+		location.pathname.startsWith('/bills/issue/') ||
+		location.pathname.startsWith('/admin/bills')
 	const isHrRoute =
 		location.pathname === '/my-applications' ||
 		location.pathname.startsWith('/my-applications/') ||
@@ -267,17 +276,23 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			})
 		}
 
-		const hasCorporationModuleAccess =
-			(corporationAccess?.hasAccess ?? false) || (hrCorporations?.length ?? 0) > 0 || isAuditor
-		const canSeeLegacyApplications =
+		const hasMemberCorporationAccess =
 			isSiteAdmin ||
 			isAuditor ||
-			(hrCorporations?.some((corp) => corp.isMemberCorporation) ?? false)
+			(leadershipCorporationAccess?.corporations ?? []).some(
+				(corporation) => corporation.isMemberCorporation
+			) ||
+			(hrCorporations ?? []).some((corporation) => corporation.isMemberCorporation)
+		const hasMemberLeadershipAccess = (leadershipCorporationAccess?.corporations ?? []).some(
+			(corporation) => corporation.isMemberCorporation
+		)
+		const canSeeLegacyApplications =
+			isSiteAdmin || isAuditor || hasExplicitMemberCorporationHrRole(hrCorporations)
 		const isHrOnlyUser =
-			!(corporationAccess?.hasAccess ?? false) && ((hrCorporations?.length ?? 0) > 0 || isAuditor)
+			!hasMemberLeadershipAccess && ((hrCorporations?.length ?? 0) > 0 || isAuditor)
 		const isOnCorpHrRoute = /^\/corporations\/[^/]+\/hr/.test(location.pathname)
 
-		if (canSeeAllianceMemberNav && hasCorporationModuleAccess) {
+		if (canSeeAllianceMemberNav && hasMemberCorporationAccess) {
 			hrItems.push({
 				label: 'Corporations',
 				href: '/corporations',
@@ -312,6 +327,16 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			href: '#hr',
 			icon: Briefcase,
 			children: hrItems,
+		})
+	}
+
+	// Permission-only users do not enter the alliance-member navigation block below.
+	if (canSeeBills && !canSeeAllianceMemberNav) {
+		navItems.push({
+			label: 'Bills',
+			href: '/my-bills',
+			icon: Receipt,
+			isActive: isBillsRoute,
 		})
 	}
 
@@ -377,11 +402,16 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 				...srpNavState.navItem,
 				icon: CircleDollarSign,
 			},
-			{
-				label: 'My Bills',
-				href: '/my-bills',
-				icon: Receipt,
-			},
+			...(canSeeBills
+				? [
+						{
+							label: 'Bills',
+							href: '/my-bills',
+							icon: Receipt,
+							isActive: isBillsRoute,
+						},
+					]
+				: []),
 			...(canSeeMumble
 				? [
 						{

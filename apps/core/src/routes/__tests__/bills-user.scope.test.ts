@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from '../../db'
-import { buildMyBillListScope, getUserBillScope } from '../bills-user'
+import { buildMyBillListScope, clearUserBillScopeCache, getUserBillScope } from '../bills-user'
 
 vi.mock('@repo/do-utils', () => ({
 	getStub: vi.fn(),
@@ -19,6 +19,7 @@ const createDbMock = vi.mocked(createDb)
 describe('bills-user scope helpers', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
+		void clearUserBillScopeCache()
 	})
 
 	it('builds my-bills scope with user-only issuer IDs', () => {
@@ -51,6 +52,9 @@ describe('bills-user scope helpers', () => {
 						{ characterId: '8002', characterName: 'Pilot Two' },
 						{ characterId: '9003', characterName: 'Pilot Three' },
 					]),
+				},
+				managedCorporations: {
+					findMany: vi.fn().mockResolvedValue([{ corporationId: '100' }, { corporationId: '200' }]),
 				},
 			},
 		} as any)
@@ -129,6 +133,52 @@ describe('bills-user scope helpers', () => {
 		)
 	})
 
+	it('excludes deleted and emeritus characters and non-member role corporations', async () => {
+		const findCharacters = vi
+			.fn()
+			.mockResolvedValue([{ characterId: 'active-char', characterName: 'Active' }])
+		createDbMock.mockReturnValue({
+			query: {
+				userCharacters: {
+					findMany: findCharacters,
+				},
+				managedCorporations: {
+					findMany: vi.fn().mockResolvedValue([{ corporationId: 'member-corp' }]),
+				},
+			},
+		} as any)
+		const characterDataStub = {
+			getCharacterInfo: vi.fn(async (characterId: string) => ({
+				corporationId: characterId === 'active-char' ? 'member-corp' : 'other-corp',
+			})),
+		}
+		const corporationDataStub = {
+			getCorporationInfo: vi.fn().mockResolvedValue({ ceoId: 'active-char' }),
+			getDirectors: vi.fn().mockResolvedValue([]),
+		}
+		const env = {
+			DATABASE_URL: 'postgres://example',
+			EVE_CHARACTER_DATA: { binding: 'character' },
+			EVE_CORPORATION_DATA: { binding: 'corporation' },
+			GROUPS: { binding: 'groups' },
+		} as any
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.EVE_CHARACTER_DATA) return characterDataStub as any
+			if (binding === env.EVE_CORPORATION_DATA) return corporationDataStub as any
+			if (binding === env.GROUPS)
+				return { getUserMemberships: vi.fn().mockResolvedValue([]) } as any
+			throw new Error(`Unexpected binding: ${String(binding)}`)
+		})
+
+		const scope = await getUserBillScope(env, 'user-filtered')
+
+		expect(scope.characterIds).toEqual(['active-char'])
+		expect(scope.corporationIds).toEqual(['member-corp'])
+		expect(findCharacters).toHaveBeenCalledWith(
+			expect.objectContaining({ where: expect.anything() })
+		)
+	})
+
 	it('excludes corporations where user is only a regular member (not ceo/director)', async () => {
 		createDbMock.mockReturnValue({
 			query: {
@@ -137,6 +187,7 @@ describe('bills-user scope helpers', () => {
 						.fn()
 						.mockResolvedValue([{ characterId: '7001', characterName: 'Pilot One' }]),
 				},
+				managedCorporations: { findMany: vi.fn().mockResolvedValue([]) },
 			},
 		} as any)
 
@@ -174,6 +225,43 @@ describe('bills-user scope helpers', () => {
 		)
 	})
 
+	it('reloads a user scope after explicit invalidation', async () => {
+		const findCharacters = vi
+			.fn()
+			.mockResolvedValueOnce([{ characterId: 'first-char', characterName: 'First' }])
+			.mockResolvedValueOnce([{ characterId: 'second-char', characterName: 'Second' }])
+		createDbMock.mockReturnValue({
+			query: {
+				userCharacters: { findMany: findCharacters },
+				managedCorporations: { findMany: vi.fn().mockResolvedValue([]) },
+			},
+		} as any)
+		const env = {
+			DATABASE_URL: 'postgres://example',
+			EVE_CHARACTER_DATA: { binding: 'character' },
+			EVE_CORPORATION_DATA: { binding: 'corporation' },
+			GROUPS: { binding: 'groups' },
+		} as any
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.EVE_CHARACTER_DATA) {
+				return { getCharacterInfo: vi.fn().mockResolvedValue(null) } as any
+			}
+			if (binding === env.GROUPS) {
+				return { getUserMemberships: vi.fn().mockResolvedValue([]) } as any
+			}
+			throw new Error(`Unexpected binding: ${String(binding)}`)
+		})
+
+		await expect(getUserBillScope(env, 'user-reloaded')).resolves.toMatchObject({
+			characterIds: ['first-char'],
+		})
+		void clearUserBillScopeCache('user-reloaded')
+		await expect(getUserBillScope(env, 'user-reloaded')).resolves.toMatchObject({
+			characterIds: ['second-char'],
+		})
+		expect(findCharacters).toHaveBeenCalledTimes(2)
+	})
+
 	it('excludes member-only corporation affiliation from allowed party entities filter', async () => {
 		createDbMock.mockReturnValue({
 			query: {
@@ -182,6 +270,9 @@ describe('bills-user scope helpers', () => {
 						{ characterId: '7001', characterName: 'Pilot One' },
 						{ characterId: '8002', characterName: 'Pilot Two' },
 					]),
+				},
+				managedCorporations: {
+					findMany: vi.fn().mockResolvedValue([{ corporationId: '100' }]),
 				},
 			},
 		} as any)
@@ -239,6 +330,9 @@ describe('bills-user scope helpers', () => {
 						{ characterId: '7001', characterName: 'Pilot One' },
 						{ characterId: '8002', characterName: 'Pilot Two' },
 					]),
+				},
+				managedCorporations: {
+					findMany: vi.fn().mockResolvedValue([{ corporationId: '100' }]),
 				},
 			},
 		} as any)

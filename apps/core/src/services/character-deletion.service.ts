@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { getStub } from '@repo/do-utils'
 
 import { userCharacters } from '../db/schema'
+import { clearUserBillScopeCache } from '../lib/billing-scope-cache'
 
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
@@ -14,7 +15,7 @@ export const DOOMHEIM_CORPORATION_ID = '1000001'
 type CharacterDeletionDb = ReturnType<typeof createDb>
 
 type CharacterDeletionEnv = Pick<Env, 'EVE_TOKEN_STORE'> &
-	Partial<Pick<Env, 'EVE_CORPORATION_DATA'>>
+	Partial<Pick<Env, 'EVE_CORPORATION_DATA' | 'BILLING_SCOPE_CACHE'>>
 
 export async function markCharacterDeletedEverywhere(
 	db: CharacterDeletionDb,
@@ -22,6 +23,10 @@ export async function markCharacterDeletedEverywhere(
 	characterId: string,
 	options?: { reconcileCorporationMembership?: boolean }
 ): Promise<void> {
+	const character = await db.query.userCharacters.findFirst({
+		where: eq(userCharacters.characterId, characterId),
+		columns: { userId: true },
+	})
 	await db
 		.update(userCharacters)
 		.set({
@@ -30,6 +35,7 @@ export async function markCharacterDeletedEverywhere(
 			updatedAt: new Date(),
 		})
 		.where(eq(userCharacters.characterId, characterId))
+	if (character) await clearUserBillScopeCache(character.userId, env.BILLING_SCOPE_CACHE)
 
 	try {
 		const tokenStore = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')

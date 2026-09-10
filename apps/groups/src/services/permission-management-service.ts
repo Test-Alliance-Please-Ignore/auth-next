@@ -10,7 +10,7 @@ import {
 	permissionCategories,
 	permissions,
 } from '../db/schema'
-import { assertValidBroadcastPermissionUrn } from './broadcast-urn'
+import { assertValidManagedPermissionUrn } from './broadcast-urn'
 import { userHasPermission } from './permission-target'
 import { canManageGroup } from './permissions'
 import { isUserGroupAdmin } from './query-helpers'
@@ -118,7 +118,7 @@ export class PermissionManagementService {
 
 	async createPermission(data: CreatePermissionRequest, adminUserId: string): Promise<Permission> {
 		// Admin-only
-		assertValidBroadcastPermissionUrn(data.urn)
+		assertValidManagedPermissionUrn(data.urn)
 		const [permission] = await this.ctx.db
 			.insert(permissions)
 			.values({
@@ -142,7 +142,7 @@ export class PermissionManagementService {
 	): Promise<Permission> {
 		// Admin-only
 		if (data.urn !== undefined) {
-			assertValidBroadcastPermissionUrn(data.urn)
+			assertValidManagedPermissionUrn(data.urn)
 		}
 		const updates: Partial<typeof permissions.$inferInsert> = {}
 

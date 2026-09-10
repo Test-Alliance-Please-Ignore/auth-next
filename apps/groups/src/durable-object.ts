@@ -25,7 +25,7 @@ import {
 	permissionCategories,
 	permissions,
 } from './db/schema'
-import { assertValidBroadcastPermissionUrn } from './services/broadcast-urn'
+import { assertValidManagedPermissionUrn } from './services/broadcast-urn'
 import { CategoryService } from './services/category-service' // Added
 
 import {
@@ -2536,7 +2536,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 
 	async createPermission(data: CreatePermissionRequest, actorId: string): Promise<Permission> {
 		// Admin-only operation
-		assertValidBroadcastPermissionUrn(data.urn)
+		assertValidManagedPermissionUrn(data.urn)
 
 		const [permission] = await this.db
 			.insert(permissions)
@@ -2616,7 +2616,7 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	): Promise<Permission> {
 		// Admin-only operation
 		if (data.urn !== undefined) {
-			assertValidBroadcastPermissionUrn(data.urn)
+			assertValidManagedPermissionUrn(data.urn)
 		}
 
 		const updates: Partial<typeof permissions.$inferInsert> = {}

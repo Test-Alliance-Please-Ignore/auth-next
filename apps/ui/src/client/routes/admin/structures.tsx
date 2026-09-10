@@ -18,7 +18,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Container } from '@/components/ui/container'
 import { FilterField } from '@/components/ui/filter-field'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
@@ -487,14 +486,14 @@ export default function AdminStructuresPage() {
 
 	if (!canShowAdminData) {
 		return (
-			<Container className="py-6">
+			<div className="flex min-h-[400px] items-center justify-center">
 				<LoadingSpinner label="Loading structure admin..." size="lg" />
-			</Container>
+			</div>
 		)
 	}
 
 	return (
-		<Container className="space-y-6 py-6">
+		<div className="space-y-6">
 			<PageHeader
 				title="Structures Admin"
 				description="Site-admin configuration for structure groups, corporation defaults, reusable alert destinations, and group alert configs."
@@ -1220,7 +1219,7 @@ export default function AdminStructuresPage() {
 				</TabsContent>
 			</Tabs>
 			{confirmationDialog}
-		</Container>
+		</div>
 	)
 }
 

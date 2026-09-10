@@ -1,4 +1,4 @@
-import { Calendar, Clock, Pause, Play, Trash2 } from 'lucide-react'
+import { ArrowLeft, Clock, Pause, Play, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
@@ -39,6 +39,7 @@ import {
 } from '@/hooks/useBills'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import toast from '@/lib/toast'
 
 import type { EntityType, PayeeType, ScheduleFrequency, UpdateScheduleInput } from '@repo/bills'
 
@@ -241,7 +242,7 @@ export default function AdminBillsSchedulesEditPage() {
 			await updateSchedule.mutateAsync({ id, data: input })
 			setMessage({ type: 'success', text: 'Schedule updated successfully!' })
 		} catch (error) {
-			console.error('Failed to update schedule:', error)
+			toast.error(error instanceof Error ? error.message : 'Failed to update schedule')
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to update schedule',
@@ -314,7 +315,10 @@ export default function AdminBillsSchedulesEditPage() {
 					</CardContent>
 				</Card>
 				<Button variant="ghost" asChild>
-					<Link to="/admin/bills/schedules">Back to Schedules</Link>
+					<Link to="/admin/bills/schedules">
+						<ArrowLeft className="h-4 w-4" />
+						Back to Schedules
+					</Link>
 				</Button>
 			</div>
 		)
@@ -358,7 +362,7 @@ export default function AdminBillsSchedulesEditPage() {
 					</Button>
 					<Button variant="ghost" asChild>
 						<Link to="/admin/bills/schedules">
-							<Calendar className="h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Schedules
 						</Link>
 					</Button>

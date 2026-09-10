@@ -4,8 +4,6 @@ import {
 	ArrowUpDown,
 	CircleHelp,
 	Flame,
-	Maximize2,
-	Minimize2,
 	Package,
 	RefreshCcw,
 	Shield,
@@ -33,10 +31,11 @@ import {
 } from '@repo/structures'
 
 import { CorporationLogo } from '@/components/corporation-logo'
-import { useLayoutScrollMode } from '@/components/layout'
+import { useLayoutScrollMode } from '@/components/layout-scroll-context'
 import { SkyhookStateBadge } from '@/components/skyhook-state-badge'
 import { StructureStateBadge } from '@/components/structure-state-badge'
 import { StructureSyncStatusBadge } from '@/components/structure-sync-status-badge'
+import { TableLayoutToggle } from '@/components/table-layout-toggle'
 import { TableRefreshFrame } from '@/components/table-refresh-frame'
 import {
 	Accordion,
@@ -1416,23 +1415,10 @@ export default function StructuresPage() {
 		</Button>
 	)
 	const tableLayoutButton = (
-		<Button
-			variant="ghost"
-			size="sm"
-			className="h-8"
-			type="button"
-			onClick={() => setIsPageScrollEnabled(!isPageScrollEnabled)}
-			aria-pressed={isTableGridClamped}
-			aria-label={
-				isTableGridClamped ? 'Use page scrolling for the table' : 'Clamp the table to the page'
-			}
-			title={
-				isTableGridClamped ? 'Use page scrolling for the table' : 'Clamp the table to the page'
-			}
-		>
-			{isTableGridClamped ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
-			<span className="ml-2">{isTableGridClamped ? 'Page scroll' : 'Clamp grid'}</span>
-		</Button>
+		<TableLayoutToggle
+			isClamped={isTableGridClamped}
+			onToggle={() => setIsPageScrollEnabled(!isPageScrollEnabled)}
+		/>
 	)
 
 	const handleSort = (field: StructureListSortBy) => {
@@ -1776,8 +1762,8 @@ export default function StructuresPage() {
 	return (
 		<Container
 			className={cn(
-				'flex min-h-0 flex-col space-y-6 py-6 2xl:!max-w-none',
-				isTableGridClamped ? 'lg:h-full lg:overflow-hidden' : 'lg:overflow-visible'
+				'flex min-h-0 flex-col space-y-6 py-0 2xl:!max-w-none',
+				isTableGridClamped ? 'lg:h-full lg:overflow-hidden lg:py-0' : 'lg:overflow-visible'
 			)}
 		>
 			<PageHeader

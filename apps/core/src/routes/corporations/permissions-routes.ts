@@ -1,8 +1,12 @@
 import { Hono } from 'hono'
 
+import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
+import { createDb } from '../../db'
+import { userCharacters } from '../../db/schema'
+import { clearUserCache } from '../../lib/groups-cache'
 import { requireAdmin, requireAuth } from '../../middleware/session'
 
 import type { Groups } from '@repo/groups'
@@ -51,6 +55,14 @@ app.post('/:corporationId/permissions', requireAdmin(), async (c) => {
 			},
 			user.id
 		)
+		const db = createDb(c.env.DATABASE_URL)
+		const linkedUsers = await db.query.userCharacters.findMany({
+			where: eq(userCharacters.corporationId, corporationId),
+			columns: { userId: true },
+		})
+		for (const linkedUser of linkedUsers) {
+			await clearUserCache(linkedUser.userId, c.env.BILLING_SCOPE_CACHE)
+		}
 
 		logger.info(`Permission ${body.permissionId} attached to corporation ${corporationId}`)
 		return c.json({ permission })
@@ -80,6 +92,14 @@ app.delete('/:corporationId/permissions/:permissionId', requireAdmin(), async (c
 	try {
 		const stub = getStub<Groups>(c.env.GROUPS, 'default')
 		await stub.removePermissionFromCorporation(permissionId, user.id)
+		const db = createDb(c.env.DATABASE_URL)
+		const linkedUsers = await db.query.userCharacters.findMany({
+			where: eq(userCharacters.corporationId, corporationId),
+			columns: { userId: true },
+		})
+		for (const linkedUser of linkedUsers) {
+			await clearUserCache(linkedUser.userId, c.env.BILLING_SCOPE_CACHE)
+		}
 
 		logger.info(`Permission ${permissionId} removed from corporation ${corporationId}`)
 		return c.json({ success: true })

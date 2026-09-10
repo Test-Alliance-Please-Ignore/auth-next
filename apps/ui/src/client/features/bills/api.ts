@@ -79,6 +79,26 @@ export async function getBill(billId: string): Promise<BillWithDetails> {
 	return fetchJson(`${API_BASE_URL}/bills/my-bills/${billId}`)
 }
 
+export async function issueIssuedBill(billId: string): Promise<BillWithDetails> {
+	return fetchJson(`${API_BASE_URL}/bills/issued/${billId}/issue`, { method: 'POST' })
+}
+
+export async function cancelIssuedBill(billId: string): Promise<BillWithDetails> {
+	return fetchJson(`${API_BASE_URL}/bills/issued/${billId}/cancel`, { method: 'POST' })
+}
+
+export async function markIssuedBillPaid(billId: string): Promise<BillWithDetails> {
+	return fetchJson(`${API_BASE_URL}/bills/issued/${billId}/mark-paid`, { method: 'POST' })
+}
+
+export async function revertIssuedBillToDraft(billId: string): Promise<BillWithDetails> {
+	return fetchJson(`${API_BASE_URL}/bills/issued/${billId}/revert-to-draft`, { method: 'POST' })
+}
+
+export async function deleteIssuedBill(billId: string): Promise<void> {
+	await fetchJson(`${API_BASE_URL}/bills/issued/${billId}`, { method: 'DELETE' })
+}
+
 export interface BillPartySearchResult {
 	entityId: string
 	entityType: EntityType

@@ -11,13 +11,11 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, action, className }: PageHeaderProps) {
 	return (
-		<div className={cn('mb-section md:mb-10', className)}>
+		<div className={cn('page-header mb-6', className)}>
 			<div className="flex items-start justify-between gap-4">
-				<div className="space-y-3">
-					<h1 className="py-1 text-4xl md:text-5xl font-bold leading-[1.2] gradient-text">
-						{title}
-					</h1>
-					{description && <div className="text-muted-foreground text-lg">{description}</div>}
+				<div>
+					<h1 className="text-3xl font-bold gradient-text">{title}</h1>
+					{description && <div className="text-muted-foreground mt-1">{description}</div>}
 				</div>
 				{action && <div className="flex-shrink-0">{action}</div>}
 			</div>

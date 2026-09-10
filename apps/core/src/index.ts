@@ -13,6 +13,7 @@ import {
 	withWorkersLogger,
 } from '@repo/hono-helpers'
 
+import { BillingScopeCacheDO } from './billing-scope-cache-do'
 import { createDb } from './db'
 import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from './db/schema'
 import { CoreDO } from './durable-object'
@@ -1198,6 +1199,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 // Use manual captureException() in DO methods for error tracking
 export { CoreDO as Core }
 export { TemporaryRoleAssignmentsDO as TemporaryRoleAssignments }
+export { BillingScopeCacheDO }
 
 // Export Workflow class
 export { UserRefreshWorkflow } from './workflows/user-refresh.workflow'

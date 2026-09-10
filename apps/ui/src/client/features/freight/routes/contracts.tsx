@@ -3,7 +3,16 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+	stickyTableActionCellClassName,
+	stickyTableActionHeaderClassName,
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { useFreightContracts, useOpenContractInGame } from '@/hooks/useFreightContracts'
 import { usePageTitle } from '@/hooks/usePageTitle'
@@ -11,10 +20,7 @@ import { cn } from '@/lib/utils'
 
 import { formatISK, formatNumber } from '../utils'
 
-import type {
-	FreightContractSortDirection,
-	FreightContractSortKey,
-} from '@/lib/freight-api'
+import type { FreightContractSortDirection, FreightContractSortKey } from '@/lib/freight-api'
 
 type AriaSort = 'none' | 'ascending' | 'descending'
 
@@ -52,7 +58,11 @@ export default function FreightContractsPage() {
 	})
 	const [pagination, setPagination] = useState({ page: 1, pageSize: 25 })
 
-	const { data: contractsPage, isLoading, isFetching } = useFreightContracts({
+	const {
+		data: contractsPage,
+		isLoading,
+		isFetching,
+	} = useFreightContracts({
 		status: 'outstanding',
 		page: pagination.page,
 		pageSize: pagination.pageSize,
@@ -140,7 +150,7 @@ export default function FreightContractsPage() {
 							{renderSortHead('Collateral', 'collateral', 'text-right font-mono')}
 							{renderSortHead('TTC', 'daysToComplete', 'text-center font-mono')}
 							{renderSortHead('Expires', 'expires')}
-							<TableHead className="sticky right-0 z-20 table-header-bg text-right">
+							<TableHead className={`${stickyTableActionHeaderClassName} text-right`}>
 								Actions
 							</TableHead>
 						</TableRow>
@@ -189,7 +199,7 @@ export default function FreightContractsPage() {
 											{contract.daysToComplete ?? '—'}
 										</TableCell>
 										<TableCell>{formatTimeRemaining(contract.dateExpired)}</TableCell>
-										<TableCell className="sticky right-0 z-10 bg-card text-right">
+										<TableCell className={`${stickyTableActionCellClassName} text-right`}>
 											<Button
 												variant="secondary"
 												size="sm"

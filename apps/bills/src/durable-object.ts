@@ -19,7 +19,9 @@ import type {
 	BillIntegrationView,
 	BillListPage,
 	BillListQuery,
+	BillListScopeEntity,
 	BillMetadata,
+	BillMutationAuthorization,
 	BillNotificationEventType,
 	BillPartySearchQuery,
 	BillPartySearchRow,
@@ -54,6 +56,7 @@ import type {
 	UpdateScheduleInput,
 	UpdateTemplateInput,
 } from '@repo/bills'
+import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Groups } from '@repo/groups'
 import type { Env } from './context'
@@ -119,6 +122,10 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 			})
 			throw error
 		}
+	}
+
+	async createBillsBulk(userId: string, data: CreateBillInput[]): Promise<Bill[]> {
+		return this.billService.createBillsBulk(userId, data)
 	}
 
 	async createBillFromExternalSource(
@@ -191,12 +198,21 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return this.billService.listBillStatusEventsByPayerPage(query)
 	}
 
-	async updateBill(actorUserId: string, billId: string, data: UpdateBillInput): Promise<Bill> {
-		return this.billService.updateBill(actorUserId, billId, data)
+	async updateBill(
+		actorUserId: string,
+		billId: string,
+		data: UpdateBillInput,
+		authorization?: BillMutationAuthorization
+	): Promise<Bill> {
+		return this.billService.updateBill(actorUserId, billId, data, authorization)
 	}
 
-	async issueBill(actorUserId: string, billId: string): Promise<Bill> {
-		const issued = await this.billService.issueBill(actorUserId, billId)
+	async issueBill(
+		actorUserId: string,
+		billId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<Bill> {
+		const issued = await this.billService.issueBill(actorUserId, billId, authorization)
 		try {
 			const enqueueResult = await this.enqueueBillNotificationEvent(issued.id, 'issued', {
 				source: 'issue_bill',
@@ -302,16 +318,24 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return { recipientCount: recipientUserIds.length }
 	}
 
-	async cancelBill(actorUserId: string, billId: string): Promise<Bill> {
-		return this.billService.cancelBill(actorUserId, billId)
+	async cancelBill(
+		actorUserId: string,
+		billId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<Bill> {
+		return this.billService.cancelBill(actorUserId, billId, authorization)
 	}
 
-	async markBillPaid(actorUserId: string, billId: string): Promise<Bill> {
+	async markBillPaid(
+		actorUserId: string,
+		billId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<Bill> {
 		const before = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
 			columns: { status: true },
 		})
-		const paid = await this.billService.markBillPaid(actorUserId, billId)
+		const paid = await this.billService.markBillPaid(actorUserId, billId, authorization)
 		const transitionedToPaid = before?.status !== 'paid' && paid.status === 'paid'
 		if (!transitionedToPaid) {
 			return paid
@@ -327,8 +351,36 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		return paid
 	}
 
-	async revertBillToDraft(actorUserId: string, billId: string): Promise<Bill> {
-		return this.billService.revertBillToDraft(actorUserId, billId)
+	async markRelatedBillPaid(
+		actorUserId: string,
+		billId: string,
+		relatedEntities: BillListScopeEntity[]
+	): Promise<Bill> {
+		const before = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+			columns: { status: true },
+		})
+		const paid = await this.billService.markRelatedBillPaid(actorUserId, billId, relatedEntities)
+		const transitionedToPaid = before?.status !== 'paid' && paid.status === 'paid'
+		if (transitionedToPaid) {
+			try {
+				await this.enqueueBillNotificationEvent(paid.id, 'paid', { source: 'manual_mark_paid' })
+			} catch (error) {
+				this.logger.error('[BillsDO] Failed to enqueue related-party paid notification', {
+					billId: paid.id,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+		return paid
+	}
+
+	async revertBillToDraft(
+		actorUserId: string,
+		billId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<Bill> {
+		return this.billService.revertBillToDraft(actorUserId, billId, authorization)
 	}
 
 	async payBill(
@@ -355,49 +407,59 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 
 	async regeneratePaymentToken(
 		actorUserId: string,
-		billId: string
+		billId: string,
+		authorization?: BillMutationAuthorization
 	): Promise<RegenerateTokenResponse> {
-		return this.billService.regeneratePaymentToken(actorUserId, billId)
+		return this.billService.regeneratePaymentToken(actorUserId, billId, authorization)
 	}
 
-	async deleteBill(actorUserId: string, billId: string): Promise<void> {
-		return this.billService.deleteBill(actorUserId, billId)
+	async deleteBill(
+		actorUserId: string,
+		billId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<void> {
+		return this.billService.deleteBill(actorUserId, billId, authorization)
 	}
 
 	async issueGroupBill(
 		actorUserId: string,
-		groupBillId: string
+		groupBillId: string,
+		authorization?: BillMutationAuthorization
 	): Promise<GroupBillOperationResult> {
-		return this.billService.issueGroupBill(actorUserId, groupBillId)
+		return this.billService.issueGroupBill(actorUserId, groupBillId, authorization)
 	}
 
 	async cancelGroupBill(
 		actorUserId: string,
-		groupBillId: string
+		groupBillId: string,
+		authorization?: BillMutationAuthorization
 	): Promise<GroupBillOperationResult> {
-		return this.billService.cancelGroupBill(actorUserId, groupBillId)
+		return this.billService.cancelGroupBill(actorUserId, groupBillId, authorization)
 	}
 
 	async revertGroupBillToDraft(
 		actorUserId: string,
-		groupBillId: string
+		groupBillId: string,
+		authorization?: BillMutationAuthorization
 	): Promise<GroupBillOperationResult> {
-		return this.billService.revertGroupBillToDraft(actorUserId, groupBillId)
+		return this.billService.revertGroupBillToDraft(actorUserId, groupBillId, authorization)
 	}
 
 	async deleteGroupBill(
 		actorUserId: string,
-		groupBillId: string
+		groupBillId: string,
+		authorization?: BillMutationAuthorization
 	): Promise<GroupBillOperationResult> {
-		return this.billService.deleteGroupBill(actorUserId, groupBillId)
+		return this.billService.deleteGroupBill(actorUserId, groupBillId, authorization)
 	}
 
 	async updateGroupBill(
 		actorUserId: string,
 		groupBillId: string,
-		data: UpdateBillInput
+		data: UpdateBillInput,
+		authorization?: BillMutationAuthorization
 	): Promise<GroupBillOperationResult> {
-		return this.billService.updateGroupBill(actorUserId, groupBillId, data)
+		return this.billService.updateGroupBill(actorUserId, groupBillId, data, authorization)
 	}
 
 	async getBillStatistics(userId: string, filters?: BillFilters): Promise<BillStatistics> {
@@ -597,6 +659,13 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 					return { success: false, error: 'No qualifying group members with a main character' }
 				}
 
+				const partyNames = await this.resolveSchedulePartyNames([
+					...qualifyingMembers.map((member) => member.mainCharacterId!),
+					scheduleResult.payeeId,
+				])
+				const payeeName = scheduleResult.payeeId
+					? (partyNames[scheduleResult.payeeId] ?? scheduleResult.payeeId)
+					: ''
 				const createdBills: Bill[] = []
 				for (const member of qualifyingMembers) {
 					const billData: CreateBillFromTemplateInput = {
@@ -606,6 +675,10 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 						payeeId: scheduleResult.payeeId ?? '',
 						payeeType: (scheduleResult.payeeType as 'character' | 'corporation') ?? 'character',
 						amount: scheduleResult.amount,
+						templateParams: {
+							payerName: partyNames[member.mainCharacterId!] ?? member.mainCharacterId!,
+							payeeName,
+						},
 						groupBillId,
 						externalMetadata: { groupId: scheduleResult.payerId },
 					}
@@ -622,6 +695,10 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 			}
 
 			// Single-payer bill
+			const partyNames = await this.resolveSchedulePartyNames([
+				scheduleResult.payerId,
+				scheduleResult.payeeId,
+			])
 			const billData: CreateBillFromTemplateInput = {
 				templateId: scheduleResult.templateId,
 				payerId: scheduleResult.payerId,
@@ -629,6 +706,12 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 				payeeId: scheduleResult.payeeId ?? '',
 				payeeType: (scheduleResult.payeeType as 'character' | 'corporation') ?? 'character',
 				amount: scheduleResult.amount,
+				templateParams: {
+					payerName: partyNames[scheduleResult.payerId] ?? scheduleResult.payerId,
+					payeeName: scheduleResult.payeeId
+						? (partyNames[scheduleResult.payeeId] ?? scheduleResult.payeeId)
+						: '',
+				},
 			}
 
 			const bill = await this.templateService.createBillFromTemplate(
@@ -656,6 +739,28 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 				success: false,
 				error: errorMessage,
 			}
+		}
+	}
+
+	private async resolveSchedulePartyNames(
+		ids: Array<string | null>
+	): Promise<Record<string, string>> {
+		const normalizedIds = [
+			...new Set(ids.filter((id): id is string => Boolean(id?.trim())).map((id) => id.trim())),
+		]
+		if (normalizedIds.length === 0) {
+			return {}
+		}
+
+		try {
+			const resolver = getStub<EsiTypeResolver>(this.env.ESI_TYPE_RESOLVER, 'global')
+			return await resolver.resolveIds(normalizedIds)
+		} catch (error) {
+			this.logger.warn('[BillsDO] Schedule party name resolution failed', {
+				ids: normalizedIds,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return {}
 		}
 	}
 

@@ -2,6 +2,11 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
+export const stickyTableActionHeaderClassName =
+	'sticky right-0 z-20 w-0 min-w-0 whitespace-nowrap !px-4 border-l border-border/60 table-sticky-action-header'
+export const stickyTableActionCellClassName =
+	'sticky right-0 z-10 w-0 min-w-0 whitespace-nowrap !px-4 border-l border-border/60 table-sticky-action-cell'
+
 interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
 	containerClassName?: string
 	containerRef?: React.Ref<HTMLDivElement>
@@ -25,7 +30,14 @@ const TableHeader = React.forwardRef<
 	HTMLTableSectionElement,
 	React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
-	<thead ref={ref} className={cn('table-header-bg [&_tr]:border-b [&_tr]:bg-transparent! [&_tr]:hover:bg-transparent!', className)} {...props} />
+	<thead
+		ref={ref}
+		className={cn(
+			'table-header-bg [&_tr]:border-b [&_tr]:bg-transparent! [&_tr]:hover:bg-transparent!',
+			className
+		)}
+		{...props}
+	/>
 ))
 TableHeader.displayName = 'TableHeader'
 
@@ -54,7 +66,7 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
 		<tr
 			ref={ref}
 			className={cn(
-				'border-b transition-colors odd:bg-muted even:bg-card hover:bg-[hsl(var(--accent-muted)/0.7)] data-[state=selected]:bg-muted',
+				'table-row-hover border-b transition-colors odd:bg-muted even:bg-card data-[state=selected]:bg-muted',
 				className
 			)}
 			{...props}

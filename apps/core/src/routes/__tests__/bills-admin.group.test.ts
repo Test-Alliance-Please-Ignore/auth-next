@@ -57,8 +57,10 @@ function createApp(user?: SessionUser) {
 function makeBillsStub() {
 	return {
 		createBill: vi.fn().mockResolvedValue({ id: 'bill-1' }),
+		createBillsBulk: vi.fn().mockResolvedValue([{ id: 'bill-1' }]),
 		getBillIntegrationView: vi.fn().mockResolvedValue(null),
 		listBillsPage: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
+		searchBillParties: vi.fn().mockResolvedValue([]),
 		getGroupBillAggregate: vi.fn().mockResolvedValue(null),
 		issueGroupBill: vi.fn().mockResolvedValue({ issued: 1 }),
 		cancelGroupBill: vi.fn().mockResolvedValue({ cancelled: 1 }),
@@ -72,6 +74,7 @@ function makeGroupsStub() {
 		getGroup: vi.fn().mockResolvedValue(null),
 		getGroupMembers: vi.fn().mockResolvedValue([]),
 		getGroupMetadataByIds: vi.fn().mockResolvedValue([]),
+		listGroups: vi.fn().mockResolvedValue([]),
 	}
 }
 
@@ -84,6 +87,8 @@ function makeResolverStub() {
 function makeDbStub() {
 	return {
 		query: {
+			userCharacters: { findMany: vi.fn().mockResolvedValue([]) },
+			managedCorporations: { findMany: vi.fn().mockResolvedValue([]) },
 			users: {
 				findMany: vi.fn().mockResolvedValue([]),
 				findFirst: vi.fn().mockResolvedValue(null),
@@ -116,9 +121,7 @@ describe('group bill creation (POST /)', () => {
 		]
 		groupsStub.getGroup.mockResolvedValueOnce(group)
 		groupsStub.getGroupMembers.mockResolvedValueOnce(members)
-		billsStub.createBill
-			.mockResolvedValueOnce({ id: 'bill-101' })
-			.mockResolvedValueOnce({ id: 'bill-102' })
+		billsStub.createBillsBulk.mockResolvedValueOnce([{ id: 'bill-101' }, { id: 'bill-102' }])
 
 		const app = createApp(makeAdmin())
 		const response = await app.request(
@@ -141,15 +144,15 @@ describe('group bill creation (POST /)', () => {
 		)
 
 		expect(response.status).toBe(201)
-		const body = await response.json() as any
+		const body = (await response.json()) as any
 		expect(body.bills).toHaveLength(2)
 		expect(body.billCount).toBe(2)
 		expect(typeof body.groupBillId).toBe('string')
 
 		// Each sub-bill must have externalMetadata.groupId pointing to the original group
-		expect(billsStub.createBill).toHaveBeenCalledTimes(2)
-		for (const call of billsStub.createBill.mock.calls) {
-			const data = call[1] as any
+		expect(billsStub.createBillsBulk).toHaveBeenCalledTimes(1)
+		const bulkData = billsStub.createBillsBulk.mock.calls[0]?.[1] as any[]
+		for (const data of bulkData) {
 			expect(data.payerType).toBe('character')
 			expect(data.externalMetadata).toEqual({ groupId: 'group-1' })
 			expect(data.groupBillId).toBe(body.groupBillId)
@@ -165,7 +168,7 @@ describe('group bill creation (POST /)', () => {
 		]
 		groupsStub.getGroup.mockResolvedValueOnce(group)
 		groupsStub.getGroupMembers.mockResolvedValueOnce(members)
-		billsStub.createBill.mockResolvedValueOnce({ id: 'bill-owner' })
+		billsStub.createBillsBulk.mockResolvedValueOnce([{ id: 'bill-owner' }])
 
 		const app = createApp(makeAdmin())
 		const response = await app.request(
@@ -189,8 +192,8 @@ describe('group bill creation (POST /)', () => {
 		)
 
 		expect(response.status).toBe(201)
-		expect(billsStub.createBill).toHaveBeenCalledTimes(1)
-		const billData = billsStub.createBill.mock.calls[0]?.[1] as any
+		expect(billsStub.createBillsBulk).toHaveBeenCalledTimes(1)
+		const billData = (billsStub.createBillsBulk.mock.calls[0]?.[1] as any[])[0]
 		expect(billData.payerId).toBe('char-owner')
 	})
 
@@ -297,6 +300,26 @@ describe('coalesced bill list (GET / with coalesced=true)', () => {
 		})
 	})
 
+	it('uses the unrestricted scope for the site-admin bill list', async () => {
+		const app = createApp(makeAdmin())
+		const response = await app.request('/api/admin/bills?limit=25&offset=0', {}, env)
+
+		expect(response.status).toBe(200)
+		expect(billsStub.listBillsPage).toHaveBeenCalledWith(
+			expect.objectContaining({ scope: { mode: 'all' } })
+		)
+	})
+
+	it('uses the unrestricted scope for site-admin party search', async () => {
+		const app = createApp(makeAdmin())
+		const response = await app.request('/api/admin/bills/parties/search?q=corp', {}, env)
+
+		expect(response.status).toBe(200)
+		expect(billsStub.searchBillParties).toHaveBeenCalledWith(
+			expect.objectContaining({ scope: { mode: 'all' } })
+		)
+	})
+
 	function makeSubBill(overrides: Record<string, unknown> = {}) {
 		return {
 			id: 'bill-1',
@@ -330,23 +353,23 @@ describe('coalesced bill list (GET / with coalesced=true)', () => {
 
 	it('coalesces sub-bills by groupBillId and resolves group payer name', async () => {
 		const rows = [
-			makeSubBill({ id: 'bill-1', payerId: 'char-101' }),
-			makeSubBill({ id: 'bill-2', payerId: 'char-102' }),
+			makeSubBill({
+				payerId: 'group-1',
+				payerType: 'group',
+				groupBillTotalCount: 2,
+				groupBillPaidCount: 0,
+			}),
 		]
-		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 2 })
+		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 1 })
 		groupsStub.getGroupMetadataByIds.mockResolvedValueOnce([
 			{ id: 'group-1', name: 'Alpha Squadron' },
 		])
 
 		const app = createApp(makeAdmin())
-		const response = await app.request(
-			'/api/admin/bills?limit=25&offset=0&coalesced=true',
-			{},
-			env
-		)
+		const response = await app.request('/api/admin/bills?limit=25&offset=0&coalesced=true', {}, env)
 
 		expect(response.status).toBe(200)
-		const body = await response.json() as any
+		const body = (await response.json()) as any
 		// Two sub-bills → coalesced into one representative row
 		expect(body.rows).toHaveLength(1)
 		const rep = body.rows[0]
@@ -359,68 +382,69 @@ describe('coalesced bill list (GET / with coalesced=true)', () => {
 
 	it('sets groupBillMixed=true when sub-bills have different statuses', async () => {
 		const rows = [
-			makeSubBill({ id: 'bill-1', payerId: 'char-101', status: 'issued' }),
-			makeSubBill({ id: 'bill-2', payerId: 'char-102', status: 'paid' }),
+			makeSubBill({
+				payerId: 'group-1',
+				payerType: 'group',
+				groupBillTotalCount: 2,
+				groupBillPaidCount: 1,
+				groupBillMixed: true,
+			}),
 		]
-		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 2 })
+		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 1 })
 		groupsStub.getGroupMetadataByIds.mockResolvedValueOnce([
 			{ id: 'group-1', name: 'Alpha Squadron' },
 		])
 
 		const app = createApp(makeAdmin())
-		const response = await app.request(
-			'/api/admin/bills?limit=25&offset=0&coalesced=true',
-			{},
-			env
-		)
+		const response = await app.request('/api/admin/bills?limit=25&offset=0&coalesced=true', {}, env)
 
 		expect(response.status).toBe(200)
-		const body = await response.json() as any
+		const body = (await response.json()) as any
 		expect(body.rows[0].groupBillMixed).toBe(true)
 	})
 
 	it('does not set groupBillMixed when all sub-bills share the same status', async () => {
 		const rows = [
-			makeSubBill({ id: 'bill-1', payerId: 'char-101', status: 'issued' }),
-			makeSubBill({ id: 'bill-2', payerId: 'char-102', status: 'issued' }),
+			makeSubBill({
+				payerId: 'group-1',
+				payerType: 'group',
+				groupBillTotalCount: 2,
+				groupBillPaidCount: 0,
+			}),
 		]
-		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 2 })
+		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 1 })
 		groupsStub.getGroupMetadataByIds.mockResolvedValueOnce([
 			{ id: 'group-1', name: 'Alpha Squadron' },
 		])
 
 		const app = createApp(makeAdmin())
-		const response = await app.request(
-			'/api/admin/bills?limit=25&offset=0&coalesced=true',
-			{},
-			env
-		)
+		const response = await app.request('/api/admin/bills?limit=25&offset=0&coalesced=true', {}, env)
 
 		expect(response.status).toBe(200)
-		const body = await response.json() as any
+		const body = (await response.json()) as any
 		expect(body.rows[0].groupBillMixed).toBeFalsy()
 	})
 
 	it('tracks groupBillPaidCount correctly', async () => {
 		const rows = [
-			makeSubBill({ id: 'bill-1', payerId: 'char-101', status: 'paid' }),
-			makeSubBill({ id: 'bill-2', payerId: 'char-102', status: 'issued' }),
-			makeSubBill({ id: 'bill-3', payerId: 'char-103', status: 'paid' }),
+			makeSubBill({
+				payerId: 'group-1',
+				payerType: 'group',
+				groupBillTotalCount: 3,
+				groupBillPaidCount: 2,
+				groupBillMixed: true,
+			}),
 		]
-		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 3 })
+		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 1 })
 		groupsStub.getGroupMetadataByIds.mockResolvedValueOnce([
 			{ id: 'group-1', name: 'Alpha Squadron' },
 		])
 
 		const app = createApp(makeAdmin())
-		const response = await app.request(
-			'/api/admin/bills?limit=25&offset=0&coalesced=true',
-			{},
-			env
-		)
+		const response = await app.request('/api/admin/bills?limit=25&offset=0&coalesced=true', {}, env)
 
 		expect(response.status).toBe(200)
-		const body = await response.json() as any
+		const body = (await response.json()) as any
 		const rep = body.rows[0]
 		expect(rep.groupBillTotalCount).toBe(3)
 		expect(rep.groupBillPaidCount).toBe(2)
@@ -428,10 +452,15 @@ describe('coalesced bill list (GET / with coalesced=true)', () => {
 
 	it('includes coalesced group rows when filtering payerType=group', async () => {
 		const rows = [
-			makeSubBill({ id: 'bill-1', payerId: 'char-101', status: 'issued' }),
-			makeSubBill({ id: 'bill-2', payerId: 'char-102', status: 'paid' }),
+			makeSubBill({
+				payerId: 'group-1',
+				payerType: 'group',
+				groupBillTotalCount: 2,
+				groupBillPaidCount: 1,
+				groupBillMixed: true,
+			}),
 		]
-		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 2 })
+		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 1 })
 		groupsStub.getGroupMetadataByIds.mockResolvedValueOnce([
 			{ id: 'group-1', name: 'Alpha Squadron' },
 		])
@@ -444,21 +473,19 @@ describe('coalesced bill list (GET / with coalesced=true)', () => {
 		)
 
 		expect(response.status).toBe(200)
-		const body = await response.json() as any
+		const body = (await response.json()) as any
 		expect(body.rowCount).toBe(1)
 		expect(body.rows).toHaveLength(1)
 		expect(body.rows[0].groupBillId).toBe('gbill-1')
 		expect(billsStub.listBillsPage).toHaveBeenCalledWith(
 			expect.objectContaining({
-				filters: expect.not.objectContaining({ payerType: 'group' }),
+				filters: expect.objectContaining({ payerType: 'group' }),
 			})
 		)
 	})
 
 	it('paginates by coalesced rows and returns coalesced rowCount', async () => {
 		const rows = [
-			makeSubBill({ id: 'bill-1', payerId: 'char-101', status: 'issued' }),
-			makeSubBill({ id: 'bill-2', payerId: 'char-102', status: 'paid' }),
 			{
 				...makeSubBill({ id: 'bill-3' }),
 				groupBillId: null,
@@ -466,20 +493,16 @@ describe('coalesced bill list (GET / with coalesced=true)', () => {
 				externalMetadata: null,
 			},
 		]
-		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 3 })
+		billsStub.listBillsPage.mockResolvedValueOnce({ rows, rowCount: 2 })
 		groupsStub.getGroupMetadataByIds.mockResolvedValueOnce([
 			{ id: 'group-1', name: 'Alpha Squadron' },
 		])
 
 		const app = createApp(makeAdmin())
-		const response = await app.request(
-			'/api/admin/bills?limit=1&offset=1&coalesced=true',
-			{},
-			env
-		)
+		const response = await app.request('/api/admin/bills?limit=1&offset=1&coalesced=true', {}, env)
 
 		expect(response.status).toBe(200)
-		const body = await response.json() as any
+		const body = (await response.json()) as any
 		expect(body.rowCount).toBe(2)
 		expect(body.rows).toHaveLength(1)
 		expect(body.rows[0].groupBillId).toBeNull()
@@ -501,7 +524,7 @@ describe('coalesced bill list (GET / with coalesced=true)', () => {
 		)
 
 		expect(response.status).toBe(200)
-		const body = await response.json() as any
+		const body = (await response.json()) as any
 		// No coalescing → both rows returned individually
 		expect(body.rows).toHaveLength(2)
 		expect(body.rows[0].groupBillTotalCount).toBeUndefined()
@@ -555,7 +578,7 @@ describe('group bill bulk action endpoints', () => {
 		const app = createApp(makeAdmin())
 		const response = await app.request('/api/admin/bills/group/gbill-1', {}, env)
 		expect(response.status).toBe(200)
-		const body = await response.json() as any
+		const body = (await response.json()) as any
 		expect(body.groupName).toBe('Alpha Squadron')
 	})
 
@@ -582,7 +605,7 @@ describe('group bill bulk action endpoints', () => {
 			env
 		)
 		expect(response.status).toBe(200)
-		expect(billsStub.issueGroupBill).toHaveBeenCalledWith('admin-1', 'gbill-1')
+		expect(billsStub.issueGroupBill).toHaveBeenCalledWith('admin-1', 'gbill-1', 'admin')
 	})
 
 	it('POST /group/:groupBillId/cancel calls cancelGroupBill and returns result', async () => {
@@ -595,7 +618,7 @@ describe('group bill bulk action endpoints', () => {
 			env
 		)
 		expect(response.status).toBe(200)
-		expect(billsStub.cancelGroupBill).toHaveBeenCalledWith('admin-1', 'gbill-1')
+		expect(billsStub.cancelGroupBill).toHaveBeenCalledWith('admin-1', 'gbill-1', 'admin')
 	})
 
 	it('POST /group/:groupBillId/revert-to-draft calls revertGroupBillToDraft and returns result', async () => {
@@ -608,20 +631,16 @@ describe('group bill bulk action endpoints', () => {
 			env
 		)
 		expect(response.status).toBe(200)
-		expect(billsStub.revertGroupBillToDraft).toHaveBeenCalledWith('admin-1', 'gbill-1')
+		expect(billsStub.revertGroupBillToDraft).toHaveBeenCalledWith('admin-1', 'gbill-1', 'admin')
 	})
 
 	it('DELETE /group/:groupBillId calls deleteGroupBill and returns result', async () => {
 		billsStub.getGroupBillAggregate.mockResolvedValueOnce(aggregate)
 
 		const app = createApp(makeAdmin({ id: 'admin-1' }))
-		const response = await app.request(
-			'/api/admin/bills/group/gbill-1',
-			{ method: 'DELETE' },
-			env
-		)
+		const response = await app.request('/api/admin/bills/group/gbill-1', { method: 'DELETE' }, env)
 		expect(response.status).toBe(200)
-		expect(billsStub.deleteGroupBill).toHaveBeenCalledWith('admin-1', 'gbill-1')
+		expect(billsStub.deleteGroupBill).toHaveBeenCalledWith('admin-1', 'gbill-1', 'admin')
 	})
 
 	it.each([

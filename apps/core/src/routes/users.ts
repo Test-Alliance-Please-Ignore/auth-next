@@ -8,6 +8,7 @@ import { logger } from '@repo/hono-helpers'
 import { createDb } from '../db'
 import { managedCorporations, userCharacters } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
+import { clearUserBillScopeCache } from '../lib/billing-scope-cache'
 import { isNpcCorporationId } from '../lib/corporation-id'
 import { getDiscordStatus } from '../lib/discord-helpers'
 import { hasHrAuditorPermission } from '../lib/hr-access'
@@ -304,6 +305,8 @@ users.delete('/me/characters/:characterId', async (c) => {
 		if (!success) {
 			return c.json({ error: 'Character not found or already unlinked' }, 404)
 		}
+
+		await clearUserBillScopeCache(user.id, c.env.BILLING_SCOPE_CACHE)
 
 		await activityService.logCharacterUnlinked(user.id, characterId, getRequestMetadata(c))
 

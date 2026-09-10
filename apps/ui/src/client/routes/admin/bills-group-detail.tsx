@@ -1,10 +1,13 @@
-import { ArrowLeft, Edit, Users } from 'lucide-react'
-import { Link, useParams } from 'react-router'
+import { ArrowLeft, Users } from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router'
 
+import { BillActionsMenu } from '@/components/bills/bill-actions-menu'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import {
+	stickyTableActionCellClassName,
+	stickyTableActionHeaderClassName,
 	Table,
 	TableBody,
 	TableCell,
@@ -12,8 +15,20 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useGroupBillAggregate } from '@/hooks/useBills'
+import { useMarkIssuedBillPaid } from '@/features/bills/hooks'
+import {
+	useCancelGroupBill,
+	useDeleteGroupBill,
+	useGroupBillAggregate,
+	useIssueGroupBill,
+	useMarkBillPaid,
+	useRevertGroupBillToDraft,
+} from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatISK } from '@/lib/bills-utils'
+import toast from '@/lib/toast'
+
+import type { GroupBillAccessScope } from '@/lib/bills-api'
 
 function getStatusBadgeClass(status: string) {
 	switch (status) {
@@ -33,7 +48,7 @@ function getStatusBadgeClass(status: string) {
 }
 
 function formatAmount(amount: string) {
-	return new Intl.NumberFormat('en-US').format(Number(amount))
+	return formatISK(amount)
 }
 
 function formatDate(date: Date) {
@@ -54,9 +69,25 @@ function formatDateTime(date: Date) {
 	})
 }
 
-export default function AdminBillsGroupDetailPage() {
+export default function AdminBillsGroupDetailPage({
+	scope = 'admin',
+}: {
+	scope?: GroupBillAccessScope
+}) {
 	const { groupBillId } = useParams<{ groupBillId: string }>()
-	const { data: groupAggregate, isLoading } = useGroupBillAggregate(groupBillId)
+	const navigate = useNavigate()
+	const { data: groupAggregate, isLoading } = useGroupBillAggregate(groupBillId, scope)
+	const issueGroupBill = useIssueGroupBill(scope)
+	const cancelGroupBill = useCancelGroupBill(scope)
+	const deleteGroupBill = useDeleteGroupBill(scope)
+	const revertGroupBill = useRevertGroupBillToDraft(scope)
+	const markIssuedBillPaid = useMarkIssuedBillPaid()
+	const markAdminBillPaid = useMarkBillPaid()
+	const markBillPaid = scope === 'issuer' ? markIssuedBillPaid : markAdminBillPaid
+	const basePath = scope === 'issuer' ? '/my-bills' : '/admin/bills'
+	const billHref = (billId: string) => `${basePath}/${billId}`
+	const groupHref = `${basePath}/group/${groupBillId}`
+	const groupEditHref = `${groupHref}/edit`
 
 	usePageTitle(groupAggregate ? `Bill Group - ${groupAggregate.title}` : 'Bill Group Details')
 
@@ -68,7 +99,7 @@ export default function AdminBillsGroupDetailPage() {
 						<h1 className="text-3xl font-bold gradient-text">Loading Group Bill...</h1>
 					</div>
 					<Button variant="ghost" asChild>
-						<Link to="/admin/bills">
+						<Link to={basePath}>
 							<ArrowLeft className="h-4 w-4" />
 							Back to Bills
 						</Link>
@@ -90,7 +121,7 @@ export default function AdminBillsGroupDetailPage() {
 						</p>
 					</div>
 					<Button variant="ghost" asChild>
-						<Link to="/admin/bills">
+						<Link to={basePath}>
 							<ArrowLeft className="h-4 w-4" />
 							Back to Bills
 						</Link>
@@ -104,6 +135,59 @@ export default function AdminBillsGroupDetailPage() {
 		groupAggregate.totalBills > 0
 			? Math.min(100, Math.floor((groupAggregate.paidBills / groupAggregate.totalBills) * 100))
 			: 0
+	const hasEditableBills = groupAggregate.bills.some(
+		(entry) => entry.status !== 'paid' && !entry.hasPayments
+	)
+	const draftCount = groupAggregate.bills.filter((entry) => entry.status === 'draft').length
+	const cancellableCount = groupAggregate.bills.filter(
+		(entry) => entry.status !== 'paid' && entry.status !== 'cancelled'
+	).length
+	const revertibleCount = groupAggregate.bills.filter(
+		(entry) => entry.status !== 'draft' && entry.status !== 'paid' && !entry.hasPayments
+	).length
+	const runGroupAction = async (operation: () => Promise<unknown>) => {
+		try {
+			await operation()
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Failed to update group bill')
+		}
+	}
+	const groupActions = [
+		{
+			label: 'Edit',
+			intent: 'secondary' as const,
+			href: groupEditHref,
+			hidden: !hasEditableBills,
+		},
+		{
+			label: 'Issue',
+			intent: 'confirm' as const,
+			hidden: draftCount === 0,
+			loading: issueGroupBill.isPending,
+			onClick: () => void runGroupAction(() => issueGroupBill.mutateAsync(groupBillId)),
+		},
+		{
+			label: 'To Draft',
+			intent: 'secondary' as const,
+			hidden: revertibleCount === 0,
+			loading: revertGroupBill.isPending,
+			onClick: () => void runGroupAction(() => revertGroupBill.mutateAsync(groupBillId)),
+		},
+		{
+			label: 'Cancel',
+			intent: 'muted' as const,
+			hidden: cancellableCount === 0,
+			loading: cancelGroupBill.isPending,
+			onClick: () => void runGroupAction(() => cancelGroupBill.mutateAsync(groupBillId)),
+		},
+		{
+			label: 'Delete',
+			intent: 'destructive' as const,
+			hidden: draftCount === 0,
+			loading: deleteGroupBill.isPending,
+			onClick: () => void runGroupAction(() => deleteGroupBill.mutateAsync(groupBillId)),
+		},
+	]
 
 	return (
 		<div className="space-y-6">
@@ -116,17 +200,12 @@ export default function AdminBillsGroupDetailPage() {
 				</div>
 				<div className="flex gap-2">
 					<Button variant="ghost" asChild>
-						<Link to="/admin/bills">
+						<Link to={basePath}>
 							<ArrowLeft className="h-4 w-4" />
 							Back to Bills
 						</Link>
 					</Button>
-					<Button variant="ghost" asChild>
-						<Link to={`/admin/bills/group/${groupBillId}/edit`}>
-							<Edit className="h-4 w-4" />
-							Edit Group
-						</Link>
-					</Button>
+					<BillActionsMenu items={groupActions} />
 				</div>
 			</div>
 
@@ -148,8 +227,10 @@ export default function AdminBillsGroupDetailPage() {
 				<CardContent className="space-y-4">
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 						<div>
-							<h3 className="text-sm font-medium text-muted-foreground mb-1">Amount (per member)</h3>
-							<p className="text-2xl font-bold">{formatAmount(groupAggregate.amount)} ISK</p>
+							<h3 className="text-sm font-medium text-muted-foreground mb-1">
+								Amount (per member)
+							</h3>
+							<p className="text-2xl font-bold">{formatAmount(groupAggregate.amount)}</p>
 						</div>
 						<div>
 							<h3 className="text-sm font-medium text-muted-foreground mb-1">Due Date</h3>
@@ -178,8 +259,8 @@ export default function AdminBillsGroupDetailPage() {
 					<CardTitle>Group Payment Progress</CardTitle>
 					<CardDescription>
 						<span className="font-semibold text-foreground">{groupAggregate.paidBills}</span> of{' '}
-						<span className="font-semibold text-foreground">{groupAggregate.totalBills}</span> members
-						paid
+						<span className="font-semibold text-foreground">{groupAggregate.totalBills}</span>{' '}
+						members paid
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
@@ -191,7 +272,7 @@ export default function AdminBillsGroupDetailPage() {
 						<Progress value={groupProgress} className="h-2 bg-warning/70" />
 					</div>
 
-					<Table>
+					<Table className="whitespace-nowrap">
 						<TableHeader>
 							<TableRow>
 								<TableHead>Member</TableHead>
@@ -199,29 +280,93 @@ export default function AdminBillsGroupDetailPage() {
 								<TableHead>Amount Due</TableHead>
 								<TableHead>Amount Paid</TableHead>
 								<TableHead>Paid At</TableHead>
-								<TableHead>Actions</TableHead>
+								<TableHead className={`${stickyTableActionHeaderClassName} text-right`}>
+									Actions
+								</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
 							{groupAggregate.bills.map((entry) => (
-								<TableRow key={entry.billId}>
-									<TableCell>{entry.payerName ?? entry.payerId}</TableCell>
+								<TableRow
+									key={entry.billId}
+									className="cursor-pointer"
+									onClick={(event) => {
+										const target = event.target as HTMLElement | null
+										if (target?.closest('a, button, [role="button"]')) return
+										const href = billHref(entry.billId)
+										if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+											event.preventDefault()
+											window.open(href, '_blank', 'noopener,noreferrer')
+											return
+										}
+										void navigate(href)
+									}}
+									onAuxClick={(event) => {
+										if (event.button !== 1) return
+										const target = event.target as HTMLElement | null
+										if (target?.closest('a, button, [role="button"]')) return
+										event.preventDefault()
+										window.open(billHref(entry.billId), '_blank', 'noopener,noreferrer')
+									}}
+								>
 									<TableCell>
-										<span
-											className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getStatusBadgeClass(entry.status)}`}
+										<Link
+											to={billHref(entry.billId)}
+											className="block no-underline hover:no-underline"
 										>
-											{entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
-										</span>
+											{entry.payerName ?? entry.payerId}
+										</Link>
 									</TableCell>
-									<TableCell>{formatAmount(entry.totalDue)} ISK</TableCell>
-									<TableCell className="text-green-500">
-										{formatAmount(entry.totalPaid)} ISK
-									</TableCell>
-									<TableCell>{entry.paidAt ? formatDateTime(entry.paidAt) : '—'}</TableCell>
 									<TableCell>
-										<Button variant="ghost" asChild>
-											<Link to={`/admin/bills/${entry.billId}`}>View Bill</Link>
-										</Button>
+										<Link
+											to={billHref(entry.billId)}
+											className="block no-underline hover:no-underline"
+										>
+											<span
+												className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getStatusBadgeClass(entry.status)}`}
+											>
+												{entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
+											</span>
+										</Link>
+									</TableCell>
+									<TableCell>
+										<Link
+											to={billHref(entry.billId)}
+											className="block no-underline hover:no-underline"
+										>
+											{formatAmount(entry.totalDue)}
+										</Link>
+									</TableCell>
+									<TableCell className="text-green-500">
+										<Link
+											to={billHref(entry.billId)}
+											className="block no-underline hover:no-underline"
+										>
+											{formatAmount(entry.totalPaid)}
+										</Link>
+									</TableCell>
+									<TableCell>
+										<Link
+											to={billHref(entry.billId)}
+											className="block no-underline hover:no-underline"
+										>
+											{entry.paidAt ? formatDateTime(entry.paidAt) : '—'}
+										</Link>
+									</TableCell>
+									<TableCell className={`${stickyTableActionCellClassName} text-right`}>
+										<BillActionsMenu
+											items={[
+												{ label: 'View', intent: 'primary', href: billHref(entry.billId) },
+												{
+													label: 'Mark Paid',
+													intent: 'confirm',
+													hidden: entry.status !== 'issued' && entry.status !== 'overdue',
+													loading: markBillPaid.isPending,
+													onClick: () =>
+														void runGroupAction(() => markBillPaid.mutateAsync(entry.billId)),
+												},
+											]}
+										/>
 									</TableCell>
 								</TableRow>
 							))}

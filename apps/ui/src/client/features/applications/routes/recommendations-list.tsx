@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { PageHeader } from '@/components/ui/page-header'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -85,14 +86,10 @@ export default function RecommendationsList() {
 
 	return (
 		<Container className="space-y-6">
-			{/* Header */}
-			<div>
-				<h1 className="text-2xl font-bold">Recommendations</h1>
-				<p className="text-muted-foreground mt-1">
-					Vouch for applicants to your corporation. Your recommendation helps HR make informed
-					decisions.
-				</p>
-			</div>
+			<PageHeader
+				title="Recommendations"
+				description="Vouch for applicants to your corporation. Your recommendation helps HR make informed decisions."
+			/>
 
 			{/* Empty state */}
 			{apps.length === 0 && (

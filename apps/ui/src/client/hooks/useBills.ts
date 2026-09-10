@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { userBillsKeys } from '@/features/bills/query-keys'
 import { billsApi } from '@/lib/bills-api'
 
 import type {
@@ -17,6 +18,7 @@ import type {
 	UpdateScheduleInput,
 	UpdateTemplateInput,
 } from '@repo/bills'
+import type { GroupBillAccessScope } from '@/lib/bills-api'
 
 // Query keys
 export const billKeys = {
@@ -99,6 +101,7 @@ export function useBillEntitySearch(params: {
 	q: string
 	entityType: EntitySearchType
 	limit?: number
+	scope?: 'admin' | 'issuer'
 	enabled?: boolean
 }) {
 	return useQuery({
@@ -108,6 +111,7 @@ export function useBillEntitySearch(params: {
 				q: params.q,
 				entityType: params.entityType,
 				limit: params.limit,
+				scope: params.scope,
 			}),
 		enabled: params.enabled ?? params.q.trim().length >= 2,
 		staleTime: 1000 * 60 * 2,
@@ -132,10 +136,15 @@ export const groupBillKeys = {
 /**
  * Fetch the aggregate view for a group bill
  */
-export function useGroupBillAggregate(groupBillId: string | undefined) {
+export function useGroupBillAggregate(
+	groupBillId: string | undefined,
+	scope: GroupBillAccessScope = 'admin'
+) {
 	return useQuery({
-		queryKey: groupBillId ? groupBillKeys.aggregate(groupBillId) : ([] as unknown[]),
-		queryFn: () => billsApi.getGroupBillAggregate(groupBillId!),
+		queryKey: groupBillId
+			? [...groupBillKeys.aggregate(groupBillId), scope]
+			: ([] as unknown[]),
+		queryFn: () => billsApi.getGroupBillAggregate(groupBillId!, scope),
 		enabled: Boolean(groupBillId),
 		staleTime: 1000 * 30,
 	})
@@ -144,14 +153,15 @@ export function useGroupBillAggregate(groupBillId: string | undefined) {
 /**
  * Issue all draft sub-bills in a group bill at once
  */
-export function useIssueGroupBill() {
+export function useIssueGroupBill(scope: GroupBillAccessScope = 'admin') {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: (groupBillId: string) => billsApi.issueGroupBill(groupBillId),
+			mutationFn: (groupBillId: string) => billsApi.issueGroupBill(groupBillId, scope),
 		onSuccess: (_result: GroupBillOperationResult, groupBillId) => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
 			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 			void queryClient.invalidateQueries({ queryKey: groupBillKeys.aggregate(groupBillId) })
 		},
 	})
@@ -160,14 +170,15 @@ export function useIssueGroupBill() {
 /**
  * Cancel all eligible sub-bills in a group bill at once
  */
-export function useCancelGroupBill() {
+export function useCancelGroupBill(scope: GroupBillAccessScope = 'admin') {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: (groupBillId: string) => billsApi.cancelGroupBill(groupBillId),
+			mutationFn: (groupBillId: string) => billsApi.cancelGroupBill(groupBillId, scope),
 		onSuccess: (_result: GroupBillOperationResult, groupBillId) => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
 			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 			void queryClient.invalidateQueries({ queryKey: groupBillKeys.aggregate(groupBillId) })
 		},
 	})
@@ -176,14 +187,15 @@ export function useCancelGroupBill() {
 /**
  * Revert all eligible sub-bills in a group bill back to draft
  */
-export function useRevertGroupBillToDraft() {
+export function useRevertGroupBillToDraft(scope: GroupBillAccessScope = 'admin') {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: (groupBillId: string) => billsApi.revertGroupBillToDraft(groupBillId),
+			mutationFn: (groupBillId: string) => billsApi.revertGroupBillToDraft(groupBillId, scope),
 		onSuccess: (_result: GroupBillOperationResult, groupBillId) => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
 			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 			void queryClient.invalidateQueries({ queryKey: groupBillKeys.aggregate(groupBillId) })
 		},
 	})
@@ -192,14 +204,15 @@ export function useRevertGroupBillToDraft() {
 /**
  * Delete all draft sub-bills in a group bill at once
  */
-export function useDeleteGroupBill() {
+export function useDeleteGroupBill(scope: GroupBillAccessScope = 'admin') {
 	const queryClient = useQueryClient()
 
 	return useMutation({
-		mutationFn: (groupBillId: string) => billsApi.deleteGroupBill(groupBillId),
+			mutationFn: (groupBillId: string) => billsApi.deleteGroupBill(groupBillId, scope),
 		onSuccess: (_result: GroupBillOperationResult, groupBillId) => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
 			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 			queryClient.removeQueries({ queryKey: groupBillKeys.aggregate(groupBillId) })
 		},
 	})
@@ -208,14 +221,15 @@ export function useDeleteGroupBill() {
 /**
  * Update all eligible sub-bills in a group bill at once
  */
-export function useUpdateGroupBill() {
+export function useUpdateGroupBill(scope: GroupBillAccessScope = 'admin') {
 	const queryClient = useQueryClient()
 
 	return useMutation({
 		mutationFn: ({ groupBillId, data }: { groupBillId: string; data: UpdateBillInput }) =>
-			billsApi.updateGroupBill(groupBillId, data),
+			billsApi.updateGroupBill(groupBillId, data, scope),
 		onSuccess: (_result: GroupBillOperationResult, { groupBillId }) => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 			void queryClient.invalidateQueries({ queryKey: groupBillKeys.aggregate(groupBillId) })
 		},
 	})
@@ -240,7 +254,38 @@ export function useCreateBill() {
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
 			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 		},
+	})
+}
+
+export function useCreateIssuedBill() {
+	const queryClient = useQueryClient()
+
+	return useMutation({
+		mutationFn: (
+			data: CreateBillInput & {
+				groupBillOptions?: {
+					includeOwner: boolean
+					includeAdmins: boolean
+					includeMembers: boolean
+				}
+			}
+		) => billsApi.createIssuedBill(data),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
+		},
+	})
+}
+
+export function useIssuerBillScope(enabled = true) {
+	return useQuery({
+		queryKey: userBillsKeys.issuerScope(),
+		queryFn: () => billsApi.getIssuerBillScope(),
+		enabled,
+		staleTime: 1000 * 60 * 5,
 	})
 }
 
@@ -255,6 +300,7 @@ export function useUpdateBill() {
 			billsApi.updateBill(id, data),
 		onSuccess: (updatedBill) => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 			queryClient.setQueryData(billKeys.detail(updatedBill.id), updatedBill)
 		},
 	})
@@ -271,6 +317,7 @@ export function useDeleteBill() {
 		onSuccess: (_, deletedId) => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
 			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 			queryClient.removeQueries({ queryKey: billKeys.detail(deletedId) })
 		},
 	})
@@ -287,6 +334,7 @@ export function useIssueBill() {
 		onSuccess: (updatedBill) => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
 			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 			queryClient.setQueryData(billKeys.detail(updatedBill.id), updatedBill)
 		},
 	})
@@ -303,6 +351,7 @@ export function useCancelBill() {
 		onSuccess: (updatedBill) => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
 			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 			queryClient.setQueryData(billKeys.detail(updatedBill.id), updatedBill)
 		},
 	})
@@ -319,6 +368,7 @@ export function useMarkBillPaid() {
 		onSuccess: (updatedBill) => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
 			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 			// Mark-paid response can be a partial bill shape without full payment relation data.
 			// Trigger an immediate detail refetch so payment history appears without manual reload.
 			void queryClient.invalidateQueries({
@@ -340,6 +390,7 @@ export function useRevertBillToDraft() {
 		onSuccess: (updatedBill) => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
 			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 			queryClient.setQueryData(billKeys.detail(updatedBill.id), updatedBill)
 		},
 	})
@@ -371,6 +422,7 @@ export function useRegeneratePaymentToken() {
 		mutationFn: (billId: string) => billsApi.regeneratePaymentToken(billId),
 		onSuccess: (_, billId) => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.detail(billId) })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 		},
 	})
 }
@@ -496,6 +548,7 @@ export function useCreateBillFromTemplate() {
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: billKeys.lists() })
 			void queryClient.invalidateQueries({ queryKey: billKeys.statistics() })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
 		},
 	})
 }

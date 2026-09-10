@@ -813,7 +813,8 @@ auth.get('/callback', async (c) => {
 				db,
 				c.env.EVE_TOKEN_STORE,
 				c.env.ESI,
-				c.env.EVE_CORPORATION_DATA
+				c.env.EVE_CORPORATION_DATA,
+				c.env.BILLING_SCOPE_CACHE
 			)
 		} catch (error) {
 			// Don't fail character linking if auto-registration fails
@@ -966,7 +967,8 @@ auth.get('/callback', async (c) => {
 				db,
 				c.env.EVE_TOKEN_STORE,
 				c.env.ESI,
-				c.env.EVE_CORPORATION_DATA
+				c.env.EVE_CORPORATION_DATA,
+				c.env.BILLING_SCOPE_CACHE
 			)
 		} catch (error) {
 			// Don't fail login if auto-registration fails
@@ -1198,7 +1200,8 @@ auth.post('/claim-main', async (c) => {
 			db,
 			c.env.EVE_TOKEN_STORE,
 			c.env.ESI,
-			c.env.EVE_CORPORATION_DATA
+			c.env.EVE_CORPORATION_DATA,
+			c.env.BILLING_SCOPE_CACHE
 		)
 	} catch (error) {
 		// Don't fail user creation if auto-registration fails

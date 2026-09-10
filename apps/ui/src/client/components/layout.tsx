@@ -1,31 +1,19 @@
 import { Menu } from 'lucide-react'
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router'
 
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 
+import { LayoutScrollProvider } from './layout-scroll-context'
 import { SidebarNav } from './sidebar-nav'
 import { Button } from './ui/button'
 import { LoadingSpinner } from './ui/loading'
 
+export { LayoutScrollProvider, useLayoutScrollMode } from './layout-scroll-context'
+
 const SIDEBAR_OPEN_STORAGE_KEY = 'ui.sidebar.open'
 const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)'
-
-interface LayoutScrollContextValue {
-	isPageScrollEnabled: boolean
-	setIsPageScrollEnabled: (enabled: boolean) => void
-}
-
-const LayoutScrollContext = createContext<LayoutScrollContextValue | null>(null)
-
-export function useLayoutScrollMode(): LayoutScrollContextValue {
-	const context = useContext(LayoutScrollContext)
-	if (!context) {
-		throw new Error('useLayoutScrollMode must be used within Layout')
-	}
-	return context
-}
 
 export default function Layout() {
 	const { isAuthenticated, isLoading } = useAuth()
@@ -47,10 +35,12 @@ export default function Layout() {
 	const sidebarOpenRef = useRef(sidebarOpen)
 	const location = useLocation()
 	const isStructuresPage = location.pathname === '/structures'
+	const isBillsPage = location.pathname === '/admin/bills' || location.pathname === '/my-bills'
 	const isHrUserSearchPage = location.pathname === '/hr/users'
 	const [isPageScrollEnabled, setIsPageScrollEnabled] = useState(false)
-	const isClampedStructuresPage = isStructuresPage && !isPageScrollEnabled
-	const isClampedRoute = isClampedStructuresPage || isHrUserSearchPage
+	const isTableLayoutRoute = isStructuresPage || isBillsPage
+	const isClampedTableRoute = isTableLayoutRoute && !isPageScrollEnabled
+	const isClampedRoute = isClampedTableRoute || isHrUserSearchPage
 
 	useEffect(() => {
 		window.localStorage.setItem(SIDEBAR_OPEN_STORAGE_KEY, sidebarOpen ? '1' : '0')
@@ -99,10 +89,10 @@ export default function Layout() {
 	}, [isAuthenticated, isLoading, location.pathname, location.search])
 
 	useEffect(() => {
-		if (!isStructuresPage) {
+		if (!isTableLayoutRoute) {
 			setIsPageScrollEnabled(false)
 		}
-	}, [isStructuresPage])
+	}, [isTableLayoutRoute])
 
 	// Show loading state while checking auth or redirecting
 	if (isLoading || !isAuthenticated) {
@@ -114,7 +104,7 @@ export default function Layout() {
 	}
 
 	return (
-		<LayoutScrollContext.Provider value={{ isPageScrollEnabled, setIsPageScrollEnabled }}>
+		<LayoutScrollProvider value={{ isPageScrollEnabled, setIsPageScrollEnabled }}>
 			<div
 				className={cn(
 					'relative min-h-screen flex overflow-x-hidden',
@@ -193,7 +183,7 @@ export default function Layout() {
 					</footer>
 				</div>
 			</div>
-		</LayoutScrollContext.Provider>
+		</LayoutScrollProvider>
 	)
 }
 

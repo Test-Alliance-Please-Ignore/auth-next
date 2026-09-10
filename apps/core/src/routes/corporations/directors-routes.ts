@@ -5,6 +5,7 @@ import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { managedCorporations, userCharacters } from '../../db/schema'
+import { clearUserBillScopeCache } from '../../lib/billing-scope-cache'
 import {
 	clearCorporationDirectorHealthCache,
 	clearCorporationListCache,
@@ -15,6 +16,27 @@ import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { App } from '../../context'
 
 const app = new Hono<App>()
+
+async function invalidateCorporationUserBillScopes(
+	db: NonNullable<App['Variables']['db']>,
+	billingScopeCache: DurableObjectNamespace,
+	corporationId: string,
+	characterId: string
+): Promise<void> {
+	const [corporationUsers, directorUsers] = await Promise.all([
+		db.query.userCharacters.findMany({
+			where: eq(userCharacters.corporationId, corporationId),
+			columns: { userId: true },
+		}),
+		db.query.userCharacters.findMany({
+			where: eq(userCharacters.characterId, characterId),
+			columns: { userId: true },
+		}),
+	])
+	for (const userId of new Set([...corporationUsers, ...directorUsers].map((row) => row.userId))) {
+		await clearUserBillScopeCache(userId, billingScopeCache)
+	}
+}
 
 async function syncManagedCorporationDirectorHealth(
 	db: NonNullable<App['Variables']['db']>,
@@ -209,6 +231,12 @@ app.post('/:corporationId/directors', requireAuth(), requireAdmin(), async (c) =
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		await stub.addDirector(corporationId, characterId, characterName, priority)
 		await syncManagedCorporationDirectorHealth(db, c.env, corporationId)
+		await invalidateCorporationUserBillScopes(
+			db,
+			c.env.BILLING_SCOPE_CACHE,
+			corporationId,
+			characterId
+		)
 
 		// If this is the first director, persist as primary configured character.
 		const directors = await stub.getDirectors(corporationId)
@@ -248,6 +276,12 @@ app.delete('/:corporationId/directors/:characterId', requireAuth(), requireAdmin
 		const stub = getStub<EveCorporationData>(c.env.EVE_CORPORATION_DATA, corporationId)
 		await stub.removeDirector(corporationId, characterId)
 		await syncManagedCorporationDirectorHealth(db, c.env, corporationId)
+		await invalidateCorporationUserBillScopes(
+			db,
+			c.env.BILLING_SCOPE_CACHE,
+			corporationId,
+			characterId
+		)
 
 		return c.json({ success: true })
 	} catch (error) {

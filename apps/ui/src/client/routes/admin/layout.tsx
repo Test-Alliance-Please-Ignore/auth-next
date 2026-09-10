@@ -3,6 +3,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Outlet, useLocation } from 'react-router'
 
 import { AdminNav } from '@/components/admin-nav'
+import { LayoutScrollProvider, useLayoutScrollMode } from '@/components/layout-scroll-context'
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
@@ -46,16 +47,21 @@ export default function AdminLayout() {
 	}
 
 	return (
-		<BreadcrumbProvider>
-			<AdminLayoutContent />
-		</BreadcrumbProvider>
+		<LayoutScrollProvider>
+			<BreadcrumbProvider>
+				<AdminLayoutContent />
+			</BreadcrumbProvider>
+		</LayoutScrollProvider>
 	)
 }
 
 function AdminLayoutContent() {
 	const location = useLocation()
+	const { isPageScrollEnabled } = useLayoutScrollMode()
 	const { customLabels } = useBreadcrumb()
 	const [sidebarOpen, setSidebarOpen] = useState(false)
+	const isBillsPage = location.pathname === '/admin/bills'
+	const isTableGridClamped = isBillsPage && !isPageScrollEnabled
 
 	// Generate breadcrumbs from current path
 	const pathSegments = location.pathname.split('/').filter(Boolean)
@@ -67,16 +73,18 @@ function AdminLayoutContent() {
 	})
 
 	return (
-		<div className="relative min-h-screen flex">
+		<div
+			className={cn(
+				'relative min-h-screen flex',
+				isTableGridClamped && 'lg:h-dvh lg:min-h-0 lg:overflow-hidden'
+			)}
+		>
 			{/* Starfield Background */}
 			<Starfield />
 
 			{/* Mobile Overlay */}
 			{sidebarOpen && (
-				<div
-					className="fixed inset-0 z-40 lg:hidden"
-					onClick={() => setSidebarOpen(false)}
-				/>
+				<div className="fixed inset-0 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
 			)}
 
 			{/* Sidebar */}
@@ -90,7 +98,12 @@ function AdminLayoutContent() {
 			</aside>
 
 			{/* Main Content Area */}
-			<div className="relative z-10 flex-1 flex flex-col min-w-0">
+			<div
+				className={cn(
+					'relative z-10 flex-1 flex flex-col min-w-0',
+					isTableGridClamped && 'lg:min-h-0'
+				)}
+			>
 				{/* Top Bar (Mobile) */}
 				<header className="sticky top-0 z-30 lg:hidden border-b border-border/30 bg-background/95 backdrop-blur-sm shadow-sm">
 					<div className="flex items-center justify-between">
@@ -136,8 +149,13 @@ function AdminLayoutContent() {
 					</div>
 				</header>
 
-				<main className="flex-1 relative z-10 p-4 md:p-6 lg:p-8 overflow-x-hidden">
-					<div className="w-full mx-auto max-w-[120rem]">
+				<main
+					className={cn(
+						'flex-1 relative z-10 p-4 md:p-6 lg:p-8 overflow-x-hidden',
+						isTableGridClamped && 'lg:min-h-0 lg:overflow-hidden'
+					)}
+				>
+					<div className={cn('w-full mx-auto max-w-[120rem]', isTableGridClamped && 'lg:h-full')}>
 						<Outlet />
 					</div>
 				</main>

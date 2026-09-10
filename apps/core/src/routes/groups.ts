@@ -9,7 +9,7 @@ import { logger } from '@repo/hono-helpers'
 import { createDb } from '../db'
 import { userCharacters } from '../db/schema.js'
 import { waitUntilWithTelemetry } from '../lib/background-task'
-import { clearUserCache, getCachedUserMemberships } from '../lib/groups-cache'
+import { clearAllCaches, clearUserCache, getCachedUserMemberships } from '../lib/groups-cache'
 import {
 	triggerDiscordRefreshWorkflow,
 	triggerMumbleRefreshWorkflow,
@@ -33,6 +33,24 @@ import type { App } from '../context'
  */
 const groups = new Hono<App>()
 groups.use('*', requireAllianceMember())
+
+async function invalidateGroupMemberCaches(
+	groupsDO: Groups,
+	groupId: string,
+	actorUserId: string,
+	billingScopeCache: DurableObjectNamespace
+): Promise<void> {
+	try {
+		const members = await groupsDO.getGroupMembers(groupId, actorUserId)
+		for (const member of members) await clearUserCache(member.userId, billingScopeCache)
+	} catch (error) {
+		// The mutation has already committed; normal cache expiry remains the fallback.
+		logger.warn('[groups] Failed to invalidate member permission caches', {
+			groupId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
+}
 
 function parseDiscordRoleMembershipType(value: unknown): 'member' | 'owner_admin' | null {
 	if (value === undefined) {
@@ -412,7 +430,7 @@ groups.post(
 
 		try {
 			await groupsDO.acceptInvitation(invitationId, user.id)
-			clearUserCache(user.id)
+			await clearUserCache(user.id, c.env.BILLING_SCOPE_CACHE)
 
 			// Sync Discord roles — accepting an invitation grants group membership which may grant new roles via Discord attachments
 			waitUntilWithTelemetry(
@@ -667,7 +685,7 @@ groups.post(
 
 		try {
 			const { userId: approvedUserId } = await groupsDO.approveJoinRequest(requestId, user.id)
-			clearUserCache(approvedUserId)
+			await clearUserCache(approvedUserId, c.env.BILLING_SCOPE_CACHE)
 
 			// Sync Discord roles — approval grants group membership which may grant new roles via Discord attachments
 			waitUntilWithTelemetry(
@@ -958,6 +976,7 @@ groups.post(
 				},
 				user.id
 			)
+			await clearAllCaches(c.env.BILLING_SCOPE_CACHE)
 			return c.json(permission, 201)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -993,6 +1012,7 @@ groups.patch(
 				},
 				user.id
 			)
+			await clearAllCaches(c.env.BILLING_SCOPE_CACHE)
 			return c.json(permission)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1022,6 +1042,7 @@ groups.delete(
 
 		try {
 			await groupsDO.deletePermission(permissionId, user.id)
+			await clearAllCaches(c.env.BILLING_SCOPE_CACHE)
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1090,6 +1111,7 @@ groups.post(
 				},
 				user.id
 			)
+			await invalidateGroupMemberCaches(groupsDO, groupId, user.id, c.env.BILLING_SCOPE_CACHE)
 			return c.json(groupPermission, 201)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1126,6 +1148,7 @@ groups.post(
 				},
 				user.id
 			)
+			await invalidateGroupMemberCaches(groupsDO, groupId, user.id, c.env.BILLING_SCOPE_CACHE)
 			return c.json(groupPermission, 201)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1147,6 +1170,7 @@ groups.patch(
 	requireAdmin(),
 	async (c) => {
 		const user = c.get('user')!
+		const groupId = c.req.param('groupId')
 		const groupPermissionId = c.req.param('groupPermissionId')
 		const body = await c.req.json()
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
@@ -1159,6 +1183,7 @@ groups.patch(
 				},
 				user.id
 			)
+			await invalidateGroupMemberCaches(groupsDO, groupId, user.id, c.env.BILLING_SCOPE_CACHE)
 			return c.json(groupPermission)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1183,11 +1208,13 @@ groups.delete(
 	requireAdmin(),
 	async (c) => {
 		const user = c.get('user')!
+		const groupId = c.req.param('groupId')
 		const groupPermissionId = c.req.param('groupPermissionId')
 		const groupsDO = getStub<Groups>(c.env.GROUPS, 'default')
 
 		try {
 			await groupsDO.removePermissionFromGroup(groupPermissionId, user.id)
+			await invalidateGroupMemberCaches(groupsDO, groupId, user.id, c.env.BILLING_SCOPE_CACHE)
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1489,6 +1516,7 @@ groups.delete(
 
 		try {
 			await groupsDO.removeMember(groupId, user.id, memberUserId)
+			await clearUserCache(memberUserId, c.env.BILLING_SCOPE_CACHE)
 
 			// Sync Discord roles with removal allowed — removing a member may revoke roles granted by the group's Discord attachment
 			waitUntilWithTelemetry(
@@ -1558,6 +1586,7 @@ groups.post('/:groupId/admins', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }
 
 	try {
 		await groupsDO.addAdmin(groupId, user.id, body.userId, user.is_admin)
+		await clearUserCache(body.userId, c.env.BILLING_SCOPE_CACHE)
 		return c.json({ success: true }, 200)
 	} catch (error) {
 		if (error instanceof Error) {
@@ -1586,6 +1615,7 @@ groups.delete(
 
 		try {
 			await groupsDO.removeAdmin(groupId, user.id, targetUserId, user.is_admin)
+			await clearUserCache(targetUserId, c.env.BILLING_SCOPE_CACHE)
 			return c.json({ success: true }, 200)
 		} catch (error) {
 			if (error instanceof Error) {
@@ -1644,7 +1674,7 @@ groups.post(
 			}
 
 			await groupsDO.addMember(groupId, user.id, targetUser.userId)
-			clearUserCache(targetUser.userId)
+			await clearUserCache(targetUser.userId, c.env.BILLING_SCOPE_CACHE)
 
 			waitUntilWithTelemetry(
 				c.executionCtx,
@@ -1701,7 +1731,7 @@ groups.post('/:id/join', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), asyn
 	try {
 		await groupsDO.joinGroup(groupId, user.id)
 		// Invalidate user cache after joining group
-		clearUserCache(user.id)
+		await clearUserCache(user.id, c.env.BILLING_SCOPE_CACHE)
 
 		// Sync Discord roles — joining a group may grant new roles via Discord attachments
 		waitUntilWithTelemetry(
@@ -1750,7 +1780,7 @@ groups.post('/:id/leave', requireAuth({ any: [ROLE_CORE_ALLIANCE_MEMBER] }), asy
 	try {
 		await groupsDO.leaveGroup(groupId, user.id)
 		// Invalidate user cache after leaving group
-		clearUserCache(user.id)
+		await clearUserCache(user.id, c.env.BILLING_SCOPE_CACHE)
 
 		// Sync Discord roles with removal allowed — leaving a group may revoke roles granted by its Discord attachment
 		waitUntilWithTelemetry(

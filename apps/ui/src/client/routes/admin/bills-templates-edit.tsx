@@ -1,4 +1,4 @@
-import { Copy, FileText, Info, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, Info, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
@@ -26,6 +26,7 @@ import {
 	useUpdateTemplate,
 } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import toast from '@/lib/toast'
 
 import type { LateFeeCompounding, LateFeeType, UpdateTemplateInput } from '@repo/bills'
 
@@ -164,7 +165,7 @@ export default function AdminBillsTemplatesEditPage() {
 			await updateTemplate.mutateAsync({ id, data: input })
 			setMessage({ type: 'success', text: 'Template updated successfully!' })
 		} catch (error) {
-			console.error('Failed to update template:', error)
+			toast.error(error instanceof Error ? error.message : 'Failed to update template')
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to update template',
@@ -229,7 +230,10 @@ export default function AdminBillsTemplatesEditPage() {
 					</CardContent>
 				</Card>
 				<Button variant="ghost" asChild>
-					<Link to="/admin/bills/templates">Back to Templates</Link>
+					<Link to="/admin/bills/templates">
+						<ArrowLeft className="h-4 w-4" />
+						Back to Templates
+					</Link>
 				</Button>
 			</div>
 		)
@@ -266,7 +270,7 @@ export default function AdminBillsTemplatesEditPage() {
 					</Button>
 					<Button variant="ghost" asChild>
 						<Link to="/admin/bills/templates">
-							<FileText className="h-4 w-4" />
+							<ArrowLeft className="h-4 w-4" />
 							Back to Templates
 						</Link>
 					</Button>

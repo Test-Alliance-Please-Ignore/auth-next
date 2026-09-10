@@ -1,16 +1,24 @@
-import { useState } from 'react'
-
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Navigate, useSearchParams } from 'react-router'
 
-import { Button } from '@/components/ui/button'
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { LoadingPage } from '@/components/ui/loading'
-import { useHrAccessibleCorporations } from '@/features/hr'
+import { PageHeader } from '@/components/ui/page-header'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { hasExplicitMemberCorporationHrRole, useHrAccessibleCorporations } from '@/features/hr'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
@@ -22,12 +30,10 @@ export default function AdminLegacyHistoryPage() {
 	const { hasAnyPermission } = useUserPermissions()
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
 	const canCheckAccessibleCorporations = isAuthenticated && !user?.is_admin && !isAuditor
-	const {
-		data: accessibleCorporations,
-		isLoading: accessibleCorporationsLoading,
-	} = useHrAccessibleCorporations({
-		enabled: canCheckAccessibleCorporations,
-	})
+	const { data: accessibleCorporations, isLoading: accessibleCorporationsLoading } =
+		useHrAccessibleCorporations({
+			enabled: canCheckAccessibleCorporations,
+		})
 	const [searchParams] = useSearchParams()
 	const initialCharacterIds = searchParams.get('characterIds') ?? ''
 	const initialCharacterName = searchParams.get('characterName') ?? ''
@@ -40,10 +46,18 @@ export default function AdminLegacyHistoryPage() {
 	const canAccessLegacyHistory =
 		user?.is_admin === true ||
 		isAuditor ||
-		(accessibleCorporations?.some((corp) => corp.isMemberCorporation) ?? false)
+		hasExplicitMemberCorporationHrRole(accessibleCorporations)
 
 	const listQuery = useQuery({
-		queryKey: ['hr', 'legacy-history', page, pageSize, characterIds, characterName, corporationName],
+		queryKey: [
+			'hr',
+			'legacy-history',
+			page,
+			pageSize,
+			characterIds,
+			characterName,
+			corporationName,
+		],
 		queryFn: () =>
 			api.getLegacyHistory({
 				page,
@@ -77,20 +91,18 @@ export default function AdminLegacyHistoryPage() {
 	const currentSearchPath = `/hr/legacy-history?${currentSearchParams.toString()}`
 
 	return (
-		<div className="space-y-6">
-			<div>
-				<h2 className="text-2xl font-semibold">Legacy History</h2>
-				<p className="text-sm text-muted-foreground mt-1">
-					Read-only legacy corporation application history. Use this for historical context only.
-				</p>
-			</div>
+		<Container className="space-y-6">
+			<PageHeader
+				title="Legacy History"
+				description="Read-only legacy corporation application history. Use this for historical context only."
+			/>
 
 			<Card>
 				<CardHeader>
 					<CardTitle>Search</CardTitle>
-				<CardDescription>
-					Filter legacy applications by character/corporation identity.
-				</CardDescription>
+					<CardDescription>
+						Filter legacy applications by character/corporation identity.
+					</CardDescription>
 				</CardHeader>
 				<CardContent className="grid gap-3 md:grid-cols-3">
 					<Input
@@ -157,24 +169,26 @@ export default function AdminLegacyHistoryPage() {
 								<TableRow key={item.legacyApplicationId}>
 									<TableCell>
 										<div className="font-medium">{item.characterName ?? 'Unknown'}</div>
-										<div className="text-xs text-muted-foreground font-mono">{item.characterId ?? 'N/A'}</div>
+										<div className="text-xs text-muted-foreground font-mono">
+											{item.characterId ?? 'N/A'}
+										</div>
 									</TableCell>
 									<TableCell>
 										<div>{item.corporationName ?? 'Unknown'}</div>
-										<div className="text-xs text-muted-foreground font-mono">{item.corporationId ?? 'N/A'}</div>
+										<div className="text-xs text-muted-foreground font-mono">
+											{item.corporationId ?? 'N/A'}
+										</div>
 									</TableCell>
 									<TableCell>
 										<Badge variant="ghost">{item.status ?? 'unknown'}</Badge>
 									</TableCell>
 									<TableCell>
-										{item.applicationDate ? new Date(item.applicationDate).toLocaleString() : 'Unknown'}
+										{item.applicationDate
+											? new Date(item.applicationDate).toLocaleString()
+											: 'Unknown'}
 									</TableCell>
 									<TableCell className="text-right">
-										<Button
-											asChild
-											size="sm"
-											variant="secondary"
-										>
+										<Button asChild size="sm" variant="secondary">
 											<a
 												href={`/hr/legacy-history/${encodeURIComponent(item.legacyApplicationId)}?returnTo=${encodeURIComponent(currentSearchPath)}`}
 												target="_blank"
@@ -213,6 +227,6 @@ export default function AdminLegacyHistoryPage() {
 					) : null}
 				</CardContent>
 			</Card>
-		</div>
+		</Container>
 	)
 }

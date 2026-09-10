@@ -1,4 +1,4 @@
-import { FileText, Info } from 'lucide-react'
+import { ArrowLeft, Info } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useCreateTemplate } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import toast from '@/lib/toast'
 
 import type { CreateTemplateInput, LateFeeCompounding, LateFeeType } from '@repo/bills'
 
@@ -125,7 +126,7 @@ export default function AdminBillsTemplatesNewPage() {
 				void navigate('/admin/bills/templates')
 			}, 1500)
 		} catch (error) {
-			console.error('Failed to create template:', error)
+			toast.error(error instanceof Error ? error.message : 'Failed to create template')
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to create template',
@@ -145,7 +146,7 @@ export default function AdminBillsTemplatesNewPage() {
 				</div>
 				<Button variant="ghost" asChild>
 					<Link to="/admin/bills/templates">
-						<FileText className="h-4 w-4" />
+						<ArrowLeft className="h-4 w-4" />
 						Back to Templates
 					</Link>
 				</Button>

@@ -45,9 +45,10 @@ function createDbRecorder() {
 		return { where }
 	})
 	const update = vi.fn(() => ({ set }))
+	const findFirst = vi.fn().mockResolvedValue(null)
 
 	return {
-		db: { update },
+		db: { query: { userCharacters: { findFirst } }, update },
 		updates,
 		update,
 	}
@@ -85,10 +86,10 @@ describe('hydrateCharacterAffiliation', () => {
 			env: {
 				ESI_TYPE_RESOLVER: hoisted.namespaces.esiTypeResolver as unknown as DurableObjectNamespace,
 				EVE_TOKEN_STORE: {} as DurableObjectNamespace,
-				EVE_CHARACTER_DATA:
-					hoisted.namespaces.eveCharacterData as unknown as DurableObjectNamespace,
-				EVE_CORPORATION_DATA:
-					hoisted.namespaces.eveCorporationData as unknown as DurableObjectNamespace,
+				EVE_CHARACTER_DATA: hoisted.namespaces
+					.eveCharacterData as unknown as DurableObjectNamespace,
+				EVE_CORPORATION_DATA: hoisted.namespaces
+					.eveCorporationData as unknown as DurableObjectNamespace,
 			},
 			characterId: '93705729',
 			cacheMode: 'no-store',
@@ -134,8 +135,8 @@ describe('hydrateCharacterAffiliation', () => {
 			env: {
 				ESI_TYPE_RESOLVER: hoisted.namespaces.esiTypeResolver as unknown as DurableObjectNamespace,
 				EVE_TOKEN_STORE: {} as DurableObjectNamespace,
-				EVE_CHARACTER_DATA:
-					hoisted.namespaces.eveCharacterData as unknown as DurableObjectNamespace,
+				EVE_CHARACTER_DATA: hoisted.namespaces
+					.eveCharacterData as unknown as DurableObjectNamespace,
 			},
 			characterId: '93705729',
 			cacheMode: 'no-store',
@@ -172,8 +173,8 @@ describe('hydrateCharacterAffiliation', () => {
 			env: {
 				ESI_TYPE_RESOLVER: hoisted.namespaces.esiTypeResolver as unknown as DurableObjectNamespace,
 				EVE_TOKEN_STORE: {} as DurableObjectNamespace,
-				EVE_CHARACTER_DATA:
-					hoisted.namespaces.eveCharacterData as unknown as DurableObjectNamespace,
+				EVE_CHARACTER_DATA: hoisted.namespaces
+					.eveCharacterData as unknown as DurableObjectNamespace,
 			},
 			characterId: '93705729',
 			cacheMode: 'no-store',

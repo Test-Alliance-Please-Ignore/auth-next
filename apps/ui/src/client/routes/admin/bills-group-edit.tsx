@@ -11,16 +11,22 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useGroupBillAggregate, useUpdateGroupBill } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import type { GroupBillAccessScope } from '@/lib/bills-api'
 
 import type { LateFeeCompounding, LateFeeType, UpdateBillInput } from '@repo/bills'
 import { Button } from '@/components/ui/button'
 
-export default function AdminBillsGroupEditPage() {
+export default function AdminBillsGroupEditPage({
+	scope = 'admin',
+}: {
+	scope?: GroupBillAccessScope
+}) {
 	const { groupBillId } = useParams<{ groupBillId: string }>()
 	const navigate = useNavigate()
 
-	const { data: aggregate, isLoading, error } = useGroupBillAggregate(groupBillId)
-	const updateGroupBill = useUpdateGroupBill()
+	const { data: aggregate, isLoading, error } = useGroupBillAggregate(groupBillId, scope)
+	const updateGroupBill = useUpdateGroupBill(scope)
+	const basePath = scope === 'issuer' ? '/my-bills' : '/admin/bills'
 
 	usePageTitle(aggregate ? `Edit Group Bill - ${aggregate.title}` : 'Edit Group Bill')
 
@@ -110,7 +116,7 @@ export default function AdminBillsGroupEditPage() {
 				text: `Updated ${result.succeeded} bill(s)${result.skipped > 0 ? `, skipped ${result.skipped}` : ''}.`,
 			})
 			setTimeout(() => {
-				void navigate('/admin/bills')
+				void navigate(basePath)
 			}, 1500)
 		} catch (err) {
 			setMessage({
@@ -126,7 +132,7 @@ export default function AdminBillsGroupEditPage() {
 				<div className="flex items-center justify-between">
 					<h1 className="text-3xl font-bold gradient-text">Loading...</h1>
 					<Button variant="ghost" asChild>
-						<Link to="/admin/bills">
+						<Link to={basePath}>
 							<ArrowLeft className="h-4 w-4" />
 							Back to Bills
 						</Link>
@@ -148,7 +154,7 @@ export default function AdminBillsGroupEditPage() {
 						</p>
 					</div>
 					<Button variant="ghost" asChild>
-						<Link to="/admin/bills">
+						<Link to={basePath}>
 							<ArrowLeft className="h-4 w-4" />
 							Back to Bills
 						</Link>
@@ -173,7 +179,7 @@ export default function AdminBillsGroupEditPage() {
 					</p>
 				</div>
 				<Button variant="ghost" asChild>
-					<Link to="/admin/bills">
+					<Link to={basePath}>
 						<ArrowLeft className="h-4 w-4" />
 						Back to Bills
 					</Link>
@@ -349,7 +355,7 @@ export default function AdminBillsGroupEditPage() {
 					<Button variant="confirm" type="submit" loading={updateGroupBill.isPending}>
 						Apply to All Eligible Bills
 					</Button>
-					<Button variant="cancel" type="button" onClick={() => navigate('/admin/bills')}>
+					<Button variant="cancel" type="button" onClick={() => navigate(basePath)}>
 						Cancel
 					</Button>
 				</div>

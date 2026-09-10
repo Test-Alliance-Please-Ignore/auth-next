@@ -1,6 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 
 import { BillEntityPicker } from '@/components/bills/bill-entity-picker'
 import { Button } from '@/components/ui/button'
@@ -8,12 +8,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
+import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { useBillEntitySearch, useCreateBill } from '@/hooks/useBills'
+import {
+	useBillEntitySearch,
+	useCreateBill,
+	useCreateIssuedBill,
+	useIssuerBillScope,
+} from '@/hooks/useBills'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import toast from '@/lib/toast'
 
 import type {
 	Bill,
@@ -25,10 +32,22 @@ import type {
 } from '@repo/bills'
 
 export default function AdminBillsNewPage() {
-	usePageTitle('Admin - Create Bill')
-
+	const location = useLocation()
 	const navigate = useNavigate()
-	const createBill = useCreateBill()
+	const isIssuerRoute = location.pathname === '/bills/issue'
+	const issuerScope = useIssuerBillScope(isIssuerRoute)
+	const issuerIsUnrestricted = issuerScope.data?.unrestricted === true
+	const isScopedIssuer = isIssuerRoute && issuerScope.isSuccess && !issuerIsUnrestricted
+	const scopedCorporationOptions = (issuerScope.data?.corporations ?? []).map((corporation) => ({
+		value: corporation.corporationId,
+		label: corporation.name,
+		description: corporation.corporationId,
+	}))
+	usePageTitle(isIssuerRoute ? 'Create Bill' : 'Admin - Create Bill')
+
+	const adminCreateBill = useCreateBill()
+	const issuerCreateBill = useCreateIssuedBill()
+	const createBill = isIssuerRoute ? issuerCreateBill : adminCreateBill
 
 	const [formData, setFormData] = useState<{
 		payerId: string
@@ -75,11 +94,13 @@ export default function AdminBillsNewPage() {
 	const payerEntitySearch = useBillEntitySearch({
 		q: debouncedPayerQuery,
 		entityType: formData.payerType,
+		scope: isIssuerRoute ? 'issuer' : 'admin',
 		enabled: debouncedPayerQuery.trim().length >= 2,
 	})
 	const payeeEntitySearch = useBillEntitySearch({
 		q: debouncedPayeeQuery,
 		entityType: formData.payeeType,
+		scope: isIssuerRoute ? 'issuer' : 'admin',
 		enabled: debouncedPayeeQuery.trim().length >= 2,
 	})
 	const payerOptions = useMemo(() => {
@@ -169,7 +190,7 @@ export default function AdminBillsNewPage() {
 			}
 		}
 
-		if (formData.payerType === 'group') {
+		if (!isIssuerRoute && formData.payerType === 'group') {
 			if (
 				!groupBillOptions.includeOwner &&
 				!groupBillOptions.includeAdmins &&
@@ -225,7 +246,8 @@ export default function AdminBillsNewPage() {
 					formData.enableLateFee && formData.lateFeeType !== 'none'
 						? formData.lateFeeCompounding
 						: undefined,
-				...(formData.payerType === 'group' && { groupBillOptions }),
+				...((!isIssuerRoute || issuerIsUnrestricted) &&
+					formData.payerType === 'group' && { groupBillOptions }),
 			}
 
 			const result = await createBill.mutateAsync(input)
@@ -238,16 +260,20 @@ export default function AdminBillsNewPage() {
 					text: `Group bill created — ${groupResult.billCount} individual bills issued.`,
 				})
 				setTimeout(() => {
-					void navigate(`/admin/bills/group/${encodeURIComponent(groupResult.groupBillId)}`)
+					void navigate(
+						isIssuerRoute
+							? '/my-bills'
+							: `/admin/bills/group/${encodeURIComponent(groupResult.groupBillId)}`
+					)
 				}, 1500)
 			} else {
 				setMessage({ type: 'success', text: 'Bill created successfully!' })
 				setTimeout(() => {
-					void navigate('/admin/bills')
+					void navigate(isIssuerRoute ? '/my-bills' : '/admin/bills')
 				}, 1500)
 			}
 		} catch (error) {
-			console.error('Failed to create bill:', error)
+			toast.error(error instanceof Error ? error.message : 'Failed to create bill')
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to create bill',
@@ -257,21 +283,22 @@ export default function AdminBillsNewPage() {
 
 	return (
 		<div className="space-y-6">
-			{/* Page Header */}
-			<div className="flex items-center justify-between">
-				<div>
-					<h1 className="text-3xl font-bold gradient-text">Create Bill</h1>
-					<p className="text-muted-foreground mt-2">
-						Create a new bill for a character, corporation, or group
-					</p>
-				</div>
-				<Button variant="ghost" asChild>
-					<Link to="/admin/bills">
-						<ArrowLeft className="h-4 w-4" />
-						Back to Bills
-					</Link>
-				</Button>
-			</div>
+			<PageHeader
+				title="Create Bill"
+				description={
+					isIssuerRoute
+						? 'Create a manual bill as the authenticated issuer'
+						: 'Create a new bill for a character, corporation, or group'
+				}
+				action={
+					<Button variant="ghost" asChild>
+						<Link to={isIssuerRoute ? '/my-bills' : '/admin/bills'}>
+							<ArrowLeft className="h-4 w-4" />
+							Back to Bills
+						</Link>
+					</Button>
+				}
+			/>
 
 			{/* Success/Error Message */}
 			{message && (
@@ -303,7 +330,11 @@ export default function AdminBillsNewPage() {
 							typeFieldId="payerType"
 							entityFieldId="payerId"
 							entityType={formData.payerType}
-							allowedEntityTypes={['character', 'corporation', 'group']}
+							allowedEntityTypes={
+								isIssuerRoute && !issuerIsUnrestricted
+									? ['character']
+									: ['character', 'corporation', 'group']
+							}
 							onEntityTypeChange={(value) => handleChange('payerType', value)}
 							query={payerQuery}
 							onQueryChange={setPayerQuery}
@@ -321,7 +352,7 @@ export default function AdminBillsNewPage() {
 				</Card>
 
 				{/* Group Bill Options — shown only when payer type is group */}
-				{formData.payerType === 'group' && (
+				{(!isIssuerRoute || issuerIsUnrestricted) && formData.payerType === 'group' && (
 					<Card className="mb-6">
 						<CardHeader>
 							<CardTitle>Group Bill Options</CardTitle>
@@ -403,6 +434,11 @@ export default function AdminBillsNewPage() {
 							selectedEntityId={formData.payeeId}
 							selectedEntityName={payeeName}
 							error={errors.payeeId}
+							staticOptions={
+								isScopedIssuer && formData.payeeType === 'corporation'
+									? scopedCorporationOptions
+									: undefined
+							}
 						/>
 					</CardContent>
 				</Card>
@@ -573,7 +609,11 @@ export default function AdminBillsNewPage() {
 					<Button variant="confirm" type="submit" loading={createBill.isPending}>
 						Create Bill
 					</Button>
-					<Button variant="cancel" type="button" onClick={() => navigate('/admin/bills')}>
+					<Button
+						variant="cancel"
+						type="button"
+						onClick={() => navigate(isIssuerRoute ? '/my-bills' : '/admin/bills')}
+					>
 						Cancel
 					</Button>
 				</div>

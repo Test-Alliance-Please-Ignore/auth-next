@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+
 import { useAuth } from './useAuth'
 
 /**
@@ -17,7 +18,7 @@ export function useUserPermissions() {
 			if (user?.is_admin) return true
 
 			// Check if user has the specific permission
-			return permissions.some(p => p.urn === urn)
+			return permissions.some((p) => p.urn === urn)
 		}
 	}, [permissions, user])
 
@@ -30,7 +31,7 @@ export function useUserPermissions() {
 			if (user?.is_admin) return true
 
 			// Check if user has any of the permissions
-			return urns.some(urn => permissions.some(p => p.urn === urn))
+			return urns.some((urn) => permissions.some((p) => p.urn === urn))
 		}
 	}, [permissions, user])
 
@@ -43,7 +44,7 @@ export function useUserPermissions() {
 			if (user?.is_admin) return true
 
 			// Check if user has all permissions
-			return urns.every(urn => permissions.some(p => p.urn === urn))
+			return urns.every((urn) => permissions.some((p) => p.urn === urn))
 		}
 	}, [permissions, user])
 
@@ -65,5 +66,6 @@ export const PERMISSIONS = {
 	SRP_REVIEWER: 'urn:srp:reviewer',
 	SRP_PAYER: 'urn:srp:payer',
 	FREIGHT_MANAGER: 'urn:freight:manager',
+	BILLING_ISSUER: 'urn:billing:issuer',
 	ADMIN: 'urn:admin',
 } as const

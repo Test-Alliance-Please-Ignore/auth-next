@@ -323,6 +323,22 @@ body {
 	background: color-mix(in srgb, hsl(var(--primary)) 12%, hsl(var(--card)));
 }
 
+/* Parent stack utilities provide the page-header gap; do not compound it with mb-6. */
+.space-y-4 > .page-header,
+.space-y-6 > .page-header,
+.space-y-8 > .page-header {
+	margin-bottom: 0;
+}
+
+/* Keep row hover contrast consistent across both striped row backgrounds. */
+tbody > .table-row-hover:nth-child(odd):hover {
+	background-color: color-mix(in srgb, hsl(var(--primary)) 18%, hsl(var(--muted))) !important;
+}
+
+tbody > .table-row-hover:nth-child(even):hover {
+	background-color: color-mix(in srgb, hsl(var(--primary)) 18%, hsl(var(--card))) !important;
+}
+
 .mrt-grid__paper .mrt-grid__head,
 .mrt-grid__paper .mrt-grid__head-cell {
 	background: color-mix(in srgb, hsl(var(--primary)) 8%, hsl(var(--card)));
@@ -647,6 +663,20 @@ select optgroup {
 .backdrop-blur-xl:not([style*='background']),
 .backdrop-blur:not([style*='background']) {
 	background-color: hsl(var(--background) / 0.82) !important;
+}
+
+/* Sticky action cells stay readable while allowing the rows beneath them to remain visible. */
+.table-sticky-action-header,
+.table-sticky-action-cell {
+	backdrop-filter: blur(6px);
+}
+
+.table-sticky-action-header {
+	background-color: hsl(var(--card) / 0.56) !important;
+}
+
+.table-sticky-action-cell {
+	background-color: hsl(var(--card) / 0.38) !important;
 }
 
 /* Keep content surfaces opaque, but allow layout-level background surfaces
