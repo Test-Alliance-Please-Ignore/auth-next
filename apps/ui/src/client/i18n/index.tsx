@@ -1,16 +1,16 @@
 import { useCallback } from 'react'
 import { I18nextProvider, useTranslation } from 'react-i18next'
 
+import { persistAppLocale } from '@/lib/locale-preference'
+
 import { getActiveLocale, i18n } from './instance'
-import { DEFAULT_APP_LOCALE, LOCALE_STORAGE_KEY, parseAppLocale } from './locales'
+import { DEFAULT_APP_LOCALE, parseAppLocale } from './locales'
 
 import type { PropsWithChildren } from 'react'
 import type { AppLocale } from './locales'
 import type { AppTranslationKey } from './resources'
 
 export type AppTranslator = (key: AppTranslationKey, values?: Record<string, unknown>) => string
-
-let explicitLocaleSelectionVersion = 0
 
 function applyDocumentLocale(locale: AppLocale): void {
 	if (typeof document === 'undefined') {
@@ -52,25 +52,12 @@ export function I18nProvider({ children }: PropsWithChildren) {
 	return <I18nextProvider i18n={i18n}>{children}</I18nextProvider>
 }
 
-export function getLocaleSelectionVersion(): number {
-	return explicitLocaleSelectionVersion
-}
-
 export async function setAppLocale(
 	locale: AppLocale,
-	options: { explicit?: boolean; persistLocal?: boolean } = {}
+	options: { persistLocal?: boolean } = {}
 ): Promise<void> {
-	if (options.explicit) {
-		explicitLocaleSelectionVersion += 1
-	}
-
-	if (options.persistLocal !== false && typeof window !== 'undefined') {
-		try {
-			window.localStorage.setItem(LOCALE_STORAGE_KEY, locale)
-		} catch {
-			// Storage can be unavailable in privacy modes. The in-memory selection
-			// must still take effect for the current visit.
-		}
+	if (options.persistLocal !== false) {
+		persistAppLocale(locale)
 	}
 
 	applyDocumentLocale(locale)

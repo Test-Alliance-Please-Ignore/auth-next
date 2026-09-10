@@ -84,8 +84,6 @@ export const commonCatalog = defineCatalog(
 		},
 		locale: {
 			label: 'Language',
-			persistenceError:
-				'Your language choice was saved on this device, but could not be synced to your account.',
 		},
 	},
 	{
@@ -171,8 +169,6 @@ export const commonCatalog = defineCatalog(
 		},
 		locale: {
 			label: 'Sprache',
-			persistenceError:
-				'Die Sprachwahl wurde auf diesem Gerät gespeichert, konnte aber nicht mit deinem Konto synchronisiert werden.',
 		},
 	},
 	{
@@ -258,7 +254,6 @@ export const commonCatalog = defineCatalog(
 		},
 		locale: {
 			label: '언어',
-			persistenceError: '이 기기에는 언어 설정이 저장되었지만 계정에 동기화하지 못했습니다.',
 		},
 	}
 )

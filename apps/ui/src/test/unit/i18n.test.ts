@@ -48,19 +48,17 @@ describe('application i18n runtime', () => {
 		expect(parseBrowserLocale('')).toBeNull()
 	})
 
-	it('resolves account, local, browser, and English fallback precedence', () => {
+	it('resolves local, browser, and English fallback precedence', () => {
 		expect(
 			resolveAppLocale({
-				accountLocale: 'ko',
 				localLocale: 'de',
 				browserLanguages: ['en-GB'],
 			})
-		).toBe('ko')
+		).toBe('de')
 		expect(resolveAppLocale({ localLocale: 'de', browserLanguages: ['ko-KR'] })).toBe('de')
 		expect(resolveAppLocale({ browserLanguages: ['de-DE', 'en-US'] })).toBe('de')
 		expect(
 			resolveAppLocale({
-				accountLocale: 'unknown',
 				localLocale: 'ko-KR',
 				browserLanguages: ['fr-FR'],
 			})
@@ -74,7 +72,6 @@ describe('application i18n runtime', () => {
 		vi.stubGlobal('navigator', { languages: ['ko-KR', 'de-DE'], language: 'ko-KR' })
 
 		expect(resolveStartupLocale()).toBe('ko')
-		expect(resolveStartupLocale('de')).toBe('de')
 	})
 
 	it('keeps German and Korean catalog structures exactly aligned with English', () => {
@@ -104,6 +101,8 @@ describe('application i18n runtime', () => {
 
 	it('updates document metadata and persists an explicit selection locally', async () => {
 		const values = new Map<string, string>()
+		const fetch = vi.fn()
+		vi.stubGlobal('fetch', fetch)
 		vi.stubGlobal('window', {
 			localStorage: {
 				getItem: (key: string) => values.get(key) ?? null,
@@ -112,11 +111,24 @@ describe('application i18n runtime', () => {
 		})
 		vi.stubGlobal('document', { documentElement: { lang: 'en', dir: 'rtl' } })
 
-		await setAppLocale('ko', { explicit: true })
+		await setAppLocale('ko')
 
 		expect(values.get('tang.locale')).toBe('ko')
+		expect(resolveStartupLocale()).toBe('ko')
+		expect(fetch).not.toHaveBeenCalled()
 		expect(document.documentElement.lang).toBe('ko')
 		expect(document.documentElement.dir).toBe('ltr')
+	})
+
+	it('can change the in-memory locale without overwriting the saved preference', async () => {
+		const setItem = vi.fn()
+		vi.stubGlobal('window', { localStorage: { getItem: () => 'ko', setItem } })
+
+		await setAppLocale('de', { persistLocal: false })
+
+		expect(i18n.resolvedLanguage).toBe('de')
+		expect(resolveStartupLocale()).toBe('ko')
+		expect(setItem).not.toHaveBeenCalled()
 	})
 
 	it('still applies an in-memory locale when browser storage is unavailable', async () => {
