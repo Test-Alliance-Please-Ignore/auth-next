@@ -487,10 +487,10 @@ export const charactersCorporationsCatalog = defineCatalog(
 			refreshed: 'Charakterdaten wurden aktualisiert',
 		},
 		browseCorporations: {
-			title: 'Corporations beitreten',
+			title: 'Corporation beitreten',
 			description: 'Finde EVE Online Mitglieds-Corporations und tritt ihnen bei',
 			logoAlt: 'Logo von {{name}}',
-			memberCorporation: 'Mitglieds-Corporation',
+			memberCorporation: 'Vollmitglied',
 			viewDetails: 'Details anzeigen',
 			searchPlaceholder: 'Corporations nach Name oder Kürzel suchen…',
 			empty: 'Keine Corporations gefunden',

@@ -176,15 +176,16 @@ describe('localized identity routes', () => {
 	})
 
 	it.each([
-		['en', 'Join corporations', 'Ready to Apply?'],
-		['de', 'Corporations beitreten', 'Bereit für deine Bewerbung?'],
-		['ko', '코퍼레이션 가입', '지원할 준비가 되셨나요?'],
+		['en', 'Join corporations', 'Ready to Apply?', 'Member corporation'],
+		['de', 'Corporation beitreten', 'Bereit für deine Bewerbung?', 'Vollmitglied'],
+		['ko', '코퍼레이션 가입', '지원할 준비가 되셨나요?', '멤버 코퍼레이션'],
 	] as const)(
 		'renders corporation browsing and recruitment details in %s with unchanged content',
-		async (locale, heading, ready) => {
+		async (locale, heading, ready, memberLabel) => {
 			await setAppLocale(locale, { persistLocal: false })
 			const browse = render('/join', '/join', <BrowseCorporations />)
 			expect(browse).toContain(heading)
+			expect(browse).toContain(memberLabel)
 			expect(browse).toContain('Original Corp')
 			expect(browse).toContain('Player-written short description')
 			expect(browse).toContain('/images/corporations/987654321/logo')
