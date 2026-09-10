@@ -61,15 +61,18 @@ describe('shared localized display helpers', () => {
 		['en', '9,007,199,254,740,993.12 ISK', '-0.12 ISK', '0.00 ISK'],
 		['de', '9.007.199.254.740.993,12 ISK', '-0,12 ISK', '0,00 ISK'],
 		['ko', '9,007,199,254,740,993.12 ISK', '-0.12 ISK', '0.00 ISK'],
-	] as const)('preserves exact ISK decimals and signs in %s', async (locale, large, negative, zero) => {
-		await setAppLocale(locale, { persistLocal: false })
-		expect(formatISK('9007199254740993.129')).toBe(large)
-		expect(formatISK('-0.129')).toBe(negative)
-		expect(formatISK('invalid')).toBe(zero)
-		expect(formatISK(Infinity)).toBe(zero)
-		expect(formatISK('1.99', { showDecimals: false })).toBe('2 ISK')
-		expect(formatISK('-1.99', { showDecimals: false })).toBe('-2 ISK')
-	})
+	] as const)(
+		'preserves exact ISK decimals and signs in %s',
+		async (locale, large, negative, zero) => {
+			await setAppLocale(locale, { persistLocal: false })
+			expect(formatISK('9007199254740993.129')).toBe(large)
+			expect(formatISK('-0.129')).toBe(negative)
+			expect(formatISK('invalid')).toBe(zero)
+			expect(formatISK(Infinity)).toBe(zero)
+			expect(formatISK('1.99', { showDecimals: false })).toBe('2 ISK')
+			expect(formatISK('-1.99', { showDecimals: false })).toBe('-2 ISK')
+		}
+	)
 
 	it('formats both past and future relative times', async () => {
 		vi.useFakeTimers()
