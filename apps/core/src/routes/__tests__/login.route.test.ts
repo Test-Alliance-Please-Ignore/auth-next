@@ -83,6 +83,15 @@ describe('login route', () => {
 		expect(body).toContain('<html lang="ko">')
 		expect(body).toContain('TEST Auth에 오신 것을 환영합니다')
 		expect(body).toMatch(/<option value="ko" selected>\s*한국어\s*<\/option>/)
+		for (const step of [
+			'아래 로그인 버튼을 누르면 EVE Online 공식 로그인 페이지로 이동됩니다',
+			'메인으로 사용할 캐릭터가 있는 계정에 먼저 로그인하세요',
+			'캐릭터 목록에서 메인 캐릭터를 선택하세요',
+			'TEST Auth가 캐릭터 정보에 접근할 수 있도록 승인하세요',
+			'로그인이 완료되면 자동으로 TEST Auth로 돌아옵니다',
+		]) {
+			expect(body).toContain(`<li>${step}</li>`)
+		}
 	})
 
 	it('negotiates a supported browser language and ignores languages with q=0', async () => {
