@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { i18n, useAppTranslation } from '@/i18n'
 import { apiClient } from '@/lib/api'
 
 /**
@@ -13,7 +14,8 @@ import { apiClient } from '@/lib/api'
  * Finally redirects back to the original page
  */
 export default function DiscordCallbackPage() {
-	usePageTitle('Linking Discord')
+	const { t } = useAppTranslation()
+	usePageTitle(t('discordCallback.title'))
 	const [searchParams] = useSearchParams()
 	const [isProcessing, setIsProcessing] = useState(false)
 	const [error, setError] = useState<string | null>(searchParams.get('error'))
@@ -29,7 +31,7 @@ export default function DiscordCallbackPage() {
 
 			// If no code, something went wrong
 			if (!code || !state) {
-				setError('Missing code or state parameter')
+				setError(i18n.t('discordCallback.missingParameters'))
 				return
 			}
 
@@ -40,7 +42,7 @@ export default function DiscordCallbackPage() {
 				const codeVerifier = localStorage.getItem(`discord_code_verifier_${state}`)
 
 				if (!codeVerifier) {
-					throw new Error('Code verifier not found - please try again')
+					throw new Error(i18n.t('discordCallback.missingVerifier'))
 				}
 
 				const redirectUri = window.location.origin + '/discord/callback'
@@ -73,7 +75,12 @@ export default function DiscordCallbackPage() {
 						statusText: tokenResponse.statusText,
 						error: errorText,
 					})
-					throw new Error(`Token exchange failed (${tokenResponse.status}): ${errorText}`)
+					throw new Error(
+						i18n.t('discordCallback.tokenExchangeFailed', {
+							status: tokenResponse.status,
+							detail: errorText,
+						})
+					)
 				}
 
 				const tokens = (await tokenResponse.json()) as {
@@ -101,7 +108,7 @@ export default function DiscordCallbackPage() {
 				await new Promise((resolve) => setTimeout(resolve, 1000)) // Brief delay to show success
 				window.location.href = returnUrl
 			} catch (err) {
-				const errorMsg = err instanceof Error ? err.message : 'Unknown error occurred'
+				const errorMsg = err instanceof Error ? err.message : i18n.t('discordCallback.unknownError')
 				console.error('Discord callback error:', err)
 				setError(errorMsg)
 				setIsProcessing(false)
@@ -132,17 +139,17 @@ export default function DiscordCallbackPage() {
 						<div className="text-center">
 							<CardTitle className="text-2xl mb-2">
 								{error
-									? 'Discord Linking Failed'
+									? t('discordCallback.linkingFailed')
 									: isProcessing
-										? 'Linking Discord Account...'
-										: 'Discord Linked Successfully'}
+										? t('discordCallback.linking')
+										: t('discordCallback.linked')}
 							</CardTitle>
 							<CardDescription>
 								{error
-									? 'There was an error linking your Discord account.'
+									? t('discordCallback.errorDescription')
 									: isProcessing
-										? 'Exchanging authorization code and storing tokens...'
-										: 'Redirecting you back...'}
+										? t('discordCallback.processingDescription')
+										: t('discordCallback.redirecting')}
 							</CardDescription>
 						</div>
 					</div>
@@ -150,12 +157,14 @@ export default function DiscordCallbackPage() {
 				{error && (
 					<CardContent>
 						<div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 space-y-3">
-							<p className="text-sm text-destructive">Error: {error}</p>
+							<p className="text-sm text-destructive">
+								{t('discordCallback.errorLabel', { error })}
+							</p>
 							<a
 								href="/profile"
 								className="inline-block text-sm text-primary hover:underline font-medium"
 							>
-								Return to Profile
+								{t('discordCallback.returnProfile')}
 							</a>
 						</div>
 					</CardContent>

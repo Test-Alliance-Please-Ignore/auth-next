@@ -2,16 +2,24 @@ import { CheckCircle2, ShieldCheck, XCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router'
 
-import { getThirdPartyAppScopeMetadata } from '@repo/admin'
-
 import { MemberAvatar } from '@/components/member-avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingPage } from '@/components/ui/loading'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { i18n, useAppTranslation } from '@/i18n'
 import { apiClient } from '@/lib/api'
+
+import type { AppTranslator } from '@/i18n'
 
 interface OAuthAuthorizePreview {
 	requestUrl: string
@@ -26,8 +34,45 @@ interface OAuthAuthorizeResolution {
 	redirectTo: string
 }
 
+function getLocalizedScopeMetadata(scope: string, t: AppTranslator) {
+	if (scope === 'profile') {
+		return {
+			scope,
+			name: t('oauthAuthorize.identityScopes.profileName'),
+			description: t('oauthAuthorize.identityScopes.profileDescription'),
+		}
+	}
+	if (scope === 'groups') {
+		return {
+			scope,
+			name: t('oauthAuthorize.identityScopes.groupsName'),
+			description: t('oauthAuthorize.identityScopes.groupsDescription'),
+		}
+	}
+	if (scope === 'permissions') {
+		return {
+			scope,
+			name: t('oauthAuthorize.identityScopes.permissionsName'),
+			description: t('oauthAuthorize.identityScopes.permissionsDescription'),
+		}
+	}
+	if (scope.startsWith('esi:')) {
+		return {
+			scope,
+			name: t('oauthAuthorize.esiScopeName'),
+			description: t('oauthAuthorize.esiScopeDescription', { scope }),
+		}
+	}
+	return {
+		scope,
+		name: scope,
+		description: t('oauthAuthorize.unknownScopeDescription'),
+	}
+}
+
 export default function OAuthAuthorizePage() {
-	usePageTitle('Authorize Application')
+	const { t } = useAppTranslation()
+	usePageTitle(t('oauthAuthorize.title'))
 	const location = useLocation()
 	const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth()
 	const [submittingAction, setSubmittingAction] = useState<'approve' | 'deny' | null>(null)
@@ -41,11 +86,12 @@ export default function OAuthAuthorizePage() {
 	const [preview, setPreview] = useState<OAuthAuthorizePreview | null>(null)
 	const [isPreviewLoading, setIsPreviewLoading] = useState(false)
 	const requestedScopes = useMemo(
-		() => preview?.scope.map((scope) => getThirdPartyAppScopeMetadata(scope)) ?? [],
-		[preview?.scope]
+		() => preview?.scope.map((scope) => getLocalizedScopeMetadata(scope, t)) ?? [],
+		[preview?.scope, t]
 	)
 	const requiresFreshSession = preview?.requiresFreshSession ?? false
-	const requiresFreshSessionError = error?.toLowerCase().includes('reauthentication required') ?? false
+	const requiresFreshSessionError =
+		error?.toLowerCase().includes('reauthentication required') ?? false
 	const loginUrl = useMemo(() => {
 		const params = new URLSearchParams({ redirect: requestUrl })
 		if (requiresFreshSession || requiresFreshSessionError) {
@@ -65,15 +111,13 @@ export default function OAuthAuthorizePage() {
 		setIsPreviewLoading(true)
 		setError(null)
 		void apiClient
-			.get<OAuthAuthorizePreview>(
-				`/oauth/authorize?requestUrl=${encodeURIComponent(requestUrl)}`
-			)
+			.get<OAuthAuthorizePreview>(`/oauth/authorize?requestUrl=${encodeURIComponent(requestUrl)}`)
 			.then((result) => {
 				if (!cancelled) setPreview(result)
 			})
 			.catch((err) => {
 				if (!cancelled) {
-					setError(err instanceof Error ? err.message : 'Unable to load authorization request.')
+					setError(err instanceof Error ? err.message : i18n.t('oauthAuthorize.loadFallback'))
 				}
 			})
 			.finally(() => {
@@ -94,7 +138,7 @@ export default function OAuthAuthorizePage() {
 			})
 			window.location.assign(result.redirectTo)
 		} catch (err) {
-			setError(err instanceof Error ? err.message : 'Unable to complete authorization.')
+			setError(err instanceof Error ? err.message : t('oauthAuthorize.completeFallback'))
 		} finally {
 			setSubmittingAction(null)
 		}
@@ -105,7 +149,7 @@ export default function OAuthAuthorizePage() {
 			?.characterName ?? user?.id
 
 	if (isAuthLoading) {
-		return <LoadingPage label="Loading authorization..." />
+		return <LoadingPage label={t('oauthAuthorize.loading')} />
 	}
 
 	if (!isAuthenticated) {
@@ -118,16 +162,16 @@ export default function OAuthAuthorizePage() {
 								<ShieldCheck className="h-10 w-10 text-primary" />
 							</div>
 							<div className="text-center">
-								<CardTitle className="mb-2 text-2xl">Sign in required</CardTitle>
-								<CardDescription>
-									You need to sign in before authorizing this application.
-								</CardDescription>
+								<CardTitle className="mb-2 text-2xl">
+									{t('oauthAuthorize.signInRequired')}
+								</CardTitle>
+								<CardDescription>{t('oauthAuthorize.signInDescription')}</CardDescription>
 							</div>
 						</div>
 					</CardHeader>
 					<CardContent>
 						<Button asChild className="w-full">
-							<a href={loginUrl}>Sign in with EVE</a>
+							<a href={loginUrl}>{t('oauthAuthorize.signInWithEve')}</a>
 						</Button>
 					</CardContent>
 				</Card>
@@ -136,7 +180,7 @@ export default function OAuthAuthorizePage() {
 	}
 
 	if (isPreviewLoading) {
-		return <LoadingPage label="Loading authorization request..." />
+		return <LoadingPage label={t('oauthAuthorize.loadingRequest')} />
 	}
 
 	if (error || !preview) {
@@ -149,9 +193,9 @@ export default function OAuthAuthorizePage() {
 								<XCircle className="h-10 w-10 text-destructive" />
 							</div>
 							<div className="text-center">
-								<CardTitle className="mb-2 text-2xl">Authorization unavailable</CardTitle>
+								<CardTitle className="mb-2 text-2xl">{t('oauthAuthorize.unavailable')}</CardTitle>
 								<CardDescription>
-									{error ?? 'We could not load the OAuth request details for this application.'}
+									{error ?? t('oauthAuthorize.unavailableDescription')}
 								</CardDescription>
 							</div>
 						</div>
@@ -161,15 +205,18 @@ export default function OAuthAuthorizePage() {
 							{requiresFreshSessionError ? (
 								<>
 									<Button asChild className="w-full">
-										<a href={loginUrl}>Sign in again</a>
+										<a href={loginUrl}>{t('oauthAuthorize.signInAgain')}</a>
 									</Button>
-									<a href="/" className="text-center text-sm font-medium text-primary hover:underline">
-										Return to Home
+									<a
+										href="/"
+										className="text-center text-sm font-medium text-primary hover:underline"
+									>
+										{t('oauthAuthorize.returnHome')}
 									</a>
 								</>
 							) : (
 								<a href="/" className="text-sm font-medium text-primary hover:underline">
-									Return to Home
+									{t('oauthAuthorize.returnHome')}
 								</a>
 							)}
 						</div>
@@ -190,10 +237,8 @@ export default function OAuthAuthorizePage() {
 							<CheckCircle2 className="h-10 w-10 text-primary" />
 						</div>
 						<div className="text-center">
-							<CardTitle className="mb-2 text-2xl">Authorize Application</CardTitle>
-							<CardDescription>
-								Allow this application to access your account and linked character data.
-							</CardDescription>
+							<CardTitle className="mb-2 text-2xl">{t('oauthAuthorize.heading')}</CardTitle>
+							<CardDescription>{t('oauthAuthorize.description')}</CardDescription>
 						</div>
 					</div>
 				</CardHeader>
@@ -203,15 +248,13 @@ export default function OAuthAuthorizePage() {
 							<h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
 								{clientName ?? clientId}
 							</h2>
-							<p className="mt-2 text-sm text-muted-foreground">
-								Review this app before granting access to your account and linked character data.
-							</p>
+							<p className="mt-2 text-sm text-muted-foreground">{t('oauthAuthorize.review')}</p>
 						</div>
 						<details className="group overflow-hidden rounded-md border border-border/60 bg-background/70">
 							<summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-3 py-2 text-sm font-medium text-foreground hover:bg-muted/50">
-								<span>Requested access</span>
+								<span>{t('oauthAuthorize.requestedAccess')}</span>
 								<span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-									{requestedScopes.length} scopes
+									{t('oauthAuthorize.scopes', { count: requestedScopes.length })}
 								</span>
 							</summary>
 							<div className="border-t border-border/60">
@@ -219,10 +262,10 @@ export default function OAuthAuthorizePage() {
 									<TableHeader>
 										<TableRow className="hover:bg-transparent">
 											<TableHead className="h-9 px-3 text-[11px] uppercase tracking-wide">
-												Name
+												{t('oauthAuthorize.name')}
 											</TableHead>
 											<TableHead className="h-9 px-3 text-[11px] uppercase tracking-wide">
-												Description
+												{t('oauthAuthorize.scopeDescription')}
 											</TableHead>
 										</TableRow>
 									</TableHeader>
@@ -242,7 +285,9 @@ export default function OAuthAuthorizePage() {
 							</div>
 						</details>
 						<div className="flex items-center justify-between gap-4">
-							<span className="text-sm text-muted-foreground">Signed in as</span>
+							<span className="text-sm text-muted-foreground">
+								{t('oauthAuthorize.signedInAs')}
+							</span>
 							<div className="flex items-center gap-3 text-right">
 								<span className="text-sm font-medium text-foreground">{signedInName}</span>
 								<MemberAvatar
@@ -263,24 +308,28 @@ export default function OAuthAuthorizePage() {
 							onClick={() => handleAction('deny')}
 							disabled={submittingAction !== null}
 						>
-							{submittingAction === 'deny' ? 'Working...' : 'Deny'}
+							{submittingAction === 'deny' ? t('oauthAuthorize.working') : t('oauthAuthorize.deny')}
 						</Button>
 						<Button
 							className="flex-1"
 							onClick={() => handleAction('approve')}
 							disabled={submittingAction !== null || requiresFreshSession}
 						>
-							{submittingAction === 'approve' ? 'Working...' : 'Approve'}
+							{submittingAction === 'approve'
+								? t('oauthAuthorize.working')
+								: t('oauthAuthorize.approve')}
 						</Button>
 					</div>
 					{requiresFreshSession ? (
 						<div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
-							<p className="font-medium text-foreground">Reauthentication required</p>
+							<p className="font-medium text-foreground">
+								{t('oauthAuthorize.reauthenticationRequired')}
+							</p>
 							<p className="mt-1 text-muted-foreground">
-								Please sign in again before authorizing this application.
+								{t('oauthAuthorize.reauthenticationDescription')}
 							</p>
 							<Button asChild className="mt-3 w-full">
-								<a href={loginUrl}>Sign in again</a>
+								<a href={loginUrl}>{t('oauthAuthorize.signInAgain')}</a>
 							</Button>
 						</div>
 					) : null}

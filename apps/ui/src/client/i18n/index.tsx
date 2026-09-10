@@ -21,19 +21,22 @@ function applyDocumentLocale(locale: AppLocale): void {
 	document.documentElement.dir = 'ltr'
 }
 
-applyDocumentLocale(DEFAULT_APP_LOCALE)
+applyDocumentLocale(getActiveLocale())
 
 export { getActiveLocale, i18n }
 export {
 	APP_LOCALES,
+	DEVELOPMENT_PREVIEW_STORAGE_KEY,
 	DEFAULT_APP_LOCALE,
 	LOCALE_STORAGE_KEY,
 	getBrowserLanguages,
+	getInitialAppLocale,
 	getStoredLocale,
 	localeNativeNames,
 	parseAppLocale,
 	parseBrowserLocale,
 	resolveAppLocale,
+	resolveInitialAppLocale,
 	resolveStartupLocale,
 	type AppLocale,
 } from './locales'

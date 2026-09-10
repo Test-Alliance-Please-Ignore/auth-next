@@ -9,15 +9,17 @@ import { PageHeader } from '@/components/ui/page-header'
 
 import { InventoryParser } from '../components/inventory-parser'
 import { usePageTitle } from '../hooks/usePageTitle'
+import { useAppTranslation } from '../i18n'
 
 export default function InventoryParserPage() {
-	usePageTitle('Inventory Parser')
+	const { t } = useAppTranslation()
+	usePageTitle(t('inventoryParser.title'))
 
 	return (
 		<Container>
 			<PageHeader
-				title="Inventory Parser"
-				description="Parse EVE Online inventory exports to view detailed item information"
+				title={t('inventoryParser.title')}
+				description={t('inventoryParser.description')}
 			/>
 
 			<InventoryParser />

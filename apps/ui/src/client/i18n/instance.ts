@@ -1,16 +1,16 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 
-import { APP_LOCALES, DEFAULT_APP_LOCALE, parseAppLocale } from './locales'
+import { APP_LOCALES, DEFAULT_APP_LOCALE, getInitialAppLocale, parseAppLocale } from './locales'
 import { resources } from './resources'
 
 import type { AppLocale } from './locales'
 
 void i18n.use(initReactI18next).init({
 	resources,
-	// Locale activation is deliberately deferred until the complete SPA catalog
-	// lands. Intermediate stacked PRs must never expose partially translated UI.
-	lng: DEFAULT_APP_LOCALE,
+	// Production activation remains deferred until the complete SPA catalog
+	// lands. Development builds accept the narrowly gated ?i18n= preview.
+	lng: getInitialAppLocale(),
 	fallbackLng: DEFAULT_APP_LOCALE,
 	supportedLngs: APP_LOCALES,
 	load: 'languageOnly',
