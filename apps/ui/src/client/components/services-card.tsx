@@ -9,10 +9,12 @@ import { canAccessMumble } from '@/features/mumble/access'
 import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
 import { useMumbleAccount } from '@/features/mumble/hooks'
 import { useAuth } from '@/hooks/useAuth'
+import { useAppTranslation } from '@/i18n'
 
 import type { MumbleAccountStatus, MumbleConnectionInfo } from '@/features/mumble/types'
 
 export function ServicesCard() {
+	const { t } = useAppTranslation()
 	const { user } = useAuth()
 	const { isEnabled: isMumbleFeatureEnabled, isLoading: isLoadingMumbleFeature } =
 		useMumbleFeatureEnabled()
@@ -32,8 +34,8 @@ export function ServicesCard() {
 		return (
 			<Card variant="elevated">
 				<CardHeader>
-					<CardTitle className="text-xl md:text-2xl">Services</CardTitle>
-					<CardDescription>Manage your linked services</CardDescription>
+					<CardTitle className="text-xl md:text-2xl">{t('services.title')}</CardTitle>
+					<CardDescription>{t('services.description')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div className="space-y-4">
@@ -53,8 +55,8 @@ export function ServicesCard() {
 		<>
 			<Card variant="elevated">
 				<CardHeader>
-					<CardTitle className="text-xl md:text-2xl">Services</CardTitle>
-					<CardDescription>Manage your linked services and credentials</CardDescription>
+					<CardTitle className="text-xl md:text-2xl">{t('services.title')}</CardTitle>
+					<CardDescription>{t('services.credentialsDescription')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div className="space-y-4">
@@ -71,10 +73,8 @@ export function ServicesCard() {
 										<Server className="h-6 w-6 text-muted-foreground" />
 									</div>
 									<div>
-										<CardTitle className="text-lg">No services configured</CardTitle>
-										<CardDescription>
-											No linked services are configured for your account yet.
-										</CardDescription>
+										<CardTitle className="text-lg">{t('services.emptyTitle')}</CardTitle>
+										<CardDescription>{t('services.emptyDescription')}</CardDescription>
 									</div>
 								</div>
 							</div>
@@ -93,6 +93,7 @@ function MumbleServiceCard({
 	account: MumbleAccountStatus
 	connection: MumbleConnectionInfo | null
 }) {
+	const { t } = useAppTranslation()
 	return (
 		<Card variant="flat" className="border-border/50">
 			<CardContent className="p-4">
@@ -111,7 +112,7 @@ function MumbleServiceCard({
 										: 'bg-muted text-muted-foreground'
 								}`}
 							>
-								{account.enabled ? 'Active' : 'Disabled'}
+								{t(account.enabled ? 'services.active' : 'services.disabled')}
 							</Badge>
 						</div>
 						<p className="mt-1 text-sm text-muted-foreground">
@@ -126,7 +127,7 @@ function MumbleServiceCard({
 					</div>
 					<Button asChild variant="ghost" size="sm" className="shrink-0 gap-2">
 						<Link to="/mumble">
-							<span>Open</span>
+							<span>{t('services.open')}</span>
 							<ArrowRight className="h-4 w-4" />
 						</Link>
 					</Button>
