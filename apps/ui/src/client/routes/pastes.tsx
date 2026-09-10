@@ -3,23 +3,31 @@ import { Check, Copy, Pencil, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router'
 
-import { Container } from '@/components/ui/container'
+import { parseDateOrNull } from '@repo/worker-utils'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { HoverPopover } from '@/components/ui/hover-popover'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
 import toast from '@/lib/toast'
-import { parseDateOrNull } from '@repo/worker-utils'
 
 const EXPIRATION_OPTIONS: Array<{ label: string; value: number | 'indefinite' }> = [
 	{ label: '1 hour', value: 60 },
@@ -120,13 +128,15 @@ export default function PastesPage() {
 			void queryClient.invalidateQueries({ queryKey: ['pastes', 'mine'] })
 			toast.success('Paste created')
 		},
-		onError: (error) => toast.error(error instanceof Error ? error.message : 'Failed to create paste'),
+		onError: (error) =>
+			toast.error(error instanceof Error ? error.message : 'Failed to create paste'),
 	})
 
 	const deleteMutation = useMutation({
 		mutationFn: (id: string) => apiClient.deletePaste(id),
 		onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['pastes', 'mine'] }),
-		onError: (error) => toast.error(error instanceof Error ? error.message : 'Failed to delete paste'),
+		onError: (error) =>
+			toast.error(error instanceof Error ? error.message : 'Failed to delete paste'),
 	})
 
 	const rows = mineQuery.data?.items ?? []
@@ -187,7 +197,11 @@ export default function PastesPage() {
 
 	return (
 		<Container className="space-y-6">
-			<PageHeader title="Pastes" description="Create, manage, and share plaintext pastes." />
+			<PageHeader
+				className="!mb-section md:!mb-10"
+				title="Pastes"
+				description="Create, manage, and share plaintext pastes."
+			/>
 			<Card>
 				<CardHeader>
 					<CardTitle>Create Paste</CardTitle>
@@ -310,7 +324,9 @@ export default function PastesPage() {
 							<HoverPopover
 								trigger={
 									<div>
-										<Button disabled>{createMutation.isPending ? 'Creating...' : 'Create Paste'}</Button>
+										<Button disabled>
+											{createMutation.isPending ? 'Creating...' : 'Create Paste'}
+										</Button>
 									</div>
 								}
 								align="center"

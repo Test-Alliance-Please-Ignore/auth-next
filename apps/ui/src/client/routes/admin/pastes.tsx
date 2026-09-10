@@ -152,7 +152,7 @@ export default function AdminPastesPage() {
 	if (!user?.is_admin) return <Navigate to="/dashboard" replace />
 
 	return (
-		<div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-6">
+		<div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
 			<h1 className="text-2xl font-semibold">Admin Pastes</h1>
 			<Card className="text-sm">
 				<CardHeader>

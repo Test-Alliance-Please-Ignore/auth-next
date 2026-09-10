@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 
 import { BillStatusBadge } from '@/components/bills/bill-status-badge'
-import { TaxReportTable } from '@/components/tax-report-table'
+import { DataTable } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { formatTaxDate } from '@/lib/tax-date'
 import { formatTaxIskFull, TaxCorporationDisplay } from '@/lib/tax-display'
@@ -138,7 +138,9 @@ export function BillStatusReportGrid(props: {
 	)
 
 	return (
-		<TaxReportTable
+		<DataTable
+			variant="plain"
+			errorMessage="Failed to load report"
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}

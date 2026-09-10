@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import { TaxReportTable } from '@/components/tax-report-table'
+import { DataTable } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import {
 	Dialog,
@@ -265,7 +265,9 @@ export function TaxAuditLogGrid(props: TaxAuditLogGridProps) {
 
 	return (
 		<>
-			<TaxReportTable
+			<DataTable
+				variant="plain"
+				errorMessage="Failed to load report"
 				columns={columns}
 				rows={props.rows}
 				loading={props.loading}

@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import {
+	SortableTableHead,
 	Table,
 	TableBody,
 	TableCell,
@@ -13,6 +13,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+
 import { formatDuration } from '../utils/format'
 
 import type { SessionRosterRow } from '../types'
@@ -43,9 +44,7 @@ export function SessionRosterPanel({ sessionId, roster }: SessionRosterPanelProp
 					cmp = a.shipsFlown - b.shipsFlown
 					break
 				case 'characterName':
-					cmp = (a.characterName ?? a.characterId).localeCompare(
-						b.characterName ?? b.characterId
-					)
+					cmp = (a.characterName ?? a.characterId).localeCompare(b.characterName ?? b.characterId)
 					break
 			}
 			return asc ? cmp : -cmp
@@ -69,8 +68,7 @@ export function SessionRosterPanel({ sessionId, roster }: SessionRosterPanelProp
 			<CardHeader>
 				<div className="flex items-center justify-between flex-wrap gap-2">
 					<CardTitle className="text-base">
-						Roster{' '}
-						<span className="text-muted-foreground font-normal">({roster.length})</span>
+						Roster <span className="text-muted-foreground font-normal">({roster.length})</span>
 					</CardTitle>
 					<div className="flex items-center gap-2 text-xs text-muted-foreground">
 						<span>{stayedCount} stayed to the end</span>
@@ -92,11 +90,35 @@ export function SessionRosterPanel({ sessionId, roster }: SessionRosterPanelProp
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<SortableHead label="Pilot" k="characterName" sortKey={sortKey} asc={asc} onClick={onHeaderClick} />
-								<SortableHead label="Time in fleet" k="totalSeconds" sortKey={sortKey} asc={asc} onClick={onHeaderClick} />
-								<SortableHead label="Ships" k="shipsFlown" sortKey={sortKey} asc={asc} onClick={onHeaderClick} />
+								<SortableHead
+									label="Pilot"
+									k="characterName"
+									sortKey={sortKey}
+									asc={asc}
+									onClick={onHeaderClick}
+								/>
+								<SortableHead
+									label="Time in fleet"
+									k="totalSeconds"
+									sortKey={sortKey}
+									asc={asc}
+									onClick={onHeaderClick}
+								/>
+								<SortableHead
+									label="Ships"
+									k="shipsFlown"
+									sortKey={sortKey}
+									asc={asc}
+									onClick={onHeaderClick}
+								/>
 								<TableHead>Last ship</TableHead>
-								<SortableHead label="Joined" k="firstSeenAt" sortKey={sortKey} asc={asc} onClick={onHeaderClick} />
+								<SortableHead
+									label="Joined"
+									k="firstSeenAt"
+									sortKey={sortKey}
+									asc={asc}
+									onClick={onHeaderClick}
+								/>
 								<TableHead>Status</TableHead>
 							</TableRow>
 						</TableHeader>
@@ -124,8 +146,7 @@ export function SessionRosterPanel({ sessionId, roster }: SessionRosterPanelProp
 											<Badge variant="secondary">Stayed to end</Badge>
 										) : (
 											<span className="text-xs text-muted-foreground">
-												Left at{' '}
-												{row.leftAt ? <EveTimeDisplay dateStr={row.leftAt} /> : '—'}
+												Left at {row.leftAt ? <EveTimeDisplay dateStr={row.leftAt} /> : '—'}
 											</span>
 										)}
 									</TableCell>
@@ -154,25 +175,11 @@ function SortableHead({
 }) {
 	const active = sortKey === k
 	return (
-		<TableHead>
-			<button
-				type="button"
-				onClick={() => onClick(k)}
-				className={`inline-flex items-center gap-1 text-left hover:text-foreground ${
-					active ? 'text-foreground font-medium' : 'text-muted-foreground'
-				}`}
-			>
-				{label}
-				{active ? (
-					asc ? (
-						<ArrowUp className="h-3.5 w-3.5" />
-					) : (
-						<ArrowDown className="h-3.5 w-3.5" />
-					)
-				) : (
-					<ArrowUpDown className="h-3.5 w-3.5 opacity-60" />
-				)}
-			</button>
-		</TableHead>
+		<SortableTableHead
+			onSort={() => onClick(k)}
+			direction={active ? (asc ? 'asc' : 'desc') : undefined}
+		>
+			{label}
+		</SortableTableHead>
 	)
 }

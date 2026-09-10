@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowLeft, ArrowUp } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router'
 
@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
+	SortableTableHead,
 	Table,
 	TableBody,
 	TableCell,
@@ -369,14 +370,6 @@ export default function SystemPage() {
 		validCompositionSortOreTypeId !== '' ||
 		effectiveSortColumn !== 'moonName' ||
 		activeSortDirection !== 'asc'
-	const SortIndicator = ({ column }: { column: SortColumn }) => {
-		if (effectiveSortColumn !== column) return null
-		return activeSortDirection === 'asc' ? (
-			<ArrowUp className="h-3.5 w-3.5" />
-		) : (
-			<ArrowDown className="h-3.5 w-3.5" />
-		)
-	}
 	if (!canView) {
 		return (
 			<Container>
@@ -491,7 +484,7 @@ export default function SystemPage() {
 				<Table>
 					<TableHeader>
 						<TableRow>
-							<TableHead
+							<SortableTableHead
 								aria-sort={
 									activeSortColumn === 'moonName'
 										? activeSortDirection === 'asc'
@@ -499,17 +492,13 @@ export default function SystemPage() {
 											: 'descending'
 										: 'none'
 								}
+								onSort={() => handleSort('moonName')}
+								direction={effectiveSortColumn === 'moonName' ? activeSortDirection : undefined}
 							>
-								<button
-									type="button"
-									onClick={() => handleSort('moonName')}
-									className="inline-flex items-center gap-1.5 hover:text-foreground"
-								>
-									Moon <SortIndicator column="moonName" />
-								</button>
-							</TableHead>
+								Moon
+							</SortableTableHead>
 							<TableHead>Status</TableHead>
-							<TableHead
+							<SortableTableHead
 								className="w-96"
 								aria-sort={
 									activeSortColumn === 'composition'
@@ -518,16 +507,12 @@ export default function SystemPage() {
 											: 'descending'
 										: 'none'
 								}
+								onSort={() => handleSort('composition')}
+								disabled={!compositionSortOreTypeId}
+								direction={effectiveSortColumn === 'composition' ? activeSortDirection : undefined}
 							>
-								<button
-									type="button"
-									onClick={() => handleSort('composition')}
-									disabled={!compositionSortOreTypeId}
-									className="inline-flex items-center gap-1.5 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-								>
-									Composition <SortIndicator column="composition" />
-								</button>
-							</TableHead>
+								Composition
+							</SortableTableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>

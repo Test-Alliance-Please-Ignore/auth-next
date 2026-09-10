@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { HoverPopover } from '@/components/ui/hover-popover'
 import { Input } from '@/components/ui/input'
 import {
+	SortableTableHead,
 	Table,
 	TableBody,
 	TableCell,
@@ -14,14 +15,11 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { formatDurationBetween } from '../utils/format'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 
-import type {
-	SessionCurrentMember,
-	SessionGroupCount,
-	SessionLiveMemberLocation,
-} from '../types'
+import { formatDurationBetween } from '../utils/format'
+
+import type { SessionCurrentMember, SessionGroupCount, SessionLiveMemberLocation } from '../types'
 
 type SortKey = 'characterName' | 'shipTypeName' | 'groupName' | 'systemName' | 'sinceTime'
 
@@ -73,12 +71,7 @@ export function CurrentMembersPanel({
 	const filteredMembers = useMemo(() => {
 		if (!trimmed) return mergedMembers
 		return mergedMembers.filter((m) => {
-			const fields = [
-				m.characterName,
-				m.shipTypeName,
-				m.groupName,
-				m.systemName,
-			]
+			const fields = [m.characterName, m.shipTypeName, m.groupName, m.systemName]
 			return fields.some((f) => f?.toLowerCase().includes(trimmed))
 		})
 	}, [mergedMembers, trimmed])
@@ -181,7 +174,7 @@ export function CurrentMembersPanel({
 						</div>
 					</CardHeader>
 					<CardContent className="p-0">
-										{members.length === 0 ? (
+						{members.length === 0 ? (
 							<div className="py-8 text-center text-sm text-muted-foreground">
 								No members in fleet right now.
 							</div>
@@ -239,81 +232,82 @@ export function CurrentMembersPanel({
 											doctrineShipTypeIds.size > 0 &&
 											(!memberShipTypeId || !doctrineShipTypeIds.has(memberShipTypeId))
 										return (
-										<TableRow
-											key={m.characterId}
-											className={
-												doctrineMismatch
-													? 'odd:!bg-yellow-500/15 even:!bg-yellow-500/15 hover:!bg-yellow-500/20 border-l-2 border-l-yellow-400'
-													: undefined
-											}
-										>
-											<TableCell>
-												<Link
-													to={`/fleet-tracking/${sessionId}/members/${m.characterId}`}
-													className="hover:underline"
-												>
-													{m.characterName ?? m.characterId}
-												</Link>
-											</TableCell>
-											<TableCell>
-												<span className="inline-flex items-center gap-1.5">
-													{doctrineMismatch && (
-														<HoverPopover
-															trigger={
-																<AlertTriangle className="h-4 w-4 cursor-help text-yellow-400" />
-															}
-															align="start"
-															side="top"
-															className="w-56 p-3"
-														>
-															<div className="space-y-1">
-																<p className="text-xs font-semibold text-yellow-300">
-																	Not in selected doctrine
-																</p>
-																<p className="text-xs text-muted-foreground">
-																	This ship type is not included in the currently selected
-																	doctrine.
-																</p>
-															</div>
-														</HoverPopover>
-													)}
-													<span>{m.shipTypeName ?? `type #${m.shipTypeId}`}</span>
-												</span>
-											</TableCell>
-											<TableCell className="text-muted-foreground">
-												{m.groupName ?? '—'}
-											</TableCell>
-											<TableCell className="text-muted-foreground">
-											{m.systemName ?? `system #${m.solarSystemId}`}
-										</TableCell>
-											<TableCell className="text-muted-foreground">
-												{formatDurationBetween(m.sinceTime, null)}
-											</TableCell>
-											{canKickMembers && kickMembers && (
-												<TableCell className="text-right">
-													<Button
-														variant="destructive"
-														size="sm"
-														disabled={isKickingMembers}
-														onClick={() =>
-															requestConfirmation({
-																title: 'Kick this member from fleet?',
-																description: `This will remove ${m.characterName ?? m.characterId} from the fleet.`,
-																confirmLabel: 'Kick member',
-																cancelLabel: 'Cancel',
-																intent: 'destructive',
-																onConfirm: async () => {
-																	await kickMembers([m.characterId])
-																},
-															})
-														}
+											<TableRow
+												key={m.characterId}
+												className={
+													doctrineMismatch
+														? 'odd:!bg-yellow-500/15 even:!bg-yellow-500/15 hover:!bg-yellow-500/20 border-l-2 border-l-yellow-400'
+														: undefined
+												}
+											>
+												<TableCell>
+													<Link
+														to={`/fleet-tracking/${sessionId}/members/${m.characterId}`}
+														className="hover:underline"
 													>
-														Kick
-													</Button>
+														{m.characterName ?? m.characterId}
+													</Link>
 												</TableCell>
-											)}
-										</TableRow>
-									)})}
+												<TableCell>
+													<span className="inline-flex items-center gap-1.5">
+														{doctrineMismatch && (
+															<HoverPopover
+																trigger={
+																	<AlertTriangle className="h-4 w-4 cursor-help text-yellow-400" />
+																}
+																align="start"
+																side="top"
+																className="w-56 p-3"
+															>
+																<div className="space-y-1">
+																	<p className="text-xs font-semibold text-yellow-300">
+																		Not in selected doctrine
+																	</p>
+																	<p className="text-xs text-muted-foreground">
+																		This ship type is not included in the currently selected
+																		doctrine.
+																	</p>
+																</div>
+															</HoverPopover>
+														)}
+														<span>{m.shipTypeName ?? `type #${m.shipTypeId}`}</span>
+													</span>
+												</TableCell>
+												<TableCell className="text-muted-foreground">
+													{m.groupName ?? '—'}
+												</TableCell>
+												<TableCell className="text-muted-foreground">
+													{m.systemName ?? `system #${m.solarSystemId}`}
+												</TableCell>
+												<TableCell className="text-muted-foreground">
+													{formatDurationBetween(m.sinceTime, null)}
+												</TableCell>
+												{canKickMembers && kickMembers && (
+													<TableCell className="text-right">
+														<Button
+															variant="destructive"
+															size="sm"
+															disabled={isKickingMembers}
+															onClick={() =>
+																requestConfirmation({
+																	title: 'Kick this member from fleet?',
+																	description: `This will remove ${m.characterName ?? m.characterId} from the fleet.`,
+																	confirmLabel: 'Kick member',
+																	cancelLabel: 'Cancel',
+																	intent: 'destructive',
+																	onConfirm: async () => {
+																		await kickMembers([m.characterId])
+																	},
+																})
+															}
+														>
+															Kick
+														</Button>
+													</TableCell>
+												)}
+											</TableRow>
+										)
+									})}
 								</TableBody>
 							</Table>
 						)}
@@ -339,15 +333,10 @@ export function CurrentMembersPanel({
 										<li key={g.groupId} className="text-sm">
 											<div className="flex items-baseline justify-between gap-2">
 												<span>{g.groupName ?? 'Unknown'}</span>
-												<span className="text-muted-foreground font-mono text-xs">
-													{g.count}
-												</span>
+												<span className="text-muted-foreground font-mono text-xs">{g.count}</span>
 											</div>
 											<div className="h-1.5 mt-1 bg-muted rounded">
-												<div
-													className="h-full bg-primary rounded"
-													style={{ width: `${pct}%` }}
-												/>
+												<div className="h-full bg-primary rounded" style={{ width: `${pct}%` }} />
 											</div>
 										</li>
 									)
@@ -376,25 +365,11 @@ function SortableHead({
 }) {
 	const active = sortKey === k
 	return (
-		<TableHead>
-			<button
-				type="button"
-				onClick={() => onClick(k)}
-				className={`inline-flex items-center gap-1 text-left hover:text-foreground ${
-					active ? 'text-foreground font-medium' : 'text-muted-foreground'
-				}`}
-			>
-				{label}
-				{active ? (
-					asc ? (
-						<ArrowUp className="h-3.5 w-3.5" />
-					) : (
-						<ArrowDown className="h-3.5 w-3.5" />
-					)
-				) : (
-					<ArrowUpDown className="h-3.5 w-3.5 opacity-60" />
-				)}
-			</button>
-		</TableHead>
+		<SortableTableHead
+			onSort={() => onClick(k)}
+			direction={active ? (asc ? 'asc' : 'desc') : undefined}
+		>
+			{label}
+		</SortableTableHead>
 	)
 }

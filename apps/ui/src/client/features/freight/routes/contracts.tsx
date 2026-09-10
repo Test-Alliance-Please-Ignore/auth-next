@@ -1,9 +1,10 @@
-import { ArrowDown, ArrowUp, ArrowUpDown, ExternalLink, Package } from 'lucide-react'
+import { ExternalLink, Package } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import {
+	SortableTableHead,
 	stickyTableActionCellClassName,
 	stickyTableActionHeaderClassName,
 	Table,
@@ -89,30 +90,14 @@ export default function FreightContractsPage() {
 	const renderSortHead = (label: string, key: FreightContractSortKey, className?: string) => {
 		const active = sorting.key === key
 		return (
-			<TableHead
+			<SortableTableHead
 				className={cn('whitespace-nowrap', className)}
 				aria-sort={(active ? sortLabel(sorting.direction) : 'none') as AriaSort}
+				onSort={() => toggleSorting(key)}
+				direction={active ? sorting.direction : undefined}
 			>
-				<button
-					type="button"
-					className={cn(
-						'inline-flex items-center gap-1 text-left hover:text-foreground',
-						active ? 'font-medium text-foreground' : 'text-muted-foreground'
-					)}
-					onClick={() => toggleSorting(key)}
-				>
-					<span>{label}</span>
-					{active ? (
-						sorting.direction === 'asc' ? (
-							<ArrowUp className="h-3.5 w-3.5" />
-						) : (
-							<ArrowDown className="h-3.5 w-3.5" />
-						)
-					) : (
-						<ArrowUpDown className="h-3.5 w-3.5 opacity-60" />
-					)}
-				</button>
-			</TableHead>
+				{label}
+			</SortableTableHead>
 		)
 	}
 

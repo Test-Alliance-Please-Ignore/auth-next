@@ -6,17 +6,7 @@
  */
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import {
-	ArrowDown,
-	ArrowUp,
-	ArrowUpDown,
-	ChevronDown,
-	Heart,
-	Shield,
-	ShieldBan,
-	Star,
-	User,
-} from 'lucide-react'
+import { ChevronDown, Heart, Shield, ShieldBan, Star, User } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -31,6 +21,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select } from '@/components/ui/select'
 import {
+	SortableTableHead,
 	stickyTableActionCellClassName,
 	stickyTableActionHeaderClassName,
 	Table,
@@ -322,29 +313,14 @@ export default function CorporationMembersTable({
 		return date.toLocaleDateString()
 	}
 
-	const SortIcon = ({ field }: { field: SortField }) => {
-		if (sortField !== field) {
-			return <ArrowUpDown className="h-3.5 w-3.5 opacity-60" />
-		}
-
-		return sortOrder === 'asc' ? (
-			<ArrowUp className="h-3.5 w-3.5" />
-		) : (
-			<ArrowDown className="h-3.5 w-3.5" />
-		)
+	const getSortDirection = (field: SortField) => {
+		return sortField === field ? sortOrder : undefined
 	}
 
 	const SortableHead = ({ field, label }: { field: SortField; label: string }) => (
-		<TableHead>
-			<button
-				type="button"
-				onClick={() => handleSort(field)}
-				className="inline-flex items-center gap-1 text-left text-muted-foreground hover:text-foreground"
-			>
-				<span>{label}</span>
-				<SortIcon field={field} />
-			</button>
-		</TableHead>
+		<SortableTableHead onSort={() => handleSort(field)} direction={getSortDirection(field)}>
+			{label}
+		</SortableTableHead>
 	)
 
 	const stats = summary ?? {

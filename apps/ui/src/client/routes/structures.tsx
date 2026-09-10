@@ -1,14 +1,4 @@
-import {
-	ArrowDown,
-	ArrowUp,
-	ArrowUpDown,
-	CircleHelp,
-	Flame,
-	Package,
-	RefreshCcw,
-	Shield,
-	Snowflake,
-} from 'lucide-react'
+import { CircleHelp, Flame, Package, RefreshCcw, Shield, Snowflake } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
 
@@ -55,6 +45,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import {
+	SortableTableHead,
 	Table,
 	TableBody,
 	TableCell,
@@ -1426,15 +1417,7 @@ export default function StructuresPage() {
 	}
 
 	const renderSortIcon = (field: StructureListSortBy) => {
-		if (tableState.sortBy !== field) {
-			return <ArrowUpDown className="h-3.5 w-3.5 opacity-60" />
-		}
-
-		return tableState.sortDirection === 'asc' ? (
-			<ArrowUp className="h-3.5 w-3.5" />
-		) : (
-			<ArrowDown className="h-3.5 w-3.5" />
-		)
+		return tableState.sortBy === field ? tableState.sortDirection : undefined
 	}
 
 	const SortableHead = ({
@@ -1446,16 +1429,13 @@ export default function StructuresPage() {
 		label: string
 		className?: string
 	}) => (
-		<TableHead className={className}>
-			<button
-				type="button"
-				onClick={() => handleSort(field)}
-				className="inline-flex items-center gap-1 text-left text-muted-foreground hover:text-foreground"
-			>
-				<span>{label}</span>
-				{renderSortIcon(field)}
-			</button>
-		</TableHead>
+		<SortableTableHead
+			className={className}
+			onSort={() => handleSort(field)}
+			direction={renderSortIcon(field)}
+		>
+			{label}
+		</SortableTableHead>
 	)
 
 	const primaryFilterSlot: PrimaryStructureFilterSlot = (() => {
@@ -1767,6 +1747,7 @@ export default function StructuresPage() {
 			)}
 		>
 			<PageHeader
+				className="!mb-section md:!mb-10"
 				title="Structures"
 				description="Track visible structures, review their current state, and fuel posture."
 				action={

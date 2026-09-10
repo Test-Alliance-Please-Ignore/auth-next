@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import { TaxReportTable } from '@/components/tax-report-table'
+import { DataTable } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
 import { formatTaxDateTime } from '@/lib/tax-date'
 import { TaxCorporationDisplay } from '@/lib/tax-display'
@@ -80,7 +80,9 @@ export function ExportSchedulesGrid(props: {
 		[props.entityNames]
 	)
 	return (
-		<TaxReportTable
+		<DataTable
+			variant="plain"
+			errorMessage="Failed to load report"
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}

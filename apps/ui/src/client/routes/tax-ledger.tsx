@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
+import { DataTable } from '@/components/data-table'
 import { TaxCorporationScopeSelector } from '@/components/tax-corporation-scope-selector'
-import { TaxReportTable } from '@/components/tax-report-table'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -576,7 +576,9 @@ export default function TaxLedgerPage() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<TaxReportTable
+						<DataTable
+							variant="plain"
+							errorMessage="Failed to load report"
 							columns={ledgerColumns}
 							rows={ledgerEntries}
 							loading={ledgerLoading}

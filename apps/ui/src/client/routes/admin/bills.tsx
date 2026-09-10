@@ -60,7 +60,6 @@ import type { BillListSortingState } from '@/components/bills/bill-list-types'
 
 export default function AdminBillsPage() {
 	usePageTitle('Admin - Bills Management')
-	const navigate = useNavigate()
 	const { isPageScrollEnabled, setIsPageScrollEnabled } = useLayoutScrollMode()
 	const isTableGridClamped = !isPageScrollEnabled
 	const [savedFilters] = useState(() =>
@@ -475,7 +474,7 @@ export default function AdminBillsPage() {
 				pagination={pagination}
 				onPaginationChange={setPagination}
 				rowCount={billsPage.data?.rowCount ?? 0}
-				rowHref={getBillHref}
+				rowInteraction={{ type: 'link', getHref: getBillHref }}
 				paginationLeadingAction={
 					<TableLayoutToggle
 						isClamped={isTableGridClamped}
@@ -591,9 +590,6 @@ export default function AdminBillsPage() {
 					)
 				}}
 				renderExpandedGroupBill={coalesced ? renderExpandedGroupBill : undefined}
-				onRowClick={(bill) => {
-					void navigate(getBillHref(bill))
-				}}
 				emptyMessage="No bills found for the current filters."
 			/>
 			{confirmationDialog}

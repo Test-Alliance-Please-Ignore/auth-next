@@ -1,19 +1,18 @@
 /**
- * Wallet Transactions Section - MRT data grid with search and pagination
+ * Wallet Transactions Section with search, filters, and pagination.
  */
 
 import { Loader2 } from 'lucide-react'
-import { MantineReactTable } from 'mantine-react-table'
 import { useMemo } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 
 import { EntityNameLink } from './entity-name-link'
-import { useFulcrumTable } from './use-fulcrum-table'
+import { FulcrumDataTable } from './fulcrum-data-table'
 
-import type { MRT_ColumnDef } from 'mantine-react-table'
 import type { ReportChunkProgress } from '../../hooks'
+import type { FulcrumDataTableColumn } from './fulcrum-data-table'
 
 interface ProcessedWalletTransaction {
 	transaction_id: string
@@ -44,102 +43,99 @@ function formatIsk(value: string | number): string {
 	return num.toFixed(0)
 }
 
-function buildWalletTransactionColumns(): Array<MRT_ColumnDef<ProcessedWalletTransaction>> {
+function buildWalletTransactionColumns(): Array<
+	FulcrumDataTableColumn<ProcessedWalletTransaction>
+> {
 	return [
 		{
-			accessorKey: 'date',
+			id: 'date',
 			header: 'Date/Time',
-			filterVariant: 'date-range',
-			accessorFn: (row) => new Date(row.date),
-			Cell: ({ row }) => <EveTimeDisplay dateStr={row.original.date} format="compact" />,
+			getValue: (row) => new Date(row.date),
+			filter: { kind: 'date-range' },
+			cell: (row) => <EveTimeDisplay dateStr={row.date} format="compact" />,
 		},
 		{
-			accessorKey: 'is_buy',
+			id: 'is_buy',
 			header: 'Type',
-			enableGlobalFilter: false,
-			filterVariant: 'select',
-			mantineFilterSelectProps: {
-				data: [
+			getValue: (row) => String(row.is_buy),
+			globalFilter: false,
+			filter: {
+				kind: 'select',
+				options: [
 					{ value: 'true', label: 'Buy' },
 					{ value: 'false', label: 'Sell' },
 				],
 			},
-			filterFn: (row, _columnId, filterValue) => {
-				if (!filterValue) return true
-				return String(row.original.is_buy) === filterValue
-			},
-			Cell: ({ row }) => (
-				<Badge variant={row.original.is_buy ? 'destructive' : 'success'}>
-					{row.original.is_buy ? 'Buy' : 'Sell'}
+			cell: (row) => (
+				<Badge variant={row.is_buy ? 'destructive' : 'success'}>
+					{row.is_buy ? 'Buy' : 'Sell'}
 				</Badge>
 			),
 		},
 		{
-			accessorKey: 'typeName',
+			id: 'typeName',
 			header: 'Item',
-			filterVariant: 'autocomplete',
-			Cell: ({ row }) => <span className="font-medium">{row.original.typeName || '-'}</span>,
+			getValue: (row) => row.typeName,
+			filter: { kind: 'autocomplete' },
+			cell: (row) => <span className="font-medium">{row.typeName || '-'}</span>,
 		},
 		{
-			accessorKey: 'clientDisplayName',
+			id: 'clientDisplayName',
 			header: 'With',
-			filterVariant: 'autocomplete',
-			accessorFn: (row) => row.clientDisplayName ?? row.clientName ?? '',
-			Cell: ({ row }) => (
-				<EntityNameLink entityId={row.original.client_id} href={row.original.clientDisplayHref}>
-					{row.original.clientDisplayName || row.original.clientName || '-'}
+			getValue: (row) => row.clientDisplayName ?? row.clientName,
+			filter: { kind: 'autocomplete' },
+			cell: (row) => (
+				<EntityNameLink entityId={row.client_id} href={row.clientDisplayHref}>
+					{row.clientDisplayName || row.clientName || '-'}
 				</EntityNameLink>
 			),
 		},
 		{
-			accessorKey: 'locationName',
+			id: 'locationName',
 			header: 'Location',
-			filterVariant: 'autocomplete',
-			Cell: ({ row }) => (
+			getValue: (row) => row.locationName,
+			filter: { kind: 'autocomplete' },
+			cell: (row) => (
 				<span className="max-w-[200px] truncate block text-muted-foreground">
-					{row.original.locationName || '-'}
+					{row.locationName || '-'}
 				</span>
 			),
 		},
 		{
-			accessorKey: 'quantity',
+			id: 'quantity',
 			header: 'Qty',
-			enableGlobalFilter: false,
-			filterVariant: 'range',
-			mantineTableHeadCellProps: { style: { textAlign: 'right' } },
-			Cell: ({ row }) => (
-				<div className="text-right font-mono">{row.original.quantity.toLocaleString()}</div>
-			),
+			getValue: (row) => row.quantity,
+			globalFilter: false,
+			filter: { kind: 'range' },
+			headerClassName: 'text-right',
+			className: 'text-right',
+			cell: (row) => <div className="font-mono">{row.quantity.toLocaleString()}</div>,
 		},
 		{
-			accessorKey: 'unit_price',
+			id: 'unit_price',
 			header: 'Unit Price',
-			enableGlobalFilter: false,
-			filterVariant: 'range',
-			accessorFn: (row) => {
+			getValue: (row) => {
 				const v = row.unit_price
 				return typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''))
 			},
-			mantineTableHeadCellProps: { style: { textAlign: 'right' } },
-			Cell: ({ row }) => (
-				<div className="text-right font-mono text-sm">{formatIsk(row.original.unit_price)}</div>
-			),
+			globalFilter: false,
+			filter: { kind: 'range' },
+			headerClassName: 'text-right',
+			className: 'text-right',
+			cell: (row) => <div className="font-mono text-sm">{formatIsk(row.unit_price)}</div>,
 		},
 		{
-			accessorKey: 'totalValue',
+			id: 'totalValue',
 			header: 'Total',
-			enableGlobalFilter: false,
-			filterVariant: 'range',
-			accessorFn: (row) => {
+			getValue: (row) => {
 				const v = row.totalValue
 				return typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''))
 			},
-			mantineTableHeadCellProps: { style: { textAlign: 'right' } },
-			Cell: ({ row }) => (
-				<div className="text-right font-mono font-medium">
-					{formatIsk(row.original.totalValue)} ISK
-				</div>
-			),
+			globalFilter: false,
+			filter: { kind: 'range' },
+			headerClassName: 'text-right',
+			className: 'text-right',
+			cell: (row) => <div className="font-mono font-medium">{formatIsk(row.totalValue)} ISK</div>,
 		},
 	]
 }
@@ -158,23 +154,26 @@ export function WalletTransactionsSection({
 	)
 	const columns = useMemo(() => buildWalletTransactionColumns(), [])
 
-	const table = useFulcrumTable({
-		columns,
-		data,
-		emptyMessage: isLoadingChunks ? 'Loading transactions...' : 'No transactions found.',
-		searchPlaceholder: 'Search transactions...',
-		pageSize: 100,
-		rowsPerPageOptions: ['50', '100', '200', '500'],
-		compactRows: true,
-		renderTopToolbarCustomActions: isLoadingChunks
-			? () => (
+	const table = (
+		<FulcrumDataTable
+			columns={columns}
+			rows={data}
+			emptyMessage={isLoadingChunks ? 'Loading transactions...' : 'No transactions found.'}
+			searchPlaceholder="Search transactions..."
+			pageSize={100}
+			pageSizeOptions={[50, 100, 200, 500]}
+			compactRows
+			getRowKey={(transaction) => transaction.transaction_id}
+			customActions={
+				isLoadingChunks ? (
 					<span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
 						<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
 						Loading chunks {loadingProgress?.loadedChunks ?? 0}/{loadingProgress?.totalChunks ?? 0}
 					</span>
-				)
-			: undefined,
-	})
+				) : undefined
+			}
+		/>
+	)
 
 	if (data.length === 0 && !isLoadingChunks) {
 		return <p className="text-sm text-muted-foreground">No wallet transactions found.</p>
@@ -221,9 +220,7 @@ export function WalletTransactionsSection({
 					Note: Not all transaction history could be retrieved due to ESI rate limits.
 				</p>
 			)}
-			<div className="tax-report-grid">
-				<MantineReactTable table={table} />
-			</div>
+			{table}
 		</div>
 	)
 }

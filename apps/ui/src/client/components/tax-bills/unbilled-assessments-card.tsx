@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import { TaxReportTable } from '@/components/tax-report-table'
+import { DataTable } from '@/components/data-table'
 import { useReportGridState } from '@/components/tax-reports/use-report-grid-state'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -98,7 +98,9 @@ export function UnbilledAssessmentsCard({
 						Select a corporation to view unbilled assessments.
 					</div>
 				) : (
-					<TaxReportTable
+					<DataTable
+						variant="plain"
+						errorMessage="Failed to load report"
 						columns={columns}
 						rows={rows}
 						loading={isFetching}

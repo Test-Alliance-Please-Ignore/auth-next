@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import { TaxReportTable } from '@/components/tax-report-table'
+import { DataTable } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatTaxDateTime } from '@/lib/tax-date'
@@ -96,7 +96,9 @@ export function ExportHistoryGrid(props: {
 		[props.downloading, props.entityNames, props.onDownload]
 	)
 	return (
-		<TaxReportTable
+		<DataTable
+			variant="plain"
+			errorMessage="Failed to load report"
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
