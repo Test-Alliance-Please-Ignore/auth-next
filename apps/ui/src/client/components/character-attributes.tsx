@@ -1,3 +1,4 @@
+import { formatDate, formatNumber, useAppTranslation } from '@/i18n'
 import { typeIconUrl } from '@/lib/eve-images'
 
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
@@ -25,32 +26,32 @@ const attributeTypeIds: Record<string, number> = {
 }
 
 export function CharacterAttributes({ attributes }: CharacterAttributesProps) {
+	const { t } = useAppTranslation()
+	const attributeEntries = [
+		{ key: 'intelligence', value: attributes.intelligence },
+		{ key: 'perception', value: attributes.perception },
+		{ key: 'memory', value: attributes.memory },
+		{ key: 'willpower', value: attributes.willpower },
+		{ key: 'charisma', value: attributes.charisma },
+	] as const
+
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Attributes</CardTitle>
+				<CardTitle>{t('characterDetail.attributes.title')}</CardTitle>
 			</CardHeader>
 			<CardContent>
 				<div className="space-y-3">
-					{Object.entries({
-						Intelligence: attributes.intelligence,
-						Perception: attributes.perception,
-						Memory: attributes.memory,
-						Willpower: attributes.willpower,
-						Charisma: attributes.charisma,
-					}).map(([name, value]) => {
-						const typeId = attributeTypeIds[name.toLowerCase()]
+					{attributeEntries.map(({ key, value }) => {
+						const name = t(`characterDetail.attributes.${key}`)
+						const typeId = attributeTypeIds[key]
 						return (
-							<div key={name} className="flex items-center justify-between">
+							<div key={key} className="flex items-center justify-between">
 								<div className="flex items-center gap-2">
-									<img
-										src={typeIconUrl(typeId, 32)}
-										alt={name}
-										className="h-5 w-5"
-									/>
+									<img src={typeIconUrl(typeId, 32)} alt={name} className="h-5 w-5" />
 									<span className="text-sm font-medium">{name}</span>
 								</div>
-								<span className="text-sm font-bold">{value}</span>
+								<span className="text-sm font-bold">{formatNumber(value)}</span>
 							</div>
 						)
 					})}
@@ -58,13 +59,18 @@ export function CharacterAttributes({ attributes }: CharacterAttributesProps) {
 					{attributes.lastRemapDate && (
 						<div className="pt-3 mt-3 border-t">
 							<p className="text-xs text-muted-foreground">
-								Last remap: {new Date(attributes.lastRemapDate).toLocaleDateString()}
+								{t('characterDetail.attributes.lastRemap', {
+									date: formatDate(attributes.lastRemapDate),
+								})}
 							</p>
 						</div>
 					)}
 					{attributes.bonusRemaps && attributes.bonusRemaps > 0 && (
 						<p className="text-xs text-muted-foreground">
-							Bonus remaps available: {attributes.bonusRemaps}
+							{t('characterDetail.attributes.bonusRemaps', {
+								count: attributes.bonusRemaps,
+								formattedCount: formatNumber(attributes.bonusRemaps),
+							})}
 						</p>
 					)}
 				</div>

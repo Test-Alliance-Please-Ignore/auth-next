@@ -5,6 +5,7 @@ import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { CharacterIdentitySummary } from '@/features/applications/components/character-identity-summary'
+import { compareLocaleStrings, formatNumber, i18n, useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 export interface UserSearchCardEntry {
@@ -33,9 +34,12 @@ export interface UserSearchCardEntry {
 	}>
 }
 
-export function formatUserDisplayName(user: UserSearchCardEntry): string {
+export function formatUserDisplayName(
+	user: UserSearchCardEntry,
+	unknownCharacter = i18n.t('corporations.userSearch.unknownCharacter')
+): string {
 	const mainName =
-		user.summary.mainCharacterName || user.summary.matchedCharacterName || 'Unknown Character'
+		user.summary.mainCharacterName || user.summary.matchedCharacterName || unknownCharacter
 	const matchedName = user.summary.matchedCharacterName
 	const isAltMatch =
 		!!user.summary.matchedCharacterId &&
@@ -46,11 +50,12 @@ export function formatUserDisplayName(user: UserSearchCardEntry): string {
 }
 
 export function UserSearchCard({ user }: { user: UserSearchCardEntry }) {
-	const displayName = formatUserDisplayName(user)
+	const { t } = useAppTranslation()
+	const displayName = formatUserDisplayName(user, t('corporations.userSearch.unknownCharacter'))
 	const portraitId = user.summary.matchedCharacterId || user.summary.mainCharacterId
 	const characters = [...user.characters].sort((a, b) => {
 		if (a.is_primary !== b.is_primary) return a.is_primary ? -1 : 1
-		return a.characterName.localeCompare(b.characterName)
+		return compareLocaleStrings(a.characterName, b.characterName)
 	})
 	const mainCharacterIsBlacklisted =
 		user.characters.find((character) => character.characterId === user.summary.mainCharacterId)
@@ -94,23 +99,38 @@ export function UserSearchCard({ user }: { user: UserSearchCardEntry }) {
 							</p>
 							<span className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
 								<span className="text-white">
-									{user.summary.characterCount} character
-									{user.summary.characterCount !== 1 ? 's' : ''}
+									{t('corporations.userSearch.characters', {
+										count: user.summary.characterCount,
+										value: formatNumber(user.summary.characterCount),
+									})}
 								</span>
 							</span>
-							{user.summary.is_admin && <Badge variant="default">Admin</Badge>}
-							{(mainCharacterIsBlacklisted || accountIsBlacklisted) && (
-								<Badge variant="destructive">Blocklisted</Badge>
+							{user.summary.is_admin && (
+								<Badge variant="default">{t('corporations.userSearch.admin')}</Badge>
 							)}
-							{user.summary.discordUserId && <Badge variant="success">Discord linked</Badge>}
+							{(mainCharacterIsBlacklisted || accountIsBlacklisted) && (
+								<Badge variant="destructive">{t('corporations.userSearch.blocklisted')}</Badge>
+							)}
+							{user.summary.discordUserId && (
+								<Badge variant="success">{t('corporations.userSearch.discordLinked')}</Badge>
+							)}
 						</div>
 						<div className="mt-2 flex flex-wrap gap-2">
-							<CopyableMetaPill label="User ID" value={user.summary.id} />
+							<CopyableMetaPill
+								label={t('corporations.userSearch.userId')}
+								value={user.summary.id}
+							/>
 							{user.summary.discordUsername ? (
-								<CopyableMetaPill label="Discord username" value={user.summary.discordUsername} />
+								<CopyableMetaPill
+									label={t('corporations.userSearch.discordUsername')}
+									value={user.summary.discordUsername}
+								/>
 							) : null}
 							{user.summary.discordUserId ? (
-								<CopyableMetaPill label="Discord ID" value={user.summary.discordUserId} />
+								<CopyableMetaPill
+									label={t('corporations.userSearch.discordId')}
+									value={user.summary.discordUserId}
+								/>
 							) : null}
 						</div>
 					</div>
@@ -119,7 +139,7 @@ export function UserSearchCard({ user }: { user: UserSearchCardEntry }) {
 				<div className="space-y-2">
 					<div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
 						<Users className="h-3.5 w-3.5" />
-						Linked Characters
+						{t('corporations.userSearch.linkedCharacters')}
 					</div>
 					{characters.length > 0 ? (
 						<div className="space-y-2">
@@ -150,11 +170,13 @@ export function UserSearchCard({ user }: { user: UserSearchCardEntry }) {
 													variant={character.is_primary ? 'default' : 'secondary'}
 													className="px-1.5 py-0 text-[10px]"
 												>
-													{character.is_primary ? 'Main' : 'Alt'}
+													{character.is_primary
+														? t('corporations.userSearch.main')
+														: t('corporations.userSearch.alt')}
 												</Badge>
 												{character.isBlacklisted && (
 													<Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
-														Blocklisted
+														{t('corporations.userSearch.blocklisted')}
 													</Badge>
 												)}
 											</>
@@ -165,7 +187,7 @@ export function UserSearchCard({ user }: { user: UserSearchCardEntry }) {
 						</div>
 					) : (
 						<p className="text-sm text-muted-foreground">
-							No linked characters were returned for this account.
+							{t('corporations.userSearch.noLinkedCharacters')}
 						</p>
 					)}
 				</div>

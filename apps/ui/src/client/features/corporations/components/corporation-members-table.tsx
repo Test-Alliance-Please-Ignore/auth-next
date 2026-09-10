@@ -7,7 +7,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, Heart, Shield, ShieldBan, Star, User } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useId, useState } from 'react'
 import { Link } from 'react-router'
 
 import { EsiStatusBadge, getEsiStatusBadgeState } from '@/components/esi-status-badge'
@@ -33,6 +33,13 @@ import {
 } from '@/components/ui/table'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { useMessage } from '@/hooks/useMessage'
+import {
+	formatDate as formatLocalizedDate,
+	formatNumber,
+	formatRelativeTime,
+	i18n,
+	useAppTranslation,
+} from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import {
@@ -113,6 +120,7 @@ const intentBg: Record<ActionIntent, string> = {
 }
 
 function ActionsMenu({ items }: { items: ActionItem[] }) {
+	const { t } = useAppTranslation()
 	const [open, setOpen] = useState(false)
 	const visible = items.filter((item) => !item.hidden)
 
@@ -125,7 +133,7 @@ function ActionsMenu({ items }: { items: ActionItem[] }) {
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<Button variant="ghost" size="sm">
-					Actions <ChevronDown className="ml-1 h-3 w-3" />
+					{t('corporations.members.actions')} <ChevronDown className="ml-1 h-3 w-3" />
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent align="end" className="w-48 p-1">
@@ -140,7 +148,7 @@ function ActionsMenu({ items }: { items: ActionItem[] }) {
 							item.onClick?.()
 						}}
 					>
-						{item.loading ? 'Loading…' : item.label}
+						{item.loading ? t('common.loading') : item.label}
 					</button>
 				))}
 			</PopoverContent>
@@ -167,6 +175,8 @@ export default function CorporationMembersTable({
 	summary,
 }: CorporationMembersTableProps) {
 	const { showSuccess, showError } = useMessage()
+	const { t } = useAppTranslation()
+	const filterId = useId()
 
 	const searchQuery = query.search ?? ''
 	const mainsOnly = query.mainsOnly ?? false
@@ -258,10 +268,10 @@ export default function CorporationMembersTable({
 		async (request: Parameters<typeof grantMutation.mutateAsync>[0]) => {
 			try {
 				await grantMutation.mutateAsync(request)
-				showSuccess('HR role granted successfully')
+				showSuccess(i18n.t('corporations.members.hrRoleGranted'))
 				setGrantDialogMember(null)
 			} catch (error) {
-				showError('Failed to grant HR role')
+				showError(i18n.t('corporations.members.hrRoleGrantFailed'))
 				throw error
 			}
 		},
@@ -272,10 +282,10 @@ export default function CorporationMembersTable({
 		async (request: Parameters<typeof revokeMutation.mutateAsync>[0]) => {
 			try {
 				await revokeMutation.mutateAsync(request)
-				showSuccess('HR role revoked successfully')
+				showSuccess(i18n.t('corporations.members.hrRoleRevoked'))
 				setRevokeDialogMember(null)
 			} catch (error) {
-				showError('Failed to revoke HR role')
+				showError(i18n.t('corporations.members.hrRoleRevokeFailed'))
 				throw error
 			}
 		},
@@ -286,31 +296,32 @@ export default function CorporationMembersTable({
 		async (characterId: string, status: 'active' | 'emeritus') => {
 			try {
 				await emeritusMutation.mutateAsync({ characterId, status })
-				const action = status === 'emeritus' ? 'marked as emeritus' : 'emeritus status removed'
-				showSuccess(`Member ${action} successfully`)
+				showSuccess(
+					status === 'emeritus'
+						? i18n.t('corporations.members.emeritusMarked')
+						: i18n.t('corporations.members.emeritusRemoved')
+				)
 				setEmeritusDialogMember(null)
 			} catch (error) {
-				showError('Failed to update member status')
+				showError(i18n.t('corporations.members.statusUpdateFailed'))
 				throw error
 			}
 		},
 		[emeritusMutation, showSuccess, showError]
 	)
 
-	const formatDate = (dateString?: string) => {
-		if (!dateString) return 'Never'
+	const formatMemberDate = (dateString?: string) => {
+		if (!dateString) return t('corporations.members.never')
 		const date = new Date(dateString)
 		const now = new Date()
 		const diffMs = now.getTime() - date.getTime()
 		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
-		if (diffDays === 0) return 'Today'
-		if (diffDays === 1) return 'Yesterday'
-		if (diffDays < 7) return `${diffDays} days ago`
-		if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`
-		if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`
+		if (diffDays < 7) return formatRelativeTime(-diffDays, 'day')
+		if (diffDays < 30) return formatRelativeTime(-Math.floor(diffDays / 7), 'week')
+		if (diffDays < 365) return formatRelativeTime(-Math.floor(diffDays / 30), 'month')
 
-		return date.toLocaleDateString()
+		return formatLocalizedDate(date)
 	}
 
 	const getSortDirection = (field: SortField) => {
@@ -347,7 +358,7 @@ export default function CorporationMembersTable({
 				onPageChange={(page) => onQueryChange((prev) => ({ ...prev, page }))}
 				onPageSizeChange={(limit) => onQueryChange((prev) => ({ ...prev, page: 1, limit }))}
 				pageSizeOptions={[10, 25, 50, 100]}
-				itemLabel="members"
+				itemLabel={t('corporations.members.membersLower', { count: totalItems })}
 			/>
 		</div>
 	)
@@ -356,7 +367,9 @@ export default function CorporationMembersTable({
 		return (
 			<Card className="p-6">
 				<div className="flex items-center justify-center">
-					<div className="animate-pulse text-muted-foreground">Loading members...</div>
+					<div className="animate-pulse text-muted-foreground">
+						{t('corporations.members.loading')}
+					</div>
 				</div>
 			</Card>
 		)
@@ -367,27 +380,32 @@ export default function CorporationMembersTable({
 			{/* Statistics Bar */}
 			<div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
 				<Card className="p-3">
-					<div className="text-sm text-muted-foreground">Total Members</div>
-					<div className="text-2xl font-bold">{stats.total}</div>
+					<div className="text-sm text-muted-foreground">
+						{t('corporations.members.totalMembers')}
+					</div>
+					<div className="text-2xl font-bold">{formatNumber(stats.total)}</div>
 					<div className="mt-1 text-xs text-muted-foreground">
-						({stats.linkedUsers} linked users)
+						{t('corporations.members.linkedUsers', {
+							count: stats.linkedUsers,
+							value: formatNumber(stats.linkedUsers),
+						})}
 					</div>
 				</Card>
 				<Card className="p-3">
-					<div className="text-sm text-muted-foreground">Linked</div>
-					<div className="text-2xl font-bold text-success">{stats.linked}</div>
+					<div className="text-sm text-muted-foreground">{t('corporations.members.linked')}</div>
+					<div className="text-2xl font-bold text-success">{formatNumber(stats.linked)}</div>
 				</Card>
 				<Card className="p-3">
-					<div className="text-sm text-muted-foreground">Active</div>
-					<div className="text-2xl font-bold text-primary">{stats.active}</div>
+					<div className="text-sm text-muted-foreground">{t('corporations.members.active')}</div>
+					<div className="text-2xl font-bold text-primary">{formatNumber(stats.active)}</div>
 				</Card>
 				<Card className="p-3">
-					<div className="text-sm text-muted-foreground">Inactive</div>
-					<div className="text-2xl font-bold text-warning">{stats.inactive}</div>
+					<div className="text-sm text-muted-foreground">{t('corporations.members.inactive')}</div>
+					<div className="text-2xl font-bold text-warning">{formatNumber(stats.inactive)}</div>
 				</Card>
 				<Card className="p-3">
-					<div className="text-sm text-muted-foreground">Directors</div>
-					<div className="text-2xl font-bold text-purple-500">{stats.directors}</div>
+					<div className="text-sm text-muted-foreground">{t('corporations.members.directors')}</div>
+					<div className="text-2xl font-bold text-purple-500">{formatNumber(stats.directors)}</div>
 				</Card>
 			</div>
 
@@ -395,7 +413,8 @@ export default function CorporationMembersTable({
 			<Card className="p-4">
 				<div className="flex flex-col sm:flex-row gap-4">
 					<Input
-						placeholder="Search members..."
+						placeholder={t('corporations.members.searchPlaceholder')}
+						aria-label={t('corporations.members.searchPlaceholder')}
 						value={searchQuery}
 						onChange={(e) =>
 							onQueryChange((prev) => ({
@@ -407,7 +426,11 @@ export default function CorporationMembersTable({
 						className="flex-1"
 					/>
 
+					<label htmlFor={`${filterId}-auth`} className="sr-only">
+						{t('corporations.members.authAccount')}
+					</label>
 					<Select
+						inputId={`${filterId}-auth`}
 						value={authFilter}
 						onValueChange={(v) =>
 							onQueryChange((prev) => ({
@@ -417,16 +440,20 @@ export default function CorporationMembersTable({
 							}))
 						}
 						options={[
-							{ value: 'all', label: 'All Auth' },
-							{ value: 'linked_valid', label: 'ESI Valid' },
-							{ value: 'linked_invalid', label: 'ESI Invalid' },
-							{ value: 'linked_unknown', label: 'ESI Unknown' },
-							{ value: 'unlinked', label: 'Unlinked' },
+							{ value: 'all', label: t('corporations.members.allAuth') },
+							{ value: 'linked_valid', label: t('common.esiStatus.valid') },
+							{ value: 'linked_invalid', label: t('common.esiStatus.invalid') },
+							{ value: 'linked_unknown', label: t('common.esiStatus.unknown') },
+							{ value: 'unlinked', label: t('common.esiStatus.unlinked') },
 						]}
 						className="w-[140px]"
 					/>
 
+					<label htmlFor={`${filterId}-activity`} className="sr-only">
+						{t('corporations.members.activity')}
+					</label>
 					<Select
+						inputId={`${filterId}-activity`}
 						value={activityFilter}
 						onValueChange={(v) =>
 							onQueryChange((prev) => ({
@@ -436,15 +463,19 @@ export default function CorporationMembersTable({
 							}))
 						}
 						options={[
-							{ value: 'all', label: 'All Activity' },
-							{ value: 'active', label: 'Active' },
-							{ value: 'inactive', label: 'Inactive' },
-							{ value: 'unknown', label: 'Unknown' },
+							{ value: 'all', label: t('corporations.members.allActivity') },
+							{ value: 'active', label: t('corporations.members.active') },
+							{ value: 'inactive', label: t('corporations.members.inactive') },
+							{ value: 'unknown', label: t('corporations.members.unknown') },
 						]}
 						className="w-[140px]"
 					/>
 
+					<label htmlFor={`${filterId}-role`} className="sr-only">
+						{t('corporations.members.role')}
+					</label>
 					<Select
+						inputId={`${filterId}-role`}
 						value={roleFilter}
 						onValueChange={(v) =>
 							onQueryChange((prev) => ({
@@ -454,10 +485,10 @@ export default function CorporationMembersTable({
 							}))
 						}
 						options={[
-							{ value: 'all', label: 'All Roles' },
-							{ value: 'CEO', label: 'CEOs' },
-							{ value: 'Director', label: 'Directors' },
-							{ value: 'Member', label: 'Members' },
+							{ value: 'all', label: t('corporations.members.allRoles') },
+							{ value: 'CEO', label: t('corporations.roles.ceos') },
+							{ value: 'Director', label: t('corporations.roles.directors') },
+							{ value: 'Member', label: t('corporations.roles.members') },
 						]}
 						className="w-[140px]"
 					/>
@@ -473,28 +504,33 @@ export default function CorporationMembersTable({
 								}))
 							}
 						/>
-						<span>Show mains only</span>
+						<span>{t('corporations.members.showMainsOnly')}</span>
 					</label>
 				</div>
 			</Card>
 
 			{/* Table */}
-			<TableRefreshFrame isRefreshing={isRefreshing} refreshMessage="Loading members...">
+			<TableRefreshFrame
+				isRefreshing={isRefreshing}
+				refreshMessage={t('corporations.members.loading')}
+			>
 				<Card>
 					{renderPaginationControls()}
 					<Table className="whitespace-nowrap">
 						<TableHeader>
 							<TableRow>
-								<SortableHead field="name" label="Member" />
-								<SortableHead field="role" label="Role" />
-								{canManageHrRoles && <SortableHead field="hrRole" label="HR Role" />}
-								<SortableHead field="auth" label="Auth Account" />
-								<SortableHead field="activity" label="Activity" />
-								<SortableHead field="lastLogin" label="Last Login" />
-								<SortableHead field="joinDate" label="Join Date" />
+								<SortableHead field="name" label={t('corporations.members.member')} />
+								<SortableHead field="role" label={t('corporations.members.role')} />
+								{canManageHrRoles && (
+									<SortableHead field="hrRole" label={t('corporations.members.hrRole')} />
+								)}
+								<SortableHead field="auth" label={t('corporations.members.authAccount')} />
+								<SortableHead field="activity" label={t('corporations.members.activity')} />
+								<SortableHead field="lastLogin" label={t('corporations.members.lastLogin')} />
+								<SortableHead field="joinDate" label={t('corporations.members.joinDate')} />
 								{showActions && (
 									<TableHead className={`${stickyTableActionHeaderClassName} text-right`}>
-										Actions
+										{t('corporations.members.actions')}
 									</TableHead>
 								)}
 							</TableRow>
@@ -550,22 +586,22 @@ export default function CorporationMembersTable({
 											)}
 											{member.role === 'Director' && (
 												<Badge variant="warning" icon={Shield}>
-													Director
+													{t('corporations.roles.director')}
 												</Badge>
 											)}
 											{member.role === 'Member' && (
 												<Badge variant="default" icon={User}>
-													Member
+													{t('corporations.roles.member')}
 												</Badge>
 											)}
 											{member.status === 'emeritus' && (
 												<Badge variant="special" icon={Heart}>
-													Emeritus
+													{t('corporations.members.emeritus')}
 												</Badge>
 											)}
 											{member.isBlacklisted && (
 												<Badge variant="destructive" icon={ShieldBan}>
-													Blocklisted
+													{t('corporations.members.blocklisted')}
 												</Badge>
 											)}
 										</div>
@@ -575,7 +611,9 @@ export default function CorporationMembersTable({
 											{member.hrRole ? (
 												<HrRoleBadge role={member.hrRole} />
 											) : (
-												<span className="text-xs text-muted-foreground">None</span>
+												<span className="text-xs text-muted-foreground">
+													{t('corporations.members.none')}
+												</span>
 											)}
 										</TableCell>
 									)}
@@ -594,17 +632,21 @@ export default function CorporationMembersTable({
 										</div>
 									</TableCell>
 									<TableCell>
-										{member.activityStatus === 'active' && <Badge variant="success">Active</Badge>}
-										{member.activityStatus === 'inactive' && (
-											<Badge variant="warning">Inactive</Badge>
+										{member.activityStatus === 'active' && (
+											<Badge variant="success">{t('corporations.members.active')}</Badge>
 										)}
-										{member.activityStatus === 'unknown' && <Badge variant="ghost">Unknown</Badge>}
+										{member.activityStatus === 'inactive' && (
+											<Badge variant="warning">{t('corporations.members.inactive')}</Badge>
+										)}
+										{member.activityStatus === 'unknown' && (
+											<Badge variant="ghost">{t('corporations.members.unknown')}</Badge>
+										)}
 									</TableCell>
 									<TableCell>
-										<div className="text-sm">{formatDate(member.lastLogin)}</div>
+										<div className="text-sm">{formatMemberDate(member.lastLogin)}</div>
 									</TableCell>
 									<TableCell>
-										<div className="text-sm">{formatDate(member.joinDate)}</div>
+										<div className="text-sm">{formatMemberDate(member.joinDate)}</div>
 									</TableCell>
 									{showActions && (
 										<TableCell
@@ -614,18 +656,18 @@ export default function CorporationMembersTable({
 											<ActionsMenu
 												items={[
 													{
-														label: 'View Profile',
+														label: t('corporations.members.viewProfile'),
 														intent: 'muted',
 														onClick: () => onMemberClick?.(member),
 													},
 													{
-														label: 'Grant HR Role',
+														label: t('corporations.members.grantHrRole'),
 														intent: 'confirm',
 														hidden: !canManageHrRoles || !member.hasAuthAccount || !!member.hrRole,
 														onClick: () => setGrantDialogMember(member),
 													},
 													{
-														label: 'Revoke HR Role',
+														label: t('corporations.members.revokeHrRole'),
 														intent: 'destructive',
 														hidden:
 															!canManageHrRoles ||
@@ -634,7 +676,7 @@ export default function CorporationMembersTable({
 														onClick: () => setRevokeDialogMember(member),
 													},
 													{
-														label: 'Mark as Emeritus',
+														label: t('corporations.emeritus.markAction'),
 														intent: 'secondary',
 														hidden:
 															!canManageEmeritus ||
@@ -647,7 +689,7 @@ export default function CorporationMembersTable({
 														},
 													},
 													{
-														label: 'Remove Emeritus',
+														label: t('corporations.members.removeEmeritus'),
 														intent: 'secondary',
 														hidden: !canManageEmeritus || member.status !== 'emeritus',
 														onClick: () => {
@@ -667,7 +709,7 @@ export default function CorporationMembersTable({
 										colSpan={showActions ? (canManageHrRoles ? 8 : 7) : canManageHrRoles ? 7 : 6}
 										className="py-8 text-center text-sm text-muted-foreground"
 									>
-										No members found for the current filters.
+										{t('corporations.members.empty')}
 									</TableCell>
 								</TableRow>
 							)}

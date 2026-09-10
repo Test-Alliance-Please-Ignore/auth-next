@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 
 import type { SelectOption } from '@/components/ui/select'
@@ -39,22 +40,25 @@ export function CorporationSearchSelect({
 	query,
 	defaultQuery,
 	onQueryChange,
-	placeholder = 'Select corporation',
+	placeholder,
 	excludeCorporationIds,
 	disabled = false,
 	searchCorporations = api.searchManagedCorporations.bind(api),
 	minQueryLength = 2,
 	debounceMs = 0,
-	queryHintText = 'Type at least 2 characters',
-	loadingText = 'Searching corporations...',
-	emptyText = 'No matching corporations',
+	queryHintText,
+	loadingText,
+	emptyText,
 	onValueChange,
 }: CorporationSearchSelectProps) {
+	const { t } = useAppTranslation()
 	const searchDelegate = useCallback(
 		async (query: string): Promise<SelectOption[]> => {
 			const rows = await searchCorporations(query)
 			return rows
-				.filter((row) => !excludeCorporationIds?.has(row.corporationId) || row.corporationId === value)
+				.filter(
+					(row) => !excludeCorporationIds?.has(row.corporationId) || row.corporationId === value
+				)
 				.map((row) => ({
 					value: row.corporationId,
 					label: formatCorporationLabel(row),
@@ -77,12 +81,12 @@ export function CorporationSearchSelect({
 			options={value ? [{ value, label: label ?? value }] : []}
 			searchable
 			searchDelegate={searchDelegate}
-			placeholder={placeholder}
+			placeholder={placeholder ?? t('corporations.search.select')}
 			minQueryLength={minQueryLength}
 			debounceMs={debounceMs}
-			queryHintText={queryHintText}
-			loadingText={loadingText}
-			emptyText={emptyText}
+			queryHintText={queryHintText ?? t('common.typeAtLeast', { count: minQueryLength })}
+			loadingText={loadingText ?? t('corporations.search.loading')}
+			emptyText={emptyText ?? t('corporations.search.empty')}
 			disabled={disabled}
 		/>
 	)

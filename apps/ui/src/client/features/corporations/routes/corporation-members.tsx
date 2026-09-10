@@ -34,6 +34,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { formatList, formatNumber, i18n, useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { useHrRoles } from '../../hr'
@@ -136,7 +137,7 @@ export default function CorporationMembers() {
 	const { corporationId } = useParams<{ corporationId: string }>()
 	const navigate = useNavigate()
 	const { showSuccess, showError } = useMessage()
-
+	const { t } = useAppTranslation()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasAnyPermission } = useUserPermissions()
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
@@ -239,14 +240,16 @@ export default function CorporationMembers() {
 	}, [membersResponse?.items, hrRoles])
 
 	// Corporation info - use Corporations data with access data as fallback (for HR-only users)
-	const corpName = corporation?.name ?? accessCorp?.name ?? 'Corporation'
+	const corpName = corporation?.name ?? accessCorp?.name ?? t('corporations.corporation')
+	// Keep the CSV filename's fallback and ISO date stable across UI locales.
+	const exportCorpName = corporation?.name ?? accessCorp?.name ?? 'Corporation'
 	const corpTicker = corporation?.ticker ?? accessCorp?.ticker
 	const corpAllianceName = corporation?.allianceName
 	const corpTypeLabel = accessCorp?.isAltCorp
-		? 'Alt'
+		? t('corporations.types.alt')
 		: accessCorp?.isSpecialPurpose
-			? 'Special-purpose'
-			: 'Corporation'
+			? t('corporations.types.specialPurpose')
+			: t('corporations.corporation')
 	const esiCoverage = membersResponse?.summary?.esiCoverage ?? {
 		full: 0,
 		partial: 0,
@@ -261,11 +264,16 @@ export default function CorporationMembers() {
 	}
 	const esiCoverageTotal = esiCoverage.totalCharacters
 	const esiCoveragePercentage = (value: number) =>
-		esiCoverageTotal > 0 ? Math.round((value / esiCoverageTotal) * 100) : 0
+		formatNumber(esiCoverageTotal > 0 ? value / esiCoverageTotal : 0, {
+			style: 'percent',
+			maximumFractionDigits: 0,
+		})
 
 	// Set page title
 	usePageTitle(
-		corporation || accessCorp ? `${corpName} Members | Corporations` : 'Corporation Members'
+		corporation || accessCorp
+			? t('corporations.members.pageTitleNamed', { name: corpName })
+			: t('corporations.members.pageTitle')
 	)
 
 	// Handlers
@@ -274,9 +282,11 @@ export default function CorporationMembers() {
 		try {
 			await myCorporationsApi.refreshCorporationMembers(corporationId!)
 			await invalidateMembers(corporationId!)
-			showSuccess('Member data refreshed')
+			showSuccess(i18n.t('corporations.members.refreshed'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to refresh member list')
+			showError(
+				error instanceof Error ? error.message : i18n.t('corporations.members.refreshFailed')
+			)
 		} finally {
 			setIsRefreshing(false)
 		}
@@ -292,7 +302,6 @@ export default function CorporationMembers() {
 					state: {
 						source: 'corporation-members',
 						backTo: `/corporations/${corporationId}/members`,
-						backLabel: 'Back to Members',
 					},
 				})
 			}
@@ -326,7 +335,7 @@ export default function CorporationMembers() {
 
 			if (!response.ok) {
 				const message = await response.text()
-				throw new Error(message || 'Failed to export corporation members')
+				throw new Error(message || i18n.t('corporations.members.exportFailed'))
 			}
 
 			const blob = await response.blob()
@@ -336,17 +345,20 @@ export default function CorporationMembers() {
 
 			const contentDisposition = response.headers.get('content-disposition') ?? ''
 			const match = contentDisposition.match(/filename="?([^";]+)"?/i)
-			a.download = match?.[1] ?? `${corpName}-members-${new Date().toISOString().split('T')[0]}.csv`
+			a.download =
+				match?.[1] ?? `${exportCorpName}-members-${new Date().toISOString().split('T')[0]}.csv`
 			a.click()
 			URL.revokeObjectURL(downloadUrl)
 
-			showSuccess('Member list exported')
+			showSuccess(i18n.t('corporations.members.exported'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to export corporation members')
+			showError(
+				error instanceof Error ? error.message : i18n.t('corporations.members.exportFailed')
+			)
 		} finally {
 			setIsExporting(false)
 		}
-	}, [corporationId, corpName, effectiveMembersQuery, isExporting, showError, showSuccess])
+	}, [corporationId, exportCorpName, effectiveMembersQuery, isExporting, showError, showSuccess])
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -376,17 +388,18 @@ export default function CorporationMembers() {
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
+							{t('corporations.accessDenied')}
+						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have permission to view members of this corporation. CEO, director, or HR
-							role access is required.
+							{t('corporations.members.accessDeniedDescription')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" asChild>
 							<Link to="/corporations">
 								<ArrowLeft className="h-4 w-4" />
-								Return to Corporations
+								{t('corporations.returnToCorporations')}
 							</Link>
 						</Button>
 					</CardContent>
@@ -403,22 +416,24 @@ export default function CorporationMembers() {
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Failed to Load Members
+							{t('corporations.members.loadFailed')}
 						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							{error instanceof Error ? error.message : 'An unexpected error occurred'}
+							{error instanceof Error ? error.message : t('corporations.unexpectedError')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center space-y-4">
 						<Button variant="ghost" onClick={handleRefresh} disabled={isRefreshing}>
 							<RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-							{isRefreshing ? 'Refreshing...' : 'Try Again'}
+							{isRefreshing
+								? t('corporations.members.refreshing')
+								: t('corporations.members.tryAgain')}
 						</Button>
 						<div>
 							<Button variant="ghost" asChild>
 								<Link to="/corporations">
 									<ArrowLeft className="h-4 w-4" />
-									Return to Corporations
+									{t('corporations.returnToCorporations')}
 								</Link>
 							</Button>
 						</div>
@@ -435,7 +450,7 @@ export default function CorporationMembers() {
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
 					<BreadcrumbItem>
-						<BreadcrumbLink to="/corporations">Corporations</BreadcrumbLink>
+						<BreadcrumbLink to="/corporations">{t('corporations.title')}</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
@@ -443,7 +458,7 @@ export default function CorporationMembers() {
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbPage>Members</BreadcrumbPage>
+						<BreadcrumbPage>{t('corporations.members.breadcrumb')}</BreadcrumbPage>
 					</BreadcrumbItem>
 				</BreadcrumbList>
 			</Breadcrumb>
@@ -454,20 +469,29 @@ export default function CorporationMembers() {
 					<div>
 						<h1 className="text-3xl font-bold flex items-center gap-3">
 							<Building2 className="h-8 w-8" />
-							{corpName} Members
+							{t('corporations.members.heading', { name: corpName })}
 						</h1>
 						<p className="text-muted-foreground mt-2">
-							View and manage all members of {corpTicker ? `[${corpTicker}]` : 'this corporation'}
-							{corpAllianceName && ` • Alliance: ${corpAllianceName}`}
+							{t('corporations.members.description', {
+								corporation: corpTicker
+									? `[${corpTicker}]`
+									: t('corporations.members.thisCorporation'),
+							})}
+							{corpAllianceName &&
+								t('corporations.members.allianceSuffix', { name: corpAllianceName })}
 						</p>
 						{(userRole || hrRole) && (
 							<p className="text-sm text-muted-foreground mt-1">
-								Your role:{' '}
+								{t('corporations.members.yourRole')}:{' '}
 								<span className="font-medium">
-									{[userRole, hrRole]
-										.filter((role, index, roles) => role !== null && roles.indexOf(role) === index)
-										.map((role) => formatCorporationRoleLabel(role))
-										.join(' / ')}
+									{formatList(
+										[userRole, hrRole]
+											.filter(
+												(role, index, roles) => role !== null && roles.indexOf(role) === index
+											)
+											.map((role) => formatCorporationRoleLabel(role)),
+										{ type: 'conjunction' }
+									)}
 								</span>
 							</p>
 						)}
@@ -476,25 +500,29 @@ export default function CorporationMembers() {
 						{canRefresh && (
 							<Button variant="ghost" onClick={handleRefresh} disabled={isRefreshing}>
 								<RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-								{isRefreshing ? 'Refreshing...' : 'Refresh'}
+								{isRefreshing
+									? t('corporations.members.refreshing')
+									: t('corporations.members.refresh')}
 							</Button>
 						)}
 						{canExport && (
 							<Button variant="ghost" onClick={handleExport} disabled={isExporting}>
 								<Download className="h-4 w-4" />
-								{isExporting ? 'Exporting...' : 'Export CSV'}
+								{isExporting
+									? t('corporations.members.exporting')
+									: t('corporations.members.exportCsv')}
 							</Button>
 						)}
 						{canUseUserSearchTool && (
 							<Button variant="ghost" onClick={() => setIsUserSearchOpen(true)}>
 								<Search className="h-4 w-4" />
-								User Search
+								{t('corporations.userSearch.title')}
 							</Button>
 						)}
 						<Button variant="ghost" asChild>
 							<Link to="/corporations">
 								<ArrowLeft className="h-4 w-4" />
-								Back
+								{t('corporations.back')}
 							</Link>
 						</Button>
 					</div>
@@ -507,15 +535,17 @@ export default function CorporationMembers() {
 					<CardHeader>
 						<CardTitle className="text-lg flex items-center gap-2">
 							<Settings className="h-5 w-5" />
-							HR Management
+							{t('corporations.members.hrManagement')}
 						</CardTitle>
 						{canUseHrTools ? (
 							<CardDescription>
 								{isHrOnly && !isLeadership
-									? `You have ${formatCorporationRoleLabel(hrRole ?? 'hr_viewer')} access for this corporation`
+									? t('corporations.members.hrAccess', {
+											role: formatCorporationRoleLabel(hrRole ?? 'hr_viewer'),
+										})
 									: userRole === 'CEO'
-										? 'You have CEO access to all HR features'
-										: 'You have site admin access to all HR features'}
+										? t('corporations.members.ceoAccess')
+										: t('corporations.members.siteAdminAccess')}
 							</CardDescription>
 						) : null}
 					</CardHeader>
@@ -525,14 +555,14 @@ export default function CorporationMembers() {
 								<Button variant="primary" asChild className="w-full sm:w-auto">
 									<Link to={`/corporations/${corporationId}/applications`}>
 										<FileText className="h-4 w-4" />
-										Review Applications
+										{t('corporations.members.reviewApplications')}
 									</Link>
 								</Button>
 								{canManageHrRoles && (
 									<Button variant="ghost" asChild className="w-full sm:w-auto">
 										<Link to={`/corporations/${corporationId}/hr/roles`}>
 											<Settings className="h-4 w-4" />
-											Manage HR Roles
+											{t('corporations.members.manageHrRoles')}
 										</Link>
 									</Button>
 								)}
@@ -540,7 +570,7 @@ export default function CorporationMembers() {
 									<Button variant="ghost" asChild className="w-full sm:w-auto">
 										<Link to={`/corporations/${corporationId}/settings`}>
 											<Settings className="h-4 w-4" />
-											Corporation Settings
+											{t('corporations.settings.pageTitle')}
 										</Link>
 									</Button>
 								)}
@@ -550,11 +580,12 @@ export default function CorporationMembers() {
 								<div className="max-w-sm space-y-2">
 									<div className="flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground">
 										<AlertCircle className="h-4 w-4" />
-										HR tools unavailable
+										{t('corporations.members.hrToolsUnavailable')}
 									</div>
 									<p className="text-sm text-muted-foreground">
-										{corpTypeLabel} corporations do not expose HR management tools. You can still
-										review member details and ESI coverage here.
+										{t('corporations.members.hrToolsUnavailableDescription', {
+											type: corpTypeLabel,
+										})}
 									</p>
 								</div>
 							</div>
@@ -564,7 +595,7 @@ export default function CorporationMembers() {
 
 				<Card className="h-full w-full max-w-sm justify-self-end bg-primary/5 border-primary/20">
 					<CardHeader className="pb-3">
-						<CardTitle className="text-lg">ESI Coverage</CardTitle>
+						<CardTitle className="text-lg">{t('corporations.members.esiCoverage')}</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-3 pt-0">
 						<div className="grid grid-cols-2 gap-2">
@@ -580,13 +611,13 @@ export default function CorporationMembers() {
 								)}
 							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-									Full
+									{t('corporations.members.coverageFull')}
 								</div>
 								<div className="text-base font-bold text-success leading-none">
-									{esiCoverage.full}
+									{formatNumber(esiCoverage.full)}
 								</div>
 								<div className="text-[10px] text-muted-foreground">
-									{esiCoveragePercentage(esiCoverage.fullCharacters)}%
+									{esiCoveragePercentage(esiCoverage.fullCharacters)}
 								</div>
 							</button>
 							<button
@@ -601,13 +632,13 @@ export default function CorporationMembers() {
 								)}
 							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-									Partial
+									{t('corporations.members.coveragePartial')}
 								</div>
 								<div className="text-base font-bold text-warning leading-none">
-									{esiCoverage.partial}
+									{formatNumber(esiCoverage.partial)}
 								</div>
 								<div className="text-[10px] text-muted-foreground">
-									{esiCoveragePercentage(esiCoverage.partialCharacters)}%
+									{esiCoveragePercentage(esiCoverage.partialCharacters)}
 								</div>
 							</button>
 							<button
@@ -622,13 +653,13 @@ export default function CorporationMembers() {
 								)}
 							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-									None
+									{t('corporations.members.coverageNone')}
 								</div>
 								<div className="text-base font-bold text-destructive leading-none">
-									{esiCoverage.none}
+									{formatNumber(esiCoverage.none)}
 								</div>
 								<div className="text-[10px] text-muted-foreground">
-									{esiCoveragePercentage(esiCoverage.noneCharacters)}%
+									{esiCoveragePercentage(esiCoverage.noneCharacters)}
 								</div>
 							</button>
 							<button
@@ -643,13 +674,13 @@ export default function CorporationMembers() {
 								)}
 							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-									Unlinked
+									{t('common.esiStatus.unlinked')}
 								</div>
 								<div className="text-base font-bold text-muted-foreground leading-none">
-									{esiCoverage.unlinked}
+									{formatNumber(esiCoverage.unlinked)}
 								</div>
 								<div className="text-[10px] text-muted-foreground">
-									{esiCoveragePercentage(esiCoverage.unlinkedCharacters)}%
+									{esiCoveragePercentage(esiCoverage.unlinkedCharacters)}
 								</div>
 							</button>
 						</div>

@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, RefreshCw, Shield, User, Users } from 'lucide-react'
 import { Link, Navigate, useLocation, useParams } from 'react-router'
 
@@ -11,13 +10,17 @@ import { CharacterSkills } from '../components/character-skills'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Container } from '../components/ui/container'
+import { formatCorporationRoleLabel, useCorporationAccess } from '../features/corporations/hooks'
 import { useAuth } from '../hooks/useAuth'
 import { useRefreshCharacter } from '../hooks/useCharacters'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { useUserPermissions } from '../hooks/useUserPermissions'
+import { useAppTranslation } from '../i18n'
 import { api } from '../lib/api'
+import { formatRelativeTime } from '../lib/date-utils'
 import { allianceLogoUrl, characterPortraitUrl, corporationLogoUrl } from '../lib/eve-images'
-import { useCorporationAccess } from '../features/corporations/hooks'
+
+import type { AppTranslator } from '../i18n'
 
 type CharacterDetailSource =
 	| 'admin-user-detail'
@@ -27,25 +30,29 @@ type CharacterDetailSource =
 	| 'hr-auditor-user-profile'
 	| 'hr-member-profile'
 
-function resolveBackLabel(source?: CharacterDetailSource): string | null {
+function resolveBackLabel(
+	source: CharacterDetailSource | undefined,
+	t: AppTranslator
+): string | null {
 	switch (source) {
 		case 'dashboard':
-			return 'Back to Dashboard'
+			return t('characterDetail.back.dashboard')
 		case 'admin-activity-log':
-			return 'Back to Activity Log'
+			return t('characterDetail.back.activityLog')
 		case 'admin-user-detail':
 		case 'hr-auditor-user-profile':
-			return 'Back to User Details'
+			return t('characterDetail.back.userDetails')
 		case 'corporation-members':
-			return 'Back to Members'
+			return t('characterDetail.back.members')
 		case 'hr-member-profile':
-			return 'Back to User Profile'
+			return t('characterDetail.back.userProfile')
 		default:
 			return null
 	}
 }
 
 export default function CharacterDetailPage() {
+	const { t } = useAppTranslation()
 	const { characterId } = useParams<{ characterId: string }>()
 	const location = useLocation()
 	const { user } = useAuth()
@@ -57,7 +64,10 @@ export default function CharacterDetailPage() {
 		backLabel?: string
 	} | null
 	const backTo = navigationState?.backTo
-	const backLabel = navigationState?.backLabel ?? resolveBackLabel(navigationState?.source) ?? 'Back'
+	const backLabel =
+		resolveBackLabel(navigationState?.source, t) ??
+		navigationState?.backLabel ??
+		t('characterDetail.back.default')
 
 	if (!characterId) {
 		return <Navigate to="/dashboard" replace />
@@ -114,7 +124,7 @@ export default function CharacterDetailPage() {
 		staleTime: 1000 * 60,
 	})
 	// Set page title based on character name
-	usePageTitle(character?.public?.info?.name ? `${character.public.info.name}` : 'Character')
+	usePageTitle(character?.public?.info?.name || t('characterDetail.title'))
 
 	// Handle character refresh with toast notifications
 	const refreshCharacter = useRefreshCharacter()
@@ -160,15 +170,17 @@ export default function CharacterDetailPage() {
 			<Container className="p-8">
 				<Card>
 					<CardHeader>
-						<CardTitle>{isForbidden ? 'Access Denied' : 'Error'}</CardTitle>
+						<CardTitle>
+							{isForbidden ? t('characterDetail.accessDenied') : t('characterDetail.error')}
+						</CardTitle>
 					</CardHeader>
 					<CardContent>
 						<p className="text-destructive">
 							{isForbidden
-								? 'You do not have permission to view this character. Only the character owner can view character details.'
+								? t('characterDetail.accessDeniedDescription')
 								: isNotFound
-									? 'Character not found'
-									: 'Failed to load character details'}
+									? t('characterDetail.notFound')
+									: t('characterDetail.loadFailed')}
 						</p>
 					</CardContent>
 				</Card>
@@ -177,8 +189,8 @@ export default function CharacterDetailPage() {
 	}
 
 	const lastUpdatedText = character.lastUpdated
-		? `Updated ${formatDistanceToNow(new Date(character.lastUpdated), { addSuffix: true })}`
-		: 'Never updated'
+		? t('characterDetail.updated', { time: formatRelativeTime(character.lastUpdated) })
+		: t('characterDetail.neverUpdated')
 	const canLinkToAdminCorporation = Boolean(
 		user?.is_admin && corporationIdForLink && isManagedCorporation
 	)
@@ -215,10 +227,10 @@ export default function CharacterDetailPage() {
 						<div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
 							<Shield className="h-5 w-5" />
 							<div>
-								<p className="font-medium">Viewing as Site Administrator</p>
+								<p className="font-medium">{t('characterDetail.viewingAsAdmin')}</p>
 								{character.owner && (
 									<p className="text-sm text-muted-foreground">
-										This character belongs to:{' '}
+										{t('characterDetail.belongsTo')}{' '}
 										<Link
 											to={`/admin/users/${character.owner.userId}`}
 											className="font-medium text-foreground underline-offset-2 hover:underline"
@@ -229,9 +241,9 @@ export default function CharacterDetailPage() {
 								)}
 							</div>
 						</div>
-				</CardContent>
-			</Card>
-		)}
+					</CardContent>
+				</Card>
+			)}
 
 			{/* CEO/Director View Alert */}
 			{character.viewedAsCeoOrDirector && (
@@ -240,15 +252,19 @@ export default function CharacterDetailPage() {
 						<div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
 							<Shield className="h-5 w-5" />
 							<div>
-								<p className="font-medium">Viewing as Corporation {character.viewerRole}</p>
+								<p className="font-medium">
+									{t('characterDetail.viewingAsCorporationRole', {
+										role: formatCorporationRoleLabel(character.viewerRole),
+									})}
+								</p>
 								<p className="text-sm text-muted-foreground">
-									You can view public character information (attributes, corporation history).
+									{t('characterDetail.corporationAccessHint')}
 								</p>
 							</div>
 						</div>
-				</CardContent>
-			</Card>
-		)}
+					</CardContent>
+				</Card>
+			)}
 
 			{/* HR Viewer Alert */}
 			{character.viewedAsHrViewer && (
@@ -257,10 +273,8 @@ export default function CharacterDetailPage() {
 						<div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
 							<Users className="h-5 w-5" />
 							<div>
-								<p className="font-medium">Viewing as HR Viewer</p>
-								<p className="text-sm text-muted-foreground">
-									You can view public character information.
-								</p>
+								<p className="font-medium">{t('characterDetail.viewingAsHrViewer')}</p>
+								<p className="text-sm text-muted-foreground">{t('characterDetail.hrAccessHint')}</p>
 							</div>
 						</div>
 					</CardContent>
@@ -291,33 +305,44 @@ export default function CharacterDetailPage() {
 											<Link
 												to={`/admin/corporations/${character.public.info.corporationId}`}
 												className="text-sm font-medium underline-offset-2 hover:underline"
-												title={`Corporation ID: ${character.public.info.corporationId}`}
+												title={t('characterDetail.corporationId', {
+													id: character.public.info.corporationId,
+												})}
 											>
 												{character.public.info.corporationName ||
-													`Corporation #${character.public.info.corporationId}`}
+													t('characterDetail.corporationNumber', {
+														id: character.public.info.corporationId,
+													})}
 											</Link>
 										) : corporationMembersLink ? (
 											<Link
 												to={corporationMembersLink}
 												className="text-sm font-medium underline-offset-2 hover:underline"
-												title={`Corporation ID: ${character.public.info.corporationId}`}
+												title={t('characterDetail.corporationId', {
+													id: character.public.info.corporationId,
+												})}
 											>
 												{character.public.info.corporationName ||
-													`Corporation #${character.public.info.corporationId}`}
+													t('characterDetail.corporationNumber', {
+														id: character.public.info.corporationId,
+													})}
 											</Link>
 										) : (
 											<span
 												className="text-sm font-medium"
-												title={`Corporation ID: ${character.public.info.corporationId}`}
+												title={t('characterDetail.corporationId', {
+													id: character.public.info.corporationId,
+												})}
 											>
 												{character.public.info.corporationName ||
-													`Corporation #${character.public.info.corporationId}`}
+													t('characterDetail.corporationNumber', {
+														id: character.public.info.corporationId,
+													})}
 											</span>
 										)}
 									</div>
 								)}
-								{(character.public.info?.allianceName ||
-									character.public.info?.allianceId) && (
+								{(character.public.info?.allianceName || character.public.info?.allianceId) && (
 									<div className="flex items-center gap-1.5">
 										<img
 											src={allianceLogoUrl(character.public.info.allianceId, 32)}
@@ -326,10 +351,14 @@ export default function CharacterDetailPage() {
 										/>
 										<span
 											className="text-sm"
-											title={`Alliance ID: ${character.public.info.allianceId}`}
+											title={t('characterDetail.allianceId', {
+												id: character.public.info.allianceId,
+											})}
 										>
 											{character.public.info.allianceName ||
-												`Alliance #${character.public.info.allianceId}`}
+												t('characterDetail.allianceNumber', {
+													id: character.public.info.allianceId,
+												})}
 										</span>
 									</div>
 								)}
@@ -348,15 +377,20 @@ export default function CharacterDetailPage() {
 								<RefreshCw
 									className={`h-4 w-4 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
 								/>
-								{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh'}
+								{refreshCharacter.isPending
+									? t('characterDetail.refreshing')
+									: t('characterDetail.refresh')}
 							</Button>
 						)}
-						{character.isOwner && !character.viewedAsAdmin && !character.viewedAsCeoOrDirector && !character.viewedAsHrViewer && (
-							<span className="text-sm text-success font-medium flex items-center">
-								<User className="h-4 w-4 mr-1" />
-								Owner
-							</span>
-						)}
+						{character.isOwner &&
+							!character.viewedAsAdmin &&
+							!character.viewedAsCeoOrDirector &&
+							!character.viewedAsHrViewer && (
+								<span className="text-sm text-success font-medium flex items-center">
+									<User className="h-4 w-4 mr-1" />
+									{t('characterDetail.owner')}
+								</span>
+							)}
 					</div>
 				</CardHeader>
 			</Card>
@@ -399,17 +433,19 @@ export default function CharacterDetailPage() {
 			) : canViewPrivateSections ? (
 				<Card>
 					<CardHeader>
-						<CardTitle>Skills</CardTitle>
+						<CardTitle>{t('characterDetail.skills')}</CardTitle>
 						<CardDescription>
-							{isPrivateLoading ? 'Loading skill data' : 'Skill data not available'}
+							{isPrivateLoading
+								? t('characterDetail.loadingSkills')
+								: t('characterDetail.skillsUnavailable')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<div className="text-center py-8">
 							<p className="text-muted-foreground mb-4">
 								{isPrivateLoading
-									? 'Loading character data needed to render skills.'
-									: 'Character data is not available for this view.'}
+									? t('characterDetail.loadingSkillsDescription')
+									: t('characterDetail.dataUnavailable')}
 							</p>
 							{isPrivateLoading && (
 								<Button
@@ -420,7 +456,9 @@ export default function CharacterDetailPage() {
 									<RefreshCw
 										className={`h-4 w-4 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
 									/>
-									{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh Character Data'}
+									{refreshCharacter.isPending
+										? t('characterDetail.refreshing')
+										: t('characterDetail.refreshData')}
 								</Button>
 							)}
 						</div>
@@ -429,12 +467,12 @@ export default function CharacterDetailPage() {
 			) : (
 				<Card>
 					<CardHeader>
-						<CardTitle>Skills</CardTitle>
-						<CardDescription>No skill data available</CardDescription>
+						<CardTitle>{t('characterDetail.skills')}</CardTitle>
+						<CardDescription>{t('characterDetail.noSkills')}</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<p className="text-center text-muted-foreground py-8">
-							This character's skill data has not been loaded yet.
+							{t('characterDetail.skillsNotLoaded')}
 						</p>
 					</CardContent>
 				</Card>

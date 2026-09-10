@@ -1,8 +1,8 @@
 import { GraduationCap } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { formatSkillPoints } from '@repo/eve-types'
-
+import { compareLocaleStrings, formatNumber, useAppTranslation } from '../i18n'
+import { formatDurationMs } from '../lib/duration-utils'
 import { cn } from '../lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
@@ -78,17 +78,8 @@ function estimateTrainingTime(trainedLevel: number, sp: number, rank: number): n
 	return Math.max(0, Math.round((spRemaining / 30) * 60))
 }
 
-function formatTrainingTime(seconds: number): string {
-	if (seconds <= 0) return ''
-	const days = Math.floor(seconds / 86400)
-	const hours = Math.floor((seconds % 86400) / 3600)
-	const mins = Math.floor((seconds % 3600) / 60)
-	if (days > 0) return `${days}d ${hours}h`
-	if (hours > 0) return `${hours}h ${mins}m`
-	return `${mins}m`
-}
-
 type SkillGroup = {
+	groupKey: string
 	groupName: string
 	totalSP: number
 	trainedCount: number
@@ -135,6 +126,7 @@ function SkillLevelPips({
 }
 
 export function CharacterSkills({ skills, allSkills, showProgress = false }: CharacterSkillsProps) {
+	const { t } = useAppTranslation()
 	const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
 
 	const groups = useMemo(() => {
@@ -155,11 +147,12 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 				const catalogSkillId = String(catalogSkill.id ?? catalogSkill.skillId)
 				catalogSkillIds.add(catalogSkillId)
 
-				const groupName = catalogSkill.groupName || 'Unknown'
-				let group = mergedByGroup.get(groupName)
+				const groupKey = catalogSkill.groupName || 'Unknown'
+				const groupName = catalogSkill.groupName || t('characterDetail.skillsPanel.unknown')
+				let group = mergedByGroup.get(groupKey)
 				if (!group) {
-					group = { groupName, totalSP: 0, trainedCount: 0, totalCount: 0, skills: [] }
-					mergedByGroup.set(groupName, group)
+					group = { groupKey, groupName, totalSP: 0, trainedCount: 0, totalCount: 0, skills: [] }
+					mergedByGroup.set(groupKey, group)
 				}
 
 				const trained = trainedMap.get(catalogSkillId)
@@ -186,16 +179,22 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 			for (const [trainedSkillId, trainedSkill] of trainedMap.entries()) {
 				if (catalogSkillIds.has(trainedSkillId)) continue
 
-				const groupName = trainedSkill.skillGroup || trainedSkill.skillCategory || 'Unknown'
-				let group = mergedByGroup.get(groupName)
+				const groupKey = trainedSkill.skillGroup || trainedSkill.skillCategory || 'Unknown'
+				const groupName =
+					trainedSkill.skillGroup ||
+					trainedSkill.skillCategory ||
+					t('characterDetail.skillsPanel.unknown')
+				let group = mergedByGroup.get(groupKey)
 				if (!group) {
-					group = { groupName, totalSP: 0, trainedCount: 0, totalCount: 0, skills: [] }
-					mergedByGroup.set(groupName, group)
+					group = { groupKey, groupName, totalSP: 0, trainedCount: 0, totalCount: 0, skills: [] }
+					mergedByGroup.set(groupKey, group)
 				}
 
 				group.skills.push({
 					skillId: Number(trainedSkill.skillId),
-					skillName: trainedSkill.skillName || `Unknown Skill (${trainedSkill.skillId})`,
+					skillName:
+						trainedSkill.skillName ||
+						t('characterDetail.skillQueue.unknownSkill', { id: trainedSkill.skillId }),
 					rank: trainedSkill.rank || 1,
 					groupName,
 					trainedSkillLevel: trainedSkill.trainedSkillLevel,
@@ -210,16 +209,19 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 		} else {
 			// Fallback: trained skills only
 			for (const skill of skills.skills) {
-				const groupName = skill.skillGroup || skill.skillCategory || 'Uncategorized'
-				let group = mergedByGroup.get(groupName)
+				const groupKey = skill.skillGroup || skill.skillCategory || 'Uncategorized'
+				const groupName =
+					skill.skillGroup || skill.skillCategory || t('characterDetail.skillsPanel.uncategorized')
+				let group = mergedByGroup.get(groupKey)
 				if (!group) {
-					group = { groupName, totalSP: 0, trainedCount: 0, totalCount: 0, skills: [] }
-					mergedByGroup.set(groupName, group)
+					group = { groupKey, groupName, totalSP: 0, trainedCount: 0, totalCount: 0, skills: [] }
+					mergedByGroup.set(groupKey, group)
 				}
 
 				group.skills.push({
 					skillId: Number(skill.skillId),
-					skillName: skill.skillName || `Skill ${skill.skillId}`,
+					skillName:
+						skill.skillName || t('characterDetail.skillsPanel.skillNumber', { id: skill.skillId }),
 					rank: skill.rank || 1,
 					groupName,
 					trainedSkillLevel: skill.trainedSkillLevel,
@@ -234,10 +236,12 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 		}
 
 		// Sort groups alphabetically (like in-game)
-		return Array.from(mergedByGroup.values()).sort((a, b) => a.groupName.localeCompare(b.groupName))
-	}, [skills.skills, allSkills])
+		return Array.from(mergedByGroup.values()).sort((a, b) =>
+			compareLocaleStrings(a.groupName, b.groupName)
+		)
+	}, [allSkills, skills.skills, t])
 
-	const activeGroup = groups.find((g) => g.groupName === selectedGroup)
+	const activeGroup = groups.find((g) => g.groupKey === selectedGroup)
 
 	return (
 		<Card>
@@ -245,19 +249,32 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 				<CardTitle className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
 						<GraduationCap className="h-5 w-5" />
-						Skills
+						{t('characterDetail.skills')}
 					</div>
 					<div className="text-sm font-normal text-muted-foreground">
-						{formatSkillPoints(skills.totalSp)} Total
+						{t('characterDetail.skillsPanel.total', {
+							amount: `${formatNumber(skills.totalSp, {
+								notation: 'compact',
+								maximumFractionDigits: 2,
+							})} SP`,
+						})}
 						{skills.unallocatedSp != null && skills.unallocatedSp > 0 && (
-							<span className="ml-2">• {formatSkillPoints(skills.unallocatedSp)} Unallocated</span>
+							<span className="ml-2">
+								•{' '}
+								{t('characterDetail.skillsPanel.unallocated', {
+									amount: `${formatNumber(skills.unallocatedSp, {
+										notation: 'compact',
+										maximumFractionDigits: 2,
+									})} SP`,
+								})}
+							</span>
 						)}
 					</div>
 				</CardTitle>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				{groups.length === 0 ? (
-					<p className="text-sm text-muted-foreground">No skills data available</p>
+					<p className="text-sm text-muted-foreground">{t('characterDetail.noSkills')}</p>
 				) : (
 					<>
 						{/* Skill Group Grid — column-first fill */}
@@ -269,13 +286,14 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 						>
 							{groups.map((group) => {
 								const pct = group.totalCount > 0 ? (group.trainedCount / group.totalCount) * 100 : 0
-								const isSelected = selectedGroup === group.groupName
+								const isSelected = selectedGroup === group.groupKey
 
 								return (
 									<button
-										key={group.groupName}
+										key={group.groupKey}
 										type="button"
-										onClick={() => setSelectedGroup(isSelected ? null : group.groupName)}
+										aria-pressed={isSelected}
+										onClick={() => setSelectedGroup(isSelected ? null : group.groupKey)}
 										className={cn(
 											'relative flex items-center justify-between rounded px-2.5 py-1.5 text-left transition-colors overflow-hidden',
 											'hover:brightness-125',
@@ -292,7 +310,7 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 										/>
 										<span className="relative text-sm truncate">{group.groupName}</span>
 										<span className="relative text-sm tabular-nums text-muted-foreground ml-2 shrink-0">
-											{group.totalCount}
+											{formatNumber(group.totalCount)}
 										</span>
 									</button>
 								)
@@ -305,14 +323,21 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 								<div className="flex items-center justify-between px-4 py-2.5 border-b bg-muted/30">
 									<h4 className="text-sm font-semibold">{activeGroup.groupName}</h4>
 									<span className="text-xs text-muted-foreground">
-										{activeGroup.trainedCount}/{activeGroup.totalCount} trained
+										{t('characterDetail.skillsPanel.trained', {
+											trained: formatNumber(activeGroup.trainedCount),
+											total: formatNumber(activeGroup.totalCount),
+										})}
 										{' • '}
-										{formatSkillPoints(activeGroup.totalSP)}
+										{formatNumber(activeGroup.totalSP, {
+											notation: 'compact',
+											maximumFractionDigits: 2,
+										})}{' '}
+										SP
 									</span>
 								</div>
 								<div className="columns-2 gap-x-4 px-4 py-1">
-									{activeGroup.skills
-										.sort((a, b) => a.skillName.localeCompare(b.skillName))
+									{[...activeGroup.skills]
+										.sort((a, b) => compareLocaleStrings(a.skillName, b.skillName))
 										.map((skill) => {
 											const progress =
 												skill.trainedSkillLevel > 0 && skill.trainedSkillLevel < 5
@@ -353,7 +378,10 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 															<span className="text-xs text-green-500">✓</span>
 														) : trainingTime > 0 ? (
 															<span className="text-xs text-muted-foreground tabular-nums">
-																{formatTrainingTime(trainingTime)}
+																{formatDurationMs(trainingTime * 1000, {
+																	style: 'compact',
+																	maxUnits: 2,
+																})}
 															</span>
 														) : null}
 													</div>
