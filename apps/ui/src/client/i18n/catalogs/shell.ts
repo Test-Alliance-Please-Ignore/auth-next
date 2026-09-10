@@ -542,7 +542,7 @@ export const shellCatalog = defineCatalog(
 			missing: '없음',
 			mainUnavailableDescription:
 				'메인으로 지정된 캐릭터가 활성 캐릭터 목록에 더 이상 없습니다. 메인 캐릭터 카드를 복원하려면 캐릭터를 연결하세요.',
-			linkCharacter: '캐릭터 연결',
+			linkCharacter: '캐릭터 추가',
 			linkedCharacters: '연결된 캐릭터',
 			linkedDescription: '인증된 모든 EVE Online 캐릭터',
 			redirecting: '이동하는 중…',
