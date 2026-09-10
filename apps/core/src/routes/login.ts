@@ -386,7 +386,9 @@ login.get('/', async (c) => {
 								? html`<input type="hidden" name="redirect" value="${redirectUrl}" />`
 								: ''}
 							${forceReauth ? html`<input type="hidden" name="reauth" value="1" />` : ''}
-							<button class="locale-apply" type="submit">${messages.applyLanguage}</button>
+							<noscript>
+								<button class="locale-apply" type="submit">${messages.applyLanguage}</button>
+							</noscript>
 						</form>
 						<h1>${messages.welcome}</h1>
 						<p>${messages.subtitle}</p>
@@ -441,6 +443,18 @@ login.get('/', async (c) => {
 
 					<div class="footer">${messages.footer}</div>
 				</div>
+				<script>
+					{
+						const loginLocaleSelect = document.getElementById('login-locale')
+
+						if (loginLocaleSelect instanceof HTMLSelectElement && loginLocaleSelect.form) {
+							const localeForm = loginLocaleSelect.form
+							loginLocaleSelect.addEventListener('change', () => {
+								localeForm.requestSubmit()
+							})
+						}
+					}
+				</script>
 			</body>
 		</html>
 	`)

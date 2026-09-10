@@ -109,6 +109,16 @@ describe('login route', () => {
 		expect(body).toContain('name="reauth" value="1"')
 	})
 
+	it('submits the locale form as soon as the selection changes', async () => {
+		const app = createApp()
+		const response = await app.request('https://pleaseignore.app/login', {}, {} as any)
+		const body = await response.text()
+
+		expect(body).toContain("loginLocaleSelect.addEventListener('change'")
+		expect(body).toContain('localeForm.requestSubmit()')
+		expect(body).toContain('<noscript>')
+	})
+
 	it('redirects authenticated users to the requested redirect target by default', async () => {
 		const app = createApp(makeUser())
 		const response = await app.request(
