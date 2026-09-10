@@ -1,4 +1,4 @@
-import { AlertCircle, Building2, FileText, Settings2, Users } from 'lucide-react'
+import { AlertCircle, Building2, FileText, Search, Settings2, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate } from 'react-router'
 
@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
@@ -111,6 +112,7 @@ export default function CorporationsPage() {
 	const [corporationTypeFilter, setCorporationTypeFilter] = useState<CorporationTypeFilter | null>(
 		null
 	)
+	const [corporationSearch, setCorporationSearch] = useState('')
 	const {
 		data: corporations = [],
 		isLoading: corporationsLoading,
@@ -171,16 +173,22 @@ export default function CorporationsPage() {
 		: null
 
 	const visibleCorporations = useMemo(() => {
-		if (!canFilterCorporations) {
-			return corporations
-		}
-		if (!activeCorporationTypeFilter) {
-			return corporations
-		}
-		return corporations.filter((corporation) =>
-			matchesCorporationType(corporation, activeCorporationTypeFilter)
-		)
-	}, [activeCorporationTypeFilter, canFilterCorporations, corporations])
+		const normalizedSearch = corporationSearch.trim().toLocaleLowerCase()
+
+		return corporations.filter((corporation) => {
+			const matchesType =
+				!canFilterCorporations ||
+				!activeCorporationTypeFilter ||
+				matchesCorporationType(corporation, activeCorporationTypeFilter)
+			const matchesSearch =
+				!normalizedSearch ||
+				[corporation.name, corporation.ticker, corporation.corporationId].some((value) =>
+					value?.toLocaleLowerCase().includes(normalizedSearch)
+				)
+
+			return matchesType && matchesSearch
+		})
+	}, [activeCorporationTypeFilter, canFilterCorporations, corporationSearch, corporations])
 	const applicationCountsByCorporationId = useMemo(
 		() => new Map(applicationCounts.map((counts) => [counts.corporationId, counts])),
 		[applicationCounts]
@@ -250,20 +258,32 @@ export default function CorporationsPage() {
 
 			{canFilterCorporations && (
 				<Card className="mt-6">
-					<CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-						<Label htmlFor="corporation-type-filter" className="shrink-0">
-							Show corporations
-						</Label>
-						<Select
-							inputId="corporation-type-filter"
-							value={activeCorporationTypeFilter ?? CORPORATION_TYPE_OPTIONS[0].value}
-							onValueChange={(value) => setCorporationTypeFilter(value as CorporationTypeFilter)}
-							options={CORPORATION_TYPE_OPTIONS.filter((option) =>
-								availableCorporationTypes.includes(option.value)
-							)}
-							className="sm:w-72"
-							contentClassName="sm:w-72"
-						/>
+					<CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-6">
+						<div className="relative min-w-0 sm:w-80 sm:shrink-0">
+							<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+							<Input
+								aria-label="Filter corporations"
+								placeholder="Filter corporations..."
+								value={corporationSearch}
+								onChange={(event) => setCorporationSearch(event.target.value)}
+								className="pl-9"
+							/>
+						</div>
+						<div className="flex min-w-0 shrink-0 items-center gap-2">
+							<Label htmlFor="corporation-type-filter" className="shrink-0">
+								Corporation type:
+							</Label>
+							<Select
+								inputId="corporation-type-filter"
+								value={activeCorporationTypeFilter ?? CORPORATION_TYPE_OPTIONS[0].value}
+								onValueChange={(value) => setCorporationTypeFilter(value as CorporationTypeFilter)}
+								options={CORPORATION_TYPE_OPTIONS.filter((option) =>
+									availableCorporationTypes.includes(option.value)
+								)}
+								className="sm:w-64"
+								contentClassName="sm:w-64"
+							/>
+						</div>
 					</CardContent>
 				</Card>
 			)}
@@ -271,7 +291,7 @@ export default function CorporationsPage() {
 			{canFilterCorporations && visibleCorporations.length === 0 ? (
 				<Card className="mt-6">
 					<CardContent className="py-10 text-center text-muted-foreground">
-						No corporations match the selected type.
+						No corporations match the selected filters.
 					</CardContent>
 				</Card>
 			) : null}

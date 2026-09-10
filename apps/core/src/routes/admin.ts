@@ -16,6 +16,7 @@ import { logger } from '@repo/hono-helpers'
 import { createDb } from '../db'
 import { corporationDiscordServers, userActivityLog, userCharacters, users } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
+import { clearUserBillScopeCache } from '../lib/billing-scope-cache'
 import { getIpHashMatches, getUserIpHistory } from '../lib/ip-history'
 import { recordUserIpAddress } from '../lib/ip-tracking'
 import { validatePagination } from '../lib/validation'
@@ -938,6 +939,7 @@ app.delete('/users/:userId/characters/:characterId', requireAuth(), requireAdmin
 
 		// Delete character
 		await db.delete(userCharacters).where(eq(userCharacters.characterId, characterId))
+		await clearUserBillScopeCache(userId, c.env.BILLING_SCOPE_CACHE)
 
 		return c.json({ success: true })
 	} catch (error) {

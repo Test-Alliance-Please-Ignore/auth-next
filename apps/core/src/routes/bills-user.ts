@@ -2,36 +2,56 @@
  * Bills routes - User-facing operations for viewing bills
  *
  * All endpoints require authentication (no admin required).
- * Users can view bills where they are the payer (via their characters or managed corporations).
+ * Users can view bills where they are the issuer, payer, payee, or an authorized leader of the
+ * payee corporation.
  */
 
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, ilike, inArray, or } from 'drizzle-orm'
 import { Hono } from 'hono'
 
-import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
+import { parseDateOrNull } from '@repo/worker-utils'
 
 import { createDb } from '../db'
-import { userCharacters, users } from '../db/schema'
+import { managedCorporations, userCharacters, users } from '../db/schema'
+import {
+	escapeLikePattern,
+	manualBillCreateSchema,
+	manualBillUpdateSchema,
+} from '../lib/bill-validation'
+import {
+	canAccessBills,
+	getBillingIssuerScope,
+	hasBaselineBillingIssuerPermission,
+	hasBillingIssuerPermission,
+	isManualBill,
+} from '../lib/billing-access'
+import { clearUserBillScopeCache, getCachedUserBillScope } from '../lib/billing-scope-cache'
 import { validatePagination } from '../lib/validation'
 import { requireAuth } from '../middleware/session'
 
 import type { MiddlewareHandler } from 'hono'
 import type {
 	BillFilters,
+	BillIntegrationView,
 	BillListScopeEntity,
 	BillListSortDirection,
 	BillListSortField,
 	BillPartyDirection,
 	Bills,
+	BillStatus,
+	CreateBillInput,
 	EntityType,
+	GroupBillAggregate,
+	UpdateBillInput,
 } from '@repo/bills'
 import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Groups } from '@repo/groups'
 import type { App } from '../context'
+import type { UserBillScope } from '../lib/billing-scope-cache'
 
 const app = new Hono<App>()
 const BILL_SORT_FIELDS = new Set<BillListSortField>([
@@ -43,6 +63,12 @@ const BILL_SORT_FIELDS = new Set<BillListSortField>([
 ])
 const ENTITY_TYPES = new Set<EntityType>(['character', 'corporation', 'group'])
 const PAYEE_ENTITY_TYPES = new Set<EntityType>(['character', 'corporation'])
+const BILL_STATUSES = new Set<BillStatus>(['draft', 'issued', 'paid', 'cancelled', 'overdue'])
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function isUuid(value: string | null | undefined): value is string {
+	return Boolean(value && UUID_REGEX.test(value))
+}
 
 const requireBillingViewer = (): MiddlewareHandler<App> => {
 	return async (c, next) => {
@@ -50,10 +76,34 @@ const requireBillingViewer = (): MiddlewareHandler<App> => {
 		if (!user) {
 			return c.json({ error: 'Unauthorized' }, 401)
 		}
-		if (!user.is_admin && !user.roles.includes(ROLE_CORE_ALLIANCE_MEMBER)) {
+		if (!(await canAccessBills(c.env, user))) {
 			return c.json({ error: 'Forbidden' }, 403)
 		}
 		return next()
+	}
+}
+
+const requireBillingIssuer = (): MiddlewareHandler<App> => {
+	return async (c, next) => {
+		const user = c.get('user')
+		if (!user) {
+			return c.json({ error: 'Unauthorized' }, 401)
+		}
+		if (user.is_admin || (await hasBillingIssuerPermission(c.env, user.id))) {
+			return next()
+		}
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+}
+
+const requireBaselineBillingIssuer = (): MiddlewareHandler<App> => {
+	return async (c, next) => {
+		const user = c.get('user')
+		if (!user) return c.json({ error: 'Unauthorized' }, 401)
+		if (user.is_admin || (await hasBaselineBillingIssuerPermission(c.env, user.id))) {
+			return next()
+		}
+		return c.json({ error: 'Forbidden' }, 403)
 	}
 }
 
@@ -76,12 +126,65 @@ async function resolveGroupNames(
 	return names
 }
 
-export interface UserBillScope {
-	characterIds: string[]
-	corporationIds: string[]
-	groupIds: string[]
+async function findBillPartyNameMatches(
+	env: App['Bindings'],
+	userId: string,
+	query: string,
+	entityType: EntityType | undefined,
 	partyEntities: BillListScopeEntity[]
+): Promise<string[]> {
+	const db = createDb(env.DATABASE_URL)
+	const ids: string[] = []
+	const characterPartyIds = partyEntities
+		.filter((party) => party.entityType === 'character')
+		.map((party) => party.entityId)
+	const corporationPartyIds = partyEntities
+		.filter((party) => party.entityType === 'corporation')
+		.map((party) => party.entityId)
+	const groupPartyIds = new Set(
+		partyEntities.filter((party) => party.entityType === 'group').map((party) => party.entityId)
+	)
+	if (!entityType || entityType === 'character') {
+		if (characterPartyIds.length > 0) {
+			const characters = await db.query.userCharacters.findMany({
+				where: and(
+					eq(userCharacters.isDeleted, false),
+					eq(userCharacters.status, 'active'),
+					inArray(userCharacters.characterId, characterPartyIds),
+					ilike(userCharacters.characterName, `${escapeLikePattern(query)}%`)
+				),
+				columns: { characterId: true },
+				limit: 100,
+			})
+			ids.push(...characters.map((character) => character.characterId))
+		}
+	}
+	if (!entityType || entityType === 'corporation') {
+		if (corporationPartyIds.length > 0) {
+			const corporations = await db.query.managedCorporations.findMany({
+				where: and(
+					eq(managedCorporations.isActive, true),
+					inArray(managedCorporations.corporationId, corporationPartyIds),
+					ilike(managedCorporations.name, `${escapeLikePattern(query)}%`)
+				),
+				columns: { corporationId: true },
+				limit: 100,
+			})
+			ids.push(...corporations.map((corporation) => corporation.corporationId))
+		}
+	}
+	if (!entityType || entityType === 'group') {
+		if (groupPartyIds.size > 0) {
+			const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+			const groups = await groupsStub.listGroups({ search: query, limit: 100, offset: 0 }, userId)
+			ids.push(...groups.filter((group) => groupPartyIds.has(group.id)).map((group) => group.id))
+		}
+	}
+	return [...new Set(ids)]
 }
+
+export { clearUserBillScopeCache }
+export type { UserBillScope } from '../lib/billing-scope-cache'
 
 export function buildMyBillListScope(
 	userId: string,
@@ -98,10 +201,531 @@ export function buildMyBillListScope(
 	}
 }
 
+function canViewMyBill(
+	userId: string,
+	bill: Pick<BillIntegrationView, 'issuerId' | 'payerId' | 'payerType' | 'payeeId' | 'payeeType'>,
+	scope: UserBillScope
+): boolean {
+	return bill.issuerId === userId || isRelatedToBill(bill, scope)
+}
+
+function isRelatedToBill(
+	bill: Pick<BillIntegrationView, 'payerId' | 'payerType' | 'payeeId' | 'payeeType'>,
+	scope: UserBillScope
+): boolean {
+	return scope.partyEntities.some((party) => {
+		const isPayer = bill.payerId === party.entityId && bill.payerType === party.entityType
+		const isPayee =
+			party.entityType !== 'group' &&
+			bill.payeeId === party.entityId &&
+			bill.payeeType === party.entityType
+		return isPayer || isPayee
+	})
+}
+
+function isMarkPaidStatus(status: BillStatus): boolean {
+	return status !== 'draft' && status !== 'paid' && status !== 'cancelled'
+}
+
+async function getOwnedManualBill(
+	env: App['Bindings'],
+	userId: string,
+	billId: string
+): Promise<{ stub: Bills; bill: Awaited<ReturnType<Bills['getBillIntegrationView']>> } | null> {
+	const stub = getStub<Bills>(env.BILLS, 'default')
+	const bill = await stub.getBillIntegrationView(billId)
+	if (!bill || bill.issuerId !== userId || !isManualBill(bill)) {
+		return null
+	}
+	return { stub, bill }
+}
+
+async function getOwnedIssuedBill(
+	env: App['Bindings'],
+	userId: string,
+	billId: string
+): Promise<{ stub: Bills; bill: Awaited<ReturnType<Bills['getBillIntegrationView']>> } | null> {
+	const stub = getStub<Bills>(env.BILLS, 'default')
+	const bill = await stub.getBillIntegrationView(billId)
+	if (!bill || bill.issuerId !== userId) return null
+	return { stub, bill }
+}
+
+async function getOwnedGroupBill(
+	env: App['Bindings'],
+	userId: string,
+	groupBillId: string
+): Promise<{ stub: Bills; aggregate: GroupBillAggregate } | null> {
+	const stub = getStub<Bills>(env.BILLS, 'default')
+	const aggregate = await stub.getGroupBillAggregate(groupBillId)
+	if (!aggregate || aggregate.issuerId !== userId) return null
+	return { stub, aggregate }
+}
+
+async function enrichGroupBillAggregate(
+	c: App['Bindings'],
+	aggregate: GroupBillAggregate
+): Promise<GroupBillAggregate> {
+	const resolver = getStub<EsiTypeResolver>(c.ESI_TYPE_RESOLVER, 'global')
+	const payerIds = [...new Set(aggregate.bills.map((bill) => bill.payerId).filter(Boolean))]
+	const nameMap = payerIds.length > 0 ? await resolver.resolveIds(payerIds) : {}
+	const groupNames = aggregate.groupId
+		? await resolveGroupNames(c, [aggregate.groupId])
+		: new Map<string, string>()
+	const db = createDb(c.DATABASE_URL)
+	const issuerUser = await db.query.users.findFirst({
+		where: eq(users.id, aggregate.issuerId),
+		columns: { mainCharacterId: true },
+	})
+	const issuerNames = issuerUser?.mainCharacterId
+		? await resolver.resolveIds([issuerUser.mainCharacterId])
+		: {}
+	return {
+		...aggregate,
+		groupName: aggregate.groupId ? groupNames.get(aggregate.groupId) : undefined,
+		issuerName: issuerUser?.mainCharacterId
+			? (issuerNames[issuerUser.mainCharacterId] ?? undefined)
+			: undefined,
+		bills: aggregate.bills.map((bill) => ({
+			...bill,
+			payerName: nameMap[bill.payerId] ?? undefined,
+		})),
+	}
+}
+
+app.post('/issued', requireAuth(), requireBillingIssuer(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+
+	try {
+		let body: unknown
+		try {
+			body = await c.req.json()
+		} catch {
+			return c.json({ error: 'Invalid JSON request body' }, 400)
+		}
+		const parsed = manualBillCreateSchema.safeParse(body)
+		if (!parsed.success) {
+			return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid bill data' }, 400)
+		}
+		const dueDate = parseDateOrNull(parsed.data.dueDate)
+		if (!dueDate) return c.json({ error: 'Invalid due date' }, 400)
+		const issuerScope = user.is_admin
+			? { unrestricted: true, corporationIds: [] }
+			: await getBillingIssuerScope(c.env, user.id)
+		const { groupBillOptions, ...billData } = parsed.data
+		if (!issuerScope.unrestricted) {
+			if (billData.payerType !== 'character') {
+				return c.json({ error: 'Scoped issuer permissions require a character payer' }, 400)
+			}
+			if (issuerScope.corporationIds.length === 0) {
+				return c.json({ error: 'Issuer permission has no corporation scope' }, 403)
+			}
+			const db = createDb(c.env.DATABASE_URL)
+			const scopedCorporationIds = issuerScope.corporationIds
+			const payerRows = await db.query.userCharacters.findMany({
+				where: and(
+					eq(userCharacters.characterId, billData.payerId),
+					eq(userCharacters.isDeleted, false),
+					eq(userCharacters.status, 'active'),
+					inArray(userCharacters.corporationId, scopedCorporationIds)
+				),
+				columns: { characterId: true },
+				limit: 1,
+			})
+			if (payerRows.length === 0) {
+				return c.json({ error: 'Payer character is outside the issuer corporation scope' }, 400)
+			}
+			if (billData.payeeType === 'corporation') {
+				const payeeRows = await db.query.managedCorporations.findMany({
+					where: and(
+						eq(managedCorporations.isActive, true),
+						inArray(managedCorporations.corporationId, scopedCorporationIds),
+						eq(managedCorporations.corporationId, billData.payeeId)
+					),
+					columns: { corporationId: true },
+					limit: 1,
+				})
+				if (payeeRows.length === 0) {
+					return c.json({ error: 'Payee corporation is outside the issuer corporation scope' }, 400)
+				}
+			} else {
+				const payeeRows = await db.query.userCharacters.findMany({
+					where: and(
+						eq(userCharacters.characterId, billData.payeeId),
+						eq(userCharacters.isDeleted, false),
+						eq(userCharacters.status, 'active'),
+						inArray(userCharacters.corporationId, scopedCorporationIds)
+					),
+					columns: { characterId: true },
+					limit: 1,
+				})
+				if (payeeRows.length === 0) {
+					return c.json({ error: 'Payee character is outside the issuer corporation scope' }, 400)
+				}
+			}
+		}
+
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		if (billData.payerType === 'group') {
+			const options = groupBillOptions ?? {
+				includeOwner: true,
+				includeAdmins: true,
+				includeMembers: true,
+			}
+			if (!options.includeOwner && !options.includeAdmins && !options.includeMembers) {
+				return c.json({ error: 'At least one member role must be selected for group bills' }, 400)
+			}
+			const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
+			const [group, members] = await Promise.all([
+				groupsStub.getGroup(billData.payerId, user.id),
+				groupsStub.getGroupMembers(billData.payerId, user.id),
+			])
+			if (!group) return c.json({ error: 'Group not found' }, 404)
+			const adminUserIds = new Set(group.adminUserIds ?? [])
+			const groupBillId = crypto.randomUUID()
+			const bulkData: CreateBillInput[] = []
+			for (const member of members) {
+				if (!member.mainCharacterId) continue
+				const isOwner = member.userId === group.ownerId
+				const isAdmin = adminUserIds.has(member.userId)
+				if (isOwner && !options.includeOwner) continue
+				if (isAdmin && !options.includeAdmins) continue
+				if (!isOwner && !isAdmin && !options.includeMembers) continue
+				bulkData.push({
+					...billData,
+					dueDate,
+					payerType: 'character',
+					payerId: member.mainCharacterId,
+					groupBillId,
+					externalMetadata: { groupId: billData.payerId },
+				})
+			}
+			if (bulkData.length === 0) {
+				return c.json({ error: 'No qualifying group members with a main character found' }, 400)
+			}
+			const createdBills = await stub.createBillsBulk(user.id, bulkData)
+			return c.json({ groupBillId, bills: createdBills, billCount: createdBills.length }, 201)
+		}
+		const bill = await stub.createBill(user.id, { ...billData, dueDate })
+		return c.json(bill, 201)
+	} catch (error) {
+		logger.error('[bills-user] Error creating issuer bill:', error)
+		return c.json({ error: 'Failed to create bill' }, 500)
+	}
+})
+
+app.get('/issued/scope', requireAuth(), requireBillingIssuer(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const scope = user.is_admin
+		? { unrestricted: true, corporationIds: [] }
+		: await getBillingIssuerScope(c.env, user.id)
+	if (scope.unrestricted || scope.corporationIds.length === 0) {
+		return c.json({ ...scope, corporations: [] })
+	}
+	const db = createDb(c.env.DATABASE_URL)
+	const corporations = await db.query.managedCorporations.findMany({
+		where: and(
+			eq(managedCorporations.isActive, true),
+			inArray(managedCorporations.corporationId, scope.corporationIds)
+		),
+		columns: { corporationId: true, name: true },
+		orderBy: (table, { asc }) => [asc(table.name)],
+	})
+	return c.json({ ...scope, corporations })
+})
+
+app.get('/my-bills/group/:groupBillId', requireAuth(), requireBillingViewer(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	try {
+		const owned = await getOwnedGroupBill(c.env, user.id, c.req.param('groupBillId'))
+		if (!owned) return c.json({ error: 'Group bill not found' }, 404)
+		return c.json(await enrichGroupBillAggregate(c.env, owned.aggregate))
+	} catch (error) {
+		logger.error('[bills-user] Error getting owned group bill:', error)
+		return c.json({ error: 'Failed to get group bill' }, 500)
+	}
+})
+
+app.get('/issued/group/:groupBillId', requireAuth(), requireBaselineBillingIssuer(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	try {
+		const owned = await getOwnedGroupBill(c.env, user.id, c.req.param('groupBillId'))
+		if (!owned) return c.json({ error: 'Group bill not found' }, 404)
+		return c.json(await enrichGroupBillAggregate(c.env, owned.aggregate))
+	} catch (error) {
+		logger.error('[bills-user] Error getting issuer group bill:', error)
+		return c.json({ error: 'Failed to get group bill' }, 500)
+	}
+})
+
+for (const action of ['issue', 'cancel', 'revert-to-draft'] as const) {
+	app.post(
+		`/issued/group/:groupBillId/${action}`,
+		requireAuth(),
+		requireBaselineBillingIssuer(),
+		async (c) => {
+			const user = c.get('user')
+			if (!user) return c.json({ error: 'Unauthorized' }, 401)
+			try {
+				const owned = await getOwnedGroupBill(c.env, user.id, c.req.param('groupBillId'))
+				if (!owned) return c.json({ error: 'Group bill not found' }, 404)
+				if (action === 'issue') {
+					return c.json(await owned.stub.issueGroupBill(user.id, c.req.param('groupBillId')))
+				}
+				if (action === 'cancel') {
+					return c.json(await owned.stub.cancelGroupBill(user.id, c.req.param('groupBillId')))
+				}
+				return c.json(await owned.stub.revertGroupBillToDraft(user.id, c.req.param('groupBillId')))
+			} catch (error) {
+				logger.error(`[bills-user] Error applying group bill action: ${action}`, error)
+				return c.json({ error: `Failed to ${action} group bill` }, 500)
+			}
+		}
+	)
+}
+
+app.delete(
+	'/issued/group/:groupBillId',
+	requireAuth(),
+	requireBaselineBillingIssuer(),
+	async (c) => {
+		const user = c.get('user')
+		if (!user) return c.json({ error: 'Unauthorized' }, 401)
+		try {
+			const owned = await getOwnedGroupBill(c.env, user.id, c.req.param('groupBillId'))
+			if (!owned) return c.json({ error: 'Group bill not found' }, 404)
+			return c.json(await owned.stub.deleteGroupBill(user.id, c.req.param('groupBillId')))
+		} catch (error) {
+			logger.error('[bills-user] Error deleting issuer group bill:', error)
+			return c.json({ error: 'Failed to delete group bill' }, 500)
+		}
+	}
+)
+
+app.put('/issued/group/:groupBillId', requireAuth(), requireBaselineBillingIssuer(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	try {
+		const owned = await getOwnedGroupBill(c.env, user.id, c.req.param('groupBillId'))
+		if (!owned) return c.json({ error: 'Group bill not found' }, 404)
+		let body: unknown
+		try {
+			body = await c.req.json()
+		} catch {
+			return c.json({ error: 'Invalid JSON request body' }, 400)
+		}
+		const parsed = manualBillUpdateSchema.safeParse(body)
+		if (!parsed.success) {
+			return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid bill data' }, 400)
+		}
+		const { dueDate: dueDateValue, ...updateValues } = parsed.data
+		const data: UpdateBillInput = { ...updateValues }
+		if (dueDateValue) {
+			const dueDate = parseDateOrNull(dueDateValue)
+			if (!dueDate) return c.json({ error: 'Invalid due date' }, 400)
+			data.dueDate = dueDate
+		}
+		return c.json(await owned.stub.updateGroupBill(user.id, c.req.param('groupBillId'), data))
+	} catch (error) {
+		logger.error('[bills-user] Error updating issuer group bill:', error)
+		return c.json({ error: 'Failed to update group bill' }, 500)
+	}
+})
+
+app.get('/issued', requireAuth(), requireBillingIssuer(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+
+	try {
+		const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
+		if (!pagination.success) return c.json({ error: pagination.error }, pagination.status)
+		const sortByQuery = c.req.query('sortBy')?.trim() as BillListSortField | undefined
+		const sortDirQuery = c.req.query('sortDir')?.trim() as BillListSortDirection | undefined
+		const sortBy = sortByQuery && BILL_SORT_FIELDS.has(sortByQuery) ? sortByQuery : 'createdAt'
+		const sortDir: BillListSortDirection = sortDirQuery === 'asc' ? 'asc' : 'desc'
+		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const parsedFilters = parseBillFilters(c)
+		if (!parsedFilters.success) return c.json({ error: parsedFilters.error }, 400)
+		const page = await stub.listBillsPage({
+			scope: { mode: 'my', issuerIds: [user.id], partyEntities: [] },
+			filters: parsedFilters.filters,
+			limit: pagination.data.limit,
+			offset: pagination.data.offset,
+			sortBy,
+			sortDir,
+			coalesced: false,
+		})
+		return c.json(page)
+	} catch (error) {
+		logger.error('[bills-user] Error listing issuer bills:', error)
+		return c.json({ error: 'Failed to list issuer bills' }, 500)
+	}
+})
+
+app.get('/issued/entities/search', requireAuth(), requireBillingIssuer(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const q = c.req.query('q')?.trim() ?? ''
+	if (q.length < 2) return c.json([])
+	const entityType = c.req.query('entityType')?.trim()
+	if (entityType !== 'character' && entityType !== 'corporation') {
+		return c.json({ error: 'Issuer search supports character or corporation entities only' }, 400)
+	}
+
+	try {
+		const limit = Math.max(1, Math.min(100, Number(c.req.query('limit') ?? 25)))
+		const db = createDb(c.env.DATABASE_URL)
+		const issuerScope = user.is_admin
+			? { unrestricted: true, corporationIds: [] }
+			: await getBillingIssuerScope(c.env, user.id)
+		if (!issuerScope.unrestricted && issuerScope.corporationIds.length === 0) {
+			return c.json([])
+		}
+		const numericQuery = /^\d+$/.test(q)
+		if (entityType === 'corporation') {
+			const rows = await db.query.managedCorporations.findMany({
+				where: and(
+					eq(managedCorporations.isActive, true),
+					!issuerScope.unrestricted
+						? inArray(managedCorporations.corporationId, issuerScope.corporationIds)
+						: undefined,
+					or(
+						ilike(managedCorporations.name, `${q}%`),
+						numericQuery ? eq(managedCorporations.corporationId, q) : undefined
+					)
+				),
+				orderBy: (table, { asc }) => [asc(table.name)],
+				limit,
+			})
+			return c.json(
+				rows.map((row) => ({
+					entityId: row.corporationId,
+					entityType: 'corporation' as const,
+					name: row.name,
+				}))
+			)
+		}
+
+		const rows = await db.query.userCharacters.findMany({
+			where: and(
+				eq(userCharacters.isDeleted, false),
+				eq(userCharacters.status, 'active'),
+				!issuerScope.unrestricted
+					? inArray(userCharacters.corporationId, issuerScope.corporationIds)
+					: undefined,
+				or(
+					ilike(userCharacters.characterName, `${q}%`),
+					numericQuery ? eq(userCharacters.characterId, q) : undefined
+				)
+			),
+			orderBy: (table, { asc }) => [asc(table.characterName)],
+			limit,
+		})
+		return c.json(
+			rows.map((row) => ({
+				entityId: row.characterId,
+				entityType: 'character' as const,
+				name: row.characterName,
+			}))
+		)
+	} catch (error) {
+		logger.error('[bills-user] Error searching issuer bill entities:', error)
+		return c.json({ error: 'Failed to search bill entities' }, 500)
+	}
+})
+
+app.get('/issued/:billId', requireAuth(), requireBillingIssuer(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	const owned = await getOwnedManualBill(c.env, user.id, c.req.param('billId'))
+	return owned ? c.json(owned.bill) : c.json({ error: 'Bill not found' }, 404)
+})
+
+app.put('/issued/:billId', requireAuth(), requireBillingIssuer(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	try {
+		const owned = await getOwnedManualBill(c.env, user.id, c.req.param('billId'))
+		if (!owned) return c.json({ error: 'Bill not found' }, 404)
+		let body: unknown
+		try {
+			body = await c.req.json()
+		} catch {
+			return c.json({ error: 'Invalid JSON request body' }, 400)
+		}
+		const parsed = manualBillUpdateSchema.safeParse(body)
+		if (!parsed.success) {
+			return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid bill data' }, 400)
+		}
+		const { dueDate: dueDateValue, ...updateValues } = parsed.data
+		const data: UpdateBillInput = { ...updateValues }
+		if (dueDateValue) {
+			const dueDate = parseDateOrNull(dueDateValue)
+			if (!dueDate) return c.json({ error: 'Invalid due date' }, 400)
+			data.dueDate = dueDate
+		}
+		const bill = await owned.stub.updateBill(user.id, c.req.param('billId'), data)
+		return c.json(bill)
+	} catch (error) {
+		logger.error('[bills-user] Error updating issuer bill:', error)
+		return c.json({ error: 'Failed to update bill' }, 500)
+	}
+})
+
+app.delete('/issued/:billId', requireAuth(), requireBillingIssuer(), async (c) => {
+	const user = c.get('user')
+	if (!user) return c.json({ error: 'Unauthorized' }, 401)
+	try {
+		const owned = await getOwnedManualBill(c.env, user.id, c.req.param('billId'))
+		if (!owned) return c.json({ error: 'Bill not found' }, 404)
+		await owned.stub.deleteBill(user.id, c.req.param('billId'))
+		return c.json({ success: true })
+	} catch (error) {
+		logger.error('[bills-user] Error deleting issuer bill:', error)
+		return c.json({ error: 'Failed to delete bill' }, 500)
+	}
+})
+
+for (const action of [
+	'issue',
+	'cancel',
+	'mark-paid',
+	'revert-to-draft',
+	'regenerate-token',
+] as const) {
+	app.post(`/issued/:billId/${action}`, requireAuth(), requireBillingIssuer(), async (c) => {
+		const user = c.get('user')
+		if (!user) return c.json({ error: 'Unauthorized' }, 401)
+		try {
+			const billId = c.req.param('billId')
+			const owned =
+				action === 'mark-paid'
+					? await getOwnedIssuedBill(c.env, user.id, billId)
+					: await getOwnedManualBill(c.env, user.id, billId)
+			if (!owned) return c.json({ error: 'Bill not found' }, 404)
+			if (action === 'issue') return c.json(await owned.stub.issueBill(user.id, billId))
+			if (action === 'cancel') return c.json(await owned.stub.cancelBill(user.id, billId))
+			if (action === 'mark-paid') {
+				return c.json(await owned.stub.markBillPaid(user.id, billId, 'owner'))
+			}
+			if (action === 'revert-to-draft') {
+				return c.json(await owned.stub.revertBillToDraft(user.id, billId))
+			}
+			return c.json(await owned.stub.regeneratePaymentToken(user.id, billId))
+		} catch (error) {
+			logger.error(`[bills-user] Error applying issuer bill action: ${action}`, error)
+			return c.json({ error: `Failed to ${action} bill` }, 500)
+		}
+	})
+}
+
 /**
  * GET /bills/my-bills
- * List bills where the current user is the payer
- * (via their character IDs or corporations where they have CEO/Director roles)
+ * List bills related to the current user as issuer, payer, payee, or payee-corporation leader.
  */
 app.get('/my-bills', requireAuth(), requireBillingViewer(), async (c) => {
 	const user = c.get('user')
@@ -110,19 +734,22 @@ app.get('/my-bills', requireAuth(), requireBillingViewer(), async (c) => {
 	}
 
 	try {
+		const canIssueBills = user.is_admin || (await hasBillingIssuerPermission(c.env, user.id))
 		const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
 		if (!pagination.success) {
 			return c.json({ error: pagination.error }, pagination.status)
 		}
-		const filters = parseBillFilters(c)
+		const parsedFilters = parseBillFilters(c)
+		if (!parsedFilters.success) return c.json({ error: parsedFilters.error }, 400)
+		const filters = parsedFilters.filters
+		filters.includeOverdueBeyondDueAfter = true
 		const sortByQuery = c.req.query('sortBy')?.trim() as BillListSortField | undefined
 		const sortDirQuery = c.req.query('sortDir')?.trim() as BillListSortDirection | undefined
 		const sortBy = sortByQuery && BILL_SORT_FIELDS.has(sortByQuery) ? sortByQuery : 'dueDate'
 		const sortDir: BillListSortDirection = sortDirQuery === 'desc' ? 'desc' : 'asc'
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const scope = user.is_admin
-			? ({ mode: 'all' } as const)
-			: buildMyBillListScope(user.id, await getUserBillScope(c.env, user.id))
+		const userBillScope = await getUserBillScope(c.env, user.id)
+		const scope = buildMyBillListScope(user.id, userBillScope)
 		const page = await stub.listBillsPage({
 			scope,
 			filters,
@@ -130,6 +757,7 @@ app.get('/my-bills', requireAuth(), requireBillingViewer(), async (c) => {
 			offset: pagination.data.offset,
 			sortBy,
 			sortDir,
+			coalesced: true,
 		})
 		const db = createDb(c.env.DATABASE_URL)
 		const issuerIds = [...new Set(page.rows.map((row) => row.issuerId).filter(Boolean))]
@@ -175,6 +803,7 @@ app.get('/my-bills', requireAuth(), requireBillingViewer(), async (c) => {
 		const groupNames = await resolveGroupNames(c.env, groupIds)
 		const enrichedRows = page.rows.map((bill) => ({
 			...bill,
+			canMarkPaid: canIssueBills && isMarkPaidStatus(bill.status) && bill.issuerId === user.id,
 			payerName:
 				bill.payerType === 'group'
 					? (groupNames.get(bill.payerId) ?? undefined)
@@ -186,52 +815,10 @@ app.get('/my-bills', requireAuth(), requireBillingViewer(), async (c) => {
 			payeeName: bill.payeeId ? (names[bill.payeeId] ?? undefined) : undefined,
 		}))
 
-		// Coalesce group sub-bills on the server side to avoid pagination skew.
-		// If the current page contains >1 bill for the same groupBillId the user
-		// is the issuer/payee — coalesce with indicator counts.
-		// If exactly 1 appears the user is the pure payer — render as individual.
-		const groupBillMap = new Map<string, (typeof enrichedRows)[0]>()
-		const groupBillStatuses = new Map<string, Set<string>>()
-		const nonGroupRows: Array<(typeof enrichedRows)[0]> = []
-		for (const row of enrichedRows) {
-			if (row.groupBillId) {
-				if (!groupBillMap.has(row.groupBillId)) {
-					const metaGroupId =
-						row.externalMetadata &&
-						typeof (row.externalMetadata as Record<string, unknown>).groupId === 'string'
-							? ((row.externalMetadata as Record<string, unknown>).groupId as string)
-							: null
-					groupBillMap.set(row.groupBillId, {
-						...row,
-						...(metaGroupId && {
-							payerId: metaGroupId,
-							payerType: 'group' as const,
-							payerName: groupNames.get(metaGroupId),
-						}),
-						groupBillTotalCount: 0,
-						groupBillPaidCount: 0,
-					})
-					groupBillStatuses.set(row.groupBillId, new Set())
-				}
-				const rep = groupBillMap.get(row.groupBillId)!
-				rep.groupBillTotalCount = (rep.groupBillTotalCount ?? 0) + 1
-				if (row.status === 'paid') rep.groupBillPaidCount = (rep.groupBillPaidCount ?? 0) + 1
-				groupBillStatuses.get(row.groupBillId)!.add(row.status)
-			} else {
-				nonGroupRows.push(row)
-			}
-		}
-		for (const [groupBillId, rep] of groupBillMap) {
-			const statuses = groupBillStatuses.get(groupBillId)!
-			if (statuses.size > 1) rep.groupBillMixed = true
-		}
-		const rows = [
-			...nonGroupRows,
-			...Array.from(groupBillMap.values()).map((rep) =>
-				// Pure payer (only 1 sub-bill visible) — strip group context
-				rep.groupBillTotalCount === 1 ? { ...rep, groupBillId: null } : rep
-			),
-		]
+		const rows = enrichedRows.map((row) =>
+			// A single visible child is a payer-only view, not a group aggregate.
+			row.groupBillTotalCount === 1 ? { ...row, groupBillId: null } : row
+		)
 
 		logger.info('[bills-user] Bills fetched successfully', {
 			userId: user.id,
@@ -268,15 +855,18 @@ app.get('/my-bills/parties/search', requireAuth(), requireBillingViewer(), async
 				? (entityTypeQuery as EntityType)
 				: undefined
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const scope = user.is_admin
-			? ({ mode: 'all' } as const)
-			: buildMyBillListScope(user.id, await getUserBillScope(c.env, user.id))
+		const scope = buildMyBillListScope(user.id, await getUserBillScope(c.env, user.id))
+		const nameMatches =
+			q && !/^\d+$/.test(q)
+				? await findBillPartyNameMatches(c.env, user.id, q, entityType, scope.partyEntities)
+				: undefined
 		const rows = await stub.searchBillParties({
 			scope,
 			direction,
 			entityType,
 			q: /^\d+$/.test(q) ? q : undefined,
-			limit: Math.max(limit, 200),
+			entityIds: nameMatches,
+			limit,
 		})
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const esiIds = [
@@ -287,15 +877,7 @@ app.get('/my-bills/parties/search', requireAuth(), requireBillingViewer(), async
 		]
 		const names = esiIds.length > 0 ? await resolver.resolveIds(esiIds) : {}
 		const groupNames = await resolveGroupNames(c.env, groupIds)
-		const normalizedQ = q.toLowerCase()
-		const filteredRows = q
-			? rows.filter((row) => {
-					const resolvedName =
-						row.entityType === 'group' ? groupNames.get(row.entityId) : names[row.entityId]
-					const name = (resolvedName || '').toLowerCase()
-					return row.entityId === q || name.includes(normalizedQ)
-				})
-			: rows
+		const filteredRows = rows
 		const deduped = new Map<
 			string,
 			{ entityId: string; entityType: EntityType; usageCount: number; name: string | null }
@@ -320,7 +902,7 @@ app.get('/my-bills/parties/search', requireAuth(), requireBillingViewer(), async
 
 /**
  * GET /bills/my-bills/:billId
- * Get a single bill if the current user is the payer
+ * Get a single bill if it is related to the current user.
  */
 app.get('/my-bills/:billId', requireAuth(), requireBillingViewer(), async (c) => {
 	const user = c.get('user')
@@ -340,16 +922,7 @@ app.get('/my-bills/:billId', requireAuth(), requireBillingViewer(), async (c) =>
 		}
 
 		const scope = await getUserBillScope(c.env, user.id)
-		const allowedPartyKeys = new Set(
-			scope.partyEntities.map((party) => `${party.entityType}:${party.entityId}`)
-		)
-		const hasIssuerAccess = bill.issuerId === user.id
-		const payerKey = `${bill.payerType}:${bill.payerId}`
-		const payeeKey = bill.payeeId && bill.payeeType ? `${bill.payeeType}:${bill.payeeId}` : null
-		const hasPayerAccess = allowedPartyKeys.has(payerKey)
-		const hasPayeeAccess = payeeKey ? allowedPartyKeys.has(payeeKey) : false
-		const hasPartyAccess = hasPayerAccess || hasPayeeAccess
-		if (!hasIssuerAccess && !hasPartyAccess) {
+		if (!canViewMyBill(user.id, bill, scope)) {
 			logger.warn('[bills-user] User not authorized to view bill', {
 				userId: user.id,
 				billId,
@@ -359,9 +932,11 @@ app.get('/my-bills/:billId', requireAuth(), requireBillingViewer(), async (c) =>
 		}
 
 		// Keep draft visibility limited to issuer.
-		if (!user.is_admin && bill.status === 'draft' && bill.issuerId !== user.id) {
+		if (bill.status === 'draft' && bill.issuerId !== user.id) {
 			return c.json({ error: 'Bill not found' }, 404)
 		}
+		const canIssueBills = user.is_admin || (await hasBillingIssuerPermission(c.env, user.id))
+		bill.canMarkPaid = canIssueBills && isMarkPaidStatus(bill.status) && bill.issuerId === user.id
 
 		// Resolve entity names.
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
@@ -375,15 +950,36 @@ app.get('/my-bills/:billId', requireAuth(), requireBillingViewer(), async (c) =>
 			where: eq(users.id, bill.issuerId),
 			columns: { mainCharacterId: true },
 		})
+		const paymentPaidByIds = bill.payments?.map((payment) => payment.paidById) ?? []
+		const paymentUserIds = [...new Set(paymentPaidByIds.filter(isUuid))]
+		const paymentUsers =
+			paymentUserIds.length > 0
+				? await db.query.users.findMany({
+						where: inArray(users.id, paymentUserIds),
+						columns: { id: true, mainCharacterId: true },
+					})
+				: []
+		const userMainCharacterByUserId = new Map(
+			paymentUsers
+				.map((entry) => [entry.id, entry.mainCharacterId] as const)
+				.filter((entry): entry is readonly [string, string] => Boolean(entry[1]))
+		)
 		if (issuerUser?.mainCharacterId) {
 			esiIdsToResolve.push(issuerUser.mainCharacterId)
 		}
 		if (bill.payments) {
 			for (const payment of bill.payments) {
-				if (payment.paidByType !== 'group') {
+				if (
+					payment.paidByType !== 'group' &&
+					payment.paidById !== 'system' &&
+					!isUuid(payment.paidById)
+				) {
 					esiIdsToResolve.push(payment.paidById)
 				}
 			}
+		}
+		for (const mainCharacterId of userMainCharacterByUserId.values()) {
+			esiIdsToResolve.push(mainCharacterId)
 		}
 		const groupIdsToResolve = [
 			bill.payerType === 'group' ? bill.payerId : null,
@@ -410,9 +1006,15 @@ app.get('/my-bills/:billId', requireAuth(), requireBillingViewer(), async (c) =>
 		if (bill.payments) {
 			for (const payment of bill.payments) {
 				payment.paidByName =
-					payment.paidByType === 'group'
-						? (groupNames.get(payment.paidById) ?? undefined)
-						: nameMap[payment.paidById] || undefined
+					payment.paidById === 'system'
+						? 'System'
+						: payment.paidByType === 'group'
+							? (groupNames.get(payment.paidById) ?? undefined)
+							: (nameMap[payment.paidById] ??
+								(userMainCharacterByUserId.get(payment.paidById)
+									? nameMap[userMainCharacterByUserId.get(payment.paidById)!]
+									: undefined) ??
+								undefined)
 			}
 		}
 
@@ -493,7 +1095,7 @@ async function getCorporationIdsWithRoles(
 	)
 
 	// Step 3: Determine which corporations the user has roles in
-	const corporationIds: string[] = []
+	const roleCorporationIds: string[] = []
 	for (const result of corpResults) {
 		if (!result) continue
 
@@ -508,16 +1110,30 @@ async function getCorporationIdsWithRoles(
 			const isDirector = directorIds.has(charId)
 
 			if (isCeo || isDirector) {
-				corporationIds.push(corpId)
+				roleCorporationIds.push(corpId)
 				break // Found a role, no need to check more characters for this corp
 			}
 		}
 	}
 
-	return corporationIds
+	const db = createDb(env.DATABASE_URL)
+	const memberCorporations = await db.query.managedCorporations.findMany({
+		where: and(
+			eq(managedCorporations.isActive, true),
+			eq(managedCorporations.isMemberCorporation, true),
+			inArray(managedCorporations.corporationId, [...new Set(roleCorporationIds)])
+		),
+		columns: { corporationId: true },
+	})
+	const memberCorporationIds = new Set(
+		memberCorporations.map((corporation) => corporation.corporationId)
+	)
+	return roleCorporationIds.filter((corporationId) => memberCorporationIds.has(corporationId))
 }
 
-function parseBillFilters(c: { req: { query: (key: string) => string | undefined } }): BillFilters {
+function parseBillFilters(c: {
+	req: { query: (key: string) => string | undefined }
+}): { success: true; filters: BillFilters } | { success: false; error: string } {
 	const status = c.req.query('status')
 	const payerId = c.req.query('payerId')?.trim()
 	const payeeId = c.req.query('payeeId')?.trim()
@@ -529,21 +1145,39 @@ function parseBillFilters(c: { req: { query: (key: string) => string | undefined
 	const createdAfter = c.req.query('createdAfter')
 	const createdBefore = c.req.query('createdBefore')
 	const filters: BillFilters = {}
-	if (status) filters.status = status as BillFilters['status']
+	if (status) {
+		if (!BILL_STATUSES.has(status as BillStatus)) {
+			return { success: false, error: 'Invalid bill status' }
+		}
+		filters.status = status as BillFilters['status']
+	}
 	if (payerId) filters.payerId = payerId
 	if (payeeId) filters.payeeId = payeeId
 	if (issuerId) filters.issuerId = issuerId
-	if (payerType && ENTITY_TYPES.has(payerType as EntityType)) {
+	if (payerType) {
+		if (!ENTITY_TYPES.has(payerType as EntityType)) {
+			return { success: false, error: 'Invalid payer type' }
+		}
 		filters.payerType = payerType as EntityType
 	}
-	if (payeeType && PAYEE_ENTITY_TYPES.has(payeeType as EntityType)) {
+	if (payeeType) {
+		if (!PAYEE_ENTITY_TYPES.has(payeeType as EntityType)) {
+			return { success: false, error: 'Invalid payee type' }
+		}
 		filters.payeeType = payeeType as EntityType
 	}
-	if (dueAfter) filters.dueAfter = new Date(dueAfter)
-	if (dueBefore) filters.dueBefore = new Date(dueBefore)
-	if (createdAfter) filters.createdAfter = new Date(createdAfter)
-	if (createdBefore) filters.createdBefore = new Date(createdBefore)
-	return filters
+	for (const [rawValue, label, assign] of [
+		[dueAfter, 'dueAfter', (date: Date) => (filters.dueAfter = date)],
+		[dueBefore, 'dueBefore', (date: Date) => (filters.dueBefore = date)],
+		[createdAfter, 'createdAfter', (date: Date) => (filters.createdAfter = date)],
+		[createdBefore, 'createdBefore', (date: Date) => (filters.createdBefore = date)],
+	] as const) {
+		if (!rawValue) continue
+		const parsed = parseDateOrNull(rawValue)
+		if (!parsed) return { success: false, error: `Invalid ${label} date` }
+		assign(parsed)
+	}
+	return { success: true, filters }
 }
 
 async function getGroupIdsWithOwnerAdminAccess(
@@ -557,13 +1191,14 @@ async function getGroupIdsWithOwnerAdminAccess(
 		.map((membership) => membership.groupId)
 }
 
-export async function getUserBillScope(
-	env: App['Bindings'],
-	userId: string
-): Promise<UserBillScope> {
+async function loadUserBillScope(env: App['Bindings'], userId: string): Promise<UserBillScope> {
 	const db = createDb(env.DATABASE_URL)
 	const characters = await db.query.userCharacters.findMany({
-		where: eq(userCharacters.userId, userId),
+		where: and(
+			eq(userCharacters.userId, userId),
+			eq(userCharacters.isDeleted, false),
+			eq(userCharacters.status, 'active')
+		),
 	})
 	const characterIds = characters.map((character) => character.characterId)
 	const [corporationIds, groupIds] = await Promise.all([
@@ -581,6 +1216,13 @@ export async function getUserBillScope(
 		groupIds,
 		partyEntities,
 	}
+}
+
+export async function getUserBillScope(
+	env: App['Bindings'],
+	userId: string
+): Promise<UserBillScope> {
+	return getCachedUserBillScope(env, userId, () => loadUserBillScope(env, userId))
 }
 
 export default app

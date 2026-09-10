@@ -1,18 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
+import { ArrowLeft } from 'lucide-react'
 import { Link, Navigate, useParams, useSearchParams } from 'react-router'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
 import { LoadingPage } from '@/components/ui/loading'
-import { useHrAccessibleCorporations } from '@/features/hr'
+import { PageHeader } from '@/components/ui/page-header'
+import { hasExplicitMemberCorporationHrRole, useHrAccessibleCorporations } from '@/features/hr'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { api } from '@/lib/api'
 import { corporationLogoUrl } from '@/lib/eve-images'
-import { ArrowLeft } from 'lucide-react'
 
 function formatLegacyEventType(eventType: string): string {
 	return eventType
@@ -27,19 +29,17 @@ export default function HrLegacyHistoryDetailPage() {
 	const { hasAnyPermission } = useUserPermissions()
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
 	const canCheckAccessibleCorporations = isAuthenticated && !user?.is_admin && !isAuditor
-	const {
-		data: accessibleCorporations,
-		isLoading: accessibleCorporationsLoading,
-	} = useHrAccessibleCorporations({
-		enabled: canCheckAccessibleCorporations,
-	})
+	const { data: accessibleCorporations, isLoading: accessibleCorporationsLoading } =
+		useHrAccessibleCorporations({
+			enabled: canCheckAccessibleCorporations,
+		})
 	const { legacyApplicationId } = useParams<{ legacyApplicationId: string }>()
 	const [searchParams] = useSearchParams()
 	const returnTo = searchParams.get('returnTo') || '/hr/legacy-history'
 	const canAccessLegacyHistory =
 		user?.is_admin === true ||
 		isAuditor ||
-		(accessibleCorporations?.some((corp) => corp.isMemberCorporation) ?? false)
+		hasExplicitMemberCorporationHrRole(accessibleCorporations)
 
 	const detailQuery = useQuery({
 		queryKey: ['hr', 'legacy-history-detail', legacyApplicationId],
@@ -66,24 +66,26 @@ export default function HrLegacyHistoryDetailPage() {
 	const actorLegacyCharacterNames = detailQuery.data?.actorLegacyCharacterNames ?? {}
 
 	return (
-		<div className="space-y-6">
-			<div className="flex items-center justify-between gap-3">
-				<div>
-					<h2 className="text-2xl font-semibold">Legacy Application Detail</h2>
-					<p className="text-sm text-muted-foreground mt-1">Read-only legacy history and timeline.</p>
-				</div>
-				<Button asChild variant="ghost">
-					<Link to={returnTo}>
-						<ArrowLeft className="h-4 w-4" />
-						Back to Search
-					</Link>
-				</Button>
-			</div>
+		<Container className="space-y-6">
+			<PageHeader
+				title="Legacy Application Detail"
+				description="Read-only legacy history and timeline."
+				action={
+					<Button asChild variant="ghost">
+						<Link to={returnTo}>
+							<ArrowLeft className="h-4 w-4" />
+							Back to Search
+						</Link>
+					</Button>
+				}
+			/>
 
 			<Card>
 				<CardHeader>
 					<CardTitle>Application</CardTitle>
-					<CardDescription>{selected?.legacyApplicationId ?? legacyApplicationId ?? 'Unknown'}</CardDescription>
+					<CardDescription>
+						{selected?.legacyApplicationId ?? legacyApplicationId ?? 'Unknown'}
+					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
 					{selected ? (
@@ -132,7 +134,8 @@ export default function HrLegacyHistoryDetailPage() {
 										</div>
 										{!modernUserMatch ? (
 											<div className="text-xs text-muted-foreground">
-												Legacy User ID: <span className="font-mono">{selected.legacyAuthUserId ?? 'N/A'}</span>
+												Legacy User ID:{' '}
+												<span className="font-mono">{selected.legacyAuthUserId ?? 'N/A'}</span>
 											</div>
 										) : null}
 									</div>
@@ -147,11 +150,15 @@ export default function HrLegacyHistoryDetailPage() {
 											<div className="flex items-center justify-between gap-2">
 												<Badge variant="secondary">{formatLegacyEventType(event.eventType)}</Badge>
 												<span className="text-xs text-muted-foreground">
-													{event.eventAt ? new Date(event.eventAt).toLocaleString() : 'Unknown time'}
+													{event.eventAt
+														? new Date(event.eventAt).toLocaleString()
+														: 'Unknown time'}
 												</span>
 											</div>
 											{event.message ? (
-												<p className="text-sm mt-1 whitespace-pre-wrap break-words">{event.message}</p>
+												<p className="text-sm mt-1 whitespace-pre-wrap break-words">
+													{event.message}
+												</p>
 											) : null}
 											<div className="mt-1 text-xs text-muted-foreground">
 												<span className="mr-2">Actor:</span>
@@ -204,6 +211,6 @@ export default function HrLegacyHistoryDetailPage() {
 					)}
 				</CardContent>
 			</Card>
-		</div>
+		</Container>
 	)
 }

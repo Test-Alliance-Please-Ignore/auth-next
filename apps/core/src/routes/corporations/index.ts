@@ -6,6 +6,7 @@ import { logger } from '@repo/hono-helpers'
 import { buildCsvLine } from '@repo/worker-utils'
 
 import { managedCorporations, userCharacters, users } from '../../db/schema'
+import { clearUserBillScopeCache } from '../../lib/billing-scope-cache'
 import { isNpcCorporationId } from '../../lib/corporation-id'
 import {
 	clearCorporationListCache,
@@ -2070,6 +2071,9 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 					.from(userCharacters)
 					.where(eq(userCharacters.corporationId, corporationId))
 				const uniqueUserIds = [...new Set(linkedUsers.map((row) => row.userId))]
+				for (const linkedUserId of uniqueUserIds) {
+					await clearUserBillScopeCache(linkedUserId, c.env.BILLING_SCOPE_CACHE)
+				}
 				if (uniqueUserIds.length > 0) {
 					const coreStub = getStub<Core>(c.env.CORE, 'default')
 					const queueResult = await coreStub.addPendingDiscordRefreshes(uniqueUserIds, {
@@ -3330,6 +3334,7 @@ app.patch('/:corporationId/members/:characterId/status', requireAuth(), async (c
 				updatedAt: new Date(),
 			})
 			.where(eq(userCharacters.characterId, characterId))
+		await clearUserBillScopeCache(character.userId, c.env.BILLING_SCOPE_CACHE)
 
 		logger.info('[Corporations] Member status updated', {
 			corporationId,

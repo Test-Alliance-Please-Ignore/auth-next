@@ -1,6 +1,15 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { getBill, getMyBills, searchMyBillParties } from './api'
+import {
+	cancelIssuedBill,
+	deleteIssuedBill,
+	getBill,
+	getMyBills,
+	issueIssuedBill,
+	markIssuedBillPaid,
+	revertIssuedBillToDraft,
+	searchMyBillParties,
+} from './api'
 import { userBillsKeys } from './query-keys'
 
 import type {
@@ -38,7 +47,7 @@ export function useMyBills(params?: {
 }
 
 /**
- * Get a single bill by ID (only if user is the payer)
+ * Get a single bill by ID from the user's authorized bill scope.
  */
 export function useBill(billId: string) {
 	return useQuery({
@@ -47,6 +56,37 @@ export function useBill(billId: string) {
 		enabled: !!billId,
 		staleTime: 1000 * 60 * 2, // 2 minutes
 	})
+}
+
+function useIssuedBillMutation<T>(mutationFn: (billId: string) => Promise<T>) {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn,
+		onSuccess: (_result, billId) => {
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.all })
+			void queryClient.invalidateQueries({ queryKey: userBillsKeys.detail(billId) })
+		},
+	})
+}
+
+export function useIssueIssuedBill() {
+	return useIssuedBillMutation(issueIssuedBill)
+}
+
+export function useCancelIssuedBill() {
+	return useIssuedBillMutation(cancelIssuedBill)
+}
+
+export function useMarkIssuedBillPaid() {
+	return useIssuedBillMutation(markIssuedBillPaid)
+}
+
+export function useRevertIssuedBillToDraft() {
+	return useIssuedBillMutation(revertIssuedBillToDraft)
+}
+
+export function useDeleteIssuedBill() {
+	return useIssuedBillMutation(deleteIssuedBill)
 }
 
 export function useMyBillPartySearch(params: {

@@ -1,4 +1,4 @@
-import { Calendar, Clock } from 'lucide-react'
+import { ArrowLeft, Clock } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
@@ -14,6 +14,7 @@ import { useBillEntitySearch, useCreateSchedule, useTemplates } from '@/hooks/us
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { formatScheduleFrequency } from '@/lib/bills-utils'
+import toast from '@/lib/toast'
 
 import type { CreateScheduleInput, EntityType, PayeeType, ScheduleFrequency } from '@repo/bills'
 
@@ -221,7 +222,7 @@ export default function AdminBillsSchedulesNewPage() {
 				void navigate('/admin/bills/schedules')
 			}, 1500)
 		} catch (error) {
-			console.error('Failed to create schedule:', error)
+			toast.error(error instanceof Error ? error.message : 'Failed to create schedule')
 			setMessage({
 				type: 'error',
 				text: error instanceof Error ? error.message : 'Failed to create schedule',
@@ -241,7 +242,7 @@ export default function AdminBillsSchedulesNewPage() {
 				</div>
 				<Button variant="ghost" asChild>
 					<Link to="/admin/bills/schedules">
-						<Calendar className="h-4 w-4" />
+						<ArrowLeft className="h-4 w-4" />
 						Back to Schedules
 					</Link>
 				</Button>

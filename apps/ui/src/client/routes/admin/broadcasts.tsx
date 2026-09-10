@@ -2,8 +2,6 @@ import { Ban, ExternalLink, FilePlus2, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 
-import { AddBroadcastAddendumDialog } from '../add-broadcast-addendum-dialog'
-import { RescindBroadcastDialog } from '../rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,6 +15,8 @@ import {
 } from '@/components/ui/dialog'
 import { Select } from '@/components/ui/select'
 import {
+	stickyTableActionCellClassName,
+	stickyTableActionHeaderClassName,
 	Table,
 	TableBody,
 	TableCell,
@@ -31,6 +31,9 @@ import {
 	useDeleteBroadcast,
 } from '@/hooks/useBroadcasts'
 import { usePageTitle } from '@/hooks/usePageTitle'
+
+import { AddBroadcastAddendumDialog } from '../add-broadcast-addendum-dialog'
+import { RescindBroadcastDialog } from '../rescind-broadcast-dialog'
 
 import type { BadgeVariant } from '@/components/ui/badge'
 import type { Broadcast, BroadcastStatus } from '@/lib/api'
@@ -215,7 +218,7 @@ export default function AdminBroadcastsPage() {
 										<TableHead>Created By</TableHead>
 										<TableHead>Created</TableHead>
 										<TableHead>Scheduled</TableHead>
-										<TableHead className="sticky right-0 z-20 bg-primary/5 border-l border-border/50 text-right">
+										<TableHead className={`${stickyTableActionHeaderClassName} text-right`}>
 											Actions
 										</TableHead>
 									</TableRow>
@@ -247,10 +250,15 @@ export default function AdminBroadcastsPage() {
 												<TableCell className="text-sm text-muted-foreground">
 													{broadcast.scheduledFor ? formatDate(broadcast.scheduledFor) : '-'}
 												</TableCell>
-												<TableCell className="sticky right-0 z-10 bg-card border-l border-border/50 text-right">
+												<TableCell className={`${stickyTableActionCellClassName} text-right`}>
 													<div className="flex items-center justify-end gap-2">
 														<Link to={`/admin/broadcasts/${broadcast.id}`}>
-															<Button variant="ghost" size="icon" title="Show details" aria-label="Show details">
+															<Button
+																variant="ghost"
+																size="icon"
+																title="Show details"
+																aria-label="Show details"
+															>
 																<ExternalLink className="h-4 w-4" />
 															</Button>
 														</Link>
@@ -266,25 +274,25 @@ export default function AdminBroadcastsPage() {
 															</Button>
 														)}
 														{broadcast.status === 'sent' && (
+															<Button
+																variant="ghost"
+																size="icon"
+																onClick={() => handleRescindClick(broadcast)}
+																title="Rescind broadcast"
+																aria-label="Rescind broadcast"
+															>
+																<Ban className="h-4 w-4 text-warning" />
+															</Button>
+														)}
 														<Button
 															variant="ghost"
 															size="icon"
-															onClick={() => handleRescindClick(broadcast)}
-															title="Rescind broadcast"
-															aria-label="Rescind broadcast"
+															onClick={() => handleDeleteClick(broadcast)}
+															title="Delete broadcast"
+															aria-label="Delete broadcast"
 														>
-															<Ban className="h-4 w-4 text-warning" />
+															<Trash2 className="h-4 w-4 text-destructive" />
 														</Button>
-													)}
-													<Button
-														variant="ghost"
-														size="icon"
-														onClick={() => handleDeleteClick(broadcast)}
-														title="Delete broadcast"
-														aria-label="Delete broadcast"
-													>
-														<Trash2 className="h-4 w-4 text-destructive" />
-													</Button>
 													</div>
 												</TableCell>
 											</TableRow>

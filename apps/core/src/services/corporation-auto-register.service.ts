@@ -4,6 +4,7 @@ import { getEsiInstanceForCharacter, getPublicEsiInstance } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 
 import { managedCorporations } from '../db/schema'
+import { clearUserBillScopeCache } from '../lib/billing-scope-cache'
 import { isNpcCorporationId } from '../lib/corporation-id'
 import { clearCorporationListCache } from '../lib/corporation-list-cache'
 
@@ -39,7 +40,8 @@ export async function autoRegisterDirectorCorporation(
 	db: ReturnType<typeof createDb>,
 	eveTokenStoreNamespace: DurableObjectNamespace,
 	esiNamespace: DurableObjectNamespace,
-	eveCorporationDataNamespace: DurableObjectNamespace
+	eveCorporationDataNamespace: DurableObjectNamespace,
+	billingScopeCacheNamespace?: DurableObjectNamespace
 ): Promise<AutoRegistrationResult> {
 	// Ensure characterId is a string (it might be passed as a number from some call sites)
 	characterId = String(characterId)
@@ -228,6 +230,7 @@ export async function autoRegisterDirectorCorporation(
 					errorMessage: errMsg,
 				})
 			})
+			await clearUserBillScopeCache(userId, billingScopeCacheNamespace)
 
 			return {
 				success: true,
@@ -260,6 +263,7 @@ export async function autoRegisterDirectorCorporation(
 			})
 
 			// Still return success if corporation was registered
+			if (wasNew) await clearUserBillScopeCache(userId, billingScopeCacheNamespace)
 			return {
 				success: true,
 				corporationRegistered: wasNew
@@ -306,7 +310,8 @@ export async function checkAndUpdateDirectorStatus(
 	eveCharacterDataNamespace: DurableObjectNamespace,
 	eveTokenStoreNamespace: DurableObjectNamespace,
 	esiNamespace: DurableObjectNamespace,
-	eveCorporationDataNamespace: DurableObjectNamespace
+	eveCorporationDataNamespace: DurableObjectNamespace,
+	billingScopeCacheNamespace?: DurableObjectNamespace
 ): Promise<{ updated: boolean; reason?: string }> {
 	try {
 		// Get the character data stub
@@ -331,8 +336,10 @@ export async function checkAndUpdateDirectorStatus(
 				db,
 				eveTokenStoreNamespace,
 				esiNamespace,
-				eveCorporationDataNamespace
+				eveCorporationDataNamespace,
+				billingScopeCacheNamespace
 			)
+			if (result.success) await clearUserBillScopeCache(userId, billingScopeCacheNamespace)
 
 			return {
 				updated: result.success,
@@ -359,6 +366,7 @@ export async function checkAndUpdateDirectorStatus(
 				try {
 					const stub = getStub<EveCorporationData>(eveCorporationDataNamespace, corporationId)
 					await stub.removeDirector(corporationId, characterId)
+					await clearUserBillScopeCache(userId, billingScopeCacheNamespace)
 
 					return { updated: true, reason: 'director_removed' }
 				} catch (error) {

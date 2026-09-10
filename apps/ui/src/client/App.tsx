@@ -7,6 +7,7 @@ import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import Layout from './components/layout'
 import { LoadingPage } from './components/ui/loading'
 import { installTaxDemoWindow } from './dev/tax-demo-mode'
+import { hasBillingIssuerPermission } from './features/bills/issuer-access'
 import { useAuth } from './hooks/useAuth'
 import { useSessionSync } from './hooks/useSessionSync'
 import { useUserPermissions } from './hooks/useUserPermissions'
@@ -111,6 +112,9 @@ const CategoriesManagement = lazy(
 // Lazy load the User Bills feature for code splitting
 const MyBillsPage = lazy(() => import('./features/bills/routes/my-bills'))
 const BillDetailPage = lazy(() => import('./features/bills/routes/bill-detail'))
+const BillIssuePage = lazy(() => import('./routes/admin/bills-new'))
+const IssuerGroupBillDetailPage = lazy(() => import('./routes/admin/bills-group-detail'))
+const IssuerGroupBillEditPage = lazy(() => import('./routes/admin/bills-group-edit'))
 
 // Lazy load the SRP (Ship Replacement Program) feature for code splitting
 const SRPIndex = lazy(() => import('./features/srp/routes/index'))
@@ -205,6 +209,19 @@ function NavigateToCorporationMembers() {
 function NavigateToCorporationSettings() {
 	const { corporationId } = useParams<{ corporationId: string }>()
 	return <Navigate to={`/corporations/${corporationId}/settings`} replace />
+}
+
+function IssuerBillRoute() {
+	const { isLoading, isAdmin, permissions } = useUserPermissions()
+	if (isLoading) return <LoadingPage />
+	if (!hasBillingIssuerPermission(permissions, isAdmin)) {
+		return <Navigate to="/my-bills" replace />
+	}
+	return (
+		<Suspense fallback={<LoadingPage />}>
+			<BillIssuePage />
+		</Suspense>
+	)
 }
 
 function NavigateHrAuditorUsersToHrUsers() {
@@ -775,14 +792,31 @@ export default function App() {
 									</Suspense>
 								}
 							/>
-							<Route
-								path="/my-bills/:billId"
+								<Route
+									path="/my-bills/:billId"
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<BillDetailPage />
 									</Suspense>
 								}
-							/>
+								/>
+								<Route
+									path="/my-bills/group/:groupBillId"
+									element={
+										<Suspense fallback={<LoadingPage />}>
+											<IssuerGroupBillDetailPage scope="issuer" />
+										</Suspense>
+									}
+								/>
+								<Route
+									path="/my-bills/group/:groupBillId/edit"
+									element={
+										<Suspense fallback={<LoadingPage />}>
+											<IssuerGroupBillEditPage scope="issuer" />
+										</Suspense>
+									}
+								/>
+							<Route path="/bills/issue" element={<IssuerBillRoute />} />
 							{taxRouteElements}
 							{/* Doctrines routes (lazy loaded) */}
 							<Route

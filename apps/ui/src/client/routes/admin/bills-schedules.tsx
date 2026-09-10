@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+	stickyTableActionCellClassName,
+	stickyTableActionHeaderClassName,
 	Table,
 	TableBody,
 	TableCell,
@@ -157,7 +159,7 @@ export default function BillsSchedulesPage() {
 										<TableHead>Frequency</TableHead>
 										<TableHead>Next Run</TableHead>
 										<TableHead>Failures</TableHead>
-										<TableHead className="sticky right-0 z-20 bg-card text-center">
+										<TableHead className={`${stickyTableActionHeaderClassName} text-center`}>
 											Actions
 										</TableHead>
 									</TableRow>
@@ -203,7 +205,7 @@ export default function BillsSchedulesPage() {
 													{schedule.consecutiveFailures}
 												</Badge>
 											</TableCell>
-											<TableCell className="sticky right-0 z-10 bg-card text-right">
+											<TableCell className={`${stickyTableActionCellClassName} text-right`}>
 												<div className="flex justify-end gap-2">
 													{schedule.isActive ? (
 														<Button

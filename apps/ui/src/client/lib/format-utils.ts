@@ -3,10 +3,23 @@
  * e.g. 1500000 → "1,500,000.00 ISK"
  */
 export function formatISK(value: string | number, options?: { showDecimals?: boolean }): string {
-	const num = typeof value === 'string' ? parseFloat(value) : value
 	const showDecimals = options?.showDecimals ?? true
 	const fractionDigits = showDecimals ? 2 : 0
-	if (isNaN(num)) return `${(0).toFixed(fractionDigits)} ISK`
+	const raw = typeof value === 'string' ? value.trim() : String(value)
+	const match = raw.match(/^(-?)(\d+)(?:\.(\d+))?$/)
+	if (match) {
+		const sign = match[1] === '-' ? '-' : ''
+		let whole = BigInt(match[2])
+		const fraction = match[3] ?? ''
+		if (fractionDigits === 0 && fraction[0] && fraction[0] >= '5') whole++
+		const formattedWhole = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+		if (fractionDigits === 0) return `${sign}${formattedWhole} ISK`
+		const formattedFraction = `${fraction}00`.slice(0, fractionDigits)
+		return `${sign}${formattedWhole}.${formattedFraction} ISK`
+	}
+
+	const num = Number(value)
+	if (!Number.isFinite(num)) return `${(0).toFixed(fractionDigits)} ISK`
 
 	return (
 		new Intl.NumberFormat('en-US', {

@@ -1,3 +1,4 @@
+import { MANUAL_BILL_SOURCE } from '@repo/bills'
 import { and, asc, desc, eq, gte, inArray, lte, or, sql } from '@repo/db-utils'
 
 import { billPayments, bills, billStatusEvents } from '../db/schema'
@@ -15,6 +16,7 @@ import type {
 	BillListQuery,
 	BillListScopeEntity,
 	BillMetadata,
+	BillMutationAuthorization,
 	BillPartySearchQuery,
 	BillPartySearchRow,
 	BillStatistics,
@@ -52,6 +54,20 @@ function parseISKToMinorUnits(value: string): bigint | null {
 	}
 }
 
+function addISKAmounts(left: string, right: string): string {
+	const leftMinor = parseISKToMinorUnits(left)
+	const rightMinor = parseISKToMinorUnits(right)
+	if (leftMinor === null || rightMinor === null) {
+		throw new Error('Invalid ISK amount')
+	}
+	const total = leftMinor + rightMinor
+	const sign = total < 0n ? '-' : ''
+	const absolute = total < 0n ? -total : total
+	const whole = absolute / 100n
+	const fraction = (absolute % 100n).toString().padStart(2, '0').replace(/0+$/, '')
+	return `${sign}${whole}${fraction ? `.${fraction}` : ''}`
+}
+
 export interface WalletPaymentInput {
 	amount: bigint
 	paidById: string
@@ -69,13 +85,78 @@ export interface WalletPaymentInput {
  * - Authorization checks
  */
 export class BillService {
+	private static readonly READ_CACHE_TTL_MS = 30 * 1000
+	private static readonly READ_CACHE_MAX_ENTRIES = 2000
+	private readonly readCache = new Map<string, { expiresAt: number; value: unknown }>()
+
 	constructor(private db: BillsDb) {}
+
+	private clearReadCache(): void {
+		this.readCache.clear()
+	}
+
+	private getCached<T>(key: string): T | undefined {
+		const cached = this.readCache.get(key)
+		if (!cached) return undefined
+		if (cached.expiresAt <= Date.now()) {
+			this.readCache.delete(key)
+			return undefined
+		}
+		return structuredClone(cached.value) as T
+	}
+
+	private setCached<T>(key: string, value: T): void {
+		while (this.readCache.size >= BillService.READ_CACHE_MAX_ENTRIES && !this.readCache.has(key)) {
+			const oldestKey = this.readCache.keys().next().value
+			if (!oldestKey) break
+			this.readCache.delete(oldestKey)
+		}
+		this.readCache.set(key, {
+			expiresAt: Date.now() + BillService.READ_CACHE_TTL_MS,
+			value: structuredClone(value),
+		})
+	}
+
+	private async getBillForMutation(
+		actorUserId: string,
+		billId: string,
+		authorization: BillMutationAuthorization = 'owner'
+	) {
+		const bill = await this.db.query.bills.findFirst({
+			where: eq(bills.id, billId),
+		})
+
+		if (!bill) throw new Error('Bill not found')
+		if (authorization !== 'admin' && bill.issuerId !== actorUserId) {
+			throw new Error('Only the bill issuer can mutate this bill')
+		}
+		return bill
+	}
 
 	/**
 	 * Create a new bill
 	 */
 	async createBill(userId: string, data: CreateBillInput): Promise<Bill> {
-		return this.createBillInternal(userId, data)
+		const bill = await this.createBillInternal(userId, data)
+		this.clearReadCache()
+		return bill
+	}
+
+	async createBillsBulk(userId: string, data: CreateBillInput[]): Promise<Bill[]> {
+		if (data.length === 0) {
+			throw new Error('At least one bill is required')
+		}
+
+		const createdBills = await this.db.transaction(async (transaction) => {
+			const writeDb = transaction as unknown as BillsDb
+			const bills = []
+			for (const billData of data) {
+				bills.push(await this.createBillInternal(userId, billData, undefined, writeDb))
+			}
+			return bills
+		})
+		this.clearReadCache()
+		return createdBills
 	}
 
 	/**
@@ -100,11 +181,13 @@ export class BillService {
 		}
 
 		try {
-			return await this.createBillInternal(userId, data, {
+			const bill = await this.createBillInternal(userId, data, {
 				sourceType,
 				sourceId,
 				metadata: externalRef.metadata ?? null,
 			})
+			this.clearReadCache()
+			return bill
 		} catch (error) {
 			// Handle race conditions on unique external source key.
 			const raced = await this.db.query.bills.findFirst({
@@ -118,6 +201,9 @@ export class BillService {
 	}
 
 	async getBillIntegrationView(billId: string): Promise<BillIntegrationView | null> {
+		const cached = this.getCached<BillIntegrationView | null>(`bill:${billId}`)
+		if (cached !== undefined) return cached
+
 		const bill = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
 			with: {
@@ -131,19 +217,32 @@ export class BillService {
 		}
 
 		const updatedBill = await this.updateLateFeeIfNeeded(bill)
-		return this.toBillWithDetailsResponse(updatedBill)
+		const response = this.toBillWithDetailsResponse(updatedBill)
+		this.setCached(`bill:${billId}`, response)
+		return response
 	}
 
 	async getGroupBillAggregate(groupBillId: string): Promise<GroupBillAggregate | null> {
-		const rows = await this.db.query.bills.findMany({
-			where: eq(bills.groupBillId, groupBillId),
-			with: { payments: true },
-			orderBy: (bills, { asc }) => [asc(bills.createdAt)],
-		})
+		const cached = this.getCached<GroupBillAggregate | null>(`group:${groupBillId}`)
+		if (cached !== undefined) return cached
+
+		const loadRows = () =>
+			this.db.query.bills.findMany({
+				where: eq(bills.groupBillId, groupBillId),
+				with: { payments: true },
+				orderBy: (bills, { asc }) => [asc(bills.createdAt)],
+			})
+		let rows = await loadRows()
 
 		if (rows.length === 0) {
 			return null
 		}
+
+		const updatedRows = await Promise.all(rows.map((row) => this.updateLateFeeIfNeeded(row)))
+		const lifecycleChanged = updatedRows.some(
+			(row, index) => row.status !== rows[index]?.status || row.lateFee !== rows[index]?.lateFee
+		)
+		if (lifecycleChanged) rows = await loadRows()
 
 		const first = rows[0]
 		const groupId = (first.externalMetadata as Record<string, unknown> | null)?.groupId as
@@ -151,23 +250,26 @@ export class BillService {
 			| undefined
 
 		const billEntries: GroupBillEntry[] = rows.map((b) => {
-			const totalDue = Number(b.amount) + Number(b.lateFee)
-			const totalPaid = (b.payments ?? []).reduce((s, p) => s + Number(p.amount), 0)
+			const totalDue = addISKAmounts(b.amount, b.lateFee)
+			const totalPaid = (b.payments ?? []).reduce((total, payment) => {
+				return addISKAmounts(total, payment.amount)
+			}, '0')
 			return {
 				billId: b.id,
 				payerId: b.payerId,
 				status: b.status as BillStatus,
 				amount: b.amount,
 				lateFee: b.lateFee,
-				totalDue: totalDue.toString(),
-				totalPaid: totalPaid.toString(),
+				totalDue,
+				totalPaid,
 				paidAt: b.paidAt,
+				hasPayments: (b.payments ?? []).length > 0,
 			}
 		})
 
 		const paidBills = rows.filter((b) => b.status === 'paid').length
 
-		return {
+		const aggregate = {
 			groupBillId,
 			groupId: groupId ?? '',
 			issuerId: first.issuerId,
@@ -180,6 +282,8 @@ export class BillService {
 			paidBills,
 			bills: billEntries,
 		}
+		this.setCached(`group:${groupBillId}`, aggregate)
+		return aggregate
 	}
 
 	async listBillsByExternalSource(
@@ -191,6 +295,9 @@ export class BillService {
 		if (!normalizedSourceType || normalizedSourceIds.length === 0) {
 			return []
 		}
+		const cacheKey = `external:${normalizedSourceType}:${[...normalizedSourceIds].sort().join(',')}`
+		const cached = this.getCached<BillIntegrationView[]>(cacheKey)
+		if (cached !== undefined) return cached
 
 		const matchedBills = await this.db.query.bills.findMany({
 			where: and(
@@ -208,7 +315,10 @@ export class BillService {
 		const updatedResults = await Promise.all(
 			matchedBills.map((bill) => this.updateLateFeeIfNeeded(bill))
 		)
-		return updatedResults.map((bill) => this.toBillWithDetailsResponse(bill))
+		const response = updatedResults.map((bill) => this.toBillWithDetailsResponse(bill))
+		for (const bill of response) this.setCached(`bill:${bill.id}`, bill)
+		this.setCached(cacheKey, response)
+		return response
 	}
 
 	async getBillTimeline(billId: string): Promise<BillStatusEvent[]> {
@@ -389,15 +499,7 @@ export class BillService {
 	 * Get a specific bill with authorization check
 	 */
 	async getBill(userId: string, billId: string): Promise<BillWithDetails | null> {
-		const bill = await this.db.query.bills.findFirst({
-			where: eq(bills.id, billId),
-			with: {
-				template: true,
-				schedule: true,
-				payments: true,
-			},
-		})
-
+		const bill = await this.getBillIntegrationView(billId)
 		if (!bill) {
 			return null
 		}
@@ -408,9 +510,7 @@ export class BillService {
 		}
 
 		// Update late fees if bill is issued and overdue
-		const updatedBill = await this.updateLateFeeIfNeeded(bill)
-
-		return this.toBillWithDetailsResponse(updatedBill)
+		return bill
 	}
 
 	/**
@@ -453,17 +553,35 @@ export class BillService {
 			: 0
 		const sortBy = query.sortBy ?? 'dueDate'
 		const sortDir = query.sortDir ?? 'asc'
-		const conditions: SQL[] = []
-
-		if (query.scope.mode === 'my') {
-			const scopeCondition = this.buildMyScopeCondition(
-				query.scope.issuerIds,
-				query.scope.partyEntities
-			)
-			conditions.push(scopeCondition)
+		const filters = { ...(query.filters ?? {}) }
+		const scopeCondition =
+			query.scope.mode === 'my'
+				? this.buildMyScopeCondition(query.scope.issuerIds, query.scope.partyEntities)
+				: sql`true`
+		const effectiveStatus = query.coalesced
+			? this.buildEffectiveBillStatusExpression()
+			: sql`${bills.status}`
+		const filterConditions: SQL[] = []
+		if (query.coalesced && filters.payerType === 'group') {
+			// Group payer rows are represented by character sub-bills. The group identity is
+			// the groupBillId, so apply this filter to the grouped projection instead.
+			delete filters.payerType
+			filterConditions.push(sql`${bills.groupBillId} is not null`)
 		}
-		conditions.push(...this.buildBillFilterConditions(query.filters ?? {}))
-		const whereCondition = this.buildWhereCondition(conditions)
+		filterConditions.push(...this.buildBillFilterConditions(filters, effectiveStatus))
+		const whereCondition = this.buildWhereCondition([scopeCondition, ...filterConditions])
+
+		if (query.coalesced) {
+			return this.listCoalescedBillsPage({
+				scopeCondition,
+				filterCondition: this.buildWhereCondition(filterConditions) ?? sql`true`,
+				effectiveStatus,
+				limit: normalizedLimit,
+				offset: normalizedOffset,
+				sortBy,
+				sortDir,
+			})
+		}
 
 		const [countRow] = await this.db
 			.select({ rowCount: sql<number>`count(*)::int` })
@@ -513,9 +631,173 @@ export class BillService {
 		const updatedResults = await Promise.all(
 			results.map((bill) => this.updateLateFeeIfNeeded(bill))
 		)
+		const paymentRows = await this.db
+			.select({ billId: billPayments.billId })
+			.from(billPayments)
+			.where(
+				inArray(
+					billPayments.billId,
+					updatedResults.map((bill) => bill.id)
+				)
+			)
+		const billIdsWithPayments = new Set(paymentRows.map((row) => row.billId))
 		return {
-			rows: updatedResults.map((bill) => this.toBillWithDetailsResponse(bill)),
+			rows: updatedResults.map((bill) => ({
+				...this.toBillWithDetailsResponse(bill),
+				canRevertToDraft:
+					bill.status !== 'draft' && bill.status !== 'paid' && !billIdsWithPayments.has(bill.id),
+			})),
 			rowCount,
+		}
+	}
+
+	private async listCoalescedBillsPage(input: {
+		scopeCondition: SQL
+		filterCondition: SQL
+		limit: number
+		offset: number
+		sortBy: BillListQuery['sortBy']
+		sortDir: BillListQuery['sortDir']
+		effectiveStatus: SQL
+	}): Promise<BillListPage> {
+		const sortBy = input.sortBy ?? 'dueDate'
+		const sortDir = input.sortDir ?? 'asc'
+		const direction = sql.raw(sortDir === 'desc' ? 'desc' : 'asc')
+		const sortValue =
+			sortBy === 'createdAt'
+				? sql`${bills.createdAt}`
+				: sortBy === 'updatedAt'
+					? sql`${bills.updatedAt}`
+					: sortBy === 'amount'
+						? sql`(${bills.amount})::numeric`
+						: sortBy === 'status'
+							? sql`${input.effectiveStatus}::text`
+							: sql`${bills.dueDate}`
+		const groupSort = sortDir === 'desc' ? sql`max(sort_value)` : sql`min(sort_value)`
+
+		const result = await this.db.execute<{
+			representative_id: string
+			group_total_count: number
+			group_paid_count: number
+			group_status_count: number
+			group_draft_count: number
+			group_editable_count: number
+			group_cancellable_count: number
+			group_revertible_count: number
+			is_group: boolean
+			row_count: number
+		}>(sql`
+			with scoped as materialized (
+					select
+						${bills.id} as bill_id,
+							${input.effectiveStatus} as status,
+						coalesce(${bills.groupBillId}::text, ${bills.id}::text) as group_key,
+						${sortValue} as sort_value,
+						(${input.filterCondition}) as matches_filter
+					from ${bills}
+					where ${input.scopeCondition}
+				), filtered_groups as (
+					select
+						group_key,
+						(array_agg(bill_id order by sort_value ${direction}, bill_id desc))[1] as representative_id,
+						${groupSort} as group_sort
+					from scoped
+					where matches_filter
+					group by group_key
+			), aggregates as (
+				select
+					scoped.group_key,
+					count(*)::int as group_total_count,
+						count(*) filter (where scoped.status = 'paid')::int as group_paid_count,
+						count(distinct scoped.status)::int as group_status_count,
+						count(*) filter (where scoped.status = 'draft')::int as group_draft_count,
+						count(*) filter (
+							where scoped.status <> 'paid'
+							and not exists (
+								select 1 from bill_payments
+								where bill_payments.bill_id = scoped.bill_id
+							)
+						)::int as group_editable_count,
+						count(*) filter (where scoped.status not in ('paid', 'cancelled'))::int as group_cancellable_count,
+						count(*) filter (
+							where scoped.status not in ('draft', 'paid')
+							and not exists (
+								select 1 from bill_payments
+								where bill_payments.bill_id = scoped.bill_id
+							)
+						)::int as group_revertible_count,
+						bool_or(scoped.group_key <> scoped.bill_id::text) as is_group
+				from scoped
+				inner join filtered_groups on filtered_groups.group_key = scoped.group_key
+				group by scoped.group_key
+			)
+			select
+				filtered_groups.representative_id,
+				aggregates.group_total_count,
+				aggregates.group_paid_count,
+				aggregates.group_status_count,
+				aggregates.group_draft_count,
+				aggregates.group_editable_count,
+				aggregates.group_cancellable_count,
+				aggregates.group_revertible_count,
+				aggregates.is_group,
+				count(*) over()::int as row_count
+			from filtered_groups
+			inner join aggregates on aggregates.group_key = filtered_groups.group_key
+			order by filtered_groups.group_sort ${direction}, filtered_groups.representative_id desc
+			limit ${input.limit}
+			offset ${input.offset}
+		`)
+
+		const rows = result.rows
+		if (rows.length === 0) {
+			const countResult = await this.db.execute<{ row_count: number }>(sql`
+				with filtered_groups as (
+					select coalesce(${bills.groupBillId}::text, ${bills.id}::text) as group_key
+					from ${bills}
+					where ${input.scopeCondition} and ${input.filterCondition}
+					group by group_key
+				)
+				select count(*)::int as row_count from filtered_groups
+			`)
+			return { rows: [], rowCount: Number(countResult.rows[0]?.row_count ?? 0) }
+		}
+
+		const representatives = await this.db.query.bills.findMany({
+			where: inArray(
+				bills.id,
+				rows.map((row) => row.representative_id)
+			),
+		})
+		const byId = new Map(representatives.map((bill) => [bill.id, bill] as const))
+		const lateFeeRows = await Promise.all(
+			rows.map(async (row) => {
+				const bill = byId.get(row.representative_id)
+				if (!bill) return null
+				const updated = await this.updateLateFeeIfNeeded(bill)
+				const metadata = updated.externalMetadata as Record<string, unknown> | null
+				const groupId = typeof metadata?.groupId === 'string' ? metadata.groupId : null
+				return {
+					...this.toBillWithDetailsResponse(updated),
+					...(row.is_group
+						? {
+								...(groupId ? { payerId: groupId, payerType: 'group' as const } : {}),
+								groupBillTotalCount: Number(row.group_total_count),
+								groupBillPaidCount: Number(row.group_paid_count),
+								groupBillDraftCount: Number(row.group_draft_count ?? 0),
+								groupBillEditableCount: Number(row.group_editable_count ?? 0),
+								groupBillCancellableCount: Number(row.group_cancellable_count ?? 0),
+								groupBillRevertibleCount: Number(row.group_revertible_count ?? 0),
+								...(Number(row.group_status_count) > 1 ? { groupBillMixed: true } : {}),
+							}
+						: {}),
+				}
+			})
+		)
+
+		return {
+			rows: lateFeeRows.filter((row): row is NonNullable<typeof row> => row !== null),
+			rowCount: Number(rows[0]?.row_count ?? 0),
 		}
 	}
 
@@ -562,6 +844,19 @@ export class BillService {
 		if (normalizedEntityType) {
 			postFilters.push(sql`entity_type = ${normalizedEntityType}`)
 		}
+		const normalizedEntityIds = [
+			...new Set((query.entityIds ?? []).map((id) => id.trim()).filter(Boolean)),
+		]
+		if (query.entityIds && normalizedEntityIds.length === 0) {
+			postFilters.push(sql`false`)
+		} else if (normalizedEntityIds.length > 0) {
+			postFilters.push(
+				sql`entity_id in (${sql.join(
+					normalizedEntityIds.map((id) => sql`${id}`),
+					sql`, `
+				)})`
+			)
+		}
 		if (normalizedQ && normalizedQ.length > 0) {
 			postFilters.push(sql`entity_id ilike ${`%${normalizedQ}%`}`)
 		}
@@ -596,16 +891,15 @@ export class BillService {
 	}
 
 	/**
-	 * Update a bill (permissions enforced by caller route; blocked when paid or when payments exist)
+	 * Update a bill (owner-scoped by default; admin scope is explicit)
 	 */
-	async updateBill(actorUserId: string, billId: string, data: UpdateBillInput): Promise<Bill> {
-		const bill = await this.db.query.bills.findFirst({
-			where: eq(bills.id, billId),
-		})
-
-		if (!bill) {
-			throw new Error('Bill not found')
-		}
+	async updateBill(
+		actorUserId: string,
+		billId: string,
+		data: UpdateBillInput,
+		authorization: BillMutationAuthorization = 'owner'
+	): Promise<Bill> {
+		const bill = await this.getBillForMutation(actorUserId, billId, authorization)
 
 		if (bill.status === 'paid') {
 			throw new Error('Cannot update a paid bill')
@@ -624,20 +918,19 @@ export class BillService {
 			.where(eq(bills.id, billId))
 			.returning()
 
+		this.clearReadCache()
 		return this.toBillResponse(updated)
 	}
 
 	/**
 	 * Issue a bill (change status from draft to issued)
 	 */
-	async issueBill(actorUserId: string, billId: string): Promise<Bill> {
-		const bill = await this.db.query.bills.findFirst({
-			where: eq(bills.id, billId),
-		})
-
-		if (!bill) {
-			throw new Error('Bill not found')
-		}
+	async issueBill(
+		actorUserId: string,
+		billId: string,
+		authorization: BillMutationAuthorization = 'owner'
+	): Promise<Bill> {
+		const bill = await this.getBillForMutation(actorUserId, billId, authorization)
 
 		if (bill.status !== 'draft') {
 			throw new Error('Only draft bills can be issued')
@@ -660,20 +953,19 @@ export class BillService {
 		if (!updated) {
 			throw new Error('Bill not found after issue')
 		}
+		this.clearReadCache()
 		return this.toBillResponse(updated)
 	}
 
 	/**
-	 * Cancel a bill (permissions enforced by caller route)
+	 * Cancel a bill (owner-scoped by default; admin scope is explicit)
 	 */
-	async cancelBill(actorUserId: string, billId: string): Promise<Bill> {
-		const bill = await this.db.query.bills.findFirst({
-			where: eq(bills.id, billId),
-		})
-
-		if (!bill) {
-			throw new Error('Bill not found')
-		}
+	async cancelBill(
+		actorUserId: string,
+		billId: string,
+		authorization: BillMutationAuthorization = 'owner'
+	): Promise<Bill> {
+		const bill = await this.getBillForMutation(actorUserId, billId, authorization)
 
 		if (bill.status === 'paid') {
 			throw new Error('Cannot cancel a paid bill')
@@ -700,27 +992,64 @@ export class BillService {
 		if (!updated) {
 			throw new Error('Bill not found after cancel')
 		}
+		this.clearReadCache()
 		return this.toBillResponse(updated)
 	}
 
 	/**
 	 * Mark bill as paid from an admin action.
 	 */
-	async markBillPaid(actorUserId: string, billId: string): Promise<Bill> {
-		return this.markBillAsPaid(billId, actorUserId)
+	async markBillPaid(
+		actorUserId: string,
+		billId: string,
+		authorization: BillMutationAuthorization = 'owner'
+	): Promise<Bill> {
+		await this.getBillForMutation(actorUserId, billId, authorization)
+		return this.markBillAsPaid(
+			billId,
+			actorUserId,
+			authorization === 'admin' ? 'admin_mark_paid' : 'owner_mark_paid'
+		)
 	}
 
 	/**
-	 * Revert a bill to draft (permissions enforced by caller route; blocked when paid or when payments exist)
+	 * Mark a bill paid for a user who is an authorized payer or payee.
+	 * The relationship is passed from Core after resolving the authenticated
+	 * user's scope and is checked again here before the mutation occurs.
 	 */
-	async revertBillToDraft(actorUserId: string, billId: string): Promise<Bill> {
+	async markRelatedBillPaid(
+		actorUserId: string,
+		billId: string,
+		relatedEntities: BillListScopeEntity[]
+	): Promise<Bill> {
 		const bill = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
 		})
+		if (!bill) throw new Error('Bill not found')
 
-		if (!bill) {
-			throw new Error('Bill not found')
+		const isRelated = relatedEntities.some(
+			(entity) =>
+				(entity.entityId === bill.payerId && entity.entityType === bill.payerType) ||
+				(entity.entityType !== 'group' &&
+					entity.entityId === bill.payeeId &&
+					entity.entityType === bill.payeeType)
+		)
+		if (!isRelated) {
+			throw new Error('Only a bill payer or payee can mark this bill paid')
 		}
+
+		return this.markBillAsPaid(billId, actorUserId, 'related_mark_paid')
+	}
+
+	/**
+	 * Revert a bill to draft (owner-scoped by default; admin scope is explicit)
+	 */
+	async revertBillToDraft(
+		actorUserId: string,
+		billId: string,
+		authorization: BillMutationAuthorization = 'owner'
+	): Promise<Bill> {
+		const bill = await this.getBillForMutation(actorUserId, billId, authorization)
 
 		if (bill.status === 'draft') {
 			return this.toBillResponse(bill)
@@ -755,6 +1084,7 @@ export class BillService {
 		if (!updated) {
 			throw new Error('Bill not found after draft revert')
 		}
+		this.clearReadCache()
 		return this.toBillResponse(updated)
 	}
 
@@ -805,6 +1135,7 @@ export class BillService {
 			)
 		}
 
+		this.clearReadCache()
 		return insertedCount
 	}
 
@@ -980,23 +1311,19 @@ export class BillService {
 			},
 		})
 
+		this.clearReadCache()
 		return payment
 	}
 
 	/**
-	 * Regenerate payment token for a bill (permissions enforced by caller route)
+	 * Regenerate payment token for a bill (owner-scoped by default; admin scope is explicit)
 	 */
 	async regeneratePaymentToken(
 		actorUserId: string,
-		billId: string
+		billId: string,
+		authorization: BillMutationAuthorization = 'owner'
 	): Promise<RegenerateTokenResponse> {
-		const bill = await this.db.query.bills.findFirst({
-			where: eq(bills.id, billId),
-		})
-
-		if (!bill) {
-			throw new Error('Bill not found')
-		}
+		const bill = await this.getBillForMutation(actorUserId, billId, authorization)
 
 		if (bill.status === 'paid' || bill.status === 'cancelled') {
 			throw new Error('Cannot regenerate token for paid or cancelled bills')
@@ -1024,6 +1351,7 @@ export class BillService {
 			actorUserId,
 		})
 
+		this.clearReadCache()
 		return {
 			token: newToken,
 			billId,
@@ -1041,20 +1369,19 @@ export class BillService {
 	/**
 	 * Delete a bill (draft only)
 	 */
-	async deleteBill(_actorUserId: string, billId: string): Promise<void> {
-		const bill = await this.db.query.bills.findFirst({
-			where: eq(bills.id, billId),
-		})
-
-		if (!bill) {
-			throw new Error('Bill not found')
-		}
+	async deleteBill(
+		actorUserId: string,
+		billId: string,
+		authorization: BillMutationAuthorization = 'owner'
+	): Promise<void> {
+		const bill = await this.getBillForMutation(actorUserId, billId, authorization)
 
 		if (bill.status !== 'draft') {
 			throw new Error('Only draft bills can be deleted')
 		}
 
 		await this.db.delete(bills).where(eq(bills.id, billId))
+		this.clearReadCache()
 	}
 
 	/**
@@ -1062,7 +1389,8 @@ export class BillService {
 	 */
 	async issueGroupBill(
 		actorUserId: string,
-		groupBillId: string
+		groupBillId: string,
+		authorization: BillMutationAuthorization = 'owner'
 	): Promise<GroupBillOperationResult> {
 		const subBills = await this.db.query.bills.findMany({
 			where: eq(bills.groupBillId, groupBillId),
@@ -1073,7 +1401,7 @@ export class BillService {
 				result.skipped++
 				continue
 			}
-			const updated = await this.issueBill(actorUserId, bill.id)
+			const updated = await this.issueBill(actorUserId, bill.id, authorization)
 			result.succeeded++
 			result.bills.push(updated)
 		}
@@ -1085,7 +1413,8 @@ export class BillService {
 	 */
 	async cancelGroupBill(
 		actorUserId: string,
-		groupBillId: string
+		groupBillId: string,
+		authorization: BillMutationAuthorization = 'owner'
 	): Promise<GroupBillOperationResult> {
 		const subBills = await this.db.query.bills.findMany({
 			where: eq(bills.groupBillId, groupBillId),
@@ -1096,7 +1425,7 @@ export class BillService {
 				result.skipped++
 				continue
 			}
-			const updated = await this.cancelBill(actorUserId, bill.id)
+			const updated = await this.cancelBill(actorUserId, bill.id, authorization)
 			result.succeeded++
 			result.bills.push(updated)
 		}
@@ -1108,7 +1437,8 @@ export class BillService {
 	 */
 	async revertGroupBillToDraft(
 		actorUserId: string,
-		groupBillId: string
+		groupBillId: string,
+		authorization: BillMutationAuthorization = 'owner'
 	): Promise<GroupBillOperationResult> {
 		const subBills = await this.db.query.bills.findMany({
 			where: eq(bills.groupBillId, groupBillId),
@@ -1123,7 +1453,7 @@ export class BillService {
 				result.skipped++
 				continue
 			}
-			const updated = await this.revertBillToDraft(actorUserId, bill.id)
+			const updated = await this.revertBillToDraft(actorUserId, bill.id, authorization)
 			result.succeeded++
 			result.bills.push(updated)
 		}
@@ -1135,7 +1465,8 @@ export class BillService {
 	 */
 	async deleteGroupBill(
 		actorUserId: string,
-		groupBillId: string
+		groupBillId: string,
+		authorization: BillMutationAuthorization = 'owner'
 	): Promise<GroupBillOperationResult> {
 		const subBills = await this.db.query.bills.findMany({
 			where: eq(bills.groupBillId, groupBillId),
@@ -1146,7 +1477,7 @@ export class BillService {
 				result.skipped++
 				continue
 			}
-			await this.deleteBill(actorUserId, bill.id)
+			await this.deleteBill(actorUserId, bill.id, authorization)
 			result.succeeded++
 		}
 		return result
@@ -1158,7 +1489,8 @@ export class BillService {
 	async updateGroupBill(
 		actorUserId: string,
 		groupBillId: string,
-		data: UpdateBillInput
+		data: UpdateBillInput,
+		authorization: BillMutationAuthorization = 'owner'
 	): Promise<GroupBillOperationResult> {
 		const subBills = await this.db.query.bills.findMany({
 			where: eq(bills.groupBillId, groupBillId),
@@ -1173,7 +1505,7 @@ export class BillService {
 				result.skipped++
 				continue
 			}
-			const updated = await this.updateBill(actorUserId, bill.id, data)
+			const updated = await this.updateBill(actorUserId, bill.id, data, authorization)
 			result.succeeded++
 			result.bills.push(updated)
 		}
@@ -1208,7 +1540,15 @@ export class BillService {
 		return paidAmount >= totalAmount + lateFeeAmount
 	}
 
-	async markBillAsPaid(billId: string, actorUserId: string | null = null): Promise<Bill> {
+	async markBillAsPaid(
+		billId: string,
+		actorUserId: string | null = null,
+		source:
+			| 'admin_mark_paid'
+			| 'owner_mark_paid'
+			| 'related_mark_paid'
+			| 'system_mark_paid' = 'system_mark_paid'
+	): Promise<Bill> {
 		const existingBill = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
 		})
@@ -1226,17 +1566,71 @@ export class BillService {
 		}
 
 		const paidAt = new Date()
-
-		const transitioned = await this.applyStatusTransitionAtomic({
-			billId,
-			fromStatus: existingBill.status,
-			toStatus: 'paid',
-			eventType: 'paid',
-			actorUserId,
-			paidAt,
-			metadata: actorUserId ? { source: 'admin_mark_paid' } : { source: 'system_mark_paid' },
-		})
-		if (!transitioned) {
+		const manualTransactionId = `manual-status-paid:${billId}:${generateUuidV7()}`
+		const paymentId = generateUuidV7()
+		const paidEventId = generateUuidV7()
+		const paymentEventId = generateUuidV7()
+		// Manual status changes are attributed to the authenticated user ID. Core resolves
+		// that ID to the user's primary character for display; wallet payments retain their
+		// ESI-derived character attribution through recordWalletPayments.
+		const paidById = actorUserId ?? 'system'
+		const result = await this.db.execute(sql`
+			with updated_bill as (
+				update bills
+				set status = 'paid'::bill_status,
+					paid_at = ${paidAt},
+					updated_at = ${paidAt}
+				where id = ${billId}::uuid
+				  and status = ${existingBill.status}::bill_status
+				returning id
+			), inserted_payment as (
+				insert into bill_payments (
+					id, bill_id, payment_token, esi_transaction_id, amount,
+					paid_by_id, paid_by_type, paid_at
+				)
+				select
+					${paymentId}::uuid,
+					id,
+					${existingBill.paymentToken},
+					${manualTransactionId},
+					'0',
+					${paidById},
+					'character'::entity_type,
+					${paidAt}
+				from updated_bill
+				returning bill_id
+			), inserted_paid_event as (
+				insert into bill_status_events (
+					id, bill_id, event_type, from_status, to_status, actor_user_id, metadata
+				)
+				select
+					${paidEventId}::uuid,
+					id,
+					'paid'::bill_status_event_type,
+					${existingBill.status}::bill_status,
+					'paid'::bill_status,
+					${actorUserId},
+					${JSON.stringify({ source })}::jsonb
+				from updated_bill
+				returning id
+			), inserted_payment_event as (
+				insert into bill_status_events (
+					id, bill_id, event_type, from_status, to_status, actor_user_id, metadata
+				)
+				select
+					${paymentEventId}::uuid,
+					bill_id,
+					'payment_recorded'::bill_status_event_type,
+					null::bill_status,
+					null::bill_status,
+					${actorUserId},
+					${JSON.stringify({ amount: '0', source, manual: true, statusOnly: true })}::jsonb
+				from inserted_payment
+				returning id
+			)
+			select id as bill_id from updated_bill
+		`)
+		if (!result.rows?.length) {
 			const currentBill = await this.db.query.bills.findFirst({
 				where: eq(bills.id, billId),
 			})
@@ -1246,37 +1640,13 @@ export class BillService {
 			throw new Error('Bill status changed during payment finalization; please retry')
 		}
 
-		// Ensure manual/system mark-paid operations leave an explicit status-only payment-history marker.
-		const manualTransactionId = `manual-status-paid:${billId}:${generateUuidV7()}`
-		await this.db.insert(billPayments).values({
-			billId,
-			paymentToken: existingBill.paymentToken,
-			esiTransactionId: manualTransactionId,
-			amount: '0',
-			paidById: actorUserId ?? 'system',
-			paidByType: 'character',
-			paidAt,
-		})
-		await this.createStatusEvent({
-			billId,
-			eventType: 'payment_recorded',
-			fromStatus: null,
-			toStatus: null,
-			actorUserId,
-			metadata: {
-				amount: '0',
-				source: actorUserId ? 'admin_mark_paid' : 'system_mark_paid',
-				manual: true,
-				statusOnly: true,
-			},
-		})
-
 		const updatedBill = await this.db.query.bills.findFirst({
 			where: eq(bills.id, billId),
 		})
 		if (!updatedBill) {
 			throw new Error('Bill not found after payment finalization')
 		}
+		this.clearReadCache()
 		return this.toBillResponse(updatedBill)
 	}
 
@@ -1319,50 +1689,50 @@ export class BillService {
 		conditions.push(...this.buildBillFilterConditions(filters))
 		const whereCondition = this.buildWhereCondition(conditions)
 
-		const userBills = await this.db.query.bills.findMany({
-			where: whereCondition,
-		})
+		const whereSql = whereCondition ?? sql`true`
+		const effectiveStatus = this.buildEffectiveBillStatusExpression()
+		const [row] = (
+			await this.db.execute<{
+				total_bills: number | string
+				total_amount: string | null
+				paid_amount: string | null
+				overdue_amount: string | null
+				draft_count: number | string
+				issued_count: number | string
+				paid_count: number | string
+				cancelled_count: number | string
+				overdue_count: number | string
+			}>(sql`
+				select
+					count(*)::int as total_bills,
+					coalesce(sum(${bills.amount}::numeric), 0)::text as total_amount,
+					coalesce(sum(${bills.amount}::numeric + ${bills.lateFee}::numeric)
+						filter (where ${effectiveStatus} = 'paid'::bill_status), 0)::text as paid_amount,
+					coalesce(sum(${bills.amount}::numeric)
+						filter (where ${effectiveStatus} = 'overdue'::bill_status)), 0)::text as overdue_amount,
+					count(*) filter (where ${effectiveStatus} = 'draft'::bill_status)::int as draft_count,
+					count(*) filter (where ${effectiveStatus} = 'issued'::bill_status)::int as issued_count,
+					count(*) filter (where ${effectiveStatus} = 'paid'::bill_status)::int as paid_count,
+					count(*) filter (where ${effectiveStatus} = 'cancelled'::bill_status)::int as cancelled_count,
+					count(*) filter (where ${effectiveStatus} = 'overdue'::bill_status)::int as overdue_count
+				from ${bills}
+				where ${whereSql}
+			`)
+		).rows
 
-		// Calculate statistics
-		const stats: BillStatistics = {
-			totalBills: userBills.length,
-			totalAmount: '0',
-			paidAmount: '0',
-			overdueAmount: '0',
+		return {
+			totalBills: Number(row?.total_bills ?? 0),
+			totalAmount: row?.total_amount ?? '0',
+			paidAmount: row?.paid_amount ?? '0',
+			overdueAmount: row?.overdue_amount ?? '0',
 			billsByStatus: {
-				draft: 0,
-				issued: 0,
-				paid: 0,
-				cancelled: 0,
-				overdue: 0,
+				draft: Number(row?.draft_count ?? 0),
+				issued: Number(row?.issued_count ?? 0),
+				paid: Number(row?.paid_count ?? 0),
+				cancelled: Number(row?.cancelled_count ?? 0),
+				overdue: Number(row?.overdue_count ?? 0),
 			},
 		}
-
-		let totalAmount = 0
-		let paidAmount = 0
-		let overdueAmount = 0
-
-		for (const bill of userBills) {
-			const amount = parseFloat(bill.amount)
-			totalAmount += amount
-
-			if (bill.status === 'paid') {
-				paidAmount += amount + parseFloat(bill.lateFee)
-			} else if (
-				bill.status === 'overdue' ||
-				(bill.status === 'issued' && new Date() > bill.dueDate)
-			) {
-				overdueAmount += amount
-			}
-
-			stats.billsByStatus[bill.status as BillStatus]++
-		}
-
-		stats.totalAmount = totalAmount.toString()
-		stats.paidAmount = paidAmount.toString()
-		stats.overdueAmount = overdueAmount.toString()
-
-		return stats
 	}
 
 	private async createBillInternal(
@@ -1372,13 +1742,14 @@ export class BillService {
 			sourceType: string
 			sourceId: string
 			metadata: BillMetadata | null
-		}
+		},
+		writeDb: BillsDb = this.db
 	): Promise<Bill> {
 		const billId = generateUuidV7()
 		const paymentToken = generatePaymentToken()
 		const dueDate = typeof data.dueDate === 'string' ? new Date(data.dueDate) : data.dueDate
 
-		const [bill] = await this.db
+		const [bill] = await writeDb
 			.insert(bills)
 			.values({
 				id: billId,
@@ -1397,27 +1768,29 @@ export class BillService {
 				dueDate,
 				status: 'draft',
 				paymentToken,
-				externalSourceType: externalRef?.sourceType ?? null,
+				externalSourceType: externalRef?.sourceType ?? MANUAL_BILL_SOURCE,
 				externalSourceId: externalRef?.sourceId ?? null,
 				externalMetadata: data.externalMetadata ?? externalRef?.metadata ?? null,
 				groupBillId: data.groupBillId ?? null,
 			})
 			.returning()
 
-		await this.createStatusEvent({
-			billId: bill.id,
-			eventType: 'created',
-			fromStatus: null,
-			toStatus: bill.status,
-			actorUserId: userId,
-			metadata: externalRef
-				? {
-						sourceType: externalRef.sourceType,
-						sourceId: externalRef.sourceId,
-					}
-				: null,
-		})
-
+		await this.createStatusEvent(
+			{
+				billId: bill.id,
+				eventType: 'created',
+				fromStatus: null,
+				toStatus: bill.status,
+				actorUserId: userId,
+				metadata: externalRef
+					? {
+							sourceType: externalRef.sourceType,
+							sourceId: externalRef.sourceId,
+						}
+					: null,
+			},
+			writeDb
+		)
 		return this.toBillResponse(bill)
 	}
 
@@ -1431,10 +1804,21 @@ export class BillService {
 		return and(...conditions)
 	}
 
-	private buildBillFilterConditions(filters: BillFilters): SQL[] {
+	private buildEffectiveBillStatusExpression(): SQL {
+		return sql`case
+			when ${bills.status} = 'issued'::bill_status and ${bills.dueDate} < now()
+			then 'overdue'::bill_status
+			else ${bills.status}
+		end`
+	}
+
+	private buildBillFilterConditions(
+		filters: BillFilters,
+		statusExpression: SQL = sql`${bills.status}`
+	): SQL[] {
 		const conditions: SQL[] = []
 		if (filters.status) {
-			conditions.push(eq(bills.status, filters.status))
+			conditions.push(sql`${statusExpression} = ${filters.status}::bill_status`)
 		}
 		if (filters.payerId) {
 			conditions.push(eq(bills.payerId, filters.payerId))
@@ -1451,11 +1835,22 @@ export class BillService {
 		if (filters.payeeType) {
 			conditions.push(eq(bills.payeeType, filters.payeeType))
 		}
+		const dueDateConditions: SQL[] = []
 		if (filters.dueAfter) {
-			conditions.push(gte(bills.dueDate, filters.dueAfter))
+			dueDateConditions.push(gte(bills.dueDate, filters.dueAfter))
 		}
 		if (filters.dueBefore) {
-			conditions.push(lte(bills.dueDate, filters.dueBefore))
+			dueDateConditions.push(lte(bills.dueDate, filters.dueBefore))
+		}
+		if (dueDateConditions.length > 0) {
+			const dueDateCondition = and(...dueDateConditions)
+			const effectiveDueDateCondition = filters.includeOverdueBeyondDueAfter
+				? or(dueDateCondition, sql`${statusExpression} = 'overdue'::bill_status`)
+				: dueDateCondition
+
+			if (effectiveDueDateCondition) {
+				conditions.push(effectiveDueDateCondition)
+			}
 		}
 		if (filters.createdAfter) {
 			conditions.push(gte(bills.createdAt, filters.createdAfter))
@@ -1517,14 +1912,17 @@ export class BillService {
 		return sql`where ${sql.join(normalized, sql` and `)}`
 	}
 
-	private async createStatusEvent(input: {
-		billId: string
-		eventType: BillStatusEventType
-		fromStatus: BillStatus | null
-		toStatus: BillStatus | null
-		actorUserId: string | null
-		metadata?: BillMetadata | null
-	}): Promise<void> {
+	private async createStatusEvent(
+		input: {
+			billId: string
+			eventType: BillStatusEventType
+			fromStatus: BillStatus | null
+			toStatus: BillStatus | null
+			actorUserId: string | null
+			metadata?: BillMetadata | null
+		},
+		writeDb: BillsDb = this.db
+	): Promise<void> {
 		const fromStatusSql = input.fromStatus
 			? sql`${input.fromStatus}::bill_status`
 			: sql`null::bill_status`
@@ -1535,7 +1933,7 @@ export class BillService {
 			? sql`${JSON.stringify(input.metadata)}::jsonb`
 			: sql`null::jsonb`
 
-		await this.db.execute(sql`
+		await writeDb.execute(sql`
 			insert into bill_status_events (
 				id,
 				bill_id,
@@ -1647,6 +2045,7 @@ export class BillService {
 					where: eq(bills.id, bill.id),
 				})
 				if (updated) {
+					this.clearReadCache()
 					return updated
 				}
 			}
@@ -1678,6 +2077,7 @@ export class BillService {
 					.where(eq(bills.id, bill.id))
 					.returning()
 
+				this.clearReadCache()
 				return updated
 			}
 		}
@@ -1737,6 +2137,8 @@ export class BillService {
 				paidAt: p.paidAt,
 				createdAt: p.createdAt,
 			})),
+			canRevertToDraft:
+				bill.status !== 'draft' && bill.status !== 'paid' && !(bill.payments?.length > 0),
 		}
 	}
 }

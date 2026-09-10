@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { and, eq, ilike, inArray, or } from '@repo/db-utils'
+import { and, eq, ilike, inArray } from '@repo/db-utils'
 import { getStub, withRpcResult } from '@repo/do-utils'
 import { getPublicEsiInstance } from '@repo/esi'
 import { captureException, logger } from '@repo/hono-helpers'
@@ -1850,6 +1850,7 @@ app.get('/corporations', requireAuth(), async (c) => {
 						corporationId: corp.corporationId,
 						name: corp.name,
 						ticker: corp.ticker,
+						hasExplicitHrRole: true,
 						isMemberCorporation: corp.isMemberCorporation,
 						isAltCorp: corp.isAltCorp,
 						isSpecialPurpose: corp.isSpecialPurpose,
@@ -1867,6 +1868,7 @@ app.get('/corporations', requireAuth(), async (c) => {
 						corporationId: corp.corporationId,
 						name: corp.name,
 						ticker: corp.ticker,
+						hasExplicitHrRole: true,
 						isMemberCorporation: corp.isMemberCorporation,
 						isAltCorp: corp.isAltCorp,
 						isSpecialPurpose: corp.isSpecialPurpose,
@@ -1934,6 +1936,7 @@ app.get('/corporations', requireAuth(), async (c) => {
 				corporationId,
 				name: corporation?.name ?? `Corporation ${corporationId}`,
 				ticker: corporation?.ticker ?? '',
+				hasExplicitHrRole: explicitRole !== undefined,
 				isMemberCorporation: corporation?.isMemberCorporation ?? false,
 				isAltCorp: corporation?.isAltCorp ?? false,
 				isSpecialPurpose: corporation?.isSpecialPurpose ?? false,

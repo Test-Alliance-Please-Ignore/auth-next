@@ -121,7 +121,7 @@ function HrAuditorUsersAdminPage() {
 		<Container className="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
 			<PageHeader title="User Search" description="Search all users for HR audit purposes" />
 
-			<div className="mt-6 flex flex-col space-y-4 lg:min-h-0 lg:flex-1">
+			<div className="flex flex-col space-y-4 lg:min-h-0 lg:flex-1">
 				{/* Search */}
 				<Card>
 					<CardContent className="pt-6">
@@ -208,7 +208,7 @@ function HrScopedUsersPage() {
 				description="Search surface-level users and linked characters within your HR access scope."
 			/>
 
-			<div className="mt-6 flex min-h-0 flex-1 flex-col">
+			<div className="flex min-h-0 flex-1 flex-col">
 				<HrUserSearchContent fillAvailableHeight />
 			</div>
 		</Container>

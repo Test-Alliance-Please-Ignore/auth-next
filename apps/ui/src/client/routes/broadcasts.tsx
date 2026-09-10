@@ -2,8 +2,6 @@ import { Ban, ExternalLink, FilePlus2, Pencil, Plus, Send, Trash2 } from 'lucide
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
-import { AddBroadcastAddendumDialog } from './add-broadcast-addendum-dialog'
-import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,6 +17,8 @@ import {
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import {
+	stickyTableActionCellClassName,
+	stickyTableActionHeaderClassName,
 	Table,
 	TableBody,
 	TableCell,
@@ -26,6 +26,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useAuth } from '@/hooks/useAuth'
 import {
 	useBroadcasts,
 	useBroadcastTargets,
@@ -33,9 +34,11 @@ import {
 	useDeleteBroadcast,
 	useSendBroadcast,
 } from '@/hooks/useBroadcasts'
-import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { getBroadcastActionVisibility } from '@/lib/broadcast-permissions'
+
+import { AddBroadcastAddendumDialog } from './add-broadcast-addendum-dialog'
+import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 
 import type { BadgeVariant } from '@/components/ui/badge'
 import type { Broadcast, BroadcastStatus } from '@/lib/api'
@@ -217,120 +220,130 @@ export default function BroadcastsPage() {
 						</CardHeader>
 						<CardContent>
 							<div className="rounded-md border bg-card">
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>Status</TableHead>
-										<TableHead>Target</TableHead>
-										<TableHead>Template</TableHead>
-										<TableHead>Created</TableHead>
-										<TableHead>Scheduled</TableHead>
-										<TableHead className="sticky right-0 z-20 bg-primary/5 border-l border-border/50 text-right">
-											Actions
-										</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{myBroadcasts.map((broadcast) => {
-										const target = targets?.find((t) => t.id === broadcast.targetId)
-										const template = broadcast.templateId
-											? templates?.find((t) => t.id === broadcast.templateId)
-											: null
-										const { canDelete, canRescind } = getBroadcastActionVisibility({
-											user,
-											permissions,
-											broadcast,
-											target,
-										})
+								<Table>
+									<TableHeader>
+										<TableRow>
+											<TableHead>Status</TableHead>
+											<TableHead>Target</TableHead>
+											<TableHead>Template</TableHead>
+											<TableHead>Created</TableHead>
+											<TableHead>Scheduled</TableHead>
+											<TableHead className={`${stickyTableActionHeaderClassName} text-right`}>
+												Actions
+											</TableHead>
+										</TableRow>
+									</TableHeader>
+									<TableBody>
+										{myBroadcasts.map((broadcast) => {
+											const target = targets?.find((t) => t.id === broadcast.targetId)
+											const template = broadcast.templateId
+												? templates?.find((t) => t.id === broadcast.templateId)
+												: null
+											const { canDelete, canRescind } = getBroadcastActionVisibility({
+												user,
+												permissions,
+												broadcast,
+												target,
+											})
 
-										return (
-											<TableRow key={broadcast.id}>
-												<TableCell>
-													<Badge variant={statusVariants[broadcast.status]}>
-														{statusLabels[broadcast.status]}
-													</Badge>
-												</TableCell>
-												<TableCell className="font-medium">
-													{target?.name || broadcast.targetId}
-												</TableCell>
-												<TableCell>{template?.name || 'Custom'}</TableCell>
-												<TableCell className="text-sm text-muted-foreground">
-													{formatDate(broadcast.createdAt)}
-												</TableCell>
-												<TableCell className="text-sm text-muted-foreground">
-													{broadcast.scheduledFor ? formatDate(broadcast.scheduledFor) : '-'}
-												</TableCell>
-												<TableCell className="sticky right-0 z-10 bg-card border-l border-border/50 text-right">
-													<div className="flex items-center justify-end gap-2">
-														<Link to={`/broadcasts/${broadcast.id}`}>
-															<Button variant="ghost" size="icon" title="Show details" aria-label="Show details">
-																<ExternalLink className="h-4 w-4" />
-															</Button>
-														</Link>
-														{canRescind && broadcast.status === 'sent' && (
-															<Button
-																variant="ghost"
-																size="icon"
-																onClick={() => handleAddendumClick(broadcast)}
-																title="Add addendum"
-																aria-label="Add addendum"
-															>
-																<FilePlus2 className="h-4 w-4 text-primary" />
-															</Button>
-														)}
-														{broadcast.status === 'draft' && (
-															<Button
-																variant="ghost"
-																size="icon"
-																onClick={() => navigate(`/broadcasts/new?draftId=${broadcast.id}`)}
-																title="Edit draft"
-																aria-label="Edit draft"
-															>
-																<Pencil className="h-4 w-4" />
-															</Button>
-														)}
-														{['draft', 'scheduled', 'failed'].includes(broadcast.status) && (
-															<Button
-																variant="ghost"
-																size="icon"
-																onClick={() => handleSendNow(broadcast)}
-																disabled={sendBroadcast.isPending}
-																title="Send now"
-																aria-label="Send now"
-															>
-																<Send className="h-4 w-4 text-confirm" />
-															</Button>
-														)}
-														{canRescind && (
-															<Button
-																variant="ghost"
-																size="icon"
-																onClick={() => { setSelectedBroadcast(broadcast); setRescindDialogOpen(true) }}
-																title="Rescind broadcast"
-																aria-label="Rescind broadcast"
-															>
-																<Ban className="h-4 w-4 text-warning" />
-															</Button>
-														)}
-														{canDelete && (
-															<Button
-																variant="ghost"
-																size="icon"
-																onClick={() => handleDeleteClick(broadcast)}
-																disabled={deleteBroadcast.isPending}
-																title="Delete broadcast"
-																aria-label="Delete broadcast"
-															>
-																<Trash2 className="h-4 w-4 text-destructive" />
-															</Button>
-														)}
-													</div>
-												</TableCell>
-											</TableRow>
-										)
-									})}
-								</TableBody>
-							</Table>
+											return (
+												<TableRow key={broadcast.id}>
+													<TableCell>
+														<Badge variant={statusVariants[broadcast.status]}>
+															{statusLabels[broadcast.status]}
+														</Badge>
+													</TableCell>
+													<TableCell className="font-medium">
+														{target?.name || broadcast.targetId}
+													</TableCell>
+													<TableCell>{template?.name || 'Custom'}</TableCell>
+													<TableCell className="text-sm text-muted-foreground">
+														{formatDate(broadcast.createdAt)}
+													</TableCell>
+													<TableCell className="text-sm text-muted-foreground">
+														{broadcast.scheduledFor ? formatDate(broadcast.scheduledFor) : '-'}
+													</TableCell>
+													<TableCell className={`${stickyTableActionCellClassName} text-right`}>
+														<div className="flex items-center justify-end gap-2">
+															<Link to={`/broadcasts/${broadcast.id}`}>
+																<Button
+																	variant="ghost"
+																	size="icon"
+																	title="Show details"
+																	aria-label="Show details"
+																>
+																	<ExternalLink className="h-4 w-4" />
+																</Button>
+															</Link>
+															{canRescind && broadcast.status === 'sent' && (
+																<Button
+																	variant="ghost"
+																	size="icon"
+																	onClick={() => handleAddendumClick(broadcast)}
+																	title="Add addendum"
+																	aria-label="Add addendum"
+																>
+																	<FilePlus2 className="h-4 w-4 text-primary" />
+																</Button>
+															)}
+															{broadcast.status === 'draft' && (
+																<Button
+																	variant="ghost"
+																	size="icon"
+																	onClick={() =>
+																		navigate(`/broadcasts/new?draftId=${broadcast.id}`)
+																	}
+																	title="Edit draft"
+																	aria-label="Edit draft"
+																>
+																	<Pencil className="h-4 w-4" />
+																</Button>
+															)}
+															{['draft', 'scheduled', 'failed'].includes(broadcast.status) && (
+																<Button
+																	variant="ghost"
+																	size="icon"
+																	onClick={() => handleSendNow(broadcast)}
+																	disabled={sendBroadcast.isPending}
+																	title="Send now"
+																	aria-label="Send now"
+																>
+																	<Send className="h-4 w-4 text-confirm" />
+																</Button>
+															)}
+															{canRescind && (
+																<Button
+																	variant="ghost"
+																	size="icon"
+																	onClick={() => {
+																		setSelectedBroadcast(broadcast)
+																		setRescindDialogOpen(true)
+																	}}
+																	title="Rescind broadcast"
+																	aria-label="Rescind broadcast"
+																>
+																	<Ban className="h-4 w-4 text-warning" />
+																</Button>
+															)}
+															{canDelete && (
+																<Button
+																	variant="ghost"
+																	size="icon"
+																	onClick={() => handleDeleteClick(broadcast)}
+																	disabled={deleteBroadcast.isPending}
+																	title="Delete broadcast"
+																	aria-label="Delete broadcast"
+																>
+																	<Trash2 className="h-4 w-4 text-destructive" />
+																</Button>
+															)}
+														</div>
+													</TableCell>
+												</TableRow>
+											)
+										})}
+									</TableBody>
+								</Table>
 							</div>
 							<div className="mt-4 flex items-center justify-between gap-2">
 								<p className="text-sm text-muted-foreground">
@@ -391,7 +404,7 @@ export default function BroadcastsPage() {
 			</Dialog>
 
 			<RescindBroadcastDialog
-				broadcastId={selectedBroadcast?.id ?? ""}
+				broadcastId={selectedBroadcast?.id ?? ''}
 				open={rescindDialogOpen}
 				onOpenChange={(open) => {
 					setRescindDialogOpen(open)

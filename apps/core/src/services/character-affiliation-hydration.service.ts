@@ -4,6 +4,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { userCharacters } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
+import { clearUserBillScopeCache } from '../lib/billing-scope-cache'
 import { markCharacterDeletedEverywhere } from './character-deletion.service'
 
 import type { EsiTypeResolver } from '@repo/esi'
@@ -15,7 +16,7 @@ import type { createDb } from '../db'
 type CharacterAffiliationHydrationParams = {
 	db: ReturnType<typeof createDb>
 	env: Pick<Env, 'ESI_TYPE_RESOLVER' | 'EVE_TOKEN_STORE' | 'EVE_CHARACTER_DATA'> &
-		Partial<Pick<Env, 'EVE_CORPORATION_DATA'>>
+		Partial<Pick<Env, 'EVE_CORPORATION_DATA' | 'BILLING_SCOPE_CACHE'>>
 	characterId: string
 	cacheMode?: 'default' | 'no-store'
 	executionCtx?: Pick<ExecutionContext, 'waitUntil'>
@@ -57,6 +58,10 @@ export async function hydrateCharacterAffiliation(
 
 	const corporationId = publicRefreshResult.currentCorporationId ?? ''
 	const allianceId = publicRefreshResult.currentAllianceId ?? null
+	const linkedCharacter = await db.query.userCharacters.findFirst({
+		where: eq(userCharacters.characterId, characterId),
+		columns: { userId: true },
+	})
 
 	await db
 		.update(userCharacters)
@@ -69,6 +74,9 @@ export async function hydrateCharacterAffiliation(
 			updatedAt: new Date(),
 		})
 		.where(eq(userCharacters.characterId, characterId))
+	if (linkedCharacter) {
+		await clearUserBillScopeCache(linkedCharacter.userId, env.BILLING_SCOPE_CACHE)
+	}
 
 	if (env.EVE_CORPORATION_DATA) {
 		try {

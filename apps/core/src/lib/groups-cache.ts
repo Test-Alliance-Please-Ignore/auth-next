@@ -1,6 +1,8 @@
 import { getStub, withRpcResult } from '@repo/do-utils'
 import { TimeCache } from '@repo/hono-helpers'
 
+import { clearUserBillScopeCache } from './billing-scope-cache'
+
 import type {
 	GroupMembershipSummary,
 	Groups,
@@ -171,10 +173,14 @@ export async function getCachedGlobalPermissions(env: GroupsEnv): Promise<Permis
  * Clear all caches for a specific user
  * Call this when user joins/leaves groups or permissions change
  */
-export function clearUserCache(userId: string): void {
+export async function clearUserCache(
+	userId: string,
+	billingScopeCache?: DurableObjectNamespace
+): Promise<void> {
 	permissionsCache.delete(`permissions:${userId}`)
 	membershipsCache.delete(`memberships:${userId}`)
 	rolesCache.delete(`roles:${userId}`)
+	await clearUserBillScopeCache(userId, billingScopeCache)
 	// Note: We can't efficiently clear all group caches for a user without tracking keys
 	// Group caches will expire naturally based on TTL
 }
@@ -201,11 +207,12 @@ export function clearGroupCache(_groupId: string): void {
 /**
  * Clear all caches (useful for testing or full reset)
  */
-export function clearAllCaches(): void {
+export async function clearAllCaches(billingScopeCache?: DurableObjectNamespace): Promise<void> {
 	permissionsCache.clear()
 	membershipsCache.clear()
 	groupsCache.clear()
 	characterPermissionsCache.clear()
 	rolesCache.clear()
 	globalPermissionsCache.clear()
+	await clearUserBillScopeCache(undefined, billingScopeCache)
 }

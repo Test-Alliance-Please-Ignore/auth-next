@@ -29,6 +29,46 @@ export type ScheduleFrequency = 'daily' | 'weekly' | 'monthly'
 export type BillMetadataScalar = string | number | boolean | null
 export type BillMetadata = Record<string, BillMetadataScalar>
 
+/** Global permission that grants non-admin manual bill issuance and ownership actions. */
+export const BILLING_ISSUER_PERMISSION = 'urn:billing:issuer' as const
+/** Prefix for issuer permissions limited to one or more corporation IDs. */
+export const BILLING_ISSUER_PERMISSION_PREFIX = `${BILLING_ISSUER_PERMISSION}:` as const
+
+export interface BillingIssuerScope {
+	unrestricted: boolean
+	corporationIds: string[]
+	corporations?: Array<{ corporationId: string; name: string }>
+}
+
+/**
+ * Return the normalized corporation ID from a scoped issuer URN, or null for
+ * the baseline/invalid URNs. IDs are kept as strings because EVE IDs can be
+ * larger than JavaScript's safe integer range.
+ */
+export function parseBillingIssuerCorporationId(urn: string): string | null {
+	if (!urn.startsWith(BILLING_ISSUER_PERMISSION_PREFIX)) return null
+	const corporationId = urn.slice(BILLING_ISSUER_PERMISSION_PREFIX.length)
+	if (!/^\d+$/.test(corporationId)) return null
+	return corporationId.replace(/^0+(?=\d)/, '')
+}
+
+export function getBillingIssuerScopeFromUrns(urns: readonly string[]): BillingIssuerScope {
+	const corporationIds = new Set<string>()
+	let unrestricted = false
+	for (const urn of urns) {
+		if (urn === BILLING_ISSUER_PERMISSION) {
+			unrestricted = true
+			continue
+		}
+		const corporationId = parseBillingIssuerCorporationId(urn)
+		if (corporationId) corporationIds.add(corporationId)
+	}
+	return { unrestricted, corporationIds: [...corporationIds] }
+}
+
+/** External source used for bills created through the manual bill workflow. */
+export const MANUAL_BILL_SOURCE = 'manual' as const
+
 /**
  * Core data types
  */
@@ -60,6 +100,24 @@ export interface Bill {
 	createdAt: Date
 	updatedAt: Date
 }
+
+/** Bills that can be managed through the issuer-owned manual workflow. */
+export function isManualBill(bill: {
+	externalSourceType: string | null | undefined
+	templateId: string | null | undefined
+	scheduleId: string | null | undefined
+	groupBillId: string | null | undefined
+}): boolean {
+	// Null is retained for legacy manually created bills; known external sources remain excluded.
+	return (
+		(bill.externalSourceType == null || bill.externalSourceType === MANUAL_BILL_SOURCE) &&
+		bill.templateId == null &&
+		bill.scheduleId == null &&
+		bill.groupBillId == null
+	)
+}
+
+export type BillMutationAuthorization = 'owner' | 'admin'
 
 export interface BillExternalRef {
 	sourceType: string
@@ -197,6 +255,14 @@ export interface BillWithDetails extends Bill {
 	groupBillTotalCount?: number
 	groupBillPaidCount?: number
 	groupBillMixed?: boolean // true when sub-bills don't all share the same status
+	groupBillDraftCount?: number
+	groupBillEditableCount?: number
+	groupBillCancellableCount?: number
+	groupBillRevertibleCount?: number
+	/** User-route capability derived from the authenticated user's bill scope. */
+	canMarkPaid?: boolean
+	/** True only when the backend permits reverting this bill to draft. */
+	canRevertToDraft?: boolean
 }
 
 export interface BillIntegrationView extends BillWithDetails {}
@@ -244,6 +310,7 @@ export interface GroupBillEntry {
 	totalDue: string
 	totalPaid: string
 	paidAt: Date | null
+	hasPayments: boolean
 }
 
 export interface GroupBillAggregate {
@@ -374,6 +441,8 @@ export interface BillFilters {
 	payerType?: EntityType
 	payeeType?: EntityType
 	dueAfter?: Date
+	/** Keep overdue bills visible when a due-date lower bound is applied. */
+	includeOverdueBeyondDueAfter?: boolean
 	dueBefore?: Date
 	createdAfter?: Date
 	createdBefore?: Date
@@ -406,6 +475,8 @@ export interface BillListQuery {
 	offset: number
 	sortBy?: BillListSortField
 	sortDir?: BillListSortDirection
+	/** Return one representative row per group bill with aggregate metadata. */
+	coalesced?: boolean
 }
 
 export interface BillListPage {
@@ -420,6 +491,8 @@ export interface BillPartySearchQuery {
 	direction?: BillPartyDirection
 	entityType?: EntityType
 	q?: string
+	/** Exact entity IDs resolved from authoritative name indexes by the caller. */
+	entityIds?: string[]
 	limit?: number
 }
 
@@ -503,6 +576,9 @@ export interface Bills {
 	/** Create a new bill */
 	createBill(userId: string, data: CreateBillInput): Promise<Bill>
 
+	/** Create a set of bills atomically, preserving one status event per bill. */
+	createBillsBulk(userId: string, data: CreateBillInput[]): Promise<Bill[]>
+
 	/** Create a bill idempotently using an external source reference */
 	createBillFromExternalSource(
 		userId: string,
@@ -543,11 +619,20 @@ export interface Bills {
 		query: BillStatusEventByPayerPageQuery
 	): Promise<BillStatusEventByPayerPage>
 
-	/** Update a bill (permissions enforced by caller route; blocked when paid or any payments exist) */
-	updateBill(actorUserId: string, billId: string, data: UpdateBillInput): Promise<Bill>
+	/** Update a bill (owner-scoped by default; admin scope is explicit) */
+	updateBill(
+		actorUserId: string,
+		billId: string,
+		data: UpdateBillInput,
+		authorization?: BillMutationAuthorization
+	): Promise<Bill>
 
-	/** Issue a bill (permissions enforced by caller route; draft-only transition) */
-	issueBill(actorUserId: string, billId: string): Promise<Bill>
+	/** Issue a bill (owner-scoped by default; admin scope is explicit) */
+	issueBill(
+		actorUserId: string,
+		billId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<Bill>
 
 	/** Enqueue idempotent notification events for one bill and event type. */
 	enqueueBillNotificationEvent(
@@ -556,14 +641,33 @@ export interface Bills {
 		metadata?: BillMetadata | null
 	): Promise<{ recipientCount: number }>
 
-	/** Cancel a bill (permissions enforced by caller route) */
-	cancelBill(actorUserId: string, billId: string): Promise<Bill>
+	/** Cancel a bill (owner-scoped by default; admin scope is explicit) */
+	cancelBill(
+		actorUserId: string,
+		billId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<Bill>
 
-	/** Mark a bill as paid (permissions enforced by caller route) */
-	markBillPaid(actorUserId: string, billId: string): Promise<Bill>
+	/** Mark a bill as paid (owner-scoped by default; admin scope is explicit) */
+	markBillPaid(
+		actorUserId: string,
+		billId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<Bill>
 
-	/** Revert a bill to draft (permissions enforced by caller route; blocked when paid or any payments exist) */
-	revertBillToDraft(actorUserId: string, billId: string): Promise<Bill>
+	/** Mark a bill paid when the actor is an authorized payer or payee. */
+	markRelatedBillPaid(
+		actorUserId: string,
+		billId: string,
+		relatedEntities: BillListScopeEntity[]
+	): Promise<Bill>
+
+	/** Revert a bill to draft (owner-scoped by default; admin scope is explicit) */
+	revertBillToDraft(
+		actorUserId: string,
+		billId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<Bill>
 
 	/** Pay a bill using payment token */
 	payBill(
@@ -576,32 +680,54 @@ export interface Bills {
 		}: { amount: bigint; paidById: string; paidByType: EntityType; esiTransactionId: string }
 	): Promise<any>
 
-	/** Regenerate payment token for a bill (permissions enforced by caller route) */
-	regeneratePaymentToken(actorUserId: string, billId: string): Promise<RegenerateTokenResponse>
+	/** Regenerate payment token (owner-scoped by default; admin scope is explicit) */
+	regeneratePaymentToken(
+		actorUserId: string,
+		billId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<RegenerateTokenResponse>
 
-	/** Delete a bill (permissions enforced by caller route; draft-only invariant) */
-	deleteBill(actorUserId: string, billId: string): Promise<void>
+	/** Delete a bill (owner-scoped by default; admin scope is explicit) */
+	deleteBill(
+		actorUserId: string,
+		billId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<void>
 
 	/** Issue all eligible (draft) sub-bills sharing a groupBillId */
-	issueGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult>
+	issueGroupBill(
+		actorUserId: string,
+		groupBillId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<GroupBillOperationResult>
 
 	/** Cancel all eligible sub-bills sharing a groupBillId */
-	cancelGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult>
+	cancelGroupBill(
+		actorUserId: string,
+		groupBillId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<GroupBillOperationResult>
 
 	/** Revert all eligible sub-bills sharing a groupBillId to draft */
 	revertGroupBillToDraft(
 		actorUserId: string,
-		groupBillId: string
+		groupBillId: string,
+		authorization?: BillMutationAuthorization
 	): Promise<GroupBillOperationResult>
 
 	/** Delete all eligible (draft) sub-bills sharing a groupBillId */
-	deleteGroupBill(actorUserId: string, groupBillId: string): Promise<GroupBillOperationResult>
+	deleteGroupBill(
+		actorUserId: string,
+		groupBillId: string,
+		authorization?: BillMutationAuthorization
+	): Promise<GroupBillOperationResult>
 
 	/** Update shared fields on all eligible sub-bills sharing a groupBillId */
 	updateGroupBill(
 		actorUserId: string,
 		groupBillId: string,
-		data: UpdateBillInput
+		data: UpdateBillInput,
+		authorization?: BillMutationAuthorization
 	): Promise<GroupBillOperationResult>
 
 	/** Get bill statistics for a user */

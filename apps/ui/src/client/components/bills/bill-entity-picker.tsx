@@ -29,6 +29,7 @@ type BillEntityPickerProps = {
 	selectedEntityName?: string
 	error?: string
 	emptyText?: string
+	staticOptions?: SelectOption[]
 }
 
 export function BillEntityPicker(props: BillEntityPickerProps) {
@@ -36,6 +37,7 @@ export function BillEntityPicker(props: BillEntityPickerProps) {
 		() => ENTITY_TYPE_LABELS[props.entityType] ?? props.entityType,
 		[props.entityType]
 	)
+	const isStaticSelection = props.staticOptions !== undefined
 
 	return (
 		<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -47,7 +49,8 @@ export function BillEntityPicker(props: BillEntityPickerProps) {
 					value={props.entityType}
 					onValueChange={(value) => props.onEntityTypeChange(value as EntitySearchType)}
 					inputId={props.typeFieldId}
-					options={props.allowedEntityTypes.map((entityType) => ({ value: entityType,
+					options={props.allowedEntityTypes.map((entityType) => ({
+						value: entityType,
 						label: ENTITY_TYPE_LABELS[entityType],
 					}))}
 				/>
@@ -65,14 +68,18 @@ export function BillEntityPicker(props: BillEntityPickerProps) {
 						}
 						props.onEntitySelect(nextValue, option.label)
 					}}
-					query={props.query}
-					onQueryChange={props.onQueryChange}
-					searchable
-					searchDelegate={() => props.options}
-					options={props.options}
-					loading={props.loading}
-					placeholder={`Search ${placeholderTypeLabel.toLowerCase()} name or ID`}
-					queryHintText="Type at least 2 characters to search"
+					query={isStaticSelection ? undefined : props.query}
+					onQueryChange={isStaticSelection ? undefined : props.onQueryChange}
+					searchable={!isStaticSelection}
+					searchDelegate={isStaticSelection ? undefined : () => props.options}
+					options={props.staticOptions ?? props.options}
+					loading={isStaticSelection ? false : props.loading}
+					placeholder={
+						isStaticSelection
+							? `Select ${placeholderTypeLabel.toLowerCase()}`
+							: `Search ${placeholderTypeLabel.toLowerCase()} name or ID`
+					}
+					queryHintText={isStaticSelection ? undefined : 'Type at least 2 characters to search'}
 					minQueryLength={2}
 					debounceMs={0}
 					emptyText={props.emptyText ?? `No ${props.roleLabel.toLowerCase()} matches`}

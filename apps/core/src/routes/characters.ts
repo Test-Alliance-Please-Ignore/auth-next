@@ -856,7 +856,8 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 						c.env.EVE_CHARACTER_DATA,
 						c.env.EVE_TOKEN_STORE,
 						c.env.ESI,
-						c.env.EVE_CORPORATION_DATA
+						c.env.EVE_CORPORATION_DATA,
+						c.env.BILLING_SCOPE_CACHE
 					),
 				{
 					characterId: characterIdStr,

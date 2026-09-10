@@ -44,16 +44,24 @@ export function DateRangeInput({
 	disabled = false,
 	className,
 }: DateRangeInputProps) {
+	const handleChange = (nextValue: [Date | null, Date | null]) => {
+		// Mantine clears an incomplete range when the popover closes. A single date is
+		// a valid filter for this control, so preserve it until the user selects an end date.
+		if (!nextValue[0] && !nextValue[1] && value.fromDate && !value.toDate) {
+			return
+		}
+
+		onChange({
+			fromDate: formatDateValue(nextValue[0]),
+			toDate: formatDateValue(nextValue[1]),
+		})
+	}
+
 	return (
 		<MantineDatePickerInput
 			type="range"
 			value={[parseDateValue(value.fromDate), parseDateValue(value.toDate)]}
-			onChange={(nextValue) =>
-				onChange({
-					fromDate: formatDateValue(nextValue[0]),
-					toDate: formatDateValue(nextValue[1]),
-				})
-			}
+			onChange={handleChange}
 			valueFormat="MM/DD/YYYY"
 			placeholder={placeholder}
 			disabled={disabled}

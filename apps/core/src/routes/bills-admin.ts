@@ -10,9 +10,15 @@ import { Hono } from 'hono'
 
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
+import { parseDateOrNull } from '@repo/worker-utils'
 
 import { createDb } from '../db'
 import { managedCorporations, userCharacters, users } from '../db/schema'
+import {
+	escapeLikePattern,
+	manualBillCreateSchema,
+	manualBillUpdateSchema,
+} from '../lib/bill-validation'
 import { validatePagination } from '../lib/validation'
 import { requireAdmin, requireAuth } from '../middleware/session'
 
@@ -22,9 +28,11 @@ import type {
 	BillListSortField,
 	BillPartyDirection,
 	Bills,
+	CreateBillInput,
 	EntitySearchType,
 	EntityType,
 	GroupBillAggregate,
+	UpdateBillInput,
 } from '@repo/bills'
 import type { EsiTypeResolver } from '@repo/esi'
 import type { Groups } from '@repo/groups'
@@ -66,7 +74,48 @@ async function resolveGroupNames(
 	return names
 }
 
-function parseBillFilters(c: { req: { query: (key: string) => string | undefined } }): BillFilters {
+async function findBillPartyNameMatches(
+	env: App['Bindings'],
+	userId: string,
+	query: string,
+	entityType?: EntityType
+): Promise<string[]> {
+	const db = createDb(env.DATABASE_URL)
+	const ids: string[] = []
+	if (!entityType || entityType === 'character') {
+		const characters = await db.query.userCharacters.findMany({
+			where: and(
+				eq(userCharacters.isDeleted, false),
+				eq(userCharacters.status, 'active'),
+				ilike(userCharacters.characterName, `${escapeLikePattern(query)}%`)
+			),
+			columns: { characterId: true },
+			limit: 100,
+		})
+		ids.push(...characters.map((character) => character.characterId))
+	}
+	if (!entityType || entityType === 'corporation') {
+		const corporations = await db.query.managedCorporations.findMany({
+			where: and(
+				eq(managedCorporations.isActive, true),
+				ilike(managedCorporations.name, `${escapeLikePattern(query)}%`)
+			),
+			columns: { corporationId: true },
+			limit: 100,
+		})
+		ids.push(...corporations.map((corporation) => corporation.corporationId))
+	}
+	if (!entityType || entityType === 'group') {
+		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+		const groups = await groupsStub.listGroups({ search: query, limit: 100, offset: 0 }, userId)
+		ids.push(...groups.map((group) => group.id))
+	}
+	return [...new Set(ids)]
+}
+
+function parseBillFilters(c: {
+	req: { query: (key: string) => string | undefined }
+}): { success: true; filters: BillFilters } | { success: false; error: string } {
 	const status = c.req.query('status')
 	const payerId = c.req.query('payerId')?.trim()
 	const payeeId = c.req.query('payeeId')?.trim()
@@ -78,21 +127,39 @@ function parseBillFilters(c: { req: { query: (key: string) => string | undefined
 	const createdAfter = c.req.query('createdAfter')
 	const createdBefore = c.req.query('createdBefore')
 	const filters: BillFilters = {}
-	if (status) filters.status = status as BillFilters['status']
+	if (status) {
+		if (!['draft', 'issued', 'paid', 'cancelled', 'overdue'].includes(status)) {
+			return { success: false, error: 'Invalid bill status' }
+		}
+		filters.status = status as BillFilters['status']
+	}
 	if (payerId) filters.payerId = payerId
 	if (payeeId) filters.payeeId = payeeId
 	if (issuerId) filters.issuerId = issuerId
-	if (payerType && ENTITY_TYPES.has(payerType as EntityType)) {
+	if (payerType) {
+		if (!ENTITY_TYPES.has(payerType as EntityType)) {
+			return { success: false, error: 'Invalid payer type' }
+		}
 		filters.payerType = payerType as EntityType
 	}
-	if (payeeType && PAYEE_ENTITY_TYPES.has(payeeType as EntityType)) {
+	if (payeeType) {
+		if (!PAYEE_ENTITY_TYPES.has(payeeType as EntityType)) {
+			return { success: false, error: 'Invalid payee type' }
+		}
 		filters.payeeType = payeeType as EntityType
 	}
-	if (dueAfter) filters.dueAfter = new Date(dueAfter)
-	if (dueBefore) filters.dueBefore = new Date(dueBefore)
-	if (createdAfter) filters.createdAfter = new Date(createdAfter)
-	if (createdBefore) filters.createdBefore = new Date(createdBefore)
-	return filters
+	for (const [rawValue, label, assign] of [
+		[dueAfter, 'dueAfter', (date: Date) => (filters.dueAfter = date)],
+		[dueBefore, 'dueBefore', (date: Date) => (filters.dueBefore = date)],
+		[createdAfter, 'createdAfter', (date: Date) => (filters.createdAfter = date)],
+		[createdBefore, 'createdBefore', (date: Date) => (filters.createdBefore = date)],
+	] as const) {
+		if (!rawValue) continue
+		const parsed = parseDateOrNull(rawValue)
+		if (!parsed) return { success: false, error: `Invalid ${label} date` }
+		assign(parsed)
+	}
+	return { success: true, filters }
 }
 
 // ===== Bill Routes =====
@@ -116,15 +183,15 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 			return c.json({ error: pagination.error }, pagination.status)
 		}
 
-		const filters = parseBillFilters(c)
+		const parsedFilters = parseBillFilters(c)
+		if (!parsedFilters.success) return c.json({ error: parsedFilters.error }, 400)
+		const filters = parsedFilters.filters
 		const coalesced = c.req.query('coalesced') !== 'false'
 		const sortByQuery = c.req.query('sortBy')?.trim() as BillListSortField | undefined
 		const sortDirQuery = c.req.query('sortDir')?.trim() as BillListSortDirection | undefined
 		const sortBy = sortByQuery && BILL_SORT_FIELDS.has(sortByQuery) ? sortByQuery : 'createdAt'
 		const sortDir: BillListSortDirection =
 			sortDirQuery === 'desc' || (!sortDirQuery && !sortByQuery) ? 'desc' : 'asc'
-		const requestedPayerType = filters.payerType
-
 		logger.info('[bills-admin] Fetching bills', {
 			userId: user.id,
 			filters,
@@ -135,97 +202,17 @@ app.get('/', requireAuth(), requireAdmin(), async (c) => {
 		})
 
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
-		const filtersForFetch: BillFilters = { ...filters }
-		if (coalesced && requestedPayerType === 'group') {
-			// Group sub-bills are stored as payerType='character' and only linked via groupBillId/group metadata.
-			// Fetch broadly and apply payerType='group' filtering after coalescing.
-			delete filtersForFetch.payerType
-		}
-		const fetchPage = (limit: number, offset: number) =>
-			stub.listBillsPage({
-				scope: { mode: 'all' },
-				filters: filtersForFetch,
-				limit,
-				offset,
-				sortBy,
-				sortDir,
-			})
-		const firstFetchLimit = coalesced ? Math.max(100, pagination.data.limit) : pagination.data.limit
-		const firstFetchOffset = coalesced ? 0 : pagination.data.offset
-		const firstPage = await fetchPage(firstFetchLimit, firstFetchOffset)
-		let rowsToRender = firstPage.rows
-		let totalRowCount = firstPage.rowCount
-		if (coalesced) {
-			const fullRows = [...firstPage.rows]
-			const chunkSize = firstFetchLimit
-			let nextOffset = firstPage.rows.length
-			let lastBatchSize = firstPage.rows.length
-			while (fullRows.length < firstPage.rowCount && lastBatchSize > 0) {
-				const chunk = await fetchPage(chunkSize, nextOffset)
-				fullRows.push(...chunk.rows)
-				lastBatchSize = chunk.rows.length
-				nextOffset += chunk.rows.length
-			}
-
-			// Coalesce group sub-bills: keep one representative per groupBillId with aggregate counts
-			// while preserving the original sorted order by first encounter.
-			const groupBillMap = new Map<
-				string,
-				{
-					representative: (typeof fullRows)[number]
-					statuses: Set<string>
-				}
-			>()
-			const coalescedRows: Array<(typeof fullRows)[number]> = []
-			for (const row of fullRows) {
-				if (!row.groupBillId) {
-					coalescedRows.push(row)
-					continue
-				}
-
-				let entry = groupBillMap.get(row.groupBillId)
-				if (!entry) {
-					const metaGroupId =
-						row.externalMetadata &&
-						typeof (row.externalMetadata as Record<string, unknown>).groupId === 'string'
-							? ((row.externalMetadata as Record<string, unknown>).groupId as string)
-							: null
-					const representative = {
-						...row,
-						...(metaGroupId && {
-							payerId: metaGroupId,
-							payerType: 'group' as const,
-						}),
-						groupBillTotalCount: 0,
-						groupBillPaidCount: 0,
-					}
-					entry = { representative, statuses: new Set<string>() }
-					groupBillMap.set(row.groupBillId, entry)
-					coalescedRows.push(representative)
-				}
-
-				entry.representative.groupBillTotalCount =
-					(entry.representative.groupBillTotalCount ?? 0) + 1
-				if (row.status === 'paid') {
-					entry.representative.groupBillPaidCount =
-						(entry.representative.groupBillPaidCount ?? 0) + 1
-				}
-				entry.statuses.add(row.status)
-			}
-			for (const { representative, statuses } of groupBillMap.values()) {
-				if (statuses.size > 1) representative.groupBillMixed = true
-			}
-
-			const postFilteredRows =
-				requestedPayerType === 'group'
-					? coalescedRows.filter((row) => row.payerType === 'group' || Boolean(row.groupBillId))
-					: coalescedRows
-			totalRowCount = postFilteredRows.length
-			rowsToRender = postFilteredRows.slice(
-				pagination.data.offset,
-				pagination.data.offset + pagination.data.limit
-			)
-		}
+		const page = await stub.listBillsPage({
+			scope: { mode: 'all' },
+			filters,
+			limit: pagination.data.limit,
+			offset: pagination.data.offset,
+			sortBy,
+			sortDir,
+			coalesced,
+		})
+		const rowsToRender = page.rows
+		const totalRowCount = page.rowCount
 		const db = createDb(c.env.DATABASE_URL)
 		const issuerIds = [...new Set(rowsToRender.map((row) => row.issuerId).filter(Boolean))]
 		const payerAndPayeeEsiIds = [
@@ -331,12 +318,17 @@ app.get('/parties/search', requireAuth(), requireAdmin(), async (c) => {
 				? (entityTypeQuery as EntityType)
 				: undefined
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
+		const nameMatches =
+			q && !/^\d+$/.test(q)
+				? await findBillPartyNameMatches(c.env, user.id, q, entityType)
+				: undefined
 		const rows = await stub.searchBillParties({
 			scope: { mode: 'all' },
 			direction,
 			entityType,
 			q: /^\d+$/.test(q) ? q : undefined,
-			limit: Math.max(limit, 200),
+			entityIds: nameMatches,
+			limit,
 		})
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const esiIds = [
@@ -347,15 +339,7 @@ app.get('/parties/search', requireAuth(), requireAdmin(), async (c) => {
 		]
 		const names = esiIds.length > 0 ? await resolver.resolveIds(esiIds) : {}
 		const groupNames = await resolveGroupNames(c.env, groupIds)
-		const normalizedQ = q.toLowerCase()
-		const filteredRows = q
-			? rows.filter((row) => {
-					const resolvedName =
-						row.entityType === 'group' ? groupNames.get(row.entityId) : names[row.entityId]
-					const name = (resolvedName || '').toLowerCase()
-					return row.entityId === q || name.includes(normalizedQ)
-				})
-			: rows
+		const filteredRows = rows
 		const deduped = new Map<
 			string,
 			{ entityId: string; entityType: EntityType; usageCount: number; name: string | null }
@@ -946,7 +930,7 @@ app.post('/group/:groupBillId/issue', requireAuth(), requireAdmin(), async (c) =
 			return c.json({ error: 'Group bill not found' }, 404)
 		}
 
-		const result = await stub.issueGroupBill(user.id, groupBillId)
+		const result = await stub.issueGroupBill(user.id, groupBillId, 'admin')
 		return c.json(result)
 	} catch (error) {
 		logger.error('[bills-admin] Error issuing group bill:', error)
@@ -973,7 +957,7 @@ app.post('/group/:groupBillId/cancel', requireAuth(), requireAdmin(), async (c) 
 			return c.json({ error: 'Group bill not found' }, 404)
 		}
 
-		const result = await stub.cancelGroupBill(user.id, groupBillId)
+		const result = await stub.cancelGroupBill(user.id, groupBillId, 'admin')
 		return c.json(result)
 	} catch (error) {
 		logger.error('[bills-admin] Error cancelling group bill:', error)
@@ -1000,7 +984,7 @@ app.post('/group/:groupBillId/revert-to-draft', requireAuth(), requireAdmin(), a
 			return c.json({ error: 'Group bill not found' }, 404)
 		}
 
-		const result = await stub.revertGroupBillToDraft(user.id, groupBillId)
+		const result = await stub.revertGroupBillToDraft(user.id, groupBillId, 'admin')
 		return c.json(result)
 	} catch (error) {
 		logger.error('[bills-admin] Error reverting group bill to draft:', error)
@@ -1027,7 +1011,7 @@ app.delete('/group/:groupBillId', requireAuth(), requireAdmin(), async (c) => {
 			return c.json({ error: 'Group bill not found' }, 404)
 		}
 
-		const result = await stub.deleteGroupBill(user.id, groupBillId)
+		const result = await stub.deleteGroupBill(user.id, groupBillId, 'admin')
 		return c.json(result)
 	} catch (error) {
 		logger.error('[bills-admin] Error deleting group bill:', error)
@@ -1055,7 +1039,7 @@ app.put('/group/:groupBillId', requireAuth(), requireAdmin(), async (c) => {
 			return c.json({ error: 'Group bill not found' }, 404)
 		}
 
-		const result = await stub.updateGroupBill(user.id, groupBillId, data)
+		const result = await stub.updateGroupBill(user.id, groupBillId, data, 'admin')
 		return c.json(result)
 	} catch (error) {
 		logger.error('[bills-admin] Error updating group bill:', error)
@@ -1106,7 +1090,9 @@ app.get('/:billId', requireAuth(), requireAdmin(), async (c) => {
 			bill.payeeId,
 			issuerMainCharacterId ?? null,
 			...(bill.payments?.map((payment) =>
-				payment.paidByType !== 'group' ? payment.paidById : null
+				payment.paidByType !== 'group' && payment.paidById !== 'system' && !isUuid(payment.paidById)
+					? payment.paidById
+					: null
 			) ?? []),
 			...paymentPaidByIds.map((paidById) => userMainCharacterByUserId.get(paidById) ?? null),
 		].filter(Boolean) as string[]
@@ -1134,13 +1120,15 @@ app.get('/:billId', requireAuth(), requireAdmin(), async (c) => {
 			bill.payments = bill.payments.map((payment) => ({
 				...payment,
 				paidByName:
-					payment.paidByType === 'group'
-						? (groupNames.get(payment.paidById) ?? undefined)
-						: (nameMap[payment.paidById] ??
-							(userMainCharacterByUserId.get(payment.paidById)
-								? nameMap[userMainCharacterByUserId.get(payment.paidById)!]
-								: undefined) ??
-							undefined),
+					payment.paidById === 'system'
+						? 'System'
+						: payment.paidByType === 'group'
+							? (groupNames.get(payment.paidById) ?? undefined)
+							: (nameMap[payment.paidById] ??
+								(userMainCharacterByUserId.get(payment.paidById)
+									? nameMap[userMainCharacterByUserId.get(payment.paidById)!]
+									: undefined) ??
+								undefined),
 			}))
 		}
 
@@ -1163,15 +1151,27 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const body = await c.req.json()
-		const { groupBillOptions, ...data } = body
+		let body: unknown
+		try {
+			body = await c.req.json()
+		} catch {
+			return c.json({ error: 'Invalid JSON request body' }, 400)
+		}
+		const parsed = manualBillCreateSchema.safeParse(body)
+		if (!parsed.success) {
+			return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid bill data' }, 400)
+		}
+		const dueDate = parseDateOrNull(parsed.data.dueDate)
+		if (!dueDate) return c.json({ error: 'Invalid due date' }, 400)
+		const { groupBillOptions, dueDate: _dueDate, ...data } = parsed.data
+		const billData: CreateBillInput = { ...data, dueDate }
 
-		logger.info('[bills-admin] Creating bill', { userId: user.id, payerType: data.payerType })
+		logger.info('[bills-admin] Creating bill', { userId: user.id, payerType: billData.payerType })
 
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
 
 		// Group bill fan-out
-		if (data.payerType === 'group') {
+		if (billData.payerType === 'group') {
 			const opts = groupBillOptions ?? {
 				includeOwner: true,
 				includeAdmins: true,
@@ -1184,8 +1184,8 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 
 			const groupsStub = getStub<Groups>(c.env.GROUPS, 'default')
 			const [group, members] = await Promise.all([
-				groupsStub.getGroup(data.payerId, user.id),
-				groupsStub.getGroupMembers(data.payerId, user.id),
+				groupsStub.getGroup(billData.payerId, user.id),
+				groupsStub.getGroupMembers(billData.payerId, user.id),
 			])
 
 			if (!group) {
@@ -1194,7 +1194,7 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 
 			const adminUserIds = new Set(group.adminUserIds ?? [])
 			const groupBillId = crypto.randomUUID()
-			const createdBills = []
+			const bulkData: CreateBillInput[] = []
 
 			for (const member of members) {
 				if (!member.mainCharacterId) continue
@@ -1207,19 +1207,19 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 				if (isAdmin && !opts.includeAdmins) continue
 				if (isMember && !opts.includeMembers) continue
 
-				const bill = await stub.createBill(user.id, {
-					...data,
+				bulkData.push({
+					...billData,
 					payerType: 'character',
 					payerId: member.mainCharacterId,
 					groupBillId,
-					externalMetadata: { groupId: data.payerId },
+					externalMetadata: { groupId: billData.payerId },
 				})
-				createdBills.push(bill)
 			}
 
-			if (createdBills.length === 0) {
+			if (bulkData.length === 0) {
 				return c.json({ error: 'No qualifying group members with a main character found' }, 400)
 			}
+			const createdBills = await stub.createBillsBulk(user.id, bulkData)
 
 			logger.info('[bills-admin] Group bill created', {
 				groupBillId,
@@ -1229,7 +1229,7 @@ app.post('/', requireAuth(), requireAdmin(), async (c) => {
 		}
 
 		// Standard single bill
-		const bill = await stub.createBill(user.id, data)
+		const bill = await stub.createBill(user.id, billData)
 		logger.info('[bills-admin] Bill created successfully', { billId: bill.id })
 		return c.json(bill, 201)
 	} catch (error) {
@@ -1254,13 +1254,29 @@ app.put('/:billId', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
-		const data = await c.req.json()
+		let body: unknown
+		try {
+			body = await c.req.json()
+		} catch {
+			return c.json({ error: 'Invalid JSON request body' }, 400)
+		}
+		const parsed = manualBillUpdateSchema.safeParse(body)
+		if (!parsed.success) {
+			return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid bill data' }, 400)
+		}
+		const { dueDate: dueDateValue, ...updateValues } = parsed.data
+		const data: UpdateBillInput = { ...updateValues }
+		if (dueDateValue) {
+			const dueDate = parseDateOrNull(dueDateValue)
+			if (!dueDate) return c.json({ error: 'Invalid due date' }, 400)
+			data.dueDate = dueDate
+		}
 		const stub = getStub<Bills>(c.env.BILLS, 'default')
 		const billRecord = await stub.getBillIntegrationView(billId)
 		if (!billRecord) {
 			return c.json({ error: 'Bill not found' }, 404)
 		}
-		const bill = await stub.updateBill(user.id, billId, data)
+		const bill = await stub.updateBill(user.id, billId, data, 'admin')
 
 		return c.json(bill)
 	} catch (error) {
@@ -1289,7 +1305,7 @@ app.delete('/:billId', requireAuth(), requireAdmin(), async (c) => {
 		}
 
 		// Admin route enforces permission scope; bills domain enforces invariants.
-		await stub.deleteBill(user.id, billId)
+		await stub.deleteBill(user.id, billId, 'admin')
 
 		return c.json({ success: true })
 	} catch (error) {
@@ -1320,7 +1336,7 @@ app.post('/:billId/issue', requireAuth(), requireAdmin(), async (c) => {
 		if (!billRecord) {
 			return c.json({ error: 'Bill not found' }, 404)
 		}
-		const bill = await stub.issueBill(user.id, billId)
+		const bill = await stub.issueBill(user.id, billId, 'admin')
 
 		return c.json(bill)
 	} catch (error) {
@@ -1347,7 +1363,7 @@ app.post('/:billId/cancel', requireAuth(), requireAdmin(), async (c) => {
 		if (!billRecord) {
 			return c.json({ error: 'Bill not found' }, 404)
 		}
-		const bill = await stub.cancelBill(user.id, billId)
+		const bill = await stub.cancelBill(user.id, billId, 'admin')
 
 		return c.json(bill)
 	} catch (error) {
@@ -1374,7 +1390,7 @@ app.post('/:billId/mark-paid', requireAuth(), requireAdmin(), async (c) => {
 		if (!billRecord) {
 			return c.json({ error: 'Bill not found' }, 404)
 		}
-		const bill = await stub.markBillPaid(user.id, billId)
+		const bill = await stub.markBillPaid(user.id, billId, 'admin')
 		return c.json(bill)
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error)
@@ -1407,7 +1423,7 @@ app.post('/:billId/revert-to-draft', requireAuth(), requireAdmin(), async (c) =>
 		if (!billRecord) {
 			return c.json({ error: 'Bill not found' }, 404)
 		}
-		const bill = await stub.revertBillToDraft(user.id, billId)
+		const bill = await stub.revertBillToDraft(user.id, billId, 'admin')
 
 		return c.json(bill)
 	} catch (error) {
@@ -1434,7 +1450,7 @@ app.post('/:billId/regenerate-token', requireAuth(), requireAdmin(), async (c) =
 		if (!billRecord) {
 			return c.json({ error: 'Bill not found' }, 404)
 		}
-		const result = await stub.regeneratePaymentToken(user.id, billId)
+		const result = await stub.regeneratePaymentToken(user.id, billId, 'admin')
 
 		return c.json(result)
 	} catch (error) {

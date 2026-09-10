@@ -1,191 +1,170 @@
 import { Users } from 'lucide-react'
-import { createMRTColumnHelper } from 'mantine-react-table'
 import { useMemo } from 'react'
 
 import { BillStatusBadge } from '@/components/bills/bill-status-badge'
 import { ISKAmount } from '@/components/bills/isk-amount'
+import { DataTable } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
-import { TaxReportDataGrid } from '@/components/tax-report-data-grid'
 import { formatDueDate } from '@/lib/bills-utils'
 import { formatDateTime } from '@/lib/date-utils'
 
-import type {
-	MRT_ColumnDef,
-	MRT_Row,
-	MRT_SortingState,
-	MRT_TableOptions,
-} from 'mantine-react-table'
 import type { ReactNode } from 'react'
 import type { BillWithDetails } from '@repo/bills'
+import type { BillListSortingState } from './bill-list-types'
 
 export function BillListGrid(props: {
 	rows: BillWithDetails[]
 	loading?: boolean
 	error?: unknown
-	sorting: MRT_SortingState
-	onSortingChange: (sorting: MRT_SortingState) => void
+	sorting: BillListSortingState
+	onSortingChange: (sorting: BillListSortingState) => void
 	pagination: {
 		pageIndex: number
 		pageSize: number
 	}
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
-	pageCount: number
 	rowCount: number
-	renderActions?: (bill: BillWithDetails, row: MRT_Row<BillWithDetails>) => ReactNode
+	renderActions?: (bill: BillWithDetails) => ReactNode
 	renderExpandedGroupBill?: (bill: BillWithDetails) => ReactNode
 	emptyMessage?: string
-	onRowClick?: (bill: BillWithDetails, row: MRT_Row<BillWithDetails>) => void
+	onRowClick?: (bill: BillWithDetails) => void
+	rowHref?: (bill: BillWithDetails) => string
+	paginationLeadingAction?: ReactNode
+	clamped?: boolean
 }) {
-	const columnHelper = createMRTColumnHelper<BillWithDetails>()
-	const columns = useMemo<Array<MRT_ColumnDef<BillWithDetails>>>(
+	const columns = useMemo(
 		() => [
-			columnHelper.accessor('status', {
+			{
 				id: 'status',
 				header: 'Status',
-				enableSorting: true,
-				Cell: ({ row }) =>
-					row.original.groupBillMixed ? (
+				sortable: true,
+				cell: (bill: BillWithDetails) =>
+					bill.groupBillMixed ? (
 						<Badge variant="ghost">Mixed</Badge>
 					) : (
-						<BillStatusBadge status={row.original.status} />
+						<BillStatusBadge status={bill.status} />
 					),
-			}),
-			columnHelper.accessor('title', {
+			},
+			{
 				id: 'title',
 				header: 'Title',
-				enableSorting: false,
-				Cell: ({ row }) => (
+				link: props.rowHref,
+				cell: (bill: BillWithDetails) => (
 					<div className="flex items-center gap-2">
-						<span>{row.original.title}</span>
-						{row.original.groupBillTotalCount != null && (
+						<span>{bill.title}</span>
+						{bill.groupBillTotalCount != null && (
 							<span
 								className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-500"
-								title={`Group bill: ${row.original.groupBillPaidCount ?? 0}/${row.original.groupBillTotalCount} paid`}
+								title={`Group bill: ${bill.groupBillPaidCount ?? 0}/${bill.groupBillTotalCount} paid`}
 							>
 								<Users className="h-3 w-3" />
-								{row.original.groupBillPaidCount ?? 0}/{row.original.groupBillTotalCount}
+								{bill.groupBillPaidCount ?? 0}/{bill.groupBillTotalCount}
 							</span>
 						)}
 					</div>
 				),
-			}),
-			columnHelper.accessor((row) => row.payerName || row.payerId, {
+			},
+			{
 				id: 'payerId',
 				header: 'Payer',
-				enableSorting: false,
-				Cell: ({ row }) => {
-					const isGroup = row.original.payerType === 'group'
-					const displayName = row.original.payerName || (isGroup ? 'Group' : row.original.payerId)
+				cell: (bill: BillWithDetails) => {
+					const isGroup = bill.payerType === 'group'
+					const displayName = bill.payerName || (isGroup ? 'Group' : bill.payerId)
 					return (
 						<div className="flex flex-col">
 							<div className="flex items-center gap-1.5">
 								{isGroup && <Users className="h-3 w-3 shrink-0 text-blue-400" />}
 								<span>{displayName}</span>
 							</div>
-							<span className="text-xs text-muted-foreground">{row.original.payerId}</span>
+							<span className="text-xs text-muted-foreground">{bill.payerId}</span>
 						</div>
 					)
 				},
-			}),
-			columnHelper.accessor((row) => row.payeeName || row.payeeId || '-', {
+			},
+			{
 				id: 'payeeId',
 				header: 'Payee',
-				enableSorting: false,
-				Cell: ({ row }) =>
-					row.original.payeeId ? (
+				cell: (bill: BillWithDetails) =>
+					bill.payeeId ? (
 						<div className="flex flex-col">
-							<span>{row.original.payeeName || row.original.payeeId}</span>
-							<span className="text-xs text-muted-foreground">{row.original.payeeId}</span>
+							<span>{bill.payeeName || bill.payeeId}</span>
+							<span className="text-xs text-muted-foreground">{bill.payeeId}</span>
 						</div>
 					) : (
 						<span className="text-muted-foreground">-</span>
 					),
-			}),
-			columnHelper.accessor((row) => row.issuerName || row.issuerId, {
+			},
+			{
 				id: 'issuerId',
 				header: 'Issuer',
-				enableSorting: false,
-				Cell: ({ row }) => (
+				cell: (bill: BillWithDetails) => (
 					<div className="flex flex-col">
-						<span>{row.original.issuerName || row.original.issuerId}</span>
-						<span className="text-xs text-muted-foreground">{row.original.issuerId}</span>
+						<span>{bill.issuerName || bill.issuerId}</span>
+						<span className="text-xs text-muted-foreground">{bill.issuerId}</span>
 					</div>
 				),
-			}),
-			columnHelper.accessor('amount', {
+			},
+			{
 				id: 'amount',
 				header: 'Amount',
-				enableSorting: true,
-				Cell: ({ row }) => <ISKAmount amount={row.original.amount} />,
-			}),
-			columnHelper.accessor('dueDate', {
+				sortable: true,
+				cell: (bill: BillWithDetails) => <ISKAmount amount={bill.amount} />,
+			},
+			{
 				id: 'dueDate',
 				header: 'Due',
-				enableSorting: true,
-				Cell: ({ row }) => formatDueDate(row.original.dueDate, row.original.status),
-			}),
-			columnHelper.accessor('createdAt', {
+				sortable: true,
+				cell: (bill: BillWithDetails) => formatDueDate(bill.dueDate, bill.status),
+			},
+			{
 				id: 'createdAt',
 				header: 'Created',
-				enableSorting: true,
-				Cell: ({ row }) => formatDateTime(row.original.createdAt),
-			}),
+				sortable: true,
+				cell: (bill: BillWithDetails) => formatDateTime(bill.createdAt),
+			},
 			...(props.renderActions
 				? [
-						columnHelper.display({
+						{
 							id: 'actions',
 							header: 'Actions',
-							enableSorting: false,
-							size: 96,
-							minSize: 88,
-							maxSize: 120,
-							mantineTableHeadCellProps: {
-								style: { textAlign: 'center', whiteSpace: 'nowrap' },
-							},
-							mantineTableBodyCellProps: {
-								style: { textAlign: 'right', whiteSpace: 'nowrap' },
-							},
-							Cell: ({ row }) => props.renderActions!(row.original, row),
-						}),
+							className: 'text-right',
+							headerClassName: 'text-center',
+							sticky: 'right' as const,
+							cell: (bill: BillWithDetails) => props.renderActions?.(bill),
+						},
 					]
 				: []),
 		],
-		[columnHelper, props.renderActions]
+		[props.renderActions, props.rowHref]
 	)
 
-	const renderDetailPanel = props.renderExpandedGroupBill
-		? ({ row }: { row: MRT_Row<BillWithDetails> }) =>
-				row.original.groupBillTotalCount != null
-					? props.renderExpandedGroupBill!(row.original)
-					: null
-		: undefined
-
-	const mantineExpandButtonProps: MRT_TableOptions<BillWithDetails>['mantineExpandButtonProps'] =
-		props.renderExpandedGroupBill
-			? ({ row }) => ({
-					style: row.original.groupBillTotalCount == null ? { visibility: 'hidden' } : undefined,
-				})
-			: undefined
-
 	return (
-		<TaxReportDataGrid
+		<DataTable
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
 			error={props.error}
 			emptyMessage={props.emptyMessage ?? 'No bills found.'}
-			sorting={props.sorting}
-			onSortingChange={props.onSortingChange}
+			sorting={[{ id: props.sorting.sortBy, desc: props.sorting.sortDir === 'desc' }]}
+			onSortingChange={(nextSorting) => {
+				const next = nextSorting[0]
+				if (!next) return
+				props.onSortingChange({
+					sortBy: next.id as BillListSortingState['sortBy'],
+					sortDir: next.desc ? 'desc' : 'asc',
+				})
+			}}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
-			pageCount={props.pageCount}
 			rowCount={props.rowCount}
-			pinnedRightColumnIds={props.renderActions ? ['actions'] : undefined}
-			renderDetailPanel={renderDetailPanel}
-			mantineExpandButtonProps={mantineExpandButtonProps}
-			onRowClick={
-				props.onRowClick ? (row) => props.onRowClick!(row.original, row) : undefined
-			}
+			itemLabel="bills"
+			getRowKey={(bill) => bill.id}
+			rowLink={props.rowHref}
+			paginationLeadingAction={props.paginationLeadingAction}
+			clamped={props.clamped}
+			onRowClick={props.onRowClick}
+			renderExpandedRow={props.renderExpandedGroupBill}
+			getRowCanExpand={(bill) => Boolean(bill.groupBillTotalCount != null && bill.groupBillId)}
 		/>
 	)
 }

@@ -1,8 +1,9 @@
 import { Loader2 } from 'lucide-react'
-import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
+
+import type { ReactNode } from 'react'
 
 interface UserSearchPaginationControlsProps {
 	totalCount: number
@@ -15,6 +16,7 @@ interface UserSearchPaginationControlsProps {
 	nextButtonLoading?: boolean
 	leadingAction?: ReactNode
 	trailingAction?: ReactNode
+	controlsLeadingAction?: ReactNode
 }
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [25, 50, 100]
@@ -30,6 +32,7 @@ export function UserSearchPaginationControls({
 	nextButtonLoading = false,
 	leadingAction,
 	trailingAction,
+	controlsLeadingAction,
 }: UserSearchPaginationControlsProps) {
 	const totalPages = Math.ceil(totalCount / pageSize)
 	const start = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
@@ -49,11 +52,16 @@ export function UserSearchPaginationControls({
 		<div className="flex flex-wrap items-center justify-between gap-3">
 			<div className="flex items-center gap-2 text-sm text-muted-foreground">
 				{leadingAction ? <div className="shrink-0">{leadingAction}</div> : null}
-				<div>{totalCount > 0 ? `${start}-${end} of ${totalCount} ${itemLabel}` : `0 ${itemLabel}`}</div>
+				<div>
+					{totalCount > 0 ? `${start}-${end} of ${totalCount} ${itemLabel}` : `0 ${itemLabel}`}
+				</div>
 				{trailingAction ? <div className="shrink-0">{trailingAction}</div> : null}
 			</div>
-			<div className="flex flex-wrap items-center gap-2 justify-end">
-				<div className="flex items-center gap-2">
+			<div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+				{controlsLeadingAction ? (
+					<div className="flex shrink-0 items-center">{controlsLeadingAction}</div>
+				) : null}
+				<div className="flex shrink-0 items-center gap-2">
 					<span className="text-sm text-muted-foreground">Per page:</span>
 					<Select
 						value={String(pageSize)}
@@ -69,7 +77,12 @@ export function UserSearchPaginationControls({
 				<Button variant="ghost" size="sm" disabled={!canGoPrev} onClick={() => onPageChange(1)}>
 					First
 				</Button>
-				<Button variant="ghost" size="sm" disabled={!canGoPrev} onClick={() => onPageChange(page - 1)}>
+				<Button
+					variant="ghost"
+					size="sm"
+					disabled={!canGoPrev}
+					onClick={() => onPageChange(page - 1)}
+				>
 					Prev
 				</Button>
 				{visiblePages.map((pageNumber) => (
@@ -98,7 +111,12 @@ export function UserSearchPaginationControls({
 						/>
 					) : null}
 				</Button>
-				<Button variant="ghost" size="sm" disabled={!canGoNext} onClick={() => onPageChange(totalPages)}>
+				<Button
+					variant="ghost"
+					size="sm"
+					disabled={!canGoNext}
+					onClick={() => onPageChange(totalPages)}
+				>
 					Last
 				</Button>
 			</div>

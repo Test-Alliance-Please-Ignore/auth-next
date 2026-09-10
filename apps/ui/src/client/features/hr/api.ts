@@ -67,9 +67,20 @@ export interface HrAccessibleCorporation {
 	name: string
 	ticker: string
 	currentRole: HrRoleType
+	hasExplicitHrRole: boolean
 	isMemberCorporation: boolean
 	isAltCorp: boolean
 	isSpecialPurpose: boolean
+}
+
+export function hasExplicitMemberCorporationHrRole(
+	corporations: HrAccessibleCorporation[] | undefined
+): boolean {
+	return (
+		corporations?.some(
+			(corporation) => corporation.isMemberCorporation && corporation.hasExplicitHrRole
+		) ?? false
+	)
 }
 
 export interface HrUserSearchCharacter {

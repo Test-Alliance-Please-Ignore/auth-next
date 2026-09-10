@@ -9,6 +9,7 @@ export const userBillsKeys = {
 	list: (params?: Record<string, unknown>) => [...userBillsKeys.all, 'list', params] as const,
 	partySearch: (params: Record<string, unknown>) =>
 		[...userBillsKeys.all, 'party-search', params] as const,
+	issuerScope: () => [...userBillsKeys.all, 'issuer-scope'] as const,
 
 	// Single bill detail
 	detail: (billId: string) => [...userBillsKeys.all, 'detail', billId] as const,

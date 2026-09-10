@@ -1,4 +1,5 @@
 const BROADCAST_SEGMENT_PATTERN = /^[a-z0-9_-]+$/
+const BILLING_ISSUER_URN_PATTERN = /^urn:billing:issuer(?::\d+)?$/
 
 export function validateBroadcastPermissionUrn(urn: string): string | null {
 	if (!urn.startsWith('urn:broadcasts:')) {
@@ -34,4 +35,10 @@ export function assertValidBroadcastPermissionUrn(urn: string): void {
 	if (error) {
 		throw new Error(error)
 	}
+}
+
+/** Global permission URNs supported by the permission-management UI. */
+export function assertValidManagedPermissionUrn(urn: string): void {
+	if (BILLING_ISSUER_URN_PATTERN.test(urn)) return
+	assertValidBroadcastPermissionUrn(urn)
 }

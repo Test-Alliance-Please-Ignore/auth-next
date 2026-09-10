@@ -1,6 +1,9 @@
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Container } from '@/components/ui/container'
+import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
 
@@ -21,29 +24,32 @@ export default function PredictionMarketCreate() {
 	const isManager = hasAnyPermission('urn:markets:manager')
 
 	return (
-		<div className="space-y-6">
-			<div className="flex items-start justify-between gap-4">
-				<div>
-					<h1 className="text-3xl font-bold gradient-text">Prediction Markets</h1>
-					<p className="mt-1 max-w-2xl text-muted-foreground">
+		<Container>
+			<PageHeader
+				title="Prediction Markets"
+				description={
+					<>
 						Create a market for the community. It’s posted to the predictions forum channel, where
 						members place bets and a resolver settles it. You can bet on your own market, but you
 						can’t resolve it.
-					</p>
-				</div>
-				{canCreate ? (
-					<Button variant="primary" onClick={() => setCreateOpen(true)}>
-						New market
-					</Button>
-				) : null}
-			</div>
+					</>
+				}
+				action={
+					canCreate ? (
+						<Button variant="primary" onClick={() => setCreateOpen(true)}>
+							New market
+						</Button>
+					) : undefined
+				}
+			/>
 
-			{!canCreate ? (
-				<p className="text-sm text-muted-foreground">
-					You don’t have permission to create prediction markets. Ask an admin for the “markets
-					creator” role.
-				</p>
-			) : null}
+			<Card>
+				<CardContent className="py-6 text-sm text-muted-foreground">
+					{canCreate
+						? 'No markets have been created from this page yet. Use New market to create one.'
+						: 'You don’t have permission to create prediction markets. Ask an admin for the “markets creator” role.'}
+				</CardContent>
+			</Card>
 
 			<CreateMarketDialog
 				open={createOpen}
@@ -51,6 +57,6 @@ export default function PredictionMarketCreate() {
 				scope="member"
 				showAdvanced={isManager}
 			/>
-		</div>
+		</Container>
 	)
 }

@@ -37,6 +37,8 @@ export type Env = SharedHonoEnv & {
 	EVE_CORPORATION_DATA_WORKER: IEveCorporationDataWorker
 	/** Groups Durable Object binding */
 	GROUPS: DurableObjectNamespace
+	/** Durable cross-isolate cache for derived billing scopes */
+	BILLING_SCOPE_CACHE: DurableObjectNamespace
 	/** Discord Durable Object binding */
 	DISCORD: DurableObjectNamespace
 	/** Discord worker service binding for local development proxying */

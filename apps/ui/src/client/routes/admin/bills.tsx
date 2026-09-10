@@ -1,14 +1,32 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Calendar, ChevronDown, FileText, Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Calendar, FileText, Plus } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
+import { BillActionsMenu } from '@/components/bills/bill-actions-menu'
+import {
+	getDefaultBillDueAfter,
+	readBillingFilterSession,
+	writeBillingFilterSession,
+} from '@/components/bills/bill-filter-session'
 import { BillListFilters } from '@/components/bills/bill-list-filters'
 import { BillListGrid } from '@/components/bills/bill-list-grid'
 import { BillStatusBadge } from '@/components/bills/bill-status-badge'
 import { ISKAmount } from '@/components/bills/isk-amount'
+import { useLayoutScrollMode } from '@/components/layout-scroll-context'
+import { TableLayoutToggle } from '@/components/table-layout-toggle'
 import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { PageHeader } from '@/components/ui/page-header'
+import {
+	stickyTableActionCellClassName,
+	stickyTableActionHeaderClassName,
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
 import {
 	groupBillKeys,
 	useBillEntitySearch,
@@ -28,9 +46,9 @@ import {
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import toast from '@/lib/toast'
 import { cn } from '@/lib/utils'
 
-import type { MRT_SortingState } from 'mantine-react-table'
 import type {
 	BillListSortDirection,
 	BillListSortField,
@@ -38,42 +56,74 @@ import type {
 	BillWithDetails,
 	EntityType,
 } from '@repo/bills'
-
-function toDateInputValue(date: Date): string {
-	const year = date.getFullYear()
-	const month = String(date.getMonth() + 1).padStart(2, '0')
-	const day = String(date.getDate()).padStart(2, '0')
-	return `${year}-${month}-${day}`
-}
-
-function getDefaultDueAfter(): string {
-	const date = new Date()
-	date.setDate(date.getDate() - 30)
-	return toDateInputValue(date)
-}
+import type { BillListSortingState } from '@/components/bills/bill-list-types'
 
 export default function AdminBillsPage() {
 	usePageTitle('Admin - Bills Management')
 	const navigate = useNavigate()
-	const [status, setStatus] = useState<BillStatus | undefined>(undefined)
-	const [issuerId, setIssuerId] = useState<string | undefined>(undefined)
-	const [issuerQuery, setIssuerQuery] = useState('')
-	const [payerType, setPayerType] = useState<EntityType | undefined>(undefined)
-	const [payeeType, setPayeeType] = useState<EntityType | undefined>(undefined)
-	const [payerId, setPayerId] = useState<string | undefined>(undefined)
-	const [payeeId, setPayeeId] = useState<string | undefined>(undefined)
-	const [payerQuery, setPayerQuery] = useState('')
-	const [payeeQuery, setPayeeQuery] = useState('')
-	const [dueAfter, setDueAfter] = useState(() => getDefaultDueAfter())
-	const [dueBefore, setDueBefore] = useState('')
+	const { isPageScrollEnabled, setIsPageScrollEnabled } = useLayoutScrollMode()
+	const isTableGridClamped = !isPageScrollEnabled
+	const [savedFilters] = useState(() =>
+		readBillingFilterSession('admin', {
+			issuerQuery: '',
+			payerQuery: '',
+			payeeQuery: '',
+			dueAfter: getDefaultBillDueAfter(),
+			dueBefore: '',
+			coalesced: true,
+		})
+	)
+	const [status, setStatus] = useState<BillStatus | undefined>(savedFilters.status)
+	const [issuerId, setIssuerId] = useState<string | undefined>(savedFilters.issuerId)
+	const [issuerQuery, setIssuerQuery] = useState(savedFilters.issuerQuery)
+	const [payerType, setPayerType] = useState<EntityType | undefined>(savedFilters.payerType)
+	const [payeeType, setPayeeType] = useState<EntityType | undefined>(savedFilters.payeeType)
+	const [payerId, setPayerId] = useState<string | undefined>(savedFilters.payerId)
+	const [payeeId, setPayeeId] = useState<string | undefined>(savedFilters.payeeId)
+	const [payerQuery, setPayerQuery] = useState(savedFilters.payerQuery)
+	const [payeeQuery, setPayeeQuery] = useState(savedFilters.payeeQuery)
+	const [dueAfter, setDueAfter] = useState(savedFilters.dueAfter)
+	const [dueBefore, setDueBefore] = useState(savedFilters.dueBefore)
 	const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 25 })
-	const [sorting, setSorting] = useState<MRT_SortingState>([{ id: 'createdAt', desc: true }])
-	const [coalesced, setCoalesced] = useState(true)
+	const [sorting, setSorting] = useState<BillListSortingState>({
+		sortBy: 'createdAt',
+		sortDir: 'desc',
+	})
+	const [coalesced, setCoalesced] = useState(savedFilters.coalesced ?? true)
+	useEffect(() => {
+		writeBillingFilterSession('admin', {
+			status,
+			issuerId,
+			issuerQuery,
+			payerType,
+			payerId,
+			payerQuery,
+			payeeType,
+			payeeId,
+			payeeQuery,
+			dueAfter,
+			dueBefore,
+			coalesced,
+		})
+	}, [
+		status,
+		issuerId,
+		issuerQuery,
+		payerType,
+		payerId,
+		payerQuery,
+		payeeType,
+		payeeId,
+		payeeQuery,
+		dueAfter,
+		dueBefore,
+		coalesced,
+	])
 	const debouncedPayerQuery = useDebounce(payerQuery, 300)
 	const debouncedPayeeQuery = useDebounce(payeeQuery, 300)
 	const debouncedIssuerQuery = useDebounce(issuerQuery, 300)
-	const sortBy = (sorting[0]?.id ?? 'createdAt') as BillListSortField
-	const sortDir: BillListSortDirection = sorting[0]?.desc ? 'desc' : 'asc'
+	const sortBy = sorting.sortBy as BillListSortField
+	const sortDir: BillListSortDirection = sorting.sortDir
 	const billsPage = useBills({
 		status,
 		issuerId,
@@ -145,10 +195,6 @@ export default function AdminBillsPage() {
 		}
 		return [...deduped.values()]
 	}, [payeeSearch.data])
-	const pageCount = Math.max(
-		1,
-		Math.ceil((billsPage.data?.rowCount ?? 0) / Math.max(1, pagination.pageSize))
-	)
 	const issueBill = useIssueBill()
 	const cancelBill = useCancelBill()
 	const markBillPaid = useMarkBillPaid()
@@ -162,13 +208,17 @@ export default function AdminBillsPage() {
 
 	const toGroupViewHref = (groupBillId: string) =>
 		`/admin/bills/group/${encodeURIComponent(groupBillId)}`
+	const getBillHref = (bill: BillWithDetails) =>
+		bill.groupBillTotalCount != null && bill.groupBillId
+			? toGroupViewHref(bill.groupBillId)
+			: `/admin/bills/${bill.id}`
 
 	// Individual bill action handlers
 	const handleIssue = async (billId: string) => {
 		try {
 			await issueBill.mutateAsync(billId)
 		} catch (error) {
-			console.error('Failed to issue bill:', error)
+			toast.error(error instanceof Error ? error.message : 'Failed to issue bill')
 		}
 	}
 
@@ -182,8 +232,7 @@ export default function AdminBillsPage() {
 				try {
 					await cancelBill.mutateAsync(billId)
 				} catch (error) {
-					console.error('Failed to cancel bill:', error)
-					throw error
+					toast.error(error instanceof Error ? error.message : 'Failed to cancel bill')
 				}
 			},
 		})
@@ -199,8 +248,7 @@ export default function AdminBillsPage() {
 				try {
 					await deleteBill.mutateAsync(billId)
 				} catch (error) {
-					console.error('Failed to delete bill:', error)
-					throw error
+					toast.error(error instanceof Error ? error.message : 'Failed to delete bill')
 				}
 			},
 		})
@@ -216,8 +264,7 @@ export default function AdminBillsPage() {
 				try {
 					await markBillPaid.mutateAsync(billId)
 				} catch (error) {
-					console.error('Failed to mark bill paid:', error)
-					throw error
+					toast.error(error instanceof Error ? error.message : 'Failed to mark bill paid')
 				}
 			},
 		})
@@ -233,8 +280,7 @@ export default function AdminBillsPage() {
 				try {
 					await revertBillToDraft.mutateAsync(billId)
 				} catch (error) {
-					console.error('Failed to revert bill to draft:', error)
-					throw error
+					toast.error(error instanceof Error ? error.message : 'Failed to revert bill to draft')
 				}
 			},
 		})
@@ -245,7 +291,7 @@ export default function AdminBillsPage() {
 		try {
 			await issueGroupBill.mutateAsync(groupBillId)
 		} catch (error) {
-			console.error('Failed to issue group bill:', error)
+			toast.error(error instanceof Error ? error.message : 'Failed to issue group bill')
 		}
 	}
 
@@ -259,8 +305,7 @@ export default function AdminBillsPage() {
 				try {
 					await cancelGroupBill.mutateAsync(groupBillId)
 				} catch (error) {
-					console.error('Failed to cancel group bill:', error)
-					throw error
+					toast.error(error instanceof Error ? error.message : 'Failed to cancel group bill')
 				}
 			},
 		})
@@ -276,8 +321,7 @@ export default function AdminBillsPage() {
 				try {
 					await deleteGroupBill.mutateAsync(groupBillId)
 				} catch (error) {
-					console.error('Failed to delete group bill:', error)
-					throw error
+					toast.error(error instanceof Error ? error.message : 'Failed to delete group bill')
 				}
 			},
 		})
@@ -293,8 +337,9 @@ export default function AdminBillsPage() {
 				try {
 					await revertGroupBillToDraft.mutateAsync(groupBillId)
 				} catch (error) {
-					console.error('Failed to revert group bill to draft:', error)
-					throw error
+					toast.error(
+						error instanceof Error ? error.message : 'Failed to revert group bill to draft'
+					)
 				}
 			},
 		})
@@ -310,7 +355,7 @@ export default function AdminBillsPage() {
 		setPayeeId(undefined)
 		setPayerQuery('')
 		setPayeeQuery('')
-		setDueAfter(getDefaultDueAfter())
+		setDueAfter(getDefaultBillDueAfter())
 		setDueBefore('')
 		setPagination((prev) => ({ ...prev, pageIndex: 0 }))
 	}
@@ -326,34 +371,35 @@ export default function AdminBillsPage() {
 	}
 
 	return (
-		<div className="space-y-6">
-			{/* Page Header */}
-			<div className="flex items-center justify-between">
-				<div>
-					<h1 className="text-3xl font-bold gradient-text">Bills Management</h1>
-					<p className="text-muted-foreground mt-1">View and manage all bills</p>
-				</div>
-				<div className="flex gap-2">
-					<Button variant="ghost" asChild>
-						<Link to="/admin/bills/templates">
-							<FileText className="h-4 w-4" />
-							Templates
-						</Link>
-					</Button>
-					<Button variant="ghost" asChild>
-						<Link to="/admin/bills/schedules">
-							<Calendar className="h-4 w-4" />
-							Schedules
-						</Link>
-					</Button>
-					<Button variant="primary" asChild>
-						<Link to="/admin/bills/new">
-							<Plus className="h-4 w-4" />
-							Create Bill
-						</Link>
-					</Button>
-				</div>
-			</div>
+		<div
+			className={cn('space-y-6', isTableGridClamped && 'lg:flex lg:h-full lg:min-h-0 lg:flex-col')}
+		>
+			<PageHeader
+				title="Bills Management"
+				description="View and manage all bills"
+				action={
+					<div className="flex gap-2">
+						<Button variant="ghost" asChild>
+							<Link to="/admin/bills/templates">
+								<FileText className="h-4 w-4" />
+								Templates
+							</Link>
+						</Button>
+						<Button variant="ghost" asChild>
+							<Link to="/admin/bills/schedules">
+								<Calendar className="h-4 w-4" />
+								Schedules
+							</Link>
+						</Button>
+						<Button variant="primary" asChild>
+							<Link to="/admin/bills/new">
+								<Plus className="h-4 w-4" />
+								Create Bill
+							</Link>
+						</Button>
+					</div>
+				}
+			/>
 			<BillListFilters
 				status={status}
 				issuerId={issuerId}
@@ -417,6 +463,7 @@ export default function AdminBillsPage() {
 				}}
 			/>
 			<BillListGrid
+				clamped={isTableGridClamped}
 				rows={rows}
 				loading={billsPage.isLoading}
 				error={billsPage.error}
@@ -427,14 +474,20 @@ export default function AdminBillsPage() {
 				}}
 				pagination={pagination}
 				onPaginationChange={setPagination}
-				pageCount={pageCount}
 				rowCount={billsPage.data?.rowCount ?? 0}
-				renderActions={(bill, _row) => {
+				rowHref={getBillHref}
+				paginationLeadingAction={
+					<TableLayoutToggle
+						isClamped={isTableGridClamped}
+						onToggle={() => setIsPageScrollEnabled(!isPageScrollEnabled)}
+					/>
+				}
+				renderActions={(bill) => {
 					// Coalesced group aggregate row — show bulk actions menu
 					if (bill.groupBillTotalCount != null && bill.groupBillId) {
 						const groupBillId = bill.groupBillId
 						return (
-							<ActionsMenu
+							<BillActionsMenu
 								items={[
 									{
 										label: 'View',
@@ -444,34 +497,34 @@ export default function AdminBillsPage() {
 									{
 										label: 'Edit',
 										intent: 'secondary',
-										hidden: bill.status !== 'draft',
+										hidden: (bill.groupBillEditableCount ?? 0) === 0,
 										href: `/admin/bills/group/${groupBillId}/edit`,
 									},
 									{
 										label: 'To Draft',
 										intent: 'secondary',
-										hidden: bill.status === 'draft' || bill.status === 'paid',
+										hidden: (bill.groupBillRevertibleCount ?? 0) === 0,
 										loading: revertGroupBillToDraft.isPending,
 										onClick: () => void handleGroupRevertToDraft(groupBillId),
 									},
 									{
 										label: 'Issue All',
 										intent: 'confirm',
-										hidden: bill.status !== 'draft',
+										hidden: (bill.groupBillDraftCount ?? 0) === 0,
 										loading: issueGroupBill.isPending,
 										onClick: () => void handleGroupIssue(groupBillId),
 									},
 									{
 										label: 'Cancel All',
 										intent: 'muted',
-										hidden: bill.status === 'paid' || bill.status === 'cancelled',
+										hidden: (bill.groupBillCancellableCount ?? 0) === 0,
 										loading: cancelGroupBill.isPending,
 										onClick: () => void handleGroupCancel(groupBillId),
 									},
 									{
 										label: 'Delete All',
 										intent: 'destructive',
-										hidden: bill.status !== 'draft',
+										hidden: (bill.groupBillDraftCount ?? 0) === 0,
 										loading: deleteGroupBill.isPending,
 										onClick: () => void handleGroupDelete(groupBillId),
 									},
@@ -482,7 +535,7 @@ export default function AdminBillsPage() {
 
 					// Individual bill row
 					return (
-						<ActionsMenu
+						<BillActionsMenu
 							items={[
 								{
 									label: 'View',
@@ -539,11 +592,7 @@ export default function AdminBillsPage() {
 				}}
 				renderExpandedGroupBill={coalesced ? renderExpandedGroupBill : undefined}
 				onRowClick={(bill) => {
-					const target =
-						bill.groupBillTotalCount != null && bill.groupBillId
-							? toGroupViewHref(bill.groupBillId)
-							: `/admin/bills/${bill.id}`
-					void navigate(target)
+					void navigate(getBillHref(bill))
 				}}
 				emptyMessage="No bills found for the current filters."
 			/>
@@ -555,6 +604,7 @@ export default function AdminBillsPage() {
 // Inline sub-bills panel rendered when a coalesced group row is expanded
 function GroupBillSubRows(props: { groupBillId: string }) {
 	const { data: aggregate, isLoading } = useGroupBillAggregate(props.groupBillId)
+	const navigate = useNavigate()
 	const queryClient = useQueryClient()
 	const issueBill = useIssueBill()
 	const cancelBill = useCancelBill()
@@ -563,8 +613,14 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 	const revertBillToDraft = useRevertBillToDraft()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
-	const invalidateAggregate = () =>
-		queryClient.invalidateQueries({ queryKey: groupBillKeys.aggregate(props.groupBillId) })
+	const runSubBillAction = async (operation: () => Promise<unknown>, fallback: string) => {
+		try {
+			await operation()
+			await queryClient.invalidateQueries({ queryKey: groupBillKeys.aggregate(props.groupBillId) })
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : fallback)
+		}
+	}
 
 	if (isLoading) {
 		return <div className="px-4 py-3 text-sm text-muted-foreground">Loading sub-bills...</div>
@@ -575,34 +631,80 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 	}
 
 	return (
-		<div className="px-4 py-3 space-y-2">
+		<div
+			className="w-full min-w-0 max-w-[calc(100vw-2rem)] border-l-2 border-muted px-4 py-3 space-y-2 md:max-w-[calc(100vw-3rem)] lg:max-w-[min(120rem,calc(100vw-20rem))]"
+			style={{ contain: 'inline-size' }}
+		>
 			{confirmationDialog}
 			<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 				Sub-bills ({aggregate.bills.length})
 			</p>
-			<table className="text-sm">
-				<thead>
-					<tr className="text-left text-xs text-muted-foreground border-b border-border">
-						<th className="pb-1 pr-4 font-medium whitespace-nowrap">Status</th>
-						<th className="pb-1 pr-4 font-medium whitespace-nowrap">Payer</th>
-						<th className="pb-1 pr-4 font-medium whitespace-nowrap">Amount</th>
-						<th className="pb-1 font-medium whitespace-nowrap text-right">Actions</th>
-					</tr>
-				</thead>
-				<tbody>
+			<Table
+				className="w-full text-sm"
+				containerClassName="w-full min-w-0 max-w-full overflow-hidden pr-6"
+			>
+				<TableHeader>
+					<TableRow className="bg-transparent">
+						<TableHead className="px-4 text-xs whitespace-nowrap">Status</TableHead>
+						<TableHead className="px-4 text-xs whitespace-nowrap">Payer</TableHead>
+						<TableHead className="px-4 text-xs whitespace-nowrap">Amount</TableHead>
+						<TableHead
+							className={`${stickyTableActionHeaderClassName} px-4 text-right text-xs whitespace-nowrap`}
+						>
+							Actions
+						</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody>
 					{aggregate.bills.map((subBill) => (
-						<tr key={subBill.billId} className="border-b border-border/50 last:border-0">
-							<td className="py-1.5 pr-4">
-								<BillStatusBadge status={subBill.status} />
-							</td>
-							<td className="py-1.5 pr-4 whitespace-nowrap">
-								<span className="text-foreground">{subBill.payerName ?? subBill.payerId}</span>
-							</td>
-							<td className="py-1.5 pr-4 whitespace-nowrap">
-								<ISKAmount amount={subBill.amount} />
-							</td>
-							<td className="py-1.5 text-right">
-								<ActionsMenu
+						<TableRow
+							key={subBill.billId}
+							className="cursor-pointer"
+							onClick={(event) => {
+								const target = event.target as HTMLElement | null
+								if (target?.closest('a, button, [role="button"]')) return
+								const href = `/admin/bills/${subBill.billId}`
+								if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+									event.preventDefault()
+									window.open(href, '_blank', 'noopener,noreferrer')
+									return
+								}
+								void navigate(href)
+							}}
+							onAuxClick={(event) => {
+								if (event.button !== 1) return
+								const target = event.target as HTMLElement | null
+								if (target?.closest('a, button, [role="button"]')) return
+								event.preventDefault()
+								window.open(`/admin/bills/${subBill.billId}`, '_blank', 'noopener,noreferrer')
+							}}
+						>
+							<TableCell className="px-4">
+								<Link
+									to={`/admin/bills/${subBill.billId}`}
+									className="block no-underline hover:no-underline"
+								>
+									<BillStatusBadge status={subBill.status} />
+								</Link>
+							</TableCell>
+							<TableCell className="px-4">
+								<Link
+									to={`/admin/bills/${subBill.billId}`}
+									className="block break-words text-foreground no-underline hover:no-underline"
+								>
+									{subBill.payerName ?? subBill.payerId}
+								</Link>
+							</TableCell>
+							<TableCell className="px-4 whitespace-nowrap">
+								<Link
+									to={`/admin/bills/${subBill.billId}`}
+									className="block no-underline hover:no-underline"
+								>
+									<ISKAmount amount={subBill.amount} />
+								</Link>
+							</TableCell>
+							<TableCell className={`${stickyTableActionCellClassName} px-4 text-right`}>
+								<BillActionsMenu
 									items={[
 										{
 											label: 'View',
@@ -627,8 +729,10 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 													confirmLabel: 'To Draft',
 													intent: 'secondary',
 													onConfirm: async () => {
-														await revertBillToDraft.mutateAsync(subBill.billId)
-														void invalidateAggregate()
+														await runSubBillAction(
+															() => revertBillToDraft.mutateAsync(subBill.billId),
+															'Failed to revert bill to draft'
+														)
 													},
 												})
 											},
@@ -645,8 +749,10 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 													confirmLabel: 'Issue',
 													intent: 'confirm',
 													onConfirm: async () => {
-														await issueBill.mutateAsync(subBill.billId)
-														void invalidateAggregate()
+														await runSubBillAction(
+															() => issueBill.mutateAsync(subBill.billId),
+															'Failed to issue bill'
+														)
 													},
 												})
 											},
@@ -663,8 +769,10 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 													confirmLabel: 'Cancel',
 													intent: 'confirm',
 													onConfirm: async () => {
-														await cancelBill.mutateAsync(subBill.billId)
-														void invalidateAggregate()
+														await runSubBillAction(
+															() => cancelBill.mutateAsync(subBill.billId),
+															'Failed to cancel bill'
+														)
 													},
 												})
 											},
@@ -684,8 +792,10 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 													confirmLabel: 'Mark Paid',
 													intent: 'confirm',
 													onConfirm: async () => {
-														await markBillPaid.mutateAsync(subBill.billId)
-														void invalidateAggregate()
+														await runSubBillAction(
+															() => markBillPaid.mutateAsync(subBill.billId),
+															'Failed to mark bill paid'
+														)
 													},
 												})
 											},
@@ -702,82 +812,21 @@ function GroupBillSubRows(props: { groupBillId: string }) {
 													confirmLabel: 'Delete',
 													intent: 'destructive',
 													onConfirm: async () => {
-														await deleteBill.mutateAsync(subBill.billId)
-														void invalidateAggregate()
+														await runSubBillAction(
+															() => deleteBill.mutateAsync(subBill.billId),
+															'Failed to delete bill'
+														)
 													},
 												})
 											},
 										},
 									]}
 								/>
-							</td>
-						</tr>
+							</TableCell>
+						</TableRow>
 					))}
-				</tbody>
-			</table>
+				</TableBody>
+			</Table>
 		</div>
-	)
-}
-
-type ActionIntent = 'confirm' | 'secondary' | 'muted' | 'destructive' | 'primary'
-
-interface ActionItem {
-	label: string
-	intent: ActionIntent
-	hidden?: boolean
-	loading?: boolean
-	onClick?: () => void
-	href?: string
-}
-
-const intentBg: Record<ActionIntent, string> = {
-	confirm: 'bg-[hsl(var(--confirm))]/45 hover:bg-[hsl(var(--confirm))]/65',
-	destructive: 'bg-[hsl(var(--destructive-alt))]/45 hover:bg-[hsl(var(--destructive-alt))]/65',
-	// neutral white tint so it's always visibly distinct from the popover backdrop
-	muted: 'bg-white/15 hover:bg-[hsl(var(--cancel-hover))]/65',
-	secondary: 'bg-[hsl(var(--secondary))]/45 hover:bg-[hsl(var(--secondary))]/65',
-	primary: 'bg-[hsl(var(--primary))]/45 hover:bg-[hsl(var(--primary))]/65',
-}
-
-function ActionsMenu(props: { items: ActionItem[] }) {
-	const [open, setOpen] = useState(false)
-	const navigate = useNavigate()
-	const visible = props.items.filter((item) => !item.hidden)
-
-	if (visible.length === 0) return null
-
-	// All items render as <button> so font-size is identical across every row.
-	// (<a> and <button> compute inherited font-size differently in some browsers.)
-	const baseClass =
-		'w-full cursor-pointer px-3 py-2 text-left text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 first:rounded-t last:rounded-b'
-
-	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<Button variant="ghost" size="sm">
-					Actions <ChevronDown className="ml-1 h-3 w-3" />
-				</Button>
-			</PopoverTrigger>
-			<PopoverContent align="end" className="w-44 p-1">
-				{visible.map((item) => (
-					<button
-						key={item.label}
-						type="button"
-						disabled={item.loading}
-						className={cn(baseClass, intentBg[item.intent])}
-						onClick={() => {
-							setOpen(false)
-							if (item.href) {
-								void navigate(item.href)
-							} else {
-								item.onClick?.()
-							}
-						}}
-					>
-						{item.loading ? 'Loading...' : item.label}
-					</button>
-				))}
-			</PopoverContent>
-		</Popover>
 	)
 }

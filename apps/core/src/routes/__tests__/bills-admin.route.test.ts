@@ -147,7 +147,12 @@ describe('bills-admin routes action access matrix', () => {
 		)
 		expect(updateResponse.status).toBe(200)
 		expect(billsStub.getBillIntegrationView).toHaveBeenCalledWith('bill-1')
-		expect(billsStub.updateBill).toHaveBeenCalledWith('admin-1', 'bill-1', { title: 'updated' })
+		expect(billsStub.updateBill).toHaveBeenCalledWith(
+			'admin-1',
+			'bill-1',
+			{ title: 'updated' },
+			'admin'
+		)
 
 		const issueResponse = await app.request(
 			'/api/admin/bills/bill-1/issue',
@@ -155,7 +160,7 @@ describe('bills-admin routes action access matrix', () => {
 			env
 		)
 		expect(issueResponse.status).toBe(200)
-		expect(billsStub.issueBill).toHaveBeenCalledWith('admin-1', 'bill-1')
+		expect(billsStub.issueBill).toHaveBeenCalledWith('admin-1', 'bill-1', 'admin')
 
 		const cancelResponse = await app.request(
 			'/api/admin/bills/bill-1/cancel',
@@ -163,7 +168,7 @@ describe('bills-admin routes action access matrix', () => {
 			env
 		)
 		expect(cancelResponse.status).toBe(200)
-		expect(billsStub.cancelBill).toHaveBeenCalledWith('admin-1', 'bill-1')
+		expect(billsStub.cancelBill).toHaveBeenCalledWith('admin-1', 'bill-1', 'admin')
 
 		const markPaidResponse = await app.request(
 			'/api/admin/bills/bill-1/mark-paid',
@@ -171,7 +176,7 @@ describe('bills-admin routes action access matrix', () => {
 			env
 		)
 		expect(markPaidResponse.status).toBe(200)
-		expect(billsStub.markBillPaid).toHaveBeenCalledWith('admin-1', 'bill-1')
+		expect(billsStub.markBillPaid).toHaveBeenCalledWith('admin-1', 'bill-1', 'admin')
 
 		const revertResponse = await app.request(
 			'/api/admin/bills/bill-1/revert-to-draft',
@@ -179,7 +184,7 @@ describe('bills-admin routes action access matrix', () => {
 			env
 		)
 		expect(revertResponse.status).toBe(200)
-		expect(billsStub.revertBillToDraft).toHaveBeenCalledWith('admin-1', 'bill-1')
+		expect(billsStub.revertBillToDraft).toHaveBeenCalledWith('admin-1', 'bill-1', 'admin')
 
 		const tokenResponse = await app.request(
 			'/api/admin/bills/bill-1/regenerate-token',
@@ -187,7 +192,35 @@ describe('bills-admin routes action access matrix', () => {
 			env
 		)
 		expect(tokenResponse.status).toBe(200)
-		expect(billsStub.regeneratePaymentToken).toHaveBeenCalledWith('admin-1', 'bill-1')
+		expect(billsStub.regeneratePaymentToken).toHaveBeenCalledWith('admin-1', 'bill-1', 'admin')
+	})
+
+	it('rejects malformed manual bill create and update payloads', async () => {
+		const app = createApp(makeUser({ is_admin: true }))
+
+		const createResponse = await app.request(
+			'/api/admin/bills',
+			{
+				method: 'POST',
+				body: JSON.stringify({ title: 'missing required fields' }),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+		const updateResponse = await app.request(
+			'/api/admin/bills/bill-1',
+			{
+				method: 'PUT',
+				body: JSON.stringify({ issuerId: 'different-user' }),
+				headers: { 'content-type': 'application/json' },
+			},
+			env
+		)
+
+		expect(createResponse.status).toBe(400)
+		expect(updateResponse.status).toBe(400)
+		expect(billsStub.createBill).not.toHaveBeenCalled()
+		expect(billsStub.updateBill).not.toHaveBeenCalled()
 	})
 
 	it('allows site-admin template and schedule action endpoints and forwards actor id', async () => {

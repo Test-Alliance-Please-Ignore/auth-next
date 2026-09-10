@@ -31,6 +31,8 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select } from '@/components/ui/select'
 import {
+	stickyTableActionCellClassName,
+	stickyTableActionHeaderClassName,
 	Table,
 	TableBody,
 	TableCell,
@@ -504,7 +506,7 @@ export default function CorporationMembersTable({
 			<TableRefreshFrame isRefreshing={isRefreshing} refreshMessage="Loading members...">
 				<Card>
 					{renderPaginationControls()}
-					<Table>
+					<Table className="whitespace-nowrap">
 						<TableHeader>
 							<TableRow>
 								<SortableHead field="name" label="Member" />
@@ -515,7 +517,9 @@ export default function CorporationMembersTable({
 								<SortableHead field="lastLogin" label="Last Login" />
 								<SortableHead field="joinDate" label="Join Date" />
 								{showActions && (
-									<TableHead className="sticky right-0 z-20 bg-card text-right">Actions</TableHead>
+									<TableHead className={`${stickyTableActionHeaderClassName} text-right`}>
+										Actions
+									</TableHead>
 								)}
 							</TableRow>
 						</TableHeader>
@@ -562,7 +566,7 @@ export default function CorporationMembersTable({
 										</div>
 									</TableCell>
 									<TableCell>
-										<div className="flex gap-2 flex-wrap">
+										<div className="flex flex-nowrap gap-2">
 											{member.role === 'CEO' && (
 												<Badge variant="destructive" icon={Star}>
 													CEO
@@ -628,7 +632,7 @@ export default function CorporationMembersTable({
 									</TableCell>
 									{showActions && (
 										<TableCell
-											className="sticky right-0 z-10 bg-card text-right"
+											className={`${stickyTableActionCellClassName} text-right`}
 											onClick={(e) => e.stopPropagation()}
 										>
 											<ActionsMenu
