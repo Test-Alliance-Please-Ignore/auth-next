@@ -1,9 +1,24 @@
 import { Hono } from 'hono'
+import { getCookie, setCookie } from 'hono/cookie'
 import { html } from 'hono/html'
 
+import {
+	LOGIN_LOCALE_COOKIE,
+	LOGIN_LOCALE_NAMES,
+	LOGIN_MESSAGES,
+	parseLoginLocale,
+	resolveLoginLocale,
+} from './login-i18n'
+
+import type { UserLocale } from '@repo/core'
 import type { App } from '../context'
 
 const login = new Hono<App>()
+const LOGIN_LOCALE_COOKIE_TTL_SECONDS = 365 * 24 * 60 * 60
+
+function selectedAttribute(locale: UserLocale, option: UserLocale) {
+	return locale === option ? 'selected' : ''
+}
 
 /**
  * GET /login
@@ -15,6 +30,28 @@ login.get('/', async (c) => {
 	const user = c.get('user')
 	const redirectUrl = c.req.query('redirect')
 	const forceReauth = c.req.query('reauth') === '1' || c.req.query('reauth') === 'true'
+	const requestedLocale = parseLoginLocale(c.req.query('locale'))
+	const locale = resolveLoginLocale({
+		queryLocale: requestedLocale,
+		cookieLocale: getCookie(c, LOGIN_LOCALE_COOKIE),
+		acceptLanguage: c.req.header('Accept-Language'),
+	})
+	const messages = LOGIN_MESSAGES[locale]
+
+	// The locale is not sensitive. Keeping this cookie readable allows the SPA activation
+	// slice to adopt the pre-authentication choice once the full catalog is ready.
+	if (requestedLocale) {
+		setCookie(c, LOGIN_LOCALE_COOKIE, requestedLocale, {
+			httpOnly: false,
+			path: '/',
+			maxAge: LOGIN_LOCALE_COOKIE_TTL_SECONDS,
+			sameSite: 'Lax',
+			secure: new URL(c.req.url).protocol === 'https:',
+		})
+	}
+
+	c.header('Cache-Control', 'private, no-store')
+	c.header('Vary', 'Cookie, Accept-Language')
 
 	// Build the auth URL with redirect parameter
 	const authUrl = redirectUrl
@@ -33,19 +70,16 @@ login.get('/', async (c) => {
 
 	return c.html(html`
 		<!DOCTYPE html>
-		<html lang="en">
+		<html lang="${locale}">
 			<head>
 				<meta charset="UTF-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-				<title>Login - TEST Auth</title>
+				<title>${messages.title}</title>
 
 				<!-- Open Graph Meta Tags -->
 				<meta property="og:type" content="website" />
-				<meta property="og:title" content="Login to TEST Auth" />
-				<meta
-					property="og:description"
-					content="Secure authentication for EVE Online alliances and corporations"
-				/>
+				<meta property="og:title" content="${messages.metaTitle}" />
+				<meta property="og:description" content="${messages.description}" />
 				<meta property="og:site_name" content="TEST Auth" />
 				<meta
 					property="og:image"
@@ -55,10 +89,7 @@ login.get('/', async (c) => {
 				<meta property="og:image:height" content="512" />
 
 				<!-- Standard Meta Tags -->
-				<meta
-					name="description"
-					content="Secure authentication for EVE Online alliances and corporations"
-				/>
+				<meta name="description" content="${messages.description}" />
 
 				<style>
 					* {
@@ -123,6 +154,59 @@ login.get('/', async (c) => {
 						font-size: 14px;
 						opacity: 0.7;
 						color: hsl(210 10% 70%);
+					}
+
+					.locale-form {
+						display: flex;
+						align-items: flex-end;
+						justify-content: flex-end;
+						gap: 8px;
+						margin-bottom: 24px;
+						text-align: left;
+					}
+
+					.locale-field {
+						display: flex;
+						flex-direction: column;
+						gap: 6px;
+					}
+
+					.locale-label {
+						font-size: 12px;
+						font-weight: 600;
+						color: hsl(210 10% 70%);
+					}
+
+					.locale-select,
+					.locale-apply {
+						height: 36px;
+						border: 1px solid hsl(220 12% 28%);
+						border-radius: 6px;
+						background: hsl(220 14% 18%);
+						color: hsl(210 12% 95%);
+						font: inherit;
+					}
+
+					.locale-select {
+						min-width: 130px;
+						padding: 0 10px;
+					}
+
+					.locale-apply {
+						padding: 0 12px;
+						font-size: 13px;
+						font-weight: 600;
+						cursor: pointer;
+					}
+
+					.locale-select:focus-visible,
+					.locale-apply:focus-visible {
+						outline: 2px solid hsl(205 85% 58%);
+						outline-offset: 2px;
+					}
+
+					.locale-apply:hover {
+						background: hsl(220 14% 22%);
 					}
 
 					.content {
@@ -267,13 +351,45 @@ login.get('/', async (c) => {
 						font-size: 12px;
 						color: hsl(210 10% 70%);
 					}
+
+					@media (max-width: 480px) {
+						.header,
+						.content {
+							padding: 24px;
+						}
+
+						.locale-form {
+							justify-content: center;
+						}
+					}
 				</style>
 			</head>
 			<body>
 				<div class="container">
 					<div class="header">
-						<h1>Welcome to TEST Auth</h1>
-						<p>Secure Authentication for EVE Online</p>
+						<form class="locale-form" method="get" action="/login">
+							<div class="locale-field">
+								<label class="locale-label" for="login-locale">${messages.languageLabel}</label>
+								<select class="locale-select" id="login-locale" name="locale">
+									<option value="en" ${selectedAttribute(locale, 'en')}>
+										${LOGIN_LOCALE_NAMES.en}
+									</option>
+									<option value="de" ${selectedAttribute(locale, 'de')}>
+										${LOGIN_LOCALE_NAMES.de}
+									</option>
+									<option value="ko" ${selectedAttribute(locale, 'ko')}>
+										${LOGIN_LOCALE_NAMES.ko}
+									</option>
+								</select>
+							</div>
+							${redirectUrl
+								? html`<input type="hidden" name="redirect" value="${redirectUrl}" />`
+								: ''}
+							${forceReauth ? html`<input type="hidden" name="reauth" value="1" />` : ''}
+							<button class="locale-apply" type="submit">${messages.applyLanguage}</button>
+						</form>
+						<h1>${messages.welcome}</h1>
+						<p>${messages.subtitle}</p>
 					</div>
 
 					<div class="content">
@@ -291,56 +407,39 @@ login.get('/', async (c) => {
 						</div>
 
 						<div class="info-section">
-							<p class="info-text">
-								You are about to login using EVE Online's secure Single Sign-On (SSO) system. This
-								ensures your credentials stay safe and are never shared with third parties.
-							</p>
+							<p class="info-text">${messages.intro}</p>
 						</div>
 
 						<div class="account-warning-box">
-							<div class="account-warning-title">Important: Do Not Create a Second Account</div>
-							<p class="warning-text">
-								You are about to create a new TEST Auth account. If you have created an Auth account
-								before, do not create another one. Multiple Auth accounts cause problems later.
-							</p>
+							<div class="account-warning-title">${messages.accountWarningTitle}</div>
+							<p class="warning-text">${messages.accountWarningText}</p>
 						</div>
 
 						<div class="warning-box">
-							<div class="warning-title">Important: Select Your Main Character</div>
+							<div class="warning-title">${messages.characterWarningTitle}</div>
 							<p class="warning-text">
-								When you reach the EVE SSO page, please select your <strong>main character</strong>.
-								This character will be associated with your account and cannot be easily changed
-								later.
+								${messages.characterWarningBefore}<strong>${messages.mainCharacter}</strong>${messages.characterWarningAfter}
 							</p>
 						</div>
 
 						<div class="info-section">
-							<div class="info-title">What happens next?</div>
+							<div class="info-title">${messages.nextTitle}</div>
 							<ul class="info-list">
-								<li>You'll be redirected to EVE Online's official login page</li>
-								<li>Log in with your EVE Online account credentials</li>
-								<li>Select your main character from your character list</li>
-								<li>Authorize TEST Auth to access your character information</li>
-								<li>You'll be automatically redirected back to continue</li>
+								${messages.nextSteps.map((step) => html`<li>${step}</li>`)}
 							</ul>
 						</div>
 
 						<div class="info-section">
-							<div class="info-title">Your data is secure</div>
-							<p class="info-text">
-								We only request the necessary permissions to verify your identity and manage your
-								group memberships. Your EVE Online password is never shared with us.
-							</p>
+							<div class="info-title">${messages.securityTitle}</div>
+							<p class="info-text">${messages.securityText}</p>
 						</div>
 
-						<a href="${authUrl}" class="button button-primary"> Continue to EVE Online Login </a>
+						<a href="${authUrl}" class="button button-primary">${messages.continueButton}</a>
 
-						<a href="/" class="button button-secondary"> Cancel </a>
+						<a href="/" class="button button-secondary">${messages.cancelButton}</a>
 					</div>
 
-					<div class="footer">
-						Powered by EVE Online SSO • Your credentials remain secure with CCP Games
-					</div>
+					<div class="footer">${messages.footer}</div>
 				</div>
 			</body>
 		</html>
