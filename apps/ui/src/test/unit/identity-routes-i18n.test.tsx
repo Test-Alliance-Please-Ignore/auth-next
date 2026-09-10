@@ -223,6 +223,23 @@ describe('localized identity routes', () => {
 		expect(html).toContain('Original Corp')
 	})
 
+	it.each([
+		['en', 'Filter corporations', 'Corporation type:'],
+		['de', 'Corporations filtern', 'Corporation-Typ:'],
+		['ko', '코퍼레이션 검색', '코퍼레이션 유형:'],
+	] as const)(
+		'localizes the upstream corporation search controls in %s',
+		async (locale, searchLabel, typeLabel) => {
+			await setAppLocale(locale, { persistLocal: false })
+			state.isAdmin = true
+			const html = render('/corporations', '/corporations', <CorporationsPage />)
+			expect(html).toContain(`aria-label="${searchLabel}"`)
+			expect(html).toContain(typeLabel)
+			expect(html).toContain('Original Corp')
+			expect(html).toContain('href="/corporations/987654321/members"')
+		}
+	)
+
 	it('renders settings fields with translated accessible labels and denies unauthorized access', async () => {
 		await setAppLocale('ko', { persistLocal: false })
 		const allowed = render(

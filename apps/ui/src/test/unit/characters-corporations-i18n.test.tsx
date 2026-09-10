@@ -319,6 +319,23 @@ describe('character and corporation translations', () => {
 		).toContain('1–1 of 1 user')
 	})
 
+	it('localizes large page numbers and preserves the upstream leading control', async () => {
+		await setAppLocale('de', { persistLocal: false })
+		const html = render(
+			<UserSearchPaginationControls
+				totalCount={50000}
+				page={1000}
+				pageSize={25}
+				onPageChange={vi.fn()}
+				onPageSizeChange={vi.fn()}
+				controlsLeadingAction={<button type="button">Original layout control</button>}
+			/>
+		)
+		expect(html).toMatch(/aria-current="page"[^>]*>1\.000<\/button>/)
+		expect(html).toContain('Original layout control')
+		expect(html).toContain('Pro Seite:')
+	})
+
 	it('keeps export query values unchanged across locales', async () => {
 		const query = {
 			roleFilter: 'Director' as const,

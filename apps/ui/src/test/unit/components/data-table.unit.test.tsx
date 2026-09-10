@@ -86,7 +86,7 @@ describe('DataTable', () => {
 		expect(html.match(/href="\/rows\/row-1"/g)).toHaveLength(1)
 		expect(html.match(/href="\/rows\/row-2"/g)).toHaveLength(1)
 		expect(html).toContain('>Action</button>')
-		expect(html).toContain('1-2 of 2 rows')
+		expect(html).toContain('1–2 of 2 rows')
 	})
 
 	it('does not render row links in callback interaction mode', () => {
