@@ -38,7 +38,10 @@ vi.mock('@/features/corporations', () => ({
 	useCorporationAccess: () => ({ data: undefined }),
 	useHasCorporationAccess: () => ({ data: undefined }),
 }))
-vi.mock('@/features/hr', () => ({ useHrAccessibleCorporations: () => ({ data: [] }) }))
+vi.mock('@/features/hr', () => ({
+	hasExplicitMemberCorporationHrRole: () => false,
+	useHrAccessibleCorporations: () => ({ data: [] }),
+}))
 vi.mock('@/features/moon-scan/permissions', () => ({
 	useMoonScanPermissions: () => ({
 		canAccessMoonScan: false,

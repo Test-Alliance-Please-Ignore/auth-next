@@ -69,6 +69,7 @@ const activity: TimerboardActivity[] = [
 vi.mock('@/features/timerboard/hooks', () => ({
 	useTimerboardEntry: () => ({ data: entry, isLoading: false, error: null }),
 	useTimerboardActivity: () => ({ data: activity, isLoading: false, error: null }),
+	useTimerboardStructureDetail: () => ({ data: null, isLoading: false, error: null }),
 	useSetTimerboardState: () => ({ mutate: vi.fn(), error: null }),
 	useAssignTimerboardEntry: () => ({ mutate: mutationMocks.assign, error: null, isPending: false }),
 }))
@@ -100,10 +101,15 @@ vi.mock('@/features/timerboard/components/timerboard-assignment-select', () => (
 	),
 }))
 
+vi.mock('@/hooks/useAuth', () => ({
+	useAuth: () => ({ user: null }),
+}))
+
 describe('TimerboardDetail', () => {
 	it('assigns a searched character and renders actor names instead of UUIDs', () => {
 		render(<TimerboardDetail entryId={entry.id} onEdit={vi.fn()} />)
 
+		fireEvent.click(screen.getByRole('button', { name: /Activity/ }))
 		expect(screen.getByText('Title: Original timer → Updated timer')).toBeTruthy()
 		expect(screen.getByText(/By Director Example/)).toBeTruthy()
 		expect(screen.queryByRole('textbox', { name: 'User UUID' })).toBeNull()

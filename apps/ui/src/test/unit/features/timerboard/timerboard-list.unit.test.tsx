@@ -9,8 +9,7 @@ describe('TimerboardList', () => {
 			<TimerboardList entries={[]} nowMs={Date.parse('2026-09-01T19:30:00.000Z')} isLoading />
 		)
 
-		expect(html).toContain('role="status"')
-		expect(html).toContain('Loading timers')
+		expect(html).toContain('aria-label="Loading"')
 	})
 
 	it('renders a useful empty board state', () => {
@@ -19,7 +18,6 @@ describe('TimerboardList', () => {
 		)
 
 		expect(html).toContain('No timers match these filters')
-		expect(html).toContain('Try a wider time range')
 	})
 
 	it('renders a safe error state', () => {

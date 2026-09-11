@@ -203,6 +203,7 @@ export function TimerboardList({
 			rows={entries}
 			loading={isLoading}
 			error={error}
+			errorMessage={error ?? undefined}
 			emptyMessage="No timers match these filters"
 			getRowKey={(entry) => entry.id}
 			rowInteraction={onSelect ? { type: 'click', onClick: onSelect } : undefined}
