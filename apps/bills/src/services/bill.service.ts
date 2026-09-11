@@ -1595,7 +1595,7 @@ export class BillService {
 					${manualTransactionId},
 					'0',
 					${paidById},
-					'character'::entity_type,
+					'character'::bill_entity_type,
 					${paidAt}
 				from updated_bill
 				returning bill_id

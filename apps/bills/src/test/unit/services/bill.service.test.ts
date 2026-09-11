@@ -127,6 +127,7 @@ describe('BillService mutation authorization', () => {
 		const query = sqlText(execute.mock.calls[0]?.[0])
 		expect(query).toContain('with updated_bill as')
 		expect(query).toContain('insert into bill_payments')
+		expect(query).toContain("'character'::bill_entity_type")
 		expect(query).toContain('inserted_paid_event')
 		expect(query).toContain('inserted_payment_event')
 	})
