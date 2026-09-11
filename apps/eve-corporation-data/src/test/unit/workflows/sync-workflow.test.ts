@@ -368,6 +368,7 @@ describe('EveCorporationSyncWorkflow', () => {
 				},
 			],
 			posListingComplete: true,
+			pruneMissingImmediately: true,
 		})
 		fetchSovereigntyEnrichmentMock.mockResolvedValue(null)
 		fetchSkyhookEnrichmentMock.mockRejectedValue(new Error('skyhook boom'))
