@@ -53,6 +53,7 @@ import type {
 	TimerboardActivity,
 	TimerboardAssignmentCandidate,
 	TimerboardAssignmentInput,
+	TimerboardDestinationCatalogItem,
 	TimerboardEntry,
 	TimerboardListQuery,
 	TimerboardListResponse,
@@ -3649,9 +3650,12 @@ export class ApiClient {
 	async getTimerboardEntries(query: TimerboardListQuery = {}): Promise<TimerboardListResponse> {
 		const params = new URLSearchParams()
 		if (query.state?.length) params.set('state', query.state.join(','))
-		if (query.kind) params.set('kind', query.kind)
-		if (query.priority) params.set('priority', query.priority)
-		if (query.side) params.set('side', query.side)
+		if (query.category) params.set('category', query.category)
+		if (query.timerTypes?.length) params.set('timerType', query.timerTypes.join(','))
+		if (query.priorities?.length) params.set('priority', query.priorities.join(','))
+		if (query.hostilities?.length) params.set('hostility', query.hostilities.join(','))
+		if (query.subjectTypes?.length) params.set('subjectType', query.subjectTypes.join(','))
+		if (query.organizations?.length) params.set('organization', query.organizations.join(','))
 		if (query.system) params.set('system', query.system)
 		if (query.assignedToMe) params.set('assignedToMe', 'true')
 		if (query.from) params.set('from', query.from)
@@ -3702,6 +3706,10 @@ export class ApiClient {
 
 	async getTimerboardActivity(entryId: string): Promise<TimerboardActivity[]> {
 		return this.get(`/timerboard/${entryId}/activity`)
+	}
+
+	async getTimerboardShareDestinations(): Promise<TimerboardDestinationCatalogItem[]> {
+		return this.get('/timerboard/share-destinations')
 	}
 
 	async getStructures(query: StructureListQuery = {}): Promise<StructureMainListResponse> {

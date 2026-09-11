@@ -12,27 +12,17 @@ const priorityStyles: Record<TimerboardEntry['priority'], string> = {
 	low: 'bg-muted-foreground',
 }
 
-function eveClock(instant: string): string {
-	return new Intl.DateTimeFormat('en-GB', {
-		timeZone: 'UTC',
-		hour: '2-digit',
-		minute: '2-digit',
-		hourCycle: 'h23',
-	}).format(new Date(instant))
-}
-
-function eveDate(instant: string): string {
-	return new Intl.DateTimeFormat('en-GB', {
-		timeZone: 'UTC',
-		day: '2-digit',
-		month: 'short',
-		year: 'numeric',
-	}).format(new Date(instant))
-}
-
 export function TimerboardEntryCard({ entry, nowMs }: { entry: TimerboardEntry; nowMs: number }) {
 	const priorityLabel = `${entry.priority[0]?.toUpperCase()}${entry.priority.slice(1)} priority`
-	const location = [entry.systemName, entry.entityName].filter(Boolean).join(' · ')
+	const location = [
+		entry.systemName,
+		entry.regionName,
+		entry.corporationName,
+		entry.allianceName,
+		entry.subjectName,
+	]
+		.filter(Boolean)
+		.join(' · ')
 	const isOverdue =
 		Date.parse(entry.startsAt) < nowMs && ['planned', 'covered'].includes(entry.state)
 
@@ -50,7 +40,7 @@ export function TimerboardEntryCard({ entry, nowMs }: { entry: TimerboardEntry; 
 					<div className="flex flex-wrap items-start justify-between gap-2">
 						<div>
 							<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-								{entry.kind} · {entry.side} · <span>{priorityLabel}</span>
+								{entry.category} · {entry.hostility} · <span>{priorityLabel}</span>
 							</p>
 							<h2 className="text-base font-semibold text-foreground">{entry.title}</h2>
 						</div>
@@ -68,19 +58,7 @@ export function TimerboardEntryCard({ entry, nowMs }: { entry: TimerboardEntry; 
 
 					{location ? <p className="text-sm text-muted-foreground">{location}</p> : null}
 					<p className="text-sm text-foreground">
-						{entry.endsAt ? (
-							<>
-								Starts {eveDate(entry.startsAt)}, {eveClock(entry.startsAt)}–
-								{eveDate(entry.endsAt) === eveDate(entry.startsAt)
-									? eveClock(entry.endsAt)
-									: `${eveDate(entry.endsAt)}, ${eveClock(entry.endsAt)}`}{' '}
-								EVE
-							</>
-						) : (
-							<>
-								Starts <EveTimeDisplay dateStr={entry.startsAt} format="compact" />
-							</>
-						)}
+						Event <EveTimeDisplay dateStr={entry.startsAt} format="compact" />
 					</p>
 					<p className="text-xs text-muted-foreground">
 						{entry.assignedCharacterName

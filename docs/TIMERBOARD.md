@@ -2,17 +2,14 @@
 
 ## Decision
 
-Add Timerboard as a first-class, shared operational module in the existing
-`core` + `ui` slice:
+Add Timerboard as a first-class, shared operational worker module behind the
+existing `core` + `ui` slice:
 
 ```text
-apps/ui  ── typed HTTP client ──>  apps/core/timerboard  ──> Neon/Postgres
-                                      │
-                                      └── optional later: typed ESI projections
+apps/ui  ── authenticated HTTP ──> apps/core/timerboard route ── internal RPC ──> apps/timerboard ──> Neon/Postgres
 ```
 
-Do **not** start it as a new Worker, Durable Object, generic scheduler, or a
-copy of the Structures feature. A timerboard is collaborative CRUD plus
+Do **not** make Core own the timerboard database or domain service. A timerboard is collaborative CRUD plus
 time-range queries, history, and permission checks; Postgres gives the right
 durability and query model. A dedicated Worker/DO would add deployment and
 consistency complexity without providing leverage for v1.
@@ -35,14 +32,13 @@ it, who owns the response, and what changed?_
 
 - A single shared board, visible to authorised users.
 - Create, view, filter, edit, assign, complete, and cancel timers.
-- Timer kinds: `structure`, `sovereignty`, `skyhook`, `moon`, `fleet`, and
-  `custom`. Treat kinds as a closed TypeScript union in v1, not an admin
-  configurable taxonomy.
-- Exact timers and time windows. A timer has `startsAt`; `endsAt` is optional.
-  If it is absent, `startsAt` is the exact time. If it is present, it must be
-  strictly later than `startsAt`.
-- Operational fields: title, priority, side (`friendly`, `hostile`, `neutral`,
-  `unknown`), system, optional linked EVE entity, response/FC owner, concise
+- Categories: `structure`, `sovereignty`, `skyhook`, `moon`, `fleet`, and
+  `custom`. Timer types are `reinforcement`, `anchoring`, `unanchoring`,
+  `extraction`, `final`, and `custom`.
+- A timer represents one exact event time. There is no duration or time window.
+- Operational fields: title, category, timer type, derived subject type, priority,
+  hostility (`friendly`, `hostile`, `neutral`, `unknown`), system/region,
+  corporation/alliance, response/FC owner, concise
   plaintext notes, source, and lifecycle state.
 - A full append-only activity trail. Cancellation and completion are state
   changes, not destructive deletes.
@@ -62,11 +58,11 @@ it, who owns the response, and what changed?_
 
 ## Domain and persistence design
 
-Put the persistent schema in `apps/core/src/db/schema.ts`, alongside the
-existing core-owned tables. Add a normal, version-controlled Drizzle migration
-to the core migration directory. Do not use `db:push`, `drizzle-kit push`, or
-generate a migration implicitly; migration generation must be a deliberate,
-reviewable step.
+Put the persistent schema in `apps/timerboard/src/db/schema.ts`, alongside the
+timerboard worker’s own migration directory. Use the timerboard-specific
+`timerboard_migrations` table so its migration history is isolated from Core.
+Do not use `db:push`, `drizzle-kit push`, or generate a migration implicitly;
+migration generation must be a deliberate, reviewable step.
 
 ### `timerboard_entries`
 
@@ -75,14 +71,17 @@ Use a UUID/ULID consistent with neighbouring core tables. Suggested columns:
 | Column                                                                 | Meaning                                                                                                                                   |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `id`                                                                   | Stable entry identifier.                                                                                                                  |
-| `kind`                                                                 | Closed timer-kind value.                                                                                                                  |
+| `category`                                                             | Overarching board archetype used by tabs.                                                                                                 |
+| `timer_type`                                                           | Event subtype such as reinforcement, anchoring, unanchoring, extraction, or custom.                                                       |
 | `title`                                                                | Required operator-facing summary.                                                                                                         |
 | `priority`                                                             | `critical`, `high`, `normal`, or `low`.                                                                                                   |
-| `side`                                                                 | `friendly`, `hostile`, `neutral`, or `unknown`.                                                                                           |
-| `starts_at`, `ends_at`                                                 | UTC instant or UTC window; `ends_at` is nullable.                                                                                         |
+| `hostility`                                                            | `friendly`, `hostile`, `neutral`, or `unknown`.                                                                                           |
+| `starts_at`                                                            | Exact UTC event instant.                                                                                                                  |
 | `state`                                                                | `planned`, `covered`, `completed`, or `cancelled`. “Overdue” is a presentation derived from the current time, never a cron-written state. |
 | `system_id`, `system_name`                                             | Optional EVE system reference and denormalised display snapshot. Store EVE IDs as strings where existing conventions require it.          |
-| `entity_id`, `entity_type`, `entity_name`                              | Optional linked structure/other EVE object and display snapshot.                                                                          |
+| `region_id`, `region_name`                                             | Region snapshot derived from the selected solar system.                                                                                   |
+| `corporation_id`, `corporation_name`, `alliance_id`, `alliance_name`   | Optional owner organization snapshots; corporation search is ESI-backed and fills its parent alliance.                                    |
+| `subject_id`, `subject_type`, `subject_name`                           | Optional subject reference and display snapshot; subjects are not limited to structures.                                                  |
 | `assigned_user_id`, `assigned_character_id`, `assigned_character_name` | Optional response owner. Keep the character-name snapshot so historical entries remain readable.                                          |
 | `notes`                                                                | Optional bounded plaintext operational notes; no HTML/Markdown rendering in v1.                                                           |
 | `source_kind`, `source_reference`                                      | `manual` initially; reserve structured provenance for a later explicit ESI import.                                                        |
@@ -109,8 +108,7 @@ audit table as a chat system.
 
 ### Deep module and seam
 
-Create one `TimerboardService` module in `apps/core/src/services/` (or the
-closest established core service location). Its interface is the sole place
+Create one `TimerboardService` module in `apps/timerboard/src/services/`. Its interface is the sole place
 that owns validation after transport parsing, state-transition rules,
 concurrency checks, row serialization, and activity writing:
 
@@ -156,24 +154,25 @@ access tokens or personal calendar data.
 
 ## HTTP contract
 
-Mount a new core route module using the repository's existing `/api` routing
-convention (confirm the precise mount point before implementation). Keep
+Mount a new Core route module using the repository's existing `/api` routing
+convention. Keep
 responses serialisable and timestamps ISO-8601 UTC strings.
 
-| Method  | Path                              | Capability        | Purpose                                                                                                                                                             |
-| ------- | --------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`   | `/timerboard`                     | view              | Filtered, paginated list. Filters: state (default active), kind, priority, side, system, assigned-to-me, and bounded `from`/`to`. Sort by urgency, then `startsAt`. |
-| `POST`  | `/timerboard`                     | edit              | Create a manual entry.                                                                                                                                              |
-| `GET`   | `/timerboard/:entryId`            | view              | Entry detail, including permission-derived actions.                                                                                                                 |
-| `PATCH` | `/timerboard/:entryId`            | owner edit/manage | Update editable fields with `expectedVersion`.                                                                                                                      |
-| `POST`  | `/timerboard/:entryId/state`      | owner edit/manage | Controlled state transition with `expectedVersion`.                                                                                                                 |
-| `POST`  | `/timerboard/:entryId/assignment` | manage            | Assign/unassign response owner with `expectedVersion`.                                                                                                              |
-| `GET`   | `/timerboard/:entryId/activity`   | view              | Ordered activity trail.                                                                                                                                             |
+| Method  | Path                              | Capability        | Purpose                                                                                                                                                                                  |
+| ------- | --------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`   | `/timerboard`                     | view              | Filtered, paginated list. Filters: state (default active), category, timer type, priority, hostility, system, assigned-to-me, and bounded `from`/`to`. Sort by urgency, then event time. |
+| `POST`  | `/timerboard`                     | edit              | Create a manual entry.                                                                                                                                                                   |
+| `GET`   | `/timerboard/:entryId`            | view              | Entry detail, including permission-derived actions.                                                                                                                                      |
+| `PATCH` | `/timerboard/:entryId`            | owner edit/manage | Update editable fields with `expectedVersion`.                                                                                                                                           |
+| `POST`  | `/timerboard/:entryId/state`      | owner edit/manage | Controlled state transition with `expectedVersion`.                                                                                                                                      |
+| `POST`  | `/timerboard/:entryId/assignment` | manage            | Assign/unassign response owner with `expectedVersion`.                                                                                                                                   |
+| `GET`   | `/timerboard/:entryId/activity`   | view              | Ordered activity trail.                                                                                                                                                                  |
 
 Keep `state` and assignment as dedicated commands because they are meaningful
 audited actions; avoid a broad PATCH that silently changes lifecycle. The
-route module should remain a transport adapter: parse, call the service, and
-map domain errors to HTTP responses.
+route module should remain a transport adapter: authenticate, resolve
+permissions, parse, call the typed worker binding, and map domain errors to HTTP
+responses. The timerboard worker has no public API surface.
 
 ## UI design
 
@@ -194,8 +193,8 @@ Expose the sidebar item only when the current user has `view`, `edit`, or
   coloured priority marker, type, title, system/entity, FC/owner, EVE date,
   and a live but inexpensive countdown. Reuse `EveTimeDisplay`,
   `DurationDisplay`, and the existing `useNowMs` pattern from Structures.
-- A clear window presentation: `Starts 19:00–21:00 EVE`; exact timers: `19:00
-EVE`. Colour alone must not communicate urgency/state.
+- A clear point-in-time presentation: `Event 19:00 EVE`. Colour alone must not
+  communicate urgency/state.
 - Create/edit form with client-side mirrors of server constraints; server
   validation remains authoritative. Use searchable, existing entity/system
   inputs only if they are already available; otherwise allow a validated name
@@ -252,17 +251,18 @@ ownership rules, the typed UI ApiClient/query pattern, UI route registration,
 and the existing Structures time-display helpers. Prefer the
 codebase-memory-mcp graph tools for discovery. Preserve unrelated work.
 
-Build one shared, manually managed operational timerboard in apps/core and
-apps/ui. It must support exact timers and time windows; kind, priority, side,
-system/entity snapshot, assignment, plaintext notes, state, audit history,
-and optimistic concurrency. Persist data in core's Postgres schema with an
+Build one shared, manually managed operational timerboard in apps/timerboard,
+apps/core, and apps/ui. It must support exact event times; category, timer type,
+subject snapshot, priority, side, assignment, plaintext notes, state, audit history,
+and optimistic concurrency. Persist data in the timerboard worker's isolated Postgres schema with an
 explicit Drizzle migration. Never use db:push or drizzle-kit push, and do not
 run migration generation unless the current task explicitly authorises it.
 
 Put lifecycle, permission, concurrency, serialization, and audit-write rules
-behind a single TimerboardService module. Routes must only validate/translate
-HTTP and call that module. Do not add a repository abstraction, a new Worker,
-a Durable Object, or a generic scheduling framework. Use a transaction for
+behind a single TimerboardService module in the timerboard worker. Core routes
+must only authenticate, validate/translate HTTP, call the typed worker binding,
+and map errors. Do not add a repository abstraction, a Durable Object, or a
+generic scheduling framework. Use a transaction for
 each entry mutation plus audit record.
 
 Use the three permissions in TIMERBOARD.md and the existing auth/cached

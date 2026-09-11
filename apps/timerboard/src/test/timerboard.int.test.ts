@@ -2,10 +2,10 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { schema } from '../../db/schema'
-import { TimerboardForbiddenError, TimerboardService } from '../../services/timerboard.service'
+import { schema } from '../db/schema'
+import { TimerboardForbiddenError, TimerboardService } from '../services/timerboard.service'
 
-import type { CreateTimerboardEntryInput, TimerboardActor } from '../../services/timerboard.service'
+import type { CreateTimerboardEntryInput, TimerboardActor } from '../services/timerboard.service'
 
 const hasDatabase = Boolean(process.env.TEST_DATABASE_URL)
 const suite = hasDatabase ? describe : describe.skip
@@ -35,17 +35,23 @@ function timerInput(
 	overrides: Partial<CreateTimerboardEntryInput> = {}
 ): CreateTimerboardEntryInput {
 	return {
-		kind: 'fleet',
+		category: 'fleet',
+		timerType: 'reinforcement',
 		title: 'Armor formup',
 		priority: 'normal',
-		side: 'friendly',
+		hostility: 'friendly',
 		startsAt: '2026-09-01T20:00:00.000Z',
-		endsAt: null,
 		systemId: '30004759',
 		systemName: '1DQ1-A',
-		entityId: null,
-		entityType: null,
-		entityName: null,
+		regionId: null,
+		regionName: null,
+		corporationId: null,
+		corporationName: null,
+		allianceId: null,
+		allianceName: null,
+		subjectId: null,
+		subjectType: null,
+		subjectName: null,
 		notes: null,
 		...overrides,
 	}
@@ -93,7 +99,6 @@ suite('TimerboardService with PostgreSQL', () => {
 		expect(fetched).toMatchObject({
 			title: 'Armor formup',
 			startsAt: '2026-09-01T20:00:00.000Z',
-			endsAt: null,
 			version: 1,
 		})
 		expect(fetched.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/)
@@ -149,7 +154,7 @@ suite('TimerboardService with PostgreSQL', () => {
 
 		const firstPage = await service.list(viewer, {
 			states: ['planned'],
-			kind: 'fleet',
+			category: 'fleet',
 			system: '1dq',
 			from: '2026-09-01T20:00:00.000Z',
 			to: '2026-09-01T23:00:00.000Z',
@@ -158,7 +163,7 @@ suite('TimerboardService with PostgreSQL', () => {
 		})
 		const secondPage = await service.list(viewer, {
 			states: ['planned'],
-			kind: 'fleet',
+			category: 'fleet',
 			system: '1dq',
 			from: '2026-09-01T20:00:00.000Z',
 			to: '2026-09-01T23:00:00.000Z',

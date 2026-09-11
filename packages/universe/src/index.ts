@@ -137,6 +137,25 @@ export interface TypeMaterial {
  * ```
  */
 export interface Universe {
+	/** Search the durable EVE corporation/alliance name index. */
+	searchOrganizations(query: string, limit?: number): Promise<UniverseOrganization[]>
+	/** Search corporations by name, falling back to the durable ESI resolver. */
+	searchCorporations(
+		query: string,
+		limit?: number,
+		authorizedCharacterId?: string,
+		strict?: boolean
+	): Promise<UniverseOrganization[]>
+	/** Search alliances by name, using the same indexed/fallback path as corporations. */
+	searchAlliances(
+		query: string,
+		limit?: number,
+		authorizedCharacterId?: string,
+		strict?: boolean
+	): Promise<UniverseOrganization[]>
+	/** Hydrate persisted/ESI organization metadata for a set of entity IDs. */
+	getOrganizationsByIds(ids: string[]): Promise<UniverseOrganization[]>
+
 	/**
 	 * Search solar systems by partial name.
 	 * @param query - Partial solar system name
@@ -361,6 +380,7 @@ export interface Universe {
 	 * Get all moons in a solar system.
 	 */
 	getMoonsBySystemId(systemId: string): Promise<UniverseStaticMoon[]>
+	getPlanetsBySystemId(systemId: string): Promise<UniversePlanet[]>
 
 	/**
 	 * Batch variant of getMoonsBySystemId.
@@ -428,4 +448,16 @@ export interface Universe {
 		serviceNames: string[],
 		serviceModuleTypeIds?: string[]
 	): Promise<UniverseFuelRuleResolution>
+}
+
+export interface UniverseOrganization {
+	id: string
+	name: string
+	ticker: string | null
+	type: 'corporation' | 'alliance'
+	parentAlliance?: {
+		id: string
+		name: string
+		ticker: string | null
+	} | null
 }

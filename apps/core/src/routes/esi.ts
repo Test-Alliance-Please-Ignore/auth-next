@@ -7,11 +7,13 @@
 
 import { Hono } from 'hono'
 
+import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { requireAuth } from '../middleware/session'
 import { EsiService } from '../services/esi.service'
 
+import type { Universe } from '@repo/universe'
 import type { App } from '../context'
 
 const app = new Hono<App>()
@@ -65,6 +67,22 @@ app.get('/search/structures', async (c) => {
 	}
 })
 
+app.get('/search/organizations', async (c) => {
+	try {
+		const query = c.req.query('q')
+		if (!query || query.length < 2)
+			return c.json({ error: 'Query must be at least 2 characters' }, 400)
+		const user = c.get('user')
+		if (!user?.mainCharacterId) return c.json({ error: 'Authenticated character is required' }, 403)
+		const strict = c.req.query('strict') === 'true'
+		const universe = getStub<Universe>(c.env.UNIVERSE, 'default')
+		return c.json(await universe.searchCorporations(query, 50, user.mainCharacterId, strict))
+	} catch (error) {
+		logger.error('Error in ESI organization search:', error)
+		return c.json({ error: 'Failed to search organizations' }, 500)
+	}
+})
+
 /**
  * GET /esi/universe/systems/:systemId
  * Get system details by ID
@@ -96,6 +114,29 @@ app.get('/universe/stations/:stationId', async (c) => {
 	} catch (error) {
 		logger.error('Error getting station details:', error)
 		return c.json({ error: 'Failed to get station details' }, 500)
+	}
+})
+
+app.get('/universe/systems/:systemId/celestials', async (c) => {
+	try {
+		const systemId = c.req.param('systemId')
+		if (!/^\d+$/.test(systemId)) return c.json({ error: 'Invalid system id' }, 400)
+		const universeStub = getStub<Universe>(c.env.UNIVERSE, 'default')
+		const [planets, moons] = await Promise.all([
+			universeStub.getPlanetsBySystemId(systemId),
+			universeStub.getMoonsBySystemId(systemId),
+		])
+		return c.json({
+			planets: planets.map((planet) => ({ id: planet.planetId, name: planet.planetName })),
+			moons: moons.map((moon) => ({
+				id: moon.moonId,
+				name: moon.moonName,
+				planetId: moon.planetId,
+			})),
+		})
+	} catch (error) {
+		logger.error('Error getting system celestials:', error)
+		return c.json({ error: 'Failed to get system celestials' }, 500)
 	}
 })
 

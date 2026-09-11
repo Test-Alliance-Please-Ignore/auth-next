@@ -30,17 +30,23 @@ afterEach(() => {
 })
 
 const validInput = {
-	kind: 'fleet',
+	category: 'fleet',
+	timerType: 'reinforcement',
 	title: 'Form for armor timer',
 	priority: 'high',
-	side: 'friendly',
+	hostility: 'friendly',
 	startsAt: '2026-09-01T20:00:00.000Z',
-	endsAt: null,
 	systemId: null,
 	systemName: '1DQ1-A',
-	entityId: null,
-	entityType: null,
-	entityName: null,
+	regionId: null,
+	regionName: null,
+	corporationId: null,
+	corporationName: null,
+	allianceId: null,
+	allianceName: null,
+	subjectId: null,
+	subjectType: null,
+	subjectName: null,
 	notes: null,
 } as const
 
@@ -93,18 +99,23 @@ function makeCreateDb() {
 function makeEntryRow(overrides: Record<string, unknown> = {}) {
 	return {
 		id: '22222222-2222-4222-8222-222222222222',
-		kind: 'fleet',
+		category: 'fleet',
 		title: 'Form for armor timer',
 		priority: 'high',
-		side: 'friendly',
+		hostility: 'friendly',
 		startsAt: new Date('2026-09-01T20:00:00.000Z'),
-		endsAt: null,
 		state: 'planned',
 		systemId: null,
 		systemName: '1DQ1-A',
-		entityId: null,
-		entityType: null,
-		entityName: null,
+		regionId: null,
+		regionName: null,
+		corporationId: null,
+		corporationName: null,
+		allianceId: null,
+		allianceName: null,
+		subjectId: null,
+		subjectType: null,
+		subjectName: null,
 		assignedUserId: null,
 		assignedCharacterId: null,
 		assignedCharacterName: null,
@@ -203,21 +214,6 @@ describe('TimerboardService', () => {
 		)
 	})
 
-	it('rejects a timer window that does not end after it starts', async () => {
-		const service = new TimerboardService({} as never)
-
-		await expect(
-			service.create(editor, {
-				...validInput,
-				endsAt: '2026-09-01T20:00:00.000Z',
-			})
-		).rejects.toEqual(
-			new TimerboardValidationError({
-				endsAt: 'End time must be later than start time',
-			})
-		)
-	})
-
 	it('creates a manual timer and exposes one creation activity', async () => {
 		const service = new TimerboardService(makeCreateDb() as never)
 
@@ -310,14 +306,13 @@ describe('TimerboardService', () => {
 		const updated = await service.update(
 			editor,
 			'22222222-2222-4222-8222-222222222222',
-			{ title: 'Updated formup', endsAt: '2026-09-01T21:00:00.000Z' },
+			{ title: 'Updated formup' },
 			1
 		)
 		const activity = await service.listActivity(editor, updated.id)
 
 		expect(updated).toMatchObject({
 			title: 'Updated formup',
-			endsAt: '2026-09-01T21:00:00.000Z',
 			version: 2,
 		})
 		expect(activity[0]).toMatchObject({
@@ -325,7 +320,6 @@ describe('TimerboardService', () => {
 			payload: {
 				changes: {
 					title: { previous: 'Form for armor timer', next: 'Updated formup' },
-					endsAt: { previous: null, next: '2026-09-01T21:00:00.000Z' },
 				},
 			},
 		})

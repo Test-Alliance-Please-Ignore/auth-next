@@ -1,8 +1,9 @@
 export type {
 	CreateTimerboardEntryInput,
-	TimerKind,
+	TimerCategory,
+	TimerType,
 	TimerPriority,
-	TimerSide,
+	TimerHostility,
 	TimerState,
 	TimerboardActivity,
 	TimerboardAssignmentCandidate,
@@ -13,4 +14,5 @@ export type {
 	TimerboardListQuery,
 	TimerboardListResponse,
 	UpdateTimerboardEntryInput,
+	TimerboardDestinationCatalogItem,
 } from '@repo/core'

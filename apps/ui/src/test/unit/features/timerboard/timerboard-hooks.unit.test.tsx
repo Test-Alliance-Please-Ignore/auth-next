@@ -48,18 +48,24 @@ vi.mock('@/lib/api', async (importOriginal) => {
 
 const oldEntry: TimerboardEntry = {
 	id: '22222222-2222-4222-8222-222222222222',
-	kind: 'fleet',
+	category: 'fleet',
+	timerType: 'custom',
 	title: 'Old timer',
 	priority: 'high',
-	side: 'friendly',
+	hostility: 'friendly',
 	startsAt: '2026-09-01T20:00:00.000Z',
-	endsAt: null,
 	state: 'planned',
 	systemId: null,
 	systemName: '1DQ1-A',
-	entityId: null,
-	entityType: null,
-	entityName: null,
+	regionId: null,
+	regionName: null,
+	corporationId: null,
+	corporationName: null,
+	allianceId: null,
+	allianceName: null,
+	subjectId: null,
+	subjectType: null,
+	subjectName: null,
 	assignedUserId: null,
 	assignedCharacterId: null,
 	assignedCharacterName: null,
@@ -96,7 +102,7 @@ beforeEach(() => {
 })
 
 describe('Timerboard mutation hooks', () => {
-	it('polls active list, detail, and activity queries every 30 seconds', () => {
+	it('refreshes list, detail, and activity queries on window focus', () => {
 		apiMocks.getEntries.mockResolvedValue({ items: [], page: 1, pageSize: 25, total: 0 })
 		apiMocks.getEntry.mockResolvedValue(oldEntry)
 		apiMocks.getActivity.mockResolvedValue([])
@@ -111,13 +117,14 @@ describe('Timerboard mutation hooks', () => {
 			{ wrapper }
 		)
 
-		const intervalFor = (queryKey: readonly unknown[]) => {
+		for (const queryKey of [
+			timerboardKeys.list({ page: 1 }),
+			timerboardKeys.detail(oldEntry.id),
+			timerboardKeys.activity(oldEntry.id),
+		]) {
 			const query = queryClient.getQueryCache().find({ queryKey })
-			return (query?.options as { refetchInterval?: number } | undefined)?.refetchInterval
+			expect((query?.options as { refetchOnWindowFocus?: boolean }).refetchOnWindowFocus).toBe(true)
 		}
-		expect(intervalFor(timerboardKeys.list({ page: 1 }))).toBe(30_000)
-		expect(intervalFor(timerboardKeys.detail(oldEntry.id))).toBe(30_000)
-		expect(intervalFor(timerboardKeys.activity(oldEntry.id))).toBe(30_000)
 	})
 
 	it('seeds detail reads from an already-cached list without another request', async () => {
@@ -191,17 +198,23 @@ describe('Timerboard mutation hooks', () => {
 
 		await act(async () => {
 			await result.current.mutateAsync({
-				kind: oldEntry.kind,
+				category: oldEntry.category,
+				timerType: oldEntry.timerType,
 				title: oldEntry.title,
 				priority: oldEntry.priority,
-				side: oldEntry.side,
+				hostility: oldEntry.hostility,
 				startsAt: oldEntry.startsAt,
-				endsAt: oldEntry.endsAt,
 				systemId: oldEntry.systemId,
 				systemName: oldEntry.systemName,
-				entityId: oldEntry.entityId,
-				entityType: oldEntry.entityType,
-				entityName: oldEntry.entityName,
+				regionId: oldEntry.regionId,
+				regionName: oldEntry.regionName,
+				corporationId: oldEntry.corporationId,
+				corporationName: oldEntry.corporationName,
+				allianceId: oldEntry.allianceId,
+				allianceName: oldEntry.allianceName,
+				subjectId: oldEntry.subjectId,
+				subjectType: oldEntry.subjectType,
+				subjectName: oldEntry.subjectName,
 				notes: oldEntry.notes,
 			})
 		})

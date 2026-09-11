@@ -13,6 +13,11 @@ const AUTH_CHARACTER_ID = '2114114257' // Test Auth character
  */
 let systemNamesCache: Array<{ id: number; name: string }> | null = null
 let systemNamesCacheExpiry = 0
+const organizationSearchCache = new Map<
+	string,
+	{ data: EsiOrganizationSearchResult[]; expiresAt: number }
+>()
+const ORGANIZATION_SEARCH_CACHE_TTL_MS = 30 * 60 * 1000
 
 /**
  * ESI Location Search Result
@@ -25,6 +30,14 @@ export interface EsiLocationSearchResult {
 	regionId: string
 	regionName: string
 	type: 'system' | 'station' | 'structure'
+}
+
+export interface EsiOrganizationSearchResult {
+	id: string
+	name: string
+	ticker: string | null
+	type: 'corporation' | 'alliance'
+	parentAlliance: { id: string; name: string; ticker: string | null } | null
 }
 
 /**
@@ -78,13 +91,15 @@ export interface EsiStructureDetails {
  */
 export class EsiService {
 	private cache: Map<string, { data: unknown; expiresAt: number }>
+	private readonly authenticatedCharacterId: string
 	private readonly authenticatedEsi: Esi
 	private readonly publicEsi: Esi
 	private readonly typeResolver: EsiTypeResolver
 
-	constructor(env: Env) {
+	constructor(env: Env, characterId = AUTH_CHARACTER_ID) {
 		this.cache = new Map()
-		this.authenticatedEsi = getEsiInstanceForCharacter(env.ESI, AUTH_CHARACTER_ID)
+		this.authenticatedCharacterId = characterId
+		this.authenticatedEsi = getEsiInstanceForCharacter(env.ESI, characterId)
 		this.publicEsi = getPublicEsiInstance(env.ESI)
 		this.typeResolver = getStub<EsiTypeResolver>(env.ESI_TYPE_RESOLVER, 'global')
 	}
@@ -197,11 +212,14 @@ export class EsiService {
 		}
 
 		try {
-			const searchResponse = await this.authenticatedEsi.fetchCharacterSearch(AUTH_CHARACTER_ID, {
-				categories: ['station'],
-				search: query,
-				strict: false,
-			})
+			const searchResponse = await this.authenticatedEsi.fetchCharacterSearch(
+				this.authenticatedCharacterId,
+				{
+					categories: ['station'],
+					search: query,
+					strict: false,
+				}
+			)
 			logger.info('searchStations: got response', {
 				stationCount: searchResponse.station?.length || 0,
 			})
@@ -275,6 +293,71 @@ export class EsiService {
 		}
 	}
 
+	async searchOrganizations(query: string): Promise<EsiOrganizationSearchResult[]> {
+		if (!query || query.length < 2) return []
+		const cacheKey = query.trim().toLocaleLowerCase()
+		const cached = organizationSearchCache.get(cacheKey)
+		if (cached && cached.expiresAt > Date.now()) return cached.data
+		try {
+			const searchResponse = await this.authenticatedEsi.fetchCharacterSearch(
+				this.authenticatedCharacterId,
+				{
+					categories: ['corporation', 'alliance'],
+					search: query,
+					strict: false,
+				}
+			)
+			const alliances = await Promise.all(
+				(searchResponse.alliance ?? []).slice(0, 10).map(async (id) => {
+					const info = await this.publicEsi.fetchAlliancePublicInfo(String(id))
+					return {
+						id: String(id),
+						name: info.name,
+						ticker: info.ticker ?? null,
+						type: 'alliance' as const,
+						parentAlliance: null,
+					}
+				})
+			)
+			const corporations = await Promise.all(
+				(searchResponse.corporation ?? []).slice(0, 20).map(async (id) => {
+					const info = await this.publicEsi.fetchCorporationPublicInfo(String(id))
+					const alliance = info.alliance_id
+						? await this.publicEsi.fetchAlliancePublicInfo(String(info.alliance_id))
+						: null
+					return {
+						id: String(id),
+						name: info.name,
+						ticker: info.ticker ?? null,
+						type: 'corporation' as const,
+						parentAlliance: alliance
+							? {
+									id: String(info.alliance_id),
+									name: alliance.name,
+									ticker: alliance.ticker ?? null,
+								}
+							: null,
+					}
+				})
+			)
+			const results = [
+				...alliances,
+				...corporations.sort(
+					(left, right) =>
+						Number(Boolean(right.parentAlliance)) - Number(Boolean(left.parentAlliance))
+				),
+			].slice(0, 20)
+			organizationSearchCache.set(cacheKey, {
+				data: results,
+				expiresAt: Date.now() + ORGANIZATION_SEARCH_CACHE_TTL_MS,
+			})
+			return results
+		} catch (error) {
+			logger.error('Error searching organizations:', error)
+			return []
+		}
+	}
+
 	/**
 	 * Search for player structures by name (requires authentication)
 	 */
@@ -284,11 +367,14 @@ export class EsiService {
 		}
 
 		try {
-			const searchResponse = await this.authenticatedEsi.fetchCharacterSearch(AUTH_CHARACTER_ID, {
-				categories: ['structure'],
-				search: query,
-				strict: false,
-			})
+			const searchResponse = await this.authenticatedEsi.fetchCharacterSearch(
+				this.authenticatedCharacterId,
+				{
+					categories: ['structure'],
+					search: query,
+					strict: false,
+				}
+			)
 			logger.info('searchStructures: got response', {
 				structureCount: searchResponse.structure?.length || 0,
 			})
@@ -455,7 +541,10 @@ export class EsiService {
 			return cached.data as EsiStructureDetails
 		}
 
-		const structure = await this.authenticatedEsi.fetchStructureInfo(AUTH_CHARACTER_ID, structureId)
+		const structure = await this.authenticatedEsi.fetchStructureInfo(
+			this.authenticatedCharacterId,
+			structureId
+		)
 		if (!structure) {
 			throw new Error(`Structure ${structureId} was not found or is inaccessible`)
 		}

@@ -16,7 +16,6 @@ import type {
 
 const TIMERBOARD_STALE_TIME = 30_000
 const TIMERBOARD_GC_TIME = 30 * 60_000
-const TIMERBOARD_REFETCH_INTERVAL = 30_000
 
 export function useTimerboard(query: TimerboardListQuery, enabled = true) {
 	return useQuery({
@@ -25,8 +24,6 @@ export function useTimerboard(query: TimerboardListQuery, enabled = true) {
 		placeholderData: keepPreviousData,
 		staleTime: TIMERBOARD_STALE_TIME,
 		gcTime: TIMERBOARD_GC_TIME,
-		refetchInterval: TIMERBOARD_REFETCH_INTERVAL,
-		refetchIntervalInBackground: false,
 		refetchOnWindowFocus: true,
 		enabled,
 	})
@@ -56,8 +53,7 @@ export function useTimerboardEntry(entryId: string | null) {
 		enabled: Boolean(entryId),
 		staleTime: TIMERBOARD_STALE_TIME,
 		gcTime: TIMERBOARD_GC_TIME,
-		refetchInterval: TIMERBOARD_REFETCH_INTERVAL,
-		refetchIntervalInBackground: false,
+		refetchOnWindowFocus: true,
 		initialData: () => cachedListEntry()?.entry,
 		initialDataUpdatedAt: () => cachedListEntry()?.updatedAt,
 	})
@@ -70,8 +66,25 @@ export function useTimerboardActivity(entryId: string | null) {
 		enabled: Boolean(entryId),
 		staleTime: TIMERBOARD_STALE_TIME,
 		gcTime: TIMERBOARD_GC_TIME,
-		refetchInterval: TIMERBOARD_REFETCH_INTERVAL,
-		refetchIntervalInBackground: false,
+		refetchOnWindowFocus: true,
+	})
+}
+
+export function useTimerboardStructureDetail(structureId: string | null) {
+	return useQuery({
+		queryKey: [...timerboardKeys.all, 'structure-detail', structureId ?? ''],
+		queryFn: () => api.getStructure(structureId!),
+		enabled: Boolean(structureId),
+		retry: false,
+		staleTime: 5 * 60_000,
+	})
+}
+
+export function useTimerboardShareDestinations() {
+	return useQuery({
+		queryKey: [...timerboardKeys.all, 'share-destinations'],
+		queryFn: () => api.getTimerboardShareDestinations(),
+		staleTime: 5 * 60_000,
 	})
 }
 

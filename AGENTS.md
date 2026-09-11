@@ -751,6 +751,12 @@ Database commands in apps should have these scripts:
 
 **CRITICAL:** Never use `db:push` or `drizzle-kit push` even in development. Always use the migration workflow.
 
+**CRITICAL: Neon HTTP-only database access**
+- Use `createDbClient` / the Neon HTTP driver for all Worker database clients.
+- Never use `createDbClientWs`, `createDbClientRawWs`, `drizzle-orm/neon-serverless`, or a WebSocket/Pool database connection.
+- Never call Drizzle `.transaction()` with Neon databases; the Neon HTTP driver does not support transactions.
+- Design mutations with conditional/versioned writes, idempotent operations, and explicit follow-up writes or supported HTTP batching where needed.
+
 ### Sentry Error Tracking Pattern
 
 All workers use Sentry for error tracking via `@repo/hono-helpers`. Sentry automatically captures 5xx errors and unhandled exceptions with full request context.

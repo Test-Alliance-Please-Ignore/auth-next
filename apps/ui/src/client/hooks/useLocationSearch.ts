@@ -45,6 +45,15 @@ export function useSystemDetails(systemId: string | undefined) {
 	})
 }
 
+export function useSystemCelestials(systemId: string, enabled = true) {
+	return useQuery({
+		queryKey: ['system-celestials', systemId] as const,
+		queryFn: () => esiApi.getSystemCelestials(systemId),
+		enabled: enabled && Boolean(systemId),
+		staleTime: 1000 * 60 * 30,
+	})
+}
+
 /**
  * Get station details by ID
  */
@@ -91,4 +100,30 @@ export function useSystemSearch(query: string, enabled = true) {
 	const isDebouncing = query.trim().length >= 3 && query !== debouncedQuery
 
 	return { ...result, isPending: isDebouncing, isDebouncing }
+}
+
+export const organizationSearchKeys = {
+	all: ['organization-search'] as const,
+	search: (query: string, strict: boolean) =>
+		[...organizationSearchKeys.all, query, strict] as const,
+}
+
+export function useOrganizationSearch(query: string, enabled = true, strict = false) {
+	const [debouncedQuery, setDebouncedQuery] = useState(query)
+
+	useEffect(() => {
+		const timer = setTimeout(() => setDebouncedQuery(query), 400)
+		return () => clearTimeout(timer)
+	}, [query])
+
+	const result = useQuery({
+		queryKey: organizationSearchKeys.search(debouncedQuery, strict),
+		queryFn: () => esiApi.searchOrganizations(debouncedQuery, strict),
+		enabled: enabled && debouncedQuery.trim().length >= 2,
+		staleTime: 1000 * 60 * 30,
+		gcTime: 1000 * 60 * 30,
+	})
+
+	const isDebouncing = query.trim().length >= 2 && query !== debouncedQuery
+	return { ...result, isDebouncing }
 }

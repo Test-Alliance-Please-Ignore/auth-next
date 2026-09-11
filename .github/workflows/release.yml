@@ -77,7 +77,7 @@ jobs:
         run: bun turbo check:ci
       - name: Focused Tests
         run: bun runx ci test
-      - name: Migrate Core Integration Database
+      - name: Migrate Timerboard Integration Database
         env:
           TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/timerboard_test
         run: |
@@ -85,12 +85,19 @@ jobs:
           for migration in apps/core/.migrations/*.sql; do
             psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
           done
-      - name: Core PostgreSQL Integration Tests
+          for migration in apps/timerboard/.migrations/*.sql; do
+            psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+      - name: Timerboard PostgreSQL Integration Tests
         env:
           TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/timerboard_test
-        run: pnpm -F core test:integration
+        run: pnpm -F timerboard test
       - name: Migrate Core Database
         run: pnpm -F core db:migrate
+        env:
+          DATABASE_URL_MIGRATIONS: ${{ secrets.CORE_DATABASE_URL_MIGRATIONS }}
+      - name: Migrate Timerboard Database
+        run: pnpm -F timerboard db:migrate
         env:
           DATABASE_URL_MIGRATIONS: ${{ secrets.CORE_DATABASE_URL_MIGRATIONS }}
       - name: Seed Timerboard Permissions

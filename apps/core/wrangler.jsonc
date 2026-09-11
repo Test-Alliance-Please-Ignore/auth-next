@@ -231,6 +231,11 @@
 			"entrypoint": "StructuresWorkerEntrypoint"
 		},
 		{
+			"binding": "TIMERBOARD",
+			"service": "timerboard",
+			"entrypoint": "TimerboardWorkerEntrypoint"
+		},
+		{
 			"binding": "THIRD_PARTY_APPS",
 			"service": "third-party-apps",
 			"entrypoint": "ThirdPartyAppsWorkerEntrypoint"

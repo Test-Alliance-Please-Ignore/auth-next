@@ -167,6 +167,7 @@ db-migrate-all:
   cd apps/eve-token-store && bun run db:migrate
   cd apps/moon-scan && bun run db:migrate
   cd apps/prediction-markets && bun run db:migrate
+  cd apps/timerboard && bun run db:migrate
 
 # Seed moon permissions into groups DB
 [group('2. database')]

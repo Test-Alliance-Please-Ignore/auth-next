@@ -1,21 +1,31 @@
-import { getTableColumns } from 'drizzle-orm'
+import { exists, getTableColumns } from 'drizzle-orm'
 
 import { TIMERBOARD_PERMISSION_URNS } from '@repo/core'
-import { and, asc, eq, gte, ilike, inArray, lte, sql } from '@repo/db-utils'
+import { and, asc, eq, gte, ilike, inArray, lte, not, or, sql } from '@repo/db-utils'
 import { parseDateOrNull } from '@repo/worker-utils'
 
-import { timerboardActivity, timerboardEntries, userCharacters } from '../db/schema'
+import {
+	timerboardActivity,
+	timerboardEntries,
+	timerboardEntryVisibilityGroups,
+	timerboardSyncOutbox,
+	userCharacters,
+} from '../db/schema'
 
+import type { SQL } from 'drizzle-orm'
 import type {
 	CreateTimerboardEntryInput,
 	TimerboardActivity as TimerboardActivityContract,
 	TimerboardAssignmentCandidate,
 	TimerboardAssignmentInput,
+	TimerboardDestinationCatalogItem,
+	TimerboardDestinationSyncState,
 	TimerboardEntry as TimerboardEntryContract,
-	TimerKind,
+	TimerCategory,
+	TimerHostility,
 	TimerPriority,
-	TimerSide,
 	TimerState,
+	TimerType,
 } from '@repo/core'
 import type { createDb } from '../db'
 
@@ -28,21 +38,43 @@ export type TimerboardActor = {
 	permissionUrns: readonly string[]
 }
 
+export type TimerboardVisibilityResolver = {
+	getUserGroupIds(userId: string): Promise<string[]>
+	resolveStructureVisibility(
+		userId: string,
+		structureIds: string[]
+	): Promise<Array<{ structureId: string; canView: boolean }>>
+}
+
 export type UpdateTimerboardEntryInput = Partial<
 	Pick<
 		CreateTimerboardEntryInput,
-		| 'kind'
+		| 'category'
+		| 'timerType'
 		| 'title'
 		| 'priority'
-		| 'side'
+		| 'hostility'
 		| 'startsAt'
-		| 'endsAt'
 		| 'systemId'
 		| 'systemName'
-		| 'entityId'
-		| 'entityType'
-		| 'entityName'
+		| 'regionId'
+		| 'regionName'
+		| 'planetId'
+		| 'planetName'
+		| 'moonId'
+		| 'moonName'
+		| 'corporationId'
+		| 'corporationName'
+		| 'allianceId'
+		| 'allianceName'
+		| 'subjectId'
+		| 'subjectType'
+		| 'subjectName'
 		| 'notes'
+		| 'structureVisibilityEnforced'
+		| 'visibilityGroupIds'
+		| 'sharingEnabled'
+		| 'shareDestinations'
 	>
 >
 
@@ -50,9 +82,12 @@ export type TimerboardAssignment = Omit<TimerboardAssignmentInput, 'expectedVers
 
 export type TimerboardListQuery = {
 	states?: TimerboardState[]
-	kind?: TimerKind
-	priority?: TimerPriority
-	side?: TimerSide
+	category?: TimerCategory
+	timerTypes?: TimerType[]
+	priorities?: TimerPriority[]
+	hostilities?: TimerHostility[]
+	subjectTypes?: string[]
+	organizations?: string[]
 	system?: string
 	assignedToMe?: boolean
 	from?: string
@@ -97,12 +132,13 @@ type TimerboardActivityWithActor = TimerboardActivityRow & {
 	} | null
 }
 type CoreDb = ReturnType<typeof createDb>
-type CoreTransaction = Parameters<Parameters<CoreDb['transaction']>[0]>[0]
+type CoreTransaction = CoreDb
 type TimerboardEntryUpdate = Partial<typeof timerboardEntries.$inferInsert>
 
 type TimerboardEntryBundle = {
 	entry: TimerboardEntryRow
 	activity: TimerboardActivityWithActor[]
+	visibilityGroupIds: string[]
 }
 
 const TIMERBOARD_READ_CACHE_TTL_MS = 30_000
@@ -197,14 +233,21 @@ const allowedStateTransitions: Record<TimerboardState, readonly TimerboardState[
 	cancelled: [],
 }
 
-function serializeEntry(row: TimerboardEntryRow, actor: TimerboardActor): TimerboardEntry {
+function serializeEntry(
+	row: TimerboardEntryRow,
+	actor: TimerboardActor,
+	visibilityGroupIds: string[] = []
+): TimerboardEntry {
 	const active = row.state === 'planned' || row.state === 'covered'
 	const ownsEditableEntry = canEdit(actor) && row.createdByUserId === actor.userId
 	const manages = canManage(actor)
 	return {
 		...row,
+		structureVisibilityEnforced: row.structureVisibilityEnforced,
+		visibilityGroupIds,
+		sharingEnabled: row.sharingEnabled,
+		shareDestinations: row.shareDestinations,
 		startsAt: row.startsAt.toISOString(),
-		endsAt: row.endsAt?.toISOString() ?? null,
 		createdAt: row.createdAt.toISOString(),
 		updatedAt: row.updatedAt.toISOString(),
 		isOverdue: active && row.startsAt.getTime() < Date.now(),
@@ -240,8 +283,13 @@ function validateEntryFields(input: UpdateTimerboardEntryInput): void {
 
 	const textLimits = {
 		systemName: 120,
-		entityType: 80,
-		entityName: 160,
+		regionName: 120,
+		planetName: 120,
+		moonName: 120,
+		corporationName: 160,
+		allianceName: 160,
+		subjectType: 80,
+		subjectName: 160,
 		notes: 2000,
 	} as const
 	for (const [field, max] of Object.entries(textLimits) as Array<
@@ -254,7 +302,15 @@ function validateEntryFields(input: UpdateTimerboardEntryInput): void {
 		}
 	}
 
-	for (const field of ['systemId', 'entityId'] as const) {
+	for (const field of [
+		'systemId',
+		'regionId',
+		'corporationId',
+		'allianceId',
+		'subjectId',
+		'planetId',
+		'moonId',
+	] as const) {
 		const value = input[field]
 		if (value !== undefined && value !== null && (!/^\d+$/.test(value) || value.length > 32)) {
 			fields[field] = `${field} must be a numeric EVE ID`
@@ -290,14 +346,113 @@ function validateAssignment(assignment: TimerboardAssignment): void {
 	if (Object.keys(fields).length > 0) throw new TimerboardValidationError(fields)
 }
 
+function validateSharing(
+	input: Pick<CreateTimerboardEntryInput, 'visibilityGroupIds' | 'shareDestinations'>
+): void {
+	const fields: Record<string, string> = {}
+	const groupIds = input.visibilityGroupIds ?? []
+	if (groupIds.length > 100 || groupIds.some((id) => !/^[0-9a-f-]{36}$/i.test(id))) {
+		fields.visibilityGroupIds = 'Visibility groups must contain at most 100 valid UUIDs'
+	}
+	const destinations = input.shareDestinations ?? []
+	if (destinations.length > 25) fields.shareDestinations = 'At most 25 destinations may be selected'
+	for (const destination of destinations) {
+		if (
+			!/^[a-z0-9][a-z0-9._-]{0,79}$/.test(destination.adapterKey) ||
+			!destination.targetKey.trim() ||
+			destination.targetKey.length > 255 ||
+			JSON.stringify(destination.selectionMeta ?? {}).length > 4096
+		) {
+			fields.shareDestinations = 'Destination references are invalid or too large'
+			break
+		}
+	}
+	if (Object.keys(fields).length > 0) throw new TimerboardValidationError(fields)
+}
+
+function isSupportedStructureSubjectType(subjectType: string | null): boolean {
+	return subjectType === 'structure' || subjectType?.startsWith('structure:') === true
+}
+
 export class TimerboardService {
 	private readonly readCache: TimerboardReadCache
+	private readonly visibilityResolver: TimerboardVisibilityResolver
 
 	constructor(
 		private readonly db: CoreDb,
-		cacheScope: object = db
+		cacheScope: object = db,
+		visibilityResolver: TimerboardVisibilityResolver = {
+			getUserGroupIds: async () => [],
+			resolveStructureVisibility: async (_userId, structureIds) =>
+				structureIds.map((structureId) => ({ structureId, canView: true })),
+		}
 	) {
 		this.readCache = getTimerboardReadCache(cacheScope)
+		this.visibilityResolver = visibilityResolver
+	}
+
+	private async visibleStructureIds(actor: TimerboardActor): Promise<string[]> {
+		const rows = await this.db
+			.select({
+				subjectId: timerboardEntries.subjectId,
+				subjectType: timerboardEntries.subjectType,
+			})
+			.from(timerboardEntries)
+			.where(
+				and(
+					eq(timerboardEntries.structureVisibilityEnforced, true),
+					sql`${timerboardEntries.subjectId} is not null`
+				)
+			)
+		const subjectIds = rows.flatMap((row) =>
+			row.subjectId && isSupportedStructureSubjectType(row.subjectType) ? [row.subjectId] : []
+		)
+		if (subjectIds.length === 0) return []
+		const results = await this.visibilityResolver.resolveStructureVisibility(
+			actor.userId,
+			subjectIds
+		)
+		return results.filter((result) => result.canView).map((result) => result.structureId)
+	}
+
+	private async visibilityConditions(actor: TimerboardActor) {
+		const groupIds = await this.visibilityResolver.getUserGroupIds(actor.userId)
+		const visibleStructures = await this.visibleStructureIds(actor)
+		const groupVisibility = or(
+			not(
+				exists(
+					this.db
+						.select({ entryId: timerboardEntryVisibilityGroups.entryId })
+						.from(timerboardEntryVisibilityGroups)
+						.where(eq(timerboardEntryVisibilityGroups.entryId, timerboardEntries.id))
+				)
+			),
+			groupIds.length > 0
+				? exists(
+						this.db
+							.select({ entryId: timerboardEntryVisibilityGroups.entryId })
+							.from(timerboardEntryVisibilityGroups)
+							.where(
+								and(
+									eq(timerboardEntryVisibilityGroups.entryId, timerboardEntries.id),
+									inArray(timerboardEntryVisibilityGroups.groupId, groupIds)
+								)
+							)
+					)
+				: sql`false`
+		)
+		const structureVisibility = or(
+			eq(timerboardEntries.structureVisibilityEnforced, false),
+			visibleStructures.length > 0
+				? and(
+						eq(timerboardEntries.structureVisibilityEnforced, true),
+						inArray(timerboardEntries.subjectId, visibleStructures)
+					)
+				: sql`false`
+		)
+		return [groupVisibility, structureVisibility].filter((condition): condition is SQL =>
+			Boolean(condition)
+		)
 	}
 
 	async list(actor: TimerboardActor, query: TimerboardListQuery): Promise<TimerboardListResult> {
@@ -327,9 +482,26 @@ export class TimerboardService {
 		const system = query.system?.trim() || undefined
 
 		const conditions = [inArray(timerboardEntries.state, states)]
-		if (query.kind) conditions.push(eq(timerboardEntries.kind, query.kind))
-		if (query.priority) conditions.push(eq(timerboardEntries.priority, query.priority))
-		if (query.side) conditions.push(eq(timerboardEntries.side, query.side))
+		conditions.push(...(await this.visibilityConditions(actor)))
+		if (query.category) conditions.push(eq(timerboardEntries.category, query.category))
+		if (query.timerTypes?.length)
+			conditions.push(inArray(timerboardEntries.timerType, query.timerTypes))
+		if (query.priorities?.length)
+			conditions.push(inArray(timerboardEntries.priority, query.priorities))
+		if (query.hostilities?.length)
+			conditions.push(inArray(timerboardEntries.hostility, query.hostilities))
+		if (query.subjectTypes?.length)
+			conditions.push(inArray(timerboardEntries.subjectType, query.subjectTypes))
+		const organizations = [
+			...new Set(query.organizations?.map((value) => value.trim()).filter(Boolean)),
+		]
+		if (organizations.length) {
+			const organizationCondition = or(
+				inArray(timerboardEntries.corporationId, organizations),
+				inArray(timerboardEntries.allianceId, organizations)
+			)
+			if (organizationCondition) conditions.push(organizationCondition)
+		}
 		if (system) conditions.push(ilike(timerboardEntries.systemName, `%${system}%`))
 		if (query.assignedToMe) {
 			conditions.push(eq(timerboardEntries.assignedUserId, actor.userId))
@@ -346,10 +518,14 @@ export class TimerboardService {
 
 		const cacheKey = JSON.stringify({
 			type: 'list',
+			viewer: actor.userId,
 			states: [...states].sort(),
-			kind: query.kind ?? null,
-			priority: query.priority ?? null,
-			side: query.side ?? null,
+			category: query.category ?? null,
+			timerTypes: query.timerTypes ?? [],
+			priorities: query.priorities ?? [],
+			hostilities: query.hostilities ?? [],
+			subjectTypes: query.subjectTypes ?? [],
+			organizations,
 			system: system?.toLocaleLowerCase() ?? null,
 			assignedUserId: query.assignedToMe ? actor.userId : null,
 			from: from?.toISOString() ?? null,
@@ -389,8 +565,26 @@ export class TimerboardService {
 			}
 		})
 
+		const visibilityGroups = result.rows.length
+			? await this.db.query.timerboardEntryVisibilityGroups.findMany({
+					where: (table, { inArray }) =>
+						inArray(
+							table.entryId,
+							result.rows.map((row) => row.id)
+						),
+					columns: { entryId: true, groupId: true },
+				})
+			: []
+		const groupIdsByEntry = new Map<string, string[]>()
+		for (const group of visibilityGroups) {
+			const ids = groupIdsByEntry.get(group.entryId) ?? []
+			ids.push(group.groupId)
+			groupIdsByEntry.set(group.entryId, ids)
+		}
 		return {
-			items: result.rows.map((row) => serializeEntry(row, actor)),
+			items: result.rows.map((row) =>
+				serializeEntry(row, actor, groupIdsByEntry.get(row.id) ?? [])
+			),
 			page: query.page,
 			pageSize: query.pageSize,
 			total: result.total,
@@ -400,7 +594,8 @@ export class TimerboardService {
 	async get(actor: TimerboardActor, entryId: string): Promise<TimerboardEntry> {
 		if (!canView(actor)) throw new TimerboardForbiddenError()
 		const bundle = await this.getEntryBundle(entryId)
-		return serializeEntry(bundle.entry, actor)
+		if (!(await this.isVisible(actor, bundle.entry))) throw new TimerboardNotFoundError()
+		return serializeEntry(bundle.entry, actor, bundle.visibilityGroupIds)
 	}
 
 	async searchAssignmentCandidates(
@@ -450,29 +645,59 @@ export class TimerboardService {
 		return this.readCache.getOrLoad(`entry:${entryId}`, async () => {
 			const row = await this.db.query.timerboardEntries.findFirst({
 				where: (table, { eq }) => eq(table.id, entryId),
-				with: {
-					activity: {
-						orderBy: (table, { asc }) => asc(table.createdAt),
-						with: {
-							actor: {
-								columns: { id: true },
-								with: {
-									characters: {
-										where: (table, { and, eq }) =>
-											and(eq(table.is_primary, true), eq(table.isDeleted, false)),
-										columns: { characterName: true },
-										limit: 1,
-									},
-								},
-							},
-						},
-					},
-				},
 			})
 			if (!row) throw new TimerboardNotFoundError()
-			const { activity, ...entry } = row
-			return { entry, activity }
+			const [visibilityGroups, activityRows] = await Promise.all([
+				this.db.query.timerboardEntryVisibilityGroups.findMany({
+					where: (table, { eq }) => eq(table.entryId, entryId),
+					columns: { groupId: true },
+				}),
+				this.db
+					.select({
+						activity: timerboardActivity,
+						characterName: userCharacters.characterName,
+					})
+					.from(timerboardActivity)
+					.leftJoin(
+						userCharacters,
+						and(
+							eq(userCharacters.userId, timerboardActivity.actorUserId),
+							eq(userCharacters.is_primary, true),
+							eq(userCharacters.isDeleted, false)
+						)
+					)
+					.where(eq(timerboardActivity.entryId, entryId))
+					.orderBy(asc(timerboardActivity.createdAt)),
+			])
+			const activity = activityRows.map(({ activity, characterName }) => ({
+				...activity,
+				actor: characterName ? { characters: [{ characterName }] } : null,
+			}))
+			return {
+				entry: row,
+				activity,
+				visibilityGroupIds: visibilityGroups.map((group) => group.groupId),
+			}
 		})
+	}
+
+	private async isVisible(actor: TimerboardActor, entry: TimerboardEntryRow): Promise<boolean> {
+		const groupIds = await this.visibilityResolver.getUserGroupIds(actor.userId)
+		const groups = await this.db.query.timerboardEntryVisibilityGroups.findMany({
+			where: (table, { eq }) => eq(table.entryId, entry.id),
+			columns: { groupId: true },
+		})
+		if (groups.length > 0 && !groups.some((group) => groupIds.includes(group.groupId))) return false
+		if (!entry.structureVisibilityEnforced) return true
+		if (!entry.subjectId || !isSupportedStructureSubjectType(entry.subjectType)) return false
+		const result = await this.visibilityResolver.resolveStructureVisibility(actor.userId, [
+			entry.subjectId,
+		])
+		return result.some((item) => item.structureId === entry.subjectId && item.canView)
+	}
+
+	private async assertVisible(actor: TimerboardActor, entry: TimerboardEntryRow): Promise<void> {
+		if (!(await this.isVisible(actor, entry))) throw new TimerboardNotFoundError()
 	}
 
 	private async persistVersionedUpdate(
@@ -517,28 +742,23 @@ export class TimerboardService {
 	): Promise<TimerboardEntry> {
 		if (!canEdit(actor)) throw new TimerboardForbiddenError()
 		validateEntryFields(input)
+		validateSharing(input)
 
 		const startsAt = parseDateOrNull(input.startsAt)
-		const endsAt = parseDateOrNull(input.endsAt)
 		if (!startsAt) {
 			throw new TimerboardValidationError({ startsAt: 'Start time must be a valid UTC instant' })
 		}
-		if (input.endsAt !== null && !endsAt) {
-			throw new TimerboardValidationError({ endsAt: 'End time must be a valid UTC instant' })
-		}
-		if (startsAt && endsAt && endsAt.getTime() <= startsAt.getTime()) {
-			throw new TimerboardValidationError({
-				endsAt: 'End time must be later than start time',
-			})
-		}
 
-		const created = await this.db.transaction(async (tx) => {
+		const created = await (async () => {
+			const tx = this.db
 			const [entry] = await tx
 				.insert(timerboardEntries)
 				.values({
 					...input,
+					structureVisibilityEnforced: input.structureVisibilityEnforced ?? false,
+					sharingEnabled: input.sharingEnabled ?? false,
+					shareDestinations: input.sharingEnabled ? (input.shareDestinations ?? []) : [],
 					startsAt,
-					endsAt,
 					state: 'planned',
 					sourceKind: 'manual',
 					sourceReference: null,
@@ -548,6 +768,19 @@ export class TimerboardService {
 				.returning()
 
 			if (!entry) throw new Error('Timerboard entry insert returned no row')
+			if (input.visibilityGroupIds?.length) {
+				await tx
+					.insert(timerboardEntryVisibilityGroups)
+					.values(input.visibilityGroupIds.map((groupId) => ({ entryId: entry.id, groupId })))
+			}
+			if (entry.sharingEnabled && entry.shareDestinations.length > 0) {
+				await tx.insert(timerboardSyncOutbox).values({
+					entryId: entry.id,
+					operation: 'upsert',
+					version: entry.version,
+					payload: { entryId: entry.id, destinations: entry.shareDestinations },
+				})
+			}
 
 			await tx
 				.insert(timerboardActivity)
@@ -559,8 +792,8 @@ export class TimerboardService {
 				})
 				.returning()
 
-			return serializeEntry(entry, actor)
-		})
+			return serializeEntry(entry, actor, input.visibilityGroupIds ?? [])
+		})()
 		this.readCache.clear()
 		return created
 	}
@@ -568,7 +801,45 @@ export class TimerboardService {
 	async listActivity(actor: TimerboardActor, entryId: string): Promise<TimerboardActivity[]> {
 		if (!canView(actor)) throw new TimerboardForbiddenError()
 		const bundle = await this.getEntryBundle(entryId)
+		await this.assertVisible(actor, bundle.entry)
 		return bundle.activity.map(serializeActivity)
+	}
+
+	async listShareDestinations(actor: TimerboardActor): Promise<TimerboardDestinationCatalogItem[]> {
+		if (!canView(actor)) throw new TimerboardForbiddenError()
+		return []
+	}
+
+	async getTimerDestinationSync(
+		actor: TimerboardActor,
+		entryId: string
+	): Promise<
+		Array<{
+			adapterKey: string
+			targetKey: string
+			state: TimerboardDestinationSyncState
+			remoteId: string | null
+			lastError: string | null
+		}>
+	> {
+		if (!canView(actor)) throw new TimerboardForbiddenError()
+		const entry = await this.db.query.timerboardEntries.findFirst({
+			where: (table, { eq }) => eq(table.id, entryId),
+		})
+		if (!entry) throw new TimerboardNotFoundError()
+		await this.assertVisible(actor, entry)
+		return this.db.query.timerboardEntryDestinationSync.findMany({
+			where: (table, { eq }) => eq(table.entryId, entryId),
+			columns: { adapterKey: true, targetKey: true, state: true, remoteId: true, lastError: true },
+		}) as Promise<
+			Array<{
+				adapterKey: string
+				targetKey: string
+				state: TimerboardDestinationSyncState
+				remoteId: string | null
+				lastError: string | null
+			}>
+		>
 	}
 
 	async update(
@@ -577,11 +848,13 @@ export class TimerboardService {
 		input: UpdateTimerboardEntryInput,
 		expectedVersion: number
 	): Promise<TimerboardEntry> {
-		const updatedEntry = await this.db.transaction(async (tx) => {
+		const updatedEntry = await (async () => {
+			const tx = this.db
 			const current = await tx.query.timerboardEntries.findFirst({
 				where: (table, { eq }) => eq(table.id, entryId),
 			})
 			if (!current) throw new TimerboardNotFoundError()
+			await this.assertVisible(actor, current)
 			if (!canManage(actor) && !(canEdit(actor) && current.createdByUserId === actor.userId)) {
 				throw new TimerboardForbiddenError()
 			}
@@ -591,6 +864,7 @@ export class TimerboardService {
 				throw new TimerboardConflictError(serialized)
 			}
 			validateEntryFields(input)
+			validateSharing(input)
 
 			const startsAt =
 				input.startsAt === undefined ? current.startsAt : parseDateOrNull(input.startsAt)
@@ -599,31 +873,37 @@ export class TimerboardService {
 					startsAt: 'Start time must be a valid UTC instant',
 				})
 			}
-			const endsAt = input.endsAt === undefined ? current.endsAt : parseDateOrNull(input.endsAt)
-			if (input.endsAt !== undefined && input.endsAt !== null && !endsAt) {
-				throw new TimerboardValidationError({
-					endsAt: 'End time must be a valid UTC instant',
-				})
-			}
-			if (endsAt && endsAt.getTime() <= startsAt.getTime()) {
-				throw new TimerboardValidationError({
-					endsAt: 'End time must be later than start time',
-				})
-			}
 
 			const updates = {
-				...(input.kind === undefined ? {} : { kind: input.kind }),
+				...(input.category === undefined ? {} : { category: input.category }),
+				...(input.timerType === undefined ? {} : { timerType: input.timerType }),
 				...(input.title === undefined ? {} : { title: input.title }),
 				...(input.priority === undefined ? {} : { priority: input.priority }),
-				...(input.side === undefined ? {} : { side: input.side }),
+				...(input.hostility === undefined ? {} : { hostility: input.hostility }),
 				...(input.startsAt === undefined ? {} : { startsAt }),
-				...(input.endsAt === undefined ? {} : { endsAt }),
 				...(input.systemId === undefined ? {} : { systemId: input.systemId }),
 				...(input.systemName === undefined ? {} : { systemName: input.systemName }),
-				...(input.entityId === undefined ? {} : { entityId: input.entityId }),
-				...(input.entityType === undefined ? {} : { entityType: input.entityType }),
-				...(input.entityName === undefined ? {} : { entityName: input.entityName }),
+				...(input.regionId === undefined ? {} : { regionId: input.regionId }),
+				...(input.regionName === undefined ? {} : { regionName: input.regionName }),
+				...(input.planetId === undefined ? {} : { planetId: input.planetId }),
+				...(input.planetName === undefined ? {} : { planetName: input.planetName }),
+				...(input.moonId === undefined ? {} : { moonId: input.moonId }),
+				...(input.moonName === undefined ? {} : { moonName: input.moonName }),
+				...(input.corporationId === undefined ? {} : { corporationId: input.corporationId }),
+				...(input.corporationName === undefined ? {} : { corporationName: input.corporationName }),
+				...(input.allianceId === undefined ? {} : { allianceId: input.allianceId }),
+				...(input.allianceName === undefined ? {} : { allianceName: input.allianceName }),
+				...(input.subjectId === undefined ? {} : { subjectId: input.subjectId }),
+				...(input.subjectType === undefined ? {} : { subjectType: input.subjectType }),
+				...(input.subjectName === undefined ? {} : { subjectName: input.subjectName }),
 				...(input.notes === undefined ? {} : { notes: input.notes }),
+				...(input.structureVisibilityEnforced === undefined
+					? {}
+					: { structureVisibilityEnforced: input.structureVisibilityEnforced }),
+				...(input.sharingEnabled === undefined ? {} : { sharingEnabled: input.sharingEnabled }),
+				...(input.shareDestinations === undefined
+					? {}
+					: { shareDestinations: input.sharingEnabled === false ? [] : input.shareDestinations }),
 			}
 			const changes: Record<string, { previous: unknown; next: unknown }> = {}
 			for (const key of Object.keys(updates) as Array<keyof typeof updates>) {
@@ -635,6 +915,9 @@ export class TimerboardService {
 						next: serializeActivityValue(next),
 					}
 				}
+			}
+			if (input.visibilityGroupIds !== undefined && Object.keys(changes).length === 0) {
+				changes.visibilityGroupIds = { previous: 'unchanged', next: input.visibilityGroupIds }
 			}
 			if (Object.keys(changes).length === 0) {
 				throw new TimerboardValidationError({ update: 'At least one field must change' })
@@ -648,6 +931,25 @@ export class TimerboardService {
 				updates
 			)
 
+			if (input.visibilityGroupIds !== undefined) {
+				await tx
+					.delete(timerboardEntryVisibilityGroups)
+					.where(eq(timerboardEntryVisibilityGroups.entryId, entryId))
+				if (input.visibilityGroupIds.length > 0) {
+					await tx
+						.insert(timerboardEntryVisibilityGroups)
+						.values(input.visibilityGroupIds.map((groupId) => ({ entryId, groupId })))
+				}
+			}
+			if (updated.sharingEnabled || current.sharingEnabled) {
+				await tx.insert(timerboardSyncOutbox).values({
+					entryId,
+					operation: updated.sharingEnabled ? 'upsert' : 'delete',
+					version: updated.version,
+					payload: { entryId, destinations: updated.shareDestinations },
+				})
+			}
+
 			await tx
 				.insert(timerboardActivity)
 				.values({
@@ -659,7 +961,7 @@ export class TimerboardService {
 				.returning()
 
 			return serializeEntry(updated, actor)
-		})
+		})()
 		this.readCache.clear()
 		return updatedEntry
 	}
@@ -670,11 +972,13 @@ export class TimerboardService {
 		state: TimerboardState,
 		expectedVersion: number
 	): Promise<TimerboardEntry> {
-		const updatedEntry = await this.db.transaction(async (tx) => {
+		const updatedEntry = await (async () => {
+			const tx = this.db
 			const current = await tx.query.timerboardEntries.findFirst({
 				where: (table, { eq }) => eq(table.id, entryId),
 			})
 			if (!current) throw new TimerboardNotFoundError()
+			await this.assertVisible(actor, current)
 			const ownsEditableEntry = canEdit(actor) && current.createdByUserId === actor.userId
 			if (!canManage(actor) && !ownsEditableEntry) throw new TimerboardForbiddenError()
 			if (!canManage(actor) && !['covered', 'completed'].includes(state)) {
@@ -708,7 +1012,7 @@ export class TimerboardService {
 				.returning()
 
 			return serializeEntry(updated, actor)
-		})
+		})()
 		this.readCache.clear()
 		return updatedEntry
 	}
@@ -730,11 +1034,13 @@ export class TimerboardService {
 			})
 		}
 
-		const updatedEntry = await this.db.transaction(async (tx) => {
+		const updatedEntry = await (async () => {
+			const tx = this.db
 			const current = await tx.query.timerboardEntries.findFirst({
 				where: (table, { eq }) => eq(table.id, entryId),
 			})
 			if (!current) throw new TimerboardNotFoundError()
+			await this.assertVisible(actor, current)
 			if (current.version !== expectedVersion) {
 				this.readCache.clear()
 				throw new TimerboardConflictError(serializeEntry(current, actor))
@@ -771,7 +1077,7 @@ export class TimerboardService {
 				.returning()
 
 			return serializeEntry(updated, actor)
-		})
+		})()
 		this.readCache.clear()
 		return updatedEntry
 	}

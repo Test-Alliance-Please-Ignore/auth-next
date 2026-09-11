@@ -2,7 +2,7 @@ import type {
 	AdminWorker as IAdminWorker,
 	ThirdPartyAppsAdminWorker as IThirdPartyAppsAdminWorker,
 } from '@repo/admin'
-import type { UserProfileDTO } from '@repo/core'
+import type { TimerboardWorker, UserProfileDTO } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationDataWorker as IEveCorporationDataWorker } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
@@ -97,6 +97,8 @@ export type Env = SharedHonoEnv & {
 	INDUSTRY: DurableObjectNamespace
 	/** Structures worker service binding */
 	STRUCTURES: StructuresWorker
+	/** Timerboard worker service binding */
+	TIMERBOARD: TimerboardWorker
 	/** Fulcrum (Character Reports) Durable Object binding */
 	FULCRUM: DurableObjectNamespace
 	/** Legacy migration Durable Object binding */

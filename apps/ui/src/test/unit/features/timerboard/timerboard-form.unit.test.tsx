@@ -25,22 +25,39 @@ vi.mock('@/features/timerboard/hooks', () => ({
 		isPending: false,
 		error: null,
 	}),
+	useTimerboardShareDestinations: () => ({ data: [] }),
+}))
+
+vi.mock('@/hooks/useGroups', () => ({
+	useUserMemberships: () => ({ data: [] }),
+}))
+
+vi.mock('@/hooks/useLocationSearch', () => ({
+	useSystemSearch: () => ({ data: [], isLoading: false, isDebouncing: false }),
+	useSystemCelestials: () => ({ data: { planets: [], moons: [] }, isLoading: false }),
+	useOrganizationSearch: () => ({ data: [], isLoading: false, isDebouncing: false }),
 }))
 
 const entry: TimerboardEntry = {
 	id: '22222222-2222-4222-8222-222222222222',
-	kind: 'fleet',
+	category: 'fleet',
+	timerType: 'custom',
 	title: 'Original timer',
 	priority: 'high',
-	side: 'friendly',
+	hostility: 'friendly',
 	startsAt: '2026-09-01T20:00:00.000Z',
-	endsAt: null,
 	state: 'planned',
 	systemId: null,
 	systemName: '1DQ1-A',
-	entityId: null,
-	entityType: null,
-	entityName: null,
+	regionId: null,
+	regionName: null,
+	corporationId: null,
+	corporationName: null,
+	allianceId: null,
+	allianceName: null,
+	subjectId: null,
+	subjectType: null,
+	subjectName: null,
 	assignedUserId: null,
 	assignedCharacterId: null,
 	assignedCharacterName: null,
@@ -68,11 +85,18 @@ beforeEach(() => {
 })
 
 describe('TimerboardForm', () => {
-	it('mirrors server-side EVE ID length constraints', () => {
+	it('uses the stepped flow and mirrors server-side EVE ID length constraints', async () => {
+		const user = userEvent.setup()
 		render(<TimerboardForm onSaved={vi.fn()} onCancel={vi.fn()} />)
 
-		expect(screen.getByRole('textbox', { name: 'System ID' }).getAttribute('maxlength')).toBe('32')
-		expect(screen.getByRole('textbox', { name: 'Entity ID' }).getAttribute('maxlength')).toBe('32')
+		await user.click(screen.getByRole('button', { name: 'In 1h' }))
+		await user.click(screen.getByRole('button', { name: 'Continue' }))
+		await user.type(screen.getByRole('textbox', { name: 'Title' }), 'Test timer')
+		await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+		expect(screen.getByRole('textbox', { name: 'System' })).toBeTruthy()
+		expect(screen.getByRole('textbox', { name: 'Corporation' })).toBeTruthy()
+		expect(screen.queryByRole('textbox', { name: 'Subject ID' })).toBeNull()
 	})
 
 	it('loads the current entry after a conflict and retries with its version', async () => {
@@ -84,14 +108,17 @@ describe('TimerboardForm', () => {
 		const user = userEvent.setup()
 		render(<TimerboardForm entry={entry} onSaved={onSaved} onCancel={vi.fn()} />)
 
+		await user.click(screen.getByRole('button', { name: 'Where & Who' }))
 		await user.click(screen.getByRole('button', { name: 'Save changes' }))
 		expect(await screen.findByText('This timer changed while you were editing.')).toBeTruthy()
 
 		await user.click(screen.getByRole('button', { name: 'Load latest version' }))
+		await user.click(screen.getByRole('button', { name: 'What' }))
 		const title = screen.getByRole('textbox', { name: 'Title' })
 		expect((title as HTMLInputElement).value).toBe('Server timer')
 		await user.clear(title)
 		await user.type(title, 'Resolved timer')
+		await user.click(screen.getByRole('button', { name: 'Where & Who' }))
 		await user.click(screen.getByRole('button', { name: 'Save changes' }))
 
 		await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1))

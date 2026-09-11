@@ -4,6 +4,7 @@ export type SessionUser = StructureActor
 
 export type Env = {
 	DATABASE_URL: string
+	GROUPS: DurableObjectNamespace
 	EVE_CORPORATION_DATA: DurableObjectNamespace
 	MOON_SCAN: DurableObjectNamespace
 	MARKETS: DurableObjectNamespace

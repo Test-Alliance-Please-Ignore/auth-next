@@ -61,7 +61,7 @@ const TabsTrigger = React.forwardRef<
 			style={{
 				borderBottomColor: isActive ? 'hsl(var(--primary))' : 'transparent',
 				color: isActive ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground) / 0.7)',
-				fontWeight: isActive ? 700 : 600,
+				fontWeight: 600,
 				...style,
 			}}
 			{...props}

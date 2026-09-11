@@ -1,4 +1,4 @@
-import { ChevronsUpDown } from 'lucide-react'
+import { ChevronsUpDown, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -51,6 +51,7 @@ interface SelectAllOption {
 
 export interface SelectProps<TOption extends SelectOption> {
 	inputId?: string
+	'aria-label'?: string
 	options: TOption[]
 	value?: string
 	values?: string[]
@@ -79,13 +80,17 @@ export interface SelectProps<TOption extends SelectOption> {
 	loadingText?: string
 	emptyText?: string
 	renderOption?: (option: TOption) => ReactNode
+	selectedValueAdornment?: (option: TOption) => ReactNode
+	renderSelectedValue?: (option: TOption) => ReactNode
 	getOptionSearchText?: (option: TOption) => string
 	showValueHint?: boolean
+	onSearch?: () => void
 	selectAllOption?: SelectAllOption
 }
 
 export function Select<TOption extends SelectOption>({
 	inputId,
+	'aria-label': ariaLabel,
 	options,
 	value,
 	values,
@@ -114,8 +119,11 @@ export function Select<TOption extends SelectOption>({
 	loadingText = 'Searching...',
 	emptyText = 'No results found',
 	renderOption,
+	selectedValueAdornment,
+	renderSelectedValue,
 	getOptionSearchText,
 	showValueHint = false,
+	onSearch,
 	selectAllOption,
 }: SelectProps<TOption>) {
 	const [open, setOpen] = useState(false)
@@ -490,6 +498,7 @@ export function Select<TOption extends SelectOption>({
 					<div ref={anchorRef} className="relative">
 						<Input
 							id={inputId}
+							aria-label={ariaLabel}
 							type="text"
 							value={inputValue}
 							readOnly={!searchable}
@@ -551,15 +560,41 @@ export function Select<TOption extends SelectOption>({
 								'w-full',
 								'pr-9',
 								!searchable && 'cursor-pointer',
+								selectedOption &&
+									!isInputFocused &&
+									renderSelectedValue &&
+									'text-transparent caret-transparent',
 								disabled &&
 									'border-border/60 bg-muted/45 text-muted-foreground placeholder:text-muted-foreground',
 								inputClassName
 							)}
 						/>
+						{selectedOption && selectedValueAdornment && (
+							<div className="pointer-events-none absolute left-3 top-1/2 flex -translate-y-1/2 items-center justify-center">
+								{selectedValueAdornment(selectedOption)}
+							</div>
+						)}
+						{selectedOption && !isInputFocused && renderSelectedValue && (
+							<div
+								className={cn('pointer-events-none absolute inset-y-0 left-10 flex items-center')}
+							>
+								{renderSelectedValue(selectedOption)}
+							</div>
+						)}
 						{isLoading ? (
 							<div className="absolute right-3 top-1/2 -translate-y-1/2">
 								<div className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-primary" />
 							</div>
+						) : onSearch ? (
+							<button
+								type="button"
+								className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+								onMouseDown={(event) => event.preventDefault()}
+								onClick={onSearch}
+								aria-label="Search again"
+							>
+								<Search className="h-4 w-4" />
+							</button>
 						) : (
 							<div
 								className={cn(
