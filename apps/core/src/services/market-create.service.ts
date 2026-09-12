@@ -7,6 +7,7 @@
 import { z } from 'zod'
 
 import { inArray } from '@repo/db-utils'
+import { DiscordAPIError } from '@repo/discord'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { MAX_MARKET_OPEN_DAYS } from '@repo/prediction-markets'
@@ -226,7 +227,12 @@ export async function createAndPublishMarket(
 			)
 		} catch (err) {
 			postError = err instanceof Error ? err.message : String(err)
-			logger.error('[MarketCreate] forum post failed', { marketId: market.id, error: postError })
+			logger.error('[MarketCreate] forum post failed', {
+				marketId: market.id,
+				error: postError,
+				discordStatus: err instanceof DiscordAPIError ? err.status : undefined,
+				discordBody: err instanceof DiscordAPIError ? err.body : undefined,
+			})
 		}
 	}
 	return { market, post, postError }

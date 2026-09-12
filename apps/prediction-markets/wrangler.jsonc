@@ -21,6 +21,13 @@
 			}
 		]
 	},
+	"services": [
+		{
+			"binding": "CORE",
+			"service": "core",
+			"entrypoint": "CoreWorker"
+		}
+	],
 	"migrations": [
 		{
 			"tag": "v1",

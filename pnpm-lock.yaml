@@ -2122,12 +2122,18 @@ importers:
       '@neondatabase/serverless':
         specifier: 1.0.2
         version: 1.0.2
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
+      '@repo/expiry-alarms':
+        specifier: workspace:*
+        version: link:../../packages/expiry-alarms
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
@@ -2887,6 +2893,9 @@ importers:
       '@repo/eve-types':
         specifier: workspace:*
         version: link:../eve-types
+      '@repo/prediction-markets':
+        specifier: workspace:*
+        version: link:../prediction-markets
       zod:
         specifier: 4.1.12
         version: 4.1.12

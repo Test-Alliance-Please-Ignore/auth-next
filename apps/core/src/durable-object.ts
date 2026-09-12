@@ -33,6 +33,11 @@ import {
 } from './lib/token-invalid-alerts'
 import { validateAndSyncCharacterTokenValidityBatchTransitions } from './lib/token-validity'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
+import { announceMarketClosed } from './services/discord-market-notify.service'
+import {
+	applyMarketPostStatus,
+	updateMarketPostFromDetail,
+} from './services/discord-market-post.service'
 import { enforceBlacklistedMumbleAccess } from './services/mumble.service'
 import { updateCharacterPublicInfo } from './workflows/steps/update-character'
 
@@ -43,6 +48,7 @@ import type { EveTokenStore } from '@repo/eve-token-store'
 import type { CreateRoleRequest, Groups } from '@repo/groups'
 import type { BlacklistTargetCheckItem, BlacklistTargetType, Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
+import type { MarketDetail as PredictionMarketDetail } from '@repo/prediction-markets'
 import type { Env } from './context'
 
 type PendingDiscordRefresh = {
@@ -83,6 +89,21 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	private static readonly PENDING_TTL_MS = 15 * 60 * 1000 // 15 minutes
 	private static readonly STORAGE_PREFIX = 'pending-discord:'
 	private static readonly USER_REFRESH_STORAGE_PREFIX = 'pending-user-refresh:'
+
+	async notifyPredictionMarketClosed(market: PredictionMarketDetail): Promise<void> {
+		if (!market.discordThreadId || !market.discordMessageId) return
+		if (!this.env.PM_FORUM_GUILD_ID) throw new Error('PM_FORUM_GUILD_ID not configured')
+		const discord = getStub<Discord>(this.env.DISCORD, 'default')
+		await announceMarketClosed(discord, this.env.PM_FORUM_GUILD_ID, market)
+		const updated = await updateMarketPostFromDetail(discord, market)
+		if (!updated.success) throw new Error(updated.error ?? 'Prediction-market post update failed')
+		await applyMarketPostStatus(
+			createDb(this.env.DATABASE_URL),
+			discord,
+			this.env.PM_FORUM_GUILD_ID,
+			market
+		)
+	}
 	private pendingTokenInvalidationAlerts = new Map<
 		string,
 		{

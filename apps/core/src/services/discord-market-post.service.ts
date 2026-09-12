@@ -6,15 +6,15 @@
  * calls Discord — Core writes the post mapping back via `attachDiscordPost`.
  */
 
-import { eq } from '@repo/db-utils'
+import { and, eq, isNull } from '@repo/db-utils'
 
 import { pmForumConfig } from '../db/schema'
 import { buildMarketComponents } from '../lib/market-components'
 import { buildBetAnnouncement, buildMarketEmbed, truncateForEmbed } from '../lib/market-embed'
 
-import type { createDb } from '../db'
 import type { Discord, SendMessageResult } from '@repo/discord'
 import type { MarketDetail, PredictionMarkets } from '@repo/prediction-markets'
+import type { createDb } from '../db'
 
 type CoreDb = ReturnType<typeof createDb>
 type ForumConfigRow = typeof pmForumConfig.$inferSelect
@@ -91,15 +91,32 @@ export async function ensureForumChannel(
 
 	// We own the claim → create the forum channel under the category with the category's
 	// permission overwrites (copied verbatim = Discord "synced/inherited" perms) + status tags.
-	const category = await discord.getChannel(categoryId)
-	const created = await discord.createForumChannel(guildId, {
-		name: FORUM_CHANNEL_NAME,
-		parentId: categoryId,
-		...(category.permission_overwrites
-			? { permissionOverwrites: category.permission_overwrites }
-			: {}),
-		availableTags: STATUS_TAG_NAMES.map((name) => ({ name, moderated: true })),
-	})
+	// Release the claim when Discord rejects the create so a bad or transient request cannot strand
+	// every later market post behind FORUM_CHANNEL_INIT_IN_PROGRESS.
+	let created: Awaited<ReturnType<Discord['createForumChannel']>>
+	try {
+		const category = await discord.getChannel(categoryId)
+		created = await discord.createForumChannel(guildId, {
+			name: FORUM_CHANNEL_NAME,
+			parentId: categoryId,
+			...(category.permission_overwrites
+				? { permissionOverwrites: category.permission_overwrites }
+				: {}),
+			availableTags: STATUS_TAG_NAMES.map((name) => ({ name, moderated: true })),
+		})
+	} catch (error) {
+		await db
+			.delete(pmForumConfig)
+			.where(
+				and(
+					eq(pmForumConfig.guildId, guildId),
+					eq(pmForumConfig.categoryId, categoryId),
+					isNull(pmForumConfig.forumChannelId)
+				)
+			)
+			.catch(() => undefined)
+		throw error
+	}
 	const tagId = (name: string): string | null =>
 		created.available_tags?.find((t) => t.name === name)?.id ?? null
 

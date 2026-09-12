@@ -11,6 +11,7 @@
 	},
 	"dependencies": {
 		"@repo/eve-types": "workspace:*",
+		"@repo/prediction-markets": "workspace:*",
 		"zod": "4.1.12"
 	},
 	"devDependencies": {

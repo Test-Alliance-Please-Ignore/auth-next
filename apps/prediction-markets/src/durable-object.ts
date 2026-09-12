@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
+import { ExpiryAlarmQueue } from '@repo/expiry-alarms'
+
 import { createDb } from './db'
 import * as betting from './services/betting-service'
 import * as governance from './services/governance-service'
@@ -58,10 +60,28 @@ import type { PmDeps } from './services/context'
  */
 export class PredictionMarketsDO extends DurableObject<Env> implements PredictionMarkets {
 	private deps: PmDeps
+	private readonly closeQueue: ExpiryAlarmQueue<{ marketId: string }>
 
 	constructor(state: DurableObjectState, env: Env) {
 		super(state, env)
 		this.deps = { db: createDb(env.DATABASE_URL) }
+		this.closeQueue = new ExpiryAlarmQueue(state.storage, {
+			prefix: 'prediction-markets:close:',
+			pastDue: 'process',
+			retry: { maxAttempts: 2, baseDelayMs: 5_000, maxDelayMs: 60_000, onExhausted: 'retain' },
+			handler: async ({ payload }) => {
+				const result = await market.closeMarketIfDue(this.deps, payload.marketId)
+				if (result.nextDueAt !== undefined) {
+					return { action: 'reschedule', dueAt: result.nextDueAt, payload }
+				}
+				if (result.notify) {
+					const closedMarket = await reads.getMarket(this.deps, payload.marketId)
+					if (closedMarket) await this.env.CORE.notifyPredictionMarketClosed(closedMarket)
+				}
+				return { action: 'complete' }
+			},
+		})
+		void state.blockConcurrencyWhile(() => this.reconcileCloseAlarms())
 	}
 
 	// =====================================================================
@@ -150,7 +170,9 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 	}
 
 	async createMarket(input: CreateMarketInput): Promise<MarketDetail> {
-		return market.createMarket(this.deps, input)
+		const result = await market.createMarket(this.deps, input)
+		await this.reconcileCloseAlarms()
+		return result
 	}
 
 	async updateMarket(
@@ -158,7 +180,9 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		actorUserId: string,
 		updates: UpdateMarketInput
 	): Promise<MarketUpdateResult> {
-		return market.updateMarket(this.deps, marketId, actorUserId, updates)
+		const result = await market.updateMarket(this.deps, marketId, actorUserId, updates)
+		await this.reconcileCloseAlarms()
+		return result
 	}
 
 	async attachDiscordPost(input: {
@@ -174,11 +198,23 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 	}
 
 	async closeMarket(input: { actorUserId: string; marketId: string }): Promise<void> {
-		return market.closeMarket(this.deps, input)
+		await market.closeMarket(this.deps, input)
+		await this.reconcileCloseAlarms()
 	}
 
-	async closeDueMarkets(limit = 25): Promise<{ closedMarketIds: string[] }> {
-		return market.closeDueMarkets(this.deps, limit)
+	async reconcileCloseAlarms(): Promise<void> {
+		const openMarkets = await market.listOpenMarketCloseTimes(this.deps)
+		await this.closeQueue.replace(
+			openMarkets.map((item) => ({
+				id: item.id,
+				dueAt: item.closesAt.getTime(),
+				payload: { marketId: item.id },
+			}))
+		)
+	}
+
+	async alarm(): Promise<void> {
+		await this.closeQueue.alarm()
 	}
 
 	async listMarketsNeedingPost(limit = 25, minAgeMinutes = 2): Promise<MarketDetail[]> {
@@ -208,7 +244,9 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		bypassDesignated?: boolean
 		adminOverride?: boolean
 	}): Promise<ResolveResult> {
-		return settlement.proposeResolution(this.deps, input)
+		const result = await settlement.proposeResolution(this.deps, input)
+		await this.reconcileCloseAlarms()
+		return result
 	}
 
 	async approveResolution(input: {
@@ -218,7 +256,9 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		bypassDesignated?: boolean
 		adminOverride?: boolean
 	}): Promise<ResolveResult> {
-		return settlement.approveResolution(this.deps, input)
+		const result = await settlement.approveResolution(this.deps, input)
+		await this.reconcileCloseAlarms()
+		return result
 	}
 
 	async voidMarket(input: {
@@ -229,7 +269,8 @@ export class PredictionMarketsDO extends DurableObject<Env> implements Predictio
 		bypassDesignated?: boolean
 		adminOverride?: boolean
 	}): Promise<void> {
-		return settlement.voidMarket(this.deps, input)
+		await settlement.voidMarket(this.deps, input)
+		await this.reconcileCloseAlarms()
 	}
 
 	async getPendingProposal(marketId: string): Promise<PendingProposalView | null> {

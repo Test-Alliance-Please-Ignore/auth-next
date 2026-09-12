@@ -45,7 +45,8 @@ export class DiscordAPIError extends Error {
 		public body: unknown,
 		message?: string
 	) {
-		super(message || `Discord API error: ${status}`)
+		const detail = body === undefined ? '' : `: ${JSON.stringify(body)}`
+		super(message || `Discord API error: ${status}${detail}`)
 		this.name = 'DiscordAPIError'
 	}
 }

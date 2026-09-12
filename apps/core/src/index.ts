@@ -86,6 +86,8 @@ import {
 } from './services/discord-components.service'
 import { reconcileMarketPosts } from './services/discord-market-reconcile.service'
 import { DkpService } from './services/dkp.service'
+import { announceMarketClosed } from './services/discord-market-notify.service'
+import { applyMarketPostStatus, updateMarketPostFromDetail } from './services/discord-market-post.service'
 import { TemporaryRoleAssignmentsDO } from './temporary-role-assignments-do'
 import { MumbleTempopExpiryDO } from './mumble-tempop-expiry-do'
 
@@ -99,6 +101,8 @@ import type {
 	UserDetails,
 } from '@repo/admin'
 import type { Core } from '@repo/core'
+import type { Discord } from '@repo/discord'
+import type { MarketDetail as PredictionMarketDetail, PredictionMarkets } from '@repo/prediction-markets'
 import type { MumbleTempopExpiry } from './mumble-tempop-expiry-do'
 import type { DiscordInteractionResponse } from '@repo/discord'
 import type { Hr } from '@repo/hr'
@@ -214,7 +218,6 @@ const sentryApp = withSentry(app)
 
 const DISCORD_REFRESH_CRON = '5-55/10 * * * *'
 const MAINTENANCE_CRON = '*/30 * * * *'
-const MARKET_RECONCILIATION_CRON = '*/15 * * * *'
 
 export default {
 	fetch: sentryApp.fetch.bind(sentryApp),
@@ -229,29 +232,17 @@ export default {
 				}
 			}
 
-			if (event.cron === MARKET_RECONCILIATION_CRON) {
-				// Prediction-markets forum-post drift sweep: auto-close due markets + refresh/backfill
-				// posts. Best-effort and out-of-band so a slow Discord run never delays the cron; a real
-				// failure is paged, not swallowed.
-				ctx.waitUntil(
-					reconcileMarketPosts(createDb(env.DATABASE_URL), env)
-						.then((r) => {
-							if (
-								r.closed > 0 ||
-								r.refreshed > 0 ||
-								r.posted > 0 ||
-								r.notified > 0 ||
-								r.failed > 0
-							) {
-								scheduledLogger.info('[Core:Scheduled] Prediction-market reconcile', r)
-							}
-						})
-						.catch((error) => captureException(error as Error, { tags: { job: 'pm-reconcile' } }))
-				)
-			}
-
 			if (event.cron === MAINTENANCE_CRON) {
-				const expiryRepair = env.MUMBLE_TEMPOP_EXPIRY
+				const isolateMaintenanceJob = async (job: string, task: Promise<unknown>): Promise<void> => {
+					try {
+						await task
+					} catch (error) {
+						captureException(error as Error, { tags: { job: `maintenance:${job}` } })
+					}
+				}
+				const expiryRepair = isolateMaintenanceJob(
+					'mumble-tempop-expiry',
+					env.MUMBLE_TEMPOP_EXPIRY
 					? getStub<MumbleTempopExpiry>(env.MUMBLE_TEMPOP_EXPIRY, 'default')
 						.reconcile()
 						.then((result) => {
@@ -261,20 +252,40 @@ export default {
 							)
 						})
 					: Promise.resolve()
-				ctx.waitUntil(
-					Promise.all([
-						expiryRepair,
-						cleanupExpiredExportArtifacts(
-							getStructureAssetsDebugBucket(env),
-							'structure-assets-debug'
-						),
-						cleanupExpiredExportArtifacts(
-							getFleetParticipationExportBucket(env),
-							'fleet-participation'
-						),
-					]).catch((error) =>
-						captureException(error as Error, { tags: { job: 'export-artifact-cleanup' } })
+				)
+				const marketCloseRepair = isolateMaintenanceJob(
+					'prediction-market-close-alarms',
+					getStub<PredictionMarkets>(env.PREDICTION_MARKETS, 'default').reconcileCloseAlarms()
+				)
+				const marketPostRepair = isolateMaintenanceJob(
+					'prediction-market-posts',
+					reconcileMarketPosts(createDb(env.DATABASE_URL), env).then((result) => {
+						if (
+							result.refreshed > 0 ||
+							result.posted > 0 ||
+							result.notified > 0 ||
+							result.failed > 0
+						) {
+							scheduledLogger.info('[Core:Scheduled] Prediction-market reconcile', result)
+						}
+					})
+				)
+				const structureCleanup = isolateMaintenanceJob(
+					'structure-export-cleanup',
+					cleanupExpiredExportArtifacts(
+						getStructureAssetsDebugBucket(env),
+						'structure-assets-debug'
 					)
+				)
+				const fleetCleanup = isolateMaintenanceJob(
+					'fleet-export-cleanup',
+					cleanupExpiredExportArtifacts(
+						getFleetParticipationExportBucket(env),
+						'fleet-participation'
+					)
+				)
+				ctx.waitUntil(
+					Promise.all([expiryRepair, marketCloseRepair, marketPostRepair, structureCleanup, fleetCleanup])
 				)
 			}
 
@@ -334,6 +345,21 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 			this.service = new CoreRpcService(db, this.env)
 		}
 		return this.service
+	}
+
+	async notifyPredictionMarketClosed(market: PredictionMarketDetail): Promise<void> {
+		if (!market.discordThreadId || !market.discordMessageId) return
+		if (!this.env.PM_FORUM_GUILD_ID) throw new Error('PM_FORUM_GUILD_ID not configured')
+		const discord = getStub<Discord>(this.env.DISCORD, 'default')
+		await announceMarketClosed(discord, this.env.PM_FORUM_GUILD_ID, market)
+		const updated = await updateMarketPostFromDetail(discord, market)
+		if (!updated.success) throw new Error(updated.error ?? 'Prediction-market post update failed')
+		await applyMarketPostStatus(
+			createDb(this.env.DATABASE_URL),
+			discord,
+			this.env.PM_FORUM_GUILD_ID,
+			market
+		)
 	}
 
 	/**

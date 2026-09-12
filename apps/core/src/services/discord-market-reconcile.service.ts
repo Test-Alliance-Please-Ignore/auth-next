@@ -2,17 +2,16 @@
  * Prediction-markets forum-post reconciliation (the M2.5 sweep).
  *
  * The Discord side of a market is best-effort: a bet/resolve refresh, the initial post, and
- * auto-close on `closesAt` can all fail silently, leaving the DB and the forum posts drifting.
+ * settlement notifications can all fail silently, leaving the DB and the forum posts drifting.
  * This periodic sweep (driven by Core's cron — Core is the only worker binding both the PM DO and
- * the Discord DO; the PM DO must never call Discord) heals that drift in four bounded passes:
+ * the Discord DO; the PM DO must never call Discord) heals that drift in three bounded passes:
  *
- *   (a) auto-close markets past their close time (bounded; a backlog drains over ticks);
- *   (b) refresh drifted posts — embed + status-appropriate buttons + tag/lock — driven by a
+ *   (a) refresh drifted posts — embed + status-appropriate buttons + tag/lock — driven by a
  *       self-shrinking "recently changed, has a post" list, NOT by the one-shot close result, so a
  *       refresh that fails (a just-closed market's tag flip, or a failed live bet/resolve refresh)
  *       is retried on later ticks until it lands;
- *   (c) backfill posts for non-terminal markets that never got one;
- *   (d) re-post the terminal (resolved/voided) aggregate result to the thread for markets whose live
+ *   (b) backfill posts for non-terminal markets that never got one;
+ *   (c) re-post the terminal (resolved/voided) aggregate result to the thread for markets whose live
  *       path never landed it (Core evicted before the post), keyed off a persisted
  *       `settlementAnnouncedAt` flag. At-least-once for the public post (marked only once the post
  *       succeeds); per-participant DMs are re-sent alongside but stay best-effort (not tracked).
@@ -23,21 +22,17 @@
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
-import {
-	announceMarketClosed,
-	announceMarketResolved,
-	dmWagerResults,
-} from './discord-market-notify.service'
+import { announceMarketResolved, dmWagerResults } from './discord-market-notify.service'
 import {
 	applyMarketPostStatus,
 	publishMarketPost,
 	updateMarketPostFromDetail,
 } from './discord-market-post.service'
 
-import type { createDb } from '../db'
-import type { Env } from '../context'
 import type { Discord } from '@repo/discord'
 import type { PredictionMarkets } from '@repo/prediction-markets'
+import type { Env } from '../context'
+import type { createDb } from '../db'
 
 type CoreDb = ReturnType<typeof createDb>
 
@@ -48,7 +43,7 @@ export type ReconcileEnv = Pick<
 >
 
 export interface ReconcileResult {
-	/** Markets auto-closed this pass (past their close time). */
+	/** Retained for scheduler-result compatibility; automatic closing is handled by the PM alarm. */
 	closed: number
 	/** Posts refreshed (embed + buttons + tag/lock) this pass. */
 	refreshed: number
@@ -63,7 +58,6 @@ export interface ReconcileResult {
 }
 
 /** Per-pass caps — keep a run inside the cron's wall-clock budget; backlogs drain over ticks. */
-const CLOSE_LIMIT = 25
 const REFRESH_LIMIT = 25
 const BACKFILL_LIMIT = 25
 const SETTLEMENT_NOTICE_LIMIT = 10
@@ -84,7 +78,10 @@ const SETTLEMENT_GRACE_MINUTES = 15
  */
 const SETTLEMENT_MAX_AGE_MINUTES = 360
 
-export async function reconcileMarketPosts(db: CoreDb, env: ReconcileEnv): Promise<ReconcileResult> {
+export async function reconcileMarketPosts(
+	db: CoreDb,
+	env: ReconcileEnv
+): Promise<ReconcileResult> {
 	const result: ReconcileResult = {
 		closed: 0,
 		refreshed: 0,
@@ -94,7 +91,7 @@ export async function reconcileMarketPosts(db: CoreDb, env: ReconcileEnv): Promi
 		skipped: false,
 	}
 
-	// Without a configured forum guild + category there is nowhere to post; do nothing.
+	// Without a configured forum guild + category there is nowhere to post.
 	if (!env.PM_FORUM_GUILD_ID || !env.PM_FORUM_CATEGORY_ID) {
 		result.skipped = true
 		return result
@@ -105,26 +102,7 @@ export async function reconcileMarketPosts(db: CoreDb, env: ReconcileEnv): Promi
 	const prediction = getStub<PredictionMarkets>(env.PREDICTION_MARKETS, 'default')
 	const discord = getStub<Discord>(env.DISCORD, 'default')
 
-	// (a) Auto-close due markets (bounded). Their posts are refreshed by pass (b): a just-closed
-	// market's `updatedAt` is fresh, so it lands in the refresh list below on this same tick.
-	const { closedMarketIds } = await prediction.closeDueMarkets(CLOSE_LIMIT)
-	result.closed = closedMarketIds.length
-	// Announce each auto-close to its thread. closedMarketIds only holds markets that transitioned
-	// open→closed this pass, so this fires once per market. Best-effort and per-market isolated.
-	for (const marketId of closedMarketIds) {
-		try {
-			const market = await prediction.getMarket(marketId)
-			if (market) await announceMarketClosed(discord, guildId, market)
-		} catch (error) {
-			result.failed++
-			logger.warn('[PMReconcile] auto-close announcement failed', {
-				marketId,
-				error: error instanceof Error ? error.message : String(error),
-			})
-		}
-	}
-
-	// (b) Refresh drifted posts (embed + status buttons + tag/lock). Driven by a self-shrinking
+	// (a) Refresh drifted posts (embed + status buttons + tag/lock). Driven by a self-shrinking
 	// "recently changed, has a post" list rather than the one-shot close result, so a refresh that
 	// failed on a prior tick is retried here until it lands — this is what makes the sweep heal.
 	const refreshIds = await prediction.listMarketsToRefresh(REFRESH_SINCE_MINUTES, REFRESH_LIMIT)

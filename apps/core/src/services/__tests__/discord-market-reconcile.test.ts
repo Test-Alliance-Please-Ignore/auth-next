@@ -9,7 +9,7 @@ const hoisted = vi.hoisted(() => ({
 	predictionBinding: {} as DurableObjectNamespace,
 	discordBinding: {} as DurableObjectNamespace,
 	prediction: {
-		closeDueMarkets: vi.fn(),
+		reconcileCloseAlarms: vi.fn(),
 		listMarketsToRefresh: vi.fn(),
 		getMarket: vi.fn(),
 		listMarketsNeedingPost: vi.fn(),
@@ -23,7 +23,6 @@ const hoisted = vi.hoisted(() => ({
 		publishMarketPost: vi.fn(),
 	},
 	notify: {
-		announceMarketClosed: vi.fn(),
 		announceMarketResolved: vi.fn(),
 		dmWagerResults: vi.fn(),
 	},
@@ -44,7 +43,6 @@ vi.mock('../discord-market-post.service', () => ({
 }))
 
 vi.mock('../discord-market-notify.service', () => ({
-	announceMarketClosed: hoisted.notify.announceMarketClosed,
 	announceMarketResolved: hoisted.notify.announceMarketResolved,
 	dmWagerResults: hoisted.notify.dmWagerResults,
 }))
@@ -104,7 +102,7 @@ function settlement(marketId: string): MarketSettlement {
 describe('reconcileMarketPosts', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
-		hoisted.prediction.closeDueMarkets.mockResolvedValue({ closedMarketIds: [] })
+		hoisted.prediction.reconcileCloseAlarms.mockResolvedValue(undefined)
 		hoisted.prediction.listMarketsToRefresh.mockResolvedValue([])
 		hoisted.prediction.getMarket.mockImplementation((id: string) => Promise.resolve(market(id)))
 		hoisted.prediction.listMarketsNeedingPost.mockResolvedValue([])
@@ -116,7 +114,6 @@ describe('reconcileMarketPosts', () => {
 		hoisted.post.updateMarketPostFromDetail.mockResolvedValue({ success: true })
 		hoisted.post.applyMarketPostStatus.mockResolvedValue(undefined)
 		hoisted.post.publishMarketPost.mockResolvedValue({ threadId: 't', messageId: 'm' })
-		hoisted.notify.announceMarketClosed.mockResolvedValue(undefined)
 		// announceMarketResolved returns whether the thread post landed; default = posted.
 		hoisted.notify.announceMarketResolved.mockResolvedValue(true)
 		hoisted.notify.dmWagerResults.mockResolvedValue(undefined)
@@ -132,20 +129,16 @@ describe('reconcileMarketPosts', () => {
 			failed: 0,
 			skipped: true,
 		})
-		expect(hoisted.prediction.closeDueMarkets).not.toHaveBeenCalled()
+		expect(hoisted.prediction.reconcileCloseAlarms).not.toHaveBeenCalled()
 		expect(hoisted.prediction.listMarketsToRefresh).not.toHaveBeenCalled()
 		expect(hoisted.prediction.listMarketsNeedingPost).not.toHaveBeenCalled()
 		expect(hoisted.prediction.listMarketsNeedingSettlementNotice).not.toHaveBeenCalled()
 	})
 
-	it('auto-closes markets and announces each close to its thread', async () => {
-		hoisted.prediction.closeDueMarkets.mockResolvedValue({ closedMarketIds: ['a', 'b', 'c'] })
+	it('does not repair the durable close schedule in the forum-post cron path', async () => {
 		const res = await reconcileMarketPosts(db, makeEnv())
-		expect(res.closed).toBe(3)
-		// Auto-close is bounded to keep the run inside the cron budget.
-		expect(hoisted.prediction.closeDueMarkets).toHaveBeenCalledWith(expect.any(Number))
-		// Each just-closed market gets a "betting closed" post (once per market).
-		expect(hoisted.notify.announceMarketClosed).toHaveBeenCalledTimes(3)
+		expect(res.closed).toBe(0)
+		expect(hoisted.prediction.reconcileCloseAlarms).not.toHaveBeenCalled()
 	})
 
 	it('refreshes each drifted post (embed + tag/lock) from the self-healing refresh list', async () => {
