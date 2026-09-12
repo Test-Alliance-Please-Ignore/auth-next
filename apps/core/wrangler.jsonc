@@ -103,6 +103,11 @@
 				"script_name": "core"
 			},
 			{
+				"name": "IMMUNITAS_ALERTS",
+				"class_name": "ImmunitasAlerts",
+				"script_name": "core"
+			},
+			{
 				"name": "BILLS",
 				"class_name": "Bills",
 				"script_name": "bills"
@@ -256,6 +261,10 @@
 		{
 			"tag": "v3",
 			"new_classes": ["BillingScopeCacheDO"]
+		},
+		{
+			"tag": "v4",
+			"new_classes": ["ImmunitasAlerts"]
 		}
 	],
 	"workflows": [

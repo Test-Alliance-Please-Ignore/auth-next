@@ -79,6 +79,8 @@ export type Env = SharedHonoEnv & {
 	CORE: DurableObjectNamespace
 	/** Singleton Mumble temp-op and credential handoff expiry Durable Object */
 	MUMBLE_TEMPOP_EXPIRY?: DurableObjectNamespace
+	/** Singleton buffered Immunitas access-alert Durable Object */
+	IMMUNITAS_ALERTS?: DurableObjectNamespace
 	/** User Refresh Workflow binding */
 	USER_REFRESH_WORKFLOW: Workflow<UserRefreshWorkflowParams>
 	/** Post-authentication director health verification workflow */

@@ -1,6 +1,7 @@
-import { describe, expect, it, beforeEach, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
+
 import { CoreDO } from '../durable-object'
 import {
 	buildImmunitasAccessAlertMessage,
@@ -35,15 +36,12 @@ describe('immunitas alerts message builder', () => {
 				{
 					requestorUserId: 'requestor-1',
 					requestorLabels: ['Requester Alpha', 'Requester Alpha Alt'],
-					attemptCount: 2,
 				},
 				{
 					requestorUserId: 'requestor-2',
 					requestorLabels: ['Requester Beta'],
-					attemptCount: 1,
 				},
 			],
-			attemptCount: 3,
 			updatedAt: new Date('2026-06-21T00:00:00.000Z'),
 		})
 
@@ -53,13 +51,9 @@ describe('immunitas alerts message builder', () => {
 			color: 0xef4444,
 		})
 		expect(message.embeds?.[0]?.fields?.[2]?.name).toBe('Attempted By')
-		expect(message.embeds?.[0]?.fields?.[2]?.value).toContain(
-			'• Requester Alpha (2 blocked attempts)'
-		)
+		expect(message.embeds?.[0]?.fields?.[2]?.value).toContain('• Requester Alpha')
 		expect(message.embeds?.[0]?.fields?.[2]?.value).toContain('  - Requester Alpha Alt')
-		expect(message.embeds?.[0]?.fields?.[2]?.value).toContain(
-			'• Requester Beta (1 blocked attempt)'
-		)
+		expect(message.embeds?.[0]?.fields?.[2]?.value).toContain('• Requester Beta')
 	})
 
 	it('colors profile alerts differently from fulcrum alerts', () => {
@@ -70,10 +64,8 @@ describe('immunitas alerts message builder', () => {
 				{
 					requestorUserId: 'requestor-1',
 					requestorLabels: ['Requester Alpha'],
-					attemptCount: 1,
 				},
 			],
-			attemptCount: 1,
 			updatedAt: new Date('2026-06-21T00:00:00.000Z'),
 		})
 
@@ -137,12 +129,10 @@ describe('CoreDO immunitas alert draining', () => {
 						{
 							requestorUserId: 'requestor-1',
 							requestorLabels: ['Requester One'],
-							attemptCount: 1,
 						},
 					],
 					lastNotifiedAt: null,
 					nextEligibleAt: 0,
-					attemptCount: 1,
 					lastError: undefined,
 					source: 'test',
 					accessType: 'fulcrum-report' as const,
@@ -176,10 +166,11 @@ describe('CoreDO immunitas alert draining', () => {
 			pendingTargetCharacterLabels: [],
 			pendingRequestorGroups: [],
 			lastNotifiedAt: expect.any(Number),
-			attemptCount: 0,
 			lastError: undefined,
 		})
-		expect(entry.nextEligibleAt).toBeGreaterThanOrEqual(Date.now() + IMMUNITAS_ALERT_COOLDOWN_MS - 1000)
+		expect(entry.nextEligibleAt).toBeGreaterThanOrEqual(
+			Date.now() + IMMUNITAS_ALERT_COOLDOWN_MS - 1000
+		)
 		expect((core as any).state.storage.delete).not.toHaveBeenCalled()
 		expect((core as any).state.storage.put).toHaveBeenCalledWith(
 			expect.objectContaining({

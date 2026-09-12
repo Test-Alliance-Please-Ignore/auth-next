@@ -20,7 +20,6 @@ import { CoreDO } from './durable-object'
 import { waitUntilWithTelemetry } from './lib/background-task'
 import { cleanupExpiredExportArtifacts } from './lib/export-retention'
 import { getFleetParticipationExportBucket } from './lib/fleet-participation-export'
-import { IMMUNITAS_ALERT_DRAIN_CRON } from './lib/immunitas-alerts'
 import { getStructureAssetsDebugBucket } from './lib/structure-assets-debug'
 import { TOKEN_INVALID_ALERT_DRAIN_CRON } from './lib/token-invalid-alerts'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
@@ -90,6 +89,7 @@ import { announceMarketClosed } from './services/discord-market-notify.service'
 import { applyMarketPostStatus, updateMarketPostFromDetail } from './services/discord-market-post.service'
 import { TemporaryRoleAssignmentsDO } from './temporary-role-assignments-do'
 import { MumbleTempopExpiryDO } from './mumble-tempop-expiry-do'
+import { ImmunitasAlertsDO } from './immunitas-alerts-do'
 
 import type {
 	CharacterOwnerInfo,
@@ -295,16 +295,6 @@ export default {
 					scheduledLogger.info(
 						'[Core:Scheduled] Processed pending token invalidation alerts',
 						tokenAlertResult
-					)
-				}
-			}
-
-			if (event.cron === IMMUNITAS_ALERT_DRAIN_CRON) {
-				const immunitasAlertResult = await coreStub.processPendingImmunitasAccessAlerts()
-				if (immunitasAlertResult.processed > 0) {
-					scheduledLogger.info(
-						'[Core:Scheduled] Processed pending immunitas access alerts',
-						immunitasAlertResult
 					)
 				}
 			}
@@ -1231,6 +1221,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 export { CoreDO as Core }
 export { TemporaryRoleAssignmentsDO as TemporaryRoleAssignments }
 export { MumbleTempopExpiryDO as MumbleTempopExpiry }
+export { ImmunitasAlertsDO as ImmunitasAlerts }
 export { BillingScopeCacheDO }
 
 // Export Workflow class

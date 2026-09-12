@@ -49,6 +49,7 @@ import type { CreateRoleRequest, Groups } from '@repo/groups'
 import type { BlacklistTargetCheckItem, BlacklistTargetType, Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
 import type { MarketDetail as PredictionMarketDetail } from '@repo/prediction-markets'
+import type { ImmunitasAlerts } from './immunitas-alerts-do'
 import type { Env } from './context'
 
 type PendingDiscordRefresh = {
@@ -149,10 +150,10 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				this.ensureRolesExist(),
 				this.loadPendingDiscordRefreshes(),
 				this.loadPendingUserRefreshes(),
-				this.loadPendingImmunitasAccessAlerts(),
+				...(this.env.IMMUNITAS_ALERTS ? [] : [this.loadPendingImmunitasAccessAlerts()]),
 				this.loadPendingTokenInvalidationAlerts(),
 			])
-			await this.scheduleImmunitasAccessAlertAlarm()
+			if (!this.env.IMMUNITAS_ALERTS) await this.scheduleImmunitasAccessAlertAlarm()
 		})
 	}
 
@@ -2125,15 +2126,12 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		requestorGroups: Array<{
 			requestorUserId: string
 			requestorLabels: string[]
-			attemptCount: number
 		}>
-		attemptCount: number
 	}): ReturnType<typeof buildImmunitasAccessAlertMessage> {
 		return buildImmunitasAccessAlertMessage({
 			accessType: input.accessType,
 			targetCharacterLabels: input.targetCharacterLabels,
 			requestorGroups: input.requestorGroups,
-			attemptCount: input.attemptCount,
 			updatedAt: new Date(),
 		})
 	}
@@ -2224,6 +2222,9 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		skipped: number
 		pendingCount: number
 	}> {
+		if (this.env.IMMUNITAS_ALERTS) {
+			return getStub<ImmunitasAlerts>(this.env.IMMUNITAS_ALERTS, 'default').queueImmunitasAccessAlert(input)
+		}
 		const queueKey = this.buildImmunitasQueueKey(input)
 		const now = Date.now()
 		const expiresAt = now + IMMUNITAS_ALERT_TTL_MS
@@ -2494,6 +2495,10 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		sent: number
 		failed: number
 	}> {
+		if (this.env.IMMUNITAS_ALERTS) {
+			return getStub<ImmunitasAlerts>(this.env.IMMUNITAS_ALERTS, 'default')
+				.processPendingImmunitasAccessAlerts()
+		}
 		const now = Date.now()
 
 		const expiredKeys: string[] = []
@@ -2580,7 +2585,6 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				accessType: entry.accessType,
 				targetCharacterLabels: entry.pendingTargetCharacterLabels,
 				requestorGroups: entry.pendingRequestorGroups,
-				attemptCount: entry.attemptCount,
 			})
 			const result = await discordStub.sendDirectMessage(entry.targetUserId, message)
 			if (!result.success) {
@@ -2660,6 +2664,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	}
 
 	async alarm(): Promise<void> {
+		if (this.env.IMMUNITAS_ALERTS) return
 		const result = await this.processPendingImmunitasAccessAlerts()
 		if (result.processed > 0) {
 			this.logger.info('[CoreDO] Immunitas alert alarm drained pending alerts', result)
