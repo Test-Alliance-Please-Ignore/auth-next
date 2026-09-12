@@ -5405,6 +5405,42 @@ export async function getStructureDetail(
 	return buildStructureDetailResult(context)
 }
 
+export async function resolveStructureVisibility(
+	env: Env,
+	db: DbClient<DbSchema>,
+	user: SessionUser,
+	structureIds: string[]
+): Promise<
+	Array<{
+		structureId: string
+		canView: boolean
+		reason: 'allowed' | 'permission_denied' | 'not_found'
+	}>
+> {
+	const uniqueStructureIds = [...new Set(structureIds)]
+		.filter((id) => /^\d+$/.test(id))
+		.slice(0, 100)
+	const results = await Promise.all(
+		uniqueStructureIds.map(async (structureId) => {
+			const context = await getStructureContext(env, db, user, structureId)
+			if (!context) return { structureId, canView: false, reason: 'not_found' as const }
+			const visible = !context.config?.hidden || context.canViewSensitive
+			return {
+				structureId,
+				canView: visible,
+				reason: visible ? ('allowed' as const) : ('permission_denied' as const),
+			}
+		})
+	)
+	const resultIds = new Set(results.map((result) => result.structureId))
+	return [
+		...results,
+		...uniqueStructureIds
+			.filter((structureId) => !resultIds.has(structureId))
+			.map((structureId) => ({ structureId, canView: false, reason: 'not_found' as const })),
+	]
+}
+
 export async function updateStructureConfig(
 	env: Env,
 	db: DbClient<DbSchema>,

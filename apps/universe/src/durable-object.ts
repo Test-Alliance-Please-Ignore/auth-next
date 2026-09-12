@@ -1,9 +1,9 @@
 import { DurableObject } from 'cloudflare:workers'
 import { alias } from 'drizzle-orm/pg-core'
 
-import { and, asc, eq, gt, ilike, inArray, ne, sql } from '@repo/db-utils'
+import { and, asc, eq, gt, ilike, inArray, ne, or, sql } from '@repo/db-utils'
 import { getStub, LRUCache, withRpcResult } from '@repo/do-utils'
-import { getEsiInstanceForCharacter, getPublicEsiInstance } from '@repo/esi'
+import { getEsiInstanceForCharacter, getIdClassification, getPublicEsiInstance } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
 import {
 	EsiGetStructureMarketDataResponseSchema,
@@ -23,6 +23,8 @@ import {
 
 import { createDb } from './db'
 import {
+	allianceIds,
+	corporationIds,
 	invCategories,
 	invFlags,
 	invGroups,
@@ -67,6 +69,7 @@ import type {
 	UniverseMoonResource,
 	UniverseMoonWithResources,
 	UniverseNpcStation,
+	UniverseOrganization,
 	UniversePlanet,
 	UniversePlanetGeography,
 	UniversePosition,
@@ -457,6 +460,269 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 		return fallbackIds
 			.map((id) => hydrated[id])
 			.filter((system): system is UniverseSolarSystem => Boolean(system))
+	}
+
+	async searchOrganizations(query: string, limit = 20): Promise<UniverseOrganization[]> {
+		const trimmedQuery = query.trim()
+		if (trimmedQuery.length < 2) return []
+		const safeLimit = Math.max(1, Math.min(limit, 50))
+		const pattern = `%${trimmedQuery}%`
+		const [corporations, alliances] = await Promise.all([
+			this.db
+				.select({
+					id: corporationIds.corporationId,
+					name: corporationIds.corporationName,
+					ticker: corporationIds.ticker,
+				})
+				.from(corporationIds)
+				.where(
+					or(ilike(corporationIds.corporationName, pattern), ilike(corporationIds.ticker, pattern))
+				)
+				.orderBy(corporationIds.corporationName)
+				.limit(safeLimit),
+			this.db
+				.select({
+					id: allianceIds.allianceId,
+					name: allianceIds.allianceName,
+					ticker: allianceIds.ticker,
+				})
+				.from(allianceIds)
+				.where(or(ilike(allianceIds.allianceName, pattern), ilike(allianceIds.ticker, pattern)))
+				.orderBy(allianceIds.allianceName)
+				.limit(safeLimit),
+		])
+		return [
+			...alliances.map((result) => ({ ...result, type: 'alliance' as const })),
+			...corporations.map((result) => ({ ...result, type: 'corporation' as const })),
+		].slice(0, safeLimit)
+	}
+
+	async searchCorporations(
+		query: string,
+		limit = 50,
+		authorizedCharacterId?: string,
+		strict = false
+	): Promise<UniverseOrganization[]> {
+		return this.searchIndexedOrganizations(
+			'corporation',
+			query,
+			limit,
+			authorizedCharacterId,
+			strict
+		)
+	}
+
+	async searchAlliances(
+		query: string,
+		limit = 50,
+		authorizedCharacterId?: string,
+		strict = false
+	): Promise<UniverseOrganization[]> {
+		return this.searchIndexedOrganizations('alliance', query, limit, authorizedCharacterId, strict)
+	}
+
+	async getOrganizationsByIds(ids: string[]): Promise<UniverseOrganization[]> {
+		const uniqueIds = [...new Set(ids.filter((id) => /^\d+$/.test(id)))]
+		if (uniqueIds.length === 0) return []
+		const [corporations, alliances] = await Promise.all([
+			this.db
+				.select({
+					id: corporationIds.corporationId,
+					name: corporationIds.corporationName,
+					ticker: corporationIds.ticker,
+				})
+				.from(corporationIds)
+				.where(inArray(corporationIds.corporationId, uniqueIds)),
+			this.db
+				.select({
+					id: allianceIds.allianceId,
+					name: allianceIds.allianceName,
+					ticker: allianceIds.ticker,
+				})
+				.from(allianceIds)
+				.where(inArray(allianceIds.allianceId, uniqueIds)),
+		])
+		const known = new Map<string, UniverseOrganization>()
+		for (const result of await this.decorateOrganizationResults('corporation', corporations)) {
+			known.set(result.id, result)
+		}
+		for (const result of alliances) known.set(result.id, { ...result, type: 'alliance' })
+
+		const publicEsi = getPublicEsiInstance(this.env.ESI)
+		const missing = uniqueIds.filter((id) => !known.has(id))
+		const fallback = await Promise.all(
+			missing.map(async (id) => {
+				try {
+					const type = getIdClassification(id).type
+					if (type === 'corporation') {
+						return (await this.hydrateAndBackfillOrganizations('corporation', [id]))[0] ?? null
+					}
+					if (type === 'alliance') {
+						const info = await publicEsi.fetchAlliancePublicInfo(id)
+						await this.hydrateAndBackfillOrganizations('alliance', [id])
+						return { id, name: info.name, ticker: info.ticker ?? null, type: 'alliance' as const }
+					}
+				} catch {
+					return null
+				}
+				return null
+			})
+		)
+		for (const result of fallback) if (result) known.set(result.id, result)
+		return uniqueIds
+			.map((id) => known.get(id))
+			.filter((result): result is UniverseOrganization => Boolean(result))
+	}
+
+	private async searchIndexedOrganizations(
+		type: 'corporation' | 'alliance',
+		query: string,
+		limit: number,
+		authorizedCharacterId?: string,
+		strict = false
+	): Promise<UniverseOrganization[]> {
+		const trimmedQuery = query.trim()
+		if (trimmedQuery.length < 2) return []
+		const safeLimit = Math.max(1, Math.min(limit, 50))
+		const pattern = strict ? trimmedQuery : `%${trimmedQuery}%`
+		const exactPattern = trimmedQuery
+		const table = type === 'corporation' ? corporationIds : allianceIds
+		const nameColumn =
+			type === 'corporation' ? corporationIds.corporationName : allianceIds.allianceName
+		const indexed = await this.db
+			.select({
+				id: type === 'corporation' ? corporationIds.corporationId : allianceIds.allianceId,
+				name: type === 'corporation' ? corporationIds.corporationName : allianceIds.allianceName,
+				ticker: table.ticker,
+			})
+			.from(table)
+			.where(or(ilike(nameColumn, pattern), ilike(table.ticker, pattern)))
+			.orderBy(nameColumn)
+			.limit(safeLimit)
+
+		const exact = indexed.filter(
+			(result) =>
+				result.name.toLowerCase() === exactPattern.toLowerCase() ||
+				result.ticker?.toLowerCase() === exactPattern.toLowerCase()
+		)
+		if (exact.length > 0) {
+			return this.decorateOrganizationResults(type, exact)
+		}
+
+		let fallback: UniverseOrganization[] = []
+		if (authorizedCharacterId) {
+			try {
+				const esiResults = await getEsiInstanceForCharacter(
+					this.env.ESI,
+					authorizedCharacterId
+				).searchOrganizations(authorizedCharacterId, trimmedQuery, [type], strict)
+				fallback = await this.hydrateAndBackfillOrganizations(type, esiResults[type])
+			} catch (error) {
+				logger.warn('Organization ESI fallback failed', {
+					type,
+					query: trimmedQuery,
+					error: error instanceof Error ? error.message : String(error),
+				})
+			}
+		}
+
+		const byId = new Map<string, UniverseOrganization>()
+		const decoratedIndexed = await this.decorateOrganizationResults(type, indexed)
+		for (const result of decoratedIndexed) byId.set(result.id, result)
+		for (const result of fallback) byId.set(result.id, result)
+		return [...byId.values()].slice(0, safeLimit)
+	}
+
+	private async decorateOrganizationResults(
+		type: 'corporation' | 'alliance',
+		results: Array<{ id: string; name: string; ticker: string | null }>
+	): Promise<UniverseOrganization[]> {
+		if (type === 'alliance') return results.map((result) => ({ ...result, type }))
+
+		const publicEsi = getPublicEsiInstance(this.env.ESI)
+		return Promise.all(
+			results.map(async (result) => {
+				try {
+					const corporation = await publicEsi.fetchCorporationPublicInfo(result.id)
+					if (!corporation.alliance_id) return { ...result, type, parentAlliance: null }
+					const alliance = await publicEsi.fetchAlliancePublicInfo(corporation.alliance_id)
+					return {
+						...result,
+						type,
+						parentAlliance: {
+							id: corporation.alliance_id,
+							name: alliance.name,
+							ticker: alliance.ticker ?? null,
+						},
+					}
+				} catch {
+					return { ...result, type, parentAlliance: null }
+				}
+			})
+		)
+	}
+
+	private async hydrateAndBackfillOrganizations(
+		type: 'corporation' | 'alliance',
+		ids: string[]
+	): Promise<UniverseOrganization[]> {
+		const publicEsi = getPublicEsiInstance(this.env.ESI)
+		const results = await Promise.all(
+			ids.slice(0, 50).map(async (id) => {
+				if (type === 'corporation') {
+					const info = await publicEsi.fetchCorporationPublicInfo(id)
+					const parentAlliance = info.alliance_id
+						? await publicEsi.fetchAlliancePublicInfo(info.alliance_id)
+						: null
+					return {
+						id,
+						name: info.name,
+						ticker: info.ticker ?? null,
+						type,
+						parentAlliance: parentAlliance
+							? {
+									id: info.alliance_id!,
+									name: parentAlliance.name,
+									ticker: parentAlliance.ticker ?? null,
+								}
+							: null,
+					} as const
+				}
+				const info = await publicEsi.fetchAlliancePublicInfo(id)
+				return { id, name: info.name, ticker: info.ticker ?? null, type } as const
+			})
+		)
+		if (results.length === 0) return []
+		if (type === 'corporation') {
+			await this.db
+				.insert(corporationIds)
+				.values(
+					results.map((result) => ({
+						corporationId: result.id,
+						corporationName: result.name,
+						ticker: result.ticker,
+					}))
+				)
+				.onConflictDoUpdate({
+					target: corporationIds.corporationId,
+					set: { corporationName: sql`EXCLUDED.corporation_name`, ticker: sql`EXCLUDED.ticker` },
+				})
+		} else {
+			await this.db
+				.insert(allianceIds)
+				.values(
+					results.map((result) => ({
+						allianceId: result.id,
+						allianceName: result.name,
+						ticker: result.ticker,
+					}))
+				)
+				.onConflictDoUpdate({
+					target: allianceIds.allianceId,
+					set: { allianceName: sql`EXCLUDED.alliance_name`, ticker: sql`EXCLUDED.ticker` },
+				})
+		}
+		return results
 	}
 
 	/**
@@ -2184,6 +2450,20 @@ export class UniverseDO extends DurableObject<Env, {}> implements Universe {
 	async getMoonsBySystemId(systemId: string): Promise<UniverseStaticMoon[]> {
 		const moonMap = await this.getMoonsBySystemIds([systemId])
 		return moonMap[systemId] ?? []
+	}
+
+	async getPlanetsBySystemId(systemId: string): Promise<UniversePlanet[]> {
+		return this.db
+			.select({
+				planetId: universePlanets.planetId,
+				planetName: universePlanets.planetName,
+				solarSystemId: universePlanets.solarSystemId,
+				celestialIndex: universePlanets.celestialIndex,
+				typeId: universePlanets.typeId,
+			})
+			.from(universePlanets)
+			.where(eq(universePlanets.solarSystemId, systemId))
+			.orderBy(asc(universePlanets.celestialIndex))
 	}
 
 	/**

@@ -314,6 +314,33 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 		}
 	}
 
+	@UseCharacterAuth
+	async searchOrganizations(
+		characterId: string,
+		query: string,
+		categories: Array<'corporation' | 'alliance'> = ['corporation', 'alliance'],
+		strict = false
+	): Promise<{ corporation: string[]; alliance: string[] }> {
+		try {
+			const result = await this.fetchCharacterSearch(characterId, {
+				categories,
+				search: query,
+				strict,
+			})
+			return {
+				corporation: (result.corporation ?? []).map(String),
+				alliance: (result.alliance ?? []).map(String),
+			}
+		} catch (error) {
+			logger.warn('Organization search failed', {
+				characterId,
+				query,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			return { corporation: [], alliance: [] }
+		}
+	}
+
 	@UsePublicAuth
 	async fetchCharacterPublicInfo(
 		characterId: string,
@@ -1568,7 +1595,7 @@ export class EsiDO extends DurableObject<Env> implements Esi {
 	async fetchCharacterSearch(
 		characterId: string,
 		input: {
-			categories: Array<'solar_system' | 'station' | 'structure'>
+			categories: Array<'solar_system' | 'station' | 'structure' | 'corporation' | 'alliance'>
 			search: string
 			strict?: boolean
 		}

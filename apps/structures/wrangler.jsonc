@@ -40,6 +40,11 @@
 				"name": "MARKETS",
 				"class_name": "Markets",
 				"script_name": "markets"
+			},
+			{
+				"name": "GROUPS",
+				"class_name": "Groups",
+				"script_name": "groups"
 			}
 		]
 	}

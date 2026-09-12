@@ -244,6 +244,12 @@ export interface StructureActor {
 	implicitSensitiveCorporationIds?: string[]
 }
 
+export interface StructureVisibilityResult {
+	structureId: string
+	canView: boolean
+	reason: 'allowed' | 'permission_denied' | 'not_found'
+}
+
 export interface StructureListPagingQuery<
 	TSortBy extends StructureListSortBy = StructureListSortBy,
 > {
@@ -1001,6 +1007,10 @@ export interface UpdateStructureGroupAlertConfigRequest {
 }
 
 export interface StructuresWorker {
+	resolveStructureVisibility(
+		userId: string,
+		structureIds: string[]
+	): Promise<StructureVisibilityResult[]>
 	listStructures(actor: StructureActor, query?: StructureListQuery): Promise<StructureListResponse>
 	listPosStructures(
 		actor: StructureActor,

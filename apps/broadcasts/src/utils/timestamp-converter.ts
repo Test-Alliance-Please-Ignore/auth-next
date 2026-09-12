@@ -18,7 +18,7 @@ const MAX_TIMESTAMP = 4102444800
  * Regex pattern to match standalone numeric timestamps (10 or 13 digits)
  * Uses negative lookbehind/lookahead to avoid matching partial numbers
  */
-const TIMESTAMP_PATTERN = /(?<!\d)(\d{10}|\d{13})(?!\d)/g
+const TIMESTAMP_PATTERN = /(?<![A-Za-z0-9])(\d{10}|\d{13})(?![A-Za-z0-9])/g
 
 /**
  * Pattern to detect if a timestamp is already wrapped in Discord format

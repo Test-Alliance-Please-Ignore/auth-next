@@ -1,9 +1,9 @@
-import type { ReactNode } from 'react'
-
 import { cn } from '@/lib/utils'
 
+import type { ReactNode } from 'react'
+
 interface FilterFieldProps {
-	label: string
+	label: ReactNode
 	children: ReactNode
 	className?: string
 }

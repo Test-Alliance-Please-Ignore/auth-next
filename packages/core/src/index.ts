@@ -287,4 +287,5 @@ export interface Core {
 }
 
 export * from './roles'
+export * from './timerboard'
 export * from './user'

@@ -273,6 +273,12 @@ export interface Esi {
 		options?: EsiRequestOptions
 	): Promise<CharacterImplants>
 	searchCharacter(characterId: string, characterName: string, strict?: boolean): Promise<string[]>
+	searchOrganizations(
+		characterId: string,
+		query: string,
+		categories?: Array<'corporation' | 'alliance'>,
+		strict?: boolean
+	): Promise<{ corporation: string[]; alliance: string[] }>
 
 	// Corporation endpoints
 	fetchCorporationPublicInfo(corporationId: string): Promise<CorporationPublicInfo>
@@ -373,7 +379,7 @@ export interface Esi {
 	fetchCharacterSearch(
 		characterId: string,
 		input: {
-			categories: Array<'solar_system' | 'station' | 'structure'>
+			categories: Array<'solar_system' | 'station' | 'structure' | 'corporation' | 'alliance'>
 			search: string
 			strict?: boolean
 		}

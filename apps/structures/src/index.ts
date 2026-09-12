@@ -1,5 +1,7 @@
 import { WorkerEntrypoint } from 'cloudflare:workers'
 
+import { getStub } from '@repo/do-utils'
+
 import { createDb } from './db'
 import {
 	createAlertDestination,
@@ -21,6 +23,7 @@ import {
 	listStructureGroupAlertConfigs,
 	listStructureGroupSettings,
 	listStructures,
+	resolveStructureVisibility,
 	syncCorporationStructures,
 	updateStructureConfig,
 	updateStructureModuleConfig,
@@ -30,6 +33,7 @@ import {
 } from './services/structures.service'
 
 import type { AlertDestinationType } from '@repo/alert-destinations'
+import type { Groups } from '@repo/groups'
 import type {
 	CreateStructureAlertDestinationRequest,
 	CreateStructureGroupAlertConfigRequest,
@@ -52,6 +56,7 @@ import type {
 	StructureSovereigntyListQuery,
 	StructureSovereigntyListResponse,
 	StructuresWorker,
+	StructureVisibilityResult,
 	UpdateStructureAlertDestinationRequest,
 	UpdateStructureConfigInput,
 	UpdateStructureGroupAlertConfigRequest,
@@ -68,6 +73,24 @@ export class StructuresWorkerEntrypoint extends WorkerEntrypoint<Env> implements
 
 	private getDb() {
 		return createDb(this.env.DATABASE_URL)
+	}
+
+	async resolveStructureVisibility(
+		userId: string,
+		structureIds: string[]
+	): Promise<StructureVisibilityResult[]> {
+		const groups = getStub<Groups>(this.env.GROUPS, 'default')
+		const permissions = await groups.getUserPermissions(userId)
+		return resolveStructureVisibility(
+			this.env,
+			this.getDb(),
+			{
+				id: userId,
+				is_admin: false,
+				roles: permissions.map((permission) => permission.urn),
+			},
+			structureIds
+		)
 	}
 
 	async listStructures(

@@ -62,6 +62,8 @@ export interface EsiCharacterSearchResponse {
 	solar_system?: number[]
 	station?: number[]
 	structure?: number[]
+	corporation?: number[]
+	alliance?: number[]
 }
 
 /** Public and structure market order rows returned by ESI market endpoints. */

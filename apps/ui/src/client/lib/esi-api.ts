@@ -17,6 +17,14 @@ export interface EsiLocationSearchResult {
 	type: 'system' | 'station' | 'structure'
 }
 
+export interface EsiOrganizationSearchResult {
+	id: string
+	name: string
+	ticker: string | null
+	type: 'corporation' | 'alliance'
+	parentAlliance: { id: string; name: string; ticker: string | null } | null
+}
+
 export interface EsiSystemDetails {
 	system_id: number
 	name: string
@@ -25,6 +33,12 @@ export interface EsiSystemDetails {
 	star_id?: number
 	stargates?: number[]
 	stations?: number[]
+}
+
+export interface EsiCelestialOption {
+	id: string
+	name: string
+	planetId?: string
 }
 
 export interface EsiStationDetails {
@@ -78,6 +92,13 @@ export class EsiApiClient extends ApiClient {
 		return this.get(`${ESI_API_BASE}/search/structures?${params.toString()}`)
 	}
 
+	async searchOrganizations(query: string, strict = false): Promise<EsiOrganizationSearchResult[]> {
+		if (!query || query.length < 2) return []
+		const params = new URLSearchParams({ q: query })
+		if (strict) params.set('strict', 'true')
+		return this.get(`${ESI_API_BASE}/search/organizations?${params.toString()}`)
+	}
+
 	/**
 	 * Search across all location types
 	 */
@@ -102,6 +123,13 @@ export class EsiApiClient extends ApiClient {
 	 */
 	async getSystemDetails(systemId: string): Promise<EsiSystemDetails> {
 		return this.get(`${ESI_API_BASE}/universe/systems/${systemId}`)
+	}
+
+	async getSystemCelestials(systemId: string): Promise<{
+		planets: EsiCelestialOption[]
+		moons: EsiCelestialOption[]
+	}> {
+		return this.get(`${ESI_API_BASE}/universe/systems/${systemId}/celestials`)
 	}
 
 	/**

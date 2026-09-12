@@ -1,0 +1,18 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "timerboard",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-30",
+	"compatibility_flags": ["nodejs_compat"],
+	"workers_dev": false,
+	"routes": [],
+	"vars": { "NAME": "timerboard", "ENVIRONMENT": "production", "SENTRY_RELEASE": "unknown" },
+	"durable_objects": {
+		"bindings": [
+			{ "name": "GROUPS", "class_name": "Groups", "script_name": "groups" }
+		]
+	},
+	"services": [
+		{ "binding": "STRUCTURES", "service": "structures", "entrypoint": "StructuresWorkerEntrypoint" }
+	]
+}
