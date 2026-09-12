@@ -128,10 +128,6 @@ export interface Core {
 		triggered: number
 		failed: number
 	}>
-	processExpiredTempops(): Promise<{
-		expired: number
-		disconnected: number
-	}>
 	processPendingImmunitasAccessAlerts(): Promise<{
 		processed: number
 		sent: number

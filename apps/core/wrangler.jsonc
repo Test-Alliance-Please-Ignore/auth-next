@@ -29,7 +29,6 @@
 		"crons": [
 			"5-55/10 * * * *",
 			"*/30 * * * *",
-			"*/10 * * * *",
 			"*/15 * * * *",
 			"15,45 * * * *",
 			"0 0 * * *"
@@ -102,6 +101,11 @@
 			{
 				"name": "TEMPORARY_ROLE_ASSIGNMENTS",
 				"class_name": "TemporaryRoleAssignments",
+				"script_name": "core"
+			},
+			{
+				"name": "MUMBLE_TEMPOP_EXPIRY",
+				"class_name": "MumbleTempopExpiry",
 				"script_name": "core"
 			},
 			{

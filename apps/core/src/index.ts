@@ -87,6 +87,7 @@ import {
 import { reconcileMarketPosts } from './services/discord-market-reconcile.service'
 import { DkpService } from './services/dkp.service'
 import { TemporaryRoleAssignmentsDO } from './temporary-role-assignments-do'
+import { MumbleTempopExpiryDO } from './mumble-tempop-expiry-do'
 
 import type {
 	CharacterOwnerInfo,
@@ -98,6 +99,7 @@ import type {
 	UserDetails,
 } from '@repo/admin'
 import type { Core } from '@repo/core'
+import type { MumbleTempopExpiry } from './mumble-tempop-expiry-do'
 import type { DiscordInteractionResponse } from '@repo/discord'
 import type { Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
@@ -211,8 +213,7 @@ const app = new Hono<App>()
 const sentryApp = withSentry(app)
 
 const DISCORD_REFRESH_CRON = '5-55/10 * * * *'
-const EXPORT_CLEANUP_CRON = '*/30 * * * *'
-const TEMPOP_EXPIRY_CRON = '*/10 * * * *'
+const MAINTENANCE_CRON = '*/30 * * * *'
 const MARKET_RECONCILIATION_CRON = '*/15 * * * *'
 
 export default {
@@ -225,13 +226,6 @@ export default {
 				const result = await coreStub.processPendingRefreshes()
 				if (result.refreshesProcessed > 0 || result.discordProcessed > 0) {
 					scheduledLogger.info('[Core:Scheduled] Processed pending refreshes', result)
-				}
-			}
-
-			if (event.cron === TEMPOP_EXPIRY_CRON) {
-				const tempopResult = await coreStub.processExpiredTempops()
-				if (tempopResult.expired > 0) {
-					scheduledLogger.info('[Core:Scheduled] Expired Mumble temp-ops', tempopResult)
 				}
 			}
 
@@ -256,9 +250,20 @@ export default {
 				)
 			}
 
-			if (event.cron === EXPORT_CLEANUP_CRON) {
+			if (event.cron === MAINTENANCE_CRON) {
+				const expiryRepair = env.MUMBLE_TEMPOP_EXPIRY
+					? getStub<MumbleTempopExpiry>(env.MUMBLE_TEMPOP_EXPIRY, 'default')
+						.reconcile()
+						.then((result) => {
+							scheduledLogger.info(
+								'[Core:Scheduled] Reconciled Mumble temp-op expiry alarm list',
+								result
+							)
+						})
+					: Promise.resolve()
 				ctx.waitUntil(
 					Promise.all([
+						expiryRepair,
 						cleanupExpiredExportArtifacts(
 							getStructureAssetsDebugBucket(env),
 							'structure-assets-debug'
@@ -1199,6 +1204,7 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 // Use manual captureException() in DO methods for error tracking
 export { CoreDO as Core }
 export { TemporaryRoleAssignmentsDO as TemporaryRoleAssignments }
+export { MumbleTempopExpiryDO as MumbleTempopExpiry }
 export { BillingScopeCacheDO }
 
 // Export Workflow class

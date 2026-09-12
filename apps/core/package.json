@@ -42,6 +42,7 @@
 		"@repo/eve-corporation-data": "workspace:*",
 		"@repo/eve-fitting": "workspace:*",
 		"@repo/eve-token-store": "workspace:*",
+		"@repo/expiry-alarms": "workspace:*",
 		"@repo/eve-types": "workspace:*",
 		"@repo/features": "workspace:*",
 		"@repo/fleets": "workspace:*",

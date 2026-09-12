@@ -25,6 +25,10 @@
 				"class_name": "TemporaryRoleAssignments"
 			},
 			{
+				"name": "MUMBLE_TEMPOP_EXPIRY",
+				"class_name": "MumbleTempopExpiry"
+			},
+			{
 				"name": "BILLING_SCOPE_CACHE",
 				"class_name": "BillingScopeCacheDO"
 			}
