@@ -201,7 +201,7 @@ describe('structure prune cleanup', () => {
 				lastSyncedAt: new Date('2026-07-12T19:36:47.369Z'),
 				services: null,
 				fuelBurnRate: null,
-				structureInfo: null,
+				structureInfo: { owner_id: 'new-corp' },
 				updatedAt: new Date('2026-07-12T19:36:47.369Z'),
 			},
 		])
@@ -230,6 +230,34 @@ describe('structure prune cleanup', () => {
 				set: expect.objectContaining({ corporationId: expect.anything() }),
 			})
 		)
+	})
+
+	it('does not let a stale listing reclaim a structure already owned by another corporation', async () => {
+		const db = makeDb()
+		db.query.corporationStructures.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'transferred-structure',
+				corporationId: 'new-corp',
+				typeId: '35832',
+				updatedAt: new Date(),
+			},
+		])
+		const instance = createDoInstance(db)
+		;(instance as any).hydrateStructureRows = vi.fn().mockResolvedValue([
+			{
+				corporationId: 'old-corp',
+				structureId: 'transferred-structure',
+				typeId: '35832',
+				structureInfo: null,
+			},
+		])
+		;(instance as any).resolveStructureFuelBurnRates = vi.fn().mockResolvedValue(new Map())
+		;(instance as any).storeMoonGeographies = vi.fn()
+		;(instance as any).storeMoonDrills = vi.fn()
+
+		await instance.storeStructures('old-corp', [{ structure_id: 'transferred-structure' }])
+
+		expect(db.insert).not.toHaveBeenCalled()
 	})
 
 	it('does not reattach a structure from a stale former-owner listing', async () => {
@@ -419,6 +447,29 @@ describe('structure prune cleanup', () => {
 		await instance.storeStructures('corp-1', [])
 
 		expect(db.delete).not.toHaveBeenCalled()
+	})
+
+	it('prunes recently departed structures when the complete listing is trusted', async () => {
+		const db = makeDb()
+		const instance = createDoInstance(db)
+		const recent = new Date(Date.now() - 60 * 60 * 1000)
+
+		db.query.corporationStructures.findMany = vi.fn().mockResolvedValue([
+			{
+				structureId: 'structure-1',
+				corporationId: 'corp-1',
+				typeId: '35832',
+				updatedAt: recent,
+			},
+		])
+		;(instance as any).hydrateStructureRows = vi.fn().mockResolvedValue([])
+
+		await instance.storeStructures('corp-1', [], {
+			posListingComplete: true,
+			pruneMissingImmediately: true,
+		})
+
+		expect(db.delete).toHaveBeenCalledWith(corporationStructures)
 	})
 
 	it('clears all structure-side rows when the successful sync returns no structures', async () => {

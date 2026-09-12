@@ -160,6 +160,7 @@ export async function storeStructures(
 	const corpData = getCorporationDataStub(env, corporationId)
 	await corpData.storeStructures(corporationId, structures.structures, {
 		posListingComplete: structures.posListingComplete,
+		pruneMissingImmediately: structures.posListingComplete,
 	})
 
 	logger.info('[StructuresStep] Stored structures', {

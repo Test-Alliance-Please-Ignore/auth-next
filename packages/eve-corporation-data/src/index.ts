@@ -477,6 +477,8 @@ export interface StructurePriorityQueue {
 export interface StructureStoreOptions {
 	/** Existing POS rows are preserved when the live POS listing was incomplete. */
 	posListingComplete?: boolean
+	/** Prune departed structures immediately when the complete listing is trusted. */
+	pruneMissingImmediately?: boolean
 }
 
 export type StructureSyncFailureTarget =

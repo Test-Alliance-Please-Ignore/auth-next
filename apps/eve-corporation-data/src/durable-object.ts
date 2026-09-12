@@ -525,7 +525,7 @@ type SkyhookBaseStructureRow = {
 	services: Array<{ name: string; state: string }> | null
 	updatedAt: Date
 }
-const STRUCTURE_PRUNE_GRACE_MS = 72 * 60 * 60 * 1000
+const STRUCTURE_PRUNE_GRACE_MS = 24 * 60 * 60 * 1000
 
 function normalizeSkyhookState(
 	state: string,
@@ -549,11 +549,12 @@ function isBeyondStructurePruneGrace(updatedAt: Date | null | undefined, now: Da
 function filterPrunableStructureIds<T extends { structureId: string; updatedAt?: Date | null }>(
 	rows: T[],
 	currentStructureIds: Set<string>,
-	now: Date
+	now: Date,
+	graceMs = STRUCTURE_PRUNE_GRACE_MS
 ): string[] {
 	return rows
 		.filter((row) => !currentStructureIds.has(row.structureId))
-		.filter((row) => isBeyondStructurePruneGrace(row.updatedAt, now))
+		.filter((row) => graceMs === 0 || isBeyondStructurePruneGrace(row.updatedAt, now))
 		.map((row) => row.structureId)
 }
 
@@ -3374,32 +3375,15 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 			corporationId,
 			structures as EsiCorporationStructure[]
 		)
-		const ownershipConfirmedStructures = hydratedStructures.filter((structure) => {
-			const observedOwnerId = structure.structureInfo?.owner_id
-			if (!observedOwnerId || observedOwnerId === corporationId) {
-				return true
-			}
-
-			logger.info('[EveCorporationData] Ignoring stale structure listing after ownership change', {
-				corporationId,
-				structureId: structure.structureId,
-				observedOwnerId,
-			})
-			return false
-		})
-		const fuelBurnRateByStructure = await this.resolveStructureFuelBurnRates(
-			corporationId,
-			ownershipConfirmedStructures
-		)
-		const structureIds = [
-			...new Set(ownershipConfirmedStructures.map((structure) => structure.structureId)),
+		const incomingStructureIds = [
+			...new Set(hydratedStructures.map((structure) => structure.structureId)),
 		]
 		const existingStructureRows = await this.getDb().query.corporationStructures.findMany({
 			where:
-				structureIds.length > 0
+				incomingStructureIds.length > 0
 					? or(
 							eq(corporationStructures.corporationId, corporationId),
-							inArray(corporationStructures.structureId, structureIds)
+							inArray(corporationStructures.structureId, incomingStructureIds)
 						)
 					: eq(corporationStructures.corporationId, corporationId),
 			columns: {
@@ -3410,6 +3394,33 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				updatedAt: true,
 			},
 		})
+		const existingStructureById = new Map(
+			existingStructureRows.map((row) => [row.structureId, row] as const)
+		)
+		const ownershipConfirmedStructures = hydratedStructures.filter((structure) => {
+			const observedOwnerId = structure.structureInfo?.owner_id
+			const persistedOwnerId = existingStructureById.get(structure.structureId)?.corporationId
+			const ownerMismatch = observedOwnerId && observedOwnerId !== corporationId
+			const persistedOwnerMismatch =
+				!observedOwnerId && persistedOwnerId && persistedOwnerId !== corporationId
+			if (!ownerMismatch && !persistedOwnerMismatch) {
+				return true
+			}
+
+			logger.info('[EveCorporationData] Ignoring stale structure listing after ownership change', {
+				corporationId,
+				structureId: structure.structureId,
+				observedOwnerId: observedOwnerId ?? persistedOwnerId,
+			})
+			return false
+		})
+		const fuelBurnRateByStructure = await this.resolveStructureFuelBurnRates(
+			corporationId,
+			ownershipConfirmedStructures
+		)
+		const structureIds = [
+			...new Set(ownershipConfirmedStructures.map((structure) => structure.structureId)),
+		]
 		const transferredStructures = existingStructureRows.filter(
 			(row) => structureIds.includes(row.structureId) && row.corporationId !== corporationId
 		)
@@ -3460,7 +3471,8 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					((options.posListingComplete ?? true) || !POS_STRUCTURE_TYPE_IDS.has(row.typeId))
 			),
 			currentStructureIds,
-			new Date()
+			new Date(),
+			options.pruneMissingImmediately ? 0 : STRUCTURE_PRUNE_GRACE_MS
 		)
 		const BATCH_SIZE = STRUCTURE_SNAPSHOT_BATCH_SIZE
 
@@ -3493,6 +3505,13 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 				.values(batchValues)
 				.onConflictDoUpdate({
 					target: corporationStructures.structureId,
+					where:
+						transferredStructures.length > 0
+							? sql`(${eq(corporationStructures.corporationId, corporationId)} or ${inArray(
+									corporationStructures.structureId,
+									transferredStructures.map((row) => row.structureId)
+								)})`
+							: eq(corporationStructures.corporationId, corporationId),
 					set: {
 						corporationId: sql`excluded.corporation_id`,
 						name: sql`excluded.name`,
@@ -3533,12 +3552,22 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 					)
 				)
 		})
-		await this.storeMoonGeographies(
-			corporationId,
-			ownershipConfirmedStructures,
-			directMoonIdsByStructureId
+		const persistedOwnershipRows =
+			structureIds.length > 0
+				? await this.getDb().query.corporationStructures.findMany({
+						where: and(
+							eq(corporationStructures.corporationId, corporationId),
+							inArray(corporationStructures.structureId, structureIds)
+						),
+						columns: { structureId: true },
+					})
+				: []
+		const persistedOwnershipIds = new Set(persistedOwnershipRows.map((row) => row.structureId))
+		const structuresStillOwned = ownershipConfirmedStructures.filter((structure) =>
+			persistedOwnershipIds.has(structure.structureId)
 		)
-		await this.storeMoonDrills(corporationId, ownershipConfirmedStructures)
+		await this.storeMoonGeographies(corporationId, structuresStillOwned, directMoonIdsByStructureId)
+		await this.storeMoonDrills(corporationId, structuresStillOwned)
 	}
 
 	/** Store POS detail state without replacing the base structure snapshot. */
@@ -6596,6 +6625,7 @@ export class EveCorporationDataDO extends DurableObject<Env> implements EveCorpo
 
 		await this.storeStructures(corporationId, structures.structures, {
 			posListingComplete: structures.posListingComplete,
+			pruneMissingImmediately: structures.posListingComplete,
 		})
 	}
 
