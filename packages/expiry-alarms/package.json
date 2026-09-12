@@ -1,0 +1,21 @@
+{
+	"name": "@repo/expiry-alarms",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"check:lint": "run-eslint",
+		"check:types": "run-tsc",
+		"test": "run-vitest",
+		"test:focused": "run-vitest"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "5.20260724.1",
+		"@repo/eslint-config": "workspace:*",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*",
+		"vitest": "4.1.10"
+	}
+}
