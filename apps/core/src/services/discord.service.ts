@@ -2692,7 +2692,8 @@ export async function syncUserDiscordAccess(
 	env: Env,
 	userId: string,
 	allowRemoval?: boolean,
-	hardStripAllRoles?: boolean
+	hardStripAllRoles?: boolean,
+	skipInvites = false
 ): Promise<{
 	results: Array<{
 		guildId: string
@@ -2726,15 +2727,17 @@ export async function syncUserDiscordAccess(
 		return enforceBlacklistedDiscordAccess(env, userId, 'User is blacklisted')
 	}
 
-	// First invite to new servers
-	logger.info('[Discord] syncUserDiscordAccess: Starting invitation process', { userId })
-	const inviteResult = await inviteUserToDiscordServers(env, userId)
-	logger.info('[Discord] syncUserDiscordAccess: Invitation process completed', {
-		userId,
-		totalInvited: inviteResult.totalInvited,
-		totalFailed: inviteResult.totalFailed,
-		resultsCount: inviteResult.results.length,
-	})
+	const inviteResult = skipInvites
+		? { results: [], totalInvited: 0, totalFailed: 0 }
+		: await inviteUserToDiscordServers(env, userId)
+	if (!skipInvites) {
+		logger.info('[Discord] syncUserDiscordAccess: Invitation process completed', {
+			userId,
+			totalInvited: inviteResult.totalInvited,
+			totalFailed: inviteResult.totalFailed,
+			resultsCount: inviteResult.results.length,
+		})
+	}
 
 	// Then update roles on all servers
 	logger.info('[Discord] syncUserDiscordAccess: Starting role update process', { userId })

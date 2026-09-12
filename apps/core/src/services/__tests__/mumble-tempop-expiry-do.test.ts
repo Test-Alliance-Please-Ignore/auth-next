@@ -48,7 +48,13 @@ describe('MumbleTempopExpiryDO dispatch', () => {
 	})
 
 	it('delegates reconciliation to the authoritative database projection', async () => {
-		const items = [{ id: 'tempop:tempop-1', dueAt: 10_000, payload: { kind: 'tempop', tempopId: 'tempop-1' as const } }]
+		const items = [
+			{
+				id: 'tempop:tempop-1',
+				dueAt: 10_000,
+				payload: { kind: 'tempop' as const, tempopId: 'tempop-1' },
+			},
+		]
 		listTempopExpiryItemsMock.mockResolvedValue(items)
 		const replace = vi.fn().mockResolvedValue(undefined)
 

@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers'
 
 import { getStub } from '@repo/do-utils'
+import { ExpiryAlarmQueue } from '@repo/expiry-alarms'
 import { createWorkflow } from '@repo/workflow-utils'
 
 import type { Discord } from '@repo/discord'
@@ -11,6 +12,11 @@ type SqlValue = ArrayBuffer | string | number | null
 export type TemporaryRoleAssignmentSource = 'self' | 'admin'
 export type TemporaryRoleAssignmentStatus = 'active' | 'claimed' | 'removal_pending' | 'failed'
 export const TEMPORARY_ROLE_INTERACTION_REPLAY_ERROR = 'TEMPORARY_ROLE_INTERACTION_REPLAY'
+
+interface TemporaryRoleExpiryPayload {
+	assignmentId: string
+	revision: number
+}
 
 export interface TemporaryRoleAssignment {
 	id: string
@@ -134,11 +140,24 @@ export class TemporaryRoleAssignmentsDO
 	extends DurableObject<Env>
 	implements TemporaryRoleAssignments
 {
+	private readonly queue: ExpiryAlarmQueue<TemporaryRoleExpiryPayload>
+
 	constructor(
 		public state: DurableObjectState,
 		public env: Env
 	) {
 		super(state, env)
+		this.queue = new ExpiryAlarmQueue(state.storage, {
+			prefix: 'temporary-role-assignments:expiry:',
+			pastDue: 'process',
+			retry: {
+				maxAttempts: 2,
+				baseDelayMs: RETRY_DELAY_MS,
+				maxDelayMs: CLAIM_LEASE_MS,
+				onExhausted: 'retain',
+			},
+			handler: (context) => this.processExpiry(context),
+		})
 		void state.blockConcurrencyWhile(async () => {
 			state.storage.sql.exec(`
 				CREATE TABLE IF NOT EXISTS temporary_role_assignments (
@@ -184,8 +203,7 @@ export class TemporaryRoleAssignmentsDO
 			} catch {
 				// Existing DO instances already have the column.
 			}
-			const existingAlarm = await state.storage.getAlarm()
-			if (existingAlarm === null) await this.rescheduleAlarm()
+			await this.reconcileExpiryQueue()
 		})
 	}
 
@@ -306,7 +324,7 @@ export class TemporaryRoleAssignmentsDO
 				revision,
 				existing.id
 			)
-			await this.rescheduleAlarm()
+			await this.reconcileExpiryQueue()
 			return this.queryRows(`SELECT * FROM temporary_role_assignments WHERE id = ?`, existing.id)[0]
 		}
 
@@ -327,7 +345,7 @@ export class TemporaryRoleAssignmentsDO
 			revision,
 			input.interactionId ?? null
 		)
-		await this.rescheduleAlarm()
+		await this.reconcileExpiryQueue()
 		return this.queryRows(`SELECT * FROM temporary_role_assignments WHERE id = ?`, id)[0]
 	}
 
@@ -338,7 +356,7 @@ export class TemporaryRoleAssignmentsDO
 		await this.assertGuild(guildId)
 		const sourceClause = input.onlySelf ? ` AND assignment_source = 'self'` : ''
 		const existing = this.queryRows(
-			`SELECT * FROM temporary_role_assignments WHERE guild_id = ? AND role_id = ? AND discord_user_id = ? AND status IN ('active', 'claimed', 'failed') AND NOT (status = 'failed' AND failure_message = 'removed')${sourceClause} ORDER BY revision DESC LIMIT 1`,
+			`SELECT * FROM temporary_role_assignments WHERE guild_id = ? AND role_id = ? AND discord_user_id = ? AND status IN ('active', 'removal_pending', 'claimed', 'failed') AND NOT (status = 'failed' AND failure_message = 'removed')${sourceClause} ORDER BY revision DESC LIMIT 1`,
 			guildId,
 			input.roleId,
 			input.discordUserId
@@ -352,7 +370,7 @@ export class TemporaryRoleAssignmentsDO
 			revision,
 			existing.id
 		)
-		await this.rescheduleAlarm()
+		await this.reconcileExpiryQueue()
 		return this.queryRows(`SELECT * FROM temporary_role_assignments WHERE id = ?`, existing.id)[0]
 	}
 
@@ -451,7 +469,7 @@ export class TemporaryRoleAssignmentsDO
 				)
 			}
 		}
-		await this.rescheduleAlarm()
+		await this.reconcileExpiryQueue()
 	}
 
 	async deleteAssignment(
@@ -467,7 +485,7 @@ export class TemporaryRoleAssignmentsDO
 			assignmentId,
 			expectedRevision
 		)
-		await this.rescheduleAlarm()
+		await this.reconcileExpiryQueue()
 	}
 
 	async restoreAssignment(
@@ -493,121 +511,206 @@ export class TemporaryRoleAssignmentsDO
 			assignmentId,
 			expectedRevision
 		)
-		await this.rescheduleAlarm()
+		await this.reconcileExpiryQueue()
 	}
 
 	async reschedule(guildId: string): Promise<void> {
 		await this.assertGuild(guildId)
-		await this.rescheduleAlarm()
+		await this.reconcileExpiryQueue()
 	}
 
-	private async rescheduleAlarm(): Promise<void> {
+	private async reconcileExpiryQueue(): Promise<void> {
 		const now = Date.now()
 		this.state.storage.sql.exec(
 			`DELETE FROM temporary_role_assignments WHERE status = 'failed' AND failure_expires_at IS NOT NULL AND failure_expires_at <= ?`,
 			now
 		)
-		const next = this.state.storage.sql
-			.exec<{
-				due_at: number | null
-			}>(
-				`SELECT MIN(due_at) AS due_at FROM (SELECT expires_at AS due_at FROM temporary_role_assignments WHERE status = 'active' AND expires_at IS NOT NULL UNION ALL SELECT next_attempt_at AS due_at FROM temporary_role_assignments WHERE status IN ('removal_pending', 'failed') AND next_attempt_at IS NOT NULL UNION ALL SELECT next_attempt_at AS due_at FROM temporary_role_assignments WHERE status = 'claimed' AND next_attempt_at IS NOT NULL UNION ALL SELECT failure_expires_at AS due_at FROM temporary_role_assignments WHERE status = 'failed' AND failure_expires_at IS NOT NULL)`
-			)
+		const rows = this.state.storage.sql
+			.exec<Record<string, SqlValue>>(`SELECT * FROM temporary_role_assignments`)
+			.toArray()
+		const items = rows.flatMap((rawRow) => {
+			const row = rowToAssignment(rawRow)
+			const dueAt =
+				row.status === 'active'
+					? row.expiresAt
+					: row.status === 'removal_pending' || row.status === 'claimed'
+						? row.nextAttemptAt
+						: rawRow.failure_expires_at === null || rawRow.failure_expires_at === undefined
+							? null
+							: Number(rawRow.failure_expires_at)
+			if (dueAt === null || dueAt === undefined || !Number.isFinite(dueAt)) return []
+			return [
+				{
+					id: row.id,
+					dueAt,
+					payload: { assignmentId: row.id, revision: row.revision },
+				},
+			]
+		})
+		await this.queue.replace(items)
+	}
+
+	private async processExpiry(context: {
+		id: string
+		payload: TemporaryRoleExpiryPayload
+		claimId: string
+	}): Promise<
+		| { action: 'complete' }
+		| { action: 'reschedule'; dueAt: number; payload?: TemporaryRoleExpiryPayload }
+	> {
+		const rawRow = this.state.storage.sql
+			.exec<
+				Record<string, SqlValue>
+			>(`SELECT * FROM temporary_role_assignments WHERE id = ?`, context.id)
 			.toArray()[0]
-		if (next?.due_at === null || next?.due_at === undefined) {
-			await this.state.storage.deleteAlarm()
-			return
+		if (!rawRow) return { action: 'complete' }
+
+		let row = rowToAssignment(rawRow)
+		let dueAt = this.dueAtForRow(row, rawRow)
+		const now = Date.now()
+		if (dueAt !== null && dueAt > now) {
+			return {
+				action: 'reschedule',
+				dueAt,
+				payload: { assignmentId: row.id, revision: row.revision },
+			}
 		}
-		await this.state.storage.setAlarm(Math.max(now + 1000, next.due_at))
+
+		if (row.status === 'failed') {
+			this.state.storage.sql.exec(`DELETE FROM temporary_role_assignments WHERE id = ?`, row.id)
+			return { action: 'complete' }
+		}
+
+		if (row.status === 'active') {
+			if (row.expiresAt === null) return { action: 'complete' }
+			const revision = await this.nextRevision()
+			this.state.storage.sql.exec(
+				`UPDATE temporary_role_assignments SET status = 'removal_pending', removal_reason = 'expired', next_attempt_at = ?, attempt_count = 0, claim_token = NULL, revision = ? WHERE id = ? AND status = 'active' AND revision = ?`,
+				now,
+				revision,
+				row.id,
+				row.revision
+			)
+			const updated = this.state.storage.sql
+				.exec<
+					Record<string, SqlValue>
+				>(`SELECT * FROM temporary_role_assignments WHERE id = ?`, row.id)
+				.toArray()[0]
+			if (!updated) return { action: 'complete' }
+			row = rowToAssignment(updated)
+			dueAt = this.dueAtForRow(row, updated)
+		}
+
+		if (
+			(row.status !== 'removal_pending' && row.status !== 'claimed') ||
+			dueAt === null ||
+			dueAt > now
+		) {
+			return dueAt === null
+				? { action: 'complete' }
+				: {
+						action: 'reschedule',
+						dueAt,
+						payload: { assignmentId: row.id, revision: row.revision },
+					}
+		}
+
+		const claimToken = context.claimId
+		this.state.storage.sql.exec(
+			`UPDATE temporary_role_assignments SET status = 'claimed', attempt_count = attempt_count + 1, next_attempt_at = ?, claim_token = ? WHERE id = ? AND revision = ? AND status IN ('removal_pending', 'claimed') AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`,
+			now + CLAIM_LEASE_MS,
+			claimToken,
+			row.id,
+			row.revision,
+			now
+		)
+		if (row.coreUserId) {
+			try {
+				await createWorkflow(this.env.USER_DISCORD_REFRESH_WORKFLOW, {
+					id: `temporary-role-expiry-${row.guildId}-${row.coreUserId}-${Date.now().toString(36)}`,
+					params: {
+						userId: row.coreUserId,
+						source: 'temporary-role-expiry',
+						allowRemoval: true,
+						skipInvites: true,
+						temporaryRoleRemovalsByGuild: {
+							[row.guildId]: [{ assignmentId: row.id, revision: row.revision, claimToken }],
+						},
+					},
+				})
+			} catch (error) {
+				await this.completeRemoval(
+					row.guildId,
+					[{ assignmentId: row.id, revision: row.revision, claimToken }],
+					false,
+					String(error)
+				)
+				return this.queueOutcomeForCurrentRow(row.id)
+			}
+			return {
+				action: 'reschedule',
+				dueAt: now + CLAIM_LEASE_MS,
+				payload: { assignmentId: row.id, revision: row.revision },
+			}
+		}
+
+		let result: { success: boolean; error?: string }
+		try {
+			result = await this.applyRoleMutation(row.guildId, {
+				assignmentId: row.id,
+				roleId: row.roleId,
+				discordUserId: row.discordUserId,
+				action: 'remove',
+				revision: row.revision,
+			})
+		} catch (error) {
+			await this.completeRemoval(
+				row.guildId,
+				[{ assignmentId: row.id, revision: row.revision, claimToken }],
+				false,
+				String(error)
+			)
+			return this.queueOutcomeForCurrentRow(row.id)
+		}
+		await this.completeRemoval(
+			row.guildId,
+			[{ assignmentId: row.id, revision: row.revision, claimToken }],
+			result.success,
+			result.error
+		)
+		return this.queueOutcomeForCurrentRow(row.id)
+	}
+
+	private dueAtForRow(
+		row: TemporaryRoleAssignment,
+		rawRow: Record<string, SqlValue>
+	): number | null {
+		if (row.status === 'active') return row.expiresAt
+		if (row.status === 'removal_pending' || row.status === 'claimed') return row.nextAttemptAt
+		if (rawRow.failure_expires_at === null || rawRow.failure_expires_at === undefined) return null
+		return Number(rawRow.failure_expires_at)
+	}
+
+	private async queueOutcomeForCurrentRow(
+		assignmentId: string
+	): Promise<
+		| { action: 'complete' }
+		| { action: 'reschedule'; dueAt: number; payload?: TemporaryRoleExpiryPayload }
+	> {
+		const rawRow = this.state.storage.sql
+			.exec<
+				Record<string, SqlValue>
+			>(`SELECT * FROM temporary_role_assignments WHERE id = ?`, assignmentId)
+			.toArray()[0]
+		if (!rawRow) return { action: 'complete' }
+		const row = rowToAssignment(rawRow)
+		const dueAt = this.dueAtForRow(row, rawRow)
+		return dueAt === null
+			? { action: 'complete' }
+			: { action: 'reschedule', dueAt, payload: { assignmentId: row.id, revision: row.revision } }
 	}
 
 	async alarm(): Promise<void> {
-		try {
-			const guildId = await this.state.storage.get<string>(GUILD_ID_STORAGE_KEY)
-			if (!guildId) {
-				await this.state.storage.deleteAlarm()
-				return
-			}
-			const now = Date.now()
-			const due = this.queryRows(
-				`SELECT * FROM temporary_role_assignments WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= ? LIMIT 100`,
-				now
-			)
-			for (const assignment of due) {
-				const revision = await this.nextRevision()
-				this.state.storage.sql.exec(
-					`UPDATE temporary_role_assignments SET status = 'removal_pending', removal_reason = 'expired', next_attempt_at = ?, attempt_count = 0, claim_token = NULL, revision = ? WHERE id = ? AND status = 'active'`,
-					now,
-					revision,
-					assignment.id
-				)
-			}
-
-			const pending = this.queryRows(
-				`SELECT * FROM temporary_role_assignments WHERE status IN ('removal_pending', 'claimed') AND next_attempt_at IS NOT NULL AND next_attempt_at <= ? LIMIT 100`,
-				now
-			)
-			const linked = new Map<
-				string,
-				Array<{ assignmentId: string; revision: number; claimToken: string }>
-			>()
-			for (const assignment of pending) {
-				const claimToken = crypto.randomUUID()
-				this.state.storage.sql.exec(
-					`UPDATE temporary_role_assignments SET status = 'claimed', attempt_count = attempt_count + 1, next_attempt_at = ?, claim_token = ? WHERE id = ? AND status IN ('removal_pending', 'claimed') AND (next_attempt_at IS NULL OR next_attempt_at <= ?)`,
-					now + CLAIM_LEASE_MS,
-					claimToken,
-					assignment.id,
-					now
-				)
-				if (assignment.coreUserId) {
-					const ids = linked.get(assignment.coreUserId) ?? []
-					ids.push({ assignmentId: assignment.id, revision: assignment.revision, claimToken })
-					linked.set(assignment.coreUserId, ids)
-					continue
-				}
-
-				const result = await this.applyRoleMutation(guildId, {
-					assignmentId: assignment.id,
-					roleId: assignment.roleId,
-					discordUserId: assignment.discordUserId,
-					action: 'remove',
-					revision: assignment.revision,
-				})
-				await this.completeRemoval(
-					guildId,
-					[{ assignmentId: assignment.id, revision: assignment.revision, claimToken }],
-					result.success,
-					result.error
-				)
-			}
-
-			for (const [coreUserId, assignmentIds] of linked) {
-				try {
-					await createWorkflow(this.env.USER_DISCORD_REFRESH_WORKFLOW, {
-						id: `temporary-role-expiry-${guildId}-${coreUserId}-${Date.now().toString(36)}`,
-						params: {
-							userId: coreUserId,
-							source: 'temporary-role-expiry',
-							allowRemoval: true,
-							temporaryRoleRemovalsByGuild: { [guildId]: assignmentIds },
-						},
-					})
-				} catch (error) {
-					await this.completeRemoval(guildId, assignmentIds, false, String(error))
-				}
-			}
-			await this.rescheduleAlarm()
-		} catch (error) {
-			console.error('[TemporaryRoleAssignmentsDO] Alarm processing failed', error)
-			try {
-				await this.state.storage.setAlarm(Date.now() + RETRY_DELAY_MS)
-			} catch (recoveryError) {
-				console.error(
-					'[TemporaryRoleAssignmentsDO] Failed to schedule alarm recovery',
-					recoveryError
-				)
-			}
-		}
+		await this.queue.alarm()
 	}
 }

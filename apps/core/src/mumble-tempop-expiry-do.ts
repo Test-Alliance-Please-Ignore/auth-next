@@ -30,7 +30,7 @@ export class MumbleTempopExpiryDO extends DurableObject<Env> implements MumbleTe
 
 	constructor(
 		private readonly state: DurableObjectState,
-		private readonly env: Env
+		public readonly env: Env
 	) {
 		super(state, env)
 		this.queue = new ExpiryAlarmQueue(state.storage, {

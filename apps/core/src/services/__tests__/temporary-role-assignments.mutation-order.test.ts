@@ -152,33 +152,50 @@ describe('temporary role mutation ordering', () => {
 		expect(discordStub.removeGuildMemberRole).toHaveBeenCalledTimes(1)
 	})
 
-	it('reschedules a recovery alarm when alarm processing throws unexpectedly', async () => {
-		const setAlarm = vi.fn()
-		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+	it('delegates alarm processing to the shared expiry queue', async () => {
+		const alarm = vi.fn().mockRejectedValue(new Error('storage unavailable'))
 		const instance = Object.create(
 			TemporaryRoleAssignmentsDO.prototype
 		) as TemporaryRoleAssignmentsDO
 		Object.assign(instance, {
-			state: {
-				storage: {
-					get: vi.fn().mockResolvedValue('guild-1'),
-					setAlarm,
-					sql: {
-						exec: vi.fn(() => {
-							throw new Error('storage unavailable')
-						}),
-					},
-				},
-			},
+			queue: { alarm },
 			env: { DISCORD: {} },
 		})
 
-		try {
-			await instance.alarm()
-		} finally {
-			consoleError.mockRestore()
-		}
+		await expect(instance.alarm()).rejects.toThrow('storage unavailable')
+		expect(alarm).toHaveBeenCalledOnce()
+	})
 
-		expect(setAlarm).toHaveBeenCalledWith(expect.any(Number))
+	it('rebuilds queue entries from the SQL source of truth', async () => {
+		const replace = vi.fn().mockResolvedValue(undefined)
+		const rows = [
+			[
+				{
+					id: 'assignment-1',
+					guild_id: 'guild-1',
+					role_id: 'role-1',
+					role_name: 'Role',
+					discord_user_id: 'user-1',
+					assignment_source: 'self',
+					assigned_at: 1,
+					expires_at: 10_000,
+					status: 'active',
+					revision: 4,
+					attempt_count: 0,
+				},
+			],
+		]
+		const instance = makeDurableObject(rows)
+		Object.assign(instance, { queue: { replace } })
+
+		await instance.reschedule('guild-1')
+
+		expect(replace).toHaveBeenCalledWith([
+			{
+				id: 'assignment-1',
+				dueAt: 10_000,
+				payload: { assignmentId: 'assignment-1', revision: 4 },
+			},
+		])
 	})
 })
