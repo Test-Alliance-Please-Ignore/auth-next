@@ -19,7 +19,7 @@ import {
 import type { Discord } from '@repo/discord'
 import type { Env } from './context'
 
-export interface ImmunitasAlertsApi {
+export interface ImmunitasAlerts {
 	queueImmunitasAccessAlert(input: ImmunitasAccessAlertInput): Promise<{
 		added: number
 		skipped: number
@@ -57,7 +57,7 @@ type AlertPayload = {
 const PREFIX = 'immunitas-alert:'
 const PAYLOAD_PREFIX = `${PREFIX}payload:`
 
-export class ImmunitasAlerts extends DurableObject<Env> implements ImmunitasAlertsApi {
+export class ImmunitasAlertsDO extends DurableObject<Env> implements ImmunitasAlerts {
 	private readonly queue: ExpiryAlarmQueue<AlertPayload>
 
 	constructor(

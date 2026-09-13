@@ -17,7 +17,7 @@ import { BillingScopeCacheDO } from './billing-scope-cache-do'
 import { createDb } from './db'
 import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from './db/schema'
 import { CoreDO } from './durable-object'
-import { ImmunitasAlerts } from './immunitas-alerts-do'
+import { ImmunitasAlertsDO } from './immunitas-alerts-do'
 import { waitUntilWithTelemetry } from './lib/background-task'
 import { cleanupExpiredExportArtifacts } from './lib/export-retention'
 import { getFleetParticipationExportBucket } from './lib/fleet-participation-export'
@@ -26,7 +26,7 @@ import { TOKEN_INVALID_ALERT_DRAIN_CRON } from './lib/token-invalid-alerts'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { csrfProtection } from './middleware/csrf'
 import { sessionMiddleware } from './middleware/session'
-import { MumbleTempopExpiry } from './mumble-tempop-expiry-do'
+import { MumbleTempopExpiryDO } from './mumble-tempop-expiry-do'
 import adminRoutes from './routes/admin'
 import adminNavigationLinksRoutes from './routes/admin/navigation-links'
 import adminStructuresRoutes from './routes/admin/structures'
@@ -112,8 +112,8 @@ import type {
 	PredictionMarkets,
 } from '@repo/prediction-markets'
 import type { App, Env } from './context'
-import type { ImmunitasAlertsApi } from './immunitas-alerts-do'
-import type { MumbleTempopExpiryApi } from './mumble-tempop-expiry-do'
+import type { ImmunitasAlerts } from './immunitas-alerts-do'
+import type { MumbleTempopExpiry } from './mumble-tempop-expiry-do'
 import type {
 	DiscordInteractionRouting,
 	ExecuteDiscordSlashCommandInput,
@@ -251,7 +251,7 @@ export default {
 				}
 				const expiryRepair = isolateMaintenanceJob(
 					'mumble-tempop-expiry',
-					getStub<MumbleTempopExpiryApi>(env.MUMBLE_TEMPOP_EXPIRY, 'default')
+					getStub<MumbleTempopExpiry>(env.MUMBLE_TEMPOP_EXPIRY, 'default')
 						.reconcile()
 						.then((result) => {
 							scheduledLogger.info(
@@ -279,7 +279,7 @@ export default {
 				)
 				const immunitasRepair = isolateMaintenanceJob(
 					'immunitas-alerts',
-					getStub<ImmunitasAlertsApi>(env.IMMUNITAS_ALERTS, 'default').reconcile()
+					getStub<ImmunitasAlerts>(env.IMMUNITAS_ALERTS, 'default').reconcile()
 				)
 				const structureCleanup = isolateMaintenanceJob(
 					'structure-export-cleanup',
@@ -1238,8 +1238,8 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 // Use manual captureException() in DO methods for error tracking
 export { CoreDO as Core }
 export { TemporaryRoleAssignmentsDO as TemporaryRoleAssignments }
-export { MumbleTempopExpiry }
-export { ImmunitasAlerts }
+export { MumbleTempopExpiryDO as MumbleTempopExpiry }
+export { ImmunitasAlertsDO as ImmunitasAlerts }
 export { BillingScopeCacheDO }
 
 // Export Workflow class

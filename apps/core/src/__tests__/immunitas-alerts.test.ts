@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getStub } from '@repo/do-utils'
 
 import { createDb } from '../db'
-import { ImmunitasAlerts } from '../immunitas-alerts-do'
+import { ImmunitasAlertsDO } from '../immunitas-alerts-do'
 import {
 	buildImmunitasAccessAlertMessage,
 	shouldRetryImmunitasAccessAlertDelivery,
@@ -81,7 +81,7 @@ describe('Immunitas alert formatting and retry policy', () => {
 	})
 })
 
-describe('ImmunitasAlerts', () => {
+describe('ImmunitasAlertsDO', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		createDbMock.mockReturnValue({
@@ -91,7 +91,7 @@ describe('ImmunitasAlerts', () => {
 	it('aggregates alerts and arms the delayed alarm', async () => {
 		const storage = new FakeStorage()
 		getStubMock.mockReturnValue({ sendDirectMessage: vi.fn() } as unknown as Discord)
-		const alerts = new ImmunitasAlerts(createState(storage), { DISCORD: {} } as any)
+		const alerts = new ImmunitasAlertsDO(createState(storage), { DISCORD: {} } as any)
 		await alerts.queueImmunitasAccessAlert(input)
 		await alerts.queueImmunitasAccessAlert({ ...input, targetCharacterLabel: 'Second Pilot' })
 		expect(storage.alarmAt).toBeGreaterThan(Date.now())
@@ -103,7 +103,7 @@ describe('ImmunitasAlerts', () => {
 			sendDirectMessage: vi.fn().mockResolvedValue({ success: true, messageId: 'message' }),
 		}
 		getStubMock.mockReturnValue(discord as unknown as Discord)
-		const alerts = new ImmunitasAlerts(createState(storage), { DISCORD: {} } as any)
+		const alerts = new ImmunitasAlertsDO(createState(storage), { DISCORD: {} } as any)
 		await alerts.queueImmunitasAccessAlert(input)
 		const payload = await storage.get<any>('immunitas-alert:payload:target-user:fulcrum-report')
 		const duePayload = { ...payload, nextEligibleAt: 0 }
@@ -121,7 +121,7 @@ describe('ImmunitasAlerts', () => {
 				.mockResolvedValue({ success: false, error: 'Discord API error: 401' }),
 		}
 		getStubMock.mockReturnValue(discord as unknown as Discord)
-		const alerts = new ImmunitasAlerts(createState(storage), { DISCORD: {} } as any)
+		const alerts = new ImmunitasAlertsDO(createState(storage), { DISCORD: {} } as any)
 		await alerts.queueImmunitasAccessAlert(input)
 		const payload = await storage.get<any>('immunitas-alert:payload:target-user:fulcrum-report')
 		const duePayload = { ...payload, nextEligibleAt: 0 }
