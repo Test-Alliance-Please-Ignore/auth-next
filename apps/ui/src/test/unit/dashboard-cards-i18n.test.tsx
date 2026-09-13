@@ -92,7 +92,7 @@ function renderCards(children: ReactNode) {
 			'Discord-Zugriff aktualisieren',
 			'Dienste',
 		],
-		['ko', '연결된 계정', 'Discord 연결 새로고침', '서비스'],
+		['ko', '연결된 계정', 'Discord 접근 권한 갱신', '서비스'],
 	] as const)(
 		'renders dashboard card copy in %s without changing account data',
 		async (locale, connected, refresh, services) => {
@@ -122,7 +122,7 @@ function renderCards(children: ReactNode) {
 		)
 		expect(revoked).toContain('인증 권한 취소됨')
 		expect(revoked).toContain('Discord 계정 다시 연결')
-		expect(revoked).not.toContain('Discord 연결 새로고침')
+		expect(revoked).not.toContain('Discord 접근 권한 갱신')
 
 		state.linkPending = true
 		state.linkError = new Error('Upstream diagnostic')
