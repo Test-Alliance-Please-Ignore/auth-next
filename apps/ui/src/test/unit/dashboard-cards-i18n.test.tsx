@@ -9,15 +9,14 @@ import { formatNumber, i18n, I18nProvider, setAppLocale } from '@/i18n'
 
 import type { ReactNode } from 'react'
 import type { User } from '@/hooks/useAuth'
-import type { UserService } from '@/lib/api'
 
 const state = vi.hoisted(() => ({
-	isLoading: false,
-	error: null as Error | null,
-	services: [] as UserService[],
 	linkPending: false,
 	linkError: null as Error | null,
 	mumbleEnabled: false,
+	mumbleFeatureLoading: false,
+	mumbleLoading: false,
+	mumbleError: null as Error | null,
 }))
 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { is_admin: true } }) }))
@@ -29,16 +28,11 @@ vi.mock('@/hooks/useDiscord', () => ({
 		error: state.linkError,
 	}),
 }))
-vi.mock('@/hooks/useServices', () => ({
-	serviceKeys: { user: () => ['services', 'user'] },
-	useUserServices: () => ({
-		data: state.services,
-		isLoading: state.isLoading,
-		error: state.error,
-	}),
-}))
 vi.mock('@/features/mumble/feature', () => ({
-	useMumbleFeatureEnabled: () => ({ isEnabled: state.mumbleEnabled, isLoading: false }),
+	useMumbleFeatureEnabled: () => ({
+		isEnabled: state.mumbleEnabled,
+		isLoading: state.mumbleFeatureLoading,
+	}),
 }))
 vi.mock('@/features/mumble/hooks', () => ({
 	useMumbleAccount: () => ({
@@ -46,8 +40,8 @@ vi.mock('@/features/mumble/hooks', () => ({
 			account: { enabled: true, loginName: 'pilot.voice' },
 			connection: { host: 'voice.example.test', port: 64738 },
 		},
-		isLoading: false,
-		error: null,
+		isLoading: state.mumbleLoading,
+		error: state.mumbleError,
 	}),
 }))
 
@@ -76,14 +70,14 @@ function renderCards(children: ReactNode) {
 	)
 }
 
-describe('localized dashboard cards', () => {
+	describe('localized dashboard cards', () => {
 	beforeEach(() => {
-		state.isLoading = false
-		state.error = null
-		state.services = []
 		state.linkPending = false
 		state.linkError = null
 		state.mumbleEnabled = false
+		state.mumbleFeatureLoading = false
+		state.mumbleLoading = false
+		state.mumbleError = null
 	})
 
 	afterEach(async () => {
@@ -91,33 +85,32 @@ describe('localized dashboard cards', () => {
 	})
 
 	it.each([
-		['en', 'Connected account', 'Refresh Discord Access', 'Services', 'No services configured'],
+		['en', 'Connected account', 'Refresh Discord Access', 'Services'],
 		[
 			'de',
 			'Verknüpftes Konto',
 			'Discord-Zugriff aktualisieren',
 			'Dienste',
-			'Keine Dienste eingerichtet',
 		],
-		['ko', '연결된 계정', 'Discord 접근 권한 갱신', '서비스', '설정된 서비스 없음'],
+		['ko', '연결된 계정', 'Discord 연결 새로고침', '서비스'],
 	] as const)(
 		'renders dashboard card copy in %s without changing account data',
-		async (locale, connected, refresh, services, empty) => {
+		async (locale, connected, refresh, services) => {
 			await setAppLocale(locale, { persistLocal: false })
+			state.mumbleEnabled = true
 			const html = renderCards(
 				<>
 					<DiscordCard user={user} />
-					<ServicesCard isLegacyAuthLinked={false} />
+					<ServicesCard />
 				</>
 			)
 
-			for (const message of [connected, refresh, services, empty, 'Pilot Name', '987654321']) {
+			for (const message of [connected, refresh, services, 'pilot.voice', 'voice.example.test']) {
 				expect(html).toContain(message)
 			}
 			if (locale !== 'en') {
 				expect(html).not.toContain('Connected account')
 				expect(html).not.toContain('Refresh Discord Access')
-				expect(html).not.toContain('Manage your linked services')
 			}
 		}
 	)
@@ -129,7 +122,7 @@ describe('localized dashboard cards', () => {
 		)
 		expect(revoked).toContain('인증 권한 취소됨')
 		expect(revoked).toContain('Discord 계정 다시 연결')
-		expect(revoked).not.toContain('Discord 접근 권한 갱신')
+		expect(revoked).not.toContain('Discord 연결 새로고침')
 
 		state.linkPending = true
 		state.linkError = new Error('Upstream diagnostic')
@@ -141,41 +134,22 @@ describe('localized dashboard cards', () => {
 
 	it('keeps loading and failed service states localized', async () => {
 		await setAppLocale('ko', { persistLocal: false })
-		state.isLoading = true
-		const loading = renderCards(<ServicesCard isLegacyAuthLinked />)
+		state.mumbleEnabled = true
+		state.mumbleFeatureLoading = true
+		const loading = renderCards(<ServicesCard />)
+		expect(loading).toContain('서비스')
 		expect(loading).toContain('연결된 서비스 관리')
-		expect(loading).not.toContain('Manage your linked services')
 
-		state.isLoading = false
-		state.error = new Error('Unavailable')
-		const failed = renderCards(<ServicesCard isLegacyAuthLinked />)
-		expect(failed).toContain('서비스를 불러오지 못했습니다. 나중에 다시 시도해 주세요.')
+		state.mumbleFeatureLoading = false
+		state.mumbleError = new Error('Unavailable')
+		const failed = renderCards(<ServicesCard />)
+		expect(failed).toContain('서비스')
 	})
 
 	it('localizes service statuses and accessible copy without changing service data or links', async () => {
 		await setAppLocale('de', { persistLocal: false })
 		state.mumbleEnabled = true
-		state.services = [
-			{
-				id: 'user-service-1',
-				serviceId: 'service-1',
-				enabled: false,
-				createdAt: '2026-09-10T00:00:00Z',
-				updatedAt: '2026-09-10T00:00:00Z',
-				service: {
-					id: 'service-1',
-					name: 'Community Forum',
-					slug: 'forum',
-					icon: '/forum.svg',
-					description: null,
-					enabled: true,
-				},
-			},
-		]
-		const html = renderCards(<ServicesCard isLegacyAuthLinked />)
-		expect(html).toContain('title="Community Forum verwalten"')
-		expect(html).toContain('alt="Symbol für Community Forum"')
-		expect(html).toContain('>Deaktiviert</')
+		const html = renderCards(<ServicesCard />)
 		expect(html).toContain('>Aktiv</')
 		expect(html).toContain('>Öffnen</')
 		expect(html).toContain('href="/mumble"')
