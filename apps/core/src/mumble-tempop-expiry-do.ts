@@ -15,7 +15,7 @@ export type MumbleTempopExpiryItem =
 	| { kind: 'tempop'; tempopId: string }
 	| { kind: 'credential-handoff'; tokenHash: string }
 
-export interface MumbleTempopExpiry {
+export interface MumbleTempopExpiryApi {
 	scheduleTempop(tempopId: string, expiresAt: number): Promise<void>
 	cancelTempop(tempopId: string): Promise<void>
 	scheduleCredentialHandoff(tokenHash: string, expiresAt: number): Promise<void>
@@ -25,7 +25,7 @@ export interface MumbleTempopExpiry {
 
 const PREFIX = 'mumble-tempop-expiry:'
 
-export class MumbleTempopExpiryDO extends DurableObject<Env> implements MumbleTempopExpiry {
+export class MumbleTempopExpiry extends DurableObject<Env> implements MumbleTempopExpiryApi {
 	private readonly queue: ExpiryAlarmQueue<MumbleTempopExpiryItem>
 
 	constructor(
