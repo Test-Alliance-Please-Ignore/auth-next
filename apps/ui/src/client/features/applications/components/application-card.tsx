@@ -8,7 +8,6 @@
 import { formatDistanceToNow } from 'date-fns'
 import { MessageSquare } from 'lucide-react'
 
-import { useEntityNames } from '@/hooks/useEntityNames'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
@@ -16,15 +15,15 @@ import { cn } from '@/lib/utils'
 import { ApplicationCharacterStack } from './application-character-stack'
 import { ApplicationStatusBadge } from './application-status-badge'
 
-import type { Application } from '../api'
+import type { ApplicationListItem } from '../api'
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export interface ApplicationCardProps {
-	application: Application
-	onClick?: (application: Application) => void
+	application: ApplicationListItem
+	onClick?: (application: ApplicationListItem) => void
 	className?: string
 }
 
@@ -52,10 +51,11 @@ export function ApplicationCard({ application, onClick, className }: Application
 
 	const isInteractive = !!onClick
 
-	const altCharacterIds = application.altCharacterIds ?? []
-	const { data: altCharacterNames = {} } = useEntityNames(altCharacterIds, {
-		enabled: altCharacterIds.length > 0,
-	})
+	const altCharacters = application.altCharacters ?? []
+	const altCharacterIds = altCharacters.map((character) => character.characterId)
+	const altCharacterNames = Object.fromEntries(
+		altCharacters.map((character) => [character.characterId, character.characterName])
+	)
 
 	return (
 		<Card
@@ -110,7 +110,7 @@ export function ApplicationCard({ application, onClick, className }: Application
 
 						{/* Application Text Preview */}
 						<p className="text-sm text-muted-foreground line-clamp-2">
-							{application.applicationText}
+							{application.applicationTextPreview ?? 'Application submitted'}
 						</p>
 
 						{/* Metadata Row */}

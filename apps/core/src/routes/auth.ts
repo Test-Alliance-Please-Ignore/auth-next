@@ -803,28 +803,28 @@ auth.get('/callback', async (c) => {
 			refreshMode: 'event',
 		})
 
-		// Auto-register corporation if character is a director
-		let autoRegResult
-		try {
-			autoRegResult = await autoRegisterDirectorCorporation(
-				characterId,
-				characterInfo.characterName,
-				stateUserId,
-				db,
-				c.env.EVE_TOKEN_STORE,
-				c.env.ESI,
-				c.env.EVE_CORPORATION_DATA,
-				c.env.BILLING_SCOPE_CACHE
-			)
-		} catch (error) {
-			// Don't fail character linking if auto-registration fails
-			logger.error('[Auth] Auto-registration failed:', toErrorMessage(error))
-		}
+		// Auto-registration is best-effort and may require multiple ESI requests.
+		// Keep it out of the authentication response path.
+		waitUntilWithTelemetry(
+			c.executionCtx,
+			'auth.director-corporation-auto-registration',
+			() =>
+				autoRegisterDirectorCorporation(
+					characterId,
+					characterInfo.characterName,
+					stateUserId,
+					db,
+					c.env.EVE_TOKEN_STORE,
+					c.env.ESI,
+					c.env.EVE_CORPORATION_DATA,
+					c.env.BILLING_SCOPE_CACHE
+				),
+			{ userId: stateUserId, characterId }
+		)
 
 		return c.json({
 			characterLinked: true,
 			character: linkedCharacter,
-			autoRegistration: autoRegResult,
 		})
 	}
 
@@ -957,23 +957,24 @@ auth.get('/callback', async (c) => {
 			refreshMode: 'event',
 		})
 
-		// Auto-register corporation if character is a director
-		let autoRegResult
-		try {
-			autoRegResult = await autoRegisterDirectorCorporation(
-				characterId,
-				characterInfo.characterName,
-				user.id,
-				db,
-				c.env.EVE_TOKEN_STORE,
-				c.env.ESI,
-				c.env.EVE_CORPORATION_DATA,
-				c.env.BILLING_SCOPE_CACHE
-			)
-		} catch (error) {
-			// Don't fail login if auto-registration fails
-			logger.error('[Auth] Auto-registration failed:', toErrorMessage(error))
-		}
+		// Auto-registration is best-effort and may require multiple ESI requests.
+		// Keep it out of the authentication response path.
+		waitUntilWithTelemetry(
+			c.executionCtx,
+			'auth.director-corporation-auto-registration',
+			() =>
+				autoRegisterDirectorCorporation(
+					characterId,
+					characterInfo.characterName,
+					user.id,
+					db,
+					c.env.EVE_TOKEN_STORE,
+					c.env.ESI,
+					c.env.EVE_CORPORATION_DATA,
+					c.env.BILLING_SCOPE_CACHE
+				),
+			{ userId: user.id, characterId }
+		)
 
 		// Set session cookie
 		setCookie(c, 'session', session.sessionToken, {
@@ -992,7 +993,6 @@ auth.get('/callback', async (c) => {
 				requiresClaimMain: false,
 			},
 			redirectUrl: redirectUrl || undefined,
-			autoRegistration: autoRegResult,
 		})
 	}
 
@@ -1190,23 +1190,24 @@ auth.post('/claim-main', async (c) => {
 		refreshMode: 'event',
 	})
 
-	// Auto-register corporation if character is a director
-	let autoRegResult
-	try {
-		autoRegResult = await autoRegisterDirectorCorporation(
-			tokenInfo.characterId,
-			tokenInfo.characterName,
-			user.id,
-			db,
-			c.env.EVE_TOKEN_STORE,
-			c.env.ESI,
-			c.env.EVE_CORPORATION_DATA,
-			c.env.BILLING_SCOPE_CACHE
-		)
-	} catch (error) {
-		// Don't fail user creation if auto-registration fails
-		logger.error('[Auth] Auto-registration failed:', toErrorMessage(error))
-	}
+	// Auto-registration is best-effort and may require multiple ESI requests.
+	// Keep it out of the authentication response path.
+	waitUntilWithTelemetry(
+		c.executionCtx,
+		'auth.director-corporation-auto-registration',
+		() =>
+			autoRegisterDirectorCorporation(
+				tokenInfo.characterId,
+				tokenInfo.characterName,
+				user.id,
+				db,
+				c.env.EVE_TOKEN_STORE,
+				c.env.ESI,
+				c.env.EVE_CORPORATION_DATA,
+				c.env.BILLING_SCOPE_CACHE
+			),
+		{ userId: user.id, characterId: tokenInfo.characterId }
+	)
 
 	// Set session cookie
 	setCookie(c, 'session', session.sessionToken, {
@@ -1223,7 +1224,6 @@ auth.post('/claim-main', async (c) => {
 			id: user.id,
 			mainCharacterId: user.mainCharacterId,
 		},
-		autoRegistration: autoRegResult,
 	})
 })
 

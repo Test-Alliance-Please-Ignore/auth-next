@@ -1,8 +1,10 @@
+import { logger } from '@repo/hono-helpers'
+
 import * as discordService from '../services/discord.service'
+import { getCachedDiscordStatus } from './discord-status-cache'
 
 import type { Context } from 'hono'
 import type { App } from '../context'
-import { logger } from '@repo/hono-helpers'
 
 /**
  * Discord status information
@@ -43,8 +45,9 @@ export async function getDiscordStatus(c: Context<App>): Promise<DiscordStatus |
 	}
 
 	try {
-		const status = await discordService.getUserStatus(c.env, user.id)
-		if (status) {
+		return await getCachedDiscordStatus(user.id, async () => {
+			const status = await discordService.getUserStatus(c.env, user.id)
+			if (!status) return null
 			return {
 				userId: status.userId,
 				username: status.username,
@@ -53,7 +56,7 @@ export async function getDiscordStatus(c: Context<App>): Promise<DiscordStatus |
 				authRevokedAt: status.authRevokedAt,
 				lastSuccessfulAuth: status.lastSuccessfulAuth,
 			}
-		}
+		})
 	} catch (error) {
 		// Log but don't throw - graceful degradation
 		logger.error('Error loading Discord status:', error)

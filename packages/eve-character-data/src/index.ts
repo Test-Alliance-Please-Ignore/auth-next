@@ -208,6 +208,13 @@ export interface CharacterPublicData {
 	updatedAt: Date
 }
 
+export interface CharacterDashboardData {
+	characterId: string
+	name: string
+	corporationId: string
+	allianceId?: string
+}
+
 /**
  * Result from refreshing public character data.
  */
@@ -421,6 +428,15 @@ export interface CharacterSkillsResponse {
 	unallocated_sp?: number
 }
 
+export interface CharacterPrivateProfileData {
+	characterId: string
+	skills: CharacterSkillsResponse | null
+	sensitiveData: Pick<
+		CharacterSensitiveData,
+		'location' | 'wallet' | 'assets' | 'status' | 'skillQueue'
+	> | null
+}
+
 export interface CharacterWalletJournalWindowFilters {
 	refTypes?: string[]
 	firstPartyId?: string
@@ -593,6 +609,11 @@ export interface EveCharacterData {
 	getCharacterInfo(characterId: string): Promise<CharacterPublicData | null>
 
 	/**
+	 * Get minimal public info for multiple characters from the database.
+	 */
+	getCharacterInfoBulk(characterIds: string[]): Promise<CharacterDashboardData[]>
+
+	/**
 	 * Search for a character by name (case-insensitive)
 	 * Tries local database first, falls back to ESI search if not found
 	 * @param characterName - Character name to search for
@@ -659,6 +680,8 @@ export interface EveCharacterData {
 	 * @returns Sensitive character data or null if not found
 	 */
 	getSensitiveData(characterId: string): Promise<CharacterSensitiveData | null>
+
+	getPrivateProfileDataBulk(characterIds: string[]): Promise<CharacterPrivateProfileData[]>
 
 	/**
 	 * Get wallet journal entries for a character

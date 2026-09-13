@@ -31,7 +31,7 @@ import { useCanAccessCorporation } from '../../corporations/hooks'
 import { useHrPermissionCheck } from '../../hr/hooks'
 import { ApplicationStatsCard } from '../components/application-stats-card'
 import { ApplicationsTable } from '../components/applications-table'
-import { useApplicationsPaged } from '../hooks'
+import { useCorporationApplicationsPaged } from '../hooks'
 
 import type { ApplicationStatus } from '../api'
 
@@ -110,9 +110,9 @@ export default function HrApplicationsList() {
 		isLoading: applicationsLoading,
 		isFetching: applicationsFetching,
 		error: applicationsError,
-	} = useApplicationsPaged(
+	} = useCorporationApplicationsPaged(
+		corporationId ?? '',
 		{
-			corporationId,
 			status: activeFilter === 'all' ? undefined : (activeFilter as ApplicationStatus),
 			search: debouncedSearch.trim() || undefined,
 			limit: pageSize,

@@ -5,7 +5,7 @@ import { getStub } from '@repo/do-utils'
 import { createEveCharacterId } from '@repo/eve-types'
 import { logger } from '@repo/hono-helpers'
 
-import { userCharacters } from '../db/schema'
+import { userCharacters, users } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
 import {
 	canAccessCharacterPrivateData,
@@ -31,8 +31,13 @@ import { shouldTreatSensitiveDataAsLive } from './characters-utils'
 import type { Context } from 'hono'
 import type { Core as CoreRpc } from '@repo/core'
 import type { EsiTypeResolver } from '@repo/esi'
-import type { EveCharacterData } from '@repo/eve-character-data'
+import type { CharacterPrivateProfileData, EveCharacterData } from '@repo/eve-character-data'
 import type { App } from '../context'
+import type {
+	CharacterAccessContext,
+	CharacterAccessPrefetch,
+	CharacterAccessTargetOwner,
+} from '../lib/character-access'
 
 // Helper to transform and enrich skills data
 async function transformAndEnrichSkillsData(skills: any, env: any) {
@@ -309,18 +314,23 @@ app.post('/ownership', requireAuth(), async (c) => {
  * scope is accepted. It is the only character profile route that queues
  * profile-data immunitas access alerts.
  */
-app.get('/:characterId/private', requireAuth(), async (c) => {
-	const characterIdStr = c.req.param('characterId')
+async function getCharacterPrivateResponse(
+	c: Context<App>,
+	characterIdStr: string,
+	prefetch?: CharacterAccessPrefetch & {
+		tokenStateByCharacterId?: Map<string, boolean>
+		profileDataByCharacterId?: Map<string, CharacterPrivateProfileData>
+	}
+) {
 	const characterId = createEveCharacterId(characterIdStr)
-	const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr)
+	const accessOrResponse = await resolveCharacterAccessContext(c, characterIdStr, prefetch)
 
 	if (accessOrResponse instanceof Response) {
 		return accessOrResponse
 	}
 
 	const access = accessOrResponse
-	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
-	using eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
+	const profileData = prefetch?.profileDataByCharacterId?.get(characterIdStr)
 	try {
 		const targetOwner = access.targetOwner
 		if (targetOwner && shouldBlockCharacterPrivateAccess(access)) {
@@ -355,8 +365,11 @@ app.get('/:characterId/private', requireAuth(), async (c) => {
 			return c.json({ error: 'You do not have permission to view this character' }, 403)
 		}
 
+		const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+		using eveCharacterData = await eveCharacterDataStub.getInstance(characterId)
+
 		const [skills, allSkills] = await Promise.all([
-			eveCharacterData.getSkills(),
+			profileData?.skills ?? eveCharacterData.getSkills(),
 			getStub<any>(c.env.SKILLS, 'default')
 				.getAllSkills()
 				.catch((error: unknown) => {
@@ -374,7 +387,7 @@ app.get('/:characterId/private', requireAuth(), async (c) => {
 
 		const [enrichedSkills, sensitiveData] = await Promise.all([
 			transformAndEnrichSkillsData(skills, c.env),
-			eveCharacterData.getSensitiveData(),
+			profileData?.sensitiveData ?? eveCharacterData.getSensitiveData(),
 		])
 
 		const response: any = {
@@ -397,12 +410,18 @@ app.get('/:characterId/private', requireAuth(), async (c) => {
 		}
 
 		if (sensitiveData) {
-			const tokenState = await access.db
-				.select({ hasValidToken: userCharacters.hasValidToken })
-				.from(userCharacters)
-				.where(eq(userCharacters.characterId, characterIdStr))
-				.limit(1)
-			const sensitiveDataIsLive = shouldTreatSensitiveDataAsLive(tokenState[0]?.hasValidToken)
+			const hasValidToken = prefetch?.tokenStateByCharacterId?.get(characterIdStr)
+			const tokenState =
+				hasValidToken === undefined
+					? await access.db
+							.select({ hasValidToken: userCharacters.hasValidToken })
+							.from(userCharacters)
+							.where(eq(userCharacters.characterId, characterIdStr))
+							.limit(1)
+					: []
+			const sensitiveDataIsLive = shouldTreatSensitiveDataAsLive(
+				hasValidToken ?? tokenState[0]?.hasValidToken
+			)
 
 			if (sensitiveDataIsLive) {
 				await Promise.all([
@@ -488,6 +507,146 @@ app.get('/:characterId/private', requireAuth(), async (c) => {
 		logger.error('Error fetching private character data:', error)
 		return c.json({ error: 'Failed to fetch character data' }, 500)
 	}
+}
+
+app.get('/:characterId/private', requireAuth(), async (c) => {
+	return getCharacterPrivateResponse(c, c.req.param('characterId'))
+})
+
+app.post('/private/bulk', requireAuth(), async (c) => {
+	const body = await c.req.json().catch(() => null)
+	const characterIds =
+		body && typeof body === 'object' && 'characterIds' in body ? body.characterIds : null
+	if (
+		!Array.isArray(characterIds) ||
+		characterIds.length === 0 ||
+		characterIds.length > 50 ||
+		characterIds.some((id) => typeof id !== 'string' || !/^[1-9]\d{0,19}$/.test(id))
+	) {
+		return c.json(
+			{ error: 'characterIds must contain between 1 and 50 numeric character IDs' },
+			400
+		)
+	}
+
+	const uniqueCharacterIds = [...new Set(characterIds)]
+	const db = c.get('db')
+	if (!db) return c.json({ error: 'Database not available' }, 500)
+
+	const profileRows = await db
+		.select({
+			characterId: userCharacters.characterId,
+			userId: userCharacters.userId,
+			characterName: userCharacters.characterName,
+			hasValidToken: userCharacters.hasValidToken,
+			immunitas: users.immunitas,
+		})
+		.from(userCharacters)
+		.leftJoin(users, eq(users.id, userCharacters.userId))
+		.where(inArray(userCharacters.characterId, uniqueCharacterIds))
+	const profileByCharacterId = new Map(profileRows.map((row) => [row.characterId, row]))
+	const targetOwners = new Map<string, CharacterAccessTargetOwner | null>()
+	for (const characterId of uniqueCharacterIds) {
+		const owner = profileByCharacterId.get(characterId)
+		targetOwners.set(
+			characterId,
+			owner
+				? {
+						userId: owner.userId,
+						characterName: owner.characterName,
+						immunitas: owner.immunitas === true,
+					}
+				: null
+		)
+	}
+	const tokenStateByCharacterId = new Map(
+		profileRows.map((row) => [row.characterId, row.hasValidToken === true])
+	)
+	const accessByCharacterId = new Map<string, CharacterAccessContext>()
+	const accessResults: Array<CharacterAccessContext | Response> = new Array(
+		uniqueCharacterIds.length
+	)
+	let nextAccessIndex = 0
+	const accessWorkerCount = Math.min(4, uniqueCharacterIds.length)
+	await Promise.all(
+		Array.from({ length: accessWorkerCount }, async () => {
+			while (nextAccessIndex < uniqueCharacterIds.length) {
+				const index = nextAccessIndex++
+				const characterId = uniqueCharacterIds[index]
+				accessResults[index] = await resolveCharacterAccessContext(c, characterId, { targetOwners })
+				const access = accessResults[index]
+				if (!(access instanceof Response)) accessByCharacterId.set(characterId, access)
+			}
+		})
+	)
+	const authorizedCharacterIds = uniqueCharacterIds.filter((characterId, index) => {
+		const access = accessResults[index]
+		return access instanceof Response ? false : canAccessCharacterPrivateData(access)
+	})
+	const eveCharacterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+	const profileDataRows =
+		await eveCharacterDataStub.getPrivateProfileDataBulk(authorizedCharacterIds)
+	const profileDataByCharacterId = new Map(profileDataRows.map((row) => [row.characterId, row]))
+	const prefetch = {
+		targetOwners,
+		accessByCharacterId,
+		tokenStateByCharacterId,
+		profileDataByCharacterId,
+	}
+	const results: Array<{
+		characterId: string
+		status: 'ok' | 'forbidden' | 'unavailable'
+		data?: unknown
+	}> = new Array(uniqueCharacterIds.length)
+	let nextIndex = 0
+	const workerCount = Math.min(4, uniqueCharacterIds.length)
+
+	await Promise.all(
+		Array.from({ length: workerCount }, async () => {
+			while (nextIndex < uniqueCharacterIds.length) {
+				const index = nextIndex++
+				const characterId = uniqueCharacterIds[index]
+				try {
+					const access = accessResults[index]
+					if (access instanceof Response) {
+						results[index] = {
+							characterId,
+							status: access.status === 403 ? 'forbidden' : 'unavailable',
+						}
+						continue
+					}
+					if (!canAccessCharacterPrivateData(access)) {
+						const response = await getCharacterPrivateResponse(c, characterId, prefetch)
+						results[index] = {
+							characterId,
+							status: response.status === 403 ? 'forbidden' : 'unavailable',
+						}
+						continue
+					}
+					const profileData = profileDataByCharacterId.get(characterId)
+					results[index] = {
+						characterId,
+						status: 'ok',
+						data: {
+							characterId,
+							skills: profileData?.skills ? { totalSp: profileData.skills.total_sp } : null,
+							private: profileData?.sensitiveData?.wallet
+								? { wallet: { balance: profileData.sensitiveData.wallet.balance } }
+								: undefined,
+						},
+					}
+				} catch (error) {
+					logger.warn('[Character Detail] Bulk private detail fetch failed', {
+						characterId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+					results[index] = { characterId, status: 'unavailable' }
+				}
+			}
+		})
+	)
+
+	return c.json({ items: results })
 })
 
 /**

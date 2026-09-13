@@ -7,7 +7,6 @@
  * main content area.
  */
 
-import { useQueries } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, Link2, ShieldAlert, XCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -33,7 +32,6 @@ import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
-import { apiClient } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 import { useCanAccessCorporation, useCorporationMemberAccount } from '../../corporations/hooks'
@@ -50,6 +48,7 @@ import {
 } from '../components/user-profile-sections'
 import {
 	useApplications,
+	useCharacterPrivateDetailsBulk,
 	useFulcrumUserReports,
 	useHRNotes,
 	useHrUserCharacters,
@@ -216,33 +215,34 @@ export default function HrMemberProfile() {
 
 		return [...inCorp, ...external]
 	}, [account, hrCharacters, hrCharacterById, reportCharacterById])
-	const characterDetailQueries = useQueries({
-		queries: unifiedCharacters.map((character) => ({
-			queryKey: ['character', character.characterId, 'hr-member-profile-private'],
-			queryFn: () => apiClient.getCharacterPrivateDetail(character.characterId),
-			meta: {
-				suppressErrorToast: true,
-			},
-			enabled: Boolean(character.characterId),
-			staleTime: 5 * 60 * 1000,
-		})),
-	})
+	const characterDetailQuery = useCharacterPrivateDetailsBulk(
+		unifiedCharacters.map((character) => character.characterId)
+	)
+	const characterDetailById = new Map(
+		(characterDetailQuery.data?.items ?? []).map((item) => [item.characterId, item])
+	)
 	const spByCharacterId = new Map<string, number | null>()
 	const walletByCharacterId = new Map<string, string | null>()
 	const metricsLoadingByCharacterId = new Map<string, boolean>()
 	const privateDataUnavailableNoteByCharacterId = new Map<string, string | null>()
-	unifiedCharacters.forEach((character, index) => {
-		const query = characterDetailQueries[index]
-		const detail = query?.data
+	unifiedCharacters.forEach((character) => {
+		const item = characterDetailById.get(character.characterId)
+		const detail = item?.data
 		spByCharacterId.set(character.characterId, detail?.skills?.totalSp ?? null)
 		walletByCharacterId.set(character.characterId, detail?.private?.wallet?.balance ?? null)
 		metricsLoadingByCharacterId.set(
 			character.characterId,
-			(query?.isPending ?? false) && detail == null
+			characterDetailQuery.isFetching && detail == null
 		)
 		privateDataUnavailableNoteByCharacterId.set(
 			character.characterId,
-			getPrivateDataUnavailableMessage(query?.error)
+			getPrivateDataUnavailableMessage(
+				item?.status === 'forbidden'
+					? { status: 403 }
+					: item?.status === 'unavailable'
+						? { status: 500 }
+						: null
+			)
 		)
 	})
 	const privateDataUnavailableMessage =

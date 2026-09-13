@@ -1,11 +1,6 @@
 import { ArrowRight, Mic, Server } from 'lucide-react'
-import { useState } from 'react'
-
-import { useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router'
 
-import { ServiceDialog } from '@/components/service-dialog'
-import { ServiceItemCard } from '@/components/service-item-card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,63 +8,27 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { canAccessMumble } from '@/features/mumble/access'
 import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
 import { useMumbleAccount } from '@/features/mumble/hooks'
-import { useApiMutation } from '@/hooks/useApiMutation'
 import { useAuth } from '@/hooks/useAuth'
-import { serviceKeys, useUserServices } from '@/hooks/useServices'
-import { apiClient } from '@/lib/api'
 
-import type { ResetServicePasswordResponse, UserService } from '@/lib/api'
-import type { MumbleConnectionInfo, MumbleAccountStatus } from '@/features/mumble/types'
+import type { MumbleAccountStatus, MumbleConnectionInfo } from '@/features/mumble/types'
 
-interface ServicesCardProps {
-	isLegacyAuthLinked: boolean
-}
-
-export function ServicesCard({ isLegacyAuthLinked }: ServicesCardProps) {
-	const queryClient = useQueryClient()
+export function ServicesCard() {
 	const { user } = useAuth()
 	const { isEnabled: isMumbleFeatureEnabled, isLoading: isLoadingMumbleFeature } =
 		useMumbleFeatureEnabled()
 	const hasMumbleAccess = canAccessMumble(user)
 	const canSeeMumbleService = isMumbleFeatureEnabled && hasMumbleAccess
-	const { data: services, isLoading, error } = useUserServices(isLegacyAuthLinked)
 	const {
 		data: mumbleAccount,
 		isLoading: isLoadingMumble,
 		error: mumbleError,
 	} = useMumbleAccount(canSeeMumbleService)
-	const [selectedService, setSelectedService] = useState<UserService | null>(null)
-	const [resetResult, setResetResult] = useState<ResetServicePasswordResponse | null>(null)
-	const legacyServices = services ?? []
-	const hasLegacyServices = legacyServices.length > 0
 	const visibleMumbleAccount = canSeeMumbleService ? mumbleAccount : null
 	const hasMumbleAccount = visibleMumbleAccount?.account != null
 	const isMumbleLoading = canSeeMumbleService && isLoadingMumble
 	const mumbleLoadError = canSeeMumbleService ? mumbleError : null
 
-	const resetMutation = useApiMutation({
-		mutationFn: (slug: string) => apiClient.resetServicePassword(slug),
-		showSuccessToast: false, // We handle success in the dialog
-		onSuccess: (data) => {
-			setResetResult(data)
-			void queryClient.invalidateQueries({ queryKey: serviceKeys.user() })
-		},
-	})
-
-	const handleReset = async (slug: string) => {
-		setResetResult(null)
-		await resetMutation.mutateAsync(slug)
-	}
-
-	const handleCloseDialog = (open: boolean) => {
-		if (!open) {
-			setSelectedService(null)
-			setResetResult(null)
-			resetMutation.reset()
-		}
-	}
-
-	if (isLoading || isLoadingMumbleFeature) {
+	if (isLoadingMumbleFeature) {
 		return (
 			<Card variant="elevated">
 				<CardHeader>
@@ -88,19 +47,7 @@ export function ServicesCard({ isLegacyAuthLinked }: ServicesCardProps) {
 		)
 	}
 
-	if (error) {
-		return (
-			<Card variant="elevated">
-				<CardHeader>
-					<CardTitle className="text-xl md:text-2xl">Services</CardTitle>
-					<CardDescription>Manage your linked services</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<p className="text-muted-foreground">Failed to load services. Please try again later.</p>
-				</CardContent>
-			</Card>
-		)
-	}
+	if (!canSeeMumbleService) return null
 
 	return (
 		<>
@@ -117,17 +64,7 @@ export function ServicesCard({ isLegacyAuthLinked }: ServicesCardProps) {
 								connection={mumbleAccount?.connection ?? null}
 							/>
 						) : null}
-						{hasLegacyServices ? (
-							<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-								{legacyServices.map((service) => (
-									<ServiceItemCard
-										key={service.id}
-										service={service}
-										onClick={() => setSelectedService(service)}
-									/>
-								))}
-							</div>
-						) : !hasMumbleAccount && !isMumbleLoading && !mumbleLoadError ? (
+						{!hasMumbleAccount && !isMumbleLoading && !mumbleLoadError ? (
 							<div className="rounded-lg border border-border/50 bg-muted/20 p-4">
 								<div className="flex items-center gap-3">
 									<div className="flex items-center justify-center w-12 h-12 rounded-full bg-muted">
@@ -145,16 +82,6 @@ export function ServicesCard({ isLegacyAuthLinked }: ServicesCardProps) {
 					</div>
 				</CardContent>
 			</Card>
-
-			<ServiceDialog
-				service={selectedService}
-				open={!!selectedService}
-				onOpenChange={handleCloseDialog}
-				onReset={handleReset}
-				isResetting={resetMutation.isPending}
-				resetResult={resetResult}
-				resetError={resetMutation.error}
-			/>
 		</>
 	)
 }
@@ -179,7 +106,9 @@ function MumbleServiceCard({
 							<Badge
 								variant="default"
 								className={`text-xs ${
-									account.enabled ? 'bg-green-500/20 text-green-500' : 'bg-muted text-muted-foreground'
+									account.enabled
+										? 'bg-green-500/20 text-green-500'
+										: 'bg-muted text-muted-foreground'
 								}`}
 							>
 								{account.enabled ? 'Active' : 'Disabled'}

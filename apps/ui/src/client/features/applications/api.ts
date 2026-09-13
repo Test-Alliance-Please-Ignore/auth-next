@@ -48,11 +48,33 @@ export interface Application {
 	updatedAt: string
 	lastStaffInteractionAt?: string | null
 	recommendationCount?: number
+	messageCount?: number
 	altCharacterIds?: string[]
+	altCharacters?: Array<{ characterId: string; characterName: string }>
+	recommendations?: Recommendation[]
+	activityLog?: ApplicationActivityLogEntry[]
 	isFirstApplication?: boolean
 	isUserBlacklisted?: boolean
 	isCharacterBlacklisted?: boolean
 	isBlacklisted?: boolean
+}
+
+export interface ApplicationListItem {
+	id: string
+	corporationId: string
+	corporationName?: string
+	userId: string
+	characterId: string
+	characterName: string
+	altCharacters?: Array<{ characterId: string; characterName: string }>
+	status: ApplicationStatus
+	applicationTextPreview?: string
+	createdAt: string
+	updatedAt: string
+	lastStaffInteractionAt?: string | null
+	recommendationCount?: number
+	isFirstApplication?: boolean
+	blacklistState?: { user: boolean; character: boolean; effective: boolean }
 }
 
 export interface ApplicationStaffNote {
@@ -222,6 +244,14 @@ export interface ApplicationsListResult {
 	}
 }
 
+export interface ApplicationListResult {
+	items: ApplicationListItem[]
+	total: number
+	limit: number
+	offset: number
+	counts: ApplicationsListResult['counts']
+}
+
 export interface CorporationApplicationCounts {
 	corporationId: string
 	pending: number
@@ -363,6 +393,10 @@ export const applicationsApi = {
 		return apiClient.get(`/hr/applications${query ? `?${query}` : ''}`)
 	},
 
+	async getMyApplications(): Promise<ApplicationListItem[]> {
+		return apiClient.get('/hr/applications/mine')
+	},
+
 	async getApplicationsPaged(params?: ApplicationsParams): Promise<ApplicationsListResult> {
 		const searchParams = new URLSearchParams()
 		if (params?.corporationId) searchParams.set('corporationId', params.corporationId)
@@ -375,6 +409,21 @@ export const applicationsApi = {
 
 		const query = searchParams.toString()
 		return apiClient.get(`/hr/applications/paged${query ? `?${query}` : ''}`)
+	},
+
+	async getCorporationApplicationsPaged(
+		corporationId: string,
+		params?: Omit<ApplicationsParams, 'corporationId' | 'userId' | 'characterId'>
+	): Promise<ApplicationListResult> {
+		const searchParams = new URLSearchParams()
+		if (params?.status) searchParams.set('status', params.status)
+		if (params?.search) searchParams.set('search', params.search)
+		if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString())
+		if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString())
+		const query = searchParams.toString()
+		return apiClient.get(
+			`/hr/corporations/${corporationId}/applications${query ? `?${query}` : ''}`
+		)
 	},
 
 	async getApplicationCountsByCorporation(): Promise<CorporationApplicationCounts[]> {
@@ -442,19 +491,6 @@ export const applicationsApi = {
 		return apiClient.delete(`/hr/applications/${applicationId}/alts/${altCharacterId}`)
 	},
 
-	// ==================== Recommendations ====================
-
-	/**
-	 * Get recommendations for an application
-	 * Note: This is embedded in the application detail response
-	 */
-	async getRecommendations(applicationId: string): Promise<Recommendation[]> {
-		// The backend embeds recommendations in the application detail
-		// This is a convenience method that extracts them
-		const application = await this.getApplication(applicationId)
-		return (application as any).recommendations || []
-	},
-
 	/**
 	 * Add a recommendation to an application
 	 */
@@ -487,19 +523,6 @@ export const applicationsApi = {
 		recommendationId: string
 	): Promise<{ success: boolean }> {
 		return apiClient.delete(`/hr/applications/${applicationId}/recommendations/${recommendationId}`)
-	},
-
-	// ==================== Activity Log ====================
-
-	/**
-	 * Get activity log for an application
-	 * Note: This is embedded in the application detail response
-	 */
-	async getApplicationActivity(applicationId: string): Promise<ApplicationActivityLogEntry[]> {
-		// The backend embeds activity in the application detail
-		// This is a convenience method that extracts it
-		const application = await this.getApplication(applicationId)
-		return (application as any).activityLog || []
 	},
 
 	// ==================== Messages ====================

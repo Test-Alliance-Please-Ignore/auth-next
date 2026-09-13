@@ -6,7 +6,6 @@
  * Requires HR Viewer role minimum.
  */
 
-import { useQueries } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -29,7 +28,6 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
-import { useEntityNames } from '@/hooks/useEntityNames'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { apiClient } from '@/lib/api'
@@ -56,12 +54,12 @@ import {
 	useApplication,
 	useApplicationActivity,
 	useApplicationStaffNotes,
+	useCharacterPrivateDetailsBulk,
 	useDeleteHRNote,
 	useHRNote,
 	useHRNotes,
 	useHrUserBlocklistStatus,
 	useHrUserCharacters,
-	useMessageCount,
 	useRecommendations,
 } from '../hooks'
 import { resolveApplicationActionRole } from '../utils/application-action-role'
@@ -134,9 +132,7 @@ export default function HrApplicationReview() {
 	const { data: recommendations } = useRecommendations(applicationId!, {
 		enabled: canViewCorporationApplications,
 	})
-	const { data: messageCount = 0 } = useMessageCount(applicationId!, {
-		enabled: canViewCorporationApplications,
-	})
+	const messageCount = application?.messageCount ?? 0
 	const { data: staffNotes = [] } = useApplicationStaffNotes(applicationId!, {
 		enabled: canViewCorporationApplications,
 	})
@@ -201,25 +197,20 @@ export default function HrApplicationReview() {
 	const { data: selectedNote } = useHRNote(selectedNoteId)
 
 	// Resolve alt character names
-	const altCharacterIds = application?.altCharacterIds ?? []
-	const { data: altCharacterNames = {} } = useEntityNames(altCharacterIds, {
-		enabled: altCharacterIds.length > 0,
-	})
+	const altCharacters = application?.altCharacters ?? []
+	const altCharacterIds = altCharacters.map((character) => character.characterId)
+	const altCharacterNames = Object.fromEntries(
+		altCharacters.map((character) => [character.characterId, character.characterName])
+	)
 
 	// Fetch total SP for main character + alts
 	const allCharacterIds = application ? [application.characterId, ...altCharacterIds] : []
-	const characterDetailQueries = useQueries({
-		queries: allCharacterIds.map((characterId) => ({
-			queryKey: ['character', characterId, 'application-review-private'],
-			queryFn: () => apiClient.getCharacterPrivateDetail(characterId),
-			enabled: canViewApplicationPrivateData,
-			retry: false,
-			staleTime: 5 * 60 * 1000,
-			meta: {
-				suppressErrorToast: true,
-			},
-		})),
+	const characterDetailQuery = useCharacterPrivateDetailsBulk(allCharacterIds, {
+		enabled: canViewApplicationPrivateData,
 	})
+	const characterDetailById = new Map(
+		(characterDetailQuery.data?.items ?? []).map((item) => [item.characterId, item])
+	)
 	const markCharacterNameCopied = async (characterId: string, characterName: string) => {
 		if (!characterName.trim()) return
 		try {
@@ -240,12 +231,18 @@ export default function HrApplicationReview() {
 	const privateDataUnavailableNotes: string[] = []
 	for (let i = 0; i < allCharacterIds.length; i++) {
 		const characterId = allCharacterIds[i]
-		const query = characterDetailQueries[i]
-		const detail = query?.data
+		const item = characterDetailById.get(characterId)
+		const detail = item?.data
 		spByCharacterId[characterId] = detail?.skills?.totalSp ?? null
 		walletByCharacterId[characterId] = detail?.private?.wallet?.balance ?? null
-		metricsLoadingByCharacterId[characterId] = (query?.isPending ?? false) && detail == null
-		const unavailableMessage = getPrivateDataUnavailableMessage(query?.error)
+		metricsLoadingByCharacterId[characterId] = characterDetailQuery.isFetching && detail == null
+		const unavailableMessage = getPrivateDataUnavailableMessage(
+			item?.status === 'forbidden'
+				? { status: 403 }
+				: item?.status === 'unavailable'
+					? { status: 500 }
+					: null
+		)
 		if (unavailableMessage) privateDataUnavailableNotes.push(unavailableMessage)
 	}
 	const privateDataUnavailableMessage = !canViewApplicationPrivateData

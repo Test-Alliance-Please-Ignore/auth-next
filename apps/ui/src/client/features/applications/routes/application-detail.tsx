@@ -41,7 +41,6 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
-import { useEntityNames } from '@/hooks/useEntityNames'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 
@@ -60,7 +59,6 @@ import {
 	useAddApplicationAlt,
 	useApplication,
 	useApplicationActivity,
-	useMessageCount,
 	useRecommendations,
 	useRemoveApplicationAlt,
 	useWithdrawApplication,
@@ -101,12 +99,13 @@ export default function ApplicationDetail() {
 		useCanAccessCorporation(application?.corporationId ?? '')
 	const { data: activityLog, isLoading: activityLoading } = useApplicationActivity(applicationId!)
 	const { data: recommendations } = useRecommendations(applicationId!)
-	const { data: messageCount = 0 } = useMessageCount(applicationId!)
+	const messageCount = application?.messageCount ?? 0
 
-	const altCharacterIds = application?.altCharacterIds ?? []
-	const { data: altCharacterNames = {} } = useEntityNames(altCharacterIds, {
-		enabled: altCharacterIds.length > 0,
-	})
+	const altCharacters = application?.altCharacters ?? []
+	const altCharacterIds = altCharacters.map((character) => character.characterId)
+	const altCharacterNames = Object.fromEntries(
+		altCharacters.map((character) => [character.characterId, character.characterName])
+	)
 
 	// Mutations
 	const withdrawMutation = useWithdrawApplication()

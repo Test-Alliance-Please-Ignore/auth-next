@@ -5,7 +5,6 @@ import { UserService } from '../user.service'
 function createDbMock() {
 	const usersFindFirst = vi.fn()
 	const userCharactersFindMany = vi.fn()
-	const userPreferencesFindFirst = vi.fn()
 
 	return {
 		db: {
@@ -16,14 +15,10 @@ function createDbMock() {
 				userCharacters: {
 					findMany: userCharactersFindMany,
 				},
-				userPreferences: {
-					findFirst: userPreferencesFindFirst,
-				},
 			},
 		},
 		usersFindFirst,
 		userCharactersFindMany,
-		userPreferencesFindFirst,
 	}
 }
 
@@ -69,8 +64,6 @@ describe('UserService.getUserProfile', () => {
 				linkedAt: now,
 			},
 		])
-		db.userPreferencesFindFirst.mockResolvedValue({ preferences: {} })
-
 		const service = new UserService(db.db as never)
 		const profile = await service.getUserProfile('user-1')
 
@@ -118,34 +111,10 @@ describe('UserService.getUserProfile', () => {
 				linkedAt: now,
 			},
 		])
-		db.userPreferencesFindFirst.mockResolvedValue({ preferences: {} })
-
 		const service = new UserService(db.db as never)
 		const profile = await service.getUserProfile('user-1', { includeDeleted: true })
 
 		expect(profile.characters).toHaveLength(2)
 		expect(profile.characters.map((character) => character.characterId)).toEqual(['1001', '1002'])
-	})
-
-	it('uses default preferences when the optional preferences query fails', async () => {
-		const db = createDbMock()
-		const now = new Date('2026-06-16T08:00:00.000Z')
-		db.usersFindFirst.mockResolvedValue({
-			id: 'user-1',
-			mainCharacterId: '1001',
-			discordUserId: null,
-			is_admin: false,
-			legacyAuthUserId: null,
-			legacyAuthUserUsername: null,
-			createdAt: now,
-			updatedAt: now,
-		})
-		db.userCharactersFindMany.mockResolvedValue([])
-		db.userPreferencesFindFirst.mockRejectedValue(new Error('temporary database failure'))
-
-		const service = new UserService(db.db as never)
-		const profile = await service.getUserProfile('user-1')
-
-		expect(profile.preferences).toEqual({})
 	})
 })

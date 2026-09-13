@@ -145,6 +145,31 @@ export interface ApplicationDetail extends Application {
 	activityLog?: ActivityLogEntry[]
 }
 
+export interface ApplicationListItem {
+	id: string
+	corporationId: string
+	userId: string
+	characterId: string
+	characterName: string
+	reviewedBy: string | null
+	applicationTextPreview: string
+	status: ApplicationStatus
+	createdAt: Date
+	updatedAt: Date
+	lastStaffInteractionAt: Date | null
+	altCharacterIds: string[]
+	isFirstApplication: boolean
+	recommendationCount: number
+}
+
+export interface HrApplicationListResult {
+	items: ApplicationListItem[]
+	total: number
+	limit: number
+	offset: number
+	counts: ApplicationListResult['counts']
+}
+
 /**
  * Lightweight application info for the recommendations discovery page
  */
@@ -518,6 +543,15 @@ export interface Hr extends DurableObject {
 		userId: string,
 		access: HrAccessContext
 	): Promise<ApplicationListResult>
+
+	listMyApplications(userId: string): Promise<ApplicationListItem[]>
+
+	listCorporationApplicationsPaged(
+		corporationId: string,
+		filters: Omit<ApplicationFilters, 'corporationId' | 'userId'>,
+		userId: string,
+		access: HrAccessContext
+	): Promise<HrApplicationListResult>
 
 	/**
 	 * Count open applications grouped by corporation without loading application rows.

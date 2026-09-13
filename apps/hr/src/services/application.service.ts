@@ -13,6 +13,7 @@ import type {
 	Application,
 	ApplicationDetail,
 	ApplicationFilters,
+	ApplicationListItem,
 	ApplicationListResult,
 	ApplicationStatus,
 	CorporationApplicationCounts,
@@ -91,6 +92,83 @@ export class ApplicationService {
 		}
 
 		return conditions.length > 0 ? and(...conditions) : undefined
+	}
+
+	private async getRecommendationCounts(applicationIds: string[]): Promise<Map<string, number>> {
+		if (applicationIds.length === 0) return new Map()
+		const rows = await this.ctx.db
+			.select({
+				applicationId: applicationRecommendations.applicationId,
+				count: sql<number>`count(*)::int`,
+			})
+			.from(applicationRecommendations)
+			.where(inArray(applicationRecommendations.applicationId, applicationIds))
+			.groupBy(applicationRecommendations.applicationId)
+		return new Map(rows.map((row) => [row.applicationId, row.count ?? 0]))
+	}
+
+	private mapToApplicationListItem(
+		application: Application,
+		recommendationCount = 0
+	): ApplicationListItem {
+		return {
+			id: application.id,
+			corporationId: application.corporationId,
+			userId: application.userId,
+			characterId: application.characterId,
+			characterName: application.characterName,
+			reviewedBy: application.reviewedBy,
+			applicationTextPreview: application.applicationText.slice(0, 240),
+			status: application.status,
+			createdAt: application.createdAt,
+			updatedAt: application.updatedAt,
+			lastStaffInteractionAt: application.lastStaffInteractionAt,
+			altCharacterIds: application.altCharacterIds ?? [],
+			isFirstApplication: application.isFirstApplication === true,
+			recommendationCount,
+		}
+	}
+
+	async listMyApplicationItems(userId: string): Promise<ApplicationListItem[]> {
+		const applications = await this.listApplications({ userId }, userId, false, false, [])
+		const recommendationCounts = await this.getRecommendationCounts(
+			applications.map((app) => app.id)
+		)
+		return applications.map((application) =>
+			this.mapToApplicationListItem(application, recommendationCounts.get(application.id) ?? 0)
+		)
+	}
+
+	async listCorporationApplicationItems(
+		corporationId: string,
+		filters: Omit<ApplicationFilters, 'corporationId' | 'userId'>,
+		userId: string,
+		isAdmin: boolean,
+		isAuditor: boolean,
+		userHrCorporations: string[]
+	): Promise<{
+		items: ApplicationListItem[]
+		total: number
+		limit: number
+		offset: number
+		counts: ApplicationListResult['counts']
+	}> {
+		const result = await this.listApplicationsPaged(
+			{ ...filters, corporationId },
+			userId,
+			isAdmin,
+			isAuditor,
+			userHrCorporations
+		)
+		const recommendationCounts = await this.getRecommendationCounts(
+			result.items.map((app) => app.id)
+		)
+		return {
+			...result,
+			items: result.items.map((application) =>
+				this.mapToApplicationListItem(application, recommendationCounts.get(application.id) ?? 0)
+			),
+		}
 	}
 
 	private async resolveFirstApplicationIds(userIds: string[]): Promise<Set<string>> {

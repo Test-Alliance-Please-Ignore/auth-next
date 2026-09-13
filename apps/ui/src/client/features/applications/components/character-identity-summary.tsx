@@ -66,10 +66,15 @@ export function CharacterSpWalletLine({
 }: CharacterSpWalletLineProps) {
 	if (isLoading) {
 		return (
-			<div className={cn('mt-1 flex items-center gap-2 text-sm text-muted-foreground', className)}>
-				<Skeleton className="h-4 w-24" />
+			<div
+				className={cn('mt-1 flex items-center gap-2 text-sm text-muted-foreground', className)}
+				role="status"
+				aria-label="Loading private character details"
+				aria-busy="true"
+			>
+				<Skeleton className="h-4 w-24 bg-muted-foreground/30" />
 				<span>—</span>
-				<Skeleton className="h-4 w-28" />
+				<Skeleton className="h-4 w-28 bg-muted-foreground/30" />
 			</div>
 		)
 	}

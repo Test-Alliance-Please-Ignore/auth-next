@@ -29,9 +29,11 @@ import type {
 	Application,
 	ApplicationDetail,
 	ApplicationFilters,
+	ApplicationListItem,
 	BlacklistTargetCheckItem,
 	Hr,
 	HrAccessContext,
+	HrApplicationListResult,
 	HrNote,
 	NoteFilters,
 } from '@repo/hr'
@@ -319,6 +321,7 @@ async function enrichApplications<
 		reviewedBy: string | null
 		userId: string
 		characterId: string
+		altCharacterIds?: string[]
 	},
 >(
 	items: T[],
@@ -329,6 +332,7 @@ async function enrichApplications<
 	Array<
 		T & {
 			corporationName: string
+			altCharacters: Array<{ characterId: string; characterName: string }>
 			reviewedByCharacterName: string | null
 			isUserBlacklisted: boolean
 			isCharacterBlacklisted: boolean
@@ -337,20 +341,52 @@ async function enrichApplications<
 	>
 > {
 	const corpIds = [...new Set(items.map((a) => a.corporationId))]
-	const corpNames =
+	const altCharacterIds = [
+		...new Set(items.flatMap((application) => application.altCharacterIds ?? [])),
+	]
+	const resolverIds = [...new Set([...corpIds, ...altCharacterIds])]
+	const corpNamesPromise =
+		resolverIds.length > 0
+			? withRpcResult(resolver.resolveIds(resolverIds), (result) => ({ ...result }))
+			: Promise.resolve({} as Record<string, string>)
+	const managedCorpNamesPromise =
 		corpIds.length > 0
-			? await withRpcResult(resolver.resolveIds(corpIds), (result) => ({ ...result }))
-			: {}
-	const managedCorpNames =
-		corpIds.length > 0
-			? await db.query.managedCorporations.findMany({
+			? db.query.managedCorporations.findMany({
 					where: inArray(managedCorporations.corporationId, corpIds),
 					columns: {
 						corporationId: true,
 						name: true,
 					},
 				})
-			: []
+			: Promise.resolve([])
+	const reviewerIds = items.map((a) => a.reviewedBy).filter((id): id is string => id !== null)
+	const blacklistTargets: BlacklistTargetCheckItem[] = [
+		...new Set(items.map((application) => application.userId)),
+	].map((userId) => ({ targetType: 'user', targetValue: userId }))
+	blacklistTargets.push(
+		...[...new Set(items.map((application) => application.characterId))].map((characterId) => ({
+			targetType: 'character_id' as const,
+			targetValue: characterId,
+		}))
+	)
+
+	const [corpNames, managedCorpNames, reviewerNames, blacklistResults] = await Promise.all([
+		corpNamesPromise,
+		managedCorpNamesPromise,
+		resolveUserCharacterNames(db, reviewerIds),
+		blacklistTargets.length > 0
+			? withRpcResult(hr.checkBlacklistTargets(blacklistTargets), (result) => [...result]).catch(
+					(error) => {
+						logger.warn('[HR] Failed to load application blacklist statuses', {
+							applicationCount: items.length,
+							error: error instanceof Error ? error.message : String(error),
+						})
+						return []
+					}
+				)
+			: Promise.resolve([]),
+	])
+
 	const corpNameMap = new Map<string, string>()
 	for (const [corporationId, corporationName] of Object.entries(corpNames)) {
 		if (corporationName) {
@@ -363,39 +399,19 @@ async function enrichApplications<
 		}
 	}
 
-	const reviewerIds = items.map((a) => a.reviewedBy).filter((id): id is string => id !== null)
-	const reviewerNames = await resolveUserCharacterNames(db, reviewerIds)
-
-	const blacklistTargets: BlacklistTargetCheckItem[] = [
-		...new Set(items.map((application) => application.userId)),
-	].map((userId) => ({ targetType: 'user', targetValue: userId }))
-	blacklistTargets.push(
-		...[...new Set(items.map((application) => application.characterId))].map((characterId) => ({
-			targetType: 'character_id' as const,
-			targetValue: characterId,
-		}))
-	)
-
 	let blacklistedTargets = new Set<string>()
-	try {
-		const blacklistResults =
-			blacklistTargets.length > 0
-				? await withRpcResult(hr.checkBlacklistTargets(blacklistTargets), (result) => [...result])
-				: []
-		blacklistedTargets = new Set(
-			blacklistResults
-				.filter((result) => result.isBlacklisted)
-				.map((result) => `${result.targetType}:${result.targetValue}`)
-		)
-	} catch (error) {
-		logger.warn('[HR] Failed to load application blacklist statuses', {
-			applicationCount: items.length,
-			error: error instanceof Error ? error.message : String(error),
-		})
-	}
+	blacklistedTargets = new Set(
+		blacklistResults
+			.filter((result) => result.isBlacklisted)
+			.map((result) => `${result.targetType}:${result.targetValue}`)
+	)
 
 	return items.map((a) => ({
 		...a,
+		altCharacters: (a.altCharacterIds ?? []).map((characterId) => ({
+			characterId,
+			characterName: corpNames[characterId] ?? characterId,
+		})),
 		corporationName: corpNameMap.get(a.corporationId) ?? `Corporation ${a.corporationId}`,
 		reviewedByCharacterName: a.reviewedBy ? (reviewerNames[a.reviewedBy] ?? null) : null,
 		isUserBlacklisted: blacklistedTargets.has(`user:${a.userId}`),
@@ -404,6 +420,38 @@ async function enrichApplications<
 			blacklistedTargets.has(`user:${a.userId}`) ||
 			blacklistedTargets.has(`character_id:${a.characterId}`),
 	}))
+}
+
+function toApplicationListItem(
+	application: ApplicationListItem & {
+		corporationName: string
+		altCharacters: Array<{ characterId: string; characterName: string }>
+		isUserBlacklisted?: boolean
+		isCharacterBlacklisted?: boolean
+		isBlacklisted?: boolean
+	}
+) {
+	return {
+		id: application.id,
+		corporationId: application.corporationId,
+		corporationName: application.corporationName,
+		userId: application.userId,
+		characterId: application.characterId,
+		characterName: application.characterName,
+		altCharacters: application.altCharacters,
+		status: application.status,
+		applicationTextPreview: application.applicationTextPreview,
+		createdAt: application.createdAt,
+		updatedAt: application.updatedAt,
+		lastStaffInteractionAt: application.lastStaffInteractionAt,
+		recommendationCount: application.recommendationCount,
+		isFirstApplication: application.isFirstApplication,
+		blacklistState: {
+			user: application.isUserBlacklisted === true,
+			character: application.isCharacterBlacklisted === true,
+			effective: application.isBlacklisted === true,
+		},
+	}
 }
 
 /**
@@ -734,8 +782,73 @@ app.post('/applications', requireAuth(), async (c) => {
 })
 
 /**
+ * GET /api/hr/applications/mine
+ * List the authenticated user's applications with an applicant-only contract.
+ */
+app.get('/applications/mine', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	try {
+		const hr = getHrStub(c)
+		const applications = await hr.listMyApplications(user.id)
+		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+		const enriched = await enrichApplications(applications, resolver, c.get('db')!, hr)
+		return c.json(enriched.map((application) => toApplicationListItem(application)))
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to list applications' },
+			500
+		)
+	}
+})
+
+/**
+ * GET /api/hr/corporations/:corporationId/applications
+ * List applications for one explicitly scoped HR corporation.
+ */
+app.get('/corporations/:corporationId/applications', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const corporationId = c.req.param('corporationId')
+	const pagination = validatePagination(c.req.query('limit'), c.req.query('offset'))
+	if (!pagination.success) return c.json({ error: pagination.error }, pagination.status)
+
+	if (!(await canUseHrToolsForCorporation(c, corporationId))) {
+		return c.json(
+			{ error: 'Access denied. HR tools are only available for member corporations.' },
+			403
+		)
+	}
+
+	try {
+		const hr = getHrStub(c)
+		const isAuditor = await hasHrAuditorPermission(c)
+		const result = await hr.listCorporationApplicationsPaged(
+			corporationId,
+			{
+				status: c.req.query('status') as ApplicationFilters['status'],
+				search: c.req.query('search')?.trim() || undefined,
+				limit: pagination.data.limit,
+				offset: pagination.data.offset,
+			},
+			user.id,
+			{ isAdmin: user.is_admin, isAuditor }
+		)
+		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+		const enriched = await enrichApplications(result.items, resolver, c.get('db')!, hr)
+		return c.json({
+			...result,
+			items: enriched.map((application) => toApplicationListItem(application)),
+		})
+	} catch (error) {
+		return c.json(
+			{ error: error instanceof Error ? error.message : 'Failed to list applications' },
+			500
+		)
+	}
+})
+
+/**
  * GET /api/hr/applications
- * List applications with optional filters
+ * Compatibility list endpoint. New UI callers should use an explicit scope endpoint.
  */
 app.get('/applications', requireAuth(), async (c) => {
 	const user = c.get('user')!
@@ -940,14 +1053,12 @@ app.get('/applications/:id', requireAuth(), async (c) => {
 
 		const resolver = getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
 		const db = c.get('db')!
-		const [enriched] = await enrichApplications(
-			[{ ...application, discordUsername }],
-			resolver,
-			db,
-			hr
-		)
+		const [enriched, messageCount] = await Promise.all([
+			enrichApplications([{ ...application, discordUsername }], resolver, db, hr),
+			hr.getMessageCount(applicationId, user.id, { isAdmin: user.is_admin, isAuditor }),
+		])
 
-		return c.json(enriched)
+		return c.json({ ...enriched[0], messageCount })
 	} catch (error) {
 		return c.json(
 			{ error: error instanceof Error ? error.message : 'Failed to get application' },

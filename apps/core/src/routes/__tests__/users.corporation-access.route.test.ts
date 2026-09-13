@@ -78,6 +78,7 @@ describe('users corporation access', () => {
 	const env = {
 		EVE_CHARACTER_DATA: { name: 'EVE_CHARACTER_DATA' },
 		EVE_CORPORATION_DATA: { name: 'EVE_CORPORATION_DATA' },
+		ESI_TYPE_RESOLVER: { name: 'ESI_TYPE_RESOLVER' },
 		HR: { name: 'HR' },
 		DATABASE_URL: 'postgresql://test',
 	} as any
@@ -101,6 +102,10 @@ describe('users corporation access', () => {
 	}
 	let charStub: {
 		getCharacterInfo: ReturnType<typeof vi.fn>
+		getCharacterInfoBulk: ReturnType<typeof vi.fn>
+	}
+	let resolverStub: {
+		resolveIds: ReturnType<typeof vi.fn>
 	}
 	let corpStub: {
 		getCorporationInfo: ReturnType<typeof vi.fn>
@@ -174,6 +179,10 @@ describe('users corporation access', () => {
 		}
 		charStub = {
 			getCharacterInfo: vi.fn(),
+			getCharacterInfoBulk: vi.fn(),
+		}
+		resolverStub = {
+			resolveIds: vi.fn().mockResolvedValue({}),
 		}
 		corpStub = {
 			getCorporationInfo: vi.fn().mockResolvedValue(makeRpcResult({ ceoId: '9999' }).value as any),
@@ -185,8 +194,66 @@ describe('users corporation access', () => {
 			if (binding === env.HR) return hrStub as any
 			if (binding === env.EVE_CHARACTER_DATA) return charStub as any
 			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
+			if (binding === env.ESI_TYPE_RESOLVER) return resolverStub as any
 			throw new Error('Unexpected binding')
 		})
+	})
+
+	it('returns minimal dashboard character cards in one user-scoped request', async () => {
+		dbStub.query.userCharacters.findMany.mockResolvedValueOnce([
+			{
+				characterId: '1001',
+				characterName: 'Main Pilot',
+				is_primary: true,
+				hasValidToken: true,
+			},
+			{
+				characterId: '1002',
+				characterName: 'Alt Pilot',
+				is_primary: false,
+				hasValidToken: false,
+			},
+		] as any)
+		charStub.getCharacterInfoBulk.mockResolvedValue([
+			{ characterId: '1001', name: 'Main Pilot', corporationId: '2001', allianceId: '3001' },
+			{ characterId: '1002', name: 'Alt Pilot', corporationId: '2001' },
+		])
+		resolverStub.resolveIds.mockResolvedValue({
+			'2001': 'Example Corp',
+			'3001': 'Example Alliance',
+		})
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const response = await app.request('/api/users/me/dashboard/characters', {}, env)
+
+		expect(response.status).toBe(200)
+		expect(await response.json()).toEqual({
+			mainCharacterId: '1001',
+			characters: [
+				{
+					characterId: '1001',
+					characterName: 'Main Pilot',
+					isPrimary: true,
+					hasValidToken: true,
+					corporationId: '2001',
+					corporationName: 'Example Corp',
+					allianceId: '3001',
+					allianceName: 'Example Alliance',
+				},
+				{
+					characterId: '1002',
+					characterName: 'Alt Pilot',
+					isPrimary: false,
+					hasValidToken: false,
+					corporationId: '2001',
+					corporationName: 'Example Corp',
+					allianceId: null,
+					allianceName: null,
+				},
+			],
+		})
+		expect(charStub.getCharacterInfoBulk).toHaveBeenCalledWith(['1001', '1002'])
+		expect(resolverStub.resolveIds).toHaveBeenCalledWith(['2001', '3001'])
 	})
 
 	it('returns only member corporation HR access for non-admin users', async () => {

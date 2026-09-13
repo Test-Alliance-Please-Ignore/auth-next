@@ -10,6 +10,7 @@ import {
 	clearCorporationSyncStatusCache,
 } from '../lib/corporation-list-cache'
 import { validateAndSyncCharacterTokenValidityBatchTransitions } from '../lib/token-validity'
+import { clearUserProfileCache } from '../lib/user-profile-cache'
 import * as discordService from '../services/discord.service'
 import * as mumbleService from '../services/mumble.service'
 
@@ -792,8 +793,9 @@ export class CoreRpcService {
 		// the Murmur user). Never blocks auth-next user deletion.
 		await mumbleService.deleteMumbleAccounts(this.env, [userId])
 
-		// 5. Delete user (CASCADE handles userCharacters, userSessions, userPreferences)
+		// 5. Delete user (CASCADE handles linked characters and sessions)
 		await this.db.delete(users).where(eq(users.id, userId))
+		clearUserProfileCache(userId)
 
 		// 6. Return result
 		return {
@@ -864,6 +866,8 @@ export class CoreRpcService {
 				updatedAt: new Date(),
 			})
 			.where(eq(userCharacters.characterId, characterId))
+		clearUserProfileCache(oldUserId)
+		clearUserProfileCache(newUserId)
 
 		// 7. Return result
 		return {
@@ -911,6 +915,7 @@ export class CoreRpcService {
 
 		// 4. Delete character link
 		await this.db.delete(userCharacters).where(eq(userCharacters.characterId, characterId))
+		clearUserProfileCache(userId)
 
 		// 5. Return result
 		return {
