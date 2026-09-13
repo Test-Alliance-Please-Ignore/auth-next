@@ -54,6 +54,10 @@
 		{
 			"tag": "v4",
 			"new_classes": ["ImmunitasAlerts"]
+		},
+		{
+			"tag": "v5",
+			"new_classes": ["MumbleTempopExpiry"]
 		}
 	]
 }
