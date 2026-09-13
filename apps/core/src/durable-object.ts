@@ -15,14 +15,6 @@ import {
 	userIpAddresses,
 	users,
 } from './db/schema'
-import {
-	buildImmunitasAccessAlertMessage,
-	IMMUNITAS_ALERT_COOLDOWN_MS,
-	IMMUNITAS_ALERT_INITIAL_DELAY_MS,
-	IMMUNITAS_ALERT_RETRY_MS,
-	IMMUNITAS_ALERT_TTL_MS,
-	shouldRetryImmunitasAccessAlertDelivery,
-} from './lib/immunitas-alerts'
 import { recordUserIpAddress } from './lib/ip-tracking'
 import {
 	buildTokenInvalidationMessage,
@@ -49,8 +41,8 @@ import type { CreateRoleRequest, Groups } from '@repo/groups'
 import type { BlacklistTargetCheckItem, BlacklistTargetType, Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
 import type { MarketDetail as PredictionMarketDetail } from '@repo/prediction-markets'
-import type { ImmunitasAlerts } from './immunitas-alerts-do'
 import type { Env } from './context'
+import type { ImmunitasAccessAlertInput, ImmunitasAlerts } from './immunitas-alerts-do'
 
 type PendingDiscordRefresh = {
 	expiresAt: number
@@ -118,26 +110,6 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 	>()
 	private static readonly TOKEN_ALERT_STORAGE_PREFIX = 'pending-token-invalid:'
-	private pendingImmunitasAccessAlerts = new Map<
-		string,
-		{
-			expiresAt: number
-			pendingTargetCharacterLabels: string[]
-			pendingRequestorGroups: Array<{
-				requestorUserId: string
-				requestorLabels: string[]
-				attemptCount: number
-			}>
-			lastNotifiedAt: number | null
-			nextEligibleAt: number
-			attemptCount: number
-			lastError?: string
-			source?: string
-			accessType: 'profile-data' | 'fulcrum-report'
-			targetUserId: string
-		}
-	>()
-	private static readonly IMMUNITAS_ALERT_STORAGE_PREFIX = 'pending-immunitas:'
 
 	constructor(
 		public state: DurableObjectState,
@@ -150,10 +122,8 @@ export class CoreDO extends DurableObject<Env> implements Core {
 				this.ensureRolesExist(),
 				this.loadPendingDiscordRefreshes(),
 				this.loadPendingUserRefreshes(),
-				...(this.env.IMMUNITAS_ALERTS ? [] : [this.loadPendingImmunitasAccessAlerts()]),
 				this.loadPendingTokenInvalidationAlerts(),
 			])
-			if (!this.env.IMMUNITAS_ALERTS) await this.scheduleImmunitasAccessAlertAlarm()
 		})
 	}
 
@@ -219,57 +189,6 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 		this.logger.info('[CoreDO] Loaded pending token invalidation alerts from storage', {
 			count: this.pendingTokenInvalidationAlerts.size,
-		})
-	}
-
-	private async loadPendingImmunitasAccessAlerts(): Promise<void> {
-		const stored = await this.state.storage.list<{
-			expiresAt: number
-			pendingTargetCharacterLabels: string[]
-			pendingRequestorGroups?: Array<{
-				requestorUserId: string
-				requestorLabels: string[]
-				attemptCount: number
-			}>
-			pendingRequestorLabels?: string[]
-			lastNotifiedAt: number | null
-			nextEligibleAt: number
-			attemptCount: number
-			lastError?: string
-			source?: string
-			accessType: 'profile-data' | 'fulcrum-report'
-			targetUserId: string
-		}>({
-			prefix: CoreDO.IMMUNITAS_ALERT_STORAGE_PREFIX,
-		})
-		for (const [key, value] of stored) {
-			const pendingRequestorGroups =
-				value.pendingRequestorGroups ??
-				(value.pendingRequestorLabels?.length
-					? [
-							{
-								requestorUserId: 'legacy',
-								requestorLabels: value.pendingRequestorLabels ?? [],
-								attemptCount: value.attemptCount ?? 0,
-							},
-						]
-					: [])
-			const queueKey = key.slice(CoreDO.IMMUNITAS_ALERT_STORAGE_PREFIX.length)
-			this.pendingImmunitasAccessAlerts.set(queueKey, {
-				expiresAt: value.expiresAt,
-				pendingTargetCharacterLabels: value.pendingTargetCharacterLabels ?? [],
-				pendingRequestorGroups,
-				lastNotifiedAt: value.lastNotifiedAt ?? null,
-				nextEligibleAt: value.nextEligibleAt ?? 0,
-				attemptCount: value.attemptCount ?? 0,
-				lastError: value.lastError,
-				source: value.source,
-				accessType: value.accessType,
-				targetUserId: value.targetUserId,
-			})
-		}
-		this.logger.info('[CoreDO] Loaded pending immunitas access alerts from storage', {
-			count: this.pendingImmunitasAccessAlerts.size,
 		})
 	}
 
@@ -2056,23 +1975,6 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		this.logger.info('[CoreDO] Evicted pending Discord refresh entry', { userId, reason })
 	}
 
-	private async evictPendingImmunitasAccessAlert(queueKey: string, reason: string): Promise<void> {
-		this.pendingImmunitasAccessAlerts.delete(queueKey)
-		await this.state.storage.delete(`${CoreDO.IMMUNITAS_ALERT_STORAGE_PREFIX}${queueKey}`)
-		await this.scheduleImmunitasAccessAlertAlarm()
-		this.logger.info('[CoreDO] Evicted pending immunitas access alert entry', {
-			queueKey,
-			reason,
-		})
-	}
-
-	private buildImmunitasQueueKey(input: {
-		targetUserId: string
-		accessType: 'profile-data' | 'fulcrum-report'
-	}): string {
-		return `${input.targetUserId}:${input.accessType}`
-	}
-
 	private async evictPendingTokenInvalidationAlert(userId: string, reason: string): Promise<void> {
 		this.pendingTokenInvalidationAlerts.delete(userId)
 		await this.state.storage.delete(`${CoreDO.TOKEN_ALERT_STORAGE_PREFIX}${userId}`)
@@ -2114,40 +2016,6 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			characterName: row.characterName,
 			hasValidToken: row.hasValidToken === true,
 		}))
-	}
-
-	private normalizeImmunitasLabels(labels: string[]): string[] {
-		return [...new Set(labels.map((label) => String(label).trim()))].filter(Boolean)
-	}
-
-	private buildImmunitasAccessMessage(input: {
-		accessType: 'profile-data' | 'fulcrum-report'
-		targetCharacterLabels: string[]
-		requestorGroups: Array<{
-			requestorUserId: string
-			requestorLabels: string[]
-		}>
-	}): ReturnType<typeof buildImmunitasAccessAlertMessage> {
-		return buildImmunitasAccessAlertMessage({
-			accessType: input.accessType,
-			targetCharacterLabels: input.targetCharacterLabels,
-			requestorGroups: input.requestorGroups,
-			updatedAt: new Date(),
-		})
-	}
-
-	private async scheduleImmunitasAccessAlertAlarm(): Promise<void> {
-		const pendingEntries = [...this.pendingImmunitasAccessAlerts.values()].filter(
-			(entry) => entry.pendingTargetCharacterLabels.length > 0
-		)
-		if (pendingEntries.length === 0) {
-			await this.state.storage.deleteAlarm()
-			return
-		}
-
-		const now = Date.now()
-		const nextAlarmAt = Math.min(...pendingEntries.map((entry) => entry.nextEligibleAt))
-		await this.state.storage.setAlarm(Math.max(now, nextAlarmAt))
 	}
 
 	async queueTokenInvalidationAlerts(input: {
@@ -2210,101 +2078,10 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 	}
 
-	async queueImmunitasAccessAlert(input: {
-		targetUserId: string
-		targetCharacterLabel: string
-		requestorUserId: string
-		requestorCharacterLabel: string | null
-		accessType: 'profile-data' | 'fulcrum-report'
-		source?: string
-	}): Promise<{
-		added: number
-		skipped: number
-		pendingCount: number
-	}> {
-		if (this.env.IMMUNITAS_ALERTS) {
-			return getStub<ImmunitasAlerts>(this.env.IMMUNITAS_ALERTS, 'default').queueImmunitasAccessAlert(input)
-		}
-		const queueKey = this.buildImmunitasQueueKey(input)
-		const now = Date.now()
-		const expiresAt = now + IMMUNITAS_ALERT_TTL_MS
-		const existing = this.pendingImmunitasAccessAlerts.get(queueKey)
-		const pendingTargetCharacterLabels = new Set(existing?.pendingTargetCharacterLabels ?? [])
-		const pendingRequestorGroupsByUserId = new Map(
-			(existing?.pendingRequestorGroups ?? []).map((group) => [
-				group.requestorUserId,
-				{
-					requestorUserId: group.requestorUserId,
-					requestorLabels: new Set(
-						group.requestorLabels.map((label) => String(label).trim()).filter(Boolean)
-					),
-					attemptCount: group.attemptCount ?? 0,
-				},
-			])
+	async queueImmunitasAccessAlert(input: ImmunitasAccessAlertInput) {
+		return getStub<ImmunitasAlerts>(this.env.IMMUNITAS_ALERTS, 'default').queueImmunitasAccessAlert(
+			input
 		)
-		const beforeTargetSize = pendingTargetCharacterLabels.size
-		const hasPendingEntry = (existing?.pendingTargetCharacterLabels.length ?? 0) > 0
-		const requestorLabel =
-			input.requestorCharacterLabel?.trim() || input.requestorUserId.trim() || 'Unknown requester'
-		const existingRequestorGroup = pendingRequestorGroupsByUserId.get(input.requestorUserId) ?? {
-			requestorUserId: input.requestorUserId,
-			requestorLabels: new Set<string>(),
-			attemptCount: 0,
-		}
-		const beforeRequestorSize = existingRequestorGroup.requestorLabels.size
-		pendingTargetCharacterLabels.add(input.targetCharacterLabel.trim())
-		existingRequestorGroup.requestorLabels.add(requestorLabel)
-		existingRequestorGroup.attemptCount += 1
-		pendingRequestorGroupsByUserId.set(input.requestorUserId, existingRequestorGroup)
-		const added =
-			pendingTargetCharacterLabels.size -
-			beforeTargetSize +
-			existingRequestorGroup.requestorLabels.size -
-			beforeRequestorSize
-		const skipped = Math.max(0, 2 - added)
-		const nextEligibleAt = hasPendingEntry
-			? existing!.nextEligibleAt
-			: existing?.nextEligibleAt && existing.nextEligibleAt > now
-				? existing.nextEligibleAt
-				: now + IMMUNITAS_ALERT_INITIAL_DELAY_MS
-		const entry = {
-			expiresAt,
-			pendingTargetCharacterLabels: [...pendingTargetCharacterLabels],
-			pendingRequestorGroups: [...pendingRequestorGroupsByUserId.values()].map((group) => ({
-				requestorUserId: group.requestorUserId,
-				requestorLabels: [...group.requestorLabels],
-				attemptCount: group.attemptCount,
-			})),
-			lastNotifiedAt: existing?.lastNotifiedAt ?? null,
-			nextEligibleAt,
-			attemptCount: (existing?.attemptCount ?? 0) + 1,
-			lastError: existing?.lastError,
-			source: input.source ?? existing?.source,
-			accessType: input.accessType,
-			targetUserId: input.targetUserId,
-		}
-		this.pendingImmunitasAccessAlerts.set(queueKey, entry)
-
-		await this.state.storage.put({
-			[`${CoreDO.IMMUNITAS_ALERT_STORAGE_PREFIX}${queueKey}`]:
-				this.pendingImmunitasAccessAlerts.get(queueKey)!,
-		})
-		await this.scheduleImmunitasAccessAlertAlarm()
-
-		this.logger.info('[CoreDO] Queued immunitas access alert', {
-			queueKey,
-			targetUserId: input.targetUserId,
-			accessType: input.accessType,
-			pendingCount: this.pendingImmunitasAccessAlerts.size,
-			source: input.source ?? existing?.source ?? 'unknown',
-			hasPendingEntry,
-		})
-
-		return {
-			added,
-			skipped,
-			pendingCount: this.pendingImmunitasAccessAlerts.size,
-		}
 	}
 
 	private buildPendingTokenInvalidationMessage(
@@ -2483,192 +2260,6 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		}
 		this.logger.info('[CoreDO] Processed queued user and Discord refreshes', result)
 		return result
-	}
-
-	/**
-	 * Drain queued immunitas access alerts and DM the affected users.
-	 * Alerts are deduplicated per target user + access type and rate-limited
-	 * to one delivery per 15 minutes.
-	 */
-	async processPendingImmunitasAccessAlerts(): Promise<{
-		processed: number
-		sent: number
-		failed: number
-	}> {
-		if (this.env.IMMUNITAS_ALERTS) {
-			return getStub<ImmunitasAlerts>(this.env.IMMUNITAS_ALERTS, 'default')
-				.processPendingImmunitasAccessAlerts()
-		}
-		const now = Date.now()
-
-		const expiredKeys: string[] = []
-		for (const [queueKey, entry] of this.pendingImmunitasAccessAlerts) {
-			if (entry.expiresAt <= now) {
-				this.pendingImmunitasAccessAlerts.delete(queueKey)
-				expiredKeys.push(`${CoreDO.IMMUNITAS_ALERT_STORAGE_PREFIX}${queueKey}`)
-			}
-		}
-		if (expiredKeys.length > 0) {
-			await this.state.storage.delete(expiredKeys)
-		}
-
-		const dueEntries = [...this.pendingImmunitasAccessAlerts.entries()]
-			.filter(
-				([, entry]) => entry.pendingTargetCharacterLabels.length > 0 && entry.nextEligibleAt <= now
-			)
-			.sort((a, b) => a[1].nextEligibleAt - b[1].nextEligibleAt)
-			.slice(0, 20)
-
-		if (dueEntries.length === 0) {
-			return { processed: 0, sent: 0, failed: 0 }
-		}
-
-		const discordStub = getStub<Discord>(this.env.DISCORD, 'default')
-		const db = this.getDb()
-		let sent = 0
-		let failed = 0
-		const toStore: Record<
-			string,
-			{
-				expiresAt: number
-				pendingTargetCharacterLabels: string[]
-				pendingRequestorGroups: Array<{
-					requestorUserId: string
-					requestorLabels: string[]
-					attemptCount: number
-				}>
-				lastNotifiedAt: number | null
-				nextEligibleAt: number
-				attemptCount: number
-				lastError?: string
-				source?: string
-				accessType: 'profile-data' | 'fulcrum-report'
-				targetUserId: string
-			}
-		> = {}
-
-		for (const [queueKey, entry] of dueEntries) {
-			const user = await db.query.users.findFirst({
-				where: eq(users.id, entry.targetUserId),
-				columns: {
-					id: true,
-					discordUserId: true,
-				},
-			})
-
-			if (!user) {
-				await this.evictPendingImmunitasAccessAlert(
-					queueKey,
-					'queue entry no longer has a matching core user'
-				)
-				this.logger.info('[CoreDO] Dropped immunitas access alert for missing core user', {
-					queueKey,
-					targetUserId: entry.targetUserId,
-				})
-				continue
-			}
-
-			if (!user.discordUserId) {
-				await this.evictPendingImmunitasAccessAlert(
-					queueKey,
-					'discord account is not linked for this user'
-				)
-				this.logger.info('[CoreDO] Dropped immunitas access alert due to missing Discord link', {
-					queueKey,
-					targetUserId: entry.targetUserId,
-					pendingTargetCharacterLabels: entry.pendingTargetCharacterLabels.length,
-				})
-				continue
-			}
-
-			const message = this.buildImmunitasAccessMessage({
-				accessType: entry.accessType,
-				targetCharacterLabels: entry.pendingTargetCharacterLabels,
-				requestorGroups: entry.pendingRequestorGroups,
-			})
-			const result = await discordStub.sendDirectMessage(entry.targetUserId, message)
-			if (!result.success) {
-				if (!shouldRetryImmunitasAccessAlertDelivery(result)) {
-					await this.evictPendingImmunitasAccessAlert(
-						queueKey,
-						result.error ?? 'fatal Discord delivery failure'
-					)
-					failed++
-					this.logger.warn(
-						'[CoreDO] Dropped immunitas access alert due to fatal Discord delivery failure',
-						{
-							queueKey,
-							targetUserId: entry.targetUserId,
-							accessType: entry.accessType,
-							error: result.error ?? 'Unknown Discord delivery error',
-						}
-					)
-					continue
-				}
-
-				const retryAfterMs =
-					typeof result.retryAfter === 'number' && result.retryAfter > 0
-						? result.retryAfter * 1000
-						: IMMUNITAS_ALERT_RETRY_MS
-				const nextEntry = {
-					...entry,
-					attemptCount: entry.attemptCount + 1,
-					lastError: result.error ?? 'Failed to deliver immunitas access alert',
-					nextEligibleAt: now + retryAfterMs,
-					expiresAt: now + IMMUNITAS_ALERT_TTL_MS,
-				}
-				this.pendingImmunitasAccessAlerts.set(queueKey, nextEntry)
-				toStore[`${CoreDO.IMMUNITAS_ALERT_STORAGE_PREFIX}${queueKey}`] = nextEntry
-				failed++
-				this.logger.warn('[CoreDO] Failed to send immunitas access alert', {
-					queueKey,
-					targetUserId: entry.targetUserId,
-					accessType: entry.accessType,
-					error: result.error ?? 'Unknown Discord delivery error',
-					retryAfterMs,
-				})
-				continue
-			}
-
-			const nextEntry = {
-				...entry,
-				pendingTargetCharacterLabels: [],
-				pendingRequestorGroups: [],
-				lastNotifiedAt: now,
-				nextEligibleAt: now + IMMUNITAS_ALERT_COOLDOWN_MS,
-				attemptCount: 0,
-				lastError: undefined,
-				expiresAt: now + IMMUNITAS_ALERT_TTL_MS,
-			}
-			this.pendingImmunitasAccessAlerts.set(queueKey, nextEntry)
-			toStore[`${CoreDO.IMMUNITAS_ALERT_STORAGE_PREFIX}${queueKey}`] = nextEntry
-			sent++
-		}
-
-		if (Object.keys(toStore).length > 0) {
-			await this.state.storage.put(toStore)
-		}
-		await this.scheduleImmunitasAccessAlertAlarm()
-
-		this.logger.info('[CoreDO] Processed pending immunitas access alerts', {
-			processed: dueEntries.length,
-			sent,
-			failed,
-		})
-
-		return {
-			processed: dueEntries.length,
-			sent,
-			failed,
-		}
-	}
-
-	async alarm(): Promise<void> {
-		if (this.env.IMMUNITAS_ALERTS) return
-		const result = await this.processPendingImmunitasAccessAlerts()
-		if (result.processed > 0) {
-			this.logger.info('[CoreDO] Immunitas alert alarm drained pending alerts', result)
-		}
 	}
 
 	/**

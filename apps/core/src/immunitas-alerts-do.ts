@@ -1,10 +1,12 @@
 import { DurableObject } from 'cloudflare:workers'
 
-import { ExpiryAlarmQueue } from '@repo/expiry-alarms'
 import { eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { ExpiryAlarmQueue } from '@repo/expiry-alarms'
 import { logger } from '@repo/hono-helpers'
 
+import { createDb } from './db'
+import { users } from './db/schema'
 import {
 	buildImmunitasAccessAlertMessage,
 	IMMUNITAS_ALERT_COOLDOWN_MS,
@@ -13,8 +15,6 @@ import {
 	IMMUNITAS_ALERT_TTL_MS,
 	shouldRetryImmunitasAccessAlertDelivery,
 } from './lib/immunitas-alerts'
-import { createDb } from './db'
-import { users } from './db/schema'
 
 import type { Discord } from '@repo/discord'
 import type { Env } from './context'
@@ -25,11 +25,7 @@ export interface ImmunitasAlerts {
 		skipped: number
 		pendingCount: number
 	}>
-	processPendingImmunitasAccessAlerts(): Promise<{
-		processed: number
-		sent: number
-		failed: number
-	}>
+	reconcile(): Promise<{ scheduled: number }>
 }
 
 export interface ImmunitasAccessAlertInput {
@@ -73,7 +69,12 @@ export class ImmunitasAlertsDO extends DurableObject<Env> implements ImmunitasAl
 			prefix: PREFIX,
 			pastDue: 'process',
 			batchSize: 20,
-			retry: { maxAttempts: 1, baseDelayMs: IMMUNITAS_ALERT_RETRY_MS, maxDelayMs: IMMUNITAS_ALERT_RETRY_MS },
+			retry: {
+				maxAttempts: 1,
+				baseDelayMs: IMMUNITAS_ALERT_RETRY_MS,
+				maxDelayMs: IMMUNITAS_ALERT_RETRY_MS,
+				onExhausted: 'remove',
+			},
 			handler: (context) => this.deliver(context.payload),
 		})
 		void state.blockConcurrencyWhile(() => this.queue.initialize())
@@ -88,18 +89,22 @@ export class ImmunitasAlertsDO extends DurableObject<Env> implements ImmunitasAl
 		const existing = await this.state.storage.get<AlertPayload>(`${PAYLOAD_PREFIX}${id}`)
 		const labels = new Set(existing?.pendingTargetCharacterLabels ?? [])
 		const groups = new Map(
-			(existing?.pendingRequestorGroups ?? []).map((group) => [group.requestorUserId, {
-				requestorUserId: group.requestorUserId,
-				requestorLabels: new Set(group.requestorLabels),
-			}])
+			(existing?.pendingRequestorGroups ?? []).map((group) => [
+				group.requestorUserId,
+				{
+					requestorUserId: group.requestorUserId,
+					requestorLabels: new Set(group.requestorLabels),
+				},
+			])
 		)
 		const beforeLabels = labels.size
 		labels.add(label)
-		const requestorLabel = input.requestorCharacterLabel?.trim() || input.requestorUserId.trim() || 'Unknown requester'
+		const requestorLabel =
+			input.requestorCharacterLabel?.trim() || input.requestorUserId.trim() || 'Unknown requester'
 		const group = groups.get(input.requestorUserId) ?? {
 			requestorUserId: input.requestorUserId,
 			requestorLabels: new Set<string>(),
-			}
+		}
 		const beforeRequestorLabels = group.requestorLabels.size
 		group.requestorLabels.add(requestorLabel)
 		groups.set(input.requestorUserId, group)
@@ -126,17 +131,44 @@ export class ImmunitasAlertsDO extends DurableObject<Env> implements ImmunitasAl
 		}
 		await this.state.storage.put(`${PAYLOAD_PREFIX}${id}`, payload)
 		await this.queue.upsert(id, dueAt, payload)
-		logger.info('[ImmunitasAlertsDO] Queued access alert', { id, added: labels.size - beforeLabels + group.requestorLabels.size - beforeRequestorLabels })
+		logger.info('[ImmunitasAlertsDO] Queued access alert', {
+			id,
+			added: labels.size - beforeLabels + group.requestorLabels.size - beforeRequestorLabels,
+		})
 		return {
 			added: labels.size - beforeLabels + group.requestorLabels.size - beforeRequestorLabels,
-			skipped: Math.max(0, 2 - (labels.size - beforeLabels + group.requestorLabels.size - beforeRequestorLabels)),
+			skipped: Math.max(
+				0,
+				2 - (labels.size - beforeLabels + group.requestorLabels.size - beforeRequestorLabels)
+			),
 			pendingCount: 1,
 		}
 	}
 
-	async processPendingImmunitasAccessAlerts() {
-		const result = await this.queue.alarm()
-		return { processed: result.claimed, sent: result.completed, failed: result.failed }
+	async reconcile(): Promise<{ scheduled: number }> {
+		const stored = await this.state.storage.list<AlertPayload>({ prefix: PAYLOAD_PREFIX })
+		const entries = await this.queue.list({ includeFailed: true })
+		const activeEntries = await this.queue.list()
+		const entryIds = new Set(entries.map((entry) => entry.id))
+		const activeById = new Map(activeEntries.map((entry) => [entry.id, entry]))
+		for (const [key, payload] of stored) {
+			const id = key.slice(PAYLOAD_PREFIX.length)
+			const activeEntry = activeById.get(id)
+			if (
+				!entryIds.has(id) ||
+				(activeEntry &&
+					(activeEntry.dueAt !== payload.nextEligibleAt ||
+						JSON.stringify(activeEntry.payload) !== JSON.stringify(payload)))
+			) {
+				await this.queue.upsert(id, payload.nextEligibleAt, payload)
+			}
+		}
+		const payloadIds = new Set([...stored.keys()].map((key) => key.slice(PAYLOAD_PREFIX.length)))
+		for (const entry of entries) {
+			if (!payloadIds.has(entry.id)) await this.queue.cancel(entry.id)
+		}
+		await this.queue.repair()
+		return { scheduled: stored.size }
 	}
 
 	async alarm(): Promise<void> {
@@ -173,8 +205,17 @@ export class ImmunitasAlertsDO extends DurableObject<Env> implements ImmunitasAl
 				await this.state.storage.delete(`${PAYLOAD_PREFIX}${id}`)
 				return { action: 'complete' as const }
 			}
-			const retryAt = now + (result.retryAfter && result.retryAfter > 0 ? result.retryAfter * 1000 : IMMUNITAS_ALERT_RETRY_MS)
-			const retryPayload = { ...payload, nextEligibleAt: retryAt, expiresAt: now + IMMUNITAS_ALERT_TTL_MS, lastError: result.error }
+			const retryAt =
+				now +
+				(result.retryAfter && result.retryAfter > 0
+					? result.retryAfter * 1000
+					: IMMUNITAS_ALERT_RETRY_MS)
+			const retryPayload = {
+				...payload,
+				nextEligibleAt: retryAt,
+				expiresAt: now + IMMUNITAS_ALERT_TTL_MS,
+				lastError: result.error,
+			}
 			await this.state.storage.put(`${PAYLOAD_PREFIX}${id}`, retryPayload)
 			return { action: 'retry' as const, delayMs: retryAt - now, payload: retryPayload }
 		}
@@ -188,6 +229,10 @@ export class ImmunitasAlertsDO extends DurableObject<Env> implements ImmunitasAl
 			lastError: undefined,
 		}
 		await this.state.storage.put(`${PAYLOAD_PREFIX}${id}`, cooldownPayload)
-		return { action: 'reschedule' as const, dueAt: cooldownPayload.nextEligibleAt, payload: cooldownPayload }
+		return {
+			action: 'reschedule' as const,
+			dueAt: cooldownPayload.nextEligibleAt,
+			payload: cooldownPayload,
+		}
 	}
 }

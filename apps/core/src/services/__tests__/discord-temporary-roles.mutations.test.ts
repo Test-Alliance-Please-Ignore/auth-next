@@ -152,15 +152,28 @@ describe('temporary role direct mutations', () => {
 		assignmentStub.listPendingRemovalAssignments.mockResolvedValue([
 			{ assignmentSource: 'self', roleId: role.roleId },
 		])
+		const db = {
+			query: {
+				discordRoles: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							id: role.roleDbId,
+							roleId: role.roleId,
+							roleName: role.roleName,
+							discordServer: { guildId: 'guild-1', isActive: true },
+							selfAssignable: {
+								displayName: role.displayName,
+								defaultDurationSeconds: role.defaultDurationSeconds,
+							},
+						},
+					]),
+				},
+			},
+		} as any
 
-		const roles = await listSelfAssignableRolesForUser(
-			env,
-			{} as any,
-			'guild-1',
-			'discord-1',
-			'leave',
-			[role.roleId]
-		)
+		const roles = await listSelfAssignableRolesForUser(env, db, 'guild-1', 'discord-1', 'leave', [
+			role.roleId,
+		])
 
 		expect(roles).toEqual([role])
 	})

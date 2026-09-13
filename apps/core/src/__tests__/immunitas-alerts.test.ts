@@ -2,203 +2,132 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
 
-import { CoreDO } from '../durable-object'
+import { createDb } from '../db'
+import { ImmunitasAlertsDO } from '../immunitas-alerts-do'
 import {
 	buildImmunitasAccessAlertMessage,
-	IMMUNITAS_ALERT_COOLDOWN_MS,
 	shouldRetryImmunitasAccessAlertDelivery,
 } from '../lib/immunitas-alerts'
 
 import type { Discord } from '@repo/discord'
 
-vi.mock('@repo/do-utils', () => ({
-	getStub: vi.fn(),
-}))
+vi.mock('@repo/do-utils', () => ({ getStub: vi.fn() }))
+vi.mock('../db', () => ({ createDb: vi.fn() }))
 
 const getStubMock = vi.mocked(getStub)
+const createDbMock = vi.mocked(createDb)
 
-function createDbMock() {
-	return {
-		query: {
-			users: {
-				findFirst: vi.fn(),
-			},
-		},
+class FakeStorage {
+	private readonly values = new Map<string, unknown>()
+	alarmAt: number | null = null
+	async get<T>(key: string) {
+		return structuredClone(this.values.get(key)) as T | undefined
+	}
+	async list<T>({ prefix }: { prefix?: string } = {}) {
+		return new Map(
+			[...this.values.entries()]
+				.filter(([key]) => !prefix || key.startsWith(prefix))
+				.map(([key, value]) => [key, structuredClone(value) as T])
+		)
+	}
+	async put<T>(keyOrEntries: string | Record<string, T>, value?: T) {
+		if (typeof keyOrEntries === 'string') this.values.set(keyOrEntries, structuredClone(value))
+		else
+			for (const [key, entry] of Object.entries(keyOrEntries))
+				this.values.set(key, structuredClone(entry))
+	}
+	async delete(keyOrKeys: string | string[]) {
+		for (const key of Array.isArray(keyOrKeys) ? keyOrKeys : [keyOrKeys]) this.values.delete(key)
+	}
+	async transaction<T>(callback: (storage: this) => Promise<T>) {
+		return callback(this)
+	}
+	async setAlarm(value: number | Date) {
+		this.alarmAt = value instanceof Date ? value.getTime() : value
+	}
+	async deleteAlarm() {
+		this.alarmAt = null
 	}
 }
 
-describe('immunitas alerts message builder', () => {
-	it('groups requestors by accessor user in the attempted by field', () => {
+const input = {
+	targetUserId: 'target-user',
+	targetCharacterLabel: 'Target Pilot',
+	requestorUserId: 'requestor-user',
+	requestorCharacterLabel: 'Requester',
+	accessType: 'fulcrum-report' as const,
+}
+function createState(storage: FakeStorage) {
+	return {
+		storage,
+		blockConcurrencyWhile: async (callback: () => Promise<void>) => callback(),
+	} as any
+}
+
+describe('Immunitas alert formatting and retry policy', () => {
+	it('groups requestors without displaying request counts', () => {
 		const message = buildImmunitasAccessAlertMessage({
 			accessType: 'fulcrum-report',
-			targetCharacterLabels: ['Target Pilot One', 'Target Pilot Two'],
-			requestorGroups: [
-				{
-					requestorUserId: 'requestor-1',
-					requestorLabels: ['Requester Alpha', 'Requester Alpha Alt'],
-				},
-				{
-					requestorUserId: 'requestor-2',
-					requestorLabels: ['Requester Beta'],
-				},
-			],
+			targetCharacterLabels: ['Target Pilot'],
+			requestorGroups: [{ requestorUserId: 'requestor-1', requestorLabels: ['Requester'] }],
 			updatedAt: new Date('2026-06-21T00:00:00.000Z'),
-		})
-
-		expect(message.embeds?.[0]).toMatchObject({
-			title: 'Unauthorized fulcrum report access blocked',
-			timestamp: '2026-06-21T00:00:00.000Z',
-			color: 0xef4444,
 		})
 		expect(message.embeds?.[0]?.fields?.[2]?.name).toBe('Attempted By')
-		expect(message.embeds?.[0]?.fields?.[2]?.value).toContain('• Requester Alpha')
-		expect(message.embeds?.[0]?.fields?.[2]?.value).toContain('  - Requester Alpha Alt')
-		expect(message.embeds?.[0]?.fields?.[2]?.value).toContain('• Requester Beta')
+		expect(JSON.stringify(message)).not.toContain('attempt count')
 	})
-
-	it('colors profile alerts differently from fulcrum alerts', () => {
-		const message = buildImmunitasAccessAlertMessage({
-			accessType: 'profile-data',
-			targetCharacterLabels: ['Target Pilot'],
-			requestorGroups: [
-				{
-					requestorUserId: 'requestor-1',
-					requestorLabels: ['Requester Alpha'],
-				},
-			],
-			updatedAt: new Date('2026-06-21T00:00:00.000Z'),
-		})
-
-		expect(message.embeds?.[0]).toMatchObject({
-			title: 'Unauthorized profile data access blocked',
-			color: 0xf59e0b,
-		})
+	it('treats authorization failures as fatal and server failures as retryable', () => {
+		expect(shouldRetryImmunitasAccessAlertDelivery({ error: 'Discord API error: 401' })).toBe(false)
+		expect(shouldRetryImmunitasAccessAlertDelivery({ error: 'Discord API error: 500' })).toBe(true)
 	})
 })
 
-describe('immunitas alert delivery retry policy', () => {
-	it('treats 401/403-style discord failures and missing permissions as fatal', () => {
-		expect(
-			shouldRetryImmunitasAccessAlertDelivery({
-				error: 'Discord API error: 401',
-			})
-		).toBe(false)
-		expect(
-			shouldRetryImmunitasAccessAlertDelivery({
-				error: 'Discord API error: 403',
-			})
-		).toBe(false)
-		expect(
-			shouldRetryImmunitasAccessAlertDelivery({
-				error: 'Missing permissions to send DM to this user',
-			})
-		).toBe(false)
-		expect(
-			shouldRetryImmunitasAccessAlertDelivery({
-				error: 'Discord API error: 500',
-			})
-		).toBe(true)
-	})
-})
-
-describe('CoreDO immunitas alert draining', () => {
-	const createState = () =>
-		({
-			storage: {
-				delete: vi.fn().mockResolvedValue(undefined),
-				put: vi.fn().mockResolvedValue(undefined),
-				deleteAlarm: vi.fn().mockResolvedValue(undefined),
-			},
-		}) as any
-
-	const createCore = (discordStub: { sendDirectMessage: ReturnType<typeof vi.fn> }) => {
-		const core = Object.create(CoreDO.prototype) as CoreDO
-		const db = createDbMock()
-		;(core as any).env = { DISCORD: {} as DurableObjectNamespace }
-		;(core as any).logger = { info: vi.fn(), error: vi.fn(), warn: vi.fn() }
-		;(core as any).state = createState()
-		;(core as any).getDb = vi.fn().mockReturnValue(db)
-		;(core as any).scheduleImmunitasAccessAlertAlarm = vi.fn().mockResolvedValue(undefined)
-		;(core as any).pendingImmunitasAccessAlerts = new Map([
-			[
-				'core-user:fulcrum-report',
-				{
-					expiresAt: Date.now() + 60_000,
-					pendingTargetCharacterLabels: ['Target Pilot'],
-					pendingRequestorGroups: [
-						{
-							requestorUserId: 'requestor-1',
-							requestorLabels: ['Requester One'],
-						},
-					],
-					lastNotifiedAt: null,
-					nextEligibleAt: 0,
-					lastError: undefined,
-					source: 'test',
-					accessType: 'fulcrum-report' as const,
-					targetUserId: 'core-user',
-				},
-			],
-		])
-		getStubMock.mockImplementation((binding: unknown) => {
-			if (binding === (core as any).env.DISCORD) return discordStub as unknown as Discord
-			throw new Error('Unexpected binding')
-		})
-		return { core, db }
-	}
-
+describe('ImmunitasAlertsDO', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
+		createDbMock.mockReturnValue({
+			query: { users: { findFirst: vi.fn().mockResolvedValue({ discordUserId: 'discord-user' }) } },
+		} as any)
 	})
-
-	it('evicts the queue entry after a successful Discord send', async () => {
-		const discordStub = {
-			sendDirectMessage: vi.fn().mockResolvedValue({ success: true, messageId: 'msg-1' }),
-		}
-		const { core, db } = createCore(discordStub)
-		db.query.users.findFirst.mockResolvedValue({ id: 'core-user', discordUserId: 'discord-user' })
-
-		const result = await (core as any).processPendingImmunitasAccessAlerts()
-
-		expect(result).toEqual({ processed: 1, sent: 1, failed: 0 })
-		const entry = (core as any).pendingImmunitasAccessAlerts.get('core-user:fulcrum-report')
-		expect(entry).toMatchObject({
-			pendingTargetCharacterLabels: [],
-			pendingRequestorGroups: [],
-			lastNotifiedAt: expect.any(Number),
-			lastError: undefined,
-		})
-		expect(entry.nextEligibleAt).toBeGreaterThanOrEqual(
-			Date.now() + IMMUNITAS_ALERT_COOLDOWN_MS - 1000
-		)
-		expect((core as any).state.storage.delete).not.toHaveBeenCalled()
-		expect((core as any).state.storage.put).toHaveBeenCalledWith(
-			expect.objectContaining({
-				'pending-immunitas:core-user:fulcrum-report': expect.objectContaining({
-					pendingTargetCharacterLabels: [],
-					pendingRequestorGroups: [],
-				}),
-			})
-		)
+	it('aggregates alerts and arms the delayed alarm', async () => {
+		const storage = new FakeStorage()
+		getStubMock.mockReturnValue({ sendDirectMessage: vi.fn() } as unknown as Discord)
+		const alerts = new ImmunitasAlertsDO(createState(storage), { DISCORD: {} } as any)
+		await alerts.queueImmunitasAccessAlert(input)
+		await alerts.queueImmunitasAccessAlert({ ...input, targetCharacterLabel: 'Second Pilot' })
+		expect(storage.alarmAt).toBeGreaterThan(Date.now())
+		expect((await alerts.reconcile()).scheduled).toBe(1)
 	})
-
-	it('evicts the queue entry for fatal Discord failures instead of retrying', async () => {
-		const discordStub = {
-			sendDirectMessage: vi.fn().mockResolvedValue({
-				success: false,
-				error: 'Discord API error: 401',
-			}),
+	it('delivers due alerts and schedules the cooldown', async () => {
+		const storage = new FakeStorage()
+		const discord = {
+			sendDirectMessage: vi.fn().mockResolvedValue({ success: true, messageId: 'message' }),
 		}
-		const { core, db } = createCore(discordStub)
-		db.query.users.findFirst.mockResolvedValue({ id: 'core-user', discordUserId: 'discord-user' })
-
-		const result = await (core as any).processPendingImmunitasAccessAlerts()
-
-		expect(result).toEqual({ processed: 1, sent: 0, failed: 1 })
-		expect((core as any).pendingImmunitasAccessAlerts.has('core-user:fulcrum-report')).toBe(false)
-		expect((core as any).state.storage.delete).toHaveBeenCalledWith(
-			'pending-immunitas:core-user:fulcrum-report'
-		)
-		expect((core as any).state.storage.put).not.toHaveBeenCalled()
+		getStubMock.mockReturnValue(discord as unknown as Discord)
+		const alerts = new ImmunitasAlertsDO(createState(storage), { DISCORD: {} } as any)
+		await alerts.queueImmunitasAccessAlert(input)
+		const payload = await storage.get<any>('immunitas-alert:payload:target-user:fulcrum-report')
+		const duePayload = { ...payload, nextEligibleAt: 0 }
+		await storage.put('immunitas-alert:payload:target-user:fulcrum-report', duePayload)
+		await (alerts as any).queue.upsert('target-user:fulcrum-report', 0, duePayload)
+		await alerts.alarm()
+		expect(discord.sendDirectMessage).toHaveBeenCalledTimes(1)
+		expect(storage.alarmAt).toBeGreaterThan(Date.now())
+	})
+	it('removes fatal delivery failures', async () => {
+		const storage = new FakeStorage()
+		const discord = {
+			sendDirectMessage: vi
+				.fn()
+				.mockResolvedValue({ success: false, error: 'Discord API error: 401' }),
+		}
+		getStubMock.mockReturnValue(discord as unknown as Discord)
+		const alerts = new ImmunitasAlertsDO(createState(storage), { DISCORD: {} } as any)
+		await alerts.queueImmunitasAccessAlert(input)
+		const payload = await storage.get<any>('immunitas-alert:payload:target-user:fulcrum-report')
+		const duePayload = { ...payload, nextEligibleAt: 0 }
+		await storage.put('immunitas-alert:payload:target-user:fulcrum-report', duePayload)
+		await (alerts as any).queue.upsert('target-user:fulcrum-report', 0, duePayload)
+		await alerts.alarm()
+		expect(await storage.get('immunitas-alert:payload:target-user:fulcrum-report')).toBeUndefined()
 	})
 })

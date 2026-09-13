@@ -17,6 +17,7 @@ import { BillingScopeCacheDO } from './billing-scope-cache-do'
 import { createDb } from './db'
 import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from './db/schema'
 import { CoreDO } from './durable-object'
+import { ImmunitasAlertsDO } from './immunitas-alerts-do'
 import { waitUntilWithTelemetry } from './lib/background-task'
 import { cleanupExpiredExportArtifacts } from './lib/export-retention'
 import { getFleetParticipationExportBucket } from './lib/fleet-participation-export'
@@ -25,6 +26,7 @@ import { TOKEN_INVALID_ALERT_DRAIN_CRON } from './lib/token-invalid-alerts'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { csrfProtection } from './middleware/csrf'
 import { sessionMiddleware } from './middleware/session'
+import { MumbleTempopExpiryDO } from './mumble-tempop-expiry-do'
 import adminRoutes from './routes/admin'
 import adminNavigationLinksRoutes from './routes/admin/navigation-links'
 import adminStructuresRoutes from './routes/admin/structures'
@@ -83,13 +85,14 @@ import {
 	executeDiscordComponent,
 	executeDiscordModalSubmit,
 } from './services/discord-components.service'
+import { announceMarketClosed } from './services/discord-market-notify.service'
+import {
+	applyMarketPostStatus,
+	updateMarketPostFromDetail,
+} from './services/discord-market-post.service'
 import { reconcileMarketPosts } from './services/discord-market-reconcile.service'
 import { DkpService } from './services/dkp.service'
-import { announceMarketClosed } from './services/discord-market-notify.service'
-import { applyMarketPostStatus, updateMarketPostFromDetail } from './services/discord-market-post.service'
 import { TemporaryRoleAssignmentsDO } from './temporary-role-assignments-do'
-import { MumbleTempopExpiryDO } from './mumble-tempop-expiry-do'
-import { ImmunitasAlertsDO } from './immunitas-alerts-do'
 
 import type {
 	CharacterOwnerInfo,
@@ -101,13 +104,16 @@ import type {
 	UserDetails,
 } from '@repo/admin'
 import type { Core } from '@repo/core'
-import type { Discord } from '@repo/discord'
-import type { MarketDetail as PredictionMarketDetail, PredictionMarkets } from '@repo/prediction-markets'
-import type { MumbleTempopExpiry } from './mumble-tempop-expiry-do'
-import type { DiscordInteractionResponse } from '@repo/discord'
+import type { Discord, DiscordInteractionResponse } from '@repo/discord'
 import type { Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
+import type {
+	MarketDetail as PredictionMarketDetail,
+	PredictionMarkets,
+} from '@repo/prediction-markets'
 import type { App, Env } from './context'
+import type { ImmunitasAlerts } from './immunitas-alerts-do'
+import type { MumbleTempopExpiry } from './mumble-tempop-expiry-do'
 import type {
 	DiscordInteractionRouting,
 	ExecuteDiscordSlashCommandInput,
@@ -233,7 +239,10 @@ export default {
 			}
 
 			if (event.cron === MAINTENANCE_CRON) {
-				const isolateMaintenanceJob = async (job: string, task: Promise<unknown>): Promise<void> => {
+				const isolateMaintenanceJob = async (
+					job: string,
+					task: Promise<unknown>
+				): Promise<void> => {
 					try {
 						await task
 					} catch (error) {
@@ -242,8 +251,7 @@ export default {
 				}
 				const expiryRepair = isolateMaintenanceJob(
 					'mumble-tempop-expiry',
-					env.MUMBLE_TEMPOP_EXPIRY
-					? getStub<MumbleTempopExpiry>(env.MUMBLE_TEMPOP_EXPIRY, 'default')
+					getStub<MumbleTempopExpiry>(env.MUMBLE_TEMPOP_EXPIRY, 'default')
 						.reconcile()
 						.then((result) => {
 							scheduledLogger.info(
@@ -251,7 +259,6 @@ export default {
 								result
 							)
 						})
-					: Promise.resolve()
 				)
 				const marketCloseRepair = isolateMaintenanceJob(
 					'prediction-market-close-alarms',
@@ -270,6 +277,10 @@ export default {
 						}
 					})
 				)
+				const immunitasRepair = isolateMaintenanceJob(
+					'immunitas-alerts',
+					getStub<ImmunitasAlerts>(env.IMMUNITAS_ALERTS, 'default').reconcile()
+				)
 				const structureCleanup = isolateMaintenanceJob(
 					'structure-export-cleanup',
 					cleanupExpiredExportArtifacts(
@@ -285,7 +296,14 @@ export default {
 					)
 				)
 				ctx.waitUntil(
-					Promise.all([expiryRepair, marketCloseRepair, marketPostRepair, structureCleanup, fleetCleanup])
+					Promise.all([
+						expiryRepair,
+						marketCloseRepair,
+						marketPostRepair,
+						immunitasRepair,
+						structureCleanup,
+						fleetCleanup,
+					])
 				)
 			}
 

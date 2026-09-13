@@ -131,11 +131,6 @@ export interface Core {
 		triggered: number
 		failed: number
 	}>
-	processPendingImmunitasAccessAlerts(): Promise<{
-		processed: number
-		sent: number
-		failed: number
-	}>
 	processPendingTokenInvalidationAlerts(): Promise<{
 		processed: number
 		sent: number
