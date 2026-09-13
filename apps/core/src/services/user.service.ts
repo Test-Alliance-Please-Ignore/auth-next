@@ -8,7 +8,6 @@ import type {
 	CreateUserOptions,
 	LinkCharacterOptions,
 	UserCharacterDTO,
-	UserPreferencesDTO,
 	UserProfileDTO,
 } from '@repo/core'
 import type { createDb } from '../db'
@@ -375,38 +374,6 @@ export class UserService {
 		clearUserProfileCache(userId)
 
 		return true
-	}
-
-	/**
-	 * Update user preferences
-	 */
-	async updatePreferences(
-		userId: string,
-		preferences: UserPreferencesDTO
-	): Promise<UserPreferencesDTO> {
-		// Check if preferences exist
-		const existing = await this.db.query.userPreferences.findFirst({
-			where: eq(userPreferences.userId, userId),
-		})
-
-		if (existing) {
-			// Update existing
-			await this.db
-				.update(userPreferences)
-				.set({
-					preferences,
-					updatedAt: new Date(),
-				})
-				.where(eq(userPreferences.userId, userId))
-		} else {
-			// Create new
-			await this.db.insert(userPreferences).values({
-				userId,
-				preferences,
-			})
-		}
-
-		return preferences
 	}
 
 	/**

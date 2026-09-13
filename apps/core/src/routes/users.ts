@@ -232,32 +232,6 @@ users.get('/me', async (c) => {
 })
 
 /**
- * PATCH /users/me/preferences
- *
- * Update user preferences.
- */
-users.patch('/me/preferences', async (c) => {
-	const user = c.get('user')!
-	const body = await c.req.json()
-
-	const db = c.get('db') || createDb(c.env.DATABASE_URL)
-	const userService = new UserService(db)
-	const activityService = new ActivityService(db)
-
-	// Validate preferences
-	const preferences: UserPreferencesDTO = body.preferences || body
-
-	// Update preferences
-	const updated = await userService.updatePreferences(user.id, preferences)
-
-	await activityService.logPreferencesUpdated(user.id, getRequestMetadata(c))
-
-	return c.json({
-		preferences: updated,
-	})
-})
-
-/**
  * GET /users/me/characters
  *
  * List all linked characters for current user.
