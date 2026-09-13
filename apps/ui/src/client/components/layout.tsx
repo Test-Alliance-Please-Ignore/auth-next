@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router'
 
 import { useAuth } from '@/hooks/useAuth'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { LayoutScrollProvider } from './layout-scroll-context'
@@ -17,6 +18,7 @@ const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)'
 
 export default function Layout() {
 	const { isAuthenticated, isLoading } = useAuth()
+	const { t } = useAppTranslation()
 	const sidebarStateBeforeMobileRef = useRef<boolean | null>(null)
 	const [sidebarOpen, setSidebarOpen] = useState(() => {
 		if (typeof window === 'undefined') {
@@ -98,7 +100,7 @@ export default function Layout() {
 	if (isLoading || !isAuthenticated) {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
-				<LoadingSpinner label="Loading..." />
+				<LoadingSpinner label={t('common.loading')} />
 			</div>
 		)
 	}
@@ -155,7 +157,7 @@ export default function Layout() {
 								variant="ghost"
 								size="icon"
 								onClick={() => setSidebarOpen(true)}
-								aria-label="Open navigation"
+								aria-label={t('navigation.open')}
 								className="h-9 w-9 bg-background/90 backdrop-blur-sm border border-border/50 shadow-sm"
 							>
 								<Menu className="h-4 w-4" />
@@ -178,7 +180,7 @@ export default function Layout() {
 					{/* Footer */}
 					<footer className="border-t border-border/50 py-4 relative z-10 bg-background/75 backdrop-blur-sm">
 						<div className="px-4 md:px-6 lg:px-8 text-center text-xs text-muted-foreground">
-							<p>Powered by EVE Online SSO • Built on Cloudflare Workers</p>
+							<p>{t('navigation.footer')}</p>
 						</div>
 					</footer>
 				</div>

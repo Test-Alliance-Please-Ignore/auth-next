@@ -45,12 +45,14 @@ import { useTaxAlerts } from '@/hooks/corporation-tax'
 import { useAuth, useLogout } from '@/hooks/useAuth'
 import { usePendingInvitations } from '@/hooks/useGroups'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 import { characterPortraitUrl } from '@/lib/eve-images'
 import { resolveSidebarExternalLinkIconName } from '@/lib/sidebar-external-links'
 import { extractCorporationIdFromTaxViewerScopedUrn } from '@/lib/tax-permissions'
 import { cn } from '@/lib/utils'
 
+import { LocalePicker } from './locale-picker'
 import { resolveSrpNavState } from './sidebar-nav.srp'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -74,6 +76,7 @@ interface SidebarNavItem {
 export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }: SidebarNavProps) {
 	const location = useLocation()
 	const { user } = useAuth()
+	const { t } = useAppTranslation()
 	const logout = useLogout()
 	const { data: corporationAccess } = useHasCorporationAccess()
 	const { data: leadershipCorporationAccess } = useCorporationAccess()
@@ -106,6 +109,14 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		gcTime: 1000 * 60 * 5,
 	})
 	const resolvedSidebarExternalLinks = canSeeAllianceMemberNav ? (sidebarExternalLinks ?? []) : []
+	const srpLabels = {
+		myRequests: t('navigation.myRequests'),
+		reviewQueue: t('navigation.reviewQueue'),
+		paymentQueue: t('navigation.paymentQueue'),
+		walletHistory: t('navigation.walletHistory'),
+		alerts: t('navigation.alerts'),
+		configuration: t('navigation.configuration'),
+	}
 	const previewSrpState = resolveSrpNavState({
 		isSiteAdmin,
 		hasSrpReviewerPermission,
@@ -114,6 +125,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		reviewQueueCount: 0,
 		paymentQueueCount: 0,
 		srpAlertCount: 0,
+		labels: srpLabels,
 	})
 	const shouldFetchSrpReviewCount = previewSrpState.shouldFetchSrpReviewCount
 	const shouldFetchSrpPaymentCount = previewSrpState.shouldFetchSrpPaymentCount
@@ -159,6 +171,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		reviewQueueCount,
 		paymentQueueCount,
 		srpAlertCount,
+		labels: srpLabels,
 	})
 
 	const pendingCount = invitations?.length || 0
@@ -251,7 +264,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 
 	const navItems: SidebarNavItem[] = [
 		{
-			label: 'Dashboard',
+			label: t('navigation.dashboard'),
 			href: '/dashboard',
 			icon: LayoutDashboard,
 		},
@@ -261,17 +274,17 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	{
 		const hrItems: SidebarNavItem[] = [
 			{
-				label: 'My Applications',
+				label: t('navigation.myApplications'),
 				href: '/my-applications',
 			},
 			{
-				label: 'Join Corporations',
+				label: t('navigation.joinCorporations'),
 				href: '/join',
 			},
 		]
 		if (canSeeAllianceMemberNav) {
 			hrItems.push({
-				label: 'Recommendations',
+				label: t('navigation.recommendations'),
 				href: '/recommendations',
 			})
 		}
@@ -294,7 +307,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 
 		if (canSeeAllianceMemberNav && hasMemberCorporationAccess) {
 			hrItems.push({
-				label: 'Corporations',
+				label: t('navigation.corporations'),
 				href: '/corporations',
 				isActive:
 					location.pathname === '/corporations' ||
@@ -310,20 +323,20 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			(hrCorporations?.some((corporation) => corporation.isMemberCorporation) ?? false)
 		if (canSeeAllianceMemberNav && canUseCorporationUserSearch) {
 			hrItems.push({
-				label: 'User Search',
+				label: t('navigation.userSearch'),
 				href: '/hr/users',
 			})
 		}
 
 		if (canSeeAllianceMemberNav && canSeeLegacyApplications) {
 			hrItems.push({
-				label: 'Legacy Applications',
+				label: t('navigation.legacyApplications'),
 				href: '/hr/legacy-history',
 			})
 		}
 
 		navItems.push({
-			label: 'HR',
+			label: t('navigation.hr'),
 			href: '#hr',
 			icon: Briefcase,
 			children: hrItems,
@@ -333,7 +346,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	// Permission-only users do not enter the alliance-member navigation block below.
 	if (canSeeBills && !canSeeAllianceMemberNav) {
 		navItems.push({
-			label: 'Bills',
+			label: t('navigation.myBills'),
 			href: '/my-bills',
 			icon: Receipt,
 			isActive: isBillsRoute,
@@ -343,14 +356,14 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	if (canSeeAllianceMemberNav && (canSeeFleetTrackingList || canSeeFleetTrackingStats)) {
 		const fleetTrackingItems: SidebarNavItem[] = []
 		if (canSeeFleetTrackingList) {
-			fleetTrackingItems.push({ label: 'Fleets', href: '/fleet-tracking' })
+			fleetTrackingItems.push({ label: t('navigation.fleets'), href: '/fleet-tracking' })
 		}
 		if (canSeeFleetTrackingStats) {
-			fleetTrackingItems.push({ label: 'Statistics', href: '/fleet-tracking/stats' })
+			fleetTrackingItems.push({ label: t('navigation.statistics'), href: '/fleet-tracking/stats' })
 		}
 
 		navItems.push({
-			label: 'Fleet Tracking',
+			label: t('navigation.fleetTracking'),
 			href: canSeeFleetTrackingList ? '/fleet-tracking' : '/fleet-tracking/stats',
 			icon: Radar,
 			children: fleetTrackingItems.length > 0 ? fleetTrackingItems : undefined,
@@ -360,25 +373,25 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	if (canSeeAllianceMemberNav) {
 		navItems.push(
 			{
-				label: 'Invitations',
+				label: t('navigation.invitations'),
 				href: '/invitations',
 				icon: Mail,
 				badge: pendingCount > 0 ? pendingCount : undefined,
 			},
 			{
-				label: 'My Groups',
+				label: t('navigation.myGroups'),
 				href: '/my-groups',
 				icon: FolderHeart,
 			},
 			{
-				label: 'Groups',
+				label: t('navigation.groups'),
 				href: '/groups',
 				icon: Users,
 			},
 			...(canViewStructures
 				? [
 						{
-							label: 'Structures',
+							label: t('navigation.structures'),
 							href: '/structures',
 							icon: Building2,
 							isActive: isStructuresRoute,
@@ -386,12 +399,12 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 					]
 				: []),
 			{
-				label: 'Skill Plans',
+				label: t('navigation.skillPlans'),
 				href: '/skill-plans',
 				icon: BookOpen,
 			},
 			{
-				label: 'Doctrines',
+				label: t('navigation.doctrines'),
 				href: '/doctrines',
 				icon: Swords,
 			}
@@ -405,7 +418,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			...(canSeeBills
 				? [
 						{
-							label: 'Bills',
+							label: t('navigation.myBills'),
 							href: '/my-bills',
 							icon: Receipt,
 							isActive: isBillsRoute,
@@ -415,22 +428,22 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			...(canSeeMumble
 				? [
 						{
-							label: 'Mumble',
+							label: t('navigation.mumble'),
 							href: '/mumble',
 							icon: Mic,
 						},
 					]
 				: []),
 			{
-				label: 'Freight',
+				label: t('navigation.freight'),
 				href: '/freight',
 				icon: Truck,
 				children: [
-					{ label: 'Calculator', href: '/freight' },
-					{ label: 'Open Contracts', href: '/freight/contracts' },
-					{ label: 'Leaderboard', href: '/freight/leaderboard' },
+					{ label: t('navigation.calculator'), href: '/freight' },
+					{ label: t('navigation.openContracts'), href: '/freight/contracts' },
+					{ label: t('navigation.leaderboard'), href: '/freight/leaderboard' },
 					...(isSiteAdmin || hasAnyPermission('urn:freight:manager')
-						? [{ label: 'Manage Routes', href: '/freight/manage' }]
+						? [{ label: t('navigation.manageRoutes'), href: '/freight/manage' }]
 						: []),
 				],
 			}
@@ -440,49 +453,49 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 
 		if (canSeeMoonScanNav) {
 			navItems.push({
-				label: 'Moon Scanning',
+				label: t('navigation.moonScanning'),
 				href: '/moon-scan',
 				icon: Moon,
 				children: [
 					...(moonScanPermissions.canView
 						? [
-								{ label: 'Regions', href: '/moon-scan' },
-								{ label: 'Scanned Moons', href: '/moon-scan/scanned' },
+								{ label: t('navigation.regions'), href: '/moon-scan' },
+								{ label: t('navigation.scannedMoons'), href: '/moon-scan/scanned' },
 							]
 						: []),
 					...(moonScanPermissions.canSubmit
 						? [
-								{ label: 'Submit Scan', href: '/moon-scan/submit' },
-								{ label: 'My Scans', href: '/moon-scan/my-scans' },
+								{ label: t('navigation.submitScan'), href: '/moon-scan/submit' },
+								{ label: t('navigation.myScans'), href: '/moon-scan/my-scans' },
 							]
 						: []),
 					...(moonScanPermissions.canLeaderboard
-						? [{ label: 'Leaderboard', href: '/moon-scan/leaderboard' }]
+						? [{ label: t('navigation.leaderboard'), href: '/moon-scan/leaderboard' }]
 						: []),
 					...(moonScanPermissions.canValidate
-						? [{ label: 'Validation Queue', href: '/moon-scan/queue' }]
+						? [{ label: t('navigation.validationQueue'), href: '/moon-scan/queue' }]
 						: []),
 					...(moonScanPermissions.canAdmin
-						? [{ label: 'Configuration', href: '/moon-scan/settings' }]
+						? [{ label: t('navigation.configuration'), href: '/moon-scan/settings' }]
 						: []),
 				],
 			})
 		}
 
 		navItems.push({
-			label: 'Broadcasts',
+			label: t('navigation.broadcasts'),
 			href: '/broadcasts',
 			icon: Radio,
 		})
 
 		navItems.push({
-			label: 'Inventory Parser',
+			label: t('navigation.inventoryParser'),
 			href: '/inventory-parser',
 			icon: Package,
 		})
 
 		navItems.push({
-			label: 'Pastes',
+			label: t('navigation.pastes'),
 			href: '/pastes',
 			icon: FileText,
 		})
@@ -490,7 +503,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		// Prediction markets: visible to anyone who can create one (managers + admins also pass).
 		if (hasAnyPermission('urn:markets:creator', 'urn:markets:manager')) {
 			navItems.push({
-				label: 'Prediction Markets',
+				label: t('navigation.predictionMarkets'),
 				href: '/prediction-markets',
 				icon: CircleDollarSign,
 			})
@@ -507,7 +520,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 
 		if (externalLinkChildren.length > 0) {
 			navItems.push({
-				label: 'External',
+				label: t('navigation.external'),
 				href: '#external',
 				icon: ExternalLink,
 				children: externalLinkChildren,
@@ -545,50 +558,50 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		if (canReadTaxFeature) {
 			const taxItems: SidebarNavItem[] = []
 			taxItems.push({
-				label: 'Member Summary',
+				label: t('navigation.memberSummary'),
 				href: '/tax/member-summary',
 			})
 
 			if (canAuditTaxFeature || canReadScopedTaxReports) {
 				taxItems.push({
-					label: 'Reports',
+					label: t('navigation.reports'),
 					href: '/tax/reports',
 				})
 			}
 
 			if (canAuditTaxFeature) {
 				taxItems.push({
-					label: 'Billing',
+					label: t('navigation.billing'),
 					href: '/tax/bills',
 				})
 			}
 
 			if (canManageTaxFeature) {
 				taxItems.push({
-					label: 'Alerts',
+					label: t('navigation.alerts'),
 					href: '/tax/alerts',
 					badge: openTaxAlertCount > 0 ? openTaxAlertCount : undefined,
 				})
 				taxItems.push({
-					label: 'Ledger',
+					label: t('navigation.ledger'),
 					href: '/tax/ledger',
 				})
 				taxItems.push({
-					label: 'Rules',
+					label: t('navigation.rules'),
 					href: '/tax/rules',
 				})
 				taxItems.push({
-					label: 'Exclusions',
+					label: t('navigation.exclusions'),
 					href: '/tax/exclusions',
 				})
 				taxItems.push({
-					label: 'Audit Log',
+					label: t('navigation.auditLog'),
 					href: '/tax/audit-log',
 				})
 			}
 
 			navItems.push({
-				label: 'Tax',
+				label: t('navigation.tax'),
 				href: '/tax',
 				icon: Scale,
 				children: taxItems,
@@ -599,7 +612,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	// Add admin nav item if user is admin (bottom)
 	if (user?.is_admin) {
 		navItems.push({
-			label: 'Admin',
+			label: t('navigation.admin'),
 			href: '/admin',
 			icon: Shield,
 		})
@@ -623,14 +636,14 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 							variant="ghost"
 							size="icon"
 							onClick={onToggleSidebar}
-							aria-label="Collapse navigation"
+							aria-label={t('navigation.collapse')}
 							className="h-8 w-8"
 						>
 							<ChevronLeft className="h-4 w-4" />
 						</Button>
 					) : null}
 				</div>
-				<p className="text-xs text-muted-foreground mt-1">Test Auth Next Gen</p>
+				<p className="text-xs text-muted-foreground mt-1">{t('navigation.productLine')}</p>
 			</div>
 
 			{/* Navigation Items */}
@@ -799,11 +812,12 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 
 			{/* User Section */}
 			<div className="p-4 border-t border-border/50 space-y-3">
+				<LocalePicker />
 				{mainCharacter && (
 					<div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-accent/30">
 						<img
 							src={characterPortraitUrl(mainCharacter.characterId, 64)}
-							alt={`${mainCharacter.characterName}'s portrait`}
+							alt={t('navigation.portraitAlt', { name: mainCharacter.characterName })}
 							loading="lazy"
 							onError={(e) => {
 								;(e.currentTarget as HTMLImageElement).src =
@@ -813,7 +827,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 						/>
 						<div className="flex-1 min-w-0">
 							<p className="text-sm font-medium truncate">{mainCharacter.characterName}</p>
-							<p className="text-xs text-muted-foreground">Online</p>
+							<p className="text-xs text-muted-foreground">{t('navigation.online')}</p>
 						</div>
 					</div>
 				)}
@@ -826,7 +840,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 					className="w-full justify-start gap-2"
 				>
 					<LogOut className="h-4 w-4" />
-					{logout.isPending ? 'Logging out...' : 'Logout'}
+					{logout.isPending ? t('navigation.loggingOut') : t('navigation.logout')}
 				</Button>
 			</div>
 		</div>

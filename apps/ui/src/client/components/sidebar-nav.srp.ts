@@ -19,6 +19,14 @@ export interface ResolveSrpNavStateInput {
 	reviewQueueCount: number
 	paymentQueueCount: number
 	srpAlertCount: number
+	labels: {
+		myRequests: string
+		reviewQueue: string
+		paymentQueue: string
+		walletHistory: string
+		alerts: string
+		configuration: string
+	}
 }
 
 export interface ResolveSrpNavStateResult {
@@ -42,12 +50,12 @@ export function resolveSrpNavState(input: ResolveSrpNavStateInput): ResolveSrpNa
 		reviewQueueCount,
 		paymentQueueCount,
 		srpAlertCount,
+		labels,
 	} = input
 
 	const canSeeSrpConfiguration = isSiteAdmin || hasSrpManagerPermission
 	const canSeeSrpAlerts = isSiteAdmin || hasSrpManagerPermission
-	const canSeeSrpPaymentQueue =
-		isSiteAdmin || hasSrpManagerPermission || hasSrpPayerPermission
+	const canSeeSrpPaymentQueue = isSiteAdmin || hasSrpManagerPermission || hasSrpPayerPermission
 	const canSeeSrpReviewQueue =
 		isSiteAdmin || hasSrpManagerPermission || hasSrpPayerPermission || hasSrpReviewerPermission
 	const hasSrpStaffAccess = canSeeSrpReviewQueue
@@ -67,11 +75,11 @@ export function resolveSrpNavState(input: ResolveSrpNavStateInput): ResolveSrpNa
 			label: 'SRP',
 			href: '/srp',
 			children: [
-				{ label: 'My Requests', href: '/srp' },
+				{ label: labels.myRequests, href: '/srp' },
 				...(canSeeSrpReviewQueue
 					? [
 							{
-								label: 'Review Queue',
+								label: labels.reviewQueue,
 								href: '/srp/review',
 								badge: reviewQueueCount > 0 ? reviewQueueCount : undefined,
 							},
@@ -80,12 +88,12 @@ export function resolveSrpNavState(input: ResolveSrpNavStateInput): ResolveSrpNa
 				...(canSeeSrpPaymentQueue
 					? [
 							{
-								label: 'Payment Queue',
+								label: labels.paymentQueue,
 								href: '/srp/payments',
 								badge: paymentQueueCount > 0 ? paymentQueueCount : undefined,
 							},
 							{
-								label: 'Wallet History',
+								label: labels.walletHistory,
 								href: '/srp/wallet-history',
 							},
 						]
@@ -93,13 +101,13 @@ export function resolveSrpNavState(input: ResolveSrpNavStateInput): ResolveSrpNa
 				...(canSeeSrpAlerts
 					? [
 							{
-								label: 'Alerts',
+								label: labels.alerts,
 								href: '/srp/alerts',
 								badge: srpAlertCount > 0 ? srpAlertCount : undefined,
 							},
 						]
 					: []),
-				...(canSeeSrpConfiguration ? [{ label: 'Configuration', href: '/srp/policies' }] : []),
+				...(canSeeSrpConfiguration ? [{ label: labels.configuration, href: '/srp/policies' }] : []),
 			],
 		}
 	}

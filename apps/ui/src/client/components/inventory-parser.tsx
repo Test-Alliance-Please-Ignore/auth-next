@@ -8,6 +8,7 @@
 import { useState } from 'react'
 
 import { useParseInventory } from '../hooks/useInventoryParser'
+import { useAppTranslation } from '../i18n'
 import { JsonViewer } from './json-viewer'
 import { Button } from './ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
@@ -36,6 +37,7 @@ export function InventoryParser({
 	rows = 20,
 	className = '',
 }: InventoryParserProps) {
+	const { t } = useAppTranslation()
 	const [inventoryText, setInventoryText] = useState(initialValue)
 	const [lastResult, setLastResult] = useState<InventoryParseResult | null>(null)
 
@@ -68,14 +70,12 @@ export function InventoryParser({
 			{/* Input Section */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Inventory Input</CardTitle>
-					<CardDescription>
-						Paste your EVE Online inventory export here (format: ItemName[TAB]Quantity)
-					</CardDescription>
+					<CardTitle>{t('inventoryParser.inputTitle')}</CardTitle>
+					<CardDescription>{t('inventoryParser.inputDescription')}</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="space-y-2">
-						<Label htmlFor="inventory-input">Inventory Text</Label>
+						<Label htmlFor="inventory-input">{t('inventoryParser.inventoryText')}</Label>
 						<Textarea
 							id="inventory-input"
 							value={inventoryText}
@@ -86,18 +86,17 @@ export function InventoryParser({
 					</div>
 
 					<div className="flex items-center gap-4">
-						<Button variant="confirm"
+						<Button
+							variant="confirm"
 							onClick={handleParse}
 							disabled={!inventoryText.trim() || isLoading}
 							loading={isLoading}
 						>
-							Parse Inventory
+							{t('inventoryParser.parse')}
 						</Button>
 
 						{hasError && (
-							<p className="text-sm text-destructive">
-								Failed to parse inventory. Please check your input and try again.
-							</p>
+							<p className="text-sm text-destructive">{t('inventoryParser.parseError')}</p>
 						)}
 					</div>
 				</CardContent>
@@ -107,10 +106,10 @@ export function InventoryParser({
 			{showOutput && lastResult && (
 				<Card>
 					<CardHeader>
-						<CardTitle>Parse Results</CardTitle>
+						<CardTitle>{t('inventoryParser.results')}</CardTitle>
 						<CardDescription>
-							{lastResult.summary.successCount} items parsed successfully,{' '}
-							{lastResult.summary.errorCount} errors
+							{t('inventoryParser.parsed', { count: lastResult.summary.successCount })},{' '}
+							{t('inventoryParser.error', { count: lastResult.summary.errorCount })}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>

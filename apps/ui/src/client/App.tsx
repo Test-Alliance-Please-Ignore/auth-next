@@ -11,6 +11,7 @@ import { hasBillingIssuerPermission } from './features/bills/issuer-access'
 import { useAuth } from './hooks/useAuth'
 import { useSessionSync } from './hooks/useSessionSync'
 import { useUserPermissions } from './hooks/useUserPermissions'
+import { i18n, useAppTranslation } from './i18n'
 import { logApiError } from './lib/api'
 import toast from './lib/toast'
 import AuthCallbackPage from './routes/auth-callback'
@@ -167,8 +168,7 @@ const queryClient = new QueryClient({
 
 			logApiError(error)
 
-			const message =
-				error instanceof Error ? error.message : 'Something went wrong while loading data.'
+			const message = error instanceof Error ? error.message : i18n.t('common.loadDataError')
 			toast.error(message, {
 				id: `query-error:${query.queryHash}`,
 			})
@@ -260,10 +260,12 @@ function NavigateHrAuditorUserGroupsToHrUsers() {
 }
 
 function NavigatePasteRootToLogin() {
+	const { t } = useAppTranslation()
+
 	useEffect(() => {
 		window.location.href = '/login'
 	}, [])
-	return <LoadingPage label="Redirecting to login..." />
+	return <LoadingPage label={t('app.redirectingToLogin')} />
 }
 
 /**
@@ -272,10 +274,11 @@ function NavigatePasteRootToLogin() {
  * a deep-link guard that avoids transient 403 requests.
  */
 function AllianceMemberRoute({ children }: { children: React.ReactNode }) {
+	const { t } = useAppTranslation()
 	const { user, isAuthenticated, isLoading } = useAuth()
 
 	if (isLoading) {
-		return <LoadingPage label="Loading..." />
+		return <LoadingPage label={t('common.loading')} />
 	}
 
 	if (!isAuthenticated) {
@@ -792,30 +795,30 @@ export default function App() {
 									</Suspense>
 								}
 							/>
-								<Route
-									path="/my-bills/:billId"
+							<Route
+								path="/my-bills/:billId"
 								element={
 									<Suspense fallback={<LoadingPage />}>
 										<BillDetailPage />
 									</Suspense>
 								}
-								/>
-								<Route
-									path="/my-bills/group/:groupBillId"
-									element={
-										<Suspense fallback={<LoadingPage />}>
-											<IssuerGroupBillDetailPage scope="issuer" />
-										</Suspense>
-									}
-								/>
-								<Route
-									path="/my-bills/group/:groupBillId/edit"
-									element={
-										<Suspense fallback={<LoadingPage />}>
-											<IssuerGroupBillEditPage scope="issuer" />
-										</Suspense>
-									}
-								/>
+							/>
+							<Route
+								path="/my-bills/group/:groupBillId"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<IssuerGroupBillDetailPage scope="issuer" />
+									</Suspense>
+								}
+							/>
+							<Route
+								path="/my-bills/group/:groupBillId/edit"
+								element={
+									<Suspense fallback={<LoadingPage />}>
+										<IssuerGroupBillEditPage scope="issuer" />
+									</Suspense>
+								}
+							/>
 							<Route path="/bills/issue" element={<IssuerBillRoute />} />
 							{taxRouteElements}
 							{/* Doctrines routes (lazy loaded) */}

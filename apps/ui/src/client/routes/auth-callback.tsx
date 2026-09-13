@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { apiClient } from '@/lib/api'
 import { shouldUseFullPageAuthRedirect } from '@/lib/auth-redirect'
 
@@ -33,7 +34,8 @@ interface CallbackResponse {
 }
 
 export default function AuthCallbackPage() {
-	usePageTitle('Authenticating')
+	const { t } = useAppTranslation()
+	usePageTitle(t('authCallback.title'))
 	const [searchParams] = useSearchParams()
 	const navigate = useNavigate()
 	const queryClient = useQueryClient()
@@ -51,14 +53,14 @@ export default function AuthCallbackPage() {
 			const state = searchParams.get('state')
 
 			if (!code) {
-				setError('No authorization code received')
+				setError(t('authCallback.noCode'))
 				return
 			}
 
 			// The server requires a state parameter and rejects the callback without one, so
 			// surface a real error here rather than sending an empty string it will refuse.
 			if (!state) {
-				setError('No state parameter received')
+				setError(t('authCallback.noState'))
 				return
 			}
 
@@ -109,28 +111,28 @@ export default function AuthCallbackPage() {
 						void navigate(destination)
 					}
 				} else {
-					setError('Unexpected response from server')
+					setError(t('authCallback.unexpectedResponse'))
 				}
 			} catch (err) {
 				console.error('Auth callback error:', err)
-				setError('Failed to complete authentication')
+				setError(t('authCallback.failed'))
 			}
 		}
 
 		void handleCallback()
-	}, [navigate, queryClient, searchParams])
+	}, [navigate, queryClient, searchParams, t])
 
 	if (error) {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
 				<div className="text-center">
-					<h1 className="text-2xl font-bold text-destructive mb-4">Authentication Failed</h1>
+					<h1 className="text-2xl font-bold text-destructive mb-4">{t('authCallback.heading')}</h1>
 					<p className="text-muted-foreground mb-6">{error}</p>
 					<button
 						onClick={() => navigate('/')}
 						className="px-6 py-3 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
 					>
-						Return to Home
+						{t('authCallback.returnHome')}
 					</button>
 				</div>
 			</div>
@@ -162,10 +164,8 @@ export default function AuthCallbackPage() {
 						></path>
 					</svg>
 				</div>
-				<h2 className="text-xl font-semibold mb-2">Completing authentication...</h2>
-				<p className="text-muted-foreground">
-					Please wait while we verify your EVE Online identity
-				</p>
+				<h2 className="text-xl font-semibold mb-2">{t('authCallback.completing')}</h2>
+				<p className="text-muted-foreground">{t('authCallback.verifying')}</p>
 			</div>
 		</div>
 	)

@@ -14,11 +14,13 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { apiClient } from '@/lib/api'
 import { characterPortraitUrl } from '@/lib/eve-images'
 
 export default function DashboardPage() {
-	usePageTitle('Dashboard')
+	const { t } = useAppTranslation()
+	usePageTitle(t('dashboard.title'))
 	const { user, isLoading, refetch } = useAuth()
 	const navigate = useNavigate()
 	const [searchParams, setSearchParams] = useSearchParams()
@@ -148,7 +150,7 @@ export default function DashboardPage() {
 			})
 
 			if (!fleetInfo.isInFleet) {
-				alert('Character is not currently in a fleet')
+				alert(t('dashboard.fleetNotInFleet'))
 				return
 			}
 
@@ -165,7 +167,7 @@ export default function DashboardPage() {
 					charIdType: typeof characterId,
 					areEqual: fleetBossId === charId,
 				})
-				alert('Only the fleet boss can create quick join invitations')
+				alert(t('dashboard.fleetBossOnly'))
 				return
 			}
 
@@ -177,10 +179,10 @@ export default function DashboardPage() {
 			await navigator.clipboard.writeText(invite.url)
 
 			// 4. Show success message
-			alert(`Fleet invite created! URL copied to clipboard:\n${invite.url}`)
+			alert(t('dashboard.fleetInviteCreated', { url: invite.url }))
 		} catch (error) {
 			console.error('Failed to create fleet invite:', error)
-			alert('Failed to create fleet invite. Make sure the character is a fleet boss.')
+			alert(t('dashboard.fleetInviteFailed'))
 		} finally {
 			setCreatingInvites((prev) => {
 				const next = new Set(prev)
@@ -191,7 +193,7 @@ export default function DashboardPage() {
 	}
 
 	if (isLoading) {
-		return <LoadingPage label="Loading dashboard..." />
+		return <LoadingPage label={t('dashboard.loading')} />
 	}
 
 	if (!user) {
@@ -214,7 +216,7 @@ export default function DashboardPage() {
 
 	return (
 		<Container>
-			<PageHeader title="Dashboard" description="Manage your characters and connections" />
+			<PageHeader title={t('dashboard.title')} description={t('dashboard.description')} />
 
 			<Section>
 				{/* Main Character and Discord Cards Row */}
@@ -223,8 +225,10 @@ export default function DashboardPage() {
 					<div className="md:col-span-2 lg:col-span-3">
 						<Card variant="default" className="h-full">
 							<CardHeader>
-								<CardTitle className="text-xl md:text-2xl">Main Character</CardTitle>
-								<CardDescription>Your primary EVE Online character</CardDescription>
+								<CardTitle className="text-xl md:text-2xl">
+									{t('dashboard.mainCharacter')}
+								</CardTitle>
+								<CardDescription>{t('dashboard.mainDescription')}</CardDescription>
 							</CardHeader>
 							<CardContent>
 								{mainCharacter ? (
@@ -232,7 +236,9 @@ export default function DashboardPage() {
 										<div className="flex items-center gap-4">
 											<img
 												src={characterPortraitUrl(mainCharacter.characterId, 128)}
-												alt={`${mainCharacter.characterName}'s portrait`}
+												alt={t('dashboard.portraitAlt', {
+													name: mainCharacter.characterName,
+												})}
 												loading="lazy"
 												onError={(e) => {
 													;(e.currentTarget as HTMLImageElement).src =
@@ -256,7 +262,9 @@ export default function DashboardPage() {
 														)}
 													</div>
 												) : (
-													<p className="text-sm text-muted-foreground">Loading...</p>
+													<p className="text-sm text-muted-foreground">
+														{t('dashboard.loadingDetails')}
+													</p>
 												)}
 											</div>
 											<Link
@@ -264,11 +272,11 @@ export default function DashboardPage() {
 												state={{
 													source: 'dashboard',
 													backTo: '/dashboard',
-													backLabel: 'Back to Dashboard',
+													backLabel: t('dashboard.back'),
 												}}
 											>
 												<Button size="sm" variant="ghost" className="gap-2">
-													View Details
+													{t('dashboard.viewDetails')}
 													<ExternalLink className="h-3 w-3" />
 												</Button>
 											</Link>
@@ -282,8 +290,10 @@ export default function DashboardPage() {
 													className="h-11 w-11"
 													onClick={() => handleCreateFleetInvite(mainCharacter.characterId)}
 													disabled={creatingInvites.has(mainCharacter.characterId)}
-													aria-label={`Create fleet invite for ${mainCharacter.characterName}`}
-													title="Create fleet invite for this character"
+													aria-label={t('dashboard.createFleetInviteFor', {
+														name: mainCharacter.characterName,
+													})}
+													title={t('dashboard.createFleetInvite')}
 												>
 													<UserPlus
 														className={`h-4 w-4 ${
@@ -298,8 +308,10 @@ export default function DashboardPage() {
 												className="h-11 w-11"
 												onClick={() => handleRefreshCharacter(mainCharacter.characterId)}
 												disabled={refreshingCharacters.has(mainCharacter.characterId)}
-												aria-label={`Refresh ${mainCharacter.characterName} character data`}
-												title="Refresh character data"
+												aria-label={t('dashboard.refreshFor', {
+													name: mainCharacter.characterName,
+												})}
+												title={t('dashboard.refresh')}
 											>
 												<RefreshCw
 													className={`h-4 w-4 ${
@@ -318,17 +330,18 @@ export default function DashboardPage() {
 											<div className="space-y-3">
 												<div>
 													<div className="flex items-center gap-2">
-														<h3 className="text-lg font-semibold">Main character unavailable</h3>
-														<Badge variant="warning">Missing</Badge>
+														<h3 className="text-lg font-semibold">
+															{t('dashboard.mainUnavailable')}
+														</h3>
+														<Badge variant="warning">{t('dashboard.missing')}</Badge>
 													</div>
 													<p className="mt-1 text-sm text-muted-foreground">
-														The character set as your main is no longer available in your active
-														character list. Link a character to restore the main-character card.
+														{t('dashboard.mainUnavailableDescription')}
 													</p>
 												</div>
 												<Button size="sm" variant="primary" onClick={handleLinkCharacter}>
 													<UserPlus className="h-4 w-4" />
-													Link Character
+													{t('dashboard.linkCharacter')}
 												</Button>
 											</div>
 										</div>
@@ -353,8 +366,10 @@ export default function DashboardPage() {
 					<CardHeader>
 						<div className="flex items-start justify-between gap-4">
 							<div className="space-y-1.5">
-								<CardTitle className="text-xl md:text-2xl">Linked Characters</CardTitle>
-								<CardDescription>All your authenticated EVE Online characters</CardDescription>
+								<CardTitle className="text-xl md:text-2xl">
+									{t('dashboard.linkedCharacters')}
+								</CardTitle>
+								<CardDescription>{t('dashboard.linkedDescription')}</CardDescription>
 							</div>
 							<Button
 								variant="primary"
@@ -363,11 +378,11 @@ export default function DashboardPage() {
 								disabled={isLinkingCharacter}
 							>
 								{isLinkingCharacter ? (
-									'Redirecting...'
+									t('dashboard.redirecting')
 								) : (
 									<>
 										<UserPlus className="h-4 w-4" />
-										Link Character
+										{t('dashboard.linkCharacter')}
 									</>
 								)}
 							</Button>
@@ -383,14 +398,16 @@ export default function DashboardPage() {
 											state={{
 												source: 'dashboard',
 												backTo: '/dashboard',
-												backLabel: 'Back to Dashboard',
+												backLabel: t('dashboard.back'),
 											}}
 											className="block"
 										>
 											<div className="flex items-center gap-3">
 												<img
 													src={characterPortraitUrl(character.characterId, 64)}
-													alt={`${character.characterName}'s portrait`}
+													alt={t('dashboard.portraitAlt', {
+														name: character.characterName,
+													})}
 													loading="lazy"
 													onError={(e) => {
 														;(e.currentTarget as HTMLImageElement).src =
@@ -405,16 +422,16 @@ export default function DashboardPage() {
 													<div className="flex items-center gap-2 mt-1">
 														{character.isPrimary && (
 															<Badge variant="default" className="text-xs">
-																Main
+																{t('dashboard.main')}
 															</Badge>
 														)}
 														{character.hasValidToken ? (
 															<Badge variant="success" className="text-xs">
-																Valid
+																{t('dashboard.valid')}
 															</Badge>
 														) : (
 															<Badge variant="destructive" className="text-xs">
-																Please refresh
+																{t('dashboard.pleaseRefresh')}
 															</Badge>
 														)}
 													</div>
@@ -430,8 +447,8 @@ export default function DashboardPage() {
 												disabled={reauthorizingCharacters.has(character.characterId)}
 											>
 												{reauthorizingCharacters.has(character.characterId)
-													? 'Redirecting...'
-													: 'Re-authorize token'}
+													? t('dashboard.redirecting')
+													: t('dashboard.reauthorize')}
 											</Button>
 										)}
 										<div className="absolute top-2 right-2 flex items-center gap-2">
@@ -443,8 +460,10 @@ export default function DashboardPage() {
 													className="h-11 w-11"
 													onClick={() => handleCreateFleetInvite(character.characterId)}
 													disabled={creatingInvites.has(character.characterId)}
-													aria-label={`Create fleet invite for ${character.characterName}`}
-													title="Create fleet invite for this character"
+													aria-label={t('dashboard.createFleetInviteFor', {
+														name: character.characterName,
+													})}
+													title={t('dashboard.createFleetInvite')}
 												>
 													<UserPlus
 														className={`h-4 w-4 ${
@@ -459,8 +478,10 @@ export default function DashboardPage() {
 												className="h-11 w-11"
 												onClick={() => handleRefreshCharacter(character.characterId)}
 												disabled={refreshingCharacters.has(character.characterId)}
-												aria-label={`Refresh ${character.characterName} character data`}
-												title="Refresh character data"
+												aria-label={t('dashboard.refreshFor', {
+													name: character.characterName,
+												})}
+												title={t('dashboard.refresh')}
 											>
 												<RefreshCw
 													className={`h-4 w-4 ${

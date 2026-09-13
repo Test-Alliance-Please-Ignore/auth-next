@@ -5,10 +5,12 @@ import {
 	formatList,
 	formatNumber,
 	getDateInputFormat,
+	getInitialAppLocale,
 	i18n,
 	parseAppLocale,
 	parseBrowserLocale,
 	resolveAppLocale,
+	resolveInitialAppLocale,
 	resolveStartupLocale,
 	setAppLocale,
 } from '@/i18n'
@@ -72,6 +74,81 @@ describe('application i18n runtime', () => {
 		vi.stubGlobal('navigator', { languages: ['ko-KR', 'de-DE'], language: 'ko-KR' })
 
 		expect(resolveStartupLocale()).toBe('ko')
+	})
+
+	it.each([false, true])(
+		'uses an explicit login cookie at startup (development: %s)',
+		(isDevelopment) => {
+			vi.stubGlobal('window', {
+				localStorage: { getItem: () => null },
+				location: { href: 'http://localhost:5173/dashboard' },
+			})
+			vi.stubGlobal('document', { cookie: 'tang.locale=de' })
+
+			expect(getInitialAppLocale(isDevelopment)).toBe('de')
+		}
+	)
+
+	it.each([false, true])(
+		'restores a language selection ahead of cookies and previews (development: %s)',
+		async (isDevelopment) => {
+			const values = new Map([['tang.i18n.preview', 'ko']])
+			vi.stubGlobal('window', {
+				location: { href: 'http://localhost:5173/dashboard?i18n=ko' },
+				localStorage: {
+					getItem: (key: string) => values.get(key) ?? null,
+					setItem: (key: string, value: string) => values.set(key, value),
+				},
+			})
+			vi.stubGlobal('document', {
+				cookie: 'tang.locale=ko',
+				documentElement: { lang: 'en', dir: 'ltr' },
+			})
+
+			await setAppLocale('de')
+
+			expect(getInitialAppLocale(isDevelopment)).toBe('de')
+			expect(document.documentElement.lang).toBe('de')
+			expect(values.get('tang.locale')).toBe('de')
+		}
+	)
+
+	it('allows URL locale previews only in development builds', () => {
+		expect(
+			resolveInitialAppLocale({
+				isDevelopment: true,
+				queryLocale: 'ko',
+				storedPreviewLocale: 'de',
+			})
+		).toBe('ko')
+		expect(
+			resolveInitialAppLocale({
+				isDevelopment: true,
+				queryLocale: 'invalid',
+				storedPreviewLocale: 'de',
+			})
+		).toBe('de')
+		expect(
+			resolveInitialAppLocale({
+				isDevelopment: false,
+				queryLocale: 'ko',
+				storedPreviewLocale: 'de',
+			})
+		).toBe('en')
+	})
+
+	it('persists a valid development URL preview for later navigation', () => {
+		const values = new Map<string, string>()
+		vi.stubGlobal('window', {
+			location: { href: 'http://localhost:5173/dashboard?i18n=ko' },
+			localStorage: {
+				getItem: (key: string) => values.get(key) ?? null,
+				setItem: (key: string, value: string) => values.set(key, value),
+			},
+		})
+
+		expect(getInitialAppLocale(true)).toBe('ko')
+		expect(values.get('tang.i18n.preview')).toBe('ko')
 	})
 
 	it('keeps German and Korean catalog structures exactly aligned with English', () => {

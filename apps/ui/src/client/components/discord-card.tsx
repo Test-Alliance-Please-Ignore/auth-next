@@ -2,27 +2,32 @@ import { AlertTriangle, CheckCircle2, MessageSquare, Shield, XCircle } from 'luc
 import { useState } from 'react'
 
 import { useDiscordLink } from '@/hooks/useDiscord'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { apiClient } from '@/lib/api'
 
 import { Button } from './ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 
 import type { User } from '@/hooks/useAuth'
+import type { AppTranslationKey } from '@/i18n'
+import type { DiscordRefreshOutput } from '@/lib/api'
 
-function getDiscordRefreshMessage(
-	reason: 'authorization' | 'configuration' | 'temporary' | 'unknown' | undefined,
+interface RefreshMessage {
+	key: AppTranslationKey
+	count?: number
+}
+
+function getDiscordRefreshMessageKey(
+	reason: DiscordRefreshOutput['reason'],
 	partial: boolean
-): string {
-	if (reason === 'authorization') {
-		return partial ? 'Some access needs Discord authorization' : 'Discord authorization may need renewal'
-	}
-	if (reason === 'configuration') {
-		return partial ? 'Some access has a server configuration issue' : 'Discord server configuration issue'
-	}
-	if (reason === 'temporary') {
-		return partial ? 'Some access affected by a temporary Discord issue' : 'Discord temporarily unavailable'
-	}
-	return partial ? 'Some Discord access could not be updated' : 'Discord access update incomplete'
+): AppTranslationKey {
+	const messageReason =
+		reason === 'authorization' || reason === 'configuration' || reason === 'temporary'
+			? reason
+			: 'unknown'
+	return partial
+		? `discordCard.partialRefreshErrors.${messageReason}`
+		: `discordCard.refreshErrors.${messageReason}`
 }
 
 interface DiscordCardProps {
@@ -34,10 +39,14 @@ interface DiscordCardProps {
  * Shows link button when not linked, or Discord username when linked
  */
 export function DiscordCard({ user }: DiscordCardProps) {
+	const { t } = useAppTranslation()
 	const { mutate: linkDiscord, isPending, error: linkError, reset } = useDiscordLink()
 	const [isJoiningServers, setIsJoiningServers] = useState(false)
-	const [joinMessage, setJoinMessage] = useState<string | null>(null)
-	const [joinError, setJoinError] = useState<string | null>(null)
+	// Translate at render time so feedback also updates when the locale changes.
+	const [joinMessage, setJoinMessage] = useState<RefreshMessage | null>(null)
+	const [joinError, setJoinError] = useState<RefreshMessage | null>(null)
+	const translateRefreshMessage = ({ key, count }: RefreshMessage) =>
+		t(key, { count, formattedCount: count === undefined ? undefined : formatNumber(count) })
 
 	const handleLinkClick = () => {
 		// Clear any previous errors before starting new link attempt
@@ -55,7 +64,7 @@ export function DiscordCard({ user }: DiscordCardProps) {
 			workflowInstanceId = (await apiClient.joinDiscordServers()).workflowInstanceId
 		} catch (error) {
 			console.error('Failed to start Discord access refresh:', error)
-			setJoinError('We could not start the Discord access refresh. Please try again later.')
+			setJoinError({ key: 'discordCard.refreshStartError' })
 			setIsJoiningServers(false)
 			return
 		}
@@ -66,19 +75,20 @@ export function DiscordCard({ user }: DiscordCardProps) {
 			const totalInvited = result.totalInvited ?? 0
 
 			if (result.status === 'failed') {
-				setJoinError(getDiscordRefreshMessage(result.reason, false))
+				setJoinError({ key: getDiscordRefreshMessageKey(result.reason, false) })
 			} else if (totalFailed > 0) {
-				setJoinError(`${getDiscordRefreshMessage(result.reason, true)} (${totalFailed} server${totalFailed > 1 ? 's' : ''}).`)
+				setJoinError({
+					key: getDiscordRefreshMessageKey(result.reason, true),
+					count: totalFailed,
+				})
 			} else if (totalInvited > 0) {
-				setJoinMessage(
-					`Successfully joined ${totalInvited} Discord server${totalInvited > 1 ? 's' : ''}!`
-				)
+				setJoinMessage({ key: 'discordCard.joined', count: totalInvited })
 			} else {
-				setJoinMessage('Discord access refreshed successfully.')
+				setJoinMessage({ key: 'discordCard.refreshed' })
 			}
 		} catch (error) {
 			console.error('Failed to confirm Discord access refresh:', error)
-			setJoinError('Discord access status could not be confirmed')
+			setJoinError({ key: 'discordCard.refreshStatusError' })
 		} finally {
 			setIsJoiningServers(false)
 		}
@@ -94,7 +104,7 @@ export function DiscordCard({ user }: DiscordCardProps) {
 					<div>
 						<CardTitle className="text-2xl">Discord</CardTitle>
 						<CardDescription>
-							{user.discord ? 'Connected account' : 'Link your Discord account'}
+							{t(user.discord ? 'discordCard.connected' : 'discordCard.linkDescription')}
 						</CardDescription>
 					</div>
 				</div>
@@ -114,7 +124,9 @@ export function DiscordCard({ user }: DiscordCardProps) {
 									{user.discord.username}
 									{user.discord.discriminator !== '0' && `#${user.discord.discriminator}`}
 								</p>
-								<p className="text-sm text-muted-foreground">Discord ID: {user.discord.userId}</p>
+								<p className="text-sm text-muted-foreground">
+									{t('discordCard.userId', { id: user.discord.userId })}
+								</p>
 							</div>
 						</div>
 
@@ -124,10 +136,11 @@ export function DiscordCard({ user }: DiscordCardProps) {
 								<div className="flex items-start gap-2">
 									<AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
 									<div>
-										<p className="text-sm text-destructive font-medium">Authorization Revoked</p>
+										<p className="text-sm text-destructive font-medium">
+											{t('discordCard.authorizationRevoked')}
+										</p>
 										<p className="text-sm text-destructive/90 mt-1">
-											You've removed this app from your Discord authorized apps. Please re-link your
-											account to restore access.
+											{t('discordCard.revokedDescription')}
 										</p>
 									</div>
 								</div>
@@ -144,7 +157,7 @@ export function DiscordCard({ user }: DiscordCardProps) {
 									className="w-full gap-2 bg-[hsl(var(--discord-blurple))] text-white hover:bg-[hsl(var(--discord-blurple))]/90"
 								>
 									<MessageSquare className="h-4 w-4" />
-									{isPending ? 'Redirecting to Discord...' : 'Re-link Discord Account'}
+									{t(isPending ? 'discordCard.redirecting' : 'discordCard.relink')}
 								</Button>
 							) : (
 								<Button
@@ -155,37 +168,41 @@ export function DiscordCard({ user }: DiscordCardProps) {
 									className="w-full gap-2"
 								>
 									<Shield className="h-4 w-4" />
-									{isJoiningServers ? 'Refreshing...' : 'Refresh Discord Access'}
+									{t(isJoiningServers ? 'discordCard.refreshing' : 'discordCard.refreshAccess')}
 								</Button>
 							)}
 
 							{/* Success message */}
 							{joinMessage && (
-								<p className="text-sm text-green-600 dark:text-green-400">{joinMessage}</p>
+								<p className="text-sm text-green-600 dark:text-green-400">
+									{translateRefreshMessage(joinMessage)}
+								</p>
 							)}
 
 							{/* Error message */}
-							{joinError && <p className="text-sm text-destructive">{joinError}</p>}
+							{joinError && (
+								<p className="text-sm text-destructive">{translateRefreshMessage(joinError)}</p>
+							)}
 						</div>
 					</div>
 				) : (
 					// Not linked state - show link button
 					<div className="space-y-3">
-						<p className="text-muted-foreground">
-							Connect your Discord account to enable notifications and community features.
-						</p>
+						<p className="text-muted-foreground">{t('discordCard.connectDescription')}</p>
 						<Button
 							onClick={handleLinkClick}
 							disabled={isPending}
 							className="w-full sm:w-auto bg-[hsl(var(--discord-blurple))] text-white hover:bg-[hsl(var(--discord-blurple))]/90"
 						>
-							{isPending ? 'Redirecting to Discord...' : 'Link Discord Account'}
+							{t(isPending ? 'discordCard.redirecting' : 'discordCard.link')}
 						</Button>
 						{linkError && (
 							<div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
-								<p className="text-sm text-destructive font-medium">Linking Failed</p>
+								<p className="text-sm text-destructive font-medium">
+									{t('discordCard.linkFailed')}
+								</p>
 								<p className="text-sm text-destructive/90 mt-1">
-									{linkError instanceof Error ? linkError.message : 'An error occurred'}
+									{linkError instanceof Error ? linkError.message : t('discordCard.linkError')}
 								</p>
 							</div>
 						)}

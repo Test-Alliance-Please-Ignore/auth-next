@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
 /**
  * Landing Page - Redirects to login or dashboard
@@ -12,7 +13,8 @@ import { usePageTitle } from '@/hooks/usePageTitle'
  * Otherwise, redirect to the server-side login page.
  */
 export default function LandingPage() {
-	usePageTitle('Home')
+	const { t } = useAppTranslation()
+	usePageTitle(t('landing.title'))
 	const { isAuthenticated, isLoading } = useAuth()
 	const navigate = useNavigate()
 
@@ -30,7 +32,7 @@ export default function LandingPage() {
 
 	return (
 		<div className="min-h-screen flex items-center justify-center">
-			<LoadingSpinner label="Redirecting..." />
+			<LoadingSpinner label={t('landing.redirecting')} />
 		</div>
 	)
 }

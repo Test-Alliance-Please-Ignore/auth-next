@@ -11,6 +11,14 @@ function resolve(overrides: Partial<Parameters<typeof resolveSrpNavState>[0]> = 
 		reviewQueueCount: 4,
 		paymentQueueCount: 3,
 		srpAlertCount: 2,
+		labels: {
+			myRequests: 'My Requests',
+			reviewQueue: 'Review Queue',
+			paymentQueue: 'Payment Queue',
+			walletHistory: 'Wallet History',
+			alerts: 'Alerts',
+			configuration: 'Configuration',
+		},
 		...overrides,
 	})
 }
@@ -33,7 +41,9 @@ describe('resolveSrpNavState', () => {
 			'My Requests',
 			'Review Queue',
 		])
-		expect(state.navItem.children?.find((child) => child.label === 'My Requests')?.href).toBe('/srp')
+		expect(state.navItem.children?.find((child) => child.label === 'My Requests')?.href).toBe(
+			'/srp'
+		)
 		expect(state.navItem.children?.find((child) => child.label === 'Review Queue')?.badge).toBe(4)
 		expect(state.shouldFetchSrpReviewCount).toBe(true)
 		expect(state.shouldFetchSrpPaymentCount).toBe(false)

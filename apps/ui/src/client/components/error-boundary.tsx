@@ -1,7 +1,9 @@
 import { Component } from 'react'
 
-import type { ErrorInfo, ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
+import { i18n } from '@/i18n'
+
+import type { ErrorInfo, ReactNode } from 'react'
 
 const RELOAD_COUNT_KEY = 'errorBoundary_reloadCount'
 const MAX_RELOADS = 3
@@ -89,12 +91,13 @@ export class ErrorBoundary extends Component<Props, State> {
 				return (
 					<div className="flex items-center justify-center min-h-screen p-4">
 						<div className="text-center max-w-md">
-							<h1 className="text-2xl font-bold mb-4">Unable to load application</h1>
+							<h1 className="text-2xl font-bold mb-4">{i18n.t('appError.unableToLoad')}</h1>
 							<p className="text-muted-foreground mb-4">
-								We tried to reload the page automatically but the problem persists. This may be a
-								temporary network issue.
+								{i18n.t('appError.unableToLoadDescription')}
 							</p>
-							<Button variant="primary" onClick={this.handleManualReload}>Try Again</Button>
+							<Button variant="primary" onClick={this.handleManualReload}>
+								{i18n.t('appError.tryAgain')}
+							</Button>
 						</div>
 					</div>
 				)
@@ -105,7 +108,7 @@ export class ErrorBoundary extends Component<Props, State> {
 				return (
 					<div className="flex items-center justify-center min-h-screen">
 						<div className="text-center">
-							<p className="text-lg">Loading updated version...</p>
+							<p className="text-lg">{i18n.t('appError.loadingUpdate')}</p>
 						</div>
 					</div>
 				)
@@ -115,11 +118,11 @@ export class ErrorBoundary extends Component<Props, State> {
 			return (
 				<div className="flex items-center justify-center min-h-screen p-4">
 					<div className="text-center max-w-md">
-						<h1 className="text-2xl font-bold mb-4">Something went wrong</h1>
-						<p className="text-muted-foreground mb-4">
-							An unexpected error occurred. Please try refreshing the page.
-						</p>
-						<Button variant="primary" onClick={() => window.location.reload()}>Refresh Page</Button>
+						<h1 className="text-2xl font-bold mb-4">{i18n.t('appError.unexpected')}</h1>
+						<p className="text-muted-foreground mb-4">{i18n.t('appError.unexpectedDescription')}</p>
+						<Button variant="primary" onClick={() => window.location.reload()}>
+							{i18n.t('appError.refresh')}
+						</Button>
 					</div>
 				</div>
 			)
