@@ -51,6 +51,13 @@ export interface UserSessionDTO {
 }
 
 /**
+ * Supported UI locales shared by the SPA and server-rendered login page.
+ */
+export const USER_LOCALES = ['en', 'de', 'ko'] as const
+
+export type UserLocale = (typeof USER_LOCALES)[number]
+
+/**
  * User profile DTO (full user data)
  */
 export interface UserProfileDTO {
