@@ -1,19 +1,25 @@
-import { getActiveLocale } from './instance'
+import { getActiveLocale, i18n } from './instance'
 
 import type { AppLocale } from './locales'
 
 /** Parse canonical date-only values in local time to avoid UTC day shifts. */
-function dateFromDisplayInput(value: Date | string): Date {
+function dateFromDisplayInput(value: Date | string): Date | null {
 	if (typeof value !== 'string') {
-		return value
+		return Number.isNaN(value.getTime()) ? null : value
 	}
 
 	const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
 	if (dateOnly) {
-		return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+		const date = new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+		return Number.isNaN(date.getTime()) ? null : date
 	}
 
-	return new Date(value)
+	const date = new Date(value)
+	return Number.isNaN(date.getTime()) ? null : date
+}
+
+function notAvailable(): string {
+	return i18n.t('common.notAvailable')
 }
 
 export function formatNumber(value: number | bigint, options?: Intl.NumberFormatOptions): string {
@@ -24,14 +30,16 @@ export function formatDate(
 	value: Date | string,
 	options: Intl.DateTimeFormatOptions = { dateStyle: 'medium' }
 ): string {
-	return new Intl.DateTimeFormat(getActiveLocale(), options).format(dateFromDisplayInput(value))
+	const date = dateFromDisplayInput(value)
+	return date ? new Intl.DateTimeFormat(getActiveLocale(), options).format(date) : notAvailable()
 }
 
 export function formatDateTime(
 	value: Date | string,
 	options: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short' }
 ): string {
-	return new Intl.DateTimeFormat(getActiveLocale(), options).format(dateFromDisplayInput(value))
+	const date = dateFromDisplayInput(value)
+	return date ? new Intl.DateTimeFormat(getActiveLocale(), options).format(date) : notAvailable()
 }
 
 export function formatRelativeTime(
