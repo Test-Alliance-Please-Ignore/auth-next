@@ -1,13 +1,19 @@
 import { createTheme, MantineProvider } from '@mantine/core'
+import { DatesProvider } from '@mantine/dates'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Toaster } from 'sonner'
 
 import App from './App'
 import { ErrorBoundary } from './components/error-boundary'
+import { I18nProvider, useAppTranslation } from './i18n'
+
+import type { ReactNode } from 'react'
 
 import '@mantine/core/styles.css'
 import '@mantine/dates/styles.css'
+import 'dayjs/locale/de'
+import 'dayjs/locale/ko'
 import './styles/globals.css'
 
 // Handle chunk loading errors (e.g., when assets change after deployment)
@@ -79,26 +85,36 @@ const mantineTheme = createTheme({
 	},
 })
 
+function LocaleAwareDatesProvider({ children }: { children: ReactNode }) {
+	const { locale } = useAppTranslation()
+
+	return <DatesProvider settings={{ locale }}>{children}</DatesProvider>
+}
+
 createRoot(rootElement).render(
 	<StrictMode>
-		<ErrorBoundary>
+		<I18nProvider>
 			<MantineProvider forceColorScheme="dark" theme={mantineTheme}>
-				<App />
-				<Toaster
-					position="bottom-right"
-					theme="dark"
-					closeButton
-					richColors
-					toastOptions={{
-						style: {
-							background: 'hsl(var(--card))',
-							border: '1px solid hsl(var(--border))',
-							color: 'hsl(var(--foreground))',
-						},
-						className: 'backdrop-blur-sm',
-					}}
-				/>
+				<LocaleAwareDatesProvider>
+					<ErrorBoundary>
+						<App />
+						<Toaster
+							position="bottom-right"
+							theme="dark"
+							closeButton
+							richColors
+							toastOptions={{
+								style: {
+									background: 'hsl(var(--card))',
+									border: '1px solid hsl(var(--border))',
+									color: 'hsl(var(--foreground))',
+								},
+								className: 'backdrop-blur-sm',
+							}}
+						/>
+					</ErrorBoundary>
+				</LocaleAwareDatesProvider>
 			</MantineProvider>
-		</ErrorBoundary>
+		</I18nProvider>
 	</StrictMode>
 )
