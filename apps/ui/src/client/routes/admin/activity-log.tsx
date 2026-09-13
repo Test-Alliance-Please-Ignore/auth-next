@@ -6,15 +6,19 @@ import { JsonViewer } from '@/components/json-viewer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { DateInput } from '@/components/ui/date-input'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useActivityLogs } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatNumber, useAppTranslation } from '@/i18n'
+import { getActivityActionLabel } from '@/lib/admin-activity'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 export default function ActivityLogPage() {
-	usePageTitle('Admin - Activity Log')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.activityLog.pageTitle'))
 	const [searchParams, setSearchParams] = useSearchParams()
 
 	// State from URL params
@@ -42,7 +46,7 @@ export default function ActivityLogPage() {
 		pageSize,
 	}
 
-	const { data, isLoading } = useActivityLogs(filters)
+	const { data, isLoading, error } = useActivityLogs(filters)
 
 	const logs = data?.data || []
 	const pagination = data?.pagination
@@ -104,8 +108,8 @@ export default function ActivityLogPage() {
 		<div className="space-y-6">
 			{/* Page Header */}
 			<div>
-				<h1 className="text-3xl font-bold gradient-text">Activity Log</h1>
-				<p className="text-muted-foreground mt-1">View and filter system activity logs</p>
+				<h1 className="text-3xl font-bold gradient-text">{t('admin.activityLog.title')}</h1>
+				<p className="text-muted-foreground mt-1">{t('admin.activityLog.description')}</p>
 			</div>
 
 			{/* Filters */}
@@ -113,14 +117,12 @@ export default function ActivityLogPage() {
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
-							<CardTitle>Filters</CardTitle>
-							<CardDescription>
-								Filter activity logs by user, character, action, or date range
-							</CardDescription>
+							<CardTitle>{t('admin.activityLog.filters')}</CardTitle>
+							<CardDescription>{t('admin.activityLog.filtersDescription')}</CardDescription>
 						</div>
 						{hasActiveFilters && (
 							<Button variant="ghost" size="sm" onClick={handleClearFilters}>
-								Clear Filters
+								{t('admin.blocklist.clearFilters')}
 							</Button>
 						)}
 					</div>
@@ -129,9 +131,12 @@ export default function ActivityLogPage() {
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 						{/* User ID */}
 						<div>
-							<label className="text-sm font-medium mb-1 block">User ID</label>
+							<label htmlFor="activity-user" className="text-sm font-medium mb-1 block">
+								{t('admin.blocklist.create.user.label')}
+							</label>
 							<Input
-								placeholder="Filter by user ID..."
+								placeholder={t('admin.activityLog.userPlaceholder')}
+								id="activity-user"
 								value={userId}
 								onChange={(e) => setUserId(e.target.value)}
 							/>
@@ -139,9 +144,12 @@ export default function ActivityLogPage() {
 
 						{/* Character ID */}
 						<div>
-							<label className="text-sm font-medium mb-1 block">Character ID</label>
+							<label htmlFor="activity-character" className="text-sm font-medium mb-1 block">
+								{t('admin.blocklist.targets.character_id')}
+							</label>
 							<Input
-								placeholder="Filter by character ID..."
+								placeholder={t('admin.activityLog.characterPlaceholder')}
+								id="activity-character"
 								value={characterId}
 								onChange={(e) => setCharacterId(e.target.value)}
 							/>
@@ -149,9 +157,12 @@ export default function ActivityLogPage() {
 
 						{/* Action */}
 						<div>
-							<label className="text-sm font-medium mb-1 block">Action</label>
+							<label htmlFor="activity-action" className="text-sm font-medium mb-1 block">
+								{t('admin.activityLog.action')}
+							</label>
 							<Input
-								placeholder="Filter by action..."
+								placeholder={t('admin.activityLog.actionPlaceholder')}
+								id="activity-action"
 								value={action}
 								onChange={(e) => setAction(e.target.value)}
 							/>
@@ -159,21 +170,25 @@ export default function ActivityLogPage() {
 
 						{/* Start Date */}
 						<div>
-							<label className="text-sm font-medium mb-1 block">Start Date</label>
-							<Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+							<label htmlFor="activity-start-date" className="text-sm font-medium mb-1 block">
+								{t('admin.activityLog.startDate')}
+							</label>
+							<DateInput id="activity-start-date" value={startDate} onChange={setStartDate} />
 						</div>
 
 						{/* End Date */}
 						<div>
-							<label className="text-sm font-medium mb-1 block">End Date</label>
-							<Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+							<label htmlFor="activity-end-date" className="text-sm font-medium mb-1 block">
+								{t('admin.activityLog.endDate')}
+							</label>
+							<DateInput id="activity-end-date" value={endDate} onChange={setEndDate} />
 						</div>
 					</div>
 
 					<div className="flex justify-end">
 						<Button onClick={handleApplyFilters}>
 							<Filter className="h-4 w-4" />
-							Apply Filters
+							{t('admin.activityLog.apply')}
 						</Button>
 					</div>
 				</CardContent>
@@ -184,25 +199,36 @@ export default function ActivityLogPage() {
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
-							<CardTitle>Activity Logs</CardTitle>
+							<CardTitle>{t('admin.activityLog.logs')}</CardTitle>
 							<CardDescription>
 								{pagination
-									? `Showing ${(pagination.page - 1) * pagination.pageSize + 1}-${Math.min(pagination.page * pagination.pageSize, pagination.totalCount)} of ${pagination.totalCount} logs`
-									: 'Loading activity logs...'}
+									? t('admin.activityLog.range', {
+											start:
+												pagination.totalCount === 0
+													? 0
+													: (pagination.page - 1) * pagination.pageSize + 1,
+											end: Math.min(pagination.page * pagination.pageSize, pagination.totalCount),
+											count: pagination.totalCount,
+										})
+									: error
+										? t('admin.activityLog.loadError')
+										: t('admin.activityLog.loading')}
 							</CardDescription>
 						</div>
 
 						{/* Page Size Selector */}
 						<div className="flex items-center gap-2">
-							<span className="text-sm text-muted-foreground">Show:</span>
+							<label htmlFor="activity-page-size" className="text-sm text-muted-foreground">
+								{t('admin.activityLog.pageSize')}
+							</label>
 							<Select
+								inputId="activity-page-size"
 								value={String(pageSize)}
 								onValueChange={(value) => handlePageSizeChange(Number(value))}
-								options={[
-									{ value: '25', label: '25' },
-									{ value: '50', label: '50' },
-									{ value: '100', label: '100' },
-								]}
+								options={[25, 50, 100].map((size) => ({
+									value: String(size),
+									label: formatNumber(size),
+								}))}
 								className="h-9 w-20"
 								inputClassName="h-9"
 							/>
@@ -211,9 +237,17 @@ export default function ActivityLogPage() {
 				</CardHeader>
 				<CardContent>
 					{isLoading ? (
-						<div className="text-center py-8 text-muted-foreground">Loading activity logs...</div>
+						<div className="text-center py-8 text-muted-foreground">
+							{t('admin.activityLog.loading')}
+						</div>
+					) : error ? (
+						<p role="alert" className="py-8 text-center text-destructive">
+							{error instanceof Error ? error.message : t('admin.activityLog.loadError')}
+						</p>
 					) : logs.length === 0 ? (
-						<div className="text-center py-8 text-muted-foreground">No activity logs found</div>
+						<div className="text-center py-8 text-muted-foreground">
+							{t('admin.activityLog.empty')}
+						</div>
 					) : (
 						<>
 							<div className="space-y-2">
@@ -229,8 +263,9 @@ export default function ActivityLogPage() {
 															<Badge
 																variant="ghost"
 																className={cn(getActionBadgeClass(log.action))}
+																title={log.action}
 															>
-																{log.action}
+																{getActivityActionLabel(log.action, t)}
 															</Badge>
 															<span
 																className="text-sm text-muted-foreground"
@@ -243,7 +278,9 @@ export default function ActivityLogPage() {
 														<div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
 															{log.userName && (
 																<div>
-																	<span className="text-muted-foreground">User: </span>
+																	<span className="text-muted-foreground">
+																		{t('admin.activityLog.userLabel')}
+																	</span>
 																	<Link
 																		to={`/admin/users/${log.userId}`}
 																		className="text-primary hover:underline"
@@ -254,13 +291,15 @@ export default function ActivityLogPage() {
 															)}
 															{log.characterName && (
 																<div>
-																	<span className="text-muted-foreground">Character: </span>
+																	<span className="text-muted-foreground">
+																		{t('admin.activityLog.characterLabel')}
+																	</span>
 																	<Link
 																		to={`/character/${log.characterId}`}
 																		state={{
 																			source: 'admin-activity-log',
 																			backTo: '/admin/activity-log',
-																			backLabel: 'Back to Activity Log',
+																			backLabel: t('characterDetail.back.activityLog'),
 																		}}
 																		className="text-primary hover:underline"
 																	>
@@ -270,13 +309,17 @@ export default function ActivityLogPage() {
 															)}
 															{log.ipAddress && (
 																<div>
-																	<span className="text-muted-foreground">IP: </span>
+																	<span className="text-muted-foreground">
+																		{t('admin.activityLog.ipLabel')}
+																	</span>
 																	<span className="font-mono">{log.ipAddress}</span>
 																</div>
 															)}
 															{log.userAgent && (
 																<div className="md:col-span-2">
-																	<span className="text-muted-foreground">User Agent: </span>
+																	<span className="text-muted-foreground">
+																		{t('admin.activityLog.agentLabel')}
+																	</span>
 																	<span className="text-xs break-all">{log.userAgent}</span>
 																</div>
 															)}
@@ -288,6 +331,10 @@ export default function ActivityLogPage() {
 															variant="ghost"
 															size="sm"
 															onClick={() => toggleRowExpanded(log.id)}
+															aria-expanded={isExpanded}
+															aria-label={t(
+																isExpanded ? 'common.table.collapseRow' : 'common.table.expandRow'
+															)}
 															className="flex-shrink-0"
 														>
 															<ChevronDown
@@ -304,7 +351,9 @@ export default function ActivityLogPage() {
 											{/* Expanded Metadata */}
 											{isExpanded && log.metadata && (
 												<div className="p-4 border-t border-border bg-background">
-													<div className="text-sm font-medium mb-2">Metadata:</div>
+													<div className="text-sm font-medium mb-2">
+														{t('admin.activityLog.metadata')}
+													</div>
 													<JsonViewer
 														data={log.metadata}
 														defaultExpanded={false}
@@ -321,7 +370,10 @@ export default function ActivityLogPage() {
 							{pagination && pagination.totalPages > 1 && (
 								<div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
 									<div className="text-sm text-muted-foreground">
-										Page {pagination.page} of {pagination.totalPages}
+										{t('admin.activityLog.page', {
+											page: pagination.page,
+											pages: pagination.totalPages,
+										})}
 									</div>
 									<div className="flex gap-2">
 										<Button
@@ -330,7 +382,7 @@ export default function ActivityLogPage() {
 											disabled={pagination.page === 1}
 											onClick={() => setPage(page - 1)}
 										>
-											Previous
+											{t('admin.activityLog.previous')}
 										</Button>
 										<Button
 											variant="ghost"
@@ -338,7 +390,7 @@ export default function ActivityLogPage() {
 											disabled={pagination.page === pagination.totalPages}
 											onClick={() => setPage(page + 1)}
 										>
-											Next
+											{t('pagination.next')}
 										</Button>
 									</div>
 								</div>

@@ -3,6 +3,17 @@ import { defineCatalog } from '../catalog'
 export const commonCatalog = defineCatalog(
 	{
 		common: {
+			jsonViewer: {
+				empty: 'No data',
+				copy: 'Copy',
+				copied: 'Copied!',
+				copyFailed: 'Failed to copy JSON',
+				properties_one: '{{count, number}} property',
+				properties_other: '{{count, number}} properties',
+				expand: 'Expand {{name}}',
+				collapse: 'Collapse {{name}}',
+				root: 'JSON data',
+			},
 			loading: 'Loading…',
 			loadDataError: 'Something went wrong while loading data.',
 			processing: 'Processing…',
@@ -130,6 +141,17 @@ export const commonCatalog = defineCatalog(
 	},
 	{
 		common: {
+			jsonViewer: {
+				empty: 'Keine Daten',
+				copy: 'Kopieren',
+				copied: 'Kopiert!',
+				copyFailed: 'JSON konnte nicht kopiert werden',
+				properties_one: '{{count, number}} Eigenschaft',
+				properties_other: '{{count, number}} Eigenschaften',
+				expand: '{{name}} ausklappen',
+				collapse: '{{name}} einklappen',
+				root: 'JSON-Daten',
+			},
 			loading: 'Wird geladen…',
 			loadDataError: 'Beim Laden der Daten ist ein Fehler aufgetreten.',
 			processing: 'Wird verarbeitet…',
@@ -257,6 +279,17 @@ export const commonCatalog = defineCatalog(
 	},
 	{
 		common: {
+			jsonViewer: {
+				empty: '데이터 없음',
+				copy: '복사',
+				copied: '복사 완료!',
+				copyFailed: 'JSON을 복사하지 못했습니다',
+				properties_one: '속성 {{count, number}}개',
+				properties_other: '속성 {{count, number}}개',
+				expand: '{{name}} 펼치기',
+				collapse: '{{name}} 접기',
+				root: 'JSON 데이터',
+			},
 			loading: '불러오는 중…',
 			loadDataError: '데이터를 불러오는 중 문제가 발생했습니다.',
 			processing: '처리하는 중…',

@@ -2,6 +2,8 @@ import { ChevronDown, ChevronRight, Copy } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { useMessage } from '@/hooks/useMessage'
+import { formatNumber, useAppTranslation } from '@/i18n'
 
 interface JsonViewerProps {
 	data: unknown
@@ -14,18 +16,22 @@ export function JsonViewer({
 	defaultExpanded = false,
 	maxHeight = '400px',
 }: JsonViewerProps) {
-	const [copied, setCopied] = useState(false)
+	const { t } = useAppTranslation()
+	const { message, showSuccess, showError } = useMessage()
 
-	const handleCopy = () => {
-		void navigator.clipboard.writeText(JSON.stringify(data, null, 2))
-		setCopied(true)
-		setTimeout(() => setCopied(false), 2000)
+	const handleCopy = async () => {
+		try {
+			await navigator.clipboard.writeText(JSON.stringify(data, null, 2))
+			showSuccess((t) => t('common.jsonViewer.copied'), 2000)
+		} catch {
+			showError((t) => t('common.jsonViewer.copyFailed'))
+		}
 	}
 
 	if (data === null || data === undefined) {
 		return (
 			<div className="text-sm text-muted-foreground italic p-2 border border-border rounded-md bg-muted/30">
-				No data
+				{t('common.jsonViewer.empty')}
 			</div>
 		)
 	}
@@ -35,9 +41,14 @@ export function JsonViewer({
 			<div className="absolute top-2 right-2 z-10">
 				<Button variant="ghost" size="sm" onClick={handleCopy}>
 					<Copy className="h-3 w-3 mr-1" />
-					{copied ? 'Copied!' : 'Copy'}
+					{message?.type === 'success' ? message.text : t('common.jsonViewer.copy')}
 				</Button>
 			</div>
+			{message?.type === 'error' && (
+				<p role="alert" className="p-3 pr-24 text-sm text-destructive">
+					{message.text}
+				</p>
+			)}
 			<div className="p-3 overflow-auto" style={{ maxHeight }}>
 				<JsonNode data={data} level={0} defaultExpanded={defaultExpanded} />
 			</div>
@@ -53,7 +64,11 @@ interface JsonNodeProps {
 }
 
 function JsonNode({ data, level, defaultExpanded = false, propertyName }: JsonNodeProps) {
+	const { t } = useAppTranslation()
 	const [isExpanded, setIsExpanded] = useState(defaultExpanded)
+	const toggleLabel = t(isExpanded ? 'common.jsonViewer.collapse' : 'common.jsonViewer.expand', {
+		name: propertyName ?? t('common.jsonViewer.root'),
+	})
 
 	const indent = level * 16
 
@@ -115,12 +130,14 @@ function JsonNode({ data, level, defaultExpanded = false, propertyName }: JsonNo
 		return (
 			<div style={{ paddingLeft: `${indent}px` }}>
 				<button
+					aria-label={toggleLabel}
+					aria-expanded={isExpanded}
 					onClick={() => setIsExpanded(!isExpanded)}
 					className="flex items-center gap-1 text-sm hover:bg-accent/50 rounded px-1 -ml-1"
 				>
 					{isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
 					{propertyName && <span className="text-primary font-medium">{propertyName}: </span>}
-					<span className="text-muted-foreground">[{data.length}]</span>
+					<span className="text-muted-foreground">[{formatNumber(data.length)}]</span>
 				</button>
 				{isExpanded && (
 					<div className="mt-1">
@@ -154,13 +171,15 @@ function JsonNode({ data, level, defaultExpanded = false, propertyName }: JsonNo
 		return (
 			<div style={{ paddingLeft: `${indent}px` }}>
 				<button
+					aria-label={toggleLabel}
+					aria-expanded={isExpanded}
 					onClick={() => setIsExpanded(!isExpanded)}
 					className="flex items-center gap-1 text-sm hover:bg-accent/50 rounded px-1 -ml-1"
 				>
 					{isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
 					{propertyName && <span className="text-primary font-medium">{propertyName}: </span>}
 					<span className="text-muted-foreground">
-						{'{'} {entries.length} {entries.length === 1 ? 'property' : 'properties'} {'}'}
+						{'{'} {t('common.jsonViewer.properties', { count: entries.length })} {'}'}
 					</span>
 				</button>
 				{isExpanded && (
