@@ -1,5 +1,6 @@
 import { DatePickerInput as MantineDatePickerInput } from '@mantine/dates'
 
+import { getDateInputFormat, useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 interface DateRangeInputProps {
@@ -40,10 +41,12 @@ function formatDateValue(value: Date | null): string {
 export function DateRangeInput({
 	value,
 	onChange,
-	placeholder = 'Date range',
+	placeholder,
 	disabled = false,
 	className,
 }: DateRangeInputProps) {
+	const { locale, t } = useAppTranslation()
+	const dateFormat = getDateInputFormat(locale)
 	const handleChange = (nextValue: [Date | null, Date | null]) => {
 		// Mantine clears an incomplete range when the popover closes. A single date is
 		// a valid filter for this control, so preserve it until the user selects an end date.
@@ -62,8 +65,8 @@ export function DateRangeInput({
 			type="range"
 			value={[parseDateValue(value.fromDate), parseDateValue(value.toDate)]}
 			onChange={handleChange}
-			valueFormat="MM/DD/YYYY"
-			placeholder={placeholder}
+			valueFormat={dateFormat}
+			placeholder={placeholder ?? t('common.dateRange')}
 			disabled={disabled}
 			allowSingleDateInRange
 			dropdownType="popover"

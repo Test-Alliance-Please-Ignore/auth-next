@@ -1,5 +1,7 @@
 import { parseDateOrNull } from '@repo/worker-utils'
 
+import { i18n } from '@/i18n'
+
 export interface FormatDurationOptions {
 	maxUnits?: number
 	style?: 'long' | 'short' | 'compact'
@@ -23,41 +25,10 @@ const YEAR_MS = 365 * DAY_MS
 
 function formatUnit(value: number, unit: DurationUnit, style: DurationFormatStyle): string {
 	if (style === 'short' || style === 'compact') {
-		switch (unit) {
-			case 'year':
-				return `${value}y`
-			case 'month':
-				return `${value}mo`
-			case 'week':
-				return `${value}w`
-			case 'day':
-				return `${value}d`
-			case 'hour':
-				return `${value}h`
-			case 'minute':
-				return `${value}m`
-			case 'second':
-				return `${value}s`
-		}
+		return i18n.t(`duration.compact.${unit}`, { count: value })
 	}
 
-	const suffix = value === 1 ? '' : 's'
-	switch (unit) {
-		case 'year':
-			return `${value} year${suffix}`
-		case 'month':
-			return `${value} month${suffix}`
-		case 'week':
-			return `${value} week${suffix}`
-		case 'day':
-			return `${value} day${suffix}`
-		case 'hour':
-			return `${value} hour${suffix}`
-		case 'minute':
-			return `${value} minute${suffix}`
-		case 'second':
-			return `${value} second${suffix}`
-	}
+	return i18n.t(`duration.units.${unit}`, { count: value })
 }
 
 function decomposeDuration(ms: number): Partial<Record<DurationUnit, number>> {
@@ -87,7 +58,10 @@ function decomposeDuration(ms: number): Partial<Record<DurationUnit, number>> {
 	}
 }
 
-function formatDurationParts(parts: Partial<Record<DurationUnit, number>>, options: FormatDurationOptions = {}): string {
+function formatDurationParts(
+	parts: Partial<Record<DurationUnit, number>>,
+	options: FormatDurationOptions = {}
+): string {
 	const maxUnits = Math.max(1, options.maxUnits ?? 3)
 	const style = options.style ?? 'long'
 	const units: Array<[DurationUnit, number | undefined]> = [
@@ -106,7 +80,7 @@ function formatDurationParts(parts: Partial<Record<DurationUnit, number>>, optio
 		.map(([unit, value]) => formatUnit(value!, unit, style))
 
 	if (rendered.length === 0) {
-		return style === 'long' ? '0 seconds' : '0s'
+		return formatUnit(0, 'second', style)
 	}
 
 	return rendered.join(' ')
@@ -114,13 +88,10 @@ function formatDurationParts(parts: Partial<Record<DurationUnit, number>>, optio
 
 export function formatDurationMs(ms: number, options?: FormatDurationOptions): string {
 	if (!Number.isFinite(ms) || ms <= 0) {
-		return options?.style === 'short' ? '0s' : '0 seconds'
+		return formatUnit(0, 'second', options?.style ?? 'long')
 	}
 
-	return formatDurationParts(
-		decomposeDuration(ms),
-		options
-	)
+	return formatDurationParts(decomposeDuration(ms), options)
 }
 
 export function formatDurationBetween(
@@ -130,12 +101,12 @@ export function formatDurationBetween(
 ): string {
 	const start = parseDateOrNull(startDate)
 	if (!start) {
-		return '0 seconds'
+		return formatUnit(0, 'second', options?.style ?? 'long')
 	}
 
 	const end = endDate === null || endDate === undefined ? new Date() : parseDateOrNull(endDate)
 	if (!end) {
-		return '0 seconds'
+		return formatUnit(0, 'second', options?.style ?? 'long')
 	}
 
 	return formatDurationMs(Math.max(0, end.getTime() - start.getTime()), options)
@@ -147,13 +118,13 @@ export function formatDurationUntil(
 ): string {
 	const end = endDate === null || endDate === undefined ? null : parseDateOrNull(endDate)
 	if (!end) {
-		return '0 seconds'
+		return formatUnit(0, 'second', options?.style ?? 'long')
 	}
 
 	const referenceTimeMs = options?.referenceTimeMs ?? Date.now()
 	const remainingMs = end.getTime() - referenceTimeMs
 	if (remainingMs <= 0) {
-		return options?.expiredLabel ?? 'Expired'
+		return options?.expiredLabel ?? i18n.t('duration.expired')
 	}
 
 	return formatDurationMs(remainingMs, options)

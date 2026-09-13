@@ -15,6 +15,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import type { ReactNode } from 'react'
@@ -89,14 +90,14 @@ export function DataTable<Row>({
 	rows,
 	loading = false,
 	error,
-	errorMessage = 'Failed to load data',
+	errorMessage,
 	emptyMessage,
 	sorting = [],
 	onSortingChange,
 	pagination,
 	onPaginationChange,
 	rowCount = rows.length,
-	itemLabel = 'rows',
+	itemLabel,
 	pageSizeOptions,
 	getRowKey,
 	rowInteraction,
@@ -109,6 +110,8 @@ export function DataTable<Row>({
 	variant = 'card',
 	className,
 }: DataTableProps<Row>) {
+	const { t } = useAppTranslation()
+	const resolvedItemLabel = itemLabel ?? t('common.table.rows', { count: rowCount })
 	const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
 	const isPaginated = Boolean(pagination && onPaginationChange)
 	const page = pagination?.pageIndex ?? 0
@@ -139,7 +142,7 @@ export function DataTable<Row>({
 				onPageSizeChange={(nextPageSize) =>
 					onPaginationChange?.({ pageIndex: 0, pageSize: nextPageSize })
 				}
-				itemLabel={itemLabel}
+				itemLabel={resolvedItemLabel}
 				pageSizeOptions={pageSizeOptions}
 				nextButtonLoading={loading}
 				controlsLeadingAction={paginationLeadingAction}
@@ -157,7 +160,7 @@ export function DataTable<Row>({
 				onPageSizeChange={(nextPageSize) =>
 					onPaginationChange?.({ pageIndex: 0, pageSize: nextPageSize })
 				}
-				itemLabel={itemLabel}
+				itemLabel={resolvedItemLabel}
 				pageSizeOptions={pageSizeOptions}
 				nextButtonLoading={loading}
 			/>
@@ -178,7 +181,9 @@ export function DataTable<Row>({
 			>
 				<TableHeader>
 					<TableRow>
-						{hasExpansion ? <TableHead className="w-10" aria-label="Expand" /> : null}
+						{hasExpansion ? (
+							<TableHead className="w-10" aria-label={t('common.table.expand')} />
+						) : null}
 						{columns.map((column) => {
 							const activeSort = sorting[0]?.id === column.id ? sorting[0] : undefined
 							const headerClassName = cn(
@@ -243,7 +248,9 @@ export function DataTable<Row>({
 													<button
 														type="button"
 														className="relative z-10 -m-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded p-2 transition-colors hover:bg-primary/15 hover:text-primary"
-														aria-label={isExpanded ? 'Collapse row' : 'Expand row'}
+														aria-label={t(
+															isExpanded ? 'common.table.collapseRow' : 'common.table.expandRow'
+														)}
 														aria-expanded={isExpanded}
 														onClick={() => toggleExpanded(key)}
 													>
@@ -307,7 +314,7 @@ export function DataTable<Row>({
 			</Table>
 			{loading ? (
 				<div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-[1px]">
-					<Loader2 aria-label="Loading" className="h-6 w-6 animate-spin text-primary" />
+					<Loader2 aria-label={t('common.loading')} className="h-6 w-6 animate-spin text-primary" />
 				</div>
 			) : null}
 		</div>
@@ -319,7 +326,7 @@ export function DataTable<Row>({
 		>
 			{error ? (
 				<div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-					{error instanceof Error ? error.message : errorMessage}
+					{error instanceof Error ? error.message : (errorMessage ?? t('common.table.loadFailed'))}
 				</div>
 			) : null}
 			{variant === 'card' ? (

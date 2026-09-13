@@ -1,3 +1,5 @@
+import { useAppTranslation } from '@/i18n'
+
 import { Button } from './button'
 import {
 	Dialog,
@@ -7,6 +9,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from './dialog'
+
 import type { ButtonVariant } from './button'
 
 export type ConfirmationIntent = 'confirm' | 'secondary' | 'destructive'
@@ -31,7 +34,7 @@ export function ConfirmationDialog({
 	title,
 	description,
 	confirmLabel,
-	cancelLabel = 'Cancel',
+	cancelLabel,
 	intent = 'confirm',
 	confirmButtonVariant,
 	cancelButtonVariant,
@@ -40,6 +43,7 @@ export function ConfirmationDialog({
 	onCancel,
 	onConfirm,
 }: ConfirmationDialogProps) {
+	const { t } = useAppTranslation()
 	const confirmVariant =
 		intent === 'destructive' ? 'destructive' : intent === 'secondary' ? 'secondary' : 'confirm'
 
@@ -57,7 +61,7 @@ export function ConfirmationDialog({
 						disabled={pending}
 						onClick={onCancel}
 					>
-						{cancelLabel}
+						{cancelLabel ?? t('common.cancel')}
 					</Button>
 					<Button
 						variant={confirmButtonVariant ?? confirmVariant}

@@ -1,4 +1,5 @@
 import { useSystemDetails } from '@/hooks/useLocationSearch'
+import { useAppTranslation } from '@/i18n'
 
 import { Badge } from './badge'
 import { Skeleton } from './skeleton'
@@ -11,6 +12,7 @@ interface LocationDisplayProps {
 }
 
 export function LocationDisplay({ location, showBadge = false }: LocationDisplayProps) {
+	const { t } = useAppTranslation()
 	const { data: systemDetails, isLoading } = useSystemDetails(location.solarSystemId)
 
 	if (isLoading) {
@@ -18,7 +20,7 @@ export function LocationDisplay({ location, showBadge = false }: LocationDisplay
 	}
 
 	if (!systemDetails) {
-		return <span className="text-muted-foreground">Unknown Location</span>
+		return <span className="text-muted-foreground">{t('common.unknownLocation')}</span>
 	}
 
 	// Determine location type from IDs
@@ -31,12 +33,12 @@ export function LocationDisplay({ location, showBadge = false }: LocationDisplay
 			<span>
 				{systemDetails.name}
 				{location.constellationId && (
-					<span className="text-muted-foreground text-sm"> (Region)</span>
+					<span className="text-muted-foreground text-sm">{t('common.regionSuffix')}</span>
 				)}
 			</span>
 			{showBadge && (
 				<Badge variant={type === 'structure' ? 'ghost' : 'default'} className="text-xs">
-					{type}
+					{t(`common.locationType.${type}`)}
 				</Badge>
 			)}
 		</div>

@@ -1,5 +1,7 @@
 import { DatePickerInput as MantineDatePickerInput } from '@mantine/dates'
 
+import { getDateInputFormat, useAppTranslation } from '@/i18n'
+
 interface DateInputProps {
 	value: string
 	onChange: (value: string) => void
@@ -39,17 +41,20 @@ function formatDateValue(value: Date | string | null): string {
 export function DateInput({
 	value,
 	onChange,
-	placeholder = 'MM/DD/YYYY',
+	placeholder,
 	clearable = true,
 	disabled = false,
 }: DateInputProps) {
+	const { locale, t } = useAppTranslation()
+	const dateFormat = getDateInputFormat(locale)
+
 	return (
 		<MantineDatePickerInput
 			type="default"
 			value={parseDateValue(value)}
 			onChange={(nextValue) => onChange(formatDateValue(nextValue))}
-			valueFormat="MM/DD/YYYY"
-			placeholder={placeholder}
+			valueFormat={dateFormat}
+			placeholder={placeholder ?? dateFormat}
 			clearable={clearable}
 			disabled={disabled}
 			dropdownType="popover"
@@ -63,7 +68,7 @@ export function DateInput({
 			}}
 			clearButtonProps={{
 				className: 'themed-date-picker__clear-button',
-				'aria-label': 'Clear date',
+				'aria-label': t('common.clearDate'),
 			}}
 			classNames={{
 				input: 'themed-date-picker__input',

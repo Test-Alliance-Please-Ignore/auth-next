@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 
+import { useAppTranslation } from '@/i18n'
+
 import { Button } from './button'
 import {
 	Dialog,
@@ -27,12 +29,13 @@ export function PasswordPromptDialog({
 	open,
 	title,
 	description,
-	confirmLabel = 'Confirm',
-	cancelLabel = 'Cancel',
+	confirmLabel,
+	cancelLabel,
 	pending = false,
 	onCancel,
 	onConfirm,
 }: PasswordPromptDialogProps) {
+	const { t } = useAppTranslation()
 	const [value, setValue] = useState('')
 
 	useEffect(() => {
@@ -47,7 +50,7 @@ export function PasswordPromptDialog({
 					<DialogDescription>{description}</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-2">
-					<Label htmlFor="password-prompt-input">Password</Label>
+					<Label htmlFor="password-prompt-input">{t('common.password')}</Label>
 					<Input
 						id="password-prompt-input"
 						type="password"
@@ -63,7 +66,7 @@ export function PasswordPromptDialog({
 				</div>
 				<DialogFooter>
 					<Button variant="cancel" showIcon={false} disabled={pending} onClick={onCancel}>
-						{cancelLabel}
+						{cancelLabel ?? t('common.cancel')}
 					</Button>
 					<Button
 						variant="confirm"
@@ -72,7 +75,7 @@ export function PasswordPromptDialog({
 						loading={pending}
 						onClick={() => onConfirm(value)}
 					>
-						{confirmLabel}
+						{confirmLabel ?? t('common.confirm')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

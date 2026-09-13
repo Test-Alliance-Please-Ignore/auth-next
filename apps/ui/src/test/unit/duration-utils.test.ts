@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { setAppLocale } from '@/i18n'
 import { formatDurationBetween, formatDurationMs, formatDurationUntil } from '@/lib/duration-utils'
 
 const SECOND_MS = 1000
@@ -12,31 +13,19 @@ const YEAR_MS = 365 * DAY_MS
 
 describe('duration utils', () => {
 	it('truncates long durations to the top three non-zero units', () => {
-		const durationMs =
-			3 * YEAR_MS +
-			1 * MONTH_MS +
-			1 * WEEK_MS +
-			1 * DAY_MS
+		const durationMs = 3 * YEAR_MS + 1 * MONTH_MS + 1 * WEEK_MS + 1 * DAY_MS
 
 		expect(formatDurationMs(durationMs)).toBe('3 years 1 month 1 week')
 	})
 
 	it('truncates month-range durations to the top three non-zero units', () => {
-		const durationMs =
-			3 * MONTH_MS +
-			2 * WEEK_MS +
-			4 * DAY_MS +
-			5 * HOUR_MS
+		const durationMs = 3 * MONTH_MS + 2 * WEEK_MS + 4 * DAY_MS + 5 * HOUR_MS
 
 		expect(formatDurationMs(durationMs)).toBe('3 months 2 weeks 4 days')
 	})
 
 	it('truncates week-range durations to the top three non-zero units', () => {
-		const durationMs =
-			3 * WEEK_MS +
-			6 * DAY_MS +
-			14 * HOUR_MS +
-			45 * MINUTE_MS
+		const durationMs = 3 * WEEK_MS + 6 * DAY_MS + 14 * HOUR_MS + 45 * MINUTE_MS
 
 		expect(formatDurationMs(durationMs)).toBe('3 weeks 6 days 14 hours')
 	})
@@ -48,17 +37,32 @@ describe('duration utils', () => {
 	})
 
 	it('supports compact unit abbreviations', () => {
-		const durationMs =
-			3 * MONTH_MS +
-			2 * WEEK_MS +
-			4 * DAY_MS
+		const durationMs = 3 * MONTH_MS + 2 * WEEK_MS + 4 * DAY_MS
 
 		expect(formatDurationMs(durationMs, { style: 'compact' })).toBe('3mo 2w 4d')
 	})
 
 	it('respects the expired label for past end dates', () => {
-		expect(formatDurationUntil('2026-01-01T00:00:00.000Z', {
-			referenceTimeMs: Date.parse('2026-01-01T00:00:01.000Z'),
-		})).toBe('Expired')
+		expect(
+			formatDurationUntil('2026-01-01T00:00:00.000Z', {
+				referenceTimeMs: Date.parse('2026-01-01T00:00:01.000Z'),
+			})
+		).toBe('Expired')
+	})
+
+	it('uses the active locale for long, compact, and expired output', async () => {
+		await setAppLocale('de', { persistLocal: false })
+		expect(formatDurationMs(DAY_MS + 2 * HOUR_MS)).toBe('1 Tag 2 Stunden')
+		expect(
+			formatDurationUntil('2026-01-01T00:00:00.000Z', {
+				referenceTimeMs: Date.parse('2026-01-01T00:00:01.000Z'),
+			})
+		).toBe('Abgelaufen')
+
+		await setAppLocale('ko', { persistLocal: false })
+		expect(formatDurationMs(DAY_MS + 2 * HOUR_MS)).toBe('1일 2시간')
+		expect(formatDurationMs(DAY_MS + 2 * HOUR_MS, { style: 'compact' })).toBe('1일 2시간')
+
+		await setAppLocale('en', { persistLocal: false })
 	})
 })

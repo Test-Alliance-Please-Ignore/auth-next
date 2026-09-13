@@ -1,6 +1,7 @@
 import { ChevronsUpDown } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { Checkbox } from './checkbox'
@@ -101,7 +102,7 @@ export function Select<TOption extends SelectOption>({
 	searchDelegate,
 	minQueryLength = 2,
 	debounceMs = 250,
-	placeholder = 'Select an option',
+	placeholder,
 	loading = false,
 	disabled = false,
 	className,
@@ -111,13 +112,17 @@ export function Select<TOption extends SelectOption>({
 	listMinHeight,
 	listMaxHeight,
 	queryHintText,
-	loadingText = 'Searching...',
-	emptyText = 'No results found',
+	loadingText,
+	emptyText,
 	renderOption,
 	getOptionSearchText,
 	showValueHint = false,
 	selectAllOption,
 }: SelectProps<TOption>) {
+	const { t } = useAppTranslation()
+	const resolvedPlaceholder = placeholder ?? t('common.selectOption')
+	const resolvedLoadingText = loadingText ?? t('common.searching')
+	const resolvedEmptyText = emptyText ?? t('common.noResults')
 	const [open, setOpen] = useState(false)
 	const [isInputFocused, setIsInputFocused] = useState(false)
 	const [highlightedIndex, setHighlightedIndex] = useState<number>(-1)
@@ -156,8 +161,7 @@ export function Select<TOption extends SelectOption>({
 		trimmedQuery,
 		minQueryLength,
 	})
-	const resolvedQueryHintText =
-		queryHintText ?? `Type at least ${minQueryLength} characters to search`
+	const resolvedQueryHintText = queryHintText ?? t('common.typeAtLeast', { count: minQueryLength })
 
 	useEffect(() => {
 		if (!isSelectedValueControlled && initialValue !== undefined) {
@@ -343,7 +347,7 @@ export function Select<TOption extends SelectOption>({
 		searchable,
 		effectiveQueryValue,
 		selectedLabel,
-		placeholder,
+		placeholder: resolvedPlaceholder,
 	})
 
 	useEffect(() => {
@@ -611,9 +615,9 @@ export function Select<TOption extends SelectOption>({
 								{minQueryBlocked ? (
 									<CommandEmpty>{resolvedQueryHintText}</CommandEmpty>
 								) : isLoading ? (
-									<CommandEmpty>{loadingText}</CommandEmpty>
+									<CommandEmpty>{resolvedLoadingText}</CommandEmpty>
 								) : renderedOptions.length === 0 ? (
-									<CommandEmpty>{emptyText}</CommandEmpty>
+									<CommandEmpty>{resolvedEmptyText}</CommandEmpty>
 								) : (
 									<CommandGroup>
 										{renderedOptions.map((option, index) => (

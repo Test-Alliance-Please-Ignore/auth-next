@@ -21,6 +21,14 @@ export const commonCatalog = defineCatalog(
 			scrollDown: 'Scroll down',
 			noAdditionalContext: 'No additional context available.',
 			notAvailable: 'N/A',
+			breadcrumb: 'Breadcrumb',
+			more: 'More',
+			unknownLocation: 'Unknown location',
+			regionSuffix: ' (Region)',
+			locationType: {
+				structure: 'Structure',
+				system: 'System',
+			},
 			esiStatus: {
 				valid: 'ESI Valid',
 				invalid: 'ESI Invalid',
@@ -44,10 +52,22 @@ export const commonCatalog = defineCatalog(
 			locationSearch: 'Search for a system or station…',
 			locationSearchHint: 'Type at least 2 characters',
 			noLocations: 'No locations found',
+			table: {
+				loadFailed: 'Failed to load data',
+				expand: 'Expand',
+				expandRow: 'Expand row',
+				collapseRow: 'Collapse row',
+				rows_one: 'row',
+				rows_other: 'rows',
+				pageScroll: 'Page scroll',
+				clampGrid: 'Clamp grid',
+				pageScrollHint: 'Use page scrolling for the table',
+				clampGridHint: 'Clamp the table to the page',
+			},
 		},
 		currency: {
-			point: '{{value}} point',
-			points: '{{value}} points',
+			points_one: '{{value}} point',
+			points_other: '{{value}} points',
 		},
 		duration: {
 			units: {
@@ -106,6 +126,14 @@ export const commonCatalog = defineCatalog(
 			scrollDown: 'Nach unten scrollen',
 			noAdditionalContext: 'Keine zusätzlichen Informationen verfügbar.',
 			notAvailable: 'k. A.',
+			breadcrumb: 'Navigationspfad',
+			more: 'Mehr',
+			unknownLocation: 'Unbekannter Ort',
+			regionSuffix: ' (Region)',
+			locationType: {
+				structure: 'Struktur',
+				system: 'System',
+			},
 			esiStatus: {
 				valid: 'ESI gültig',
 				invalid: 'ESI ungültig',
@@ -129,10 +157,22 @@ export const commonCatalog = defineCatalog(
 			locationSearch: 'Nach einem System oder einer Station suchen…',
 			locationSearchHint: 'Mindestens 2 Zeichen eingeben',
 			noLocations: 'Keine Orte gefunden',
+			table: {
+				loadFailed: 'Daten konnten nicht geladen werden',
+				expand: 'Aufklappen',
+				expandRow: 'Zeile aufklappen',
+				collapseRow: 'Zeile zuklappen',
+				rows_one: 'Zeile',
+				rows_other: 'Zeilen',
+				pageScroll: 'Seite scrollen',
+				clampGrid: 'Tabelle einpassen',
+				pageScrollHint: 'Die gesamte Seite mit der Tabelle scrollen',
+				clampGridHint: 'Die Tabellenhöhe auf den sichtbaren Bereich begrenzen',
+			},
 		},
 		currency: {
-			point: '{{value}} Punkt',
-			points: '{{value}} Punkte',
+			points_one: '{{value}} Punkt',
+			points_other: '{{value}} Punkte',
 		},
 		duration: {
 			units: {
@@ -191,6 +231,14 @@ export const commonCatalog = defineCatalog(
 			scrollDown: '아래로 스크롤',
 			noAdditionalContext: '추가 정보를 사용할 수 없습니다.',
 			notAvailable: '해당 없음',
+			breadcrumb: '이동 경로',
+			more: '더 보기',
+			unknownLocation: '알 수 없는 위치',
+			regionSuffix: ' (지역)',
+			locationType: {
+				structure: '구조물',
+				system: '성계',
+			},
 			esiStatus: {
 				valid: 'ESI 유효',
 				invalid: 'ESI 무효',
@@ -214,10 +262,22 @@ export const commonCatalog = defineCatalog(
 			locationSearch: '성계 또는 정거장 검색…',
 			locationSearchHint: '2자 이상 입력해 주세요',
 			noLocations: '위치를 찾을 수 없습니다',
+			table: {
+				loadFailed: '데이터를 불러오지 못했습니다',
+				expand: '펼치기',
+				expandRow: '행 펼치기',
+				collapseRow: '행 접기',
+				rows_one: '행',
+				rows_other: '행',
+				pageScroll: '페이지 스크롤',
+				clampGrid: '표 높이 맞추기',
+				pageScrollHint: '표와 함께 전체 페이지 스크롤',
+				clampGridHint: '표 높이를 화면에 맞추기',
+			},
 		},
 		currency: {
-			point: '{{value}}포인트',
-			points: '{{value}}포인트',
+			points_one: '{{value}}포인트',
+			points_other: '{{value}}포인트',
 		},
 		duration: {
 			units: {
