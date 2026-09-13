@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { MumbleTempopExpiryDO } from '../../mumble-tempop-expiry-do'
+import { MumbleTempopExpiry } from '../../mumble-tempop-expiry-do'
 import {
 	deleteCredentialHandoff,
 	expireTempop,
@@ -30,10 +30,10 @@ describe('MumbleTempopExpiryDO dispatch', () => {
 		}
 		const instance = { queue } as any
 
-		await MumbleTempopExpiryDO.prototype.scheduleTempop.call(instance, 'tempop-1', 10_000)
-		await MumbleTempopExpiryDO.prototype.cancelTempop.call(instance, 'tempop-1')
-		await MumbleTempopExpiryDO.prototype.scheduleCredentialHandoff.call(instance, 'hash-1', 20_000)
-		await MumbleTempopExpiryDO.prototype.cancelCredentialHandoff.call(instance, 'hash-1')
+		await MumbleTempopExpiry.prototype.scheduleTempop.call(instance, 'tempop-1', 10_000)
+		await MumbleTempopExpiry.prototype.cancelTempop.call(instance, 'tempop-1')
+		await MumbleTempopExpiry.prototype.scheduleCredentialHandoff.call(instance, 'hash-1', 20_000)
+		await MumbleTempopExpiry.prototype.cancelCredentialHandoff.call(instance, 'hash-1')
 
 		expect(queue.upsert).toHaveBeenNthCalledWith(1, 'tempop:tempop-1', 10_000, {
 			kind: 'tempop',
@@ -59,7 +59,7 @@ describe('MumbleTempopExpiryDO dispatch', () => {
 		const replace = vi.fn().mockResolvedValue(undefined)
 
 		await expect(
-			MumbleTempopExpiryDO.prototype.reconcile.call({ env, queue: { replace } } as any)
+			MumbleTempopExpiry.prototype.reconcile.call({ env, queue: { replace } } as any)
 		).resolves.toEqual({ scheduled: 1 })
 		expect(replace).toHaveBeenCalledWith(items)
 	})
@@ -67,7 +67,7 @@ describe('MumbleTempopExpiryDO dispatch', () => {
 	it('expires a temp-op and removes the queue item when it is due', async () => {
 		expireTempopMock.mockResolvedValue({ rescheduleAt: null, disconnected: 2 })
 
-		const result = await (MumbleTempopExpiryDO.prototype as any).handleItem.call(
+		const result = await (MumbleTempopExpiry.prototype as any).handleItem.call(
 			{ env },
 			{ kind: 'tempop', tempopId: 'tempop-1' }
 		)
@@ -79,7 +79,7 @@ describe('MumbleTempopExpiryDO dispatch', () => {
 	it('reschedules a stale temp-op item when its source expiry moved forward', async () => {
 		expireTempopMock.mockResolvedValue({ rescheduleAt: 50_000, disconnected: 0 })
 
-		const result = await (MumbleTempopExpiryDO.prototype as any).handleItem.call(
+		const result = await (MumbleTempopExpiry.prototype as any).handleItem.call(
 			{ env },
 			{ kind: 'tempop', tempopId: 'tempop-1' }
 		)
@@ -88,7 +88,7 @@ describe('MumbleTempopExpiryDO dispatch', () => {
 	})
 
 	it('deletes expired handoff rows without exposing their credentials', async () => {
-		const result = await (MumbleTempopExpiryDO.prototype as any).handleItem.call(
+		const result = await (MumbleTempopExpiry.prototype as any).handleItem.call(
 			{ env },
 			{ kind: 'credential-handoff', tokenHash: 'hash-1' }
 		)

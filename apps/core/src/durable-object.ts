@@ -42,7 +42,7 @@ import type { BlacklistTargetCheckItem, BlacklistTargetType, Hr } from '@repo/hr
 import type { Legacy } from '@repo/legacy'
 import type { MarketDetail as PredictionMarketDetail } from '@repo/prediction-markets'
 import type { Env } from './context'
-import type { ImmunitasAccessAlertInput, ImmunitasAlerts } from './immunitas-alerts-do'
+import type { ImmunitasAccessAlertInput, ImmunitasAlertsApi } from './immunitas-alerts-do'
 
 type PendingDiscordRefresh = {
 	expiresAt: number
@@ -2079,9 +2079,10 @@ export class CoreDO extends DurableObject<Env> implements Core {
 	}
 
 	async queueImmunitasAccessAlert(input: ImmunitasAccessAlertInput) {
-		return getStub<ImmunitasAlerts>(this.env.IMMUNITAS_ALERTS, 'default').queueImmunitasAccessAlert(
-			input
-		)
+		return getStub<ImmunitasAlertsApi>(
+			this.env.IMMUNITAS_ALERTS,
+			'default'
+		).queueImmunitasAccessAlert(input)
 	}
 
 	private buildPendingTokenInvalidationMessage(
