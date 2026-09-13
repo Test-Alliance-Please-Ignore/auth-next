@@ -36,9 +36,108 @@ function createApp(user?: SessionUser) {
 }
 
 describe('login route', () => {
+	it('renders the login page in English by default', async () => {
+		const app = createApp()
+		const response = await app.request('https://pleaseignore.app/login', {}, {} as any)
+		const body = await response.text()
+
+		expect(response.status).toBe(200)
+		expect(body).toContain('<html lang="en">')
+		expect(body).toContain('Welcome to TEST Auth')
+		expect(body).toMatch(/<option value="en" selected>\s*English\s*<\/option>/)
+		expect(response.headers.get('cache-control')).toBe('private, no-store')
+		expect(response.headers.get('vary')).toBe('Cookie, Accept-Language')
+	})
+
+	it('renders an explicitly selected locale and remembers it in a cookie', async () => {
+		const app = createApp()
+		const response = await app.request(
+			'https://pleaseignore.app/login?locale=de&redirect=%2Fdashboard',
+			{},
+			{} as any
+		)
+		const body = await response.text()
+
+		expect(response.status).toBe(200)
+		expect(body).toContain('<html lang="de">')
+		expect(body).toContain('Willkommen bei TEST Auth')
+		expect(body).toMatch(/<option value="de" selected>\s*Deutsch\s*<\/option>/)
+		expect(body).toContain('name="redirect" value="/dashboard"')
+		const localeCookie = response.headers.get('set-cookie')
+		expect(localeCookie).toContain('tang.locale=de; Max-Age=31536000; Path=/')
+		expect(localeCookie).toContain('SameSite=Lax')
+		expect(localeCookie).toContain('Secure')
+		expect(localeCookie).not.toContain('HttpOnly')
+	})
+
+	it('uses a remembered locale before the browser language', async () => {
+		const app = createApp()
+		const response = await app.request('https://pleaseignore.app/login', {
+			headers: {
+				'Accept-Language': 'de-DE,de;q=0.9',
+				Cookie: 'tang.locale=ko',
+			},
+		})
+		const body = await response.text()
+
+		expect(body).toContain('<html lang="ko">')
+		expect(body).toContain('TEST Auth에 오신 것을 환영합니다')
+		expect(body).toMatch(/<option value="ko" selected>\s*한국어\s*<\/option>/)
+		for (const step of [
+			'아래 로그인 버튼을 누르면 EVE Online 공식 로그인 페이지로 이동됩니다',
+			'메인으로 사용할 캐릭터가 있는 계정에 먼저 로그인하세요',
+			'캐릭터 목록에서 메인 캐릭터를 선택하세요',
+			'TEST Auth가 캐릭터 정보에 접근할 수 있도록 승인하세요',
+			'로그인이 완료되면 자동으로 TEST Auth로 돌아옵니다',
+		]) {
+			expect(body).toContain(`<li>${step}</li>`)
+		}
+	})
+
+	it('negotiates a supported browser language and ignores languages with q=0', async () => {
+		const app = createApp()
+		const response = await app.request('https://pleaseignore.app/login', {
+			headers: { 'Accept-Language': 'fr-FR, de-DE;q=0, ko-KR;q=0.8' },
+		})
+		const body = await response.text()
+
+		expect(body).toContain('<html lang="ko">')
+		expect(response.headers.get('set-cookie')).toBeNull()
+	})
+
+	it('preserves redirect and reauthentication parameters when changing locale', async () => {
+		const app = createApp()
+		const response = await app.request(
+			'https://pleaseignore.app/login?redirect=%2Foauth%2Fauthorize%3FrequestUrl%3Dabc&reauth=1',
+			{},
+			{} as any
+		)
+		const body = await response.text()
+
+		expect(body).toContain('name="redirect" value="/oauth/authorize?requestUrl=abc"')
+		expect(body).toContain('name="reauth" value="1"')
+	})
+
+	it('submits the locale form as soon as the selection changes', async () => {
+		const app = createApp()
+		const response = await app.request('https://pleaseignore.app/login', {}, {} as any)
+		const body = await response.text()
+
+		expect(body).toContain("loginLocaleSelect.addEventListener('change'")
+		expect(body).toContain('localeForm.requestSubmit()')
+		expect(body).toContain('<noscript>')
+		expect(body).toContain('<div class="locale-control">')
+		expect(body).toContain('class="locale-chevron"')
+		expect(body).toContain('aria-hidden="true"')
+	})
+
 	it('redirects authenticated users to the requested redirect target by default', async () => {
 		const app = createApp(makeUser())
-		const response = await app.request('https://pleaseignore.app/login?redirect=%2Fdashboard', {}, {} as any)
+		const response = await app.request(
+			'https://pleaseignore.app/login?redirect=%2Fdashboard',
+			{},
+			{} as any
+		)
 
 		expect(response.status).toBe(302)
 		expect(response.headers.get('location')).toBe('/dashboard')
