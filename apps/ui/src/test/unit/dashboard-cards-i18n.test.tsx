@@ -70,7 +70,7 @@ function renderCards(children: ReactNode) {
 	)
 }
 
-	describe('localized dashboard cards', () => {
+describe('localized dashboard cards', () => {
 	beforeEach(() => {
 		state.linkPending = false
 		state.linkError = null
@@ -86,12 +86,7 @@ function renderCards(children: ReactNode) {
 
 	it.each([
 		['en', 'Connected account', 'Refresh Discord Access', 'Services'],
-		[
-			'de',
-			'Verknüpftes Konto',
-			'Discord-Zugriff aktualisieren',
-			'Dienste',
-		],
+		['de', 'Verknüpftes Konto', 'Discord-Zugriff aktualisieren', 'Dienste'],
 		['ko', '연결된 계정', 'Discord 접근 권한 갱신', '서비스'],
 	] as const)(
 		'renders dashboard card copy in %s without changing account data',
