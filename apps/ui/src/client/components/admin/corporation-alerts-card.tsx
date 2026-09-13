@@ -1,22 +1,19 @@
 import { Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
-import toast from '@/lib/toast'
-import { useDiscordServers } from '@/hooks/useDiscord'
-import {
-	AlertDestinationEditor,
-	type AlertDestinationEditorRow,
-	alertDestinationEditorRowFromDestination,
-	createAlertDestinationEditorRow,
-} from '@/components/admin/alert-destination-editor'
 import {
 	getAlertDestinationTypeOptions,
 	validateAlertDestinationRequirements,
-	type AlertDestinationType,
 } from '@repo/alert-destinations'
+
+import {
+	AlertDestinationEditor,
+	alertDestinationEditorRowFromDestination,
+	createAlertDestinationEditorRow,
+} from '@/components/admin/alert-destination-editor'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import {
 	useCorporationAlertDestinations,
 	useCorporationAlertTypes,
@@ -24,8 +21,32 @@ import {
 	useDeleteCorporationAlertDestination,
 	useUpdateCorporationAlertDestination,
 } from '@/hooks/useCorporationAlerts'
+import { useDiscordServers } from '@/hooks/useDiscord'
+import { useAppTranslation } from '@/i18n'
+import toast from '@/lib/toast'
 
+import type { AlertDestinationType } from '@repo/alert-destinations'
+import type { AlertDestinationEditorRow } from '@/components/admin/alert-destination-editor'
+import type { AppTranslationKey, AppTranslator } from '@/i18n'
 import type { CorporationAlertDestination } from '@/lib/api'
+
+function AlertMessage({ text }: { text: (t: AppTranslator) => string }) {
+	const { t } = useAppTranslation()
+	return text(t)
+}
+
+// The shared validator also serves workers. Translate its known client-side
+// failures here while keeping request validation and server responses intact.
+const destinationValidationKeys: Record<string, AppTranslationKey> = {
+	'discordServerId and channelId are required for discord_channel destinations':
+		'admin.organizations.alerts.channelRequired',
+	'coreUserId is required for discord_user destinations': 'admin.organizations.alerts.userRequired',
+	'groupId is required for group destinations': 'admin.organizations.alerts.groupRequired',
+	'webhookUrl is required for discord_webhook destinations':
+		'admin.organizations.alerts.webhookRequired',
+	'webhookUrl must be a valid Discord webhook URL for discord_webhook destinations':
+		'admin.organizations.alerts.webhookInvalid',
+}
 
 type EditableRow = AlertDestinationEditorRow
 
@@ -39,13 +60,13 @@ function isCorpApplicationAlertType(alertType: string): boolean {
 const CORP_APPLICATION_ALERT_SECTIONS = [
 	{
 		type: 'corp_application_submitted',
-		title: 'Corp Application Submitted',
-		description: 'Alerts when a new application is submitted to this corporation.',
+		titleKey: 'admin.organizations.alerts.submitted',
+		descriptionKey: 'admin.organizations.alerts.submittedDescription',
 	},
 	{
 		type: 'corp_application_first_time_accepted',
-		title: 'Corp Application Accepted (First-Time)',
-		description: 'Alerts when a first-time application is accepted for this corporation.',
+		titleKey: 'admin.organizations.alerts.accepted',
+		descriptionKey: 'admin.organizations.alerts.acceptedDescription',
 	},
 ] as const
 
@@ -75,6 +96,7 @@ function getNewRow(alertType: string): EditableRow {
 }
 
 export function CorporationAlertsCard({ corporationId }: { corporationId: string }) {
+	const { t } = useAppTranslation()
 	const { data: alertTypes = [] } = useCorporationAlertTypes()
 	const { data: alertDestinations = [], isLoading } = useCorporationAlertDestinations(corporationId)
 	const { data: discordServers = [] } = useDiscordServers()
@@ -142,9 +164,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 	}
 
 	const handleUpdateNewDraft = (rowId: string, patch: Partial<EditableRow>) => {
-		setNewRows((current) =>
-			current.map((row) => (row.id === rowId ? { ...row, ...patch } : row))
-		)
+		setNewRows((current) => current.map((row) => (row.id === rowId ? { ...row, ...patch } : row)))
 	}
 
 	const handleValidateDestination = (row: EditableRow): string | null => {
@@ -167,7 +187,15 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 		const draft = draftRows[destination.id] ?? getDefaultRowFromDestination(destination)
 		const validationError = handleValidateDestination(draft)
 		if (validationError) {
-			toast.error(validationError)
+			toast.error(
+				<AlertMessage
+					text={(t) =>
+						destinationValidationKeys[validationError]
+							? t(destinationValidationKeys[validationError])
+							: validationError
+					}
+				/>
+			)
 			return
 		}
 
@@ -177,16 +205,30 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 				destinationId: destination.id,
 				data: buildCorporationAlertDestinationInput(draft),
 			})
-			toast.success('Alert destination saved.')
+			toast.success(<AlertMessage text={(t) => t('admin.organizations.alerts.saved')} />)
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Failed to save alert destination.')
+			toast.error(
+				<AlertMessage
+					text={(t) =>
+						error instanceof Error ? error.message : t('admin.organizations.alerts.saveError')
+					}
+				/>
+			)
 		}
 	}
 
 	const handleSaveNew = async (row: EditableRow) => {
 		const validationError = handleValidateDestination(row)
 		if (validationError) {
-			toast.error(validationError)
+			toast.error(
+				<AlertMessage
+					text={(t) =>
+						destinationValidationKeys[validationError]
+							? t(destinationValidationKeys[validationError])
+							: validationError
+					}
+				/>
+			)
 			return
 		}
 
@@ -196,24 +238,36 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 				data: buildCorporationAlertDestinationInput(row),
 			})
 			setNewRows((current) => current.filter((currentRow) => currentRow.id !== row.id))
-			toast.success('Alert destination created.')
+			toast.success(<AlertMessage text={(t) => t('admin.organizations.alerts.created')} />)
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Failed to create alert destination.')
+			toast.error(
+				<AlertMessage
+					text={(t) =>
+						error instanceof Error ? error.message : t('admin.organizations.alerts.createError')
+					}
+				/>
+			)
 		}
 	}
 
 	const handleDeleteExisting = (destination: CorporationAlertDestination) => {
 		requestConfirmation({
-			title: 'Delete destination?',
-			description: 'This will remove the destination from this alert type.',
-			confirmLabel: 'Delete Destination',
+			title: (t) => t('admin.organizations.alerts.deleteTitle'),
+			description: (t) => t('admin.organizations.alerts.deleteDescription'),
+			confirmLabel: (t) => t('admin.organizations.alerts.delete'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				try {
 					await deleteDestination.mutateAsync({ corporationId, destinationId: destination.id })
-					toast.success('Alert destination deleted.')
+					toast.success(<AlertMessage text={(t) => t('admin.organizations.alerts.deleted')} />)
 				} catch (error) {
-					toast.error(error instanceof Error ? error.message : 'Failed to delete alert destination.')
+					toast.error(
+						<AlertMessage
+							text={(t) =>
+								error instanceof Error ? error.message : t('admin.organizations.alerts.deleteError')
+							}
+						/>
+					)
 				}
 			},
 		})
@@ -224,51 +278,52 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 	}
 
 	const getDestinationTypeOptions = () => [
-		...getAlertDestinationTypeOptions(['discord_channel', 'discord_user', 'discord_webhook']),
+		...getAlertDestinationTypeOptions(['discord_channel', 'discord_user', 'discord_webhook']).map(
+			({ value }) => ({ value, label: t(`admin.organizations.alerts.destinationTypes.${value}`) })
+		),
 	]
 
 	if (isLoading) {
 		return (
 			<Card className="border-border/80 bg-card/95 shadow-elevated">
 				<CardHeader>
-					<CardTitle>Alert Destinations</CardTitle>
-					<CardDescription>Loading configured alert destinations...</CardDescription>
+					<CardTitle>{t('admin.organizations.alerts.title')}</CardTitle>
+					<CardDescription>{t('admin.organizations.alerts.loading')}</CardDescription>
 				</CardHeader>
 			</Card>
 		)
 	}
 
 	return (
-	<Card className="border-border/80 bg-card/95 shadow-elevated">
+		<Card className="border-border/80 bg-card/95 shadow-elevated">
 			<CardHeader>
 				<div className="flex items-center justify-between gap-4">
 					<div>
-						<CardTitle>Alert Destinations</CardTitle>
-						<CardDescription>
-							Route corporation alerts to Discord channels or direct user destinations.
-						</CardDescription>
+						<CardTitle>{t('admin.organizations.alerts.title')}</CardTitle>
+						<CardDescription>{t('admin.organizations.alerts.description')}</CardDescription>
 					</div>
 				</div>
 			</CardHeader>
 			<CardContent className="space-y-6">
 				{alertTypes.length === 0 ? (
-					<p className="text-sm text-muted-foreground">No alert types are currently registered.</p>
+					<p className="text-sm text-muted-foreground">{t('admin.organizations.alerts.noTypes')}</p>
 				) : (
 					<>
 						{CORP_APPLICATION_ALERT_SECTIONS.map((section) => {
-							const destinationsForType =
-								alertDestinations.filter((destination) => destination.alertType === section.type)
+							const destinationsForType = alertDestinations.filter(
+								(destination) => destination.alertType === section.type
+							)
 							const draftRowsForType = newRows.filter((row) => row.alertType === section.type)
 
-								return (
-									<div
-										key={section.type}
-										className="space-y-4 rounded-xl border border-border/80 bg-background/75 p-4 shadow-sm"
-									>
+							return (
+								<div
+									key={section.type}
+									className="space-y-4 rounded-xl border border-border/80 bg-background/75 p-4 shadow-sm"
+								>
 									<div className="flex flex-wrap items-start justify-between gap-3">
 										<div className="space-y-1">
-											<h3 className="text-sm font-semibold">{section.title}</h3>
-											<p className="text-sm text-muted-foreground">{section.description}</p>
+											<h3 className="text-sm font-semibold">{t(section.titleKey)}</h3>
+											<p className="text-sm text-muted-foreground">{t(section.descriptionKey)}</p>
 										</div>
 										<Button
 											variant="primary"
@@ -277,19 +332,20 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 											disabled={createDestination.isPending}
 										>
 											<Plus className="h-4 w-4" />
-											Add Destination
+											{t('admin.organizations.alerts.add')}
 										</Button>
 									</div>
 
 									{destinationsForType.length === 0 && draftRowsForType.length === 0 ? (
 										<p className="text-sm text-muted-foreground">
-											No destination configured for this alert type.
+											{t('admin.organizations.alerts.empty')}
 										</p>
 									) : null}
 
 									<div className="space-y-3">
 										{destinationsForType.map((destination) => {
-											const draft = draftRows[destination.id] ?? getDefaultRowFromDestination(destination)
+											const draft =
+												draftRows[destination.id] ?? getDefaultRowFromDestination(destination)
 											return (
 												<AlertDestinationEditor
 													key={destination.id}
@@ -304,7 +360,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 													isExisting
 													saveButtonVariant="primary"
 													removeButtonVariant="destructive"
-														className="rounded-xl border border-border/90 bg-card/95 p-4 shadow-md ring-1 ring-border/60"
+													className="rounded-xl border border-border/90 bg-card/95 p-4 shadow-md ring-1 ring-border/60"
 												/>
 											)
 										})}
@@ -321,7 +377,7 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 												onRemove={() => handleClearNew(row.id)}
 												isSaving={createDestination.isPending}
 												removeButtonVariant="cancel"
-													className="rounded-xl border border-dashed border-border/90 bg-card/90 p-4 shadow-md ring-1 ring-border/60"
+												className="rounded-xl border border-dashed border-border/90 bg-card/90 p-4 shadow-md ring-1 ring-border/60"
 											/>
 										))}
 									</div>
@@ -333,74 +389,75 @@ export function CorporationAlertsCard({ corporationId }: { corporationId: string
 							const destinationsForType = rowsByType.get(definition.type) ?? []
 							const draftRowsForType = newRowsByType.get(definition.type) ?? []
 
-								return (
-									<div
-										key={definition.type}
-										className="space-y-4 rounded-xl border border-border/80 bg-background/75 p-4 shadow-sm"
-									>
-								<div className="flex flex-wrap items-start justify-between gap-3">
-									<div className="space-y-1">
-										<h3 className="text-sm font-semibold">{definition.label}</h3>
-										<p className="text-sm text-muted-foreground">{definition.description}</p>
+							return (
+								<div
+									key={definition.type}
+									className="space-y-4 rounded-xl border border-border/80 bg-background/75 p-4 shadow-sm"
+								>
+									<div className="flex flex-wrap items-start justify-between gap-3">
+										<div className="space-y-1">
+											<h3 className="text-sm font-semibold">{definition.label}</h3>
+											<p className="text-sm text-muted-foreground">{definition.description}</p>
+										</div>
+										<Button
+											variant="primary"
+											size="sm"
+											onClick={() => handleAddRow(definition.type)}
+											disabled={createDestination.isPending}
+										>
+											<Plus className="h-4 w-4" />
+											{t('admin.organizations.alerts.add')}
+										</Button>
 									</div>
-									<Button
-										variant="primary"
-										size="sm"
-										onClick={() => handleAddRow(definition.type)}
-										disabled={createDestination.isPending}
-									>
-										<Plus className="h-4 w-4" />
-										Add Destination
-									</Button>
-								</div>
 
-								{destinationsForType.length === 0 && draftRowsForType.length === 0 ? (
-									<p className="text-sm text-muted-foreground">
-										No destinations configured for this alert type.
-									</p>
-								) : null}
+									{destinationsForType.length === 0 && draftRowsForType.length === 0 ? (
+										<p className="text-sm text-muted-foreground">
+											{t('admin.organizations.alerts.empty')}
+										</p>
+									) : null}
 
-								<div className="space-y-3">
-									{destinationsForType.map((destination) => {
-										const draft = draftRows[destination.id] ?? getDefaultRowFromDestination(destination)
-										return (
+									<div className="space-y-3">
+										{destinationsForType.map((destination) => {
+											const draft =
+												draftRows[destination.id] ?? getDefaultRowFromDestination(destination)
+											return (
+												<AlertDestinationEditor
+													key={destination.id}
+													row={draft}
+													showAlertTypeSelector={false}
+													destinationTypeOptions={getDestinationTypeOptions()}
+													discordServers={discordServers}
+													onChange={(patch) => handleUpdateExistingDraft(destination.id, patch)}
+													onSave={async () => handleSaveExisting(destination)}
+													onRemove={() => handleDeleteExisting(destination)}
+													isSaving={updateDestination.isPending}
+													isExisting
+													saveButtonVariant="primary"
+													removeButtonVariant="destructive"
+													className="rounded-xl border border-border/90 bg-card/95 p-4 shadow-md ring-1 ring-border/60"
+												/>
+											)
+										})}
+
+										{draftRowsForType.map((row) => (
 											<AlertDestinationEditor
-												key={destination.id}
-												row={draft}
+												key={row.id}
+												row={row}
 												showAlertTypeSelector={false}
 												destinationTypeOptions={getDestinationTypeOptions()}
 												discordServers={discordServers}
-												onChange={(patch) => handleUpdateExistingDraft(destination.id, patch)}
-												onSave={async () => handleSaveExisting(destination)}
-												onRemove={() => handleDeleteExisting(destination)}
-												isSaving={updateDestination.isPending}
-												isExisting
-												saveButtonVariant="primary"
-												removeButtonVariant="destructive"
-													className="rounded-xl border border-border/90 bg-card/95 p-4 shadow-md ring-1 ring-border/60"
-											/>
-										)
-									})}
-
-									{draftRowsForType.map((row) => (
-										<AlertDestinationEditor
-											key={row.id}
-											row={row}
-											showAlertTypeSelector={false}
-											destinationTypeOptions={getDestinationTypeOptions()}
-											discordServers={discordServers}
-											onChange={(patch) => handleUpdateNewDraft(row.id, patch)}
-											onSave={async () => handleSaveNew(row)}
-											onRemove={() => handleClearNew(row.id)}
-											isSaving={createDestination.isPending}
-											removeButtonVariant="cancel"
+												onChange={(patch) => handleUpdateNewDraft(row.id, patch)}
+												onSave={async () => handleSaveNew(row)}
+												onRemove={() => handleClearNew(row.id)}
+												isSaving={createDestination.isPending}
+												removeButtonVariant="cancel"
 												className="rounded-xl border border-dashed border-border/90 bg-card/90 p-4 shadow-md ring-1 ring-border/60"
 											/>
 										))}
 									</div>
-									</div>
-								)
-							})}
+								</div>
+							)
+						})}
 					</>
 				)}
 			</CardContent>

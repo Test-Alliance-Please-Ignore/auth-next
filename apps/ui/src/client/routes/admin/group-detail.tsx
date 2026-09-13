@@ -18,6 +18,7 @@ import {
 	X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Trans } from 'react-i18next'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 
 import { AttachPermissionDialog } from '@/components/attach-permission-dialog'
@@ -82,15 +83,18 @@ import {
 	useRevokeInviteCode,
 } from '@/hooks/useInviteCodes'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatDate, formatNumber, useAppTranslation } from '@/i18n'
 
 import {
 	groupDiscordRoleAssignmentSections,
-	groupDiscordRoleAssignmentSummary,
+	groupDiscordRoleAssignmentSummaryKey,
 } from './group-discord-role-sections'
 
+import type { MessageText } from '@/hooks/useMessage'
 import type { GroupPermissionWithDetails } from '@/lib/api'
 
 export default function GroupDetailPage() {
+	const { t } = useAppTranslation()
 	const { groupId } = useParams<{ groupId: string }>()
 	const location = useLocation()
 	const navigate = useNavigate()
@@ -104,7 +108,11 @@ export default function GroupDetailPage() {
 	const deleteGroup = useDeleteGroup()
 
 	// Set dynamic page title based on group name
-	usePageTitle(group?.name ? `Admin - ${group.name}` : 'Admin - Group Details')
+	usePageTitle(
+		group?.name
+			? t('admin.organizations.shared.entityTitle', { name: group.name })
+			: t('admin.organizations.group.detailPageTitle')
+	)
 	const { data: members, isLoading: membersLoading } = useGroupMembers(groupId!)
 	const removeMember = useRemoveMember()
 	const toggleAdmin = useToggleAdmin()
@@ -173,14 +181,16 @@ export default function GroupDetailPage() {
 	)
 
 	// Error/success messages
-	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: MessageText } | null>(
+		null
+	)
 
 	// Get admin user IDs from group data
 	const adminUserIds = new Set(group?.adminUserIds || [])
 
 	// Get selected member's character name
 	const selectedMember = members?.find((m) => m.userId === selectedUserId)
-	const selectedMemberName = selectedMember?.mainCharacterName || 'this user'
+	const selectedMemberName = selectedMember?.mainCharacterName || t('admin.users.account.thisUser')
 
 	// Set custom breadcrumb label when group loads
 	useEffect(() => {
@@ -205,12 +215,15 @@ export default function GroupDetailPage() {
 			await removeMember.mutateAsync({ groupId, userId: selectedUserId })
 			setRemoveDialogOpen(false)
 			setSelectedUserId(null)
-			setMessage({ type: 'success', text: 'Member removed successfully!' })
+			setMessage({ type: 'success', text: (t) => t('admin.organizations.feedback.memberRemoved') })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to remove member',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.memberRemoveError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -240,15 +253,17 @@ export default function GroupDetailPage() {
 			setSelectedUserId(null)
 			setMessage({
 				type: 'success',
-				text: selectedUserIsAdmin
-					? 'Admin role removed successfully!'
-					: 'User promoted to admin successfully!',
+				text: (t) =>
+					selectedUserIsAdmin
+						? t('admin.organizations.feedback.adminRemoved')
+						: t('admin.organizations.feedback.adminGranted'),
 			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to update admin status',
+				text: (t) =>
+					error instanceof Error ? error.message : t('admin.users.feedback.adminError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -270,12 +285,15 @@ export default function GroupDetailPage() {
 			setShowAddServerDialog(false)
 			setSelectedServerId('')
 			setAttachmentSettings({ autoInvite: false, autoAssignRoles: false })
-			setMessage({ type: 'success', text: 'Discord server attached successfully!' })
+			setMessage({ type: 'success', text: (t) => t('admin.organizations.feedback.serverAttached') })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to attach Discord server',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.serverAttachError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -286,12 +304,15 @@ export default function GroupDetailPage() {
 
 		try {
 			await detachServer.mutateAsync({ groupId, attachmentId })
-			setMessage({ type: 'success', text: 'Discord server detached successfully!' })
+			setMessage({ type: 'success', text: (t) => t('admin.organizations.feedback.serverDetached') })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to detach Discord server',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.serverDetachError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -304,11 +325,14 @@ export default function GroupDetailPage() {
 			const result = await refreshServerRoles.mutateAsync({ groupId, attachmentId })
 
 			// Show detailed summary
-			const successMsg =
+			const successMsg: MessageText = (t) =>
 				result.message ||
-				`Refreshed ${result.success}/${result.totalMembers} members successfully` +
-					(result.skipped > 0 ? ` (${result.skipped} skipped)` : '') +
-					(result.failed > 0 ? ` (${result.failed} failed)` : '')
+				t('admin.organizations.feedback.rolesRefreshed', {
+					success: result.success,
+					total: result.totalMembers,
+					skipped: result.skipped,
+					failed: result.failed,
+				})
 
 			setMessage({
 				type: result.failed > 0 && result.success === 0 ? 'error' : 'success',
@@ -318,7 +342,10 @@ export default function GroupDetailPage() {
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to refresh Discord roles',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.rolesRefreshError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -333,12 +360,18 @@ export default function GroupDetailPage() {
 				attachmentId,
 				data: { autoInvite: !currentValue },
 			})
-			setMessage({ type: 'success', text: 'Auto-invite setting updated!' })
+			setMessage({
+				type: 'success',
+				text: (t) => t('admin.organizations.feedback.autoInviteSaved'),
+			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to update auto-invite setting',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.autoInviteError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -353,12 +386,18 @@ export default function GroupDetailPage() {
 				attachmentId,
 				data: { autoAssignRoles: !currentValue },
 			})
-			setMessage({ type: 'success', text: 'Auto-assign roles setting updated!' })
+			setMessage({
+				type: 'success',
+				text: (t) => t('admin.organizations.feedback.autoAssignSaved'),
+			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to update auto-assign roles setting',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.autoAssignError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -377,12 +416,15 @@ export default function GroupDetailPage() {
 				attachmentId,
 				data: { discordRoleId, membershipType },
 			})
-			setMessage({ type: 'success', text: 'Role assigned successfully!' })
+			setMessage({ type: 'success', text: (t) => t('admin.organizations.feedback.roleAssigned') })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to assign role',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.roleAssignError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -397,12 +439,15 @@ export default function GroupDetailPage() {
 				attachmentId,
 				roleAssignmentId,
 			})
-			setMessage({ type: 'success', text: 'Role unassigned successfully!' })
+			setMessage({ type: 'success', text: (t) => t('admin.organizations.feedback.roleUnassigned') })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to unassign role',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.roleUnassignError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -420,12 +465,15 @@ export default function GroupDetailPage() {
 			})
 			setShowCreateInviteCodeDialog(false)
 			setInviteCodeSettings({ maxUses: null, expiresInDays: 7 })
-			setMessage({ type: 'success', text: 'Invite code created successfully!' })
+			setMessage({ type: 'success', text: (t) => t('admin.organizations.feedback.codeCreated') })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to create invite code',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.codeCreateError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -436,12 +484,15 @@ export default function GroupDetailPage() {
 
 		try {
 			await revokeInviteCode.mutateAsync({ codeId, groupId })
-			setMessage({ type: 'success', text: 'Invite code revoked successfully!' })
+			setMessage({ type: 'success', text: (t) => t('admin.organizations.feedback.codeRevoked') })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to revoke invite code',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.codeRevokeError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -455,7 +506,7 @@ export default function GroupDetailPage() {
 		} catch {
 			setMessage({
 				type: 'error',
-				text: 'Failed to copy code to clipboard',
+				text: (t) => t('admin.organizations.feedback.copyError'),
 			})
 			setTimeout(() => setMessage(null), 3000)
 		}
@@ -466,7 +517,10 @@ export default function GroupDetailPage() {
 		try {
 			await attachPermission.mutateAsync(data)
 			setShowAttachPermissionDialog(false)
-			setMessage({ type: 'success', text: 'Permission attached successfully!' })
+			setMessage({
+				type: 'success',
+				text: (t) => t('admin.organizations.feedback.permissionAttached'),
+			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			if (groupId) {
@@ -481,7 +535,10 @@ export default function GroupDetailPage() {
 			}
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to attach permission',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.permissionAttachError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -492,13 +549,16 @@ export default function GroupDetailPage() {
 		try {
 			await createCustomPermission.mutateAsync(data)
 			setShowCreateCustomPermissionDialog(false)
-			setMessage({ type: 'success', text: 'Custom permission created successfully!' })
+			setMessage({ type: 'success', text: (t) => t('admin.organizations.feedback.customCreated') })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			console.error('Failed to create custom permission:', error)
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to create custom permission',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.customCreateError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -511,12 +571,18 @@ export default function GroupDetailPage() {
 			await removePermission.mutateAsync({ id: selectedPermission.id, groupId })
 			setRemovePermissionDialogOpen(false)
 			setSelectedPermission(null)
-			setMessage({ type: 'success', text: 'Permission removed successfully!' })
+			setMessage({
+				type: 'success',
+				text: (t) => t('admin.organizations.feedback.permissionRemoved'),
+			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to remove permission',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.permissionRemoveError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -533,12 +599,15 @@ export default function GroupDetailPage() {
 
 		try {
 			await updateGroup.mutateAsync({ id: groupId, data })
-			setMessage({ type: 'success', text: 'Group updated successfully!' })
+			setMessage({ type: 'success', text: (t) => t('admin.organizations.feedback.groupUpdated') })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to update group',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.groupUpdateError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -551,7 +620,7 @@ export default function GroupDetailPage() {
 		if (deleteConfirmationText !== group.name) {
 			setMessage({
 				type: 'error',
-				text: 'Group name does not match. Please type the exact group name to confirm deletion.',
+				text: (t) => t('admin.organizations.feedback.groupNameMismatch'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 			return
@@ -559,14 +628,17 @@ export default function GroupDetailPage() {
 
 		try {
 			await deleteGroup.mutateAsync(groupId)
-			setMessage({ type: 'success', text: 'Group deleted successfully!' })
+			setMessage({ type: 'success', text: (t) => t('admin.organizations.feedback.groupDeleted') })
 			setTimeout(() => {
 				void navigate('/admin/groups')
 			}, 1000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to delete group',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.groupDeleteError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -587,11 +659,11 @@ export default function GroupDetailPage() {
 		return (
 			<Card className="border-destructive bg-destructive/10">
 				<CardContent className="py-8 text-center">
-					<p className="text-destructive font-medium">Group not found</p>
+					<p className="text-destructive font-medium">{t('groupDetail.notFound')}</p>
 					<Button variant="ghost" className="mt-4" asChild>
 						<Link to="/admin/groups">
 							<ArrowLeft className="h-4 w-4" />
-							Back to Groups
+							{t('groupDetail.back')}
 						</Link>
 					</Button>
 				</CardContent>
@@ -608,7 +680,7 @@ export default function GroupDetailPage() {
 			<Button variant="ghost" size="sm" asChild>
 				<Link to="/admin/groups">
 					<ArrowLeft className="h-4 w-4" />
-					Back to Groups
+					{t('groupDetail.back')}
 				</Link>
 			</Button>
 
@@ -623,7 +695,7 @@ export default function GroupDetailPage() {
 				>
 					<CardContent className="py-3">
 						<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>
-							{message.text}
+							{typeof message.text === 'function' ? message.text(t) : message.text}
 						</p>
 					</CardContent>
 				</Card>
@@ -635,32 +707,32 @@ export default function GroupDetailPage() {
 			{/* Group Management Actions */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Group Management</CardTitle>
-					<CardDescription>Administrative actions for this group</CardDescription>
+					<CardTitle>{t('admin.organizations.group.management')}</CardTitle>
+					<CardDescription>{t('admin.organizations.group.managementDescription')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div className="flex flex-wrap gap-2">
 						<Button variant="primary" size="sm" onClick={() => setEditGroupDialogOpen(true)}>
 							<Settings className="h-4 w-4" />
-							Edit Group
+							{t('groups.form.edit')}
 						</Button>
 						<Button variant="ghost" size="sm" onClick={() => setEditNameDialogOpen(true)}>
 							<Pencil className="h-4 w-4" />
-							Edit Name
+							{t('admin.organizations.group.editName')}
 						</Button>
 						<Button variant="ghost" size="sm" onClick={() => setEditDescriptionDialogOpen(true)}>
 							<Pencil className="h-4 w-4" />
-							Edit Description
+							{t('admin.organizations.group.editDescription')}
 						</Button>
 						{user?.is_admin && (
 							<Button variant="ghost" size="sm" onClick={() => setEditMumbleDialogOpen(true)}>
 								<Settings className="h-4 w-4" />
-								Edit Mumble Settings
+								{t('groups.mumble.title')}
 							</Button>
 						)}
 						<Button variant="ghost" size="sm" onClick={() => setReassignCategoryDialogOpen(true)}>
 							<FolderEdit className="h-4 w-4" />
-							Reassign Category
+							{t('admin.organizations.group.reassignCategory')}
 						</Button>
 					</div>
 				</CardContent>
@@ -670,21 +742,21 @@ export default function GroupDetailPage() {
 			<div className="grid gap-4 md:grid-cols-2">
 				<Card>
 					<CardHeader>
-						<CardTitle>Members</CardTitle>
-						<CardDescription>Total group members</CardDescription>
+						<CardTitle>{t('admin.organizations.group.members')}</CardTitle>
+						<CardDescription>{t('admin.organizations.group.totalMembers')}</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<p className="text-3xl font-bold gradient-text">{memberCount}</p>
+						<p className="text-3xl font-bold gradient-text">{formatNumber(memberCount)}</p>
 					</CardContent>
 				</Card>
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Admins</CardTitle>
-						<CardDescription>Users with admin privileges</CardDescription>
+						<CardTitle>{t('admin.organizations.group.admins')}</CardTitle>
+						<CardDescription>{t('admin.organizations.group.adminDescription')}</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<p className="text-3xl font-bold gradient-text">{adminCount}</p>
+						<p className="text-3xl font-bold gradient-text">{formatNumber(adminCount)}</p>
 					</CardContent>
 				</Card>
 			</div>
@@ -706,16 +778,13 @@ export default function GroupDetailPage() {
 							<div>
 								<div className="flex items-center gap-2">
 									<Ticket className="h-5 w-5 text-primary" />
-									<CardTitle>Invite Codes</CardTitle>
+									<CardTitle>{t('groupDetail.inviteCodes.title')}</CardTitle>
 								</div>
-								<CardDescription>
-									Create reusable invite codes for this group. Codes can be shared to allow users to
-									join without approval.
-								</CardDescription>
+								<CardDescription>{t('groupDetail.inviteCodes.description')}</CardDescription>
 							</div>
 							<Button onClick={() => setShowCreateInviteCodeDialog(true)} size="sm">
 								<Plus className="h-4 w-4" />
-								Create Code
+								{t('admin.organizations.group.createCode')}
 							</Button>
 						</div>
 					</CardHeader>
@@ -723,9 +792,9 @@ export default function GroupDetailPage() {
 						{inviteCodes.length === 0 ? (
 							<div className="text-center py-8">
 								<Ticket className="mx-auto h-12 w-12 text-muted-foreground" />
-								<h3 className="mt-4 text-sm font-medium">No invite codes</h3>
+								<h3 className="mt-4 text-sm font-medium">{t('groupDetail.inviteCodes.empty')}</h3>
 								<p className="text-sm text-muted-foreground mt-2">
-									Create an invite code to allow users to join this group
+									{t('groupDetail.inviteCodes.emptyDescription')}
 								</p>
 							</div>
 						) : (
@@ -739,11 +808,11 @@ export default function GroupDetailPage() {
 										inviteCode.maxUses !== null &&
 										inviteCode.currentUses >= inviteCode.maxUses
 									const statusLabel = isRevoked
-										? 'Revoked'
+										? t('groupDetail.inviteCodes.revoked')
 										: isExpired
-											? 'Expired'
+											? t('invitations.pending.status.expired')
 											: isMaxedOut
-												? 'Max uses reached'
+												? t('groupDetail.inviteCodes.maxUsesReached')
 												: null
 									const inviteUrl = `${window.location.origin}/invite/${inviteCode.code}`
 
@@ -763,7 +832,7 @@ export default function GroupDetailPage() {
 															size="sm"
 															onClick={() => handleCopyCode(inviteCode.code)}
 															className="h-7 px-2"
-															title="Copy code"
+															title={t('groupDetail.inviteCodes.copyCode')}
 														>
 															{copiedCode === inviteCode.code ? (
 																<Check className="h-4 w-4 text-green-500" />
@@ -786,7 +855,7 @@ export default function GroupDetailPage() {
 															size="sm"
 															onClick={() => handleCopyCode(inviteUrl)}
 															className="h-7 px-2 shrink-0"
-															title="Copy invite URL"
+															title={t('groupDetail.inviteCodes.copyUrl')}
 														>
 															{copiedCode === inviteUrl ? (
 																<Check className="h-4 w-4 text-green-500" />
@@ -797,14 +866,25 @@ export default function GroupDetailPage() {
 													</div>
 													<div className="flex gap-4 text-xs text-muted-foreground">
 														<span>
-															Uses: {inviteCode.currentUses}
-															{inviteCode.maxUses ? ` / ${inviteCode.maxUses}` : ' (unlimited)'}
+															{t(
+																inviteCode.maxUses
+																	? 'groupDetail.inviteCodes.usesLimited'
+																	: 'groupDetail.inviteCodes.usesUnlimited',
+																{
+																	current: formatNumber(inviteCode.currentUses),
+																	maximum: formatNumber(inviteCode.maxUses ?? 0),
+																}
+															)}
 														</span>
 														<span>
-															Expires: {new Date(inviteCode.expiresAt).toLocaleDateString()}
+															{t('groupDetail.inviteCodes.expires', {
+																date: formatDate(inviteCode.expiresAt),
+															})}
 														</span>
 														<span>
-															Created: {new Date(inviteCode.createdAt).toLocaleDateString()}
+															{t('groupDetail.inviteCodes.created', {
+																date: formatDate(inviteCode.createdAt),
+															})}
 														</span>
 													</div>
 												</div>
@@ -827,18 +907,20 @@ export default function GroupDetailPage() {
 						<Dialog open={showCreateInviteCodeDialog} onOpenChange={setShowCreateInviteCodeDialog}>
 							<DialogContent>
 								<DialogHeader>
-									<DialogTitle>Create Invite Code</DialogTitle>
-									<DialogDescription>Configure settings for the new invite code</DialogDescription>
+									<DialogTitle>{t('groupDetail.inviteCodes.createTitle')}</DialogTitle>
+									<DialogDescription>
+										{t('groupDetail.inviteCodes.createDescription')}
+									</DialogDescription>
 								</DialogHeader>
 
 								<div className="space-y-4">
 									<div className="space-y-2">
-										<Label htmlFor="max-uses">Max Uses (optional)</Label>
+										<Label htmlFor="max-uses">{t('groupDetail.inviteCodes.maxUses')}</Label>
 										<Input
 											id="max-uses"
 											type="number"
 											min="1"
-											placeholder="Unlimited"
+											placeholder={t('groupDetail.inviteCodes.unlimited')}
 											value={inviteCodeSettings.maxUses ?? ''}
 											onChange={(e) =>
 												setInviteCodeSettings({
@@ -847,11 +929,15 @@ export default function GroupDetailPage() {
 												})
 											}
 										/>
-										<p className="text-xs text-muted-foreground">Leave empty for unlimited uses</p>
+										<p className="text-xs text-muted-foreground">
+											{t('groupDetail.inviteCodes.maxUsesHint')}
+										</p>
 									</div>
 
 									<div className="space-y-2">
-										<Label htmlFor="expires-in-days">Expires In (days)</Label>
+										<Label htmlFor="expires-in-days">
+											{t('groupDetail.inviteCodes.expiresInDays')}
+										</Label>
 										<Input
 											id="expires-in-days"
 											type="number"
@@ -865,7 +951,9 @@ export default function GroupDetailPage() {
 												})
 											}
 										/>
-										<p className="text-xs text-muted-foreground">Between 1 and 30 days</p>
+										<p className="text-xs text-muted-foreground">
+											{t('groupDetail.inviteCodes.expiryHint')}
+										</p>
 									</div>
 								</div>
 
@@ -877,15 +965,15 @@ export default function GroupDetailPage() {
 											setInviteCodeSettings({ maxUses: null, expiresInDays: 7 })
 										}}
 									>
-										Cancel
+										{t('common.cancel')}
 									</Button>
 									<Button
 										variant="confirm"
 										onClick={handleCreateInviteCode}
 										loading={createInviteCode.isPending}
-										loadingText="Creating..."
+										loadingText={t('groupDetail.inviteCodes.creating')}
 									>
-										Create Code
+										{t('admin.organizations.group.createCode')}
 									</Button>
 								</DialogFooter>
 							</DialogContent>
@@ -901,12 +989,9 @@ export default function GroupDetailPage() {
 						<div>
 							<div className="flex items-center gap-2">
 								<MessageSquare className="h-5 w-5 text-[hsl(var(--discord-blurple))]" />
-								<CardTitle>Discord Servers</CardTitle>
+								<CardTitle>{t('admin.organizations.discord.servers')}</CardTitle>
 							</div>
-							<CardDescription>
-								Attach Discord servers from the registry to enable auto-invite and split role
-								assignment for members versus owners/admins.
-							</CardDescription>
+							<CardDescription>{t('admin.organizations.discord.groupDescription')}</CardDescription>
 						</div>
 						<Button
 							onClick={() => setShowAddServerDialog(true)}
@@ -914,7 +999,7 @@ export default function GroupDetailPage() {
 							size="sm"
 						>
 							<Plus className="h-4 w-4" />
-							Attach Server
+							{t('admin.organizations.discord.attachServer')}
 						</Button>
 					</div>
 				</CardHeader>
@@ -922,14 +1007,14 @@ export default function GroupDetailPage() {
 					{groupDiscordServers.length === 0 ? (
 						<div className="text-center py-8">
 							<MessageSquare className="mx-auto h-12 w-12 text-muted-foreground" />
-							<h3 className="mt-4 text-sm font-medium">No Discord servers attached</h3>
+							<h3 className="mt-4 text-sm font-medium">{t('admin.organizations.discord.empty')}</h3>
 							<p className="text-sm text-muted-foreground mt-2">
-								Attach a Discord server from the registry to enable auto-invite
+								{t('admin.organizations.discord.emptyHint')}
 							</p>
 							{discordServers.length === 0 && (
 								<p className="text-xs text-muted-foreground mt-2">
 									<Link to="/admin/discord-servers" className="text-primary hover:underline">
-										Add servers to the registry first
+										{t('admin.organizations.discord.registryHint')}
 									</Link>
 								</p>
 							)}
@@ -946,7 +1031,9 @@ export default function GroupDetailPage() {
 										<div>
 											<h4 className="font-medium">{attachment.discordServer?.guildName}</h4>
 											<p className="text-xs text-muted-foreground">
-												ID: {attachment.discordServer?.guildId}
+												{t('admin.organizations.shared.id', {
+													id: attachment.discordServer?.guildId,
+												})}
 											</p>
 											{attachment.discordServer?.description && (
 												<p className="mt-1 text-sm text-muted-foreground">
@@ -967,8 +1054,8 @@ export default function GroupDetailPage() {
 													}
 													title={
 														(attachment.roles?.length ?? 0) === 0
-															? 'No roles configured'
-															: 'Refresh role assignments for all group members'
+															? t('admin.organizations.discord.noRolesConfigured')
+															: t('admin.organizations.discord.refreshHint')
 													}
 												>
 													<RefreshCw
@@ -997,7 +1084,7 @@ export default function GroupDetailPage() {
 														htmlFor={`auto-invite-${attachment.id}`}
 														className="cursor-pointer"
 													>
-														Auto-Invite
+														{t('admin.organizations.discord.autoInvite')}
 													</Label>
 												</div>
 
@@ -1013,7 +1100,7 @@ export default function GroupDetailPage() {
 														htmlFor={`auto-assign-${attachment.id}`}
 														className="cursor-pointer"
 													>
-														Auto-Assign Roles
+														{t('admin.organizations.discord.autoAssign')}
 													</Label>
 												</div>
 											</div>
@@ -1028,7 +1115,7 @@ export default function GroupDetailPage() {
 												return (
 													<div className="rounded-xl border border-border/90 bg-card/90 p-4 shadow-md ring-1 ring-border/60 space-y-4">
 														<p className="text-xs text-muted-foreground">
-															{groupDiscordRoleAssignmentSummary}
+															{t(groupDiscordRoleAssignmentSummaryKey)}
 														</p>
 														{groupDiscordRoleAssignmentSections.map((section) => {
 															const sectionAssignments = (attachment.roles ?? []).filter(
@@ -1051,20 +1138,22 @@ export default function GroupDetailPage() {
 																>
 																	<div className="flex items-start justify-between gap-3">
 																		<div>
-																			<p className="text-sm font-medium">{section.label}</p>
+																			<p className="text-sm font-medium">{t(section.labelKey)}</p>
 																			<p className="text-xs text-muted-foreground">
-																				{section.description}
+																				{t(section.descriptionKey)}
 																			</p>
 																		</div>
 																		<p className="text-xs text-muted-foreground">
-																			{sectionAssignments.length} assigned
+																			{t('admin.organizations.discord.assigned', {
+																				count: sectionAssignments.length,
+																			})}
 																		</p>
 																	</div>
 
 																	<div className="flex flex-wrap gap-2">
 																		{sectionAssignments.length === 0 ? (
 																			<p className="text-sm text-muted-foreground">
-																				No roles assigned.
+																				{t('admin.organizations.discord.noRoles')}
 																			</p>
 																		) : (
 																			sectionAssignments.map((roleAssignment) => (
@@ -1117,8 +1206,8 @@ export default function GroupDetailPage() {
 																					value: role.id,
 																					label: role.roleName,
 																				}))}
-																				placeholder="Add role..."
-																				emptyText="No matching roles found"
+																				placeholder={t('admin.organizations.discord.addRole')}
+																				emptyText={t('admin.organizations.discord.noMatchingRoles')}
 																				className="w-full"
 																				contentClassName="w-[min(90vw,36rem)]"
 																				inputClassName="h-9"
@@ -1126,7 +1215,7 @@ export default function GroupDetailPage() {
 																		</div>
 																	) : (
 																		<p className="text-xs text-muted-foreground">
-																			No available roles left to assign.
+																			{t('admin.organizations.discord.noAvailableRoles')}
 																		</p>
 																	)}
 																</div>
@@ -1146,15 +1235,17 @@ export default function GroupDetailPage() {
 					<Dialog open={showAddServerDialog} onOpenChange={setShowAddServerDialog}>
 						<DialogContent>
 							<DialogHeader>
-								<DialogTitle>Attach Discord Server</DialogTitle>
+								<DialogTitle>{t('admin.organizations.discord.attachTitle')}</DialogTitle>
 								<DialogDescription>
-									Select a Discord server from the registry to attach to this group
+									{t('admin.organizations.discord.attachGroupDescription')}
 								</DialogDescription>
 							</DialogHeader>
 
 							<div className="space-y-4">
 								<div className="space-y-2">
-									<Label htmlFor="discord-server">Select Server</Label>
+									<Label htmlFor="discord-server">
+										{t('admin.organizations.discord.selectServer')}
+									</Label>
 									<Select
 										inputId="discord-server"
 										value={selectedServerId}
@@ -1165,7 +1256,7 @@ export default function GroupDetailPage() {
 													!groupDiscordServers.some((att) => att.discordServerId === server.id)
 											)
 											.map((server) => ({ value: server.id, label: server.guildName }))}
-										placeholder="Choose a server..."
+										placeholder={t('admin.organizations.discord.chooseServer')}
 										className="w-full"
 									/>
 								</div>
@@ -1180,7 +1271,7 @@ export default function GroupDetailPage() {
 											}
 										/>
 										<Label htmlFor="attach-auto-invite" className="cursor-pointer">
-											Enable Auto-Invite
+											{t('admin.organizations.discord.enableAutoInvite')}
 										</Label>
 									</div>
 
@@ -1193,7 +1284,7 @@ export default function GroupDetailPage() {
 											}
 										/>
 										<Label htmlFor="attach-auto-assign" className="cursor-pointer">
-											Auto-Assign Roles
+											{t('admin.organizations.discord.autoAssign')}
 										</Label>
 									</div>
 								</div>
@@ -1201,7 +1292,7 @@ export default function GroupDetailPage() {
 
 							<DialogFooter>
 								<Button variant="cancel" onClick={() => setShowAddServerDialog(false)}>
-									Cancel
+									{t('common.cancel')}
 								</Button>
 								<Button
 									variant="confirm"
@@ -1210,7 +1301,7 @@ export default function GroupDetailPage() {
 									showIcon={false}
 								>
 									<Plus className="h-4 w-4" />
-									Attach
+									{t('admin.organizations.discord.attach')}
 								</Button>
 							</DialogFooter>
 						</DialogContent>
@@ -1225,10 +1316,10 @@ export default function GroupDetailPage() {
 						<div>
 							<div className="flex items-center gap-2">
 								<Key className="h-5 w-5 text-primary" />
-								<CardTitle>Permissions</CardTitle>
+								<CardTitle>{t('admin.nav.permissions')}</CardTitle>
 							</div>
 							<CardDescription>
-								Manage permissions for this group. Attach global permissions or create custom ones.
+								{t('admin.organizations.group.permissionsDescription')}
 							</CardDescription>
 						</div>
 						<div className="flex gap-2">
@@ -1238,11 +1329,11 @@ export default function GroupDetailPage() {
 								variant="ghost"
 							>
 								<Plus className="h-4 w-4" />
-								Custom
+								{t('groups.permissions.custom')}
 							</Button>
 							<Button onClick={() => setShowAttachPermissionDialog(true)} size="sm">
 								<Plus className="h-4 w-4" />
-								Attach Global
+								{t('admin.organizations.group.attachGlobal')}
 							</Button>
 						</div>
 					</div>
@@ -1251,9 +1342,11 @@ export default function GroupDetailPage() {
 					{groupPermissions.length === 0 ? (
 						<div className="text-center py-8">
 							<Key className="mx-auto h-12 w-12 text-muted-foreground" />
-							<h3 className="mt-4 text-sm font-medium">No permissions assigned</h3>
+							<h3 className="mt-4 text-sm font-medium">
+								{t('admin.organizations.group.noPermissions')}
+							</h3>
 							<p className="text-sm text-muted-foreground mt-2">
-								Attach a global permission or create a custom one for this group
+								{t('admin.organizations.group.noPermissionsHint')}
 							</p>
 						</div>
 					) : (
@@ -1285,9 +1378,9 @@ export default function GroupDetailPage() {
 					>
 						<DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
 							<DialogHeader>
-								<DialogTitle>Create Custom Permission</DialogTitle>
+								<DialogTitle>{t('admin.organizations.group.createCustom')}</DialogTitle>
 								<DialogDescription>
-									Create a group-scoped custom permission that is unique to this group
+									{t('admin.organizations.group.customDescription')}
 								</DialogDescription>
 							</DialogHeader>
 							<GroupPermissionForm
@@ -1303,11 +1396,11 @@ export default function GroupDetailPage() {
 					<Dialog open={removePermissionDialogOpen} onOpenChange={setRemovePermissionDialogOpen}>
 						<DialogContent>
 							<DialogHeader>
-								<DialogTitle>Remove Permission</DialogTitle>
+								<DialogTitle>{t('admin.organizations.shared.removePermission')}</DialogTitle>
 								<DialogDescription>
-									Are you sure you want to remove "
-									{selectedPermission?.permission?.name || selectedPermission?.customName}" from
-									this group?
+									{t('admin.organizations.group.removePermissionWarning', {
+										name: selectedPermission?.permission?.name || selectedPermission?.customName,
+									})}
 								</DialogDescription>
 							</DialogHeader>
 							<DialogFooter>
@@ -1319,15 +1412,15 @@ export default function GroupDetailPage() {
 									}}
 									disabled={removePermission.isPending}
 								>
-									Cancel
+									{t('common.cancel')}
 								</Button>
 								<Button
 									variant="danger"
 									onClick={handleRemovePermission}
 									loading={removePermission.isPending}
-									loadingText="Removing..."
+									loadingText={t('admin.users.account.removing')}
 								>
-									Remove Permission
+									{t('admin.organizations.shared.removePermission')}
 								</Button>
 							</DialogFooter>
 						</DialogContent>
@@ -1338,8 +1431,10 @@ export default function GroupDetailPage() {
 			{/* Members List */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Member Management</CardTitle>
-					<CardDescription>View and manage group members</CardDescription>
+					<CardTitle>{t('admin.organizations.group.memberManagement')}</CardTitle>
+					<CardDescription>
+						{t('admin.organizations.group.memberManagementDescription')}
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<MemberList
@@ -1358,30 +1453,28 @@ export default function GroupDetailPage() {
 			{/* Danger Zone */}
 			<Card className="border-destructive">
 				<CardHeader>
-					<CardTitle className="text-destructive">Danger Zone</CardTitle>
-					<CardDescription>
-						Irreversible and destructive actions. Please be certain before proceeding.
-					</CardDescription>
+					<CardTitle className="text-destructive">
+						{t('admin.organizations.group.danger')}
+					</CardTitle>
+					<CardDescription>{t('admin.organizations.group.dangerDescription')}</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
 						<div className="flex items-start justify-between">
 							<div className="space-y-1">
-								<h4 className="font-medium text-destructive">Delete This Group</h4>
+								<h4 className="font-medium text-destructive">
+									{t('admin.organizations.group.deleteThis')}
+								</h4>
 								<p className="text-sm text-muted-foreground">
-									Once you delete a group, there is no going back. This will permanently delete:
+									{t('admin.organizations.group.deleteWarning')}
 								</p>
 								<ul className="text-sm text-muted-foreground list-disc list-inside space-y-1 mt-2">
-									<li>
-										All {memberCount} member{memberCount !== 1 ? 's' : ''}
-									</li>
-									<li>
-										All {adminCount} admin{adminCount !== 1 ? 's' : ''}
-									</li>
-									<li>All pending invitations and join requests</li>
-									<li>All invite codes</li>
-									<li>All Discord server attachments</li>
-									<li>All permissions</li>
+									<li>{t('admin.organizations.group.deleteMembers', { count: memberCount })}</li>
+									<li>{t('admin.organizations.group.deleteAdmins', { count: adminCount })}</li>
+									<li>{t('admin.organizations.group.deleteInvitations')}</li>
+									<li>{t('admin.organizations.group.deleteCodes')}</li>
+									<li>{t('admin.organizations.group.deleteAttachments')}</li>
+									<li>{t('admin.organizations.group.deletePermissions')}</li>
 								</ul>
 							</div>
 							<Button
@@ -1393,7 +1486,7 @@ export default function GroupDetailPage() {
 								size="sm"
 							>
 								<Trash2 className="h-4 w-4" />
-								Delete Group
+								{t('admin.organizations.group.delete')}
 							</Button>
 						</div>
 					</div>
@@ -1404,10 +1497,9 @@ export default function GroupDetailPage() {
 			<Dialog open={removeDialogOpen} onOpenChange={setRemoveDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Remove Member</DialogTitle>
+						<DialogTitle>{t('groupDetail.remove.title')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to remove {selectedMemberName} from the group? They will need to
-							be re-invited or request to join again.
+							{t('admin.organizations.group.removeMemberWarning', { name: selectedMemberName })}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -1419,17 +1511,17 @@ export default function GroupDetailPage() {
 							}}
 							disabled={removeMember.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="danger"
 							onClick={handleRemoveMemberConfirm}
 							loading={removeMember.isPending}
-							loadingText="Removing..."
+							loadingText={t('admin.users.account.removing')}
 							showIcon={false}
 						>
 							<UserMinus className="h-4 w-4" />
-							Remove Member
+							{t('groupDetail.remove.title')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -1439,11 +1531,15 @@ export default function GroupDetailPage() {
 			<Dialog open={adminDialogOpen} onOpenChange={setAdminDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>{selectedUserIsAdmin ? 'Remove Admin Role' : 'Make Admin'}</DialogTitle>
+						<DialogTitle>
+							{selectedUserIsAdmin
+								? t('admin.organizations.group.removeAdminTitle')
+								: t('groupDetail.memberList.makeAdmin')}
+						</DialogTitle>
 						<DialogDescription>
 							{selectedUserIsAdmin
-								? `Are you sure you want to remove admin privileges from ${selectedMemberName}? They will no longer be able to approve join requests or remove members.`
-								: `Are you sure you want to give admin privileges to ${selectedMemberName}? They will be able to approve join requests and remove members.`}
+								? t('admin.organizations.group.removeAdminWarning', { name: selectedMemberName })
+								: t('admin.organizations.group.grantAdminWarning', { name: selectedMemberName })}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -1455,29 +1551,29 @@ export default function GroupDetailPage() {
 							}}
 							disabled={toggleAdmin.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						{selectedUserIsAdmin ? (
 							<Button
 								variant="danger"
 								onClick={handleToggleAdminConfirm}
 								loading={toggleAdmin.isPending}
-								loadingText="Removing..."
+								loadingText={t('admin.users.account.removing')}
 								showIcon={false}
 							>
 								<ShieldOff className="h-4 w-4" />
-								Remove Admin
+								{t('groupDetail.memberList.removeAdmin')}
 							</Button>
 						) : (
 							<Button
 								variant="confirm"
 								onClick={handleToggleAdminConfirm}
 								loading={toggleAdmin.isPending}
-								loadingText="Promoting..."
+								loadingText={t('admin.organizations.group.promoting')}
 								showIcon={false}
 							>
 								<Shield className="h-4 w-4" />
-								Make Admin
+								{t('groupDetail.memberList.makeAdmin')}
 							</Button>
 						)}
 					</DialogFooter>
@@ -1493,7 +1589,10 @@ export default function GroupDetailPage() {
 					onOpenChange={setTransferDialogOpen}
 					initialSelectedUserId={selectedUserId || undefined}
 					onSuccess={() => {
-						setMessage({ type: 'success', text: 'Ownership transferred successfully!' })
+						setMessage({
+							type: 'success',
+							text: (t) => t('admin.organizations.feedback.ownershipTransferred'),
+						})
 						setTimeout(() => setMessage(null), 3000)
 					}}
 				/>
@@ -1506,7 +1605,10 @@ export default function GroupDetailPage() {
 					open={reassignCategoryDialogOpen}
 					onOpenChange={setReassignCategoryDialogOpen}
 					onSuccess={() => {
-						setMessage({ type: 'success', text: 'Category reassigned successfully!' })
+						setMessage({
+							type: 'success',
+							text: (t) => t('admin.organizations.feedback.categoryChanged'),
+						})
 						setTimeout(() => setMessage(null), 3000)
 					}}
 				/>
@@ -1519,7 +1621,10 @@ export default function GroupDetailPage() {
 					open={editNameDialogOpen}
 					onOpenChange={setEditNameDialogOpen}
 					onSuccess={() => {
-						setMessage({ type: 'success', text: 'Group name updated successfully!' })
+						setMessage({
+							type: 'success',
+							text: (t) => t('admin.organizations.feedback.nameUpdated'),
+						})
 						setTimeout(() => setMessage(null), 3000)
 					}}
 				/>
@@ -1532,7 +1637,10 @@ export default function GroupDetailPage() {
 					open={editDescriptionDialogOpen}
 					onOpenChange={setEditDescriptionDialogOpen}
 					onSuccess={() => {
-						setMessage({ type: 'success', text: 'Group description updated successfully!' })
+						setMessage({
+							type: 'success',
+							text: (t) => t('admin.organizations.feedback.descriptionUpdated'),
+						})
 						setTimeout(() => setMessage(null), 3000)
 					}}
 				/>
@@ -1545,7 +1653,10 @@ export default function GroupDetailPage() {
 					open={editMumbleDialogOpen}
 					onOpenChange={setEditMumbleDialogOpen}
 					onSuccess={() => {
-						setMessage({ type: 'success', text: 'Group Mumble settings updated successfully!' })
+						setMessage({
+							type: 'success',
+							text: (t) => t('admin.organizations.feedback.mumbleUpdated'),
+						})
 						setTimeout(() => setMessage(null), 3000)
 					}}
 				/>
@@ -1567,40 +1678,41 @@ export default function GroupDetailPage() {
 			<Dialog open={deleteGroupDialogOpen} onOpenChange={setDeleteGroupDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Delete Group</DialogTitle>
+						<DialogTitle>{t('admin.organizations.group.delete')}</DialogTitle>
 						<DialogDescription>
-							This action cannot be undone. This will permanently delete the group and all
-							associated data.
+							{t('admin.organizations.group.deleteDescription')}
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4 py-4">
 						<div className="space-y-2">
 							<Label htmlFor="confirm-delete">
-								Type <span className="font-mono font-bold">{group?.name}</span> to confirm deletion
+								<Trans
+									i18nKey="admin.organizations.group.confirmName"
+									values={{ name: group?.name }}
+									components={{ name: <span className="font-mono font-bold" /> }}
+								/>
 							</Label>
 							<Input
 								id="confirm-delete"
 								value={deleteConfirmationText}
 								onChange={(e) => setDeleteConfirmationText((e.target as HTMLInputElement).value)}
-								placeholder="Enter group name"
+								placeholder={t('groups.form.namePlaceholder')}
 								disabled={deleteGroup.isPending}
 							/>
 						</div>
 						<div className="rounded-lg border border-destructive/50 bg-destructive/5 p-3">
 							<p className="text-sm text-muted-foreground">
-								<strong className="text-destructive">Warning:</strong> Deleting this group will
-								permanently remove:
+								<strong className="text-destructive">
+									{t('admin.organizations.group.warning')}
+								</strong>{' '}
+								{t('admin.organizations.group.deleteRemoves')}
 							</p>
 							<ul className="text-sm text-muted-foreground list-disc list-inside mt-2 space-y-1">
-								<li>
-									{memberCount} member{memberCount !== 1 ? 's' : ''}
-								</li>
-								<li>
-									{adminCount} admin{adminCount !== 1 ? 's' : ''}
-								</li>
-								<li>All invitations, join requests, and invite codes</li>
-								<li>All Discord server attachments and role assignments</li>
-								<li>All permissions</li>
+								<li>{t('admin.organizations.group.memberCount', { count: memberCount })}</li>
+								<li>{t('admin.organizations.group.adminCount', { count: adminCount })}</li>
+								<li>{t('admin.organizations.group.deleteAllInvites')}</li>
+								<li>{t('admin.organizations.group.deleteAllRoles')}</li>
+								<li>{t('admin.organizations.group.deletePermissions')}</li>
 							</ul>
 						</div>
 					</div>
@@ -1613,16 +1725,16 @@ export default function GroupDetailPage() {
 							}}
 							disabled={deleteGroup.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="danger"
 							onClick={handleDeleteGroup}
 							disabled={deleteConfirmationText !== group?.name}
 							loading={deleteGroup.isPending}
-							loadingText="Deleting..."
+							loadingText={t('admin.users.account.deleting')}
 						>
-							Delete Group Permanently
+							{t('admin.organizations.group.deletePermanent')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

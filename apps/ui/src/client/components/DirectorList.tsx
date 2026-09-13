@@ -1,5 +1,6 @@
 import { AlertCircle, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { Trans } from 'react-i18next'
 import { Link } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
@@ -29,15 +30,19 @@ import {
 	useVerifyAllDirectors,
 	useVerifyDirector,
 } from '@/hooks/useCorporations'
+import { formatDateTime, formatNumber, useAppTranslation } from '@/i18n'
 
 import { AddDirectorDialog } from './AddDirectorDialog'
 import { DirectorHealthBadge } from './DirectorHealthBadge'
+
+import type { FormEvent } from 'react'
 
 interface DirectorListProps {
 	corporationId: string
 }
 
 export function DirectorList({ corporationId }: DirectorListProps) {
+	const { t } = useAppTranslation()
 	const [addDialogOpen, setAddDialogOpen] = useState(false)
 	const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
 	const [priorityDialogOpen, setPriorityDialogOpen] = useState(false)
@@ -75,7 +80,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 		setSelectedDirector(null)
 	}
 
-	const handleUpdatePriority = async (e: React.FormEvent) => {
+	const handleUpdatePriority = async (e: FormEvent) => {
 		e.preventDefault()
 		if (!selectedDirector) return
 
@@ -114,19 +119,23 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 	}
 
 	const formatDate = (date: string | null) => {
-		if (!date) return 'Never'
-		return new Date(date).toLocaleString()
+		if (!date) return t('admin.users.account.never')
+		return formatDateTime(date)
 	}
 
 	if (isLoading) {
-		return <div className="text-sm text-muted-foreground">Loading directors...</div>
+		return (
+			<div className="text-sm text-muted-foreground">
+				{t('admin.organizations.directors.loading')}
+			</div>
+		)
 	}
 
 	if (error) {
 		return (
 			<div className="flex items-center gap-2 text-sm text-destructive">
 				<AlertCircle className="h-4 w-4" />
-				<span>Failed to load directors</span>
+				<span>{t('admin.organizations.directors.loadError')}</span>
 			</div>
 		)
 	}
@@ -137,12 +146,12 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-2">
 					<h3 className="text-sm font-medium">
-						Directors ({healthyCount}/{totalCount} healthy)
+						{t('admin.organizations.directors.count', { healthy: healthyCount, total: totalCount })}
 					</h3>
 					{totalCount > 0 && healthyCount === 0 && (
 						<Badge variant="destructive" className="gap-1">
 							<AlertCircle className="h-3 w-3" />
-							All Directors Unhealthy
+							{t('admin.organizations.directors.allUnhealthy')}
 						</Badge>
 					)}
 				</div>
@@ -157,12 +166,12 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 							<RefreshCw
 								className={`h-4 w-4 ${verifyAllDirectors.isPending ? 'animate-spin' : ''}`}
 							/>
-							Verify All
+							{t('admin.organizations.directors.verifyAll')}
 						</Button>
 					)}
 					<Button variant="primary" size="sm" onClick={() => setAddDialogOpen(true)}>
 						<Plus className="h-4 w-4" />
-						Add Director
+						{t('admin.organizations.directors.add')}
 					</Button>
 				</div>
 			</div>
@@ -171,11 +180,11 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 			{!directors || directors.length === 0 ? (
 				<div className="rounded-lg border border-dashed p-8 text-center">
 					<p className="text-sm text-muted-foreground mb-4">
-						No directors assigned. Add a director character to manage corporation data.
+						{t('admin.organizations.directors.empty')}
 					</p>
 					<Button variant="ghost" onClick={() => setAddDialogOpen(true)}>
 						<Plus className="h-4 w-4" />
-						Add First Director
+						{t('admin.organizations.directors.addFirst')}
 					</Button>
 				</div>
 			) : (
@@ -183,12 +192,12 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead>Character</TableHead>
-								<TableHead>Priority</TableHead>
-								<TableHead>Status</TableHead>
-								<TableHead>Last Used</TableHead>
-								<TableHead>Last Checked</TableHead>
-								<TableHead className="text-right">Actions</TableHead>
+								<TableHead>{t('admin.users.account.character')}</TableHead>
+								<TableHead>{t('admin.organizations.shared.priority')}</TableHead>
+								<TableHead>{t('admin.users.account.status')}</TableHead>
+								<TableHead>{t('admin.organizations.directors.lastUsed')}</TableHead>
+								<TableHead>{t('admin.organizations.directors.lastChecked')}</TableHead>
+								<TableHead className="text-right">{t('admin.fields.actions')}</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -209,7 +218,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 												)}
 											</div>
 											<div className="text-xs text-muted-foreground">
-												ID: {director.characterId}
+												{t('admin.organizations.shared.id', { id: director.characterId })}
 											</div>
 										</div>
 									</TableCell>
@@ -226,7 +235,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 												)
 											}
 										>
-											{director.priority}
+											{formatNumber(director.priority)}
 										</Button>
 									</TableCell>
 									<TableCell>
@@ -245,7 +254,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 												size="sm"
 												onClick={() => handleVerify(director.directorId)}
 												disabled={verifyDirector.isPending}
-												title="Verify health"
+												title={t('admin.organizations.directors.verifyHealth')}
 											>
 												<RefreshCw className="h-4 w-4" />
 											</Button>
@@ -256,7 +265,7 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 													openRemoveDialog(director.characterId, director.characterName)
 												}
 												disabled={removeDirector.isPending}
-												title="Remove director"
+												title={t('admin.organizations.directors.remove')}
 											>
 												<Trash2 className="h-4 w-4" />
 											</Button>
@@ -280,20 +289,26 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 			<Dialog open={removeDialogOpen} onOpenChange={setRemoveDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Remove Director</DialogTitle>
+						<DialogTitle>{t('admin.organizations.directors.remove')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to remove <strong>{selectedDirector?.characterName}</strong> as
-							a director? This action cannot be undone.
+							<Trans
+								i18nKey="admin.organizations.directors.removeWarning"
+								values={{ name: selectedDirector?.characterName }}
+								components={{ name: <strong /> }}
+							/>
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel" onClick={() => setRemoveDialogOpen(false)}>Cancel</Button>
-						<Button variant="destructive"
+						<Button variant="cancel" onClick={() => setRemoveDialogOpen(false)}>
+							{t('common.cancel')}
+						</Button>
+						<Button
+							variant="destructive"
 							onClick={handleRemove}
 							loading={removeDirector.isPending}
-							loadingText="Removing..."
+							loadingText={t('admin.users.account.removing')}
 						>
-							Remove Director
+							{t('admin.organizations.directors.remove')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -303,16 +318,19 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 			<Dialog open={priorityDialogOpen} onOpenChange={setPriorityDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Update Priority</DialogTitle>
+						<DialogTitle>{t('admin.organizations.directors.updatePriority')}</DialogTitle>
 						<DialogDescription>
-							Change the priority for <strong>{selectedDirector?.characterName}</strong>. Lower
-							values have higher priority.
+							<Trans
+								i18nKey="admin.organizations.directors.priorityDescription"
+								values={{ name: selectedDirector?.characterName }}
+								components={{ name: <strong /> }}
+							/>
 						</DialogDescription>
 					</DialogHeader>
 					<form onSubmit={handleUpdatePriority}>
 						<div className="space-y-4">
 							<div className="space-y-2">
-								<Label htmlFor="priority">Priority</Label>
+								<Label htmlFor="priority">{t('admin.organizations.shared.priority')}</Label>
 								<Input
 									id="priority"
 									type="number"
@@ -321,23 +339,26 @@ export function DirectorList({ corporationId }: DirectorListProps) {
 										const value = Number.parseInt(e.target.value)
 										setNewPriority(Number.isNaN(value) ? 100 : value)
 									}}
-									placeholder="e.g., 100"
+									placeholder={t('admin.organizations.directors.priorityExample')}
 								/>
 								<p className="text-xs text-muted-foreground">
-									Current priority: {selectedDirector?.currentPriority}
+									{t('admin.organizations.directors.currentPriority', {
+										priority: selectedDirector?.currentPriority,
+									})}
 								</p>
 							</div>
 						</div>
 						<DialogFooter className="mt-6">
 							<Button variant="cancel" type="button" onClick={() => setPriorityDialogOpen(false)}>
-								Cancel
+								{t('common.cancel')}
 							</Button>
-							<Button variant="confirm"
+							<Button
+								variant="confirm"
 								type="submit"
 								loading={updatePriority.isPending}
-								loadingText="Updating..."
+								loadingText={t('hr.notes.updating')}
 							>
-								Update Priority
+								{t('admin.organizations.directors.updatePriority')}
 							</Button>
 						</DialogFooter>
 					</form>

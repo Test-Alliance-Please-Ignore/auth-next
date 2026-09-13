@@ -15,15 +15,18 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { useCategories } from '@/hooks/useCategories'
 import { useAuth } from '@/hooks/useAuth'
+import { useCategories } from '@/hooks/useCategories'
 import { useCreateGroup, useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatNumber, useAppTranslation } from '@/i18n'
 
+import type { MessageText } from '@/hooks/useMessage'
 import type { CreateGroupRequest, GroupsFilters } from '@/lib/api'
 
 export default function GroupsPage() {
-	usePageTitle('Admin - Groups')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.organizations.group.pageTitle'))
 	const { user } = useAuth()
 	const [filters, setFilters] = useState<GroupsFilters>({})
 	const { data: groups, isLoading: groupsLoading } = useGroups(filters)
@@ -37,7 +40,9 @@ export default function GroupsPage() {
 	const [searchInput, setSearchInput] = useState('')
 
 	// Error/success messages
-	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: MessageText } | null>(
+		null
+	)
 
 	// Update filter
 	const updateFilter = (key: keyof GroupsFilters, value: string | undefined) => {
@@ -83,12 +88,15 @@ export default function GroupsPage() {
 		try {
 			await createGroup.mutateAsync(data)
 			setCreateDialogOpen(false)
-			setMessage({ type: 'success', text: 'Group created successfully!' })
+			setMessage({ type: 'success', text: (t) => t('admin.organizations.feedback.groupCreated') })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to create group',
+				text: (t) =>
+					error instanceof Error
+						? error.message
+						: t('admin.organizations.feedback.groupCreateError'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -99,12 +107,14 @@ export default function GroupsPage() {
 			{/* Page Header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-3xl font-bold gradient-text">Groups Overview</h1>
-					<p className="text-muted-foreground mt-1">View and manage all groups</p>
+					<h1 className="text-3xl font-bold gradient-text">
+						{t('admin.organizations.group.title')}
+					</h1>
+					<p className="text-muted-foreground mt-1">{t('admin.organizations.group.description')}</p>
 				</div>
 				<Button onClick={() => setCreateDialogOpen(true)}>
 					<Plus className="h-4 w-4" />
-					Create Group
+					{t('groups.form.create')}
 				</Button>
 			</div>
 
@@ -119,7 +129,7 @@ export default function GroupsPage() {
 				>
 					<CardContent className="py-3">
 						<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>
-							{message.text}
+							{typeof message.text === 'function' ? message.text(t) : message.text}
 						</p>
 					</CardContent>
 				</Card>
@@ -130,15 +140,13 @@ export default function GroupsPage() {
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
-							<CardTitle>Filters</CardTitle>
-							<CardDescription>
-								Filter groups by category, visibility, join mode, or search
-							</CardDescription>
+							<CardTitle>{t('groups.filters')}</CardTitle>
+							<CardDescription>{t('admin.organizations.group.filterDescription')}</CardDescription>
 						</div>
 						{hasActiveFilters && (
 							<Button variant="ghost" size="sm" onClick={clearFilters}>
 								<X className="h-4 w-4" />
-								Clear Filters
+								{t('groups.clearFilters')}
 							</Button>
 						)}
 					</div>
@@ -147,67 +155,72 @@ export default function GroupsPage() {
 					<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 						{/* Category Filter */}
 						<div className="space-y-2">
-							<Label>Category</Label>
+							<Label htmlFor="group-filter-category">{t('groups.category')}</Label>
 							<Select
+								inputId="group-filter-category"
 								value={filters.categoryId ?? 'all'}
 								onValueChange={(value) =>
 									updateFilter('categoryId', value === 'all' ? undefined : value)
 								}
 								searchable
 								options={[
-									{ value: 'all', label: 'All categories' },
-									...(categories?.map((category) => ({ value: category.id,
+									{ value: 'all', label: t('groups.allCategories') },
+									...(categories?.map((category) => ({
+										value: category.id,
 										label: category.name,
 									})) ?? []),
 								]}
-								placeholder="All categories"
+								placeholder={t('groups.allCategories')}
 							/>
 						</div>
 
 						{/* Visibility Filter */}
 						<div className="space-y-2">
-							<Label>Visibility</Label>
+							<Label htmlFor="group-filter-visibility">{t('groups.visibility')}</Label>
 							<Select
+								inputId="group-filter-visibility"
 								value={filters.visibility ?? 'all'}
 								onValueChange={(value) =>
 									updateFilter('visibility', value === 'all' ? undefined : value)
 								}
 								searchable
 								options={[
-									{ value: 'all', label: 'All visibilities' },
-									{ value: 'public', label: 'Public' },
-									{ value: 'hidden', label: 'Hidden' },
-									{ value: 'system', label: 'System' },
+									{ value: 'all', label: t('admin.organizations.group.allVisibilities') },
+									{ value: 'public', label: t('groups.badges.public') },
+									{ value: 'hidden', label: t('groups.badges.hidden') },
+									{ value: 'system', label: t('groups.badges.system') },
 								]}
-								placeholder="All visibilities"
+								placeholder={t('admin.organizations.group.allVisibilities')}
 							/>
 						</div>
 
 						{/* Join Mode Filter */}
 						<div className="space-y-2">
-							<Label>Join Mode</Label>
+							<Label htmlFor="group-filter-joinMode">{t('groups.joinMode')}</Label>
 							<Select
+								inputId="group-filter-joinMode"
 								value={filters.joinMode ?? 'all'}
 								onValueChange={(value) =>
 									updateFilter('joinMode', value === 'all' ? undefined : value)
 								}
 								searchable
 								options={[
-									{ value: 'all', label: 'All modes' },
-									{ value: 'open', label: 'Open' },
-									{ value: 'approval', label: 'Approval' },
-									{ value: 'invitation_only', label: 'Invitation Only' },
+									{ value: 'all', label: t('groups.allJoinModes') },
+									{ value: 'open', label: t('groups.badges.open') },
+									{ value: 'approval', label: t('groups.badges.approval') },
+									{ value: 'invitation_only', label: t('groups.badges.invitationOnly') },
 								]}
-								placeholder="All join modes"
+								placeholder={t('groups.allJoinModes')}
 							/>
 						</div>
 
 						{/* Search Input */}
 						<div className="space-y-2">
-							<Label>Search</Label>
+							<Label htmlFor="group-filter-search">{t('groups.search')}</Label>
 							<Input
+								id="group-filter-search"
 								type="text"
-								placeholder="Search by name..."
+								placeholder={t('groups.searchPlaceholder')}
 								value={searchInput}
 								onChange={(e) => setSearchInput((e.target as HTMLInputElement).value)}
 							/>
@@ -220,15 +233,17 @@ export default function GroupsPage() {
 			<Card>
 				<CardHeader>
 					<CardTitle>
-						Groups{' '}
+						{t('admin.nav.groups')}{' '}
 						{groups && (
-							<span className="text-muted-foreground font-normal">({displayedGroups.length})</span>
+							<span className="text-muted-foreground font-normal">
+								({formatNumber(displayedGroups.length)})
+							</span>
 						)}
 					</CardTitle>
 					<CardDescription>
 						{hasActiveFilters
-							? 'Filtered results - click a row to view details'
-							: 'All groups - click a row to view details'}
+							? t('groups.filteredDescription')
+							: t('admin.organizations.group.allDescription')}
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
@@ -240,8 +255,10 @@ export default function GroupsPage() {
 			<Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Create Group</DialogTitle>
-						<DialogDescription>Create a new group for organizing users</DialogDescription>
+						<DialogTitle>{t('groups.form.create')}</DialogTitle>
+						<DialogDescription>
+							{t('admin.organizations.group.createDescription')}
+						</DialogDescription>
 					</DialogHeader>
 					<GroupForm
 						categories={categories || []}

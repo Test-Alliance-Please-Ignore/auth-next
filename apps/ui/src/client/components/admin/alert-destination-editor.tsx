@@ -7,10 +7,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
-import type { SelectOption } from '@/components/ui/select'
 import type { ButtonVariant } from '@/components/ui/button'
+import type { SelectOption } from '@/components/ui/select'
 import type { CorporationAlertDestination, CorporationAlertDestinationType } from '@/lib/api'
 
 export type AlertDestinationEditorRow = {
@@ -98,12 +99,14 @@ export function AlertDestinationEditor({
 	removeButtonVariant?: ButtonVariant
 	className?: string
 }) {
+	const { t } = useAppTranslation()
 	const showChannelFields = row.destinationType === 'discord_channel'
 	const showUserFields = row.destinationType === 'discord_user'
 	const showWebhookFields = row.destinationType === 'discord_webhook'
 	const showGroupFields = row.destinationType === 'group'
 	const hasAlertTypeSelector = showAlertTypeSelector && (alertTypeOptions?.length ?? 0) > 0
-	const removeButtonLabel = removeButtonVariant === 'cancel' ? 'Cancel' : 'Remove'
+	const removeButtonLabel =
+		removeButtonVariant === 'cancel' ? t('common.cancel') : t('common.remove')
 
 	return (
 		<div
@@ -115,27 +118,37 @@ export function AlertDestinationEditor({
 		>
 			<div className="flex items-center justify-between gap-3">
 				<div className="space-y-1">
-					<div className="font-medium">{isExisting ? 'Current Destination' : 'New Destination'}</div>
-					<div className="text-xs text-muted-foreground">Alert type and delivery target.</div>
+					<div className="font-medium">
+						{isExisting
+							? t('admin.organizations.alerts.current')
+							: t('admin.organizations.alerts.new')}
+					</div>
+					<div className="text-xs text-muted-foreground">
+						{t('admin.organizations.alerts.targetDescription')}
+					</div>
 				</div>
 				<div className="flex items-center gap-2">
 					<Badge variant={row.isEnabled ? 'success' : 'ghost'}>
-						{row.isEnabled ? 'Enabled' : 'Disabled'}
+						{row.isEnabled ? t('admin.users.account.enabled') : t('admin.users.account.disabled')}
 					</Badge>
-					<Switch checked={row.isEnabled} onCheckedChange={(checked) => onChange({ isEnabled: checked })} />
+					<Switch
+						aria-label={t('admin.users.account.enabled')}
+						checked={row.isEnabled}
+						onCheckedChange={(checked) => onChange({ isEnabled: checked })}
+					/>
 				</div>
 			</div>
 
 			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 				{hasAlertTypeSelector && (
 					<div className="space-y-2">
-						<Label htmlFor={`alert-type-${row.id}`}>Alert Type</Label>
+						<Label htmlFor={`alert-type-${row.id}`}>{t('admin.organizations.alerts.type')}</Label>
 						<Select
 							inputId={`alert-type-${row.id}`}
 							options={alertTypeOptions ?? []}
 							value={row.alertType}
 							onValueChange={(value) => onChange({ alertType: value })}
-							placeholder="Select alert type"
+							placeholder={t('admin.organizations.alerts.selectType')}
 							className="w-full"
 							searchable
 						/>
@@ -143,7 +156,9 @@ export function AlertDestinationEditor({
 				)}
 
 				<div className="space-y-2">
-					<Label htmlFor={`destination-type-${row.id}`}>Destination Type</Label>
+					<Label htmlFor={`destination-type-${row.id}`}>
+						{t('admin.organizations.alerts.destinationType')}
+					</Label>
 					<Select
 						inputId={`destination-type-${row.id}`}
 						options={destinationTypeOptions}
@@ -158,7 +173,7 @@ export function AlertDestinationEditor({
 								webhookUrl: value === 'discord_webhook' ? row.webhookUrl : '',
 							})
 						}
-						placeholder="Select destination type"
+						placeholder={t('admin.organizations.alerts.selectDestinationType')}
 						className="w-full"
 						searchable
 					/>
@@ -167,7 +182,9 @@ export function AlertDestinationEditor({
 				{showChannelFields && (
 					<>
 						<div className="space-y-2">
-							<Label htmlFor={`discord-server-${row.id}`}>Discord Server</Label>
+							<Label htmlFor={`discord-server-${row.id}`}>
+								{t('admin.organizations.alerts.discordServer')}
+							</Label>
 							<Select
 								inputId={`discord-server-${row.id}`}
 								options={discordServers.map((server) => ({
@@ -176,7 +193,7 @@ export function AlertDestinationEditor({
 								}))}
 								value={row.discordServerId}
 								onValueChange={(value) => onChange({ discordServerId: value })}
-								placeholder="Select a Discord server"
+								placeholder={t('admin.organizations.alerts.selectServer')}
 								className="w-full"
 								contentClassName="w-[min(90vw,32rem)]"
 								listMaxHeight="24rem"
@@ -184,12 +201,14 @@ export function AlertDestinationEditor({
 							/>
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor={`channel-id-${row.id}`}>Channel ID</Label>
+							<Label htmlFor={`channel-id-${row.id}`}>
+								{t('admin.organizations.alerts.channelId')}
+							</Label>
 							<Input
 								id={`channel-id-${row.id}`}
 								value={row.channelId}
 								onChange={(event) => onChange({ channelId: event.target.value })}
-								placeholder="Discord channel ID"
+								placeholder={t('admin.organizations.alerts.channelPlaceholder')}
 							/>
 						</div>
 					</>
@@ -197,19 +216,23 @@ export function AlertDestinationEditor({
 
 				{showUserFields && (
 					<div className="space-y-2">
-						<Label htmlFor={`core-user-id-${row.id}`}>Core User ID</Label>
+						<Label htmlFor={`core-user-id-${row.id}`}>
+							{t('admin.organizations.alerts.userId')}
+						</Label>
 						<Input
 							id={`core-user-id-${row.id}`}
 							value={row.coreUserId}
 							onChange={(event) => onChange({ coreUserId: event.target.value })}
-							placeholder="Core user ID"
+							placeholder={t('admin.organizations.alerts.userPlaceholder')}
 						/>
 					</div>
 				)}
 
 				{showWebhookFields && (
 					<div className="space-y-2 md:col-span-2 lg:col-span-2">
-						<Label htmlFor={`webhook-url-${row.id}`}>Webhook URL</Label>
+						<Label htmlFor={`webhook-url-${row.id}`}>
+							{t('admin.organizations.alerts.webhookUrl')}
+						</Label>
 						<Input
 							id={`webhook-url-${row.id}`}
 							value={row.webhookUrl}
@@ -222,13 +245,15 @@ export function AlertDestinationEditor({
 				{showGroupFields && (
 					<div className="space-y-4 lg:col-span-2">
 						<div className="space-y-2">
-							<Label htmlFor={`group-id-${row.id}`}>Target Group</Label>
+							<Label htmlFor={`group-id-${row.id}`}>
+								{t('admin.organizations.alerts.targetGroup')}
+							</Label>
 							<Select
 								inputId={`group-id-${row.id}`}
 								options={groupOptions ?? []}
 								value={row.groupId}
 								onValueChange={(value) => onChange({ groupId: value })}
-								placeholder="Select a structure group"
+								placeholder={t('admin.organizations.alerts.selectGroup')}
 								className="w-full"
 								searchable
 							/>
@@ -236,20 +261,20 @@ export function AlertDestinationEditor({
 
 						{showGroupAudience && (
 							<div className="space-y-2">
-								<Label>Audience</Label>
+								<Label>{t('admin.organizations.alerts.audience')}</Label>
 								<div className="space-y-2 rounded-lg border border-border/60 p-3">
 									<CheckRow
-										label="Admins"
+										label={t('admin.organizations.group.admins')}
 										checked={row.sendToAdmins}
 										onCheckedChange={(checked) => onChange({ sendToAdmins: checked })}
 									/>
 									<CheckRow
-										label="Owners"
+										label={t('admin.organizations.alerts.owners')}
 										checked={row.sendToOwners}
 										onCheckedChange={(checked) => onChange({ sendToOwners: checked })}
 									/>
 									<CheckRow
-										label="Members"
+										label={t('admin.organizations.group.members')}
 										checked={row.sendToMembers}
 										onCheckedChange={(checked) => onChange({ sendToMembers: checked })}
 									/>
@@ -265,9 +290,15 @@ export function AlertDestinationEditor({
 					<Trash2 className="h-4 w-4" />
 					{removeButtonLabel}
 				</Button>
-				<Button variant={saveButtonVariant} size="sm" onClick={() => void onSave()} loading={isSaving} showIcon={false}>
+				<Button
+					variant={saveButtonVariant}
+					size="sm"
+					onClick={() => void onSave()}
+					loading={isSaving}
+					showIcon={false}
+				>
 					<Save className="h-4 w-4" />
-					Save
+					{t('admin.organizations.shared.save')}
 				</Button>
 			</div>
 		</div>
