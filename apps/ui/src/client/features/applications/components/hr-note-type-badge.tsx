@@ -8,9 +8,11 @@
 import { AlertOctagon, AlertTriangle, CheckCircle, Info, Shield } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import type { BadgeVariant } from '@/components/ui/badge'
+import type { AppTranslationKey } from '@/i18n'
 import type { HRNoteType } from '../api'
 
 // ============================================================================
@@ -31,33 +33,33 @@ export interface HRNoteTypeBadgeProps {
 const noteTypeConfig: Record<
 	HRNoteType,
 	{
-		label: string
+		labelKey: AppTranslationKey
 		icon: typeof Info
 		variant: BadgeVariant
 	}
 > = {
 	general: {
-		label: 'General',
+		labelKey: 'hr.notes.types.general',
 		icon: Info,
 		variant: 'ghost',
 	},
 	warning: {
-		label: 'Warning',
+		labelKey: 'hr.notes.types.warning',
 		icon: AlertTriangle,
 		variant: 'warning',
 	},
 	positive: {
-		label: 'Positive',
+		labelKey: 'hr.notes.types.positive',
 		icon: CheckCircle,
 		variant: 'success',
 	},
 	incident: {
-		label: 'Incident',
+		labelKey: 'hr.notes.types.incident',
 		icon: AlertOctagon,
 		variant: 'destructive',
 	},
 	background_check: {
-		label: 'Background Check',
+		labelKey: 'hr.notes.types.background_check',
 		icon: Shield,
 		variant: 'default',
 	},
@@ -94,6 +96,7 @@ export function HRNoteTypeBadge({
 	showIcon = true,
 	className,
 }: HRNoteTypeBadgeProps) {
+	const { t } = useAppTranslation()
 	const config = noteTypeConfig[noteType]
 	const Icon = config.icon
 
@@ -103,7 +106,7 @@ export function HRNoteTypeBadge({
 			className={cn('inline-flex items-center gap-1.5 font-medium', sizeClasses[size], className)}
 		>
 			{showIcon && <Icon className={iconSizeClasses[size]} />}
-			<span>{config.label}</span>
+			<span>{t(config.labelKey)}</span>
 		</Badge>
 	)
 }

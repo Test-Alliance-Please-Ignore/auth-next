@@ -2,13 +2,21 @@ import { ArrowLeft } from 'lucide-react'
 import { useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
-import { UserGroupMembershipsTable } from '@/components/user-group-memberships-table'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
+import { UserGroupMembershipsTable } from '@/components/user-group-memberships-table'
 import { useAdminUser } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { Button } from '@/components/ui/button'
+import { compareLocaleStrings, useAppTranslation } from '@/i18n'
 
 const grantSourceVariantBySource = {
 	global: 'default',
@@ -23,7 +31,8 @@ const grantTargetVariantByType = {
 } as const
 
 export default function AdminUserGroupsPage() {
-	usePageTitle('Admin - User Group Memberships')
+	const { t, locale } = useAppTranslation()
+	usePageTitle(t('admin.users.userGroups.pageTitle'))
 	const { userId } = useParams<{ userId: string }>()
 	const navigate = useNavigate()
 	const { data: user, isLoading } = useAdminUser(userId!)
@@ -36,17 +45,25 @@ export default function AdminUserGroupsPage() {
 				if (urnDiff !== 0) return urnDiff
 				const sourceDiff = a.source.localeCompare(b.source)
 				if (sourceDiff !== 0) return sourceDiff
-				return a.groupName.localeCompare(b.groupName)
+				return compareLocaleStrings(a.groupName, b.groupName)
 			}),
-		[rawPermissionGrants]
+		[rawPermissionGrants, locale]
 	)
 
 	if (isLoading) {
-		return <div className="text-center py-8 text-muted-foreground">Loading user group memberships...</div>
+		return (
+			<div className="text-center py-8 text-muted-foreground">
+				{t('admin.users.userGroups.loading')}
+			</div>
+		)
 	}
 
 	if (!user) {
-		return <div className="text-center py-8 text-muted-foreground">User not found</div>
+		return (
+			<div className="text-center py-8 text-muted-foreground">
+				{t('admin.users.account.notFound')}
+			</div>
+		)
 	}
 
 	return (
@@ -54,26 +71,32 @@ export default function AdminUserGroupsPage() {
 			<div className="flex items-center gap-4">
 				<Button variant="ghost" onClick={() => navigate(`/admin/users/${userId}`)}>
 					<ArrowLeft className="h-4 w-4" />
-					Back to User
+					{t('admin.users.account.backToUser')}
 				</Button>
 			</div>
 
 			<div className="space-y-1">
-				<h1 className="text-3xl font-bold gradient-text">User Group Memberships</h1>
+				<h1 className="text-3xl font-bold gradient-text">{t('admin.users.userGroups.title')}</h1>
 				<p className="text-muted-foreground">
-					{user.characters.find((c) => c.is_primary)?.characterName || 'User'} belongs to{' '}
-					{memberships.length} group{memberships.length === 1 ? '' : 's'}.
+					{t('admin.users.userGroups.description', {
+						name:
+							user.characters.find((c) => c.is_primary)?.characterName ||
+							t('admin.users.account.user'),
+						count: memberships.length,
+					})}
 				</p>
 			</div>
 
 			<Card>
 				<CardHeader>
-					<CardTitle>Memberships</CardTitle>
-					<CardDescription>Group-level access and join dates</CardDescription>
+					<CardTitle>{t('admin.users.userGroups.memberships')}</CardTitle>
+					<CardDescription>{t('admin.users.userGroups.membershipsDescription')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					{memberships.length === 0 ? (
-						<div className="text-center py-8 text-muted-foreground">No group memberships</div>
+						<div className="text-center py-8 text-muted-foreground">
+							{t('admin.users.userGroups.empty')}
+						</div>
 					) : (
 						<UserGroupMembershipsTable
 							memberships={memberships}
@@ -85,22 +108,21 @@ export default function AdminUserGroupsPage() {
 
 			<Card>
 				<CardHeader>
-					<CardTitle>Resolved Permission Grants</CardTitle>
-					<CardDescription>
-						URNs currently resolved for this user, including the group or corporation that
-						granted each one.
-					</CardDescription>
+					<CardTitle>{t('admin.users.userGroups.grants')}</CardTitle>
+					<CardDescription>{t('admin.users.userGroups.grantsDescription')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					{permissionGrants.length === 0 ? (
-						<div className="text-center py-8 text-muted-foreground">No resolved permissions</div>
+						<div className="text-center py-8 text-muted-foreground">
+							{t('admin.users.userGroups.noPermissions')}
+						</div>
 					) : (
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>URN</TableHead>
-									<TableHead>Grant Source</TableHead>
-									<TableHead>Target</TableHead>
+									<TableHead>{t('admin.fields.urn')}</TableHead>
+									<TableHead>{t('admin.users.userGroups.source')}</TableHead>
+									<TableHead>{t('admin.users.userGroups.target')}</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -126,14 +148,19 @@ export default function AdminUserGroupsPage() {
 														variant={grantSourceVariantBySource[grant.source]}
 														className="text-[10px] uppercase"
 													>
-														{grant.source === 'global' ? 'global' : 'group scoped'}
+														{grant.source === 'global'
+															? t('admin.users.userGroups.global')
+															: t('admin.users.userGroups.groupScoped')}
 													</Badge>
 												</div>
 											</div>
 										</TableCell>
 										<TableCell>
-											<Badge variant={grantTargetVariantByType[grant.targetType]} className="capitalize">
-												{grant.targetType.replaceAll('_', ' ')}
+											<Badge
+												variant={grantTargetVariantByType[grant.targetType]}
+												className="capitalize"
+											>
+												{t(`groups.permissions.targets.${grant.targetType}`)}
 											</Badge>
 										</TableCell>
 									</TableRow>

@@ -1,17 +1,21 @@
 import { Search } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
-import { UserSearchResultsTable } from '@/components/user-search-results-table'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { UserSearchResultsTable } from '@/components/user-search-results-table'
 import { useAdminUsers } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 
+import type { AppTranslationKey } from '@/i18n'
+
 export default function UsersPage() {
-	usePageTitle('Admin - Users')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.users.users.pageTitle'))
 	const [searchQuery, setSearchQuery] = useState('')
 	const [debouncedQuery, setDebouncedQuery] = useState('')
 	const [adminFilter, setAdminFilter] = useState<string>('all')
@@ -20,7 +24,9 @@ export default function UsersPage() {
 	const [joiningUserId, setJoiningUserId] = useState<string | null>(null)
 	const [joinMessage, setJoinMessage] = useState<{
 		type: 'success' | 'error'
-		text: string
+		key: AppTranslationKey
+		values?: Record<string, unknown>
+		detail?: string
 	} | null>(null)
 
 	// Debounce search query
@@ -68,22 +74,30 @@ export default function UsersPage() {
 			if (result.status === 'failed') {
 				setJoinMessage({
 					type: 'error',
-					text: `Discord access refresh failed: ${result.error?.message ?? 'The refresh did not complete.'}`,
+					key: result.error?.message
+						? 'admin.users.feedback.discordFailedDetail'
+						: 'admin.users.feedback.discordFailed',
+					values: { error: result.error?.message },
 				})
 			} else if (totalInvited > 0) {
 				setJoinMessage({
 					type: 'success',
-					text: `Successfully joined ${totalInvited} Discord server${totalInvited !== 1 ? 's' : ''}${totalFailed > 0 ? ` (${totalFailed} failed)` : ''}`,
+					key:
+						totalFailed > 0
+							? 'admin.users.feedback.discordJoinedPartial'
+							: 'admin.users.feedback.discordJoined',
+					values: { count: totalInvited, failed: totalFailed },
 				})
 			} else if (totalFailed > 0) {
 				setJoinMessage({
 					type: 'error',
-					text: `Failed to join ${totalFailed} Discord server${totalFailed !== 1 ? 's' : ''}`,
+					key: 'admin.users.feedback.discordJoinFailed',
+					values: { count: totalFailed },
 				})
 			} else {
 				setJoinMessage({
 					type: 'success',
-					text: 'No eligible Discord servers found for this user',
+					key: 'admin.users.feedback.discordNone',
 				})
 			}
 
@@ -91,7 +105,8 @@ export default function UsersPage() {
 		} catch (error) {
 			setJoinMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to join Discord servers',
+				key: 'admin.users.feedback.discordJoinError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setJoinMessage(null), 5000)
 		} finally {
@@ -103,10 +118,8 @@ export default function UsersPage() {
 		<div className="space-y-6">
 			{/* Page Header */}
 			<div>
-				<h1 className="text-3xl font-bold gradient-text">User Management</h1>
-				<p className="text-muted-foreground mt-1">
-					Search by character/user/discord identity and manage account access
-				</p>
+				<h1 className="text-3xl font-bold gradient-text">{t('admin.users.users.title')}</h1>
+				<p className="text-muted-foreground mt-1">{t('admin.users.users.description')}</p>
 			</div>
 
 			{/* Success/Error Message */}
@@ -120,7 +133,7 @@ export default function UsersPage() {
 				>
 					<CardContent className="py-3">
 						<p className={joinMessage.type === 'error' ? 'text-destructive' : 'text-primary'}>
-							{joinMessage.text}
+							{joinMessage.detail ?? t(joinMessage.key, joinMessage.values)}
 						</p>
 					</CardContent>
 				</Card>
@@ -135,7 +148,8 @@ export default function UsersPage() {
 							<div className="relative">
 								<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 								<Input
-									placeholder="Search by character name/ID, user ID, Discord ID, or Discord username..."
+									aria-label={t('admin.users.users.searchPlaceholder')}
+									placeholder={t('admin.users.users.searchPlaceholder')}
 									value={searchQuery}
 									onChange={(e) => setSearchQuery(e.target.value)}
 									className="pl-9"
@@ -152,11 +166,11 @@ export default function UsersPage() {
 									setPage(1)
 								}}
 								options={[
-									{ value: 'all', label: 'All Users' },
-									{ value: 'admin', label: 'Admins Only' },
-									{ value: 'non-admin', label: 'Non-Admins' },
+									{ value: 'all', label: t('admin.users.users.all') },
+									{ value: 'admin', label: t('admin.users.users.adminsOnly') },
+									{ value: 'non-admin', label: t('admin.users.users.nonAdmins') },
 								]}
-								placeholder="All Users"
+								placeholder={t('admin.users.users.all')}
 								className="w-full"
 							/>
 						</div>
@@ -169,9 +183,13 @@ export default function UsersPage() {
 				<CardHeader>
 					<div className="space-y-4">
 						<div>
-							<CardTitle>Users</CardTitle>
+							<CardTitle>{t('admin.nav.users')}</CardTitle>
 							<CardDescription>
-								{isLoading ? 'Loading users...' : debouncedQuery ? 'Search results' : 'All users'}
+								{isLoading
+									? t('admin.users.users.loading')
+									: debouncedQuery
+										? t('admin.users.users.searchResults')
+										: t('admin.users.users.allDescription')}
 							</CardDescription>
 						</div>
 						<UserSearchPaginationControls
@@ -185,9 +203,13 @@ export default function UsersPage() {
 				</CardHeader>
 				<CardContent>
 					{isLoading ? (
-						<div className="text-center py-8 text-muted-foreground">Loading users...</div>
+						<div className="text-center py-8 text-muted-foreground">
+							{t('admin.users.users.loading')}
+						</div>
 					) : users.length === 0 ? (
-						<div className="text-center py-8 text-muted-foreground">No users found</div>
+						<div className="text-center py-8 text-muted-foreground">
+							{t('admin.users.users.empty')}
+						</div>
 					) : (
 						<>
 							<div className="rounded-md border bg-card">
@@ -214,7 +236,6 @@ export default function UsersPage() {
 					)}
 				</CardContent>
 			</Card>
-
 		</div>
 	)
 }

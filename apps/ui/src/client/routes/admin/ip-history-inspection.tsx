@@ -5,10 +5,12 @@ import { IpHashInspectionPage } from '@/components/ip-hash-inspection-page'
 import { Container } from '@/components/ui/container'
 import { useAdminIpHashMatches } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 
 export default function AdminIpHistoryInspectionPage() {
-	usePageTitle('Admin - IP History Inspection')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.users.ip.pageTitle'))
 
 	const { ipAddressHash = '' } = useParams<{ ipAddressHash: string }>()
 	const [searchParams] = useSearchParams()
@@ -24,7 +26,9 @@ export default function AdminIpHistoryInspectionPage() {
 				matches={matchesData?.matches ?? []}
 				isLoading={isLoading}
 				backTo={userId ? `/admin/users/${userId}` : '/admin/users'}
-				backLabel={userId ? 'Back to User Details' : 'Back to Users'}
+				backLabel={
+					userId ? t('admin.users.account.backToDetails') : t('admin.users.account.backToUsers')
+				}
 				buildUserLink={(targetUserId) => `/admin/users/${targetUserId}`}
 				loadUserHashes={(targetUserId) => api.getAdminUserIpHistory(targetUserId)}
 				buildHashLink={(targetHash) =>

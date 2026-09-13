@@ -6,8 +6,10 @@
  */
 
 import { Badge } from '@/components/ui/badge'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
+import type { AppTranslationKey } from '@/i18n'
 import type { HRNotePriority } from '../api'
 
 // ============================================================================
@@ -28,24 +30,24 @@ export interface HRNotePriorityBadgeProps {
 const priorityConfig: Record<
 	HRNotePriority,
 	{
-		label: string
+		labelKey: AppTranslationKey
 		colorClasses: string
 	}
 > = {
 	low: {
-		label: 'Low',
+		labelKey: 'hr.notes.priorities.low',
 		colorClasses: 'text-muted-foreground bg-muted/20 border-muted',
 	},
 	normal: {
-		label: 'Normal',
+		labelKey: 'hr.notes.priorities.normal',
 		colorClasses: 'text-primary bg-primary/10 border-primary/30',
 	},
 	high: {
-		label: 'High Priority',
+		labelKey: 'hr.notes.highPriority',
 		colorClasses: 'text-warning bg-warning/10 border-warning/30',
 	},
 	critical: {
-		label: 'Critical',
+		labelKey: 'hr.notes.priorities.critical',
 		colorClasses: 'text-destructive bg-destructive/10 border-destructive/30',
 	},
 }
@@ -76,6 +78,7 @@ export function HRNotePriorityBadge({
 	size = 'sm',
 	className,
 }: HRNotePriorityBadgeProps) {
+	const { t } = useAppTranslation()
 	// Only show high and critical by default
 	if (!showAll && priority !== 'high' && priority !== 'critical') {
 		return null
@@ -92,7 +95,7 @@ export function HRNotePriorityBadge({
 				className
 			)}
 		>
-			{config.label}
+			{t(config.labelKey)}
 		</Badge>
 	)
 }
