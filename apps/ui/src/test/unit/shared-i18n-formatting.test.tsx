@@ -7,7 +7,7 @@ import { DateInput } from '@/components/ui/date-input'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { I18nProvider, setAppLocale } from '@/i18n'
 import { formatDate, formatMonthYear, formatRelativeTime } from '@/lib/date-utils'
-import { formatISK, formatPoints } from '@/lib/format-utils'
+import { formatISK, formatISKShort, formatPoints } from '@/lib/format-utils'
 
 import type { AppLocale } from '@/i18n'
 
@@ -73,6 +73,17 @@ describe('shared localized display helpers', () => {
 			expect(formatISK('-1.99', { showDecimals: false })).toBe('-2 ISK')
 		}
 	)
+
+	it('localizes compact ISK separators without changing EVE suffixes or rounding', async () => {
+		await setAppLocale('de', { persistLocal: false })
+
+		expect(formatISKShort('1500000000')).toBe('1,50B ISK')
+		expect(formatISKShort('1500', { showDecimals: false })).toBe('2K ISK')
+		expect(formatISKShort('999')).toBe('999,00 ISK')
+
+		await setAppLocale('en', { persistLocal: false })
+		expect(formatISKShort('1500000000')).toBe('1.50B ISK')
+	})
 
 	it('formats both past and future relative times', async () => {
 		vi.useFakeTimers()
