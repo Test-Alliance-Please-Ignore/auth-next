@@ -25,6 +25,7 @@ const hoisted = vi.hoisted(() => ({
 	},
 	characterData: {
 		getInstance: vi.fn(),
+		getPrivateProfileDataBulk: vi.fn(),
 	},
 	characterInstance: {
 		getCharacterInfo: vi.fn(),
@@ -87,22 +88,42 @@ function makeUser(overrides: Partial<SessionUser> = {}): SessionUser {
 }
 
 function createDb() {
+	const selectResult = [
+		{
+			characterId: '2001',
+			userId: 'target-user',
+			characterName: 'Target Pilot',
+			hasValidToken: false,
+			immunitas: false,
+		},
+		{
+			characterId: '2002',
+			userId: 'target-user',
+			characterName: 'Target Pilot Two',
+			hasValidToken: false,
+			immunitas: false,
+		},
+	]
+	const selectChain = {
+		from: vi.fn().mockReturnThis(),
+		leftJoin: vi.fn().mockReturnThis(),
+		where: vi.fn().mockReturnThis(),
+		limit: vi.fn().mockResolvedValue(selectResult),
+		then: (resolve: (value: typeof selectResult) => unknown) => resolve(selectResult),
+	}
 	return {
 		query: {
 			userCharacters: {
 				findFirst: vi.fn(),
+				findMany: vi.fn(),
 			},
 			users: {
 				findFirst: vi.fn(),
+				findMany: vi.fn(),
 			},
 		},
-		select: vi.fn(() => ({
-			from: vi.fn(() => ({
-				where: vi.fn(() => ({
-					limit: vi.fn().mockResolvedValue([{ hasValidToken: false }]),
-				})),
-			})),
-		})),
+		select: vi.fn(() => selectChain),
+		selectResult,
 	}
 }
 
@@ -174,6 +195,13 @@ describe('character detail access for HR page viewers', () => {
 			characterName: 'Target Pilot',
 		} as any)
 		vi.mocked(db.query.users.findFirst).mockResolvedValue({ immunitas: false } as any)
+		vi.mocked(db.query.userCharacters.findMany).mockResolvedValue([
+			{ characterId: '2001', userId: 'target-user', characterName: 'Target Pilot' },
+			{ characterId: '2002', userId: 'target-user', characterName: 'Target Pilot Two' },
+		] as any)
+		vi.mocked(db.query.users.findMany).mockResolvedValue([
+			{ id: 'target-user', immunitas: false },
+		] as any)
 		hoisted.resolver.resolveEntityNames.mockResolvedValue(
 			new Map([
 				['2001', 'Target Corp'],
@@ -181,6 +209,7 @@ describe('character detail access for HR page viewers', () => {
 			])
 		)
 		hoisted.characterData.getInstance.mockResolvedValue(hoisted.characterInstance)
+		hoisted.characterData.getPrivateProfileDataBulk.mockResolvedValue([])
 		hoisted.characterInstance.getCharacterInfo.mockResolvedValue({
 			characterId: '2001',
 			name: 'Target Pilot',
@@ -381,5 +410,113 @@ describe('character detail access for HR page viewers', () => {
 		expect(body.totalSp).toBe(123456)
 		expect(hoisted.core.queueImmunitasAccessAlert).not.toHaveBeenCalled()
 		expect(hoisted.groups.getUserPermissions).not.toHaveBeenCalled()
+	})
+
+	it('returns individually authorized private details from the bulk route', async () => {
+		hoisted.characterData.getPrivateProfileDataBulk.mockResolvedValue([
+			{
+				characterId: '2001',
+				skills: { skills: [], total_sp: 123 },
+				sensitiveData: { wallet: { balance: '456' } },
+			},
+			{
+				characterId: '2002',
+				skills: { skills: [], total_sp: 789 },
+				sensitiveData: { wallet: { balance: '101112' } },
+			},
+		])
+		const app = createApp(makeUser(), db)
+		const res = await app.request(
+			'/api/characters/private/bulk',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ characterIds: ['2001', '2002'] }),
+			},
+			env
+		)
+
+		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
+
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as any
+		expect(body.items).toHaveLength(2)
+		expect(body.items.every((item: any) => item.status === 'ok')).toBe(true)
+		expect(body.items[0].data).toEqual({
+			characterId: '2001',
+			skills: { totalSp: 123 },
+			private: { wallet: { balance: '456' } },
+		})
+		expect(hoisted.characterData.getPrivateProfileDataBulk).toHaveBeenCalledWith(['2001', '2002'])
+		expect(hoisted.characterData.getInstance).not.toHaveBeenCalledWith('2001')
+		expect(hoisted.characterData.getInstance).not.toHaveBeenCalledWith('2002')
+	})
+
+	it('applies the Immunitas gate per bulk item and queues alerts', async () => {
+		db.selectResult.forEach((row) => {
+			row.immunitas = true
+		})
+		const app = createApp(makeUser({ is_admin: true }), db)
+		const res = await app.request(
+			'/api/characters/private/bulk',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ characterIds: ['2001', '2002'] }),
+			},
+			env
+		)
+
+		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
+
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as any
+		expect(body.items).toEqual([
+			{ characterId: '2001', status: 'forbidden' },
+			{ characterId: '2002', status: 'forbidden' },
+		])
+		expect(hoisted.core.queueImmunitasAccessAlert).toHaveBeenCalledTimes(2)
+	})
+
+	it('fetches private data only for authorized items in a mixed bulk request', async () => {
+		db.selectResult[0].immunitas = false
+		db.selectResult[1].immunitas = true
+		hoisted.characterData.getPrivateProfileDataBulk.mockResolvedValue([
+			{
+				characterId: '2001',
+				skills: { skills: [], total_sp: 123 },
+				sensitiveData: { wallet: { balance: '456' } },
+			},
+		])
+		const app = createApp(makeUser({ is_admin: true }), db)
+		const res = await app.request(
+			'/api/characters/private/bulk',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ characterIds: ['2001', '2002'] }),
+			},
+			env
+		)
+
+		await Promise.all(backgroundTasks.splice(0, backgroundTasks.length))
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({
+			items: [
+				{
+					characterId: '2001',
+					status: 'ok',
+					data: {
+						characterId: '2001',
+						skills: { totalSp: 123 },
+						private: { wallet: { balance: '456' } },
+					},
+				},
+				{ characterId: '2002', status: 'forbidden' },
+			],
+		})
+		expect(hoisted.characterData.getPrivateProfileDataBulk).toHaveBeenCalledWith(['2001'])
+		expect(hoisted.core.queueImmunitasAccessAlert).toHaveBeenCalledTimes(1)
 	})
 })

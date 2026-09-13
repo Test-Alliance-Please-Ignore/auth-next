@@ -14,6 +14,8 @@ import {
 	userCharacters,
 	users,
 } from '../db/schema'
+import { clearDiscordStatusCache } from '../lib/discord-status-cache'
+import { clearUserProfileCache } from '../lib/user-profile-cache'
 import { enforceBlacklistedMumbleAccess } from './mumble.service'
 
 import type { DiscordProfile, JoinServerResult } from '@repo/discord'
@@ -232,6 +234,8 @@ export async function handleTokens(
 			discordUserId,
 			updated: updateResult.length > 0,
 		})
+		clearDiscordStatusCache(coreUserId)
+		clearUserProfileCache(coreUserId)
 
 		// Clean up OAuth state
 		await db.delete(oauthStates).where(eq(oauthStates.state, state))
@@ -330,6 +334,8 @@ export async function unlinkUser(env: Env, userId: string): Promise<boolean> {
 				updatedAt: new Date(),
 			})
 			.where(eq(users.id, userId))
+		clearDiscordStatusCache(userId)
+		clearUserProfileCache(userId)
 
 		logger.info('[Discord] Successfully unlinked Discord account', {
 			userId,

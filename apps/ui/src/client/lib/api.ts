@@ -2489,32 +2489,6 @@ export interface IndustryProviderStatistics {
 	servicesByStatus: Record<ServiceStatus, number>
 }
 
-/**
- * User Services API Types
- */
-
-export interface UserService {
-	id: string
-	serviceId: string
-	enabled: boolean
-	createdAt: string
-	updatedAt: string
-	service: {
-		id: string
-		name: string
-		slug: string
-		icon: string | null
-		description: string | null
-		enabled: boolean
-	}
-}
-
-export interface ResetServicePasswordResponse {
-	success: boolean
-	message: string
-	newPassword?: string
-}
-
 export interface MumbleConnectionInfo {
 	host: string
 	port: number
@@ -2646,6 +2620,61 @@ export interface PasteViewerResponse {
 	paste: PasteRecord
 	content: string | null
 	requiresPassword: boolean
+}
+
+export interface CharacterPrivateDetail {
+	characterId: string
+	isOwner: boolean
+	viewedAsAdmin: boolean
+	viewedAsCeoOrDirector: boolean
+	viewedAsHrViewer: boolean
+	viewerRole: 'CEO' | 'Director' | null
+	skills: any
+	allSkills: any[]
+	private?: {
+		location?: any
+		wallet?: any
+		assets?: any
+		status?: any
+		sensitiveDataIsLive?: boolean
+		skillQueue?: any[]
+	}
+	owner?: {
+		userId: string
+		mainCharacterName: string
+	}
+}
+
+export interface CharacterPrivateBulkItem {
+	characterId: string
+	status: 'ok' | 'forbidden' | 'unavailable'
+	data?: CharacterPrivateSummary
+}
+
+export interface CharacterPrivateSummary {
+	characterId: string
+	skills: { totalSp: number } | null
+	private?: {
+		wallet?: {
+			balance: string
+		}
+	}
+}
+
+export interface DashboardCharacter {
+	characterId: string
+	characterName: string
+	isPrimary: boolean
+	hasValidToken: boolean
+	corporationId: string | null
+	corporationName: string | null
+	allianceId: string | null
+	allianceName: string | null
+}
+
+export interface DashboardCharactersResponse {
+	mainCharacterId: string | null
+	characters: DashboardCharacter[]
 }
 
 export class ApiClient {
@@ -2968,33 +2997,22 @@ export class ApiClient {
 		return this.get(`/characters/${characterId}`)
 	}
 
+	async getDashboardCharacters(): Promise<DashboardCharactersResponse> {
+		return this.get('/users/me/dashboard/characters')
+	}
+
 	/**
 	 * Get the private character-profile hydration for explicit detail-page views.
 	 * This is the only profile-data fetch that can trigger the private-profile alert.
 	 */
-	async getCharacterPrivateDetail(characterId: string): Promise<{
-		characterId: string
-		isOwner: boolean
-		viewedAsAdmin: boolean
-		viewedAsCeoOrDirector: boolean
-		viewedAsHrViewer: boolean
-		viewerRole: 'CEO' | 'Director' | null
-		skills: any
-		allSkills: any[]
-		private?: {
-			location?: any
-			wallet?: any
-			assets?: any
-			status?: any
-			sensitiveDataIsLive?: boolean
-			skillQueue?: any[]
-		}
-		owner?: {
-			userId: string
-			mainCharacterName: string
-		}
-	}> {
+	async getCharacterPrivateDetail(characterId: string): Promise<CharacterPrivateDetail> {
 		return this.get(`/characters/${characterId}/private`)
+	}
+
+	async getCharacterPrivateDetailsBulk(
+		characterIds: string[]
+	): Promise<{ items: CharacterPrivateBulkItem[] }> {
+		return this.post('/characters/private/bulk', { characterIds })
 	}
 
 	/**
@@ -5521,22 +5539,6 @@ export class ApiClient {
 	 */
 	async getIndustryStats(): Promise<IndustryProviderStatistics> {
 		return this.get('/admin/industry/stats')
-	}
-
-	// ===== User Services API Methods =====
-
-	/**
-	 * Get current user's services
-	 */
-	async getUserServices(): Promise<UserService[]> {
-		return this.get('/users/me/services')
-	}
-
-	/**
-	 * Reset password for a service
-	 */
-	async resetServicePassword(slug: string): Promise<ResetServicePasswordResponse> {
-		return this.post(`/services/${slug}/reset`)
 	}
 
 	// ===== Mumble API Methods =====

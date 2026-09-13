@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 import { isOpenApplicationStatus } from '@repo/hr'
@@ -43,7 +44,17 @@ export type CharacterAccessContext = {
 	viewedAsHrViewer: boolean
 }
 
-async function getImmunitasCharacterOwner(db: Db, characterId: string): Promise<{
+export type CharacterAccessTargetOwner = NonNullable<CharacterAccessContext['targetOwner']>
+
+export type CharacterAccessPrefetch = {
+	targetOwners: Map<string, CharacterAccessTargetOwner | null>
+	accessByCharacterId?: Map<string, CharacterAccessContext>
+}
+
+async function getImmunitasCharacterOwner(
+	db: Db,
+	characterId: string
+): Promise<{
 	userId: string
 	characterName: string
 	immunitas: boolean
@@ -113,21 +124,19 @@ async function resolveSharedCorporationCandidates(
 	const [viewerCorporations, targetCorporations, targetApplications] = await Promise.all([
 		core.getUserCorporations(user.id),
 		core.getUserCorporations(targetOwner.userId),
-		hr.listApplications(
-			{ userId: targetOwner.userId },
-			user.id,
-			{
-				isAdmin: user.is_admin,
-				isAuditor: false,
-			}
-		),
+		hr.listApplications({ userId: targetOwner.userId }, user.id, {
+			isAdmin: user.is_admin,
+			isAuditor: false,
+		}),
 	])
 
 	const candidateCorporationIds = new Map<string, SharedCorporationCandidate>()
 	for (const corporationId of viewerCorporations
 		.map((corporation) => corporation.corporationId)
 		.filter((corporationId) =>
-			targetCorporations.some((targetCorporation) => targetCorporation.corporationId === corporationId)
+			targetCorporations.some(
+				(targetCorporation) => targetCorporation.corporationId === corporationId
+			)
 		)) {
 		candidateCorporationIds.set(corporationId, {
 			corporationId,
@@ -150,7 +159,8 @@ async function resolveSharedCorporationCandidates(
 
 export async function resolveCharacterAccessContext(
 	c: Context<App>,
-	characterIdStr: string
+	characterIdStr: string,
+	prefetch?: CharacterAccessPrefetch
 ): Promise<CharacterAccessContext | Response> {
 	const user = c.get('user')!
 	const db = c.get('db')
@@ -158,8 +168,12 @@ export async function resolveCharacterAccessContext(
 	if (!db) {
 		return c.json({ error: 'Database not available' }, 500)
 	}
+	const prefetchedAccess = prefetch?.accessByCharacterId?.get(characterIdStr)
+	if (prefetchedAccess) return prefetchedAccess
 
-	const targetOwner = await getImmunitasCharacterOwner(db, characterIdStr)
+	const targetOwner = prefetch?.targetOwners.has(characterIdStr)
+		? (prefetch.targetOwners.get(characterIdStr) ?? null)
+		: await getImmunitasCharacterOwner(db, characterIdStr)
 	const isActualOwner = user.characters.some(
 		(char) => char.characterId.toString() === characterIdStr
 	)
@@ -177,8 +191,9 @@ export async function resolveCharacterAccessContext(
 		const hr = getStub<Hr>(c.env.HR, 'default')
 
 		try {
-			const candidateCorporations =
-				targetOwner ? await resolveSharedCorporationCandidates(c, user, targetOwner) : []
+			const candidateCorporations = targetOwner
+				? await resolveSharedCorporationCandidates(c, user, targetOwner)
+				: []
 
 			if (candidateCorporations.length > 0) {
 				// One shared stub for every character: EveCharacterData is Postgres-backed and
@@ -191,7 +206,9 @@ export async function resolveCharacterAccessContext(
 							const userCharInfo = await userCharInstance.getCharacterInfo()
 							return {
 								characterId: userChar.characterId,
-								corporationId: userCharInfo?.corporationId ? String(userCharInfo.corporationId) : null,
+								corporationId: userCharInfo?.corporationId
+									? String(userCharInfo.corporationId)
+									: null,
 							}
 						} catch (error) {
 							logger.warn('[Character Detail] Error checking viewer character access:', {
@@ -208,7 +225,7 @@ export async function resolveCharacterAccessContext(
 					viewerCharacterResults
 						.filter(
 							(
-								value,
+								value
 							): value is {
 								characterId: string
 								corporationId: string | null

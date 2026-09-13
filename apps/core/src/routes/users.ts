@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
-import { and, eq, inArray, or } from '@repo/db-utils'
+import { and, asc, eq, inArray, or } from '@repo/db-utils'
 import { getStub, withRpcResult } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -15,10 +15,12 @@ import { hasHrAuditorPermission } from '../lib/hr-access'
 import { triggerUserRefreshWorkflow } from '../lib/workflow-triggers'
 import { requireAuth } from '../middleware/session'
 import { ActivityService } from '../services/activity.service'
+import { EntityResolverService } from '../services/entity-resolver.service'
 import { syncUsersMumbleProfiles } from '../services/mumble.service'
 import { UserService } from '../services/user.service'
 
-import type { RequestMetadata, UserPreferencesDTO } from '@repo/core'
+import type { RequestMetadata } from '@repo/core'
+import type { EsiTypeResolver } from '@repo/esi'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Hr } from '@repo/hr'
@@ -157,7 +159,7 @@ function buildCorporationMemberStats(
 /**
  * User management routes
  *
- * Handles user profile, preferences, and character management.
+ * Handles user profile and character management.
  * All routes require authentication.
  */
 const users = new Hono<App>()
@@ -178,7 +180,7 @@ function getRequestMetadata(c: any): RequestMetadata {
 /**
  * GET /users/me
  *
- * Get current user profile with all characters, roles, and preferences.
+ * Get current user profile with all characters, roles, and linked account data.
  */
 users.get('/me', async (c) => {
 	const user = c.get('user')!
@@ -222,37 +224,10 @@ users.get('/me', async (c) => {
 		mainCharacterId: profile.mainCharacterId,
 		characters: profile.characters,
 		is_admin: profile.is_admin,
-		preferences: profile.preferences,
 		discord: discordStatus,
 		legacyAuth,
 		createdAt: profile.createdAt,
 		updatedAt: profile.updatedAt,
-	})
-})
-
-/**
- * PATCH /users/me/preferences
- *
- * Update user preferences.
- */
-users.patch('/me/preferences', async (c) => {
-	const user = c.get('user')!
-	const body = await c.req.json()
-
-	const db = c.get('db') || createDb(c.env.DATABASE_URL)
-	const userService = new UserService(db)
-	const activityService = new ActivityService(db)
-
-	// Validate preferences
-	const preferences: UserPreferencesDTO = body.preferences || body
-
-	// Update preferences
-	const updated = await userService.updatePreferences(user.id, preferences)
-
-	await activityService.logPreferencesUpdated(user.id, getRequestMetadata(c))
-
-	return c.json({
-		preferences: updated,
 	})
 })
 
@@ -271,6 +246,65 @@ users.get('/me/characters', async (c) => {
 
 	return c.json({
 		characters: profile.characters,
+	})
+})
+
+/**
+ * GET /users/me/dashboard/characters
+ *
+ * Minimal, user-scoped character cards for the dashboard. This intentionally
+ * avoids the full character overview contract and hydrates affiliations in one
+ * resolver call for the entire list.
+ */
+users.get('/me/dashboard/characters', async (c) => {
+	const user = c.get('user')!
+	const db = c.get('db') || createDb(c.env.DATABASE_URL)
+
+	const characters = await db.query.userCharacters.findMany({
+		where: and(eq(userCharacters.userId, user.id), eq(userCharacters.isDeleted, false)),
+		orderBy: [asc(userCharacters.linkedAt)],
+		columns: {
+			characterId: true,
+			characterName: true,
+			is_primary: true,
+			hasValidToken: true,
+		},
+	})
+
+	if (characters.length === 0) return c.json({ mainCharacterId: null, characters: [] })
+
+	const characterDataStub = getStub<EveCharacterData>(c.env.EVE_CHARACTER_DATA, 'default')
+	const publicData = await characterDataStub.getCharacterInfoBulk(
+		characters.map((character) => character.characterId)
+	)
+	const publicDataById = new Map(publicData.map((character) => [character.characterId, character]))
+	const idsToResolve = [
+		...new Set(
+			publicData.flatMap((character) =>
+				[character.corporationId, character.allianceId].filter((id): id is string => Boolean(id))
+			)
+		),
+	]
+	const resolver = new EntityResolverService(
+		getStub<EsiTypeResolver>(c.env.ESI_TYPE_RESOLVER, 'global')
+	)
+	const entityNames = await resolver.resolveEntityNames(idsToResolve)
+
+	return c.json({
+		mainCharacterId: characters.find((character) => character.is_primary)?.characterId ?? null,
+		characters: characters.map((character) => {
+			const info = publicDataById.get(character.characterId)
+			return {
+				characterId: character.characterId,
+				characterName: character.characterName,
+				isPrimary: character.is_primary,
+				hasValidToken: character.hasValidToken === true,
+				corporationId: info?.corporationId ?? null,
+				corporationName: info?.corporationId ? (entityNames.get(info.corporationId) ?? null) : null,
+				allianceId: info?.allianceId ?? null,
+				allianceName: info?.allianceId ? (entityNames.get(info.allianceId) ?? null) : null,
+			}
+		}),
 	})
 })
 

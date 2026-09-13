@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 
 import { ApplicationCard } from '../components/application-card'
 import { ApplicationStatsCard } from '../components/application-stats-card'
-import { useApplications } from '../hooks'
+import { useMyApplications } from '../hooks'
 
 import type { ApplicationStatus } from '../api'
 
@@ -66,7 +66,7 @@ export default function MyApplicationsList() {
 		data: applications,
 		isLoading: applicationsLoading,
 		error,
-	} = useApplications({ userId: user?.id })
+	} = useMyApplications({ enabled: !!user?.id })
 
 	// Set page title
 	usePageTitle('My Applications')

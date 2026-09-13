@@ -67,7 +67,10 @@ export class AuthService {
 	/**
 	 * Validate a session token and return session data with userId
 	 */
-	async validateSession(sessionToken: string): Promise<{
+	async validateSession(
+		sessionToken: string,
+		options: { updateActivity?: boolean } = {}
+	): Promise<{
 		session: UserSessionDTO | null
 		userId: string | null
 	}> {
@@ -86,11 +89,11 @@ export class AuthService {
 			return { session: null, userId: null }
 		}
 
-		// Update last activity timestamp
-		await this.db
-			.update(userSessions)
-			.set({ lastActivityAt: new Date() })
-			.where(eq(userSessions.id, session.id))
+		// Activity updates can be deferred by request middleware. Callers that need
+		// the legacy synchronous behavior can leave this enabled.
+		if (options.updateActivity !== false) {
+			await this.touchSessionActivity(session.id)
+		}
 
 		return {
 			session: {
@@ -98,11 +101,18 @@ export class AuthService {
 				sessionToken: session.sessionToken,
 				expiresAt: session.expiresAt,
 				metadata: session.metadata as UserSessionDTO['metadata'],
-				lastActivityAt: new Date(),
+				lastActivityAt: options.updateActivity === false ? session.lastActivityAt : new Date(),
 				createdAt: session.createdAt,
 			},
 			userId: session.userId,
 		}
+	}
+
+	async touchSessionActivity(sessionId: string): Promise<void> {
+		await this.db
+			.update(userSessions)
+			.set({ lastActivityAt: new Date() })
+			.where(eq(userSessions.id, sessionId))
 	}
 
 	/**

@@ -14,6 +14,7 @@ import type {
 	Application,
 	ApplicationDetail,
 	ApplicationFilters,
+	ApplicationListItem,
 	ApplicationListResult,
 	ApplicationMessage,
 	ApplicationStaffNote,
@@ -30,6 +31,7 @@ import type {
 	CreateDiscordBlacklistParams,
 	CreateUserBlacklistParams,
 	Hr,
+	HrApplicationListResult,
 	HrNote,
 	HrNotePriority,
 	HrNoteType,
@@ -146,7 +148,8 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		access: { isAdmin: boolean; isAuditor: boolean }
 	): Promise<Application[]> {
 		// Get user's HR corporations for authorization
-		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
+		const userHrCorporations =
+			filters.userId === userId ? [] : await this.hrRoleService.getUserHrCorporations(userId)
 
 		return await this.applicationService.listApplications(
 			filters,
@@ -162,9 +165,34 @@ export class HrDO extends DurableObject<Env> implements Hr {
 		userId: string,
 		access: { isAdmin: boolean; isAuditor: boolean }
 	): Promise<ApplicationListResult> {
-		const userHrCorporations = await this.hrRoleService.getUserHrCorporations(userId)
+		const userHrCorporations =
+			filters.userId === userId ? [] : await this.hrRoleService.getUserHrCorporations(userId)
 
 		return await this.applicationService.listApplicationsPaged(
+			filters,
+			userId,
+			access.isAdmin,
+			access.isAuditor,
+			userHrCorporations
+		)
+	}
+
+	async listMyApplications(userId: string): Promise<ApplicationListItem[]> {
+		return await this.applicationService.listMyApplicationItems(userId)
+	}
+
+	async listCorporationApplicationsPaged(
+		corporationId: string,
+		filters: Omit<ApplicationFilters, 'corporationId' | 'userId'>,
+		userId: string,
+		access: { isAdmin: boolean; isAuditor: boolean }
+	): Promise<HrApplicationListResult> {
+		const userHrCorporations =
+			access.isAdmin || access.isAuditor
+				? []
+				: await this.hrRoleService.getUserHrCorporations(userId)
+		return await this.applicationService.listCorporationApplicationItems(
+			corporationId,
 			filters,
 			userId,
 			access.isAdmin,

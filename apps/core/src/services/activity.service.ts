@@ -1,7 +1,7 @@
 import { userActivityLog } from '../db/schema'
 
-import type { createDb } from '../db'
 import type { ActivityAction, RequestMetadata } from '@repo/core'
+import type { createDb } from '../db'
 
 /**
  * Activity Service
@@ -141,16 +141,6 @@ export class ActivityService {
 			...metadata,
 			role,
 			revokedBy,
-			success: true,
-		})
-	}
-
-	/**
-	 * Log preferences updated activity
-	 */
-	async logPreferencesUpdated(userId: string, metadata: RequestMetadata): Promise<void> {
-		await this.logActivity('preferences_updated', userId, {
-			...metadata,
 			success: true,
 		})
 	}

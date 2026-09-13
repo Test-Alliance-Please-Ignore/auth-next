@@ -4,6 +4,7 @@ import { getStub } from '@repo/do-utils'
 
 import { userCharacters } from '../db/schema'
 import { clearUserBillScopeCache } from '../lib/billing-scope-cache'
+import { clearUserProfileCache } from '../lib/user-profile-cache'
 
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { EveTokenStore } from '@repo/eve-token-store'
@@ -35,7 +36,10 @@ export async function markCharacterDeletedEverywhere(
 			updatedAt: new Date(),
 		})
 		.where(eq(userCharacters.characterId, characterId))
-	if (character) await clearUserBillScopeCache(character.userId, env.BILLING_SCOPE_CACHE)
+	if (character) {
+		await clearUserBillScopeCache(character.userId, env.BILLING_SCOPE_CACHE)
+		clearUserProfileCache(character.userId)
+	}
 
 	try {
 		const tokenStore = getStub<EveTokenStore>(env.EVE_TOKEN_STORE, 'default')

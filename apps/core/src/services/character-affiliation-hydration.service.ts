@@ -5,6 +5,7 @@ import { logger } from '@repo/hono-helpers'
 import { userCharacters } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
 import { clearUserBillScopeCache } from '../lib/billing-scope-cache'
+import { clearUserProfileCache } from '../lib/user-profile-cache'
 import { markCharacterDeletedEverywhere } from './character-deletion.service'
 
 import type { EsiTypeResolver } from '@repo/esi'
@@ -76,6 +77,7 @@ export async function hydrateCharacterAffiliation(
 		.where(eq(userCharacters.characterId, characterId))
 	if (linkedCharacter) {
 		await clearUserBillScopeCache(linkedCharacter.userId, env.BILLING_SCOPE_CACHE)
+		clearUserProfileCache(linkedCharacter.userId)
 	}
 
 	if (env.EVE_CORPORATION_DATA) {

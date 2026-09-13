@@ -11,7 +11,6 @@ export type ActivityAction =
 	| 'character_linked'
 	| 'character_unlinked'
 	| 'character_primary_changed'
-	| 'preferences_updated'
 	| 'session_created'
 	| 'session_expired'
 	| 'role_granted'
@@ -52,18 +51,6 @@ export interface UserSessionDTO {
 }
 
 /**
- * User preferences DTO
- */
-export interface UserPreferencesDTO {
-	theme?: 'light' | 'dark' | 'auto'
-	notifications?: {
-		email?: boolean
-		push?: boolean
-	}
-	[key: string]: unknown
-}
-
-/**
  * User profile DTO (full user data)
  */
 export interface UserProfileDTO {
@@ -72,7 +59,6 @@ export interface UserProfileDTO {
 	discordUserId: string | null
 	characters: UserCharacterDTO[]
 	is_admin: boolean
-	preferences: UserPreferencesDTO
 	legacyAuthUserId: string | null
 	legacyAuthUserUsername: string | null
 	createdAt: Date
@@ -134,4 +120,3 @@ export interface LinkCharacterOptions {
 	characterId: string
 	characterName: string
 }
-

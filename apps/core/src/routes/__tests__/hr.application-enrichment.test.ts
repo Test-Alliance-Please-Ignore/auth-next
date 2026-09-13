@@ -11,6 +11,7 @@ const hoisted = vi.hoisted(() => ({
 	hrMocks: {
 		listApplications: vi.fn(),
 		getApplication: vi.fn(),
+		getMessageCount: vi.fn(),
 		checkBlacklistTargets: vi.fn(),
 	},
 	resolverMocks: {
@@ -87,6 +88,7 @@ describe('HR application hydration', () => {
 				return {
 					listApplications: hoisted.hrMocks.listApplications,
 					getApplication: hoisted.hrMocks.getApplication,
+					getMessageCount: hoisted.hrMocks.getMessageCount,
 					checkBlacklistTargets: hoisted.hrMocks.checkBlacklistTargets,
 				}
 			}
@@ -99,6 +101,7 @@ describe('HR application hydration', () => {
 		})
 		hoisted.resolverMocks.resolveIds.mockResolvedValue({})
 		hoisted.hrMocks.checkBlacklistTargets.mockResolvedValue([])
+		hoisted.hrMocks.getMessageCount.mockResolvedValue(0)
 	})
 
 	it('falls back to managed corporation names for application lists', async () => {

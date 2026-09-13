@@ -14,11 +14,14 @@ import { apiClient } from '@/lib/api'
 
 import { applicationsApi, fulcrumApi } from './api'
 
+import type { CharacterPrivateBulkItem } from '@/lib/api'
 import type {
 	AddHRNoteRequest,
 	AddRecommendationRequest,
 	Application,
 	ApplicationActivityLogEntry,
+	ApplicationListItem,
+	ApplicationListResult,
 	ApplicationMessage,
 	ApplicationsListResult,
 	ApplicationsParams,
@@ -138,6 +141,16 @@ export function useApplications(params?: ApplicationsParams, options?: { enabled
 	})
 }
 
+export function useMyApplications(options?: { enabled?: boolean }) {
+	return useQuery<ApplicationListItem[]>({
+		queryKey: [...applicationKeys.all, 'mine'],
+		queryFn: () => applicationsApi.getMyApplications(),
+		staleTime: 1000 * 60 * 2,
+		gcTime: 1000 * 60 * 5,
+		enabled: options?.enabled ?? true,
+	})
+}
+
 export function useCorporationApplicationCounts(options?: { enabled?: boolean }) {
 	const { user } = useAuth()
 	const userId = user?.id ?? null
@@ -164,6 +177,22 @@ export function useApplicationsPaged(params?: ApplicationsParams, options?: { en
 	})
 }
 
+export function useCorporationApplicationsPaged(
+	corporationId: string,
+	params?: Omit<ApplicationsParams, 'corporationId' | 'userId' | 'characterId'>,
+	options?: { enabled?: boolean }
+) {
+	const filterKey = JSON.stringify(params ?? {})
+	return useQuery<ApplicationListResult>({
+		queryKey: [...applicationKeys.all, 'corporation-list', corporationId, filterKey],
+		queryFn: () => applicationsApi.getCorporationApplicationsPaged(corporationId, params),
+		placeholderData: (previousData) => previousData,
+		staleTime: 1000 * 60 * 2,
+		gcTime: 1000 * 60 * 5,
+		enabled: (options?.enabled ?? true) && !!corporationId,
+	})
+}
+
 /**
  * Hook to fetch a single application by ID
  * @param applicationId - The application ID to fetch
@@ -172,7 +201,7 @@ export function useApplication(applicationId: string, options?: { enabled?: bool
 	return useQuery<Application>({
 		queryKey: applicationKeys.detail(applicationId),
 		queryFn: () => applicationsApi.getApplication(applicationId),
-		staleTime: 1000 * 60, // 1 minute
+		staleTime: 1000 * 60 * 5,
 		gcTime: 1000 * 60 * 3, // 3 minutes
 		enabled: options?.enabled ?? !!applicationId,
 	})
@@ -215,9 +244,10 @@ export function useUserApplicationHistory(userId: string, excludeApplicationId: 
  * @param applicationId - The application ID
  */
 export function useRecommendations(applicationId: string, options?: { enabled?: boolean }) {
-	return useQuery<Recommendation[]>({
-		queryKey: applicationKeys.recommendations(applicationId),
-		queryFn: () => applicationsApi.getRecommendations(applicationId),
+	return useQuery<Application, Error, Recommendation[]>({
+		queryKey: applicationKeys.detail(applicationId),
+		queryFn: () => applicationsApi.getApplication(applicationId),
+		select: (application) => application.recommendations ?? [],
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
 		enabled: options?.enabled ?? !!applicationId,
@@ -229,12 +259,30 @@ export function useRecommendations(applicationId: string, options?: { enabled?: 
  * @param applicationId - The application ID
  */
 export function useApplicationActivity(applicationId: string, options?: { enabled?: boolean }) {
-	return useQuery<ApplicationActivityLogEntry[]>({
-		queryKey: applicationKeys.activity(applicationId),
-		queryFn: () => applicationsApi.getApplicationActivity(applicationId),
+	return useQuery<Application, Error, ApplicationActivityLogEntry[]>({
+		queryKey: applicationKeys.detail(applicationId),
+		queryFn: () => applicationsApi.getApplication(applicationId),
+		select: (application) => application.activityLog ?? [],
 		staleTime: 1000 * 60, // 1 minute
 		gcTime: 1000 * 60 * 3, // 3 minutes
 		enabled: options?.enabled ?? !!applicationId,
+	})
+}
+
+export function useCharacterPrivateDetailsBulk(
+	characterIds: string[],
+	options?: { enabled?: boolean }
+) {
+	const normalizedCharacterIds = [...new Set(characterIds)].sort()
+	return useQuery<{ items: CharacterPrivateBulkItem[] }>({
+		queryKey: ['characters', 'private', 'bulk', normalizedCharacterIds],
+		queryFn: () => apiClient.getCharacterPrivateDetailsBulk(normalizedCharacterIds),
+		staleTime: 5 * 60 * 1000,
+		gcTime: 5 * 60 * 1000,
+		enabled: (options?.enabled ?? true) && normalizedCharacterIds.length > 0,
+		meta: {
+			suppressErrorToast: true,
+		},
 	})
 }
 

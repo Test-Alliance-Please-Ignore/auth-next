@@ -21,13 +21,13 @@ import type {
 	DataTablePagination,
 	DataTableSortingState,
 } from '@/components/data-table'
-import type { Application } from '../api'
+import type { ApplicationListItem } from '../api'
 
 export interface ApplicationsTableProps {
-	applications: Application[]
+	applications: ApplicationListItem[]
 	loading?: boolean
 	/** Build the href for an application row. Enables right-click "Open in new tab". */
-	getApplicationHref: (app: Application) => string
+	getApplicationHref: (app: ApplicationListItem) => string
 	canManage?: boolean
 	totalCount?: number
 	page?: number
@@ -37,10 +37,10 @@ export interface ApplicationsTableProps {
 }
 
 function buildColumns(
-	getApplicationHref: (app: Application) => string,
+	getApplicationHref: (app: ApplicationListItem) => string,
 	canManage: boolean
-): Array<DataTableColumn<Application>> {
-	const columns: Array<DataTableColumn<Application>> = [
+): Array<DataTableColumn<ApplicationListItem>> {
+	const columns: Array<DataTableColumn<ApplicationListItem>> = [
 		{
 			id: 'characterName',
 			header: 'Character',
@@ -52,19 +52,19 @@ function buildColumns(
 							characterId={application.characterId}
 							characterName={application.characterName}
 							size="sm"
-							isBlacklisted={application.isBlacklisted === true}
+							isBlacklisted={application.blacklistState?.effective === true}
 						/>
 						<div className="flex min-w-0 flex-col">
 							<span className="inline-flex min-w-0 items-center gap-2">
 								<span
 									className={cn(
 										'truncate text-left font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-										application.isBlacklisted ? 'text-red-500' : 'text-foreground'
+										application.blacklistState?.effective ? 'text-red-500' : 'text-foreground'
 									)}
 								>
 									{application.characterName}
 								</span>
-								{application.isBlacklisted && (
+								{application.blacklistState?.effective && (
 									<Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
 										Blocklisted
 									</Badge>
@@ -82,10 +82,10 @@ function buildColumns(
 									</span>
 								)}
 							</span>
-							{(application.altCharacterIds?.length ?? 0) > 0 && (
+							{(application.altCharacters?.length ?? 0) > 0 && (
 								<span className="text-xs text-muted-foreground">
-									+{application.altCharacterIds!.length}{' '}
-									{application.altCharacterIds!.length === 1 ? 'Alt' : 'Alts'}
+									+{application.altCharacters?.length ?? 0}{' '}
+									{(application.altCharacters?.length ?? 0) === 1 ? 'Alt' : 'Alts'}
 								</span>
 							)}
 						</div>
@@ -173,8 +173,12 @@ function buildColumns(
 	return columns
 }
 
-function compareApplicationValues(left: Application, right: Application, columnId: string): number {
-	const value = (application: Application): string | number => {
+function compareApplicationValues(
+	left: ApplicationListItem,
+	right: ApplicationListItem,
+	columnId: string
+): number {
+	const value = (application: ApplicationListItem): string | number => {
 		switch (columnId) {
 			case 'createdAt':
 				return new Date(application.createdAt).getTime()

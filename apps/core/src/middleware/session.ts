@@ -6,6 +6,7 @@ import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
 import { waitUntilWithTelemetry } from '../lib/background-task'
+import { getCachedUserBlocklistStatus } from '../lib/blocklist-cache'
 import { getCachedUserRoles } from '../lib/groups-cache'
 import { extractClientIp, recordUserIpAddress } from '../lib/ip-tracking'
 import { AuthService } from '../services/auth.service'
@@ -16,6 +17,8 @@ import type { MiddlewareHandler } from 'hono'
 import type { EveTokenStore } from '@repo/eve-token-store'
 import type { Hr } from '@repo/hr'
 import type { App, SessionUser } from '../context'
+
+const SESSION_ACTIVITY_UPDATE_INTERVAL_MS = 60_000
 
 /** Public image requests do not need session resolution or its RPC lookups. */
 export function shouldBypassSessionMiddleware(pathname: string): boolean {
@@ -68,7 +71,9 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			const userService = new UserService(db)
 
 			// Validate session and get user ID in one call
-			const { session, userId } = await authService.validateSession(sessionToken)
+			const { session, userId } = await authService.validateSession(sessionToken, {
+				updateActivity: false,
+			})
 
 			if (!session || !userId) {
 				// Invalid or expired session, or user not found
@@ -81,20 +86,23 @@ export const sessionMiddleware = (): MiddlewareHandler<App> => {
 			const isAdminRoute = c.req.path.startsWith('/api/admin/')
 
 			// Execute independent operations in parallel for better performance
-			const [userProfile, isBlacklisted, roleAttachments] = await Promise.all([
+			const shouldUpdateActivity =
+				Date.now() - session.lastActivityAt.getTime() >= SESSION_ACTIVITY_UPDATE_INTERVAL_MS
+			const [userProfile, isBlocklisted, roleAttachments] = await Promise.all([
 				userService.getUserProfile(userId),
-				getStub<Hr>(c.env.HR, 'default').isUserBlacklisted(userId),
+				getCachedUserBlocklistStatus(getStub<Hr>(c.env.HR, 'default'), userId),
 				isAdminRoute
 					? Promise.resolve([])
 					: getCachedUserRoles(c.env, userId).catch((error) => {
 							logger.error('Error fetching user roles:', error)
 							return []
 						}),
+				shouldUpdateActivity ? authService.touchSessionActivity(session.id) : Promise.resolve(),
 			])
 
-			// SECURITY: Check blacklist first (fail fast)
-			if (isBlacklisted) {
-				// User is blacklisted - invalidate session and reject
+			// SECURITY: Check blocklist first (fail fast)
+			if (isBlocklisted) {
+				// User is blocklisted - invalidate session and reject
 				const sessionService = new SessionService(db)
 				await sessionService.invalidateSession(sessionToken)
 				return c.json({ error: 'Account suspended' }, 403)

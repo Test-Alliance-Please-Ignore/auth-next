@@ -13,7 +13,6 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
-import { apiClient } from '@/lib/api'
 
 import { useAuditorUser, useAuditorUserIpHistory } from '../../../hooks/useAuditorUsers'
 import { myCorporationsApi } from '../../corporations/api'
@@ -36,6 +35,7 @@ import {
 } from '../components/user-profile-sections'
 import {
 	useApplications,
+	useCharacterPrivateDetailsBulk,
 	useFulcrumUserReports,
 	useHRNotes,
 	useHrUserCharacters,
@@ -206,17 +206,12 @@ export default function HrAuditorUserProfilePage() {
 			})
 	}, [hrCharacterById, hrCharacters, reportCharacterById, userDetails])
 
-	const characterDetailQueries = useQueries({
-		queries: rows.map((character) => ({
-			queryKey: ['character', character.characterId, 'auditor-profile-private'],
-			queryFn: () => apiClient.getCharacterPrivateDetail(character.characterId),
-			meta: {
-				suppressErrorToast: true,
-			},
-			enabled: !!character.characterId,
-			staleTime: 5 * 60 * 1000,
-		})),
-	})
+	const characterDetailQuery = useCharacterPrivateDetailsBulk(
+		rows.map((character) => character.characterId)
+	)
+	const characterDetailById = new Map(
+		(characterDetailQuery.data?.items ?? []).map((item) => [item.characterId, item])
+	)
 	const corporationIdsForMemberMeta = useMemo(
 		() => [
 			...new Set(
@@ -259,18 +254,24 @@ export default function HrAuditorUserProfilePage() {
 	const walletByCharacterId = new Map<string, string | null>()
 	const metricsLoadingByCharacterId = new Map<string, boolean>()
 	const privateDataUnavailableNoteByCharacterId = new Map<string, string | null>()
-	rows.forEach((character, index) => {
-		const query = characterDetailQueries[index]
-		const detail = query?.data
+	rows.forEach((character) => {
+		const item = characterDetailById.get(character.characterId)
+		const detail = item?.data
 		spByCharacterId.set(character.characterId, detail?.skills?.totalSp ?? null)
 		walletByCharacterId.set(character.characterId, detail?.private?.wallet?.balance ?? null)
 		metricsLoadingByCharacterId.set(
 			character.characterId,
-			!!character.corporationId && (query?.isPending ?? false) && detail == null
+			!!character.corporationId && characterDetailQuery.isFetching && detail == null
 		)
 		privateDataUnavailableNoteByCharacterId.set(
 			character.characterId,
-			getPrivateDataUnavailableMessage(query?.error)
+			getPrivateDataUnavailableMessage(
+				item?.status === 'forbidden'
+					? { status: 403 }
+					: item?.status === 'unavailable'
+						? { status: 500 }
+						: null
+			)
 		)
 	})
 	const privateDataUnavailableMessage =

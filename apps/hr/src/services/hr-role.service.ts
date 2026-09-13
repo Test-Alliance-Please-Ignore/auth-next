@@ -18,6 +18,7 @@ import type { ServiceContext } from './context'
  * Validates corporation membership via EVE Corporation Data DO.
  */
 export class HrRoleService {
+	private static readonly LEADERSHIP_LOOKUP_CONCURRENCY = 4
 	private readonly logger = logger.withTags({ service: 'hr-role' })
 	private readonly roleIdCache = new Map<HrRoleType, string>()
 	private readonly roleTypeCache = new Map<HrRoleUrn, Role>()
@@ -276,6 +277,35 @@ export class HrRoleService {
 		return null
 	}
 
+	private async getLeadershipRolesForCorporations(
+		userId: string,
+		corporationIds: string[]
+	): Promise<Array<[string, HrRoleType | null]>> {
+		const results: Array<[string, HrRoleType | null]> = []
+		let nextIndex = 0
+		const worker = async (): Promise<void> => {
+			while (nextIndex < corporationIds.length) {
+				const index = nextIndex++
+				const corporationId = corporationIds[index]
+				if (corporationId) {
+					results[index] = [
+						corporationId,
+						await this.getLeadershipRoleForCorporation(userId, corporationId),
+					]
+				}
+			}
+		}
+		await Promise.all(
+			Array.from(
+				{
+					length: Math.min(HrRoleService.LEADERSHIP_LOOKUP_CONCURRENCY, corporationIds.length),
+				},
+				() => worker()
+			)
+		)
+		return results.filter((result): result is [string, HrRoleType | null] => result !== undefined)
+	}
+
 	private buildSyntheticLeadershipRole(
 		userId: string,
 		corporationId: string,
@@ -481,8 +511,10 @@ export class HrRoleService {
 				.map((row) => row.corporation_id)
 				.filter((value): value is string => typeof value === 'string' && value.length > 0)
 
-			for (const corporationId of candidateCorporationIds) {
-				const leadershipRole = await this.getLeadershipRoleForCorporation(userId, corporationId)
+			for (const [corporationId, leadershipRole] of await this.getLeadershipRolesForCorporations(
+				userId,
+				candidateCorporationIds
+			)) {
 				if (leadershipRole) {
 					corporationIds.add(corporationId)
 				}
@@ -555,8 +587,10 @@ export class HrRoleService {
 			.map((row) => row.corporation_id)
 			.filter((value): value is string => typeof value === 'string' && value.length > 0)
 
-		for (const corporationId of candidateCorporationIds) {
-			const leadershipRole = await this.getLeadershipRoleForCorporation(userId, corporationId)
+		for (const [corporationId, leadershipRole] of await this.getLeadershipRolesForCorporations(
+			userId,
+			candidateCorporationIds
+		)) {
 			if (minRole === 'hr_admin' && leadershipRole === 'hr_admin') {
 				corporationIds.add(corporationId)
 			} else if (

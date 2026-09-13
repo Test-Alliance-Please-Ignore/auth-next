@@ -31,6 +31,7 @@ import type { CharacterMarketTransaction } from '@repo/esi'
 import type {
 	CharacterAttributesData,
 	CharacterCorporationHistoryData,
+	CharacterDashboardData,
 	CharacterKillmailData,
 	CharacterKillmailUpsertData,
 	CharacterLossData,
@@ -38,6 +39,7 @@ import type {
 	CharacterMarketOrderData,
 	CharacterMarketTransactionData,
 	CharacterMarketTransactionsWindowFilters,
+	CharacterPrivateProfileData,
 	CharacterPublicData,
 	CharacterPublicRefreshResult,
 	CharacterSkillsData,
@@ -691,6 +693,27 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			createdAt: result.createdAt,
 			updatedAt: result.updatedAt,
 		}
+	}
+
+	async getCharacterInfoBulk(characterIds: string[]): Promise<CharacterDashboardData[]> {
+		if (characterIds.length === 0) return []
+
+		const rows = await this.db
+			.select({
+				characterId: characterPublicInfo.characterId,
+				name: characterPublicInfo.name,
+				corporationId: characterPublicInfo.corporationId,
+				allianceId: characterPublicInfo.allianceId,
+			})
+			.from(characterPublicInfo)
+			.where(inArray(characterPublicInfo.characterId, characterIds))
+
+		return rows.map((row) => ({
+			characterId: row.characterId,
+			name: row.name,
+			corporationId: row.corporationId,
+			allianceId: row.allianceId ?? undefined,
+		}))
 	}
 
 	/**
@@ -1549,6 +1572,120 @@ export class EveCharacterDataDO extends DurableObject<Env> implements EveCharact
 			total_sp: result.totalSp,
 			unallocated_sp: result.unallocatedSp ?? undefined,
 		}
+	}
+
+	async getPrivateProfileDataBulk(characterIds: string[]): Promise<CharacterPrivateProfileData[]> {
+		if (characterIds.length === 0) return []
+
+		const rows = await this.db
+			.select({
+				characterId: characterPublicInfo.characterId,
+				skills: characterSkills.skills,
+				totalSp: characterSkills.totalSp,
+				unallocatedSp: characterSkills.unallocatedSp,
+				locationSolarSystemId: characterLocation.solarSystemId,
+				locationStationId: characterLocation.stationId,
+				locationStructureId: characterLocation.structureId,
+				walletBalance: characterWallet.balance,
+				assetsTotalValue: characterAssets.totalValue,
+				assetsAssetCount: characterAssets.assetCount,
+				assetsLastUpdated: characterAssets.lastUpdated,
+				statusOnline: characterStatus.online,
+				statusLastLogin: characterStatus.lastLogin,
+				statusLastLogout: characterStatus.lastLogout,
+				statusLoginsCount: characterStatus.loginsCount,
+				skillQueue: characterSkillQueue.queue,
+			})
+			.from(characterPublicInfo)
+			.leftJoin(characterSkills, eq(characterSkills.characterId, characterPublicInfo.characterId))
+			.leftJoin(
+				characterLocation,
+				eq(characterLocation.characterId, characterPublicInfo.characterId)
+			)
+			.leftJoin(characterWallet, eq(characterWallet.characterId, characterPublicInfo.characterId))
+			.leftJoin(characterAssets, eq(characterAssets.characterId, characterPublicInfo.characterId))
+			.leftJoin(characterStatus, eq(characterStatus.characterId, characterPublicInfo.characterId))
+			.leftJoin(
+				characterSkillQueue,
+				eq(characterSkillQueue.characterId, characterPublicInfo.characterId)
+			)
+			.where(inArray(characterPublicInfo.characterId, characterIds))
+
+		const rowsByCharacterId = new Map(rows.map((row) => [row.characterId, row]))
+
+		return characterIds.map((characterId) => {
+			const row = rowsByCharacterId.get(characterId)
+			if (!row) {
+				return { characterId, skills: null, sensitiveData: null }
+			}
+			const hasSensitiveData = Boolean(
+				row.locationSolarSystemId ||
+					row.walletBalance ||
+					row.assetsTotalValue ||
+					typeof row.assetsAssetCount === 'number' ||
+					row.assetsLastUpdated ||
+					typeof row.statusOnline === 'boolean' ||
+					row.statusLastLogin ||
+					row.statusLastLogout ||
+					typeof row.statusLoginsCount === 'number' ||
+					row.skillQueue
+			)
+			const sensitiveData = hasSensitiveData
+				? {
+						location: row.locationSolarSystemId
+							? {
+									solarSystemId: row.locationSolarSystemId,
+									stationId: row.locationStationId ?? undefined,
+									structureId: row.locationStructureId ?? undefined,
+								}
+							: undefined,
+						wallet: row.walletBalance ? { balance: row.walletBalance } : undefined,
+						assets:
+							row.assetsTotalValue ||
+							typeof row.assetsAssetCount === 'number' ||
+							row.assetsLastUpdated
+								? {
+										totalValue: row.assetsTotalValue ?? undefined,
+										assetCount: row.assetsAssetCount ?? undefined,
+										lastUpdated: row.assetsLastUpdated ?? undefined,
+									}
+								: undefined,
+						status:
+							typeof row.statusOnline === 'boolean' ||
+							row.statusLastLogin ||
+							row.statusLastLogout ||
+							typeof row.statusLoginsCount === 'number'
+								? {
+										online: row.statusOnline ?? false,
+										lastLogin: row.statusLastLogin ?? undefined,
+										lastLogout: row.statusLastLogout ?? undefined,
+										loginsCount: row.statusLoginsCount ?? undefined,
+									}
+								: undefined,
+						skillQueue: row.skillQueue
+							? row.skillQueue.map((item) => ({
+									...item,
+									skill_id: Number(item.skill_id),
+								}))
+							: undefined,
+					}
+				: null
+
+			return {
+				characterId,
+				skills: row?.skills
+					? {
+							skills: row.skills.map((skill) => ({
+								...skill,
+								skill_id: Number(skill.skill_id),
+							})),
+							total_sp: row.totalSp ?? 0,
+							unallocated_sp: row.unallocatedSp ?? undefined,
+						}
+					: null,
+				sensitiveData,
+			}
+		})
 	}
 
 	/**

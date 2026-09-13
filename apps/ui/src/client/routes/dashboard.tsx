@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, ExternalLink, RefreshCw, UserPlus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
@@ -24,23 +25,13 @@ export default function DashboardPage() {
 	const [isLinkingCharacter, setIsLinkingCharacter] = useState(false)
 	const [reauthorizingCharacters, setReauthorizingCharacters] = useState<Set<string>>(new Set())
 	const [refreshingCharacters, setRefreshingCharacters] = useState<Set<string>>(new Set())
-	const [mainCharacterDetails, setMainCharacterDetails] = useState<any>(null)
 	const [creatingInvites, setCreatingInvites] = useState<Set<string>>(new Set())
-
-	// Fetch main character details when user loads
-	useEffect(() => {
-		const fetchMainCharacterDetails = async () => {
-			if (user?.mainCharacterId) {
-				try {
-					const details = await apiClient.getCharacterDetail(user.mainCharacterId)
-					setMainCharacterDetails(details)
-				} catch (error) {
-					console.error('Failed to fetch main character details:', error)
-				}
-			}
-		}
-		void fetchMainCharacterDetails()
-	}, [user?.mainCharacterId])
+	const dashboardCharactersQuery = useQuery({
+		queryKey: ['users', 'me', 'dashboard', 'characters'],
+		queryFn: () => apiClient.getDashboardCharacters(),
+		enabled: Boolean(user),
+		staleTime: 60 * 1000,
+	})
 
 	// Force immediate auth/session refresh after OAuth token update callback.
 	useEffect(() => {
@@ -209,7 +200,17 @@ export default function DashboardPage() {
 	}
 
 	// Find main character
-	const mainCharacter = user.characters.find((c) => c.characterId === user.mainCharacterId)
+	const dashboardCharacters =
+		dashboardCharactersQuery.data?.characters ??
+		user.characters.map((character) => ({
+			...character,
+			isPrimary: character.characterId === user.mainCharacterId,
+			corporationId: null,
+			corporationName: null,
+			allianceId: null,
+			allianceName: null,
+		}))
+	const mainCharacter = dashboardCharacters.find((c) => c.characterId === user.mainCharacterId)
 
 	return (
 		<Container>
@@ -243,14 +244,14 @@ export default function DashboardPage() {
 												<h3 className="text-xl font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
 													{mainCharacter.characterName}
 												</h3>
-												{mainCharacterDetails?.public?.info ? (
+												{mainCharacter.corporationName ? (
 													<div className="space-y-1">
 														<p className="text-sm text-muted-foreground">
-															{mainCharacterDetails.public.info.corporation_name}
+															{mainCharacter.corporationName}
 														</p>
-														{mainCharacterDetails.public.info.alliance_name && (
+														{mainCharacter.allianceName && (
 															<p className="text-xs text-muted-foreground">
-																{mainCharacterDetails.public.info.alliance_name}
+																{mainCharacter.allianceName}
 															</p>
 														)}
 													</div>
@@ -374,7 +375,7 @@ export default function DashboardPage() {
 					</CardHeader>
 					<CardContent>
 						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-							{user.characters.map((character) => (
+							{dashboardCharacters.map((character) => (
 								<Card key={character.characterId} className="group relative">
 									<CardContent className="p-4">
 										<Link
@@ -402,7 +403,7 @@ export default function DashboardPage() {
 														{character.characterName}
 													</h3>
 													<div className="flex items-center gap-2 mt-1">
-														{character.characterId === user.mainCharacterId && (
+														{character.isPrimary && (
 															<Badge variant="default" className="text-xs">
 																Main
 															</Badge>
@@ -481,7 +482,7 @@ export default function DashboardPage() {
 				<>
 					<div className="my-8" />
 					<Section>
-						<ServicesCard isLegacyAuthLinked={true} />
+						<ServicesCard />
 					</Section>
 				</>
 			)}

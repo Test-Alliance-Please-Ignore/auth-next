@@ -1,13 +1,13 @@
 import { and, asc, eq } from '@repo/db-utils'
 import { logger, toErrorLogDetails } from '@repo/hono-helpers'
 
-import { userCharacters, userPreferences, users } from '../db/schema'
+import { userCharacters, users } from '../db/schema'
+import { clearUserProfileCache, getCachedUserProfile } from '../lib/user-profile-cache'
 
 import type {
 	CreateUserOptions,
 	LinkCharacterOptions,
 	UserCharacterDTO,
-	UserPreferencesDTO,
 	UserProfileDTO,
 } from '@repo/core'
 import type { createDb } from '../db'
@@ -79,12 +79,6 @@ export class UserService {
 			hasValidToken: true,
 		})
 
-		// Create default preferences
-		await this.db.insert(userPreferences).values({
-			userId: user.id,
-			preferences: {},
-		})
-
 		// Return full user profile
 		return this.getUserProfile(user.id)
 	}
@@ -153,7 +147,7 @@ export class UserService {
 	}
 
 	/**
-	 * Get full user profile with characters and preferences
+	 * Get full user profile with characters
 	 * Optimized to fetch all data in parallel rather than sequentially
 	 */
 	async getUserProfile(
@@ -161,28 +155,20 @@ export class UserService {
 		options?: { includeDeleted?: boolean }
 	): Promise<UserProfileDTO> {
 		const includeDeleted = options?.includeDeleted === true
+		return getCachedUserProfile(userId, includeDeleted, () =>
+			this.loadUserProfile(userId, includeDeleted)
+		)
+	}
+
+	private async loadUserProfile(userId: string, includeDeleted: boolean): Promise<UserProfileDTO> {
 		const characterWhere = includeDeleted
 			? eq(userCharacters.userId, userId)
 			: and(eq(userCharacters.userId, userId), eq(userCharacters.isDeleted, false))
 
-		// Preferences are optional profile metadata. Keep their failure isolated so a
-		// transient preferences query does not prevent session authentication.
-		const preferencesPromise = this.db.query.userPreferences
-			.findFirst({
-				where: eq(userPreferences.userId, userId),
-			})
-			.catch((error) => {
-				logger.warn('[UserService] Preferences query failed; using defaults', {
-					userId,
-					...toErrorLogDetails(error),
-				})
-				return null
-			})
-
 		// Execute all profile queries in parallel for better performance.
-		let user, characters, preferences
+		let user, characters
 		try {
-			;[user, characters, preferences] = await Promise.all([
+			;[user, characters] = await Promise.all([
 				this.db.query.users.findFirst({
 					where: eq(users.id, userId),
 				}),
@@ -201,7 +187,6 @@ export class UserService {
 						linkedAt: true,
 					},
 				}),
-				preferencesPromise,
 			])
 		} catch (error) {
 			logger.error('[UserService] Database query failed', {
@@ -230,15 +215,12 @@ export class UserService {
 			linkedAt: char.linkedAt,
 		}))
 
-		const preferencesDTO: UserPreferencesDTO = preferences?.preferences || {}
-
 		return {
 			id: user.id,
 			mainCharacterId: user.mainCharacterId,
 			discordUserId: user.discordUserId || null,
 			characters: charactersDTO,
 			is_admin: user.is_admin,
-			preferences: preferencesDTO,
 			legacyAuthUserId: user.legacyAuthUserId || null,
 			legacyAuthUserUsername: user.legacyAuthUserUsername || null,
 			createdAt: user.createdAt,
@@ -280,6 +262,8 @@ export class UserService {
 					.where(eq(userCharacters.id, existingCharacter.id))
 					.returning()
 
+				clearUserProfileCache(userId)
+
 				return {
 					id: updatedCharacter.id,
 					characterOwnerHash: updatedCharacter.characterOwnerHash,
@@ -311,6 +295,7 @@ export class UserService {
 		if (!linkedCharacter) {
 			throw new Error('Failed to link character')
 		}
+		clearUserProfileCache(userId)
 
 		return {
 			id: linkedCharacter.id,
@@ -346,6 +331,8 @@ export class UserService {
 			.delete(userCharacters)
 			.where(eq(userCharacters.id, character.id))
 			.returning()
+
+		clearUserProfileCache(userId)
 
 		return result.length > 0
 	}
@@ -384,39 +371,9 @@ export class UserService {
 			})
 			.where(eq(users.id, userId))
 
+		clearUserProfileCache(userId)
+
 		return true
-	}
-
-	/**
-	 * Update user preferences
-	 */
-	async updatePreferences(
-		userId: string,
-		preferences: UserPreferencesDTO
-	): Promise<UserPreferencesDTO> {
-		// Check if preferences exist
-		const existing = await this.db.query.userPreferences.findFirst({
-			where: eq(userPreferences.userId, userId),
-		})
-
-		if (existing) {
-			// Update existing
-			await this.db
-				.update(userPreferences)
-				.set({
-					preferences,
-					updatedAt: new Date(),
-				})
-				.where(eq(userPreferences.userId, userId))
-		} else {
-			// Create new
-			await this.db.insert(userPreferences).values({
-				userId,
-				preferences,
-			})
-		}
-
-		return preferences
 	}
 
 	/**
@@ -461,5 +418,7 @@ export class UserService {
 				updatedAt: new Date(),
 			})
 			.where(eq(users.id, userId))
+
+		clearUserProfileCache(userId)
 	}
 }
