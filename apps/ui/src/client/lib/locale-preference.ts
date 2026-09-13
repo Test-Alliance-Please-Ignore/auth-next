@@ -67,6 +67,24 @@ export function getStoredLocale(): AppLocale | null {
 	}
 }
 
+export function getCookieLocale(): AppLocale | null {
+	if (typeof document === 'undefined') {
+		return null
+	}
+
+	try {
+		const cookie = document.cookie
+			.split(';')
+			.map((entry) => entry.trim())
+			.find((entry) => entry.startsWith(`${LOCALE_STORAGE_KEY}=`))
+		if (!cookie) return null
+
+		return parseAppLocale(decodeURIComponent(cookie.slice(LOCALE_STORAGE_KEY.length + 1)))
+	} catch {
+		return null
+	}
+}
+
 export function persistAppLocale(locale: AppLocale): void {
 	if (typeof window === 'undefined') {
 		return
@@ -90,7 +108,7 @@ export function getBrowserLanguages(): readonly string[] {
 
 export function resolveStartupLocale(): AppLocale {
 	return resolveAppLocale({
-		localLocale: getStoredLocale(),
+		localLocale: getStoredLocale() ?? getCookieLocale(),
 		browserLanguages: getBrowserLanguages(),
 	})
 }

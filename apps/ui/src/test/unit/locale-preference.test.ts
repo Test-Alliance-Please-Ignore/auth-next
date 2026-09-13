@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+	getCookieLocale,
 	getStoredLocale,
 	LOCALE_STORAGE_KEY,
 	parseAppLocale,
@@ -69,6 +70,21 @@ describe('browser-only locale preference', () => {
 
 		expect(getStoredLocale()).toBeNull()
 		expect(resolveStartupLocale()).toBe('ko')
+	})
+
+	it('reads the explicit login cookie without treating it as backend state', () => {
+		vi.stubGlobal('window', { localStorage: { getItem: () => null } })
+		vi.stubGlobal('document', { cookie: 'other=value; tang.locale=ko; trailing=value' })
+		vi.stubGlobal('navigator', { languages: ['de-DE'], language: 'de-DE' })
+
+		expect(getCookieLocale()).toBe('ko')
+		expect(resolveStartupLocale()).toBe('ko')
+	})
+
+	it('ignores malformed locale cookies', () => {
+		vi.stubGlobal('document', { cookie: 'tang.locale=%E0%A4%A' })
+
+		expect(getCookieLocale()).toBeNull()
 	})
 
 	it('handles storage access being denied', () => {
