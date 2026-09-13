@@ -17,15 +17,16 @@ import { BillingScopeCacheDO } from './billing-scope-cache-do'
 import { createDb } from './db'
 import { discordMemberAuditRuns, userCharacters, userIpAddresses, users } from './db/schema'
 import { CoreDO } from './durable-object'
+import { ImmunitasAlertsDO } from './immunitas-alerts-do'
 import { waitUntilWithTelemetry } from './lib/background-task'
 import { cleanupExpiredExportArtifacts } from './lib/export-retention'
 import { getFleetParticipationExportBucket } from './lib/fleet-participation-export'
-import { IMMUNITAS_ALERT_DRAIN_CRON } from './lib/immunitas-alerts'
 import { getStructureAssetsDebugBucket } from './lib/structure-assets-debug'
 import { TOKEN_INVALID_ALERT_DRAIN_CRON } from './lib/token-invalid-alerts'
 import { triggerDiscordRefreshWorkflow, triggerUserRefreshWorkflow } from './lib/workflow-triggers'
 import { csrfProtection } from './middleware/csrf'
 import { sessionMiddleware } from './middleware/session'
+import { MumbleTempopExpiryDO } from './mumble-tempop-expiry-do'
 import adminRoutes from './routes/admin'
 import adminNavigationLinksRoutes from './routes/admin/navigation-links'
 import adminStructuresRoutes from './routes/admin/structures'
@@ -84,6 +85,11 @@ import {
 	executeDiscordComponent,
 	executeDiscordModalSubmit,
 } from './services/discord-components.service'
+import { announceMarketClosed } from './services/discord-market-notify.service'
+import {
+	applyMarketPostStatus,
+	updateMarketPostFromDetail,
+} from './services/discord-market-post.service'
 import { reconcileMarketPosts } from './services/discord-market-reconcile.service'
 import { DkpService } from './services/dkp.service'
 import { TemporaryRoleAssignmentsDO } from './temporary-role-assignments-do'
@@ -98,10 +104,16 @@ import type {
 	UserDetails,
 } from '@repo/admin'
 import type { Core } from '@repo/core'
-import type { DiscordInteractionResponse } from '@repo/discord'
+import type { Discord, DiscordInteractionResponse } from '@repo/discord'
 import type { Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
+import type {
+	MarketDetail as PredictionMarketDetail,
+	PredictionMarkets,
+} from '@repo/prediction-markets'
 import type { App, Env } from './context'
+import type { ImmunitasAlerts } from './immunitas-alerts-do'
+import type { MumbleTempopExpiry } from './mumble-tempop-expiry-do'
 import type {
 	DiscordInteractionRouting,
 	ExecuteDiscordSlashCommandInput,
@@ -211,9 +223,7 @@ const app = new Hono<App>()
 const sentryApp = withSentry(app)
 
 const DISCORD_REFRESH_CRON = '5-55/10 * * * *'
-const EXPORT_CLEANUP_CRON = '*/30 * * * *'
-const TEMPOP_EXPIRY_CRON = '*/10 * * * *'
-const MARKET_RECONCILIATION_CRON = '*/15 * * * *'
+const MAINTENANCE_CRON = '*/30 * * * *'
 
 export default {
 	fetch: sentryApp.fetch.bind(sentryApp),
@@ -228,48 +238,72 @@ export default {
 				}
 			}
 
-			if (event.cron === TEMPOP_EXPIRY_CRON) {
-				const tempopResult = await coreStub.processExpiredTempops()
-				if (tempopResult.expired > 0) {
-					scheduledLogger.info('[Core:Scheduled] Expired Mumble temp-ops', tempopResult)
+			if (event.cron === MAINTENANCE_CRON) {
+				const isolateMaintenanceJob = async (
+					job: string,
+					task: Promise<unknown>
+				): Promise<void> => {
+					try {
+						await task
+					} catch (error) {
+						captureException(error as Error, { tags: { job: `maintenance:${job}` } })
+					}
 				}
-			}
-
-			if (event.cron === MARKET_RECONCILIATION_CRON) {
-				// Prediction-markets forum-post drift sweep: auto-close due markets + refresh/backfill
-				// posts. Best-effort and out-of-band so a slow Discord run never delays the cron; a real
-				// failure is paged, not swallowed.
-				ctx.waitUntil(
-					reconcileMarketPosts(createDb(env.DATABASE_URL), env)
-						.then((r) => {
-							if (
-								r.closed > 0 ||
-								r.refreshed > 0 ||
-								r.posted > 0 ||
-								r.notified > 0 ||
-								r.failed > 0
-							) {
-								scheduledLogger.info('[Core:Scheduled] Prediction-market reconcile', r)
-							}
+				const expiryRepair = isolateMaintenanceJob(
+					'mumble-tempop-expiry',
+					getStub<MumbleTempopExpiry>(env.MUMBLE_TEMPOP_EXPIRY, 'default')
+						.reconcile()
+						.then((result) => {
+							scheduledLogger.info(
+								'[Core:Scheduled] Reconciled Mumble temp-op expiry alarm list',
+								result
+							)
 						})
-						.catch((error) => captureException(error as Error, { tags: { job: 'pm-reconcile' } }))
 				)
-			}
-
-			if (event.cron === EXPORT_CLEANUP_CRON) {
+				const marketCloseRepair = isolateMaintenanceJob(
+					'prediction-market-close-alarms',
+					getStub<PredictionMarkets>(env.PREDICTION_MARKETS, 'default').reconcileCloseAlarms()
+				)
+				const marketPostRepair = isolateMaintenanceJob(
+					'prediction-market-posts',
+					reconcileMarketPosts(createDb(env.DATABASE_URL), env).then((result) => {
+						if (
+							result.refreshed > 0 ||
+							result.posted > 0 ||
+							result.notified > 0 ||
+							result.failed > 0
+						) {
+							scheduledLogger.info('[Core:Scheduled] Prediction-market reconcile', result)
+						}
+					})
+				)
+				const immunitasRepair = isolateMaintenanceJob(
+					'immunitas-alerts',
+					getStub<ImmunitasAlerts>(env.IMMUNITAS_ALERTS, 'default').reconcile()
+				)
+				const structureCleanup = isolateMaintenanceJob(
+					'structure-export-cleanup',
+					cleanupExpiredExportArtifacts(
+						getStructureAssetsDebugBucket(env),
+						'structure-assets-debug'
+					)
+				)
+				const fleetCleanup = isolateMaintenanceJob(
+					'fleet-export-cleanup',
+					cleanupExpiredExportArtifacts(
+						getFleetParticipationExportBucket(env),
+						'fleet-participation'
+					)
+				)
 				ctx.waitUntil(
 					Promise.all([
-						cleanupExpiredExportArtifacts(
-							getStructureAssetsDebugBucket(env),
-							'structure-assets-debug'
-						),
-						cleanupExpiredExportArtifacts(
-							getFleetParticipationExportBucket(env),
-							'fleet-participation'
-						),
-					]).catch((error) =>
-						captureException(error as Error, { tags: { job: 'export-artifact-cleanup' } })
-					)
+						expiryRepair,
+						marketCloseRepair,
+						marketPostRepair,
+						immunitasRepair,
+						structureCleanup,
+						fleetCleanup,
+					])
 				)
 			}
 
@@ -279,16 +313,6 @@ export default {
 					scheduledLogger.info(
 						'[Core:Scheduled] Processed pending token invalidation alerts',
 						tokenAlertResult
-					)
-				}
-			}
-
-			if (event.cron === IMMUNITAS_ALERT_DRAIN_CRON) {
-				const immunitasAlertResult = await coreStub.processPendingImmunitasAccessAlerts()
-				if (immunitasAlertResult.processed > 0) {
-					scheduledLogger.info(
-						'[Core:Scheduled] Processed pending immunitas access alerts',
-						immunitasAlertResult
 					)
 				}
 			}
@@ -329,6 +353,21 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 			this.service = new CoreRpcService(db, this.env)
 		}
 		return this.service
+	}
+
+	async notifyPredictionMarketClosed(market: PredictionMarketDetail): Promise<void> {
+		if (!market.discordThreadId || !market.discordMessageId) return
+		if (!this.env.PM_FORUM_GUILD_ID) throw new Error('PM_FORUM_GUILD_ID not configured')
+		const discord = getStub<Discord>(this.env.DISCORD, 'default')
+		await announceMarketClosed(discord, this.env.PM_FORUM_GUILD_ID, market)
+		const updated = await updateMarketPostFromDetail(discord, market)
+		if (!updated.success) throw new Error(updated.error ?? 'Prediction-market post update failed')
+		await applyMarketPostStatus(
+			createDb(this.env.DATABASE_URL),
+			discord,
+			this.env.PM_FORUM_GUILD_ID,
+			market
+		)
 	}
 
 	/**
@@ -1199,6 +1238,8 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 // Use manual captureException() in DO methods for error tracking
 export { CoreDO as Core }
 export { TemporaryRoleAssignmentsDO as TemporaryRoleAssignments }
+export { MumbleTempopExpiryDO as MumbleTempopExpiry }
+export { ImmunitasAlertsDO as ImmunitasAlerts }
 export { BillingScopeCacheDO }
 
 // Export Workflow class

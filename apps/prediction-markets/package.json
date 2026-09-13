@@ -22,8 +22,10 @@
 	},
 	"dependencies": {
 		"@neondatabase/serverless": "1.0.2",
+		"@repo/core": "workspace:*",
 		"@repo/db-utils": "workspace:*",
 		"@repo/do-utils": "workspace:*",
+		"@repo/expiry-alarms": "workspace:*",
 		"@repo/hono-helpers": "workspace:*",
 		"@repo/prediction-markets": "workspace:*",
 		"@repo/worker-utils": "workspace:*",

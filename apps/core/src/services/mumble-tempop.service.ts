@@ -1,4 +1,5 @@
-import { and, eq, lt } from '@repo/db-utils'
+import { and, eq } from '@repo/db-utils'
+import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
@@ -6,6 +7,7 @@ import { mumbleTempopCredentialHandoffs, mumbleTempopGuests, mumbleTempops } fro
 import { deleteMumbleAccounts, TEMPOP_GROUP_NAME } from './mumble.service'
 
 import type { Env } from '../context'
+import type { MumbleTempopExpiry, MumbleTempopExpiryItem } from '../mumble-tempop-expiry-do'
 
 /** TTL preset labels offered in the UI, mapped to seconds. */
 export const TEMPOP_TTL_PRESETS: Record<string, number> = {
@@ -38,6 +40,28 @@ export interface CreatedTempop {
 	/** Raw URL token — returned to the creator exactly once, never stored. */
 	token: string
 	expiresAt: Date
+}
+
+function getExpiryStub(env: Env): MumbleTempopExpiry | null {
+	if (!env.MUMBLE_TEMPOP_EXPIRY) return null
+	return getStub<MumbleTempopExpiry>(env.MUMBLE_TEMPOP_EXPIRY, 'default')
+}
+
+async function bestEffortExpiryMutation(
+	env: Env,
+	operation: string,
+	mutation: (stub: MumbleTempopExpiry) => Promise<void>
+): Promise<void> {
+	const stub = getExpiryStub(env)
+	if (!stub) return
+	try {
+		await mutation(stub)
+	} catch (error) {
+		logger.error('[Mumble] Failed to update temp-op expiry alarm list', {
+			operation,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
 }
 
 function base64url(bytes: Uint8Array): string {
@@ -129,6 +153,9 @@ export async function createTempop(
 					expiresAt,
 				})
 				.returning({ id: mumbleTempops.id, shortCode: mumbleTempops.shortCode })
+			await bestEffortExpiryMutation(env, 'schedule temp-op', (stub) =>
+				stub.scheduleTempop(row.id, expiresAt.getTime())
+			)
 			return { id: row.id, shortCode: row.shortCode, token, expiresAt }
 		} catch (error) {
 			// Retry on the rare shortCode/keyHash unique collision.
@@ -185,46 +212,59 @@ export async function deleteTempop(
 	actor: string
 ): Promise<{ disconnected: number }> {
 	const disconnected = await finalizeTempop(env, tempopId, 'deleted')
+	await bestEffortExpiryMutation(env, 'cancel temp-op', (stub) => stub.cancelTempop(tempopId))
 	logger.info('[Mumble] Deleted temp-op', { tempopId, actor, disconnected })
 	return { disconnected }
 }
 
-/**
- * Expire temp-ops whose TTL has elapsed and sweep stale credential handoffs.
- * Invoked from the core scheduled cron handler.
- */
-export async function processExpiredTempops(
-	env: Env
-): Promise<{ expired: number; disconnected: number }> {
+export async function expireTempop(
+	env: Env,
+	tempopId: string
+): Promise<{ rescheduleAt: number | null; disconnected: number }> {
 	const db = createDb(env.DATABASE_URL)
-	const now = new Date()
-
-	const expired = await db.query.mumbleTempops.findMany({
-		where: and(eq(mumbleTempops.status, 'active'), lt(mumbleTempops.expiresAt, now)),
-		columns: { id: true },
+	const tempop = await db.query.mumbleTempops.findFirst({
+		where: and(eq(mumbleTempops.id, tempopId), eq(mumbleTempops.status, 'active')),
+		columns: { id: true, expiresAt: true },
 	})
-
-	let disconnected = 0
-	for (const tempop of expired) {
-		try {
-			disconnected += await finalizeTempop(env, tempop.id, 'expired')
-		} catch (error) {
-			logger.error('[Mumble] Failed to expire temp-op', {
-				tempopId: tempop.id,
-				error: error instanceof Error ? error.message : String(error),
-			})
-		}
+	if (!tempop) return { rescheduleAt: null, disconnected: 0 }
+	if (tempop.expiresAt.getTime() > Date.now()) {
+		return { rescheduleAt: tempop.expiresAt.getTime(), disconnected: 0 }
 	}
+	return { rescheduleAt: null, disconnected: await finalizeTempop(env, tempop.id, 'expired') }
+}
 
+export async function listTempopExpiryItems(
+	env: Env
+): Promise<Array<{ id: string; dueAt: number; payload: MumbleTempopExpiryItem }>> {
+	const db = createDb(env.DATABASE_URL)
+	const [tempops, handoffs] = await Promise.all([
+		db.query.mumbleTempops.findMany({
+			where: eq(mumbleTempops.status, 'active'),
+			columns: { id: true, expiresAt: true },
+		}),
+		db.query.mumbleTempopCredentialHandoffs.findMany({
+			columns: { tokenHash: true, expiresAt: true },
+		}),
+	])
+	return [
+		...tempops.map((tempop) => ({
+			id: `tempop:${tempop.id}`,
+			dueAt: tempop.expiresAt.getTime(),
+			payload: { kind: 'tempop' as const, tempopId: tempop.id },
+		})),
+		...handoffs.map((handoff) => ({
+			id: `credential-handoff:${handoff.tokenHash}`,
+			dueAt: handoff.expiresAt.getTime(),
+			payload: { kind: 'credential-handoff' as const, tokenHash: handoff.tokenHash },
+		})),
+	]
+}
+
+export async function deleteCredentialHandoff(env: Env, tokenHash: string): Promise<void> {
+	const db = createDb(env.DATABASE_URL)
 	await db
 		.delete(mumbleTempopCredentialHandoffs)
-		.where(lt(mumbleTempopCredentialHandoffs.expiresAt, now))
-
-	if (expired.length > 0) {
-		logger.info('[Mumble] Expired temp-ops', { expired: expired.length, disconnected })
-	}
-
-	return { expired: expired.length, disconnected }
+		.where(eq(mumbleTempopCredentialHandoffs.tokenHash, tokenHash))
 }
 
 /**
@@ -239,12 +279,16 @@ export async function storeCredentialHandoff(
 	const db = createDb(env.DATABASE_URL)
 	const token = randomToken(24)
 	const tokenHash = await hashToken(token)
+	const expiresAt = new Date(Date.now() + CREDENTIAL_HANDOFF_TTL_MS)
 	await db.insert(mumbleTempopCredentialHandoffs).values({
 		tokenHash,
 		tempopId,
 		credentials,
-		expiresAt: new Date(Date.now() + CREDENTIAL_HANDOFF_TTL_MS),
+		expiresAt,
 	})
+	await bestEffortExpiryMutation(env, 'schedule credential handoff', (stub) =>
+		stub.scheduleCredentialHandoff(tokenHash, expiresAt.getTime())
+	)
 	return token
 }
 
@@ -268,6 +312,9 @@ export async function consumeCredentialHandoff(
 	await db
 		.delete(mumbleTempopCredentialHandoffs)
 		.where(eq(mumbleTempopCredentialHandoffs.tokenHash, tokenHash))
+	await bestEffortExpiryMutation(env, 'cancel credential handoff', (stub) =>
+		stub.cancelCredentialHandoff(tokenHash)
+	)
 
 	if (row.expiresAt.getTime() < Date.now()) return null
 	return row.credentials

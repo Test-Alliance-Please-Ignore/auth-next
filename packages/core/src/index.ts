@@ -5,7 +5,10 @@
  * This package allows other workers to interact with the Durable Object via RPC.
  */
 
+import type { MarketDetail } from '@repo/prediction-markets'
+
 export interface Core {
+	notifyPredictionMarketClosed(market: MarketDetail): Promise<void>
 	getCharacterOwner(characterId: string): Promise<{ userId: string; isPrimary: boolean } | null>
 	isMemberCorporation(corporationId: string): Promise<boolean>
 	getMemberCorporationIds(corporationIds: string[]): Promise<string[]>
@@ -126,15 +129,6 @@ export interface Core {
 		refreshesTriggered: number
 		discordProcessed: number
 		triggered: number
-		failed: number
-	}>
-	processExpiredTempops(): Promise<{
-		expired: number
-		disconnected: number
-	}>
-	processPendingImmunitasAccessAlerts(): Promise<{
-		processed: number
-		sent: number
 		failed: number
 	}>
 	processPendingTokenInvalidationAlerts(): Promise<{

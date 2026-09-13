@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { assignTemporaryRole, removeTemporaryRole } from '../discord-temporary-roles.service'
+import {
+	assignTemporaryRole,
+	listSelfAssignableRolesForUser,
+	removeTemporaryRole,
+} from '../discord-temporary-roles.service'
 
 const { assignmentStub, discordStub } = vi.hoisted(() => ({
 	assignmentStub: {
 		listActiveAssignments: vi.fn(),
+		listPendingRemovalAssignments: vi.fn(),
 		applyRoleMutation: vi.fn(),
 		upsertAssignment: vi.fn(),
 		markRemovalPending: vi.fn(),
@@ -43,6 +48,7 @@ describe('temporary role direct mutations', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		assignmentStub.listActiveAssignments.mockResolvedValue([])
+		assignmentStub.listPendingRemovalAssignments.mockResolvedValue([])
 		assignmentStub.upsertAssignment.mockResolvedValue({
 			id: 'assignment-1',
 			revision: 1,
@@ -140,5 +146,35 @@ describe('temporary role direct mutations', () => {
 			false,
 			'temporary Discord failure'
 		)
+	})
+
+	it('offers a pending expiry assignment for manual leave retry', async () => {
+		assignmentStub.listPendingRemovalAssignments.mockResolvedValue([
+			{ assignmentSource: 'self', roleId: role.roleId },
+		])
+		const db = {
+			query: {
+				discordRoles: {
+					findMany: vi.fn().mockResolvedValue([
+						{
+							id: role.roleDbId,
+							roleId: role.roleId,
+							roleName: role.roleName,
+							discordServer: { guildId: 'guild-1', isActive: true },
+							selfAssignable: {
+								displayName: role.displayName,
+								defaultDurationSeconds: role.defaultDurationSeconds,
+							},
+						},
+					]),
+				},
+			},
+		} as any
+
+		const roles = await listSelfAssignableRolesForUser(env, db, 'guild-1', 'discord-1', 'leave', [
+			role.roleId,
+		])
+
+		expect(roles).toEqual([role])
 	})
 })

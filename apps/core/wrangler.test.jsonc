@@ -25,6 +25,14 @@
 				"class_name": "TemporaryRoleAssignments"
 			},
 			{
+				"name": "MUMBLE_TEMPOP_EXPIRY",
+				"class_name": "MumbleTempopExpiry"
+			},
+			{
+				"name": "IMMUNITAS_ALERTS",
+				"class_name": "ImmunitasAlerts"
+			},
+			{
 				"name": "BILLING_SCOPE_CACHE",
 				"class_name": "BillingScopeCacheDO"
 			}
@@ -42,6 +50,10 @@
 		{
 			"tag": "v3",
 			"new_classes": ["BillingScopeCacheDO"]
+		},
+		{
+			"tag": "v4",
+			"new_classes": ["ImmunitasAlerts"]
 		}
 	]
 }

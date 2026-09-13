@@ -20,6 +20,8 @@ export interface UserDiscordRefreshWorkflowParams {
 	allowRemoval?: boolean
 	/** Whether this run should hard-strip all roles on managed guilds (managed + unmanaged). */
 	hardStripAllRoles?: boolean
+	/** Skip server invitations when the workflow is only reconciling existing roles. */
+	skipInvites?: boolean
 	/** Optional delay before executing the refresh, used to stagger batch runs (0–600 seconds). */
 	jitterDelaySeconds?: number
 	/** Assignment DO rows waiting for this refresh to confirm role removal. */
@@ -89,6 +91,7 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<
 			source,
 			allowRemoval = false,
 			hardStripAllRoles = false,
+			skipInvites = false,
 			jitterDelaySeconds = 0,
 			temporaryRoleRemovalsByGuild = {},
 		} = event.payload
@@ -129,7 +132,8 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<
 						this.env,
 						userId,
 						allowRemoval,
-						hardStripAllRoles
+						hardStripAllRoles,
+						skipInvites
 					)
 				}
 			)

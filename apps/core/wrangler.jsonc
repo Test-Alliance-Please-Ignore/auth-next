@@ -26,14 +26,7 @@
 		// Discord refreshes run 5 minutes after the 10-minute corporation data refresh cron.
 		// The remaining maintenance jobs use independent schedules so each can be adjusted separately.
 		// Token invalidation alerts drain twice hourly; Discord member audit history is cleaned at midnight.
-		"crons": [
-			"5-55/10 * * * *",
-			"*/30 * * * *",
-			"*/10 * * * *",
-			"*/15 * * * *",
-			"15,45 * * * *",
-			"0 0 * * *"
-		]
+		"crons": ["5-55/10 * * * *", "*/30 * * * *", "15,45 * * * *", "0 0 * * *"]
 	},
 	"vars": {
 		"NAME": "core",
@@ -102,6 +95,16 @@
 			{
 				"name": "TEMPORARY_ROLE_ASSIGNMENTS",
 				"class_name": "TemporaryRoleAssignments",
+				"script_name": "core"
+			},
+			{
+				"name": "MUMBLE_TEMPOP_EXPIRY",
+				"class_name": "MumbleTempopExpiry",
+				"script_name": "core"
+			},
+			{
+				"name": "IMMUNITAS_ALERTS",
+				"class_name": "ImmunitasAlerts",
 				"script_name": "core"
 			},
 			{
@@ -258,6 +261,10 @@
 		{
 			"tag": "v3",
 			"new_classes": ["BillingScopeCacheDO"]
+		},
+		{
+			"tag": "v4",
+			"new_classes": ["ImmunitasAlerts"]
 		}
 	],
 	"workflows": [

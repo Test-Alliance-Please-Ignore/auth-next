@@ -535,12 +535,8 @@ export interface PredictionMarkets {
 	 */
 	placeBet(input: PlaceBetInput): Promise<BetResult & { deduped: boolean }>
 	closeMarket(input: { actorUserId: string; marketId: string }): Promise<void>
-	/**
-	 * Auto-close up to `limit` open markets whose close time has passed (bounded so a backlog
-	 * can't blow the reconcile cron's budget; it drains over ticks). Returns the closed ids
-	 * (empty on a no-op re-run). Idempotent.
-	 */
-	closeDueMarkets(limit?: number): Promise<{ closedMarketIds: string[] }>
+	/** Rebuild the durable close schedule from open markets in PostgreSQL. */
+	reconcileCloseAlarms(): Promise<void>
 	proposeResolution(input: {
 		resolverId: string
 		marketId: string

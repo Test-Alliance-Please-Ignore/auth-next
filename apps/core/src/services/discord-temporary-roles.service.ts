@@ -100,9 +100,13 @@ export async function listSelfAssignableRolesForUser(
 		mode === 'leave'
 			? new Set(
 					(
-						await getAssignmentStub(env, guildId).then((stub) =>
-							stub.listActiveAssignments(guildId, discordUserId)
-						)
+						await getAssignmentStub(env, guildId).then(async (stub) => {
+							const [active, pending] = await Promise.all([
+								stub.listActiveAssignments(guildId, discordUserId),
+								stub.listPendingRemovalAssignments(guildId, discordUserId),
+							])
+							return [...active, ...pending]
+						})
 					)
 						.filter((assignment) => assignment.assignmentSource === 'self')
 						.map((assignment) => assignment.roleId)

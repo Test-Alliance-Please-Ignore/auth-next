@@ -317,58 +317,59 @@ export async function closeMarket(
 	}
 }
 
-/** Cron sweep: close all open markets whose close time has passed. */
-export async function closeDueMarkets(
+/** Close one market only when it is still open and its authoritative close time has passed. */
+export async function closeMarketIfDue(
 	deps: PmDeps,
-	limit = 25
-): Promise<{ closedMarketIds: string[] }> {
-	const bounded = Math.min(Math.max(limit, 1), 100)
+	marketId: string
+): Promise<{ closed: boolean; nextDueAt?: number; notify?: boolean }> {
 	try {
-		// Bound the batch so a backlog of due markets can't blow the reconcile cron's wall-clock
-		// budget; a large backlog drains over successive ticks.
-		const due = await deps.db
-			.select({ id: pmMarkets.id })
-			.from(pmMarkets)
-			.where(and(eq(pmMarkets.status, 'open'), sql`${pmMarkets.closesAt} <= now()`))
-			.orderBy(asc(pmMarkets.closesAt))
-			.limit(bounded)
-		if (due.length === 0) return { closedMarketIds: [] }
-
-		// Re-guard BOTH the status AND the due condition in the UPDATE: a market that transitioned
-		// (status) or had its close time extended (admin updateMarket) between the select and the
-		// update must not be clobbered. Re-checking closes_at <= now() makes an extended market
-		// drop out. RETURNING yields the ids actually closed.
-		const closed = await deps.db
-			.update(pmMarkets)
-			.set({ status: 'closed', updatedAt: new Date() })
-			.where(
-				and(
-					inArray(
-						pmMarkets.id,
-						due.map((d) => d.id)
-					),
-					eq(pmMarkets.status, 'open'),
-					sql`${pmMarkets.closesAt} <= now()`
+		return await deps.db.transaction(async (tx) => {
+			const closed = await tx
+				.update(pmMarkets)
+				.set({ status: 'closed', updatedAt: new Date() })
+				.where(
+					and(
+						eq(pmMarkets.id, marketId),
+						eq(pmMarkets.status, 'open'),
+						sql`${pmMarkets.closesAt} <= now()`
+					)
 				)
-			)
-			.returning({ id: pmMarkets.id })
-
-		for (const market of closed) {
-			await logHistory(deps.db, {
-				marketId: market.id,
+				.returning({ id: pmMarkets.id })
+			if (closed.length === 0) {
+				const [current] = await tx
+					.select({ status: pmMarkets.status, closesAt: pmMarkets.closesAt })
+					.from(pmMarkets)
+					.where(eq(pmMarkets.id, marketId))
+					.limit(1)
+				if (current?.status === 'open')
+					return { closed: false, nextDueAt: current.closesAt.getTime() }
+				return current?.status === 'closed' ? { closed: false, notify: true } : { closed: false }
+			}
+			await logHistory(tx, {
+				marketId,
 				action: 'closed',
 				previousStatus: 'open',
 				newStatus: 'closed',
-				metadata: { auto: true },
+				metadata: { auto: true, source: 'expiry-alarm' },
 			})
-		}
-		return { closedMarketIds: closed.map((m) => m.id) }
+			return { closed: true, notify: true }
+		})
 	} catch (error) {
 		captureException(error as Error, {
-			tags: { durableObject: 'PredictionMarketsDO', method: 'closeDueMarkets' },
+			tags: { durableObject: 'PredictionMarketsDO', method: 'closeMarketIfDue', marketId },
 		})
 		throw error
 	}
+}
+
+/** Return the authoritative schedule projection for every open market. */
+export async function listOpenMarketCloseTimes(
+	deps: PmDeps
+): Promise<Array<{ id: string; closesAt: Date }>> {
+	return deps.db
+		.select({ id: pmMarkets.id, closesAt: pmMarkets.closesAt })
+		.from(pmMarkets)
+		.where(eq(pmMarkets.status, 'open'))
 }
 
 /**

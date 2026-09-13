@@ -368,6 +368,9 @@ importers:
       '@repo/eve-types':
         specifier: workspace:*
         version: link:../../packages/eve-types
+      '@repo/expiry-alarms':
+        specifier: workspace:*
+        version: link:../../packages/expiry-alarms
       '@repo/features':
         specifier: workspace:*
         version: link:../../packages/features
@@ -2119,12 +2122,18 @@ importers:
       '@neondatabase/serverless':
         specifier: 1.0.2
         version: 1.0.2
+      '@repo/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@repo/db-utils':
         specifier: workspace:*
         version: link:../../packages/db-utils
       '@repo/do-utils':
         specifier: workspace:*
         version: link:../../packages/do-utils
+      '@repo/expiry-alarms':
+        specifier: workspace:*
+        version: link:../../packages/expiry-alarms
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
@@ -2884,6 +2893,9 @@ importers:
       '@repo/eve-types':
         specifier: workspace:*
         version: link:../eve-types
+      '@repo/prediction-markets':
+        specifier: workspace:*
+        version: link:../prediction-markets
       zod:
         specifier: 4.1.12
         version: 4.1.12
@@ -3271,6 +3283,24 @@ importers:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.19.1
         version: 0.19.1(@cloudflare/workers-types@5.20260724.1)(@vitest/runner@4.1.10)(@vitest/snapshot@4.1.10)(vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(vite@8.1.5(@types/node@24.10.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0)))
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(vite@8.1.5(@types/node@24.10.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
+
+  packages/expiry-alarms:
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 5.20260724.1
+        version: 5.20260724.1
       '@repo/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config

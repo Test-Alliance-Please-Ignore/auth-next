@@ -5,13 +5,11 @@ export const IMMUNITAS_ALERT_COOLDOWN_MS = 15 * 60 * 1000
 export const IMMUNITAS_ALERT_INITIAL_DELAY_MS = 30 * 1000
 export const IMMUNITAS_ALERT_TTL_MS = 60 * 60 * 1000
 export const IMMUNITAS_ALERT_RETRY_MS = 15 * 60 * 1000
-export const IMMUNITAS_ALERT_DRAIN_CRON = '0,15,30,45 * * * *'
 
 export type ImmunitasAccessType = 'profile-data' | 'fulcrum-report'
 export type ImmunitasAccessRequestorGroup = {
 	requestorUserId: string
 	requestorLabels: string[]
-	attemptCount: number
 }
 
 export function shouldRetryImmunitasAccessAlertDelivery(
@@ -72,9 +70,7 @@ function formatRequestorGroups(groups: ImmunitasAccessRequestorGroup[], maxGroup
 	for (const group of visibleGroups) {
 		const label =
 			group.requestorLabels[0]?.trim() || group.requestorUserId.trim() || 'Unknown requester'
-		const attemptLabel =
-			group.attemptCount === 1 ? '1 blocked attempt' : `${group.attemptCount} blocked attempts`
-		lines.push(`• ${label} (${attemptLabel})`)
+		lines.push(`• ${label}`)
 
 		const extraLabels = group.requestorLabels.slice(1, 4)
 		for (const extraLabel of extraLabels) {
@@ -98,14 +94,10 @@ export function buildImmunitasAccessAlertMessage(input: {
 	accessType: ImmunitasAccessType
 	targetCharacterLabels: string[]
 	requestorGroups: ImmunitasAccessRequestorGroup[]
-	attemptCount: number
 	updatedAt?: Date
 }): MessageContent {
 	const accessTypeLabel = getAccessTypeLabel(input.accessType)
-	const description =
-		input.attemptCount === 1
-			? 'One unauthorized attempt to access an immunitas account was blocked.'
-			: `${input.attemptCount} unauthorized attempts to access an immunitas account were blocked.`
+	const description = 'Unauthorized access to an immunitas account was blocked.'
 	const fields: DiscordEmbed['fields'] = [
 		{
 			name: 'Access Type',
