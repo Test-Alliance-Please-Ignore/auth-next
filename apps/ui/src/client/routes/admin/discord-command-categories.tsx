@@ -1,5 +1,6 @@
 import { ArrowLeft, Edit, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { Trans } from 'react-i18next'
 import { Link } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
@@ -24,13 +25,14 @@ import {
 } from '@/hooks/useDiscordCommands'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
+import type { FormEvent } from 'react'
 import type {
 	CreateDiscordCommandCategoryRequest,
 	DiscordCommandCategory,
 	UpdateDiscordCommandCategoryRequest,
 } from '@/lib/api'
-import type { FormEvent } from 'react'
 
 interface CategoryFormState {
 	name: string
@@ -47,7 +49,8 @@ function emptyCategoryFormState(): CategoryFormState {
 }
 
 export default function AdminDiscordCommandCategoriesPage() {
-	usePageTitle('Admin - Discord Command Categories')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.discord.categories.pageTitle'))
 	const { message, showSuccess, showError } = useMessage()
 
 	const { data: categories = [], isLoading: categoriesLoading } = useDiscordCommandCategories()
@@ -92,12 +95,16 @@ export default function AdminDiscordCommandCategoriesPage() {
 	const handleCreateCategory = async (event: FormEvent) => {
 		event.preventDefault()
 		try {
-			await createCategory.mutateAsync(toCategoryPayload(categoryForm) as CreateDiscordCommandCategoryRequest)
+			await createCategory.mutateAsync(
+				toCategoryPayload(categoryForm) as CreateDiscordCommandCategoryRequest
+			)
 			setCreateCategoryOpen(false)
 			resetCategoryDialogState()
-			showSuccess('Discord command category created')
+			showSuccess((t) => t('admin.discord.feedback.categoryCreated'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to create command category')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.categoryCreateError')
+			)
 		}
 	}
 
@@ -112,9 +119,11 @@ export default function AdminDiscordCommandCategoriesPage() {
 			})
 			setEditCategoryOpen(false)
 			resetCategoryDialogState()
-			showSuccess('Discord command category updated')
+			showSuccess((t) => t('admin.discord.feedback.categoryUpdated'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update command category')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.categoryUpdateError')
+			)
 		}
 	}
 
@@ -124,9 +133,11 @@ export default function AdminDiscordCommandCategoriesPage() {
 			await deleteCategory.mutateAsync(selectedCategory.id)
 			setDeleteCategoryOpen(false)
 			resetCategoryDialogState()
-			showSuccess('Discord command category deleted')
+			showSuccess((t) => t('admin.discord.feedback.categoryDeleted'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to delete command category')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.categoryDeleteError')
+			)
 		}
 	}
 
@@ -134,15 +145,19 @@ export default function AdminDiscordCommandCategoriesPage() {
 		<div className="space-y-6">
 			<div className="flex items-center justify-between gap-3">
 				<div>
-					<div className="text-sm text-muted-foreground">Discord / Commands / Categories</div>
-					<h1 className="text-3xl font-bold gradient-text">Discord Command Categories</h1>
-					<p className="text-muted-foreground mt-1">Manage command category labels and ordering</p>
+					<div className="text-sm text-muted-foreground">
+						{t('admin.discord.categories.breadcrumb')}
+					</div>
+					<h1 className="text-3xl font-bold gradient-text">
+						{t('admin.discord.categories.title')}
+					</h1>
+					<p className="text-muted-foreground mt-1">{t('admin.discord.categories.description')}</p>
 				</div>
 				<div className="flex items-center gap-2">
 					<Button asChild variant="ghost">
 						<Link to="/admin/discord-commands">
 							<ArrowLeft className="h-4 w-4" />
-							Back To Commands
+							{t('admin.discord.categories.backCommands')}
 						</Link>
 					</Button>
 					<Button
@@ -153,7 +168,7 @@ export default function AdminDiscordCommandCategoriesPage() {
 						}}
 					>
 						<Plus className="h-4 w-4" />
-						New Category
+						{t('admin.permissionCategories.new')}
 					</Button>
 				</div>
 			</div>
@@ -176,37 +191,48 @@ export default function AdminDiscordCommandCategoriesPage() {
 
 			<Card variant="elevated">
 				<CardHeader>
-					<CardTitle>Categories</CardTitle>
-					<CardDescription>Used when creating or editing slash commands</CardDescription>
+					<CardTitle>{t('admin.nav.categories')}</CardTitle>
+					<CardDescription>{t('admin.discord.categories.usageHint')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					{categoriesLoading ? (
-						<p className="text-muted-foreground">Loading categories...</p>
+						<p className="text-muted-foreground">{t('admin.discord.shared.loadingCategories')}</p>
 					) : categories.length === 0 ? (
-						<p className="text-muted-foreground">No categories configured yet.</p>
+						<p className="text-muted-foreground">{t('admin.discord.categories.empty')}</p>
 					) : (
 						<div className="space-y-2">
 							{categories
 								.slice()
 								.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
 								.map((category) => (
-									<div key={category.id} className="flex items-start justify-between rounded-md border p-3">
+									<div
+										key={category.id}
+										className="flex items-start justify-between rounded-md border p-3"
+									>
 										<div className="space-y-1">
 											<div className="flex items-center gap-2">
 												<span className="font-medium">{category.name}</span>
-												<Badge variant="secondary">Order {category.sortOrder}</Badge>
+												<Badge variant="secondary">
+													{t('admin.discord.categories.order', { order: category.sortOrder })}
+												</Badge>
 											</div>
 											{category.description && (
 												<p className="text-sm text-muted-foreground">{category.description}</p>
 											)}
 										</div>
 										<div className="flex items-center gap-2">
-											<Button variant="ghost" size="sm" onClick={() => openCategoryEditDialog(category)}>
+											<Button
+												variant="ghost"
+												size="sm"
+												aria-label={t('admin.discord.categories.editTitle')}
+												onClick={() => openCategoryEditDialog(category)}
+											>
 												<Edit className="h-4 w-4" />
 											</Button>
 											<Button
 												variant="destructive"
 												size="sm"
+												aria-label={t('admin.permissionCategories.delete')}
 												onClick={() => openCategoryDeleteDialog(category)}
 											>
 												<Trash2 className="h-4 w-4" />
@@ -222,12 +248,12 @@ export default function AdminDiscordCommandCategoriesPage() {
 			<Dialog open={createCategoryOpen} onOpenChange={setCreateCategoryOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Create Command Category</DialogTitle>
-						<DialogDescription>Add a category for grouping slash commands</DialogDescription>
+						<DialogTitle>{t('admin.discord.categories.createTitle')}</DialogTitle>
+						<DialogDescription>{t('admin.discord.categories.createDescription')}</DialogDescription>
 					</DialogHeader>
 					<form className="space-y-4" onSubmit={handleCreateCategory}>
 						<div>
-							<Label htmlFor="category-create-name">Name</Label>
+							<Label htmlFor="category-create-name">{t('groups.form.name')}</Label>
 							<Input
 								id="category-create-name"
 								value={categoryForm.name}
@@ -238,7 +264,7 @@ export default function AdminDiscordCommandCategoriesPage() {
 							/>
 						</div>
 						<div>
-							<Label htmlFor="category-create-description">Description</Label>
+							<Label htmlFor="category-create-description">{t('groups.form.description')}</Label>
 							<Textarea
 								id="category-create-description"
 								value={categoryForm.description}
@@ -252,7 +278,7 @@ export default function AdminDiscordCommandCategoriesPage() {
 							/>
 						</div>
 						<div>
-							<Label htmlFor="category-create-order">Sort Order</Label>
+							<Label htmlFor="category-create-order">{t('admin.discord.shared.sortOrder')}</Label>
 							<Input
 								id="category-create-order"
 								type="number"
@@ -267,15 +293,15 @@ export default function AdminDiscordCommandCategoriesPage() {
 						</div>
 						<DialogFooter>
 							<Button variant="cancel" type="button" onClick={() => setCreateCategoryOpen(false)}>
-								Cancel
+								{t('common.cancel')}
 							</Button>
 							<Button
 								variant="confirm"
 								type="submit"
 								loading={createCategory.isPending}
-								loadingText="Creating..."
+								loadingText={t('admin.discord.shared.creating')}
 							>
-								Create
+								{t('admin.discord.shared.create')}
 							</Button>
 						</DialogFooter>
 					</form>
@@ -285,12 +311,12 @@ export default function AdminDiscordCommandCategoriesPage() {
 			<Dialog open={editCategoryOpen} onOpenChange={setEditCategoryOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Edit Command Category</DialogTitle>
-						<DialogDescription>Update category metadata</DialogDescription>
+						<DialogTitle>{t('admin.discord.categories.editTitle')}</DialogTitle>
+						<DialogDescription>{t('admin.discord.categories.editDescription')}</DialogDescription>
 					</DialogHeader>
 					<form className="space-y-4" onSubmit={handleUpdateCategory}>
 						<div>
-							<Label htmlFor="category-edit-name">Name</Label>
+							<Label htmlFor="category-edit-name">{t('groups.form.name')}</Label>
 							<Input
 								id="category-edit-name"
 								value={categoryForm.name}
@@ -301,7 +327,7 @@ export default function AdminDiscordCommandCategoriesPage() {
 							/>
 						</div>
 						<div>
-							<Label htmlFor="category-edit-description">Description</Label>
+							<Label htmlFor="category-edit-description">{t('groups.form.description')}</Label>
 							<Textarea
 								id="category-edit-description"
 								value={categoryForm.description}
@@ -315,7 +341,7 @@ export default function AdminDiscordCommandCategoriesPage() {
 							/>
 						</div>
 						<div>
-							<Label htmlFor="category-edit-order">Sort Order</Label>
+							<Label htmlFor="category-edit-order">{t('admin.discord.shared.sortOrder')}</Label>
 							<Input
 								id="category-edit-order"
 								type="number"
@@ -330,15 +356,15 @@ export default function AdminDiscordCommandCategoriesPage() {
 						</div>
 						<DialogFooter>
 							<Button variant="cancel" type="button" onClick={() => setEditCategoryOpen(false)}>
-								Cancel
+								{t('common.cancel')}
 							</Button>
 							<Button
 								variant="confirm"
 								type="submit"
 								loading={updateCategory.isPending}
-								loadingText="Saving..."
+								loadingText={t('admin.fields.saving')}
 							>
-								Save Changes
+								{t('groups.edit.save')}
 							</Button>
 						</DialogFooter>
 					</form>
@@ -348,23 +374,26 @@ export default function AdminDiscordCommandCategoriesPage() {
 			<Dialog open={deleteCategoryOpen} onOpenChange={setDeleteCategoryOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Delete Category</DialogTitle>
+						<DialogTitle>{t('admin.permissionCategories.delete')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete{' '}
-							<span className="font-semibold">{selectedCategory?.name}</span>?
+							<Trans
+								i18nKey="admin.discord.categories.deleteWarning"
+								values={{ name: selectedCategory?.name }}
+								components={{ name: <span className="font-semibold" /> }}
+							/>
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDeleteCategoryOpen(false)}>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleDeleteCategory}
 							loading={deleteCategory.isPending}
-							loadingText="Deleting..."
+							loadingText={t('admin.users.account.deleting')}
 						>
-							Delete
+							{t('common.delete')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

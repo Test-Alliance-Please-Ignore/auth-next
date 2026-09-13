@@ -1,5 +1,6 @@
 import { Edit, FolderKanban, Plus, Trash2, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { Trans } from 'react-i18next'
 import { Link } from 'react-router'
 
 import { renderDiscordContentValue } from '@/components/discord-content-renderer'
@@ -29,13 +30,14 @@ import {
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useGlobalPermissions } from '@/hooks/usePermissions'
+import { formatList, useAppTranslation } from '@/i18n'
 
+import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import type {
 	CreateDiscordCommandRequest,
 	DiscordCommand,
 	UpdateDiscordCommandRequest,
 } from '@/lib/api'
-import type { Dispatch, FormEvent, SetStateAction } from 'react'
 
 interface CommandFormState {
 	categoryId: string
@@ -58,7 +60,8 @@ function emptyCommandFormState(): CommandFormState {
 }
 
 export default function AdminDiscordCommandsPage() {
-	usePageTitle('Admin - Discord Commands')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.discord.commands.pageTitle'))
 	const { message, showSuccess, showError } = useMessage()
 
 	const { data: categories = [] } = useDiscordCommandCategories()
@@ -83,7 +86,7 @@ export default function AdminDiscordCommandsPage() {
 	)
 
 	const categoryOptions = [
-		{ value: '', label: 'Uncategorized' },
+		{ value: '', label: t('admin.permissions.uncategorized') },
 		...categories.map((category) => ({ value: category.id, label: category.name })),
 	]
 
@@ -110,11 +113,11 @@ export default function AdminDiscordCommandsPage() {
 
 	const commandsCategoryFilterOptions = useMemo(
 		() => [
-			{ value: 'all', label: 'All categories' },
-			{ value: 'uncategorized', label: 'Uncategorized' },
+			{ value: 'all', label: t('groups.allCategories') },
+			{ value: 'uncategorized', label: t('admin.permissions.uncategorized') },
 			...categories.map((category) => ({ value: category.id, label: category.name })),
 		],
-		[categories]
+		[categories, t]
 	)
 
 	const resetCommandDialogState = () => {
@@ -146,7 +149,9 @@ export default function AdminDiscordCommandsPage() {
 			description: command.description,
 			responseTemplate: command.responseTemplate ?? '',
 			isActive: command.isActive,
-			requiredPermissionIds: command.requiredPermissions.map((permission) => permission.permissionId),
+			requiredPermissionIds: command.requiredPermissions.map(
+				(permission) => permission.permissionId
+			),
 		})
 		setEditCommandOpen(true)
 	}
@@ -162,9 +167,11 @@ export default function AdminDiscordCommandsPage() {
 			await createCommand.mutateAsync(toCommandPayload(commandForm) as CreateDiscordCommandRequest)
 			setCreateCommandOpen(false)
 			resetCommandDialogState()
-			showSuccess('Discord slash command created')
+			showSuccess((t) => t('admin.discord.feedback.commandCreated'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to create slash command')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.commandCreateError')
+			)
 		}
 	}
 
@@ -180,9 +187,11 @@ export default function AdminDiscordCommandsPage() {
 			})
 			setEditCommandOpen(false)
 			resetCommandDialogState()
-			showSuccess('Discord slash command updated')
+			showSuccess((t) => t('admin.discord.feedback.commandUpdated'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update slash command')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.commandUpdateError')
+			)
 		}
 	}
 
@@ -192,9 +201,11 @@ export default function AdminDiscordCommandsPage() {
 			await deleteCommand.mutateAsync(selectedCommand.id)
 			setDeleteCommandOpen(false)
 			resetCommandDialogState()
-			showSuccess('Discord slash command deleted')
+			showSuccess((t) => t('admin.discord.feedback.commandDeleted'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to delete slash command')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.commandDeleteError')
+			)
 		}
 	}
 
@@ -218,16 +229,14 @@ export default function AdminDiscordCommandsPage() {
 		<div className="space-y-6">
 			<div className="flex items-center justify-between gap-3">
 				<div>
-					<h1 className="text-3xl font-bold gradient-text">Discord Commands</h1>
-					<p className="text-muted-foreground mt-1">
-						Manage slash commands, permissions, and response templates
-					</p>
+					<h1 className="text-3xl font-bold gradient-text">{t('admin.discord.commands.title')}</h1>
+					<p className="text-muted-foreground mt-1">{t('admin.discord.commands.description')}</p>
 				</div>
 				<div className="flex items-center gap-2">
 					<Button asChild variant="ghost">
 						<Link to="/admin/discord-commands/categories">
 							<FolderKanban className="h-4 w-4" />
-							Categories
+							{t('admin.nav.categories')}
 						</Link>
 					</Button>
 					<Button
@@ -238,7 +247,7 @@ export default function AdminDiscordCommandsPage() {
 						}}
 					>
 						<Plus className="h-4 w-4" />
-						New Command
+						{t('admin.discord.commands.new')}
 					</Button>
 				</div>
 			</div>
@@ -263,37 +272,37 @@ export default function AdminDiscordCommandsPage() {
 				<CardHeader>
 					<div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
 						<div>
-							<CardTitle>Slash Commands</CardTitle>
-							<CardDescription>
-								Server attachments are managed from the Discord Servers page
-							</CardDescription>
+							<CardTitle>{t('admin.discord.commands.slashCommands')}</CardTitle>
+							<CardDescription>{t('admin.discord.commands.attachmentsHint')}</CardDescription>
 						</div>
 						<div className="w-full md:w-72">
 							<Label htmlFor="commands-category-filter" className="mb-1 block text-xs">
-								Filter by category
+								{t('admin.discord.commands.filterCategory')}
 							</Label>
 							<Select
 								inputId="commands-category-filter"
 								value={commandsCategoryFilter}
 								onValueChange={setCommandsCategoryFilter}
 								options={commandsCategoryFilterOptions}
-								placeholder="All categories"
+								placeholder={t('groups.allCategories')}
 							/>
 						</div>
 					</div>
 				</CardHeader>
 				<CardContent>
 					{commandsLoading ? (
-						<p className="text-muted-foreground">Loading commands...</p>
+						<p className="text-muted-foreground">{t('admin.discord.commands.loading')}</p>
 					) : commands.length === 0 ? (
-						<p className="text-muted-foreground">No commands defined yet.</p>
+						<p className="text-muted-foreground">{t('admin.discord.commands.empty')}</p>
 					) : filteredCommands.length === 0 ? (
-						<p className="text-muted-foreground">No commands match this category filter.</p>
+						<p className="text-muted-foreground">{t('admin.discord.commands.noMatches')}</p>
 					) : (
 						<div className="space-y-4">
 							{filteredCommands.map((command) => {
 								const requiredPermissionNames = command.requiredPermissions.map((permission) => {
-									return permissionById.get(permission.permissionId)?.name ?? permission.permissionId
+									return (
+										permissionById.get(permission.permissionId)?.name ?? permission.permissionId
+									)
 								})
 								const immutableAccessRequirements = command.immutableAccessRequirements ?? []
 
@@ -305,12 +314,14 @@ export default function AdminDiscordCommandsPage() {
 													<div className="flex items-center gap-2 flex-wrap">
 														<h3 className="text-lg font-semibold">/{command.name}</h3>
 														<Badge variant={command.isActive ? 'success' : 'secondary'}>
-															{command.isActive ? 'Active' : 'Inactive'}
+															{command.isActive
+																? t('services.active')
+																: t('admin.organizations.corp.inactive')}
 														</Badge>
 														<Badge variant="default">
 															{command.commandType === 'programmatic'
-																? 'Programmatic'
-																: 'Static Response'}
+																? t('admin.discord.commands.programmatic')
+																: t('admin.discord.commands.staticResponse')}
 														</Badge>
 														{command.category && (
 															<Badge variant="secondary">{command.category.name}</Badge>
@@ -318,41 +329,49 @@ export default function AdminDiscordCommandsPage() {
 													</div>
 													<p className="text-sm text-muted-foreground">{command.description}</p>
 													<div className="text-xs text-muted-foreground">
-														Required permissions:{' '}
-														{requiredPermissionNames.length > 0
-															? requiredPermissionNames.join(', ')
-															: 'None'}
+														{t('admin.discord.commands.permissions', {
+															permissions:
+																requiredPermissionNames.length > 0
+																	? formatList(requiredPermissionNames)
+																	: t('admin.users.discord.none'),
+														})}
 													</div>
 													{immutableAccessRequirements.length > 0 && (
 														<div className="text-xs text-muted-foreground">
-															Code-defined access: {immutableAccessRequirements.join(', ')}
+															{t('admin.discord.commands.codeAccess', {
+																requirements: formatList(immutableAccessRequirements),
+															})}
 														</div>
 													)}
 													<div className="text-xs text-muted-foreground">
-														Attached servers: {command.serverAttachments.length}
+														{t('admin.discord.commands.attachedServers', {
+															count: command.serverAttachments.length,
+														})}
 													</div>
 												</div>
-											<div className="flex items-center gap-2">
-												<Button
-													variant="ghost"
-													size="sm"
-													onClick={() => openCommandEditDialog(command)}
-												>
-													<Edit className="h-4 w-4" />
-												</Button>
-												{command.commandType !== 'programmatic' && (
+												<div className="flex items-center gap-2">
 													<Button
-														variant="destructive"
+														variant="ghost"
 														size="sm"
-														onClick={() => openCommandDeleteDialog(command)}
+														aria-label={t('admin.discord.commands.editTitle')}
+														onClick={() => openCommandEditDialog(command)}
 													>
-														<Trash2 className="h-4 w-4" />
+														<Edit className="h-4 w-4" />
 													</Button>
-												)}
+													{command.commandType !== 'programmatic' && (
+														<Button
+															variant="destructive"
+															size="sm"
+															aria-label={t('admin.discord.commands.deleteTitle')}
+															onClick={() => openCommandDeleteDialog(command)}
+														>
+															<Trash2 className="h-4 w-4" />
+														</Button>
+													)}
+												</div>
 											</div>
-										</div>
-									</CardContent>
-								</Card>
+										</CardContent>
+									</Card>
 								)
 							})}
 						</div>
@@ -363,8 +382,8 @@ export default function AdminDiscordCommandsPage() {
 			<Dialog open={createCommandOpen} onOpenChange={setCreateCommandOpen}>
 				<DialogContent className="max-w-5xl">
 					<DialogHeader>
-						<DialogTitle>Create Slash Command</DialogTitle>
-						<DialogDescription>Define command metadata, permissions, and response markdown</DialogDescription>
+						<DialogTitle>{t('admin.discord.commands.createTitle')}</DialogTitle>
+						<DialogDescription>{t('admin.discord.commands.createDescription')}</DialogDescription>
 					</DialogHeader>
 					<form className="space-y-4" onSubmit={handleCreateCommand}>
 						<CommandFormFields
@@ -380,29 +399,29 @@ export default function AdminDiscordCommandsPage() {
 							onAddRequiredPermission={addRequiredPermission}
 							onRemoveRequiredPermission={removeRequiredPermission}
 							immutableAccessRequirements={selectedCommand?.immutableAccessRequirements ?? []}
-							/>
+						/>
 						<DialogFooter>
 							<Button variant="cancel" type="button" onClick={() => setCreateCommandOpen(false)}>
-								Cancel
+								{t('common.cancel')}
 							</Button>
 							<Button
 								variant="confirm"
 								type="submit"
 								loading={createCommand.isPending}
-								loadingText="Creating..."
+								loadingText={t('admin.discord.shared.creating')}
 							>
-								Create Command
+								{t('admin.discord.commands.create')}
 							</Button>
 						</DialogFooter>
 					</form>
-					</DialogContent>
-				</Dialog>
+				</DialogContent>
+			</Dialog>
 
 			<Dialog open={editCommandOpen} onOpenChange={setEditCommandOpen}>
 				<DialogContent className="max-w-5xl">
 					<DialogHeader>
-						<DialogTitle>Edit Slash Command</DialogTitle>
-						<DialogDescription>Update command metadata and response behavior</DialogDescription>
+						<DialogTitle>{t('admin.discord.commands.editTitle')}</DialogTitle>
+						<DialogDescription>{t('admin.discord.commands.editDescription')}</DialogDescription>
 					</DialogHeader>
 					<form className="space-y-4" onSubmit={handleUpdateCommand}>
 						<CommandFormFields
@@ -418,44 +437,47 @@ export default function AdminDiscordCommandsPage() {
 							onAddRequiredPermission={addRequiredPermission}
 							onRemoveRequiredPermission={removeRequiredPermission}
 							immutableAccessRequirements={selectedCommand?.immutableAccessRequirements ?? []}
-							/>
+						/>
 						<DialogFooter>
 							<Button variant="cancel" type="button" onClick={() => setEditCommandOpen(false)}>
-								Cancel
+								{t('common.cancel')}
 							</Button>
 							<Button
 								variant="confirm"
 								type="submit"
 								loading={updateCommand.isPending}
-								loadingText="Saving..."
+								loadingText={t('admin.fields.saving')}
 							>
-								Save Changes
+								{t('groups.edit.save')}
 							</Button>
 						</DialogFooter>
 					</form>
-					</DialogContent>
-				</Dialog>
+				</DialogContent>
+			</Dialog>
 
 			<Dialog open={deleteCommandOpen} onOpenChange={setDeleteCommandOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Delete Slash Command</DialogTitle>
+						<DialogTitle>{t('admin.discord.commands.deleteTitle')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete{' '}
-							<span className="font-semibold">/{selectedCommand?.name}</span>?
+							<Trans
+								i18nKey="admin.discord.commands.deleteWarning"
+								values={{ name: selectedCommand?.name }}
+								components={{ name: <span className="font-semibold" /> }}
+							/>
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDeleteCommandOpen(false)}>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleDeleteCommand}
 							loading={deleteCommand.isPending}
-							loadingText="Deleting..."
+							loadingText={t('admin.users.account.deleting')}
 						>
-							Delete
+							{t('common.delete')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -504,6 +526,7 @@ function CommandFormFields({
 	onRemoveRequiredPermission: (permissionId: string) => void
 	immutableAccessRequirements: string[]
 }) {
+	const { t } = useAppTranslation()
 	const availablePermissionOptions = permissionOptions.filter(
 		(permission) => !commandForm.requiredPermissionIds.includes(permission.value)
 	)
@@ -517,7 +540,7 @@ function CommandFormFields({
 		<div className="grid gap-4 md:grid-cols-2">
 			<div className="space-y-4">
 				<div>
-					<Label htmlFor="command-name">Command Name</Label>
+					<Label htmlFor="command-name">{t('admin.discord.commands.name')}</Label>
 					<Input
 						id="command-name"
 						value={commandForm.name}
@@ -528,10 +551,12 @@ function CommandFormFields({
 						disabled={disableNameEdit}
 						required
 					/>
-					<p className="mt-1 text-xs text-muted-foreground">lowercase letters, numbers, `_` or `-`</p>
+					<p className="mt-1 text-xs text-muted-foreground">
+						{t('admin.discord.commands.nameHint')}
+					</p>
 				</div>
 				<div>
-					<Label htmlFor="command-description">Description</Label>
+					<Label htmlFor="command-description">{t('groups.form.description')}</Label>
 					<Input
 						id="command-description"
 						value={commandForm.description}
@@ -543,7 +568,7 @@ function CommandFormFields({
 					/>
 				</div>
 				<div>
-					<Label htmlFor="command-category">Category</Label>
+					<Label htmlFor="command-category">{t('myGroups.table.category')}</Label>
 					<Select
 						inputId="command-category"
 						value={commandForm.categoryId}
@@ -551,25 +576,26 @@ function CommandFormFields({
 							setCommandForm((previous) => ({ ...previous, categoryId: value }))
 						}
 						options={categories}
-						placeholder="Select category"
+						placeholder={t('admin.discord.commands.selectCategory')}
 					/>
 				</div>
 				<div className="flex items-center gap-2">
 					<Switch
+						aria-label={t('services.active')}
 						checked={commandForm.isActive}
 						onCheckedChange={(checked) =>
 							setCommandForm((previous) => ({ ...previous, isActive: checked }))
 						}
 					/>
-					<span className="text-sm font-medium">Active</span>
+					<span className="text-sm font-medium">{t('services.active')}</span>
 				</div>
 				<div className="space-y-2">
-					<Label htmlFor="permission-select">Required Access</Label>
+					<Label htmlFor="permission-select">{t('admin.discord.commands.requiredAccess')}</Label>
 					{hasImmutableAccessRequirements ? (
-							<div className="rounded-md border border-border/60 bg-muted/30 p-3">
-								<div className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">
-								Static access requirements
-								</div>
+						<div className="rounded-md border border-border/60 bg-muted/30 p-3">
+							<div className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">
+								{t('admin.discord.commands.staticAccess')}
+							</div>
 							<div className="flex flex-wrap gap-2">
 								{immutableAccessRequirements.map((label) => (
 									<Badge key={label} variant="secondary" className="px-2 py-1">
@@ -592,7 +618,9 @@ function CommandFormFields({
 												type="button"
 												onClick={() => onRemoveRequiredPermission(permission.id)}
 												className="ml-1 hover:text-destructive"
-												aria-label={`Remove ${permission.name}`}
+												aria-label={t('admin.discord.commands.removePermission', {
+													name: permission.name,
+												})}
 											>
 												<X className="h-3 w-3" />
 											</button>
@@ -612,12 +640,14 @@ function CommandFormFields({
 								onQueryChange={setPermissionSearch}
 								searchable
 								options={availablePermissionOptions}
-								placeholder="Add permission..."
-								emptyText="No matching permissions found"
+								placeholder={t('admin.discord.commands.addPermission')}
+								emptyText={t('admin.discord.commands.noPermissions')}
 								className="w-full"
 								contentClassName="w-[min(90vw,36rem)]"
 								inputClassName="h-9"
-								getOptionSearchText={(option) => `${option.label} ${option.urn} ${option.description ?? ''}`.trim()}
+								getOptionSearchText={(option) =>
+									`${option.label} ${option.urn} ${option.description ?? ''}`.trim()
+								}
 								renderOption={(option) => (
 									<div className="space-y-0.5 py-0.5">
 										<div className="text-sm font-medium">{option.label}</div>
@@ -634,7 +664,9 @@ function CommandFormFields({
 				{showResponseTemplate ? (
 					<>
 						<div>
-							<Label htmlFor="command-response-template">Response Template (Discord Markdown)</Label>
+							<Label htmlFor="command-response-template">
+								{t('admin.discord.commands.responseTemplate')}
+							</Label>
 							<Textarea
 								id="command-response-template"
 								value={commandForm.responseTemplate}
@@ -649,19 +681,21 @@ function CommandFormFields({
 								required
 							/>
 							<p className="mt-1 text-xs text-muted-foreground">
-								Supports template variables like {'{{discordUserId}}'} and command option names.
+								{t('admin.discord.commands.variablesHint', { example: '{{discordUserId}}' })}
 							</p>
 						</div>
 						<Card className="bg-muted/20">
 							<CardHeader>
-								<CardTitle className="text-base">Preview</CardTitle>
-								<CardDescription>Rendered markdown preview of the response template</CardDescription>
+								<CardTitle className="text-base">{t('admin.discord.shared.preview')}</CardTitle>
+								<CardDescription>{t('admin.discord.commands.previewDescription')}</CardDescription>
 							</CardHeader>
 							<CardContent className="break-words text-sm leading-relaxed">
 								{commandForm.responseTemplate.trim().length > 0 ? (
 									renderDiscordContentValue(commandForm.responseTemplate, 'discord-command-preview')
 								) : (
-									<span className="text-muted-foreground">No response template yet.</span>
+									<span className="text-muted-foreground">
+										{t('admin.discord.commands.noTemplate')}
+									</span>
 								)}
 							</CardContent>
 						</Card>
@@ -669,9 +703,11 @@ function CommandFormFields({
 				) : (
 					<Card className="bg-muted/20">
 						<CardHeader>
-							<CardTitle className="text-base">Programmatic Command</CardTitle>
+							<CardTitle className="text-base">
+								{t('admin.discord.commands.programmaticTitle')}
+							</CardTitle>
 							<CardDescription>
-								Response content is generated by the command handler in code.
+								{t('admin.discord.commands.programmaticDescription')}
 							</CardDescription>
 						</CardHeader>
 					</Card>

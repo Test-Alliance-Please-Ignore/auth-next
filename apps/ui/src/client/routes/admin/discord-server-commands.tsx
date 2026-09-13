@@ -15,11 +15,15 @@ import {
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Select } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
-	useDiscordServers,
-	useResyncDiscordServerCommands,
-} from '@/hooks/useDiscord'
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
+import { useDiscordServers, useResyncDiscordServerCommands } from '@/hooks/useDiscord'
 import {
 	useAttachDiscordCommandToServer,
 	useDetachDiscordCommandFromServer,
@@ -27,12 +31,15 @@ import {
 } from '@/hooks/useDiscordCommands'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
+import type { FormEvent } from 'react'
 import type { DiscordCommand } from '@/lib/api'
 
 export default function AdminDiscordServerCommandsPage() {
+	const { t } = useAppTranslation()
 	const { serverId } = useParams<{ serverId: string }>()
-	usePageTitle('Admin - Discord Server Commands')
+	usePageTitle(t('admin.discord.serverCommands.pageTitle'))
 	const { data: discordServers, isLoading: serversLoading } = useDiscordServers()
 	const { data: discordCommands = [], isLoading: commandsLoading } = useDiscordCommands()
 	const resyncCommands = useResyncDiscordServerCommands()
@@ -64,10 +71,10 @@ export default function AdminDiscordServerCommandsPage() {
 		return discordCommands.filter((command) => !attachedIds.has(command.id))
 	}, [attachedCommands, discordCommands])
 
-	const handleAttachCommand = async (e: React.FormEvent) => {
+	const handleAttachCommand = async (e: FormEvent) => {
 		e.preventDefault()
 		if (!server || !selectedCommandId) {
-			showError('Select a command to attach')
+			showError((t) => t('admin.discord.feedback.selectCommand'))
 			return
 		}
 
@@ -78,9 +85,11 @@ export default function AdminDiscordServerCommandsPage() {
 			})
 			setAddCommandDialogOpen(false)
 			setSelectedCommandId('')
-			showSuccess('Command attached to server')
+			showSuccess((t) => t('admin.discord.feedback.commandAttached'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to attach command')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.commandAttachError')
+			)
 		}
 	}
 
@@ -91,9 +100,16 @@ export default function AdminDiscordServerCommandsPage() {
 				commandId: command.id,
 				serverId: server.id,
 			})
-			showSuccess(`Detached /${command.name} from ${server.guildName}`)
+			showSuccess((t) =>
+				t('admin.discord.feedback.commandDetached', {
+					command: command.name,
+					server: server.guildName,
+				})
+			)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to detach command')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.commandDetachError')
+			)
 		}
 	}
 
@@ -102,11 +118,17 @@ export default function AdminDiscordServerCommandsPage() {
 		setResyncing(true)
 		try {
 			const result = await resyncCommands.mutateAsync(server.id)
-			showSuccess(
-				`Command resync complete: ${result.synced}/${result.total} successful (${result.failed} failed)`
+			showSuccess((t) =>
+				t('admin.discord.feedback.commandsResynced', {
+					synced: result.synced,
+					total: result.total,
+					failed: result.failed,
+				})
 			)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to resync commands')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.commandResyncError')
+			)
 		} finally {
 			setResyncing(false)
 		}
@@ -115,7 +137,7 @@ export default function AdminDiscordServerCommandsPage() {
 	if (serversLoading || commandsLoading) {
 		return (
 			<div className="flex justify-center py-12">
-				<LoadingSpinner label="Loading Discord server commands..." />
+				<LoadingSpinner label={t('admin.discord.shared.loadingServerCommands')} />
 			</div>
 		)
 	}
@@ -124,9 +146,9 @@ export default function AdminDiscordServerCommandsPage() {
 		return (
 			<Card>
 				<CardContent className="py-8">
-					<p className="text-muted-foreground">Discord server not found.</p>
+					<p className="text-muted-foreground">{t('admin.discord.shared.serverNotFound')}</p>
 					<Button asChild variant="ghost" className="mt-3">
-						<Link to="/admin/discord-servers">Back to Servers</Link>
+						<Link to="/admin/discord-servers">{t('admin.discord.shared.backServers')}</Link>
 					</Button>
 				</CardContent>
 			</Card>
@@ -138,21 +160,25 @@ export default function AdminDiscordServerCommandsPage() {
 			<div className="flex items-center justify-between gap-3">
 				<div>
 					<div className="text-sm text-muted-foreground">
-						Discord / Servers / {server.guildName} / Commands
+						{t('admin.discord.serverCommands.breadcrumb', { name: server.guildName })}
 					</div>
-					<h1 className="text-3xl font-bold gradient-text">Discord Server Commands</h1>
-					<p className="text-muted-foreground mt-1">Manage slash command attachments for this server</p>
+					<h1 className="text-3xl font-bold gradient-text">
+						{t('admin.discord.serverCommands.title')}
+					</h1>
+					<p className="text-muted-foreground mt-1">
+						{t('admin.discord.serverCommands.description')}
+					</p>
 				</div>
 				<div className="flex items-center gap-2">
 					<Button asChild variant="ghost">
 						<Link to="/admin/discord-servers">
 							<ArrowLeft className="h-4 w-4" />
-							Back to Servers
+							{t('admin.discord.shared.backServers')}
 						</Link>
 					</Button>
 					<Button variant="ghost" onClick={handleResyncCommands} disabled={resyncing}>
 						<RefreshCw className={`h-4 w-4 ${resyncing ? 'animate-spin' : ''}`} />
-						Resync Commands
+						{t('admin.discord.serverCommands.resync')}
 					</Button>
 					<Button
 						variant="primary"
@@ -163,7 +189,7 @@ export default function AdminDiscordServerCommandsPage() {
 						disabled={availableCommands.length === 0}
 					>
 						<Plus className="h-4 w-4" />
-						Add Command
+						{t('admin.discord.serverCommands.add')}
 					</Button>
 				</div>
 			</div>
@@ -186,21 +212,25 @@ export default function AdminDiscordServerCommandsPage() {
 
 			<Card variant="elevated">
 				<CardHeader>
-					<CardTitle>Attached Commands</CardTitle>
-					<CardDescription>Server: {server.guildName}</CardDescription>
+					<CardTitle>{t('admin.discord.serverCommands.attached')}</CardTitle>
+					<CardDescription>
+						{t('admin.discord.shared.serverName', { name: server.guildName })}
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					{attachedCommands.length === 0 ? (
-						<p className="text-sm text-muted-foreground">No commands attached to this server.</p>
+						<p className="text-sm text-muted-foreground">
+							{t('admin.discord.serverCommands.empty')}
+						</p>
 					) : (
 						<div className="overflow-x-auto rounded-lg border border-border/50">
 							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead>Command</TableHead>
-										<TableHead>Description</TableHead>
-										<TableHead>Status</TableHead>
-										<TableHead className="text-right">Actions</TableHead>
+										<TableHead>{t('admin.discord.serverCommands.command')}</TableHead>
+										<TableHead>{t('groups.form.description')}</TableHead>
+										<TableHead>{t('admin.users.account.status')}</TableHead>
+										<TableHead className="text-right">{t('myGroups.table.actions')}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -211,15 +241,20 @@ export default function AdminDiscordServerCommandsPage() {
 												{command.description}
 											</TableCell>
 											<TableCell className="text-sm">
-												{command.isActive ? 'Active' : 'Inactive'}
+												{command.isActive
+													? t('services.active')
+													: t('admin.organizations.corp.inactive')}
 											</TableCell>
 											<TableCell className="text-right">
 												<Button
 													variant="ghost"
 													size="sm"
+													aria-label={t('admin.discord.commands.removePermission', {
+														name: `/${command.name}`,
+													})}
 													onClick={() => handleDetachCommand(command)}
 													loading={detachCommandFromServer.isPending}
-													loadingText="Detaching..."
+													loadingText={t('admin.discord.shared.detaching')}
 												>
 													<Trash2 className="h-4 w-4 text-destructive" />
 												</Button>
@@ -236,12 +271,14 @@ export default function AdminDiscordServerCommandsPage() {
 			<Dialog open={addCommandDialogOpen} onOpenChange={setAddCommandDialogOpen}>
 				<DialogContent onOpenAutoFocus={(event) => event.preventDefault()}>
 					<DialogHeader>
-						<DialogTitle>Add Command</DialogTitle>
-						<DialogDescription>Attach a slash command to {server.guildName}</DialogDescription>
+						<DialogTitle>{t('admin.discord.serverCommands.add')}</DialogTitle>
+						<DialogDescription>
+							{t('admin.discord.serverCommands.attachDescription', { name: server.guildName })}
+						</DialogDescription>
 					</DialogHeader>
 					<form className="space-y-4" onSubmit={handleAttachCommand}>
 						<div className="space-y-2">
-							<Label htmlFor="command-select">Command</Label>
+							<Label htmlFor="command-select">{t('admin.discord.serverCommands.command')}</Label>
 							<Select
 								inputId="command-select"
 								value={selectedCommandId}
@@ -252,21 +289,21 @@ export default function AdminDiscordServerCommandsPage() {
 									description: command.description,
 								}))}
 								searchable
-								placeholder="Select command"
+								placeholder={t('admin.discord.serverCommands.select')}
 							/>
 						</div>
 						<DialogFooter>
 							<Button variant="cancel" type="button" onClick={() => setAddCommandDialogOpen(false)}>
-								Cancel
+								{t('common.cancel')}
 							</Button>
 							<Button
 								variant="confirm"
 								type="submit"
 								disabled={!selectedCommandId}
 								loading={attachCommandToServer.isPending}
-								loadingText="Attaching..."
+								loadingText={t('admin.permissionAttachment.attaching')}
 							>
-								Attach Command
+								{t('admin.discord.serverCommands.attach')}
 							</Button>
 						</DialogFooter>
 					</form>

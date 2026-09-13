@@ -1,9 +1,10 @@
 import { Edit, MessageSquare, Plus, Settings2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { Trans } from 'react-i18next'
 import { Link } from 'react-router'
 
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
 	Dialog,
@@ -25,11 +26,18 @@ import {
 } from '@/hooks/useDiscord'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
-import type { CreateDiscordServerRequest, DiscordServerWithRoles, UpdateDiscordServerRequest } from '@/lib/api'
+import type { FormEvent } from 'react'
+import type {
+	CreateDiscordServerRequest,
+	DiscordServerWithRoles,
+	UpdateDiscordServerRequest,
+} from '@/lib/api'
 
 export default function AdminDiscordServersPage() {
-	usePageTitle('Admin - Discord Servers')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.discord.servers.pageTitle'))
 	const { data: discordServers, isLoading } = useDiscordServers()
 	const createServer = useCreateDiscordServer()
 	const updateServer = useUpdateDiscordServer()
@@ -55,10 +63,10 @@ export default function AdminDiscordServersPage() {
 		manageNicknames: false,
 	})
 
-	const handleCreateServer = async (e: React.FormEvent) => {
+	const handleCreateServer = async (e: FormEvent) => {
 		e.preventDefault()
 		if (!serverFormData.guildId || !serverFormData.guildName) {
-			showError('Guild ID and name are required')
+			showError((t) => t('admin.discord.feedback.serverRequired'))
 			return
 		}
 
@@ -71,13 +79,15 @@ export default function AdminDiscordServersPage() {
 				description: '',
 				manageNicknames: false,
 			})
-			showSuccess('Discord server added successfully!')
+			showSuccess((t) => t('admin.discord.feedback.serverAdded'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to add Discord server')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.serverAddError')
+			)
 		}
 	}
 
-	const handleUpdateServer = async (e: React.FormEvent) => {
+	const handleUpdateServer = async (e: FormEvent) => {
 		e.preventDefault()
 		if (!selectedServer) return
 
@@ -88,9 +98,11 @@ export default function AdminDiscordServersPage() {
 			})
 			setEditServerDialogOpen(false)
 			setSelectedServer(null)
-			showSuccess('Discord server updated successfully!')
+			showSuccess((t) => t('admin.discord.feedback.serverUpdated'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update Discord server')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.serverUpdateError')
+			)
 		}
 	}
 
@@ -101,9 +113,11 @@ export default function AdminDiscordServersPage() {
 			await deleteServer.mutateAsync(selectedServer.id)
 			setDeleteServerDialogOpen(false)
 			setSelectedServer(null)
-			showSuccess('Discord server deleted successfully!')
+			showSuccess((t) => t('admin.discord.feedback.serverDeleted'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to delete Discord server')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.serverDeleteError')
+			)
 		}
 	}
 
@@ -126,7 +140,7 @@ export default function AdminDiscordServersPage() {
 	if (isLoading) {
 		return (
 			<div className="flex justify-center py-12">
-				<LoadingSpinner label="Loading Discord servers..." />
+				<LoadingSpinner label={t('admin.discord.shared.loadingServers')} />
 			</div>
 		)
 	}
@@ -137,15 +151,13 @@ export default function AdminDiscordServersPage() {
 				<div>
 					<h1 className="text-3xl font-bold gradient-text flex items-center gap-2">
 						<MessageSquare className="h-8 w-8 text-[hsl(var(--discord-blurple))]" />
-						Discord Servers
+						{t('admin.organizations.discord.servers')}
 					</h1>
-					<p className="text-muted-foreground mt-1">
-						Manage the server registry. Roles and commands are managed per server.
-					</p>
+					<p className="text-muted-foreground mt-1">{t('admin.discord.servers.description')}</p>
 				</div>
 				<Button onClick={() => setCreateServerDialogOpen(true)}>
 					<Plus className="h-4 w-4" />
-					Add Server
+					{t('admin.discord.servers.add')}
 				</Button>
 			</div>
 
@@ -169,13 +181,11 @@ export default function AdminDiscordServersPage() {
 				<Card>
 					<CardContent className="py-12 text-center">
 						<MessageSquare className="mx-auto h-12 w-12 text-muted-foreground" />
-						<h3 className="mt-4 text-lg font-medium">No Discord servers</h3>
-						<p className="text-muted-foreground mt-2">
-							Add a Discord server to the registry to get started.
-						</p>
+						<h3 className="mt-4 text-lg font-medium">{t('admin.discord.servers.empty')}</h3>
+						<p className="text-muted-foreground mt-2">{t('admin.discord.servers.emptyHint')}</p>
 						<Button onClick={() => setCreateServerDialogOpen(true)} className="mt-4">
 							<Plus className="h-4 w-4" />
-							Add Server
+							{t('admin.discord.servers.add')}
 						</Button>
 					</CardContent>
 				</Card>
@@ -189,13 +199,16 @@ export default function AdminDiscordServersPage() {
 										<div className="flex items-center gap-2">
 											<h3 className="font-semibold">{server.guildName}</h3>
 											{!server.isActive && (
-												<span className="text-xs text-muted-foreground">(Inactive)</span>
+												<span className="text-xs text-muted-foreground">
+													{t('admin.discord.shared.inactiveBadge')}
+												</span>
 											)}
 										</div>
 										<div className="flex gap-1">
 											<Button
 												variant="ghost"
 												size="sm"
+												aria-label={t('admin.discord.servers.editTitle')}
 												onClick={() => openEditServerDialog(server)}
 											>
 												<Edit className="h-4 w-4" />
@@ -203,13 +216,16 @@ export default function AdminDiscordServersPage() {
 											<Button
 												variant="ghost"
 												size="sm"
+												aria-label={t('admin.discord.servers.deleteTitle')}
 												onClick={() => openDeleteServerDialog(server)}
 											>
 												<Trash2 className="h-4 w-4 text-destructive" />
 											</Button>
 										</div>
 									</div>
-									<p className="text-xs text-muted-foreground">Guild ID: {server.guildId}</p>
+									<p className="text-xs text-muted-foreground">
+										{t('admin.discord.servers.guildId', { id: server.guildId })}
+									</p>
 									{server.description && (
 										<p className="text-sm text-muted-foreground">{server.description}</p>
 									)}
@@ -218,25 +234,33 @@ export default function AdminDiscordServersPage() {
 								<div className="mt-auto space-y-2 pt-1">
 									<div className="flex items-center justify-between gap-2">
 										<div className="text-sm font-semibold text-foreground">
-											Roles: <span className="text-primary">{server.roles?.length ?? 0}</span>
+											<Trans
+												i18nKey="admin.discord.servers.roleCount"
+												values={{ count: server.roles?.length ?? 0 }}
+												components={{ count: <span className="text-primary" /> }}
+											/>
 										</div>
 										<Badge variant={server.manageNicknames ? 'success' : 'warning'}>
-											Nicknames {server.manageNicknames ? 'Enabled' : 'Disabled'}
+											{t(
+												server.manageNicknames
+													? 'admin.discord.servers.nicknamesEnabled'
+													: 'admin.discord.servers.nicknamesDisabled'
+											)}
 										</Badge>
 									</div>
 									<div className="grid grid-cols-2 gap-2">
-									<Button asChild variant="ghost" size="sm">
-										<Link to={`/admin/discord-servers/${server.id}/roles`}>
-											<Settings2 className="h-4 w-4" />
-											Roles
-										</Link>
-									</Button>
-									<Button asChild variant="ghost" size="sm">
-										<Link to={`/admin/discord-servers/${server.id}/commands`}>
-											<MessageSquare className="h-4 w-4" />
-											Commands
-										</Link>
-									</Button>
+										<Button asChild variant="ghost" size="sm">
+											<Link to={`/admin/discord-servers/${server.id}/roles`}>
+												<Settings2 className="h-4 w-4" />
+												{t('admin.breadcrumbs.roles')}
+											</Link>
+										</Button>
+										<Button asChild variant="ghost" size="sm">
+											<Link to={`/admin/discord-servers/${server.id}/commands`}>
+												<MessageSquare className="h-4 w-4" />
+												{t('admin.discord.shared.commands')}
+											</Link>
+										</Button>
 									</div>
 								</div>
 							</CardContent>
@@ -248,16 +272,16 @@ export default function AdminDiscordServersPage() {
 			<Dialog open={createServerDialogOpen} onOpenChange={setCreateServerDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Add Discord Server</DialogTitle>
-						<DialogDescription>Add a new Discord server to the registry</DialogDescription>
+						<DialogTitle>{t('admin.discord.servers.addTitle')}</DialogTitle>
+						<DialogDescription>{t('admin.discord.servers.addDescription')}</DialogDescription>
 					</DialogHeader>
 					<form onSubmit={handleCreateServer} className="space-y-4">
 						<div className="space-y-2">
-							<Label htmlFor="guildId">Guild ID *</Label>
+							<Label htmlFor="guildId">{t('admin.discord.servers.guildIdRequired')}</Label>
 							<Input
 								id="guildId"
 								type="text"
-								placeholder="e.g., 1234567890123456789"
+								placeholder={t('admin.discord.servers.idExample')}
 								value={serverFormData.guildId}
 								onChange={(e) => setServerFormData({ ...serverFormData, guildId: e.target.value })}
 								required
@@ -265,25 +289,29 @@ export default function AdminDiscordServersPage() {
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor="guildName">Server Name *</Label>
+							<Label htmlFor="guildName">{t('admin.discord.servers.nameRequired')}</Label>
 							<Input
 								id="guildName"
 								type="text"
-								placeholder="e.g., My Discord Server"
+								placeholder={t('admin.discord.servers.nameExample')}
 								value={serverFormData.guildName}
-								onChange={(e) => setServerFormData({ ...serverFormData, guildName: e.target.value })}
+								onChange={(e) =>
+									setServerFormData({ ...serverFormData, guildName: e.target.value })
+								}
 								required
 							/>
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor="description">Description (Optional)</Label>
+							<Label htmlFor="description">{t('admin.discord.shared.descriptionOptional')}</Label>
 							<Input
 								id="description"
 								type="text"
-								placeholder="Brief description of this server"
+								placeholder={t('admin.discord.servers.descriptionPlaceholder')}
 								value={serverFormData.description}
-								onChange={(e) => setServerFormData({ ...serverFormData, description: e.target.value })}
+								onChange={(e) =>
+									setServerFormData({ ...serverFormData, description: e.target.value })
+								}
 							/>
 						</div>
 
@@ -297,17 +325,26 @@ export default function AdminDiscordServersPage() {
 							/>
 							<div className="flex-1">
 								<Label htmlFor="manageNicknames" className="cursor-pointer">
-									Manage Nicknames
+									{t('admin.discord.servers.manageNicknames')}
 								</Label>
 							</div>
 						</div>
 
 						<DialogFooter>
-							<Button variant="cancel" type="button" onClick={() => setCreateServerDialogOpen(false)}>
-								Cancel
+							<Button
+								variant="cancel"
+								type="button"
+								onClick={() => setCreateServerDialogOpen(false)}
+							>
+								{t('common.cancel')}
 							</Button>
-							<Button variant="confirm" type="submit" loading={createServer.isPending} loadingText="Adding...">
-								Add Server
+							<Button
+								variant="confirm"
+								type="submit"
+								loading={createServer.isPending}
+								loadingText={t('admin.organizations.corp.adding')}
+							>
+								{t('admin.discord.servers.add')}
 							</Button>
 						</DialogFooter>
 					</form>
@@ -317,23 +354,27 @@ export default function AdminDiscordServersPage() {
 			<Dialog open={editServerDialogOpen} onOpenChange={setEditServerDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Edit Discord Server</DialogTitle>
-						<DialogDescription>Update Discord server information</DialogDescription>
+						<DialogTitle>{t('admin.discord.servers.editTitle')}</DialogTitle>
+						<DialogDescription>{t('admin.discord.servers.editDescription')}</DialogDescription>
 					</DialogHeader>
 					<form onSubmit={handleUpdateServer} className="space-y-4">
 						<div className="space-y-2">
-							<Label htmlFor="edit-guildName">Server Name *</Label>
+							<Label htmlFor="edit-guildName">{t('admin.discord.servers.nameRequired')}</Label>
 							<Input
 								id="edit-guildName"
 								type="text"
 								value={serverEditFormData.guildName}
-								onChange={(e) => setServerEditFormData({ ...serverEditFormData, guildName: e.target.value })}
+								onChange={(e) =>
+									setServerEditFormData({ ...serverEditFormData, guildName: e.target.value })
+								}
 								required
 							/>
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor="edit-description">Description (Optional)</Label>
+							<Label htmlFor="edit-description">
+								{t('admin.discord.shared.descriptionOptional')}
+							</Label>
 							<Input
 								id="edit-description"
 								type="text"
@@ -353,7 +394,7 @@ export default function AdminDiscordServersPage() {
 								}
 							/>
 							<Label htmlFor="edit-isActive" className="cursor-pointer">
-								Active
+								{t('services.active')}
 							</Label>
 						</div>
 
@@ -366,21 +407,21 @@ export default function AdminDiscordServersPage() {
 								}
 							/>
 							<Label htmlFor="edit-manageNicknames" className="cursor-pointer">
-								Manage Nicknames
+								{t('admin.discord.servers.manageNicknames')}
 							</Label>
 						</div>
 
 						<DialogFooter>
 							<Button variant="cancel" type="button" onClick={() => setEditServerDialogOpen(false)}>
-								Cancel
+								{t('common.cancel')}
 							</Button>
 							<Button
 								variant="confirm"
 								type="submit"
 								loading={updateServer.isPending}
-								loadingText="Updating..."
+								loadingText={t('hr.notes.updating')}
 							>
-								Update Server
+								{t('admin.discord.servers.update')}
 							</Button>
 						</DialogFooter>
 					</form>
@@ -390,23 +431,22 @@ export default function AdminDiscordServersPage() {
 			<Dialog open={deleteServerDialogOpen} onOpenChange={setDeleteServerDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Delete Discord Server</DialogTitle>
+						<DialogTitle>{t('admin.discord.servers.deleteTitle')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete "{selectedServer?.guildName}"? This will remove all
-							associated roles and command attachments.
+							{t('admin.discord.servers.deleteWarning', { name: selectedServer?.guildName })}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDeleteServerDialogOpen(false)}>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleDeleteServer}
 							loading={deleteServer.isPending}
-							loadingText="Deleting..."
+							loadingText={t('admin.users.account.deleting')}
 						>
-							Delete
+							{t('common.delete')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

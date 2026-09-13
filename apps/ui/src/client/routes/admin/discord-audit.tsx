@@ -1,28 +1,38 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Trans } from 'react-i18next'
 import { Link } from 'react-router'
 
-import { useQueryClient } from '@tanstack/react-query'
-
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { LoadingInline, LoadingSpinner } from '@/components/ui/loading'
 import { Select } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-	useDiscordServers,
-	useCleanupDiscordGuildAudit,
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
+import {
 	discordKeys,
+	useCleanupDiscordGuildAudit,
+	useDiscordServers,
 	useKickDiscordGuildUsers,
 	useStartDiscordGuildAudit,
 	useStripDiscordGuildRoles,
 } from '@/hooks/useDiscord'
-import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
+
+import type { AppTranslationKey } from '@/i18n'
 
 type AuditTab = 'linked' | 'unlinked'
 type AuditFilter =
@@ -82,17 +92,24 @@ function formatDiscordHandle(username: string, discriminator: string): string {
 }
 
 export default function AdminDiscordAuditPage() {
-	usePageTitle('Admin - Discord Audit')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.discord.audit.pageTitle'))
+
+	const [auditError, setAuditError] = useState<{ cause: unknown; key: AppTranslationKey } | null>(
+		null
+	)
 
 	const cachedSession = useMemo(() => loadDiscordAuditSessionCache(), [])
 	const cachedSelectedServerId = cachedSession?.selectedServerId ?? ''
 	const cachedSelectedEntry = cachedSelectedServerId
-		? cachedSession?.entries[cachedSelectedServerId] ?? null
+		? (cachedSession?.entries[cachedSelectedServerId] ?? null)
 		: null
 
 	const { data: servers = [], isLoading: serversLoading } = useDiscordServers()
 	const [serverId, setServerId] = useState<string>(cachedSelectedServerId)
-	const [activeServerId, setActiveServerId] = useState<string>(cachedSelectedEntry?.activeServerId ?? '')
+	const [activeServerId, setActiveServerId] = useState<string>(
+		cachedSelectedEntry?.activeServerId ?? ''
+	)
 	const [tab, setTab] = useState<AuditTab>(cachedSelectedEntry?.tab ?? 'linked')
 	const [filter, setFilter] = useState<AuditFilter>(cachedSelectedEntry?.filter ?? 'all')
 	const [page, setPage] = useState<number>(cachedSelectedEntry?.page ?? 1)
@@ -123,13 +140,17 @@ export default function AdminDiscordAuditPage() {
 	const currentCacheKey = serverId || activeServerId
 
 	const selectedIds = useMemo(
-		() => Object.entries(selectedUnlinked).filter(([, checked]) => checked).map(([id]) => id),
+		() =>
+			Object.entries(selectedUnlinked)
+				.filter(([, checked]) => checked)
+				.map(([id]) => id),
 		[selectedUnlinked]
 	)
 
 	const unlinkedRows = (data?.items ?? []).filter((item) => !item.linked)
 	const allVisibleUnlinkedChecked =
-		unlinkedRows.length > 0 && unlinkedRows.every((row) => selectedUnlinked[row.discordUserId] === true)
+		unlinkedRows.length > 0 &&
+		unlinkedRows.every((row) => selectedUnlinked[row.discordUserId] === true)
 
 	useEffect(() => {
 		if (!currentCacheKey) return
@@ -165,35 +186,32 @@ export default function AdminDiscordAuditPage() {
 		tab,
 	])
 
-	const restoreCachedServerState = useCallback(
-		(nextServerId: string) => {
-			const cached = loadDiscordAuditSessionCache()
-			const cachedEntry = cached?.entries[nextServerId]
+	const restoreCachedServerState = useCallback((nextServerId: string) => {
+		const cached = loadDiscordAuditSessionCache()
+		const cachedEntry = cached?.entries[nextServerId]
 
-			setServerId(nextServerId)
-			if (cachedEntry) {
-				setActiveServerId(cachedEntry.activeServerId)
-				setTab(cachedEntry.tab)
-				setFilter(cachedEntry.filter)
-				setPage(cachedEntry.page)
-				setPageSize(cachedEntry.pageSize)
-				setData(cachedEntry.data)
-				setSelectedUnlinked(cachedEntry.selectedUnlinked)
-				setStartCooldownUntil(cachedEntry.startCooldownUntil)
-				return
-			}
+		setServerId(nextServerId)
+		if (cachedEntry) {
+			setActiveServerId(cachedEntry.activeServerId)
+			setTab(cachedEntry.tab)
+			setFilter(cachedEntry.filter)
+			setPage(cachedEntry.page)
+			setPageSize(cachedEntry.pageSize)
+			setData(cachedEntry.data)
+			setSelectedUnlinked(cachedEntry.selectedUnlinked)
+			setStartCooldownUntil(cachedEntry.startCooldownUntil)
+			return
+		}
 
-			setActiveServerId('')
-			setTab('linked')
-			setFilter('all')
-			setPage(1)
-			setPageSize(25)
-			setData(null)
-			setSelectedUnlinked({})
-			setStartCooldownUntil(0)
-		},
-		[]
-	)
+		setActiveServerId('')
+		setTab('linked')
+		setFilter('all')
+		setPage(1)
+		setPageSize(25)
+		setData(null)
+		setSelectedUnlinked({})
+		setStartCooldownUntil(0)
+	}, [])
 
 	const fetchAuditPage = useCallback(
 		async (
@@ -204,6 +222,7 @@ export default function AdminDiscordAuditPage() {
 			pageSizeOverride = pageSize
 		) => {
 			setIsLoading(true)
+			setAuditError(null)
 			try {
 				const response = await api.getDiscordGuildAudit(server, {
 					tab: fetchTab,
@@ -212,6 +231,8 @@ export default function AdminDiscordAuditPage() {
 					pageSize: pageSizeOverride,
 				})
 				setData(response)
+			} catch (cause) {
+				setAuditError({ cause, key: 'admin.discord.audit.loadError' })
 			} finally {
 				setIsLoading(false)
 			}
@@ -265,7 +286,11 @@ export default function AdminDiscordAuditPage() {
 		setData(null)
 		setStartCooldownUntil(Date.now() + 60_000)
 		void (async () => {
-			await startAuditMutation.mutateAsync(serverId)
+			try {
+				await startAuditMutation.mutateAsync(serverId)
+			} catch (cause) {
+				setAuditError({ cause, key: 'admin.discord.audit.startError' })
+			}
 		})()
 	}
 
@@ -295,11 +320,10 @@ export default function AdminDiscordAuditPage() {
 
 	const stripSingleUserRoles = async (discordUserId: string) => {
 		requestConfirmation({
-			title: 'Strip all roles for this Discord user?',
-			description:
-				'This will clear all assignable roles in this guild for the selected user. This cannot be undone.',
-			confirmLabel: 'Strip Roles',
-			cancelLabel: 'Cancel',
+			title: (t) => t('admin.discord.audit.stripSingleTitle'),
+			description: (t) => t('admin.discord.audit.stripSingleWarning'),
+			confirmLabel: (t) => t('admin.users.discord.stripRoles'),
+			cancelLabel: (t) => t('common.cancel'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				try {
@@ -328,6 +352,8 @@ export default function AdminDiscordAuditPage() {
 					)
 					setSelectedUnlinked((prev) => ({ ...prev, [discordUserId]: false }))
 					void fetchAuditPage(effectiveServerId, tab)
+				} catch (cause) {
+					setAuditError({ cause, key: 'admin.discord.audit.stripError' })
 				} finally {
 					closeConfirmation()
 				}
@@ -339,11 +365,10 @@ export default function AdminDiscordAuditPage() {
 		if (selectedIds.length === 0) return
 
 		requestConfirmation({
-			title: `Strip roles for ${selectedIds.length} users?`,
-			description:
-				'This will clear all assignable roles in this guild for the selected users. This cannot be undone.',
-			confirmLabel: 'Strip Roles',
-			cancelLabel: 'Cancel',
+			title: (t) => t('admin.discord.audit.stripManyTitle', { count: selectedIds.length }),
+			description: (t) => t('admin.discord.audit.stripManyWarning'),
+			confirmLabel: (t) => t('admin.users.discord.stripRoles'),
+			cancelLabel: (t) => t('common.cancel'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				try {
@@ -372,6 +397,8 @@ export default function AdminDiscordAuditPage() {
 					)
 					setSelectedUnlinked({})
 					void fetchAuditPage(effectiveServerId, tab)
+				} catch (cause) {
+					setAuditError({ cause, key: 'admin.discord.audit.stripError' })
 				} finally {
 					closeConfirmation()
 				}
@@ -381,11 +408,10 @@ export default function AdminDiscordAuditPage() {
 
 	const kickSingleUser = async (discordUserId: string) => {
 		requestConfirmation({
-			title: 'Kick this Discord user from the server?',
-			description:
-				'This removes the selected user from the Discord server. They can rejoin later if invited again.',
-			confirmLabel: 'Kick User',
-			cancelLabel: 'Cancel',
+			title: (t) => t('admin.discord.audit.kickTitle'),
+			description: (t) => t('admin.discord.audit.kickWarning'),
+			confirmLabel: (t) => t('admin.discord.audit.kick'),
+			cancelLabel: (t) => t('common.cancel'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				try {
@@ -414,6 +440,8 @@ export default function AdminDiscordAuditPage() {
 					)
 					setSelectedUnlinked((prev) => ({ ...prev, [discordUserId]: false }))
 					void fetchAuditPage(effectiveServerId, tab)
+				} catch (cause) {
+					setAuditError({ cause, key: 'admin.discord.audit.kickError' })
 				} finally {
 					closeConfirmation()
 				}
@@ -422,23 +450,29 @@ export default function AdminDiscordAuditPage() {
 	}
 
 	const refreshLinkedUser = async (coreUserId: string) => {
-		const trigger = await api.triggerDiscordJoin(coreUserId)
-		await api.waitForAdminDiscordRefresh(coreUserId, trigger.workflowInstanceId)
-		void fetchAuditPage(effectiveServerId, tab)
+		try {
+			const trigger = await api.triggerDiscordJoin(coreUserId)
+			await api.waitForAdminDiscordRefresh(coreUserId, trigger.workflowInstanceId)
+			void fetchAuditPage(effectiveServerId, tab)
+		} catch (cause) {
+			setAuditError({ cause, key: 'admin.discord.audit.refreshError' })
+		}
 	}
 
 	const cleanupOldReports = async () => {
 		if (!effectiveServerId) return
 		requestConfirmation({
-			title: 'Clean up old reports?',
-			description: 'This keeps only the newest audit report for this server and deletes older reports.',
-			confirmLabel: 'Clean Up',
-			cancelLabel: 'Cancel',
+			title: (t) => t('admin.discord.audit.cleanupTitle'),
+			description: (t) => t('admin.discord.audit.cleanupWarning'),
+			confirmLabel: (t) => t('admin.discord.audit.cleanup'),
+			cancelLabel: (t) => t('common.cancel'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				try {
 					await cleanupAuditMutation.mutateAsync(effectiveServerId)
 					void fetchAuditPage(effectiveServerId, tab, 1)
+				} catch (cause) {
+					setAuditError({ cause, key: 'admin.discord.audit.cleanupError' })
 				} finally {
 					closeConfirmation()
 				}
@@ -468,14 +502,19 @@ export default function AdminDiscordAuditPage() {
 
 	return (
 		<div className="space-y-6">
+			{auditError && (
+				<p
+					role="alert"
+					className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
+				>
+					{auditError.cause instanceof Error ? auditError.cause.message : t(auditError.key)}
+				</p>
+			)}
 			<Card>
 				<CardHeader>
 					<div>
-						<CardTitle>Discord Member Audit</CardTitle>
-						<CardDescription>
-							Audit guild members against linked platform users. Linked users can be inspected/refreshed;
-							unlinked users can have roles stripped.
-						</CardDescription>
+						<CardTitle>{t('admin.discord.audit.title')}</CardTitle>
+						<CardDescription>{t('admin.discord.audit.description')}</CardDescription>
 					</div>
 				</CardHeader>
 				<CardContent className="space-y-4">
@@ -487,7 +526,11 @@ export default function AdminDiscordAuditPage() {
 								value: server.id,
 								label: `${server.guildName} (${server.guildId})`,
 							}))}
-							placeholder={serversLoading ? 'Loading servers...' : 'Select a server'}
+							placeholder={
+								serversLoading
+									? t('admin.discord.audit.loadingServers')
+									: t('admin.discord.audit.selectServer')
+							}
 							className="w-full"
 						/>
 						<div className="flex items-center justify-end gap-2">
@@ -502,12 +545,16 @@ export default function AdminDiscordAuditPage() {
 									isStartCooldownActive
 								}
 							>
-								{isFetching || startAuditMutation.isPending ? <LoadingInline className="mr-2" /> : null}
+								{isFetching || startAuditMutation.isPending ? (
+									<LoadingInline className="mr-2" />
+								) : null}
 								{isRunActive
-									? 'Audit Running'
+									? t('admin.discord.audit.running')
 									: isStartCooldownActive
-										? `Start Audit (${Math.ceil(startCooldownRemainingMs / 1000)}s)`
-										: 'Start Audit'}
+										? t('admin.discord.audit.cooldown', {
+												count: Math.ceil(startCooldownRemainingMs / 1000),
+											})
+										: t('admin.discord.audit.start')}
 							</Button>
 							<Button
 								variant="secondary"
@@ -515,7 +562,7 @@ export default function AdminDiscordAuditPage() {
 								disabled={!effectiveServerId || isFetching}
 							>
 								{isFetching ? <LoadingInline className="mr-2" /> : null}
-								Refresh
+								{t('admin.discord.shared.refresh')}
 							</Button>
 							<Button
 								variant="destructive"
@@ -523,15 +570,15 @@ export default function AdminDiscordAuditPage() {
 								disabled={!effectiveServerId || cleanupAuditMutation.isPending || isRunActive}
 							>
 								{cleanupAuditMutation.isPending ? <LoadingInline className="mr-2" /> : null}
-								Clean Up Old Reports
+								{t('admin.discord.audit.cleanupOld')}
 							</Button>
 						</div>
 					</div>
 
 					<Tabs value={tab} onValueChange={onChangeTab}>
 						<TabsList>
-							<TabsTrigger value="linked">Linked</TabsTrigger>
-							<TabsTrigger value="unlinked">Unlinked</TabsTrigger>
+							<TabsTrigger value="linked">{t('admin.discord.shared.linked')}</TabsTrigger>
+							<TabsTrigger value="unlinked">{t('common.esiStatus.unlinked')}</TabsTrigger>
 						</TabsList>
 					</Tabs>
 					<div className="max-w-sm">
@@ -541,34 +588,37 @@ export default function AdminDiscordAuditPage() {
 							options={
 								tab === 'linked'
 									? [
-											{ value: 'all', label: 'All Rows' },
-											{ value: 'drifted', label: 'Managed Role Drift' },
-											{ value: 'unmanaged_roles', label: 'Has Unmanaged Roles' },
-											{ value: 'roles_without_member_corp', label: 'Roles w/o Member Corp' },
-											{ value: 'member_corp', label: 'Only Valid Corp Affiliation' },
-											{ value: 'external', label: 'Only External Affiliation' },
+											{ value: 'all', label: t('admin.discord.audit.allRows') },
+											{ value: 'drifted', label: t('admin.discord.audit.drift') },
+											{ value: 'unmanaged_roles', label: t('admin.discord.audit.unmanaged') },
+											{
+												value: 'roles_without_member_corp',
+												label: t('admin.discord.audit.roleMismatch'),
+											},
+											{ value: 'member_corp', label: t('admin.discord.audit.onlyMembers') },
+											{ value: 'external', label: t('admin.discord.audit.onlyExternal') },
 										]
 									: [
-											{ value: 'all', label: 'All Rows' },
-											{ value: 'with_roles', label: 'With Roles Only' },
-											{ value: 'without_roles', label: 'Without Roles Only' },
+											{ value: 'all', label: t('admin.discord.audit.allRows') },
+											{ value: 'with_roles', label: t('admin.discord.audit.withRoles') },
+											{ value: 'without_roles', label: t('admin.discord.audit.withoutRoles') },
 										]
 							}
-							placeholder="Filter"
+							placeholder={t('admin.discord.audit.filter')}
 						/>
 					</div>
 
 					{tab === 'unlinked' && (
 						<div className="flex items-center justify-between gap-2 rounded-md border p-3">
 							<div className="text-sm text-muted-foreground">
-								{selectedIds.length} selected for bulk strip.
+								{t('admin.discord.audit.selected', { count: selectedIds.length })}
 							</div>
 							<Button
 								variant="destructive"
 								onClick={() => void stripSelectedRoles()}
 								disabled={selectedIds.length === 0 || stripRoles.isPending}
 							>
-								Strip Roles (Selected)
+								{t('admin.discord.audit.stripSelected')}
 							</Button>
 						</div>
 					)}
@@ -577,14 +627,20 @@ export default function AdminDiscordAuditPage() {
 						<div className="rounded-md border px-3 py-2">
 							<div className="flex items-center gap-2 text-sm text-muted-foreground">
 								<LoadingInline />
-								Audit ingest in progress. Fetching guild members...
+								{t('admin.discord.audit.ingesting')}
 							</div>
 						</div>
 					) : null}
 					{effectiveServerId && data?.runStatus ? (
 						<div className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
-							Run status: <span className="font-medium text-foreground">{data.runStatus}</span>
-							{typeof data.scanned === 'number' ? ` · Scanned ${data.scanned}` : ''}
+							<Trans
+								i18nKey="admin.discord.audit.runStatus"
+								values={{ status: t(`admin.discord.audit.status.${data.runStatus}`) }}
+								components={{ status: <span className="font-medium text-foreground" /> }}
+							/>
+							{typeof data.scanned === 'number'
+								? t('admin.discord.audit.scanned', { count: data.scanned })
+								: ''}
 							{data.runError ? ` · ${data.runError}` : ''}
 						</div>
 					) : null}
@@ -593,161 +649,191 @@ export default function AdminDiscordAuditPage() {
 						<div className="p-3">{renderPaginationControls('top')}</div>
 						{!effectiveServerId && !serversLoading ? (
 							<div className="py-10 text-center text-sm text-muted-foreground">
-								Select a configured Discord server, then click Start Audit.
+								{t('admin.discord.audit.startHint')}
 							</div>
 						) : (
-						<Table>
-							<TableHeader>
-								<TableRow>
-									{tab === 'unlinked' && (
-										<TableHead className="w-10">
-											<Checkbox
-												checked={allVisibleUnlinkedChecked}
-												onCheckedChange={(checked) => toggleAllVisibleUnlinked(checked === true)}
-											/>
-										</TableHead>
-									)}
-									<TableHead>Discord User</TableHead>
-									{tab === 'linked' && <TableHead>Corporation</TableHead>}
-									{tab === 'linked' && <TableHead>Affiliation</TableHead>}
-									<TableHead>Link</TableHead>
-									{tab === 'linked' && <TableHead>Token</TableHead>}
-									<TableHead>Roles</TableHead>
-									<TableHead className="text-right">Actions</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{isLoading ? (
+							<Table>
+								<TableHeader>
 									<TableRow>
-										<TableCell
-											colSpan={tab === 'linked' ? 8 : 6}
-											className="py-8 text-center text-muted-foreground"
-										>
-											<LoadingSpinner size="sm" label="Loading audit members..." className="py-2" />
-										</TableCell>
+										{tab === 'unlinked' && (
+											<TableHead className="w-10">
+												<Checkbox
+													aria-label={t('admin.discord.audit.selectAll')}
+													checked={allVisibleUnlinkedChecked}
+													onCheckedChange={(checked) => toggleAllVisibleUnlinked(checked === true)}
+												/>
+											</TableHead>
+										)}
+										<TableHead>{t('admin.discord.audit.discordUser')}</TableHead>
+										{tab === 'linked' && (
+											<TableHead>{t('admin.users.account.corporation')}</TableHead>
+										)}
+										{tab === 'linked' && (
+											<TableHead>{t('admin.discord.audit.affiliation')}</TableHead>
+										)}
+										<TableHead>{t('admin.discord.audit.link')}</TableHead>
+										{tab === 'linked' && <TableHead>{t('admin.discord.audit.token')}</TableHead>}
+										<TableHead>{t('admin.breadcrumbs.roles')}</TableHead>
+										<TableHead className="text-right">{t('myGroups.table.actions')}</TableHead>
 									</TableRow>
-								) : (data?.items?.length ?? 0) === 0 ? (
-									<TableRow>
-										<TableCell
-											colSpan={tab === 'linked' ? 8 : 6}
-											className="py-8 text-center text-muted-foreground"
-										>
-											No {tab} users found on this page.
-										</TableCell>
-									</TableRow>
-								) : (
-									data!.items.map((item) => (
-										<TableRow key={item.discordUserId}>
-											{tab === 'unlinked' && (
-												<TableCell>
-													<Checkbox
-														checked={selectedUnlinked[item.discordUserId] === true}
-														onCheckedChange={(checked) =>
-															setSelectedUnlinked((prev) => ({
-																...prev,
-																[item.discordUserId]: checked === true,
-															}))
-														}
-													/>
-												</TableCell>
-											)}
-											<TableCell>
-												{item.linked && item.coreUserId ? (
-													<Link
-														to={`/admin/users/${item.coreUserId}`}
-														target="_blank"
-														rel="noreferrer"
-														className="block hover:underline"
-													>
-														<div className="font-medium">{item.displayName}</div>
-														<div className="text-xs text-muted-foreground">
-															{formatDiscordHandle(item.username, item.discriminator)} · {item.discordUserId}
-														</div>
-													</Link>
-												) : (
-													<>
-														<div className="font-medium">{item.displayName}</div>
-														<div className="text-xs text-muted-foreground">
-															{formatDiscordHandle(item.username, item.discriminator)} · {item.discordUserId}
-														</div>
-													</>
+								</TableHeader>
+								<TableBody>
+									{isLoading ? (
+										<TableRow>
+											<TableCell
+												colSpan={tab === 'linked' ? 8 : 6}
+												className="py-8 text-center text-muted-foreground"
+											>
+												<LoadingSpinner
+													size="sm"
+													label={t('admin.discord.audit.loadingMembers')}
+													className="py-2"
+												/>
+											</TableCell>
+										</TableRow>
+									) : (data?.items?.length ?? 0) === 0 ? (
+										<TableRow>
+											<TableCell
+												colSpan={tab === 'linked' ? 8 : 6}
+												className="py-8 text-center text-muted-foreground"
+											>
+												{t(
+													tab === 'linked'
+														? 'admin.discord.audit.emptyLinked'
+														: 'admin.discord.audit.emptyUnlinked'
 												)}
 											</TableCell>
-											{tab === 'linked' && (
-												<TableCell>
-													{item.corporationName ? (
-														<div className="text-sm">{item.corporationName}</div>
-													) : (
-														<span className="text-xs text-muted-foreground">Unknown</span>
-													)}
-													{item.corporationId && (
-														<div className="text-xs text-muted-foreground">{item.corporationId}</div>
-													)}
-												</TableCell>
-											)}
-											{tab === 'linked' && (
-												<TableCell>
-													{item.isInMemberCorporation ? (
-														<Badge variant="success">Member Corp</Badge>
-													) : (
-														<Badge variant="warning">External</Badge>
-													)}
-												</TableCell>
-											)}
-											<TableCell>
-												{item.linked && item.coreUserId ? (
-													<Badge variant="secondary">Linked</Badge>
-												) : (
-													<Badge variant="destructive">Unlinked</Badge>
+										</TableRow>
+									) : (
+										data!.items.map((item) => (
+											<TableRow key={item.discordUserId}>
+												{tab === 'unlinked' && (
+													<TableCell>
+														<Checkbox
+															aria-label={t('admin.discord.audit.selectUser', {
+																name: item.displayName,
+															})}
+															checked={selectedUnlinked[item.discordUserId] === true}
+															onCheckedChange={(checked) =>
+																setSelectedUnlinked((prev) => ({
+																	...prev,
+																	[item.discordUserId]: checked === true,
+																}))
+															}
+														/>
+													</TableCell>
 												)}
-											</TableCell>
-											{tab === 'linked' && (
 												<TableCell>
-													{item.hasValidToken === true ? (
-														<Badge variant="success">Valid</Badge>
-													) : item.hasValidToken === false ? (
-														<Badge variant="destructive">Invalid</Badge>
+													{item.linked && item.coreUserId ? (
+														<Link
+															to={`/admin/users/${item.coreUserId}`}
+															target="_blank"
+															rel="noreferrer"
+															className="block hover:underline"
+														>
+															<div className="font-medium">{item.displayName}</div>
+															<div className="text-xs text-muted-foreground">
+																{formatDiscordHandle(item.username, item.discriminator)} ·{' '}
+																{item.discordUserId}
+															</div>
+														</Link>
 													) : (
-														<Badge variant="warning">Unknown</Badge>
+														<>
+															<div className="font-medium">{item.displayName}</div>
+															<div className="text-xs text-muted-foreground">
+																{formatDiscordHandle(item.username, item.discriminator)} ·{' '}
+																{item.discordUserId}
+															</div>
+														</>
 													)}
 												</TableCell>
-											)}
-											<TableCell>
-												<div className="text-xs text-muted-foreground space-y-1">
-													{item.roleIds.length} roles assigned
-													{item.hasRoleAffiliationMismatch ? (
-														<div>
-															<Badge variant="destructive">
-																Roles w/o Member Corp
-																{(item.unmanagedRoleCount ?? 0) > 0
-																	? ` (${item.unmanagedRoleCount} unmanaged)`
-																	: ''}
+												{tab === 'linked' && (
+													<TableCell>
+														{item.corporationName ? (
+															<div className="text-sm">{item.corporationName}</div>
+														) : (
+															<span className="text-xs text-muted-foreground">
+																{t('admin.users.account.unknown')}
+															</span>
+														)}
+														{item.corporationId && (
+															<div className="text-xs text-muted-foreground">
+																{item.corporationId}
+															</div>
+														)}
+													</TableCell>
+												)}
+												{tab === 'linked' && (
+													<TableCell>
+														{item.isInMemberCorporation ? (
+															<Badge variant="success">
+																{t('admin.discord.shared.memberCorp')}
 															</Badge>
-														</div>
-													) : null}
-												</div>
-											</TableCell>
-											<TableCell className="text-right">
-												{item.linked && item.coreUserId ? (
-													<div className="inline-flex items-center gap-2">
-														<Button variant="secondary" size="sm" asChild>
-															<Link to={`/admin/users/${item.coreUserId}/discord-access`}>Inspect</Link>
-														</Button>
-														<Button
-															variant="secondary"
-															size="sm"
-															onClick={() => void refreshLinkedUser(item.coreUserId!)}
-														>
-															Refresh
-														</Button>
-														<Button
-															variant="destructive"
-															size="sm"
-															onClick={() => void stripSingleUserRoles(item.discordUserId)}
-														>
-															Strip Roles
-														</Button>
+														) : (
+															<Badge variant="warning">{t('admin.discord.shared.external')}</Badge>
+														)}
+													</TableCell>
+												)}
+												<TableCell>
+													{item.linked && item.coreUserId ? (
+														<Badge variant="secondary">{t('admin.discord.shared.linked')}</Badge>
+													) : (
+														<Badge variant="destructive">{t('common.esiStatus.unlinked')}</Badge>
+													)}
+												</TableCell>
+												{tab === 'linked' && (
+													<TableCell>
+														{item.hasValidToken === true ? (
+															<Badge variant="success">{t('admin.discord.audit.valid')}</Badge>
+														) : item.hasValidToken === false ? (
+															<Badge variant="destructive">
+																{t('admin.discord.audit.invalid')}
+															</Badge>
+														) : (
+															<Badge variant="warning">{t('admin.users.account.unknown')}</Badge>
+														)}
+													</TableCell>
+												)}
+												<TableCell>
+													<div className="text-xs text-muted-foreground space-y-1">
+														{t('admin.discord.audit.rolesAssigned', { count: item.roleIds.length })}
+														{item.hasRoleAffiliationMismatch ? (
+															<div>
+																<Badge variant="destructive">
+																	{t('admin.discord.audit.roleMismatch')}
+																	{(item.unmanagedRoleCount ?? 0) > 0
+																		? t('admin.discord.audit.unmanagedCount', {
+																				count: item.unmanagedRoleCount,
+																			})
+																		: ''}
+																</Badge>
+															</div>
+														) : null}
 													</div>
+												</TableCell>
+												<TableCell className="text-right">
+													{item.linked && item.coreUserId ? (
+														<div className="inline-flex items-center gap-2">
+															<Button variant="secondary" size="sm" asChild>
+																<Link to={`/admin/users/${item.coreUserId}/discord-access`}>
+																	{t('admin.discord.audit.inspect')}
+																</Link>
+															</Button>
+															<Button
+																variant="secondary"
+																size="sm"
+																onClick={() => void refreshLinkedUser(item.coreUserId!)}
+															>
+																{t('admin.discord.shared.refresh')}
+															</Button>
+															<Button
+																variant="destructive"
+																size="sm"
+																onClick={() => void stripSingleUserRoles(item.discordUserId)}
+															>
+																{t('admin.users.discord.stripRoles')}
+															</Button>
+														</div>
 													) : (
 														<div className="inline-flex items-center gap-2">
 															<Button
@@ -755,23 +841,23 @@ export default function AdminDiscordAuditPage() {
 																size="sm"
 																onClick={() => void stripSingleUserRoles(item.discordUserId)}
 															>
-																Strip Roles
+																{t('admin.users.discord.stripRoles')}
 															</Button>
 															<Button
 																variant="destructive"
 																size="sm"
 																onClick={() => void kickSingleUser(item.discordUserId)}
 															>
-																Kick User
+																{t('admin.discord.audit.kick')}
 															</Button>
 														</div>
 													)}
 												</TableCell>
-										</TableRow>
-									))
-								)}
-							</TableBody>
-						</Table>
+											</TableRow>
+										))
+									)}
+								</TableBody>
+							</Table>
 						)}
 					</div>
 					{renderPaginationControls('bottom')}

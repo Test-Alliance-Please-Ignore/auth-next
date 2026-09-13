@@ -1,4 +1,5 @@
 import { defineCatalog } from '../catalog'
+import { adminDiscordCatalog } from './admin-discord'
 import { adminOrganizationsCatalog } from './admin-organizations'
 import { adminPermissionsCatalog } from './admin-permissions'
 import { adminShellCatalog } from './admin-shell'
@@ -11,6 +12,7 @@ export const adminCatalog = defineCatalog(
 			...adminPermissionsCatalog.en,
 			...adminUsersCatalog.en,
 			...adminOrganizationsCatalog.en,
+			...adminDiscordCatalog.en,
 		},
 	},
 	{
@@ -19,6 +21,7 @@ export const adminCatalog = defineCatalog(
 			...adminPermissionsCatalog.de,
 			...adminUsersCatalog.de,
 			...adminOrganizationsCatalog.de,
+			...adminDiscordCatalog.de,
 		},
 	},
 	{
@@ -27,6 +30,7 @@ export const adminCatalog = defineCatalog(
 			...adminPermissionsCatalog.ko,
 			...adminUsersCatalog.ko,
 			...adminOrganizationsCatalog.ko,
+			...adminDiscordCatalog.ko,
 		},
 	}
 )
