@@ -76,6 +76,13 @@ describe('application i18n runtime', () => {
 		expect(resolveStartupLocale()).toBe('ko')
 	})
 
+	it('uses an explicit login cookie for production startup activation', () => {
+		vi.stubGlobal('window', { localStorage: { getItem: () => null } })
+		vi.stubGlobal('document', { cookie: 'tang.locale=de' })
+
+		expect(getInitialAppLocale(false)).toBe('de')
+	})
+
 	it('allows URL locale previews only in development builds', () => {
 		expect(
 			resolveInitialAppLocale({
