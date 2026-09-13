@@ -11,6 +11,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { formatNumber, useAppTranslation } from '@/i18n'
 
 import type { GroupPermissionWithDetails } from '@/lib/api'
 
@@ -29,13 +30,14 @@ export function PermissionUsageDialog({
 	open,
 	onOpenChange,
 }: PermissionUsageDialogProps) {
+	const { t } = useAppTranslation()
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
 				<DialogHeader>
-					<DialogTitle>Permission Usage</DialogTitle>
+					<DialogTitle>{t('admin.permissionUsage.title')}</DialogTitle>
 					<DialogDescription>
-						Groups using the permission "{permissionName}"
+						{t('admin.permissionUsage.description', { name: permissionName })}
 						<span className="block font-mono text-xs mt-1">{permissionUrn}</span>
 					</DialogDescription>
 				</DialogHeader>
@@ -44,10 +46,8 @@ export function PermissionUsageDialog({
 					{groupPermissions.length === 0 && (
 						<Card className="p-8 text-center">
 							<Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-							<h3 className="text-lg font-medium mb-2">No groups using this permission</h3>
-							<p className="text-muted-foreground">
-								This permission is not currently attached to any groups
-							</p>
+							<h3 className="text-lg font-medium mb-2">{t('admin.permissionUsage.empty')}</h3>
+							<p className="text-muted-foreground">{t('admin.permissionUsage.emptyDescription')}</p>
 						</Card>
 					)}
 
@@ -55,7 +55,10 @@ export function PermissionUsageDialog({
 						<>
 							<div className="flex items-center justify-between">
 								<p className="text-sm text-muted-foreground">
-									Used by {groupPermissions.length} group{groupPermissions.length !== 1 ? 's' : ''}
+									{t('admin.permissionUsage.count', {
+										count: groupPermissions.length,
+										value: formatNumber(groupPermissions.length),
+									})}
 								</p>
 							</div>
 
@@ -69,9 +72,9 @@ export function PermissionUsageDialog({
 													<PermissionTargetBadge target={gp.targetType} size="sm" />
 												</div>
 											</div>
-											<Link to={`/admin/group-detail/${gp.group.id}`}>
+											<Link to={`/admin/groups/${gp.group.id}`}>
 												<Button variant="ghost" size="sm">
-													View Group
+													{t('admin.permissionUsage.viewGroup')}
 													<ExternalLink className="w-3 h-3 ml-2" />
 												</Button>
 											</Link>

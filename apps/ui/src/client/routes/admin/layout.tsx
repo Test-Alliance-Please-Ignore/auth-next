@@ -1,6 +1,6 @@
 import { ChevronRight, Menu, X } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Link, Navigate, Outlet, useLocation } from 'react-router'
+import { Link, matchPath, Navigate, Outlet, useLocation } from 'react-router'
 
 import { AdminNav } from '@/components/admin-nav'
 import { LayoutScrollProvider, useLayoutScrollMode } from '@/components/layout-scroll-context'
@@ -8,9 +8,75 @@ import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
 import { BreadcrumbProvider, useBreadcrumb } from '@/hooks/useBreadcrumb'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
+import type { AppTranslationKey } from '@/i18n'
+
+// Match complete route patterns; entity IDs and custom breadcrumb labels remain verbatim.
+const breadcrumbKeys: Record<string, AppTranslationKey> = {
+	'/admin/eve-character-sync': 'admin.breadcrumbs.eveCharacterSync',
+	'/admin/discord-servers/:serverId/roles': 'admin.breadcrumbs.roles',
+	'/admin/users/:userId/discord-access': 'admin.breadcrumbs.discordAccess',
+	'/admin/users/:userId/oauth-inspection': 'admin.breadcrumbs.oauthInspection',
+	'/admin/users/:userId/activity': 'admin.breadcrumbs.userActivity',
+	'/admin/ip-history': 'admin.breadcrumbs.ipHistory',
+	'/admin/users/:userId/hr-notes': 'admin.breadcrumbs.hrNotes',
+	'/admin/dev': 'admin.breadcrumbs.development',
+	'/admin/dev/components': 'admin.breadcrumbs.components',
+	'/admin/bills/new': 'admin.breadcrumbs.new',
+	'/admin/bills/dashboard': 'admin.breadcrumbs.dashboard',
+	'/admin/bills/schedules': 'admin.breadcrumbs.schedules',
+	'/admin/bills/schedules/new': 'admin.breadcrumbs.new',
+	'/admin/bills/templates/new': 'admin.breadcrumbs.new',
+	'/admin/bills/group': 'admin.breadcrumbs.group',
+	'/admin/bills/group/:groupBillId/edit': 'admin.breadcrumbs.edit',
+	'/admin/bills/:billId/edit': 'admin.breadcrumbs.edit',
+	'/admin/dkp/awards': 'admin.breadcrumbs.awards',
+	'/admin/dkp/leaderboards': 'admin.breadcrumbs.leaderboards',
+	'/admin/industry-providers/new': 'admin.breadcrumbs.new',
+	'/admin/industry-providers/:providerId/edit': 'admin.breadcrumbs.edit',
+	'/admin/discord-servers/:serverId/commands': 'admin.nav.commands',
+	'/admin/discord-commands/categories': 'admin.nav.categories',
+	'/admin/users/:userId/groups': 'admin.nav.groups',
+	'/admin/bills/templates': 'admin.nav.templates',
+	'/admin/dkp/history': 'admin.nav.history',
+
+	'/admin': 'admin.shell.admin',
+	'/admin/permissions': 'admin.nav.permissions',
+	'/admin/permissions/categories': 'admin.nav.categories',
+	'/admin/permissions/global': 'admin.permissions.global',
+	'/admin/users': 'admin.nav.users',
+	'/admin/groups': 'admin.nav.groups',
+	'/admin/categories': 'admin.nav.categories',
+	'/admin/corporations': 'admin.nav.corporations',
+	'/admin/structures': 'admin.nav.structures',
+	'/admin/discord': 'admin.nav.discord',
+	'/admin/discord-servers': 'admin.nav.servers',
+	'/admin/discord-commands': 'admin.nav.commands',
+	'/admin/discord-audit': 'admin.nav.memberAudit',
+	'/admin/broadcasts': 'admin.nav.broadcasts',
+	'/admin/broadcasts-targets': 'admin.nav.targets',
+	'/admin/broadcasts-templates': 'admin.nav.templates',
+	'/admin/bills': 'admin.nav.bills',
+	'/admin/dkp': 'admin.nav.dkp',
+	'/admin/prediction-markets': 'admin.nav.predictionMarkets',
+	'/admin/prediction-markets/markets': 'admin.nav.markets',
+	'/admin/prediction-markets/wallets': 'admin.nav.wallets',
+	'/admin/prediction-markets/audit': 'admin.nav.auditLog',
+	'/admin/prediction-markets/config': 'admin.nav.config',
+	'/admin/industry-providers': 'admin.nav.industryProviders',
+	'/admin/pastes': 'admin.nav.pastes',
+	'/admin/legacy-migrations': 'admin.nav.legacyMigrations',
+	'/admin/third-party-apps': 'admin.nav.thirdPartyApps',
+	'/admin/external-links': 'admin.nav.externalLinks',
+	'/admin/services-audit': 'admin.nav.servicesAudit',
+	'/admin/blacklist': 'admin.nav.blocklist',
+	'/admin/activity-log': 'admin.nav.activityLog',
+}
+
 export default function AdminLayout() {
+	const { t } = useAppTranslation()
 	const { user, isAuthenticated, isLoading } = useAuth()
 	const location = useLocation()
 
@@ -27,7 +93,7 @@ export default function AdminLayout() {
 	if (isLoading) {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
-				<LoadingSpinner label="Loading admin panel..." />
+				<LoadingSpinner label={t('admin.shell.loading')} />
 			</div>
 		)
 	}
@@ -36,7 +102,7 @@ export default function AdminLayout() {
 	if (!isAuthenticated || !user) {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
-				<LoadingSpinner label="Redirecting to login..." />
+				<LoadingSpinner label={t('admin.shell.redirecting')} />
 			</div>
 		)
 	}
@@ -56,6 +122,7 @@ export default function AdminLayout() {
 }
 
 function AdminLayoutContent() {
+	const { t } = useAppTranslation()
 	const location = useLocation()
 	const { isPageScrollEnabled } = useLayoutScrollMode()
 	const { customLabels } = useBreadcrumb()
@@ -67,7 +134,10 @@ function AdminLayoutContent() {
 	const pathSegments = location.pathname.split('/').filter(Boolean)
 	const breadcrumbs = pathSegments.map((segment, index) => {
 		const path = `/${pathSegments.slice(0, index + 1).join('/')}`
-		const defaultLabel = segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' ')
+		const labelKey = Object.entries(breadcrumbKeys).find(([pattern]) =>
+			matchPath({ path: pattern, end: true }, path)
+		)?.[1]
+		const defaultLabel = labelKey ? t(labelKey) : segment
 		const label = customLabels.get(path) || defaultLabel
 		return { label, path }
 	})
@@ -114,9 +184,9 @@ function AdminLayoutContent() {
 							className="gap-2"
 						>
 							{sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-							<span className="font-semibold">Menu</span>
+							<span className="font-semibold">{t('admin.shell.menu')}</span>
 						</Button>
-						<span className="text-sm font-bold gradient-text">Admin</span>
+						<span className="text-sm font-bold gradient-text">{t('admin.shell.admin')}</span>
 					</div>
 				</header>
 
@@ -124,9 +194,12 @@ function AdminLayoutContent() {
 				<header className="border-b border-border/30 bg-background/72 z-20 shadow-[0_4px_20px_rgba(0,0,0,0.3)] flex-shrink-0 backdrop-blur-sm">
 					<div className="px-4 md:px-6 lg:px-8 py-4">
 						<div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-							<h1 className="text-2xl font-bold gradient-text">Admin Panel</h1>
+							<h1 className="text-2xl font-bold gradient-text">{t('admin.shell.panel')}</h1>
 
-							<nav className="flex flex-wrap items-center gap-2 text-sm" aria-label="Breadcrumb">
+							<nav
+								className="flex flex-wrap items-center gap-2 text-sm"
+								aria-label={t('common.breadcrumb')}
+							>
 								{breadcrumbs.map((crumb, index) => (
 									<Fragment key={crumb.path}>
 										{index > 0 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
@@ -163,7 +236,7 @@ function AdminLayoutContent() {
 				{/* Footer */}
 				<footer className="border-t border-border/50 py-4 relative z-10 bg-background/75 backdrop-blur-sm">
 					<div className="px-4 md:px-6 lg:px-8 text-center text-xs text-muted-foreground">
-						<p>Admin Panel • Manage Categories and Groups</p>
+						<p>{t('admin.shell.footer')}</p>
 					</div>
 				</footer>
 			</div>

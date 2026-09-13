@@ -28,7 +28,9 @@ import {
 	usePermissionCategories,
 	useUpdatePermissionCategory,
 } from '@/hooks/usePermissionCategories'
+import { formatNumber, useAppTranslation } from '@/i18n'
 
+import type { AppTranslationKey } from '@/i18n'
 import type {
 	CreatePermissionCategoryRequest,
 	PermissionCategory,
@@ -36,7 +38,8 @@ import type {
 } from '@/lib/api'
 
 export default function PermissionCategoriesPage() {
-	usePageTitle('Admin - Permission Categories')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.permissionCategories.pageTitle'))
 	const { data: categories, isLoading } = usePermissionCategories()
 	const createCategory = useCreatePermissionCategory()
 	const updateCategory = useUpdatePermissionCategory()
@@ -49,19 +52,24 @@ export default function PermissionCategoriesPage() {
 	const [selectedCategory, setSelectedCategory] = useState<PermissionCategory | null>(null)
 
 	// Message state
-	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [message, setMessage] = useState<{
+		type: 'success' | 'error'
+		key: AppTranslationKey
+		detail?: string
+	} | null>(null)
 
 	// Handlers
 	const handleCreate = async (data: CreatePermissionCategoryRequest) => {
 		try {
 			await createCategory.mutateAsync(data)
 			setCreateDialogOpen(false)
-			setMessage({ type: 'success', text: 'Category created successfully!' })
+			setMessage({ type: 'success', key: 'admin.permissionCategories.createSuccess' })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to create category',
+				key: 'admin.permissionCategories.createError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -74,12 +82,13 @@ export default function PermissionCategoriesPage() {
 			await updateCategory.mutateAsync({ id: selectedCategory.id, data })
 			setEditDialogOpen(false)
 			setSelectedCategory(null)
-			setMessage({ type: 'success', text: 'Category updated successfully!' })
+			setMessage({ type: 'success', key: 'admin.permissionCategories.updateSuccess' })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to update category',
+				key: 'admin.permissionCategories.updateError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -92,12 +101,13 @@ export default function PermissionCategoriesPage() {
 			await deleteCategory.mutateAsync(selectedCategory.id)
 			setDeleteDialogOpen(false)
 			setSelectedCategory(null)
-			setMessage({ type: 'success', text: 'Category deleted successfully!' })
+			setMessage({ type: 'success', key: 'admin.permissionCategories.deleteSuccess' })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to delete category',
+				key: 'admin.permissionCategories.deleteError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -119,14 +129,12 @@ export default function PermissionCategoriesPage() {
 			<div className="space-y-4">
 				<div className="flex items-center justify-between">
 					<div>
-						<h1 className="text-3xl font-bold gradient-text">Permissions</h1>
-						<p className="text-muted-foreground mt-1">
-							Manage permission categories and global permissions
-						</p>
+						<h1 className="text-3xl font-bold gradient-text">{t('admin.nav.permissions')}</h1>
+						<p className="text-muted-foreground mt-1">{t('admin.permissions.description')}</p>
 					</div>
 					<Button onClick={() => setCreateDialogOpen(true)}>
 						<Plus className="h-4 w-4" />
-						New Category
+						{t('admin.permissionCategories.new')}
 					</Button>
 				</div>
 
@@ -135,13 +143,13 @@ export default function PermissionCategoriesPage() {
 					<Button variant="primary" asChild>
 						<Link to="/admin/permissions/categories">
 							<FolderOpen className="h-4 w-4" />
-							Categories
+							{t('admin.nav.categories')}
 						</Link>
 					</Button>
 					<Button variant="ghost" asChild>
 						<Link to="/admin/permissions/global">
 							<FileKey className="h-4 w-4" />
-							Global Permissions
+							{t('admin.permissions.global')}
 						</Link>
 					</Button>
 				</div>
@@ -158,7 +166,7 @@ export default function PermissionCategoriesPage() {
 				>
 					<CardContent className="py-3">
 						<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>
-							{message.text}
+							{message.detail ?? t(message.key)}
 						</p>
 					</CardContent>
 				</Card>
@@ -168,12 +176,14 @@ export default function PermissionCategoriesPage() {
 			<Card>
 				<CardHeader>
 					<CardTitle>
-						Categories{' '}
+						{t('admin.nav.categories')}{' '}
 						{categories && (
-							<span className="text-muted-foreground font-normal">({categories.length})</span>
+							<span className="text-muted-foreground font-normal">
+								({formatNumber(categories.length)})
+							</span>
 						)}
 					</CardTitle>
-					<CardDescription>Create and manage permission categories</CardDescription>
+					<CardDescription>{t('admin.permissionCategories.listDescription')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					{isLoading ? (
@@ -185,13 +195,13 @@ export default function PermissionCategoriesPage() {
 					) : !categories || categories.length === 0 ? (
 						<div className="rounded-lg border border-dashed p-8 text-center">
 							<FolderOpen className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-							<h3 className="text-lg font-medium mb-2">No categories yet</h3>
+							<h3 className="text-lg font-medium mb-2">{t('admin.permissionCategories.empty')}</h3>
 							<p className="text-muted-foreground mb-4">
-								Create your first category to organize permissions
+								{t('admin.permissionCategories.emptyDescription')}
 							</p>
 							<Button onClick={() => setCreateDialogOpen(true)}>
 								<Plus className="w-4 h-4 mr-2" />
-								Create Category
+								{t('admin.permissionCategories.create')}
 							</Button>
 						</div>
 					) : (
@@ -199,9 +209,9 @@ export default function PermissionCategoriesPage() {
 							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead>Name</TableHead>
-										<TableHead>Description</TableHead>
-										<TableHead className="text-right">Actions</TableHead>
+										<TableHead>{t('admin.fields.name')}</TableHead>
+										<TableHead>{t('admin.fields.description')}</TableHead>
+										<TableHead className="text-right">{t('admin.fields.actions')}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -213,10 +223,20 @@ export default function PermissionCategoriesPage() {
 											</TableCell>
 											<TableCell className="text-right">
 												<div className="flex items-center justify-end gap-2">
-													<Button variant="ghost" size="icon" onClick={() => openEditDialog(category)} title="Edit category">
+													<Button
+														variant="ghost"
+														size="icon"
+														onClick={() => openEditDialog(category)}
+														title={t('admin.permissionCategories.editAction')}
+													>
 														<Edit2 className="h-4 w-4" />
 													</Button>
-													<Button variant="ghost" size="icon" onClick={() => openDeleteDialog(category)} title="Delete category">
+													<Button
+														variant="ghost"
+														size="icon"
+														onClick={() => openDeleteDialog(category)}
+														title={t('admin.permissionCategories.deleteAction')}
+													>
 														<Trash2 className="h-4 w-4 text-destructive" />
 													</Button>
 												</div>
@@ -234,9 +254,9 @@ export default function PermissionCategoriesPage() {
 			<Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Create Permission Category</DialogTitle>
+						<DialogTitle>{t('admin.permissionCategories.createTitle')}</DialogTitle>
 						<DialogDescription>
-							Create a new category to organize your permissions
+							{t('admin.permissionCategories.createDescription')}
 						</DialogDescription>
 					</DialogHeader>
 					<PermissionCategoryForm
@@ -251,8 +271,8 @@ export default function PermissionCategoriesPage() {
 			<Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Edit Permission Category</DialogTitle>
-						<DialogDescription>Update the category details</DialogDescription>
+						<DialogTitle>{t('admin.permissionCategories.editTitle')}</DialogTitle>
+						<DialogDescription>{t('admin.permissionCategories.editDescription')}</DialogDescription>
 					</DialogHeader>
 					<PermissionCategoryForm
 						category={selectedCategory || undefined}
@@ -270,10 +290,9 @@ export default function PermissionCategoriesPage() {
 			<Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Delete Category</DialogTitle>
+						<DialogTitle>{t('admin.permissionCategories.delete')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete "{selectedCategory?.name}"? Permissions in this
-							category will not be deleted, but they will no longer be organized.
+							{t('admin.permissionCategories.deleteWarning', { name: selectedCategory?.name })}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -285,10 +304,10 @@ export default function PermissionCategoriesPage() {
 							}}
 							disabled={deleteCategory.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button variant="destructive" onClick={handleDelete} loading={deleteCategory.isPending}>
-							Delete Category
+							{t('admin.permissionCategories.delete')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

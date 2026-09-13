@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { usePermissionCategories } from '@/hooks/usePermissionCategories'
 import { useGlobalPermissions } from '@/hooks/usePermissions'
+import { useAppTranslation } from '@/i18n'
 
 interface GlobalPermissionPickerProps {
 	selectedPermissionId: string
@@ -18,6 +19,7 @@ export function GlobalPermissionPicker({
 	selectedPermissionId,
 	onSelectPermissionId,
 }: GlobalPermissionPickerProps) {
+	const { t } = useAppTranslation()
 	const { data: permissions = [], isLoading } = useGlobalPermissions()
 	const { data: categories = [] } = usePermissionCategories()
 	const [searchQuery, setSearchQuery] = useState('')
@@ -42,12 +44,12 @@ export function GlobalPermissionPicker({
 		<div className="space-y-4">
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 				<div className="space-y-2">
-					<Label htmlFor="search-permissions">Search</Label>
+					<Label htmlFor="search-permissions">{t('admin.fields.search')}</Label>
 					<div className="relative">
 						<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 						<Input
 							id="search-permissions"
-							placeholder="Search by name or URN..."
+							placeholder={t('admin.permissionPicker.searchPlaceholder')}
 							value={searchQuery}
 							onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
 							className="pl-9"
@@ -56,25 +58,25 @@ export function GlobalPermissionPicker({
 				</div>
 
 				<div className="space-y-2">
-					<Label htmlFor="category-filter-attach">Filter by Category</Label>
+					<Label htmlFor="category-filter-attach">{t('admin.permissions.filterCategory')}</Label>
 					<Select
 						value={categoryFilter || 'all'}
 						onValueChange={(value) => setCategoryFilter(value === 'all' ? undefined : value)}
 						inputId="category-filter-attach"
 						searchable
 						options={[
-							{ value: 'all', label: 'All categories' },
-							{ value: 'uncategorized', label: 'Uncategorized' },
+							{ value: 'all', label: t('admin.permissions.allCategories') },
+							{ value: 'uncategorized', label: t('admin.permissions.uncategorized') },
 							...categories.map((category) => ({ value: category.id, label: category.name })),
 						]}
-						placeholder="All categories"
+						placeholder={t('admin.permissions.allCategories')}
 					/>
 				</div>
 			</div>
 
 			<div className="space-y-2">
 				<Label>
-					Select Permission <span className="text-destructive">*</span>
+					{t('admin.permissionPicker.select')} <span className="text-destructive">*</span>
 				</Label>
 				{isLoading ? (
 					<div className="space-y-2">
@@ -86,8 +88,8 @@ export function GlobalPermissionPicker({
 					<Card className="p-8 text-center">
 						<p className="text-muted-foreground">
 							{searchQuery || categoryFilter
-								? 'No permissions match your search criteria'
-								: 'No global permissions available'}
+								? t('admin.permissionPicker.noMatches')
+								: t('admin.permissionPicker.empty')}
 						</p>
 					</Card>
 				) : (
@@ -119,7 +121,7 @@ export function GlobalPermissionPicker({
 											{isSelected && (
 												<div className="inline-flex items-center gap-1 text-xs font-medium text-primary">
 													<CheckCircle2 className="h-4 w-4" />
-													Selected
+													{t('admin.permissionPicker.selected')}
 												</div>
 											)}
 										</div>
