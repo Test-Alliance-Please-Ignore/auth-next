@@ -70,7 +70,7 @@ export function CharacterSpWalletLine({
 			<div
 				className={cn('mt-1 flex items-center gap-2 text-sm text-muted-foreground', className)}
 				role="status"
-				aria-label="Loading private character details"
+				aria-label={t('common.characterIdentity.loadingPrivateDetails')}
 				aria-busy="true"
 			>
 				<Skeleton className="h-4 w-24 bg-muted-foreground/30" />
@@ -84,7 +84,9 @@ export function CharacterSpWalletLine({
 		<p className={cn('mt-1 text-sm text-muted-foreground', className)}>
 			<span className="font-mono font-semibold tabular-nums">
 				{skillPoints != null
-					? `${formatNumber(skillPoints, { notation: 'compact', maximumFractionDigits: 2 })} SP`
+					? t('common.characterIdentity.skillPoints', {
+							value: formatNumber(skillPoints, { notation: 'compact', maximumFractionDigits: 2 }),
+						})
 					: t('common.characterIdentity.spUnavailable')}
 			</span>
 			<span className="mx-2">—</span>

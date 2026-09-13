@@ -11,7 +11,11 @@ import { CharacterSkills } from '@/components/character-skills'
 import { CopyableMetaPill } from '@/components/copyable-meta-pill'
 import { EsiStatusBadge } from '@/components/esi-status-badge'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
-import { CharacterIdentitySummary } from '@/features/applications/components/character-identity-summary'
+import {
+	CharacterIdentitySummary,
+	CharacterSpWalletLine,
+} from '@/features/applications/components/character-identity-summary'
+import { CharacterRoleBadge } from '@/features/applications/components/character-role-badge'
 import { buildCorporationMembersExportUrl, sortMembers } from '@/features/corporations/api'
 import CorporationMembersTable from '@/features/corporations/components/corporation-members-table'
 import { EmeritusConfirmationDialog } from '@/features/corporations/components/emeritus-confirmation-dialog'
@@ -78,6 +82,28 @@ describe('character and corporation translations', () => {
 		await setAppLocale('en', { persistLocal: false })
 		vi.restoreAllMocks()
 	})
+
+	it.each([
+		['en', 'Loading private character details', 'Main', 'Alt'],
+		['de', 'Private Charakterdaten werden geladen', 'Hauptcharakter', 'Alt'],
+		['ko', '캐릭터 비공개 정보 불러오는 중', '메인', '부캐'],
+	] as const)(
+		'localizes private-detail loading and character roles in %s',
+		async (locale, loading, main, alt) => {
+			await setAppLocale(locale, { persistLocal: false })
+			const html = render(
+				<>
+					<CharacterSpWalletLine skillPoints={null} walletBalance={null} isLoading />
+					<CharacterRoleBadge role="main" />
+					<CharacterRoleBadge role="alt" />
+				</>
+			)
+			expect(html).toContain(`aria-label="${loading}"`)
+			expect(html).toContain('aria-busy="true"')
+			expect(html).toContain(`>${main}</`)
+			expect(html).toContain(`>${alt}</`)
+		}
+	)
 
 	it.each([
 		['en', 'Attributes', 'Corporation History', 'Skill Queue', 'Skills'],

@@ -137,6 +137,7 @@ export const charactersCorporationsCatalog = defineCatalog(
 				specialPurpose: 'Special-purpose',
 			},
 			roles: {
+				ceo: 'CEO',
 				director: 'Director',
 				member: 'Member',
 				siteAdmin: 'Site Admin',
@@ -526,6 +527,7 @@ export const charactersCorporationsCatalog = defineCatalog(
 				specialPurpose: 'Spezialzweck',
 			},
 			roles: {
+				ceo: 'CEO',
 				director: 'Direktor',
 				member: 'Mitglied',
 				siteAdmin: 'Website-Admin',
@@ -925,6 +927,7 @@ export const charactersCorporationsCatalog = defineCatalog(
 				specialPurpose: '특수 목적',
 			},
 			roles: {
+				ceo: 'CEO',
 				director: '디렉터',
 				member: '멤버',
 				siteAdmin: '사이트 관리자',

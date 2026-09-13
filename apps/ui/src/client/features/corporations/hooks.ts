@@ -90,7 +90,7 @@ export function formatCorporationRoleLabel(
 ): string {
 	switch (role) {
 		case 'CEO':
-			return 'CEO'
+			return i18n.t('corporations.roles.ceo')
 		case 'Director':
 			return i18n.t('corporations.roles.director')
 		case 'Member':

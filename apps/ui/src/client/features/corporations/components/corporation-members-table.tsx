@@ -581,7 +581,7 @@ export default function CorporationMembersTable({
 										<div className="flex flex-nowrap gap-2">
 											{member.role === 'CEO' && (
 												<Badge variant="destructive" icon={Star}>
-													CEO
+													{t('corporations.roles.ceo')}
 												</Badge>
 											)}
 											{member.role === 'Director' && (

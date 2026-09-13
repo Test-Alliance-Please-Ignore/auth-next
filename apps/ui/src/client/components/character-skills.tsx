@@ -328,11 +328,12 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 											total: formatNumber(activeGroup.totalCount),
 										})}
 										{' • '}
-										{formatNumber(activeGroup.totalSP, {
-											notation: 'compact',
-											maximumFractionDigits: 2,
-										})}{' '}
-										SP
+										{t('common.characterIdentity.skillPoints', {
+											value: formatNumber(activeGroup.totalSP, {
+												notation: 'compact',
+												maximumFractionDigits: 2,
+											}),
+										})}
 									</span>
 								</div>
 								<div className="columns-2 gap-x-4 px-4 py-1">

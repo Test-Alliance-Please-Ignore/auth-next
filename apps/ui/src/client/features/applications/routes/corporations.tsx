@@ -349,7 +349,7 @@ export default function CorporationsPage() {
 								</div>
 								<div className="justify-self-end self-start">
 									{corporationAccessEntry?.userRole === 'CEO' ? (
-										<Badge variant="warning">CEO</Badge>
+										<Badge variant="warning">{t('corporations.roles.ceo')}</Badge>
 									) : corporationAccessEntry?.userRole === 'Director' ? (
 										<Badge variant="secondary">{t('corporations.roles.director')}</Badge>
 									) : (
