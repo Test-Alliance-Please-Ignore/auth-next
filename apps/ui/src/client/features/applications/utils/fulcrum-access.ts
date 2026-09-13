@@ -1,7 +1,7 @@
 import { OPEN_APPLICATION_STATUSES } from '../constants'
 
-import type { ApplicationStatus } from '../api'
 import type { HrRoleType } from '../../hr/api'
+import type { ApplicationStatus } from '../api'
 
 type FulcrumAccessInput = {
 	applicationStatus?: ApplicationStatus | null

@@ -61,6 +61,7 @@ function makeHrStub() {
 		checkPermission: vi.fn().mockResolvedValue(false),
 		getUserRoles: vi.fn().mockResolvedValue([]),
 		listApplications: vi.fn().mockResolvedValue([]),
+		getApplication: vi.fn(),
 	}
 }
 
@@ -312,10 +313,10 @@ describe('fulcrum route access matrix', () => {
 		expect(res.status).toBe(403)
 		expect(await res.json()).toEqual({ error: 'HR role required' })
 		expect(fulcrumStub.getReportSections).not.toHaveBeenCalled()
-		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '1001', 'hr_viewer')
+		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '1001', 'hr_reviewer')
 	})
 
-	it('allows hr_viewer staff to read completed report section data', async () => {
+	it('allows hr_reviewer staff to read completed report section data', async () => {
 		hrStub.getUserRoles.mockResolvedValue([
 			{
 				id: 'role-1',
@@ -323,7 +324,7 @@ describe('fulcrum route access matrix', () => {
 				userId: 'user-1',
 				characterId: 'user-1',
 				characterName: 'Main Pilot',
-				role: 'hr_viewer',
+				role: 'hr_reviewer',
 				grantedBy: 'granted-by',
 				grantedAt: new Date(),
 				expiresAt: null,
@@ -347,8 +348,53 @@ describe('fulcrum route access matrix', () => {
 
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual({ rows: [{ section: 'public-info' }] })
-		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '1001', 'hr_viewer')
+		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '1001', 'hr_reviewer')
 		expect(fulcrumStub.getReportSectionData).toHaveBeenCalledWith('report-1', 'public-info')
+	})
+
+	it('allows an hr_reviewer to read a report linked to their pending application', async () => {
+		hrStub.checkPermission.mockImplementation(
+			async (_userId: string, corporationId: string, requiredRole: string) =>
+				corporationId === '2001' && requiredRole === 'hr_reviewer'
+		)
+		hrStub.getApplication.mockResolvedValue({ corporationId: '2001', status: 'pending' } as any)
+		fulcrumStub.getReportStatus.mockResolvedValue({
+			reportId: 'report-1',
+			status: 'completed',
+			requestorCorporationId: '1001',
+			applicationId: 'application-1',
+		} as any)
+		fulcrumStub.getReportSections.mockResolvedValue({
+			sections: ['public-info'],
+		} as any)
+
+		const app = createApp(makeUser())
+		const res = await app.request('/api/fulcrum/reports/report-1/sections', {}, env)
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ sections: ['public-info'] })
+		expect(hrStub.getApplication).toHaveBeenCalledWith('application-1', 'user-1', {
+			isAdmin: false,
+			isAuditor: false,
+		})
+		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '2001', 'hr_reviewer')
+	})
+
+	it('denies report access when the linked application is closed', async () => {
+		hrStub.checkPermission.mockResolvedValue(false)
+		hrStub.getApplication.mockResolvedValue({ corporationId: '2001', status: 'completed' } as any)
+		fulcrumStub.getReportStatus.mockResolvedValue({
+			reportId: 'report-1',
+			status: 'completed',
+			requestorCorporationId: '1001',
+			applicationId: 'application-1',
+		} as any)
+
+		const app = createApp(makeUser())
+		const res = await app.request('/api/fulcrum/reports/report-1/sections', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(fulcrumStub.getReportSections).not.toHaveBeenCalled()
 	})
 
 	it('denies unauthorized mail content access before revealing readiness state', async () => {
@@ -366,7 +412,7 @@ describe('fulcrum route access matrix', () => {
 		expect(res.status).toBe(403)
 		expect(await res.json()).toEqual({ error: 'HR role required' })
 		expect(fulcrumStub.fetchMailContent).not.toHaveBeenCalled()
-		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '1001', 'hr_viewer')
+		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '1001', 'hr_reviewer')
 	})
 
 	it('denies character report listing when backend access scope does not exist', async () => {
