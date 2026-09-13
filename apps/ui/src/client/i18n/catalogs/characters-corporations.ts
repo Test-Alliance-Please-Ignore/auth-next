@@ -104,7 +104,7 @@ export const charactersCorporationsCatalog = defineCatalog(
 			redirecting: 'Discord로 이동 중…',
 			relink: 'Discord 계정 다시 연결',
 			refreshing: '갱신 중…',
-			refreshAccess: 'Discord 접근 권한 갱신',
+			refreshAccess: 'Discord 연결 새로고침',
 			connectDescription: 'Discord 계정을 연결하면 알림 및 커뮤니티 기능을 사용할 수 있습니다.',
 			link: 'Discord 계정 연결',
 			linkFailed: '연결 실패',

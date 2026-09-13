@@ -10,16 +10,18 @@ import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
-import { Select } from '@/components/ui/select'
 import { Section } from '@/components/ui/section'
+import { Select } from '@/components/ui/select'
 import { useCategories } from '@/hooks/useCategories'
 import { useGroups } from '@/hooks/useGroups'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatNumber, useAppTranslation } from '@/i18n'
 
 import type { GroupsFilters } from '@/lib/api'
 
 export default function GroupsPage() {
-	usePageTitle('Discover Groups')
+	const { t } = useAppTranslation()
+	usePageTitle(t('groups.title'))
 	const navigate = useNavigate()
 	const [filters, setFilters] = useState<GroupsFilters>({})
 	const { data: groups, isLoading: groupsLoading } = useGroups(filters)
@@ -69,10 +71,7 @@ export default function GroupsPage() {
 
 	return (
 		<Container>
-			<PageHeader
-				title="Discover Groups"
-				description="Find and join groups that match your interests"
-			/>
+			<PageHeader title={t('groups.title')} description={t('groups.description')} />
 
 			<Section>
 				{/* Invite Code Redemption */}
@@ -87,13 +86,13 @@ export default function GroupsPage() {
 					<CardHeader>
 						<div className="flex items-center justify-between">
 							<div>
-								<CardTitle>Filters</CardTitle>
-								<CardDescription>Filter groups by category, join mode, or search</CardDescription>
+								<CardTitle>{t('groups.filters')}</CardTitle>
+								<CardDescription>{t('groups.filterDescription')}</CardDescription>
 							</div>
 							{hasActiveFilters && (
 								<Button variant="ghost" size="sm" onClick={clearFilters}>
 									<X className="h-4 w-4" />
-									Clear Filters
+									{t('groups.clearFilters')}
 								</Button>
 							)}
 						</div>
@@ -102,48 +101,50 @@ export default function GroupsPage() {
 						<div className="grid gap-4 md:grid-cols-3">
 							{/* Category Filter */}
 							<div className="space-y-2">
-								<Label>Category</Label>
+								<Label htmlFor="groups-category">{t('groups.category')}</Label>
 								<Select
+									inputId="groups-category"
 									value={filters.categoryId ?? 'all'}
 									onValueChange={(value) =>
 										updateFilter('categoryId', value === 'all' ? undefined : value)
 									}
 									options={[
-										{ value: 'all', label: 'All categories' },
-										...(categories?.map((category) => ({ value: category.id,
+										{ value: 'all', label: t('groups.allCategories') },
+										...(categories?.map((category) => ({
+											value: category.id,
 											label: category.name,
 										})) ?? []),
 									]}
-									placeholder="All categories"
+									placeholder={t('groups.allCategories')}
 								/>
 							</div>
 
 							{/* Join Mode Filter */}
 							<div className="space-y-2">
-								<Label>Join Mode</Label>
+								<Label htmlFor="groups-join-mode">{t('groups.joinMode')}</Label>
 								<Select
+									inputId="groups-join-mode"
 									value={filters.joinMode ?? 'all'}
 									onValueChange={(value) =>
 										updateFilter('joinMode', value === 'all' ? undefined : value)
 									}
 									options={[
-										{ value: 'all', label: 'All join modes' },
-										{ value: 'open', label: 'Open' },
-										{ value: 'approval', label: 'Approval' },
-										{ value: 'invitation_only',
-											label: 'Invitation Only',
-										},
+										{ value: 'all', label: t('groups.allJoinModes') },
+										{ value: 'open', label: t('groups.badges.open') },
+										{ value: 'approval', label: t('groups.badges.approval') },
+										{ value: 'invitation_only', label: t('groups.badges.invitationOnly') },
 									]}
-									placeholder="All join modes"
+									placeholder={t('groups.allJoinModes')}
 								/>
 							</div>
 
 							{/* Search Input */}
 							<div className="space-y-2">
-								<Label>Search</Label>
+								<Label htmlFor="groups-search">{t('groups.search')}</Label>
 								<Input
+									id="groups-search"
 									type="text"
-									placeholder="Search by name..."
+									placeholder={t('groups.searchPlaceholder')}
 									value={searchInput}
 									onChange={(e) => setSearchInput((e.target as HTMLInputElement).value)}
 								/>
@@ -156,17 +157,15 @@ export default function GroupsPage() {
 				<Card variant="default">
 					<CardHeader>
 						<CardTitle>
-							Available Groups{' '}
+							{t('groups.available')}{' '}
 							{groups && (
 								<span className="text-muted-foreground font-normal">
-									({displayedGroups.length})
+									({formatNumber(displayedGroups.length)})
 								</span>
 							)}
 						</CardTitle>
 						<CardDescription>
-							{hasActiveFilters
-								? 'Filtered results - click a row to view details'
-								: 'All available groups - click a row to view details'}
+							{hasActiveFilters ? t('groups.filteredDescription') : t('groups.allDescription')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>

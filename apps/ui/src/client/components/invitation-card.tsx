@@ -1,12 +1,13 @@
 import { Calendar, Check, X } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAcceptInvitation, useDeclineInvitation } from '@/hooks/useGroups'
+import { formatNumber, useAppTranslation } from '@/i18n'
 
 import { VisibilityBadge } from './visibility-badge'
 
 import type { GroupInvitationWithDetails } from '@/lib/api'
-import { Button } from '@/components/ui/button'
 
 interface InvitationCardProps {
 	invitation: GroupInvitationWithDetails
@@ -14,6 +15,7 @@ interface InvitationCardProps {
 }
 
 export function InvitationCard({ invitation, onActionComplete }: InvitationCardProps) {
+	const { t } = useAppTranslation()
 	const acceptInvitation = useAcceptInvitation()
 	const declineInvitation = useDeclineInvitation()
 
@@ -45,7 +47,9 @@ export function InvitationCard({ invitation, onActionComplete }: InvitationCardP
 				<div className="flex items-start justify-between">
 					<div className="space-y-1">
 						<CardTitle>{invitation.group.name}</CardTitle>
-						<CardDescription>{invitation.group.description || 'No description'}</CardDescription>
+						<CardDescription>
+							{invitation.group.description || t('invitations.noDescription')}
+						</CardDescription>
 					</div>
 					<VisibilityBadge visibility={invitation.group.visibility} />
 				</div>
@@ -54,32 +58,37 @@ export function InvitationCard({ invitation, onActionComplete }: InvitationCardP
 				<div className="flex items-center gap-2 text-sm text-muted-foreground">
 					<Calendar className="h-4 w-4" />
 					<span>
-						Expires in {daysUntilExpiry} day{daysUntilExpiry !== 1 ? 's' : ''}
+						{t('invitations.expiresIn', {
+							count: daysUntilExpiry,
+							formattedCount: formatNumber(daysUntilExpiry),
+						})}
 					</span>
 				</div>
 
 				<div className="flex gap-2">
-					<Button variant="success"
+					<Button
+						variant="success"
 						onClick={handleAccept}
 						disabled={isLoading}
 						loading={acceptInvitation.isPending}
-						loadingText="Accepting..."
+						loadingText={t('invitations.accepting')}
 						className="flex-1"
 						showIcon={false}
 					>
 						<Check className="h-4 w-4" />
-						Accept
+						{t('invitations.accept')}
 					</Button>
-					<Button variant="cancel"
+					<Button
+						variant="cancel"
 						onClick={handleDecline}
 						disabled={isLoading}
 						loading={declineInvitation.isPending}
-						loadingText="Declining..."
+						loadingText={t('invitations.declining')}
 						className="flex-1"
 						showIcon={false}
 					>
 						<X className="h-4 w-4" />
-						Decline
+						{t('invitations.decline')}
 					</Button>
 				</div>
 			</CardContent>

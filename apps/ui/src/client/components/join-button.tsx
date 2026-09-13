@@ -13,6 +13,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useCreateJoinRequest, useJoinGroup } from '@/hooks/useGroups'
+import { useAppTranslation } from '@/i18n'
 
 import type { GroupWithDetails } from '@/lib/api'
 
@@ -23,6 +24,7 @@ interface JoinButtonProps {
 }
 
 export function JoinButton({ group, onSuccess, compact = false }: JoinButtonProps) {
+	const { t } = useAppTranslation()
 	const [dialogOpen, setDialogOpen] = useState(false)
 	const [reason, setReason] = useState('')
 	const joinGroup = useJoinGroup()
@@ -70,7 +72,7 @@ export function JoinButton({ group, onSuccess, compact = false }: JoinButtonProp
 		return (
 			<Button disabled variant="ghost">
 				<UserPlus className="h-4 w-4" />
-				Managed by Admins
+				{t('groups.join.managed')}
 			</Button>
 		)
 	}
@@ -79,7 +81,7 @@ export function JoinButton({ group, onSuccess, compact = false }: JoinButtonProp
 		return (
 			<Button disabled variant="ghost">
 				<Clock className="h-4 w-4" />
-				Request Pending
+				{t('groups.join.pending')}
 			</Button>
 		)
 	}
@@ -87,7 +89,7 @@ export function JoinButton({ group, onSuccess, compact = false }: JoinButtonProp
 	if (group.joinMode === 'invitation_only') {
 		return (
 			<Button disabled variant="ghost">
-				Invitation Only
+				{t('groups.join.invitationOnly')}
 			</Button>
 		)
 	}
@@ -104,48 +106,46 @@ export function JoinButton({ group, onSuccess, compact = false }: JoinButtonProp
 				<UserPlus className="h-4 w-4" />
 				{compact
 					? group.joinMode === 'open'
-						? 'Join'
-						: 'Apply'
+						? t('groups.join.join')
+						: t('groups.join.apply')
 					: group.joinMode === 'open'
-						? 'Join Group'
-						: 'Request to Join'}
+						? t('groups.join.joinGroup')
+						: t('groups.join.requestJoin')}
 			</Button>
 
 			{/* Join Request Dialog */}
 			<Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Request to Join {group.name}</DialogTitle>
-						<DialogDescription>
-							This group requires approval to join. Please provide a reason for your request.
-						</DialogDescription>
+						<DialogTitle>{t('groups.join.dialogTitle', { name: group.name })}</DialogTitle>
+						<DialogDescription>{t('groups.join.description')}</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4">
 						<div className="space-y-2">
-							<Label htmlFor="reason">Reason (optional)</Label>
+							<Label htmlFor="reason">{t('groups.join.reason')}</Label>
 							<Textarea
 								id="reason"
 								value={reason}
 								onChange={(e) => setReason((e.target as HTMLTextAreaElement).value)}
-								placeholder="Why do you want to join this group?"
+								placeholder={t('groups.join.reasonPlaceholder')}
 								rows={3}
 							/>
 						</div>
 					</div>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDialogOpen(false)} disabled={isLoading}>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="confirm"
 							onClick={handleSubmitRequest}
 							disabled={isLoading}
 							loading={isLoading}
-							loadingText="Sending..."
+							loadingText={t('groups.join.sending')}
 							showIcon={false}
 						>
 							<Send className="h-4 w-4" />
-							Send Request
+							{t('groups.join.send')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

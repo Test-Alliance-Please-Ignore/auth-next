@@ -10,6 +10,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useAppTranslation } from '@/i18n'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 
 interface GroupMembership {
@@ -28,13 +29,14 @@ export function UserGroupMembershipsTable({
 	memberships,
 	getGroupPath,
 }: UserGroupMembershipsTableProps) {
+	const { t } = useAppTranslation()
 	return (
 		<Table>
 			<TableHeader>
 				<TableRow>
-					<TableHead>Group</TableHead>
-					<TableHead>Level</TableHead>
-					<TableHead>Joined</TableHead>
+					<TableHead>{t('myGroups.table.group')}</TableHead>
+					<TableHead>{t('groups.memberships.level')}</TableHead>
+					<TableHead>{t('myGroups.table.joined')}</TableHead>
 				</TableRow>
 			</TableHeader>
 			<TableBody>
@@ -72,10 +74,10 @@ export function UserGroupMembershipsTable({
 									}
 								>
 									{membership.membershipLevel === 'owner'
-										? 'Owner'
+										? t('groupDetail.roles.owner')
 										: membership.membershipLevel === 'admin'
-											? 'Admin'
-											: 'Member'}
+											? t('groupDetail.roles.admin')
+											: t('groupDetail.roles.member')}
 								</Badge>
 							</TableCell>
 							<TableCell>

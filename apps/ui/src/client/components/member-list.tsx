@@ -3,6 +3,7 @@ import { Shield, ShieldOff, UserCog, UserMinus } from 'lucide-react'
 import { MemberRow } from '@/components/member-row'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useAppTranslation } from '@/i18n'
 
 import type { GroupMember, GroupWithDetails } from '@/lib/api'
 
@@ -27,6 +28,8 @@ export function MemberList({
 	onTransferOwnership,
 	isLoading,
 }: MemberListProps) {
+	const { t } = useAppTranslation()
+
 	if (isLoading) {
 		return (
 			<div className="space-y-4">
@@ -40,7 +43,7 @@ export function MemberList({
 	if (members.length === 0) {
 		return (
 			<div className="rounded-md border border-dashed p-8 text-center">
-				<p className="text-muted-foreground">No members in this group.</p>
+				<p className="text-muted-foreground">{t('groupDetail.memberList.empty')}</p>
 			</div>
 		)
 	}
@@ -51,10 +54,10 @@ export function MemberList({
 				<TableHeader>
 					<TableRow>
 						<TableHead className="w-20 px-2"></TableHead>
-						<TableHead>User</TableHead>
-						<TableHead>Role</TableHead>
-						<TableHead>Joined</TableHead>
-						<TableHead className="text-right">Actions</TableHead>
+						<TableHead>{t('groupDetail.memberList.user')}</TableHead>
+						<TableHead>{t('groupDetail.memberList.role')}</TableHead>
+						<TableHead>{t('groupDetail.memberList.joined')}</TableHead>
+						<TableHead className="text-right">{t('groupDetail.actions')}</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
@@ -78,27 +81,31 @@ export function MemberList({
 													variant="ghost"
 													size="sm"
 													onClick={() => onTransferOwnership(member.userId)}
-													title="Transfer ownership to this member"
+													title={t('groupDetail.memberList.transferTitle')}
 												>
 													<UserCog className="h-4 w-4" />
-													Make Owner
+													{t('groupDetail.memberList.makeOwner')}
 												</Button>
 											)}
 											<Button
 												variant="ghost"
 												size="sm"
 												onClick={() => onToggleAdmin(member.userId, isAdmin)}
-												title={isAdmin ? 'Remove admin role' : 'Make admin'}
+												title={
+													isAdmin
+														? t('groupDetail.memberList.removeAdminTitle')
+														: t('groupDetail.memberList.makeAdminTitle')
+												}
 											>
 												{isAdmin ? (
 													<>
 														<ShieldOff className="h-4 w-4" />
-														Remove Admin
+														{t('groupDetail.memberList.removeAdmin')}
 													</>
 												) : (
 													<>
 														<Shield className="h-4 w-4" />
-														Make Admin
+														{t('groupDetail.memberList.makeAdmin')}
 													</>
 												)}
 											</Button>
@@ -107,11 +114,15 @@ export function MemberList({
 												size="sm"
 												onClick={() => onRemoveMember(member.userId)}
 												disabled={cannotRemove}
-												title={cannotRemove ? 'Cannot remove owner' : 'Remove member'}
+												title={
+													cannotRemove
+														? t('groupDetail.memberList.cannotRemoveOwner')
+														: t('groupDetail.memberList.removeMember')
+												}
 												className="text-destructive hover:text-destructive disabled:text-muted-foreground"
 											>
 												<UserMinus className="h-4 w-4" />
-												Remove
+												{t('groupDetail.memberList.remove')}
 											</Button>
 										</div>
 									)

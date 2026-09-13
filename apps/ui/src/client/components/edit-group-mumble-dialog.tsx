@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -12,12 +13,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { useUpdateGroup } from '@/hooks/useGroups'
+import { useAppTranslation } from '@/i18n'
 
 import type { GroupWithDetails } from '@/lib/api'
-import { Button } from '@/components/ui/button'
 
 function sanitizeMumbleTickerInput(value: string): string {
-	return value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5)
+	return value
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, '')
+		.slice(0, 5)
 }
 
 interface EditGroupMumbleDialogProps {
@@ -33,6 +37,7 @@ export function EditGroupMumbleDialog({
 	onOpenChange,
 	onSuccess,
 }: EditGroupMumbleDialogProps) {
+	const { t } = useAppTranslation()
 	const [mumbleSyncEnabled, setMumbleSyncEnabled] = useState<boolean>(group.mumbleSyncEnabled)
 	const [mumbleTicker, setMumbleTicker] = useState<string>(group.mumbleTicker ?? '')
 	const updateGroup = useUpdateGroup()
@@ -73,16 +78,16 @@ export function EditGroupMumbleDialog({
 	}
 
 	const isUnchanged =
-		mumbleSyncEnabled === group.mumbleSyncEnabled && mumbleTicker.trim() === (group.mumbleTicker ?? '')
+		mumbleSyncEnabled === group.mumbleSyncEnabled &&
+		mumbleTicker.trim() === (group.mumbleTicker ?? '')
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>Edit Mumble Settings</DialogTitle>
+					<DialogTitle>{t('groups.mumble.title')}</DialogTitle>
 					<DialogDescription>
-						Configure whether "{group.name}" syncs to Mumble and which addendum appears after the
-						group ticker. Only site admins can edit these settings.
+						{t('groups.mumble.description', { name: group.name })}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -90,10 +95,10 @@ export function EditGroupMumbleDialog({
 					<div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
 						<div className="space-y-1">
 							<Label htmlFor="mumbleSyncEnabled" className="text-sm font-medium">
-								Enable as Mumble Group
+								{t('groups.mumble.enable')}
 							</Label>
 							<p className="text-xs text-muted-foreground">
-								When enabled, this group will be assigned to members in Mumble.
+								{t('groups.mumble.enableDescription')}
 							</p>
 						</div>
 						<Switch
@@ -106,36 +111,34 @@ export function EditGroupMumbleDialog({
 
 					<div className="space-y-2">
 						<Label htmlFor="mumbleTicker" className="text-sm font-medium">
-							Mumble ticker addendum
+							{t('groups.mumble.ticker')}
 						</Label>
 						<Input
 							id="mumbleTicker"
 							value={mumbleTicker}
 							onChange={(e) => setMumbleTicker(sanitizeMumbleTickerInput(e.target.value))}
-							placeholder="optional"
+							placeholder={t('groups.mumble.optional')}
 							maxLength={5}
 							pattern="[A-Za-z0-9]*"
 							inputMode="text"
 							disabled={updateGroup.isPending}
 						/>
-						<p className="text-xs text-muted-foreground">
-							Optional. 1-5 alphanumeric characters appended to the user's Mumble display name.
-						</p>
+						<p className="text-xs text-muted-foreground">{t('groups.mumble.tickerHint')}</p>
 					</div>
 				</div>
 
 				<DialogFooter>
 					<Button variant="cancel" onClick={handleCancel} disabled={updateGroup.isPending}>
-						Cancel
+						{t('common.cancel')}
 					</Button>
 					<Button
 						variant="confirm"
 						onClick={handleSave}
 						loading={updateGroup.isPending}
-						loadingText="Saving..."
+						loadingText={t('groups.edit.saving')}
 						disabled={isUnchanged}
 					>
-						Save Changes
+						{t('groups.edit.save')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

@@ -13,6 +13,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { GroupMembershipAction } from './group-membership-action'
@@ -30,6 +31,7 @@ interface GroupListProps {
 // Memoized row component to prevent unnecessary re-renders
 const GroupRow = memo(
 	({ group, isAdminContext }: { group: GroupWithDetails; isAdminContext?: boolean }) => {
+		const { t } = useAppTranslation()
 		const groupDetailUrl = isAdminContext ? `/admin/groups/${group.id}` : `/groups/${group.id}`
 
 		return (
@@ -40,7 +42,7 @@ const GroupRow = memo(
 							{group.name}
 						</Link>
 						{group.visibility === 'system' && (
-							<span className="text-xs text-destructive" title="System visibility group">
+							<span className="text-xs text-destructive" title={t('groups.systemVisibility')}>
 								⚠️
 							</span>
 						)}
@@ -58,7 +60,7 @@ const GroupRow = memo(
 				<TableCell className="text-right">
 					<div className="flex items-center justify-end gap-2">
 						<GroupMembershipAction group={group} />
-						<Button variant="ghost" size="sm" asChild title="View details">
+						<Button variant="ghost" size="sm" asChild title={t('groups.viewDetails')}>
 							<Link to={groupDetailUrl}>
 								<ExternalLink className="h-4 w-4" />
 							</Link>
@@ -77,6 +79,7 @@ export const GroupList = memo(function GroupList({
 	isLoading,
 	isAdminContext,
 }: GroupListProps) {
+	const { t } = useAppTranslation()
 	const isMobile = useMediaQuery('(max-width: 768px)')
 
 	if (isLoading) {
@@ -96,10 +99,9 @@ export const GroupList = memo(function GroupList({
 					<div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
 						<Users className="h-8 w-8 text-muted-foreground" />
 					</div>
-					<h3 className="text-xl font-semibold mb-2">No Groups Found</h3>
+					<h3 className="text-xl font-semibold mb-2">{t('groups.noGroups')}</h3>
 					<p className="text-muted-foreground max-w-md mx-auto">
-						No groups match your current filter criteria. Try adjusting your filters or browse all
-						available groups.
+						{t('groups.noGroupsDescription')}
 					</p>
 				</CardContent>
 			</Card>
@@ -133,7 +135,7 @@ export const GroupList = memo(function GroupList({
 												{group.visibility === 'system' && (
 													<span
 														className="text-xs text-destructive"
-														title="System visibility group"
+														title={t('groups.systemVisibility')}
 													>
 														⚠️
 													</span>
@@ -150,7 +152,7 @@ export const GroupList = memo(function GroupList({
 
 									<div className="flex items-center justify-end gap-2 border-t border-border/50 pt-2">
 										<GroupMembershipAction group={group} />
-										<Button variant="ghost" size="sm" asChild title="View details">
+										<Button variant="ghost" size="sm" asChild title={t('groups.viewDetails')}>
 											<Link to={groupDetailUrl}>
 												<ExternalLink className="h-4 w-4" />
 											</Link>
@@ -171,11 +173,11 @@ export const GroupList = memo(function GroupList({
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead>Group Name</TableHead>
-						<TableHead>Category</TableHead>
-						<TableHead>Visibility</TableHead>
-						<TableHead>Join Mode</TableHead>
-						<TableHead className="text-right">Actions</TableHead>
+						<TableHead>{t('groups.groupName')}</TableHead>
+						<TableHead>{t('groups.category')}</TableHead>
+						<TableHead>{t('groups.visibility')}</TableHead>
+						<TableHead>{t('groups.joinMode')}</TableHead>
+						<TableHead className="text-right">{t('groups.actions')}</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>

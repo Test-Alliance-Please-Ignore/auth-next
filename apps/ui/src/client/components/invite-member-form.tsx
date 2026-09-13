@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 
 import { useAddGroupMember, useCreateInvitation, useSearchCharacters } from '@/hooks/useGroups'
+import { useAppTranslation } from '@/i18n'
 
 import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { Select } from './ui/select'
 
+import type { FormEvent } from 'react'
 import type { GroupWithDetails } from '@/lib/api'
 
 interface InviteMemberFormProps {
@@ -14,13 +16,21 @@ interface InviteMemberFormProps {
 	onSuccess?: () => void
 }
 
-export function InviteMemberForm({ group, allowDirectAdd = false, onSuccess }: InviteMemberFormProps) {
+export function InviteMemberForm({
+	group,
+	allowDirectAdd = false,
+	onSuccess,
+}: InviteMemberFormProps) {
+	const { t } = useAppTranslation()
 	const isAdminManaged = group.joinMode === 'admin_managed'
 	const [searchQuery, setSearchQuery] = useState('')
 	const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
 	const [selectedCharacter, setSelectedCharacter] = useState<string>('')
-	const [errorMessage, setErrorMessage] = useState<string | null>(null)
-	const [successMessage, setSuccessMessage] = useState<string | null>(null)
+	const [errorMessage, setErrorMessage] = useState<Error | 'required' | 'failed' | null>(null)
+	const [successMessage, setSuccessMessage] = useState<{
+		action: 'added' | 'invited'
+		name: string
+	} | null>(null)
 
 	const { data: searchResults, isLoading: isSearching } = useSearchCharacters(debouncedSearchQuery)
 	const createInvitation = useCreateInvitation()
@@ -51,15 +61,15 @@ export function InviteMemberForm({ group, allowDirectAdd = false, onSuccess }: I
 	if (isAdminManaged && !allowDirectAdd) {
 		return (
 			<Card className="p-4 border-dashed">
-				<h3 className="text-lg font-semibold mb-2">Admin Managed Group</h3>
+				<h3 className="text-lg font-semibold mb-2">{t('groupDetail.inviteMember.adminManaged')}</h3>
 				<p className="text-sm text-muted-foreground">
-					This group is admin managed. Members can only be added by site admins.
+					{t('groupDetail.inviteMember.adminManagedDescription')}
 				</p>
 			</Card>
 		)
 	}
 
-	const handleSubmit = async (e: React.FormEvent) => {
+	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault()
 		setErrorMessage(null)
 		setSuccessMessage(null)
@@ -67,7 +77,7 @@ export function InviteMemberForm({ group, allowDirectAdd = false, onSuccess }: I
 		const characterName = selectedCharacter || searchQuery.trim()
 
 		if (!characterName) {
-			setErrorMessage('Please enter a character name')
+			setErrorMessage('required')
 			return
 		}
 
@@ -77,13 +87,13 @@ export function InviteMemberForm({ group, allowDirectAdd = false, onSuccess }: I
 					groupId: group.id,
 					characterName,
 				})
-				setSuccessMessage(`Member added directly: ${characterName}`)
+				setSuccessMessage({ action: 'added', name: characterName })
 			} else {
 				await createInvitation.mutateAsync({
 					groupId: group.id,
 					characterName,
 				})
-				setSuccessMessage(`Invitation sent to ${characterName}`)
+				setSuccessMessage({ action: 'invited', name: characterName })
 			}
 			setSearchQuery('')
 			setSelectedCharacter('')
@@ -91,14 +101,18 @@ export function InviteMemberForm({ group, allowDirectAdd = false, onSuccess }: I
 
 			// Clear success message after 3 seconds
 			setTimeout(() => setSuccessMessage(null), 3000)
-		} catch (error: any) {
-			setErrorMessage(error?.message || 'Failed to send invitation')
+		} catch (error) {
+			setErrorMessage(error instanceof Error ? error : 'failed')
 		}
 	}
 
 	return (
 		<Card className="p-4">
-			<h3 className="text-lg font-semibold mb-3">{isAdminManaged ? 'Add User' : 'Invite Member'}</h3>
+			<h3 className="text-lg font-semibold mb-3">
+				{isAdminManaged
+					? t('groupDetail.inviteMember.addUser')
+					: t('groupDetail.inviteMember.inviteMember')}
+			</h3>
 
 			<form onSubmit={handleSubmit} className="space-y-3">
 				<div className="flex gap-2">
@@ -127,43 +141,53 @@ export function InviteMemberForm({ group, allowDirectAdd = false, onSuccess }: I
 						}))}
 						minQueryLength={2}
 						debounceMs={0}
-						placeholder="Enter main character name..."
+						placeholder={t('groupDetail.inviteMember.placeholder')}
 						loading={
 							searchQuery.length >= 2 && (isSearching || searchQuery !== debouncedSearchQuery)
 						}
-						queryHintText="Type at least 2 characters"
-						loadingText="Searching..."
-						emptyText="No characters found"
+						queryHintText={t('common.typeAtLeast', { count: 2 })}
+						loadingText={t('common.searching')}
+						emptyText={t('groupDetail.inviteMember.noCharacters')}
 					/>
 					<Button
 						type="submit"
-						disabled={(isAdminManaged ? addGroupMember.isPending : createInvitation.isPending) || !searchQuery.trim()}
+						disabled={
+							(isAdminManaged ? addGroupMember.isPending : createInvitation.isPending) ||
+							!searchQuery.trim()
+						}
 					>
 						{isAdminManaged
 							? addGroupMember.isPending
-								? 'Adding...'
-								: 'Add User'
+								? t('groupDetail.inviteMember.adding')
+								: t('groupDetail.inviteMember.addUser')
 							: createInvitation.isPending
-								? 'Sending...'
-								: 'Invite'}
+								? t('groupDetail.inviteMember.sending')
+								: t('groupDetail.inviteMember.invite')}
 					</Button>
 				</div>
 
 				{errorMessage && (
 					<div className="text-sm text-destructive-foreground bg-destructive/10 border border-destructive/30 rounded px-3 py-2">
-						{errorMessage}
+						{errorMessage instanceof Error
+							? errorMessage.message
+							: t(
+									errorMessage === 'required'
+										? 'groupDetail.inviteMember.characterRequired'
+										: 'groupDetail.inviteMember.failed'
+								)}
 					</div>
 				)}
 
 				{successMessage && (
 					<div className="text-sm text-foreground bg-primary/10 border border-primary/30 rounded px-3 py-2">
-						{successMessage}
+						{t(`groupDetail.inviteMember.${successMessage.action}`, { name: successMessage.name })}
 					</div>
 				)}
 
 				<p className="text-xs text-muted-foreground">
-					Start typing to search for characters. Only main characters can be{' '}
-					{isAdminManaged ? 'added directly' : 'invited'}.
+					{isAdminManaged
+						? t('groupDetail.inviteMember.directHint')
+						: t('groupDetail.inviteMember.inviteHint')}
 				</p>
 			</form>
 		</Card>

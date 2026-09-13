@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge'
+import { useAppTranslation } from '@/i18n'
 
 import type { JoinMode } from '@/lib/api'
 
@@ -8,22 +9,23 @@ interface JoinModeBadgeProps {
 }
 
 export function JoinModeBadge({ joinMode, className }: JoinModeBadgeProps) {
+	const { t } = useAppTranslation()
 	const config = {
 		open: {
 			variant: 'default' as const,
-			label: 'Open',
+			label: t('groups.badges.open'),
 		},
 		approval: {
 			variant: 'secondary' as const,
-			label: 'Approval Required',
+			label: t('groups.badges.approval'),
 		},
 		invitation_only: {
 			variant: 'ghost' as const,
-			label: 'Invitation Only',
+			label: t('groups.badges.invitationOnly'),
 		},
 		admin_managed: {
 			variant: 'secondary' as const,
-			label: 'Admin Managed',
+			label: t('groups.badges.adminManaged'),
 		},
 	}
 

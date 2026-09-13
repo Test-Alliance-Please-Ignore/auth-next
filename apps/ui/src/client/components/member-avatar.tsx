@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 
+import { useAppTranslation } from '@/i18n'
 import { characterPortraitUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
 
@@ -36,6 +37,7 @@ export function MemberAvatar({
 	imageSize,
 	isBlacklisted = false,
 }: MemberAvatarProps) {
+	const { t } = useAppTranslation()
 	const sizeClass = sizeClasses[size]
 	const portraitSize = imageSize ?? 64
 
@@ -47,7 +49,7 @@ export function MemberAvatar({
 			{characterId ? (
 				<img
 					src={characterPortraitUrl(characterId, portraitSize)}
-					alt={characterName || 'Character portrait'}
+					alt={characterName || t('groupDetail.portrait')}
 					className={cn(
 						'h-full w-full rounded-md',
 						size === 'auto' ? 'object-contain' : 'object-cover',

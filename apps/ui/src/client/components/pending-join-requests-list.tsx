@@ -2,6 +2,7 @@ import { Check, X } from 'lucide-react'
 import { useState } from 'react'
 
 import { useApproveJoinRequest, useJoinRequests, useRejectJoinRequest } from '@/hooks/useGroups'
+import { formatDate, formatNumber, useAppTranslation } from '@/i18n'
 
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -12,11 +13,15 @@ interface PendingJoinRequestsListProps {
 }
 
 export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProps) {
+	const { t } = useAppTranslation()
 	const { data: requests, isLoading, error } = useJoinRequests(groupId)
 	const approveRequest = useApproveJoinRequest()
 	const rejectRequest = useRejectJoinRequest()
 	const [processingId, setProcessingId] = useState<string | null>(null)
-	const [errorMessage, setErrorMessage] = useState<string | null>(null)
+	const [errorMessage, setErrorMessage] = useState<{
+		action: 'approve' | 'reject'
+		error: unknown
+	} | null>(null)
 
 	const handleApprove = async (requestId: string) => {
 		setProcessingId(requestId)
@@ -24,9 +29,7 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 		try {
 			await approveRequest.mutateAsync(requestId)
 		} catch (error) {
-			setErrorMessage(
-				`Failed to approve: ${error instanceof Error ? error.message : 'Unknown error'}`
-			)
+			setErrorMessage({ action: 'approve', error })
 		} finally {
 			setProcessingId(null)
 		}
@@ -38,9 +41,7 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 		try {
 			await rejectRequest.mutateAsync(requestId)
 		} catch (error) {
-			setErrorMessage(
-				`Failed to reject: ${error instanceof Error ? error.message : 'Unknown error'}`
-			)
+			setErrorMessage({ action: 'reject', error })
 		} finally {
 			setProcessingId(null)
 		}
@@ -50,10 +51,10 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 		return (
 			<Card>
 				<CardHeader>
-					<CardTitle>Pending Join Requests</CardTitle>
+					<CardTitle>{t('groupDetail.joinRequests.title')}</CardTitle>
 				</CardHeader>
 				<CardContent>
-					<p className="text-sm text-muted-foreground">Loading join requests...</p>
+					<p className="text-sm text-muted-foreground">{t('groupDetail.joinRequests.loading')}</p>
 				</CardContent>
 			</Card>
 		)
@@ -63,10 +64,10 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 		return (
 			<Card>
 				<CardHeader>
-					<CardTitle>Pending Join Requests</CardTitle>
+					<CardTitle>{t('groupDetail.joinRequests.title')}</CardTitle>
 				</CardHeader>
 				<CardContent>
-					<p className="text-sm text-destructive">Failed to load join requests</p>
+					<p className="text-sm text-destructive">{t('groupDetail.joinRequests.loadFailed')}</p>
 				</CardContent>
 			</Card>
 		)
@@ -79,10 +80,10 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 		return (
 			<Card>
 				<CardHeader>
-					<CardTitle>Pending Join Requests</CardTitle>
+					<CardTitle>{t('groupDetail.joinRequests.title')}</CardTitle>
 				</CardHeader>
 				<CardContent>
-					<p className="text-sm text-muted-foreground">No pending join requests</p>
+					<p className="text-sm text-muted-foreground">{t('groupDetail.joinRequests.empty')}</p>
 				</CardContent>
 			</Card>
 		)
@@ -92,15 +93,22 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 		<Card>
 			<CardHeader>
 				<div className="flex items-center justify-between">
-					<CardTitle>Pending Join Requests</CardTitle>
-					<Badge variant="secondary">{pendingRequests.length}</Badge>
+					<CardTitle>{t('groupDetail.joinRequests.title')}</CardTitle>
+					<Badge variant="secondary">{formatNumber(pendingRequests.length)}</Badge>
 				</div>
-				<CardDescription>Review and respond to membership requests</CardDescription>
+				<CardDescription>{t('groupDetail.joinRequests.description')}</CardDescription>
 			</CardHeader>
 			<CardContent>
 				{errorMessage && (
 					<div className="rounded-md border border-destructive bg-destructive/10 p-3 mb-4">
-						<p className="text-sm text-destructive">{errorMessage}</p>
+						<p className="text-sm text-destructive">
+							{t(`groupDetail.joinRequests.${errorMessage.action}Failed`, {
+								message:
+									errorMessage.error instanceof Error
+										? errorMessage.error.message
+										: t('groupDetail.unknownError'),
+							})}
+						</p>
 					</div>
 				)}
 
@@ -113,39 +121,45 @@ export function PendingJoinRequestsList({ groupId }: PendingJoinRequestsListProp
 							<div className="flex items-start justify-between gap-3">
 								<div className="flex-1">
 									<div className="font-medium text-sm">
-										{request.userMainCharacterName || request.userName || `User ${request.userId}`}
+										{request.userMainCharacterName ||
+											request.userName ||
+											t('groupDetail.joinRequests.user', { id: request.userId })}
 									</div>
 									{request.reason && (
 										<div className="text-sm text-muted-foreground mt-1 italic">
-											"{request.reason}"
+											<q>{request.reason}</q>
 										</div>
 									)}
 									<div className="text-xs text-muted-foreground mt-1">
-										Requested: {new Date(request.createdAt).toLocaleDateString()}
+										{t('groupDetail.joinRequests.requested', {
+											date: formatDate(request.createdAt),
+										})}
 									</div>
 								</div>
 								<div className="flex gap-2">
-									<Button variant="confirm"
+									<Button
+										variant="confirm"
 										size="sm"
 										disabled={processingId === request.id}
 										loading={processingId === request.id && approveRequest.isPending}
-										loadingText="Approving..."
+										loadingText={t('groupDetail.joinRequests.approving')}
 										onClick={() => handleApprove(request.id)}
 										showIcon={false}
 									>
 										<Check className="h-4 w-4 mr-1" />
-										Approve
+										{t('groupDetail.joinRequests.approve')}
 									</Button>
-									<Button variant="destructive"
+									<Button
+										variant="destructive"
 										size="sm"
 										disabled={processingId === request.id}
 										loading={processingId === request.id && rejectRequest.isPending}
-										loadingText="Rejecting..."
+										loadingText={t('groupDetail.joinRequests.rejecting')}
 										onClick={() => handleReject(request.id)}
 										showIcon={false}
 									>
 										<X className="h-4 w-4 mr-1" />
-										Reject
+										{t('groupDetail.joinRequests.reject')}
 									</Button>
 								</div>
 							</div>

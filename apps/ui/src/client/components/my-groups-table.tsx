@@ -11,6 +11,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { formatDate, useAppTranslation } from '@/i18n'
 
 import { LeaveButton } from './leave-button'
 
@@ -29,6 +30,8 @@ export function MyGroupsTable({
 	memberships,
 	showActions = true,
 }: MyGroupsTableProps) {
+	const { t } = useAppTranslation()
+
 	return (
 		<Card variant="default">
 			<CardHeader>
@@ -40,17 +43,19 @@ export function MyGroupsTable({
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead>Group</TableHead>
-								<TableHead>Category</TableHead>
-								<TableHead>Role</TableHead>
-								<TableHead>Joined</TableHead>
-								<TableHead>Mumble</TableHead>
-								{showActions && <TableHead className="text-right">Actions</TableHead>}
+								<TableHead>{t('myGroups.table.group')}</TableHead>
+								<TableHead>{t('myGroups.table.category')}</TableHead>
+								<TableHead>{t('myGroups.table.role')}</TableHead>
+								<TableHead>{t('myGroups.table.joined')}</TableHead>
+								<TableHead>{t('myGroups.table.mumble')}</TableHead>
+								{showActions && (
+									<TableHead className="text-right">{t('myGroups.table.actions')}</TableHead>
+								)}
 							</TableRow>
 						</TableHeader>
 						<TableBody>
 							{memberships.map((membership) => {
-								const joinedDate = new Date(membership.joinedAt).toLocaleDateString()
+								const joinedDate = formatDate(membership.joinedAt)
 								const leaveGroup = {
 									id: membership.groupId,
 									name: membership.groupName,
@@ -73,15 +78,15 @@ export function MyGroupsTable({
 											{membership.isOwner ? (
 												<Badge variant="default" className="gap-1">
 													<Crown className="h-3 w-3" />
-													Owner
+													{t('myGroups.table.owner')}
 												</Badge>
 											) : membership.isAdmin ? (
 												<Badge variant="secondary" className="gap-1">
 													<Shield className="h-3 w-3" />
-													Admin
+													{t('myGroups.table.admin')}
 												</Badge>
 											) : (
-												<span className="text-muted-foreground">Member</span>
+												<span className="text-muted-foreground">{t('myGroups.table.member')}</span>
 											)}
 										</TableCell>
 										<TableCell className="whitespace-nowrap text-muted-foreground">
@@ -96,7 +101,9 @@ export function MyGroupsTable({
 													{membership.mumbleTicker ? `Mumble ${membership.mumbleTicker}` : 'Mumble'}
 												</Badge>
 											) : (
-												<span className="text-muted-foreground">Disabled</span>
+												<span className="text-muted-foreground">
+													{t('myGroups.table.disabled')}
+												</span>
 											)}
 										</TableCell>
 										{showActions && (
