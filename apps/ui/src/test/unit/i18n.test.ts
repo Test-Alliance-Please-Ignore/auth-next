@@ -76,12 +76,42 @@ describe('application i18n runtime', () => {
 		expect(resolveStartupLocale()).toBe('ko')
 	})
 
-	it('uses an explicit login cookie for production startup activation', () => {
-		vi.stubGlobal('window', { localStorage: { getItem: () => null } })
-		vi.stubGlobal('document', { cookie: 'tang.locale=de' })
+	it.each([false, true])(
+		'uses an explicit login cookie at startup (development: %s)',
+		(isDevelopment) => {
+			vi.stubGlobal('window', {
+				localStorage: { getItem: () => null },
+				location: { href: 'http://localhost:5173/dashboard' },
+			})
+			vi.stubGlobal('document', { cookie: 'tang.locale=de' })
 
-		expect(getInitialAppLocale(false)).toBe('de')
-	})
+			expect(getInitialAppLocale(isDevelopment)).toBe('de')
+		}
+	)
+
+	it.each([false, true])(
+		'restores a language selection ahead of cookies and previews (development: %s)',
+		async (isDevelopment) => {
+			const values = new Map([['tang.i18n.preview', 'ko']])
+			vi.stubGlobal('window', {
+				location: { href: 'http://localhost:5173/dashboard?i18n=ko' },
+				localStorage: {
+					getItem: (key: string) => values.get(key) ?? null,
+					setItem: (key: string, value: string) => values.set(key, value),
+				},
+			})
+			vi.stubGlobal('document', {
+				cookie: 'tang.locale=ko',
+				documentElement: { lang: 'en', dir: 'ltr' },
+			})
+
+			await setAppLocale('de')
+
+			expect(getInitialAppLocale(isDevelopment)).toBe('de')
+			expect(document.documentElement.lang).toBe('de')
+			expect(values.get('tang.locale')).toBe('de')
+		}
+	)
 
 	it('allows URL locale previews only in development builds', () => {
 		expect(

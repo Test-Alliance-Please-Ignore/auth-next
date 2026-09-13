@@ -32,10 +32,8 @@ export interface InitialAppLocaleInput {
 }
 
 /**
- * Feature PRs can be reviewed in German and Korean without enabling partial
- * catalogs in production. Vite replaces `import.meta.env.DEV` at build time;
- * production does not auto-detect browser languages, but honors explicit
- * browser-local choices from storage or the login locale cookie.
+ * Resolves development-only URL and saved preview overrides. Production
+ * startup uses explicit locale preferences in getInitialAppLocale instead.
  */
 export function resolveInitialAppLocale({
 	isDevelopment,
@@ -49,12 +47,18 @@ export function resolveInitialAppLocale({
 	return parseAppLocale(queryLocale) ?? parseAppLocale(storedPreviewLocale) ?? DEFAULT_APP_LOCALE
 }
 
+/**
+ * Explicit localStorage or login-cookie choices take precedence in every build.
+ * Without a saved choice, development supports locale previews and production
+ * starts in English without browser-language detection.
+ */
 export function getInitialAppLocale(isDevelopment = import.meta.env.DEV): AppLocale {
-	if (!isDevelopment) {
-		return getStoredLocale() ?? getCookieLocale() ?? DEFAULT_APP_LOCALE
+	const preferredLocale = getStoredLocale() ?? getCookieLocale()
+	if (preferredLocale) {
+		return preferredLocale
 	}
 
-	if (typeof window === 'undefined') {
+	if (!isDevelopment || typeof window === 'undefined') {
 		return DEFAULT_APP_LOCALE
 	}
 

@@ -52,6 +52,7 @@ import { resolveSidebarExternalLinkIconName } from '@/lib/sidebar-external-links
 import { extractCorporationIdFromTaxViewerScopedUrn } from '@/lib/tax-permissions'
 import { cn } from '@/lib/utils'
 
+import { LocalePicker } from './locale-picker'
 import { resolveSrpNavState } from './sidebar-nav.srp'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -811,6 +812,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 
 			{/* User Section */}
 			<div className="p-4 border-t border-border/50 space-y-3">
+				<LocalePicker />
 				{mainCharacter && (
 					<div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-accent/30">
 						<img

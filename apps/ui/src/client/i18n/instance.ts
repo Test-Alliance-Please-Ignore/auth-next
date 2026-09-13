@@ -8,8 +8,8 @@ import type { AppLocale } from './locales'
 
 void i18n.use(initReactI18next).init({
 	resources,
-	// Production activation remains deferred until the complete SPA catalog
-	// lands. Development builds accept the narrowly gated ?i18n= preview.
+	// Honor explicit locale preferences in every build. Without a saved choice,
+	// development supports previews and production starts in English.
 	lng: getInitialAppLocale(),
 	fallbackLng: DEFAULT_APP_LOCALE,
 	supportedLngs: APP_LOCALES,
