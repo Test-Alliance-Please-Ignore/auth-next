@@ -1,15 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
+import { useAppTranslation } from '@/i18n'
 
-import type { ConfirmationDialogProps, ConfirmationIntent } from '@/components/ui/confirmation-dialog'
 import type { ButtonVariant } from '@/components/ui/button'
+import type {
+	ConfirmationDialogProps,
+	ConfirmationIntent,
+} from '@/components/ui/confirmation-dialog'
+import type { AppTranslator } from '@/i18n'
+
+// Resolve stored copy at render time so open confirmations follow locale changes.
+type ConfirmationText = string | ((t: AppTranslator) => string)
+
+function resolveText(value: ConfirmationText, t: AppTranslator): string {
+	return typeof value === 'function' ? value(t) : value
+}
 
 type ConfirmationRequest = {
-	title: string
-	description: string
-	confirmLabel: string
-	cancelLabel?: string
+	title: ConfirmationText
+	description: ConfirmationText
+	confirmLabel: ConfirmationText
+	cancelLabel?: ConfirmationText
 	intent?: ConfirmationIntent
 	confirmButtonVariant?: ButtonVariant
 	cancelButtonVariant?: ButtonVariant
@@ -26,6 +38,7 @@ type UseConfirmationDialogResult = {
 }
 
 export function useConfirmationDialog(): UseConfirmationDialogResult {
+	const { t } = useAppTranslation()
 	const [request, setRequest] = useState<ConfirmationRequest | null>(null)
 	const [pending, setPending] = useState(false)
 	const [nowMs, setNowMs] = useState(() => Date.now())
@@ -70,16 +83,18 @@ export function useConfirmationDialog(): UseConfirmationDialogResult {
 		const remainingMs = Math.max(0, unlockAtMs - nowMs)
 		const remainingSeconds = Math.ceil(remainingMs / 1000)
 		const confirmDelayActive = confirmDelayMs > 0 && remainingMs > 0
+		const actionLabel = resolveText(request.confirmLabel, t)
 		const confirmLabel = confirmDelayActive
-			? `${request.confirmLabel} (${remainingSeconds}s)`
-			: request.confirmLabel
+			? t('common.confirmationCountdown', { label: actionLabel, count: remainingSeconds })
+			: actionLabel
 
 		const dialogProps: ConfirmationDialogProps = {
 			open: true,
-			title: request.title,
-			description: request.description,
+			title: resolveText(request.title, t),
+			description: resolveText(request.description, t),
 			confirmLabel,
-			cancelLabel: request.cancelLabel,
+			cancelLabel:
+				request.cancelLabel === undefined ? undefined : resolveText(request.cancelLabel, t),
 			intent: request.intent,
 			confirmButtonVariant: request.confirmButtonVariant,
 			cancelButtonVariant: request.cancelButtonVariant,
@@ -90,7 +105,7 @@ export function useConfirmationDialog(): UseConfirmationDialogResult {
 		}
 
 		return <ConfirmationDialog {...dialogProps} />
-	}, [request, pending, closeConfirmation, handleConfirm, nowMs, requestedAtMs])
+	}, [request, pending, closeConfirmation, handleConfirm, nowMs, requestedAtMs, t])
 
 	return {
 		requestConfirmation,

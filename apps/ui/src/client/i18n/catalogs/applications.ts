@@ -1,6 +1,7 @@
 import { defineCatalog } from '../catalog'
+import { applicationDetailsCatalog } from './applications-details'
 
-export const applicationsCatalog = defineCatalog(
+const applicantWorkflowsCatalog = defineCatalog(
 	{
 		applications: {
 			status: {
@@ -179,3 +180,15 @@ export const applicationsCatalog = defineCatalog(
 		},
 	}
 )
+
+export const applicationsCatalog = {
+	en: {
+		applications: { ...applicantWorkflowsCatalog.en.applications, ...applicationDetailsCatalog.en },
+	},
+	de: {
+		applications: { ...applicantWorkflowsCatalog.de.applications, ...applicationDetailsCatalog.de },
+	},
+	ko: {
+		applications: { ...applicantWorkflowsCatalog.ko.applications, ...applicationDetailsCatalog.ko },
+	},
+}

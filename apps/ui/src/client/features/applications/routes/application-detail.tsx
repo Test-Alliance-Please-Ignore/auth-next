@@ -42,7 +42,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
+import { formatNumber, useAppTranslation } from '@/i18n'
+import { formatRelativeTime } from '@/lib/date-utils'
 
 import { useCanAccessCorporation } from '../../corporations/hooks'
 import { useHrPermissionCheck } from '../../hr/hooks'
@@ -74,9 +75,10 @@ import type { Recommendation } from '../api'
  * Main Application Detail Component (Applicant View)
  */
 export default function ApplicationDetail() {
+	const { t } = useAppTranslation()
 	const { applicationId } = useParams<{ applicationId: string }>()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-	const { showSuccess, showError } = useMessage()
+	const { message, showSuccess, showError, clearMessage } = useMessage()
 
 	// State
 	const [showWithdrawDialog, setShowWithdrawDialog] = useState(false)
@@ -116,8 +118,10 @@ export default function ApplicationDetail() {
 	// Set page title
 	usePageTitle(
 		application
-			? `Application to ${application.corporationName || 'Corporation'}`
-			: 'Application Details'
+			? t('applications.detail.titleFor', {
+					corporation: application.corporationName || t('applications.detail.corporation'),
+				})
+			: t('applications.detail.title')
 	)
 
 	// Check if user owns this application
@@ -142,6 +146,7 @@ export default function ApplicationDetail() {
 
 	// Handlers
 	const handleWithdrawClick = () => {
+		clearMessage()
 		setShowWithdrawDialog(true)
 	}
 
@@ -149,11 +154,14 @@ export default function ApplicationDetail() {
 		if (!applicationId) return
 
 		try {
+			clearMessage()
 			await withdrawMutation.mutateAsync(applicationId)
-			showSuccess('Application withdrawn successfully')
+			showSuccess((translate) => translate('applications.detail.withdraw.success'))
 			setShowWithdrawDialog(false)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to withdraw application')
+			showError((translate) =>
+				error instanceof Error ? error.message : translate('applications.detail.withdraw.failed')
+			)
 		}
 	}
 
@@ -212,13 +220,13 @@ export default function ApplicationDetail() {
 		return (
 			<Container>
 				<AccessDeniedCard
-					title="Failed to Load Application"
+					title={t('applications.detail.loadFailed')}
 					message={
 						applicationError instanceof Error
 							? applicationError.message
-							: 'An unexpected error occurred'
+							: t('applications.list.unexpectedError')
 					}
-					backLabel="Back to My Applications"
+					backLabel={t('applications.detail.back')}
 					backHref={myApplicationsPath}
 				/>
 			</Container>
@@ -257,8 +265,8 @@ export default function ApplicationDetail() {
 		return (
 			<Container>
 				<AccessDeniedCard
-					message="You don't have permission to view this application."
-					backLabel="Back to My Applications"
+					message={t('applications.detail.denied')}
+					backLabel={t('applications.detail.back')}
 					backHref={myApplicationsPath}
 				/>
 			</Container>
@@ -272,14 +280,14 @@ export default function ApplicationDetail() {
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
 						<Briefcase className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-						<CardTitle>Application Not Found</CardTitle>
-						<CardDescription>This application doesn't exist or has been removed.</CardDescription>
+						<CardTitle>{t('applications.detail.notFound')}</CardTitle>
+						<CardDescription>{t('applications.detail.notFoundDescription')}</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button asChild variant="ghost">
 							<Link to={myApplicationsPath}>
 								<ArrowLeft className="h-4 w-4" />
-								Back to My Applications
+								{t('applications.detail.back')}
 							</Link>
 						</Button>
 					</CardContent>
@@ -288,6 +296,15 @@ export default function ApplicationDetail() {
 		)
 	}
 
+	const feedback = message ? (
+		<p
+			role={message.type === 'error' ? 'alert' : 'status'}
+			className={message.type === 'error' ? 'text-sm text-destructive' : 'text-sm text-success'}
+		>
+			{message.text}
+		</p>
+	) : null
+
 	// Main content
 	return (
 		<Container>
@@ -295,14 +312,18 @@ export default function ApplicationDetail() {
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
 					<BreadcrumbItem>
-						<BreadcrumbLink to="/my-applications">My Applications</BreadcrumbLink>
+						<BreadcrumbLink to="/my-applications">{t('applications.list.title')}</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbPage>{application.corporationName || 'Application'}</BreadcrumbPage>
+						<BreadcrumbPage>
+							{application.corporationName || t('applications.detail.application')}
+						</BreadcrumbPage>
 					</BreadcrumbItem>
 				</BreadcrumbList>
 			</Breadcrumb>
+
+			{!showAddAltDialog && !showWithdrawDialog && feedback}
 
 			{/* Header Card */}
 			<Card className="mb-6">
@@ -325,25 +346,33 @@ export default function ApplicationDetail() {
 										variant={application.isFirstApplication ? 'success' : 'default'}
 										className="h-5 px-1.5 text-[10px] font-semibold leading-none shrink-0"
 									>
-										{application.isFirstApplication ? 'First' : 'Repeat'}
+										{t(
+											application.isFirstApplication
+												? 'applications.card.first'
+												: 'applications.card.repeat'
+										)}
 									</Badge>
 								)}
 								{altCharacterIds.length > 0 && (
 									<span className="ml-2 text-lg font-normal text-muted-foreground">
-										(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
+										{t('applications.card.alts', {
+											count: altCharacterIds.length,
+											formattedCount: formatNumber(altCharacterIds.length),
+										})}
 									</span>
 								)}
 							</h1>
 							{application.corporationName && (
 								<p className="text-lg text-muted-foreground mb-3">
-									Applied to: <span className="font-medium">{application.corporationName}</span>
+									{t('applications.detail.appliedTo', { corporation: application.corporationName })}
 								</p>
 							)}
-							<div className="flex items-center gap-3">
+							<div className="flex flex-wrap items-center gap-3">
 								<ApplicationStatusBadge status={application.status} size="md" />
 								<span className="text-sm text-muted-foreground">
-									Submitted{' '}
-									{formatDistanceToNow(new Date(application.createdAt), { addSuffix: true })}
+									{t('applications.detail.submitted', {
+										time: formatRelativeTime(application.createdAt),
+									})}
 								</span>
 							</div>
 						</div>
@@ -353,23 +382,25 @@ export default function ApplicationDetail() {
 
 			{/* Tabbed Content */}
 			<Tabs defaultValue="details" className="space-y-6">
-				<TabsList className="w-full sm:w-auto">
+				<TabsList className="grid h-auto w-full grid-cols-2 sm:inline-flex sm:w-auto">
 					<TabsTrigger value="details" className="flex-1 sm:flex-none">
-						Details
+						{t('applications.detail.details')}
 					</TabsTrigger>
 					<TabsTrigger value="recommendations" className="flex-1 sm:flex-none">
-						Recommendations
+						{t('applications.detail.recommendations')}
 						{publicRecommendations.length > 0 && (
-							<span className="ml-1.5 text-xs opacity-70">({publicRecommendations.length})</span>
+							<span className="ml-1.5 text-xs opacity-70">
+								({formatNumber(publicRecommendations.length)})
+							</span>
 						)}
 					</TabsTrigger>
 					<TabsTrigger value="history" className="flex-1 sm:flex-none">
-						History
+						{t('applications.detail.history')}
 					</TabsTrigger>
 					<TabsTrigger value="messages" className="flex-1 sm:flex-none">
-						Messages
+						{t('applications.messages.title')}
 						{messageCount > 0 && (
-							<span className="ml-1.5 text-xs opacity-70">({messageCount})</span>
+							<span className="ml-1.5 text-xs opacity-70">({formatNumber(messageCount)})</span>
 						)}
 					</TabsTrigger>
 				</TabsList>
@@ -380,10 +411,8 @@ export default function ApplicationDetail() {
 						{/* Application Text */}
 						<Card>
 							<CardHeader>
-								<CardTitle>Application Text</CardTitle>
-								<CardDescription>
-									Your message to the corporation explaining why you want to join
-								</CardDescription>
+								<CardTitle>{t('applications.submit.text')}</CardTitle>
+								<CardDescription>{t('applications.detail.textDescription')}</CardDescription>
 							</CardHeader>
 							<CardContent>
 								<p className="text-foreground whitespace-pre-wrap break-words leading-relaxed">
@@ -396,24 +425,23 @@ export default function ApplicationDetail() {
 						{canWithdraw && isOwner ? (
 							<Card>
 								<CardHeader>
-									<div className="flex items-start justify-between gap-4">
+									<div className="flex flex-wrap items-start justify-between gap-4">
 										<div>
-											<CardTitle>Alt Characters</CardTitle>
-											<CardDescription>
-												Additional characters included with this application
-											</CardDescription>
+											<CardTitle>{t('applications.characters.alts')}</CardTitle>
+											<CardDescription>{t('applications.detail.alts.description')}</CardDescription>
 										</div>
 										{addableAlts.length > 0 && (
 											<Button
 												size="sm"
 												onClick={() => {
+													clearMessage()
 													setAltSearch('')
 													setSelectedAltIds(new Set())
 													setShowAddAltDialog(true)
 												}}
 											>
 												<Plus className="h-4 w-4" />
-												Add Alt
+												{t('applications.detail.alts.add')}
 											</Button>
 										)}
 									</div>
@@ -441,13 +469,21 @@ export default function ApplicationDetail() {
 														size="sm"
 														className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
 														disabled={removeAltMutation.isPending}
+														aria-label={t('applications.detail.alts.removeAria', {
+															character: altCharacterNames[altId] ?? altId,
+														})}
 														onClick={() =>
 															requestConfirmation({
-																title: 'Remove Alt Character',
-																description: `Remove ${altCharacterNames[altId] ?? altId} from this application?`,
-																confirmLabel: 'Remove',
+																title: (translate) =>
+																	translate('applications.detail.alts.removeTitle'),
+																description: (translate) =>
+																	translate('applications.detail.alts.removeDescription', {
+																		character: altCharacterNames[altId] ?? altId,
+																	}),
+																confirmLabel: (translate) => translate('common.remove'),
 																intent: 'destructive',
 																onConfirm: async () => {
+																	clearMessage()
 																	await removeAltMutation
 																		.mutateAsync({
 																			applicationId: applicationId!,
@@ -457,8 +493,10 @@ export default function ApplicationDetail() {
 																			actorCharacterName: application.characterName,
 																		})
 																		.catch((e) =>
-																			showError(
-																				e instanceof Error ? e.message : 'Failed to remove alt'
+																			showError((translate) =>
+																				e instanceof Error
+																					? e.message
+																					: translate('applications.detail.alts.removeFailed')
 																			)
 																		)
 																},
@@ -471,17 +509,17 @@ export default function ApplicationDetail() {
 											))}
 										</div>
 									) : (
-										<p className="text-sm text-muted-foreground">No alt characters added.</p>
+										<p className="text-sm text-muted-foreground">
+											{t('applications.detail.alts.empty')}
+										</p>
 									)}
 								</CardContent>
 							</Card>
 						) : altCharacterIds.length > 0 ? (
 							<Card>
 								<CardHeader>
-									<CardTitle>Alt Characters</CardTitle>
-									<CardDescription>
-										Additional characters included with this application
-									</CardDescription>
+									<CardTitle>{t('applications.characters.alts')}</CardTitle>
+									<CardDescription>{t('applications.detail.alts.description')}</CardDescription>
 								</CardHeader>
 								<CardContent>
 									<div className="space-y-2">
@@ -511,27 +549,31 @@ export default function ApplicationDetail() {
 						(application.status === 'accepted' || application.status === 'rejected') && (
 							<Card>
 								<CardHeader>
-									<CardTitle>Review Information</CardTitle>
+									<CardTitle>{t('applications.detail.review.title')}</CardTitle>
 								</CardHeader>
 								<CardContent className="space-y-3">
 									<div>
-										<p className="text-sm font-medium text-muted-foreground">Reviewed By</p>
+										<p className="text-sm font-medium text-muted-foreground">
+											{t('applications.detail.review.by')}
+										</p>
 										<p className="text-foreground">
-											{application.reviewedByCharacterName || 'Unknown'}
+											{application.reviewedByCharacterName || t('applications.detail.unknown')}
 										</p>
 									</div>
 									<Separator />
 									<div>
-										<p className="text-sm font-medium text-muted-foreground">Reviewed At</p>
-										<p className="text-foreground">
-											{formatDistanceToNow(new Date(application.reviewedAt), { addSuffix: true })}
+										<p className="text-sm font-medium text-muted-foreground">
+											{t('applications.detail.review.at')}
 										</p>
+										<p className="text-foreground">{formatRelativeTime(application.reviewedAt)}</p>
 									</div>
 									{application.reviewNotes && (
 										<>
 											<Separator />
 											<div>
-												<p className="text-sm font-medium text-muted-foreground">Review Notes</p>
+												<p className="text-sm font-medium text-muted-foreground">
+													{t('applications.detail.review.notes')}
+												</p>
 												<p className="text-foreground whitespace-pre-wrap mt-1 italic">
 													"{application.reviewNotes}"
 												</p>
@@ -546,14 +588,14 @@ export default function ApplicationDetail() {
 					<Dialog open={showAddAltDialog} onOpenChange={setShowAddAltDialog}>
 						<DialogContent className="sm:max-w-[400px]">
 							<DialogHeader>
-								<DialogTitle>Add Alt Characters</DialogTitle>
-								<DialogDescription>
-									Select one or more alt characters to include with this application.
-								</DialogDescription>
+								<DialogTitle>{t('applications.detail.alts.title')}</DialogTitle>
+								<DialogDescription>{t('applications.detail.alts.hint')}</DialogDescription>
 							</DialogHeader>
 							<div className="space-y-3 py-2">
 								<Input
-									placeholder="Search characters..."
+									placeholder={t('applications.detail.alts.search')}
+									aria-label={t('applications.detail.alts.search')}
+									disabled={addAltMutation.isPending}
 									value={altSearch}
 									onChange={(e) => setAltSearch(e.target.value)}
 									autoFocus
@@ -572,6 +614,7 @@ export default function ApplicationDetail() {
 												>
 													<Checkbox
 														checked={selectedAltIds.has(ch.characterId)}
+														disabled={addAltMutation.isPending}
 														onCheckedChange={() => {
 															setSelectedAltIds((prev) => {
 																const next = new Set(prev)
@@ -591,43 +634,53 @@ export default function ApplicationDetail() {
 											))
 										) : (
 											<p className="text-sm text-muted-foreground text-center py-4">
-												No characters found.
+												{t('applications.detail.alts.noResults')}
 											</p>
 										)
 									})()}
 								</div>
 							</div>
+							{message?.type === 'error' && feedback}
 							<DialogFooter>
-								<Button variant="ghost" onClick={() => setShowAddAltDialog(false)}>
-									Cancel
+								<Button
+									variant="ghost"
+									onClick={() => setShowAddAltDialog(false)}
+									disabled={addAltMutation.isPending}
+								>
+									{t('common.cancel')}
 								</Button>
 								<Button
 									disabled={selectedAltIds.size === 0 || addAltMutation.isPending}
 									loading={addAltMutation.isPending}
-									loadingText="Adding..."
-									onClick={() => {
+									loadingText={t('applications.detail.alts.adding')}
+									onClick={async () => {
+										clearMessage()
 										const alts = [...selectedAltIds].map((id) => {
 											const ch = addableAlts.find(
 												(c: { characterId: string; characterName: string }) => c.characterId === id
 											)
 											return { characterId: id, characterName: ch?.characterName }
 										})
-										addAltMutation.mutate(
-											{
-												applicationId: applicationId!,
+										try {
+											await addAltMutation.mutateAsync({
+												applicationId,
 												alts,
 												actorCharacterId: application.characterId,
 												actorCharacterName: application.characterName,
-											},
-											{
-												onError: (e) =>
-													showError(e instanceof Error ? e.message : 'Failed to add alts'),
-											}
-										)
-										setShowAddAltDialog(false)
+											})
+											setShowAddAltDialog(false)
+										} catch (error) {
+											showError((translate) =>
+												error instanceof Error
+													? error.message
+													: translate('applications.detail.alts.addFailed')
+											)
+										}
 									}}
 								>
-									Add Selected ({selectedAltIds.size})
+									{t('applications.detail.alts.addSelected', {
+										count: formatNumber(selectedAltIds.size),
+									})}
 								</Button>
 							</DialogFooter>
 						</DialogContent>
@@ -637,7 +690,7 @@ export default function ApplicationDetail() {
 					{canWithdraw && (
 						<div className="flex justify-end">
 							<Button variant="destructive" onClick={handleWithdrawClick}>
-								Withdraw Application
+								{t('applications.detail.withdraw.action')}
 							</Button>
 						</div>
 					)}
@@ -647,9 +700,9 @@ export default function ApplicationDetail() {
 				<TabsContent value="recommendations">
 					<Card>
 						<CardHeader>
-							<CardTitle>Recommendations</CardTitle>
+							<CardTitle>{t('applications.detail.recommendations')}</CardTitle>
 							<CardDescription>
-								Community recommendations for this application (public recommendations only)
+								{t('applications.detail.recommendationsDescription')}
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -668,10 +721,8 @@ export default function ApplicationDetail() {
 				<TabsContent value="history">
 					<Card>
 						<CardHeader>
-							<CardTitle>Activity History</CardTitle>
-							<CardDescription>
-								Timeline of all actions and status changes for this application
-							</CardDescription>
+							<CardTitle>{t('applications.timeline.title')}</CardTitle>
+							<CardDescription>{t('applications.timeline.description')}</CardDescription>
 						</CardHeader>
 						<CardContent>
 							{activityLoading ? (
@@ -681,7 +732,9 @@ export default function ApplicationDetail() {
 							) : activityLog && activityLog.length > 0 ? (
 								<ApplicationTimeline activityLog={activityLog} showActors={true} />
 							) : (
-								<p className="text-center text-muted-foreground py-8">No activity recorded yet</p>
+								<p className="text-center text-muted-foreground py-8">
+									{t('applications.timeline.empty')}
+								</p>
 							)}
 						</CardContent>
 					</Card>
@@ -691,8 +744,8 @@ export default function ApplicationDetail() {
 				<TabsContent value="messages">
 					<Card>
 						<CardHeader>
-							<CardTitle>Messages</CardTitle>
-							<CardDescription>Communicate with the HR team about your application</CardDescription>
+							<CardTitle>{t('applications.messages.title')}</CardTitle>
+							<CardDescription>{t('applications.messages.description')}</CardDescription>
 						</CardHeader>
 						<CardContent>
 							<MessagesPanel
@@ -709,28 +762,29 @@ export default function ApplicationDetail() {
 			<Dialog open={showWithdrawDialog} onOpenChange={setShowWithdrawDialog}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Withdraw Application?</DialogTitle>
+						<DialogTitle>{t('applications.detail.withdraw.title')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to withdraw your application to {application.corporationName}?
-							This action cannot be undone, and you will need to submit a new application if you
-							change your mind.
+							{t('applications.detail.withdraw.description', {
+								corporation: application.corporationName || t('applications.detail.corporation'),
+							})}
 						</DialogDescription>
 					</DialogHeader>
+					{message?.type === 'error' && feedback}
 					<DialogFooter>
 						<Button
 							variant="ghost"
 							onClick={() => setShowWithdrawDialog(false)}
 							disabled={withdrawMutation.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleWithdrawConfirm}
 							loading={withdrawMutation.isPending}
-							loadingText="Withdrawing..."
+							loadingText={t('applications.detail.withdraw.pending')}
 						>
-							Withdraw Application
+							{t('applications.detail.withdraw.action')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

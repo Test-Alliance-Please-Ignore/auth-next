@@ -13,12 +13,14 @@ import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { useMessages, useSendMessage } from '../hooks'
 import { MessageItem } from './message-item'
 import { TemplateSelector } from './template-selector'
 
+import type { KeyboardEvent } from 'react'
 import type { MessageTemplate } from '../api'
 
 // ============================================================================
@@ -64,6 +66,7 @@ export function MessagesPanel({
 	showTemplates = false,
 	className,
 }: MessagesPanelProps) {
+	const { t } = useAppTranslation()
 	const [messageText, setMessageText] = useState('')
 	const [pendingTemplate, setPendingTemplate] = useState<MessageTemplate | null>(null)
 	const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -75,6 +78,11 @@ export function MessagesPanel({
 	// Send message mutation
 	const sendMutation = useSendMessage()
 
+	// Use the same validation for the button and keyboard shortcut.
+	const isValidMessage =
+		messageText.trim().length >= MIN_MESSAGE_LENGTH && messageText.length <= MAX_MESSAGE_LENGTH
+	const canSubmit = canSend && isValidMessage && !sendMutation.isPending
+
 	// Auto-scroll to bottom when messages change
 	useEffect(() => {
 		messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -82,7 +90,7 @@ export function MessagesPanel({
 
 	// Handle send
 	const handleSend = async () => {
-		if (!messageText.trim() || messageText.length < MIN_MESSAGE_LENGTH) {
+		if (!canSubmit) {
 			return
 		}
 
@@ -96,12 +104,12 @@ export function MessagesPanel({
 			})
 			setMessageText('')
 		} catch {
-			// Error is handled by React Query
+			// Keep the draft; the mutation error state renders feedback below.
 		}
 	}
 
 	// Handle key press (Ctrl+Enter to send)
-	const handleKeyPress = (e: React.KeyboardEvent) => {
+	const handleKeyPress = (e: KeyboardEvent) => {
 		if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
 			e.preventDefault()
 			void handleSend()
@@ -126,11 +134,6 @@ export function MessagesPanel({
 		}
 	}
 
-	// Validation
-	const isValidMessage =
-		messageText.trim().length >= MIN_MESSAGE_LENGTH && messageText.length <= MAX_MESSAGE_LENGTH
-	const canSubmit = isValidMessage && !sendMutation.isPending
-
 	// Loading state
 	if (isLoading) {
 		return (
@@ -144,8 +147,8 @@ export function MessagesPanel({
 	if (error) {
 		return (
 			<div className={cn('text-center py-8', className)}>
-				<p className="text-destructive">
-					{error instanceof Error ? error.message : 'Failed to load messages'}
+				<p role="alert" className="text-destructive">
+					{error instanceof Error ? error.message : t('applications.messages.loadFailed')}
 				</p>
 			</div>
 		)
@@ -166,7 +169,7 @@ export function MessagesPanel({
 					<div className="text-center py-12">
 						<MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
 						<p className="text-muted-foreground">
-							No messages yet. {canSend ? 'Start the conversation!' : ''}
+							{t(canSend ? 'applications.messages.emptySend' : 'applications.messages.empty')}
 						</p>
 					</div>
 				)}
@@ -191,7 +194,8 @@ export function MessagesPanel({
 							value={messageText}
 							onChange={(e) => setMessageText(e.target.value)}
 							onKeyDown={handleKeyPress}
-							placeholder="Type your message... (Ctrl+Enter to send)"
+							placeholder={t('applications.messages.placeholder')}
+							aria-label={t('applications.messages.inputLabel')}
 							maxLength={MAX_MESSAGE_LENGTH}
 							rows={3}
 							disabled={sendMutation.isPending}
@@ -199,14 +203,18 @@ export function MessagesPanel({
 						/>
 
 						{/* Character counter and send button */}
-						<div className="flex items-center justify-end gap-3">
+						<div className="flex flex-wrap items-center justify-end gap-3">
 							{sendMutation.isError && (
-								<span className="text-xs text-destructive">Failed to send. Try again.</span>
+								<span role="alert" className="text-xs text-destructive">
+									{t('applications.messages.sendFailed')}
+								</span>
 							)}
 							<div className="flex items-center gap-2 text-xs">
-								{messageText.length > 0 && messageText.length < MIN_MESSAGE_LENGTH && (
+								{messageText.length > 0 && messageText.trim().length < MIN_MESSAGE_LENGTH && (
 									<span className="text-muted-foreground">
-										Minimum {MIN_MESSAGE_LENGTH} characters
+										{t('applications.messages.minimum', {
+											count: formatNumber(MIN_MESSAGE_LENGTH),
+										})}
 									</span>
 								)}
 								<span
@@ -217,7 +225,10 @@ export function MessagesPanel({
 											: 'text-muted-foreground'
 									)}
 								>
-									{messageText.length} / {MAX_MESSAGE_LENGTH}
+									{t('applications.messages.counter', {
+										current: formatNumber(messageText.length),
+										maximum: formatNumber(MAX_MESSAGE_LENGTH),
+									})}
 								</span>
 							</div>
 							<Button onClick={handleSend} disabled={!canSubmit} size="sm">
@@ -226,7 +237,11 @@ export function MessagesPanel({
 								) : (
 									<Send className="h-4 w-4" />
 								)}
-								Send Message
+								{t(
+									sendMutation.isPending
+										? 'applications.messages.sending'
+										: 'applications.messages.send'
+								)}
 							</Button>
 						</div>
 					</div>
@@ -236,16 +251,16 @@ export function MessagesPanel({
 			{/* Closed application notice */}
 			{!canSend && messages && messages.length > 0 && (
 				<div className="text-center py-4 text-sm text-muted-foreground border-t">
-					This application is closed. Messages can no longer be sent.
+					{t('applications.messages.closed')}
 				</div>
 			)}
 
 			{/* Template overwrite confirmation */}
 			<ConfirmationDialog
 				open={pendingTemplate !== null}
-				title="Replace message?"
-				description="Your current message will be replaced with the template content. This cannot be undone."
-				confirmLabel="Replace"
+				title={t('applications.messages.replaceTitle')}
+				description={t('applications.messages.replaceDescription')}
+				confirmLabel={t('applications.messages.replace')}
 				intent="secondary"
 				onCancel={() => setPendingTemplate(null)}
 				onConfirm={handleConfirmTemplate}
