@@ -42,40 +42,34 @@ function getCoreStub(c: Context<App>): Core {
 async function getReportAccessSnapshot(
 	fulcrum: Fulcrum,
 	reportId: string
-): Promise<{ status: string; requestorCorporationId: string; applicationId?: string } | null> {
+): Promise<{ status: string; characterId: string } | null> {
 	return withRpcResult(fulcrum.getReportStatus(reportId), (report) =>
 		report
 			? {
 					status: report.status,
-					requestorCorporationId: report.requestorCorporationId,
-					applicationId: report.applicationId,
+					characterId: report.characterId,
 				}
 			: null
 	)
 }
 
 async function hasFulcrumReportViewerAccess(
+	c: Context<App>,
 	user: SessionUser,
-	report: { requestorCorporationId: string; applicationId?: string },
+	report: { characterId: string },
 	hr: Hr
 ): Promise<boolean> {
-	if (await hr.checkPermission(user.id, report.requestorCorporationId, 'hr_reviewer')) {
-		return true
-	}
-
-	if (!report.applicationId) {
+	const db = c.get('db')
+	if (!db) {
 		return false
 	}
 
 	try {
-		const application = await withRpcResult(
-			hr.getApplication(report.applicationId, user.id, { isAdmin: false, isAuditor: false }),
-			(result) => result
-		)
-		if (!isOpenApplicationStatus(application.status)) {
-			return false
-		}
-		return await hr.checkPermission(user.id, application.corporationId, 'hr_reviewer')
+		const target = await getImmunitasReportTarget(c, db, report.characterId)
+		if (!target) return false
+
+		const access = await resolveFulcrumReportAccessForTargetUser(c, hr, user, target.userId)
+		return access.corporationId !== null
 	} catch {
 		return false
 	}
@@ -1088,7 +1082,7 @@ app.get('/reports/:reportId/sections', requireAuth(), async (c) => {
 
 		if (!(await isHrAuditorUser(c, user))) {
 			const hr = getHrStub(c)
-			const hasPermission = await hasFulcrumReportViewerAccess(user, report, hr)
+			const hasPermission = await hasFulcrumReportViewerAccess(c, user, report, hr)
 			if (!hasPermission) {
 				return c.json({ error: 'HR role required' }, 403)
 			}
@@ -1137,7 +1131,7 @@ app.get('/reports/:reportId/sections/:section', requireAuth(), async (c) => {
 
 		if (!(await isHrAuditorUser(c, user))) {
 			const hr = getHrStub(c)
-			const hasPermission = await hasFulcrumReportViewerAccess(user, report, hr)
+			const hasPermission = await hasFulcrumReportViewerAccess(c, user, report, hr)
 			if (!hasPermission) {
 				return c.json({ error: 'HR role required' }, 403)
 			}
@@ -1210,7 +1204,7 @@ app.get('/reports/:reportId/mails/:mailId/content', requireAuth(), async (c) => 
 
 		if (!(await isHrAuditorUser(c, user))) {
 			const hr = getHrStub(c)
-			const hasPermission = await hasFulcrumReportViewerAccess(user, report, hr)
+			const hasPermission = await hasFulcrumReportViewerAccess(c, user, report, hr)
 			if (!hasPermission) {
 				return c.json({ error: 'HR role required' }, 403)
 			}

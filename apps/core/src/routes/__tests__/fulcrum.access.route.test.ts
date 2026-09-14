@@ -357,12 +357,14 @@ describe('fulcrum route access matrix', () => {
 			async (_userId: string, corporationId: string, requiredRole: string) =>
 				corporationId === '2001' && requiredRole === 'hr_reviewer'
 		)
-		hrStub.getApplication.mockResolvedValue({ corporationId: '2001', status: 'pending' } as any)
+		hrStub.listApplications.mockResolvedValue([
+			{ userId: 'user-1', corporationId: '2001', status: 'pending' },
+		] as any)
 		fulcrumStub.getReportStatus.mockResolvedValue({
 			reportId: 'report-1',
 			status: 'completed',
 			requestorCorporationId: '1001',
-			applicationId: 'application-1',
+			characterId: '3001',
 		} as any)
 		fulcrumStub.getReportSections.mockResolvedValue({
 			sections: ['public-info'],
@@ -373,7 +375,7 @@ describe('fulcrum route access matrix', () => {
 
 		expect(res.status).toBe(200)
 		expect(await res.json()).toEqual({ sections: ['public-info'] })
-		expect(hrStub.getApplication).toHaveBeenCalledWith('application-1', 'user-1', {
+		expect(hrStub.listApplications).toHaveBeenCalledWith({ userId: 'user-1' }, 'user-1', {
 			isAdmin: false,
 			isAuditor: false,
 		})
@@ -382,12 +384,14 @@ describe('fulcrum route access matrix', () => {
 
 	it('denies report access when the linked application is closed', async () => {
 		hrStub.checkPermission.mockResolvedValue(false)
-		hrStub.getApplication.mockResolvedValue({ corporationId: '2001', status: 'completed' } as any)
+		hrStub.listApplications.mockResolvedValue([
+			{ userId: 'user-1', corporationId: '2001', status: 'completed' },
+		] as any)
 		fulcrumStub.getReportStatus.mockResolvedValue({
 			reportId: 'report-1',
 			status: 'completed',
 			requestorCorporationId: '1001',
-			applicationId: 'application-1',
+			characterId: '3001',
 		} as any)
 
 		const app = createApp(makeUser())
