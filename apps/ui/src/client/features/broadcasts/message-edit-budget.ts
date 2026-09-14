@@ -1,5 +1,7 @@
 import { parseDateOrNull } from '@repo/worker-utils'
 
+import { convertUnixTimestampsForPreview } from '@/features/broadcasts/preview-timestamps'
+
 import { renderBroadcastTemplateMessage } from './message-template-renderer'
 
 import type { BroadcastWithDetails } from '@/lib/api'
@@ -10,19 +12,6 @@ type BroadcastMessageEvent = {
 	message: string | null
 	createdAtUnix: number
 	createdByCharacterName: string
-}
-
-function convertUnixTimestampsForPreview(message: string): string {
-	const timestampPattern = /(?<!\d)(\d{10}|\d{13})(?!\d)/g
-	const minTimestamp = 946684800
-	const maxTimestamp = 4102444800
-
-	return message.replace(timestampPattern, (match) => {
-		const numeric = Number.parseInt(match, 10)
-		const timestamp = match.length === 13 ? Math.floor(numeric / 1000) : numeric
-		if (timestamp < minTimestamp || timestamp > maxTimestamp) return match
-		return `<t:${timestamp}:f>`
-	})
 }
 
 function buildSentFooter(broadcast: BroadcastWithDetails): string {

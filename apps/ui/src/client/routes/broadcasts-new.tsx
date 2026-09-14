@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { BroadcastFeedback } from '@/features/broadcasts/components/broadcast-feedback'
 import { BroadcastPreviewPane } from '@/features/broadcasts/components/broadcast-preview-pane'
 import { DiscordTimestampHelperDialog } from '@/features/broadcasts/components/discord-timestamp-helper-dialog'
 import {
@@ -25,6 +26,7 @@ import {
 import { TemplateFieldsEditor } from '@/features/broadcasts/components/template-fields-editor'
 import { useBroadcastDraftInitializer } from '@/features/broadcasts/hooks/use-broadcast-draft-initializer'
 import { renderBroadcastTemplateMessage } from '@/features/broadcasts/message-template-renderer'
+import { convertUnixTimestampsForPreview } from '@/features/broadcasts/preview-timestamps'
 import { generateSrpTokenAtFormLoad } from '@/features/broadcasts/srp-token-generator'
 import {
 	autoResizeTextarea,
@@ -44,6 +46,10 @@ import {
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { formatNumber, useAppTranslation } from '@/i18n'
+
+import type { FormEvent } from 'react'
+import type { MessageText } from '@/hooks/useMessage'
 
 const DISCORD_MESSAGE_MAX_LENGTH = 2000
 const FROGSIREN_EMOTE = '<:fs:1496199804470952080>'
@@ -53,24 +59,12 @@ function wrapWithFrogsirenBanner(message: string): string {
 	return `${banner}\n\n${message}\n\n${banner}`
 }
 
-function convertUnixTimestampsForPreview(message: string, format: string = 'f'): string {
-	const timestampPattern = /(?<!\d)(\d{10}|\d{13})(?!\d)/g
-	const minTimestamp = 946684800
-	const maxTimestamp = 4102444800
-
-	return message.replace(timestampPattern, (match) => {
-		const numeric = Number.parseInt(match, 10)
-		const timestamp = match.length === 13 ? Math.floor(numeric / 1000) : numeric
-		if (timestamp < minTimestamp || timestamp > maxTimestamp) return match
-		return `<t:${timestamp}:${format}>`
-	})
-}
-
 export default function NewBroadcastPage() {
+	const { t } = useAppTranslation()
 	const [searchParams] = useSearchParams()
 	const draftId = searchParams.get('draftId') ?? ''
 	const isEditMode = draftId.length > 0
-	usePageTitle(isEditMode ? 'Edit Draft Broadcast' : 'New Broadcast')
+	usePageTitle(isEditMode ? t('broadcasts.composer.editTitle') : t('broadcasts.composer.newTitle'))
 	const navigate = useNavigate()
 	const createBroadcast = useCreateBroadcast()
 	const sendBroadcast = useSendBroadcast()
@@ -78,7 +72,12 @@ export default function NewBroadcastPage() {
 	const { user } = useAuth()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const { hasPermission, isAdmin } = useUserPermissions()
-	const { data: draftBroadcast, isLoading: draftLoading } = useBroadcast(draftId, isEditMode)
+	const {
+		data: draftBroadcast,
+		isLoading: draftLoading,
+		error: draftError,
+		isError: draftFailed,
+	} = useBroadcast(draftId, isEditMode)
 
 	// Form state
 	const [selectedTargetId, setSelectedTargetId] = useState<string>('')
@@ -95,24 +94,38 @@ export default function NewBroadcastPage() {
 	const [isSavingDraft, setIsSavingDraft] = useState(false)
 	const [timestampHelperOpen, setTimestampHelperOpen] = useState(false)
 	const [isDraftInitialized, setIsDraftInitialized] = useState(false)
+	const navigationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	useEffect(
+		() => () => {
+			if (navigationTimerRef.current) clearTimeout(navigationTimerRef.current)
+		},
+		[]
+	)
+	const navigateAfter = (path: string, delay: number) => {
+		if (navigationTimerRef.current) clearTimeout(navigationTimerRef.current)
+		navigationTimerRef.current = setTimeout(() => navigate(path), delay)
+	}
 	const autoSelectedTemplateTargetsRef = useRef<Set<string>>(new Set())
 
 	// Fetch all broadcast targets available to the user
-	const { data: targets } = useBroadcastTargets()
+	const { data: targets, error: targetsError, isError: targetsFailed } = useBroadcastTargets()
 
 	// Get the selected target to determine type
 	const selectedTarget = targets?.find((t) => t.id === selectedTargetId)
 
 	// Fetch templates scoped to the selected target/type
-	const { data: templates } = useBroadcastTemplates(
-		selectedTarget?.type,
-		selectedTargetId || undefined
-	)
+	const {
+		data: templates,
+		error: templatesError,
+		isError: templatesFailed,
+	} = useBroadcastTemplates(selectedTarget?.type, selectedTargetId || undefined)
 	const { data: doctrines = [] } = useDoctrines()
 	const { data: stagingSystems = [] } = useStagingSystems()
 
 	// Message state
-	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: MessageText } | null>(
+		null
+	)
 
 	const handleMentionLevelChange = useCallback(
 		(value: string) => {
@@ -125,11 +138,10 @@ export default function NewBroadcastPage() {
 			// Declining the confirmation should default to @here.
 			setMentionLevel('here')
 			requestConfirmation({
-				title: 'Ping @everyone?',
-				description:
-					'Are you sure you want to ping @everyone? This is sent to offline people as well. Prefer @here instead.',
-				confirmLabel: 'Yes, Ping @everyone',
-				cancelLabel: "It's not that important",
+				title: (t) => t('broadcasts.composer.mentionTitle'),
+				description: (t) => t('broadcasts.composer.mentionDescription'),
+				confirmLabel: (t) => t('broadcasts.composer.mentionConfirm'),
+				cancelLabel: (t) => t('broadcasts.composer.mentionCancel'),
 				confirmButtonVariant: 'danger',
 				cancelButtonVariant: 'confirm',
 				onConfirm: () => {
@@ -488,6 +500,8 @@ export default function NewBroadcastPage() {
 		updateTemplateField('__fleetTrackingEnabled', 'false')
 	}, [canCreateFleetTracking, templateFields.__fleetTrackingEnabled])
 
+	// Titles, template values and the Discord footer are canonical outgoing content.
+	// Keep them stable when only the author’s interface language changes.
 	const buildBroadcastData = () => {
 		if (!selectedTarget) throw new Error('No target selected')
 		return {
@@ -506,17 +520,22 @@ export default function NewBroadcastPage() {
 		}
 	}
 
-	const handleSend = async (e: React.FormEvent) => {
+	const handleSend = async (e: FormEvent) => {
 		e.preventDefault()
+		if (!canSubmit || isSubmitting) return
 		if (isOverRenderedMessageLimit) {
 			setMessage({
 				type: 'error',
-				text: `Rendered broadcast is ${renderedOutboundLength} characters. Discord maximum is ${DISCORD_MESSAGE_MAX_LENGTH}.`,
+				text: (t) =>
+					t('broadcasts.composer.tooLong', {
+						length: formatNumber(renderedOutboundLength),
+						max: formatNumber(DISCORD_MESSAGE_MAX_LENGTH),
+					}),
 			})
 			return
 		}
 		if (isEditMode && draftBroadcast?.status !== 'draft') {
-			setMessage({ type: 'error', text: 'Only draft broadcasts can be edited.' })
+			setMessage({ type: 'error', text: (t) => t('broadcasts.composer.onlyDraft') })
 			return
 		}
 		setIsSending(true)
@@ -532,8 +551,12 @@ export default function NewBroadcastPage() {
 				: await createBroadcast.mutateAsync(payload)
 			const sendResult = await sendBroadcast.mutateAsync(isEditMode ? draftId : broadcast.id)
 			if (!sendResult.success) {
-				const errorText = sendResult.delivery.errorMessage || 'Failed to send broadcast'
-				throw new Error(errorText)
+				setMessage({
+					type: 'error',
+					text: (t) => sendResult.delivery.errorMessage || t('broadcasts.feedback.sendFailed'),
+				})
+				setIsSending(false)
+				return
 			}
 
 			// Fleet-tracking side effect: if the broadcast started a session, redirect
@@ -542,34 +565,38 @@ export default function NewBroadcastPage() {
 			if (sendResult.trackingSessionId) {
 				setMessage({
 					type: 'success',
-					text: 'Broadcast sent — opening tracking session…',
+					text: (t) => t('broadcasts.feedback.tracking'),
 				})
-				setTimeout(() => navigate(`/fleet-tracking/${sendResult.trackingSessionId}`), 1200)
+				navigateAfter(`/fleet-tracking/${sendResult.trackingSessionId}`, 1200)
 				return
 			}
 			if (sendResult.trackingError) {
 				setMessage({
 					type: 'error',
-					text: `Broadcast sent, but fleet tracking failed: ${sendResult.trackingError}`,
+					text: (t) => t('broadcasts.feedback.trackingFailed', { error: sendResult.trackingError }),
 				})
 				setIsSending(false)
 				return
 			}
 
-			setMessage({ type: 'success', text: 'Broadcast sent successfully!' })
-			setTimeout(() => navigate('/broadcasts'), 2000)
+			setMessage({ type: 'success', text: (t) => t('broadcasts.composer.sent') })
+			navigateAfter('/broadcasts', 2000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to send broadcast',
+				text: (t) =>
+					error instanceof Error && error.message
+						? error.message
+						: t('broadcasts.feedback.sendFailed'),
 			})
 			setIsSending(false)
 		}
 	}
 
 	const handleSaveAsDraft = async () => {
+		if (!canSubmit || isSubmitting) return
 		if (isEditMode && draftBroadcast?.status !== 'draft') {
-			setMessage({ type: 'error', text: 'Only draft broadcasts can be edited.' })
+			setMessage({ type: 'error', text: (t) => t('broadcasts.composer.onlyDraft') })
 			return
 		}
 		setIsSavingDraft(true)
@@ -583,33 +610,49 @@ export default function NewBroadcastPage() {
 						},
 					})
 				: await createBroadcast.mutateAsync(payload)
-			setMessage({ type: 'success', text: 'Draft saved.' })
-			setTimeout(() => navigate(`/broadcasts/${broadcast.id}`), 1000)
+			setMessage({ type: 'success', text: (t) => t('broadcasts.composer.saved') })
+			navigateAfter(`/broadcasts/${broadcast.id}`, 1000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to save draft',
+				text: (t) =>
+					error instanceof Error && error.message
+						? error.message
+						: t('broadcasts.composer.saveFailed'),
 			})
 			setIsSavingDraft(false)
 		}
 	}
 
 	const canSubmit =
-		selectedTargetId &&
-		(selectedTemplateId === 'custom' ? customMessage.trim() : selectedTemplate !== null) &&
+		Boolean(selectedTarget) &&
+		(selectedTemplateId === 'custom'
+			? customMessage.trim().length > 0
+			: Boolean(selectedTemplate)) &&
 		(!isEditMode || draftBroadcast?.status === 'draft')
 	const isSubmitting = isSending || isSavingDraft || updateBroadcast.isPending
+	const loadFailure = draftFailed
+		? { messageKey: 'broadcasts.composer.draftLoadFailed' as const, error: draftError }
+		: targetsFailed
+			? { messageKey: 'broadcasts.composer.targetsFailed' as const, error: targetsError }
+			: templatesFailed
+				? { messageKey: 'broadcasts.composer.templatesFailed' as const, error: templatesError }
+				: isEditMode && !draftLoading && !draftBroadcast
+					? { messageKey: 'broadcasts.composer.draftMissing' as const }
+					: null
 
 	return (
 		<Container>
 			<PageHeader
-				title={isEditMode ? 'Edit Draft Broadcast' : 'New Broadcast'}
+				title={isEditMode ? t('broadcasts.composer.editTitle') : t('broadcasts.composer.newTitle')}
 				description={
-					isEditMode ? 'Update this draft before sending' : 'Send a message to a broadcast target'
+					isEditMode
+						? t('broadcasts.composer.editDescription')
+						: t('broadcasts.composer.newDescription')
 				}
 				action={
 					<Button variant="cancel" onClick={() => navigate('/broadcasts')} size="default">
-						Cancel
+						{t('common.cancel')}
 					</Button>
 				}
 			/>
@@ -619,7 +662,14 @@ export default function NewBroadcastPage() {
 				{isEditMode && draftLoading && (
 					<Card>
 						<CardContent className="py-3 text-sm text-muted-foreground">
-							Loading draft...
+							{t('broadcasts.composer.loadingDraft')}
+						</CardContent>
+					</Card>
+				)}
+				{loadFailure && (
+					<Card>
+						<CardContent className="py-3 text-sm text-destructive" role="alert">
+							<BroadcastFeedback {...loadFailure} />
 						</CardContent>
 					</Card>
 				)}
@@ -632,8 +682,11 @@ export default function NewBroadcastPage() {
 						}
 					>
 						<CardContent className="py-3">
-							<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>
-								{message.text}
+							<p
+								role={message.type === 'error' ? 'alert' : 'status'}
+								className={message.type === 'error' ? 'text-destructive' : 'text-primary'}
+							>
+								{typeof message.text === 'function' ? message.text(t) : message.text}
 							</p>
 						</CardContent>
 					</Card>
@@ -641,15 +694,15 @@ export default function NewBroadcastPage() {
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Broadcast Details</CardTitle>
-						<CardDescription>Configure your broadcast message</CardDescription>
+						<CardTitle>{t('broadcasts.detail.title')}</CardTitle>
+						<CardDescription>{t('broadcasts.composer.configure')}</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<form onSubmit={handleSend} className="min-w-0 space-y-6">
 							<div className="grid min-w-0 gap-4 lg:grid-cols-3">
 								{/* Target Selection */}
 								<div className="min-w-0 space-y-2">
-									<Label htmlFor="target">Target *</Label>
+									<Label htmlFor="target">{t('broadcasts.target')} *</Label>
 									<Select
 										inputId="target"
 										value={selectedTargetId}
@@ -663,53 +716,53 @@ export default function NewBroadcastPage() {
 												}`,
 											})) ?? []
 										}
-										placeholder="Select a broadcast target"
+										placeholder={t('broadcasts.composer.targetPlaceholder')}
 										disabled={isEditMode}
 									/>
 									<p className="text-xs text-muted-foreground">
-										Choose where this broadcast should be sent
+										{t('broadcasts.composer.targetHelp')}
 									</p>
 								</div>
 
 								{/* Template Selection */}
 								<div className="min-w-0 space-y-2">
-									<Label htmlFor="template">Template</Label>
+									<Label htmlFor="template">{t('broadcasts.template')}</Label>
 									<Select
 										value={selectedTemplateId}
 										onValueChange={handleTemplateChange}
 										inputId="template"
 										options={[
-											{ value: 'custom', label: 'Custom Message' },
+											{ value: 'custom', label: t('broadcasts.composer.customMessage') },
 											...(templates?.map((template) => ({
 												value: template.id,
 												label: template.name,
 											})) ?? []),
 										]}
-										placeholder="Custom message"
+										placeholder={t('broadcasts.composer.customMessage')}
 										disabled={!selectedTargetId || isEditMode}
 									/>
 									<p className="text-xs text-muted-foreground">
 										{!selectedTargetId
-											? 'Select a target first'
-											: 'Use a pre-configured template or write a custom message'}
+											? t('broadcasts.composer.targetFirst')
+											: t('broadcasts.composer.templateHelp')}
 									</p>
 								</div>
 
 								{/* Mention Level Selection */}
 								<div className="min-w-0 space-y-2">
-									<Label htmlFor="mentions">Mentions</Label>
+									<Label htmlFor="mentions">{t('broadcasts.composer.mentions')}</Label>
 									<Select
 										inputId="mentions"
 										value={mentionLevel}
 										onValueChange={handleMentionLevelChange}
 										options={[
-											{ value: 'none', label: 'No mention' },
+											{ value: 'none', label: t('broadcasts.composer.noMention') },
 											{ value: 'here', label: '@here' },
 											{ value: 'everyone', label: '@everyone' },
 										]}
 									/>
 									<p className="text-xs text-muted-foreground">
-										Add a mention to the beginning of the broadcast
+										{t('broadcasts.composer.mentionHelp')}
 									</p>
 								</div>
 							</div>
@@ -721,7 +774,7 @@ export default function NewBroadcastPage() {
 									size="sm"
 									onClick={() => setTimestampHelperOpen(true)}
 								>
-									Discord Timestamp Helper
+									{t('broadcasts.composer.timestamp.title')}
 								</Button>
 							</div>
 
@@ -729,18 +782,18 @@ export default function NewBroadcastPage() {
 							{selectedTemplateId === 'custom' ? (
 								<div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-stretch">
 									<div className="min-w-0 space-y-2">
-										<Label htmlFor="message">Message *</Label>
+										<Label htmlFor="message">{t('broadcasts.composer.message')} *</Label>
 										<Textarea
 											id="message"
 											value={customMessage}
 											onChange={(e) => setCustomMessage(e.target.value)}
 											rows={10}
-											placeholder="Enter your broadcast message..."
+											placeholder={t('broadcasts.composer.messagePlaceholder')}
 											required
 											className="h-[16rem] resize-none"
 										/>
 										<p className="text-xs text-muted-foreground">
-											Write your custom message. Supports Discord markdown formatting.
+											{t('broadcasts.composer.messageHelp')}
 										</p>
 									</div>
 									<BroadcastPreviewPane message={customMessage} />
@@ -776,7 +829,10 @@ export default function NewBroadcastPage() {
 											: 'text-primary font-semibold'
 									}
 								>
-									Rendered length: {renderedOutboundLength}/{DISCORD_MESSAGE_MAX_LENGTH}
+									{t('broadcasts.composer.renderedLength', {
+										length: formatNumber(renderedOutboundLength),
+										max: formatNumber(DISCORD_MESSAGE_MAX_LENGTH),
+									})}
 								</span>
 							</div>
 							<div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-end">
@@ -787,30 +843,30 @@ export default function NewBroadcastPage() {
 									disabled={isSubmitting}
 									className="w-full sm:w-auto"
 								>
-									Cancel
+									{t('common.cancel')}
 								</Button>
 								<Button
 									variant="secondary"
 									type="button"
 									disabled={!canSubmit || isSubmitting}
 									loading={isSavingDraft}
-									loadingText="Saving..."
+									loadingText={t('broadcasts.composer.saving')}
 									showIcon={false}
 									onClick={handleSaveAsDraft}
 									className="w-full sm:w-auto"
 								>
-									Save as Draft
+									{t('broadcasts.composer.saveDraft')}
 								</Button>
 								<Button
 									variant="confirm"
 									type="submit"
 									disabled={!canSubmit || isSubmitting || isOverRenderedMessageLimit}
 									loading={isSending}
-									loadingText="Sending..."
+									loadingText={t('broadcasts.sending')}
 									showIcon={false}
 									className="w-full sm:w-auto"
 								>
-									Send Broadcast
+									{t('broadcasts.composer.send')}
 								</Button>
 							</div>
 						</form>

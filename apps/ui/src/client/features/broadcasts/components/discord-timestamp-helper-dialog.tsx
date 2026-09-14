@@ -1,6 +1,7 @@
 import { Copy } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { DataTable } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import {
 	Dialog,
@@ -13,6 +14,10 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
+import { formatDiscordTimestamp } from '@/lib/discord-time'
+
+import type { DataTableColumn } from '@/components/data-table'
 
 interface DiscordTimestampHelperDialogProps {
 	open: boolean
@@ -22,18 +27,7 @@ interface DiscordTimestampHelperDialogProps {
 type TimeMode = 'local' | 'eve'
 type TimestampFormat = 't' | 'T' | 'd' | 'D' | 'f' | 'F' | 'R'
 
-const DISCORD_TIMESTAMP_FORMATS: Array<{
-	code: TimestampFormat
-	label: string
-}> = [
-	{ code: 't', label: 'Short Time' },
-	{ code: 'T', label: 'Long Time' },
-	{ code: 'd', label: 'Short Date' },
-	{ code: 'D', label: 'Long Date' },
-	{ code: 'f', label: 'Short Date/Time' },
-	{ code: 'F', label: 'Long Date/Time' },
-	{ code: 'R', label: 'Relative Time' },
-]
+const DISCORD_TIMESTAMP_FORMATS: TimestampFormat[] = ['t', 'T', 'd', 'D', 'f', 'F', 'R']
 
 function toDateTimeLocalValue(date: Date): string {
 	const year = date.getFullYear()
@@ -97,75 +91,31 @@ function parseDateTimeInput(value: string, mode: TimeMode): Date | null {
 	return new Date(Date.UTC(year, month - 1, day, hours, minutes, 0))
 }
 
-function formatRelativeFromNow(target: Date): string {
-	const diffMs = target.getTime() - Date.now()
-	const absMs = Math.abs(diffMs)
-	const minute = 60_000
-	const hour = 60 * minute
-	const day = 24 * hour
-
-	if (absMs < minute) return diffMs >= 0 ? 'in <1 minute' : '<1 minute ago'
-	if (absMs < hour) {
-		const mins = Math.round(absMs / minute)
-		return diffMs >= 0
-			? `in ${mins} minute${mins === 1 ? '' : 's'}`
-			: `${mins} minute${mins === 1 ? '' : 's'} ago`
-	}
-	if (absMs < day) {
-		const hours = Math.round(absMs / hour)
-		return diffMs >= 0
-			? `in ${hours} hour${hours === 1 ? '' : 's'}`
-			: `${hours} hour${hours === 1 ? '' : 's'} ago`
-	}
-	const days = Math.round(absMs / day)
-	return diffMs >= 0
-		? `in ${days} day${days === 1 ? '' : 's'}`
-		: `${days} day${days === 1 ? '' : 's'} ago`
-}
-
-function getFormatPreview(date: Date, format: TimestampFormat): string {
-	switch (format) {
-		case 't':
-			return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-		case 'T':
-			return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
-		case 'd':
-			return date.toLocaleDateString([], { year: 'numeric', month: '2-digit', day: '2-digit' })
-		case 'D':
-			return date.toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' })
-		case 'f':
-			return date.toLocaleString([], {
-				year: 'numeric',
-				month: 'long',
-				day: 'numeric',
-				hour: 'numeric',
-				minute: '2-digit',
-			})
-		case 'F':
-			return date.toLocaleString([], {
-				weekday: 'long',
-				year: 'numeric',
-				month: 'long',
-				day: 'numeric',
-				hour: 'numeric',
-				minute: '2-digit',
-			})
-		case 'R':
-			return formatRelativeFromNow(date)
-	}
-}
-
 export function DiscordTimestampHelperDialog({
 	open,
 	onOpenChange,
 }: DiscordTimestampHelperDialogProps) {
+	const { t } = useAppTranslation()
+	const [now, setNow] = useState(Date.now)
+	const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	useEffect(
+		() => () => {
+			if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+		},
+		[]
+	)
+	useEffect(() => {
+		if (!open) return
+		const timer = setInterval(() => setNow(Date.now()), 1000)
+		return () => clearInterval(timer)
+	}, [open])
 	const timestampInputRef = useRef<HTMLInputElement | null>(null)
 	const [timeMode, setTimeMode] = useState<TimeMode>('local')
 	const [timestampInput, setTimestampInput] = useState<string>(() =>
 		toDateTimeLocalValue(startOfNextHour(new Date()))
 	)
 	const [copiedFormat, setCopiedFormat] = useState<TimestampFormat | null>(null)
-	const [copyError, setCopyError] = useState<string | null>(null)
+	const [copyFailed, setCopyFailed] = useState(false)
 
 	const timestampDate = useMemo(
 		() => parseDateTimeInput(timestampInput, timeMode),
@@ -174,21 +124,22 @@ export function DiscordTimestampHelperDialog({
 	const minTimestampInput = useMemo(
 		() =>
 			timeMode === 'eve'
-				? toDateTimeLocalValueUtc(roundUpToNextMinute(new Date()))
-				: toDateTimeLocalValue(roundUpToNextMinute(new Date())),
-		[timeMode]
+				? toDateTimeLocalValueUtc(roundUpToNextMinute(new Date(now)))
+				: toDateTimeLocalValue(roundUpToNextMinute(new Date(now))),
+		[timeMode, now]
 	)
-	const timestampError = useMemo(() => {
-		if (!timestampDate) return 'Enter a valid date/time'
-		if (timestampDate.getTime() <= Date.now()) return 'Date/time must be in the future'
-		return null
-	}, [timestampDate])
+	const timestampError = !timestampDate
+		? t('broadcasts.composer.timestamp.invalid')
+		: timestampDate.getTime() <= now
+			? t('broadcasts.composer.timestamp.future')
+			: null
+
 	const timestampEpoch = timestampDate ? Math.floor(timestampDate.getTime() / 1000) : null
 
 	const handleTimeModeChange = (nextMode: TimeMode) => {
 		const currentParsed = parseDateTimeInput(timestampInput, timeMode)
 		setTimeMode(nextMode)
-		setCopyError(null)
+		setCopyFailed(false)
 		if (!currentParsed) {
 			const fallback = startOfNextHour(new Date())
 			setTimestampInput(
@@ -205,16 +156,58 @@ export function DiscordTimestampHelperDialog({
 
 	const handleCopyTimestamp = async (format: TimestampFormat) => {
 		if (!timestampEpoch || timestampError) return
+		if (timestampDate && timestampDate.getTime() <= Date.now()) {
+			setNow(Date.now())
+			return
+		}
 		const token = `<t:${timestampEpoch}:${format}>`
 		try {
 			await navigator.clipboard.writeText(token)
-			setCopyError(null)
+			setCopyFailed(false)
 			setCopiedFormat(format)
-			setTimeout(() => setCopiedFormat((current) => (current === format ? null : current)), 1500)
+			if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+			copyTimerRef.current = setTimeout(() => setCopiedFormat(null), 1500)
 		} catch {
-			setCopyError('Failed to copy timestamp token.')
+			setCopyFailed(true)
 		}
 	}
+
+	const columns: Array<DataTableColumn<TimestampFormat>> = [
+		{
+			id: 'style',
+			header: t('broadcasts.composer.timestamp.style'),
+			cell: (code) => t(`broadcasts.composer.timestamp.styles.${code}`),
+		},
+		{
+			id: 'preview',
+			header: t('broadcasts.composer.preview'),
+			cell: (code) => (timestampDate ? formatDiscordTimestamp(timestampDate, code) : '—'),
+			className: 'text-muted-foreground whitespace-normal',
+		},
+		{
+			id: 'copy',
+			header: t('broadcasts.composer.timestamp.copy'),
+			className: 'text-right',
+			headerClassName: 'text-right',
+			cell: (code) => (
+				<Button
+					type="button"
+					size="sm"
+					variant="ghost"
+					onClick={() => void handleCopyTimestamp(code)}
+					disabled={!timestampEpoch || Boolean(timestampError)}
+					aria-label={t('broadcasts.composer.timestamp.copyLabel', {
+						style: t(`broadcasts.composer.timestamp.styles.${code}`),
+					})}
+				>
+					<Copy className="h-4 w-4 mr-1" />
+					{copiedFormat === code
+						? t('broadcasts.composer.timestamp.copied')
+						: t('broadcasts.composer.timestamp.copy')}
+				</Button>
+			),
+		},
+	]
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -226,28 +219,26 @@ export function DiscordTimestampHelperDialog({
 				}}
 			>
 				<DialogHeader>
-					<DialogTitle>Discord Timestamp Helper</DialogTitle>
-					<DialogDescription>
-						Pick a future date/time and copy Discord timestamp tokens.
-					</DialogDescription>
+					<DialogTitle>{t('broadcasts.composer.timestamp.title')}</DialogTitle>
+					<DialogDescription>{t('broadcasts.composer.timestamp.description')}</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-4">
 					<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 						<div className="space-y-2">
-							<Label htmlFor="timestamp-time-mode">Time Zone</Label>
+							<Label htmlFor="timestamp-time-mode">{t('broadcasts.composer.timestamp.zone')}</Label>
 							<Select
 								inputId="timestamp-time-mode"
 								value={timeMode}
 								onValueChange={(value) => handleTimeModeChange(value as TimeMode)}
 								options={[
-									{ value: 'local', label: 'Local Time' },
-									{ value: 'eve', label: 'EVE Time (UTC)' },
+									{ value: 'local', label: t('broadcasts.composer.timestamp.local') },
+									{ value: 'eve', label: t('broadcasts.composer.timestamp.eve') },
 								]}
 							/>
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor="timestamp-input">Date & Time</Label>
+							<Label htmlFor="timestamp-input">{t('broadcasts.composer.timestamp.date')}</Label>
 							<Input
 								ref={timestampInputRef}
 								id="timestamp-input"
@@ -255,69 +246,47 @@ export function DiscordTimestampHelperDialog({
 								value={timestampInput}
 								min={minTimestampInput}
 								onChange={(e) => {
-									setCopyError(null)
+									setCopyFailed(false)
 									setTimestampInput(e.target.value)
 								}}
 							/>
 						</div>
 					</div>
-					<p className="text-xs text-muted-foreground">
-						Time Zone controls how you choose the date/time in this helper only. Discord renders the
-						timestamp in each viewer&apos;s local time.
-					</p>
+					<p className="text-xs text-muted-foreground">{t('broadcasts.composer.timestamp.help')}</p>
 
 					{timestampError ? (
-						<p className="text-sm text-destructive">{timestampError}</p>
+						<p role="alert" className="text-sm text-destructive">
+							{timestampError}
+						</p>
 					) : timestampEpoch ? (
 						<p className="text-sm text-muted-foreground">
-							Epoch: <span className="font-mono">{timestampEpoch}</span>
+							{t('broadcasts.composer.timestamp.epoch')}{' '}
+							<span className="font-mono">{timestampEpoch}</span>
 						</p>
 					) : null}
-					{copyError ? <p className="text-sm text-destructive">{copyError}</p> : null}
+					{copyFailed ? (
+						<p role="alert" className="text-sm text-destructive">
+							{t('broadcasts.composer.timestamp.copyFailed')}
+						</p>
+					) : null}
 
 					<div className="space-y-2">
-						<Label>Discord Format Tokens</Label>
-						<div className="max-h-72 overflow-y-auto rounded-md border border-border/60">
-							<table className="w-full text-sm">
-								<thead className="bg-muted/30">
-									<tr>
-										<th className="text-left px-3 py-2 font-medium">Style</th>
-										<th className="text-left px-3 py-2 font-medium">Preview</th>
-										<th className="text-right px-3 py-2 font-medium">Copy</th>
-									</tr>
-								</thead>
-								<tbody>
-									{DISCORD_TIMESTAMP_FORMATS.map((item) => (
-										<tr key={item.code} className="border-t border-border/50">
-											<td className="px-3 py-2">
-												<div className="font-medium">{item.label}</div>
-											</td>
-											<td className="px-3 py-2 text-muted-foreground">
-												{timestampDate ? getFormatPreview(timestampDate, item.code) : '—'}
-											</td>
-											<td className="px-3 py-2 text-right">
-												<Button
-													type="button"
-													size="sm"
-													variant="ghost"
-													onClick={() => handleCopyTimestamp(item.code)}
-													disabled={!timestampEpoch || Boolean(timestampError)}
-												>
-													<Copy className="h-4 w-4 mr-1" />
-													{copiedFormat === item.code ? 'Copied' : 'Copy'}
-												</Button>
-											</td>
-										</tr>
-									))}
-								</tbody>
-							</table>
+						<Label>{t('broadcasts.composer.timestamp.formats')}</Label>
+						<div className="max-h-72 overflow-y-auto">
+							<DataTable
+								columns={columns}
+								rows={DISCORD_TIMESTAMP_FORMATS}
+								getRowKey={(code) => code}
+								emptyMessage=""
+								variant="plain"
+							/>
 						</div>
 					</div>
 				</div>
 
 				<DialogFooter>
 					<Button type="button" variant="confirm" onClick={() => onOpenChange(false)}>
-						Done
+						{t('broadcasts.composer.timestamp.done')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

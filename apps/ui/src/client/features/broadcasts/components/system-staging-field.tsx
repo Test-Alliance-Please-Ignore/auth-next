@@ -1,6 +1,9 @@
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
+
+import type { AppTranslator } from '@/i18n'
 
 interface Option {
 	value: string
@@ -15,10 +18,11 @@ export interface StagingFieldState {
 }
 
 export function buildStagingOptions(
-	stagingSystems: Array<{ solarSystemName: string }>
+	stagingSystems: Array<{ solarSystemName: string }>,
+	t: AppTranslator
 ): Option[] {
 	return [
-		{ value: STAGING_CUSTOM_VALUE, label: 'Custom' },
+		{ value: STAGING_CUSTOM_VALUE, label: t('broadcasts.composer.custom') },
 		...stagingSystems.map((stagingSystem) => ({
 			value: stagingSystem.solarSystemName,
 			label: stagingSystem.solarSystemName,
@@ -75,7 +79,8 @@ export function SystemStagingField({
 	stagingSystems,
 	onChange,
 }: SystemStagingFieldProps) {
-	const options = buildStagingOptions(stagingSystems)
+	const { t } = useAppTranslation()
+	const options = buildStagingOptions(stagingSystems, t)
 
 	return (
 		<div className="w-full space-y-2">
@@ -102,7 +107,8 @@ export function SystemStagingField({
 					value={value ?? ''}
 					onChange={(event) => onChange({ selection, value: event.target.value })}
 					required={required}
-					placeholder="Enter staging system"
+					aria-label={t('broadcasts.composer.customField', { field: fieldLabel })}
+					placeholder={t('broadcasts.composer.stagingPlaceholder')}
 				/>
 			) : null}
 		</div>

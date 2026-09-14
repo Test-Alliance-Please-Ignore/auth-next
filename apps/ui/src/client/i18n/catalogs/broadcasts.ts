@@ -1,8 +1,10 @@
 import { defineCatalog } from '../catalog'
+import { broadcastComposerCatalog } from './broadcast-composer'
 
 export const broadcastsCatalog = defineCatalog(
 	{
 		broadcasts: {
+			composer: broadcastComposerCatalog.en,
 			title: 'My Broadcasts',
 			refresh: 'Refresh',
 			description: 'View and manage your broadcasts',
@@ -107,6 +109,7 @@ export const broadcastsCatalog = defineCatalog(
 	},
 	{
 		broadcasts: {
+			composer: broadcastComposerCatalog.de,
 			title: 'Meine Broadcasts',
 			refresh: 'Aktualisieren',
 			description: 'Sieh dir deine Broadcasts an und verwalte sie',
@@ -214,6 +217,7 @@ export const broadcastsCatalog = defineCatalog(
 	},
 	{
 		broadcasts: {
+			composer: broadcastComposerCatalog.ko,
 			title: '내 방송',
 			refresh: '새로고침',
 			description: '내 방송을 확인하고 관리하세요',
