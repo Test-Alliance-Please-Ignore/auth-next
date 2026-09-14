@@ -121,6 +121,17 @@ export const commonCatalog = defineCatalog(
 		locale: {
 			label: 'Language',
 		},
+		pagination: {
+			range: '{{start}}–{{end}} of {{total}} {{itemLabel}}',
+			empty: '0 {{itemLabel}}',
+			perPage: 'Per page:',
+			first: 'First',
+			previous: 'Prev',
+			next: 'Next',
+			last: 'Last',
+			users_one: 'user',
+			users_other: 'users',
+		},
 	},
 	{
 		common: {
@@ -242,6 +253,17 @@ export const commonCatalog = defineCatalog(
 		locale: {
 			label: 'Sprache',
 		},
+		pagination: {
+			range: '{{itemLabel}}: {{start}}–{{end}} von {{total}}',
+			empty: '0 {{itemLabel}}',
+			perPage: 'Pro Seite:',
+			first: 'Erste',
+			previous: 'Zurück',
+			next: 'Weiter',
+			last: 'Letzte',
+			users_one: 'Benutzer',
+			users_other: 'Benutzer',
+		},
 	},
 	{
 		common: {
@@ -362,6 +384,17 @@ export const commonCatalog = defineCatalog(
 		},
 		locale: {
 			label: '언어',
+		},
+		pagination: {
+			range: '{{itemLabel}} {{total}} · {{start}}–{{end}}',
+			empty: '{{itemLabel}} 0',
+			perPage: '페이지당:',
+			first: '처음',
+			previous: '이전',
+			next: '다음',
+			last: '마지막',
+			users_one: '사용자',
+			users_other: '사용자',
 		},
 	}
 )

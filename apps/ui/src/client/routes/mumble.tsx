@@ -9,18 +9,22 @@ import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
+import { canAccessMumble } from '@/features/mumble/access'
 import { OneTimeCredentialsCard } from '@/features/mumble/components/credentials-card'
+import { MumbleFeedback } from '@/features/mumble/components/feedback'
 import { TempopSection } from '@/features/mumble/components/tempop-section'
+import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
 import {
 	useMumbleAccount,
 	useProvisionMumbleAccount,
 	useResetMumblePassword,
 } from '@/features/mumble/hooks'
-import { canAccessMumble } from '@/features/mumble/access'
-import { useMumbleFeatureEnabled } from '@/features/mumble/feature'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
+import { formatDateTime } from '@/lib/date-utils'
+import toast from '@/lib/toast'
 
 import type { MumbleOneTimeCredentials } from '@/features/mumble/types'
 
@@ -28,7 +32,8 @@ const TEMPOP_CREATE_URN = 'urn:mumble:tempop:create'
 const TEMPOP_DELETE_URN = 'urn:mumble:tempop:delete'
 
 export default function MumblePage() {
-	usePageTitle('Mumble')
+	const { t } = useAppTranslation()
+	usePageTitle(t('mumble.title'))
 
 	const { user, isLoading: authLoading, isAuthenticated } = useAuth()
 	const { isEnabled: isMumbleFeatureEnabled, isLoading: isLoadingMumbleFeature } =
@@ -53,7 +58,7 @@ export default function MumblePage() {
 	if (authLoading || isLoadingMumbleFeature || (canViewMumblePage && isLoading)) {
 		return (
 			<div className="flex items-center justify-center min-h-[400px]">
-				<p className="text-muted-foreground">Loading Mumble account...</p>
+				<p className="text-muted-foreground">{t('mumble.loading')}</p>
 			</div>
 		)
 	}
@@ -67,6 +72,7 @@ export default function MumblePage() {
 	}
 
 	const handleProvision = () => {
+		if (provision.isPending) return
 		provision.mutate(undefined, {
 			onSuccess: (result) => {
 				setCredentials({
@@ -79,6 +85,7 @@ export default function MumblePage() {
 	}
 
 	const handleResetPassword = () => {
+		if (resetPassword.isPending) return
 		resetPassword.mutate(undefined, {
 			onSuccess: (result) => {
 				if (account) {
@@ -90,8 +97,14 @@ export default function MumblePage() {
 				}
 				setResetDialogOpen(false)
 			},
-			onError: () => {
-				setResetDialogOpen(false)
+			onError: (error) => {
+				toast.error(
+					error instanceof Error && error.message ? (
+						error.message
+					) : (
+						<MumbleFeedback messageKey="mumble.failed" />
+					)
+				)
 			},
 		})
 	}
@@ -100,24 +113,24 @@ export default function MumblePage() {
 
 	return (
 		<Container>
-			<PageHeader title="Mumble" description="Voice server account linked to your auth groups" />
+			<PageHeader title={t('mumble.title')} description={t('mumble.description')} />
 
 			<Section>
 				<div className="space-y-4">
 					{error ? (
 						<Card variant="default" className="border-destructive/50">
-							<CardContent className="pt-6 text-sm text-destructive">
-								Failed to load your Mumble account. Try again later.
+							<CardContent role="alert" className="pt-6 text-sm text-destructive">
+								{t('mumble.loadFailed')}
 							</CardContent>
 						</Card>
 					) : null}
 
 					{mutationError ? (
 						<Card variant="default" className="border-destructive/50">
-							<CardContent className="pt-6 text-sm text-destructive">
-								{mutationError instanceof Error
+							<CardContent role="alert" className="pt-6 text-sm text-destructive">
+								{mutationError instanceof Error && mutationError.message
 									? mutationError.message
-									: 'Something went wrong. Try again later.'}
+									: t('mumble.failed')}
 							</CardContent>
 						</Card>
 					) : null}
@@ -129,17 +142,13 @@ export default function MumblePage() {
 							<CardHeader>
 								<CardTitle className="flex items-center gap-2">
 									<Mic className="h-5 w-5" />
-									No Mumble account yet
+									{t('mumble.emptyTitle')}
 								</CardTitle>
-								<CardDescription>
-									Create a voice account to connect to the alliance Mumble server. Your account name
-									is based on your main character and your channel access follows your groups
-									automatically.
-								</CardDescription>
+								<CardDescription>{t('mumble.emptyDescription')}</CardDescription>
 							</CardHeader>
 							<CardContent>
 								<Button onClick={handleProvision} disabled={provision.isPending}>
-									{provision.isPending ? 'Creating…' : 'Create Mumble account'}
+									{provision.isPending ? t('mumble.creating') : t('mumble.create')}
 								</Button>
 							</CardContent>
 						</Card>
@@ -148,7 +157,7 @@ export default function MumblePage() {
 					{account ? (
 						<>
 							<Card variant="default">
-								<CardHeader className="flex flex-row items-center justify-between space-y-0">
+								<CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
 									<div>
 										<CardTitle className="flex items-center gap-2">
 											<Mic className="h-5 w-5" />
@@ -159,22 +168,27 @@ export default function MumblePage() {
 										</CardDescription>
 									</div>
 									<Badge variant={account.enabled ? 'default' : 'destructive'}>
-										{account.enabled ? 'Active' : 'Disabled'}
+										{account.enabled ? t('mumble.active') : t('mumble.disabled')}
 									</Badge>
 								</CardHeader>
 								<CardContent className="space-y-4">
 									<div className="text-sm text-muted-foreground">
 										{account.lastAuthenticatedAt
-											? `Last connected ${new Date(account.lastAuthenticatedAt).toLocaleString()}`
-											: 'Never connected'}
+											? t('mumble.lastConnected', {
+													time: formatDateTime(account.lastAuthenticatedAt),
+												})
+											: t('mumble.neverConnected')}
 									</div>
 									<Button
 										variant="secondary"
-										onClick={() => setResetDialogOpen(true)}
+										onClick={() => {
+											resetPassword.reset()
+											setResetDialogOpen(true)
+										}}
 										disabled={resetPassword.isPending}
 									>
 										<RefreshCw className="h-4 w-4 mr-2" />
-										{resetPassword.isPending ? 'Generating…' : 'Regenerate password'}
+										{resetPassword.isPending ? t('mumble.generating') : t('mumble.regenerate')}
 									</Button>
 								</CardContent>
 							</Card>
@@ -183,11 +197,9 @@ export default function MumblePage() {
 								<CardHeader>
 									<CardTitle className="flex items-center gap-2 text-sm font-medium">
 										<Users className="h-4 w-4" />
-										Synced groups
+										{t('mumble.syncedGroups')}
 									</CardTitle>
-									<CardDescription>
-										Group access on the voice server follows your auth groups automatically.
-									</CardDescription>
+									<CardDescription>{t('mumble.groupsDescription')}</CardDescription>
 								</CardHeader>
 								<CardContent>
 									{account.groups.length > 0 ? (
@@ -199,7 +211,7 @@ export default function MumblePage() {
 											))}
 										</div>
 									) : (
-										<p className="text-sm text-muted-foreground">No groups synced yet.</p>
+										<p className="text-sm text-muted-foreground">{t('mumble.noGroups')}</p>
 									)}
 								</CardContent>
 							</Card>
@@ -210,20 +222,19 @@ export default function MumblePage() {
 
 			{showTempopSection ? (
 				<Section className="mt-8">
-					<TempopSection
-						canCreate={canCreateTempop}
-						canManageAll={isAdmin || canDeleteTempop}
-					/>
+					<TempopSection canCreate={canCreateTempop} canManageAll={isAdmin || canDeleteTempop} />
 				</Section>
 			) : null}
 
 			<ConfirmationDialog
 				open={resetDialogOpen}
-				title="Regenerate Mumble password?"
-				description="Your current password stops working immediately. The new password is shown only once."
-				confirmLabel="Regenerate"
+				title={t('mumble.resetTitle')}
+				description={t('mumble.resetDescription')}
+				confirmLabel={t('mumble.resetConfirm')}
 				pending={resetPassword.isPending}
-				onCancel={() => setResetDialogOpen(false)}
+				onCancel={() => {
+					if (!resetPassword.isPending) setResetDialogOpen(false)
+				}}
 				onConfirm={handleResetPassword}
 			/>
 		</Container>

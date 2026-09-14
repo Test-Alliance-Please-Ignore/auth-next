@@ -3,21 +3,27 @@ import { LogIn, Mic } from 'lucide-react'
 import { useState } from 'react'
 import { useParams, useSearchParams } from 'react-router'
 
+import { LocalePicker } from '@/components/locale-picker'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { OneTimeCredentialsCard } from '@/features/mumble/components/credentials-card'
+import { MumbleFeedback } from '@/features/mumble/components/feedback'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { apiClient } from '@/lib/api'
 import toast from '@/lib/toast'
 
-const ERROR_MESSAGES: Record<string, string> = {
-	sso: 'EVE login failed. Please try again.',
-	expired: 'This temp-op link has expired.',
-	blacklisted: 'This character is not permitted to join this voice server.',
-	provision: 'Could not create your voice account. Please try again.',
-	invalid: 'This link is invalid.',
+import type { ReactNode } from 'react'
+import type { AppTranslationKey } from '@/i18n'
+
+const ERROR_MESSAGES: Record<string, AppTranslationKey> = {
+	sso: 'mumble.guest.errors.sso',
+	expired: 'mumble.guest.errors.expired',
+	blacklisted: 'mumble.guest.errors.blacklisted',
+	provision: 'mumble.guest.errors.provision',
+	invalid: 'mumble.guest.errors.invalid',
 }
 
 function MessageCard({ title, message }: { title: string; message: string }) {
@@ -32,7 +38,8 @@ function MessageCard({ title, message }: { title: string; message: string }) {
 }
 
 export default function TempopGuestPage() {
-	usePageTitle('Join voice')
+	const { t } = useAppTranslation()
+	usePageTitle(t('mumble.guest.title'))
 	const { key = '' } = useParams<{ key: string }>()
 	const [searchParams] = useSearchParams()
 	const provisioned = searchParams.get('provisioned') === '1'
@@ -64,47 +71,60 @@ export default function TempopGuestPage() {
 	})
 
 	const handleIdentify = async () => {
+		if (starting) return
 		setStarting(true)
 		try {
 			const { authorizationUrl } = await apiClient.startTempopSso(key)
 			window.location.href = authorizationUrl
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Failed to start EVE login')
+			toast.error(
+				error instanceof Error && error.message ? (
+					error.message
+				) : (
+					<MumbleFeedback messageKey="mumble.feedback.loginFailed" />
+				)
+			)
 			setStarting(false)
 		}
 	}
 
-	let content: React.ReactNode
+	let content: ReactNode
 	if (errorCode) {
 		content = (
 			<MessageCard
-				title="Unable to join"
-				message={ERROR_MESSAGES[errorCode] ?? 'Something went wrong. Please try again.'}
+				title={t('mumble.guest.unable')}
+				message={t(
+					Object.hasOwn(ERROR_MESSAGES, errorCode)
+						? ERROR_MESSAGES[errorCode]
+						: 'mumble.guest.errors.unknown'
+				)}
 			/>
 		)
 	} else if (provisioned) {
 		if (credentialsQuery.isLoading) {
-			content = <p className="text-muted-foreground">Preparing your credentials…</p>
+			content = <p className="text-muted-foreground">{t('mumble.guest.preparing')}</p>
 		} else if (credentialsQuery.data) {
 			content = <OneTimeCredentialsCard credentials={credentialsQuery.data} />
 		} else {
 			content = (
 				<MessageCard
-					title="Credentials unavailable"
-					message="Your one-time credentials have expired. Open the temp-op link again to retry."
+					title={t('mumble.guest.unavailable')}
+					message={t('mumble.guest.retryHandoff')}
 				/>
 			)
 		}
 	} else if (infoQuery.isLoading) {
-		content = <p className="text-muted-foreground">Loading…</p>
+		content = <p className="text-muted-foreground">{t('common.loading')}</p>
 	} else if (infoQuery.error || !infoQuery.data?.valid) {
 		content = (
 			<MessageCard
-				title={infoQuery.data?.expired ? 'Link expired' : 'Invalid link'}
+				title={
+					infoQuery.data?.expired ? t('mumble.guest.expiredTitle') : t('mumble.guest.invalidTitle')
+				}
 				message={
 					infoQuery.data?.expired
-						? 'This temp-op link has expired.'
-						: 'This temp-op link is invalid or no longer available.'
+						? t('mumble.guest.errors.expired')
+						: t('mumble.guest.invalidDescription')
 				}
 			/>
 		)
@@ -114,17 +134,14 @@ export default function TempopGuestPage() {
 				<CardHeader>
 					<CardTitle className="flex items-center gap-2">
 						<Mic className="h-5 w-5" />
-						Join voice
+						{t('mumble.guest.title')}
 					</CardTitle>
-					<CardDescription>
-						Sign in with EVE to receive a temporary Mumble account for this operation. We only read
-						your character name and affiliation for display — no other access is requested.
-					</CardDescription>
+					<CardDescription>{t('mumble.guest.loginDescription')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<Button onClick={handleIdentify} disabled={starting} className="gap-2">
 						<LogIn className="h-4 w-4" />
-						{starting ? 'Redirecting…' : 'Identify with EVE'}
+						{starting ? t('mumble.guest.redirecting') : t('mumble.guest.identify')}
 					</Button>
 				</CardContent>
 			</Card>
@@ -133,7 +150,16 @@ export default function TempopGuestPage() {
 
 	return (
 		<Container>
-			<PageHeader title="Mumble temp-op" description="Temporary voice access" />
+			<PageHeader
+				className="[&>div]:flex-wrap"
+				title={t('mumble.guest.header')}
+				description={t('mumble.guest.description')}
+				action={
+					<div className="w-44">
+						<LocalePicker />
+					</div>
+				}
+			/>
 			<div className="mt-4 max-w-xl space-y-4">{content}</div>
 		</Container>
 	)
