@@ -2,6 +2,7 @@ import { AlertCircle, CheckCircle, Clock } from 'lucide-react'
 import { memo } from 'react'
 
 import { Badge } from '@/components/ui/badge'
+import { useAppTranslation } from '@/i18n'
 
 import type { DirectorHealth } from '@/lib/api'
 
@@ -14,6 +15,7 @@ export const DirectorStatusBadge = memo(function DirectorStatusBadge({
 	director,
 	showFailureCount = true,
 }: DirectorStatusBadgeProps) {
+	const { t } = useAppTranslation()
 	const { isHealthy, failureCount, lastHealthCheck } = director
 
 	// Never checked - needs verification
@@ -21,7 +23,7 @@ export const DirectorStatusBadge = memo(function DirectorStatusBadge({
 		return (
 			<Badge variant="ghost" className="gap-1">
 				<Clock className="h-3 w-3" />
-				<span>Needs Verification</span>
+				<span>{t('admin.organizations.directors.needsVerification')}</span>
 			</Badge>
 		)
 	}
@@ -31,7 +33,7 @@ export const DirectorStatusBadge = memo(function DirectorStatusBadge({
 		return (
 			<Badge variant="success" className="gap-1">
 				<CheckCircle className="h-3 w-3" />
-				<span>Healthy</span>
+				<span>{t('admin.organizations.directors.healthy')}</span>
 			</Badge>
 		)
 	}
@@ -40,9 +42,11 @@ export const DirectorStatusBadge = memo(function DirectorStatusBadge({
 	return (
 		<Badge variant="destructive" className="gap-1">
 			<AlertCircle className="h-3 w-3" />
-			<span>Unhealthy</span>
+			<span>{t('admin.organizations.directors.unhealthy')}</span>
 			{showFailureCount && failureCount > 0 && (
-				<span className="ml-1">({failureCount} failures)</span>
+				<span className="ml-1">
+					{t('admin.organizations.directors.failures', { count: failureCount })}
+				</span>
 			)}
 		</Badge>
 	)

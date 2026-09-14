@@ -1,4 +1,3 @@
-import { formatDistanceToNow } from 'date-fns'
 import {
 	Building2,
 	Plus,
@@ -47,11 +46,15 @@ import {
 } from '@/hooks/useCorporations'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
+import { formatRelativeTime } from '@/lib/date-utils'
 
+import type { FormEvent } from 'react'
 import type { CorporationsFilters, CreateCorporationRequest } from '@/lib/api'
 
 export default function CorporationsPage() {
-	usePageTitle('Admin - Corporations')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.organizations.corp.pageTitle'))
 
 	// Filter state
 	const [filters, setFilters] = useState<CorporationsFilters>({
@@ -132,12 +135,12 @@ export default function CorporationsPage() {
 	}
 
 	// Handlers
-	const handleCreate = async (e: React.FormEvent) => {
+	const handleCreate = async (e: FormEvent) => {
 		e.preventDefault()
 
 		// Validate corporation ID is a valid number
 		if (!formData.corporationId) {
-			showError('Please enter a valid corporation ID')
+			showError((t) => t('admin.organizations.feedback.corpIdInvalid'))
 			return
 		}
 
@@ -153,9 +156,11 @@ export default function CorporationsPage() {
 				includeInBackgroundRefresh: false,
 				includeInStructureAssetSync: false,
 			})
-			showSuccess('Corporation added successfully!')
+			showSuccess((t) => t('admin.organizations.feedback.corpAdded'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to add corporation')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.corpAddError')
+			)
 		}
 	}
 
@@ -165,9 +170,11 @@ export default function CorporationsPage() {
 			await deleteCorporation.mutateAsync(selectedCorpId)
 			setDeleteDialogOpen(false)
 			setSelectedCorpId(null)
-			showSuccess('Corporation removed successfully!')
+			showSuccess((t) => t('admin.organizations.feedback.corpRemoved'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to remove corporation')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.corpRemoveError')
+			)
 		}
 	}
 
@@ -175,12 +182,14 @@ export default function CorporationsPage() {
 		try {
 			const result = await verifyAccess.mutateAsync(corporationId)
 			if (result.hasAccess) {
-				showSuccess('Access verified successfully!')
+				showSuccess((t) => t('admin.organizations.feedback.accessVerified'))
 			} else {
-				showError('Verification failed: Missing required roles')
+				showError((t) => t('admin.organizations.feedback.accessMissing'))
 			}
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to verify access')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.accessError')
+			)
 		}
 	}
 
@@ -190,9 +199,17 @@ export default function CorporationsPage() {
 				corporationId,
 				data: { includeInBackgroundRefresh: enabled },
 			})
-			showSuccess(`Background refresh ${enabled ? 'enabled' : 'disabled'}`)
+			showSuccess((t) =>
+				t(
+					enabled
+						? 'admin.organizations.feedback.backgroundEnabled'
+						: 'admin.organizations.feedback.backgroundDisabled'
+				)
+			)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update setting')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.settingError')
+			)
 		}
 	}
 
@@ -202,9 +219,17 @@ export default function CorporationsPage() {
 				corporationId,
 				data: { includeInStructureAssetSync: enabled },
 			})
-			showSuccess(`Structure asset sync ${enabled ? 'enabled' : 'disabled'}`)
+			showSuccess((t) =>
+				t(
+					enabled
+						? 'admin.organizations.feedback.assetsEnabled'
+						: 'admin.organizations.feedback.assetsDisabled'
+				)
+			)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update setting')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.settingError')
+			)
 		}
 	}
 
@@ -219,39 +244,40 @@ export default function CorporationsPage() {
 			return (
 				<Badge variant="success" className="gap-1">
 					<ShieldCheck className="h-3 w-3" />
-					Verified
+					{t('admin.organizations.corp.verified')}
 				</Badge>
 			)
 		}
 		return (
 			<Badge variant="destructive" className="gap-1">
 				<ShieldAlert className="h-3 w-3" />
-				Unverified
+				{t('admin.organizations.corp.unverified')}
 			</Badge>
 		)
 	}, [])
 
 	// Format date (memoized for performance)
-	const formatDate = useCallback((date: string | null) => {
-		if (!date) return 'Never'
-		const parsedDate = new Date(date)
-		if (Number.isNaN(parsedDate.getTime())) return 'Never'
-		return formatDistanceToNow(parsedDate, { addSuffix: true })
-	}, [])
+	const formatDate = useCallback(
+		(date: string | null) => {
+			if (!date) return t('admin.users.account.never')
+			const parsedDate = new Date(date)
+			if (Number.isNaN(parsedDate.getTime())) return t('admin.users.account.never')
+			return formatRelativeTime(parsedDate)
+		},
+		[t]
+	)
 
 	return (
 		<div className="space-y-6">
 			{/* Page Header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-3xl font-bold gradient-text">Corporations</h1>
-					<p className="text-muted-foreground mt-1">
-						Manage EVE Online corporations and director assignments
-					</p>
+					<h1 className="text-3xl font-bold gradient-text">{t('admin.nav.corporations')}</h1>
+					<p className="text-muted-foreground mt-1">{t('admin.organizations.corp.description')}</p>
 				</div>
 				<Button onClick={() => setCreateDialogOpen(true)}>
 					<Plus className="h-4 w-4" />
-					Add Corporation
+					{t('admin.organizations.corp.add')}
 				</Button>
 			</div>
 
@@ -277,15 +303,13 @@ export default function CorporationsPage() {
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
-							<CardTitle>Search & Filters</CardTitle>
-							<CardDescription>
-								Search by corporation name or ticker, and filter by classification
-							</CardDescription>
+							<CardTitle>{t('admin.organizations.corp.searchFilters')}</CardTitle>
+							<CardDescription>{t('admin.organizations.corp.filterDescription')}</CardDescription>
 						</div>
 						{hasActiveFilters && (
 							<Button variant="ghost" size="sm" onClick={clearFilters}>
 								<X className="h-4 w-4" />
-								Clear Filters
+								{t('groups.clearFilters')}
 							</Button>
 						)}
 					</div>
@@ -296,7 +320,7 @@ export default function CorporationsPage() {
 						<div className="relative flex-1">
 							<Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
 							<Input
-								placeholder="Search corporations..."
+								placeholder={t('admin.organizations.corp.searchPlaceholder')}
 								value={searchQuery}
 								onChange={(e) => setSearchQuery(e.target.value)}
 								className="pl-9"
@@ -306,7 +330,9 @@ export default function CorporationsPage() {
 						{/* Filters */}
 						<div className="flex gap-4">
 							<div className="flex-1 space-y-2">
-								<Label htmlFor="corporation-type-filter">Corporation Type</Label>
+								<Label htmlFor="corporation-type-filter">
+									{t('admin.organizations.corp.type')}
+								</Label>
 								<Select
 									value={filters.corporationType ?? 'all'}
 									onValueChange={(value) => {
@@ -321,13 +347,13 @@ export default function CorporationsPage() {
 									}}
 									inputId="corporation-type-filter"
 									options={[
-										{ value: 'all', label: 'All Corporations' },
-										{ value: 'member', label: 'Member Corps' },
-										{ value: 'alt', label: 'Alt Corps' },
-										{ value: 'special', label: 'Special Purpose Corps' },
-										{ value: 'other', label: 'Other Corps' },
+										{ value: 'all', label: t('admin.organizations.corp.all') },
+										{ value: 'member', label: t('admin.organizations.corp.memberCorps') },
+										{ value: 'alt', label: t('admin.organizations.corp.altCorps') },
+										{ value: 'special', label: t('admin.organizations.corp.specialCorps') },
+										{ value: 'other', label: t('admin.organizations.corp.otherCorps') },
 									]}
-									placeholder="All Corporations"
+									placeholder={t('admin.organizations.corp.all')}
 								/>
 							</div>
 						</div>
@@ -340,8 +366,10 @@ export default function CorporationsPage() {
 				<CardHeader>
 					<div className="space-y-4">
 						<div>
-							<CardTitle>Managed Corporations ({pagination?.totalCount ?? 0})</CardTitle>
-							<CardDescription>Corporations configured for data collection</CardDescription>
+							<CardTitle>
+								{t('admin.organizations.corp.managed', { count: pagination?.totalCount ?? 0 })}
+							</CardTitle>
+							<CardDescription>{t('admin.organizations.corp.managedDescription')}</CardDescription>
 						</div>
 						<UserSearchPaginationControls
 							totalCount={pagination?.totalCount ?? 0}
@@ -349,7 +377,7 @@ export default function CorporationsPage() {
 							pageSize={filters.pageSize ?? 25}
 							onPageChange={(page) => setFilters((current) => ({ ...current, page }))}
 							onPageSizeChange={handlePageSizeChange}
-							itemLabel="corporations"
+							itemLabel={t('admin.nav.corporations')}
 							nextButtonLoading={isFetching}
 						/>
 					</div>
@@ -357,34 +385,34 @@ export default function CorporationsPage() {
 				<CardContent>
 					<TableRefreshFrame
 						isRefreshing={isSoftLoading}
-						refreshMessage="Loading corporations..."
+						refreshMessage={t('admin.organizations.corp.loading')}
 						errorMessage={
 							error && data
 								? error instanceof Error
 									? error.message
-									: 'Failed to refresh corporations.'
+									: t('admin.organizations.corp.refreshError')
 								: null
 						}
 					>
 						{error && !data ? (
 							<div className="rounded-lg border border-destructive/40 bg-destructive/10 p-8 text-center text-sm text-destructive">
-								<div className="font-medium">Failed to load corporations.</div>
+								<div className="font-medium">{t('admin.organizations.corp.loadError')}</div>
 								<div className="mt-1 text-destructive/80">
-									{error instanceof Error ? error.message : 'Please try again.'}
+									{error instanceof Error ? error.message : t('admin.organizations.corp.retry')}
 								</div>
 							</div>
 						) : isInitialLoading ? (
 							<div className="flex justify-center py-8">
-								<LoadingSpinner label="Loading corporations..." />
+								<LoadingSpinner label={t('admin.organizations.corp.loading')} />
 							</div>
 						) : corporations.length === 0 ? (
 							<div className="text-center py-8">
 								<Building2 className="mx-auto h-12 w-12 text-muted-foreground" />
-								<h3 className="mt-4 text-lg font-medium">No corporations found</h3>
+								<h3 className="mt-4 text-lg font-medium">{t('admin.organizations.corp.empty')}</h3>
 								<p className="text-muted-foreground mt-2">
 									{searchQuery
-										? 'Try adjusting your search'
-										: 'Add your first corporation to get started'}
+										? t('admin.organizations.corp.searchHint')
+										: t('admin.organizations.corp.firstHint')}
 								</p>
 							</div>
 						) : (
@@ -393,14 +421,14 @@ export default function CorporationsPage() {
 									<Table>
 										<TableHeader>
 											<TableRow>
-												<TableHead>Corporation</TableHead>
-												<TableHead>Directors</TableHead>
-												<TableHead>Status</TableHead>
-												<TableHead>Auto-Sync</TableHead>
-												<TableHead>Asset Sync</TableHead>
-												<TableHead>Last Sync</TableHead>
-												<TableHead>Last Verified</TableHead>
-												<TableHead className="text-right">Actions</TableHead>
+												<TableHead>{t('admin.users.account.corporation')}</TableHead>
+												<TableHead>{t('admin.organizations.corp.directors')}</TableHead>
+												<TableHead>{t('admin.users.account.status')}</TableHead>
+												<TableHead>{t('admin.organizations.corp.autoSync')}</TableHead>
+												<TableHead>{t('admin.organizations.corp.assetSync')}</TableHead>
+												<TableHead>{t('admin.organizations.corp.lastSync')}</TableHead>
+												<TableHead>{t('admin.organizations.corp.lastVerified')}</TableHead>
+												<TableHead className="text-right">{t('admin.fields.actions')}</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
@@ -419,9 +447,15 @@ export default function CorporationsPage() {
 													</TableCell>
 													<TableCell>
 														<div className="text-sm">
-															<div>{`${corp.healthyDirectorCount} healthy`}</div>
+															<div>
+																{t('admin.organizations.corp.healthyCount', {
+																	count: corp.healthyDirectorCount,
+																})}
+															</div>
 															{corp.healthyDirectorCount === 0 && (
-																<div className="text-amber-600 text-xs">Needs verification</div>
+																<div className="text-amber-600 text-xs">
+																	{t('admin.organizations.corp.needsVerification')}
+																</div>
 															)}
 														</div>
 													</TableCell>
@@ -458,8 +492,8 @@ export default function CorporationsPage() {
 																	size="sm"
 																	onClick={() => handleVerify(corp.corporationId)}
 																	disabled={verifyAccess.isPending}
-																	title="Verify corporation access"
-																	aria-label="Verify corporation access"
+																	title={t('admin.organizations.corp.verifyHint')}
+																	aria-label={t('admin.organizations.corp.verifyHint')}
 																>
 																	<RefreshCw className="h-4 w-4" />
 																</Button>
@@ -486,7 +520,7 @@ export default function CorporationsPage() {
 											pageSize={filters.pageSize ?? 25}
 											onPageChange={(page) => setFilters((current) => ({ ...current, page }))}
 											onPageSizeChange={handlePageSizeChange}
-											itemLabel="corporations"
+											itemLabel={t('admin.nav.corporations')}
 											nextButtonLoading={isFetching}
 										/>
 									</div>
@@ -501,15 +535,13 @@ export default function CorporationsPage() {
 			<Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Add Corporation</DialogTitle>
-						<DialogDescription>
-							Add a new corporation for management. You can assign a director character later.
-						</DialogDescription>
+						<DialogTitle>{t('admin.organizations.corp.add')}</DialogTitle>
+						<DialogDescription>{t('admin.organizations.corp.addDescription')}</DialogDescription>
 					</DialogHeader>
 					<form onSubmit={handleCreate}>
 						<div className="space-y-4">
 							<div className="space-y-2">
-								<Label htmlFor="corporationId">Corporation ID *</Label>
+								<Label htmlFor="corporationId">{t('admin.organizations.corp.idRequired')}</Label>
 								<Input
 									id="corporationId"
 									type="text"
@@ -518,31 +550,31 @@ export default function CorporationsPage() {
 									value={formData.corporationId}
 									onChange={(e) => setFormData({ ...formData, corporationId: e.target.value })}
 									required
-									placeholder="e.g., 98000001"
+									placeholder={t('admin.organizations.corp.idExample')}
 								/>
 							</div>
 							<div className="space-y-2">
-								<Label htmlFor="name">Corporation Name *</Label>
+								<Label htmlFor="name">{t('admin.organizations.corp.nameRequired')}</Label>
 								<Input
 									id="name"
 									value={formData.name}
 									onChange={(e) => setFormData({ ...formData, name: e.target.value })}
 									required
-									placeholder="e.g., Goonswarm Federation"
+									placeholder={t('admin.organizations.corp.nameExample')}
 								/>
 							</div>
 							<div className="space-y-2">
-								<Label htmlFor="ticker">Ticker *</Label>
+								<Label htmlFor="ticker">{t('admin.organizations.corp.tickerRequired')}</Label>
 								<Input
 									id="ticker"
 									value={formData.ticker}
 									onChange={(e) => setFormData({ ...formData, ticker: e.target.value })}
 									required
-									placeholder="e.g., CONDI"
+									placeholder={t('admin.organizations.corp.tickerExample')}
 								/>
 							</div>
 							<div className="space-y-2">
-								<Label htmlFor="characterId">Director Character ID (Optional)</Label>
+								<Label htmlFor="characterId">{t('admin.organizations.corp.directorId')}</Label>
 								<Input
 									id="characterId"
 									type="text"
@@ -555,18 +587,18 @@ export default function CorporationsPage() {
 											assignedCharacterId: e.target.value || undefined,
 										})
 									}
-									placeholder="e.g., 2119123456"
+									placeholder={t('admin.organizations.directors.characterIdExample')}
 								/>
 							</div>
 							<div className="space-y-2">
-								<Label htmlFor="characterName">Director Character Name (Optional)</Label>
+								<Label htmlFor="characterName">{t('admin.organizations.corp.directorName')}</Label>
 								<Input
 									id="characterName"
 									value={formData.assignedCharacterName || ''}
 									onChange={(e) =>
 										setFormData({ ...formData, assignedCharacterName: e.target.value || undefined })
 									}
-									placeholder="e.g., Character Name"
+									placeholder={t('admin.organizations.corp.characterExample')}
 								/>
 							</div>
 							<div className="space-y-2">
@@ -579,11 +611,11 @@ export default function CorporationsPage() {
 										}
 									/>
 									<Label htmlFor="includeInBackgroundRefresh" className="cursor-pointer">
-										Include in Background Refresh
+										{t('admin.organizations.corp.backgroundRefresh')}
 									</Label>
 								</div>
 								<p className="text-sm text-muted-foreground">
-									Automatically fetch and sync corporation data on a regular schedule
+									{t('admin.organizations.corp.backgroundHint')}
 								</p>
 							</div>
 							<div className="space-y-2">
@@ -596,25 +628,25 @@ export default function CorporationsPage() {
 										}
 									/>
 									<Label htmlFor="includeInStructureAssetSync" className="cursor-pointer">
-										Include in Structure Asset Sync
+										{t('admin.organizations.corp.structureSync')}
 									</Label>
 								</div>
 								<p className="text-sm text-muted-foreground">
-									Fetch structure assets for this corporation during sync runs
+									{t('admin.organizations.corp.structureHint')}
 								</p>
 							</div>
 						</div>
 						<DialogFooter className="mt-6">
 							<Button variant="cancel" type="button" onClick={() => setCreateDialogOpen(false)}>
-								Cancel
+								{t('common.cancel')}
 							</Button>
 							<Button
 								variant="confirm"
 								type="submit"
 								loading={createCorporation.isPending}
-								loadingText="Adding..."
+								loadingText={t('admin.organizations.corp.adding')}
 							>
-								Add Corporation
+								{t('admin.organizations.corp.add')}
 							</Button>
 						</DialogFooter>
 					</form>
@@ -625,22 +657,20 @@ export default function CorporationsPage() {
 			<Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Remove Corporation</DialogTitle>
-						<DialogDescription>
-							Are you sure you want to remove this corporation? This action cannot be undone.
-						</DialogDescription>
+						<DialogTitle>{t('admin.organizations.corp.remove')}</DialogTitle>
+						<DialogDescription>{t('admin.organizations.corp.removeWarning')}</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleDelete}
 							loading={deleteCorporation.isPending}
-							loadingText="Removing..."
+							loadingText={t('admin.users.account.removing')}
 						>
-							Remove
+							{t('common.remove')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -11,7 +12,9 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAddDirector } from '@/hooks/useCorporations'
-import { Button } from '@/components/ui/button'
+import { useAppTranslation } from '@/i18n'
+
+import type { FormEvent } from 'react'
 
 interface AddDirectorDialogProps {
 	corporationId: string
@@ -20,6 +23,7 @@ interface AddDirectorDialogProps {
 }
 
 export function AddDirectorDialog({ corporationId, open, onOpenChange }: AddDirectorDialogProps) {
+	const { t } = useAppTranslation()
 	const [formData, setFormData] = useState<{
 		characterId: string
 		characterName: string
@@ -32,7 +36,7 @@ export function AddDirectorDialog({ corporationId, open, onOpenChange }: AddDire
 
 	const addDirector = useAddDirector()
 
-	const handleSubmit = async (e: React.FormEvent) => {
+	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault()
 
 		const characterId = formData.characterId
@@ -64,16 +68,13 @@ export function AddDirectorDialog({ corporationId, open, onOpenChange }: AddDire
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>Add Director</DialogTitle>
-					<DialogDescription>
-						Add a new director character to manage corporation data. The director needs appropriate
-						corp roles to access ESI data.
-					</DialogDescription>
+					<DialogTitle>{t('admin.organizations.directors.add')}</DialogTitle>
+					<DialogDescription>{t('admin.organizations.directors.addDescription')}</DialogDescription>
 				</DialogHeader>
 				<form onSubmit={handleSubmit}>
 					<div className="space-y-4">
 						<div className="space-y-2">
-							<Label htmlFor="characterId">Character ID *</Label>
+							<Label htmlFor="characterId">{t('admin.organizations.directors.characterId')}</Label>
 							<Input
 								id="characterId"
 								type="text"
@@ -82,21 +83,23 @@ export function AddDirectorDialog({ corporationId, open, onOpenChange }: AddDire
 								value={formData.characterId}
 								onChange={(e) => setFormData({ ...formData, characterId: e.target.value })}
 								required
-								placeholder="e.g., 2119123456"
+								placeholder={t('admin.organizations.directors.characterIdExample')}
 							/>
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor="characterName">Character Name *</Label>
+							<Label htmlFor="characterName">
+								{t('admin.organizations.directors.characterName')}
+							</Label>
 							<Input
 								id="characterName"
 								value={formData.characterName}
 								onChange={(e) => setFormData({ ...formData, characterName: e.target.value })}
 								required
-								placeholder="e.g., Director Name"
+								placeholder={t('admin.organizations.directors.nameExample')}
 							/>
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor="priority">Priority</Label>
+							<Label htmlFor="priority">{t('admin.organizations.shared.priority')}</Label>
 							<Input
 								id="priority"
 								type="number"
@@ -105,20 +108,24 @@ export function AddDirectorDialog({ corporationId, open, onOpenChange }: AddDire
 									const value = Number.parseInt(e.target.value)
 									setFormData({ ...formData, priority: Number.isNaN(value) ? 100 : value })
 								}}
-								placeholder="Lower number = higher priority"
+								placeholder={t('admin.organizations.directors.priorityPlaceholder')}
 							/>
 							<p className="text-xs text-muted-foreground">
-								Lower values have higher priority. Default is 100. Used for tie-breaking during
-								round-robin selection.
+								{t('admin.organizations.directors.priorityHint')}
 							</p>
 						</div>
 					</div>
 					<DialogFooter className="mt-6">
 						<Button variant="cancel" type="button" onClick={handleClose}>
-							Cancel
+							{t('common.cancel')}
 						</Button>
-						<Button variant="confirm" type="submit" loading={addDirector.isPending} loadingText="Adding...">
-							Add Director
+						<Button
+							variant="confirm"
+							type="submit"
+							loading={addDirector.isPending}
+							loadingText={t('admin.organizations.corp.adding')}
+						>
+							{t('admin.organizations.directors.add')}
 						</Button>
 					</DialogFooter>
 				</form>

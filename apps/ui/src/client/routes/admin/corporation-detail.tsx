@@ -1,4 +1,3 @@
-import { formatDistanceToNow } from 'date-fns'
 import {
 	ArrowLeft,
 	Building2,
@@ -74,18 +73,31 @@ import {
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useGlobalPermissions } from '@/hooks/usePermissions'
+import { formatDateTime, formatNumber, useAppTranslation } from '@/i18n'
+import { formatRelativeTime } from '@/lib/date-utils'
 
+import type { AppTranslationKey } from '@/i18n'
 import type { CorporationAccessVerification, CorporationDiscordServer } from '@/lib/api'
 
+const fetchCategoryKeys = {
+	all: 'admin.organizations.corp.categories.all',
+	public: 'admin.organizations.corp.categories.public',
+	core: 'admin.organizations.corp.categories.core',
+	financial: 'admin.organizations.corp.categories.financial',
+	assets: 'admin.organizations.corp.categories.assets',
+	market: 'admin.organizations.corp.categories.market',
+	killmails: 'admin.organizations.corp.categories.killmails',
+} as const
+
 const ACCESS_ROLE_GROUPS = [
-	{ label: 'Director', roles: ['Director'] },
-	{ label: 'Accountant / Junior Accountant', roles: ['Accountant', 'Junior_Accountant'] },
-	{ label: 'Station Manager', roles: ['Station_Manager'] },
+	{ labelKey: 'admin.organizations.roles.director', roles: ['Director'] },
+	{ labelKey: 'admin.organizations.roles.accountants', roles: ['Accountant', 'Junior_Accountant'] },
+	{ labelKey: 'admin.organizations.roles.stationManager', roles: ['Station_Manager'] },
 	{
-		label: 'Accountant / Junior Accountant / Trader',
+		labelKey: 'admin.organizations.roles.traders',
 		roles: ['Accountant', 'Junior_Accountant', 'Trader'],
 	},
-	{ label: 'Factory Manager', roles: ['Factory_Manager'] },
+	{ labelKey: 'admin.organizations.roles.factoryManager', roles: ['Factory_Manager'] },
 ] as const
 
 const DEFAULT_ATTACHMENT_SETTINGS = {
@@ -108,11 +120,12 @@ type NicknameBucketDraft = {
 	customTicker: string
 }
 
-const NICKNAME_SOURCE_OPTIONS: Array<{ value: NicknameBucketSource; label: string }> = [
-	{ value: 'corp', label: 'Corp ticker' },
-	{ value: 'alliance', label: 'Alliance ticker' },
-	{ value: 'custom', label: 'Custom ticker' },
-]
+const NICKNAME_SOURCE_OPTIONS: Array<{ value: NicknameBucketSource; labelKey: AppTranslationKey }> =
+	[
+		{ value: 'corp', labelKey: 'admin.organizations.discord.corpTicker' },
+		{ value: 'alliance', labelKey: 'admin.organizations.discord.allianceTicker' },
+		{ value: 'custom', labelKey: 'admin.organizations.discord.customTicker' },
+	]
 
 const EMPTY_CORPORATION_DISCORD_SERVERS: CorporationDiscordServer[] = []
 
@@ -125,8 +138,8 @@ function sanitizeNicknameTickerInput(value: string): string {
 
 const NICKNAME_BUCKET_CONFIGS: Array<{
 	key: NicknameBucketKey
-	label: string
-	description: string
+	labelKey: AppTranslationKey
+	descriptionKey: AppTranslationKey
 	enabledField:
 		| 'corpMemberNicknameEnabled'
 		| 'allianceGuestNicknameEnabled'
@@ -142,24 +155,24 @@ const NICKNAME_BUCKET_CONFIGS: Array<{
 }> = [
 	{
 		key: 'corpMember',
-		label: 'Corp Members',
-		description: 'Multi-select roles and ticker settings for members of this corporation.',
+		labelKey: 'admin.organizations.discord.corpMembers',
+		descriptionKey: 'admin.organizations.discord.corpMembersDescription',
 		enabledField: 'corpMemberNicknameEnabled',
 		sourceField: 'corpMemberNicknameSource',
 		customField: 'corpMemberNicknameCustomTicker',
 	},
 	{
 		key: 'allianceGuest',
-		label: 'Alliance Guest',
-		description: 'Guest access for users affiliated with member corporations.',
+		labelKey: 'admin.organizations.discord.allianceGuest',
+		descriptionKey: 'admin.organizations.discord.allianceGuestDescription',
 		enabledField: 'allianceGuestNicknameEnabled',
 		sourceField: 'allianceGuestNicknameSource',
 		customField: 'allianceGuestNicknameCustomTicker',
 	},
 	{
 		key: 'nonAllianceGuest',
-		label: 'Non-Alliance Guest',
-		description: 'Guest access for linked users outside the alliance.',
+		labelKey: 'admin.organizations.discord.otherGuest',
+		descriptionKey: 'admin.organizations.discord.otherGuestDescription',
 		enabledField: 'nonAllianceGuestNicknameEnabled',
 		sourceField: 'nonAllianceGuestNicknameSource',
 		customField: 'nonAllianceGuestNicknameCustomTicker',
@@ -167,13 +180,18 @@ const NICKNAME_BUCKET_CONFIGS: Array<{
 ] as const
 
 export default function CorporationDetailPage() {
+	const { t } = useAppTranslation()
 	const { corporationId } = useParams<{ corporationId: string }>()
 	const corpId = corporationId || ''
 
 	const { data: corporation, isLoading } = useCorporation(corpId)
 
 	// Set dynamic page title based on corporation name
-	usePageTitle(corporation?.name ? `Admin - ${corporation.name}` : 'Admin - Corporation Details')
+	usePageTitle(
+		corporation?.name
+			? t('admin.organizations.shared.entityTitle', { name: corporation.name })
+			: t('admin.organizations.corp.detailPageTitle')
+	)
 	const { data: dataSummary, isLoading: summaryLoading } = useCorporationDataSummary(corpId)
 	const updateCorporation = useUpdateCorporation()
 	const verifyAccess = useVerifyCorporationAccess()
@@ -280,8 +298,8 @@ export default function CorporationDetailPage() {
 	const updateRoleAttachment = async (
 		attachmentId: string,
 		data: Parameters<typeof updateAttachment.mutateAsync>[0]['data'],
-		successMessage: string,
-		errorMessage: string
+		successKey: AppTranslationKey,
+		errorKey: AppTranslationKey
 	) => {
 		try {
 			await updateAttachment.mutateAsync({
@@ -289,17 +307,17 @@ export default function CorporationDetailPage() {
 				attachmentId,
 				data,
 			})
-			showSuccess(successMessage)
+			showSuccess((t) => t(successKey))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : errorMessage)
+			showError((t) => (error instanceof Error ? error.message : t(errorKey)))
 		}
 	}
 
 	const updateNicknameAttachment = async (
 		attachmentId: string,
 		data: Parameters<typeof updateNicknameConfig.mutateAsync>[0]['data'],
-		successMessage: string,
-		errorMessage: string
+		successKey: AppTranslationKey,
+		errorKey: AppTranslationKey
 	) => {
 		try {
 			await updateNicknameConfig.mutateAsync({
@@ -307,9 +325,9 @@ export default function CorporationDetailPage() {
 				attachmentId,
 				data,
 			})
-			showSuccess(successMessage)
+			showSuccess((t) => t(successKey))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : errorMessage)
+			showError((t) => (error instanceof Error ? error.message : t(errorKey)))
 		}
 	}
 
@@ -329,25 +347,30 @@ export default function CorporationDetailPage() {
 			setShowAddServerDialog(false)
 			setSelectedServerId('')
 			setAttachmentSettings({ ...DEFAULT_ATTACHMENT_SETTINGS })
-			showSuccess('Discord server attached successfully!')
+			showSuccess((t) => t('admin.organizations.feedback.serverAttached'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to attach Discord server')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.serverAttachError')
+			)
 		}
 	}
 
 	const handleDetachServer = async (attachmentId: string) => {
 		requestConfirmation({
-			title: 'Detach Discord Server?',
-			description:
-				'Detaching this server removes corporation Discord attachment-based access. This may revoke Discord roles for affected users on the next sync.',
-			confirmLabel: 'Detach Server',
+			title: (t) => t('admin.organizations.discord.detachTitle'),
+			description: (t) => t('admin.organizations.discord.detachWarning'),
+			confirmLabel: (t) => t('admin.organizations.discord.detach'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				try {
 					await detachServer.mutateAsync({ corporationId: corpId, attachmentId })
-					showSuccess('Discord server detached successfully!')
+					showSuccess((t) => t('admin.organizations.feedback.serverDetached'))
 				} catch (error) {
-					showError(error instanceof Error ? error.message : 'Failed to detach Discord server')
+					showError((t) =>
+						error instanceof Error
+							? error.message
+							: t('admin.organizations.feedback.serverDetachError')
+					)
 				}
 			},
 		})
@@ -357,8 +380,8 @@ export default function CorporationDetailPage() {
 		await updateRoleAttachment(
 			attachmentId,
 			{ autoInvite: !currentValue },
-			'Auto-invite setting updated!',
-			'Failed to update auto-invite setting'
+			'admin.organizations.feedback.autoInviteSaved',
+			'admin.organizations.feedback.autoInviteError'
 		)
 	}
 
@@ -366,8 +389,8 @@ export default function CorporationDetailPage() {
 		await updateRoleAttachment(
 			attachmentId,
 			{ autoAssignRoles: !currentValue },
-			'Auto-assign roles setting updated!',
-			'Failed to update auto-assign roles setting'
+			'admin.organizations.feedback.autoAssignSaved',
+			'admin.organizations.feedback.autoAssignError'
 		)
 	}
 
@@ -378,9 +401,11 @@ export default function CorporationDetailPage() {
 				attachmentId,
 				data: { discordRoleId },
 			})
-			showSuccess('Role assigned successfully!')
+			showSuccess((t) => t('admin.organizations.feedback.roleAssigned'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to assign role')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.roleAssignError')
+			)
 		}
 	}
 
@@ -394,8 +419,8 @@ export default function CorporationDetailPage() {
 			{
 				[field]: nextValue === noneScenarioRoleValue ? null : nextValue,
 			} as Parameters<typeof updateAttachment.mutateAsync>[0]['data'],
-			'Scenario role updated!',
-			'Failed to update scenario role'
+			'admin.organizations.feedback.scenarioRoleSaved',
+			'admin.organizations.feedback.scenarioRoleError'
 		)
 	}
 
@@ -409,8 +434,8 @@ export default function CorporationDetailPage() {
 			{
 				[field]: !currentValue,
 			} as Parameters<typeof updateAttachment.mutateAsync>[0]['data'],
-			'Scenario auto-apply updated!',
-			'Failed to update scenario auto-apply'
+			'admin.organizations.feedback.scenarioAutoSaved',
+			'admin.organizations.feedback.scenarioAutoError'
 		)
 	}
 
@@ -460,8 +485,8 @@ export default function CorporationDetailPage() {
 						? sanitizeNicknameTickerInput(attachmentDraft.customTicker) || null
 						: null,
 			} as Parameters<typeof updateNicknameConfig.mutateAsync>[0]['data'],
-			'Nickname config updated!',
-			'Failed to update nickname config'
+			'admin.organizations.feedback.nicknameSaved',
+			'admin.organizations.feedback.nicknameError'
 		)
 	}
 
@@ -472,9 +497,11 @@ export default function CorporationDetailPage() {
 				attachmentId,
 				roleAssignmentId,
 			})
-			showSuccess('Role unassigned successfully!')
+			showSuccess((t) => t('admin.organizations.feedback.roleUnassigned'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to unassign role')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.roleUnassignError')
+			)
 		}
 	}
 
@@ -489,9 +516,13 @@ export default function CorporationDetailPage() {
 			})
 			setShowAttachPermissionDialog(false)
 			setSelectedPermissionId('')
-			showSuccess('Permission attached successfully!')
+			showSuccess((t) => t('admin.organizations.feedback.permissionAttached'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to attach permission')
+			showError((t) =>
+				error instanceof Error
+					? error.message
+					: t('admin.organizations.feedback.permissionAttachError')
+			)
 		}
 	}
 
@@ -501,9 +532,13 @@ export default function CorporationDetailPage() {
 				corporationId: corpId,
 				permissionId,
 			})
-			showSuccess('Permission removed successfully!')
+			showSuccess((t) => t('admin.organizations.feedback.permissionRemoved'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to remove permission')
+			showError((t) =>
+				error instanceof Error
+					? error.message
+					: t('admin.organizations.feedback.permissionRemoveError')
+			)
 		}
 	}
 
@@ -514,16 +549,24 @@ export default function CorporationDetailPage() {
 			const result = await verifyAccess.mutateAsync(corpId)
 			setAccessVerification(result)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to verify access')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.accessError')
+			)
 		}
 	}
 
-	const handleFetch = async (category: string) => {
+	const handleFetch = async (category: keyof typeof fetchCategoryKeys) => {
 		try {
-			await fetchData.mutateAsync({ corporationId: corpId, data: { category: category as any } })
-			showSuccess(`Started fetching ${category} data...`)
+			await fetchData.mutateAsync({ corporationId: corpId, data: { category } })
+			showSuccess((t) =>
+				t('admin.organizations.feedback.fetchStarted', {
+					category: t(fetchCategoryKeys[category]),
+				})
+			)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to fetch data')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.fetchError')
+			)
 		}
 	}
 
@@ -533,9 +576,17 @@ export default function CorporationDetailPage() {
 				corporationId: corpId,
 				data: { includeInBackgroundRefresh: enabled },
 			})
-			showSuccess(`Background refresh ${enabled ? 'enabled' : 'disabled'}`)
+			showSuccess((t) =>
+				t(
+					enabled
+						? 'admin.organizations.feedback.backgroundEnabled'
+						: 'admin.organizations.feedback.backgroundDisabled'
+				)
+			)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update setting')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.settingError')
+			)
 		}
 	}
 
@@ -545,19 +596,26 @@ export default function CorporationDetailPage() {
 				corporationId: corpId,
 				data: { includeInStructureAssetSync: enabled },
 			})
-			showSuccess(`Structure asset sync ${enabled ? 'enabled' : 'disabled'}`)
+			showSuccess((t) =>
+				t(
+					enabled
+						? 'admin.organizations.feedback.assetsEnabled'
+						: 'admin.organizations.feedback.assetsDisabled'
+				)
+			)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update setting')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.settingError')
+			)
 		}
 	}
 
 	const handleUpdateMemberCorporation = async (enabled: boolean) => {
 		if (!enabled) {
 			requestConfirmation({
-				title: 'Disable Member Corporation?',
-				description:
-					'Disabling member corporation status removes member-corp alliance access and may revoke associated Discord access/roles for affected users.',
-				confirmLabel: 'Disable Membership',
+				title: (t) => t('admin.organizations.corp.disableMemberTitle'),
+				description: (t) => t('admin.organizations.corp.disableMemberWarning'),
+				confirmLabel: (t) => t('admin.organizations.corp.disableMembership'),
 				intent: 'destructive',
 				onConfirm: async () => {
 					try {
@@ -565,9 +623,13 @@ export default function CorporationDetailPage() {
 							corporationId: corpId,
 							data: { isMemberCorporation: enabled },
 						})
-						showSuccess('Member corporation status disabled')
+						showSuccess((t) => t('admin.organizations.feedback.memberDisabled'))
 					} catch (error) {
-						showError(error instanceof Error ? error.message : 'Failed to update setting')
+						showError((t) =>
+							error instanceof Error
+								? error.message
+								: t('admin.organizations.feedback.settingError')
+						)
 					}
 				},
 			})
@@ -579,9 +641,11 @@ export default function CorporationDetailPage() {
 				corporationId: corpId,
 				data: { isMemberCorporation: enabled },
 			})
-			showSuccess('Member corporation status enabled')
+			showSuccess((t) => t('admin.organizations.feedback.memberEnabled'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update setting')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.settingError')
+			)
 		}
 	}
 
@@ -591,9 +655,17 @@ export default function CorporationDetailPage() {
 				corporationId: corpId,
 				data: { isAltCorp: enabled },
 			})
-			showSuccess(`Alt corporation status ${enabled ? 'enabled' : 'disabled'}`)
+			showSuccess((t) =>
+				t(
+					enabled
+						? 'admin.organizations.feedback.altEnabled'
+						: 'admin.organizations.feedback.altDisabled'
+				)
+			)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update setting')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.settingError')
+			)
 		}
 	}
 
@@ -603,38 +675,44 @@ export default function CorporationDetailPage() {
 				corporationId: corpId,
 				data: { isSpecialPurpose: enabled },
 			})
-			showSuccess(`Special purpose status ${enabled ? 'enabled' : 'disabled'}`)
+			showSuccess((t) =>
+				t(
+					enabled
+						? 'admin.organizations.feedback.specialEnabled'
+						: 'admin.organizations.feedback.specialDisabled'
+				)
+			)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update setting')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.organizations.feedback.settingError')
+			)
 		}
 	}
 
 	const formatDate = (date: string | Date | null) => {
-		if (!date) return 'Never'
+		if (!date) return t('admin.users.account.never')
 		const parsedDate = date instanceof Date ? date : new Date(date)
-		if (Number.isNaN(parsedDate.getTime())) return 'Never'
-		return formatDistanceToNow(parsedDate, { addSuffix: true })
+		if (Number.isNaN(parsedDate.getTime())) return t('admin.users.account.never')
+		return formatRelativeTime(parsedDate)
 	}
 
 	const scenarioRoleConfigs = [
 		{
 			key: 'allianceGuest',
-			label: 'Alliance Guest',
-			description: 'Guest access for users affiliated with member corporations',
-			nicknameLabel: 'Alliance Guest Ticker',
-			nicknameDescription:
-				'Used for alliance members outside this corporation. Takes priority over the non-alliance setting.',
+			label: t('admin.organizations.discord.allianceGuest'),
+			description: t('admin.organizations.discord.allianceGuestDescription'),
+			nicknameLabel: t('admin.organizations.discord.allianceGuestTicker'),
+			nicknameDescription: t('admin.organizations.discord.allianceTickerHint'),
 			nicknameClassName: 'border-sky-500/30 bg-sky-500/5',
 			roleIdKey: 'allianceGuestRoleId' as const,
 			autoApplyKey: 'allianceGuestAutoApply' as const,
 		},
 		{
 			key: 'nonAllianceGuest',
-			label: 'Non-Alliance Guest',
-			description: 'Guest access for linked users outside the alliance',
-			nicknameLabel: 'Non-Alliance Guest Ticker',
-			nicknameDescription:
-				'Used for linked users outside this corporation and alliance. Fallback when no more specific setting applies.',
+			label: t('admin.organizations.discord.otherGuest'),
+			description: t('admin.organizations.discord.otherGuestDescription'),
+			nicknameLabel: t('admin.organizations.discord.otherGuestTicker'),
+			nicknameDescription: t('admin.organizations.discord.otherTickerHint'),
 			nicknameClassName: 'border-slate-500/30 bg-slate-500/5',
 			roleIdKey: 'nonAllianceGuestRoleId' as const,
 			autoApplyKey: 'nonAllianceGuestAutoApply' as const,
@@ -659,7 +737,7 @@ export default function CorporationDetailPage() {
 		const options = [
 			{
 				value: noneScenarioRoleValue,
-				label: 'None',
+				label: t('admin.users.discord.none'),
 			},
 		]
 
@@ -678,7 +756,7 @@ export default function CorporationDetailPage() {
 	if (isLoading) {
 		return (
 			<div className="flex justify-center py-12">
-				<LoadingSpinner label="Loading corporation..." />
+				<LoadingSpinner label={t('admin.organizations.corp.loadingDetail')} />
 			</div>
 		)
 	}
@@ -687,12 +765,12 @@ export default function CorporationDetailPage() {
 		return (
 			<div className="text-center py-12">
 				<Building2 className="mx-auto h-12 w-12 text-muted-foreground" />
-				<h3 className="mt-4 text-lg font-medium">Corporation not found</h3>
-				<p className="text-muted-foreground mt-2">This corporation may have been removed.</p>
+				<h3 className="mt-4 text-lg font-medium">{t('admin.organizations.corp.notFound')}</h3>
+				<p className="text-muted-foreground mt-2">{t('admin.organizations.corp.notFoundHint')}</p>
 				<Button asChild className="mt-4">
 					<Link to="/admin/corporations">
 						<ArrowLeft className="h-4 w-4" />
-						Back to Corporations
+						{t('admin.organizations.corp.back')}
 					</Link>
 				</Button>
 			</div>
@@ -706,7 +784,7 @@ export default function CorporationDetailPage() {
 				<Button variant="ghost" asChild>
 					<Link to="/admin/corporations">
 						<ArrowLeft className="h-4 w-4" />
-						Back to Corporations
+						{t('admin.organizations.corp.back')}
 					</Link>
 				</Button>
 
@@ -720,7 +798,9 @@ export default function CorporationDetailPage() {
 						{corporation.assignedCharacterId && (
 							<Button onClick={handleVerify} disabled={verifyAccess.isPending}>
 								<Shield className="h-4 w-4" />
-								{verifyAccess.isPending ? 'Verifying...' : 'Verify Access'}
+								{verifyAccess.isPending
+									? t('admin.organizations.corp.verifying')
+									: t('admin.organizations.corp.verify')}
 							</Button>
 						)}
 					</div>
@@ -739,7 +819,9 @@ export default function CorporationDetailPage() {
 							<div className="flex items-start justify-between gap-4">
 								<div className="space-y-1">
 									<div className="flex flex-wrap items-center gap-2">
-										<CardTitle className="text-base">Access verification</CardTitle>
+										<CardTitle className="text-base">
+											{t('admin.organizations.corp.accessVerification')}
+										</CardTitle>
 										<Badge
 											variant={accessVerification.hasAccess ? 'success' : 'destructive'}
 											className="gap-1"
@@ -749,19 +831,27 @@ export default function CorporationDetailPage() {
 											) : (
 												<ShieldAlert className="h-3 w-3" />
 											)}
-											{accessVerification.hasAccess ? 'Access verified' : 'Access missing'}
+											{accessVerification.hasAccess
+												? t('admin.organizations.corp.accessVerified')
+												: t('admin.organizations.corp.accessMissing')}
 										</Badge>
 									</div>
 									<CardDescription>
 										{accessVerification.hasAccess
-											? `Verified via ${accessVerification.characterName ?? 'an eligible director'}`
-											: 'No healthy director satisfied the required role matrix.'}
+											? t('admin.organizations.corp.verifiedVia', {
+													name:
+														accessVerification.characterName ??
+														t('admin.organizations.corp.eligibleDirector'),
+												})
+											: t('admin.organizations.corp.noDirectorAccess')}
 									</CardDescription>
 								</div>
 								<p className="text-xs text-muted-foreground">
 									{accessVerification.lastVerified
-										? `Checked ${formatDate(accessVerification.lastVerified)}`
-										: 'Not checked'}
+										? t('admin.organizations.corp.checked', {
+												date: formatDate(accessVerification.lastVerified),
+											})
+										: t('admin.organizations.corp.notChecked')}
 								</p>
 							</div>
 						</CardHeader>
@@ -769,16 +859,19 @@ export default function CorporationDetailPage() {
 							<div className="space-y-2">
 								<div className="flex items-center justify-between gap-3">
 									<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-										What we check for
+										{t('admin.organizations.corp.roleRequirements')}
 									</p>
 									<p className="text-xs text-muted-foreground">
-										{satisfiedAccessRoleGroups.length} / {ACCESS_ROLE_GROUPS.length} satisfied
+										{t('admin.organizations.corp.rolesSatisfied', {
+											satisfied: satisfiedAccessRoleGroups.length,
+											total: ACCESS_ROLE_GROUPS.length,
+										})}
 									</p>
 								</div>
 								<div className="flex flex-wrap gap-2">
 									{accessRoleStatuses.map((group) => (
 										<Badge
-											key={group.label}
+											key={group.labelKey}
 											variant={group.satisfied ? 'success' : 'destructive'}
 											className="gap-1"
 										>
@@ -787,7 +880,7 @@ export default function CorporationDetailPage() {
 											) : (
 												<XCircle className="h-3 w-3" />
 											)}
-											{group.label}
+											{t(group.labelKey)}
 										</Badge>
 									))}
 								</div>
@@ -796,13 +889,13 @@ export default function CorporationDetailPage() {
 							{missingAccessRoleGroups.length > 0 && (
 								<div className="space-y-2">
 									<p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-										What we don&apos;t have
+										{t('admin.organizations.corp.missingRoles')}
 									</p>
 									<div className="flex flex-wrap gap-2">
 										{missingAccessRoleGroups.map((group) => (
-											<Badge key={group.label} variant="destructive" className="gap-1">
+											<Badge key={group.labelKey} variant="destructive" className="gap-1">
 												<XCircle className="h-3 w-3" />
-												{group.label}
+												{t(group.labelKey)}
 											</Badge>
 										))}
 									</div>
@@ -832,7 +925,9 @@ export default function CorporationDetailPage() {
 				<div className="grid gap-4 md:grid-cols-3">
 					<Card>
 						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-							<CardTitle className="text-sm font-medium">Status</CardTitle>
+							<CardTitle className="text-sm font-medium">
+								{t('admin.users.account.status')}
+							</CardTitle>
 							{corporation.isActive ? (
 								<CheckCircle2 className="h-4 w-4 text-green-600" />
 							) : (
@@ -841,14 +936,18 @@ export default function CorporationDetailPage() {
 						</CardHeader>
 						<CardContent>
 							<div className="text-2xl font-bold">
-								{corporation.isActive ? 'Active' : 'Inactive'}
+								{corporation.isActive
+									? t('admin.users.account.active')
+									: t('admin.organizations.corp.inactive')}
 							</div>
 						</CardContent>
 					</Card>
 
 					<Card>
 						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-							<CardTitle className="text-sm font-medium">Last Sync</CardTitle>
+							<CardTitle className="text-sm font-medium">
+								{t('admin.organizations.corp.lastSync')}
+							</CardTitle>
 							<RefreshCw className="h-4 w-4 text-muted-foreground" />
 						</CardHeader>
 						<CardContent>
@@ -858,7 +957,9 @@ export default function CorporationDetailPage() {
 
 					<Card>
 						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-							<CardTitle className="text-sm font-medium">Verification</CardTitle>
+							<CardTitle className="text-sm font-medium">
+								{t('admin.organizations.corp.verification')}
+							</CardTitle>
 							{corporation.isVerified ? (
 								<ShieldCheck className="h-4 w-4 text-green-600" />
 							) : (
@@ -867,7 +968,9 @@ export default function CorporationDetailPage() {
 						</CardHeader>
 						<CardContent>
 							<div className="text-2xl font-bold">
-								{corporation.isVerified ? 'Verified' : 'Unverified'}
+								{corporation.isVerified
+									? t('admin.organizations.corp.verified')
+									: t('admin.organizations.corp.unverified')}
 							</div>
 							<p className="text-xs text-muted-foreground mt-1">
 								{formatDate(corporation.lastVerified)}
@@ -879,20 +982,19 @@ export default function CorporationDetailPage() {
 				{/* Tabs */}
 				<Tabs defaultValue="config" className="space-y-4">
 					<TabsList>
-						<TabsTrigger value="config">Configuration</TabsTrigger>
-						<TabsTrigger value="data">Data Summary</TabsTrigger>
-						<TabsTrigger value="fetch">Fetch Data</TabsTrigger>
-						<TabsTrigger value="permissions">Permissions</TabsTrigger>
+						<TabsTrigger value="config">{t('admin.organizations.corp.configuration')}</TabsTrigger>
+						<TabsTrigger value="data">{t('admin.organizations.corp.dataSummary')}</TabsTrigger>
+						<TabsTrigger value="fetch">{t('admin.organizations.corp.fetchData')}</TabsTrigger>
+						<TabsTrigger value="permissions">{t('admin.nav.permissions')}</TabsTrigger>
 					</TabsList>
 
 					{/* Configuration Tab */}
 					<TabsContent value="config" className="space-y-4">
 						<Card>
 							<CardHeader>
-								<CardTitle>Directors</CardTitle>
+								<CardTitle>{t('admin.organizations.corp.directors')}</CardTitle>
 								<CardDescription>
-									Manage director characters with access to corporation data via ESI. Multiple
-									directors provide automatic failover and load balancing.
+									{t('admin.organizations.corp.directorDescription')}
 								</CardDescription>
 							</CardHeader>
 							<CardContent>
@@ -905,11 +1007,10 @@ export default function CorporationDetailPage() {
 							<CardHeader>
 								<div className="flex items-center gap-2">
 									<RefreshCw className="h-5 w-5 text-muted-foreground" />
-									<CardTitle>Data Collection Settings</CardTitle>
+									<CardTitle>{t('admin.organizations.corp.collectionSettings')}</CardTitle>
 								</div>
 								<CardDescription>
-									Configure automatic data fetching, synchronization behavior, and structure asset
-									snapshots.
+									{t('admin.organizations.corp.collectionDescription')}
 								</CardDescription>
 							</CardHeader>
 							<CardContent className="space-y-4">
@@ -923,12 +1024,11 @@ export default function CorporationDetailPage() {
 												disabled={updateCorporation.isPending}
 											/>
 											<Label htmlFor="background-refresh" className="cursor-pointer font-medium">
-												Include in Background Refresh
+												{t('admin.organizations.corp.backgroundRefresh')}
 											</Label>
 										</div>
 										<p className="text-sm text-muted-foreground ml-11">
-											When enabled, corporation data will be automatically fetched and updated on a
-											regular schedule
+											{t('admin.organizations.corp.backgroundDescription')}
 										</p>
 									</div>
 								</div>
@@ -943,11 +1043,11 @@ export default function CorporationDetailPage() {
 												disabled={updateCorporation.isPending}
 											/>
 											<Label htmlFor="structure-asset-sync" className="cursor-pointer font-medium">
-												Include in Structure Asset Sync
+												{t('admin.organizations.corp.structureSync')}
 											</Label>
 										</div>
 										<p className="text-sm text-muted-foreground ml-11">
-											When enabled, structure asset snapshots are fetched during corporation sync
+											{t('admin.organizations.corp.structureDescription')}
 										</p>
 									</div>
 								</div>
@@ -959,10 +1059,10 @@ export default function CorporationDetailPage() {
 							<CardHeader>
 								<div className="flex items-center gap-2">
 									<Settings className="h-5 w-5 text-muted-foreground" />
-									<CardTitle>Corporation Classification</CardTitle>
+									<CardTitle>{t('admin.organizations.corp.classification')}</CardTitle>
 								</div>
 								<CardDescription>
-									Categorize this corporation for filtering and organizational purposes
+									{t('admin.organizations.corp.classificationDescription')}
 								</CardDescription>
 							</CardHeader>
 							<CardContent className="space-y-4">
@@ -976,11 +1076,11 @@ export default function CorporationDetailPage() {
 												disabled={updateCorporation.isPending}
 											/>
 											<Label htmlFor="member-corporation" className="cursor-pointer font-medium">
-												Member Corporation
+												{t('admin.organizations.corp.member')}
 											</Label>
 										</div>
 										<p className="text-sm text-muted-foreground ml-11">
-											Mark this corporation as a member of the alliance
+											{t('admin.organizations.corp.memberHint')}
 										</p>
 									</div>
 								</div>
@@ -995,11 +1095,11 @@ export default function CorporationDetailPage() {
 												disabled={updateCorporation.isPending}
 											/>
 											<Label htmlFor="alt-corp" className="cursor-pointer font-medium">
-												Alt Corporation
+												{t('admin.organizations.corp.alt')}
 											</Label>
 										</div>
 										<p className="text-sm text-muted-foreground ml-11">
-											Mark this corporation as an alt corp
+											{t('admin.organizations.corp.altHint')}
 										</p>
 									</div>
 								</div>
@@ -1014,11 +1114,11 @@ export default function CorporationDetailPage() {
 												disabled={updateCorporation.isPending}
 											/>
 											<Label htmlFor="special-purpose" className="cursor-pointer font-medium">
-												Special Purpose Corporation
+												{t('admin.organizations.corp.special')}
 											</Label>
 										</div>
 										<p className="text-sm text-muted-foreground ml-11">
-											Mark this corporation as a special purpose corp
+											{t('admin.organizations.corp.specialHint')}
 										</p>
 									</div>
 								</div>
@@ -1032,11 +1132,10 @@ export default function CorporationDetailPage() {
 									<div>
 										<div className="flex items-center gap-2">
 											<MessageSquare className="h-5 w-5 text-[hsl(var(--discord-blurple))]" />
-											<CardTitle>Discord Servers</CardTitle>
+											<CardTitle>{t('admin.organizations.discord.servers')}</CardTitle>
 										</div>
 										<CardDescription>
-											Attach Discord servers from the registry to enable auto-invite for corporation
-											members. Each server can be configured independently with role assignments.
+											{t('admin.organizations.discord.corpDescription')}
 										</CardDescription>
 									</div>
 									<div className="flex items-center gap-2">
@@ -1050,12 +1149,17 @@ export default function CorporationDetailPage() {
 													{
 														onSuccess: (data) =>
 															showSuccess(
-																data.message ||
-																	`Discord refresh queued for ${data.usersQueued} users`
+																(t) =>
+																	data.message ||
+																	t('admin.organizations.discord.queued', {
+																		count: data.usersQueued,
+																	})
 															),
 														onError: (error) =>
-															showError(
-																error instanceof Error ? error.message : 'Failed to refresh Discord'
+															showError((t) =>
+																error instanceof Error
+																	? error.message
+																	: t('admin.organizations.feedback.discordRefreshError')
 															),
 													}
 												)
@@ -1064,7 +1168,7 @@ export default function CorporationDetailPage() {
 											<RefreshCw
 												className={`h-4 w-4 ${refreshCorporationDiscord.isPending ? 'animate-spin' : ''}`}
 											/>
-											Refresh All Members
+											{t('admin.organizations.discord.refreshMembers')}
 										</Button>
 										<Button
 											onClick={() => setShowAddServerDialog(true)}
@@ -1072,7 +1176,7 @@ export default function CorporationDetailPage() {
 											size="sm"
 										>
 											<Plus className="h-4 w-4" />
-											Attach Server
+											{t('admin.organizations.discord.attachServer')}
 										</Button>
 									</div>
 								</div>
@@ -1081,14 +1185,16 @@ export default function CorporationDetailPage() {
 								{corporationDiscordServers.length === 0 ? (
 									<div className="text-center py-8">
 										<MessageSquare className="mx-auto h-12 w-12 text-muted-foreground" />
-										<h3 className="mt-4 text-sm font-medium">No Discord servers attached</h3>
+										<h3 className="mt-4 text-sm font-medium">
+											{t('admin.organizations.discord.empty')}
+										</h3>
 										<p className="text-sm text-muted-foreground mt-2">
-											Attach a Discord server from the registry to enable auto-invite
+											{t('admin.organizations.discord.emptyHint')}
 										</p>
 										{discordServers.length === 0 && (
 											<p className="text-xs text-muted-foreground mt-2">
 												<Link to="/admin/discord-servers" className="text-primary hover:underline">
-													Add servers to the registry first
+													{t('admin.organizations.discord.registryHint')}
 												</Link>
 											</p>
 										)}
@@ -1127,7 +1233,9 @@ export default function CorporationDetailPage() {
 														<div>
 															<h4 className="font-medium">{attachment.discordServer?.guildName}</h4>
 															<p className="text-xs text-muted-foreground">
-																ID: {attachment.discordServer?.guildId}
+																{t('admin.organizations.shared.id', {
+																	id: attachment.discordServer?.guildId,
+																})}
 															</p>
 															{attachment.discordServer?.description && (
 																<p className="mt-1 text-sm text-muted-foreground">
@@ -1152,9 +1260,11 @@ export default function CorporationDetailPage() {
 																<div className="rounded-xl border border-border/80 bg-background/75 p-4 shadow-sm">
 																	<div className="flex items-start justify-between gap-3">
 																		<div>
-																			<p className="text-sm font-medium">Auto-Invite</p>
+																			<p className="text-sm font-medium">
+																				{t('admin.organizations.discord.autoInvite')}
+																			</p>
 																			<p className="text-xs text-muted-foreground">
-																				Invite matching members automatically.
+																				{t('admin.organizations.discord.autoInviteHint')}
 																			</p>
 																		</div>
 																		<Switch
@@ -1170,11 +1280,11 @@ export default function CorporationDetailPage() {
 																<div className="rounded-xl border border-border/80 bg-background/75 p-4 shadow-sm">
 																	<div className="flex items-start justify-between gap-3">
 																		<div>
-																			<p className="text-sm font-medium">Role Sync</p>
+																			<p className="text-sm font-medium">
+																				{t('admin.organizations.discord.roleSync')}
+																			</p>
 																			<p className="text-xs text-muted-foreground">
-																				When off, the role buckets below are ignored. Nickname
-																				tickers still apply if the server is configured to manage
-																				nicknames.
+																				{t('admin.organizations.discord.roleSyncHint')}
 																			</p>
 																		</div>
 																		<Switch
@@ -1196,11 +1306,11 @@ export default function CorporationDetailPage() {
 																	<div className="space-y-3">
 																		<div className="flex items-start justify-between gap-3">
 																			<div>
-																				<p className="text-sm font-medium">Corp Members</p>
+																				<p className="text-sm font-medium">
+																					{t('admin.organizations.discord.corpMembers')}
+																				</p>
 																				<p className="text-xs text-muted-foreground">
-																					Multi-select roles that apply to every linked user. This
-																					bucket is the fallback ticker choice for corporation
-																					members.
+																					{t('admin.organizations.discord.corpRolesHint')}
 																				</p>
 																			</div>
 																		</div>
@@ -1225,7 +1335,7 @@ export default function CorporationDetailPage() {
 																			</div>
 																		) : (
 																			<p className="text-xs text-muted-foreground">
-																				No Corp Members roles assigned yet.
+																				{t('admin.organizations.discord.noCorpRoles')}
 																			</p>
 																		)}
 																		{(attachment.discordServer?.roles ?? []).filter(
@@ -1259,8 +1369,10 @@ export default function CorporationDetailPage() {
 																					options={buildRoleOptions(attachment).filter(
 																						(option) => option.value !== noneScenarioRoleValue
 																					)}
-																					placeholder="Add role..."
-																					emptyText="No matching roles found"
+																					placeholder={t('admin.organizations.discord.addRole')}
+																					emptyText={t(
+																						'admin.organizations.discord.noMatchingRoles'
+																					)}
 																					className="w-full"
 																					contentClassName="w-[min(90vw,36rem)]"
 																					inputClassName="h-9"
@@ -1272,22 +1384,24 @@ export default function CorporationDetailPage() {
 																	<div className="space-y-3 xl:border-l xl:pl-6">
 																		<div className="flex items-start justify-between gap-3">
 																			<div>
-																				<p className="text-sm font-medium">Corp Members Ticker</p>
+																				<p className="text-sm font-medium">
+																					{t('admin.organizations.discord.corpMembersTicker')}
+																				</p>
 																				<p className="text-xs text-muted-foreground">
-																					Used for members of this corporation. Takes priority over
-																					the guest settings.
+																					{t('admin.organizations.discord.corpTickerHint')}
 																				</p>
 																				{!nicknameManagementEnabled && (
 																					<p className="mt-1 text-xs text-muted-foreground">
-																						Enable nickname management on the Discord server to edit
-																						ticker settings.
+																						{t('admin.organizations.discord.enableNicknameHint')}
 																					</p>
 																				)}
 																			</div>
 																			<div className="flex items-center gap-2">
 																				<Switch
 																					id={`corp-members-nickname-enabled-${attachment.id}`}
-																					aria-label="Enable Corp Members ticker"
+																					aria-label={t(
+																						'admin.organizations.discord.enableCorpTicker'
+																					)}
 																					checked={attachmentNicknameDrafts.corpMember.enabled}
 																					disabled={nicknameControlsDisabled}
 																					onCheckedChange={() =>
@@ -1311,7 +1425,7 @@ export default function CorporationDetailPage() {
 																						)
 																					}
 																				>
-																					Save
+																					{t('admin.organizations.shared.save')}
 																				</Button>
 																			</div>
 																		</div>
@@ -1327,7 +1441,9 @@ export default function CorporationDetailPage() {
 																						source: nextValue as NicknameBucketSource,
 																					})
 																				}
-																				options={NICKNAME_SOURCE_OPTIONS}
+																				options={NICKNAME_SOURCE_OPTIONS.map(
+																					({ value, labelKey }) => ({ value, label: t(labelKey) })
+																				)}
 																				className="w-full"
 																				contentClassName="w-[min(90vw,24rem)]"
 																			/>
@@ -1346,11 +1462,13 @@ export default function CorporationDetailPage() {
 																							),
 																						})
 																					}
-																					placeholder="Custom ticker"
+																					placeholder={t(
+																						'admin.organizations.discord.customTicker'
+																					)}
 																					maxLength={5}
 																				/>
 																				<p className="text-xs text-muted-foreground">
-																					Max 5 characters.
+																					{t('admin.organizations.discord.tickerLimit')}
 																				</p>
 																			</div>
 																		</div>
@@ -1363,7 +1481,7 @@ export default function CorporationDetailPage() {
 																const currentRoleLabel =
 																	attachment.discordServer?.roles?.find(
 																		(role) => role.id === currentRoleId
-																	)?.roleName ?? 'None'
+																	)?.roleName ?? t('admin.users.discord.none')
 																const currentValue = currentRoleId ?? noneScenarioRoleValue
 																const nicknameDraft = attachmentNicknameDrafts[config.key]
 
@@ -1397,7 +1515,7 @@ export default function CorporationDetailPage() {
 																							htmlFor={`${config.autoApplyKey}-${attachment.id}`}
 																							className="cursor-pointer"
 																						>
-																							Auto-apply
+																							{t('admin.organizations.discord.autoApply')}
 																						</Label>
 																					</div>
 																				</div>
@@ -1413,14 +1531,18 @@ export default function CorporationDetailPage() {
 																						}
 																						searchable
 																						options={buildRoleOptions(attachment, currentRoleId)}
-																						placeholder="Select a role..."
-																						emptyText="No roles available"
+																						placeholder={t(
+																							'admin.organizations.discord.selectRole'
+																						)}
+																						emptyText={t('admin.organizations.discord.noAvailable')}
 																						className="w-full"
 																						contentClassName="w-[min(90vw,36rem)]"
 																						inputClassName="h-9"
 																					/>
 																					<p className="text-xs text-muted-foreground">
-																						Currently {currentRoleLabel}
+																						{t('admin.organizations.discord.currentRole', {
+																							role: currentRoleLabel,
+																						})}
 																					</p>
 																				</div>
 																			</div>
@@ -1465,7 +1587,7 @@ export default function CorporationDetailPage() {
 																								)
 																							}
 																						>
-																							Save
+																							{t('admin.organizations.shared.save')}
 																						</Button>
 																					</div>
 																				</div>
@@ -1480,7 +1602,12 @@ export default function CorporationDetailPage() {
 																								source: nextValue as NicknameBucketSource,
 																							})
 																						}
-																						options={NICKNAME_SOURCE_OPTIONS}
+																						options={NICKNAME_SOURCE_OPTIONS.map(
+																							({ value, labelKey }) => ({
+																								value,
+																								label: t(labelKey),
+																							})
+																						)}
 																						className="w-full"
 																						contentClassName="w-[min(90vw,24rem)]"
 																					/>
@@ -1503,11 +1630,13 @@ export default function CorporationDetailPage() {
 																									}
 																								)
 																							}
-																							placeholder="Custom ticker"
+																							placeholder={t(
+																								'admin.organizations.discord.customTicker'
+																							)}
 																							maxLength={5}
 																						/>
 																						<p className="text-xs text-muted-foreground">
-																							Max 5 characters.
+																							{t('admin.organizations.discord.tickerLimit')}
 																						</p>
 																					</div>
 																				</div>
@@ -1537,15 +1666,17 @@ export default function CorporationDetailPage() {
 								>
 									<DialogContent>
 										<DialogHeader>
-											<DialogTitle>Attach Discord Server</DialogTitle>
+											<DialogTitle>{t('admin.organizations.discord.attachTitle')}</DialogTitle>
 											<DialogDescription>
-												Select a Discord server from the registry to attach to this corporation
+												{t('admin.organizations.discord.attachCorpDescription')}
 											</DialogDescription>
 										</DialogHeader>
 
 										<div className="space-y-4">
 											<div className="space-y-2">
-												<Label htmlFor="discord-server">Select Server</Label>
+												<Label htmlFor="discord-server">
+													{t('admin.organizations.discord.selectServer')}
+												</Label>
 												<Select
 													inputId="discord-server"
 													value={selectedServerId}
@@ -1558,7 +1689,7 @@ export default function CorporationDetailPage() {
 																)
 														)
 														.map((server) => ({ value: server.id, label: server.guildName }))}
-													placeholder="Choose a server..."
+													placeholder={t('admin.organizations.discord.chooseServer')}
 													className="w-full"
 												/>
 											</div>
@@ -1573,7 +1704,7 @@ export default function CorporationDetailPage() {
 														}
 													/>
 													<Label htmlFor="attach-auto-invite" className="cursor-pointer">
-														Enable Auto-Invite
+														{t('admin.organizations.discord.enableAutoInvite')}
 													</Label>
 												</div>
 
@@ -1589,19 +1720,18 @@ export default function CorporationDetailPage() {
 														}
 													/>
 													<Label htmlFor="attach-auto-assign" className="cursor-pointer">
-														Auto-Assign Roles
+														{t('admin.organizations.discord.autoAssign')}
 													</Label>
 												</div>
 												<p className="text-xs text-muted-foreground">
-													When enabled, the roles assigned on the main page for this attachment are
-													applied to all matching members.
+													{t('admin.organizations.discord.rolesApplyHint')}
 												</p>
 											</div>
 										</div>
 
 										<DialogFooter>
 											<Button variant="cancel" onClick={() => setShowAddServerDialog(false)}>
-												Cancel
+												{t('common.cancel')}
 											</Button>
 											<Button
 												variant="confirm"
@@ -1610,7 +1740,7 @@ export default function CorporationDetailPage() {
 												showIcon={false}
 											>
 												<Plus className="h-4 w-4" />
-												Attach
+												{t('admin.organizations.discord.attach')}
 											</Button>
 										</DialogFooter>
 									</DialogContent>
@@ -1625,78 +1755,98 @@ export default function CorporationDetailPage() {
 					<TabsContent value="data" className="space-y-4">
 						{summaryLoading ? (
 							<div className="flex justify-center py-8">
-								<LoadingSpinner label="Loading data summary..." />
+								<LoadingSpinner label={t('admin.organizations.corp.loadingSummary')} />
 							</div>
 						) : (
 							<div className="grid gap-4 md:grid-cols-2">
 								<Card>
 									<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-										<CardTitle className="text-sm font-medium">Members</CardTitle>
+										<CardTitle className="text-sm font-medium">
+											{t('admin.organizations.group.members')}
+										</CardTitle>
 										<Users className="h-4 w-4 text-muted-foreground" />
 									</CardHeader>
 									<CardContent>
 										<div className="text-2xl font-bold">
-											{dataSummary?.coreData?.memberCount || 0}
+											{formatNumber(dataSummary?.coreData?.memberCount || 0)}
 										</div>
 										<p className="text-xs text-muted-foreground">
-											{dataSummary?.coreData?.trackingCount || 0} with tracking data
+											{t('admin.organizations.corp.tracking', {
+												count: dataSummary?.coreData?.trackingCount || 0,
+											})}
 										</p>
 									</CardContent>
 								</Card>
 
 								<Card>
 									<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-										<CardTitle className="text-sm font-medium">Wallets</CardTitle>
+										<CardTitle className="text-sm font-medium">{t('admin.nav.wallets')}</CardTitle>
 										<Wallet className="h-4 w-4 text-muted-foreground" />
 									</CardHeader>
 									<CardContent>
 										<div className="text-2xl font-bold">
-											{dataSummary?.financialData?.walletCount || 0}
+											{formatNumber(dataSummary?.financialData?.walletCount || 0)}
 										</div>
 										<p className="text-xs text-muted-foreground">
-											{dataSummary?.financialData?.journalCount || 0} journal entries
+											{t('admin.organizations.corp.journal', {
+												count: dataSummary?.financialData?.journalCount || 0,
+											})}
 										</p>
 									</CardContent>
 								</Card>
 
 								<Card>
 									<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-										<CardTitle className="text-sm font-medium">Assets</CardTitle>
+										<CardTitle className="text-sm font-medium">
+											{t('admin.organizations.corp.assets')}
+										</CardTitle>
 										<Package className="h-4 w-4 text-muted-foreground" />
 									</CardHeader>
 									<CardContent>
 										<div className="text-2xl font-bold">
-											{dataSummary?.assetsData?.assetCount || 0}
+											{formatNumber(dataSummary?.assetsData?.assetCount || 0)}
 										</div>
 										<p className="text-xs text-muted-foreground">
-											{dataSummary?.assetsData?.structureCount || 0} structures
+											{t('admin.organizations.corp.structures', {
+												count: dataSummary?.assetsData?.structureCount || 0,
+											})}
 										</p>
 									</CardContent>
 								</Card>
 
 								<Card>
 									<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-										<CardTitle className="text-sm font-medium">Market</CardTitle>
+										<CardTitle className="text-sm font-medium">
+											{t('admin.organizations.corp.market')}
+										</CardTitle>
 										<TrendingUp className="h-4 w-4 text-muted-foreground" />
 									</CardHeader>
 									<CardContent>
 										<div className="text-2xl font-bold">
-											{dataSummary?.marketData?.orderCount || 0}
+											{formatNumber(dataSummary?.marketData?.orderCount || 0)}
 										</div>
 										<p className="text-xs text-muted-foreground">
-											{dataSummary?.marketData?.contractCount || 0} contracts
+											{t('admin.organizations.corp.contracts', {
+												count: dataSummary?.marketData?.contractCount || 0,
+											})}
 										</p>
 									</CardContent>
 								</Card>
 
 								<Card>
 									<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-										<CardTitle className="text-sm font-medium">Killmails</CardTitle>
+										<CardTitle className="text-sm font-medium">
+											{t('admin.organizations.corp.killmails')}
+										</CardTitle>
 										<Skull className="h-4 w-4 text-muted-foreground" />
 									</CardHeader>
 									<CardContent>
-										<div className="text-2xl font-bold">{dataSummary?.killmailCount || 0}</div>
-										<p className="text-xs text-muted-foreground">Recent killmails</p>
+										<div className="text-2xl font-bold">
+											{formatNumber(dataSummary?.killmailCount || 0)}
+										</div>
+										<p className="text-xs text-muted-foreground">
+											{t('admin.organizations.corp.recentKillmails')}
+										</p>
 									</CardContent>
 								</Card>
 							</div>
@@ -1707,10 +1857,8 @@ export default function CorporationDetailPage() {
 					<TabsContent value="fetch" className="space-y-4">
 						<Card>
 							<CardHeader>
-								<CardTitle>Fetch Corporation Data</CardTitle>
-								<CardDescription>
-									Trigger data fetches from EVE ESI. Requires assigned director with proper roles.
-								</CardDescription>
+								<CardTitle>{t('admin.organizations.corp.fetchTitle')}</CardTitle>
+								<CardDescription>{t('admin.organizations.corp.fetchDescription')}</CardDescription>
 							</CardHeader>
 							<CardContent>
 								<div className="grid gap-3">
@@ -1720,7 +1868,7 @@ export default function CorporationDetailPage() {
 										className="w-full justify-start"
 									>
 										<Database className="h-4 w-4" />
-										Fetch All Data
+										{t('admin.organizations.corp.fetchAll')}
 									</Button>
 									<Button
 										variant="ghost"
@@ -1729,7 +1877,7 @@ export default function CorporationDetailPage() {
 										className="w-full justify-start"
 									>
 										<Building2 className="h-4 w-4" />
-										Fetch Public Data
+										{t('admin.organizations.corp.fetchPublic')}
 									</Button>
 									<Button
 										variant="ghost"
@@ -1738,7 +1886,7 @@ export default function CorporationDetailPage() {
 										className="w-full justify-start"
 									>
 										<Users className="h-4 w-4" />
-										Fetch Members & Tracking
+										{t('admin.organizations.corp.fetchMembers')}
 									</Button>
 									<Button
 										variant="ghost"
@@ -1747,7 +1895,7 @@ export default function CorporationDetailPage() {
 										className="w-full justify-start"
 									>
 										<Wallet className="h-4 w-4" />
-										Fetch Financial Data
+										{t('admin.organizations.corp.fetchFinancial')}
 									</Button>
 									<Button
 										variant="ghost"
@@ -1756,7 +1904,7 @@ export default function CorporationDetailPage() {
 										className="w-full justify-start"
 									>
 										<Package className="h-4 w-4" />
-										Fetch Assets & Structures
+										{t('admin.organizations.corp.fetchAssets')}
 									</Button>
 									<Button
 										variant="ghost"
@@ -1765,7 +1913,7 @@ export default function CorporationDetailPage() {
 										className="w-full justify-start"
 									>
 										<TrendingUp className="h-4 w-4" />
-										Fetch Market Data
+										{t('admin.organizations.corp.fetchMarket')}
 									</Button>
 									<Button
 										variant="ghost"
@@ -1774,7 +1922,7 @@ export default function CorporationDetailPage() {
 										className="w-full justify-start"
 									>
 										<Skull className="h-4 w-4" />
-										Fetch Killmails
+										{t('admin.organizations.corp.fetchKillmails')}
 									</Button>
 								</div>
 							</CardContent>
@@ -1787,15 +1935,14 @@ export default function CorporationDetailPage() {
 							<CardHeader>
 								<div className="flex items-center justify-between">
 									<div>
-										<CardTitle>Corporation Permissions</CardTitle>
+										<CardTitle>{t('admin.organizations.corp.permissions')}</CardTitle>
 										<CardDescription>
-											Manage permissions for all members of this corporation. Permissions are
-											automatically inherited by all corporation members.
+											{t('admin.organizations.corp.permissionsDescription')}
 										</CardDescription>
 									</div>
 									<Button onClick={() => setShowAttachPermissionDialog(true)}>
 										<Plus className="h-4 w-4" />
-										Attach Permission
+										{t('admin.permissionAttachment.attach')}
 									</Button>
 								</div>
 							</CardHeader>
@@ -1804,7 +1951,7 @@ export default function CorporationDetailPage() {
 									<LoadingSpinner />
 								) : corporationPermissions.length === 0 ? (
 									<p className="text-sm text-muted-foreground">
-										No permissions attached to this corporation.
+										{t('admin.organizations.corp.noPermissions')}
 									</p>
 								) : (
 									<div className="space-y-2">
@@ -1828,7 +1975,9 @@ export default function CorporationDetailPage() {
 															</div>
 														)}
 														<p className="mt-2 text-xs text-muted-foreground">
-															Added {new Date(perm.createdAt).toLocaleDateString()}
+															{t('admin.organizations.corp.permissionAdded', {
+																date: formatDateTime(perm.createdAt),
+															})}
 														</p>
 													</div>
 													<Button
@@ -1837,10 +1986,9 @@ export default function CorporationDetailPage() {
 														showIcon={false}
 														onClick={() =>
 															requestConfirmation({
-																title: 'Remove Permission',
-																description:
-																	'Are you sure you want to remove this permission from the corporation?',
-																confirmLabel: 'Remove',
+																title: (t) => t('admin.organizations.shared.removePermission'),
+																description: (t) => t('admin.organizations.corp.removePermission'),
+																confirmLabel: (t) => t('common.remove'),
 																intent: 'destructive',
 																onConfirm: () => handleRemovePermission(perm.id),
 															})
@@ -1860,15 +2008,14 @@ export default function CorporationDetailPage() {
 						<Dialog open={showAttachPermissionDialog} onOpenChange={setShowAttachPermissionDialog}>
 							<DialogContent>
 								<DialogHeader>
-									<DialogTitle>Attach Permission to Corporation</DialogTitle>
+									<DialogTitle>{t('admin.organizations.corp.attachPermissionTitle')}</DialogTitle>
 									<DialogDescription>
-										Select a global permission to attach to this corporation. All members will
-										automatically inherit this permission.
+										{t('admin.organizations.corp.attachPermissionDescription')}
 									</DialogDescription>
 								</DialogHeader>
 								<div className="space-y-4">
 									<div>
-										<Label htmlFor="permission">Permission</Label>
+										<Label htmlFor="permission">{t('admin.organizations.corp.permission')}</Label>
 										<Select
 											inputId="permission"
 											value={selectedPermissionId}
@@ -1883,21 +2030,21 @@ export default function CorporationDetailPage() {
 													label: perm.name,
 													description: perm.urn,
 												}))}
-											placeholder="Select a permission..."
+											placeholder={t('admin.organizations.corp.selectPermission')}
 											className="mt-1.5 w-full"
 										/>
 									</div>
 								</div>
 								<DialogFooter>
 									<Button variant="cancel" onClick={() => setShowAttachPermissionDialog(false)}>
-										Cancel
+										{t('common.cancel')}
 									</Button>
 									<Button
 										variant="confirm"
 										onClick={handleAttachPermission}
 										disabled={!selectedPermissionId || attachPermission.isPending}
 									>
-										Attach Permission
+										{t('admin.permissionAttachment.attach')}
 									</Button>
 								</DialogFooter>
 							</DialogContent>

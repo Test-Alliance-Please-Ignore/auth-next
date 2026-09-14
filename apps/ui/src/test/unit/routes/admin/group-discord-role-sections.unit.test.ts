@@ -1,25 +1,32 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
+import { i18n, setAppLocale } from '@/i18n'
 import {
 	groupDiscordRoleAssignmentSections,
-	groupDiscordRoleAssignmentSummary,
+	groupDiscordRoleAssignmentSummaryKey,
 } from '@/routes/admin/group-discord-role-sections'
 
 describe('group Discord role assignment sections', () => {
-	it('documents the member and owner/admin buckets explicitly', () => {
-		expect(groupDiscordRoleAssignmentSections).toEqual([
-			{
-				membershipType: 'member',
-				label: 'Members',
-				description: 'Roles for everyone in the group.',
-			},
-			{
-				membershipType: 'owner_admin',
-				label: 'Owners/Admins',
-				description: 'Roles for group owners and admins. These stack with member roles.',
-			},
-		])
-		expect(groupDiscordRoleAssignmentSummary).toContain('Member roles apply to every group member')
-		expect(groupDiscordRoleAssignmentSummary).toContain('Owner/Admin roles stack on top')
-	})
+	afterEach(() => setAppLocale('en', { persistLocal: false }))
+
+	it.each([
+		['en', 'Members', 'Owners/Admins', 'stack on top'],
+		['de', 'Mitglieder', 'Eigentümer/Administratoren', 'zusätzlich'],
+		['ko', '구성원', '소유자/관리자', '추가로'],
+	] as const)(
+		'keeps assignment targets and explains additive roles in %s',
+		async (locale, members, admins, additive) => {
+			await setAppLocale(locale, { persistLocal: false })
+			expect(
+				groupDiscordRoleAssignmentSections.map((section) => ({
+					target: section.membershipType,
+					label: i18n.t(section.labelKey),
+				}))
+			).toEqual([
+				{ target: 'member', label: members },
+				{ target: 'owner_admin', label: admins },
+			])
+			expect(i18n.t(groupDiscordRoleAssignmentSummaryKey)).toContain(additive)
+		}
+	)
 })
