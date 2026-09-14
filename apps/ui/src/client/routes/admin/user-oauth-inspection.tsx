@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAdminOAuthResolverInspection, useAdminUser } from '@/hooks/useAdminUsers'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { formatDateTime } from '@/lib/date-utils'
 
 export default function AdminUserOAuthInspectionPage() {
-	usePageTitle('Admin - OAuth Resolver Inspection')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.users.oauth.pageTitle'))
 	const { userId } = useParams<{ userId: string }>()
 	const navigate = useNavigate()
 
@@ -24,45 +26,50 @@ export default function AdminUserOAuthInspectionPage() {
 			<div className="flex items-center gap-4">
 				<Button variant="ghost" onClick={() => navigate(`/admin/users/${userId}`)}>
 					<ArrowLeft className="h-4 w-4" />
-					Back to User
+					{t('admin.users.account.backToUser')}
 				</Button>
 			</div>
 
 			<div className="space-y-1">
-				<h1 className="text-3xl font-bold gradient-text">OAuth Resolver Inspection</h1>
+				<h1 className="text-3xl font-bold gradient-text">{t('admin.users.oauth.title')}</h1>
 				<p className="text-muted-foreground">
 					{userLoading
-						? 'Loading user...'
-						: `Resolved profile, groups, and permissions payload for ${
-								user?.characters.find((c) => c.is_primary)?.characterName || 'user'
-							}`}
+						? t('admin.users.account.loadingUser')
+						: t('admin.users.oauth.description', {
+								name:
+									user?.characters.find((c) => c.is_primary)?.characterName ||
+									t('admin.users.account.user'),
+							})}
 				</p>
 			</div>
 
 			{inspectionLoading ? (
 				<Card>
-				<CardContent className="py-8 text-center text-muted-foreground">
-						Loading OAuth resolver inspection...
+					<CardContent className="py-8 text-center text-muted-foreground">
+						{t('admin.users.oauth.loading')}
 					</CardContent>
 				</Card>
 			) : error ? (
 				<Card className="border-destructive/30 bg-destructive/10">
 					<CardContent className="py-4 text-destructive">
-						Failed to inspect OAuth resolver response right now. Please try again.
+						{t('admin.users.oauth.error')}
 					</CardContent>
 				</Card>
 			) : !inspection ? (
 				<Card>
 					<CardContent className="py-8 text-center text-muted-foreground">
-						No inspection data available.
+						{t('admin.users.discord.noInspection')}
 					</CardContent>
 				</Card>
 			) : (
 				<Card>
 					<CardHeader>
-						<CardTitle>Resolver Payload</CardTitle>
+						<CardTitle>{t('admin.users.oauth.payload')}</CardTitle>
 						<CardDescription>
-							Generated at {formatDateTime(inspection.inspectedAt)} for user {inspection.userId}
+							{t('admin.users.oauth.generated', {
+								date: formatDateTime(inspection.inspectedAt),
+								id: inspection.userId,
+							})}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>

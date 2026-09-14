@@ -12,6 +12,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useAppTranslation } from '@/i18n'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -44,17 +45,18 @@ export function UserSearchResultsTable({
 	onRefreshDiscordAccess,
 	refreshingDiscordUserId,
 }: UserSearchResultsTableProps) {
+	const { t } = useAppTranslation()
 	return (
 		<Table>
 			<TableHeader>
 				<TableRow>
-					<TableHead>User</TableHead>
-					<TableHead>Characters</TableHead>
-					<TableHead>Discord</TableHead>
-					<TableHead>Status</TableHead>
-					<TableHead>Last Updated</TableHead>
-					<TableHead>Created</TableHead>
-					<TableHead className="text-right">Actions</TableHead>
+					<TableHead>{t('admin.users.account.user')}</TableHead>
+					<TableHead>{t('admin.users.account.characters')}</TableHead>
+					<TableHead>{t('admin.nav.discord')}</TableHead>
+					<TableHead>{t('admin.users.account.status')}</TableHead>
+					<TableHead>{t('admin.users.account.lastUpdated')}</TableHead>
+					<TableHead>{t('admin.users.account.created')}</TableHead>
+					<TableHead className="text-right">{t('admin.fields.actions')}</TableHead>
 				</TableRow>
 			</TableHeader>
 			<TableBody>
@@ -66,7 +68,9 @@ export function UserSearchResultsTable({
 						!!user.matchedCharacterName
 					const displayName = isAltMatch
 						? `${user.matchedCharacterName}${user.mainCharacterName ? ` (${user.mainCharacterName})` : ''}`
-						: user.mainCharacterName || user.matchedCharacterName || 'Unknown Character'
+						: user.mainCharacterName ||
+							user.matchedCharacterName ||
+							t('admin.users.account.unknownCharacter')
 					const isDisplayedCharacterBlacklisted = isAltMatch
 						? user.matchedCharacterIsBlacklisted
 						: user.mainCharacterIsBlacklisted
@@ -91,20 +95,22 @@ export function UserSearchResultsTable({
 											)}
 										>
 											{displayName}
-											{isAltMatch && <Badge variant="default">Alt</Badge>}
+											{isAltMatch && (
+												<Badge variant="default">{t('common.characterIdentity.alt')}</Badge>
+											)}
 											{isDisplayedCharacterBlacklisted && (
-												<Badge variant="destructive">Blocklisted</Badge>
+												<Badge variant="destructive">{t('admin.users.account.blocklisted')}</Badge>
 											)}
 										</Link>
 										<div className="text-xs text-muted-foreground">
-											ID: {user.id.slice(0, 8)}...
+											{t('admin.users.account.shortId', { id: user.id.slice(0, 8) })}
 										</div>
 									</div>
 								</div>
 							</TableCell>
 							<TableCell>
 								<div className="text-sm">
-									{user.characterCount} character{user.characterCount !== 1 ? 's' : ''}
+									{t('admin.users.account.characterCount', { count: user.characterCount })}
 								</div>
 							</TableCell>
 							<TableCell>
@@ -112,7 +118,7 @@ export function UserSearchResultsTable({
 									<div className="flex items-center justify-between gap-2">
 										<div className="min-w-0">
 											<div className="text-sm font-medium truncate">
-												{user.discordUsername || 'Discord Linked'}
+												{user.discordUsername || t('admin.users.discord.linked')}
 											</div>
 											<div className="font-mono text-xs text-muted-foreground truncate">
 												{user.discordUserId}
@@ -124,17 +130,21 @@ export function UserSearchResultsTable({
 												size="sm"
 												onClick={() => onRefreshDiscordAccess(user.id)}
 												disabled={refreshingDiscordUserId === user.id}
-												title="Refresh Discord roles"
+												title={t('admin.users.discord.refreshRoles')}
 											>
 												<Users className="h-4 w-4" />
 											</Button>
 										)}
 									</div>
 								) : (
-									<span className="text-sm text-muted-foreground">Not linked</span>
+									<span className="text-sm text-muted-foreground">
+										{t('admin.users.discord.notLinked')}
+									</span>
 								)}
 							</TableCell>
-							<TableCell>{user.is_admin && <Badge variant="default">Admin</Badge>}</TableCell>
+							<TableCell>
+								{user.is_admin && <Badge variant="default">{t('admin.shell.admin')}</Badge>}
+							</TableCell>
 							<TableCell>
 								<div className="text-sm" title={formatDateTime(user.updatedAt)}>
 									{formatRelativeTime(user.updatedAt)}
@@ -147,7 +157,11 @@ export function UserSearchResultsTable({
 							</TableCell>
 							<TableCell className="text-right">
 								<Link to={userDetailsPath(user.id)}>
-									<Button variant="ghost" size="sm">
+									<Button
+										variant="ghost"
+										size="sm"
+										aria-label={t('admin.users.account.viewDetails')}
+									>
 										<ExternalLink className="h-4 w-4" />
 									</Button>
 								</Link>

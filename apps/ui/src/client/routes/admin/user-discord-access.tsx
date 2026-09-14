@@ -2,20 +2,24 @@ import { ArrowLeft } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useDiscordServers, useStripDiscordGuildRoles } from '@/hooks/useDiscord'
-import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
-import { useAdminDiscordInspection, useAdminUser } from '@/hooks/useAdminUsers'
-import { usePageTitle } from '@/hooks/usePageTitle'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAdminDiscordInspection, useAdminUser } from '@/hooks/useAdminUsers'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
+import { useDiscordServers, useStripDiscordGuildRoles } from '@/hooks/useDiscord'
+import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatNumber, useAppTranslation } from '@/i18n'
+
+import type { AppTranslator } from '@/i18n'
 
 function renderRolePills(
 	roles: Array<{ roleId: string; roleName: string | null }>,
 	variant: 'secondary' | 'ghost',
+	t: AppTranslator,
 	extraClassName?: string
 ) {
 	if (roles.length === 0) {
-		return <span className="text-xs text-muted-foreground">None</span>
+		return <span className="text-xs text-muted-foreground">{t('admin.users.discord.none')}</span>
 	}
 
 	return (
@@ -35,7 +39,8 @@ function renderRolePills(
 }
 
 export default function AdminUserDiscordAccessPage() {
-	usePageTitle('Admin - User Discord Access')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.users.discord.pageTitle'))
 	const { userId } = useParams<{ userId: string }>()
 	const navigate = useNavigate()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
@@ -56,11 +61,10 @@ export default function AdminUserDiscordAccessPage() {
 		if (!server) return
 
 		requestConfirmation({
-			title: 'Strip all roles in this guild?',
-			description:
-				'This will clear all assignable roles for this user in the selected guild. This cannot be undone.',
-			confirmLabel: 'Strip Roles',
-			cancelLabel: 'Cancel',
+			title: (translate) => translate('admin.users.discord.stripTitle'),
+			description: (translate) => translate('admin.users.discord.stripWarning'),
+			confirmLabel: (translate) => translate('admin.users.discord.stripRoles'),
+			cancelLabel: (translate) => translate('common.cancel'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				await stripRoles.mutateAsync({
@@ -77,35 +81,41 @@ export default function AdminUserDiscordAccessPage() {
 			<div className="flex items-center gap-4">
 				<Button variant="ghost" onClick={() => navigate(`/admin/users/${userId}`)}>
 					<ArrowLeft className="h-4 w-4" />
-					Back to User
+					{t('admin.users.account.backToUser')}
 				</Button>
 			</div>
 
 			<div className="space-y-1">
-				<h1 className="text-3xl font-bold gradient-text">Discord Access Inspection</h1>
+				<h1 className="text-3xl font-bold gradient-text">
+					{t('admin.users.discord.inspectionTitle')}
+				</h1>
 				<p className="text-muted-foreground">
 					{userLoading
-						? 'Loading user...'
-						: `Role and membership drift for ${user?.characters.find((c) => c.is_primary)?.characterName || 'user'}`}
+						? t('admin.users.account.loadingUser')
+						: t('admin.users.discord.inspectionDescription', {
+								name:
+									user?.characters.find((c) => c.is_primary)?.characterName ||
+									t('admin.users.account.user'),
+							})}
 				</p>
 			</div>
 
 			{inspectionLoading ? (
 				<Card>
 					<CardContent className="py-8 text-center text-muted-foreground">
-						Loading Discord inspection...
+						{t('admin.users.discord.loadingInspection')}
 					</CardContent>
 				</Card>
 			) : error ? (
 				<Card className="border-destructive/30 bg-destructive/10">
 					<CardContent className="py-4 text-destructive">
-						Failed to inspect Discord access right now. Please try again.
+						{t('admin.users.discord.inspectionError')}
 					</CardContent>
 				</Card>
 			) : !inspection ? (
 				<Card>
 					<CardContent className="py-8 text-center text-muted-foreground">
-						No inspection data available.
+						{t('admin.users.discord.noInspection')}
 					</CardContent>
 				</Card>
 			) : (
@@ -113,45 +123,61 @@ export default function AdminUserDiscordAccessPage() {
 					<div className="grid grid-cols-2 md:grid-cols-3 gap-3">
 						<Card>
 							<CardContent className="pt-4">
-								<div className="text-xs text-muted-foreground">Guilds Inspected</div>
-								<div className="text-xl font-semibold">{inspection.summary.guildsInspected}</div>
-							</CardContent>
-						</Card>
-						<Card>
-							<CardContent className="pt-4">
-								<div className="text-xs text-muted-foreground">Member Guilds</div>
-								<div className="text-xl font-semibold">{inspection.summary.memberGuilds}</div>
-							</CardContent>
-						</Card>
-						<Card>
-							<CardContent className="pt-4">
-								<div className="text-xs text-muted-foreground">Guilds With Drift</div>
-								<div className="text-xl font-semibold text-amber-700">
-									{inspection.summary.guildsWithDrift}
+								<div className="text-xs text-muted-foreground">
+									{t('admin.users.discord.guildsInspected')}
 								</div>
-							</CardContent>
-						</Card>
-						<Card>
-							<CardContent className="pt-4">
-								<div className="text-xs text-muted-foreground">Missing Expected Managed</div>
-								<div className="text-xl font-semibold text-amber-700">
-									{inspection.summary.totalMissingExpectedManagedRoles}
-								</div>
-							</CardContent>
-						</Card>
-						<Card>
-							<CardContent className="pt-4">
-								<div className="text-xs text-muted-foreground">Unexpected Managed</div>
-								<div className="text-xl font-semibold text-red-700">
-									{inspection.summary.totalUnexpectedManagedRoles}
-								</div>
-							</CardContent>
-						</Card>
-						<Card>
-							<CardContent className="pt-4">
-								<div className="text-xs text-muted-foreground">Current Unmanaged</div>
 								<div className="text-xl font-semibold">
-									{inspection.summary.totalUnmanagedCurrentRoles}
+									{formatNumber(inspection.summary.guildsInspected)}
+								</div>
+							</CardContent>
+						</Card>
+						<Card>
+							<CardContent className="pt-4">
+								<div className="text-xs text-muted-foreground">
+									{t('admin.users.discord.memberGuilds')}
+								</div>
+								<div className="text-xl font-semibold">
+									{formatNumber(inspection.summary.memberGuilds)}
+								</div>
+							</CardContent>
+						</Card>
+						<Card>
+							<CardContent className="pt-4">
+								<div className="text-xs text-muted-foreground">
+									{t('admin.users.discord.guildsWithDrift')}
+								</div>
+								<div className="text-xl font-semibold text-amber-700">
+									{formatNumber(inspection.summary.guildsWithDrift)}
+								</div>
+							</CardContent>
+						</Card>
+						<Card>
+							<CardContent className="pt-4">
+								<div className="text-xs text-muted-foreground">
+									{t('admin.users.discord.missingExpected')}
+								</div>
+								<div className="text-xl font-semibold text-amber-700">
+									{formatNumber(inspection.summary.totalMissingExpectedManagedRoles)}
+								</div>
+							</CardContent>
+						</Card>
+						<Card>
+							<CardContent className="pt-4">
+								<div className="text-xs text-muted-foreground">
+									{t('admin.users.discord.unexpectedManaged')}
+								</div>
+								<div className="text-xl font-semibold text-red-700">
+									{formatNumber(inspection.summary.totalUnexpectedManagedRoles)}
+								</div>
+							</CardContent>
+						</Card>
+						<Card>
+							<CardContent className="pt-4">
+								<div className="text-xs text-muted-foreground">
+									{t('admin.users.discord.currentUnmanaged')}
+								</div>
+								<div className="text-xl font-semibold">
+									{formatNumber(inspection.summary.totalUnmanagedCurrentRoles)}
 								</div>
 							</CardContent>
 						</Card>
@@ -180,7 +206,9 @@ export default function AdminUserDiscordAccessPage() {
 															: 'border-amber-600 text-amber-700'
 													}
 												>
-													{guild.isMember ? 'Member' : 'Not a Member'}
+													{guild.isMember
+														? t('admin.users.discord.member')
+														: t('admin.users.discord.notMember')}
 												</Badge>
 												<Badge
 													variant="ghost"
@@ -190,19 +218,21 @@ export default function AdminUserDiscordAccessPage() {
 															: 'border-green-600 text-green-700'
 													}
 												>
-													{hasDrift ? 'Drift Detected' : 'In Sync'}
+													{hasDrift
+														? t('admin.users.discord.drift')
+														: t('admin.users.discord.inSync')}
 												</Badge>
-											<Button
-												variant="destructive"
-												size="sm"
-												onClick={() => void stripRolesForGuild(guild.guildId)}
-												disabled={
-													!guild.isMember ||
-													!discordServers.some((server) => server.guildId === guild.guildId) ||
-													stripRoles.isPending
-												}
-											>
-													Strip Roles
+												<Button
+													variant="destructive"
+													size="sm"
+													onClick={() => void stripRolesForGuild(guild.guildId)}
+													disabled={
+														!guild.isMember ||
+														!discordServers.some((server) => server.guildId === guild.guildId) ||
+														stripRoles.isPending
+													}
+												>
+													{t('admin.users.discord.stripRoles')}
 												</Button>
 											</div>
 										</div>
@@ -214,33 +244,43 @@ export default function AdminUserDiscordAccessPage() {
 										<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 											<div className="space-y-1">
 												<p className="text-xs font-medium text-muted-foreground">
-													Expected ({guild.expectedManagedRoles.length})
+													{t('admin.users.discord.expectedCount', {
+														count: guild.expectedManagedRoles.length,
+													})}
 												</p>
-												{renderRolePills(guild.expectedManagedRoles, 'secondary')}
+												{renderRolePills(guild.expectedManagedRoles, 'secondary', t)}
 											</div>
 											<div className="space-y-1">
 												<p className="text-xs font-medium text-muted-foreground">
-													Current ({guild.currentManagedRoles.length})
+													{t('admin.users.discord.currentCount', {
+														count: guild.currentManagedRoles.length,
+													})}
 												</p>
-												{renderRolePills(guild.currentManagedRoles, 'secondary')}
+												{renderRolePills(guild.currentManagedRoles, 'secondary', t)}
 											</div>
 											<div className="space-y-1">
 												<p className="text-xs font-medium text-muted-foreground">
-													Missing ({guild.missingExpectedManagedRoles.length})
+													{t('admin.users.discord.missingCount', {
+														count: guild.missingExpectedManagedRoles.length,
+													})}
 												</p>
 												{renderRolePills(
 													guild.missingExpectedManagedRoles,
 													'ghost',
+													t,
 													'border-amber-500/40 text-amber-700'
 												)}
 											</div>
 											<div className="space-y-1">
 												<p className="text-xs font-medium text-muted-foreground">
-													Unexpected ({guild.unexpectedManagedRoles.length})
+													{t('admin.users.discord.unexpectedCount', {
+														count: guild.unexpectedManagedRoles.length,
+													})}
 												</p>
 												{renderRolePills(
 													guild.unexpectedManagedRoles,
 													'ghost',
+													t,
 													'border-red-500/40 text-red-700'
 												)}
 											</div>
@@ -248,9 +288,11 @@ export default function AdminUserDiscordAccessPage() {
 
 										<div className="space-y-1">
 											<p className="text-xs font-medium text-muted-foreground">
-												Unmanaged ({guild.currentUnmanagedRoles.length})
+												{t('admin.users.discord.unmanagedCount', {
+													count: guild.currentUnmanagedRoles.length,
+												})}
 											</p>
-											{renderRolePills(guild.currentUnmanagedRoles, 'ghost')}
+											{renderRolePills(guild.currentUnmanagedRoles, 'ghost', t)}
 										</div>
 									</CardContent>
 								</Card>

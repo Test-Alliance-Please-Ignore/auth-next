@@ -23,11 +23,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useMessage } from '@/hooks/useMessage'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { useAddHRNote, useUpdateHRNote } from '../hooks'
 
+import type { AppTranslationKey } from '@/i18n'
 import type { HRNote, HRNotePriority, HRNoteType } from '../api'
 
 // ============================================================================
@@ -53,56 +54,56 @@ const MAX_LENGTH = 2000
 
 const NOTE_TYPE_OPTIONS: Array<{
 	value: HRNoteType
-	label: string
+	labelKey: AppTranslationKey
 	icon: typeof Info
-	description: string
+	descriptionKey: AppTranslationKey
 	baseClass: string
 	selectedClass: string
 	iconClass: string
 }> = [
 	{
 		value: 'general',
-		label: 'General',
+		labelKey: 'hr.notes.types.general',
 		icon: Info,
-		description: 'General information',
+		descriptionKey: 'hr.notes.typeDescriptions.general',
 		baseClass: 'border-muted/50 bg-muted/10 hover:bg-muted/20',
 		selectedClass: 'border-muted ring-2 ring-muted/30',
 		iconClass: 'text-muted-foreground',
 	},
 	{
 		value: 'warning',
-		label: 'Warning',
+		labelKey: 'hr.notes.types.warning',
 		icon: AlertTriangle,
-		description: 'Caution advised',
+		descriptionKey: 'hr.notes.typeDescriptions.warning',
 		baseClass: 'border-warning/30 bg-warning/10 hover:bg-warning/20',
 		selectedClass: 'border-warning ring-2 ring-warning/30',
 		iconClass: 'text-warning',
 	},
 	{
 		value: 'positive',
-		label: 'Positive',
+		labelKey: 'hr.notes.types.positive',
 		icon: CheckCircle,
-		description: 'Positive note',
+		descriptionKey: 'hr.notes.typeDescriptions.positive',
 		baseClass: 'border-success/30 bg-success/10 hover:bg-success/20',
 		selectedClass: 'border-success ring-2 ring-success/30',
 		iconClass: 'text-success',
 	},
 	{
 		value: 'incident',
-		label: 'Incident',
+		labelKey: 'hr.notes.types.incident',
 		icon: AlertOctagon,
-		description: 'Security incident',
+		descriptionKey: 'hr.notes.typeDescriptions.incident',
 		baseClass: 'border-destructive/30 bg-destructive/10 hover:bg-destructive/20',
 		selectedClass: 'border-destructive ring-2 ring-destructive/30',
 		iconClass: 'text-destructive',
 	},
 ]
 
-const PRIORITY_OPTIONS: Array<{ value: HRNotePriority; label: string }> = [
-	{ value: 'low', label: 'Low' },
-	{ value: 'normal', label: 'Normal' },
-	{ value: 'high', label: 'High' },
-	{ value: 'critical', label: 'Critical' },
+const PRIORITY_OPTIONS: Array<{ value: HRNotePriority; labelKey: AppTranslationKey }> = [
+	{ value: 'low', labelKey: 'hr.notes.priorities.low' },
+	{ value: 'normal', labelKey: 'hr.notes.priorities.normal' },
+	{ value: 'high', labelKey: 'hr.notes.priorities.high' },
+	{ value: 'critical', labelKey: 'hr.notes.priorities.critical' },
 ]
 
 // ============================================================================
@@ -180,7 +181,12 @@ export function AddHRNoteDialog({
 	existingNote,
 	onSuccess,
 }: AddHRNoteDialogProps) {
-	const { showSuccess, showError } = useMessage()
+	const { t } = useAppTranslation()
+	const [message, setMessage] = useState<{
+		type: 'success' | 'error'
+		key: AppTranslationKey
+		detail?: string
+	} | null>(null)
 
 	// Form state
 	const [noteType, setNoteType] = useState<HRNoteType>('general')
@@ -199,6 +205,7 @@ export function AddHRNoteDialog({
 	// Initialize form when dialog opens or note changes
 	useEffect(() => {
 		if (open) {
+			setMessage(null)
 			if (existingNote) {
 				// Edit mode - populate from existing
 				setNoteType(existingNote.noteType)
@@ -258,7 +265,7 @@ export function AddHRNoteDialog({
 						metadata,
 					},
 				})
-				showSuccess('HR note updated successfully')
+				setMessage({ type: 'success', key: 'hr.notes.updated' })
 			} else {
 				// Add new note
 				await addMutation.mutateAsync({
@@ -269,17 +276,17 @@ export function AddHRNoteDialog({
 					noteText: noteText.trim(),
 					metadata,
 				})
-				showSuccess('HR note added successfully')
+				setMessage({ type: 'success', key: 'hr.notes.added' })
 			}
 
 			onOpenChange(false)
 			onSuccess?.()
 		} catch (error) {
-			const message =
-				error instanceof Error
-					? error.message
-					: `Failed to ${isEditMode ? 'update' : 'add'} HR note`
-			showError(message)
+			setMessage({
+				type: 'error',
+				key: isEditMode ? 'hr.notes.updateError' : 'hr.notes.addError',
+				detail: error instanceof Error ? error.message : undefined,
+			})
 		}
 	}
 
@@ -293,21 +300,31 @@ export function AddHRNoteDialog({
 				<DialogHeader>
 					<div className="flex items-center gap-2 text-warning mb-2">
 						<Lock className="h-4 w-4" />
-						<span className="text-xs font-semibold uppercase tracking-wide">Admin Only</span>
+						<span className="text-xs font-semibold uppercase tracking-wide">
+							{t('hr.notes.adminWarning')}
+						</span>
 					</div>
-					<DialogTitle>{isEditMode ? 'Edit HR Note' : 'Add HR Note'}</DialogTitle>
+					<DialogTitle>{isEditMode ? t('hr.notes.editTitle') : t('hr.notes.addTitle')}</DialogTitle>
 					<DialogDescription>
-						{isEditMode
-							? 'Update the HR note about this user.'
-							: 'Add a private internal note about this user. Only visible to site administrators.'}
+						{isEditMode ? t('hr.notes.editDescription') : t('hr.notes.addDescription')}
 					</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-6 py-4">
+					{message && (
+						<p
+							role={message.type === 'error' ? 'alert' : 'status'}
+							className={
+								message.type === 'error' ? 'text-sm text-destructive' : 'text-sm text-success'
+							}
+						>
+							{message.detail ?? t(message.key)}
+						</p>
+					)}
 					{/* Subject Display */}
 					{subjectCharacterName && (
 						<div className="space-y-2">
-							<Label>Subject</Label>
+							<Label>{t('hr.notes.subject')}</Label>
 							<div className="p-3 rounded-lg bg-muted text-sm font-medium">
 								{subjectCharacterName}
 							</div>
@@ -317,15 +334,15 @@ export function AddHRNoteDialog({
 					{/* Note Type Selector */}
 					<div className="space-y-3">
 						<Label>
-							Note Type <span className="text-destructive">*</span>
+							{t('hr.notes.noteType')} <span className="text-destructive">*</span>
 						</Label>
 						<div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
 							{NOTE_TYPE_OPTIONS.map((option) => (
 								<NoteTypeButton
 									key={option.value}
 									value={option.value}
-									label={option.label}
-									description={option.description}
+									label={t(option.labelKey)}
+									description={t(option.descriptionKey)}
 									icon={option.icon}
 									selected={noteType === option.value}
 									onClick={() => setNoteType(option.value)}
@@ -340,27 +357,28 @@ export function AddHRNoteDialog({
 					{/* Priority Selector */}
 					<div className="space-y-2">
 						<Label htmlFor="priority">
-							Priority <span className="text-destructive">*</span>
+							{t('hr.notes.priority')} <span className="text-destructive">*</span>
 						</Label>
 						<Select
 							inputId="priority"
 							value={priority}
 							onValueChange={(v) => setPriority(v as HRNotePriority)}
-							options={PRIORITY_OPTIONS.map((option) => ({ value: option.value,
-								label: option.label,
+							options={PRIORITY_OPTIONS.map((option) => ({
+								value: option.value,
+								label: t(option.labelKey),
 							}))}
-							placeholder="Select priority"
+							placeholder={t('hr.notes.selectPriority')}
 						/>
 					</div>
 
 					{/* Note Text */}
 					<div className="space-y-2">
 						<Label htmlFor="note-text">
-							Note Text <span className="text-destructive">*</span>
+							{t('hr.notes.text')} <span className="text-destructive">*</span>
 						</Label>
 						<Textarea
 							id="note-text"
-							placeholder="Private internal notes about this user..."
+							placeholder={t('hr.notes.textPlaceholder')}
 							value={noteText}
 							onChange={(e) => setNoteText(e.target.value)}
 							disabled={isPending}
@@ -370,24 +388,24 @@ export function AddHRNoteDialog({
 						<div className="flex items-center justify-between text-xs">
 							<span className="text-muted-foreground">
 								{textLength < MIN_LENGTH
-									? `Minimum ${MIN_LENGTH} characters`
+									? t('hr.notes.minimum', { count: MIN_LENGTH })
 									: textLength > MAX_LENGTH
-										? 'Maximum length exceeded'
-										: 'Character count:'}
+										? t('hr.notes.maximum')
+										: t('hr.notes.characterCount')}
 							</span>
 							<span className={cn('font-mono', getCounterColor())}>
-								{textLength} / {MAX_LENGTH}
+								{t('hr.notes.length', { length: textLength, max: MAX_LENGTH })}
 							</span>
 						</div>
 					</div>
 
 					{/* Tags */}
 					<div className="space-y-2">
-						<Label htmlFor="tag-input">Tags (optional)</Label>
+						<Label htmlFor="tag-input">{t('hr.notes.tags')}</Label>
 						<div className="flex gap-2">
 							<Input
 								id="tag-input"
-								placeholder="Add a tag..."
+								placeholder={t('hr.notes.tagPlaceholder')}
 								value={tagInput}
 								onChange={(e) => setTagInput(e.target.value)}
 								onKeyDown={(e) => {
@@ -405,7 +423,7 @@ export function AddHRNoteDialog({
 								onClick={handleAddTag}
 								disabled={!tagInput.trim() || isPending}
 							>
-								Add
+								{t('hr.notes.addTag')}
 							</Button>
 						</div>
 						{tags.length > 0 && (
@@ -418,6 +436,7 @@ export function AddHRNoteDialog({
 										#{tag}
 										<button
 											type="button"
+											aria-label={t('hr.notes.removeTag', { tag })}
 											onClick={() => handleRemoveTag(tag)}
 											className="hover:text-destructive transition-colors"
 											disabled={isPending}
@@ -433,15 +452,16 @@ export function AddHRNoteDialog({
 
 				<DialogFooter>
 					<Button variant="cancel" onClick={handleCancel} disabled={isPending}>
-						Cancel
+						{t('common.cancel')}
 					</Button>
-					<Button variant="confirm"
+					<Button
+						variant="confirm"
 						onClick={handleSubmit}
 						disabled={!isFormValid}
 						loading={isPending}
-						loadingText={isEditMode ? 'Updating...' : 'Saving...'}
+						loadingText={isEditMode ? t('hr.notes.updating') : t('hr.notes.saving')}
 					>
-						{isEditMode ? 'Update Note' : 'Save Note'}
+						{isEditMode ? t('hr.notes.update') : t('hr.notes.save')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

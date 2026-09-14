@@ -21,6 +21,7 @@ import {
 	XCircle,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { Trans } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { IpHistoryCard } from '@/components/ip-history-card'
@@ -70,25 +71,34 @@ import { useAuth } from '@/hooks/useAuth'
 import { useBreadcrumb } from '@/hooks/useBreadcrumb'
 import { useCorporations } from '@/hooks/useCorporations'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatList, formatNumber, useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
+import type { AppTranslationKey } from '@/i18n'
 import type { BlacklistTargetType, DiscordRefreshOutput } from '@/lib/api'
 
-const TARGET_TYPE_LABELS: Record<BlacklistTargetType, string> = {
-	user: 'User',
-	character_id: 'Character ID',
-	character_name: 'Character Name',
-	discord_id: 'Discord ID',
-	corporation_id: 'Corporation ID',
-	corporation_name: 'Corporation Name',
-	alliance_id: 'Alliance ID',
-	alliance_name: 'Alliance Name',
+const discordOperationKeys = {
+	invite: 'admin.users.discord.operations.invite',
+	update: 'admin.users.discord.operations.update',
+	'revoke-ban': 'admin.users.discord.operations.revoke-ban',
+} as const
+
+const TARGET_TYPE_KEYS: Record<BlacklistTargetType, AppTranslationKey> = {
+	user: 'admin.users.blocklist.targets.user',
+	character_id: 'admin.users.blocklist.targets.character_id',
+	character_name: 'admin.users.blocklist.targets.character_name',
+	discord_id: 'admin.users.blocklist.targets.discord_id',
+	corporation_id: 'admin.users.blocklist.targets.corporation_id',
+	corporation_name: 'admin.users.blocklist.targets.corporation_name',
+	alliance_id: 'admin.users.blocklist.targets.alliance_id',
+	alliance_name: 'admin.users.blocklist.targets.alliance_name',
 }
 
 export default function UserDetailPage() {
-	usePageTitle('Admin - User Details')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.users.account.pageTitle'))
 	const { userId } = useParams<{ userId: string }>()
 	const navigate = useNavigate()
 	const queryClient = useQueryClient()
@@ -170,7 +180,12 @@ export default function UserDetailPage() {
 	const [selectedCharacter, setSelectedCharacter] = useState<string | null>(null)
 
 	// Message state
-	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [message, setMessage] = useState<{
+		type: 'success' | 'error'
+		key: AppTranslationKey
+		values?: Record<string, unknown>
+		detail?: string
+	} | null>(null)
 
 	// Fetch HR notes for this user
 	const { data: hrNotes = [], isLoading: notesLoading } = useHRNotes({
@@ -179,7 +194,7 @@ export default function UserDetailPage() {
 
 	const primaryCharacter =
 		user?.characters.find((character) => character.is_primary) ?? user?.characters[0] ?? null
-	const primaryCharacterName = primaryCharacter?.characterName || 'this user'
+	const primaryCharacterName = primaryCharacter?.characterName || t('admin.users.account.thisUser')
 	const corporationLinkForCurrentUser =
 		sessionUser?.is_admin === true
 			? (corporationId: string) => `/admin/corporations/${corporationId}`
@@ -203,10 +218,12 @@ export default function UserDetailPage() {
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" onClick={() => navigate('/admin/users')}>
 						<ArrowLeft className="h-4 w-4" />
-						Back
+						{t('admin.users.account.back')}
 					</Button>
 				</div>
-				<div className="text-center py-8 text-muted-foreground">Loading user details...</div>
+				<div className="text-center py-8 text-muted-foreground">
+					{t('admin.users.account.loading')}
+				</div>
 			</div>
 		)
 	}
@@ -217,10 +234,12 @@ export default function UserDetailPage() {
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" onClick={() => navigate('/admin/users')}>
 						<ArrowLeft className="h-4 w-4" />
-						Back
+						{t('admin.users.account.back')}
 					</Button>
 				</div>
-				<div className="text-center py-8 text-muted-foreground">User not found</div>
+				<div className="text-center py-8 text-muted-foreground">
+					{t('admin.users.account.notFound')}
+				</div>
 			</div>
 		)
 	}
@@ -231,15 +250,16 @@ export default function UserDetailPage() {
 			setAdminDialogOpen(false)
 			setMessage({
 				type: 'success',
-				text: user.is_admin
-					? 'Admin privileges revoked successfully'
-					: 'Admin privileges granted successfully',
+				key: user.is_admin
+					? 'admin.users.feedback.adminRevoked'
+					: 'admin.users.feedback.adminGranted',
 			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to update admin status',
+				key: 'admin.users.feedback.adminError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -252,7 +272,7 @@ export default function UserDetailPage() {
 		if (character?.is_primary && user.characters.length === 1) {
 			setMessage({
 				type: 'error',
-				text: 'Cannot delete the only character on an account',
+				key: 'admin.users.feedback.onlyCharacter',
 			})
 			setTimeout(() => setMessage(null), 5000)
 			return
@@ -273,13 +293,15 @@ export default function UserDetailPage() {
 			setSelectedCharacter(null)
 			setMessage({
 				type: 'success',
-				text: `Character ${character?.characterName} deleted successfully`,
+				key: 'admin.users.feedback.characterDeleted',
+				values: { name: character?.characterName },
 			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to delete character',
+				key: 'admin.users.feedback.characterDeleteError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -301,13 +323,15 @@ export default function UserDetailPage() {
 			setSelectedCharacter(null)
 			setMessage({
 				type: 'success',
-				text: `${character?.characterName} set as primary character`,
+				key: 'admin.users.feedback.primarySet',
+				values: { name: character?.characterName },
 			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to set primary character',
+				key: 'admin.users.feedback.primaryError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -319,13 +343,14 @@ export default function UserDetailPage() {
 			setRevokeDiscordDialogOpen(false)
 			setMessage({
 				type: 'success',
-				text: 'Discord authorization revoked successfully',
+				key: 'admin.users.feedback.discordRevoked',
 			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to revoke Discord authorization',
+				key: 'admin.users.feedback.discordRevokeError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -337,13 +362,14 @@ export default function UserDetailPage() {
 			setUnlinkDiscordDialogOpen(false)
 			setMessage({
 				type: 'success',
-				text: 'Discord account unlinked successfully',
+				key: 'admin.users.feedback.discordUnlinked',
 			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to unlink Discord account',
+				key: 'admin.users.feedback.discordUnlinkError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -355,13 +381,14 @@ export default function UserDetailPage() {
 			setClearSessionsDialogOpen(false)
 			setMessage({
 				type: 'success',
-				text: 'All sessions cleared successfully',
+				key: 'admin.users.feedback.sessionsCleared',
 			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to clear sessions',
+				key: 'admin.users.feedback.sessionsError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -373,13 +400,14 @@ export default function UserDetailPage() {
 			setSyncUserDialogOpen(false)
 			setMessage({
 				type: 'success',
-				text: 'User sync workflow triggered. Data will be refreshed in the background.',
+				key: 'admin.users.feedback.syncStarted',
 			})
 			setTimeout(() => setMessage(null), 5000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to trigger user sync',
+				key: 'admin.users.feedback.syncError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -394,16 +422,20 @@ export default function UserDetailPage() {
 			const totalFailed = results.totalFailed ?? 0
 			setMessage({
 				type: results.status === 'failed' ? 'error' : 'success',
-				text:
+				key:
 					results.status === 'failed'
-						? `Discord access refresh failed: ${results.error?.message ?? 'The refresh did not complete.'}`
-						: `Discord access updated! Joined ${totalInvited} server(s), ${totalFailed} failed.`,
+						? results.error?.message
+							? 'admin.users.feedback.discordFailedDetail'
+							: 'admin.users.feedback.discordFailed'
+						: 'admin.users.feedback.discordUpdated',
+				values: { error: results.error?.message, joined: totalInvited, failed: totalFailed },
 			})
 			setTimeout(() => setMessage(null), 5000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to update Discord access',
+				key: 'admin.users.feedback.discordUpdateError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -414,13 +446,15 @@ export default function UserDetailPage() {
 			const result = await syncMumbleGroups.mutateAsync(user.id)
 			setMessage({
 				type: 'success',
-				text: `Mumble groups synced successfully (${result.synced.length} updated, ${result.skipped.length} skipped).`,
+				key: 'admin.users.feedback.mumbleSynced',
+				values: { updated: result.synced.length, skipped: result.skipped.length },
 			})
 			setTimeout(() => setMessage(null), 4000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to sync Mumble groups',
+				key: 'admin.users.feedback.mumbleSyncError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -432,16 +466,17 @@ export default function UserDetailPage() {
 			setDeleteMumbleDialogOpen(false)
 			setMessage({
 				type: 'success',
-				text:
+				key:
 					result.queued.length > 0
-						? 'Mumble account deletion queued for retry'
-						: 'Mumble account deleted successfully',
+						? 'admin.users.feedback.mumbleDeleteQueued'
+						: 'admin.users.feedback.mumbleDeleted',
 			})
 			setTimeout(() => setMessage(null), 4000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to delete Mumble account',
+				key: 'admin.users.feedback.mumbleDeleteError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -451,7 +486,7 @@ export default function UserDetailPage() {
 		if (!blacklistReason.trim()) {
 			setMessage({
 				type: 'error',
-				text: 'Please provide a reason for blocklisting',
+				key: 'admin.users.feedback.blocklistReason',
 			})
 			setTimeout(() => setMessage(null), 3000)
 			return
@@ -463,13 +498,14 @@ export default function UserDetailPage() {
 			setBlacklistReason('')
 			setMessage({
 				type: 'success',
-				text: 'User has been blocklisted successfully',
+				key: 'admin.users.feedback.blocklisted',
 			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to blocklist user',
+				key: 'admin.users.feedback.blocklistError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -483,13 +519,14 @@ export default function UserDetailPage() {
 			setRemoveBlacklistDialogOpen(false)
 			setMessage({
 				type: 'success',
-				text: 'User has been removed from blocklist',
+				key: 'admin.users.feedback.blocklistRemoved',
 			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to remove blocklist',
+				key: 'admin.users.feedback.blocklistRemoveError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -504,9 +541,14 @@ export default function UserDetailPage() {
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" onClick={() => navigate('/admin/users')}>
 						<ArrowLeft className="h-4 w-4" />
-						Back to Users
+						{t('admin.users.account.backToUsers')}
 					</Button>
-					<Button variant="ghost" size="sm" onClick={() => refetch()}>
+					<Button
+						variant="ghost"
+						size="sm"
+						aria-label={t('admin.users.account.refresh')}
+						onClick={() => refetch()}
+					>
 						<RefreshCw className="h-4 w-4" />
 					</Button>
 				</div>
@@ -514,19 +556,19 @@ export default function UserDetailPage() {
 					<Button variant="ghost" asChild>
 						<Link to={`/admin/users/${user.id}/discord-access`}>
 							<Bot className="h-4 w-4" />
-							Discord Access
+							{t('admin.users.account.discordAccess')}
 						</Link>
 					</Button>
 					<Button variant="ghost" asChild>
 						<Link to={`/admin/users/${user.id}/oauth-inspection`}>
 							<ExternalLink className="h-4 w-4" />
-							OAuth Resolver
+							{t('admin.users.account.oauthResolver')}
 						</Link>
 					</Button>
 					<Button variant="ghost" asChild>
 						<Link to={`/admin/users/${user.id}/groups`}>
 							<Users className="h-4 w-4" />
-							Group Memberships
+							{t('admin.users.account.memberships')}
 						</Link>
 					</Button>
 					<Button variant="ghost" asChild>
@@ -536,13 +578,13 @@ export default function UserDetailPage() {
 							rel="noopener noreferrer"
 						>
 							<RefreshCw className="h-4 w-4" />
-							Legacy Data
+							{t('admin.users.account.legacyData')}
 						</Link>
 					</Button>
 					<Button variant="ghost" asChild>
 						<Link to={`/admin/users/${user.id}/activity`}>
 							<History className="h-4 w-4" />
-							Activity Log
+							{t('admin.nav.activityLog')}
 						</Link>
 					</Button>
 				</div>
@@ -550,8 +592,8 @@ export default function UserDetailPage() {
 
 			{/* Page Header */}
 			<div>
-				<h1 className="text-3xl font-bold gradient-text">User Details</h1>
-				<p className="text-muted-foreground mt-1">Inspect user account, access, and activity</p>
+				<h1 className="text-3xl font-bold gradient-text">{t('admin.users.account.title')}</h1>
+				<p className="text-muted-foreground mt-1">{t('admin.users.account.description')}</p>
 			</div>
 
 			{/* Success/Error Message */}
@@ -565,7 +607,7 @@ export default function UserDetailPage() {
 				>
 					<CardContent className="py-3">
 						<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>
-							{message.text}
+							{message.detail ?? t(message.key, message.values)}
 						</p>
 					</CardContent>
 				</Card>
@@ -586,7 +628,7 @@ export default function UserDetailPage() {
 							/>
 						) : (
 							<div className="flex h-24 w-24 items-center justify-center rounded-full border border-dashed text-xs text-muted-foreground">
-								No live characters
+								{t('admin.users.account.noCharacters')}
 							</div>
 						)}
 						<div className="flex-1">
@@ -599,22 +641,24 @@ export default function UserDetailPage() {
 												(activeBlacklist || primaryCharacter?.isBlacklisted) && 'text-red-500'
 											)}
 										>
-											{primaryCharacterName || 'Unknown'}
+											{primaryCharacterName || t('admin.users.account.unknown')}
 										</h2>
 										{user.is_admin && (
 											<Badge variant="default">
 												<Shield className="h-3 w-3 mr-1" />
-												Admin
+												{t('admin.shell.admin')}
 											</Badge>
 										)}
 									</div>
-									<p className="text-sm text-muted-foreground mt-1">User ID: {user.id}</p>
+									<p className="text-sm text-muted-foreground mt-1">
+										{t('admin.users.account.userId', { id: user.id })}
+									</p>
 								</div>
 								<div className="flex items-center gap-2">
 									{activeBlacklist && (
 										<Badge variant="destructive">
 											<ShieldBan className="h-3 w-3 mr-1" />
-											Blocklisted
+											{t('admin.users.account.blocklisted')}
 										</Badge>
 									)}
 									{user.is_admin ? (
@@ -626,7 +670,7 @@ export default function UserDetailPage() {
 											showIcon={false}
 										>
 											<ShieldOff className="h-4 w-4" />
-											Revoke Admin
+											{t('admin.users.account.revokeAdmin')}
 										</Button>
 									) : (
 										<Button
@@ -637,7 +681,7 @@ export default function UserDetailPage() {
 											showIcon={false}
 										>
 											<Shield className="h-4 w-4" />
-											Grant Admin
+											{t('admin.users.account.grantAdmin')}
 										</Button>
 									)}
 									{activeBlacklist ? (
@@ -647,7 +691,7 @@ export default function UserDetailPage() {
 											onClick={() => setRemoveBlacklistDialogOpen(true)}
 											disabled={removeBlacklist.isPending}
 										>
-											Remove from Blocklist
+											{t('admin.users.account.removeBlocklist')}
 										</Button>
 									) : (
 										<Button
@@ -673,7 +717,7 @@ export default function UserDetailPage() {
 														'0 1px 8px rgba(220, 38, 38, 1), 0 1px 3px rgba(248, 113, 113, 0.95)',
 												}}
 											>
-												💩 Blocklist User
+												{t('admin.users.account.blocklistButton')}
 											</span>
 										</Button>
 									)}
@@ -685,7 +729,7 @@ export default function UserDetailPage() {
 										showIcon={false}
 									>
 										<LogOut className="h-4 w-4" />
-										Clear Sessions
+										{t('admin.users.account.clearSessions')}
 									</Button>
 									<Button
 										variant="primary"
@@ -694,24 +738,32 @@ export default function UserDetailPage() {
 										size="sm"
 									>
 										<RefreshCw className={cn('h-4 w-4', syncUser.isPending && 'animate-spin')} />
-										Sync User
+										{t('admin.users.account.syncUser')}
 									</Button>
 								</div>
 							</div>
 
 							<div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
 								<div>
-									<div className="text-sm text-muted-foreground">Characters</div>
-									<div className="text-lg font-semibold">{user.characters.length}</div>
+									<div className="text-sm text-muted-foreground">
+										{t('admin.users.account.characters')}
+									</div>
+									<div className="text-lg font-semibold">
+										{formatNumber(user.characters.length)}
+									</div>
 								</div>
 								<div>
-									<div className="text-sm text-muted-foreground">Last Updated</div>
+									<div className="text-sm text-muted-foreground">
+										{t('admin.users.account.lastUpdated')}
+									</div>
 									<div className="text-sm font-medium" title={formatDateTime(user.updatedAt)}>
 										{formatRelativeTime(user.updatedAt)}
 									</div>
 								</div>
 								<div>
-									<div className="text-sm text-muted-foreground">Created</div>
+									<div className="text-sm text-muted-foreground">
+										{t('admin.users.account.created')}
+									</div>
 									<div className="text-sm font-medium" title={formatDateTime(user.createdAt)}>
 										{formatRelativeTime(user.createdAt)}
 									</div>
@@ -729,21 +781,23 @@ export default function UserDetailPage() {
 						<CardHeader>
 							<div className="flex items-center justify-between">
 								<div>
-									<CardTitle>Account Notes (0)</CardTitle>
-									<CardDescription>Private notes about this user</CardDescription>
+									<CardTitle>{t('admin.users.account.accountNotes', { count: 0 })}</CardTitle>
+									<CardDescription>{t('admin.users.account.notesDescription')}</CardDescription>
 								</div>
 								<Button onClick={() => setAddNoteDialogOpen(true)} size="sm">
 									<MessageSquarePlus className="h-4 w-4" />
-									Add Note
+									{t('admin.users.account.addNote')}
 								</Button>
 							</div>
 						</CardHeader>
 						<CardContent>
 							{notesLoading ? (
-								<div className="text-center py-4 text-muted-foreground">Loading notes...</div>
+								<div className="text-center py-4 text-muted-foreground">
+									{t('admin.users.account.loadingNotes')}
+								</div>
 							) : (
 								<div className="text-center py-8 text-muted-foreground border border-dashed rounded-md">
-									No notes yet. Add a note to track important information about this user.
+									{t('admin.users.account.noNotes')}
 								</div>
 							)}
 						</CardContent>
@@ -752,8 +806,12 @@ export default function UserDetailPage() {
 					<details className="group">
 						<summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
 							<div>
-								<CardTitle>Account Notes ({hrNotes.length})</CardTitle>
-								<CardDescription className="mt-1">Private notes about this user</CardDescription>
+								<CardTitle>
+									{t('admin.users.account.accountNotes', { count: hrNotes.length })}
+								</CardTitle>
+								<CardDescription className="mt-1">
+									{t('admin.users.account.notesDescription')}
+								</CardDescription>
 							</div>
 							<div className="pointer-events-auto flex items-center gap-3">
 								<Button
@@ -765,18 +823,22 @@ export default function UserDetailPage() {
 									size="sm"
 								>
 									<MessageSquarePlus className="h-4 w-4" />
-									Add Note
+									{t('admin.users.account.addNote')}
 								</Button>
 								<div className="flex items-center gap-2 text-xs text-muted-foreground">
-									<span className="group-open:hidden">Click to expand</span>
-									<span className="hidden group-open:inline">Click to collapse</span>
+									<span className="group-open:hidden">{t('admin.users.account.expand')}</span>
+									<span className="hidden group-open:inline">
+										{t('admin.users.account.collapse')}
+									</span>
 									<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
 								</div>
 							</div>
 						</summary>
 						<CardContent className="pt-0">
 							{notesLoading ? (
-								<div className="text-center py-4 text-muted-foreground">Loading notes...</div>
+								<div className="text-center py-4 text-muted-foreground">
+									{t('admin.users.account.loadingNotes')}
+								</div>
 							) : (
 								<div className="space-y-4">
 									{hrNotes.map((note) => (
@@ -795,8 +857,8 @@ export default function UserDetailPage() {
 					<CardHeader>
 						<div className="flex items-center justify-between">
 							<div>
-								<CardTitle>Discord Account</CardTitle>
-								<CardDescription>Linked Discord account information</CardDescription>
+								<CardTitle>{t('admin.users.discord.account')}</CardTitle>
+								<CardDescription>{t('admin.users.discord.accountDescription')}</CardDescription>
 							</div>
 							<div className="flex items-center gap-2">
 								{!user.discord.authRevoked && (
@@ -810,7 +872,7 @@ export default function UserDetailPage() {
 											<RefreshCw
 												className={cn('h-4 w-4', updateDiscordAccess.isPending && 'animate-spin')}
 											/>
-											Update Discord Access
+											{t('admin.users.discord.updateAccess')}
 										</Button>
 										<Button
 											variant="destructive"
@@ -820,7 +882,7 @@ export default function UserDetailPage() {
 											showIcon={false}
 										>
 											<XCircle className="h-4 w-4" />
-											Revoke Authorization
+											{t('admin.users.discord.revoke')}
 										</Button>
 									</>
 								)}
@@ -832,7 +894,7 @@ export default function UserDetailPage() {
 									showIcon={false}
 								>
 									<Trash2 className="h-4 w-4" />
-									Unlink Discord Account
+									{t('admin.users.discord.unlink')}
 								</Button>
 							</div>
 						</div>
@@ -852,11 +914,13 @@ export default function UserDetailPage() {
 										{activeDiscordBlacklist && (
 											<Badge variant="destructive" className="gap-1">
 												<ShieldBan className="h-3 w-3" />
-												Blocklisted
+												{t('admin.users.account.blocklisted')}
 											</Badge>
 										)}
 									</div>
-									<p className="text-sm text-muted-foreground">Discord ID: {user.discord.userId}</p>
+									<p className="text-sm text-muted-foreground">
+										{t('admin.users.discord.id', { id: user.discord.userId })}
+									</p>
 								</div>
 							</div>
 
@@ -866,12 +930,12 @@ export default function UserDetailPage() {
 										<ShieldBan className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
 										<div>
 											<p className="text-sm text-destructive font-medium">
-												Discord Account Blocklisted
+												{t('admin.users.discord.blocklisted')}
 											</p>
 											<p className="text-sm text-destructive/90 mt-1">
-												This Discord account is blocked from accessing the platform.
+												{t('admin.users.discord.blocklistedDescription')}{' '}
 												{activeDiscordBlacklist.isAutoBlacklist && (
-													<span> Auto-blocked due to associated user blocklist.</span>
+													<span> {t('admin.users.discord.autoBlocked')}</span>
 												)}
 											</p>
 										</div>
@@ -884,12 +948,15 @@ export default function UserDetailPage() {
 									<div className="flex items-start gap-2">
 										<AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
 										<div>
-											<p className="text-sm text-destructive font-medium">Authorization Revoked</p>
+											<p className="text-sm text-destructive font-medium">
+												{t('admin.users.discord.authorizationRevoked')}
+											</p>
 											<p className="text-sm text-destructive/90 mt-1">
-												User's Discord authorization was revoked on{' '}
-												{user.discord.authRevokedAt
-													? formatDateTime(user.discord.authRevokedAt)
-													: 'unknown date'}
+												{t('admin.users.discord.revokedAt', {
+													date: user.discord.authRevokedAt
+														? formatDateTime(user.discord.authRevokedAt)
+														: t('admin.users.account.unknownDate'),
+												})}
 											</p>
 										</div>
 									</div>
@@ -898,21 +965,25 @@ export default function UserDetailPage() {
 
 							<div className="grid grid-cols-2 gap-4 pt-2">
 								<div>
-									<div className="text-sm text-muted-foreground">Authorization Status</div>
+									<div className="text-sm text-muted-foreground">
+										{t('admin.users.discord.authorizationStatus')}
+									</div>
 									<div className="text-sm font-medium">
 										{user.discord.authRevoked ? (
-											<Badge variant="destructive">Revoked</Badge>
+											<Badge variant="destructive">{t('admin.users.discord.revoked')}</Badge>
 										) : (
-											<Badge variant="success">Active</Badge>
+											<Badge variant="success">{t('admin.users.account.active')}</Badge>
 										)}
 									</div>
 								</div>
 								<div>
-									<div className="text-sm text-muted-foreground">Last Successful Auth</div>
+									<div className="text-sm text-muted-foreground">
+										{t('admin.users.discord.lastAuth')}
+									</div>
 									<div className="text-sm font-medium">
 										{user.discord.lastSuccessfulAuth
 											? formatRelativeTime(user.discord.lastSuccessfulAuth)
-											: 'Never'}
+											: t('admin.users.account.never')}
 									</div>
 								</div>
 							</div>
@@ -928,8 +999,8 @@ export default function UserDetailPage() {
 				mumbleAccountData?.account && (
 					<Card>
 						<CardHeader>
-							<CardTitle>Services</CardTitle>
-							<CardDescription>Mumble account status and admin controls</CardDescription>
+							<CardTitle>{t('admin.users.services.title')}</CardTitle>
+							<CardDescription>{t('admin.users.services.description')}</CardDescription>
 						</CardHeader>
 						<CardContent>
 							<Card variant="flat" className="border-border/50">
@@ -952,14 +1023,20 @@ export default function UserDetailPage() {
 																	: 'bg-muted text-muted-foreground'
 															)}
 														>
-															{mumbleAccountData.account.enabled ? 'Active' : 'Disabled'}
+															{mumbleAccountData.account.enabled
+																? t('admin.users.account.active')
+																: t('admin.users.account.disabled')}
 														</Badge>
 													</div>
 													<p className="text-sm text-muted-foreground">
-														Login: {mumbleAccountData.account.loginName}
+														{t('admin.users.services.login', {
+															name: mumbleAccountData.account.loginName,
+														})}
 													</p>
 													<p className="text-xs text-muted-foreground">
-														Display: {mumbleAccountData.account.displayName}
+														{t('admin.users.services.display', {
+															name: mumbleAccountData.account.displayName,
+														})}
 													</p>
 												</div>
 											</div>
@@ -974,7 +1051,7 @@ export default function UserDetailPage() {
 													<RefreshCw
 														className={cn('h-4 w-4', syncMumbleGroups.isPending && 'animate-spin')}
 													/>
-													Sync Groups
+													{t('admin.users.services.syncGroups')}
 												</Button>
 												<Button
 													variant="destructive"
@@ -984,7 +1061,7 @@ export default function UserDetailPage() {
 													showIcon={false}
 												>
 													<Trash2 className="h-4 w-4" />
-													Delete Account
+													{t('admin.users.services.deleteAccount')}
 												</Button>
 											</div>
 										</div>
@@ -992,23 +1069,25 @@ export default function UserDetailPage() {
 										<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 											<div>
 												<div className="text-xs uppercase tracking-wide text-muted-foreground">
-													Status
+													{t('admin.users.account.status')}
 												</div>
 												<div className="text-sm font-medium mt-1">
-													{mumbleAccountData.account.enabled ? 'Enabled' : 'Disabled'}
+													{mumbleAccountData.account.enabled
+														? t('admin.users.account.enabled')
+														: t('admin.users.account.disabled')}
 												</div>
 											</div>
 											<div>
 												<div className="text-xs uppercase tracking-wide text-muted-foreground">
-													Groups
+													{t('admin.nav.groups')}
 												</div>
 												<div className="text-sm font-medium mt-1">
-													{mumbleAccountData.account.groups.length}
+													{formatNumber(mumbleAccountData.account.groups.length)}
 												</div>
 											</div>
 											<div>
 												<div className="text-xs uppercase tracking-wide text-muted-foreground">
-													Connection
+													{t('admin.users.services.connection')}
 												</div>
 												<div className="text-sm font-medium mt-1 flex items-center gap-1">
 													<Server className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1019,12 +1098,12 @@ export default function UserDetailPage() {
 											</div>
 											<div>
 												<div className="text-xs uppercase tracking-wide text-muted-foreground">
-													Last Auth
+													{t('admin.users.services.lastAuth')}
 												</div>
 												<div className="text-sm font-medium mt-1">
 													{mumbleAccountData.account.lastAuthenticatedAt
 														? formatRelativeTime(mumbleAccountData.account.lastAuthenticatedAt)
-														: 'Never'}
+														: t('admin.users.account.never')}
 												</div>
 											</div>
 										</div>
@@ -1039,8 +1118,8 @@ export default function UserDetailPage() {
 			{activeBlacklist && (
 				<Card className="border-red-500/20 bg-red-500/5">
 					<CardHeader>
-						<CardTitle className="text-red-500">Blocklist Status</CardTitle>
-						<CardDescription>This user has been blocklisted</CardDescription>
+						<CardTitle className="text-red-500">{t('admin.users.blocklist.status')}</CardTitle>
+						<CardDescription>{t('admin.users.blocklist.description')}</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<div className="space-y-4">
@@ -1048,7 +1127,9 @@ export default function UserDetailPage() {
 								<div className="flex items-start gap-2">
 									<AlertTriangle className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
 									<div className="flex-1">
-										<p className="text-sm font-medium text-destructive mb-2">Reason:</p>
+										<p className="text-sm font-medium text-destructive mb-2">
+											{t('admin.users.blocklist.reason')}
+										</p>
 										<p className="text-sm text-foreground">{activeBlacklist.reason}</p>
 									</div>
 								</div>
@@ -1056,7 +1137,9 @@ export default function UserDetailPage() {
 
 							<div className="grid grid-cols-2 gap-4">
 								<div>
-									<div className="text-sm text-muted-foreground">Blocklisted On</div>
+									<div className="text-sm text-muted-foreground">
+										{t('admin.users.blocklist.created')}
+									</div>
 									<div className="text-sm font-medium">
 										{formatDateTime(activeBlacklist.createdAt)}
 									</div>
@@ -1065,14 +1148,16 @@ export default function UserDetailPage() {
 									</div>
 								</div>
 								<div>
-									<div className="text-sm text-muted-foreground">Type</div>
+									<div className="text-sm text-muted-foreground">
+										{t('admin.users.blocklist.type')}
+									</div>
 									<div className="text-sm font-medium">
 										{activeBlacklist.isAutoBlacklist ? (
 											<Badge variant="default" className="bg-orange-500/20 text-orange-500">
-												Auto-Blocklisted
+												{t('admin.users.blocklist.auto')}
 											</Badge>
 										) : (
-											<Badge variant="destructive">Manual Blocklist</Badge>
+											<Badge variant="destructive">{t('admin.users.blocklist.manual')}</Badge>
 										)}
 									</div>
 								</div>
@@ -1084,25 +1169,30 @@ export default function UserDetailPage() {
 										<AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
 										<div className="space-y-1">
 											<p className="text-sm text-orange-500 font-medium">
-												Automatically Blocklisted
+												{t('admin.users.blocklist.automatic')}
 											</p>
 											{triggeringEntry ? (
 												<p className="text-sm text-orange-500/90">
-													Triggered by a{' '}
-													<span className="font-medium">
-														{TARGET_TYPE_LABELS[triggeringEntry.targetType]}
-													</span>{' '}
-													blocklist on{' '}
-													<span className="font-mono">{triggeringEntry.targetValue}</span>.{' '}
+													<Trans
+														i18nKey="admin.users.blocklist.trigger"
+														values={{
+															type: t(TARGET_TYPE_KEYS[triggeringEntry.targetType]),
+															value: triggeringEntry.targetValue,
+														}}
+														components={{
+															kind: <span className="font-medium" />,
+															value: <span className="font-mono" />,
+														}}
+													/>{' '}
 													<Link to="/admin/blacklist" className="underline hover:text-orange-400">
-														View blocklist
+														{t('admin.users.blocklist.view')}
 													</Link>
 												</p>
 											) : (
 												<p className="text-sm text-orange-500/90">
-													This user was automatically blocklisted due to a linked blocklist entry.{' '}
+													{t('admin.users.blocklist.linkedEntry')}{' '}
 													<Link to="/admin/blacklist" className="underline hover:text-orange-400">
-														View blocklist
+														{t('admin.users.blocklist.view')}
 													</Link>
 												</p>
 											)}
@@ -1118,18 +1208,18 @@ export default function UserDetailPage() {
 			{/* Characters */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Characters</CardTitle>
-					<CardDescription>All characters associated with this user account</CardDescription>
+					<CardTitle>{t('admin.users.account.characters')}</CardTitle>
+					<CardDescription>{t('admin.users.account.characterDescription')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead>Character</TableHead>
-								<TableHead>Corporation</TableHead>
-								<TableHead>Token Status</TableHead>
-								<TableHead>Added</TableHead>
-								<TableHead className="text-right">Actions</TableHead>
+								<TableHead>{t('admin.users.account.character')}</TableHead>
+								<TableHead>{t('admin.users.account.corporation')}</TableHead>
+								<TableHead>{t('admin.users.account.tokenStatus')}</TableHead>
+								<TableHead>{t('admin.users.account.added')}</TableHead>
+								<TableHead className="text-right">{t('admin.fields.actions')}</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -1142,7 +1232,7 @@ export default function UserDetailPage() {
 											state: {
 												source: 'admin-user-detail',
 												backTo: `/admin/users/${userId}`,
-												backLabel: 'Back to User Details',
+												backLabel: t('admin.users.account.backToDetails'),
 											},
 										})
 									}
@@ -1164,11 +1254,13 @@ export default function UserDetailPage() {
 												</div>
 												<div className="text-xs text-muted-foreground">{character.characterId}</div>
 												<div className="mt-1 flex gap-2">
-													{character.is_primary && <Badge variant="default">Primary</Badge>}
+													{character.is_primary && (
+														<Badge variant="default">{t('admin.users.account.primary')}</Badge>
+													)}
 													{character.isBlacklisted && (
 														<Badge variant="destructive">
 															<ShieldBan className="h-3 w-3 mr-1" />
-															Blocklisted
+															{t('admin.users.account.blocklisted')}
 														</Badge>
 													)}
 												</div>
@@ -1183,10 +1275,12 @@ export default function UserDetailPage() {
 													to={corporationLinkForCurrentUser(character.corporationId)}
 													className="font-medium underline-offset-2 hover:underline"
 												>
-													{character.corporationName || 'Unknown'}
+													{character.corporationName || t('admin.users.account.unknown')}
 												</Link>
 											) : (
-												<div className="font-medium">{character.corporationName || 'Unknown'}</div>
+												<div className="font-medium">
+													{character.corporationName || t('admin.users.account.unknown')}
+												</div>
 											)}
 											{character.corporationId && (
 												<div className="text-xs text-muted-foreground">
@@ -1198,9 +1292,9 @@ export default function UserDetailPage() {
 									<TableCell>
 										<div className="text-sm">
 											{character.hasValidToken ? (
-												<Badge variant="success">Valid</Badge>
+												<Badge variant="success">{t('admin.users.account.valid')}</Badge>
 											) : (
-												<Badge variant="destructive">Invalid</Badge>
+												<Badge variant="destructive">{t('admin.users.account.invalid')}</Badge>
 											)}
 										</div>
 									</TableCell>
@@ -1219,10 +1313,14 @@ export default function UserDetailPage() {
 												state={{
 													source: 'admin-user-detail',
 													backTo: `/admin/users/${userId}`,
-													backLabel: 'Back to User Details',
+													backLabel: t('admin.users.account.backToDetails'),
 												}}
 											>
-												<Button variant="ghost" size="sm">
+												<Button
+													variant="ghost"
+													size="sm"
+													aria-label={t('admin.users.account.viewCharacter')}
+												>
 													<ExternalLink className="h-4 w-4" />
 												</Button>
 											</Link>
@@ -1232,7 +1330,7 @@ export default function UserDetailPage() {
 													size="sm"
 													onClick={() => handleSetPrimaryClick(character.characterId)}
 													disabled={setPrimaryCharacter.isPending}
-													title="Set as primary character"
+													title={t('admin.users.account.setPrimaryAction')}
 												>
 													<CheckCircle className="h-4 w-4 text-green-500" />
 												</Button>
@@ -1240,6 +1338,7 @@ export default function UserDetailPage() {
 											<Button
 												variant="ghost"
 												size="sm"
+												aria-label={t('admin.users.account.deleteCharacter')}
 												onClick={() => handleDeleteCharacterClick(character.characterId)}
 												disabled={
 													deleteCharacter.isPending ||
@@ -1258,7 +1357,7 @@ export default function UserDetailPage() {
 			</Card>
 
 			<IpHistoryCard
-				title="IP History"
+				title={t('admin.users.ip.title')}
 				entries={ipHistoryData?.entries ?? []}
 				buildHashInspectionLink={(ipHash) =>
 					`/admin/ip-history/${encodeURIComponent(ipHash)}?userId=${encodeURIComponent(user.id)}`
@@ -1270,12 +1369,14 @@ export default function UserDetailPage() {
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>
-							{user.is_admin ? 'Revoke Admin Privileges' : 'Grant Admin Privileges'}
+							{user.is_admin
+								? t('admin.users.confirm.revokeAdminTitle')
+								: t('admin.users.confirm.grantAdminTitle')}
 						</DialogTitle>
 						<DialogDescription>
 							{user.is_admin
-								? `Are you sure you want to revoke admin privileges for ${primaryCharacterName}? They will lose access to all admin features.`
-								: `Are you sure you want to grant admin privileges to ${primaryCharacterName}? They will have full access to all admin features.`}
+								? t('admin.users.confirm.revokeAdmin', { name: primaryCharacterName })
+								: t('admin.users.confirm.grantAdmin', { name: primaryCharacterName })}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -1284,7 +1385,7 @@ export default function UserDetailPage() {
 							onClick={() => setAdminDialogOpen(false)}
 							disabled={setUserAdmin.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						{user.is_admin ? (
 							<Button
@@ -1292,21 +1393,21 @@ export default function UserDetailPage() {
 								onClick={handleToggleAdmin}
 								loading={setUserAdmin.isPending}
 								showIcon={false}
-								loadingText="Revoking..."
+								loadingText={t('admin.users.account.revoking')}
 							>
 								<ShieldOff className="h-4 w-4" />
-								Revoke Admin
+								{t('admin.users.account.revokeAdmin')}
 							</Button>
 						) : (
 							<Button
 								variant="confirm"
 								onClick={handleToggleAdmin}
 								loading={setUserAdmin.isPending}
-								loadingText="Granting..."
+								loadingText={t('admin.users.account.granting')}
 								showIcon={false}
 							>
 								<Shield className="h-4 w-4" />
-								Grant Admin
+								{t('admin.users.account.grantAdmin')}
 							</Button>
 						)}
 					</DialogFooter>
@@ -1317,10 +1418,9 @@ export default function UserDetailPage() {
 			<Dialog open={revokeDiscordDialogOpen} onOpenChange={setRevokeDiscordDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Revoke Discord Authorization</DialogTitle>
+						<DialogTitle>{t('admin.users.confirm.revokeDiscordTitle')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to revoke Discord authorization for {primaryCharacterName}? This
-							will mark their Discord account as unauthorized and they will need to re-link it.
+							{t('admin.users.confirm.revokeDiscord', { name: primaryCharacterName })}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -1329,17 +1429,17 @@ export default function UserDetailPage() {
 							onClick={() => setRevokeDiscordDialogOpen(false)}
 							disabled={revokeDiscord.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleRevokeDiscordConfirm}
 							loading={revokeDiscord.isPending}
-							loadingText="Revoking..."
+							loadingText={t('admin.users.account.revoking')}
 							showIcon={false}
 						>
 							<XCircle className="h-4 w-4" />
-							Revoke Authorization
+							{t('admin.users.discord.revoke')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -1349,18 +1449,15 @@ export default function UserDetailPage() {
 			<Dialog open={unlinkDiscordDialogOpen} onOpenChange={setUnlinkDiscordDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Unlink Discord Account</DialogTitle>
+						<DialogTitle>{t('admin.users.discord.unlink')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to completely unlink the Discord account for{' '}
-							{primaryCharacterName}? This action will:
+							{t('admin.users.confirm.unlinkDiscord', { name: primaryCharacterName })}
 							<ul className="list-disc list-inside mt-2 space-y-1">
-								<li>Remove the Discord link from their account</li>
-								<li>Delete all Discord tokens</li>
-								<li>Remove them from all managed Discord servers</li>
+								<li>{t('admin.users.confirm.unlinkRemove')}</li>
+								<li>{t('admin.users.confirm.unlinkTokens')}</li>
+								<li>{t('admin.users.confirm.unlinkServers')}</li>
 							</ul>
-							<strong className="block mt-2">
-								They will need to re-link Discord from scratch.
-							</strong>
+							<strong className="block mt-2">{t('admin.users.confirm.unlinkRelink')}</strong>
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -1369,17 +1466,17 @@ export default function UserDetailPage() {
 							onClick={() => setUnlinkDiscordDialogOpen(false)}
 							disabled={unlinkDiscord.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleUnlinkDiscordConfirm}
 							loading={unlinkDiscord.isPending}
-							loadingText="Unlinking..."
+							loadingText={t('admin.users.account.unlinking')}
 							showIcon={false}
 						>
 							<Trash2 className="h-4 w-4" />
-							Unlink Discord Account
+							{t('admin.users.discord.unlink')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -1388,9 +1485,9 @@ export default function UserDetailPage() {
 			{/* Delete Mumble Account Confirmation Dialog */}
 			<ConfirmationDialog
 				open={deleteMumbleDialogOpen}
-				title="Delete Mumble Account"
-				description={`Are you sure you want to delete the Mumble account for ${primaryCharacterName}? This will remove the user's voice account from the Mumble control plane and clear access to the service. If the control plane is temporarily unavailable, the deletion may be queued for retry.`}
-				confirmLabel="Delete Mumble Account"
+				title={t('admin.users.confirm.deleteMumbleTitle')}
+				description={t('admin.users.confirm.deleteMumble', { name: primaryCharacterName })}
+				confirmLabel={t('admin.users.confirm.deleteMumbleTitle')}
 				intent="destructive"
 				pending={deleteMumbleAccount.isPending}
 				onCancel={() => setDeleteMumbleDialogOpen(false)}
@@ -1401,10 +1498,9 @@ export default function UserDetailPage() {
 			<Dialog open={clearSessionsDialogOpen} onOpenChange={setClearSessionsDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Clear All Sessions</DialogTitle>
+						<DialogTitle>{t('admin.users.confirm.clearSessionsTitle')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to clear all active sessions for {primaryCharacterName}? This
-							will force them to re-authenticate on all devices.
+							{t('admin.users.confirm.clearSessions', { name: primaryCharacterName })}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -1413,17 +1509,17 @@ export default function UserDetailPage() {
 							onClick={() => setClearSessionsDialogOpen(false)}
 							disabled={clearSessions.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleClearSessionsConfirm}
 							loading={clearSessions.isPending}
-							loadingText="Clearing..."
+							loadingText={t('admin.users.account.clearing')}
 							showIcon={false}
 						>
 							<LogOut className="h-4 w-4" />
-							Clear Sessions
+							{t('admin.users.account.clearSessions')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -1433,11 +1529,9 @@ export default function UserDetailPage() {
 			<Dialog open={syncUserDialogOpen} onOpenChange={setSyncUserDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Sync User Data</DialogTitle>
+						<DialogTitle>{t('admin.users.confirm.syncTitle')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to trigger a data sync for {primaryCharacterName}? This will
-							refresh all character data, authenticated data, and role assignments. The sync runs in
-							the background and may take a few minutes to complete.
+							{t('admin.users.confirm.sync', { name: primaryCharacterName })}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -1446,17 +1540,17 @@ export default function UserDetailPage() {
 							onClick={() => setSyncUserDialogOpen(false)}
 							disabled={syncUser.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="confirm"
 							onClick={handleSyncUserConfirm}
 							loading={syncUser.isPending}
-							loadingText="Triggering..."
+							loadingText={t('admin.users.account.triggering')}
 							showIcon={false}
 						>
 							<RefreshCw className="h-4 w-4" />
-							Sync User
+							{t('admin.users.account.syncUser')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -1466,14 +1560,14 @@ export default function UserDetailPage() {
 			<Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Delete Character</DialogTitle>
+						<DialogTitle>{t('admin.users.account.deleteCharacter')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete "{selectedCharacterData?.characterName}"? This action
-							cannot be undone. The character will be removed from the user's account.
+							{t('admin.users.confirm.deleteCharacter', {
+								name: selectedCharacterData?.characterName,
+							})}
 							{selectedCharacterData?.is_primary && (
 								<div className="mt-2 text-destructive font-semibold">
-									Warning: This is the user's primary character. A new primary will be automatically
-									selected.
+									{t('admin.users.confirm.deletePrimaryWarning')}
 								</div>
 							)}
 						</DialogDescription>
@@ -1487,17 +1581,17 @@ export default function UserDetailPage() {
 							}}
 							disabled={deleteCharacter.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleDeleteCharacterConfirm}
 							loading={deleteCharacter.isPending}
-							loadingText="Deleting..."
+							loadingText={t('admin.users.account.deleting')}
 							showIcon={false}
 						>
 							<Trash2 className="h-4 w-4" />
-							Delete Character
+							{t('admin.users.account.deleteCharacter')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -1507,11 +1601,12 @@ export default function UserDetailPage() {
 			<Dialog open={primaryDialogOpen} onOpenChange={setPrimaryDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Set Primary Character</DialogTitle>
+						<DialogTitle>{t('admin.users.confirm.setPrimaryTitle')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to set "{selectedCharacterData?.characterName}" as the primary
-							character for {primaryCharacterName}? This will change the user's main character and
-							update their display name throughout the system.
+							{t('admin.users.confirm.setPrimary', {
+								character: selectedCharacterData?.characterName,
+								name: primaryCharacterName,
+							})}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -1523,17 +1618,17 @@ export default function UserDetailPage() {
 							}}
 							disabled={setPrimaryCharacter.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="confirm"
 							onClick={handleSetPrimaryConfirm}
 							loading={setPrimaryCharacter.isPending}
-							loadingText="Setting..."
+							loadingText={t('admin.users.account.setting')}
 							showIcon={false}
 						>
 							<CheckCircle className="h-4 w-4" />
-							Set as Primary
+							{t('admin.users.account.setPrimary')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -1543,37 +1638,45 @@ export default function UserDetailPage() {
 			<Dialog open={updateDiscordDialogOpen} onOpenChange={setUpdateDiscordDialogOpen}>
 				<DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
 					<DialogHeader>
-						<DialogTitle>Discord Access Update Results</DialogTitle>
+						<DialogTitle>{t('admin.users.discord.updateResults')}</DialogTitle>
 						<DialogDescription>
-							Results of updating Discord server access for {primaryCharacterName}
+							{t('admin.users.discord.resultsDescription', { name: primaryCharacterName })}
 						</DialogDescription>
 					</DialogHeader>
 					{discordUpdateResults && (
 						<div className="space-y-4">
 							<div className="grid grid-cols-2 gap-4">
 								<div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
-									<div className="text-sm text-muted-foreground">Servers Joined</div>
+									<div className="text-sm text-muted-foreground">
+										{t('admin.users.discord.serversJoined')}
+									</div>
 									<div className="text-2xl font-bold text-green-500">
-										{discordUpdateResults.totalInvited ?? 0}
+										{formatNumber(discordUpdateResults.totalInvited ?? 0)}
 									</div>
 								</div>
 								<div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
-									<div className="text-sm text-muted-foreground">Servers Updated</div>
+									<div className="text-sm text-muted-foreground">
+										{t('admin.users.discord.serversUpdated')}
+									</div>
 									<div className="text-2xl font-bold text-blue-500">
-										{discordUpdateResults.totalUpdated ?? 0}
+										{formatNumber(discordUpdateResults.totalUpdated ?? 0)}
 									</div>
 								</div>
 								<div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-									<div className="text-sm text-muted-foreground">Failed</div>
+									<div className="text-sm text-muted-foreground">
+										{t('admin.users.discord.failed')}
+									</div>
 									<div className="text-2xl font-bold text-red-500">
-										{discordUpdateResults.totalFailed ?? 0}
+										{formatNumber(discordUpdateResults.totalFailed ?? 0)}
 									</div>
 								</div>
 							</div>
 
 							{(discordUpdateResults.results ?? []).length > 0 && (
 								<div className="space-y-2">
-									<div className="text-sm font-semibold">Server Details</div>
+									<div className="text-sm font-semibold">
+										{t('admin.users.discord.serverDetails')}
+									</div>
 									{(discordUpdateResults.results ?? []).map((result, index) => (
 										<div
 											key={`${result.guildId}-${index}`}
@@ -1595,39 +1698,43 @@ export default function UserDetailPage() {
 													)}
 													{result.alreadyMember && (
 														<div className="text-sm text-muted-foreground mt-1">
-															Already a member
+															{t('admin.users.discord.alreadyMember')}
 														</div>
 													)}
 													{result.operation && (
 														<div className="text-xs text-muted-foreground mt-1">
-															Operation: {result.operation}
+															{t('admin.users.discord.operation', {
+																operation: t(discordOperationKeys[result.operation]),
+															})}
 														</div>
 													)}
 													{result.attemptedRoleNames && result.attemptedRoleNames.length > 0 && (
 														<div className="mt-2">
 															<div className="text-xs font-medium text-blue-600">
-																Attempted Roles
+																{t('admin.users.discord.attemptedRoles')}
 															</div>
 															<div className="text-xs font-mono break-all text-muted-foreground">
-																{result.attemptedRoleNames.join(', ')}
+																{formatList(result.attemptedRoleNames)}
 															</div>
 														</div>
 													)}
 													{result.roleNamesAdded && result.roleNamesAdded.length > 0 && (
 														<div className="mt-2">
-															<div className="text-xs font-medium text-green-600">Roles Added</div>
+															<div className="text-xs font-medium text-green-600">
+																{t('admin.users.discord.rolesAdded')}
+															</div>
 															<div className="text-xs font-mono break-all text-muted-foreground">
-																{result.roleNamesAdded.join(', ')}
+																{formatList(result.roleNamesAdded)}
 															</div>
 														</div>
 													)}
 													{result.roleNamesRemoved && result.roleNamesRemoved.length > 0 && (
 														<div className="mt-2">
 															<div className="text-xs font-medium text-amber-600">
-																Roles Removed
+																{t('admin.users.discord.rolesRemoved')}
 															</div>
 															<div className="text-xs font-mono break-all text-muted-foreground">
-																{result.roleNamesRemoved.join(', ')}
+																{formatList(result.roleNamesRemoved)}
 															</div>
 														</div>
 													)}
@@ -1640,7 +1747,9 @@ export default function UserDetailPage() {
 															: 'border-red-500 text-red-500'
 													}
 												>
-													{result.success ? 'Success' : 'Failed'}
+													{result.success
+														? t('admin.users.discord.success')
+														: t('admin.users.discord.failed')}
 												</Badge>
 											</div>
 										</div>
@@ -1656,7 +1765,7 @@ export default function UserDetailPage() {
 								setDiscordUpdateResults(null)
 							}}
 						>
-							Close
+							{t('common.close')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -1666,24 +1775,23 @@ export default function UserDetailPage() {
 			<Dialog open={blacklistDialogOpen} onOpenChange={setBlacklistDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Blocklist User</DialogTitle>
+						<DialogTitle>{t('admin.users.account.blocklistUser')}</DialogTitle>
 						<DialogDescription>
-							Blocklist {primaryCharacterName}. This will immediately disable all services and
-							prevent login. This action can be reversed.
+							{t('admin.users.confirm.blocklist', { name: primaryCharacterName })}
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4 py-4">
 						<div className="space-y-2">
-							<Label htmlFor="blacklist-reason">Reason *</Label>
+							<Label htmlFor="blacklist-reason">{t('admin.users.blocklist.reasonRequired')}</Label>
 							<Textarea
 								id="blacklist-reason"
-								placeholder="Enter the reason for blocklisting this user..."
+								placeholder={t('admin.users.blocklist.reasonPlaceholder')}
 								value={blacklistReason}
 								onChange={(e) => setBlacklistReason(e.target.value)}
 								rows={4}
 							/>
 							<p className="text-xs text-muted-foreground">
-								This reason will be visible to other administrators.
+								{t('admin.users.blocklist.reasonVisibility')}
 							</p>
 						</div>
 					</div>
@@ -1696,17 +1804,17 @@ export default function UserDetailPage() {
 							}}
 							disabled={createBlacklist.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleBlacklistConfirm}
 							loading={createBlacklist.isPending}
-							loadingText="Blocklisting..."
+							loadingText={t('admin.users.account.blocklisting')}
 							showIcon={false}
 						>
 							<ShieldBan className="h-4 w-4" />
-							Blocklist User
+							{t('admin.users.account.blocklistUser')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -1716,15 +1824,16 @@ export default function UserDetailPage() {
 			<Dialog open={removeBlacklistDialogOpen} onOpenChange={setRemoveBlacklistDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Remove from Blocklist</DialogTitle>
+						<DialogTitle>{t('admin.users.account.removeBlocklist')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to remove {primaryCharacterName} from the blocklist? They will
-							regain access to all services immediately.
+							{t('admin.users.confirm.removeBlocklist', { name: primaryCharacterName })}
 						</DialogDescription>
 					</DialogHeader>
 					{activeBlacklist && (
 						<div className="bg-muted/50 border rounded-lg p-3 my-2">
-							<p className="text-sm text-muted-foreground mb-1">Current blocklist reason:</p>
+							<p className="text-sm text-muted-foreground mb-1">
+								{t('admin.users.blocklist.currentReason')}
+							</p>
 							<p className="text-sm">{activeBlacklist.reason}</p>
 						</div>
 					)}
@@ -1734,17 +1843,17 @@ export default function UserDetailPage() {
 							onClick={() => setRemoveBlacklistDialogOpen(false)}
 							disabled={removeBlacklist.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="confirm"
 							onClick={handleRemoveBlacklistConfirm}
 							loading={removeBlacklist.isPending}
-							loadingText="Removing..."
+							loadingText={t('admin.users.account.removing')}
 							showIcon={false}
 						>
 							<ShieldBan className="h-4 w-4" />
-							Remove from Blocklist
+							{t('admin.users.account.removeBlocklist')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -1757,7 +1866,7 @@ export default function UserDetailPage() {
 				subjectUserId={user.id}
 				subjectCharacterName={primaryCharacter?.characterName}
 				onSuccess={() => {
-					setMessage({ type: 'success', text: 'Note added successfully' })
+					setMessage({ type: 'success', key: 'admin.users.feedback.noteAdded' })
 					setTimeout(() => setMessage(null), 3000)
 				}}
 			/>

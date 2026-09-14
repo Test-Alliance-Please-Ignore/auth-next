@@ -1,3 +1,11 @@
+import { Pencil, Trash2 } from 'lucide-react'
+import { Trans } from 'react-i18next'
+
+import { MemberAvatar } from '@/components/member-avatar'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { useAppTranslation } from '@/i18n'
 /**
  * HR Note Card Component
  *
@@ -7,13 +15,7 @@
  * SECURITY: This component must only be rendered for admin users.
  */
 
-import { formatDistanceToNow } from 'date-fns'
-import { Pencil, Trash2 } from 'lucide-react'
-
-import { MemberAvatar } from '@/components/member-avatar'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { HRNotePriorityBadge } from './hr-note-priority-badge'
@@ -50,10 +52,20 @@ export interface HRNoteCardProps {
  * <HRNoteCard note={note} />
  * ```
  */
-export function HRNoteCard({ note, showSubject = false, className, onEdit, onDelete }: HRNoteCardProps) {
-	const isLegacyFallbackActor = note.metadata?.legacyNoteActorResolution === 'unresolved_importer_fallback'
+export function HRNoteCard({
+	note,
+	showSubject = false,
+	className,
+	onEdit,
+	onDelete,
+}: HRNoteCardProps) {
+	const { t } = useAppTranslation()
+	const isLegacyFallbackActor =
+		note.metadata?.legacyNoteActorResolution === 'unresolved_importer_fallback'
 	const isLegacyImportedNote = note.metadata?.source === 'legacy_import'
-	const displayAuthorName = isLegacyFallbackActor ? 'Legacy User' : note.authorCharacterName
+	const displayAuthorName = isLegacyFallbackActor
+		? t('hr.notes.legacyUser')
+		: note.authorCharacterName
 	const displayAuthorCharacterId = isLegacyFallbackActor ? '1' : note.authorCharacterId
 	const visibility = note.metadata?.visibility === 'admin' ? 'admin' : 'hr'
 
@@ -88,18 +100,19 @@ export function HRNoteCard({ note, showSubject = false, className, onEdit, onDel
 					<span className="font-medium text-sm">{displayAuthorName}</span>
 					<HRNoteTypeBadge noteType={note.noteType} size="sm" />
 					<Badge variant={visibility === 'admin' ? 'secondary' : 'default'}>
-						{visibility === 'admin' ? 'Admin-only' : 'HR note'}
+						{visibility === 'admin' ? t('hr.notes.adminOnly') : t('hr.notes.hrNote')}
 					</Badge>
-					{isLegacyImportedNote ? <Badge variant="secondary">Legacy</Badge> : null}
+					{isLegacyImportedNote ? <Badge variant="secondary">{t('hr.notes.legacy')}</Badge> : null}
 					<HRNotePriorityBadge priority={note.priority} size="sm" />
 					<span className="text-xs text-muted-foreground ml-auto">
-						{formatDistanceToNow(new Date(note.createdAt), { addSuffix: true })}
+						{formatRelativeTime(note.createdAt)}
 					</span>
 					{onEdit && (
 						<Button
 							variant="ghost"
 							size="sm"
 							className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+							aria-label={t('hr.notes.editAction')}
 							onClick={() => onEdit(note.id)}
 						>
 							<Pencil className="h-3.5 w-3.5" />
@@ -110,6 +123,7 @@ export function HRNoteCard({ note, showSubject = false, className, onEdit, onDel
 							variant="ghost"
 							size="sm"
 							className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+							aria-label={t('hr.notes.deleteAction')}
 							onClick={() => onDelete(note.id)}
 						>
 							<Trash2 className="h-3.5 w-3.5" />
@@ -119,7 +133,11 @@ export function HRNoteCard({ note, showSubject = false, className, onEdit, onDel
 
 				{showSubject && note.subjectCharacterName && (
 					<div className="text-xs text-muted-foreground mb-2">
-						About: <span className="font-medium">{note.subjectCharacterName}</span>
+						<Trans
+							i18nKey="hr.notes.about"
+							values={{ name: note.subjectCharacterName }}
+							components={{ name: <span className="font-medium" /> }}
+						/>
 					</div>
 				)}
 
