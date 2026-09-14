@@ -40,7 +40,9 @@ import {
 } from '@/hooks/useDiscord'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatNumber, useAppTranslation } from '@/i18n'
 
+import type { FormEvent } from 'react'
 import type { CreateDiscordRoleRequest, UpdateDiscordRoleRequest } from '@/lib/api'
 
 const DURATION_PRESETS = [
@@ -53,8 +55,6 @@ const DURATION_PRESETS = [
 	'1 month',
 	'1 year',
 ].map((label) => ({ value: label, label }))
-
-const DURATION_OPTIONS = [...DURATION_PRESETS, { value: 'custom', label: 'Custom' }]
 
 type DurationDraft = { mode: string; customValue: string }
 
@@ -90,7 +90,7 @@ function durationBorderClass(isValid: boolean | null): string {
 	return ''
 }
 
-function formatDuration(seconds: number | null): string {
+function formatDurationInput(seconds: number | null): string {
 	if (seconds === null) return 'forever'
 	const units: Array<[string, number]> = [
 		['year', 365 * 24 * 60 * 60],
@@ -110,15 +110,40 @@ function formatDuration(seconds: number | null): string {
 }
 
 function getDurationDraft(seconds: number | null): DurationDraft {
-	const value = formatDuration(seconds)
+	const value = formatDurationInput(seconds)
 	return DURATION_PRESETS.some((option) => option.value === value)
 		? { mode: value, customValue: '' }
 		: { mode: 'custom', customValue: value }
 }
 
 export default function AdminDiscordServerRolesPage() {
+	const { t } = useAppTranslation()
+	const formatDurationLabel = (seconds: number | null) => {
+		if (seconds === null) return t('admin.discord.roles.forever')
+		const units = [
+			['year', 31536000],
+			['month', 2592000],
+			['week', 604800],
+			['day', 86400],
+			['hour', 3600],
+			['minute', 60],
+			['second', 1],
+		] as const
+		const [unit, size] = units.find(([, size]) => seconds >= size && seconds % size === 0) ?? [
+			'second',
+			1,
+		]
+		return formatNumber(seconds / size, { style: 'unit', unit, unitDisplay: 'long' })
+	}
+	const durationOptions = [
+		...DURATION_PRESETS.map(({ value }) => ({
+			value,
+			label: formatDurationLabel(parseDuration(value)! / 1000),
+		})),
+		{ value: 'custom', label: t('admin.discord.roles.custom') },
+	]
 	const { serverId } = useParams<{ serverId: string }>()
-	usePageTitle('Admin - Discord Server Roles')
+	usePageTitle(t('admin.discord.roles.pageTitle'))
 	const { data: discordServers, isLoading } = useDiscordServers()
 	const createRole = useCreateDiscordRole()
 	const updateRole = useUpdateDiscordRole()
@@ -222,14 +247,14 @@ export default function AdminDiscordServerRolesPage() {
 		(server?.roles.some((role) => role.roleName.trim().toLowerCase() === normalizedRoleName) ??
 			false)
 
-	const handleCreateRole = async (e: React.FormEvent) => {
+	const handleCreateRole = async (e: FormEvent) => {
 		e.preventDefault()
 		if (!server || !roleFormData.roleId || !roleFormData.roleName) {
-			showError('Role ID and name are required')
+			showError((t) => t('admin.discord.feedback.roleRequired'))
 			return
 		}
 		if (duplicateRoleId || duplicateRoleName) {
-			showError('A managed role with this ID or name already exists')
+			showError((t) => t('admin.discord.feedback.duplicateRole'))
 			return
 		}
 
@@ -237,13 +262,15 @@ export default function AdminDiscordServerRolesPage() {
 			await createRole.mutateAsync({ serverId: server.id, data: roleFormData })
 			setCreateRoleDialogOpen(false)
 			setRoleFormData({ roleId: '', roleName: '', description: '', autoApply: false })
-			showSuccess('Role added successfully!')
+			showSuccess((t) => t('admin.discord.feedback.roleAdded'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to add role')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.roleAddError')
+			)
 		}
 	}
 
-	const handleUpdateRole = async (e: React.FormEvent) => {
+	const handleUpdateRole = async (e: FormEvent) => {
 		e.preventDefault()
 		if (!server || !selectedRole) return
 
@@ -255,9 +282,11 @@ export default function AdminDiscordServerRolesPage() {
 			})
 			setEditRoleDialogOpen(false)
 			setSelectedRole(null)
-			showSuccess('Role updated successfully!')
+			showSuccess((t) => t('admin.discord.feedback.roleUpdated'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update role')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.roleUpdateError')
+			)
 		}
 	}
 
@@ -267,9 +296,11 @@ export default function AdminDiscordServerRolesPage() {
 			await deleteRole.mutateAsync({ serverId: server.id, roleId: selectedRole.roleId })
 			setDeleteRoleDialogOpen(false)
 			setSelectedRole(null)
-			showSuccess('Role deleted successfully!')
+			showSuccess((t) => t('admin.discord.feedback.roleDeleted'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to delete role')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.roleDeleteError')
+			)
 		}
 	}
 
@@ -278,11 +309,17 @@ export default function AdminDiscordServerRolesPage() {
 		setRefreshing(true)
 		try {
 			const result = await refreshMembers.mutateAsync(server.id)
-			showSuccess(
-				`Refresh complete! Processed ${result.totalProcessed} users: ${result.successfulInvites} successful, ${result.failedInvites} failed`
+			showSuccess((t) =>
+				t('admin.discord.feedback.membersRefreshed', {
+					total: result.totalProcessed,
+					success: result.successfulInvites,
+					failed: result.failedInvites,
+				})
 			)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to refresh members')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.membersRefreshError')
+			)
 		} finally {
 			setRefreshing(false)
 		}
@@ -303,11 +340,11 @@ export default function AdminDiscordServerRolesPage() {
 
 	const saveNewSelfAssignableRole = async () => {
 		if (!server || !newSelfAssignableRoleId) {
-			showError('Select a managed role')
+			showError((t) => t('admin.discord.feedback.selectManaged'))
 			return
 		}
 		if (newSelfAssignableDuration.mode === 'custom' && newCustomDurationValid !== true) {
-			showError('Enter a valid duration')
+			showError((t) => t('admin.discord.feedback.validDuration'))
 			return
 		}
 		try {
@@ -329,9 +366,11 @@ export default function AdminDiscordServerRolesPage() {
 			setNewSelfAssignableDisplayName('')
 			setNewSelfAssignableDuration({ mode: '1 day', customValue: '' })
 			setIsCreatingSelfAssignableRole(false)
-			showSuccess('Self-assignable role saved')
+			showSuccess((t) => t('admin.discord.feedback.selfSaved'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to save self-assignable role')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.selfSaveError')
+			)
 		}
 	}
 
@@ -343,7 +382,7 @@ export default function AdminDiscordServerRolesPage() {
 	) => {
 		if (!server) return
 		if (draft.mode === 'custom' && customDurationValidity[configId] !== true) {
-			showError('Enter a valid duration')
+			showError((t) => t('admin.discord.feedback.validDuration'))
 			return
 		}
 		const value = draft.mode === 'custom' ? draft.customValue : draft.mode
@@ -370,16 +409,18 @@ export default function AdminDiscordServerRolesPage() {
 				const { [configId]: _, ...rest } = current
 				return rest
 			})
-			showSuccess('Self-assignable role updated')
+			showSuccess((t) => t('admin.discord.feedback.selfUpdated'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update self-assignable role')
+			showError((t) =>
+				error instanceof Error ? error.message : t('admin.discord.feedback.selfUpdateError')
+			)
 		}
 	}
 
 	if (isLoading) {
 		return (
 			<div className="flex justify-center py-12">
-				<LoadingSpinner label="Loading Discord server..." />
+				<LoadingSpinner label={t('admin.discord.shared.loadingServer')} />
 			</div>
 		)
 	}
@@ -388,9 +429,9 @@ export default function AdminDiscordServerRolesPage() {
 		return (
 			<Card>
 				<CardContent className="py-8">
-					<p className="text-muted-foreground">Discord server not found.</p>
+					<p className="text-muted-foreground">{t('admin.discord.shared.serverNotFound')}</p>
 					<Button asChild variant="ghost" className="mt-3">
-						<Link to="/admin/discord-servers">Back to Servers</Link>
+						<Link to="/admin/discord-servers">{t('admin.discord.shared.backServers')}</Link>
 					</Button>
 				</CardContent>
 			</Card>
@@ -402,25 +443,25 @@ export default function AdminDiscordServerRolesPage() {
 			<div className="flex items-center justify-between gap-3">
 				<div>
 					<div className="text-sm text-muted-foreground">
-						Discord / Servers / {server.guildName} / Roles
+						{t('admin.discord.roles.breadcrumb', { name: server.guildName })}
 					</div>
-					<h1 className="text-3xl font-bold gradient-text">Discord Server Roles</h1>
-					<p className="text-muted-foreground mt-1">Manage role registry for this server</p>
+					<h1 className="text-3xl font-bold gradient-text">{t('admin.discord.roles.title')}</h1>
+					<p className="text-muted-foreground mt-1">{t('admin.discord.roles.description')}</p>
 				</div>
 				<div className="flex items-center gap-2">
 					<Button asChild variant="ghost">
 						<Link to="/admin/discord-servers">
 							<ArrowLeft className="h-4 w-4" />
-							Back to Servers
+							{t('admin.discord.shared.backServers')}
 						</Link>
 					</Button>
 					<Button variant="ghost" onClick={handleRefreshMembers} disabled={refreshing}>
 						<RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-						Refresh All Members
+						{t('admin.discord.roles.refreshAll')}
 					</Button>
 					<Button variant="primary" onClick={() => setCreateRoleDialogOpen(true)}>
 						<Plus className="h-4 w-4" />
-						Add Role
+						{t('admin.discord.roles.add')}
 					</Button>
 				</div>
 			</div>
@@ -443,28 +484,32 @@ export default function AdminDiscordServerRolesPage() {
 
 			<Tabs value={activeTab} onValueChange={setActiveTab}>
 				<TabsList>
-					<TabsTrigger value="managed">Managed Roles</TabsTrigger>
-					<TabsTrigger value="self-assignable">Self-Assignable Roles</TabsTrigger>
+					<TabsTrigger value="managed">{t('admin.discord.roles.managed')}</TabsTrigger>
+					<TabsTrigger value="self-assignable">
+						{t('admin.discord.roles.selfAssignable')}
+					</TabsTrigger>
 				</TabsList>
 				<TabsContent value="managed">
 					<Card variant="elevated">
 						<CardHeader>
-							<CardTitle>Roles</CardTitle>
-							<CardDescription>Server: {server.guildName}</CardDescription>
+							<CardTitle>{t('admin.breadcrumbs.roles')}</CardTitle>
+							<CardDescription>
+								{t('admin.discord.shared.serverName', { name: server.guildName })}
+							</CardDescription>
 						</CardHeader>
 						<CardContent>
 							{server.roles.length === 0 ? (
-								<p className="text-sm text-muted-foreground">No roles configured.</p>
+								<p className="text-sm text-muted-foreground">{t('admin.discord.roles.empty')}</p>
 							) : (
 								<div className="max-h-[65vh] overflow-y-auto pr-1">
 									<Table>
 										<TableHeader>
 											<TableRow>
-												<TableHead>Role Name</TableHead>
-												<TableHead>Role ID</TableHead>
-												<TableHead>Status</TableHead>
-												<TableHead>Description</TableHead>
-												<TableHead className="text-right">Actions</TableHead>
+												<TableHead>{t('admin.discord.roles.name')}</TableHead>
+												<TableHead>{t('admin.discord.roles.id')}</TableHead>
+												<TableHead>{t('admin.users.account.status')}</TableHead>
+												<TableHead>{t('groups.form.description')}</TableHead>
+												<TableHead className="text-right">{t('myGroups.table.actions')}</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
@@ -479,11 +524,13 @@ export default function AdminDiscordServerRolesPage() {
 															<span
 																className={`text-xs ${role.isActive ? 'text-primary' : 'text-muted-foreground'}`}
 															>
-																{role.isActive ? 'Active' : 'Inactive'}
+																{role.isActive
+																	? t('services.active')
+																	: t('admin.organizations.corp.inactive')}
 															</span>
 															{role.autoApply && (
 																<span className="rounded bg-primary/10 px-2 py-0.5 text-xs text-primary">
-																	Auto-apply
+																	{t('admin.discord.roles.autoApply')}
 																</span>
 															)}
 														</div>
@@ -545,23 +592,20 @@ export default function AdminDiscordServerRolesPage() {
 				<TabsContent value="self-assignable">
 					<Card variant="elevated">
 						<CardHeader>
-							<CardTitle>Self-Assignable Roles</CardTitle>
-							<CardDescription>
-								Choose from this server&apos;s managed roles. Unmanaged Discord roles are not
-								eligible.
-							</CardDescription>
+							<CardTitle>{t('admin.discord.roles.selfAssignable')}</CardTitle>
+							<CardDescription>{t('admin.discord.roles.selfDescription')}</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-3">
 							{selfAssignableRoles.isLoading ? (
-								<LoadingSpinner label="Loading self-assignable roles..." />
+								<LoadingSpinner label={t('admin.discord.roles.selfLoading')} />
 							) : selfAssignableRoles.data?.length || isCreatingSelfAssignableRole ? (
 								<div className="overflow-x-auto rounded-lg border border-border/50 bg-card">
 									<Table>
 										<TableHeader>
 											<TableRow>
-												<TableHead>Role</TableHead>
-												<TableHead>Duration</TableHead>
-												<TableHead className="text-right">Actions</TableHead>
+												<TableHead>{t('admin.discord.roles.role')}</TableHead>
+												<TableHead>{t('admin.discord.roles.duration')}</TableHead>
+												<TableHead className="text-right">{t('myGroups.table.actions')}</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
@@ -613,14 +657,14 @@ export default function AdminDiscordServerRolesPage() {
 																					[config.id]: event.target.value,
 																				}))
 																			}
-																			placeholder="Display name shown in Discord"
+																			placeholder={t('admin.discord.roles.displayPlaceholder')}
 																		/>
 																	</div>
 																</TableCell>
 																<TableCell>
 																	<div className="space-y-2">
 																		<Select
-																			options={DURATION_OPTIONS}
+																			options={durationOptions}
 																			value={duration.mode}
 																			onValueChange={(mode) =>
 																				setSelfAssignableDurationDrafts((current) => ({
@@ -628,7 +672,7 @@ export default function AdminDiscordServerRolesPage() {
 																					[config.id]: { ...duration, mode },
 																				}))
 																			}
-																			placeholder="Select duration"
+																			placeholder={t('admin.discord.roles.selectDuration')}
 																		/>
 																		{duration.mode === 'custom' && (
 																			<Input
@@ -642,7 +686,9 @@ export default function AdminDiscordServerRolesPage() {
 																						},
 																					}))
 																				}
-																				placeholder="Custom duration, e.g. 90 minutes or forever"
+																				placeholder={t('admin.discord.roles.customDuration')}
+																				aria-label={t('admin.discord.roles.duration')}
+																				title={t('admin.discord.roles.durationHint')}
 																				maxLength={MAX_DURATION_INPUT_LENGTH}
 																				className={durationBorderClass(
 																					customDurationValidity[config.id] ?? null
@@ -672,7 +718,7 @@ export default function AdminDiscordServerRolesPage() {
 																				customDurationValidity[config.id] !== true
 																			}
 																		>
-																			Save
+																			{t('admin.organizations.shared.save')}
 																		</Button>
 																		<Button
 																			variant="ghost"
@@ -693,7 +739,7 @@ export default function AdminDiscordServerRolesPage() {
 																				})
 																			}}
 																		>
-																			Cancel
+																			{t('common.cancel')}
 																		</Button>
 																	</div>
 																</TableCell>
@@ -709,9 +755,7 @@ export default function AdminDiscordServerRolesPage() {
 																	</div>
 																</TableCell>
 																<TableCell className="text-sm text-muted-foreground">
-																	{duration.mode === 'custom'
-																		? duration.customValue
-																		: duration.mode}
+																	{formatDurationLabel(config.defaultDurationSeconds)}
 																</TableCell>
 																<TableCell className="text-right">
 																	<div className="inline-flex gap-1">
@@ -735,8 +779,10 @@ export default function AdminDiscordServerRolesPage() {
 																					),
 																				}))
 																			}}
-																			aria-label={`Edit ${config.discordRole.roleName} configuration`}
-																			title="Edit role"
+																			aria-label={t('admin.discord.roles.editConfiguration', {
+																				name: config.discordRole.roleName,
+																			})}
+																			title={t('admin.discord.roles.edit')}
 																		>
 																			<Edit className="h-4 w-4" />
 																		</Button>
@@ -750,17 +796,21 @@ export default function AdminDiscordServerRolesPage() {
 																						serverId: server.id,
 																						configId: config.id,
 																					})
-																					showSuccess('Self-assignable role removed')
+																					showSuccess((t) =>
+																						t('admin.discord.feedback.selfRemoved')
+																					)
 																				} catch (error) {
-																					showError(
+																					showError((t) =>
 																						error instanceof Error
 																							? error.message
-																							: 'Failed to remove self-assignable role'
+																							: t('admin.discord.feedback.selfRemoveError')
 																					)
 																				}
 																			}}
-																			aria-label={`Remove ${config.discordRole.roleName} configuration`}
-																			title="Remove role"
+																			aria-label={t('admin.discord.roles.removeConfiguration', {
+																				name: config.discordRole.roleName,
+																			})}
+																			title={t('admin.discord.roles.remove')}
 																		>
 																			<Trash2 className="h-4 w-4 text-destructive" />
 																		</Button>
@@ -786,7 +836,7 @@ export default function AdminDiscordServerRolesPage() {
 																	}
 																}}
 																searchable
-																placeholder="Select managed role"
+																placeholder={t('admin.discord.roles.selectManaged')}
 															/>
 															<Input
 																value={newSelfAssignableDisplayName}
@@ -794,19 +844,19 @@ export default function AdminDiscordServerRolesPage() {
 																onChange={(event) =>
 																	setNewSelfAssignableDisplayName(event.target.value)
 																}
-																placeholder="Display name shown in Discord"
+																placeholder={t('admin.discord.roles.displayPlaceholder')}
 															/>
 														</div>
 													</TableCell>
 													<TableCell>
 														<div className="space-y-2">
 															<Select
-																options={DURATION_OPTIONS}
+																options={durationOptions}
 																value={newSelfAssignableDuration.mode}
 																onValueChange={(mode) =>
 																	setNewSelfAssignableDuration((current) => ({ ...current, mode }))
 																}
-																placeholder="Select duration"
+																placeholder={t('admin.discord.roles.selectDuration')}
 															/>
 															{newSelfAssignableDuration.mode === 'custom' && (
 																<Input
@@ -817,7 +867,9 @@ export default function AdminDiscordServerRolesPage() {
 																			customValue: event.target.value,
 																		}))
 																	}
-																	placeholder="Custom duration, e.g. 90 minutes or forever"
+																	placeholder={t('admin.discord.roles.customDuration')}
+																	aria-label={t('admin.discord.roles.duration')}
+																	title={t('admin.discord.roles.durationHint')}
 																	maxLength={MAX_DURATION_INPUT_LENGTH}
 																	className={durationBorderClass(newCustomDurationValid)}
 																	aria-invalid={newCustomDurationValid === false}
@@ -837,7 +889,7 @@ export default function AdminDiscordServerRolesPage() {
 																	newCustomDurationValid !== true
 																}
 															>
-																Save
+																{t('admin.organizations.shared.save')}
 															</Button>
 															<Button
 																variant="ghost"
@@ -849,7 +901,7 @@ export default function AdminDiscordServerRolesPage() {
 																	setNewSelfAssignableDuration({ mode: '1 day', customValue: '' })
 																}}
 															>
-																Cancel
+																{t('common.cancel')}
 															</Button>
 														</div>
 													</TableCell>
@@ -860,7 +912,7 @@ export default function AdminDiscordServerRolesPage() {
 								</div>
 							) : (
 								<p className="text-sm text-muted-foreground">
-									No self-assignable roles configured.
+									{t('admin.discord.roles.selfEmpty')}
 								</p>
 							)}
 							{!isCreatingSelfAssignableRole && (
@@ -871,7 +923,7 @@ export default function AdminDiscordServerRolesPage() {
 										onClick={() => setIsCreatingSelfAssignableRole(true)}
 									>
 										<Plus className="h-4 w-4" />
-										Add configuration
+										{t('admin.discord.roles.addConfiguration')}
 									</Button>
 								</div>
 							)}
@@ -883,12 +935,14 @@ export default function AdminDiscordServerRolesPage() {
 			<Dialog open={createRoleDialogOpen} onOpenChange={setCreateRoleDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Add Role</DialogTitle>
-						<DialogDescription>Add a new role to {server.guildName}</DialogDescription>
+						<DialogTitle>{t('admin.discord.roles.add')}</DialogTitle>
+						<DialogDescription>
+							{t('admin.discord.roles.addDescription', { name: server.guildName })}
+						</DialogDescription>
 					</DialogHeader>
 					<form onSubmit={handleCreateRole} className="space-y-4">
 						<div className="space-y-2">
-							<Label htmlFor="roleId">Role ID *</Label>
+							<Label htmlFor="roleId">{t('admin.discord.roles.idRequired')}</Label>
 							<Input
 								id="roleId"
 								type="text"
@@ -901,11 +955,11 @@ export default function AdminDiscordServerRolesPage() {
 								required
 							/>
 							{duplicateRoleId && (
-								<p className="text-xs text-destructive">This role ID is already managed.</p>
+								<p className="text-xs text-destructive">{t('admin.discord.roles.duplicateId')}</p>
 							)}
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor="roleName">Role Name *</Label>
+							<Label htmlFor="roleName">{t('admin.discord.roles.nameRequired')}</Label>
 							<Input
 								id="roleName"
 								type="text"
@@ -920,11 +974,13 @@ export default function AdminDiscordServerRolesPage() {
 								required
 							/>
 							{duplicateRoleName && (
-								<p className="text-xs text-destructive">This role name is already managed.</p>
+								<p className="text-xs text-destructive">{t('admin.discord.roles.duplicateName')}</p>
 							)}
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor="role-description">Description (Optional)</Label>
+							<Label htmlFor="role-description">
+								{t('admin.discord.shared.descriptionOptional')}
+							</Label>
 							<Input
 								id="role-description"
 								type="text"
@@ -941,21 +997,21 @@ export default function AdminDiscordServerRolesPage() {
 								}
 							/>
 							<Label htmlFor="autoApply" className="cursor-pointer">
-								Auto-apply to all users
+								{t('admin.discord.roles.autoApplyAll')}
 							</Label>
 						</div>
 						<DialogFooter>
 							<Button variant="cancel" type="button" onClick={() => setCreateRoleDialogOpen(false)}>
-								Cancel
+								{t('common.cancel')}
 							</Button>
 							<Button
 								variant="confirm"
 								type="submit"
 								disabled={duplicateRoleId || duplicateRoleName}
 								loading={createRole.isPending}
-								loadingText="Adding..."
+								loadingText={t('admin.organizations.corp.adding')}
 							>
-								Add Role
+								{t('admin.discord.roles.add')}
 							</Button>
 						</DialogFooter>
 					</form>
@@ -965,12 +1021,12 @@ export default function AdminDiscordServerRolesPage() {
 			<Dialog open={editRoleDialogOpen} onOpenChange={setEditRoleDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Edit Role</DialogTitle>
-						<DialogDescription>Update role information</DialogDescription>
+						<DialogTitle>{t('admin.discord.roles.edit')}</DialogTitle>
+						<DialogDescription>{t('admin.discord.roles.editDescription')}</DialogDescription>
 					</DialogHeader>
 					<form onSubmit={handleUpdateRole} className="space-y-4">
 						<div className="space-y-2">
-							<Label htmlFor="edit-roleName">Role Name *</Label>
+							<Label htmlFor="edit-roleName">{t('admin.discord.roles.nameRequired')}</Label>
 							<Input
 								id="edit-roleName"
 								type="text"
@@ -982,7 +1038,9 @@ export default function AdminDiscordServerRolesPage() {
 							/>
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor="edit-role-description">Description (Optional)</Label>
+							<Label htmlFor="edit-role-description">
+								{t('admin.discord.shared.descriptionOptional')}
+							</Label>
 							<Input
 								id="edit-role-description"
 								type="text"
@@ -1000,7 +1058,7 @@ export default function AdminDiscordServerRolesPage() {
 									setRoleEditFormData({ ...roleEditFormData, isActive: checked })
 								}
 							/>
-							<Label htmlFor="edit-role-active">Active</Label>
+							<Label htmlFor="edit-role-active">{t('services.active')}</Label>
 						</div>
 						<div className="flex items-center space-x-2">
 							<Switch
@@ -1010,19 +1068,19 @@ export default function AdminDiscordServerRolesPage() {
 									setRoleEditFormData({ ...roleEditFormData, autoApply: checked })
 								}
 							/>
-							<Label htmlFor="edit-role-autoApply">Auto-apply to all users</Label>
+							<Label htmlFor="edit-role-autoApply">{t('admin.discord.roles.autoApplyAll')}</Label>
 						</div>
 						<DialogFooter>
 							<Button variant="cancel" type="button" onClick={() => setEditRoleDialogOpen(false)}>
-								Cancel
+								{t('common.cancel')}
 							</Button>
 							<Button
 								variant="confirm"
 								type="submit"
 								loading={updateRole.isPending}
-								loadingText="Updating..."
+								loadingText={t('hr.notes.updating')}
 							>
-								Update Role
+								{t('admin.discord.roles.update')}
 							</Button>
 						</DialogFooter>
 					</form>
@@ -1032,22 +1090,22 @@ export default function AdminDiscordServerRolesPage() {
 			<Dialog open={deleteRoleDialogOpen} onOpenChange={setDeleteRoleDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Delete Role</DialogTitle>
+						<DialogTitle>{t('admin.discord.roles.delete')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete role "{selectedRole?.roleName}"?
+							{t('admin.discord.roles.deleteWarning', { name: selectedRole?.roleName })}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDeleteRoleDialogOpen(false)}>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleDeleteRole}
 							loading={deleteRole.isPending}
-							loadingText="Deleting..."
+							loadingText={t('admin.users.account.deleting')}
 						>
-							Delete
+							{t('common.delete')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
