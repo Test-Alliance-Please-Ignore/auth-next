@@ -3,10 +3,12 @@ import { useNavigate, useParams } from 'react-router'
 import { isManualBill } from '@repo/bills'
 
 import { BillDetailContent, BillDetailState } from '@/components/bills/bill-detail-content'
+import { BillFeedback } from '@/components/bills/bill-feedback'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 
 import {
@@ -20,6 +22,7 @@ import {
 import { hasBillingIssuerPermission } from '../issuer-access'
 
 export default function BillDetailPage() {
+	const { t } = useAppTranslation()
 	const { billId } = useParams<{ billId: string }>()
 	const navigate = useNavigate()
 	const { user } = useAuth()
@@ -32,29 +35,30 @@ export default function BillDetailPage() {
 	const revertBillToDraft = useRevertIssuedBillToDraft()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
-	usePageTitle(bill ? `Bill - ${bill.title}` : 'Bill Details')
+	usePageTitle(bill ? t('bills.pageTitle', { title: bill.title }) : t('bills.details'))
 
 	const handleIssue = async () => {
 		if (!bill) return
 		try {
 			await issueBill.mutateAsync(bill.id)
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Failed to issue bill')
+			toast.error(<BillFeedback messageKey="bills.feedback.issueFailed" error={error} />)
 		}
 	}
 
 	const handleCancel = () => {
 		if (!bill) return
 		requestConfirmation({
-			title: 'Cancel Bill',
-			description: 'Are you sure you want to cancel this bill?',
-			confirmLabel: 'Cancel Bill',
+			title: (t) => t('bills.confirm.cancelTitle'),
+			description: (t) => t('bills.confirm.cancelDescription'),
+			confirmLabel: (t) => t('bills.confirm.cancelTitle'),
 			intent: 'confirm',
 			onConfirm: async () => {
 				try {
 					await cancelBill.mutateAsync(bill.id)
 				} catch (error) {
-					toast.error(error instanceof Error ? error.message : 'Failed to cancel bill')
+					toast.error(<BillFeedback messageKey="bills.feedback.cancelFailed" error={error} />)
+					throw error
 				}
 			},
 		})
@@ -63,15 +67,16 @@ export default function BillDetailPage() {
 	const handleMarkPaid = () => {
 		if (!bill) return
 		requestConfirmation({
-			title: 'Mark Bill Paid',
-			description: 'Mark this bill as paid?',
-			confirmLabel: 'Mark Paid',
+			title: (t) => t('bills.confirm.paidTitle'),
+			description: (t) => t('bills.confirm.paidDescription'),
+			confirmLabel: (t) => t('bills.actions.markPaid'),
 			intent: 'confirm',
 			onConfirm: async () => {
 				try {
 					await markBillPaid.mutateAsync(bill.id)
 				} catch (error) {
-					toast.error(error instanceof Error ? error.message : 'Failed to mark bill paid')
+					toast.error(<BillFeedback messageKey="bills.feedback.paidFailed" error={error} />)
+					throw error
 				}
 			},
 		})
@@ -80,15 +85,16 @@ export default function BillDetailPage() {
 	const handleRevertToDraft = () => {
 		if (!bill) return
 		requestConfirmation({
-			title: 'Move Bill To Draft',
-			description: 'Move this bill back to draft?',
-			confirmLabel: 'To Draft',
+			title: (t) => t('bills.confirm.draftTitle'),
+			description: (t) => t('bills.confirm.draftDescription'),
+			confirmLabel: (t) => t('bills.actions.draft'),
 			intent: 'secondary',
 			onConfirm: async () => {
 				try {
 					await revertBillToDraft.mutateAsync(bill.id)
 				} catch (error) {
-					toast.error(error instanceof Error ? error.message : 'Failed to revert bill to draft')
+					toast.error(<BillFeedback messageKey="bills.feedback.draftFailed" error={error} />)
+					throw error
 				}
 			},
 		})
@@ -97,16 +103,17 @@ export default function BillDetailPage() {
 	const handleDelete = () => {
 		if (!bill) return
 		requestConfirmation({
-			title: 'Delete Bill',
-			description: 'Are you sure you want to delete this bill? This action cannot be undone.',
-			confirmLabel: 'Delete Bill',
+			title: (t) => t('bills.confirm.deleteTitle'),
+			description: (t) => t('bills.confirm.deleteDescription'),
+			confirmLabel: (t) => t('bills.confirm.deleteTitle'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				try {
 					await deleteBill.mutateAsync(bill.id)
 					void navigate('/my-bills')
 				} catch (error) {
-					toast.error(error instanceof Error ? error.message : 'Failed to delete bill')
+					toast.error(<BillFeedback messageKey="bills.feedback.deleteFailed" error={error} />)
+					throw error
 				}
 			},
 		})
@@ -139,6 +146,12 @@ export default function BillDetailPage() {
 				actions={
 					canManage || canMarkPaid
 						? {
+								pending:
+									issueBill.isPending ||
+									cancelBill.isPending ||
+									markBillPaid.isPending ||
+									deleteBill.isPending ||
+									revertBillToDraft.isPending,
 								onIssue: canManage ? () => void handleIssue() : undefined,
 								onMarkPaid: canMarkPaid ? handleMarkPaid : undefined,
 								onRevertToDraft: canManage && canRevertToDraft ? handleRevertToDraft : undefined,

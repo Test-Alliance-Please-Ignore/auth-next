@@ -4,11 +4,13 @@ import { Link } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 export type BillActionIntent = 'confirm' | 'secondary' | 'muted' | 'destructive' | 'primary'
 
 export interface BillActionItem {
+	id?: string
 	label: string
 	intent: BillActionIntent
 	hidden?: boolean
@@ -26,6 +28,7 @@ const intentBg: Record<BillActionIntent, string> = {
 }
 
 export function BillActionsMenu(props: { items: BillActionItem[] }) {
+	const { t } = useAppTranslation()
 	const [open, setOpen] = useState(false)
 	const visible = props.items.filter((item) => !item.hidden)
 
@@ -53,26 +56,26 @@ export function BillActionsMenu(props: { items: BillActionItem[] }) {
 				disabled={item.loading}
 				onClick={() => run(item)}
 			>
-				{item.loading ? 'Loading...' : item.label}
+				{item.loading ? t('common.loading') : item.label}
 			</Button>
 		)
 	}
 
 	const baseClass =
-		'flex min-h-9 w-full cursor-pointer items-center px-3 py-2 text-left !text-sm !font-medium !leading-5 text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 first:rounded-t last:rounded-b'
+		'flex min-h-9 w-full cursor-pointer items-center px-3 py-2 whitespace-normal text-left !text-sm !font-medium !leading-5 text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 first:rounded-t last:rounded-b'
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<Button variant="ghost" size="sm" type="button">
-					Actions <ChevronDown className="ml-1 h-3 w-3" />
+					{t('bills.columns.actions')} <ChevronDown className="ml-1 h-3 w-3" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent align="end" className="w-36 p-1">
+			<PopoverContent align="end" className="w-56 max-w-[calc(100vw-2rem)] p-1">
 				{visible.map((item) =>
 					item.href && !item.loading ? (
 						<Button
-							key={item.label}
+							key={item.id ?? item.label}
 							variant="ghost"
 							size="sm"
 							asChild
@@ -88,13 +91,13 @@ export function BillActionsMenu(props: { items: BillActionItem[] }) {
 						</Button>
 					) : (
 						<button
-							key={item.label}
+							key={item.id ?? item.label}
 							type="button"
 							disabled={item.loading}
 							className={cn(baseClass, intentBg[item.intent])}
 							onClick={() => run(item)}
 						>
-							{item.loading ? 'Loading...' : item.label}
+							{item.loading ? t('common.loading') : item.label}
 						</button>
 					)
 				)}
