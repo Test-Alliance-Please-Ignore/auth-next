@@ -29,77 +29,80 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 
+import type { FormEvent } from 'react'
 import type { SelectOption } from '@/components/ui/select'
 import type { BlacklistEntry, BlacklistTargetType } from '@/lib/api'
 
-const TARGET_TYPE_LABELS: Record<BlacklistTargetType, string> = {
-	user: 'User',
-	character_id: 'Character ID',
-	character_name: 'Character Name',
-	discord_id: 'Discord ID',
-	corporation_id: 'Corporation ID',
-	corporation_name: 'Corporation Name',
-	alliance_id: 'Alliance ID',
-	alliance_name: 'Alliance Name',
-}
-
 type BlacklistCreateTargetType = 'user' | 'character_id' | 'character_name' | 'discord_id'
 
-const BLACKLIST_CREATE_TARGET_OPTIONS: SelectOption[] = [
-	{
-		value: 'user',
-		label: 'User',
-		description: 'Block a platform account from logging in.',
-	},
-	{
-		value: 'character_id',
-		label: 'Character ID',
-		description: 'Block a specific EVE character and auto-blocklist linked users.',
-	},
-	{
-		value: 'character_name',
-		label: 'Character Name',
-		description: 'Block a character name and auto-blocklist currently linked users.',
-	},
-	{
-		value: 'discord_id',
-		label: 'Discord ID',
-		description: 'Block a Discord account from linking to the platform.',
-	},
-]
-
-const BLACKLIST_CREATE_FIELD_CONFIG: Record<
-	BlacklistCreateTargetType,
-	{ label: string; placeholder: string; helperText: string }
-> = {
-	user: {
-		label: 'User ID',
-		placeholder: 'Enter user UUID',
-		helperText: 'Find the user ID from the Users page or a user detail page.',
-	},
-	character_id: {
-		label: 'Character ID',
-		placeholder: 'Enter EVE character ID',
-		helperText: 'This will also auto-blocklist users currently linked to that character.',
-	},
-	character_name: {
-		label: 'Character Name',
-		placeholder: 'Enter EVE character name',
-		helperText: 'This will auto-blocklist users currently linked to that character name.',
-	},
-	discord_id: {
-		label: 'Discord ID',
-		placeholder: 'Enter Discord snowflake ID',
-		helperText: 'This blocks the Discord account from linking, even if it is not linked yet.',
-	},
-}
-
 export default function BlacklistPage() {
-	usePageTitle('Blocklist Management')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.blocklist.title'))
+	const targetTypeLabels: Record<BlacklistTargetType, string> = {
+		user: t('admin.blocklist.targets.user'),
+		character_id: t('admin.blocklist.targets.character_id'),
+		character_name: t('admin.blocklist.targets.character_name'),
+		discord_id: t('admin.blocklist.targets.discord_id'),
+		corporation_id: t('admin.blocklist.targets.corporation_id'),
+		corporation_name: t('admin.blocklist.targets.corporation_name'),
+		alliance_id: t('admin.blocklist.targets.alliance_id'),
+		alliance_name: t('admin.blocklist.targets.alliance_name'),
+	}
+
+	const createTargetOptions: SelectOption[] = [
+		{
+			value: 'user',
+			label: t('admin.blocklist.targets.user'),
+			description: t('admin.blocklist.create.user.description'),
+		},
+		{
+			value: 'character_id',
+			label: t('admin.blocklist.targets.character_id'),
+			description: t('admin.blocklist.create.character_id.description'),
+		},
+		{
+			value: 'character_name',
+			label: t('admin.blocklist.targets.character_name'),
+			description: t('admin.blocklist.create.character_name.description'),
+		},
+		{
+			value: 'discord_id',
+			label: t('admin.blocklist.targets.discord_id'),
+			description: t('admin.blocklist.create.discord_id.description'),
+		},
+	]
+
+	const createFieldConfig: Record<
+		BlacklistCreateTargetType,
+		{ label: string; placeholder: string; helperText: string }
+	> = {
+		user: {
+			label: t('admin.blocklist.create.user.label'),
+			placeholder: t('admin.blocklist.create.user.placeholder'),
+			helperText: t('admin.blocklist.create.user.helper'),
+		},
+		character_id: {
+			label: t('admin.blocklist.targets.character_id'),
+			placeholder: t('admin.blocklist.create.character_id.placeholder'),
+			helperText: t('admin.blocklist.create.character_id.helper'),
+		},
+		character_name: {
+			label: t('admin.blocklist.targets.character_name'),
+			placeholder: t('admin.blocklist.create.character_name.placeholder'),
+			helperText: t('admin.blocklist.create.character_name.helper'),
+		},
+		discord_id: {
+			label: t('admin.blocklist.targets.discord_id'),
+			placeholder: t('admin.blocklist.create.discord_id.placeholder'),
+			helperText: t('admin.blocklist.create.discord_id.helper'),
+		},
+	}
 
 	const queryClient = useQueryClient()
 
@@ -115,7 +118,7 @@ export default function BlacklistPage() {
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 	const [selectedEntry, setSelectedEntry] = useState<BlacklistEntry | null>(null)
 
-	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const { message, showSuccess, showError, clearMessage } = useMessage()
 
 	// Form state
 	const [formData, setFormData] = useState({
@@ -204,30 +207,29 @@ export default function BlacklistPage() {
 			setAddDialogOpen(false)
 			resetAddForm()
 
-			let successMessage = `${TARGET_TYPE_LABELS[targetType]} blocklisted successfully.`
-			if (targetType === 'user') {
-				const autoBlacklisted = result as {
-					autoBlacklisted: { characters: string[]; users: string[]; totalCount: number }
+			showSuccess((t) => {
+				const parts = [t(`admin.blocklist.success.${targetType}`)]
+				if (
+					targetType === 'user' &&
+					'autoBlacklisted' in result &&
+					result.autoBlacklisted.totalCount > 0
+				) {
+					parts.push(
+						t('admin.blocklist.cascade', {
+							characters: result.autoBlacklisted.characters.length,
+							users: result.autoBlacklisted.users.length,
+						})
+					)
+				} else if ('autoBlacklistedCount' in result) {
+					parts.push(t('admin.blocklist.usersBlocked', { count: result.autoBlacklistedCount }))
 				}
-				const cascadeMsg =
-					autoBlacklisted.autoBlacklisted.totalCount > 0
-						? ` Auto-blocklisted ${autoBlacklisted.autoBlacklisted.characters.length} character(s) and ${autoBlacklisted.autoBlacklisted.users.length} user(s).`
-						: ''
-				successMessage += cascadeMsg
-			} else if (targetType === 'character_id' || targetType === 'character_name') {
-				const characterResult = result as { autoBlacklistedCount: number }
-				successMessage += ` ${characterResult.autoBlacklistedCount} user(s) auto-blocklisted.`
-			}
-
-			setMessage({ type: 'success', text: successMessage })
-			setTimeout(() => setMessage(null), 5000)
+				return parts.join(' ')
+			}, 5000)
 		},
-		onError: (error: any) => {
-			setMessage({
-				type: 'error',
-				text: error.message || 'Failed to create blocklist entry',
-			})
-			setTimeout(() => setMessage(null), 5000)
+		onError: (error) => {
+			showError((t) =>
+				error instanceof Error && error.message ? error.message : t('admin.blocklist.createError')
+			)
 		},
 	})
 
@@ -238,31 +240,25 @@ export default function BlacklistPage() {
 			void queryClient.invalidateQueries({ queryKey: ['blacklists'] })
 			setDeleteDialogOpen(false)
 			setSelectedEntry(null)
-			const cascadeMsg =
-				result.removedCount > 1
-					? ` Also removed ${result.removedCount - 1} triggered blocklist(s).`
-					: ''
-			setMessage({ type: 'success', text: `Blocklist entry removed successfully.${cascadeMsg}` })
-			setTimeout(() => setMessage(null), 5000)
+			showSuccess((t) => {
+				const removed = t('admin.blocklist.removed')
+				return result.removedCount > 1
+					? `${removed} ${t('admin.blocklist.cascadeRemoved', { count: result.removedCount - 1 })}`
+					: removed
+			}, 5000)
 		},
-		onError: (error: any) => {
-			setMessage({
-				type: 'error',
-				text: error.message || 'Failed to remove blocklist entry',
-			})
-			setTimeout(() => setMessage(null), 5000)
+		onError: (error) => {
+			showError((t) =>
+				error instanceof Error && error.message ? error.message : t('admin.blocklist.removeError')
+			)
 		},
 	})
 
-	const handleAdd = (e: React.FormEvent) => {
+	const handleAdd = (e: FormEvent) => {
 		e.preventDefault()
 
 		if (!formData.targetValue.trim() || !formData.reason.trim()) {
-			setMessage({
-				type: 'error',
-				text: `${BLACKLIST_CREATE_FIELD_CONFIG[formData.targetType].label} and reason are required`,
-			})
-			setTimeout(() => setMessage(null), 5000)
+			showError((t) => t(`admin.blocklist.required.${formData.targetType}`))
 			return
 		}
 
@@ -274,6 +270,7 @@ export default function BlacklistPage() {
 	}
 
 	const openDeleteDialog = (entry: BlacklistEntry) => {
+		clearMessage()
 		setSelectedEntry(entry)
 		setDeleteDialogOpen(true)
 	}
@@ -303,21 +300,24 @@ export default function BlacklistPage() {
 		setPage(1)
 	}
 
-	const addBlacklistFieldConfig = BLACKLIST_CREATE_FIELD_CONFIG[formData.targetType]
+	const addBlacklistFieldConfig = createFieldConfig[formData.targetType]
 
 	return (
 		<div className="space-y-6">
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-3xl font-bold gradient-text">Blocklist Management</h1>
-					<p className="text-muted-foreground mt-1">
-						Manage global blocklist for users and characters
-					</p>
+					<h1 className="text-3xl font-bold gradient-text">{t('admin.blocklist.title')}</h1>
+					<p className="text-muted-foreground mt-1">{t('admin.blocklist.description')}</p>
 				</div>
-				<Button onClick={() => setAddDialogOpen(true)}>
+				<Button
+					onClick={() => {
+						clearMessage()
+						setAddDialogOpen(true)
+					}}
+				>
 					<Plus className="h-4 w-4" />
-					Add to Blocklist
+					{t('admin.blocklist.add')}
 				</Button>
 			</div>
 
@@ -343,12 +343,12 @@ export default function BlacklistPage() {
 				<CardContent className="pt-6">
 					<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
 						<div className="space-y-2">
-							<Label htmlFor="search">Search</Label>
+							<Label htmlFor="search">{t('admin.blocklist.search')}</Label>
 							<div className="relative">
 								<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
 								<Input
 									id="search"
-									placeholder="Search ID, reason..."
+									placeholder={t('admin.blocklist.searchPlaceholder')}
 									value={searchQuery}
 									onChange={(e) => setSearchQuery(e.target.value)}
 									onKeyDown={(e) => {
@@ -363,35 +363,38 @@ export default function BlacklistPage() {
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor="targetType">Target Type</Label>
+							<Label htmlFor="targetType">{t('admin.blocklist.targetType')}</Label>
 							<Select
 								inputId="targetType"
 								value={targetTypeFilter}
 								onValueChange={(v) => setTargetTypeFilter(v as BlacklistTargetType | 'all')}
 								options={[
-									{ value: 'all', label: 'All Types' },
-									{ value: 'user', label: 'User' },
-									{ value: 'character_id', label: 'Character ID' },
-									{ value: 'character_name', label: 'Character Name' },
-									{ value: 'discord_id', label: 'Discord ID' },
-									{ value: 'corporation_id', label: 'Corporation ID' },
-									{ value: 'corporation_name', label: 'Corporation Name' },
-									{ value: 'alliance_id', label: 'Alliance ID' },
-									{ value: 'alliance_name', label: 'Alliance Name' },
+									{ value: 'all', label: t('admin.blocklist.allTypes') },
+									{ value: 'user', label: t('admin.blocklist.targets.user') },
+									{ value: 'character_id', label: t('admin.blocklist.targets.character_id') },
+									{ value: 'character_name', label: t('admin.blocklist.targets.character_name') },
+									{ value: 'discord_id', label: t('admin.blocklist.targets.discord_id') },
+									{ value: 'corporation_id', label: t('admin.blocklist.targets.corporation_id') },
+									{
+										value: 'corporation_name',
+										label: t('admin.blocklist.targets.corporation_name'),
+									},
+									{ value: 'alliance_id', label: t('admin.blocklist.targets.alliance_id') },
+									{ value: 'alliance_name', label: t('admin.blocklist.targets.alliance_name') },
 								]}
 							/>
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor="autoBlacklist">Auto-Blocklist</Label>
+							<Label htmlFor="autoBlacklist">{t('admin.blocklist.autoBlocklist')}</Label>
 							<Select
 								value={autoBlacklistFilter}
 								onValueChange={(v) => setAutoBlacklistFilter(v as 'all' | 'true' | 'false')}
 								inputId="autoBlacklist"
 								options={[
-									{ value: 'all', label: 'All' },
-									{ value: 'true', label: 'Auto Only' },
-									{ value: 'false', label: 'Manual Only' },
+									{ value: 'all', label: t('admin.blocklist.all') },
+									{ value: 'true', label: t('admin.blocklist.autoOnly') },
+									{ value: 'false', label: t('admin.blocklist.manualOnly') },
 								]}
 							/>
 						</div>
@@ -403,17 +406,17 @@ export default function BlacklistPage() {
 								className="w-full"
 								onClick={() => setAppliedSearch(searchQuery)}
 							>
-								Search
+								{t('admin.blocklist.search')}
 							</Button>
 						</div>
 					</div>
 
 					{hasActiveFilters && (
 						<div className="mt-4 flex items-center justify-between">
-							<p className="text-sm text-muted-foreground">Active filters applied</p>
+							<p className="text-sm text-muted-foreground">{t('admin.blocklist.activeFilters')}</p>
 							<Button variant="ghost" size="sm" onClick={clearFilters}>
 								<X className="h-4 w-4" />
-								Clear Filters
+								{t('admin.blocklist.clearFilters')}
 							</Button>
 						</div>
 					)}
@@ -425,12 +428,16 @@ export default function BlacklistPage() {
 				<CardHeader>
 					<div className="space-y-4">
 						<div>
-							<CardTitle>Blocklist Entries</CardTitle>
+							<CardTitle>{t('admin.blocklist.entries')}</CardTitle>
 							<CardDescription>
 								{isLoading ? (
 									<Skeleton className="h-4 w-32" />
 								) : (
-									`${filteredData.length} ${filteredData.length === 1 ? 'entry' : 'entries'} • Page ${data?.pagination.page || 1} of ${data?.pagination.totalPages || 1}`
+									t('admin.blocklist.summary', {
+										count: filteredData.length,
+										page: data?.pagination.page || 1,
+										pages: data?.pagination.totalPages || 1,
+									})
 								)}
 							</CardDescription>
 						</div>
@@ -441,7 +448,7 @@ export default function BlacklistPage() {
 							onPageChange={setPage}
 							onPageSizeChange={handlePageSizeChange}
 							pageSizeOptions={[10, 25, 50, 100]}
-							itemLabel="entries"
+							itemLabel={t('admin.blocklist.entryLabel', { count: totalCount })}
 						/>
 					</div>
 				</CardHeader>
@@ -453,24 +460,30 @@ export default function BlacklistPage() {
 					) : error ? (
 						<div className="flex flex-col items-center justify-center py-8 text-center">
 							<AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-							<h3 className="text-lg font-semibold">Error Loading Blocklist</h3>
+							<h3 className="text-lg font-semibold">{t('admin.blocklist.loadTitle')}</h3>
 							<p className="text-muted-foreground mt-1">
-								{error instanceof Error ? error.message : 'Failed to load blocklist entries'}
+								{error instanceof Error ? error.message : t('admin.blocklist.loadError')}
 							</p>
 						</div>
 					) : filteredData.length === 0 ? (
 						<div className="flex flex-col items-center justify-center py-8 text-center">
 							<ShieldBan className="h-12 w-12 text-muted-foreground mb-4" />
-							<h3 className="text-lg font-semibold">No Blocklist Entries</h3>
+							<h3 className="text-lg font-semibold">{t('admin.blocklist.empty')}</h3>
 							<p className="text-muted-foreground mt-1">
 								{hasActiveFilters
-									? 'No entries match your filters'
-									: 'No users or characters have been blocklisted yet'}
+									? t('admin.blocklist.emptyFiltered')
+									: t('admin.blocklist.emptyHint')}
 							</p>
 							{!hasActiveFilters && (
-								<Button className="mt-4" onClick={() => setAddDialogOpen(true)}>
+								<Button
+									className="mt-4"
+									onClick={() => {
+										clearMessage()
+										setAddDialogOpen(true)
+									}}
+								>
 									<Plus className="h-4 w-4" />
-									Add First Entry
+									{t('admin.blocklist.addFirst')}
 								</Button>
 							)}
 						</div>
@@ -479,12 +492,12 @@ export default function BlacklistPage() {
 							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead>Type</TableHead>
-										<TableHead>Target Value</TableHead>
-										<TableHead>Reason</TableHead>
-										<TableHead>Added</TableHead>
-										<TableHead>Entry Mode</TableHead>
-										<TableHead className="text-right">Actions</TableHead>
+										<TableHead>{t('admin.blocklist.type')}</TableHead>
+										<TableHead>{t('admin.blocklist.targetValue')}</TableHead>
+										<TableHead>{t('admin.blocklist.reason')}</TableHead>
+										<TableHead>{t('admin.blocklist.added')}</TableHead>
+										<TableHead>{t('admin.blocklist.mode')}</TableHead>
+										<TableHead className="text-right">{t('admin.blocklist.actions')}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -499,7 +512,7 @@ export default function BlacklistPage() {
 															: 'secondary'
 													}
 												>
-													{TARGET_TYPE_LABELS[entry.targetType] ?? entry.targetType}
+													{targetTypeLabels[entry.targetType] ?? entry.targetType}
 												</Badge>
 											</TableCell>
 											<TableCell className="font-mono text-sm">
@@ -527,19 +540,19 @@ export default function BlacklistPage() {
 													{entry.isAutoBlacklist ? (
 														<Badge variant="ghost" className="gap-1 w-fit">
 															<AlertTriangle className="h-3 w-3" />
-															Auto
+															{t('admin.blocklist.auto')}
 														</Badge>
 													) : (
 														<Badge variant="default" className="w-fit">
-															Manual
+															{t('admin.blocklist.manual')}
 														</Badge>
 													)}
 													{entry.triggeredBy && (
 														<span
 															className="text-xs text-muted-foreground font-mono"
-															title={`Triggered by entry: ${entry.triggeredBy}`}
+															title={t('admin.blocklist.triggeredBy', { id: entry.triggeredBy })}
 														>
-															via {entry.triggeredBy.substring(0, 8)}...
+															{t('admin.blocklist.via', { id: entry.triggeredBy.substring(0, 8) })}
 														</span>
 													)}
 												</div>
@@ -549,6 +562,9 @@ export default function BlacklistPage() {
 													variant="ghost"
 													size="sm"
 													onClick={() => openDeleteDialog(entry)}
+													aria-label={t('admin.blocklist.removeEntry', {
+														target: entry.targetValue,
+													})}
 													className="text-destructive hover:text-destructive"
 												>
 													<Trash2 className="h-4 w-4" />
@@ -568,7 +584,7 @@ export default function BlacklistPage() {
 										onPageChange={setPage}
 										onPageSizeChange={handlePageSizeChange}
 										pageSizeOptions={[10, 25, 50, 100]}
-										itemLabel="entries"
+										itemLabel={t('admin.blocklist.entryLabel', { count: totalCount })}
 									/>
 								</div>
 							)}
@@ -589,15 +605,18 @@ export default function BlacklistPage() {
 			>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Add to Blocklist</DialogTitle>
-						<DialogDescription>
-							Block a user account, character, or Discord account from accessing the platform
-						</DialogDescription>
+						<DialogTitle>{t('admin.blocklist.add')}</DialogTitle>
+						<DialogDescription>{t('admin.blocklist.addDescription')}</DialogDescription>
 					</DialogHeader>
 					<form onSubmit={handleAdd}>
+						{message?.type === 'error' && (
+							<p role="alert" className="mb-4 text-sm text-destructive">
+								{message.text}
+							</p>
+						)}
 						<div className="space-y-4">
 							<div className="space-y-2">
-								<Label htmlFor="targetType">Target Type</Label>
+								<Label htmlFor="createTargetType">{t('admin.blocklist.targetType')}</Label>
 								<Select
 									value={formData.targetType}
 									onValueChange={(v) =>
@@ -607,8 +626,8 @@ export default function BlacklistPage() {
 											targetValue: '',
 										})
 									}
-									inputId="targetType"
-									options={BLACKLIST_CREATE_TARGET_OPTIONS}
+									inputId="createTargetType"
+									options={createTargetOptions}
 								/>
 							</div>
 
@@ -627,10 +646,10 @@ export default function BlacklistPage() {
 							</div>
 
 							<div className="space-y-2">
-								<Label htmlFor="reason">Reason</Label>
+								<Label htmlFor="reason">{t('admin.blocklist.reason')}</Label>
 								<Textarea
 									id="reason"
-									placeholder="Explain why this user/character is being blocklisted"
+									placeholder={t('admin.blocklist.reasonPlaceholder')}
 									value={formData.reason}
 									onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
 									rows={3}
@@ -647,10 +666,14 @@ export default function BlacklistPage() {
 									resetAddForm()
 								}}
 							>
-								Cancel
+								{t('common.cancel')}
 							</Button>
-							<Button variant="confirm" loading={createBlacklist.isPending} loadingText="Adding...">
-								Add to Blocklist
+							<Button
+								variant="confirm"
+								loading={createBlacklist.isPending}
+								loadingText={t('admin.blocklist.adding')}
+							>
+								{t('admin.blocklist.add')}
 							</Button>
 						</DialogFooter>
 					</form>
@@ -661,29 +684,35 @@ export default function BlacklistPage() {
 			<Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Remove from Blocklist</DialogTitle>
+						<DialogTitle>{t('admin.blocklist.remove')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to remove this{' '}
-							{selectedEntry ? TARGET_TYPE_LABELS[selectedEntry.targetType] : ''} from the
-							blocklist?
+							{t('admin.blocklist.removeConfirm', {
+								type: selectedEntry
+									? (targetTypeLabels[selectedEntry.targetType] ?? selectedEntry.targetType)
+									: '',
+							})}
 							{selectedEntry?.isAutoBlacklist && (
 								<span className="block mt-2 text-orange-500">
-									Warning: This is an auto-blocklist entry. The user may still be blocked if the
-									triggering character is still blocklisted.
+									{t('admin.blocklist.autoWarning')}
 								</span>
 							)}
 						</DialogDescription>
 					</DialogHeader>
+					{message?.type === 'error' && (
+						<p role="alert" className="text-sm text-destructive">
+							{message.text}
+						</p>
+					)}
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleDelete}
 							loading={removeBlacklist.isPending}
 						>
-							Remove from Blocklist
+							{t('admin.blocklist.remove')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

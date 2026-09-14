@@ -3,6 +3,7 @@ import { DatePickerInput as MantineDatePickerInput } from '@mantine/dates'
 import { getDateInputFormat, useAppTranslation } from '@/i18n'
 
 interface DateInputProps {
+	id?: string
 	value: string
 	onChange: (value: string) => void
 	placeholder?: string
@@ -39,6 +40,7 @@ function formatDateValue(value: Date | string | null): string {
 }
 
 export function DateInput({
+	id,
 	value,
 	onChange,
 	placeholder,
@@ -50,6 +52,7 @@ export function DateInput({
 
 	return (
 		<MantineDatePickerInput
+			id={id}
 			type="default"
 			value={parseDateValue(value)}
 			onChange={(nextValue) => onChange(formatDateValue(nextValue))}
