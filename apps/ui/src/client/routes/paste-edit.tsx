@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
@@ -15,50 +15,26 @@ import { PasswordPromptDialog } from '@/components/ui/password-prompt-dialog'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { PasteFeedback } from '@/features/pastes/feedback'
+import {
+	EXPIRATION_PRESETS,
+	getExpirationOptions,
+	getPasswordChecks,
+	getPasswordValidationError,
+	PASSWORD_SYMBOLS,
+} from '@/features/pastes/form'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { apiClient } from '@/lib/api'
 import toast from '@/lib/toast'
 
-const EXPIRATION_OPTIONS: Array<{ label: string; value: number | 'indefinite' }> = [
-	{ label: '1 hour', value: 60 },
-	{ label: '3 hours', value: 180 },
-	{ label: '6 hours', value: 360 },
-	{ label: '12 hours', value: 720 },
-	{ label: '1 day', value: 1440 },
-	{ label: '3 days', value: 4320 },
-	{ label: '7 days', value: 10080 },
-	{ label: '14 days', value: 20160 },
-	{ label: '30 days', value: 43200 },
-	{ label: 'Indefinite', value: 'indefinite' },
-]
+import type { ExpirationValue } from '@/features/pastes/form'
 
-type ExpirationValue = number | 'indefinite'
-const PASSWORD_PATTERN =
-	/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*_\-+=,.?/|~`:])[A-Za-z0-9!@#$%^&*_\-+=,.?/|~`:]{8,128}$/
-
-function getPasswordValidationError(password: string): string | null {
-	if (!password.trim()) return 'Password is required.'
-	if (!PASSWORD_PATTERN.test(password)) {
-		return 'Password must be at least 8 characters, include upper/lowercase letters, a number, and a symbol: ! @ # $ % ^ & * - _ = + , . ? / | ~ ` :'
-	}
-	return null
-}
-
-function getPasswordChecks(password: string) {
-	return [
-		{ label: 'At least 8 characters', valid: password.length >= 8 },
-		{ label: 'Uppercase letter', valid: /[A-Z]/.test(password) },
-		{ label: 'Lowercase letter', valid: /[a-z]/.test(password) },
-		{ label: 'Number', valid: /\d/.test(password) },
-		{
-			label: 'At least one symbol from: ! @ # $ % ^ & * - _ = + , . ? / | ~ ` :',
-			valid: /[!@#$%^&*_\-+=,.?/|~`:]/.test(password),
-		},
-	]
-}
-
-function inferExpirationValue(expiresAt: string | null, presets: Array<number | 'indefinite'>): ExpirationValue {
+function inferExpirationValue(
+	expiresAt: string | null,
+	presets: readonly ExpirationValue[]
+): ExpirationValue {
 	if (!expiresAt) return 'indefinite'
 	const expiryMs = new Date(expiresAt).getTime()
 	const now = Date.now()
@@ -78,7 +54,8 @@ function inferExpirationValue(expiresAt: string | null, presets: Array<number | 
 }
 
 export default function PasteEditPage() {
-	usePageTitle('Edit Paste')
+	const { t } = useAppTranslation()
+	usePageTitle(t('pastes.edit'))
 
 	const { isAuthenticated } = useAuth()
 	const { id = '' } = useParams<{ id: string }>()
@@ -114,28 +91,22 @@ export default function PasteEditPage() {
 			setIsPublic(data.paste.visibility === 'public')
 			setIsPasswordProtected(true)
 			setPassword(unlockPassword)
-			setExpiration(
-				inferExpirationValue(
-					data.paste.expiresAt,
-					EXPIRATION_OPTIONS.map((option) => option.value)
-				)
-			)
+			setExpiration(inferExpirationValue(data.paste.expiresAt, EXPIRATION_PRESETS))
 			setIsUnlocked(true)
 			setInitialized(true)
 		},
 		onError: (error) => {
-			toast.error(error instanceof Error ? error.message : 'Invalid password or unavailable paste')
+			toast.error(
+				error instanceof Error && error.message ? (
+					error.message
+				) : (
+					<PasteFeedback messageKey="pastes.feedback.unlockFailed" />
+				)
+			)
 		},
 	})
 
-	const expirationOptions = useMemo(
-		() =>
-			EXPIRATION_OPTIONS.map((option) => ({
-				value: option.value,
-				label: option.label,
-			})),
-		[]
-	)
+	const expirationOptions = getExpirationOptions(t)
 
 	useEffect(() => {
 		if (!viewQuery.data || initialized) return
@@ -148,12 +119,7 @@ export default function PasteEditPage() {
 		setIsPublic(paste.visibility === 'public')
 		setIsPasswordProtected(requiresPassword || paste.isPasswordProtected)
 		setContent(initialContent ?? '')
-		setExpiration(
-			inferExpirationValue(
-				paste.expiresAt,
-				EXPIRATION_OPTIONS.map((option) => option.value)
-			)
-		)
+		setExpiration(inferExpirationValue(paste.expiresAt, EXPIRATION_PRESETS))
 		setInitialized(true)
 	}, [initialized, isUnlocked, viewQuery.data])
 
@@ -180,170 +146,191 @@ export default function PasteEditPage() {
 				password: isPasswordProtected ? password : undefined,
 			}),
 		onSuccess: () => {
-			toast.success('Paste saved')
+			toast.success(<PasteFeedback messageKey="pastes.feedback.saved" />)
 			void queryClient.invalidateQueries({ queryKey: ['pastes', 'mine'] })
 			void queryClient.invalidateQueries({ queryKey: ['paste', 'view', id, true] })
 			void queryClient.invalidateQueries({ queryKey: ['paste', 'edit', id] })
 			void navigate('/pastes')
 		},
-		onError: (error) => toast.error(error instanceof Error ? error.message : 'Failed to save paste'),
+		onError: (error) =>
+			toast.error(
+				error instanceof Error && error.message ? (
+					error.message
+				) : (
+					<PasteFeedback messageKey="pastes.feedback.saveFailed" />
+				)
+			),
 	})
 
 	if (!isAuthenticated) return <Navigate to="/" replace />
-	if (viewQuery.isLoading) return <LoadingPage label="Loading paste..." />
+	if (viewQuery.isLoading) return <LoadingPage label={t('pastes.loading')} />
 
 	return (
 		<Container className="space-y-6">
 			<PageHeader
-				title="Edit Paste"
-				description="Update paste content and protection settings."
+				title={t('pastes.edit')}
+				description={t('pastes.editDescription')}
 				action={
 					<Button variant="ghost" onClick={() => void navigate('/pastes')}>
 						<ArrowLeft className="h-4 w-4" />
-						Back to Pastes
+						{t('pastes.back')}
 					</Button>
 				}
 			/>
 			<PasswordPromptDialog
 				open={unlockDialogOpen}
-				title="Password Required"
-				description="Enter the paste password to load this protected paste for editing."
-				confirmLabel="Unlock"
+				title={t('pastes.passwordTitle')}
+				description={t('pastes.unlockDescription')}
+				confirmLabel={t('pastes.unlock')}
 				pending={decryptMutation.isPending}
 				onCancel={() => {
+					if (decryptMutation.isPending) return
 					setUnlockDialogOpen(false)
 					void navigate('/pastes')
 				}}
 				onConfirm={(unlockPassword) => {
-					decryptMutation.mutate(unlockPassword)
+					if (!decryptMutation.isPending) decryptMutation.mutate(unlockPassword)
 				}}
 			/>
 			<Card>
 				<CardHeader>
-					<CardTitle>Paste Details</CardTitle>
+					<CardTitle>{t('pastes.details')}</CardTitle>
 				</CardHeader>
 				<CardContent>
-					{viewQuery.isError ? (
-						<div className="text-sm text-muted-foreground">
-							Paste unavailable or you are not allowed to edit it.
-						</div>
-					) : null}
-					<div className="mb-4 grid gap-4 md:grid-cols-2">
-						<div className="flex items-center gap-3">
-							<Switch checked={isPublic} onCheckedChange={setIsPublic} />
-							<Label>Public by URL</Label>
-						</div>
-						<div className="flex items-center gap-3">
-							<Switch
-								checked={isPasswordProtected}
-								onCheckedChange={setIsPasswordProtected}
-								disabled={isPublic}
-							/>
-							<Label>Password Protect</Label>
-						</div>
-						<div>
-							<Label>Expiration</Label>
-							<Select
-								className="mt-1"
-								value={String(expiration)}
-								onValueChange={(value) =>
-									setExpiration(value === 'indefinite' ? 'indefinite' : Number(value))
-								}
-								options={expirationOptions.map((option) => ({
-									value: String(option.value),
-									label: option.label,
-								}))}
-							/>
-						</div>
-						<div>
-							<Label>Name</Label>
-							<Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Paste name" />
-						</div>
-						<div>
-							<Label>
-								Password {passwordRequired ? null : '(optional)'}
-								{passwordRequired ? <span className="ml-1 text-destructive">*</span> : null}
-							</Label>
-							<div className="mt-1">
-								{passwordRequired ? (
-									<HoverPopover
-										trigger={
-											<div>
-												<Input
-													value={password}
-													onChange={(e) => setPassword(e.target.value)}
-													type="password"
-													disabled={!isPasswordProtected}
-													className={
-														showPasswordValidationError && passwordError
-															? 'border-destructive focus-visible:ring-destructive'
-															: ''
-													}
-												/>
-											</div>
-										}
-										align="start"
-										className="w-80 border border-destructive/60"
-										fullWidth
-									>
-										<div className="space-y-1 text-xs">
-											{passwordChecks.map((check) => (
-												<div
-													key={check.label}
-													className={check.valid ? 'text-green-500' : 'text-destructive'}
-												>
-													{check.valid ? '✓' : '✕'} {check.label}
-												</div>
-											))}
-										</div>
-									</HoverPopover>
-								) : (
-									<Input
-										value={password}
-										onChange={(e) => setPassword(e.target.value)}
-										type="password"
-										disabled={!isPasswordProtected}
-									/>
-								)}
+					<fieldset
+						className="min-w-0"
+						disabled={saveMutation.isPending || viewQuery.isError || !initialized}
+					>
+						{viewQuery.isError ? (
+							<div className="text-sm text-muted-foreground">{t('pastes.editUnavailable')}</div>
+						) : null}
+						<div className="mb-4 grid gap-4 md:grid-cols-2">
+							<div className="flex items-center gap-3">
+								<Switch id="paste-visibility" checked={isPublic} onCheckedChange={setIsPublic} />
+								<Label htmlFor="paste-visibility">{t('pastes.publicUrl')}</Label>
 							</div>
-							<p className="mt-1 text-xs text-muted-foreground">
-								Password-protected pastes cannot be recovered if password is lost.
-							</p>
-						</div>
-					</div>
-					<div className="mb-4">
-						<Label>Content</Label>
-						<Textarea
-							value={content}
-							onChange={(e) => setContent(e.target.value)}
-							rows={10}
-							placeholder="Paste plaintext content..."
-						/>
-					</div>
-					<div className="flex justify-end">
-						<Button
-							onClick={() => {
-								if (passwordRequired) {
-									const submitPasswordError = getPasswordValidationError(password)
-									setShowPasswordValidationError(Boolean(submitPasswordError))
-									if (submitPasswordError) {
-										toast.error(submitPasswordError)
-										return
+							<div className="flex items-center gap-3">
+								<Switch
+									id="paste-protection"
+									checked={isPasswordProtected}
+									onCheckedChange={setIsPasswordProtected}
+									disabled={isPublic}
+								/>
+								<Label htmlFor="paste-protection">{t('pastes.passwordProtect')}</Label>
+							</div>
+							<div>
+								<Label htmlFor="paste-expiration">{t('pastes.expiration')}</Label>
+								<Select
+									inputId="paste-expiration"
+									className="mt-1"
+									value={String(expiration)}
+									onValueChange={(value) =>
+										setExpiration(value === 'indefinite' ? 'indefinite' : Number(value))
 									}
+									options={expirationOptions}
+								/>
+							</div>
+							<div>
+								<Label htmlFor="paste-name">{t('pastes.name')}</Label>
+								<Input
+									id="paste-name"
+									value={name}
+									onChange={(e) => setName(e.target.value)}
+									placeholder={t('pastes.namePlaceholder')}
+								/>
+							</div>
+							<div>
+								<Label htmlFor="paste-password">
+									{passwordRequired ? t('common.password') : t('pastes.passwordOptional')}
+									{passwordRequired ? <span className="ml-1 text-destructive">*</span> : null}
+								</Label>
+								<div className="mt-1">
+									{passwordRequired ? (
+										<HoverPopover
+											trigger={
+												<div>
+													<Input
+														value={password}
+														onChange={(e) => setPassword(e.target.value)}
+														id="paste-password"
+														type="password"
+														disabled={!isPasswordProtected}
+														className={
+															showPasswordValidationError && passwordError
+																? 'border-destructive focus-visible:ring-destructive'
+																: ''
+														}
+													/>
+												</div>
+											}
+											align="start"
+											className="w-80 border border-destructive/60"
+											fullWidth
+										>
+											<div className="space-y-1 text-xs">
+												{passwordChecks.map((check) => (
+													<div
+														key={check.key}
+														className={check.valid ? 'text-green-500' : 'text-destructive'}
+													>
+														{check.valid ? '✓' : '✕'} {t(check.key, { symbols: PASSWORD_SYMBOLS })}
+													</div>
+												))}
+											</div>
+										</HoverPopover>
+									) : (
+										<Input
+											value={password}
+											onChange={(e) => setPassword(e.target.value)}
+											id="paste-password"
+											type="password"
+											disabled={!isPasswordProtected}
+										/>
+									)}
+								</div>
+								{showPasswordValidationError && passwordError && (
+									<p role="alert" className="mt-1 text-sm text-destructive">
+										{t(passwordError, { symbols: PASSWORD_SYMBOLS })}
+									</p>
+								)}
+								<p className="mt-1 text-xs text-muted-foreground">{t('pastes.passwordWarning')}</p>
+							</div>
+						</div>
+						<div className="mb-4">
+							<Label htmlFor="paste-content">{t('pastes.content')}</Label>
+							<Textarea
+								id="paste-content"
+								value={content}
+								onChange={(e) => setContent(e.target.value)}
+								rows={10}
+								placeholder={t('pastes.contentPlaceholder')}
+							/>
+						</div>
+						<div className="flex justify-end">
+							<Button
+								onClick={() => {
+									if (passwordRequired) {
+										const submitPasswordError = getPasswordValidationError(password)
+										setShowPasswordValidationError(Boolean(submitPasswordError))
+										if (submitPasswordError) {
+											toast.error(<PasteFeedback messageKey={submitPasswordError} />)
+											return
+										}
+									}
+									saveMutation.mutate()
+								}}
+								disabled={
+									saveMutation.isPending ||
+									viewQuery.isError ||
+									!initialized ||
+									!name.trim() ||
+									!content.trim()
 								}
-								saveMutation.mutate()
-							}}
-							disabled={
-								saveMutation.isPending ||
-								viewQuery.isError ||
-								!initialized ||
-								!name.trim() ||
-								!content.trim()
-							}
-						>
-							{saveMutation.isPending ? 'Saving...' : 'Save'}
-						</Button>
-					</div>
+							>
+								{saveMutation.isPending ? t('pastes.saving') : t('pastes.save')}
+							</Button>
+						</div>
+					</fieldset>
 				</CardContent>
 			</Card>
 		</Container>
