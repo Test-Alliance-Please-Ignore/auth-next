@@ -1,7 +1,8 @@
-import { formatDistanceToNow } from 'date-fns'
-
-import { corporationLogoUrl } from '@/lib/eve-images'
 import { Calendar } from 'lucide-react'
+
+import { formatNumber, useAppTranslation } from '@/i18n'
+import { formatRelativeTime } from '@/lib/date-utils'
+import { corporationLogoUrl } from '@/lib/eve-images'
 
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
@@ -18,6 +19,7 @@ interface CharacterCorporationHistoryProps {
 }
 
 export function CharacterCorporationHistory({ history }: CharacterCorporationHistoryProps) {
+	const { t } = useAppTranslation()
 	// Sort history by start date (newest first)
 	const sortedHistory = [...history].sort(
 		(a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
@@ -26,12 +28,14 @@ export function CharacterCorporationHistory({ history }: CharacterCorporationHis
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Corporation History</CardTitle>
+				<CardTitle>{t('characterDetail.corporationHistory.title')}</CardTitle>
 			</CardHeader>
 			<CardContent>
 				<div className="space-y-3">
 					{sortedHistory.length === 0 ? (
-						<p className="text-sm text-muted-foreground">No corporation history available</p>
+						<p className="text-sm text-muted-foreground">
+							{t('characterDetail.corporationHistory.empty')}
+						</p>
 					) : (
 						sortedHistory.slice(0, 5).map((entry) => (
 							<div
@@ -41,25 +45,34 @@ export function CharacterCorporationHistory({ history }: CharacterCorporationHis
 								<div className="flex items-start gap-2">
 									<img
 										src={corporationLogoUrl(entry.corporationId, 32)}
-										alt={entry.corporationName || `Corporation #${entry.corporationId}`}
+										alt={
+											entry.corporationName ||
+											t('characterDetail.corporationNumber', { id: entry.corporationId })
+										}
 										className="h-6 w-6 rounded mt-0.5"
 									/>
 									<div>
 										<p className="text-sm font-medium">
 											{entry.corporationName ? (
-												<span title={`Corporation ID: ${entry.corporationId}`}>
+												<span
+													title={t('characterDetail.corporationId', { id: entry.corporationId })}
+												>
 													{entry.corporationName}
 												</span>
 											) : (
-												`Corporation #${entry.corporationId}`
+												t('characterDetail.corporationNumber', { id: entry.corporationId })
 											)}
 											{entry.isDeleted && (
-												<span className="text-xs text-red-500 ml-2">(Closed)</span>
+												<span className="text-xs text-red-500 ml-2">
+													{t('characterDetail.corporationHistory.closed')}
+												</span>
 											)}
 										</p>
 										<p className="text-xs text-muted-foreground flex items-center gap-1">
 											<Calendar className="h-3 w-3" />
-											Joined {formatDistanceToNow(new Date(entry.startDate), { addSuffix: true })}
+											{t('characterDetail.corporationHistory.joined', {
+												time: formatRelativeTime(entry.startDate),
+											})}
 										</p>
 									</div>
 								</div>
@@ -68,7 +81,10 @@ export function CharacterCorporationHistory({ history }: CharacterCorporationHis
 					)}
 					{sortedHistory.length > 5 && (
 						<p className="text-xs text-muted-foreground text-center">
-							And {sortedHistory.length - 5} more...
+							{t('characterDetail.corporationHistory.more', {
+								count: sortedHistory.length - 5,
+								formattedCount: formatNumber(sortedHistory.length - 5),
+							})}
 						</p>
 					)}
 				</div>

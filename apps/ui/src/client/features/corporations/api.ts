@@ -1,3 +1,5 @@
+import { compareLocaleStrings } from '@/i18n'
+
 import { API_BASE_URL, apiClient } from '../../lib/api'
 
 import type { ManagedCorporation } from '../../lib/api'
@@ -323,7 +325,7 @@ export function sortMembers(members: CorporationMember[]): CorporationMember[] {
 	return [...members].sort((a, b) => {
 		const roleDiff = roleOrder[a.role] - roleOrder[b.role]
 		if (roleDiff !== 0) return roleDiff
-		return a.characterName.localeCompare(b.characterName)
+		return compareLocaleStrings(a.characterName, b.characterName)
 	})
 }
 

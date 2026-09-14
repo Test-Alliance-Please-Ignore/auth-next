@@ -10,6 +10,7 @@ import { useCallback, useMemo } from 'react'
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 
 import { useAuth } from '@/hooks/useAuth'
+import { i18n } from '@/i18n'
 
 import { myCorporationsApi } from './api'
 
@@ -76,23 +77,34 @@ export function useHasCorporationAccess() {
  * Format a corporation role for user-facing display.
  */
 export function formatCorporationRoleLabel(
-	role: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer' | null | undefined
+	role:
+		| 'CEO'
+		| 'Director'
+		| 'Member'
+		| 'admin'
+		| 'hr_admin'
+		| 'hr_reviewer'
+		| 'hr_viewer'
+		| null
+		| undefined
 ): string {
 	switch (role) {
 		case 'CEO':
-			return 'CEO'
+			return i18n.t('corporations.roles.ceo')
 		case 'Director':
-			return 'Director'
+			return i18n.t('corporations.roles.director')
+		case 'Member':
+			return i18n.t('corporations.roles.member')
 		case 'admin':
-			return 'Site Admin'
+			return i18n.t('corporations.roles.siteAdmin')
 		case 'hr_admin':
-			return 'HR Admin'
+			return i18n.t('corporations.roles.hr_admin')
 		case 'hr_reviewer':
-			return 'HR Reviewer'
+			return i18n.t('corporations.roles.hr_reviewer')
 		case 'hr_viewer':
-			return 'HR Viewer'
+			return i18n.t('corporations.roles.hr_viewer')
 		default:
-			return 'Unknown'
+			return i18n.t('corporations.members.unknown')
 	}
 }
 

@@ -1,6 +1,7 @@
 import { Building2 } from 'lucide-react'
 import { useState } from 'react'
 
+import { useAppTranslation } from '@/i18n'
 import { corporationLogoUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
 
@@ -23,6 +24,7 @@ export function CorporationLogo({
 	size = 'sm',
 	className,
 }: CorporationLogoProps) {
+	const { t } = useAppTranslation()
 	const [hasError, setHasError] = useState(false)
 
 	return (
@@ -36,7 +38,11 @@ export function CorporationLogo({
 			{!hasError ? (
 				<img
 					src={corporationLogoUrl(corporationId, 32)}
-					alt={corporationName ? `${corporationName} logo` : 'Corporation logo'}
+					alt={
+						corporationName
+							? t('browseCorporations.logoAlt', { name: corporationName })
+							: t('corporations.logoAlt')
+					}
 					className="h-full w-full object-cover"
 					loading="lazy"
 					onError={() => setHasError(true)}

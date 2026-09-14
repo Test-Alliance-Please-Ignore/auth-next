@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { useDebounce } from '@/hooks/useDebounce'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { UserSearchCard } from '../../corporations/components/user-search-card'
@@ -20,6 +21,7 @@ export function HrUserSearchContent({
 	enabled?: boolean
 	fillAvailableHeight?: boolean
 }) {
+	const { t } = useAppTranslation()
 	const [searchQuery, setSearchQuery] = useState('')
 	const [page, setPage] = useState(1)
 	const [pageSize, setPageSize] = useState(10)
@@ -49,14 +51,15 @@ export function HrUserSearchContent({
 							<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 							<Input
 								autoFocus={autoFocus}
-								placeholder="Search character name, character ID, Discord username, or Discord ID"
+								aria-label={t('corporations.userSearch.searchPlaceholder')}
+								placeholder={t('corporations.userSearch.searchPlaceholder')}
 								value={searchQuery}
 								onChange={(event) => setSearchQuery(event.target.value)}
 								className="pl-9"
 							/>
 						</div>
 						<p className="text-xs text-muted-foreground">
-							Search users and linked characters visible to your HR roles.
+							{t('corporations.userSearch.searchHint')}
 						</p>
 					</div>
 				</CardContent>
@@ -75,13 +78,13 @@ export function HrUserSearchContent({
 				>
 					{error ? (
 						<p className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-							{error instanceof Error ? error.message : 'Failed to search users'}
+							{error instanceof Error ? error.message : t('corporations.userSearch.searchFailed')}
 						</p>
 					) : null}
 
 					{debouncedQuery.length < 2 ? (
 						<p className="py-10 text-center text-sm text-muted-foreground">
-							Enter at least 2 characters to search the HR user directory.
+							{t('corporations.userSearch.minimumCharacters', { count: 2 })}
 						</p>
 					) : isSearching ? (
 						<div className="flex justify-center py-10">
@@ -89,7 +92,7 @@ export function HrUserSearchContent({
 						</div>
 					) : users.length === 0 ? (
 						<p className="py-10 text-center text-sm text-muted-foreground">
-							No users matched that search.
+							{t('corporations.userSearch.noMatches')}
 						</p>
 					) : (
 						<div
@@ -108,7 +111,7 @@ export function HrUserSearchContent({
 									setPage(1)
 								}}
 								pageSizeOptions={[10, 25, 50]}
-								itemLabel="users"
+								itemLabel={t('corporations.userSearch.usersLower', { count: total })}
 							/>
 							<div
 								className={cn(
@@ -132,7 +135,7 @@ export function HrUserSearchContent({
 											setPage(1)
 										}}
 										pageSizeOptions={[10, 25, 50]}
-										itemLabel="users"
+										itemLabel={t('corporations.userSearch.usersLower', { count: total })}
 									/>
 								</div>
 							)}

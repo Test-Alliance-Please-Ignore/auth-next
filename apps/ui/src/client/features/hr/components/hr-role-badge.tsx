@@ -1,7 +1,6 @@
 import { Badge } from '@/components/ui/badge'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
-
-import { HR_ROLE_DESCRIPTIONS, HR_ROLE_NAMES } from '../api'
 
 import type { BadgeVariant } from '@/components/ui/badge'
 import type { HrRoleGrant, HrRoleType } from '../api'
@@ -32,14 +31,15 @@ const ROLE_VARIANTS: Record<HrRoleType, BadgeVariant> = {
  * Displays a colored badge for an HR role with optional tooltip
  */
 export function HrRoleBadge({ role, className, showTooltip = true }: HrRoleBadgeProps) {
+	const { t } = useAppTranslation()
 	const roleType = getRoleType(role)
 
 	if (!roleType) {
 		return null
 	}
 
-	const roleName = HR_ROLE_NAMES[roleType]
-	const roleDescription = HR_ROLE_DESCRIPTIONS[roleType]
+	const roleName = t(`corporations.roles.${roleType}`)
+	const roleDescription = t(`corporations.hrRoleDescriptions.${roleType}`)
 
 	return (
 		<Badge

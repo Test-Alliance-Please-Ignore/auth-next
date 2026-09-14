@@ -36,6 +36,10 @@ export const commonCatalog = defineCatalog(
 				unlinked: 'Unlinked',
 			},
 			characterIdentity: {
+				loadingPrivateDetails: 'Loading private character details',
+				main: 'Main',
+				alt: 'Alt',
+				skillPoints: '{{value}} SP',
 				spUnavailable: 'SP unavailable',
 				walletUnavailable: 'Wallet unavailable',
 				copyNameAria: 'Copy {{name}} to clipboard',
@@ -105,6 +109,23 @@ export const commonCatalog = defineCatalog(
 		locale: {
 			label: 'Language',
 		},
+		pagination: {
+			range: '{{start}}–{{end}} of {{total}} {{itemLabel}}',
+			empty: '0 {{itemLabel}}',
+			perPage: 'Per page:',
+			first: 'First',
+			previous: 'Prev',
+			next: 'Next',
+			last: 'Last',
+			users_one: 'user',
+			users_other: 'users',
+		},
+		metaPill: {
+			copySuccess: '{{label}} copied',
+			copyFailed: 'Failed to copy {{label}}',
+			copyAria: 'Copy {{label}} to clipboard',
+			copy: 'Copy {{label}}',
+		},
 	},
 	{
 		common: {
@@ -141,6 +162,10 @@ export const commonCatalog = defineCatalog(
 				unlinked: 'Nicht verknüpft',
 			},
 			characterIdentity: {
+				loadingPrivateDetails: 'Private Charakterdaten werden geladen',
+				main: 'Hauptcharakter',
+				alt: 'Alt',
+				skillPoints: '{{value}} SP',
 				spUnavailable: 'SP nicht verfügbar',
 				walletUnavailable: 'Wallet nicht verfügbar',
 				copyNameAria: '{{name}} in die Zwischenablage kopieren',
@@ -210,6 +235,23 @@ export const commonCatalog = defineCatalog(
 		locale: {
 			label: 'Sprache',
 		},
+		pagination: {
+			range: '{{itemLabel}}: {{start}}–{{end}} von {{total}}',
+			empty: '0 {{itemLabel}}',
+			perPage: 'Pro Seite:',
+			first: 'Erste',
+			previous: 'Zurück',
+			next: 'Weiter',
+			last: 'Letzte',
+			users_one: 'Benutzer',
+			users_other: 'Benutzer',
+		},
+		metaPill: {
+			copySuccess: '{{label}} kopiert',
+			copyFailed: '{{label}} konnte nicht kopiert werden',
+			copyAria: '{{label}} in die Zwischenablage kopieren',
+			copy: '{{label}} kopieren',
+		},
 	},
 	{
 		common: {
@@ -246,6 +288,10 @@ export const commonCatalog = defineCatalog(
 				unlinked: '연결 안 됨',
 			},
 			characterIdentity: {
+				loadingPrivateDetails: '캐릭터 비공개 정보 불러오는 중',
+				main: '메인',
+				alt: '부캐',
+				skillPoints: '{{value}} SP',
 				spUnavailable: 'SP 정보 없음',
 				walletUnavailable: '지갑 정보 없음',
 				copyNameAria: '{{name}}을(를) 클립보드에 복사',
@@ -314,6 +360,23 @@ export const commonCatalog = defineCatalog(
 		},
 		locale: {
 			label: '언어',
+		},
+		pagination: {
+			range: '{{itemLabel}} {{total}} · {{start}}–{{end}}',
+			empty: '{{itemLabel}} 0',
+			perPage: '페이지당:',
+			first: '처음',
+			previous: '이전',
+			next: '다음',
+			last: '마지막',
+			users_one: '사용자',
+			users_other: '사용자',
+		},
+		metaPill: {
+			copySuccess: '{{label}} 복사 완료',
+			copyFailed: '{{label}} 복사 실패',
+			copyAria: '{{label}} 클립보드에 복사',
+			copy: '{{label}} 복사',
 		},
 	}
 )

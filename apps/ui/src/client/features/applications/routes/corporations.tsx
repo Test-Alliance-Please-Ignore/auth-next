@@ -17,6 +17,7 @@ import { useHrAccessibleCorporations } from '@/features/hr'
 import { HrRoleBadge } from '@/features/hr/components/hr-role-badge'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { corporationLogoUrl } from '@/lib/eve-images'
 
 import { useCorporationAccess, useCorporationCoverage } from '../../corporations/hooks'
@@ -26,14 +27,7 @@ import type { CorporationCoverageStats } from '../../corporations/api'
 
 type CorporationTypeFilter = 'member' | 'alt' | 'special'
 
-const CORPORATION_TYPE_OPTIONS: Array<{
-	value: CorporationTypeFilter
-	label: string
-}> = [
-	{ value: 'member', label: 'Member Corps' },
-	{ value: 'alt', label: 'Alt Corps' },
-	{ value: 'special', label: 'Special Purpose Corps' },
-]
+const CORPORATION_TYPES: CorporationTypeFilter[] = ['member', 'alt', 'special']
 
 function matchesCorporationType(
 	corporation: {
@@ -49,6 +43,7 @@ function matchesCorporationType(
 }
 
 function CorporationCoverageBars({ coverage }: { coverage: CorporationCoverageStats }) {
+	const { t } = useAppTranslation()
 	const authLinkedUnits = coverage.linkedMemberCount + coverage.unlinkedMemberCount
 	const authLinkedPercentage =
 		authLinkedUnits > 0 ? Math.round((coverage.linkedMemberCount / authLinkedUnits) * 100) : 0
@@ -61,9 +56,9 @@ function CorporationCoverageBars({ coverage }: { coverage: CorporationCoverageSt
 		<div className="w-44 space-y-2">
 			<div className="space-y-1">
 				<div className="flex items-center justify-between text-xs text-muted-foreground">
-					<span>Auth-linked users</span>
+					<span>{t('corporations.list.authLinkedUsers')}</span>
 					<span>
-						{coverage.linkedMemberCount}/{authLinkedUnits}
+						{formatNumber(coverage.linkedMemberCount)}/{formatNumber(authLinkedUnits)}
 					</span>
 				</div>
 				<Progress
@@ -73,9 +68,9 @@ function CorporationCoverageBars({ coverage }: { coverage: CorporationCoverageSt
 			</div>
 			<div className="space-y-1">
 				<div className="flex items-center justify-between text-xs text-muted-foreground">
-					<span>Characters with valid ESI</span>
+					<span>{t('corporations.list.validEsiCharacters')}</span>
 					<span>
-						{coverage.validEsiKeyMemberCount}/{coverage.memberCount}
+						{formatNumber(coverage.validEsiKeyMemberCount)}/{formatNumber(coverage.memberCount)}
 					</span>
 				</div>
 				<Progress
@@ -88,8 +83,9 @@ function CorporationCoverageBars({ coverage }: { coverage: CorporationCoverageSt
 }
 
 function CorporationCoverageBarsSkeleton() {
+	const { t } = useAppTranslation()
 	return (
-		<div className="w-44 space-y-2" aria-label="Loading ESI coverage">
+		<div className="w-44 space-y-2" aria-label={t('corporations.list.loadingCoverage')}>
 			{Array.from({ length: 2 }, (_, index) => (
 				<div className="space-y-1" key={index}>
 					<div className="flex items-center justify-between gap-2">
@@ -104,6 +100,7 @@ function CorporationCoverageBarsSkeleton() {
 }
 
 export default function CorporationsPage() {
+	const { t } = useAppTranslation()
 	const { user, isAuthenticated, isLoading: authLoading, permissions } = useAuth()
 	const isAuditor = useMemo(
 		() => permissions.some((permission) => permission.urn === 'urn:hr:auditor'),
@@ -123,6 +120,17 @@ export default function CorporationsPage() {
 		useCorporationCoverage()
 	const { data: applicationCounts = [], isLoading: applicationCountsLoading } =
 		useCorporationApplicationCounts()
+	const corporationTypeOptions = useMemo(
+		() => [
+			{ value: 'member', label: t('corporations.list.memberCorporations') },
+			{ value: 'alt', label: t('corporations.list.altCorporations') },
+			{
+				value: 'special',
+				label: t('corporations.list.specialPurposeCorporations'),
+			},
+		],
+		[t]
+	) satisfies Array<{ value: CorporationTypeFilter; label: string }>
 	const availableCorporationTypes = useMemo(() => {
 		const types = new Set<CorporationTypeFilter>()
 		for (const corporation of corporations) {
@@ -134,10 +142,10 @@ export default function CorporationsPage() {
 	}, [corporations])
 	const defaultCorporationTypeFilter = useMemo(() => {
 		return (
-			CORPORATION_TYPE_OPTIONS.find((option) => availableCorporationTypes.includes(option.value))
+			corporationTypeOptions.find((option) => availableCorporationTypes.includes(option.value))
 				?.value ?? null
 		)
-	}, [availableCorporationTypes])
+	}, [availableCorporationTypes, corporationTypeOptions])
 	const canFilterCorporations =
 		user?.is_admin === true || isAuditor || availableCorporationTypes.length > 1
 	const accessibleCorporationIds = useMemo(
@@ -194,7 +202,7 @@ export default function CorporationsPage() {
 		[applicationCounts]
 	)
 
-	usePageTitle('Corporations')
+	usePageTitle(t('corporations.title'))
 
 	if (!authLoading && !isAuthenticated) {
 		return <Navigate to="/login" replace />
@@ -217,15 +225,15 @@ export default function CorporationsPage() {
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Failed to Load Corporations
+							{t('corporations.list.loadFailed')}
 						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							{error instanceof Error ? error.message : 'An unexpected error occurred'}
+							{error instanceof Error ? error.message : t('corporations.list.unexpectedError')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" onClick={() => window.location.reload()}>
-							Try Again
+							{t('corporations.list.retry')}
 						</Button>
 					</CardContent>
 				</Card>
@@ -239,9 +247,9 @@ export default function CorporationsPage() {
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
 						<Building2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-						<CardTitle className="text-2xl">No Corporation Access</CardTitle>
+						<CardTitle className="text-2xl">{t('corporations.list.noAccess')}</CardTitle>
 						<CardDescription className="mt-2">
-							You do not currently have HR Viewer/Reviewer/Admin access for any corporation.
+							{t('corporations.list.noAccessDescription')}
 						</CardDescription>
 					</CardHeader>
 				</Card>
@@ -252,8 +260,8 @@ export default function CorporationsPage() {
 	return (
 		<Container>
 			<PageHeader
-				title="Corporations"
-				description="Select a corporation to access members and application review tools"
+				title={t('corporations.title')}
+				description={t('corporations.list.description')}
 			/>
 
 			{canFilterCorporations && (
@@ -262,8 +270,8 @@ export default function CorporationsPage() {
 						<div className="relative min-w-0 sm:w-80 sm:shrink-0">
 							<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
 							<Input
-								aria-label="Filter corporations"
-								placeholder="Filter corporations..."
+								aria-label={t('corporations.list.filterCorporations')}
+								placeholder={t('corporations.list.filterPlaceholder')}
 								value={corporationSearch}
 								onChange={(event) => setCorporationSearch(event.target.value)}
 								className="pl-9"
@@ -271,13 +279,13 @@ export default function CorporationsPage() {
 						</div>
 						<div className="flex min-w-0 shrink-0 items-center gap-2">
 							<Label htmlFor="corporation-type-filter" className="shrink-0">
-								Corporation type:
+								{t('corporations.list.showCorporations')}
 							</Label>
 							<Select
 								inputId="corporation-type-filter"
-								value={activeCorporationTypeFilter ?? CORPORATION_TYPE_OPTIONS[0].value}
+								value={activeCorporationTypeFilter ?? CORPORATION_TYPES[0]}
 								onValueChange={(value) => setCorporationTypeFilter(value as CorporationTypeFilter)}
-								options={CORPORATION_TYPE_OPTIONS.filter((option) =>
+								options={corporationTypeOptions.filter((option) =>
 									availableCorporationTypes.includes(option.value)
 								)}
 								className="sm:w-64"
@@ -291,7 +299,7 @@ export default function CorporationsPage() {
 			{canFilterCorporations && visibleCorporations.length === 0 ? (
 				<Card className="mt-6">
 					<CardContent className="py-10 text-center text-muted-foreground">
-						No corporations match the selected filters.
+						{t('corporations.list.noTypeMatches')}
 					</CardContent>
 				</Card>
 			) : null}
@@ -334,14 +342,16 @@ export default function CorporationsPage() {
 										</span>
 									</CardTitle>
 									<CardDescription className="mt-1">
-										Corporation ID: {corporation.corporationId}
+										{t('corporations.list.corporationId', {
+											id: corporation.corporationId,
+										})}
 									</CardDescription>
 								</div>
 								<div className="justify-self-end self-start">
 									{corporationAccessEntry?.userRole === 'CEO' ? (
-										<Badge variant="warning">CEO</Badge>
+										<Badge variant="warning">{t('corporations.roles.ceo')}</Badge>
 									) : corporationAccessEntry?.userRole === 'Director' ? (
-										<Badge variant="secondary">Director</Badge>
+										<Badge variant="secondary">{t('corporations.roles.director')}</Badge>
 									) : (
 										<HrRoleBadge role={corporation.currentRole} showTooltip={false} />
 									)}
@@ -352,7 +362,7 @@ export default function CorporationsPage() {
 											<Button variant="ghost" asChild className="w-full sm:w-auto">
 												<Link to={`/corporations/${corporation.corporationId}/members`}>
 													<Users className="h-4 w-4" />
-													Members
+													{t('corporations.list.members')}
 												</Link>
 											</Button>
 										)}
@@ -364,7 +374,7 @@ export default function CorporationsPage() {
 											>
 												<Link to={`/corporations/${corporation.corporationId}/applications`}>
 													<FileText className="h-4 w-4" />
-													Applications
+													{t('corporations.list.applications')}
 												</Link>
 											</Button>
 										)}
@@ -372,7 +382,7 @@ export default function CorporationsPage() {
 											<Button variant="ghost" asChild className="w-full sm:w-auto">
 												<Link to={`/corporations/${corporation.corporationId}/settings`}>
 													<Settings2 className="h-4 w-4" />
-													Configure
+													{t('corporations.list.configure')}
 												</Link>
 											</Button>
 										)}
@@ -394,10 +404,20 @@ export default function CorporationsPage() {
 													<Skeleton className="h-5 w-20" />
 												)}
 												{pendingCount > 0 && (
-													<Badge variant="warning">Pending: {pendingCount}</Badge>
+													<Badge variant="warning">
+														{t('corporations.list.pendingCount', {
+															count: pendingCount,
+															formattedCount: formatNumber(pendingCount),
+														})}
+													</Badge>
 												)}
 												{underReviewCount > 0 && (
-													<Badge variant="secondary">Under Review: {underReviewCount}</Badge>
+													<Badge variant="secondary">
+														{t('corporations.list.underReviewCount', {
+															count: underReviewCount,
+															formattedCount: formatNumber(underReviewCount),
+														})}
+													</Badge>
 												)}
 											</div>
 										</div>

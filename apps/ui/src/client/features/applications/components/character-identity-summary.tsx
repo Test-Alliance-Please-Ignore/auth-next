@@ -1,12 +1,11 @@
 import { Check, Copy } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 
-import { formatSkillPoints } from '@repo/eve-types'
-
 import { EsiStatusBadge } from '@/components/esi-status-badge'
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { allianceLogoUrl, corporationLogoUrl } from '@/lib/eve-images'
 import { formatISKShort } from '@/lib/format-utils'
 import { cn } from '@/lib/utils'
@@ -64,12 +63,14 @@ export function CharacterSpWalletLine({
 	isLoading = false,
 	className,
 }: CharacterSpWalletLineProps) {
+	const { t } = useAppTranslation()
+
 	if (isLoading) {
 		return (
 			<div
 				className={cn('mt-1 flex items-center gap-2 text-sm text-muted-foreground', className)}
 				role="status"
-				aria-label="Loading private character details"
+				aria-label={t('common.characterIdentity.loadingPrivateDetails')}
 				aria-busy="true"
 			>
 				<Skeleton className="h-4 w-24 bg-muted-foreground/30" />
@@ -82,11 +83,17 @@ export function CharacterSpWalletLine({
 	return (
 		<p className={cn('mt-1 text-sm text-muted-foreground', className)}>
 			<span className="font-mono font-semibold tabular-nums">
-				{skillPoints != null ? formatSkillPoints(skillPoints) : 'SP unavailable'}
+				{skillPoints != null
+					? t('common.characterIdentity.skillPoints', {
+							value: formatNumber(skillPoints, { notation: 'compact', maximumFractionDigits: 2 }),
+						})
+					: t('common.characterIdentity.spUnavailable')}
 			</span>
 			<span className="mx-2">—</span>
 			<span className="font-mono font-semibold tabular-nums">
-				{walletBalance != null ? formatISKShort(walletBalance) : 'Wallet unavailable'}
+				{walletBalance != null
+					? formatISKShort(walletBalance)
+					: t('common.characterIdentity.walletUnavailable')}
 			</span>
 		</p>
 	)
@@ -113,6 +120,7 @@ export function CharacterIdentitySummary({
 	onCopyName,
 	className,
 }: CharacterIdentitySummaryProps) {
+	const { t } = useAppTranslation()
 	const npcCorp = isNpcCorporation(corporationId)
 	const detailsRef = useRef<HTMLDivElement | null>(null)
 	const [detailsHeight, setDetailsHeight] = useState<number | null>(null)
@@ -179,8 +187,12 @@ export function CharacterIdentitySummary({
 								'truncate text-left text-lg font-semibold transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm cursor-copy',
 								isBlacklisted ? 'text-red-500' : 'text-foreground'
 							)}
-							aria-label={`Copy ${characterName} to clipboard`}
-							title={isNameCopied ? 'Copied' : 'Copy character name'}
+							aria-label={t('common.characterIdentity.copyNameAria', { name: characterName })}
+							title={
+								isNameCopied
+									? t('common.characterIdentity.copied')
+									: t('common.characterIdentity.copyName')
+							}
 						>
 							{characterName}
 						</button>
@@ -203,8 +215,12 @@ export function CharacterIdentitySummary({
 								onCopyName()
 							}}
 							className="inline-flex size-5 items-center justify-center rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring text-blue-500 hover:text-blue-400 cursor-copy"
-							aria-label={`Copy ${characterName} to clipboard`}
-							title={isNameCopied ? 'Copied' : 'Copy character name'}
+							aria-label={t('common.characterIdentity.copyNameAria', { name: characterName })}
+							title={
+								isNameCopied
+									? t('common.characterIdentity.copied')
+									: t('common.characterIdentity.copyName')
+							}
 						>
 							{isNameCopied ? (
 								<Check className="h-3.5 w-3.5 text-green-500" />
@@ -225,7 +241,7 @@ export function CharacterIdentitySummary({
 						<div className="inline-flex items-center gap-1.5">
 							<img
 								src={corporationLogoUrl(corporationId, 32)}
-								alt={`${corporationName} logo`}
+								alt={t('common.characterIdentity.logoAlt', { name: corporationName })}
 								className="size-5 rounded-sm border border-border/60 object-cover"
 								loading="lazy"
 							/>
@@ -240,19 +256,21 @@ export function CharacterIdentitySummary({
 							</span>
 							{npcCorp && (
 								<Badge variant="ghost" className="h-5 px-1.5 text-[10px]">
-									NPC Corp
+									{t('common.characterIdentity.npcCorporation')}
 								</Badge>
 							)}
 						</div>
 					) : (
-						<span className="text-xs text-muted-foreground">Corporation unknown</span>
+						<span className="text-xs text-muted-foreground">
+							{t('common.characterIdentity.corporationUnknown')}
+						</span>
 					)}
 					{allianceId && allianceName && (
 						<div className="inline-flex items-center gap-1.5">
 							<span className="text-muted-foreground">•</span>
 							<img
 								src={allianceLogoUrl(allianceId, 32)}
-								alt={`${allianceName} logo`}
+								alt={t('common.characterIdentity.logoAlt', { name: allianceName })}
 								className="size-5 rounded-sm border border-border/60 object-cover"
 								loading="lazy"
 							/>

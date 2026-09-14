@@ -19,9 +19,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/hooks/useAuth'
 import { usePublicCorporations } from '@/hooks/useCorporations'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 import { corporationLogoUrl } from '@/lib/eve-images'
 
+import type { ChangeEvent } from 'react'
 import type { ManagedCorporation } from '@/lib/api'
 
 // ============================================================================
@@ -38,6 +40,8 @@ interface CorporationCardProps {
 // ============================================================================
 
 function CorporationCard({ corporation, onClick }: CorporationCardProps) {
+	const { t } = useAppTranslation()
+
 	return (
 		<Card
 			variant="elevated"
@@ -47,7 +51,7 @@ function CorporationCard({ corporation, onClick }: CorporationCardProps) {
 				<div className="flex items-start gap-4">
 					<img
 						src={corporationLogoUrl(corporation.corporationId, 64)}
-						alt={corporation.name}
+						alt={t('browseCorporations.logoAlt', { name: corporation.name })}
 						className="h-16 w-16 rounded-lg bg-muted/30"
 					/>
 					<div className="flex-1 min-w-0">
@@ -64,7 +68,7 @@ function CorporationCard({ corporation, onClick }: CorporationCardProps) {
 				{/* Corporation Info */}
 				<div className="flex items-center gap-2 text-sm text-muted-foreground">
 					<Users className="h-4 w-4" />
-					<span>Member Corporation</span>
+					<span>{t('browseCorporations.memberCorporation')}</span>
 				</div>
 
 				{/* Short Description */}
@@ -78,7 +82,7 @@ function CorporationCard({ corporation, onClick }: CorporationCardProps) {
 
 				{/* View Details Button */}
 				<Button className="w-full" onClick={() => onClick(corporation.corporationId)}>
-					View Details
+					{t('browseCorporations.viewDetails')}
 				</Button>
 			</CardContent>
 		</Card>
@@ -114,7 +118,8 @@ function CorporationCardSkeleton() {
 // ============================================================================
 
 export default function BrowseCorporations() {
-	usePageTitle('Join Corporations')
+	const { t } = useAppTranslation()
+	usePageTitle(t('browseCorporations.title'))
 
 	const navigate = useNavigate()
 	const { isAuthenticated, isLoading: authLoading } = useAuth()
@@ -152,22 +157,23 @@ export default function BrowseCorporations() {
 		void navigate(`/join/${corporationId}`)
 	}
 
-	const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+	const handleSearch = (e: ChangeEvent<HTMLInputElement>) => {
 		setSearchQuery(e.target.value)
 	}
 
 	return (
 		<Container size="wide">
 			<PageHeader
-				title="Join Corporations"
-				description="Find and join EVE Online member corporations"
+				title={t('browseCorporations.title')}
+				description={t('browseCorporations.description')}
 			/>
 
 			{/* Search */}
 			<div className="mb-6">
 				<Input
 					type="text"
-					placeholder="Search corporations by name or ticker..."
+					aria-label={t('browseCorporations.searchPlaceholder')}
+					placeholder={t('browseCorporations.searchPlaceholder')}
 					value={searchQuery}
 					onChange={handleSearch}
 					className="max-w-md"
@@ -188,11 +194,11 @@ export default function BrowseCorporations() {
 				<Card className="max-w-2xl mx-auto">
 					<CardContent className="py-12 text-center">
 						<Building2 className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-						<CardTitle className="text-xl mb-2">No Corporations Found</CardTitle>
+						<CardTitle className="text-xl mb-2">{t('browseCorporations.empty')}</CardTitle>
 						<CardDescription>
 							{debouncedQuery
-								? 'No corporations match your search. Try adjusting your search terms.'
-								: 'No member corporations are currently available for applications.'}
+								? t('browseCorporations.noSearchResults')
+								: t('browseCorporations.noneAvailable')}
 						</CardDescription>
 					</CardContent>
 				</Card>
