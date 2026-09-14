@@ -477,6 +477,11 @@ export class ApplicationService {
 			orderBy: [desc(applicationRecommendations.createdAt)],
 		})
 
+		const canViewPrivateRecommendations = hasHrAccess || isAdmin
+		const visibleRecommendations = canViewPrivateRecommendations
+			? recommendations
+			: recommendations.filter((rec) => rec.isPublic || rec.userId === userId)
+
 		// Get alt characters
 		const alts = await this.ctx.db.query.applicationAlts.findMany({
 			where: eq(applicationAlts.applicationId, applicationId),
@@ -492,12 +497,25 @@ export class ApplicationService {
 			})
 		}
 
+		if (activityLog && !canViewPrivateRecommendations) {
+			const visibleRecommendationIds = new Set(visibleRecommendations.map((rec) => rec.id))
+			// History exposes recommendation authors and sentiment too. Deleted or legacy
+			// entries with unknown visibility stay private, except for the actor's own entries.
+			activityLog = activityLog.filter((entry) => {
+				if (!entry.action.startsWith('recommendation_') || entry.userId === userId) return true
+				const recommendationId = entry.metadata?.recommendationId
+				return (
+					typeof recommendationId === 'string' && visibleRecommendationIds.has(recommendationId)
+				)
+			})
+		}
+
 		const firstApplicationIds = await this.resolveFirstApplicationIds([application.userId])
 
 		return {
 			...this.mapToApplication(application, undefined, firstApplicationIds.has(application.id)),
 			altCharacterIds: alts.map((alt) => alt.characterId),
-			recommendations: recommendations.map((rec) => ({
+			recommendations: visibleRecommendations.map((rec) => ({
 				id: rec.id,
 				applicationId: rec.applicationId,
 				userId: rec.userId,
@@ -509,7 +527,7 @@ export class ApplicationService {
 				createdAt: rec.createdAt,
 				updatedAt: rec.updatedAt,
 			})),
-			recommendationCount: recommendations.length,
+			recommendationCount: visibleRecommendations.length,
 			activityLog: activityLog?.map((log) => ({
 				id: log.id,
 				applicationId: log.applicationId,

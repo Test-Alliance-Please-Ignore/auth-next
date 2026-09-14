@@ -10,7 +10,8 @@ import { Edit, Trash2 } from 'lucide-react'
 import { MemberAvatar } from '@/components/member-avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
+import { useAppTranslation } from '@/i18n'
+import { formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { RecommendationSentimentBadge } from './recommendation-sentiment-badge'
@@ -56,6 +57,7 @@ export function RecommendationCard({
 	onDelete,
 	className,
 }: RecommendationCardProps) {
+	const { t } = useAppTranslation()
 	const sentimentBorderColor = {
 		positive: 'border-l-success',
 		neutral: 'border-l-primary',
@@ -90,8 +92,9 @@ export function RecommendationCard({
 									{recommendation.characterName}
 								</h3>
 								<p className="text-sm text-muted-foreground">
-									Recommended{' '}
-									{formatDistanceToNow(new Date(recommendation.createdAt), { addSuffix: true })}
+									{t('applications.recommendations.cards.recommended', {
+										time: formatRelativeTime(recommendation.createdAt),
+									})}
 								</p>
 							</div>
 							<RecommendationSentimentBadge sentiment={recommendation.sentiment} size="sm" />
@@ -101,7 +104,7 @@ export function RecommendationCard({
 			</CardHeader>
 
 			<CardContent className="pb-4">
-				<p className="text-foreground whitespace-pre-wrap leading-relaxed">
+				<p className="text-foreground whitespace-pre-wrap break-words leading-relaxed">
 					"{recommendation.recommendationText}"
 				</p>
 			</CardContent>
@@ -116,7 +119,7 @@ export function RecommendationCard({
 							className="text-muted-foreground hover:text-foreground"
 						>
 							<Edit className="h-4 w-4 mr-1.5" />
-							Edit
+							{t('common.edit')}
 						</Button>
 					)}
 					{canDelete && onDelete && (
@@ -127,7 +130,7 @@ export function RecommendationCard({
 							className="text-muted-foreground hover:text-destructive"
 						>
 							<Trash2 className="h-4 w-4 mr-1.5" />
-							Delete
+							{t('common.delete')}
 						</Button>
 					)}
 				</CardFooter>

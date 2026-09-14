@@ -10,6 +10,7 @@ import { MessageSquare, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { useRecommendations } from '../hooks'
@@ -24,6 +25,8 @@ import type { Recommendation } from '../api'
 export interface RecommendationListProps {
 	applicationId: string
 	currentUserId?: string
+	/** The applicant tab shows public recommendations and the viewer's own. */
+	applicantView?: boolean
 	onAddRecommendation?: () => void
 	onEditRecommendation?: (rec: Recommendation) => void
 	onDeleteRecommendation?: (rec: Recommendation) => void
@@ -74,17 +77,20 @@ interface EmptyStateProps {
 }
 
 function EmptyState({ onAddRecommendation }: EmptyStateProps) {
+	const { t } = useAppTranslation()
 	return (
 		<div className="text-center py-12">
 			<MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-			<h3 className="text-lg font-semibold text-foreground mb-2">No recommendations yet</h3>
+			<h3 className="text-lg font-semibold text-foreground mb-2">
+				{t('applications.recommendations.cards.emptyTitle')}
+			</h3>
 			<p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
-				Community members can vouch for this applicant by adding their recommendation.
+				{t('applications.recommendations.cards.emptyDescription')}
 			</p>
 			{onAddRecommendation && (
 				<Button onClick={onAddRecommendation} size="sm">
 					<Plus className="h-4 w-4" />
-					Add Recommendation
+					{t('applications.recommendations.form.addTitle')}
 				</Button>
 			)}
 		</div>
@@ -96,25 +102,28 @@ function EmptyState({ onAddRecommendation }: EmptyStateProps) {
 // ============================================================================
 
 interface ErrorStateProps {
-	error: Error
+	error: unknown
 	onRetry: () => void
 }
 
 function ErrorState({ error, onRetry }: ErrorStateProps) {
+	const { t } = useAppTranslation()
 	return (
 		<div className="text-center py-12">
 			<Card className="max-w-md mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 				<CardHeader>
 					<CardTitle className="text-red-900 dark:text-red-100">
-						Failed to Load Recommendations
+						{t('applications.recommendations.list.loadFailed')}
 					</CardTitle>
 					<CardDescription className="text-red-700 dark:text-red-300">
-						{error.message || 'An unexpected error occurred'}
+						{error instanceof Error && error.message
+							? error.message
+							: t('applications.list.unexpectedError')}
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<Button variant="ghost" onClick={onRetry}>
-						Try Again
+						{t('appError.tryAgain')}
 					</Button>
 				</CardContent>
 			</Card>
@@ -143,18 +152,20 @@ function ErrorState({ error, onRetry }: ErrorStateProps) {
 export function RecommendationList({
 	applicationId,
 	currentUserId,
+	applicantView = false,
 	onAddRecommendation,
 	onEditRecommendation,
 	onDeleteRecommendation,
 	className,
 }: RecommendationListProps) {
+	const { t } = useAppTranslation()
 	const { data: recommendations, isLoading, error, refetch } = useRecommendations(applicationId)
 
 	// Sort recommendations by date (newest first)
 	const sortedRecommendations = recommendations
-		? [...recommendations].sort(
-				(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-			)
+		? recommendations
+				.filter((rec) => !applicantView || rec.isPublic || rec.userId === currentUserId)
+				.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 		: []
 
 	// Check if user already has a recommendation
@@ -178,7 +189,7 @@ export function RecommendationList({
 	if (error) {
 		return (
 			<div className={className}>
-				<ErrorState error={error as Error} onRetry={() => refetch()} />
+				<ErrorState error={error} onRetry={() => refetch()} />
 			</div>
 		)
 	}
@@ -196,14 +207,16 @@ export function RecommendationList({
 	return (
 		<div className={cn('space-y-4', className)}>
 			{/* Header with count and add button */}
-			<div className="flex items-center justify-between">
+			<div className="flex flex-wrap items-center justify-between gap-2">
 				<h3 className="text-lg font-semibold text-foreground">
-					Recommendations ({sortedRecommendations.length})
+					{t('applications.recommendations.cards.count', {
+						count: formatNumber(sortedRecommendations.length),
+					})}
 				</h3>
 				{canAddRecommendation && (
 					<Button onClick={onAddRecommendation} size="sm" variant="ghost">
 						<Plus className="h-4 w-4" />
-						Add Recommendation
+						{t('applications.recommendations.form.addTitle')}
 					</Button>
 				)}
 			</div>
