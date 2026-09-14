@@ -16,6 +16,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { ApplicationCard } from '../components/application-card'
@@ -30,23 +31,18 @@ import type { ApplicationStatus } from '../api'
 
 type FilterTab = 'all' | ApplicationStatus
 
-interface FilterTabConfig {
-	label: string
-	value: FilterTab
-}
-
 // ============================================================================
 // Constants
 // ============================================================================
 
-const FILTER_TABS: FilterTabConfig[] = [
-	{ label: 'All', value: 'all' },
-	{ label: 'Pending', value: 'pending' },
-	{ label: 'Under Review', value: 'under_review' },
-	{ label: 'Accepted', value: 'accepted' },
-	{ label: 'Completed', value: 'completed' },
-	{ label: 'Rejected', value: 'rejected' },
-	{ label: 'Withdrawn', value: 'withdrawn' },
+const FILTER_TABS: FilterTab[] = [
+	'all',
+	'pending',
+	'under_review',
+	'accepted',
+	'completed',
+	'rejected',
+	'withdrawn',
 ]
 
 // ============================================================================
@@ -57,6 +53,7 @@ const FILTER_TABS: FilterTabConfig[] = [
  * Main My Applications List Component
  */
 export default function MyApplicationsList() {
+	const { t } = useAppTranslation()
 	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const [activeFilter, setActiveFilter] = useState<FilterTab>('all')
@@ -69,7 +66,7 @@ export default function MyApplicationsList() {
 	} = useMyApplications({ enabled: !!user?.id })
 
 	// Set page title
-	usePageTitle('My Applications')
+	usePageTitle(t('applications.list.title'))
 
 	// Calculate statistics
 	const stats = useMemo(() => {
@@ -132,15 +129,15 @@ export default function MyApplicationsList() {
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Failed to Load Applications
+							{t('applications.list.loadFailed')}
 						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							{error instanceof Error ? error.message : 'An unexpected error occurred'}
+							{error instanceof Error ? error.message : t('applications.list.unexpectedError')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" onClick={() => window.location.reload()}>
-							Try Again
+							{t('appError.tryAgain')}
 						</Button>
 					</CardContent>
 				</Card>
@@ -152,22 +149,42 @@ export default function MyApplicationsList() {
 	return (
 		<Container>
 			<PageHeader
-				title="My Applications"
-				description="Track and manage your job applications to corporations"
+				title={t('applications.list.title')}
+				description={t('applications.list.description')}
 			/>
 
 			{/* Statistics Cards */}
 			<div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-6">
-				<ApplicationStatsCard label="Pending" value={stats.pending} variant="pending" />
 				<ApplicationStatsCard
-					label="Under Review"
+					label={t('applications.status.pending')}
+					value={stats.pending}
+					variant="pending"
+				/>
+				<ApplicationStatsCard
+					label={t('applications.status.under_review')}
 					value={stats.under_review}
 					variant="under_review"
 				/>
-				<ApplicationStatsCard label="Accepted" value={stats.accepted} variant="accepted" />
-				<ApplicationStatsCard label="Completed" value={stats.completed} variant="completed" />
-				<ApplicationStatsCard label="Rejected" value={stats.rejected} variant="rejected" />
-				<ApplicationStatsCard label="Withdrawn" value={stats.withdrawn} variant="withdrawn" />
+				<ApplicationStatsCard
+					label={t('applications.status.accepted')}
+					value={stats.accepted}
+					variant="accepted"
+				/>
+				<ApplicationStatsCard
+					label={t('applications.status.completed')}
+					value={stats.completed}
+					variant="completed"
+				/>
+				<ApplicationStatsCard
+					label={t('applications.status.rejected')}
+					value={stats.rejected}
+					variant="rejected"
+				/>
+				<ApplicationStatsCard
+					label={t('applications.status.withdrawn')}
+					value={stats.withdrawn}
+					variant="withdrawn"
+				/>
 			</div>
 
 			{/* Filter Tabs */}
@@ -175,17 +192,18 @@ export default function MyApplicationsList() {
 				<div className="inline-flex items-center gap-2 p-1 bg-muted rounded-lg min-w-full sm:min-w-0">
 					{FILTER_TABS.map((tab) => (
 						<button
-							key={tab.value}
-							onClick={() => setActiveFilter(tab.value)}
+							key={tab}
+							onClick={() => setActiveFilter(tab)}
+							aria-pressed={activeFilter === tab}
 							className={cn(
 								'px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap',
 								'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-								activeFilter === tab.value
+								activeFilter === tab
 									? 'bg-background text-foreground shadow-sm'
 									: 'text-muted-foreground hover:text-foreground hover:bg-background/50'
 							)}
 						>
-							{tab.label}
+							{tab === 'all' ? t('applications.list.all') : t(`applications.status.${tab}`)}
 						</button>
 					))}
 				</div>
@@ -209,24 +227,26 @@ export default function MyApplicationsList() {
 						<Briefcase className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
 						<CardTitle>
 							{activeFilter === 'all'
-								? 'No Applications Yet'
-								: `No ${FILTER_TABS.find((t) => t.value === activeFilter)?.label} Applications`}
+								? t('applications.list.emptyTitle')
+								: t('applications.list.emptyFilteredTitle', {
+										status: t(`applications.status.${activeFilter}`),
+									})}
 						</CardTitle>
 						<CardDescription>
 							{activeFilter === 'all'
-								? "You haven't submitted any applications to corporations yet."
-								: `You don't have any applications with this status.`}
+								? t('applications.list.emptyDescription')
+								: t('applications.list.emptyFilteredDescription')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<p className="text-sm text-muted-foreground mb-4">
 							{activeFilter === 'all'
-								? 'Browse corporations and submit an application to get started.'
-								: 'Try selecting a different filter to view other applications.'}
+								? t('applications.list.emptyHint')
+								: t('applications.list.emptyFilteredHint')}
 						</p>
 						{activeFilter !== 'all' && (
 							<Button variant="ghost" onClick={() => setActiveFilter('all')}>
-								View All Applications
+								{t('applications.list.viewAll')}
 							</Button>
 						)}
 					</CardContent>
@@ -236,9 +256,7 @@ export default function MyApplicationsList() {
 			{/* Help Text */}
 			{applications && applications.length > 0 && (
 				<div className="mt-8 text-center">
-					<p className="text-sm text-muted-foreground">
-						Click on any application to view details and track its progress.
-					</p>
+					<p className="text-sm text-muted-foreground">{t('applications.list.hint')}</p>
 				</div>
 			)}
 		</Container>

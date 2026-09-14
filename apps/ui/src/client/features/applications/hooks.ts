@@ -397,6 +397,11 @@ export function useSubmitApplication() {
 	return useMutation({
 		mutationFn: (data: SubmitApplicationRequest) => applicationsApi.submitApplication(data),
 		onSuccess: (newApplication) => {
+			// The applicant list has its own cache key outside the staff list family.
+			void queryClient.invalidateQueries({
+				queryKey: [...applicationKeys.all, 'mine'],
+			})
+
 			// Invalidate all application lists
 			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.lists(),
