@@ -299,8 +299,10 @@ export function useDeleteBroadcast() {
 
 	return useMutation({
 		mutationFn: (id: string) => api.deleteBroadcast(id),
-		onSuccess: () => {
+		onSuccess: (_, id) => {
 			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+			// Reopening a detail page must reflect edits made from the history list.
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcast(id) })
 		},
 	})
 }
@@ -311,8 +313,10 @@ export function useRescindBroadcast() {
 	return useMutation({
 		mutationFn: ({ id, rescindMessage }: { id: string; rescindMessage?: string }) =>
 			api.rescindBroadcast(id, rescindMessage),
-		onSuccess: () => {
+		onSuccess: (_, { id }) => {
 			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+			// Reopening a detail page must reflect edits made from the history list.
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcast(id) })
 		},
 	})
 }
@@ -323,8 +327,10 @@ export function useAddBroadcastAddendum() {
 	return useMutation({
 		mutationFn: ({ id, addendumMessage }: { id: string; addendumMessage: string }) =>
 			api.addBroadcastAddendum(id, addendumMessage),
-		onSuccess: () => {
+		onSuccess: (_, { id }) => {
 			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcasts() })
+			// Reopening a detail page must reflect edits made from the history list.
+			void queryClient.invalidateQueries({ queryKey: broadcastKeys.broadcast(id) })
 		},
 	})
 }
