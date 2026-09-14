@@ -13,7 +13,9 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 
+import type { FormEvent } from 'react'
 import type { AttachPermissionRequest, PermissionTarget } from '@/lib/api'
 
 interface AttachPermissionDialogProps {
@@ -31,10 +33,11 @@ export function AttachPermissionDialog({
 	onSubmit,
 	isSubmitting,
 }: AttachPermissionDialogProps) {
+	const { t } = useAppTranslation()
 	const [selectedPermissionId, setSelectedPermissionId] = useState<string>('')
 	const [targetType, setTargetType] = useState<PermissionTarget>('all_members')
 
-	const handleSubmit = async (e: React.FormEvent) => {
+	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault()
 
 		if (!selectedPermissionId) return
@@ -64,10 +67,8 @@ export function AttachPermissionDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
 				<DialogHeader>
-					<DialogTitle>Attach Global Permission</DialogTitle>
-					<DialogDescription>
-						Select a global permission from the registry to attach to this group
-					</DialogDescription>
+					<DialogTitle>{t('admin.permissionAttachment.title')}</DialogTitle>
+					<DialogDescription>{t('admin.permissionAttachment.description')}</DialogDescription>
 				</DialogHeader>
 
 				<form onSubmit={handleSubmit} className="space-y-4">
@@ -79,21 +80,24 @@ export function AttachPermissionDialog({
 					{/* Target Type Selection */}
 					<div className="space-y-2">
 						<Label htmlFor="target-type">
-							Attachment Type <span className="text-destructive">*</span>
+							{t('admin.permissionAttachment.type')} <span className="text-destructive">*</span>
 						</Label>
 						<Select
 							value={targetType}
 							onValueChange={(value) => setTargetType(value as PermissionTarget)}
 							inputId="target-type"
 							options={[
-								{ value: 'all_members', label: 'All Members' },
-								{ value: 'all_admins', label: 'All Admins' },
-								{ value: 'owner_only', label: 'Owner Only' },
-								{ value: 'owner_and_admins', label: 'Owner & Admins' },
+								{ value: 'all_members', label: t('groups.permissions.targets.all_members') },
+								{ value: 'all_admins', label: t('groups.permissions.targets.all_admins') },
+								{ value: 'owner_only', label: t('groups.permissions.targets.owner_only') },
+								{
+									value: 'owner_and_admins',
+									label: t('groups.permissions.targets.owner_and_admins'),
+								},
 							]}
 						/>
 						<p className="text-xs text-muted-foreground">
-							Who in the group should receive this permission attachment?
+							{t('admin.permissionAttachment.targetHelp')}
 						</p>
 						<div className="pt-2">
 							<PermissionTargetBadge target={targetType} />
@@ -103,18 +107,18 @@ export function AttachPermissionDialog({
 					{/* Action Buttons */}
 					<div className="flex justify-end gap-2 pt-4">
 						<Button variant="cancel" type="button" onClick={handleCancel} disabled={isSubmitting}>
-							Cancel
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="confirm"
 							type="submit"
 							loading={isSubmitting}
-							loadingText="Attaching..."
+							loadingText={t('admin.permissionAttachment.attaching')}
 							disabled={!selectedPermissionId}
 							showIcon={false}
 						>
 							<Plus className="h-4 w-4" />
-							Attach Permission
+							{t('admin.permissionAttachment.attach')}
 						</Button>
 					</div>
 				</form>

@@ -25,6 +25,8 @@ import {
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router'
 
+import { LocalePicker } from '@/components/locale-picker'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -39,6 +41,7 @@ function isRouteActive(pathname: string, href: string): boolean {
 }
 
 export function AdminNav({ onNavigate }: AdminNavProps) {
+	const { t } = useAppTranslation()
 	const location = useLocation()
 	const { data: pendingLegacyMigrationsCount = 0 } = useQuery({
 		queryKey: ['admin-nav', 'legacy-migrations', 'pending-count'],
@@ -64,98 +67,98 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 
 	const navItems = [
 		{
-			label: 'Users',
+			label: t('admin.nav.users'),
 			href: '/admin/users',
 			icon: UserCircle,
 		},
 		{
-			label: 'Groups',
+			label: t('admin.nav.groups'),
 			href: '/admin/groups',
 			icon: Users,
 		},
 		{
-			label: 'Categories',
+			label: t('admin.nav.categories'),
 			href: '/admin/categories',
 			icon: FolderKanban,
 		},
 		{
-			label: 'Permissions',
+			label: t('admin.nav.permissions'),
 			href: '/admin/permissions/categories',
 			icon: Key,
 		},
 		{
-			label: 'Corporations',
+			label: t('admin.nav.corporations'),
 			href: '/admin/corporations',
 			icon: Building2,
 		},
 		{
-			label: 'Structures',
+			label: t('admin.nav.structures'),
 			href: '/admin/structures',
 			icon: Building2,
 		},
 		{
-			label: 'Discord',
+			label: t('admin.nav.discord'),
 			href: '/admin/discord',
 			icon: MessageSquare,
 			children: [
-				{ label: 'Servers', href: '/admin/discord-servers' },
-				{ label: 'Commands', href: '/admin/discord-commands' },
-				{ label: 'Member Audit', href: '/admin/discord-audit' },
+				{ label: t('admin.nav.servers'), href: '/admin/discord-servers' },
+				{ label: t('admin.nav.commands'), href: '/admin/discord-commands' },
+				{ label: t('admin.nav.memberAudit'), href: '/admin/discord-audit' },
 			],
 		},
 		{
-			label: 'Broadcasts',
+			label: t('admin.nav.broadcasts'),
 			href: '/admin/broadcasts',
 			icon: Radio,
 			children: [
-				{ label: 'History', href: '/admin/broadcasts' },
-				{ label: 'Targets', href: '/admin/broadcasts-targets' },
-				{ label: 'Templates', href: '/admin/broadcasts-templates' },
+				{ label: t('admin.nav.history'), href: '/admin/broadcasts' },
+				{ label: t('admin.nav.targets'), href: '/admin/broadcasts-targets' },
+				{ label: t('admin.nav.templates'), href: '/admin/broadcasts-templates' },
 			],
 		},
 		{
-			label: 'Bills',
+			label: t('admin.nav.bills'),
 			href: '/admin/bills',
 			icon: Receipt,
 		},
 		{
-			label: 'DKP',
+			label: t('admin.nav.dkp'),
 			href: '/admin/dkp',
 			icon: Coins,
 		},
 		{
-			label: 'Prediction Markets',
+			label: t('admin.nav.predictionMarkets'),
 			href: '/admin/prediction-markets',
 			icon: Wallet,
 			children: [
-				{ label: 'Markets', href: '/admin/prediction-markets/markets' },
-				{ label: 'Wallets', href: '/admin/prediction-markets/wallets' },
-				{ label: 'Audit Log', href: '/admin/prediction-markets/audit' },
-				{ label: 'Config', href: '/admin/prediction-markets/config' },
+				{ label: t('admin.nav.markets'), href: '/admin/prediction-markets/markets' },
+				{ label: t('admin.nav.wallets'), href: '/admin/prediction-markets/wallets' },
+				{ label: t('admin.nav.auditLog'), href: '/admin/prediction-markets/audit' },
+				{ label: t('admin.nav.config'), href: '/admin/prediction-markets/config' },
 			],
 		},
 		{
-			label: 'Industry Providers',
+			label: t('admin.nav.industryProviders'),
 			href: '/admin/industry-providers',
 			icon: Factory,
 		},
 		{
-			label: 'Pastes',
+			label: t('admin.nav.pastes'),
 			href: '/admin/pastes',
 			icon: FileText,
 		},
 		{
-			label: 'Legacy Migrations',
+			label: t('admin.nav.legacyMigrations'),
 			href: '/admin/legacy-migrations',
 			icon: ArchiveRestore,
 		},
 		{
-			label: 'Third-Party Apps',
+			label: t('admin.nav.thirdPartyApps'),
 			href: '/admin/third-party-apps',
 			icon: Waypoints,
 		},
 		{
-			label: 'External Links',
+			label: t('admin.nav.externalLinks'),
 			href: '/admin/external-links',
 			icon: Link2,
 		},
@@ -163,17 +166,17 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 			// Top-level, NOT nested under Discord: this audit covers Mumble as well,
 			// and `isDiscordRoute` only auto-opens that menu for /admin/discord-*.
 			// An emergency tool nobody can find at 04:00 is not shipped.
-			label: 'Services Audit',
+			label: t('admin.nav.servicesAudit'),
 			href: '/admin/services-audit',
 			icon: ShieldAlert,
 		},
 		{
-			label: 'Blocklist',
+			label: t('admin.nav.blocklist'),
 			href: '/admin/blacklist',
 			icon: ShieldBan,
 		},
 		{
-			label: 'Activity Log',
+			label: t('admin.nav.activityLog'),
 			href: '/admin/activity-log',
 			icon: ScrollText,
 		},
@@ -187,9 +190,9 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 					onClick={onNavigate}
 					className="text-xl font-bold gradient-text block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
 				>
-					Admin
+					{t('admin.shell.admin')}
 				</Link>
-				<p className="text-xs text-muted-foreground mt-1">System Management</p>
+				<p className="text-xs text-muted-foreground mt-1">{t('admin.shell.management')}</p>
 			</div>
 
 			<div className="flex-1 p-4 space-y-1 overflow-y-auto overscroll-contain">
@@ -275,7 +278,9 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 										solid
 										className="h-5 min-w-5 border-0 px-1.5 text-[10px] leading-none ring-1 ring-destructive/80"
 									>
-										{pendingLegacyMigrationsCount > 99 ? '99+' : pendingLegacyMigrationsCount}
+										{pendingLegacyMigrationsCount > 99
+											? t('admin.shell.countOverflow', { value: formatNumber(99) })
+											: formatNumber(pendingLegacyMigrationsCount)}
 									</Badge>
 								) : null}
 							</span>
@@ -284,6 +289,9 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 				})}
 
 				<div className="mt-4 pt-4 border-t border-border">
+					<div className="mb-4">
+						<LocalePicker />
+					</div>
 					<Link
 						to="/dashboard"
 						onClick={onNavigate}
@@ -294,7 +302,7 @@ export function AdminNav({ onNavigate }: AdminNavProps) {
 						)}
 					>
 						<ArrowLeft className="h-4 w-4" />
-						Back to Dashboard
+						{t('admin.shell.dashboard')}
 					</Link>
 				</div>
 			</div>

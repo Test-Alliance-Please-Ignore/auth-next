@@ -5,8 +5,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
+import type { FormEvent } from 'react'
+import type { AppTranslationKey } from '@/i18n'
 import type {
 	CreatePermissionRequest,
 	Permission,
@@ -33,6 +36,7 @@ export function PermissionFormDialog({
 	onCancel,
 	isSubmitting,
 }: PermissionFormDialogProps) {
+	const { t } = useAppTranslation()
 	const isEditing = !!permission
 
 	const [formData, setFormData] = useState<CreatePermissionRequest>({
@@ -42,31 +46,33 @@ export function PermissionFormDialog({
 		categoryId: permission?.categoryId || undefined,
 	})
 
-	const [errors, setErrors] = useState<Partial<Record<keyof CreatePermissionRequest, string>>>({})
+	const [errors, setErrors] = useState<
+		Partial<Record<keyof CreatePermissionRequest, AppTranslationKey>>
+	>({})
 	const [urnTouched, setUrnTouched] = useState(false)
 
-	const validateUrn = (urn: string): string | null => {
+	const validateUrn = (urn: string): AppTranslationKey | null => {
 		if (!urn.trim()) {
-			return 'URN is required'
+			return 'admin.validation.urnRequired'
 		}
 
 		if (!urn.startsWith('urn:')) {
-			return "URN must start with 'urn:'"
+			return 'admin.validation.urnPrefix'
 		}
 
 		const parts = urn.split(':')
 		if (parts.length < 3) {
-			return 'URN must have at least 2 parts after "urn:" (e.g., urn:namespace:action)'
+			return 'admin.validation.urnParts'
 		}
 
 		if (!URN_REGEX.test(urn)) {
-			return 'URN can only contain lowercase letters, numbers, hyphens, and underscores'
+			return 'admin.validation.urnCharacters'
 		}
 
 		if (urn.startsWith('urn:broadcasts:')) {
 			const parts = urn.split(':')
 			if (parts.length !== 5) {
-				return 'Broadcast URN must be: urn:broadcasts:<entity-namespace>:<target-name>:<action>'
+				return 'admin.validation.broadcastFormat'
 			}
 
 			const entityNamespace = parts[2]
@@ -74,15 +80,15 @@ export function PermissionFormDialog({
 			const action = parts[4]
 
 			if (!BROADCAST_SEGMENT_REGEX.test(entityNamespace)) {
-				return 'Broadcast entity namespace must match ^[a-z0-9_-]+$ (no spaces)'
+				return 'admin.validation.broadcastNamespace'
 			}
 
 			if (!BROADCAST_SEGMENT_REGEX.test(targetName)) {
-				return 'Broadcast target name must match ^[a-z0-9_-]+$ (no spaces)'
+				return 'admin.validation.broadcastTarget'
 			}
 
 			if (action !== 'send' && action !== 'manage') {
-				return 'Broadcast action must be either :send or :manage'
+				return 'admin.validation.broadcastAction'
 			}
 		}
 
@@ -90,7 +96,7 @@ export function PermissionFormDialog({
 	}
 
 	const validate = (): boolean => {
-		const newErrors: Partial<Record<keyof CreatePermissionRequest, string>> = {}
+		const newErrors: Partial<Record<keyof CreatePermissionRequest, AppTranslationKey>> = {}
 
 		// Validate URN
 		const urnError = validateUrn(formData.urn)
@@ -100,21 +106,21 @@ export function PermissionFormDialog({
 
 		// Validate name
 		if (!formData.name.trim()) {
-			newErrors.name = 'Display name is required'
+			newErrors.name = 'admin.validation.displayNameRequired'
 		} else if (formData.name.length > 255) {
-			newErrors.name = 'Name must be 255 characters or less'
+			newErrors.name = 'admin.validation.nameTooLong'
 		}
 
 		// Validate description
 		if (formData.description && formData.description.length > 1000) {
-			newErrors.description = 'Description must be 1000 characters or less'
+			newErrors.description = 'admin.validation.descriptionTooLong'
 		}
 
 		setErrors(newErrors)
 		return Object.keys(newErrors).length === 0
 	}
 
-	const handleSubmit = async (e: React.FormEvent) => {
+	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault()
 
 		if (!validate()) {
@@ -148,7 +154,7 @@ export function PermissionFormDialog({
 		<form onSubmit={handleSubmit} className="space-y-4">
 			<div className="space-y-2">
 				<Label htmlFor="urn">
-					URN (Unique Resource Name) <span className="text-destructive">*</span>
+					{t('admin.permissionForm.urn')} <span className="text-destructive">*</span>
 				</Label>
 				<div className="relative">
 					<Input
@@ -177,37 +183,36 @@ export function PermissionFormDialog({
 				</div>
 				{urnError && urnTouched && (
 					<p id="urn-error" className="text-sm text-destructive" role="alert">
-						{urnError}
+						{t(urnError)}
 					</p>
 				)}
 				{!urnError && (
 					<p id="urn-help" className="text-sm text-muted-foreground">
-						Format: urn:namespace:action (or more parts as needed, lowercase, hyphens, underscores)
-						<span className="ml-2">
-							Broadcast format:
-							urn:broadcasts:&lt;entity-namespace&gt;:&lt;target-name&gt;:&lt;send|manage&gt;
-						</span>
-						{isEditing && <span className="ml-2 text-xs">(URN cannot be changed)</span>}
+						{t('admin.permissionForm.urnHelp')}
+						<span className="ml-2">{t('admin.permissionForm.broadcastHelp')}</span>
+						{isEditing && (
+							<span className="ml-2 text-xs">{t('admin.permissionForm.urnImmutable')}</span>
+						)}
 					</p>
 				)}
 			</div>
 
 			<div className="space-y-2">
 				<Label htmlFor="name">
-					Display Name <span className="text-destructive">*</span>
+					{t('admin.permissionForm.name')} <span className="text-destructive">*</span>
 				</Label>
 				<Input
 					id="name"
 					value={formData.name}
 					onChange={(e) => setFormData({ ...formData, name: (e.target as HTMLInputElement).value })}
-					placeholder="Corporation Member"
+					placeholder={t('admin.permissionForm.nameExample')}
 					disabled={isSubmitting}
 				/>
-				{errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+				{errors.name && <p className="text-sm text-destructive">{t(errors.name)}</p>}
 			</div>
 
 			<div className="space-y-2">
-				<Label htmlFor="category">Category (optional)</Label>
+				<Label htmlFor="category">{t('admin.permissionForm.categoryOptional')}</Label>
 				<Select
 					value={formData.categoryId || 'none'}
 					onValueChange={(value) =>
@@ -216,36 +221,41 @@ export function PermissionFormDialog({
 					inputId="category"
 					searchable
 					options={[
-						{ value: 'none', label: 'No category' },
+						{ value: 'none', label: t('admin.permissionForm.noCategory') },
 						...categories.map((category) => ({ value: category.id, label: category.name })),
 					]}
-					placeholder="Select a category"
+					placeholder={t('admin.permissionForm.selectCategory')}
 					disabled={isSubmitting}
 				/>
 			</div>
 
 			<div className="space-y-2">
-				<Label htmlFor="description">Description (optional)</Label>
+				<Label htmlFor="description">{t('admin.fields.descriptionOptional')}</Label>
 				<textarea
 					id="description"
 					value={formData.description || ''}
 					onChange={(e) =>
 						setFormData({ ...formData, description: (e.target as HTMLTextAreaElement).value })
 					}
-					placeholder="Access to view corporation members"
+					placeholder={t('admin.permissionForm.descriptionExample')}
 					disabled={isSubmitting}
 					className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 					rows={3}
 				/>
-				{errors.description && <p className="text-sm text-destructive">{errors.description}</p>}
+				{errors.description && <p className="text-sm text-destructive">{t(errors.description)}</p>}
 			</div>
 
 			<div className="flex justify-end gap-2 pt-4">
 				<Button variant="cancel" type="button" onClick={onCancel} disabled={isSubmitting}>
-					Cancel
+					{t('common.cancel')}
 				</Button>
-				<Button variant="confirm" type="submit" loading={isSubmitting} loadingText="Saving...">
-					{isEditing ? 'Update Permission' : 'Create Permission'}
+				<Button
+					variant="confirm"
+					type="submit"
+					loading={isSubmitting}
+					loadingText={t('admin.fields.saving')}
+				>
+					{isEditing ? t('admin.permissions.update') : t('admin.permissions.create')}
 				</Button>
 			</div>
 		</form>

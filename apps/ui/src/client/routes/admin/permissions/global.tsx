@@ -33,7 +33,9 @@ import {
 	useGlobalPermissions,
 	useUpdatePermission,
 } from '@/hooks/usePermissions'
+import { formatNumber, useAppTranslation } from '@/i18n'
 
+import type { AppTranslationKey } from '@/i18n'
 import type {
 	CreatePermissionRequest,
 	PermissionWithDetails,
@@ -41,7 +43,8 @@ import type {
 } from '@/lib/api'
 
 export default function GlobalPermissionsPage() {
-	usePageTitle('Admin - Global Permissions')
+	const { t } = useAppTranslation()
+	usePageTitle(t('admin.permissions.pageTitle'))
 	const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined)
 	const [searchQuery, setSearchQuery] = useState('')
 
@@ -58,19 +61,24 @@ export default function GlobalPermissionsPage() {
 	const [selectedPermission, setSelectedPermission] = useState<PermissionWithDetails | null>(null)
 
 	// Message state
-	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [message, setMessage] = useState<{
+		type: 'success' | 'error'
+		key: AppTranslationKey
+		detail?: string
+	} | null>(null)
 
 	// Handlers
 	const handleCreate = async (data: CreatePermissionRequest) => {
 		try {
 			await createPermission.mutateAsync(data)
 			setCreateDialogOpen(false)
-			setMessage({ type: 'success', text: 'Permission created successfully!' })
+			setMessage({ type: 'success', key: 'admin.permissions.createSuccess' })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to create permission',
+				key: 'admin.permissions.createError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -83,12 +91,13 @@ export default function GlobalPermissionsPage() {
 			await updatePermission.mutateAsync({ id: selectedPermission.id, data })
 			setEditDialogOpen(false)
 			setSelectedPermission(null)
-			setMessage({ type: 'success', text: 'Permission updated successfully!' })
+			setMessage({ type: 'success', key: 'admin.permissions.updateSuccess' })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to update permission',
+				key: 'admin.permissions.updateError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -101,12 +110,13 @@ export default function GlobalPermissionsPage() {
 			await deletePermission.mutateAsync(selectedPermission.id)
 			setDeleteDialogOpen(false)
 			setSelectedPermission(null)
-			setMessage({ type: 'success', text: 'Permission deleted successfully!' })
+			setMessage({ type: 'success', key: 'admin.permissions.deleteSuccess' })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to delete permission',
+				key: 'admin.permissions.deleteError',
+				detail: error instanceof Error ? error.message : undefined,
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -139,14 +149,12 @@ export default function GlobalPermissionsPage() {
 			<div className="space-y-4">
 				<div className="flex items-center justify-between">
 					<div>
-						<h1 className="text-3xl font-bold gradient-text">Permissions</h1>
-						<p className="text-muted-foreground mt-1">
-							Manage permission categories and global permissions
-						</p>
+						<h1 className="text-3xl font-bold gradient-text">{t('admin.nav.permissions')}</h1>
+						<p className="text-muted-foreground mt-1">{t('admin.permissions.description')}</p>
 					</div>
 					<Button onClick={() => setCreateDialogOpen(true)}>
 						<Plus className="h-4 w-4" />
-						New Permission
+						{t('admin.permissions.new')}
 					</Button>
 				</div>
 
@@ -155,13 +163,13 @@ export default function GlobalPermissionsPage() {
 					<Button variant="ghost" asChild>
 						<Link to="/admin/permissions/categories">
 							<FolderOpen className="h-4 w-4" />
-							Categories
+							{t('admin.nav.categories')}
 						</Link>
 					</Button>
 					<Button variant="primary" asChild>
 						<Link to="/admin/permissions/global">
 							<FileKey className="h-4 w-4" />
-							Global Permissions
+							{t('admin.permissions.global')}
 						</Link>
 					</Button>
 				</div>
@@ -178,7 +186,7 @@ export default function GlobalPermissionsPage() {
 				>
 					<CardContent className="py-3">
 						<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>
-							{message.text}
+							{message.detail ?? t(message.key)}
 						</p>
 					</CardContent>
 				</Card>
@@ -190,12 +198,12 @@ export default function GlobalPermissionsPage() {
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 						{/* Search */}
 						<div className="space-y-2">
-							<Label htmlFor="search">Search</Label>
+							<Label htmlFor="search">{t('admin.fields.search')}</Label>
 							<div className="relative">
 								<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 								<Input
 									id="search"
-									placeholder="Search by name, URN, or description..."
+									placeholder={t('admin.permissions.searchPlaceholder')}
 									value={searchQuery}
 									onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
 									className="pl-9"
@@ -205,7 +213,7 @@ export default function GlobalPermissionsPage() {
 
 						{/* Category Filter */}
 						<div className="space-y-2">
-							<Label htmlFor="category-filter">Filter by Category</Label>
+							<Label htmlFor="category-filter">{t('admin.permissions.filterCategory')}</Label>
 							<Select
 								value={selectedCategoryId || 'all'}
 								onValueChange={(value) =>
@@ -214,13 +222,14 @@ export default function GlobalPermissionsPage() {
 								inputId="category-filter"
 								searchable
 								options={[
-									{ value: 'all', label: 'All categories' },
-									{ value: 'uncategorized', label: 'Uncategorized' },
-									...(categories?.map((category) => ({ value: category.id,
+									{ value: 'all', label: t('admin.permissions.allCategories') },
+									{ value: 'uncategorized', label: t('admin.permissions.uncategorized') },
+									...(categories?.map((category) => ({
+										value: category.id,
 										label: category.name,
 									})) ?? []),
 								]}
-								placeholder="All categories"
+								placeholder={t('admin.permissions.allCategories')}
 							/>
 						</div>
 					</div>
@@ -231,17 +240,20 @@ export default function GlobalPermissionsPage() {
 			<Card>
 				<CardHeader>
 					<CardTitle>
-						Permissions{' '}
+						{t('admin.nav.permissions')}{' '}
 						{filteredPermissions && (
 							<span className="text-muted-foreground font-normal">
-								({filteredPermissions.length}
-								{searchQuery || selectedCategoryId ? ' filtered' : ''})
+								(
+								{searchQuery || selectedCategoryId
+									? t('admin.permissions.filteredCount', {
+											value: formatNumber(filteredPermissions.length),
+										})
+									: formatNumber(filteredPermissions.length)}
+								)
 							</span>
 						)}
 					</CardTitle>
-					<CardDescription>
-						Manage global permissions that can be attached to groups
-					</CardDescription>
+					<CardDescription>{t('admin.permissions.listDescription')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					{isLoading ? (
@@ -255,20 +267,30 @@ export default function GlobalPermissionsPage() {
 							{searchQuery || selectedCategoryId ? (
 								<>
 									<Search className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-									<h3 className="text-lg font-medium mb-2">No permissions found</h3>
-									<p className="text-muted-foreground mb-4">Try adjusting your search or filter criteria</p>
-									<Button variant="ghost" onClick={() => { setSearchQuery(''); setSelectedCategoryId(undefined) }}>
-										Clear filters
+									<h3 className="text-lg font-medium mb-2">{t('admin.permissions.noMatches')}</h3>
+									<p className="text-muted-foreground mb-4">
+										{t('admin.permissions.adjustFilters')}
+									</p>
+									<Button
+										variant="ghost"
+										onClick={() => {
+											setSearchQuery('')
+											setSelectedCategoryId(undefined)
+										}}
+									>
+										{t('admin.permissions.clearFilters')}
 									</Button>
 								</>
 							) : (
 								<>
 									<FileKey className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-									<h3 className="text-lg font-medium mb-2">No permissions yet</h3>
-									<p className="text-muted-foreground mb-4">Create your first global permission to get started</p>
+									<h3 className="text-lg font-medium mb-2">{t('admin.permissions.empty')}</h3>
+									<p className="text-muted-foreground mb-4">
+										{t('admin.permissions.emptyDescription')}
+									</p>
 									<Button onClick={() => setCreateDialogOpen(true)}>
 										<Plus className="w-4 h-4 mr-2" />
-										Create Permission
+										{t('admin.permissions.create')}
 									</Button>
 								</>
 							)}
@@ -278,21 +300,25 @@ export default function GlobalPermissionsPage() {
 							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead>Name</TableHead>
-										<TableHead>URN</TableHead>
-										<TableHead>Category</TableHead>
-										<TableHead>Description</TableHead>
-										<TableHead className="text-right">Actions</TableHead>
+										<TableHead>{t('admin.fields.name')}</TableHead>
+										<TableHead>{t('admin.fields.urn')}</TableHead>
+										<TableHead>{t('admin.fields.category')}</TableHead>
+										<TableHead>{t('admin.fields.description')}</TableHead>
+										<TableHead className="text-right">{t('admin.fields.actions')}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
 									{filteredPermissions.map((permission) => (
 										<TableRow key={permission.id}>
 											<TableCell className="font-medium">{permission.name}</TableCell>
-											<TableCell className="font-mono text-xs text-muted-foreground">{permission.urn}</TableCell>
+											<TableCell className="font-mono text-xs text-muted-foreground">
+												{permission.urn}
+											</TableCell>
 											<TableCell>
 												{permission.category ? (
-													<Badge variant="secondary" className="text-xs">{permission.category.name}</Badge>
+													<Badge variant="secondary" className="text-xs">
+														{permission.category.name}
+													</Badge>
 												) : (
 													<span className="text-xs text-muted-foreground">—</span>
 												)}
@@ -302,10 +328,20 @@ export default function GlobalPermissionsPage() {
 											</TableCell>
 											<TableCell className="text-right">
 												<div className="flex items-center justify-end gap-2">
-													<Button variant="ghost" size="icon" onClick={() => openEditDialog(permission)} title="Edit permission">
+													<Button
+														variant="ghost"
+														size="icon"
+														onClick={() => openEditDialog(permission)}
+														title={t('admin.permissions.editAction')}
+													>
 														<Edit2 className="h-4 w-4" />
 													</Button>
-													<Button variant="ghost" size="icon" onClick={() => openDeleteDialog(permission)} title="Delete permission">
+													<Button
+														variant="ghost"
+														size="icon"
+														onClick={() => openDeleteDialog(permission)}
+														title={t('admin.permissions.deleteAction')}
+													>
 														<Trash2 className="h-4 w-4 text-destructive" />
 													</Button>
 												</div>
@@ -323,10 +359,8 @@ export default function GlobalPermissionsPage() {
 			<Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Create Global Permission</DialogTitle>
-						<DialogDescription>
-							Create a new reusable permission that can be attached to groups
-						</DialogDescription>
+						<DialogTitle>{t('admin.permissions.createTitle')}</DialogTitle>
+						<DialogDescription>{t('admin.permissions.createDescription')}</DialogDescription>
 					</DialogHeader>
 					<PermissionFormDialog
 						categories={categories || []}
@@ -341,8 +375,8 @@ export default function GlobalPermissionsPage() {
 			<Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Edit Permission</DialogTitle>
-						<DialogDescription>Update the permission details</DialogDescription>
+						<DialogTitle>{t('admin.permissions.edit')}</DialogTitle>
+						<DialogDescription>{t('admin.permissions.editDescription')}</DialogDescription>
 					</DialogHeader>
 					<PermissionFormDialog
 						permission={selectedPermission || undefined}
@@ -361,10 +395,9 @@ export default function GlobalPermissionsPage() {
 			<Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Delete Permission</DialogTitle>
+						<DialogTitle>{t('admin.permissions.delete')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete "{selectedPermission?.name}"? This will remove it from
-							all groups that use this permission.
+							{t('admin.permissions.deleteWarning', { name: selectedPermission?.name })}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -376,10 +409,14 @@ export default function GlobalPermissionsPage() {
 							}}
 							disabled={deletePermission.isPending}
 						>
-							Cancel
+							{t('common.cancel')}
 						</Button>
-						<Button variant="destructive" onClick={handleDelete} loading={deletePermission.isPending}>
-							Delete Permission
+						<Button
+							variant="destructive"
+							onClick={handleDelete}
+							loading={deletePermission.isPending}
+						>
+							{t('admin.permissions.delete')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
