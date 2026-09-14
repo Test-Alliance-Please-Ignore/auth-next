@@ -2,6 +2,7 @@ import { ArrowLeft, Users } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,16 +12,19 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useGroupBillAggregate, useUpdateGroupBill } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import type { GroupBillAccessScope } from '@/lib/bills-api'
+import { formatNumber, useAppTranslation } from '@/i18n'
 
+import type { FormEvent } from 'react'
 import type { LateFeeCompounding, LateFeeType, UpdateBillInput } from '@repo/bills'
-import { Button } from '@/components/ui/button'
+import type { AppTranslationKey, AppTranslator } from '@/i18n'
+import type { GroupBillAccessScope } from '@/lib/bills-api'
 
 export default function AdminBillsGroupEditPage({
 	scope = 'admin',
 }: {
 	scope?: GroupBillAccessScope
 }) {
+	const { t } = useAppTranslation()
 	const { groupBillId } = useParams<{ groupBillId: string }>()
 	const navigate = useNavigate()
 
@@ -28,7 +32,9 @@ export default function AdminBillsGroupEditPage({
 	const updateGroupBill = useUpdateGroupBill(scope)
 	const basePath = scope === 'issuer' ? '/my-bills' : '/admin/bills'
 
-	usePageTitle(aggregate ? `Edit Group Bill - ${aggregate.title}` : 'Edit Group Bill')
+	usePageTitle(
+		aggregate ? t('bills.group.editPageTitle', { title: aggregate.title }) : t('bills.group.edit')
+	)
 
 	const [formData, setFormData] = useState<{
 		title: string
@@ -50,8 +56,11 @@ export default function AdminBillsGroupEditPage({
 		lateFeeCompounding: 'none',
 	})
 
-	const [errors, setErrors] = useState<Record<string, string>>({})
-	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [errors, setErrors] = useState<Record<string, AppTranslationKey>>({})
+	const [message, setMessage] = useState<{
+		type: 'success' | 'error'
+		text: string | ((t: AppTranslator) => string)
+	} | null>(null)
 
 	const handleChange = (field: string, value: string | boolean) => {
 		setFormData((prev) => ({ ...prev, [field]: value }))
@@ -65,22 +74,22 @@ export default function AdminBillsGroupEditPage({
 	}
 
 	const validate = (): boolean => {
-		const newErrors: Record<string, string> = {}
+		const newErrors: Record<string, AppTranslationKey> = {}
 
 		if (
 			formData.amount.trim() &&
 			(isNaN(Number(formData.amount)) || Number(formData.amount) <= 0)
 		) {
-			newErrors.amount = 'Amount must be a positive number'
+			newErrors.amount = 'bills.form.amountPositive'
 		}
 
 		if (formData.enableLateFee) {
 			if (!formData.lateFeeAmount.trim()) {
-				newErrors.lateFeeAmount = 'Late fee amount is required when late fees are enabled'
+				newErrors.lateFeeAmount = 'bills.form.lateRequired'
 			} else if (isNaN(Number(formData.lateFeeAmount)) || Number(formData.lateFeeAmount) <= 0) {
-				newErrors.lateFeeAmount = 'Late fee amount must be a positive number'
+				newErrors.lateFeeAmount = 'bills.form.latePositive'
 			} else if (formData.lateFeeType === 'percentage' && Number(formData.lateFeeAmount) > 100) {
-				newErrors.lateFeeAmount = 'Late fee percentage cannot exceed 100.00%'
+				newErrors.lateFeeAmount = 'bills.form.lateMaximum'
 			}
 		}
 
@@ -88,7 +97,7 @@ export default function AdminBillsGroupEditPage({
 		return Object.keys(newErrors).length === 0
 	}
 
-	const handleSubmit = async (e: React.FormEvent) => {
+	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault()
 		if (!validate()) return
 
@@ -105,7 +114,7 @@ export default function AdminBillsGroupEditPage({
 		}
 
 		if (Object.keys(input).length === 0) {
-			setMessage({ type: 'error', text: 'No changes to apply.' })
+			setMessage({ type: 'error', text: (t) => t('bills.group.noChanges') })
 			return
 		}
 
@@ -113,7 +122,12 @@ export default function AdminBillsGroupEditPage({
 			const result = await updateGroupBill.mutateAsync({ groupBillId: groupBillId!, data: input })
 			setMessage({
 				type: 'success',
-				text: `Updated ${result.succeeded} bill(s)${result.skipped > 0 ? `, skipped ${result.skipped}` : ''}.`,
+				text: (t) =>
+					t(result.skipped > 0 ? 'bills.group.updatedSkipped' : 'bills.group.updated', {
+						count: result.succeeded,
+						formattedCount: formatNumber(result.succeeded),
+						skipped: formatNumber(result.skipped),
+					}),
 			})
 			setTimeout(() => {
 				void navigate(basePath)
@@ -121,7 +135,7 @@ export default function AdminBillsGroupEditPage({
 		} catch (err) {
 			setMessage({
 				type: 'error',
-				text: err instanceof Error ? err.message : 'Failed to update group bill',
+				text: err instanceof Error ? err.message : (t) => t('bills.group.updateFailed'),
 			})
 		}
 	}
@@ -129,12 +143,12 @@ export default function AdminBillsGroupEditPage({
 	if (isLoading) {
 		return (
 			<div className="space-y-6">
-				<div className="flex items-center justify-between">
-					<h1 className="text-3xl font-bold gradient-text">Loading...</h1>
+				<div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
+					<h1 className="text-3xl font-bold gradient-text">{t('common.loading')}</h1>
 					<Button variant="ghost" asChild>
 						<Link to={basePath}>
 							<ArrowLeft className="h-4 w-4" />
-							Back to Bills
+							{t('bills.back')}
 						</Link>
 					</Button>
 				</div>
@@ -145,18 +159,15 @@ export default function AdminBillsGroupEditPage({
 	if (error || !aggregate) {
 		return (
 			<div className="space-y-6">
-				<div className="flex items-center justify-between">
+				<div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
 					<div>
-						<h1 className="text-3xl font-bold gradient-text">Group Bill Not Found</h1>
-						<p className="text-muted-foreground mt-2">
-							The group bill you're looking for doesn't exist or you don't have permission to view
-							it.
-						</p>
+						<h1 className="text-3xl font-bold gradient-text">{t('bills.group.notFound')}</h1>
+						<p className="text-muted-foreground mt-2">{t('bills.group.unavailable')}</p>
 					</div>
 					<Button variant="ghost" asChild>
 						<Link to={basePath}>
 							<ArrowLeft className="h-4 w-4" />
-							Back to Bills
+							{t('bills.back')}
 						</Link>
 					</Button>
 				</div>
@@ -170,26 +181,29 @@ export default function AdminBillsGroupEditPage({
 
 	return (
 		<div className="space-y-6">
-			<div className="flex items-center justify-between">
+			<div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
 				<div>
-					<h1 className="text-3xl font-bold gradient-text">Edit Group Bill</h1>
+					<h1 className="text-3xl font-bold gradient-text">{t('bills.group.edit')}</h1>
 					<p className="text-muted-foreground mt-2 flex items-center gap-2">
 						<Users className="h-4 w-4" />
-						{aggregate.title} — {eligibleCount} eligible bill(s) will be updated
+						{t('bills.group.eligible', {
+							title: aggregate.title,
+							count: eligibleCount,
+							formattedCount: formatNumber(eligibleCount),
+						})}
 					</p>
 				</div>
 				<Button variant="ghost" asChild>
 					<Link to={basePath}>
 						<ArrowLeft className="h-4 w-4" />
-						Back to Bills
+						{t('bills.back')}
 					</Link>
 				</Button>
 			</div>
 
 			<Card className="border-muted bg-muted/20">
 				<CardContent className="py-3 text-sm text-muted-foreground">
-					Only fields you fill in will be updated. Leave fields blank to keep their current values.
-					Paid and cancelled bills will be skipped.
+					{t('bills.group.editHint')}
 				</CardContent>
 			</Card>
 
@@ -203,7 +217,7 @@ export default function AdminBillsGroupEditPage({
 				>
 					<CardContent className="py-3">
 						<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>
-							{message.text}
+							{typeof message.text === 'function' ? message.text(t) : message.text}
 						</p>
 					</CardContent>
 				</Card>
@@ -212,26 +226,26 @@ export default function AdminBillsGroupEditPage({
 			<form onSubmit={handleSubmit}>
 				<Card className="mb-6">
 					<CardHeader>
-						<CardTitle>Bill Details</CardTitle>
-						<CardDescription>Leave blank to keep current values on each bill</CardDescription>
+						<CardTitle>{t('bills.details')}</CardTitle>
+						<CardDescription>{t('bills.group.keepValues')}</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<div className="space-y-2">
-							<Label htmlFor="title">Title</Label>
+							<Label htmlFor="title">{t('bills.columns.title')}</Label>
 							<Input
 								id="title"
-								placeholder="Leave blank to keep current title"
+								placeholder={t('bills.group.keepTitle')}
 								value={formData.title}
 								onChange={(e) => handleChange('title', e.target.value)}
 							/>
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor="description">Description</Label>
+							<Label htmlFor="description">{t('bills.columns.description')}</Label>
 							<Textarea
 								id="description"
 								rows={3}
-								placeholder="Leave blank to keep current description"
+								placeholder={t('bills.group.keepDescription')}
 								value={formData.description}
 								onChange={(e) => handleChange('description', e.target.value)}
 							/>
@@ -239,21 +253,21 @@ export default function AdminBillsGroupEditPage({
 
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 							<div className="space-y-2">
-								<Label htmlFor="amount">Amount (ISK)</Label>
+								<Label htmlFor="amount">{t('bills.form.amount')}</Label>
 								<NumberInput
 									id="amount"
 									min={0}
 									suffix=" ISK"
-									placeholder="Leave blank to keep current amount"
+									placeholder={t('bills.group.keepAmount')}
 									value={formData.amount}
 									onChange={(value) => handleChange('amount', value)}
 									error={!!errors.amount}
 								/>
-								{errors.amount && <p className="text-sm text-destructive">{errors.amount}</p>}
+								{errors.amount && <p className="text-sm text-destructive">{t(errors.amount)}</p>}
 							</div>
 
 							<div className="space-y-2">
-								<Label htmlFor="dueDate">Due Date</Label>
+								<Label htmlFor="dueDate">{t('bills.columns.dueDate')}</Label>
 								<Input
 									id="dueDate"
 									type="date"
@@ -267,16 +281,14 @@ export default function AdminBillsGroupEditPage({
 
 				<Card className="mb-6">
 					<CardHeader>
-						<CardTitle>Late Fee Settings</CardTitle>
-						<CardDescription>Override late fee settings for all eligible bills</CardDescription>
+						<CardTitle>{t('bills.form.lateTitle')}</CardTitle>
+						<CardDescription>{t('bills.group.lateDescription')}</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<div className="flex items-center justify-between">
 							<div className="space-y-0.5">
-								<Label htmlFor="enableLateFee">Update Late Fees</Label>
-								<p className="text-sm text-muted-foreground">
-									Override late fee configuration on all eligible bills
-								</p>
+								<Label htmlFor="enableLateFee">{t('bills.group.lateUpdate')}</Label>
+								<p className="text-sm text-muted-foreground">{t('bills.group.lateDescription')}</p>
 							</div>
 							<Switch
 								id="enableLateFee"
@@ -288,21 +300,23 @@ export default function AdminBillsGroupEditPage({
 						{formData.enableLateFee && (
 							<>
 								<div className="space-y-2">
-									<Label htmlFor="lateFeeType">Late Fee Type</Label>
+									<Label htmlFor="lateFeeType">{t('bills.late.type')}</Label>
 									<Select
 										inputId="lateFeeType"
 										value={formData.lateFeeType}
 										onValueChange={(value) => handleChange('lateFeeType', value)}
 										options={[
-											{ value: 'static', label: 'Static Amount (Fixed ISK)' },
-											{ value: 'percentage', label: 'Percentage (% of bill amount)' },
+											{ value: 'static', label: t('bills.form.lateStatic') },
+											{ value: 'percentage', label: t('bills.form.latePercentage') },
 										]}
 									/>
 								</div>
 
 								<div className="space-y-2">
 									<Label htmlFor="lateFeeAmount">
-										Late Fee Amount {formData.lateFeeType === 'percentage' ? '(%)' : '(ISK)'}{' '}
+										{t('bills.form.lateAmount', {
+											unit: formData.lateFeeType === 'percentage' ? '%' : 'ISK',
+										})}{' '}
 										<span className="text-destructive">*</span>
 									</Label>
 									{formData.lateFeeType === 'percentage' ? (
@@ -328,21 +342,29 @@ export default function AdminBillsGroupEditPage({
 										/>
 									)}
 									{errors.lateFeeAmount && (
-										<p className="text-sm text-destructive">{errors.lateFeeAmount}</p>
+										<p className="text-sm text-destructive">
+											{t(errors.lateFeeAmount, {
+												maximum: formatNumber(1, {
+													style: 'percent',
+													minimumFractionDigits: 2,
+													maximumFractionDigits: 2,
+												}),
+											})}
+										</p>
 									)}
 								</div>
 
 								<div className="space-y-2">
-									<Label htmlFor="lateFeeCompounding">Late Fee Compounding</Label>
+									<Label htmlFor="lateFeeCompounding">{t('bills.form.lateCompounding')}</Label>
 									<Select
 										inputId="lateFeeCompounding"
 										value={formData.lateFeeCompounding}
 										onValueChange={(value) => handleChange('lateFeeCompounding', value)}
 										options={[
-											{ value: 'none', label: 'None (One-time fee)' },
-											{ value: 'daily', label: 'Daily (Compounds every day)' },
-											{ value: 'weekly', label: 'Weekly (Compounds every week)' },
-											{ value: 'monthly', label: 'Monthly (Compounds every month)' },
+											{ value: 'none', label: t('bills.form.lateNone') },
+											{ value: 'daily', label: t('bills.form.lateDaily') },
+											{ value: 'weekly', label: t('bills.form.lateWeekly') },
+											{ value: 'monthly', label: t('bills.form.lateMonthly') },
 										]}
 									/>
 								</div>
@@ -351,12 +373,17 @@ export default function AdminBillsGroupEditPage({
 					</CardContent>
 				</Card>
 
-				<div className="flex gap-3">
-					<Button variant="confirm" type="submit" loading={updateGroupBill.isPending}>
-						Apply to All Eligible Bills
+				<div className="flex flex-wrap gap-3">
+					<Button
+						variant="confirm"
+						type="submit"
+						loading={updateGroupBill.isPending}
+						className="h-auto min-h-10 whitespace-normal"
+					>
+						{t('bills.group.apply')}
 					</Button>
 					<Button variant="cancel" type="button" onClick={() => navigate(basePath)}>
-						Cancel
+						{t('common.cancel')}
 					</Button>
 				</div>
 			</form>

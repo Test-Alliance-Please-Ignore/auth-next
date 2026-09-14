@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 
 import { BillEntityPicker } from '@/components/bills/bill-entity-picker'
+import { BillFeedback } from '@/components/bills/bill-feedback'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -20,8 +21,10 @@ import {
 } from '@/hooks/useBills'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 
+import type { FormEvent } from 'react'
 import type {
 	Bill,
 	CreateBillInput,
@@ -30,8 +33,10 @@ import type {
 	LateFeeType,
 	PayeeType,
 } from '@repo/bills'
+import type { AppTranslationKey, AppTranslator } from '@/i18n'
 
 export default function AdminBillsNewPage() {
+	const { t } = useAppTranslation()
 	const location = useLocation()
 	const navigate = useNavigate()
 	const isIssuerRoute = location.pathname === '/bills/issue'
@@ -43,7 +48,7 @@ export default function AdminBillsNewPage() {
 		label: corporation.name,
 		description: corporation.corporationId,
 	}))
-	usePageTitle(isIssuerRoute ? 'Create Bill' : 'Admin - Create Bill')
+	usePageTitle(isIssuerRoute ? t('bills.actions.create') : 'Admin - Create Bill')
 
 	const adminCreateBill = useCreateBill()
 	const issuerCreateBill = useCreateIssuedBill()
@@ -83,8 +88,11 @@ export default function AdminBillsNewPage() {
 		includeMembers: true,
 	})
 
-	const [errors, setErrors] = useState<Record<string, string>>({})
-	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [errors, setErrors] = useState<Record<string, AppTranslationKey>>({})
+	const [message, setMessage] = useState<{
+		type: 'success' | 'error'
+		text: string | ((t: AppTranslator) => string)
+	} | null>(null)
 	const [payerQuery, setPayerQuery] = useState('')
 	const [payeeQuery, setPayeeQuery] = useState('')
 	const [payerName, setPayerName] = useState('')
@@ -156,28 +164,28 @@ export default function AdminBillsNewPage() {
 	}
 
 	const validate = (): boolean => {
-		const newErrors: Record<string, string> = {}
+		const newErrors: Record<string, AppTranslationKey> = {}
 
 		if (!formData.payerId.trim()) {
-			newErrors.payerId = 'Payer is required'
+			newErrors.payerId = 'bills.form.payerRequired'
 		}
 
 		if (!formData.payeeId.trim()) {
-			newErrors.payeeId = 'Payee is required'
+			newErrors.payeeId = 'bills.form.payeeRequired'
 		}
 
 		if (!formData.title.trim()) {
-			newErrors.title = 'Title is required'
+			newErrors.title = 'bills.form.titleRequired'
 		}
 
 		if (!formData.amount.trim()) {
-			newErrors.amount = 'Amount is required'
+			newErrors.amount = 'bills.form.amountRequired'
 		} else if (isNaN(Number(formData.amount)) || Number(formData.amount) <= 0) {
-			newErrors.amount = 'Amount must be a positive number'
+			newErrors.amount = 'bills.form.amountPositive'
 		}
 
 		if (!formData.dueDate) {
-			newErrors.dueDate = 'Due date is required'
+			newErrors.dueDate = 'bills.form.dueRequired'
 		} else {
 			// Append T00:00:00 so the date is interpreted as local midnight rather than UTC midnight.
 			// Without this, new Date("2026-03-26") is UTC midnight which falls before local midnight
@@ -186,7 +194,7 @@ export default function AdminBillsNewPage() {
 			const today = new Date()
 			today.setHours(0, 0, 0, 0)
 			if (dueDate < today) {
-				newErrors.dueDate = 'Due date must be today or in the future'
+				newErrors.dueDate = 'bills.form.dueFuture'
 			}
 		}
 
@@ -196,17 +204,17 @@ export default function AdminBillsNewPage() {
 				!groupBillOptions.includeAdmins &&
 				!groupBillOptions.includeMembers
 			) {
-				newErrors.groupBillOptions = 'At least one member role must be selected'
+				newErrors.groupBillOptions = 'bills.form.rolesRequired'
 			}
 		}
 
 		if (formData.enableLateFee) {
 			if (!formData.lateFeeAmount.trim()) {
-				newErrors.lateFeeAmount = 'Late fee amount is required when late fees are enabled'
+				newErrors.lateFeeAmount = 'bills.form.lateRequired'
 			} else if (isNaN(Number(formData.lateFeeAmount)) || Number(formData.lateFeeAmount) <= 0) {
-				newErrors.lateFeeAmount = 'Late fee amount must be a positive number'
+				newErrors.lateFeeAmount = 'bills.form.latePositive'
 			} else if (formData.lateFeeType === 'percentage' && Number(formData.lateFeeAmount) > 100) {
-				newErrors.lateFeeAmount = 'Late fee percentage cannot exceed 100.00%'
+				newErrors.lateFeeAmount = 'bills.form.lateMaximum'
 			}
 		}
 
@@ -214,7 +222,7 @@ export default function AdminBillsNewPage() {
 		return Object.keys(newErrors).length === 0
 	}
 
-	const handleSubmit = async (e: React.FormEvent) => {
+	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault()
 
 		if (!validate()) {
@@ -257,7 +265,11 @@ export default function AdminBillsNewPage() {
 				const groupResult = result as { groupBillId: string; bills: Bill[]; billCount: number }
 				setMessage({
 					type: 'success',
-					text: `Group bill created — ${groupResult.billCount} individual bills issued.`,
+					text: (t) =>
+						t('bills.form.groupCreated', {
+							count: groupResult.billCount,
+							formattedCount: formatNumber(groupResult.billCount),
+						}),
 				})
 				setTimeout(() => {
 					void navigate(
@@ -267,16 +279,22 @@ export default function AdminBillsNewPage() {
 					)
 				}, 1500)
 			} else {
-				setMessage({ type: 'success', text: 'Bill created successfully!' })
+				setMessage({ type: 'success', text: (t) => t('bills.form.created') })
 				setTimeout(() => {
 					void navigate(isIssuerRoute ? '/my-bills' : '/admin/bills')
 				}, 1500)
 			}
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Failed to create bill')
+			toast.error(
+				error instanceof Error ? (
+					error.message
+				) : (
+					<BillFeedback messageKey="bills.form.createFailed" />
+				)
+			)
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to create bill',
+				text: error instanceof Error ? error.message : (t) => t('bills.form.createFailed'),
 			})
 		}
 	}
@@ -284,17 +302,17 @@ export default function AdminBillsNewPage() {
 	return (
 		<div className="space-y-6">
 			<PageHeader
-				title="Create Bill"
+				title={t('bills.actions.create')}
 				description={
 					isIssuerRoute
-						? 'Create a manual bill as the authenticated issuer'
+						? t('bills.form.description')
 						: 'Create a new bill for a character, corporation, or group'
 				}
 				action={
 					<Button variant="ghost" asChild>
 						<Link to={isIssuerRoute ? '/my-bills' : '/admin/bills'}>
 							<ArrowLeft className="h-4 w-4" />
-							Back to Bills
+							{t('bills.back')}
 						</Link>
 					</Button>
 				}
@@ -311,7 +329,7 @@ export default function AdminBillsNewPage() {
 				>
 					<CardContent className="py-3">
 						<p className={message.type === 'error' ? 'text-destructive' : 'text-primary'}>
-							{message.text}
+							{typeof message.text === 'function' ? message.text(t) : message.text}
 						</p>
 					</CardContent>
 				</Card>
@@ -321,12 +339,12 @@ export default function AdminBillsNewPage() {
 				{/* Payer Information */}
 				<Card className="mb-6">
 					<CardHeader>
-						<CardTitle>Payer Information</CardTitle>
-						<CardDescription>Who is responsible for paying this bill?</CardDescription>
+						<CardTitle>{t('bills.form.payerTitle')}</CardTitle>
+						<CardDescription>{t('bills.form.payerDescription')}</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<BillEntityPicker
-							roleLabel="Payer"
+							roleLabel={t('bills.columns.payer')}
 							typeFieldId="payerType"
 							entityFieldId="payerId"
 							entityType={formData.payerType}
@@ -346,7 +364,7 @@ export default function AdminBillsNewPage() {
 							loading={payerEntitySearch.isLoading}
 							selectedEntityId={formData.payerId}
 							selectedEntityName={payerName}
-							error={errors.payerId}
+							error={errors.payerId ? t(errors.payerId) : undefined}
 						/>
 					</CardContent>
 				</Card>
@@ -355,16 +373,14 @@ export default function AdminBillsNewPage() {
 				{(!isIssuerRoute || issuerIsUnrestricted) && formData.payerType === 'group' && (
 					<Card className="mb-6">
 						<CardHeader>
-							<CardTitle>Group Bill Options</CardTitle>
-							<CardDescription>
-								Select which member roles to issue individual bills to
-							</CardDescription>
+							<CardTitle>{t('bills.form.rolesTitle')}</CardTitle>
+							<CardDescription>{t('bills.form.rolesDescription')}</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-4">
 							<div className="flex items-center justify-between">
 								<div className="space-y-0.5">
-									<Label htmlFor="includeOwner">Include Group Owner</Label>
-									<p className="text-sm text-muted-foreground">Issue a bill to the group owner</p>
+									<Label htmlFor="includeOwner">{t('bills.form.includeOwner')}</Label>
+									<p className="text-sm text-muted-foreground">{t('bills.form.ownerHint')}</p>
 								</div>
 								<Switch
 									id="includeOwner"
@@ -376,8 +392,8 @@ export default function AdminBillsNewPage() {
 							</div>
 							<div className="flex items-center justify-between">
 								<div className="space-y-0.5">
-									<Label htmlFor="includeAdmins">Include Group Admins</Label>
-									<p className="text-sm text-muted-foreground">Issue bills to all group admins</p>
+									<Label htmlFor="includeAdmins">{t('bills.form.includeAdmins')}</Label>
+									<p className="text-sm text-muted-foreground">{t('bills.form.adminsHint')}</p>
 								</div>
 								<Switch
 									id="includeAdmins"
@@ -389,10 +405,8 @@ export default function AdminBillsNewPage() {
 							</div>
 							<div className="flex items-center justify-between">
 								<div className="space-y-0.5">
-									<Label htmlFor="includeMembers">Include Group Members</Label>
-									<p className="text-sm text-muted-foreground">
-										Issue bills to all regular group members
-									</p>
+									<Label htmlFor="includeMembers">{t('bills.form.includeMembers')}</Label>
+									<p className="text-sm text-muted-foreground">{t('bills.form.membersHint')}</p>
 								</div>
 								<Switch
 									id="includeMembers"
@@ -403,7 +417,7 @@ export default function AdminBillsNewPage() {
 								/>
 							</div>
 							{errors.groupBillOptions && (
-								<p className="text-sm text-destructive">{errors.groupBillOptions}</p>
+								<p className="text-sm text-destructive">{t(errors.groupBillOptions)}</p>
 							)}
 						</CardContent>
 					</Card>
@@ -412,12 +426,12 @@ export default function AdminBillsNewPage() {
 				{/* Payee Information */}
 				<Card className="mb-6">
 					<CardHeader>
-						<CardTitle>Payee Information</CardTitle>
-						<CardDescription>Who will receive the payment?</CardDescription>
+						<CardTitle>{t('bills.form.payeeTitle')}</CardTitle>
+						<CardDescription>{t('bills.form.payeeDescription')}</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<BillEntityPicker
-							roleLabel="Payee"
+							roleLabel={t('bills.columns.payee')}
 							typeFieldId="payeeType"
 							entityFieldId="payeeId"
 							entityType={formData.payeeType}
@@ -433,7 +447,7 @@ export default function AdminBillsNewPage() {
 							loading={payeeEntitySearch.isLoading}
 							selectedEntityId={formData.payeeId}
 							selectedEntityName={payeeName}
-							error={errors.payeeId}
+							error={errors.payeeId ? t(errors.payeeId) : undefined}
 							staticOptions={
 								isScopedIssuer && formData.payeeType === 'corporation'
 									? scopedCorporationOptions
@@ -446,42 +460,40 @@ export default function AdminBillsNewPage() {
 				{/* Bill Details */}
 				<Card className="mb-6">
 					<CardHeader>
-						<CardTitle>Bill Details</CardTitle>
-						<CardDescription>Enter the amount and description for this bill</CardDescription>
+						<CardTitle>{t('bills.details')}</CardTitle>
+						<CardDescription>{t('bills.form.detailsDescription')}</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<div className="space-y-2">
 							<Label htmlFor="title">
-								Title <span className="text-destructive">*</span>
+								{t('bills.columns.title')} <span className="text-destructive">*</span>
 							</Label>
 							<Input
 								id="title"
-								placeholder="e.g., Monthly Alliance Dues"
+								placeholder={t('bills.form.titlePlaceholder')}
 								value={formData.title}
 								onChange={(e) => handleChange('title', e.target.value)}
 								className={errors.title ? 'border-destructive' : ''}
 							/>
-							{errors.title && <p className="text-sm text-destructive">{errors.title}</p>}
+							{errors.title && <p className="text-sm text-destructive">{t(errors.title)}</p>}
 						</div>
 
 						<div className="space-y-2">
-							<Label htmlFor="description">Description</Label>
+							<Label htmlFor="description">{t('bills.columns.description')}</Label>
 							<Textarea
 								id="description"
-								placeholder="Optional description explaining what this bill is for..."
+								placeholder={t('bills.form.descriptionPlaceholder')}
 								rows={3}
 								value={formData.description}
 								onChange={(e) => handleChange('description', e.target.value)}
 							/>
-							<p className="text-sm text-muted-foreground">
-								Provide additional context about this bill (optional)
-							</p>
+							<p className="text-sm text-muted-foreground">{t('bills.form.descriptionHint')}</p>
 						</div>
 
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 							<div className="space-y-2">
 								<Label htmlFor="amount">
-									Amount (ISK) <span className="text-destructive">*</span>
+									{t('bills.form.amount')} <span className="text-destructive">*</span>
 								</Label>
 								<NumberInput
 									id="amount"
@@ -492,12 +504,12 @@ export default function AdminBillsNewPage() {
 									onChange={(value) => handleChange('amount', value)}
 									error={!!errors.amount}
 								/>
-								{errors.amount && <p className="text-sm text-destructive">{errors.amount}</p>}
+								{errors.amount && <p className="text-sm text-destructive">{t(errors.amount)}</p>}
 							</div>
 
 							<div className="space-y-2">
 								<Label htmlFor="dueDate">
-									Due Date <span className="text-destructive">*</span>
+									{t('bills.columns.dueDate')} <span className="text-destructive">*</span>
 								</Label>
 								<Input
 									id="dueDate"
@@ -506,7 +518,7 @@ export default function AdminBillsNewPage() {
 									onChange={(e) => handleChange('dueDate', e.target.value)}
 									className={errors.dueDate ? 'border-destructive' : ''}
 								/>
-								{errors.dueDate && <p className="text-sm text-destructive">{errors.dueDate}</p>}
+								{errors.dueDate && <p className="text-sm text-destructive">{t(errors.dueDate)}</p>}
 							</div>
 						</div>
 					</CardContent>
@@ -515,16 +527,14 @@ export default function AdminBillsNewPage() {
 				{/* Late Fee Settings */}
 				<Card className="mb-6">
 					<CardHeader>
-						<CardTitle>Late Fee Settings</CardTitle>
-						<CardDescription>Configure penalties for late payment (optional)</CardDescription>
+						<CardTitle>{t('bills.form.lateTitle')}</CardTitle>
+						<CardDescription>{t('bills.form.lateDescription')}</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<div className="flex items-center justify-between">
 							<div className="space-y-0.5">
-								<Label htmlFor="enableLateFee">Enable Late Fees</Label>
-								<p className="text-sm text-muted-foreground">
-									Charge additional fees for late payment
-								</p>
+								<Label htmlFor="enableLateFee">{t('bills.form.lateEnable')}</Label>
+								<p className="text-sm text-muted-foreground">{t('bills.form.lateHint')}</p>
 							</div>
 							<Switch
 								id="enableLateFee"
@@ -536,21 +546,23 @@ export default function AdminBillsNewPage() {
 						{formData.enableLateFee && (
 							<>
 								<div className="space-y-2">
-									<Label htmlFor="lateFeeType">Late Fee Type</Label>
+									<Label htmlFor="lateFeeType">{t('bills.late.type')}</Label>
 									<Select
 										inputId="lateFeeType"
 										value={formData.lateFeeType}
 										onValueChange={(value) => handleChange('lateFeeType', value)}
 										options={[
-											{ value: 'static', label: 'Static Amount (Fixed ISK)' },
-											{ value: 'percentage', label: 'Percentage (% of bill amount)' },
+											{ value: 'static', label: t('bills.form.lateStatic') },
+											{ value: 'percentage', label: t('bills.form.latePercentage') },
 										]}
 									/>
 								</div>
 
 								<div className="space-y-2">
 									<Label htmlFor="lateFeeAmount">
-										Late Fee Amount {formData.lateFeeType === 'percentage' ? '(%)' : '(ISK)'}{' '}
+										{t('bills.form.lateAmount', {
+											unit: formData.lateFeeType === 'percentage' ? '%' : 'ISK',
+										})}{' '}
 										<span className="text-destructive">*</span>
 									</Label>
 									{formData.lateFeeType === 'percentage' ? (
@@ -578,26 +590,32 @@ export default function AdminBillsNewPage() {
 										/>
 									)}
 									{errors.lateFeeAmount && (
-										<p className="text-sm text-destructive">{errors.lateFeeAmount}</p>
+										<p className="text-sm text-destructive">
+											{t(errors.lateFeeAmount, {
+												maximum: formatNumber(1, {
+													style: 'percent',
+													minimumFractionDigits: 2,
+													maximumFractionDigits: 2,
+												}),
+											})}
+										</p>
 									)}
 								</div>
 
 								<div className="space-y-2">
-									<Label htmlFor="lateFeeCompounding">Late Fee Compounding</Label>
+									<Label htmlFor="lateFeeCompounding">{t('bills.form.lateCompounding')}</Label>
 									<Select
 										inputId="lateFeeCompounding"
 										value={formData.lateFeeCompounding}
 										onValueChange={(value) => handleChange('lateFeeCompounding', value)}
 										options={[
-											{ value: 'none', label: 'None (One-time fee)' },
-											{ value: 'daily', label: 'Daily (Compounds every day)' },
-											{ value: 'weekly', label: 'Weekly (Compounds every week)' },
-											{ value: 'monthly', label: 'Monthly (Compounds every month)' },
+											{ value: 'none', label: t('bills.form.lateNone') },
+											{ value: 'daily', label: t('bills.form.lateDaily') },
+											{ value: 'weekly', label: t('bills.form.lateWeekly') },
+											{ value: 'monthly', label: t('bills.form.lateMonthly') },
 										]}
 									/>
-									<p className="text-sm text-muted-foreground">
-										How often the late fee should be applied after the due date
-									</p>
+									<p className="text-sm text-muted-foreground">{t('bills.form.lateFrequency')}</p>
 								</div>
 							</>
 						)}
@@ -607,14 +625,14 @@ export default function AdminBillsNewPage() {
 				{/* Actions */}
 				<div className="flex gap-3">
 					<Button variant="confirm" type="submit" loading={createBill.isPending}>
-						Create Bill
+						{t('bills.actions.create')}
 					</Button>
 					<Button
 						variant="cancel"
 						type="button"
 						onClick={() => navigate(isIssuerRoute ? '/my-bills' : '/admin/bills')}
 					>
-						Cancel
+						{t('common.cancel')}
 					</Button>
 				</div>
 			</form>
