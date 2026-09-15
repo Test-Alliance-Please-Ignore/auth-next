@@ -1,6 +1,7 @@
 import { defineCatalog } from '../catalog'
+import { mumbleCatalog } from './mumble'
 
-export const pasteMumbleCatalog = defineCatalog(
+const pasteCatalog = defineCatalog(
 	{
 		pastes: {
 			title: 'Pastes',
@@ -256,3 +257,9 @@ export const pasteMumbleCatalog = defineCatalog(
 		},
 	}
 )
+
+export const pasteMumbleCatalog = {
+	en: { ...pasteCatalog.en, ...mumbleCatalog.en },
+	de: { ...pasteCatalog.de, ...mumbleCatalog.de },
+	ko: { ...pasteCatalog.ko, ...mumbleCatalog.ko },
+}
