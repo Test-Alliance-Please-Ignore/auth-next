@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, RefreshCw, Shield, User, Users } from 'lucide-react'
 import { Link, Navigate, useLocation, useParams } from 'react-router'
+
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import { CharacterAttributes } from '../components/character-attributes'
 import { CharacterCorporationHistory } from '../components/character-corporation-history'
@@ -11,13 +12,13 @@ import { CharacterSkills } from '../components/character-skills'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Container } from '../components/ui/container'
+import { useCorporationAccess } from '../features/corporations/hooks'
 import { useAuth } from '../hooks/useAuth'
 import { useRefreshCharacter } from '../hooks/useCharacters'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { useUserPermissions } from '../hooks/useUserPermissions'
 import { api } from '../lib/api'
 import { allianceLogoUrl, characterPortraitUrl, corporationLogoUrl } from '../lib/eve-images'
-import { useCorporationAccess } from '../features/corporations/hooks'
 
 type CharacterDetailSource =
 	| 'admin-user-detail'
@@ -57,7 +58,8 @@ export default function CharacterDetailPage() {
 		backLabel?: string
 	} | null
 	const backTo = navigationState?.backTo
-	const backLabel = navigationState?.backLabel ?? resolveBackLabel(navigationState?.source) ?? 'Back'
+	const backLabel =
+		navigationState?.backLabel ?? resolveBackLabel(navigationState?.source) ?? 'Back'
 
 	if (!characterId) {
 		return <Navigate to="/dashboard" replace />
@@ -229,9 +231,9 @@ export default function CharacterDetailPage() {
 								)}
 							</div>
 						</div>
-				</CardContent>
-			</Card>
-		)}
+					</CardContent>
+				</Card>
+			)}
 
 			{/* CEO/Director View Alert */}
 			{character.viewedAsCeoOrDirector && (
@@ -246,9 +248,9 @@ export default function CharacterDetailPage() {
 								</p>
 							</div>
 						</div>
-				</CardContent>
-			</Card>
-		)}
+					</CardContent>
+				</Card>
+			)}
 
 			{/* HR Viewer Alert */}
 			{character.viewedAsHrViewer && (
@@ -316,8 +318,7 @@ export default function CharacterDetailPage() {
 										)}
 									</div>
 								)}
-								{(character.public.info?.allianceName ||
-									character.public.info?.allianceId) && (
+								{(character.public.info?.allianceName || character.public.info?.allianceId) && (
 									<div className="flex items-center gap-1.5">
 										<img
 											src={allianceLogoUrl(character.public.info.allianceId, 32)}
@@ -351,12 +352,15 @@ export default function CharacterDetailPage() {
 								{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh'}
 							</Button>
 						)}
-						{character.isOwner && !character.viewedAsAdmin && !character.viewedAsCeoOrDirector && !character.viewedAsHrViewer && (
-							<span className="text-sm text-success font-medium flex items-center">
-								<User className="h-4 w-4 mr-1" />
-								Owner
-							</span>
-						)}
+						{character.isOwner &&
+							!character.viewedAsAdmin &&
+							!character.viewedAsCeoOrDirector &&
+							!character.viewedAsHrViewer && (
+								<span className="text-sm text-success font-medium flex items-center">
+									<User className="h-4 w-4 mr-1" />
+									Owner
+								</span>
+							)}
 					</div>
 				</CardHeader>
 			</Card>

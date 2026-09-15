@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -83,9 +82,10 @@ Options:
   --compatibility-date <date>
                       ESI compatibility date (default: ${DEFAULT_COMPATIBILITY_DATE})
   --check-structures  Refresh the ESI token and list/enrich all corporation sovereignty hubs
-  --json              Print structured JSON, including matching system IDs
-  --help              Show this help text`)
+				  --json              Print structured JSON, including matching system IDs
+				  --help              Show this help text`)
 				process.exit(0)
+				break
 			default:
 				throw new Error(`Unknown argument: ${argument}`)
 		}
@@ -201,7 +201,9 @@ async function refreshAccessToken() {
 
 	if (!response.ok) {
 		const body = await response.text()
-		throw new Error(`Refresh token exchange failed: ${response.status} ${response.statusText} - ${body}`)
+		throw new Error(
+			`Refresh token exchange failed: ${response.status} ${response.statusText} - ${body}`
+		)
 	}
 
 	const payload = await response.json()
@@ -212,7 +214,12 @@ async function refreshAccessToken() {
 	return payload.access_token
 }
 
-async function fetchCorporationSovereigntyHubs(corporationId, accessToken, baseUrl, compatibilityDate) {
+async function fetchCorporationSovereigntyHubs(
+	corporationId,
+	accessToken,
+	baseUrl,
+	compatibilityDate
+) {
 	const headers = {
 		Accept: 'application/json',
 		Authorization: `Bearer ${accessToken}`,
@@ -250,9 +257,7 @@ async function fetchCorporationSovereigntyHubs(corporationId, accessToken, baseU
 	if (
 		!listing.every(
 			(hub) =>
-				isRecord(hub) &&
-				Number.isSafeInteger(hub.id) &&
-				Number.isSafeInteger(hub.solar_system_id)
+				isRecord(hub) && Number.isSafeInteger(hub.id) && Number.isSafeInteger(hub.solar_system_id)
 		)
 	) {
 		throw new Error(
@@ -290,10 +295,10 @@ async function enrichCorporationSovereigntyHubs(
 					detail:
 						isRecord(detail) && Number.isSafeInteger(detail.id)
 							? {
-								id: detail.id,
-								solarSystemId: detail.solar_system_id,
-								controllerAllianceId: detail.controller_alliance_id ?? null,
-							}
+									id: detail.id,
+									solarSystemId: detail.solar_system_id,
+									controllerAllianceId: detail.controller_alliance_id ?? null,
+								}
 							: null,
 					hubId: hub.id,
 					error: null,
@@ -417,7 +422,9 @@ async function main() {
 	}
 
 	const ownerLabel = options.ownerType === 'alliance' ? 'Alliance' : 'Corporation'
-	console.log(`${ownerLabel} ${result.ownerId} owns ${result.ownedSystemCount} sovereignty systems.`)
+	console.log(
+		`${ownerLabel} ${result.ownerId} owns ${result.ownedSystemCount} sovereignty systems.`
+	)
 	if (systemIds.length > 0) {
 		console.log(`System IDs: ${systemIds.join(', ')}`)
 	}

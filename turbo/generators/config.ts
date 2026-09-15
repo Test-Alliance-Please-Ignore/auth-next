@@ -299,7 +299,7 @@ Happy coding! 🚀
 		try {
 			execSync(command, { stdio: 'inherit' })
 			return `Executed: ${command}`
-		} catch (error) {
+		} catch {
 			throw new Error(`Failed to execute: ${command}`)
 		}
 	})

@@ -1,4 +1,3 @@
-import { formatDistanceToNow } from 'date-fns'
 import {
 	ArrowLeft,
 	Building2,
@@ -74,6 +73,7 @@ import {
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useGlobalPermissions } from '@/hooks/usePermissions'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import type { CorporationAccessVerification, CorporationDiscordServer } from '@/lib/api'
 

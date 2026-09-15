@@ -1,7 +1,4 @@
-export const FORBIDDEN_PRIVATE_DATA_MESSAGE =
-	'Private ESI data is hidden because this user does not have an open application or shared corporation access for this character.'
-
-export const GENERIC_PRIVATE_DATA_MESSAGE = 'Private ESI data is unavailable right now.'
+import { i18n } from '@/i18n'
 
 function isForbiddenError(error: unknown): boolean {
 	return Boolean(
@@ -14,5 +11,7 @@ function isForbiddenError(error: unknown): boolean {
 
 export function getPrivateDataUnavailableMessage(error: unknown): string | null {
 	if (!error) return null
-	return isForbiddenError(error) ? FORBIDDEN_PRIVATE_DATA_MESSAGE : GENERIC_PRIVATE_DATA_MESSAGE
+	return isForbiddenError(error)
+		? i18n.t('common.privateData.forbidden')
+		: i18n.t('common.privateData.unavailable')
 }

@@ -5,12 +5,12 @@
  * and edit/delete actions for the recommendation owner.
  */
 
-import { formatDistanceToNow } from 'date-fns'
 import { Edit, Trash2 } from 'lucide-react'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { RecommendationSentimentBadge } from './recommendation-sentiment-badge'

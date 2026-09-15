@@ -10,9 +10,9 @@ import type { SharedHonoEnv } from '@repo/hono-helpers/src/types'
  */
 export interface AnalyticsEngineBinding {
 	writeDataPoint(event?: {
-		indexes?: ((ArrayBuffer | string) | null)[]
+		indexes?: Array<(ArrayBuffer | string) | null>
 		doubles?: number[]
-		blobs?: ((ArrayBuffer | string) | null)[]
+		blobs?: Array<(ArrayBuffer | string) | null>
 	}): void
 }
 

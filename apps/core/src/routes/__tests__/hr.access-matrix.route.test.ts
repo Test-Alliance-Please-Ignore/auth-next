@@ -299,6 +299,7 @@ describe('hr route access matrix', () => {
 		ESI: { name: 'ESI' },
 		CORE: {
 			getCharacterOwner: vi.fn().mockResolvedValue({ userId: 'target-user-1' }),
+			getUserCorporations: vi.fn().mockResolvedValue([]),
 			getUserCharacters: vi.fn().mockResolvedValue([]),
 		},
 		ADMIN: {
@@ -1403,8 +1404,30 @@ describe('hr route access matrix', () => {
 		const res = await app.request('/api/hr/users/target-user-1/blocklist-status', {}, env)
 
 		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual({ isBlacklisted: true })
+		expect(await res.json()).toEqual({ isBlacklisted: true, discordAccountLinked: false })
 		expect(hrStub.isUserBlacklisted).toHaveBeenCalledWith('target-user-1')
+	})
+
+	it('requires profile access before returning HR user characters', async () => {
+		env.CORE.getUserCorporations.mockImplementation(async (userId: string) => [
+			{
+				corporationId: userId === 'user-1' ? '1001' : '2001',
+				corporationName: userId === 'user-1' ? 'Alpha Corp' : 'Bravo Corp',
+			},
+		])
+		hrStub.getUserRoles.mockResolvedValue([
+			{
+				role: 'hr_viewer',
+				isActive: true,
+				corporationId: '1001',
+			},
+		] as any)
+
+		const app = createApp({ user: makeUser(), db: dbStub })
+		const res = await app.request('/api/hr/users/target-user-1/characters', {}, env)
+
+		expect(res.status).toBe(403)
+		expect(env.CORE.getUserCharacters).not.toHaveBeenCalled()
 	})
 
 	it('allows auditors to create hr notes via hasAnyHrAccess', async () => {

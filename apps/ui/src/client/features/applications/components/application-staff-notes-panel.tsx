@@ -1,4 +1,3 @@
-import { formatDistanceToNow } from 'date-fns'
 import { Lock, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -9,6 +8,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { Textarea } from '@/components/ui/textarea'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useMessage } from '@/hooks/useMessage'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import {
 	useAddApplicationStaffNote,
@@ -72,7 +72,8 @@ export function ApplicationStaffNotesPanel({
 	const handleDelete = async (noteId: string) => {
 		requestConfirmation({
 			title: 'Delete Application Note',
-			description: 'Are you sure you want to delete this application note? This action cannot be undone.',
+			description:
+				'Are you sure you want to delete this application note? This action cannot be undone.',
 			confirmLabel: 'Delete Note',
 			intent: 'destructive',
 			onConfirm: async () => {
@@ -145,7 +146,9 @@ export function ApplicationStaffNotesPanel({
 										characterName={note.authorCharacterName}
 										size="sm"
 									/>
-									<span className="font-medium text-sm">{note.authorCharacterName ?? 'Unknown'}</span>
+									<span className="font-medium text-sm">
+										{note.authorCharacterName ?? 'Unknown'}
+									</span>
 									<span className="text-xs text-muted-foreground ml-auto">
 										{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}
 									</span>
@@ -171,7 +174,7 @@ export function ApplicationStaffNotesPanel({
 									)}
 								</div>
 
-									{editingNoteId === note.id ? (
+								{editingNoteId === note.id ? (
 									<div className="space-y-2">
 										<Textarea
 											value={editingText}

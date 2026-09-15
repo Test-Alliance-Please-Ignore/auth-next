@@ -195,6 +195,8 @@ export type HRNoteType = 'general' | 'warning' | 'positive' | 'incident' | 'back
  */
 export type HRNotePriority = 'low' | 'normal' | 'high' | 'critical'
 
+export type HRNoteVisibility = 'admin' | 'auditor' | 'hr'
+
 /**
  * Represents an HR note about a user (ADMIN ONLY)
  */
@@ -579,10 +581,10 @@ export const applicationsApi = {
 		return apiClient.delete(`/hr/applications/${applicationId}/staff-notes/${noteId}`)
 	},
 
-	// ==================== HR Notes (ADMIN ONLY) ====================
+	// ==================== HR Notes ====================
 
 	/**
-	 * Get HR notes with optional filters (ADMIN ONLY)
+	 * Get HR notes with optional filters
 	 */
 	async getHRNotes(params?: HRNotesParams): Promise<HRNote[]> {
 		const searchParams = new URLSearchParams()
@@ -597,14 +599,14 @@ export const applicationsApi = {
 	},
 
 	/**
-	 * Get a single HR note by ID (ADMIN ONLY)
+	 * Get a single HR note by ID
 	 */
 	async getHRNote(noteId: string): Promise<HRNote> {
 		return apiClient.get(`/hr/notes/${noteId}`)
 	},
 
 	/**
-	 * Add a new HR note (ADMIN ONLY)
+	 * Add a new HR note
 	 */
 	async addHRNote(data: AddHRNoteRequest): Promise<HRNote> {
 		return apiClient.post('/hr/notes', data)

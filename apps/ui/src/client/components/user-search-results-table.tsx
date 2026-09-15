@@ -86,7 +86,7 @@ export function UserSearchResultsTable({
 										<Link
 											to={userDetailsPath(user.id)}
 											className={cn(
-												'inline-flex items-center gap-2 font-medium hover:text-primary transition-colors',
+												'inline-flex items-center gap-2 font-medium text-primary transition-colors hover:text-primary/80 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
 												isDisplayedCharacterBlacklisted && 'text-red-500'
 											)}
 										>

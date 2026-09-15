@@ -1,7 +1,8 @@
-import { formatDistanceToNow } from 'date-fns'
 import { Clock, GraduationCap } from 'lucide-react'
 
 import { formatSkillWithLevel } from '@repo/eve-types'
+
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 

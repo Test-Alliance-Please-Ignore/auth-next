@@ -6,7 +6,6 @@
  * Requires HR Viewer role minimum.
  */
 
-import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, ArrowLeft, Briefcase, Lock } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams, useSearchParams } from 'react-router'
@@ -30,7 +29,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { apiClient } from '@/lib/api'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import toast from '@/lib/toast'
 import { cn } from '@/lib/utils'
 
@@ -64,10 +63,7 @@ import {
 } from '../hooks'
 import { resolveApplicationActionRole } from '../utils/application-action-role'
 import { canViewFulcrumTab } from '../utils/fulcrum-access'
-import {
-	FORBIDDEN_PRIVATE_DATA_MESSAGE,
-	getPrivateDataUnavailableMessage,
-} from '../utils/private-data'
+import { getPrivateDataUnavailableMessage } from '../utils/private-data'
 
 // ============================================================================
 // Component
@@ -246,7 +242,7 @@ export default function HrApplicationReview() {
 		if (unavailableMessage) privateDataUnavailableNotes.push(unavailableMessage)
 	}
 	const privateDataUnavailableMessage = !canViewApplicationPrivateData
-		? FORBIDDEN_PRIVATE_DATA_MESSAGE
+		? getPrivateDataUnavailableMessage({ status: 403 })
 		: (privateDataUnavailableNotes[0] ?? null)
 	const hrCharacterTokenStateById = new Map(
 		hrCharacters.map((character) => [character.characterId, character.hasValidToken])

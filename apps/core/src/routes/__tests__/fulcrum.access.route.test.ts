@@ -214,7 +214,8 @@ describe('fulcrum route access matrix', () => {
 		const res = await app.request('/api/fulcrum/users/target-1/characters', {}, env)
 		expect(res.status).toBe(403)
 		expect(await res.json()).toEqual({
-			error: 'HR staff access requires a shared corporation or an open application',
+			error:
+				'Fulcrum reports require an HR reviewer role plus a shared corporation or open application',
 		})
 		expect(hrStub.listApplications).toHaveBeenCalledWith({ userId: 'target-1' }, 'user-1', {
 			isAdmin: false,
@@ -311,7 +312,9 @@ describe('fulcrum route access matrix', () => {
 		const res = await app.request('/api/fulcrum/reports/report-1/sections', {}, env)
 
 		expect(res.status).toBe(403)
-		expect(await res.json()).toEqual({ error: 'HR role required' })
+		expect(await res.json()).toEqual({
+			error: 'An HR reviewer role and matching corporation or application access are required',
+		})
 		expect(fulcrumStub.getReportSections).not.toHaveBeenCalled()
 		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '1001', 'hr_reviewer')
 	})
@@ -414,7 +417,9 @@ describe('fulcrum route access matrix', () => {
 		const res = await app.request('/api/fulcrum/reports/report-1/mails/mail-1/content', {}, env)
 
 		expect(res.status).toBe(403)
-		expect(await res.json()).toEqual({ error: 'HR role required' })
+		expect(await res.json()).toEqual({
+			error: 'An HR reviewer role and matching corporation or application access are required',
+		})
 		expect(fulcrumStub.fetchMailContent).not.toHaveBeenCalled()
 		expect(hrStub.checkPermission).toHaveBeenCalledWith('user-1', '1001', 'hr_reviewer')
 	})
@@ -430,7 +435,8 @@ describe('fulcrum route access matrix', () => {
 
 		expect(res.status).toBe(403)
 		expect(await res.json()).toEqual({
-			error: 'HR staff access requires a shared corporation or an open application',
+			error:
+				'Fulcrum reports require an HR reviewer role plus a shared corporation or open application',
 		})
 		expect(hrStub.listApplications).toHaveBeenCalledWith({ userId: 'target-1' }, 'user-1', {
 			isAdmin: false,
@@ -602,12 +608,15 @@ describe('fulcrum route access matrix', () => {
 				corporationName: 'Corp 2002',
 			},
 		])
-		eveCharacterDataStub.getInstance.mockResolvedValue({
-			getCharacterInfo: vi.fn().mockResolvedValue({
-				characterId: '3001',
-				corporationId: '2002',
-			}),
-		} as any)
+		eveCharacterDataStub.getInstance.mockImplementation(
+			async (characterId: string) =>
+				({
+					getCharacterInfo: vi.fn().mockResolvedValue({
+						characterId,
+						corporationId: characterId === '1001' ? '1001' : '2002',
+					}),
+				}) as any
+		)
 		hrStub.checkPermission.mockResolvedValue(false)
 		hrStub.getUserRoles.mockResolvedValue([
 			{
@@ -652,12 +661,15 @@ describe('fulcrum route access matrix', () => {
 			userId: 'target-user',
 			characterName: 'Target Pilot',
 		} as any)
-		eveCharacterDataStub.getInstance.mockResolvedValue({
-			getCharacterInfo: vi.fn().mockResolvedValue({
-				characterId: '3001',
-				corporationId: '2002',
-			}),
-		} as any)
+		eveCharacterDataStub.getInstance.mockImplementation(
+			async (characterId: string) =>
+				({
+					getCharacterInfo: vi.fn().mockResolvedValue({
+						characterId,
+						corporationId: characterId === '1001' ? '1001' : '2002',
+					}),
+				}) as any
+		)
 		coreStub.getUserCorporations.mockResolvedValue([
 			{
 				corporationId: '1001',
@@ -1203,7 +1215,8 @@ describe('fulcrum route access matrix', () => {
 				({
 					getCharacterInfo: vi.fn().mockResolvedValue({
 						characterId,
-						corporationId: characterId === '3001' ? '2002' : '3003',
+						corporationId:
+							characterId === '1001' ? '1001' : characterId === '3001' ? '2002' : '3003',
 					}),
 				}) as any
 		)

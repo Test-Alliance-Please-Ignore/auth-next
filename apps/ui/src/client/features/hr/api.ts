@@ -106,6 +106,8 @@ export interface HrUserSearchSummary {
 	matchedCharacterId: string | null
 	matchedCharacterName: string | null
 	isBlacklisted: boolean
+	canViewProfile: boolean
+	mumbleAccountLinked: boolean | null
 	matchedBy: string | null
 	createdAt: string
 	updatedAt: string

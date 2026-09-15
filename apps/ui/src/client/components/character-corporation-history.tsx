@@ -1,7 +1,7 @@
-import { formatDistanceToNow } from 'date-fns'
-
-import { corporationLogoUrl } from '@/lib/eve-images'
 import { Calendar } from 'lucide-react'
+
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
+import { corporationLogoUrl } from '@/lib/eve-images'
 
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
