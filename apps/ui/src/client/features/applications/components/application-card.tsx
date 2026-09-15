@@ -9,7 +9,8 @@ import { MessageSquare } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
+import { formatNumber, useAppTranslation } from '@/i18n'
+import { formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { ApplicationCharacterStack } from './application-character-stack'
@@ -43,6 +44,7 @@ export interface ApplicationCardProps {
  * ```
  */
 export function ApplicationCard({ application, onClick, className }: ApplicationCardProps) {
+	const { t } = useAppTranslation()
 	const handleClick = () => {
 		if (onClick) {
 			onClick(application)
@@ -90,13 +92,20 @@ export function ApplicationCard({ application, onClick, className }: Application
 											variant={application.isFirstApplication ? 'success' : 'default'}
 											className="h-5 px-1.5 text-[10px] font-semibold leading-none"
 										>
-											{application.isFirstApplication ? 'First' : 'Repeat'}
+											{t(
+												application.isFirstApplication
+													? 'applications.card.first'
+													: 'applications.card.repeat'
+											)}
 										</Badge>
 									)}
 								</h3>
 								{altCharacterIds.length > 0 && (
 									<div className="text-sm font-normal text-muted-foreground">
-										(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
+										{t('applications.card.alts', {
+											count: altCharacterIds.length,
+											formattedCount: formatNumber(altCharacterIds.length),
+										})}
 									</div>
 								)}
 								{application.corporationName && (
@@ -110,22 +119,26 @@ export function ApplicationCard({ application, onClick, className }: Application
 
 						{/* Application Text Preview */}
 						<p className="text-sm text-muted-foreground line-clamp-2">
-							{application.applicationTextPreview ?? 'Application submitted'}
+							{application.applicationTextPreview ?? t('applications.card.submitted')}
 						</p>
 
 						{/* Metadata Row */}
 						<div className="flex items-center justify-between text-xs text-muted-foreground">
 							{/* Timestamp */}
-							<span>
-								{formatDistanceToNow(new Date(application.createdAt), { addSuffix: true })}
-							</span>
+							<span>{formatRelativeTime(application.createdAt)}</span>
 
 							{/* Recommendation Count */}
 							{application.recommendationCount !== undefined &&
 								application.recommendationCount > 0 && (
-									<div className="flex items-center gap-1">
+									<div
+										className="flex items-center gap-1"
+										title={t('applications.card.recommendations', {
+											count: application.recommendationCount,
+											formattedCount: formatNumber(application.recommendationCount),
+										})}
+									>
 										<MessageSquare className="h-3.5 w-3.5" />
-										<span>{application.recommendationCount}</span>
+										<span>{formatNumber(application.recommendationCount)}</span>
 									</div>
 								)}
 						</div>

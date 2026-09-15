@@ -5,6 +5,7 @@ import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { characterPortraitUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
 
@@ -103,6 +104,7 @@ export function ApplicationCharacterStack({
 	blacklistedCharacterIds = [],
 	size = 'lg',
 }: ApplicationCharacterStackProps) {
+	const { t } = useAppTranslation()
 	const [open, setOpen] = useState(false)
 	const closeTimeoutRef = useRef<number | null>(null)
 
@@ -240,7 +242,7 @@ export function ApplicationCharacterStack({
 							}}
 							className="px-1 py-0 text-[10px] leading-4 shadow-sm"
 						>
-							+{altCount}
+							+{formatNumber(altCount)}
 						</Badge>
 					)}
 				</div>
@@ -256,7 +258,7 @@ export function ApplicationCharacterStack({
 				<div className="space-y-3 min-w-[200px]">
 					<div>
 						<p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-							Main Character
+							{t('applications.characters.main')}
 						</p>
 						<div className="flex items-center gap-2">
 							<MemberAvatar
@@ -284,7 +286,7 @@ export function ApplicationCharacterStack({
 							<Separator />
 							<div>
 								<p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-									Alt Characters ({altCount})
+									{t('applications.characters.altsCount', { count: formatNumber(altCount) })}
 								</p>
 								<div className="space-y-2">
 									{altCharacterIds.map((altId) => (

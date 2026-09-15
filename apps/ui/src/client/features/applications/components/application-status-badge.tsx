@@ -8,9 +8,11 @@
 import { AlertCircle, Check, CircleCheckBig, Clock, Eye, Minus, XCircle } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import type { BadgeVariant } from '@/components/ui/badge'
+import type { AppTranslationKey } from '@/i18n'
 import type { ApplicationStatus } from '../api'
 
 // ============================================================================
@@ -31,45 +33,45 @@ export interface ApplicationStatusBadgeProps {
 const statusConfig: Record<
 	ApplicationStatus,
 	{
-		label: string
+		labelKey: AppTranslationKey
 		icon: typeof Clock
 		variant: BadgeVariant
 	}
 > = {
 	pending: {
-		label: 'Pending',
+		labelKey: 'applications.status.pending',
 		icon: Clock,
 		variant: 'warning',
 	},
 	under_review: {
-		label: 'Under Review',
+		labelKey: 'applications.status.under_review',
 		icon: Eye,
 		variant: 'default',
 	},
 	accepted: {
-		label: 'Accepted',
+		labelKey: 'applications.status.accepted',
 		icon: Check,
 		variant: 'success',
 	},
 	completed: {
-		label: 'Completed',
+		labelKey: 'applications.status.completed',
 		icon: CircleCheckBig,
 		variant: 'success',
 	},
 	rejected: {
-		label: 'Rejected',
+		labelKey: 'applications.status.rejected',
 		icon: XCircle,
 		variant: 'destructive',
 	},
 	withdrawn: {
-		label: 'Withdrawn',
+		labelKey: 'applications.status.withdrawn',
 		icon: Minus,
 		variant: 'ghost',
 	},
 }
 
 const unknownStatusConfig = {
-	label: 'Unknown Status',
+	labelKey: 'applications.status.unknown' as const,
 	icon: AlertCircle,
 	variant: 'ghost' as BadgeVariant,
 }
@@ -105,7 +107,10 @@ export function ApplicationStatusBadge({
 	showIcon = true,
 	className,
 }: ApplicationStatusBadgeProps) {
-	const config = statusConfig[status as ApplicationStatus] ?? unknownStatusConfig
+	const { t } = useAppTranslation()
+	const config = Object.hasOwn(statusConfig, status)
+		? statusConfig[status as ApplicationStatus]
+		: unknownStatusConfig
 	const Icon = config.icon
 
 	return (
@@ -114,7 +119,7 @@ export function ApplicationStatusBadge({
 			className={cn('inline-flex items-center gap-1.5 font-medium', sizeClasses[size], className)}
 		>
 			{showIcon && <Icon className={iconSizeClasses[size]} />}
-			<span>{config.label}</span>
+			<span>{t(config.labelKey)}</span>
 		</Badge>
 	)
 }

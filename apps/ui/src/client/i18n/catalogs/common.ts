@@ -37,6 +37,8 @@ export const commonCatalog = defineCatalog(
 			},
 			characterIdentity: {
 				loadingPrivateDetails: 'Loading private character details',
+				main: 'Main',
+				alt: 'Alt',
 				spUnavailable: 'SP unavailable',
 				walletUnavailable: 'Wallet unavailable',
 				copyNameAria: 'Copy {{name}} to clipboard',
@@ -155,6 +157,8 @@ export const commonCatalog = defineCatalog(
 			},
 			characterIdentity: {
 				loadingPrivateDetails: 'Private Charakterdetails werden geladen',
+				main: 'Hauptcharakter',
+				alt: 'Alt',
 				spUnavailable: 'SP nicht verfügbar',
 				walletUnavailable: 'Wallet nicht verfügbar',
 				copyNameAria: '{{name}} in die Zwischenablage kopieren',
@@ -273,6 +277,8 @@ export const commonCatalog = defineCatalog(
 			},
 			characterIdentity: {
 				loadingPrivateDetails: '비공개 캐릭터 세부 정보 로드 중',
+				main: '메인',
+				alt: '부캐',
 				spUnavailable: 'SP 정보 없음',
 				walletUnavailable: '지갑 정보 없음',
 				copyNameAria: '{{name}}을(를) 클립보드에 복사',

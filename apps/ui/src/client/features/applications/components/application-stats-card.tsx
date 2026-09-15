@@ -6,6 +6,7 @@
  */
 
 import { Card, CardContent } from '@/components/ui/card'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import type { ApplicationStatus } from '../api'
@@ -70,6 +71,7 @@ export function ApplicationStatsCard({
 	variant = 'all',
 	className,
 }: ApplicationStatsCardProps) {
+	useAppTranslation()
 	return (
 		<Card className={cn('border-2', variantStyles[variant], className)}>
 			<CardContent className="p-4">
@@ -77,7 +79,7 @@ export function ApplicationStatsCard({
 					<p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
 						{label}
 					</p>
-					<p className={cn('text-3xl font-bold', valueStyles[variant])}>{value}</p>
+					<p className={cn('text-3xl font-bold', valueStyles[variant])}>{formatNumber(value)}</p>
 				</div>
 			</CardContent>
 		</Card>

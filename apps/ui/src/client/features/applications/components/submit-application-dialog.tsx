@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { useSubmitApplication } from '../hooks'
@@ -69,6 +70,7 @@ export function SubmitApplicationDialog({
 	corporationId,
 	corporationName,
 }: SubmitApplicationDialogProps) {
+	const { t } = useAppTranslation()
 	const navigate = useNavigate()
 	const { user } = useAuth()
 	const { message, showError, clearMessage } = useMessage()
@@ -130,7 +132,9 @@ export function SubmitApplicationDialog({
 			setApplicationText('')
 			void navigate('/my-applications')
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to submit application')
+			showError((translate) =>
+				error instanceof Error ? error.message : translate('applications.submit.failed')
+			)
 		}
 	}
 
@@ -148,17 +152,18 @@ export function SubmitApplicationDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="sm:max-w-[600px]">
 				<DialogHeader>
-					<DialogTitle>Apply to {corporationName}</DialogTitle>
-					<DialogDescription>
-						Submit your application to join this corporation. Make sure to explain why you want to
-						join and what you can bring to the corporation.
-					</DialogDescription>
+					<DialogTitle>
+						{t('applications.submit.title', { corporation: corporationName })}
+					</DialogTitle>
+					<DialogDescription>{t('applications.submit.description')}</DialogDescription>
 				</DialogHeader>
 
 				{message && (
 					<Card className="border-destructive bg-destructive/10">
 						<CardContent className="py-3">
-							<p className="text-destructive text-sm">{message.text}</p>
+							<p role="alert" className="text-destructive text-sm">
+								{message.text}
+							</p>
 						</CardContent>
 					</Card>
 				)}
@@ -166,17 +171,21 @@ export function SubmitApplicationDialog({
 				<div className="space-y-4 py-4">
 					{/* Main Character (read-only) */}
 					<div className="space-y-2">
-						<Label className="text-sm font-medium">Main Character</Label>
+						<Label className="text-sm font-medium">{t('applications.characters.main')}</Label>
 						<div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
 							{mainCharacter ? (
 								<>
 									<span className="font-medium">{mainCharacter.characterName}</span>
 									{!mainCharacter.hasValidToken && (
-										<span className="text-muted-foreground">(No valid token)</span>
+										<span className="text-muted-foreground">
+											{t('applications.characters.noToken')}
+										</span>
 									)}
 								</>
 							) : (
-								<span className="text-muted-foreground">No main character found</span>
+								<span className="text-muted-foreground">
+									{t('applications.characters.missingMain')}
+								</span>
 							)}
 						</div>
 					</div>
@@ -184,10 +193,8 @@ export function SubmitApplicationDialog({
 					{/* Alt Characters */}
 					{mainCharacterId && altCharacters.length > 0 && (
 						<div className="space-y-2">
-							<Label className="text-sm font-medium">Alt Characters</Label>
-							<p className="text-xs text-muted-foreground">
-								Select any alt characters you are also applying with.
-							</p>
+							<Label className="text-sm font-medium">{t('applications.characters.alts')}</Label>
+							<p className="text-xs text-muted-foreground">{t('applications.submit.altHint')}</p>
 							<div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
 								{altCharacters.map(
 									(char: {
@@ -206,7 +213,10 @@ export function SubmitApplicationDialog({
 											<span className="text-sm">
 												{char.characterName}
 												{!char.hasValidToken && (
-													<span className="text-muted-foreground"> (No valid token)</span>
+													<span className="text-muted-foreground">
+														{' '}
+														{t('applications.characters.noToken')}
+													</span>
 												)}
 											</span>
 										</label>
@@ -219,11 +229,11 @@ export function SubmitApplicationDialog({
 					{/* Application Text */}
 					<div className="space-y-2">
 						<Label htmlFor="application-text" className="text-sm font-medium">
-							Application Text <span className="text-destructive">*</span>
+							{t('applications.submit.text')} <span className="text-destructive">*</span>
 						</Label>
 						<Textarea
 							id="application-text"
-							placeholder="Tell us why you want to join this corporation..."
+							placeholder={t('applications.submit.placeholder')}
 							value={applicationText}
 							onChange={(e) => setApplicationText(e.target.value)}
 							className="min-h-[200px] resize-y"
@@ -239,10 +249,14 @@ export function SubmitApplicationDialog({
 									isTextValid && 'text-success'
 								)}
 							>
-								{characterCount < MIN_APPLICATION_LENGTH && (
-									<>{MIN_APPLICATION_LENGTH - characterCount} more characters required</>
-								)}
-								{characterCount >= MIN_APPLICATION_LENGTH && isTextValid && <>Minimum length met</>}
+								{characterCount < MIN_APPLICATION_LENGTH &&
+									t('applications.submit.remaining', {
+										count: MIN_APPLICATION_LENGTH - characterCount,
+										formattedCount: formatNumber(MIN_APPLICATION_LENGTH - characterCount),
+									})}
+								{characterCount >= MIN_APPLICATION_LENGTH &&
+									isTextValid &&
+									t('applications.submit.minimumMet')}
 							</span>
 							<span
 								className={cn(
@@ -251,8 +265,10 @@ export function SubmitApplicationDialog({
 									charactersRemaining < 0 && 'text-destructive'
 								)}
 							>
-								{characterCount.toLocaleString()} / {MAX_APPLICATION_LENGTH.toLocaleString()}{' '}
-								characters
+								{t('applications.submit.counter', {
+									current: formatNumber(characterCount),
+									maximum: formatNumber(MAX_APPLICATION_LENGTH),
+								})}
 							</span>
 						</div>
 					</div>
@@ -260,16 +276,16 @@ export function SubmitApplicationDialog({
 
 				<DialogFooter>
 					<Button variant="cancel" onClick={handleCancel} disabled={submitMutation.isPending}>
-						Cancel
+						{t('common.cancel')}
 					</Button>
 					<Button
 						variant="confirm"
 						onClick={handleSubmit}
 						disabled={!isFormValid}
 						loading={submitMutation.isPending}
-						loadingText="Submitting..."
+						loadingText={t('applications.submit.pending')}
 					>
-						Submit Application
+						{t('applications.submit.action')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
