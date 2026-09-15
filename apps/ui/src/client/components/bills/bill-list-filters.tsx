@@ -1,35 +1,16 @@
 import { Layers, LayoutList } from 'lucide-react'
+import { useId } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { FilterField } from '@/components/ui/filter-field'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
+import { formatBillStatus, formatEntityType } from '@/lib/bills-utils'
 
 import type { BillStatus, EntityType } from '@repo/bills'
 import type { SelectOption } from '@/components/ui/select'
-import { Button } from '@/components/ui/button'
-
-const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
-	{ value: 'all', label: 'All statuses' },
-	{ value: 'draft', label: 'Draft' },
-	{ value: 'issued', label: 'Issued' },
-	{ value: 'paid', label: 'Paid' },
-	{ value: 'cancelled', label: 'Cancelled' },
-	{ value: 'overdue', label: 'Overdue' },
-]
-
-const ENTITY_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
-	{ value: 'all', label: 'All types' },
-	{ value: 'character', label: 'Character' },
-	{ value: 'corporation', label: 'Corporation' },
-	{ value: 'group', label: 'Group' },
-]
-
-const PAYEE_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
-	{ value: 'all', label: 'All types' },
-	{ value: 'character', label: 'Character' },
-	{ value: 'corporation', label: 'Corporation' },
-]
 
 export function BillListFilters(props: {
 	status?: BillStatus
@@ -51,7 +32,9 @@ export function BillListFilters(props: {
 	payeeOptions: SelectOption[]
 	issuerLoading?: boolean
 	payerLoading?: boolean
+	payerError?: boolean
 	payeeLoading?: boolean
+	payeeError?: boolean
 	onStatusChange: (value?: BillStatus) => void
 	onPayerTypeChange: (value?: EntityType) => void
 	onPayeeTypeChange: (value?: EntityType) => void
@@ -64,53 +47,81 @@ export function BillListFilters(props: {
 	hasGroupBills?: boolean
 	onCoalescedToggle?: () => void
 }) {
+	const { t } = useAppTranslation()
+	const id = useId()
+	const statusOptions = [
+		{ value: 'all', label: t('bills.filters.allStatuses') },
+		...(['draft', 'issued', 'paid', 'cancelled', 'overdue'] as const).map((value) => ({
+			value,
+			label: formatBillStatus(value),
+		})),
+	]
+	const entityOptions = [
+		{ value: 'all', label: t('bills.filters.allTypes') },
+		...(['character', 'corporation', 'group'] as const).map((value) => ({
+			value,
+			label: formatEntityType(value),
+		})),
+	]
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Filters</CardTitle>
-				<CardDescription>
-					Filter bills by status, parties, types, and due-date range.
-				</CardDescription>
+				<CardTitle>{t('bills.filters.title')}</CardTitle>
+				<CardDescription>{t('bills.filters.description')}</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				<div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-					<FilterField label="Status">
+					<FilterField label={t('bills.columns.status')}>
+						<label className="sr-only" htmlFor={`${id}-status`}>
+							{t('bills.columns.status')}
+						</label>
 						<Select
+							inputId={`${id}-status`}
 							value={props.status ?? 'all'}
 							onValueChange={(value) =>
 								props.onStatusChange(value === 'all' ? undefined : (value as BillStatus))
 							}
-							options={STATUS_OPTIONS.map((option) => ({ value: option.value,
+							options={statusOptions.map((option) => ({
+								value: option.value,
 								label: option.label,
 							}))}
-							placeholder="All statuses"
+							placeholder={t('bills.filters.allStatuses')}
 						/>
 					</FilterField>
-					<FilterField label="Payer Type">
+					<FilterField label={t('bills.filters.payerType')}>
+						<label className="sr-only" htmlFor={`${id}-payerType`}>
+							{t('bills.filters.payerType')}
+						</label>
 						<Select
+							inputId={`${id}-payerType`}
 							value={props.payerType ?? 'all'}
 							onValueChange={(value) =>
 								props.onPayerTypeChange(value === 'all' ? undefined : (value as EntityType))
 							}
-							options={ENTITY_TYPE_OPTIONS.map((option) => ({ value: option.value,
+							options={entityOptions.map((option) => ({
+								value: option.value,
 								label: option.label,
 							}))}
-							placeholder="All types"
+							placeholder={t('bills.filters.allTypes')}
 						/>
 					</FilterField>
-					<FilterField label="Payee Type">
+					<FilterField label={t('bills.filters.payeeType')}>
+						<label className="sr-only" htmlFor={`${id}-payeeType`}>
+							{t('bills.filters.payeeType')}
+						</label>
 						<Select
+							inputId={`${id}-payeeType`}
 							value={props.payeeType ?? 'all'}
 							onValueChange={(value) =>
 								props.onPayeeTypeChange(value === 'all' ? undefined : (value as EntityType))
 							}
-							options={PAYEE_TYPE_OPTIONS.map((option) => ({ value: option.value,
-								label: option.label,
-							}))}
-							placeholder="All types"
+							options={entityOptions
+								.filter((option) => option.value !== 'group')
+								.map((option) => ({ value: option.value, label: option.label }))}
+							placeholder={t('bills.filters.allTypes')}
 						/>
 					</FilterField>
-					<FilterField label="Due Date Range">
+					<FilterField label={t('bills.filters.dueRange')}>
 						<DateRangeInput
 							value={{
 								fromDate: props.dueAfter ?? '',
@@ -128,8 +139,11 @@ export function BillListFilters(props: {
 					}`}
 				>
 					<div>
-						<label className="text-sm text-muted-foreground">Payer</label>
+						<label htmlFor={`${id}-payer`} className="text-sm text-muted-foreground">
+							{t('bills.columns.payer')}
+						</label>
 						<Select
+							inputId={`${id}-payer`}
 							value={props.payerId ?? ''}
 							onValueChange={(nextValue) => {
 								props.onPayerIdChange(nextValue || undefined)
@@ -140,16 +154,24 @@ export function BillListFilters(props: {
 							searchDelegate={() => props.payerOptions}
 							options={props.payerOptions}
 							loading={props.payerLoading}
-							placeholder="Search payer name or ID"
-							queryHintText="Type at least 2 characters"
+							placeholder={t('bills.filters.payerSearch')}
+							queryHintText={t('bills.filters.queryHint')}
 							minQueryLength={2}
 							debounceMs={0}
-							emptyText="No payer matches"
+							emptyText={t('bills.filters.payerEmpty')}
 						/>
+						{props.payerError && (
+							<p role="alert" className="text-sm text-destructive">
+								{t('bills.filters.payerFailed')}
+							</p>
+						)}
 					</div>
 					<div>
-						<label className="text-sm text-muted-foreground">Payee</label>
+						<label htmlFor={`${id}-payee`} className="text-sm text-muted-foreground">
+							{t('bills.columns.payee')}
+						</label>
 						<Select
+							inputId={`${id}-payee`}
 							value={props.payeeId ?? ''}
 							onValueChange={(nextValue) => {
 								props.onPayeeIdChange(nextValue || undefined)
@@ -160,17 +182,25 @@ export function BillListFilters(props: {
 							searchDelegate={() => props.payeeOptions}
 							options={props.payeeOptions}
 							loading={props.payeeLoading}
-							placeholder="Search payee name or ID"
-							queryHintText="Type at least 2 characters"
+							placeholder={t('bills.filters.payeeSearch')}
+							queryHintText={t('bills.filters.queryHint')}
 							minQueryLength={2}
 							debounceMs={0}
-							emptyText="No payee matches"
+							emptyText={t('bills.filters.payeeEmpty')}
 						/>
+						{props.payeeError && (
+							<p role="alert" className="text-sm text-destructive">
+								{t('bills.filters.payeeFailed')}
+							</p>
+						)}
 					</div>
 					{props.onIssuerIdChange && props.setIssuerQuery ? (
 						<div>
-							<label className="text-sm text-muted-foreground">Issuer</label>
+							<label htmlFor={`${id}-issuer`} className="text-sm text-muted-foreground">
+								{t('bills.columns.issuer')}
+							</label>
 							<Select
+								inputId={`${id}-issuer`}
 								value={props.issuerId ?? ''}
 								onValueChange={(nextValue) => {
 									props.onIssuerIdChange?.(nextValue || undefined)
@@ -181,38 +211,41 @@ export function BillListFilters(props: {
 								searchDelegate={() => props.issuerOptions ?? []}
 								options={props.issuerOptions ?? []}
 								loading={props.issuerLoading}
-								placeholder="Search issuer name or user ID"
-								queryHintText="Type at least 2 characters"
+								placeholder={t('bills.filters.issuerSearch')}
+								queryHintText={t('bills.filters.queryHint')}
 								minQueryLength={2}
 								debounceMs={0}
-								emptyText="No issuer matches"
+								emptyText={t('bills.filters.issuerEmpty')}
 							/>
 						</div>
 					) : null}
 					<div className="flex items-end justify-end gap-2">
 						{props.onCoalescedToggle && props.hasGroupBills !== false && (
-							<Button variant="ghost"
+							<Button
+								variant="ghost"
 								onClick={props.onCoalescedToggle}
 								title={
 									props.coalesced
-										? 'Show individual sub-bills'
-										: 'Show coalesced group rows'
+										? t('bills.filters.showIndividual')
+										: t('bills.filters.showGrouped')
 								}
 							>
 								{props.coalesced ? (
 									<>
 										<LayoutList className="h-4 w-4" />
-										Uncoalesced
+										{t('bills.filters.individual')}
 									</>
 								) : (
 									<>
 										<Layers className="h-4 w-4" />
-										Coalesced
+										{t('bills.filters.grouped')}
 									</>
 								)}
 							</Button>
 						)}
-						<Button variant="ghost" onClick={props.onReset}>Reset Filters</Button>
+						<Button variant="ghost" onClick={props.onReset}>
+							{t('bills.filters.reset')}
+						</Button>
 					</div>
 				</div>
 			</CardContent>

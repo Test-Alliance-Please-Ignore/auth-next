@@ -5,6 +5,7 @@ import { BillStatusBadge } from '@/components/bills/bill-status-badge'
 import { ISKAmount } from '@/components/bills/isk-amount'
 import { DataTable } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { formatDueDate } from '@/lib/bills-utils'
 import { formatDateTime } from '@/lib/date-utils'
 
@@ -32,22 +33,23 @@ export function BillListGrid(props: {
 	paginationLeadingAction?: ReactNode
 	clamped?: boolean
 }) {
+	const { t } = useAppTranslation()
 	const columns = useMemo(
 		() => [
 			{
 				id: 'status',
-				header: 'Status',
+				header: t('bills.columns.status'),
 				sortable: true,
 				cell: (bill: BillWithDetails) =>
 					bill.groupBillMixed ? (
-						<Badge variant="ghost">Mixed</Badge>
+						<Badge variant="ghost">{t('bills.mixed')}</Badge>
 					) : (
 						<BillStatusBadge status={bill.status} />
 					),
 			},
 			{
 				id: 'title',
-				header: 'Title',
+				header: t('bills.columns.title'),
 				link: props.rowInteraction?.type === 'link' ? props.rowInteraction.getHref : undefined,
 				cell: (bill: BillWithDetails) => (
 					<div className="flex items-center gap-2">
@@ -55,10 +57,14 @@ export function BillListGrid(props: {
 						{bill.groupBillTotalCount != null && (
 							<span
 								className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-500"
-								title={`Group bill: ${bill.groupBillPaidCount ?? 0}/${bill.groupBillTotalCount} paid`}
+								title={t('bills.groupProgress', {
+									paid: formatNumber(bill.groupBillPaidCount ?? 0),
+									total: formatNumber(bill.groupBillTotalCount),
+								})}
 							>
 								<Users className="h-3 w-3" />
-								{bill.groupBillPaidCount ?? 0}/{bill.groupBillTotalCount}
+								{formatNumber(bill.groupBillPaidCount ?? 0)}/
+								{formatNumber(bill.groupBillTotalCount)}
 							</span>
 						)}
 					</div>
@@ -66,10 +72,10 @@ export function BillListGrid(props: {
 			},
 			{
 				id: 'payerId',
-				header: 'Payer',
+				header: t('bills.columns.payer'),
 				cell: (bill: BillWithDetails) => {
 					const isGroup = bill.payerType === 'group'
-					const displayName = bill.payerName || (isGroup ? 'Group' : bill.payerId)
+					const displayName = bill.payerName || (isGroup ? t('bills.entity.group') : bill.payerId)
 					return (
 						<div className="flex flex-col">
 							<div className="flex items-center gap-1.5">
@@ -83,7 +89,7 @@ export function BillListGrid(props: {
 			},
 			{
 				id: 'payeeId',
-				header: 'Payee',
+				header: t('bills.columns.payee'),
 				cell: (bill: BillWithDetails) =>
 					bill.payeeId ? (
 						<div className="flex flex-col">
@@ -96,7 +102,7 @@ export function BillListGrid(props: {
 			},
 			{
 				id: 'issuerId',
-				header: 'Issuer',
+				header: t('bills.columns.issuer'),
 				cell: (bill: BillWithDetails) => (
 					<div className="flex flex-col">
 						<span>{bill.issuerName || bill.issuerId}</span>
@@ -106,19 +112,19 @@ export function BillListGrid(props: {
 			},
 			{
 				id: 'amount',
-				header: 'Amount',
+				header: t('bills.columns.amount'),
 				sortable: true,
 				cell: (bill: BillWithDetails) => <ISKAmount amount={bill.amount} />,
 			},
 			{
 				id: 'dueDate',
-				header: 'Due',
+				header: t('bills.columns.due'),
 				sortable: true,
 				cell: (bill: BillWithDetails) => formatDueDate(bill.dueDate, bill.status),
 			},
 			{
 				id: 'createdAt',
-				header: 'Created',
+				header: t('bills.columns.created'),
 				sortable: true,
 				cell: (bill: BillWithDetails) => formatDateTime(bill.createdAt),
 			},
@@ -126,7 +132,7 @@ export function BillListGrid(props: {
 				? [
 						{
 							id: 'actions',
-							header: 'Actions',
+							header: t('bills.columns.actions'),
 							className: 'text-right',
 							headerClassName: 'text-center',
 							sticky: 'right' as const,
@@ -135,7 +141,7 @@ export function BillListGrid(props: {
 					]
 				: []),
 		],
-		[props.renderActions, props.rowInteraction]
+		[props.renderActions, props.rowInteraction, t]
 	)
 
 	return (
@@ -144,7 +150,7 @@ export function BillListGrid(props: {
 			rows={props.rows}
 			loading={props.loading}
 			error={props.error}
-			emptyMessage={props.emptyMessage ?? 'No bills found.'}
+			emptyMessage={props.emptyMessage ?? t('bills.empty')}
 			sorting={[{ id: props.sorting.sortBy, desc: props.sorting.sortDir === 'desc' }]}
 			onSortingChange={(nextSorting) => {
 				const next = nextSorting[0]
@@ -157,7 +163,7 @@ export function BillListGrid(props: {
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
 			rowCount={props.rowCount}
-			itemLabel="bills"
+			itemLabel={t('bills.item', { count: props.rowCount })}
 			getRowKey={(bill) => bill.id}
 			rowInteraction={props.rowInteraction}
 			paginationLeadingAction={props.paginationLeadingAction}

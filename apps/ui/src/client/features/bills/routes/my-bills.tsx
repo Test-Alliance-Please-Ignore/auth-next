@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import { getBillingIssuerScopeFromUrns, isManualBill } from '@repo/bills'
 
 import { BillActionsMenu } from '@/components/bills/bill-actions-menu'
+import { BillFeedback } from '@/components/bills/bill-feedback'
 import {
 	getDefaultBillDueAfter,
 	readBillingFilterSession,
@@ -27,6 +28,7 @@ import {
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 import { cn } from '@/lib/utils'
 
@@ -46,7 +48,8 @@ import type { BillActionItem } from '@/components/bills/bill-actions-menu'
 import type { BillListSortingState } from '@/components/bills/bill-list-types'
 
 export default function MyBillsPage() {
-	usePageTitle('Bills')
+	const { t } = useAppTranslation()
+	usePageTitle(t('bills.title'))
 	const { permissions, isAdmin } = useUserPermissions()
 	const canIssueBills = hasBillingIssuerPermission(permissions, isAdmin)
 	const { isPageScrollEnabled, setIsPageScrollEnabled } = useLayoutScrollMode()
@@ -164,14 +167,14 @@ export default function MyBillsPage() {
 	return (
 		<Container className={cn(isTableGridClamped && 'lg:flex lg:h-full lg:min-h-0 lg:flex-col')}>
 			<PageHeader
-				title="Bills"
-				description="View bills assigned to you or your corporations"
+				title={t('bills.title')}
+				description={t('bills.description')}
 				action={
 					canIssueBills ? (
 						<Button variant="primary" asChild>
 							<Link to="/bills/issue">
 								<Plus className="h-4 w-4" />
-								Create Bill
+								{t('bills.actions.create')}
 							</Link>
 						</Button>
 					) : undefined
@@ -198,7 +201,9 @@ export default function MyBillsPage() {
 					payerOptions={payerOptions}
 					payeeOptions={payeeOptions}
 					payerLoading={payerSearch.isLoading}
+					payerError={payerSearch.isError}
 					payeeLoading={payeeSearch.isLoading}
+					payeeError={payeeSearch.isError}
 					onStatusChange={(value) => {
 						setStatus(value)
 						setPagination((prev) => ({ ...prev, pageIndex: 0 }))
@@ -251,7 +256,7 @@ export default function MyBillsPage() {
 						/>
 					}
 					renderActions={(bill) => <OwnedBillActions bill={bill} />}
-					emptyMessage="No bills found for the current filters."
+					emptyMessage={t('bills.emptyFilters')}
 				/>
 			</div>
 		</Container>
@@ -259,6 +264,7 @@ export default function MyBillsPage() {
 }
 
 function OwnedBillActions({ bill }: { bill: BillWithDetails }) {
+	const { t } = useAppTranslation()
 	const { user } = useAuth()
 	const { permissions, isAdmin } = useUserPermissions()
 	const canIssueGroupBills =
@@ -280,12 +286,12 @@ function OwnedBillActions({ bill }: { bill: BillWithDetails }) {
 		try {
 			await operation()
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Failed to update bill')
+			toast.error(<BillFeedback messageKey="bills.feedback.updateFailed" error={error} />)
 		}
 	}
 
 	const actionItems: BillActionItem[] = [
-		{ label: 'View', intent: 'primary', href: getOwnedBillHref(bill) },
+		{ id: 'view', label: t('bills.actions.view'), intent: 'primary', href: getOwnedBillHref(bill) },
 	]
 	if (
 		canIssueGroupBills &&
@@ -296,34 +302,39 @@ function OwnedBillActions({ bill }: { bill: BillWithDetails }) {
 		const groupBillId = bill.groupBillId
 		actionItems.push(
 			{
-				label: 'Edit',
+				id: 'edit',
+				label: t('bills.actions.edit'),
 				intent: 'secondary',
 				href: `/my-bills/group/${encodeURIComponent(groupBillId)}/edit`,
 				hidden: (bill.groupBillEditableCount ?? 0) === 0,
 			},
 			{
-				label: 'Issue',
+				id: 'issue',
+				label: t('bills.actions.issue'),
 				intent: 'confirm',
 				hidden: (bill.groupBillDraftCount ?? 0) === 0,
 				loading: issueGroupBill.isPending,
 				onClick: () => void action(() => issueGroupBill.mutateAsync(groupBillId)),
 			},
 			{
-				label: 'To Draft',
+				id: 'draft',
+				label: t('bills.actions.draft'),
 				intent: 'secondary',
 				hidden: (bill.groupBillRevertibleCount ?? 0) === 0,
 				loading: revertGroupBill.isPending,
 				onClick: () => void action(() => revertGroupBill.mutateAsync(groupBillId)),
 			},
 			{
-				label: 'Cancel',
+				id: 'cancel',
+				label: t('bills.actions.cancel'),
 				intent: 'muted',
 				hidden: (bill.groupBillCancellableCount ?? 0) === 0,
 				loading: cancelGroupBill.isPending,
 				onClick: () => void action(() => cancelGroupBill.mutateAsync(groupBillId)),
 			},
 			{
-				label: 'Delete',
+				id: 'delete',
+				label: t('bills.actions.delete'),
 				intent: 'destructive',
 				hidden: (bill.groupBillDraftCount ?? 0) === 0,
 				loading: deleteGroupBill.isPending,
@@ -340,7 +351,8 @@ function OwnedBillActions({ bill }: { bill: BillWithDetails }) {
 		bill.status !== 'cancelled'
 	) {
 		actionItems.push({
-			label: 'Mark Paid',
+			id: 'markPaid',
+			label: t('bills.actions.markPaid'),
 			intent: 'confirm',
 			loading: markIssuedBillPaid.isPending,
 			onClick: () => void action(() => markIssuedBillPaid.mutateAsync(bill.id)),
@@ -349,13 +361,15 @@ function OwnedBillActions({ bill }: { bill: BillWithDetails }) {
 	if (isOwnedManualBill && bill.status === 'draft') {
 		actionItems.push(
 			{
-				label: 'Issue',
+				id: 'issue',
+				label: t('bills.actions.issue'),
 				intent: 'confirm',
 				loading: issueBill.isPending,
 				onClick: () => void action(() => issueBill.mutateAsync(bill.id)),
 			},
 			{
-				label: 'Delete',
+				id: 'delete',
+				label: t('bills.actions.delete'),
 				intent: 'destructive',
 				loading: deleteBill.isPending,
 				onClick: () => void action(() => deleteBill.mutateAsync(bill.id)),
@@ -364,14 +378,16 @@ function OwnedBillActions({ bill }: { bill: BillWithDetails }) {
 	}
 	if (isOwnedManualBill && bill.canRevertToDraft === true) {
 		actionItems.push({
-			label: 'To Draft',
+			id: 'draft',
+			label: t('bills.actions.draft'),
 			intent: 'secondary',
 			loading: revertBill.isPending,
 			onClick: () => void action(() => revertBill.mutateAsync(bill.id)),
 		})
 		if (bill.status !== 'cancelled') {
 			actionItems.push({
-				label: 'Cancel',
+				id: 'cancel',
+				label: t('bills.actions.cancel'),
 				intent: 'muted',
 				loading: cancelBill.isPending,
 				onClick: () => void action(() => cancelBill.mutateAsync(bill.id)),

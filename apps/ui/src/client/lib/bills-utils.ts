@@ -2,8 +2,11 @@
  * Utility functions for bills management
  */
 
+import { differenceInCalendarDays, parseISO } from 'date-fns'
+
 import { getBillStatusBadgeVariant } from '@repo/bills'
 
+import { formatDate, formatNumber, i18n } from '@/i18n'
 import { formatISK, formatISKShort } from '@/lib/format-utils'
 
 import type { Bill, BillStatus, LateFeeCompounding, LateFeeType } from '@repo/bills'
@@ -87,52 +90,35 @@ export function getBillStatusColor(
 /**
  * Get human-readable status text
  */
-export function formatBillStatus(status: BillStatus): string {
+export function formatBillStatus(status: BillStatus | 'unbilled'): string {
 	switch (status) {
 		case 'draft':
-			return 'Draft'
 		case 'issued':
-			return 'Issued'
 		case 'paid':
-			return 'Paid'
 		case 'cancelled':
-			return 'Cancelled'
 		case 'overdue':
-			return 'Overdue'
+		case 'unbilled':
+			return i18n.t(`bills.status.${status}`)
 		default:
 			return status
 	}
 }
 
-/**
- * Format due date with overdue indicator
- */
+/** Due labels compare calendar days, so a bill due this morning still says "Due today". */
 export function formatDueDate(dueDate: Date | string, status?: BillStatus): string {
-	const date = typeof dueDate === 'string' ? new Date(dueDate) : dueDate
-	const now = new Date()
-	const diffMs = date.getTime() - now.getTime()
-	const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-	const formatted = date.toLocaleDateString('en-US', {
-		year: 'numeric',
-		month: 'short',
-		day: 'numeric',
-	})
-
-	if (status === 'paid') {
-		return formatted
+	const date = typeof dueDate === 'string' ? parseISO(dueDate) : dueDate
+	const formatted = formatDate(date, { year: 'numeric', month: 'short', day: 'numeric' })
+	if (Number.isNaN(date.getTime()) || status === 'paid') return formatted
+	const days = differenceInCalendarDays(date, new Date())
+	const values = {
+		date: formatted,
+		count: Math.abs(days),
+		formattedCount: formatNumber(Math.abs(days)),
 	}
-
-	if (diffDays < 0) {
-		return `${formatted} (${Math.abs(diffDays)} days overdue)`
-	} else if (diffDays === 0) {
-		return `${formatted} (Due today)`
-	} else if (diffDays === 1) {
-		return `${formatted} (Due tomorrow)`
-	} else if (diffDays <= 7) {
-		return `${formatted} (Due in ${diffDays} days)`
-	}
-
+	if (days < 0) return i18n.t('bills.due.overdue', values)
+	if (days === 0) return i18n.t('bills.due.today', values)
+	if (days === 1) return i18n.t('bills.due.tomorrow', values)
+	if (days <= 7) return i18n.t('bills.due.inDays', values)
 	return formatted
 }
 
@@ -189,11 +175,9 @@ export function getTotalAmountDue(bill: Bill): number {
 export function formatEntityType(type: 'character' | 'corporation' | 'group'): string {
 	switch (type) {
 		case 'character':
-			return 'Character'
 		case 'corporation':
-			return 'Corporation'
 		case 'group':
-			return 'Group'
+			return i18n.t(`bills.entity.${type}`)
 		default:
 			return type
 	}
