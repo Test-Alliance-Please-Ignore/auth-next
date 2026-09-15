@@ -1,5 +1,5 @@
 import { Ban } from 'lucide-react'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -11,119 +11,16 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { renderBroadcastTemplateMessage } from '@/features/broadcasts/message-template-renderer'
+import { BroadcastFeedback } from '@/features/broadcasts/components/broadcast-feedback'
+import {
+	DISCORD_MESSAGE_MAX_LENGTH,
+	getBroadcastEditRemaining,
+} from '@/features/broadcasts/message-edit-budget'
 import { useRescindBroadcast } from '@/hooks/useBroadcasts'
+import { formatNumber, useAppTranslation } from '@/i18n'
+import toast from '@/lib/toast'
 
 import type { BroadcastWithDetails } from '@/lib/api'
-
-const DISCORD_MESSAGE_MAX_LENGTH = 2000
-type BroadcastMessageEvent = {
-	type: 'addendum' | 'rescind'
-	message: string | null
-	createdAtUnix: number
-	createdByCharacterName: string
-}
-
-function convertUnixTimestampsForPreview(message: string): string {
-	const timestampPattern = /(?<!\d)(\d{10}|\d{13})(?!\d)/g
-	const minTimestamp = 946684800
-	const maxTimestamp = 4102444800
-
-	return message.replace(timestampPattern, (match) => {
-		const numeric = Number.parseInt(match, 10)
-		const timestamp = match.length === 13 ? Math.floor(numeric / 1000) : numeric
-		if (timestamp < minTimestamp || timestamp > maxTimestamp) return match
-		return `<t:${timestamp}:f>`
-	})
-}
-
-function buildSentFooter(broadcast: BroadcastWithDetails): string {
-	const sentUnix = broadcast.sentAt
-		? Math.floor(new Date(broadcast.sentAt).getTime() / 1000)
-		: Math.floor(Date.now() / 1000)
-	return `#### SENT BY ${broadcast.createdByCharacterName} to ${broadcast.target.name} @ <t:${sentUnix}:F> ####`
-}
-
-function getMessageEvents(content: Record<string, unknown>): BroadcastMessageEvent[] {
-	const raw = content.__messageEvents
-	if (!Array.isArray(raw)) return []
-	return raw
-		.filter((item): item is BroadcastMessageEvent => {
-			if (typeof item !== 'object' || item === null) return false
-			const record = item as Record<string, unknown>
-			if (record.type !== 'addendum' && record.type !== 'rescind') return false
-			if (record.message !== null && typeof record.message !== 'string') return false
-			if (typeof record.createdAtUnix !== 'number') return false
-			if (typeof record.createdByCharacterName !== 'string') return false
-			return true
-		})
-		.sort((a, b) => a.createdAtUnix - b.createdAtUnix)
-}
-
-function stripSentFooterIfPresent(message: string): string {
-	const lines = message.split('\n')
-	let index = lines.length - 1
-	while (index >= 0 && lines[index].trim() === '') {
-		index -= 1
-	}
-	if (index < 0 || !lines[index].includes('#### SENT BY ')) return message
-	const baseLines = lines.slice(0, index)
-	while (baseLines.length > 0 && baseLines[baseLines.length - 1].trim() === '') {
-		baseLines.pop()
-	}
-	return baseLines.join('\n')
-}
-
-function buildBaseMessage(broadcast: BroadcastWithDetails): string {
-	const content = broadcast.content as Record<string, string | undefined>
-	const explicitBase =
-		typeof (broadcast.content as Record<string, unknown>).__baseMessage === 'string'
-			? String((broadcast.content as Record<string, unknown>).__baseMessage).trim()
-			: ''
-	if (explicitBase) return explicitBase
-	if (typeof content.message === 'string' && content.message.trim().length > 0) {
-		return stripSentFooterIfPresent(content.message)
-	}
-	let baseMessage = broadcast.title
-	if (broadcast.template?.messageTemplate) {
-		baseMessage = renderBroadcastTemplateMessage(broadcast.template.messageTemplate, content, true)
-	}
-	return convertUnixTimestampsForPreview(baseMessage)
-}
-
-function strikethroughLines(message: string): string {
-	return message
-		.split('\n')
-		.map((line) => (line.trim() ? `~~${line}~~` : line))
-		.join('\n')
-}
-
-function renderComposedMessageForLength(args: {
-	broadcast: BroadcastWithDetails
-	baseMessage: string
-	events: BroadcastMessageEvent[]
-}): string {
-	const rescindIndex = args.events.findIndex((event) => event.type === 'rescind')
-	const body = rescindIndex >= 0 ? strikethroughLines(args.baseMessage) : args.baseMessage
-	const sentFooter = buildSentFooter(args.broadcast)
-	const parts = [`${body}\n\n${sentFooter}`]
-	for (const event of args.events) {
-		if (event.type === 'addendum') {
-			const addendumMessage = event.message?.trim() ?? ''
-			if (!addendumMessage) continue
-			parts.push(
-				`ADDENDUM: ${addendumMessage}\n\n#### ADDENDUM BY ${event.createdByCharacterName} @ <t:${event.createdAtUnix}:F> ####`
-			)
-			continue
-		}
-		let rescindBlock = ''
-		const rescindMessage = event.message?.trim() ?? ''
-		if (rescindMessage) rescindBlock += `RESCINDED: ${rescindMessage}\n\n`
-		rescindBlock += `#### RESCINDED @ <t:${event.createdAtUnix}:F> ####`
-		parts.push(rescindBlock)
-	}
-	return parts.join('\n\n')
-}
 
 interface RescindBroadcastDialogProps {
 	broadcast?: BroadcastWithDetails
@@ -142,103 +39,95 @@ export function RescindBroadcastDialog({
 	onSuccess,
 	onError,
 }: RescindBroadcastDialogProps) {
+	const { t } = useAppTranslation()
+	const messageId = useId()
 	const rescindBroadcast = useRescindBroadcast()
 	const [rescindMessage, setRescindMessage] = useState('')
-	const remaining =
-		broadcast
-			? (() => {
-					const rescindTimestamp = Math.floor(Date.now() / 1000)
-					const baseMessage = buildBaseMessage(broadcast)
-					const existingEvents = getMessageEvents(broadcast.content as Record<string, unknown>)
-					const nextEvents: BroadcastMessageEvent[] = [
-						...existingEvents,
-						{
-							type: 'rescind',
-							message: '',
-							createdAtUnix: rescindTimestamp,
-							createdByCharacterName: broadcast.createdByCharacterName,
-						},
-					]
-					const fixedLengthWithReasonPrefix = renderComposedMessageForLength({
-						broadcast,
-						baseMessage,
-						events: nextEvents,
-					}).length
-					return Math.max(
-						0,
-						DISCORD_MESSAGE_MAX_LENGTH -
-							fixedLengthWithReasonPrefix -
-							rescindMessage.trim().length
-					)
-				})()
-			: null
+	const remaining = broadcast
+		? getBroadcastEditRemaining(broadcast, 'rescind', rescindMessage)
+		: null
+	const tooLong = remaining !== null && remaining < 0
 
 	const handleClose = () => {
 		onOpenChange(false)
+		rescindBroadcast.reset()
 		setRescindMessage('')
 	}
 
 	const handleConfirm = async () => {
+		if (rescindBroadcast.isPending || !broadcastId || tooLong) return
 		try {
 			await rescindBroadcast.mutateAsync({
 				id: broadcastId,
 				rescindMessage: rescindMessage.trim() || undefined,
 			})
 			handleClose()
-			onSuccess?.()
+			if (onSuccess) onSuccess()
+			else toast.success(<BroadcastFeedback messageKey="broadcasts.feedback.rescinded" />)
 		} catch (error) {
-			handleClose()
-			onError?.(error instanceof Error ? error : new Error('Failed to rescind broadcast'))
+			onError?.(error instanceof Error ? error : new Error(t('broadcasts.feedback.rescindFailed')))
 		}
 	}
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
+		<Dialog
+			open={open}
+			onOpenChange={(nextOpen) => {
+				if (!nextOpen && !rescindBroadcast.isPending) handleClose()
+			}}
+		>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>Rescind Broadcast</DialogTitle>
-					<DialogDescription>
-						This will edit the Discord message to display the content as strikethrough text and mark
-						the broadcast as rescinded. This action cannot be undone.
-					</DialogDescription>
+					<DialogTitle>{t('broadcasts.rescind.title')}</DialogTitle>
+					<DialogDescription>{t('broadcasts.rescind.description')}</DialogDescription>
 				</DialogHeader>
 				<div className="py-2">
-					<label className="text-sm font-medium mb-1 block">
-						Rescind message <span className="text-muted-foreground font-normal">(optional)</span>
+					<label htmlFor={messageId} className="text-sm font-medium mb-1 block">
+						{t('broadcasts.rescind.label')}
 					</label>
 					<Textarea
-						placeholder="Explain why this broadcast is being rescinded..."
+						id={messageId}
+						placeholder={t('broadcasts.rescind.placeholder')}
 						value={rescindMessage}
 						onChange={(e) => setRescindMessage(e.target.value)}
 						rows={3}
 						disabled={rescindBroadcast.isPending}
-						maxLength={remaining ?? undefined}
+						maxLength={DISCORD_MESSAGE_MAX_LENGTH}
 					/>
 					{remaining !== null ? (
 						<p className="text-xs mt-1">
-							<span className={remaining === 0 ? 'text-destructive' : 'text-muted-foreground'}>
-								{remaining} characters remaining
+							<span className={tooLong ? 'text-destructive' : 'text-muted-foreground'}>
+								{t(tooLong ? 'broadcasts.overLimit' : 'broadcasts.remaining', {
+									count: Math.max(0, remaining),
+									formattedCount: formatNumber(Math.abs(remaining)),
+								})}
 							</span>
 						</p>
 					) : null}
-					<p className="text-xs text-muted-foreground mt-1">
-						Appended after the strikethrough content in Discord.
-					</p>
+					<p className="text-xs text-muted-foreground mt-1">{t('broadcasts.rescind.help')}</p>
 				</div>
+				{rescindBroadcast.isError && (
+					<p role="alert" className="text-sm text-destructive">
+						<BroadcastFeedback
+							messageKey="broadcasts.feedback.rescindFailed"
+							error={rescindBroadcast.error}
+						/>
+					</p>
+				)}
 				<DialogFooter>
 					<Button variant="cancel" onClick={handleClose} disabled={rescindBroadcast.isPending}>
-						Cancel
+						{t('common.cancel')}
 					</Button>
 					<Button
 						variant="destructive"
 						onClick={handleConfirm}
-						disabled={remaining === 0 && rescindMessage.trim().length > 0}
+						disabled={tooLong}
 						loading={rescindBroadcast.isPending}
-						loadingText="Rescinding..."
+						loadingText={t('broadcasts.rescind.pending')}
 						showIcon={false}
 					>
 						<Ban className="h-4 w-4" />
-						Rescind
+						{t('broadcasts.rescind.action')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

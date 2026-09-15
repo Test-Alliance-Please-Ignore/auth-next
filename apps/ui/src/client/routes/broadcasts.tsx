@@ -2,7 +2,7 @@ import { Ban, ExternalLink, FilePlus2, Pencil, Plus, Send, Trash2 } from 'lucide
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
-import { Badge } from '@/components/ui/badge'
+import { DataTable } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -16,16 +16,8 @@ import {
 } from '@/components/ui/dialog'
 import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
-import {
-	stickyTableActionCellClassName,
-	stickyTableActionHeaderClassName,
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
+import { BroadcastFeedback } from '@/features/broadcasts/components/broadcast-feedback'
+import { BroadcastStatusBadge } from '@/features/broadcasts/components/broadcast-status-badge'
 import { useAuth } from '@/hooks/useAuth'
 import {
 	useBroadcasts,
@@ -35,41 +27,29 @@ import {
 	useSendBroadcast,
 } from '@/hooks/useBroadcasts'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { getBroadcastActionVisibility } from '@/lib/broadcast-permissions'
+import { formatDateTime } from '@/lib/date-utils'
+import toast from '@/lib/toast'
 
 import { AddBroadcastAddendumDialog } from './add-broadcast-addendum-dialog'
 import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 
-import type { BadgeVariant } from '@/components/ui/badge'
-import type { Broadcast, BroadcastStatus } from '@/lib/api'
-
-const statusVariants: Record<BroadcastStatus, BadgeVariant> = {
-	draft: 'secondary',
-	scheduled: 'default',
-	sending: 'warning',
-	sent: 'success',
-	failed: 'destructive',
-	rescinded: 'warning',
-}
-
-const statusLabels: Record<BroadcastStatus, string> = {
-	draft: 'Draft',
-	scheduled: 'Scheduled',
-	sending: 'Sending',
-	sent: 'Sent',
-	failed: 'Failed',
-	rescinded: 'Rescinded',
-}
+import type { DataTableColumn } from '@/components/data-table'
+import type { Broadcast } from '@/lib/api'
 
 export default function BroadcastsPage() {
-	usePageTitle('My Broadcasts')
-
+	const { t } = useAppTranslation()
+	usePageTitle(t('broadcasts.title'))
 	const pageSize = 25
 	const navigate = useNavigate()
 	const [page, setPage] = useState(0)
 	const { user, permissions } = useAuth()
-
-	const { data: broadcastsPage, isLoading } = useBroadcasts(undefined, undefined, {
+	const {
+		data: broadcastsPage,
+		isLoading,
+		error,
+	} = useBroadcasts(undefined, undefined, {
 		mine: true,
 		limit: pageSize,
 		offset: page * pageSize,
@@ -85,325 +65,297 @@ export default function BroadcastsPage() {
 
 	const myBroadcasts = broadcastsPage?.rows ?? []
 	const rowCount = broadcastsPage?.rowCount ?? 0
-	const totalPages = Math.max(1, Math.ceil(rowCount / pageSize))
-	const maxPage = Math.max(totalPages - 1, 0)
-
+	const maxPage = Math.max(Math.ceil(rowCount / pageSize) - 1, 0)
 	useEffect(() => {
-		if (page > maxPage) {
-			setPage(maxPage)
-		}
-	}, [page, maxPage])
-
-	const formatDate = (dateString: string) => {
-		return new Date(dateString).toLocaleString()
-	}
+		// A new page has no cached count while loading; clamp only against a received page.
+		if (broadcastsPage && page > maxPage) setPage(maxPage)
+	}, [broadcastsPage, page, maxPage])
 
 	const handleSendNow = async (broadcast: Broadcast) => {
+		if (sendBroadcast.isPending) return
 		try {
-			await sendBroadcast.mutateAsync(broadcast.id)
-		} catch {
-			// Error is surfaced by API layer/toasts in app shell; keep row action simple
+			const result = await sendBroadcast.mutateAsync(broadcast.id)
+			if (result.trackingError) {
+				toast.error(
+					<BroadcastFeedback
+						messageKey="broadcasts.feedback.trackingFailed"
+						error={result.trackingError}
+					/>
+				)
+			} else {
+				toast.success(<BroadcastFeedback messageKey="broadcasts.feedback.queued" />)
+			}
+		} catch (error) {
+			toast.error(<BroadcastFeedback messageKey="broadcasts.feedback.sendFailed" error={error} />)
 		}
 	}
-
-	const handleDeleteClick = (broadcast: Broadcast) => {
-		setSelectedBroadcast(broadcast)
-		setDeleteDialogOpen(true)
+	const closeDelete = () => {
+		if (deleteBroadcast.isPending) return
+		setDeleteDialogOpen(false)
+		setSelectedBroadcast(null)
+		deleteBroadcast.reset()
 	}
-
-	const handleAddendumClick = (broadcast: Broadcast) => {
-		setSelectedBroadcast(broadcast)
-		setAddendumDialogOpen(true)
-	}
-
 	const handleDeleteConfirm = async () => {
-		if (!selectedBroadcast) return
+		if (!selectedBroadcast || deleteBroadcast.isPending) return
 		try {
 			await deleteBroadcast.mutateAsync(selectedBroadcast.id)
 			setDeleteDialogOpen(false)
 			setSelectedBroadcast(null)
+			toast.success(<BroadcastFeedback messageKey="broadcasts.feedback.deleted" />)
 		} catch {
-			// Error is surfaced by API layer/toasts in app shell; keep dialog state
+			// The mutation error is rendered inside the confirmation so it can be retried.
 		}
 	}
-
-	if (isLoading) {
-		return (
-			<Container>
-				<div className="flex items-center justify-center min-h-[400px]">
-					<p className="text-muted-foreground">Loading broadcasts...</p>
-				</div>
-			</Container>
-		)
-	}
-
+	const columns: Array<DataTableColumn<Broadcast>> = [
+		{
+			id: 'status',
+			header: t('broadcasts.statusLabel'),
+			cell: (broadcast) => <BroadcastStatusBadge status={broadcast.status} />,
+		},
+		{
+			id: 'target',
+			header: t('broadcasts.target'),
+			className: 'font-medium',
+			cell: (broadcast) =>
+				targets?.find((target) => target.id === broadcast.targetId)?.name || broadcast.targetId,
+		},
+		{
+			id: 'template',
+			header: t('broadcasts.template'),
+			cell: (broadcast) =>
+				templates?.find((template) => template.id === broadcast.templateId)?.name ||
+				t('broadcasts.custom'),
+		},
+		{
+			id: 'created',
+			header: t('broadcasts.created'),
+			className: 'text-sm text-muted-foreground',
+			cell: (broadcast) => formatDateTime(broadcast.createdAt),
+		},
+		{
+			id: 'scheduled',
+			header: t('broadcasts.scheduled'),
+			className: 'text-sm text-muted-foreground',
+			cell: (broadcast) => (broadcast.scheduledFor ? formatDateTime(broadcast.scheduledFor) : '-'),
+		},
+		{
+			id: 'actions',
+			header: t('broadcasts.actions'),
+			className: 'text-right',
+			headerClassName: 'text-right',
+			sticky: 'right',
+			cell: (broadcast) => {
+				const target = targets?.find((target) => target.id === broadcast.targetId)
+				const { canDelete, canRescind } = getBroadcastActionVisibility({
+					user,
+					permissions,
+					broadcast,
+					target,
+				})
+				return (
+					<div className="flex items-center justify-end gap-2">
+						<Button
+							asChild
+							variant="ghost"
+							size="icon"
+							title={t('broadcasts.showDetails')}
+							aria-label={t('broadcasts.showDetails')}
+						>
+							<Link to={`/broadcasts/${broadcast.id}`}>
+								<ExternalLink className="h-4 w-4" />
+							</Link>
+						</Button>
+						{canRescind && broadcast.status === 'sent' && (
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={() => {
+									setSelectedBroadcast(broadcast)
+									setAddendumDialogOpen(true)
+								}}
+								title={t('broadcasts.addendum.action')}
+								aria-label={t('broadcasts.addendum.action')}
+							>
+								<FilePlus2 className="h-4 w-4 text-primary" />
+							</Button>
+						)}
+						{broadcast.status === 'draft' && (
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={() => navigate(`/broadcasts/new?draftId=${broadcast.id}`)}
+								title={t('broadcasts.editDraft')}
+								aria-label={t('broadcasts.editDraft')}
+							>
+								<Pencil className="h-4 w-4" />
+							</Button>
+						)}
+						{['draft', 'scheduled', 'failed'].includes(broadcast.status) && (
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={() => void handleSendNow(broadcast)}
+								disabled={sendBroadcast.isPending}
+								title={t('broadcasts.sendNow')}
+								aria-label={t('broadcasts.sendNow')}
+							>
+								<Send className="h-4 w-4 text-confirm" />
+							</Button>
+						)}
+						{canRescind && (
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={() => {
+									setSelectedBroadcast(broadcast)
+									setRescindDialogOpen(true)
+								}}
+								title={t('broadcasts.rescindAction')}
+								aria-label={t('broadcasts.rescindAction')}
+							>
+								<Ban className="h-4 w-4 text-warning" />
+							</Button>
+						)}
+						{canDelete && (
+							<Button
+								variant="ghost"
+								size="icon"
+								onClick={() => {
+									deleteBroadcast.reset()
+									setSelectedBroadcast(broadcast)
+									setDeleteDialogOpen(true)
+								}}
+								disabled={deleteBroadcast.isPending}
+								title={t('broadcasts.deleteAction')}
+								aria-label={t('broadcasts.deleteAction')}
+							>
+								<Trash2 className="h-4 w-4 text-destructive" />
+							</Button>
+						)}
+					</div>
+				)
+			},
+		},
+	]
 	return (
 		<Container>
 			<PageHeader
-				title="My Broadcasts"
-				description="View and manage your broadcasts"
+				title={t('broadcasts.title')}
+				description={t('broadcasts.description')}
 				action={
 					<Button onClick={() => navigate('/broadcasts/new')}>
 						<Plus className="h-4 w-4" />
-						New Broadcast
+						{t('broadcasts.new')}
 					</Button>
 				}
 			/>
-
 			<Section>
 				<div className="grid gap-4 md:grid-cols-4">
-					<Card variant="elevated">
-						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-							<CardTitle className="text-sm font-medium">Total</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<div className="text-2xl font-bold">{rowCount}</div>
-						</CardContent>
-					</Card>
-
-					<Card variant="elevated">
-						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-							<CardTitle className="text-sm font-medium">Sent</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<div className="text-2xl font-bold">
-								{myBroadcasts.filter((b) => b.status === 'sent').length}
-							</div>
-						</CardContent>
-					</Card>
-
-					<Card variant="elevated">
-						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-							<CardTitle className="text-sm font-medium">Scheduled</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<div className="text-2xl font-bold">
-								{myBroadcasts.filter((b) => b.status === 'scheduled').length}
-							</div>
-						</CardContent>
-					</Card>
-
-					<Card variant="elevated">
-						<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-							<CardTitle className="text-sm font-medium">Failed</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<div className="text-2xl font-bold">
-								{myBroadcasts.filter((b) => b.status === 'failed').length}
-							</div>
-						</CardContent>
-					</Card>
+					{(
+						[
+							[t('broadcasts.total'), rowCount],
+							[t('broadcasts.status.sent'), myBroadcasts.filter((b) => b.status === 'sent').length],
+							[
+								t('broadcasts.status.scheduled'),
+								myBroadcasts.filter((b) => b.status === 'scheduled').length,
+							],
+							[
+								t('broadcasts.status.failed'),
+								myBroadcasts.filter((b) => b.status === 'failed').length,
+							],
+						] as const
+					).map(([label, count]) => (
+						<Card key={label} variant="elevated">
+							<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+								<CardTitle className="text-sm font-medium">{label}</CardTitle>
+							</CardHeader>
+							<CardContent>
+								<div className="text-2xl font-bold">{formatNumber(count)}</div>
+							</CardContent>
+						</Card>
+					))}
 				</div>
-
-				{rowCount === 0 ? (
+				{!isLoading && !error && rowCount === 0 ? (
 					<Card variant="elevated">
 						<CardContent className="py-16 text-center">
 							<div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-muted mb-6">
 								<Plus className="h-10 w-10 text-muted-foreground" />
 							</div>
-							<h3 className="text-xl font-semibold mb-2">No Broadcasts Yet</h3>
+							<h3 className="text-xl font-semibold mb-2">{t('broadcasts.emptyTitle')}</h3>
 							<p className="text-muted-foreground mb-6 max-w-md mx-auto">
-								You haven't created any broadcasts yet. Get started by sending your first broadcast
-								message.
+								{t('broadcasts.emptyDescription')}
 							</p>
 							<Button onClick={() => navigate('/broadcasts/new')} size="lg">
 								<Plus className="h-4 w-4" />
-								Create Your First Broadcast
+								{t('broadcasts.createFirst')}
 							</Button>
 						</CardContent>
 					</Card>
 				) : (
 					<Card variant="elevated">
 						<CardHeader>
-							<CardTitle>Recent Broadcasts</CardTitle>
-							<CardDescription>Your broadcast history</CardDescription>
+							<CardTitle>{t('broadcasts.recent')}</CardTitle>
+							<CardDescription>{t('broadcasts.history')}</CardDescription>
 						</CardHeader>
 						<CardContent>
-							<div className="rounded-md border bg-card">
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead>Status</TableHead>
-											<TableHead>Target</TableHead>
-											<TableHead>Template</TableHead>
-											<TableHead>Created</TableHead>
-											<TableHead>Scheduled</TableHead>
-											<TableHead className={`${stickyTableActionHeaderClassName} text-right`}>
-												Actions
-											</TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{myBroadcasts.map((broadcast) => {
-											const target = targets?.find((t) => t.id === broadcast.targetId)
-											const template = broadcast.templateId
-												? templates?.find((t) => t.id === broadcast.templateId)
-												: null
-											const { canDelete, canRescind } = getBroadcastActionVisibility({
-												user,
-												permissions,
-												broadcast,
-												target,
-											})
-
-											return (
-												<TableRow key={broadcast.id}>
-													<TableCell>
-														<Badge variant={statusVariants[broadcast.status]}>
-															{statusLabels[broadcast.status]}
-														</Badge>
-													</TableCell>
-													<TableCell className="font-medium">
-														{target?.name || broadcast.targetId}
-													</TableCell>
-													<TableCell>{template?.name || 'Custom'}</TableCell>
-													<TableCell className="text-sm text-muted-foreground">
-														{formatDate(broadcast.createdAt)}
-													</TableCell>
-													<TableCell className="text-sm text-muted-foreground">
-														{broadcast.scheduledFor ? formatDate(broadcast.scheduledFor) : '-'}
-													</TableCell>
-													<TableCell className={`${stickyTableActionCellClassName} text-right`}>
-														<div className="flex items-center justify-end gap-2">
-															<Link to={`/broadcasts/${broadcast.id}`}>
-																<Button
-																	variant="ghost"
-																	size="icon"
-																	title="Show details"
-																	aria-label="Show details"
-																>
-																	<ExternalLink className="h-4 w-4" />
-																</Button>
-															</Link>
-															{canRescind && broadcast.status === 'sent' && (
-																<Button
-																	variant="ghost"
-																	size="icon"
-																	onClick={() => handleAddendumClick(broadcast)}
-																	title="Add addendum"
-																	aria-label="Add addendum"
-																>
-																	<FilePlus2 className="h-4 w-4 text-primary" />
-																</Button>
-															)}
-															{broadcast.status === 'draft' && (
-																<Button
-																	variant="ghost"
-																	size="icon"
-																	onClick={() =>
-																		navigate(`/broadcasts/new?draftId=${broadcast.id}`)
-																	}
-																	title="Edit draft"
-																	aria-label="Edit draft"
-																>
-																	<Pencil className="h-4 w-4" />
-																</Button>
-															)}
-															{['draft', 'scheduled', 'failed'].includes(broadcast.status) && (
-																<Button
-																	variant="ghost"
-																	size="icon"
-																	onClick={() => handleSendNow(broadcast)}
-																	disabled={sendBroadcast.isPending}
-																	title="Send now"
-																	aria-label="Send now"
-																>
-																	<Send className="h-4 w-4 text-confirm" />
-																</Button>
-															)}
-															{canRescind && (
-																<Button
-																	variant="ghost"
-																	size="icon"
-																	onClick={() => {
-																		setSelectedBroadcast(broadcast)
-																		setRescindDialogOpen(true)
-																	}}
-																	title="Rescind broadcast"
-																	aria-label="Rescind broadcast"
-																>
-																	<Ban className="h-4 w-4 text-warning" />
-																</Button>
-															)}
-															{canDelete && (
-																<Button
-																	variant="ghost"
-																	size="icon"
-																	onClick={() => handleDeleteClick(broadcast)}
-																	disabled={deleteBroadcast.isPending}
-																	title="Delete broadcast"
-																	aria-label="Delete broadcast"
-																>
-																	<Trash2 className="h-4 w-4 text-destructive" />
-																</Button>
-															)}
-														</div>
-													</TableCell>
-												</TableRow>
-											)
-										})}
-									</TableBody>
-								</Table>
-							</div>
-							<div className="mt-4 flex items-center justify-between gap-2">
-								<p className="text-sm text-muted-foreground">
-									Showing {Math.min(page * pageSize + 1, rowCount)}-
-									{Math.min((page + 1) * pageSize, rowCount)} of {rowCount}
-								</p>
-								<div className="flex items-center gap-2">
-									<Button variant="ghost" disabled={page === 0} onClick={() => setPage(page - 1)}>
-										Previous
-									</Button>
-									<p className="text-sm text-muted-foreground">
-										Page {page + 1} of {totalPages}
-									</p>
-									<Button
-										variant="ghost"
-										disabled={page >= maxPage}
-										onClick={() => setPage(page + 1)}
-									>
-										Next
-									</Button>
-								</div>
-							</div>
+							<DataTable
+								variant="plain"
+								columns={columns}
+								rows={myBroadcasts}
+								getRowKey={(broadcast) => broadcast.id}
+								loading={isLoading}
+								error={error}
+								errorMessage={t('broadcasts.loadFailed')}
+								emptyMessage={t('broadcasts.emptyTitle')}
+								rowCount={rowCount}
+								itemLabel={t('broadcasts.item', { count: rowCount })}
+								pagination={{ pageIndex: page, pageSize }}
+								onPaginationChange={(next) => setPage(next.pageIndex)}
+								pageSizeOptions={[pageSize]}
+								paginationPosition="bottom"
+							/>
 						</CardContent>
 					</Card>
 				)}
 			</Section>
-
-			<Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+			<Dialog
+				open={deleteDialogOpen}
+				onOpenChange={(open) => {
+					if (!open) closeDelete()
+				}}
+			>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Delete Broadcast</DialogTitle>
-						<DialogDescription>
-							Are you sure you want to delete this broadcast? This action cannot be undone.
-						</DialogDescription>
+						<DialogTitle>{t('broadcasts.deleteTitle')}</DialogTitle>
+						<DialogDescription>{t('broadcasts.deleteDescription')}</DialogDescription>
 					</DialogHeader>
+					{deleteBroadcast.isError && (
+						<p role="alert" className="text-sm text-destructive">
+							<BroadcastFeedback
+								messageKey="broadcasts.feedback.deleteFailed"
+								error={deleteBroadcast.error}
+							/>
+						</p>
+					)}
 					<DialogFooter>
-						<Button
-							variant="cancel"
-							onClick={() => {
-								setDeleteDialogOpen(false)
-								setSelectedBroadcast(null)
-							}}
-						>
-							Cancel
+						<Button variant="cancel" onClick={closeDelete} disabled={deleteBroadcast.isPending}>
+							{t('common.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
-							onClick={handleDeleteConfirm}
+							onClick={() => void handleDeleteConfirm()}
 							loading={deleteBroadcast.isPending}
-							loadingText="Deleting..."
+							loadingText={t('broadcasts.deleting')}
 							showIcon={false}
 						>
 							<Trash2 className="h-4 w-4" />
-							Delete
+							{t('common.delete')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
-
 			<RescindBroadcastDialog
+				key={`rescind-${selectedBroadcast?.id}`}
 				broadcastId={selectedBroadcast?.id ?? ''}
 				open={rescindDialogOpen}
 				onOpenChange={(open) => {
@@ -412,6 +364,7 @@ export default function BroadcastsPage() {
 				}}
 			/>
 			<AddBroadcastAddendumDialog
+				key={`addendum-${selectedBroadcast?.id}`}
 				broadcastId={selectedBroadcast?.id ?? ''}
 				open={addendumDialogOpen}
 				onOpenChange={(open) => {

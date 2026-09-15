@@ -52,6 +52,7 @@ function renderTimestampToken(token: string, key: string): ReactNode {
 	if (!Number.isFinite(unix)) return token
 
 	const date = new Date(unix * 1000)
+	if (Number.isNaN(date.getTime())) return token
 	const fullTimestamp = formatFullTimestampTooltip(date)
 	const displayText = formatDiscordTimestamp(date, match[2])
 
