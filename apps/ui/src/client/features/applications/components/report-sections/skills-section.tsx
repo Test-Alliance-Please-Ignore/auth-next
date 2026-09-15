@@ -7,7 +7,6 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { formatDistanceToNow } from 'date-fns'
 import { Clock } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
@@ -15,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { apiClient } from '@/lib/api'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 // ============================================================================
@@ -123,8 +123,7 @@ function SkillLevelPips({ level, progress }: { level: number; progress?: number 
 		<div className="flex gap-0.5">
 			{[1, 2, 3, 4, 5].map((pip) => {
 				const isFilled = pip <= level
-				const isPartial =
-					!isFilled && pip === level + 1 && progress !== undefined && progress > 0
+				const isPartial = !isFilled && pip === level + 1 && progress !== undefined && progress > 0
 
 				return (
 					<div
@@ -135,7 +134,7 @@ function SkillLevelPips({ level, progress }: { level: number; progress?: number 
 								? 'bg-sky-500 border-sky-400'
 								: isPartial
 									? 'border-muted-foreground/40 overflow-hidden'
-									: 'bg-muted/30 border-muted-foreground/20',
+									: 'bg-muted/30 border-muted-foreground/20'
 						)}
 					>
 						{isPartial && (
@@ -242,9 +241,7 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 			}
 		}
 
-		return Array.from(mergedByGroup.values()).sort((a, b) =>
-			a.groupName.localeCompare(b.groupName),
-		)
+		return Array.from(mergedByGroup.values()).sort((a, b) => a.groupName.localeCompare(b.groupName))
 	}, [data.skills, catalog])
 
 	const activeGroup = groups.find((g) => g.groupName === selectedGroup)
@@ -270,9 +267,7 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 					<Card variant="flat">
 						<CardContent className="py-3">
 							<p className="text-xs text-muted-foreground">Unallocated SP</p>
-							<p className="text-lg font-bold text-foreground">
-								{formatSp(data.unallocatedSp)}
-							</p>
+							<p className="text-lg font-bold text-foreground">{formatSp(data.unallocatedSp)}</p>
 						</CardContent>
 					</Card>
 				)}
@@ -296,37 +291,28 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 						}}
 					>
 						{groups.map((group) => {
-							const pct =
-								group.totalCount > 0
-									? (group.trainedCount / group.totalCount) * 100
-									: 0
+							const pct = group.totalCount > 0 ? (group.trainedCount / group.totalCount) * 100 : 0
 							const isSelected = selectedGroup === group.groupName
 
 							return (
 								<button
 									key={group.groupName}
 									type="button"
-									onClick={() =>
-										setSelectedGroup(isSelected ? null : group.groupName)
-									}
+									onClick={() => setSelectedGroup(isSelected ? null : group.groupName)}
 									className={cn(
 										'relative flex items-center justify-between rounded px-2.5 py-1.5 text-left transition-colors overflow-hidden',
 										'hover:brightness-125',
-										isSelected
-											? 'bg-sky-500/10 text-sky-300'
-											: 'bg-muted/40 text-foreground',
+										isSelected ? 'bg-sky-500/10 text-sky-300' : 'bg-muted/40 text-foreground'
 									)}
 								>
 									<div
 										className={cn(
 											'absolute inset-y-0 left-0 rounded transition-colors',
-											isSelected ? 'bg-sky-500/30' : 'bg-muted-foreground/20',
+											isSelected ? 'bg-sky-500/30' : 'bg-muted-foreground/20'
 										)}
 										style={{ width: `${pct}%` }}
 									/>
-									<span className="relative text-sm truncate">
-										{group.groupName}
-									</span>
+									<span className="relative text-sm truncate">{group.groupName}</span>
 									<span className="relative ml-2 shrink-0 text-sm tabular-nums text-muted-foreground">
 										{group.trainedCount}/{group.totalCount}
 									</span>
@@ -355,7 +341,7 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 												? calculateSkillProgress(
 														skill.trainedLevel,
 														skill.skillpointsInSkill,
-														skill.rank,
+														skill.rank
 													)
 												: 0
 										const trainingTime =
@@ -363,7 +349,7 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 												? estimateTrainingTime(
 														skill.trainedLevel,
 														skill.skillpointsInSkill,
-														skill.rank,
+														skill.rank
 													)
 												: 0
 
@@ -372,19 +358,15 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 												key={skill.skillId}
 												className={cn(
 													'flex items-center justify-between break-inside-avoid py-1',
-													!skill.isTrained && 'opacity-40',
+													!skill.isTrained && 'opacity-40'
 												)}
 											>
 												<div className="flex min-w-0 items-center gap-2">
 													<SkillLevelPips
 														level={skill.trainedLevel}
-														progress={
-															skill.trainedLevel < 5 ? progress : undefined
-														}
+														progress={skill.trainedLevel < 5 ? progress : undefined}
 													/>
-													<span className="truncate text-sm">
-														{skill.skillName}
-													</span>
+													<span className="truncate text-sm">{skill.skillName}</span>
 												</div>
 												<div className="ml-1 shrink-0 text-right">
 													{skill.trainedLevel === 5 ? (
@@ -412,18 +394,15 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 					</h4>
 					<div className="space-y-2">
 						{activeQueue.map((entry) => {
-							const isCurrentlyTraining =
-								entry.startDate && new Date(entry.startDate) <= new Date()
-							const finishTime = entry.finishDate
-								? new Date(entry.finishDate)
-								: null
+							const isCurrentlyTraining = entry.startDate && new Date(entry.startDate) <= new Date()
+							const finishTime = entry.finishDate ? new Date(entry.finishDate) : null
 
 							return (
 								<div
 									key={entry.queuePosition}
 									className={cn(
 										'flex items-start justify-between rounded-lg border p-3',
-										isCurrentlyTraining && 'border-green-500/50 bg-green-500/5',
+										isCurrentlyTraining && 'border-green-500/50 bg-green-500/5'
 									)}
 								>
 									<div className="flex-1">
@@ -435,10 +414,7 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 												Level {entry.finishedLevel}
 											</Badge>
 											{isCurrentlyTraining && (
-												<Badge
-													variant="success"
-													className="text-xs"
-												>
+												<Badge variant="success" className="text-xs">
 													Training
 												</Badge>
 											)}
@@ -453,9 +429,7 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 											</p>
 										)}
 									</div>
-									<span className="text-xs text-muted-foreground">
-										#{entry.queuePosition + 1}
-									</span>
+									<span className="text-xs text-muted-foreground">#{entry.queuePosition + 1}</span>
 								</div>
 							)
 						})}

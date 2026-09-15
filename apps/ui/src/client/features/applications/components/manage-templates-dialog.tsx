@@ -5,7 +5,6 @@
  * Supports creating, editing, and deleting templates.
  */
 
-import { formatDistanceToNow } from 'date-fns'
 import { FileText, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -25,6 +24,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useMessage } from '@/hooks/useMessage'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { useCreateTemplate, useDeleteTemplate, useTemplates, useUpdateTemplate } from '../hooks'

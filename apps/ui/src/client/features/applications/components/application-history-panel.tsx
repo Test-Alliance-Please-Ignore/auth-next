@@ -6,13 +6,13 @@
  * 2. This Account — all apps by other characters on the same user account
  */
 
-import { formatDistanceToNow } from 'date-fns'
 import { FileText, History, User, Users } from 'lucide-react'
 import { Link } from 'react-router'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import { useHrAccessibleCorporations } from '../../hr/hooks'
 import { useCharacterApplicationHistory, useUserApplicationHistory } from '../hooks'

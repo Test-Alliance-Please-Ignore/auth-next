@@ -1,4 +1,3 @@
-import { formatDistanceToNow } from 'date-fns'
 import {
 	ChevronDown,
 	ExternalLink,
@@ -16,6 +15,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingSpinner } from '@/components/ui/loading'
+import { useAppTranslation } from '@/i18n'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { ApplicationStatusBadge } from './application-status-badge'
@@ -82,7 +83,7 @@ export function ProfileCharactersSection({
 	getReportTarget,
 	onViewDetails,
 	getDetailsTarget,
-	noDataText = 'No linked characters found',
+	noDataText,
 }: {
 	characters: SharedProfileCharacter[]
 	fulcrumLoading?: boolean
@@ -103,13 +104,14 @@ export function ProfileCharactersSection({
 	getDetailsTarget?: (character: SharedProfileCharacter) => ProfileNavigationTarget
 	noDataText?: string
 }) {
+	const { t } = useAppTranslation()
 	return (
 		<Card>
 			<CardHeader>
 				<div className="flex items-center justify-between gap-2">
 					<CardTitle className="flex items-center gap-2 text-base">
 						<Users className="h-4 w-4" />
-						Characters ({characters.length})
+						{t('hr.profile.charactersCount', { count: characters.length })}
 					</CardTitle>
 					{showFulcrumReports && isScanAllVisible && (
 						<Button
@@ -119,7 +121,7 @@ export function ProfileCharactersSection({
 							disabled={scanAllDisabled || !canRequestReports}
 						>
 							<Scan className={`mr-1.5 h-3.5 w-3.5 ${isScanningAll ? 'animate-spin' : ''}`} />
-							{scanAllLabel ?? 'Scan All'}
+							{scanAllLabel ?? t('hr.profile.scanAll', { count: characters.length })}
 						</Button>
 					)}
 				</div>
@@ -130,7 +132,9 @@ export function ProfileCharactersSection({
 						<LoadingSpinner size="sm" />
 					</div>
 				) : characters.length === 0 ? (
-					<p className="py-6 text-center text-sm text-muted-foreground">{noDataText}</p>
+					<p className="py-6 text-center text-sm text-muted-foreground">
+						{noDataText ?? t('hr.search.noLinkedCharacters')}
+					</p>
 				) : (
 					<div className="space-y-2">
 						{characters.map((character) => {
@@ -151,7 +155,7 @@ export function ProfileCharactersSection({
 												<Button asChild variant="ghost" size="sm">
 													<Link {...getDetailsTarget(character)}>
 														<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-														View Details
+														{t('hr.profile.viewDetails')}
 													</Link>
 												</Button>
 											) : (
@@ -161,7 +165,7 @@ export function ProfileCharactersSection({
 													onClick={() => onViewDetails?.(character)}
 												>
 													<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-													View Details
+													{t('hr.profile.viewDetails')}
 												</Button>
 											)}
 										</div>
@@ -185,12 +189,12 @@ export function ProfileCharactersSection({
 														variant="default"
 														className="bg-blue-500/20 px-1.5 py-0 text-[10px] text-blue-500"
 													>
-														Primary
+														{t('hr.profile.primary')}
 													</Badge>
 												)}
 												{character.isExternal && (
 													<Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-														External
+														{t('hr.profile.external')}
 													</Badge>
 												)}
 												{(character.role === 'CEO' || character.role === 'Director') && (
@@ -220,7 +224,7 @@ export function ProfileCharactersSection({
 												)}
 												{character.isBlacklisted && (
 													<Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
-														Blocklisted
+														{t('hr.profile.blocklisted')}
 													</Badge>
 												)}
 											</>
@@ -229,15 +233,21 @@ export function ProfileCharactersSection({
 									<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
 										{character.joinDate && (
 											<span>
-												Joined{' '}
-												{formatDistanceToNow(new Date(character.joinDate), { addSuffix: true })}
+												{t('hr.profile.joined', {
+													time: formatDistanceToNow(new Date(character.joinDate), {
+														addSuffix: true,
+													}),
+												})}
 											</span>
 										)}
 										{character.joinDate && character.lastLogin && <span>•</span>}
 										{character.lastLogin && (
-											<span title="Last active is based on the most recent ESI member-tracking login timestamp.">
-												Last active{' '}
-												{formatDistanceToNow(new Date(character.lastLogin), { addSuffix: true })}
+											<span title={t('hr.profile.lastActiveHint')}>
+												{t('hr.profile.lastActive', {
+													time: formatDistanceToNow(new Date(character.lastLogin), {
+														addSuffix: true,
+													}),
+												})}
 											</span>
 										)}
 									</div>
@@ -254,15 +264,18 @@ export function ProfileCharactersSection({
 												>
 													<Scan className="h-3 w-3 shrink-0 text-muted-foreground" />
 													<span className="shrink-0 font-medium text-muted-foreground">
-														Fulcrum Report
+														{t('hr.profile.fulcrumReport')}
 													</span>
 													<span className="shrink-0 text-muted-foreground">·</span>
 													<span className="truncate text-foreground">
-														View latest report (
-														{formatDistanceToNow(new Date(character.latestReport!.createdAt), {
-															addSuffix: true,
+														{t('hr.profile.viewLatestReport', {
+															time: formatDistanceToNow(
+																new Date(character.latestReport!.createdAt),
+																{
+																	addSuffix: true,
+																}
+															),
 														})}
-														)
 													</span>
 													<ExternalLink className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" />
 												</Link>
@@ -278,41 +291,48 @@ export function ProfileCharactersSection({
 												>
 													<Scan className="h-3 w-3 shrink-0 text-muted-foreground" />
 													<span className="shrink-0 font-medium text-muted-foreground">
-														Fulcrum Report
+														{t('hr.profile.fulcrumReport')}
 													</span>
 													<span className="shrink-0 text-muted-foreground">·</span>
 													{character.latestReport ? (
 														character.latestReport.status === 'completed' ? (
 															<>
 																<span className="truncate text-foreground">
-																	View latest report (
-																	{formatDistanceToNow(new Date(character.latestReport.createdAt), {
-																		addSuffix: true,
+																	{t('hr.profile.viewLatestReport', {
+																		time: formatDistanceToNow(
+																			new Date(character.latestReport.createdAt),
+																			{
+																				addSuffix: true,
+																			}
+																		),
 																	})}
-																	)
 																</span>
 																<ExternalLink className="ml-auto h-3 w-3 shrink-0 text-muted-foreground" />
 															</>
 														) : character.latestReport.status === 'pending' ||
 														  character.latestReport.status === 'processing' ? (
 															<span className="truncate text-muted-foreground">
-																Processing... (
-																{formatDistanceToNow(new Date(character.latestReport.createdAt), {
-																	addSuffix: true,
+																{t('hr.profile.processingReport', {
+																	time: formatDistanceToNow(
+																		new Date(character.latestReport.createdAt),
+																		{ addSuffix: true }
+																	),
 																})}
-																)
 															</span>
 														) : (
 															<span className="truncate text-muted-foreground">
-																Failed (
-																{formatDistanceToNow(new Date(character.latestReport.createdAt), {
-																	addSuffix: true,
+																{t('hr.profile.failedReport', {
+																	time: formatDistanceToNow(
+																		new Date(character.latestReport.createdAt),
+																		{ addSuffix: true }
+																	),
 																})}
-																)
 															</span>
 														)
 													) : (
-														<span className="truncate text-muted-foreground">No report yet</span>
+														<span className="truncate text-muted-foreground">
+															{t('hr.profile.noReport')}
+														</span>
 													)}
 												</div>
 											)}
@@ -334,7 +354,7 @@ export function ProfileCharactersSection({
 												) : (
 													<Scan className="mr-1.5 h-3.5 w-3.5" />
 												)}
-												{isScanPending ? 'Requesting...' : 'Scan'}
+												{isScanPending ? t('hr.profile.requesting') : t('hr.profile.scan')}
 											</Button>
 										</div>
 									)}
@@ -353,7 +373,7 @@ export function ProfileNotesSection({
 	loading = false,
 	canAddNote = false,
 	onAddNote,
-	emptyText = 'No notes for this user',
+	emptyText,
 }: {
 	notes?: HRNote[]
 	loading?: boolean
@@ -361,6 +381,7 @@ export function ProfileNotesSection({
 	onAddNote?: () => void
 	emptyText?: string
 }) {
+	const { t } = useAppTranslation()
 	const noteCount = notes?.length ?? 0
 
 	return (
@@ -371,12 +392,12 @@ export function ProfileNotesSection({
 						<div className="flex items-center justify-between">
 							<CardTitle className="flex items-center gap-2 text-base">
 								<FileText className="h-4 w-4" />
-								Account Notes (0)
+								{t('hr.profile.accountNotes', { count: 0 })}
 							</CardTitle>
 							{canAddNote && (
 								<Button variant="primary" size="sm" onClick={onAddNote}>
 									<MessageSquarePlus className="mr-1.5 h-3.5 w-3.5" />
-									Add Note
+									{t('hr.profile.addNote')}
 								</Button>
 							)}
 						</div>
@@ -387,7 +408,9 @@ export function ProfileNotesSection({
 								<LoadingSpinner size="sm" />
 							</div>
 						) : (
-							<p className="py-4 text-center text-sm text-muted-foreground">{emptyText}</p>
+							<p className="py-4 text-center text-sm text-muted-foreground">
+								{emptyText ?? t('hr.profile.noNotes')}
+							</p>
 						)}
 					</CardContent>
 				</>
@@ -396,7 +419,7 @@ export function ProfileNotesSection({
 					<summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
 						<CardTitle className="flex items-center gap-2 text-base">
 							<FileText className="h-4 w-4" />
-							Account Notes ({noteCount})
+							{t('hr.profile.accountNotes', { count: noteCount })}
 						</CardTitle>
 						<div className="pointer-events-auto flex items-center gap-3">
 							{canAddNote && (
@@ -410,12 +433,12 @@ export function ProfileNotesSection({
 									}}
 								>
 									<MessageSquarePlus className="mr-1.5 h-3.5 w-3.5" />
-									Add Note
+									{t('hr.profile.addNote')}
 								</Button>
 							)}
 							<div className="flex items-center gap-2 text-xs text-muted-foreground">
-								<span className="group-open:hidden">Click to expand</span>
-								<span className="hidden group-open:inline">Click to collapse</span>
+								<span className="group-open:hidden">{t('hr.profile.expand')}</span>
+								<span className="hidden group-open:inline">{t('hr.profile.collapse')}</span>
 								<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
 							</div>
 						</div>
@@ -444,8 +467,8 @@ export function ProfileApplicationHistorySection({
 	loading = false,
 	linked = true,
 	getApplicationHref,
-	emptyText = 'No application history',
-	unlinkedText = 'Unregistered member — no application data',
+	emptyText,
+	unlinkedText,
 }: {
 	applications: SharedProfileApplication[]
 	loading?: boolean
@@ -454,6 +477,7 @@ export function ProfileApplicationHistorySection({
 	emptyText?: string
 	unlinkedText?: string
 }) {
+	const { t } = useAppTranslation()
 	const applicationCount = applications.length
 
 	return (
@@ -462,17 +486,19 @@ export function ProfileApplicationHistorySection({
 				<summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
 					<CardTitle className="flex items-center gap-2 text-base">
 						<User className="h-4 w-4" />
-						Application History ({applicationCount})
+						{t('hr.profile.applicationHistory', { count: applicationCount })}
 					</CardTitle>
 					<div className="flex items-center gap-2 text-xs text-muted-foreground">
-						<span className="group-open:hidden">Click to expand</span>
-						<span className="hidden group-open:inline">Click to collapse</span>
+						<span className="group-open:hidden">{t('hr.profile.expand')}</span>
+						<span className="hidden group-open:inline">{t('hr.profile.collapse')}</span>
 						<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
 					</div>
 				</summary>
 				<CardContent className="pt-0">
 					{!linked ? (
-						<p className="py-4 text-center text-sm text-muted-foreground">{unlinkedText}</p>
+						<p className="py-4 text-center text-sm text-muted-foreground">
+							{unlinkedText ?? t('hr.profile.unregisteredMember')}
+						</p>
 					) : loading ? (
 						<div className="flex justify-center py-6">
 							<LoadingSpinner size="sm" />
@@ -506,7 +532,9 @@ export function ProfileApplicationHistorySection({
 							))}
 						</div>
 					) : (
-						<p className="py-4 text-center text-sm text-muted-foreground">{emptyText}</p>
+						<p className="py-4 text-center text-sm text-muted-foreground">
+							{emptyText ?? t('hr.profile.noApplicationHistory')}
+						</p>
 					)}
 				</CardContent>
 			</details>

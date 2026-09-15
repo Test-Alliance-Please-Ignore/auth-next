@@ -201,17 +201,48 @@ async function resolveSharedFulcrumCorporationForTargetUser(
 	targetUserId: string
 ): Promise<FulcrumSharedCorporationResolution> {
 	const core = getCoreStub(c)
-	const corporations = await withRpcResult(core.getUserCorporations(targetUserId), (result) =>
-		result.map((corporation) => ({ ...corporation }))
+	const [viewerCorporations, targetCorporations, targetCharacters] = await Promise.all([
+		Promise.all(
+			requestor.characters.map(async (character) => {
+				try {
+					return await getCharacterCorporationId(c, character.characterId)
+				} catch (error) {
+					logger.warn('[Fulcrum] Failed to resolve viewer character affiliation', {
+						userId: requestor.id,
+						characterId: character.characterId,
+						error: error instanceof Error ? error.message : String(error),
+					})
+					return null
+				}
+			})
+		),
+		withRpcResult(core.getUserCorporations(targetUserId), (result) =>
+			result.map((corporation) => ({ ...corporation }))
+		),
+		withRpcResult(core.getUserCharacters(targetUserId, false), (result) =>
+			result.map((character) => ({ corporationId: character.corporationId ?? null }))
+		),
+	])
+	const viewerCorporationIds = new Set(
+		viewerCorporations.filter((corporationId): corporationId is string => corporationId !== null)
 	)
-	if (corporations.length === 0) {
+	const targetCorporationIds = new Set([
+		...targetCorporations.map((corporation) => corporation.corporationId),
+		...targetCharacters
+			.map((character) => character.corporationId)
+			.filter((corporationId): corporationId is string => corporationId !== null),
+	])
+	const sharedCorporations = [...targetCorporationIds]
+		.filter((corporationId) => viewerCorporationIds.has(corporationId))
+		.map((corporationId) => ({ corporationId }))
+	if (sharedCorporations.length === 0) {
 		return {
 			corporationId: null,
 			sawPermission: false,
 		}
 	}
 
-	for (const corporation of corporations) {
+	for (const corporation of sharedCorporations) {
 		const hasPermission = await hr.checkPermission(
 			requestor.id,
 			corporation.corporationId,
@@ -232,6 +263,40 @@ async function resolveSharedFulcrumCorporationForTargetUser(
 }
 
 async function resolveFulcrumReportAccessForTargetUser(
+	c: Context<App>,
+	hr: Hr,
+	requestor: SessionUser,
+	targetUserId: string
+): Promise<FulcrumReportAccessResolution> {
+	if (!requestor.is_admin && !(await isHrAuditorUser(c, requestor))) {
+		try {
+			const userRoles = await withRpcResult(hr.getUserRoles(requestor.id), (result) =>
+				result.map((role) => ({ ...role }))
+			)
+			if (userRoles.length > 0 && userRoles.every((role) => role.role === 'hr_viewer')) {
+				return {
+					corporationId: null,
+					error: 'unauthorized',
+				}
+			}
+		} catch {
+			return await resolveFulcrumReportAccessForTargetUserWithoutFastFail(
+				c,
+				hr,
+				requestor,
+				targetUserId
+			)
+		}
+	}
+	return await resolveFulcrumReportAccessForTargetUserWithoutFastFail(
+		c,
+		hr,
+		requestor,
+		targetUserId
+	)
+}
+
+async function resolveFulcrumReportAccessForTargetUserWithoutFastFail(
 	c: Context<App>,
 	hr: Hr,
 	requestor: SessionUser,
@@ -489,7 +554,10 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 			const accessResolution = await resolveFulcrumReportAccessForTargetUser(c, hr, user, userId)
 			if (!accessResolution.corporationId) {
 				return c.json(
-					{ error: 'HR staff access requires a shared corporation or an open application' },
+					{
+						error:
+							'Fulcrum reports require an HR reviewer role plus a shared corporation or open application',
+					},
 					403
 				)
 			}
@@ -549,7 +617,10 @@ app.get('/users/:userId/reports', requireAuth(), async (c) => {
 			const accessResolution = await resolveFulcrumReportAccessForTargetUser(c, hr, user, userId)
 			if (!accessResolution.corporationId) {
 				return c.json(
-					{ error: 'HR staff access requires a shared corporation or an open application' },
+					{
+						error:
+							'Fulcrum reports require an HR reviewer role plus a shared corporation or open application',
+					},
 					403
 				)
 			}
@@ -619,7 +690,10 @@ app.get('/characters/:characterId/reports', requireAuth(), async (c) => {
 				)
 			} else {
 				return c.json(
-					{ error: 'HR staff access requires a shared corporation or an open application' },
+					{
+						error:
+							'Fulcrum reports require an HR reviewer role plus a shared corporation or open application',
+					},
 					403
 				)
 			}
@@ -1084,7 +1158,13 @@ app.get('/reports/:reportId/sections', requireAuth(), async (c) => {
 			const hr = getHrStub(c)
 			const hasPermission = await hasFulcrumReportViewerAccess(c, user, report, hr)
 			if (!hasPermission) {
-				return c.json({ error: 'HR role required' }, 403)
+				return c.json(
+					{
+						error:
+							'An HR reviewer role and matching corporation or application access are required',
+					},
+					403
+				)
 			}
 		}
 
@@ -1133,7 +1213,13 @@ app.get('/reports/:reportId/sections/:section', requireAuth(), async (c) => {
 			const hr = getHrStub(c)
 			const hasPermission = await hasFulcrumReportViewerAccess(c, user, report, hr)
 			if (!hasPermission) {
-				return c.json({ error: 'HR role required' }, 403)
+				return c.json(
+					{
+						error:
+							'An HR reviewer role and matching corporation or application access are required',
+					},
+					403
+				)
 			}
 		}
 
@@ -1206,7 +1292,13 @@ app.get('/reports/:reportId/mails/:mailId/content', requireAuth(), async (c) => 
 			const hr = getHrStub(c)
 			const hasPermission = await hasFulcrumReportViewerAccess(c, user, report, hr)
 			if (!hasPermission) {
-				return c.json({ error: 'HR role required' }, 403)
+				return c.json(
+					{
+						error:
+							'An HR reviewer role and matching corporation or application access are required',
+					},
+					403
+				)
 			}
 		}
 

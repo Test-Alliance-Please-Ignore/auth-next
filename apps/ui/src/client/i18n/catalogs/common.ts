@@ -36,6 +36,7 @@ export const commonCatalog = defineCatalog(
 				unlinked: 'Unlinked',
 			},
 			characterIdentity: {
+				loadingPrivateDetails: 'Loading private character details',
 				spUnavailable: 'SP unavailable',
 				walletUnavailable: 'Wallet unavailable',
 				copyNameAria: 'Copy {{name}} to clipboard',
@@ -47,6 +48,18 @@ export const commonCatalog = defineCatalog(
 			},
 			items_one: '{{count}} item',
 			items_other: '{{count}} items',
+			pagination: {
+				perPage: 'Per page:',
+				first: 'First',
+				previous: 'Prev',
+				next: 'Next',
+				last: 'Last',
+			},
+			privateData: {
+				forbidden:
+					'Private ESI data is hidden because this user does not have an open application or shared corporation access for this character.',
+				unavailable: 'Private ESI data is unavailable right now.',
+			},
 			clearDate: 'Clear date',
 			dateRange: 'Date range',
 			locationSearch: 'Search for a system or station…',
@@ -141,6 +154,7 @@ export const commonCatalog = defineCatalog(
 				unlinked: 'Nicht verknüpft',
 			},
 			characterIdentity: {
+				loadingPrivateDetails: 'Private Charakterdetails werden geladen',
 				spUnavailable: 'SP nicht verfügbar',
 				walletUnavailable: 'Wallet nicht verfügbar',
 				copyNameAria: '{{name}} in die Zwischenablage kopieren',
@@ -152,6 +166,18 @@ export const commonCatalog = defineCatalog(
 			},
 			items_one: '{{count}} Element',
 			items_other: '{{count}} Elemente',
+			pagination: {
+				perPage: 'Pro Seite:',
+				first: 'Erste',
+				previous: 'Zurück',
+				next: 'Weiter',
+				last: 'Letzte',
+			},
+			privateData: {
+				forbidden:
+					'Private ESI-Daten sind verborgen, da dieser Benutzer für diesen Charakter keine offene Bewerbung oder gemeinsame Corporation-Zugehörigkeit hat.',
+				unavailable: 'Private ESI-Daten sind derzeit nicht verfügbar.',
+			},
 			clearDate: 'Datum löschen',
 			dateRange: 'Datumsbereich',
 			locationSearch: 'Nach einem System oder einer Station suchen…',
@@ -246,6 +272,7 @@ export const commonCatalog = defineCatalog(
 				unlinked: '연결 안 됨',
 			},
 			characterIdentity: {
+				loadingPrivateDetails: '비공개 캐릭터 세부 정보 로드 중',
 				spUnavailable: 'SP 정보 없음',
 				walletUnavailable: '지갑 정보 없음',
 				copyNameAria: '{{name}}을(를) 클립보드에 복사',
@@ -257,6 +284,18 @@ export const commonCatalog = defineCatalog(
 			},
 			items_one: '{{count}}개 항목',
 			items_other: '{{count}}개 항목',
+			pagination: {
+				perPage: '페이지당:',
+				first: '처음',
+				previous: '이전',
+				next: '다음',
+				last: '마지막',
+			},
+			privateData: {
+				forbidden:
+					'Private ESI 데이터는 이 사용자가 이 캐릭터에 대해 진행 중인 지원서나 공유 Corporation 소속이 없기 때문에 숨겨져 있습니다.',
+				unavailable: 'Private ESI 데이터를 현재 사용할 수 없습니다.',
+			},
 			clearDate: '날짜 지우기',
 			dateRange: '날짜 범위',
 			locationSearch: '성계 또는 정거장 검색…',

@@ -1,10 +1,12 @@
 import { Users } from 'lucide-react'
+import { Link } from 'react-router'
 
 import { CopyableMetaPill } from '@/components/copyable-meta-pill'
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { CharacterIdentitySummary } from '@/features/applications/components/character-identity-summary'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 export interface UserSearchCardEntry {
@@ -16,9 +18,11 @@ export interface UserSearchCardEntry {
 		is_admin: boolean
 		discordUserId: string | null
 		discordUsername: string | null
+		mumbleAccountLinked: boolean | null
 		matchedCharacterId: string | null
 		matchedCharacterName: string | null
 		isBlacklisted: boolean
+		canViewProfile: boolean
 	}
 	characters: Array<{
 		characterId: string
@@ -33,9 +37,12 @@ export interface UserSearchCardEntry {
 	}>
 }
 
-export function formatUserDisplayName(user: UserSearchCardEntry): string {
+export function formatUserDisplayName(
+	user: UserSearchCardEntry,
+	unknownCharacter = 'Unknown Character'
+): string {
 	const mainName =
-		user.summary.mainCharacterName || user.summary.matchedCharacterName || 'Unknown Character'
+		user.summary.mainCharacterName || user.summary.matchedCharacterName || unknownCharacter
 	const matchedName = user.summary.matchedCharacterName
 	const isAltMatch =
 		!!user.summary.matchedCharacterId &&
@@ -46,7 +53,8 @@ export function formatUserDisplayName(user: UserSearchCardEntry): string {
 }
 
 export function UserSearchCard({ user }: { user: UserSearchCardEntry }) {
-	const displayName = formatUserDisplayName(user)
+	const { t } = useAppTranslation()
+	const displayName = formatUserDisplayName(user, t('hr.search.unknownCharacter'))
 	const portraitId = user.summary.matchedCharacterId || user.summary.mainCharacterId
 	const characters = [...user.characters].sort((a, b) => {
 		if (a.is_primary !== b.is_primary) return a.is_primary ? -1 : 1
@@ -84,33 +92,60 @@ export function UserSearchCard({ user }: { user: UserSearchCardEntry }) {
 					/>
 					<div className="min-w-0 flex-1">
 						<div className="flex flex-wrap items-center gap-2">
-							<p
-								className={cn(
-									'truncate text-base font-semibold',
-									(displayedCharacterIsBlacklisted || accountIsBlacklisted) && 'text-red-500'
-								)}
-							>
-								{displayName}
-							</p>
+							{user.summary.canViewProfile ? (
+								<Link
+									to={`/hr/users/${user.summary.id}`}
+									className={cn(
+										'inline-flex truncate text-base font-semibold text-primary transition-colors hover:text-primary/80 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+										(displayedCharacterIsBlacklisted || accountIsBlacklisted) && 'text-red-500'
+									)}
+								>
+									{displayName}
+								</Link>
+							) : (
+								<p
+									className={cn(
+										'truncate text-base font-semibold',
+										(displayedCharacterIsBlacklisted || accountIsBlacklisted) && 'text-red-500'
+									)}
+								>
+									{displayName}
+								</p>
+							)}
 							<span className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
 								<span className="text-white">
-									{user.summary.characterCount} character
-									{user.summary.characterCount !== 1 ? 's' : ''}
+									{t('hr.search.character', { count: user.summary.characterCount })}
 								</span>
 							</span>
-							{user.summary.is_admin && <Badge variant="default">Admin</Badge>}
 							{(mainCharacterIsBlacklisted || accountIsBlacklisted) && (
-								<Badge variant="destructive">Blocklisted</Badge>
+								<Badge variant="destructive">{t('hr.search.blocklisted')}</Badge>
 							)}
-							{user.summary.discordUserId && <Badge variant="success">Discord linked</Badge>}
+							{user.summary.discordUserId ? (
+								<Badge variant="success">{t('hr.search.discordLinked')}</Badge>
+							) : (
+								<Badge variant="destructive">{t('hr.search.discordNotLinked')}</Badge>
+							)}
+							{user.summary.mumbleAccountLinked === true && (
+								<Badge variant="success">{t('hr.mumble.linked')}</Badge>
+							)}
+							{user.summary.mumbleAccountLinked === false && (
+								<Badge variant="destructive">{t('hr.mumble.notLinked')}</Badge>
+							)}
+							{user.summary.is_admin && <Badge variant="default">{t('hr.search.admin')}</Badge>}
 						</div>
 						<div className="mt-2 flex flex-wrap gap-2">
-							<CopyableMetaPill label="User ID" value={user.summary.id} />
+							<CopyableMetaPill label={t('hr.search.userId')} value={user.summary.id} />
 							{user.summary.discordUsername ? (
-								<CopyableMetaPill label="Discord username" value={user.summary.discordUsername} />
+								<CopyableMetaPill
+									label={t('hr.search.discordUsername')}
+									value={user.summary.discordUsername}
+								/>
 							) : null}
 							{user.summary.discordUserId ? (
-								<CopyableMetaPill label="Discord ID" value={user.summary.discordUserId} />
+								<CopyableMetaPill
+									label={t('hr.search.discordId')}
+									value={user.summary.discordUserId}
+								/>
 							) : null}
 						</div>
 					</div>
@@ -119,7 +154,7 @@ export function UserSearchCard({ user }: { user: UserSearchCardEntry }) {
 				<div className="space-y-2">
 					<div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
 						<Users className="h-3.5 w-3.5" />
-						Linked Characters
+						{t('hr.search.linkedCharacters')}
 					</div>
 					{characters.length > 0 ? (
 						<div className="space-y-2">
@@ -143,6 +178,7 @@ export function UserSearchCard({ user }: { user: UserSearchCardEntry }) {
 										allianceId={character.allianceId}
 										allianceName={character.allianceName}
 										portraitSize="sm"
+										compact
 										showMetrics={false}
 										nameBadges={
 											<>
@@ -150,11 +186,11 @@ export function UserSearchCard({ user }: { user: UserSearchCardEntry }) {
 													variant={character.is_primary ? 'default' : 'secondary'}
 													className="px-1.5 py-0 text-[10px]"
 												>
-													{character.is_primary ? 'Main' : 'Alt'}
+													{character.is_primary ? t('hr.search.main') : t('hr.search.alt')}
 												</Badge>
 												{character.isBlacklisted && (
 													<Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
-														Blocklisted
+														{t('hr.search.blocklisted')}
 													</Badge>
 												)}
 											</>
@@ -164,9 +200,7 @@ export function UserSearchCard({ user }: { user: UserSearchCardEntry }) {
 							))}
 						</div>
 					) : (
-						<p className="text-sm text-muted-foreground">
-							No linked characters were returned for this account.
-						</p>
+						<p className="text-sm text-muted-foreground">{t('hr.search.noLinkedCharacters')}</p>
 					)}
 				</div>
 			</CardContent>

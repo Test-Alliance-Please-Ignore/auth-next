@@ -7,7 +7,6 @@
  * main content area.
  */
 
-import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, Link2, ShieldAlert, XCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router'
@@ -32,6 +31,7 @@ import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { useCanAccessCorporation, useCorporationMemberAccount } from '../../corporations/hooks'

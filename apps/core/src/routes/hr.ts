@@ -5,7 +5,7 @@ import { and, eq, ilike, inArray } from '@repo/db-utils'
 import { getStub, withRpcResult } from '@repo/do-utils'
 import { getPublicEsiInstance } from '@repo/esi'
 import { captureException, logger } from '@repo/hono-helpers'
-import { APPLICATION_STATUSES } from '@repo/hr'
+import { APPLICATION_STATUSES, isOpenApplicationStatus } from '@repo/hr'
 
 import { managedCorporations, userCharacters, users } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
@@ -15,11 +15,13 @@ import {
 	resolveHrAccessState,
 } from '../lib/hr-access'
 import { getIpHashMatches, getUserIpHistory } from '../lib/ip-history'
+import { isMumbleFeatureEnabled } from '../lib/mumble-feature'
 import { getUserCorporationAffiliationIds } from '../lib/user-corporation-affiliations'
 import { validatePagination } from '../lib/validation'
 import { requireAdmin, requireAllianceMember, requireAuth } from '../middleware/session'
 import { CoreRpcService } from '../services/core-rpc.service'
 import { dispatchCorporationAlert } from '../services/corporation-alerts.service'
+import { getMumbleAccount } from '../services/mumble.service'
 
 import type { Context } from 'hono'
 import type { Core } from '@repo/core'
@@ -33,12 +35,11 @@ import type {
 	BlacklistTargetCheckItem,
 	Hr,
 	HrAccessContext,
-	HrApplicationListResult,
 	HrNote,
 	NoteFilters,
 } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
-import type { App } from '../context'
+import type { App, SessionUser } from '../context'
 
 const app = new Hono<App>()
 
@@ -482,17 +483,23 @@ async function enrichHrNotesWithAuthorSource(
 	})
 }
 
-type HrNoteVisibility = 'admin' | 'hr'
+type HrNoteVisibility = 'admin' | 'auditor' | 'hr'
 
 function getHrNoteVisibility(note: HrNote): HrNoteVisibility {
 	const visibility = note.metadata?.visibility
-	if (visibility === 'admin' || visibility === 'hr') return visibility
-	return note.noteType === 'background_check' ? 'admin' : 'hr'
+	if (visibility === 'admin' || visibility === 'auditor' || visibility === 'hr') return visibility
+	return 'admin'
 }
 
-function canViewHrNote(note: HrNote, isSiteAdmin: boolean): boolean {
-	if (isSiteAdmin) return true
-	return getHrNoteVisibility(note) === 'hr'
+function canViewHrNote(
+	note: HrNote,
+	canViewAdminNotes: boolean,
+	canViewAuditorNotes: boolean
+): boolean {
+	const visibility = getHrNoteVisibility(note)
+	if (canViewAdminNotes) return true
+	if (canViewAuditorNotes) return visibility === 'auditor' || visibility === 'hr'
+	return visibility === 'hr'
 }
 
 /**
@@ -563,6 +570,175 @@ async function hasMemberCorporationHrAccess(c: Context<App>): Promise<boolean> {
 		...new Set(ids),
 	])
 	return corporationIds.some((corporationId) => memberCorporationIds.has(corporationId))
+}
+
+async function canViewHrSearchProfile(
+	c: Context<App>,
+	user: SessionUser,
+	target: {
+		summary: { id: string }
+		characters: Array<{ corporationId: string | null }>
+	},
+	hasGlobalAccess: boolean,
+	viewerCorporationIds?: ReadonlySet<string>
+): Promise<boolean> {
+	if (hasGlobalAccess || user.is_admin) return true
+
+	try {
+		const hr = getHrStub(c)
+		const [resolvedViewerCorporations, targetApplications] = await Promise.all([
+			viewerCorporationIds
+				? Promise.resolve([...viewerCorporationIds])
+				: withRpcResult(getCoreStub(c).getUserCorporations(user.id), (result) =>
+						result.map((corporation) => corporation.corporationId)
+					),
+			withRpcResult(
+				hr.listApplications({ userId: target.summary.id }, user.id, {
+					isAdmin: false,
+					isAuditor: false,
+				}),
+				(result) => result.map((application) => ({ ...application }))
+			),
+		])
+
+		const viewerCorporationIdSet = new Set(resolvedViewerCorporations)
+		const targetCorporationIds = new Set(
+			target.characters
+				.map((character) => character.corporationId)
+				.filter((corporationId): corporationId is string => Boolean(corporationId))
+		)
+
+		for (const corporationId of targetCorporationIds) {
+			if (
+				viewerCorporationIdSet.has(corporationId) &&
+				(await hr.checkPermission(user.id, corporationId, 'hr_viewer'))
+			) {
+				return true
+			}
+		}
+
+		for (const application of targetApplications) {
+			if (
+				isOpenApplicationStatus(application.status) &&
+				(await hr.checkPermission(user.id, application.corporationId, 'hr_viewer'))
+			) {
+				return true
+			}
+		}
+	} catch (error) {
+		logger.warn('[HR] Failed to resolve search profile visibility', {
+			userId: user.id,
+			targetUserId: target.summary.id,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
+
+	return false
+}
+
+async function canViewHrUserProfile(
+	c: Context<App>,
+	user: SessionUser,
+	targetUserId: string,
+	targetCorporationIds?: string[]
+): Promise<boolean> {
+	const isGlobalAccess =
+		user.is_admin || (await hasHrAuditorPermissionForUser({ env: c.env, userId: user.id }))
+	if (isGlobalAccess) return true
+
+	try {
+		const hr = getHrStub(c)
+		const [viewerCorporations, targetCorporations, targetApplications] = await Promise.all([
+			withRpcResult(getCoreStub(c).getUserCorporations(user.id), (result) =>
+				result.map((corporation) => corporation.corporationId)
+			),
+			targetCorporationIds
+				? Promise.resolve(targetCorporationIds)
+				: withRpcResult(getCoreStub(c).getUserCorporations(targetUserId), (result) =>
+						result.map((corporation) => corporation.corporationId)
+					),
+			withRpcResult(
+				hr.listApplications({ userId: targetUserId }, user.id, {
+					isAdmin: false,
+					isAuditor: false,
+				}),
+				(result) => result.map((application) => ({ ...application }))
+			),
+		])
+
+		const viewerCorporationIds = new Set(viewerCorporations)
+		for (const corporationId of targetCorporations) {
+			if (
+				viewerCorporationIds.has(corporationId) &&
+				(await hr.checkPermission(user.id, corporationId, 'hr_viewer'))
+			) {
+				return true
+			}
+		}
+
+		for (const application of targetApplications) {
+			if (
+				isOpenApplicationStatus(application.status) &&
+				(await hr.checkPermission(user.id, application.corporationId, 'hr_viewer'))
+			) {
+				return true
+			}
+		}
+	} catch (error) {
+		logger.warn('[HR] Failed to resolve user profile access', {
+			userId: user.id,
+			targetUserId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+	}
+
+	return false
+}
+
+async function getMumbleLinkStatus(
+	c: Context<App>,
+	userId: string,
+	featureEnabled?: boolean
+): Promise<boolean | null> {
+	if (
+		c.env.ENVIRONMENT === 'development' ||
+		(featureEnabled === undefined && !(await isMumbleFeatureEnabled(c.env))) ||
+		featureEnabled === false
+	) {
+		return false
+	}
+
+	try {
+		return (await getMumbleAccount(c.env, userId)) !== null
+	} catch (error) {
+		logger.warn('[HR] Failed to resolve Mumble account status', {
+			userId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return null
+	}
+}
+
+async function mapWithConcurrency<T, R>(
+	items: readonly T[],
+	concurrency: number,
+	mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+	const results = new Array<R>(items.length)
+	let nextIndex = 0
+
+	async function worker(): Promise<void> {
+		while (true) {
+			const index = nextIndex++
+			if (index >= items.length) return
+			results[index] = await mapper(items[index])
+		}
+	}
+
+	await Promise.all(
+		Array.from({ length: Math.min(Math.max(concurrency, 1), items.length) }, () => worker())
+	)
+	return results
 }
 
 async function hasHrAuditorPermission(c: Context<App>): Promise<boolean> {
@@ -2258,24 +2434,31 @@ app.delete('/templates/:templateId', requireAuth(), async (c) => {
 /**
  * POST /api/hr/notes
  * Create an HR note about a user
- * Access: Site admins, HR admins, HR reviewers
+ * Access: users with profile access to the subject user; notes are HR-scoped
  */
 app.post('/notes', requireAuth(), async (c) => {
 	const user = c.get('user')!
-
-	if (!(await hasAnyHrAccess(c))) {
-		return c.json({ error: 'Forbidden' }, 403)
-	}
 	const { subjectUserId, subjectCharacterId, noteText, noteType, priority, metadata } =
 		await c.req.json()
+	if (!subjectUserId || !(await canViewHrUserProfile(c, user, subjectUserId))) {
+		return c.json({ error: 'You do not have permission to add notes for this user' }, 403)
+	}
+	const isAdminOrAuditor =
+		user.is_admin || (await hasHrAuditorPermissionForUser({ env: c.env, userId: user.id }))
 	const requestedVisibility = metadata?.visibility
-	const normalizedVisibility: HrNoteVisibility =
-		requestedVisibility === 'admin' || requestedVisibility === 'hr'
+	const requestedNoteVisibility: HrNoteVisibility | null =
+		requestedVisibility === 'admin' ||
+		requestedVisibility === 'auditor' ||
+		requestedVisibility === 'hr'
 			? requestedVisibility
-			: noteType === 'background_check'
-				? 'admin'
-				: 'hr'
-	const effectiveVisibility: HrNoteVisibility = user.is_admin ? normalizedVisibility : 'hr'
+			: null
+	const effectiveVisibility: HrNoteVisibility = user.is_admin
+		? (requestedNoteVisibility ?? 'admin')
+		: isAdminOrAuditor
+			? requestedNoteVisibility === 'hr' || requestedNoteVisibility === 'auditor'
+				? requestedNoteVisibility
+				: 'auditor'
+			: 'hr'
 	const enrichedMetadata = {
 		...(metadata ?? {}),
 		visibility: effectiveVisibility,
@@ -2320,13 +2503,10 @@ app.post('/notes', requireAuth(), async (c) => {
 /**
  * GET /api/hr/notes
  * List HR notes with optional filters
- * Access: Site admins, HR admins, HR reviewers
+ * Access: users with profile access to the subject user; notes are HR-scoped
  */
 app.get('/notes', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	if (!(await hasAnyHrAccess(c))) {
-		return c.json({ error: 'Forbidden' }, 403)
-	}
 
 	// Parse query params
 	const filters: NoteFilters = {
@@ -2336,11 +2516,26 @@ app.get('/notes', requireAuth(), async (c) => {
 		limit: c.req.query('limit') ? parseInt(c.req.query('limit')!) : undefined,
 		offset: c.req.query('offset') ? parseInt(c.req.query('offset')!) : undefined,
 	}
+	if (filters.subjectUserId) {
+		if (!(await canViewHrUserProfile(c, user, filters.subjectUserId))) {
+			return c.json({ error: 'You do not have permission to view notes for this user' }, 403)
+		}
+	} else if (
+		!user.is_admin &&
+		!(await hasHrAuditorPermissionForUser({ env: c.env, userId: user.id }))
+	) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
 
 	try {
 		const hr = getHrStub(c)
 		const notes = await hr.listNotes(filters)
-		const visibleNotes = notes.filter((note) => canViewHrNote(note, user.is_admin))
+		const canViewAdminNotes =
+			user.is_admin || (await hasHrAuditorPermissionForUser({ env: c.env, userId: user.id }))
+		const canViewAuditorNotes = await hasHrAuditorPermissionForUser({ env: c.env, userId: user.id })
+		const visibleNotes = notes.filter((note) =>
+			canViewHrNote(note, canViewAdminNotes, canViewAuditorNotes)
+		)
 		const db = c.get('db')
 		if (!db) return c.json(visibleNotes)
 		const enriched = await enrichHrNotesWithAuthorSource(db, visibleNotes)
@@ -2353,20 +2548,24 @@ app.get('/notes', requireAuth(), async (c) => {
 /**
  * GET /api/hr/notes/user/:userId
  * Get all HR notes for a specific user
- * Access: Site admins, HR admins, HR reviewers
+ * Access: users with profile access to the subject user; notes are HR-scoped
  */
 app.get('/notes/user/:userId', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	if (!(await hasAnyHrAccess(c))) {
+	const subjectUserId = c.req.param('userId')
+	if (!(await canViewHrUserProfile(c, user, subjectUserId))) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
-
-	const subjectUserId = c.req.param('userId')
 
 	try {
 		const hr = getHrStub(c)
 		const notes = await hr.getUserNotes(subjectUserId)
-		const visibleNotes = notes.filter((note) => canViewHrNote(note, user.is_admin))
+		const canViewAdminNotes =
+			user.is_admin || (await hasHrAuditorPermissionForUser({ env: c.env, userId: user.id }))
+		const canViewAuditorNotes = await hasHrAuditorPermissionForUser({ env: c.env, userId: user.id })
+		const visibleNotes = notes.filter((note) =>
+			canViewHrNote(note, canViewAdminNotes, canViewAuditorNotes)
+		)
 		const db = c.get('db')
 		if (!db) return c.json(visibleNotes)
 		const enriched = await enrichHrNotesWithAuthorSource(db, visibleNotes)
@@ -2821,13 +3020,62 @@ app.get('/users/search', requireAuth(), async (c) => {
 				(status) => [`${status.targetType}:${status.targetValue}`, status.isBlacklisted] as const
 			)
 		)
+		let viewerCorporationIds: ReadonlySet<string> | undefined
+		if (!hasGlobalHrSearchAccess) {
+			try {
+				const viewerCorporations = await withRpcResult(
+					getCoreStub(c).getUserCorporations(user.id),
+					(result) => result.map((corporation) => corporation.corporationId)
+				)
+				viewerCorporationIds = new Set(viewerCorporations)
+			} catch (error) {
+				logger.warn('[HR] Failed to resolve viewer corporations for search links', {
+					userId: user.id,
+					error: error instanceof Error ? error.message : String(error),
+				})
+				viewerCorporationIds = new Set()
+			}
+		}
+		const profileVisibility = new Map(
+			await Promise.all(
+				result.users.map(
+					async (entry) =>
+						[
+							entry.summary.id,
+							await canViewHrSearchProfile(
+								c,
+								user,
+								entry,
+								hasGlobalHrSearchAccess,
+								viewerCorporationIds
+							),
+						] as const
+				)
+			)
+		)
+		const mumbleStatusByUserId = new Map<string, boolean | null>()
+		const mumbleEnabled =
+			c.env.ENVIRONMENT !== 'development' && (await isMumbleFeatureEnabled(c.env))
+		if (c.env.ENVIRONMENT === 'development') {
+			for (const entry of result.users) mumbleStatusByUserId.set(entry.summary.id, false)
+		} else if (mumbleEnabled) {
+			const mumbleStatuses = await mapWithConcurrency(
+				result.users,
+				5,
+				async (entry) =>
+					[entry.summary.id, await getMumbleLinkStatus(c, entry.summary.id, true)] as const
+			)
+			for (const [userId, status] of mumbleStatuses) mumbleStatusByUserId.set(userId, status)
+		}
 
 		return c.json({
 			...result,
 			users: result.users.map((entry) => ({
 				summary: {
 					...entry.summary,
+					mumbleAccountLinked: mumbleStatusByUserId.get(entry.summary.id) ?? null,
 					isBlacklisted: blacklistStatuses.get(`user:${entry.summary.id}`) ?? false,
+					canViewProfile: profileVisibility.get(entry.summary.id) ?? false,
 				},
 				characters: entry.characters.map((character) => ({
 					...character,
@@ -2836,12 +3084,11 @@ app.get('/users/search', requireAuth(), async (c) => {
 			})),
 		})
 	} catch (error) {
-		logger.error('[HR] Failed to search users within HR scope', {
+		logger.error('[HR] Failed to search users', {
 			userId: user.id,
-			search,
 			error: error instanceof Error ? error.message : String(error),
 		})
-		return c.json({ error: 'Failed to search users' }, 500)
+		return c.json({ error: error instanceof Error ? error.message : 'Failed to search users' }, 500)
 	}
 })
 
@@ -2974,9 +3221,22 @@ app.get('/users/:userId/blocklist-status', requireAuth(), async (c) => {
 	}
 
 	const targetUserId = c.req.param('userId')
+	if (!(await canViewHrUserProfile(c, user, targetUserId))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
 	try {
 		const isBlacklisted = await getHrStub(c).isUserBlacklisted(targetUserId)
-		return c.json({ isBlacklisted })
+		const db = c.get('db')
+		let discordAccountLinked: boolean | null = null
+		if (db) {
+			const [targetUser] = await db
+				.select({ discordUserId: users.discordUserId })
+				.from(users)
+				.where(eq(users.id, targetUserId))
+				.limit(1)
+			discordAccountLinked = targetUser ? Boolean(targetUser.discordUserId) : null
+		}
+		return c.json({ isBlacklisted, discordAccountLinked })
 	} catch (error) {
 		logger.error('[HR] Failed to get user blocklist status', {
 			userId: user.id,
@@ -2993,11 +3253,10 @@ app.get('/users/:userId/blocklist-status', requireAuth(), async (c) => {
  */
 app.get('/users/:userId/characters', requireAuth(), async (c) => {
 	const user = c.get('user')!
-	if (!user.is_admin && !(await hasAnyHrAccess(c))) {
+	const targetUserId = c.req.param('userId')
+	if (!(await canViewHrUserProfile(c, user, targetUserId))) {
 		return c.json({ error: 'Forbidden' }, 403)
 	}
-
-	const targetUserId = c.req.param('userId')
 
 	try {
 		const core = getCoreStub(c)
@@ -3038,6 +3297,16 @@ app.get('/users/:userId/characters', requireAuth(), async (c) => {
 			500
 		)
 	}
+})
+
+app.get('/users/:userId/mumble-status', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	const targetUserId = c.req.param('userId')
+	if (!(await canViewHrUserProfile(c, user, targetUserId))) {
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	return c.json({ mumbleAccountLinked: await getMumbleLinkStatus(c, targetUserId) })
 })
 
 /**

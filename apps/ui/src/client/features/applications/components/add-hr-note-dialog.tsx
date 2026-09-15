@@ -24,11 +24,12 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useMessage } from '@/hooks/useMessage'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { useAddHRNote, useUpdateHRNote } from '../hooks'
 
-import type { HRNote, HRNotePriority, HRNoteType } from '../api'
+import type { HRNote, HRNotePriority, HRNoteType, HRNoteVisibility } from '../api'
 
 // ============================================================================
 // Types
@@ -41,6 +42,9 @@ export interface AddHRNoteDialogProps {
 	subjectCharacterId?: string
 	subjectCharacterName?: string
 	existingNote?: HRNote
+	canSelectVisibility?: boolean
+	canSelectAdminVisibility?: boolean
+	initialVisibility?: HRNoteVisibility
 	onSuccess?: () => void
 }
 
@@ -178,9 +182,13 @@ export function AddHRNoteDialog({
 	subjectCharacterId,
 	subjectCharacterName,
 	existingNote,
+	canSelectVisibility = false,
+	canSelectAdminVisibility = false,
+	initialVisibility = 'auditor',
 	onSuccess,
 }: AddHRNoteDialogProps) {
 	const { showSuccess, showError } = useMessage()
+	const { t } = useAppTranslation()
 
 	// Form state
 	const [noteType, setNoteType] = useState<HRNoteType>('general')
@@ -188,6 +196,7 @@ export function AddHRNoteDialog({
 	const [noteText, setNoteText] = useState('')
 	const [tags, setTags] = useState<string[]>([])
 	const [tagInput, setTagInput] = useState('')
+	const [visibility, setVisibility] = useState<HRNoteVisibility>('auditor')
 
 	// Mutations
 	const addMutation = useAddHRNote()
@@ -211,10 +220,11 @@ export function AddHRNoteDialog({
 				setPriority('normal')
 				setNoteText('')
 				setTags([])
+				setVisibility(initialVisibility)
 				setTagInput('')
 			}
 		}
-	}, [open, existingNote])
+	}, [open, existingNote, initialVisibility])
 
 	// Validation
 	const textLength = noteText.trim().length
@@ -245,7 +255,10 @@ export function AddHRNoteDialog({
 		if (!isFormValid) return
 
 		try {
-			const metadata = tags.length > 0 ? { tags } : undefined
+			const metadata = {
+				...(tags.length > 0 ? { tags } : {}),
+				...(canSelectVisibility ? { visibility } : {}),
+			}
 
 			if (isEditMode) {
 				// Update existing note
@@ -293,13 +306,13 @@ export function AddHRNoteDialog({
 				<DialogHeader>
 					<div className="flex items-center gap-2 text-warning mb-2">
 						<Lock className="h-4 w-4" />
-						<span className="text-xs font-semibold uppercase tracking-wide">Admin Only</span>
+						<span className="text-xs font-semibold uppercase tracking-wide">
+							{t('hr.notes.internal')}
+						</span>
 					</div>
-					<DialogTitle>{isEditMode ? 'Edit HR Note' : 'Add HR Note'}</DialogTitle>
+					<DialogTitle>{isEditMode ? t('hr.notes.edit') : t('hr.notes.add')}</DialogTitle>
 					<DialogDescription>
-						{isEditMode
-							? 'Update the HR note about this user.'
-							: 'Add a private internal note about this user. Only visible to site administrators.'}
+						{isEditMode ? t('hr.notes.updateDescription') : t('hr.notes.addDescription')}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -346,12 +359,32 @@ export function AddHRNoteDialog({
 							inputId="priority"
 							value={priority}
 							onValueChange={(v) => setPriority(v as HRNotePriority)}
-							options={PRIORITY_OPTIONS.map((option) => ({ value: option.value,
+							options={PRIORITY_OPTIONS.map((option) => ({
+								value: option.value,
 								label: option.label,
 							}))}
 							placeholder="Select priority"
 						/>
 					</div>
+
+					{canSelectVisibility && !isEditMode && (
+						<div className="space-y-2">
+							<Label htmlFor="note-visibility">{t('hr.notes.visibility')}</Label>
+							<Select
+								inputId="note-visibility"
+								value={visibility}
+								onValueChange={(value) => setVisibility(value as HRNoteVisibility)}
+								options={[
+									...(canSelectAdminVisibility
+										? [{ value: 'admin', label: t('hr.notes.adminsOnly') }]
+										: []),
+									{ value: 'auditor', label: t('hr.notes.auditorsAndAdmins') },
+									{ value: 'hr', label: t('hr.notes.allAuthorizedHr') },
+								]}
+								placeholder="Select visibility"
+							/>
+						</div>
+					)}
 
 					{/* Note Text */}
 					<div className="space-y-2">
@@ -435,7 +468,8 @@ export function AddHRNoteDialog({
 					<Button variant="cancel" onClick={handleCancel} disabled={isPending}>
 						Cancel
 					</Button>
-					<Button variant="confirm"
+					<Button
+						variant="confirm"
 						onClick={handleSubmit}
 						disabled={!isFormValid}
 						loading={isPending}

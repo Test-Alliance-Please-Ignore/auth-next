@@ -7,7 +7,6 @@
  * - Withdraw functionality
  */
 
-import { formatDistanceToNow } from 'date-fns'
 import { ArrowLeft, Briefcase, Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
@@ -43,6 +42,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import { useCanAccessCorporation } from '../../corporations/hooks'
 import { useHrPermissionCheck } from '../../hr/hooks'

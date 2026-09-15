@@ -526,6 +526,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		Array<{
 			characterId: string
 			characterName: string
+			is_primary: boolean
 			hasValidToken: boolean
 			isDeleted: boolean
 			corporationId?: string | null
@@ -540,6 +541,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		return characters.map((c) => ({
 			characterId: c.characterId,
 			characterName: c.characterName,
+			is_primary: c.is_primary,
 			hasValidToken: c.hasValidToken === true,
 			isDeleted: c.isDeleted,
 			corporationId: c.corporationId,

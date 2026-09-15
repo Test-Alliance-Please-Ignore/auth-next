@@ -1,5 +1,4 @@
 import { useQueries, useQueryClient } from '@tanstack/react-query'
-import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, ArrowLeft, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router'
@@ -13,6 +12,8 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import { useAuditorUser, useAuditorUserIpHistory } from '../../../hooks/useAuditorUsers'
 import { myCorporationsApi } from '../../corporations/api'
@@ -39,6 +40,7 @@ import {
 	useFulcrumUserReports,
 	useHRNotes,
 	useHrUserCharacters,
+	useHrUserMumbleStatus,
 	useRequestFulcrumReport,
 	useRequestFulcrumReportBatch,
 } from '../hooks'
@@ -82,6 +84,7 @@ export default function HrAuditorUserProfilePage() {
 	const queryClient = useQueryClient()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasAnyPermission } = useUserPermissions()
+	const { t } = useAppTranslation()
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
 	const [requestingCharacterId, setRequestingCharacterId] = useState<string | null>(null)
 	const [isScanningAll, setIsScanningAll] = useState(false)
@@ -93,6 +96,9 @@ export default function HrAuditorUserProfilePage() {
 		useFulcrumScanDmPreference()
 
 	const { data: userDetails, isLoading: userLoading } = useAuditorUser(userId ?? '')
+	const { data: mumbleStatus } = useHrUserMumbleStatus(userId ?? '', {
+		enabled: !!userId,
+	})
 	const { data: hrCharacters = [], isLoading: hrLoading } = useHrUserCharacters(userId ?? '', {
 		enabled: !!userId,
 	})
@@ -444,9 +450,23 @@ export default function HrAuditorUserProfilePage() {
 						<UserProfileStatusBadge variant="destructive">Blocklisted</UserProfileStatusBadge>
 					)}
 					{userDetails.discordUserId ? (
-						<UserProfileStatusBadge variant="success">Discord Linked</UserProfileStatusBadge>
+						<UserProfileStatusBadge variant="success">
+							{t('hr.search.discordLinked')}
+						</UserProfileStatusBadge>
 					) : (
-						<UserProfileStatusBadge variant="secondary">No Discord</UserProfileStatusBadge>
+						<UserProfileStatusBadge variant="destructive">
+							{t('hr.search.discordNotLinked')}
+						</UserProfileStatusBadge>
+					)}
+					{mumbleStatus?.mumbleAccountLinked === true && (
+						<UserProfileStatusBadge variant="success">
+							{t('hr.mumble.linked')}
+						</UserProfileStatusBadge>
+					)}
+					{mumbleStatus?.mumbleAccountLinked === false && (
+						<UserProfileStatusBadge variant="destructive">
+							{t('hr.mumble.notLinked')}
+						</UserProfileStatusBadge>
 					)}
 					{(userDetails.discord?.username || userDetails.discordUserId) && (
 						<div className="mt-2 flex flex-wrap items-center justify-center gap-2">
@@ -600,6 +620,7 @@ export default function HrAuditorUserProfilePage() {
 						subjectUserId={userId}
 						subjectCharacterId={mainCharacter?.characterId}
 						subjectCharacterName={mainCharacter?.characterName}
+						canSelectVisibility={isAuditor || user?.is_admin === true}
 						onSuccess={() => {
 							void queryClient.invalidateQueries({
 								queryKey: ['applications', 'hr-notes'],

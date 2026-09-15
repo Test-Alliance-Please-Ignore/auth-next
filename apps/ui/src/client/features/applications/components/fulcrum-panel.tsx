@@ -6,7 +6,6 @@
  * new reports or re-request expired ones.
  */
 
-import { formatDistanceToNow } from 'date-fns'
 import { AlertCircle, Clock, ExternalLink, FileText, Loader2, RefreshCw, Users } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
@@ -24,6 +23,7 @@ import {
 } from '@/components/ui/dialog'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import {
 	useFulcrumUserReports,

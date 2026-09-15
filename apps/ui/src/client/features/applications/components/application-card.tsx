@@ -5,11 +5,11 @@
  * Features character portrait, name, status, timestamp, and recommendation count.
  */
 
-import { formatDistanceToNow } from 'date-fns'
 import { MessageSquare } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { ApplicationCharacterStack } from './application-character-stack'

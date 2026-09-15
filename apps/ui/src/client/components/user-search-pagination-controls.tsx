@@ -2,6 +2,7 @@ import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 
 import type { ReactNode } from 'react'
 
@@ -34,6 +35,7 @@ export function UserSearchPaginationControls({
 	trailingAction,
 	controlsLeadingAction,
 }: UserSearchPaginationControlsProps) {
+	const { t } = useAppTranslation()
 	const totalPages = Math.ceil(totalCount / pageSize)
 	const start = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
 	const end = Math.min(page * pageSize, totalCount)
@@ -62,7 +64,7 @@ export function UserSearchPaginationControls({
 					<div className="flex shrink-0 items-center">{controlsLeadingAction}</div>
 				) : null}
 				<div className="flex shrink-0 items-center gap-2">
-					<span className="text-sm text-muted-foreground">Per page:</span>
+					<span className="text-sm text-muted-foreground">{t('common.pagination.perPage')}</span>
 					<Select
 						value={String(pageSize)}
 						onValueChange={(value) => onPageSizeChange(Number(value))}
@@ -75,7 +77,7 @@ export function UserSearchPaginationControls({
 					/>
 				</div>
 				<Button variant="ghost" size="sm" disabled={!canGoPrev} onClick={() => onPageChange(1)}>
-					First
+					{t('common.pagination.first')}
 				</Button>
 				<Button
 					variant="ghost"
@@ -83,7 +85,7 @@ export function UserSearchPaginationControls({
 					disabled={!canGoPrev}
 					onClick={() => onPageChange(page - 1)}
 				>
-					Prev
+					{t('common.pagination.previous')}
 				</Button>
 				{visiblePages.map((pageNumber) => (
 					<Button
@@ -103,7 +105,9 @@ export function UserSearchPaginationControls({
 					aria-busy={nextButtonLoading}
 					onClick={() => onPageChange(page + 1)}
 				>
-					<span className={nextButtonLoading ? 'opacity-0' : undefined}>Next</span>
+					<span className={nextButtonLoading ? 'opacity-0' : undefined}>
+						{t('common.pagination.next')}
+					</span>
 					{nextButtonLoading ? (
 						<Loader2
 							aria-hidden
@@ -117,7 +121,7 @@ export function UserSearchPaginationControls({
 					disabled={!canGoNext}
 					onClick={() => onPageChange(totalPages)}
 				>
-					Last
+					{t('common.pagination.last')}
 				</Button>
 			</div>
 		</div>

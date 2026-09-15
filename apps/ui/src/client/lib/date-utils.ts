@@ -72,7 +72,10 @@ export function formatDateTime(dateString: DateInput): string {
  * @param dateString - ISO date string or Date object
  * @returns Relative time string
  */
-export function formatRelativeTime(dateString: DateInput): string {
+export function formatRelativeTime(
+	dateString: DateInput,
+	_options?: { addSuffix?: boolean }
+): string {
 	const date = parseDate(dateString)
 	if (!date) return notAvailable()
 

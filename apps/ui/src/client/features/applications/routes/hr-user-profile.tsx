@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Navigate, useLocation, useParams } from 'react-router'
@@ -6,9 +6,11 @@ import { Navigate, useLocation, useParams } from 'react-router'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
 import { useHrAccessibleCorporations } from '../../hr/hooks'
 import { applicationsApi } from '../api'
+import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
 import {
 	FulcrumBulkScanDialog,
 	FulcrumSingleScanDialog,
@@ -23,12 +25,16 @@ import {
 import {
 	ProfileApplicationHistorySection,
 	ProfileCharactersSection,
+	ProfileNotesSection,
 } from '../components/user-profile-sections'
 import {
+	applicationKeys,
 	useCharacterPrivateDetailsBulk,
 	useFulcrumUserReports,
+	useHRNotes,
 	useHrUserBlocklistStatus,
 	useHrUserCharacters,
+	useHrUserMumbleStatus,
 	useRequestFulcrumReport,
 	useRequestFulcrumReportBatch,
 } from '../hooks'
@@ -78,16 +84,22 @@ function isForbiddenError(error: unknown): boolean {
 export default function HrUserProfilePage() {
 	const { userId } = useParams<{ userId: string }>()
 	const location = useLocation()
-	const { isAuthenticated, isLoading: authLoading } = useAuth()
+	const queryClient = useQueryClient()
+	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
+	const { t } = useAppTranslation()
 	const [requestingCharacterId, setRequestingCharacterId] = useState<string | null>(null)
 	const [isScanningAll, setIsScanningAll] = useState(false)
 	const [scanAllDialogOpen, setScanAllDialogOpen] = useState(false)
 	const [singleScanDialogCharacter, setSingleScanDialogCharacter] =
 		useState<ReviewerCharacterRow | null>(null)
+	const [addNoteDialogOpen, setAddNoteDialogOpen] = useState(false)
 	const { sendDmForScanRequests, setSendDmForScanRequests, persistSendDmPreference } =
 		useFulcrumScanDmPreference()
 	const { data: accessibleCorporations, isLoading: accessibleCorporationsLoading } =
 		useHrAccessibleCorporations()
+	const { data: mumbleStatus } = useHrUserMumbleStatus(userId ?? '', {
+		enabled: !!userId,
+	})
 
 	const [referrerNavigationState] = useState(getApplicationProfileNavigationFromReferrer)
 	const navigationState =
@@ -98,15 +110,15 @@ export default function HrUserProfilePage() {
 	const fromMembers = source === 'members' || returnTo?.includes('/members')
 	const backTarget = returnTo ?? '/hr/users'
 	const breadcrumbMidLabel = fromApplications
-		? 'Applications'
+		? t('hr.profile.applications')
 		: fromMembers
-			? 'Members'
-			: 'User Search'
+			? t('hr.profile.members')
+			: t('hr.profile.userSearch')
 	const backLabel = fromApplications
-		? 'Back to Applications'
+		? t('hr.profile.backToApplications')
 		: fromMembers
-			? 'Back to Members'
-			: 'Back to User Search'
+			? t('hr.profile.backToMembers')
+			: t('hr.profile.backToUserSearch')
 
 	const applicationsQuery = useQuery<Application[]>({
 		queryKey: ['hr', 'user-profile', userId, 'applications'],
@@ -126,6 +138,12 @@ export default function HrUserProfilePage() {
 	const { data: userBlocklistStatus } = useHrUserBlocklistStatus(userId ?? '', {
 		enabled: !!userId,
 	})
+	const {
+		data: notes = [],
+		isLoading: notesLoading,
+		error: notesError,
+	} = useHRNotes(userId ? { subjectUserId: userId } : undefined, { enabled: !!userId })
+	const canViewNotes = !!userId && !notesLoading && !notesError
 
 	const {
 		data: reportCharacters = [],
@@ -138,11 +156,9 @@ export default function HrUserProfilePage() {
 		[reportCharacters]
 	)
 	const reportAccessDenied = isForbiddenError(reportError)
-	const fulcrumAccessDeniedMessage = reportAccessDenied
-		? 'Fulcrum data is hidden because this user does not have an open application or shared corporation access.'
-		: null
+	const fulcrumAccessDeniedMessage = reportAccessDenied ? t('hr.fulcrum.hiddenDescription') : null
 	const fulcrumUnavailableMessage =
-		reportError && !reportAccessDenied ? 'Fulcrum data is unavailable right now.' : null
+		reportError && !reportAccessDenied ? t('hr.profile.fulcrumUnavailable') : null
 	const canViewFulcrumReports = reportLoaded
 	const canRequestFulcrumReports =
 		canViewFulcrumReports && (accessibleCorporations?.length ?? 0) > 0
@@ -158,15 +174,14 @@ export default function HrUserProfilePage() {
 		if (!characterQuery.data) return []
 
 		return characterQuery.data
-			.map((character, index) => {
+			.map((character) => {
 				const report = reportCharacterById.get(character.characterId)
 				const latestReport = report ? getLatestReport(report) : null
 				const hasPendingReport =
 					report?.reports.some(
 						(entry) => entry.status === 'pending' || entry.status === 'processing'
 					) ?? false
-				const isPrimary =
-					index === 0 || sortedApplications[0]?.characterId === character.characterId
+				const isPrimary = character.is_primary
 
 				return {
 					characterId: character.characterId,
@@ -189,7 +204,7 @@ export default function HrUserProfilePage() {
 				if (!a.isPrimary && b.isPrimary) return 1
 				return a.characterName.localeCompare(b.characterName)
 			})
-	}, [characterQuery.data, reportCharacterById, sortedApplications])
+	}, [characterQuery.data, reportCharacterById])
 
 	const characterDetailQuery = useCharacterPrivateDetailsBulk(
 		rows.map((character) => character.characterId)
@@ -226,13 +241,17 @@ export default function HrUserProfilePage() {
 		[...privateDataUnavailableNoteByCharacterId.values()].find((note) => Boolean(note)) ?? null
 
 	const accountName =
-		sortedApplications[0]?.characterName ??
 		rows.find((row) => row.isPrimary)?.characterName ??
+		sortedApplications[0]?.characterName ??
 		rows[0]?.characterName ??
 		userId ??
 		'Unknown'
 
-	usePageTitle(accountName ? `${accountName} | HR User Details` : 'HR User Details')
+	usePageTitle(
+		accountName
+			? t('hr.profile.pageTitle', { name: accountName })
+			: t('hr.profile.pageTitleFallback')
+	)
 
 	const canRequestCharacterReport = (character: { corporationId?: string | null }) =>
 		Boolean(character.corporationId)
@@ -261,7 +280,7 @@ export default function HrUserProfilePage() {
 	if (isForbiddenError(characterQuery.error) && !characterQuery.data) {
 		return (
 			<UserProfilePageShell
-				rootLabel="Users"
+				rootLabel={t('hr.profile.users')}
 				rootTo="/hr/users"
 				midLabel={breadcrumbMidLabel}
 				backTarget={backTarget}
@@ -271,12 +290,14 @@ export default function HrUserProfilePage() {
 				mainCharacterId={undefined}
 				mainCharacterName={undefined}
 				sidebarBadges={
-					<UserProfileStatusBadge variant="destructive">Access Denied</UserProfileStatusBadge>
+					<UserProfileStatusBadge variant="destructive">
+						{t('hr.profile.accessDenied')}
+					</UserProfileStatusBadge>
 				}
 				sidebarStats={null}
 			>
 				<div className="max-w-2xl rounded-lg border border-red-200 bg-red-50 p-6 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-					You do not have permission to view this user's HR profile.
+					{t('hr.profile.accessDeniedDescription')}
 				</div>
 			</UserProfilePageShell>
 		)
@@ -388,7 +409,7 @@ export default function HrUserProfilePage() {
 
 	return (
 		<UserProfilePageShell
-			rootLabel="Users"
+			rootLabel={t('hr.profile.users')}
 			rootTo="/hr/users"
 			midLabel={breadcrumbMidLabel}
 			backTarget={backTarget}
@@ -400,18 +421,45 @@ export default function HrUserProfilePage() {
 			isMainCharacterBlacklisted={Boolean(mainCharacter?.isBlacklisted)}
 			isAccountBlacklisted={Boolean(userBlocklistStatus?.isBlacklisted)}
 			sidebarBadges={
-				userBlocklistStatus?.isBlacklisted ? (
-					<UserProfileStatusBadge variant="destructive">Blocklisted</UserProfileStatusBadge>
-				) : undefined
+				<>
+					{userBlocklistStatus?.isBlacklisted && (
+						<UserProfileStatusBadge variant="destructive">
+							{t('hr.profile.blocklisted')}
+						</UserProfileStatusBadge>
+					)}
+					{userBlocklistStatus?.discordAccountLinked === true && (
+						<UserProfileStatusBadge variant="success">
+							{t('hr.search.discordLinked')}
+						</UserProfileStatusBadge>
+					)}
+					{userBlocklistStatus?.discordAccountLinked === false && (
+						<UserProfileStatusBadge variant="destructive">
+							{t('hr.search.discordNotLinked')}
+						</UserProfileStatusBadge>
+					)}
+					{mumbleStatus?.mumbleAccountLinked === true && (
+						<UserProfileStatusBadge variant="success">
+							{t('hr.mumble.linked')}
+						</UserProfileStatusBadge>
+					)}
+					{mumbleStatus?.mumbleAccountLinked === false && (
+						<UserProfileStatusBadge variant="destructive">
+							{t('hr.mumble.notLinked')}
+						</UserProfileStatusBadge>
+					)}
+				</>
 			}
 			sidebarStats={
 				<>
-					<UserProfileStatRow label="Characters" value={rows.length} />
-					<UserProfileStatsSeparator />
-					<UserProfileStatRow label="Applications" value={sortedApplications.length} />
+					<UserProfileStatRow label={t('hr.profile.characters')} value={rows.length} />
 					<UserProfileStatsSeparator />
 					<UserProfileStatRow
-						label="Accessible corps"
+						label={t('hr.profile.applications')}
+						value={sortedApplications.length}
+					/>
+					<UserProfileStatsSeparator />
+					<UserProfileStatRow
+						label={t('hr.profile.accessibleCorps')}
 						value={accessibleCorporations?.length ?? 0}
 					/>
 				</>
@@ -422,7 +470,7 @@ export default function HrUserProfilePage() {
 					<div className="flex items-start gap-3">
 						<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
 						<div className="space-y-1">
-							<p className="font-medium">Private ESI data is hidden for some characters</p>
+							<p className="font-medium">{t('hr.profile.privateEsiHidden')}</p>
 							<p className="text-sm text-amber-800 dark:text-amber-200">
 								{privateDataUnavailableMessage}
 							</p>
@@ -435,7 +483,7 @@ export default function HrUserProfilePage() {
 					<div className="flex items-start gap-3">
 						<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
 						<div className="space-y-1">
-							<p className="font-medium">Fulcrum reports are hidden for this user</p>
+							<p className="font-medium">{t('hr.fulcrum.hiddenTitle')}</p>
 							<p className="text-sm text-amber-800 dark:text-amber-200">
 								{fulcrumAccessDeniedMessage}
 							</p>
@@ -448,7 +496,7 @@ export default function HrUserProfilePage() {
 					<div className="flex items-start gap-3">
 						<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
 						<div className="space-y-1">
-							<p className="font-medium">Fulcrum data is temporarily unavailable</p>
+							<p className="font-medium">{t('hr.profile.fulcrumUnavailable')}</p>
 							<p className="text-sm text-sky-800 dark:text-sky-200">{fulcrumUnavailableMessage}</p>
 						</div>
 					</div>
@@ -482,7 +530,9 @@ export default function HrUserProfilePage() {
 				isScanAllVisible
 				isScanningAll={isScanningAll}
 				scanAllLabel={
-					isScanningAll ? 'Scanning All...' : `Scan All (${scanEligibleCharacters.length})`
+					isScanningAll
+						? t('hr.profile.scanningAll')
+						: t('hr.profile.scanAll', { count: scanEligibleCharacters.length })
 				}
 				scanAllDisabled={
 					isScanningAll ||
@@ -504,7 +554,7 @@ export default function HrUserProfilePage() {
 					state: {
 						source: 'hr-member-profile',
 						backTo: `/hr/users/${userId}`,
-						backLabel: 'Back to User Details',
+						backLabel: t('hr.profile.backToUserDetails'),
 					},
 				})}
 				onScan={(character) => {
@@ -531,6 +581,16 @@ export default function HrUserProfilePage() {
 				}
 			/>
 
+			{canViewNotes && (
+				<ProfileNotesSection
+					notes={notes}
+					loading={notesLoading}
+					canAddNote
+					onAddNote={() => setAddNoteDialogOpen(true)}
+					emptyText={t('hr.profile.noNotes')}
+				/>
+			)}
+
 			{canViewFulcrumReports && (
 				<>
 					<FulcrumBulkScanDialog
@@ -544,12 +604,29 @@ export default function HrUserProfilePage() {
 					<FulcrumSingleScanDialog
 						open={singleScanDialogCharacter !== null}
 						onOpenChange={(open) => !open && setSingleScanDialogCharacter(null)}
-						characterName={singleScanDialogCharacter?.characterName ?? 'Character'}
+						characterName={
+							singleScanDialogCharacter?.characterName ?? t('hr.profile.characterFallback')
+						}
 						sendDmForScanRequests={sendDmForScanRequests}
 						setSendDmForScanRequests={setSendDmForScanRequests}
 						onConfirm={handleConfirmSingleScan}
 					/>
 				</>
+			)}
+			{canViewNotes && userId && (
+				<AddHRNoteDialog
+					open={addNoteDialogOpen}
+					onOpenChange={setAddNoteDialogOpen}
+					subjectUserId={userId}
+					subjectCharacterId={rows[0]?.characterId}
+					subjectCharacterName={rows[0]?.characterName}
+					canSelectVisibility={user?.is_admin === true}
+					canSelectAdminVisibility={user?.is_admin === true}
+					initialVisibility="admin"
+					onSuccess={() => {
+						void queryClient.invalidateQueries({ queryKey: applicationKeys.hrNotes() })
+					}}
+				/>
 			)}
 		</UserProfilePageShell>
 	)

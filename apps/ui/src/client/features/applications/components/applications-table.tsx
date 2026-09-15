@@ -3,7 +3,6 @@
  * Status filtering is handled externally by the parent (tab bar).
  */
 
-import { formatDistanceToNow } from 'date-fns'
 import { MessageSquare } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
@@ -12,6 +11,7 @@ import { DataTable } from '@/components/data-table'
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { ApplicationStatusBadge } from './application-status-badge'

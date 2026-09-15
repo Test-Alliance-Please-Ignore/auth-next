@@ -5,10 +5,10 @@
  * Displays with colored dots matching status colors, timestamps, and actors.
  */
 
-import { formatDistanceToNow } from 'date-fns'
 import { CheckCircle, Clock, Eye, Minus, User, XCircle } from 'lucide-react'
 
 import { MemberAvatar } from '@/components/member-avatar'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import type { LucideIcon } from 'lucide-react'
@@ -189,18 +189,23 @@ export function ApplicationTimeline({
 									<p className="text-sm font-medium text-foreground">{config.label}</p>
 
 									{/* Alt character for alt_added / alt_removed */}
-									{(entry.action === 'alt_added' || entry.action === 'alt_removed') ? (() => {
-										const altId = entry.action === 'alt_added' ? entry.newValue : entry.previousValue
-										const altName = entry.metadata?.altCharacterName ? String(entry.metadata.altCharacterName) : undefined
-										if (!altId) return null
-										return (
-											<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-												<span>{entry.action === 'alt_added' ? 'Added' : 'Removed'}:</span>
-												<MemberAvatar characterId={altId} characterName={altName} size="sm" />
-												{altName && <span className="font-medium">{altName}</span>}
-											</div>
-										)
-									})() : null}
+									{entry.action === 'alt_added' || entry.action === 'alt_removed'
+										? (() => {
+												const altId =
+													entry.action === 'alt_added' ? entry.newValue : entry.previousValue
+												const altName = entry.metadata?.altCharacterName
+													? String(entry.metadata.altCharacterName)
+													: undefined
+												if (!altId) return null
+												return (
+													<div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+														<span>{entry.action === 'alt_added' ? 'Added' : 'Removed'}:</span>
+														<MemberAvatar characterId={altId} characterName={altName} size="sm" />
+														{altName && <span className="font-medium">{altName}</span>}
+													</div>
+												)
+											})()
+										: null}
 
 									{/* Status change metadata */}
 									{entry.newValue && entry.action.startsWith('status_changed_') ? (

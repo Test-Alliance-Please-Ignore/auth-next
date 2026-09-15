@@ -1756,6 +1756,9 @@ export default function UserDetailPage() {
 				onOpenChange={setAddNoteDialogOpen}
 				subjectUserId={user.id}
 				subjectCharacterName={primaryCharacter?.characterName}
+				canSelectVisibility={sessionUser?.is_admin === true}
+				canSelectAdminVisibility={sessionUser?.is_admin === true}
+				initialVisibility="admin"
 				onSuccess={() => {
 					setMessage({ type: 'success', text: 'Note added successfully' })
 					setTimeout(() => setMessage(null), 3000)

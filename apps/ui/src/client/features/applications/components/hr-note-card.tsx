@@ -7,13 +7,14 @@
  * SECURITY: This component must only be rendered for admin users.
  */
 
-import { formatDistanceToNow } from 'date-fns'
 import { Pencil, Trash2 } from 'lucide-react'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { useAppTranslation } from '@/i18n'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { HRNotePriorityBadge } from './hr-note-priority-badge'
@@ -50,12 +51,27 @@ export interface HRNoteCardProps {
  * <HRNoteCard note={note} />
  * ```
  */
-export function HRNoteCard({ note, showSubject = false, className, onEdit, onDelete }: HRNoteCardProps) {
-	const isLegacyFallbackActor = note.metadata?.legacyNoteActorResolution === 'unresolved_importer_fallback'
+export function HRNoteCard({
+	note,
+	showSubject = false,
+	className,
+	onEdit,
+	onDelete,
+}: HRNoteCardProps) {
+	const { t } = useAppTranslation()
+	const isLegacyFallbackActor =
+		note.metadata?.legacyNoteActorResolution === 'unresolved_importer_fallback'
 	const isLegacyImportedNote = note.metadata?.source === 'legacy_import'
 	const displayAuthorName = isLegacyFallbackActor ? 'Legacy User' : note.authorCharacterName
 	const displayAuthorCharacterId = isLegacyFallbackActor ? '1' : note.authorCharacterId
-	const visibility = note.metadata?.visibility === 'admin' ? 'admin' : 'hr'
+	const visibility =
+		note.metadata?.visibility === 'admin'
+			? 'admin'
+			: note.metadata?.visibility === 'auditor'
+				? 'auditor'
+				: note.metadata?.visibility === 'hr'
+					? 'hr'
+					: 'admin'
 
 	// Priority-based card styling
 	const getPriorityCardClasses = () => {
@@ -88,7 +104,11 @@ export function HRNoteCard({ note, showSubject = false, className, onEdit, onDel
 					<span className="font-medium text-sm">{displayAuthorName}</span>
 					<HRNoteTypeBadge noteType={note.noteType} size="sm" />
 					<Badge variant={visibility === 'admin' ? 'secondary' : 'default'}>
-						{visibility === 'admin' ? 'Admin-only' : 'HR note'}
+						{visibility === 'admin'
+							? t('hr.notes.badgeAdmin')
+							: visibility === 'auditor'
+								? t('hr.notes.badgeAuditor')
+								: t('hr.notes.badgeHr')}
 					</Badge>
 					{isLegacyImportedNote ? <Badge variant="secondary">Legacy</Badge> : null}
 					<HRNotePriorityBadge priority={note.priority} size="sm" />

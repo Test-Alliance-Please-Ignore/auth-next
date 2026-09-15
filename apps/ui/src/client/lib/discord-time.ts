@@ -1,5 +1,9 @@
-import { formatDistanceToNow } from 'date-fns'
-import { formatDateTimeFull, formatDateTimeLong, formatDateTimeWithSeconds } from './date-utils'
+import {
+	formatDateTimeFull,
+	formatDateTimeLong,
+	formatDateTimeWithSeconds,
+	formatRelativeTime as formatDistanceToNow,
+} from './date-utils'
 
 export function formatDateTimeLocal(date: string | null): string {
 	if (!date) return '-'

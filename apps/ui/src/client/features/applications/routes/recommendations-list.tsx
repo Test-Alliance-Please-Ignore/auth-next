@@ -5,7 +5,6 @@
  * and add recommendations. Dialog opens directly from the list.
  */
 
-import { formatDistanceToNow } from 'date-fns'
 import { MessageSquarePlus, Pencil, Trash2, Users } from 'lucide-react'
 import { useState } from 'react'
 
@@ -17,6 +16,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import { AccessDeniedCard } from '../components/access-denied-card'
 import { AddRecommendationDialog } from '../components/add-recommendation-dialog'

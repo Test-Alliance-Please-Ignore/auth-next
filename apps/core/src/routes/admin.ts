@@ -562,7 +562,7 @@ app.post('/legacy/import-notes', requireAuth(), requireAdmin(), async (c) => {
 					legacyCreatedByUserId: note.legacyCreatedByUserId ?? null,
 					legacyDateCreated: note.legacyDateCreated ?? null,
 					...(note.metadata ?? {}),
-					visibility: 'hr',
+					visibility: 'admin',
 				}
 			)
 			created += 1

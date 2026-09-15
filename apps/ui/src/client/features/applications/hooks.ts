@@ -112,6 +112,7 @@ export const hrUserKeys = {
 export interface HrUserCharacterData {
 	characterId: string
 	characterName: string
+	is_primary: boolean
 	hasValidToken: boolean
 	isDeleted: boolean
 	corporationId?: string | null
@@ -357,9 +358,22 @@ export function useHrUserCharacters(userId: string, options?: { enabled?: boolea
 }
 
 export function useHrUserBlocklistStatus(userId: string, options?: { enabled?: boolean }) {
-	return useQuery<{ isBlacklisted: boolean }>({
+	return useQuery<{ isBlacklisted: boolean; discordAccountLinked: boolean | null }>({
 		queryKey: hrUserKeys.blocklistStatus(userId),
 		queryFn: () => apiClient.get(`/hr/users/${userId}/blocklist-status`),
+		staleTime: 1000 * 30,
+		gcTime: 1000 * 60 * 3,
+		enabled: options?.enabled ?? !!userId,
+		meta: {
+			suppressErrorToast: true,
+		},
+	})
+}
+
+export function useHrUserMumbleStatus(userId: string, options?: { enabled?: boolean }) {
+	return useQuery<{ mumbleAccountLinked: boolean | null }>({
+		queryKey: [...hrUserKeys.all, userId, 'mumble-status'] as const,
+		queryFn: () => apiClient.get(`/hr/users/${userId}/mumble-status`),
 		staleTime: 1000 * 30,
 		gcTime: 1000 * 60 * 3,
 		enabled: options?.enabled ?? !!userId,
@@ -860,11 +874,11 @@ export function useDeleteApplicationStaffNote() {
 // ============================================================================
 // Manager Hook for Cache Invalidation
 // ============================================================================
-// HR Notes Query Hooks (ADMIN ONLY)
+// HR Notes Query Hooks
 // ============================================================================
 
 /**
- * Hook to fetch HR notes with optional filters (ADMIN ONLY)
+ * Hook to fetch HR notes with optional filters
  * @param params - Query parameters for filtering HR notes
  */
 export function useHRNotes(params?: HRNotesParams, options?: { enabled?: boolean }) {
@@ -894,11 +908,11 @@ export function useHRNote(noteId: string | null) {
 }
 
 // ============================================================================
-// HR Notes Mutation Hooks (ADMIN ONLY)
+// HR Notes Mutation Hooks
 // ============================================================================
 
 /**
- * Hook to add a new HR note (ADMIN ONLY)
+ * Hook to add a new HR note
  * Invalidates HR notes lists on success
  */
 export function useAddHRNote() {

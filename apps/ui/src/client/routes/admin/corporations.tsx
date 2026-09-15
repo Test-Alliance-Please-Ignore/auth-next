@@ -1,4 +1,3 @@
-import { formatDistanceToNow } from 'date-fns'
 import {
 	Building2,
 	Plus,
@@ -47,6 +46,7 @@ import {
 } from '@/hooks/useCorporations'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import type { CorporationsFilters, CreateCorporationRequest } from '@/lib/api'
 

@@ -22,6 +22,7 @@ When working with Cloudflare Workers in this repository, follow these principles
 - **TypeScript by default** - Generate code in TypeScript unless JavaScript is specifically requested
 - **ES modules format exclusively** - NEVER use Service Worker format
 - **Import everything** - You MUST import all methods, classes and types used in the code
+- **Frontend translations** - User-facing static frontend copy MUST use the appropriate module i18n catalog and translation hook when a catalog exists or the copy is likely to be reused, localized, or visible to users. Add the corresponding entries for every supported locale; do not introduce new hardcoded UI labels, messages, errors, or descriptions without a clear exception.
 - **Use shared date parsing utility** - For server/workflow date coercion, use `parseDateOrNull` from `@repo/worker-utils` instead of ad-hoc `new Date(...)` + `Number.isNaN(...)` checks or one-off wrappers like `toDate`/`toDateOrNull`
 - **Use official SDKs** - If there is an official SDK or library for a service, use it to simplify implementation
 - **Minimize external dependencies** - Avoid libraries with FFI/native/C bindings
