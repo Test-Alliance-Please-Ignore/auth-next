@@ -466,6 +466,8 @@ export function useWithdrawApplication() {
 				queryKey: applicationKeys.detail(applicationId),
 			})
 
+			void queryClient.invalidateQueries({ queryKey: [...applicationKeys.all, 'mine'] })
+
 			// Invalidate all application lists
 			void queryClient.invalidateQueries({
 				queryKey: applicationKeys.lists(),
@@ -574,6 +576,7 @@ export function useAddApplicationAlt() {
 		onSettled: (_, __, { applicationId }) => {
 			void queryClient.invalidateQueries({ queryKey: applicationKeys.detail(applicationId) })
 			void queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: [...applicationKeys.all, 'mine'] })
 			void queryClient.invalidateQueries({ queryKey: applicationKeys.activity(applicationId) })
 		},
 	})
@@ -630,6 +633,7 @@ export function useRemoveApplicationAlt() {
 		onSettled: (_, __, { applicationId }) => {
 			void queryClient.invalidateQueries({ queryKey: applicationKeys.detail(applicationId) })
 			void queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
+			void queryClient.invalidateQueries({ queryKey: [...applicationKeys.all, 'mine'] })
 			void queryClient.invalidateQueries({ queryKey: applicationKeys.activity(applicationId) })
 		},
 	})

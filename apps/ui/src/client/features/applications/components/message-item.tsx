@@ -6,7 +6,8 @@
  */
 
 import { MemberAvatar } from '@/components/member-avatar'
-import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
+import { useAppTranslation } from '@/i18n'
+import { formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import type { ApplicationMessage } from '../api'
@@ -35,8 +36,11 @@ export interface MessageItemProps {
  * - Whitespace-preserving message text
  */
 export function MessageItem({ message, currentUserId, className }: MessageItemProps) {
+	const { t } = useAppTranslation()
 	const isMine = message.senderId === currentUserId
-	const senderName = isMine ? 'You' : message.senderCharacterName || 'Unknown'
+	const senderName = isMine
+		? t('applications.messages.you')
+		: message.senderCharacterName || t('applications.detail.unknown')
 
 	return (
 		<div className={cn('flex gap-3', isMine ? 'flex-row-reverse' : 'flex-row', className)}>
@@ -49,7 +53,7 @@ export function MessageItem({ message, currentUserId, className }: MessageItemPr
 				<div className={cn('flex items-center gap-2', isMine ? 'flex-row-reverse' : 'flex-row')}>
 					<span className="font-medium text-sm text-foreground">{senderName}</span>
 					<span className="text-xs text-muted-foreground">
-						{formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}
+						{formatRelativeTime(message.createdAt)}
 					</span>
 				</div>
 				<div

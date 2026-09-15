@@ -4,6 +4,7 @@ export const commonCatalog = defineCatalog(
 	{
 		common: {
 			loading: 'Loading…',
+			confirmationCountdown: '{{label}} ({{count, number}}s)',
 			loadDataError: 'Something went wrong while loading data.',
 			processing: 'Processing…',
 			close: 'Close',
@@ -124,6 +125,7 @@ export const commonCatalog = defineCatalog(
 	{
 		common: {
 			loading: 'Wird geladen…',
+			confirmationCountdown: '{{label}} ({{count, number}} s)',
 			loadDataError: 'Beim Laden der Daten ist ein Fehler aufgetreten.',
 			processing: 'Wird verarbeitet…',
 			close: 'Schließen',
@@ -244,6 +246,7 @@ export const commonCatalog = defineCatalog(
 	{
 		common: {
 			loading: '불러오는 중…',
+			confirmationCountdown: '{{label}} ({{count, number}}초)',
 			loadDataError: '데이터를 불러오는 중 문제가 발생했습니다.',
 			processing: '처리하는 중…',
 			close: '닫기',
