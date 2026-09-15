@@ -1,5 +1,6 @@
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { useAppTranslation } from '@/i18n'
 
 interface SystemFrogsirenFieldProps {
 	fieldName: string
@@ -26,6 +27,7 @@ export function SystemFrogsirenField({
 	onDisable,
 	onConfirmEnable,
 }: SystemFrogsirenFieldProps) {
+	const { t } = useAppTranslation()
 	return (
 		<div className="max-w-xl">
 			<div
@@ -38,7 +40,7 @@ export function SystemFrogsirenField({
 				}}
 			>
 				<Label htmlFor={fieldName} className="text-2xl font-black cursor-pointer">
-					Sound the Frogsiren
+					{t('broadcasts.composer.frogsiren')}
 				</Label>
 				<Switch
 					id={fieldName}

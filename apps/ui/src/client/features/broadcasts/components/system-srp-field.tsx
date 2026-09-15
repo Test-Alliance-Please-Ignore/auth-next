@@ -3,6 +3,7 @@ import { parseBroadcastSrpMode } from '@repo/broadcasts'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { generateSrpTokenAtFormLoad } from '@/features/broadcasts/srp-token-generator'
+import { useAppTranslation } from '@/i18n'
 
 import type { BroadcastSrpMode } from '@repo/broadcasts'
 
@@ -14,9 +15,10 @@ interface SystemSrpFieldProps {
 }
 
 export function SystemSrpField({ fieldName, value, token, onChange }: SystemSrpFieldProps) {
+	const { t } = useAppTranslation()
 	return (
 		<div className="w-full space-y-2">
-			<Label htmlFor={fieldName}>SRP Type</Label>
+			<Label htmlFor={fieldName}>{t('broadcasts.composer.srp')}</Label>
 			<Select
 				inputId={fieldName}
 				value={parseBroadcastSrpMode(value)}
@@ -32,10 +34,10 @@ export function SystemSrpField({ fieldName, value, token, onChange }: SystemSrpF
 					})
 				}}
 				options={[
-					{ value: 'blanket', label: 'Blanket SRP' },
-					{ value: 'military', label: 'Military SRP' },
-					{ value: 'coalition', label: 'Coalition SRP' },
-					{ value: 'disabled', label: 'No SRP' },
+					{ value: 'blanket', label: t('broadcasts.composer.srpBlanket') },
+					{ value: 'military', label: t('broadcasts.composer.srpMilitary') },
+					{ value: 'coalition', label: t('broadcasts.composer.srpCoalition') },
+					{ value: 'disabled', label: t('broadcasts.composer.srpDisabled') },
 				]}
 			/>
 		</div>

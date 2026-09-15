@@ -1,6 +1,7 @@
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 
 export const FLEET_COMMANDER_CUSTOM_VALUE = '__custom__'
 
@@ -33,10 +34,11 @@ export function SystemFleetCommanderField({
 	characters,
 	onChange,
 }: SystemFleetCommanderFieldProps) {
+	const { t } = useAppTranslation()
 	const options = [
 		{
 			value: FLEET_COMMANDER_CUSTOM_VALUE,
-			label: 'Custom',
+			label: t('broadcasts.composer.custom'),
 		},
 		...characters.map((character) => ({
 			value: character.characterId,
@@ -74,7 +76,7 @@ export function SystemFleetCommanderField({
 					})
 				}}
 				options={options}
-				placeholder="Select fleet commander"
+				placeholder={t('broadcasts.composer.commanderPlaceholder')}
 				searchable
 			/>
 			{selection === FLEET_COMMANDER_CUSTOM_VALUE && (
@@ -88,7 +90,8 @@ export function SystemFleetCommanderField({
 							trackingCharacterName: '',
 						})
 					}
-					placeholder="Custom fleet commander text"
+					aria-label={t('broadcasts.composer.customField', { field: fieldLabel })}
+					placeholder={t('broadcasts.composer.commanderCustom')}
 					required={required}
 				/>
 			)}

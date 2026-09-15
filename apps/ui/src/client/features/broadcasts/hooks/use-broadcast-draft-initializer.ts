@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 
+import type { MessageText } from '@/hooks/useMessage'
 import type { BroadcastWithDetails } from '@/lib/api'
 
 interface UseBroadcastDraftInitializerArgs {
@@ -7,7 +8,7 @@ interface UseBroadcastDraftInitializerArgs {
 	draftBroadcast: BroadcastWithDetails | null | undefined
 	isDraftInitialized: boolean
 	setIsDraftInitialized: (value: boolean) => void
-	setMessage: (value: { type: 'success' | 'error'; text: string } | null) => void
+	setMessage: (value: { type: 'success' | 'error'; text: MessageText } | null) => void
 	setSelectedTargetId: (value: string) => void
 	setSelectedTemplateId: (value: string) => void
 	setMentionLevel: (value: 'none' | 'here' | 'everyone') => void
@@ -35,7 +36,7 @@ export function useBroadcastDraftInitializer({
 		if (!isEditMode || !draftBroadcast || isDraftInitialized) return
 
 		if (draftBroadcast.status !== 'draft') {
-			setMessage({ type: 'error', text: 'Only draft broadcasts can be edited.' })
+			setMessage({ type: 'error', text: (t) => t('broadcasts.composer.onlyDraft') })
 			setIsDraftInitialized(true)
 			return
 		}

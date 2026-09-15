@@ -1,5 +1,6 @@
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { useAppTranslation } from '@/i18n'
 
 interface SystemFleetTrackingFieldProps {
 	enabled: boolean
@@ -32,6 +33,7 @@ export function SystemFleetTrackingField({
 	disabled = false,
 	disabledReason,
 }: SystemFleetTrackingFieldProps) {
+	const { t } = useAppTranslation()
 	const switchId = 'fleet-tracking-toggle'
 
 	return (
@@ -41,9 +43,7 @@ export function SystemFleetTrackingField({
 					disabled
 						? 'border-border/60 bg-muted/40 cursor-not-allowed opacity-75'
 						: 'border-border/60 cursor-pointer'
-				} ${
-					enabled ? 'bg-slate-500/15' : 'bg-transparent'
-				}`}
+				} ${enabled ? 'bg-slate-500/15' : 'bg-transparent'}`}
 				onClick={(event) => {
 					if (disabled) return
 					if (isSwitchControlClick(event.target)) return
@@ -54,19 +54,19 @@ export function SystemFleetTrackingField({
 					htmlFor={switchId}
 					className={`font-medium ${disabled ? 'cursor-not-allowed text-muted-foreground italic' : 'cursor-pointer'}`}
 				>
-					Start fleet tracking when broadcast is sent
+					{t('broadcasts.composer.tracking')}
 				</Label>
 				<Switch
 					id={switchId}
 					checked={enabled}
-				disabled={disabled}
-				onClick={(event) => event.stopPropagation()}
-				onCheckedChange={onEnabledChange}
+					disabled={disabled}
+					onClick={(event) => event.stopPropagation()}
+					onCheckedChange={onEnabledChange}
 				/>
 			</div>
 			{disabledReason ? (
 				<p className="text-xs text-muted-foreground italic">{disabledReason}</p>
 			) : null}
-	</div>
+		</div>
 	)
 }

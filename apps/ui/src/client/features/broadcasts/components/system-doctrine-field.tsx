@@ -1,6 +1,9 @@
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
+
+import type { AppTranslator } from '@/i18n'
 
 interface Option {
 	value: string
@@ -15,10 +18,13 @@ export interface DoctrineFieldState {
 	value: string
 }
 
-export function buildDoctrineOptions(doctrines: Array<{ name: string }>): Option[] {
+export function buildDoctrineOptions(
+	doctrines: Array<{ name: string }>,
+	t: AppTranslator
+): Option[] {
 	return [
-		{ value: DOCTRINE_READ_MOTD_VALUE, label: 'Read MOTD' },
-		{ value: DOCTRINE_CUSTOM_VALUE, label: 'Custom' },
+		{ value: DOCTRINE_READ_MOTD_VALUE, label: t('broadcasts.composer.readMotd') },
+		{ value: DOCTRINE_CUSTOM_VALUE, label: t('broadcasts.composer.custom') },
 		...doctrines.map((doctrine) => ({ value: doctrine.name, label: doctrine.name })),
 	]
 }
@@ -66,7 +72,8 @@ export function SystemDoctrineField({
 	doctrines,
 	onChange,
 }: SystemDoctrineFieldProps) {
-	const options = buildDoctrineOptions(doctrines)
+	const { t } = useAppTranslation()
+	const options = buildDoctrineOptions(doctrines, t)
 
 	return (
 		<div className="w-full space-y-2">
@@ -108,7 +115,8 @@ export function SystemDoctrineField({
 						})
 					}
 					required={required}
-					placeholder="Enter doctrine"
+					aria-label={t('broadcasts.composer.customField', { field: fieldLabel })}
+					placeholder={t('broadcasts.composer.doctrinePlaceholder')}
 				/>
 			) : null}
 		</div>

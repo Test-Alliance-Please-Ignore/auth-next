@@ -2,10 +2,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
-import {
-	SystemDoctrineField,
-} from '@/features/broadcasts/components/system-doctrine-field'
+import { SystemDoctrineField } from '@/features/broadcasts/components/system-doctrine-field'
 import {
 	FLEET_COMMANDER_CUSTOM_VALUE,
 	SystemFleetCommanderField,
@@ -13,14 +10,14 @@ import {
 import { SystemFleetTrackingField } from '@/features/broadcasts/components/system-fleet-tracking-field'
 import { SystemFrogsirenField } from '@/features/broadcasts/components/system-frogsiren-field'
 import { SystemSrpField } from '@/features/broadcasts/components/system-srp-field'
-import {
-	SystemStagingField,
-} from '@/features/broadcasts/components/system-staging-field'
+import { SystemStagingField } from '@/features/broadcasts/components/system-staging-field'
 import {
 	autoResizeTextarea,
 	parseBooleanField,
 	resolveFleetCommanderSelectionFromFields,
 } from '@/features/broadcasts/utils'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
+import { useAppTranslation } from '@/i18n'
 
 type TemplateField = {
 	name: string
@@ -75,6 +72,7 @@ export function TemplateFieldsEditor({
 	onUpdateTemplateField,
 	onUpdateTemplateFieldSelection,
 }: TemplateFieldsEditorProps) {
+	const { t } = useAppTranslation()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
 	const nonSystemFields = fields.filter((field) => {
@@ -102,7 +100,7 @@ export function TemplateFieldsEditor({
 	return (
 		<div className="space-y-4">
 			<div className="max-w-xl space-y-2">
-				<Label htmlFor="template-prefix-text">Text before (optional)</Label>
+				<Label htmlFor="template-prefix-text">{t('broadcasts.composer.before')}</Label>
 				<Textarea
 					id="template-prefix-text"
 					value={messageParts.prefix}
@@ -112,13 +110,13 @@ export function TemplateFieldsEditor({
 					}}
 					onBlur={(e) => autoResizeTextarea(e.currentTarget, { forceShrink: true })}
 					rows={1}
-					placeholder="Optional text prepended before the template message"
+					placeholder={t('broadcasts.composer.beforePlaceholder')}
 					className="resize-none overflow-hidden"
 					style={{ minHeight: '2.5rem' }}
 				/>
 			</div>
 
-			<Label className="text-sm font-medium">Template Fields</Label>
+			<Label className="text-sm font-medium">{t('broadcasts.composer.fields')}</Label>
 			<div className="grid gap-4 md:grid-cols-2">
 				{nonSystemFields.map((field) => (
 					<div key={field.name} className="space-y-2 min-w-0">
@@ -172,12 +170,7 @@ export function TemplateFieldsEditor({
 										characterId: character.characterId,
 										characterName: character.characterName,
 									}))}
-								onChange={({
-									selection,
-									value,
-									trackingCharacterId,
-									trackingCharacterName,
-								}) => {
+								onChange={({ selection, value, trackingCharacterId, trackingCharacterName }) => {
 									onUpdateTemplateFieldSelection(field.name, selection)
 									onUpdateTemplateField(field.name, value)
 									onUpdateTemplateField('__fleetTrackingCharacterId', trackingCharacterId)
@@ -197,7 +190,9 @@ export function TemplateFieldsEditor({
 									<div className="w-full">
 										<Select
 											inputId={field.name}
-											value={templateFieldSelections[field.name] ?? templateFields[field.name] ?? ''}
+											value={
+												templateFieldSelections[field.name] ?? templateFields[field.name] ?? ''
+											}
 											onValueChange={(value) => {
 												onUpdateTemplateFieldSelection(field.name, value)
 												onUpdateTemplateField(field.name, value)
@@ -238,7 +233,7 @@ export function TemplateFieldsEditor({
 			</div>
 
 			<div className="max-w-xl space-y-2">
-				<Label htmlFor="template-default-text">Text after (optional)</Label>
+				<Label htmlFor="template-default-text">{t('broadcasts.composer.after')}</Label>
 				<Textarea
 					id="template-default-text"
 					value={messageParts.suffix}
@@ -248,7 +243,7 @@ export function TemplateFieldsEditor({
 					}}
 					onBlur={(e) => autoResizeTextarea(e.currentTarget, { forceShrink: true })}
 					rows={1}
-					placeholder="Optional text appended after the template message"
+					placeholder={t('broadcasts.composer.afterPlaceholder')}
 					className="resize-none overflow-hidden"
 					style={{ minHeight: '2.5rem' }}
 				/>
@@ -259,9 +254,7 @@ export function TemplateFieldsEditor({
 					enabled={parseBooleanField(templateFields.__fleetTrackingEnabled, false)}
 					disabled={fleetTrackingDisabled}
 					disabledReason={
-						fleetTrackingDisabled
-							? 'Select a valid Fleet Commander character to enable fleet tracking.'
-							: undefined
+						fleetTrackingDisabled ? t('broadcasts.composer.trackingDisabled') : undefined
 					}
 					onEnabledChange={(next) => {
 						if (fleetTrackingDisabled && next) return
@@ -280,10 +273,9 @@ export function TemplateFieldsEditor({
 						onDisable={() => onUpdateTemplateField(field.name, 'false')}
 						onConfirmEnable={() => {
 							requestConfirmation({
-								title: 'Sound the Frogsiren?',
-								description:
-									'Are you really fucking sure you want to sound the frogsiren? Is the happening status: its? Is it UALX all over again?',
-								confirmLabel: 'Sound It',
+								title: (t) => t('broadcasts.composer.frogsirenTitle'),
+								description: (t) => t('broadcasts.composer.frogsirenDescription'),
+								confirmLabel: (t) => t('broadcasts.composer.frogsirenConfirm'),
 								intent: 'destructive',
 								confirmButtonVariant: 'danger',
 								confirmDelaySeconds: 3,
