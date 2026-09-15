@@ -2,15 +2,17 @@ import { useMemo } from 'react'
 
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 
 import type { EntitySearchType } from '@repo/bills'
 import type { SelectOption } from '@/components/ui/select'
+import type { AppTranslationKey } from '@/i18n'
 
-const ENTITY_TYPE_LABELS: Record<EntitySearchType, string> = {
-	character: 'Character',
-	corporation: 'Corporation',
-	group: 'Group',
-	user: 'User',
+const ENTITY_TYPE_LABELS: Record<EntitySearchType, AppTranslationKey> = {
+	character: 'bills.entity.character',
+	corporation: 'bills.entity.corporation',
+	group: 'bills.entity.group',
+	user: 'bills.picker.user',
 }
 
 type BillEntityPickerProps = {
@@ -33,9 +35,13 @@ type BillEntityPickerProps = {
 }
 
 export function BillEntityPicker(props: BillEntityPickerProps) {
+	const { t, locale } = useAppTranslation()
 	const placeholderTypeLabel = useMemo(
-		() => ENTITY_TYPE_LABELS[props.entityType] ?? props.entityType,
-		[props.entityType]
+		() =>
+			ENTITY_TYPE_LABELS[props.entityType]
+				? t(ENTITY_TYPE_LABELS[props.entityType])
+				: props.entityType,
+		[props.entityType, t]
 	)
 	const isStaticSelection = props.staticOptions !== undefined
 
@@ -43,7 +49,8 @@ export function BillEntityPicker(props: BillEntityPickerProps) {
 		<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 			<div className="space-y-2">
 				<Label htmlFor={props.typeFieldId}>
-					{props.roleLabel} Type <span className="text-destructive">*</span>
+					{t('bills.picker.type', { role: props.roleLabel })}{' '}
+					<span className="text-destructive">*</span>
 				</Label>
 				<Select
 					value={props.entityType}
@@ -51,7 +58,7 @@ export function BillEntityPicker(props: BillEntityPickerProps) {
 					inputId={props.typeFieldId}
 					options={props.allowedEntityTypes.map((entityType) => ({
 						value: entityType,
-						label: ENTITY_TYPE_LABELS[entityType],
+						label: t(ENTITY_TYPE_LABELS[entityType]),
 					}))}
 				/>
 			</div>
@@ -76,23 +83,34 @@ export function BillEntityPicker(props: BillEntityPickerProps) {
 					loading={isStaticSelection ? false : props.loading}
 					placeholder={
 						isStaticSelection
-							? `Select ${placeholderTypeLabel.toLowerCase()}`
-							: `Search ${placeholderTypeLabel.toLowerCase()} name or ID`
+							? t('bills.picker.select', {
+									type: locale === 'en' ? placeholderTypeLabel.toLowerCase() : placeholderTypeLabel,
+								})
+							: t('bills.picker.search', {
+									type: locale === 'en' ? placeholderTypeLabel.toLowerCase() : placeholderTypeLabel,
+								})
 					}
-					queryHintText={isStaticSelection ? undefined : 'Type at least 2 characters to search'}
+					queryHintText={isStaticSelection ? undefined : t('bills.picker.hint')}
 					minQueryLength={2}
 					debounceMs={0}
-					emptyText={props.emptyText ?? `No ${props.roleLabel.toLowerCase()} matches`}
+					emptyText={
+						props.emptyText ??
+						t('bills.picker.empty', {
+							role: locale === 'en' ? props.roleLabel.toLowerCase() : props.roleLabel,
+						})
+					}
 					className={props.error ? 'border-destructive rounded-md' : ''}
 				/>
 				{props.error && <p className="text-sm text-destructive">{props.error}</p>}
 				{props.selectedEntityId && (
 					<p className="text-sm text-muted-foreground">
-						Selected {props.roleLabel}:{' '}
+						{t('bills.picker.selected', { role: props.roleLabel })}{' '}
 						{props.selectedEntityName ? (
 							<>
 								<span className="text-foreground">{props.selectedEntityName}</span>{' '}
-								<span className="text-muted-foreground/70">(ID: {props.selectedEntityId})</span>
+								<span className="text-muted-foreground/70">
+									{t('bills.picker.id', { id: props.selectedEntityId })}
+								</span>
 							</>
 						) : (
 							props.selectedEntityId

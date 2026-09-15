@@ -1,7 +1,9 @@
 import { ArrowLeft, Users } from 'lucide-react'
+import { Trans } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { BillActionsMenu } from '@/components/bills/bill-actions-menu'
+import { BillFeedback } from '@/components/bills/bill-feedback'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -25,7 +27,13 @@ import {
 	useRevertGroupBillToDraft,
 } from '@/hooks/useBills'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { formatISK } from '@/lib/bills-utils'
+import {
+	formatNumber,
+	formatDate as localizedDate,
+	formatDateTime as localizedDateTime,
+	useAppTranslation,
+} from '@/i18n'
+import { formatBillStatus, formatISK } from '@/lib/bills-utils'
 import toast from '@/lib/toast'
 
 import type { GroupBillAccessScope } from '@/lib/bills-api'
@@ -52,7 +60,7 @@ function formatAmount(amount: string) {
 }
 
 function formatDate(date: Date) {
-	return new Date(date).toLocaleDateString('en-US', {
+	return localizedDate(date, {
 		year: 'numeric',
 		month: 'long',
 		day: 'numeric',
@@ -60,7 +68,7 @@ function formatDate(date: Date) {
 }
 
 function formatDateTime(date: Date) {
-	return new Date(date).toLocaleString('en-US', {
+	return localizedDateTime(date, {
 		year: 'numeric',
 		month: 'short',
 		day: 'numeric',
@@ -74,6 +82,7 @@ export default function AdminBillsGroupDetailPage({
 }: {
 	scope?: GroupBillAccessScope
 }) {
+	const { t } = useAppTranslation()
 	const { groupBillId } = useParams<{ groupBillId: string }>()
 	const navigate = useNavigate()
 	const { data: groupAggregate, isLoading } = useGroupBillAggregate(groupBillId, scope)
@@ -89,19 +98,23 @@ export default function AdminBillsGroupDetailPage({
 	const groupHref = `${basePath}/group/${groupBillId}`
 	const groupEditHref = `${groupHref}/edit`
 
-	usePageTitle(groupAggregate ? `Bill Group - ${groupAggregate.title}` : 'Bill Group Details')
+	usePageTitle(
+		groupAggregate
+			? t('bills.group.pageTitle', { title: groupAggregate.title })
+			: t('bills.group.details')
+	)
 
 	if (isLoading) {
 		return (
 			<div className="space-y-6">
-				<div className="flex items-center justify-between">
+				<div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
 					<div>
-						<h1 className="text-3xl font-bold gradient-text">Loading Group Bill...</h1>
+						<h1 className="text-3xl font-bold gradient-text">{t('bills.group.loading')}</h1>
 					</div>
 					<Button variant="ghost" asChild>
 						<Link to={basePath}>
 							<ArrowLeft className="h-4 w-4" />
-							Back to Bills
+							{t('bills.back')}
 						</Link>
 					</Button>
 				</div>
@@ -112,18 +125,15 @@ export default function AdminBillsGroupDetailPage({
 	if (!groupBillId || !groupAggregate) {
 		return (
 			<div className="space-y-6">
-				<div className="flex items-center justify-between">
+				<div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
 					<div>
-						<h1 className="text-3xl font-bold gradient-text">Group Bill Not Found</h1>
-						<p className="text-muted-foreground mt-2">
-							The group bill you're looking for doesn't exist or you don't have permission to view
-							it.
-						</p>
+						<h1 className="text-3xl font-bold gradient-text">{t('bills.group.notFound')}</h1>
+						<p className="text-muted-foreground mt-2">{t('bills.group.unavailable')}</p>
 					</div>
 					<Button variant="ghost" asChild>
 						<Link to={basePath}>
 							<ArrowLeft className="h-4 w-4" />
-							Back to Bills
+							{t('bills.back')}
 						</Link>
 					</Button>
 				</div>
@@ -149,39 +159,45 @@ export default function AdminBillsGroupDetailPage({
 		try {
 			await operation()
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Failed to update group bill')
+			toast.error(
+				error instanceof Error ? (
+					error.message
+				) : (
+					<BillFeedback messageKey="bills.group.updateFailed" />
+				)
+			)
 		}
 	}
 	const groupActions = [
 		{
-			label: 'Edit',
+			label: t('bills.actions.edit'),
 			intent: 'secondary' as const,
 			href: groupEditHref,
 			hidden: !hasEditableBills,
 		},
 		{
-			label: 'Issue',
+			label: t('bills.actions.issue'),
 			intent: 'confirm' as const,
 			hidden: draftCount === 0,
 			loading: issueGroupBill.isPending,
 			onClick: () => void runGroupAction(() => issueGroupBill.mutateAsync(groupBillId)),
 		},
 		{
-			label: 'To Draft',
+			label: t('bills.actions.draft'),
 			intent: 'secondary' as const,
 			hidden: revertibleCount === 0,
 			loading: revertGroupBill.isPending,
 			onClick: () => void runGroupAction(() => revertGroupBill.mutateAsync(groupBillId)),
 		},
 		{
-			label: 'Cancel',
+			label: t('bills.actions.cancel'),
 			intent: 'muted' as const,
 			hidden: cancellableCount === 0,
 			loading: cancelGroupBill.isPending,
 			onClick: () => void runGroupAction(() => cancelGroupBill.mutateAsync(groupBillId)),
 		},
 		{
-			label: 'Delete',
+			label: t('bills.actions.delete'),
 			intent: 'destructive' as const,
 			hidden: draftCount === 0,
 			loading: deleteGroupBill.isPending,
@@ -191,18 +207,20 @@ export default function AdminBillsGroupDetailPage({
 
 	return (
 		<div className="space-y-6">
-			<div className="flex items-center justify-between">
+			<div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
 				<div>
 					<h1 className="text-3xl font-bold gradient-text">{groupAggregate.title}</h1>
 					<p className="text-muted-foreground mt-2">
-						Group Bill · {groupAggregate.groupName ?? groupAggregate.groupId}
+						{t('bills.group.subtitle', {
+							group: groupAggregate.groupName ?? groupAggregate.groupId,
+						})}
 					</p>
 				</div>
 				<div className="flex gap-2">
 					<Button variant="ghost" asChild>
 						<Link to={basePath}>
 							<ArrowLeft className="h-4 w-4" />
-							Back to Bills
+							{t('bills.back')}
 						</Link>
 					</Button>
 					<BillActionsMenu items={groupActions} />
@@ -212,41 +230,51 @@ export default function AdminBillsGroupDetailPage({
 			<div className="flex items-center gap-2">
 				<span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-3 py-1 text-sm font-medium text-blue-500">
 					<Users className="h-3.5 w-3.5" />
-					Group Bill
+					{t('bills.group.title')}
 				</span>
 				<span className="text-sm text-muted-foreground">
-					Issued by {groupAggregate.issuerName ?? groupAggregate.issuerId}
+					{t('bills.group.issuer', {
+						issuer: groupAggregate.issuerName ?? groupAggregate.issuerId,
+					})}
 				</span>
 			</div>
 
 			<Card>
 				<CardHeader>
-					<CardTitle>Bill Details</CardTitle>
-					<CardDescription>Shared details for all members of this group bill</CardDescription>
+					<CardTitle>{t('bills.details')}</CardTitle>
+					<CardDescription>{t('bills.group.description')}</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 						<div>
 							<h3 className="text-sm font-medium text-muted-foreground mb-1">
-								Amount (per member)
+								{t('bills.group.amount')}
 							</h3>
 							<p className="text-2xl font-bold">{formatAmount(groupAggregate.amount)}</p>
 						</div>
 						<div>
-							<h3 className="text-sm font-medium text-muted-foreground mb-1">Due Date</h3>
+							<h3 className="text-sm font-medium text-muted-foreground mb-1">
+								{t('bills.columns.dueDate')}
+							</h3>
 							<p className="text-lg">{formatDate(groupAggregate.dueDate)}</p>
 						</div>
 						<div>
-							<h3 className="text-sm font-medium text-muted-foreground mb-1">Group</h3>
+							<h3 className="text-sm font-medium text-muted-foreground mb-1">
+								{t('bills.entity.group')}
+							</h3>
 							<p className="text-lg">{groupAggregate.groupName ?? groupAggregate.groupId}</p>
 						</div>
 						<div>
-							<h3 className="text-sm font-medium text-muted-foreground mb-1">Created</h3>
+							<h3 className="text-sm font-medium text-muted-foreground mb-1">
+								{t('bills.columns.created')}
+							</h3>
 							<p className="text-lg">{formatDate(groupAggregate.createdAt)}</p>
 						</div>
 						{groupAggregate.description && (
 							<div className="md:col-span-2">
-								<h3 className="text-sm font-medium text-muted-foreground mb-1">Description</h3>
+								<h3 className="text-sm font-medium text-muted-foreground mb-1">
+									{t('bills.columns.description')}
+								</h3>
 								<p className="text-lg">{groupAggregate.description}</p>
 							</div>
 						)}
@@ -256,18 +284,28 @@ export default function AdminBillsGroupDetailPage({
 
 			<Card>
 				<CardHeader>
-					<CardTitle>Group Payment Progress</CardTitle>
+					<CardTitle>{t('bills.group.progressTitle')}</CardTitle>
 					<CardDescription>
-						<span className="font-semibold text-foreground">{groupAggregate.paidBills}</span> of{' '}
-						<span className="font-semibold text-foreground">{groupAggregate.totalBills}</span>{' '}
-						members paid
+						<Trans
+							i18nKey="bills.group.paid"
+							values={{
+								paid: formatNumber(groupAggregate.paidBills),
+								total: formatNumber(groupAggregate.totalBills),
+							}}
+							components={{
+								paid: <span className="font-semibold text-foreground" />,
+								total: <span className="font-semibold text-foreground" />,
+							}}
+						/>
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="space-y-2">
 						<div className="flex justify-between text-sm">
-							<span className="text-muted-foreground">Overall Progress</span>
-							<span className="font-medium">{groupProgress}%</span>
+							<span className="text-muted-foreground">{t('bills.group.progress')}</span>
+							<span className="font-medium">
+								{formatNumber(groupProgress / 100, { style: 'percent' })}
+							</span>
 						</div>
 						<Progress value={groupProgress} className="h-2 bg-warning/70" />
 					</div>
@@ -275,13 +313,13 @@ export default function AdminBillsGroupDetailPage({
 					<Table className="whitespace-nowrap">
 						<TableHeader>
 							<TableRow>
-								<TableHead>Member</TableHead>
-								<TableHead>Status</TableHead>
-								<TableHead>Amount Due</TableHead>
-								<TableHead>Amount Paid</TableHead>
-								<TableHead>Paid At</TableHead>
+								<TableHead>{t('bills.group.member')}</TableHead>
+								<TableHead>{t('bills.columns.status')}</TableHead>
+								<TableHead>{t('bills.group.amountDue')}</TableHead>
+								<TableHead>{t('bills.group.amountPaid')}</TableHead>
+								<TableHead>{t('bills.columns.paidAt')}</TableHead>
 								<TableHead className={`${stickyTableActionHeaderClassName} text-right`}>
-									Actions
+									{t('bills.columns.actions')}
 								</TableHead>
 							</TableRow>
 						</TableHeader>
@@ -325,7 +363,7 @@ export default function AdminBillsGroupDetailPage({
 											<span
 												className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getStatusBadgeClass(entry.status)}`}
 											>
-												{entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
+												{formatBillStatus(entry.status)}
 											</span>
 										</Link>
 									</TableCell>
@@ -356,9 +394,13 @@ export default function AdminBillsGroupDetailPage({
 									<TableCell className={`${stickyTableActionCellClassName} text-right`}>
 										<BillActionsMenu
 											items={[
-												{ label: 'View', intent: 'primary', href: billHref(entry.billId) },
 												{
-													label: 'Mark Paid',
+													label: t('bills.actions.view'),
+													intent: 'primary',
+													href: billHref(entry.billId),
+												},
+												{
+													label: t('bills.actions.markPaid'),
 													intent: 'confirm',
 													hidden: entry.status !== 'issued' && entry.status !== 'overdue',
 													loading: markBillPaid.isPending,
