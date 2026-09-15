@@ -16,7 +16,8 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
+import { formatNumber, useAppTranslation } from '@/i18n'
+import { formatRelativeTime } from '@/lib/date-utils'
 
 import { AccessDeniedCard } from '../components/access-denied-card'
 import { AddRecommendationDialog } from '../components/add-recommendation-dialog'
@@ -27,6 +28,7 @@ import { usePendingRecommendations } from '../hooks'
 import type { RecommendableApplication, Recommendation } from '../api'
 
 export default function RecommendationsList() {
+	const { t } = useAppTranslation()
 	const { data: applications, isLoading, error } = usePendingRecommendations()
 	const [selectedApp, setSelectedApp] = useState<RecommendableApplication | null>(null)
 	const [editingRec, setEditingRec] = useState<{
@@ -35,7 +37,7 @@ export default function RecommendationsList() {
 	} | null>(null)
 	const [deletingRec, setDeletingRec] = useState<Recommendation | null>(null)
 
-	usePageTitle('Recommendations')
+	usePageTitle(t('applications.recommendations.list.title'))
 
 	// Collect unique corporation IDs for name resolution
 	const corporationIds = [...new Set((applications ?? []).map((a) => a.corporationId))]
@@ -57,8 +59,12 @@ export default function RecommendationsList() {
 		return (
 			<Container>
 				<AccessDeniedCard
-					title="Failed to Load"
-					message={error instanceof Error ? error.message : 'Failed to load applications'}
+					title={t('applications.recommendations.list.loadFailed')}
+					message={
+						error instanceof Error && error.message
+							? error.message
+							: t('applications.recommendations.list.loadFailed')
+					}
 				/>
 			</Container>
 		)
@@ -87,8 +93,8 @@ export default function RecommendationsList() {
 	return (
 		<Container className="space-y-6">
 			<PageHeader
-				title="Recommendations"
-				description="Vouch for applicants to your corporation. Your recommendation helps HR make informed decisions."
+				title={t('applications.recommendations.list.title')}
+				description={t('applications.recommendations.list.description')}
 			/>
 
 			{/* Empty state */}
@@ -96,10 +102,11 @@ export default function RecommendationsList() {
 				<Card>
 					<CardContent className="text-center py-12">
 						<Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-						<h3 className="text-lg font-semibold mb-2">No pending applications</h3>
+						<h3 className="text-lg font-semibold mb-2">
+							{t('applications.recommendations.list.emptyTitle')}
+						</h3>
 						<p className="text-sm text-muted-foreground max-w-md mx-auto">
-							There are currently no pending applications for your corporation(s). Check back later
-							when new applicants apply.
+							{t('applications.recommendations.list.emptyDescription')}
 						</p>
 					</CardContent>
 				</Card>
@@ -173,6 +180,7 @@ function ApplicationRecommendCard({
 	onEdit: () => void
 	onDelete: () => void
 }) {
+	const { t } = useAppTranslation()
 	const userRec = application.userRecommendation
 
 	return (
@@ -180,7 +188,7 @@ function ApplicationRecommendCard({
 			className={userRec ? undefined : 'cursor-pointer transition-colors hover:bg-accent/30'}
 			onClick={userRec ? undefined : onRecommend}
 		>
-			<CardContent className="flex items-center gap-4 py-4">
+			<CardContent className="flex flex-wrap items-center gap-4 py-4">
 				{/* Avatar */}
 				<MemberAvatar
 					characterId={application.characterId}
@@ -189,19 +197,19 @@ function ApplicationRecommendCard({
 				/>
 
 				{/* Info */}
-				<div className="flex-1 min-w-0">
+				<div className="flex-1 min-w-32">
 					<div className="flex items-center gap-2">
 						<span className="font-medium truncate">{application.characterName}</span>
 						{application.recommendationCount > 0 && (
 							<span className="text-xs text-muted-foreground flex items-center gap-1">
-								({application.recommendationCount})
+								({formatNumber(application.recommendationCount)})
 							</span>
 						)}
 					</div>
-					<div className="text-sm text-muted-foreground mt-0.5">
-						Applying to <span className="font-medium">{corporationName}</span>
+					<div className="text-sm text-muted-foreground mt-0.5 break-words">
+						{t('applications.recommendations.list.applyingTo', { corporation: corporationName })}
 						{' · '}
-						{formatDistanceToNow(new Date(application.createdAt), { addSuffix: true })}
+						{formatRelativeTime(application.createdAt)}
 					</div>
 					{/* Show user's recommendation inline */}
 					{userRec && (
@@ -221,6 +229,9 @@ function ApplicationRecommendCard({
 							<Button
 								size="sm"
 								variant="ghost"
+								aria-label={t('applications.recommendations.list.editAria', {
+									character: application.characterName,
+								})}
 								onClick={(e) => {
 									e.stopPropagation()
 									onEdit()
@@ -232,6 +243,9 @@ function ApplicationRecommendCard({
 								size="sm"
 								variant="ghost"
 								className="text-destructive hover:text-destructive"
+								aria-label={t('applications.recommendations.list.deleteAria', {
+									character: application.characterName,
+								})}
 								onClick={(e) => {
 									e.stopPropagation()
 									onDelete()
@@ -249,7 +263,7 @@ function ApplicationRecommendCard({
 							}}
 						>
 							<MessageSquarePlus className="h-4 w-4 mr-1.5" />
-							Recommend
+							{t('applications.recommendations.list.recommend')}
 						</Button>
 					)}
 				</div>

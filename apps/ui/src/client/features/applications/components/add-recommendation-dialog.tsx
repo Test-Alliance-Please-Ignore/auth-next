@@ -23,10 +23,14 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
+import { formatNumber, useAppTranslation } from '@/i18n'
+import toast from '@/lib/toast'
 import { cn } from '@/lib/utils'
 
 import { useAddRecommendation, useUpdateRecommendation } from '../hooks'
+import { RecommendationFeedback } from './recommendation-feedback'
 
+import type { AppTranslationKey } from '@/i18n'
 import type { Recommendation, RecommendationSentiment } from '../api'
 
 // ============================================================================
@@ -51,36 +55,36 @@ const MAX_LENGTH = 500
 
 const SENTIMENT_OPTIONS: Array<{
 	value: RecommendationSentiment
-	label: string
+	label: AppTranslationKey
 	icon: typeof ThumbsUp
-	description: string
+	description: AppTranslationKey
 	colorClass: string
 }> = [
-		{
-			value: 'positive',
-			label: 'Positive',
-			icon: ThumbsUp,
-			description: 'Recommend this applicant',
-			colorClass:
-				'border-success/30 bg-success/10 hover:bg-success/20 data-[state=checked]:border-success',
-		},
-		{
-			value: 'neutral',
-			label: 'Neutral',
-			icon: Minus,
-			description: 'No strong opinion',
-			colorClass:
-				'border-primary/30 bg-primary/10 hover:bg-primary/20 data-[state=checked]:border-primary',
-		},
-		{
-			value: 'negative',
-			label: 'Negative',
-			icon: ThumbsDown,
-			description: 'Do not recommend',
-			colorClass:
-				'border-warning/30 bg-warning/10 hover:bg-warning/20 data-[state=checked]:border-warning',
-		},
-	]
+	{
+		value: 'positive',
+		label: 'applications.recommendations.sentiment.positive',
+		icon: ThumbsUp,
+		description: 'applications.recommendations.sentiment.positiveHint',
+		colorClass:
+			'border-success/30 bg-success/10 hover:bg-success/20 data-[state=checked]:border-success',
+	},
+	{
+		value: 'neutral',
+		label: 'applications.recommendations.sentiment.neutral',
+		icon: Minus,
+		description: 'applications.recommendations.sentiment.neutralHint',
+		colorClass:
+			'border-primary/30 bg-primary/10 hover:bg-primary/20 data-[state=checked]:border-primary',
+	},
+	{
+		value: 'negative',
+		label: 'applications.recommendations.sentiment.negative',
+		icon: ThumbsDown,
+		description: 'applications.recommendations.sentiment.negativeHint',
+		colorClass:
+			'border-warning/30 bg-warning/10 hover:bg-warning/20 data-[state=checked]:border-warning',
+	},
+]
 
 // ============================================================================
 // Sentiment Radio Button Component
@@ -91,6 +95,7 @@ interface SentimentButtonProps {
 	description: string
 	icon: typeof ThumbsUp
 	selected: boolean
+	disabled: boolean
 	onClick: () => void
 	colorClass: string
 }
@@ -100,6 +105,7 @@ function SentimentButton({
 	description,
 	icon: Icon,
 	selected,
+	disabled,
 	onClick,
 	colorClass,
 }: SentimentButtonProps) {
@@ -112,6 +118,8 @@ function SentimentButton({
 				'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
 				selected ? colorClass : 'border-input bg-background hover:bg-muted/50'
 			)}
+			disabled={disabled}
+			aria-pressed={selected}
 			data-state={selected ? 'checked' : 'unchecked'}
 		>
 			<Icon className="h-5 w-5" />
@@ -151,7 +159,8 @@ export function AddRecommendationDialog({
 	onSuccess,
 }: AddRecommendationDialogProps) {
 	const { user } = useAuth()
-	const { showSuccess, showError } = useMessage()
+	const { t } = useAppTranslation()
+	const { message, showError, clearMessage } = useMessage()
 	const recommendationTextRef = useRef<HTMLTextAreaElement | null>(null)
 
 	// Form state
@@ -210,7 +219,8 @@ export function AddRecommendationDialog({
 
 	// Handlers
 	const handleSubmit = async () => {
-		if (!isFormValid) return
+		if (!isFormValid || isPending) return
+		clearMessage()
 
 		try {
 			if (isEditMode) {
@@ -225,7 +235,7 @@ export function AddRecommendationDialog({
 						isPublic,
 					},
 				})
-				showSuccess('Recommendation updated successfully')
+				toast.success(<RecommendationFeedback action="updated" />)
 			} else {
 				// Add new recommendation
 				await addMutation.mutateAsync({
@@ -237,28 +247,36 @@ export function AddRecommendationDialog({
 						isPublic,
 					},
 				})
-				showSuccess('Recommendation added successfully')
+				toast.success(<RecommendationFeedback action="added" />)
 			}
 
 			onOpenChange(false)
 			onSuccess?.()
 		} catch (error) {
-			const message =
-				error instanceof Error
-					? error.message
-					: `Failed to ${isEditMode ? 'update' : 'add'} recommendation`
-			showError(message)
+			showError(
+				(translate) =>
+					error instanceof Error && error.message
+						? error.message
+						: translate(
+								isEditMode
+									? 'applications.recommendations.feedback.updateFailed'
+									: 'applications.recommendations.feedback.addFailed'
+							),
+				0
+			)
 		}
 	}
 
-	const handleCancel = () => {
-		onOpenChange(false)
+	const handleOpenChange = (nextOpen: boolean) => {
+		if (isPending) return
+		if (!nextOpen) clearMessage()
+		onOpenChange(nextOpen)
 	}
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
+		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogContent
-				className="sm:max-w-[600px]"
+				className="sm:max-w-[600px] max-h-[90dvh] overflow-y-auto"
 				onOpenAutoFocus={(event) => {
 					event.preventDefault()
 					requestAnimationFrame(() => {
@@ -267,11 +285,15 @@ export function AddRecommendationDialog({
 				}}
 			>
 				<DialogHeader>
-					<DialogTitle>{isEditMode ? 'Edit Recommendation' : 'Add Recommendation'}</DialogTitle>
+					<DialogTitle>
+						{isEditMode
+							? t('applications.recommendations.form.editTitle')
+							: t('applications.recommendations.form.addTitle')}
+					</DialogTitle>
 					<DialogDescription>
 						{isEditMode
-							? 'Update your recommendation for this applicant.'
-							: 'Share your thoughts about this applicant with the corporation.'}
+							? t('applications.recommendations.form.editDescription')
+							: t('applications.recommendations.form.addDescription')}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -279,7 +301,8 @@ export function AddRecommendationDialog({
 					{/* Character Selector */}
 					<div className="space-y-2">
 						<Label htmlFor="character">
-							Character <span className="text-destructive">*</span>
+							{t('applications.recommendations.form.character')}{' '}
+							<span className="text-destructive">*</span>
 						</Label>
 						<Select
 							inputId="character"
@@ -294,21 +317,22 @@ export function AddRecommendationDialog({
 										hasValidToken: boolean
 									}) => ({
 										value: char.characterId,
-										label: `${char.characterName}${!char.hasValidToken ? ' (Token expired)' : ''}`,
+										label: char.hasValidToken
+											? char.characterName
+											: t('applications.recommendations.form.expiredCharacter', {
+													character: char.characterName,
+												}),
 									})
 								) ?? []
 							}
-							placeholder="Select character"
+							placeholder={t('applications.recommendations.form.selectCharacter')}
 						/>
 
 						{/* Self-recommendation warning */}
 						{isSelfRecommendation && (
 							<div className="mt-2 flex items-start gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/30 text-destructive">
 								<AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-								<p className="text-sm">
-									You cannot recommend your own application. Please select a different character or
-									ask someone else to provide a recommendation.
-								</p>
+								<p className="text-sm">{t('applications.recommendations.form.selfWarning')}</p>
 							</div>
 						)}
 					</div>
@@ -316,16 +340,18 @@ export function AddRecommendationDialog({
 					{/* Sentiment Selector */}
 					<div className="space-y-3">
 						<Label>
-							Sentiment <span className="text-destructive">*</span>
+							{t('applications.recommendations.form.sentiment')}{' '}
+							<span className="text-destructive">*</span>
 						</Label>
 						<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
 							{SENTIMENT_OPTIONS.map((option) => (
 								<SentimentButton
 									key={option.value}
-									label={option.label}
-									description={option.description}
+									label={t(option.label)}
+									description={t(option.description)}
 									icon={option.icon}
 									selected={sentiment === option.value}
+									disabled={isPending}
 									onClick={() => setSentiment(option.value)}
 									colorClass={option.colorClass}
 								/>
@@ -336,12 +362,13 @@ export function AddRecommendationDialog({
 					{/* Recommendation Text */}
 					<div className="space-y-2">
 						<Label htmlFor="recommendation-text">
-							Recommendation Text <span className="text-destructive">*</span>
+							{t('applications.recommendations.form.text')}{' '}
+							<span className="text-destructive">*</span>
 						</Label>
 						<Textarea
 							ref={recommendationTextRef}
 							id="recommendation-text"
-							placeholder="Share your thoughts about this applicant..."
+							placeholder={t('applications.recommendations.form.placeholder')}
 							value={recommendationText}
 							onChange={(e) => setRecommendationText(e.target.value)}
 							disabled={isPending}
@@ -351,13 +378,18 @@ export function AddRecommendationDialog({
 						<div className="flex items-center justify-between text-xs">
 							<span className="text-muted-foreground">
 								{textLength < MIN_LENGTH
-									? `Minimum ${MIN_LENGTH} characters`
+									? t('applications.recommendations.form.minimum', {
+											count: formatNumber(MIN_LENGTH),
+										})
 									: textLength > MAX_LENGTH
-										? 'Maximum length exceeded'
-										: 'Character count:'}
+										? t('applications.recommendations.form.maximum')
+										: t('applications.recommendations.form.countLabel')}
 							</span>
 							<span className={cn('font-mono', getCounterColor())}>
-								{textLength} / {MAX_LENGTH}
+								{t('applications.recommendations.form.counter', {
+									current: formatNumber(textLength),
+									maximum: formatNumber(MAX_LENGTH),
+								})}
 							</span>
 						</div>
 					</div>
@@ -366,10 +398,12 @@ export function AddRecommendationDialog({
 					<div className="flex items-center justify-between space-x-2 p-4 rounded-lg border bg-muted/50">
 						<div className="space-y-0.5">
 							<Label htmlFor="is-public" className="cursor-pointer">
-								Make recommendation public
+								{t('applications.recommendations.form.makePublic')}
 							</Label>
 							<p className="text-sm text-muted-foreground">
-								{isPublic ? 'Visible to the applicant and HR staff' : 'Only visible to HR staff'}
+								{isPublic
+									? t('applications.recommendations.form.publicHint')
+									: t('applications.recommendations.form.privateHint')}
 							</p>
 						</div>
 						<Switch
@@ -381,18 +415,23 @@ export function AddRecommendationDialog({
 					</div>
 				</div>
 
+				{message && (
+					<p role="alert" className="text-sm text-destructive break-words">
+						{message.text}
+					</p>
+				)}
 				<DialogFooter>
-					<Button variant="ghost" onClick={handleCancel} disabled={isPending}>
-						Cancel
+					<Button variant="ghost" onClick={() => handleOpenChange(false)} disabled={isPending}>
+						{t('common.cancel')}
 					</Button>
 					<Button onClick={handleSubmit} disabled={!isFormValid || isPending}>
 						{isPending
 							? isEditMode
-								? 'Updating...'
-								: 'Submitting...'
+								? t('applications.recommendations.form.updating')
+								: t('applications.recommendations.form.submitting')
 							: isEditMode
-								? 'Update Recommendation'
-								: 'Submit Recommendation'}
+								? t('applications.recommendations.form.update')
+								: t('applications.recommendations.form.submit')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

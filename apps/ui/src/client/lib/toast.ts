@@ -5,6 +5,7 @@
 
 import { toast as sonnerToast } from 'sonner'
 
+import type { ReactNode } from 'react'
 import type { ExternalToast } from 'sonner'
 
 /**
@@ -19,7 +20,7 @@ const baseToastOptions: ExternalToast = {
  * Show a success toast notification
  * Auto-dismisses after 3 seconds
  */
-export function success(message: string, options?: ExternalToast) {
+export function success(message: ReactNode, options?: ExternalToast) {
 	return sonnerToast.success(message, {
 		...baseToastOptions,
 		duration: 3000, // Shorter for success
@@ -31,7 +32,7 @@ export function success(message: string, options?: ExternalToast) {
  * Show an error toast notification
  * Longer duration (5 seconds) to give users time to read
  */
-export function error(message: string, options?: ExternalToast) {
+export function error(message: ReactNode, options?: ExternalToast) {
 	return sonnerToast.error(message, {
 		...baseToastOptions,
 		duration: 5000, // Longer for errors

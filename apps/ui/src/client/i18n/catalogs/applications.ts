@@ -1,5 +1,6 @@
 import { defineCatalog } from '../catalog'
 import { applicationDetailsCatalog } from './applications-details'
+import { applicationRecommendationsCatalog } from './applications-recommendations'
 
 const applicantWorkflowsCatalog = defineCatalog(
 	{
@@ -183,12 +184,24 @@ const applicantWorkflowsCatalog = defineCatalog(
 
 export const applicationsCatalog = {
 	en: {
-		applications: { ...applicantWorkflowsCatalog.en.applications, ...applicationDetailsCatalog.en },
+		applications: {
+			...applicantWorkflowsCatalog.en.applications,
+			...applicationDetailsCatalog.en,
+			recommendations: applicationRecommendationsCatalog.en,
+		},
 	},
 	de: {
-		applications: { ...applicantWorkflowsCatalog.de.applications, ...applicationDetailsCatalog.de },
+		applications: {
+			...applicantWorkflowsCatalog.de.applications,
+			...applicationDetailsCatalog.de,
+			recommendations: applicationRecommendationsCatalog.de,
+		},
 	},
 	ko: {
-		applications: { ...applicantWorkflowsCatalog.ko.applications, ...applicationDetailsCatalog.ko },
+		applications: {
+			...applicantWorkflowsCatalog.ko.applications,
+			...applicationDetailsCatalog.ko,
+			recommendations: applicationRecommendationsCatalog.ko,
+		},
 	},
 }

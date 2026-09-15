@@ -8,8 +8,10 @@
 import { Minus, ThumbsDown, ThumbsUp } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
+import type { AppTranslationKey } from '@/i18n'
 import type { RecommendationSentiment } from '../api'
 
 // ============================================================================
@@ -30,23 +32,23 @@ export interface RecommendationSentimentBadgeProps {
 const sentimentConfig: Record<
 	RecommendationSentiment,
 	{
-		label: string
+		label: AppTranslationKey
 		icon: typeof ThumbsUp
 		colorClasses: string
 	}
 > = {
 	positive: {
-		label: 'Positive',
+		label: 'applications.recommendations.sentiment.positive',
 		icon: ThumbsUp,
 		colorClasses: 'text-success bg-success/10 border-success/30',
 	},
 	neutral: {
-		label: 'Neutral',
+		label: 'applications.recommendations.sentiment.neutral',
 		icon: Minus,
 		colorClasses: 'text-primary bg-primary/10 border-primary/30',
 	},
 	negative: {
-		label: 'Negative',
+		label: 'applications.recommendations.sentiment.negative',
 		icon: ThumbsDown,
 		colorClasses: 'text-warning bg-warning/10 border-warning/30',
 	},
@@ -83,7 +85,13 @@ export function RecommendationSentimentBadge({
 	showIcon = true,
 	className,
 }: RecommendationSentimentBadgeProps) {
-	const config = sentimentConfig[sentiment]
+	const { t } = useAppTranslation()
+	const config = Object.hasOwn(sentimentConfig, sentiment)
+		? sentimentConfig[sentiment]
+		: {
+				...sentimentConfig.neutral,
+				label: 'applications.recommendations.sentiment.unknown' as const,
+			}
 	const Icon = config.icon
 
 	return (
@@ -96,7 +104,7 @@ export function RecommendationSentimentBadge({
 			)}
 		>
 			{showIcon && <Icon className={iconSizeClasses[size]} />}
-			<span>{config.label}</span>
+			<span>{t(config.label)}</span>
 		</Badge>
 	)
 }

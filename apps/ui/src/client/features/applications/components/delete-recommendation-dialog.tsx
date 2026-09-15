@@ -17,8 +17,11 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { useMessage } from '@/hooks/useMessage'
+import { useAppTranslation } from '@/i18n'
+import toast from '@/lib/toast'
 
 import { useDeleteRecommendation } from '../hooks'
+import { RecommendationFeedback } from './recommendation-feedback'
 
 import type { Recommendation } from '../api'
 
@@ -56,11 +59,13 @@ export function DeleteRecommendationDialog({
 	recommendation,
 	onSuccess,
 }: DeleteRecommendationDialogProps) {
-	const { showSuccess, showError } = useMessage()
+	const { t } = useAppTranslation()
+	const { message, showError, clearMessage } = useMessage()
 	const deleteMutation = useDeleteRecommendation()
 
 	const handleDelete = async () => {
-		if (!recommendation) return
+		if (!recommendation || deleteMutation.isPending) return
+		clearMessage()
 
 		try {
 			await deleteMutation.mutateAsync({
@@ -68,51 +73,73 @@ export function DeleteRecommendationDialog({
 				recommendationId: recommendation.id,
 			})
 
-			showSuccess('Recommendation deleted successfully')
+			toast.success(<RecommendationFeedback action="deleted" />)
 			onOpenChange(false)
 			onSuccess?.()
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to delete recommendation'
-			showError(message)
+			showError(
+				(translate) =>
+					error instanceof Error && error.message
+						? error.message
+						: translate('applications.recommendations.feedback.deleteFailed'),
+				0
+			)
 		}
 	}
 
-	const handleCancel = () => {
-		onOpenChange(false)
+	const handleOpenChange = (nextOpen: boolean) => {
+		if (deleteMutation.isPending) return
+		if (!nextOpen) clearMessage()
+		onOpenChange(nextOpen)
 	}
 
 	return (
-		<Dialog open={open} onOpenChange={onOpenChange}>
+		<Dialog open={open} onOpenChange={handleOpenChange}>
 			<DialogContent className="sm:max-w-[425px]">
 				<DialogHeader>
 					<div className="flex items-center gap-3 mb-2">
 						<div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10">
 							<AlertTriangle className="h-5 w-5 text-destructive" />
 						</div>
-						<DialogTitle>Delete Recommendation</DialogTitle>
+						<DialogTitle>{t('applications.recommendations.delete.title')}</DialogTitle>
 					</div>
 					<DialogDescription className="text-base">
-						Are you sure you want to delete your recommendation? This action cannot be undone.
+						{t('applications.recommendations.delete.description')}
 					</DialogDescription>
 				</DialogHeader>
 
 				{recommendation && (
 					<div className="rounded-lg border bg-muted/50 p-4">
-						<p className="text-sm text-muted-foreground mb-1">Your recommendation:</p>
-						<p className="text-sm italic line-clamp-3">"{recommendation.recommendationText}"</p>
+						<p className="text-sm text-muted-foreground mb-1">
+							{t('applications.recommendations.delete.preview')}
+						</p>
+						<p className="text-sm italic line-clamp-3 break-words">
+							"{recommendation.recommendationText}"
+						</p>
 					</div>
 				)}
 
+				{message && (
+					<p role="alert" className="text-sm text-destructive break-words">
+						{message.text}
+					</p>
+				)}
 				<DialogFooter>
-					<Button variant="ghost" onClick={handleCancel} disabled={deleteMutation.isPending}>
-						Cancel
+					<Button
+						variant="ghost"
+						onClick={() => handleOpenChange(false)}
+						disabled={deleteMutation.isPending}
+					>
+						{t('common.cancel')}
 					</Button>
-					<Button variant="destructive"
+					<Button
+						variant="destructive"
 						onClick={handleDelete}
 						loading={deleteMutation.isPending}
-						loadingText="Deleting..."
+						disabled={!recommendation}
+						loadingText={t('applications.recommendations.delete.pending')}
 					>
-						Delete Recommendation
+						{t('applications.recommendations.delete.title')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

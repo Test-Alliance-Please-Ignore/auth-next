@@ -707,6 +707,7 @@ export default function ApplicationDetail() {
 						</CardHeader>
 						<CardContent>
 							<RecommendationList
+								applicantView
 								applicationId={applicationId!}
 								currentUserId={user?.id}
 								onAddRecommendation={handleAddRecommendation}
