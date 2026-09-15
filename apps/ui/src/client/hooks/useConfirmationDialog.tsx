@@ -71,6 +71,9 @@ export function useConfirmationDialog(): UseConfirmationDialogResult {
 		try {
 			await request.onConfirm()
 			setRequest(null)
+		} catch {
+			// The action owns error feedback. Keep the dialog open for retry without
+			// leaking a rejected promise from the click handler.
 		} finally {
 			setPending(false)
 		}

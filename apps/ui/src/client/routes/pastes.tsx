@@ -5,6 +5,7 @@ import { Link, Navigate } from 'react-router'
 
 import { parseDateOrNull } from '@repo/worker-utils'
 
+import { DataTable } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -14,61 +15,29 @@ import { Label } from '@/components/ui/label'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { PasteFeedback } from '@/features/pastes/feedback'
+import {
+	getExpirationOptions,
+	getPasswordChecks,
+	getPasswordValidationError,
+	PASSWORD_SYMBOLS,
+} from '@/features/pastes/form'
 import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { apiClient } from '@/lib/api'
+import { formatDateTime } from '@/lib/date-utils'
 import toast from '@/lib/toast'
 
-const EXPIRATION_OPTIONS: Array<{ label: string; value: number | 'indefinite' }> = [
-	{ label: '1 hour', value: 60 },
-	{ label: '3 hours', value: 180 },
-	{ label: '6 hours', value: 360 },
-	{ label: '12 hours', value: 720 },
-	{ label: '1 day', value: 1440 },
-	{ label: '3 days', value: 4320 },
-	{ label: '7 days', value: 10080 },
-	{ label: '14 days', value: 20160 },
-	{ label: '30 days', value: 43200 },
-	{ label: 'Indefinite', value: 'indefinite' },
-]
-
-type ExpirationValue = number | 'indefinite'
-const PASSWORD_PATTERN =
-	/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*_\-+=,.?/|~`:])[A-Za-z0-9!@#$%^&*_\-+=,.?/|~`:]{8,128}$/
-
-function getPasswordValidationError(password: string): string | null {
-	if (!password.trim()) return 'Password is required.'
-	if (!PASSWORD_PATTERN.test(password)) {
-		return 'Password must be at least 8 characters, include upper/lowercase letters, a number, and a symbol: ! @ # $ % ^ & * - _ = + , . ? / | ~ ` :'
-	}
-	return null
-}
-
-function getPasswordChecks(password: string) {
-	return [
-		{ label: 'At least 8 characters', valid: password.length >= 8 },
-		{ label: 'Uppercase letter', valid: /[A-Z]/.test(password) },
-		{ label: 'Lowercase letter', valid: /[a-z]/.test(password) },
-		{ label: 'Number', valid: /\d/.test(password) },
-		{
-			label: 'At least one symbol from: ! @ # $ % ^ & * - _ = + , . ? / | ~ ` :',
-			valid: /[!@#$%^&*_\-+=,.?/|~`:]/.test(password),
-		},
-	]
-}
+import type { DataTableColumn } from '@/components/data-table'
+import type { ExpirationValue } from '@/features/pastes/form'
+import type { PasteRecord } from '@/lib/api'
 
 export default function PastesPage() {
-	usePageTitle('Pastes')
+	const { t } = useAppTranslation()
+	usePageTitle(t('pastes.title'))
 
 	const { isAuthenticated } = useAuth()
 	const queryClient = useQueryClient()
@@ -126,17 +95,29 @@ export default function PastesPage() {
 			setIsPublic(false)
 			setIsPasswordProtected(false)
 			void queryClient.invalidateQueries({ queryKey: ['pastes', 'mine'] })
-			toast.success('Paste created')
+			toast.success(<PasteFeedback messageKey="pastes.feedback.created" />)
 		},
 		onError: (error) =>
-			toast.error(error instanceof Error ? error.message : 'Failed to create paste'),
+			toast.error(
+				error instanceof Error && error.message ? (
+					error.message
+				) : (
+					<PasteFeedback messageKey="pastes.feedback.createFailed" />
+				)
+			),
 	})
 
 	const deleteMutation = useMutation({
 		mutationFn: (id: string) => apiClient.deletePaste(id),
 		onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['pastes', 'mine'] }),
 		onError: (error) =>
-			toast.error(error instanceof Error ? error.message : 'Failed to delete paste'),
+			toast.error(
+				error instanceof Error && error.message ? (
+					error.message
+				) : (
+					<PasteFeedback messageKey="pastes.feedback.deleteFailed" />
+				)
+			),
 	})
 
 	const rows = mineQuery.data?.items ?? []
@@ -158,14 +139,7 @@ export default function PastesPage() {
 		mineQuery.data?.maxActivePastesPerUser ?? settingsQuery.data?.maxActivePastesPerUser ?? 0
 	)
 	const isAtPasteLimit = maxActivePastesPerUser > 0 && activeCount >= maxActivePastesPerUser
-	const expirationOptions = useMemo(
-		() =>
-			EXPIRATION_OPTIONS.map((option) => ({
-				value: option.value,
-				label: option.label,
-			})),
-		[]
-	)
+	const expirationOptions = getExpirationOptions(t)
 
 	if (!isAuthenticated) return <Navigate to="/" replace />
 
@@ -174,20 +148,20 @@ export default function PastesPage() {
 		try {
 			await navigator.clipboard.writeText(url)
 			setCopiedPasteId(pasteId)
-			toast.success('Paste URL copied')
+			toast.success(<PasteFeedback messageKey="pastes.feedback.urlCopied" />)
 			setTimeout(() => {
 				setCopiedPasteId((current) => (current === pasteId ? null : current))
 			}, 1200)
 		} catch {
-			toast.error('Failed to copy paste URL')
+			toast.error(<PasteFeedback messageKey="pastes.feedback.urlCopyFailed" />)
 		}
 	}
 
 	const requestDeletePaste = (pasteId: string, pasteName: string) => {
 		requestConfirmation({
-			title: 'Delete Paste?',
-			description: `This will permanently delete "${pasteName}".`,
-			confirmLabel: 'Delete',
+			title: (translate) => translate('pastes.deleteTitle'),
+			description: (translate) => translate('pastes.deleteDescription', { name: pasteName }),
+			confirmLabel: (translate) => translate('common.delete'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				await deleteMutation.mutateAsync(pasteId)
@@ -195,70 +169,156 @@ export default function PastesPage() {
 		})
 	}
 
+	const columns: Array<DataTableColumn<PasteRecord>> = [
+		{
+			id: 'id',
+			header: t('pastes.id'),
+			cell: (paste) => (
+				<div className="flex items-center gap-2">
+					<Button
+						variant="ghost"
+						size="icon"
+						className="h-7 w-7"
+						onClick={() => void handleCopyPasteUrl(paste.id)}
+						aria-label={t('pastes.copyUrlAria', { id: paste.id })}
+						title={t('pastes.copyUrl')}
+					>
+						{copiedPasteId === paste.id ? (
+							<Check className="h-3.5 w-3.5 text-green-500" />
+						) : (
+							<Copy className="h-3.5 w-3.5" />
+						)}
+					</Button>
+					<Link className="font-mono underline" to={`/paste/${paste.id}`}>
+						{paste.id}
+					</Link>
+				</div>
+			),
+		},
+		{
+			id: 'name',
+			header: t('pastes.name'),
+			cell: (paste) => (
+				<Link className="underline" to={`/paste/${paste.id}`}>
+					{paste.name}
+				</Link>
+			),
+		},
+		{
+			id: 'visibility',
+			header: t('pastes.visibility'),
+			cell: (paste) => t(paste.visibility === 'public' ? 'pastes.public' : 'pastes.alliance'),
+		},
+		{
+			id: 'expires',
+			header: t('pastes.expires'),
+			cell: (paste) => (paste.expiresAt ? formatDateTime(paste.expiresAt) : t('pastes.indefinite')),
+		},
+		{
+			id: 'protection',
+			header: t('pastes.protection'),
+			cell: (paste) => t(paste.isPasswordProtected ? 'pastes.protected' : 'pastes.unprotected'),
+		},
+		{
+			id: 'actions',
+			header: t('pastes.actions'),
+			className: 'text-right',
+			headerClassName: 'text-right',
+			cell: (paste) => (
+				<div className="inline-flex items-center gap-2">
+					<Button
+						asChild
+						variant="ghost"
+						size="icon"
+						aria-label={t('pastes.editAria', { name: paste.name })}
+						title={t('pastes.edit')}
+					>
+						<Link to={`/pastes/${paste.id}/edit`}>
+							<Pencil className="h-4 w-4" />
+						</Link>
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon"
+						onClick={() => requestDeletePaste(paste.id, paste.name)}
+						disabled={deleteMutation.isPending}
+						aria-label={t('pastes.deleteAria', { name: paste.name })}
+						title={t('pastes.delete')}
+					>
+						<Trash2 className="h-4 w-4 text-destructive" />
+					</Button>
+				</div>
+			),
+		},
+	]
+
 	return (
 		<Container className="space-y-6">
 			<PageHeader
 				className="!mb-section md:!mb-10"
-				title="Pastes"
-				description="Create, manage, and share plaintext pastes."
+				title={t('pastes.title')}
+				description={t('pastes.description')}
 			/>
 			<Card>
 				<CardHeader>
-					<CardTitle>Create Paste</CardTitle>
+					<CardTitle>{t('pastes.create')}</CardTitle>
 				</CardHeader>
 				<CardContent>
 					<div className="mb-4 grid gap-4">
 						<div className="md:col-span-2">
-							<Label>Name</Label>
+							<Label htmlFor="paste-name">{t('pastes.name')}</Label>
 							<Input
+								id="paste-name"
 								value={name}
 								onChange={(e) => setName(e.target.value)}
-								placeholder="Paste name"
+								placeholder={t('pastes.namePlaceholder')}
 								className="mt-1"
-								disabled={isAtPasteLimit}
+								disabled={isAtPasteLimit || createMutation.isPending}
 							/>
 						</div>
 						<div className="grid gap-4 md:grid-cols-[1fr_3.5fr_0.5fr_1fr_3.5fr] md:items-start">
 							<div>
-								<Label>Visibility</Label>
+								<Label htmlFor="paste-visibility">{t('pastes.visibility')}</Label>
 								<div className="mt-1 flex h-10 items-center gap-2 px-1">
-									<span className="min-w-14 text-sm">{isPublic ? 'Public' : 'Alliance'}</span>
+									<span className="min-w-14 text-sm">
+										{isPublic ? t('pastes.public') : t('pastes.alliance')}
+									</span>
 									<Switch
+										id="paste-visibility"
 										checked={isPublic}
 										onCheckedChange={handleVisibilityChange}
-										disabled={isAtPasteLimit}
+										disabled={isAtPasteLimit || createMutation.isPending}
 									/>
 								</div>
 							</div>
 							<div>
-								<Label>Expiration</Label>
+								<Label htmlFor="paste-expiration">{t('pastes.expiration')}</Label>
 								<Select
+									inputId="paste-expiration"
 									className="mt-1"
 									value={String(expiration)}
-									disabled={isAtPasteLimit}
+									disabled={isAtPasteLimit || createMutation.isPending}
 									onValueChange={(value) =>
 										setExpiration(value === 'indefinite' ? 'indefinite' : Number(value))
 									}
-									options={expirationOptions.map((option) => ({
-										value: String(option.value),
-										label: option.label,
-									}))}
+									options={expirationOptions}
 								/>
 							</div>
 							<div aria-hidden="true" />
 							<div className={isPublic ? 'opacity-60' : undefined} aria-disabled={isPublic}>
-								<Label>Password Protect</Label>
+								<Label htmlFor="paste-protection">{t('pastes.passwordProtect')}</Label>
 								<div className="mt-1 flex h-10 items-center px-1">
 									<Switch
+										id="paste-protection"
 										checked={isPasswordProtected}
 										onCheckedChange={setIsPasswordProtected}
-										disabled={isPublic || isAtPasteLimit}
+										disabled={isPublic || isAtPasteLimit || createMutation.isPending}
 									/>
 								</div>
 							</div>
 							<div>
-								<Label>
-									Password {passwordRequired ? null : '(optional)'}
+								<Label htmlFor="paste-password">
+									{passwordRequired ? t('common.password') : t('pastes.passwordOptional')}
 									{passwordRequired ? <span className="ml-1 text-destructive">*</span> : null}
 								</Label>
 								<div className="mt-1">
@@ -269,8 +329,11 @@ export default function PastesPage() {
 													<Input
 														value={password}
 														onChange={(e) => setPassword(e.target.value)}
+														id="paste-password"
 														type="password"
-														disabled={!isPasswordProtected || isAtPasteLimit}
+														disabled={
+															!isPasswordProtected || isAtPasteLimit || createMutation.isPending
+														}
 														className={
 															showPasswordValidationError && passwordError
 																? 'border-destructive focus-visible:ring-destructive'
@@ -286,10 +349,10 @@ export default function PastesPage() {
 											<div className="space-y-1 text-xs">
 												{passwordChecks.map((check) => (
 													<div
-														key={check.label}
+														key={check.key}
 														className={check.valid ? 'text-green-500' : 'text-destructive'}
 													>
-														{check.valid ? '✓' : '✕'} {check.label}
+														{check.valid ? '✓' : '✕'} {t(check.key, { symbols: PASSWORD_SYMBOLS })}
 													</div>
 												))}
 											</div>
@@ -298,25 +361,30 @@ export default function PastesPage() {
 										<Input
 											value={password}
 											onChange={(e) => setPassword(e.target.value)}
+											id="paste-password"
 											type="password"
-											disabled={!isPasswordProtected || isAtPasteLimit}
+											disabled={!isPasswordProtected || isAtPasteLimit || createMutation.isPending}
 										/>
 									)}
 								</div>
-								<p className="mt-1 text-xs text-muted-foreground">
-									Password-protected pastes cannot be recovered if password is lost.
-								</p>
+								{showPasswordValidationError && passwordError && (
+									<p role="alert" className="mt-1 text-sm text-destructive">
+										{t(passwordError, { symbols: PASSWORD_SYMBOLS })}
+									</p>
+								)}
+								<p className="mt-1 text-xs text-muted-foreground">{t('pastes.passwordWarning')}</p>
 							</div>
 						</div>
 					</div>
 					<div className="mb-4">
-						<Label>Content</Label>
+						<Label htmlFor="paste-content">{t('pastes.content')}</Label>
 						<Textarea
+							id="paste-content"
 							value={content}
 							onChange={(e) => setContent(e.target.value)}
 							rows={10}
-							placeholder="Paste plaintext content..."
-							disabled={isAtPasteLimit}
+							placeholder={t('pastes.contentPlaceholder')}
+							disabled={isAtPasteLimit || createMutation.isPending}
 						/>
 					</div>
 					<div className="flex justify-end">
@@ -325,13 +393,13 @@ export default function PastesPage() {
 								trigger={
 									<div>
 										<Button disabled>
-											{createMutation.isPending ? 'Creating...' : 'Create Paste'}
+											{createMutation.isPending ? t('pastes.creating') : t('pastes.create')}
 										</Button>
 									</div>
 								}
 								align="center"
 							>
-								<div className="text-xs">You have reached your active paste limit.</div>
+								<div className="text-xs">{t('pastes.limit')}</div>
 							</HoverPopover>
 						) : (
 							<Button
@@ -340,7 +408,7 @@ export default function PastesPage() {
 										const submitPasswordError = getPasswordValidationError(password)
 										setShowPasswordValidationError(Boolean(submitPasswordError))
 										if (submitPasswordError) {
-											toast.error(submitPasswordError)
+											toast.error(<PasteFeedback messageKey={submitPasswordError} />)
 											return
 										}
 									}
@@ -348,7 +416,7 @@ export default function PastesPage() {
 								}}
 								disabled={createMutation.isPending || !name.trim() || !content.trim()}
 							>
-								{createMutation.isPending ? 'Creating...' : 'Create Paste'}
+								{createMutation.isPending ? t('pastes.creating') : t('pastes.create')}
 							</Button>
 						)}
 					</div>
@@ -357,96 +425,25 @@ export default function PastesPage() {
 
 			<Card>
 				<CardHeader className="flex flex-row items-start justify-between">
-					<CardTitle>My Pastes</CardTitle>
+					<CardTitle>{t('pastes.mine')}</CardTitle>
 					<p className="text-sm text-muted-foreground">
-						{activeCount} / {maxActivePastesPerUser || '—'}
+						{t('pastes.activeCount', {
+							active: formatNumber(activeCount),
+							maximum: maxActivePastesPerUser ? formatNumber(maxActivePastesPerUser) : '—',
+						})}
 					</p>
 				</CardHeader>
 				<CardContent>
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>ID</TableHead>
-								<TableHead>Name</TableHead>
-								<TableHead>Visibility</TableHead>
-								<TableHead>Expires</TableHead>
-								<TableHead>Protection</TableHead>
-								<TableHead className="text-right">Actions</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{rows.length === 0 ? (
-								<TableRow>
-									<TableCell colSpan={6} className="text-center text-muted-foreground">
-										No pastes yet.
-									</TableCell>
-								</TableRow>
-							) : (
-								rows.map((paste) => (
-									<TableRow key={paste.id}>
-										<TableCell>
-											<div className="flex items-center gap-2">
-												<Button
-													variant="ghost"
-													size="icon"
-													className="relative h-7 w-7"
-													onClick={() => void handleCopyPasteUrl(paste.id)}
-													aria-label={`Copy URL for paste ${paste.id}`}
-													title="Copy paste URL"
-												>
-													<Copy
-														className={`h-3.5 w-3.5 transition-opacity ${
-															copiedPasteId === paste.id ? 'opacity-0' : 'opacity-100'
-														}`}
-													/>
-													<Check
-														className={`absolute h-3.5 w-3.5 text-green-500 transition-opacity ${
-															copiedPasteId === paste.id ? 'opacity-100' : 'opacity-0'
-														}`}
-													/>
-												</Button>
-												<Link className="font-mono underline" to={`/paste/${paste.id}`}>
-													{paste.id}
-												</Link>
-											</div>
-										</TableCell>
-										<TableCell>
-											<Link className="underline" to={`/paste/${paste.id}`}>
-												{paste.name}
-											</Link>
-										</TableCell>
-										<TableCell className="capitalize">{paste.visibility}</TableCell>
-										<TableCell>{paste.expiresAt ?? 'indefinite'}</TableCell>
-										<TableCell>{paste.isPasswordProtected ? 'protected' : 'unprotected'}</TableCell>
-										<TableCell className="text-right">
-											<div className="inline-flex items-center gap-2">
-												<Link to={`/pastes/${paste.id}/edit`}>
-													<Button
-														variant="ghost"
-														size="icon"
-														aria-label={`Edit paste ${paste.name}`}
-														title="Edit paste"
-													>
-														<Pencil className="h-4 w-4" />
-													</Button>
-												</Link>
-												<Button
-													variant="ghost"
-													size="icon"
-													onClick={() => requestDeletePaste(paste.id, paste.name)}
-													disabled={deleteMutation.isPending}
-													aria-label={`Delete paste ${paste.name}`}
-													title="Delete paste"
-												>
-													<Trash2 className="h-4 w-4 text-destructive" />
-												</Button>
-											</div>
-										</TableCell>
-									</TableRow>
-								))
-							)}
-						</TableBody>
-					</Table>
+					<DataTable
+						variant="plain"
+						columns={columns}
+						rows={rows}
+						getRowKey={(paste) => paste.id}
+						loading={mineQuery.isLoading}
+						error={mineQuery.error}
+						errorMessage={t('pastes.listFailed')}
+						emptyMessage={t('pastes.empty')}
+					/>
 				</CardContent>
 			</Card>
 			{confirmationDialog}
