@@ -188,7 +188,7 @@ export default function HrLegacyHistoryDetailPage() {
 															{event.legacyActorUserId
 																? (actorLegacyCharacterNames[event.legacyActorUserId] ??
 																	event.legacyActorUserId)
-																: 'unknown'}
+																: t('hrpages.unknown')}
 														</span>
 														{event.legacyActorUserId ? (
 															<Badge variant="warning" className="ml-2">

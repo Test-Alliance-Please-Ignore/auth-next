@@ -124,7 +124,9 @@ export default function FulcrumReportPage() {
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
 							<BreadcrumbPage>
-								{characterName ? `${characterName} Report` : t('hrpages.characterReport')}
+								{characterName
+									? t('hrpages.namedReport', { name: characterName })
+									: t('hrpages.characterReport')}
 							</BreadcrumbPage>
 						</BreadcrumbItem>
 					</BreadcrumbList>

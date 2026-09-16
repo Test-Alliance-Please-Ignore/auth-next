@@ -482,7 +482,7 @@ export default function CorporationMembers() {
 						<p className="text-muted-foreground mt-2">
 							{t('characterpages.viewAndManageAllMembersOf')}
 							{corpTicker ? `[${corpTicker}]` : t('characterpages.thisCorporation')}
-							{corpAllianceName && ` • Alliance: ${corpAllianceName}`}
+							{corpAllianceName && ` • ${t('hrpages.alliance')}: ${corpAllianceName}`}
 						</p>
 						{(userRole || hrRole) && (
 							<p className="text-sm text-muted-foreground mt-1">

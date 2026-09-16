@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Copy } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { useAppTranslation } from '@/i18n'
 
 interface JsonViewerProps {
 	data: unknown
@@ -14,6 +15,7 @@ export function JsonViewer({
 	defaultExpanded = false,
 	maxHeight = '400px',
 }: JsonViewerProps) {
+	const { t } = useAppTranslation()
 	const [copied, setCopied] = useState(false)
 
 	const handleCopy = () => {
@@ -25,7 +27,7 @@ export function JsonViewer({
 	if (data === null || data === undefined) {
 		return (
 			<div className="text-sm text-muted-foreground italic p-2 border border-border rounded-md bg-muted/30">
-				No data
+				{t('common.jsonViewer.noData')}
 			</div>
 		)
 	}
@@ -35,7 +37,7 @@ export function JsonViewer({
 			<div className="absolute top-2 right-2 z-10">
 				<Button variant="ghost" size="sm" onClick={handleCopy}>
 					<Copy className="h-3 w-3 mr-1" />
-					{copied ? 'Copied!' : 'Copy'}
+					{copied ? t('common.jsonViewer.copied') : t('common.jsonViewer.copy')}
 				</Button>
 			</div>
 			<div className="p-3 overflow-auto" style={{ maxHeight }}>
@@ -53,6 +55,7 @@ interface JsonNodeProps {
 }
 
 function JsonNode({ data, level, defaultExpanded = false, propertyName }: JsonNodeProps) {
+	const { t } = useAppTranslation()
 	const [isExpanded, setIsExpanded] = useState(defaultExpanded)
 
 	const indent = level * 16
@@ -160,7 +163,7 @@ function JsonNode({ data, level, defaultExpanded = false, propertyName }: JsonNo
 					{isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
 					{propertyName && <span className="text-primary font-medium">{propertyName}: </span>}
 					<span className="text-muted-foreground">
-						{'{'} {entries.length} {entries.length === 1 ? 'property' : 'properties'} {'}'}
+						{'{'} {t('common.jsonViewer.properties', { count: entries.length })} {'}'}
 					</span>
 				</button>
 				{isExpanded && (

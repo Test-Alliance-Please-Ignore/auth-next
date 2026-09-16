@@ -186,7 +186,7 @@ export default function AdminLegacyHistoryPage() {
 										</div>
 									</TableCell>
 									<TableCell>
-										<Badge variant="ghost">{item.status ?? 'unknown'}</Badge>
+										<Badge variant="ghost">{item.status ?? t('hrpages.unknown')}</Badge>
 									</TableCell>
 									<TableCell>
 										{item.applicationDate

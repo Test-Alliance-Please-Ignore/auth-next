@@ -1,10 +1,11 @@
+import { AlertTriangle } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
-import { AlertTriangle } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAppTranslation } from '@/i18n'
 
 import type { IpHashUserMatch, UserIpHistoryEntry } from '@/lib/api'
 
@@ -27,8 +28,11 @@ export function IpHashInspectionPage({
 	loadUserHashes: (userId: string) => Promise<{ entries: UserIpHistoryEntry[] }>
 	buildHashLink: (ipHash: string) => string
 }) {
+	const { t } = useAppTranslation()
 	const [expandedUserId, setExpandedUserId] = useState<string | null>(null)
-	const [userHashesByUserId, setUserHashesByUserId] = useState<Record<string, UserIpHistoryEntry[]>>({})
+	const [userHashesByUserId, setUserHashesByUserId] = useState<
+		Record<string, UserIpHistoryEntry[]>
+	>({})
 	const [loadingUserId, setLoadingUserId] = useState<string | null>(null)
 
 	const onExpandUser = async (userId: string) => {
@@ -51,7 +55,7 @@ export function IpHashInspectionPage({
 		<div className="space-y-6">
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-xl font-semibold">IP Hash Inspection</h1>
+					<h1 className="text-xl font-semibold">{t('hr.ipHistory.inspection')}</h1>
 					<p className="font-mono text-xs text-muted-foreground break-all">{hash}</p>
 				</div>
 				<Button asChild variant="ghost">
@@ -61,13 +65,13 @@ export function IpHashInspectionPage({
 
 			<Card>
 				<CardHeader>
-					<CardTitle>Matched Users</CardTitle>
+					<CardTitle>{t('hr.ipHistory.matchedUsers')}</CardTitle>
 				</CardHeader>
 				<CardContent>
 					{isLoading ? (
-						<p className="text-sm text-muted-foreground">Loading matches...</p>
+						<p className="text-sm text-muted-foreground">{t('hr.ipHistory.loadingMatches')}</p>
 					) : matches.length === 0 ? (
-						<p className="text-sm text-muted-foreground">No users found for this hash.</p>
+						<p className="text-sm text-muted-foreground">{t('hr.ipHistory.noUsers')}</p>
 					) : (
 						<div className="space-y-2">
 							{matches.map((match) => (
@@ -85,10 +89,16 @@ export function IpHashInspectionPage({
 											</Link>
 										</div>
 										<div className="flex items-center gap-2">
-											{match.isAdmin && <Badge variant="secondary">Admin</Badge>}
-											<span className="text-xs text-muted-foreground">{match.seenCount} sightings</span>
-											<Button size="sm" variant="primary" onClick={() => void onExpandUser(match.userId)}>
-												Show Other Hashes
+											{match.isAdmin && <Badge variant="secondary">{t('hr.search.admin')}</Badge>}
+											<span className="text-xs text-muted-foreground">
+												{t('hr.ipHistory.sightings', { count: match.seenCount })}
+											</span>
+											<Button
+												size="sm"
+												variant="primary"
+												onClick={() => void onExpandUser(match.userId)}
+											>
+												{t('hr.ipHistory.showOtherHashes')}
 											</Button>
 										</div>
 									</div>
@@ -96,7 +106,9 @@ export function IpHashInspectionPage({
 									{expandedUserId === match.userId && (
 										<div className="mt-2 space-y-1">
 											{loadingUserId === match.userId ? (
-												<p className="text-xs text-muted-foreground">Loading hashes...</p>
+												<p className="text-xs text-muted-foreground">
+													{t('hr.ipHistory.loadingHashes')}
+												</p>
 											) : (
 												(userHashesByUserId[match.userId] ?? [])
 													.filter((entry) => entry.ipAddressHash !== hash)

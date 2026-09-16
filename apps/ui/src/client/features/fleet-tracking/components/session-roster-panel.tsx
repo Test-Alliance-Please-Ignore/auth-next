@@ -146,7 +146,8 @@ export function SessionRosterPanel({ sessionId, roster }: SessionRosterPanelProp
 									<TableCell>{formatDuration(row.totalSeconds * 1000)}</TableCell>
 									<TableCell>{row.shipsFlown}</TableCell>
 									<TableCell className="text-muted-foreground">
-										{row.lastShipTypeName ?? `type #${row.lastShipTypeId}`}
+										{row.lastShipTypeName ??
+											t('fleetTracking.typeFallback', { id: row.lastShipTypeId })}
 									</TableCell>
 									<TableCell className="text-muted-foreground">
 										<EveTimeDisplay dateStr={row.firstSeenAt} />

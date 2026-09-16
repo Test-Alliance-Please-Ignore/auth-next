@@ -141,7 +141,10 @@ export function CurrentMembersPanel({
 								{t('fleetTracking.currentMembers')}{' '}
 								<span className="text-muted-foreground font-normal">
 									{trimmed && filteredMembers.length !== members.length
-										? `(${filteredMembers.length} of ${members.length})`
+										? t('fleetTracking.filteredMembers', {
+												shown: filteredMembers.length,
+												total: members.length,
+											})
 										: `(${members.length})`}
 								</span>
 							</CardTitle>
@@ -281,14 +284,18 @@ export function CurrentMembersPanel({
 																</div>
 															</HoverPopover>
 														)}
-														<span>{m.shipTypeName ?? `type #${m.shipTypeId}`}</span>
+														<span>
+															{m.shipTypeName ??
+																t('fleetTracking.typeFallback', { id: m.shipTypeId })}
+														</span>
 													</span>
 												</TableCell>
 												<TableCell className="text-muted-foreground">
 													{m.groupName ?? '—'}
 												</TableCell>
 												<TableCell className="text-muted-foreground">
-													{m.systemName ?? `system #${m.solarSystemId}`}
+													{m.systemName ??
+														t('fleetTracking.systemFallback', { id: m.solarSystemId })}
 												</TableCell>
 												<TableCell className="text-muted-foreground">
 													{formatDurationBetween(m.sinceTime, null)}

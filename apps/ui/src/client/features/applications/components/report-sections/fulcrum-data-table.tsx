@@ -264,7 +264,7 @@ export function FulcrumDataTable<Row>({
 				<details className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
 					<summary className="cursor-pointer text-sm font-medium text-muted-foreground">
 						{t('hrpages.columnFilters')}
-						{activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ''}
+						{activeFilterCount > 0 ? t('hrpages.activeFilters', { count: activeFilterCount }) : ''}
 					</summary>
 					<div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 						{filterControls.map((column) => {

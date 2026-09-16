@@ -326,7 +326,11 @@ export default function TaxAlertsPage() {
 										: destinationError
 											? t('tax.failedToLoadDestination')
 											: currentDestination
-												? `${currentDestination.name} • Guild ${currentDestination.guildId} • Channel ${currentDestination.channelId}`
+												? t('tax.discordDestinationSummary', {
+														name: currentDestination.name,
+														guildId: currentDestination.guildId,
+														channelId: currentDestination.channelId,
+													})
 												: t('tax.noDiscordDestinationConfigured')}
 								</div>
 								<Button

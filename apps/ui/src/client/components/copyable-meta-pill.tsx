@@ -1,6 +1,7 @@
-import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
+import { useState } from 'react'
 
+import { useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 import { cn } from '@/lib/utils'
 
@@ -12,20 +13,21 @@ interface CopyableMetaPillProps {
 }
 
 export function CopyableMetaPill({ label, value, copyValue, className }: CopyableMetaPillProps) {
+	const { t } = useAppTranslation()
 	const [copied, setCopied] = useState(false)
 
 	const handleCopy = () => {
 		void navigator.clipboard
 			.writeText(copyValue ?? value)
 			.then(() => {
-				toast.success(`${label} copied`)
+				toast.success(t('common.metaCopy.copied', { label }))
 				setCopied(true)
 				window.setTimeout(() => {
 					setCopied(false)
 				}, 1800)
 			})
 			.catch(() => {
-				toast.error(`Failed to copy ${label.toLowerCase()}`)
+				toast.error(t('common.metaCopy.failed', { label }))
 			})
 	}
 
@@ -40,8 +42,8 @@ export function CopyableMetaPill({ label, value, copyValue, className }: Copyabl
 					: 'border-border/60 bg-background/80 text-muted-foreground hover:border-primary/40',
 				className
 			)}
-			aria-label={`Copy ${label} to clipboard`}
-			title={copied ? 'Copied' : `Copy ${label}`}
+			aria-label={t('common.metaCopy.copyToClipboard', { label })}
+			title={copied ? t('common.characterIdentity.copied') : t('common.metaCopy.copy', { label })}
 		>
 			<span className="shrink-0 font-medium uppercase tracking-wide text-[10px] text-muted-foreground">
 				{label}
@@ -49,7 +51,11 @@ export function CopyableMetaPill({ label, value, copyValue, className }: Copyabl
 			<span className="max-w-[18rem] truncate font-mono text-[11px] font-semibold text-foreground dark:text-white">
 				{value}
 			</span>
-			{copied ? <Check className="h-3.5 w-3.5 text-emerald-300" /> : <Copy className="h-3.5 w-3.5" />}
+			{copied ? (
+				<Check className="h-3.5 w-3.5 text-emerald-300" />
+			) : (
+				<Copy className="h-3.5 w-3.5" />
+			)}
 		</button>
 	)
 }
