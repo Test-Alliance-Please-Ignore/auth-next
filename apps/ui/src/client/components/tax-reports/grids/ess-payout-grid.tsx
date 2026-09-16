@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 
 import { DataTable } from '@/components/data-table'
+import { useAppTranslation } from '@/i18n'
 import { formatTaxDateTime } from '@/lib/tax-date'
 import {
 	formatTaxDivisionLabel,
@@ -23,17 +24,19 @@ export function EssPayoutGrid(props: {
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
 	rowCount: number
 }) {
+	const { t } = useAppTranslation()
+
 	const columns = useMemo(
 		() => [
 			{
 				id: 'entryDate',
-				header: 'Date',
+				header: t('tax.date'),
 				sortable: true,
 				cell: (row: TaxEssPayoutRow) => formatTaxDateTime(row.entryDate),
 			},
 			{
 				id: 'corporationId',
-				header: 'Corporation',
+				header: t('tax.corporation'),
 				sortable: true,
 				cell: (row: TaxEssPayoutRow) => (
 					<TaxCorporationDisplay
@@ -44,49 +47,49 @@ export function EssPayoutGrid(props: {
 			},
 			{
 				id: 'division',
-				header: 'Division',
+				header: t('tax.division'),
 				sortable: true,
 				cell: (row: TaxEssPayoutRow) => formatTaxDivisionLabel(row.division),
 			},
 			{
 				id: 'amount',
-				header: 'Amount',
+				header: t('tax.amount'),
 				sortable: true,
 				cell: (row: TaxEssPayoutRow) => formatTaxIskFull(row.amount),
 			},
 			{
 				id: 'firstPartyId',
-				header: 'Sender',
+				header: t('tax.sender'),
 				cell: (row: TaxEssPayoutRow) => (
 					<TaxEntityDisplay entityId={row.firstPartyId} entityNames={props.entityNames} />
 				),
 			},
 			{
 				id: 'secondPartyId',
-				header: 'Recipient',
+				header: t('tax.recipient'),
 				cell: (row: TaxEssPayoutRow) => (
 					<TaxEntityDisplay entityId={row.secondPartyId} entityNames={props.entityNames} />
 				),
 			},
 		],
-		[props.entityNames]
+		[props.entityNames, t]
 	)
 
 	return (
 		<DataTable
 			variant="plain"
-			errorMessage="Failed to load report"
+			errorMessage={t('tax.failedToLoadReport')}
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
 			error={props.error}
-			emptyMessage="No ESS rows found."
+			emptyMessage={t('tax.noEssRowsFound')}
 			sorting={props.sorting}
 			onSortingChange={props.onSortingChange}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
 			rowCount={props.rowCount}
-			itemLabel="ESS rows"
+			itemLabel={t('tax.essRows')}
 			getRowKey={(row) => row.id}
 		/>
 	)

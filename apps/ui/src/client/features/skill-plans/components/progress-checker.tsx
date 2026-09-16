@@ -9,6 +9,8 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { i18n, useAppTranslation } from '@/i18n'
+
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
@@ -69,11 +71,9 @@ async function copyMissingSkillbooks(
 	const { success, error } = await import('../../../lib/toast')
 	try {
 		await navigator.clipboard.writeText(text)
-		success(
-			`Copied ${missing.length} missing skillbook${missing.length === 1 ? '' : 's'} to clipboard`
-		)
+		success(i18n.t('skillPlans.copiedSkillbooks', { count: missing.length }))
 	} catch {
-		error('Failed to copy to clipboard')
+		error(i18n.t('skillPlans.failedToCopyToClipboard'))
 	}
 }
 
@@ -89,9 +89,9 @@ async function copyMissingSkills(
 	const { success, error } = await import('../../../lib/toast')
 	try {
 		await navigator.clipboard.writeText(text)
-		success(`Copied ${missing.length} missing skills to clipboard`)
+		success(i18n.t('skillPlans.copiedValue1MissingSkillsToClipboard', { value1: missing.length }))
 	} catch {
-		error('Failed to copy to clipboard')
+		error(i18n.t('skillPlans.failedToCopyToClipboard'))
 	}
 }
 
@@ -101,13 +101,15 @@ async function copyAllSkills(skills: CharacterSkillProgress[], mode: 'required' 
 	const { success, error } = await import('../../../lib/toast')
 	try {
 		await navigator.clipboard.writeText(text)
-		success(`Copied ${skills.length} skill${skills.length === 1 ? '' : 's'} to clipboard`)
+		success(i18n.t('skillPlans.copiedSkills', { count: skills.length }))
 	} catch {
-		error('Failed to copy to clipboard')
+		error(i18n.t('skillPlans.failedToCopyToClipboard'))
 	}
 }
 
 export function ProgressChecker({ planId, planName, initialCharacterId }: ProgressCheckerProps) {
+	const { t } = useAppTranslation()
+
 	const { user } = useAuth()
 	const selectedCharacterId = initialCharacterId || user?.mainCharacterId || ''
 	const [skillFilter, setSkillFilter] = useState<'all' | 'needs-training' | 'missing-required'>(
@@ -122,7 +124,7 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 		return (
 			<Card>
 				<CardContent className="py-8 text-center text-muted-foreground">
-					Please log in to check character progress.
+					{t('skillPlans.pleaseLogInToCheckCharacterProgress')}
 				</CardContent>
 			</Card>
 		)
@@ -136,13 +138,13 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 
 		return calculateCharacterProgress({
 			planId,
-			planName: planName || 'Skill Plan',
+			planName: planName || t('skillPlans.skillPlan'),
 			characterId: selectedCharacter.characterId,
 			characterName: selectedCharacter.characterName,
 			planSkills,
 			characterSkillLevels: selectedCharacterSkills.levels,
 		})
-	}, [planId, planName, planSkills, selectedCharacter, selectedCharacterSkills])
+	}, [planId, planName, planSkills, selectedCharacter, selectedCharacterSkills, t])
 	const isLoading = isPlanSkillsLoading || isCharacterSkillsLoading
 
 	return (
@@ -152,7 +154,7 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 				<Card>
 					<CardContent className="py-8 flex items-center justify-center">
 						<LoadingSpinner />
-						<span className="ml-2">Checking character skills...</span>
+						<span className="ml-2">{t('skillPlans.checkingCharacterSkills')}</span>
 					</CardContent>
 				</Card>
 			) : progress ? (
@@ -160,17 +162,19 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 					{/* Overall progress */}
 					<Card>
 						<CardHeader>
-							<CardTitle>Overall Progress</CardTitle>
+							<CardTitle>{t('skillPlans.overallProgress')}</CardTitle>
 						</CardHeader>
 						<CardContent className="space-y-4">
 							<div className="space-y-3">
 								<div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-									Progress Targets
+									{t('skillPlans.progressTargets')}
 								</div>
 								<div className="grid gap-2 md:grid-cols-2">
 									<div className="rounded-md border border-success/30 bg-success/5 px-3 py-2">
 										<div className="flex items-center justify-between gap-2">
-											<span className="text-sm font-medium text-success">Required Skills</span>
+											<span className="text-sm font-medium text-success">
+												{t('skillPlans.requiredSkills')}
+											</span>
 											<span className="text-sm font-bold text-success">
 												{progress.completedRequired || 0} / {progress.totalSkills || 0}
 											</span>
@@ -182,10 +186,10 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 													size="sm"
 													className="h-7 px-2 text-xs gap-1"
 													onClick={() => copyMissingSkills(progress.skills || [], 'required')}
-													title="Copy missing required skills for EVE import"
+													title={t('skillPlans.copyMissingRequiredSkillsForEveImport')}
 												>
 													<ClipboardCopy className="h-3 w-3" />
-													Copy Missing Required
+													{t('skillPlans.copyMissingRequired')}
 												</Button>
 											)}
 											{(progress.skills || []).length > 0 && (
@@ -194,17 +198,19 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 													size="sm"
 													className="h-7 px-2 text-xs gap-1"
 													onClick={() => copyAllSkills(progress.skills || [], 'required')}
-													title="Copy all required skills for EVE import"
+													title={t('skillPlans.copyAllRequiredSkillsForEveImport')}
 												>
 													<ClipboardCopy className="h-3 w-3" />
-													Copy All Required
+													{t('skillPlans.copyAllRequired')}
 												</Button>
 											)}
 										</div>
 									</div>
 									<div className="rounded-md border border-amber-300/30 bg-amber-400/5 px-3 py-2">
 										<div className="flex items-center justify-between gap-2">
-											<span className="text-sm font-medium text-amber-300">Recommended Skills</span>
+											<span className="text-sm font-medium text-amber-300">
+												{t('skillPlans.recommendedSkills')}
+											</span>
 											<span className="text-sm font-bold text-amber-300">
 												{progress.completedRecommendedUpgrades || 0} /{' '}
 												{progress.totalRecommendedUpgrades || 0}
@@ -218,10 +224,10 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 													size="sm"
 													className="h-7 px-2 text-xs gap-1"
 													onClick={() => copyMissingSkills(progress.skills || [], 'recommended')}
-													title="Copy missing recommended skills for EVE import"
+													title={t('skillPlans.copyMissingRecommendedSkillsForEveImport')}
 												>
 													<ClipboardCopy className="h-3 w-3" />
-													Copy Missing Recommended
+													{t('skillPlans.copyMissingRecommended')}
 												</Button>
 											)}
 											{(progress.skills || []).length > 0 && (
@@ -230,10 +236,10 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 													size="sm"
 													className="h-7 px-2 text-xs gap-1"
 													onClick={() => copyAllSkills(progress.skills || [], 'recommended')}
-													title="Copy all recommended skills for EVE import"
+													title={t('skillPlans.copyAllRecommendedSkillsForEveImport')}
 												>
 													<ClipboardCopy className="h-3 w-3" />
-													Copy All Recommended
+													{t('skillPlans.copyAllRecommended')}
 												</Button>
 											)}
 										</div>
@@ -285,8 +291,14 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 									})()}
 								</div>
 								<div className="flex justify-between text-xs text-muted-foreground">
-									<p>{(progress.percentageRequired || 0).toFixed(1)}% required</p>
-									<p>{(progress.percentageRecommendedUpgrades || 0).toFixed(1)}% recommended</p>
+									<p>
+										{(progress.percentageRequired || 0).toFixed(1)}
+										{t('skillPlans.required3')}
+									</p>
+									<p>
+										{(progress.percentageRecommendedUpgrades || 0).toFixed(1)}
+										{t('skillPlans.recommended3')}
+									</p>
 								</div>
 							</div>
 
@@ -296,17 +308,17 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 									{(progress.percentageRequired || 0) === 100 ? (
 										<Badge variant="default" className="flex items-center gap-1">
 											<CheckCircle2 className="h-3 w-3" />
-											Ready for plan
+											{t('skillPlans.readyForPlan')}
 										</Badge>
 									) : (progress.percentageRequired || 0) >= 75 ? (
 										<Badge variant="secondary" className="flex items-center gap-1">
 											<AlertCircle className="h-3 w-3" />
-											Almost ready
+											{t('skillPlans.almostReady')}
 										</Badge>
 									) : (
 										<Badge variant="destructive" className="flex items-center gap-1">
 											<XCircle className="h-3 w-3" />
-											Training needed
+											{t('skillPlans.trainingNeeded')}
 										</Badge>
 									)}
 								</div>
@@ -325,10 +337,11 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 													selectedCharacterSkills?.levels ?? {}
 												)
 											}
-											title="Copy missing skillbooks for EVE multi-buy"
+											title={t('skillPlans.copyMissingSkillbooksForEveMultiBuy')}
 										>
 											<ShoppingCart className="h-3 w-3" />
-											Copy Missing Skillbooks ({missingCount})
+											{t('skillPlans.copyMissingSkillbooks')}
+											{missingCount})
 										</Button>
 									) : null
 								})()}
@@ -340,7 +353,7 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 					<Card>
 						<CardHeader>
 							<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-								<CardTitle>Skills Breakdown</CardTitle>
+								<CardTitle>{t('skillPlans.skillsBreakdown')}</CardTitle>
 								<div className="inline-flex rounded-lg border divide-x">
 									<Button
 										variant={skillFilter === 'all' ? 'secondary' : 'ghost'}
@@ -348,7 +361,8 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 										className="text-xs h-8 rounded-none rounded-l-md border-0"
 										onClick={() => setSkillFilter('all')}
 									>
-										All ({progress.skills?.length || 0})
+										{t('skillPlans.all')}
+										{progress.skills?.length || 0})
 									</Button>
 									<Button
 										variant={skillFilter === 'missing-required' ? 'secondary' : 'ghost'}
@@ -357,7 +371,8 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 										onClick={() => setSkillFilter('missing-required')}
 									>
 										<XCircle className="h-3 w-3 mr-1" />
-										Required ({progress.skills?.filter((s) => !s.meetsRequired).length || 0})
+										{t('skillPlans.required4')}
+										{progress.skills?.filter((s) => !s.meetsRequired).length || 0})
 									</Button>
 									<Button
 										variant={skillFilter === 'needs-training' ? 'secondary' : 'ghost'}
@@ -366,7 +381,8 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 										onClick={() => setSkillFilter('needs-training')}
 									>
 										<Filter className="h-3 w-3 mr-1" />
-										Training ({progress.skills?.filter((s) => !s.meetsRecommended).length || 0})
+										{t('skillPlans.training')}
+										{progress.skills?.filter((s) => !s.meetsRecommended).length || 0})
 									</Button>
 								</div>
 							</div>
@@ -375,11 +391,11 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead>Skill</TableHead>
-										<TableHead className="text-center">Current</TableHead>
-										<TableHead className="text-center">Required</TableHead>
-										<TableHead className="text-center">Recommended</TableHead>
-										<TableHead>Status</TableHead>
+										<TableHead>{t('skillPlans.skill')}</TableHead>
+										<TableHead className="text-center">{t('skillPlans.current')}</TableHead>
+										<TableHead className="text-center">{t('skillPlans.required')}</TableHead>
+										<TableHead className="text-center">{t('skillPlans.recommended')}</TableHead>
+										<TableHead>{t('skillPlans.status')}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -396,9 +412,9 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 										if (filteredSkills.length === 0) {
 											let message = ''
 											if (skillFilter === 'needs-training') {
-												message = 'All skills are fully trained to recommended levels! 🎉'
+												message = t('skillPlans.fullyTrainedMessage')
 											} else if (skillFilter === 'missing-required') {
-												message = 'All required skills are trained! ✅'
+												message = t('skillPlans.requiredTrainedMessage')
 											}
 
 											if (message) {
@@ -425,7 +441,7 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 												)}
 											>
 												<TableCell className="font-medium">
-													{skill.skillName || 'Unknown Skill'}
+													{skill.skillName || t('skillPlans.unknownSkill')}
 												</TableCell>
 												<TableCell
 													className={cn(
@@ -458,18 +474,20 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 													{skill.meetsRecommended ? (
 														<div className="flex items-center gap-1 text-amber-300">
 															<Star className="h-4 w-4 fill-current" />
-															<span className="text-xs">Fully trained</span>
+															<span className="text-xs">{t('skillPlans.fullyTrained2')}</span>
 														</div>
 													) : skill.meetsRequired ? (
 														<div className="flex items-center gap-1 text-success">
 															<CheckCircle2 className="h-4 w-4" />
-															<span className="text-xs">Meets minimum</span>
+															<span className="text-xs">{t('skillPlans.meetsMinimum')}</span>
 														</div>
 													) : (
 														<div className="flex items-center gap-1 text-destructive">
 															<XCircle className="h-4 w-4" />
 															<span className="text-xs">
-																{skill.currentLevel === 0 ? 'Not trained' : 'Needs training'}
+																{skill.currentLevel === 0
+																	? t('skillPlans.notTrained')
+																	: t('skillPlans.needsTraining2')}
 															</span>
 														</div>
 													)}
@@ -482,7 +500,7 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 
 							{(!progress.skills || progress.skills.length === 0) && (
 								<div className="text-center py-8 text-muted-foreground">
-									This plan has no skills added yet.
+									{t('skillPlans.thisPlanHasNoSkillsAddedYet')}
 								</div>
 							)}
 						</CardContent>
@@ -491,16 +509,18 @@ export function ProgressChecker({ planId, planName, initialCharacterId }: Progre
 			) : selectedCharacter && !selectedCharacter.hasValidToken ? (
 				<Card>
 					<CardContent className="py-8 text-center">
-						<p className="text-muted-foreground mb-2">This character's EVE token has expired.</p>
+						<p className="text-muted-foreground mb-2">
+							{t('skillPlans.thisCharacterSEveTokenHasExpired')}
+						</p>
 						<p className="text-sm text-muted-foreground">
-							Please re-authenticate with EVE Online to check skill progress.
+							{t('skillPlans.pleaseReAuthenticateWithEveOnlineToCheckSkillProgress')}
 						</p>
 					</CardContent>
 				</Card>
 			) : (
 				<Card>
 					<CardContent className="py-8 text-center text-muted-foreground">
-						Select a character to check progress.
+						{t('skillPlans.selectACharacterToCheckProgress')}
 					</CardContent>
 				</Card>
 			)}

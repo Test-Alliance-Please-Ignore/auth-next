@@ -20,13 +20,16 @@ import {
 } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { getCurrentMonthDateRange, shiftMonthRange } from '@/lib/tax-date'
-import { formatTaxIskCompact, formatTaxNumber, TAX_REF_TYPE_OPTIONS } from '@/lib/tax-display'
+import { formatTaxIskCompact, formatTaxNumber, getTaxRefTypeOptions } from '@/lib/tax-display'
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
 
 export default function TaxMemberSummaryPage() {
-	usePageTitle('Tax Member Summary')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('tax.taxMemberSummary'))
 
 	const { data: globalCapabilities, isLoading: globalCapabilitiesLoading } = useTaxCapabilities()
 	const canReadWithUrn = globalCapabilities?.global.canRead ?? false
@@ -50,7 +53,7 @@ export default function TaxMemberSummaryPage() {
 		return corporationSettings
 			.map((setting) => setting.corporationId)
 			.filter((corporationId) => !accessIdSet.has(corporationId))
-	}, [isCorporationScopeLoading, corporationAccess?.corporations, corporationSettings])
+	}, [isCorporationScopeLoading, corporationAccess?.corporations, corporationSettings, t])
 	const { data: resolvedCorporationNames = {} } = useEntityNames(unresolvedCorporationIds, {
 		enabled: !isCorporationScopeLoading && unresolvedCorporationIds.length > 0,
 	})
@@ -77,6 +80,7 @@ export default function TaxMemberSummaryPage() {
 		corporationAccess?.corporations,
 		corporationSettings,
 		resolvedCorporationNames,
+		t,
 	])
 
 	const [selectedCorporationId, setSelectedCorporationId] = useState<string | undefined>(undefined)
@@ -100,7 +104,7 @@ export default function TaxMemberSummaryPage() {
 					: next
 			)
 		},
-		[]
+		[t]
 	)
 
 	const effectiveCorporationId = useMemo(() => {
@@ -114,7 +118,7 @@ export default function TaxMemberSummaryPage() {
 			return corporationOptions[0]?.corporationId
 		}
 		return undefined
-	}, [isCorporationScopeLoading, selectedCorporationId, corporationOptions])
+	}, [isCorporationScopeLoading, selectedCorporationId, corporationOptions, t])
 
 	const { data: scopedCapabilities } = useTaxCapabilities(
 		effectiveCorporationId,
@@ -170,17 +174,19 @@ export default function TaxMemberSummaryPage() {
 	return (
 		<Container>
 			<PageHeader
-				title="Tax Member Summary"
-				description="View member-attributed contribution into corporation wallet inflows and taxable contribution by source."
+				title={t('tax.taxMemberSummary')}
+				description={t(
+					'tax.viewMemberAttributedContributionIntoCorporationWalletInflowsAndTaxable'
+				)}
 			/>
 
 			<Section>
 				{isCorporationScopeLoading ? (
 					<Card>
 						<CardHeader>
-							<CardTitle>Loading Corporation Scope</CardTitle>
+							<CardTitle>{t('tax.loadingCorporationScope')}</CardTitle>
 							<CardDescription>
-								Resolving accessible corporations before loading member summaries.
+								{t('tax.resolvingAccessibleCorporationsBeforeLoadingMemberSummaries')}
 							</CardDescription>
 						</CardHeader>
 					</Card>
@@ -193,23 +199,25 @@ export default function TaxMemberSummaryPage() {
 				) : (
 					<Card>
 						<CardHeader>
-							<CardTitle>No Corporation Scope</CardTitle>
-							<CardDescription>No corporation scope is available for this account.</CardDescription>
+							<CardTitle>{t('tax.noCorporationScope')}</CardTitle>
+							<CardDescription>
+								{t('tax.noCorporationScopeIsAvailableForThisAccount')}
+							</CardDescription>
 						</CardHeader>
 					</Card>
 				)}
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Filters</CardTitle>
+						<CardTitle>{t('tax.filters')}</CardTitle>
 						<CardDescription>
-							Filter by period and optionally search members by character name prefix or exact ID.
+							{t('tax.filterByPeriodAndOptionallySearchMembersByCharacterName')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-2">
 						<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
 							<div className="space-y-2">
-								<div className="text-sm font-medium">Date Range</div>
+								<div className="text-sm font-medium">{t('tax.dateRange2')}</div>
 								<div className="flex items-center gap-1">
 									<Button
 										type="button"
@@ -217,7 +225,7 @@ export default function TaxMemberSummaryPage() {
 										size="icon"
 										showIcon={false}
 										className="h-10 w-10 shrink-0 p-0"
-										aria-label="Previous month"
+										aria-label={t('tax.previousMonth')}
 										onClick={() => moveMonth(-1)}
 									>
 										<ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -228,7 +236,7 @@ export default function TaxMemberSummaryPage() {
 											setFromDate(nextFromDate)
 											setToDate(nextToDate)
 										}}
-										placeholder="Date range"
+										placeholder={t('tax.dateRange')}
 										className="min-w-0 flex-1 [&_.themed-date-picker__input]:h-10 [&_.themed-date-picker__input]:w-full"
 									/>
 									<Button
@@ -237,7 +245,7 @@ export default function TaxMemberSummaryPage() {
 										size="icon"
 										showIcon={false}
 										className="h-10 w-10 shrink-0 p-0"
-										aria-label="Next month"
+										aria-label={t('tax.nextMonth')}
 										onClick={() => moveMonth(1)}
 									>
 										<ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -245,28 +253,28 @@ export default function TaxMemberSummaryPage() {
 								</div>
 							</div>
 							<div className="space-y-2">
-								<div className="text-sm font-medium">Character</div>
+								<div className="text-sm font-medium">{t('tax.character')}</div>
 								<div className="space-y-2 md:space-y-0">
 									<Input
 										value={characterQuery}
 										onChange={(event) => setCharacterQuery(event.target.value)}
-										placeholder="Character name or ID"
+										placeholder={t('tax.characterNameOrId')}
 										disabled={!canSearchCharacter}
 										className="h-10"
 									/>
 								</div>
 							</div>
 							<div className="space-y-2">
-								<div className="text-sm font-medium">Income Types</div>
+								<div className="text-sm font-medium">{t('tax.incomeTypes')}</div>
 								<div className="flex items-center gap-2">
 									<div className="min-w-0 flex-1">
 										<Select
-											options={TAX_REF_TYPE_OPTIONS}
+											options={getTaxRefTypeOptions()}
 											values={incomeTypes}
 											onValuesChange={setIncomeTypes}
 											multiple
 											searchable
-											placeholder="All income types"
+											placeholder={t('tax.allIncomeTypes')}
 											inputClassName="h-10"
 											contentClassName="w-[min(20rem,calc(100vw-2rem))] min-w-[min(20rem,calc(100vw-2rem))]"
 										/>
@@ -279,7 +287,7 @@ export default function TaxMemberSummaryPage() {
 										disabled={taxableIncomeTypes.length === 0}
 										onClick={() => setIncomeTypes(taxableIncomeTypes)}
 									>
-										Taxable only
+										{t('tax.taxableOnly')}
 									</Button>
 								</div>
 							</div>
@@ -293,7 +301,7 @@ export default function TaxMemberSummaryPage() {
 										onClick={clearFilters}
 										disabled={!hasActiveFilters}
 									>
-										Clear Filters
+										{t('tax.clearFilters')}
 									</Button>
 									<Button
 										type="button"
@@ -305,7 +313,7 @@ export default function TaxMemberSummaryPage() {
 										variant="primary"
 										className="h-10 w-28"
 									>
-										{isRefreshing ? 'Refreshing…' : 'Refresh'}
+										{isRefreshing ? t('tax.refreshing') : t('tax.refresh')}
 									</Button>
 								</div>
 							</div>
@@ -316,7 +324,7 @@ export default function TaxMemberSummaryPage() {
 				<div className="grid gap-4 md:grid-cols-4">
 					<Card>
 						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">Members in View</CardTitle>
+							<CardTitle className="text-sm">{t('tax.membersInView')}</CardTitle>
 						</CardHeader>
 						<CardContent className="text-2xl font-semibold">
 							{formatTaxNumber(memberStats.membersInView)}
@@ -324,7 +332,7 @@ export default function TaxMemberSummaryPage() {
 					</Card>
 					<Card>
 						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">Total Income</CardTitle>
+							<CardTitle className="text-sm">{t('tax.totalIncome')}</CardTitle>
 						</CardHeader>
 						<CardContent className="text-2xl font-semibold">
 							{formatTaxIskCompact(memberStats.totalIncome)}
@@ -332,7 +340,7 @@ export default function TaxMemberSummaryPage() {
 					</Card>
 					<Card>
 						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">Taxable Income Due</CardTitle>
+							<CardTitle className="text-sm">{t('tax.taxableIncomeDue')}</CardTitle>
 						</CardHeader>
 						<CardContent className="text-2xl font-semibold">
 							{formatTaxIskCompact(memberStats.totalTaxableIncome)}
@@ -341,7 +349,7 @@ export default function TaxMemberSummaryPage() {
 					{canViewSummaryTotals ? (
 						<Card>
 							<CardHeader className="pb-2">
-								<CardTitle className="text-sm">Taxes Paid</CardTitle>
+								<CardTitle className="text-sm">{t('tax.taxesPaid')}</CardTitle>
 							</CardHeader>
 							<CardContent className="text-2xl font-semibold">
 								{formatTaxIskCompact(summaryReport?.taxPaid ?? '0')}

@@ -11,6 +11,7 @@ import { DataTable } from '@/components/data-table'
 import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { i18n, useAppTranslation } from '@/i18n'
 import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -43,7 +44,7 @@ function buildColumns(
 	const columns: Array<DataTableColumn<ApplicationListItem>> = [
 		{
 			id: 'characterName',
-			header: 'Character',
+			header: i18n.t('hrpages.character'),
 			sortable: true,
 			cell: (application) => {
 				return (
@@ -66,7 +67,7 @@ function buildColumns(
 								</span>
 								{application.blacklistState?.effective && (
 									<Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
-										Blocklisted
+										{i18n.t('hrpages.blocklisted')}
 									</Badge>
 								)}
 								{application.isFirstApplication !== undefined && (
@@ -78,14 +79,18 @@ function buildColumns(
 												: 'border-primary/30 bg-primary/20 text-primary'
 										)}
 									>
-										{application.isFirstApplication ? 'First' : 'Repeat'}
+										{application.isFirstApplication
+											? i18n.t('hrpages.first')
+											: i18n.t('hrpages.repeat')}
 									</span>
 								)}
 							</span>
 							{(application.altCharacters?.length ?? 0) > 0 && (
 								<span className="text-xs text-muted-foreground">
 									+{application.altCharacters?.length ?? 0}{' '}
-									{(application.altCharacters?.length ?? 0) === 1 ? 'Alt' : 'Alts'}
+									{(application.altCharacters?.length ?? 0) === 1
+										? i18n.t('hrpages.alt')
+										: i18n.t('hrpages.alts')}
 								</span>
 							)}
 						</div>
@@ -95,21 +100,23 @@ function buildColumns(
 		},
 		{
 			id: 'corporationName',
-			header: 'Corporation',
+			header: i18n.t('hrpages.corporation'),
 			sortable: true,
 			cell: (application) => (
-				<span className="text-muted-foreground">{application.corporationName || 'Unknown'}</span>
+				<span className="text-muted-foreground">
+					{application.corporationName || i18n.t('hrpages.unknown')}
+				</span>
 			),
 		},
 		{
 			id: 'status',
-			header: 'Status',
+			header: i18n.t('hrpages.status'),
 			sortable: true,
 			cell: (application) => <ApplicationStatusBadge status={application.status} size="sm" />,
 		},
 		{
 			id: 'createdAt',
-			header: 'Submitted',
+			header: i18n.t('hrpages.submitted'),
 			sortable: true,
 			cell: (application) => (
 				<span className="text-sm text-muted-foreground">
@@ -119,7 +126,7 @@ function buildColumns(
 		},
 		{
 			id: 'lastStaffInteractionAt',
-			header: 'Last HR Activity',
+			header: i18n.t('hrpages.lastHrActivity'),
 			sortable: true,
 			cell: (application) => {
 				const value = application.lastStaffInteractionAt
@@ -134,7 +141,7 @@ function buildColumns(
 		},
 		{
 			id: 'recommendationCount',
-			header: 'Recs',
+			header: i18n.t('hrpages.recs'),
 			sortable: true,
 			cell: (application) => {
 				const count = application.recommendationCount
@@ -153,7 +160,7 @@ function buildColumns(
 	if (canManage) {
 		columns.push({
 			id: 'actions',
-			header: 'Actions',
+			header: i18n.t('hrpages.actions'),
 			headerClassName: 'text-center',
 			className: 'text-right',
 			sticky: 'right',
@@ -162,7 +169,7 @@ function buildColumns(
 				return (
 					<Button asChild variant="ghost" size="sm">
 						<Link to={href} onClick={(event) => event.stopPropagation()}>
-							View
+							{i18n.t('hrpages.view')}
 						</Link>
 					</Button>
 				)
@@ -221,6 +228,8 @@ export function ApplicationsTable({
 	onPageChange,
 	onPageSizeChange,
 }: ApplicationsTableProps) {
+	const { t } = useAppTranslation()
+
 	const [pagination, setPagination] = useState<DataTablePagination>({
 		pageIndex: Math.max(page - 1, 0),
 		pageSize,
@@ -233,7 +242,7 @@ export function ApplicationsTable({
 
 	const columns = useMemo(
 		() => buildColumns(getApplicationHref, canManage),
-		[getApplicationHref, canManage]
+		[getApplicationHref, canManage, t]
 	)
 	const sortedApplications = useMemo(() => {
 		const activeSort = sorting[0]
@@ -242,7 +251,7 @@ export function ApplicationsTable({
 			const result = compareApplicationValues(left, right, activeSort.id)
 			return activeSort.desc ? -result : result
 		})
-	}, [applications, sorting])
+	}, [applications, sorting, t])
 	const isServerPaginated = typeof totalCount === 'number'
 	const visibleApplications = isServerPaginated
 		? sortedApplications
@@ -263,7 +272,7 @@ export function ApplicationsTable({
 			columns={columns}
 			rows={visibleApplications}
 			loading={loading}
-			emptyMessage="No applications match the current filters"
+			emptyMessage={t('hrpages.noApplicationsMatchTheCurrentFilters')}
 			sorting={sorting}
 			onSortingChange={(next) => {
 				setSorting(next)
@@ -272,7 +281,7 @@ export function ApplicationsTable({
 			pagination={pagination}
 			onPaginationChange={handlePaginationChange}
 			rowCount={rowCount}
-			itemLabel="applications"
+			itemLabel={t('hrpages.applications')}
 			pageSizeOptions={[10, 25, 50, 100, 200]}
 			paginationPosition="both"
 			getRowKey={(application) => application.id}

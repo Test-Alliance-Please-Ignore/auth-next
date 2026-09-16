@@ -30,6 +30,7 @@ import {
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
+import { useAppTranslation } from '@/i18n'
 import { getCurrentMonthDateRange, getMonthDateRange, getMonthPeriodOptions } from '@/lib/tax-date'
 
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
@@ -37,7 +38,9 @@ const DEFAULT_MONTH_VALUE = DEFAULT_MONTH_RANGE.fromDate.slice(0, 7)
 const TAX_ASSESSMENT_MONTH_OPTIONS = getMonthPeriodOptions(24)
 
 export default function TaxBillsPage() {
-	usePageTitle('Tax Billing')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('tax.taxBilling'))
 
 	const { data: globalCapabilities } = useTaxCapabilities()
 	const canAdminScope = globalCapabilities?.global.canAudit ?? false
@@ -91,7 +94,7 @@ export default function TaxBillsPage() {
 			if (assessment.assessmentScope === 'character') ids.add(assessment.scopeId)
 		}
 		return [...ids]
-	}, [assessments])
+	}, [assessments, t])
 
 	const { data: resolvedEntityNames = {} } = useEntityNames(entityIds, { enabled: canView })
 	const entityNames = useMemo(() => {
@@ -100,7 +103,7 @@ export default function TaxBillsPage() {
 			if (corporation.name) names[corporation.corporationId] = corporation.name
 		}
 		return names
-	}, [accessibleCorporations, resolvedEntityNames])
+	}, [accessibleCorporations, resolvedEntityNames, t])
 	const retractableAssessment = assessments.find((row) => row.id === retractingAssessmentId)
 
 	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
@@ -108,8 +111,8 @@ export default function TaxBillsPage() {
 			<Container>
 				<Card>
 					<CardHeader>
-						<CardTitle>Tax Billing</CardTitle>
-						<CardDescription>You do not have permission to view tax billing data.</CardDescription>
+						<CardTitle>{t('tax.taxBilling')}</CardTitle>
+						<CardDescription>{t('tax.youDoNotHavePermissionToViewTaxBillingData')}</CardDescription>
 					</CardHeader>
 				</Card>
 			</Container>
@@ -119,8 +122,8 @@ export default function TaxBillsPage() {
 	return (
 		<Container>
 			<PageHeader
-				title="Tax Billing"
-				description="View assessment-level bill status, period windows, and bill timeline history by corporation."
+				title={t('tax.taxBilling')}
+				description={t('tax.viewAssessmentLevelBillStatusPeriodWindowsAndBillTimeline')}
 			/>
 
 			<Section>
@@ -211,16 +214,16 @@ export default function TaxBillsPage() {
 				<Tabs defaultValue="bill-status" className="space-y-2">
 					<Card>
 						<CardHeader>
-							<CardTitle>Billing Data</CardTitle>
+							<CardTitle>{t('tax.billingData')}</CardTitle>
 							<CardDescription>
-								Bill lifecycle, scoped assessments, and event history for the selected corporation.
+								{t('tax.billLifecycleScopedAssessmentsAndEventHistoryForTheSelected')}
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-2">
 							<TabsList>
-								<TabsTrigger value="bill-status">Bill Status</TabsTrigger>
-								<TabsTrigger value="assessments">Assessments</TabsTrigger>
-								<TabsTrigger value="billing-history">Billing History</TabsTrigger>
+								<TabsTrigger value="bill-status">{t('tax.billStatus')}</TabsTrigger>
+								<TabsTrigger value="assessments">{t('tax.assessments2')}</TabsTrigger>
+								<TabsTrigger value="billing-history">{t('tax.billingHistory')}</TabsTrigger>
 							</TabsList>
 
 							<TabsContent value="bill-status" className="mt-2 space-y-3">

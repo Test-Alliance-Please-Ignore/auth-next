@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, RefreshCw, Shield, User, Users } from 'lucide-react'
 import { Link, Navigate, useLocation, useParams } from 'react-router'
 
+import { i18n, useAppTranslation } from '@/i18n'
 import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import { CharacterAttributes } from '../components/character-attributes'
@@ -31,22 +32,24 @@ type CharacterDetailSource =
 function resolveBackLabel(source?: CharacterDetailSource): string | null {
 	switch (source) {
 		case 'dashboard':
-			return 'Back to Dashboard'
+			return i18n.t('characterpages.backToDashboard')
 		case 'admin-activity-log':
-			return 'Back to Activity Log'
+			return i18n.t('characterpages.backToActivityLog')
 		case 'admin-user-detail':
 		case 'hr-auditor-user-profile':
-			return 'Back to User Details'
+			return i18n.t('characterpages.backToUserDetails')
 		case 'corporation-members':
-			return 'Back to Members'
+			return i18n.t('characterpages.backToMembers')
 		case 'hr-member-profile':
-			return 'Back to User Profile'
+			return i18n.t('characterpages.backToUserProfile')
 		default:
 			return null
 	}
 }
 
 export default function CharacterDetailPage() {
+	const { t } = useAppTranslation()
+
 	const { characterId } = useParams<{ characterId: string }>()
 	const location = useLocation()
 	const { user } = useAuth()
@@ -59,7 +62,9 @@ export default function CharacterDetailPage() {
 	} | null
 	const backTo = navigationState?.backTo
 	const backLabel =
-		navigationState?.backLabel ?? resolveBackLabel(navigationState?.source) ?? 'Back'
+		navigationState?.backLabel ??
+		resolveBackLabel(navigationState?.source) ??
+		t('characterpages.back')
 
 	if (!characterId) {
 		return <Navigate to="/dashboard" replace />
@@ -116,7 +121,9 @@ export default function CharacterDetailPage() {
 		staleTime: 1000 * 60,
 	})
 	// Set page title based on character name
-	usePageTitle(character?.public?.info?.name ? `${character.public.info.name}` : 'Character')
+	usePageTitle(
+		character?.public?.info?.name ? `${character.public.info.name}` : t('characterpages.character')
+	)
 
 	// Handle character refresh with toast notifications
 	const refreshCharacter = useRefreshCharacter()
@@ -162,15 +169,17 @@ export default function CharacterDetailPage() {
 			<Container className="p-8">
 				<Card>
 					<CardHeader>
-						<CardTitle>{isForbidden ? 'Access Denied' : 'Error'}</CardTitle>
+						<CardTitle>
+							{isForbidden ? t('characterpages.accessDenied') : t('characterpages.error')}
+						</CardTitle>
 					</CardHeader>
 					<CardContent>
 						<p className="text-destructive">
 							{isForbidden
-								? 'You do not have permission to view this character. Only the character owner can view character details.'
+								? t('characterpages.youDoNotHavePermissionToViewThisCharacterOnly')
 								: isNotFound
-									? 'Character not found'
-									: 'Failed to load character details'}
+									? t('characterpages.characterNotFound')
+									: t('characterpages.failedToLoadCharacterDetails')}
 						</p>
 					</CardContent>
 				</Card>
@@ -179,8 +188,10 @@ export default function CharacterDetailPage() {
 	}
 
 	const lastUpdatedText = character.lastUpdated
-		? `Updated ${formatDistanceToNow(new Date(character.lastUpdated), { addSuffix: true })}`
-		: 'Never updated'
+		? t('characterpages.updatedValue1', {
+				value1: formatDistanceToNow(new Date(character.lastUpdated), { addSuffix: true }),
+			})
+		: t('characterpages.neverUpdated')
 	const canLinkToAdminCorporation = Boolean(
 		user?.is_admin && corporationIdForLink && isManagedCorporation
 	)
@@ -217,10 +228,10 @@ export default function CharacterDetailPage() {
 						<div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
 							<Shield className="h-5 w-5" />
 							<div>
-								<p className="font-medium">Viewing as Site Administrator</p>
+								<p className="font-medium">{t('characterpages.viewingAsSiteAdministrator')}</p>
 								{character.owner && (
 									<p className="text-sm text-muted-foreground">
-										This character belongs to:{' '}
+										{t('characterpages.thisCharacterBelongsTo')}{' '}
 										<Link
 											to={`/admin/users/${character.owner.userId}`}
 											className="font-medium text-foreground underline-offset-2 hover:underline"
@@ -242,9 +253,14 @@ export default function CharacterDetailPage() {
 						<div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
 							<Shield className="h-5 w-5" />
 							<div>
-								<p className="font-medium">Viewing as Corporation {character.viewerRole}</p>
+								<p className="font-medium">
+									{t('characterpages.viewingAsCorporation')}
+									{character.viewerRole}
+								</p>
 								<p className="text-sm text-muted-foreground">
-									You can view public character information (attributes, corporation history).
+									{t(
+										'characterpages.youCanViewPublicCharacterInformationAttributesCorporationHistory'
+									)}
 								</p>
 							</div>
 						</div>
@@ -259,9 +275,9 @@ export default function CharacterDetailPage() {
 						<div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
 							<Users className="h-5 w-5" />
 							<div>
-								<p className="font-medium">Viewing as HR Viewer</p>
+								<p className="font-medium">{t('characterpages.viewingAsHrViewer')}</p>
 								<p className="text-sm text-muted-foreground">
-									You can view public character information.
+									{t('characterpages.youCanViewPublicCharacterInformation')}
 								</p>
 							</div>
 						</div>
@@ -293,27 +309,39 @@ export default function CharacterDetailPage() {
 											<Link
 												to={`/admin/corporations/${character.public.info.corporationId}`}
 												className="text-sm font-medium underline-offset-2 hover:underline"
-												title={`Corporation ID: ${character.public.info.corporationId}`}
+												title={t('characterpages.corporationIdValue1', {
+													value1: character.public.info.corporationId,
+												})}
 											>
 												{character.public.info.corporationName ||
-													`Corporation #${character.public.info.corporationId}`}
+													t('characterpages.corporationValue1', {
+														value1: character.public.info.corporationId,
+													})}
 											</Link>
 										) : corporationMembersLink ? (
 											<Link
 												to={corporationMembersLink}
 												className="text-sm font-medium underline-offset-2 hover:underline"
-												title={`Corporation ID: ${character.public.info.corporationId}`}
+												title={t('characterpages.corporationIdValue1', {
+													value1: character.public.info.corporationId,
+												})}
 											>
 												{character.public.info.corporationName ||
-													`Corporation #${character.public.info.corporationId}`}
+													t('characterpages.corporationValue1', {
+														value1: character.public.info.corporationId,
+													})}
 											</Link>
 										) : (
 											<span
 												className="text-sm font-medium"
-												title={`Corporation ID: ${character.public.info.corporationId}`}
+												title={t('characterpages.corporationIdValue1', {
+													value1: character.public.info.corporationId,
+												})}
 											>
 												{character.public.info.corporationName ||
-													`Corporation #${character.public.info.corporationId}`}
+													t('characterpages.corporationValue1', {
+														value1: character.public.info.corporationId,
+													})}
 											</span>
 										)}
 									</div>
@@ -327,10 +355,14 @@ export default function CharacterDetailPage() {
 										/>
 										<span
 											className="text-sm"
-											title={`Alliance ID: ${character.public.info.allianceId}`}
+											title={t('characterpages.allianceIdValue1', {
+												value1: character.public.info.allianceId,
+											})}
 										>
 											{character.public.info.allianceName ||
-												`Alliance #${character.public.info.allianceId}`}
+												t('characterpages.allianceValue1', {
+													value1: character.public.info.allianceId,
+												})}
 										</span>
 									</div>
 								)}
@@ -349,7 +381,9 @@ export default function CharacterDetailPage() {
 								<RefreshCw
 									className={`h-4 w-4 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
 								/>
-								{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh'}
+								{refreshCharacter.isPending
+									? t('characterpages.refreshing')
+									: t('characterpages.refresh')}
 							</Button>
 						)}
 						{character.isOwner &&
@@ -358,7 +392,7 @@ export default function CharacterDetailPage() {
 							!character.viewedAsHrViewer && (
 								<span className="text-sm text-success font-medium flex items-center">
 									<User className="h-4 w-4 mr-1" />
-									Owner
+									{t('characterpages.owner')}
 								</span>
 							)}
 					</div>
@@ -403,17 +437,19 @@ export default function CharacterDetailPage() {
 			) : canViewPrivateSections ? (
 				<Card>
 					<CardHeader>
-						<CardTitle>Skills</CardTitle>
+						<CardTitle>{t('characterpages.skills')}</CardTitle>
 						<CardDescription>
-							{isPrivateLoading ? 'Loading skill data' : 'Skill data not available'}
+							{isPrivateLoading
+								? t('characterpages.loadingSkillData')
+								: t('characterpages.skillDataNotAvailable')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<div className="text-center py-8">
 							<p className="text-muted-foreground mb-4">
 								{isPrivateLoading
-									? 'Loading character data needed to render skills.'
-									: 'Character data is not available for this view.'}
+									? t('characterpages.loadingCharacterDataNeededToRenderSkills')
+									: t('characterpages.characterDataIsNotAvailableForThisView')}
 							</p>
 							{isPrivateLoading && (
 								<Button
@@ -424,7 +460,9 @@ export default function CharacterDetailPage() {
 									<RefreshCw
 										className={`h-4 w-4 ${refreshCharacter.isPending ? 'animate-spin' : ''}`}
 									/>
-									{refreshCharacter.isPending ? 'Refreshing...' : 'Refresh Character Data'}
+									{refreshCharacter.isPending
+										? t('characterpages.refreshing')
+										: t('characterpages.refreshCharacterData')}
 								</Button>
 							)}
 						</div>
@@ -433,12 +471,12 @@ export default function CharacterDetailPage() {
 			) : (
 				<Card>
 					<CardHeader>
-						<CardTitle>Skills</CardTitle>
-						<CardDescription>No skill data available</CardDescription>
+						<CardTitle>{t('characterpages.skills')}</CardTitle>
+						<CardDescription>{t('characterpages.noSkillDataAvailable')}</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<p className="text-center text-muted-foreground py-8">
-							This character's skill data has not been loaded yet.
+							{t('characterpages.thisCharacterSSkillDataHasNotBeenLoadedYet')}
 						</p>
 					</CardContent>
 				</Card>

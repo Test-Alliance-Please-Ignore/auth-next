@@ -1,6 +1,8 @@
 import { Plus, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
+import { useAppTranslation } from '@/i18n'
+
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { Input } from '../../../components/ui/input'
@@ -21,6 +23,8 @@ export function SkillSelector({
 	onAddSkill,
 	isSubmitting = false,
 }: SkillSelectorProps) {
+	const { t } = useAppTranslation()
+
 	const [searchTerm, setSearchTerm] = useState('')
 	const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
 	const [selectedGroup, setSelectedGroup] = useState<string>('all')
@@ -52,7 +56,7 @@ export function SkillSelector({
 		}
 		// Otherwise use all skills
 		return allSkills || []
-	}, [debouncedSearchTerm, searchResults, allSkills])
+	}, [debouncedSearchTerm, searchResults, allSkills, t])
 
 	// Loading state
 	const isLoading = debouncedSearchTerm.length >= 2 ? searchLoading : allSkillsLoading
@@ -62,7 +66,7 @@ export function SkillSelector({
 		if (!availableSkills) return []
 		const groups = new Set(availableSkills.map((s) => s.group))
 		return Array.from(groups).sort()
-	}, [availableSkills])
+	}, [availableSkills, t])
 
 	// Filter skills based on group and existing skills
 	const filteredSkills = useMemo(() => {
@@ -79,7 +83,7 @@ export function SkillSelector({
 
 			return true
 		})
-	}, [availableSkills, existingSkillIds, selectedGroup])
+	}, [availableSkills, existingSkillIds, selectedGroup, t])
 
 	const handleAddSkill = async () => {
 		if (!selectedSkill) return
@@ -112,12 +116,12 @@ export function SkillSelector({
 			{/* Search and filters */}
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 				<div className="space-y-2">
-					<Label htmlFor="skill-search">Search Skills</Label>
+					<Label htmlFor="skill-search">{t('skillPlans.searchSkills')}</Label>
 					<div className="relative">
 						<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 						<Input
 							id="skill-search"
-							placeholder="Search by skill name (min 2 characters)..."
+							placeholder={t('skillPlans.searchBySkillNameMin2Characters')}
 							value={searchTerm}
 							onChange={(e) => setSearchTerm(e.target.value)}
 							className="pl-8"
@@ -125,21 +129,23 @@ export function SkillSelector({
 						/>
 					</div>
 					{searchTerm.length > 0 && searchTerm.length < 2 && (
-						<p className="text-xs text-muted-foreground">Type at least 2 characters to search</p>
+						<p className="text-xs text-muted-foreground">
+							{t('skillPlans.typeAtLeast2CharactersToSearch')}
+						</p>
 					)}
 				</div>
 
 				<div className="space-y-2">
-					<Label htmlFor="skill-group">Skill Group</Label>
+					<Label htmlFor="skill-group">{t('skillPlans.skillGroup')}</Label>
 					<Select
 						value={selectedGroup}
 						onValueChange={setSelectedGroup}
 						inputId="skill-group"
 						options={[
-							{ value: 'all', label: 'All groups' },
+							{ value: 'all', label: t('skillPlans.allGroups') },
 							...skillGroups.map((group) => ({ value: group, label: group })),
 						]}
-						placeholder="All groups"
+						placeholder={t('skillPlans.allGroups')}
 						disabled={isLoading || isSubmitting}
 					/>
 				</div>
@@ -148,20 +154,20 @@ export function SkillSelector({
 			{/* Skill selection */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Add Skill to Plan</CardTitle>
+					<CardTitle>{t('skillPlans.addSkillToPlan')}</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-4">
 					{/* Loading state */}
 					{isLoading && (
 						<div className="text-sm text-muted-foreground">
-							{searchTerm ? 'Searching skills...' : 'Loading skills...'}
+							{searchTerm ? t('skillPlans.searchingSkills') : t('skillPlans.loadingSkills')}
 						</div>
 					)}
 
 					{/* Skill dropdown */}
 					{!isLoading && (
 						<div className="space-y-2">
-							<Label htmlFor="skill-select">Select Skill</Label>
+							<Label htmlFor="skill-select">{t('skillPlans.selectSkill')}</Label>
 							<Select
 								value={selectedSkill?.skillId || ''}
 								onValueChange={(value) => {
@@ -173,17 +179,18 @@ export function SkillSelector({
 									value: skill.skillId,
 									label: `${skill.name} (${skill.group})`,
 								}))}
-								placeholder="Choose a skill to add..."
+								placeholder={t('skillPlans.chooseASkillToAdd')}
 								emptyText={
-									searchTerm ? 'No skills found matching your search' : 'No skills available'
+									searchTerm ? t('skillPlans.noSkillsMatch') : t('skillPlans.noSkillsAvailable')
 								}
 								disabled={isLoading || isSubmitting}
 							/>
 							{filteredSkills.length > 0 && (
 								<p className="text-xs text-muted-foreground">
-									Found {filteredSkills.length} skill{filteredSkills.length !== 1 ? 's' : ''}
-									{searchTerm && ` matching "${searchTerm}"`}
-									{selectedGroup !== 'all' && ` in ${selectedGroup}`}
+									{t('skillPlans.found')}
+									{t('skillPlans.skill2Count', { count: filteredSkills.length })}
+									{searchTerm && t('skillPlans.matchingQuery', { value1: searchTerm })}
+									{selectedGroup !== 'all' && t('skillPlans.inGroup', { value1: selectedGroup })}
 								</p>
 							)}
 						</div>
@@ -194,7 +201,7 @@ export function SkillSelector({
 						<>
 							<div className="grid grid-cols-2 gap-4">
 								<div className="space-y-2">
-									<Label htmlFor="required-level">Required Level</Label>
+									<Label htmlFor="required-level">{t('skillPlans.requiredLevel')}</Label>
 									<Select
 										value={String(requiredLevel)}
 										onValueChange={(value) => {
@@ -208,26 +215,34 @@ export function SkillSelector({
 										inputId="required-level"
 										options={[0, 1, 2, 3, 4, 5].map((level) => ({
 											value: String(level),
-											label: level === 0 ? 'Optional' : `Level ${level}`,
+											label:
+												level === 0
+													? t('skillPlans.optional')
+													: t('skillPlans.level', { value1: level }),
 										}))}
 										disabled={isSubmitting}
 									/>
-									<p className="text-xs text-muted-foreground">Minimum level needed for the plan</p>
+									<p className="text-xs text-muted-foreground">
+										{t('skillPlans.minimumLevelNeededForThePlan')}
+									</p>
 								</div>
 
 								<div className="space-y-2">
-									<Label htmlFor="recommended-level">Recommended Level</Label>
+									<Label htmlFor="recommended-level">{t('skillPlans.recommendedLevel')}</Label>
 									<Select
 										value={String(recommendedLevel)}
 										onValueChange={(value) => setRecommendedLevel(parseInt(value))}
 										inputId="recommended-level"
 										options={[1, 2, 3, 4, 5]
 											.filter((level) => level >= requiredLevel)
-											.map((level) => ({ value: String(level), label: `Level ${level}` }))}
+											.map((level) => ({
+												value: String(level),
+												label: t('skillPlans.level', { value1: level }),
+											}))}
 										disabled={isSubmitting}
 									/>
 									<p className="text-xs text-muted-foreground">
-										Ideal level for full effectiveness
+										{t('skillPlans.idealLevelForFullEffectiveness')}
 									</p>
 								</div>
 							</div>
@@ -235,7 +250,9 @@ export function SkillSelector({
 							{/* Add button */}
 							<Button onClick={handleAddSkill} disabled={isSubmitting} className="w-full">
 								<Plus className="h-4 w-4" />
-								Add {selectedSkill.name} to Plan
+								{t('skillPlans.add2')}
+								{selectedSkill.name}
+								{t('skillPlans.toPlan')}
 							</Button>
 						</>
 					)}
@@ -244,9 +261,8 @@ export function SkillSelector({
 
 			{/* Info text */}
 			<p className="text-sm text-muted-foreground">
-				Already added skills are automatically hidden from the selection. Required level must be
-				less than or equal to recommended level.
-				{searchTerm && ' Search results are cached for better performance.'}
+				{t('skillPlans.alreadyAddedSkillsAreAutomaticallyHiddenFromTheSelectionRequired')}
+				{searchTerm && t('skillPlans.searchCacheHint')}
 			</p>
 		</div>
 	)

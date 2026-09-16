@@ -11,6 +11,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { useTemplates } from '../hooks'
@@ -40,6 +41,8 @@ export function TemplateSelector({
 	onSelectTemplate,
 	className,
 }: TemplateSelectorProps) {
+	const { t } = useAppTranslation()
+
 	const [showManageDialog, setShowManageDialog] = useState(false)
 	const [selectedValue, setSelectedValue] = useState<string>('')
 
@@ -59,7 +62,7 @@ export function TemplateSelector({
 		return (
 			<div className={cn('flex items-center gap-2 text-xs text-muted-foreground', className)}>
 				<LoadingSpinner size="sm" />
-				<span>Loading templates...</span>
+				<span>{t('hrpages.loadingTemplates')}</span>
 			</div>
 		)
 	}
@@ -77,17 +80,18 @@ export function TemplateSelector({
 						value={selectedValue}
 						onValueChange={handleValueChange}
 						options={
-							templates?.map((template) => ({ value: template.id,
+							templates?.map((template) => ({
+								value: template.id,
 								label: template.templateName,
 								description: template.description ?? undefined,
 							})) ?? []
 						}
-						placeholder="Use template..."
+						placeholder={t('hrpages.useTemplate')}
 						className="text-xs"
 						inputClassName="h-8 text-xs"
 						contentClassName="w-[min(90vw,26rem)] text-xs"
 						listMaxHeight="40rem"
-						emptyText="No templates available"
+						emptyText={t('hrpages.noTemplatesAvailable')}
 					/>
 				</div>
 
@@ -96,7 +100,7 @@ export function TemplateSelector({
 					size="sm"
 					className="h-8 px-2"
 					onClick={() => setShowManageDialog(true)}
-					title="Manage templates"
+					title={t('hrpages.manageTemplates')}
 				>
 					<Settings className="h-4 w-4" />
 				</Button>

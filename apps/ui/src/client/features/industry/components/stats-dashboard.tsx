@@ -2,6 +2,7 @@ import { Building2, CheckCircle, Factory, Settings } from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useAppTranslation } from '@/i18n'
 
 import type { IndustryProviderStatistics } from '../types'
 
@@ -11,6 +12,8 @@ interface StatsDashboardProps {
 }
 
 export function StatsDashboard({ stats, isLoading }: StatsDashboardProps) {
+	const { t } = useAppTranslation()
+
 	if (isLoading) {
 		return (
 			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -31,28 +34,28 @@ export function StatsDashboard({ stats, isLoading }: StatsDashboardProps) {
 
 	const statCards = [
 		{
-			title: 'Total Providers',
+			title: t('industry.totalProviders'),
 			value: stats?.totalProviders ?? 0,
 			icon: Factory,
-			description: 'Registered service providers',
+			description: t('industry.registeredServiceProviders'),
 		},
 		{
-			title: 'Accepting Orders',
+			title: t('industry.acceptingOrders'),
 			value: stats?.totalAcceptingOrders ?? 0,
 			icon: CheckCircle,
-			description: 'Currently accepting new orders',
+			description: t('industry.currentlyAcceptingNewOrders'),
 		},
 		{
-			title: 'Total Services',
+			title: t('industry.totalServices'),
 			value: stats?.totalServices ?? 0,
 			icon: Settings,
-			description: 'Services offered across all providers',
+			description: t('industry.servicesOfferedAcrossAllProviders'),
 		},
 		{
-			title: 'By Entity Type',
+			title: t('industry.byEntityType'),
 			value: Object.values(stats?.totalByEntityType ?? {}).filter((v) => v > 0).length,
 			icon: Building2,
-			description: 'Different owner types',
+			description: t('industry.differentOwnerTypes'),
 		},
 	]
 

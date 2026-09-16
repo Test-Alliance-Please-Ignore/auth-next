@@ -1,6 +1,8 @@
 import { AlertCircle, FileText, FileUp, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 
+import { useAppTranslation } from '@/i18n'
+
 import { parseEvemonXml } from '../lib/evemon-parser'
 import { EvemonSkillPreview } from './evemon-skill-preview'
 import { Button } from './ui/button'
@@ -20,6 +22,8 @@ export function EvemonXmlImporter({
 	onCancel,
 	isLoading = false,
 }: EvemonXmlImporterProps) {
+	const { t } = useAppTranslation()
+
 	const [xmlContent, setXmlContent] = useState('')
 	const [parseError, setParseError] = useState<string | null>(null)
 	const [parsedSkills, setParsedSkills] = useState<ParsedEvemonSkill[] | null>(null)
@@ -27,7 +31,7 @@ export function EvemonXmlImporter({
 
 	const handleParse = () => {
 		if (!xmlContent.trim()) {
-			setParseError('Please paste EVEMon XML content or upload a file')
+			setParseError(t('skillPlans.pleasePasteEvemonXmlContentOrUploadAFile'))
 			return
 		}
 
@@ -37,7 +41,7 @@ export function EvemonXmlImporter({
 			setParsedSkills(result.skills)
 			setParseError(null)
 		} else {
-			setParseError(result.error || 'Failed to parse XML')
+			setParseError(result.error || t('skillPlans.failedToParseXml'))
 			setParsedSkills(null)
 		}
 	}
@@ -48,7 +52,7 @@ export function EvemonXmlImporter({
 
 		// Validate file type
 		if (!file.name.endsWith('.xml')) {
-			setParseError('Please select an XML file')
+			setParseError(t('skillPlans.pleaseSelectAnXmlFile'))
 			return
 		}
 
@@ -61,12 +65,12 @@ export function EvemonXmlImporter({
 				setParseError(null)
 				setXmlContent(content) // Save content for potential debugging
 			} else {
-				setParseError(result.error || 'Failed to parse XML file')
+				setParseError(result.error || t('skillPlans.failedToParseXmlFile'))
 				setParsedSkills(null)
 			}
 		} catch (error) {
 			console.error('Error reading file:', error)
-			setParseError('Failed to read file. Please try again.')
+			setParseError(t('skillPlans.failedToReadFilePleaseTryAgain'))
 		}
 
 		// Reset file input so the same file can be selected again
@@ -109,11 +113,10 @@ export function EvemonXmlImporter({
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
 					<FileText className="h-5 w-5" />
-					Import EVEMon Skill Plan
+					{t('skillPlans.importEvemonSkillPlan')}
 				</CardTitle>
 				<CardDescription>
-					Upload an EVEMon XML file or paste the content below. Priority 1-9 skills will be imported
-					as required, priority 10 as optional (recommended only).
+					{t('skillPlans.uploadAnEvemonXmlFileOrPasteTheContentBelow')}
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
@@ -137,7 +140,7 @@ export function EvemonXmlImporter({
 						className="gap-2"
 					>
 						<FileUp className="h-4 w-4" />
-						Upload XML File
+						{t('skillPlans.uploadXmlFile')}
 					</Button>
 				</div>
 
@@ -147,14 +150,16 @@ export function EvemonXmlImporter({
 						<span className="w-full border-t" />
 					</div>
 					<div className="relative flex justify-center text-xs uppercase">
-						<span className="bg-background px-2 text-muted-foreground">Or paste XML content</span>
+						<span className="bg-background px-2 text-muted-foreground">
+							{t('skillPlans.orPasteXmlContent')}
+						</span>
 					</div>
 				</div>
 
 				{/* Textarea for pasting */}
 				<div className="space-y-2">
 					<Textarea
-						placeholder="Paste EVEMon XML content here..."
+						placeholder={t('skillPlans.pasteEvemonXmlContentHere')}
 						value={xmlContent}
 						onChange={(e) => {
 							setXmlContent(e.target.value)
@@ -173,27 +178,27 @@ export function EvemonXmlImporter({
 
 				<div className="flex items-center justify-between">
 					<Button type="button" variant="ghost" onClick={onCancel} disabled={isLoading}>
-						Cancel
+						{t('skillPlans.cancel')}
 					</Button>
 					<Button type="button" onClick={handleParse} disabled={!xmlContent.trim() || isLoading}>
 						<Upload className="h-4 w-4" />
-						Parse XML
+						{t('skillPlans.parseXml')}
 					</Button>
 				</div>
 
 				<Card>
 					<CardContent className="pt-4">
 						<div className="text-sm text-muted-foreground">
-							<strong>How to export from EVEMon:</strong>
+							<strong>{t('skillPlans.howToExportFromEvemon')}</strong>
 							<ol className="mt-2 ml-4 space-y-1 list-decimal">
-								<li>Open EVEMon and go to your skill plan</li>
-								<li>Click File → Export Plan</li>
-								<li>Choose "EVEMon Skill Plan (*.xml)"</li>
+								<li>{t('skillPlans.openEvemonAndGoToYourSkillPlan')}</li>
+								<li>{t('skillPlans.clickFileExportPlan')}</li>
+								<li>{t('skillPlans.chooseEvemonSkillPlanXml')}</li>
 								<li>
-									Either:
+									{t('skillPlans.either')}
 									<ul className="ml-4 mt-1 space-y-1 list-disc">
-										<li>Use the "Upload XML File" button above to select the saved file</li>
-										<li>Or open the file in a text editor, copy all content, and paste it above</li>
+										<li>{t('skillPlans.useTheUploadXmlFileButtonAboveToSelectThe')}</li>
+										<li>{t('skillPlans.orOpenTheFileInATextEditorCopyAll')}</li>
 									</ul>
 								</li>
 							</ol>

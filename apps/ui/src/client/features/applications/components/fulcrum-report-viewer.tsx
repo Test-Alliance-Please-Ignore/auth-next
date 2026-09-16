@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useEntityNames } from '@/hooks/useEntityNames'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { ALL_DATA_SECTIONS, SECTION_LABELS, SECTION_TABS } from '../constants'
@@ -77,6 +78,8 @@ type LegacyAssociationItem = {
 }
 
 function LegacyDataSection({ data }: { data: unknown }) {
+	const { t } = useAppTranslation()
+
 	const alertsPayload = data as {
 		alerts?: Array<{ type: string; details?: Record<string, unknown> }>
 	}
@@ -88,7 +91,7 @@ function LegacyDataSection({ data }: { data: unknown }) {
 	if (items.length === 0) {
 		return (
 			<p className="text-sm text-muted-foreground">
-				No legacy associations found for this report owner.
+				{t('hrpages.noLegacyAssociationsFoundForThisReportOwner')}
 			</p>
 		)
 	}
@@ -103,17 +106,22 @@ function LegacyDataSection({ data }: { data: unknown }) {
 					<Card key={item.id}>
 						<CardContent className="pt-6 space-y-3">
 							<div className="flex flex-wrap items-center gap-2">
-								<h3 className="text-sm font-semibold">Legacy User {item.legacyAuthUserId}</h3>
+								<h3 className="text-sm font-semibold">
+									{t('hrpages.legacyUser')}
+									{item.legacyAuthUserId}
+								</h3>
 								<Badge variant="secondary">{item.status}</Badge>
 								{blacklistSignals.hasAnyBlacklistSignal ? (
-									<Badge variant="destructive">Blocklist Alert</Badge>
+									<Badge variant="destructive">{t('hrpages.blocklistAlert')}</Badge>
 								) : null}
 							</div>
 
 							<div className="space-y-2">
-								<p className="text-xs font-semibold text-muted-foreground">Character Matches</p>
+								<p className="text-xs font-semibold text-muted-foreground">
+									{t('hrpages.characterMatches')}
+								</p>
 								{item.candidates.characters.length === 0 ? (
-									<p className="text-sm text-muted-foreground">None</p>
+									<p className="text-sm text-muted-foreground">{t('hrpages.none')}</p>
 								) : (
 									item.candidates.characters.map((character) => (
 										<div
@@ -158,13 +166,13 @@ function LegacyDataSection({ data }: { data: unknown }) {
 													) : null}
 												</div>
 												{character.alreadyLinkedToModernUser ? (
-													<Badge variant="success">Already linked</Badge>
+													<Badge variant="success">{t('hrpages.alreadyLinked')}</Badge>
 												) : character.linkedToOtherUserId ? (
-													<Badge variant="destructive">Linked to other user</Badge>
+													<Badge variant="destructive">{t('hrpages.linkedToOtherUser')}</Badge>
 												) : character.isDeleted ? (
-													<Badge variant="warning">Deleted</Badge>
+													<Badge variant="warning">{t('hrpages.deleted')}</Badge>
 												) : (
-													<Badge variant="warning">Not linked</Badge>
+													<Badge variant="warning">{t('hrpages.notLinked')}</Badge>
 												)}
 											</div>
 										</div>
@@ -173,9 +181,11 @@ function LegacyDataSection({ data }: { data: unknown }) {
 							</div>
 
 							<div className="space-y-2">
-								<p className="text-xs font-semibold text-muted-foreground">Legacy Notes</p>
+								<p className="text-xs font-semibold text-muted-foreground">
+									{t('hrpages.legacyNotes')}
+								</p>
 								{item.candidates.notes.length === 0 ? (
-									<p className="text-sm text-muted-foreground">None</p>
+									<p className="text-sm text-muted-foreground">{t('hrpages.none')}</p>
 								) : (
 									item.candidates.notes.map((note) => (
 										<div
@@ -185,14 +195,15 @@ function LegacyDataSection({ data }: { data: unknown }) {
 											<div className="flex items-start justify-between gap-3">
 												<div className="min-w-0 text-sm whitespace-pre-wrap">{note.note}</div>
 												{note.alreadyImported ? (
-													<Badge variant="success">Already imported</Badge>
+													<Badge variant="success">{t('hrpages.alreadyImported')}</Badge>
 												) : (
-													<Badge variant="warning">Not linked</Badge>
+													<Badge variant="warning">{t('hrpages.notLinked')}</Badge>
 												)}
 											</div>
 											{note.legacyCreatedByCharacterName ? (
 												<div className="mt-1 text-xs text-muted-foreground">
-													by {note.legacyCreatedByCharacterName}
+													{t('hrpages.by')}
+													{note.legacyCreatedByCharacterName}
 												</div>
 											) : null}
 										</div>
@@ -202,13 +213,14 @@ function LegacyDataSection({ data }: { data: unknown }) {
 
 							<div className="space-y-2">
 								<p className="text-xs font-semibold text-muted-foreground">
-									IP-associated Modern Users
+									{t('hrpages.ipAssociatedModernUsers')}
 								</p>
 								<div className="text-xs text-muted-foreground">
-									Legacy IP addresses: {item.candidates.ipAddressCount}
+									{t('hrpages.legacyIpAddresses')}
+									{item.candidates.ipAddressCount}
 								</div>
 								{ipAssociatedMatches.length === 0 ? (
-									<p className="text-sm text-muted-foreground">None</p>
+									<p className="text-sm text-muted-foreground">{t('hrpages.none')}</p>
 								) : (
 									<div className="space-y-1">
 										{ipAssociatedMatches.map((match) => (
@@ -244,6 +256,8 @@ function OverviewContent({
 	reportId: string
 	availableSections: ReportSectionName[]
 }) {
+	const { t } = useAppTranslation()
+
 	const hasCorpHistory = availableSections.includes('corp-history')
 	const hasClones = availableSections.includes('clones')
 
@@ -291,11 +305,15 @@ function OverviewContent({
 							<Card>
 								<CardContent className="pt-6">
 									<div className="space-y-2">
-										<h3 className="text-sm font-semibold text-foreground">Character Details</h3>
+										<h3 className="text-sm font-semibold text-foreground">
+											{t('hrpages.characterDetails')}
+										</h3>
 										<PublicInfoCard data={publicInfo as any} />
 									</div>
 									<div className="mt-4 space-y-2">
-										<h3 className="text-sm font-semibold text-foreground">External Links</h3>
+										<h3 className="text-sm font-semibold text-foreground">
+											{t('hrpages.externalLinks')}
+										</h3>
 										<ExternalLinksCard data={publicInfo as any} />
 									</div>
 								</CardContent>
@@ -306,7 +324,7 @@ function OverviewContent({
 							<Card className="flex h-0 min-h-full flex-col">
 								<CardContent className="flex min-h-0 flex-1 flex-col gap-2 pt-6">
 									<h3 className="shrink-0 text-sm font-semibold text-foreground">
-										Corporation History
+										{t('hrpages.corporationHistory')}
 									</h3>
 									{loadingCorpHistory ? (
 										<Skeleton className="h-32 w-full" />
@@ -314,7 +332,7 @@ function OverviewContent({
 										<CorpHistorySection data={corpHistory as any} />
 									) : (
 										<p className="text-sm text-muted-foreground">
-											No corporation history available.
+											{t('hrpages.noCorporationHistoryAvailable')}
 										</p>
 									)}
 								</CardContent>
@@ -328,13 +346,15 @@ function OverviewContent({
 			{hasClones && (
 				<Card>
 					<CardContent className="pt-6">
-						<h3 className="mb-2 text-sm font-semibold text-foreground">Clones &amp; Implants</h3>
+						<h3 className="mb-2 text-sm font-semibold text-foreground">
+							{t('hrpages.clonesImplants')}
+						</h3>
 						{loadingClones ? (
 							<Skeleton className="h-32 w-full" />
 						) : clones ? (
 							<ClonesSection data={clones as any} />
 						) : (
-							<p className="text-sm text-muted-foreground">No clone data available.</p>
+							<p className="text-sm text-muted-foreground">{t('hrpages.noCloneDataAvailable')}</p>
 						)}
 					</CardContent>
 				</Card>
@@ -354,6 +374,8 @@ function SkillsContentWithSubTabs({
 	characterId: string
 	skillsData: unknown
 }) {
+	const { t } = useAppTranslation()
+
 	const [subTab, setSubTab] = useState<'skills' | 'skill-plans'>('skills')
 
 	return (
@@ -369,7 +391,7 @@ function SkillsContentWithSubTabs({
 					)}
 					onClick={() => setSubTab('skills')}
 				>
-					Skills
+					{t('hrpages.skills')}
 				</button>
 				<button
 					type="button"
@@ -381,7 +403,7 @@ function SkillsContentWithSubTabs({
 					)}
 					onClick={() => setSubTab('skill-plans')}
 				>
-					Skill Plans
+					{t('hrpages.skillPlans')}
 				</button>
 			</div>
 
@@ -411,6 +433,8 @@ function SectionContent({
 	characterId: string
 	highlightedCharacterName?: string
 }) {
+	const { t } = useAppTranslation()
+
 	// Communications and Overview tabs manage their own data fetching — skip the standard fetch
 	const isCommunications = section === 'mails'
 	const isOverview = section === 'public-info'
@@ -487,7 +511,10 @@ function SectionContent({
 				{sectionAlerts}
 				<Card>
 					<CardContent className="pt-6">
-						<p className="text-sm text-destructive">Failed to load section: {error.message}</p>
+						<p className="text-sm text-destructive">
+							{t('hrpages.failedToLoadSection')}
+							{error.message}
+						</p>
 					</CardContent>
 				</Card>
 			</div>
@@ -500,7 +527,9 @@ function SectionContent({
 				{sectionAlerts}
 				<Card>
 					<CardContent className="pt-6">
-						<p className="text-sm text-muted-foreground">No data available for this section.</p>
+						<p className="text-sm text-muted-foreground">
+							{t('hrpages.noDataAvailableForThisSection')}
+						</p>
 					</CardContent>
 				</Card>
 			</div>
@@ -532,7 +561,7 @@ function SectionContent({
 			case 'alerts':
 				return <LegacyDataSection data={d} />
 			default:
-				return <p className="text-sm text-muted-foreground">Unknown section.</p>
+				return <p className="text-sm text-muted-foreground">{t('hrpages.unknownSection')}</p>
 		}
 	})()
 
@@ -555,6 +584,8 @@ interface FulcrumReportViewerProps {
 }
 
 export function FulcrumReportViewer({ reportId }: FulcrumReportViewerProps) {
+	const { t } = useAppTranslation()
+
 	const { data: manifest, isLoading, error } = useReportSections(reportId)
 	const [activeTab, setActiveTab] = useState<string>('public-info')
 	const { data: characterNames = {} } = useEntityNames(
@@ -572,11 +603,20 @@ export function FulcrumReportViewer({ reportId }: FulcrumReportViewerProps) {
 	}
 
 	if (error) {
-		return <p className="text-sm text-destructive py-4">Failed to load report: {error.message}</p>
+		return (
+			<p className="text-sm text-destructive py-4">
+				{t('hrpages.failedToLoadReport')}
+				{error.message}
+			</p>
+		)
 	}
 
 	if (!manifest || Object.keys(manifest.sections).length === 0) {
-		return <p className="text-sm text-muted-foreground py-4">Report has no sections available.</p>
+		return (
+			<p className="text-sm text-muted-foreground py-4">
+				{t('hrpages.reportHasNoSectionsAvailable')}
+			</p>
+		)
 	}
 
 	const hasSection = (name: ReportSectionName) => name in manifest.sections
@@ -620,9 +660,11 @@ export function FulcrumReportViewer({ reportId }: FulcrumReportViewerProps) {
 				{missingSections.length > 0 && (
 					<span
 						className="text-xs text-muted-foreground"
-						title={`Missing: ${missingSections.map((s) => SECTION_LABELS[s] ?? s).join(', ')}`}
+						title={t('hrpages.missingValue1', {
+							value1: missingSections.map((s) => SECTION_LABELS[s] ?? s).join(', '),
+						})}
 					>
-						{missingSections.length} section{missingSections.length !== 1 ? 's' : ''} unavailable
+						{t('hrpages.unavailableSections', { value1: missingSections.length })}
 					</span>
 				)}
 			</div>

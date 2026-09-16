@@ -1,5 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { useAppTranslation } from '@/i18n'
+
 import { apiClient } from '../../lib/api'
 import { skillPlansApi } from './api'
 import { type CharacterSkillLevels } from './utils/readiness'
@@ -286,11 +288,13 @@ export function useCharacterProgress(planId: string, characterId?: string) {
 }
 
 export function useCharacterSkillLevels(characterId?: string) {
+	const { t } = useAppTranslation()
+
 	return useQuery<CharacterSkillLevels>({
 		queryKey: skillPlanKeys.characterSkills(characterId ?? ''),
 		queryFn: async () => {
 			if (!characterId) {
-				throw new Error('Character ID is required')
+				throw new Error(t('skillPlans.characterIdIsRequired'))
 			}
 
 			const detail = await apiClient.getCharacterSkillLevels(characterId)

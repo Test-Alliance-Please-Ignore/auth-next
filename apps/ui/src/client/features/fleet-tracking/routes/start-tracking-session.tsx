@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { apiClient, BaseApiError } from '@/lib/api'
 import { error as toastError, success as toastSuccess } from '@/lib/toast'
 
@@ -82,7 +83,9 @@ function useCharacterFleetStates(
 }
 
 export default function StartTrackingSession() {
-	usePageTitle('Start Fleet Tracking')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('fleetTracking.startFleetTracking'))
 	const { user } = useAuth()
 	const navigate = useNavigate()
 	const startTracking = useStartTracking()
@@ -106,9 +109,9 @@ export default function StartTrackingSession() {
 		null
 	const selectedPrimaryActionLabel = selectedTrackedSession
 		? selectedTrackedSessionBossId && selectedTrackedSessionBossId !== selectedCharacterId
-			? 'Take over'
-			: 'Resume'
-		: 'Start Tracking'
+			? t('fleetTracking.takeOver')
+			: t('fleetTracking.resume')
+		: t('fleetTracking.startTracking')
 	const canShowNewAction = selectedTrackedSession?.status === 'ended'
 	const resolvedSessionName = name.trim()
 	const canSubmit = !!eligible && !!resolvedSessionName && !startTracking.isPending
@@ -126,7 +129,7 @@ export default function StartTrackingSession() {
 	const startOrTakeOverTracking = async (characterId: string, action: 'new' | 'take_over') => {
 		const resolvedName = name.trim()
 		if (!resolvedName) {
-			toastError('Name is required')
+			toastError(t('fleetTracking.nameIsRequired'))
 			return
 		}
 		try {
@@ -135,7 +138,7 @@ export default function StartTrackingSession() {
 				name: resolvedName,
 				action,
 			})
-			toastSuccess('Tracking started')
+			toastSuccess(t('fleetTracking.trackingStarted2'))
 			void navigate(`/fleet-tracking/${result.sessionId}`)
 		} catch (err) {
 			if (err instanceof BaseApiError && err.status === 409) {
@@ -144,11 +147,11 @@ export default function StartTrackingSession() {
 					| undefined
 				if (responseBody?.session) {
 					setConflictingSession(responseBody.session)
-					toastError('This fleet is already being tracked.')
+					toastError(t('fleetTracking.thisFleetIsAlreadyBeingTracked'))
 					return
 				}
 			}
-			toastError(err instanceof Error ? err.message : 'Failed to start tracking')
+			toastError(err instanceof Error ? err.message : t('fleetTracking.failedToStartTracking'))
 		}
 	}
 
@@ -163,13 +166,13 @@ export default function StartTrackingSession() {
 	return (
 		<Container>
 			<PageHeader
-				title="Start Tracking"
-				description="Start tracking a fleet you are currently in as the fleet boss."
+				title={t('fleetTracking.startTracking')}
+				description={t('fleetTracking.startTrackingAFleetYouAreCurrentlyInAsThe')}
 				action={
 					<Button asChild variant="ghost" size="sm">
 						<Link to="/fleet-tracking">
 							<ArrowLeft className="h-4 w-4" />
-							Back to Fleet Tracking
+							{t('fleetTracking.backToFleetTracking')}
 						</Link>
 					</Button>
 				}
@@ -179,10 +182,10 @@ export default function StartTrackingSession() {
 				<Card>
 					<CardHeader>
 						<div className="flex items-center justify-between">
-							<CardTitle>1. Select character</CardTitle>
+							<CardTitle>{t('fleetTracking.message1SelectCharacter')}</CardTitle>
 							<Button variant="ghost" size="sm" onClick={refetchAll}>
 								<RefreshCw className="h-4 w-4" />
-								Refresh
+								{t('fleetTracking.refresh')}
 							</Button>
 						</div>
 					</CardHeader>
@@ -190,8 +193,8 @@ export default function StartTrackingSession() {
 						{fleetBossStates.length === 0 ? (
 							<div className="text-sm text-muted-foreground">
 								{anyLoading
-									? 'Checking characters…'
-									: 'No characters are currently fleet boss. Form a fleet in-game and click Refresh.'}
+									? t('fleetTracking.checkingCharacters')
+									: t('fleetTracking.noCharactersAreCurrentlyFleetBossFormAFleetIn')}
 							</div>
 						) : (
 							fleetBossStates.map((s) => {
@@ -200,8 +203,8 @@ export default function StartTrackingSession() {
 								const existingSessionActionLabel =
 									existingSession?.currentFleetBossCharacterId &&
 									existingSession.currentFleetBossCharacterId !== s.characterId
-										? 'Can take over'
-										: 'Can resume'
+										? t('fleetTracking.canTakeOver')
+										: t('fleetTracking.canResume')
 								return (
 									<div
 										key={s.characterId}
@@ -219,15 +222,16 @@ export default function StartTrackingSession() {
 												<div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
 													<span className="flex items-center gap-1 text-success">
 														<CheckCircle2 className="h-4 w-4" />
-														Fleet boss of fleet {s.fleetId}
+														{t('fleetTracking.fleetBossOfFleet')}
+														{s.fleetId}
 													</span>
 												</div>
 												{existingSession ? (
 													<div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
 														<span>
 															{existingSession.status === 'active'
-																? 'Active session:'
-																: 'Existing session:'}{' '}
+																? t('fleetTracking.activeSession')
+																: t('fleetTracking.existingSession')}{' '}
 															<span className="text-foreground">{existingSession.name}</span>
 														</span>
 														<span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-700 dark:text-emerald-300">
@@ -246,16 +250,16 @@ export default function StartTrackingSession() {
 
 				<Card className="mt-4">
 					<CardHeader>
-						<CardTitle>2. Fleet name</CardTitle>
+						<CardTitle>{t('fleetTracking.message2FleetName')}</CardTitle>
 					</CardHeader>
 					<CardContent>
 						<div className="space-y-1.5">
-							<Label htmlFor="session-name">Name</Label>
+							<Label htmlFor="session-name">{t('fleetTracking.name')}</Label>
 							<Input
 								id="session-name"
 								value={name}
 								onChange={(e) => setName(e.target.value)}
-								placeholder="Friday CTA — DOR roam"
+								placeholder={t('fleetTracking.fridayCtaDorRoam')}
 								maxLength={120}
 							/>
 						</div>
@@ -265,17 +269,16 @@ export default function StartTrackingSession() {
 				{conflictingSession && (
 					<Card className="mt-4 border-amber-500/40 bg-amber-500/5">
 						<CardHeader>
-							<CardTitle className="text-base">Fleet already tracked</CardTitle>
+							<CardTitle className="text-base">{t('fleetTracking.fleetAlreadyTracked')}</CardTitle>
 						</CardHeader>
 						<CardContent className="space-y-3 text-sm">
 							<div className="text-muted-foreground">
-								This fleet already has an active tracking session. Select a different fleet boss to
-								start a new track, or take over this one from the action buttons below.
+								{t('fleetTracking.thisFleetAlreadyHasAnActiveTrackingSessionSelectA')}
 							</div>
 							<div className="flex flex-wrap items-center gap-3">
 								<div className="font-medium text-foreground">{conflictingSession.name}</div>
 								<div className="text-muted-foreground">
-									Tracked FC:{' '}
+									{t('fleetTracking.trackedFc')}{' '}
 									<span className="text-foreground">
 										{conflictingSession.characterName ?? conflictingSession.characterId}
 									</span>
@@ -284,7 +287,7 @@ export default function StartTrackingSession() {
 								conflictingSession.currentCommanderCharacterId !==
 									conflictingSession.characterId ? (
 									<div className="text-muted-foreground">
-										Current FC:{' '}
+										{t('fleetTracking.currentFc')}{' '}
 										<span className="text-foreground">
 											{conflictingSession.currentCommanderCharacterName ??
 												conflictingSession.currentCommanderCharacterId}
@@ -298,7 +301,7 @@ export default function StartTrackingSession() {
 
 				<div className="mt-4 flex justify-end gap-2">
 					<Button variant="ghost" asChild>
-						<Link to="/fleet-tracking">Cancel</Link>
+						<Link to="/fleet-tracking">{t('fleetTracking.cancel')}</Link>
 					</Button>
 					{canShowNewAction ? (
 						<Button
@@ -308,7 +311,7 @@ export default function StartTrackingSession() {
 							}
 							disabled={!eligible || !resolvedSessionName || startTracking.isPending}
 						>
-							New
+							{t('fleetTracking.new')}
 						</Button>
 					) : null}
 					<Button onClick={handleSubmit} disabled={!canSubmit}>

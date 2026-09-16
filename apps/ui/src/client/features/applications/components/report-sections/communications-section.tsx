@@ -8,14 +8,15 @@
 import { useState } from 'react'
 
 import { Skeleton } from '@/components/ui/skeleton'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { useReportSectionData } from '../../hooks'
 import { AlertsBanner } from './alerts-banner'
-import type { BlacklistHighlights } from './blacklist-highlighting'
-
 import { MailsSection } from './mails-section'
 import { NotificationsSection } from './notifications-section'
+
+import type { BlacklistHighlights } from './blacklist-highlighting'
 
 type SubTab = 'mails' | 'notifications'
 
@@ -28,39 +29,41 @@ export function CommunicationsSection({
 	highlightedCharacterName?: string
 	blacklistHighlights?: BlacklistHighlights
 }) {
-    const [activeTab, setActiveTab] = useState<SubTab>('mails')
+	const { t } = useAppTranslation()
 
-    return (
-        <div className="flex flex-col gap-0">
-            {/* Sub-tab bar */}
-            <div className="mb-3 flex border-b border-border">
-                <button
-                    type="button"
-                    className={cn(
-                        'px-4 py-2.5 text-base font-medium transition-colors',
-                        activeTab === 'mails'
-                            ? 'border-b-2 border-primary text-foreground'
-                            : 'text-muted-foreground hover:text-foreground',
-                    )}
-                    onClick={() => setActiveTab('mails')}
-                >
-                    Mails
-                </button>
-                <button
-                    type="button"
-                    className={cn(
-                        'px-4 py-2.5 text-base font-medium transition-colors',
-                        activeTab === 'notifications'
-                            ? 'border-b-2 border-primary text-foreground'
-                            : 'text-muted-foreground hover:text-foreground',
-                    )}
-                    onClick={() => setActiveTab('notifications')}
-                >
-                    Notifications
-                </button>
-            </div>
+	const [activeTab, setActiveTab] = useState<SubTab>('mails')
 
-            {/* Content */}
+	return (
+		<div className="flex flex-col gap-0">
+			{/* Sub-tab bar */}
+			<div className="mb-3 flex border-b border-border">
+				<button
+					type="button"
+					className={cn(
+						'px-4 py-2.5 text-base font-medium transition-colors',
+						activeTab === 'mails'
+							? 'border-b-2 border-primary text-foreground'
+							: 'text-muted-foreground hover:text-foreground'
+					)}
+					onClick={() => setActiveTab('mails')}
+				>
+					{t('hrpages.mails')}
+				</button>
+				<button
+					type="button"
+					className={cn(
+						'px-4 py-2.5 text-base font-medium transition-colors',
+						activeTab === 'notifications'
+							? 'border-b-2 border-primary text-foreground'
+							: 'text-muted-foreground hover:text-foreground'
+					)}
+					onClick={() => setActiveTab('notifications')}
+				>
+					{t('hrpages.notifications')}
+				</button>
+			</div>
+
+			{/* Content */}
 			{activeTab === 'mails' && (
 				<SubTabContent
 					reportId={reportId}
@@ -69,11 +72,11 @@ export function CommunicationsSection({
 					blacklistHighlights={blacklistHighlights}
 				/>
 			)}
-            {activeTab === 'notifications' && (
-                <SubTabContent reportId={reportId} section="notifications" />
-            )}
-        </div>
-    )
+			{activeTab === 'notifications' && (
+				<SubTabContent reportId={reportId} section="notifications" />
+			)}
+		</div>
+	)
 }
 
 function SubTabContent({
@@ -87,6 +90,8 @@ function SubTabContent({
 	highlightedCharacterName?: string
 	blacklistHighlights?: BlacklistHighlights
 }) {
+	const { t } = useAppTranslation()
+
 	const { data, isLoading, error } = useReportSectionData(reportId, section, true)
 
 	if (isLoading) {
@@ -105,7 +110,8 @@ function SubTabContent({
 			<div className="space-y-3">
 				<AlertsBanner reportId={reportId} section={section} />
 				<p className="text-sm text-destructive">
-					Failed to load: {error.message}
+					{t('hrpages.failedToLoad')}
+					{error.message}
 				</p>
 			</div>
 		)
@@ -115,7 +121,7 @@ function SubTabContent({
 		return (
 			<div className="space-y-3">
 				<AlertsBanner reportId={reportId} section={section} />
-				<p className="text-sm text-muted-foreground">No data available.</p>
+				<p className="text-sm text-muted-foreground">{t('hrpages.noDataAvailable')}</p>
 			</div>
 		)
 	}

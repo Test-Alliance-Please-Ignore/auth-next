@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
+import { useAppTranslation } from '@/i18n'
+
 import type { JumpLink, RegionSystemEntry } from '../types'
 
 interface DotlanCoords {
@@ -66,6 +68,8 @@ export function RegionMap({
 	from,
 	highlightedSystemIds,
 }: Props) {
+	const { t } = useAppTranslation()
+
 	const navigate = useNavigate()
 	const [tooltip, setTooltip] = useState<TooltipState | null>(null)
 	const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
@@ -274,10 +278,10 @@ export function RegionMap({
 					{tooltip.moonCount > 0 ? (
 						<>
 							<br />
-							<span style={{ color: '#6b7c8f' }}>Moons: </span>
+							<span style={{ color: '#6b7c8f' }}>{t('moonScan.moons')}</span>
 							{tooltip.moonCount}
 							{'  '}
-							<span style={{ color: '#6b7c8f' }}>Verified: </span>
+							<span style={{ color: '#6b7c8f' }}>{t('moonScan.verified')}</span>
 							{tooltip.verifiedCount} (
 							{tooltip.moonCount > 0
 								? Math.round((tooltip.verifiedCount / tooltip.moonCount) * 100)
@@ -295,37 +299,39 @@ export function RegionMap({
 						className="inline-block h-3 w-8 rounded"
 						style={{ background: '#1a3320', border: '1px solid #28a745' }}
 					/>
-					100% Verified
+					{t('moonScan.message100Verified')}
 				</span>
 				<span className="flex items-center gap-1.5">
 					<span
 						className="inline-block h-3 w-8 rounded"
 						style={{ background: '#332a10', border: '1px solid #c89b20' }}
 					/>
-					Partially Scanned
+					{t('moonScan.partiallyScanned')}
 				</span>
 				<span className="flex items-center gap-1.5">
 					<span
 						className="inline-block h-3 w-8 rounded"
 						style={{ background: '#1e2830', border: '1px solid #4a5a6a' }}
 					/>
-					Has Moons
+					{t('moonScan.hasMoons')}
 				</span>
 				<span className="flex items-center gap-1.5">
 					<span
 						className="inline-block h-3 w-8 rounded"
 						style={{ background: '#151c24', border: '1px solid #2a3644' }}
 					/>
-					No Moons
+					{t('moonScan.noMoons')}
 				</span>
 				<span className="flex items-center gap-1.5">
 					<span
 						className="inline-block h-3 w-8 rounded"
 						style={{ background: '#0d1a26', border: '1px dashed #3a5a7a' }}
 					/>
-					Other Region
+					{t('moonScan.otherRegion')}
 				</span>
-				<span className="text-muted-foreground/60">Click eligible system to view details</span>
+				<span className="text-muted-foreground/60">
+					{t('moonScan.clickEligibleSystemToViewDetails')}
+				</span>
 			</div>
 		</div>
 	)

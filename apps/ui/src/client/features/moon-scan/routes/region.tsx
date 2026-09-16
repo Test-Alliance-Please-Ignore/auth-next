@@ -16,6 +16,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
 import { RegionMap } from '../components/RegionMap'
 import { useDotlanRegionCoords, useMoonRegionDetail, useMoonRegions } from '../hooks'
@@ -47,6 +48,8 @@ function CoverageBar({ moonCount, verifiedCount }: { moonCount: number; verified
 }
 
 export default function RegionPage() {
+	const { t } = useAppTranslation()
+
 	const { regionId } = useParams<{ regionId: string }>()
 	const location = useLocation()
 	const [searchParams, setSearchParams] = useSearchParams()
@@ -66,11 +69,13 @@ export default function RegionPage() {
 		immediateRegionName ??
 		detail?.regionName ??
 		regionsData?.regions.find((r) => r.regionId === regionId)?.regionName ??
-		'Region'
-	usePageTitle(regionName ? `Region — ${regionName}` : 'Region')
+		t('moonScan.region')
+	usePageTitle(
+		regionName ? t('moonScan.regionValue1', { value1: regionName }) : t('moonScan.region')
+	)
 	const dotlanFile = useMemo(
 		() => (regionName !== 'Region' ? regionNameToFile(regionName) : ''),
-		[regionId, regionName]
+		[regionId, regionName, t]
 	)
 	const { data: coords, error: coordsError } = useDotlanRegionCoords(
 		dotlanFile,
@@ -81,8 +86,8 @@ export default function RegionPage() {
 		return (
 			<Container>
 				<PageHeader
-					title="Region Map"
-					description="You do not have permission to view moon data."
+					title={t('moonScan.regionMap')}
+					description={t('moonScan.youDoNotHavePermissionToViewMoonData')}
 				/>
 			</Container>
 		)
@@ -113,7 +118,7 @@ export default function RegionPage() {
 	const highlightedSystemIds = useMemo(() => {
 		if (!normalizedSystemSearch) return undefined
 		return new Set(filteredSystems.map((s) => s.solarSystemId))
-	}, [filteredSystems, normalizedSystemSearch])
+	}, [filteredSystems, normalizedSystemSearch, t])
 
 	return (
 		<Container>
@@ -123,7 +128,7 @@ export default function RegionPage() {
 					<div className="flex flex-col items-end gap-2">
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
 							<Link to="/moon-scan" className="hover:underline">
-								Moon Scanning
+								{t('moonScan.moonScanning')}
 							</Link>
 							<span>/</span>
 							<span>{regionName}</span>
@@ -131,7 +136,7 @@ export default function RegionPage() {
 						<Button variant="ghost" size="sm" asChild>
 							<Link to="/moon-scan">
 								<ArrowLeft className="mr-2 h-4 w-4" />
-								Back to Regions
+								{t('moonScan.backToRegions')}
 							</Link>
 						</Button>
 					</div>
@@ -140,7 +145,7 @@ export default function RegionPage() {
 
 			{error && (
 				<div className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-500">
-					Failed to load region data
+					{t('moonScan.failedToLoadRegionData')}
 				</div>
 			)}
 
@@ -156,19 +161,19 @@ export default function RegionPage() {
 					<div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
 						<div className="rounded-md border bg-card p-3 text-center">
 							<div className="text-2xl font-semibold">{systems.length}</div>
-							<div className="text-xs text-muted-foreground mt-0.5">Systems</div>
+							<div className="text-xs text-muted-foreground mt-0.5">{t('moonScan.systems2')}</div>
 						</div>
 						<div className="rounded-md border bg-card p-3 text-center">
 							<div className="text-2xl font-semibold">{totalMoons}</div>
-							<div className="text-xs text-muted-foreground mt-0.5">Total Moons</div>
+							<div className="text-xs text-muted-foreground mt-0.5">{t('moonScan.totalMoons')}</div>
 						</div>
 						<div className="rounded-md border bg-card p-3 text-center">
 							<div className="text-2xl font-semibold text-green-400">{totalVerified}</div>
-							<div className="text-xs text-muted-foreground mt-0.5">Verified</div>
+							<div className="text-xs text-muted-foreground mt-0.5">{t('moonScan.verified2')}</div>
 						</div>
 						<div className="rounded-md border bg-card p-3 text-center">
 							<div className="text-2xl font-semibold">{coverage.toFixed(1)}%</div>
-							<div className="text-xs text-muted-foreground mt-0.5">Coverage</div>
+							<div className="text-xs text-muted-foreground mt-0.5">{t('moonScan.coverage')}</div>
 						</div>
 					</div>
 				)
@@ -178,7 +183,7 @@ export default function RegionPage() {
 				<div className="mt-4 rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4 text-sm text-yellow-400">
 					{coordsError instanceof Error
 						? coordsError.message
-						: 'No map coordinates available for this region.'}
+						: t('moonScan.noMapCoordinatesAvailableForThisRegion2')}
 				</div>
 			)}
 
@@ -207,17 +212,18 @@ export default function RegionPage() {
 					<div className="border-b px-4 py-2.5">
 						<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 							<div className="text-sm font-medium">
-								Systems
+								{t('moonScan.systems2')}
 								{eligibleSystems.length > 0 && (
 									<span className="ml-2 text-xs text-muted-foreground">
-										({eligibleSystems.length} eligible for moon mining)
+										({eligibleSystems.length}
+										{t('moonScan.eligibleForMoonMining')}
 									</span>
 								)}
 							</div>
 							<Input
 								value={systemSearch}
 								onChange={(e) => updateSystemSearch(e.target.value)}
-								placeholder="Filter systems..."
+								placeholder={t('moonScan.filterSystems')}
 								className="h-8 w-full sm:w-64"
 							/>
 						</div>
@@ -226,11 +232,11 @@ export default function RegionPage() {
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>System</TableHead>
-									<TableHead>Security</TableHead>
-									<TableHead className="text-right">Moons</TableHead>
-									<TableHead className="text-right">Verified</TableHead>
-									<TableHead>Coverage</TableHead>
+									<TableHead>{t('moonScan.system')}</TableHead>
+									<TableHead>{t('moonScan.security')}</TableHead>
+									<TableHead className="text-right">{t('moonScan.moons2')}</TableHead>
+									<TableHead className="text-right">{t('moonScan.verified2')}</TableHead>
+									<TableHead>{t('moonScan.coverage')}</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -284,7 +290,7 @@ export default function RegionPage() {
 						</Table>
 						{filteredSystems.length === 0 && (
 							<div className="px-4 py-6 text-sm text-muted-foreground">
-								No systems match the current filter.
+								{t('moonScan.noSystemsMatchTheCurrentFilter')}
 							</div>
 						)}
 					</div>

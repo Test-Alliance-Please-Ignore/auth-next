@@ -1,3 +1,5 @@
+import { getActiveLocale } from '@/i18n'
+
 import { formatDate, formatDateTime } from './date-utils'
 
 export function formatTaxDateTime(value: string | Date | null | undefined): string {
@@ -72,7 +74,11 @@ export function getMonthPeriodOptions(
 		const value = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
 		return {
 			value,
-			label: date.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+			label: date.toLocaleDateString(getActiveLocale(), {
+				month: 'long',
+				year: 'numeric',
+				timeZone: 'UTC',
+			}),
 		}
 	})
 }

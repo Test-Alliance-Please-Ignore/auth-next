@@ -1,7 +1,9 @@
+import { formatDate } from '@/i18n'
+
 export function formatMoonScanDate(value: string): string {
-	return new Date(value).toLocaleDateString()
+	return formatDate(value, { dateStyle: 'short' })
 }
 
 export function formatMoonScanDateTime(value: string): string {
-	return new Date(value).toISOString().slice(0, 16).replace('T', ' ')
+	return formatDate(value, { dateStyle: 'short', timeStyle: 'short', timeZone: 'UTC' })
 }

@@ -17,6 +17,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 import { typeIconUrl } from '@/lib/eve-images'
 import { formatISK } from '@/lib/format-utils'
 
@@ -42,24 +43,26 @@ function RarityBadge({ rarity }: { rarity: string }) {
 
 function formatVolumeM3(value: number | null | undefined): string {
 	if (value === null || value === undefined || !Number.isFinite(value)) return '—'
-	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} m3`
+	return `${value.toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 })} m3`
 }
 
 function OreCompositionTable({ ores }: { ores: OreWithProfitability[] }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<div className="overflow-x-auto">
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead>Ore</TableHead>
-						<TableHead>Rarity</TableHead>
-						<TableHead>Percentage</TableHead>
-						<TableHead className="text-right">Raw ore volume (m3)</TableHead>
-						<TableHead>Refines To (per 100)</TableHead>
-						<TableHead className="text-right">Batch volume (m3)</TableHead>
-						<TableHead className="text-right">Total (refinery m3)</TableHead>
-						<TableHead className="text-right">Jita Sell</TableHead>
-						<TableHead className="text-right">Per 100 ore</TableHead>
+						<TableHead>{t('moonScan.ore')}</TableHead>
+						<TableHead>{t('moonScan.rarity')}</TableHead>
+						<TableHead>{t('moonScan.percentage')}</TableHead>
+						<TableHead className="text-right">{t('moonScan.rawOreVolumeM3')}</TableHead>
+						<TableHead>{t('moonScan.refinesToPer100')}</TableHead>
+						<TableHead className="text-right">{t('moonScan.batchVolumeM3')}</TableHead>
+						<TableHead className="text-right">{t('moonScan.totalRefineryM3')}</TableHead>
+						<TableHead className="text-right">{t('moonScan.jitaSell')}</TableHead>
+						<TableHead className="text-right">{t('moonScan.per100Ore')}</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
@@ -146,7 +149,7 @@ function MaterialCell({ product, batchQty }: { product: OreRefineProduct; batchQ
 					loading="lazy"
 				/>{' '}
 				<span className="font-semibold text-foreground">{product.materialName}</span>{' '}
-				<span className="text-muted-foreground">×{batchQty.toLocaleString()}</span>
+				<span className="text-muted-foreground">×{batchQty.toLocaleString(getActiveLocale())}</span>
 			</span>
 		</span>
 	)
@@ -161,6 +164,8 @@ function ProfitabilityCard({
 	updatedAt: string
 	pricingSnapshotDate: string | null
 }) {
+	const { t } = useAppTranslation()
+
 	const ORDER = ['metenox', 'tatara']
 	const visible = ORDER.map((id) => structures.find((s) => s.structureType === id)).filter(
 		(s): s is StructureProfitability => s !== undefined
@@ -168,7 +173,7 @@ function ProfitabilityCard({
 
 	return (
 		<div className="rounded-md border bg-card">
-			<div className="border-b px-4 py-3 text-sm font-semibold">Profitability</div>
+			<div className="border-b px-4 py-3 text-sm font-semibold">{t('moonScan.profitability')}</div>
 			<div className="grid grid-cols-1 gap-0 sm:grid-cols-2 sm:divide-x">
 				{visible.map((s) => (
 					<MoonProfitabilityTable key={s.structureType} structure={s} />
@@ -176,18 +181,18 @@ function ProfitabilityCard({
 			</div>
 			<div className="border-t px-4 py-2 text-xs text-muted-foreground">
 				<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-					<span>Calculated:</span>
+					<span>{t('moonScan.calculated')}</span>
 					<EveTimeDisplay dateStr={updatedAt} />
 				</div>
 				<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-					<span>Pricing Source: Global Daily Average</span>
+					<span>{t('moonScan.pricingSourceGlobalDailyAverage')}</span>
 					<span aria-hidden="true">•</span>
 					<span className="flex items-center gap-1">
-						Snapshot:
+						{t('moonScan.snapshot')}
 						{pricingSnapshotDate ? (
 							<EveTimeDisplay dateStr={`${pricingSnapshotDate}T00:00:00Z`} format="date" />
 						) : (
-							<span>Unavailable</span>
+							<span>{t('moonScan.unavailable')}</span>
 						)}
 					</span>
 				</div>
@@ -197,6 +202,8 @@ function ProfitabilityCard({
 }
 
 export default function MoonPage() {
+	const { t } = useAppTranslation()
+
 	const { moonId } = useParams<{ moonId: string }>()
 	const location = useLocation()
 	const navigationState =
@@ -216,13 +223,13 @@ export default function MoonPage() {
 
 	const { data: detail, isLoading, error } = useMoonDetail(moonId!, canView)
 	const resolvedMoonName = detail?.moon?.moonName ?? immediateMoonName
-	usePageTitle(resolvedMoonName ? `${resolvedMoonName} — Moon` : 'Moon Detail')
+	usePageTitle(resolvedMoonName ? `${resolvedMoonName} — Moon` : t('moonScan.moonDetail'))
 
 	if (!canView) {
 		return (
 			<Container>
 				<div className="mt-section rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-					You do not have permission to view moon data.
+					{t('moonScan.youDoNotHavePermissionToViewMoonData')}
 				</div>
 			</Container>
 		)
@@ -238,10 +245,10 @@ export default function MoonPage() {
 				? `/moon-scan/system/${moon.solarSystemId}`
 				: '/moon-scan'
 	const backLabel = backTo.startsWith('/moon-scan/scanned')
-		? 'Back to Scanned Moons'
+		? t('moonScan.backToScannedMoons')
 		: backTo.startsWith('/moon-scan/system/')
-			? 'Back to System'
-			: 'Back to Regions'
+			? t('moonScan.backToSystem')
+			: t('moonScan.backToRegions')
 	const systemNavigationState = backTo.startsWith('/moon-scan/system/')
 		? {
 				from:
@@ -255,13 +262,13 @@ export default function MoonPage() {
 	return (
 		<Container>
 			<PageHeader
-				title={moon?.moonName ?? immediateMoonName ?? 'Moon'}
-				description={moon ? `Moon ID: ${moon.moonId}` : undefined}
+				title={moon?.moonName ?? immediateMoonName ?? t('moonScan.moon')}
+				description={moon ? t('moonScan.moonIdValue1', { value1: moon.moonId }) : undefined}
 				action={
 					<div className="flex flex-col items-end gap-2">
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
 							<Link to="/moon-scan" className="hover:underline">
-								Moons
+								{t('moonScan.moons2')}
 							</Link>
 							{moon?.solarSystemId && (
 								<>
@@ -271,12 +278,12 @@ export default function MoonPage() {
 										state={systemNavigationState}
 										className="hover:underline"
 									>
-										{moon.solarSystemName || immediateSystemName || 'System'}
+										{moon.solarSystemName || immediateSystemName || t('moonScan.system')}
 									</Link>
 								</>
 							)}
 							<span>/</span>
-							<span>{moon?.moonName ?? immediateMoonName ?? 'Moon'}</span>
+							<span>{moon?.moonName ?? immediateMoonName ?? t('moonScan.moon')}</span>
 						</div>
 						<Button variant="ghost" size="sm" asChild>
 							<Link to={backTo} state={systemNavigationState}>
@@ -291,10 +298,12 @@ export default function MoonPage() {
 			<div className="mb-6 -mt-3">
 				<div className="flex items-center gap-3 flex-wrap">
 					{composition ? (
-						<Badge className="bg-green-500/20 text-green-400 border-green-500/30">verified</Badge>
+						<Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+							{t('moonScan.verified3')}
+						</Badge>
 					) : !isLoading ? (
 						<Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
-							unverified
+							{t('moonScan.unverified')}
 						</Badge>
 					) : null}
 				</div>
@@ -302,7 +311,7 @@ export default function MoonPage() {
 
 			{error && (
 				<div className="mb-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-500">
-					Failed to load moon data
+					{t('moonScan.failedToLoadMoonData')}
 				</div>
 			)}
 
@@ -315,7 +324,7 @@ export default function MoonPage() {
 
 			{!isLoading && !composition && (
 				<div className="mb-6 rounded-md border border-dashed bg-card/50 p-6 text-center text-sm text-muted-foreground">
-					No verified composition yet.
+					{t('moonScan.noVerifiedCompositionYet')}
 				</div>
 			)}
 
@@ -323,15 +332,18 @@ export default function MoonPage() {
 			{!isLoading && profitability && composition && (
 				<div className="mb-6 rounded-md border bg-card">
 					<div className="border-b px-4 py-3 flex items-center justify-between">
-						<span className="text-sm font-semibold text-green-400">✓ Verified Composition</span>
+						<span className="text-sm font-semibold text-green-400">
+							{t('moonScan.verifiedComposition')}
+						</span>
 					</div>
 					<OreCompositionTable ores={profitability.ores} />
 					<div className="border-t px-4 py-2 text-xs text-muted-foreground">
-						Verified
+						{t('moonScan.verified2')}
 						{composition.verifiedBy
-							? ` by ${composition.verifiedByName ?? composition.verifiedBy}`
+							? t('moonScan.by', { value1: composition.verifiedByName ?? composition.verifiedBy })
 							: ''}{' '}
-						on {new Date(composition.verifiedAt).toISOString().slice(0, 10)}
+						{t('moonScan.on')}
+						{new Date(composition.verifiedAt).toISOString().slice(0, 10)}
 					</div>
 				</div>
 			)}
@@ -339,7 +351,7 @@ export default function MoonPage() {
 			{/* Composition bar fallback when profitability unavailable but composition exists */}
 			{!isLoading && composition && !profitability && (
 				<div className="mb-6 rounded-md border bg-card px-4 py-3 text-sm text-muted-foreground">
-					Verified composition available but pricing data could not be loaded.
+					{t('moonScan.verifiedCompositionAvailableButPricingDataCouldNotBeLoaded')}
 				</div>
 			)}
 
@@ -356,15 +368,15 @@ export default function MoonPage() {
 
 			{/* Scan history */}
 			<div className="rounded-md border bg-card">
-				<div className="border-b px-4 py-3 text-sm font-semibold">Scan History</div>
+				<div className="border-b px-4 py-3 text-sm font-semibold">{t('moonScan.scanHistory')}</div>
 				<div className="overflow-x-auto">
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead>Date</TableHead>
-								<TableHead>Submitted By</TableHead>
-								<TableHead>Status</TableHead>
-								<TableHead>Ores</TableHead>
+								<TableHead>{t('moonScan.date')}</TableHead>
+								<TableHead>{t('moonScan.submittedBy')}</TableHead>
+								<TableHead>{t('moonScan.status')}</TableHead>
+								<TableHead>{t('moonScan.ores')}</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -396,7 +408,7 @@ export default function MoonPage() {
 							{detail?.scans.length === 0 && (
 								<TableRow>
 									<TableCell colSpan={4} className="py-6 text-center text-sm text-muted-foreground">
-										No scan records for this moon.
+										{t('moonScan.noScanRecordsForThisMoon')}
 									</TableCell>
 								</TableRow>
 							)}

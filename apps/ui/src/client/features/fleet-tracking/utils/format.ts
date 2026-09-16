@@ -1,4 +1,8 @@
-import { formatDurationBetween as formatDurationBetweenShared, formatDurationMs } from '@/lib/duration-utils'
+import { i18n } from '@/i18n'
+import {
+	formatDurationBetween as formatDurationBetweenShared,
+	formatDurationMs,
+} from '@/lib/duration-utils'
 
 /**
  * Format a duration in milliseconds as a short human-readable string.
@@ -19,22 +23,22 @@ export function formatDurationBetween(startIso: string, endIso: string | null): 
  * Pretty-print an end reason for display.
  */
 export function formatEndReason(reason: string | null): string {
-	if (!reason) return 'Unknown'
+	if (!reason) return i18n.t('fleetTracking.unknown')
 	switch (reason) {
 		case 'user_stopped':
-			return 'Stopped by user'
+			return i18n.t('fleetTracking.stoppedByUser')
 		case 'admin_stopped':
-			return 'Stopped by admin'
+			return i18n.t('fleetTracking.stoppedByAdmin')
 		case 'fleet_disbanded':
-			return 'Fleet disbanded'
+			return i18n.t('fleetTracking.fleetDisbanded')
 		case 'character_left_fleet':
-			return 'Character left fleet'
+			return i18n.t('fleetTracking.characterLeftFleet')
 		case 'not_fleet_boss':
-			return 'Character no longer fleet boss'
+			return i18n.t('fleetTracking.characterNoLongerFleetBoss')
 		case 'esi_error':
-			return 'ESI error'
+			return i18n.t('fleetTracking.esiError')
 		case 'token_expired':
-			return 'Token expired'
+			return i18n.t('fleetTracking.tokenExpired')
 		default:
 			return reason
 	}

@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
+import { i18n } from '@/i18n'
 import { corporationTaxApi } from '@/lib/tax-api'
 
 import { corporationTaxKeys } from './keys'
@@ -153,7 +154,7 @@ export function useTaxMemberSummary(
 		queryKey: corporationTaxKeys.memberSummary(corporationId ?? 'none', filters),
 		queryFn: () => {
 			if (!corporationId) {
-				throw new Error('Corporation id is required for member summary')
+				throw new Error(i18n.t('tax.corporationIdIsRequiredForMemberSummary'))
 			}
 			return corporationTaxApi.getMemberSummary(corporationId, filters)
 		},

@@ -8,6 +8,7 @@
 import { AlertOctagon, AlertTriangle, CheckCircle, Info, Shield } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
+import { i18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import type { BadgeVariant } from '@/components/ui/badge'
@@ -37,27 +38,37 @@ const noteTypeConfig: Record<
 	}
 > = {
 	general: {
-		label: 'General',
+		get label() {
+			return i18n.t('hrpages.general')
+		},
 		icon: Info,
 		variant: 'ghost',
 	},
 	warning: {
-		label: 'Warning',
+		get label() {
+			return i18n.t('hrpages.warning')
+		},
 		icon: AlertTriangle,
 		variant: 'warning',
 	},
 	positive: {
-		label: 'Positive',
+		get label() {
+			return i18n.t('hrpages.positive')
+		},
 		icon: CheckCircle,
 		variant: 'success',
 	},
 	incident: {
-		label: 'Incident',
+		get label() {
+			return i18n.t('hrpages.incident')
+		},
 		icon: AlertOctagon,
 		variant: 'destructive',
 	},
 	background_check: {
-		label: 'Background Check',
+		get label() {
+			return i18n.t('hrpages.backgroundCheck')
+		},
 		icon: Shield,
 		variant: 'default',
 	},

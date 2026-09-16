@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+import { useAppTranslation } from '@/i18n'
+
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
@@ -25,6 +27,8 @@ export function SkillPlanForm({
 	isSubmitting = false,
 	mode = 'create',
 }: SkillPlanFormProps) {
+	const { t } = useAppTranslation()
+
 	const [formData, setFormData] = useState<CreateSkillPlanRequest>({
 		name: initialData?.name || '',
 		description: initialData?.description || '',
@@ -40,19 +44,19 @@ export function SkillPlanForm({
 		const newErrors: Partial<Record<keyof CreateSkillPlanRequest, string>> = {}
 
 		if (!formData.name.trim()) {
-			newErrors.name = 'Name is required'
+			newErrors.name = t('skillPlans.nameRequired')
 		} else if (formData.name.length < 3) {
-			newErrors.name = 'Name must be at least 3 characters'
+			newErrors.name = t('skillPlans.nameMin3')
 		} else if (formData.name.length > 100) {
-			newErrors.name = 'Name must be less than 100 characters'
+			newErrors.name = t('skillPlans.nameMax100')
 		}
 
 		if (!formData.description.trim()) {
-			newErrors.description = 'Description is required'
+			newErrors.description = t('skillPlans.descriptionRequired')
 		} else if (formData.description.length < 10) {
-			newErrors.description = 'Description must be at least 10 characters'
+			newErrors.description = t('skillPlans.descriptionMin10')
 		} else if (formData.description.length > 1000) {
-			newErrors.description = 'Description must be less than 1000 characters'
+			newErrors.description = t('skillPlans.descriptionMax1000')
 		}
 
 		setErrors(newErrors)
@@ -96,13 +100,14 @@ export function SkillPlanForm({
 			{/* Name field */}
 			<div className="space-y-2">
 				<Label htmlFor="name">
-					Plan Name <span className="text-destructive">*</span>
+					{t('skillPlans.planName')}
+					<span className="text-destructive">*</span>
 				</Label>
 				<Input
 					id="name"
 					value={formData.name}
 					onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-					placeholder="Enter a name for your skill plan"
+					placeholder={t('skillPlans.enterANameForYourSkillPlan')}
 					disabled={isSubmitting}
 					maxLength={100}
 				/>
@@ -112,19 +117,21 @@ export function SkillPlanForm({
 			{/* Description field */}
 			<div className="space-y-2">
 				<Label htmlFor="description">
-					Description <span className="text-destructive">*</span>
+					{t('skillPlans.description2')}
+					<span className="text-destructive">*</span>
 				</Label>
 				<Textarea
 					id="description"
 					value={formData.description}
 					onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-					placeholder="Describe what this skill plan is for and when to use it"
+					placeholder={t('skillPlans.describeWhatThisSkillPlanIsForAndWhenTo')}
 					disabled={isSubmitting}
 					rows={4}
 					maxLength={1000}
 				/>
 				<p className="text-sm text-muted-foreground">
-					{formData.description.length}/1000 characters
+					{formData.description.length}
+					{t('skillPlans.message1000Characters')}
 				</p>
 				{errors.description && <p className="text-sm text-destructive">{errors.description}</p>}
 			</div>
@@ -146,9 +153,9 @@ export function SkillPlanForm({
 			{/* Published toggle */}
 			<div className="flex items-center justify-between rounded-lg border p-4">
 				<div className="space-y-0.5">
-					<Label htmlFor="published">Published</Label>
+					<Label htmlFor="published">{t('skillPlans.published')}</Label>
 					<p className="text-sm text-muted-foreground">
-						Published plans are visible to all authenticated users
+						{t('skillPlans.publishedPlansAreVisibleToAllAuthenticatedUsers')}
 					</p>
 				</div>
 				<Switch
@@ -162,10 +169,10 @@ export function SkillPlanForm({
 			{/* Form actions */}
 			<div className="flex justify-end gap-2 pt-4">
 				<Button variant="cancel" onClick={onCancel} disabled={isSubmitting}>
-					Cancel
+					{t('skillPlans.cancel')}
 				</Button>
 				<Button variant="confirm" type="submit" loading={isSubmitting}>
-					{mode === 'create' ? 'Create Plan' : 'Save Changes'}
+					{mode === 'create' ? t('skillPlans.createPlan') : t('skillPlans.saveChanges')}
 				</Button>
 			</div>
 		</form>

@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAppTranslation } from '@/i18n'
 
 interface RankingListProps<T> {
 	title: string
@@ -8,6 +9,8 @@ interface RankingListProps<T> {
 }
 
 export function RankingList<T>({ title, items, emptyText, renderItem }: RankingListProps<T>) {
+	const { t } = useAppTranslation()
+
 	return (
 		<Card>
 			<CardHeader>
@@ -15,7 +18,9 @@ export function RankingList<T>({ title, items, emptyText, renderItem }: RankingL
 			</CardHeader>
 			<CardContent>
 				{items.length === 0 ? (
-					<div className="text-sm text-muted-foreground py-4">{emptyText ?? 'No data'}</div>
+					<div className="text-sm text-muted-foreground py-4">
+						{emptyText ?? t('fleetTracking.noData')}
+					</div>
 				) : (
 					<ol className="space-y-2">
 						{items.map((item, i) => (

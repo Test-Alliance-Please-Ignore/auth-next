@@ -5,6 +5,7 @@ import { CorporationSearchSelect } from '@/components/corporation-search-select'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAppTranslation } from '@/i18n'
 
 import type { TaxRuleGroupAttachment } from '@repo/corporation-tax'
 
@@ -27,29 +28,32 @@ export function RuleGroupCorporationAttachmentsCard({
 	onAttach: (input: { ruleGroupId: string; corporationId: string }) => Promise<unknown> | void
 	onDetach: (input: { ruleGroupId: string; corporationId: string }) => Promise<unknown> | void
 }) {
+	const { t } = useAppTranslation()
+
 	const attachedIds = useMemo(
 		() => new Set(attachments.map((attachment) => attachment.corporationId)),
-		[attachments]
+		[attachments, t]
 	)
 
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Corporations In Scope</CardTitle>
+				<CardTitle>{t('tax.corporationsInScope')}</CardTitle>
 				<CardDescription>
-					Attach corporations to the selected rule group scope. Attached corporations inherit this
-					group&apos;s rules.
+					{t('tax.attachCorporationsToTheSelectedRuleGroupScopeAttachedCorporations')}
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-3">
 				{!effectiveRuleGroupId ? (
-					<div className="text-sm text-muted-foreground">Select a rule group first.</div>
+					<div className="text-sm text-muted-foreground">{t('tax.selectARuleGroupFirst')}</div>
 				) : (
 					<>
 						<CorporationSearchSelect
 							value=""
 							excludeCorporationIds={
-								excludeCorporationIds ? new Set([...attachedIds, ...excludeCorporationIds]) : attachedIds
+								excludeCorporationIds
+									? new Set([...attachedIds, ...excludeCorporationIds])
+									: attachedIds
 							}
 							onValueChange={(nextValue) => {
 								void onAttach({
@@ -57,7 +61,7 @@ export function RuleGroupCorporationAttachmentsCard({
 									corporationId: nextValue,
 								})
 							}}
-							placeholder="Attach corporation by name or ID"
+							placeholder={t('tax.attachCorporationByNameOrId')}
 							disabled={isAttaching}
 						/>
 						<div className="flex flex-wrap gap-2">
@@ -68,7 +72,9 @@ export function RuleGroupCorporationAttachmentsCard({
 									className={`gap-2 ${attachment.isExcluded ? 'opacity-50 grayscale' : ''}`}
 									title={
 										attachment.isExcluded
-											? `Excluded: ${attachment.exclusionReason ?? 'No reason provided'}`
+											? t('tax.excludedValue1', {
+													value1: attachment.exclusionReason ?? t('tax.noReason'),
+												})
 											: undefined
 									}
 								>

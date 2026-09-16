@@ -1,6 +1,8 @@
 import { X } from 'lucide-react'
 import { useState } from 'react'
 
+import { useAppTranslation } from '@/i18n'
+
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Label } from '../../../components/ui/label'
@@ -15,6 +17,8 @@ interface CategorySelectorProps {
 }
 
 export function CategorySelector({ value = [], onChange, disabled }: CategorySelectorProps) {
+	const { t } = useAppTranslation()
+
 	const { data: categories, isLoading } = useSkillPlanCategories()
 	const [selectedCategoryId, setSelectedCategoryId] = useState<string>('')
 
@@ -32,7 +36,7 @@ export function CategorySelector({ value = [], onChange, disabled }: CategorySel
 	// Get category names for display
 	const getCategoryName = (categoryId: string) => {
 		const category = categories?.find((c) => c.id === categoryId)
-		return category?.name || 'Unknown Category'
+		return category?.name || t('skillPlans.unknownCategory')
 	}
 
 	// Filter out already selected categories from dropdown
@@ -41,7 +45,7 @@ export function CategorySelector({ value = [], onChange, disabled }: CategorySel
 	if (isLoading) {
 		return (
 			<div className="space-y-2">
-				<Label>Categories</Label>
+				<Label>{t('skillPlans.categories')}</Label>
 				<Skeleton className="h-10 w-full" />
 			</div>
 		)
@@ -49,9 +53,9 @@ export function CategorySelector({ value = [], onChange, disabled }: CategorySel
 
 	return (
 		<div className="space-y-2">
-			<Label>Categories</Label>
+			<Label>{t('skillPlans.categories')}</Label>
 			<p className="text-sm text-muted-foreground">
-				Organize your skill plan by adding it to categories
+				{t('skillPlans.organizeYourSkillPlanByAddingItToCategories')}
 			</p>
 
 			{/* Add category selector */}
@@ -60,10 +64,11 @@ export function CategorySelector({ value = [], onChange, disabled }: CategorySel
 					<Select
 						value={selectedCategoryId}
 						onValueChange={setSelectedCategoryId}
-						options={availableCategories.map((category) => ({ value: category.id,
+						options={availableCategories.map((category) => ({
+							value: category.id,
 							label: category.name,
 						}))}
-						placeholder="Select a category to add"
+						placeholder={t('skillPlans.selectACategoryToAdd')}
 						className="flex-1"
 						disabled={disabled}
 					/>
@@ -72,7 +77,7 @@ export function CategorySelector({ value = [], onChange, disabled }: CategorySel
 						onClick={handleAddCategory}
 						disabled={!selectedCategoryId || disabled}
 					>
-						Add
+						{t('skillPlans.add')}
 					</Button>
 				</div>
 			)}
@@ -100,7 +105,7 @@ export function CategorySelector({ value = [], onChange, disabled }: CategorySel
 
 			{value.length === 0 && availableCategories.length === 0 && (
 				<p className="text-sm text-muted-foreground italic">
-					No categories available. Categories can be created by admins.
+					{t('skillPlans.noCategoriesAvailableCategoriesCanBeCreatedByAdmins')}
 				</p>
 			)}
 		</div>

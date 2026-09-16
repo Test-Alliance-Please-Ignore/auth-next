@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Separator } from '@/components/ui/separator'
+import { i18n, useAppTranslation } from '@/i18n'
 import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import {
@@ -50,16 +51,16 @@ function getInitialSendDmPreference(): boolean {
 function getReportStatusBadge(status: string) {
 	switch (status) {
 		case 'completed':
-			return <Badge variant="success">Completed</Badge>
+			return <Badge variant="success">{i18n.t('hrpages.completed')}</Badge>
 		case 'pending':
 		case 'processing':
-			return <Badge variant="default">In Progress</Badge>
+			return <Badge variant="default">{i18n.t('hrpages.inProgress')}</Badge>
 		case 'failed':
-			return <Badge variant="destructive">Failed</Badge>
+			return <Badge variant="destructive">{i18n.t('hrpages.failed')}</Badge>
 		case 'expired':
-			return <Badge variant="warning">Expired</Badge>
+			return <Badge variant="warning">{i18n.t('hrpages.expired')}</Badge>
 		case 'cancelled':
-			return <Badge variant="secondary">Cancelled</Badge>
+			return <Badge variant="secondary">{i18n.t('hrpages.cancelled')}</Badge>
 		default:
 			return <Badge variant="secondary">{status}</Badge>
 	}
@@ -112,6 +113,8 @@ function CharacterReportCard({
 	requestingCharacterId,
 	canRequest,
 }: CharacterReportCardProps) {
+	const { t } = useAppTranslation()
+
 	const latestReport = getLatestReport(character.reports)
 	const isThisRequesting =
 		isRequesting &&
@@ -146,7 +149,8 @@ function CharacterReportCard({
 						{latestReport.status === 'completed' && latestReport.expiresAt && (
 							<div className="flex items-center gap-1 text-xs text-muted-foreground">
 								<Clock className="h-3 w-3" />
-								Expires {formatDistanceToNow(new Date(latestReport.expiresAt), { addSuffix: true })}
+								{t('hrpages.expires')}
+								{formatDistanceToNow(new Date(latestReport.expiresAt), { addSuffix: true })}
 							</div>
 						)}
 
@@ -160,12 +164,12 @@ function CharacterReportCard({
 						{(latestReport.status === 'pending' || latestReport.status === 'processing') && (
 							<div className="flex items-center gap-1 text-xs text-muted-foreground">
 								<Loader2 className="h-3 w-3 animate-spin" />
-								Report is being generated...
+								{t('hrpages.reportIsBeingGenerated')}
 							</div>
 						)}
 					</div>
 				) : (
-					<p className="text-sm text-muted-foreground">No reports generated yet</p>
+					<p className="text-sm text-muted-foreground">{t('hrpages.noReportsGeneratedYet')}</p>
 				)}
 			</div>
 
@@ -175,7 +179,7 @@ function CharacterReportCard({
 					<Button asChild variant="ghost" size="sm">
 						<Link to={reportTarget.to}>
 							<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-							View
+							{t('hrpages.view')}
 						</Link>
 					</Button>
 				)}
@@ -194,7 +198,7 @@ function CharacterReportCard({
 						) : (
 							<FileText className="mr-1.5 h-3.5 w-3.5" />
 						)}
-						{latestReport ? 'New Report' : 'Request Report'}
+						{latestReport ? t('hrpages.newReport') : t('hrpages.requestReport')}
 					</Button>
 				)}
 			</div>
@@ -225,17 +229,19 @@ export function FulcrumPanel({
 	canRequestCharacterReport,
 	enabled = true,
 }: FulcrumPanelProps) {
+	const { t } = useAppTranslation()
+
 	const { data: reportCharacters = [], isLoading, error } = useFulcrumUserReports(userId, enabled)
 	const { data: hrCharacters = [] } = useHrUserCharacters(userId, {
 		enabled: !!userId && enabled,
 	})
 	const hrCharacterById = useMemo(
 		() => new Map(hrCharacters.map((character) => [character.characterId, character])),
-		[hrCharacters]
+		[hrCharacters, t]
 	)
 	const reportCharacterById = useMemo(
 		() => new Map(reportCharacters.map((character) => [character.characterId, character])),
-		[reportCharacters]
+		[reportCharacters, t]
 	)
 	const characters = useMemo<PanelCharacterRow[]>(() => {
 		const combinedCharacterIds = new Set<string>([
@@ -258,7 +264,7 @@ export function FulcrumPanel({
 				reports: reportCharacter?.reports ?? [],
 			}
 		})
-	}, [hrCharacterById, hrCharacters, reportCharacterById, reportCharacters])
+	}, [hrCharacterById, hrCharacters, reportCharacterById, reportCharacters, t])
 	const requestReport = useRequestFulcrumReport()
 	const requestReportBatch = useRequestFulcrumReportBatch()
 	const [sendDmForScanRequests, setSendDmForScanRequests] = useState(getInitialSendDmPreference)
@@ -304,7 +310,10 @@ export function FulcrumPanel({
 		return (
 			<div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
 				<AlertCircle className="h-5 w-5" />
-				<p>Failed to load character data: {error.message}</p>
+				<p>
+					{t('hrpages.failedToLoadCharacterData')}
+					{error.message}
+				</p>
 			</div>
 		)
 	}
@@ -312,7 +321,7 @@ export function FulcrumPanel({
 	if (characters.length === 0) {
 		return (
 			<p className="text-center text-muted-foreground py-8">
-				No linked characters found for this applicant
+				{t('hrpages.noLinkedCharactersFoundForThisApplicant')}
 			</p>
 		)
 	}
@@ -432,14 +441,16 @@ export function FulcrumPanel({
 						) : (
 							<Users className="mr-1.5 h-3.5 w-3.5" />
 						)}
-						Generate All Reports
+						{t('hrpages.generateAllReports')}
 					</Button>
 				</div>
 			)}
 
 			{applicationCharacters.length > 0 && (
 				<>
-					<h4 className="text-sm font-medium text-muted-foreground">Application Characters</h4>
+					<h4 className="text-sm font-medium text-muted-foreground">
+						{t('hrpages.applicationCharacters')}
+					</h4>
 					{renderCharacterCards(applicationCharacters)}
 				</>
 			)}
@@ -449,7 +460,9 @@ export function FulcrumPanel({
 			{otherCharacters.length > 0 && (
 				<>
 					{applicationCharacters.length > 0 && (
-						<h4 className="text-sm font-medium text-muted-foreground">Other Characters</h4>
+						<h4 className="text-sm font-medium text-muted-foreground">
+							{t('hrpages.otherCharacters')}
+						</h4>
 					)}
 					{renderCharacterCards(otherCharacters)}
 				</>
@@ -458,10 +471,10 @@ export function FulcrumPanel({
 			<Dialog open={scanAllDialogOpen} onOpenChange={setScanAllDialogOpen}>
 				<DialogContent className="sm:max-w-[500px]">
 					<DialogHeader>
-						<DialogTitle>Generate Reports For All Eligible Characters?</DialogTitle>
+						<DialogTitle>{t('hrpages.generateReportsForAllEligibleCharacters')}</DialogTitle>
 						<DialogDescription>
-							This will queue {requestableCharacters.length} report
-							{requestableCharacters.length === 1 ? '' : 's'}.
+							{t('hrpages.thisWillQueue')}
+							{t('hrpages.reportCount', { count: requestableCharacters.length })}.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-2">
@@ -475,16 +488,18 @@ export function FulcrumPanel({
 								onCheckedChange={(checked) => setSendDmForScanRequests(checked === true)}
 							/>
 							<div>
-								<span className="text-sm font-medium leading-none">Send DM for report status</span>
+								<span className="text-sm font-medium leading-none">
+									{t('hrpages.sendDmForReportStatus')}
+								</span>
 							</div>
 						</label>
 					</div>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setScanAllDialogOpen(false)}>
-							Cancel
+							{t('hrpages.cancel')}
 						</Button>
 						<Button variant="confirm" onClick={() => void handleConfirmRequestAll()}>
-							Generate Reports
+							{t('hrpages.generateReports')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -497,9 +512,10 @@ export function FulcrumPanel({
 				<DialogContent className="sm:max-w-[500px]">
 					<DialogHeader>
 						<DialogTitle>
-							Generate Report For {scanSingleDialogCharacter?.characterName ?? 'Character'}?
+							{t('hrpages.generateReportFor')}
+							{scanSingleDialogCharacter?.characterName ?? t('hrpages.character')}?
 						</DialogTitle>
-						<DialogDescription>This will queue one character report.</DialogDescription>
+						<DialogDescription>{t('hrpages.thisWillQueueOneCharacterReport')}</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-2">
 						<label
@@ -512,16 +528,18 @@ export function FulcrumPanel({
 								onCheckedChange={(checked) => setSendDmForScanRequests(checked === true)}
 							/>
 							<div>
-								<span className="text-sm font-medium leading-none">Send DM for report status</span>
+								<span className="text-sm font-medium leading-none">
+									{t('hrpages.sendDmForReportStatus')}
+								</span>
 							</div>
 						</label>
 					</div>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setScanSingleDialogCharacter(null)}>
-							Cancel
+							{t('hrpages.cancel')}
 						</Button>
 						<Button variant="confirm" onClick={handleConfirmSingle}>
-							Generate Report
+							{t('hrpages.generateReport')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

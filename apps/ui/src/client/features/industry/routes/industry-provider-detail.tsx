@@ -35,6 +35,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { formatDateTime } from '@/lib/date-utils'
 
 import { EntityTypeBadge, ServiceTypeBadge } from '../components'
@@ -52,7 +53,9 @@ import { SERVICE_STATUS_LABELS, SERVICE_TYPE_LABELS, ServiceType } from '../type
 import type { ProviderServiceDTO, ServiceStatus } from '../types'
 
 export default function IndustryProviderDetailPage() {
-	usePageTitle('Admin - Provider Details')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('industry.adminProviderDetails'))
 	const { providerId } = useParams<{ providerId: string }>()
 	const navigate = useNavigate()
 
@@ -84,8 +87,10 @@ export default function IndustryProviderDetailPage() {
 
 	const handleToggleAcceptingOrders = async () => {
 		if (!provider) return
-		const action = provider.acceptingOrders ? 'disable' : 'enable'
-		if (!confirm(`Are you sure you want to ${action} accepting orders?`)) return
+		const confirmation = provider.acceptingOrders
+			? t('industry.stopOrdersConfirm')
+			: t('industry.startOrdersConfirm')
+		if (!confirm(confirmation)) return
 
 		try {
 			await setAcceptingOrders.mutateAsync({
@@ -94,13 +99,13 @@ export default function IndustryProviderDetailPage() {
 			})
 			setMessage({
 				type: 'success',
-				text: `Provider is now ${provider.acceptingOrders ? 'not accepting' : 'accepting'} orders`,
+				text: provider.acceptingOrders ? t('industry.ordersStopped') : t('industry.ordersStarted'),
 			})
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to update status',
+				text: error instanceof Error ? error.message : t('industry.failedToUpdateStatus'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -114,7 +119,7 @@ export default function IndustryProviderDetailPage() {
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to delete provider',
+				text: error instanceof Error ? error.message : t('industry.failedToDeleteProvider'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 			setDeleteDialogOpen(false)
@@ -130,12 +135,12 @@ export default function IndustryProviderDetailPage() {
 			})
 			setAddServiceDialogOpen(false)
 			setNewServiceType('')
-			setMessage({ type: 'success', text: 'Service added successfully' })
+			setMessage({ type: 'success', text: t('industry.serviceAddedSuccessfully') })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to add service',
+				text: error instanceof Error ? error.message : t('industry.failedToAddService'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -150,12 +155,12 @@ export default function IndustryProviderDetailPage() {
 			})
 			setRemoveServiceDialogOpen(false)
 			setSelectedService(null)
-			setMessage({ type: 'success', text: 'Service removed successfully' })
+			setMessage({ type: 'success', text: t('industry.serviceRemovedSuccessfully') })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to remove service',
+				text: error instanceof Error ? error.message : t('industry.failedToRemoveService'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -169,12 +174,12 @@ export default function IndustryProviderDetailPage() {
 				serviceType,
 				status: newStatus,
 			})
-			setMessage({ type: 'success', text: 'Service status updated' })
+			setMessage({ type: 'success', text: t('industry.serviceStatusUpdated') })
 			setTimeout(() => setMessage(null), 3000)
 		} catch (error) {
 			setMessage({
 				type: 'error',
-				text: error instanceof Error ? error.message : 'Failed to update status',
+				text: error instanceof Error ? error.message : t('industry.failedToUpdateStatus'),
 			})
 			setTimeout(() => setMessage(null), 5000)
 		}
@@ -186,10 +191,12 @@ export default function IndustryProviderDetailPage() {
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" onClick={() => navigate('/admin/industry-providers')}>
 						<ArrowLeft className="h-4 w-4" />
-						Back
+						{t('industry.back')}
 					</Button>
 				</div>
-				<div className="text-center py-8 text-muted-foreground">Loading provider details...</div>
+				<div className="text-center py-8 text-muted-foreground">
+					{t('industry.loadingProviderDetails')}
+				</div>
 			</div>
 		)
 	}
@@ -200,10 +207,12 @@ export default function IndustryProviderDetailPage() {
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" onClick={() => navigate('/admin/industry-providers')}>
 						<ArrowLeft className="h-4 w-4" />
-						Back
+						{t('industry.back')}
 					</Button>
 				</div>
-				<div className="text-center py-8 text-muted-foreground">Provider not found</div>
+				<div className="text-center py-8 text-muted-foreground">
+					{t('industry.providerNotFound')}
+				</div>
 			</div>
 		)
 	}
@@ -215,7 +224,7 @@ export default function IndustryProviderDetailPage() {
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" onClick={() => navigate('/admin/industry-providers')}>
 						<ArrowLeft className="h-4 w-4" />
-						Back
+						{t('industry.back')}
 					</Button>
 					<Button variant="ghost" size="sm" onClick={() => refetch()}>
 						<RefreshCw className="h-4 w-4" />
@@ -225,12 +234,12 @@ export default function IndustryProviderDetailPage() {
 					<Button variant="ghost" asChild>
 						<Link to={`/admin/industry-providers/${provider.id}/edit`}>
 							<Edit className="h-4 w-4" />
-							Edit
+							{t('industry.edit')}
 						</Link>
 					</Button>
 					<Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
 						<Trash2 className="h-4 w-4" />
-						Delete
+						{t('industry.delete')}
 					</Button>
 				</div>
 			</div>
@@ -270,12 +279,12 @@ export default function IndustryProviderDetailPage() {
 							{provider.acceptingOrders ? (
 								<>
 									<PowerOff className="h-4 w-4" />
-									Stop Accepting Orders
+									{t('industry.stopAcceptingOrders')}
 								</>
 							) : (
 								<>
 									<Power className="h-4 w-4" />
-									Start Accepting Orders
+									{t('industry.startAcceptingOrders')}
 								</>
 							)}
 						</Button>
@@ -284,33 +293,33 @@ export default function IndustryProviderDetailPage() {
 				<CardContent>
 					<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 						<div>
-							<Label className="text-muted-foreground">Owner Type</Label>
+							<Label className="text-muted-foreground">{t('industry.ownerType2')}</Label>
 							<div className="mt-1">
 								<EntityTypeBadge type={provider.ownerEntityType} />
 							</div>
 						</div>
 						<div>
-							<Label className="text-muted-foreground">Owner ID</Label>
+							<Label className="text-muted-foreground">{t('industry.ownerId2')}</Label>
 							<p className="mt-1 font-mono text-sm">{provider.ownerEntityId}</p>
 						</div>
 						<div>
-							<Label className="text-muted-foreground">Status</Label>
+							<Label className="text-muted-foreground">{t('industry.status')}</Label>
 							<div className="mt-1">
 								{provider.acceptingOrders ? (
 									<Badge variant="success">
 										<CheckCircle className="mr-1 h-3 w-3" />
-										Accepting Orders
+										{t('industry.acceptingOrders')}
 									</Badge>
 								) : (
 									<Badge variant="destructive">
 										<XCircle className="mr-1 h-3 w-3" />
-										Not Accepting
+										{t('industry.notAccepting')}
 									</Badge>
 								)}
 							</div>
 						</div>
 						<div>
-							<Label className="text-muted-foreground">Created</Label>
+							<Label className="text-muted-foreground">{t('industry.created')}</Label>
 							<p className="mt-1 text-sm">{formatDateTime(provider.createdAt)}</p>
 						</div>
 					</div>
@@ -322,9 +331,9 @@ export default function IndustryProviderDetailPage() {
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<div>
-							<CardTitle>Services</CardTitle>
+							<CardTitle>{t('industry.services')}</CardTitle>
 							<CardDescription>
-								{services?.length || 0} service{services?.length !== 1 ? 's' : ''} offered
+								{t('industry.serviceCount', { count: services?.length ?? 0 })}
 							</CardDescription>
 						</div>
 						<Button
@@ -332,7 +341,7 @@ export default function IndustryProviderDetailPage() {
 							disabled={availableServiceTypes.length === 0}
 						>
 							<Plus className="h-4 w-4" />
-							Add Service
+							{t('industry.addService')}
 						</Button>
 					</div>
 				</CardHeader>
@@ -345,10 +354,10 @@ export default function IndustryProviderDetailPage() {
 						</div>
 					) : !services || services.length === 0 ? (
 						<div className="text-center py-8">
-							<p className="text-muted-foreground mb-4">No services added yet</p>
+							<p className="text-muted-foreground mb-4">{t('industry.noServicesAddedYet')}</p>
 							<Button onClick={() => setAddServiceDialogOpen(true)}>
 								<Plus className="h-4 w-4" />
-								Add First Service
+								{t('industry.addFirstService')}
 							</Button>
 						</div>
 					) : (
@@ -356,10 +365,10 @@ export default function IndustryProviderDetailPage() {
 							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead>Service Type</TableHead>
-										<TableHead>Status</TableHead>
-										<TableHead>Created</TableHead>
-										<TableHead className="text-right">Actions</TableHead>
+										<TableHead>{t('industry.serviceType')}</TableHead>
+										<TableHead>{t('industry.status')}</TableHead>
+										<TableHead>{t('industry.created')}</TableHead>
+										<TableHead className="text-right">{t('industry.actions')}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -409,23 +418,22 @@ export default function IndustryProviderDetailPage() {
 			<Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Delete Provider</DialogTitle>
+						<DialogTitle>{t('industry.deleteProvider')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to delete "{provider.name}"? This will also remove all
-							associated services. This action cannot be undone.
+							{t('industry.deleteProviderConfirm', { name: provider.name })}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setDeleteDialogOpen(false)}>
-							Cancel
+							{t('industry.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleDeleteProvider}
 							loading={deleteProvider.isPending}
-							loadingText="Deleting..."
+							loadingText={t('industry.deleting')}
 						>
-							Delete Provider
+							{t('industry.deleteProvider')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -435,11 +443,13 @@ export default function IndustryProviderDetailPage() {
 			<Dialog open={addServiceDialogOpen} onOpenChange={setAddServiceDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Add Service</DialogTitle>
-						<DialogDescription>Select a service type to add to this provider.</DialogDescription>
+						<DialogTitle>{t('industry.addService')}</DialogTitle>
+						<DialogDescription>
+							{t('industry.selectAServiceTypeToAddToThisProvider')}
+						</DialogDescription>
 					</DialogHeader>
 					<div className="py-4">
-						<Label htmlFor="serviceType">Service Type</Label>
+						<Label htmlFor="serviceType">{t('industry.serviceType')}</Label>
 						<Select
 							value={newServiceType}
 							onValueChange={(value) => setNewServiceType(value as ServiceType)}
@@ -448,22 +458,22 @@ export default function IndustryProviderDetailPage() {
 								value: type,
 								label: SERVICE_TYPE_LABELS[type],
 							}))}
-							placeholder="Select a service type"
+							placeholder={t('industry.selectAServiceType')}
 							className="mt-2"
 						/>
 					</div>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setAddServiceDialogOpen(false)}>
-							Cancel
+							{t('industry.cancel')}
 						</Button>
 						<Button
 							variant="confirm"
 							onClick={handleAddService}
 							loading={addService.isPending}
-							loadingText="Adding..."
+							loadingText={t('industry.adding')}
 							disabled={!newServiceType}
 						>
-							Add Service
+							{t('industry.addService')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -473,11 +483,11 @@ export default function IndustryProviderDetailPage() {
 			<Dialog open={removeServiceDialogOpen} onOpenChange={setRemoveServiceDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Remove Service</DialogTitle>
+						<DialogTitle>{t('industry.removeService')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to remove "
-							{selectedService && SERVICE_TYPE_LABELS[selectedService.serviceType]}" from this
-							provider?
+							{t('industry.removeServiceConfirm', {
+								service: selectedService ? SERVICE_TYPE_LABELS[selectedService.serviceType] : '',
+							})}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -488,15 +498,15 @@ export default function IndustryProviderDetailPage() {
 								setSelectedService(null)
 							}}
 						>
-							Cancel
+							{t('industry.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleRemoveService}
 							loading={removeService.isPending}
-							loadingText="Removing..."
+							loadingText={t('industry.removing')}
 						>
-							Remove Service
+							{t('industry.removeService')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

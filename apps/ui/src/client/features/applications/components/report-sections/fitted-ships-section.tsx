@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react'
 
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { getActiveLocale, i18n, useAppTranslation } from '@/i18n'
 import { typeIconUrl, typeImageUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
 
@@ -54,16 +55,33 @@ interface LocationGroup {
 
 type ShipSortMode = 'value' | 'class' | 'name'
 const SHIP_SORT_OPTIONS = [
-	{ value: 'value', label: 'Sort: Value' },
-	{ value: 'class', label: 'Sort: Ship Class' },
-	{ value: 'name', label: 'Sort: Name' },
+	{
+		value: 'value',
+		get label() {
+			return i18n.t('hrpages.sortValue')
+		},
+	},
+	{
+		value: 'class',
+		get label() {
+			return i18n.t('hrpages.sortShipClass')
+		},
+	},
+	{
+		value: 'name',
+		get label() {
+			return i18n.t('hrpages.sortName')
+		},
+	},
 ] as const
 
 function formatIsk(value: number): string {
-	if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B ISK`
-	if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M ISK`
-	if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K ISK`
-	return `${value.toLocaleString()} ISK`
+	if (value >= 1_000_000_000)
+		return i18n.t('hrpages.value1BIsk', { value1: (value / 1_000_000_000).toFixed(2) })
+	if (value >= 1_000_000)
+		return i18n.t('hrpages.value1MIsk', { value1: (value / 1_000_000).toFixed(1) })
+	if (value >= 1_000) return i18n.t('hrpages.value1KIsk', { value1: (value / 1_000).toFixed(0) })
+	return `${value.toLocaleString(getActiveLocale())} ISK`
 }
 
 const SHIP_GROUP_CLASS_RANK: Record<string, number> = {
@@ -195,6 +213,8 @@ function ShipCard({
 	expandedShips: Set<string>
 	depth?: number
 }) {
+	const { t } = useAppTranslation()
+
 	const totalModules = [
 		ship.highs,
 		ship.meds,
@@ -232,7 +252,7 @@ function ShipCard({
 						)}
 					</div>
 					<span className="text-xs text-muted-foreground">
-						{totalModules} module{totalModules !== 1 ? 's' : ''} fitted
+						{t('hrpages.fittedModules', { value1: totalModules })}
 					</span>
 				</div>
 				{ship.estimatedValue != null && ship.estimatedValue > 0 && (
@@ -245,18 +265,18 @@ function ShipCard({
 			{isExpanded && (
 				<div className="border-t px-4 py-3">
 					<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-						<SlotGroup label="High Slots" items={ship.highs} />
-						<SlotGroup label="Mid Slots" items={ship.meds} />
-						<SlotGroup label="Low Slots" items={ship.lows} />
-						<SlotGroup label="Rigs" items={ship.rigs} />
-						<SlotGroup label="Subsystems" items={ship.subsystems} />
-						<SlotGroup label="Drones" items={ship.drones} />
-						<SlotGroup label="Cargo" items={ship.cargo} />
-						<SlotGroup label="Fuel Bay" items={ship.fuel} />
-						<SlotGroup label="Fighters" items={ship.fighters} />
-						<SlotGroup label="Fighter Bay" items={ship.fighterBay} />
-						<SlotGroup label="Ship Maintenance Bay" items={ship.shipsInSmb} />
-						<SlotGroup label="Fleet Hangar" items={ship.fleetHangar} />
+						<SlotGroup label={t('hrpages.highSlots')} items={ship.highs} />
+						<SlotGroup label={t('hrpages.midSlots')} items={ship.meds} />
+						<SlotGroup label={t('hrpages.lowSlots')} items={ship.lows} />
+						<SlotGroup label={t('hrpages.rigs')} items={ship.rigs} />
+						<SlotGroup label={t('hrpages.subsystems')} items={ship.subsystems} />
+						<SlotGroup label={t('hrpages.drones')} items={ship.drones} />
+						<SlotGroup label={t('hrpages.cargo')} items={ship.cargo} />
+						<SlotGroup label={t('hrpages.fuelBay')} items={ship.fuel} />
+						<SlotGroup label={t('hrpages.fighters')} items={ship.fighters} />
+						<SlotGroup label={t('hrpages.fighterBay')} items={ship.fighterBay} />
+						<SlotGroup label={t('hrpages.shipMaintenanceBay')} items={ship.shipsInSmb} />
+						<SlotGroup label={t('hrpages.fleetHangar')} items={ship.fleetHangar} />
 						{ship.specializedBays?.map((bay) => (
 							<SlotGroup key={bay.bayName} label={bay.bayName} items={bay.items} />
 						))}
@@ -264,7 +284,7 @@ function ShipCard({
 					{ship.containedShips && ship.containedShips.length > 0 && (
 						<div className="mt-4 space-y-2">
 							<h6 className="text-xs font-semibold uppercase text-muted-foreground">
-								Contained Ships
+								{t('hrpages.containedShips')}
 							</h6>
 							<div className="space-y-2">
 								{ship.containedShips.map((containedShip) => (
@@ -295,6 +315,8 @@ function collectShipKeys(ship: FittedShip): string[] {
 }
 
 export function FittedShipsSection({ data }: { data: FittedShip[] }) {
+	const { t } = useAppTranslation()
+
 	const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set())
 	const [expandedShips, setExpandedShips] = useState<Set<string>>(new Set())
 	const [search, setSearch] = useState('')
@@ -314,7 +336,7 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 
 		const map = new Map<string, FittedShip[]>()
 		for (const ship of filtered) {
-			const loc = ship.locationName || 'Unknown Location'
+			const loc = ship.locationName || t('hrpages.unknownLocation')
 			const existing = map.get(loc)
 			if (existing) {
 				existing.push(ship)
@@ -344,7 +366,7 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 			})
 		}
 		return result.sort((a, b) => b.ships.length - a.ships.length)
-	}, [data, search, sortMode])
+	}, [data, search, sortMode, t])
 
 	const toggleLocation = (loc: string) => {
 		setExpandedLocations((prev) => {
@@ -371,26 +393,31 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 	}
 
 	if (data.length === 0) {
-		return <p className="text-sm text-muted-foreground">No fitted ships found.</p>
+		return <p className="text-sm text-muted-foreground">{t('hrpages.noFittedShipsFound')}</p>
 	}
 
 	return (
 		<div className="space-y-3">
 			<div className="flex items-center justify-between gap-4">
 				<p className="text-sm text-muted-foreground">
-					{data.length} fitted ship{data.length !== 1 ? 's' : ''} across {groups.length} location
-					{groups.length !== 1 ? 's' : ''}
+					{t('hrpages.fittedShipCount', { count: data.length })}
+					{t('hrpages.across')}
+					{t('hrpages.location2Count', { count: groups.length })}
 					{(() => {
 						const total = groups.reduce((sum, g) => sum + g.estimatedValue, 0)
 						return total > 0 ? (
-							<span className="text-amber-400 font-medium"> — {formatIsk(total)} total</span>
+							<span className="text-amber-400 font-medium">
+								{' '}
+								— {formatIsk(total)}
+								{t('hrpages.total2')}
+							</span>
 						) : null
 					})()}
 				</p>
 				<div className="relative w-64">
 					<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
 					<Input
-						placeholder="Search ships or locations..."
+						placeholder={t('hrpages.searchShipsOrLocations')}
 						value={search}
 						onChange={(e) => setSearch(e.target.value)}
 						className="pl-9 h-9"
@@ -401,7 +428,7 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 						value={sortMode}
 						onValueChange={(value) => setSortMode(value as ShipSortMode)}
 						options={[...SHIP_SORT_OPTIONS]}
-						placeholder="Sort: Value"
+						placeholder={t('hrpages.sortValue')}
 						className="w-36"
 					/>
 					<button
@@ -414,7 +441,7 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 						}}
 						className="rounded border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
 					>
-						Expand all
+						{t('hrpages.expandAll')}
 					</button>
 					<button
 						type="button"
@@ -424,7 +451,7 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 						}}
 						className="rounded border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
 					>
-						Collapse all
+						{t('hrpages.collapseAll')}
 					</button>
 				</div>
 			</div>
@@ -446,7 +473,7 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 								)}
 								<span className="font-medium text-sm flex-1 truncate">{group.locationName}</span>
 								<span className="text-xs text-muted-foreground">
-									{group.ships.length} ship{group.ships.length !== 1 ? 's' : ''}
+									{t('hrpages.shipCount', { count: group.ships.length })}
 								</span>
 								{group.estimatedValue > 0 && (
 									<span className="text-xs font-medium text-amber-400">
@@ -477,7 +504,8 @@ export function FittedShipsSection({ data }: { data: FittedShip[] }) {
 
 				{groups.length === 0 && search && (
 					<p className="py-8 text-center text-sm text-muted-foreground">
-						No ships matching "{search}"
+						{t('hrpages.noShipsMatching')}
+						{search}"
 					</p>
 				)}
 			</div>

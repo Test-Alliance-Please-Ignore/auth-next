@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 
 type BillingOperationsCardProps = {
 	effectiveCorporationId: string | null
@@ -71,6 +72,8 @@ export function BillingOperationsCard({
 	runAssessmentWorkflowError,
 	runAssessmentError,
 }: BillingOperationsCardProps) {
+	const { t } = useAppTranslation()
+
 	const assessmentActive =
 		runAssessmentPending ||
 		runAssessmentStatus === 'queued' ||
@@ -80,17 +83,15 @@ export function BillingOperationsCard({
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Assessment and Billing Operations</CardTitle>
+				<CardTitle>{t('tax.assessmentAndBillingOperations')}</CardTitle>
 				<CardDescription>
-					Run an assessment for the selected period, create missing bills, then issue existing draft
-					bills. Assessment and billing are separate operations.
+					{t('tax.runAnAssessmentForTheSelectedPeriodCreateMissingBills')}
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				{!effectiveCorporationId ? (
 					<div className="text-sm text-muted-foreground">
-						Select one corporation above to enable assessment and billing actions. These operations
-						cannot be run against the all-corporations scope.
+						{t('tax.selectOneCorporationAboveToEnableAssessmentAndBillingActions')}
 					</div>
 				) : null}
 				<div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -100,14 +101,14 @@ export function BillingOperationsCard({
 							disabled={!effectiveCorporationId || !canIssue || syncCorporationPending}
 							onClick={onSyncCorporation}
 						>
-							{syncCorporationPending ? 'Syncing...' : 'Sync Corporation Bill Statuses'}
+							{syncCorporationPending ? t('tax.syncing') : t('tax.syncCorporationBillStatuses')}
 						</Button>
 						<Button
 							variant="primary"
 							disabled={!effectiveCorporationId || !canIssue || issuePeriodPending}
 							onClick={onIssuePeriod}
 						>
-							{issuePeriodPending ? 'Issuing...' : 'Issue Existing Bills'}
+							{issuePeriodPending ? t('tax.issuing') : t('tax.issueExistingBills')}
 						</Button>
 					</div>
 					<div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center md:justify-end">
@@ -115,7 +116,7 @@ export function BillingOperationsCard({
 							value={monthValue}
 							onValueChange={onMonthChange}
 							options={monthOptions}
-							placeholder="Assessment period"
+							placeholder={t('tax.assessmentPeriod')}
 							searchable
 							className="min-w-0 sm:w-64 md:w-80"
 							disabled={!effectiveCorporationId || !canIssue}
@@ -126,57 +127,62 @@ export function BillingOperationsCard({
 							onClick={onRunAssessment}
 						>
 							{runAssessmentPending || runAssessmentStatus === 'running'
-								? 'Assessing...'
+								? t('tax.assessing')
 								: runAssessmentStatus === 'queued' || runAssessmentStatus === 'waiting'
-									? 'Queued...'
-									: 'Run Assessment'}
+									? t('tax.queued')
+									: t('tax.runAssessment')}
 						</Button>
 					</div>
 				</div>
 				{syncCorporationResult ? (
 					<div className="text-sm text-muted-foreground">
-						Processed {syncCorporationResult.processedAssessmentIds.length}, updated{' '}
-						{syncCorporationResult.updatedAssessmentIds.length}, skipped{' '}
-						{syncCorporationResult.skippedAssessmentIds.length}.
+						{t('tax.syncResult', {
+							processed: syncCorporationResult.processedAssessmentIds.length,
+							updated: syncCorporationResult.updatedAssessmentIds.length,
+							skipped: syncCorporationResult.skippedAssessmentIds.length,
+						})}
 					</div>
 				) : null}
 				{runAssessmentResult ? (
 					<div className="text-sm text-muted-foreground">
-						Assessment completed with {runAssessmentResult.lineCount.toLocaleString('en-US')}{' '}
-						line(s) and {runAssessmentResult.discrepancyCount.toLocaleString('en-US')}{' '}
-						discrepancy(ies).
+						{t('tax.assessmentResult', {
+							lines: runAssessmentResult.lineCount,
+							discrepancies: runAssessmentResult.discrepancyCount,
+						})}
 					</div>
 				) : null}
 				{runAssessmentError ? (
 					<div className="text-sm text-destructive">
 						{runAssessmentError instanceof Error
 							? runAssessmentError.message
-							: 'Failed to run assessment for period'}
+							: t('tax.failedToRunAssessmentForPeriod')}
 					</div>
 				) : null}
 				{runAssessmentWorkflowError ? (
 					<div className="text-sm text-destructive">
-						{runAssessmentWorkflowError.message || 'Assessment workflow failed'}
+						{runAssessmentWorkflowError.message || t('tax.assessmentWorkflowFailed')}
 					</div>
 				) : null}
 				{issuePeriodResult ? (
 					<div className="text-sm text-muted-foreground">
-						Issued {issuePeriodResult.issuedAssessmentIds.length}, skipped{' '}
-						{issuePeriodResult.skippedAssessmentIds.length}.
+						{t('tax.issueResult', {
+							issued: issuePeriodResult.issuedAssessmentIds.length,
+							skipped: issuePeriodResult.skippedAssessmentIds.length,
+						})}
 					</div>
 				) : null}
 				{issuePeriodError ? (
 					<div className="text-sm text-destructive">
 						{issuePeriodError instanceof Error
 							? issuePeriodError.message
-							: 'Failed to issue bills for period'}
+							: t('tax.failedToIssueBillsForPeriod')}
 					</div>
 				) : null}
 				{syncCorporationError ? (
 					<div className="text-sm text-destructive">
 						{syncCorporationError instanceof Error
 							? syncCorporationError.message
-							: 'Failed to sync corporation bill statuses'}
+							: t('tax.failedToSyncCorporationBillStatuses')}
 					</div>
 				) : null}
 			</CardContent>

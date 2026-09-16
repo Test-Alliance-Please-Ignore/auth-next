@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 
 import { DataTable } from '@/components/data-table'
+import { useAppTranslation } from '@/i18n'
 import { formatTaxDateTime } from '@/lib/tax-date'
 import { TaxCorporationDisplay } from '@/lib/tax-display'
 
@@ -20,11 +21,13 @@ export function DiscrepancyGrid(props: {
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
 	rowCount: number
 }) {
+	const { t } = useAppTranslation()
+
 	const columns = useMemo(
 		() => [
 			{
 				id: 'corporationId',
-				header: 'Corporation',
+				header: t('tax.corporation'),
 				sortable: true,
 				cell: (row: TaxDiscrepancy) => (
 					<TaxCorporationDisplay
@@ -35,53 +38,53 @@ export function DiscrepancyGrid(props: {
 			},
 			{
 				id: 'discrepancyType',
-				header: 'Type',
+				header: t('tax.type'),
 				sortable: true,
 				cell: (row: TaxDiscrepancy) => row.discrepancyType,
 			},
 			{
 				id: 'severity',
-				header: 'Severity',
+				header: t('tax.severity'),
 				sortable: true,
 				cell: (row: TaxDiscrepancy) => row.severity,
 			},
 			{
 				id: 'assessmentId',
-				header: 'Assessment',
+				header: t('tax.assessment'),
 				cell: (row: TaxDiscrepancy) => row.assessmentId ?? '-',
 			},
 			{
 				id: 'createdAt',
-				header: 'Created',
+				header: t('tax.created'),
 				sortable: true,
 				cell: (row: TaxDiscrepancy) => formatTaxDateTime(row.createdAt),
 			},
 			{
 				id: 'details',
-				header: 'Details',
+				header: t('tax.details'),
 				cell: (row: TaxDiscrepancy) => (
 					<div className="max-w-[24rem] truncate">{toJsonPreview(row.details)}</div>
 				),
 			},
 		],
-		[props.entityNames]
+		[props.entityNames, t]
 	)
 
 	return (
 		<DataTable
 			variant="plain"
-			errorMessage="Failed to load report"
+			errorMessage={t('tax.failedToLoadReport')}
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
 			error={props.error}
-			emptyMessage="No open discrepancies found."
+			emptyMessage={t('tax.noOpenDiscrepanciesFound')}
 			sorting={props.sorting}
 			onSortingChange={props.onSortingChange}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
 			rowCount={props.rowCount}
-			itemLabel="discrepancies"
+			itemLabel={t('tax.discrepancies')}
 			getRowKey={(row) => row.id}
 		/>
 	)

@@ -23,7 +23,8 @@ import {
 	useTaxTotalTaxesReport,
 } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
-import { TAX_REF_TYPE_OPTIONS } from '@/lib/tax-display'
+import { useAppTranslation } from '@/i18n'
+import { getTaxRefTypeOptions } from '@/lib/tax-display'
 
 import type { TaxIncomeSourceControls, TaxRollupReportQueryFilters } from '@/lib/tax-report-types'
 import type { SortDirection } from '@/lib/tax-report-utils'
@@ -81,6 +82,8 @@ export function TopIncomeSourcesReportSection(props: {
 	controls: TaxIncomeSourceControls
 	onControlsChange: (controls: TaxIncomeSourceControls) => void
 }) {
+	const { t } = useAppTranslation()
+
 	const { data: taxableIncomeTypes = [] } = useTaxableIncomeRefTypes(
 		props.filters.corporationId,
 		props.enabled
@@ -101,12 +104,12 @@ export function TopIncomeSourcesReportSection(props: {
 	return (
 		<div className="space-y-4">
 			<div className="w-full space-y-2">
-				<div className="text-sm font-medium">Income Types</div>
+				<div className="text-sm font-medium">{t('tax.incomeTypes')}</div>
 				<div className="flex flex-wrap items-center gap-2">
 					<div
 						className="flex shrink-0 items-center rounded-md border border-border bg-card p-1"
 						role="group"
-						aria-label="Wallet source"
+						aria-label={t('tax.walletSource')}
 					>
 						{(['character', 'corporation'] as const).map((walletSource) => {
 							const isSelected = props.controls.walletSource === walletSource
@@ -127,19 +130,19 @@ export function TopIncomeSourcesReportSection(props: {
 										})
 									}
 								>
-									{walletSource === 'character' ? 'Character' : 'Corporation'}
+									{walletSource === 'character' ? t('tax.character') : t('tax.corporation')}
 								</Button>
 							)
 						})}
 					</div>
 					<div className="w-[min(20rem,100%)] min-w-0 shrink-0">
 						<Select
-							options={TAX_REF_TYPE_OPTIONS}
+							options={getTaxRefTypeOptions()}
 							values={props.controls.refTypes}
 							onValuesChange={(refTypes) => props.onControlsChange({ ...props.controls, refTypes })}
 							multiple
 							searchable
-							placeholder="All income types"
+							placeholder={t('tax.allIncomeTypes')}
 							inputClassName="h-10"
 							contentClassName="w-[min(20rem,calc(100vw-2rem))] min-w-[min(20rem,calc(100vw-2rem))]"
 						/>
@@ -154,7 +157,7 @@ export function TopIncomeSourcesReportSection(props: {
 							props.onControlsChange({ ...props.controls, refTypes: taxableIncomeTypes })
 						}
 					>
-						Taxable only
+						{t('tax.taxableOnly')}
 					</Button>
 					{props.controls.walletSource === 'corporation' ? (
 						<Button
@@ -169,7 +172,7 @@ export function TopIncomeSourcesReportSection(props: {
 								})
 							}
 						>
-							{props.controls.incomeMode === 'total' ? 'Show Assessed' : 'Show Total'}
+							{props.controls.incomeMode === 'total' ? t('tax.showAssessed') : t('tax.showTotal')}
 						</Button>
 					) : null}
 					<Button
@@ -180,16 +183,16 @@ export function TopIncomeSourcesReportSection(props: {
 						disabled={props.controls.refTypes.length === 0}
 						onClick={() => props.onControlsChange({ ...props.controls, refTypes: [] })}
 					>
-						Reset
+						{t('tax.reset')}
 					</Button>
 				</div>
 			</div>
 
 			{isLoading && data.length === 0 ? (
-				<div className="py-8 text-sm text-muted-foreground">Loading income sources...</div>
+				<div className="py-8 text-sm text-muted-foreground">{t('tax.loadingIncomeSources')}</div>
 			) : error && data.length === 0 ? (
 				<div className="py-8 text-sm text-destructive">
-					{error instanceof Error ? error.message : 'Failed to load income sources report'}
+					{error instanceof Error ? error.message : t('tax.failedToLoadIncomeSourcesReport')}
 				</div>
 			) : (
 				<TopIncomeSourcesMonthlyChart

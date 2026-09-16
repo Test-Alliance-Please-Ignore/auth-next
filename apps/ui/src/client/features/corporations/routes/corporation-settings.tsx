@@ -29,6 +29,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 
 import { useCanAccessCorporation } from '../hooks'
@@ -38,6 +39,8 @@ import { useCanAccessCorporation } from '../hooks'
 // ============================================================================
 
 export default function CorporationSettings() {
+	const { t } = useAppTranslation()
+
 	const { corporationId } = useParams<{ corporationId: string }>()
 	const navigate = useNavigate()
 	const { showSuccess, showError } = useMessage()
@@ -74,7 +77,9 @@ export default function CorporationSettings() {
 	})
 
 	// Set page title
-	usePageTitle(corporation ? `${corporation.name} - Settings` : 'Corporation Settings')
+	usePageTitle(
+		corporation ? `${corporation.name} - Settings` : t('characterpages.corporationSettings')
+	)
 
 	// Update form when corporation data loads
 	useEffect(() => {
@@ -100,7 +105,7 @@ export default function CorporationSettings() {
 	// Validate short description length
 	useEffect(() => {
 		if (shortDescription.length > 250) {
-			setShortDescError('Short description must not exceed 250 characters')
+			setShortDescError(t('characterpages.shortDescriptionMustNotExceed250Characters'))
 		} else {
 			setShortDescError('')
 		}
@@ -119,12 +124,12 @@ export default function CorporationSettings() {
 			queryClient.setQueryData(['corporations', corporationId], data)
 			void queryClient.invalidateQueries({ queryKey: ['corporations', 'browse'] })
 
-			showSuccess('Corporation recruiting settings have been saved successfully.')
+			showSuccess(t('characterpages.corporationRecruitingSettingsHaveBeenSavedSuccessfully'))
 
 			setHasChanges(false)
 		},
 		onError: (error) => {
-			showError(error instanceof Error ? error.message : 'Failed to update settings')
+			showError(error instanceof Error ? error.message : t('characterpages.failedToUpdateSettings'))
 		},
 	})
 
@@ -162,15 +167,17 @@ export default function CorporationSettings() {
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
+							{t('characterpages.accessDenied')}
+						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You do not have permission to manage settings for this corporation.
+							{t('characterpages.youDoNotHavePermissionToManageSettingsForThis')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" onClick={() => navigate('/corporations')}>
 							<ArrowLeft className="h-4 w-4" />
-							Back to Corporations
+							{t('characterpages.backToCorporations')}
 						</Button>
 					</CardContent>
 				</Card>
@@ -186,17 +193,16 @@ export default function CorporationSettings() {
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Corporation Not Found
+							{t('characterpages.corporationNotFound')}
 						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							The requested corporation could not be found or you don't have permission to access
-							it.
+							{t('characterpages.theRequestedCorporationCouldNotBeFoundOrYouDon')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" onClick={() => navigate('/corporations')}>
 							<ArrowLeft className="h-4 w-4" />
-							Back to Corporations
+							{t('characterpages.backToCorporations')}
 						</Button>
 					</CardContent>
 				</Card>
@@ -214,7 +220,7 @@ export default function CorporationSettings() {
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
 					<BreadcrumbItem>
-						<BreadcrumbLink to="/corporations">Corporations</BreadcrumbLink>
+						<BreadcrumbLink to="/corporations">{t('characterpages.corporations')}</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
@@ -224,22 +230,24 @@ export default function CorporationSettings() {
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbPage>Settings</BreadcrumbPage>
+						<BreadcrumbPage>{t('characterpages.settings')}</BreadcrumbPage>
 					</BreadcrumbItem>
 				</BreadcrumbList>
 			</Breadcrumb>
 
 			{/* Header */}
 			<PageHeader
-				title="Recruiting Settings"
-				description={`Configure how ${corporation.name} appears to applicants`}
+				title={t('characterpages.recruitingSettings')}
+				description={t('characterpages.configureHowValue1AppearsToApplicants', {
+					value1: corporation.name,
+				})}
 				action={
 					<Button
 						variant="ghost"
 						onClick={() => navigate(`/corporations/${corporationId}/members`)}
 					>
 						<ArrowLeft className="h-4 w-4" />
-						Back to Manage Corporation
+						{t('characterpages.backToManageCorporation')}
 					</Button>
 				}
 			/>
@@ -249,20 +257,19 @@ export default function CorporationSettings() {
 				{/* Recruiting Status Section */}
 				<Card>
 					<CardHeader>
-						<CardTitle>Recruiting Status</CardTitle>
+						<CardTitle>{t('characterpages.recruitingStatus')}</CardTitle>
 						<CardDescription>
-							Control whether your corporation appears in the Browse Corporations list
+							{t('characterpages.controlWhetherYourCorporationAppearsInTheBrowseCorporationsList')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<div className="flex flex-row items-center justify-between rounded-lg border p-4">
 							<div className="space-y-0.5">
 								<Label htmlFor="is-recruiting" className="text-base">
-									Open for Recruitment
+									{t('characterpages.openForRecruitment')}
 								</Label>
 								<div className="text-sm text-muted-foreground">
-									When enabled, your corporation will be visible to players browsing for
-									corporations to join
+									{t('characterpages.whenEnabledYourCorporationWillBeVisibleToPlayersBrowsing')}
 								</div>
 							</div>
 							<Switch id="is-recruiting" checked={isRecruiting} onCheckedChange={setIsRecruiting} />
@@ -273,28 +280,28 @@ export default function CorporationSettings() {
 				{/* Short Description Section */}
 				<Card>
 					<CardHeader>
-						<CardTitle>Short Description</CardTitle>
+						<CardTitle>{t('characterpages.shortDescription')}</CardTitle>
 						<CardDescription>
-							Brief description shown on the Browse Corporations page (2-3 sentences, max 250
-							characters)
+							{t('characterpages.briefDescriptionShownOnTheBrowseCorporationsPage23')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<div className="space-y-2">
 							<Textarea
-								placeholder="Example: We're a PvP-focused corporation operating in null-sec. New players welcome! We offer training, ship replacement, and regular fleet ops."
+								placeholder={t('characterpages.exampleWeReAPvpFocusedCorporationOperatingInNull')}
 								className="min-h-[100px] resize-none"
 								value={shortDescription}
 								onChange={(e) => setShortDescription(e.target.value)}
 							/>
 							<div className="flex justify-between text-sm">
 								<span className="text-muted-foreground">
-									This appears on the browse page to attract applicants
+									{t('characterpages.thisAppearsOnTheBrowsePageToAttractApplicants')}
 								</span>
 								<span
 									className={shortDescRemaining < 0 ? 'text-destructive' : 'text-muted-foreground'}
 								>
-									{shortDescRemaining} characters remaining
+									{shortDescRemaining}
+									{t('characterpages.charactersRemaining')}
 								</span>
 							</div>
 							{shortDescError && <p className="text-sm text-destructive">{shortDescError}</p>}
@@ -305,23 +312,23 @@ export default function CorporationSettings() {
 				{/* Full Description Section */}
 				<Card>
 					<CardHeader>
-						<CardTitle>Full Description & Application Instructions</CardTitle>
+						<CardTitle>{t('characterpages.fullDescriptionApplicationInstructions')}</CardTitle>
 						<CardDescription>
-							Detailed information shown on the corporation detail page, including requirements and
-							how to apply
+							{t(
+								'characterpages.detailedInformationShownOnTheCorporationDetailPageIncludingRequirements'
+							)}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<div className="space-y-2">
 							<Textarea
-								placeholder={`Example:\n\n## About Us\nWe're a well-established corporation with 200+ members focusing on null-sec PvP and industry.\n\n## What We Offer\n- Ship replacement program\n- Regular fleet ops (EU/US timezone)\n- Free skill books and ships for new members\n- Access to alliance infrastructure\n\n## Requirements\n- Minimum 5 million skill points\n- Discord required (voice comms mandatory for fleets)\n- Active at least 3-4 times per week\n- Willingness to participate in CTAs\n\n## How to Apply\n1. Submit your application through this page\n2. Join our public Discord: discord.gg/example\n3. Reach out to a recruiter for an interview\n4. Complete a quick background check\n\nWe look forward to flying with you!`}
+								placeholder={t('characterpages.exampleAboutUsWeReAWellEstablishedCorporationWith')}
 								className="min-h-[300px] font-mono text-sm"
 								value={fullDescription}
 								onChange={(e) => setFullDescription(e.target.value)}
 							/>
 							<p className="text-sm text-muted-foreground">
-								Use this space to describe your corporation, list requirements, and explain the
-								application process. You can use formatting like ** for bold and ## for headings.
+								{t('characterpages.useThisSpaceToDescribeYourCorporationListRequirementsAnd')}
 							</p>
 						</div>
 					</CardContent>
@@ -338,12 +345,12 @@ export default function CorporationSettings() {
 						{updateSettings.isPending ? (
 							<>
 								<LoadingSpinner size="sm" className="mr-2" />
-								Saving...
+								{t('characterpages.saving')}
 							</>
 						) : (
 							<>
 								<Save className="h-4 w-4" />
-								Save Settings
+								{t('characterpages.saveSettings')}
 							</>
 						)}
 					</Button>
@@ -352,7 +359,7 @@ export default function CorporationSettings() {
 						type="button"
 						onClick={() => navigate(`/corporations/${corporationId}/members`)}
 					>
-						Cancel
+						{t('characterpages.cancel')}
 					</Button>
 				</div>
 			</form>

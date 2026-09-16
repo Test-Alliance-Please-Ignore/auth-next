@@ -20,12 +20,15 @@ import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
 import { useCorporationMemberAccount } from '../../corporations/hooks'
 import { FulcrumReportViewer } from '../components/fulcrum-report-viewer'
 import { useApplication, useHrUserCharacters, useReportSections } from '../hooks'
 
 export default function FulcrumReportPage() {
+	const { t } = useAppTranslation()
+
 	const {
 		reportId,
 		userId: routeUserId,
@@ -82,7 +85,11 @@ export default function FulcrumReportPage() {
 				: reportSource === 'user'
 					? `/hr/users/${userId}`
 					: null
-	usePageTitle(characterName ? `Report - ${characterName}` : 'Character Report')
+	usePageTitle(
+		characterName
+			? t('hrpages.reportValue1', { value1: characterName })
+			: t('hrpages.characterReport')
+	)
 
 	if (!reportId || !backPath) {
 		return null
@@ -90,16 +97,16 @@ export default function FulcrumReportPage() {
 
 	const backLabel =
 		reportSource === 'application'
-			? 'Back to Application'
+			? t('hrpages.backToApplication')
 			: reportSource === 'member'
-				? 'Back to Member Profile'
-				: 'Back to User Profile'
+				? t('hrpages.backToMemberProfile')
+				: t('hrpages.backToUserProfile')
 	const breadcrumbParentLabel =
 		reportSource === 'application'
-			? 'Application'
+			? t('hrpages.application')
 			: reportSource === 'member'
-				? 'Members'
-				: 'User Profile'
+				? t('hrpages.members')
+				: t('hrpages.userProfile')
 
 	return (
 		<Container>
@@ -117,7 +124,7 @@ export default function FulcrumReportPage() {
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
 							<BreadcrumbPage>
-								{characterName ? `${characterName} Report` : 'Character Report'}
+								{characterName ? `${characterName} Report` : t('hrpages.characterReport')}
 							</BreadcrumbPage>
 						</BreadcrumbItem>
 					</BreadcrumbList>

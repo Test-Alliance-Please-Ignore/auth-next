@@ -6,7 +6,7 @@ import { MemberAvatar } from '@/components/member-avatar'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { CharacterIdentitySummary } from '@/features/applications/components/character-identity-summary'
-import { useAppTranslation } from '@/i18n'
+import { i18n, useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 export interface UserSearchCardEntry {
@@ -39,7 +39,7 @@ export interface UserSearchCardEntry {
 
 export function formatUserDisplayName(
 	user: UserSearchCardEntry,
-	unknownCharacter = 'Unknown Character'
+	unknownCharacter = i18n.t('characterpages.unknownCharacter')
 ): string {
 	const mainName =
 		user.summary.mainCharacterName || user.summary.matchedCharacterName || unknownCharacter

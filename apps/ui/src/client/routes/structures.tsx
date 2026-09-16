@@ -7,7 +7,6 @@ import {
 	hasAnyStructurePermission,
 	hasStructureTabPermission,
 } from '@repo/groups'
-import { STRUCTURE_STATE_OPTIONS } from '@repo/structure-states'
 import {
 	FUEL_BLOCK_TYPE_IDS,
 	isReinforcedStructureState,
@@ -60,6 +59,7 @@ import { useGroups } from '@/hooks/useGroups'
 import { useNowMs } from '@/hooks/useNowMs'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { getActiveLocale, i18n, useAppTranslation } from '@/i18n'
 import {
 	type StructureListBaseItem,
 	type StructureListFilterOptions,
@@ -83,6 +83,7 @@ import { formatDateTimeLong } from '@/lib/date-utils'
 import { formatDurationUntil } from '@/lib/duration-utils'
 import { allianceLogoUrl, typeIconUrl } from '@/lib/eve-images'
 import { getSkyhookVulnerabilityWindowDisplay } from '@/lib/skyhook-vulnerability-window'
+import { formatStructureLabel } from '@/lib/structure-labels'
 import { stripLeadingContextName } from '@/lib/structure-name-utils'
 import { cn } from '@/lib/utils'
 
@@ -116,8 +117,18 @@ import type { SelectOption } from '@/components/ui/select'
 
 const UNASSIGNED_GROUP_VALUE = '__unassigned__'
 const BOOLEAN_FILTER_OPTIONS: SelectOption[] = [
-	{ value: 'true', label: 'Yes' },
-	{ value: 'false', label: 'No' },
+	{
+		value: 'true',
+		get label() {
+			return i18n.t('structures.yes')
+		},
+	},
+	{
+		value: 'false',
+		get label() {
+			return i18n.t('structures.no')
+		},
+	},
 ]
 const FUEL_BLOCK_ICON_TYPE_ID = Array.from(FUEL_BLOCK_TYPE_IDS)[0] ?? '4051'
 // EVE's Station Vault Container is a clear representative icon for stored Moon Goo.
@@ -130,43 +141,60 @@ function structureSyncStatusDescription(
 		if (!structure.lastSyncedAt) return null
 		const ageMs = Math.max(0, Date.now() - new Date(structure.lastSyncedAt).getTime())
 		if (ageMs >= STRUCTURE_SYNC_ERROR_STALE_MS) {
-			return 'This snapshot is more than 24 hours old and should be treated as stale.'
+			return i18n.t('structures.thisSnapshotIsMoreThan24HoursOldAndShould')
 		}
 		if (ageMs >= STRUCTURE_SYNC_WARNING_STALE_MS) {
-			return 'This snapshot is more than 12 hours old and may be stale.'
+			return i18n.t('structures.thisSnapshotIsMoreThan12HoursOldAndMay')
 		}
 		return null
 	}
 
 	if (structure.syncFailureReason) {
 		return structure.lastSyncedAt
-			? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}. ${structure.syncFailureReason}`
+			? i18n.t('structures.lastSyncAtValue1Value2', {
+					value1: formatDateTimeLong(structure.lastSyncedAt),
+					value2: structure.syncFailureReason,
+				})
 			: structure.syncFailureReason
 	}
 
 	if (structure.syncStatus === 'ok') {
 		return structure.lastSyncedAt
-			? `Last successful sync at ${formatDateTimeLong(structure.lastSyncedAt)}.`
-			: 'The latest corporation-data sync completed successfully.'
+			? i18n.t('structures.lastSuccessfulSyncAtValue1', {
+					value1: formatDateTimeLong(structure.lastSyncedAt),
+				})
+			: i18n.t('structures.theLatestCorporationDataSyncCompletedSuccessfully')
 	}
 
 	if (structure.syncStatus === 'warning') {
 		const stalenessNote = getStalenessNote()
 		return structure.lastSyncedAt
-			? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}. ${stalenessNote ?? 'The latest corporation-data sync completed with warnings, so some snapshot fields may be stale or incomplete.'}`
-			: 'The latest corporation-data sync completed with warnings, so some snapshot fields may be stale or incomplete.'
+			? i18n.t('structures.lastSyncAtValue1Value2', {
+					value1: formatDateTimeLong(structure.lastSyncedAt),
+					value2:
+						stalenessNote ??
+						i18n.t('structures.theLatestCorporationDataSyncCompletedWithWarningsSoSome2'),
+				})
+			: i18n.t('structures.theLatestCorporationDataSyncCompletedWithWarningsSoSome2')
 	}
 
 	if (structure.syncStatus === 'error') {
 		const stalenessNote = getStalenessNote()
 		return structure.lastSyncedAt
-			? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}. ${stalenessNote ?? 'The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.'}`
-			: 'The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.'
+			? i18n.t('structures.lastSyncAtValue1Value2', {
+					value1: formatDateTimeLong(structure.lastSyncedAt),
+					value2:
+						stalenessNote ??
+						i18n.t('structures.theLatestCorporationDataSyncFailedSoThisSnapshotMay'),
+				})
+			: i18n.t('structures.theLatestCorporationDataSyncFailedSoThisSnapshotMay')
 	}
 
 	return structure.lastSyncedAt
-		? `Last sync at ${formatDateTimeLong(structure.lastSyncedAt)}. The latest corporation-data sync completed successfully and the stored snapshot is current.`
-		: 'The latest corporation-data sync completed successfully and the stored snapshot is current.'
+		? i18n.t('structures.lastSyncAtValue1TheLatestCorporationDataSyncCompleted', {
+				value1: formatDateTimeLong(structure.lastSyncedAt),
+			})
+		: i18n.t('structures.theLatestCorporationDataSyncCompletedSuccessfullyAndTheStored')
 }
 
 function withAllOption(options: SelectOption[], label: string): SelectOption[] {
@@ -194,17 +222,13 @@ function serializeMultiFilter(values: string[]): string | undefined {
 	return normalizedValues.length > 0 ? normalizedValues.join(',') : undefined
 }
 
-const structureStateLabelByValue = new Map<string, string>(
-	STRUCTURE_STATE_OPTIONS.map((option) => [option.value, option.label])
-)
-
 function formatNullableDateTime(value: string | null | undefined): string {
 	return value ? formatDateTimeLong(value) : '-'
 }
 
 function formatNullableNumber(value: number | null | undefined): string {
 	if (value === null || value === undefined) return '-'
-	return value.toLocaleString()
+	return value.toLocaleString(getActiveLocale())
 }
 
 function formatNullableDecimal(
@@ -219,7 +243,7 @@ function formatNullableDecimal(
 
 function formatPercent(value: number | null | undefined): string {
 	if (value === null || value === undefined || !Number.isFinite(value)) return '-'
-	return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
+	return `${value.toLocaleString(getActiveLocale(), { maximumFractionDigits: 1 })}%`
 }
 
 function MoonDrillResourceCell({
@@ -264,16 +288,23 @@ function MoonDrillResourceCell({
 
 function LiveDurationUntilText({
 	endDate,
-	expiredLabel = 'Now',
+	expiredLabel,
 }: {
 	endDate: string | null | undefined
 	expiredLabel?: string
 }) {
+	const { t } = useAppTranslation()
+
 	if (!endDate) {
 		return '-'
 	}
 
-	return <LiveDurationUntilTextValue endDate={endDate} expiredLabel={expiredLabel} />
+	return (
+		<LiveDurationUntilTextValue
+			endDate={endDate}
+			expiredLabel={expiredLabel ?? t('structures.now')}
+		/>
+	)
 }
 
 function LiveDurationUntilTextValue({
@@ -294,6 +325,8 @@ function LiveDurationUntilTextValue({
 }
 
 function StatCardHelp({ content }: { content: ReactNode }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<HoverPopover
 			trigger={
@@ -303,7 +336,7 @@ function StatCardHelp({ content }: { content: ReactNode }) {
 					size="icon"
 					showIcon={false}
 					className="h-8 w-8 cursor-help rounded-full border border-border/60 bg-background/80 text-muted-foreground shadow-none hover:bg-muted/60"
-					aria-label="More information"
+					aria-label={t('structures.moreInformation')}
 				>
 					<CircleHelp className="h-4 w-4" />
 				</Button>
@@ -354,7 +387,7 @@ function SkyhookFillBar({ value }: { value: number }) {
 
 function formatReagentBurnRate(value: number | null | undefined): string {
 	if (value === null || value === undefined || !Number.isFinite(value) || value < 0) return '-'
-	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}/hr`
+	return `${value.toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 })}/hr`
 }
 
 function SovereigntyReagentAmount({ typeId, value }: { typeId: string; value: number }) {
@@ -391,16 +424,19 @@ function SovereigntyReagentCell({
 	burningPerHour: number
 	estimatedDepletionAt: string | null
 }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<div className="space-y-1.5">
 			<SovereigntyReagentAmount typeId={typeId} value={quantity} />
 			<div className="text-xs text-muted-foreground">
-				Burn {formatReagentBurnRate(burningPerHour)}
+				{t('structures.burn')}
+				{formatReagentBurnRate(burningPerHour)}
 			</div>
 			<div className="text-xs text-muted-foreground">
 				{estimatedDepletionAt ? (
 					<>
-						<span className="mr-1">Remaining</span>
+						<span className="mr-1">{t('structures.remaining')}</span>
 						<DurationDisplay
 							endDate={estimatedDepletionAt}
 							maxUnits={3}
@@ -475,17 +511,17 @@ function getSovereigntyVulnerabilityState(
 		| undefined
 ): { label: string; variant: 'ghost' | 'success' } {
 	if (!sovereignty?.vulnerabilityWindowStart || !sovereignty?.vulnerabilityWindowEnd) {
-		return { label: 'Unknown', variant: 'ghost' }
+		return { label: i18n.t('structures.unknown'), variant: 'ghost' }
 	}
 
 	const start = new Date(sovereignty.vulnerabilityWindowStart).getTime()
 	const end = new Date(sovereignty.vulnerabilityWindowEnd).getTime()
 	const now = Date.now()
 	if (Number.isFinite(start) && Number.isFinite(end) && now >= start && now <= end) {
-		return { label: 'Vulnerable', variant: 'success' }
+		return { label: i18n.t('structures.vulnerable'), variant: 'success' }
 	}
 
-	return { label: 'Invulnerable', variant: 'success' }
+	return { label: i18n.t('structures.invulnerable'), variant: 'success' }
 }
 
 function AllianceLogo({
@@ -495,6 +531,8 @@ function AllianceLogo({
 	allianceId: string
 	allianceName?: string | null
 }) {
+	const { t } = useAppTranslation()
+
 	const [failed, setFailed] = useState(false)
 
 	if (failed) {
@@ -504,7 +542,11 @@ function AllianceLogo({
 	return (
 		<img
 			src={allianceLogoUrl(allianceId, 32)}
-			alt={allianceName ? `${allianceName} logo` : 'Alliance logo'}
+			alt={
+				allianceName
+					? t('structures.value1Logo', { value1: allianceName })
+					: t('structures.allianceLogo')
+			}
 			className="h-5 w-5 rounded-sm object-cover"
 			loading="lazy"
 			onError={() => setFailed(true)}
@@ -515,7 +557,9 @@ function AllianceLogo({
 type PrimaryStructureFilterSlot = 'type' | 'raidable' | null
 
 export default function StructuresPage() {
-	usePageTitle('Structures')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('structures.structures'))
 
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const navigate = useNavigate()
@@ -538,7 +582,7 @@ export default function StructuresPage() {
 			user?.is_admin === true || hasImplicitSensitiveAccess
 				? STRUCTURE_TABS
 				: STRUCTURE_TABS.filter((tab) => hasStructureTabPermission(permissions, tab.tab)),
-		[user, permissions, hasImplicitSensitiveAccess]
+		[user, permissions, hasImplicitSensitiveAccess, t]
 	)
 	const activeTab = visibleTabs.some((tab) => tab.tab === tableState.tab)
 		? tableState.tab
@@ -552,7 +596,7 @@ export default function StructuresPage() {
 			pageSize: tableState.pageSize,
 			sortDirection: tableState.sortDirection,
 		}),
-		[tableState.page, tableState.pageSize, tableState.sortDirection]
+		[tableState.page, tableState.pageSize, tableState.sortDirection, t]
 	)
 	const commonSortBy = getEffectiveStructureSortByForTab('structures', tableState.sortBy)
 	const sovereigntySortBy = getEffectiveStructureSortByForTab('sovereignty', tableState.sortBy)
@@ -576,7 +620,7 @@ export default function StructuresPage() {
 				state: tableState.filters.state,
 				typeId: tableState.filters.typeId,
 			}) as StructureListQuery,
-		[sharedQuery, tableState.filters, commonSortBy]
+		[sharedQuery, tableState.filters, commonSortBy, t]
 	)
 	const sovereigntyQuery = useMemo<StructureSovereigntyListQuery>(
 		() =>
@@ -590,7 +634,7 @@ export default function StructuresPage() {
 				controllerAllianceId: tableState.filters.controllerAllianceId,
 				vulnerabilityState: tableState.filters.vulnerabilityState,
 			}) as StructureSovereigntyListQuery,
-		[sharedQuery, tableState.filters, sovereigntySortBy]
+		[sharedQuery, tableState.filters, sovereigntySortBy, t]
 	)
 	const skyhookQuery = useMemo<StructureSkyhookListQuery>(
 		() =>
@@ -606,7 +650,7 @@ export default function StructuresPage() {
 				planetId: tableState.filters.planetId,
 				isRaidable: tableState.filters.isRaidable,
 			}) as StructureSkyhookListQuery,
-		[sharedQuery, tableState.filters, skyhookSortBy]
+		[sharedQuery, tableState.filters, skyhookSortBy, t]
 	)
 	const miningCitadelQuery = useMemo<StructureMiningCitadelListQuery>(
 		() =>
@@ -623,7 +667,7 @@ export default function StructuresPage() {
 				typeId: tableState.filters.typeId,
 				planetId: tableState.filters.planetId,
 			}) as StructureMiningCitadelListQuery,
-		[sharedQuery, tableState.filters, moonSortBy]
+		[sharedQuery, tableState.filters, moonSortBy, t]
 	)
 	const moonDrillQuery = useMemo<StructureMoonDrillListQuery>(
 		() =>
@@ -639,7 +683,7 @@ export default function StructuresPage() {
 				state: tableState.filters.state,
 				planetId: tableState.filters.planetId,
 			}) as StructureMoonDrillListQuery,
-		[sharedQuery, tableState.filters, moonSortBy]
+		[sharedQuery, tableState.filters, moonSortBy, t]
 	)
 
 	const structuresResponseQuery = useStructures(commonQuery, {
@@ -786,25 +830,25 @@ export default function StructuresPage() {
 				value: option.value,
 				label: option.label,
 			})),
-		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions]
+		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions, t]
 	)
 	const groupNameById = useMemo(
 		() => new Map(groups.map((group) => [group.id, group.name])),
-		[groups]
+		[groups, t]
 	)
 	const assignedGroupOptions = useMemo<SelectOption[]>(
 		() =>
 			withAllOption(
 				[
-					{ value: UNASSIGNED_GROUP_VALUE, label: 'Unassigned' },
+					{ value: UNASSIGNED_GROUP_VALUE, label: t('structures.unassigned') },
 					...(commonFilterOptions?.assignedGroups ?? []).map((option) => ({
 						value: option.value,
 						label: groupNameById.get(option.value) ?? option.label ?? option.value,
 					})),
 				],
-				'All Groups'
+				t('structures.allGroups')
 			),
-		[commonFilterOptions, groupNameById]
+		[commonFilterOptions, groupNameById, t]
 	)
 	const regionOptions = useMemo<SelectOption[]>(
 		() =>
@@ -815,7 +859,7 @@ export default function StructuresPage() {
 				value: option.value,
 				label: option.label,
 			})),
-		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions]
+		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions, t]
 	)
 	const systemOptions = useMemo<SelectOption[]>(
 		() =>
@@ -826,7 +870,7 @@ export default function StructuresPage() {
 				value: option.value,
 				label: option.label,
 			})),
-		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions]
+		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions, t]
 	)
 	const stateOptions = useMemo<SelectOption[]>(
 		() =>
@@ -836,11 +880,11 @@ export default function StructuresPage() {
 					: (commonFilterOptions?.states ?? [])
 				).map((option) => ({
 					value: option.value,
-					label: structureStateLabelByValue.get(option.value) ?? option.label,
+					label: formatStructureLabel(option.value, option.label),
 				})),
-				isSovereigntyTab ? 'All Vulnerability States' : 'All States'
+				isSovereigntyTab ? t('structures.allVulnerabilityStates') : t('structures.allStates')
 			),
-		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions]
+		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions, t]
 	)
 	const typeOptions = useMemo<SelectOption[]>(
 		() =>
@@ -848,7 +892,7 @@ export default function StructuresPage() {
 				value: option.value,
 				label: option.label,
 			})),
-		[commonFilterOptions]
+		[commonFilterOptions, t]
 	)
 	const allianceOptions = useMemo<SelectOption[]>(
 		() =>
@@ -860,9 +904,9 @@ export default function StructuresPage() {
 					value: option.value,
 					label: option.label,
 				})),
-				isSovereigntyTab ? 'All Controlling Alliances' : 'All Alliances'
+				isSovereigntyTab ? t('structures.allControllingAlliances') : t('structures.allAlliances')
 			),
-		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions]
+		[isSovereigntyTab, commonFilterOptions, sovereigntyFilterOptions, t]
 	)
 	const raidableStateOptions = useMemo<SelectOption[]>(
 		() =>
@@ -871,9 +915,9 @@ export default function StructuresPage() {
 					value: option.value,
 					label: option.label,
 				})),
-				'All Raidable States'
+				t('structures.allRaidableStates')
 			),
-		[skyhookFilterOptions]
+		[skyhookFilterOptions, t]
 	)
 	const structuresContentKey = buildStructureListContentKey({
 		tab: activeTab,
@@ -955,7 +999,9 @@ export default function StructuresPage() {
 			const fuelLabel = structure.fuelExpires ? (
 				<DurationDisplay endDate={structure.fuelExpires} maxUnits={3} durationStyle="compact" />
 			) : structure.fuelAmount != null ? (
-				`${structure.fuelAmount.toLocaleString()} units`
+				i18n.t('structures.fuelUnits', {
+					value1: structure.fuelAmount.toLocaleString(getActiveLocale()),
+				})
 			) : (
 				'-'
 			)
@@ -976,7 +1022,7 @@ export default function StructuresPage() {
 						<TableCell className="max-w-[16rem]">
 							<div className="flex min-w-0 items-center gap-2">
 								<div className="truncate font-medium">{structure.name}</div>
-								{structure.hidden && <Badge variant="ghost">Hidden</Badge>}
+								{structure.hidden && <Badge variant="ghost">{t('structures.hidden')}</Badge>}
 							</div>
 						</TableCell>
 					)}
@@ -995,12 +1041,12 @@ export default function StructuresPage() {
 					<TableCell>{fuelLabel}</TableCell>
 					<TableCell>
 						<Badge variant={structure.lowPower ? 'warning' : 'ghost'}>
-							{structure.lowPower ? 'Yes' : 'No'}
+							{structure.lowPower ? t('structures.yes') : t('structures.no')}
 						</Badge>
 					</TableCell>
 					<TableCell>
 						<Badge variant={structure.lowPowerAllowed ? 'success' : 'ghost'}>
-							{structure.lowPowerAllowed ? 'Yes' : 'No'}
+							{structure.lowPowerAllowed ? t('structures.yes') : t('structures.no')}
 						</Badge>
 					</TableCell>
 					<TableCell>
@@ -1036,7 +1082,7 @@ export default function StructuresPage() {
 							<Badge variant={vulnerabilityState.variant}>{vulnerabilityState.label}</Badge>
 							{isReinforcedStructureState(structure.state) && (
 								<Badge variant="destructive" className="text-xs">
-									Reinforced
+									{t('structures.reinforced')}
 								</Badge>
 							)}
 						</div>
@@ -1148,7 +1194,7 @@ export default function StructuresPage() {
 					<TableCell>{formatNullableNumber(structure.effectiveWorkforce)}</TableCell>
 					<TableCell>
 						<Badge variant={structure.isRaidable ? 'warning' : 'success'}>
-							{structure.isRaidable ? 'Yes' : 'No'}
+							{structure.isRaidable ? t('structures.yes') : t('structures.no')}
 						</Badge>
 					</TableCell>
 					<TableCell>
@@ -1222,19 +1268,21 @@ export default function StructuresPage() {
 								durationStyle="compact"
 							/>
 						) : structure.fuelAmount != null ? (
-							`${structure.fuelAmount.toLocaleString()} units`
+							i18n.t('structures.fuelUnits', {
+								value1: structure.fuelAmount.toLocaleString(getActiveLocale()),
+							})
 						) : (
 							'-'
 						)}
 					</TableCell>
 					<TableCell>
 						<Badge variant={structure.lowPower ? 'warning' : 'ghost'}>
-							{structure.lowPower ? 'Yes' : 'No'}
+							{structure.lowPower ? t('structures.yes') : t('structures.no')}
 						</Badge>
 					</TableCell>
 					<TableCell>
 						<Badge variant={structure.lowPowerAllowed ? 'success' : 'ghost'}>
-							{structure.lowPowerAllowed ? 'Yes' : 'No'}
+							{structure.lowPowerAllowed ? t('structures.yes') : t('structures.no')}
 						</Badge>
 					</TableCell>
 					<TableCell>
@@ -1273,7 +1321,9 @@ export default function StructuresPage() {
 			const fuelLabel = structure.fuelExpires ? (
 				<DurationDisplay endDate={structure.fuelExpires} maxUnits={3} durationStyle="compact" />
 			) : structure.fuelAmount != null ? (
-				`${structure.fuelAmount.toLocaleString()} units`
+				i18n.t('structures.fuelUnits', {
+					value1: structure.fuelAmount.toLocaleString(getActiveLocale()),
+				})
 			) : (
 				'-'
 			)
@@ -1312,7 +1362,7 @@ export default function StructuresPage() {
 					<TableCell>
 						<MoonDrillResourceCell
 							typeId={STATION_VAULT_ICON_TYPE_ID}
-							iconAlt="Moon goo"
+							iconAlt={t('structures.moonGoo1')}
 							fallbackIcon={Package}
 							value={structure.moonMaterialUnits}
 							secondaryValue={structure.moonMaterialVolumeM3}
@@ -1322,7 +1372,7 @@ export default function StructuresPage() {
 					<TableCell>
 						<MoonDrillResourceCell
 							typeId={FUEL_BLOCK_ICON_TYPE_ID}
-							iconAlt="Fuel block"
+							iconAlt={t('structures.fuelBlock')}
 							fallbackIcon={Package}
 							value={structure.fuelBlockUnits}
 						/>
@@ -1330,19 +1380,19 @@ export default function StructuresPage() {
 					<TableCell>
 						<MoonDrillResourceCell
 							typeId={SKYHOOK_MAGMATIC_GAS_TYPE_ID}
-							iconAlt="Magmatic gas"
+							iconAlt={t('structures.magmaticGas2')}
 							fallbackIcon={Flame}
 							value={structure.magmaticGasUnits}
 						/>
 					</TableCell>
 					<TableCell>
 						<Badge variant={structure.lowPower ? 'warning' : 'ghost'}>
-							{structure.lowPower ? 'Yes' : 'No'}
+							{structure.lowPower ? t('structures.yes') : t('structures.no')}
 						</Badge>
 					</TableCell>
 					<TableCell>
 						<Badge variant={structure.lowPowerAllowed ? 'success' : 'ghost'}>
-							{structure.lowPowerAllowed ? 'Yes' : 'No'}
+							{structure.lowPowerAllowed ? t('structures.yes') : t('structures.no')}
 						</Badge>
 					</TableCell>
 					<TableCell>
@@ -1402,7 +1452,7 @@ export default function StructuresPage() {
 			disabled={isFetching || isInitialLoading}
 		>
 			<RefreshCcw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
-			<span className="ml-2">Refresh</span>
+			<span className="ml-2">{t('structures.refresh')}</span>
 		</Button>
 	)
 	const tableLayoutButton = (
@@ -1457,20 +1507,20 @@ export default function StructuresPage() {
 		switch (primaryFilterSlot) {
 			case 'raidable':
 				return (
-					<FilterField label="Raidable">
+					<FilterField label={t('structures.raidable')}>
 						<Select
 							options={raidableStateOptions}
 							value={tableState.filters.isRaidable ?? ''}
 							onValueChange={(value) =>
 								setStructureTableFilters({ isRaidable: toBooleanFilterValue(value) })
 							}
-							placeholder="All Raidable States"
+							placeholder={t('structures.allRaidableStates')}
 						/>
 					</FilterField>
 				)
 			case 'type':
 				return (
-					<FilterField label="Type">
+					<FilterField label={t('structures.type')}>
 						<Select
 							options={typeOptions}
 							values={parseMultiFilter(tableState.filters.typeId)}
@@ -1478,7 +1528,7 @@ export default function StructuresPage() {
 								setStructureTableFilters({ typeId: serializeMultiFilter(values) })
 							}
 							multiple
-							placeholder="All Types"
+							placeholder={t('structures.allTypes')}
 							searchable
 						/>
 					</FilterField>
@@ -1489,7 +1539,7 @@ export default function StructuresPage() {
 	})()
 	const sovereigntyFilterControls = (
 		<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3">
-			<FilterField label="Region">
+			<FilterField label={t('structures.region')}>
 				<Select
 					options={regionOptions}
 					values={parseMultiFilter(tableState.filters.regionId)}
@@ -1497,11 +1547,11 @@ export default function StructuresPage() {
 						setStructureTableFilters({ regionId: serializeMultiFilter(values) })
 					}
 					multiple
-					placeholder="All Regions"
+					placeholder={t('structures.allRegions')}
 					searchable
 				/>
 			</FilterField>
-			<FilterField label="System">
+			<FilterField label={t('structures.system')}>
 				<Select
 					options={systemOptions}
 					values={parseMultiFilter(tableState.filters.systemId)}
@@ -1509,11 +1559,11 @@ export default function StructuresPage() {
 						setStructureTableFilters({ systemId: serializeMultiFilter(values) })
 					}
 					multiple
-					placeholder="All Systems"
+					placeholder={t('structures.allSystems')}
 					searchable
 				/>
 			</FilterField>
-			<FilterField label="Corporation">
+			<FilterField label={t('structures.corporation')}>
 				<Select
 					options={corporationOptions}
 					values={parseMultiFilter(tableState.filters.corporationId)}
@@ -1521,22 +1571,22 @@ export default function StructuresPage() {
 						setStructureTableFilters({ corporationId: serializeMultiFilter(values) })
 					}
 					multiple
-					placeholder="All Corporations"
+					placeholder={t('structures.allCorporations')}
 					searchable
 				/>
 			</FilterField>
-			<FilterField label="Controlling Alliance">
+			<FilterField label={t('structures.controllingAlliance')}>
 				<Select
 					options={allianceOptions}
 					value={tableState.filters.controllerAllianceId ?? ''}
 					onValueChange={(value) =>
 						setStructureTableFilters({ controllerAllianceId: value || undefined })
 					}
-					placeholder="All Controlling Alliances"
+					placeholder={t('structures.allControllingAlliances')}
 					searchable
 				/>
 			</FilterField>
-			<FilterField label="Vulnerability State">
+			<FilterField label={t('structures.vulnerabilityState')}>
 				<Select
 					options={stateOptions}
 					value={tableState.filters.vulnerabilityState ?? ''}
@@ -1545,11 +1595,11 @@ export default function StructuresPage() {
 							vulnerabilityState: isStructureVulnerabilityState(value) ? value : undefined,
 						})
 					}
-					placeholder="All Vulnerability States"
+					placeholder={t('structures.allVulnerabilityStates')}
 					searchable
 				/>
 			</FilterField>
-			<FilterField label="Group">
+			<FilterField label={t('structures.group')}>
 				<Select
 					options={assignedGroupOptions}
 					value={tableState.filters.assignedGroupId ?? ''}
@@ -1558,7 +1608,7 @@ export default function StructuresPage() {
 							assignedGroupId: value || undefined,
 						})
 					}
-					placeholder="All Groups"
+					placeholder={t('structures.allGroups')}
 					searchable
 				/>
 			</FilterField>
@@ -1566,7 +1616,7 @@ export default function StructuresPage() {
 	)
 	const commonFilterControls = (
 		<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4">
-			<FilterField label="Region">
+			<FilterField label={t('structures.region')}>
 				<Select
 					options={regionOptions}
 					values={parseMultiFilter(tableState.filters.regionId)}
@@ -1574,11 +1624,11 @@ export default function StructuresPage() {
 						setStructureTableFilters({ regionId: serializeMultiFilter(values) })
 					}
 					multiple
-					placeholder="All Regions"
+					placeholder={t('structures.allRegions')}
 					searchable
 				/>
 			</FilterField>
-			<FilterField label="System">
+			<FilterField label={t('structures.system')}>
 				<Select
 					options={systemOptions}
 					values={parseMultiFilter(tableState.filters.systemId)}
@@ -1586,11 +1636,11 @@ export default function StructuresPage() {
 						setStructureTableFilters({ systemId: serializeMultiFilter(values) })
 					}
 					multiple
-					placeholder="All Systems"
+					placeholder={t('structures.allSystems')}
 					searchable
 				/>
 			</FilterField>
-			<FilterField label="Corporation">
+			<FilterField label={t('structures.corporation')}>
 				<Select
 					options={corporationOptions}
 					values={parseMultiFilter(tableState.filters.corporationId)}
@@ -1598,41 +1648,41 @@ export default function StructuresPage() {
 						setStructureTableFilters({ corporationId: serializeMultiFilter(values) })
 					}
 					multiple
-					placeholder="All Corporations"
+					placeholder={t('structures.allCorporations')}
 					searchable
 				/>
 			</FilterField>
 			{primaryFilterControl}
-			<FilterField label="State">
+			<FilterField label={t('structures.state')}>
 				<Select
 					options={stateOptions}
 					value={tableState.filters.state ?? ''}
 					onValueChange={(value) => setStructureTableFilters({ state: value || undefined })}
-					placeholder="All States"
+					placeholder={t('structures.allStates')}
 					searchable
 				/>
 			</FilterField>
-			<FilterField label="Low Power">
+			<FilterField label={t('structures.lowPower')}>
 				<Select
-					options={withAllOption(BOOLEAN_FILTER_OPTIONS, 'All Power Statuses')}
+					options={withAllOption(BOOLEAN_FILTER_OPTIONS, t('structures.allPowerStatuses'))}
 					value={tableState.filters.lowPower ?? ''}
 					onValueChange={(value) =>
 						setStructureTableFilters({ lowPower: toBooleanFilterValue(value) })
 					}
-					placeholder="All Power Statuses"
+					placeholder={t('structures.allPowerStatuses')}
 				/>
 			</FilterField>
-			<FilterField label="Low Power Allowed">
+			<FilterField label={t('structures.lowPowerAllowed')}>
 				<Select
-					options={withAllOption(BOOLEAN_FILTER_OPTIONS, 'All LP Preferences')}
+					options={withAllOption(BOOLEAN_FILTER_OPTIONS, t('structures.allLpPreferences'))}
 					value={tableState.filters.lowPowerAllowed ?? ''}
 					onValueChange={(value) =>
 						setStructureTableFilters({ lowPowerAllowed: toBooleanFilterValue(value) })
 					}
-					placeholder="All LP Preferences"
+					placeholder={t('structures.allLpPreferences')}
 				/>
 			</FilterField>
-			<FilterField label="Group">
+			<FilterField label={t('structures.group')}>
 				<Select
 					options={assignedGroupOptions}
 					value={tableState.filters.assignedGroupId ?? ''}
@@ -1641,7 +1691,7 @@ export default function StructuresPage() {
 							assignedGroupId: value || undefined,
 						})
 					}
-					placeholder="All Groups"
+					placeholder={t('structures.allGroups')}
 					searchable
 				/>
 			</FilterField>
@@ -1649,7 +1699,7 @@ export default function StructuresPage() {
 	)
 	const specialFilterControls = (
 		<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4">
-			<FilterField label="Region">
+			<FilterField label={t('structures.region')}>
 				<Select
 					options={regionOptions}
 					values={parseMultiFilter(tableState.filters.regionId)}
@@ -1657,11 +1707,11 @@ export default function StructuresPage() {
 						setStructureTableFilters({ regionId: serializeMultiFilter(values) })
 					}
 					multiple
-					placeholder="All Regions"
+					placeholder={t('structures.allRegions')}
 					searchable
 				/>
 			</FilterField>
-			<FilterField label="System">
+			<FilterField label={t('structures.system')}>
 				<Select
 					options={systemOptions}
 					values={parseMultiFilter(tableState.filters.systemId)}
@@ -1669,11 +1719,11 @@ export default function StructuresPage() {
 						setStructureTableFilters({ systemId: serializeMultiFilter(values) })
 					}
 					multiple
-					placeholder="All Systems"
+					placeholder={t('structures.allSystems')}
 					searchable
 				/>
 			</FilterField>
-			<FilterField label="Corporation">
+			<FilterField label={t('structures.corporation')}>
 				<Select
 					options={corporationOptions}
 					values={parseMultiFilter(tableState.filters.corporationId)}
@@ -1681,45 +1731,45 @@ export default function StructuresPage() {
 						setStructureTableFilters({ corporationId: serializeMultiFilter(values) })
 					}
 					multiple
-					placeholder="All Corporations"
+					placeholder={t('structures.allCorporations')}
 					searchable
 				/>
 			</FilterField>
 			{primaryFilterControl}
-			<FilterField label="State">
+			<FilterField label={t('structures.state')}>
 				<Select
 					options={stateOptions}
 					value={tableState.filters.state ?? ''}
 					onValueChange={(value) => setStructureTableFilters({ state: value || undefined })}
-					placeholder="All States"
+					placeholder={t('structures.allStates')}
 					searchable
 				/>
 			</FilterField>
 			{isMoonDrillsTab && (
 				<>
-					<FilterField label="Low Power">
+					<FilterField label={t('structures.lowPower')}>
 						<Select
-							options={withAllOption(BOOLEAN_FILTER_OPTIONS, 'All Power Statuses')}
+							options={withAllOption(BOOLEAN_FILTER_OPTIONS, t('structures.allPowerStatuses'))}
 							value={tableState.filters.lowPower ?? ''}
 							onValueChange={(value) =>
 								setStructureTableFilters({ lowPower: toBooleanFilterValue(value) })
 							}
-							placeholder="All Power Statuses"
+							placeholder={t('structures.allPowerStatuses')}
 						/>
 					</FilterField>
-					<FilterField label="Low Power Allowed">
+					<FilterField label={t('structures.lowPowerAllowed')}>
 						<Select
-							options={withAllOption(BOOLEAN_FILTER_OPTIONS, 'All LP Preferences')}
+							options={withAllOption(BOOLEAN_FILTER_OPTIONS, t('structures.allLpPreferences'))}
 							value={tableState.filters.lowPowerAllowed ?? ''}
 							onValueChange={(value) =>
 								setStructureTableFilters({ lowPowerAllowed: toBooleanFilterValue(value) })
 							}
-							placeholder="All LP Preferences"
+							placeholder={t('structures.allLpPreferences')}
 						/>
 					</FilterField>
 				</>
 			)}
-			<FilterField label="Group">
+			<FilterField label={t('structures.group')}>
 				<Select
 					options={assignedGroupOptions}
 					value={tableState.filters.assignedGroupId ?? ''}
@@ -1728,7 +1778,7 @@ export default function StructuresPage() {
 							assignedGroupId: value || undefined,
 						})
 					}
-					placeholder="All Groups"
+					placeholder={t('structures.allGroups')}
 					searchable
 				/>
 			</FilterField>
@@ -1748,13 +1798,13 @@ export default function StructuresPage() {
 		>
 			<PageHeader
 				className="!mb-section md:!mb-10"
-				title="Structures"
-				description="Track visible structures, review their current state, and fuel posture."
+				title={t('structures.structures')}
+				description={t('structures.trackVisibleStructuresReviewTheirCurrentStateAndFuelPosture')}
 				action={
 					<div className="flex items-center gap-2">
 						{canManageStructures && (
 							<Button asChild variant="ghost" size="sm">
-								<Link to="/structures/settings">Settings</Link>
+								<Link to="/structures/settings">{t('structures.settings')}</Link>
 							</Button>
 						)}
 						<Button
@@ -1764,42 +1814,49 @@ export default function StructuresPage() {
 							disabled={isFetching || isInitialLoading}
 						>
 							<RefreshCcw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
-							Refresh
+							{t('structures.refresh')}
 						</Button>
 					</div>
 				}
 			/>
 
 			<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-				<StatCard title="Total Structures" help={<p>Matches the active tab and filters.</p>}>
+				<StatCard
+					title={t('structures.totalStructures')}
+					help={<p>{t('structures.matchesTheActiveTabAndFilters')}</p>}
+				>
 					<div className="text-3xl font-semibold">{summary?.total ?? '-'}</div>
 				</StatCard>
 				{isSkyhooksTab ? (
 					<>
 						<StatCard
-							title="Highest Fill"
-							help={<p>Highest secured or surplus bay fullness among the filtered skyhooks.</p>}
+							title={t('structures.highestFill')}
+							help={
+								<p>{t('structures.highestSecuredOrSurplusBayFullnessAmongTheFilteredSkyhooks')}</p>
+							}
 						>
 							<div className="text-3xl font-semibold">
 								{formatPercent(skyhookSummary?.skyhookHighestFillPercent)}
 							</div>
 						</StatCard>
 						<StatCard
-							title="Next Raidable"
+							title={t('structures.nextRaidable')}
 							help={
 								<>
-									<p>Time until the next skyhook becomes theft vulnerable or raidable.</p>
+									<p>{t('structures.timeUntilTheNextSkyhookBecomesTheftVulnerableOrRaidable')}</p>
 									<p>
 										{skyhookSummary?.skyhookNextRaidableAt
-											? `Next raidable skyhook: ${skyhookSummary.skyhookNextRaidablePlanetName ?? '-'}${
-													skyhookSummary.skyhookCurrentRaidableCount &&
-													skyhookSummary.skyhookCurrentRaidableCount > 1
-														? ` and ${skyhookSummary.skyhookCurrentRaidableCount - 1} other${
-																skyhookSummary.skyhookCurrentRaidableCount - 1 === 1 ? '' : 's'
-															}`
-														: ''
-												}`
-											: 'No raidable skyhook is currently available.'}
+											? t('structures.nextRaidableSkyhook', {
+													value1: skyhookSummary.skyhookNextRaidablePlanetName ?? '-',
+													value2:
+														skyhookSummary.skyhookCurrentRaidableCount &&
+														skyhookSummary.skyhookCurrentRaidableCount > 1
+															? t('structures.otherSkyhooks', {
+																	value1: skyhookSummary.skyhookCurrentRaidableCount - 1,
+																})
+															: '',
+												})
+											: t('structures.noRaidableSkyhookIsCurrentlyAvailable')}
 									</p>
 								</>
 							}
@@ -1812,12 +1869,17 @@ export default function StructuresPage() {
 				) : (
 					<>
 						<StatCard
-							title="Low Fuel"
+							title={t('structures.lowFuel')}
 							help={
 								<p>
 									{isSovereigntyTab
-										? `Sovereignty hubs with either reagent below ${moduleConfig?.lowFuelTimeThresholdHours ?? '-'}h remaining. Zero-quantity reagents are ignored.`
-										: `Low fuel: ${moduleConfig?.lowFuelTimeThresholdHours ?? '-'}h or ${moduleConfig?.lowFuelAmountThreshold ?? '-'} units remaining.`}
+										? t('structures.sovereigntyHubsWithEitherReagentBelowHRemainingZeroQuantity', {
+												value1: moduleConfig?.lowFuelTimeThresholdHours ?? '-',
+											})
+										: t('structures.lowFuelHOrUnitsRemaining', {
+												value1: moduleConfig?.lowFuelTimeThresholdHours ?? '-',
+												value2: moduleConfig?.lowFuelAmountThreshold ?? '-',
+											})}
 								</p>
 							}
 						>
@@ -1825,8 +1887,8 @@ export default function StructuresPage() {
 						</StatCard>
 						{!isSovereigntyTab ? (
 							<StatCard
-								title="Low Power"
-								help={<p>Structures in low power without suppression enabled.</p>}
+								title={t('structures.lowPower')}
+								help={<p>{t('structures.structuresInLowPowerWithoutSuppressionEnabled')}</p>}
 							>
 								<div className="text-3xl font-semibold">{summary?.lowPower ?? '-'}</div>
 							</StatCard>
@@ -1834,58 +1896,64 @@ export default function StructuresPage() {
 					</>
 				)}
 				<StatCard
-					title="Reinforced"
-					help={<p>Structures currently in a reinforced or transition state.</p>}
+					title={t('structures.reinforced')}
+					help={<p>{t('structures.structuresCurrentlyInAReinforcedOrTransitionState')}</p>}
 				>
 					<div className="text-3xl font-semibold">{summary?.reinforced ?? '-'}</div>
 				</StatCard>
 				{isSovereigntyTab ? (
 					<>
 						<StatCard
-							title="Magmatic Gas Burn"
+							title={t('structures.magmaticGasBurn')}
 							help={
 								<>
 									<p>
-										Aggregate hourly magmatic gas burn across the filtered sovereignty hubs with
-										positive stock and valid burn data.
+										{t('structures.aggregateHourlyMagmaticGasBurnAcrossTheFilteredSovereigntyHubs')}
 									</p>
 									<p>
 										{sovereigntySummary
-											? `${sovereigntySummary.magmaticGasBurningSampleCount} hubs contributing`
+											? t('structures.hubsContributing', {
+													value1: sovereigntySummary.magmaticGasBurningSampleCount,
+												})
 											: '-'}
 									</p>
 								</>
 							}
 						>
 							<div className="text-3xl font-semibold">
-								{formatNullableDecimal(sovereigntySummary?.magmaticGasBurningPerHour, 2)}/hr
+								{formatNullableDecimal(sovereigntySummary?.magmaticGasBurningPerHour, 2)}
+								{t('structures.hr')}
 							</div>
 						</StatCard>
 						<StatCard
-							title="Superionic Ice Burn"
+							title={t('structures.superionicIceBurn')}
 							help={
 								<>
 									<p>
-										Aggregate hourly superionic ice burn across the filtered sovereignty hubs with
-										positive stock and valid burn data.
+										{t(
+											'structures.aggregateHourlySuperionicIceBurnAcrossTheFilteredSovereigntyHubs'
+										)}
 									</p>
 									<p>
 										{sovereigntySummary
-											? `${sovereigntySummary.superionicIceBurningSampleCount} hubs contributing`
+											? t('structures.hubsContributing', {
+													value1: sovereigntySummary.superionicIceBurningSampleCount,
+												})
 											: '-'}
 									</p>
 								</>
 							}
 						>
 							<div className="text-3xl font-semibold">
-								{formatNullableDecimal(sovereigntySummary?.superionicIceBurningPerHour, 2)}/hr
+								{formatNullableDecimal(sovereigntySummary?.superionicIceBurningPerHour, 2)}
+								{t('structures.hr')}
 							</div>
 						</StatCard>
 					</>
 				) : isSkyhooksTab ? (
 					<StatCard
-						title="Total Workforce"
-						help={<p>Total effective workforce across the filtered skyhooks.</p>}
+						title={t('structures.totalWorkforce')}
+						help={<p>{t('structures.totalEffectiveWorkforceAcrossTheFilteredSkyhooks')}</p>}
 					>
 						<div className="text-3xl font-semibold">
 							{summary ? formatNullableNumber(skyhookSummary?.skyhookTotalWorkforce) : '-'}
@@ -1893,13 +1961,15 @@ export default function StructuresPage() {
 					</StatCard>
 				) : (
 					<StatCard
-						title="Fuel Burn Rate"
+						title={t('structures.fuelBurnRate')}
 						help={
 							<>
-								<p>Estimated aggregate burn rate from the filtered structure set.</p>
+								<p>{t('structures.estimatedAggregateBurnRateFromTheFilteredStructureSet')}</p>
 								<p>
 									{summary
-										? `Estimated from ${summary.fuelBurnRateKnownStructureCount} structures with known service data.`
+										? t('structures.estimatedFromStructuresWithKnownServiceData', {
+												value1: summary.fuelBurnRateKnownStructureCount,
+											})
 										: '-'}
 								</p>
 							</>
@@ -1907,9 +1977,12 @@ export default function StructuresPage() {
 					>
 						<div className="text-3xl font-semibold">
 							{summary?.estimatedFuelBurnRatePerHour
-								? `${Number(summary.estimatedFuelBurnRatePerHour).toLocaleString(undefined, {
-										maximumFractionDigits: 2,
-									})}/hr`
+								? `${Number(summary.estimatedFuelBurnRatePerHour).toLocaleString(
+										getActiveLocale(),
+										{
+											maximumFractionDigits: 2,
+										}
+									)}/hr`
 								: '-'}
 						</div>
 					</StatCard>
@@ -1936,7 +2009,7 @@ export default function StructuresPage() {
 							<TabsList className="flex w-full flex-wrap gap-1 border-b-0">
 								{visibleTabs.map((tab) => (
 									<TabsTrigger key={tab.tab} value={tab.tab}>
-										{tab.label}
+										{formatStructureLabel(tab.tab, tab.label)}
 									</TabsTrigger>
 								))}
 							</TabsList>
@@ -1956,7 +2029,7 @@ export default function StructuresPage() {
 						>
 							<AccordionTrigger className="min-w-0 py-3 text-sm hover:no-underline">
 								<span className="flex min-w-0 items-center gap-2">
-									Filters
+									{t('structures.filters')}
 									{activeFilterCount > 0 && (
 										<Badge
 											variant="secondary"
@@ -1981,11 +2054,11 @@ export default function StructuresPage() {
 											clearStructureTableFilters()
 										}}
 									>
-										Clear Filters
+										{t('structures.clearFilters')}
 									</Button>
 								)}
 								<span className="ml-auto mr-3 hidden text-xs font-normal text-muted-foreground sm:inline">
-									Click to {areFiltersOpen ? 'hide' : 'show'}
+									{areFiltersOpen ? t('structures.hideFilters') : t('structures.showFilters')}
 								</span>
 							</AccordionTrigger>
 							<AccordionContent>
@@ -2013,7 +2086,7 @@ export default function StructuresPage() {
 								onPageChange={setStructureTablePage}
 								onPageSizeChange={setStructureTablePageSize}
 								pageSizeOptions={[15, 25, 50, 100]}
-								itemLabel="structures"
+								itemLabel={t('structures.structures2')}
 								nextButtonLoading={isFetching}
 								trailingAction={refreshButton}
 							/>
@@ -2022,12 +2095,12 @@ export default function StructuresPage() {
 							className={cn('min-h-0', isTableGridClamped && 'lg:flex-1')}
 							key={structuresContentKey}
 							isRefreshing={isSoftLoading}
-							refreshMessage="Refreshing structure list..."
+							refreshMessage={t('structures.refreshingStructureList')}
 							errorMessage={
 								error && structuresResponse
 									? error instanceof Error
 										? error.message
-										: 'Failed to refresh structures.'
+										: t('structures.failedToRefreshStructures')
 									: null
 							}
 							onRetry={error && structuresResponse ? () => refreshAll() : undefined}
@@ -2035,9 +2108,9 @@ export default function StructuresPage() {
 						>
 							{error && !structuresResponse ? (
 								<div className="rounded-lg border border-destructive/40 bg-destructive/10 p-8 text-center text-sm text-destructive">
-									<div className="font-medium">Failed to load structures.</div>
+									<div className="font-medium">{t('structures.failedToLoadStructures')}</div>
 									<div className="mt-1 text-destructive/80">
-										{error instanceof Error ? error.message : 'Please try again.'}
+										{error instanceof Error ? error.message : t('structures.pleaseTryAgain')}
 									</div>
 									<div className="mt-4">
 										<Button
@@ -2046,17 +2119,17 @@ export default function StructuresPage() {
 											onClick={() => refreshAll()}
 											disabled={isFetching}
 										>
-											Retry
+											{t('structures.retry')}
 										</Button>
 									</div>
 								</div>
 							) : isInitialLoading ? (
 								<div className="p-4">
-									<LoadingSpinner label="Loading structures..." />
+									<LoadingSpinner label={t('structures.loadingStructures')} />
 								</div>
 							) : structures.length === 0 ? (
 								<div className="rounded-lg border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
-									No structures were returned for the selected filters.
+									{t('structures.noStructuresWereReturnedForTheSelectedFilters')}
 								</div>
 							) : (
 								<Table
@@ -2074,93 +2147,102 @@ export default function StructuresPage() {
 										<TableRow>
 											{isSovereigntyTab ? (
 												<>
-													<SortableHead field="state" label="State" />
-													<SortableHead field="region" label="Region" />
-													<SortableHead field="system" label="System" />
-													<SortableHead field="corporation" label="Corporation" />
-													<TableHead>System Alliance</TableHead>
-													<TableHead>Group</TableHead>
+													<SortableHead field="state" label={t('structures.state')} />
+													<SortableHead field="region" label={t('structures.region')} />
+													<SortableHead field="system" label={t('structures.system')} />
+													<SortableHead field="corporation" label={t('structures.corporation')} />
+													<TableHead>{t('structures.systemAlliance')}</TableHead>
+													<TableHead>{t('structures.group')}</TableHead>
 													<SortableHead field="activityDefenseMultiplier" label="ADM" />
 													<SortableHead
 														field="magmaticGasEstimatedDepletionAt"
-														label="Magmatic Gas"
+														label={t('structures.magmaticGas')}
 													/>
 													<SortableHead
 														field="superionicIceEstimatedDepletionAt"
-														label="Superionic Ice"
+														label={t('structures.superionicIce')}
 													/>
-													<TableHead>Workforce</TableHead>
-													<TableHead>Power</TableHead>
-													<TableHead>Sync</TableHead>
+													<TableHead>{t('structures.workforce')}</TableHead>
+													<TableHead>{t('structures.power')}</TableHead>
+													<TableHead>{t('structures.sync')}</TableHead>
 												</>
 											) : isSkyhooksTab ? (
 												<>
-													<SortableHead field="state" label="State" />
-													<SortableHead field="region" label="Region" />
-													<SortableHead field="system" label="System" />
-													<SortableHead field="planet" label="Planet" />
-													<SortableHead field="corporation" label="Corporation" />
-													<SortableHead field="skyhookSecureFullness" label="Fullness (Secure)" />
-													<SortableHead field="skyhookSurplusFullness" label="Fullness (Surplus)" />
-													<SortableHead field="workforce" label="Workforce" />
-													<SortableHead field="raidable" label="Raidable" />
-													<SortableHead field="theftVulnerabilityStart" label="Theft Window" />
-													<SortableHead field="nextStateAt" label="Next State In" />
-													<SortableHead field="group" label="Group" />
-													<SortableHead field="syncStatus" label="Sync" />
+													<SortableHead field="state" label={t('structures.state')} />
+													<SortableHead field="region" label={t('structures.region')} />
+													<SortableHead field="system" label={t('structures.system')} />
+													<SortableHead field="planet" label={t('structures.planet')} />
+													<SortableHead field="corporation" label={t('structures.corporation')} />
+													<SortableHead
+														field="skyhookSecureFullness"
+														label={t('structures.fullnessSecure')}
+													/>
+													<SortableHead
+														field="skyhookSurplusFullness"
+														label={t('structures.fullnessSurplus')}
+													/>
+													<SortableHead field="workforce" label={t('structures.workforce')} />
+													<SortableHead field="raidable" label={t('structures.raidable')} />
+													<SortableHead
+														field="theftVulnerabilityStart"
+														label={t('structures.theftWindow')}
+													/>
+													<SortableHead field="nextStateAt" label={t('structures.nextStateIn')} />
+													<SortableHead field="group" label={t('structures.group')} />
+													<SortableHead field="syncStatus" label={t('structures.sync')} />
 												</>
 											) : isMoonDrillsTab ? (
 												<>
-													<SortableHead field="state" label="State" />
-													<SortableHead field="region" label="Region" />
-													<SortableHead field="system" label="System" />
-													<SortableHead field="planet" label="Planet" />
-													<TableHead>Moon</TableHead>
-													<SortableHead field="name" label="Name" />
-													<SortableHead field="corporation" label="Corporation" />
-													<SortableHead field="fuel" label="Fuel" />
-													<SortableHead field="moonMaterials" label="Moon Goo" />
-													<SortableHead field="fuelBlocks" label="Fuel Blocks" />
-													<SortableHead field="magmaticGas" label="Magmatic Gas" />
+													<SortableHead field="state" label={t('structures.state')} />
+													<SortableHead field="region" label={t('structures.region')} />
+													<SortableHead field="system" label={t('structures.system')} />
+													<SortableHead field="planet" label={t('structures.planet')} />
+													<TableHead>{t('structures.moon')}</TableHead>
+													<SortableHead field="name" label={t('structures.name')} />
+													<SortableHead field="corporation" label={t('structures.corporation')} />
+													<SortableHead field="fuel" label={t('structures.fuel')} />
+													<SortableHead field="moonMaterials" label={t('structures.moonGoo')} />
+													<SortableHead field="fuelBlocks" label={t('structures.fuelBlocks')} />
+													<SortableHead field="magmaticGas" label={t('structures.magmaticGas')} />
 													<TableHead>LP</TableHead>
-													<TableHead>LP Allowed</TableHead>
-													<SortableHead field="nextStateAt" label="Next State In" />
-													<TableHead>Group</TableHead>
-													<TableHead>Sync</TableHead>
+													<TableHead>{t('structures.lpAllowed')}</TableHead>
+													<SortableHead field="nextStateAt" label={t('structures.nextStateIn')} />
+													<TableHead>{t('structures.group')}</TableHead>
+													<TableHead>{t('structures.sync')}</TableHead>
 												</>
 											) : isMiningCitadelTab ? (
 												<>
-													<SortableHead field="state" label="State" />
-													<SortableHead field="region" label="Region" />
-													<SortableHead field="system" label="System" />
-													<SortableHead field="planet" label="Planet" />
-													<TableHead>Moon</TableHead>
-													<SortableHead field="name" label="Name" />
-													<SortableHead field="corporation" label="Corporation" />
-													<SortableHead field="type" label="Type" />
-													<SortableHead field="fuel" label="Fuel" />
+													<SortableHead field="state" label={t('structures.state')} />
+													<SortableHead field="region" label={t('structures.region')} />
+													<SortableHead field="system" label={t('structures.system')} />
+													<SortableHead field="planet" label={t('structures.planet')} />
+													<TableHead>{t('structures.moon')}</TableHead>
+													<SortableHead field="name" label={t('structures.name')} />
+													<SortableHead field="corporation" label={t('structures.corporation')} />
+													<SortableHead field="type" label={t('structures.type')} />
+													<SortableHead field="fuel" label={t('structures.fuel')} />
 													<TableHead>LP</TableHead>
-													<TableHead>LP Allowed</TableHead>
-													<SortableHead field="nextStateAt" label="Next State In" />
-													<TableHead>Group</TableHead>
-													<TableHead>Chunk Arrival</TableHead>
-													<TableHead>Natural Decay</TableHead>
-													<TableHead>Sync</TableHead>
+													<TableHead>{t('structures.lpAllowed')}</TableHead>
+													<SortableHead field="nextStateAt" label={t('structures.nextStateIn')} />
+													<TableHead>{t('structures.group')}</TableHead>
+													<TableHead>{t('structures.chunkArrival')}</TableHead>
+													<TableHead>{t('structures.naturalDecay')}</TableHead>
+													<TableHead>{t('structures.sync')}</TableHead>
 												</>
 											) : (
 												<>
-													<SortableHead field="state" label="State" />
-													<SortableHead field="region" label="Region" />
-													<SortableHead field="system" label="System" />
-													<SortableHead field="name" label="Name" />
-													<SortableHead field="corporation" label="Corporation" />
-													<SortableHead field="type" label="Type" />
-													<SortableHead field="fuel" label="Fuel" />
+													<SortableHead field="state" label={t('structures.state')} />
+													<SortableHead field="region" label={t('structures.region')} />
+													<SortableHead field="system" label={t('structures.system')} />
+													<SortableHead field="name" label={t('structures.name')} />
+													<SortableHead field="corporation" label={t('structures.corporation')} />
+													<SortableHead field="type" label={t('structures.type')} />
+													<SortableHead field="fuel" label={t('structures.fuel')} />
 													<TableHead>LP</TableHead>
-													<TableHead>LP Allowed</TableHead>
-													<SortableHead field="nextStateAt" label="Next State In" />
-													<TableHead>Group</TableHead>
-													<TableHead>Sync</TableHead>
+													<TableHead>{t('structures.lpAllowed')}</TableHead>
+													<SortableHead field="nextStateAt" label={t('structures.nextStateIn')} />
+													<TableHead>{t('structures.group')}</TableHead>
+													<TableHead>{t('structures.sync')}</TableHead>
 												</>
 											)}
 										</TableRow>

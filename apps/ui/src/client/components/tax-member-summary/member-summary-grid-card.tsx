@@ -5,6 +5,7 @@ import { useReportGridState } from '@/components/tax-reports/use-report-grid-sta
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useTaxMemberSummary } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
+import { useAppTranslation } from '@/i18n'
 
 type MemberSummaryStats = {
 	membersInView: number
@@ -34,6 +35,8 @@ function parseIsk(value: string): number {
 }
 
 export function MemberSummaryGridCard(props: MemberSummaryGridCardProps) {
+	const { t } = useAppTranslation()
+
 	const grid = useReportGridState({
 		defaultSortBy: 'contributionIncome',
 		defaultSortDir: 'desc',
@@ -77,7 +80,7 @@ export function MemberSummaryGridCard(props: MemberSummaryGridCardProps) {
 		void refetch()
 	}, [props.canViewSummary, props.effectiveCorporationId, props.refreshToken, refetch])
 
-	const rows = useMemo(() => data?.rows ?? [], [data?.rows])
+	const rows = useMemo(() => data?.rows ?? [], [data?.rows, t])
 	const totalRows = data?.totalRows ?? 0
 
 	const entityIds = useMemo(() => {
@@ -89,7 +92,7 @@ export function MemberSummaryGridCard(props: MemberSummaryGridCardProps) {
 			}
 		}
 		return [...ids]
-	}, [rows])
+	}, [rows, t])
 
 	const { data: entityNames = {} } = useEntityNames(entityIds, {
 		enabled: Boolean(props.effectiveCorporationId) && props.canViewSummary && entityIds.length > 0,
@@ -121,10 +124,9 @@ export function MemberSummaryGridCard(props: MemberSummaryGridCardProps) {
 			<CardHeader className="space-y-3">
 				<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 					<div className="space-y-1">
-						<CardTitle>Member Contribution Summary</CardTitle>
+						<CardTitle>{t('tax.memberContributionSummary')}</CardTitle>
 						<CardDescription>
-							Aggregated from corporation wallet entries attributed to members in the selected
-							period.
+							{t('tax.aggregatedFromCorporationWalletEntriesAttributedToMembersInThe')}
 						</CardDescription>
 					</div>
 				</div>
@@ -132,15 +134,15 @@ export function MemberSummaryGridCard(props: MemberSummaryGridCardProps) {
 			<CardContent>
 				{props.isScopeLoading ? (
 					<div className="py-8 text-sm text-muted-foreground">
-						Resolving corporation access before loading member summaries.
+						{t('tax.resolvingCorporationAccessBeforeLoadingMemberSummaries')}
 					</div>
 				) : !props.effectiveCorporationId ? (
 					<div className="py-8 text-sm text-muted-foreground">
-						Select a corporation to load member summaries.
+						{t('tax.selectACorporationToLoadMemberSummaries')}
 					</div>
 				) : !props.canViewSummary ? (
 					<div className="py-8 text-sm text-muted-foreground">
-						You do not have permission to view this member summary.
+						{t('tax.youDoNotHavePermissionToViewThisMemberSummary')}
 					</div>
 				) : (
 					<MemberSummaryReportGrid

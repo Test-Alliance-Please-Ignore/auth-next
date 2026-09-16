@@ -1,8 +1,10 @@
+import { i18n } from '@/i18n'
 import { apiClient } from '@/lib/api'
 import { downloadTextFile } from '@/lib/csv-utils'
 
 import type {
 	AdminSettings,
+	DotlanCoords,
 	ExtractionSettings,
 	LeaderboardEntry,
 	LeaderboardWindow,
@@ -19,24 +21,26 @@ import type {
 	StructureType,
 	SubmitResult,
 	SystemDetail,
-	DotlanCoords,
 } from './types'
 
-export async function getScannedMoons(params: {
-	page?: number
-	pageSize?: number
-	regionId?: string
-	constellationId?: string
-	rarities?: string[]
-	search?: string
-	sortBy?: string
-	sortDir?: 'asc' | 'desc'
-} = {}): Promise<ScannedMoonsResponse> {
+export async function getScannedMoons(
+	params: {
+		page?: number
+		pageSize?: number
+		regionId?: string
+		constellationId?: string
+		rarities?: string[]
+		search?: string
+		sortBy?: string
+		sortDir?: 'asc' | 'desc'
+	} = {}
+): Promise<ScannedMoonsResponse> {
 	const qs = new URLSearchParams()
 	if (params.page) qs.set('page', String(params.page))
 	if (params.pageSize) qs.set('pageSize', String(params.pageSize))
 	if (params.regionId && params.regionId !== 'all') qs.set('regionId', params.regionId)
-	if (params.constellationId && params.constellationId !== 'all') qs.set('constellationId', params.constellationId)
+	if (params.constellationId && params.constellationId !== 'all')
+		qs.set('constellationId', params.constellationId)
 	if (params.rarities && params.rarities.length > 0) qs.set('rarity', params.rarities.join(','))
 	if (params.search?.trim()) qs.set('search', params.search.trim())
 	if (params.sortBy) qs.set('sortBy', params.sortBy)
@@ -45,17 +49,20 @@ export async function getScannedMoons(params: {
 	return apiClient.get(`/moon-scan/moons/verified${query ? `?${query}` : ''}`)
 }
 
-export async function requestScannedMoonsExport(params: {
-	regionId?: string
-	constellationId?: string
-	rarities?: string[]
-	search?: string
-	sortBy?: string
-	sortDir?: 'asc' | 'desc'
-} = {}): Promise<{ workflowInstanceId: string; exportId: string; fileName: string; status: 'queued' }> {
+export async function requestScannedMoonsExport(
+	params: {
+		regionId?: string
+		constellationId?: string
+		rarities?: string[]
+		search?: string
+		sortBy?: string
+		sortDir?: 'asc' | 'desc'
+	} = {}
+): Promise<{ workflowInstanceId: string; exportId: string; fileName: string; status: 'queued' }> {
 	const qs = new URLSearchParams()
 	if (params.regionId && params.regionId !== 'all') qs.set('regionId', params.regionId)
-	if (params.constellationId && params.constellationId !== 'all') qs.set('constellationId', params.constellationId)
+	if (params.constellationId && params.constellationId !== 'all')
+		qs.set('constellationId', params.constellationId)
 	if (params.rarities && params.rarities.length > 0) qs.set('rarity', params.rarities.join(','))
 	if (params.search?.trim()) qs.set('search', params.search.trim())
 	if (params.sortBy) qs.set('sortBy', params.sortBy)
@@ -78,15 +85,18 @@ export async function downloadScannedMoonsExport(
 	workflowInstanceId: string,
 	fileName: string
 ): Promise<void> {
-	const response = await fetch(`/api/moon-scan/moons/verified/export/${workflowInstanceId}/download`, {
-		credentials: 'include',
-		headers: {
-			'X-Requested-With': 'XMLHttpRequest',
-		},
-	})
+	const response = await fetch(
+		`/api/moon-scan/moons/verified/export/${workflowInstanceId}/download`,
+		{
+			credentials: 'include',
+			headers: {
+				'X-Requested-With': 'XMLHttpRequest',
+			},
+		}
+	)
 	if (!response.ok) {
 		const message = await response.text()
-		throw new Error(message || 'Failed to download scanned moons export')
+		throw new Error(message || i18n.t('moonScan.failedToDownloadScannedMoonsExport'))
 	}
 
 	const csv = await response.text()
@@ -105,12 +115,12 @@ export async function getDotlanRegionCoords(regionFile: string): Promise<DotlanC
 	const response = await fetch(`/dotlan/${regionFile}.json`)
 	const bodyText = await response.text()
 	if (!response.ok) {
-		throw new Error('No map coordinates available for this region')
+		throw new Error(i18n.t('moonScan.noMapCoordinatesAvailableForThisRegion'))
 	}
 	try {
 		return JSON.parse(bodyText) as DotlanCoords
 	} catch {
-		throw new Error('Invalid map coordinate payload for this region')
+		throw new Error(i18n.t('moonScan.invalidMapCoordinatePayloadForThisRegion'))
 	}
 }
 
@@ -145,7 +155,9 @@ export async function getScans(params: {
 	return apiClient.get(`/moon-scan/scans${query ? `?${query}` : ''}`)
 }
 
-export async function getScanQueue(params: { page?: number; pageSize?: number } = {}): Promise<PaginatedScanQueue> {
+export async function getScanQueue(
+	params: { page?: number; pageSize?: number } = {}
+): Promise<PaginatedScanQueue> {
 	const qs = new URLSearchParams()
 	if (params.page) qs.set('page', String(params.page))
 	if (params.pageSize) qs.set('pageSize', String(params.pageSize))
@@ -153,7 +165,9 @@ export async function getScanQueue(params: { page?: number; pageSize?: number } 
 	return apiClient.get(`/moon-scan/scans/queue${query ? `?${query}` : ''}`)
 }
 
-export async function getMyScans(params: { page?: number; pageSize?: number } = {}): Promise<PaginatedScans> {
+export async function getMyScans(
+	params: { page?: number; pageSize?: number } = {}
+): Promise<PaginatedScans> {
 	const qs = new URLSearchParams()
 	if (params.page) qs.set('page', String(params.page))
 	if (params.pageSize) qs.set('pageSize', String(params.pageSize))
@@ -189,7 +203,9 @@ export async function getAdminSettings(): Promise<AdminSettings> {
 	return apiClient.get('/moon-scan/admin/settings')
 }
 
-export async function updateExtractionSettings(settings: Partial<ExtractionSettings>): Promise<ExtractionSettings> {
+export async function updateExtractionSettings(
+	settings: Partial<ExtractionSettings>
+): Promise<ExtractionSettings> {
 	return apiClient.post('/moon-scan/admin/settings', settings)
 }
 

@@ -9,7 +9,7 @@ import { Link } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-
+import { useAppTranslation } from '@/i18n'
 import { typeIconUrl } from '@/lib/eve-images'
 
 import type { Fitting } from '../types'
@@ -20,6 +20,8 @@ interface FittingCardProps {
 }
 
 export function FittingCard({ fitting, doctrineId }: FittingCardProps) {
+	const { t } = useAppTranslation()
+
 	const linkTo = doctrineId
 		? `/doctrines/fittings/${fitting.id}?doctrineId=${doctrineId}`
 		: `/doctrines/fittings/${fitting.id}`
@@ -42,11 +44,13 @@ export function FittingCard({ fitting, doctrineId }: FittingCardProps) {
 							{fitting.srpEligible && (
 								<Badge variant="default" className="flex items-center gap-1 shrink-0 text-xs">
 									<CheckCircle2 className="h-3 w-3" />
-									SRP Eligible
+									{t('doctrines.srpEligible')}
 								</Badge>
 							)}
 						</div>
-						<p className="text-xs text-muted-foreground truncate">{fitting.shipName} &middot; {fitting.category}</p>
+						<p className="text-xs text-muted-foreground truncate">
+							{fitting.shipName} &middot; {fitting.category}
+						</p>
 					</div>
 				</CardContent>
 			</Card>

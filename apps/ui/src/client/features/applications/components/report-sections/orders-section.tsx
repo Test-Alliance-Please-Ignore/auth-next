@@ -18,6 +18,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { getActiveLocale, i18n, useAppTranslation } from '@/i18n'
 import { typeIconUrl } from '@/lib/eve-images'
 
 import type { Dispatch, SetStateAction } from 'react'
@@ -54,10 +55,12 @@ type OrderSortField =
 	| 'escrow'
 
 function formatIsk(value: number): string {
-	if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B ISK`
-	if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M ISK`
-	if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K ISK`
-	return `${value.toLocaleString()} ISK`
+	if (value >= 1_000_000_000)
+		return i18n.t('hrpages.value1BIsk', { value1: (value / 1_000_000_000).toFixed(1) })
+	if (value >= 1_000_000)
+		return i18n.t('hrpages.value1MIsk', { value1: (value / 1_000_000).toFixed(1) })
+	if (value >= 1_000) return i18n.t('hrpages.value1KIsk', { value1: (value / 1_000).toFixed(1) })
+	return `${value.toLocaleString(getActiveLocale())} ISK`
 }
 
 function normalizeOrderState(state?: string): string {
@@ -150,6 +153,8 @@ function OrderTable({
 	sortOrder: 'asc' | 'desc'
 	onSort: (field: OrderSortField) => void
 }) {
+	const { t } = useAppTranslation()
+
 	const totalNotional = orders.reduce((sum, order) => sum + order.price * order.volume_remain, 0)
 	const stateCounts = orders.reduce<Record<string, number>>((counts, order) => {
 		const key = normalizeOrderState(order.state)
@@ -192,7 +197,7 @@ function OrderTable({
 
 			return compareStrings(a.typeName || a.type_id, b.typeName || b.type_id)
 		})
-	}, [orders, sortField, sortOrder])
+	}, [orders, sortField, sortOrder, t])
 
 	const SortableHead = ({
 		field,
@@ -220,26 +225,31 @@ function OrderTable({
 				<Badge variant="secondary">{orders.length}</Badge>
 				{stateCounts.active && (
 					<Badge variant="success" className="text-[10px] capitalize">
-						{stateCounts.active} active
+						{stateCounts.active}
+						{t('hrpages.active2')}
 					</Badge>
 				)}
 				{stateCounts.closed && (
 					<Badge variant="ghost" className="text-[10px] capitalize">
-						{stateCounts.closed} closed
+						{stateCounts.closed}
+						{t('hrpages.closed2')}
 					</Badge>
 				)}
 				{stateCounts.expired && (
 					<Badge variant="warning" className="text-[10px] capitalize">
-						{stateCounts.expired} expired
+						{stateCounts.expired}
+						{t('hrpages.expired2')}
 					</Badge>
 				)}
 				{stateCounts.cancelled && (
 					<Badge variant="destructive" className="text-[10px] capitalize">
-						{stateCounts.cancelled} cancelled
+						{stateCounts.cancelled}
+						{t('hrpages.cancelled2')}
 					</Badge>
 				)}
 				<span className="text-xs text-muted-foreground">
-					Visible notional: {formatIsk(totalNotional)}
+					{t('hrpages.visibleNotional')}
+					{formatIsk(totalNotional)}
 				</span>
 			</div>
 
@@ -250,14 +260,14 @@ function OrderTable({
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<SortableHead field="item" label="Item" />
-								<SortableHead field="price" label="Price" alignRight />
-								<SortableHead field="total" label="Total" alignRight />
-								<SortableHead field="remain" label="Remain" alignRight />
-								<SortableHead field="issued" label="Issued" />
-								<SortableHead field="expires" label="Expires" />
-								<SortableHead field="state" label="Status" />
-								{showEscrow && <TableHead className="text-right">Escrow</TableHead>}
+								<SortableHead field="item" label={t('hrpages.item')} />
+								<SortableHead field="price" label={t('hrpages.price')} alignRight />
+								<SortableHead field="total" label={t('hrpages.total')} alignRight />
+								<SortableHead field="remain" label={t('hrpages.remain')} alignRight />
+								<SortableHead field="issued" label={t('hrpages.issued')} />
+								<SortableHead field="expires" label={t('hrpages.expires3')} />
+								<SortableHead field="state" label={t('hrpages.status')} />
+								{showEscrow && <TableHead className="text-right">{t('hrpages.escrow')}</TableHead>}
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -268,7 +278,10 @@ function OrderTable({
 											<OrderIcon typeId={order.type_id} />
 											<div className="min-w-0 space-y-0.5">
 												<div className="truncate">{order.typeName || order.type_id}</div>
-												<div className="text-xs text-muted-foreground">Range: {order.range}</div>
+												<div className="text-xs text-muted-foreground">
+													{t('hrpages.range')}
+													{order.range}
+												</div>
 											</div>
 										</div>
 									</TableCell>
@@ -277,7 +290,7 @@ function OrderTable({
 										{formatIsk(order.price * order.volume_total)}
 									</TableCell>
 									<TableCell className="text-right font-mono">
-										{order.volume_remain.toLocaleString()}
+										{order.volume_remain.toLocaleString(getActiveLocale())}
 									</TableCell>
 									<TableCell>
 										<EveTimeDisplay dateStr={order.issued} format="compact" />
@@ -311,6 +324,8 @@ interface LocationGroup {
 }
 
 export function OrdersSection({ data }: { data: ProcessedMarketOrder[] }) {
+	const { t } = useAppTranslation()
+
 	const [search, setSearch] = useState('')
 	const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set())
 	const [buySortField, setBuySortField] = useState<OrderSortField>('price')
@@ -334,7 +349,7 @@ export function OrdersSection({ data }: { data: ProcessedMarketOrder[] }) {
 				.filter(Boolean)
 				.some((value) => String(value).toLowerCase().includes(q))
 		})
-	}, [data, search])
+	}, [data, search, t])
 
 	const groups = useMemo(() => {
 		const map = new Map<string, LocationGroup>()
@@ -372,7 +387,7 @@ export function OrdersSection({ data }: { data: ProcessedMarketOrder[] }) {
 				if (bCount !== aCount) return bCount - aCount
 				return a.locationName.localeCompare(b.locationName)
 			})
-	}, [filtered])
+	}, [filtered, t])
 
 	const totalVisible = filtered.length
 
@@ -404,7 +419,7 @@ export function OrdersSection({ data }: { data: ProcessedMarketOrder[] }) {
 	}
 
 	if (data.length === 0) {
-		return <p className="text-sm text-muted-foreground">No market orders found.</p>
+		return <p className="text-sm text-muted-foreground">{t('hrpages.noMarketOrdersFound')}</p>
 	}
 
 	return (
@@ -415,11 +430,14 @@ export function OrdersSection({ data }: { data: ProcessedMarketOrder[] }) {
 					<Input
 						value={search}
 						onChange={(event) => setSearch(event.target.value)}
-						placeholder="Search orders..."
+						placeholder={t('hrpages.searchOrders')}
 						className="pl-9"
 					/>
 				</div>
-				<Badge variant="secondary">{totalVisible} visible</Badge>
+				<Badge variant="secondary">
+					{totalVisible}
+					{t('hrpages.visible')}
+				</Badge>
 			</div>
 
 			<div className="space-y-2">
@@ -447,7 +465,7 @@ export function OrdersSection({ data }: { data: ProcessedMarketOrder[] }) {
 									{group.locationName}
 								</span>
 								<span className="text-xs text-muted-foreground">
-									{totalOrders} order{totalOrders !== 1 ? 's' : ''}
+									{t('hrpages.orderCount', { count: totalOrders })}
 								</span>
 								{totalNotional > 0 && (
 									<span className="text-xs font-medium text-amber-400">
@@ -459,18 +477,18 @@ export function OrdersSection({ data }: { data: ProcessedMarketOrder[] }) {
 							{isExpanded && (
 								<div className="border-t px-4 py-3 space-y-4">
 									<OrderTable
-										title="Buy Orders"
+										title={t('hrpages.buyOrders')}
 										orders={group.buyOrders}
-										emptyLabel="No buy orders matched the current filters."
+										emptyLabel={t('hrpages.noBuyOrdersMatchedTheCurrentFilters')}
 										showEscrow
 										sortField={buySortField}
 										sortOrder={buySortOrder}
 										onSort={makeSortHandler(buySortField, setBuySortField, setBuySortOrder)}
 									/>
 									<OrderTable
-										title="Sell Orders"
+										title={t('hrpages.sellOrders')}
 										orders={group.sellOrders}
-										emptyLabel="No sell orders matched the current filters."
+										emptyLabel={t('hrpages.noSellOrdersMatchedTheCurrentFilters')}
 										showEscrow={false}
 										sortField={sellSortField}
 										sortOrder={sellSortOrder}

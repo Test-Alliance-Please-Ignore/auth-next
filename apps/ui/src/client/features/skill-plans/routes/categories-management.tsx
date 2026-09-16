@@ -2,6 +2,8 @@ import { ArrowLeft, Edit2, Plus, Settings, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, Navigate } from 'react-router'
 
+import { useAppTranslation } from '@/i18n'
+
 import { Badge } from '../../../components/ui/badge'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
@@ -38,7 +40,9 @@ import {
 import type { SkillPlanCategory } from '../types'
 
 export default function CategoriesManagement() {
-	usePageTitle('Manage Skill Plan Categories')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('skillPlans.manageSkillPlanCategories'))
 
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasPermission } = useUserPermissions()
@@ -96,7 +100,7 @@ export default function CategoriesManagement() {
 	}
 
 	const handleDeleteCategory = async (categoryId: string) => {
-		if (confirm('Are you sure you want to delete this category? This cannot be undone.')) {
+		if (confirm(t('skillPlans.areYouSureYouWantToDeleteThisCategoryThis'))) {
 			try {
 				await deleteCategory.mutateAsync(categoryId)
 			} catch (error) {
@@ -116,13 +120,13 @@ export default function CategoriesManagement() {
 	return (
 		<Container>
 			<PageHeader
-				title="Manage Categories"
-				description="Create and manage categories for organizing skill plans"
+				title={t('skillPlans.manageCategories')}
+				description={t('skillPlans.createAndManageCategoriesForOrganizingSkillPlans')}
 				action={
 					<Button variant="ghost" size="sm" asChild>
 						<Link to="/skill-plans">
 							<ArrowLeft className="h-4 w-4" />
-							Back to Plans
+							{t('skillPlans.backToPlans')}
 						</Link>
 					</Button>
 				}
@@ -131,11 +135,14 @@ export default function CategoriesManagement() {
 			<Section>
 				{/* Actions bar */}
 				<div className="flex justify-between items-center mb-6">
-					<h2 className="text-xl font-semibold">Categories ({sortedCategories.length})</h2>
+					<h2 className="text-xl font-semibold">
+						{t('skillPlans.categories2')}
+						{sortedCategories.length})
+					</h2>
 					{canCreateCategories ? (
 						<Button onClick={() => setShowCreateDialog(true)}>
 							<Plus className="h-4 w-4" />
-							New Category
+							{t('skillPlans.newCategory')}
 						</Button>
 					) : null}
 				</div>
@@ -143,17 +150,17 @@ export default function CategoriesManagement() {
 				{/* Categories table */}
 				<Card>
 					<CardHeader>
-						<CardTitle>Skill Plan Categories</CardTitle>
+						<CardTitle>{t('skillPlans.skillPlanCategories')}</CardTitle>
 					</CardHeader>
 					<CardContent>
 						{sortedCategories.length > 0 ? (
 							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead className="w-[50px]">Order</TableHead>
-										<TableHead>Name</TableHead>
-										<TableHead>Description</TableHead>
-										<TableHead className="w-[100px]">Actions</TableHead>
+										<TableHead className="w-[50px]">{t('skillPlans.order')}</TableHead>
+										<TableHead>{t('skillPlans.name')}</TableHead>
+										<TableHead>{t('skillPlans.description')}</TableHead>
+										<TableHead className="w-[100px]">{t('skillPlans.actions')}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -186,7 +193,9 @@ export default function CategoriesManagement() {
 														</Button>
 													</div>
 												) : (
-													<span className="text-xs text-muted-foreground">View only</span>
+													<span className="text-xs text-muted-foreground">
+														{t('skillPlans.viewOnly')}
+													</span>
 												)}
 											</TableCell>
 										</TableRow>
@@ -196,11 +205,11 @@ export default function CategoriesManagement() {
 						) : (
 							<div className="text-center py-8 text-muted-foreground">
 								<Settings className="h-12 w-12 mx-auto mb-4 opacity-20" />
-								<p>No categories have been created yet.</p>
+								<p>{t('skillPlans.noCategoriesHaveBeenCreatedYet')}</p>
 								{canCreateCategories ? (
 									<Button className="mt-4" onClick={() => setShowCreateDialog(true)}>
 										<Plus className="h-4 w-4" />
-										Create First Category
+										{t('skillPlans.createFirstCategory')}
 									</Button>
 								) : null}
 							</div>
@@ -213,8 +222,10 @@ export default function CategoriesManagement() {
 			<Dialog open={canCreateCategories && showCreateDialog} onOpenChange={setShowCreateDialog}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Create New Category</DialogTitle>
-						<DialogDescription>Create a new category to organize skill plans.</DialogDescription>
+						<DialogTitle>{t('skillPlans.createNewCategory')}</DialogTitle>
+						<DialogDescription>
+							{t('skillPlans.createANewCategoryToOrganizeSkillPlans')}
+						</DialogDescription>
 					</DialogHeader>
 					<CategoryForm
 						onSubmit={handleCreateCategory}
@@ -232,8 +243,8 @@ export default function CategoriesManagement() {
 			>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Edit Category</DialogTitle>
-						<DialogDescription>Update the category details.</DialogDescription>
+						<DialogTitle>{t('skillPlans.editCategory')}</DialogTitle>
+						<DialogDescription>{t('skillPlans.updateTheCategoryDetails')}</DialogDescription>
 					</DialogHeader>
 					{editingCategory && (
 						<CategoryForm

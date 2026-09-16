@@ -62,7 +62,9 @@ export function HRNoteCard({
 	const isLegacyFallbackActor =
 		note.metadata?.legacyNoteActorResolution === 'unresolved_importer_fallback'
 	const isLegacyImportedNote = note.metadata?.source === 'legacy_import'
-	const displayAuthorName = isLegacyFallbackActor ? 'Legacy User' : note.authorCharacterName
+	const displayAuthorName = isLegacyFallbackActor
+		? t('hrpages.legacyUser2')
+		: note.authorCharacterName
 	const displayAuthorCharacterId = isLegacyFallbackActor ? '1' : note.authorCharacterId
 	const visibility =
 		note.metadata?.visibility === 'admin'
@@ -110,7 +112,7 @@ export function HRNoteCard({
 								? t('hr.notes.badgeAuditor')
 								: t('hr.notes.badgeHr')}
 					</Badge>
-					{isLegacyImportedNote ? <Badge variant="secondary">Legacy</Badge> : null}
+					{isLegacyImportedNote ? <Badge variant="secondary">{t('hrpages.legacy')}</Badge> : null}
 					<HRNotePriorityBadge priority={note.priority} size="sm" />
 					<span className="text-xs text-muted-foreground ml-auto">
 						{formatDistanceToNow(new Date(note.createdAt), { addSuffix: true })}
@@ -139,7 +141,8 @@ export function HRNoteCard({
 
 				{showSubject && note.subjectCharacterName && (
 					<div className="text-xs text-muted-foreground mb-2">
-						About: <span className="font-medium">{note.subjectCharacterName}</span>
+						{t('hrpages.about')}
+						<span className="font-medium">{note.subjectCharacterName}</span>
 					</div>
 				)}
 

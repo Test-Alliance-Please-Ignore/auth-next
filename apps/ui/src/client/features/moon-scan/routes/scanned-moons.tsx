@@ -24,6 +24,7 @@ import {
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { useDebounce } from '@/hooks/useDebounce'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { formatISK } from '@/lib/format-utils'
 import toast from '@/lib/toast'
 
@@ -160,7 +161,9 @@ function MoonRow({ moon, backTo }: { moon: ScannedMoonEntry; backTo: string }) {
 }
 
 export default function ScannedMoonsPage() {
-	usePageTitle('Scanned Moons')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('moonScan.scannedMoons'))
 	const location = useLocation()
 	const [searchParams, setSearchParams] = useSearchParams()
 	const moonDetailBackTo = `${location.pathname}${location.search}`
@@ -192,7 +195,7 @@ export default function ScannedMoonsPage() {
 			}
 			setSearchParams(next, { replace: true })
 		},
-		[searchParams, setSearchParams]
+		[searchParams, setSearchParams, t]
 	)
 
 	const exportStatusQuery = useQuery({
@@ -223,10 +226,12 @@ export default function ScannedMoonsPage() {
 			void (async () => {
 				try {
 					await downloadScannedMoonsExport(pendingExport.workflowInstanceId, pendingExport.fileName)
-					toast.success('Scanned moons export ready')
+					toast.success(t('moonScan.scannedMoonsExportReady'))
 				} catch (error) {
 					const messageText =
-						error instanceof Error ? error.message : 'Failed to download scanned moons export'
+						error instanceof Error
+							? error.message
+							: t('moonScan.failedToDownloadScannedMoonsExport')
 					toast.error(messageText)
 					console.error('[MoonScan] Failed to download scanned moons export', error)
 				} finally {
@@ -237,7 +242,7 @@ export default function ScannedMoonsPage() {
 			return
 		}
 		if (exportStatusQuery.data.status === 'failed' || exportStatusQuery.data.status === 'unknown') {
-			toast.error('Scanned moons export failed')
+			toast.error(t('moonScan.scannedMoonsExportFailed'))
 			setPendingExport(null)
 			setIsExporting(false)
 		}
@@ -268,22 +273,22 @@ export default function ScannedMoonsPage() {
 	const regions = useMemo(() => {
 		if (!regionsData) return []
 		return [...regionsData.regions].sort((a, b) => a.regionName.localeCompare(b.regionName))
-	}, [regionsData])
+	}, [regionsData, t])
 	const regionOptions = useMemo(
 		() => [
-			{ value: 'all', label: 'All Regions' },
+			{ value: 'all', label: t('moonScan.allRegions') },
 			...regions.map((region) => ({ value: region.regionId, label: region.regionName })),
 		],
-		[regions]
+		[regions, t]
 	)
 
 	const constellationOptions = useMemo(() => {
 		const constellations = data?.constellations ?? []
 		return [
-			{ value: 'all', label: 'All Constellations' },
+			{ value: 'all', label: t('moonScan.allConstellations') },
 			...constellations.map((c) => ({ value: c.constellationId, label: c.constellationName })),
 		]
-	}, [data?.constellations])
+	}, [data?.constellations, t])
 
 	const groupedItems = useMemo(() => {
 		const items = data?.items ?? []
@@ -297,7 +302,7 @@ export default function ScannedMoonsPage() {
 			if (!group) {
 				group = {
 					constellationId: moon.constellationId,
-					constellationName: moon.constellationName || 'Unknown Constellation',
+					constellationName: moon.constellationName || t('moonScan.unknownConstellation'),
 					moons: [],
 				}
 				groups.set(key, group)
@@ -305,7 +310,7 @@ export default function ScannedMoonsPage() {
 			group.moons.push(moon)
 		}
 		return [...groups.values()]
-	}, [data?.items])
+	}, [data?.items, t])
 
 	const toggleConstellationCollapse = (id: string) => {
 		setCollapsedConstellations((prev) => {
@@ -325,7 +330,7 @@ export default function ScannedMoonsPage() {
 		selectedRarities.length > 0
 	const hasExportScope = regionFilter !== 'all' || constellationFilter !== 'all'
 	const canExportCsv = canView && hasExportScope
-	const exportHelpMessage = 'Select a region or constellation to export this scope.'
+	const exportHelpMessage = t('moonScan.selectARegionOrConstellationToExportThisScope')
 	const toggleSort = (column: SortBy) => {
 		updateUrl({
 			sortBy: column,
@@ -362,7 +367,7 @@ export default function ScannedMoonsPage() {
 			onPageSizeChange={(size) => {
 				updateUrl({ pageSize: String(size), page: '1' })
 			}}
-			itemLabel="moons"
+			itemLabel={t('moonScan.moons3')}
 		/>
 	)
 	const handleExport = useCallback(async () => {
@@ -385,7 +390,8 @@ export default function ScannedMoonsPage() {
 				fileName: exportResult.fileName,
 			})
 		} catch (error) {
-			const messageText = error instanceof Error ? error.message : 'Failed to export scanned moons'
+			const messageText =
+				error instanceof Error ? error.message : t('moonScan.failedToExportScannedMoons')
 			toast.error(messageText)
 			console.error('[MoonScan] Failed to export scanned moons', error)
 			setIsExporting(false)
@@ -399,14 +405,15 @@ export default function ScannedMoonsPage() {
 		selectedRarities,
 		sortBy,
 		sortDir,
+		t,
 	])
 
 	if (!canView) {
 		return (
 			<Container>
 				<PageHeader
-					title="Scanned Moons"
-					description="You do not have permission to view moon data."
+					title={t('moonScan.scannedMoons')}
+					description={t('moonScan.youDoNotHavePermissionToViewMoonData')}
 				/>
 			</Container>
 		)
@@ -415,13 +422,13 @@ export default function ScannedMoonsPage() {
 	return (
 		<Container>
 			<PageHeader
-				title="Scanned Moons"
-				description="All verified moon compositions with profitability estimates"
+				title={t('moonScan.scannedMoons')}
+				description={t('moonScan.allVerifiedMoonCompositionsWithProfitabilityEstimates')}
 				action={
 					<div className="flex items-center gap-3">
 						{isExportPolling && (
 							<span className="text-xs text-muted-foreground">
-								Waiting for export to generate...
+								{t('moonScan.waitingForExportToGenerate')}
 							</span>
 						)}
 						{!canExportCsv && !isExportBusy ? (
@@ -432,12 +439,12 @@ export default function ScannedMoonsPage() {
 								trigger={
 									<span className="inline-block cursor-help">
 										<Button type="button" variant="ghost" disabled>
-											Export CSV
+											{t('moonScan.exportCsv')}
 										</Button>
 									</span>
 								}
 							>
-								<div className="text-sm font-medium">Export scope required</div>
+								<div className="text-sm font-medium">{t('moonScan.exportScopeRequired')}</div>
 								<div className="text-sm text-muted-foreground">{exportHelpMessage}</div>
 							</HoverPopover>
 						) : (
@@ -449,9 +456,9 @@ export default function ScannedMoonsPage() {
 								}}
 								disabled={!canExportCsv || isExportBusy}
 								loading={isExportBusy}
-								loadingText={isExporting ? 'Exporting…' : 'Generating…'}
+								loadingText={isExporting ? t('moonScan.exporting') : t('moonScan.generating')}
 							>
-								Export CSV
+								{t('moonScan.exportCsv')}
 							</Button>
 						)}
 					</div>
@@ -459,7 +466,7 @@ export default function ScannedMoonsPage() {
 			/>
 			{error && (
 				<div className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-500">
-					Failed to load moon data
+					{t('moonScan.failedToLoadMoonData')}
 				</div>
 			)}
 
@@ -478,7 +485,7 @@ export default function ScannedMoonsPage() {
 								: 'text-muted-foreground hover:text-foreground'
 						}`}
 					>
-						All
+						{t('moonScan.all')}
 					</button>
 					{RARITY_VALUES.map((rarity) => {
 						const active = selectedRarities.includes(rarity)
@@ -514,7 +521,7 @@ export default function ScannedMoonsPage() {
 					}}
 					options={regionOptions}
 					searchable
-					placeholder="Filter region..."
+					placeholder={t('moonScan.filterRegion')}
 					className="w-56"
 					inputClassName="h-9"
 				/>
@@ -530,7 +537,7 @@ export default function ScannedMoonsPage() {
 					}}
 					options={constellationOptions}
 					searchable
-					placeholder="Filter constellation..."
+					placeholder={t('moonScan.filterConstellation')}
 					className="w-56"
 					inputClassName="h-9"
 					disabled={constellationOptions.length <= 1}
@@ -539,7 +546,7 @@ export default function ScannedMoonsPage() {
 				{/* Name / system search */}
 				<Input
 					className="w-56"
-					placeholder="Search moon or system…"
+					placeholder={t('moonScan.searchMoonOrSystem')}
 					value={search}
 					onChange={(e) => {
 						updateUrl({ search: e.target.value, page: '1' })
@@ -561,7 +568,7 @@ export default function ScannedMoonsPage() {
 					}
 					disabled={!hasActiveFilters}
 				>
-					Clear Filters
+					{t('moonScan.clearFilters')}
 				</Button>
 
 				{/* Grouped / ungrouped view toggle */}
@@ -585,10 +592,10 @@ export default function ScannedMoonsPage() {
 
 				{!isLoading && data?.pricingSnapshotDate && (
 					<span className="ml-auto flex items-center gap-x-2 text-xs text-muted-foreground">
-						<span>Pricing Source: Global Daily Average</span>
+						<span>{t('moonScan.pricingSourceGlobalDailyAverage')}</span>
 						<span aria-hidden="true">•</span>
 						<span className="flex items-center gap-1">
-							Snapshot:{' '}
+							{t('moonScan.snapshot')}{' '}
 							<EveTimeDisplay dateStr={`${data.pricingSnapshotDate}T00:00:00Z`} format="date" />
 						</span>
 					</span>
@@ -599,24 +606,24 @@ export default function ScannedMoonsPage() {
 				{hasPagination && <div className="border-b p-4">{renderPaginationControls()}</div>}
 				<TableRefreshFrame
 					isRefreshing={Boolean(data) && isFetching}
-					refreshMessage="Refreshing scanned moons..."
+					refreshMessage={t('moonScan.refreshingScannedMoons')}
 				>
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<SortableHead label="Moon" column="moonName" />
-								<SortableHead label="System" column="solarSystemName" />
-								<SortableHead label="Region" column="regionName" />
-								<SortableHead label="Security" column="securityStatus" />
-								<SortableHead label="Rarity" column="highestRarity" />
+								<SortableHead label={t('moonScan.moon')} column="moonName" />
+								<SortableHead label={t('moonScan.system')} column="solarSystemName" />
+								<SortableHead label={t('moonScan.region')} column="regionName" />
+								<SortableHead label={t('moonScan.security')} column="securityStatus" />
+								<SortableHead label={t('moonScan.rarity')} column="highestRarity" />
 								<SortableHead
-									label="Metenox 30d"
+									label={t('moonScan.metenox30d')}
 									column="metenoxProfit"
 									className="text-right"
 									alignRight
 								/>
 								<SortableHead
-									label="Refinery 30d"
+									label={t('moonScan.refinery30d')}
 									column="tataraProfit"
 									className="text-right"
 									alignRight
@@ -655,7 +662,7 @@ export default function ScannedMoonsPage() {
 																)}
 																<span>{group.constellationName}</span>
 																<span className="text-xs font-normal text-muted-foreground">
-																	{group.moons.length} moon{group.moons.length === 1 ? '' : 's'}
+																	{t('moonScan.moon2Count', { count: group.moons.length })}
 																</span>
 															</div>
 														</TableCell>
@@ -670,7 +677,7 @@ export default function ScannedMoonsPage() {
 							{!isLoading && (data?.items.length ?? 0) === 0 && (
 								<TableRow>
 									<TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
-										No moons match the current filters.
+										{t('moonScan.noMoonsMatchTheCurrentFilters')}
 									</TableCell>
 								</TableRow>
 							)}

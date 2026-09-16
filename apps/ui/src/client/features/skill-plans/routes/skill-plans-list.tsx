@@ -3,6 +3,8 @@ import { Plus, Search, Settings } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 
+import { useAppTranslation } from '@/i18n'
+
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { Container } from '../../../components/ui/container'
@@ -35,7 +37,9 @@ import {
 import type { SkillPlansFilter } from '../types'
 
 export default function SkillPlansList() {
-	usePageTitle('Skill Plans')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('skillPlans.skillPlans'))
 
 	const { user } = useAuth()
 	const { hasPermission } = useUserPermissions()
@@ -75,11 +79,11 @@ export default function SkillPlansList() {
 			byId.set(plan.id, plan)
 		}
 		return Array.from(byId.values())
-	}, [myPlansResponse?.items, plansResponse?.items])
+	}, [myPlansResponse?.items, plansResponse?.items, t])
 
 	const myPlanIds = useMemo(() => {
 		return new Set((myPlansResponse?.items ?? []).map((plan) => plan.id))
-	}, [myPlansResponse?.items])
+	}, [myPlansResponse?.items, t])
 
 	const maintainerOptions = useMemo(() => {
 		const options = new Map<string, { value: string; label: string; description: string }>()
@@ -89,15 +93,19 @@ export default function SkillPlansList() {
 			}
 			const type = plan.maintainerType ?? 'user'
 			const value = `${type}:${plan.maintainerId}`
-			const name = plan.maintainerName || plan.ownerCharacterName || 'Unknown Maintainer'
+			const name =
+				plan.maintainerName || plan.ownerCharacterName || t('skillPlans.unknownMaintainer')
 			options.set(value, {
 				value,
 				label: name,
-				description: type === 'group' ? 'Group' : 'User',
+				description: type === 'group' ? t('skillPlans.group') : t('skillPlans.user'),
 			})
 		}
-		return [{ value: 'all', label: 'All maintainers' }, ...Array.from(options.values())]
-	}, [mergedPlans])
+		return [
+			{ value: 'all', label: t('skillPlans.allMaintainers') },
+			...Array.from(options.values()),
+		]
+	}, [mergedPlans, t])
 
 	// Filter plans client-side because backend list endpoint only supports category filtering
 	const filteredPlans = useMemo(() => {
@@ -156,6 +164,7 @@ export default function SkillPlansList() {
 		filters.search,
 		mergedPlans,
 		myPlanIds,
+		t,
 	])
 
 	const totalPlans = mergedPlans.length
@@ -165,13 +174,13 @@ export default function SkillPlansList() {
 	// Group filtered plans by category
 	const groupedPlans = useMemo(() => {
 		return groupPlansByCategory(filteredPlans)
-	}, [filteredPlans])
+	}, [filteredPlans, t])
 
 	const selectedCharacters = useMemo(() => {
 		if (!user?.characters?.length) return []
 		if (selectedCharacterId === 'all') return user.characters
 		return user.characters.filter((character) => character.characterId === selectedCharacterId)
-	}, [selectedCharacterId, user?.characters])
+	}, [selectedCharacterId, user?.characters, t])
 
 	const characterSkillQueries = useCharacterSkillLevelsForCharacters(selectedCharacters)
 
@@ -246,7 +255,7 @@ export default function SkillPlansList() {
 		}
 
 		return result
-	}, [characterSkillQueries, filteredPlans, planSkillsQueries, selectedCharacters])
+	}, [characterSkillQueries, filteredPlans, planSkillsQueries, selectedCharacters, t])
 
 	const readinessLoadingByPlanId = useMemo(() => {
 		const loading = new Map<string, boolean>()
@@ -260,7 +269,7 @@ export default function SkillPlansList() {
 			loading.set(plan.id, areCharacterSkillsLoading || isLoading)
 		}
 		return loading
-	}, [characterSkillQueries, filteredPlans, planSkillsQueries, user])
+	}, [characterSkillQueries, filteredPlans, planSkillsQueries, user, t])
 
 	const readinessIndicatorByPlanId = useMemo(() => {
 		const indicator = new Map<string, 'recommended' | 'required' | 'incomplete'>()
@@ -278,7 +287,7 @@ export default function SkillPlansList() {
 			}
 		}
 		return indicator
-	}, [filteredPlans, readinessByPlanId])
+	}, [filteredPlans, readinessByPlanId, t])
 
 	if ((plansLoading && !plansResponse) || categoriesLoading) {
 		return <LoadingPage />
@@ -287,32 +296,32 @@ export default function SkillPlansList() {
 	return (
 		<Container>
 			<PageHeader
-				title="Skill Plans"
-				description="Browse and manage skill training plans for EVE Online"
+				title={t('skillPlans.skillPlans')}
+				description={t('skillPlans.browseAndManageSkillTrainingPlansForEveOnline')}
 			/>
 
 			<Section>
 				{/* Actions bar */}
 				<div className="flex justify-between items-center mb-6">
-					<h2 className="text-xl font-semibold">Available Plans</h2>
+					<h2 className="text-xl font-semibold">{t('skillPlans.availablePlans')}</h2>
 					{user && canEditSkillPlans && (
 						<div className="flex gap-2">
 							{canManageCategories && (
 								<Button variant="ghost" asChild>
 									<Link to="/skill-plans/categories/manage">
 										<Settings className="h-4 w-4" />
-										Manage Categories
+										{t('skillPlans.manageCategories')}
 									</Link>
 								</Button>
 							)}
 							<Button variant="ghost" asChild>
-								<Link to="/skill-plans/my">My Plans</Link>
+								<Link to="/skill-plans/my">{t('skillPlans.myPlans')}</Link>
 							</Button>
 							{canCreatePlans && (
 								<Button asChild>
 									<Link to="/skill-plans/create">
 										<Plus className="h-4 w-4" />
-										Create Plan
+										{t('skillPlans.createPlan')}
 									</Link>
 								</Button>
 							)}
@@ -323,18 +332,18 @@ export default function SkillPlansList() {
 				{/* Filters */}
 				<Card className="mb-6">
 					<CardHeader>
-						<CardTitle>Filters</CardTitle>
+						<CardTitle>{t('skillPlans.filters')}</CardTitle>
 					</CardHeader>
 					<CardContent>
 						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
 							{/* Search */}
 							<div className="space-y-2">
-								<Label htmlFor="search">Search</Label>
+								<Label htmlFor="search">{t('skillPlans.search')}</Label>
 								<div className="relative">
 									<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 									<Input
 										id="search"
-										placeholder="Search plans..."
+										placeholder={t('skillPlans.searchPlans')}
 										value={filters.search}
 										onChange={(e) => setFilters({ ...filters, search: e.target.value })}
 										className="pl-8"
@@ -344,26 +353,26 @@ export default function SkillPlansList() {
 
 							{/* Character filter */}
 							<div className="space-y-2">
-								<Label htmlFor="character-filter">Character</Label>
+								<Label htmlFor="character-filter">{t('skillPlans.character')}</Label>
 								<Select
 									value={selectedCharacterId}
 									onValueChange={setSelectedCharacterId}
 									inputId="character-filter"
 									searchable
 									options={[
-										{ value: 'all', label: 'All Characters' },
+										{ value: 'all', label: t('skillPlans.allCharacters') },
 										...(user?.characters ?? []).map((character) => ({
 											value: character.characterId,
 											label: character.characterName,
 										})),
 									]}
-									placeholder="All Characters"
+									placeholder={t('skillPlans.allCharacters')}
 								/>
 							</div>
 
 							{/* Category filter */}
 							<div className="space-y-2">
-								<Label htmlFor="category">Category</Label>
+								<Label htmlFor="category">{t('skillPlans.category')}</Label>
 								<Select
 									value={filters.categoryId || 'all'}
 									onValueChange={(value) =>
@@ -374,19 +383,19 @@ export default function SkillPlansList() {
 									}
 									inputId="category"
 									options={[
-										{ value: 'all', label: 'All categories' },
+										{ value: 'all', label: t('skillPlans.allCategories') },
 										...(categories?.map((category) => ({
 											value: category.id,
 											label: category.name,
 										})) ?? []),
 									]}
-									placeholder="All categories"
+									placeholder={t('skillPlans.allCategories')}
 								/>
 							</div>
 
 							{/* Maintainer filter */}
 							<div className="space-y-2">
-								<Label htmlFor="maintainer">Maintainer</Label>
+								<Label htmlFor="maintainer">{t('skillPlans.maintainer2')}</Label>
 								<Select
 									value={filters.maintainer || 'all'}
 									onValueChange={(value) =>
@@ -398,13 +407,13 @@ export default function SkillPlansList() {
 									inputId="maintainer"
 									searchable
 									options={maintainerOptions}
-									placeholder="All maintainers"
+									placeholder={t('skillPlans.allMaintainers')}
 								/>
 							</div>
 
 							{canEditSkillPlans && (
 								<div className="space-y-2">
-									<Label htmlFor="status">Status</Label>
+									<Label htmlFor="status">{t('skillPlans.status')}</Label>
 									<Select
 										value={filters.published === undefined ? 'all' : String(filters.published)}
 										onValueChange={(value) =>
@@ -415,11 +424,11 @@ export default function SkillPlansList() {
 										}
 										inputId="status"
 										options={[
-											{ value: 'all', label: 'All statuses' },
-											{ value: 'true', label: 'Published' },
-											{ value: 'false', label: 'Draft' },
+											{ value: 'all', label: t('skillPlans.allStatuses') },
+											{ value: 'true', label: t('skillPlans.published') },
+											{ value: 'false', label: t('skillPlans.draft') },
 										]}
-										placeholder="All statuses"
+										placeholder={t('skillPlans.allStatuses')}
 									/>
 								</div>
 							)}
@@ -436,7 +445,7 @@ export default function SkillPlansList() {
 									className="h-4 w-4 rounded border-gray-300"
 								/>
 								<Label htmlFor="my-plans" className="cursor-pointer">
-									Show only my plans
+									{t('skillPlans.showOnlyMyPlans')}
 								</Label>
 							</div>
 						)}
@@ -448,12 +457,17 @@ export default function SkillPlansList() {
 					{filteredPlans && filteredPlans.length > 0 ? (
 						<>
 							<div className="text-sm text-muted-foreground">
-								Showing {filteredPlans.length} of {totalPlans} plan{totalPlans !== 1 ? 's' : ''}
+								{t('skillPlans.showing')}
+								{filteredPlans.length}
+								{t('skillPlans.of')}
+								{t('skillPlans.planCount', { count: totalPlans })}
 							</div>
 							<div className="space-y-6">
 								{groupedPlans.map((group) => (
 									<div key={group.category?.id || 'uncategorized'}>
-										<CategorySectionHeader name={group.category?.name || 'Uncategorized'} />
+										<CategorySectionHeader
+											name={group.category?.name || t('skillPlans.uncategorized')}
+										/>
 										<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
 											{group.plans.map((plan) => (
 												<SkillPlanCard
@@ -474,13 +488,13 @@ export default function SkillPlansList() {
 					) : (
 						<Card>
 							<CardContent className="py-8 text-center text-muted-foreground">
-								No skill plans found matching your filters.
+								{t('skillPlans.noSkillPlansFoundMatchingYourFilters')}
 								{canCreatePlans && (
 									<div className="mt-4">
 										<Button asChild>
 											<Link to="/skill-plans/create">
 												<Plus className="h-4 w-4" />
-												Create your first plan
+												{t('skillPlans.createYourFirstPlan2')}
 											</Link>
 										</Button>
 									</div>

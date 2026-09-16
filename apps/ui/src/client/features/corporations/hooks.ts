@@ -10,6 +10,7 @@ import { useCallback, useMemo } from 'react'
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 
 import { useAuth } from '@/hooks/useAuth'
+import { i18n } from '@/i18n'
 
 import { myCorporationsApi } from './api'
 
@@ -81,18 +82,18 @@ export function formatCorporationRoleLabel(
 	switch (role) {
 		case 'CEO':
 			return 'CEO'
-		case 'Director':
-			return 'Director'
+		case i18n.t('characterpages.director'):
+			return i18n.t('characterpages.director')
 		case 'admin':
-			return 'Site Admin'
+			return i18n.t('characterpages.siteAdmin')
 		case 'hr_admin':
-			return 'HR Admin'
+			return i18n.t('characterpages.hrAdmin')
 		case 'hr_reviewer':
-			return 'HR Reviewer'
+			return i18n.t('characterpages.hrReviewer')
 		case 'hr_viewer':
-			return 'HR Viewer'
+			return i18n.t('characterpages.hrViewer')
 		default:
-			return 'Unknown'
+			return i18n.t('characterpages.unknown')
 	}
 }
 

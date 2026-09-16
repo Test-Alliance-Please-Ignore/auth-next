@@ -20,6 +20,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
 import { OreCompositionBar } from '../components/OreCompositionBar'
 import { ScanStatusBadge } from '../components/ScanStatusBadge'
@@ -125,6 +126,8 @@ function renderOreOption(option: OreOption) {
 }
 
 export default function SystemPage() {
+	const { t } = useAppTranslation()
+
 	const { systemId } = useParams<{ systemId: string }>()
 	const location = useLocation()
 	const [searchParams, setSearchParams] = useSearchParams()
@@ -132,7 +135,7 @@ export default function SystemPage() {
 
 	const { data: detail, isLoading, error } = useMoonSystemDetail(systemId!, canView)
 	const searchParamString = searchParams.toString()
-	const persistedView = useMemo(() => readPersistedSystemView(systemId), [systemId])
+	const persistedView = useMemo(() => readPersistedSystemView(systemId), [systemId, t])
 	const lastSearchParamStringRef = useRef(searchParamString)
 	const lastSystemIdRef = useRef(systemId)
 	const skipUrlSyncRef = useRef(false)
@@ -174,9 +177,9 @@ export default function SystemPage() {
 			? navigationState.from
 			: '/moon-scan'
 	const backLabel = backTo.startsWith('/moon-scan/scanned')
-		? 'Back to Scanned Moons'
-		: 'Back to Regions'
-	usePageTitle(detail?.system?.solarSystemName ?? immediateSystemName ?? 'System')
+		? t('moonScan.backToScannedMoons')
+		: t('moonScan.backToRegions')
+	usePageTitle(detail?.system?.solarSystemName ?? immediateSystemName ?? t('moonScan.system'))
 	useEffect(() => {
 		const systemChanged = lastSystemIdRef.current !== systemId
 		const urlChanged = lastSearchParamStringRef.current !== searchParamString
@@ -265,15 +268,15 @@ export default function SystemPage() {
 				(a.rarity ? RARITY_ORDER[a.rarity] : Number.MIN_SAFE_INTEGER)
 			return rarityComparison || a.label.localeCompare(b.label)
 		})
-	}, [detail?.moons])
+	}, [detail?.moons, t])
 	const compositionSortOptions = oreOptions
 	const availableOreTypeIds = useMemo(
 		() => new Set(oreOptions.map((option) => option.value)),
-		[oreOptions]
+		[oreOptions, t]
 	)
 	const validSelectedOreTypeIds = useMemo(
 		() => filterValidOreTypeIds(selectedOreTypeIds, availableOreTypeIds),
-		[availableOreTypeIds, selectedOreTypeIds]
+		[availableOreTypeIds, selectedOreTypeIds, t]
 	)
 	const validCompositionSortOreTypeId = getValidCompositionSortOreTypeId(
 		compositionSortOreTypeId,
@@ -336,6 +339,7 @@ export default function SystemPage() {
 		validCompositionSortOreTypeId,
 		detail?.moons,
 		validSelectedOreTypeIds,
+		t,
 	])
 	const handleSort = (column: SortColumn) => {
 		if (column === 'composition' && !validCompositionSortOreTypeId) return
@@ -374,8 +378,8 @@ export default function SystemPage() {
 		return (
 			<Container>
 				<PageHeader
-					title="System Detail"
-					description="You do not have permission to view moon data."
+					title={t('moonScan.systemDetail')}
+					description={t('moonScan.youDoNotHavePermissionToViewMoonData')}
 				/>
 			</Container>
 		)
@@ -391,11 +395,11 @@ export default function SystemPage() {
 					<div className="space-y-3">
 						<div className="flex items-center gap-3">
 							<h1 className="text-4xl md:text-5xl font-bold leading-none gradient-text">
-								{sys?.solarSystemName ?? immediateSystemName ?? 'System'}
+								{sys?.solarSystemName ?? immediateSystemName ?? t('moonScan.system')}
 							</h1>
 							{sys && (
 								<span className="inline-flex items-center gap-2 rounded-md border bg-card px-3 py-1.5 text-sm">
-									<span className="text-muted-foreground">Security</span>
+									<span className="text-muted-foreground">{t('moonScan.security')}</span>
 									<span className={`font-mono font-semibold tabular-nums ${secColor}`}>
 										{secStatus !== null ? secStatus.toFixed(2) : '—'}
 									</span>
@@ -404,17 +408,17 @@ export default function SystemPage() {
 						</div>
 						<p className="text-muted-foreground text-lg">
 							{isLoading
-								? 'Loading…'
+								? t('moonScan.loading')
 								: `${detail?.moons.length ?? 0} moons · ${scannedMoons} scanned · ${verifiedMoons} verified`}
 						</p>
 					</div>
 					<div className="flex flex-col items-end gap-2">
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
 							<Link to="/moon-scan" className="hover:underline">
-								Moon Scanning
+								{t('moonScan.moonScanning')}
 							</Link>
 							<span>/</span>
-							<span>{sys?.solarSystemName ?? immediateSystemName ?? 'System'}</span>
+							<span>{sys?.solarSystemName ?? immediateSystemName ?? t('moonScan.system')}</span>
 						</div>
 						<Button variant="ghost" size="sm" asChild>
 							<Link to={backTo}>
@@ -428,14 +432,14 @@ export default function SystemPage() {
 
 			{error && (
 				<div className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-500">
-					Failed to load system data
+					{t('moonScan.failedToLoadSystemData')}
 				</div>
 			)}
 
 			<div className="mt-4 flex flex-wrap items-end gap-3 rounded-md border bg-card p-4">
 				<div className="w-full sm:w-72">
 					<div className="mb-1.5 text-xs font-medium text-muted-foreground">
-						Compositions present
+						{t('moonScan.compositionsPresent')}
 					</div>
 					<Select<OreOption>
 						options={oreOptions}
@@ -446,7 +450,7 @@ export default function SystemPage() {
 						}}
 						multiple
 						searchable
-						placeholder="All compositions"
+						placeholder={t('moonScan.allCompositions')}
 						disabled={oreOptions.length === 0}
 						renderOption={renderOreOption}
 						inputClassName="h-9"
@@ -454,7 +458,7 @@ export default function SystemPage() {
 				</div>
 				<div className="w-full sm:w-72">
 					<div className="mb-1.5 text-xs font-medium text-muted-foreground">
-						Sort composition by
+						{t('moonScan.sortCompositionBy')}
 					</div>
 					<Select<OreOption>
 						options={compositionSortOptions}
@@ -463,7 +467,7 @@ export default function SystemPage() {
 							setCompositionSortOreTypeId(value)
 							updateUrl({ compositionSort: value || null, sort: null })
 						}}
-						placeholder="No composition sort"
+						placeholder={t('moonScan.noCompositionSort')}
 						searchable
 						renderOption={renderOreOption}
 						inputClassName="h-9"
@@ -476,7 +480,7 @@ export default function SystemPage() {
 					onClick={resetSystemView}
 					disabled={!hasActiveSystemView}
 				>
-					Reset
+					{t('moonScan.reset')}
 				</Button>
 			</div>
 
@@ -495,9 +499,9 @@ export default function SystemPage() {
 								onSort={() => handleSort('moonName')}
 								direction={effectiveSortColumn === 'moonName' ? activeSortDirection : undefined}
 							>
-								Moon
+								{t('moonScan.moon')}
 							</SortableTableHead>
-							<TableHead>Status</TableHead>
+							<TableHead>{t('moonScan.status')}</TableHead>
 							<SortableTableHead
 								className="w-96"
 								aria-sort={
@@ -511,7 +515,7 @@ export default function SystemPage() {
 								disabled={!compositionSortOreTypeId}
 								direction={effectiveSortColumn === 'composition' ? activeSortDirection : undefined}
 							>
-								Composition
+								{t('moonScan.composition')}
 							</SortableTableHead>
 						</TableRow>
 					</TableHeader>
@@ -549,7 +553,7 @@ export default function SystemPage() {
 												<ScanStatusBadge status="pending" />
 											) : (
 												<Badge variant="ghost" className="text-muted-foreground">
-													No data
+													{t('moonScan.noData')}
 												</Badge>
 											)}
 										</TableCell>
@@ -566,8 +570,8 @@ export default function SystemPage() {
 							<TableRow>
 								<TableCell colSpan={3} className="py-8 text-center text-sm text-muted-foreground">
 									{detail?.moons.length
-										? 'No moons match the current filters.'
-										: 'No moons found in this system.'}
+										? t('moonScan.noMoonsMatchTheCurrentFilters')
+										: t('moonScan.noMoonsFoundInThisSystem')}
 								</TableCell>
 							</TableRow>
 						)}

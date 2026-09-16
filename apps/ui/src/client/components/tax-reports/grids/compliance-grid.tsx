@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 
 import { DataTable } from '@/components/data-table'
+import { useAppTranslation } from '@/i18n'
 import { formatTaxDateTime } from '@/lib/tax-date'
 import { formatTaxIskFull, formatTaxNumber } from '@/lib/tax-display'
 
@@ -17,57 +18,59 @@ export function ComplianceGrid(props: {
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
 	rowCount: number
 }) {
+	const { t } = useAppTranslation()
+
 	const columns = useMemo(
 		() => [
 			{
 				id: 'rollupDate',
-				header: 'Date',
+				header: t('tax.date'),
 				sortable: true,
 				cell: (row: TaxCompliancePoint) => formatTaxDateTime(row.rollupDate),
 			},
 			{
 				id: 'taxDue',
-				header: 'Tax Due',
+				header: t('tax.taxDue'),
 				sortable: true,
 				cell: (row: TaxCompliancePoint) => formatTaxIskFull(row.taxDue),
 			},
 			{
 				id: 'taxPaid',
-				header: 'Tax Paid',
+				header: t('tax.taxPaid'),
 				sortable: true,
 				cell: (row: TaxCompliancePoint) => formatTaxIskFull(row.taxPaid),
 			},
 			{
 				id: 'taxDelta',
-				header: 'Delta',
+				header: t('tax.delta'),
 				sortable: true,
 				cell: (row: TaxCompliancePoint) => formatTaxIskFull(row.taxDelta),
 			},
 			{
 				id: 'entryCount',
-				header: 'Entries',
+				header: t('tax.entries'),
 				sortable: true,
 				cell: (row: TaxCompliancePoint) => formatTaxNumber(row.entryCount),
 			},
 		],
-		[]
+		[t]
 	)
 
 	return (
 		<DataTable
 			variant="plain"
-			errorMessage="Failed to load report"
+			errorMessage={t('tax.failedToLoadReport')}
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
 			error={props.error}
-			emptyMessage="No compliance trend points available."
+			emptyMessage={t('tax.noComplianceTrendPointsAvailable')}
 			sorting={props.sorting}
 			onSortingChange={props.onSortingChange}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
 			rowCount={props.rowCount}
-			itemLabel="periods"
+			itemLabel={t('tax.periods')}
 			getRowKey={(row) => row.rollupDate.toISOString()}
 		/>
 	)

@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Separator } from '@/components/ui/separator'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import type { ReactNode } from 'react'
@@ -53,6 +54,8 @@ export function UserProfilePageShell({
 	sidebarFooter?: ReactNode
 	children: ReactNode
 }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<Container>
 			<div className="flex items-center justify-between mb-6">
@@ -101,7 +104,10 @@ export function UserProfilePageShell({
 									>
 										{accountName}
 									</h1>
-									<p className="font-mono text-xs text-muted-foreground">User ID: {userId}</p>
+									<p className="font-mono text-xs text-muted-foreground">
+										{t('hrpages.userId')}
+										{userId}
+									</p>
 								</div>
 								<div className="flex flex-wrap items-center justify-center gap-2">
 									{sidebarBadges}

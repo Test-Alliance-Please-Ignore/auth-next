@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge'
 import { HoverPopover } from '@/components/ui/hover-popover'
+import { i18n, useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import type { BadgeVariant } from '@/components/ui/badge'
@@ -19,9 +20,11 @@ function structureSyncStatusVariant(status: StructureSyncStatusBadgeProps['statu
 }
 
 function structureSyncStatusLabel(status: StructureSyncStatusBadgeProps['status']): string {
-	if (status === 'ok') return 'Synced'
-	if (status === 'disabled') return 'Disabled'
-	return status.charAt(0).toUpperCase() + status.slice(1)
+	if (status === 'ok') return i18n.t('structures.synced')
+	if (status === 'disabled') return i18n.t('structures.disabled')
+	return status === 'warning'
+		? i18n.t('structures.warningStatus')
+		: i18n.t('structures.errorStatus')
 }
 
 export function StructureSyncStatusBadge({
@@ -30,9 +33,13 @@ export function StructureSyncStatusBadge({
 	label,
 	className,
 }: StructureSyncStatusBadgeProps) {
+	const { t } = useAppTranslation()
+
 	const statusLabel = structureSyncStatusLabel(status)
 	const displayLabel = label ? `${label}: ${statusLabel}` : statusLabel
-	const popoverTitle = label ? `${label} Sync` : 'Sync Status'
+	const popoverTitle = label
+		? t('structures.syncLabel', { value1: label })
+		: t('structures.syncStatus')
 
 	return (
 		<HoverPopover

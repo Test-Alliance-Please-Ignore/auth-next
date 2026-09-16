@@ -9,6 +9,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { useAppTranslation } from '@/i18n'
 import { formatTaxDateTime } from '@/lib/tax-date'
 import { TaxCorporationDisplay } from '@/lib/tax-display'
 
@@ -197,28 +198,30 @@ function JsonValueView({
 }
 
 export function TaxAuditLogGrid(props: TaxAuditLogGridProps) {
+	const { t } = useAppTranslation()
+
 	const [selectedEntry, setSelectedEntry] = useState<TaxAuditLogEntry | null>(null)
 	const changedPaths = useMemo(
 		() => collectDiffPaths(selectedEntry?.before ?? null, selectedEntry?.after ?? null),
-		[selectedEntry]
+		[selectedEntry, t]
 	)
 
 	const columns = [
 		{
 			id: 'createdAt',
-			header: 'Time',
+			header: t('tax.time'),
 			sortable: true,
 			cell: (row: TaxAuditLogEntry) => formatTaxDateTime(row.createdAt),
 		},
 		{
 			id: 'action',
-			header: 'Action',
+			header: t('tax.action'),
 			sortable: true,
 			cell: (row: TaxAuditLogEntry) => <span className="font-medium">{row.action}</span>,
 		},
 		{
 			id: 'actorUserId',
-			header: 'Actor',
+			header: t('tax.actor'),
 			sortable: true,
 			cell: (row: TaxAuditLogEntry) => {
 				const actorUserId = row.actorUserId
@@ -235,12 +238,12 @@ export function TaxAuditLogGrid(props: TaxAuditLogGridProps) {
 		},
 		{
 			id: 'corporationId',
-			header: 'Corporation',
+			header: t('tax.corporation'),
 			sortable: true,
 			cell: (row: TaxAuditLogEntry) => {
 				const corporationId = row.corporationId
 				if (!corporationId) {
-					return <span>Global</span>
+					return <span>{t('tax.global')}</span>
 				}
 				return (
 					<TaxCorporationDisplay corporationId={corporationId} entityNames={props.entityNames} />
@@ -249,7 +252,7 @@ export function TaxAuditLogGrid(props: TaxAuditLogGridProps) {
 		},
 		{
 			id: 'actions',
-			header: 'Actions',
+			header: t('tax.actions'),
 			cell: (row: TaxAuditLogEntry) => (
 				<Button
 					variant="ghost"
@@ -257,7 +260,7 @@ export function TaxAuditLogGrid(props: TaxAuditLogGridProps) {
 					className="h-8 px-3"
 					onClick={() => setSelectedEntry(row)}
 				>
-					View
+					{t('tax.view')}
 				</Button>
 			),
 		},
@@ -267,18 +270,18 @@ export function TaxAuditLogGrid(props: TaxAuditLogGridProps) {
 		<>
 			<DataTable
 				variant="plain"
-				errorMessage="Failed to load report"
+				errorMessage={t('tax.failedToLoadReport')}
 				columns={columns}
 				rows={props.rows}
 				loading={props.loading}
 				error={props.error}
-				emptyMessage="No audit entries matched the selected filters."
+				emptyMessage={t('tax.noAuditEntriesMatchedTheSelectedFilters')}
 				sorting={props.sorting}
 				onSortingChange={props.onSortingChange}
 				pagination={props.pagination}
 				onPaginationChange={props.onPaginationChange}
 				rowCount={props.rowCount}
-				itemLabel="audit entries"
+				itemLabel={t('tax.auditEntries')}
 				getRowKey={(row) => row.id}
 			/>
 
@@ -288,22 +291,30 @@ export function TaxAuditLogGrid(props: TaxAuditLogGridProps) {
 			>
 				<DialogContent className="max-w-6xl">
 					<DialogHeader>
-						<DialogTitle>Audit Payload Diff</DialogTitle>
+						<DialogTitle>{t('tax.auditPayloadDiff')}</DialogTitle>
 						<DialogDescription>
 							{selectedEntry
-								? `${selectedEntry.action} • ${formatTaxDateTime(selectedEntry.createdAt)} • ${changedPaths.size} changed paths`
-								: 'Audit payload details'}
+								? t('tax.value1Value2Value3ChangedPaths', {
+										value1: selectedEntry.action,
+										value2: formatTaxDateTime(selectedEntry.createdAt),
+										value3: changedPaths.size,
+									})
+								: t('tax.auditPayloadDetails')}
 						</DialogDescription>
 					</DialogHeader>
 					<div className="grid gap-4 md:grid-cols-2">
 						<div className="rounded-md border border-border">
-							<div className="border-b border-border px-3 py-2 text-sm font-semibold">Before</div>
+							<div className="border-b border-border px-3 py-2 text-sm font-semibold">
+								{t('tax.before')}
+							</div>
 							<div className="max-h-[60vh] overflow-auto px-3 py-2 font-mono text-xs leading-6">
 								<JsonValueView value={selectedEntry?.before ?? null} changedPaths={changedPaths} />
 							</div>
 						</div>
 						<div className="rounded-md border border-border">
-							<div className="border-b border-border px-3 py-2 text-sm font-semibold">After</div>
+							<div className="border-b border-border px-3 py-2 text-sm font-semibold">
+								{t('tax.after')}
+							</div>
 							<div className="max-h-[60vh] overflow-auto px-3 py-2 font-mono text-xs leading-6">
 								<JsonValueView value={selectedEntry?.after ?? null} changedPaths={changedPaths} />
 							</div>

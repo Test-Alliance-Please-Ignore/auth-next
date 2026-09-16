@@ -15,12 +15,15 @@ import { useHrAccessibleCorporations } from '@/features/hr'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 
 import { useAuditorUsers } from '../../../hooks/useAuditorUsers'
 import { AccessDeniedCard } from '../components/access-denied-card'
 import { HrUserSearchContent } from '../components/hr-user-search-content'
 
 export default function HrAuditorUsersPage() {
+	const { t } = useAppTranslation()
+
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasAnyPermission } = useUserPermissions()
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
@@ -32,7 +35,7 @@ export default function HrAuditorUsersPage() {
 			enabled: isAllianceMember && !isGlobalHrSearchUser,
 		})
 
-	usePageTitle('User Search')
+	usePageTitle(t('hrpages.userSearch'))
 
 	if (!authLoading && !isAuthenticated) {
 		return <Navigate to="/login" replace />
@@ -52,10 +55,10 @@ export default function HrAuditorUsersPage() {
 		return (
 			<Container>
 				<AccessDeniedCard
-					title="Alliance Membership Required"
-					message="User Search is available only to members of an active alliance corporation."
+					title={t('hrpages.allianceMembershipRequired')}
+					message={t('hrpages.userSearchIsAvailableOnlyToMembersOfAnActive')}
 					backHref="/dashboard"
-					backLabel="Back to Dashboard"
+					backLabel={t('hrpages.backToDashboard')}
 				/>
 			</Container>
 		)
@@ -79,10 +82,10 @@ export default function HrAuditorUsersPage() {
 		return (
 			<Container>
 				<AccessDeniedCard
-					title="HR Access Required"
-					message="User Search requires HR access for at least one active member corporation."
+					title={t('hrpages.hrAccessRequired')}
+					message={t('hrpages.userSearchRequiresHrAccessForAtLeastOneActive')}
 					backHref="/dashboard"
-					backLabel="Back to Dashboard"
+					backLabel={t('hrpages.backToDashboard')}
 				/>
 			</Container>
 		)
@@ -92,6 +95,8 @@ export default function HrAuditorUsersPage() {
 }
 
 function HrAuditorUsersAdminPage() {
+	const { t } = useAppTranslation()
+
 	const [searchQuery, setSearchQuery] = useState('')
 	const [debouncedQuery, setDebouncedQuery] = useState('')
 	const [page, setPage] = useState(1)
@@ -119,7 +124,10 @@ function HrAuditorUsersAdminPage() {
 
 	return (
 		<Container className="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
-			<PageHeader title="User Search" description="Search all users for HR audit purposes" />
+			<PageHeader
+				title={t('hrpages.userSearch')}
+				description={t('hrpages.searchAllUsersForHrAuditPurposes')}
+			/>
 
 			<div className="flex flex-col space-y-4 lg:min-h-0 lg:flex-1">
 				{/* Search */}
@@ -128,7 +136,7 @@ function HrAuditorUsersAdminPage() {
 						<div className="relative">
 							<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 							<Input
-								placeholder="Search by character name, user ID, character ID, Discord..."
+								placeholder={t('hrpages.searchByCharacterNameUserIdCharacterIdDiscord')}
 								value={searchQuery}
 								onChange={(e) => setSearchQuery(e.target.value)}
 								className="pl-9"
@@ -144,10 +152,14 @@ function HrAuditorUsersAdminPage() {
 							<div>
 								<CardTitle className="flex items-center gap-2">
 									<Users className="h-5 w-5" />
-									Users
+									{t('hrpages.users')}
 								</CardTitle>
 								<CardDescription>
-									{isLoading ? 'Searching...' : debouncedQuery ? 'Search results' : 'All users'}
+									{isLoading
+										? t('hrpages.searching')
+										: debouncedQuery
+											? t('hrpages.searchResults')
+											: t('hrpages.allUsers')}
 								</CardDescription>
 							</div>
 							<UserSearchPaginationControls
@@ -169,7 +181,9 @@ function HrAuditorUsersAdminPage() {
 							</div>
 						) : users.length === 0 ? (
 							<p className="text-center text-muted-foreground py-8">
-								{debouncedQuery ? 'No users match your search' : 'Enter a search term above'}
+								{debouncedQuery
+									? t('hrpages.noUsersMatchYourSearch')
+									: t('hrpages.enterASearchTermAbove')}
 							</p>
 						) : (
 							<div className="lg:min-h-0 lg:flex-1 lg:overflow-auto">
@@ -201,11 +215,13 @@ function HrAuditorUsersAdminPage() {
 }
 
 function HrScopedUsersPage() {
+	const { t } = useAppTranslation()
+
 	return (
 		<Container className="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
 			<PageHeader
-				title="User Search"
-				description="Search surface-level users and linked characters within your HR access scope."
+				title={t('hrpages.userSearch')}
+				description={t('hrpages.searchSurfaceLevelUsersAndLinkedCharactersWithinYourHr')}
 			/>
 
 			<div className="flex min-h-0 flex-1 flex-col">

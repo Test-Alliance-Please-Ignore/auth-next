@@ -20,6 +20,7 @@ import { UserSearchPaginationControls } from '@/components/user-search-paginatio
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 
 import { SessionStatsGrid } from '../components/session-stats-grid'
 import { ShipDistributionChart } from '../components/ship-distribution-chart'
@@ -28,8 +29,10 @@ import { useUserStats } from '../hooks'
 import { formatDuration } from '../utils/format'
 
 export default function UserStats() {
+	const { t } = useAppTranslation()
+
 	const { userId } = useParams<{ userId: string }>()
-	usePageTitle('User Stats')
+	usePageTitle(t('fleetTracking.userStats'))
 	const { range } = useRangeFromSearchParams()
 	const { user } = useAuth()
 	const { isAdmin, hasPermission } = useUserPermissions()
@@ -53,18 +56,18 @@ export default function UserStats() {
 		return (
 			<Container>
 				<PageHeader
-					title="User Stats"
+					title={t('fleetTracking.userStats')}
 					action={
 						<Button asChild variant="ghost" size="sm">
 							<Link to="/fleet-tracking">
 								<ArrowLeft className="h-4 w-4" />
-								Fleet Tracking
+								{t('fleetTracking.fleetTracking')}
 							</Link>
 						</Button>
 					}
 				/>
 				<div className="py-12 text-center text-muted-foreground">
-					You do not have permission to view this user's fleet tracking stats.
+					{t('fleetTracking.youDoNotHavePermissionToViewThisUserS')}
 				</div>
 			</Container>
 		)
@@ -83,7 +86,7 @@ export default function UserStats() {
 					<Button asChild variant="ghost" size="sm">
 						<Link to="/fleet-tracking/stats">
 							<ArrowLeft className="h-4 w-4" />
-							Stats
+							{t('fleetTracking.stats')}
 						</Link>
 					</Button>
 				}
@@ -91,8 +94,7 @@ export default function UserStats() {
 			<div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
 				<div>
 					<p className="text-sm text-muted-foreground mt-1">
-						{data?.perCharacter.length ?? 0} character
-						{(data?.perCharacter.length ?? 0) === 1 ? '' : 's'}
+						{t('fleetTracking.character2Count', { count: data?.perCharacter.length ?? 0 })}
 					</p>
 				</div>
 				<StatsRangePicker />
@@ -101,23 +103,25 @@ export default function UserStats() {
 			{isLoading ? (
 				<LoadingPage />
 			) : !data ? (
-				<div className="py-12 text-center text-sm text-muted-foreground">No data.</div>
+				<div className="py-12 text-center text-sm text-muted-foreground">
+					{t('fleetTracking.noData2')}
+				</div>
 			) : (
 				<div className="space-y-6">
 					<SessionStatsGrid
 						stats={[
-							{ label: 'Fleets joined', value: data.totals.fleetsJoined },
+							{ label: t('fleetTracking.fleetsJoined'), value: data.totals.fleetsJoined },
 							{
-								label: 'Time in fleet',
+								label: t('fleetTracking.timeInFleet'),
 								value: formatDuration(data.totals.minutesInFleet * 60_000),
 							},
 							{
-								label: 'FC time',
+								label: t('fleetTracking.fcTime'),
 								value: formatDuration(data.totals.minutesAsFC * 60_000),
 								sublabel: `${data.totals.timesFC} periods`,
 							},
 							{
-								label: 'Avg fleet duration',
+								label: t('fleetTracking.avgFleetDuration'),
 								value:
 									data.totals.avgFleetDurationMinutes != null
 										? `${data.totals.avgFleetDurationMinutes}m`
@@ -131,10 +135,10 @@ export default function UserStats() {
 							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead>Character</TableHead>
-										<TableHead>Fleets</TableHead>
-										<TableHead>Time in fleet</TableHead>
-										<TableHead>FC'd</TableHead>
+										<TableHead>{t('fleetTracking.character')}</TableHead>
+										<TableHead>{t('fleetTracking.fleets2')}</TableHead>
+										<TableHead>{t('fleetTracking.timeInFleet')}</TableHead>
+										<TableHead>{t('fleetTracking.fcD')}</TableHead>
 										<TableHead className="w-12" />
 									</TableRow>
 								</TableHeader>
@@ -144,7 +148,9 @@ export default function UserStats() {
 											<TableCell>
 												{c.characterName}{' '}
 												{c.is_primary && (
-													<span className="text-xs text-muted-foreground">(main)</span>
+													<span className="text-xs text-muted-foreground">
+														{t('fleetTracking.main')}
+													</span>
 												)}
 											</TableCell>
 											<TableCell>{c.stats.totals.fleetsJoined}</TableCell>
@@ -167,7 +173,7 @@ export default function UserStats() {
 					</Card>
 
 					<ShipDistributionChart
-						title="Most-flown ships (all characters)"
+						title={t('fleetTracking.mostFlownShipsAllCharacters')}
 						items={data.shipsFlown.map((s) => ({
 							shipTypeId: s.shipTypeId,
 							shipTypeName: s.shipTypeName,
@@ -189,24 +195,24 @@ export default function UserStats() {
 											setPage(1)
 										}}
 										pageSizeOptions={[10, 25, 50, 100]}
-										itemLabel="fleet sessions"
+										itemLabel={t('fleetTracking.fleetSessions')}
 										nextButtonLoading={isFetching}
 									/>
 								</div>
 							)}
 							{data.recentSessions.length === 0 ? (
 								<div className="py-8 text-center text-sm text-muted-foreground">
-									No recent fleets in range.
+									{t('fleetTracking.noRecentFleetsInRange')}
 								</div>
 							) : (
 								<Table>
 									<TableHeader>
 										<TableRow>
-											<TableHead>Date</TableHead>
-											<TableHead>Character</TableHead>
-											<TableHead>Fleet name</TableHead>
-											<TableHead>Role</TableHead>
-											<TableHead>Duration</TableHead>
+											<TableHead>{t('fleetTracking.date')}</TableHead>
+											<TableHead>{t('fleetTracking.character')}</TableHead>
+											<TableHead>{t('fleetTracking.fleetName')}</TableHead>
+											<TableHead>{t('fleetTracking.role')}</TableHead>
+											<TableHead>{t('fleetTracking.duration')}</TableHead>
 										</TableRow>
 									</TableHeader>
 									<TableBody>
@@ -228,7 +234,7 @@ export default function UserStats() {
 														{s.sessionName}
 													</Link>
 												</TableCell>
-												<TableCell>{s.wasFC ? 'FC' : 'Member'}</TableCell>
+												<TableCell>{s.wasFC ? 'FC' : t('fleetTracking.member')}</TableCell>
 												<TableCell>{formatDuration(s.totalMinutes * 60_000)}</TableCell>
 											</TableRow>
 										))}

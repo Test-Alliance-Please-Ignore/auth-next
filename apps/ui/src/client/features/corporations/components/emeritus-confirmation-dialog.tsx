@@ -1,5 +1,6 @@
 import { Heart } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -7,9 +8,9 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { useAppTranslation } from '@/i18n'
 
 import type { CorporationMember } from '../api'
-import { Button } from '@/components/ui/button'
 
 interface EmeritusConfirmationDialogProps {
 	member: CorporationMember | null
@@ -28,6 +29,8 @@ export function EmeritusConfirmationDialog({
 	onSubmit,
 	isSubmitting,
 }: EmeritusConfirmationDialogProps) {
+	const { t } = useAppTranslation()
+
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault()
 
@@ -55,12 +58,14 @@ export function EmeritusConfirmationDialog({
 			<DialogContent className="max-w-lg">
 				<DialogHeader>
 					<DialogTitle>
-						{isMarkingEmeritus ? 'Mark as Emeritus' : 'Remove Emeritus Status'}
+						{isMarkingEmeritus
+							? t('characterpages.markAsEmeritus')
+							: t('characterpages.removeEmeritusStatus')}
 					</DialogTitle>
 					<DialogDescription>
 						{isMarkingEmeritus
-							? 'This will mark the character as emeritus and exclude them from corporation statistics.'
-							: 'This will restore the character to active status and include them in statistics.'}
+							? t('characterpages.thisWillMarkTheCharacterAsEmeritusAndExcludeThem')
+							: t('characterpages.thisWillRestoreTheCharacterToActiveStatusAndInclude')}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -73,12 +78,13 @@ export function EmeritusConfirmationDialog({
 						</div>
 						<div className="space-y-2">
 							<div className="flex items-center gap-2 text-sm">
-								<span className="text-muted-foreground">Role:</span>
+								<span className="text-muted-foreground">{t('characterpages.role2')}</span>
 								<span className="font-medium">{member.role}</span>
 							</div>
 							{member.mainCharacterName && (
 								<p className="text-sm text-muted-foreground">
-									Main Character: {member.mainCharacterName}
+									{t('characterpages.mainCharacter')}
+									{member.mainCharacterName}
 								</p>
 							)}
 						</div>
@@ -88,42 +94,54 @@ export function EmeritusConfirmationDialog({
 					{isMarkingEmeritus ? (
 						<div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 space-y-2">
 							<p className="text-sm text-amber-900 dark:text-amber-200">
-								<strong>Emeritus Status:</strong>
+								<strong>{t('characterpages.emeritusStatus')}</strong>
 							</p>
 							<ul className="text-sm text-amber-900 dark:text-amber-200 list-disc list-inside space-y-1">
-								<li>Character will be excluded from all corporation statistics</li>
-								<li>They will not count toward linked/unlinked member totals</li>
-								<li>This status is designed for characters whose owners have passed away</li>
+								<li>{t('characterpages.characterWillBeExcludedFromAllCorporationStatistics')}</li>
+								<li>{t('characterpages.theyWillNotCountTowardLinkedUnlinkedMemberTotals')}</li>
 								<li>
-									<strong>Important:</strong> If the character logs in (in-game or to the app), they
-									should be immediately blocklisted
+									{t('characterpages.thisStatusIsDesignedForCharactersWhoseOwnersHavePassed')}
+								</li>
+								<li>
+									<strong>{t('characterpages.important')}</strong>
+									{t('characterpages.ifTheCharacterLogsInInGameOrToThe')}
 								</li>
 							</ul>
 						</div>
 					) : (
 						<div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
 							<p className="text-sm">
-								<strong>Note:</strong> Removing emeritus status will include this character in all
-								corporation statistics again.
+								<strong>{t('characterpages.note')}</strong>
+								{t('characterpages.removingEmeritusStatusWillIncludeThisCharacterInAllCorporation')}
 							</p>
 						</div>
 					)}
 
 					{/* Action Buttons */}
 					<div className="flex justify-end gap-2 pt-4">
-						<Button variant="cancel" type="button" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
-							Cancel
+						<Button
+							variant="cancel"
+							type="button"
+							onClick={() => onOpenChange(false)}
+							disabled={isSubmitting}
+						>
+							{t('characterpages.cancel')}
 						</Button>
-						<Button variant="destructive"
+						<Button
+							variant="destructive"
 							type="submit"
 							loading={isSubmitting}
 							loadingText={
-								isMarkingEmeritus ? 'Marking as Emeritus...' : 'Removing Emeritus Status...'
+								isMarkingEmeritus
+									? t('characterpages.markingAsEmeritus')
+									: t('characterpages.removingEmeritusStatus')
 							}
 							showIcon={false}
 						>
 							<Heart className="h-4 w-4" />
-							{isMarkingEmeritus ? 'Mark as Emeritus' : 'Remove Emeritus Status'}
+							{isMarkingEmeritus
+								? t('characterpages.markAsEmeritus')
+								: t('characterpages.removeEmeritusStatus')}
 						</Button>
 					</div>
 				</form>

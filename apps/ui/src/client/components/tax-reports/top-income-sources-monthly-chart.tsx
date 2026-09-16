@@ -1,6 +1,7 @@
 import { Loader2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 import { formatTaxIskCompact, formatTaxRefTypeLabel, getTaxRefTypeColor } from '@/lib/tax-display'
 import { parseTaxAmount } from '@/lib/tax-report-utils'
 
@@ -86,6 +87,8 @@ export function TopIncomeSourcesMonthlyChart({
 	walletSource: 'corporation' | 'character'
 	loading?: boolean
 }) {
+	const { t } = useAppTranslation()
+
 	const [hoveredSegment, setHoveredSegment] = useState<{
 		key: string
 		x: number
@@ -129,12 +132,12 @@ export function TopIncomeSourcesMonthlyChart({
 			return Math.max(max, total)
 		}, 0)
 		return { refTypes, months, maxMonthTotal }
-	}, [rows])
+	}, [rows, t])
 
 	if (chartData.months.length === 0 || chartData.refTypes.length === 0) {
 		return (
 			<div className="relative rounded border bg-muted/20 p-3" aria-busy={loading}>
-				<div className="py-8 text-sm text-muted-foreground">No income sources found.</div>
+				<div className="py-8 text-sm text-muted-foreground">{t('tax.noIncomeSourcesFound')}</div>
 				{loading ? <ChartLoadingOverlay /> : null}
 			</div>
 		)
@@ -148,7 +151,7 @@ export function TopIncomeSourcesMonthlyChart({
 	const baselineY = MONTHLY_INCOME_CHART_HEIGHT - 28
 	const drawableHeight = MONTHLY_INCOME_CHART_HEIGHT - 56
 	const maxTotal = Math.max(chartData.maxMonthTotal, 1)
-	const formatter = new Intl.DateTimeFormat('en-US', {
+	const formatter = new Intl.DateTimeFormat(getActiveLocale(), {
 		month: 'short',
 		year: 'numeric',
 		timeZone: 'UTC',
@@ -165,7 +168,12 @@ export function TopIncomeSourcesMonthlyChart({
 						viewBox={`0 0 ${chartWidth} ${MONTHLY_INCOME_CHART_HEIGHT}`}
 						className="h-72 min-w-[680px] w-full"
 						role="img"
-						aria-label={`${incomeMode === 'assessed' ? 'Monthly assessed tax' : 'Monthly total income'} from ${walletSource === 'character' ? 'player' : 'corporation'} wallets, stacked by income type`}
+						aria-label={t('tax.monthlyChartDescription', {
+							income:
+								incomeMode === 'assessed' ? t('tax.monthlyAssessedTax') : t('tax.monthlyIncome'),
+							wallets:
+								walletSource === 'character' ? t('tax.playerWallets') : t('tax.corporationWallets'),
+						})}
 					>
 						<line
 							x1={36}
@@ -310,7 +318,7 @@ export function TopIncomeSourcesMonthlyChart({
 													label:
 														tinySegments.length === 1
 															? formatTaxRefTypeLabel(tinySegments[0]!.refType)
-															: `Small sources (${tinySegments.length})`,
+															: t('tax.smallSources', { value1: tinySegments.length }),
 													value: tinyTotalValue,
 													share: monthTotal > 0 ? (tinyTotalValue / monthTotal) * 100 : 0,
 													details: tinySegments.map((tiny) => ({
@@ -333,10 +341,11 @@ export function TopIncomeSourcesMonthlyChart({
 													current?.key === `${month.monthStart.toISOString()}-tiny` ? null : current
 												)
 											}
-											aria-label={`Small sources ${(monthTotal > 0
-												? (tinyTotalValue / monthTotal) * 100
-												: 0
-											).toFixed(1)}%`}
+											aria-label={t('tax.smallSourcesValue1', {
+												value1: (monthTotal > 0 ? (tinyTotalValue / monthTotal) * 100 : 0).toFixed(
+													1
+												),
+											})}
 											role="img"
 										/>
 									) : null}
@@ -422,9 +431,11 @@ export function TopIncomeSourcesMonthlyChart({
 }
 
 function ChartLoadingOverlay() {
+	const { t } = useAppTranslation()
+
 	return (
 		<div className="absolute inset-0 z-10 flex items-center justify-center rounded bg-background/60 backdrop-blur-[1px]">
-			<Loader2 aria-label="Loading" className="h-6 w-6 animate-spin text-primary" />
+			<Loader2 aria-label={t('tax.loading2')} className="h-6 w-6 animate-spin text-primary" />
 		</div>
 	)
 }

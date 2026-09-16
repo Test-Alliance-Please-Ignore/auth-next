@@ -1,6 +1,7 @@
 import { Shield } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -10,13 +11,13 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 
 import { HR_ROLE_DESCRIPTIONS, HR_ROLE_NAMES } from '../api'
 import { HrRoleBadge } from './hr-role-badge'
 
 import type { CorporationMember } from '../../corporations/api'
 import type { GrantHrRoleRequest, HrRoleType } from '../api'
-import { Button } from '@/components/ui/button'
 
 interface GrantHrRoleDialogProps {
 	member: CorporationMember | null
@@ -39,6 +40,8 @@ export function GrantHrRoleDialog({
 	isSubmitting,
 	allowedRoles = HR_ROLES,
 }: GrantHrRoleDialogProps) {
+	const { t } = useAppTranslation()
+
 	const [selectedRole, setSelectedRole] = useState<HrRoleType>(
 		allowedRoles.includes('hr_reviewer') ? 'hr_reviewer' : allowedRoles[0]
 	)
@@ -86,10 +89,11 @@ export function GrantHrRoleDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-xl">
 				<DialogHeader>
-					<DialogTitle>Grant HR Role</DialogTitle>
+					<DialogTitle>{t('hrpages.grantHrRole')}</DialogTitle>
 					<DialogDescription>
-						Assign an HR role to {member.characterName} to give them access to the HR management
-						system
+						{t('hrpages.assignAnHrRoleTo')}
+						{member.characterName}
+						{t('hrpages.toGiveThemAccessToTheHrManagementSystem')}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -101,26 +105,33 @@ export function GrantHrRoleDialog({
 							<h3 className="font-semibold">{member.characterName}</h3>
 						</div>
 						<div className="text-sm text-muted-foreground space-y-1">
-							<p>Corporation Role: {member.role}</p>
-							{member.mainCharacterName && <p>Main Character: {member.mainCharacterName}</p>}
+							<p>
+								{t('hrpages.corporationRole')}
+								{member.role}
+							</p>
+							{member.mainCharacterName && (
+								<p>
+									{t('hrpages.mainCharacter2')}
+									{member.mainCharacterName}
+								</p>
+							)}
 						</div>
 					</div>
 
 					{/* Role Selection */}
 					<div className="space-y-2">
 						<Label htmlFor="hr-role">
-							HR Role <span className="text-destructive">*</span>
+							{t('hrpages.hrRole2')}
+							<span className="text-destructive">*</span>
 						</Label>
 						<Select
 							value={selectedRole}
 							onValueChange={(value) => setSelectedRole(value as HrRoleType)}
 							inputId="hr-role"
-							options={allowedRoles.map((role) => ({ value: role,
-								label: HR_ROLE_NAMES[role],
-							}))}
+							options={allowedRoles.map((role) => ({ value: role, label: HR_ROLE_NAMES[role] }))}
 						/>
 						<p className="text-xs text-muted-foreground">
-							Select the HR role to grant to this member
+							{t('hrpages.selectTheHrRoleToGrantToThisMember')}
 						</p>
 					</div>
 
@@ -128,7 +139,7 @@ export function GrantHrRoleDialog({
 					<div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 space-y-2">
 						<div className="flex items-center gap-2">
 							<HrRoleBadge role={selectedRole} showTooltip={false} />
-							<span className="text-sm font-medium">Role Capabilities</span>
+							<span className="text-sm font-medium">{t('hrpages.roleCapabilities')}</span>
 						</div>
 						<p className="text-sm text-muted-foreground">{HR_ROLE_DESCRIPTIONS[selectedRole]}</p>
 					</div>
@@ -137,8 +148,8 @@ export function GrantHrRoleDialog({
 					{selectedRole === 'hr_admin' && (
 						<div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
 							<p className="text-sm text-orange-600 dark:text-orange-400">
-								<strong>Warning:</strong> HR Admins have full access to the HR system, including the
-								ability to view sensitive notes and manage all applications.
+								<strong>{t('hrpages.warning2')}</strong>
+								{t('hrpages.hrAdminsHaveFullAccessToTheHrSystemIncluding')}
 							</p>
 						</div>
 					)}
@@ -146,16 +157,17 @@ export function GrantHrRoleDialog({
 					{/* Action Buttons */}
 					<div className="flex justify-end gap-2 pt-4">
 						<Button variant="cancel" type="button" onClick={handleCancel} disabled={isSubmitting}>
-							Cancel
+							{t('hrpages.cancel')}
 						</Button>
-						<Button variant="confirm"
+						<Button
+							variant="confirm"
 							type="submit"
 							loading={isSubmitting}
-							loadingText="Granting Role..."
+							loadingText={t('hrpages.grantingRole')}
 							showIcon={false}
 						>
 							<Shield className="h-4 w-4" />
-							Grant Role
+							{t('hrpages.grantRole')}
 						</Button>
 					</div>
 				</form>

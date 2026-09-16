@@ -7,15 +7,17 @@
  */
 
 import { useCallback, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
 
 import { Badge } from '@/components/ui/badge'
+import { getActiveLocale, i18n, useAppTranslation } from '@/i18n'
 import { formatMonthDay, formatTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
 import { fulcrumApi } from '../../api'
 import { BlacklistHighlight } from './blacklist-highlighting'
 import { EntityNameLink } from './entity-name-link'
+
+import type { ReactNode } from 'react'
 import type { BlacklistHighlights } from './blacklist-highlighting'
 
 // ---------------------------------------------------------------------------
@@ -81,13 +83,7 @@ const EVE_LABEL_ALLIANCE = '8'
 // Folder definitions
 // ---------------------------------------------------------------------------
 
-type FolderType =
-	| 'all'
-	| 'inbox'
-	| 'sent'
-	| 'corp'
-	| 'alliance'
-	| `mailing_list:${string}`
+type FolderType = 'all' | 'inbox' | 'sent' | 'corp' | 'alliance' | `mailing_list:${string}`
 
 interface FolderDef {
 	id: FolderType
@@ -95,11 +91,36 @@ interface FolderDef {
 }
 
 const STATIC_FOLDERS: FolderDef[] = [
-	{ id: 'all', label: 'All Mails' },
-	{ id: 'inbox', label: 'Inbox' },
-	{ id: 'sent', label: 'Sent' },
-	{ id: 'corp', label: 'Corporation' },
-	{ id: 'alliance', label: 'Alliance' },
+	{
+		id: 'all',
+		get label() {
+			return i18n.t('hrpages.allMails')
+		},
+	},
+	{
+		id: 'inbox',
+		get label() {
+			return i18n.t('hrpages.inbox')
+		},
+	},
+	{
+		id: 'sent',
+		get label() {
+			return i18n.t('hrpages.sent')
+		},
+	},
+	{
+		id: 'corp',
+		get label() {
+			return i18n.t('hrpages.corporation')
+		},
+	},
+	{
+		id: 'alliance',
+		get label() {
+			return i18n.t('hrpages.alliance')
+		},
+	},
 ]
 
 const PAGE_SIZE = 50
@@ -134,9 +155,7 @@ function filterMails(mails: ProcessedMail[], folder: FolderType): ProcessedMail[
 			if (folder.startsWith('mailing_list:')) {
 				const mlId = folder.slice('mailing_list:'.length)
 				return mails.filter((m) =>
-					m.recipients?.some(
-						(r) => r.recipient_type === 'mailing_list' && r.recipient_id === mlId,
-					),
+					m.recipients?.some((r) => r.recipient_type === 'mailing_list' && r.recipient_id === mlId)
 				)
 			}
 			return mails
@@ -173,12 +192,14 @@ function formatShortDate(timestamp?: string): string {
 function renderRecipientLinks(
 	recipients: MailRecipient[] | undefined,
 	highlightedCharacterName: string | undefined,
-	blacklistHighlights?: BlacklistHighlights,
+	blacklistHighlights?: BlacklistHighlights
 ) {
 	if (!recipients || recipients.length === 0) return null
 	return recipients.map((recipient, index) => {
 		const recipientLabel =
-			recipient.recipientDisplayName || recipient.recipientName || `ID: ${recipient.recipient_id}`
+			recipient.recipientDisplayName ||
+			recipient.recipientName ||
+			i18n.t('hrpages.idValue1', { value1: recipient.recipient_id })
 		return (
 			<span key={`${recipient.recipient_id}:${index}`} className="inline-flex items-center">
 				{index > 0 ? <span className="mx-1">, </span> : null}
@@ -210,13 +231,16 @@ function highlightText(value: string | undefined, needle: string | undefined): R
 	const pattern = new RegExp(`(${escapeRegExp(needle.trim())})`, 'ig')
 	const parts = value.split(pattern)
 	return parts.map((part, index) =>
-		part.toLowerCase() === needle.trim().toLowerCase()
-			? (
-				<mark key={`${part}-${index}`} className="rounded bg-amber-400/20 px-0.5 font-semibold text-foreground">
-					{part}
-				</mark>
-			)
-			: part
+		part.toLowerCase() === needle.trim().toLowerCase() ? (
+			<mark
+				key={`${part}-${index}`}
+				className="rounded bg-amber-400/20 px-0.5 font-semibold text-foreground"
+			>
+				{part}
+			</mark>
+		) : (
+			part
+		)
 	)
 }
 
@@ -224,11 +248,16 @@ function hasCharacterMention(mail: ProcessedMail, highlightedCharacterName?: str
 	if (!highlightedCharacterName?.trim()) return false
 	const needle = highlightedCharacterName.toLowerCase()
 	return (
-		(mail.fromName ?? '').toLowerCase().includes(needle)
-		|| (mail.fromDisplayName ?? '').toLowerCase().includes(needle)
-		|| (mail.subject ?? '').toLowerCase().includes(needle)
-		|| (mail.bodyPlainText ?? '').toLowerCase().includes(needle)
-		|| (mail.recipients?.some((recipient) => (recipient.recipientDisplayName ?? recipient.recipientName ?? '').toLowerCase().includes(needle)) ?? false)
+		(mail.fromName ?? '').toLowerCase().includes(needle) ||
+		(mail.fromDisplayName ?? '').toLowerCase().includes(needle) ||
+		(mail.subject ?? '').toLowerCase().includes(needle) ||
+		(mail.bodyPlainText ?? '').toLowerCase().includes(needle) ||
+		(mail.recipients?.some((recipient) =>
+			(recipient.recipientDisplayName ?? recipient.recipientName ?? '')
+				.toLowerCase()
+				.includes(needle)
+		) ??
+			false)
 	)
 }
 
@@ -243,7 +272,9 @@ export function MailsSection({
 	highlightedCharacterName?: string
 	blacklistHighlights?: BlacklistHighlights
 }) {
-	const { mails, mailingLists } = useMemo(() => normaliseData(raw), [raw])
+	const { t } = useAppTranslation()
+
+	const { mails, mailingLists } = useMemo(() => normaliseData(raw), [raw, t])
 
 	const [activeFolder, setActiveFolder] = useState<FolderType>('all')
 	const [selectedMailId, setSelectedMailId] = useState<string | null>(null)
@@ -255,26 +286,26 @@ export function MailsSection({
 	const [loadedBodies, setLoadedBodies] = useState<Record<string, string>>({})
 	const [loadingMailId, setLoadingMailId] = useState<string | null>(null)
 
-	const handleLoadContent = useCallback(async (mailId: string) => {
-		setLoadingMailId(mailId)
-		try {
-			const { body } = await fulcrumApi.fetchMailContent(reportId, mailId)
-			setLoadedBodies((prev) => ({ ...prev, [mailId]: body }))
-		} catch {
-			// Leave the button visible so the user can retry
-		} finally {
-			setLoadingMailId(null)
-		}
-	}, [reportId])
-
-	const folderFiltered = useMemo(
-		() => filterMails(mails, activeFolder),
-		[mails, activeFolder],
+	const handleLoadContent = useCallback(
+		async (mailId: string) => {
+			setLoadingMailId(mailId)
+			try {
+				const { body } = await fulcrumApi.fetchMailContent(reportId, mailId)
+				setLoadedBodies((prev) => ({ ...prev, [mailId]: body }))
+			} catch {
+				// Leave the button visible so the user can retry
+			} finally {
+				setLoadingMailId(null)
+			}
+		},
+		[reportId, t]
 	)
+
+	const folderFiltered = useMemo(() => filterMails(mails, activeFolder), [mails, activeFolder, t])
 
 	const filtered = useMemo(
 		() => searchMails(folderFiltered, searchQuery),
-		[folderFiltered, searchQuery],
+		[folderFiltered, searchQuery, t]
 	)
 
 	const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -282,7 +313,7 @@ export function MailsSection({
 
 	const selectedMail = useMemo(
 		() => (selectedMailId ? mails.find((m) => m.mail_id === selectedMailId) : null),
-		[mails, selectedMailId],
+		[mails, selectedMailId, t]
 	)
 
 	// Reset page when folder changes
@@ -293,7 +324,7 @@ export function MailsSection({
 	}
 
 	if (mails.length === 0) {
-		return <p className="text-sm text-muted-foreground">No mails found.</p>
+		return <p className="text-sm text-muted-foreground">{t('hrpages.noMailsFound')}</p>
 	}
 
 	// ------ Mailing list folders ------
@@ -308,7 +339,7 @@ export function MailsSection({
 			<div className="flex w-48 shrink-0 flex-col border-r border-border bg-card/60">
 				<div className="border-b border-border px-3 py-2">
 					<span className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-						Folders
+						{t('hrpages.folders')}
 					</span>
 				</div>
 				<nav className="flex-1 overflow-y-auto py-1">
@@ -320,7 +351,7 @@ export function MailsSection({
 								'flex w-full items-center px-3 py-1.5 text-left text-sm transition-colors',
 								activeFolder === f.id
 									? 'bg-primary/15 text-primary font-medium'
-									: 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+									: 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
 							)}
 						>
 							<span className="truncate">{f.label}</span>
@@ -336,7 +367,7 @@ export function MailsSection({
 							>
 								<span className="text-[10px]">{mlExpanded ? '▾' : '▸'}</span>
 								<span className="font-semibold uppercase tracking-wider text-muted-foreground">
-									Mailing Lists
+									{t('hrpages.mailingLists')}
 								</span>
 							</button>
 							{mlExpanded &&
@@ -348,7 +379,7 @@ export function MailsSection({
 											'flex w-full items-center py-1.5 pl-5 pr-3 text-left text-sm transition-colors',
 											activeFolder === f.id
 												? 'bg-primary/15 text-primary font-medium'
-												: 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+												: 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
 										)}
 									>
 										<span className="truncate">{f.label}</span>
@@ -359,7 +390,8 @@ export function MailsSection({
 				</nav>
 				<div className="border-t border-border px-3 py-2">
 					<span className="text-sm text-muted-foreground">
-						{mails.length} total
+						{mails.length}
+						{t('hrpages.total2')}
 					</span>
 				</div>
 			</div>
@@ -377,11 +409,11 @@ export function MailsSection({
 								setSearchQuery(e.target.value)
 								setPage(0)
 							}}
-							placeholder="Search mails..."
+							placeholder={t('hrpages.searchMails')}
 							className="h-8 flex-1 rounded border border-border bg-background/50 px-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
 						/>
 						<span className="shrink-0 text-sm text-muted-foreground">
-							{filtered.length} mail{filtered.length !== 1 ? 's' : ''}
+							{t('hrpages.mailCount', { count: filtered.length })}
 						</span>
 						{totalPages > 1 && (
 							<div className="flex shrink-0 items-center gap-1.5 text-sm">
@@ -390,7 +422,7 @@ export function MailsSection({
 									disabled={page === 0}
 									className="rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
 								>
-									‹ Prev
+									{t('hrpages.prev')}
 								</button>
 								<span className="text-muted-foreground">
 									{page + 1}/{totalPages}
@@ -400,7 +432,7 @@ export function MailsSection({
 									disabled={page >= totalPages - 1}
 									className="rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
 								>
-									Next ›
+									{t('hrpages.next')}
 								</button>
 							</div>
 						)}
@@ -410,7 +442,9 @@ export function MailsSection({
 					<div className="flex-1 overflow-y-auto">
 						{pageMails.length === 0 ? (
 							<p className="px-3 py-4 text-sm text-muted-foreground">
-								{searchQuery ? 'No mails match your search.' : 'No mails in this folder.'}
+								{searchQuery
+									? t('hrpages.noMailsMatchYourSearch')
+									: t('hrpages.noMailsInThisFolder')}
 							</p>
 						) : (
 							pageMails.map((mail) => {
@@ -421,9 +455,7 @@ export function MailsSection({
 										onClick={() => setSelectedMailId(mail.mail_id ?? null)}
 										className={cn(
 											'flex w-full items-start gap-3 border-b border-border/40 px-3 py-2 text-left transition-colors',
-											isSelected
-												? 'bg-primary/10'
-												: 'hover:bg-muted/30',
+											isSelected ? 'bg-primary/10' : 'hover:bg-muted/30'
 										)}
 									>
 										<div className="min-w-0 flex-1">
@@ -431,18 +463,25 @@ export function MailsSection({
 												<span
 													className={cn(
 														'truncate text-sm',
-														isSelected ? 'font-semibold text-primary' : 'font-medium text-foreground',
+														isSelected
+															? 'font-semibold text-primary'
+															: 'font-medium text-foreground'
 													)}
 												>
-													{mail.subject || '(No Subject)'}
+													{mail.subject || t('hrpages.noSubject')}
 												</span>
 												<span className="shrink-0 text-xs text-muted-foreground">
 													{formatShortDate(mail.timestamp)}
 												</span>
 											</div>
 											<div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-												<span className={cn(hasCharacterMention(mail, highlightedCharacterName) && 'font-semibold text-foreground')}>
-													From:{' '}
+												<span
+													className={cn(
+														hasCharacterMention(mail, highlightedCharacterName) &&
+															'font-semibold text-foreground'
+													)}
+												>
+													{t('hrpages.from2')}{' '}
 													<BlacklistHighlight
 														value={mail.from ?? mail.fromDisplayName ?? mail.fromName}
 														blacklist={blacklistHighlights}
@@ -452,7 +491,10 @@ export function MailsSection({
 															entityType="character"
 															href={mail.fromDisplayHref}
 														>
-															{highlightText(mail.fromDisplayName || mail.fromName || 'Unknown', highlightedCharacterName)}
+															{highlightText(
+																mail.fromDisplayName || mail.fromName || t('hrpages.unknown'),
+																highlightedCharacterName
+															)}
 														</EntityNameLink>
 													</BlacklistHighlight>
 												</span>
@@ -460,13 +502,15 @@ export function MailsSection({
 													<span
 														className={cn(
 															'truncate',
-															hasCharacterMention(mail, highlightedCharacterName) && 'font-semibold text-foreground',
+															hasCharacterMention(mail, highlightedCharacterName) &&
+																'font-semibold text-foreground'
 														)}
 													>
-														→ {renderRecipientLinks(
+														→{' '}
+														{renderRecipientLinks(
 															mail.recipients,
 															highlightedCharacterName,
-															blacklistHighlights,
+															blacklistHighlights
 														)}
 													</span>
 												)}
@@ -484,14 +528,21 @@ export function MailsSection({
 					{selectedMail ? (
 						<>
 							<div className="border-b border-border bg-card/80 px-4 py-2">
-												<h3 className="text-base font-semibold text-foreground">
-									{selectedMail.subject || '(No Subject)'}
+								<h3 className="text-base font-semibold text-foreground">
+									{selectedMail.subject || t('hrpages.noSubject')}
 								</h3>
 								<div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-									<span className={cn(hasCharacterMention(selectedMail, highlightedCharacterName) && 'font-semibold text-foreground')}>
-										From:{' '}
-											<BlacklistHighlight
-											value={selectedMail.from ?? selectedMail.fromDisplayName ?? selectedMail.fromName}
+									<span
+										className={cn(
+											hasCharacterMention(selectedMail, highlightedCharacterName) &&
+												'font-semibold text-foreground'
+										)}
+									>
+										{t('hrpages.from2')}{' '}
+										<BlacklistHighlight
+											value={
+												selectedMail.from ?? selectedMail.fromDisplayName ?? selectedMail.fromName
+											}
 											blacklist={blacklistHighlights}
 										>
 											<strong>
@@ -500,20 +551,18 @@ export function MailsSection({
 													entityType="character"
 													href={selectedMail.fromDisplayHref}
 												>
-													{selectedMail.fromDisplayName || selectedMail.fromName || 'Unknown'}
+													{selectedMail.fromDisplayName ||
+														selectedMail.fromName ||
+														t('hrpages.unknown')}
 												</EntityNameLink>
 											</strong>
 										</BlacklistHighlight>
 									</span>
 									{selectedMail.recipients && selectedMail.recipients.length > 0 && (
 										<span className="flex flex-wrap items-center gap-1">
-											To:{' '}
+											{t('hrpages.to2')}{' '}
 											{selectedMail.recipients.map((r, i) => (
-												<Badge
-													key={i}
-													variant="secondary"
-													className="text-xs py-0"
-												>
+												<Badge key={i} variant="secondary" className="text-xs py-0">
 													<BlacklistHighlight
 														value={r.recipient_id ?? r.recipientDisplayName ?? r.recipientName}
 														blacklist={blacklistHighlights}
@@ -524,8 +573,10 @@ export function MailsSection({
 															href={r.recipientDisplayHref}
 														>
 															{highlightText(
-																r.recipientDisplayName || r.recipientName || `ID: ${r.recipient_id}`,
-																highlightedCharacterName,
+																r.recipientDisplayName ||
+																	r.recipientName ||
+																	t('hrpages.idValue1', { value1: r.recipient_id }),
+																highlightedCharacterName
 															)}
 														</EntityNameLink>
 													</BlacklistHighlight>
@@ -536,14 +587,16 @@ export function MailsSection({
 									<span className="ml-auto">
 										{selectedMail.timestampFormatted ||
 											(selectedMail.timestamp
-												? new Date(selectedMail.timestamp).toLocaleString()
+												? new Date(selectedMail.timestamp).toLocaleString(getActiveLocale())
 												: '')}
 									</span>
 								</div>
 							</div>
 							<div className="flex-1 overflow-y-auto px-4 py-3">
 								{(() => {
-									const bodyText = selectedMail.bodyPlainText || (selectedMail.mail_id ? loadedBodies[selectedMail.mail_id] : undefined)
+									const bodyText =
+										selectedMail.bodyPlainText ||
+										(selectedMail.mail_id ? loadedBodies[selectedMail.mail_id] : undefined)
 									if (bodyText) {
 										return (
 											<p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
@@ -554,14 +607,14 @@ export function MailsSection({
 									if (!selectedMail.mail_id) {
 										return (
 											<p className="text-sm text-muted-foreground italic">
-												No content available.
+												{t('hrpages.noContentAvailable')}
 											</p>
 										)
 									}
 									return (
 										<div className="flex flex-col items-center justify-center gap-2 py-4">
 											<p className="text-sm text-muted-foreground italic">
-												Content was not fetched during report generation.
+												{t('hrpages.contentWasNotFetchedDuringReportGeneration')}
 											</p>
 											<button
 												onClick={() => handleLoadContent(selectedMail.mail_id!)}
@@ -569,8 +622,8 @@ export function MailsSection({
 												className="rounded border border-primary/40 bg-primary/10 px-3 py-1 text-sm font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
 											>
 												{loadingMailId === selectedMail.mail_id
-													? 'Loading...'
-													: 'Load content'}
+													? t('hrpages.loading')
+													: t('hrpages.loadContent')}
 											</button>
 										</div>
 									)
@@ -580,7 +633,7 @@ export function MailsSection({
 					) : (
 						<div className="flex flex-1 items-center justify-center">
 							<p className="text-sm text-muted-foreground">
-								Select a mail to view its content.
+								{t('hrpages.selectAMailToViewItsContent')}
 							</p>
 						</div>
 					)}

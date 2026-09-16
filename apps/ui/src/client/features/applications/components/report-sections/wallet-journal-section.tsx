@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { HoverPopover } from '@/components/ui/hover-popover'
 import { Select } from '@/components/ui/select'
+import { i18n, useAppTranslation } from '@/i18n'
 
 import { EntityNameLink } from './entity-name-link'
 import { FulcrumDataTable } from './fulcrum-data-table'
@@ -45,10 +46,10 @@ function isHighlightedJournalType(entry: ProcessedWalletJournalEntry): boolean {
 	const typeLabel = normalize(entry.refTypeLabel)
 	const description = normalize(entry.description)
 	return (
-		typeLabel.includes('player trading') ||
-		typeLabel.includes('gm cash transfer') ||
-		description.includes('player trading') ||
-		description.includes('gm cash transfer')
+		typeLabel.includes(i18n.t('hrpages.playerTrading')) ||
+		typeLabel.includes(i18n.t('hrpages.gmCashTransfer')) ||
+		description.includes(i18n.t('hrpages.playerTrading')) ||
+		description.includes(i18n.t('hrpages.gmCashTransfer'))
 	)
 }
 
@@ -63,14 +64,14 @@ function buildWalletJournalColumns(): Array<FulcrumDataTableColumn<ProcessedWall
 		},
 		{
 			id: 'refTypeLabel',
-			header: 'Type',
+			header: i18n.t('hrpages.type'),
 			getValue: (row) => row.refTypeLabel,
 			filter: { kind: 'multi-select' },
 			cell: (row) => row.refTypeLabel || '-',
 		},
 		{
 			id: 'firstPartyDisplayName',
-			header: 'From',
+			header: i18n.t('hrpages.from'),
 			getValue: (row) => row.firstPartyDisplayName ?? row.firstPartyName,
 			filter: { kind: 'autocomplete' },
 			cell: (row) => (
@@ -85,7 +86,7 @@ function buildWalletJournalColumns(): Array<FulcrumDataTableColumn<ProcessedWall
 		},
 		{
 			id: 'secondPartyDisplayName',
-			header: 'To',
+			header: i18n.t('hrpages.to'),
 			getValue: (row) => row.secondPartyDisplayName ?? row.secondPartyName,
 			filter: { kind: 'autocomplete' },
 			cell: (row) => (
@@ -100,7 +101,7 @@ function buildWalletJournalColumns(): Array<FulcrumDataTableColumn<ProcessedWall
 		},
 		{
 			id: 'description',
-			header: 'Description',
+			header: i18n.t('hrpages.description'),
 			getValue: (row) => row.description,
 			cell: (row) =>
 				row.description ? (
@@ -120,7 +121,7 @@ function buildWalletJournalColumns(): Array<FulcrumDataTableColumn<ProcessedWall
 		},
 		{
 			id: 'amount',
-			header: 'Amount',
+			header: i18n.t('hrpages.amount'),
 			getValue: (row) => row.amount,
 			globalFilter: false,
 			filter: { kind: 'range' },
@@ -138,7 +139,7 @@ function buildWalletJournalColumns(): Array<FulcrumDataTableColumn<ProcessedWall
 		},
 		{
 			id: 'balanceFormatted',
-			header: 'Balance',
+			header: i18n.t('hrpages.balance'),
 			getValue: (row) => row.balanceFormatted,
 			globalFilter: false,
 			headerClassName: 'text-right',
@@ -155,12 +156,14 @@ export function WalletJournalSection({
 	data: ProcessedWalletJournalEntry[] | undefined
 	loadingProgress?: ReportChunkProgress
 }) {
+	const { t } = useAppTranslation()
+
 	const rows = data ?? []
 	const isLoadingChunks = Boolean(
 		!data && loadingProgress && loadingProgress.loadedChunks < loadingProgress.totalChunks
 	)
 	const [refTypeFilter, setRefTypeFilter] = useState<string>('all')
-	const columns = useMemo(() => buildWalletJournalColumns(), [])
+	const columns = useMemo(() => buildWalletJournalColumns(), [t])
 	const availableRefTypes = useMemo(
 		() =>
 			Array.from(
@@ -168,29 +171,31 @@ export function WalletJournalSection({
 					rows.map((entry) => entry.refTypeLabel).filter((type): type is string => Boolean(type))
 				)
 			).sort(),
-		[rows]
+		[rows, t]
 	)
 	const refTypeOptions = useMemo(
 		() => [
-			{ value: 'all', label: 'All Types' },
+			{ value: 'all', label: t('hrpages.allTypes') },
 			...availableRefTypes.map((type) => ({ value: type, label: type })),
 		],
-		[availableRefTypes]
+		[availableRefTypes, t]
 	)
 	const filteredData = useMemo(
 		() =>
 			refTypeFilter === 'all'
 				? rows
-				: rows.filter((entry) => (entry.refTypeLabel ?? 'Unknown') === refTypeFilter),
-		[rows, refTypeFilter]
+				: rows.filter((entry) => (entry.refTypeLabel ?? t('hrpages.unknown')) === refTypeFilter),
+		[rows, refTypeFilter, t]
 	)
 
 	const table = (
 		<FulcrumDataTable
 			columns={columns}
 			rows={filteredData}
-			emptyMessage={isLoadingChunks ? 'Loading journal entries...' : 'No journal entries found.'}
-			searchPlaceholder="Search journal..."
+			emptyMessage={
+				isLoadingChunks ? t('hrpages.loadingJournalEntries') : t('hrpages.noJournalEntriesFound')
+			}
+			searchPlaceholder={t('hrpages.searchJournal')}
 			pageSize={100}
 			compactRows
 			getRowKey={(entry) => entry.id}
@@ -200,15 +205,15 @@ export function WalletJournalSection({
 					{isLoadingChunks && (
 						<span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
 							<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-							Loading chunks {loadingProgress?.loadedChunks ?? 0}/
-							{loadingProgress?.totalChunks ?? 0}
+							{t('hrpages.loadingChunks')}
+							{loadingProgress?.loadedChunks ?? 0}/{loadingProgress?.totalChunks ?? 0}
 						</span>
 					)}
 					<label
 						htmlFor="journal-ref-type-filter"
 						className="text-xs font-medium text-muted-foreground"
 					>
-						Transaction Type
+						{t('hrpages.transactionType')}
 					</label>
 					<Select
 						inputId="journal-ref-type-filter"
@@ -216,7 +221,7 @@ export function WalletJournalSection({
 						onValueChange={(value) => setRefTypeFilter(value)}
 						options={refTypeOptions}
 						searchable
-						placeholder="All Types"
+						placeholder={t('hrpages.allTypes')}
 						className="w-56"
 					/>
 					<span className="text-xs text-muted-foreground">
@@ -228,7 +233,7 @@ export function WalletJournalSection({
 	)
 
 	if (rows.length === 0 && !isLoadingChunks) {
-		return <p className="text-sm text-muted-foreground">No journal entries found.</p>
+		return <p className="text-sm text-muted-foreground">{t('hrpages.noJournalEntriesFound')}</p>
 	}
 
 	// Most recent entry's balance is the current wallet balance
@@ -238,12 +243,12 @@ export function WalletJournalSection({
 		<div className="space-y-3">
 			{currentBalance && (
 				<div className="flex items-center gap-2 text-sm">
-					<span className="text-muted-foreground">Wallet Balance:</span>
+					<span className="text-muted-foreground">{t('hrpages.walletBalance2')}</span>
 					<span className="font-mono font-semibold">{currentBalance} ISK</span>
 				</div>
 			)}
 			<p className="text-xs text-muted-foreground italic">
-				Note: ESI only returns journal entries from the last 30 days.
+				{t('hrpages.noteEsiOnlyReturnsJournalEntriesFromTheLast30')}
 			</p>
 			{table}
 		</div>

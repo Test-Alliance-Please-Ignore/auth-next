@@ -22,6 +22,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useMessage } from '@/hooks/useMessage'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { canReviewApplication } from '../api'
@@ -66,6 +67,8 @@ export function ApplicationActionPanel({
 	disabled = false,
 	className,
 }: ApplicationActionPanelProps) {
+	const { t } = useAppTranslation()
+
 	const { showSuccess, showError } = useMessage()
 	const updateStatusMutation = useUpdateApplicationStatus()
 
@@ -107,11 +110,11 @@ export function ApplicationActionPanel({
 	// Validate review notes (required for accept/reject)
 	const validateReviewNotes = (): boolean => {
 		if (!reviewNotes.trim()) {
-			setReviewNotesError('Review notes are required when accepting or rejecting an application')
+			setReviewNotesError(t('hrpages.reviewNotesAreRequiredWhenAcceptingOrRejectingAnApplication'))
 			return false
 		}
 		if (reviewNotes.trim().length < 10) {
-			setReviewNotesError('Review notes must be at least 10 characters')
+			setReviewNotesError(t('hrpages.reviewNotesMustBeAtLeast10Characters'))
 			return false
 		}
 		return true
@@ -128,7 +131,7 @@ export function ApplicationActionPanel({
 				},
 			})
 
-			showSuccess('Application marked as under review')
+			showSuccess(t('hrpages.applicationMarkedAsUnderReview'))
 			setReviewNotes('')
 			setReviewNotesError('')
 
@@ -136,7 +139,9 @@ export function ApplicationActionPanel({
 				onStatusChange('under_review', reviewNotes || undefined)
 			}
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to update application status')
+			showError(
+				error instanceof Error ? error.message : t('hrpages.failedToUpdateApplicationStatus')
+			)
 		}
 	}
 
@@ -156,7 +161,7 @@ export function ApplicationActionPanel({
 				},
 			})
 
-			showSuccess('Application accepted')
+			showSuccess(t('hrpages.applicationAccepted'))
 			setShowAcceptDialog(false)
 			setReviewNotes('')
 			setReviewNotesError('')
@@ -165,7 +170,7 @@ export function ApplicationActionPanel({
 				onStatusChange('accepted', reviewNotes)
 			}
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to accept application')
+			showError(error instanceof Error ? error.message : t('hrpages.failedToAcceptApplication'))
 		}
 	}
 
@@ -185,7 +190,7 @@ export function ApplicationActionPanel({
 				},
 			})
 
-			showSuccess('Application marked as completed')
+			showSuccess(t('hrpages.applicationMarkedAsCompleted'))
 			setShowCompleteDialog(false)
 			setReviewNotes('')
 			setReviewNotesError('')
@@ -194,7 +199,7 @@ export function ApplicationActionPanel({
 				onStatusChange('completed', reviewNotes)
 			}
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to complete application')
+			showError(error instanceof Error ? error.message : t('hrpages.failedToCompleteApplication'))
 		}
 	}
 
@@ -214,7 +219,7 @@ export function ApplicationActionPanel({
 				},
 			})
 
-			showSuccess('Application rejected')
+			showSuccess(t('hrpages.applicationRejected'))
 			setShowRejectDialog(false)
 			setReviewNotes('')
 			setReviewNotesError('')
@@ -223,7 +228,7 @@ export function ApplicationActionPanel({
 				onStatusChange('rejected', reviewNotes)
 			}
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to reject application')
+			showError(error instanceof Error ? error.message : t('hrpages.failedToRejectApplication'))
 		}
 	}
 
@@ -232,12 +237,12 @@ export function ApplicationActionPanel({
 		return (
 			<Card className={cn('border-muted', className)}>
 				<CardHeader>
-					<CardTitle>HR Actions</CardTitle>
-					<CardDescription>Read-only access - no actions available</CardDescription>
+					<CardTitle>{t('hrpages.hrActions')}</CardTitle>
+					<CardDescription>{t('hrpages.readOnlyAccessNoActionsAvailable')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<p className="text-sm text-muted-foreground">
-						You have view-only access to applications. Contact an HR Admin for reviewer access.
+						{t('hrpages.youHaveViewOnlyAccessToApplicationsContactAnHr')}
 					</p>
 				</CardContent>
 			</Card>
@@ -249,12 +254,12 @@ export function ApplicationActionPanel({
 		return (
 			<Card className={cn('border-muted', className)}>
 				<CardHeader>
-					<CardTitle>HR Actions</CardTitle>
-					<CardDescription>Application is no longer active</CardDescription>
+					<CardTitle>{t('hrpages.hrActions')}</CardTitle>
+					<CardDescription>{t('hrpages.applicationIsNoLongerActive')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<p className="text-sm text-muted-foreground">
-						This application has already been processed and cannot be modified.
+						{t('hrpages.thisApplicationHasAlreadyBeenProcessedAndCannotBeModified')}
 					</p>
 				</CardContent>
 			</Card>
@@ -264,11 +269,11 @@ export function ApplicationActionPanel({
 	return (
 		<Card className={className}>
 			<CardHeader>
-				<CardTitle>HR Actions</CardTitle>
+				<CardTitle>{t('hrpages.hrActions')}</CardTitle>
 				<CardDescription>
 					{userRole === 'hr_admin'
-						? 'Accept, reject, or mark this application for review'
-						: 'Mark this application for review and add advisory notes'}
+						? t('hrpages.acceptRejectOrMarkThisApplicationForReview')
+						: t('hrpages.markThisApplicationForReviewAndAddAdvisoryNotes')}
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
@@ -278,10 +283,11 @@ export function ApplicationActionPanel({
 						<Label htmlFor="review-notes">
 							{userRole === 'hr_admin' ? (
 								<>
-									Review Notes <span className="text-destructive">*</span>
+									{t('hrpages.reviewNotes')}
+									<span className="text-destructive">*</span>
 								</>
 							) : (
-								'Advisory Notes'
+								t('hrpages.advisoryNotes')
 							)}
 						</Label>
 					</div>
@@ -293,8 +299,8 @@ export function ApplicationActionPanel({
 						id="review-notes"
 						placeholder={
 							userRole === 'hr_admin'
-								? 'Add notes about this application (required for accept/reject, minimum 10 characters)...'
-								: 'Add advisory notes for other reviewers...'
+								? t('hrpages.addNotesAboutThisApplicationRequiredForAcceptRejectMinimum')
+								: t('hrpages.addAdvisoryNotesForOtherReviewers')
 						}
 						value={reviewNotes}
 						onChange={(e) => {
@@ -313,8 +319,8 @@ export function ApplicationActionPanel({
 					)}
 					<p className="text-xs text-muted-foreground">
 						{userRole === 'hr_admin'
-							? 'These notes will be visible to the applicant. Required when accepting or rejecting.'
-							: 'Advisory notes are for internal HR use and are not shown to applicants.'}
+							? t('hrpages.theseNotesWillBeVisibleToTheApplicantRequiredWhen')
+							: t('hrpages.advisoryNotesAreForInternalHrUseAndAreNot')}
 					</p>
 				</div>
 
@@ -329,7 +335,7 @@ export function ApplicationActionPanel({
 							className="flex-1"
 						>
 							<Search className="h-4 w-4 mr-1" />
-							Mark Under Review
+							{t('hrpages.markUnderReview')}
 						</Button>
 					)}
 
@@ -345,7 +351,7 @@ export function ApplicationActionPanel({
 							}
 							className="flex-1"
 						>
-							Accept Application
+							{t('hrpages.acceptApplication')}
 						</Button>
 					)}
 
@@ -363,7 +369,7 @@ export function ApplicationActionPanel({
 							className="flex-1"
 						>
 							<CheckCircle2 className="h-4 w-4 mr-1" />
-							Mark Completed
+							{t('hrpages.markCompleted')}
 						</Button>
 					)}
 
@@ -375,7 +381,7 @@ export function ApplicationActionPanel({
 							disabled={disabled || updateStatusMutation.isPending}
 							className="flex-1"
 						>
-							Reject Application
+							{t('hrpages.rejectApplication')}
 						</Button>
 					)}
 				</div>
@@ -383,11 +389,15 @@ export function ApplicationActionPanel({
 				{/* Role Information */}
 				<div className="pt-4 border-t">
 					<p className="text-xs text-muted-foreground">
-						<strong>Your Role:</strong>{' '}
-						{userRole === 'hr_admin' ? 'HR Admin' : isViewer ? 'HR Viewer' : 'HR Reviewer'}
+						<strong>{t('hrpages.yourRole')}</strong>{' '}
+						{userRole === 'hr_admin'
+							? t('hrpages.hrAdmin')
+							: isViewer
+								? t('hrpages.hrViewer')
+								: t('hrpages.hrReviewer')}
 						{isViewer && (
 							<span className="block mt-1">
-								Only HR reviewers and HR admins can change application statuses.
+								{t('hrpages.onlyHrReviewersAndHrAdminsCanChangeApplicationStatuses')}
 							</span>
 						)}
 					</p>
@@ -398,11 +408,11 @@ export function ApplicationActionPanel({
 			<Dialog open={showAcceptDialog} onOpenChange={setShowAcceptDialog}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Accept Application?</DialogTitle>
+						<DialogTitle>{t('hrpages.acceptApplication2')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to accept the application from{' '}
-							<strong>{application.characterName}</strong>? This will notify the applicant and they
-							can proceed with joining the corporation.
+							{t('hrpages.areYouSureYouWantToAcceptTheApplicationFrom')}{' '}
+							<strong>{application.characterName}</strong>
+							{t('hrpages.thisWillNotifyTheApplicantAndTheyCanProceedWith')}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -411,15 +421,15 @@ export function ApplicationActionPanel({
 							onClick={() => setShowAcceptDialog(false)}
 							disabled={updateStatusMutation.isPending}
 						>
-							Cancel
+							{t('hrpages.cancel')}
 						</Button>
 						<Button
 							variant="confirm"
 							onClick={handleAcceptConfirm}
 							loading={updateStatusMutation.isPending}
-							loadingText="Accepting..."
+							loadingText={t('hrpages.accepting')}
 						>
-							Accept Application
+							{t('hrpages.acceptApplication')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -429,11 +439,11 @@ export function ApplicationActionPanel({
 			<Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Reject Application?</DialogTitle>
+						<DialogTitle>{t('hrpages.rejectApplication2')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to reject the application from{' '}
-							<strong>{application.characterName}</strong>? The applicant will be notified with your
-							review notes.
+							{t('hrpages.areYouSureYouWantToRejectTheApplicationFrom')}{' '}
+							<strong>{application.characterName}</strong>
+							{t('hrpages.theApplicantWillBeNotifiedWithYourReviewNotes')}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -446,15 +456,15 @@ export function ApplicationActionPanel({
 							}}
 							disabled={updateStatusMutation.isPending}
 						>
-							Cancel
+							{t('hrpages.cancel')}
 						</Button>
 						<Button
 							variant="destructive"
 							onClick={handleRejectConfirm}
 							loading={updateStatusMutation.isPending}
-							loadingText="Rejecting..."
+							loadingText={t('hrpages.rejecting')}
 						>
-							Reject Application
+							{t('hrpages.rejectApplication')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -464,10 +474,11 @@ export function ApplicationActionPanel({
 			<Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Mark Application Completed?</DialogTitle>
+						<DialogTitle>{t('hrpages.markApplicationCompleted')}</DialogTitle>
 						<DialogDescription>
-							Are you sure you want to mark the accepted application from{' '}
-							<strong>{application.characterName}</strong> as completed?
+							{t('hrpages.areYouSureYouWantToMarkTheAcceptedApplication')}{' '}
+							<strong>{application.characterName}</strong>
+							{t('hrpages.asCompleted')}
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -476,15 +487,15 @@ export function ApplicationActionPanel({
 							onClick={() => setShowCompleteDialog(false)}
 							disabled={updateStatusMutation.isPending}
 						>
-							Cancel
+							{t('hrpages.cancel')}
 						</Button>
 						<Button
 							variant="confirm"
 							onClick={handleCompleteConfirm}
 							loading={updateStatusMutation.isPending}
-							loadingText="Completing..."
+							loadingText={t('hrpages.completing')}
 						>
-							Mark Completed
+							{t('hrpages.markCompleted')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -493,9 +504,9 @@ export function ApplicationActionPanel({
 			{/* Template overwrite confirmation */}
 			<ConfirmationDialog
 				open={pendingTemplate !== null}
-				title="Replace review notes?"
-				description="Your current review notes will be replaced with the template content. This cannot be undone."
-				confirmLabel="Replace"
+				title={t('hrpages.replaceReviewNotes')}
+				description={t('hrpages.yourCurrentReviewNotesWillBeReplacedWithTheTemplate')}
+				confirmLabel={t('hrpages.replace')}
 				intent="secondary"
 				onCancel={() => setPendingTemplate(null)}
 				onConfirm={handleConfirmTemplate}

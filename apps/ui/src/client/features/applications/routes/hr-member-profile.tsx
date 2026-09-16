@@ -31,6 +31,7 @@ import { Separator } from '@/components/ui/separator'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -117,6 +118,8 @@ export function resolveEsiBadgeState({
 // ============================================================================
 
 export default function HrMemberProfile() {
+	const { t } = useAppTranslation()
+
 	const { corporationId, accountId } = useParams<{ corporationId: string; accountId: string }>()
 	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -148,7 +151,7 @@ export default function HrMemberProfile() {
 	const isAdmin = useMemo(() => {
 		if (user?.is_admin) return true
 		return permission?.currentRole === 'hr_admin'
-	}, [user, permission])
+	}, [user, permission, t])
 
 	const canAddNote = isAdmin && !isAuditor
 
@@ -178,14 +181,14 @@ export default function HrMemberProfile() {
 		return [...applications].sort(
 			(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 		)
-	}, [applications])
+	}, [applications, t])
 	const reportCharacterById = useMemo(
 		() => new Map((reportCharacters ?? []).map((character) => [character.characterId, character])),
-		[reportCharacters]
+		[reportCharacters, t]
 	)
 	const hrCharacterById = useMemo(
 		() => new Map(hrCharacters.map((character) => [character.characterId, character])),
-		[hrCharacters]
+		[hrCharacters, t]
 	)
 	// Build a unified character list: in-corp members first, then external alts
 	const unifiedCharacters = useMemo(() => {
@@ -214,7 +217,7 @@ export default function HrMemberProfile() {
 			}))
 
 		return [...inCorp, ...external]
-	}, [account, hrCharacters, hrCharacterById, reportCharacterById])
+	}, [account, hrCharacters, hrCharacterById, reportCharacterById, t])
 	const characterDetailQuery = useCharacterPrivateDetailsBulk(
 		unifiedCharacters.map((character) => character.characterId)
 	)
@@ -256,7 +259,7 @@ export default function HrMemberProfile() {
 				.map((character) => character.characterId)
 		)
 		return inCorpIds.size
-	}, [unifiedCharacters])
+	}, [unifiedCharacters, t])
 	const scanEligibleCharacters = useMemo(
 		() =>
 			unifiedCharacters.filter((character) => {
@@ -270,12 +273,12 @@ export default function HrMemberProfile() {
 					(user?.is_admin || isAuditor || character.role !== 'CEO')
 				)
 			}),
-		[isAuditor, unifiedCharacters, user?.is_admin]
+		[isAuditor, unifiedCharacters, user?.is_admin, t]
 	)
 	const canRequestFulcrumReports = useMemo(() => {
 		if (user?.is_admin || isAuditor) return true
 		return permission?.currentRole === 'hr_admin' || permission?.currentRole === 'hr_reviewer'
-	}, [isAuditor, permission?.currentRole, user?.is_admin])
+	}, [isAuditor, permission?.currentRole, user?.is_admin, t])
 	const canRequestCeoReports = user?.is_admin || isAuditor
 	const canRequestCharacterReport = (character: { role?: 'CEO' | 'Director' | 'Member' | null }) =>
 		canRequestFulcrumReports && (canRequestCeoReports || character.role !== 'CEO')
@@ -331,17 +334,17 @@ export default function HrMemberProfile() {
 		void handleScanAllCharacters(sendDmForScanRequests)
 	}
 
-	const accountName = account?.mainName ?? 'Member'
+	const accountName = account?.mainName ?? t('hrpages.member')
 
 	usePageTitle(accountName)
 
 	// Navigation helpers
 	const canViewCorpMemberPage = user?.is_admin || hasCorporationAccess || isAuditor
 	const backPath = `/corporations/${corporationId}/members`
-	const backLabel = 'Back to Members'
-	const breadcrumbParentLabel = 'Members'
+	const backLabel = t('hrpages.backToMembers')
+	const breadcrumbParentLabel = t('hrpages.members')
 	const rootCorporationsPath = '/corporations'
-	const rootCorporationsLabel = 'Corporations'
+	const rootCorporationsLabel = t('hrpages.corporations')
 	const isCorporationAccessPending = !isAuditor && corporationAccessLoading
 
 	if (!authLoading && !isAuthenticated) {
@@ -367,15 +370,18 @@ export default function HrMemberProfile() {
 			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
+							{t('hrpages.accessDenied')}
+						</CardTitle>
 					</CardHeader>
 					<CardContent className="text-center">
 						<p className="text-red-700 dark:text-red-300 mb-4">
-							You don't have permission to view members of this corporation.
+							{t('hrpages.youDonTHavePermissionToViewMembersOfThis')}
 						</p>
 						<Button variant="ghost" onClick={() => navigate(rootCorporationsPath)}>
 							<ArrowLeft className="h-4 w-4" />
-							Back to {rootCorporationsLabel}
+							{t('hrpages.backTo')}
+							{rootCorporationsLabel}
 						</Button>
 					</CardContent>
 				</Card>
@@ -388,11 +394,11 @@ export default function HrMemberProfile() {
 			<Container>
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
-						<CardTitle>Member Not Found</CardTitle>
+						<CardTitle>{t('hrpages.memberNotFound')}</CardTitle>
 					</CardHeader>
 					<CardContent className="text-center">
 						<p className="text-muted-foreground mb-4">
-							This account could not be found in the corporation member list.
+							{t('hrpages.thisAccountCouldNotBeFoundInTheCorporationMember')}
 						</p>
 						<Button variant="ghost" onClick={() => navigate(backPath)}>
 							<ArrowLeft className="h-4 w-4" />
@@ -461,18 +467,18 @@ export default function HrMemberProfile() {
 									{account.isLinked ? (
 										<Badge variant="success" className="gap-1">
 											<Link2 className="h-3 w-3" />
-											Registered
+											{t('hrpages.registered')}
 										</Badge>
 									) : (
 										<Badge variant="destructive" className="gap-1">
 											<XCircle className="h-3 w-3" />
-											Not Registered
+											{t('hrpages.notRegistered')}
 										</Badge>
 									)}
 									{account.hasBlacklisted && (
 										<Badge variant="destructive" className="gap-1">
 											<ShieldAlert className="h-3 w-3" />
-											Blocklisted
+											{t('hrpages.blocklisted')}
 										</Badge>
 									)}
 								</div>
@@ -480,12 +486,15 @@ export default function HrMemberProfile() {
 									<div className="flex flex-wrap items-center justify-center gap-2">
 										{representative.discordUsername ? (
 											<CopyableMetaPill
-												label="Discord username"
+												label={t('hrpages.discordUsername2')}
 												value={representative.discordUsername}
 											/>
 										) : null}
 										{representative.discordUserId ? (
-											<CopyableMetaPill label="Discord ID" value={representative.discordUserId} />
+											<CopyableMetaPill
+												label={t('hrpages.discordId')}
+												value={representative.discordUserId}
+											/>
 										) : null}
 									</div>
 								)}
@@ -497,7 +506,7 @@ export default function HrMemberProfile() {
 					<Card>
 						<CardContent className="pt-6 space-y-3">
 							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">Highest Role</span>
+								<span className="text-muted-foreground">{t('hrpages.highestRole')}</span>
 								<Badge
 									variant={
 										account.highestRole === 'CEO'
@@ -513,20 +522,22 @@ export default function HrMemberProfile() {
 							</div>
 							<Separator />
 							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">Characters</span>
+								<span className="text-muted-foreground">{t('hrpages.characters')}</span>
 								<span className="font-medium">
-									{inCorpCharacterCount} in corp
+									{inCorpCharacterCount}
+									{t('hrpages.inCorp')}
 									{totalCharacters > inCorpCharacterCount && (
 										<span className="text-muted-foreground font-normal">
 											{' '}
-											/ {totalCharacters} total
+											/ {totalCharacters}
+											{t('hrpages.total2')}
 										</span>
 									)}
 								</span>
 							</div>
 							<Separator />
 							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">Joined</span>
+								<span className="text-muted-foreground">{t('hrpages.joined')}</span>
 								<span className="font-medium">
 									{formatDistanceToNow(new Date(representative.joinDate), {
 										addSuffix: true,
@@ -537,7 +548,7 @@ export default function HrMemberProfile() {
 								<>
 									<Separator />
 									<div className="flex justify-between text-sm">
-										<span className="text-muted-foreground">Last Login</span>
+										<span className="text-muted-foreground">{t('hrpages.lastLogin')}</span>
 										<span className="font-medium">
 											{formatDistanceToNow(new Date(representative.lastLogin), {
 												addSuffix: true,
@@ -557,7 +568,9 @@ export default function HrMemberProfile() {
 							<div className="flex items-start gap-3">
 								<ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
 								<div className="space-y-1">
-									<p className="font-medium">Private ESI data is hidden for some characters</p>
+									<p className="font-medium">
+										{t('hrpages.privateEsiDataIsHiddenForSomeCharacters')}
+									</p>
 									<p className="text-sm text-amber-800 dark:text-amber-200">
 										{privateDataUnavailableMessage}
 									</p>
@@ -595,7 +608,9 @@ export default function HrMemberProfile() {
 						isScanAllVisible
 						isScanningAll={isScanningAll}
 						scanAllLabel={
-							isScanningAll ? 'Scanning All...' : `Scan All (${scanEligibleCharacters.length})`
+							isScanningAll
+								? t('hrpages.scanningAll')
+								: t('hrpages.scanAll', { value1: scanEligibleCharacters.length })
 						}
 						scanAllDisabled={
 							isScanningAll ||
@@ -635,7 +650,7 @@ export default function HrMemberProfile() {
 							loading={notesLoading}
 							canAddNote={canAddNote}
 							onAddNote={() => setAddNoteOpen(true)}
-							emptyText="No HR notes for this account"
+							emptyText={t('hrpages.noHrNotesForThisAccount')}
 						/>
 					)}
 
@@ -651,7 +666,7 @@ export default function HrMemberProfile() {
 						}))}
 						loading={appsLoading}
 						linked={account.isLinked}
-						emptyText="No applications found"
+						emptyText={t('hrpages.noApplicationsFound')}
 						getApplicationHref={(application) =>
 							`/corporations/${corporationId}/applications/${application.id}`
 						}

@@ -2,7 +2,6 @@ import { Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -21,9 +20,12 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
+
 import { SessionStatusPill } from '../components/session-status-pill'
 import { useTrackingSessions } from '../hooks'
 import { formatDurationBetween } from '../utils/format'
@@ -47,7 +49,9 @@ export function dateInputToIsoEndExclusive(value: string): string | undefined {
 }
 
 export default function TrackingSessionsList() {
-	usePageTitle('Fleet Tracking')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('fleetTracking.fleetTracking'))
 	const { hasPermission, isAdmin } = useUserPermissions()
 	const canCreate = isAdmin || hasPermission('urn:fleet-tracking:create')
 	const canViewAll = isAdmin || hasPermission('urn:fleet-tracking:view-all')
@@ -69,7 +73,7 @@ export default function TrackingSessionsList() {
 			limit: pageSize,
 			offset: (page - 1) * pageSize,
 		}),
-		[tab, fromDate, toDate, characterFilter, page, pageSize]
+		[tab, fromDate, toDate, characterFilter, page, pageSize, t]
 	)
 	const { data, isLoading } = useTrackingSessions(filter)
 
@@ -80,14 +84,14 @@ export default function TrackingSessionsList() {
 	return (
 		<Container>
 			<PageHeader
-				title="Fleet Tracking"
-				description="Manually start and review fleet tracking sessions."
+				title={t('fleetTracking.fleetTracking')}
+				description={t('fleetTracking.manuallyStartAndReviewFleetTrackingSessions')}
 				action={
 					canCreate && (
 						<Button asChild>
 							<Link to="/fleet-tracking/new">
 								<Plus className="h-4 w-4" />
-								Start Tracking
+								{t('fleetTracking.startTracking')}
 							</Link>
 						</Button>
 					)
@@ -97,7 +101,7 @@ export default function TrackingSessionsList() {
 			<Section>
 				<Card>
 					<CardHeader className="pb-3">
-						<CardTitle>Sessions</CardTitle>
+						<CardTitle>{t('fleetTracking.sessions2')}</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						{canViewFleets && (
@@ -119,11 +123,11 @@ export default function TrackingSessionsList() {
 												description: entry.characterId,
 											}))
 										}}
-										placeholder="FC character"
+										placeholder={t('fleetTracking.fcCharacter')}
 										minQueryLength={2}
-										queryHintText="Type at least 2 characters"
-										emptyText="No character names found"
-										selectAllOption={{ value: '', label: 'All FCs' }}
+										queryHintText={t('fleetTracking.typeAtLeast2Characters')}
+										emptyText={t('fleetTracking.noCharacterNamesFound')}
+										selectAllOption={{ value: '', label: t('fleetTracking.allFcs') }}
 									/>
 								</div>
 								<DateRangeInput
@@ -133,7 +137,7 @@ export default function TrackingSessionsList() {
 										setToDate(nextToDate)
 										setPage(1)
 									}}
-									placeholder="Session date range"
+									placeholder={t('fleetTracking.sessionDateRange')}
 									className="[&_.themed-date-picker__input]:h-10"
 								/>
 								{(fromDate || toDate || characterFilter) && (
@@ -147,7 +151,7 @@ export default function TrackingSessionsList() {
 											setPage(1)
 										}}
 									>
-										Clear
+										{t('fleetTracking.clear')}
 									</Button>
 								)}
 							</div>
@@ -161,9 +165,9 @@ export default function TrackingSessionsList() {
 							}}
 						>
 							<TabsList>
-								<TabsTrigger value="all">All</TabsTrigger>
-								<TabsTrigger value="active">Active</TabsTrigger>
-								<TabsTrigger value="ended">Ended</TabsTrigger>
+								<TabsTrigger value="all">{t('fleetTracking.all')}</TabsTrigger>
+								<TabsTrigger value="active">{t('fleetTracking.active')}</TabsTrigger>
+								<TabsTrigger value="ended">{t('fleetTracking.ended2')}</TabsTrigger>
 							</TabsList>
 						</Tabs>
 
@@ -171,7 +175,7 @@ export default function TrackingSessionsList() {
 							<LoadingPage />
 						) : sessions.length === 0 ? (
 							<div className="py-10 text-center text-muted-foreground">
-								No fleet tracking sessions match these filters.
+								{t('fleetTracking.noFleetTrackingSessionsMatchTheseFilters')}
 							</div>
 						) : (
 							<>
@@ -187,7 +191,7 @@ export default function TrackingSessionsList() {
 												setPage(1)
 											}}
 											pageSizeOptions={[10, 25, 50]}
-											itemLabel="sessions"
+											itemLabel={t('fleetTracking.sessions3')}
 										/>
 									</div>
 								)}
@@ -195,34 +199,35 @@ export default function TrackingSessionsList() {
 									<Table>
 										<TableHeader>
 											<TableRow>
-												<TableHead>Status</TableHead>
-												<TableHead>Fleet</TableHead>
-												<TableHead>FC</TableHead>
-												<TableHead>Started</TableHead>
-												<TableHead>Duration</TableHead>
+												<TableHead>{t('fleetTracking.status')}</TableHead>
+												<TableHead>{t('fleetTracking.fleet')}</TableHead>
+												<TableHead>{t('fleetTracking.fc')}</TableHead>
+												<TableHead>{t('fleetTracking.started2')}</TableHead>
+												<TableHead>{t('fleetTracking.duration')}</TableHead>
 												<TableHead className="w-20" />
 											</TableRow>
 										</TableHeader>
 										<TableBody>
 											{sessions.map((session) => (
-										<TableRow key={session.id}>
-											<TableCell>
-												<SessionStatusPill status={session.status} />
-											</TableCell>
-											<TableCell className="font-medium">{session.name}</TableCell>
-											<TableCell>
-												<div className="leading-tight">
-													<div>
-														{session.currentFleetBossCharacterName ??
-															session.currentCommanderCharacterName ??
-															session.characterName ??
-															'Unknown'}
-													</div>
-													<div className="text-xs text-muted-foreground font-mono">
-														Tracked from: {session.characterId}
-													</div>
-												</div>
-											</TableCell>
+												<TableRow key={session.id}>
+													<TableCell>
+														<SessionStatusPill status={session.status} />
+													</TableCell>
+													<TableCell className="font-medium">{session.name}</TableCell>
+													<TableCell>
+														<div className="leading-tight">
+															<div>
+																{session.currentFleetBossCharacterName ??
+																	session.currentCommanderCharacterName ??
+																	session.characterName ??
+																	t('fleetTracking.unknown')}
+															</div>
+															<div className="text-xs text-muted-foreground font-mono">
+																{t('fleetTracking.trackedFrom')}
+																{session.characterId}
+															</div>
+														</div>
+													</TableCell>
 													<TableCell className="text-muted-foreground">
 														<EveTimeDisplay dateStr={session.startedAt} />
 													</TableCell>
@@ -231,7 +236,9 @@ export default function TrackingSessionsList() {
 													</TableCell>
 													<TableCell>
 														<Button asChild variant="ghost" size="sm">
-															<Link to={`/fleet-tracking/${session.id}`}>Open</Link>
+															<Link to={`/fleet-tracking/${session.id}`}>
+																{t('fleetTracking.open')}
+															</Link>
 														</Button>
 													</TableCell>
 												</TableRow>
@@ -251,7 +258,7 @@ export default function TrackingSessionsList() {
 												setPage(1)
 											}}
 											pageSizeOptions={[10, 25, 50]}
-											itemLabel="sessions"
+											itemLabel={t('fleetTracking.sessions3')}
 										/>
 									</div>
 								)}

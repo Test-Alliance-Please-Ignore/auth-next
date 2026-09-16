@@ -1,5 +1,7 @@
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
 
+import { useAppTranslation } from '@/i18n'
+
 import { formatSkillLevel } from '../lib/evemon-parser'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
@@ -20,6 +22,8 @@ export function EvemonSkillPreview({
 	onCancel,
 	isLoading = false,
 }: EvemonSkillPreviewProps) {
+	const { t } = useAppTranslation()
+
 	const totalSkills = skills.length
 
 	return (
@@ -28,9 +32,9 @@ export function EvemonSkillPreview({
 				<CardContent className="flex items-start gap-2 pt-4">
 					<CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
 					<div className="text-sm">
-						Successfully parsed {totalSkills} unique skill{totalSkills !== 1 ? 's' : ''} from EVEMon
-						XML. Priority 1-9 skills will be imported as required, priority 10 as optional
-						(recommended only).
+						{t('skillPlans.successfullyParsed')}
+						{t('skillPlans.uniqueSkillCount', { count: totalSkills })}
+						{t('skillPlans.fromEvemonXmlPriority19SkillsWillBeImported')}
 					</div>
 				</CardContent>
 			</Card>
@@ -40,11 +44,11 @@ export function EvemonSkillPreview({
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead>Skill Name</TableHead>
-								<TableHead className="text-center">Required</TableHead>
-								<TableHead className="text-center">Recommended</TableHead>
-								<TableHead className="text-center">Priority</TableHead>
-								<TableHead className="text-right">Skill ID</TableHead>
+								<TableHead>{t('skillPlans.skillName')}</TableHead>
+								<TableHead className="text-center">{t('skillPlans.required')}</TableHead>
+								<TableHead className="text-center">{t('skillPlans.recommended')}</TableHead>
+								<TableHead className="text-center">{t('skillPlans.priority')}</TableHead>
+								<TableHead className="text-right">{t('skillPlans.skillId')}</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -54,7 +58,8 @@ export function EvemonSkillPreview({
 									<TableCell className="text-center">
 										{skill.requiredLevel > 0 ? (
 											<span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold rounded bg-primary/10 text-primary">
-												Level {formatSkillLevel(skill.requiredLevel)}
+												{t('skillPlans.level2')}
+												{formatSkillLevel(skill.requiredLevel)}
 											</span>
 										) : (
 											<span className="text-muted-foreground">—</span>
@@ -62,7 +67,8 @@ export function EvemonSkillPreview({
 									</TableCell>
 									<TableCell className="text-center">
 										<span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold rounded bg-blue-50 text-blue-700">
-											Level {formatSkillLevel(skill.recommendedLevel)}
+											{t('skillPlans.level2')}
+											{formatSkillLevel(skill.recommendedLevel)}
 										</span>
 									</TableCell>
 									<TableCell className="text-center text-muted-foreground">
@@ -82,24 +88,24 @@ export function EvemonSkillPreview({
 				<CardContent className="flex items-start gap-2 pt-4">
 					<AlertCircle className="h-4 w-4 text-blue-600 mt-0.5" />
 					<div className="text-sm text-muted-foreground">
-						After import, you can adjust the required and recommended levels for individual skills
-						in the skill plan editor.
+						{t('skillPlans.afterImportYouCanAdjustTheRequiredAndRecommendedLevels')}
 					</div>
 				</CardContent>
 			</Card>
 
 			<div className="flex justify-end gap-2">
 				<Button type="button" variant="ghost" onClick={onCancel} disabled={isLoading}>
-					Cancel
+					{t('skillPlans.cancel')}
 				</Button>
-				<Button variant="confirm"
+				<Button
+					variant="confirm"
 					type="button"
 					onClick={onConfirm}
 					loading={isLoading}
-					loadingText="Importing..."
+					loadingText={t('skillPlans.importing')}
 					showIcon={!isLoading}
 				>
-					{`Import ${totalSkills} Skill${totalSkills !== 1 ? 's' : ''}`}
+					{t('skillPlans.importSkills', { count: totalSkills })}
 				</Button>
 			</div>
 		</div>

@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 import { apiClient } from '../../lib/api'
 
 import type {
@@ -234,7 +236,8 @@ export const fleetTrackingApi = {
 			`/api/fleets/tracking/stats/corporations/${encodeURIComponent(corporationId)}/export/${encodeURIComponent(workflowInstanceId)}/download`,
 			{ credentials: 'include' }
 		)
-		if (!response.ok) throw new Error('Failed to download fleet participation export')
+		if (!response.ok)
+			throw new Error(i18n.t('fleetTracking.failedToDownloadFleetParticipationExport'))
 		const blob = await response.blob()
 		const url = URL.createObjectURL(blob)
 		const link = document.createElement('a')

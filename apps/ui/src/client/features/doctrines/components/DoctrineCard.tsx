@@ -9,6 +9,7 @@ import { Link } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { useAppTranslation } from '@/i18n'
 import { typeIconUrl } from '@/lib/eve-images'
 
 import type { Doctrine } from '../types'
@@ -19,7 +20,8 @@ interface DoctrineCardProps {
 }
 
 export function DoctrineCard({ doctrine, fittingCount }: DoctrineCardProps) {
-	const formattedDate = new Date(doctrine.updatedAt).toLocaleDateString('en-US', {
+	const { t, locale } = useAppTranslation()
+	const formattedDate = new Date(doctrine.updatedAt).toLocaleDateString(locale, {
 		year: 'numeric',
 		month: 'short',
 		day: 'numeric',
@@ -29,17 +31,17 @@ export function DoctrineCard({ doctrine, fittingCount }: DoctrineCardProps) {
 		<Link to={`/doctrines/${doctrine.id}`} className="block group">
 			<Card className="transition-colors hover:bg-accent/50">
 				<CardContent className="flex items-center gap-4 py-4">
-{/* Ship icon */}
-				<div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-					{doctrine.shipTypeId ? (
-						<img
-							src={typeIconUrl(doctrine.shipTypeId, 64)}
-							alt=""
-							className="h-14 w-14 rounded-lg"
-						/>
-					) : (
-						<Ship className="h-7 w-7 text-primary" />
-					)}
+					{/* Ship icon */}
+					<div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+						{doctrine.shipTypeId ? (
+							<img
+								src={typeIconUrl(doctrine.shipTypeId, 64)}
+								alt=""
+								className="h-14 w-14 rounded-lg"
+							/>
+						) : (
+							<Ship className="h-7 w-7 text-primary" />
+						)}
 					</div>
 
 					{/* Main content */}
@@ -48,7 +50,7 @@ export function DoctrineCard({ doctrine, fittingCount }: DoctrineCardProps) {
 							<h3 className="font-semibold text-base truncate">{doctrine.name}</h3>
 							{fittingCount !== undefined && (
 								<Badge variant="secondary" className="shrink-0">
-									{fittingCount} {fittingCount === 1 ? 'fit' : 'fits'}
+									{t('doctrines.fittingsCount', { value1: fittingCount })}
 								</Badge>
 							)}
 						</div>

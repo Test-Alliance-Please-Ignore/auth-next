@@ -34,6 +34,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { i18n, useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { useHrRoles } from '../../hr'
@@ -93,7 +94,12 @@ function readMembersQuery(corporationId: string | undefined): CorporationMembers
 		)
 			? saved.activityFilter
 			: 'all'
-		const roleFilter = ['all', 'CEO', 'Director', 'Member'].includes(saved.roleFilter ?? '')
+		const roleFilter = [
+			'all',
+			'CEO',
+			i18n.t('characterpages.director'),
+			i18n.t('characterpages.member'),
+		].includes(saved.roleFilter ?? '')
 			? saved.roleFilter
 			: 'all'
 		const sortField = [
@@ -133,6 +139,8 @@ function readMembersQuery(corporationId: string | undefined): CorporationMembers
  * Main Corporation Members Component
  */
 export default function CorporationMembers() {
+	const { t } = useAppTranslation()
+
 	const { corporationId } = useParams<{ corporationId: string }>()
 	const navigate = useNavigate()
 	const { showSuccess, showError } = useMessage()
@@ -170,7 +178,7 @@ export default function CorporationMembers() {
 			...membersQuery,
 			search: debouncedSearch,
 		}),
-		[membersQuery, debouncedSearch]
+		[membersQuery, debouncedSearch, t]
 	)
 	const {
 		data: membersResponse,
@@ -196,7 +204,7 @@ export default function CorporationMembers() {
 	// Can manage HR roles: member corp only, with CEO/admin/hr_admin access
 	const canManageHrRoles = useMemo(() => {
 		return isMemberCorporation && (userRole === 'CEO' || userRole === 'admin' || isHrAdmin)
-	}, [isMemberCorporation, isHrAdmin, userRole])
+	}, [isMemberCorporation, isHrAdmin, userRole, t])
 	const { data: hrRoles, isLoading: hrRolesLoading } = useHrRoles(corporationId!, {
 		enabled: canManageHrRoles,
 	})
@@ -207,11 +215,11 @@ export default function CorporationMembers() {
 				: userRole === 'CEO' || userRole === 'admin'
 					? (['hr_admin', 'hr_reviewer', 'hr_viewer'] as const)
 					: (['hr_reviewer', 'hr_viewer'] as const),
-		[isMemberCorporation, userRole]
+		[isMemberCorporation, userRole, t]
 	)
 	const canRevokeHrAdmin = useMemo(
 		() => isMemberCorporation && (userRole === 'CEO' || userRole === 'admin'),
-		[isMemberCorporation, userRole]
+		[isMemberCorporation, userRole, t]
 	)
 
 	// Can manage emeritus status: site admins or member corporations only, CEO/site admin
@@ -236,17 +244,17 @@ export default function CorporationMembers() {
 				hrRole,
 			}
 		})
-	}, [membersResponse?.items, hrRoles])
+	}, [membersResponse?.items, hrRoles, t])
 
 	// Corporation info - use Corporations data with access data as fallback (for HR-only users)
-	const corpName = corporation?.name ?? accessCorp?.name ?? 'Corporation'
+	const corpName = corporation?.name ?? accessCorp?.name ?? t('characterpages.corporation')
 	const corpTicker = corporation?.ticker ?? accessCorp?.ticker
 	const corpAllianceName = corporation?.allianceName
 	const corpTypeLabel = accessCorp?.isAltCorp
-		? 'Alt'
+		? t('characterpages.alt')
 		: accessCorp?.isSpecialPurpose
-			? 'Special-purpose'
-			: 'Corporation'
+			? t('characterpages.specialPurpose')
+			: t('characterpages.corporation')
 	const esiCoverage = membersResponse?.summary?.esiCoverage ?? {
 		full: 0,
 		partial: 0,
@@ -265,7 +273,9 @@ export default function CorporationMembers() {
 
 	// Set page title
 	usePageTitle(
-		corporation || accessCorp ? `${corpName} Members | Corporations` : 'Corporation Members'
+		corporation || accessCorp
+			? `${corpName} Members | Corporations`
+			: t('characterpages.corporationMembers')
 	)
 
 	// Handlers
@@ -274,13 +284,15 @@ export default function CorporationMembers() {
 		try {
 			await myCorporationsApi.refreshCorporationMembers(corporationId!)
 			await invalidateMembers(corporationId!)
-			showSuccess('Member data refreshed')
+			showSuccess(t('characterpages.memberDataRefreshed'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to refresh member list')
+			showError(
+				error instanceof Error ? error.message : t('characterpages.failedToRefreshMemberList')
+			)
 		} finally {
 			setIsRefreshing(false)
 		}
-	}, [corporationId, invalidateMembers, showSuccess, showError])
+	}, [corporationId, invalidateMembers, showSuccess, showError, t])
 
 	const handleMemberClick = useCallback(
 		(member: CorporationMember) => {
@@ -292,24 +304,27 @@ export default function CorporationMembers() {
 					state: {
 						source: 'corporation-members',
 						backTo: `/corporations/${corporationId}/members`,
-						backLabel: 'Back to Members',
+						backLabel: t('characterpages.backToMembers'),
 					},
 				})
 			}
 		},
-		[navigate, corporationId]
+		[navigate, corporationId, t]
 	)
 
-	const handleCoverageFilterSelect = useCallback((coverageFilter: MembersCoverageFilter) => {
-		setMembersQuery((prev) => ({
-			...prev,
-			page: 1,
-			authFilter: 'all',
-			coverageFilter: prev.coverageFilter === coverageFilter ? 'all' : coverageFilter,
-			sortField: 'auth',
-			sortOrder: 'asc',
-		}))
-	}, [])
+	const handleCoverageFilterSelect = useCallback(
+		(coverageFilter: MembersCoverageFilter) => {
+			setMembersQuery((prev) => ({
+				...prev,
+				page: 1,
+				authFilter: 'all',
+				coverageFilter: prev.coverageFilter === coverageFilter ? 'all' : coverageFilter,
+				sortField: 'auth',
+				sortOrder: 'asc',
+			}))
+		},
+		[t]
+	)
 
 	const handleExport = useCallback(async () => {
 		if (!corporationId || isExporting) return
@@ -326,7 +341,7 @@ export default function CorporationMembers() {
 
 			if (!response.ok) {
 				const message = await response.text()
-				throw new Error(message || 'Failed to export corporation members')
+				throw new Error(message || t('characterpages.failedToExportCorporationMembers'))
 			}
 
 			const blob = await response.blob()
@@ -340,13 +355,17 @@ export default function CorporationMembers() {
 			a.click()
 			URL.revokeObjectURL(downloadUrl)
 
-			showSuccess('Member list exported')
+			showSuccess(t('characterpages.memberListExported'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to export corporation members')
+			showError(
+				error instanceof Error
+					? error.message
+					: t('characterpages.failedToExportCorporationMembers')
+			)
 		} finally {
 			setIsExporting(false)
 		}
-	}, [corporationId, corpName, effectiveMembersQuery, isExporting, showError, showSuccess])
+	}, [corporationId, corpName, effectiveMembersQuery, isExporting, showError, showSuccess, t])
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -376,17 +395,18 @@ export default function CorporationMembers() {
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
+							{t('characterpages.accessDenied')}
+						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have permission to view members of this corporation. CEO, director, or HR
-							role access is required.
+							{t('characterpages.youDonTHavePermissionToViewMembersOfThis')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" asChild>
 							<Link to="/corporations">
 								<ArrowLeft className="h-4 w-4" />
-								Return to Corporations
+								{t('characterpages.returnToCorporations')}
 							</Link>
 						</Button>
 					</CardContent>
@@ -403,22 +423,24 @@ export default function CorporationMembers() {
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Failed to Load Members
+							{t('characterpages.failedToLoadMembers')}
 						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							{error instanceof Error ? error.message : 'An unexpected error occurred'}
+							{error instanceof Error
+								? error.message
+								: t('characterpages.anUnexpectedErrorOccurred')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center space-y-4">
 						<Button variant="ghost" onClick={handleRefresh} disabled={isRefreshing}>
 							<RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-							{isRefreshing ? 'Refreshing...' : 'Try Again'}
+							{isRefreshing ? t('characterpages.refreshing') : t('characterpages.tryAgain')}
 						</Button>
 						<div>
 							<Button variant="ghost" asChild>
 								<Link to="/corporations">
 									<ArrowLeft className="h-4 w-4" />
-									Return to Corporations
+									{t('characterpages.returnToCorporations')}
 								</Link>
 							</Button>
 						</div>
@@ -435,7 +457,7 @@ export default function CorporationMembers() {
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
 					<BreadcrumbItem>
-						<BreadcrumbLink to="/corporations">Corporations</BreadcrumbLink>
+						<BreadcrumbLink to="/corporations">{t('characterpages.corporations')}</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
@@ -443,7 +465,7 @@ export default function CorporationMembers() {
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbPage>Members</BreadcrumbPage>
+						<BreadcrumbPage>{t('characterpages.members')}</BreadcrumbPage>
 					</BreadcrumbItem>
 				</BreadcrumbList>
 			</Breadcrumb>
@@ -454,15 +476,17 @@ export default function CorporationMembers() {
 					<div>
 						<h1 className="text-3xl font-bold flex items-center gap-3">
 							<Building2 className="h-8 w-8" />
-							{corpName} Members
+							{corpName}
+							{t('characterpages.members3')}
 						</h1>
 						<p className="text-muted-foreground mt-2">
-							View and manage all members of {corpTicker ? `[${corpTicker}]` : 'this corporation'}
+							{t('characterpages.viewAndManageAllMembersOf')}
+							{corpTicker ? `[${corpTicker}]` : t('characterpages.thisCorporation')}
 							{corpAllianceName && ` • Alliance: ${corpAllianceName}`}
 						</p>
 						{(userRole || hrRole) && (
 							<p className="text-sm text-muted-foreground mt-1">
-								Your role:{' '}
+								{t('characterpages.yourRole')}{' '}
 								<span className="font-medium">
 									{[userRole, hrRole]
 										.filter((role, index, roles) => role !== null && roles.indexOf(role) === index)
@@ -476,25 +500,25 @@ export default function CorporationMembers() {
 						{canRefresh && (
 							<Button variant="ghost" onClick={handleRefresh} disabled={isRefreshing}>
 								<RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-								{isRefreshing ? 'Refreshing...' : 'Refresh'}
+								{isRefreshing ? t('characterpages.refreshing') : t('characterpages.refresh')}
 							</Button>
 						)}
 						{canExport && (
 							<Button variant="ghost" onClick={handleExport} disabled={isExporting}>
 								<Download className="h-4 w-4" />
-								{isExporting ? 'Exporting...' : 'Export CSV'}
+								{isExporting ? t('characterpages.exporting') : t('characterpages.exportCsv')}
 							</Button>
 						)}
 						{canUseUserSearchTool && (
 							<Button variant="ghost" onClick={() => setIsUserSearchOpen(true)}>
 								<Search className="h-4 w-4" />
-								User Search
+								{t('characterpages.userSearch')}
 							</Button>
 						)}
 						<Button variant="ghost" asChild>
 							<Link to="/corporations">
 								<ArrowLeft className="h-4 w-4" />
-								Back
+								{t('characterpages.back')}
 							</Link>
 						</Button>
 					</div>
@@ -507,15 +531,17 @@ export default function CorporationMembers() {
 					<CardHeader>
 						<CardTitle className="text-lg flex items-center gap-2">
 							<Settings className="h-5 w-5" />
-							HR Management
+							{t('characterpages.hrManagement')}
 						</CardTitle>
 						{canUseHrTools ? (
 							<CardDescription>
 								{isHrOnly && !isLeadership
-									? `You have ${formatCorporationRoleLabel(hrRole ?? 'hr_viewer')} access for this corporation`
+									? t('characterpages.youHaveValue1AccessForThisCorporation', {
+											value1: formatCorporationRoleLabel(hrRole ?? 'hr_viewer'),
+										})
 									: userRole === 'CEO'
-										? 'You have CEO access to all HR features'
-										: 'You have site admin access to all HR features'}
+										? t('characterpages.youHaveCeoAccessToAllHrFeatures')
+										: t('characterpages.youHaveSiteAdminAccessToAllHrFeatures')}
 							</CardDescription>
 						) : null}
 					</CardHeader>
@@ -525,14 +551,14 @@ export default function CorporationMembers() {
 								<Button variant="primary" asChild className="w-full sm:w-auto">
 									<Link to={`/corporations/${corporationId}/applications`}>
 										<FileText className="h-4 w-4" />
-										Review Applications
+										{t('characterpages.reviewApplications')}
 									</Link>
 								</Button>
 								{canManageHrRoles && (
 									<Button variant="ghost" asChild className="w-full sm:w-auto">
 										<Link to={`/corporations/${corporationId}/hr/roles`}>
 											<Settings className="h-4 w-4" />
-											Manage HR Roles
+											{t('characterpages.manageHrRoles')}
 										</Link>
 									</Button>
 								)}
@@ -540,7 +566,7 @@ export default function CorporationMembers() {
 									<Button variant="ghost" asChild className="w-full sm:w-auto">
 										<Link to={`/corporations/${corporationId}/settings`}>
 											<Settings className="h-4 w-4" />
-											Corporation Settings
+											{t('characterpages.corporationSettings')}
 										</Link>
 									</Button>
 								)}
@@ -550,11 +576,11 @@ export default function CorporationMembers() {
 								<div className="max-w-sm space-y-2">
 									<div className="flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground">
 										<AlertCircle className="h-4 w-4" />
-										HR tools unavailable
+										{t('characterpages.hrToolsUnavailable')}
 									</div>
 									<p className="text-sm text-muted-foreground">
-										{corpTypeLabel} corporations do not expose HR management tools. You can still
-										review member details and ESI coverage here.
+										{corpTypeLabel}
+										{t('characterpages.corporationsDoNotExposeHrManagementToolsYouCanStill')}
 									</p>
 								</div>
 							</div>
@@ -564,7 +590,7 @@ export default function CorporationMembers() {
 
 				<Card className="h-full w-full max-w-sm justify-self-end bg-primary/5 border-primary/20">
 					<CardHeader className="pb-3">
-						<CardTitle className="text-lg">ESI Coverage</CardTitle>
+						<CardTitle className="text-lg">{t('characterpages.esiCoverage')}</CardTitle>
 					</CardHeader>
 					<CardContent className="space-y-3 pt-0">
 						<div className="grid grid-cols-2 gap-2">
@@ -580,7 +606,7 @@ export default function CorporationMembers() {
 								)}
 							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-									Full
+									{t('characterpages.full')}
 								</div>
 								<div className="text-base font-bold text-success leading-none">
 									{esiCoverage.full}
@@ -601,7 +627,7 @@ export default function CorporationMembers() {
 								)}
 							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-									Partial
+									{t('characterpages.partial')}
 								</div>
 								<div className="text-base font-bold text-warning leading-none">
 									{esiCoverage.partial}
@@ -622,7 +648,7 @@ export default function CorporationMembers() {
 								)}
 							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-									None
+									{t('characterpages.none')}
 								</div>
 								<div className="text-base font-bold text-destructive leading-none">
 									{esiCoverage.none}
@@ -643,7 +669,7 @@ export default function CorporationMembers() {
 								)}
 							>
 								<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-									Unlinked
+									{t('characterpages.unlinked')}
 								</div>
 								<div className="text-base font-bold text-muted-foreground leading-none">
 									{esiCoverage.unlinked}

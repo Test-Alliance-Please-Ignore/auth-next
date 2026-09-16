@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 
 import { DataTable } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
+import { useAppTranslation } from '@/i18n'
 import { formatTaxDateTime } from '@/lib/tax-date'
 import { formatTaxNumber, TaxCorporationDisplay } from '@/lib/tax-display'
 
@@ -19,11 +20,13 @@ export function MissingEsiKeysGrid(props: {
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
 	rowCount: number
 }) {
+	const { t } = useAppTranslation()
+
 	const columns = useMemo(
 		() => [
 			{
 				id: 'corporationId',
-				header: 'Corporation',
+				header: t('tax.corporation'),
 				sortable: true,
 				cell: (row: TaxMissingEsiKeyRow) => (
 					<TaxCorporationDisplay
@@ -34,18 +37,18 @@ export function MissingEsiKeysGrid(props: {
 			},
 			{
 				id: 'isConfigured',
-				header: 'Configured',
+				header: t('tax.configured'),
 				cell: (row: TaxMissingEsiKeyRow) => (row.isConfigured ? 'yes' : 'no'),
 			},
 			{
 				id: 'missingRequiredScopes',
-				header: 'Required Scopes',
+				header: t('tax.requiredScopes'),
 				cell: (row: TaxMissingEsiKeyRow) =>
 					row.missingRequiredScopes.length > 0 ? row.missingRequiredScopes.join(', ') : 'complete',
 			},
 			{
 				id: 'healthyDirectorCount',
-				header: 'Healthy Directors',
+				header: t('tax.healthyDirectors'),
 				sortable: true,
 				cell: (row: TaxMissingEsiKeyRow) => (
 					<Badge variant={row.healthyDirectorCount > 0 ? 'success' : 'destructive'}>
@@ -55,29 +58,29 @@ export function MissingEsiKeysGrid(props: {
 			},
 			{
 				id: 'lastVerified',
-				header: 'Last Verified',
+				header: t('tax.lastVerified'),
 				sortable: true,
 				cell: (row: TaxMissingEsiKeyRow) => formatTaxDateTime(row.lastVerified),
 			},
 		],
-		[props.entityNames]
+		[props.entityNames, t]
 	)
 
 	return (
 		<DataTable
 			variant="plain"
-			errorMessage="Failed to load report"
+			errorMessage={t('tax.failedToLoadReport')}
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
 			error={props.error}
-			emptyMessage="No missing ESI key coverage found."
+			emptyMessage={t('tax.noMissingEsiKeyCoverageFound')}
 			sorting={props.sorting}
 			onSortingChange={props.onSortingChange}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
 			rowCount={props.rowCount}
-			itemLabel="corporations"
+			itemLabel={t('tax.corporations')}
 			getRowKey={(row) => row.corporationId}
 		/>
 	)

@@ -13,6 +13,7 @@ import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 
 import { DoctrineForm } from '../components/DoctrineForm'
@@ -21,7 +22,9 @@ import { useCreateDoctrine } from '../hooks'
 import type { CreateDoctrineRequest, UpdateDoctrineRequest } from '../types'
 
 export default function DoctrineCreatePage() {
-	usePageTitle('Create Doctrine')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('doctrines.createDoctrine'))
 	const navigate = useNavigate()
 	const { hasPermission, isAdmin } = useUserPermissions()
 	const createMutation = useCreateDoctrine()
@@ -30,10 +33,10 @@ export default function DoctrineCreatePage() {
 	const handleSubmit = async (data: CreateDoctrineRequest | UpdateDoctrineRequest) => {
 		try {
 			const result = await createMutation.mutateAsync(data as CreateDoctrineRequest)
-			toast.success('Doctrine created')
+			toast.success(t('doctrines.doctrineCreated'))
 			void navigate(`/doctrines/${result.id}`)
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Failed to create doctrine')
+			toast.error(error instanceof Error ? error.message : t('doctrines.failedToCreateDoctrine'))
 		}
 	}
 
@@ -46,11 +49,14 @@ export default function DoctrineCreatePage() {
 			<Button asChild variant="ghost" size="sm" className="mb-4">
 				<Link to="/doctrines">
 					<ArrowLeft className="h-4 w-4" />
-					Back to Doctrines
+					{t('doctrines.backToDoctrines')}
 				</Link>
 			</Button>
 
-			<PageHeader title="Create Doctrine" description="Define a new fleet doctrine" />
+			<PageHeader
+				title={t('doctrines.createDoctrine')}
+				description={t('doctrines.defineANewFleetDoctrine')}
+			/>
 
 			{canManage ? (
 				<Card>
@@ -68,7 +74,7 @@ export default function DoctrineCreatePage() {
 				<Card>
 					<CardContent className="pt-6">
 						<p className="text-sm text-muted-foreground">
-							You do not have permission to perform this action.
+							{t('doctrines.youDoNotHavePermissionToPerformThisAction')}
 						</p>
 					</CardContent>
 				</Card>

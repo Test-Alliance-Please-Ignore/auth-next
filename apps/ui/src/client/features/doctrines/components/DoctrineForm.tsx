@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 import { typeIconUrl } from '@/lib/eve-images'
 
@@ -32,6 +33,8 @@ interface DoctrineFormProps {
 }
 
 export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: DoctrineFormProps) {
+	const { t } = useAppTranslation()
+
 	const [name, setName] = useState(doctrine?.name || '')
 	const [description, setDescription] = useState(doctrine?.description || '')
 	const [sortOrder, setSortOrder] = useState(doctrine?.sortOrder ?? 0)
@@ -64,53 +67,61 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 		<form onSubmit={handleSubmit} className="space-y-6">
 			{/* Name */}
 			<div className="space-y-2">
-				<Label htmlFor="name">Doctrine Name *</Label>
+				<Label htmlFor="name">{t('doctrines.doctrineName')}</Label>
 				<Input
 					id="name"
 					value={name}
 					onChange={(e) => setName(e.target.value)}
-					placeholder="e.g., Alpha Fleet, BLOPS Doctrine, Caracal Navy Issue"
+					placeholder={t('doctrines.eGAlphaFleetBlopsDoctrineCaracalNavyIssue')}
 					required
 				/>
-				<p className="text-sm text-muted-foreground">A descriptive name for this doctrine</p>
+				<p className="text-sm text-muted-foreground">
+					{t('doctrines.aDescriptiveNameForThisDoctrine')}
+				</p>
 			</div>
 
 			{/* Description */}
 			<div className="space-y-2">
-				<Label htmlFor="description">Description</Label>
+				<Label htmlFor="description">{t('doctrines.description')}</Label>
 				<Textarea
 					id="description"
 					value={description}
 					onChange={(e) => setDescription(e.target.value)}
-					placeholder="Describe the purpose, composition, or usage of this doctrine..."
+					placeholder={t('doctrines.describeThePurposeCompositionOrUsageOfThisDoctrine')}
 					className="min-h-[100px]"
 				/>
 				<p className="text-sm text-muted-foreground">
-					A short description shown on the doctrine card
+					{t('doctrines.aShortDescriptionShownOnTheDoctrineCard')}
 				</p>
 			</div>
 
 			{/* Category */}
 			<div className="space-y-2">
-				<Label>Category</Label>
+				<Label>{t('doctrines.category')}</Label>
 				<Select
 					options={[
-						{ value: '', label: 'No category' },
+						{ value: '', label: t('doctrines.noCategory') },
 						...(categories || []).map((c) => ({ value: c.id, label: c.name })),
 					]}
 					value={categoryId}
 					onValueChange={(val) => setCategoryId(val)}
-					placeholder="Select a category..."
+					placeholder={t('doctrines.selectACategory')}
 				/>
-				<p className="text-sm text-muted-foreground">Group this doctrine under a category</p>
+				<p className="text-sm text-muted-foreground">
+					{t('doctrines.groupThisDoctrineUnderACategory')}
+				</p>
 			</div>
 
 			{/* Ship Icon */}
 			<div className="space-y-2">
-				<Label>Ship Icon</Label>
+				<Label>{t('doctrines.shipIcon')}</Label>
 				<div className="flex items-center gap-3">
 					{shipTypeId && (
-						<img src={typeIconUrl(shipTypeId, 64)} alt="Ship icon" className="h-10 w-10 rounded" />
+						<img
+							src={typeIconUrl(shipTypeId, 64)}
+							alt={t('doctrines.shipIcon2')}
+							className="h-10 w-10 rounded"
+						/>
 					)}
 					<div className="flex-1">
 						<Select<ShipOption>
@@ -121,9 +132,9 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 							searchDelegate={searchShipTypes}
 							minQueryLength={2}
 							debounceMs={300}
-							placeholder="Search for a ship..."
-							emptyText="No ships found"
-							queryHintText="Type at least 2 characters to search"
+							placeholder={t('doctrines.searchForAShip')}
+							emptyText={t('doctrines.noShips')}
+							queryHintText={t('doctrines.searchTwo')}
 							renderOption={(option) => (
 								<div className="flex items-center gap-2">
 									<img src={typeIconUrl(option.value, 32)} alt="" className="h-5 w-5 rounded" />
@@ -134,13 +145,13 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 					</div>
 				</div>
 				<p className="text-sm text-muted-foreground">
-					Search for a ship to use as the doctrine icon
+					{t('doctrines.searchForAShipToUseAsTheDoctrineIcon')}
 				</p>
 			</div>
 
 			{/* Sort Order */}
 			<div className="space-y-2">
-				<Label htmlFor="sortOrder">Sort Order</Label>
+				<Label htmlFor="sortOrder">{t('doctrines.sortOrder')}</Label>
 				<Input
 					id="sortOrder"
 					type="number"
@@ -150,23 +161,23 @@ export function DoctrineForm({ doctrine, onSubmit, onCancel, isSubmitting }: Doc
 					className="w-32"
 				/>
 				<p className="text-sm text-muted-foreground">
-					Lower numbers appear first on the doctrines page
+					{t('doctrines.lowerNumbersAppearFirstOnTheDoctrinesPage')}
 				</p>
 			</div>
 
 			{/* Actions */}
 			<div className="flex justify-end gap-2">
 				<Button variant="cancel" onClick={onCancel} type="button">
-					Cancel
+					{t('doctrines.cancel')}
 				</Button>
 				<Button
 					variant="confirm"
 					type="submit"
 					loading={isSubmitting}
-					loadingText={doctrine ? 'Updating...' : 'Creating...'}
+					loadingText={doctrine ? t('doctrines.updating') : t('doctrines.creating')}
 					disabled={!canSubmit || isSubmitting}
 				>
-					{doctrine ? 'Update Doctrine' : 'Create Doctrine'}
+					{doctrine ? t('doctrines.updateDoctrine') : t('doctrines.createDoctrine')}
 				</Button>
 			</div>
 		</form>

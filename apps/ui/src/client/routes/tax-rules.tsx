@@ -27,9 +27,12 @@ import {
 } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
 export default function TaxRulesPage() {
-	usePageTitle('Tax Rules')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('tax.taxRules'))
 
 	const { data: globalCapabilities } = useTaxCapabilities()
 	const canManage = globalCapabilities?.global.canManage ?? false
@@ -81,7 +84,7 @@ export default function TaxRulesPage() {
 					.filter((corporation) => corporation.included === false)
 					.map((corporation) => corporation.corporationId)
 			),
-		[taxCorporations]
+		[taxCorporations, t]
 	)
 
 	const corporationIdsForNameLookup = useMemo(() => {
@@ -90,7 +93,7 @@ export default function TaxRulesPage() {
 		for (const corp of taxCorporations) ids.add(corp.corporationId)
 		for (const attachment of attachments) ids.add(attachment.corporationId)
 		return Array.from(ids)
-	}, [corporationAccess?.corporations, taxCorporations, attachments])
+	}, [corporationAccess?.corporations, taxCorporations, attachments, t])
 
 	const { data: entityNames = {} } = useEntityNames(corporationIdsForNameLookup, {
 		enabled: canManage && corporationIdsForNameLookup.length > 0,
@@ -108,15 +111,15 @@ export default function TaxRulesPage() {
 			if (!map.has(id)) map.set(id, name)
 		}
 		return map
-	}, [corporationAccess?.corporations, taxCorporations, entityNames])
+	}, [corporationAccess?.corporations, taxCorporations, entityNames, t])
 
 	if (!canManage) {
 		return (
 			<Container>
 				<Card>
 					<CardHeader>
-						<CardTitle>Tax Rules</CardTitle>
-						<CardDescription>You do not have permission to manage tax rules.</CardDescription>
+						<CardTitle>{t('tax.taxRules')}</CardTitle>
+						<CardDescription>{t('tax.youDoNotHavePermissionToManageTaxRules')}</CardDescription>
 					</CardHeader>
 				</Card>
 			</Container>
@@ -126,8 +129,8 @@ export default function TaxRulesPage() {
 	return (
 		<Container>
 			<PageHeader
-				title="Tax Rules"
-				description="Manage rule group scopes, attach corporations to those scopes, and maintain group-scoped tax rules."
+				title={t('tax.taxRules')}
+				description={t('tax.manageRuleGroupScopesAttachCorporationsToThoseScopesAnd')}
 			/>
 
 			<Section>

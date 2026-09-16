@@ -8,15 +8,16 @@
 import { Lock, Plus } from 'lucide-react'
 import { useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/hooks/useAuth'
+import { i18n, useAppTranslation } from '@/i18n'
 
 import { useHRNotes } from '../hooks'
 import { HRNoteCard } from './hr-note-card'
 
 import type { HRNotePriority, HRNoteType } from '../api'
-import { Button } from '@/components/ui/button'
 
 // ============================================================================
 // Types
@@ -38,19 +39,69 @@ export interface HRNotesListProps {
 // ============================================================================
 
 const NOTE_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
-	{ value: 'all', label: 'All Types' },
-	{ value: 'general', label: 'General' },
-	{ value: 'warning', label: 'Warning' },
-	{ value: 'positive', label: 'Positive' },
-	{ value: 'incident', label: 'Incident' },
+	{
+		value: 'all',
+		get label() {
+			return i18n.t('hrpages.allTypes')
+		},
+	},
+	{
+		value: 'general',
+		get label() {
+			return i18n.t('hrpages.general')
+		},
+	},
+	{
+		value: 'warning',
+		get label() {
+			return i18n.t('hrpages.warning')
+		},
+	},
+	{
+		value: 'positive',
+		get label() {
+			return i18n.t('hrpages.positive')
+		},
+	},
+	{
+		value: 'incident',
+		get label() {
+			return i18n.t('hrpages.incident')
+		},
+	},
 ]
 
 const PRIORITY_OPTIONS: Array<{ value: string; label: string }> = [
-	{ value: 'all', label: 'All Priorities' },
-	{ value: 'low', label: 'Low' },
-	{ value: 'normal', label: 'Normal' },
-	{ value: 'high', label: 'High' },
-	{ value: 'critical', label: 'Critical' },
+	{
+		value: 'all',
+		get label() {
+			return i18n.t('hrpages.allPriorities')
+		},
+	},
+	{
+		value: 'low',
+		get label() {
+			return i18n.t('hrpages.low')
+		},
+	},
+	{
+		value: 'normal',
+		get label() {
+			return i18n.t('hrpages.normal')
+		},
+	},
+	{
+		value: 'high',
+		get label() {
+			return i18n.t('hrpages.high')
+		},
+	},
+	{
+		value: 'critical',
+		get label() {
+			return i18n.t('hrpages.critical')
+		},
+	},
 ]
 
 // ============================================================================
@@ -80,6 +131,8 @@ export function HRNotesList({
 	className,
 	hasAccess,
 }: HRNotesListProps) {
+	const { t } = useAppTranslation()
+
 	const { user } = useAuth()
 	const [noteTypeFilter, setNoteTypeFilter] = useState<string>('all')
 	const [priorityFilter, setPriorityFilter] = useState<string>('all')
@@ -118,12 +171,12 @@ export function HRNotesList({
 			<div className="flex items-center justify-between mb-4">
 				<div className="flex items-center gap-2 text-warning">
 					<Lock className="h-4 w-4" />
-					<h3 className="font-semibold">HR Notes</h3>
+					<h3 className="font-semibold">{t('hrpages.hrNotes')}</h3>
 				</div>
 				{onAddNote && (
 					<Button variant="primary" onClick={onAddNote} size="sm" className="gap-1.5">
 						<Plus className="h-4 w-4" />
-						Add Note
+						{t('hrpages.addNote')}
 					</Button>
 				)}
 			</div>
@@ -137,14 +190,14 @@ export function HRNotesList({
 						value: option.value,
 						label: option.label,
 					}))}
-					placeholder="Filter by type"
+					placeholder={t('hrpages.filterByType')}
 				/>
 
 				<Select
 					value={priorityFilter}
 					onValueChange={setPriorityFilter}
 					options={PRIORITY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
-					placeholder="Filter by priority"
+					placeholder={t('hrpages.filterByPriority')}
 				/>
 			</div>
 
@@ -158,9 +211,9 @@ export function HRNotesList({
 			{/* Error State */}
 			{error && (
 				<div className="text-center py-8 text-destructive">
-					<p className="font-medium">Failed to load HR notes</p>
+					<p className="font-medium">{t('hrpages.failedToLoadHrNotes')}</p>
 					<p className="text-sm text-muted-foreground mt-1">
-						{error instanceof Error ? error.message : 'An unexpected error occurred'}
+						{error instanceof Error ? error.message : t('hrpages.anUnexpectedErrorOccurred')}
 					</p>
 				</div>
 			)}
@@ -170,17 +223,18 @@ export function HRNotesList({
 				<div className="text-center py-12 space-y-3">
 					<Lock className="h-12 w-12 mx-auto text-muted-foreground/50" />
 					<div>
-						<p className="font-medium text-muted-foreground">No HR notes yet</p>
+						<p className="font-medium text-muted-foreground">{t('hrpages.noHrNotesYet')}</p>
 						{subjectCharacterName && (
 							<p className="text-sm text-muted-foreground mt-1">
-								No notes recorded for {subjectCharacterName}
+								{t('hrpages.noNotesRecordedFor')}
+								{subjectCharacterName}
 							</p>
 						)}
 					</div>
 					{onAddNote && (
 						<Button variant="primary" onClick={onAddNote} size="sm" className="mt-4">
 							<Plus className="h-4 w-4 mr-1.5" />
-							Add First Note
+							{t('hrpages.addFirstNote')}
 						</Button>
 					)}
 				</div>
@@ -198,7 +252,8 @@ export function HRNotesList({
 			{/* Results Count */}
 			{!isLoading && !error && sortedNotes.length > 0 && (
 				<div className="text-center text-xs text-muted-foreground mt-4">
-					Showing {sortedNotes.length} note{sortedNotes.length !== 1 ? 's' : ''}
+					{t('hrpages.showing')}
+					{t('hrpages.noteCount', { count: sortedNotes.length })}
 				</div>
 			)}
 		</div>

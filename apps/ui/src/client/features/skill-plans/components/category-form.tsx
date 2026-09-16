@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+import { useAppTranslation } from '@/i18n'
+
 import { Button } from '../../../components/ui/button'
 import { Input } from '../../../components/ui/input'
 import { Label } from '../../../components/ui/label'
@@ -22,6 +24,8 @@ export function CategoryForm({
 	isSubmitting = false,
 	mode = 'create',
 }: CategoryFormProps) {
+	const { t } = useAppTranslation()
+
 	const [formData, setFormData] = useState({
 		name: initialData?.name || '',
 		description: initialData?.description || '',
@@ -34,19 +38,19 @@ export function CategoryForm({
 		const newErrors: Partial<Record<string, string>> = {}
 
 		if (!formData.name.trim()) {
-			newErrors.name = 'Name is required'
+			newErrors.name = t('skillPlans.nameRequired')
 		} else if (formData.name.length < 2) {
-			newErrors.name = 'Name must be at least 2 characters'
+			newErrors.name = t('skillPlans.nameMin2')
 		} else if (formData.name.length > 50) {
-			newErrors.name = 'Name must be less than 50 characters'
+			newErrors.name = t('skillPlans.nameMax50')
 		}
 
 		if (!formData.description.trim()) {
-			newErrors.description = 'Description is required'
+			newErrors.description = t('skillPlans.descriptionRequired')
 		} else if (formData.description.length < 10) {
-			newErrors.description = 'Description must be at least 10 characters'
+			newErrors.description = t('skillPlans.descriptionMin10')
 		} else if (formData.description.length > 200) {
-			newErrors.description = 'Description must be less than 200 characters'
+			newErrors.description = t('skillPlans.descriptionMax200')
 		}
 
 		setErrors(newErrors)
@@ -69,13 +73,14 @@ export function CategoryForm({
 			{/* Name field */}
 			<div className="space-y-2">
 				<Label htmlFor="name">
-					Category Name <span className="text-destructive">*</span>
+					{t('skillPlans.categoryName')}
+					<span className="text-destructive">*</span>
 				</Label>
 				<Input
 					id="name"
 					value={formData.name}
 					onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-					placeholder="e.g., PvP, Mining, Industry"
+					placeholder={t('skillPlans.eGPvpMiningIndustry')}
 					disabled={isSubmitting}
 					maxLength={50}
 				/>
@@ -85,26 +90,28 @@ export function CategoryForm({
 			{/* Description field */}
 			<div className="space-y-2">
 				<Label htmlFor="description">
-					Description <span className="text-destructive">*</span>
+					{t('skillPlans.description2')}
+					<span className="text-destructive">*</span>
 				</Label>
 				<Textarea
 					id="description"
 					value={formData.description}
 					onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-					placeholder="Describe what types of skill plans belong in this category"
+					placeholder={t('skillPlans.describeWhatTypesOfSkillPlansBelongInThisCategory')}
 					disabled={isSubmitting}
 					rows={3}
 					maxLength={200}
 				/>
 				<p className="text-sm text-muted-foreground">
-					{formData.description.length}/200 characters
+					{formData.description.length}
+					{t('skillPlans.message200Characters')}
 				</p>
 				{errors.description && <p className="text-sm text-destructive">{errors.description}</p>}
 			</div>
 
 			{/* Display order field */}
 			<div className="space-y-2">
-				<Label htmlFor="displayOrder">Display Order</Label>
+				<Label htmlFor="displayOrder">{t('skillPlans.displayOrder')}</Label>
 				<Input
 					id="displayOrder"
 					type="number"
@@ -117,16 +124,18 @@ export function CategoryForm({
 					min={0}
 					max={999}
 				/>
-				<p className="text-sm text-muted-foreground">Lower numbers appear first in lists</p>
+				<p className="text-sm text-muted-foreground">
+					{t('skillPlans.lowerNumbersAppearFirstInLists')}
+				</p>
 			</div>
 
 			{/* Form actions */}
 			<div className="flex justify-end gap-2 pt-4">
 				<Button variant="cancel" onClick={onCancel} disabled={isSubmitting}>
-					Cancel
+					{t('skillPlans.cancel')}
 				</Button>
 				<Button variant="confirm" type="submit" loading={isSubmitting}>
-					{mode === 'create' ? 'Create Category' : 'Save Changes'}
+					{mode === 'create' ? t('skillPlans.createCategory') : t('skillPlans.saveChanges')}
 				</Button>
 			</div>
 		</form>

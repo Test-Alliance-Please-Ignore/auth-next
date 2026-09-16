@@ -6,6 +6,7 @@ import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 
 import { CreateMarketDialog } from '../components/create-market-dialog'
 
@@ -15,7 +16,9 @@ import { CreateMarketDialog } from '../components/create-market-dialog'
  * posted to the predictions forum channel where members bet and a resolver settles them.
  */
 export default function PredictionMarketCreate() {
-	usePageTitle('Prediction Markets')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('predictionMarkets.predictionMarkets'))
 	const [createOpen, setCreateOpen] = useState(false)
 	const { hasAnyPermission } = useUserPermissions()
 	const canCreate = hasAnyPermission('urn:markets:creator', 'urn:markets:manager')
@@ -26,18 +29,12 @@ export default function PredictionMarketCreate() {
 	return (
 		<Container>
 			<PageHeader
-				title="Prediction Markets"
-				description={
-					<>
-						Create a market for the community. It’s posted to the predictions forum channel, where
-						members place bets and a resolver settles it. You can bet on your own market, but you
-						can’t resolve it.
-					</>
-				}
+				title={t('predictionMarkets.predictionMarkets')}
+				description={<>{t('predictionMarkets.createAMarketForTheCommunityItSPostedTo')}</>}
 				action={
 					canCreate ? (
 						<Button variant="primary" onClick={() => setCreateOpen(true)}>
-							New market
+							{t('predictionMarkets.newMarket')}
 						</Button>
 					) : undefined
 				}
@@ -46,8 +43,8 @@ export default function PredictionMarketCreate() {
 			<Card>
 				<CardContent className="py-6 text-sm text-muted-foreground">
 					{canCreate
-						? 'No markets have been created from this page yet. Use New market to create one.'
-						: 'You don’t have permission to create prediction markets. Ask an admin for the “markets creator” role.'}
+						? t('predictionMarkets.noMarketsHaveBeenCreatedFromThisPageYetUse')
+						: t('predictionMarkets.youDonTHavePermissionToCreatePredictionMarketsAsk')}
 				</CardContent>
 			</Card>
 

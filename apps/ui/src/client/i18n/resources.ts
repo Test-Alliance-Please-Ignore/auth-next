@@ -2,6 +2,7 @@ import { adminCatalog } from './catalogs/admin'
 import { applicationsCatalog } from './catalogs/applications'
 import { billsCatalog } from './catalogs/bills'
 import { broadcastsCatalog } from './catalogs/broadcasts'
+import { characterpagesCatalog } from './catalogs/character-pages'
 import { charactersCorporationsCatalog } from './catalogs/characters-corporations'
 import { commonCatalog } from './catalogs/common'
 import { doctrinesCatalog } from './catalogs/doctrines'
@@ -9,6 +10,8 @@ import { fleetTrackingCatalog } from './catalogs/fleet-tracking'
 import { freightIndustryCatalog } from './catalogs/freight-industry'
 import { groupsCatalog } from './catalogs/groups'
 import { hrCatalog } from './catalogs/hr'
+import { hrpagesCatalog } from './catalogs/hr-pages'
+import { industryCatalog } from './catalogs/industry'
 import { moonScanCatalog } from './catalogs/moon-scan'
 import { pasteMumbleCatalog } from './catalogs/paste-mumble'
 import { predictionDkpCatalog } from './catalogs/prediction-dkp'
@@ -26,8 +29,10 @@ export const en = {
 	...shellCatalog.en,
 	...groupsCatalog.en,
 	...charactersCorporationsCatalog.en,
+	...characterpagesCatalog.en,
 	...applicationsCatalog.en,
 	...hrCatalog.en,
+	...hrpagesCatalog.en,
 	...pasteMumbleCatalog.en,
 	...broadcastsCatalog.en,
 	...billsCatalog.en,
@@ -36,6 +41,7 @@ export const en = {
 	...doctrinesCatalog.en,
 	...srpCatalog.en,
 	...freightIndustryCatalog.en,
+	...industryCatalog.en,
 	...moonScanCatalog.en,
 	...skillPlansCatalog.en,
 	...fleetTrackingCatalog.en,
@@ -48,8 +54,10 @@ export const de = {
 	...shellCatalog.de,
 	...groupsCatalog.de,
 	...charactersCorporationsCatalog.de,
+	...characterpagesCatalog.de,
 	...applicationsCatalog.de,
 	...hrCatalog.de,
+	...hrpagesCatalog.de,
 	...pasteMumbleCatalog.de,
 	...broadcastsCatalog.de,
 	...billsCatalog.de,
@@ -58,6 +66,7 @@ export const de = {
 	...doctrinesCatalog.de,
 	...srpCatalog.de,
 	...freightIndustryCatalog.de,
+	...industryCatalog.de,
 	...moonScanCatalog.de,
 	...skillPlansCatalog.de,
 	...fleetTrackingCatalog.de,
@@ -70,8 +79,10 @@ export const ko = {
 	...shellCatalog.ko,
 	...groupsCatalog.ko,
 	...charactersCorporationsCatalog.ko,
+	...characterpagesCatalog.ko,
 	...applicationsCatalog.ko,
 	...hrCatalog.ko,
+	...hrpagesCatalog.ko,
 	...pasteMumbleCatalog.ko,
 	...broadcastsCatalog.ko,
 	...billsCatalog.ko,
@@ -80,6 +91,7 @@ export const ko = {
 	...doctrinesCatalog.ko,
 	...srpCatalog.ko,
 	...freightIndustryCatalog.ko,
+	...industryCatalog.ko,
 	...moonScanCatalog.ko,
 	...skillPlansCatalog.ko,
 	...fleetTrackingCatalog.ko,
@@ -92,8 +104,10 @@ export const esMX = {
 	...shellCatalog['es-MX'],
 	...groupsCatalog['es-MX'],
 	...charactersCorporationsCatalog['es-MX'],
+	...characterpagesCatalog['es-MX'],
 	...applicationsCatalog['es-MX'],
 	...hrCatalog['es-MX'],
+	...hrpagesCatalog['es-MX'],
 	...pasteMumbleCatalog['es-MX'],
 	...broadcastsCatalog['es-MX'],
 	...billsCatalog['es-MX'],
@@ -102,6 +116,7 @@ export const esMX = {
 	...doctrinesCatalog['es-MX'],
 	...srpCatalog['es-MX'],
 	...freightIndustryCatalog['es-MX'],
+	...industryCatalog['es-MX'],
 	...moonScanCatalog['es-MX'],
 	...skillPlansCatalog['es-MX'],
 	...fleetTrackingCatalog['es-MX'],

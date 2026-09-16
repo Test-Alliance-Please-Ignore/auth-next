@@ -5,6 +5,7 @@ import { billStatusBadgeVariant } from '@/components/tax-reports/grids/shared'
 import { useReportGridState } from '@/components/tax-reports/use-report-grid-state'
 import { Badge } from '@/components/ui/badge'
 import { useTaxCorporationBillEventHistory } from '@/hooks/corporation-tax'
+import { useAppTranslation } from '@/i18n'
 import { formatTaxDate } from '@/lib/tax-date'
 
 import type {
@@ -17,6 +18,8 @@ export function CorporationBillHistoryCard(props: {
 	effectiveCorporationId: string | null
 	canView: boolean
 }) {
+	const { t } = useAppTranslation()
+
 	const grid = useReportGridState({
 		defaultSortBy: 'createdAt',
 		defaultSortDir: 'desc',
@@ -39,19 +42,19 @@ export function CorporationBillHistoryCard(props: {
 		() => [
 			{
 				id: 'createdAt',
-				header: 'Event Time',
+				header: t('tax.eventTime'),
 				sortable: true,
 				cell: (row: TaxBillingEventHistoryRow) => formatTaxDate(row.createdAt),
 			},
 			{
 				id: 'eventType',
-				header: 'Event',
+				header: t('tax.event'),
 				sortable: true,
 				cell: (row: TaxBillingEventHistoryRow) => row.eventType,
 			},
 			{
 				id: 'billId',
-				header: 'Bill',
+				header: t('tax.bill'),
 				sortable: true,
 				cell: (row: TaxBillingEventHistoryRow) => (
 					<span className="font-mono text-xs">{row.billId}</span>
@@ -59,7 +62,7 @@ export function CorporationBillHistoryCard(props: {
 			},
 			{
 				id: 'assessmentId',
-				header: 'Assessment',
+				header: t('tax.assessment'),
 				sortable: true,
 				cell: (row: TaxBillingEventHistoryRow) => (
 					<span className="font-mono text-xs">{row.assessmentId}</span>
@@ -67,7 +70,7 @@ export function CorporationBillHistoryCard(props: {
 			},
 			{
 				id: 'statusTransition',
-				header: 'Transition',
+				header: t('tax.transition'),
 				sortable: false,
 				cell: (row: TaxBillingEventHistoryRow) => {
 					if (!row.fromStatus && !row.toStatus) return '-'
@@ -92,20 +95,20 @@ export function CorporationBillHistoryCard(props: {
 			},
 			{
 				id: 'actorUserId',
-				header: 'Actor',
+				header: t('tax.actor'),
 				sortable: true,
 				cell: (row: TaxBillingEventHistoryRow) => (
 					<span className="font-mono text-xs">{row.actorUserId ?? '-'}</span>
 				),
 			},
 		],
-		[]
+		[t]
 	)
 
 	if (!props.effectiveCorporationId) {
 		return (
 			<div className="py-8 text-sm text-muted-foreground">
-				Select a corporation to view assessment bill history.
+				{t('tax.selectACorporationToViewAssessmentBillHistory')}
 			</div>
 		)
 	}
@@ -113,16 +116,16 @@ export function CorporationBillHistoryCard(props: {
 	return (
 		<DataTable
 			variant="plain"
-			errorMessage="Failed to load report"
+			errorMessage={t('tax.failedToLoadReport')}
 			columns={columns}
 			rows={rows}
 			loading={isLoading}
 			error={error}
-			emptyMessage="No bill history entries were found for this corporation."
+			emptyMessage={t('tax.noBillHistoryEntriesWereFoundForThisCorporation')}
 			pagination={grid.pagination}
 			onPaginationChange={grid.onPaginationChange}
 			rowCount={data?.totalRows ?? 0}
-			itemLabel="events"
+			itemLabel={t('tax.events')}
 			sorting={grid.sorting}
 			onSortingChange={grid.onSortingChange}
 			getRowKey={(row) => row.id}

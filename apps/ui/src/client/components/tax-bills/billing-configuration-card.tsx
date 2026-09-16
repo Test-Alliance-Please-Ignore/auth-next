@@ -1,6 +1,7 @@
 import { Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
 	useCreateTaxBillingConfig,
@@ -11,13 +12,13 @@ import {
 	useUpdateTaxBillingConfig,
 } from '@/hooks/corporation-tax'
 import { useEntityNames } from '@/hooks/useEntityNames'
+import { useAppTranslation } from '@/i18n'
 import { corporationTaxApi } from '@/lib/tax-api'
 
 import { BillingConfigurationForm } from './billing-configuration-form'
 import { BillingConfigurationTable } from './billing-configuration-table'
 
 import type { TaxBillingPayeeType, TaxCorporationBillingConfig } from '@repo/corporation-tax'
-import { Button } from '@/components/ui/button'
 
 type BillingConfigurationCardProps = {
 	effectiveCorporationId: string | undefined
@@ -30,6 +31,8 @@ export function BillingConfigurationCard({
 	canIssue,
 	canView,
 }: BillingConfigurationCardProps) {
+	const { t } = useAppTranslation()
+
 	const [editingBillingConfigId, setEditingBillingConfigId] = useState<string | null>(null)
 	const [billingEnabledInput, setBillingEnabledInput] = useState(false)
 	const [billingIssuerUserIdInput, setBillingIssuerUserIdInput] = useState('')
@@ -61,7 +64,7 @@ export function BillingConfigurationCard({
 			if (config.billingPayeeId) ids.add(config.billingPayeeId)
 		}
 		return [...ids]
-	}, [billingConfigs])
+	}, [billingConfigs, t])
 	const { data: entityNames = {} } = useEntityNames(payeeEntityIds, { enabled: canView })
 
 	const { data: billingCharacterSearchResults = [], isLoading: billingCharacterSearchLoading } =
@@ -77,7 +80,7 @@ export function BillingConfigurationCard({
 			}
 			return corporationTaxApi.searchActivePayeeCorporations(effectiveCorporationId, query)
 		},
-		[effectiveCorporationId]
+		[effectiveCorporationId, t]
 	)
 
 	const isCreatingFirstBillingConfig =
@@ -140,21 +143,19 @@ export function BillingConfigurationCard({
 	const submitBillingConfig = () => {
 		if (!effectiveCorporationId) return
 		if (!billingPayeeTypeInput) {
-			setBillingConfigValidationError('Payee type is required.')
+			setBillingConfigValidationError(t('tax.payeeTypeIsRequired'))
 			return
 		}
 		if (!billingPayeeIdInput.trim()) {
 			setBillingConfigValidationError(
 				billingPayeeTypeInput === 'character'
-					? 'Please select a character payee.'
-					: 'Please select a corporation payee.'
+					? t('tax.pleaseSelectACharacterPayee')
+					: t('tax.pleaseSelectACorporationPayee')
 			)
 			return
 		}
 		if (!isBillingDueDaysValid) {
-			setBillingConfigValidationError(
-				'Due days is required and must be an integer between 1 and 90.'
-			)
+			setBillingConfigValidationError(t('tax.dueDaysIsRequiredAndMustBeAnIntegerBetween'))
 			return
 		}
 		setBillingConfigValidationError(null)
@@ -191,16 +192,15 @@ export function BillingConfigurationCard({
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Billing Configuration</CardTitle>
+				<CardTitle>{t('tax.billingConfiguration')}</CardTitle>
 				<CardDescription>
-					Configure issuer, payee, due days, and default billing profile for the selected
-					corporation.
+					{t('tax.configureIssuerPayeeDueDaysAndDefaultBillingProfileFor')}
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				{!effectiveCorporationId ? (
 					<div className="text-sm text-muted-foreground">
-						Select a corporation to configure billing.
+						{t('tax.selectACorporationToConfigureBilling')}
 					</div>
 				) : (
 					<>
@@ -232,7 +232,8 @@ export function BillingConfigurationCard({
 
 						{canIssue && !showBillingConfigForm ? (
 							<div className="flex justify-center pt-2">
-								<Button variant="primary"
+								<Button
+									variant="primary"
 									className="min-w-44"
 									onClick={() => {
 										resetBillingConfigForm()
@@ -240,7 +241,7 @@ export function BillingConfigurationCard({
 									}}
 								>
 									<Plus className="h-4 w-4" />
-									Add Config
+									{t('tax.addConfig')}
 								</Button>
 							</div>
 						) : null}
@@ -309,7 +310,7 @@ export function BillingConfigurationCard({
 											deleteBillingConfigMutation.error ||
 											setDefaultBillingConfigMutation.error
 										)?.message
-									: 'Billing configuration update failed'}
+									: t('tax.billingConfigurationUpdateFailed')}
 							</div>
 						) : null}
 					</>

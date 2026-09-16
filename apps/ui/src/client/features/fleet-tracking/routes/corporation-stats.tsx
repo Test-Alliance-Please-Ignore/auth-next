@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { useCorporationAccess } from '@/features/corporations'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 
 import { CorporationParticipationExportDialog } from '../components/corporation-participation-export-dialog'
 import { RankingList } from '../components/ranking-list'
@@ -19,6 +20,8 @@ import { useCorporationStats } from '../hooks'
 import { formatDuration } from '../utils/format'
 
 export default function CorporationStats() {
+	const { t } = useAppTranslation()
+
 	const { corpId } = useParams<{ corpId: string }>()
 	const { range } = useRangeFromSearchParams()
 	const { isAdmin, hasPermission } = useUserPermissions()
@@ -34,7 +37,9 @@ export default function CorporationStats() {
 		enabled: canView,
 	})
 	usePageTitle(
-		data?.corporationName ? `${data.corporationName} — Corporation Stats` : 'Corporation Stats'
+		data?.corporationName
+			? t('fleetTracking.value1CorporationStats', { value1: data.corporationName })
+			: t('fleetTracking.corporationStats')
 	)
 
 	if (!corpId) return <Navigate to="/fleet-tracking/stats" replace />
@@ -47,18 +52,18 @@ export default function CorporationStats() {
 		return (
 			<Container>
 				<PageHeader
-					title="Corporation Stats"
+					title={t('fleetTracking.corporationStats')}
 					action={
 						<Button asChild variant="ghost" size="sm">
 							<Link to="/fleet-tracking">
 								<ArrowLeft className="h-4 w-4" />
-								Fleet Tracking
+								{t('fleetTracking.fleetTracking')}
 							</Link>
 						</Button>
 					}
 				/>
 				<div className="py-12 text-center text-muted-foreground">
-					You do not have permission to view corporation fleet tracking stats.
+					{t('fleetTracking.youDoNotHavePermissionToViewCorporationFleetTracking')}
 				</div>
 			</Container>
 		)
@@ -67,17 +72,17 @@ export default function CorporationStats() {
 	return (
 		<Container>
 			<PageHeader
-				title={data?.corporationName ?? 'Corporation Stats'}
+				title={data?.corporationName ?? t('fleetTracking.corporationStats')}
 				action={
 					<div className="flex items-center gap-2">
 						<Button size="sm" onClick={() => setExportOpen(true)}>
 							<Download className="h-4 w-4" />
-							Export CSV
+							{t('fleetTracking.exportCsv')}
 						</Button>
 						<Button asChild variant="ghost" size="sm">
 							<Link to="/fleet-tracking/stats">
 								<ArrowLeft className="h-4 w-4" />
-								Stats
+								{t('fleetTracking.stats')}
 							</Link>
 						</Button>
 					</div>
@@ -95,23 +100,28 @@ export default function CorporationStats() {
 			{isLoading ? (
 				<LoadingPage />
 			) : !data ? (
-				<div className="py-12 text-center text-sm text-muted-foreground">No data.</div>
+				<div className="py-12 text-center text-sm text-muted-foreground">
+					{t('fleetTracking.noData2')}
+				</div>
 			) : (
 				<div className="space-y-6">
 					<SessionStatsGrid
 						stats={[
-							{ label: 'Pilots active', value: data.totals.pilotsActive },
-							{ label: 'Pilot hours', value: data.totals.pilotHours },
-							{ label: 'Fleets with presence', value: data.totals.sessionsWithPresence },
-							{ label: 'Avg pilots / fleet', value: data.totals.avgPilotsPerSession },
+							{ label: t('fleetTracking.pilotsActive'), value: data.totals.pilotsActive },
+							{ label: t('fleetTracking.pilotHours'), value: data.totals.pilotHours },
+							{
+								label: t('fleetTracking.fleetsWithPresence'),
+								value: data.totals.sessionsWithPresence,
+							},
+							{ label: t('fleetTracking.avgPilotsFleet'), value: data.totals.avgPilotsPerSession },
 						]}
 					/>
 
 					<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 						<RankingList
-							title="Top participating members"
+							title={t('fleetTracking.topParticipatingMembers')}
 							items={data.topMembers}
-							emptyText="No members in this range."
+							emptyText={t('fleetTracking.noMembersInThisRange')}
 							renderItem={(r) => (
 								<div className="flex items-center justify-between">
 									<Link
@@ -121,15 +131,17 @@ export default function CorporationStats() {
 										{r.characterName}
 									</Link>
 									<span className="text-muted-foreground">
-										{r.fleetsJoined} fleets • {formatDuration(r.minutesInFleet * 60_000)}
+										{r.fleetsJoined}
+										{t('fleetTracking.fleets')}
+										{formatDuration(r.minutesInFleet * 60_000)}
 									</span>
 								</div>
 							)}
 						/>
 						<RankingList
-							title="Top FCs from this corp"
+							title={t('fleetTracking.topFcsFromThisCorp')}
 							items={data.topFCs}
-							emptyText="No FCs in this range."
+							emptyText={t('fleetTracking.noFcsInThisRange')}
 							renderItem={(r) => (
 								<div className="flex items-center justify-between gap-3">
 									<div className="min-w-0">
@@ -140,17 +152,21 @@ export default function CorporationStats() {
 											{r.characterName}
 										</Link>
 										<div className="text-xs text-muted-foreground">
-											{formatDuration((r.minutesAsFC ?? 0) * 60_000)} active
+											{formatDuration((r.minutesAsFC ?? 0) * 60_000)}
+											{t('fleetTracking.active2')}
 										</div>
 									</div>
-									<span className="text-muted-foreground">{r.sessions} sessions</span>
+									<span className="text-muted-foreground">
+										{r.sessions}
+										{t('fleetTracking.sessions')}
+									</span>
 								</div>
 							)}
 						/>
 					</div>
 
 					<ShipDistributionChart
-						title="Ships flown by this corp's members"
+						title={t('fleetTracking.shipsFlownByThisCorpSMembers')}
 						items={data.shipsFlown.map((s) => ({
 							shipTypeId: s.shipTypeId,
 							shipTypeName: s.shipTypeName,

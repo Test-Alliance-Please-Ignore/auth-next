@@ -14,6 +14,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 
 import { DoctrineForm } from '../components/DoctrineForm'
@@ -22,6 +23,8 @@ import { useDoctrine, useUpdateDoctrine } from '../hooks'
 import type { UpdateDoctrineRequest } from '../types'
 
 export default function DoctrineEditPage() {
+	const { t } = useAppTranslation()
+
 	const { id } = useParams<{ id: string }>()
 	const navigate = useNavigate()
 	const { hasPermission, isAdmin } = useUserPermissions()
@@ -29,17 +32,19 @@ export default function DoctrineEditPage() {
 	const updateMutation = useUpdateDoctrine()
 	const canManage = isAdmin || hasPermission('urn:doctrines:manager')
 
-	usePageTitle(doctrine ? `Edit ${doctrine.name}` : 'Edit Doctrine')
+	usePageTitle(
+		doctrine ? t('doctrines.editValue1', { value1: doctrine.name }) : t('doctrines.editDoctrine')
+	)
 
 	const handleSubmit = async (data: UpdateDoctrineRequest) => {
 		if (!id) return
 
 		try {
 			await updateMutation.mutateAsync({ id, data })
-			toast.success('Doctrine updated')
+			toast.success(t('doctrines.doctrineUpdated'))
 			void navigate(`/doctrines/${id}`)
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Failed to update doctrine')
+			toast.error(error instanceof Error ? error.message : t('doctrines.failedToUpdateDoctrine'))
 		}
 	}
 
@@ -58,17 +63,17 @@ export default function DoctrineEditPage() {
 	if (!doctrine) {
 		return (
 			<Container>
-				<PageHeader title="Doctrine Not Found" />
+				<PageHeader title={t('doctrines.doctrineNotFound')} />
 				<Card>
 					<CardContent className="pt-6">
 						<div className="text-center">
 							<p className="text-muted-foreground mb-4">
-								The doctrine you're trying to edit doesn't exist.
+								{t('doctrines.theDoctrineYouReTryingToEditDoesnTExist')}
 							</p>
 							<Button asChild variant="ghost">
 								<Link to="/doctrines">
 									<ArrowLeft className="h-4 w-4" />
-									Back to Doctrines
+									{t('doctrines.backToDoctrines')}
 								</Link>
 							</Button>
 						</div>
@@ -83,11 +88,14 @@ export default function DoctrineEditPage() {
 			<Button asChild variant="ghost" size="sm" className="mb-4">
 				<Link to={`/doctrines/${id}`}>
 					<ArrowLeft className="h-4 w-4" />
-					Back to Doctrine
+					{t('doctrines.backToDoctrine')}
 				</Link>
 			</Button>
 
-			<PageHeader title={`Edit ${doctrine.name}`} description="Update doctrine details" />
+			<PageHeader
+				title={t('doctrines.editValue1', { value1: doctrine.name })}
+				description={t('doctrines.updateDoctrineDetails')}
+			/>
 
 			{canManage ? (
 				<Card>
@@ -106,7 +114,7 @@ export default function DoctrineEditPage() {
 				<Card>
 					<CardContent className="pt-6">
 						<p className="text-sm text-muted-foreground">
-							You do not have permission to perform this action.
+							{t('doctrines.youDoNotHavePermissionToPerformThisAction')}
 						</p>
 					</CardContent>
 				</Card>

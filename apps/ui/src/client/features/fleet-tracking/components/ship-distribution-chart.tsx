@@ -1,4 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAppTranslation } from '@/i18n'
+
 import { formatDuration } from '../utils/format'
 
 interface ShipDistributionChartProps {
@@ -12,6 +14,8 @@ interface ShipDistributionChartProps {
 }
 
 export function ShipDistributionChart({ title, items, emptyText }: ShipDistributionChartProps) {
+	const { t } = useAppTranslation()
+
 	const sorted = [...items].sort((a, b) => b.totalMinutes - a.totalMinutes)
 	const max = Math.max(...sorted.map((i) => i.totalMinutes), 1)
 
@@ -22,7 +26,9 @@ export function ShipDistributionChart({ title, items, emptyText }: ShipDistribut
 			</CardHeader>
 			<CardContent>
 				{sorted.length === 0 ? (
-					<div className="text-sm text-muted-foreground py-4">{emptyText ?? 'No ship data'}</div>
+					<div className="text-sm text-muted-foreground py-4">
+						{emptyText ?? t('fleetTracking.noShipData')}
+					</div>
 				) : (
 					<ul className="space-y-2">
 						{sorted.map((row) => {
@@ -36,10 +42,7 @@ export function ShipDistributionChart({ title, items, emptyText }: ShipDistribut
 										</span>
 									</div>
 									<div className="h-2 mt-1 bg-muted rounded">
-										<div
-											className="h-full bg-primary rounded"
-											style={{ width: `${pct}%` }}
-										/>
+										<div className="h-full bg-primary rounded" style={{ width: `${pct}%` }} />
 									</div>
 								</li>
 							)

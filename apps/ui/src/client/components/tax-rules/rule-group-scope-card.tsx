@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
 	Dialog,
@@ -11,9 +12,9 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 
 import type { TaxRuleGroup } from '@repo/corporation-tax'
-import { Button } from '@/components/ui/button'
 
 type RuleGroupUpdate = {
 	name?: string
@@ -45,6 +46,8 @@ export function RuleGroupScopeCard({
 	onUpdateGroup: (ruleGroupId: string, updates: RuleGroupUpdate) => Promise<unknown> | void
 	onDeleteGroup: (ruleGroupId: string) => Promise<unknown> | void
 }) {
+	const { t } = useAppTranslation()
+
 	const [ruleGroupScopeQuery, setRuleGroupScopeQuery] = useState('')
 	const [newGroupName, setNewGroupName] = useState('')
 	const [groupName, setGroupName] = useState('')
@@ -53,7 +56,7 @@ export function RuleGroupScopeCard({
 
 	const selectedRuleGroup = useMemo(
 		() => ruleGroups.find((group) => group.id === selectedRuleGroupId),
-		[ruleGroups, selectedRuleGroupId]
+		[ruleGroups, selectedRuleGroupId, t]
 	)
 	const isImmutableGroup = Boolean(
 		selectedRuleGroup?.isDefaultGlobal || selectedRuleGroup?.isSystem
@@ -67,33 +70,35 @@ export function RuleGroupScopeCard({
 
 	const ruleGroupScopeOptions = useMemo(
 		() =>
-			ruleGroups.map((group) => ({ value: group.id,
-				label: group.isDefaultGlobal ? 'Alliance Global (default)' : group.name,
+			ruleGroups.map((group) => ({
+				value: group.id,
+				label: group.isDefaultGlobal ? t('tax.allianceGlobalDefault') : group.name,
 				description: group.isDefaultGlobal ? group.name : (group.description ?? undefined),
 			})),
-		[ruleGroups]
+		[ruleGroups, t]
 	)
 
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Rule Group Scope</CardTitle>
+				<CardTitle>{t('tax.ruleGroupScope')}</CardTitle>
 				<CardDescription>
-					Select the active rule group scope. Rules and corporation attachments below are always for
-					the selected group.
+					{t('tax.selectTheActiveRuleGroupScopeRulesAndCorporationAttachments')}
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				<div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-end">
 					<div className="space-y-1">
-						<label className="text-xs font-medium text-muted-foreground">Rule Group</label>
+						<label className="text-xs font-medium text-muted-foreground">
+							{t('tax.ruleGroup')}
+						</label>
 						{ruleGroupsLoading ? (
-							<div className="text-sm text-muted-foreground">Loading rule groups...</div>
+							<div className="text-sm text-muted-foreground">{t('tax.loadingRuleGroups')}</div>
 						) : ruleGroupsError ? (
 							<div className="text-sm text-destructive">
 								{ruleGroupsError instanceof Error
 									? ruleGroupsError.message
-									: 'Failed to load groups'}
+									: t('tax.failedToLoadGroups')}
 							</div>
 						) : (
 							<Select
@@ -109,23 +114,28 @@ export function RuleGroupScopeCard({
 								placeholder={
 									selectedRuleGroup
 										? selectedRuleGroup.isDefaultGlobal
-											? 'Alliance Global (default)'
+											? t('tax.allianceGlobalDefault')
 											: selectedRuleGroup.name
-										: 'Select a rule group'
+										: t('tax.selectARuleGroup')
 								}
 							/>
 						)}
 					</div>
-					<div className="pb-2 text-center text-xs font-medium text-muted-foreground">- or -</div>
+					<div className="pb-2 text-center text-xs font-medium text-muted-foreground">
+						{t('tax.or')}
+					</div>
 					<div className="space-y-1">
-						<label className="text-xs font-medium text-muted-foreground">Create Rule Group</label>
+						<label className="text-xs font-medium text-muted-foreground">
+							{t('tax.createRuleGroup')}
+						</label>
 						<div className="flex items-center gap-2">
 							<Input
 								value={newGroupName}
 								onChange={(event) => setNewGroupName(event.target.value)}
-								placeholder="Enter a rule group name"
+								placeholder={t('tax.enterARuleGroupName')}
 							/>
-							<Button variant="primary"
+							<Button
+								variant="primary"
 								disabled={isCreating}
 								onClick={() => {
 									const name = newGroupName.trim()
@@ -133,7 +143,7 @@ export function RuleGroupScopeCard({
 									void Promise.resolve(onCreateGroup(name)).then(() => setNewGroupName(''))
 								}}
 							>
-								{isCreating ? 'Creating...' : 'Create'}
+								{isCreating ? t('tax.creating') : t('tax.create')}
 							</Button>
 						</div>
 					</div>
@@ -143,12 +153,14 @@ export function RuleGroupScopeCard({
 					<div className="space-y-3 rounded-md border border-border p-3">
 						{isImmutableGroup ? (
 							<div className="text-xs text-muted-foreground">
-								Alliance Global (default) group metadata is system-managed and cannot be edited.
+								{t('tax.allianceGlobalDefaultGroupMetadataIsSystemManagedAndCannot')}
 							</div>
 						) : null}
 						<div className="grid gap-3 md:grid-cols-2">
 							<div className="space-y-1">
-								<label className="text-xs font-medium text-muted-foreground">Group name</label>
+								<label className="text-xs font-medium text-muted-foreground">
+									{t('tax.groupName')}
+								</label>
 								<Input
 									value={groupName}
 									onChange={(event) => setGroupName(event.target.value)}
@@ -157,7 +169,7 @@ export function RuleGroupScopeCard({
 							</div>
 							<div className="space-y-1">
 								<label className="text-xs font-medium text-muted-foreground">
-									Description (optional)
+									{t('tax.descriptionOptional')}
 								</label>
 								<Input
 									value={groupDescription}
@@ -168,7 +180,8 @@ export function RuleGroupScopeCard({
 						</div>
 						{!isImmutableGroup ? (
 							<div className="flex flex-wrap gap-2">
-								<Button variant="primary"
+								<Button
+									variant="primary"
 									size="sm"
 									disabled={isUpdating || !groupName.trim()}
 									onClick={() =>
@@ -178,15 +191,16 @@ export function RuleGroupScopeCard({
 										})
 									}
 								>
-									{isUpdating ? 'Saving...' : 'Save Group'}
+									{isUpdating ? t('tax.saving') : t('tax.saveGroup')}
 								</Button>
-								<Button variant="destructive"
+								<Button
+									variant="destructive"
 									size="sm"
 									showIcon={false}
 									disabled={isDeleting}
 									onClick={() => setDeleteGroupDialogOpen(true)}
 								>
-									Delete Group
+									{t('tax.deleteGroup')}
 								</Button>
 							</div>
 						) : null}
@@ -195,19 +209,23 @@ export function RuleGroupScopeCard({
 				<Dialog open={deleteGroupDialogOpen} onOpenChange={setDeleteGroupDialogOpen}>
 					<DialogContent>
 						<DialogHeader>
-							<DialogTitle>Delete Rule Group</DialogTitle>
+							<DialogTitle>{t('tax.deleteRuleGroup')}</DialogTitle>
 							<DialogDescription>
-								Are you sure you want to delete "{selectedRuleGroup?.name}"? This action cannot be
-								undone.
+								{t('tax.deleteRuleConfirm', { name: selectedRuleGroup?.name })}
 							</DialogDescription>
 						</DialogHeader>
 						<DialogFooter>
-							<Button variant="cancel" onClick={() => setDeleteGroupDialogOpen(false)} disabled={isDeleting}>
-								Cancel
+							<Button
+								variant="cancel"
+								onClick={() => setDeleteGroupDialogOpen(false)}
+								disabled={isDeleting}
+							>
+								{t('tax.cancel')}
 							</Button>
-							<Button variant="destructive"
+							<Button
+								variant="destructive"
 								loading={isDeleting}
-								loadingText="Deleting..."
+								loadingText={t('tax.deleting')}
 								showIcon={false}
 								onClick={() => {
 									if (!selectedRuleGroup) return
@@ -216,7 +234,7 @@ export function RuleGroupScopeCard({
 									)
 								}}
 							>
-								Delete
+								{t('tax.delete')}
 							</Button>
 						</DialogFooter>
 					</DialogContent>
