@@ -210,5 +210,76 @@ export const applicationRecommendationsCatalog = defineCatalog(
 			preview: '내 추천:',
 			pending: '삭제 중…',
 		},
+	},
+	{
+		list: {
+			title: 'Recomendaciones',
+			description:
+				'Respalda a los candidatos de tu corporación. Tu recomendación ayuda a RR. HH. a tomar decisiones informadas.',
+			loadFailed: 'No se pudieron cargar las recomendaciones',
+			emptyTitle: 'No hay solicitudes pendientes',
+			emptyDescription:
+				'Actualmente no hay solicitudes pendientes para tus corporaciones. Vuelve más tarde para ver si hay nuevos candidatos.',
+			applyingTo: 'Solicita unirse a {{corporation}}',
+			recommend: 'Recomendar',
+			editAria: 'Editar tu recomendación para {{character}}',
+			deleteAria: 'Eliminar tu recomendación para {{character}}',
+		},
+		cards: {
+			emptyTitle: 'Aún no hay recomendaciones',
+			emptyDescription:
+				'Los miembros de la comunidad pueden respaldar a este candidato agregando su recomendación.',
+			count: 'Recomendaciones ({{count}})',
+			recommended: 'Recomendado {{time}}',
+		},
+		sentiment: {
+			positive: 'Positiva',
+			neutral: 'Neutral',
+			negative: 'Negativa',
+			unknown: 'Opinión desconocida',
+			positiveHint: 'Recomendar a este candidato',
+			neutralHint: 'Sin una opinión definida',
+			negativeHint: 'No recomendar',
+		},
+		form: {
+			addTitle: 'Agregar recomendación',
+			editTitle: 'Editar recomendación',
+			addDescription: 'Comparte tu opinión sobre este candidato con la corporación.',
+			editDescription: 'Actualiza tu recomendación para este candidato.',
+			character: 'Personaje',
+			selectCharacter: 'Seleccionar personaje',
+			expiredCharacter: '{{character}} (Token vencido)',
+			selfWarning:
+				'No puedes recomendar tu propia solicitud. Pídele a alguien más que te recomiende.',
+			sentiment: 'Opinión',
+			text: 'Texto de la recomendación',
+			placeholder: 'Comparte tu opinión sobre este candidato…',
+			minimum: 'Mínimo {{count}} caracteres',
+			maximum: 'Se excedió la longitud máxima',
+			countLabel: 'Número de caracteres:',
+			counter: '{{current}} / {{maximum}}',
+			makePublic: 'Hacer pública la recomendación',
+			publicHint: 'Visible para el candidato y el personal de RR. HH.',
+			privateHint: 'Solo visible para el personal de RR. HH.',
+			updating: 'Actualizando…',
+			submitting: 'Enviando…',
+			update: 'Actualizar recomendación',
+			submit: 'Enviar recomendación',
+		},
+		feedback: {
+			added: 'Recomendación agregada correctamente',
+			updated: 'Recomendación actualizada correctamente',
+			deleted: 'Recomendación eliminada correctamente',
+			addFailed: 'No se pudo agregar la recomendación',
+			updateFailed: 'No se pudo actualizar la recomendación',
+			deleteFailed: 'No se pudo eliminar la recomendación',
+		},
+		delete: {
+			title: 'Eliminar recomendación',
+			description:
+				'¿Seguro que quieres eliminar tu recomendación? Esta acción no se puede deshacer.',
+			preview: 'Tu recomendación:',
+			pending: 'Eliminando…',
+		},
 	}
 )

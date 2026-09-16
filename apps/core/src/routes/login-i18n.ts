@@ -35,6 +35,7 @@ export const LOGIN_LOCALE_NAMES: Record<UserLocale, string> = {
 	en: 'English',
 	de: 'Deutsch',
 	ko: '한국어',
+	'es-MX': 'Español',
 }
 
 export const LOGIN_MESSAGES = {
@@ -138,6 +139,39 @@ export const LOGIN_MESSAGES = {
 		languageLabel: '언어',
 		applyLanguage: '적용',
 	},
+	'es-MX': {
+		title: 'Iniciar sesión - TEST Auth',
+		metaTitle: 'Iniciar sesión en TEST Auth',
+		description: 'Autenticación segura para alianzas y corporaciones de EVE Online',
+		welcome: 'Bienvenido a TEST Auth',
+		subtitle: 'Autenticación segura para EVE Online',
+		intro:
+			'Estás a punto de iniciar sesión con el sistema seguro de inicio de sesión único (SSO) de EVE Online. Tus credenciales se mantienen protegidas y nunca se comparten con terceros.',
+		accountWarningTitle: 'Importante: no crees una segunda cuenta',
+		accountWarningText:
+			'Estás a punto de crear una nueva cuenta de TEST Auth. Si ya creaste una cuenta de Auth, no crees otra. Tener varias cuentas de Auth causa problemas más adelante.',
+		characterWarningTitle: 'Importante: selecciona tu personaje principal',
+		characterWarningBefore: 'Cuando llegues a la página de EVE SSO, selecciona tu ',
+		mainCharacter: 'personaje principal',
+		characterWarningAfter:
+			'. Este personaje quedará asociado a tu cuenta y no se podrá cambiar fácilmente después.',
+		nextTitle: '¿Qué sigue?',
+		nextSteps: [
+			'Serás redirigido a la página oficial de inicio de sesión de EVE Online',
+			'Inicia sesión con las credenciales de tu cuenta de EVE Online',
+			'Selecciona tu personaje principal de la lista de personajes',
+			'Autoriza a TEST Auth para acceder a la información de tu personaje',
+			'Serás redirigido de vuelta automáticamente para continuar',
+		],
+		securityTitle: 'Tus datos están seguros',
+		securityText:
+			'Solo solicitamos los permisos necesarios para verificar tu identidad y administrar tus membresías en grupos. Tu contraseña de EVE Online nunca se comparte con nosotros.',
+		continueButton: 'Continuar al inicio de sesión de EVE Online',
+		cancelButton: 'Cancelar',
+		footer: 'Con tecnología de EVE Online SSO • Tus credenciales están protegidas con CCP Games',
+		languageLabel: 'Idioma',
+		applyLanguage: 'Aplicar',
+	},
 } satisfies Record<UserLocale, LoginMessages>
 
 export function parseLoginLocale(value: unknown): UserLocale | null {
@@ -147,6 +181,7 @@ export function parseLoginLocale(value: unknown): UserLocale | null {
 
 	try {
 		const language = new Intl.Locale(value.trim()).language.toLowerCase()
+		if (language === 'es') return 'es-MX'
 		return supportedLocales.has(language) ? (language as UserLocale) : null
 	} catch {
 		return null

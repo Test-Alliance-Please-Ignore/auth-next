@@ -4,6 +4,8 @@ import {
 	formatDate,
 	formatList,
 	formatNumber,
+	formatRelativeTime,
+	getActiveLocale,
 	getDateInputFormat,
 	getInitialAppLocale,
 	i18n,
@@ -14,20 +16,48 @@ import {
 	resolveStartupLocale,
 	setAppLocale,
 } from '@/i18n'
-import { de, en, ko } from '@/i18n/resources'
+import { en, resources } from '@/i18n/resources'
 
 import type { AppTranslationKey } from '@/i18n'
 
-function keyShape(value: unknown): unknown {
+function keyShape(value: unknown, includeMany = false): unknown {
 	if (typeof value === 'string') {
 		return 'message'
 	}
 
 	if (value && typeof value === 'object') {
-		return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, keyShape(entry)]))
+		return Object.fromEntries(
+			Object.entries(value).flatMap(([key, entry]) => {
+				const shape = keyShape(entry, includeMany)
+				return includeMany && key.endsWith('_other')
+					? [
+							[key, shape],
+							[key.replace(/_other$/, '_many'), shape],
+						]
+					: [[key, shape]]
+			})
+		)
 	}
 
 	return typeof value
+}
+
+function messageTokens(value: unknown, includeMany = false): unknown {
+	if (typeof value === 'string') {
+		return [...value.matchAll(/\{\{[^}]+\}\}|<\/?[a-zA-Z]+>/g)].map(([token]) => token).sort()
+	}
+
+	return Object.fromEntries(
+		Object.entries(value as Record<string, unknown>).flatMap(([key, entry]) => {
+			const tokens = messageTokens(entry, includeMany)
+			return includeMany && key.endsWith('_other')
+				? [
+						[key, tokens],
+						[key.replace(/_other$/, '_many'), tokens],
+					]
+				: [[key, tokens]]
+		})
+	)
 }
 
 describe('application i18n runtime', () => {
@@ -151,9 +181,31 @@ describe('application i18n runtime', () => {
 		expect(values.get('tang.i18n.preview')).toBe('ko')
 	})
 
-	it('keeps German and Korean catalog structures exactly aligned with English', () => {
-		expect(keyShape(de)).toEqual(keyShape(en))
-		expect(keyShape(ko)).toEqual(keyShape(en))
+	it.each(Object.entries(resources))(
+		'keeps the %s catalog structure aligned with English',
+		(locale, { translation }) => {
+			expect(keyShape(translation)).toEqual(keyShape(en, locale === 'es-MX'))
+		}
+	)
+
+	it('preserves interpolation and markup tokens throughout the Spanish catalog', () => {
+		expect(messageTokens(resources['es-MX'].translation)).toEqual(messageTokens(en, true))
+	})
+
+	it('uses Mexican Spanish resources and formatting without falling back to English', async () => {
+		await setAppLocale('es-MX', { persistLocal: false })
+		expect(getActiveLocale()).toBe('es-MX')
+		expect(i18n.resolvedLanguage).toBe('es-MX')
+		expect(i18n.t('common.items', { count: 0 })).toBe('0 elementos')
+		expect(i18n.t('common.items', { count: 1 })).toBe('1 elemento')
+		expect(i18n.t('common.items', { count: 2 })).toBe('2 elementos')
+		expect(i18n.t('common.items', { count: 1_000_000 })).toBe('1000000 elementos')
+		expect(i18n.t('dashboard.portraitAlt', { name: 'Alpha Pilot' })).toBe('Retrato de Alpha Pilot')
+		expect(formatNumber(1_234_567.89)).toBe('1,234,567.89')
+		expect(formatDate('2026-02-03', { dateStyle: 'short' })).toBe('03/02/26')
+		expect(formatList(['Alpha', 'Beta'])).toBe('Alpha y Beta')
+		expect(formatRelativeTime(-1, 'day')).toBe('ayer')
+		expect(getDateInputFormat()).toBe('DD/MM/YYYY')
 	})
 
 	it('normalizes plural suffixes in the typed translation key surface', () => {

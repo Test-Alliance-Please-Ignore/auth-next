@@ -14,18 +14,24 @@ describe('localized application shell', () => {
 		await setAppLocale('en', { persistLocal: false })
 	})
 
-	it('renders translated redirect copy and its accessible loading label', async () => {
-		await setAppLocale('ko', { persistLocal: false })
+	it.each([
+		['ko', '이동하는 중…'],
+		['es-MX', 'Redirigiendo…'],
+	] as const)(
+		'renders %s redirect copy and its accessible loading label',
+		async (locale, label) => {
+			await setAppLocale(locale, { persistLocal: false })
 
-		const html = renderToStaticMarkup(
-			<I18nProvider>
-				<MemoryRouter>
-					<LandingPage />
-				</MemoryRouter>
-			</I18nProvider>
-		)
+			const html = renderToStaticMarkup(
+				<I18nProvider>
+					<MemoryRouter>
+						<LandingPage />
+					</MemoryRouter>
+				</I18nProvider>
+			)
 
-		expect(html).toContain('aria-label="이동하는 중…"')
-		expect(html).toContain('>이동하는 중…</p>')
-	})
+			expect(html).toContain(`aria-label="${label}"`)
+			expect(html).toContain(`>${label}</p>`)
+		}
+	)
 })

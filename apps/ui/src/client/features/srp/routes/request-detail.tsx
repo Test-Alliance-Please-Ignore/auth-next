@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { formatNumber, useAppTranslation } from '@/i18n'
 
 import { CharacterRoleBadge } from '../components/CharacterRoleBadge'
 import { CommentForm } from '../components/CommentForm'
@@ -39,10 +40,11 @@ function formatAppliedModifierValue(modifier: {
 		return `${sign}${formatISK(roundedToNearestMillion)}`
 	}
 
-	return `${sign}${modifier.amount}% (${formatISK(roundedToNearestMillion)})`
+	return `${sign}${formatNumber(modifier.amount / 100, { style: 'percent', maximumFractionDigits: 2 })} (${formatISK(roundedToNearestMillion)})`
 }
 
 export default function RequestDetails() {
+	const { t } = useAppTranslation()
 	const { id } = useParams<{ id: string }>()
 	const navigate = useNavigate()
 	const { user } = useAuth()
@@ -54,7 +56,7 @@ export default function RequestDetails() {
 	const createRequest = useCreateRequest()
 	const withdrawRequest = useWithdrawRequest()
 
-	usePageTitle(request ? `SRP Request ${request.id}` : 'SRP Request')
+	usePageTitle(request ? t('srp.detail.titleFor', { id: request.id }) : t('srp.detail.pageTitle'))
 
 	if (!id) {
 		return <Navigate to="/srp" replace />
@@ -71,14 +73,14 @@ export default function RequestDetails() {
 	if (error || !request) {
 		return (
 			<Container>
-				<PageHeader title="Request Not Found" />
+				<PageHeader title={t('srp.detail.notFoundTitle')} />
 				<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-6 text-center">
-					<p className="text-sm text-red-500">Failed to load request</p>
+					<p className="text-sm text-red-500">{t('srp.detail.loadFailed')}</p>
 					<p className="text-xs text-muted-foreground">
-						{error instanceof Error ? error.message : 'Request not found'}
+						{error instanceof Error ? error.message : t('srp.detail.notFound')}
 					</p>
 					<Button variant="ghost" className="mt-4" asChild>
-						<Link to="/srp">Back to Dashboard</Link>
+						<Link to="/srp">{t('srp.common.backDashboard')}</Link>
 					</Button>
 				</div>
 			</Container>
@@ -100,9 +102,9 @@ export default function RequestDetails() {
 	const handleWithdraw = async () => {
 		if (!id) return
 		requestConfirmation({
-			title: 'Withdraw SRP Request',
-			description: 'Withdraw this SRP request? You can re-submit it later from Recent Losses.',
-			confirmLabel: 'Withdraw Request',
+			title: (t) => t('srp.detail.withdrawTitle'),
+			description: (t) => t('srp.detail.withdrawDescription'),
+			confirmLabel: (t) => t('srp.detail.withdraw'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				await withdrawRequest.mutateAsync({ id })
@@ -114,16 +116,16 @@ export default function RequestDetails() {
 	const handleReopen = async () => {
 		if (!id) return
 		requestConfirmation({
-			title: 'Reopen SRP Request',
-			description: 'Reopen this withdrawn SRP request? This will move it back to pending review.',
-			confirmLabel: 'Reopen Request',
+			title: (t) => t('srp.detail.reopenTitle'),
+			description: (t) => t('srp.detail.reopenDescription'),
+			confirmLabel: (t) => t('srp.detail.reopen'),
 			intent: 'confirm',
 			onConfirm: async () => {
 				await createRequest.mutateAsync({
 					characterId: request.characterId,
 					killmailId: request.id,
 					killmailHash: request.killmailHash,
-					contextText: request.contextText?.trim() || 'Reopened SRP request',
+					contextText: request.contextText?.trim() || t('srp.detail.reopened'),
 				})
 				void navigate(`/srp/request/${id}`)
 			},
@@ -137,11 +139,11 @@ export default function RequestDetails() {
 
 		return (
 			<Container>
-				<PageHeader title="Permission Denied" />
+				<PageHeader title={t('srp.detail.denied')} />
 				<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-6 text-center">
-					<p className="text-sm text-red-500">You are not authorized to view this SRP request.</p>
+					<p className="text-sm text-red-500">{t('srp.detail.deniedDescription')}</p>
 					<Button variant="ghost" className="mt-4" asChild>
-						<Link to="/srp">Back to Dashboard</Link>
+						<Link to="/srp">{t('srp.common.backDashboard')}</Link>
 					</Button>
 				</div>
 			</Container>
@@ -151,10 +153,10 @@ export default function RequestDetails() {
 	return (
 		<Container>
 			<PageHeader
-				title={`SRP Request #${request.id}`}
+				title={t('srp.detail.heading', { id: request.id })}
 				description={
 					<span className="inline-flex items-center gap-2">
-						<span className="text-lg font-semibold text-foreground">Status:</span>
+						<span className="text-lg font-semibold text-foreground">{t('srp.detail.status')}</span>
 						<RequestStatusBadge
 							status={request.requestStatus}
 							className="px-3 py-1 text-base font-semibold"
@@ -170,7 +172,7 @@ export default function RequestDetails() {
 								onClick={handleWithdraw}
 								disabled={withdrawRequest.isPending || createRequest.isPending}
 							>
-								Withdraw Request
+								{t('srp.detail.withdraw')}
 							</Button>
 						)}
 						{canReopen && (
@@ -180,13 +182,13 @@ export default function RequestDetails() {
 								onClick={handleReopen}
 								disabled={createRequest.isPending || withdrawRequest.isPending}
 							>
-								Reopen Request
+								{t('srp.detail.reopen')}
 							</Button>
 						)}
 						<Button variant="ghost" size="sm" asChild>
 							<Link to="/srp">
 								<ArrowLeft className="mr-2 h-4 w-4" />
-								Back to SRP Dashboard
+								{t('srp.detail.backDashboard')}
 							</Link>
 						</Button>
 					</div>
@@ -196,31 +198,33 @@ export default function RequestDetails() {
 			<div className="space-y-6">
 				{/* Killmail Details */}
 				<Card className="p-6">
-					<h3 className="mb-4 font-semibold">Loss Details</h3>
+					<h3 className="mb-4 font-semibold">{t('srp.detail.lossDetails')}</h3>
 					<div className="grid gap-4 sm:grid-cols-2">
 						<div>
-							<div className="text-sm text-muted-foreground">Ship</div>
+							<div className="text-sm text-muted-foreground">{t('srp.common.ship')}</div>
 							<div className="font-medium">{request.shipTypeName}</div>
 						</div>
 						<div>
-							<div className="text-sm text-muted-foreground">Lossmail ID</div>
+							<div className="text-sm text-muted-foreground">{t('srp.detail.lossmailId')}</div>
 							<div className="font-mono font-medium break-all">{request.id}</div>
 						</div>
 						<div>
-							<div className="text-sm text-muted-foreground">Approved Payout</div>
+							<div className="text-sm text-muted-foreground">{t('srp.detail.approvedPayout')}</div>
 							<div className="font-medium tabular-nums text-success">
 								{request.approvedAmount ? formatISK(request.approvedAmount) : '—'}
 							</div>
 						</div>
 						<div>
-							<div className="text-sm text-muted-foreground">Loss System</div>
-							<div className="font-medium">{request.solarSystemName ?? 'Unknown'}</div>
+							<div className="text-sm text-muted-foreground">{t('srp.detail.lossSystem')}</div>
+							<div className="font-medium">
+								{request.solarSystemName ?? t('srp.common.unknown')}
+							</div>
 							{request.solarSystemRegionName ? (
 								<div className="text-xs text-muted-foreground">{request.solarSystemRegionName}</div>
 							) : null}
 						</div>
 						<div>
-							<div className="text-sm text-muted-foreground">Character</div>
+							<div className="text-sm text-muted-foreground">{t('srp.common.character')}</div>
 							<div className="inline-flex items-center gap-2 font-medium">
 								{canOpenHrUserProfile ? (
 									<Link to={`/hr/users/${request.userId}`} className="text-primary hover:underline">
@@ -237,17 +241,17 @@ export default function RequestDetails() {
 							</div>
 						</div>
 						<div>
-							<div className="text-sm text-muted-foreground">Corporation</div>
+							<div className="text-sm text-muted-foreground">{t('srp.common.corporation')}</div>
 							<div className="font-medium">{request.corporationName}</div>
 						</div>
 						<div>
-							<div className="text-sm text-muted-foreground">Loss Date</div>
+							<div className="text-sm text-muted-foreground">{t('srp.common.lossDate')}</div>
 							<EveTimeDisplay dateStr={request.lossDate} className="font-medium" />
 						</div>
 						<div>
 							<Button variant="ghost" size="sm" asChild>
 								<a href={getKillmailUrl(request.id)} target="_blank" rel="noopener noreferrer">
-									View on zKillboard →
+									{t('srp.common.zkillArrow')}
 								</a>
 							</Button>
 						</div>
@@ -256,20 +260,24 @@ export default function RequestDetails() {
 
 				{/* Review Adjustments */}
 				<Card className="p-6">
-					<h3 className="mb-4 font-semibold">Review Adjustments</h3>
+					<h3 className="mb-4 font-semibold">{t('srp.detail.adjustments')}</h3>
 					<div className="grid gap-4 sm:grid-cols-2">
 						<div>
-							<div className="text-sm text-muted-foreground">Coverage Policy</div>
-							<div className="font-medium">{request.appliedModifierPolicyName ?? 'None'}</div>
+							<div className="text-sm text-muted-foreground">{t('srp.detail.coveragePolicy')}</div>
+							<div className="font-medium">
+								{request.appliedModifierPolicyName ?? t('srp.common.none')}
+							</div>
 						</div>
 						<div>
-							<div className="text-sm text-muted-foreground">Cap Policy</div>
-							<div className="font-medium">{request.appliedCapPolicyName ?? 'None'}</div>
+							<div className="text-sm text-muted-foreground">{t('srp.review.capPolicy')}</div>
+							<div className="font-medium">
+								{request.appliedCapPolicyName ?? t('srp.common.none')}
+							</div>
 						</div>
 					</div>
 
 					<div className="mt-4">
-						<div className="text-sm text-muted-foreground">Bonuses / Deductions</div>
+						<div className="text-sm text-muted-foreground">{t('srp.detail.modifiers')}</div>
 						{appliedModifiers.length > 0 ? (
 							<ul className="mt-2 space-y-1 text-sm">
 								{appliedModifiers.map(
@@ -292,7 +300,9 @@ export default function RequestDetails() {
 											<Badge
 												variant={modifier.modifierType === 'deduction' ? 'destructive' : 'success'}
 											>
-												{modifier.modifierType === 'deduction' ? 'Deduction' : 'Bonus'}
+												{modifier.modifierType === 'deduction'
+													? t('srp.common.deduction')
+													: t('srp.common.bonus')}
 											</Badge>
 											<span className="font-semibold">{formatAppliedModifierValue(modifier)}</span>
 											<span className="text-foreground">: {modifier.reason}</span>
@@ -301,7 +311,7 @@ export default function RequestDetails() {
 								)}
 							</ul>
 						) : (
-							<div className="mt-1 text-sm font-medium">None</div>
+							<div className="mt-1 text-sm font-medium">{t('srp.common.none')}</div>
 						)}
 					</div>
 				</Card>
@@ -313,7 +323,7 @@ export default function RequestDetails() {
 
 				{/* Comments */}
 				<Card className="p-6">
-					<h3 className="mb-4 font-semibold">Comments</h3>
+					<h3 className="mb-4 font-semibold">{t('srp.common.comments')}</h3>
 					<CommentsList
 						comments={comments.filter((c: any) => c.visibility === 'public')}
 						requestId={id}

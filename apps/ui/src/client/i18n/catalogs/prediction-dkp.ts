@@ -1,3 +1,3 @@
 import { defineCatalog } from '../catalog'
 
-export const predictionDkpCatalog = defineCatalog({}, {}, {})
+export const predictionDkpCatalog = defineCatalog({}, {}, {}, {})

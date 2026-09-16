@@ -94,6 +94,42 @@ describe('login route', () => {
 		}
 	})
 
+	it('renders Español with Mexican Spanish and remembers the canonical locale', async () => {
+		const response = await createApp().request(
+			'https://pleaseignore.app/login?locale=es-mx&redirect=%2Fdashboard',
+			{ headers: { Cookie: 'tang.locale=de', 'Accept-Language': 'ko-KR' } }
+		)
+		const body = await response.text()
+
+		expect(body).toContain('<html lang="es-MX">')
+		expect(body).toContain('Bienvenido a TEST Auth')
+		expect(body).toContain('Importante: no crees una segunda cuenta')
+		expect(body).toContain('Importante: selecciona tu personaje principal')
+		expect(body).toContain('>Idioma</label>')
+		expect(body).toMatch(/<option value="es-MX" selected>\s*Español\s*<\/option>/)
+		expect(body).not.toContain('Español (México)')
+		expect(body).toContain('name="redirect" value="/dashboard"')
+		expect(response.headers.get('set-cookie')).toContain('tang.locale=es-MX;')
+	})
+
+	it.each(['es', 'es-MX', 'es-419', 'es-ES'])(
+		'negotiates %s as Mexican Spanish when no explicit choice exists',
+		async (language) => {
+			const response = await createApp().request('https://pleaseignore.app/login', {
+				headers: { 'Accept-Language': `fr-FR,${language};q=0.9,en;q=0.8` },
+			})
+			expect(await response.text()).toContain('<html lang="es-MX">')
+			expect(response.headers.get('set-cookie')).toBeNull()
+		}
+	)
+
+	it('restores the Spanish cookie before the browser language', async () => {
+		const response = await createApp().request('https://pleaseignore.app/login', {
+			headers: { Cookie: 'tang.locale=es-MX', 'Accept-Language': 'de-DE' },
+		})
+		expect(await response.text()).toContain('<html lang="es-MX">')
+	})
+
 	it('negotiates a supported browser language and ignores languages with q=0', async () => {
 		const app = createApp()
 		const response = await app.request('https://pleaseignore.app/login', {

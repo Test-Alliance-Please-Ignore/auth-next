@@ -1,19 +1,25 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
-import toast from '@/lib/toast'
 import { z } from 'zod'
 
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useAppTranslation } from '@/i18n'
+import toast from '@/lib/toast'
 
 import { useAddComment, useUpdateComment } from '../hooks'
+import { SRPFeedback } from './SRPFeedback'
 
+import type { AppTranslationKey } from '@/i18n'
 import type { SRPCommentResponse } from '../types'
 
 const commentSchema = z.object({
-	content: z.string().min(1, 'Comment cannot be empty').max(5000, 'Comment too long'),
+	content: z
+		.string()
+		.min(1, 'srp.validation.commentRequired')
+		.max(5000, 'srp.validation.commentTooLong'),
 	visibility: z.enum(['public', 'internal']),
 })
 
@@ -34,6 +40,7 @@ export function CommentForm({
 	onSuccess,
 	onCancel,
 }: CommentFormProps) {
+	const { t } = useAppTranslation()
 	const addMutation = useAddComment()
 	const updateMutation = useUpdateComment()
 
@@ -52,7 +59,7 @@ export function CommentForm({
 					id: editingComment.id,
 					content: data.content,
 				})
-				toast.success('Comment updated')
+				toast.success(<SRPFeedback messageKey="srp.comments.updated" />)
 			} else {
 				await addMutation.mutateAsync({
 					requestId,
@@ -61,14 +68,21 @@ export function CommentForm({
 						visibility: data.visibility,
 					},
 				})
-				toast.success('Comment added')
+				toast.success(<SRPFeedback messageKey="srp.comments.added" />)
 				form.reset()
 			}
 			onSuccess()
 		} catch (error: any) {
-			toast.error(editingComment ? 'Failed to update comment' : 'Failed to add comment', {
-				description: error.message,
-			})
+			toast.error(
+				editingComment ? (
+					<SRPFeedback messageKey="srp.comments.updateFailed" />
+				) : (
+					<SRPFeedback messageKey="srp.comments.addFailed" />
+				),
+				{
+					description: error.message,
+				}
+			)
 		}
 	})
 
@@ -79,15 +93,17 @@ export function CommentForm({
 			<div>
 				<Textarea
 					{...form.register('content')}
-					placeholder="Add a comment..."
+					placeholder={t('srp.comments.placeholder')}
 					rows={4}
 					disabled={isPending}
 				/>
 				{form.formState.errors.content && (
-					<p className="mt-1 text-xs text-red-500">{form.formState.errors.content.message}</p>
+					<p className="mt-1 text-xs text-red-500">
+						{t(form.formState.errors.content.message as AppTranslationKey)}
+					</p>
 				)}
 				<p className="mt-1 text-xs text-muted-foreground">
-					{form.watch('content').length}/5000 characters
+					{t('srp.comments.characterCount', { count: form.watch('content').length, max: 5000 })}
 				</p>
 			</div>
 
@@ -101,7 +117,7 @@ export function CommentForm({
 						}
 					/>
 					<Label htmlFor="internal" className="text-sm">
-						Internal comment (only visible to reviewers and admins)
+						{t('srp.comments.internalHint')}
 					</Label>
 				</div>
 			)}
@@ -109,17 +125,17 @@ export function CommentForm({
 			<div className="flex gap-2">
 				{onCancel && (
 					<Button type="button" variant="ghost" onClick={onCancel} disabled={isPending}>
-						Cancel
+						{t('srp.common.cancel')}
 					</Button>
 				)}
 				<Button type="submit" disabled={isPending}>
 					{isPending
 						? editingComment
-							? 'Updating...'
-							: 'Adding...'
+							? t('srp.comments.updating')
+							: t('srp.comments.adding')
 						: editingComment
-							? 'Update Comment'
-							: 'Add Comment'}
+							? t('srp.comments.update')
+							: t('srp.comments.add')}
 				</Button>
 			</div>
 		</form>

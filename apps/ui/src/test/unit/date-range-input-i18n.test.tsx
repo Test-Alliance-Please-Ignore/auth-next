@@ -26,6 +26,7 @@ describe('localized date range input interactions', () => {
 	it.each([
 		['de', 'DD.MM.YYYY', 'Datumsbereich'],
 		['ko', 'YYYY. MM. DD.', '날짜 범위'],
+		['es-MX', 'DD/MM/YYYY', 'Rango de fechas'],
 	] as const)(
 		'retains an incomplete range and emits ISO values in %s',
 		async (locale, format, label) => {

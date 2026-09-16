@@ -1,23 +1,27 @@
 import { Edit2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router'
-import toast from '@/lib/toast'
 
-import { Button } from '@/components/ui/button'
+import { MAX_SRP_LOSS_AGE_DAYS } from '@repo/srp'
+
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { NumberInput } from '@/components/ui/number-input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
+import toast from '@/lib/toast'
 
+import { SRPFeedback } from '../components/SRPFeedback'
+import { SRPNumberInput as NumberInput } from '../components/SRPNumberInput'
 import {
 	useCreatePolicy,
 	useDeletePolicy,
@@ -29,7 +33,6 @@ import {
 } from '../hooks'
 import { formatISK } from '../utils'
 
-import { MAX_SRP_LOSS_AGE_DAYS } from '@repo/srp'
 import type { CapConfig, PayoutModifierConfig } from '@repo/srp'
 import type { SelectOption } from '@/components/ui/select'
 import type { SRPConfigResponse, SRPPolicy, SRPPredefinedAdhocModifier } from '../types'
@@ -53,14 +56,15 @@ function upsertSelectOption(
 
 function formatTemplateAmount(modifier: SRPPredefinedAdhocModifier): string {
 	if (modifier.mode === 'percentage') {
-		return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(modifier.amount)}%`
+		return formatNumber(modifier.amount / 100, { style: 'percent', maximumFractionDigits: 2 })
 	}
 
 	return formatISK(String(Math.round(modifier.amount * 1_000_000)))
 }
 
 export default function PoliciesPage() {
-	usePageTitle('SRP - Policies')
+	const { t } = useAppTranslation()
+	usePageTitle(t('srp.policies.pageTitle'))
 
 	const { hasPermission, isAdmin } = useUserPermissions()
 
@@ -77,7 +81,10 @@ export default function PoliciesPage() {
 	if (isLoading) {
 		return (
 			<Container>
-				<PageHeader title="SRP Policies" description="Manage payout modifier and cap policies" />
+				<PageHeader
+					title={t('srp.policies.title')}
+					description={t('srp.policies.shortDescription')}
+				/>
 				<div className="space-y-4">
 					{[...Array(4)].map((_, i) => (
 						<div key={i} className="h-14 animate-pulse rounded-md bg-muted/30" />
@@ -89,22 +96,19 @@ export default function PoliciesPage() {
 
 	return (
 		<Container>
-			<PageHeader
-				title="SRP Policies"
-				description="Manage payout modifier and cap policies used during reviews"
-			/>
+			<PageHeader title={t('srp.policies.title')} description={t('srp.policies.description')} />
 
 			<div className="space-y-8">
 				<GeneralConfigPanel config={config} />
 				<PolicySection
-					title="Payout Modifier Policies"
-					description="Control coverage rate and insurance handling"
+					title={t('srp.policies.modifiers')}
+					description={t('srp.policies.modifiersDescription')}
 					effect="payout_modifier"
 					policies={modifierPolicies}
 				/>
 				<PolicySection
-					title="Cap Policies"
-					description="Set payout ceilings"
+					title={t('srp.policies.caps')}
+					description={t('srp.policies.capsDescription')}
 					effect="cap"
 					policies={capPolicies}
 				/>
@@ -117,6 +121,7 @@ export default function PoliciesPage() {
 }
 
 function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
+	const { t } = useAppTranslation()
 	const updateConfigMutation = useUpdateSRPConfig()
 	const [defaultCoverageRatePercent, setDefaultCoverageRatePercent] = useState('100')
 	const [maxPayoutAmount, setMaxPayoutAmount] = useState('')
@@ -217,33 +222,33 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 		try {
 			await updateConfigMutation.mutateAsync({
 				defaultCoverageRate: String((Number.parseFloat(defaultCoverageRatePercent) || 0) / 100),
-					maxPayoutAmount: maxPayoutAmount.trim() ? maxPayoutAmount.trim() : null,
+				maxPayoutAmount: maxPayoutAmount.trim() ? maxPayoutAmount.trim() : null,
 				maxLossAgeDays: Math.max(1, Number.parseInt(maxLossAgeDays, 10) || 30),
 				paymentProcessorCorporationId: paymentProcessorCorporationId.trim()
-						? paymentProcessorCorporationId.trim()
-						: null,
-					srpGroupId: srpGroupId.trim() ? srpGroupId.trim() : null,
-					srpDiscordGuildId: srpDiscordGuildId.trim() ? srpDiscordGuildId.trim() : null,
-					srpDiscordChannelId: srpDiscordChannelId.trim() ? srpDiscordChannelId.trim() : null,
+					? paymentProcessorCorporationId.trim()
+					: null,
+				srpGroupId: srpGroupId.trim() ? srpGroupId.trim() : null,
+				srpDiscordGuildId: srpDiscordGuildId.trim() ? srpDiscordGuildId.trim() : null,
+				srpDiscordChannelId: srpDiscordChannelId.trim() ? srpDiscordChannelId.trim() : null,
 			})
-			toast.success('SRP configuration saved')
+			toast.success(<SRPFeedback messageKey="srp.policies.configSaved" />)
 		} catch (error: any) {
-			toast.error('Failed to save SRP configuration', { description: error.message })
+			toast.error(<SRPFeedback messageKey="srp.policies.configFailed" />, {
+				description: error.message,
+			})
 		}
 	}
 
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle className="text-lg">General Configuration</CardTitle>
-				<CardDescription>
-					Edit SRP baseline configuration values used across request handling and review.
-				</CardDescription>
+				<CardTitle className="text-lg">{t('srp.policies.general')}</CardTitle>
+				<CardDescription>{t('srp.policies.generalDescription')}</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				<div className="grid gap-4 sm:grid-cols-2">
 					<div>
-						<Label htmlFor="defaultCoverageRatePercent">Default Coverage Rate (%)</Label>
+						<Label htmlFor="defaultCoverageRatePercent">{t('srp.policies.defaultCoverage')}</Label>
 						<NumberInput
 							id="defaultCoverageRatePercent"
 							min={0}
@@ -256,7 +261,7 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 						/>
 					</div>
 					<div>
-						<Label htmlFor="maxPayoutAmount">Max Payout Amount (ISK, optional)</Label>
+						<Label htmlFor="maxPayoutAmount">{t('srp.policies.maxPayoutOptional')}</Label>
 						<NumberInput
 							id="maxPayoutAmount"
 							min={0}
@@ -265,11 +270,11 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 							suffix=" ISK"
 							value={maxPayoutAmount}
 							onChange={setMaxPayoutAmount}
-							placeholder="e.g. 1,000,000,000 ISK"
+							placeholder={t('srp.policies.maxPlaceholder', { amount: formatNumber(1000000000) })}
 						/>
 					</div>
 					<div>
-						<Label htmlFor="maxLossAgeDays">Max Loss Age (days)</Label>
+						<Label htmlFor="maxLossAgeDays">{t('srp.policies.maxAge')}</Label>
 						<NumberInput
 							id="maxLossAgeDays"
 							min={1}
@@ -281,7 +286,7 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 						/>
 					</div>
 					<div className="sm:col-span-2">
-						<Label htmlFor="paymentProcessorCorporationId">Payment Processor Corporation</Label>
+						<Label htmlFor="paymentProcessorCorporationId">{t('srp.policies.processor')}</Label>
 						<Select
 							inputId="paymentProcessorCorporationId"
 							searchable
@@ -295,8 +300,8 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 								}
 							}}
 							options={paymentProcessorCorporationOptions}
-							placeholder="Search managed corporations..."
-							queryHintText="Type at least 2 characters to search managed corporations"
+							placeholder={t('srp.policies.searchCorporations')}
+							queryHintText={t('srp.policies.searchCorporationsHint')}
 							searchDelegate={(query) =>
 								api.searchSRPPaymentProcessorCorporations(query).then((rows) =>
 									rows.map((row) => ({
@@ -308,7 +313,7 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 						/>
 					</div>
 					<div>
-						<Label htmlFor="srpDiscordGuildId">SRP Discord Guild</Label>
+						<Label htmlFor="srpDiscordGuildId">{t('srp.policies.guild')}</Label>
 						<Select
 							inputId="srpDiscordGuildId"
 							value={srpDiscordGuildId}
@@ -320,24 +325,22 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 								value: server.guildId,
 								label: `${server.guildName} (${server.guildId})`,
 							}))}
-							placeholder="Select a Discord guild..."
+							placeholder={t('srp.policies.selectGuild')}
 						/>
 					</div>
 					<div>
-						<Label htmlFor="srpDiscordChannelId">SRP Discord Channel ID</Label>
+						<Label htmlFor="srpDiscordChannelId">{t('srp.policies.channel')}</Label>
 						<Input
 							id="srpDiscordChannelId"
 							value={srpDiscordChannelId}
 							onChange={(event) => setSrpDiscordChannelId(event.target.value)}
-							placeholder="Discord channel ID"
+							placeholder={t('srp.policies.channelPlaceholder')}
 							inputMode="numeric"
 						/>
-						<p className="mt-1 text-xs text-muted-foreground">
-							/srpfleet results are only shown when invoked from this channel.
-						</p>
+						<p className="mt-1 text-xs text-muted-foreground">{t('srp.policies.channelHint')}</p>
 					</div>
 					<div className="sm:col-span-2">
-						<Label htmlFor="srpGroupId">SRP Group</Label>
+						<Label htmlFor="srpGroupId">{t('srp.policies.group')}</Label>
 						<Select
 							inputId="srpGroupId"
 							searchable
@@ -351,8 +354,8 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 								}
 							}}
 							options={srpGroupOptions}
-							placeholder="Search groups..."
-							queryHintText="Type at least 2 characters to search groups"
+							placeholder={t('srp.policies.searchGroups')}
+							queryHintText={t('srp.policies.searchGroupsHint')}
 							searchDelegate={(query) =>
 								api.getGroups({ search: query, limit: 25 }).then((rows) =>
 									rows.map((row) => ({
@@ -368,7 +371,9 @@ function GeneralConfigPanel({ config }: { config?: SRPConfigResponse }) {
 				<div className="flex justify-end">
 					<div className="flex items-center gap-2">
 						<Button onClick={save} disabled={updateConfigMutation.isPending}>
-						{updateConfigMutation.isPending ? 'Saving…' : 'Save Configuration'}
+							{updateConfigMutation.isPending
+								? t('srp.common.saving')
+								: t('srp.policies.saveConfig')}
 						</Button>
 					</div>
 				</div>
@@ -382,6 +387,7 @@ function PredefinedAdhocModifiersSection({
 }: {
 	initialModifiers: SRPPredefinedAdhocModifier[]
 }) {
+	const { t } = useAppTranslation()
 	const updateConfigMutation = useUpdateSRPConfig()
 	const [modifiers, setModifiers] = useState<SRPPredefinedAdhocModifier[]>(initialModifiers)
 	const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -404,7 +410,9 @@ function PredefinedAdhocModifiersSection({
 				})),
 			} as any)
 		} catch (error: any) {
-			toast.error('Failed to save predefined modifiers', { description: error.message })
+			toast.error(<SRPFeedback messageKey="srp.policies.templatesFailed" />, {
+				description: error.message,
+			})
 		}
 	}
 
@@ -434,7 +442,7 @@ function PredefinedAdhocModifiersSection({
 	const saveEdit = async () => {
 		if (editingIndex === null || !draftModifier) return
 		if (draftModifier.reason.trim().length === 0) {
-			toast.error('Reason is required')
+			toast.error(<SRPFeedback messageKey="srp.validation.reasonRequired" />)
 			return
 		}
 
@@ -460,197 +468,208 @@ function PredefinedAdhocModifiersSection({
 		<Card>
 			<CardHeader className="flex flex-row items-start justify-between space-y-0 gap-3">
 				<div>
-					<CardTitle className="text-lg">Modifier Templates</CardTitle>
-					<CardDescription>
-						Optional suggestion templates shown in review form ad-hoc modifiers.
-					</CardDescription>
+					<CardTitle className="text-lg">{t('srp.policies.templates')}</CardTitle>
+					<CardDescription>{t('srp.policies.templatesDescription')}</CardDescription>
 				</div>
 				<Button size="sm" onClick={addModifier} disabled={updateConfigMutation.isPending}>
 					<Plus className="mr-1 h-4 w-4" />
-					Add Template
+					{t('srp.policies.addTemplate')}
 				</Button>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				<div className="overflow-hidden rounded-lg border border-border/50 bg-card">
-				{modifiers.length === 0 && !(isCreating && draftModifier && editingIndex === modifiers.length) ? (
-					<div className="p-8 text-center text-sm text-muted-foreground">No modifiers yet</div>
-				) : (
-					<div className="space-y-2 p-3">
-						<div className="grid items-center gap-2 px-2 text-xs font-medium text-muted-foreground sm:grid-cols-[150px_140px_140px_1fr_auto]">
-							<div>Type</div>
-							<div>Mode</div>
-							<div>Amount</div>
-							<div>Reason</div>
-							<div className="text-right">Actions</div>
+					{modifiers.length === 0 &&
+					!(isCreating && draftModifier && editingIndex === modifiers.length) ? (
+						<div className="p-8 text-center text-sm text-muted-foreground">
+							{t('srp.policies.noModifiers')}
 						</div>
-						{modifiers.map((modifier, index) => (
-							<div
-								key={index}
-								className="grid items-center gap-2 rounded-md border border-border/40 p-3 sm:grid-cols-[150px_140px_140px_1fr_auto]"
-							>
-								{editingIndex === index && !isCreating && draftModifier ? (
-									<>
-										<Select
-											value={draftModifier.modifierType}
-											onValueChange={(value) =>
-												setDraftModifier({
-													...draftModifier,
-													modifierType: value as SRPPredefinedAdhocModifier['modifierType'],
-												})
-											}
-											options={[
-												{ value: 'deduction', label: 'Deduction' },
-												{ value: 'bonus', label: 'Bonus' },
-											]}
-										/>
-										<Select
-											value={draftModifier.mode}
-											onValueChange={(value) =>
-												setDraftModifier({
-													...draftModifier,
-													mode: value as SRPPredefinedAdhocModifier['mode'],
-												})
-											}
-											options={[
-												{ value: 'percentage', label: 'Percentage' },
-												{ value: 'value', label: 'M ISK' },
-											]}
-										/>
-										<NumberInput
-											min={0}
-											step={0.01}
-											value={draftModifier.amount}
-											onChange={(value) =>
-												setDraftModifier({
-													...draftModifier,
-													amount: Number.parseFloat(value) || 0,
-												})
-											}
-											placeholder="Amount"
-										/>
-										<Input
-											value={draftModifier.reason}
-											onChange={(e) =>
-												setDraftModifier({
-													...draftModifier,
-													reason: e.target.value,
-												})
-											}
-											placeholder="Reason"
-										/>
-										<div className="flex gap-1">
-											<Button variant="primary" size="sm" onClick={() => void saveEdit()}>
-												Save
-											</Button>
-											<Button variant="ghost" size="sm" onClick={cancelEdit}>
-												Cancel
-											</Button>
-										</div>
-									</>
-								) : (
-									<>
-										<div className="text-sm">
-											<Badge
-												variant={modifier.modifierType === 'deduction' ? 'destructive' : 'default'}
-												className={modifier.modifierType === 'bonus' ? 'bg-green-600 text-white' : undefined}
-											>
-												{modifier.modifierType === 'deduction' ? 'Deduction' : 'Bonus'}
-											</Badge>
-										</div>
-										<div className="text-sm font-semibold">
-											{modifier.mode === 'percentage' ? 'Percentage' : 'M ISK'}
-										</div>
-										<div className="font-mono font-semibold text-sm tabular-nums">
-											{formatTemplateAmount(modifier)}
-										</div>
-										<div className="text-sm">{modifier.reason}</div>
-										<div className="flex justify-end gap-1">
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => startEdit(index)}
-												disabled={updateConfigMutation.isPending}
-												aria-label="Edit template"
-											>
-												<Pencil className="h-4 w-4" />
-											</Button>
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => removeModifier(index)}
-												disabled={updateConfigMutation.isPending}
-												aria-label="Remove template"
-												className="text-destructive hover:text-destructive"
-											>
-												<Trash2 className="h-4 w-4" />
-											</Button>
-										</div>
-									</>
-								)}
+					) : (
+						<div className="space-y-2 p-3">
+							<div className="grid items-center gap-2 px-2 text-xs font-medium text-muted-foreground sm:grid-cols-[150px_140px_140px_1fr_auto]">
+								<div>{t('srp.common.type')}</div>
+								<div>{t('srp.policies.mode')}</div>
+								<div>{t('srp.common.amount')}</div>
+								<div>{t('srp.common.reason')}</div>
+								<div className="text-right">{t('srp.common.actions')}</div>
 							</div>
-						))}
-						{isCreating && draftModifier && editingIndex === modifiers.length && (
-							<div className="grid items-center gap-2 rounded-md border border-border/40 p-3 sm:grid-cols-[150px_140px_140px_1fr_auto]">
-								<Select
-									value={draftModifier.modifierType}
-									onValueChange={(value) =>
-										setDraftModifier({
-											...draftModifier,
-											modifierType: value as SRPPredefinedAdhocModifier['modifierType'],
-										})
-									}
-									options={[
-										{ value: 'deduction', label: 'Deduction' },
-										{ value: 'bonus', label: 'Bonus' },
-									]}
-								/>
-								<Select
-									value={draftModifier.mode}
-									onValueChange={(value) =>
-										setDraftModifier({
-											...draftModifier,
-											mode: value as SRPPredefinedAdhocModifier['mode'],
-										})
-									}
-									options={[
-										{ value: 'percentage', label: 'Percentage' },
-										{ value: 'value', label: 'M ISK' },
-									]}
-								/>
-								<NumberInput
-									min={0}
-									step={0.01}
-									value={draftModifier.amount}
-									onChange={(value) =>
-										setDraftModifier({
-											...draftModifier,
-											amount: Number.parseFloat(value) || 0,
-										})
-									}
-									placeholder="Amount"
-								/>
-								<Input
-									value={draftModifier.reason}
-									onChange={(e) =>
-										setDraftModifier({
-											...draftModifier,
-											reason: e.target.value,
-										})
-									}
-									placeholder="Reason"
-								/>
-								<div className="flex gap-1">
-									<Button variant="primary" size="sm" onClick={() => void saveEdit()}>
-										Save
-									</Button>
-									<Button variant="ghost" size="sm" onClick={cancelEdit}>
-										Cancel
-									</Button>
+							{modifiers.map((modifier, index) => (
+								<div
+									key={index}
+									className="grid items-center gap-2 rounded-md border border-border/40 p-3 sm:grid-cols-[150px_140px_140px_1fr_auto]"
+								>
+									{editingIndex === index && !isCreating && draftModifier ? (
+										<>
+											<Select
+												value={draftModifier.modifierType}
+												onValueChange={(value) =>
+													setDraftModifier({
+														...draftModifier,
+														modifierType: value as SRPPredefinedAdhocModifier['modifierType'],
+													})
+												}
+												options={[
+													{ value: 'deduction', label: t('srp.common.deduction') },
+													{ value: 'bonus', label: t('srp.common.bonus') },
+												]}
+											/>
+											<Select
+												value={draftModifier.mode}
+												onValueChange={(value) =>
+													setDraftModifier({
+														...draftModifier,
+														mode: value as SRPPredefinedAdhocModifier['mode'],
+													})
+												}
+												options={[
+													{ value: 'percentage', label: t('srp.policies.percentage') },
+													{ value: 'value', label: t('srp.common.millionIsk') },
+												]}
+											/>
+											<NumberInput
+												min={0}
+												step={0.01}
+												value={draftModifier.amount}
+												onChange={(value) =>
+													setDraftModifier({
+														...draftModifier,
+														amount: Number.parseFloat(value) || 0,
+													})
+												}
+												placeholder={t('srp.common.amount')}
+											/>
+											<Input
+												value={draftModifier.reason}
+												onChange={(e) =>
+													setDraftModifier({
+														...draftModifier,
+														reason: e.target.value,
+													})
+												}
+												placeholder={t('srp.common.reason')}
+											/>
+											<div className="flex gap-1">
+												<Button variant="primary" size="sm" onClick={() => void saveEdit()}>
+													{t('srp.common.save')}
+												</Button>
+												<Button variant="ghost" size="sm" onClick={cancelEdit}>
+													{t('srp.common.cancel')}
+												</Button>
+											</div>
+										</>
+									) : (
+										<>
+											<div className="text-sm">
+												<Badge
+													variant={
+														modifier.modifierType === 'deduction' ? 'destructive' : 'default'
+													}
+													className={
+														modifier.modifierType === 'bonus'
+															? 'bg-green-600 text-white'
+															: undefined
+													}
+												>
+													{modifier.modifierType === 'deduction'
+														? t('srp.common.deduction')
+														: t('srp.common.bonus')}
+												</Badge>
+											</div>
+											<div className="text-sm font-semibold">
+												{modifier.mode === 'percentage'
+													? t('srp.policies.percentage')
+													: t('srp.common.millionIsk')}
+											</div>
+											<div className="font-mono font-semibold text-sm tabular-nums">
+												{formatTemplateAmount(modifier)}
+											</div>
+											<div className="text-sm">{modifier.reason}</div>
+											<div className="flex justify-end gap-1">
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => startEdit(index)}
+													disabled={updateConfigMutation.isPending}
+													aria-label={t('srp.policies.editTemplate')}
+												>
+													<Pencil className="h-4 w-4" />
+												</Button>
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => removeModifier(index)}
+													disabled={updateConfigMutation.isPending}
+													aria-label={t('srp.policies.removeTemplate')}
+													className="text-destructive hover:text-destructive"
+												>
+													<Trash2 className="h-4 w-4" />
+												</Button>
+											</div>
+										</>
+									)}
 								</div>
-							</div>
-						)}
-					</div>
-				)}
+							))}
+							{isCreating && draftModifier && editingIndex === modifiers.length && (
+								<div className="grid items-center gap-2 rounded-md border border-border/40 p-3 sm:grid-cols-[150px_140px_140px_1fr_auto]">
+									<Select
+										value={draftModifier.modifierType}
+										onValueChange={(value) =>
+											setDraftModifier({
+												...draftModifier,
+												modifierType: value as SRPPredefinedAdhocModifier['modifierType'],
+											})
+										}
+										options={[
+											{ value: 'deduction', label: t('srp.common.deduction') },
+											{ value: 'bonus', label: t('srp.common.bonus') },
+										]}
+									/>
+									<Select
+										value={draftModifier.mode}
+										onValueChange={(value) =>
+											setDraftModifier({
+												...draftModifier,
+												mode: value as SRPPredefinedAdhocModifier['mode'],
+											})
+										}
+										options={[
+											{ value: 'percentage', label: t('srp.policies.percentage') },
+											{ value: 'value', label: t('srp.common.millionIsk') },
+										]}
+									/>
+									<NumberInput
+										min={0}
+										step={0.01}
+										value={draftModifier.amount}
+										onChange={(value) =>
+											setDraftModifier({
+												...draftModifier,
+												amount: Number.parseFloat(value) || 0,
+											})
+										}
+										placeholder={t('srp.common.amount')}
+									/>
+									<Input
+										value={draftModifier.reason}
+										onChange={(e) =>
+											setDraftModifier({
+												...draftModifier,
+												reason: e.target.value,
+											})
+										}
+										placeholder={t('srp.common.reason')}
+									/>
+									<div className="flex gap-1">
+										<Button variant="primary" size="sm" onClick={() => void saveEdit()}>
+											{t('srp.common.save')}
+										</Button>
+										<Button variant="ghost" size="sm" onClick={cancelEdit}>
+											{t('srp.common.cancel')}
+										</Button>
+									</div>
+								</div>
+							)}
+						</div>
+					)}
 				</div>
 			</CardContent>
 		</Card>
@@ -665,6 +684,7 @@ interface PolicySectionProps {
 }
 
 function PolicySection({ title, description, effect, policies }: PolicySectionProps) {
+	const { t } = useAppTranslation()
 	const [showAddForm, setShowAddForm] = useState(false)
 
 	return (
@@ -676,7 +696,7 @@ function PolicySection({ title, description, effect, policies }: PolicySectionPr
 				</div>
 				<Button size="sm" onClick={() => setShowAddForm((v) => !v)}>
 					<Plus className="mr-1 h-4 w-4" />
-					Add Policy
+					{t('srp.policies.addPolicy')}
 				</Button>
 			</CardHeader>
 			<CardContent className="space-y-4">
@@ -691,52 +711,57 @@ function PolicySection({ title, description, effect, policies }: PolicySectionPr
 				)}
 
 				<div className="overflow-hidden rounded-lg border border-border/50 bg-card">
-				{policies.length === 0 ? (
-					<div className="p-8 text-center text-sm text-muted-foreground">No policies yet</div>
-				) : (
-					<table className="w-full">
-						<thead>
-							<tr className="border-b border-border/50 bg-muted/20">
-								<th className="p-3 text-left text-xs font-semibold text-muted-foreground">Name</th>
-								{effect === 'payout_modifier' ? (
-									<>
-										<th className="p-3 text-left text-xs font-semibold text-muted-foreground">
-											Rate
-										</th>
-										<th className="p-3 text-left text-xs font-semibold text-muted-foreground">
-											Insurance
-										</th>
-									</>
-								) : (
+					{policies.length === 0 ? (
+						<div className="p-8 text-center text-sm text-muted-foreground">
+							{t('srp.policies.empty')}
+						</div>
+					) : (
+						<table className="w-full">
+							<thead>
+								<tr className="border-b border-border/50 bg-muted/20">
 									<th className="p-3 text-left text-xs font-semibold text-muted-foreground">
-										Max Payout
+										{t('srp.common.name')}
 									</th>
-								)}
-								<th className="p-3 text-center text-xs font-semibold text-muted-foreground">
-									Order
-								</th>
-								<th className="p-3 text-center text-xs font-semibold text-muted-foreground">
-									Active
-								</th>
-								<th className="p-3 text-right text-xs font-semibold text-muted-foreground">
-									Actions
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							{policies.map((policy) => (
-								<PolicyRow key={policy.id} policy={policy} />
-							))}
-						</tbody>
-					</table>
-				)}
-			</div>
+									{effect === 'payout_modifier' ? (
+										<>
+											<th className="p-3 text-left text-xs font-semibold text-muted-foreground">
+												{t('srp.policies.rate')}
+											</th>
+											<th className="p-3 text-left text-xs font-semibold text-muted-foreground">
+												{t('srp.policies.insurance')}
+											</th>
+										</>
+									) : (
+										<th className="p-3 text-left text-xs font-semibold text-muted-foreground">
+											{t('srp.policies.maxPayout')}
+										</th>
+									)}
+									<th className="p-3 text-center text-xs font-semibold text-muted-foreground">
+										{t('srp.policies.order')}
+									</th>
+									<th className="p-3 text-center text-xs font-semibold text-muted-foreground">
+										{t('srp.policies.active')}
+									</th>
+									<th className="p-3 text-right text-xs font-semibold text-muted-foreground">
+										{t('srp.common.actions')}
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								{policies.map((policy) => (
+									<PolicyRow key={policy.id} policy={policy} />
+								))}
+							</tbody>
+						</table>
+					)}
+				</div>
 			</CardContent>
 		</Card>
 	)
 }
 
 function PolicyRow({ policy }: { policy: SRPPolicy }) {
+	const { t } = useAppTranslation()
 	const [editing, setEditing] = useState(false)
 	const updateMutation = useUpdatePolicy()
 	const deleteMutation = useDeletePolicy()
@@ -747,20 +772,30 @@ function PolicyRow({ policy }: { policy: SRPPolicy }) {
 				id: policy.id,
 				data: { ...policy, isActive: !policy.isActive } as any,
 			})
-			toast.success(policy.isActive ? 'Policy deactivated' : 'Policy activated')
+			toast.success(
+				policy.isActive ? (
+					<SRPFeedback messageKey="srp.policies.deactivated" />
+				) : (
+					<SRPFeedback messageKey="srp.policies.activated" />
+				)
+			)
 		} catch (e: any) {
-			toast.error('Failed to update policy', { description: e.message })
+			toast.error(<SRPFeedback messageKey="srp.policies.updateFailed" />, {
+				description: e.message,
+			})
 		}
 	}
 
 	const removePolicy = async () => {
-		if (!confirm('Delete this policy? This action cannot be undone.')) return
+		if (!confirm(t('srp.policies.deleteConfirm'))) return
 
 		try {
 			await deleteMutation.mutateAsync(policy.id)
-			toast.success('Policy deleted')
+			toast.success(<SRPFeedback messageKey="srp.policies.deleted" />)
 		} catch (e: any) {
-			toast.error('Failed to delete policy', { description: e.message })
+			toast.error(<SRPFeedback messageKey="srp.policies.deleteFailed" />, {
+				description: e.message,
+			})
 		}
 	}
 
@@ -775,9 +810,16 @@ function PolicyRow({ policy }: { policy: SRPPolicy }) {
 				</td>
 				{policy.effect === 'payout_modifier' && isPayoutModifierConfig(policy.config) ? (
 					<>
-						<td className="p-3 text-sm">{Math.round(parseFloat(policy.config.rate) * 100)}%</td>
+						<td className="p-3 text-sm">
+							{formatNumber(parseFloat(policy.config.rate), {
+								style: 'percent',
+								maximumFractionDigits: 0,
+							})}
+						</td>
 						<td className="p-3 text-sm text-muted-foreground">
-							{policy.config.applyInsuranceDelta ? 'Deducted' : 'Not deducted'}
+							{policy.config.applyInsuranceDelta
+								? t('srp.policies.deducted')
+								: t('srp.policies.notDeducted')}
 						</td>
 					</>
 				) : policy.effect === 'cap' && isCapConfig(policy.config) ? (
@@ -794,7 +836,7 @@ function PolicyRow({ policy }: { policy: SRPPolicy }) {
 							disabled={updateMutation.isPending}
 						/>
 						<span className="text-xs text-muted-foreground">
-							{policy.isActive ? 'Active' : 'Inactive'}
+							{policy.isActive ? t('srp.policies.active') : t('srp.policies.inactive')}
 						</span>
 					</div>
 				</td>
@@ -805,6 +847,7 @@ function PolicyRow({ policy }: { policy: SRPPolicy }) {
 							size="sm"
 							className="h-8 w-8 p-0"
 							onClick={() => setEditing((v) => !v)}
+							aria-label={t('srp.policies.edit')}
 							disabled={deleteMutation.isPending}
 						>
 							<Edit2 className="h-4 w-4" />
@@ -815,7 +858,7 @@ function PolicyRow({ policy }: { policy: SRPPolicy }) {
 							className="h-8 w-8 p-0 text-destructive hover:text-destructive"
 							onClick={() => void removePolicy()}
 							disabled={deleteMutation.isPending || updateMutation.isPending}
-							aria-label="Delete policy"
+							aria-label={t('srp.policies.delete')}
 						>
 							<Trash2 className="h-4 w-4" />
 						</Button>
@@ -846,6 +889,7 @@ interface PolicyFormProps {
 }
 
 function PolicyForm({ effect, existing, onCancel, onSaved }: PolicyFormProps) {
+	const { t } = useAppTranslation()
 	const createMutation = useCreatePolicy()
 	const updateMutation = useUpdatePolicy()
 
@@ -874,7 +918,7 @@ function PolicyForm({ effect, existing, onCancel, onSaved }: PolicyFormProps) {
 
 	const handleSave = async () => {
 		if (!name.trim()) {
-			toast.error('Name is required')
+			toast.error(<SRPFeedback messageKey="srp.validation.nameRequired" />)
 			return
 		}
 
@@ -894,14 +938,16 @@ function PolicyForm({ effect, existing, onCancel, onSaved }: PolicyFormProps) {
 		try {
 			if (existing) {
 				await updateMutation.mutateAsync({ id: existing.id, data: data as any })
-				toast.success('Policy updated')
+				toast.success(<SRPFeedback messageKey="srp.policies.updated" />)
 			} else {
 				await createMutation.mutateAsync(data as any)
-				toast.success('Policy created')
+				toast.success(<SRPFeedback messageKey="srp.policies.created" />)
 			}
 			onSaved()
 		} catch (e: any) {
-			toast.error('Failed to save policy', { description: e.message })
+			toast.error(<SRPFeedback messageKey="srp.policies.saveFailed" />, {
+				description: e.message,
+			})
 		}
 	}
 
@@ -909,16 +955,16 @@ function PolicyForm({ effect, existing, onCancel, onSaved }: PolicyFormProps) {
 		<div className="space-y-4">
 			<div className="grid gap-4 sm:grid-cols-2">
 				<div>
-					<Label htmlFor="policyName">Name *</Label>
+					<Label htmlFor="policyName">{t('srp.policies.nameRequired')}</Label>
 					<Input
 						id="policyName"
 						value={name}
 						onChange={(e) => setName(e.target.value)}
-						placeholder="e.g. Fleet blanket 100%"
+						placeholder={t('srp.policies.namePlaceholder')}
 					/>
 				</div>
 				<div>
-					<Label htmlFor="policyOrder">Display Order</Label>
+					<Label htmlFor="policyOrder">{t('srp.policies.displayOrder')}</Label>
 					<NumberInput
 						id="policyOrder"
 						step={1}
@@ -928,7 +974,7 @@ function PolicyForm({ effect, existing, onCancel, onSaved }: PolicyFormProps) {
 					/>
 				</div>
 				<div className="sm:col-span-2">
-					<Label htmlFor="policyDesc">Description (optional)</Label>
+					<Label htmlFor="policyDesc">{t('srp.policies.descriptionOptional')}</Label>
 					<Textarea
 						id="policyDesc"
 						value={description}
@@ -940,7 +986,7 @@ function PolicyForm({ effect, existing, onCancel, onSaved }: PolicyFormProps) {
 				{effect === 'payout_modifier' ? (
 					<>
 						<div>
-							<Label htmlFor="policyRate">Coverage Rate (%)</Label>
+							<Label htmlFor="policyRate">{t('srp.policies.coverageRate')}</Label>
 							<NumberInput
 								id="policyRate"
 								min={0}
@@ -952,9 +998,7 @@ function PolicyForm({ effect, existing, onCancel, onSaved }: PolicyFormProps) {
 								onChange={setRate}
 								placeholder="100"
 							/>
-							<p className="mt-1 text-xs text-muted-foreground">
-								100 = full value, 80 = 80%, 110 = 110%
-							</p>
+							<p className="mt-1 text-xs text-muted-foreground">{t('srp.policies.coverageHint')}</p>
 						</div>
 						<div className="flex items-center gap-3 pt-6">
 							<input
@@ -964,12 +1008,12 @@ function PolicyForm({ effect, existing, onCancel, onSaved }: PolicyFormProps) {
 								onChange={(e) => setApplyInsurance(e.target.checked)}
 								className="h-4 w-4"
 							/>
-							<Label htmlFor="applyInsurance">Deduct insurance from payout</Label>
+							<Label htmlFor="applyInsurance">{t('srp.policies.deductInsurance')}</Label>
 						</div>
 					</>
 				) : (
 					<div>
-						<Label htmlFor="maxPayout">Max Payout (millions ISK)</Label>
+						<Label htmlFor="maxPayout">{t('srp.policies.maxPayoutMillions')}</Label>
 						<NumberInput
 							id="maxPayout"
 							min={0}
@@ -990,10 +1034,14 @@ function PolicyForm({ effect, existing, onCancel, onSaved }: PolicyFormProps) {
 
 			<div className="flex justify-end gap-2">
 				<Button variant="cancel" size="sm" onClick={onCancel}>
-					Cancel
+					{t('srp.common.cancel')}
 				</Button>
 				<Button size="sm" onClick={handleSave} disabled={isPending}>
-					{isPending ? 'Saving…' : existing ? 'Update Policy' : 'Create Policy'}
+					{isPending
+						? t('srp.common.saving')
+						: existing
+							? t('srp.policies.update')
+							: t('srp.policies.create')}
 				</Button>
 			</div>
 		</div>

@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { useAppTranslation } from '@/i18n'
 
 import { formatISK, formatRelativeTime, getKillmailUrl, getRequestCharacterRole } from '../utils'
 import { CharacterRoleBadge } from './CharacterRoleBadge'
@@ -15,6 +16,7 @@ interface RequestCardProps {
 }
 
 export function RequestCard({ request, showActions = true }: RequestCardProps) {
+	const { t } = useAppTranslation()
 	return (
 		<Card className="p-4">
 			<div className="space-y-3">
@@ -40,20 +42,26 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 					{request.requestStatus === 'paid' || request.requestStatus === 'payment_pending' ? (
 						<div>
 							<div className="text-muted-foreground">
-								{request.requestStatus === 'paid' ? 'Paid Amount' : 'Payment Sent'}
+								{request.requestStatus === 'paid'
+									? t('srp.common.paidAmount')
+									: t('srp.status.payment_pending')}
 							</div>
-							<div className="font-medium tabular-nums text-success">{formatISK(request.approvedAmount ?? '0')}</div>
+							<div className="font-medium tabular-nums text-success">
+								{formatISK(request.approvedAmount ?? '0')}
+							</div>
 						</div>
 					) : (
 						<>
 							<div>
-								<div className="text-muted-foreground">Ship Value</div>
+								<div className="text-muted-foreground">{t('srp.common.shipValue')}</div>
 								<div className="font-medium tabular-nums">{formatISK(request.shipValue)}</div>
 							</div>
 							{request.approvedAmount && (
 								<div>
-									<div className="text-muted-foreground">Approved</div>
-									<div className="font-medium tabular-nums text-success">{formatISK(request.approvedAmount)}</div>
+									<div className="text-muted-foreground">{t('srp.status.approved')}</div>
+									<div className="font-medium tabular-nums text-success">
+										{formatISK(request.approvedAmount)}
+									</div>
 								</div>
 							)}
 						</>
@@ -63,15 +71,11 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
 				{showActions && (
 					<div className="flex gap-2">
 						<Button variant="ghost" size="sm" asChild>
-							<Link to={`/srp/request/${request.id}`}>View Details</Link>
+							<Link to={`/srp/request/${request.id}`}>{t('srp.common.viewDetails')}</Link>
 						</Button>
 						<Button variant="ghost" size="sm" asChild>
-							<a
-								href={getKillmailUrl(request.id)}
-								target="_blank"
-								rel="noopener noreferrer"
-							>
-								View on zKillboard
+							<a href={getKillmailUrl(request.id)} target="_blank" rel="noopener noreferrer">
+								{t('srp.common.zkill')}
 							</a>
 						</Button>
 					</div>

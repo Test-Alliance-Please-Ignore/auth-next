@@ -17,9 +17,10 @@ import {
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { useFreightContracts, useOpenContractInGame } from '@/hooks/useFreightContracts'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
-import { formatISK, formatNumber } from '../utils'
+import { formatISK, formatNumber, formatTimeRemaining } from '../utils'
 
 import type { FreightContractSortDirection, FreightContractSortKey } from '@/lib/freight-api'
 
@@ -30,25 +31,13 @@ function formatVolume(volume: string | null): string {
 	return `${formatNumber(volume)} m³`
 }
 
-function formatTimeRemaining(dateExpired: string): string {
-	const now = Date.now()
-	const expiry = new Date(dateExpired).getTime()
-	const diff = expiry - now
-	if (diff <= 0) return 'Expired'
-
-	const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-	const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-
-	if (days > 0) return `${days} day${days !== 1 ? 's' : ''}, ${hours} hour${hours !== 1 ? 's' : ''}`
-	return `${hours} hour${hours !== 1 ? 's' : ''}`
-}
-
 function sortLabel(direction: FreightContractSortDirection): Exclude<AriaSort, 'none'> {
 	return direction === 'asc' ? 'ascending' : 'descending'
 }
 
 export default function FreightContractsPage() {
-	usePageTitle('Open Contracts')
+	const { t } = useAppTranslation()
+	usePageTitle(t('freight.contracts.title'))
 
 	const [sorting, setSorting] = useState<{
 		key: FreightContractSortKey
@@ -63,6 +52,7 @@ export default function FreightContractsPage() {
 		data: contractsPage,
 		isLoading,
 		isFetching,
+		error,
 	} = useFreightContracts({
 		status: 'outstanding',
 		page: pagination.page,
@@ -104,10 +94,8 @@ export default function FreightContractsPage() {
 	return (
 		<Container size="wide">
 			<div className="mb-section md:mb-10">
-				<h1 className="text-3xl font-bold gradient-text">Open Contracts</h1>
-				<p className="mt-1 text-muted-foreground">
-					Outstanding courier contracts waiting to be picked up
-				</p>
+				<h1 className="text-3xl font-bold gradient-text">{t('freight.contracts.title')}</h1>
+				<p className="mt-1 text-muted-foreground">{t('freight.contracts.description')}</p>
 			</div>
 
 			{!isLoading && totalCount > 0 ? (
@@ -118,7 +106,7 @@ export default function FreightContractsPage() {
 						pageSize={currentPageSize}
 						onPageChange={(page) => setPagination((prev) => ({ ...prev, page }))}
 						onPageSizeChange={(pageSize) => setPagination({ page: 1, pageSize })}
-						itemLabel="contracts"
+						itemLabel={t('freight.contracts.item', { count: totalCount })}
 						nextButtonLoading={isRefreshing}
 					/>
 				</div>
@@ -128,15 +116,19 @@ export default function FreightContractsPage() {
 				<Table>
 					<TableHeader>
 						<TableRow>
-							{renderSortHead('Pickup', 'pickup')}
-							{renderSortHead('Dropoff', 'dropoff')}
-							{renderSortHead('Volume', 'volume', 'text-right font-mono')}
-							{renderSortHead('Reward', 'reward', 'text-right font-mono')}
-							{renderSortHead('Collateral', 'collateral', 'text-right font-mono')}
-							{renderSortHead('TTC', 'daysToComplete', 'text-center font-mono')}
-							{renderSortHead('Expires', 'expires')}
+							{renderSortHead(t('freight.common.pickup'), 'pickup')}
+							{renderSortHead(t('freight.contracts.dropoff'), 'dropoff')}
+							{renderSortHead(t('freight.common.volume'), 'volume', 'text-right font-mono')}
+							{renderSortHead(t('freight.common.reward'), 'reward', 'text-right font-mono')}
+							{renderSortHead(t('freight.common.collateral'), 'collateral', 'text-right font-mono')}
+							{renderSortHead(
+								t('freight.contracts.ttc'),
+								'daysToComplete',
+								'text-center font-mono'
+							)}
+							{renderSortHead(t('freight.contracts.expires'), 'expires')}
 							<TableHead className={`${stickyTableActionHeaderClassName} text-right`}>
-								Actions
+								{t('freight.common.actions')}
 							</TableHead>
 						</TableRow>
 					</TableHeader>
@@ -144,7 +136,17 @@ export default function FreightContractsPage() {
 						{isLoading ? (
 							<TableRow>
 								<TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
-									Loading outstanding contracts...
+									{t('freight.contracts.loading')}
+								</TableCell>
+							</TableRow>
+						) : error ? (
+							<TableRow>
+								<TableCell colSpan={8}>
+									<p role="alert" className="text-destructive">
+										{error instanceof Error && error.message
+											? error.message
+											: t('freight.contracts.loadFailed')}
+									</p>
 								</TableCell>
 							</TableRow>
 						) : pageContracts.length === 0 ? (
@@ -153,7 +155,7 @@ export default function FreightContractsPage() {
 									<div className="flex min-h-40 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground">
 										<div>
 											<Package className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-											<p>No outstanding contracts</p>
+											<p>{t('freight.contracts.empty')}</p>
 										</div>
 									</div>
 								</TableCell>
@@ -181,19 +183,21 @@ export default function FreightContractsPage() {
 											{contract.collateral ? formatISK(contract.collateral) : '—'}
 										</TableCell>
 										<TableCell className="font-mono text-center">
-											{contract.daysToComplete ?? '—'}
+											{contract.daysToComplete === null
+												? '—'
+												: formatNumber(contract.daysToComplete)}
 										</TableCell>
-										<TableCell>{formatTimeRemaining(contract.dateExpired)}</TableCell>
+										<TableCell>{formatTimeRemaining(contract.dateExpired, t)}</TableCell>
 										<TableCell className={`${stickyTableActionCellClassName} text-right`}>
 											<Button
 												variant="secondary"
 												size="sm"
 												disabled={openInGame.isPending}
 												onClick={() => openInGame.mutate(contract.contractId)}
-												title="Open this contract in your EVE client"
+												title={t('freight.contracts.openHint')}
 											>
 												<ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-												{isPending ? 'Opening…' : 'In-game'}
+												{isPending ? t('freight.contracts.opening') : t('freight.contracts.inGame')}
 											</Button>
 										</TableCell>
 									</TableRow>
@@ -212,7 +216,7 @@ export default function FreightContractsPage() {
 						pageSize={currentPageSize}
 						onPageChange={(page) => setPagination((prev) => ({ ...prev, page }))}
 						onPageSizeChange={(pageSize) => setPagination({ page: 1, pageSize })}
-						itemLabel="contracts"
+						itemLabel={t('freight.contracts.item', { count: totalCount })}
 						nextButtonLoading={isRefreshing}
 					/>
 				</div>

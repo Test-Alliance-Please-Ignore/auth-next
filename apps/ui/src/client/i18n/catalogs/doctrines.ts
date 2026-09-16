@@ -1,3 +1,3 @@
 import { defineCatalog } from '../catalog'
 
-export const doctrinesCatalog = defineCatalog({}, {}, {})
+export const doctrinesCatalog = defineCatalog({}, {}, {}, {})

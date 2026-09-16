@@ -2,6 +2,8 @@ import { Hono } from 'hono'
 import { getCookie, setCookie } from 'hono/cookie'
 import { html } from 'hono/html'
 
+import { USER_LOCALES } from '@repo/core'
+
 import {
 	LOGIN_LOCALE_COOKIE,
 	LOGIN_LOCALE_NAMES,
@@ -15,6 +17,10 @@ import type { App } from '../context'
 
 const login = new Hono<App>()
 const LOGIN_LOCALE_COOKIE_TTL_SECONDS = 365 * 24 * 60 * 60
+// Keep the alphabetical order stable when the selected language changes.
+const loginLocales = [...USER_LOCALES].sort((left, right) =>
+	LOGIN_LOCALE_NAMES[left].localeCompare(LOGIN_LOCALE_NAMES[right], 'en')
+)
 
 function selectedAttribute(locale: UserLocale, option: UserLocale) {
 	return locale === option ? 'selected' : ''
@@ -399,15 +405,13 @@ login.get('/', async (c) => {
 								<label class="locale-label" for="login-locale">${messages.languageLabel}</label>
 								<div class="locale-control">
 									<select class="locale-select" id="login-locale" name="locale">
-										<option value="en" ${selectedAttribute(locale, 'en')}>
-											${LOGIN_LOCALE_NAMES.en}
-										</option>
-										<option value="de" ${selectedAttribute(locale, 'de')}>
-											${LOGIN_LOCALE_NAMES.de}
-										</option>
-										<option value="ko" ${selectedAttribute(locale, 'ko')}>
-											${LOGIN_LOCALE_NAMES.ko}
-										</option>
+										${loginLocales.map(
+											(option) => html`
+												<option value="${option}" ${selectedAttribute(locale, option)}>
+													${LOGIN_LOCALE_NAMES[option]}
+												</option>
+											`
+										)}
 									</select>
 									<svg class="locale-chevron" viewBox="0 0 24 24" fill="none" aria-hidden="true">
 										<path

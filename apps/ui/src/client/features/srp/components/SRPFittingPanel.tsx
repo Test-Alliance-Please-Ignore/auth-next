@@ -1,3 +1,6 @@
+import { FittingPanel as SharedFittingPanel } from '@repo/eve-fitting/fitting-panel'
+
+import { useAppTranslation } from '@/i18n'
 /**
  * SRP fitting panel wrapper.
  *
@@ -6,16 +9,11 @@
  */
 
 import { typeIconUrl, typeRenderUrl } from '@/lib/eve-images'
-import { FittingPanel as SharedFittingPanel } from '@repo/eve-fitting/fitting-panel'
-import type { FittingDisplayItem } from '@repo/eve-fitting/flags'
 
 import { isPodLoss } from '../utils/fitting'
 
-import type {
-	SRPFittingItem,
-	SRPShipSlotCapacities,
-	SRPSlotHighlightMap,
-} from '../utils/fitting'
+import type { FittingDisplayItem } from '@repo/eve-fitting/flags'
+import type { SRPFittingItem, SRPShipSlotCapacities, SRPSlotHighlightMap } from '../utils/fitting'
 
 interface SRPFittingPanelProps {
 	shipTypeId: string
@@ -49,12 +47,16 @@ export function SRPFittingPanel({
 	slotHighlights = {},
 	slotCapacities = {},
 }: SRPFittingPanelProps) {
+	const { t } = useAppTranslation()
 	const isPod = isPodLoss(shipTypeId)
 
 	return (
 		<SharedFittingPanel
 			shipTypeId={shipTypeId}
-			shipTypeName={shipTypeName}
+			shipTypeName={
+				shipTypeName ??
+				(isPod ? t('srp.fitting.capsule') : t('srp.common.shipId', { id: shipTypeId }))
+			}
 			items={toDisplayItems(items, isPod)}
 			slotHighlights={slotHighlights}
 			slotCapacities={slotCapacities}

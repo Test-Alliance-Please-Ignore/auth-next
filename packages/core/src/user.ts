@@ -53,7 +53,7 @@ export interface UserSessionDTO {
 /**
  * Supported UI locales shared by the SPA and server-rendered login page.
  */
-export const USER_LOCALES = ['en', 'de', 'ko'] as const
+export const USER_LOCALES = ['en', 'de', 'ko', 'es-MX'] as const
 
 export type UserLocale = (typeof USER_LOCALES)[number]
 

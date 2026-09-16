@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { formatList, formatNumber, i18n, useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 
 import {
@@ -17,16 +18,19 @@ import {
 	useSubmitReview,
 	useUpdateReviewState,
 } from '../hooks'
-import { formatISK } from '../utils'
+import { formatISK, getRequestStatusText } from '../utils'
 import {
 	transformKillmailToCargoItems,
 	transformKillmailToFittingItems,
 	transformKillmailToShipMaintenanceBayShips,
 } from '../utils/fitting'
+import { SRPFeedback } from './SRPFeedback'
 import { SRPFittingDisplay } from './SRPFittingDisplay'
+import { SRPNumberInput } from './SRPNumberInput'
 
 import type { ReactNode } from 'react'
 import type { CapConfig, PayoutModifierConfig } from '@repo/srp'
+import type { AppTranslator } from '@/i18n'
 import type { FittingWithItems } from '@/lib/api'
 import type {
 	AppliedModifier,
@@ -138,10 +142,13 @@ function doctrineQuantity(quantity: string): number {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
 }
 
-function predefinedModifierOptionLabel(modifier: SRPPredefinedAdhocModifier): string {
+function predefinedModifierOptionLabel(
+	modifier: SRPPredefinedAdhocModifier,
+	t: AppTranslator
+): string {
 	const sign = modifier.modifierType === 'deduction' ? '−' : '+'
-	const unit = modifier.mode === 'percentage' ? '%' : 'M ISK'
-	return `${modifier.reason} (${sign}${modifier.amount}${unit})`
+	const unit = modifier.mode === 'percentage' ? '%' : t('srp.common.millionIsk')
+	return `${modifier.reason} (${sign}${formatNumber(modifier.amount)}${unit})`
 }
 
 function buildDoctrineCountsBySlot(
@@ -219,7 +226,8 @@ function analyzeHighSlotAmmoDistribution(
 	killmailItems: LossKillmailItem[],
 	consumableTypeIds: Set<string>,
 	itemNames: Record<string, string>,
-	itemGroupIds: Record<string, string>
+	itemGroupIds: Record<string, string>,
+	t: AppTranslator
 ): {
 	weaponModuleCount: number
 	moduleSystemCount: number
@@ -263,7 +271,10 @@ function analyzeHighSlotAmmoDistribution(
 			moduleTypeId,
 			(weaponSystemCountByType.get(moduleTypeId) ?? 0) + moduleCount
 		)
-		weaponSystemNames.set(moduleTypeId, itemNames[moduleTypeId] ?? `Type ${moduleTypeId}`)
+		weaponSystemNames.set(
+			moduleTypeId,
+			itemNames[moduleTypeId] ?? t('srp.common.typeId', { id: moduleTypeId })
+		)
 
 		const systemAmmoTypes = ammoTypesByWeaponSystem.get(moduleTypeId) ?? new Set<string>()
 		for (const [ammoTypeId, ammoQty] of moduleAmmoByType) {
@@ -279,11 +290,14 @@ function analyzeHighSlotAmmoDistribution(
 
 	const totalAmmoQuantity = [...ammoByType.values()].reduce((sum, quantity) => sum + quantity, 0)
 	const ammoTypeNames = [...ammoByType.keys()].map(
-		(typeId) => itemNames[typeId] ?? `Type ${typeId}`
+		(typeId) => itemNames[typeId] ?? t('srp.common.typeId', { id: typeId })
 	)
 	const mixedWeaponSystemNames = [...ammoTypesByWeaponSystem.entries()]
 		.filter(([, ammoTypes]) => ammoTypes.size > 1)
-		.map(([moduleTypeId]) => weaponSystemNames.get(moduleTypeId) ?? `Type ${moduleTypeId}`)
+		.map(
+			([moduleTypeId]) =>
+				weaponSystemNames.get(moduleTypeId) ?? t('srp.common.typeId', { id: moduleTypeId })
+		)
 	const unevenAmmoByType = [...ammoByType.entries()]
 		.map(([ammoTypeId, ammoQuantity]) => {
 			const matchingWeaponCount = matchingWeaponCountByAmmoType.get(ammoTypeId) ?? 0
@@ -296,7 +310,7 @@ function analyzeHighSlotAmmoDistribution(
 			}
 			return {
 				ammoTypeId,
-				ammoTypeName: itemNames[ammoTypeId] ?? `Type ${ammoTypeId}`,
+				ammoTypeName: itemNames[ammoTypeId] ?? t('srp.common.typeId', { id: ammoTypeId }),
 				ammoQuantity,
 				matchingWeaponCount,
 			}
@@ -339,7 +353,8 @@ export function computeDoctrineConformityFindings(
 	doctrineCargoTypeIds: Set<string>,
 	consumableTypeIds: Set<string>,
 	itemNames: Record<string, string>,
-	killmailItemGroupIds: Record<string, string> = {}
+	killmailItemGroupIds: Record<string, string> = {},
+	t: AppTranslator = i18n.t
 ): ConformityFinding[] {
 	const findings: ConformityFinding[] = []
 	const doctrineBySlot = buildDoctrineCountsBySlot(fitting)
@@ -349,7 +364,7 @@ export function computeDoctrineConformityFindings(
 		if (!doctrineTypeNames.has(item.typeId)) doctrineTypeNames.set(item.typeId, item.typeName)
 	}
 	const typeName = (typeId: string) =>
-		doctrineTypeNames.get(typeId) ?? itemNames[typeId] ?? `Type ${typeId}`
+		doctrineTypeNames.get(typeId) ?? itemNames[typeId] ?? t('srp.common.typeId', { id: typeId })
 
 	const expectedRigCount = [...(doctrineBySlot.get('rig')?.values() ?? [])].reduce(
 		(sum, quantity) => sum + quantity,
@@ -364,7 +379,7 @@ export function computeDoctrineConformityFindings(
 		findings.push({
 			severity: 'destructive',
 			slot: 'rig',
-			message: `Missing ${missingRigs} rig module${missingRigs === 1 ? '' : 's'}`,
+			message: t('srp.review.missingRigs', { count: missingRigs }),
 			quantity: missingRigs,
 		})
 	}
@@ -403,7 +418,7 @@ export function computeDoctrineConformityFindings(
 					severity: likelyVariation ? 'secondary' : 'warning',
 					slot,
 					quantity: pairQty,
-					message: `${likelyVariation ? 'Likely doctrine variation' : 'Module differs from doctrine expectation'}${pairQty > 1 ? ` ×${pairQty}` : ''}`,
+					message: `${t(likelyVariation ? 'srp.review.likelyVariation' : 'srp.review.moduleDiffers')}${pairQty > 1 ? ` ×${formatNumber(pairQty)}` : ''}`,
 					expectedModule: typeName(expectedTypeId),
 					lossTypeId: extra.typeId,
 					lossModule: typeName(extra.typeId),
@@ -417,7 +432,7 @@ export function computeDoctrineConformityFindings(
 					severity: 'destructive',
 					slot,
 					quantity: remaining,
-					message: `Missing module in ${slot} slot${remaining > 1 ? ` ×${remaining}` : ''}`,
+					message: `${t('srp.review.missingModule', { slot: t(`srp.fitting.slot.${slot}`) })}${remaining > 1 ? ` ×${formatNumber(remaining)}` : ''}`,
 					expectedModule: typeName(expectedTypeId),
 				})
 			}
@@ -429,7 +444,7 @@ export function computeDoctrineConformityFindings(
 				severity: 'secondary',
 				slot,
 				quantity: extra.qty,
-				message: `Additional module not in doctrine expectation${extra.qty > 1 ? ` ×${extra.qty}` : ''}`,
+				message: `${t('srp.review.extraModule')}${extra.qty > 1 ? ` ×${formatNumber(extra.qty)}` : ''}`,
 				lossTypeId: extra.typeId,
 				lossModule: typeName(extra.typeId),
 			})
@@ -440,7 +455,8 @@ export function computeDoctrineConformityFindings(
 		killmailItemsForAmmoCheck,
 		consumableTypeIds,
 		itemNames,
-		killmailItemGroupIds
+		killmailItemGroupIds,
+		t
 	)
 	const hasMultipleAmmoTypes = ammoCheck.ammoTypeCount > 1
 	const hasUnevenAmmoDistribution = ammoCheck.unevenAmmoByType.length > 0
@@ -457,24 +473,27 @@ export function computeDoctrineConformityFindings(
 		const reasons: string[] = []
 		if (ammoCheck.hasMixedAmmoWithinSameWeaponSystem) {
 			reasons.push(
-				`multiple ammo types loaded within the same weapon system (${ammoCheck.mixedWeaponSystemNames.join(', ')})`
+				t('srp.review.mixedAmmo', { names: formatList(ammoCheck.mixedWeaponSystemNames) })
 			)
 		}
 		if (hasUnevenAmmoDistribution) {
 			reasons.push(
-				...ammoCheck.unevenAmmoByType.map(
-					(entry) =>
-						`${entry.ammoTypeName} qty ${entry.ammoQuantity} is not evenly divisible by matching weapon count ${entry.matchingWeaponCount}`
+				...ammoCheck.unevenAmmoByType.map((entry) =>
+					t('srp.review.unevenAmmo', {
+						name: entry.ammoTypeName,
+						quantity: entry.ammoQuantity,
+						weapons: entry.matchingWeaponCount,
+					})
 				)
 			)
 		}
 		if (hasMultipleAmmoTypes && !hasPlausibleSplitAcrossDistinctWeaponSystems) {
-			reasons.push(`multiple ammo types loaded (${ammoCheck.ammoTypeNames.join(', ')})`)
+			reasons.push(t('srp.review.multipleAmmo', { names: formatList(ammoCheck.ammoTypeNames) }))
 		}
 		findings.push({
 			severity: 'warning',
 			slot: 'high',
-			message: `Split weapons variant detected: ${reasons.join('; ')}.`,
+			message: t('srp.review.splitWeapons', { reasons: formatList(reasons) }),
 			highlightWholeSlotType: true,
 		})
 	}
@@ -627,6 +646,7 @@ export function ReviewRequestForm({
 	commentSlot,
 	rightAppend,
 }: ReviewRequestFormProps) {
+	const { t } = useAppTranslation()
 	const { data: policies = [] } = useSRPPolicies()
 	const { data: srpConfig } = useSRPConfig()
 	const submitMutation = useSubmitReview()
@@ -887,7 +907,8 @@ export function ReviewRequestForm({
 						doctrineCargoTypeIds,
 						consumableTypeIds,
 						itemNames,
-						request.killmailItemGroupIds ?? {}
+						request.killmailItemGroupIds ?? {},
+						t
 					)
 				: [],
 		[
@@ -900,6 +921,7 @@ export function ReviewRequestForm({
 			request.killmailItemGroupIds,
 			request.killmailItems,
 			showDoctrineConformity,
+			t,
 		]
 	)
 	const conformitySlotHighlights = useMemo(
@@ -956,7 +978,7 @@ export function ReviewRequestForm({
 		const signed = mod.modifierType === 'deduction' ? -delta : delta
 		const percentSuffix =
 			mod.mode === 'percentage'
-				? ` (${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(mod.amount)}%)`
+				? ` (${formatNumber(mod.amount / 100, { style: 'percent', maximumFractionDigits: 2 })})`
 				: ''
 		modifierLines.push({
 			label: mod.reason,
@@ -974,7 +996,7 @@ export function ReviewRequestForm({
 	const beforeCapAmount = afterModifiers
 	const predefinedModifierOptions = predefinedAdhocModifiers.map((modifier, index) => ({
 		value: String(index),
-		label: predefinedModifierOptionLabel(modifier),
+		label: predefinedModifierOptionLabel(modifier, t),
 	}))
 
 	const addModifier = () => {
@@ -1045,7 +1067,7 @@ export function ReviewRequestForm({
 					id: request.id,
 					newState: 'pending',
 				})
-				toast.success('Request moved to pending')
+				toast.success(<SRPFeedback messageKey="srp.review.movedToPending" />)
 			} else {
 				await submitMutation.mutateAsync({
 					id: request.id,
@@ -1059,12 +1081,16 @@ export function ReviewRequestForm({
 						reviewNotes: null,
 					},
 				})
-				toast.success('Review submitted successfully')
+				toast.success(<SRPFeedback messageKey="srp.review.submitted" />)
 			}
 			onSuccess()
 		} catch (error: any) {
 			toast.error(
-				outcome === 'pending' ? 'Failed to move request to pending' : 'Failed to submit review',
+				outcome === 'pending' ? (
+					<SRPFeedback messageKey="srp.review.moveFailed" />
+				) : (
+					<SRPFeedback messageKey="srp.review.submitFailed" />
+				),
 				{ description: error.message }
 			)
 			setShowConfirm(false)
@@ -1088,17 +1114,16 @@ export function ReviewRequestForm({
 							<Card className="p-4">
 								<div className="space-y-3">
 									<div className="flex items-center justify-between gap-3">
-										<Badge variant="secondary">Military Doctrine Fittings Available</Badge>
+										<Badge variant="secondary">{t('srp.review.doctrinesAvailable')}</Badge>
 										<span className="text-xs text-muted-foreground">
-											{sortedDoctrineFittings.length} fitting
-											{sortedDoctrineFittings.length === 1 ? '' : 's'}
+											{t('srp.fitting.count', { count: sortedDoctrineFittings.length })}
 										</span>
 									</div>
 									<div className="flex items-center justify-between gap-3">
 										<div>
-											<h4 className="text-sm font-semibold">Show Doctrine Conformity</h4>
+											<h4 className="text-sm font-semibold">{t('srp.review.showConformity')}</h4>
 											<p className="text-xs text-muted-foreground">
-												Compare this loss against doctrine fittings for this hull
+												{t('srp.review.conformityHint')}
 											</p>
 										</div>
 										<Switch
@@ -1115,12 +1140,10 @@ export function ReviewRequestForm({
 													value: fitting.id,
 													label: fitting.name,
 												}))}
-												placeholder="Select doctrine fitting"
+												placeholder={t('srp.review.selectFitting')}
 											/>
 											{doctrineFindings.length === 0 ? (
-												<p className="text-sm text-success">
-													No invariant issues for selected fitting.
-												</p>
+												<p className="text-sm text-success">{t('srp.review.noIssues')}</p>
 											) : (
 												<ul className="space-y-2">
 													{doctrineFindings.map((finding, index) => (
@@ -1137,11 +1160,11 @@ export function ReviewRequestForm({
 															<div className="text-sm font-medium">{finding.message}</div>
 															{(finding.expectedModule || finding.lossModule) && (
 																<div className="mt-1 text-xs text-muted-foreground">
-																	Expected:{' '}
+																	{t('srp.review.expected')}{' '}
 																	<span className="font-medium text-foreground">
 																		{finding.expectedModule ?? '—'}
 																	</span>{' '}
-																	| Loss:{' '}
+																	{t('srp.review.actualLoss')}{' '}
 																	<span className="font-medium text-foreground">
 																		{finding.lossModule ?? '—'}
 																		{finding.quantity && finding.quantity > 1
@@ -1167,50 +1190,59 @@ export function ReviewRequestForm({
 			<div className="flex flex-col gap-4 lg:w-1/2">
 				{/* Math breakdown */}
 				<Card className="p-4">
-					<h4 className="mb-3 font-semibold text-sm">Payout Calculation</h4>
+					<h4 className="mb-3 font-semibold text-sm">{t('srp.review.calculation')}</h4>
 					<div className="space-y-1 font-mono text-sm">
-						<MathRow label={`Hull (${request.shipTypeName ?? 'Ship'})`} value={hullValue} />
-						{modulesValue > 0 && <MathRow label="+ Modules" value={modulesValue} dim />}
+						<MathRow
+							label={t('srp.review.hull', { name: request.shipTypeName ?? t('srp.common.ship') })}
+							value={hullValue}
+						/>
+						{modulesValue > 0 && (
+							<MathRow label={t('srp.review.modules')} value={modulesValue} dim />
+						)}
 						<div className="my-1 border-t border-border/50" />
-						<MathRow label="Equipment Value" value={equipmentValue} bold />
+						<MathRow label={t('srp.review.equipment')} value={equipmentValue} bold />
 						{insurancePremium > 0 || insurancePayout > 0 ? (
 							<>
-								<MathRow label="+ Insurance Premium" value={insurancePremium} dim />
+								<MathRow label={t('srp.review.insurancePremium')} value={insurancePremium} dim />
 								<MathRow
-									label="− Insurance Payout"
+									label={t('srp.review.insurancePayout')}
 									value={-insurancePayout}
 									dim
 									muted={!applyInsurance}
 								/>
 								{!applyInsurance && (
 									<div className="text-right text-xs text-muted-foreground/60">
-										(not applied — overridden by selected policy)
+										{t('srp.review.insuranceOverridden')}
 									</div>
 								)}
 							</>
 						) : (
 							<div className="flex justify-between text-xs text-muted-foreground/60 italic">
-								<span>− Insurance (no data)</span>
+								<span>{t('srp.review.noInsurance')}</span>
 								<span>{formatISK(0)}</span>
 							</div>
 						)}
 						<div className="my-1 border-t border-border/50" />
 						<MathRow
-							label="Base Value"
+							label={t('srp.review.baseValue')}
 							value={applyInsurance ? afterInsurance : equipmentValue}
 							bold
 						/>
 						{coverageRate !== null && (
 							<>
 								<div className="flex justify-between text-xs text-muted-foreground">
-									<span>× Coverage Rate</span>
+									<span>{t('srp.review.coverageRate')}</span>
 									<span>{Math.round(coverageRate * 100)}%</span>
 								</div>
 								{coverageReduction > 0 && (
-									<MathRow label="− Coverage Reduction" value={-coverageReduction} dim />
+									<MathRow
+										label={t('srp.review.coverageReduction')}
+										value={-coverageReduction}
+										dim
+									/>
 								)}
 								<div className="my-1 border-t border-border/50" />
-								<MathRow label="After Coverage" value={afterCoverage} bold />
+								<MathRow label={t('srp.review.afterCoverage')} value={afterCoverage} bold />
 							</>
 						)}
 						{modifierLines.map((line, i) => (
@@ -1222,7 +1254,9 @@ export function ReviewRequestForm({
 											line.modifierType === 'bonus' ? 'bg-green-600 text-white' : undefined
 										}
 									>
-										{line.modifierType === 'deduction' ? 'Deduction' : 'Bonus'}
+										{line.modifierType === 'deduction'
+											? t('srp.common.deduction')
+											: t('srp.common.bonus')}
 									</Badge>
 									<span>
 										{line.label}
@@ -1240,16 +1274,16 @@ export function ReviewRequestForm({
 						{modifierLines.length > 0 && (
 							<>
 								<div className="my-1 border-t border-border/50" />
-								<MathRow label="Before Cap" value={beforeCapAmount} bold />
+								<MathRow label={t('srp.review.beforeCap')} value={beforeCapAmount} bold />
 							</>
 						)}
 						{capPolicy && (
 							<div className="flex justify-between text-xs text-muted-foreground">
-								<span>Cap ({selectedCapPolicy?.name})</span>
+								<span>{t('srp.review.cap', { name: selectedCapPolicy?.name })}</span>
 								<span className={isCapped ? 'text-amber-500' : ''}>
 									{isCapped
 										? `→ ${formatISK(String(capPolicy.maxPayoutMillions * 1_000_000))}`
-										: 'not applicable'}
+										: t('srp.review.notApplicable')}
 								</span>
 							</div>
 						)}
@@ -1258,7 +1292,7 @@ export function ReviewRequestForm({
 							<span
 								className={overrideMillions !== null ? 'line-through text-muted-foreground' : ''}
 							>
-								Suggested Payout
+								{t('srp.review.suggestedPayout')}
 							</span>
 							<span
 								className={
@@ -1274,7 +1308,7 @@ export function ReviewRequestForm({
 						</div>
 						{overrideMillions !== null && (
 							<div className="flex justify-between font-bold text-green-400">
-								<span>Override</span>
+								<span>{t('srp.review.override')}</span>
 								<span>{formatISK(String(overrideMillions * 1_000_000))}</span>
 							</div>
 						)}
@@ -1284,13 +1318,13 @@ export function ReviewRequestForm({
 				{/* Payout Modifier Policy */}
 				{modifierPolicies.length > 0 && (
 					<Card className="p-4">
-						<h4 className="mb-3 text-sm font-semibold">Payout Modifier Policy</h4>
+						<h4 className="mb-3 text-sm font-semibold">{t('srp.review.modifierPolicy')}</h4>
 						<div className="space-y-2">
 							<PolicyRadio
-								label="No Modifier Policy"
+								label={t('srp.review.noModifierPolicy')}
 								selected={selectedModifierPolicyId === null}
 								onSelect={() => setSelectedModifierPolicyId(null)}
-								detail="No policy applied"
+								detail={t('srp.review.noPolicy')}
 							/>
 							{modifierPolicies.map((p) => {
 								const cfg = isPayoutModifierConfig(p.config) ? p.config : null
@@ -1302,7 +1336,17 @@ export function ReviewRequestForm({
 										onSelect={() => setSelectedModifierPolicyId(p.id)}
 										detail={
 											cfg
-												? `${Math.round(parseFloat(cfg.rate) * 100)}% coverage${cfg.applyInsuranceDelta ? ', insurance deducted' : ', no insurance deduction'}`
+												? t(
+														cfg.applyInsuranceDelta
+															? 'srp.review.coverageInsurance'
+															: 'srp.review.coverageNoInsurance',
+														{
+															rate: formatNumber(parseFloat(cfg.rate), {
+																style: 'percent',
+																maximumFractionDigits: 0,
+															}),
+														}
+													)
 												: ''
 										}
 									/>
@@ -1315,13 +1359,13 @@ export function ReviewRequestForm({
 				{/* Cap Policy */}
 				{capPolicies.length > 0 && (
 					<Card className="p-4">
-						<h4 className="mb-3 text-sm font-semibold">Cap Policy</h4>
+						<h4 className="mb-3 text-sm font-semibold">{t('srp.review.capPolicy')}</h4>
 						<div className="space-y-2">
 							<PolicyRadio
-								label="No cap"
+								label={t('srp.review.noCap')}
 								selected={selectedCapPolicyId === null}
 								onSelect={() => setSelectedCapPolicyId(null)}
-								detail="No payout ceiling"
+								detail={t('srp.review.noCeiling')}
 							/>
 							{capPolicies.map((p) => {
 								const cfg = isCapConfig(p.config) ? p.config : null
@@ -1332,7 +1376,11 @@ export function ReviewRequestForm({
 										selected={selectedCapPolicyId === p.id}
 										onSelect={() => setSelectedCapPolicyId(p.id)}
 										detail={
-											cfg ? `Max: ${formatISK(String(cfg.maxPayoutMillions * 1_000_000))}` : ''
+											cfg
+												? t('srp.review.max', {
+														amount: formatISK(String(cfg.maxPayoutMillions * 1_000_000)),
+													})
+												: ''
 										}
 									/>
 								)
@@ -1343,7 +1391,7 @@ export function ReviewRequestForm({
 
 				{/* Ad-hoc Modifiers */}
 				<Card className="p-4">
-					<h4 className="mb-3 text-sm font-semibold">Ad-hoc Modifiers</h4>
+					<h4 className="mb-3 text-sm font-semibold">{t('srp.review.modifiers')}</h4>
 					<div className="space-y-2">
 						{predefinedModifierOptions.length > 0 && (
 							<Select
@@ -1353,9 +1401,9 @@ export function ReviewRequestForm({
 									addPredefinedModifier(value)
 								}}
 								options={predefinedModifierOptions}
-								placeholder="Apply modifier template"
+								placeholder={t('srp.review.applyTemplate')}
 								searchable
-								emptyText="No predefined modifiers"
+								emptyText={t('srp.review.noTemplates')}
 							/>
 						)}
 						{modifiers.map((mod) => (
@@ -1368,8 +1416,8 @@ export function ReviewRequestForm({
 										value={mod.modifierType}
 										onValueChange={(v) => updateModifier(mod.id, { modifierType: v as any })}
 										options={[
-											{ value: 'deduction', label: 'Deduction' },
-											{ value: 'bonus', label: 'Bonus' },
+											{ value: 'deduction', label: t('srp.common.deduction') },
+											{ value: 'bonus', label: t('srp.common.bonus') },
 										]}
 									/>
 								</div>
@@ -1379,21 +1427,19 @@ export function ReviewRequestForm({
 										onValueChange={(v) => updateModifier(mod.id, { mode: v as any })}
 										options={[
 											{ value: 'percentage', label: '%' },
-											{ value: 'value', label: 'M ISK' },
+											{ value: 'value', label: t('srp.common.millionIsk') },
 										]}
 									/>
 								</div>
-								<Input
-									type="number"
+								<SRPNumberInput
 									min={0}
 									value={mod.amount}
-									onChange={(e) =>
-										updateModifier(mod.id, { amount: parseFloat(e.target.value) || 0 })
-									}
+									aria-label={t('srp.common.amount')}
+									onChange={(value) => updateModifier(mod.id, { amount: parseFloat(value) || 0 })}
 									className="h-9 w-20"
 								/>
 								<Input
-									placeholder="Reason (required)"
+									placeholder={t('srp.review.reasonRequired')}
 									value={mod.reason}
 									onChange={(e) => updateModifier(mod.id, { reason: e.target.value })}
 									className="h-9 flex-1"
@@ -1403,34 +1449,35 @@ export function ReviewRequestForm({
 									size="sm"
 									className="h-9 w-9 p-0"
 									onClick={() => removeModifier(mod.id)}
+									aria-label={t('srp.review.removeModifier')}
 								>
 									<X className="h-4 w-4" />
 								</Button>
 							</div>
 						))}
 						<Button variant="primary" size="sm" onClick={addModifier}>
-							<Plus className="mr-1 h-4 w-4" /> Add Modifier
+							<Plus className="mr-1 h-4 w-4" /> {t('srp.review.addModifier')}
 						</Button>
 					</div>
 				</Card>
 
 				{/* Override */}
 				<Card className="p-4">
-					<h4 className="mb-2 text-sm font-semibold">Override Payout</h4>
+					<h4 className="mb-2 text-sm font-semibold">{t('srp.review.overridePayout')}</h4>
 					<div className="flex items-center gap-2">
-						<Input
-							type="number"
+						<SRPNumberInput
 							min={0}
-							placeholder="millions"
+							placeholder={t('srp.review.millions')}
+							allowDecimal={false}
+							aria-label={t('srp.review.overridePayout')}
 							value={overrideMillions ?? ''}
-							onChange={(e) => {
-								const v = e.target.value
+							onChange={(v) => {
 								setOverrideMillions(v === '' ? null : parseInt(v, 10) || null)
 							}}
 							className="w-32"
 						/>
 						<span className="text-sm text-muted-foreground">
-							× 1,000,000 ISK
+							{t('srp.review.millionMultiplier', { amount: formatNumber(1000000) })}
 							{overrideMillions !== null
 								? ` = ${formatISK(String(overrideMillions * 1_000_000))}`
 								: ''}
@@ -1441,7 +1488,7 @@ export function ReviewRequestForm({
 				{/* Outcome + Submit */}
 				<Card className="p-4">
 					<div className="mb-4 flex items-center gap-3">
-						<Label className="text-sm font-semibold">Outcome</Label>
+						<Label className="text-sm font-semibold">{t('srp.review.outcome')}</Label>
 						<div className="flex-1">
 							<Select
 								value={outcome}
@@ -1450,16 +1497,16 @@ export function ReviewRequestForm({
 									setShowConfirm(false)
 								}}
 								options={[
-									{ value: 'pending', label: 'Pending' },
+									{ value: 'pending', label: t('srp.status.pending') },
 									{
 										value: 'approved',
 										label:
 											isZeroPayout && overrideMillions === null
-												? 'Approved (payout is zero — must reject)'
-												: 'Approved',
+												? t('srp.review.zeroPayout')
+												: t('srp.status.approved'),
 									},
-									{ value: 'needs_context', label: 'Needs Context' },
-									{ value: 'rejected', label: 'Rejected' },
+									{ value: 'needs_context', label: t('srp.status.needs_context') },
+									{ value: 'rejected', label: t('srp.status.rejected') },
 								].filter(
 									(opt) => !(opt.value === 'approved' && isZeroPayout && overrideMillions === null)
 								)}
@@ -1470,7 +1517,7 @@ export function ReviewRequestForm({
 					<div className="flex gap-2">
 						{showConfirm && (
 							<Button variant="secondary" onClick={() => setShowConfirm(false)}>
-								Back
+								{t('srp.common.back')}
 							</Button>
 						)}
 						<Button
@@ -1483,26 +1530,27 @@ export function ReviewRequestForm({
 							}
 						>
 							{submitMutation.isPending || updateStateMutation.isPending
-								? 'Submitting…'
+								? t('srp.review.submitting')
 								: showConfirm
-									? 'Confirm Submit'
-									: 'Submit Review'}
+									? t('srp.review.confirmSubmit')
+									: t('srp.review.submit')}
 						</Button>
 					</div>
 
 					{showConfirm && (
 						<div className="mt-4 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-600">
-							Confirm submission: <strong>{outcome.replace('_', ' ')}</strong> for{' '}
-							{request.shipTypeName}? Payout:{' '}
-							{outcome === 'pending' ? (
-								<strong>unchanged</strong>
-							) : (
-								<strong>
-									{overrideMillions !== null
-										? formatISK(String(overrideMillions * 1_000_000))
-										: formatISK(String(computedPayout))}
-								</strong>
-							)}
+							{t('srp.review.confirmation', {
+								status: getRequestStatusText(outcome, t),
+								ship: request.shipTypeName,
+								amount:
+									outcome === 'pending'
+										? t('srp.review.unchanged')
+										: formatISK(
+												String(
+													overrideMillions !== null ? overrideMillions * 1000000 : computedPayout
+												)
+											),
+							})}
 						</div>
 					)}
 				</Card>

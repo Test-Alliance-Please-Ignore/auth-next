@@ -10,10 +10,11 @@ import {
 	useAppTranslation,
 } from '@/i18n'
 
+// Keep the alphabetical order stable when the selected language changes.
 const localeOptions = APP_LOCALES.map((locale) => ({
 	value: locale,
 	label: localeNativeNames[locale],
-}))
+})).sort((left, right) => left.label.localeCompare(right.label, 'en'))
 
 export function LocalePicker() {
 	const inputId = useId()

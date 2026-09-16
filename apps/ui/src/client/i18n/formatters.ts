@@ -64,6 +64,8 @@ export function compareLocaleStrings(
 
 export function getDateInputFormat(locale: AppLocale = getActiveLocale()): string {
 	switch (locale) {
+		case 'es-MX':
+			return 'DD/MM/YYYY'
 		case 'de':
 			return 'DD.MM.YYYY'
 		case 'ko':

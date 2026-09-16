@@ -12,19 +12,19 @@ import { Textarea } from '@/components/ui/textarea'
 import { useCreateFreightRoute } from '@/hooks/useFreightRoutes'
 import { useSystemSearch } from '@/hooks/useLocationSearch'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
+import { formatISK, formatNumber, getExpirationOptions, getNumberInputSeparators } from '../utils'
+
+import type { FormEvent } from 'react'
 import type { CreateFreightRouteInput, FreightRouteStatus } from '@repo/freight'
-
-const EXPIRATION_OPTIONS = [
-	{ value: '1', label: '1 day' },
-	{ value: '3', label: '3 days' },
-	{ value: '7', label: '1 week' },
-	{ value: '14', label: '2 weeks' },
-	{ value: '28', label: '4 weeks' },
-]
+import type { AppTranslationKey } from '@/i18n'
 
 export default function FreightManageNewPage() {
-	usePageTitle('Create Freight Route')
+	const { t, locale } = useAppTranslation()
+	const expirationOptions = getExpirationOptions(t)
+	const numberInputSeparators = getNumberInputSeparators(locale)
+	usePageTitle(t('freight.form.createTitle'))
 
 	const navigate = useNavigate()
 	const createRoute = useCreateFreightRoute()
@@ -55,8 +55,11 @@ export default function FreightManageNewPage() {
 		status: 'active',
 	})
 
-	const [errors, setErrors] = useState<Record<string, string>>({})
-	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+	const [errors, setErrors] = useState<Record<string, AppTranslationKey>>({})
+	const [message, setMessage] = useState<{
+		type: 'success' | 'error'
+		key: AppTranslationKey
+	} | null>(null)
 	const [pickupSystemId, setPickupSystemId] = useState<string | null>(null)
 	const [destinationSystemId, setDestinationSystemId] = useState<string | null>(null)
 	const [pickupQuery, setPickupQuery] = useState('')
@@ -97,18 +100,18 @@ export default function FreightManageNewPage() {
 	}
 
 	const validate = (): boolean => {
-		const newErrors: Record<string, string> = {}
+		const newErrors: Record<string, AppTranslationKey> = {}
 
 		if (!formData.pickupName.trim()) {
-			newErrors.pickupName = 'Pickup location is required'
+			newErrors.pickupName = 'freight.form.validation.pickup'
 		} else if (!pickupSystemId) {
-			newErrors.pickupName = 'Please select a system from the search results'
+			newErrors.pickupName = 'freight.form.validation.selectSystem'
 		}
 
 		if (!formData.destinationName.trim()) {
-			newErrors.destinationName = 'Destination location is required'
+			newErrors.destinationName = 'freight.form.validation.destination'
 		} else if (!destinationSystemId) {
-			newErrors.destinationName = 'Please select a system from the search results'
+			newErrors.destinationName = 'freight.form.validation.selectSystem'
 		}
 
 		if (
@@ -116,37 +119,37 @@ export default function FreightManageNewPage() {
 			formData.destinationName.trim() &&
 			formData.pickupName.trim() === formData.destinationName.trim()
 		) {
-			newErrors.destinationName = 'Pickup and destination cannot be the same'
+			newErrors.destinationName = 'freight.form.validation.sameLocation'
 		}
 
 		if (!formData.iskPerVolumeUnit.trim()) {
-			newErrors.iskPerVolumeUnit = 'Price per m³ is required'
+			newErrors.iskPerVolumeUnit = 'freight.form.validation.price'
 		} else if (isNaN(Number(formData.iskPerVolumeUnit)) || Number(formData.iskPerVolumeUnit) <= 0) {
-			newErrors.iskPerVolumeUnit = 'Price must be a positive number'
+			newErrors.iskPerVolumeUnit = 'freight.form.validation.positivePrice'
 		}
 
 		if (
 			formData.minReward.trim() &&
 			(isNaN(Number(formData.minReward)) || Number(formData.minReward) <= 0)
 		) {
-			newErrors.minReward = 'Minimum reward must be a positive number'
+			newErrors.minReward = 'freight.form.validation.positiveMinimum'
 		}
 
 		if (
 			formData.maxVolume.trim() &&
 			(isNaN(Number(formData.maxVolume)) || Number(formData.maxVolume) <= 0)
 		) {
-			newErrors.maxVolume = 'Max volume must be a positive number'
+			newErrors.maxVolume = 'freight.form.validation.positiveVolume'
 		}
 
-		if (formData.expiration && !EXPIRATION_OPTIONS.some((o) => o.value === formData.expiration)) {
-			newErrors.expiration = 'Please select a valid expiration period'
+		if (formData.expiration && !expirationOptions.some((o) => o.value === formData.expiration)) {
+			newErrors.expiration = 'freight.form.validation.expiration'
 		}
 
 		if (formData.daysToComplete.trim()) {
 			const days = Number(formData.daysToComplete)
 			if (isNaN(days) || days < 1 || days > 365) {
-				newErrors.daysToComplete = 'Days to complete must be between 1 and 365'
+				newErrors.daysToComplete = 'freight.form.validation.days'
 			}
 		}
 
@@ -154,7 +157,7 @@ export default function FreightManageNewPage() {
 		return Object.keys(newErrors).length === 0
 	}
 
-	const handleSubmit = async (e: React.FormEvent) => {
+	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault()
 
 		if (!validate()) {
@@ -184,13 +187,13 @@ export default function FreightManageNewPage() {
 
 			await createRoute.mutateAsync(input)
 
-			setMessage({ type: 'success', text: 'Freight route created successfully!' })
+			setMessage({ type: 'success', key: 'freight.form.created' })
 			setTimeout(() => {
 				void navigate('/freight/manage')
 			}, 1000)
 		} catch (error) {
 			console.error('Error creating route:', error)
-			setMessage({ type: 'error', text: 'Failed to create freight route. Please try again.' })
+			setMessage({ type: 'error', key: 'freight.form.createFailed' })
 		}
 	}
 
@@ -198,23 +201,19 @@ export default function FreightManageNewPage() {
 		<Container size="narrow">
 			<div className="mb-section md:mb-10 flex flex-wrap items-center justify-between gap-4">
 				<div>
-					<h1 className="text-3xl font-bold gradient-text">Create Freight Route</h1>
-					<p className="text-muted-foreground mt-1">
-						Define a new official freight route with pricing
-					</p>
+					<h1 className="text-3xl font-bold gradient-text">{t('freight.form.createTitle')}</h1>
+					<p className="text-muted-foreground mt-1">{t('freight.form.createDescription')}</p>
 				</div>
 				<Button variant="ghost" asChild>
-					<Link to="/freight/manage">Back to Routes</Link>
+					<Link to="/freight/manage">{t('freight.common.back')}</Link>
 				</Button>
 			</div>
 
 			<form onSubmit={handleSubmit}>
 				<Card>
 					<CardHeader>
-						<CardTitle>Route Details</CardTitle>
-						<CardDescription>
-							Configure the pickup location, destination, and pricing for this route
-						</CardDescription>
+						<CardTitle>{t('freight.form.details')}</CardTitle>
+						<CardDescription>{t('freight.form.description')}</CardDescription>
 					</CardHeader>
 					<CardContent className="space-y-6">
 						{/* Success/Error Message */}
@@ -222,7 +221,7 @@ export default function FreightManageNewPage() {
 							<Card variant={message.type === 'success' ? 'flat' : 'flat'}>
 								<CardContent className="pt-6">
 									<p className={message.type === 'success' ? 'text-success' : 'text-destructive'}>
-										{message.text}
+										{t(message.key)}
 									</p>
 								</CardContent>
 							</Card>
@@ -231,7 +230,7 @@ export default function FreightManageNewPage() {
 						{/* Pickup Location */}
 						<div className="space-y-2">
 							<Label htmlFor="pickupName">
-								Pickup Location
+								{t('freight.form.pickup')}
 								<span className="text-destructive ml-1">*</span>
 							</Label>
 							<Select
@@ -256,21 +255,21 @@ export default function FreightManageNewPage() {
 								options={pickupOptions}
 								minQueryLength={3}
 								debounceMs={0}
-								placeholder="Search for a solar system..."
+								placeholder={t('freight.form.systemSearch')}
 								loading={pickupSearch.isFetching || pickupSearch.isPending}
-								emptyText="No systems found"
+								emptyText={t('freight.form.noSystems')}
 								inputClassName={errors.pickupName ? 'border-destructive' : ''}
 							/>
-							{errors.pickupName && <p className="text-sm text-destructive">{errors.pickupName}</p>}
-							<p className="text-sm text-muted-foreground">
-								Search for and select the pickup solar system
-							</p>
+							{errors.pickupName && (
+								<p className="text-sm text-destructive">{t(errors.pickupName)}</p>
+							)}
+							<p className="text-sm text-muted-foreground">{t('freight.form.pickupHint')}</p>
 						</div>
 
 						{/* Destination Location */}
 						<div className="space-y-2">
 							<Label htmlFor="destinationName">
-								Destination Location
+								{t('freight.form.destination')}
 								<span className="text-destructive ml-1">*</span>
 							</Label>
 							<Select
@@ -295,152 +294,146 @@ export default function FreightManageNewPage() {
 								options={destinationOptions}
 								minQueryLength={3}
 								debounceMs={0}
-								placeholder="Search for a solar system..."
+								placeholder={t('freight.form.systemSearch')}
 								loading={destinationSearch.isFetching || destinationSearch.isPending}
-								emptyText="No systems found"
+								emptyText={t('freight.form.noSystems')}
 								inputClassName={errors.destinationName ? 'border-destructive' : ''}
 							/>
 							{errors.destinationName && (
-								<p className="text-sm text-destructive">{errors.destinationName}</p>
+								<p className="text-sm text-destructive">{t(errors.destinationName)}</p>
 							)}
-							<p className="text-sm text-muted-foreground">
-								Search for and select the destination solar system
-							</p>
+							<p className="text-sm text-muted-foreground">{t('freight.form.destinationHint')}</p>
 						</div>
 
 						{/* ISK per m³ */}
 						<div className="space-y-2">
 							<Label htmlFor="iskPerVolumeUnit">
-								Price (ISK per m³)
+								{t('freight.form.price')}
 								<span className="text-destructive ml-1">*</span>
 							</Label>
 							<NumberInput
+								{...numberInputSeparators}
 								id="iskPerVolumeUnit"
 								min={0}
 								suffix=" ISK"
-								placeholder="1,000 ISK"
+								placeholder={formatISK(1000, { showDecimals: false })}
 								value={formData.iskPerVolumeUnit}
 								onChange={(val) => handleChange('iskPerVolumeUnit', val)}
 								error={!!errors.iskPerVolumeUnit}
 							/>
 							{errors.iskPerVolumeUnit && (
-								<p className="text-sm text-destructive">{errors.iskPerVolumeUnit}</p>
+								<p className="text-sm text-destructive">{t(errors.iskPerVolumeUnit)}</p>
 							)}
-							<p className="text-sm text-muted-foreground">
-								The cost per cubic meter for this route
-							</p>
+							<p className="text-sm text-muted-foreground">{t('freight.form.priceHint')}</p>
 						</div>
 
 						{/* Minimum Reward */}
 						<div className="space-y-2">
-							<Label htmlFor="minReward">Minimum Reward (ISK)</Label>
+							<Label htmlFor="minReward">{t('freight.form.minimum')}</Label>
 							<NumberInput
+								{...numberInputSeparators}
 								id="minReward"
 								min={0}
 								suffix=" ISK"
-								placeholder="1,000,000 ISK"
+								placeholder={formatISK(1000000, { showDecimals: false })}
 								value={formData.minReward}
 								onChange={(val) => handleChange('minReward', val)}
 								error={!!errors.minReward}
 							/>
-							{errors.minReward && <p className="text-sm text-destructive">{errors.minReward}</p>}
-							<p className="text-sm text-muted-foreground">
-								Minimum ISK reward for a contract on this route, regardless of volume (optional)
-							</p>
+							{errors.minReward && (
+								<p className="text-sm text-destructive">{t(errors.minReward)}</p>
+							)}
+							<p className="text-sm text-muted-foreground">{t('freight.form.minimumHint')}</p>
 						</div>
 
 						{/* Max Volume */}
 						<div className="space-y-2">
-							<Label htmlFor="maxVolume">Maximum Volume (m³)</Label>
+							<Label htmlFor="maxVolume">{t('freight.form.maxVolume')}</Label>
 							<NumberInput
+								{...numberInputSeparators}
 								id="maxVolume"
 								min={0}
-								placeholder="Optional - leave empty for unlimited"
+								placeholder={t('freight.form.unlimitedPlaceholder')}
 								value={formData.maxVolume}
 								onChange={(val) => handleChange('maxVolume', val)}
 								error={!!errors.maxVolume}
 							/>
-							{errors.maxVolume && <p className="text-sm text-destructive">{errors.maxVolume}</p>}
-							<p className="text-sm text-muted-foreground">
-								Maximum cargo volume allowed per contract (optional)
-							</p>
+							{errors.maxVolume && (
+								<p className="text-sm text-destructive">{t(errors.maxVolume)}</p>
+							)}
+							<p className="text-sm text-muted-foreground">{t('freight.form.maxVolumeHint')}</p>
 						</div>
 
 						{/* Collateral Fee Rate */}
 						<div className="space-y-2">
-							<Label htmlFor="collateralFeeRate">Collateral Fee Rate (%)</Label>
-							<Input
+							<Label htmlFor="collateralFeeRate">{t('freight.form.feeRate')}</Label>
+							<NumberInput
+								{...numberInputSeparators}
 								id="collateralFeeRate"
-								type="number"
-								step="0.01"
+								step={0.01}
 								value={formData.collateralFeeRate}
-								onChange={(e) => handleChange('collateralFeeRate', e.target.value)}
-								placeholder="Optional - e.g. 1.5"
+								onChange={(value) => handleChange('collateralFeeRate', value)}
+								placeholder={t('freight.form.feePlaceholder', { example: formatNumber(1.5) })}
 							/>
-							<p className="text-sm text-muted-foreground">
-								Percentage fee charged on collateral value (optional)
-							</p>
+							<p className="text-sm text-muted-foreground">{t('freight.form.feeHint')}</p>
 						</div>
 
 						{/* Expiration */}
 						<div className="space-y-2">
-							<Label htmlFor="expiration">Contract Expiration</Label>
+							<Label htmlFor="expiration">{t('freight.form.expiration')}</Label>
 							<Select
 								inputId="expiration"
 								value={formData.expiration}
 								onValueChange={(nextValue) => handleChange('expiration', nextValue)}
-								options={EXPIRATION_OPTIONS}
+								options={expirationOptions}
 								placeholder={
-									EXPIRATION_OPTIONS.find((o) => o.value === formData.expiration)?.label ??
-									'Optional - select expiration period'
+									expirationOptions.find((o) => o.value === formData.expiration)?.label ??
+									t('freight.form.expirationPlaceholder')
 								}
 								inputClassName={errors.expiration ? 'border-destructive' : ''}
 							/>
-							{errors.expiration && <p className="text-sm text-destructive">{errors.expiration}</p>}
-							<p className="text-sm text-muted-foreground">
-								How long the courier contract is available before expiring (optional)
-							</p>
+							{errors.expiration && (
+								<p className="text-sm text-destructive">{t(errors.expiration)}</p>
+							)}
+							<p className="text-sm text-muted-foreground">{t('freight.form.expirationHint')}</p>
 						</div>
 
 						{/* Days to Complete */}
 						<div className="space-y-2">
-							<Label htmlFor="daysToComplete">Days to Complete</Label>
+							<Label htmlFor="daysToComplete">{t('freight.common.daysToComplete')}</Label>
 							<NumberInput
+								{...numberInputSeparators}
 								id="daysToComplete"
 								min={1}
 								max={365}
 								step={1}
-								placeholder="Optional - days allowed to complete delivery"
+								placeholder={t('freight.form.daysPlaceholder')}
 								value={formData.daysToComplete}
 								onChange={(val) => handleChange('daysToComplete', val)}
 								error={!!errors.daysToComplete}
 							/>
 							{errors.daysToComplete && (
-								<p className="text-sm text-destructive">{errors.daysToComplete}</p>
+								<p className="text-sm text-destructive">{t(errors.daysToComplete)}</p>
 							)}
-							<p className="text-sm text-muted-foreground">
-								How many days the courier has to complete the delivery after accepting (optional)
-							</p>
+							<p className="text-sm text-muted-foreground">{t('freight.form.daysHint')}</p>
 						</div>
 
 						{/* Notes */}
 						<div className="space-y-2">
-							<Label htmlFor="notes">Notes</Label>
+							<Label htmlFor="notes">{t('freight.form.notes')}</Label>
 							<Textarea
 								id="notes"
 								value={formData.notes}
 								onChange={(e) => handleChange('notes', e.target.value)}
-								placeholder="Optional notes about route restrictions, risks, or special handling..."
+								placeholder={t('freight.form.notesPlaceholder')}
 								rows={4}
 							/>
-							<p className="text-sm text-muted-foreground">
-								Admin notes about this route (visible to customers)
-							</p>
+							<p className="text-sm text-muted-foreground">{t('freight.form.notesHint')}</p>
 						</div>
 
 						{/* Sort Order */}
 						<div className="space-y-2">
-							<Label htmlFor="sortOrder">Sort Order</Label>
+							<Label htmlFor="sortOrder">{t('freight.form.sortOrder')}</Label>
 							<Input
 								id="sortOrder"
 								type="number"
@@ -449,31 +442,27 @@ export default function FreightManageNewPage() {
 								onChange={(e) => handleChange('sortOrder', e.target.value)}
 								placeholder="0"
 							/>
-							<p className="text-sm text-muted-foreground">
-								Lower numbers appear first in the dropdown. The first route is selected by default.
-							</p>
+							<p className="text-sm text-muted-foreground">{t('freight.form.sortHint')}</p>
 						</div>
 
 						{/* Status */}
 						<div className="space-y-2">
-							<Label htmlFor="status">Initial Status</Label>
+							<Label htmlFor="status">{t('freight.form.initialStatus')}</Label>
 							<Select
 								inputId="status"
 								value={formData.status}
 								onValueChange={(nextValue) => handleChange('status', nextValue)}
 								options={[
-									{ value: 'active', label: 'Active (available for use)' },
-									{ value: 'inactive', label: 'Inactive (not available)' },
+									{ value: 'active', label: t('freight.form.active') },
+									{ value: 'inactive', label: t('freight.form.inactive') },
 								]}
 								placeholder={
 									formData.status === 'active'
-										? 'Active (available for use)'
-										: 'Inactive (not available)'
+										? t('freight.form.active')
+										: t('freight.form.inactive')
 								}
 							/>
-							<p className="text-sm text-muted-foreground">
-								Set route status - only active routes are available to customers
-							</p>
+							<p className="text-sm text-muted-foreground">{t('freight.form.statusHint')}</p>
 						</div>
 					</CardContent>
 				</Card>
@@ -481,15 +470,15 @@ export default function FreightManageNewPage() {
 				{/* Form Actions */}
 				<div className="flex justify-end gap-3 mt-6">
 					<Button variant="cancel" type="button" onClick={() => navigate('/freight/manage')}>
-						Cancel
+						{t('common.cancel')}
 					</Button>
 					<Button
 						variant="confirm"
 						type="submit"
 						loading={createRoute.isPending}
-						loadingText="Creating..."
+						loadingText={t('freight.common.creating')}
 					>
-						Create Route
+						{t('freight.common.create')}
 					</Button>
 				</div>
 			</form>

@@ -12,6 +12,7 @@ export const localeNativeNames: Record<AppLocale, string> = {
 	en: 'English',
 	de: 'Deutsch',
 	ko: '한국어',
+	'es-MX': 'Español',
 }
 
 export function parseAppLocale(value: unknown): AppLocale | null {
@@ -20,7 +21,7 @@ export function parseAppLocale(value: unknown): AppLocale | null {
 	}
 
 	const normalized = value.trim().toLowerCase()
-	return APP_LOCALES.find((locale) => locale === normalized) ?? null
+	return APP_LOCALES.find((locale) => locale.toLowerCase() === normalized) ?? null
 }
 
 /** Browser language tags may include a region; saved choices use exact app codes. */
@@ -30,7 +31,8 @@ export function parseBrowserLocale(value: unknown): AppLocale | null {
 	}
 
 	try {
-		return parseAppLocale(new Intl.Locale(value.trim()).language)
+		const language = new Intl.Locale(value.trim()).language
+		return language === 'es' ? 'es-MX' : parseAppLocale(language)
 	} catch {
 		return null
 	}

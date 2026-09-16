@@ -1,3 +1,3 @@
 import { defineCatalog } from '../catalog'
 
-export const structuresCatalog = defineCatalog({}, {}, {})
+export const structuresCatalog = defineCatalog({}, {}, {}, {})

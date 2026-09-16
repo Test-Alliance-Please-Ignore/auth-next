@@ -9,6 +9,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useAppTranslation } from '@/i18n'
 import { typeIconUrl } from '@/lib/eve-images'
 
 import { formatISK, formatRelativeTime, getRequestCharacterRole } from '../utils'
@@ -24,6 +25,7 @@ interface RequestTableProps {
 }
 
 export function RequestTable({ requests, isLoading }: RequestTableProps) {
+	const { t } = useAppTranslation()
 	if (isLoading) {
 		return (
 			<div className="space-y-4">
@@ -37,7 +39,7 @@ export function RequestTable({ requests, isLoading }: RequestTableProps) {
 	if (requests.length === 0) {
 		return (
 			<div className="rounded-lg border border-dashed p-8 text-center">
-				<p className="text-sm text-muted-foreground">No requests found.</p>
+				<p className="text-sm text-muted-foreground">{t('srp.common.noRequests')}</p>
 			</div>
 		)
 	}
@@ -48,13 +50,13 @@ export function RequestTable({ requests, isLoading }: RequestTableProps) {
 				<TableHeader>
 					<TableRow>
 						<TableHead className="w-16" />
-						<TableHead>Ship</TableHead>
-						<TableHead>Character</TableHead>
-						<TableHead>Location</TableHead>
-						<TableHead>Requested</TableHead>
-						<TableHead className="text-right">Payout</TableHead>
-						<TableHead>Status</TableHead>
-						<TableHead className="text-right">Actions</TableHead>
+						<TableHead>{t('srp.common.ship')}</TableHead>
+						<TableHead>{t('srp.common.character')}</TableHead>
+						<TableHead>{t('srp.common.location')}</TableHead>
+						<TableHead>{t('srp.common.requested')}</TableHead>
+						<TableHead className="text-right">{t('srp.common.payout')}</TableHead>
+						<TableHead>{t('srp.common.status')}</TableHead>
+						<TableHead className="text-right">{t('srp.common.actions')}</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
@@ -65,7 +67,9 @@ export function RequestTable({ requests, isLoading }: RequestTableProps) {
 									<div className="h-10 w-10 overflow-hidden rounded border border-border/50">
 										<img
 											src={typeIconUrl(request.shipTypeId, 64)}
-											alt={request.shipTypeName || `Ship ${request.shipTypeId}`}
+											alt={
+												request.shipTypeName || t('srp.common.shipId', { id: request.shipTypeId })
+											}
 											className="h-full w-full object-contain"
 											loading="lazy"
 										/>
@@ -109,7 +113,7 @@ export function RequestTable({ requests, isLoading }: RequestTableProps) {
 							</TableCell>
 							<TableCell className="text-right">
 								<Button variant="secondary" size="sm" asChild>
-									<Link to={`/srp/request/${request.id}`}>View</Link>
+									<Link to={`/srp/request/${request.id}`}>{t('srp.common.view')}</Link>
 								</Button>
 							</TableCell>
 						</TableRow>

@@ -1,3 +1,3 @@
 import { defineCatalog } from '../catalog'
 
-export const moonScanCatalog = defineCatalog({}, {}, {})
+export const moonScanCatalog = defineCatalog({}, {}, {}, {})

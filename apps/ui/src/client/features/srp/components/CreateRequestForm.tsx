@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 
 import { useCreateRequest } from '../hooks'
@@ -17,15 +18,21 @@ import {
 	transformKillmailToFittingItems,
 	transformKillmailToShipMaintenanceBayShips,
 } from '../utils/fitting'
+import { SRPFeedback } from './SRPFeedback'
 import { SRPFittingDisplay } from './SRPFittingDisplay'
 
+import type { AppTranslationKey } from '@/i18n'
 import type { RecentLossVictimItem } from '../types'
 
 const createRequestSchema = z.object({
 	killmailId: z.string().min(1),
 	killmailHash: z.string().min(1),
 	characterId: z.string().min(1),
-	contextText: z.string().trim().min(1, 'Context is required').max(2000),
+	contextText: z
+		.string()
+		.trim()
+		.min(1, 'srp.validation.contextRequired')
+		.max(2000, 'srp.validation.contextTooLong'),
 })
 
 type CreateRequestFormData = z.infer<typeof createRequestSchema>
@@ -103,6 +110,7 @@ export function CreateRequestForm({
 	preview,
 	previewLoading,
 }: CreateRequestFormProps) {
+	const { t } = useAppTranslation()
 	const navigate = useNavigate()
 	const createMutation = useCreateRequest()
 
@@ -134,10 +142,12 @@ export function CreateRequestForm({
 	const onSubmit = form.handleSubmit(async (data) => {
 		try {
 			const result = await createMutation.mutateAsync(data)
-			toast.success('SRP request submitted')
+			toast.success(<SRPFeedback messageKey="srp.create.submitted" />)
 			void navigate(`/srp/request/${result.id}`, { replace: true })
 		} catch (error: any) {
-			toast.error('Failed to create request', { description: error.message || 'Please try again' })
+			toast.error(<SRPFeedback messageKey="srp.create.failed" />, {
+				description: error.message || t('srp.common.tryAgain'),
+			})
 		}
 	})
 
@@ -154,28 +164,25 @@ export function CreateRequestForm({
 					</div>
 					<Button variant="ghost" size="sm" asChild>
 						<a href={getKillmailUrl(killmailId)} target="_blank" rel="noopener noreferrer">
-							View on zKillboard →
+							{t('srp.common.zkillArrow')}
 						</a>
 					</Button>
 				</div>
 
 				<div className="space-y-4">
 					<div>
-						<Label htmlFor="contextText">Context *</Label>
+						<Label htmlFor="contextText">{t('srp.create.context')}</Label>
 						<Textarea
 							id="contextText"
-							placeholder="Describe the circumstances —FC name, discord ping, SRP token,  what happened, etc."
+							placeholder={t('srp.create.contextPlaceholder')}
 							rows={6}
 							className="min-h-40"
 							{...form.register('contextText')}
 						/>
-						<p className="mt-1 text-xs text-muted-foreground">
-							If you want full value reimbursement, you must include the fleet ping and/or SRP
-							token.
-						</p>
+						<p className="mt-1 text-xs text-muted-foreground">{t('srp.create.contextHint')}</p>
 						{form.formState.errors.contextText && (
 							<p className="mt-1 text-xs text-red-500">
-								{form.formState.errors.contextText.message}
+								{t(form.formState.errors.contextText.message as AppTranslationKey)}
 							</p>
 						)}
 					</div>
@@ -187,10 +194,10 @@ export function CreateRequestForm({
 							onClick={() => navigate('/srp')}
 							disabled={createMutation.isPending}
 						>
-							Cancel
+							{t('srp.common.cancel')}
 						</Button>
 						<Button type="submit" disabled={createMutation.isPending}>
-							{createMutation.isPending ? 'Submitting...' : 'Submit Request'}
+							{createMutation.isPending ? t('srp.common.submitting') : t('srp.create.submit')}
 						</Button>
 					</div>
 				</div>

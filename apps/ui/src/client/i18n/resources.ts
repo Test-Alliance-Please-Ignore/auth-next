@@ -19,6 +19,7 @@ import { structuresCatalog } from './catalogs/structures'
 import { taxCatalog } from './catalogs/tax'
 
 import type { MessageShape } from './catalog'
+import type { AppLocale } from './locales'
 
 export const en = {
 	...commonCatalog.en,
@@ -86,11 +87,34 @@ export const ko = {
 	...adminCatalog.ko,
 } satisfies MessageShape<typeof en>
 
+export const esMX = {
+	...commonCatalog['es-MX'],
+	...shellCatalog['es-MX'],
+	...groupsCatalog['es-MX'],
+	...charactersCorporationsCatalog['es-MX'],
+	...applicationsCatalog['es-MX'],
+	...hrCatalog['es-MX'],
+	...pasteMumbleCatalog['es-MX'],
+	...broadcastsCatalog['es-MX'],
+	...billsCatalog['es-MX'],
+	...taxCatalog['es-MX'],
+	...predictionDkpCatalog['es-MX'],
+	...doctrinesCatalog['es-MX'],
+	...srpCatalog['es-MX'],
+	...freightIndustryCatalog['es-MX'],
+	...moonScanCatalog['es-MX'],
+	...skillPlansCatalog['es-MX'],
+	...fleetTrackingCatalog['es-MX'],
+	...structuresCatalog['es-MX'],
+	...adminCatalog['es-MX'],
+} satisfies MessageShape<typeof en, 'many'>
+
 export const resources = {
 	en: { translation: en },
 	de: { translation: de },
 	ko: { translation: ko },
-} as const
+	'es-MX': { translation: esMX },
+} as const satisfies Record<AppLocale, { translation: MessageShape<typeof en> }>
 
 type LeafPaths<Value, Prefix extends string = ''> = Value extends string
 	? Prefix

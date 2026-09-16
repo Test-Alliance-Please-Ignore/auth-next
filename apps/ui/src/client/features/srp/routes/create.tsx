@@ -4,12 +4,14 @@ import { Button } from '@/components/ui/button'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
 import { CreateRequestForm } from '../components/CreateRequestForm'
 import { useKillmailPreview, useRecentLosses } from '../hooks'
 
 export default function CreateRequest() {
-	usePageTitle('SRP - Submit Request')
+	const { t } = useAppTranslation()
+	usePageTitle(t('srp.create.pageTitle'))
 
 	const [searchParams] = useSearchParams()
 
@@ -35,7 +37,7 @@ export default function CreateRequest() {
 				<div className="flex min-h-[400px] items-center justify-center">
 					<div className="text-center">
 						<div className="mb-2 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-						<p className="text-sm text-muted-foreground">Loading killmail details...</p>
+						<p className="text-sm text-muted-foreground">{t('srp.create.loading')}</p>
 					</div>
 				</div>
 			</Container>
@@ -45,15 +47,12 @@ export default function CreateRequest() {
 	if (!loss) {
 		return (
 			<Container>
-				<PageHeader title="Submit SRP Request" description="Request ship replacement" />
+				<PageHeader title={t('srp.create.title')} description={t('srp.create.description')} />
 				<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-6 text-center">
-					<p className="text-sm text-red-500">Killmail not found</p>
-					<p className="text-xs text-muted-foreground">
-						This killmail was not found in your recent losses. It may be too old or not belong to
-						your character.
-					</p>
+					<p className="text-sm text-red-500">{t('srp.create.notFound')}</p>
+					<p className="text-xs text-muted-foreground">{t('srp.create.notFoundDescription')}</p>
 					<Button variant="ghost" className="mt-4" asChild>
-						<Link to="/srp">Back to Dashboard</Link>
+						<Link to="/srp">{t('srp.common.backDashboard')}</Link>
 					</Button>
 				</div>
 			</Container>
@@ -67,14 +66,12 @@ export default function CreateRequest() {
 
 		return (
 			<Container>
-				<PageHeader title="Submit SRP Request" description="Request ship replacement" />
+				<PageHeader title={t('srp.create.title')} description={t('srp.create.description')} />
 				<div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-6 text-center">
-					<p className="text-sm text-amber-500">Request already exists</p>
-					<p className="text-xs text-muted-foreground">
-						You've already submitted an SRP request for this loss.
-					</p>
+					<p className="text-sm text-amber-500">{t('srp.create.exists')}</p>
+					<p className="text-xs text-muted-foreground">{t('srp.create.existsDescription')}</p>
 					<Button variant="ghost" className="mt-4" asChild>
-						<Link to={`/srp/request/${loss.srpRequestId}`}>View Request</Link>
+						<Link to={`/srp/request/${loss.srpRequestId}`}>{t('srp.common.viewRequest')}</Link>
 					</Button>
 				</div>
 			</Container>
@@ -83,13 +80,13 @@ export default function CreateRequest() {
 
 	return (
 		<Container>
-			<PageHeader title="Submit SRP Request" description="Request ship replacement for your loss" />
+			<PageHeader title={t('srp.create.title')} description={t('srp.create.lossDescription')} />
 			<CreateRequestForm
 				killmailId={killmailId}
 				killmailHash={killmailHash}
 				characterId={loss.victimCharacterId}
 				shipTypeId={loss.shipTypeId}
-				shipTypeName={loss.shipTypeName || `Ship ${loss.shipTypeId}`}
+				shipTypeName={loss.shipTypeName || t('srp.common.shipId', { id: loss.shipTypeId })}
 				lossDate={loss.killmailTime}
 				lossVictimItems={loss.victimItems}
 				preview={preview ?? null}
