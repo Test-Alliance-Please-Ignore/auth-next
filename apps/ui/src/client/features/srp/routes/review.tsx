@@ -24,6 +24,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 import { typeIconUrl } from '@/lib/eve-images'
 
@@ -44,17 +45,19 @@ import {
 	formatISKShort,
 	formatRelativeTime,
 	getRequestCharacterRole,
+	getRequestStatusText,
 	isDateRangeWithinOneYear,
 } from '../utils'
 
+import type { AppTranslationKey } from '@/i18n'
 import type { RequestStatus, SRPRequestResponse } from '../types'
 
-const TABS: Array<{ value: RequestStatus; label: string }> = [
-	{ value: 'pending', label: 'Pending' },
-	{ value: 'needs_context', label: 'Needs Context' },
-	{ value: 'rejected', label: 'Rejected' },
-	{ value: 'approved', label: 'Approved' },
-	{ value: 'paid', label: 'Paid' },
+const TABS: Array<{ value: RequestStatus; label: AppTranslationKey }> = [
+	{ value: 'pending', label: 'srp.status.pending' },
+	{ value: 'needs_context', label: 'srp.status.needs_context' },
+	{ value: 'rejected', label: 'srp.status.rejected' },
+	{ value: 'approved', label: 'srp.status.approved' },
+	{ value: 'paid', label: 'srp.status.paid' },
 ]
 
 type ReviewQueueSortBy = 'submitted' | 'loss'
@@ -74,7 +77,8 @@ function toTimestamp(value: string | null | undefined): number {
 }
 
 export default function ReviewQueue() {
-	usePageTitle('SRP - Review Queue')
+	const { t } = useAppTranslation()
+	usePageTitle(t('srp.queue.pageTitle'))
 
 	const { hasPermission, isAdmin } = useUserPermissions()
 	const activeTab = useReviewQueueUiState((state) => state.activeTab)
@@ -106,7 +110,7 @@ export default function ReviewQueue() {
 
 	return (
 		<Container>
-			<PageHeader title="Review Queue" description="Review and process ship replacement requests" />
+			<PageHeader title={t('srp.queue.title')} description={t('srp.queue.description')} />
 
 			<Card className="mt-section">
 				<CardContent className="space-y-4 p-4">
@@ -134,11 +138,11 @@ export default function ReviewQueue() {
 										label: name,
 									}))
 							}}
-							placeholder="Character"
+							placeholder={t('srp.common.character')}
 							minQueryLength={2}
-							queryHintText="Type at least 2 characters"
-							emptyText="No character names found"
-							selectAllOption={{ value: '', label: 'All Characters' }}
+							queryHintText={t('srp.common.searchHint')}
+							emptyText={t('srp.queue.noCharacters')}
+							selectAllOption={{ value: '', label: t('srp.queue.allCharacters') }}
 						/>
 						<Select
 							options={[]}
@@ -155,11 +159,11 @@ export default function ReviewQueue() {
 									description: entry.typeId,
 								}))
 							}}
-							placeholder="Ship"
+							placeholder={t('srp.common.ship')}
 							minQueryLength={2}
-							queryHintText="Type at least 2 characters"
-							emptyText="No ships found"
-							selectAllOption={{ value: '', label: 'All Ships' }}
+							queryHintText={t('srp.common.searchHint')}
+							emptyText={t('srp.queue.noShips')}
+							selectAllOption={{ value: '', label: t('srp.queue.allShips') }}
 						/>
 						<Select
 							options={[]}
@@ -176,11 +180,11 @@ export default function ReviewQueue() {
 									description: entry.systemId,
 								}))
 							}}
-							placeholder="System"
+							placeholder={t('srp.common.system')}
 							minQueryLength={2}
-							queryHintText="Type at least 2 characters"
-							emptyText="No systems found"
-							selectAllOption={{ value: '', label: 'All Systems' }}
+							queryHintText={t('srp.common.searchHint')}
+							emptyText={t('srp.queue.noSystems')}
+							selectAllOption={{ value: '', label: t('srp.queue.allSystems') }}
 						/>
 						<DateRangeInput
 							value={{
@@ -193,7 +197,7 @@ export default function ReviewQueue() {
 									dateTo: toDate || undefined,
 								})
 							}
-							placeholder="Loss date range"
+							placeholder={t('srp.queue.dateRange')}
 							className="[&_.themed-date-picker__input]:h-10"
 						/>
 						<div className="flex items-end justify-end">
@@ -210,7 +214,7 @@ export default function ReviewQueue() {
 									!filters.dateTo
 								}
 							>
-								Clear Filters
+								{t('srp.common.clearFilters')}
 							</Button>
 						</div>
 					</div>
@@ -219,7 +223,7 @@ export default function ReviewQueue() {
 						<TabsList className="w-full">
 							{TABS.map((tab) => (
 								<TabsTrigger key={tab.value} value={tab.value}>
-									{tab.label}
+									{t(tab.label)}
 								</TabsTrigger>
 							))}
 						</TabsList>
@@ -257,6 +261,7 @@ function ReviewTabContent({
 	onPageChange: (page: number) => void
 	onPageSizeChange: (pageSize: number) => void
 }) {
+	const { t } = useAppTranslation()
 	const sortBy = useReviewQueueUiState((state) => state.sortBy)
 	const sortDirection = useReviewQueueUiState((state) => state.sortDirection)
 	const toggleSort = (nextSortBy: ReviewQueueSortBy) => {
@@ -442,7 +447,7 @@ function ReviewTabContent({
 			) : (
 				<RefreshCw className="h-4 w-4" />
 			)}
-			<span className="ml-2">Refresh</span>
+			<span className="ml-2">{t('srp.common.refresh')}</span>
 		</Button>
 	)
 	const actionButtons =
@@ -451,7 +456,7 @@ function ReviewTabContent({
 				{refreshButton}
 				<div className="flex items-center gap-3">
 					{isExportPolling && (
-						<span className="text-xs text-muted-foreground">Waiting for export to generate...</span>
+						<span className="text-xs text-muted-foreground">{t('srp.common.exportWaiting')}</span>
 					)}
 					{!isExportBusy &&
 					(!filters.dateFrom ||
@@ -464,15 +469,13 @@ function ReviewTabContent({
 							trigger={
 								<span className="inline-block cursor-help">
 									<Button type="button" variant="secondary" size="sm" className="h-8" disabled>
-										Export CSV
+										{t('srp.common.exportCsv')}
 									</Button>
 								</span>
 							}
 						>
-							<div className="text-sm font-medium">Date range required</div>
-							<div className="text-sm text-muted-foreground">
-								Select a date range up to 1 year to export paid requests.
-							</div>
+							<div className="text-sm font-medium">{t('srp.queue.dateRequired')}</div>
+							<div className="text-sm text-muted-foreground">{t('srp.queue.dateHint')}</div>
 						</HoverPopover>
 					) : (
 						<Button
@@ -491,9 +494,9 @@ function ReviewTabContent({
 								!isDateRangeWithinOneYear(filters.dateFrom, filters.dateTo)
 							}
 							loading={isExportBusy}
-							loadingText={isExporting ? 'Exporting…' : 'Generating…'}
+							loadingText={isExporting ? t('srp.common.exporting') : t('srp.common.generating')}
 						>
-							Export CSV
+							{t('srp.common.exportCsv')}
 						</Button>
 					)}
 				</div>
@@ -508,11 +511,9 @@ function ReviewTabContent({
 				<div className="rounded-lg border border-muted p-6 text-center">
 					<div className="mx-auto flex w-fit items-center gap-2 rounded-full border border-muted bg-muted/20 px-3 py-1.5 text-sm text-muted-foreground">
 						<Loader2 className="h-4 w-4 animate-spin" />
-						<span>Loading requests...</span>
+						<span>{t('srp.common.loadingRequests')}</span>
 					</div>
-					<p className="mt-3 text-sm text-muted-foreground">
-						Queue is taking longer than expected.
-					</p>
+					<p className="mt-3 text-sm text-muted-foreground">{t('srp.queue.slow')}</p>
 					<Button
 						variant="secondary"
 						size="sm"
@@ -521,7 +522,7 @@ function ReviewTabContent({
 						disabled={isFetching}
 						loading={isFetching}
 					>
-						Retry loading queue
+						{t('srp.common.retryQueue')}
 					</Button>
 				</div>
 			)
@@ -530,7 +531,7 @@ function ReviewTabContent({
 			<div className="rounded-lg border border-dashed p-12 text-center">
 				<div className="mx-auto flex w-fit items-center gap-2 rounded-full border border-muted bg-muted/20 px-3 py-1.5 text-sm text-muted-foreground">
 					<Loader2 className="h-4 w-4 animate-spin" />
-					<span>Loading requests...</span>
+					<span>{t('srp.common.loadingRequests')}</span>
 				</div>
 			</div>
 		)
@@ -539,7 +540,7 @@ function ReviewTabContent({
 	if (error && !effectiveData) {
 		return (
 			<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-6 text-center">
-				<p className="text-sm text-red-500">Failed to load requests</p>
+				<p className="text-sm text-red-500">{t('srp.common.loadRequestsFailed')}</p>
 				<Button
 					variant="secondary"
 					size="sm"
@@ -548,7 +549,7 @@ function ReviewTabContent({
 					disabled={isFetching}
 					loading={isFetching}
 				>
-					Retry loading queue
+					{t('srp.common.retryQueue')}
 				</Button>
 			</div>
 		)
@@ -565,8 +566,8 @@ function ReviewTabContent({
 			<div className="rounded-lg border border-dashed p-12 text-center">
 				<p className="text-muted-foreground">
 					{hasActiveFilters
-						? 'No requests match the current filters'
-						: `No ${status.replace('_', ' ')} requests`}
+						? t('srp.queue.emptyFiltered')
+						: t('srp.queue.emptyStatus', { status: getRequestStatusText(status, t) })}
 				</p>
 				<div className="mt-4 flex justify-center">{actionButtons}</div>
 			</div>
@@ -577,12 +578,12 @@ function ReviewTabContent({
 		<div>
 			<TableRefreshFrame
 				isRefreshing={isSoftLoading}
-				refreshMessage="Refreshing recent losses..."
+				refreshMessage={t('srp.dashboard.refreshingLosses')}
 				errorMessage={
 					error && effectiveData
 						? error instanceof Error
 							? error.message
-							: 'Failed to refresh requests.'
+							: t('srp.common.refreshRequestsFailed')
 						: null
 				}
 				onRetry={error && effectiveData ? () => void refetch() : undefined}
@@ -596,7 +597,7 @@ function ReviewTabContent({
 						onPageChange={onPageChange}
 						onPageSizeChange={onPageSizeChange}
 						pageSizeOptions={[10, 25, 50, 100]}
-						itemLabel="requests"
+						itemLabel={t('srp.common.requestItem', { count: totalCount })}
 						nextButtonLoading={isFetching}
 						trailingAction={actionButtons}
 					/>
@@ -606,17 +607,17 @@ function ReviewTabContent({
 						<TableHeader>
 							<TableRow>
 								<TableHead className="w-14" />
-								<TableHead>Ship</TableHead>
-								<TableHead>Pilot</TableHead>
-								<TableHead className="text-right">Payout / Value</TableHead>
-								<TableHead>System</TableHead>
+								<TableHead>{t('srp.common.ship')}</TableHead>
+								<TableHead>{t('srp.queue.pilot')}</TableHead>
+								<TableHead className="text-right">{t('srp.queue.payoutValue')}</TableHead>
+								<TableHead>{t('srp.common.system')}</TableHead>
 								<TableHead>
 									<button
 										type="button"
 										className="inline-flex items-center gap-1 text-left hover:text-foreground"
 										onClick={() => toggleSort('loss')}
 									>
-										Lost
+										{t('srp.queue.lost')}
 										<span className="text-xs text-muted-foreground">{sortIndicator('loss')}</span>
 									</button>
 								</TableHead>
@@ -626,14 +627,14 @@ function ReviewTabContent({
 										className="inline-flex items-center gap-1 text-left hover:text-foreground"
 										onClick={() => toggleSort('submitted')}
 									>
-										Submitted
+										{t('srp.queue.submitted')}
 										<span className="text-xs text-muted-foreground">
 											{sortIndicator('submitted')}
 										</span>
 									</button>
 								</TableHead>
-								<TableHead>Status</TableHead>
-								<TableHead className="text-right">Actions</TableHead>
+								<TableHead>{t('srp.common.status')}</TableHead>
+								<TableHead className="text-right">{t('srp.common.actions')}</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -668,7 +669,7 @@ function ReviewTabContent({
 												mainCharacterId={req.mainCharacterId}
 											/>
 										</div>
-										{req.corporationName && req.corporationName !== 'Unknown' && (
+										{req.corporationName && req.corporationName !== t('srp.common.unknown') && (
 											<div className="text-xs text-muted-foreground">{req.corporationName}</div>
 										)}
 									</TableCell>
@@ -704,7 +705,7 @@ function ReviewTabContent({
 									</TableCell>
 									<TableCell className="text-right">
 										<Button size="sm" variant="secondary" asChild>
-											<Link to={`/srp/review/${req.id}`}>View</Link>
+											<Link to={`/srp/review/${req.id}`}>{t('srp.common.view')}</Link>
 										</Button>
 									</TableCell>
 								</TableRow>

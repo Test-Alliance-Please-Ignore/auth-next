@@ -1,6 +1,8 @@
 import { ArrowLeft } from 'lucide-react'
 import { Link, Navigate, useNavigate } from 'react-router'
 
+import { useAppTranslation } from '@/i18n'
+
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
 import { Container } from '../../../components/ui/container'
@@ -16,7 +18,9 @@ import { useCreateSkillPlan } from '../hooks'
 import type { CreateSkillPlanRequest, UpdateSkillPlanRequest } from '../types'
 
 export default function SkillPlanCreate() {
-	usePageTitle('Create Skill Plan')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('skillPlans.createSkillPlan'))
 
 	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -55,13 +59,13 @@ export default function SkillPlanCreate() {
 	return (
 		<Container>
 			<PageHeader
-				title="Create Skill Plan"
-				description="Create a new skill training plan for EVE Online"
+				title={t('skillPlans.createSkillPlan')}
+				description={t('skillPlans.createANewSkillTrainingPlanForEveOnline')}
 				action={
 					<Button variant="ghost" size="sm" asChild>
 						<Link to="/skill-plans">
 							<ArrowLeft className="h-4 w-4" />
-							Back to Plans
+							{t('skillPlans.backToPlans')}
 						</Link>
 					</Button>
 				}
@@ -70,7 +74,7 @@ export default function SkillPlanCreate() {
 			<Section>
 				<Card>
 					<CardHeader>
-						<CardTitle>Plan Details</CardTitle>
+						<CardTitle>{t('skillPlans.planDetails')}</CardTitle>
 					</CardHeader>
 					<CardContent>
 						<SkillPlanForm

@@ -1,3 +1,4 @@
+import { getActiveLocale, i18n } from '@/i18n'
 /**
  * Fitting Slot List
  *
@@ -12,16 +13,86 @@ const getTypeIconUrl = (typeId: string) => typeIconUrl(typeId, 32)
 
 /** Ordered slot sections for UI display. Canonical source: SLOT_FLAGS in @repo/doctrines */
 const SLOT_SECTIONS = [
-	{ flagName: 'High Slot', label: 'High Slots' },
-	{ flagName: 'Mid Slot', label: 'Mid Slots' },
-	{ flagName: 'Low Slot', label: 'Low Slots' },
-	{ flagName: 'Rig Slot', label: 'Rig Slots' },
-	{ flagName: 'Subsystem Slot', label: 'Subsystems' },
-	{ flagName: 'Service Slot', label: 'Service Slots' },
-	{ flagName: 'Drone Bay', label: 'Drone Bay' },
-	{ flagName: 'Fighter Bay', label: 'Fighter Bay' },
-	{ flagName: 'Implant', label: 'Implants' },
-	{ flagName: 'Cargo', label: 'Cargo' },
+	{
+		get flagName() {
+			return i18n.t('doctrines.highSlot')
+		},
+		get label() {
+			return i18n.t('doctrines.highSlots')
+		},
+	},
+	{
+		get flagName() {
+			return i18n.t('doctrines.midSlot')
+		},
+		get label() {
+			return i18n.t('doctrines.midSlots')
+		},
+	},
+	{
+		get flagName() {
+			return i18n.t('doctrines.lowSlot')
+		},
+		get label() {
+			return i18n.t('doctrines.lowSlots')
+		},
+	},
+	{
+		get flagName() {
+			return i18n.t('doctrines.rigSlot')
+		},
+		get label() {
+			return i18n.t('doctrines.rigSlots')
+		},
+	},
+	{
+		get flagName() {
+			return i18n.t('doctrines.subsystemSlot')
+		},
+		get label() {
+			return i18n.t('doctrines.subsystems')
+		},
+	},
+	{
+		get flagName() {
+			return i18n.t('doctrines.serviceSlot')
+		},
+		get label() {
+			return i18n.t('doctrines.serviceSlots')
+		},
+	},
+	{
+		get flagName() {
+			return i18n.t('doctrines.droneBay')
+		},
+		get label() {
+			return i18n.t('doctrines.droneBay')
+		},
+	},
+	{
+		get flagName() {
+			return i18n.t('doctrines.fighterBay')
+		},
+		get label() {
+			return i18n.t('doctrines.fighterBay')
+		},
+	},
+	{
+		get flagName() {
+			return i18n.t('doctrines.implant')
+		},
+		get label() {
+			return i18n.t('doctrines.implants')
+		},
+	},
+	{
+		get flagName() {
+			return i18n.t('doctrines.cargo')
+		},
+		get label() {
+			return i18n.t('doctrines.cargo')
+		},
+	},
 ] as const
 
 interface FittingSlotListProps {
@@ -63,14 +134,14 @@ export function FittingSlotList({ fittingItems }: FittingSlotListProps) {
 									alt=""
 									className="h-6 w-6 rounded flex-shrink-0"
 									onError={(e) => {
-										; (e.target as HTMLImageElement).style.display = 'none'
+										;(e.target as HTMLImageElement).style.display = 'none'
 									}}
 								/>
 								<span className="text-sm">
 									{item.typeName}
 									{parseInt(item.quantity) > 1 && (
 										<span className="text-primary ml-1.5">
-											x{parseInt(item.quantity).toLocaleString()}
+											x{parseInt(item.quantity).toLocaleString(getActiveLocale())}
 										</span>
 									)}
 								</span>

@@ -1,4 +1,5 @@
 import { HoverPopover } from '@/components/ui/hover-popover'
+import { useAppTranslation } from '@/i18n'
 import { characterPortraitUrl } from '@/lib/eve-images'
 import { cn } from '@/lib/utils'
 
@@ -15,6 +16,7 @@ export function CharacterRoleBadge({
 	mainCharacterName,
 	mainCharacterId,
 }: CharacterRoleBadgeProps) {
+	const { t } = useAppTranslation()
 	if (!role) return null
 
 	const isMain = role === 'main'
@@ -22,25 +24,18 @@ export function CharacterRoleBadge({
 		<span
 			className={cn(
 				'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-				isMain
-					? 'bg-emerald-500/15 text-emerald-400'
-					: 'bg-sky-500/15 text-sky-400',
+				isMain ? 'bg-emerald-500/15 text-emerald-400' : 'bg-sky-500/15 text-sky-400',
 				className
 			)}
 		>
-			{isMain ? 'Main' : 'Alt'}
+			{isMain ? t('srp.character.main') : t('srp.character.alt')}
 		</span>
 	)
 
 	if (isMain || !mainCharacterName) return badge
 
 	return (
-		<HoverPopover
-			trigger={badge}
-			align="start"
-			side="top"
-			className="w-56 p-3"
-		>
+		<HoverPopover trigger={badge} align="start" side="top" className="w-56 p-3">
 			<div className="flex items-center gap-3">
 				{mainCharacterId ? (
 					<img
@@ -52,7 +47,7 @@ export function CharacterRoleBadge({
 					<div className="h-10 w-10 rounded-full border border-border/50 bg-muted" />
 				)}
 				<div className="min-w-0">
-					<div className="text-xs text-muted-foreground">Main Character</div>
+					<div className="text-xs text-muted-foreground">{t('srp.character.mainCharacter')}</div>
 					<div className="truncate text-sm font-medium">{mainCharacterName}</div>
 				</div>
 			</div>

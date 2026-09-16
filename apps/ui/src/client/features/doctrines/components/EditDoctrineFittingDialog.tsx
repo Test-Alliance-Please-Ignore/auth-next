@@ -18,6 +18,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 
 import { useDoctrineCategories, useUpdateDoctrineFitting } from '../hooks'
@@ -37,6 +38,8 @@ export function EditDoctrineFittingDialog({
 	doctrineId,
 	entry,
 }: EditDoctrineFittingDialogProps) {
+	const { t } = useAppTranslation()
+
 	const { data: categories } = useDoctrineCategories()
 	const updateMutation = useUpdateDoctrineFitting()
 
@@ -56,10 +59,10 @@ export function EditDoctrineFittingDialog({
 					sortOrder,
 				},
 			})
-			toast.success('Fitting link updated')
+			toast.success(t('doctrines.fittingLinkUpdated'))
 			onOpenChange(false)
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Failed to update')
+			toast.error(err instanceof Error ? err.message : t('doctrines.failedToUpdate'))
 		}
 	}
 
@@ -68,11 +71,14 @@ export function EditDoctrineFittingDialog({
 			<DialogContent>
 				<form onSubmit={handleSubmit}>
 					<DialogHeader>
-						<DialogTitle>Edit: {entry.fitting.name}</DialogTitle>
+						<DialogTitle>
+							{t('doctrines.edit2')}
+							{entry.fitting.name}
+						</DialogTitle>
 					</DialogHeader>
 					<div className="space-y-4 py-4">
 						<div className="space-y-2">
-							<Label>Category in Doctrine</Label>
+							<Label>{t('doctrines.categoryInDoctrine')}</Label>
 							<Select
 								options={(categories || []).map((c) => ({
 									value: c.name,
@@ -80,14 +86,14 @@ export function EditDoctrineFittingDialog({
 								}))}
 								value={fittingCategory}
 								onValueChange={(val) => setFittingCategory(val)}
-								placeholder="Select category..."
+								placeholder={t('doctrines.selectCategory')}
 							/>
 							<p className="text-xs text-muted-foreground">
-								Override which category this fitting appears under in this doctrine
+								{t('doctrines.overrideWhichCategoryThisFittingAppearsUnderInThisDoctrine')}
 							</p>
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor="link-sort">Sort Order</Label>
+							<Label htmlFor="link-sort">{t('doctrines.sortOrder')}</Label>
 							<Input
 								id="link-sort"
 								type="number"
@@ -97,21 +103,21 @@ export function EditDoctrineFittingDialog({
 								className="w-32"
 							/>
 							<p className="text-xs text-muted-foreground">
-								Controls position within the category (lower = higher)
+								{t('doctrines.controlsPositionWithinTheCategoryLowerHigher')}
 							</p>
 						</div>
 					</div>
 					<DialogFooter>
 						<Button variant="cancel" type="button" onClick={() => onOpenChange(false)}>
-							Cancel
+							{t('doctrines.cancel')}
 						</Button>
 						<Button
 							variant="confirm"
 							type="submit"
 							loading={updateMutation.isPending}
-							loadingText="Saving..."
+							loadingText={t('doctrines.saving')}
 						>
-							Update
+							{t('doctrines.update')}
 						</Button>
 					</DialogFooter>
 				</form>

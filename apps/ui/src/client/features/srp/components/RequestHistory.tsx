@@ -1,10 +1,12 @@
-import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { formatFullDate, formatISK } from '../utils'
 import { RequestStatusBadge } from './RequestStatusBadge'
 
+import type { AppTranslator } from '@/i18n'
 import type { SRPHistoryResponse } from '../types'
 
 interface RequestHistoryProps {
@@ -13,20 +15,21 @@ interface RequestHistoryProps {
 }
 
 export function RequestHistory({ history, className }: RequestHistoryProps) {
+	const { t } = useAppTranslation()
 	if (history.length === 0) {
 		return (
 			<Card className={cn('p-6', className)}>
-				<p className="text-sm text-muted-foreground">No history available.</p>
+				<p className="text-sm text-muted-foreground">{t('srp.history.empty')}</p>
 			</Card>
 		)
 	}
 
 	return (
 		<Card className={cn('p-6', className)}>
-			<h3 className="mb-4 font-semibold">Request Timeline</h3>
+			<h3 className="mb-4 font-semibold">{t('srp.history.title')}</h3>
 			<div className="relative space-y-6 before:absolute before:left-[7px] before:top-2 before:h-[calc(100%-1rem)] before:w-[2px] before:bg-border">
 				{history.map((entry) => {
-					const detailLines = getDetailLines(entry.metadata)
+					const detailLines = getDetailLines(entry.metadata, t)
 
 					return (
 						<div key={entry.id} className="relative pl-8">
@@ -41,8 +44,10 @@ export function RequestHistory({ history, className }: RequestHistoryProps) {
 							{/* Content */}
 							<div className="space-y-1">
 								<div className="flex items-center gap-2">
-									<span className="text-sm font-medium">{getActionLabel(entry.action)}</span>
-									{isAlertAction(entry.action) && <Badge variant="destructive">Alert</Badge>}
+									<span className="text-sm font-medium">{getActionLabel(entry.action, t)}</span>
+									{isAlertAction(entry.action) && (
+										<Badge variant="destructive">{t('srp.common.alert')}</Badge>
+									)}
 									{entry.newRequestStatus && <RequestStatusBadge status={entry.newRequestStatus} />}
 								</div>
 								<div className="text-xs text-muted-foreground">
@@ -60,7 +65,7 @@ export function RequestHistory({ history, className }: RequestHistoryProps) {
 								)}
 								{entry.previousApprovedAmount ? (
 									<div className="mt-2 rounded-md bg-muted/50 p-2 text-xs">
-										<span className="font-medium">Previous Approved Amount: </span>
+										<span className="font-medium">{t('srp.history.previousAmount')}</span>
 										<span className="tabular-nums">{formatISK(entry.previousApprovedAmount)}</span>
 									</div>
 								) : null}
@@ -74,7 +79,8 @@ export function RequestHistory({ history, className }: RequestHistoryProps) {
 }
 
 function getDetailLines(
-	metadata?: Record<string, unknown>
+	metadata: Record<string, unknown> | undefined,
+	t: AppTranslator
 ): Array<{ label: string; value: string }> {
 	if (!metadata) return []
 
@@ -84,13 +90,13 @@ function getDetailLines(
 
 	const lines: Array<{ label: string; value: string }> = []
 	if (rejectionReason) {
-		lines.push({ label: 'Reason', value: rejectionReason })
+		lines.push({ label: t('srp.common.reason'), value: rejectionReason })
 	}
 	if (notes) {
-		lines.push({ label: 'Notes', value: notes })
+		lines.push({ label: t('srp.common.notes'), value: notes })
 	}
 	if (message) {
-		lines.push({ label: 'Message', value: message })
+		lines.push({ label: t('srp.common.message'), value: message })
 	}
 	return lines
 }
@@ -111,23 +117,23 @@ function getActionColor(action: string): string {
 	return 'bg-muted-foreground'
 }
 
-function getActionLabel(action: string): string {
+function getActionLabel(action: string, t: AppTranslator): string {
 	const labels: Record<string, string> = {
-		request_created: 'Request Created',
-		review_submitted: 'Review Submitted',
-		review_details: 'Review Details',
-		request_approved: 'Approved',
-		request_partially_approved: 'Partially Approved',
-		request_rejected: 'Rejected',
-		request_withdrawn: 'Withdrawn',
-		request_reopened: 'Reopened',
-		state_changed: 'Status Updated',
-		payment_submitted: 'Payment Sent',
-		payment_completed: 'Payment Completed',
-		partial_payment_completed: 'Partial Payment',
-		payment_missing_detected: 'Payment Missing Alert',
-		payment_amount_mismatch_detected: 'Payment Mismatch Alert',
-		payment_alert_acknowledged: 'Payment Alert Acknowledged',
+		request_created: t('srp.history.created'),
+		review_submitted: t('srp.history.reviewSubmitted'),
+		review_details: t('srp.history.reviewDetails'),
+		request_approved: t('srp.status.approved'),
+		request_partially_approved: t('srp.history.partiallyApproved'),
+		request_rejected: t('srp.status.rejected'),
+		request_withdrawn: t('srp.status.withdrawn'),
+		request_reopened: t('srp.history.reopened'),
+		state_changed: t('srp.history.stateChanged'),
+		payment_submitted: t('srp.status.payment_pending'),
+		payment_completed: t('srp.history.paymentCompleted'),
+		partial_payment_completed: t('srp.history.partialPayment'),
+		payment_missing_detected: t('srp.history.paymentMissing'),
+		payment_amount_mismatch_detected: t('srp.history.paymentMismatch'),
+		payment_alert_acknowledged: t('srp.history.paymentAcknowledged'),
 	}
 	return labels[action] || action
 }

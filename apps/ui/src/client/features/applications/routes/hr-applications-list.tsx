@@ -25,6 +25,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { i18n, useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { useCanAccessCorporation } from '../../corporations/hooks'
@@ -51,12 +52,42 @@ interface FilterTabConfig {
 // ============================================================================
 
 const FILTER_TABS: FilterTabConfig[] = [
-	{ label: 'All', value: 'all' },
-	{ label: 'Pending', value: 'pending' },
-	{ label: 'Under Review', value: 'under_review' },
-	{ label: 'Accepted', value: 'accepted' },
-	{ label: 'Completed', value: 'completed' },
-	{ label: 'Rejected', value: 'rejected' },
+	{
+		get label() {
+			return i18n.t('hrpages.all')
+		},
+		value: 'all',
+	},
+	{
+		get label() {
+			return i18n.t('hrpages.pending')
+		},
+		value: 'pending',
+	},
+	{
+		get label() {
+			return i18n.t('hrpages.underReview')
+		},
+		value: 'under_review',
+	},
+	{
+		get label() {
+			return i18n.t('hrpages.accepted')
+		},
+		value: 'accepted',
+	},
+	{
+		get label() {
+			return i18n.t('hrpages.completed')
+		},
+		value: 'completed',
+	},
+	{
+		get label() {
+			return i18n.t('hrpages.rejected')
+		},
+		value: 'rejected',
+	},
 ]
 
 // ============================================================================
@@ -67,11 +98,13 @@ const FILTER_TABS: FilterTabConfig[] = [
  * HR Applications List with filtering and search
  */
 export default function HrApplicationsList() {
+	const { t } = useAppTranslation()
+
 	const { corporationId } = useParams<{ corporationId: string }>()
 	const { user, isAuthenticated, isLoading: authLoading, permissions } = useAuth()
 	const isAuditor = useMemo(
 		() => permissions.some((permission) => permission.urn === 'urn:hr:auditor'),
-		[permissions]
+		[permissions, t]
 	)
 	const {
 		canAccess: hasCorporationAccess,
@@ -126,7 +159,7 @@ export default function HrApplicationsList() {
 	)
 
 	// Set page title
-	usePageTitle('HR Applications')
+	usePageTitle(t('hrpages.hrApplications'))
 
 	const applications = applicationsResult?.items ?? []
 	const stats = useMemo(
@@ -138,7 +171,7 @@ export default function HrApplicationsList() {
 			rejected: applicationsResult?.counts.rejected ?? 0,
 			withdrawn: applicationsResult?.counts.withdrawn ?? 0,
 		}),
-		[applicationsResult]
+		[applicationsResult, t]
 	)
 
 	const handleStatusFilterChange = (status: FilterTab) => {
@@ -148,7 +181,7 @@ export default function HrApplicationsList() {
 
 	const showMembersNavigation = user?.is_admin || hasCorporationAccess
 	const rootCorporationsPath = '/corporations'
-	const rootCorporationsLabel = 'Corporations'
+	const rootCorporationsLabel = t('hrpages.corporations')
 	const membersPath = `/corporations/${corporationId}/members`
 
 	// Check authentication
@@ -183,17 +216,19 @@ export default function HrApplicationsList() {
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
+							{t('hrpages.accessDenied')}
+						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							You don't have HR permissions for this corporation. Contact an HR Admin to request
-							access.
+							{t('hrpages.youDonTHaveHrPermissionsForThisCorporationContact')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button asChild variant="ghost">
 							<Link to={rootCorporationsPath}>
 								<ArrowLeft className="h-4 w-4" />
-								Back to {rootCorporationsLabel}
+								{t('hrpages.backTo')}
+								{rootCorporationsLabel}
 							</Link>
 						</Button>
 					</CardContent>
@@ -210,17 +245,17 @@ export default function HrApplicationsList() {
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Failed to Load Applications
+							{t('hrpages.failedToLoadApplications')}
 						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
 							{applicationsError instanceof Error
 								? applicationsError.message
-								: 'An unexpected error occurred'}
+								: t('hrpages.anUnexpectedErrorOccurred')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" onClick={() => window.location.reload()}>
-							Try Again
+							{t('hrpages.tryAgain')}
 						</Button>
 					</CardContent>
 				</Card>
@@ -241,26 +276,26 @@ export default function HrApplicationsList() {
 						<>
 							<BreadcrumbSeparator />
 							<BreadcrumbItem>
-								<BreadcrumbLink to={membersPath}>Members</BreadcrumbLink>
+								<BreadcrumbLink to={membersPath}>{t('hrpages.members')}</BreadcrumbLink>
 							</BreadcrumbItem>
 						</>
 					)}
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbPage>Applications</BreadcrumbPage>
+						<BreadcrumbPage>{t('hrpages.applications2')}</BreadcrumbPage>
 					</BreadcrumbItem>
 				</BreadcrumbList>
 			</Breadcrumb>
 
 			{/* Header */}
 			<PageHeader
-				title="HR Applications"
-				description="Review and manage job applications to your corporation"
+				title={t('hrpages.hrApplications')}
+				description={t('hrpages.reviewAndManageJobApplicationsToYourCorporation')}
 				action={
 					<Button asChild variant="ghost">
 						<Link to={showMembersNavigation ? membersPath : '/corporations'}>
 							<ArrowLeft className="h-4 w-4" />
-							{showMembersNavigation ? 'Back to Members' : 'Back to Corporations'}
+							{showMembersNavigation ? t('hrpages.backToMembers') : t('hrpages.backToCorporations')}
 						</Link>
 					</Button>
 				}
@@ -268,16 +303,36 @@ export default function HrApplicationsList() {
 
 			{/* Statistics Cards */}
 			<div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-6">
-				<ApplicationStatsCard label="Pending" value={stats.pending} variant="pending" />
 				<ApplicationStatsCard
-					label="Under Review"
+					label={t('hrpages.pending')}
+					value={stats.pending}
+					variant="pending"
+				/>
+				<ApplicationStatsCard
+					label={t('hrpages.underReview')}
 					value={stats.under_review}
 					variant="under_review"
 				/>
-				<ApplicationStatsCard label="Accepted" value={stats.accepted} variant="accepted" />
-				<ApplicationStatsCard label="Completed" value={stats.completed} variant="completed" />
-				<ApplicationStatsCard label="Rejected" value={stats.rejected} variant="rejected" />
-				<ApplicationStatsCard label="Withdrawn" value={stats.withdrawn} variant="withdrawn" />
+				<ApplicationStatsCard
+					label={t('hrpages.accepted')}
+					value={stats.accepted}
+					variant="accepted"
+				/>
+				<ApplicationStatsCard
+					label={t('hrpages.completed')}
+					value={stats.completed}
+					variant="completed"
+				/>
+				<ApplicationStatsCard
+					label={t('hrpages.rejected')}
+					value={stats.rejected}
+					variant="rejected"
+				/>
+				<ApplicationStatsCard
+					label={t('hrpages.withdrawn')}
+					value={stats.withdrawn}
+					variant="withdrawn"
+				/>
 			</div>
 
 			<div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -303,7 +358,7 @@ export default function HrApplicationsList() {
 				<Input
 					value={searchTerm}
 					onChange={(event) => setSearchTerm(event.target.value)}
-					placeholder="Search character or attached alt name..."
+					placeholder={t('hrpages.searchCharacterOrAttachedAltName')}
 					className="w-full lg:ml-auto lg:max-w-md"
 				/>
 			</div>
@@ -328,7 +383,7 @@ export default function HrApplicationsList() {
 			{(applicationsResult?.total ?? 0) > 0 && (
 				<div className="mt-8 text-center">
 					<p className="text-sm text-muted-foreground">
-						Click on any application to view full details and take action.
+						{t('hrpages.clickOnAnyApplicationToViewFullDetailsAndTake')}
 					</p>
 				</div>
 			)}

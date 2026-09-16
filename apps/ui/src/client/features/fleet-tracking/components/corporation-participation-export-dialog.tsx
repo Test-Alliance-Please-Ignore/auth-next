@@ -12,6 +12,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { Select } from '@/components/ui/select'
+import { getActiveLocale, i18n, useAppTranslation } from '@/i18n'
 
 import { fleetTrackingApi } from '../api'
 import { fleetStatsKeys, useCorporationParticipationExportMonths } from '../hooks'
@@ -43,13 +44,13 @@ export function buildParticipationPeriodOptions(
 	const representedMonths = new Set([currentMonth, previousMonth])
 
 	return [
-		{ value: 'month-to-date', label: 'Month to date' },
-		{ value: 'last-month', label: 'Last month' },
+		{ value: 'month-to-date', label: i18n.t('fleetTracking.monthToDate') },
+		{ value: 'last-month', label: i18n.t('fleetTracking.lastMonth') },
 		...months
 			.filter((month) => !representedMonths.has(month.month))
 			.map((month) => ({
 				value: `month:${month.month}`,
-				label: new Date(`${month.month}-01T00:00:00Z`).toLocaleDateString(undefined, {
+				label: new Date(`${month.month}-01T00:00:00Z`).toLocaleDateString(getActiveLocale(), {
 					month: 'long',
 					year: 'numeric',
 					timeZone: 'UTC',
@@ -63,6 +64,8 @@ export function CorporationParticipationExportDialog({
 	open,
 	onOpenChange,
 }: CorporationParticipationExportDialogProps) {
+	const { t } = useAppTranslation()
+
 	const { data: monthData, isLoading: monthsLoading } = useCorporationParticipationExportMonths(
 		corporationId,
 		{ enabled: open }
@@ -75,7 +78,7 @@ export function CorporationParticipationExportDialog({
 	const [error, setError] = useState<string | null>(null)
 
 	const months = monthData?.months ?? []
-	const periodOptions = useMemo(() => buildParticipationPeriodOptions(months), [months])
+	const periodOptions = useMemo(() => buildParticipationPeriodOptions(months), [months, t])
 
 	const selectedRange = useMemo(() => {
 		const now = new Date()
@@ -87,7 +90,7 @@ export function CorporationParticipationExportDialog({
 		}
 		if (!period.startsWith('month:')) return null
 		return months.find((month) => `month:${month.month}` === period) ?? null
-	}, [months, period])
+	}, [months, period, t])
 
 	const statusQuery = useQuery({
 		queryKey: fleetStatsKeys.corporationExportStatus(
@@ -117,14 +120,16 @@ export function CorporationParticipationExportDialog({
 			)
 			.then(() => onOpenChange(false))
 			.catch((downloadError: unknown) => {
-				setError(downloadError instanceof Error ? downloadError.message : 'Download failed')
+				setError(
+					downloadError instanceof Error ? downloadError.message : t('fleetTracking.downloadFailed')
+				)
 			})
 			.finally(() => setPending(null))
 	}, [corporationId, onOpenChange, pending, statusQuery.data?.status])
 
 	useEffect(() => {
 		if (statusQuery.data?.status === 'failed' || statusQuery.data?.status === 'unknown') {
-			setError('The fleet participation export failed.')
+			setError(t('fleetTracking.theFleetParticipationExportFailed'))
 			setPending(null)
 		}
 	}, [statusQuery.data?.status])
@@ -141,7 +146,9 @@ export function CorporationParticipationExportDialog({
 			)
 			setPending({ workflowInstanceId: result.workflowInstanceId, fileName: result.fileName })
 		} catch (submitError: unknown) {
-			setError(submitError instanceof Error ? submitError.message : 'Unable to start export')
+			setError(
+				submitError instanceof Error ? submitError.message : t('fleetTracking.unableToStartExport')
+			)
 		} finally {
 			setSubmitting(false)
 		}
@@ -151,14 +158,14 @@ export function CorporationParticipationExportDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>Export fleet participation</DialogTitle>
+					<DialogTitle>{t('fleetTracking.exportFleetParticipation')}</DialogTitle>
 					<DialogDescription>
-						Export one row per corporation member and tracked fleet session for the selected period.
+						{t('fleetTracking.exportOneRowPerCorporationMemberAndTrackedFleetSession')}
 					</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-4">
 					<label className="block text-sm font-medium" htmlFor="fleet-export-period">
-						Period
+						{t('fleetTracking.period')}
 					</label>
 					<Select
 						inputId="fleet-export-period"
@@ -166,24 +173,26 @@ export function CorporationParticipationExportDialog({
 						value={period}
 						onValueChange={setPeriod}
 						searchable
-						placeholder="Select period"
+						placeholder={t('fleetTracking.selectPeriod')}
 						loading={monthsLoading}
 						disabled={Boolean(pending)}
 						className="w-full"
 					/>
-					{pending && <p className="text-sm text-muted-foreground">Preparing your CSV...</p>}
+					{pending && (
+						<p className="text-sm text-muted-foreground">{t('fleetTracking.preparingYourCsv')}</p>
+					)}
 					{error && <p className="text-sm text-destructive">{error}</p>}
 				</div>
 				<DialogFooter>
 					<Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>
-						Cancel
+						{t('fleetTracking.cancel')}
 					</Button>
 					<Button
 						onClick={() => void handleSubmit()}
 						disabled={!selectedRange || submitting || Boolean(pending)}
 					>
 						{submitting || pending ? <Loader2 className="animate-spin" /> : <Download />}
-						{pending ? 'Exporting...' : 'Export CSV'}
+						{pending ? t('fleetTracking.exporting') : t('fleetTracking.exportCsv')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

@@ -5,7 +5,6 @@
 import { ChevronDown, ChevronRight, Package, Search } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 
-import { typeImageUrl } from '@/lib/eve-images'
 import { Input } from '@/components/ui/input'
 import {
 	Table,
@@ -15,6 +14,8 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { getActiveLocale, i18n, useAppTranslation } from '@/i18n'
+import { typeImageUrl } from '@/lib/eve-images'
 
 interface ProcessedAsset {
 	item_id: string
@@ -60,10 +61,12 @@ type TopLevelRow =
 	| { kind: 'asset'; key: string; asset: ProcessedAsset }
 
 function formatIsk(value: number): string {
-	if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B ISK`
-	if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M ISK`
-	if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K ISK`
-	return `${value.toLocaleString()} ISK`
+	if (value >= 1_000_000_000)
+		return i18n.t('hrpages.value1BIsk', { value1: (value / 1_000_000_000).toFixed(2) })
+	if (value >= 1_000_000)
+		return i18n.t('hrpages.value1MIsk', { value1: (value / 1_000_000).toFixed(1) })
+	if (value >= 1_000) return i18n.t('hrpages.value1KIsk', { value1: (value / 1_000).toFixed(0) })
+	return `${value.toLocaleString(getActiveLocale())} ISK`
 }
 
 function getRowStripeClass(stripe: RowStripe): string {
@@ -72,7 +75,15 @@ function getRowStripeClass(stripe: RowStripe): string {
 		: 'bg-card !bg-card hover:!bg-[hsl(var(--accent-muted)/0.7)]'
 }
 
-function ItemIcon({ typeId, categoryName, isBpc }: { typeId: string; categoryName?: string; isBpc?: boolean }) {
+function ItemIcon({
+	typeId,
+	categoryName,
+	isBpc,
+}: {
+	typeId: string
+	categoryName?: string
+	isBpc?: boolean
+}) {
 	const [failed, setFailed] = useState(false)
 
 	if (failed) {
@@ -104,7 +115,11 @@ function AssetRow({ asset, stripe }: { asset: ProcessedAsset; stripe: RowStripe 
 	return (
 		<TableRow key={asset.item_id} className={getRowStripeClass(stripe)}>
 			<TableCell className="w-10 pr-0">
-				<ItemIcon typeId={asset.type_id} categoryName={asset.categoryName} isBpc={asset.is_blueprint_copy} />
+				<ItemIcon
+					typeId={asset.type_id}
+					categoryName={asset.categoryName}
+					isBpc={asset.is_blueprint_copy}
+				/>
 			</TableCell>
 			<TableCell className="font-medium">
 				<div>
@@ -116,11 +131,9 @@ function AssetRow({ asset, stripe }: { asset: ProcessedAsset; stripe: RowStripe 
 					)}
 				</div>
 			</TableCell>
-			<TableCell className="text-sm text-muted-foreground">
-				{asset.categoryName || '-'}
-			</TableCell>
+			<TableCell className="text-sm text-muted-foreground">{asset.categoryName || '-'}</TableCell>
 			<TableCell className="text-right font-mono">
-				{asset.quantity.toLocaleString()}
+				{asset.quantity.toLocaleString(getActiveLocale())}
 			</TableCell>
 			<TableCell className="text-right font-mono text-xs text-muted-foreground">
 				{asset.estimatedValue ? formatIsk(asset.estimatedValue) : '-'}
@@ -140,12 +153,11 @@ function ContainerRows({
 	onToggle: () => void
 	stripe: RowStripe
 }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<>
-			<TableRow
-				className={`cursor-pointer ${getRowStripeClass(stripe)}`}
-				onClick={onToggle}
-			>
+			<TableRow className={`cursor-pointer ${getRowStripeClass(stripe)}`} onClick={onToggle}>
 				<TableCell className="w-10 pl-2 pr-0">
 					{isExpanded ? (
 						<ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -162,21 +174,27 @@ function ContainerRows({
 						/>
 						<div className="min-w-0">
 							<div className="flex items-center gap-2">
-								<span className="truncate">{container.containerAsset.customName || container.containerName}</span>
+								<span className="truncate">
+									{container.containerAsset.customName || container.containerName}
+								</span>
 								<span className="text-xs text-muted-foreground">
-									({container.assets.length} item{container.assets.length !== 1 ? 's' : ''})
+									({t('hrpages.item2Count', { count: container.assets.length })})
 								</span>
 							</div>
 							<div className="text-xs text-muted-foreground truncate">
-								{container.containerAsset.typeName || container.containerAsset.categoryName || 'Container'}
+								{container.containerAsset.typeName ||
+									container.containerAsset.categoryName ||
+									t('hrpages.container')}
 							</div>
 						</div>
 					</div>
 				</TableCell>
 				<TableCell className="py-2.5 text-sm text-muted-foreground">
-					{container.containerAsset.categoryName || 'Container'}
+					{container.containerAsset.categoryName || t('hrpages.container')}
 				</TableCell>
-				<TableCell className="py-2.5 text-right font-mono">{container.totalItems.toLocaleString()}</TableCell>
+				<TableCell className="py-2.5 text-right font-mono">
+					{container.totalItems.toLocaleString(getActiveLocale())}
+				</TableCell>
 				<TableCell className="py-2.5 text-right font-mono text-xs text-muted-foreground">
 					{container.estimatedValue > 0 ? formatIsk(container.estimatedValue) : '-'}
 				</TableCell>
@@ -185,11 +203,11 @@ function ContainerRows({
 				<TableRow className="bg-muted/20">
 					<TableCell className="w-10 pr-0 pl-4" />
 					<TableCell className="pl-8 py-2 text-sm text-muted-foreground italic" colSpan={4}>
-						Empty container
+						{t('hrpages.emptyContainer')}
 					</TableCell>
 				</TableRow>
 			)}
-			{isExpanded &&
+			{isExpanded && (
 				<TableRow className="bg-transparent odd:!bg-transparent even:!bg-transparent hover:!bg-transparent">
 					<TableCell colSpan={5} className="px-0 pb-2 pt-0">
 						<div className="border-l-2 border-muted bg-transparent pl-5 pr-3 pt-1 pb-2">
@@ -221,7 +239,7 @@ function ContainerRows({
 												{asset.categoryName || '-'}
 											</TableCell>
 											<TableCell className="text-right font-mono">
-												{asset.quantity.toLocaleString()}
+												{asset.quantity.toLocaleString(getActiveLocale())}
 											</TableCell>
 											<TableCell className="text-right font-mono text-xs text-muted-foreground">
 												{asset.estimatedValue ? formatIsk(asset.estimatedValue) : '-'}
@@ -233,7 +251,7 @@ function ContainerRows({
 						</div>
 					</TableCell>
 				</TableRow>
-				}
+			)}
 		</>
 	)
 }
@@ -258,6 +276,8 @@ function getTopLevelRows(group: LocationGroup): TopLevelRow[] {
 }
 
 export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
+	const { t } = useAppTranslation()
+
 	const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set())
 	const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set())
 	const [search, setSearch] = useState('')
@@ -265,16 +285,16 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 	const groups = useMemo(() => {
 		const filtered = search
 			? data.filter((a) => {
-				const q = search.toLowerCase()
-				return (
-					a.typeName?.toLowerCase().includes(q) ||
-					a.customName?.toLowerCase().includes(q) ||
-					a.categoryName?.toLowerCase().includes(q) ||
-					a.locationName?.toLowerCase().includes(q) ||
-					a.marketGroupName?.toLowerCase().includes(q) ||
-					a.containerName?.toLowerCase().includes(q)
-				)
-			})
+					const q = search.toLowerCase()
+					return (
+						a.typeName?.toLowerCase().includes(q) ||
+						a.customName?.toLowerCase().includes(q) ||
+						a.categoryName?.toLowerCase().includes(q) ||
+						a.locationName?.toLowerCase().includes(q) ||
+						a.marketGroupName?.toLowerCase().includes(q) ||
+						a.containerName?.toLowerCase().includes(q)
+					)
+				})
 			: data
 		const assetById = new Map(filtered.map((asset) => [asset.item_id, asset]))
 
@@ -285,7 +305,9 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 			if (asset.isShipAsset && asset.containerItemId) {
 				continue
 			}
-			const containerAsset = asset.containerItemId ? assetById.get(asset.containerItemId) : undefined
+			const containerAsset = asset.containerItemId
+				? assetById.get(asset.containerItemId)
+				: undefined
 			if (containerAsset?.isShipAsset) {
 				continue
 			}
@@ -296,17 +318,25 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 			}
 		}
 
-		const locationMap = new Map<string, { loose: ProcessedAsset[]; containerMap: Map<string, { name: string; assets: ProcessedAsset[] }> }>()
+		const locationMap = new Map<
+			string,
+			{
+				loose: ProcessedAsset[]
+				containerMap: Map<string, { name: string; assets: ProcessedAsset[] }>
+			}
+		>()
 
 		for (const asset of filtered) {
 			if (asset.isShipAsset && asset.containerItemId) {
 				continue
 			}
-			const containerAsset = asset.containerItemId ? assetById.get(asset.containerItemId) : undefined
+			const containerAsset = asset.containerItemId
+				? assetById.get(asset.containerItemId)
+				: undefined
 			if (containerAsset?.isShipAsset) {
 				continue
 			}
-			const loc = asset.locationName || 'Unknown Location'
+			const loc = asset.locationName || t('hrpages.unknownLocation')
 			if (!locationMap.has(loc)) {
 				locationMap.set(loc, { loose: [], containerMap: new Map() })
 			}
@@ -316,7 +346,7 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 				const cId = asset.containerItemId
 				if (!group.containerMap.has(cId)) {
 					group.containerMap.set(cId, {
-						name: asset.containerName || 'Unknown Container',
+						name: asset.containerName || t('hrpages.unknownContainer'),
 						assets: [],
 					})
 				}
@@ -325,7 +355,7 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 				const cId = asset.item_id
 				if (!group.containerMap.has(cId)) {
 					group.containerMap.set(cId, {
-						name: asset.customName || asset.typeName || 'Unknown Container',
+						name: asset.customName || asset.typeName || t('hrpages.unknownContainer'),
 						assets: [],
 					})
 				}
@@ -347,7 +377,7 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 						isContainerAsset: true,
 						quantity: 1,
 						is_singleton: true,
-						location_flag: 'Container',
+						location_flag: t('hrpages.container'),
 						locationName,
 					} as ProcessedAsset)
 				containers.push({
@@ -377,39 +407,45 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 			const bCount = b.looseAssets.length + b.containers.reduce((s, c) => s + c.assets.length, 0)
 			return bCount - aCount
 		})
-	}, [data, search])
+	}, [data, search, t])
 
-	const toggleLocation = useCallback((loc: string) => {
-		setExpandedLocations((prev) => {
-			const next = new Set(prev)
-			if (next.has(loc)) {
-				next.delete(loc)
-			} else {
-				next.add(loc)
-			}
-			return next
-		})
-	}, [])
+	const toggleLocation = useCallback(
+		(loc: string) => {
+			setExpandedLocations((prev) => {
+				const next = new Set(prev)
+				if (next.has(loc)) {
+					next.delete(loc)
+				} else {
+					next.add(loc)
+				}
+				return next
+			})
+		},
+		[t]
+	)
 
-	const toggleContainer = useCallback((containerId: string) => {
-		setExpandedContainers((prev) => {
-			const next = new Set(prev)
-			if (next.has(containerId)) {
-				next.delete(containerId)
-			} else {
-				next.add(containerId)
-			}
-			return next
-		})
-	}, [])
+	const toggleContainer = useCallback(
+		(containerId: string) => {
+			setExpandedContainers((prev) => {
+				const next = new Set(prev)
+				if (next.has(containerId)) {
+					next.delete(containerId)
+				} else {
+					next.add(containerId)
+				}
+				return next
+			})
+		},
+		[t]
+	)
 
 	const totalEstimatedValue = useMemo(
 		() => groups.reduce((sum, g) => sum + g.estimatedValue, 0),
-		[groups],
+		[groups, t]
 	)
 
 	if (data.length === 0) {
-		return <p className="text-sm text-muted-foreground">No assets found.</p>
+		return <p className="text-sm text-muted-foreground">{t('hrpages.noAssetsFound')}</p>
 	}
 
 	return (
@@ -417,12 +453,13 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 			<div className="flex items-center justify-between gap-4">
 				<div className="space-y-0.5">
 					<p className="text-sm text-muted-foreground">
-						{data.length} asset{data.length !== 1 ? 's' : ''} across {groups.length} location
-						{groups.length !== 1 ? 's' : ''}
+						{t('hrpages.assetCount', { count: data.length })}
+						{t('hrpages.across')}
+						{t('hrpages.location2Count', { count: groups.length })}
 					</p>
 					{totalEstimatedValue > 0 && (
 						<p className="text-xs text-muted-foreground">
-							Total est. value:{' '}
+							{t('hrpages.totalEstValue')}{' '}
 							<span className="font-mono font-medium text-foreground">
 								{formatIsk(totalEstimatedValue)}
 							</span>
@@ -432,7 +469,7 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 				<div className="relative w-64">
 					<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
 					<Input
-						placeholder="Search assets..."
+						placeholder={t('hrpages.searchAssets')}
 						value={search}
 						onChange={(e) => setSearch(e.target.value)}
 						className="pl-9 h-9"
@@ -444,12 +481,16 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 						onClick={() => {
 							setExpandedLocations(new Set(groups.map((group) => group.locationName)))
 							setExpandedContainers(
-								new Set(groups.flatMap((group) => group.containers.map((container) => container.containerItemId)))
+								new Set(
+									groups.flatMap((group) =>
+										group.containers.map((container) => container.containerItemId)
+									)
+								)
 							)
 						}}
 						className="rounded border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
 					>
-						Expand all
+						{t('hrpages.expandAll')}
 					</button>
 					<button
 						type="button"
@@ -459,7 +500,7 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 						}}
 						className="rounded border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
 					>
-						Collapse all
+						{t('hrpages.collapseAll')}
 					</button>
 				</div>
 			</div>
@@ -469,8 +510,7 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 					const isExpanded = expandedLocations.has(group.locationName)
 					const topLevelRows = getTopLevelRows(group)
 					const itemCount =
-						group.looseAssets.length +
-						group.containers.reduce((s, c) => s + c.assets.length, 0)
+						group.looseAssets.length + group.containers.reduce((s, c) => s + c.assets.length, 0)
 					return (
 						<div key={group.locationName}>
 							<button
@@ -483,20 +523,16 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 								) : (
 									<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
 								)}
-								<span className="font-medium text-sm flex-1 truncate">
-									{group.locationName}
-								</span>
+								<span className="font-medium text-sm flex-1 truncate">{group.locationName}</span>
 								<span className="text-xs text-muted-foreground">
-									{itemCount} item{itemCount !== 1 ? 's' : ''}
+									{t('hrpages.item2Count', { count: itemCount })}
 									{group.containers.length > 0 && (
 										<span className="ml-1">
-											({group.containers.length} container{group.containers.length !== 1 ? 's' : ''})
+											({t('hrpages.container2Count', { count: group.containers.length })})
 										</span>
 									)}
 									{group.estimatedValue > 0 && (
-										<span className="ml-2 font-mono">
-											· {formatIsk(group.estimatedValue)}
-										</span>
+										<span className="ml-2 font-mono">· {formatIsk(group.estimatedValue)}</span>
 									)}
 								</span>
 							</button>
@@ -507,10 +543,14 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 										<TableHeader>
 											<TableRow className="bg-muted/50">
 												<TableHead className="w-10" />
-												<TableHead className="font-semibold">Item</TableHead>
-												<TableHead className="font-semibold">Category</TableHead>
-												<TableHead className="text-right font-semibold">Qty</TableHead>
-												<TableHead className="text-right font-semibold">Est. Value</TableHead>
+												<TableHead className="font-semibold">{t('hrpages.item')}</TableHead>
+												<TableHead className="font-semibold">{t('hrpages.category')}</TableHead>
+												<TableHead className="text-right font-semibold">
+													{t('hrpages.qty')}
+												</TableHead>
+												<TableHead className="text-right font-semibold">
+													{t('hrpages.estValue')}
+												</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
@@ -541,7 +581,8 @@ export function AssetsSection({ data }: { data: ProcessedAsset[] }) {
 
 				{groups.length === 0 && search && (
 					<p className="py-8 text-center text-sm text-muted-foreground">
-						No assets matching &ldquo;{search}&rdquo;
+						{t('hrpages.noAssetsMatching')}
+						{search}&rdquo;
 					</p>
 				)}
 			</div>

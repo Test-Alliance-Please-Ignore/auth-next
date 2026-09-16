@@ -1,5 +1,6 @@
 import { MoonCompositionTable, MoonProfitabilityTable } from '@/components/moon-profitability-table'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAppTranslation } from '@/i18n'
 
 import type { StructureMoonComposition, StructureMoonGeography } from '@repo/structures'
 
@@ -9,32 +10,34 @@ export interface MoonCompositionCardProps {
 }
 
 export function MoonCompositionCard({ composition, moon }: MoonCompositionCardProps) {
+	const { t } = useAppTranslation()
+
 	const profitability = composition?.profitability
 
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Moon Resources</CardTitle>
+				<CardTitle>{t('moonScan.moonResources')}</CardTitle>
 			</CardHeader>
 			<CardContent className="space-y-4 text-sm">
 				<div className="grid gap-4 border-b border-border/60 pb-4 md:grid-cols-3">
 					<div>
-						<div className="text-muted-foreground">Moon</div>
+						<div className="text-muted-foreground">{t('moonScan.moon')}</div>
 						<div className="font-medium">{moon?.moonName ?? moon?.moonId ?? '-'}</div>
 					</div>
 					<div>
-						<div className="text-muted-foreground">Planet</div>
+						<div className="text-muted-foreground">{t('moonScan.planet')}</div>
 						<div className="font-medium">{moon?.planetName ?? moon?.planetId ?? '-'}</div>
 					</div>
 					<div>
-						<div className="text-muted-foreground">System</div>
+						<div className="text-muted-foreground">{t('moonScan.system')}</div>
 						<div className="font-medium">{moon?.systemName ?? moon?.systemId ?? '-'}</div>
 					</div>
 				</div>
 
 				{!composition ? (
 					<p className="text-sm text-muted-foreground">
-						No verified moon composition is available for this moon.
+						{t('moonScan.noVerifiedMoonCompositionIsAvailableForThisMoon')}
 					</p>
 				) : null}
 
@@ -43,14 +46,15 @@ export function MoonCompositionCard({ composition, moon }: MoonCompositionCardPr
 				) : composition ? (
 					<div className="space-y-2">
 						<p className="text-sm text-muted-foreground">
-							Verified composition available, but profitability data could not be loaded.
+							{t('moonScan.verifiedCompositionAvailableButProfitabilityDataCouldNotBeLoaded')}
 						</p>
 						<MoonCompositionTable composition={composition} />
 					</div>
 				) : null}
 				{composition?.pricingSnapshotDate ? (
 					<div className="text-right text-xs text-muted-foreground">
-						Pricing snapshot: {composition.pricingSnapshotDate}
+						{t('moonScan.pricingSnapshot')}
+						{composition.pricingSnapshotDate}
 					</div>
 				) : null}
 			</CardContent>

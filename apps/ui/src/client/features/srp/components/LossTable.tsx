@@ -2,7 +2,6 @@ import { ExternalLink, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 
-import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { Button } from '@/components/ui/button'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import {
@@ -13,12 +12,14 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
+import { useAppTranslation } from '@/i18n'
 import { typeIconUrl } from '@/lib/eve-images'
 
 import {
-	REFRESH_COOLDOWN_MS,
 	persistRefreshCooldownUntilMs,
 	readRefreshCooldownUntilMs,
+	REFRESH_COOLDOWN_MS,
 } from '../state/refresh-cooldown'
 import { getKillmailUrl } from '../utils'
 import { RequestStatusBadge } from './RequestStatusBadge'
@@ -52,6 +53,7 @@ export function LossTable({
 	onDismissLoss,
 	dismissingKillmailId,
 }: LossTableProps) {
+	const { t } = useAppTranslation()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const maxLossAgeDays = config?.maxLossAgeDays ?? 30
 
@@ -60,7 +62,7 @@ export function LossTable({
 			<div className="space-y-6">
 				<div className="flex items-center justify-center gap-3 rounded-lg border border-dashed p-8">
 					<div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-					<p className="text-sm text-muted-foreground">Loading recent losses...</p>
+					<p className="text-sm text-muted-foreground">{t('srp.losses.loading')}</p>
 				</div>
 				<div className="space-y-2">
 					{[...Array(3)].map((_, i) => (
@@ -78,7 +80,7 @@ export function LossTable({
 			{losses.length === 0 ? (
 				<div className="rounded-lg border border-dashed p-8 text-center">
 					<p className="text-sm text-muted-foreground">
-						{`No requestable losses found in the last ${maxLossAgeDays} days.`}
+						{t('srp.losses.empty', { count: maxLossAgeDays })}
 					</p>
 				</div>
 			) : (
@@ -87,12 +89,12 @@ export function LossTable({
 						<TableHeader>
 							<TableRow>
 								<TableHead className="w-16" />
-								<TableHead>Ship</TableHead>
-								<TableHead>Character</TableHead>
-								<TableHead>Date/Time</TableHead>
-								<TableHead>Location</TableHead>
-								<TableHead>SRP Status</TableHead>
-								<TableHead className="text-right">Actions</TableHead>
+								<TableHead>{t('srp.common.ship')}</TableHead>
+								<TableHead>{t('srp.common.character')}</TableHead>
+								<TableHead>{t('srp.common.dateTime')}</TableHead>
+								<TableHead>{t('srp.common.location')}</TableHead>
+								<TableHead>{t('srp.losses.status')}</TableHead>
+								<TableHead className="text-right">{t('srp.common.actions')}</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -107,7 +109,7 @@ export function LossTable({
 											<div className="h-10 w-10 overflow-hidden rounded border border-border/50">
 												<img
 													src={typeIconUrl(loss.shipTypeId, 64)}
-													alt={loss.shipTypeName || `Ship ${loss.shipTypeId}`}
+													alt={loss.shipTypeName || t('srp.common.shipId', { id: loss.shipTypeId })}
 													className="h-full w-full object-contain"
 													loading="lazy"
 												/>
@@ -119,16 +121,16 @@ export function LossTable({
 													to={`/srp/request/${loss.srpRequestId}`}
 													className="underline-offset-4 hover:underline focus-visible:underline"
 												>
-													{loss.shipTypeName || `Ship ${loss.shipTypeId}`}
+													{loss.shipTypeName || t('srp.common.shipId', { id: loss.shipTypeId })}
 												</Link>
 											) : isTooOld ? (
-												loss.shipTypeName || `Ship ${loss.shipTypeId}`
+												loss.shipTypeName || t('srp.common.shipId', { id: loss.shipTypeId })
 											) : (
 												<Link
 													to={`/srp/create?killmailId=${loss.killmailId}&killmailHash=${loss.killmailHash}`}
 													className="underline-offset-4 hover:underline focus-visible:underline"
 												>
-													{loss.shipTypeName || `Ship ${loss.shipTypeId}`}
+													{loss.shipTypeName || t('srp.common.shipId', { id: loss.shipTypeId })}
 												</Link>
 											)}
 										</TableCell>
@@ -155,7 +157,7 @@ export function LossTable({
 												<RequestStatusBadge status={loss.srpRequestStatus as any} />
 											) : (
 												<span className="inline-flex items-center rounded-md border border-border/50 bg-muted/20 px-2 py-1 text-xs text-muted-foreground">
-													No request
+													{t('srp.losses.noRequest')}
 												</span>
 											)}
 										</TableCell>
@@ -166,21 +168,23 @@ export function LossTable({
 														href={getKillmailUrl(loss.killmailId)}
 														target="_blank"
 														rel="noopener noreferrer"
-														title="View on zKillboard"
+														title={t('srp.common.zkill')}
 													>
 														<ExternalLink className="h-4 w-4" />
 													</a>
 												</Button>
 												{loss.hasSRPRequest && loss.srpRequestId ? (
 													<Button variant="secondary" size="sm" asChild>
-														<Link to={`/srp/request/${loss.srpRequestId}`}>View Request</Link>
+														<Link to={`/srp/request/${loss.srpRequestId}`}>
+															{t('srp.common.viewRequest')}
+														</Link>
 													</Button>
 												) : isTooOld ? (
 													<span
 														className="inline-flex items-center rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1 text-xs text-destructive"
-														title={`Losses older than ${maxLossAgeDays} days are not eligible for SRP`}
+														title={t('srp.losses.ageLimit', { count: maxLossAgeDays })}
 													>
-														Too old
+														{t('srp.losses.tooOld')}
 													</span>
 												) : (
 													<div className="flex items-center gap-2">
@@ -188,22 +192,19 @@ export function LossTable({
 															<Link
 																to={`/srp/create?killmailId=${loss.killmailId}&killmailHash=${loss.killmailHash}`}
 															>
-																Request SRP
+																{t('srp.losses.request')}
 															</Link>
 														</Button>
 														<Button
 															variant="ghost"
 															size="sm"
-															disabled={
-																!onDismissLoss || dismissingKillmailId === loss.killmailId
-															}
+															disabled={!onDismissLoss || dismissingKillmailId === loss.killmailId}
 															onClick={() => {
 																if (!onDismissLoss) return
 																requestConfirmation({
-																	title: 'Dismiss This Loss?',
-																	description:
-																		'This will remove the loss from your recent losses list and cannot be undone.',
-																	confirmLabel: 'Dismiss Loss',
+																	title: (t) => t('srp.losses.dismissTitle'),
+																	description: t('srp.losses.dismissDescription'),
+																	confirmLabel: (t) => t('srp.losses.dismissConfirm'),
 																	intent: 'destructive',
 																	onConfirm: async () => {
 																		await onDismissLoss(loss.killmailId)
@@ -212,8 +213,8 @@ export function LossTable({
 															}}
 														>
 															{dismissingKillmailId === loss.killmailId
-																? 'Dismissing…'
-																: 'Dismiss'}
+																? t('srp.losses.dismissing')
+																: t('srp.losses.dismiss')}
 														</Button>
 													</div>
 												)}
@@ -235,8 +236,11 @@ export function RecentLossesStatusAlerts({
 	refreshErrorMessage,
 	loadFailures,
 }: RecentLossesStatusAlertsProps) {
+	const { t } = useAppTranslation()
 	const actionableLoadFailures =
-		loadFailures?.filter((failure) => failure.reason === 'invalid_token' || failure.reason === 'fetch_failed') ?? []
+		loadFailures?.filter(
+			(failure) => failure.reason === 'invalid_token' || failure.reason === 'fetch_failed'
+		) ?? []
 	const hasLoadFailures = actionableLoadFailures.length > 0
 	const isWorkflowRefreshing =
 		refreshStatus?.status === 'queued' || refreshStatus?.status === 'running'
@@ -249,19 +253,19 @@ export function RecentLossesStatusAlerts({
 		? null
 		: refreshStatus?.status === 'failed'
 			? {
-					title: 'Recent loss refresh failed',
-					body: refreshStatus?.lastError ?? refreshErrorMessage ?? 'Unknown error',
+					title: t('srp.losses.refreshFailed'),
+					body: refreshStatus?.lastError ?? refreshErrorMessage ?? t('srp.common.unknownError'),
 					className: 'border-red-500/40 bg-red-500/10 text-red-400',
 				}
 			: refreshErrorMessage
 				? {
-						title: 'Recent loss refresh failed',
+						title: t('srp.losses.refreshFailed'),
 						body: refreshErrorMessage,
 						className: 'border-red-500/40 bg-red-500/10 text-red-400',
 					}
 				: hasLoadFailures
 					? {
-							title: 'Some character losses could not be fetched',
+							title: t('srp.losses.partialFailure'),
 							body: actionableLoadFailures,
 							className: 'border-amber-500/40 bg-amber-500/10 text-amber-400',
 						}
@@ -272,23 +276,27 @@ export function RecentLossesStatusAlerts({
 			{isWorkflowRefreshing ? (
 				<div className="rounded-md border border-sky-500/40 bg-sky-500/10 px-4 py-3 text-sm text-sky-400">
 					<p className="mb-1 font-medium">
-						Refreshing recent losses for {refreshStatus?.processedCharacters ?? 0}/{refreshStatus?.totalCharacters ?? 0}{' '}
-						characters
+						{t('srp.losses.refreshProgress', {
+							processed: refreshStatus?.processedCharacters ?? 0,
+							total: refreshStatus?.totalCharacters ?? 0,
+						})}
 					</p>
 					<p className="text-xs text-muted-foreground">
 						{refreshStatus?.currentCharacterName
-							? `Currently fetching ${refreshStatus.currentCharacterName}.`
-							: 'Starting background refresh workflow.'}
+							? t('srp.losses.currentCharacter', { name: refreshStatus.currentCharacterName })
+							: t('srp.losses.startingWorkflow')}
 					</p>
 				</div>
 			) : null}
 
 			{refreshStatus?.status === 'completed' ? (
 				<div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
-					<p className="mb-1 font-medium">Recent losses refreshed</p>
+					<p className="mb-1 font-medium">{t('srp.losses.refreshed')}</p>
 					<p className="text-xs text-muted-foreground">
-						{refreshStatus?.successfulCharacters ?? 0} characters refreshed, {refreshStatus?.failedCharacters ?? 0}{' '}
-						characters reported warnings.
+						{t('srp.losses.refreshCompleted', {
+							successful: refreshStatus?.successfulCharacters ?? 0,
+							failed: refreshStatus?.failedCharacters ?? 0,
+						})}
 					</p>
 				</div>
 			) : null}
@@ -299,13 +307,16 @@ export function RecentLossesStatusAlerts({
 					{Array.isArray(warningBanner.body) ? (
 						<ul className="space-y-0.5">
 							{warningBanner.body.map((failure) => (
-								<li key={failure.characterId} className="flex items-center gap-2 text-xs text-muted-foreground">
+								<li
+									key={failure.characterId}
+									className="flex items-center gap-2 text-xs text-muted-foreground"
+								>
 									<span className="font-medium text-foreground">{failure.characterName}</span>
 									{failure.message
 										? `— ${failure.message}`
 										: failure.reason === 'invalid_token'
-											? '— ESI token is invalid or expired. Please re-authenticate this character.'
-												: '— Could not load losses right now. Please try again shortly.'}
+											? t('srp.losses.tokenExpired')
+											: t('srp.losses.loadRetry')}
 								</li>
 							))}
 						</ul>
@@ -331,6 +342,7 @@ export function RecentLossRefreshButton({
 	refreshCooldownUntil,
 	onRefresh,
 }: RecentLossRefreshButtonProps) {
+	const { t } = useAppTranslation()
 	const [nowMs, setNowMs] = useState(() => Date.now())
 	const [cooldownUntilMs, setCooldownUntilMs] = useState(() => {
 		if (typeof window === 'undefined') return 0
@@ -391,10 +403,12 @@ export function RecentLossRefreshButton({
 			disabled={refreshDisabled}
 			title={
 				isCooldownActive
-					? `Refresh available in ${remainingMinutesPart}:${remainingSecondsPart}`
+					? t('srp.losses.refreshAvailable', {
+							time: `${remainingMinutesPart}:${remainingSecondsPart}`,
+						})
 					: isWorkflowRefreshing
-						? 'Recent loss refresh is already in progress'
-						: 'Refresh losses'
+						? t('srp.losses.refreshInProgress')
+						: t('srp.losses.refreshHint')
 			}
 		>
 			<RefreshCw
@@ -402,12 +416,15 @@ export function RecentLossRefreshButton({
 				className={`mr-2 h-4 w-4 ${isRefreshing || isWorkflowRefreshing ? 'animate-spin' : ''}`}
 			/>
 			{isRefreshing
-				? 'Starting…'
+				? t('srp.losses.starting')
 				: isWorkflowRefreshing
-					? `Fetching… ${refreshStatus?.processedCharacters ?? 0}/${refreshStatus?.totalCharacters ?? 0}`
+					? t('srp.losses.fetching', {
+							processed: refreshStatus?.processedCharacters ?? 0,
+							total: refreshStatus?.totalCharacters ?? 0,
+						})
 					: isCooldownActive
-						? `Refresh in ${remainingMinutesPart}:${remainingSecondsPart}`
-						: 'Refresh Losses'}
+						? t('srp.losses.refreshIn', { time: `${remainingMinutesPart}:${remainingSecondsPart}` })
+						: t('srp.losses.refresh')}
 		</Button>
 	)
 }

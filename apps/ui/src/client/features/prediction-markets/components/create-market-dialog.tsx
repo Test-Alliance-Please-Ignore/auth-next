@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { i18n, useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 
 import { useCreateMarket } from '../hooks'
@@ -28,38 +29,45 @@ import type { CreateMarketRequest } from '../types'
 const MAX_OUTCOMES = 20
 
 // Client guard mirrors the server route (defense-in-depth; server is authoritative).
-const schema = z
-	.object({
-		question: z.string().trim().min(3, 'Question must be at least 3 characters').max(500),
-		description: z.string().trim().max(2000).optional(),
-		outcomes: z
-			.array(z.string().trim().min(1))
-			.min(2, 'Add at least two outcomes')
-			.max(MAX_OUTCOMES)
-			.refine(
-				(o) => new Set(o.map((s) => s.toLowerCase())).size === o.length,
-				'Outcomes must be distinct'
-			),
-		closesAt: z.string().refine((s) => {
-			const t = new Date(s).getTime()
-			return Number.isFinite(t) && t > Date.now()
-		}, 'Close time must be in the future'),
-		resolvesOn: z.string().refine((s) => {
-			const t = new Date(s).getTime()
-			return Number.isFinite(t) && t > Date.now()
-		}, 'Resolution date must be in the future'),
-		rakeBps: z.number().int().min(0).max(2000).optional(),
-		minStake: z.string().optional(),
-		maxStake: z.string().optional(),
-		perUserCap: z.string().optional(),
-		twoOfN: z.boolean().optional(),
-		designatedResolverIds: z.array(z.string().uuid()).max(10).optional(),
-	})
-	// A market can't be scheduled to resolve before its own betting closes (server enforces this too).
-	.refine((d) => new Date(d.resolvesOn).getTime() >= new Date(d.closesAt).getTime(), {
-		message: 'Resolution date must be on or after the close time',
-		path: ['resolvesOn'],
-	})
+const createMarketSchema = () =>
+	z
+		.object({
+			question: z
+				.string()
+				.trim()
+				.min(3, i18n.t('predictionMarkets.questionMustBeAtLeast3Characters'))
+				.max(500),
+			description: z.string().trim().max(2000).optional(),
+			outcomes: z
+				.array(z.string().trim().min(1))
+				.min(2, i18n.t('predictionMarkets.addAtLeastTwoOutcomes'))
+				.max(MAX_OUTCOMES)
+				.refine(
+					(o) => new Set(o.map((s) => s.toLowerCase())).size === o.length,
+					i18n.t('predictionMarkets.outcomesMustBeDistinct')
+				),
+			closesAt: z.string().refine((s) => {
+				const t = new Date(s).getTime()
+				return Number.isFinite(t) && t > Date.now()
+			}, i18n.t('predictionMarkets.closeTimeMustBeInTheFuture')),
+			resolvesOn: z.string().refine((s) => {
+				const t = new Date(s).getTime()
+				return Number.isFinite(t) && t > Date.now()
+			}, i18n.t('predictionMarkets.resolutionDateMustBeInTheFuture')),
+			rakeBps: z.number().int().min(0).max(2000).optional(),
+			minStake: z.string().optional(),
+			maxStake: z.string().optional(),
+			perUserCap: z.string().optional(),
+			twoOfN: z.boolean().optional(),
+			designatedResolverIds: z.array(z.string().uuid()).max(10).optional(),
+		})
+		// A market can't be scheduled to resolve before its own betting closes (server enforces this too).
+		.refine((d) => new Date(d.resolvesOn).getTime() >= new Date(d.closesAt).getTime(), {
+			get message() {
+				return i18n.t('predictionMarkets.resolutionDateMustBeOnOrAfterTheCloseTime')
+			},
+			path: ['resolvesOn'],
+		})
 
 export interface CreateMarketDialogProps {
 	open: boolean
@@ -88,9 +96,14 @@ export function CreateMarketDialog({
 	scope = 'admin',
 	showAdvanced = true,
 }: CreateMarketDialogProps) {
+	const { t } = useAppTranslation()
+
 	const [question, setQuestion] = useState('')
 	const [description, setDescription] = useState('')
-	const [outcomes, setOutcomes] = useState<string[]>(['Yes', 'No'])
+	const [outcomes, setOutcomes] = useState<string[]>([
+		t('predictionMarkets.yes'),
+		t('predictionMarkets.no'),
+	])
 	const [closesAt, setClosesAt] = useState('')
 	const [resolvesOn, setResolvesOn] = useState('')
 	const [rakeBps, setRakeBps] = useState('')
@@ -118,7 +131,7 @@ export function CreateMarketDialog({
 		if (open) {
 			setQuestion('')
 			setDescription('')
-			setOutcomes(['Yes', 'No'])
+			setOutcomes([t('predictionMarkets.yes'), t('predictionMarkets.no')])
 			setClosesAt('')
 			setResolvesOn('')
 			setRakeBps('')
@@ -151,7 +164,7 @@ export function CreateMarketDialog({
 		e.preventDefault()
 
 		const trimmedOutcomes = outcomes.map((o) => o.trim()).filter(Boolean)
-		const parsed = schema.safeParse({
+		const parsed = createMarketSchema().safeParse({
 			question,
 			description: description.trim() || undefined,
 			outcomes: trimmedOutcomes,
@@ -165,7 +178,7 @@ export function CreateMarketDialog({
 			designatedResolverIds: canDesignate && resolverIds.length ? resolverIds : undefined,
 		})
 		if (!parsed.success) {
-			toast.error(parsed.error.issues[0]?.message ?? 'Invalid market')
+			toast.error(parsed.error.issues[0]?.message ?? t('predictionMarkets.invalidMarket'))
 			return
 		}
 		const d = parsed.data
@@ -176,7 +189,11 @@ export function CreateMarketDialog({
 			durationCapped &&
 			new Date(d.closesAt).getTime() - Date.now() > MAX_MARKET_OPEN_DURATION_MS
 		) {
-			toast.error(`Markets can stay open for at most ${MAX_MARKET_OPEN_DAYS} days.`)
+			toast.error(
+				t('predictionMarkets.marketsCanStayOpenForAtMostValue1Days', {
+					value1: MAX_MARKET_OPEN_DAYS,
+				})
+			)
 			return
 		}
 
@@ -204,18 +221,18 @@ export function CreateMarketDialog({
 		<Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
 			<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
 				<DialogHeader>
-					<DialogTitle>New market</DialogTitle>
+					<DialogTitle>{t('predictionMarkets.newMarket')}</DialogTitle>
 					<DialogDescription>
-						Creates the market and posts it to the predictions forum channel.
+						{t('predictionMarkets.createsTheMarketAndPostsItToThePredictionsForum')}
 					</DialogDescription>
 				</DialogHeader>
 
 				<form onSubmit={handleSubmit} className="space-y-4">
 					<div className="space-y-2">
-						<Label htmlFor="pm-question">Question</Label>
+						<Label htmlFor="pm-question">{t('predictionMarkets.question')}</Label>
 						<Input
 							id="pm-question"
-							placeholder="Will X happen by Y?"
+							placeholder={t('predictionMarkets.willXHappenByY')}
 							value={question}
 							onChange={(e) => setQuestion(e.target.value)}
 							maxLength={500}
@@ -225,10 +242,10 @@ export function CreateMarketDialog({
 					</div>
 
 					<div className="space-y-2">
-						<Label htmlFor="pm-description">Description (optional)</Label>
+						<Label htmlFor="pm-description">{t('predictionMarkets.descriptionOptional')}</Label>
 						<Textarea
 							id="pm-description"
-							placeholder="Resolution criteria, context…"
+							placeholder={t('predictionMarkets.resolutionCriteriaContext')}
 							value={description}
 							onChange={(e) => setDescription(e.target.value)}
 							rows={2}
@@ -238,12 +255,12 @@ export function CreateMarketDialog({
 					</div>
 
 					<div className="space-y-2">
-						<Label>Outcomes</Label>
+						<Label>{t('predictionMarkets.outcomes')}</Label>
 						<div className="space-y-2">
 							{outcomes.map((outcome, i) => (
 								<div key={i} className="flex items-center gap-2">
 									<Input
-										placeholder={`Outcome ${i + 1}`}
+										placeholder={t('predictionMarkets.outcomeValue1', { value1: i + 1 })}
 										value={outcome}
 										onChange={(e) => setOutcome(i, e.target.value)}
 										maxLength={100}
@@ -256,7 +273,7 @@ export function CreateMarketDialog({
 										size="icon"
 										onClick={() => removeOutcome(i)}
 										disabled={create.isPending || outcomes.length <= 2}
-										aria-label={`Remove outcome ${i + 1}`}
+										aria-label={t('predictionMarkets.removeOutcomeValue1', { value1: i + 1 })}
 									>
 										<X className="h-4 w-4" />
 									</Button>
@@ -271,12 +288,13 @@ export function CreateMarketDialog({
 							onClick={addOutcome}
 							disabled={create.isPending || outcomes.length >= MAX_OUTCOMES}
 						>
-							<Plus className="mr-1 h-4 w-4" /> Add outcome
+							<Plus className="mr-1 h-4 w-4" />
+							{t('predictionMarkets.addOutcome')}
 						</Button>
 					</div>
 
 					<div className="space-y-2">
-						<Label htmlFor="pm-closes">Closes at</Label>
+						<Label htmlFor="pm-closes">{t('predictionMarkets.closesAt')}</Label>
 						<Input
 							id="pm-closes"
 							type="datetime-local"
@@ -288,13 +306,15 @@ export function CreateMarketDialog({
 						/>
 						{durationCapped ? (
 							<p className="text-xs text-muted-foreground">
-								Markets can stay open for up to {MAX_MARKET_OPEN_DAYS} days.
+								{t('predictionMarkets.marketsCanStayOpenForUpTo')}
+								{MAX_MARKET_OPEN_DAYS}
+								{t('predictionMarkets.days')}
 							</p>
 						) : null}
 					</div>
 
 					<div className="space-y-2">
-						<Label htmlFor="pm-resolves">Resolves on</Label>
+						<Label htmlFor="pm-resolves">{t('predictionMarkets.resolvesOn')}</Label>
 						<Input
 							id="pm-resolves"
 							type="datetime-local"
@@ -304,7 +324,7 @@ export function CreateMarketDialog({
 							required
 						/>
 						<p className="text-xs text-muted-foreground">
-							Expected resolution date — on or after the close time.
+							{t('predictionMarkets.expectedResolutionDateOnOrAfterTheCloseTime')}
 						</p>
 					</div>
 
@@ -312,48 +332,48 @@ export function CreateMarketDialog({
 						<>
 							<div className="grid grid-cols-2 gap-3">
 								<div className="space-y-2">
-									<Label htmlFor="pm-rake">Rake (bps, optional)</Label>
+									<Label htmlFor="pm-rake">{t('predictionMarkets.rakeBpsOptional')}</Label>
 									<Input
 										id="pm-rake"
 										type="text"
 										inputMode="numeric"
-										placeholder="default"
+										placeholder={t('predictionMarkets.default')}
 										value={rakeBps}
 										onChange={(e) => setRakeBps(digitsOnly(e.target.value))}
 										disabled={create.isPending}
 									/>
 								</div>
 								<div className="space-y-2">
-									<Label htmlFor="pm-min">Min stake (optional)</Label>
+									<Label htmlFor="pm-min">{t('predictionMarkets.minStakeOptional')}</Label>
 									<Input
 										id="pm-min"
 										type="text"
 										inputMode="numeric"
-										placeholder="default"
+										placeholder={t('predictionMarkets.default')}
 										value={minStake}
 										onChange={(e) => setMinStake(digitsOnly(e.target.value))}
 										disabled={create.isPending}
 									/>
 								</div>
 								<div className="space-y-2">
-									<Label htmlFor="pm-max">Max stake (optional)</Label>
+									<Label htmlFor="pm-max">{t('predictionMarkets.maxStakeOptional')}</Label>
 									<Input
 										id="pm-max"
 										type="text"
 										inputMode="numeric"
-										placeholder="none"
+										placeholder={t('predictionMarkets.none')}
 										value={maxStake}
 										onChange={(e) => setMaxStake(digitsOnly(e.target.value))}
 										disabled={create.isPending}
 									/>
 								</div>
 								<div className="space-y-2">
-									<Label htmlFor="pm-cap">Per-user cap (optional)</Label>
+									<Label htmlFor="pm-cap">{t('predictionMarkets.perUserCapOptional')}</Label>
 									<Input
 										id="pm-cap"
 										type="text"
 										inputMode="numeric"
-										placeholder="none"
+										placeholder={t('predictionMarkets.none')}
 										value={perUserCap}
 										onChange={(e) => setPerUserCap(digitsOnly(e.target.value))}
 										disabled={create.isPending}
@@ -363,9 +383,11 @@ export function CreateMarketDialog({
 
 							<div className="flex items-center justify-between rounded-md border border-border p-3">
 								<div>
-									<Label htmlFor="pm-twoofn">Require two-of-N resolution</Label>
+									<Label htmlFor="pm-twoofn">
+										{t('predictionMarkets.requireTwoOfNResolution')}
+									</Label>
 									<p className="text-xs text-muted-foreground">
-										A second resolver must approve before this market resolves.
+										{t('predictionMarkets.aSecondResolverMustApproveBeforeThisMarketResolves')}
 									</p>
 								</div>
 								<Switch
@@ -380,15 +402,13 @@ export function CreateMarketDialog({
 
 					{canDesignate ? (
 						<div className="space-y-2">
-							<Label>Designated resolvers (optional)</Label>
+							<Label>{t('predictionMarkets.designatedResolversOptional')}</Label>
 							<p className="text-xs text-muted-foreground">
-								Restrict who can resolve or void this market. Each must already hold the resolver
-								role; you can’t designate yourself. Leave empty to allow any resolver. Two-of-N
-								markets need at least two.
+								{t('predictionMarkets.restrictWhoCanResolveOrVoidThisMarketEachMust')}
 							</p>
 							<UserSearchSelect
 								value=""
-								placeholder="Search resolvers by name…"
+								placeholder={t('predictionMarkets.searchResolversByName')}
 								disabled={create.isPending || resolverIds.length >= 10}
 								onChange={(id, user) => addResolver(id, user?.label ?? id)}
 							/>
@@ -406,7 +426,9 @@ export function CreateMarketDialog({
 												type="button"
 												onClick={() => removeResolver(id)}
 												disabled={create.isPending}
-												aria-label={`Remove resolver ${resolverLabels[id] ?? id}`}
+												aria-label={t('predictionMarkets.removeResolverValue1', {
+													value1: resolverLabels[id] ?? id,
+												})}
 												className="text-muted-foreground hover:text-foreground"
 											>
 												<X className="h-3.5 w-3.5" />
@@ -426,15 +448,15 @@ export function CreateMarketDialog({
 							onClick={close}
 							disabled={create.isPending}
 						>
-							Cancel
+							{t('predictionMarkets.cancel')}
 						</Button>
 						<Button
 							type="submit"
 							variant="primary"
 							loading={create.isPending}
-							loadingText="Creating…"
+							loadingText={t('predictionMarkets.creating')}
 						>
-							Create market
+							{t('predictionMarkets.createMarket')}
 						</Button>
 					</DialogFooter>
 				</form>

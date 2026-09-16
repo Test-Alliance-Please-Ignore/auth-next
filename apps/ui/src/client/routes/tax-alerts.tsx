@@ -39,12 +39,14 @@ import { useAuth } from '@/hooks/useAuth'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
+import { i18n, useAppTranslation } from '@/i18n'
 import { formatTaxDateTime } from '@/lib/tax-date'
 import {
 	formatTaxAlertContext,
 	formatTaxAlertPayloadSummary,
 	formatTaxAlertTypeLabel,
 	formatTaxNumber,
+	formatTaxStatus,
 	TaxCorporationDisplay,
 } from '@/lib/tax-display'
 import toast from '@/lib/toast'
@@ -52,17 +54,57 @@ import toast from '@/lib/toast'
 import type { TaxAlert, TaxAlertSeverity, TaxAlertStatus } from '@repo/corporation-tax'
 
 const statusFilterOptions: Array<{ label: string; value?: TaxAlertStatus }> = [
-	{ label: 'All', value: undefined },
-	{ label: 'Open', value: 'open' },
-	{ label: 'Acknowledged', value: 'acknowledged' },
-	{ label: 'Resolved', value: 'resolved' },
+	{
+		get label() {
+			return i18n.t('tax.all')
+		},
+		value: undefined,
+	},
+	{
+		get label() {
+			return i18n.t('tax.open')
+		},
+		value: 'open',
+	},
+	{
+		get label() {
+			return i18n.t('tax.acknowledged')
+		},
+		value: 'acknowledged',
+	},
+	{
+		get label() {
+			return i18n.t('tax.resolved')
+		},
+		value: 'resolved',
+	},
 ]
 
 const severityFilterOptions: Array<{ label: string; value?: TaxAlertSeverity }> = [
-	{ label: 'All Severities', value: undefined },
-	{ label: 'Critical', value: 'critical' },
-	{ label: 'Warning', value: 'warning' },
-	{ label: 'Info', value: 'info' },
+	{
+		get label() {
+			return i18n.t('tax.allSeverities')
+		},
+		value: undefined,
+	},
+	{
+		get label() {
+			return i18n.t('tax.critical')
+		},
+		value: 'critical',
+	},
+	{
+		get label() {
+			return i18n.t('tax.warning')
+		},
+		value: 'warning',
+	},
+	{
+		get label() {
+			return i18n.t('tax.info')
+		},
+		value: 'info',
+	},
 ]
 
 function severityBadgeVariant(severity: TaxAlertSeverity): 'destructive' | 'warning' | 'ghost' {
@@ -86,7 +128,9 @@ function statusBadgeVariant(status: TaxAlertStatus): 'default' | 'secondary' | '
 }
 
 export default function TaxAlertsPage() {
-	usePageTitle('Tax Alerts')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('tax.taxAlerts'))
 
 	const { user } = useAuth()
 	const isSiteAdmin = user?.is_admin === true
@@ -170,8 +214,8 @@ export default function TaxAlertsPage() {
 			<Container>
 				<Card>
 					<CardHeader>
-						<CardTitle>Tax Alerts</CardTitle>
-						<CardDescription>You do not have permission to view tax alerts.</CardDescription>
+						<CardTitle>{t('tax.taxAlerts')}</CardTitle>
+						<CardDescription>{t('tax.youDoNotHavePermissionToViewTaxAlerts')}</CardDescription>
 					</CardHeader>
 				</Card>
 			</Container>
@@ -183,9 +227,9 @@ export default function TaxAlertsPage() {
 			<Container>
 				<Card>
 					<CardHeader>
-						<CardTitle>Tax Alerts</CardTitle>
+						<CardTitle>{t('tax.taxAlerts')}</CardTitle>
 						<CardDescription>
-							No corporation self-service scope was found for this account.
+							{t('tax.noCorporationSelfServiceScopeWasFoundForThisAccount')}
 						</CardDescription>
 					</CardHeader>
 				</Card>
@@ -205,7 +249,7 @@ export default function TaxAlertsPage() {
 		const trimmedGuildId = guildId.trim()
 		const trimmedChannelId = channelId.trim()
 		if (!trimmedName || !trimmedGuildId || !trimmedChannelId) {
-			toast.error('Name, guild ID, and channel ID are required.')
+			toast.error(t('tax.nameGuildIdAndChannelIdAreRequired'))
 			return
 		}
 		try {
@@ -214,18 +258,18 @@ export default function TaxAlertsPage() {
 				guildId: trimmedGuildId,
 				channelId: trimmedChannelId,
 			})
-			toast.success('Discord alert destination saved.')
+			toast.success(t('tax.discordAlertDestinationSaved'))
 			setDestinationModalOpen(false)
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Failed to save Discord destination.')
+			toast.error(error instanceof Error ? error.message : t('tax.failedToSaveDiscordDestination'))
 		}
 	}
 
 	return (
 		<Container>
 			<PageHeader
-				title="Tax Alerts"
-				description="Monitor discrepancy alerts and delivery status for corporation tax automation."
+				title={t('tax.taxAlerts')}
+				description={t('tax.monitorDiscrepancyAlertsAndDeliveryStatusForCorporationTaxAutomation')}
 				action={
 					canRetryFailedDeliveries ? (
 						<Button
@@ -234,7 +278,7 @@ export default function TaxAlertsPage() {
 							disabled={retryMutation.isPending}
 						>
 							<RefreshCcw className="h-4 w-4" />
-							Retry Failed Deliveries
+							{t('tax.retryFailedDeliveries')}
 						</Button>
 					) : undefined
 				}
@@ -246,20 +290,20 @@ export default function TaxAlertsPage() {
 				>
 					<Card>
 						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">Open Alerts</CardTitle>
+							<CardTitle className="text-sm">{t('tax.openAlerts')}</CardTitle>
 						</CardHeader>
 						<CardContent className="text-2xl font-semibold">{openCount}</CardContent>
 					</Card>
 					<Card>
 						<CardHeader className="pb-2">
-							<CardTitle className="text-sm">Critical Alerts</CardTitle>
+							<CardTitle className="text-sm">{t('tax.criticalAlerts')}</CardTitle>
 						</CardHeader>
 						<CardContent className="text-2xl font-semibold">{criticalCount}</CardContent>
 					</Card>
 					{showDeliveryTelemetry ? (
 						<Card>
 							<CardHeader className="pb-2">
-								<CardTitle className="text-sm">Failed Discord Deliveries</CardTitle>
+								<CardTitle className="text-sm">{t('tax.failedDiscordDeliveries')}</CardTitle>
 							</CardHeader>
 							<CardContent className="text-2xl font-semibold">{failedDeliveryCount}</CardContent>
 						</Card>
@@ -269,21 +313,21 @@ export default function TaxAlertsPage() {
 				<Card>
 					<CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
 						<div className="space-y-1">
-							<CardTitle>Alert Inbox</CardTitle>
+							<CardTitle>{t('tax.alertInbox')}</CardTitle>
 							<CardDescription>
-								Filter and manage alert lifecycle for tax discrepancy and ingestion events.
+								{t('tax.filterAndManageAlertLifecycleForTaxDiscrepancyAndIngestion')}
 							</CardDescription>
 						</div>
 						{canConfigureDestination ? (
 							<div className="flex flex-col items-start gap-2 sm:items-end">
 								<div className="text-xs text-muted-foreground sm:text-right">
 									{destinationLoading
-										? 'Loading destination...'
+										? t('tax.loadingDestination')
 										: destinationError
-											? 'Failed to load destination'
+											? t('tax.failedToLoadDestination')
 											: currentDestination
 												? `${currentDestination.name} • Guild ${currentDestination.guildId} • Channel ${currentDestination.channelId}`
-												: 'No Discord destination configured'}
+												: t('tax.noDiscordDestinationConfigured')}
 								</div>
 								<Button
 									variant="ghost"
@@ -294,7 +338,7 @@ export default function TaxAlertsPage() {
 										setDestinationModalOpen(true)
 									}}
 								>
-									Edit Discord Destination
+									{t('tax.editDiscordDestination')}
 								</Button>
 							</div>
 						) : null}
@@ -333,26 +377,28 @@ export default function TaxAlertsPage() {
 						</div>
 
 						{isLoading ? (
-							<div className="py-8 text-sm text-muted-foreground">Loading alerts...</div>
+							<div className="py-8 text-sm text-muted-foreground">{t('tax.loadingAlerts')}</div>
 						) : error ? (
 							<div className="py-8 text-sm text-destructive">
-								{error instanceof Error ? error.message : 'Failed to load tax alerts'}
+								{error instanceof Error ? error.message : t('tax.failedToLoadTaxAlerts')}
 							</div>
 						) : alerts.length === 0 ? (
 							<div className="py-8 text-sm text-muted-foreground">
-								No alerts matched the current filters.
+								{t('tax.noAlertsMatchedTheCurrentFilters')}
 							</div>
 						) : (
 							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead>Alert</TableHead>
-										<TableHead>Severity</TableHead>
-										<TableHead>Status</TableHead>
-										<TableHead>Corporation</TableHead>
-										<TableHead>Last Triggered</TableHead>
-										{showDeliveryTelemetry ? <TableHead>Discord Delivery</TableHead> : null}
-										<TableHead>Actions</TableHead>
+										<TableHead>{t('tax.alert')}</TableHead>
+										<TableHead>{t('tax.severity')}</TableHead>
+										<TableHead>{t('tax.status')}</TableHead>
+										<TableHead>{t('tax.corporation')}</TableHead>
+										<TableHead>{t('tax.lastTriggered')}</TableHead>
+										{showDeliveryTelemetry ? (
+											<TableHead>{t('tax.discordDelivery')}</TableHead>
+										) : null}
+										<TableHead>{t('tax.actions')}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -373,11 +419,13 @@ export default function TaxAlertsPage() {
 												</TableCell>
 												<TableCell>
 													<Badge variant={severityBadgeVariant(alert.severity)}>
-														{alert.severity}
+														{formatTaxStatus(alert.severity)}
 													</Badge>
 												</TableCell>
 												<TableCell>
-													<Badge variant={statusBadgeVariant(alert.status)}>{alert.status}</Badge>
+													<Badge variant={statusBadgeVariant(alert.status)}>
+														{formatTaxStatus(alert.status)}
+													</Badge>
 												</TableCell>
 												<TableCell>
 													{alert.corporationId ? (
@@ -386,16 +434,17 @@ export default function TaxAlertsPage() {
 															entityNames={entityNames}
 														/>
 													) : (
-														'Global'
+														t('tax.global')
 													)}
 												</TableCell>
 												<TableCell>{formatTaxDateTime(alert.lastTriggeredAt)}</TableCell>
 												{showDeliveryTelemetry ? (
 													<TableCell>
 														<div className="text-sm">
-															<div>{alert.discordDeliveryStatus}</div>
+															<div>{formatTaxStatus(alert.discordDeliveryStatus)}</div>
 															<div className="text-xs text-muted-foreground">
-																attempts: {formatTaxNumber(alert.discordAttemptCount)}
+																{t('tax.attempts')}
+																{formatTaxNumber(alert.discordAttemptCount)}
 															</div>
 														</div>
 													</TableCell>
@@ -409,7 +458,7 @@ export default function TaxAlertsPage() {
 																onClick={() => acknowledgeMutation.mutate(alert.id)}
 																disabled={acknowledgeMutation.isPending}
 															>
-																Acknowledge
+																{t('tax.acknowledge')}
 															</Button>
 														) : null}
 														{canResolve && alert.status !== 'resolved' ? (
@@ -420,7 +469,7 @@ export default function TaxAlertsPage() {
 																onClick={() => resolveMutation.mutate(alert.id)}
 																disabled={resolveMutation.isPending}
 															>
-																Resolve
+																{t('tax.resolve')}
 															</Button>
 														) : null}
 													</div>
@@ -438,37 +487,37 @@ export default function TaxAlertsPage() {
 					<Dialog open={destinationModalOpen} onOpenChange={setDestinationModalOpen}>
 						<DialogContent>
 							<DialogHeader>
-								<DialogTitle>Edit Discord Destination</DialogTitle>
+								<DialogTitle>{t('tax.editDiscordDestination')}</DialogTitle>
 								<DialogDescription>
-									Set the global destination used for all tax alerts.
+									{t('tax.setTheGlobalDestinationUsedForAllTaxAlerts')}
 								</DialogDescription>
 							</DialogHeader>
 							<div className="space-y-4">
 								<div className="space-y-1.5">
-									<Label htmlFor="tax-alert-destination-name">Destination Name</Label>
+									<Label htmlFor="tax-alert-destination-name">{t('tax.destinationName')}</Label>
 									<Input
 										id="tax-alert-destination-name"
 										value={destinationName}
 										onChange={(event) => setDestinationName(event.target.value)}
-										placeholder="Alliance Tax Alerts"
+										placeholder={t('tax.allianceTaxAlerts')}
 									/>
 								</div>
 								<div className="space-y-1.5">
-									<Label htmlFor="tax-alert-destination-guild-id">Guild ID</Label>
+									<Label htmlFor="tax-alert-destination-guild-id">{t('tax.guildId')}</Label>
 									<Input
 										id="tax-alert-destination-guild-id"
 										value={guildId}
 										onChange={(event) => setGuildId(event.target.value)}
-										placeholder="Discord guild ID"
+										placeholder={t('tax.discordGuildId')}
 									/>
 								</div>
 								<div className="space-y-1.5">
-									<Label htmlFor="tax-alert-destination-channel-id">Channel ID</Label>
+									<Label htmlFor="tax-alert-destination-channel-id">{t('tax.channelId')}</Label>
 									<Input
 										id="tax-alert-destination-channel-id"
 										value={channelId}
 										onChange={(event) => setChannelId(event.target.value)}
-										placeholder="Discord channel ID"
+										placeholder={t('tax.discordChannelId')}
 									/>
 								</div>
 							</div>
@@ -479,7 +528,7 @@ export default function TaxAlertsPage() {
 									showIcon={false}
 									onClick={() => setDestinationModalOpen(false)}
 								>
-									Cancel
+									{t('tax.cancel')}
 								</Button>
 								<Button
 									variant="primary"
@@ -488,8 +537,8 @@ export default function TaxAlertsPage() {
 									onClick={() => void handleSaveDestination()}
 								>
 									{upsertDestinationMutation.isPending
-										? 'Saving Destination...'
-										: 'Save Destination'}
+										? t('tax.savingDestination')
+										: t('tax.saveDestination')}
 								</Button>
 							</DialogFooter>
 						</DialogContent>

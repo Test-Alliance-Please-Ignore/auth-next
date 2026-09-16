@@ -17,6 +17,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
 import { EntityTypeBadge, StatsDashboard } from '../components'
 import { useIndustryProviders, useIndustryStats, useSetProviderAcceptingOrders } from '../hooks'
@@ -25,7 +26,9 @@ import { ENTITY_TYPE_LABELS } from '../types'
 import type { IndustryEntityType, IndustryProviderFilters } from '../types'
 
 export default function IndustryProvidersPage() {
-	usePageTitle('Admin - Industry Providers')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('industry.adminIndustryProviders'))
 
 	const [entityTypeFilter, setEntityTypeFilter] = useState<IndustryEntityType | 'all'>('all')
 	const [acceptingOrdersFilter, setAcceptingOrdersFilter] = useState<'all' | 'yes' | 'no'>('all')
@@ -46,8 +49,10 @@ export default function IndustryProvidersPage() {
 	const setAcceptingOrders = useSetProviderAcceptingOrders()
 
 	const handleToggleAcceptingOrders = async (providerId: string, currentStatus: boolean) => {
-		const action = currentStatus ? 'disable' : 'enable'
-		if (!confirm(`Are you sure you want to ${action} accepting orders for this provider?`)) return
+		const confirmation = currentStatus
+			? t('industry.stopOrdersConfirm')
+			: t('industry.startOrdersConfirm')
+		if (!confirm(confirmation)) return
 		try {
 			await setAcceptingOrders.mutateAsync({
 				id: providerId,
@@ -70,15 +75,15 @@ export default function IndustryProvidersPage() {
 			{/* Page Header */}
 			<div className="flex items-center justify-between">
 				<div>
-					<h1 className="text-3xl font-bold gradient-text">Industry Providers</h1>
+					<h1 className="text-3xl font-bold gradient-text">{t('industry.industryProviders')}</h1>
 					<p className="text-muted-foreground mt-1">
-						Manage service providers and their offered services
+						{t('industry.manageServiceProvidersAndTheirOfferedServices')}
 					</p>
 				</div>
 				<Button asChild>
 					<Link to="/admin/industry-providers/new">
 						<Plus className="h-4 w-4" />
-						Create Provider
+						{t('industry.createProvider')}
 					</Link>
 				</Button>
 			</div>
@@ -89,46 +94,46 @@ export default function IndustryProvidersPage() {
 			{/* Filters */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Filters</CardTitle>
-					<CardDescription>Filter providers by type and status</CardDescription>
+					<CardTitle>{t('industry.filters')}</CardTitle>
+					<CardDescription>{t('industry.filterProvidersByTypeAndStatus')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<div className="flex flex-wrap items-end gap-4">
 						<div className="w-full md:w-48 space-y-2">
-							<Label htmlFor="entityType">Owner Type</Label>
+							<Label htmlFor="entityType">{t('industry.ownerType2')}</Label>
 							<Select
 								value={entityTypeFilter}
 								onValueChange={(value) => setEntityTypeFilter(value as IndustryEntityType | 'all')}
 								inputId="entityType"
 								options={[
-									{ value: 'all', label: 'All Types' },
+									{ value: 'all', label: t('industry.allTypes') },
 									...Object.entries(ENTITY_TYPE_LABELS).map(([value, label]) => ({
 										value,
 										label,
 									})),
 								]}
-								placeholder="All types"
+								placeholder={t('industry.allTypes')}
 							/>
 						</div>
 
 						<div className="w-full md:w-48 space-y-2">
-							<Label htmlFor="acceptingOrders">Accepting Orders</Label>
+							<Label htmlFor="acceptingOrders">{t('industry.acceptingOrders')}</Label>
 							<Select
 								value={acceptingOrdersFilter}
 								onValueChange={(value) => setAcceptingOrdersFilter(value as 'all' | 'yes' | 'no')}
 								inputId="acceptingOrders"
 								options={[
-									{ value: 'all', label: 'All' },
-									{ value: 'yes', label: 'Yes' },
-									{ value: 'no', label: 'No' },
+									{ value: 'all', label: t('industry.all') },
+									{ value: 'yes', label: t('industry.yes') },
+									{ value: 'no', label: t('industry.no') },
 								]}
-								placeholder="All"
+								placeholder={t('industry.all')}
 							/>
 						</div>
 
 						{hasActiveFilters && (
 							<Button variant="ghost" onClick={clearFilters}>
-								Clear Filters
+								{t('industry.clearFilters')}
 							</Button>
 						)}
 					</div>
@@ -138,9 +143,9 @@ export default function IndustryProvidersPage() {
 			{/* Providers Table */}
 			<Card>
 				<CardHeader>
-					<CardTitle>Providers</CardTitle>
+					<CardTitle>{t('industry.providers')}</CardTitle>
 					<CardDescription>
-						{providers?.length || 0} provider{providers?.length !== 1 ? 's' : ''}
+						{t('industry.providerCount', { count: providers?.length ?? 0 })}
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
@@ -152,11 +157,11 @@ export default function IndustryProvidersPage() {
 						</div>
 					) : !providers || providers.length === 0 ? (
 						<div className="text-center py-12">
-							<p className="text-muted-foreground mb-4">No providers found</p>
+							<p className="text-muted-foreground mb-4">{t('industry.noProvidersFound')}</p>
 							<Button asChild>
 								<Link to="/admin/industry-providers/new">
 									<Plus className="h-4 w-4" />
-									Create Your First Provider
+									{t('industry.createYourFirstProvider')}
 								</Link>
 							</Button>
 						</div>
@@ -165,10 +170,10 @@ export default function IndustryProvidersPage() {
 							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead>Name</TableHead>
-										<TableHead>Owner Type</TableHead>
-										<TableHead>Accepting Orders</TableHead>
-										<TableHead className="text-right">Actions</TableHead>
+										<TableHead>{t('industry.name2')}</TableHead>
+										<TableHead>{t('industry.ownerType2')}</TableHead>
+										<TableHead>{t('industry.acceptingOrders')}</TableHead>
+										<TableHead className="text-right">{t('industry.actions')}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -194,12 +199,12 @@ export default function IndustryProvidersPage() {
 												{provider.acceptingOrders ? (
 													<Badge variant="success">
 														<CheckCircle className="mr-1 h-3 w-3" />
-														Yes
+														{t('industry.yes')}
 													</Badge>
 												) : (
 													<Badge variant="destructive">
 														<XCircle className="mr-1 h-3 w-3" />
-														No
+														{t('industry.no')}
 													</Badge>
 												)}
 											</TableCell>
@@ -214,8 +219,8 @@ export default function IndustryProvidersPage() {
 														disabled={setAcceptingOrders.isPending}
 														title={
 															provider.acceptingOrders
-																? 'Stop accepting orders'
-																: 'Start accepting orders'
+																? t('industry.stopAcceptingOrders2')
+																: t('industry.startAcceptingOrders2')
 														}
 													>
 														{provider.acceptingOrders ? (

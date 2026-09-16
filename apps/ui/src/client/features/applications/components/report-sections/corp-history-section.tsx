@@ -3,6 +3,7 @@
  */
 
 import { Badge } from '@/components/ui/badge'
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 import { corporationLogoUrl } from '@/lib/eve-images'
 
 interface ProcessedCorpHistoryEntry {
@@ -25,8 +26,12 @@ function CorpIcon({ corporationId }: { corporationId: string }) {
 }
 
 export function CorpHistorySection({ data }: { data: ProcessedCorpHistoryEntry[] }) {
+	const { t } = useAppTranslation()
+
 	if (data.length === 0) {
-		return <p className="text-sm text-muted-foreground">No corporation history available.</p>
+		return (
+			<p className="text-sm text-muted-foreground">{t('hrpages.noCorporationHistoryAvailable')}</p>
+		)
 	}
 
 	return (
@@ -34,10 +39,18 @@ export function CorpHistorySection({ data }: { data: ProcessedCorpHistoryEntry[]
 			<table className="w-full caption-bottom text-sm">
 				<thead className="sticky top-0 z-10 bg-card [&_tr]:border-b">
 					<tr className="border-b">
-						<th className="h-10 px-4 text-left align-middle text-sm font-medium text-muted-foreground">Corporation</th>
-						<th className="h-10 px-4 text-left align-middle text-sm font-medium text-muted-foreground">Joined</th>
-						<th className="h-10 px-4 text-left align-middle text-sm font-medium text-muted-foreground">Duration</th>
-						<th className="h-10 px-4 text-left align-middle text-sm font-medium text-muted-foreground">Status</th>
+						<th className="h-10 px-4 text-left align-middle text-sm font-medium text-muted-foreground">
+							{t('hrpages.corporation')}
+						</th>
+						<th className="h-10 px-4 text-left align-middle text-sm font-medium text-muted-foreground">
+							{t('hrpages.joined')}
+						</th>
+						<th className="h-10 px-4 text-left align-middle text-sm font-medium text-muted-foreground">
+							{t('hrpages.duration')}
+						</th>
+						<th className="h-10 px-4 text-left align-middle text-sm font-medium text-muted-foreground">
+							{t('hrpages.status')}
+						</th>
 					</tr>
 				</thead>
 				<tbody className="[&_tr:last-child]:border-0">
@@ -54,13 +67,15 @@ export function CorpHistorySection({ data }: { data: ProcessedCorpHistoryEntry[]
 									</span>
 								</div>
 							</td>
-							<td className="px-4 py-2 align-middle">{new Date(entry.start_date).toLocaleDateString()}</td>
+							<td className="px-4 py-2 align-middle">
+								{new Date(entry.start_date).toLocaleDateString(getActiveLocale())}
+							</td>
 							<td className="px-4 py-2 align-middle">{entry.duration || '-'}</td>
 							<td className="px-4 py-2 align-middle">
 								{i === 0 ? (
-									<Badge variant="success">Current</Badge>
+									<Badge variant="success">{t('hrpages.current2')}</Badge>
 								) : entry.is_deleted ? (
-									<Badge variant="destructive">Closed</Badge>
+									<Badge variant="destructive">{t('hrpages.closed')}</Badge>
 								) : null}
 							</td>
 						</tr>

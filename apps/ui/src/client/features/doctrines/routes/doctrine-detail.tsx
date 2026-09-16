@@ -27,6 +27,7 @@ import { Select } from '@/components/ui/select'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { i18n, useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 
 import { AddFittingDialog } from '../components/AddFittingDialog'
@@ -53,7 +54,9 @@ function groupFittingsByCategory(
 	for (const entry of entries) {
 		const fc = entry.fittingCategory
 		const key =
-			(fc && fc !== 'Uncategorized' ? fc : null) || entry.fitting.category || 'Uncategorized'
+			(fc && fc !== 'Uncategorized' ? fc : null) ||
+			entry.fitting.category ||
+			i18n.t('doctrines.uncategorized')
 		const group = map.get(key)
 		if (group) {
 			group.push(entry)
@@ -88,6 +91,8 @@ function StagingDialog({
 	doctrineId: string
 	existing?: DoctrineStagingEntry
 }) {
+	const { t } = useAppTranslation()
+
 	const { data: allSystems } = useStagingSystems()
 	const setMutation = useSetDoctrineStagingSystem()
 	const [stagingSystemId, setStagingSystemId] = useState(existing?.stagingSystem.id || '')
@@ -103,10 +108,10 @@ function StagingDialog({
 				stagingSystemId: isEdit ? existing.stagingSystem.id : stagingSystemId,
 				note: note || '',
 			})
-			toast.success(isEdit ? 'Staging updated' : 'Staging system assigned')
+			toast.success(isEdit ? t('doctrines.stagingUpdated') : t('doctrines.stagingSystemAssigned'))
 			onOpenChange(false)
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Failed to save')
+			toast.error(err instanceof Error ? err.message : t('doctrines.failedToSave'))
 		}
 	}
 
@@ -123,47 +128,49 @@ function StagingDialog({
 					<DialogHeader>
 						<DialogTitle>
 							{isEdit
-								? `Edit Staging: ${existing.stagingSystem.solarSystemName}`
-								: 'Assign Staging System'}
+								? t('doctrines.editStagingValue1', {
+										value1: existing.stagingSystem.solarSystemName,
+									})
+								: t('doctrines.assignStagingSystem')}
 						</DialogTitle>
 					</DialogHeader>
 					<div className="space-y-4 py-4">
 						{!isEdit && (
 							<div className="space-y-2">
-								<Label>Staging System</Label>
+								<Label>{t('doctrines.stagingSystem')}</Label>
 								<Select
 									options={availableOptions}
 									value={stagingSystemId}
 									onValueChange={(val) => setStagingSystemId(val)}
-									placeholder="Select a system..."
+									placeholder={t('doctrines.selectASystem')}
 								/>
 							</div>
 						)}
 						<div className="space-y-2">
-							<Label htmlFor="staging-note">Note</Label>
+							<Label htmlFor="staging-note">{t('doctrines.note')}</Label>
 							<Input
 								id="staging-note"
 								value={note}
 								onChange={(e) => setNote(e.target.value)}
-								placeholder="e.g., X, First Spare, Death Clone"
+								placeholder={t('doctrines.eGXFirstSpareDeathClone')}
 							/>
 							<p className="text-sm text-muted-foreground">
-								Displayed in the staging matrix (leave blank for no note)
+								{t('doctrines.displayedInTheStagingMatrixLeaveBlankForNoNote')}
 							</p>
 						</div>
 					</div>
 					<DialogFooter>
 						<Button variant="cancel" type="button" onClick={() => onOpenChange(false)}>
-							Cancel
+							{t('doctrines.cancel')}
 						</Button>
 						<Button
 							variant="confirm"
 							type="submit"
 							loading={setMutation.isPending}
-							loadingText="Saving..."
+							loadingText={t('doctrines.saving')}
 							disabled={!isEdit && !stagingSystemId}
 						>
-							{isEdit ? 'Update' : 'Assign'}
+							{isEdit ? t('doctrines.update') : t('doctrines.assign')}
 						</Button>
 					</DialogFooter>
 				</form>
@@ -173,6 +180,8 @@ function StagingDialog({
 }
 
 export default function DoctrineDetailPage() {
+	const { t } = useAppTranslation()
+
 	const { id } = useParams<{ id: string }>()
 	const navigate = useNavigate()
 	const { hasPermission, isAdmin } = useUserPermissions()
@@ -188,25 +197,25 @@ export default function DoctrineDetailPage() {
 	const [editingStaging, setEditingStaging] = useState<DoctrineStagingEntry | undefined>()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 
-	usePageTitle(doctrine?.name || 'Doctrine Details')
+	usePageTitle(doctrine?.name || t('doctrines.doctrineDetails'))
 
 	const canManage = isAdmin || hasPermission('urn:doctrines:manager')
 
 	const groupedFittings = useMemo(
 		() => (doctrine ? groupFittingsByCategory(doctrine.fittings, categories || []) : []),
-		[doctrine, categories]
+		[doctrine, categories, t]
 	)
 
 	const handleDelete = () => {
 		if (!id) return
 		requestConfirmation({
-			title: 'Delete Doctrine',
-			description: 'Are you sure you want to delete this doctrine? This cannot be undone.',
-			confirmLabel: 'Delete',
+			title: t('doctrines.deleteDoctrine'),
+			description: t('doctrines.areYouSureYouWantToDeleteThisDoctrineThis'),
+			confirmLabel: t('doctrines.delete'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				await deleteMutation.mutateAsync(id)
-				toast.success('Doctrine deleted')
+				toast.success(t('doctrines.doctrineDeleted'))
 				void navigate('/doctrines')
 			},
 		})
@@ -215,13 +224,13 @@ export default function DoctrineDetailPage() {
 	const handleRemoveFitting = (fittingId: string) => {
 		if (!id) return
 		requestConfirmation({
-			title: 'Remove Fitting',
-			description: 'Remove this fitting from the doctrine? The fitting itself will not be deleted.',
-			confirmLabel: 'Remove',
+			title: t('doctrines.removeFitting'),
+			description: t('doctrines.removeThisFittingFromTheDoctrineTheFittingItselfWill'),
+			confirmLabel: t('doctrines.remove'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				await removeFittingMutation.mutateAsync({ doctrineId: id, fittingId })
-				toast.success('Fitting removed')
+				toast.success(t('doctrines.fittingRemoved'))
 			},
 		})
 	}
@@ -229,13 +238,13 @@ export default function DoctrineDetailPage() {
 	const handleRemoveStaging = (stagingSystemId: string) => {
 		if (!id) return
 		requestConfirmation({
-			title: 'Remove Staging System',
-			description: 'Remove this staging system from the doctrine?',
-			confirmLabel: 'Remove',
+			title: t('doctrines.removeStagingSystem'),
+			description: t('doctrines.removeThisStagingSystemFromTheDoctrine'),
+			confirmLabel: t('doctrines.remove'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				await removeStagingMutation.mutateAsync({ doctrineId: id, stagingSystemId })
-				toast.success('Staging system removed')
+				toast.success(t('doctrines.stagingSystemRemoved'))
 			},
 		})
 	}
@@ -263,18 +272,17 @@ export default function DoctrineDetailPage() {
 	if (error || !doctrine) {
 		return (
 			<Container>
-				<PageHeader title="Doctrine Not Found" />
+				<PageHeader title={t('doctrines.doctrineNotFound')} />
 				<Card>
 					<CardContent className="pt-6">
 						<div className="text-center">
 							<p className="text-muted-foreground mb-4">
-								The doctrine you're looking for doesn't exist or you don't have permission to view
-								it.
+								{t('doctrines.theDoctrineYouReLookingForDoesnTExistOr')}
 							</p>
 							<Button asChild variant="ghost">
 								<Link to="/doctrines">
 									<ArrowLeft className="h-4 w-4" />
-									Back to Doctrines
+									{t('doctrines.backToDoctrines')}
 								</Link>
 							</Button>
 						</div>
@@ -289,7 +297,7 @@ export default function DoctrineDetailPage() {
 			<Button asChild variant="ghost" size="sm" className="mb-4">
 				<Link to="/doctrines">
 					<ArrowLeft className="h-4 w-4" />
-					Back to Doctrines
+					{t('doctrines.backToDoctrines')}
 				</Link>
 			</Button>
 
@@ -301,26 +309,26 @@ export default function DoctrineDetailPage() {
 							<>
 								<Button onClick={() => navigate(`/doctrines/fittings/create?doctrineId=${id}`)}>
 									<Plus className="h-4 w-4" />
-									Create Fitting
+									{t('doctrines.createFitting')}
 								</Button>
 								<Button variant="secondary" onClick={() => setAddFittingOpen(true)}>
 									<Plus className="h-4 w-4" />
-									Link Existing
+									{t('doctrines.linkExisting')}
 								</Button>
 								<Button asChild variant="ghost">
 									<Link to={`/doctrines/${id}/edit`}>
 										<Edit className="h-4 w-4" />
-										Edit
+										{t('doctrines.edit')}
 									</Link>
 								</Button>
 								<Button
 									variant="destructive"
 									onClick={handleDelete}
 									loading={deleteMutation.isPending}
-									loadingText="Deleting..."
+									loadingText={t('doctrines.deleting')}
 								>
 									<Trash2 className="h-4 w-4" />
-									Delete
+									{t('doctrines.delete')}
 								</Button>
 							</>
 						)}
@@ -335,7 +343,9 @@ export default function DoctrineDetailPage() {
 						<div className="space-y-3">
 							{doctrine.description && (
 								<div>
-									<span className="text-sm text-muted-foreground">Description:</span>
+									<span className="text-sm text-muted-foreground">
+										{t('doctrines.description2')}
+									</span>
 									<p className="text-sm text-foreground whitespace-pre-wrap mt-1">
 										{doctrine.description}
 									</p>
@@ -343,12 +353,12 @@ export default function DoctrineDetailPage() {
 							)}
 							{doctrine.category && (
 								<div className="flex items-center gap-2">
-									<span className="text-sm text-muted-foreground">Category:</span>
+									<span className="text-sm text-muted-foreground">{t('doctrines.category3')}</span>
 									<Badge variant="secondary">{doctrine.category.name}</Badge>
 								</div>
 							)}
 							<div className="flex items-center gap-2 flex-wrap">
-								<span className="text-sm text-muted-foreground">Staging:</span>
+								<span className="text-sm text-muted-foreground">{t('doctrines.staging')}</span>
 								{doctrine.stagingSystems && doctrine.stagingSystems.length > 0 ? (
 									doctrine.stagingSystems.map((s) => (
 										<Badge
@@ -382,7 +392,9 @@ export default function DoctrineDetailPage() {
 										</Badge>
 									))
 								) : (
-									<span className="text-sm text-muted-foreground italic">None assigned</span>
+									<span className="text-sm text-muted-foreground italic">
+										{t('doctrines.noneAssigned')}
+									</span>
 								)}
 								{canManage && (
 									<Button
@@ -406,16 +418,16 @@ export default function DoctrineDetailPage() {
 					<Card>
 						<CardContent className="pt-6">
 							<div className="text-center py-12">
-								<p className="text-muted-foreground mb-4">No fittings added yet.</p>
+								<p className="text-muted-foreground mb-4">{t('doctrines.noFittingsAddedYet')}</p>
 								{canManage && (
 									<div className="flex justify-center gap-2">
 										<Button onClick={() => navigate(`/doctrines/fittings/create?doctrineId=${id}`)}>
 											<Plus className="h-4 w-4" />
-											Create Fitting
+											{t('doctrines.createFitting')}
 										</Button>
 										<Button variant="secondary" onClick={() => setAddFittingOpen(true)}>
 											<Plus className="h-4 w-4" />
-											Link Existing
+											{t('doctrines.linkExisting')}
 										</Button>
 									</div>
 								)}
@@ -462,7 +474,7 @@ export default function DoctrineDetailPage() {
 																	e.stopPropagation()
 																	setEditingFittingEntry(entry)
 																}}
-																title="Edit link settings"
+																title={t('doctrines.editLinkSettings')}
 															>
 																<Settings className="h-3.5 w-3.5" />
 															</Button>

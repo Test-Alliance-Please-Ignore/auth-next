@@ -10,9 +10,12 @@ import { useAuditorUser } from '@/hooks/useAuditorUsers'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 
 export default function HrAuditorUserGroupsPage() {
-	usePageTitle('User Search - Group Memberships')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('hrpages.userSearchGroupMemberships'))
 	const { userId } = useParams<{ userId: string }>()
 	const navigate = useNavigate()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -32,7 +35,7 @@ export default function HrAuditorUserGroupsPage() {
 		return (
 			<Container>
 				<div className="flex min-h-[320px] items-center justify-center text-muted-foreground">
-					Loading user group memberships...
+					{t('hrpages.loadingUserGroupMemberships')}
 				</div>
 			</Container>
 		)
@@ -42,36 +45,42 @@ export default function HrAuditorUserGroupsPage() {
 		return (
 			<Container>
 				<div className="flex min-h-[320px] items-center justify-center text-muted-foreground">
-					User not found
+					{t('hrpages.userNotFound')}
 				</div>
 			</Container>
 		)
 	}
 
 	const memberships = targetUser.groupMemberships ?? []
-	const mainCharacterName = targetUser.characters.find((c) => c.is_primary)?.characterName ?? 'User'
+	const mainCharacterName =
+		targetUser.characters.find((c) => c.is_primary)?.characterName ?? t('hrpages.user')
 
 	return (
 		<Container className="space-y-6">
 			<PageHeader
-				title="User Group Memberships"
-				description={`${mainCharacterName} belongs to ${memberships.length} group${memberships.length === 1 ? '' : 's'}.`}
+				title={t('hrpages.userGroupMemberships')}
+				description={t('hrpages.groupMembershipCount', {
+					count: memberships.length,
+					value1: mainCharacterName,
+				})}
 				action={
 					<Button variant="ghost" onClick={() => navigate(`/hr/users/${userId}`)}>
 						<ArrowLeft className="h-4 w-4" />
-						Back to User
+						{t('hrpages.backToUser')}
 					</Button>
 				}
 			/>
 
 			<Card>
 				<CardHeader>
-					<CardTitle>Memberships</CardTitle>
-					<CardDescription>Group-level access and join dates</CardDescription>
+					<CardTitle>{t('hrpages.memberships')}</CardTitle>
+					<CardDescription>{t('hrpages.groupLevelAccessAndJoinDates')}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					{memberships.length === 0 ? (
-						<div className="text-center py-8 text-muted-foreground">No group memberships</div>
+						<div className="text-center py-8 text-muted-foreground">
+							{t('hrpages.noGroupMemberships')}
+						</div>
 					) : (
 						<UserGroupMembershipsTable memberships={memberships} />
 					)}

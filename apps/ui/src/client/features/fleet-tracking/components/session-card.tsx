@@ -3,7 +3,9 @@ import { Link } from 'react-router'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
+import { useAppTranslation } from '@/i18n'
 import { formatRelativeTime } from '@/lib/date-utils'
+
 import { formatDurationBetween, formatEndReason } from '../utils/format'
 import { SessionStatusPill } from './session-status-pill'
 
@@ -14,11 +16,17 @@ interface SessionCardProps {
 }
 
 export function SessionCard({ session }: SessionCardProps) {
+	const { t } = useAppTranslation()
+
 	const isActive = session.status === 'active'
 	const trackedFleetBossName =
-		session.currentFleetBossCharacterName ?? session.currentCommanderCharacterName ?? session.characterName
+		session.currentFleetBossCharacterName ??
+		session.currentCommanderCharacterName ??
+		session.characterName
 	const trackedFleetBossId =
-		session.currentFleetBossCharacterId ?? session.currentCommanderCharacterId ?? session.characterId
+		session.currentFleetBossCharacterId ??
+		session.currentCommanderCharacterId ??
+		session.characterId
 
 	return (
 		<Link
@@ -34,11 +42,14 @@ export function SessionCard({ session }: SessionCardProps) {
 								<h3 className="font-semibold truncate">{session.name}</h3>
 							</div>
 							<div className="text-sm text-muted-foreground">
-								Tracked FC:{' '}
+								{t('fleetTracking.trackedFc')}{' '}
 								{trackedFleetBossName ?? <span className="font-mono">{trackedFleetBossId}</span>}
 								{' • '}
 								{isActive ? (
-									<>Running {formatDurationBetween(session.startedAt, null)}</>
+									<>
+										{t('fleetTracking.running')}
+										{formatDurationBetween(session.startedAt, null)}
+									</>
 								) : (
 									<>
 										<EveTimeDisplay dateStr={session.startedAt} /> →{' '}
@@ -56,13 +67,16 @@ export function SessionCard({ session }: SessionCardProps) {
 							</div>
 							{trackedFleetBossId !== session.characterId ? (
 								<div className="text-xs text-muted-foreground">
-									Initial FC:{' '}
-									{session.characterName ?? <span className="font-mono">{session.characterId}</span>}
+									{t('fleetTracking.initialFc')}{' '}
+									{session.characterName ?? (
+										<span className="font-mono">{session.characterId}</span>
+									)}
 								</div>
 							) : null}
 							{isActive && (
 								<div className="text-xs text-muted-foreground">
-									Started {formatRelativeTime(session.startedAt)}
+									{t('fleetTracking.started')}
+									{formatRelativeTime(session.startedAt)}
 								</div>
 							)}
 						</div>

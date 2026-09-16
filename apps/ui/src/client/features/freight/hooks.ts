@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { api } from '@/lib/api'
 import { freightRouteKeys } from '@/hooks/useFreightRoutes'
+import { api } from '@/lib/api'
 
 /**
  * Fetch active freight routes (user-facing)

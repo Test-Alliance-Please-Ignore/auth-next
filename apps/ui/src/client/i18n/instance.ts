@@ -13,7 +13,7 @@ void i18n.use(initReactI18next).init({
 	lng: getInitialAppLocale(),
 	fallbackLng: DEFAULT_APP_LOCALE,
 	supportedLngs: APP_LOCALES,
-	load: 'languageOnly',
+	load: 'currentOnly',
 	initAsync: false,
 	returnNull: false,
 	returnEmptyString: false,

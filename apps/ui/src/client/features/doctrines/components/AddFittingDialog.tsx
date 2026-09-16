@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 
 import { useAddFittingToDoctrine, useDoctrineCategories, useFittings } from '../hooks'
@@ -37,6 +38,8 @@ export function AddFittingDialog({
 	onOpenChange,
 	existingFittingIds,
 }: AddFittingDialogProps) {
+	const { t } = useAppTranslation()
+
 	const { data: allFittings, isLoading } = useFittings()
 	const { data: categories } = useDoctrineCategories()
 	const addMutation = useAddFittingToDoctrine()
@@ -77,7 +80,7 @@ export function AddFittingDialog({
 				fittingCategory: categoryOverride || undefined,
 				sortOrder,
 			})
-			toast.success('Fitting added to doctrine')
+			toast.success(t('doctrines.fittingAddedToDoctrine'))
 			// Reset state
 			setSelectedFittingId(null)
 			setSortOrder(0)
@@ -85,7 +88,7 @@ export function AddFittingDialog({
 			setSearch('')
 			onOpenChange(false)
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Failed to add fitting')
+			toast.error(err instanceof Error ? err.message : t('doctrines.failedToAddFitting'))
 		}
 	}
 
@@ -93,17 +96,17 @@ export function AddFittingDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-lg">
 				<DialogHeader>
-					<DialogTitle>Add Fitting</DialogTitle>
-					<DialogDescription>Select a fitting to add to this doctrine.</DialogDescription>
+					<DialogTitle>{t('doctrines.addFitting')}</DialogTitle>
+					<DialogDescription>{t('doctrines.selectAFittingToAddToThisDoctrine')}</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-4">
 					{/* Search fittings */}
 					<div>
-						<Label htmlFor="fitting-search">Search fittings</Label>
+						<Label htmlFor="fitting-search">{t('doctrines.searchFittings')}</Label>
 						<Input
 							id="fitting-search"
-							placeholder="Search by ship or fitting name..."
+							placeholder={t('doctrines.searchByShipOrFittingName')}
 							value={search}
 							onChange={(e) => setSearch(e.target.value)}
 						/>
@@ -112,7 +115,9 @@ export function AddFittingDialog({
 					{/* Fitting list */}
 					{search === '' && totalAvailable > 10 && (
 						<p className="text-xs text-muted-foreground">
-							Showing 10 of {totalAvailable} — search to find more
+							{t('doctrines.showing10Of')}
+							{totalAvailable}
+							{t('doctrines.searchToFindMore')}
 						</p>
 					)}
 
@@ -123,7 +128,7 @@ export function AddFittingDialog({
 							</div>
 						) : !availableFittings || availableFittings.length === 0 ? (
 							<p className="p-4 text-sm text-muted-foreground text-center">
-								No available fittings found.
+								{t('doctrines.noAvailableFittingsFound')}
 							</p>
 						) : (
 							<div className="divide-y">
@@ -146,7 +151,7 @@ export function AddFittingDialog({
 					{selectedFittingId && (
 						<div className="flex gap-4">
 							<div className="flex-1">
-								<Label htmlFor="fitting-category">Category</Label>
+								<Label htmlFor="fitting-category">{t('doctrines.category')}</Label>
 								<Select
 									options={(categories || []).map((c) => ({
 										value: c.name,
@@ -154,11 +159,11 @@ export function AddFittingDialog({
 									}))}
 									value={categoryOverride}
 									onValueChange={(val) => setCategoryOverride(val)}
-									placeholder="Select category..."
+									placeholder={t('doctrines.selectCategory')}
 								/>
 							</div>
 							<div className="w-32">
-								<Label htmlFor="fitting-sort">Sort Order</Label>
+								<Label htmlFor="fitting-sort">{t('doctrines.sortOrder')}</Label>
 								<Input
 									id="fitting-sort"
 									type="number"
@@ -173,11 +178,11 @@ export function AddFittingDialog({
 						className="w-full"
 						disabled={!selectedFittingId || addMutation.isPending}
 						loading={addMutation.isPending}
-						loadingText="Adding..."
+						loadingText={t('doctrines.adding')}
 						onClick={handleAdd}
 					>
 						<Plus className="h-4 w-4" />
-						Add Fitting
+						{t('doctrines.addFitting')}
 					</Button>
 				</div>
 			</DialogContent>

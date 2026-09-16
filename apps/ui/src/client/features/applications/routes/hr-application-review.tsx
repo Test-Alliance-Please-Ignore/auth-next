@@ -29,6 +29,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import toast from '@/lib/toast'
 import { cn } from '@/lib/utils'
@@ -73,6 +74,8 @@ import { getPrivateDataUnavailableMessage } from '../utils/private-data'
  * HR Application Review page with full details and actions
  */
 export default function HrApplicationReview() {
+	const { t } = useAppTranslation()
+
 	const { corporationId, applicationId } = useParams<{
 		corporationId: string
 		applicationId: string
@@ -218,7 +221,7 @@ export default function HrApplicationReview() {
 			})
 			toast.success(`${characterName} copied`)
 		} catch {
-			toast.error('Failed to copy character name')
+			toast.error(t('hrpages.failedToCopyCharacterName'))
 		}
 	}
 	const spByCharacterId: Record<string, number | null> = {}
@@ -257,7 +260,9 @@ export default function HrApplicationReview() {
 
 	// Set page title
 	usePageTitle(
-		application ? `Review Application - ${application.characterName}` : 'Review Application'
+		application
+			? t('hrpages.reviewApplicationValue1', { value1: application.characterName })
+			: t('hrpages.reviewApplication')
 	)
 
 	const applicationsPath = `/corporations/${corporationId}/applications`
@@ -266,8 +271,8 @@ export default function HrApplicationReview() {
 		? {
 				source: 'applications' as const,
 				returnTo: `/corporations/${corporationId}/applications/${application.id}`,
-				backLabel: 'Back to Application',
-				breadcrumbParentLabel: 'Application',
+				backLabel: t('hrpages.backToApplication'),
+				breadcrumbParentLabel: t('hrpages.application'),
 			}
 		: null
 
@@ -285,9 +290,9 @@ export default function HrApplicationReview() {
 		if (!note) return
 
 		requestConfirmation({
-			title: 'Delete HR Note',
-			description: 'Are you sure you want to delete this HR note? This action cannot be undone.',
-			confirmLabel: 'Delete Note',
+			title: t('hrpages.deleteHrNote'),
+			description: t('hrpages.areYouSureYouWantToDeleteThisHrNote'),
+			confirmLabel: t('hrpages.deleteNote'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				try {
@@ -295,10 +300,10 @@ export default function HrApplicationReview() {
 						noteId: note.id,
 						subjectUserId: note.subjectUserId,
 					})
-					showSuccess('HR note deleted successfully')
+					showSuccess(t('hrpages.hrNoteDeletedSuccessfully'))
 					setSelectedNoteId(null)
 				} catch (error) {
-					showError(error instanceof Error ? error.message : 'Failed to delete HR note')
+					showError(error instanceof Error ? error.message : t('hrpages.failedToDeleteHrNote'))
 				}
 			},
 		})
@@ -311,7 +316,7 @@ export default function HrApplicationReview() {
 
 	const showMembersNavigation = user?.is_admin || hasCorporationAccess
 	const rootCorporationsPath = '/corporations'
-	const rootCorporationsLabel = 'Corporations'
+	const rootCorporationsLabel = t('hrpages.corporations')
 	const membersPath = `/corporations/${corporationId}/members`
 	const reviewTabTriggerClassName = 'flex-1 sm:flex-none'
 
@@ -350,8 +355,8 @@ export default function HrApplicationReview() {
 		return (
 			<Container>
 				<AccessDeniedCard
-					message="You don't have HR permissions for this corporation. Contact an HR Admin to request access."
-					backLabel={`Back to ${rootCorporationsLabel}`}
+					message={t('hrpages.youDonTHaveHrPermissionsForThisCorporationContact')}
+					backLabel={t('hrpages.backTo1', { value1: rootCorporationsLabel })}
 					backHref={rootCorporationsPath}
 				/>
 			</Container>
@@ -363,13 +368,13 @@ export default function HrApplicationReview() {
 		return (
 			<Container>
 				<AccessDeniedCard
-					title="Failed to Load Application"
+					title={t('hrpages.failedToLoadApplication')}
 					message={
 						applicationError instanceof Error
 							? applicationError.message
-							: 'An unexpected error occurred'
+							: t('hrpages.anUnexpectedErrorOccurred')
 					}
-					backLabel="Back to Applications"
+					backLabel={t('hrpages.backToApplications')}
 					backHref={applicationsPath}
 				/>
 			</Container>
@@ -383,12 +388,14 @@ export default function HrApplicationReview() {
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
 						<Briefcase className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-						<CardTitle>Application Not Found</CardTitle>
-						<CardDescription>This application doesn't exist or has been removed.</CardDescription>
+						<CardTitle>{t('hrpages.applicationNotFound')}</CardTitle>
+						<CardDescription>
+							{t('hrpages.thisApplicationDoesnTExistOrHasBeenRemoved')}
+						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button asChild variant="ghost">
-							<Link to={applicationsPath}>Back to Applications</Link>
+							<Link to={applicationsPath}>{t('hrpages.backToApplications')}</Link>
 						</Button>
 					</CardContent>
 				</Card>
@@ -401,9 +408,9 @@ export default function HrApplicationReview() {
 		return (
 			<Container>
 				<AccessDeniedCard
-					title="Invalid Application"
-					message="This application does not belong to the specified corporation."
-					backLabel="Back to Applications"
+					title={t('hrpages.invalidApplication')}
+					message={t('hrpages.thisApplicationDoesNotBelongToTheSpecifiedCorporation')}
+					backLabel={t('hrpages.backToApplications')}
 					backHref={applicationsPath}
 				/>
 			</Container>
@@ -429,14 +436,14 @@ export default function HrApplicationReview() {
 							<>
 								<BreadcrumbSeparator />
 								<BreadcrumbItem>
-									<BreadcrumbLink to={membersPath}>Members</BreadcrumbLink>
+									<BreadcrumbLink to={membersPath}>{t('hrpages.members')}</BreadcrumbLink>
 								</BreadcrumbItem>
 							</>
 						)}
 						<BreadcrumbSeparator />
 						<BreadcrumbItem>
 							<BreadcrumbLink to={`/corporations/${corporationId}/applications`}>
-								Applications
+								{t('hrpages.applications2')}
 							</BreadcrumbLink>
 						</BreadcrumbItem>
 						<BreadcrumbSeparator />
@@ -450,13 +457,13 @@ export default function HrApplicationReview() {
 					<Button asChild variant="ghost">
 						<a href={legacyHistoryPath} target="_blank" rel="noreferrer">
 							<Briefcase className="h-4 w-4" />
-							Legacy App Search
+							{t('hrpages.legacyAppSearch')}
 						</a>
 					</Button>
 					<Button asChild variant="ghost">
 						<Link to={applicationsPath}>
 							<ArrowLeft className="h-4 w-4" />
-							Back to Applications
+							{t('hrpages.backToApplications')}
 						</Link>
 					</Button>
 				</div>
@@ -512,35 +519,39 @@ export default function HrApplicationReview() {
 										variant={application.isFirstApplication ? 'success' : 'default'}
 										className="h-5 shrink-0 px-1.5 text-[10px] font-semibold leading-none"
 									>
-										{application.isFirstApplication ? 'First' : 'Repeat'}
+										{application.isFirstApplication ? t('hrpages.first') : t('hrpages.repeat')}
 									</Badge>
 								)}
 								{userBlocklistStatus?.isBlacklisted && (
 									<Badge variant="destructive" className="h-5 shrink-0 px-1.5 text-[10px]">
-										Blocklisted
+										{t('hrpages.blocklisted')}
 									</Badge>
 								)}
 								{altCharacterIds.length > 0 && (
 									<span className="ml-2 text-lg font-normal text-muted-foreground">
-										(+{altCharacterIds.length} {altCharacterIds.length === 1 ? 'Alt' : 'Alts'})
+										(+{altCharacterIds.length}{' '}
+										{altCharacterIds.length === 1 ? t('hrpages.alt') : t('hrpages.alts')})
 									</span>
 								)}
 							</h1>
 							{application.corporationName && (
 								<p className="text-lg text-muted-foreground mb-3">
-									Applied to: <span className="font-medium">{application.corporationName}</span>
+									{t('hrpages.appliedTo')}
+									<span className="font-medium">{application.corporationName}</span>
 								</p>
 							)}
 							<div className="mb-3 text-sm text-muted-foreground">
-								Discord Username:{' '}
+								{t('hrpages.discordUsername')}{' '}
 								<span className="font-medium text-foreground">
-									{application.discordUsername ? `@${application.discordUsername}` : 'Not linked'}
+									{application.discordUsername
+										? `@${application.discordUsername}`
+										: t('hrpages.notLinked')}
 								</span>
 							</div>
 							<div className="flex items-center gap-3">
 								<ApplicationStatusBadge status={application.status} size="md" />
 								<span className="text-sm text-muted-foreground">
-									Submitted{' '}
+									{t('hrpages.submitted')}{' '}
 									{formatDistanceToNow(new Date(application.createdAt), { addSuffix: true })}
 								</span>
 							</div>
@@ -553,32 +564,32 @@ export default function HrApplicationReview() {
 			<Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
 				<TabsList className="w-full flex-wrap gap-2 sm:w-auto sm:flex-nowrap">
 					<TabsTrigger value="details" className={reviewTabTriggerClassName}>
-						Details
+						{t('hrpages.details')}
 					</TabsTrigger>
 					<TabsTrigger value="alts" className={reviewTabTriggerClassName}>
-						Characters
+						{t('hrpages.characters')}
 						{altCharacterIds.length > 0 && (
 							<span className="ml-1.5 text-xs opacity-70">({altCharacterIds.length})</span>
 						)}
 					</TabsTrigger>
 					<TabsTrigger value="recommendations" className={reviewTabTriggerClassName}>
-						Recommendations
+						{t('hrpages.recommendations')}
 						{recommendations && recommendations.length > 0 && (
 							<span className="ml-1.5 text-xs opacity-70">({recommendations.length})</span>
 						)}
 					</TabsTrigger>
 					<TabsTrigger value="history" className={reviewTabTriggerClassName}>
-						History
+						{t('hrpages.history')}
 					</TabsTrigger>
 					<TabsTrigger value="messages" className={reviewTabTriggerClassName}>
-						Messages
+						{t('hrpages.messages')}
 						{messageCount > 0 && (
 							<span className="ml-1.5 text-xs opacity-70">({messageCount})</span>
 						)}
 					</TabsTrigger>
 					{(user?.is_admin || permission?.hasPermission) && (
 						<TabsTrigger value="staff-notes" className={reviewTabTriggerClassName}>
-							Application Notes
+							{t('hrpages.applicationNotes')}
 							{staffNotesCount > 0 && (
 								<span className="ml-1.5 text-xs opacity-70">({staffNotesCount})</span>
 							)}
@@ -586,16 +597,16 @@ export default function HrApplicationReview() {
 					)}
 					{(user?.is_admin || permission?.hasPermission) && (
 						<TabsTrigger value="global-notes" className={reviewTabTriggerClassName}>
-							Account Notes
+							{t('hrpages.accountNotes')}
 							<span className="ml-1.5 text-xs opacity-70">({globalUserNotesCount})</span>
 						</TabsTrigger>
 					)}
 					<TabsTrigger value="prior-apps" className={reviewTabTriggerClassName}>
-						Prior Apps
+						{t('hrpages.priorApps')}
 					</TabsTrigger>
 					{canShowFulcrumTab && (
 						<TabsTrigger value="fulcrum" className={reviewTabTriggerClassName}>
-							Fulcrum
+							{t('hrpages.fulcrum')}
 						</TabsTrigger>
 					)}
 				</TabsList>
@@ -605,9 +616,9 @@ export default function HrApplicationReview() {
 					{/* Application Text */}
 					<Card>
 						<CardHeader>
-							<CardTitle>Application Text</CardTitle>
+							<CardTitle>{t('hrpages.applicationText')}</CardTitle>
 							<CardDescription>
-								The applicant's message explaining why they want to join
+								{t('hrpages.theApplicantSMessageExplainingWhyTheyWantToJoin')}
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -630,19 +641,23 @@ export default function HrApplicationReview() {
 								}
 							>
 								<CardHeader>
-									<CardTitle>Review Information</CardTitle>
-									<CardDescription>Details about the application review</CardDescription>
+									<CardTitle>{t('hrpages.reviewInformation')}</CardTitle>
+									<CardDescription>{t('hrpages.detailsAboutTheApplicationReview')}</CardDescription>
 								</CardHeader>
 								<CardContent className="space-y-3">
 									<div>
-										<p className="text-sm font-medium text-muted-foreground">Reviewed By</p>
+										<p className="text-sm font-medium text-muted-foreground">
+											{t('hrpages.reviewedBy')}
+										</p>
 										<p className="text-foreground">
-											{application.reviewedByCharacterName || 'Unknown'}
+											{application.reviewedByCharacterName || t('hrpages.unknown')}
 										</p>
 									</div>
 									<Separator />
 									<div>
-										<p className="text-sm font-medium text-muted-foreground">Reviewed At</p>
+										<p className="text-sm font-medium text-muted-foreground">
+											{t('hrpages.reviewedAt')}
+										</p>
 										<p className="text-foreground">
 											{formatDistanceToNow(new Date(application.reviewedAt), { addSuffix: true })}
 										</p>
@@ -651,7 +666,9 @@ export default function HrApplicationReview() {
 										<>
 											<Separator />
 											<div>
-												<p className="text-sm font-medium text-muted-foreground">Review Notes</p>
+												<p className="text-sm font-medium text-muted-foreground">
+													{t('hrpages.reviewNotes2')}
+												</p>
 												<p className="text-foreground whitespace-pre-wrap mt-1 italic">
 													"{application.reviewNotes}"
 												</p>
@@ -680,7 +697,9 @@ export default function HrApplicationReview() {
 							<div className="flex items-start gap-3">
 								<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
 								<div className="space-y-1">
-									<p className="font-medium">Private ESI data is hidden for some characters</p>
+									<p className="font-medium">
+										{t('hrpages.privateEsiDataIsHiddenForSomeCharacters')}
+									</p>
 									<p className="text-sm text-amber-800 dark:text-amber-200">
 										{privateDataUnavailableMessage}
 									</p>
@@ -691,8 +710,10 @@ export default function HrApplicationReview() {
 					{/* Main Character */}
 					<Card>
 						<CardHeader>
-							<CardTitle>Main Character</CardTitle>
-							<CardDescription>The primary character for this application</CardDescription>
+							<CardTitle>{t('hrpages.mainCharacter')}</CardTitle>
+							<CardDescription>
+								{t('hrpages.thePrimaryCharacterForThisApplication')}
+							</CardDescription>
 						</CardHeader>
 						<CardContent>
 							<div className="card-gradient rounded-md border border-border/50 bg-card p-3 shadow-elevated">
@@ -719,7 +740,7 @@ export default function HrApplicationReview() {
 									nameBadges={
 										hrCharacterById.get(application.characterId)?.isBlacklisted ? (
 											<Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
-												Blocklisted
+												{t('hrpages.blocklisted')}
 											</Badge>
 										) : undefined
 									}
@@ -734,9 +755,9 @@ export default function HrApplicationReview() {
 					{/* Alt Characters */}
 					<Card>
 						<CardHeader>
-							<CardTitle>Alt Characters</CardTitle>
+							<CardTitle>{t('hrpages.altCharacters')}</CardTitle>
 							<CardDescription>
-								Additional characters the applicant is applying with.
+								{t('hrpages.additionalCharactersTheApplicantIsApplyingWith')}
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -762,7 +783,7 @@ export default function HrApplicationReview() {
 												nameBadges={
 													hrCharacterById.get(charId)?.isBlacklisted ? (
 														<Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
-															Blocklisted
+															{t('hrpages.blocklisted')}
 														</Badge>
 													) : undefined
 												}
@@ -777,7 +798,7 @@ export default function HrApplicationReview() {
 								</div>
 							) : (
 								<p className="text-sm text-muted-foreground">
-									No alt characters were included with this application.
+									{t('hrpages.noAltCharactersWereIncludedWithThisApplication')}
 								</p>
 							)}
 						</CardContent>
@@ -788,9 +809,11 @@ export default function HrApplicationReview() {
 				<TabsContent value="recommendations">
 					<Card>
 						<CardHeader>
-							<CardTitle>Recommendations</CardTitle>
+							<CardTitle>{t('hrpages.recommendations')}</CardTitle>
 							<CardDescription>
-								Community recommendations for this application (all recommendations visible to HR)
+								{t(
+									'hrpages.communityRecommendationsForThisApplicationAllRecommendationsVisibleToHr'
+								)}
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -807,9 +830,9 @@ export default function HrApplicationReview() {
 				<TabsContent value="history">
 					<Card>
 						<CardHeader>
-							<CardTitle>Activity History</CardTitle>
+							<CardTitle>{t('hrpages.activityHistory')}</CardTitle>
 							<CardDescription>
-								Timeline of all actions and status changes for this application
+								{t('hrpages.timelineOfAllActionsAndStatusChangesForThisApplication')}
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -820,7 +843,9 @@ export default function HrApplicationReview() {
 							) : activityLog && activityLog.length > 0 ? (
 								<ApplicationTimeline activityLog={activityLog} showActors={true} />
 							) : (
-								<p className="text-center text-muted-foreground py-8">No activity recorded yet</p>
+								<p className="text-center text-muted-foreground py-8">
+									{t('hrpages.noActivityRecordedYet')}
+								</p>
 							)}
 						</CardContent>
 					</Card>
@@ -830,8 +855,8 @@ export default function HrApplicationReview() {
 				<TabsContent value="messages">
 					<Card>
 						<CardHeader>
-							<CardTitle>Messages</CardTitle>
-							<CardDescription>Communicate with the applicant</CardDescription>
+							<CardTitle>{t('hrpages.messages')}</CardTitle>
+							<CardDescription>{t('hrpages.communicateWithTheApplicant')}</CardDescription>
 						</CardHeader>
 						<CardContent>
 							<MessagesPanel
@@ -853,10 +878,10 @@ export default function HrApplicationReview() {
 							<CardHeader>
 								<div className="flex items-center gap-2">
 									<Lock className="h-4 w-4 text-warning" />
-									<CardTitle>Application Staff Notes</CardTitle>
+									<CardTitle>{t('hrpages.applicationStaffNotes')}</CardTitle>
 								</div>
 								<CardDescription>
-									Private notes scoped to this application. Only visible to HR staff.
+									{t('hrpages.privateNotesScopedToThisApplicationOnlyVisibleToHr')}
 								</CardDescription>
 							</CardHeader>
 							<CardContent>
@@ -877,11 +902,10 @@ export default function HrApplicationReview() {
 							<CardHeader>
 								<div className="flex items-center gap-2">
 									<Lock className="h-4 w-4 text-warning" />
-									<CardTitle>Account Notes</CardTitle>
+									<CardTitle>{t('hrpages.accountNotes')}</CardTitle>
 								</div>
 								<CardDescription>
-									Private internal notes about this user across all applications. Only visible to HR
-									staff.
+									{t('hrpages.privateInternalNotesAboutThisUserAcrossAllApplicationsOnly')}
 								</CardDescription>
 							</CardHeader>
 							<CardContent>
@@ -902,10 +926,9 @@ export default function HrApplicationReview() {
 				<TabsContent value="prior-apps">
 					<Card>
 						<CardHeader>
-							<CardTitle>Prior Applications</CardTitle>
+							<CardTitle>{t('hrpages.priorApplications')}</CardTitle>
 							<CardDescription>
-								Applications by this character (across all accounts) and other characters on this
-								account
+								{t('hrpages.applicationsByThisCharacterAcrossAllAccountsAndOtherCharacters')}
 							</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -923,9 +946,10 @@ export default function HrApplicationReview() {
 					<TabsContent value="fulcrum">
 						<Card>
 							<CardHeader>
-								<CardTitle>Character Reports</CardTitle>
+								<CardTitle>{t('hrpages.characterReports')}</CardTitle>
 								<CardDescription>
-									Generate detailed background reports for {application.characterName}
+									{t('hrpages.generateDetailedBackgroundReportsFor')}
+									{application.characterName}
 								</CardDescription>
 							</CardHeader>
 							<CardContent>

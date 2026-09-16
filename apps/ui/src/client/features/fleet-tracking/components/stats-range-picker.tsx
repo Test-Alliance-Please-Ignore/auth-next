@@ -2,17 +2,48 @@ import { useMemo } from 'react'
 import { useSearchParams } from 'react-router'
 
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { i18n } from '@/i18n'
 
 import type { StatsRangeInput } from '../types'
 
 export type RangePreset = '7d' | '30d' | '90d' | '1y' | 'all'
 
 const PRESETS: Array<{ key: RangePreset; label: string; days: number | null }> = [
-	{ key: '7d', label: 'Last 7 days', days: 7 },
-	{ key: '30d', label: 'Last 30 days', days: 30 },
-	{ key: '90d', label: 'Last 90 days', days: 90 },
-	{ key: '1y', label: 'Last year', days: 365 },
-	{ key: 'all', label: 'All time', days: null },
+	{
+		key: '7d',
+		get label() {
+			return i18n.t('fleetTracking.last7Days')
+		},
+		days: 7,
+	},
+	{
+		key: '30d',
+		get label() {
+			return i18n.t('fleetTracking.last30Days')
+		},
+		days: 30,
+	},
+	{
+		key: '90d',
+		get label() {
+			return i18n.t('fleetTracking.last90Days')
+		},
+		days: 90,
+	},
+	{
+		key: '1y',
+		get label() {
+			return i18n.t('fleetTracking.lastYear')
+		},
+		days: 365,
+	},
+	{
+		key: 'all',
+		get label() {
+			return i18n.t('fleetTracking.allTime')
+		},
+		days: null,
+	},
 ]
 
 /**

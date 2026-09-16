@@ -21,15 +21,16 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
+import { i18n, useAppTranslation } from '@/i18n'
 import { formatTaxDateTime, getCurrentMonthDateRange } from '@/lib/tax-date'
 import {
 	formatTaxDivisionLabel,
 	formatTaxIskFull,
 	formatTaxLedgerSourceTypeLabel,
 	formatTaxRefTypeLabel,
+	getTaxLedgerSourceTypeOptions,
 	getTaxRefTypeColor,
-	TAX_LEDGER_SOURCE_TYPE_OPTIONS,
-	TAX_REF_TYPE_OPTIONS,
+	getTaxRefTypeOptions,
 	TaxEntityDisplay,
 } from '@/lib/tax-display'
 
@@ -40,10 +41,17 @@ const PAGE_SIZE = 50
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
 const ALL_DIVISIONS_VALUE = '__all_divisions__'
 const ALL_INCOME_TYPES_VALUE = '__all_income_types__'
-const ALL_DIVISIONS_OPTION = { value: ALL_DIVISIONS_VALUE, label: 'All divisions' } as const
+const ALL_DIVISIONS_OPTION = {
+	value: ALL_DIVISIONS_VALUE,
+	get label() {
+		return i18n.t('tax.allDivisions')
+	},
+} as const
 const ALL_INCOME_TYPES_OPTION = {
 	value: ALL_INCOME_TYPES_VALUE,
-	label: 'All income types',
+	get label() {
+		return i18n.t('tax.allIncomeTypes')
+	},
 } as const
 const LEDGER_SOURCE_TYPES = new Set([
 	'corporation_wallet_journal',
@@ -72,7 +80,9 @@ function toSearchOptions(options: Array<{ value: string; label: string }>) {
 }
 
 export default function TaxLedgerPage() {
-	usePageTitle('Tax Ledger')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('tax.taxLedger'))
 
 	const { data: globalCapabilities } = useTaxCapabilities()
 	const canAdminScope = globalCapabilities?.global.canManage ?? false
@@ -130,12 +140,12 @@ export default function TaxLedgerPage() {
 				label: formatTaxDivisionLabel(division),
 			})),
 		],
-		[walletDivisions]
+		[walletDivisions, t]
 	)
 
 	const incomeTypeOptions = useMemo(
-		() => [ALL_INCOME_TYPES_OPTION, ...toSearchOptions(TAX_REF_TYPE_OPTIONS)],
-		[]
+		() => [ALL_INCOME_TYPES_OPTION, ...toSearchOptions(getTaxRefTypeOptions())],
+		[t]
 	)
 
 	useEffect(() => {
@@ -154,7 +164,7 @@ export default function TaxLedgerPage() {
 			: undefined
 	const refTypesValue = useMemo(
 		() => (refTypesFilter === ALL_INCOME_TYPES_VALUE ? [] : parseCsv(refTypesFilter)),
-		[refTypesFilter]
+		[refTypesFilter, t]
 	)
 	const sourceTypesValue = useMemo(
 		() =>
@@ -166,7 +176,7 @@ export default function TaxLedgerPage() {
 				| 'character_wallet_journal'
 				| 'character_wallet_transaction'
 			>,
-		[sourceTypesFilter]
+		[sourceTypesFilter, t]
 	)
 	const fromDateIso = fromDate ? toStartOfDayIso(fromDate) : undefined
 	const toDateIso = toDate ? toEndOfDayIso(toDate) : undefined
@@ -266,7 +276,14 @@ export default function TaxLedgerPage() {
 		if (firstPartyIdFilter) ids.add(firstPartyIdFilter)
 		if (secondPartyIdFilter) ids.add(secondPartyIdFilter)
 		return [...ids]
-	}, [ledgerEntries, senderPartyRows, recipientPartyRows, firstPartyIdFilter, secondPartyIdFilter])
+	}, [
+		ledgerEntries,
+		senderPartyRows,
+		recipientPartyRows,
+		firstPartyIdFilter,
+		secondPartyIdFilter,
+		t,
+	])
 
 	const { data: entityNames = {} } = useEntityNames(ledgerEntityIds, { enabled: canView })
 
@@ -277,7 +294,7 @@ export default function TaxLedgerPage() {
 				label: party.entityName ?? entityNames[party.entityId] ?? party.entityId,
 				description: party.entityId,
 			})),
-		[entityNames, senderPartyRows]
+		[entityNames, senderPartyRows, t]
 	)
 	const recipientPartyOptions = useMemo(
 		() =>
@@ -286,7 +303,7 @@ export default function TaxLedgerPage() {
 				label: party.entityName ?? entityNames[party.entityId] ?? party.entityId,
 				description: party.entityId,
 			})),
-		[entityNames, recipientPartyRows]
+		[entityNames, recipientPartyRows, t]
 	)
 	const partyNameById = useMemo(
 		() =>
@@ -296,20 +313,20 @@ export default function TaxLedgerPage() {
 					option.label,
 				])
 			),
-		[senderPartyOptions, recipientPartyOptions]
+		[senderPartyOptions, recipientPartyOptions, t]
 	)
 
 	const ledgerColumns = useMemo(
 		() => [
 			{
 				id: 'entryDate',
-				header: 'Date',
+				header: t('tax.date'),
 				sortable: true,
 				cell: (row: TaxLedgerEntry) => formatTaxDateTime(row.entryDate),
 			},
 			{
 				id: 'refType',
-				header: 'Income Type',
+				header: t('tax.incomeType'),
 				sortable: true,
 				cell: (row: TaxLedgerEntry) => (
 					<div className="flex items-center gap-2">
@@ -323,38 +340,38 @@ export default function TaxLedgerPage() {
 			},
 			{
 				id: 'amount',
-				header: 'Amount',
+				header: t('tax.amount'),
 				sortable: true,
 				cell: (row: TaxLedgerEntry) => formatTaxIskFull(row.amount),
 			},
 			{
 				id: 'division',
-				header: 'Division',
+				header: t('tax.division'),
 				sortable: true,
 				cell: (row: TaxLedgerEntry) => formatTaxDivisionLabel(row.division),
 			},
 			{
 				id: 'sourceType',
-				header: 'Source',
+				header: t('tax.source'),
 				sortable: true,
 				cell: (row: TaxLedgerEntry) => formatTaxLedgerSourceTypeLabel(row.sourceType),
 			},
 			{
 				id: 'firstPartyId',
-				header: 'Sender',
+				header: t('tax.sender'),
 				cell: (row: TaxLedgerEntry) => (
 					<TaxEntityDisplay entityId={row.firstPartyId} entityNames={entityNames} />
 				),
 			},
 			{
 				id: 'secondPartyId',
-				header: 'Recipient',
+				header: t('tax.recipient'),
 				cell: (row: TaxLedgerEntry) => (
 					<TaxEntityDisplay entityId={row.secondPartyId} entityNames={entityNames} />
 				),
 			},
 		],
-		[entityNames]
+		[entityNames, t]
 	)
 
 	const resetFilters = () => {
@@ -379,8 +396,8 @@ export default function TaxLedgerPage() {
 			<Container>
 				<Card>
 					<CardHeader>
-						<CardTitle>Tax Ledger</CardTitle>
-						<CardDescription>You do not have permission to view tax ledger data.</CardDescription>
+						<CardTitle>{t('tax.taxLedger')}</CardTitle>
+						<CardDescription>{t('tax.youDoNotHavePermissionToViewTaxLedgerData')}</CardDescription>
 					</CardHeader>
 				</Card>
 			</Container>
@@ -390,8 +407,8 @@ export default function TaxLedgerPage() {
 	return (
 		<Container>
 			<PageHeader
-				title="Tax Ledger"
-				description="Explore normalized ledger entries with transaction-level filtering."
+				title={t('tax.taxLedger')}
+				description={t('tax.exploreNormalizedLedgerEntriesWithTransactionLevelFiltering')}
 			/>
 
 			<Section>
@@ -404,9 +421,9 @@ export default function TaxLedgerPage() {
 				) : (
 					<Card>
 						<CardHeader>
-							<CardTitle>No Corporation Scope</CardTitle>
+							<CardTitle>{t('tax.noCorporationScope')}</CardTitle>
 							<CardDescription>
-								No accessible corporations were found for ledger exploration.
+								{t('tax.noAccessibleCorporationsWereFoundForLedgerExploration')}
 							</CardDescription>
 						</CardHeader>
 					</Card>
@@ -414,24 +431,23 @@ export default function TaxLedgerPage() {
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Filters</CardTitle>
+						<CardTitle>{t('tax.filters')}</CardTitle>
 						<CardDescription>
-							Refine the ledger by date range, wallet division, income type, source type, and
-							parties.
+							{t('tax.refineTheLedgerByDateRangeWalletDivisionIncomeType')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="grid gap-3 md:grid-cols-4">
-						<FilterField label="Date range">
+						<FilterField label={t('tax.dateRange')}>
 							<DateRangeInput
 								value={{ fromDate, toDate }}
 								onChange={({ fromDate: nextFromDate, toDate: nextToDate }) => {
 									setFromDate(nextFromDate)
 									setToDate(nextToDate)
 								}}
-								placeholder="Date range"
+								placeholder={t('tax.dateRange')}
 							/>
 						</FilterField>
-						<FilterField label="Division">
+						<FilterField label={t('tax.division')}>
 							<Select
 								value={divisionFilter}
 								onValueChange={(nextValue) => {
@@ -445,13 +461,13 @@ export default function TaxLedgerPage() {
 								disabled={!effectiveCorporationId}
 								placeholder={
 									divisionFilter === ALL_DIVISIONS_VALUE
-										? 'All divisions'
+										? t('tax.allDivisions')
 										: formatTaxDivisionLabel(divisionFilter)
 								}
-								emptyText="No wallet divisions found"
+								emptyText={t('tax.noWalletDivisions')}
 							/>
 						</FilterField>
-						<FilterField label="Income type">
+						<FilterField label={t('tax.incomeType2')}>
 							<Select
 								value={refTypesFilter}
 								onValueChange={(nextValue) => {
@@ -465,13 +481,13 @@ export default function TaxLedgerPage() {
 								listMaxHeight={420}
 								placeholder={
 									refTypesFilter === ALL_INCOME_TYPES_VALUE
-										? 'All income types'
+										? t('tax.allIncomeTypes')
 										: formatTaxRefTypeLabel(refTypesFilter)
 								}
-								emptyText="No income types found"
+								emptyText={t('tax.noIncomeTypes')}
 							/>
 						</FilterField>
-						<FilterField label="Source type">
+						<FilterField label={t('tax.sourceType')}>
 							<Select
 								value={sourceTypesFilter}
 								onValueChange={(nextValue) => {
@@ -481,24 +497,24 @@ export default function TaxLedgerPage() {
 								query={sourceTypeQuery}
 								onQueryChange={setSourceTypeQuery}
 								searchable
-								options={toSearchOptions(TAX_LEDGER_SOURCE_TYPE_OPTIONS)}
+								options={toSearchOptions(getTaxLedgerSourceTypeOptions())}
 								listClassName="max-h-72"
 								placeholder={
 									sourceTypesFilter
 										? formatTaxLedgerSourceTypeLabel(sourceTypesFilter)
-										: 'Source type'
+										: t('tax.sourceType')
 								}
-								emptyText="No source types found"
+								emptyText={t('tax.noSourceTypes')}
 							/>
 						</FilterField>
-						<FilterField label="Min amount">
+						<FilterField label={t('tax.minAmount')}>
 							<Input
 								value={minAmountFilter}
 								onChange={(event) => setMinAmountFilter(event.target.value)}
-								placeholder="Min amount"
+								placeholder={t('tax.minAmount')}
 							/>
 						</FilterField>
-						<FilterField label="Sender">
+						<FilterField label={t('tax.sender')}>
 							<Select
 								value={firstPartyIdFilter}
 								onValueChange={(nextValue) => {
@@ -519,16 +535,16 @@ export default function TaxLedgerPage() {
 								minQueryLength={2}
 								debounceMs={0}
 								loading={senderPartiesLoading || firstPartySearchPending}
-								queryHintText="Type at least 2 characters to search senders"
+								queryHintText={t('tax.senderSearchHint')}
 								placeholder={
 									firstPartyIdFilter
 										? (partyNameById.get(firstPartyIdFilter) ?? firstPartyIdFilter)
-										: 'Sender name or ID'
+										: t('tax.senderNameOrId')
 								}
-								emptyText="No sender matches found"
+								emptyText={t('tax.noSenders')}
 							/>
 						</FilterField>
-						<FilterField label="Recipient">
+						<FilterField label={t('tax.recipient')}>
 							<Select
 								value={secondPartyIdFilter}
 								onValueChange={(nextValue) => {
@@ -549,18 +565,18 @@ export default function TaxLedgerPage() {
 								minQueryLength={2}
 								debounceMs={0}
 								loading={recipientPartiesLoading || secondPartySearchPending}
-								queryHintText="Type at least 2 characters to search recipients"
+								queryHintText={t('tax.recipientSearchHint')}
 								placeholder={
 									secondPartyIdFilter
 										? (partyNameById.get(secondPartyIdFilter) ?? secondPartyIdFilter)
-										: 'Recipient name or ID'
+										: t('tax.recipientNameOrId')
 								}
-								emptyText="No recipient matches found"
+								emptyText={t('tax.noRecipients')}
 							/>
 						</FilterField>
 						<div className="flex items-end md:justify-end">
 							<Button variant="ghost" onClick={resetFilters}>
-								Clear Filters
+								{t('tax.clearFilters')}
 							</Button>
 						</div>
 					</CardContent>
@@ -568,22 +584,24 @@ export default function TaxLedgerPage() {
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Ledger Entries</CardTitle>
+						<CardTitle>{t('tax.ledgerEntries')}</CardTitle>
 						<CardDescription>
 							{effectiveCorporationId
-								? `Showing entries for ${entityNames[effectiveCorporationId] ?? effectiveCorporationId}.`
-								: 'Select a corporation to load entries.'}
+								? t('tax.showingEntriesForValue1', {
+										value1: entityNames[effectiveCorporationId] ?? effectiveCorporationId,
+									})
+								: t('tax.selectACorporationToLoadEntries')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<DataTable
 							variant="plain"
-							errorMessage="Failed to load report"
+							errorMessage={t('tax.failedToLoadReport')}
 							columns={ledgerColumns}
 							rows={ledgerEntries}
 							loading={ledgerLoading}
 							error={ledgerError}
-							emptyMessage="No ledger entries found."
+							emptyMessage={t('tax.noLedgerEntriesFound')}
 							sorting={ledgerSorting}
 							onSortingChange={onLedgerSortingChange}
 							pagination={{ pageIndex: page, pageSize }}
@@ -592,7 +610,7 @@ export default function TaxLedgerPage() {
 								setPage(next.pageSize === pageSize ? Math.max(0, next.pageIndex) : 0)
 							}}
 							rowCount={ledgerRowCount}
-							itemLabel="ledger entries"
+							itemLabel={t('tax.ledgerEntries2')}
 							getRowKey={(row) => row.id}
 						/>
 					</CardContent>

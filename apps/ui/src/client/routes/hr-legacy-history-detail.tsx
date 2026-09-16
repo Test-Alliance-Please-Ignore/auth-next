@@ -13,6 +13,7 @@ import { hasExplicitMemberCorporationHrRole, useHrAccessibleCorporations } from 
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 import { corporationLogoUrl } from '@/lib/eve-images'
 
@@ -24,7 +25,9 @@ function formatLegacyEventType(eventType: string): string {
 }
 
 export default function HrLegacyHistoryDetailPage() {
-	usePageTitle('HR - Legacy History Detail')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('hrpages.hrLegacyHistoryDetail'))
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasAnyPermission } = useUserPermissions()
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
@@ -52,7 +55,7 @@ export default function HrLegacyHistoryDetailPage() {
 	}
 
 	if (authLoading || accessibleCorporationsLoading) {
-		return <LoadingPage label="Loading legacy history detail..." />
+		return <LoadingPage label={t('hrpages.loadingLegacyHistoryDetail')} />
 	}
 
 	if (!canAccessLegacyHistory) {
@@ -68,13 +71,13 @@ export default function HrLegacyHistoryDetailPage() {
 	return (
 		<Container className="space-y-6">
 			<PageHeader
-				title="Legacy Application Detail"
-				description="Read-only legacy history and timeline."
+				title={t('hrpages.legacyApplicationDetail')}
+				description={t('hrpages.readOnlyLegacyHistoryAndTimeline')}
 				action={
 					<Button asChild variant="ghost">
 						<Link to={returnTo}>
 							<ArrowLeft className="h-4 w-4" />
-							Back to Search
+							{t('hrpages.backToSearch')}
 						</Link>
 					</Button>
 				}
@@ -82,9 +85,9 @@ export default function HrLegacyHistoryDetailPage() {
 
 			<Card>
 				<CardHeader>
-					<CardTitle>Application</CardTitle>
+					<CardTitle>{t('hrpages.application')}</CardTitle>
 					<CardDescription>
-						{selected?.legacyApplicationId ?? legacyApplicationId ?? 'Unknown'}
+						{selected?.legacyApplicationId ?? legacyApplicationId ?? t('hrpages.unknown')}
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
@@ -105,36 +108,40 @@ export default function HrLegacyHistoryDetailPage() {
 													to={`/hr/users/${modernUserMatch.userId}`}
 													className="truncate text-lg font-bold"
 												>
-													{selected.characterName ?? 'Unknown'}
+													{selected.characterName ?? t('hrpages.unknown')}
 												</Link>
 											) : (
 												<span className="truncate text-lg font-bold">
-													{selected.characterName ?? 'Unknown'}
+													{selected.characterName ?? t('hrpages.unknown')}
 												</span>
 											)}
 											{modernUserMatch ? (
-												<Badge variant="secondary">TANG User</Badge>
+												<Badge variant="secondary">{t('hrpages.tangUser')}</Badge>
 											) : (
-												<Badge variant="warning">Legacy-only identity</Badge>
+												<Badge variant="warning">{t('hrpages.legacyOnlyIdentity')}</Badge>
 											)}
 										</div>
 										<div className="flex items-center gap-2">
-											<span className="text-xs text-muted-foreground">Applied to:</span>
+											<span className="text-xs text-muted-foreground">
+												{t('hrpages.appliedTo2')}
+											</span>
 											{selected.corporationId ? (
 												<img
 													src={corporationLogoUrl(selected.corporationId, 32)}
-													alt={`${selected.corporationName ?? 'Corporation'} logo`}
+													alt={t('hrpages.value1Logo', {
+														value1: selected.corporationName ?? t('hrpages.corporation'),
+													})}
 													className="size-5 rounded-sm border border-border/60 object-cover"
 													loading="lazy"
 												/>
 											) : null}
 											<span className="-ml-1 font-bold">
-												{selected.corporationName ?? 'Unknown'}
+												{selected.corporationName ?? t('hrpages.unknown')}
 											</span>
 										</div>
 										{!modernUserMatch ? (
 											<div className="text-xs text-muted-foreground">
-												Legacy User ID:{' '}
+												{t('hrpages.legacyUserId')}{' '}
 												<span className="font-mono">{selected.legacyAuthUserId ?? 'N/A'}</span>
 											</div>
 										) : null}
@@ -143,7 +150,7 @@ export default function HrLegacyHistoryDetailPage() {
 							</div>
 
 							<div className="space-y-2">
-								<div className="text-sm font-medium">Event Timeline (Read-only)</div>
+								<div className="text-sm font-medium">{t('hrpages.eventTimelineReadOnly')}</div>
 								<div className="space-y-2">
 									{events.map((event) => (
 										<div key={event.id} className="rounded border p-2 bg-muted/20">
@@ -151,8 +158,8 @@ export default function HrLegacyHistoryDetailPage() {
 												<Badge variant="secondary">{formatLegacyEventType(event.eventType)}</Badge>
 												<span className="text-xs text-muted-foreground">
 													{event.eventAt
-														? new Date(event.eventAt).toLocaleString()
-														: 'Unknown time'}
+														? new Date(event.eventAt).toLocaleString(getActiveLocale())
+														: t('hrpages.unknownTime')}
 												</span>
 											</div>
 											{event.message ? (
@@ -161,7 +168,7 @@ export default function HrLegacyHistoryDetailPage() {
 												</p>
 											) : null}
 											<div className="mt-1 text-xs text-muted-foreground">
-												<span className="mr-2">Actor:</span>
+												<span className="mr-2">{t('hrpages.actor')}</span>
 												{event.legacyActorUserId && actorMatches[event.legacyActorUserId] ? (
 													<>
 														<Link
@@ -172,7 +179,7 @@ export default function HrLegacyHistoryDetailPage() {
 																actorMatches[event.legacyActorUserId].userId}
 														</Link>
 														<Badge variant="secondary" className="ml-2">
-															TANG User
+															{t('hrpages.tangUser')}
 														</Badge>
 													</>
 												) : (
@@ -185,28 +192,32 @@ export default function HrLegacyHistoryDetailPage() {
 														</span>
 														{event.legacyActorUserId ? (
 															<Badge variant="warning" className="ml-2">
-																Legacy User
+																{t('hrpages.legacyUser2')}
 															</Badge>
 														) : null}
 													</>
 												)}
 												{event.legacyActorUserId ? null : (
 													<Badge variant="secondary" className="ml-2">
-														Unmapped legacy actor
+														{t('hrpages.unmappedLegacyActor')}
 													</Badge>
 												)}
 											</div>
 										</div>
 									))}
 									{events.length === 0 ? (
-										<div className="text-sm text-muted-foreground">No legacy events.</div>
+										<div className="text-sm text-muted-foreground">
+											{t('hrpages.noLegacyEvents')}
+										</div>
 									) : null}
 								</div>
 							</div>
 						</>
 					) : (
 						<div className="text-sm text-muted-foreground">
-							{detailQuery.isLoading ? 'Loading...' : 'Legacy application not found.'}
+							{detailQuery.isLoading
+								? t('hrpages.loading')
+								: t('hrpages.legacyApplicationNotFound')}
 						</div>
 					)}
 				</CardContent>

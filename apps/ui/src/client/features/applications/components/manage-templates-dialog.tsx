@@ -24,6 +24,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useMessage } from '@/hooks/useMessage'
+import { useAppTranslation } from '@/i18n'
 import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -75,6 +76,8 @@ export function ManageTemplatesDialog({
 	onOpenChange,
 	corporationId,
 }: ManageTemplatesDialogProps) {
+	const { t } = useAppTranslation()
+
 	const { showSuccess, showError } = useMessage()
 
 	// State
@@ -112,21 +115,21 @@ export function ManageTemplatesDialog({
 	const handleDelete = async (templateId: string) => {
 		try {
 			await deleteMutation.mutateAsync({ templateId, corporationId })
-			showSuccess('Template deleted')
+			showSuccess(t('hrpages.templateDeleted'))
 			setDeleteConfirmId(null)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to delete template')
+			showError(error instanceof Error ? error.message : t('hrpages.failedToDeleteTemplate'))
 		}
 	}
 
 	const handleSave = async () => {
 		// Validate
 		if (!formData.templateName.trim()) {
-			showError('Template name is required')
+			showError(t('hrpages.templateNameIsRequired'))
 			return
 		}
 		if (!formData.messageTemplate.trim()) {
-			showError('Template content is required')
+			showError(t('hrpages.templateContentIsRequired'))
 			return
 		}
 
@@ -141,7 +144,7 @@ export function ManageTemplatesDialog({
 						status: formData.status,
 					},
 				})
-				showSuccess('Template created')
+				showSuccess(t('hrpages.templateCreated'))
 			} else if (mode === 'edit' && editingTemplate) {
 				await updateMutation.mutateAsync({
 					templateId: editingTemplate.id,
@@ -152,11 +155,11 @@ export function ManageTemplatesDialog({
 						status: formData.status,
 					},
 				})
-				showSuccess('Template updated')
+				showSuccess(t('hrpages.templateUpdated'))
 			}
 			setMode('list')
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to save template')
+			showError(error instanceof Error ? error.message : t('hrpages.failedToSaveTemplate'))
 		}
 	}
 
@@ -184,14 +187,14 @@ export function ManageTemplatesDialog({
 			<DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
 				<DialogHeader>
 					<DialogTitle>
-						{mode === 'list' && 'Message Templates'}
-						{mode === 'create' && 'Create Template'}
-						{mode === 'edit' && 'Edit Template'}
+						{mode === 'list' && t('hrpages.messageTemplates')}
+						{mode === 'create' && t('hrpages.createTemplate')}
+						{mode === 'edit' && t('hrpages.editTemplate')}
 					</DialogTitle>
 					<DialogDescription>
-						{mode === 'list' && 'Manage message templates for this corporation'}
-						{mode === 'create' && 'Create a new message template'}
-						{mode === 'edit' && 'Edit the template details'}
+						{mode === 'list' && t('hrpages.manageMessageTemplatesForThisCorporation')}
+						{mode === 'create' && t('hrpages.createANewMessageTemplate')}
+						{mode === 'edit' && t('hrpages.editTheTemplateDetails')}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -227,7 +230,7 @@ export function ManageTemplatesDialog({
 													</p>
 												)}
 												<p className="text-xs text-muted-foreground mt-1">
-													Updated{' '}
+													{t('hrpages.updated')}{' '}
 													{formatDistanceToNow(new Date(template.updatedAt), {
 														addSuffix: true,
 													})}
@@ -251,7 +254,11 @@ export function ManageTemplatesDialog({
 															onClick={() => handleDelete(template.id)}
 															disabled={deleteMutation.isPending}
 														>
-															{deleteMutation.isPending ? <LoadingSpinner size="sm" /> : 'Confirm'}
+															{deleteMutation.isPending ? (
+																<LoadingSpinner size="sm" />
+															) : (
+																t('hrpages.confirm')
+															)}
 														</Button>
 														<Button
 															variant="ghost"
@@ -259,7 +266,7 @@ export function ManageTemplatesDialog({
 															className="h-8 px-2 text-xs"
 															onClick={() => setDeleteConfirmId(null)}
 														>
-															Cancel
+															{t('hrpages.cancel')}
 														</Button>
 													</div>
 												) : (
@@ -279,20 +286,20 @@ export function ManageTemplatesDialog({
 							) : (
 								<div className="flex flex-col items-center justify-center py-12 text-center">
 									<FileText className="h-12 w-12 text-muted-foreground mb-4" />
-									<p className="text-muted-foreground">No templates yet</p>
+									<p className="text-muted-foreground">{t('hrpages.noTemplatesYet')}</p>
 									<p className="text-xs text-muted-foreground mt-1">
-										Create your first template to speed up messaging
+										{t('hrpages.createYourFirstTemplateToSpeedUpMessaging')}
 									</p>
 								</div>
 							)}
 						</div>
 						<DialogFooter>
 							<Button variant="ghost" onClick={handleClose}>
-								Close
+								{t('hrpages.close')}
 							</Button>
 							<Button onClick={handleCreate}>
 								<Plus className="h-4 w-4" />
-								Create Template
+								{t('hrpages.createTemplate')}
 							</Button>
 						</DialogFooter>
 					</>
@@ -303,51 +310,51 @@ export function ManageTemplatesDialog({
 					<>
 						<div className="flex-1 space-y-4 overflow-y-auto">
 							<div className="space-y-2">
-								<Label htmlFor="templateName">Template Name</Label>
+								<Label htmlFor="templateName">{t('hrpages.templateName')}</Label>
 								<Input
 									id="templateName"
 									value={formData.templateName}
 									onChange={(e) =>
 										setFormData((prev) => ({ ...prev, templateName: e.target.value }))
 									}
-									placeholder="e.g., Welcome Message, Follow-up Request"
+									placeholder={t('hrpages.eGWelcomeMessageFollowUpRequest')}
 									disabled={isSaving}
 								/>
 							</div>
 
 							<div className="space-y-2">
-								<Label htmlFor="description">Description (optional)</Label>
+								<Label htmlFor="description">{t('hrpages.descriptionOptional')}</Label>
 								<Input
 									id="description"
 									value={formData.description}
 									onChange={(e) =>
 										setFormData((prev) => ({ ...prev, description: e.target.value }))
 									}
-									placeholder="Brief description of when to use this template"
+									placeholder={t('hrpages.briefDescriptionOfWhenToUseThisTemplate')}
 									disabled={isSaving}
 								/>
 							</div>
 
 							<div className="space-y-2">
-								<Label htmlFor="messageTemplate">Template Content</Label>
+								<Label htmlFor="messageTemplate">{t('hrpages.templateContent')}</Label>
 								<Textarea
 									id="messageTemplate"
 									value={formData.messageTemplate}
 									onChange={(e) =>
 										setFormData((prev) => ({ ...prev, messageTemplate: e.target.value }))
 									}
-									placeholder="Enter your message template content..."
+									placeholder={t('hrpages.enterYourMessageTemplateContent')}
 									rows={6}
 									className="resize-none"
 									disabled={isSaving}
 								/>
 								<p className="text-xs text-muted-foreground">
-									This content will be inserted into the message box when selected.
+									{t('hrpages.thisContentWillBeInsertedIntoTheMessageBoxWhen')}
 								</p>
 							</div>
 
 							<div className="space-y-2">
-								<Label htmlFor="status">Status</Label>
+								<Label htmlFor="status">{t('hrpages.status')}</Label>
 								<Select
 									value={formData.status}
 									onValueChange={(value) =>
@@ -358,31 +365,31 @@ export function ManageTemplatesDialog({
 									}
 									inputId="status"
 									options={[
-										{ value: 'active', label: 'Active' },
-										{ value: 'draft', label: 'Draft' },
-										{ value: 'inactive', label: 'Inactive' },
+										{ value: 'active', label: t('hrpages.active') },
+										{ value: 'draft', label: t('hrpages.draft') },
+										{ value: 'inactive', label: t('hrpages.inactive') },
 									]}
 									disabled={isSaving}
 								/>
 								<p className="text-xs text-muted-foreground">
-									Only active templates appear in the template selector.
+									{t('hrpages.onlyActiveTemplatesAppearInTheTemplateSelector')}
 								</p>
 							</div>
 						</div>
 						<DialogFooter>
 							<Button variant="ghost" onClick={handleCancel} disabled={isSaving}>
-								Cancel
+								{t('hrpages.cancel')}
 							</Button>
 							<Button onClick={handleSave} disabled={isSaving}>
 								{isSaving ? (
 									<>
 										<LoadingSpinner size="sm" className="mr-2" />
-										Saving...
+										{t('hrpages.saving')}
 									</>
 								) : mode === 'create' ? (
-									'Create Template'
+									t('hrpages.createTemplate')
 								) : (
-									'Save Changes'
+									t('hrpages.saveChanges')
 								)}
 							</Button>
 						</DialogFooter>

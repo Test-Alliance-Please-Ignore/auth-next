@@ -14,9 +14,12 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
+import { useAppTranslation } from '@/i18n'
 
 export default function TaxAuditLogPage() {
-	usePageTitle('Tax Audit Log')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('tax.taxAuditLog'))
 
 	const { data: globalCapabilities } = useTaxCapabilities()
 	const canAdminScope = globalCapabilities?.global.canManage ?? false
@@ -77,7 +80,7 @@ export default function TaxAuditLogPage() {
 						.filter((corporationId): corporationId is string => Boolean(corporationId))
 				)
 			),
-		[auditLogRows]
+		[auditLogRows, t]
 	)
 	const { data: entityNames = {} } = useEntityNames(corporationIds, {
 		enabled: canView,
@@ -93,7 +96,7 @@ export default function TaxAuditLogPage() {
 					].filter(Boolean)
 				)
 			) as string[],
-		[auditLogRows, actorUserIdFilter]
+		[auditLogRows, actorUserIdFilter, t]
 	)
 	const { data: resolvedActors = [] } = useTaxAuditActors({
 		corporationId: effectiveCorporationId,
@@ -113,7 +116,7 @@ export default function TaxAuditLogPage() {
 			if (actor.name) next[actor.userId] = actor.name
 		}
 		return next
-	}, [resolvedActors])
+	}, [resolvedActors, t])
 	const actorSearchOptions = useMemo(
 		() =>
 			actorSearchResults.map((actor) => ({
@@ -121,7 +124,7 @@ export default function TaxAuditLogPage() {
 				label: actor.name ?? actor.userId,
 				description: actor.name ? actor.userId : undefined,
 			})),
-		[actorSearchResults]
+		[actorSearchResults, t]
 	)
 
 	if (!corporationAccessLoading && !scopedCapabilitiesLoading && !canView) {
@@ -129,8 +132,10 @@ export default function TaxAuditLogPage() {
 			<Container>
 				<Card>
 					<CardHeader>
-						<CardTitle>Tax Audit Log</CardTitle>
-						<CardDescription>You do not have permission to view tax audit entries.</CardDescription>
+						<CardTitle>{t('tax.taxAuditLog')}</CardTitle>
+						<CardDescription>
+							{t('tax.youDoNotHavePermissionToViewTaxAuditEntries')}
+						</CardDescription>
 					</CardHeader>
 				</Card>
 			</Container>
@@ -140,8 +145,8 @@ export default function TaxAuditLogPage() {
 	return (
 		<Container>
 			<PageHeader
-				title="Tax Audit Log"
-				description="Review configuration and operational actions recorded by the taxation domain."
+				title={t('tax.taxAuditLog')}
+				description={t('tax.reviewConfigurationAndOperationalActionsRecordedByTheTaxationDomain')}
 			/>
 
 			<Section>
@@ -155,8 +160,8 @@ export default function TaxAuditLogPage() {
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Filters</CardTitle>
-						<CardDescription>Filter by actor and action key (partial match).</CardDescription>
+						<CardTitle>{t('tax.filters')}</CardTitle>
+						<CardDescription>{t('tax.filterByActorAndActionKeyPartialMatch')}</CardDescription>
 					</CardHeader>
 					<CardContent className="grid gap-3 md:grid-cols-2">
 						<Select
@@ -179,26 +184,26 @@ export default function TaxAuditLogPage() {
 							minQueryLength={2}
 							debounceMs={0}
 							loading={actorSearchLoading || actorSearchPending}
-							queryHintText="Type at least 2 characters to search actors"
+							queryHintText={t('tax.actorSearchHint')}
 							placeholder={
 								actorUserIdFilter
 									? (actorDisplayNames[actorUserIdFilter] ?? actorUserIdFilter)
-									: 'Actor name or user ID'
+									: t('tax.actorNameOrUserId')
 							}
-							emptyText="No actors found"
+							emptyText={t('tax.noActors')}
 						/>
 						<Input
 							value={actionFilter}
 							onChange={(event) => setActionFilter(event.target.value)}
-							placeholder="Action contains (example: settings)"
+							placeholder={t('tax.actionContainsExampleSettings')}
 						/>
 					</CardContent>
 				</Card>
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Audit Entries</CardTitle>
-						<CardDescription>Most recent entries first.</CardDescription>
+						<CardTitle>{t('tax.auditEntries2')}</CardTitle>
+						<CardDescription>{t('tax.mostRecentEntriesFirst')}</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<TaxAuditLogGrid

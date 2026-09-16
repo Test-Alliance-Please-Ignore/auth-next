@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 
+import { useAppTranslation } from '@/i18n'
+
 import { Label } from '../../../components/ui/label'
 import { Select } from '../../../components/ui/select'
 import { useAuth } from '../../../hooks/useAuth'
@@ -20,6 +22,8 @@ export function MaintainerSelector({
 	disabled = false,
 	required = false,
 }: MaintainerSelectorProps) {
+	const { t } = useAppTranslation()
+
 	const { user } = useAuth()
 	const { data: memberships, isLoading: membershipsLoading } = useUserMemberships()
 	const options = useMemo<MaintainerOption[]>(() => {
@@ -29,7 +33,7 @@ export function MaintainerSelector({
 			const primaryChar = user.characters.find((c) => c.characterId === user.mainCharacterId)
 			maintainerOptions.push({
 				id: user.id,
-				name: primaryChar?.characterName || 'Me (Personal)',
+				name: primaryChar?.characterName || t('skillPlans.me'),
 				type: 'user',
 			})
 		}
@@ -45,15 +49,16 @@ export function MaintainerSelector({
 		}
 
 		return maintainerOptions
-	}, [memberships, user])
+	}, [memberships, user, t])
 
 	return (
 		<div className="space-y-2" data-component="searchable-maintainer-selector">
 			<Label htmlFor="maintainer">
-				Maintainer {required && <span className="text-destructive">*</span>}
+				{t('skillPlans.maintainer')}
+				{required && <span className="text-destructive">*</span>}
 			</Label>
 			<p className="text-sm text-muted-foreground">
-				Choose yourself or one of your groups. The selected maintainer can edit and delete this plan.
+				{t('skillPlans.chooseYourselfOrOneOfYourGroupsTheSelectedMaintainer')}
 			</p>
 			<Select
 				value={value || 'none'}
@@ -61,14 +66,14 @@ export function MaintainerSelector({
 				inputId="maintainer"
 				searchable
 				options={[
-					...(!required ? [{ value: 'none', label: 'No maintainer' }] : []),
+					...(!required ? [{ value: 'none', label: t('skillPlans.noMaintainer') }] : []),
 					...options.map((option) => ({
 						value: option.id,
 						label: option.name,
-						description: option.type === 'group' ? 'Group' : 'User',
+						description: option.type === 'group' ? t('skillPlans.group') : t('skillPlans.user'),
 					})),
 				]}
-				placeholder="Select maintainer..."
+				placeholder={t('skillPlans.selectMaintainer')}
 				disabled={disabled || membershipsLoading}
 			/>
 		</div>

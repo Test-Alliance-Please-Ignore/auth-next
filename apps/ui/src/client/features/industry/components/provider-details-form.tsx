@@ -3,6 +3,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { i18n, useAppTranslation } from '@/i18n'
 
 import { ENTITY_TYPE_LABELS } from '../types'
 
@@ -29,6 +30,8 @@ export function ProviderDetailsForm({
 	errors,
 	disabled,
 }: ProviderDetailsFormProps) {
+	const { t } = useAppTranslation()
+
 	const handleChange = <K extends keyof ProviderFormData>(field: K, value: ProviderFormData[K]) => {
 		onChange({ ...data, [field]: value })
 	}
@@ -38,13 +41,14 @@ export function ProviderDetailsForm({
 			{/* Name */}
 			<div className="space-y-2">
 				<Label htmlFor="name">
-					Name <span className="text-destructive">*</span>
+					{t('industry.name')}
+					<span className="text-destructive">*</span>
 				</Label>
 				<Input
 					id="name"
 					value={data.name}
 					onChange={(e) => handleChange('name', e.target.value)}
-					placeholder="Enter provider name"
+					placeholder={t('industry.enterProviderName')}
 					maxLength={255}
 					disabled={disabled}
 				/>
@@ -53,12 +57,12 @@ export function ProviderDetailsForm({
 
 			{/* Description */}
 			<div className="space-y-2">
-				<Label htmlFor="description">Description</Label>
+				<Label htmlFor="description">{t('industry.description')}</Label>
 				<Textarea
 					id="description"
 					value={data.description}
 					onChange={(e) => handleChange('description', e.target.value)}
-					placeholder="Enter a description for this provider"
+					placeholder={t('industry.enterADescriptionForThisProvider')}
 					rows={3}
 					disabled={disabled}
 				/>
@@ -68,7 +72,8 @@ export function ProviderDetailsForm({
 			<div className="grid gap-4 md:grid-cols-2">
 				<div className="space-y-2">
 					<Label htmlFor="ownerEntityType">
-						Owner Type <span className="text-destructive">*</span>
+						{t('industry.ownerType')}
+						<span className="text-destructive">*</span>
 					</Label>
 					<Select
 						value={data.ownerEntityType}
@@ -78,7 +83,7 @@ export function ProviderDetailsForm({
 							value,
 							label,
 						}))}
-						placeholder="Select owner type"
+						placeholder={t('industry.selectOwnerType')}
 						disabled={disabled}
 					/>
 					{errors.ownerEntityType && (
@@ -88,13 +93,14 @@ export function ProviderDetailsForm({
 
 				<div className="space-y-2">
 					<Label htmlFor="ownerEntityId">
-						Owner ID <span className="text-destructive">*</span>
+						{t('industry.ownerId')}
+						<span className="text-destructive">*</span>
 					</Label>
 					<Input
 						id="ownerEntityId"
 						value={data.ownerEntityId}
 						onChange={(e) => handleChange('ownerEntityId', e.target.value)}
-						placeholder="Enter owner entity ID (UUID)"
+						placeholder={t('industry.enterOwnerEntityIdUuid')}
 						disabled={disabled}
 					/>
 					{errors.ownerEntityId && (
@@ -106,9 +112,9 @@ export function ProviderDetailsForm({
 			{/* Accepting Orders */}
 			<div className="flex items-center justify-between rounded-lg border p-4">
 				<div className="space-y-0.5">
-					<Label htmlFor="acceptingOrders">Accepting Orders</Label>
+					<Label htmlFor="acceptingOrders">{t('industry.acceptingOrders')}</Label>
 					<p className="text-sm text-muted-foreground">
-						Allow new orders to be placed with this provider
+						{t('industry.allowNewOrdersToBePlacedWithThisProvider')}
 					</p>
 				</div>
 				<Switch
@@ -131,22 +137,22 @@ export function validateProviderForm(
 	const errors: Partial<Record<keyof ProviderFormData, string>> = {}
 
 	if (!data.name.trim()) {
-		errors.name = 'Name is required'
+		errors.name = i18n.t('industry.nameRequired')
 	} else if (data.name.length > 255) {
-		errors.name = 'Name must be 255 characters or less'
+		errors.name = i18n.t('industry.nameTooLong')
 	}
 
 	if (!data.ownerEntityType) {
-		errors.ownerEntityType = 'Owner type is required'
+		errors.ownerEntityType = i18n.t('industry.ownerTypeRequired')
 	}
 
 	if (!data.ownerEntityId.trim()) {
-		errors.ownerEntityId = 'Owner ID is required'
+		errors.ownerEntityId = i18n.t('industry.ownerIdRequired')
 	} else {
 		// Basic UUID validation
 		const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 		if (!uuidRegex.test(data.ownerEntityId.trim())) {
-			errors.ownerEntityId = 'Owner ID must be a valid UUID'
+			errors.ownerEntityId = i18n.t('industry.ownerIdInvalid')
 		}
 	}
 

@@ -1,15 +1,14 @@
-import { AlertTriangle } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { AlertTriangle } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router'
 
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { DateRangeInput } from '@/components/ui/date-range-input'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
 import { HoverPopover } from '@/components/ui/hover-popover'
-import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -21,21 +20,24 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
-import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 
 import { useSrpWalletHistory } from '../hooks'
 import {
 	setWalletHistoryPage,
 	setWalletHistoryPageSize,
-	useWalletHistoryUiState,
 	updateWalletHistoryFilters,
+	useWalletHistoryUiState,
 } from '../state/wallet-history-store'
 import { formatISK, isDateRangeWithinOneYear } from '../utils'
 
 export default function SRPWalletHistoryPage() {
-	usePageTitle('SRP - Wallet History')
+	const { t } = useAppTranslation()
+	usePageTitle(t('srp.wallet.pageTitle'))
 	const { hasAnyPermission } = useUserPermissions()
 	const filters = useWalletHistoryUiState((state) => state.filters)
 	const page = useWalletHistoryUiState((state) => state.page)
@@ -47,7 +49,13 @@ export default function SRPWalletHistoryPage() {
 	const [isExporting, setIsExporting] = useState(false)
 
 	const exportStatusQuery = useQuery({
-		queryKey: ['srp', 'payments', 'wallet-history', 'export-status', pendingExport?.workflowInstanceId ?? null],
+		queryKey: [
+			'srp',
+			'payments',
+			'wallet-history',
+			'export-status',
+			pendingExport?.workflowInstanceId ?? null,
+		],
 		queryFn: () => api.getSrpWalletHistoryCsvExportStatus(pendingExport!.workflowInstanceId),
 		enabled: Boolean(pendingExport?.workflowInstanceId),
 		refetchInterval: (query) => {
@@ -58,7 +66,8 @@ export default function SRPWalletHistoryPage() {
 	})
 	const exportStatus = exportStatusQuery.data?.status
 	const isExportPolling =
-		Boolean(pendingExport) && (exportStatus === undefined || exportStatus === 'queued' || exportStatus === 'running')
+		Boolean(pendingExport) &&
+		(exportStatus === undefined || exportStatus === 'queued' || exportStatus === 'running')
 	const isExportBusy = isExporting || isExportPolling
 
 	useEffect(() => {
@@ -105,9 +114,7 @@ export default function SRPWalletHistoryPage() {
 	const hasPagination = Math.ceil(total / pageSize) > 1
 	const isSoftLoading = Boolean(effectiveData) && (isLoading || isFetching)
 	const canExportCsv = Boolean(
-		filters.dateFrom &&
-		filters.dateTo &&
-		isDateRangeWithinOneYear(filters.dateFrom, filters.dateTo)
+		filters.dateFrom && filters.dateTo && isDateRangeWithinOneYear(filters.dateFrom, filters.dateTo)
 	)
 
 	const handleExport = useCallback(async () => {
@@ -136,29 +143,43 @@ export default function SRPWalletHistoryPage() {
 	const getAlertReasonLines = (item: (typeof items)[number]): string[] => {
 		const lines: string[] = []
 		const expectedRecipient =
-			item.alertDetail?.expectedRecipientCharacterName && item.alertDetail?.expectedRecipientCharacterId
+			item.alertDetail?.expectedRecipientCharacterName &&
+			item.alertDetail?.expectedRecipientCharacterId
 				? `${item.alertDetail.expectedRecipientCharacterName} (${item.alertDetail.expectedRecipientCharacterId})`
-				: item.alertDetail?.expectedRecipientCharacterName ??
+				: (item.alertDetail?.expectedRecipientCharacterName ??
 					item.alertDetail?.expectedRecipientCharacterId ??
-					'unknown'
+					t('srp.common.unknown'))
 		const actualRecipient =
 			item.alertDetail?.actualRecipientCharacterName && item.alertDetail?.actualRecipientCharacterId
 				? `${item.alertDetail.actualRecipientCharacterName} (${item.alertDetail.actualRecipientCharacterId})`
-				: item.alertDetail?.actualRecipientCharacterName ??
+				: (item.alertDetail?.actualRecipientCharacterName ??
 					item.recipientName ??
 					item.alertDetail?.actualRecipientCharacterId ??
 					item.recipientId ??
-					'unknown'
+					t('srp.common.unknown'))
 		if (item.hasRecipientMismatch) {
-			lines.push(`Recipient mismatch (expected ${expectedRecipient}, actual ${actualRecipient})`)
+			lines.push(
+				t('srp.wallet.recipientMismatch', { expected: expectedRecipient, actual: actualRecipient })
+			)
 		}
 		if ((item.matchingAlertKinds ?? []).includes('payment_mismatch')) {
 			lines.push(
-				`Amount mismatch (expected ${item.alertDetail?.expectedAmount ?? 'unknown'}, actual ${item.alertDetail?.observedAmount ?? item.amount})`
+				t('srp.wallet.amountMismatch', {
+					expected: item.alertDetail?.expectedAmount
+						? formatISK(item.alertDetail.expectedAmount)
+						: t('srp.common.unknown'),
+					actual: formatISK(item.alertDetail?.observedAmount ?? item.amount),
+				})
 			)
 		}
 		if ((item.matchingAlertKinds ?? []).includes('payment_missing')) {
-			lines.push(`Missing payment (>24h) (expected ${item.alertDetail?.expectedAmount ?? 'unknown'})`)
+			lines.push(
+				t('srp.wallet.missingPayment', {
+					expected: item.alertDetail?.expectedAmount
+						? formatISK(item.alertDetail.expectedAmount)
+						: t('srp.common.unknown'),
+				})
+			)
 		}
 		return [...new Set(lines)]
 	}
@@ -169,6 +190,7 @@ export default function SRPWalletHistoryPage() {
 		<UserSearchPaginationControls
 			page={page}
 			totalCount={total}
+			itemLabel={t('srp.wallet.entryItem', { count: total })}
 			pageSize={pageSize}
 			onPageChange={setWalletHistoryPage}
 			onPageSizeChange={(next) => {
@@ -180,10 +202,7 @@ export default function SRPWalletHistoryPage() {
 
 	return (
 		<Container>
-			<PageHeader
-				title="SRP Wallet History"
-				description="Wallet journal for the configured SRP payment processor corporation"
-			/>
+			<PageHeader title={t('srp.wallet.title')} description={t('srp.wallet.description')} />
 
 			<Card className="mt-section">
 				<CardContent className="space-y-4 p-4">
@@ -198,11 +217,11 @@ export default function SRPWalletHistoryPage() {
 							searchDelegate={(query) =>
 								api.searchSrpWalletHistoryValues({ field: 'reason', query })
 							}
-							placeholder="Reason"
+							placeholder={t('srp.common.reason')}
 							minQueryLength={2}
-							queryHintText="Type at least 2 characters"
-							emptyText="No reasons found"
-							selectAllOption={{ value: '', label: 'All Reasons' }}
+							queryHintText={t('srp.common.searchHint')}
+							emptyText={t('srp.wallet.noReasons')}
+							selectAllOption={{ value: '', label: t('srp.wallet.allReasons') }}
 						/>
 						<Select
 							options={[]}
@@ -214,11 +233,11 @@ export default function SRPWalletHistoryPage() {
 							searchDelegate={(query) =>
 								api.searchSrpWalletHistoryValues({ field: 'recipient', query })
 							}
-							placeholder="Recipient"
+							placeholder={t('srp.common.recipient')}
 							minQueryLength={2}
-							queryHintText="Type at least 2 characters"
-							emptyText="No recipients found"
-							selectAllOption={{ value: '', label: 'All Recipients' }}
+							queryHintText={t('srp.common.searchHint')}
+							emptyText={t('srp.wallet.noRecipients')}
+							selectAllOption={{ value: '', label: t('srp.wallet.allRecipients') }}
 						/>
 						<div className="xl:col-span-2">
 							<DateRangeInput
@@ -232,7 +251,7 @@ export default function SRPWalletHistoryPage() {
 										dateTo: toDate || undefined,
 									})
 								}}
-								placeholder="Entry date range"
+								placeholder={t('srp.wallet.dateRange')}
 								className="[&_.themed-date-picker__input]:h-10"
 							/>
 						</div>
@@ -243,7 +262,7 @@ export default function SRPWalletHistoryPage() {
 									updateWalletHistoryFilters({ alertsOnly: checked ? true : undefined })
 								}}
 							/>
-							<span className="text-sm text-muted-foreground">Alerts only</span>
+							<span className="text-sm text-muted-foreground">{t('srp.wallet.alertsOnly')}</span>
 						</div>
 					</div>
 
@@ -257,13 +276,13 @@ export default function SRPWalletHistoryPage() {
 								}}
 								disabled={!canExportCsv || isExportBusy}
 								loading={isExportBusy}
-								loadingText={isExporting ? 'Exporting…' : 'Generating…'}
+								loadingText={isExporting ? t('srp.common.exporting') : t('srp.common.generating')}
 							>
-								Export CSV
+								{t('srp.common.exportCsv')}
 							</Button>
 							{isExportPolling && (
 								<span className="text-xs text-muted-foreground">
-									Waiting for export to generate...
+									{t('srp.common.exportWaiting')}
 								</span>
 							)}
 						</div>
@@ -280,30 +299,30 @@ export default function SRPWalletHistoryPage() {
 								<Table>
 									<TableHeader>
 										<TableRow>
-											<TableHead>Date</TableHead>
-											<TableHead>Reason</TableHead>
-											<TableHead>Recipient</TableHead>
-											<TableHead className="text-right">Amount</TableHead>
-											<TableHead>Journal</TableHead>
+											<TableHead>{t('srp.common.date')}</TableHead>
+											<TableHead>{t('srp.common.reason')}</TableHead>
+											<TableHead>{t('srp.common.recipient')}</TableHead>
+											<TableHead className="text-right">{t('srp.common.amount')}</TableHead>
+											<TableHead>{t('srp.common.journal')}</TableHead>
 										</TableRow>
 									</TableHeader>
 									<TableBody>
 										{error && !effectiveData ? (
 											<TableRow>
 												<TableCell colSpan={6} className="py-8 text-center text-red-500">
-													{error instanceof Error ? error.message : 'Failed to load wallet history'}
+													{error instanceof Error ? error.message : t('srp.wallet.loadFailed')}
 												</TableCell>
 											</TableRow>
 										) : !effectiveData && (isLoading || isFetching) ? (
 											<TableRow>
 												<TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-													Loading wallet history...
+													{t('srp.wallet.loading')}
 												</TableCell>
 											</TableRow>
 										) : items.length === 0 ? (
 											<TableRow>
 												<TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-													No wallet transactions found
+													{t('srp.wallet.empty')}
 												</TableCell>
 											</TableRow>
 										) : (
@@ -315,7 +334,7 @@ export default function SRPWalletHistoryPage() {
 															? 'odd:!bg-red-900/25 even:!bg-red-900/25 hover:!bg-red-900/30 border-l-2 border-l-red-500'
 															: hasMissingReasonWarning(item)
 																? 'odd:!bg-yellow-900/20 even:!bg-yellow-900/20 hover:!bg-yellow-900/25 border-l-2 border-l-yellow-500'
-															: undefined
+																: undefined
 													}
 												>
 													<TableCell className="text-sm">
@@ -325,13 +344,17 @@ export default function SRPWalletHistoryPage() {
 														<div className="flex items-center gap-2">
 															{item.hasOpenAlert && (
 																<HoverPopover
-																	trigger={<AlertTriangle className="h-3.5 w-3.5 cursor-help text-red-400" />}
+																	trigger={
+																		<AlertTriangle className="h-3.5 w-3.5 cursor-help text-red-400" />
+																	}
 																	align="start"
 																	side="top"
 																	className="w-64 p-3"
 																>
 																	<div className="space-y-1">
-																		<p className="text-xs font-semibold text-red-300">Alert Details</p>
+																		<p className="text-xs font-semibold text-red-300">
+																			{t('srp.wallet.alertDetails')}
+																		</p>
 																		<ul className="list-disc pl-4 text-xs text-muted-foreground">
 																			{getAlertReasonLines(item).map((reason) => (
 																				<li key={reason}>{reason}</li>
@@ -342,15 +365,19 @@ export default function SRPWalletHistoryPage() {
 															)}
 															{hasMissingReasonWarning(item) && (
 																<HoverPopover
-																	trigger={<AlertTriangle className="h-3.5 w-3.5 cursor-help text-yellow-400" />}
+																	trigger={
+																		<AlertTriangle className="h-3.5 w-3.5 cursor-help text-yellow-400" />
+																	}
 																	align="start"
 																	side="top"
 																	className="w-64 p-3"
 																>
 																	<div className="space-y-1">
-																		<p className="text-xs font-semibold text-yellow-300">Warning</p>
+																		<p className="text-xs font-semibold text-yellow-300">
+																			{t('srp.common.warning')}
+																		</p>
 																		<p className="text-xs text-muted-foreground">
-																			Corporation withdrawal to a user character with an empty reason.
+																			{t('srp.wallet.missingReason')}
 																		</p>
 																	</div>
 																</HoverPopover>

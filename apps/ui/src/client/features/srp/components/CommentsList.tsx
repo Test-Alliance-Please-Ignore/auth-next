@@ -1,16 +1,18 @@
 import { Edit, Lock, Trash } from 'lucide-react'
 import { useState } from 'react'
-import toast from '@/lib/toast'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useAuth } from '@/hooks/useAuth'
+import { useAppTranslation } from '@/i18n'
 import { characterPortraitUrl } from '@/lib/eve-images'
+import toast from '@/lib/toast'
 
 import { useDeleteComment } from '../hooks'
 import { formatRelativeTime } from '../utils'
 import { CharacterRoleBadge } from './CharacterRoleBadge'
 import { CommentForm } from './CommentForm'
+import { SRPFeedback } from './SRPFeedback'
 
 import type { SRPCommentResponse } from '../types'
 
@@ -37,19 +39,20 @@ export function CommentsList({
 	onCommentAdded,
 	initialContext,
 }: CommentsListProps) {
+	const { t } = useAppTranslation()
 	const { user } = useAuth()
 	const [editingId, setEditingId] = useState<string | null>(null)
 	const deleteMutation = useDeleteComment()
 
 	const handleDelete = async (id: string) => {
-		if (!confirm('Are you sure you want to delete this comment?')) return
+		if (!confirm(t('srp.comments.deleteConfirm'))) return
 
 		try {
 			await deleteMutation.mutateAsync(id)
-			toast.success('Comment deleted')
+			toast.success(<SRPFeedback messageKey="srp.comments.deleted" />)
 			onCommentAdded() // Refresh list
 		} catch (error: any) {
-			toast.error('Failed to delete comment', {
+			toast.error(<SRPFeedback messageKey="srp.comments.deleteFailed" />, {
 				description: error.message,
 			})
 		}
@@ -62,7 +65,7 @@ export function CommentsList({
 	if (!initialContext && comments.length === 0) {
 		return (
 			<Card className="p-6 text-center">
-				<p className="text-sm text-muted-foreground">No comments.</p>
+				<p className="text-sm text-muted-foreground">{t('srp.comments.empty')}</p>
 			</Card>
 		)
 	}
@@ -84,19 +87,17 @@ export function CommentsList({
 							)}
 							<div>
 								<div className="flex items-center gap-2 flex-wrap">
-									<span className="font-medium">
-										{initialContext.authorCharacterName}
-									</span>
+									<span className="font-medium">{initialContext.authorCharacterName}</span>
 									<CharacterRoleBadge
 										role={initialContext.authorCharacterRole}
 										mainCharacterName={initialContext.authorMainCharacterName}
 										mainCharacterId={initialContext.authorMainCharacterId}
 									/>
 									<span className="inline-flex items-center rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-400">
-										Requestor
+										{t('srp.comments.requestor')}
 									</span>
 									<span className="inline-flex items-center rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
-										Initial Context
+										{t('srp.comments.initialContext')}
 									</span>
 								</div>
 								<div className="text-xs text-muted-foreground">
@@ -128,7 +129,7 @@ export function CommentsList({
 									{comment.authorCharacterId ? (
 										<img
 											src={characterPortraitUrl(comment.authorCharacterId, 32)}
-											alt={comment.authorCharacterName}
+											alt={comment.authorCharacterName || t('srp.common.you')}
 											className="h-8 w-8 rounded-full shrink-0 mt-0.5"
 										/>
 									) : (
@@ -136,7 +137,9 @@ export function CommentsList({
 									)}
 									<div>
 										<div className="flex items-center gap-2 flex-wrap">
-											<span className="font-medium">{comment.authorCharacterName}</span>
+											<span className="font-medium">
+												{comment.authorCharacterName || t('srp.common.you')}
+											</span>
 											<CharacterRoleBadge
 												role={comment.authorCharacterRole}
 												mainCharacterName={comment.authorMainCharacterName}
@@ -144,22 +147,24 @@ export function CommentsList({
 											/>
 											{comment.authorRole === 'requestor' && (
 												<span className="inline-flex items-center rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-400">
-													Requestor
+													{t('srp.comments.requestor')}
 												</span>
 											)}
 											{comment.authorRole === 'staff' && (
 												<span className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400">
-													SRP Staff
+													{t('srp.comments.staff')}
 												</span>
 											)}
 											{comment.visibility === 'internal' && (
 												<span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
 													<Lock className="h-3 w-3" />
-													Internal
+													{t('srp.comments.internal')}
 												</span>
 											)}
 											{comment.isEdited && (
-												<span className="text-xs text-muted-foreground">(edited)</span>
+												<span className="text-xs text-muted-foreground">
+													{t('srp.comments.edited')}
+												</span>
 											)}
 										</div>
 										<div className="text-xs text-muted-foreground">
@@ -170,12 +175,22 @@ export function CommentsList({
 								{(canEdit(comment) || canDelete(comment)) && (
 									<div className="flex gap-1">
 										{canEdit(comment) && (
-											<Button variant="ghost" size="sm" onClick={() => setEditingId(comment.id)}>
+											<Button
+												variant="ghost"
+												size="sm"
+												aria-label={t('srp.comments.edit')}
+												onClick={() => setEditingId(comment.id)}
+											>
 												<Edit className="h-4 w-4" />
 											</Button>
 										)}
 										{canDelete(comment) && (
-											<Button variant="ghost" size="sm" onClick={() => handleDelete(comment.id)}>
+											<Button
+												variant="ghost"
+												size="sm"
+												aria-label={t('srp.comments.delete')}
+												onClick={() => handleDelete(comment.id)}
+											>
 												<Trash className="h-4 w-4" />
 											</Button>
 										)}

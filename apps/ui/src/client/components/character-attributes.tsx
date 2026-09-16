@@ -1,3 +1,4 @@
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 import { typeIconUrl } from '@/lib/eve-images'
 
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
@@ -25,10 +26,12 @@ const attributeTypeIds: Record<string, number> = {
 }
 
 export function CharacterAttributes({ attributes }: CharacterAttributesProps) {
+	const { t } = useAppTranslation()
+
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Attributes</CardTitle>
+				<CardTitle>{t('characterpages.attributes')}</CardTitle>
 			</CardHeader>
 			<CardContent>
 				<div className="space-y-3">
@@ -43,11 +46,7 @@ export function CharacterAttributes({ attributes }: CharacterAttributesProps) {
 						return (
 							<div key={name} className="flex items-center justify-between">
 								<div className="flex items-center gap-2">
-									<img
-										src={typeIconUrl(typeId, 32)}
-										alt={name}
-										className="h-5 w-5"
-									/>
+									<img src={typeIconUrl(typeId, 32)} alt={name} className="h-5 w-5" />
 									<span className="text-sm font-medium">{name}</span>
 								</div>
 								<span className="text-sm font-bold">{value}</span>
@@ -58,13 +57,15 @@ export function CharacterAttributes({ attributes }: CharacterAttributesProps) {
 					{attributes.lastRemapDate && (
 						<div className="pt-3 mt-3 border-t">
 							<p className="text-xs text-muted-foreground">
-								Last remap: {new Date(attributes.lastRemapDate).toLocaleDateString()}
+								{t('characterpages.lastRemap')}
+								{new Date(attributes.lastRemapDate).toLocaleDateString(getActiveLocale())}
 							</p>
 						</div>
 					)}
 					{attributes.bonusRemaps && attributes.bonusRemaps > 0 && (
 						<p className="text-xs text-muted-foreground">
-							Bonus remaps available: {attributes.bonusRemaps}
+							{t('characterpages.bonusRemapsAvailable')}
+							{attributes.bonusRemaps}
 						</p>
 					)}
 				</div>

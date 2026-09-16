@@ -1,4 +1,5 @@
 import { HoverPopover } from '@/components/ui/hover-popover'
+import { useAppTranslation } from '@/i18n'
 
 import { getOreColor, getOreRarity, RARITY_COLORS } from '../ore-rarities'
 
@@ -52,6 +53,8 @@ function getOreVariantFilter(variantIndexes: Map<string, number>, oreTypeId: str
 }
 
 export function OreCompositionBar({ ores, className = '' }: Props) {
+	const { t } = useAppTranslation()
+
 	const sorted = [...ores].sort((a, b) => parseFloat(b.quantity) - parseFloat(a.quantity))
 	const variantIndexes = getOreVariantIndexes(ores)
 	const filledPct = sorted.reduce((sum, ore) => sum + parseFloat(ore.quantity) * 100, 0)
@@ -70,7 +73,9 @@ export function OreCompositionBar({ ores, className = '' }: Props) {
 								triggerClassName="h-full w-full"
 								trigger={
 									<span
-										aria-label={ore.oreTypeName ?? `Type ${ore.oreTypeId}`}
+										aria-label={
+											ore.oreTypeName ?? t('moonScan.typeValue1', { value1: ore.oreTypeId })
+										}
 										className="block h-full cursor-help"
 										style={{
 											backgroundColor: getOreColor(ore.oreTypeId),
@@ -82,16 +87,21 @@ export function OreCompositionBar({ ores, className = '' }: Props) {
 							>
 								<div className="flex items-center gap-2 text-sm font-medium">
 									{rarity ? <RarityBadge rarity={rarity} /> : null}
-									<span>{ore.oreTypeName ?? `Type ${ore.oreTypeId}`}</span>
+									<span>
+										{ore.oreTypeName ?? t('moonScan.typeValue1', { value1: ore.oreTypeId })}
+									</span>
 								</div>
-								<div className="text-xs text-muted-foreground">{pct.toFixed(1)}% composition</div>
+								<div className="text-xs text-muted-foreground">
+									{pct.toFixed(1)}
+									{t('moonScan.composition2')}
+								</div>
 							</HoverPopover>
 						</div>
 					)
 				})}
 				{remainderPct > 0 && (
 					<div
-						title={`Unreported remainder — ${remainderPct.toFixed(1)}%`}
+						title={t('moonScan.unreportedRemainderValue1', { value1: remainderPct.toFixed(1) })}
 						className="bg-transparent"
 						style={{ width: `${remainderPct}%` }}
 					/>
@@ -119,7 +129,8 @@ export function OreCompositionBar({ ores, className = '' }: Props) {
 				{remainderPct > 0 && (
 					<span className="flex items-center gap-1 text-xs text-muted-foreground">
 						<span className="inline-block h-2 w-2 rounded-sm border border-border/70 bg-transparent" />
-						Unreported {remainderPct.toFixed(1)}%
+						{t('moonScan.unreported')}
+						{remainderPct.toFixed(1)}%
 					</span>
 				)}
 			</div>

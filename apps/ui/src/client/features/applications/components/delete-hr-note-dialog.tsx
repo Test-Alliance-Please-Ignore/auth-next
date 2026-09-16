@@ -19,6 +19,7 @@ import {
 	DialogTitle,
 } from '@/components/ui/dialog'
 import { useMessage } from '@/hooks/useMessage'
+import { useAppTranslation } from '@/i18n'
 
 import { useDeleteHRNote } from '../hooks'
 import { HRNotePriorityBadge } from './hr-note-priority-badge'
@@ -60,6 +61,8 @@ export function DeleteHRNoteDialog({
 	note,
 	onSuccess,
 }: DeleteHRNoteDialogProps) {
+	const { t } = useAppTranslation()
+
 	const { showSuccess, showError } = useMessage()
 	const deleteMutation = useDeleteHRNote()
 
@@ -75,11 +78,11 @@ export function DeleteHRNoteDialog({
 				subjectUserId: note.subjectUserId,
 			})
 
-			showSuccess('HR note deleted successfully')
+			showSuccess(t('hrpages.hrNoteDeletedSuccessfully'))
 			onOpenChange(false)
 			onSuccess?.()
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Failed to delete HR note'
+			const message = error instanceof Error ? error.message : t('hrpages.failedToDeleteHrNote')
 			showError(message)
 		}
 	}
@@ -96,11 +99,9 @@ export function DeleteHRNoteDialog({
 				<DialogHeader>
 					<div className="flex items-center gap-2 text-destructive mb-2">
 						<AlertTriangle className="h-5 w-5" />
-						<DialogTitle>Delete HR Note</DialogTitle>
+						<DialogTitle>{t('hrpages.deleteHrNote')}</DialogTitle>
 					</div>
-					<DialogDescription>
-						Are you sure you want to delete this HR note? This action cannot be undone.
-					</DialogDescription>
+					<DialogDescription>{t('hrpages.areYouSureYouWantToDeleteThisHrNote')}</DialogDescription>
 				</DialogHeader>
 
 				{/* Note Preview */}
@@ -115,17 +116,25 @@ export function DeleteHRNoteDialog({
 					</div>
 
 					<div className="text-xs text-muted-foreground">
-						<p>Author: {note.authorCharacterName}</p>
-						{note.subjectCharacterName && <p>Subject: {note.subjectCharacterName}</p>}
+						<p>
+							{t('hrpages.author')}
+							{note.authorCharacterName}
+						</p>
+						{note.subjectCharacterName && (
+							<p>
+								{t('hrpages.subject2')}
+								{note.subjectCharacterName}
+							</p>
+						)}
 					</div>
 				</div>
 
 				<DialogFooter>
 					<Button variant="ghost" onClick={handleCancel} disabled={isPending}>
-						Cancel
+						{t('hrpages.cancel')}
 					</Button>
 					<Button variant="destructive" onClick={handleDelete} disabled={isPending}>
-						{isPending ? 'Deleting...' : 'Delete Note'}
+						{isPending ? t('hrpages.deleting') : t('hrpages.deleteNote')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

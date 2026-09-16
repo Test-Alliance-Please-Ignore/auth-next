@@ -2,7 +2,6 @@ import { ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router'
 
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
@@ -19,8 +18,11 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { i18n, useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
+
 import { useSessionTimeline, useTrackingSession } from '../hooks'
 
 import type { SessionTimelineRow } from '../types'
@@ -37,27 +39,32 @@ function formatTimelineCharacterRef(
 function getTimelineEventLabel(eventType: SessionTimelineRow['eventType']): string {
 	switch (eventType) {
 		case 'join':
-			return 'Join'
+			return i18n.t('fleetTracking.join')
 		case 'leave':
-			return 'Leave'
+			return i18n.t('fleetTracking.leave')
 		case 'ship_change':
-			return 'Ship Change'
+			return i18n.t('fleetTracking.shipChange')
 		case 'fleet_boss_initial':
-			return 'Initial Fleet Boss'
+			return i18n.t('fleetTracking.initialFleetBoss')
 		case 'fleet_boss_change':
-			return 'Fleet Boss Change'
+			return i18n.t('fleetTracking.fleetBossChange')
 		case 'tracking_started':
-			return 'Tracking Started'
+			return i18n.t('fleetTracking.trackingStarted')
 		case 'tracking_resumed':
-			return 'Tracking Resumed'
+			return i18n.t('fleetTracking.trackingResumed')
 		case 'tracking_ended':
-			return 'Tracking Ended'
+			return i18n.t('fleetTracking.trackingEnded')
 	}
 }
 
 function renderTimelineEventDetails(ev: SessionTimelineRow) {
 	if (ev.eventType === 'fleet_boss_initial') {
-		return <>Initial boss: {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+		return (
+			<>
+				{i18n.t('fleetTracking.initialBoss')}
+				{formatTimelineCharacterRef(ev.characterName, ev.characterId)}
+			</>
+		)
 	}
 
 	if (ev.eventType === 'fleet_boss_change') {
@@ -73,17 +80,21 @@ function renderTimelineEventDetails(ev: SessionTimelineRow) {
 	}
 
 	if (ev.eventType === 'tracking_started') {
-		return <>Tracking started with {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+		return (
+			<>
+				{i18n.t('fleetTracking.trackingStartedWith')}
+				{formatTimelineCharacterRef(ev.characterName, ev.characterId)}
+			</>
+		)
 	}
 
 	if (ev.eventType === 'tracking_resumed') {
 		const isTakeover =
-			!!ev.previousFleetBossCharacterId &&
-			ev.previousFleetBossCharacterId !== ev.characterId
+			!!ev.previousFleetBossCharacterId && ev.previousFleetBossCharacterId !== ev.characterId
 
 		return isTakeover ? (
 			<>
-				Taken over from{' '}
+				{i18n.t('fleetTracking.takenOverFrom')}{' '}
 				{formatTimelineCharacterRef(
 					ev.previousFleetBossCharacterName,
 					ev.previousFleetBossCharacterId
@@ -91,33 +102,45 @@ function renderTimelineEventDetails(ev: SessionTimelineRow) {
 				→ {formatTimelineCharacterRef(ev.characterName, ev.characterId)}
 			</>
 		) : (
-			<>Tracking resumed by {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+			<>
+				{i18n.t('fleetTracking.trackingResumedBy')}
+				{formatTimelineCharacterRef(ev.characterName, ev.characterId)}
+			</>
 		)
 	}
 
 	if (ev.eventType === 'tracking_ended') {
-		return <>Tracking ended by {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+		return (
+			<>
+				{i18n.t('fleetTracking.trackingEndedBy')}
+				{formatTimelineCharacterRef(ev.characterName, ev.characterId)}
+			</>
+		)
 	}
 
 	if (ev.eventType === 'ship_change') {
 		return (
 			<>
 				{ev.previousShipTypeName || `type #${ev.previousShipTypeId ?? '?'}`} →{' '}
-				{ev.shipTypeName || `type #${ev.shipTypeId}`} in{' '}
-				{ev.systemName || `system #${ev.solarSystemId}`}
+				{ev.shipTypeName || `type #${ev.shipTypeId}`}
+				{i18n.t('fleetTracking.in')} {ev.systemName || `system #${ev.solarSystemId}`}
 			</>
 		)
 	}
 
 	return (
 		<>
-			{ev.shipTypeName || `type #${ev.shipTypeId}`} at {ev.systemName || `system #${ev.solarSystemId}`}
+			{ev.shipTypeName || `type #${ev.shipTypeId}`}
+			{i18n.t('fleetTracking.at')}
+			{ev.systemName || `system #${ev.solarSystemId}`}
 		</>
 	)
 }
 
 export default function SessionTimeline() {
-	usePageTitle('Fleet Tracking Timeline')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('fleetTracking.fleetTrackingTimeline'))
 	const { sessionId } = useParams<{ sessionId: string }>()
 	const [filter, setFilter] = useState<Filter>('all')
 	const [characterId, setCharacterId] = useState('')
@@ -138,13 +161,15 @@ export default function SessionTimeline() {
 	return (
 		<Container>
 			<PageHeader
-				title="Timeline"
-				description={session ? `Session: ${session.name}` : undefined}
+				title={t('fleetTracking.timeline')}
+				description={
+					session ? t('fleetTracking.sessionValue1', { value1: session.name }) : undefined
+				}
 				action={
 					<Button asChild variant="ghost" size="sm">
 						<Link to={`/fleet-tracking/${sessionId}`}>
 							<ArrowLeft className="h-4 w-4" />
-							Session
+							{t('fleetTracking.session')}
 						</Link>
 					</Button>
 				}
@@ -152,7 +177,7 @@ export default function SessionTimeline() {
 
 			<Card>
 				<CardHeader>
-					<CardTitle className="text-base">Filters</CardTitle>
+					<CardTitle className="text-base">{t('fleetTracking.filters')}</CardTitle>
 				</CardHeader>
 				<CardContent>
 					<div className="flex flex-wrap items-center gap-3">
@@ -164,10 +189,10 @@ export default function SessionTimeline() {
 							}}
 						>
 							<TabsList>
-								<TabsTrigger value="all">All events</TabsTrigger>
-								<TabsTrigger value="join">Joins</TabsTrigger>
-								<TabsTrigger value="leave">Leaves</TabsTrigger>
-								<TabsTrigger value="ship_change">Ship changes</TabsTrigger>
+								<TabsTrigger value="all">{t('fleetTracking.allEvents')}</TabsTrigger>
+								<TabsTrigger value="join">{t('fleetTracking.joins')}</TabsTrigger>
+								<TabsTrigger value="leave">{t('fleetTracking.leaves')}</TabsTrigger>
+								<TabsTrigger value="ship_change">{t('fleetTracking.shipChanges')}</TabsTrigger>
 							</TabsList>
 						</Tabs>
 						<div className="w-full max-w-sm">
@@ -187,11 +212,11 @@ export default function SessionTimeline() {
 										description: entry.characterId,
 									}))
 								}}
-								placeholder="Filter by character name"
+								placeholder={t('fleetTracking.filterByCharacterName')}
 								minQueryLength={2}
-								queryHintText="Type at least 2 characters"
-								emptyText="No character names found"
-								selectAllOption={{ value: '', label: 'All Characters' }}
+								queryHintText={t('fleetTracking.typeAtLeast2Characters')}
+								emptyText={t('fleetTracking.noCharacterNamesFound')}
+								selectAllOption={{ value: '', label: t('fleetTracking.allCharacters') }}
 							/>
 						</div>
 					</div>
@@ -212,7 +237,7 @@ export default function SessionTimeline() {
 									setPage(1)
 								}}
 								pageSizeOptions={[10, 25, 50]}
-								itemLabel="events"
+								itemLabel={t('fleetTracking.events')}
 							/>
 						</div>
 					)}
@@ -220,36 +245,38 @@ export default function SessionTimeline() {
 						<LoadingPage />
 					) : !timeline || timeline.items.length === 0 ? (
 						<div className="py-8 text-center text-sm text-muted-foreground">
-							No events found for the selected filters.
+							{t('fleetTracking.noEventsFoundForTheSelectedFilters')}
 						</div>
 					) : (
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>Timestamp</TableHead>
-									<TableHead>Event</TableHead>
-									<TableHead>Character</TableHead>
-									<TableHead>Details</TableHead>
+									<TableHead>{t('fleetTracking.timestamp')}</TableHead>
+									<TableHead>{t('fleetTracking.event')}</TableHead>
+									<TableHead>{t('fleetTracking.character')}</TableHead>
+									<TableHead>{t('fleetTracking.details')}</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
 								{timeline.items.map((ev) => (
-								<TableRow key={ev.id}>
-									<TableCell className="text-muted-foreground">
-										<EveTimeDisplay dateStr={ev.eventTimestamp} />
-									</TableCell>
-									<TableCell className="font-medium">{getTimelineEventLabel(ev.eventType)}</TableCell>
-									<TableCell>
-										<Link
-											to={`/fleet-tracking/${sessionId}/members/${ev.characterId}`}
-											className="hover:underline"
-										>
-											{ev.characterName || ev.characterId}
-										</Link>
-									</TableCell>
-									<TableCell className="text-muted-foreground">
-										{renderTimelineEventDetails(ev)}
-									</TableCell>
+									<TableRow key={ev.id}>
+										<TableCell className="text-muted-foreground">
+											<EveTimeDisplay dateStr={ev.eventTimestamp} />
+										</TableCell>
+										<TableCell className="font-medium">
+											{getTimelineEventLabel(ev.eventType)}
+										</TableCell>
+										<TableCell>
+											<Link
+												to={`/fleet-tracking/${sessionId}/members/${ev.characterId}`}
+												className="hover:underline"
+											>
+												{ev.characterName || ev.characterId}
+											</Link>
+										</TableCell>
+										<TableCell className="text-muted-foreground">
+											{renderTimelineEventDetails(ev)}
+										</TableCell>
 									</TableRow>
 								))}
 							</TableBody>
@@ -270,7 +297,7 @@ export default function SessionTimeline() {
 							setPage(1)
 						}}
 						pageSizeOptions={[10, 25, 50]}
-						itemLabel="events"
+						itemLabel={t('fleetTracking.events')}
 					/>
 				</div>
 			)}

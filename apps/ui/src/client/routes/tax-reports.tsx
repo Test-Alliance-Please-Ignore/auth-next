@@ -24,6 +24,7 @@ import {
 import { useEntityNames } from '@/hooks/useEntityNames'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useTaxCorporationAccessScope } from '@/hooks/useTaxCorporationAccessScope'
+import { i18n, useAppTranslation } from '@/i18n'
 import {
 	getCurrentMonthDateRange,
 	getCurrentMonthWindowRange,
@@ -49,44 +50,70 @@ const reportViewOptions: Array<{
 }> = [
 	{
 		value: 'total_taxes_by_corporation',
-		label: 'Total Taxes',
-		description: 'Corporation-level due, paid, and delta for the selected filter period.',
+		get label() {
+			return i18n.t('tax.totalTaxes')
+		},
+		get description() {
+			return i18n.t('tax.corporationLevelDuePaidAndDeltaForTheSelectedFilter')
+		},
 		exportable: true,
 	},
 	{
 		value: 'top_income_sources',
-		label: 'Income Sources',
-		description: 'Income or assessed tax grouped by income type.',
+		get label() {
+			return i18n.t('tax.incomeSources')
+		},
+		get description() {
+			return i18n.t('tax.incomeOrAssessedTaxGroupedByIncomeType')
+		},
 		exportable: true,
 	},
 	{
 		value: 'ess_payout',
 		label: 'ESS',
-		description: 'Recent ESS escrow entries with bank type and counterparties.',
+		get description() {
+			return i18n.t('tax.recentEssEscrowEntriesWithBankTypeAndCounterparties')
+		},
 		exportable: true,
 	},
 	{
 		value: 'compliance_over_time',
-		label: 'Compliance',
-		description: 'Period-level tax due, paid, and delta over time.',
+		get label() {
+			return i18n.t('tax.compliance')
+		},
+		get description() {
+			return i18n.t('tax.periodLevelTaxDuePaidAndDeltaOverTime')
+		},
 		exportable: true,
 	},
 	{
 		value: 'discrepancies',
-		label: 'Discrepancies',
-		description: 'Active discrepancy signals for the selected scope.',
+		get label() {
+			return i18n.t('tax.discrepancies2')
+		},
+		get description() {
+			return i18n.t('tax.activeDiscrepancySignalsForTheSelectedScope')
+		},
 		exportable: true,
 	},
 	{
 		value: 'bill_status',
-		label: 'Bill Status',
-		description: 'Assessment-level bill lifecycle, period window, and payment totals.',
+		get label() {
+			return i18n.t('tax.billStatus')
+		},
+		get description() {
+			return i18n.t('tax.assessmentLevelBillLifecyclePeriodWindowAndPaymentTotals')
+		},
 		exportable: true,
 	},
 	{
 		value: 'missing_esi_keys',
-		label: 'ESI Coverage',
-		description: 'Corporations with incomplete ESI key or scope coverage.',
+		get label() {
+			return i18n.t('tax.esiCoverage')
+		},
+		get description() {
+			return i18n.t('tax.corporationsWithIncompleteEsiKeyOrScopeCoverage')
+		},
 		exportable: false,
 		requiresAdminScope: true,
 	},
@@ -100,12 +127,24 @@ const exportFormatOptions: Array<{ value: TaxExportFormat; label: string }> = [
 const DEFAULT_MONTH_RANGE = getCurrentMonthDateRange()
 
 const scheduleFrequencyOptions: Array<{ value: 'weekly' | 'monthly'; label: string }> = [
-	{ value: 'weekly', label: 'Weekly' },
-	{ value: 'monthly', label: 'Monthly' },
+	{
+		value: 'weekly',
+		get label() {
+			return i18n.t('tax.weekly')
+		},
+	},
+	{
+		value: 'monthly',
+		get label() {
+			return i18n.t('tax.monthly')
+		},
+	},
 ]
 
 export default function TaxReportsPage() {
-	usePageTitle('Tax Reports')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('tax.taxReports'))
 
 	const { data: globalCapabilities } = useTaxCapabilities()
 	const canAdminScope = globalCapabilities?.global.canAudit ?? false
@@ -122,10 +161,10 @@ export default function TaxReportsPage() {
 	const [selectedReportView, setSelectedReportView] = useState<TaxReportView>(
 		'total_taxes_by_corporation'
 	)
-	const [reportSelectorQuery, setReportSelectorQuery] = useState('Total Taxes')
+	const [reportSelectorQuery, setReportSelectorQuery] = useState(t('tax.totalTaxes'))
 	const [selectedExportFormat, setSelectedExportFormat] = useState<TaxExportFormat>('csv')
 	const [selectedScheduleFormat, setSelectedScheduleFormat] = useState<TaxExportFormat>('csv')
-	const [scheduleName, setScheduleName] = useState('Weekly Tax Summary')
+	const [scheduleName, setScheduleName] = useState(t('tax.weeklyTaxSummary'))
 	const [scheduleFrequency, setScheduleFrequency] = useState<'weekly' | 'monthly'>('weekly')
 	const [incomeSourceControls, setIncomeSourceControls] = useState<TaxIncomeSourceControls>({
 		refTypes: [],
@@ -201,7 +240,7 @@ export default function TaxReportsPage() {
 
 	const visibleReportOptions = useMemo(
 		() => reportViewOptions.filter((option) => !option.requiresAdminScope || canAdminScope),
-		[canAdminScope]
+		[canAdminScope, t]
 	)
 	const selectedReportOption =
 		visibleReportOptions.find((option) => option.value === selectedReportView) ??
@@ -230,7 +269,7 @@ export default function TaxReportsPage() {
 			fromDate: fromDateIso,
 			toDate: toDateIso,
 		}),
-		[effectiveCorporationId, fromDateIso, toDateIso]
+		[effectiveCorporationId, fromDateIso, toDateIso, t]
 	)
 
 	const {
@@ -329,30 +368,35 @@ export default function TaxReportsPage() {
 		incomeSourceControls,
 		toDateIso,
 		totalTaxesExportSort,
+		t,
 	])
 
 	const exportFilterSummary = useMemo(() => {
 		const items: string[] = []
 		items.push(
-			effectiveCorporationId ? `Corporation ${effectiveCorporationId}` : 'All corporations in scope'
+			effectiveCorporationId
+				? t('tax.corporationValue1', { value1: effectiveCorporationId })
+				: t('tax.allCorporationsInScope')
 		)
-		if (fromDate) items.push(`From ${fromDate}`)
-		if (toDate) items.push(`To ${toDate}`)
+		if (fromDate) items.push(t('tax.fromValue1', { value1: fromDate }))
+		if (toDate) items.push(t('tax.toValue1', { value1: toDate }))
 		if (activeExportReportType === 'top_income_sources') {
 			items.push(
 				incomeSourceControls.walletSource === 'character'
-					? 'Source: Player wallets'
-					: 'Source: Corporation wallets'
+					? t('tax.sourcePlayerWallets')
+					: t('tax.sourceCorporationWallets')
 			)
 			if (incomeSourceControls.incomeMode === 'assessed') {
-				items.push('Mode: Assessed')
+				items.push(t('tax.modeAssessed'))
 			}
 			if (incomeSourceControls.refTypes.length > 0) {
-				items.push(`Income types: ${incomeSourceControls.refTypes.length} selected`)
+				items.push(
+					t('tax.incomeTypesValue1Selected', { value1: incomeSourceControls.refTypes.length })
+				)
 			}
 		}
 		return items
-	}, [activeExportReportType, effectiveCorporationId, fromDate, incomeSourceControls, toDate])
+	}, [activeExportReportType, effectiveCorporationId, fromDate, incomeSourceControls, toDate, t])
 
 	const reportEntityIds = useMemo(() => {
 		const ids = new Set<string>()
@@ -360,7 +404,7 @@ export default function TaxReportsPage() {
 		for (const row of schedules) if (row.corporationId) ids.add(row.corporationId)
 
 		return [...ids]
-	}, [exportsList, schedules])
+	}, [exportsList, schedules, t])
 
 	const { data: entityNames = {} } = useEntityNames(reportEntityIds, {
 		enabled: canView,
@@ -371,8 +415,8 @@ export default function TaxReportsPage() {
 			<Container size="wide">
 				<Card>
 					<CardHeader>
-						<CardTitle>Tax Reports</CardTitle>
-						<CardDescription>You do not have permission to view tax reports.</CardDescription>
+						<CardTitle>{t('tax.taxReports')}</CardTitle>
+						<CardDescription>{t('tax.youDoNotHavePermissionToViewTaxReports')}</CardDescription>
 					</CardHeader>
 				</Card>
 			</Container>
@@ -382,8 +426,8 @@ export default function TaxReportsPage() {
 	return (
 		<Container size="wide">
 			<PageHeader
-				title="Tax Reports"
-				description="Review tax reports through a single active report view, then export or schedule the output."
+				title={t('tax.taxReports')}
+				description={t('tax.reviewTaxReportsThroughASingleActiveReportViewThen')}
 			/>
 
 			<Section>
@@ -454,12 +498,12 @@ export default function TaxReportsPage() {
 								filters: exportFilters,
 								sourceEsiVersion: 'esi-v1',
 							})
-							toast.success('Tax export request submitted', {
-								description: 'The export will appear in Recent Exports when it is ready.',
+							toast.success(t('tax.exportSubmitted'), {
+								description: t('tax.exportReadyHint'),
 							})
 						} catch (error) {
-							toast.error('Failed to request tax export', {
-								description: error instanceof Error ? error.message : 'Please try again.',
+							toast.error(t('tax.exportRequestFailed'), {
+								description: error instanceof Error ? error.message : t('tax.tryAgain'),
 							})
 							throw error
 						}
@@ -467,7 +511,7 @@ export default function TaxReportsPage() {
 					onSubmitSchedule={async () => {
 						if (!activeExportReportType) return
 						await createScheduleMutation.mutateAsync({
-							name: scheduleName.trim() || 'Tax Export Schedule',
+							name: scheduleName.trim() || t('tax.exportScheduleName'),
 							corporationId: effectiveCorporationId,
 							format: selectedScheduleFormat,
 							frequency: scheduleFrequency,

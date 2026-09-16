@@ -2,6 +2,8 @@ import { ArrowLeft, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router'
 
+import { useAppTranslation } from '@/i18n'
+
 import { EvemonXmlImporter } from '../../../components/evemon-xml-importer'
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card'
@@ -36,6 +38,8 @@ import type { ParsedEvemonSkill } from '../../../lib/evemon-parser'
 import type { AddSkillRequest, UpdateSkillPlanRequest } from '../types'
 
 export default function SkillPlanEdit() {
+	const { t } = useAppTranslation()
+
 	const { id } = useParams<{ id: string }>()
 	const navigate = useNavigate()
 	const [activeTab, setActiveTab] = useState('details')
@@ -49,7 +53,9 @@ export default function SkillPlanEdit() {
 	const updateSkillLevels = useUpdateSkillLevels()
 	const batchAddSkills = useBatchAddSkillsToPlan()
 
-	usePageTitle(plan ? `Edit ${plan.name}` : 'Edit Skill Plan')
+	usePageTitle(
+		plan ? t('skillPlans.editValue1', { value1: plan.name }) : t('skillPlans.editSkillPlan')
+	)
 
 	if (!id) {
 		return <Navigate to="/skill-plans" replace />
@@ -89,7 +95,7 @@ export default function SkillPlanEdit() {
 	}
 
 	const handleRemoveSkill = async (skillId: string) => {
-		if (confirm('Are you sure you want to remove this skill from the plan?')) {
+		if (confirm(t('skillPlans.areYouSureYouWantToRemoveThisSkillFrom'))) {
 			try {
 				await removeSkill.mutateAsync({ planId: id, skillId })
 				// Refetch skills to update the list
@@ -138,15 +144,10 @@ export default function SkillPlanEdit() {
 
 			// Show success message (in a real app, use a toast)
 			if (result.successful > 0) {
-				alert(
-					`Successfully imported ${result.successful} skill${result.successful !== 1 ? 's' : ''}`
-				)
+				alert(t('skillPlans.importedSkills', { count: result.successful }))
 			}
 			if (result.failed > 0) {
-				console.warn(
-					`Failed to import ${result.failed} skill${result.failed !== 1 ? 's' : ''}`,
-					result.errors
-				)
+				console.warn(t('skillPlans.importFailures', { value1: result.failed }), result.errors)
 			}
 		} catch (error) {
 			console.error('Failed to import skills:', error)
@@ -158,13 +159,13 @@ export default function SkillPlanEdit() {
 	return (
 		<Container>
 			<PageHeader
-				title={`Edit: ${plan.name}`}
-				description="Modify plan details and manage skills"
+				title={t('skillPlans.editValue12', { value1: plan.name })}
+				description={t('skillPlans.modifyPlanDetailsAndManageSkills')}
 				action={
 					<Button variant="ghost" size="sm" asChild>
 						<Link to={`/skill-plans/${id}`}>
 							<ArrowLeft className="h-4 w-4" />
-							Back to Plan
+							{t('skillPlans.backToPlan')}
 						</Link>
 					</Button>
 				}
@@ -174,15 +175,18 @@ export default function SkillPlanEdit() {
 				{/* Tabs for different sections */}
 				<Tabs value={activeTab} onValueChange={setActiveTab}>
 					<TabsList>
-						<TabsTrigger value="details">Plan Details</TabsTrigger>
-						<TabsTrigger value="skills">Manage Skills ({skills?.length || 0})</TabsTrigger>
+						<TabsTrigger value="details">{t('skillPlans.planDetails')}</TabsTrigger>
+						<TabsTrigger value="skills">
+							{t('skillPlans.manageSkills2')}
+							{skills?.length || 0})
+						</TabsTrigger>
 					</TabsList>
 
 					{/* Details Tab */}
 					<TabsContent value="details" className="space-y-4">
 						<Card>
 							<CardHeader>
-								<CardTitle>Edit Plan Details</CardTitle>
+								<CardTitle>{t('skillPlans.editPlanDetails')}</CardTitle>
 							</CardHeader>
 							<CardContent>
 								<SkillPlanForm
@@ -208,14 +212,14 @@ export default function SkillPlanEdit() {
 						) : (
 							<Card>
 								<CardHeader className="flex flex-row items-center justify-between">
-									<CardTitle>Add Skills to Plan</CardTitle>
+									<CardTitle>{t('skillPlans.addSkillsToPlan')}</CardTitle>
 									<Button
 										variant="ghost"
 										onClick={() => setShowImporter(true)}
 										disabled={addSkill.isPending}
 									>
 										<Upload className="h-4 w-4" />
-										Import from EVEMon
+										{t('skillPlans.importFromEvemon')}
 									</Button>
 								</CardHeader>
 								<CardContent>
@@ -231,18 +235,22 @@ export default function SkillPlanEdit() {
 						{/* Current skills */}
 						<Card>
 							<CardHeader>
-								<CardTitle>Current Skills in Plan</CardTitle>
+								<CardTitle>{t('skillPlans.currentSkillsInPlan')}</CardTitle>
 							</CardHeader>
 							<CardContent>
 								{skills && skills.length > 0 ? (
 									<Table>
 										<TableHeader>
 											<TableRow>
-												<TableHead>Skill Name</TableHead>
-												<TableHead>Group</TableHead>
-												<TableHead className="text-center">Required Level</TableHead>
-												<TableHead className="text-center">Recommended Level</TableHead>
-												<TableHead className="w-[100px]">Actions</TableHead>
+												<TableHead>{t('skillPlans.skillName')}</TableHead>
+												<TableHead>{t('skillPlans.group')}</TableHead>
+												<TableHead className="text-center">
+													{t('skillPlans.requiredLevel')}
+												</TableHead>
+												<TableHead className="text-center">
+													{t('skillPlans.recommendedLevel')}
+												</TableHead>
+												<TableHead className="w-[100px]">{t('skillPlans.actions')}</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
@@ -252,7 +260,7 @@ export default function SkillPlanEdit() {
 														{skill.skillName || skill.skillId}
 													</TableCell>
 													<TableCell className="text-muted-foreground">
-														{skill.skillGroup || 'Unknown'}
+														{skill.skillGroup || t('skillPlans.unknown')}
 													</TableCell>
 													<TableCell className="text-center">
 														<Select
@@ -262,7 +270,7 @@ export default function SkillPlanEdit() {
 															}
 															options={[0, 1, 2, 3, 4, 5].map((level) => ({
 																value: String(level),
-																label: level === 0 ? 'Optional' : String(level),
+																label: level === 0 ? t('skillPlans.optional') : String(level),
 															}))}
 															className="w-20 mx-auto"
 															disabled={updateSkillLevels.isPending}
@@ -297,8 +305,8 @@ export default function SkillPlanEdit() {
 									</Table>
 								) : (
 									<div className="text-center py-8 text-muted-foreground">
-										<p>No skills have been added to this plan yet.</p>
-										<p className="mt-2 text-sm">Use the form above to add skills.</p>
+										<p>{t('skillPlans.noSkillsHaveBeenAddedToThisPlanYet')}</p>
+										<p className="mt-2 text-sm">{t('skillPlans.useTheFormAboveToAddSkills')}</p>
 									</div>
 								)}
 							</CardContent>

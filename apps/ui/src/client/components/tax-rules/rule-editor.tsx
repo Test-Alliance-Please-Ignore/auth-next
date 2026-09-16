@@ -2,6 +2,7 @@ import { NumberInput } from '@mantine/core'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -14,15 +15,15 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { TableCell, TableRow } from '@/components/ui/table'
+import { useAppTranslation } from '@/i18n'
 import {
 	MANTINE_THEMED_NUMBER_INPUT_CLASS_NAMES,
 	MANTINE_THEMED_NUMBER_INPUT_STYLES,
 } from '@/lib/mantine-input-styles'
 import { formatTaxDateTime } from '@/lib/tax-date'
-import { formatTaxRefTypeLabel, TAX_REF_TYPE_OPTIONS } from '@/lib/tax-display'
+import { formatTaxRefTypeLabel, getTaxRefTypeOptions } from '@/lib/tax-display'
 
 import type { TaxRuleSet } from '@repo/corporation-tax'
-import { Button } from '@/components/ui/button'
 
 const ANY_INCOME_TYPE_VALUE = '__any_income_type__'
 
@@ -99,20 +100,20 @@ export function RuleFormFields({
 	onChange: (next: RuleFormState) => void
 	disabled?: boolean
 }) {
+	const { t } = useAppTranslation()
+
 	const incomeTypeOptions = useMemo(
 		() => [
-			{ value: ANY_INCOME_TYPE_VALUE,
-				label: 'Any income type',
-			},
-			...TAX_REF_TYPE_OPTIONS,
+			{ value: ANY_INCOME_TYPE_VALUE, label: t('tax.anyIncomeType') },
+			...getTaxRefTypeOptions(),
 		],
-		[]
+		[t]
 	)
 
 	return (
 		<div className="grid gap-3 md:grid-cols-[25%_25%_15%_15%_15%]">
 			<div className="space-y-1">
-				<label className="text-xs font-medium text-muted-foreground">Rule name</label>
+				<label className="text-xs font-medium text-muted-foreground">{t('tax.ruleName')}</label>
 				<Input
 					value={form.name}
 					onChange={(event) => onChange({ ...form, name: event.target.value })}
@@ -121,7 +122,7 @@ export function RuleFormFields({
 			</div>
 			<div className="space-y-1">
 				<label className="text-xs font-medium text-muted-foreground">
-					Income source (optional)
+					{t('tax.incomeSourceOptional')}
 				</label>
 				<Select
 					value={form.refType}
@@ -140,14 +141,14 @@ export function RuleFormFields({
 					listMaxHeight="28rem"
 					placeholder={
 						form.refType === ANY_INCOME_TYPE_VALUE
-							? 'Any income type'
+							? t('tax.anyIncomeType')
 							: formatTaxRefTypeLabel(form.refType)
 					}
 					disabled={disabled}
 				/>
 			</div>
 			<div className="space-y-1">
-				<label className="text-xs font-medium text-muted-foreground">Rate (%)</label>
+				<label className="text-xs font-medium text-muted-foreground">{t('tax.rate')}</label>
 				<NumberInput
 					value={form.rateText}
 					onChange={(value) => onChange({ ...form, rateText: normalizeNumberInputValue(value) })}
@@ -167,7 +168,7 @@ export function RuleFormFields({
 				/>
 			</div>
 			<div className="space-y-1">
-				<label className="text-xs font-medium text-muted-foreground">Priority</label>
+				<label className="text-xs font-medium text-muted-foreground">{t('tax.priority')}</label>
 				<NumberInput
 					value={form.priorityText}
 					onChange={(value) =>
@@ -185,13 +186,13 @@ export function RuleFormFields({
 				/>
 			</div>
 			<div className="flex flex-col items-center space-y-1">
-				<label className="text-xs font-medium text-muted-foreground">Active</label>
+				<label className="text-xs font-medium text-muted-foreground">{t('tax.active')}</label>
 				<div className="flex h-10 items-center justify-center">
 					<Switch
 						checked={form.isActive}
 						onCheckedChange={(checked) => onChange({ ...form, isActive: checked })}
 						disabled={disabled}
-						aria-label="Rule active"
+						aria-label={t('tax.ruleActive')}
 					/>
 				</div>
 			</div>
@@ -221,6 +222,8 @@ export function RuleRowEditor({
 	) => void
 	onDelete: (ruleSetId: string) => void
 }) {
+	const { t } = useAppTranslation()
+
 	const [isEditing, setIsEditing] = useState(false)
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
 	const [form, setForm] = useState<RuleFormState>(() => ruleToFormState(rule))
@@ -249,7 +252,9 @@ export function RuleRowEditor({
 			<TableRow>
 				<TableCell className="font-medium">{rule.name}</TableCell>
 				<TableCell>
-					{rule.appliesToRefType ? formatTaxRefTypeLabel(rule.appliesToRefType) : 'Any income type'}
+					{rule.appliesToRefType
+						? formatTaxRefTypeLabel(rule.appliesToRefType)
+						: t('tax.anyIncomeType')}
 				</TableCell>
 				<TableCell>{toPercentText(rule.taxRateBps)}%</TableCell>
 				<TableCell>{rule.priority}</TableCell>
@@ -267,7 +272,7 @@ export function RuleRowEditor({
 								}, 300)
 							}}
 							disabled={!canManage || isSaving}
-							aria-label="Toggle rule active state"
+							aria-label={t('tax.toggleRuleActiveState')}
 						/>
 					</div>
 				</TableCell>
@@ -276,8 +281,8 @@ export function RuleRowEditor({
 					<div className="flex items-center gap-3">
 						<button
 							type="button"
-							aria-label="Edit rule"
-							title="Edit rule"
+							aria-label={t('tax.editRule')}
+							title={t('tax.editRule')}
 							disabled={!canManage || isSaving}
 							onClick={() => setIsEditing((current) => !current)}
 							className="text-muted-foreground hover:text-foreground disabled:opacity-50"
@@ -286,8 +291,8 @@ export function RuleRowEditor({
 						</button>
 						<button
 							type="button"
-							aria-label="Delete rule"
-							title="Delete rule"
+							aria-label={t('tax.deleteRule')}
+							title={t('tax.deleteRule')}
 							disabled={!canManage || isSaving}
 							onClick={() => setIsDeleteDialogOpen(true)}
 							className="text-destructive/80 hover:text-destructive disabled:opacity-50"
@@ -303,7 +308,8 @@ export function RuleRowEditor({
 						<div className="space-y-3">
 							<RuleFormFields form={form} onChange={setForm} disabled={!canManage || isSaving} />
 							<div className="flex flex-wrap items-center justify-end gap-2">
-								<Button variant="primary"
+								<Button
+									variant="primary"
 									size="sm"
 									disabled={!canManage || isSaving || !formValid}
 									onClick={() => {
@@ -321,9 +327,10 @@ export function RuleRowEditor({
 										setIsEditing(false)
 									}}
 								>
-									Save
+									{t('tax.save')}
 								</Button>
-								<Button variant="cancel"
+								<Button
+									variant="cancel"
 									size="sm"
 									showIcon={false}
 									disabled={!canManage || isSaving}
@@ -332,7 +339,7 @@ export function RuleRowEditor({
 										setIsEditing(false)
 									}}
 								>
-									Cancel
+									{t('tax.cancel')}
 								</Button>
 							</div>
 						</div>
@@ -342,25 +349,28 @@ export function RuleRowEditor({
 			<Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Delete Rule</DialogTitle>
-						<DialogDescription>
-							Are you sure you want to delete "{rule.name}"? This action cannot be undone.
-						</DialogDescription>
+						<DialogTitle>{t('tax.deleteRule2')}</DialogTitle>
+						<DialogDescription>{t('tax.deleteRuleConfirm', { name: rule.name })}</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
-						<Button variant="cancel" onClick={() => setIsDeleteDialogOpen(false)} disabled={isSaving}>
-							Cancel
+						<Button
+							variant="cancel"
+							onClick={() => setIsDeleteDialogOpen(false)}
+							disabled={isSaving}
+						>
+							{t('tax.cancel')}
 						</Button>
-						<Button variant="destructive"
+						<Button
+							variant="destructive"
 							loading={isSaving}
-							loadingText="Deleting..."
+							loadingText={t('tax.deleting')}
 							showIcon={false}
 							onClick={() => {
 								onDelete(rule.id)
 								setIsDeleteDialogOpen(false)
 							}}
 						>
-							Delete
+							{t('tax.delete')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

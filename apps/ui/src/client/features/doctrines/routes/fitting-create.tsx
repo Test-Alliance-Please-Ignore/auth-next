@@ -15,6 +15,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 import toast from '@/lib/toast'
 
@@ -26,7 +27,9 @@ import { useAddFittingToDoctrine, useCreateFitting } from '../hooks'
 import type { CreateFittingRequest, ParsedFittingPreview, UpdateFittingRequest } from '../types'
 
 export default function FittingCreatePage() {
-	usePageTitle('Create Fitting')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('doctrines.createFitting'))
 	const navigate = useNavigate()
 	const { hasPermission, isAdmin } = useUserPermissions()
 	const [searchParams] = useSearchParams()
@@ -63,14 +66,14 @@ export default function FittingCreatePage() {
 					fittingCategory: (data as CreateFittingRequest).category || undefined,
 					sortOrder: 0,
 				})
-				toast.success('Fitting created and added to doctrine')
+				toast.success(t('doctrines.fittingCreatedAndAddedToDoctrine'))
 				void navigate(`/doctrines/${doctrineId}`)
 			} else {
-				toast.success('Fitting created')
+				toast.success(t('doctrines.fittingCreated'))
 				void navigate(`/doctrines/fittings/${result.id}`)
 			}
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Failed to create fitting')
+			toast.error(error instanceof Error ? error.message : t('doctrines.failedToCreateFitting'))
 		}
 	}
 
@@ -87,11 +90,14 @@ export default function FittingCreatePage() {
 			<Button asChild variant="ghost" size="sm" className="mb-4">
 				<Link to={doctrineId ? `/doctrines/${doctrineId}` : '/doctrines'}>
 					<ArrowLeft className="h-4 w-4" />
-					{doctrineId ? 'Back to Doctrine' : 'Back to Doctrines'}
+					{doctrineId ? t('doctrines.backToDoctrine') : t('doctrines.backToDoctrines')}
 				</Link>
 			</Button>
 
-			<PageHeader title="Create Fitting" description="Import a new ship fitting from EFT format" />
+			<PageHeader
+				title={t('doctrines.createFitting')}
+				description={t('doctrines.importANewShipFittingFromEftFormat')}
+			/>
 
 			{canManage ? (
 				<div className="grid gap-6 lg:grid-cols-2">
@@ -122,7 +128,8 @@ export default function FittingCreatePage() {
 										<Card>
 											<CardContent className="pt-4 pb-4">
 												<p className="text-sm text-amber-400">
-													Could not resolve: {preview.unresolvedItems.join(', ')}
+													{t('doctrines.couldNotResolve')}
+													{preview.unresolvedItems.join(', ')}
 												</p>
 											</CardContent>
 										</Card>
@@ -150,7 +157,7 @@ export default function FittingCreatePage() {
 				<Card>
 					<CardContent className="pt-6">
 						<p className="text-sm text-muted-foreground">
-							You do not have permission to perform this action.
+							{t('doctrines.youDoNotHavePermissionToPerformThisAction')}
 						</p>
 					</CardContent>
 				</Card>

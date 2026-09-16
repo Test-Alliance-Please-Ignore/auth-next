@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 import { characterPortraitUrl } from '@/lib/eve-images'
 
@@ -37,22 +38,30 @@ function mapUser(user: AdminUser): UserOption {
 export function UserSearchSelect({
 	value,
 	label,
-	placeholder = 'Search members by name…',
+	placeholder: providedPlaceholder,
 	disabled = false,
 	inputId,
 	onChange,
 }: UserSearchSelectProps) {
-	const searchDelegate = useCallback(async (query: string): Promise<UserOption[]> => {
-		const { data } = await api.getAdminUsers({ search: query })
-		return data.map(mapUser)
-	}, [])
+	const { t } = useAppTranslation()
+	const placeholder = providedPlaceholder ?? t('predictionMarkets.searchMembersByName')
+
+	const searchDelegate = useCallback(
+		async (query: string): Promise<UserOption[]> => {
+			const { data } = await api.getAdminUsers({ search: query })
+			return data.map(mapUser)
+		},
+		[t]
+	)
 
 	return (
 		<Select<UserOption>
 			inputId={inputId}
 			value={value}
 			options={
-				value ? [{ value, label: label ?? value, mainCharacterId: null, discordUsername: null }] : []
+				value
+					? [{ value, label: label ?? value, mainCharacterId: null, discordUsername: null }]
+					: []
 			}
 			searchable
 			searchDelegate={searchDelegate}
@@ -60,9 +69,9 @@ export function UserSearchSelect({
 			placeholder={placeholder}
 			disabled={disabled}
 			onValueChange={(nextValue, option) => onChange(nextValue, option)}
-			loadingText="Searching members…"
-			emptyText="No matching members"
-			queryHintText="Type at least 2 characters"
+			loadingText={t('predictionMarkets.searchingMembers')}
+			emptyText={t('predictionMarkets.noMatchingMembers')}
+			queryHintText={t('predictionMarkets.typeAtLeast2Characters')}
 			renderOption={(option) => (
 				<div className="flex min-w-0 items-center gap-2">
 					{option.mainCharacterId ? (

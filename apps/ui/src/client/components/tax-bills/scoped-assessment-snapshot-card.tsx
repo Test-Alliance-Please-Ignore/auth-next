@@ -3,8 +3,9 @@ import { useMemo } from 'react'
 import { DataTable } from '@/components/data-table'
 import { useReportGridState } from '@/components/tax-reports/use-report-grid-state'
 import { useTaxAssessments } from '@/hooks/corporation-tax'
+import { useAppTranslation } from '@/i18n'
 import { formatTaxDate } from '@/lib/tax-date'
-import { formatTaxIskFull, TaxEntityDisplay } from '@/lib/tax-display'
+import { formatTaxIskFull, formatTaxStatus, TaxEntityDisplay } from '@/lib/tax-display'
 
 import type { TaxAssessment } from '@repo/corporation-tax'
 
@@ -19,6 +20,8 @@ export function ScopedAssessmentSnapshotCard({
 	entityNames,
 	canView,
 }: ScopedAssessmentSnapshotCardProps) {
+	const { t } = useAppTranslation()
+
 	const grid = useReportGridState({
 		defaultSortBy: 'taxPeriodEnd',
 		defaultSortDir: 'desc',
@@ -47,13 +50,13 @@ export function ScopedAssessmentSnapshotCard({
 		() => [
 			{
 				id: 'assessmentScope',
-				header: 'Scope',
+				header: t('tax.scope'),
 				sortable: true,
 				cell: (row: TaxAssessment) => row.assessmentScope,
 			},
 			{
 				id: 'scopeId',
-				header: 'Scope ID',
+				header: t('tax.scopeId'),
 				sortable: true,
 				cell: (row: TaxAssessment) =>
 					row.assessmentScope === 'division' ? (
@@ -62,33 +65,38 @@ export function ScopedAssessmentSnapshotCard({
 						<TaxEntityDisplay entityId={row.scopeId} entityNames={entityNames} />
 					),
 			},
-			{ id: 'status', header: 'Status', sortable: true, cell: (row: TaxAssessment) => row.status },
+			{
+				id: 'status',
+				header: t('tax.status'),
+				sortable: true,
+				cell: (row: TaxAssessment) => formatTaxStatus(row.status),
+			},
 			{
 				id: 'taxDue',
-				header: 'Tax Due',
+				header: t('tax.taxDue'),
 				sortable: true,
 				cell: (row: TaxAssessment) => formatTaxIskFull(row.taxDue),
 			},
 			{
 				id: 'taxDelta',
-				header: 'Delta',
+				header: t('tax.delta'),
 				sortable: true,
 				cell: (row: TaxAssessment) => formatTaxIskFull(row.taxDelta),
 			},
 			{
 				id: 'taxPeriodEnd',
-				header: 'Period End',
+				header: t('tax.periodEnd'),
 				sortable: true,
 				cell: (row: TaxAssessment) => formatTaxDate(row.taxPeriodEnd),
 			},
 		],
-		[entityNames]
+		[entityNames, t]
 	)
 
 	if (!effectiveCorporationId) {
 		return (
 			<div className="py-8 text-sm text-muted-foreground">
-				Select a corporation to view scoped assessments.
+				{t('tax.selectACorporationToViewScopedAssessments')}
 			</div>
 		)
 	}
@@ -96,16 +104,16 @@ export function ScopedAssessmentSnapshotCard({
 	return (
 		<DataTable
 			variant="plain"
-			errorMessage="Failed to load report"
+			errorMessage={t('tax.failedToLoadReport')}
 			columns={columns}
 			rows={assessments}
 			loading={isLoading}
 			error={error}
-			emptyMessage="No assessments found for the selected corporation."
+			emptyMessage={t('tax.noAssessmentsFoundForTheSelectedCorporation')}
 			pagination={grid.pagination}
 			onPaginationChange={grid.onPaginationChange}
 			rowCount={data?.totalRows ?? 0}
-			itemLabel="assessments"
+			itemLabel={t('tax.assessments')}
 			sorting={grid.sorting}
 			onSortingChange={grid.onSortingChange}
 			getRowKey={(row) => row.id}

@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 
 import { useApiMutation } from '@/hooks/useApiMutation'
 import { useAuth } from '@/hooks/useAuth'
+import { useAppTranslation } from '@/i18n'
 import { apiClient } from '@/lib/api'
 
 import { applicationsApi, fulcrumApi } from './api'
@@ -1185,6 +1186,8 @@ export function useCharacterReports(characterId: string, enabled = true) {
  * Hook to request a new Fulcrum report for a character
  */
 export function useRequestFulcrumReport() {
+	const { t } = useAppTranslation()
+
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
@@ -1202,7 +1205,7 @@ export function useRequestFulcrumReport() {
 			/** Pass userId to invalidate the user-characters query (application Fulcrum panel) */
 			userId?: string
 		}) => fulcrumApi.requestReport(characterId, requestSource, applicationId, sendDm),
-		errorMessage: 'You do not have permission to request a Fulcrum report for this character.',
+		errorMessage: t('hrpages.youDoNotHavePermissionToRequestAFulcrumReport'),
 		onMutate: ({ characterId, corporationId, userId }) => {
 			if (!userId) return
 			const optimisticPendingReport: CharacterReportMetadata = {
@@ -1272,6 +1275,8 @@ export function useRequestFulcrumReport() {
 }
 
 export function useRequestFulcrumReportBatch() {
+	const { t } = useAppTranslation()
+
 	const queryClient = useQueryClient()
 
 	return useApiMutation({
@@ -1288,7 +1293,7 @@ export function useRequestFulcrumReportBatch() {
 			sendDm?: boolean
 			userId?: string
 		}) => fulcrumApi.requestBulkReports(characterIds, requestSource, applicationId, sendDm),
-		errorMessage: 'You do not have permission to request Fulcrum reports for these characters.',
+		errorMessage: t('hrpages.youDoNotHavePermissionToRequestFulcrumReportsFor'),
 		onMutate: ({ characterIds, corporationId, userId }) => {
 			if (!userId || characterIds.length === 0) return
 			const now = new Date().toISOString()

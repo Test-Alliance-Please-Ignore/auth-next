@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
 	Dialog,
@@ -9,7 +10,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
+import { useAppTranslation } from '@/i18n'
 
 const SCAN_ALL_SEND_DM_PREF_KEY = 'fulcrum:scan-all:send-dm'
 
@@ -48,13 +49,16 @@ export function FulcrumBulkScanDialog({
 	setSendDmForScanRequests: (value: boolean) => void
 	onConfirm: () => void
 }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="sm:max-w-[500px]">
 				<DialogHeader>
-					<DialogTitle>Generate Reports For All Eligible Characters?</DialogTitle>
+					<DialogTitle>{t('hrpages.generateReportsForAllEligibleCharacters')}</DialogTitle>
 					<DialogDescription>
-						This will queue {eligibleCount} report{eligibleCount === 1 ? '' : 's'}.
+						{t('hrpages.thisWillQueue')}
+						{t('hrpages.reportCount', { count: eligibleCount })}.
 					</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-2">
@@ -68,16 +72,18 @@ export function FulcrumBulkScanDialog({
 							onCheckedChange={(checked) => setSendDmForScanRequests(checked === true)}
 						/>
 						<div>
-							<span className="text-sm font-medium leading-none">Send DM for report status</span>
+							<span className="text-sm font-medium leading-none">
+								{t('hrpages.sendDmForReportStatus')}
+							</span>
 						</div>
 					</label>
 				</div>
 				<DialogFooter>
 					<Button variant="cancel" onClick={() => onOpenChange(false)}>
-						Cancel
+						{t('hrpages.cancel')}
 					</Button>
 					<Button variant="confirm" onClick={onConfirm}>
-						Generate Reports
+						{t('hrpages.generateReports')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -100,12 +106,17 @@ export function FulcrumSingleScanDialog({
 	setSendDmForScanRequests: (value: boolean) => void
 	onConfirm: () => void
 }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="sm:max-w-[500px]">
 				<DialogHeader>
-					<DialogTitle>Generate Report For {characterName}?</DialogTitle>
-					<DialogDescription>This will queue one character report.</DialogDescription>
+					<DialogTitle>
+						{t('hrpages.generateReportFor')}
+						{characterName}?
+					</DialogTitle>
+					<DialogDescription>{t('hrpages.thisWillQueueOneCharacterReport')}</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-2">
 					<label
@@ -118,16 +129,18 @@ export function FulcrumSingleScanDialog({
 							onCheckedChange={(checked) => setSendDmForScanRequests(checked === true)}
 						/>
 						<div>
-							<span className="text-sm font-medium leading-none">Send DM for report status</span>
+							<span className="text-sm font-medium leading-none">
+								{t('hrpages.sendDmForReportStatus')}
+							</span>
 						</div>
 					</label>
 				</div>
 				<DialogFooter>
 					<Button variant="cancel" onClick={() => onOpenChange(false)}>
-						Cancel
+						{t('hrpages.cancel')}
 					</Button>
 					<Button variant="confirm" onClick={onConfirm}>
-						Generate Report
+						{t('hrpages.generateReport')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

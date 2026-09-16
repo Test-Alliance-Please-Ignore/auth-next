@@ -1,6 +1,7 @@
 import { Plus } from 'lucide-react'
 import { useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
 	Table,
@@ -10,6 +11,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useAppTranslation } from '@/i18n'
 
 import {
 	defaultRuleFormState,
@@ -22,7 +24,6 @@ import {
 
 import type { TaxRuleSet } from '@repo/corporation-tax'
 import type { RuleFormState } from './rule-editor'
-import { Button } from '@/components/ui/button'
 
 export function RuleSetListCard({
 	effectiveRuleGroupId,
@@ -65,45 +66,45 @@ export function RuleSetListCard({
 	) => Promise<unknown> | void
 	onDeleteRule: (ruleSetId: string) => Promise<unknown> | void
 }) {
+	const { t } = useAppTranslation()
+
 	const [isCreateRuleOpen, setIsCreateRuleOpen] = useState(false)
 	const [createRuleForm, setCreateRuleForm] = useState<RuleFormState>(() => defaultRuleFormState())
 
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Rules In Scope</CardTitle>
-				<CardDescription>
-					Review group rules, edit with the pencil action, and add new rules using the + action.
-				</CardDescription>
+				<CardTitle>{t('tax.rulesInScope')}</CardTitle>
+				<CardDescription>{t('tax.reviewGroupRulesEditWithThePencilActionAndAdd')}</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				{!effectiveRuleGroupId ? (
-					<div className="text-sm text-muted-foreground">Select a rule group first.</div>
+					<div className="text-sm text-muted-foreground">{t('tax.selectARuleGroupFirst')}</div>
 				) : ruleSetsLoading ? (
-					<div className="text-sm text-muted-foreground">Loading rules...</div>
+					<div className="text-sm text-muted-foreground">{t('tax.loadingRules')}</div>
 				) : ruleSetsError ? (
 					<div className="text-sm text-destructive">
-						{ruleSetsError instanceof Error ? ruleSetsError.message : 'Failed to load rules'}
+						{ruleSetsError instanceof Error ? ruleSetsError.message : t('tax.failedToLoadRules')}
 					</div>
 				) : (
 					<>
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>Name</TableHead>
-									<TableHead>Income Type</TableHead>
-									<TableHead>Rate (%)</TableHead>
-									<TableHead>Priority</TableHead>
-									<TableHead>Active</TableHead>
-									<TableHead>Updated</TableHead>
-									<TableHead>Actions</TableHead>
+									<TableHead>{t('tax.name')}</TableHead>
+									<TableHead>{t('tax.incomeType')}</TableHead>
+									<TableHead>{t('tax.rate')}</TableHead>
+									<TableHead>{t('tax.priority')}</TableHead>
+									<TableHead>{t('tax.active')}</TableHead>
+									<TableHead>{t('tax.updated2')}</TableHead>
+									<TableHead>{t('tax.actions')}</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
 								{ruleSets.length === 0 ? (
 									<TableRow>
 										<TableCell colSpan={7} className="text-sm text-muted-foreground">
-											No rules are attached to this group yet.
+											{t('tax.noRulesAreAttachedToThisGroupYet')}
 										</TableCell>
 									</TableRow>
 								) : (
@@ -123,23 +124,25 @@ export function RuleSetListCard({
 
 						{!isCreateRuleOpen ? (
 							<div className="flex justify-center">
-								<Button variant="primary"
+								<Button
+									variant="primary"
 									className="min-w-40"
 									onClick={() => setIsCreateRuleOpen(true)}
 									disabled={isCreating}
 								>
 									<Plus className="h-4 w-4" />
-									Add Rule
+									{t('tax.addRule')}
 								</Button>
 							</div>
 						) : null}
 
 						{isCreateRuleOpen ? (
 							<div className="space-y-3 rounded-md border border-border p-3">
-								<div className="text-sm font-medium">New Rule</div>
+								<div className="text-sm font-medium">{t('tax.newRule')}</div>
 								<RuleFormFields form={createRuleForm} onChange={setCreateRuleForm} />
 								<div className="flex items-center justify-end gap-2">
-									<Button variant="primary"
+									<Button
+										variant="primary"
 										disabled={isCreating || !isRuleFormValid(createRuleForm)}
 										onClick={() => {
 											if (!effectiveRuleGroupId) return
@@ -163,9 +166,10 @@ export function RuleSetListCard({
 											})
 										}}
 									>
-										{isCreating ? 'Creating...' : 'Create Rule'}
+										{isCreating ? t('tax.creating') : t('tax.createRule')}
 									</Button>
-									<Button variant="cancel"
+									<Button
+										variant="cancel"
 										showIcon={false}
 										disabled={isCreating}
 										onClick={() => {
@@ -173,7 +177,7 @@ export function RuleSetListCard({
 											setCreateRuleForm(defaultRuleFormState())
 										}}
 									>
-										Cancel
+										{t('tax.cancel')}
 									</Button>
 								</div>
 							</div>

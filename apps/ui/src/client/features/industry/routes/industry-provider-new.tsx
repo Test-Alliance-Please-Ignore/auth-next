@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { i18n, useAppTranslation } from '@/i18n'
 
 import {
 	formDataToRequest,
@@ -20,14 +21,30 @@ import type { ProviderFormData } from '../components/provider-details-form'
 import type { ServiceType } from '../types'
 
 const WIZARD_STEPS = [
-	{ label: 'Provider Details', description: 'Basic information' },
-	{ label: 'Add Services', description: 'Select services' },
+	{
+		get label() {
+			return i18n.t('industry.providerDetails')
+		},
+		get description() {
+			return i18n.t('industry.basicInformation')
+		},
+	},
+	{
+		get label() {
+			return i18n.t('industry.addServices')
+		},
+		get description() {
+			return i18n.t('industry.selectServices')
+		},
+	},
 ]
 
 type CreationStatus = 'idle' | 'creating-provider' | 'adding-services' | 'complete' | 'error'
 
 export default function IndustryProviderNewPage() {
-	usePageTitle('Admin - Create Provider')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('industry.adminCreateProvider'))
 	const navigate = useNavigate()
 
 	// Wizard state
@@ -87,7 +104,9 @@ export default function IndustryProviderNewPage() {
 				setCurrentStep(2)
 			} catch (error) {
 				setCreationStatus('error')
-				setCreationError(error instanceof Error ? error.message : 'Failed to create provider')
+				setCreationError(
+					error instanceof Error ? error.message : t('industry.failedToCreateProvider')
+				)
 			}
 		}
 	}
@@ -116,7 +135,7 @@ export default function IndustryProviderNewPage() {
 				results.push({
 					type: serviceType,
 					success: false,
-					error: error instanceof Error ? error.message : 'Failed to add service',
+					error: error instanceof Error ? error.message : t('industry.failedToAddService'),
 				})
 			}
 		}
@@ -149,11 +168,11 @@ export default function IndustryProviderNewPage() {
 					disabled={isProcessing}
 				>
 					<ArrowLeft className="h-4 w-4" />
-					Back
+					{t('industry.back')}
 				</Button>
 				<div>
-					<h1 className="text-3xl font-bold gradient-text">Create Provider</h1>
-					<p className="text-muted-foreground mt-1">Set up a new service provider</p>
+					<h1 className="text-3xl font-bold gradient-text">{t('industry.createProvider')}</h1>
+					<p className="text-muted-foreground mt-1">{t('industry.setUpANewServiceProvider')}</p>
 				</div>
 			</div>
 
@@ -168,9 +187,9 @@ export default function IndustryProviderNewPage() {
 			{currentStep === 1 && (
 				<Card>
 					<CardHeader>
-						<CardTitle>Provider Details</CardTitle>
+						<CardTitle>{t('industry.providerDetails')}</CardTitle>
 						<CardDescription>
-							Enter the basic information for the new service provider
+							{t('industry.enterTheBasicInformationForTheNewServiceProvider')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
@@ -193,17 +212,17 @@ export default function IndustryProviderNewPage() {
 								onClick={() => navigate('/admin/industry-providers')}
 								disabled={isProcessing}
 							>
-								Cancel
+								{t('industry.cancel')}
 							</Button>
 							<Button onClick={handleNextStep} disabled={isProcessing}>
 								{creationStatus === 'creating-provider' ? (
 									<>
 										<Loader2 className="h-4 w-4 animate-spin" />
-										Creating...
+										{t('industry.creating')}
 									</>
 								) : (
 									<>
-										Next
+										{t('industry.next')}
 										<ArrowRight className="h-4 w-4 ml-2" />
 									</>
 								)}
@@ -216,9 +235,9 @@ export default function IndustryProviderNewPage() {
 			{currentStep === 2 && (
 				<Card>
 					<CardHeader>
-						<CardTitle>Add Services</CardTitle>
+						<CardTitle>{t('industry.addServices')}</CardTitle>
 						<CardDescription>
-							Select the services this provider will offer. You can add more services later.
+							{t('industry.selectTheServicesThisProviderWillOfferYouCanAdd')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
@@ -226,7 +245,7 @@ export default function IndustryProviderNewPage() {
 							<div className="mb-6 p-4 rounded-lg border border-primary bg-primary/10">
 								<div className="flex items-center gap-2 text-primary font-medium mb-2">
 									<Check className="h-5 w-5" />
-									Provider created successfully!
+									{t('industry.providerCreatedSuccessfully')}
 								</div>
 								{serviceCreationResults.length > 0 && (
 									<div className="space-y-1 text-sm">
@@ -242,7 +261,7 @@ export default function IndustryProviderNewPage() {
 									</div>
 								)}
 								<p className="text-sm text-muted-foreground mt-2">
-									Redirecting to provider details...
+									{t('industry.redirectingToProviderDetails')}
 								</p>
 							</div>
 						)}
@@ -257,20 +276,20 @@ export default function IndustryProviderNewPage() {
 
 								<div className="flex justify-between gap-2 mt-6 pt-4 border-t">
 									<Button variant="ghost" onClick={handleSkipServices} disabled={isProcessing}>
-										Skip for Now
+										{t('industry.skipForNow')}
 									</Button>
 									<Button onClick={handleFinish} disabled={isProcessing}>
 										{creationStatus === 'adding-services' ? (
 											<>
 												<Loader2 className="h-4 w-4 animate-spin" />
-												Adding Services...
+												{t('industry.addingServices')}
 											</>
 										) : (
 											<>
 												<Check className="h-4 w-4" />
 												{selectedServices.length > 0
-													? `Finish (${selectedServices.length} services)`
-													: 'Finish'}
+													? t('industry.finishValue1Services', { value1: selectedServices.length })
+													: t('industry.finish')}
 											</>
 										)}
 									</Button>

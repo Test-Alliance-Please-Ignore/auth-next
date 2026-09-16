@@ -5,6 +5,7 @@ import { useReportGridState } from '@/components/tax-reports/use-report-grid-sta
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useTaxAssessments } from '@/hooks/corporation-tax'
+import { useAppTranslation } from '@/i18n'
 import { formatTaxDate } from '@/lib/tax-date'
 import { formatTaxIskFull } from '@/lib/tax-display'
 
@@ -27,6 +28,8 @@ export function UnbilledAssessmentsCard({
 	createBillError,
 	onCreateBill,
 }: UnbilledAssessmentsCardProps) {
+	const { t } = useAppTranslation()
+
 	const grid = useReportGridState({
 		defaultSortBy: 'taxPeriodEnd',
 		defaultSortDir: 'desc',
@@ -45,27 +48,27 @@ export function UnbilledAssessmentsCard({
 	const rows = data?.rows ?? []
 	const columns = useMemo(
 		() => [
-			{ id: 'assessment', header: 'Assessment', cell: (row: TaxAssessment) => row.id },
+			{ id: 'assessment', header: t('tax.assessment'), cell: (row: TaxAssessment) => row.id },
 			{
 				id: 'taxDue',
-				header: 'Tax Due',
+				header: t('tax.taxDue'),
 				sortable: true,
 				cell: (row: TaxAssessment) => formatTaxIskFull(row.taxDue),
 			},
 			{
 				id: 'taxPeriodStart',
-				header: 'Period Start',
+				header: t('tax.periodStart'),
 				cell: (row: TaxAssessment) => formatTaxDate(row.taxPeriodStart),
 			},
 			{
 				id: 'taxPeriodEnd',
-				header: 'Period End',
+				header: t('tax.periodEnd'),
 				sortable: true,
 				cell: (row: TaxAssessment) => formatTaxDate(row.taxPeriodEnd),
 			},
 			{
 				id: 'action',
-				header: 'Action',
+				header: t('tax.action'),
 				cell: (row: TaxAssessment) => (
 					<div className="flex justify-end">
 						<Button
@@ -74,42 +77,41 @@ export function UnbilledAssessmentsCard({
 							disabled={!canIssue || createBillPending}
 							onClick={() => onCreateBill(row.id)}
 						>
-							{createBillPending ? 'Creating...' : 'Create Bill'}
+							{createBillPending ? t('tax.creating') : t('tax.createBill')}
 						</Button>
 					</div>
 				),
 			},
 		],
-		[canIssue, createBillPending, onCreateBill]
+		[canIssue, createBillPending, onCreateBill, t]
 	)
 
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Unbilled Assessments</CardTitle>
+				<CardTitle>{t('tax.unbilledAssessments')}</CardTitle>
 				<CardDescription>
-					Finalized corporation-scope assessments without a linked bill. Create bills manually as
-					needed.
+					{t('tax.finalizedCorporationScopeAssessmentsWithoutALinkedBillCreateBills')}
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
 				{!effectiveCorporationId ? (
 					<div className="py-8 text-sm text-muted-foreground">
-						Select a corporation to view unbilled assessments.
+						{t('tax.selectACorporationToViewUnbilledAssessments')}
 					</div>
 				) : (
 					<DataTable
 						variant="plain"
-						errorMessage="Failed to load report"
+						errorMessage={t('tax.failedToLoadReport')}
 						columns={columns}
 						rows={rows}
 						loading={isFetching}
 						error={error}
-						emptyMessage="No unbilled finalized assessments found."
+						emptyMessage={t('tax.noUnbilledFinalizedAssessmentsFound')}
 						pagination={grid.pagination}
 						onPaginationChange={grid.onPaginationChange}
 						rowCount={data?.totalRows ?? 0}
-						itemLabel="assessments"
+						itemLabel={t('tax.assessments')}
 						sorting={grid.sorting}
 						onSortingChange={grid.onSortingChange}
 						getRowKey={(row) => row.id}
@@ -117,7 +119,9 @@ export function UnbilledAssessmentsCard({
 				)}
 				{createBillError ? (
 					<div className="mt-3 text-sm text-destructive">
-						{createBillError instanceof Error ? createBillError.message : 'Failed to create bill'}
+						{createBillError instanceof Error
+							? createBillError.message
+							: t('tax.failedToCreateBill')}
 					</div>
 				) : null}
 			</CardContent>

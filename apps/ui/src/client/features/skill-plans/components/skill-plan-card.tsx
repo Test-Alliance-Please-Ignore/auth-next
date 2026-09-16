@@ -1,6 +1,8 @@
 import { CheckCircle2, Globe, Lock, Star, XCircle } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 
+import { useAppTranslation } from '@/i18n'
+
 import { Badge } from '../../../components/ui/badge'
 import {
 	Card,
@@ -30,6 +32,8 @@ export function SkillPlanCard({
 	showPublicationState = true,
 	readinessIndicator,
 }: SkillPlanCardProps) {
+	const { t } = useAppTranslation()
+
 	const navigate = useNavigate()
 
 	const handleCardClick = (e: React.MouseEvent) => {
@@ -79,7 +83,7 @@ export function SkillPlanCard({
 								icon={plan.isPublished ? Globe : Lock}
 								className="gap-1.5"
 							>
-								{plan.isPublished ? 'Published' : 'Draft'}
+								{plan.isPublished ? t('skillPlans.published') : t('skillPlans.draft')}
 							</Badge>
 						</div>
 					) : null}
@@ -90,50 +94,53 @@ export function SkillPlanCard({
 				{/* Skills count */}
 				{plan.skills && (
 					<div className="text-sm font-medium text-muted-foreground">
-						{plan.skills.length} skill{plan.skills.length !== 1 ? 's' : ''} in this plan
+						{t('skillPlans.skill2Count', { count: plan.skills.length })}
+						{t('skillPlans.inThisPlan')}
 					</div>
 				)}
 
 				{isReadinessLoading ? (
 					<div className="mt-auto pt-3">
-						<Badge variant="secondary">Checking readiness...</Badge>
+						<Badge variant="secondary">{t('skillPlans.checkingReadiness')}</Badge>
 					</div>
 				) : hasNoSkills ? (
 					<div className="mt-auto pt-3">
-						<Badge variant="secondary">No Skills</Badge>
+						<Badge variant="secondary">{t('skillPlans.noSkills')}</Badge>
 					</div>
 				) : characterReadiness && characterReadiness.total > 0 ? (
 					<div className="mt-auto pt-3 space-y-2">
 						<div className="flex items-center gap-2 text-xs text-muted-foreground">
-							<span>Character Readiness</span>
+							<span>{t('skillPlans.characterReadiness')}</span>
 							<span className="font-semibold text-foreground">{characterReadiness.total}</span>
-							<span>characters</span>
+							<span>{t('skillPlans.characters')}</span>
 						</div>
 						<div className="flex flex-wrap items-center gap-2 text-xs">
 							{characterReadiness.completed > 0 && (
 								<Badge variant="gold" className="gap-1 px-2 py-0">
 									<Star className="h-3 w-3 fill-current" />
-									Fully Trained <span className="font-bold">{characterReadiness.completed}</span>
+									{t('skillPlans.fullyTrained3')}
+									<span className="font-bold">{characterReadiness.completed}</span>
 								</Badge>
 							)}
 							{characterReadiness.meetsRequirements > 0 && (
 								<Badge variant="success" className="gap-1 px-2 py-0">
 									<CheckCircle2 className="h-3 w-3" />
-									Meets Required{' '}
+									{t('skillPlans.meetsRequired')}{' '}
 									<span className="font-bold">{characterReadiness.meetsRequirements}</span>
 								</Badge>
 							)}
 							{characterReadiness.incomplete > 0 && (
 								<Badge variant="destructive" className="gap-1 px-2 py-0">
 									<XCircle className="h-3 w-3" />
-									Needs Training <span className="font-bold">{characterReadiness.incomplete}</span>
+									{t('skillPlans.needsTraining3')}
+									<span className="font-bold">{characterReadiness.incomplete}</span>
 								</Badge>
 							)}
 						</div>
 					</div>
 				) : (
 					<div className="mt-auto pt-3">
-						<Badge variant="secondary">No character data</Badge>
+						<Badge variant="secondary">{t('skillPlans.noCharacterData')}</Badge>
 					</div>
 				)}
 			</CardContent>

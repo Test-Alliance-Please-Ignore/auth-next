@@ -2,8 +2,9 @@ import { useMemo } from 'react'
 
 import { DataTable } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
+import { useAppTranslation } from '@/i18n'
 import { formatTaxDateTime } from '@/lib/tax-date'
-import { TaxCorporationDisplay } from '@/lib/tax-display'
+import { formatTaxReportTypeLabel, formatTaxStatus, TaxCorporationDisplay } from '@/lib/tax-display'
 
 import type { TaxExportSchedule } from '@repo/corporation-tax'
 import type { TaxReportSortingState } from '@/lib/tax-report-utils'
@@ -19,12 +20,19 @@ export function ExportSchedulesGrid(props: {
 	sorting: TaxReportSortingState
 	onSortingChange: (sorting: TaxReportSortingState) => void
 }) {
+	const { t } = useAppTranslation()
+
 	const columns = useMemo(
 		() => [
-			{ id: 'name', header: 'Name', sortable: true, cell: (row: TaxExportSchedule) => row.name },
+			{
+				id: 'name',
+				header: t('tax.name'),
+				sortable: true,
+				cell: (row: TaxExportSchedule) => row.name,
+			},
 			{
 				id: 'corporationId',
-				header: 'Corporation',
+				header: t('tax.corporation'),
 				sortable: true,
 				cell: (row: TaxExportSchedule) =>
 					row.corporationId ? (
@@ -33,65 +41,66 @@ export function ExportSchedulesGrid(props: {
 							entityNames={props.entityNames}
 						/>
 					) : (
-						'Global'
+						t('tax.global')
 					),
 			},
 			{
 				id: 'reportType',
-				header: 'Report',
+				header: t('tax.report'),
 				sortable: true,
-				cell: (row: TaxExportSchedule) => row.reportType,
+				cell: (row: TaxExportSchedule) => formatTaxReportTypeLabel(row.reportType),
 			},
 			{
 				id: 'format',
-				header: 'Format',
+				header: t('tax.format'),
 				sortable: true,
 				cell: (row: TaxExportSchedule) => row.format.toUpperCase(),
 			},
 			{
 				id: 'frequency',
-				header: 'Frequency',
+				header: t('tax.frequency'),
 				sortable: true,
-				cell: (row: TaxExportSchedule) => row.frequency,
+				cell: (row: TaxExportSchedule) =>
+					row.frequency === 'weekly' ? t('tax.weekly') : t('tax.monthly'),
 			},
 			{
 				id: 'isActive',
-				header: 'Active',
+				header: t('tax.active'),
 				sortable: true,
 				cell: (row: TaxExportSchedule) => (
 					<Badge variant={row.isActive ? 'default' : 'secondary'}>
-						{row.isActive ? 'active' : 'paused'}
+						{formatTaxStatus(row.isActive ? 'active' : 'paused')}
 					</Badge>
 				),
 			},
 			{
 				id: 'nextRunAt',
-				header: 'Next Run',
+				header: t('tax.nextRun'),
 				sortable: true,
 				cell: (row: TaxExportSchedule) => formatTaxDateTime(row.nextRunAt),
 			},
 			{
 				id: 'lastRunAt',
-				header: 'Last Run',
+				header: t('tax.lastRun'),
 				sortable: true,
 				cell: (row: TaxExportSchedule) => formatTaxDateTime(row.lastRunAt),
 			},
 		],
-		[props.entityNames]
+		[props.entityNames, t]
 	)
 	return (
 		<DataTable
 			variant="plain"
-			errorMessage="Failed to load report"
+			errorMessage={t('tax.failedToLoadReport')}
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
 			error={props.error}
-			emptyMessage="No export schedules found."
+			emptyMessage={t('tax.noExportSchedulesFound')}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
 			rowCount={props.rowCount}
-			itemLabel="schedules"
+			itemLabel={t('tax.schedules')}
 			sorting={props.sorting}
 			onSortingChange={props.onSortingChange}
 			getRowKey={(row) => row.id}

@@ -1,8 +1,10 @@
-import type { ReactNode } from 'react'
-
 import { HoverPopover } from '@/components/ui/hover-popover'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
+
 import { renderBlacklistContextLine } from '../../utils/blacklist-context'
+
+import type { ReactNode } from 'react'
 
 type BlacklistAssociationAlert = {
 	type: string
@@ -68,7 +70,7 @@ export function extractBlacklistHighlights(raw: unknown): BlacklistHighlights {
 
 export function isBlacklistedEntity(
 	value: string | number | null | undefined,
-	blacklist: BlacklistHighlights,
+	blacklist: BlacklistHighlights
 ): boolean {
 	if (value == null) return false
 	const normalized = String(value).trim()
@@ -78,12 +80,14 @@ export function isBlacklistedEntity(
 
 export function getBlacklistContext(
 	value: string | number | null | undefined,
-	blacklist: BlacklistHighlights,
+	blacklist: BlacklistHighlights
 ): string[] {
 	if (value == null) return []
 	const normalized = String(value).trim()
 	if (!normalized) return []
-	return blacklist.contextsById[normalized] ?? blacklist.contextsByName[normalized.toLowerCase()] ?? []
+	return (
+		blacklist.contextsById[normalized] ?? blacklist.contextsByName[normalized.toLowerCase()] ?? []
+	)
 }
 
 function renderContextLine(context: string): ReactNode {
@@ -101,6 +105,8 @@ export function BlacklistHighlight({
 	children: ReactNode
 	className?: string
 }) {
+	const { t } = useAppTranslation()
+
 	if (!blacklist || !isBlacklistedEntity(value, blacklist)) {
 		return children
 	}
@@ -109,14 +115,18 @@ export function BlacklistHighlight({
 
 	return (
 		<HoverPopover
-			trigger={<span className={cn('cursor-help text-destructive font-semibold', className)}>{children}</span>}
+			trigger={
+				<span className={cn('cursor-help text-destructive font-semibold', className)}>
+					{children}
+				</span>
+			}
 			side="top"
 			align="start"
 			className="max-w-sm border border-border bg-popover p-3 text-popover-foreground shadow-lg"
 		>
 			<div className="space-y-2 text-xs">
 				<div className="font-semibold uppercase tracking-wide text-muted-foreground">
-					Blocklist context
+					{t('hrpages.blocklistContext')}
 				</div>
 				{contexts.length > 0 ? (
 					<ul className="space-y-1">
@@ -127,7 +137,7 @@ export function BlacklistHighlight({
 						))}
 					</ul>
 				) : (
-					<p>No additional context available.</p>
+					<p>{t('hrpages.noAdditionalContextAvailable')}</p>
 				)}
 			</div>
 		</HoverPopover>

@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 /**
  * Utility Functions for Doctrines Feature
  */
@@ -73,18 +74,21 @@ export function parseEFTPreview(eftString: string): ParsedEFT | null {
  */
 export function validateEFT(eftString: string): { valid: boolean; error?: string } {
 	if (!eftString || eftString.trim() === '') {
-		return { valid: false, error: 'EFT string cannot be empty' }
+		return { valid: false, error: i18n.t('doctrines.eftStringCannotBeEmpty') }
 	}
 
 	const lines = eftString.trim().split('\n')
 	if (lines.length < 2) {
-		return { valid: false, error: 'EFT format requires at least a header and one item' }
+		return { valid: false, error: i18n.t('doctrines.eftFormatRequiresAtLeastAHeaderAndOneItem') }
 	}
 
 	// Check header format
 	const headerMatch = lines[0].match(/^\[([^,]+),\s*([^\]]+)\]$/)
 	if (!headerMatch) {
-		return { valid: false, error: 'Invalid header format. Expected: [ShipName, FittingName]' }
+		return {
+			valid: false,
+			error: i18n.t('doctrines.invalidHeaderFormatExpectedShipnameFittingname'),
+		}
 	}
 
 	return { valid: true }

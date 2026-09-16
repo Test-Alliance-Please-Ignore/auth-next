@@ -18,6 +18,7 @@ import { Select } from '@/components/ui/select'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 
 import { FittingPanel } from '../components/FittingPanel'
@@ -25,6 +26,8 @@ import { FittingSlotList } from '../components/FittingSlotList'
 import { useFitting, useSaveFittingIngame } from '../hooks'
 
 export default function FittingDetailPage() {
+	const { t } = useAppTranslation()
+
 	const { id } = useParams<{ id: string }>()
 	const [searchParams] = useSearchParams()
 	const doctrineId = searchParams.get('doctrineId')
@@ -35,7 +38,7 @@ export default function FittingDetailPage() {
 	const [copied, setCopied] = useState(false)
 	const [selectedCharacterId, setSelectedCharacterId] = useState(user?.mainCharacterId ?? '')
 
-	usePageTitle(fitting ? `${fitting.shipName} Fitting` : 'Fitting Details')
+	usePageTitle(fitting ? `${fitting.shipName} Fitting` : t('doctrines.fittingDetails'))
 
 	const canManage = isAdmin || hasPermission('urn:doctrines:manager')
 
@@ -45,7 +48,7 @@ export default function FittingDetailPage() {
 		if (!fitting) return
 		await navigator.clipboard.writeText(fitting.fitting)
 		setCopied(true)
-		toast.success('EFT copied to clipboard')
+		toast.success(t('doctrines.eftCopiedToClipboard'))
 		setTimeout(() => setCopied(false), 2000)
 	}
 
@@ -53,9 +56,9 @@ export default function FittingDetailPage() {
 		if (!id || !selectedCharacterId) return
 		try {
 			await saveMutation.mutateAsync({ fittingId: id, characterId: selectedCharacterId })
-			toast.success('Fitting saved in-game')
+			toast.success(t('doctrines.fittingSavedInGame'))
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : 'Failed to save fitting in-game')
+			toast.error(err instanceof Error ? err.message : t('doctrines.failedToSaveFittingInGame'))
 		}
 	}
 
@@ -70,18 +73,17 @@ export default function FittingDetailPage() {
 	if (error || !fitting) {
 		return (
 			<Container>
-				<PageHeader title="Fitting Not Found" />
+				<PageHeader title={t('doctrines.fittingNotFound')} />
 				<Card>
 					<CardContent className="pt-6">
 						<div className="text-center">
 							<p className="text-muted-foreground mb-4">
-								The fitting you're looking for doesn't exist or you don't have permission to view
-								it.
+								{t('doctrines.theFittingYouReLookingForDoesnTExistOr')}
 							</p>
 							<Button asChild variant="ghost">
 								<Link to="/doctrines">
 									<ArrowLeft className="h-4 w-4" />
-									Back to Doctrines
+									{t('doctrines.backToDoctrines')}
 								</Link>
 							</Button>
 						</div>
@@ -96,7 +98,7 @@ export default function FittingDetailPage() {
 			<Button asChild variant="ghost" size="sm" className="mb-4">
 				<Link to={doctrineId ? `/doctrines/${doctrineId}` : '/doctrines'}>
 					<ArrowLeft className="h-4 w-4" />
-					{doctrineId ? 'Back to Doctrine' : 'Back to Doctrines'}
+					{doctrineId ? t('doctrines.backToDoctrine') : t('doctrines.backToDoctrines')}
 				</Link>
 			</Button>
 
@@ -110,7 +112,7 @@ export default function FittingDetailPage() {
 								to={`/doctrines/fittings/${id}/edit${doctrineId ? `?doctrineId=${doctrineId}` : ''}`}
 							>
 								<Edit className="h-4 w-4" />
-								Edit
+								{t('doctrines.edit')}
 							</Link>
 						</Button>
 					)
@@ -123,13 +125,13 @@ export default function FittingDetailPage() {
 				<Card>
 					<CardContent className="pt-6 space-y-4">
 						<div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm">
-							<span className="text-muted-foreground">Name</span>
+							<span className="text-muted-foreground">{t('doctrines.name')}</span>
 							<span className="font-medium">{fitting.name}</span>
 
-							<span className="text-muted-foreground">Ship</span>
+							<span className="text-muted-foreground">{t('doctrines.ship')}</span>
 							<span>{fitting.shipName}</span>
 
-							<span className="text-muted-foreground">Category</span>
+							<span className="text-muted-foreground">{t('doctrines.category')}</span>
 							<span>{fitting.category}</span>
 
 							<span className="text-muted-foreground">SRP</span>
@@ -137,17 +139,17 @@ export default function FittingDetailPage() {
 								{fitting.srpEligible ? (
 									<Badge variant="default" className="inline-flex items-center gap-1">
 										<CheckCircle2 className="h-3 w-3" />
-										SRP Eligible
+										{t('doctrines.srpEligible')}
 									</Badge>
 								) : (
-									<span className="text-muted-foreground">Not eligible</span>
+									<span className="text-muted-foreground">{t('doctrines.notEligible')}</span>
 								)}
 							</span>
 						</div>
 
 						{fitting.description && (
 							<div className="pt-2 border-t">
-								<p className="text-sm text-muted-foreground mb-1">Description</p>
+								<p className="text-sm text-muted-foreground mb-1">{t('doctrines.description')}</p>
 								<p className="text-sm whitespace-pre-wrap">{fitting.description}</p>
 							</div>
 						)}
@@ -156,7 +158,7 @@ export default function FittingDetailPage() {
 							<div>
 								<Button variant="ghost" size="sm" onClick={handleCopyEft}>
 									<ClipboardCopy className="h-4 w-4" />
-									{copied ? 'Copied!' : 'Copy EFT'}
+									{copied ? t('doctrines.copied') : t('doctrines.copyEft')}
 								</Button>
 							</div>
 							{validTokenChars.length > 0 && (
@@ -169,7 +171,7 @@ export default function FittingDetailPage() {
 											}))}
 											value={selectedCharacterId}
 											onValueChange={setSelectedCharacterId}
-											placeholder="Character..."
+											placeholder={t('doctrines.character')}
 										/>
 									)}
 									<Button
@@ -178,10 +180,10 @@ export default function FittingDetailPage() {
 										onClick={handleSaveIngame}
 										disabled={!selectedCharacterId}
 										loading={saveMutation.isPending}
-										loadingText="Saving..."
+										loadingText={t('doctrines.saving')}
 									>
 										<Gamepad2 className="h-4 w-4" />
-										Save In-Game
+										{t('doctrines.saveInGame')}
 									</Button>
 								</div>
 							)}
@@ -204,7 +206,7 @@ export default function FittingDetailPage() {
 			{/* Bottom — Slot List (full width) */}
 			<Card>
 				<CardContent className="pt-6">
-					<h3 className="text-sm font-semibold mb-3">Fitting Details</h3>
+					<h3 className="text-sm font-semibold mb-3">{t('doctrines.fittingDetails')}</h3>
 					<FittingSlotList fittingItems={fitting.fittingItems} />
 				</CardContent>
 			</Card>

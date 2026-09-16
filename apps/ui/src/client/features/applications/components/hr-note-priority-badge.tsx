@@ -6,6 +6,7 @@
  */
 
 import { Badge } from '@/components/ui/badge'
+import { i18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import type { HRNotePriority } from '../api'
@@ -33,19 +34,27 @@ const priorityConfig: Record<
 	}
 > = {
 	low: {
-		label: 'Low',
+		get label() {
+			return i18n.t('hrpages.low')
+		},
 		colorClasses: 'text-muted-foreground bg-muted/20 border-muted',
 	},
 	normal: {
-		label: 'Normal',
+		get label() {
+			return i18n.t('hrpages.normal')
+		},
 		colorClasses: 'text-primary bg-primary/10 border-primary/30',
 	},
 	high: {
-		label: 'High Priority',
+		get label() {
+			return i18n.t('hrpages.highPriority')
+		},
 		colorClasses: 'text-warning bg-warning/10 border-warning/30',
 	},
 	critical: {
-		label: 'Critical',
+		get label() {
+			return i18n.t('hrpages.critical')
+		},
 		colorClasses: 'text-destructive bg-destructive/10 border-destructive/30',
 	},
 }

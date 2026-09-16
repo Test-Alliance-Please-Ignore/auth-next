@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge'
+import { useAppTranslation } from '@/i18n'
 
 import { getRequestStatusText, getRequestStatusVariant } from '../utils'
 
@@ -10,9 +11,10 @@ interface RequestStatusBadgeProps {
 }
 
 export function RequestStatusBadge({ status, className }: RequestStatusBadgeProps) {
+	const { t } = useAppTranslation()
 	return (
 		<Badge variant={getRequestStatusVariant(status)} className={className}>
-			{getRequestStatusText(status)}
+			{getRequestStatusText(status, t)}
 		</Badge>
 	)
 }

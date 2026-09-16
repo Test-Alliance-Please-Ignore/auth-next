@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
 import {
 	LossTable,
@@ -42,7 +43,8 @@ import {
 import type { LossWithSRPStatus, RecentLossesResponse } from '../types'
 
 export default function SRPIndex() {
-	usePageTitle('SRP')
+	const { t } = useAppTranslation()
+	usePageTitle(t('srp.dashboard.pageTitle'))
 	const { user } = useAuth()
 	const { data: config } = useSRPConfig()
 	const [activeTab, setActiveTab] = useState<'losses' | 'requests'>('losses')
@@ -147,7 +149,7 @@ export default function SRPIndex() {
 		lossesError && effectiveLossesData
 			? lossesError instanceof Error
 				? lossesError.message
-				: 'Failed to refresh recent losses.'
+				: t('srp.dashboard.refreshLossesFailed')
 			: null
 	const lossRefreshAction = (
 		<RecentLossRefreshButton
@@ -167,7 +169,7 @@ export default function SRPIndex() {
 				pageSize={lossPageSize}
 				onPageChange={setRecentLossesPage}
 				onPageSizeChange={setRecentLossesPageSize}
-				itemLabel="losses"
+				itemLabel={t('srp.losses.item', { count: effectiveLossesData?.total ?? 0 })}
 				nextButtonLoading={lossesFetching}
 				pageSizeOptions={[10, 25, 50]}
 				leadingAction={lossRefreshAction}
@@ -177,10 +179,7 @@ export default function SRPIndex() {
 
 	return (
 		<Container>
-			<PageHeader
-				title="Ship Replacement Program"
-				description="Request reimbursement for ship losses"
-			/>
+			<PageHeader title={t('srp.dashboard.title')} description={t('srp.dashboard.description')} />
 
 			<Card className="mt-section">
 				<CardContent className="p-0">
@@ -189,17 +188,19 @@ export default function SRPIndex() {
 						onValueChange={(value) => setActiveTab(value as 'losses' | 'requests')}
 					>
 						<TabsList className="w-full rounded-b-none border-b">
-							<TabsTrigger value="losses">Recent Losses</TabsTrigger>
-							<TabsTrigger value="requests">My Requests</TabsTrigger>
+							<TabsTrigger value="losses">{t('srp.dashboard.losses')}</TabsTrigger>
+							<TabsTrigger value="requests">{t('srp.dashboard.requests')}</TabsTrigger>
 						</TabsList>
 
 						<div className="p-4">
 							<TabsContent value="losses" className="mt-0 space-y-4">
 								{lossLoadError && !lossGridLoading ? (
 									<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-center">
-										<p className="text-sm text-red-500">Failed to load losses</p>
+										<p className="text-sm text-red-500">{t('srp.dashboard.lossesFailed')}</p>
 										<p className="text-xs text-muted-foreground">
-											{lossLoadError instanceof Error ? lossLoadError.message : 'Unknown error'}
+											{lossLoadError instanceof Error
+												? lossLoadError.message
+												: t('srp.common.unknownError')}
 										</p>
 									</div>
 								) : (
@@ -210,7 +211,7 @@ export default function SRPIndex() {
 											loadFailures={effectiveLossesData?.failedCharacters ?? loadFailures}
 										/>
 										<div className="w-full space-y-2 md:w-1/2">
-											<div className="text-sm font-medium">Characters to fetch</div>
+											<div className="text-sm font-medium">{t('srp.dashboard.characters')}</div>
 											<div className="flex min-w-0 gap-2">
 												<div className="min-w-0 flex-1">
 													<Select
@@ -219,7 +220,7 @@ export default function SRPIndex() {
 														onValuesChange={setSelectedCharacterIds}
 														multiple
 														searchable
-														placeholder="All characters"
+														placeholder={t('srp.dashboard.allCharacters')}
 														disabled={!characterSelectionLoaded}
 														inputClassName="h-10"
 														contentClassName="w-[min(28rem,calc(100vw-2rem))] min-w-[min(28rem,calc(100vw-2rem))]"
@@ -233,16 +234,16 @@ export default function SRPIndex() {
 													disabled={!characterSelectionLoaded || selectedCharacterIds.length === 0}
 													onClick={() => setSelectedCharacterIds([])}
 												>
-													Reset
+													{t('srp.common.reset')}
 												</Button>
 											</div>
 											<p className="text-xs text-muted-foreground">
-												Leave empty to fetch losses for all characters.
+												{t('srp.dashboard.characterHint')}
 											</p>
 										</div>
 										<TableRefreshFrame
 											isRefreshing={lossGridRefreshing || refreshMutation.isPending}
-											refreshMessage="Refreshing recent losses..."
+											refreshMessage={t('srp.dashboard.refreshingLosses')}
 											onRetry={() => void refetchLosses()}
 											retryDisabled={lossesFetching}
 										>
@@ -284,29 +285,29 @@ export default function SRPIndex() {
 							<TabsContent value="requests" className="mt-0 space-y-4">
 								{requestLoadError && !requestGridLoading ? (
 									<div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-center">
-										<p className="text-sm text-red-500">Failed to load requests</p>
+										<p className="text-sm text-red-500">{t('srp.common.loadRequestsFailed')}</p>
 										<p className="text-xs text-muted-foreground">
 											{requestLoadError instanceof Error
 												? requestLoadError.message
-												: 'Unknown error'}
+												: t('srp.common.unknownError')}
 										</p>
 									</div>
 								) : !effectiveRequestsData && requestGridLoading ? (
 									<div className="rounded-lg border border-muted p-6 text-center">
 										<div className="mx-auto flex w-fit items-center gap-2 rounded-full border border-muted bg-muted/20 px-3 py-1.5 text-sm text-muted-foreground">
 											<span className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-transparent" />
-											<span>Loading requests...</span>
+											<span>{t('srp.common.loadingRequests')}</span>
 										</div>
 									</div>
 								) : (
 									<TableRefreshFrame
 										isRefreshing={requestGridRefreshing}
-										refreshMessage="Refreshing requests..."
+										refreshMessage={t('srp.dashboard.refreshingRequests')}
 										errorMessage={
 											requestsError && effectiveRequestsData
 												? requestsError instanceof Error
 													? requestsError.message
-													: 'Failed to refresh requests.'
+													: t('srp.common.refreshRequestsFailed')
 												: null
 										}
 									>
@@ -317,7 +318,9 @@ export default function SRPIndex() {
 												pageSize={requestPageSize}
 												onPageChange={setMyRequestsPage}
 												onPageSizeChange={setMyRequestsPageSize}
-												itemLabel="requests"
+												itemLabel={t('srp.common.requestItem', {
+													count: effectiveRequestsData?.total ?? 0,
+												})}
 												nextButtonLoading={requestsFetching}
 												pageSizeOptions={[10, 25, 50]}
 											/>

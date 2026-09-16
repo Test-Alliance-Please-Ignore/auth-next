@@ -17,6 +17,7 @@ import {
 	TotalTaxesReportSection,
 } from '@/components/tax-reports/report-sections'
 import { Button } from '@/components/ui/button'
+import { useAppTranslation } from '@/i18n'
 
 import type { TaxExportFormat, TaxExportReportType } from '@repo/corporation-tax'
 import type { TaxRollupReportQueryFilters } from '@/hooks/corporation-tax'
@@ -94,6 +95,8 @@ export function TaxReportWorkspace({
 	onSubmitExport: () => Promise<void> | void
 	onSubmitSchedule: () => Promise<void> | void
 }) {
+	const { t } = useAppTranslation()
+
 	const [exportModalOpen, setExportModalOpen] = useState(false)
 	const [scheduleModalOpen, setScheduleModalOpen] = useState(false)
 
@@ -104,7 +107,7 @@ export function TaxReportWorkspace({
 	return (
 		<>
 			<TaxPanelCard
-				title="Report"
+				title={t('tax.report')}
 				description={selectedReportDescription}
 				actions={
 					<>
@@ -114,7 +117,7 @@ export function TaxReportWorkspace({
 							disabled={!canExport || !activeReportIsExportable}
 						>
 							<Download className="h-4 w-4" />
-							Export
+							{t('tax.export')}
 						</Button>
 						<Button
 							variant="ghost"
@@ -122,7 +125,7 @@ export function TaxReportWorkspace({
 							disabled={!canCreateSchedule || !activeReportIsExportable}
 						>
 							<CalendarClock className="h-4 w-4" />
-							Schedule
+							{t('tax.schedule')}
 						</Button>
 					</>
 				}

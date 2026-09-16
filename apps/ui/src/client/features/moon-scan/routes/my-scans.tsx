@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
@@ -14,7 +13,9 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
 import { ScanStatusBadge } from '../components/ScanStatusBadge'
 import { formatMoonScanDate } from '../date'
@@ -24,6 +25,8 @@ import { useMoonScanPermissions } from '../permissions'
 import type { MoonScan } from '../types'
 
 function ScanRow({ scan, canViewMoon }: { scan: MoonScan; canViewMoon: boolean }) {
+	const { t } = useAppTranslation()
+
 	const submittedAt = formatMoonScanDate(scan.submittedAt)
 	return (
 		<TableRow>
@@ -36,15 +39,19 @@ function ScanRow({ scan, canViewMoon }: { scan: MoonScan; canViewMoon: boolean }
 					<span>{scan.moonId}</span>
 				)}
 			</TableCell>
-				<TableCell>{scan.ores.length} ore{scan.ores.length !== 1 ? 's' : ''}</TableCell>
-				<TableCell>{submittedAt}</TableCell>
-				<TableCell><ScanStatusBadge status={scan.status} /></TableCell>
-			</TableRow>
-		)
+			<TableCell>{t('moonScan.ore2Count', { count: scan.ores.length })}</TableCell>
+			<TableCell>{submittedAt}</TableCell>
+			<TableCell>
+				<ScanStatusBadge status={scan.status} />
+			</TableCell>
+		</TableRow>
+	)
 }
 
 export default function MyScansPage() {
-	usePageTitle('My Moon Scans')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('moonScan.myMoonScans'))
 
 	const { canSubmit, canView } = useMoonScanPermissions()
 
@@ -56,7 +63,10 @@ export default function MyScansPage() {
 	if (!canSubmit) {
 		return (
 			<Container>
-				<PageHeader title="My Scans" description="You do not have permission to view scans." />
+				<PageHeader
+					title={t('moonScan.myScans')}
+					description={t('moonScan.youDoNotHavePermissionToViewScans')}
+				/>
 			</Container>
 		)
 	}
@@ -75,20 +85,20 @@ export default function MyScansPage() {
 				setPage(1)
 			}}
 			pageSizeOptions={[20, 50, 100]}
-			itemLabel="scans"
+			itemLabel={t('moonScan.scans')}
 		/>
 	)
 
 	return (
 		<Container>
 			<PageHeader
-				title="My Scans"
-				description="Moon scans you have submitted"
+				title={t('moonScan.myScans')}
+				description={t('moonScan.moonScansYouHaveSubmitted')}
 			/>
 
 			{error && (
 				<div className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-500">
-					Failed to load scans
+					{t('moonScan.failedToLoadScans')}
 				</div>
 			)}
 
@@ -97,10 +107,10 @@ export default function MyScansPage() {
 				<Table>
 					<TableHeader>
 						<TableRow>
-							<TableHead>Moon</TableHead>
-							<TableHead>Ores</TableHead>
-							<TableHead>Submitted</TableHead>
-							<TableHead>Status</TableHead>
+							<TableHead>{t('moonScan.moon')}</TableHead>
+							<TableHead>{t('moonScan.ores')}</TableHead>
+							<TableHead>{t('moonScan.submitted')}</TableHead>
+							<TableHead>{t('moonScan.status')}</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -114,13 +124,15 @@ export default function MyScansPage() {
 										))}
 									</TableRow>
 								))
-							: (data?.items ?? []).map((scan) => <ScanRow key={scan.id} scan={scan} canViewMoon={canView} />)}
+							: (data?.items ?? []).map((scan) => (
+									<ScanRow key={scan.id} scan={scan} canViewMoon={canView} />
+								))}
 						{!isLoading && data?.items.length === 0 && (
 							<TableRow>
 								<TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
-									No scans submitted yet.{' '}
+									{t('moonScan.noScansSubmittedYet')}{' '}
 									<Link to="/moon-scan/submit" className="text-primary hover:underline">
-										Submit your first scan
+										{t('moonScan.submitYourFirstScan')}
 									</Link>
 								</TableCell>
 							</TableRow>

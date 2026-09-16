@@ -3,6 +3,7 @@ import { useState } from 'react'
 
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatNumber, useAppTranslation } from '@/i18n'
 import { typeIconUrl } from '@/lib/eve-images'
 
 import { SRPFittingPanel } from './SRPFittingPanel'
@@ -43,6 +44,7 @@ export function SRPFittingDisplay({
 	panelLoading = false,
 	middleContent,
 }: SRPFittingDisplayProps) {
+	const { t } = useAppTranslation()
 	return (
 		<div className="flex flex-col gap-4">
 			{panelLoading ? (
@@ -62,7 +64,7 @@ export function SRPFittingDisplay({
 			{middleContent}
 
 			<Card className="p-4">
-				<h4 className="mb-3 font-semibold text-sm">Fitting</h4>
+				<h4 className="mb-3 font-semibold text-sm">{t('srp.fitting.title')}</h4>
 				<SRPFittingSlotList
 					shipTypeId={shipTypeId}
 					items={fittingItems}
@@ -74,9 +76,9 @@ export function SRPFittingDisplay({
 
 			{cargoItems && (
 				<Card className="p-4">
-					<h4 className="mb-3 font-semibold text-sm">Cargo</h4>
+					<h4 className="mb-3 font-semibold text-sm">{t('srp.fitting.cargo')}</h4>
 					{cargoItems.length === 0 ? (
-						<p className="text-sm text-muted-foreground">No cargo recorded on lossmail.</p>
+						<p className="text-sm text-muted-foreground">{t('srp.fitting.noCargo')}</p>
 					) : (
 						<div className="space-y-1 rounded-md border border-border/40 bg-muted/10 p-1">
 							{cargoItems.map((item) => (
@@ -94,9 +96,7 @@ export function SRPFittingDisplay({
 										<p className="truncate text-sm font-medium leading-tight">
 											{item.typeName}
 											{item.quantity > 1 && (
-												<span className="ml-1.5 text-primary">
-													x{item.quantity.toLocaleString()}
-												</span>
+												<span className="ml-1.5 text-primary">x{formatNumber(item.quantity)}</span>
 											)}
 										</p>
 									</div>
@@ -115,6 +115,7 @@ export function SRPFittingDisplay({
 }
 
 function ShipMaintenanceBayCard({ ships }: { ships: SRPShipMaintenanceBayShip[] }) {
+	const { t } = useAppTranslation()
 	const [expandedShips, setExpandedShips] = useState<Set<string>>(new Set())
 
 	const toggleShip = (key: string) => {
@@ -128,7 +129,7 @@ function ShipMaintenanceBayCard({ ships }: { ships: SRPShipMaintenanceBayShip[] 
 
 	return (
 		<Card className="p-4">
-			<h4 className="mb-3 font-semibold text-sm">Ship Maintenance Bay</h4>
+			<h4 className="mb-3 font-semibold text-sm">{t('srp.fitting.maintenanceBay')}</h4>
 			<div className="space-y-1 rounded-md border border-border/40 bg-muted/10 p-1">
 				{ships.map((ship, index) => {
 					const key = `${ship.typeId}-${index}`
@@ -156,11 +157,11 @@ function ShipMaintenanceBayCard({ ships }: { ships: SRPShipMaintenanceBayShip[] 
 								<span className="min-w-0 flex-1 truncate text-sm font-medium">
 									{ship.typeName}
 									{ship.quantity > 1 && (
-										<span className="ml-1.5 text-primary">x{ship.quantity.toLocaleString()}</span>
+										<span className="ml-1.5 text-primary">x{formatNumber(ship.quantity)}</span>
 									)}
 								</span>
 								<span className="text-xs text-muted-foreground">
-									{ship.contents.length} item{ship.contents.length === 1 ? '' : 's'}
+									{t('srp.fitting.itemCount', { count: ship.contents.length })}
 								</span>
 							</button>
 							{isExpanded && <MaintenanceBayContents contents={ship.contents} />}
@@ -179,10 +180,11 @@ function MaintenanceBayContents({
 	contents: SRPShipMaintenanceBayContent[]
 	depth?: number
 }) {
+	const { t } = useAppTranslation()
 	return (
 		<div className="border-t border-border/30 px-3 py-2">
 			{contents.length === 0 ? (
-				<p className="text-xs text-muted-foreground">No contents recorded.</p>
+				<p className="text-xs text-muted-foreground">{t('srp.fitting.noContents')}</p>
 			) : (
 				<div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 text-xs">
 					{contents.map((item, index) => (
@@ -200,7 +202,7 @@ function MaintenanceBayContents({
 								<span className="truncate">{item.typeName}</span>
 							</div>
 							<span className="text-right text-muted-foreground">
-								x{item.quantity.toLocaleString()}
+								x{formatNumber(item.quantity)}
 							</span>
 							{item.items?.length ? (
 								<div className="col-span-2">

@@ -179,6 +179,69 @@ const applicantWorkflowsCatalog = defineCatalog(
 				failed: '지원서를 제출하지 못했습니다',
 			},
 		},
+	},
+	{
+		applications: {
+			status: {
+				pending: 'Pendiente',
+				under_review: 'En revisión',
+				accepted: 'Aceptada',
+				completed: 'Completada',
+				rejected: 'Rechazada',
+				withdrawn: 'Retirada',
+				unknown: 'Estado desconocido',
+			},
+			list: {
+				title: 'Mis solicitudes',
+				description: 'Da seguimiento y administra tus solicitudes a corporaciones',
+				loadFailed: 'No se pudieron cargar las solicitudes',
+				unexpectedError: 'Ocurrió un error inesperado',
+				all: 'Todas',
+				emptyTitle: 'Aún no hay solicitudes',
+				emptyFilteredTitle: 'No hay solicitudes con el estado “{{status}}”',
+				emptyDescription: 'Aún no has enviado solicitudes a corporaciones.',
+				emptyFilteredDescription: 'No tienes solicitudes con este estado.',
+				emptyHint: 'Explora las corporaciones y envía una solicitud para empezar.',
+				emptyFilteredHint: 'Selecciona otro filtro para ver otras solicitudes.',
+				viewAll: 'Ver todas las solicitudes',
+				hint: 'Haz clic en una solicitud para ver sus detalles y seguir su progreso.',
+			},
+			card: {
+				first: 'Primera',
+				repeat: 'Repetida',
+				alts_one: '(+{{formattedCount}} personaje alternativo)',
+				alts_other: '(+{{formattedCount}} personajes alternativos)',
+				alts_many: '(+{{formattedCount}} personajes alternativos)',
+				submitted: 'Solicitud enviada',
+				recommendations_one: '{{formattedCount}} recomendación',
+				recommendations_other: '{{formattedCount}} recomendaciones',
+				recommendations_many: '{{formattedCount}} recomendaciones',
+			},
+			characters: {
+				main: 'Personaje principal',
+				alts: 'Personajes alternativos',
+				altsCount: 'Personajes alternativos ({{count}})',
+				noToken: '(Sin token válido)',
+				missingMain: 'No se encontró un personaje principal',
+			},
+			submit: {
+				title: 'Solicitar unirse a {{corporation}}',
+				description:
+					'Envía tu solicitud para unirte a esta corporación. Explica por qué quieres unirte y qué puedes aportar.',
+				altHint:
+					'Selecciona los personajes alternativos con los que también quieres solicitar ingreso.',
+				text: 'Texto de la solicitud',
+				placeholder: 'Cuéntanos por qué quieres unirte a esta corporación…',
+				remaining_one: 'Falta {{formattedCount}} carácter',
+				remaining_other: 'Faltan {{formattedCount}} caracteres',
+				remaining_many: 'Faltan {{formattedCount}} caracteres',
+				minimumMet: 'Longitud mínima alcanzada',
+				counter: '{{current}} / {{maximum}} caracteres',
+				action: 'Enviar solicitud',
+				pending: 'Enviando…',
+				failed: 'No se pudo enviar la solicitud',
+			},
+		},
 	}
 )
 
@@ -202,6 +265,13 @@ export const applicationsCatalog = {
 			...applicantWorkflowsCatalog.ko.applications,
 			...applicationDetailsCatalog.ko,
 			recommendations: applicationRecommendationsCatalog.ko,
+		},
+	},
+	'es-MX': {
+		applications: {
+			...applicantWorkflowsCatalog['es-MX'].applications,
+			...applicationDetailsCatalog['es-MX'],
+			recommendations: applicationRecommendationsCatalog['es-MX'],
 		},
 	},
 }

@@ -2,6 +2,7 @@ import { CheckCircle2, Star, XCircle } from 'lucide-react'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Card } from '@/components/ui/card'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import type { CharacterMasteryCardProps, MasteryStatus } from '../types'
@@ -14,6 +15,8 @@ export function CharacterMasteryCard({
 	error,
 	onClick,
 }: CharacterMasteryCardProps) {
+	const { t } = useAppTranslation()
+
 	// Determine mastery status based on progress
 	const getMasteryStatus = (): MasteryStatus => {
 		if (!progress) return 'insufficient'
@@ -39,7 +42,7 @@ export function CharacterMasteryCard({
 					boxClass: 'border-amber-300 text-amber-300',
 					bgClass: 'bg-amber-400/20',
 					icon: <Star className="h-5 w-5 fill-current" />,
-					text: 'Fully Trained',
+					text: t('skillPlans.fullyTrained'),
 					progressPercent: 100,
 				}
 			case 'meets_minimum':
@@ -47,7 +50,7 @@ export function CharacterMasteryCard({
 					boxClass: 'border-success text-success',
 					bgClass: 'bg-success/20',
 					icon: <CheckCircle2 className="h-5 w-5" />,
-					text: 'Meets Required',
+					text: t('skillPlans.meetsRequired'),
 					progressPercent: 100,
 				}
 			case 'insufficient':
@@ -56,7 +59,7 @@ export function CharacterMasteryCard({
 					boxClass: 'border-destructive text-destructive',
 					bgClass: 'bg-destructive/20',
 					icon: <XCircle className="h-5 w-5" />,
-					text: 'Needs Training',
+					text: t('skillPlans.needsTraining'),
 					progressPercent,
 				}
 			}
@@ -96,7 +99,7 @@ export function CharacterMasteryCard({
 
 					{/* Loading text with fade animation */}
 					<div className="text-sm font-medium text-primary mt-2 animate-pulse">
-						Loading progress...
+						{t('skillPlans.loadingProgress')}
 					</div>
 				</div>
 			</Card>
@@ -109,7 +112,7 @@ export function CharacterMasteryCard({
 				<div className="flex flex-col items-center gap-3">
 					<MemberAvatar characterId={characterId} size="lg" />
 					<h4 className="font-medium text-sm">{characterName}</h4>
-					<div className="text-sm text-destructive">Failed to load progress</div>
+					<div className="text-sm text-destructive">{t('skillPlans.failedToLoadProgress')}</div>
 				</div>
 			</Card>
 		)
@@ -161,13 +164,16 @@ export function CharacterMasteryCard({
 				{progress && (
 					<div className="text-center space-y-1">
 						<div className="text-sm text-muted-foreground">
-							<span className="font-medium">{progress.percentageRequired}%</span> Required
+							<span className="font-medium">{progress.percentageRequired}%</span>
+							{t('skillPlans.required2')}
 						</div>
 						<div className="text-sm text-muted-foreground">
-							<span className="font-medium">{progress.percentageRecommended}%</span> Recommended
+							<span className="font-medium">{progress.percentageRecommended}%</span>
+							{t('skillPlans.recommended2')}
 						</div>
 						<div className="text-xs text-muted-foreground mt-2">
-							{progress.completedRequired}/{progress.totalSkills} skills met
+							{progress.completedRequired}/{progress.totalSkills}
+							{t('skillPlans.skillsMet')}
 						</div>
 					</div>
 				)}

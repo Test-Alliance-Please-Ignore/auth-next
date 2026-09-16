@@ -1,19 +1,24 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAppTranslation } from '@/i18n'
 
 interface FleetsPerDayChartProps {
 	data: Array<{ day: string; count: number }>
 }
 
 export function FleetsPerDayChart({ data }: FleetsPerDayChartProps) {
+	const { t } = useAppTranslation()
+
 	const max = Math.max(...data.map((d) => d.count), 1)
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle className="text-base">Fleets per day</CardTitle>
+				<CardTitle className="text-base">{t('fleetTracking.fleetsPerDay')}</CardTitle>
 			</CardHeader>
 			<CardContent>
 				{data.length === 0 ? (
-					<div className="text-sm text-muted-foreground py-4">No fleets in this range.</div>
+					<div className="text-sm text-muted-foreground py-4">
+						{t('fleetTracking.noFleetsInThisRange')}
+					</div>
 				) : (
 					<div className="flex items-end gap-1 h-32">
 						{data.map((d) => {

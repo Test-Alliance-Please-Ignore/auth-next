@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 import { apiClient } from '../../lib/api'
 
 /**
@@ -127,19 +129,30 @@ export interface HrUserSearchResult {
  * HR Role capabilities for UI display
  */
 export const HR_ROLE_DESCRIPTIONS: Record<HrRoleType, string> = {
-	hr_admin: 'Full HR system access. Can manage applications, recommendations, notes, and HR roles.',
-	hr_reviewer:
-		'Can review and process applications. Can add recommendations and notes. Cannot manage HR roles.',
-	hr_viewer: 'Read-only access. Can view applications and recommendations. Cannot make changes.',
+	get hr_admin() {
+		return i18n.t('hrpages.fullHrSystemAccessCanManageApplicationsRecommendationsNotesAnd2')
+	},
+	get hr_reviewer() {
+		return i18n.t('hrpages.canReviewAndProcessApplicationsCanAddRecommendationsAndNotes2')
+	},
+	get hr_viewer() {
+		return i18n.t('hrpages.readOnlyAccessCanViewApplicationsAndRecommendationsCannotMake2')
+	},
 }
 
 /**
  * HR Role display names
  */
 export const HR_ROLE_NAMES: Record<HrRoleType, string> = {
-	hr_admin: 'HR Admin',
-	hr_reviewer: 'HR Reviewer',
-	hr_viewer: 'HR Viewer',
+	get hr_admin() {
+		return i18n.t('hrpages.hrAdmin')
+	},
+	get hr_reviewer() {
+		return i18n.t('hrpages.hrReviewer')
+	},
+	get hr_viewer() {
+		return i18n.t('hrpages.hrViewer')
+	},
 }
 
 /**

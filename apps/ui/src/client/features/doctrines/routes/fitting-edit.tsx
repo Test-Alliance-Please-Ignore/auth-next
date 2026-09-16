@@ -14,6 +14,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 
 import { FittingForm } from '../components/FittingForm'
@@ -24,6 +25,8 @@ import { useFitting, useUpdateFitting } from '../hooks'
 import type { UpdateFittingRequest } from '../types'
 
 export default function FittingEditPage() {
+	const { t } = useAppTranslation()
+
 	const { id } = useParams<{ id: string }>()
 	const navigate = useNavigate()
 	const { hasPermission, isAdmin } = useUserPermissions()
@@ -33,17 +36,19 @@ export default function FittingEditPage() {
 	const updateMutation = useUpdateFitting()
 	const canManage = isAdmin || hasPermission('urn:doctrines:manager')
 
-	usePageTitle(fitting ? `Edit ${fitting.shipName}` : 'Edit Fitting')
+	usePageTitle(
+		fitting ? t('doctrines.editValue1', { value1: fitting.shipName }) : t('doctrines.editFitting')
+	)
 
 	const handleSubmit = async (data: UpdateFittingRequest) => {
 		if (!id) return
 
 		try {
 			await updateMutation.mutateAsync({ id, data })
-			toast.success('Fitting updated')
+			toast.success(t('doctrines.fittingUpdated'))
 			void navigate(`/doctrines/fittings/${id}${doctrineId ? `?doctrineId=${doctrineId}` : ''}`)
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Failed to update fitting')
+			toast.error(error instanceof Error ? error.message : t('doctrines.failedToUpdateFitting'))
 		}
 	}
 
@@ -62,17 +67,17 @@ export default function FittingEditPage() {
 	if (!fitting) {
 		return (
 			<Container>
-				<PageHeader title="Fitting Not Found" />
+				<PageHeader title={t('doctrines.fittingNotFound')} />
 				<Card>
 					<CardContent className="pt-6">
 						<div className="text-center">
 							<p className="text-muted-foreground mb-4">
-								The fitting you're trying to edit doesn't exist.
+								{t('doctrines.theFittingYouReTryingToEditDoesnTExist')}
 							</p>
 							<Button asChild variant="ghost">
 								<Link to="/doctrines">
 									<ArrowLeft className="h-4 w-4" />
-									Back to Doctrines
+									{t('doctrines.backToDoctrines')}
 								</Link>
 							</Button>
 						</div>
@@ -87,13 +92,13 @@ export default function FittingEditPage() {
 			<Button asChild variant="ghost" size="sm" className="mb-4">
 				<Link to={`/doctrines/fittings/${id}${doctrineId ? `?doctrineId=${doctrineId}` : ''}`}>
 					<ArrowLeft className="h-4 w-4" />
-					Back to Fitting
+					{t('doctrines.backToFitting')}
 				</Link>
 			</Button>
 
 			<PageHeader
-				title={`Edit ${fitting.shipName}`}
-				description="Update fitting details and EFT format"
+				title={t('doctrines.editValue1', { value1: fitting.shipName })}
+				description={t('doctrines.updateFittingDetailsAndEftFormat')}
 			/>
 
 			{canManage ? (
@@ -134,7 +139,7 @@ export default function FittingEditPage() {
 				<Card>
 					<CardContent className="pt-6">
 						<p className="text-sm text-muted-foreground">
-							You do not have permission to perform this action.
+							{t('doctrines.youDoNotHavePermissionToPerformThisAction')}
 						</p>
 					</CardContent>
 				</Card>

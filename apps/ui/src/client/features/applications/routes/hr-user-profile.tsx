@@ -153,7 +153,7 @@ export default function HrUserProfilePage() {
 	} = useFulcrumUserReports(userId ?? '', { enabled: !!userId })
 	const reportCharacterById = useMemo(
 		() => new Map(reportCharacters.map((character) => [character.characterId, character])),
-		[reportCharacters]
+		[reportCharacters, t]
 	)
 	const reportAccessDenied = isForbiddenError(reportError)
 	const fulcrumAccessDeniedMessage = reportAccessDenied ? t('hr.fulcrum.hiddenDescription') : null
@@ -168,7 +168,7 @@ export default function HrUserProfilePage() {
 		return [...applicationsQuery.data].sort(
 			(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 		)
-	}, [applicationsQuery.data])
+	}, [applicationsQuery.data, t])
 
 	const rows = useMemo<ReviewerCharacterRow[]>(() => {
 		if (!characterQuery.data) return []
@@ -204,7 +204,7 @@ export default function HrUserProfilePage() {
 				if (!a.isPrimary && b.isPrimary) return 1
 				return a.characterName.localeCompare(b.characterName)
 			})
-	}, [characterQuery.data, reportCharacterById])
+	}, [characterQuery.data, reportCharacterById, t])
 
 	const characterDetailQuery = useCharacterPrivateDetailsBulk(
 		rows.map((character) => character.characterId)
@@ -245,7 +245,7 @@ export default function HrUserProfilePage() {
 		sortedApplications[0]?.characterName ??
 		rows[0]?.characterName ??
 		userId ??
-		'Unknown'
+		t('hrpages.unknown')
 
 	usePageTitle(
 		accountName

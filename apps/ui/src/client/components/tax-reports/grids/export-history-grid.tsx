@@ -3,8 +3,14 @@ import { useMemo } from 'react'
 import { DataTable } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { useAppTranslation } from '@/i18n'
 import { formatTaxDateTime } from '@/lib/tax-date'
-import { formatTaxNumber, TaxCorporationDisplay } from '@/lib/tax-display'
+import {
+	formatTaxNumber,
+	formatTaxReportTypeLabel,
+	formatTaxStatus,
+	TaxCorporationDisplay,
+} from '@/lib/tax-display'
 
 import type { TaxExportRecord } from '@repo/corporation-tax'
 import type { TaxReportSortingState } from '@/lib/tax-report-utils'
@@ -22,17 +28,19 @@ export function ExportHistoryGrid(props: {
 	sorting: TaxReportSortingState
 	onSortingChange: (sorting: TaxReportSortingState) => void
 }) {
+	const { t } = useAppTranslation()
+
 	const columns = useMemo(
 		() => [
 			{
 				id: 'requestedAt',
-				header: 'Requested At',
+				header: t('tax.requestedAt'),
 				sortable: true,
 				cell: (row: TaxExportRecord) => formatTaxDateTime(row.requestedAt),
 			},
 			{
 				id: 'corporationId',
-				header: 'Corporation',
+				header: t('tax.corporation'),
 				sortable: true,
 				cell: (row: TaxExportRecord) =>
 					row.corporationId ? (
@@ -41,44 +49,46 @@ export function ExportHistoryGrid(props: {
 							entityNames={props.entityNames}
 						/>
 					) : (
-						'Global'
+						t('tax.global')
 					),
 			},
 			{
 				id: 'reportType',
-				header: 'Report',
+				header: t('tax.report'),
 				sortable: true,
-				cell: (row: TaxExportRecord) => row.reportType,
+				cell: (row: TaxExportRecord) => formatTaxReportTypeLabel(row.reportType),
 			},
 			{
 				id: 'format',
-				header: 'Format',
+				header: t('tax.format'),
 				sortable: true,
 				cell: (row: TaxExportRecord) => row.format.toUpperCase(),
 			},
 			{
 				id: 'status',
-				header: 'Status',
+				header: t('tax.status'),
 				sortable: true,
 				cell: (row: TaxExportRecord) => (
-					<Badge variant={row.status === 'failed' ? 'destructive' : 'ghost'}>{row.status}</Badge>
+					<Badge variant={row.status === 'failed' ? 'destructive' : 'ghost'}>
+						{formatTaxStatus(row.status)}
+					</Badge>
 				),
 			},
 			{
 				id: 'rowCount',
-				header: 'Rows',
+				header: t('tax.rows'),
 				sortable: true,
 				cell: (row: TaxExportRecord) => formatTaxNumber(row.rowCount),
 			},
 			{
 				id: 'completedAt',
-				header: 'Completed',
+				header: t('tax.completed'),
 				sortable: true,
 				cell: (row: TaxExportRecord) => formatTaxDateTime(row.completedAt),
 			},
 			{
 				id: 'download',
-				header: 'Download',
+				header: t('tax.download'),
 				className: 'text-right',
 				headerClassName: 'text-right',
 				cell: (row: TaxExportRecord) => (
@@ -88,26 +98,26 @@ export function ExportHistoryGrid(props: {
 						disabled={row.status !== 'completed' || props.downloading}
 						onClick={() => props.onDownload(row.id)}
 					>
-						{props.downloading ? 'Preparing...' : 'Download'}
+						{props.downloading ? t('tax.preparing') : t('tax.download')}
 					</Button>
 				),
 			},
 		],
-		[props.downloading, props.entityNames, props.onDownload]
+		[props.downloading, props.entityNames, props.onDownload, t]
 	)
 	return (
 		<DataTable
 			variant="plain"
-			errorMessage="Failed to load report"
+			errorMessage={t('tax.failedToLoadReport')}
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
 			error={props.error}
-			emptyMessage="No export runs found."
+			emptyMessage={t('tax.noExportRunsFound')}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
 			rowCount={props.rowCount}
-			itemLabel="exports"
+			itemLabel={t('tax.exports')}
 			sorting={props.sorting}
 			onSortingChange={props.onSortingChange}
 			getRowKey={(row) => row.id}

@@ -12,6 +12,7 @@ import { Link } from 'react-router'
 import { MemberAvatar } from '@/components/member-avatar'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { useAuth } from '@/hooks/useAuth'
+import { useAppTranslation } from '@/i18n'
 import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import { useHrAccessibleCorporations } from '../../hr/hooks'
@@ -33,6 +34,8 @@ function HistoryEntry({
 	href: string
 	canAccess: boolean
 }) {
+	const { t } = useAppTranslation()
+
 	const content = (
 		<>
 			<MemberAvatar characterId={app.characterId} characterName={app.characterName} size="md" />
@@ -42,13 +45,15 @@ function HistoryEntry({
 					<ApplicationStatusBadge status={app.status} size="sm" />
 				</div>
 				<p className="text-sm text-muted-foreground">
-					{app.corporationName ?? 'Unknown Corporation'}
+					{app.corporationName ?? t('hrpages.unknownCorporation')}
 				</p>
 				<p className="text-xs text-muted-foreground">
 					{formatDistanceToNow(new Date(app.createdAt), { addSuffix: true })}
 				</p>
 				{!canAccess && (
-					<p className="text-xs text-amber-500">You do not have HR access to this corporation.</p>
+					<p className="text-xs text-amber-500">
+						{t('hrpages.youDoNotHaveHrAccessToThisCorporation')}
+					</p>
 				)}
 			</div>
 		</>
@@ -125,6 +130,8 @@ export function ApplicationHistoryPanel({
 	userId,
 	applicationId,
 }: ApplicationHistoryPanelProps) {
+	const { t } = useAppTranslation()
+
 	const { user, permissions } = useAuth()
 	const hasGlobalAccess =
 		user?.is_admin === true || permissions.some((permission) => permission.urn === 'urn:hr:auditor')
@@ -171,7 +178,10 @@ export function ApplicationHistoryPanel({
 		return (
 			<div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive">
 				<FileText className="h-5 w-5" />
-				<p>Failed to load application history: {error.message}</p>
+				<p>
+					{t('hrpages.failedToLoadApplicationHistory')}
+					{error.message}
+				</p>
 			</div>
 		)
 	}
@@ -183,7 +193,7 @@ export function ApplicationHistoryPanel({
 		return (
 			<div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground">
 				<History className="h-8 w-8 opacity-50" />
-				<p>No prior applications found</p>
+				<p>{t('hrpages.noPriorApplicationsFound')}</p>
 			</div>
 		)
 	}
@@ -191,18 +201,18 @@ export function ApplicationHistoryPanel({
 	return (
 		<div className="space-y-6">
 			<HistorySection
-				title="This Character"
+				title={t('hrpages.thisCharacter')}
 				icon={User}
 				apps={charHistory ?? []}
-				emptyMessage="No prior applications from this character"
+				emptyMessage={t('hrpages.noPriorApplicationsFromThisCharacter')}
 				getHref={getApplicationHref}
 				canAccessApplication={canAccessApplication}
 			/>
 			<HistorySection
-				title="This Account (Other Characters)"
+				title={t('hrpages.thisAccountOtherCharacters')}
 				icon={Users}
 				apps={otherAccountApps}
-				emptyMessage="No applications from other characters on this account"
+				emptyMessage={t('hrpages.noApplicationsFromOtherCharactersOnThisAccount')}
 				getHref={getApplicationHref}
 				canAccessApplication={canAccessApplication}
 			/>

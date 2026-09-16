@@ -1,4 +1,5 @@
 import { Checkbox } from '@/components/ui/checkbox'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { SERVICE_TYPE_CATEGORIES, SERVICE_TYPE_LABELS, ServiceType } from '../types'
@@ -16,6 +17,8 @@ export function ServicesSelection({
 	disabled,
 	excludeServices = [],
 }: ServicesSelectionProps) {
+	const { t } = useAppTranslation()
+
 	const toggleService = (serviceType: ServiceType) => {
 		if (selectedServices.includes(serviceType)) {
 			onChange(selectedServices.filter((s) => s !== serviceType))
@@ -44,7 +47,10 @@ export function ServicesSelection({
 			{/* Header with select/clear buttons */}
 			<div className="flex items-center justify-between">
 				<p className="text-sm text-muted-foreground">
-					{selectedServices.length} of {availableCount} services selected
+					{t('industry.selectedServices', {
+						selected: selectedServices.length,
+						total: availableCount,
+					})}
 				</p>
 				<div className="flex gap-2">
 					<button
@@ -53,7 +59,7 @@ export function ServicesSelection({
 						disabled={disabled || selectedServices.length === availableCount}
 						className="text-sm text-primary hover:underline disabled:opacity-50 disabled:no-underline"
 					>
-						Select All
+						{t('industry.selectAll')}
 					</button>
 					<span className="text-muted-foreground">|</span>
 					<button
@@ -62,7 +68,7 @@ export function ServicesSelection({
 						disabled={disabled || selectedServices.length === 0}
 						className="text-sm text-primary hover:underline disabled:opacity-50 disabled:no-underline"
 					>
-						Clear All
+						{t('industry.clearAll')}
 					</button>
 				</div>
 			</div>
@@ -75,7 +81,17 @@ export function ServicesSelection({
 				return (
 					<div key={category} className="space-y-3">
 						<h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
-							{category}
+							{t(
+								(
+									{
+										Manufacturing: 'industry.manufacturingCategory',
+										'Research & Development': 'industry.researchCategory',
+										Logistics: 'industry.logisticsCategory',
+										Trade: 'industry.tradeCategory',
+										Other: 'industry.otherCategory',
+									} as const
+								)[category as keyof typeof SERVICE_TYPE_CATEGORIES]
+							)}
 						</h3>
 						<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 							{availableTypes.map((serviceType) => (

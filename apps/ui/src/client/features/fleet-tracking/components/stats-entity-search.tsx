@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 
 import { useStatsEntitySearch } from '../hooks'
 
@@ -12,6 +13,8 @@ import { useStatsEntitySearch } from '../hooks'
  * relevant stats page on selection.
  */
 export function StatsEntitySearch() {
+	const { t } = useAppTranslation()
+
 	const navigate = useNavigate()
 	const [charQuery, setCharQuery] = useState('')
 	const [corpQuery, setCorpQuery] = useState('')
@@ -25,8 +28,8 @@ export function StatsEntitySearch() {
 		description: c.isPrimary
 			? undefined
 			: c.ownerMainCharacterName
-				? `Alt of ${c.ownerMainCharacterName}`
-				: 'Alt',
+				? t('fleetTracking.altOfValue1', { value1: c.ownerMainCharacterName })
+				: t('fleetTracking.alt'),
 		isPrimary: c.isPrimary,
 	}))
 
@@ -39,7 +42,7 @@ export function StatsEntitySearch() {
 		<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 			<div>
 				<label htmlFor="stats-find-character" className="text-sm text-muted-foreground">
-					Find character
+					{t('fleetTracking.findCharacter')}
 				</label>
 				<Select
 					inputId="stats-find-character"
@@ -55,11 +58,11 @@ export function StatsEntitySearch() {
 					searchDelegate={() => characterOptions}
 					options={characterOptions}
 					loading={charSearch.isFetching}
-					placeholder="Search character name"
-					queryHintText="Type at least 2 characters"
+					placeholder={t('fleetTracking.searchCharacterName')}
+					queryHintText={t('fleetTracking.typeAtLeast2Characters')}
 					minQueryLength={2}
 					debounceMs={0}
-					emptyText="No matching pilots in tracked fleets"
+					emptyText={t('fleetTracking.noMatchingPilotsInTrackedFleets')}
 					renderOption={(option) => (
 						<div className="min-w-0">
 							<div className="flex items-center gap-2">
@@ -67,7 +70,7 @@ export function StatsEntitySearch() {
 									{option.label}
 								</div>
 								<Badge variant={option.isPrimary ? 'default' : 'secondary'} className="shrink-0">
-									{option.isPrimary ? 'Main' : 'Alt'}
+									{option.isPrimary ? t('fleetTracking.main1') : t('fleetTracking.alt')}
 								</Badge>
 							</div>
 							{option.description && (
@@ -81,7 +84,7 @@ export function StatsEntitySearch() {
 			</div>
 			<div>
 				<label htmlFor="stats-find-corporation" className="text-sm text-muted-foreground">
-					Find corporation
+					{t('fleetTracking.findCorporation')}
 				</label>
 				<Select
 					inputId="stats-find-corporation"
@@ -97,11 +100,11 @@ export function StatsEntitySearch() {
 					searchDelegate={() => corporationOptions}
 					options={corporationOptions}
 					loading={corpSearch.isFetching}
-					placeholder="Search corporation name"
-					queryHintText="Type at least 2 characters"
+					placeholder={t('fleetTracking.searchCorporationName')}
+					queryHintText={t('fleetTracking.typeAtLeast2Characters')}
 					minQueryLength={2}
 					debounceMs={0}
-					emptyText="No matching corps in tracked fleets"
+					emptyText={t('fleetTracking.noMatchingCorpsInTrackedFleets')}
 				/>
 			</div>
 		</div>

@@ -10,6 +10,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 import { typeIconUrl } from '@/lib/eve-images'
 import { formatISK } from '@/lib/format-utils'
 
@@ -34,7 +35,7 @@ function RarityBadge({ rarity }: { rarity: string }) {
 
 function formatVolumeM3(value: number | null | undefined): string {
 	if (value === null || value === undefined || !Number.isFinite(value)) return '—'
-	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} m3`
+	return `${value.toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 })} m3`
 }
 
 function MaterialCell({
@@ -68,7 +69,12 @@ function MaterialCell({
 }
 
 export function MoonProfitabilityTable({ structure }: { structure: StructureProfitability }) {
-	const LABELS: Record<string, string> = { metenox: 'Metenox', tatara: 'Refinery' }
+	const { t } = useAppTranslation()
+
+	const LABELS: Record<string, string> = {
+		metenox: t('moonScan.metenox'),
+		tatara: t('moonScan.refinery'),
+	}
 	const label = LABELS[structure.structureType] ?? structure.structureType
 	const gross = parseFloat(structure.grossIsk)
 	const fuel = parseFloat(structure.fuelCost)
@@ -82,16 +88,19 @@ export function MoonProfitabilityTable({ structure }: { structure: StructureProf
 	return (
 		<div className="p-4">
 			<h6 className="mb-3 text-sm font-medium">
-				{label} (per {structure.cycleDays}d cycle)
+				{label}
+				{t('moonScan.per')}
+				{structure.cycleDays}
+				{t('moonScan.dCycle')}
 			</h6>
 
 			<Table className="mb-3 text-xs">
 				<TableHeader>
 					<TableRow>
-						<TableHead className="text-left">Ore / Material</TableHead>
-						<TableHead className="text-right">Qty</TableHead>
-						<TableHead className="text-right">Volume (m3)</TableHead>
-						<TableHead className="text-right">Refined value</TableHead>
+						<TableHead className="text-left">{t('moonScan.oreMaterial')}</TableHead>
+						<TableHead className="text-right">{t('moonScan.qty')}</TableHead>
+						<TableHead className="text-right">{t('moonScan.volumeM3')}</TableHead>
+						<TableHead className="text-right">{t('moonScan.refinedValue')}</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody className="divide-y divide-border/50">
@@ -123,7 +132,7 @@ export function MoonProfitabilityTable({ structure }: { structure: StructureProf
 										</div>
 									</TableCell>
 									<TableCell className="pb-1 pt-2 text-right tabular-nums text-muted-foreground">
-										{ore.oreUnits.toLocaleString()}
+										{ore.oreUnits.toLocaleString(getActiveLocale())}
 									</TableCell>
 									<TableCell className="pb-1 pt-2 text-right tabular-nums text-muted-foreground">
 										{formatVolumeM3(ore.oreVolumeM3)}
@@ -142,7 +151,7 @@ export function MoonProfitabilityTable({ structure }: { structure: StructureProf
 											/>
 										</TableCell>
 										<TableCell className="py-0.5 text-right tabular-nums text-muted-foreground">
-											{material.quantity.toLocaleString()}
+											{material.quantity.toLocaleString(getActiveLocale())}
 										</TableCell>
 										<TableCell className="py-0.5 text-right tabular-nums text-muted-foreground">
 											{formatVolumeM3(material.volumeM3)}
@@ -161,19 +170,23 @@ export function MoonProfitabilityTable({ structure }: { structure: StructureProf
 			<Table className="border-t pt-2 text-sm">
 				<TableBody>
 					<TableRow>
-						<TableCell className="py-1 text-muted-foreground">Total raw ore volume</TableCell>
+						<TableCell className="py-1 text-muted-foreground">
+							{t('moonScan.totalRawOreVolume')}
+						</TableCell>
 						<TableCell className="py-1 text-right font-semibold tabular-nums">
 							{formatVolumeM3(rawOreVolumeM3)}
 						</TableCell>
 					</TableRow>
 					<TableRow>
-						<TableCell className="py-1 text-muted-foreground">Total refined volume</TableCell>
+						<TableCell className="py-1 text-muted-foreground">
+							{t('moonScan.totalRefinedVolume')}
+						</TableCell>
 						<TableCell className="py-1 text-right font-semibold tabular-nums">
 							{formatVolumeM3(refinedVolumeM3)}
 						</TableCell>
 					</TableRow>
 					<TableRow>
-						<TableCell className="py-1 text-muted-foreground">Gross ISK</TableCell>
+						<TableCell className="py-1 text-muted-foreground">{t('moonScan.grossIsk')}</TableCell>
 						<TableCell className="py-1 text-right font-semibold tabular-nums">
 							{formatISK(String(Math.round(gross)), { showDecimals: false })}
 						</TableCell>
@@ -187,7 +200,7 @@ export function MoonProfitabilityTable({ structure }: { structure: StructureProf
 									className="h-5 w-5 rounded"
 									loading="lazy"
 								/>
-								Fuel Blocks
+								{t('moonScan.fuelBlocks')}
 							</span>
 						</TableCell>
 						<TableCell className="py-1 text-right font-semibold tabular-nums text-red-400">
@@ -204,7 +217,7 @@ export function MoonProfitabilityTable({ structure }: { structure: StructureProf
 										className="h-5 w-5 rounded"
 										loading="lazy"
 									/>
-									Magmatic Gas
+									{t('moonScan.magmaticGas')}
 								</span>
 							</TableCell>
 							<TableCell className="py-1 text-right font-semibold tabular-nums text-red-400">
@@ -213,7 +226,7 @@ export function MoonProfitabilityTable({ structure }: { structure: StructureProf
 						</TableRow>
 					)}
 					<TableRow className="border-t font-semibold">
-						<TableCell className="py-1.5">Profit</TableCell>
+						<TableCell className="py-1.5">{t('moonScan.profit')}</TableCell>
 						<TableCell
 							className={`py-1.5 text-right tabular-nums ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}
 						>
@@ -227,13 +240,15 @@ export function MoonProfitabilityTable({ structure }: { structure: StructureProf
 }
 
 export function MoonCompositionTable({ composition }: { composition: StructureMoonComposition }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<Table>
 			<TableHeader>
 				<TableRow>
-					<TableHead>Mineral</TableHead>
-					<TableHead>Rarity</TableHead>
-					<TableHead className="text-right">Composition</TableHead>
+					<TableHead>{t('moonScan.mineral')}</TableHead>
+					<TableHead>{t('moonScan.rarity')}</TableHead>
+					<TableHead className="text-right">{t('moonScan.composition')}</TableHead>
 				</TableRow>
 			</TableHeader>
 			<TableBody>
@@ -246,7 +261,7 @@ export function MoonCompositionTable({ composition }: { composition: StructureMo
 								<TableCell>
 									<div className="flex items-center gap-2">
 										<img src={typeIconUrl(ore.typeId, 32)} alt="" className="h-6 w-6 rounded" />
-										<span>{ore.typeName ?? `Type ${ore.typeId}`}</span>
+										<span>{ore.typeName ?? t('moonScan.typeValue1', { value1: ore.typeId })}</span>
 									</div>
 								</TableCell>
 								<TableCell>{rarity ? <RarityBadge rarity={rarity} /> : '—'}</TableCell>

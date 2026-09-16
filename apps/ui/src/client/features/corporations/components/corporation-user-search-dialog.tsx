@@ -7,6 +7,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { useAppTranslation } from '@/i18n'
 
 import { HrUserSearchContent } from '../../applications/components/hr-user-search-content'
 
@@ -19,17 +20,18 @@ export function CorporationUserSearchDialog({
 	open,
 	onOpenChange,
 }: CorporationUserSearchDialogProps) {
+	const { t } = useAppTranslation()
+
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="sm:max-w-5xl">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
 						<Search className="h-5 w-5" />
-						User Search
+						{t('characterpages.userSearch')}
 					</DialogTitle>
 					<DialogDescription>
-						Search by character name, character ID, Discord username, or Discord ID to review the
-						linked characters on the account.
+						{t('characterpages.searchByCharacterNameCharacterIdDiscordUsernameOrDiscord')}
 					</DialogDescription>
 				</DialogHeader>
 

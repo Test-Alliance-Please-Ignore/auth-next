@@ -16,6 +16,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { isNpcCharacterContact } from '../../utils/contacts'
@@ -95,6 +96,8 @@ export function ContactsSection({
 	data: ProcessedContact[]
 	blacklistHighlights?: BlacklistHighlights
 }) {
+	const { t } = useAppTranslation()
+
 	const [search, setSearch] = useState('')
 	const [typeFilter, setTypeFilter] = useState<ContactTypeFilter>('all')
 	const [standingFilter, setStandingFilter] = useState<StandingFilter>('all')
@@ -107,7 +110,7 @@ export function ContactsSection({
 			counts[t] = (counts[t] ?? 0) + 1
 		}
 		return counts
-	}, [data])
+	}, [data, t])
 
 	const filtered = useMemo(() => {
 		let result = data
@@ -131,13 +134,13 @@ export function ContactsSection({
 		}
 
 		return result
-	}, [data, typeFilter, standingFilter, search])
+	}, [data, typeFilter, standingFilter, search, t])
 
 	const visible = filtered.slice(0, visibleCount)
 	const hasMore = visibleCount < filtered.length
 
 	if (data.length === 0) {
-		return <p className="text-sm text-muted-foreground">No contacts found.</p>
+		return <p className="text-sm text-muted-foreground">{t('hrpages.noContactsFound')}</p>
 	}
 
 	return (
@@ -151,7 +154,7 @@ export function ContactsSection({
 						onClick={() => setTypeFilter('all')}
 						count={data.length}
 					>
-						All
+						{t('hrpages.all')}
 					</FilterButton>
 					{(['character', 'corporation', 'alliance', 'faction'] as const).map(
 						(type) =>
@@ -174,10 +177,10 @@ export function ContactsSection({
 				<div className="flex flex-wrap gap-1">
 					{(
 						[
-							['all', 'Any Standing'],
+							['all', t('hrpages.anyStanding')],
 							['excellent', '+10 to +5'],
 							['good', '+5 to 0'],
-							['neutral', 'Neutral'],
+							['neutral', t('hrpages.neutral')],
 							['bad', '0 to -5'],
 							['terrible', '-5 to -10'],
 						] as const
@@ -196,7 +199,7 @@ export function ContactsSection({
 					<div className="relative">
 						<Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
 						<Input
-							placeholder="Search contacts..."
+							placeholder={t('hrpages.searchContacts')}
 							value={search}
 							onChange={(e) => {
 								setSearch(e.target.value)
@@ -210,22 +213,24 @@ export function ContactsSection({
 
 			{/* Results */}
 			<p className="text-sm text-muted-foreground">
-				{filtered.length} contact{filtered.length !== 1 ? 's' : ''}
-				{search || typeFilter !== 'all' || standingFilter !== 'all' ? ` (of ${data.length})` : ''}
+				{t('hrpages.contactCount', { count: filtered.length })}
+				{search || typeFilter !== 'all' || standingFilter !== 'all'
+					? t('hrpages.remainingTotal', { value1: data.length })
+					: ''}
 			</p>
 
 			{filtered.length === 0 ? (
 				<p className="py-8 text-center text-sm text-muted-foreground">
-					No contacts match the current filters
+					{t('hrpages.noContactsMatchTheCurrentFilters')}
 				</p>
 			) : (
 				<div className="h-[70vh] min-h-[460px] max-h-[1200px] resize-y overflow-auto rounded-md border">
 					<Table>
 						<TableHeader>
 							<TableRow className="bg-muted/50">
-								<TableHead className="font-semibold">Name</TableHead>
-								<TableHead className="font-semibold">Type</TableHead>
-								<TableHead className="text-right font-semibold">Standing</TableHead>
+								<TableHead className="font-semibold">{t('hrpages.name')}</TableHead>
+								<TableHead className="font-semibold">{t('hrpages.type')}</TableHead>
+								<TableHead className="text-right font-semibold">{t('hrpages.standing')}</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -241,11 +246,11 @@ export function ContactsSection({
 											>
 												{contact.contactDisplayName ||
 													contact.contactName ||
-													`ID: ${contact.contact_id}`}
+													t('hrpages.idValue1', { value1: contact.contact_id })}
 											</EntityNameLink>
 											{isNpcCharacterContact(contact) ? (
 												<Badge variant="secondary" className="ml-2 px-1.5 py-0 text-[10px]">
-													NPC
+													{t('hrpages.npc')}
 												</Badge>
 											) : null}
 										</BlacklistHighlight>
@@ -277,10 +282,11 @@ export function ContactsSection({
 						size="sm"
 						onClick={() => setVisibleCount((c) => c + DEFAULT_VISIBLE)}
 					>
-						Show more
+						{t('hrpages.showMore')}
 					</Button>
 					<Button variant="ghost" size="sm" onClick={() => setVisibleCount(filtered.length)}>
-						Show all ({filtered.length})
+						{t('hrpages.showAll')}
+						{filtered.length})
 					</Button>
 				</div>
 			)}

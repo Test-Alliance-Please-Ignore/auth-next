@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 import { apiClient } from '../../lib/api'
 
 import type {
@@ -150,7 +152,7 @@ export const skillPlansApi = {
 		return skills.map((skill) => ({
 			skillId: String(skill.id || skill.skillId),
 			name: skill.name,
-			group: skill.groupName || 'Unknown',
+			group: skill.groupName || i18n.t('skillPlans.unknown'),
 			description: skill.description,
 			rank: skill.rank,
 			primaryAttribute: skill.primaryAttribute,
@@ -166,7 +168,7 @@ export const skillPlansApi = {
 		return skills.map((skill) => ({
 			skillId: String(skill.id || skill.skillId),
 			name: skill.name,
-			group: skill.groupName || 'Unknown',
+			group: skill.groupName || i18n.t('skillPlans.unknown'),
 			description: skill.description,
 			rank: skill.rank,
 			primaryAttribute: skill.primaryAttribute,

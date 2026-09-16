@@ -58,6 +58,7 @@ import { useSystemDetails } from '@/hooks/useLocationSearch'
 import { useNowMs } from '@/hooks/useNowMs'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { getActiveLocale, i18n, useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 import { formatDateTimeLong, formatUtcDateTime } from '@/lib/date-utils'
 import { formatDurationMs } from '@/lib/duration-utils'
@@ -87,43 +88,60 @@ function structureSyncStatusDescription(
 		if (!lastSyncedAt) return null
 		const ageMs = Math.max(0, Date.now() - new Date(lastSyncedAt).getTime())
 		if (ageMs >= STRUCTURE_SYNC_ERROR_STALE_MS) {
-			return 'This snapshot is more than 24 hours old and should be treated as stale.'
+			return i18n.t('structures.thisSnapshotIsMoreThan24HoursOldAndShould')
 		}
 		if (ageMs >= STRUCTURE_SYNC_WARNING_STALE_MS) {
-			return 'This snapshot is more than 12 hours old and may be stale.'
+			return i18n.t('structures.thisSnapshotIsMoreThan12HoursOldAndMay')
 		}
 		return null
 	}
 
 	if (syncFailureReason) {
 		return lastSyncedAt
-			? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. ${syncFailureReason}`
+			? i18n.t('structures.lastSyncAtValue1Value2', {
+					value1: formatDateTimeLong(lastSyncedAt),
+					value2: syncFailureReason,
+				})
 			: syncFailureReason
 	}
 
 	if (syncStatus === 'ok') {
 		return lastSyncedAt
-			? `Last successful sync at ${formatDateTimeLong(lastSyncedAt)}.`
-			: 'The latest corporation-data sync completed successfully.'
+			? i18n.t('structures.lastSuccessfulSyncAtValue1', {
+					value1: formatDateTimeLong(lastSyncedAt),
+				})
+			: i18n.t('structures.theLatestCorporationDataSyncCompletedSuccessfully')
 	}
 
 	if (syncStatus === 'warning') {
 		const stalenessNote = getStalenessNote()
 		return lastSyncedAt
-			? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. ${stalenessNote ?? 'The latest corporation-data sync completed with warnings, so some fields may be incomplete or stale.'}`
-			: 'The latest corporation-data sync completed with warnings, so some fields may be incomplete or stale.'
+			? i18n.t('structures.lastSyncAtValue1Value2', {
+					value1: formatDateTimeLong(lastSyncedAt),
+					value2:
+						stalenessNote ??
+						i18n.t('structures.theLatestCorporationDataSyncCompletedWithWarningsSoSome'),
+				})
+			: i18n.t('structures.theLatestCorporationDataSyncCompletedWithWarningsSoSome')
 	}
 
 	if (syncStatus === 'error') {
 		const stalenessNote = getStalenessNote()
 		return lastSyncedAt
-			? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. ${stalenessNote ?? 'The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.'}`
-			: 'The latest corporation-data sync failed, so this snapshot may be stale until the next successful refresh.'
+			? i18n.t('structures.lastSyncAtValue1Value2', {
+					value1: formatDateTimeLong(lastSyncedAt),
+					value2:
+						stalenessNote ??
+						i18n.t('structures.theLatestCorporationDataSyncFailedSoThisSnapshotMay'),
+				})
+			: i18n.t('structures.theLatestCorporationDataSyncFailedSoThisSnapshotMay')
 	}
 
 	return lastSyncedAt
-		? `Last sync at ${formatDateTimeLong(lastSyncedAt)}. The latest corporation-data sync completed successfully and the stored snapshot is current.`
-		: 'The latest corporation-data sync completed successfully and the stored snapshot is current.'
+		? i18n.t('structures.lastSyncAtValue1TheLatestCorporationDataSyncCompleted', {
+				value1: formatDateTimeLong(lastSyncedAt),
+			})
+		: i18n.t('structures.theLatestCorporationDataSyncCompletedSuccessfullyAndTheStored')
 }
 
 type AssetSyncStatus = 'ok' | 'warning' | 'error' | 'disabled'
@@ -146,29 +164,35 @@ function snapshotSyncStatus(lastSnapshotAt: string | null): Exclude<AssetSyncSta
 }
 
 function assetSyncStatusDescription(enabled: boolean, lastAssetSnapshotAt: string | null): string {
-	if (!enabled) return 'Asset sync is disabled for this corporation.'
+	if (!enabled) return i18n.t('structures.assetSyncIsDisabledForThisCorporation')
 	return snapshotSyncStatusDescription('asset', lastAssetSnapshotAt)
 }
 
 function snapshotSyncStatusDescription(label: string, lastSnapshotAt: string | null): string {
 	if (!lastSnapshotAt) {
-		return `No ${label} snapshot timestamp has been recorded.`
+		return i18n.t('structures.noValue1SnapshotTimestampHasBeenRecorded', { value1: label })
 	}
 
 	const parsed = new Date(lastSnapshotAt)
 	if (Number.isNaN(parsed.getTime())) {
-		return `The last ${label} snapshot timestamp was invalid, so the snapshot cannot be trusted.`
+		return i18n.t('structures.theLastValue1SnapshotTimestampWasInvalidSoTheSnapshot', {
+			value1: label,
+		})
 	}
 
 	const ageMs = Math.max(0, Date.now() - parsed.getTime())
 	const stalenessNote =
 		ageMs >= STRUCTURE_SYNC_ERROR_STALE_MS
-			? 'This snapshot is more than 24 hours old and should be treated as stale.'
+			? i18n.t('structures.thisSnapshotIsMoreThan24HoursOldAndShould')
 			: ageMs >= STRUCTURE_SYNC_WARNING_STALE_MS
-				? 'This snapshot is more than 12 hours old and may be stale.'
-				: `The stored ${label} snapshot is current.`
+				? i18n.t('structures.thisSnapshotIsMoreThan12HoursOldAndMay')
+				: i18n.t('structures.theStoredValue1SnapshotIsCurrent', { value1: label })
 
-	return `Last ${label} snapshot at ${formatDateTimeLong(lastSnapshotAt)}. ${stalenessNote}`
+	return i18n.t('structures.lastValue1SnapshotAtValue2Value3', {
+		value1: label,
+		value2: formatDateTimeLong(lastSnapshotAt),
+		value3: stalenessNote,
+	})
 }
 
 function serviceBadgeVariant(state: string): BadgeVariant {
@@ -213,7 +237,7 @@ function formatReinforcementHourUtc(hour: number | null): string {
 	if (hour === null) {
 		return '-'
 	}
-	return `~${hour.toString().padStart(2, '0')}:00 EVE Time`
+	return i18n.t('structures.value100EveTime', { value1: hour.toString().padStart(2, '0') })
 }
 
 function formatNullableDateTime(value: string | null | undefined): string {
@@ -226,12 +250,12 @@ function formatEveTimeLabel(value: string | null | undefined): string {
 
 function formatNullableNumber(value: number | null | undefined): string {
 	if (value === null || value === undefined) return '-'
-	return value.toLocaleString()
+	return value.toLocaleString(getActiveLocale())
 }
 
 function formatApproximateNumber(value: number | null | undefined): string {
 	if (value === null || value === undefined) return '-'
-	return `~${value.toLocaleString()}`
+	return `~${value.toLocaleString(getActiveLocale())}`
 }
 
 function formatEstimatedRemaining(
@@ -251,7 +275,7 @@ function formatEstimatedRemaining(
 	}
 
 	if (burnRate <= 0) {
-		return amountValue > 0 ? 'Not burning' : '0s'
+		return amountValue > 0 ? i18n.t('structures.notBurning') : '0s'
 	}
 
 	const remainingMs = (amountValue / burnRate) * 60 * 60 * 1000
@@ -262,17 +286,17 @@ function getSovereigntyVulnerabilityState(
 	sovereignty: StructureDetailResult['sovereignty'] | null | undefined
 ): { label: string; variant: BadgeVariant } {
 	if (!sovereignty?.vulnerabilityWindowStart || !sovereignty?.vulnerabilityWindowEnd) {
-		return { label: 'Unknown', variant: 'ghost' }
+		return { label: i18n.t('structures.unknown'), variant: 'ghost' }
 	}
 
 	const start = new Date(sovereignty.vulnerabilityWindowStart).getTime()
 	const end = new Date(sovereignty.vulnerabilityWindowEnd).getTime()
 	const now = Date.now()
 	if (Number.isFinite(start) && Number.isFinite(end) && now >= start && now <= end) {
-		return { label: 'Vulnerable', variant: 'success' }
+		return { label: i18n.t('structures.vulnerable'), variant: 'success' }
 	}
 
-	return { label: 'Invulnerable', variant: 'success' }
+	return { label: i18n.t('structures.invulnerable'), variant: 'success' }
 }
 
 function LiveSovereigntyVulnerabilityWindow({
@@ -311,21 +335,21 @@ function toFiniteNumber(value: unknown): number {
 
 function formatBurnRate(value: number | null | undefined): string {
 	if (value === null || value === undefined) return '-'
-	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}/hr`
+	return `${value.toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 })}/hr`
 }
 
 function formatVolumeM3(value: number | null | undefined): string {
 	if (value === null || value === undefined || !Number.isFinite(value)) {
 		return '-'
 	}
-	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} m3`
+	return `${value.toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 })} m3`
 }
 
 function formatPercent(value: number | null | undefined): string {
 	if (value === null || value === undefined || !Number.isFinite(value)) {
 		return '-'
 	}
-	return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
+	return `${value.toLocaleString(getActiveLocale(), { maximumFractionDigits: 1 })}%`
 }
 
 function getSkyhookFullnessPercent(structure: {
@@ -377,7 +401,7 @@ function SkyhookBayFillCell({
 }) {
 	return (
 		<div className="space-y-1.5">
-			<div className="font-medium tabular-nums">{stock.toLocaleString()}</div>
+			<div className="font-medium tabular-nums">{stock.toLocaleString(getActiveLocale())}</div>
 			<div className="text-xs text-muted-foreground">
 				{formatVolumeM3(volumeM3)} / {formatVolumeM3(capacityM3)}
 			</div>
@@ -394,6 +418,8 @@ function AllianceLogo({
 	allianceId: string
 	allianceName?: string | null
 }) {
+	const { t } = useAppTranslation()
+
 	const [failed, setFailed] = useState(false)
 
 	if (failed) {
@@ -403,7 +429,11 @@ function AllianceLogo({
 	return (
 		<img
 			src={allianceLogoUrl(allianceId, 32)}
-			alt={allianceName ? `${allianceName} logo` : 'Alliance logo'}
+			alt={
+				allianceName
+					? t('structures.value1Logo', { value1: allianceName })
+					: t('structures.allianceLogo')
+			}
 			className="h-4 w-4 rounded-sm object-cover"
 			loading="lazy"
 			onError={() => setFailed(true)}
@@ -530,13 +560,13 @@ function parseWorkforceTransportSection(section: unknown): ParsedWorkforceTransp
 function formatWorkforceTransportMode(mode: ParsedWorkforceTransportSection['mode']): string {
 	switch (mode) {
 		case 'import':
-			return 'Import'
+			return i18n.t('structures.import')
 		case 'export':
-			return 'Export'
+			return i18n.t('structures.export')
 		case 'transit':
-			return 'Transit'
+			return i18n.t('structures.transit')
 		default:
-			return 'Unrecognized'
+			return i18n.t('structures.unrecognized')
 	}
 }
 
@@ -553,6 +583,8 @@ function WorkforceTransportSystemName({
 	systemId: string
 	linkTo: string | null
 }) {
+	const { t } = useAppTranslation()
+
 	const { data: systemDetails, isLoading } = useSystemDetails(systemId)
 
 	if (isLoading) {
@@ -570,7 +602,10 @@ function WorkforceTransportSystemName({
 					(systemDetails?.name ?? systemId)
 				)}
 			</div>
-			<div className="text-xs text-muted-foreground">System ID {systemId}</div>
+			<div className="text-xs text-muted-foreground">
+				{t('structures.systemId')}
+				{systemId}
+			</div>
 		</div>
 	)
 }
@@ -584,6 +619,8 @@ function WorkforceTransportSection({
 	section: StructureSovereigntyTransportSection | null | undefined
 	systemLinkById: Map<string, string>
 }) {
+	const { t } = useAppTranslation()
+
 	const parsed = parseWorkforceTransportSection(section)
 	const hasSystems = parsed.mode !== 'unknown' && parsed.systems.length > 0
 
@@ -603,8 +640,8 @@ function WorkforceTransportSection({
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead>System</TableHead>
-								<TableHead>Amount</TableHead>
+								<TableHead>{t('structures.system')}</TableHead>
+								<TableHead>{t('structures.amount')}</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -625,8 +662,8 @@ function WorkforceTransportSection({
 			) : (
 				<div className="mt-4 rounded-md border border-dashed border-border/60 bg-background px-3 py-2 text-sm text-muted-foreground">
 					{parsed.mode === 'transit'
-						? 'Transit mode does not list systems.'
-						: 'No systems recorded.'}
+						? t('structures.transitModeDoesNotListSystems')
+						: t('structures.noSystemsRecorded')}
 				</div>
 			)}
 		</div>
@@ -708,6 +745,8 @@ function structureFittingItemsToDisplayItems(
 }
 
 export default function StructuresDetailPage() {
+	const { t } = useAppTranslation()
+
 	const { structureId } = useParams<{ structureId: string }>()
 	const queryClient = useQueryClient()
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
@@ -747,12 +786,13 @@ export default function StructuresDetailPage() {
 
 	usePageTitle(
 		structure
-			? `Structure - ${
-					getStructureTabForTypeId(structure.typeId, structure.typeName) === 'skyhooks'
-						? 'Skyhook Details'
-						: structure.name
-				}`
-			: 'Structure Details'
+			? t('structures.structureValue1', {
+					value1:
+						getStructureTabForTypeId(structure.typeId, structure.typeName) === 'skyhooks'
+							? t('structures.skyhookDetails')
+							: structure.name,
+				})
+			: t('structures.structureDetails')
 	)
 
 	useEffect(() => {
@@ -769,13 +809,13 @@ export default function StructuresDetailPage() {
 
 	const groupOptions = useMemo<SelectOption[]>(() => {
 		return [
-			{ value: '', label: 'No Group' },
+			{ value: '', label: t('structures.noGroup') },
 			...groups
 				.slice()
 				.sort((left, right) => left.name.localeCompare(right.name))
 				.map((group) => ({ value: group.id, label: group.name })),
 		]
-	}, [groups])
+	}, [groups, t])
 
 	const updateMutation = useApiMutation({
 		mutationFn: (data: {
@@ -783,7 +823,7 @@ export default function StructuresDetailPage() {
 			lowPowerAllowed: boolean
 			assignedGroupId: string | null
 		}) => api.updateStructureConfig(structureId!, data),
-		successMessage: 'Structure configuration saved.',
+		successMessage: t('structures.structureConfigurationSaved'),
 		onSuccess: async () => {
 			await Promise.all([
 				queryClient.invalidateQueries({ queryKey: ['structures'] }),
@@ -807,9 +847,7 @@ export default function StructuresDetailPage() {
 		mutationFn: () => api.requestStructureInventoryRebuild(structureId!),
 		showSuccessToast: false,
 		onSuccess: async (result) => {
-			toast.success(
-				`Rebuilt the structure inventory snapshot with ${result.inventoryCount.toLocaleString()} row${result.inventoryCount === 1 ? '' : 's'}.`
-			)
+			toast.success(t('structures.rebuiltInventory', { count: result.inventoryCount }))
 			await Promise.all([
 				queryClient.invalidateQueries({ queryKey: ['structures'] }),
 				queryClient.invalidateQueries({ queryKey: ['structures', structureId] }),
@@ -855,13 +893,16 @@ export default function StructuresDetailPage() {
 					)
 					setAssetsDebug(result)
 					toast.success(
-						`Fetched ${result.fetchedAssetCount.toLocaleString()} raw assets and found ${result.itemCount.toLocaleString()} rows for this structure.`
+						t('structures.fetchedValue1RawAssetsAndFoundValue2RowsForThis', {
+							value1: result.fetchedAssetCount.toLocaleString(getActiveLocale()),
+							value2: result.itemCount.toLocaleString(getActiveLocale()),
+						})
 					)
 				} catch (error) {
 					toast.error(
 						error instanceof Error
 							? error.message
-							: 'Failed to download structure assets debug data'
+							: t('structures.failedToDownloadStructureAssetsDebugData')
 					)
 				} finally {
 					setPendingAssetsDebug(null)
@@ -874,7 +915,7 @@ export default function StructuresDetailPage() {
 			assetsDebugStatusQuery.data.status === 'failed' ||
 			assetsDebugStatusQuery.data.status === 'unknown'
 		) {
-			toast.error('Failed to generate structure assets debug data.')
+			toast.error(t('structures.failedToGenerateStructureAssetsDebugData'))
 			setPendingAssetsDebug(null)
 		}
 	}, [assetsDebugStatusQuery.data, pendingAssetsDebug, structureId])
@@ -884,7 +925,7 @@ export default function StructuresDetailPage() {
 		}
 
 		return structureFittingItemsToDisplayItems(structure)
-	}, [structure])
+	}, [structure, t])
 	const fittingSlotCapacities: NonNullable<StructureDetailResult['fittingSlotCapacities']> =
 		structure?.fittingSlotCapacities ?? { high: 0, mid: 0, low: 0, rig: 0 }
 	const hasStructureFitting =
@@ -929,10 +970,12 @@ export default function StructuresDetailPage() {
 			value: extraction.id,
 			label:
 				extraction.id === currentExtractionId
-					? `Current extraction (${formatEveTimeLabel(extraction.extractionStartTime)})`
+					? t('structures.currentExtractionValue1', {
+							value1: formatEveTimeLabel(extraction.extractionStartTime),
+						})
 					: `${formatEveTimeLabel(extraction.extractionStartTime)} - ${formatEveTimeLabel(extraction.naturalDecayTime)}`,
 		}))
-	}, [currentExtractionId, miningExtractionHistory])
+	}, [currentExtractionId, miningExtractionHistory, t])
 	const sovereigntyHub = structure?.sovereignty?.hub ?? null
 	const sovereigntyAllianceId = structure?.sovereignty?.allianceId ?? null
 	const sovereigntyAllianceName = structure?.sovereignty?.allianceName ?? null
@@ -974,7 +1017,7 @@ export default function StructuresDetailPage() {
 				`/structures/${item.sovereigntyHubStructureId ?? item.structureId}`,
 			])
 		)
-	}, [sovereigntyStructures])
+	}, [sovereigntyStructures, t])
 	if (!authLoading && !permissionsLoading && !structureAccessLoading && !canViewStructures) {
 		return <Navigate to="/dashboard" replace />
 	}
@@ -994,7 +1037,7 @@ export default function StructuresDetailPage() {
 	}
 
 	if (isLoading) {
-		return <LoadingPage label="Loading structure..." />
+		return <LoadingPage label={t('structures.loadingStructure')} />
 	}
 
 	if (error || !structure) {
@@ -1002,14 +1045,14 @@ export default function StructuresDetailPage() {
 			<Container className="py-6">
 				<Card>
 					<CardHeader>
-						<CardTitle>Structure not found</CardTitle>
+						<CardTitle>{t('structures.structureNotFound')}</CardTitle>
 						<CardDescription>
-							The requested structure could not be loaded or is not visible to your permissions.
+							{t('structures.theRequestedStructureCouldNotBeLoadedOrIsNot')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<Button asChild variant="ghost">
-							<Link to="/structures">Back to Structures</Link>
+							<Link to="/structures">{t('structures.backToStructures')}</Link>
 						</Button>
 					</CardContent>
 				</Card>
@@ -1033,10 +1076,15 @@ export default function StructuresDetailPage() {
 	const reagentBaySyncStatus = snapshotSyncStatus(
 		structure.sovereignty?.hub?.reagentBayLastUpdated ?? null
 	)
-	const reagentBaySyncDescription = `${snapshotSyncStatusDescription(
-		'reagent-bay',
-		structure.sovereignty?.hub?.reagentBayLastUpdated ?? null
-	)} Reagent quantities and remaining times are approximations calculated from that ESI baseline and its reported burn rate.`
+	const reagentBaySyncDescription = t(
+		'structures.value1ReagentQuantitiesAndRemainingTimesAreApproximationsCalculatedFrom',
+		{
+			value1: snapshotSyncStatusDescription(
+				'reagent-bay',
+				structure.sovereignty?.hub?.reagentBayLastUpdated ?? null
+			),
+		}
+	)
 
 	const handleSave = async () => {
 		await updateMutation.mutateAsync({
@@ -1051,7 +1099,7 @@ export default function StructuresDetailPage() {
 			<PageHeader
 				title={
 					hasSkyhookSummary
-						? 'Skyhook Details'
+						? t('structures.skyhookDetails')
 						: isMoonDrillStructure || hasMiningExtractionSummary
 							? stripLeadingContextName(structure.name, structure.systemName)
 							: structure.name
@@ -1074,7 +1122,7 @@ export default function StructuresDetailPage() {
 					<Button asChild variant="ghost" size="sm">
 						<Link to="/structures">
 							<ArrowLeft className="h-4 w-4" />
-							Back to Structures
+							{t('structures.backToStructures')}
 						</Link>
 					</Button>
 				}
@@ -1085,14 +1133,16 @@ export default function StructuresDetailPage() {
 					<Card>
 						<CardHeader className="gap-4 sm:flex-row sm:items-start sm:justify-between">
 							<div className="space-y-1.5">
-								<CardTitle>Summary</CardTitle>
-								<CardDescription>Current synced state and operational metadata.</CardDescription>
+								<CardTitle>{t('structures.summary')}</CardTitle>
+								<CardDescription>
+									{t('structures.currentSyncedStateAndOperationalMetadata')}
+								</CardDescription>
 							</div>
 							{isAdmin && (
 								<div className="flex items-center gap-3">
 									{isAssetsDebugPolling ? (
 										<span className="text-xs text-muted-foreground">
-											Generating asset debug snapshot...
+											{t('structures.generatingAssetDebugSnapshot')}
 										</span>
 									) : null}
 									<Button
@@ -1103,10 +1153,12 @@ export default function StructuresDetailPage() {
 											void debugAssetsMutation.mutateAsync()
 										}}
 										loading={isAssetsDebugBusy}
-										loadingText={isAssetsDebugPolling ? 'Generating...' : 'Queueing...'}
+										loadingText={
+											isAssetsDebugPolling ? t('structures.generating') : t('structures.queueing')
+										}
 									>
 										<Search className="h-4 w-4" />
-										Debug Assets
+										{t('structures.debugAssets')}
 									</Button>
 									<Button
 										variant="ghost"
@@ -1116,10 +1168,10 @@ export default function StructuresDetailPage() {
 											void rebuildInventoryMutation.mutateAsync()
 										}}
 										loading={isInventoryRebuildBusy}
-										loadingText="Rebuilding..."
+										loadingText={t('structures.rebuilding')}
 									>
 										<Recycle className="h-4 w-4" />
-										Rebuild Inventory Snapshot
+										{t('structures.rebuildInventorySnapshot')}
 									</Button>
 								</div>
 							)}
@@ -1127,18 +1179,20 @@ export default function StructuresDetailPage() {
 						<CardContent className="space-y-4 text-sm">
 							<div className="grid grid-cols-2 gap-4">
 								<div>
-									<div className="text-muted-foreground">Region</div>
+									<div className="text-muted-foreground">{t('structures.region')}</div>
 									<div className="font-medium">
 										{structure.regionName ?? structure.regionId ?? '-'}
 									</div>
 								</div>
 								<div>
-									<div className="text-muted-foreground">System</div>
+									<div className="text-muted-foreground">{t('structures.system')}</div>
 									<div className="font-medium">{structure.systemName ?? structure.systemId}</div>
 								</div>
 								<div>
 									<div className="text-muted-foreground">
-										{hasSovereigntySummary ? 'Controlling Alliance' : 'Type'}
+										{hasSovereigntySummary
+											? t('structures.controllingAlliance')
+											: t('structures.type')}
 									</div>
 									<div className="font-medium">
 										{hasSovereigntySummary ? (
@@ -1160,17 +1214,21 @@ export default function StructuresDetailPage() {
 								</div>
 								{!hasSovereigntySummary && !isSkyhookStructure && !isPosStructure && (
 									<div>
-										<div className="text-muted-foreground">Low Power</div>
-										<div className="font-medium">{structure.lowPower ? 'Yes' : 'No'}</div>
+										<div className="text-muted-foreground">{t('structures.lowPower')}</div>
+										<div className="font-medium">
+											{structure.lowPower ? t('structures.yes') : t('structures.no')}
+										</div>
 									</div>
 								)}
 								{!hasSovereigntySummary && !isSkyhookStructure && (
 									<>
 										<div>
-											<div className="text-muted-foreground">Fuel</div>
+											<div className="text-muted-foreground">{t('structures.fuel')}</div>
 											<div className="font-medium">
 												{structure.fuelAmount !== null ? (
-													`${structure.fuelAmount.toLocaleString()} units`
+													i18n.t('structures.fuelUnits', {
+														value1: structure.fuelAmount.toLocaleString(getActiveLocale()),
+													})
 												) : structure.fuelExpires ? (
 													<DurationDisplay endDate={structure.fuelExpires} format="compact" />
 												) : (
@@ -1179,7 +1237,7 @@ export default function StructuresDetailPage() {
 											</div>
 										</div>
 										<div>
-											<div className="text-muted-foreground">Last Refilled</div>
+											<div className="text-muted-foreground">{t('structures.lastRefilled')}</div>
 											<div className="font-medium">
 												{structure.lastRefilledAt ? (
 													<EveTimeDisplay dateStr={structure.lastRefilledAt} format="compact" />
@@ -1189,7 +1247,7 @@ export default function StructuresDetailPage() {
 											</div>
 										</div>
 										<div>
-											<div className="text-muted-foreground">Burn / Hr</div>
+											<div className="text-muted-foreground">{t('structures.burnHr')}</div>
 											<div className="font-medium">
 												{formatBurnRate(
 													structure.fuelBurnRate === null
@@ -1202,7 +1260,7 @@ export default function StructuresDetailPage() {
 								)}
 								{hasSovereigntySummary && (
 									<div>
-										<div className="text-muted-foreground">Claimed Since</div>
+										<div className="text-muted-foreground">{t('structures.claimedSince')}</div>
 										<div className="font-medium">
 											{structure.sovereignty?.claimedSince ? (
 												<EveTimeDisplay
@@ -1217,15 +1275,19 @@ export default function StructuresDetailPage() {
 								)}
 								{hasSovereigntySummary && (
 									<div>
-										<div className="text-muted-foreground">Capital System</div>
+										<div className="text-muted-foreground">{t('structures.capitalSystem')}</div>
 										<div className="font-medium">
-											{structure.sovereignty?.isCapitalSystem ? 'Yes' : 'No'}
+											{structure.sovereignty?.isCapitalSystem
+												? t('structures.yes')
+												: t('structures.no')}
 										</div>
 									</div>
 								)}
 								{hasSovereigntySummary && (
 									<div>
-										<div className="text-muted-foreground">Activity Defense Multiplier</div>
+										<div className="text-muted-foreground">
+											{t('structures.activityDefenseMultiplier')}
+										</div>
 										<div className="font-medium">
 											{structure.sovereignty?.activityDefenseMultiplier ?? '-'}
 										</div>
@@ -1233,7 +1295,9 @@ export default function StructuresDetailPage() {
 								)}
 								<div>
 									<div className="text-muted-foreground">
-										{hasSovereigntySummary ? 'Vulnerability State' : 'State'}
+										{hasSovereigntySummary
+											? t('structures.vulnerabilityState')
+											: t('structures.state')}
 									</div>
 									<div className="font-medium">
 										{hasSovereigntySummary ? (
@@ -1250,11 +1314,11 @@ export default function StructuresDetailPage() {
 								<div>
 									<div className="text-muted-foreground">
 										{hasSovereigntySummary ? (
-											'Vulnerability Window'
+											t('structures.vulnerabilityWindow')
 										) : isReinforced ? (
-											<Badge variant="destructive">Reinforced until</Badge>
+											<Badge variant="destructive">{t('structures.reinforcedUntil')}</Badge>
 										) : (
-											'Next State'
+											t('structures.nextState')
 										)}
 									</div>
 									<div className="font-medium">
@@ -1302,32 +1366,36 @@ export default function StructuresDetailPage() {
 								</div>
 							</div>
 							<div className="flex flex-wrap gap-2 pt-2">
-								{structure.hidden && <Badge variant="ghost">Hidden</Badge>}
+								{structure.hidden && <Badge variant="ghost">{t('structures.hidden')}</Badge>}
 								{!hasSovereigntySummary &&
 									!isSkyhookStructure &&
 									!isPosStructure &&
 									structure.lowPowerAllowed && (
-										<Badge variant="success">Low Power Alerts Suppressed</Badge>
+										<Badge variant="success">{t('structures.lowPowerAlertsSuppressed')}</Badge>
 									)}
-								{structure.assignedGroupId && <Badge variant="special">Group Assigned</Badge>}
+								{structure.assignedGroupId && (
+									<Badge variant="special">{t('structures.groupAssigned')}</Badge>
+								)}
 							</div>
 							<div className="space-y-3">
 								{!hasSovereigntySummary && !isSkyhookStructure && !isPosStructure && (
 									<div className="space-y-2">
 										<div className="text-xs uppercase tracking-wider text-muted-foreground">
-											Reinforcement
+											{t('structures.reinforcement')}
 										</div>
 										<div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm">
 											<div className="grid gap-3">
 												<div>
-													<div className="text-xs text-muted-foreground">Reinforcement Hour</div>
+													<div className="text-xs text-muted-foreground">
+														{t('structures.reinforcementHour')}
+													</div>
 													<div className="font-medium">
 														{formatReinforcementHourUtc(structure.reinforceHour)}
 													</div>
 												</div>
 												<div>
 													<div className="text-xs text-muted-foreground">
-														Next Reinforcement Hour
+														{t('structures.nextReinforcementHour')}
 													</div>
 													<div className="font-medium">
 														{structure.nextReinforceHour !== null
@@ -1337,7 +1405,7 @@ export default function StructuresDetailPage() {
 												</div>
 												<div>
 													<div className="text-xs text-muted-foreground">
-														Next Reinforcement Applies
+														{t('structures.nextReinforcementApplies')}
 													</div>
 													<div className="font-medium">
 														{structure.nextReinforceApply ? (
@@ -1357,7 +1425,7 @@ export default function StructuresDetailPage() {
 								{!hasSovereigntySummary && !isSkyhookStructure && structureFamily !== 'poses' && (
 									<div className="space-y-2">
 										<div className="text-xs uppercase tracking-wider text-muted-foreground">
-											Structure Services
+											{t('structures.structureServices')}
 										</div>
 										{structure.services.length > 0 ? (
 											<div className="space-y-1.5">
@@ -1385,19 +1453,19 @@ export default function StructuresDetailPage() {
 											</div>
 										) : (
 											<div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-												No structure services were reported for this structure.
+												{t('structures.noStructureServicesWereReportedForThisStructure')}
 											</div>
 										)}
 									</div>
 								)}
 								<div className="space-y-2">
 									<div className="text-xs uppercase tracking-wider text-muted-foreground">
-										Sync Status
+										{t('structures.syncStatus')}
 									</div>
 									<div className="rounded-lg border border-border/60 p-4">
 										<div className="mb-3 flex flex-wrap items-center gap-2">
 											<StructureSyncStatusBadge
-												label="Structure"
+												label={t('structures.structure')}
 												status={structure.syncStatus}
 												description={syncDescription}
 											/>
@@ -1407,7 +1475,7 @@ export default function StructuresDetailPage() {
 														-
 													</span>
 													<StructureSyncStatusBadge
-														label="Assets"
+														label={t('structures.assets')}
 														status={assetsSyncStatus}
 														description={assetsSyncDescription}
 													/>
@@ -1419,7 +1487,7 @@ export default function StructuresDetailPage() {
 														-
 													</span>
 													<StructureSyncStatusBadge
-														label="Reagent Bay"
+														label={t('structures.reagentBay')}
 														status={reagentBaySyncStatus}
 														description={reagentBaySyncDescription}
 													/>
@@ -1435,17 +1503,19 @@ export default function StructuresDetailPage() {
 
 					<Card>
 						<CardHeader>
-							<CardTitle>Configuration</CardTitle>
+							<CardTitle>{t('structures.configuration')}</CardTitle>
 							<CardDescription>
-								Manager-level settings for visibility, alert suppression, and group assignment.
+								{t(
+									'structures.managerLevelSettingsForVisibilityAlertSuppressionAndGroupAssignment'
+								)}
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-5">
 							<div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-4">
 								<div>
-									<div className="font-medium">Hidden</div>
+									<div className="font-medium">{t('structures.hidden')}</div>
 									<div className="text-sm text-muted-foreground">
-										Completely omit this structure from non-sensitive users.
+										{t('structures.completelyOmitThisStructureFromNonSensitiveUsers')}
 									</div>
 								</div>
 								<Switch checked={hidden} onCheckedChange={setHidden} />
@@ -1453,20 +1523,20 @@ export default function StructuresDetailPage() {
 							{!hasSovereigntySummary && !isSkyhookStructure && !isPosStructure && (
 								<div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-4">
 									<div>
-										<div className="font-medium">Low Power Allowed</div>
+										<div className="font-medium">{t('structures.lowPowerAllowed')}</div>
 										<div className="text-sm text-muted-foreground">
-											Suppress low-power alerts for structures where that is intentional.
+											{t('structures.suppressLowPowerAlertsForStructuresWhereThatIsIntentional')}
 										</div>
 									</div>
 									<Switch checked={lowPowerAllowed} onCheckedChange={setLowPowerAllowed} />
 								</div>
 							)}
-							<FilterField label="Assigned Group">
+							<FilterField label={t('structures.assignedGroup')}>
 								<Select
 									options={groupOptions}
 									value={assignedGroupId}
 									onValueChange={(value) => setAssignedGroupId(value)}
-									placeholder="No Group"
+									placeholder={t('structures.noGroup')}
 								/>
 							</FilterField>
 							<div className="flex items-center justify-end gap-3 pt-2">
@@ -1480,7 +1550,7 @@ export default function StructuresDetailPage() {
 										setAssignedGroupId(structure.assignedGroupId ?? '')
 									}}
 								>
-									Reset
+									{t('structures.reset')}
 								</Button>
 								<Button
 									variant="confirm"
@@ -1488,7 +1558,7 @@ export default function StructuresDetailPage() {
 									loading={updateMutation.isPending}
 								>
 									<Save className="h-4 w-4" />
-									Save Changes
+									{t('structures.saveChanges')}
 								</Button>
 							</div>
 						</CardContent>
@@ -1499,20 +1569,20 @@ export default function StructuresDetailPage() {
 					<div className="contents">
 						<Card>
 							<CardHeader>
-								<CardTitle>Hub Configuration</CardTitle>
+								<CardTitle>{t('structures.hubConfiguration')}</CardTitle>
 								<CardDescription>
-									Workforce transport routing and the hub's current resource allocation.
+									{t('structures.workforceTransportRoutingAndTheHubSCurrentResourceAllocation')}
 								</CardDescription>
 							</CardHeader>
 							<CardContent className="space-y-6 text-sm">
 								<div className="grid gap-4 md:grid-cols-2">
 									<ResourceAllocationCard
-										label="Power Allocation"
+										label={t('structures.powerAllocation')}
 										allocated={sovereigntyHub?.resourcePowerAllocated}
 										available={sovereigntyHub?.resourcePowerAvailable}
 									/>
 									<ResourceAllocationCard
-										label="Workforce Allocation"
+										label={t('structures.workforceAllocation')}
 										allocated={sovereigntyHub?.resourceWorkforceAllocated}
 										available={sovereigntyHub?.resourceWorkforceAvailable}
 									/>
@@ -1520,12 +1590,12 @@ export default function StructuresDetailPage() {
 
 								<div className="grid gap-4 lg:grid-cols-2">
 									<WorkforceTransportSection
-										label="Workforce Transport Configuration"
+										label={t('structures.workforceTransportConfiguration')}
 										section={sovereigntyHub?.workforceTransport?.configuration}
 										systemLinkById={sovereigntyHubStructureIdBySystemId}
 									/>
 									<WorkforceTransportSection
-										label="Workforce Transport State"
+										label={t('structures.workforceTransportState')}
 										section={sovereigntyHub?.workforceTransport?.state}
 										systemLinkById={sovereigntyHubStructureIdBySystemId}
 									/>
@@ -1536,9 +1606,9 @@ export default function StructuresDetailPage() {
 						<div className="contents">
 							<Card>
 								<CardHeader>
-									<CardTitle>Upgrades</CardTitle>
+									<CardTitle>{t('structures.upgrades')}</CardTitle>
 									<CardDescription>
-										Installed sovereignty hub upgrades and their current power state.
+										{t('structures.installedSovereigntyHubUpgradesAndTheirCurrentPowerState')}
 									</CardDescription>
 								</CardHeader>
 								<CardContent className="space-y-2">
@@ -1572,22 +1642,24 @@ export default function StructuresDetailPage() {
 										</div>
 									) : (
 										<div className="rounded-lg border border-dashed border-border/60 px-3 py-4 text-sm text-muted-foreground">
-											No upgrades reported.
+											{t('structures.noUpgradesReported')}
 										</div>
 									)}
 								</CardContent>
 							</Card>
 							<Card>
 								<CardHeader>
-									<CardTitle>Reagent Bay</CardTitle>
+									<CardTitle>{t('structures.reagentBay')}</CardTitle>
 									<CardDescription>
-										Current sovereignty hub reagents, burn rates, and estimated remaining time.
+										{t(
+											'structures.currentSovereigntyHubReagentsBurnRatesAndEstimatedRemainingTime'
+										)}
 									</CardDescription>
 								</CardHeader>
 								<CardContent className="space-y-4">
 									<div className="grid gap-4 md:grid-cols-2 text-sm">
 										<div>
-											<div className="text-muted-foreground">Last Updated</div>
+											<div className="text-muted-foreground">{t('structures.lastUpdated')}</div>
 											<div className="font-medium">
 												{sovereigntyHub?.reagentBayLastUpdated ? (
 													<EveTimeDisplay
@@ -1600,7 +1672,7 @@ export default function StructuresDetailPage() {
 											</div>
 										</div>
 										<div>
-											<div className="text-muted-foreground">Reagent Types</div>
+											<div className="text-muted-foreground">{t('structures.reagentTypes')}</div>
 											<div className="font-medium">
 												{sovereigntyHub?.reagentBay?.reagents.length ?? 0}
 											</div>
@@ -1611,11 +1683,11 @@ export default function StructuresDetailPage() {
 											<Table>
 												<TableHeader>
 													<TableRow>
-														<TableHead>Reagent</TableHead>
-														<TableHead>Est. Amount</TableHead>
-														<TableHead>Burn / Hr</TableHead>
-														<TableHead>Est. Remaining</TableHead>
-														<TableHead>Last Cycle</TableHead>
+														<TableHead>{t('structures.reagent')}</TableHead>
+														<TableHead>{t('structures.estAmount')}</TableHead>
+														<TableHead>{t('structures.burnHr')}</TableHead>
+														<TableHead>{t('structures.estRemaining')}</TableHead>
+														<TableHead>{t('structures.lastCycle')}</TableHead>
 													</TableRow>
 												</TableHeader>
 												<TableBody>
@@ -1656,7 +1728,7 @@ export default function StructuresDetailPage() {
 										</div>
 									) : (
 										<div className="rounded-lg border border-dashed border-border/60 px-3 py-4 text-sm text-muted-foreground">
-											No reagent data reported.
+											{t('structures.noReagentDataReported')}
 										</div>
 									)}
 								</CardContent>
@@ -1668,38 +1740,38 @@ export default function StructuresDetailPage() {
 				{hasSkyhookSummary && (
 					<Card>
 						<CardHeader>
-							<CardTitle>Skyhook State</CardTitle>
+							<CardTitle>{t('structures.skyhookState')}</CardTitle>
 							<CardDescription>
-								Vulnerability state and ownership context for this skyhook.
+								{t('structures.vulnerabilityStateAndOwnershipContextForThisSkyhook')}
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="grid gap-4 md:grid-cols-2 text-sm">
 							<div>
-								<div className="text-muted-foreground">Planet</div>
+								<div className="text-muted-foreground">{t('structures.planet')}</div>
 								<div className="font-medium">
 									{structure.skyhook?.planetName ?? structure.skyhook?.planetId ?? '-'}
 								</div>
 							</div>
 							<div>
-								<div className="text-muted-foreground">System</div>
+								<div className="text-muted-foreground">{t('structures.system')}</div>
 								<div className="font-medium">
 									{structure.skyhook?.systemName ?? structure.systemName ?? '-'}
 								</div>
 							</div>
 							<div>
-								<div className="text-muted-foreground">Effective Workforce</div>
+								<div className="text-muted-foreground">{t('structures.effectiveWorkforce')}</div>
 								<div className="font-medium">
 									{formatNullableNumber(structure.skyhook?.effectiveWorkforce)}
 								</div>
 							</div>
 							<div>
-								<div className="text-muted-foreground">State</div>
+								<div className="text-muted-foreground">{t('structures.state')}</div>
 								<div className="font-medium">
 									{structure.skyhook ? <SkyhookStateBadge state={structure.skyhook.state} /> : '-'}
 								</div>
 							</div>
 							<div className="md:col-span-2">
-								<div className="text-muted-foreground">Fullness</div>
+								<div className="text-muted-foreground">{t('structures.fullness')}</div>
 								<div className="mt-1">
 									{structure.skyhook ? (
 										<SkyhookFullnessBar
@@ -1719,7 +1791,7 @@ export default function StructuresDetailPage() {
 								</div>
 							</div>
 							<div>
-								<div className="text-muted-foreground">Theft Vulnerability</div>
+								<div className="text-muted-foreground">{t('structures.theftVulnerability')}</div>
 								<div className="font-medium">
 									{structure.skyhook ? (
 										structure.skyhook.theftVulnerabilityStart &&
@@ -1758,15 +1830,15 @@ export default function StructuresDetailPage() {
 				{hasSkyhookSummary && (
 					<Card>
 						<CardHeader>
-							<CardTitle>Reagents</CardTitle>
+							<CardTitle>{t('structures.reagents')}</CardTitle>
 							<CardDescription>
-								Skyhook reagent stock, bay fullness, and last cycle timestamps.
+								{t('structures.skyhookReagentStockBayFullnessAndLastCycleTimestamps')}
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-4">
 							<div className="grid gap-4 md:grid-cols-2 text-sm">
 								<div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-									<div className="text-muted-foreground">Secure Bay</div>
+									<div className="text-muted-foreground">{t('structures.secureBay')}</div>
 									<div className="mt-1">
 										<SkyhookBayFillCell
 											stock={structure.skyhook?.totalSecuredStock ?? 0}
@@ -1777,7 +1849,7 @@ export default function StructuresDetailPage() {
 									</div>
 								</div>
 								<div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-									<div className="text-muted-foreground">Surplus Bay</div>
+									<div className="text-muted-foreground">{t('structures.surplusBay')}</div>
 									<div className="mt-1">
 										<SkyhookBayFillCell
 											stock={structure.skyhook?.totalUnsecuredStock ?? 0}
@@ -1790,16 +1862,16 @@ export default function StructuresDetailPage() {
 							</div>
 							{!structure.skyhook || structure.skyhook.reagents.length === 0 ? (
 								<div className="rounded-md border border-dashed border-border/70 px-3 py-4 text-sm text-muted-foreground">
-									No reagent snapshot is currently available for this skyhook.
+									{t('structures.noReagentSnapshotIsCurrentlyAvailableForThisSkyhook')}
 								</div>
 							) : (
 								<Table>
 									<TableHeader>
 										<TableRow>
-											<TableHead>Type</TableHead>
-											<TableHead>Secure Bay</TableHead>
-											<TableHead>Surplus Bay</TableHead>
-											<TableHead>Last Cycle</TableHead>
+											<TableHead>{t('structures.type')}</TableHead>
+											<TableHead>{t('structures.secureBay')}</TableHead>
+											<TableHead>{t('structures.surplusBay')}</TableHead>
+											<TableHead>{t('structures.lastCycle')}</TableHead>
 										</TableRow>
 									</TableHeader>
 									<TableBody>
@@ -1845,29 +1917,33 @@ export default function StructuresDetailPage() {
 						{hasMiningExtractionSummary && (
 							<Card>
 								<CardHeader>
-									<CardTitle>Mining Extractions</CardTitle>
-									<CardDescription>Recorded extraction periods for this structure.</CardDescription>
+									<CardTitle>{t('structures.miningExtractions')}</CardTitle>
+									<CardDescription>
+										{t('structures.recordedExtractionPeriodsForThisStructure')}
+									</CardDescription>
 								</CardHeader>
 								<CardContent className="space-y-4 text-sm">
 									{extractionOptions.length > 0 ? (
 										<div>
-											<div className="mb-1 text-muted-foreground">Extraction period</div>
+											<div className="mb-1 text-muted-foreground">
+												{t('structures.extractionPeriod')}
+											</div>
 											<Select
 												options={extractionOptions}
 												value={selectedExtractionId ?? ''}
 												onValueChange={(value) => setSelectedExtractionId(value)}
-												placeholder="Select an extraction period"
+												placeholder={t('structures.selectAnExtractionPeriod')}
 											/>
 										</div>
 									) : null}
 									{!selectedExtraction ? (
 										<div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-yellow-50">
-											No mining extraction period is currently selected for this structure.
+											{t('structures.noMiningExtractionPeriodIsCurrentlySelectedForThisStructure')}
 										</div>
 									) : null}
 									<div className="grid gap-4 md:grid-cols-2">
 										<div>
-											<div className="text-muted-foreground">Extraction Start</div>
+											<div className="text-muted-foreground">{t('structures.extractionStart')}</div>
 											<div className="font-medium">
 												{selectedExtraction?.extractionStartTime ? (
 													<DurationDisplay
@@ -1881,7 +1957,7 @@ export default function StructuresDetailPage() {
 											</div>
 										</div>
 										<div>
-											<div className="text-muted-foreground">Chunk Arrival</div>
+											<div className="text-muted-foreground">{t('structures.chunkArrival')}</div>
 											<div className="font-medium">
 												{selectedExtraction?.chunkArrivalTime ? (
 													<DurationDisplay
@@ -1895,7 +1971,7 @@ export default function StructuresDetailPage() {
 											</div>
 										</div>
 										<div>
-											<div className="text-muted-foreground">Natural Decay</div>
+											<div className="text-muted-foreground">{t('structures.naturalDecay')}</div>
 											<div className="font-medium">
 												{selectedExtraction?.naturalDecayTime ? (
 													<DurationDisplay
@@ -1923,9 +1999,9 @@ export default function StructuresDetailPage() {
 					{hasStructureFitting ? (
 						<Card>
 							<CardHeader>
-								<CardTitle>Fitting</CardTitle>
+								<CardTitle>{t('structures.fitting')}</CardTitle>
 								<CardDescription>
-									Structure fitting and static slot layout from the latest known snapshot.
+									{t('structures.structureFittingAndStaticSlotLayoutFromTheLatestKnown')}
 								</CardDescription>
 							</CardHeader>
 							<CardContent className="space-y-6">
@@ -1945,7 +2021,7 @@ export default function StructuresDetailPage() {
 										getIconUrl={typeIconUrl}
 										slotTypes={STRUCTURE_SLOT_TABLE_TYPES}
 										slotCapacities={fittingSlotCapacities}
-										emptyState="No high, mid, low, or rig slot items detected."
+										emptyState={t('structures.noHighMidLowOrRigSlotItemsDetected')}
 									/>
 								</div>
 							</CardContent>
@@ -1955,9 +2031,9 @@ export default function StructuresDetailPage() {
 					{structure.inventoryBays && structure.inventoryBays.length > 0 ? (
 						<Card>
 							<CardHeader>
-								<CardTitle>Inventory</CardTitle>
+								<CardTitle>{t('structures.inventory')}</CardTitle>
 								<CardDescription>
-									Aggregated bay contents from the latest corp asset projection for this structure.
+									{t('structures.aggregatedBayContentsFromTheLatestCorpAssetProjectionFor')}
 								</CardDescription>
 							</CardHeader>
 							<CardContent className="space-y-4">
@@ -1973,28 +2049,28 @@ export default function StructuresDetailPage() {
 				{isAdmin && assetsDebug ? (
 					<Card>
 						<CardHeader>
-							<CardTitle>Asset Debug</CardTitle>
+							<CardTitle>{t('structures.assetDebug')}</CardTitle>
 							<CardDescription>
-								Raw corporation assets fetched for this structure&apos;s owning corporation and
-								filtered to this structure ID. This is a direct asset snapshot, not the grouped
-								inventory view.
+								{t('structures.rawCorporationAssetsFetchedForThisStructureSOwningCorporation')}
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-4">
 							<div className="grid gap-4 sm:grid-cols-3 text-sm">
 								<div>
-									<div className="text-muted-foreground">Fetched At</div>
+									<div className="text-muted-foreground">{t('structures.fetchedAt')}</div>
 									<div className="font-medium">{formatDateTimeLong(assetsDebug.fetchedAt)}</div>
 								</div>
 								<div>
-									<div className="text-muted-foreground">Raw Assets Fetched</div>
+									<div className="text-muted-foreground">{t('structures.rawAssetsFetched')}</div>
 									<div className="font-medium">
-										{assetsDebug.fetchedAssetCount.toLocaleString()}
+										{assetsDebug.fetchedAssetCount.toLocaleString(getActiveLocale())}
 									</div>
 								</div>
 								<div>
-									<div className="text-muted-foreground">Matching Rows</div>
-									<div className="font-medium">{assetsDebug.itemCount.toLocaleString()}</div>
+									<div className="text-muted-foreground">{t('structures.matchingRows')}</div>
+									<div className="font-medium">
+										{assetsDebug.itemCount.toLocaleString(getActiveLocale())}
+									</div>
 								</div>
 							</div>
 
@@ -2003,13 +2079,13 @@ export default function StructuresDetailPage() {
 									<Table>
 										<TableHeader>
 											<TableRow className="bg-muted/40">
-												<TableHead>Item</TableHead>
-												<TableHead className="text-right">Qty</TableHead>
-												<TableHead>Flag</TableHead>
-												<TableHead>Location</TableHead>
-												<TableHead className="text-right">Singleton</TableHead>
-												<TableHead>Item ID</TableHead>
-												<TableHead>Updated</TableHead>
+												<TableHead>{t('structures.item')}</TableHead>
+												<TableHead className="text-right">{t('structures.qty')}</TableHead>
+												<TableHead>{t('structures.flag')}</TableHead>
+												<TableHead>{t('structures.location')}</TableHead>
+												<TableHead className="text-right">{t('structures.singleton')}</TableHead>
+												<TableHead>{t('structures.itemId')}</TableHead>
+												<TableHead>{t('structures.updated')}</TableHead>
 											</TableRow>
 										</TableHeader>
 										<TableBody>
@@ -2027,7 +2103,7 @@ export default function StructuresDetailPage() {
 														</div>
 													</TableCell>
 													<TableCell className="text-right font-mono">
-														{item.quantity.toLocaleString()}
+														{item.quantity.toLocaleString(getActiveLocale())}
 													</TableCell>
 													<TableCell>
 														<div className="font-medium">{item.locationFlagLabel}</div>
@@ -2035,7 +2111,7 @@ export default function StructuresDetailPage() {
 													</TableCell>
 													<TableCell>{item.locationType}</TableCell>
 													<TableCell className="text-right">
-														{item.isSingleton ? 'Yes' : 'No'}
+														{item.isSingleton ? t('structures.yes') : t('structures.no')}
 													</TableCell>
 													<TableCell className="font-mono text-xs">{item.itemId}</TableCell>
 													<TableCell className="text-xs text-muted-foreground">
@@ -2048,7 +2124,7 @@ export default function StructuresDetailPage() {
 								</div>
 							) : (
 								<p className="text-sm text-muted-foreground">
-									No raw assets matched this structure ID.
+									{t('structures.noRawAssetsMatchedThisStructureId')}
 								</p>
 							)}
 						</CardContent>

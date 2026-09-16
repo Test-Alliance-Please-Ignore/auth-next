@@ -22,10 +22,13 @@ import { hasExplicitMemberCorporationHrRole, useHrAccessibleCorporations } from 
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 
 export default function AdminLegacyHistoryPage() {
-	usePageTitle('HR - Legacy History')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('hrpages.hrLegacyHistory'))
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasAnyPermission } = useUserPermissions()
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
@@ -74,7 +77,7 @@ export default function AdminLegacyHistoryPage() {
 	}
 
 	if (authLoading || accessibleCorporationsLoading) {
-		return <LoadingPage label="Loading legacy history..." />
+		return <LoadingPage label={t('hrpages.loadingLegacyHistory')} />
 	}
 
 	if (!canAccessLegacyHistory) {
@@ -93,20 +96,20 @@ export default function AdminLegacyHistoryPage() {
 	return (
 		<Container className="space-y-6">
 			<PageHeader
-				title="Legacy History"
-				description="Read-only legacy corporation application history. Use this for historical context only."
+				title={t('hrpages.legacyHistory')}
+				description={t('hrpages.readOnlyLegacyCorporationApplicationHistoryUseThisForHistorical')}
 			/>
 
 			<Card>
 				<CardHeader>
-					<CardTitle>Search</CardTitle>
+					<CardTitle>{t('hrpages.search')}</CardTitle>
 					<CardDescription>
-						Filter legacy applications by character/corporation identity.
+						{t('hrpages.filterLegacyApplicationsByCharacterCorporationIdentity')}
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="grid gap-3 md:grid-cols-3">
 					<Input
-						placeholder="Character Name"
+						placeholder={t('hrpages.characterName')}
 						value={characterName}
 						onChange={(e) => {
 							setCharacterName(e.target.value)
@@ -114,7 +117,7 @@ export default function AdminLegacyHistoryPage() {
 						}}
 					/>
 					<Input
-						placeholder="Corporation Name"
+						placeholder={t('hrpages.corporationName')}
 						value={corporationName}
 						onChange={(e) => {
 							setCorporationName(e.target.value)
@@ -122,7 +125,7 @@ export default function AdminLegacyHistoryPage() {
 						}}
 					/>
 					<Input
-						placeholder="Character ID(s), comma-separated"
+						placeholder={t('hrpages.characterIdSCommaSeparated')}
 						value={characterIds}
 						onChange={(e) => {
 							setCharacterIds(e.target.value)
@@ -136,8 +139,11 @@ export default function AdminLegacyHistoryPage() {
 				<CardHeader>
 					<div className="space-y-4">
 						<div>
-							<CardTitle>Applications</CardTitle>
-							<CardDescription>{listQuery.data?.pagination.total ?? 0} result(s)</CardDescription>
+							<CardTitle>{t('hrpages.applications2')}</CardTitle>
+							<CardDescription>
+								{listQuery.data?.pagination.total ?? 0}
+								{t('hrpages.resultS')}
+							</CardDescription>
 						</div>
 						<UserSearchPaginationControls
 							page={page}
@@ -149,7 +155,7 @@ export default function AdminLegacyHistoryPage() {
 								setPage(1)
 							}}
 							pageSizeOptions={[10, 25, 50, 100]}
-							itemLabel="legacy applications"
+							itemLabel={t('hrpages.legacyApplications')}
 						/>
 					</div>
 				</CardHeader>
@@ -157,24 +163,24 @@ export default function AdminLegacyHistoryPage() {
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead>Character</TableHead>
-								<TableHead>Corporation</TableHead>
-								<TableHead>Status</TableHead>
-								<TableHead>Date</TableHead>
-								<TableHead className="text-right">Actions</TableHead>
+								<TableHead>{t('hrpages.character')}</TableHead>
+								<TableHead>{t('hrpages.corporation')}</TableHead>
+								<TableHead>{t('hrpages.status')}</TableHead>
+								<TableHead>{t('hrpages.date')}</TableHead>
+								<TableHead className="text-right">{t('hrpages.actions')}</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
 							{(listQuery.data?.items ?? []).map((item) => (
 								<TableRow key={item.legacyApplicationId}>
 									<TableCell>
-										<div className="font-medium">{item.characterName ?? 'Unknown'}</div>
+										<div className="font-medium">{item.characterName ?? t('hrpages.unknown')}</div>
 										<div className="text-xs text-muted-foreground font-mono">
 											{item.characterId ?? 'N/A'}
 										</div>
 									</TableCell>
 									<TableCell>
-										<div>{item.corporationName ?? 'Unknown'}</div>
+										<div>{item.corporationName ?? t('hrpages.unknown')}</div>
 										<div className="text-xs text-muted-foreground font-mono">
 											{item.corporationId ?? 'N/A'}
 										</div>
@@ -184,8 +190,8 @@ export default function AdminLegacyHistoryPage() {
 									</TableCell>
 									<TableCell>
 										{item.applicationDate
-											? new Date(item.applicationDate).toLocaleString()
-											: 'Unknown'}
+											? new Date(item.applicationDate).toLocaleString(getActiveLocale())
+											: t('hrpages.unknown')}
 									</TableCell>
 									<TableCell className="text-right">
 										<Button asChild size="sm" variant="secondary">
@@ -194,7 +200,7 @@ export default function AdminLegacyHistoryPage() {
 												target="_blank"
 												rel="noreferrer"
 											>
-												Open
+												{t('hrpages.open')}
 											</a>
 										</Button>
 									</TableCell>
@@ -203,7 +209,7 @@ export default function AdminLegacyHistoryPage() {
 							{!listQuery.isLoading && (listQuery.data?.items.length ?? 0) === 0 ? (
 								<TableRow>
 									<TableCell colSpan={5} className="text-center text-muted-foreground">
-										No legacy applications found.
+										{t('hrpages.noLegacyApplicationsFound')}
 									</TableCell>
 								</TableRow>
 							) : null}
@@ -221,7 +227,7 @@ export default function AdminLegacyHistoryPage() {
 									setPage(1)
 								}}
 								pageSizeOptions={[10, 25, 50, 100]}
-								itemLabel="legacy applications"
+								itemLabel={t('hrpages.legacyApplications')}
 							/>
 						</div>
 					) : null}

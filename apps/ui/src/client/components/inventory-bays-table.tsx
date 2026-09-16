@@ -11,6 +11,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 import { formatISK } from '@/lib/format-utils'
 import { cn } from '@/lib/utils'
 
@@ -27,7 +28,7 @@ export interface InventoryBaysTableProps {
 }
 
 function formatCount(value: number): string {
-	return value.toLocaleString()
+	return value.toLocaleString(getActiveLocale())
 }
 
 function formatVolumeM3(value: number | null | undefined): string {
@@ -35,7 +36,7 @@ function formatVolumeM3(value: number | null | undefined): string {
 		return '-'
 	}
 
-	return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} m³`
+	return `${value.toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 })} m³`
 }
 
 function formatEstimatedValue(value: number | null | undefined): string {
@@ -44,12 +45,16 @@ function formatEstimatedValue(value: number | null | undefined): string {
 
 export function InventoryBaysTable({
 	bays,
-	emptyLabel = 'No inventory recorded for this structure.',
-	searchPlaceholder = 'Search inventory bays...',
+	emptyLabel: providedEmptyLabel,
+	searchPlaceholder: providedSearchPlaceholder,
 	className,
 	renderItemIcon,
 	renderItemDetails,
 }: InventoryBaysTableProps) {
+	const { t } = useAppTranslation()
+	const emptyLabel = providedEmptyLabel ?? t('structures.noInventoryRecordedForThisStructure')
+	const searchPlaceholder = providedSearchPlaceholder ?? t('structures.searchInventoryBays')
+
 	const [search, setSearch] = useState('')
 	const [expandedBays, setExpandedBays] = useState<Set<string>>(new Set())
 
@@ -91,7 +96,7 @@ export function InventoryBaysTable({
 				return { ...bay, items }
 			})
 			.filter((bay): bay is InventoryDisplayBay => bay !== null)
-	}, [bays, search])
+	}, [bays, search, t])
 
 	useEffect(() => {
 		const query = search.trim()
@@ -164,7 +169,7 @@ export function InventoryBaysTable({
 					disabled={visibleBays.length === 0}
 				>
 					<ChevronsUpDown className="h-4 w-4" />
-					{allVisibleExpanded ? 'Contract all' : 'Expand all'}
+					{allVisibleExpanded ? t('structures.contractAll') : t('structures.expandAll')}
 				</Button>
 			</div>
 
@@ -172,8 +177,8 @@ export function InventoryBaysTable({
 				<Table className="text-xs">
 					<TableHeader>
 						<TableRow className="bg-muted/40">
-							<TableHead>Bay</TableHead>
-							<TableHead className="text-right">Units</TableHead>
+							<TableHead>{t('structures.bay')}</TableHead>
+							<TableHead className="text-right">{t('structures.units')}</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -212,12 +217,18 @@ export function InventoryBaysTable({
 														<Table className="text-xs">
 															<TableHeader>
 																<TableRow className="bg-transparent">
-																	<TableHead>Item</TableHead>
-																	<TableHead className="text-right">Qty</TableHead>
+																	<TableHead>{t('structures.item')}</TableHead>
+																	<TableHead className="text-right">
+																		{t('structures.qty')}
+																	</TableHead>
 																	{showMoonMaterialDetails ? (
 																		<>
-																			<TableHead className="text-right">Volume</TableHead>
-																			<TableHead className="text-right">Value</TableHead>
+																			<TableHead className="text-right">
+																				{t('structures.volume')}
+																			</TableHead>
+																			<TableHead className="text-right">
+																				{t('structures.value')}
+																			</TableHead>
 																		</>
 																	) : null}
 																</TableRow>
@@ -264,7 +275,7 @@ export function InventoryBaysTable({
 																			colSpan={showMoonMaterialDetails ? 4 : 2}
 																			className="text-sm italic text-muted-foreground"
 																		>
-																			No items matched the current search.
+																			{t('structures.noItemsMatchedTheCurrentSearch')}
 																		</TableCell>
 																	</TableRow>
 																)}
@@ -280,7 +291,7 @@ export function InventoryBaysTable({
 						) : (
 							<TableRow>
 								<TableCell colSpan={2} className="py-8 text-center text-sm text-muted-foreground">
-									No inventory bays matched the current search.
+									{t('structures.noInventoryBaysMatchedTheCurrentSearch')}
 								</TableCell>
 							</TableRow>
 						)}

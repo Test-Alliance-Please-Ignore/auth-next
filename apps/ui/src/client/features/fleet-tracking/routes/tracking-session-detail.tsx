@@ -18,23 +18,25 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useDoctrine, useDoctrines } from '@/features/doctrines/hooks'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { getActiveLocale, i18n, useAppTranslation } from '@/i18n'
 import { error as toastError, success as toastSuccess } from '@/lib/toast'
-import { useDoctrine, useDoctrines } from '@/features/doctrines/hooks'
+
 import { CurrentMembersPanel } from '../components/current-members-panel'
 import { SessionRosterPanel } from '../components/session-roster-panel'
-import { SessionStatusPill } from '../components/session-status-pill'
 import { SessionStatsGrid } from '../components/session-stats-grid'
+import { SessionStatusPill } from '../components/session-status-pill'
 import {
+	useKickTrackingMembers,
 	useSessionCurrentMembers,
 	useSessionLiveMemberLocations,
 	useSessionLiveSnapshot,
 	useSessionRoster,
 	useSessionSummary,
 	useSessionTimeline,
-	useKickTrackingMembers,
 	useStopTracking,
 	useTrackingSession,
 } from '../hooks'
@@ -53,27 +55,32 @@ function formatTimelineCharacterRef(
 function getTimelineEventLabel(eventType: SessionTimelineRow['eventType']): string {
 	switch (eventType) {
 		case 'join':
-			return 'Join'
+			return i18n.t('fleetTracking.join')
 		case 'leave':
-			return 'Leave'
+			return i18n.t('fleetTracking.leave')
 		case 'ship_change':
-			return 'Ship Change'
+			return i18n.t('fleetTracking.shipChange')
 		case 'fleet_boss_initial':
-			return 'Initial Fleet Boss'
+			return i18n.t('fleetTracking.initialFleetBoss')
 		case 'fleet_boss_change':
-			return 'Fleet Boss Change'
+			return i18n.t('fleetTracking.fleetBossChange')
 		case 'tracking_started':
-			return 'Tracking Started'
+			return i18n.t('fleetTracking.trackingStarted')
 		case 'tracking_resumed':
-			return 'Tracking Resumed'
+			return i18n.t('fleetTracking.trackingResumed')
 		case 'tracking_ended':
-			return 'Tracking Ended'
+			return i18n.t('fleetTracking.trackingEnded')
 	}
 }
 
 function renderTimelineEventDetails(ev: SessionTimelineRow) {
 	if (ev.eventType === 'fleet_boss_initial') {
-		return <>Initial boss: {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+		return (
+			<>
+				{i18n.t('fleetTracking.initialBoss')}
+				{formatTimelineCharacterRef(ev.characterName, ev.characterId)}
+			</>
+		)
 	}
 
 	if (ev.eventType === 'fleet_boss_change') {
@@ -89,17 +96,21 @@ function renderTimelineEventDetails(ev: SessionTimelineRow) {
 	}
 
 	if (ev.eventType === 'tracking_started') {
-		return <>Tracking started with {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+		return (
+			<>
+				{i18n.t('fleetTracking.trackingStartedWith')}
+				{formatTimelineCharacterRef(ev.characterName, ev.characterId)}
+			</>
+		)
 	}
 
 	if (ev.eventType === 'tracking_resumed') {
 		const isTakeover =
-			!!ev.previousFleetBossCharacterId &&
-			ev.previousFleetBossCharacterId !== ev.characterId
+			!!ev.previousFleetBossCharacterId && ev.previousFleetBossCharacterId !== ev.characterId
 
 		return isTakeover ? (
 			<>
-				Taken over from{' '}
+				{i18n.t('fleetTracking.takenOverFrom')}{' '}
 				{formatTimelineCharacterRef(
 					ev.previousFleetBossCharacterName,
 					ev.previousFleetBossCharacterId
@@ -107,32 +118,44 @@ function renderTimelineEventDetails(ev: SessionTimelineRow) {
 				→ {formatTimelineCharacterRef(ev.characterName, ev.characterId)}
 			</>
 		) : (
-			<>Tracking resumed by {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+			<>
+				{i18n.t('fleetTracking.trackingResumedBy')}
+				{formatTimelineCharacterRef(ev.characterName, ev.characterId)}
+			</>
 		)
 	}
 
 	if (ev.eventType === 'tracking_ended') {
-		return <>Tracking ended by {formatTimelineCharacterRef(ev.characterName, ev.characterId)}</>
+		return (
+			<>
+				{i18n.t('fleetTracking.trackingEndedBy')}
+				{formatTimelineCharacterRef(ev.characterName, ev.characterId)}
+			</>
+		)
 	}
 
 	if (ev.eventType === 'ship_change') {
 		return (
 			<>
 				{ev.previousShipTypeName || `type #${ev.previousShipTypeId ?? '?'}`} →{' '}
-				{ev.shipTypeName || `type #${ev.shipTypeId}`} in{' '}
-				{ev.systemName || `system #${ev.solarSystemId}`}
+				{ev.shipTypeName || `type #${ev.shipTypeId}`}
+				{i18n.t('fleetTracking.in')} {ev.systemName || `system #${ev.solarSystemId}`}
 			</>
 		)
 	}
 
 	return (
 		<>
-			{ev.shipTypeName || `type #${ev.shipTypeId}`} at {ev.systemName || `system #${ev.solarSystemId}`}
+			{ev.shipTypeName || `type #${ev.shipTypeId}`}
+			{i18n.t('fleetTracking.at')}
+			{ev.systemName || `system #${ev.solarSystemId}`}
 		</>
 	)
 }
 
 export default function TrackingSessionDetail() {
+	const { t } = useAppTranslation()
+
 	const { sessionId } = useParams<{ sessionId: string }>()
 	const { user } = useAuth()
 	const { hasPermission, isAdmin } = useUserPermissions()
@@ -140,14 +163,16 @@ export default function TrackingSessionDetail() {
 	const { data: session, isLoading } = useTrackingSession(sessionId, {
 		refetchInterval: 5_000,
 	})
-	usePageTitle(session?.name ?? 'Fleet Tracking Session')
+	usePageTitle(session?.name ?? t('fleetTracking.fleetTrackingSession'))
 
 	if (!sessionId) return <Navigate to="/fleet-tracking" replace />
 	if (isLoading) return <LoadingPage />
 	if (!session) {
 		return (
 			<Container>
-				<div className="py-12 text-center text-muted-foreground">Session not found.</div>
+				<div className="py-12 text-center text-muted-foreground">
+					{t('fleetTracking.sessionNotFound')}
+				</div>
 			</Container>
 		)
 	}
@@ -158,7 +183,7 @@ export default function TrackingSessionDetail() {
 		? session.fleetBossCharacterIds
 		: session.commanderCharacterIds?.length
 			? session.commanderCharacterIds
-		: [session.currentCommanderCharacterId ?? session.characterId]
+			: [session.currentCommanderCharacterId ?? session.characterId]
 	const isCommander =
 		!!user &&
 		canCreate &&
@@ -168,9 +193,7 @@ export default function TrackingSessionDetail() {
 	const canViewDetail = canViewFleets || isOwner || isCommander
 	const currentFleetBossCharacterId = session.currentFleetBossCharacterId ?? null
 	const trackedFleetBossCharacterId =
-		currentFleetBossCharacterId ??
-		session.currentCommanderCharacterId ??
-		session.characterId
+		currentFleetBossCharacterId ?? session.currentCommanderCharacterId ?? session.characterId
 	const currentFleetBossCharacterName =
 		session.currentFleetBossCharacterName ??
 		session.currentCommanderCharacterName ??
@@ -189,7 +212,7 @@ export default function TrackingSessionDetail() {
 					<Button asChild variant="ghost" size="sm">
 						<Link to="/fleet-tracking">
 							<ArrowLeft className="h-4 w-4" />
-							Back
+							{t('fleetTracking.back')}
 						</Link>
 					</Button>
 				}
@@ -234,16 +257,18 @@ function HeaderBlock({
 	currentFleetBossCharacterName: string | null | undefined
 	currentFleetBossCharacterId: string
 }) {
+	const { t } = useAppTranslation()
+
 	const stop = useStopTracking()
 	const [dialogOpen, setDialogOpen] = useState(false)
 
 	const handleConfirmStop = async () => {
 		try {
 			await stop.mutateAsync(session.id)
-			toastSuccess('Tracking stopped')
+			toastSuccess(t('fleetTracking.trackingStopped'))
 			setDialogOpen(false)
 		} catch (err) {
-			toastError(err instanceof Error ? err.message : 'Failed to stop tracking')
+			toastError(err instanceof Error ? err.message : t('fleetTracking.failedToStopTracking'))
 		}
 	}
 
@@ -255,14 +280,14 @@ function HeaderBlock({
 						<span className="inline-flex items-center">
 							<SessionStatusPill status={session.status} />
 						</span>
-						<span className="text-muted-foreground">Initial FC:</span>{' '}
+						<span className="text-muted-foreground">{t('fleetTracking.initialFc')}</span>{' '}
 						<span className="font-semibold text-foreground">
 							{initialFleetBossCharacterName ?? (
 								<span className="font-mono">{initialFleetBossCharacterId}</span>
 							)}
 						</span>
 						<span className="text-muted-foreground">•</span>
-						<span className="text-muted-foreground">Tracked FC:</span>{' '}
+						<span className="text-muted-foreground">{t('fleetTracking.trackedFc')}</span>{' '}
 						<span className="font-semibold text-foreground">
 							{currentFleetBossCharacterName ?? (
 								<span className="font-mono">{currentFleetBossCharacterId}</span>
@@ -271,7 +296,10 @@ function HeaderBlock({
 						<span className="text-muted-foreground">•</span>
 						<span className="font-medium text-foreground">
 							{session.status === 'active' ? (
-								<>Running {formatDurationBetween(session.startedAt, null)}</>
+								<>
+									{t('fleetTracking.running')}
+									{formatDurationBetween(session.startedAt, null)}
+								</>
 							) : (
 								<>
 									<EveTimeDisplay dateStr={session.startedAt} /> →{' '}
@@ -284,7 +312,8 @@ function HeaderBlock({
 					</div>
 					{session.endedReason && (
 						<div className="text-sm text-muted-foreground">
-							Reason: {formatEndReason(session.endedReason)}
+							{t('fleetTracking.reason')}
+							{formatEndReason(session.endedReason)}
 						</div>
 					)}
 				</div>
@@ -295,16 +324,18 @@ function HeaderBlock({
 						disabled={stop.isPending}
 					>
 						<Square className="h-4 w-4" />
-						Stop Tracking
+						{t('fleetTracking.stopTracking')}
 					</Button>
 				)}
 			</div>
 			<ConfirmationDialog
 				open={dialogOpen}
-				title="Stop tracking this fleet?"
-				description={`This ends the "${session.name}" session. Members in fleet will be marked as left and the session will be archived. This cannot be undone.`}
-				confirmLabel="Stop tracking"
-				cancelLabel="Cancel"
+				title={t('fleetTracking.stopTrackingThisFleet')}
+				description={t('fleetTracking.thisEndsTheValue1SessionMembersInFleetWillBe', {
+					value1: session.name,
+				})}
+				confirmLabel={t('fleetTracking.stopTracking2')}
+				cancelLabel={t('fleetTracking.cancel')}
 				intent="destructive"
 				pending={stop.isPending}
 				onCancel={() => setDialogOpen(false)}
@@ -336,6 +367,8 @@ function DetailView({
 	} | null
 	canKickMembers: boolean
 }) {
+	const { t } = useAppTranslation()
+
 	const [selectedDoctrineId, setSelectedDoctrineId] = useState('')
 	const { data: doctrines = [] } = useDoctrines()
 	const { data: selectedDoctrine } = useDoctrine(selectedDoctrineId || undefined)
@@ -392,15 +425,15 @@ function DetailView({
 	const srpModeLabel = (() => {
 		switch (broadcastLink?.srpMode) {
 			case 'blanket':
-				return 'Blanket'
+				return t('fleetTracking.blanket')
 			case 'military':
-				return 'Military'
+				return t('fleetTracking.military')
 			case 'coalition':
-				return 'Coalition'
+				return t('fleetTracking.coalition')
 			case 'disabled':
-				return 'No SRP'
+				return t('fleetTracking.noSrp')
 			default:
-				return 'None'
+				return t('fleetTracking.none')
 		}
 	})()
 
@@ -428,22 +461,22 @@ function DetailView({
 	const leaveCount = leaveTotal?.total ?? 0
 
 	if (isLive && snapshot) {
-		stats.push({ label: 'Members', value: snapshot.memberCount })
-		stats.push({ label: 'Peak', value: snapshot.peakMemberCount })
-		stats.push({ label: 'Joins / Leaves', value: `${joinCount} / ${leaveCount}` })
+		stats.push({ label: t('fleetTracking.members'), value: snapshot.memberCount })
+		stats.push({ label: t('fleetTracking.peak'), value: snapshot.peakMemberCount })
+		stats.push({ label: t('fleetTracking.joinsLeaves'), value: `${joinCount} / ${leaveCount}` })
 		stats.push({
-			label: 'Duration',
+			label: t('fleetTracking.duration'),
 			value: formatDurationBetween(startedAt, null),
 		})
 	} else if (summary) {
-		stats.push({ label: 'Peak members', value: summary.peakMemberCount })
-		stats.push({ label: 'Final members', value: summary.finalMemberCount })
+		stats.push({ label: t('fleetTracking.peakMembers'), value: summary.peakMemberCount })
+		stats.push({ label: t('fleetTracking.finalMembers'), value: summary.finalMemberCount })
 		stats.push({
-			label: 'Duration',
+			label: t('fleetTracking.duration'),
 			value: summary.durationMinutes != null ? `${summary.durationMinutes}m` : '—',
 		})
 		stats.push({
-			label: 'Joins / Leaves',
+			label: t('fleetTracking.joinsLeaves'),
 			value: `${joinCount} / ${leaveCount}`,
 		})
 	}
@@ -455,7 +488,9 @@ function DetailView({
 					<div className="flex items-start gap-3">
 						<AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
 						<div className="space-y-1 text-sm">
-							<p className="font-medium text-warning">Live fleet snapshot unavailable</p>
+							<p className="font-medium text-warning">
+								{t('fleetTracking.liveFleetSnapshotUnavailable')}
+							</p>
 							<p className="text-muted-foreground">{liveResp.message}</p>
 						</div>
 					</div>
@@ -468,7 +503,7 @@ function DetailView({
 					{isLive ? (
 						<Card>
 							<CardHeader>
-								<CardTitle className="text-base">Doctrine</CardTitle>
+								<CardTitle className="text-base">{t('fleetTracking.doctrine')}</CardTitle>
 							</CardHeader>
 							<CardContent>
 								<div className="max-w-md">
@@ -476,10 +511,10 @@ function DetailView({
 										value={selectedDoctrineId}
 										onValueChange={(value) => setSelectedDoctrineId(value || '')}
 										options={[
-											{ value: '', label: 'No Doctrine Selected' },
+											{ value: '', label: t('fleetTracking.noDoctrineSelected') },
 											...doctrines.map((d) => ({ value: d.id, label: d.name })),
 										]}
-										placeholder="Select doctrine"
+										placeholder={t('fleetTracking.selectDoctrine')}
 										searchable
 									/>
 								</div>
@@ -496,18 +531,20 @@ function DetailView({
 							{broadcastLink ? (
 								<>
 									<div>
-										<span className="text-muted-foreground">Mode:</span>{' '}
+										<span className="text-muted-foreground">{t('fleetTracking.mode')}</span>{' '}
 										<span className="font-medium text-foreground">{srpModeLabel}</span>
 									</div>
 									<div>
-										<span className="text-muted-foreground">Token:</span>{' '}
+										<span className="text-muted-foreground">{t('fleetTracking.token')}</span>{' '}
 										<span className="font-mono text-foreground">
 											{broadcastLink.srpToken ?? 'N/A'}
 										</span>
 									</div>
 								</>
 							) : (
-								<div className="text-muted-foreground">No linked broadcast found for this session.</div>
+								<div className="text-muted-foreground">
+									{t('fleetTracking.noLinkedBroadcastFoundForThisSession')}
+								</div>
 							)}
 						</CardContent>
 					</Card>
@@ -533,17 +570,21 @@ function DetailView({
 									const firstFailure = result.results.find((r) => !r.success)
 									const mapKickFailureReason = (raw?: string): string => {
 										const text = (raw ?? '').toLowerCase()
-										if (!text) return 'Unable to remove this member.'
-										if (text.includes('permission') || text.includes('unauthorized') || text.includes('forbidden')) {
-											return 'You may not have the required permissions to remove this member.'
+										if (!text) return t('fleetTracking.unableToRemoveThisMember')
+										if (
+											text.includes('permission') ||
+											text.includes('unauthorized') ||
+											text.includes('forbidden')
+										) {
+											return t('fleetTracking.youMayNotHaveTheRequiredPermissionsToRemoveThis')
 										}
 										if (text.includes('not found') || text.includes('already left')) {
-											return 'That member is no longer in this fleet.'
+											return t('fleetTracking.thatMemberIsNoLongerInThisFleet')
 										}
 										if (text.includes('not active')) {
-											return 'This fleet session is no longer active.'
+											return t('fleetTracking.thisFleetSessionIsNoLongerActive')
 										}
-										return 'Unable to remove this member.'
+										return t('fleetTracking.unableToRemoveThisMember')
 									}
 									console.error('[Fleet Tracking] Kick member(s) had failures', {
 										sessionId,
@@ -552,27 +593,28 @@ function DetailView({
 									})
 									toastError(
 										result.summary.total === 1
-											? `Could not remove this member from fleet. ${mapKickFailureReason(firstFailure?.error)}`
-											: `Removed ${result.summary.success}/${result.summary.total} members. Some members could not be removed.`
+											? t('fleetTracking.couldNotRemoveThisMemberFromFleet', {
+													value1: mapKickFailureReason(firstFailure?.error),
+												})
+											: t('fleetTracking.removedMembersSomeMembersCouldNotBeRemoved', {
+													value1: result.summary.success,
+													value2: result.summary.total,
+												})
 									)
 									return
 								}
-								toastSuccess(
-									`Removed ${result.summary.success} member${result.summary.success === 1 ? '' : 's'} from fleet.`
-								)
+								toastSuccess(t('fleetTracking.removedMembers', { count: result.summary.success }))
 							}}
 						/>
 					)
-				: roster && (
-						<SessionRosterPanel sessionId={sessionId} roster={roster.items} />
-					)}
+				: roster && <SessionRosterPanel sessionId={sessionId} roster={roster.items} />}
 
 			<TimelinePanel sessionId={sessionId} timeline={timeline?.items ?? []} />
 
 			{snapshot?.motd && (
 				<Card>
 					<CardHeader>
-						<CardTitle className="text-base">MOTD</CardTitle>
+						<CardTitle className="text-base">{t('fleetTracking.motd')}</CardTitle>
 					</CardHeader>
 					<CardContent>
 						<pre className="whitespace-pre-wrap text-sm font-sans">
@@ -585,7 +627,7 @@ function DetailView({
 			{isLive && (
 				<div className="text-xs text-muted-foreground flex items-center gap-1">
 					<Clock className="h-3 w-3" />
-					Fleet data updates every 10 seconds.
+					{t('fleetTracking.fleetDataUpdatesEvery10Seconds')}
 				</div>
 			)}
 		</div>
@@ -599,27 +641,33 @@ function TimelinePanel({
 	sessionId: string
 	timeline: SessionTimelineRow[]
 }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<Card>
 			<CardHeader>
 				<div className="flex items-center justify-between">
-					<CardTitle className="text-base">Recent events</CardTitle>
+					<CardTitle className="text-base">{t('fleetTracking.recentEvents')}</CardTitle>
 					<Button asChild variant="ghost" size="sm">
-						<Link to={`/fleet-tracking/${sessionId}/timeline`}>View full timeline</Link>
+						<Link to={`/fleet-tracking/${sessionId}/timeline`}>
+							{t('fleetTracking.viewFullTimeline')}
+						</Link>
 					</Button>
 				</div>
 			</CardHeader>
 			<CardContent>
 				{timeline.length === 0 ? (
-					<div className="text-sm text-muted-foreground py-4">No events recorded yet.</div>
+					<div className="text-sm text-muted-foreground py-4">
+						{t('fleetTracking.noEventsRecordedYet')}
+					</div>
 				) : (
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead>Timestamp</TableHead>
-								<TableHead>Event</TableHead>
-								<TableHead>Character</TableHead>
-								<TableHead>Details</TableHead>
+								<TableHead>{t('fleetTracking.timestamp')}</TableHead>
+								<TableHead>{t('fleetTracking.event')}</TableHead>
+								<TableHead>{t('fleetTracking.character')}</TableHead>
+								<TableHead>{t('fleetTracking.details')}</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -628,7 +676,9 @@ function TimelinePanel({
 									<TableCell className="text-muted-foreground">
 										<EveTimeDisplay dateStr={ev.eventTimestamp} />
 									</TableCell>
-									<TableCell className="font-medium">{getTimelineEventLabel(ev.eventType)}</TableCell>
+									<TableCell className="font-medium">
+										{getTimelineEventLabel(ev.eventType)}
+									</TableCell>
 									<TableCell>
 										<Link
 											to={`/fleet-tracking/${sessionId}/members/${ev.characterId}`}
@@ -651,6 +701,8 @@ function TimelinePanel({
 }
 
 function SummaryOnlyView({ sessionId }: { sessionId: string }) {
+	const { t } = useAppTranslation()
+
 	const { data: summaryResp, isLoading } = useSessionSummary(sessionId)
 	const summary = summaryResp?.summary ?? null
 
@@ -661,19 +713,22 @@ function SummaryOnlyView({ sessionId }: { sessionId: string }) {
 			{summary ? (
 				<SessionStatsGrid
 					stats={[
-						{ label: 'Peak members', value: summary.peakMemberCount },
-						{ label: 'Final members', value: summary.finalMemberCount },
+						{ label: t('fleetTracking.peakMembers'), value: summary.peakMemberCount },
+						{ label: t('fleetTracking.finalMembers'), value: summary.finalMemberCount },
 						{
-							label: 'Duration',
+							label: t('fleetTracking.duration'),
 							value: summary.durationMinutes != null ? `${summary.durationMinutes}m` : '—',
 						},
-						{ label: 'Started', value: new Date(summary.startedAt).toLocaleString() },
+						{
+							label: t('fleetTracking.started2'),
+							value: new Date(summary.startedAt).toLocaleString(getActiveLocale()),
+						},
 					]}
 				/>
 			) : (
 				<Card>
 					<CardContent className="py-6 text-sm text-muted-foreground text-center">
-						No summary recorded for this session yet.
+						{t('fleetTracking.noSummaryRecordedForThisSessionYet')}
 					</CardContent>
 				</Card>
 			)}
@@ -682,11 +737,11 @@ function SummaryOnlyView({ sessionId }: { sessionId: string }) {
 				<CardContent className="p-6 flex items-start gap-3">
 					<Lock className="h-5 w-5 mt-0.5 text-muted-foreground" />
 					<div className="text-sm">
-						<p className="font-medium">Detailed history is restricted</p>
+						<p className="font-medium">{t('fleetTracking.detailedHistoryIsRestricted')}</p>
 						<p className="text-muted-foreground mt-1">
-							Viewing the member roster, full timeline, and ship-change events for ended sessions
-							requires the <code>urn:fleet-tracking:view-fleets</code> permission. Contact your
-							alliance leadership if you need access.
+							{t('fleetTracking.viewingTheMemberRosterFullTimelineAndShipChangeEvents')}
+							<code>urn:fleet-tracking:view-fleets</code>
+							{t('fleetTracking.permissionContactYourAllianceLeadershipIfYouNeedAccess')}
 						</p>
 					</div>
 				</CardContent>

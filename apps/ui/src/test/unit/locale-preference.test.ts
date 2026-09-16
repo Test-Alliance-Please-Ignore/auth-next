@@ -18,10 +18,18 @@ describe('browser-only locale preference', () => {
 
 	it('parses saved choices strictly while accepting browser language tags', () => {
 		expect(parseAppLocale(' de ')).toBe('de')
+		expect(parseAppLocale(' es-mx ')).toBe('es-MX')
+		expect(parseAppLocale('ES-MX')).toBe('es-MX')
+		expect(parseAppLocale('es')).toBeNull()
+		expect(parseAppLocale('es-ES')).toBeNull()
 		expect(parseAppLocale('de-DE')).toBeNull()
 		expect(parseAppLocale('unknown')).toBeNull()
 		expect(parseAppLocale(null)).toBeNull()
 		expect(parseBrowserLocale('ko-KR')).toBe('ko')
+		expect(parseBrowserLocale('es-MX')).toBe('es-MX')
+		expect(parseBrowserLocale('es-419')).toBe('es-MX')
+		expect(parseBrowserLocale('es-ES')).toBe('es-MX')
+		expect(parseBrowserLocale('es')).toBe('es-MX')
 		expect(parseBrowserLocale('en-Latn-US')).toBe('en')
 		expect(parseBrowserLocale('de_DE')).toBeNull()
 	})

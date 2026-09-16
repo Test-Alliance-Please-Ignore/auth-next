@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useAppTranslation } from '@/i18n'
 
 import { useDoctrineCategories } from '../hooks'
 import { validateEFT } from '../utils'
@@ -33,6 +34,8 @@ export function FittingForm({
 	isSubmitting,
 	onPreviewChange,
 }: FittingFormProps) {
+	const { t } = useAppTranslation()
+
 	const [eftString, setEftString] = useState(fitting?.fitting || '')
 	const [description, setDescription] = useState(fitting?.description || '')
 	const [category, setCategory] = useState(fitting?.category || '')
@@ -56,7 +59,7 @@ export function FittingForm({
 				setShowPreview(true)
 				onPreviewChange?.(eftString)
 			} else {
-				setEftError(validation.error || 'Invalid EFT format')
+				setEftError(validation.error || t('doctrines.invalidEftFormat2'))
 				onPreviewChange?.(null)
 			}
 		}
@@ -68,7 +71,7 @@ export function FittingForm({
 		// Validate EFT before submitting
 		const validation = validateEFT(eftString)
 		if (!validation.valid) {
-			setEftError(validation.error || 'Invalid EFT format')
+			setEftError(validation.error || t('doctrines.invalidEftFormat2'))
 			return
 		}
 
@@ -90,52 +93,54 @@ export function FittingForm({
 		<form onSubmit={handleSubmit} className="space-y-6">
 			{/* EFT String */}
 			<div className="space-y-2">
-				<Label htmlFor="eft">EFT Fitting *</Label>
+				<Label htmlFor="eft">{t('doctrines.eftFitting')}</Label>
 				<Textarea
 					id="eft"
 					value={eftString}
 					onChange={(e) => handleEftChange(e.target.value)}
 					onBlur={handleEftBlur}
-					placeholder="Paste EFT format fitting here... Example:&#10;[Svipul, Cena Svipul]&#10;Counterbalanced Compact Gyrostabilizer&#10;280mm Howitzer Artillery II&#10;..."
+					placeholder={t(
+						'doctrines.pasteEftFormatFittingHereExampleSvipulCenaSvipulCounterbalanced'
+					)}
 					className="font-mono text-sm min-h-[200px]"
 					required
 				/>
 				{eftError && <p className="text-sm text-destructive">{eftError}</p>}
 				<p className="text-sm text-muted-foreground">
-					Paste your EFT (EVE Fitting Tool) format fitting. A preview will appear below.
+					{t('doctrines.pasteYourEftEveFittingToolFormatFittingAPreview')}
 				</p>
 			</div>
 
 			{/* Inline Preview (only when no external handler) */}
 			{!onPreviewChange && showPreview && eftString.trim() && (
 				<div>
-					<Label className="mb-2 block">Preview</Label>
+					<Label className="mb-2 block">{t('doctrines.preview')}</Label>
 					<EftPreview eftString={eftString} />
 				</div>
 			)}
 
 			{/* Category */}
 			<div className="space-y-2">
-				<Label>Category *</Label>
+				<Label>{t('doctrines.category2')}</Label>
 				<Select
 					options={(categories || []).map((c) => ({ value: c.name, label: c.name }))}
 					value={category}
 					onValueChange={(val) => setCategory(val)}
-					placeholder="Select a category..."
+					placeholder={t('doctrines.selectACategory')}
 				/>
 				<p className="text-sm text-muted-foreground">
-					Group this fitting under a category for organization
+					{t('doctrines.groupThisFittingUnderACategoryForOrganization')}
 				</p>
 			</div>
 
 			{/* Description */}
 			<div className="space-y-2">
-				<Label htmlFor="description">Description</Label>
+				<Label htmlFor="description">{t('doctrines.description')}</Label>
 				<Textarea
 					id="description"
 					value={description}
 					onChange={(e) => setDescription(e.target.value)}
-					placeholder="Describe the fitting's purpose, usage notes, etc."
+					placeholder={t('doctrines.describeTheFittingSPurposeUsageNotesEtc')}
 					className="min-h-[80px]"
 				/>
 			</div>
@@ -143,9 +148,9 @@ export function FittingForm({
 			{/* SRP Eligible */}
 			<div className="flex items-center justify-between space-x-2 rounded-lg border p-4">
 				<div className="flex-1 space-y-1">
-					<Label htmlFor="srp-eligible">SRP Eligible</Label>
+					<Label htmlFor="srp-eligible">{t('doctrines.srpEligible')}</Label>
 					<p className="text-sm text-muted-foreground">
-						Mark this fitting as eligible for Ship Replacement Program
+						{t('doctrines.markThisFittingAsEligibleForShipReplacementProgram')}
 					</p>
 				</div>
 				<Switch id="srp-eligible" checked={srpEligible} onCheckedChange={setSrpEligible} />
@@ -154,16 +159,16 @@ export function FittingForm({
 			{/* Actions */}
 			<div className="flex justify-end gap-2">
 				<Button variant="cancel" onClick={onCancel} type="button">
-					Cancel
+					{t('doctrines.cancel')}
 				</Button>
 				<Button
 					variant="confirm"
 					type="submit"
 					loading={isSubmitting}
-					loadingText={fitting ? 'Updating...' : 'Creating...'}
+					loadingText={fitting ? t('doctrines.updating') : t('doctrines.creating')}
 					disabled={!canSubmit || isSubmitting}
 				>
-					{fitting ? 'Update Fitting' : 'Create Fitting'}
+					{fitting ? t('doctrines.updateFitting') : t('doctrines.createFitting')}
 				</Button>
 			</div>
 		</form>

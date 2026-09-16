@@ -17,6 +17,7 @@ import {
 import { FilterField } from '@/components/ui/filter-field'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 import { formatTaxIskCompact } from '@/lib/tax-display'
 
 import type { ReactNode } from 'react'
@@ -75,13 +76,15 @@ interface TaxReportFiltersCardProps {
 }
 
 export function TaxReportFiltersCard(props: TaxReportFiltersCardProps) {
+	const { t } = useAppTranslation()
+
 	return (
 		<TaxPanelCard
-			title="Filters"
-			description="These filters apply to the active report and are persisted into export payloads."
+			title={t('tax.filters')}
+			description={t('tax.theseFiltersApplyToTheActiveReportAndArePersisted')}
 			contentClassName="grid gap-3 md:grid-cols-4"
 		>
-			<FilterField label="Date range" className="md:col-span-2">
+			<FilterField label={t('tax.dateRange')} className="md:col-span-2">
 				<div className="flex items-center gap-1">
 					<Button
 						type="button"
@@ -89,7 +92,7 @@ export function TaxReportFiltersCard(props: TaxReportFiltersCardProps) {
 						size="icon"
 						showIcon={false}
 						className="h-10 w-10 shrink-0 p-0"
-						aria-label="Previous month"
+						aria-label={t('tax.previousMonth')}
 						onClick={() => props.onMoveMonth(-1)}
 					>
 						<ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -97,7 +100,7 @@ export function TaxReportFiltersCard(props: TaxReportFiltersCardProps) {
 					<DateRangeInput
 						value={{ fromDate: props.fromDate, toDate: props.toDate }}
 						onChange={props.onDateRangeChange}
-						placeholder="Date range"
+						placeholder={t('tax.dateRange')}
 						className="min-w-0 flex-1 [&_.themed-date-picker__input]:h-10 [&_.themed-date-picker__input]:w-full"
 					/>
 					<Button
@@ -106,7 +109,7 @@ export function TaxReportFiltersCard(props: TaxReportFiltersCardProps) {
 						size="icon"
 						showIcon={false}
 						className="h-10 w-10 shrink-0 p-0"
-						aria-label="Next month"
+						aria-label={t('tax.nextMonth')}
 						onClick={() => props.onMoveMonth(1)}
 					>
 						<ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -114,11 +117,11 @@ export function TaxReportFiltersCard(props: TaxReportFiltersCardProps) {
 				</div>
 				<div className="flex flex-wrap gap-1.5 pt-1">
 					{[
-						{ range: 'current-month' as const, label: 'Current month' },
-						{ range: 'previous-month' as const, label: 'Previous month' },
-						{ range: 'last-3-months' as const, label: 'Last 3 months' },
-						{ range: 'last-6-months' as const, label: 'Last 6 months' },
-						{ range: 'last-year' as const, label: 'Last year' },
+						{ range: 'current-month' as const, label: t('tax.currentMonth') },
+						{ range: 'previous-month' as const, label: t('tax.previousMonth') },
+						{ range: 'last-3-months' as const, label: t('tax.last3Months') },
+						{ range: 'last-6-months' as const, label: t('tax.last6Months') },
+						{ range: 'last-year' as const, label: t('tax.lastYear') },
 					].map((option) => (
 						<Button
 							key={option.range}
@@ -134,7 +137,7 @@ export function TaxReportFiltersCard(props: TaxReportFiltersCardProps) {
 					))}
 				</div>
 			</FilterField>
-			<FilterField label="Corporation" className="md:col-span-2">
+			<FilterField label={t('tax.corporation')} className="md:col-span-2">
 				<TaxCorporationScopeSelector
 					corporations={props.accessibleCorporations}
 					effectiveCorporationId={props.effectiveCorporationId}
@@ -147,7 +150,7 @@ export function TaxReportFiltersCard(props: TaxReportFiltersCardProps) {
 			</FilterField>
 			<div className="flex justify-end md:col-span-4">
 				<Button type="button" variant="ghost" size="sm" showIcon={false} onClick={props.onReset}>
-					Reset filters
+					{t('tax.resetFilters')}
 				</Button>
 			</div>
 		</TaxPanelCard>
@@ -159,16 +162,18 @@ export function TaxSummaryCards(props: {
 	loading: boolean
 	error: unknown
 }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<div className="space-y-4">
 			<div className="space-y-1">
-				<h2 className="text-lg font-semibold tracking-tight">Summary</h2>
-				<p className="text-sm text-muted-foreground">Reflects the current filter state.</p>
+				<h2 className="text-lg font-semibold tracking-tight">{t('tax.summary')}</h2>
+				<p className="text-sm text-muted-foreground">{t('tax.reflectsTheCurrentFilterState')}</p>
 			</div>
 			<div className="grid gap-4 md:grid-cols-4">
 				<Card>
 					<CardHeader className="pb-2">
-						<CardTitle className="text-sm">Tax Due</CardTitle>
+						<CardTitle className="text-sm">{t('tax.taxDue')}</CardTitle>
 					</CardHeader>
 					<CardContent className="text-xl font-semibold">
 						{formatTaxIskCompact(props.summaryReport?.taxDue ?? '0')}
@@ -176,7 +181,7 @@ export function TaxSummaryCards(props: {
 				</Card>
 				<Card>
 					<CardHeader className="pb-2">
-						<CardTitle className="text-sm">Tax Paid</CardTitle>
+						<CardTitle className="text-sm">{t('tax.taxPaid')}</CardTitle>
 					</CardHeader>
 					<CardContent className="text-xl font-semibold">
 						{formatTaxIskCompact(props.summaryReport?.taxPaid ?? '0')}
@@ -184,7 +189,7 @@ export function TaxSummaryCards(props: {
 				</Card>
 				<Card>
 					<CardHeader className="pb-2">
-						<CardTitle className="text-sm">Tax Delta</CardTitle>
+						<CardTitle className="text-sm">{t('tax.taxDelta')}</CardTitle>
 					</CardHeader>
 					<CardContent className="text-xl font-semibold">
 						{formatTaxIskCompact(props.summaryReport?.taxDelta ?? '0')}
@@ -192,22 +197,22 @@ export function TaxSummaryCards(props: {
 				</Card>
 				<Card>
 					<CardHeader className="pb-2">
-						<CardTitle className="text-sm">Assessments</CardTitle>
+						<CardTitle className="text-sm">{t('tax.assessments2')}</CardTitle>
 					</CardHeader>
 					<CardContent className="text-xl font-semibold">
-						{(props.summaryReport?.assessmentCount ?? 0).toLocaleString('en-US')}
+						{(props.summaryReport?.assessmentCount ?? 0).toLocaleString(getActiveLocale())}
 					</CardContent>
 				</Card>
 			</div>
 			{props.loading ? (
-				<div className="text-sm text-muted-foreground">Loading summary...</div>
+				<div className="text-sm text-muted-foreground">{t('tax.loadingSummary')}</div>
 			) : props.error ? (
 				<div className="text-sm text-destructive">
-					{props.error instanceof Error ? props.error.message : 'Failed to load summary'}
+					{props.error instanceof Error ? props.error.message : t('tax.failedToLoadSummary')}
 				</div>
 			) : !props.summaryReport ? (
 				<div className="text-sm text-muted-foreground">
-					No summary data is available for the current scope and date range.
+					{t('tax.noSummaryDataIsAvailableForTheCurrentScopeAnd')}
 				</div>
 			) : null}
 		</div>
@@ -229,17 +234,19 @@ export function TaxExportHistoryPanel(props: {
 	sorting: TaxReportSortingState
 	onSortingChange: (sorting: TaxReportSortingState) => void
 }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<TaxPanelCard
-			title="Recent Exports"
-			description="Review recent export runs and download their artifacts."
+			title={t('tax.recentExports')}
+			description={t('tax.reviewRecentExportRunsAndDownloadTheirArtifacts')}
 			contentClassName="space-y-4"
 		>
 			{props.requestError ? (
 				<div className="text-sm text-destructive">
 					{props.requestError instanceof Error
 						? props.requestError.message
-						: 'Failed to request export'}
+						: t('tax.failedToRequestExport')}
 				</div>
 			) : null}
 			<ExportHistoryGrid
@@ -259,7 +266,7 @@ export function TaxExportHistoryPanel(props: {
 				<div className="text-sm text-destructive">
 					{props.downloadError instanceof Error
 						? props.downloadError.message
-						: 'Failed to download export artifact'}
+						: t('tax.failedToDownloadExportArtifact')}
 				</div>
 			) : null}
 		</TaxPanelCard>
@@ -278,17 +285,19 @@ export function TaxExportSchedulesPanel(props: {
 	sorting: TaxReportSortingState
 	onSortingChange: (sorting: TaxReportSortingState) => void
 }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<TaxPanelCard
-			title="Recurring Export Schedules"
-			description="Review recurring export jobs for this scope."
+			title={t('tax.recurringExportSchedules')}
+			description={t('tax.reviewRecurringExportJobsForThisScope')}
 			contentClassName="space-y-4"
 		>
 			{props.createScheduleError ? (
 				<div className="text-sm text-destructive">
 					{props.createScheduleError instanceof Error
 						? props.createScheduleError.message
-						: 'Failed to create schedule'}
+						: t('tax.failedToCreateSchedule')}
 				</div>
 			) : null}
 			<ExportSchedulesGrid
@@ -319,24 +328,26 @@ export function TaxExportDialog(props: {
 	submitting: boolean
 	onSubmit: () => void
 }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>Export Active Report</DialogTitle>
+					<DialogTitle>{t('tax.exportActiveReport')}</DialogTitle>
 					<DialogDescription>
-						Create a one-off export for{' '}
-						{props.selectedReportLabel?.toLowerCase() ?? 'the active report'} using the current
-						scope and filters.
+						{t('tax.exportDescription', {
+							report: props.selectedReportLabel ?? t('tax.theActiveReport'),
+						})}
 					</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-4">
 					<div className="space-y-1 text-sm">
-						<div className="font-medium text-foreground">Report</div>
+						<div className="font-medium text-foreground">{t('tax.report')}</div>
 						<div className="text-muted-foreground">{props.selectedReportLabel}</div>
 					</div>
 					<div className="space-y-1 text-sm">
-						<div className="font-medium text-foreground">Applied Filters</div>
+						<div className="font-medium text-foreground">{t('tax.appliedFilters')}</div>
 						<div className="flex flex-wrap gap-2">
 							{props.filterSummary.map((item) => (
 								<Badge key={item} variant="secondary">
@@ -346,7 +357,7 @@ export function TaxExportDialog(props: {
 						</div>
 					</div>
 					<div className="space-y-2">
-						<div className="text-sm font-medium text-foreground">Format</div>
+						<div className="text-sm font-medium text-foreground">{t('tax.format')}</div>
 						<Select
 							value={props.selectedExportFormat}
 							onValueChange={(value) => props.onSelectExportFormat(value as TaxExportFormat)}
@@ -354,20 +365,20 @@ export function TaxExportDialog(props: {
 								value: option.value,
 								label: option.label,
 							}))}
-							placeholder="Format"
+							placeholder={t('tax.format')}
 						/>
 					</div>
 				</div>
 				<DialogFooter>
 					<Button variant="cancel" showIcon={false} onClick={() => props.onOpenChange(false)}>
-						Cancel
+						{t('tax.cancel')}
 					</Button>
 					<Button
 						variant="primary"
 						onClick={props.onSubmit}
 						disabled={!props.canExport || !props.canSubmit || props.submitting}
 					>
-						{props.submitting ? 'Requesting Export...' : 'Request Export'}
+						{props.submitting ? t('tax.requestingExport') : t('tax.requestExport')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
@@ -393,22 +404,24 @@ export function TaxScheduleDialog(props: {
 	submitting: boolean
 	onSubmit: () => void
 }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>Schedule Export</DialogTitle>
+					<DialogTitle>{t('tax.scheduleExport')}</DialogTitle>
 					<DialogDescription>
-						Create a recurring export for{' '}
-						{props.selectedReportLabel?.toLowerCase() ?? 'the active report'} using the current
-						scope and filters.
+						{t('tax.scheduleDescription', {
+							report: props.selectedReportLabel ?? t('tax.theActiveReport'),
+						})}
 					</DialogDescription>
 				</DialogHeader>
 				<div className="space-y-4">
 					<Input
 						value={props.scheduleName}
 						onChange={(event) => props.onScheduleNameChange(event.target.value)}
-						placeholder="Schedule name"
+						placeholder={t('tax.scheduleName')}
 					/>
 					<div className="grid gap-3 md:grid-cols-2">
 						<Select
@@ -418,7 +431,7 @@ export function TaxScheduleDialog(props: {
 								value: option.value,
 								label: option.label,
 							}))}
-							placeholder="Format"
+							placeholder={t('tax.format')}
 						/>
 						<Select
 							value={props.scheduleFrequency}
@@ -429,11 +442,11 @@ export function TaxScheduleDialog(props: {
 								value: option.value,
 								label: option.label,
 							}))}
-							placeholder="Frequency"
+							placeholder={t('tax.frequency')}
 						/>
 					</div>
 					<div className="space-y-1 text-sm">
-						<div className="font-medium text-foreground">Applied Filters</div>
+						<div className="font-medium text-foreground">{t('tax.appliedFilters')}</div>
 						<div className="flex flex-wrap gap-2">
 							{props.filterSummary.map((item) => (
 								<Badge key={item} variant="secondary">
@@ -445,14 +458,14 @@ export function TaxScheduleDialog(props: {
 				</div>
 				<DialogFooter>
 					<Button variant="cancel" showIcon={false} onClick={() => props.onOpenChange(false)}>
-						Cancel
+						{t('tax.cancel')}
 					</Button>
 					<Button
 						variant="primary"
 						onClick={props.onSubmit}
 						disabled={!props.canCreateSchedule || !props.canSubmit || props.submitting}
 					>
-						{props.submitting ? 'Creating Schedule...' : 'Create Schedule'}
+						{props.submitting ? t('tax.creatingSchedule') : t('tax.createSchedule')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

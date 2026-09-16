@@ -1,4 +1,5 @@
 import { isTaxDemoModeEnabled, resolveDemoEntityNames, taxDemoApi } from '@/dev/tax-demo-mode'
+import { i18n } from '@/i18n'
 
 import { ApiClient } from './api'
 
@@ -889,7 +890,7 @@ export class CorporationTaxApiClient extends ApiClient {
 		filters?: TaxMemberSummaryFilters
 	): Promise<TaxPagedResult<TaxMemberSummary>> {
 		if (!corporationId?.trim()) {
-			throw new Error('Corporation id is required for member summary')
+			throw new Error(i18n.t('tax.corporationIdIsRequiredForMemberSummary'))
 		}
 		if (this.shouldUseDemo()) return taxDemoApi.getMemberSummary(corporationId, filters)
 		const params = new URLSearchParams()

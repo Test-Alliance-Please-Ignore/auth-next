@@ -13,6 +13,7 @@ import { useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useAppTranslation } from '@/i18n'
 import { apiClient } from '@/lib/api'
 import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
@@ -152,6 +153,8 @@ function SkillLevelPips({ level, progress }: { level: number; progress?: number 
 // ============================================================================
 
 function useSkillCatalog() {
+	const { t } = useAppTranslation()
+
 	return useQuery<CatalogSkill[]>({
 		queryKey: ['skill-catalog'],
 		queryFn: async () => {
@@ -161,7 +164,7 @@ function useSkillCatalog() {
 				skillId: s.id || s.skillId,
 				name: s.name,
 				rank: s.rank,
-				groupName: s.groupName || 'Unknown',
+				groupName: s.groupName || t('hrpages.unknown'),
 				canNotBeTrained: s.canNotBeTrained,
 			}))
 		},
@@ -175,6 +178,8 @@ function useSkillCatalog() {
 // ============================================================================
 
 export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
+	const { t } = useAppTranslation()
+
 	const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
 	const { data: catalog, isLoading: catalogLoading } = useSkillCatalog()
 
@@ -218,7 +223,7 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 		} else {
 			// Fallback: trained skills only
 			for (const skill of data.skills) {
-				const groupName = 'Trained Skills'
+				const groupName = t('hrpages.trainedSkills')
 				let group = mergedByGroup.get(groupName)
 				if (!group) {
 					group = { groupName, totalSP: 0, trainedCount: 0, totalCount: 0, skills: [] }
@@ -227,7 +232,7 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 
 				group.skills.push({
 					skillId: skill.skillId,
-					skillName: skill.skillName || `Skill ${skill.skillId}`,
+					skillName: skill.skillName || t('hrpages.skillValue1', { value1: skill.skillId }),
 					rank: 1,
 					groupName,
 					trainedLevel: skill.trainedLevel,
@@ -242,7 +247,7 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 		}
 
 		return Array.from(mergedByGroup.values()).sort((a, b) => a.groupName.localeCompare(b.groupName))
-	}, [data.skills, catalog])
+	}, [data.skills, catalog, t])
 
 	const activeGroup = groups.find((g) => g.groupName === selectedGroup)
 	const activeQueue = data.skillQueue.filter((q) => q.finishDate)
@@ -253,20 +258,20 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 			<div className="grid gap-4 sm:grid-cols-3">
 				<Card variant="flat">
 					<CardContent className="py-3">
-						<p className="text-xs text-muted-foreground">Total SP</p>
+						<p className="text-xs text-muted-foreground">{t('hrpages.totalSp')}</p>
 						<p className="text-lg font-bold text-foreground">{formatSp(data.totalSp)}</p>
 					</CardContent>
 				</Card>
 				<Card variant="flat">
 					<CardContent className="py-3">
-						<p className="text-xs text-muted-foreground">Skills Trained</p>
+						<p className="text-xs text-muted-foreground">{t('hrpages.skillsTrained')}</p>
 						<p className="text-lg font-bold text-foreground">{data.skillCount}</p>
 					</CardContent>
 				</Card>
 				{data.unallocatedSp != null && (
 					<Card variant="flat">
 						<CardContent className="py-3">
-							<p className="text-xs text-muted-foreground">Unallocated SP</p>
+							<p className="text-xs text-muted-foreground">{t('hrpages.unallocatedSp')}</p>
 							<p className="text-lg font-bold text-foreground">{formatSp(data.unallocatedSp)}</p>
 						</CardContent>
 					</Card>
@@ -280,7 +285,7 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 					<Skeleton className="h-48 w-full" />
 				</div>
 			) : groups.length === 0 ? (
-				<p className="text-sm text-muted-foreground">No skills data available</p>
+				<p className="text-sm text-muted-foreground">{t('hrpages.noSkillsDataAvailable')}</p>
 			) : (
 				<>
 					{/* Skill Group Grid — column-first fill, matching character detail */}
@@ -327,9 +332,11 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 							<div className="flex items-center justify-between border-b bg-muted/30 px-4 py-2.5">
 								<h4 className="text-sm font-semibold">{activeGroup.groupName}</h4>
 								<span className="text-xs text-muted-foreground">
-									{activeGroup.trainedCount}/{activeGroup.totalCount} trained
+									{activeGroup.trainedCount}/{activeGroup.totalCount}
+									{t('hrpages.trained')}
 									{' • '}
-									{formatSp(activeGroup.totalSP)} SP
+									{formatSp(activeGroup.totalSP)}
+									{t('hrpages.sp')}
 								</span>
 							</div>
 							<div className="columns-2 gap-x-4 px-4 py-1">
@@ -390,7 +397,8 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 			{activeQueue.length > 0 && (
 				<div className="space-y-3">
 					<h4 className="text-sm font-semibold text-foreground">
-						Skill Queue ({activeQueue.length})
+						{t('hrpages.skillQueue')}
+						{activeQueue.length})
 					</h4>
 					<div className="space-y-2">
 						{activeQueue.map((entry) => {
@@ -411,18 +419,19 @@ export function SkillsSection({ data }: { data: ProcessedSkillsData }) {
 												{entry.skillName || entry.skillId}
 											</span>
 											<Badge variant="secondary" className="text-xs">
-												Level {entry.finishedLevel}
+												{t('hrpages.level')}
+												{entry.finishedLevel}
 											</Badge>
 											{isCurrentlyTraining && (
 												<Badge variant="success" className="text-xs">
-													Training
+													{t('hrpages.training')}
 												</Badge>
 											)}
 										</div>
 										{finishTime && (
 											<p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
 												<Clock className="h-3 w-3" />
-												Completes{' '}
+												{t('hrpages.completes')}{' '}
 												{formatDistanceToNow(finishTime, {
 													addSuffix: true,
 												})}

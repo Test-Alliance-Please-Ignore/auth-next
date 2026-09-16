@@ -1,6 +1,7 @@
 import { ComplianceGrid } from '@/components/tax-reports/grids'
 import { Select } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 import { formatTaxIskCompact } from '@/lib/tax-display'
 import { parseTaxAmount } from '@/lib/tax-report-utils'
 
@@ -16,6 +17,8 @@ interface TaxReportSelectorProps {
 }
 
 export function TaxReportSelector(props: TaxReportSelectorProps) {
+	const { t } = useAppTranslation()
+
 	return (
 		<>
 			<div className="md:hidden">
@@ -32,8 +35,8 @@ export function TaxReportSelector(props: TaxReportSelectorProps) {
 						value: option.value,
 						label: option.label,
 					}))}
-					placeholder="Choose report"
-					emptyText="No reports match"
+					placeholder={t('tax.chooseReport')}
+					emptyText={t('tax.noReports')}
 				/>
 			</div>
 
@@ -63,14 +66,18 @@ export function TaxComplianceReportSection(props: {
 	onPaginationChange: (pagination: { pageIndex: number; pageSize: number }) => void
 	rowCount: number
 }) {
+	const { t } = useAppTranslation()
+
 	if (props.loading && props.rows.length === 0 && props.chartRows.length === 0) {
-		return <div className="py-8 text-sm text-muted-foreground">Loading compliance trend...</div>
+		return (
+			<div className="py-8 text-sm text-muted-foreground">{t('tax.loadingComplianceTrend')}</div>
+		)
 	}
 
 	if (props.error) {
 		return (
 			<div className="py-8 text-sm text-destructive">
-				{props.error instanceof Error ? props.error.message : 'Failed to load compliance report'}
+				{props.error instanceof Error ? props.error.message : t('tax.failedToLoadComplianceReport')}
 			</div>
 		)
 	}
@@ -78,7 +85,7 @@ export function TaxComplianceReportSection(props: {
 	if (props.rows.length === 0 && props.chartRows.length === 0) {
 		return (
 			<div className="py-8 text-sm text-muted-foreground">
-				No compliance trend points available.
+				{t('tax.noComplianceTrendPointsAvailable')}
 			</div>
 		)
 	}
@@ -92,7 +99,7 @@ export function TaxComplianceReportSection(props: {
 	const plotWidth = chartWidth - leftPadding - rightPadding
 	const plotHeight = chartHeight - topPadding - bottomPadding
 	const zeroY = topPadding + plotHeight / 2
-	const formatter = new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' })
+	const formatter = new Intl.DateTimeFormat(getActiveLocale(), { month: 'short', year: 'numeric' })
 	const deltas = props.chartRows.map((row) => parseTaxAmount(row.taxDelta))
 	const maxAbsDelta = Math.max(1, ...deltas.map((value) => Math.abs(value)))
 	const pointCount = Math.max(1, props.chartRows.length)
@@ -107,7 +114,7 @@ export function TaxComplianceReportSection(props: {
 					viewBox={`0 0 ${chartWidth} ${chartHeight}`}
 					className="w-full"
 					role="img"
-					aria-label="Compliance period delta chart"
+					aria-label={t('tax.compliancePeriodDeltaChart')}
 				>
 					<line
 						x1={leftPadding}
@@ -124,7 +131,7 @@ export function TaxComplianceReportSection(props: {
 						fill="hsl(var(--muted-foreground))"
 						fontSize="10"
 					>
-						Overpaid
+						{t('tax.overpaid')}
 					</text>
 					<text
 						x={leftPadding}
@@ -133,7 +140,7 @@ export function TaxComplianceReportSection(props: {
 						fill="hsl(var(--muted-foreground))"
 						fontSize="10"
 					>
-						Underpaid
+						{t('tax.underpaid')}
 					</text>
 					{props.chartRows.map((row, index) => {
 						const delta = parseTaxAmount(row.taxDelta)
@@ -177,13 +184,13 @@ export function TaxComplianceReportSection(props: {
 				<div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">
 					<div className="flex items-center gap-2">
 						<span className="h-2 w-2 rounded-full bg-destructive" />
-						Underpaid (positive delta)
+						{t('tax.underpaidPositiveDelta')}
 					</div>
 					<div className="flex items-center gap-2">
 						<span className="h-2 w-2 rounded-full bg-success" />
-						Overpaid (negative delta)
+						{t('tax.overpaidNegativeDelta')}
 					</div>
-					<div>Showing {props.chartRows.length} periods</div>
+					<div>{t('tax.showingPeriods', { count: props.chartRows.length })}</div>
 				</div>
 			</div>
 

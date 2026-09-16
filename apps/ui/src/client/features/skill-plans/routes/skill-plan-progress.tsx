@@ -1,6 +1,8 @@
 import { ArrowLeft } from 'lucide-react'
 import { Link, Navigate, useParams } from 'react-router'
 
+import { useAppTranslation } from '@/i18n'
+
 import { Button } from '../../../components/ui/button'
 import { Container } from '../../../components/ui/container'
 import { LoadingPage } from '../../../components/ui/loading'
@@ -11,10 +13,14 @@ import { ProgressChecker } from '../components/progress-checker'
 import { useSkillPlan } from '../hooks'
 
 export default function SkillPlanProgress() {
+	const { t } = useAppTranslation()
+
 	const { id, characterId } = useParams<{ id: string; characterId?: string }>()
 	const { data: plan, isLoading } = useSkillPlan(id!)
 
-	usePageTitle(plan ? `Progress: ${plan.name}` : 'Skill Plan Progress')
+	usePageTitle(
+		plan ? t('skillPlans.progressValue1', { value1: plan.name }) : t('skillPlans.skillPlanProgress')
+	)
 
 	if (!id) {
 		return <Navigate to="/skill-plans" replace />
@@ -31,12 +37,12 @@ export default function SkillPlanProgress() {
 	return (
 		<Container>
 			<PageHeader
-				title={`Progress Check: ${plan.name}`}
+				title={t('skillPlans.progressCheckValue1', { value1: plan.name })}
 				action={
 					<Button variant="ghost" size="sm" asChild>
 						<Link to={`/skill-plans/${id}`}>
 							<ArrowLeft className="h-4 w-4" />
-							Back to Plan
+							{t('skillPlans.backToPlan')}
 						</Link>
 					</Button>
 				}

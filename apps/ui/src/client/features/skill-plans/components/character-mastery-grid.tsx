@@ -2,6 +2,7 @@ import { AlertCircle } from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/hooks/useAuth'
+import { useAppTranslation } from '@/i18n'
 
 import { useCharacterSkillLevelsForCharacters, usePlanSkills } from '../hooks'
 import { calculateCharacterProgress } from '../utils/readiness'
@@ -15,9 +16,12 @@ interface CharacterMasteryGridProps {
 
 export function CharacterMasteryGrid({
 	planId,
-	title = 'Character Readiness',
+	title: providedTitle,
 	onCharacterClick,
 }: CharacterMasteryGridProps) {
+	const { t } = useAppTranslation()
+	const title = providedTitle ?? t('skillPlans.characterReadiness')
+
 	const { user } = useAuth()
 
 	// Get all user characters
@@ -30,7 +34,7 @@ export function CharacterMasteryGrid({
 		return (
 			<Card>
 				<CardContent className="py-8 text-center text-muted-foreground">
-					Please log in to view character readiness.
+					{t('skillPlans.pleaseLogInToViewCharacterReadiness')}
 				</CardContent>
 			</Card>
 		)
@@ -40,7 +44,7 @@ export function CharacterMasteryGrid({
 		return (
 			<Card>
 				<CardContent className="py-8 text-center text-muted-foreground">
-					No characters found. Please add characters to your account.
+					{t('skillPlans.noCharactersFoundPleaseAddCharactersToYourAccount')}
 				</CardContent>
 			</Card>
 		)
@@ -56,7 +60,7 @@ export function CharacterMasteryGrid({
 				{hasExpiredTokens && (
 					<div className="flex items-center gap-2 text-sm text-yellow-500 mt-2">
 						<AlertCircle className="h-4 w-4" />
-						Some characters have expired tokens. Progress may not be available.
+						{t('skillPlans.someCharactersHaveExpiredTokensProgressMayNotBeAvailable')}
 					</div>
 				)}
 			</CardHeader>
@@ -90,7 +94,7 @@ export function CharacterMasteryGrid({
 								planId={planId}
 								progress={progress}
 								isLoading={isLoading}
-								error={hasError ? query.error || new Error('Invalid token') : null}
+								error={hasError ? query.error || new Error(t('skillPlans.invalidToken')) : null}
 								onClick={
 									onCharacterClick ? () => onCharacterClick(character.characterId) : undefined
 								}

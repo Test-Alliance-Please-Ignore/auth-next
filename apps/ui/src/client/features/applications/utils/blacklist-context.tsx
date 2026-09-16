@@ -1,6 +1,8 @@
-import type { ReactNode } from 'react'
+import { i18n } from '@/i18n'
 
 import { formatStandingLabel, getStandingColorClass } from './standing'
+
+import type { ReactNode } from 'react'
 
 const CONTACT_STANDING_PATTERN =
 	/^In contacts with standing\s+(?:<span\s+style="[^"]+">)?([+-]?\d+(?:\.\d+)?)(?:<\/span>)?$/i
@@ -15,7 +17,7 @@ export function renderBlacklistContextLine(context: string): ReactNode {
 		if (Number.isFinite(standing)) {
 			return (
 				<>
-					In contacts with standing{' '}
+					{i18n.t('hrpages.inContactsWithStanding')}{' '}
 					<span className={getStandingColorClass(standing)}>{formatStandingLabel(standing)}</span>
 				</>
 			)

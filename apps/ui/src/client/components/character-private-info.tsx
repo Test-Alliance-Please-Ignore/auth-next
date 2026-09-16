@@ -1,5 +1,7 @@
 import { Activity, Lock, MapPin, Wallet } from 'lucide-react'
 
+import { getActiveLocale, useAppTranslation } from '@/i18n'
+
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
 interface CharacterPrivateInfoProps {
@@ -28,10 +30,12 @@ export function CharacterPrivateInfo({
 	wallet,
 	status,
 }: CharacterPrivateInfoProps) {
+	const { t } = useAppTranslation()
+
 	const formatISK = (value: string) => {
 		const num = parseFloat(value)
 		return (
-			new Intl.NumberFormat('en-US', {
+			new Intl.NumberFormat(getActiveLocale(), {
 				minimumFractionDigits: 2,
 				maximumFractionDigits: 2,
 			}).format(num) + ' ISK'
@@ -44,7 +48,9 @@ export function CharacterPrivateInfo({
 			<Card>
 				<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
 					<CardTitle className="text-sm font-medium">
-						{sensitiveDataIsLive ? 'Location' : 'Last known location'}
+						{sensitiveDataIsLive
+							? t('characterpages.location')
+							: t('characterpages.lastKnownLocation')}
 					</CardTitle>
 					<div className="flex items-center gap-1">
 						<MapPin className="h-4 w-4 text-muted-foreground" />
@@ -55,25 +61,33 @@ export function CharacterPrivateInfo({
 					{location ? (
 						<div>
 							<p className="text-xs text-muted-foreground">
-								{location.solarSystemName ? 'Solar System' : 'System ID'}
+								{location.solarSystemName
+									? t('characterpages.solarSystem')
+									: t('characterpages.systemId')}
 							</p>
-							<p className="text-lg font-bold" title={`System ID: ${location.solarSystemId}`}>
+							<p
+								className="text-lg font-bold"
+								title={t('characterpages.systemIdValue1', { value1: location.solarSystemId })}
+							>
 								{location.solarSystemName || location.solarSystemId}
 							</p>
 							{location.stationId && (
 								<p className="text-xs text-muted-foreground mt-1">
 									{location.stationName ? (
-										<span title={`Station ID: ${location.stationId}`}>
-											Station: {location.stationName}
+										<span
+											title={t('characterpages.stationIdValue1', { value1: location.stationId })}
+										>
+											{t('characterpages.station')}
+											{location.stationName}
 										</span>
 									) : (
-										`Station: ${location.stationId}`
+										t('characterpages.stationValue1', { value1: location.stationId })
 									)}
 								</p>
 							)}
 						</div>
 					) : (
-						<p className="text-sm text-muted-foreground">Not available</p>
+						<p className="text-sm text-muted-foreground">{t('characterpages.notAvailable')}</p>
 					)}
 				</CardContent>
 			</Card>
@@ -81,7 +95,7 @@ export function CharacterPrivateInfo({
 			{/* Wallet */}
 			<Card>
 				<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle className="text-sm font-medium">Wallet</CardTitle>
+					<CardTitle className="text-sm font-medium">{t('characterpages.wallet')}</CardTitle>
 					<div className="flex items-center gap-1">
 						<Wallet className="h-4 w-4 text-muted-foreground" />
 						<Lock className="h-3 w-3 text-muted-foreground" />
@@ -90,11 +104,11 @@ export function CharacterPrivateInfo({
 				<CardContent>
 					{wallet ? (
 						<div>
-							<p className="text-xs text-muted-foreground">Balance</p>
+							<p className="text-xs text-muted-foreground">{t('characterpages.balance')}</p>
 							<p className="text-lg font-bold truncate">{formatISK(wallet.balance)}</p>
 						</div>
 					) : (
-						<p className="text-sm text-muted-foreground">Not available</p>
+						<p className="text-sm text-muted-foreground">{t('characterpages.notAvailable')}</p>
 					)}
 				</CardContent>
 			</Card>
@@ -102,7 +116,7 @@ export function CharacterPrivateInfo({
 			{/* Status */}
 			<Card>
 				<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle className="text-sm font-medium">Status</CardTitle>
+					<CardTitle className="text-sm font-medium">{t('characterpages.status')}</CardTitle>
 					<div className="flex items-center gap-1">
 						<Activity className="h-4 w-4 text-muted-foreground" />
 						<Lock className="h-3 w-3 text-muted-foreground" />
@@ -113,10 +127,10 @@ export function CharacterPrivateInfo({
 						<div>
 							<div className="flex items-center gap-2">
 								<div className="h-2 w-2 rounded-full bg-gray-400" />
-								<p className="text-lg font-bold">Unknown</p>
+								<p className="text-lg font-bold">{t('characterpages.unknown')}</p>
 							</div>
 							<p className="text-xs text-muted-foreground mt-1">
-								Token is no longer valid for live status updates.
+								{t('characterpages.tokenIsNoLongerValidForLiveStatusUpdates')}
 							</p>
 						</div>
 					) : status ? (
@@ -127,16 +141,19 @@ export function CharacterPrivateInfo({
 										status.online ? 'bg-green-500' : 'bg-gray-400'
 									}`}
 								/>
-								<p className="text-lg font-bold">{status.online ? 'Online' : 'Offline'}</p>
+								<p className="text-lg font-bold">
+									{status.online ? t('characterpages.online') : t('characterpages.offline')}
+								</p>
 							</div>
 							{status.lastLogin && (
 								<p className="text-xs text-muted-foreground mt-1">
-									Last login: {new Date(status.lastLogin).toLocaleDateString()}
+									{t('characterpages.lastLogin')}
+									{new Date(status.lastLogin).toLocaleDateString(getActiveLocale())}
 								</p>
 							)}
 						</div>
 					) : (
-						<p className="text-sm text-muted-foreground">Not available</p>
+						<p className="text-sm text-muted-foreground">{t('characterpages.notAvailable')}</p>
 					)}
 				</CardContent>
 			</Card>

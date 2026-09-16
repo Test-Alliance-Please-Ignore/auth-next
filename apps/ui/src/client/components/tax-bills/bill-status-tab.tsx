@@ -1,6 +1,7 @@
 import { BillStatusReportGrid } from '@/components/tax-reports/grids'
 import { useReportGridState } from '@/components/tax-reports/use-report-grid-state'
 import { useTaxBillStatusReport } from '@/hooks/corporation-tax'
+import { useAppTranslation } from '@/i18n'
 
 type BillStatusTabProps = {
 	effectiveCorporationId: string | null
@@ -27,6 +28,8 @@ export function BillStatusTab({
 	syncBillError,
 	retractBillError,
 }: BillStatusTabProps) {
+	const { t } = useAppTranslation()
+
 	const grid = useReportGridState({
 		defaultSortBy: 'dueDate',
 		defaultSortDir: 'asc',
@@ -71,14 +74,14 @@ export function BillStatusTab({
 				<div className="mt-3 text-sm text-destructive">
 					{syncBillError instanceof Error
 						? syncBillError.message
-						: 'Failed to sync assessment bill status'}
+						: t('tax.failedToSyncAssessmentBillStatus')}
 				</div>
 			) : null}
 			{retractBillError ? (
 				<div className="mt-3 text-sm text-destructive">
 					{retractBillError instanceof Error
 						? retractBillError.message
-						: 'Failed to retract assessment bill'}
+						: t('tax.failedToRetractAssessmentBill')}
 				</div>
 			) : null}
 		</div>

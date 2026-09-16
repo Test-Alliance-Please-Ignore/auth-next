@@ -108,11 +108,11 @@ export default function HrAuditorUserProfilePage() {
 	)
 	const hrCharacterById = useMemo(
 		() => new Map(hrCharacters.map((character) => [character.characterId, character])),
-		[hrCharacters]
+		[hrCharacters, t]
 	)
 	const reportCharacterById = useMemo(
 		() => new Map(reportCharacters.map((character) => [character.characterId, character])),
-		[reportCharacters]
+		[reportCharacters, t]
 	)
 	const { data: notes, isLoading: notesLoading } = useHRNotes(
 		userId ? { subjectUserId: userId } : undefined
@@ -132,21 +132,21 @@ export default function HrAuditorUserProfilePage() {
 			userDetails.characters[0] ??
 			null
 		)
-	}, [userDetails])
+	}, [userDetails, t])
 
-	const accountName = mainCharacter?.characterName ?? userId ?? 'Unknown'
+	const accountName = mainCharacter?.characterName ?? userId ?? t('hrpages.unknown')
 	const canAddNote = isAuditor || user?.is_admin === true
 	const canRequestCeoReports = user?.is_admin || isAuditor
 	const canRequestCharacterReport = (character: { role?: 'CEO' | 'Director' | 'Member' | null }) =>
 		canRequestCeoReports || character.role !== 'CEO'
-	usePageTitle(userDetails ? `${accountName} | Auditor` : 'Auditor Profile')
+	usePageTitle(userDetails ? `${accountName} | Auditor` : t('hrpages.auditorProfile'))
 
 	const sortedApps = useMemo(() => {
 		if (!applications) return []
 		return [...applications].sort(
 			(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
 		)
-	}, [applications])
+	}, [applications, t])
 
 	const [referrerNavigationState] = useState(getApplicationProfileNavigationFromReferrer)
 	const navigationState =
@@ -157,15 +157,15 @@ export default function HrAuditorUserProfilePage() {
 	const fromMembers = source === 'members' || returnTo?.includes('/members')
 	const backTarget = returnTo ?? '/hr/users'
 	const breadcrumbMidLabel = fromApplications
-		? 'Applications'
+		? t('hrpages.applications2')
 		: fromMembers
-			? 'Members'
-			: 'User Search'
+			? t('hrpages.members')
+			: t('hrpages.userSearch')
 	const backLabel = fromApplications
-		? 'Back to Applications'
+		? t('hrpages.backToApplications')
 		: fromMembers
-			? 'Back to Members'
-			: 'Back to User Search'
+			? t('hrpages.backToMembers')
+			: t('hrpages.backToUserSearch')
 
 	const rows = useMemo<AuditorCharacterRow[]>(() => {
 		if (!userDetails) return []
@@ -210,7 +210,7 @@ export default function HrAuditorUserProfilePage() {
 				if (!a.isPrimary && b.isPrimary) return 1
 				return a.characterName.localeCompare(b.characterName)
 			})
-	}, [hrCharacterById, hrCharacters, reportCharacterById, userDetails])
+	}, [hrCharacterById, hrCharacters, reportCharacterById, userDetails, t])
 
 	const characterDetailQuery = useCharacterPrivateDetailsBulk(
 		rows.map((character) => character.characterId)
@@ -224,7 +224,7 @@ export default function HrAuditorUserProfilePage() {
 				rows.map((row) => row.corporationId).filter((value): value is string => Boolean(value))
 			),
 		],
-		[rows]
+		[rows, t]
 	)
 	const memberAccountQueries = useQueries({
 		queries: corporationIdsForMemberMeta.map((corporationId) => ({
@@ -255,7 +255,7 @@ export default function HrAuditorUserProfilePage() {
 			}
 		}
 		return map
-	}, [memberAccountQueries])
+	}, [memberAccountQueries, t])
 	const spByCharacterId = new Map<string, number | null>()
 	const walletByCharacterId = new Map<string, string | null>()
 	const metricsLoadingByCharacterId = new Map<string, boolean>()
@@ -302,7 +302,9 @@ export default function HrAuditorUserProfilePage() {
 			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
+							{t('hrpages.accessDenied')}
+						</CardTitle>
 					</CardHeader>
 				</Card>
 			</Container>
@@ -314,7 +316,7 @@ export default function HrAuditorUserProfilePage() {
 			<Container>
 				<Card className="max-w-2xl mx-auto">
 					<CardHeader className="text-center">
-						<CardTitle>User Not Found</CardTitle>
+						<CardTitle>{t('hrpages.userNotFound2')}</CardTitle>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" asChild>
@@ -430,7 +432,7 @@ export default function HrAuditorUserProfilePage() {
 
 	return (
 		<UserProfilePageShell
-			rootLabel="Corporations"
+			rootLabel={t('hrpages.corporations')}
 			rootTo="/corporations"
 			midLabel={breadcrumbMidLabel}
 			backTarget={backTarget}
@@ -444,10 +446,14 @@ export default function HrAuditorUserProfilePage() {
 			sidebarBadges={
 				<>
 					{userDetails.is_admin && (
-						<UserProfileStatusBadge variant="default">Site Admin</UserProfileStatusBadge>
+						<UserProfileStatusBadge variant="default">
+							{t('hrpages.siteAdmin')}
+						</UserProfileStatusBadge>
 					)}
 					{userDetails.isBlacklisted && (
-						<UserProfileStatusBadge variant="destructive">Blocklisted</UserProfileStatusBadge>
+						<UserProfileStatusBadge variant="destructive">
+							{t('hrpages.blocklisted')}
+						</UserProfileStatusBadge>
 					)}
 					{userDetails.discordUserId ? (
 						<UserProfileStatusBadge variant="success">
@@ -471,10 +477,16 @@ export default function HrAuditorUserProfilePage() {
 					{(userDetails.discord?.username || userDetails.discordUserId) && (
 						<div className="mt-2 flex flex-wrap items-center justify-center gap-2">
 							{userDetails.discord?.username ? (
-								<CopyableMetaPill label="Discord username" value={userDetails.discord.username} />
+								<CopyableMetaPill
+									label={t('hrpages.discordUsername2')}
+									value={userDetails.discord.username}
+								/>
 							) : null}
 							{userDetails.discordUserId ? (
-								<CopyableMetaPill label="Discord ID" value={userDetails.discordUserId} />
+								<CopyableMetaPill
+									label={t('hrpages.discordId')}
+									value={userDetails.discordUserId}
+								/>
 							) : null}
 						</div>
 					)}
@@ -482,17 +494,20 @@ export default function HrAuditorUserProfilePage() {
 			}
 			sidebarStats={
 				<>
-					<UserProfileStatRow label="Characters" value={rows.length} />
-					<UserProfileStatsSeparator />
-					<UserProfileStatRow label="Groups" value={userDetails.groupMemberships.length} />
+					<UserProfileStatRow label={t('hrpages.characters')} value={rows.length} />
 					<UserProfileStatsSeparator />
 					<UserProfileStatRow
-						label="Created"
+						label={t('hrpages.groups')}
+						value={userDetails.groupMemberships.length}
+					/>
+					<UserProfileStatsSeparator />
+					<UserProfileStatRow
+						label={t('hrpages.created')}
 						value={formatDistanceToNow(new Date(userDetails.createdAt), { addSuffix: true })}
 					/>
 					<UserProfileStatsSeparator />
 					<UserProfileStatRow
-						label="Updated"
+						label={t('hrpages.updated')}
 						value={formatDistanceToNow(new Date(userDetails.updatedAt), { addSuffix: true })}
 					/>
 				</>
@@ -501,7 +516,7 @@ export default function HrAuditorUserProfilePage() {
 				<Button variant="ghost" asChild className="w-full">
 					<Link to={`/hr/users/${userDetails.id}/groups`}>
 						<Users className="h-4 w-4" />
-						View Group Memberships
+						{t('hrpages.viewGroupMemberships')}
 					</Link>
 				</Button>
 			}
@@ -513,7 +528,9 @@ export default function HrAuditorUserProfilePage() {
 							<div className="flex items-start gap-3">
 								<AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
 								<div className="space-y-1">
-									<p className="font-medium">Private ESI data is hidden for some characters</p>
+									<p className="font-medium">
+										{t('hrpages.privateEsiDataIsHiddenForSomeCharacters')}
+									</p>
 									<p className="text-sm text-amber-800 dark:text-amber-200">
 										{privateDataUnavailableMessage}
 									</p>
@@ -552,7 +569,9 @@ export default function HrAuditorUserProfilePage() {
 						isScanAllVisible
 						isScanningAll={isScanningAll}
 						scanAllLabel={
-							isScanningAll ? 'Scanning All...' : `Scan All (${scanEligibleCharacters.length})`
+							isScanningAll
+								? t('hrpages.scanningAll')
+								: t('hrpages.scanAll', { value1: scanEligibleCharacters.length })
 						}
 						scanAllDisabled={
 							isScanningAll ||
@@ -572,7 +591,7 @@ export default function HrAuditorUserProfilePage() {
 							state: {
 								source: 'hr-auditor-user-profile',
 								backTo: `/hr/users/${userId}`,
-								backLabel: 'Back to User Details',
+								backLabel: t('hrpages.backToUserDetails'),
 								corporationId: character.corporationId ?? undefined,
 							},
 						})}
@@ -606,7 +625,7 @@ export default function HrAuditorUserProfilePage() {
 						}
 					/>
 					<IpHistoryCard
-						title="IP History"
+						title={t('hrpages.ipHistory')}
 						entries={ipHistoryData?.entries ?? []}
 						buildHashInspectionLink={(ipHash) =>
 							`/hr/ip-history/${encodeURIComponent(ipHash)}?userId=${encodeURIComponent(userDetails.id)}`
@@ -639,7 +658,7 @@ export default function HrAuditorUserProfilePage() {
 				<FulcrumSingleScanDialog
 					open={singleScanDialogCharacter !== null}
 					onOpenChange={(open) => !open && setSingleScanDialogCharacter(null)}
-					characterName={singleScanDialogCharacter?.characterName ?? 'Character'}
+					characterName={singleScanDialogCharacter?.characterName ?? t('hrpages.character')}
 					sendDmForScanRequests={sendDmForScanRequests}
 					setSendDmForScanRequests={setSendDmForScanRequests}
 					onConfirm={handleConfirmSingleScan}

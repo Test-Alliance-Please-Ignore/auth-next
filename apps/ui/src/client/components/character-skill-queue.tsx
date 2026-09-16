@@ -2,6 +2,7 @@ import { Clock, GraduationCap } from 'lucide-react'
 
 import { formatSkillWithLevel } from '@repo/eve-types'
 
+import { useAppTranslation } from '@/i18n'
 import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
@@ -27,6 +28,8 @@ interface CharacterSkillQueueProps {
 }
 
 export function CharacterSkillQueue({ queue }: CharacterSkillQueueProps) {
+	const { t } = useAppTranslation()
+
 	const sortedQueue = [...queue].sort((a, b) => a.queuePosition - b.queuePosition)
 	const currentlyTraining = sortedQueue.find(
 		(entry) => entry.startDate && new Date(entry.startDate) <= new Date()
@@ -39,12 +42,14 @@ export function CharacterSkillQueue({ queue }: CharacterSkillQueueProps) {
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
 					<GraduationCap className="h-5 w-5" />
-					Skill Queue
+					{t('characterpages.skillQueue')}
 				</CardTitle>
 			</CardHeader>
 			<CardContent>
 				{sortedQueue.length === 0 ? (
-					<p className="text-sm text-muted-foreground">No skills in training queue</p>
+					<p className="text-sm text-muted-foreground">
+						{t('characterpages.noSkillsInTrainingQueue')}
+					</p>
 				) : (
 					<div className="space-y-3">
 						{sortedQueue.slice(0, 10).map((entry) => {
@@ -58,7 +63,8 @@ export function CharacterSkillQueue({ queue }: CharacterSkillQueueProps) {
 									: 0
 
 							// Use skill name directly from enriched data
-							const skillName = entry.skillName || `Unknown Skill (${entry.skillId})`
+							const skillName =
+								entry.skillName || t('characterpages.unknownSkillValue1', { value1: entry.skillId })
 							const skillDisplay = formatSkillWithLevel(skillName, entry.finishedLevel)
 
 							return (
@@ -74,14 +80,15 @@ export function CharacterSkillQueue({ queue }: CharacterSkillQueueProps) {
 												<span className="text-sm font-medium">{skillDisplay}</span>
 												{isCurrentlyTraining && (
 													<span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">
-														Training
+														{t('characterpages.training')}
 													</span>
 												)}
 											</div>
 											{finishTime && (
 												<p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
 													<Clock className="h-3 w-3" />
-													Completes {formatDistanceToNow(finishTime, { addSuffix: true })}
+													{t('characterpages.completes')}
+													{formatDistanceToNow(finishTime, { addSuffix: true })}
 												</p>
 											)}
 										</div>
@@ -98,7 +105,8 @@ export function CharacterSkillQueue({ queue }: CharacterSkillQueueProps) {
 												/>
 											</div>
 											<p className="text-xs text-muted-foreground mt-1">
-												{Math.round(progress)}% complete
+												{Math.round(progress)}
+												{t('characterpages.complete')}
 											</p>
 										</div>
 									)}
@@ -107,7 +115,9 @@ export function CharacterSkillQueue({ queue }: CharacterSkillQueueProps) {
 						})}
 						{sortedQueue.length > 10 && (
 							<p className="text-xs text-muted-foreground text-center">
-								And {sortedQueue.length - 10} more skills in queue...
+								{t('characterpages.and')}
+								{sortedQueue.length - 10}
+								{t('characterpages.moreSkillsInQueue')}
 							</p>
 						)}
 					</div>

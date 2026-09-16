@@ -16,12 +16,15 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
 import { useMemberShipHistory, useTrackingSession } from '../hooks'
 import { formatDurationBetween } from '../utils/format'
 
 export default function MemberShipHistory() {
-	usePageTitle('Pilot Ship History')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('fleetTracking.pilotShipHistory'))
 	const { sessionId, characterId } = useParams<{ sessionId: string; characterId: string }>()
 
 	const { data: session } = useTrackingSession(sessionId)
@@ -31,7 +34,7 @@ export default function MemberShipHistory() {
 	if (isLoading || isFetching) return <LoadingPage />
 
 	const rows = data?.items ?? []
-	const characterName = data?.characterName ?? 'Pilot Ship History'
+	const characterName = data?.characterName ?? t('fleetTracking.pilotShipHistory')
 	const totalMs = rows.reduce((sum, r) => {
 		const start = new Date(r.startedAt).getTime()
 		const end = r.endedAt ? new Date(r.endedAt).getTime() : Date.now()
@@ -42,22 +45,29 @@ export default function MemberShipHistory() {
 		<Container>
 			<PageHeader
 				title={characterName}
-				description="Ship history"
+				description={t('fleetTracking.shipHistory')}
 				action={
 					<Button asChild variant="ghost" size="sm">
 						<Link to={`/fleet-tracking/${sessionId}`}>
 							<ArrowLeft className="h-4 w-4" />
-							Session
+							{t('fleetTracking.session')}
 						</Link>
 					</Button>
 				}
 			/>
 			<div className="mb-6">
-				{session && <p className="text-sm text-muted-foreground">Session: {session.name}</p>}
+				{session && (
+					<p className="text-sm text-muted-foreground">
+						{t('fleetTracking.session2')}
+						{session.name}
+					</p>
+				)}
 				<p className="text-sm pt-2">
-					Time in fleet: <span className="font-medium">{formatDuration(totalMs)}</span>
+					{t('fleetTracking.timeInFleet2')}
+					<span className="font-medium">{formatDuration(totalMs)}</span>
 					{' • '}
-					Ships flown: <span className="font-medium">{data?.shipsFlown ?? 0}</span>
+					{t('fleetTracking.shipsFlown2')}
+					<span className="font-medium">{data?.shipsFlown ?? 0}</span>
 				</p>
 			</div>
 
@@ -65,17 +75,17 @@ export default function MemberShipHistory() {
 				<CardContent className="p-0">
 					{rows.length === 0 ? (
 						<div className="py-8 text-center text-sm text-muted-foreground">
-							No ship history recorded for this pilot in this session.
+							{t('fleetTracking.noShipHistoryRecordedForThisPilotInThisSession')}
 						</div>
 					) : (
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>Ship</TableHead>
-									<TableHead>Boarded in (system)</TableHead>
-									<TableHead>From</TableHead>
-									<TableHead>To</TableHead>
-									<TableHead>Duration</TableHead>
+									<TableHead>{t('fleetTracking.ship')}</TableHead>
+									<TableHead>{t('fleetTracking.boardedInSystem')}</TableHead>
+									<TableHead>{t('fleetTracking.from')}</TableHead>
+									<TableHead>{t('fleetTracking.to')}</TableHead>
+									<TableHead>{t('fleetTracking.duration')}</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -102,8 +112,7 @@ export default function MemberShipHistory() {
 			</Card>
 
 			<p className="text-xs text-muted-foreground mt-3">
-				Note: location shown is where the pilot was when they boarded each ship. Movement within the
-				same ship is not tracked.
+				{t('fleetTracking.noteLocationShownIsWhereThePilotWasWhenThey')}
 			</p>
 		</Container>
 	)

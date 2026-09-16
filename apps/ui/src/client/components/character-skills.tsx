@@ -3,6 +3,8 @@ import { useMemo, useState } from 'react'
 
 import { formatSkillPoints } from '@repo/eve-types'
 
+import { useAppTranslation } from '@/i18n'
+
 import { cn } from '../lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
@@ -135,6 +137,8 @@ function SkillLevelPips({
 }
 
 export function CharacterSkills({ skills, allSkills, showProgress = false }: CharacterSkillsProps) {
+	const { t } = useAppTranslation()
+
 	const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
 
 	const groups = useMemo(() => {
@@ -155,7 +159,7 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 				const catalogSkillId = String(catalogSkill.id ?? catalogSkill.skillId)
 				catalogSkillIds.add(catalogSkillId)
 
-				const groupName = catalogSkill.groupName || 'Unknown'
+				const groupName = catalogSkill.groupName || t('characterpages.unknown')
 				let group = mergedByGroup.get(groupName)
 				if (!group) {
 					group = { groupName, totalSP: 0, trainedCount: 0, totalCount: 0, skills: [] }
@@ -186,7 +190,8 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 			for (const [trainedSkillId, trainedSkill] of trainedMap.entries()) {
 				if (catalogSkillIds.has(trainedSkillId)) continue
 
-				const groupName = trainedSkill.skillGroup || trainedSkill.skillCategory || 'Unknown'
+				const groupName =
+					trainedSkill.skillGroup || trainedSkill.skillCategory || t('characterpages.unknown')
 				let group = mergedByGroup.get(groupName)
 				if (!group) {
 					group = { groupName, totalSP: 0, trainedCount: 0, totalCount: 0, skills: [] }
@@ -195,7 +200,9 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 
 				group.skills.push({
 					skillId: Number(trainedSkill.skillId),
-					skillName: trainedSkill.skillName || `Unknown Skill (${trainedSkill.skillId})`,
+					skillName:
+						trainedSkill.skillName ||
+						t('characterpages.unknownSkillValue1', { value1: trainedSkill.skillId }),
 					rank: trainedSkill.rank || 1,
 					groupName,
 					trainedSkillLevel: trainedSkill.trainedSkillLevel,
@@ -210,7 +217,8 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 		} else {
 			// Fallback: trained skills only
 			for (const skill of skills.skills) {
-				const groupName = skill.skillGroup || skill.skillCategory || 'Uncategorized'
+				const groupName =
+					skill.skillGroup || skill.skillCategory || t('characterpages.uncategorized')
 				let group = mergedByGroup.get(groupName)
 				if (!group) {
 					group = { groupName, totalSP: 0, trainedCount: 0, totalCount: 0, skills: [] }
@@ -219,7 +227,7 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 
 				group.skills.push({
 					skillId: Number(skill.skillId),
-					skillName: skill.skillName || `Skill ${skill.skillId}`,
+					skillName: skill.skillName || t('characterpages.skillValue1', { value1: skill.skillId }),
 					rank: skill.rank || 1,
 					groupName,
 					trainedSkillLevel: skill.trainedSkillLevel,
@@ -235,7 +243,7 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 
 		// Sort groups alphabetically (like in-game)
 		return Array.from(mergedByGroup.values()).sort((a, b) => a.groupName.localeCompare(b.groupName))
-	}, [skills.skills, allSkills])
+	}, [skills.skills, allSkills, t])
 
 	const activeGroup = groups.find((g) => g.groupName === selectedGroup)
 
@@ -245,19 +253,25 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 				<CardTitle className="flex items-center justify-between">
 					<div className="flex items-center gap-2">
 						<GraduationCap className="h-5 w-5" />
-						Skills
+						{t('characterpages.skills')}
 					</div>
 					<div className="text-sm font-normal text-muted-foreground">
-						{formatSkillPoints(skills.totalSp)} Total
+						{formatSkillPoints(skills.totalSp)}
+						{t('characterpages.total')}
 						{skills.unallocatedSp != null && skills.unallocatedSp > 0 && (
-							<span className="ml-2">• {formatSkillPoints(skills.unallocatedSp)} Unallocated</span>
+							<span className="ml-2">
+								• {formatSkillPoints(skills.unallocatedSp)}
+								{t('characterpages.unallocated')}
+							</span>
 						)}
 					</div>
 				</CardTitle>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				{groups.length === 0 ? (
-					<p className="text-sm text-muted-foreground">No skills data available</p>
+					<p className="text-sm text-muted-foreground">
+						{t('characterpages.noSkillsDataAvailable')}
+					</p>
 				) : (
 					<>
 						{/* Skill Group Grid — column-first fill */}
@@ -305,7 +319,8 @@ export function CharacterSkills({ skills, allSkills, showProgress = false }: Cha
 								<div className="flex items-center justify-between px-4 py-2.5 border-b bg-muted/30">
 									<h4 className="text-sm font-semibold">{activeGroup.groupName}</h4>
 									<span className="text-xs text-muted-foreground">
-										{activeGroup.trainedCount}/{activeGroup.totalCount} trained
+										{activeGroup.trainedCount}/{activeGroup.totalCount}
+										{t('characterpages.trained')}
 										{' • '}
 										{formatSkillPoints(activeGroup.totalSP)}
 									</span>

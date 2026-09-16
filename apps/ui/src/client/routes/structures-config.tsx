@@ -2,26 +2,33 @@ import { ArrowLeft, Save } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router'
 
+import { hasAllStructureManagerPermission } from '@repo/groups'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { Input } from '@/components/ui/input'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { PageHeader } from '@/components/ui/page-header'
+import {
+	useStructureModuleConfig,
+	useUpdateStructureModuleConfig,
+} from '@/features/structures/hooks'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
-import { useStructureModuleConfig, useUpdateStructureModuleConfig } from '@/features/structures/hooks'
+import { useAppTranslation } from '@/i18n'
 import toast from '@/lib/toast'
 
-import { hasAllStructureManagerPermission } from '@repo/groups'
-
 export default function StructuresConfigPage() {
-	usePageTitle('Structures Settings')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('structures.structuresSettings'))
 
 	const { user, isLoading: authLoading } = useAuth()
 	const { permissions, isLoading: permissionsLoading } = useUserPermissions()
-	const canManageStructures = user?.is_admin === true || hasAllStructureManagerPermission(permissions)
+	const canManageStructures =
+		user?.is_admin === true || hasAllStructureManagerPermission(permissions)
 	const { data: config, isLoading, error } = useStructureModuleConfig()
 	const updateConfig = useUpdateStructureModuleConfig()
 
@@ -43,7 +50,7 @@ export default function StructuresConfigPage() {
 		<Button asChild variant="ghost" size="sm" className="gap-2 whitespace-nowrap">
 			<Link to="/structures">
 				<ArrowLeft className="h-4 w-4" />
-				Back to Structures
+				{t('structures.backToStructures')}
 			</Link>
 		</Button>
 	)
@@ -56,17 +63,17 @@ export default function StructuresConfigPage() {
 		return (
 			<Container className="space-y-6 py-6">
 				<PageHeader
-					title="Structures Settings"
-					description="Set the module-wide fuel thresholds used for low, critical, and alert summaries."
+					title={t('structures.structuresSettings')}
+					description={t('structures.setTheModuleWideFuelThresholdsUsedForLowCritical')}
 					action={backAction}
 				/>
 				<Card>
 					<CardHeader>
-						<CardTitle>Fuel Thresholds</CardTitle>
-						<CardDescription>Loading structure settings...</CardDescription>
+						<CardTitle>{t('structures.fuelThresholds')}</CardTitle>
+						<CardDescription>{t('structures.loadingStructureSettings')}</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<LoadingSpinner label="Loading structure settings..." />
+						<LoadingSpinner label={t('structures.loadingStructureSettings')} />
 					</CardContent>
 				</Card>
 			</Container>
@@ -77,15 +84,15 @@ export default function StructuresConfigPage() {
 		return (
 			<Container className="space-y-6 py-6">
 				<PageHeader
-					title="Structures Settings"
-					description="Set the module-wide fuel thresholds used for low, critical, and alert summaries."
+					title={t('structures.structuresSettings')}
+					description={t('structures.setTheModuleWideFuelThresholdsUsedForLowCritical')}
 					action={backAction}
 				/>
 				<Card>
 					<CardHeader>
-						<CardTitle>Structures Settings</CardTitle>
+						<CardTitle>{t('structures.structuresSettings')}</CardTitle>
 						<CardDescription>
-							The module-wide structure fuel configuration could not be loaded.
+							{t('structures.theModuleWideStructureFuelConfigurationCouldNotBeLoaded')}
 						</CardDescription>
 					</CardHeader>
 				</Card>
@@ -96,28 +103,30 @@ export default function StructuresConfigPage() {
 	return (
 		<Container className="space-y-6 py-6">
 			<PageHeader
-				title="Structures Settings"
-				description="Set the module-wide fuel thresholds used for low, critical, and alert summaries."
+				title={t('structures.structuresSettings')}
+				description={t('structures.setTheModuleWideFuelThresholdsUsedForLowCritical')}
 				action={backAction}
 			/>
 
 			<Card>
 				<CardHeader>
-					<CardTitle>Fuel Thresholds</CardTitle>
+					<CardTitle>{t('structures.fuelThresholds')}</CardTitle>
 					<CardDescription>
-						These values apply across the module for both time-based and amount-based structures.
+						{t('structures.theseValuesApplyAcrossTheModuleForBothTimeBased')}
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="grid gap-4 md:grid-cols-2">
 						<div className="space-y-4 rounded-lg border border-border/60 p-4">
 							<div className="space-y-1">
-								<div className="text-sm font-medium">Time-based structures</div>
-								<p className="text-xs text-muted-foreground">Applies to fuel measured by remaining hours.</p>
+								<div className="text-sm font-medium">{t('structures.timeBasedStructures')}</div>
+								<p className="text-xs text-muted-foreground">
+									{t('structures.appliesToFuelMeasuredByRemainingHours')}
+								</p>
 							</div>
 							<div className="space-y-2">
 								<label className="text-sm font-medium" htmlFor="low-fuel-time-threshold-hours">
-									Low alert threshold (hours)
+									{t('structures.lowAlertThresholdHours')}
 								</label>
 								<Input
 									id="low-fuel-time-threshold-hours"
@@ -129,7 +138,7 @@ export default function StructuresConfigPage() {
 							</div>
 							<div className="space-y-2">
 								<label className="text-sm font-medium" htmlFor="critical-fuel-time-threshold-hours">
-									Critical alert threshold (hours)
+									{t('structures.criticalAlertThresholdHours')}
 								</label>
 								<Input
 									id="critical-fuel-time-threshold-hours"
@@ -142,12 +151,14 @@ export default function StructuresConfigPage() {
 						</div>
 						<div className="space-y-4 rounded-lg border border-border/60 p-4">
 							<div className="space-y-1">
-								<div className="text-sm font-medium">Amount-based structures</div>
-								<p className="text-xs text-muted-foreground">Applies to structures that track static fuel units.</p>
+								<div className="text-sm font-medium">{t('structures.amountBasedStructures')}</div>
+								<p className="text-xs text-muted-foreground">
+									{t('structures.appliesToStructuresThatTrackStaticFuelUnits')}
+								</p>
 							</div>
 							<div className="space-y-2">
 								<label className="text-sm font-medium" htmlFor="low-fuel-amount-threshold">
-									Low alert threshold (units)
+									{t('structures.lowAlertThresholdUnits')}
 								</label>
 								<Input
 									id="low-fuel-amount-threshold"
@@ -159,7 +170,7 @@ export default function StructuresConfigPage() {
 							</div>
 							<div className="space-y-2">
 								<label className="text-sm font-medium" htmlFor="critical-fuel-amount-threshold">
-									Critical alert threshold (units)
+									{t('structures.criticalAlertThresholdUnits')}
 								</label>
 								<Input
 									id="critical-fuel-amount-threshold"
@@ -196,17 +207,19 @@ export default function StructuresConfigPage() {
 												? Number.parseInt(criticalFuelAmountThreshold, 10)
 												: undefined,
 									})
-									toast.success('Structure fuel settings saved.')
+									toast.success(t('structures.structureFuelSettingsSaved'))
 								} catch (mutationError) {
 									toast.error(
-										mutationError instanceof Error ? mutationError.message : 'Failed to save settings.'
+										mutationError instanceof Error
+											? mutationError.message
+											: t('structures.failedToSaveSettings')
 									)
 								}
 							}}
 							loading={saveMutation.isPending}
 						>
 							<Save className="h-4 w-4" />
-							Save Changes
+							{t('structures.saveChanges')}
 						</Button>
 					</div>
 				</CardContent>

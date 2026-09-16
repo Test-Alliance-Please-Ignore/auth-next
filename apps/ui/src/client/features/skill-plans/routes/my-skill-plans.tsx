@@ -2,6 +2,8 @@ import { Plus, Settings } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link, Navigate } from 'react-router'
 
+import { useAppTranslation } from '@/i18n'
+
 import { Button } from '../../../components/ui/button'
 import { Card, CardContent } from '../../../components/ui/card'
 import { Container } from '../../../components/ui/container'
@@ -17,7 +19,9 @@ import { useMySkillPlans } from '../hooks'
 import { groupPlansByCategory } from '../utils/group-by-category'
 
 export default function MySkillPlans() {
-	usePageTitle('My Skill Plans')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('skillPlans.mySkillPlans'))
 
 	const { user, isAuthenticated, isLoading: authLoading } = useAuth()
 	const { hasPermission } = useUserPermissions()
@@ -46,7 +50,7 @@ export default function MySkillPlans() {
 	// Group plans by category
 	const groupedPlans = useMemo(() => {
 		return groupPlansByCategory(plans)
-	}, [plans])
+	}, [plans, t])
 
 	if (isLoading || authLoading) {
 		return <LoadingPage />
@@ -54,29 +58,35 @@ export default function MySkillPlans() {
 
 	return (
 		<Container>
-			<PageHeader title="My Skill Plans" description="Manage your skill training plans" />
+			<PageHeader
+				title={t('skillPlans.mySkillPlans')}
+				description={t('skillPlans.manageYourSkillTrainingPlans')}
+			/>
 
 			<Section>
 				{/* Actions bar */}
 				<div className="flex justify-between items-center mb-6">
-					<h2 className="text-xl font-semibold">Your Plans ({totalPlans})</h2>
+					<h2 className="text-xl font-semibold">
+						{t('skillPlans.yourPlans')}
+						{totalPlans})
+					</h2>
 					<div className="flex gap-2">
 						{canManageCategories && (
 							<Button variant="ghost" asChild>
 								<Link to="/skill-plans/categories/manage">
 									<Settings className="h-4 w-4" />
-									Manage Categories
+									{t('skillPlans.manageCategories')}
 								</Link>
 							</Button>
 						)}
 						<Button variant="ghost" asChild>
-							<Link to="/skill-plans">Browse All Plans</Link>
+							<Link to="/skill-plans">{t('skillPlans.browseAllPlans')}</Link>
 						</Button>
 						{canCreatePlans && (
 							<Button asChild>
 								<Link to="/skill-plans/create">
 									<Plus className="h-4 w-4" />
-									Create New Plan
+									{t('skillPlans.createNewPlan')}
 								</Link>
 							</Button>
 						)}
@@ -88,7 +98,9 @@ export default function MySkillPlans() {
 					<div className="space-y-6">
 						{groupedPlans.map((group) => (
 							<div key={group.category?.id || 'uncategorized'}>
-								<CategorySectionHeader name={group.category?.name || 'Uncategorized'} />
+								<CategorySectionHeader
+									name={group.category?.name || t('skillPlans.uncategorized')}
+								/>
 								<div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
 									{group.plans.map((plan) => (
 										<SkillPlanCard
@@ -104,12 +116,14 @@ export default function MySkillPlans() {
 				) : (
 					<Card>
 						<CardContent className="py-12 text-center">
-							<p className="text-muted-foreground mb-4">You haven't created any skill plans yet.</p>
+							<p className="text-muted-foreground mb-4">
+								{t('skillPlans.youHavenTCreatedAnySkillPlansYet')}
+							</p>
 							{canCreatePlans && (
 								<Button asChild>
 									<Link to="/skill-plans/create">
 										<Plus className="h-4 w-4" />
-										Create Your First Plan
+										{t('skillPlans.createYourFirstPlan')}
 									</Link>
 								</Button>
 							)}

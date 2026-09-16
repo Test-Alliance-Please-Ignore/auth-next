@@ -13,6 +13,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useAppTranslation } from '@/i18n'
 
 import { formatDuration } from '../utils/format'
 
@@ -26,6 +27,8 @@ interface SessionRosterPanelProps {
 }
 
 export function SessionRosterPanel({ sessionId, roster }: SessionRosterPanelProps) {
+	const { t } = useAppTranslation()
+
 	const [sortKey, setSortKey] = useState<SortKey>('totalSeconds')
 	const [asc, setAsc] = useState(false)
 
@@ -50,7 +53,7 @@ export function SessionRosterPanel({ sessionId, roster }: SessionRosterPanelProp
 			return asc ? cmp : -cmp
 		})
 		return out
-	}, [roster, sortKey, asc])
+	}, [roster, sortKey, asc, t])
 
 	const onHeaderClick = (key: SortKey) => {
 		if (sortKey === key) setAsc(!asc)
@@ -68,14 +71,21 @@ export function SessionRosterPanel({ sessionId, roster }: SessionRosterPanelProp
 			<CardHeader>
 				<div className="flex items-center justify-between flex-wrap gap-2">
 					<CardTitle className="text-base">
-						Roster <span className="text-muted-foreground font-normal">({roster.length})</span>
+						{t('fleetTracking.roster')}
+						<span className="text-muted-foreground font-normal">({roster.length})</span>
 					</CardTitle>
 					<div className="flex items-center gap-2 text-xs text-muted-foreground">
-						<span>{stayedCount} stayed to the end</span>
+						<span>
+							{stayedCount}
+							{t('fleetTracking.stayedToTheEnd')}
+						</span>
 						{leftCount > 0 && (
 							<>
 								<span>·</span>
-								<span>{leftCount} left early</span>
+								<span>
+									{leftCount}
+									{t('fleetTracking.leftEarly')}
+								</span>
 							</>
 						)}
 					</div>
@@ -84,42 +94,42 @@ export function SessionRosterPanel({ sessionId, roster }: SessionRosterPanelProp
 			<CardContent className="p-0">
 				{roster.length === 0 ? (
 					<div className="py-8 text-center text-sm text-muted-foreground">
-						No members recorded for this session.
+						{t('fleetTracking.noMembersRecordedForThisSession')}
 					</div>
 				) : (
 					<Table>
 						<TableHeader>
 							<TableRow>
 								<SortableHead
-									label="Pilot"
+									label={t('fleetTracking.pilot')}
 									k="characterName"
 									sortKey={sortKey}
 									asc={asc}
 									onClick={onHeaderClick}
 								/>
 								<SortableHead
-									label="Time in fleet"
+									label={t('fleetTracking.timeInFleet')}
 									k="totalSeconds"
 									sortKey={sortKey}
 									asc={asc}
 									onClick={onHeaderClick}
 								/>
 								<SortableHead
-									label="Ships"
+									label={t('fleetTracking.ships')}
 									k="shipsFlown"
 									sortKey={sortKey}
 									asc={asc}
 									onClick={onHeaderClick}
 								/>
-								<TableHead>Last ship</TableHead>
+								<TableHead>{t('fleetTracking.lastShip')}</TableHead>
 								<SortableHead
-									label="Joined"
+									label={t('fleetTracking.joined')}
 									k="firstSeenAt"
 									sortKey={sortKey}
 									asc={asc}
 									onClick={onHeaderClick}
 								/>
-								<TableHead>Status</TableHead>
+								<TableHead>{t('fleetTracking.status')}</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -143,10 +153,11 @@ export function SessionRosterPanel({ sessionId, roster }: SessionRosterPanelProp
 									</TableCell>
 									<TableCell>
 										{row.stayedToEnd ? (
-											<Badge variant="secondary">Stayed to end</Badge>
+											<Badge variant="secondary">{t('fleetTracking.stayedToEnd')}</Badge>
 										) : (
 											<span className="text-xs text-muted-foreground">
-												Left at {row.leftAt ? <EveTimeDisplay dateStr={row.leftAt} /> : '—'}
+												{t('fleetTracking.leftAt')}
+												{row.leftAt ? <EveTimeDisplay dateStr={row.leftAt} /> : '—'}
 											</span>
 										)}
 									</TableCell>

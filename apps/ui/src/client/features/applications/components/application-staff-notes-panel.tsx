@@ -8,6 +8,7 @@ import { LoadingSpinner } from '@/components/ui/loading'
 import { Textarea } from '@/components/ui/textarea'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { useMessage } from '@/hooks/useMessage'
+import { useAppTranslation } from '@/i18n'
 import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 
 import {
@@ -28,6 +29,8 @@ export function ApplicationStaffNotesPanel({
 	canWrite,
 	currentUserId,
 }: ApplicationStaffNotesPanelProps) {
+	const { t } = useAppTranslation()
+
 	const { showError, showSuccess } = useMessage()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
 	const { data: notes, isLoading, error } = useApplicationStaffNotes(applicationId)
@@ -45,9 +48,9 @@ export function ApplicationStaffNotesPanel({
 		try {
 			await addNote.mutateAsync({ applicationId, data: { noteText } })
 			setNewNote('')
-			showSuccess('Staff note added')
+			showSuccess(t('hrpages.staffNoteAdded'))
 		} catch (err) {
-			showError(err instanceof Error ? err.message : 'Failed to add staff note')
+			showError(err instanceof Error ? err.message : t('hrpages.failedToAddStaffNote'))
 		}
 	}
 
@@ -63,25 +66,24 @@ export function ApplicationStaffNotesPanel({
 			await updateNote.mutateAsync({ applicationId, noteId, data: { noteText } })
 			setEditingNoteId(null)
 			setEditingText('')
-			showSuccess('Staff note updated')
+			showSuccess(t('hrpages.staffNoteUpdated'))
 		} catch (err) {
-			showError(err instanceof Error ? err.message : 'Failed to update staff note')
+			showError(err instanceof Error ? err.message : t('hrpages.failedToUpdateStaffNote'))
 		}
 	}
 
 	const handleDelete = async (noteId: string) => {
 		requestConfirmation({
-			title: 'Delete Application Note',
-			description:
-				'Are you sure you want to delete this application note? This action cannot be undone.',
-			confirmLabel: 'Delete Note',
+			title: t('hrpages.deleteApplicationNote'),
+			description: t('hrpages.areYouSureYouWantToDeleteThisApplicationNote'),
+			confirmLabel: t('hrpages.deleteNote'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				try {
 					await deleteNote.mutateAsync({ applicationId, noteId })
-					showSuccess('Staff note deleted')
+					showSuccess(t('hrpages.staffNoteDeleted'))
 				} catch (err) {
-					showError(err instanceof Error ? err.message : 'Failed to delete staff note')
+					showError(err instanceof Error ? err.message : t('hrpages.failedToDeleteStaffNote'))
 				}
 			},
 		})
@@ -91,7 +93,7 @@ export function ApplicationStaffNotesPanel({
 		<div className="space-y-4">
 			<div className="flex items-center gap-2 text-warning">
 				<Lock className="h-4 w-4" />
-				<h3 className="font-semibold">Application Staff Notes</h3>
+				<h3 className="font-semibold">{t('hrpages.applicationStaffNotes')}</h3>
 			</div>
 
 			{canWrite && (
@@ -99,7 +101,7 @@ export function ApplicationStaffNotesPanel({
 					<Textarea
 						value={newNote}
 						onChange={(event) => setNewNote(event.target.value)}
-						placeholder="Add an internal note for this application..."
+						placeholder={t('hrpages.addAnInternalNoteForThisApplication')}
 						rows={3}
 					/>
 					<div className="flex justify-end">
@@ -110,7 +112,7 @@ export function ApplicationStaffNotesPanel({
 							disabled={addNote.isPending || newNote.trim().length === 0}
 						>
 							<Plus className="h-4 w-4 mr-1.5" />
-							Add Note
+							{t('hrpages.addNote')}
 						</Button>
 					</div>
 				</div>
@@ -124,12 +126,14 @@ export function ApplicationStaffNotesPanel({
 
 			{error && (
 				<p className="text-sm text-destructive">
-					{error instanceof Error ? error.message : 'Failed to load application staff notes'}
+					{error instanceof Error ? error.message : t('hrpages.failedToLoadApplicationStaffNotes')}
 				</p>
 			)}
 
 			{!isLoading && !error && (!notes || notes.length === 0) && (
-				<p className="text-sm text-muted-foreground">No staff notes on this application yet.</p>
+				<p className="text-sm text-muted-foreground">
+					{t('hrpages.noStaffNotesOnThisApplicationYet')}
+				</p>
 			)}
 
 			{!isLoading && !error && notes && notes.length > 0 && (
@@ -147,7 +151,7 @@ export function ApplicationStaffNotesPanel({
 										size="sm"
 									/>
 									<span className="font-medium text-sm">
-										{note.authorCharacterName ?? 'Unknown'}
+										{note.authorCharacterName ?? t('hrpages.unknown')}
 									</span>
 									<span className="text-xs text-muted-foreground ml-auto">
 										{formatDistanceToNow(new Date(note.updatedAt), { addSuffix: true })}
@@ -183,10 +187,10 @@ export function ApplicationStaffNotesPanel({
 										/>
 										<div className="flex justify-end gap-2">
 											<Button variant="ghost" size="sm" onClick={() => setEditingNoteId(null)}>
-												Cancel
+												{t('hrpages.cancel')}
 											</Button>
 											<Button variant="primary" size="sm" onClick={() => handleSave(note.id)}>
-												Save
+												{t('hrpages.save')}
 											</Button>
 										</div>
 									</div>

@@ -659,7 +659,7 @@ export function useAddComment() {
 				id: tempId,
 				requestId,
 				authorUserId: 'me',
-				authorCharacterName: 'You',
+				authorCharacterName: '',
 				content: data.content,
 				visibility: data.visibility,
 				isEdited: false,

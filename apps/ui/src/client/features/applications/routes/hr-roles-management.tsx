@@ -51,6 +51,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { useMessage } from '@/hooks/useMessage'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 
 import {
 	formatCorporationRoleLabel,
@@ -71,6 +72,8 @@ import type { CorporationMember } from '../../corporations'
  * Main HR Roles Management Component
  */
 export default function HrRolesManagement() {
+	const { t } = useAppTranslation()
+
 	const { corporationId } = useParams<{ corporationId: string }>()
 	const { showSuccess, showError } = useMessage()
 
@@ -116,10 +119,10 @@ export default function HrRolesManagement() {
 		return (
 			isMemberCorporation && (userRole === 'CEO' || userRole === 'admin' || hrRole === 'hr_admin')
 		)
-	}, [isMemberCorporation, hrRole, userRole])
+	}, [isMemberCorporation, hrRole, userRole, t])
 	const canRevokeHrAdmin = useMemo(
 		() => isMemberCorporation && (userRole === 'CEO' || userRole === 'admin'),
-		[isMemberCorporation, userRole]
+		[isMemberCorporation, userRole, t]
 	)
 
 	const memberByUserId = useMemo(() => {
@@ -136,7 +139,7 @@ export default function HrRolesManagement() {
 			}
 		}
 		return map
-	}, [members])
+	}, [members, t])
 
 	const activeRoleByUserId = useMemo(() => {
 		const map = new Map<string, HrRoleGrant>()
@@ -145,7 +148,7 @@ export default function HrRolesManagement() {
 			if (!map.has(role.userId)) map.set(role.userId, role)
 		}
 		return map
-	}, [hrRoles])
+	}, [hrRoles, t])
 
 	const assignableMembers = useMemo(
 		() =>
@@ -156,7 +159,7 @@ export default function HrRolesManagement() {
 				if (!existingRole) return true
 				return existingRole.role !== 'hr_admin' || canRevokeHrAdmin
 			}),
-		[members, activeRoleByUserId, canRevokeHrAdmin]
+		[members, activeRoleByUserId, canRevokeHrAdmin, t]
 	)
 
 	const assignableUsers = useMemo(() => {
@@ -179,7 +182,7 @@ export default function HrRolesManagement() {
 			}
 		}
 		return [...map.values()]
-	}, [assignableMembers])
+	}, [assignableMembers, t])
 
 	const assignUserOptions = useMemo(
 		() =>
@@ -187,8 +190,8 @@ export default function HrRolesManagement() {
 				.map((member) => {
 					const existing = member.authUserId ? activeRoleByUserId.get(member.authUserId) : undefined
 					const roleHint = existing
-						? `Current: ${formatCorporationRoleLabel(existing.role)}`
-						: 'No HR role'
+						? t('hrpages.currentValue1', { value1: formatCorporationRoleLabel(existing.role) })
+						: t('hrpages.noHrRole')
 					return {
 						value: member.authUserId!,
 						label: member.mainCharacterName || member.characterName,
@@ -196,20 +199,24 @@ export default function HrRolesManagement() {
 					}
 				})
 				.sort((a, b) => a.label.localeCompare(b.label)),
-		[assignableUsers, activeRoleByUserId]
+		[assignableUsers, activeRoleByUserId, t]
 	)
 	const allowedRoleOptions = useMemo(
 		() =>
 			[
-				{ value: 'hr_admin', label: 'HR Admin' },
-				{ value: 'hr_reviewer', label: 'HR Reviewer' },
-				{ value: 'hr_viewer', label: 'HR Viewer' },
+				{ value: 'hr_admin', label: t('hrpages.hrAdmin') },
+				{ value: 'hr_reviewer', label: t('hrpages.hrReviewer') },
+				{ value: 'hr_viewer', label: t('hrpages.hrViewer') },
 			].filter((entry) => (canRevokeHrAdmin ? true : entry.value !== 'hr_admin')),
-		[canRevokeHrAdmin]
+		[canRevokeHrAdmin, t]
 	)
 
 	// Set page title
-	usePageTitle(corp ? `${corp.name} HR Roles | HR Management` : 'HR Roles Management')
+	usePageTitle(
+		corp
+			? t('hrpages.value1HrRolesHrManagement', { value1: corp.name })
+			: t('hrpages.hrRolesManagement')
+	)
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -235,14 +242,16 @@ export default function HrRolesManagement() {
 	// Access denied
 	if (!canAccess || !canManageHrRoles) {
 		const accessMessage = isMemberCorporation
-			? "You don't have permission to manage HR roles for this corporation. CEO, HR admin, or site admin access is required."
-			: 'HR roles can only be managed for member corporations.'
+			? t('hrpages.youDonTHavePermissionToManageHrRolesFor')
+			: t('hrpages.hrRolesCanOnlyBeManagedForMemberCorporations')
 		return (
 			<Container>
 				<Card className="max-w-2xl mx-auto border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
-						<CardTitle className="text-2xl text-red-900 dark:text-red-100">Access Denied</CardTitle>
+						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
+							{t('hrpages.accessDenied')}
+						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
 							{accessMessage}
 						</CardDescription>
@@ -251,7 +260,7 @@ export default function HrRolesManagement() {
 						<Button variant="ghost" asChild>
 							<Link to="/corporations">
 								<ArrowLeft className="h-4 w-4" />
-								Return to Corporations
+								{t('hrpages.returnToCorporations')}
 							</Link>
 						</Button>
 					</CardContent>
@@ -268,17 +277,17 @@ export default function HrRolesManagement() {
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Failed to Load HR Roles
+							{t('hrpages.failedToLoadHrRoles')}
 						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							{error instanceof Error ? error.message : 'An unexpected error occurred'}
+							{error instanceof Error ? error.message : t('hrpages.anUnexpectedErrorOccurred')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" asChild>
 							<Link to={`/corporations/${corporationId}/members`}>
 								<ArrowLeft className="h-4 w-4" />
-								Return to Manage Corporation
+								{t('hrpages.returnToManageCorporation')}
 							</Link>
 						</Button>
 					</CardContent>
@@ -291,20 +300,20 @@ export default function HrRolesManagement() {
 	const handleGrantHrRole = async (request: GrantHrRoleRequest) => {
 		try {
 			await grantMutation.mutateAsync(request)
-			showSuccess(`HR role granted successfully`)
+			showSuccess(t('hrpages.hrRoleGrantedSuccessfully'))
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to grant HR role')
+			showError(error instanceof Error ? error.message : t('hrpages.failedToGrantHrRole'))
 		}
 	}
 
 	const handleAssignUserRole = async () => {
 		if (!assignUserId) {
-			showError('Select a user to assign')
+			showError(t('hrpages.selectAUserToAssign'))
 			return
 		}
 		const member = assignableMembers.find((entry) => entry.authUserId === assignUserId)
 		if (!member || !member.authUserId) {
-			showError('Selected user is invalid')
+			showError(t('hrpages.selectedUserIsInvalid'))
 			return
 		}
 
@@ -324,10 +333,10 @@ export default function HrRolesManagement() {
 	const handleRevokeHrRole = async (request: RevokeHrRoleRequest) => {
 		try {
 			await revokeMutation.mutateAsync(request)
-			showSuccess(`HR role revoked successfully`)
+			showSuccess(t('hrpages.hrRoleRevokedSuccessfully'))
 			setRevokeDialogMember(null)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to revoke HR role')
+			showError(error instanceof Error ? error.message : t('hrpages.failedToRevokeHrRole'))
 		}
 	}
 
@@ -402,10 +411,10 @@ export default function HrRolesManagement() {
 				characterName,
 				role: changeRoleValue,
 			})
-			showSuccess('HR role updated successfully')
+			showSuccess(t('hrpages.hrRoleUpdatedSuccessfully'))
 			setChangeRoleTarget(null)
 		} catch (error) {
-			showError(error instanceof Error ? error.message : 'Failed to change HR role')
+			showError(error instanceof Error ? error.message : t('hrpages.failedToChangeHrRole'))
 		}
 	}
 
@@ -416,32 +425,33 @@ export default function HrRolesManagement() {
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
 					<BreadcrumbItem>
-						<BreadcrumbLink to="/corporations">Corporations</BreadcrumbLink>
+						<BreadcrumbLink to="/corporations">{t('hrpages.corporations')}</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
 						<BreadcrumbLink to={`/corporations/${corporationId}/members`}>
-							{corporation?.name || 'Manage Corporation'}
+							{corporation?.name || t('hrpages.manageCorporation')}
 						</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
-						<BreadcrumbPage>HR Roles</BreadcrumbPage>
+						<BreadcrumbPage>{t('hrpages.hrRoles')}</BreadcrumbPage>
 					</BreadcrumbItem>
 				</BreadcrumbList>
 			</Breadcrumb>
 
 			<PageHeader
-				title="HR Role Management"
+				title={t('hrpages.hrRoleManagement')}
 				description={
 					<>
 						<div>
-							Manage HR roles for {corp?.name || 'this corporation'}
+							{t('hrpages.manageHrRolesFor')}
+							{corp?.name || t('hrpages.thisCorporation')}
 							{corp?.ticker && ` [${corp.ticker}]`}
 						</div>
 						{(userRole || hrRole) && (
 							<div className="text-sm mt-1">
-								Your role:{' '}
+								{t('hrpages.yourRole2')}{' '}
 								<span className="font-medium">
 									{[userRole, hrRole]
 										.filter((role, index, roles) => role !== null && roles.indexOf(role) === index)
@@ -454,11 +464,11 @@ export default function HrRolesManagement() {
 				}
 				action={
 					<div className="flex items-center gap-2">
-						<Button onClick={() => setAssignUserDialogOpen(true)}>Assign User</Button>
+						<Button onClick={() => setAssignUserDialogOpen(true)}>{t('hrpages.assignUser')}</Button>
 						<Button variant="ghost" asChild>
 							<Link to={`/corporations/${corporationId}/members`}>
 								<ArrowLeft className="h-4 w-4" />
-								Back to Manage Corporation
+								{t('hrpages.backToManageCorporation')}
 							</Link>
 						</Button>
 					</div>
@@ -468,9 +478,9 @@ export default function HrRolesManagement() {
 			{/* HR Roles Table */}
 			<Card>
 				<CardHeader>
-					<CardTitle>HR Roles</CardTitle>
+					<CardTitle>{t('hrpages.hrRoles')}</CardTitle>
 					<CardDescription>
-						Users with HR roles can access the HR management system for this corporation.
+						{t('hrpages.usersWithHrRolesCanAccessTheHrManagementSystem')}
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
@@ -478,12 +488,12 @@ export default function HrRolesManagement() {
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>Character</TableHead>
-									<TableHead>Role</TableHead>
-									<TableHead>Granted By</TableHead>
-									<TableHead>Granted At</TableHead>
-									<TableHead>Status</TableHead>
-									<TableHead className="text-right">Actions</TableHead>
+									<TableHead>{t('hrpages.character')}</TableHead>
+									<TableHead>{t('hrpages.role')}</TableHead>
+									<TableHead>{t('hrpages.grantedBy')}</TableHead>
+									<TableHead>{t('hrpages.grantedAt')}</TableHead>
+									<TableHead>{t('hrpages.status')}</TableHead>
+									<TableHead className="text-right">{t('hrpages.actions')}</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
@@ -509,11 +519,12 @@ export default function HrRolesManagement() {
 															<div className="font-medium">{resolvedName}</div>
 															{resolvedCharacterId ? (
 																<div className="text-xs text-muted-foreground">
-																	ID: {resolvedCharacterId}
+																	{t('hrpages.id')}
+																	{resolvedCharacterId}
 																</div>
 															) : (
 																<div className="text-xs text-muted-foreground">
-																	Character not resolved from corporation members
+																	{t('hrpages.characterNotResolvedFromCorporationMembers')}
 																</div>
 															)}
 														</div>
@@ -526,13 +537,17 @@ export default function HrRolesManagement() {
 										</TableCell>
 										<TableCell className="text-sm">{role.grantedBy}</TableCell>
 										<TableCell className="text-sm">
-											{new Date(role.grantedAt).toLocaleDateString()}
+											{new Date(role.grantedAt).toLocaleDateString(getActiveLocale())}
 										</TableCell>
 										<TableCell>
 											{role.isActive ? (
-												<span className="text-sm text-green-600 dark:text-green-400">Active</span>
+												<span className="text-sm text-green-600 dark:text-green-400">
+													{t('hrpages.active')}
+												</span>
 											) : (
-												<span className="text-sm text-muted-foreground">Inactive</span>
+												<span className="text-sm text-muted-foreground">
+													{t('hrpages.inactive')}
+												</span>
 											)}
 										</TableCell>
 										<TableCell className="text-right">
@@ -543,7 +558,7 @@ export default function HrRolesManagement() {
 													onClick={() => handleOpenChangeRole(role)}
 													disabled={!canEditRole(role)}
 												>
-													Change Role
+													{t('hrpages.changeRole')}
 												</Button>
 												<Button
 													variant="ghost"
@@ -551,7 +566,7 @@ export default function HrRolesManagement() {
 													onClick={() => handleRevokeClick(role)}
 													disabled={!canEditRole(role)}
 												>
-													Revoke HR Role
+													{t('hrpages.revokeHrRole')}
 												</Button>
 											</div>
 										</TableCell>
@@ -562,9 +577,9 @@ export default function HrRolesManagement() {
 					) : (
 						<div className="text-center py-12">
 							<Shield className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-							<p className="text-lg font-medium mb-2">No HR Roles Granted</p>
+							<p className="text-lg font-medium mb-2">{t('hrpages.noHrRolesGranted')}</p>
 							<p className="text-sm text-muted-foreground mb-4">
-								Grant HR roles to users from the corporation members page.
+								{t('hrpages.grantHrRolesToUsersFromTheCorporationMembersPage')}
 							</p>
 						</div>
 					)}
@@ -573,19 +588,19 @@ export default function HrRolesManagement() {
 
 			{/* Help Text */}
 			<div className="mt-8 space-y-2">
-				<h3 className="text-sm font-semibold">HR Role Types:</h3>
+				<h3 className="text-sm font-semibold">{t('hrpages.hrRoleTypes')}</h3>
 				<ul className="text-sm text-muted-foreground space-y-1">
 					<li>
-						<strong className="text-foreground">HR Admin:</strong> Full HR system access. Can manage
-						applications, recommendations, notes, and HR roles.
+						<strong className="text-foreground">{t('hrpages.hrAdmin2')}</strong>
+						{t('hrpages.fullHrSystemAccessCanManageApplicationsRecommendationsNotesAnd')}
 					</li>
 					<li>
-						<strong className="text-foreground">HR Reviewer:</strong> Can review and process
-						applications. Can add recommendations and notes. Cannot manage HR roles.
+						<strong className="text-foreground">{t('hrpages.hrReviewer2')}</strong>
+						{t('hrpages.canReviewAndProcessApplicationsCanAddRecommendationsAndNotes')}
 					</li>
 					<li>
-						<strong className="text-foreground">HR Viewer:</strong> Read-only access. Can view
-						applications and recommendations. Cannot make changes.
+						<strong className="text-foreground">{t('hrpages.hrViewer2')}</strong>
+						{t('hrpages.readOnlyAccessCanViewApplicationsAndRecommendationsCannotMake')}
 					</li>
 				</ul>
 			</div>
@@ -594,26 +609,26 @@ export default function HrRolesManagement() {
 			<Dialog open={assignUserDialogOpen} onOpenChange={setAssignUserDialogOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Assign HR Role</DialogTitle>
+						<DialogTitle>{t('hrpages.assignHrRole')}</DialogTitle>
 						<DialogDescription>
-							Search for a linked user in this corporation and assign an HR role.
+							{t('hrpages.searchForALinkedUserInThisCorporationAndAssign')}
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4">
 						<div className="space-y-2">
-							<Label htmlFor="assign-hr-user">User</Label>
+							<Label htmlFor="assign-hr-user">{t('hrpages.user')}</Label>
 							<Select
 								inputId="assign-hr-user"
 								value={assignUserId}
 								onValueChange={setAssignUserId}
 								options={assignUserOptions}
 								searchable
-								placeholder="Search user..."
+								placeholder={t('hrpages.searchUser')}
 								className="w-full"
 							/>
 						</div>
 						<div className="space-y-2">
-							<Label htmlFor="assign-hr-role">HR Role</Label>
+							<Label htmlFor="assign-hr-role">{t('hrpages.hrRole')}</Label>
 							<Select
 								inputId="assign-hr-role"
 								value={assignRole}
@@ -621,26 +636,26 @@ export default function HrRolesManagement() {
 									setAssignRole(value as 'hr_admin' | 'hr_reviewer' | 'hr_viewer')
 								}
 								options={[
-									{ value: 'hr_admin', label: 'HR Admin' },
-									{ value: 'hr_reviewer', label: 'HR Reviewer' },
-									{ value: 'hr_viewer', label: 'HR Viewer' },
+									{ value: 'hr_admin', label: t('hrpages.hrAdmin') },
+									{ value: 'hr_reviewer', label: t('hrpages.hrReviewer') },
+									{ value: 'hr_viewer', label: t('hrpages.hrViewer') },
 								]}
 								searchable
-								placeholder="Select role..."
+								placeholder={t('hrpages.selectRole')}
 								className="w-full"
 							/>
 						</div>
 					</div>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setAssignUserDialogOpen(false)}>
-							Cancel
+							{t('hrpages.cancel')}
 						</Button>
 						<Button
 							variant="confirm"
 							onClick={handleAssignUserRole}
 							disabled={!assignUserId || grantMutation.isPending}
 						>
-							Assign Role
+							{t('hrpages.assignRole')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
@@ -660,34 +675,34 @@ export default function HrRolesManagement() {
 			<Dialog open={!!changeRoleTarget} onOpenChange={(open) => !open && setChangeRoleTarget(null)}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Change HR Role</DialogTitle>
+						<DialogTitle>{t('hrpages.changeHrRole')}</DialogTitle>
 						<DialogDescription>
-							Update role assignment for{' '}
+							{t('hrpages.updateRoleAssignmentFor')}{' '}
 							{changeRoleTarget?.characterName || changeRoleTarget?.userId}.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-2">
-						<Label htmlFor="change-hr-role">HR Role</Label>
+						<Label htmlFor="change-hr-role">{t('hrpages.hrRole')}</Label>
 						<Select
 							inputId="change-hr-role"
 							value={changeRoleValue}
 							onValueChange={(value) => setChangeRoleValue(value as HrRoleType)}
 							options={allowedRoleOptions}
 							searchable
-							placeholder="Select role..."
+							placeholder={t('hrpages.selectRole')}
 							className="w-full"
 						/>
 					</div>
 					<DialogFooter>
 						<Button variant="cancel" onClick={() => setChangeRoleTarget(null)}>
-							Cancel
+							{t('hrpages.cancel')}
 						</Button>
 						<Button
 							variant="confirm"
 							onClick={handleSubmitChangeRole}
 							disabled={!changeRoleTarget || grantMutation.isPending || revokeMutation.isPending}
 						>
-							Save Role
+							{t('hrpages.saveRole')}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

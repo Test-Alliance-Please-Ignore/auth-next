@@ -16,6 +16,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
+import { useAppTranslation } from '@/i18n'
 
 import { formatDurationBetween } from '../utils/format'
 
@@ -44,6 +45,8 @@ export function CurrentMembersPanel({
 	onKickMembers,
 	isKickingMembers = false,
 }: CurrentMembersPanelProps) {
+	const { t } = useAppTranslation()
+
 	const [query, setQuery] = useState('')
 	const [sortKey, setSortKey] = useState<SortKey>('characterName')
 	const [asc, setAsc] = useState(true)
@@ -51,7 +54,7 @@ export function CurrentMembersPanel({
 	const trimmed = query.trim().toLowerCase()
 	const liveLocationByCharacterId = useMemo(
 		() => new Map(liveLocations.map((location) => [location.characterId, location])),
-		[liveLocations]
+		[liveLocations, t]
 	)
 	const mergedMembers = useMemo(() => {
 		return members.map((member) => {
@@ -66,7 +69,7 @@ export function CurrentMembersPanel({
 				stationId: liveLocation.stationId,
 			}
 		})
-	}, [liveLocationByCharacterId, members])
+	}, [liveLocationByCharacterId, members, t])
 
 	const filteredMembers = useMemo(() => {
 		if (!trimmed) return mergedMembers
@@ -74,7 +77,7 @@ export function CurrentMembersPanel({
 			const fields = [m.characterName, m.shipTypeName, m.groupName, m.systemName]
 			return fields.some((f) => f?.toLowerCase().includes(trimmed))
 		})
-	}, [mergedMembers, trimmed])
+	}, [mergedMembers, trimmed, t])
 
 	const sortedMembers = useMemo(() => {
 		const out = [...filteredMembers]
@@ -102,7 +105,7 @@ export function CurrentMembersPanel({
 			return asc ? cmp : -cmp
 		})
 		return out
-	}, [filteredMembers, sortKey, asc])
+	}, [filteredMembers, sortKey, asc, t])
 
 	const onHeaderClick = (key: SortKey) => {
 		if (sortKey === key) {
@@ -135,7 +138,7 @@ export function CurrentMembersPanel({
 					<CardHeader>
 						<div className="flex items-center gap-3 flex-wrap">
 							<CardTitle className="text-base">
-								Current members{' '}
+								{t('fleetTracking.currentMembers')}{' '}
 								<span className="text-muted-foreground font-normal">
 									{trimmed && filteredMembers.length !== members.length
 										? `(${filteredMembers.length} of ${members.length})`
@@ -146,7 +149,7 @@ export function CurrentMembersPanel({
 								<Input
 									value={query}
 									onChange={(e) => setQuery(e.target.value)}
-									placeholder="Search pilot, ship, system…"
+									placeholder={t('fleetTracking.searchPilotShipSystem')}
 									className="w-64"
 								/>
 								{canKickMembers && kickMembers && (
@@ -156,10 +159,12 @@ export function CurrentMembersPanel({
 										disabled={isKickingMembers || visiblePods.length === 0}
 										onClick={() =>
 											requestConfirmation({
-												title: 'Kick all visible pods?',
-												description: `This will remove ${visiblePods.length} capsule pilot${visiblePods.length === 1 ? '' : 's'} currently shown in this list.`,
-												confirmLabel: 'Kick pods',
-												cancelLabel: 'Cancel',
+												title: t('fleetTracking.kickAllVisiblePods'),
+												description: t('fleetTracking.removeVisiblePods', {
+													count: visiblePods.length,
+												}),
+												confirmLabel: t('fleetTracking.kickPods'),
+												cancelLabel: t('fleetTracking.cancel'),
 												intent: 'destructive',
 												onConfirm: async () => {
 													await kickMembers(visiblePods.map((m) => m.characterId))
@@ -167,7 +172,7 @@ export function CurrentMembersPanel({
 											})
 										}
 									>
-										Kick all pods
+										{t('fleetTracking.kickAllPods')}
 									</Button>
 								)}
 							</div>
@@ -176,52 +181,57 @@ export function CurrentMembersPanel({
 					<CardContent className="p-0">
 						{members.length === 0 ? (
 							<div className="py-8 text-center text-sm text-muted-foreground">
-								No members in fleet right now.
+								{t('fleetTracking.noMembersInFleetRightNow')}
 							</div>
 						) : filteredMembers.length === 0 ? (
 							<div className="py-8 text-center text-sm text-muted-foreground">
-								No members match "{query}".
+								{t('fleetTracking.noMembersMatch')}
+								{query}".
 							</div>
 						) : (
 							<Table>
 								<TableHeader>
 									<TableRow>
 										<SortableHead
-											label="Pilot"
+											label={t('fleetTracking.pilot')}
 											k="characterName"
 											sortKey={sortKey}
 											asc={asc}
 											onClick={onHeaderClick}
 										/>
 										<SortableHead
-											label="Ship"
+											label={t('fleetTracking.ship')}
 											k="shipTypeName"
 											sortKey={sortKey}
 											asc={asc}
 											onClick={onHeaderClick}
 										/>
 										<SortableHead
-											label="Group"
+											label={t('fleetTracking.group')}
 											k="groupName"
 											sortKey={sortKey}
 											asc={asc}
 											onClick={onHeaderClick}
 										/>
 										<SortableHead
-											label="System"
+											label={t('fleetTracking.system')}
 											k="systemName"
 											sortKey={sortKey}
 											asc={asc}
 											onClick={onHeaderClick}
 										/>
 										<SortableHead
-											label="In ship"
+											label={t('fleetTracking.inShip')}
 											k="sinceTime"
 											sortKey={sortKey}
 											asc={asc}
 											onClick={onHeaderClick}
 										/>
-										{canKickMembers && <TableHead className="w-20 text-right">Actions</TableHead>}
+										{canKickMembers && (
+											<TableHead className="w-20 text-right">
+												{t('fleetTracking.actions')}
+											</TableHead>
+										)}
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -261,11 +271,12 @@ export function CurrentMembersPanel({
 															>
 																<div className="space-y-1">
 																	<p className="text-xs font-semibold text-yellow-300">
-																		Not in selected doctrine
+																		{t('fleetTracking.notInSelectedDoctrine')}
 																	</p>
 																	<p className="text-xs text-muted-foreground">
-																		This ship type is not included in the currently selected
-																		doctrine.
+																		{t(
+																			'fleetTracking.thisShipTypeIsNotIncludedInTheCurrentlySelected'
+																		)}
 																	</p>
 																</div>
 															</HoverPopover>
@@ -290,10 +301,12 @@ export function CurrentMembersPanel({
 															disabled={isKickingMembers}
 															onClick={() =>
 																requestConfirmation({
-																	title: 'Kick this member from fleet?',
-																	description: `This will remove ${m.characterName ?? m.characterId} from the fleet.`,
-																	confirmLabel: 'Kick member',
-																	cancelLabel: 'Cancel',
+																	title: t('fleetTracking.kickThisMemberFromFleet'),
+																	description: t('fleetTracking.thisWillRemoveFromTheFleet', {
+																		value1: m.characterName ?? m.characterId,
+																	}),
+																	confirmLabel: t('fleetTracking.kickMember'),
+																	cancelLabel: t('fleetTracking.cancel'),
 																	intent: 'destructive',
 																	onConfirm: async () => {
 																		await kickMembers([m.characterId])
@@ -301,7 +314,7 @@ export function CurrentMembersPanel({
 																})
 															}
 														>
-															Kick
+															{t('fleetTracking.kick')}
 														</Button>
 													</TableCell>
 												)}
@@ -319,11 +332,13 @@ export function CurrentMembersPanel({
 			<div>
 				<Card>
 					<CardHeader>
-						<CardTitle className="text-base">By ship class</CardTitle>
+						<CardTitle className="text-base">{t('fleetTracking.byShipClass')}</CardTitle>
 					</CardHeader>
 					<CardContent>
 						{groupCounts.length === 0 ? (
-							<div className="text-sm text-muted-foreground py-4">No ships in fleet right now.</div>
+							<div className="text-sm text-muted-foreground py-4">
+								{t('fleetTracking.noShipsInFleetRightNow')}
+							</div>
 						) : (
 							<ul className="space-y-1.5">
 								{groupCounts.map((g) => {
@@ -332,7 +347,7 @@ export function CurrentMembersPanel({
 									return (
 										<li key={g.groupId} className="text-sm">
 											<div className="flex items-baseline justify-between gap-2">
-												<span>{g.groupName ?? 'Unknown'}</span>
+												<span>{g.groupName ?? t('fleetTracking.unknown')}</span>
 												<span className="text-muted-foreground font-mono text-xs">{g.count}</span>
 											</div>
 											<div className="h-1.5 mt-1 bg-muted rounded">

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 interface TaxCorporationScopeSelectorProps {
@@ -22,11 +23,13 @@ export function TaxCorporationScopeSelector({
 	effectiveCorporationId,
 	selectedCorporationId,
 	canSelectAll = false,
-	allLabel = 'All Corporations',
+	allLabel,
 	showLabel = true,
 	className,
 	onSelect,
 }: TaxCorporationScopeSelectorProps) {
+	const { t } = useAppTranslation()
+
 	const options = useMemo(() => {
 		const baseOptions = [...corporations]
 			.sort((left, right) =>
@@ -44,11 +47,11 @@ export function TaxCorporationScopeSelector({
 		return [
 			{
 				value: '__all__',
-				label: allLabel,
+				label: allLabel ?? t('tax.allCorporations'),
 			},
 			...baseOptions,
 		]
-	}, [allLabel, canSelectAll, corporations])
+	}, [allLabel, canSelectAll, corporations, t])
 
 	const selectedId = selectedCorporationId ?? (canSelectAll ? '__all__' : effectiveCorporationId)
 	const selectedOption = options.find((option) => option.value === selectedId)
@@ -65,7 +68,7 @@ export function TaxCorporationScopeSelector({
 	return (
 		<div className={cn('flex flex-col gap-2 sm:max-w-md', className)}>
 			{showLabel ? (
-				<div className="text-sm font-medium text-foreground">Corporation Scope</div>
+				<div className="text-sm font-medium text-foreground">{t('tax.corporationScope')}</div>
 			) : null}
 			<Select
 				value={selectedId}
@@ -77,8 +80,8 @@ export function TaxCorporationScopeSelector({
 				onQueryChange={setQuery}
 				searchable
 				options={options}
-				placeholder={selectedOption?.label ?? 'Select corporation scope'}
-				emptyText="No corporations match"
+				placeholder={selectedOption?.label ?? t('tax.selectCorporationScope')}
+				emptyText={t('tax.noCorporationsMatch')}
 			/>
 		</div>
 	)

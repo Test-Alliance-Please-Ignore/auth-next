@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { i18n, useAppTranslation } from '@/i18n'
 import { typeIconUrl } from '@/lib/eve-images'
 
 import { useDoctrines, useStagingSystems } from '../hooks'
@@ -45,7 +46,9 @@ function groupByCategory(
 		} else {
 			map.set(key, {
 				categoryName:
-					key === '__uncategorized__' ? 'Uncategorized' : d.categoryName || 'Unknown Category',
+					key === '__uncategorized__'
+						? i18n.t('doctrines.uncategorized')
+						: d.categoryName || i18n.t('doctrines.unknownCategory'),
 				categorySortOrder: d.categorySortOrder ?? Number.MAX_SAFE_INTEGER,
 				doctrines: [d],
 			})
@@ -72,7 +75,9 @@ function getStagingNote(doctrine: Doctrine, stagingSystemId: string): string | n
 }
 
 export default function DoctrinesPage() {
-	usePageTitle('Doctrines')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('doctrines.doctrines'))
 	const { hasPermission, isAdmin } = useUserPermissions()
 	const { data: doctrines, isLoading, error } = useDoctrines()
 	const { data: stagingSystems } = useStagingSystems()
@@ -81,20 +86,23 @@ export default function DoctrinesPage() {
 
 	const sortedStagingSystems = useMemo(
 		() => [...(stagingSystems || [])].sort((a, b) => a.sortOrder - b.sortOrder),
-		[stagingSystems]
+		[stagingSystems, t]
 	)
 
 	const categories = useMemo(() => {
 		if (!doctrines) return []
 		return groupByCategory(doctrines)
-	}, [doctrines])
+	}, [doctrines, t])
 
 	const totalCols = sortedStagingSystems.length + 1
 
 	if (isLoading) {
 		return (
 			<Container>
-				<PageHeader title="Doctrines" description="Browse fleet doctrines" />
+				<PageHeader
+					title={t('doctrines.doctrines')}
+					description={t('doctrines.browseFleetDoctrines')}
+				/>
 				<Card>
 					<CardContent className="pt-6">
 						<LoadingSpinner />
@@ -107,11 +115,14 @@ export default function DoctrinesPage() {
 	if (error) {
 		return (
 			<Container>
-				<PageHeader title="Doctrines" description="Browse fleet doctrines" />
+				<PageHeader
+					title={t('doctrines.doctrines')}
+					description={t('doctrines.browseFleetDoctrines')}
+				/>
 				<Card>
 					<CardContent className="pt-6">
 						<div className="text-center text-destructive">
-							Failed to load doctrines. Please try again later.
+							{t('doctrines.failedToLoadDoctrinesPleaseTryAgainLater')}
 						</div>
 					</CardContent>
 				</Card>
@@ -122,27 +133,27 @@ export default function DoctrinesPage() {
 	return (
 		<Container>
 			<PageHeader
-				title="Doctrines"
-				description="TEST Alliance Please Ignore fleet doctrines"
+				title={t('doctrines.doctrines')}
+				description={t('doctrines.testAlliancePleaseIgnoreFleetDoctrines')}
 				action={
 					canManage && (
 						<div className="flex gap-2">
 							<Button asChild variant="ghost">
 								<Link to="/doctrines/admin">
 									<Settings className="h-4 w-4" />
-									Admin
+									{t('doctrines.admin')}
 								</Link>
 							</Button>
 							<Button asChild variant="secondary">
 								<Link to="/doctrines/fittings/create">
 									<Plus className="h-4 w-4" />
-									New Fitting
+									{t('doctrines.newFitting')}
 								</Link>
 							</Button>
 							<Button asChild>
 								<Link to="/doctrines/create">
 									<Plus className="h-4 w-4" />
-									New Doctrine
+									{t('doctrines.newDoctrine')}
 								</Link>
 							</Button>
 						</div>
@@ -154,12 +165,12 @@ export default function DoctrinesPage() {
 				<CardContent className="pt-6">
 					{!doctrines || doctrines.length === 0 ? (
 						<div className="text-center py-12">
-							<p className="text-muted-foreground mb-4">No doctrines found.</p>
+							<p className="text-muted-foreground mb-4">{t('doctrines.noDoctrinesFound')}</p>
 							{canManage && (
 								<Button asChild>
 									<Link to="/doctrines/create">
 										<Plus className="h-4 w-4" />
-										Create First Doctrine
+										{t('doctrines.createFirstDoctrine')}
 									</Link>
 								</Button>
 							)}
@@ -169,7 +180,9 @@ export default function DoctrinesPage() {
 							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead className="min-w-[200px] text-xs font-semibold">Doctrine</TableHead>
+										<TableHead className="min-w-[200px] text-xs font-semibold">
+											{t('doctrines.doctrine')}
+										</TableHead>
 										{sortedStagingSystems.map((ss) => (
 											<TableHead
 												key={ss.id}

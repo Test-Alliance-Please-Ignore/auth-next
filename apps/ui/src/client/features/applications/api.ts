@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n'
+
 /**
  * Applications Feature API Client
  *
@@ -699,12 +701,12 @@ export const applicationsApi = {
  */
 export function getStatusDisplayName(status: ApplicationStatus): string {
 	const names: Record<ApplicationStatus, string> = {
-		pending: 'Pending',
-		under_review: 'Under Review',
-		accepted: 'Accepted',
-		completed: 'Completed',
-		rejected: 'Rejected',
-		withdrawn: 'Withdrawn',
+		pending: i18n.t('hrpages.pending'),
+		under_review: i18n.t('hrpages.underReview'),
+		accepted: i18n.t('hrpages.accepted'),
+		completed: i18n.t('hrpages.completed'),
+		rejected: i18n.t('hrpages.rejected'),
+		withdrawn: i18n.t('hrpages.withdrawn'),
 	}
 	return names[status]
 }
@@ -714,9 +716,9 @@ export function getStatusDisplayName(status: ApplicationStatus): string {
  */
 export function getSentimentDisplayName(sentiment: RecommendationSentiment): string {
 	const names: Record<RecommendationSentiment, string> = {
-		positive: 'Positive',
-		neutral: 'Neutral',
-		negative: 'Negative',
+		positive: i18n.t('hrpages.positive'),
+		neutral: i18n.t('hrpages.neutral'),
+		negative: i18n.t('hrpages.negative'),
 	}
 	return names[sentiment]
 }

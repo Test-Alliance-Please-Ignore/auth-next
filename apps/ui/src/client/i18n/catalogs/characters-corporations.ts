@@ -135,5 +135,62 @@ export const charactersCorporationsCatalog = defineCatalog(
 				unknown_other: '서버 {{formattedCount}}개의 Discord 접근 권한을 갱신하지 못했습니다.',
 			},
 		},
+	},
+	{
+		discordCard: {
+			connected: 'Cuenta conectada',
+			linkDescription: 'Vincula tu cuenta de Discord',
+			userId: 'ID de Discord: {{id}}',
+			authorizationRevoked: 'Autorización revocada',
+			revokedDescription:
+				'Eliminaste esta aplicación de tus aplicaciones autorizadas de Discord. Vuelve a vincular tu cuenta para restablecer el acceso.',
+			redirecting: 'Redirigiendo a Discord…',
+			relink: 'Volver a vincular cuenta de Discord',
+			refreshing: 'Actualizando…',
+			refreshAccess: 'Actualizar acceso a Discord',
+			connectDescription:
+				'Conecta tu cuenta de Discord para activar las notificaciones y las funciones de la comunidad.',
+			link: 'Vincular cuenta de Discord',
+			linkFailed: 'No se pudo vincular',
+			linkError: 'Ocurrió un error',
+			refreshStartError:
+				'No pudimos iniciar la actualización del acceso a Discord. Inténtalo más tarde.',
+			refreshStatusError: 'No se pudo confirmar el estado del acceso a Discord',
+			refreshed: 'Acceso a Discord actualizado correctamente.',
+			joined_one: '¡Te uniste a {{formattedCount}} servidor de Discord!',
+			joined_other: '¡Te uniste a {{formattedCount}} servidores de Discord!',
+			joined_many: '¡Te uniste a {{formattedCount}} servidores de Discord!',
+			refreshErrors: {
+				authorization: 'Es posible que necesites renovar la autorización de Discord',
+				configuration: 'Problema de configuración del servidor de Discord',
+				temporary: 'Discord no está disponible temporalmente',
+				unknown: 'Actualización del acceso a Discord incompleta',
+			},
+			partialRefreshErrors: {
+				authorization_one:
+					'El acceso a {{formattedCount}} servidor requiere autorización de Discord.',
+				authorization_other:
+					'El acceso a {{formattedCount}} servidores requiere autorización de Discord.',
+				authorization_many:
+					'El acceso a {{formattedCount}} servidores requiere autorización de Discord.',
+				configuration_one:
+					'El acceso a {{formattedCount}} servidor tiene un problema de configuración.',
+				configuration_other:
+					'El acceso a {{formattedCount}} servidores tiene un problema de configuración.',
+				configuration_many:
+					'El acceso a {{formattedCount}} servidores tiene un problema de configuración.',
+				temporary_one:
+					'Un problema temporal de Discord afecta el acceso a {{formattedCount}} servidor.',
+				temporary_other:
+					'Un problema temporal de Discord afecta el acceso a {{formattedCount}} servidores.',
+				temporary_many:
+					'Un problema temporal de Discord afecta el acceso a {{formattedCount}} servidores.',
+				unknown_one: 'No se pudo actualizar el acceso a Discord para {{formattedCount}} servidor.',
+				unknown_other:
+					'No se pudo actualizar el acceso a Discord para {{formattedCount}} servidores.',
+				unknown_many:
+					'No se pudo actualizar el acceso a Discord para {{formattedCount}} servidores.',
+			},
+		},
 	}
 )

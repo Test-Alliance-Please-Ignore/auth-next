@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { BillStatusBadge } from '@/components/bills/bill-status-badge'
 import { DataTable } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
+import { useAppTranslation } from '@/i18n'
 import { formatTaxDate } from '@/lib/tax-date'
 import { formatTaxIskFull, TaxCorporationDisplay } from '@/lib/tax-display'
 
@@ -25,17 +26,19 @@ export function BillStatusReportGrid(props: {
 	syncBillPending?: boolean
 	retractBillPending?: boolean
 }) {
+	const { t } = useAppTranslation()
+
 	const columns = useMemo(
 		() => [
 			{
 				id: 'billStatus',
-				header: 'Bill Status',
+				header: t('tax.billStatus'),
 				sortable: true,
 				cell: (row: TaxBillStatusReportRow) => <BillStatusBadge status={row.billStatus} />,
 			},
 			{
 				id: 'corporationId',
-				header: 'Corporation',
+				header: t('tax.corporation'),
 				sortable: true,
 				cell: (row: TaxBillStatusReportRow) => (
 					<TaxCorporationDisplay
@@ -46,49 +49,49 @@ export function BillStatusReportGrid(props: {
 			},
 			{
 				id: 'taxPeriodStart',
-				header: 'Period Start',
+				header: t('tax.periodStart'),
 				sortable: true,
 				cell: (row: TaxBillStatusReportRow) => formatTaxDate(row.taxPeriodStart),
 			},
 			{
 				id: 'taxPeriodEnd',
-				header: 'Period End',
+				header: t('tax.periodEnd'),
 				sortable: true,
 				cell: (row: TaxBillStatusReportRow) => formatTaxDate(row.taxPeriodEnd),
 			},
 			{
 				id: 'issueDate',
-				header: 'Issue Date',
+				header: t('tax.issueDate'),
 				sortable: true,
 				cell: (row: TaxBillStatusReportRow) => formatTaxDate(row.issueDate),
 			},
 			{
 				id: 'dueDate',
-				header: 'Due Date',
+				header: t('tax.dueDate'),
 				sortable: true,
 				cell: (row: TaxBillStatusReportRow) => formatTaxDate(row.dueDate),
 			},
 			{
 				id: 'taxDue',
-				header: 'Tax Due',
+				header: t('tax.taxDue'),
 				sortable: true,
 				cell: (row: TaxBillStatusReportRow) => formatTaxIskFull(row.taxDue),
 			},
 			{
 				id: 'taxPaid',
-				header: 'Tax Paid',
+				header: t('tax.taxPaid'),
 				sortable: true,
 				cell: (row: TaxBillStatusReportRow) => formatTaxIskFull(row.taxPaid),
 			},
 			{
 				id: 'taxDelta',
-				header: 'Delta',
+				header: t('tax.delta'),
 				sortable: true,
 				cell: (row: TaxBillStatusReportRow) => formatTaxIskFull(row.taxDelta),
 			},
 			{
 				id: 'actions',
-				header: 'Actions',
+				header: t('tax.actions'),
 				className: 'text-right',
 				headerClassName: 'text-right',
 				cell: (row: TaxBillStatusReportRow) => {
@@ -105,7 +108,7 @@ export function BillStatusReportGrid(props: {
 									disabled={Boolean(busy) || !props.onSyncBillStatus}
 									onClick={() => props.onSyncBillStatus?.(row.assessmentId)}
 								>
-									{props.syncBillPending ? 'Syncing...' : 'Sync'}
+									{props.syncBillPending ? t('tax.syncing') : t('tax.sync')}
 								</Button>
 							) : null}
 							{canRetract ? (
@@ -116,11 +119,11 @@ export function BillStatusReportGrid(props: {
 									disabled={Boolean(busy) || !props.onRetractBill}
 									onClick={() => props.onRetractBill?.(row.assessmentId)}
 								>
-									{props.retractBillPending ? 'Retracting...' : 'Retract'}
+									{props.retractBillPending ? t('tax.retracting') : t('tax.retract')}
 								</Button>
 							) : null}
 							{!canSync && !canRetract ? (
-								<span className="text-xs text-muted-foreground">No actions</span>
+								<span className="text-xs text-muted-foreground">{t('tax.noActions')}</span>
 							) : null}
 						</div>
 					)
@@ -134,24 +137,25 @@ export function BillStatusReportGrid(props: {
 			props.onSyncBillStatus,
 			props.retractBillPending,
 			props.syncBillPending,
+			t,
 		]
 	)
 
 	return (
 		<DataTable
 			variant="plain"
-			errorMessage="Failed to load report"
+			errorMessage={t('tax.failedToLoadReport')}
 			columns={columns}
 			rows={props.rows}
 			loading={props.loading}
 			error={props.error}
-			emptyMessage="No bill status rows found."
+			emptyMessage={t('tax.noBillStatusRowsFound')}
 			sorting={props.sorting}
 			onSortingChange={props.onSortingChange}
 			pagination={props.pagination}
 			onPaginationChange={props.onPaginationChange}
 			rowCount={props.rowCount}
-			itemLabel="bills"
+			itemLabel={t('tax.bills')}
 			getRowKey={(row) => row.assessmentId}
 		/>
 	)

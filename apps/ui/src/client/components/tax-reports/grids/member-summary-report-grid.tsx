@@ -10,6 +10,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { useAppTranslation } from '@/i18n'
 import { formatMonthYear } from '@/lib/date-utils'
 import {
 	formatTaxIskFull,
@@ -56,6 +57,8 @@ function MemberSummaryPagination({
 	MemberSummaryReportGridProps,
 	'totalRows' | 'page' | 'pageSize' | 'onPageChange' | 'onPageSizeChange' | 'loading'
 >) {
+	const { t } = useAppTranslation()
+
 	return (
 		<UserSearchPaginationControls
 			totalCount={totalRows}
@@ -64,7 +67,7 @@ function MemberSummaryPagination({
 			onPageChange={(nextPage) => onPageChange(nextPage - 1)}
 			onPageSizeChange={onPageSizeChange}
 			pageSizeOptions={[25, 50, 100]}
-			itemLabel="members"
+			itemLabel={t('tax.members')}
 			nextButtonLoading={loading}
 		/>
 	)
@@ -191,8 +194,10 @@ function TopSourceBreakdown({ topRefTypes }: { topRefTypes: TaxMemberSummary['to
 }
 
 export function MemberSummaryReportGrid(props: MemberSummaryReportGridProps) {
+	const { t } = useAppTranslation()
+
 	const errorMessage =
-		props.error instanceof Error ? props.error.message : 'Unable to load member summary.'
+		props.error instanceof Error ? props.error.message : t('tax.unableToLoadMemberSummary')
 
 	return (
 		<div className="space-y-3">
@@ -203,41 +208,41 @@ export function MemberSummaryReportGrid(props: MemberSummaryReportGridProps) {
 					<TableHeader>
 						<TableRow>
 							<SortableHead
-								label="Character"
+								label={t('tax.character')}
 								field="characterId"
 								sortBy={props.sortBy}
 								sortDir={props.sortDir}
 								onSortChange={props.onSortChange}
 							/>
 							<SortableHead
-								label="Contribution"
+								label={t('tax.contribution')}
 								field="contributionIncome"
 								sortBy={props.sortBy}
 								sortDir={props.sortDir}
 								onSortChange={props.onSortChange}
 							/>
 							<SortableHead
-								label="Taxable"
+								label={t('tax.taxable')}
 								field="taxableContributionIncome"
 								sortBy={props.sortBy}
 								sortDir={props.sortDir}
 								onSortChange={props.onSortChange}
 							/>
 							<SortableHead
-								label="Assessments"
+								label={t('tax.assessments2')}
 								field="assessmentCount"
 								sortBy={props.sortBy}
 								sortDir={props.sortDir}
 								onSortChange={props.onSortChange}
 							/>
 							<SortableHead
-								label="Most Recent Assessment"
+								label={t('tax.mostRecentAssessment')}
 								field="lastAssessmentAt"
 								sortBy={props.sortBy}
 								sortDir={props.sortDir}
 								onSortChange={props.onSortChange}
 							/>
-							<TableHead>Source Split</TableHead>
+							<TableHead>{t('tax.sourceSplit')}</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -246,7 +251,7 @@ export function MemberSummaryReportGrid(props: MemberSummaryReportGridProps) {
 								<TableRow key={row.characterId}>
 									<TableCell>
 										{row.characterId === UNATTRIBUTED_CHARACTER_ID ? (
-											<div className="font-medium">Unattributed</div>
+											<div className="font-medium">{t('tax.unattributed')}</div>
 										) : (
 											<TaxEntityDisplay
 												entityId={row.characterId}
@@ -275,8 +280,8 @@ export function MemberSummaryReportGrid(props: MemberSummaryReportGridProps) {
 							<TableRow>
 								<TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
 									{props.loading
-										? 'Loading member contribution records...'
-										: 'No member contribution records were found for the selected scope and period.'}
+										? t('tax.loadingMemberContributionRecords')
+										: t('tax.noMemberContributionRecordsWereFoundForTheSelectedScope')}
 								</TableCell>
 							</TableRow>
 						)}
@@ -284,7 +289,7 @@ export function MemberSummaryReportGrid(props: MemberSummaryReportGridProps) {
 				</Table>
 				{props.loading && props.rows.length > 0 ? (
 					<div className="absolute inset-0 flex items-center justify-center bg-background/45 text-sm text-muted-foreground backdrop-blur-[1px]">
-						Loading...
+						{t('tax.loading')}
 					</div>
 				) : null}
 			</div>

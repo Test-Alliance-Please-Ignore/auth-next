@@ -1,11 +1,12 @@
 import { CorporationSearchSelect } from '@/components/corporation-search-select'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { useAppTranslation } from '@/i18n'
 
 import type { TaxBillingPayeeType } from '@repo/corporation-tax'
-import { Button } from '@/components/ui/button'
 
 type BillingPayeeSearchResult = {
 	value: string
@@ -29,7 +30,9 @@ type BillingConfigurationFormProps = {
 	isBillingPayeeSelectionValid: boolean
 	billingCharacterSearchLoading: boolean
 	billingCharacterSearchResults: BillingPayeeSearchResult[]
-	searchBillingCorporationPayees: (query: string) => Promise<Array<{ corporationId: string; name: string | null }>>
+	searchBillingCorporationPayees: (
+		query: string
+	) => Promise<Array<{ corporationId: string; name: string | null }>>
 	isCreatePending: boolean
 	isUpdatePending: boolean
 	canIssue: boolean
@@ -78,12 +81,15 @@ export function BillingConfigurationForm({
 	onCancel,
 	onSubmit,
 }: BillingConfigurationFormProps) {
+	const { t } = useAppTranslation()
+
 	return (
 		<>
 			<div className="grid gap-3 md:grid-cols-2">
 				<div className="space-y-2">
 					<Label>
-						Payee Type <span className="text-destructive">*</span>
+						{t('tax.payeeType')}
+						<span className="text-destructive">*</span>
 					</Label>
 					<Select
 						value={billingPayeeTypeInput}
@@ -93,19 +99,19 @@ export function BillingConfigurationForm({
 							onBillingPayeeTypeChange(nextType)
 						}}
 						options={[
-							{ value: 'character', label: 'Character' },
-							{ value: 'corporation', label: 'Corporation' },
+							{ value: 'character', label: t('tax.character') },
+							{ value: 'corporation', label: t('tax.corporation') },
 						]}
-						placeholder="Select payee type"
+						placeholder={t('tax.selectPayeeType')}
 					/>
 				</div>
 				<div className="space-y-2">
 					<Label>
 						{billingPayeeTypeInput === 'character'
-							? 'Character'
+							? t('tax.character')
 							: billingPayeeTypeInput === 'corporation'
-								? 'Corporation'
-								: 'Payee'}{' '}
+								? t('tax.corporation')
+								: t('tax.payee')}{' '}
 						<span className="text-destructive">*</span>
 					</Label>
 					{billingPayeeTypeInput === 'character' ? (
@@ -130,14 +136,13 @@ export function BillingConfigurationForm({
 							options={billingCharacterSearchResults}
 							minQueryLength={2}
 							debounceMs={0}
-							placeholder="Character name or ID"
+							placeholder={t('tax.characterNameOrId')}
 							loading={
-								billingCharacterSearchInput.trim().length >= 2 &&
-								billingCharacterSearchLoading
+								billingCharacterSearchInput.trim().length >= 2 && billingCharacterSearchLoading
 							}
-							queryHintText="Type at least 2 characters"
-							loadingText="Searching characters..."
-							emptyText="No matching characters found"
+							queryHintText={t('tax.searchHint')}
+							loadingText={t('tax.searchingCharacters')}
+							emptyText={t('tax.noMatchingCharacters')}
 						/>
 					) : billingPayeeTypeInput === 'corporation' ? (
 						<CorporationSearchSelect
@@ -154,24 +159,25 @@ export function BillingConfigurationForm({
 								onBillingCorporationSearchInputChange(value)
 								onBillingPayeeIdChange('')
 							}}
-							placeholder="Corporation name or ID"
+							placeholder={t('tax.corporationNameOrId')}
 							searchCorporations={searchBillingCorporationPayees}
 						/>
 					) : (
-						<Input value="" disabled placeholder="Select payee type first" />
+						<Input value="" disabled placeholder={t('tax.selectPayeeTypeFirst')} />
 					)}
 				</div>
 				<div className="space-y-2">
-					<Label>Issuer User ID (optional)</Label>
+					<Label>{t('tax.issuerUserIdOptional')}</Label>
 					<Input
 						value={billingIssuerUserIdInput}
 						onChange={(event) => onBillingIssuerUserIdChange(event.target.value)}
-						placeholder="Defaults to acting user"
+						placeholder={t('tax.defaultsToActingUser')}
 					/>
 				</div>
 				<div className="space-y-2">
 					<Label>
-						Due Days <span className="text-destructive">*</span>
+						{t('tax.dueDays')}
+						<span className="text-destructive">*</span>
 					</Label>
 					<Input
 						type="number"
@@ -186,7 +192,7 @@ export function BillingConfigurationForm({
 					/>
 					{!isBillingDueDaysValid ? (
 						<div className="text-xs text-destructive">
-							Due days is required and must be an integer between 1 and 90.
+							{t('tax.dueDaysIsRequiredAndMustBeAnIntegerBetween')}
 						</div>
 					) : null}
 				</div>
@@ -194,7 +200,7 @@ export function BillingConfigurationForm({
 			<div className="flex flex-wrap items-center gap-6">
 				<div className="flex items-center gap-2">
 					<Switch checked={billingEnabledInput} onCheckedChange={onBillingEnabledChange} />
-					<Label>Billing enabled</Label>
+					<Label>{t('tax.billingEnabled')}</Label>
 				</div>
 				<div className="flex items-center gap-2">
 					<Switch
@@ -202,7 +208,7 @@ export function BillingConfigurationForm({
 						disabled={isCreatingFirstBillingConfig}
 						onCheckedChange={onBillingIsDefaultChange}
 					/>
-					<Label>Set as default payee</Label>
+					<Label>{t('tax.setAsDefaultPayee')}</Label>
 				</div>
 			</div>
 			{billingConfigValidationError ? (
@@ -210,14 +216,15 @@ export function BillingConfigurationForm({
 			) : null}
 			{isCreatingFirstBillingConfig ? (
 				<div className="text-xs text-muted-foreground">
-					First billing config for this corporation is automatically set as default.
+					{t('tax.firstBillingConfigForThisCorporationIsAutomaticallySetAs')}
 				</div>
 			) : null}
 			<div className="flex items-center justify-end gap-2">
 				<Button variant="cancel" showIcon={false} onClick={onCancel}>
-					Cancel
+					{t('tax.cancel')}
 				</Button>
-				<Button variant="primary"
+				<Button
+					variant="primary"
 					disabled={
 						!canIssue ||
 						isCreatePending ||
@@ -229,11 +236,11 @@ export function BillingConfigurationForm({
 				>
 					{editingBillingConfigId
 						? isUpdatePending
-							? 'Saving...'
-							: 'Save Changes'
+							? t('tax.saving')
+							: t('tax.saveChanges')
 						: isCreatePending
-							? 'Creating...'
-							: 'Save Config'}
+							? t('tax.creating')
+							: t('tax.saveConfig')}
 				</Button>
 			</div>
 		</>

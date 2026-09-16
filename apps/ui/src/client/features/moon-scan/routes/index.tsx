@@ -15,6 +15,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 
 import { useMoonRegions } from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
@@ -206,7 +207,9 @@ function AccessTile({
 }
 
 export default function MoonScanIndex() {
-	usePageTitle('Moon Scanning')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('moonScan.moonScanning'))
 
 	const { canView, canSubmit, canValidate, canAdmin, canAccessMoonScan, canLeaderboard } =
 		useMoonScanPermissions()
@@ -226,8 +229,8 @@ export default function MoonScanIndex() {
 		return (
 			<Container>
 				<PageHeader
-					title="Moon Scanning"
-					description="You do not have permission to view moon data."
+					title={t('moonScan.moonScanning')}
+					description={t('moonScan.youDoNotHavePermissionToViewMoonData')}
 				/>
 			</Container>
 		)
@@ -238,45 +241,49 @@ export default function MoonScanIndex() {
 		accessTiles.push(
 			{
 				to: '/moon-scan/submit',
-				title: 'Submit Scan',
-				description: 'Paste and submit moon scan results.',
+				title: t('moonScan.submitScan'),
+				description: t('moonScan.pasteAndSubmitMoonScanResults'),
 			},
 			{
 				to: '/moon-scan/my-scans',
-				title: 'My Scans',
-				description: 'Review scans you have submitted.',
+				title: t('moonScan.myScans'),
+				description: t('moonScan.reviewScansYouHaveSubmitted'),
 			}
 		)
 	}
 	if (canLeaderboard) {
 		accessTiles.push({
 			to: '/moon-scan/leaderboard',
-			title: 'Leaderboard',
-			description: 'View verified scan contributor rankings.',
+			title: t('moonScan.leaderboard'),
+			description: t('moonScan.viewVerifiedScanContributorRankings'),
 		})
 	}
 	if (canValidate) {
 		accessTiles.push({
 			to: '/moon-scan/queue',
-			title: 'Validation Queue',
-			description: 'Review and approve pending moon scans.',
+			title: t('moonScan.validationQueue'),
+			description: t('moonScan.reviewAndApprovePendingMoonScans'),
 		})
 	}
 	if (canView) {
 		accessTiles.push(
-			{ to: '/moon-scan', title: 'Regions', description: 'Browse k-space regions and coverage.' },
+			{
+				to: '/moon-scan',
+				title: t('moonScan.regions'),
+				description: t('moonScan.browseKSpaceRegionsAndCoverage'),
+			},
 			{
 				to: '/moon-scan/scanned',
-				title: 'Scanned Moons',
-				description: 'Inspect verified moon compositions.',
+				title: t('moonScan.scannedMoons'),
+				description: t('moonScan.inspectVerifiedMoonCompositions'),
 			}
 		)
 	}
 	if (canAdmin) {
 		accessTiles.push({
 			to: '/moon-scan/settings',
-			title: 'Configuration',
-			description: 'Manage moon scan extraction defaults and profiles.',
+			title: t('moonScan.configuration'),
+			description: t('moonScan.manageMoonScanExtractionDefaultsAndProfiles'),
 		})
 	}
 
@@ -285,8 +292,8 @@ export default function MoonScanIndex() {
 			<Container>
 				<div className="mb-4">
 					<PageHeader
-						title="Moon Scanning"
-						description="Choose one of the available moon scan tools."
+						title={t('moonScan.moonScanning')}
+						description={t('moonScan.chooseOneOfTheAvailableMoonScanTools')}
 					/>
 				</div>
 				<Card className="mt-section">
@@ -329,12 +336,12 @@ export default function MoonScanIndex() {
 	return (
 		<Container>
 			<div className="mb-4">
-				<PageHeader title="Moon Scanning" />
+				<PageHeader title={t('moonScan.moonScanning')} />
 			</div>
 
 			{error && (
 				<div className="mb-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-500">
-					Failed to load regions
+					{t('moonScan.failedToLoadRegions')}
 				</div>
 			)}
 
@@ -413,15 +420,15 @@ export default function MoonScanIndex() {
 								{tooltip.region.regionName}
 							</span>
 							<br />
-							<span style={{ color: MAP_COLORS.tooltipMuted }}>Systems: </span>
+							<span style={{ color: MAP_COLORS.tooltipMuted }}>{t('moonScan.systems')}</span>
 							{tooltip.region.systemCount}
 							{'  '}
-							<span style={{ color: MAP_COLORS.tooltipMuted }}>Moons: </span>
+							<span style={{ color: MAP_COLORS.tooltipMuted }}>{t('moonScan.moons')}</span>
 							{tooltip.region.moonCount}
 							{tooltip.region.moonCount > 0 && (
 								<>
 									<br />
-									<span style={{ color: MAP_COLORS.tooltipMuted }}>Verified: </span>
+									<span style={{ color: MAP_COLORS.tooltipMuted }}>{t('moonScan.verified')}</span>
 									{tooltip.region.verifiedCount} (
 									{Math.round((tooltip.region.verifiedCount / tooltip.region.moonCount) * 100)}%)
 								</>
@@ -441,7 +448,7 @@ export default function MoonScanIndex() {
 							border: `1px solid ${MAP_COLORS.verifiedStroke}`,
 						}}
 					/>
-					100% Verified
+					{t('moonScan.message100Verified')}
 				</span>
 				<span className="flex items-center gap-1.5">
 					<span
@@ -451,7 +458,7 @@ export default function MoonScanIndex() {
 							border: `1px solid ${MAP_COLORS.partialStroke}`,
 						}}
 					/>
-					Partially Scanned
+					{t('moonScan.partiallyScanned')}
 				</span>
 				<span className="flex items-center gap-1.5">
 					<span
@@ -461,7 +468,7 @@ export default function MoonScanIndex() {
 							border: `1px solid ${MAP_COLORS.hasMoonStroke}`,
 						}}
 					/>
-					Has Moons
+					{t('moonScan.hasMoons')}
 				</span>
 				<span className="flex items-center gap-1.5">
 					<span
@@ -471,20 +478,20 @@ export default function MoonScanIndex() {
 							border: `1px solid ${MAP_COLORS.emptyStroke}`,
 						}}
 					/>
-					No Moon Data
+					{t('moonScan.noMoonData')}
 				</span>
-				<span className="text-muted-foreground/60">Click region to open</span>
+				<span className="text-muted-foreground/60">{t('moonScan.clickRegionToOpen')}</span>
 			</div>
 
 			{/* Regions Table */}
 			<Card>
 				<div className="border-b px-4 py-2.5">
 					<div className="flex items-center justify-between gap-2">
-						<div className="text-sm font-medium">Regions</div>
+						<div className="text-sm font-medium">{t('moonScan.regions')}</div>
 						<Input
 							value={regionSearch}
 							onChange={(e) => updateRegionSearch(e.target.value)}
-							placeholder="Filter regions..."
+							placeholder={t('moonScan.filterRegions')}
 							className="h-8 w-full sm:w-64"
 						/>
 					</div>
@@ -493,10 +500,10 @@ export default function MoonScanIndex() {
 					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead>Region</TableHead>
-								<TableHead className="text-right">Systems</TableHead>
-								<TableHead className="text-right">Moons</TableHead>
-								<TableHead className="text-right">Verified</TableHead>
+								<TableHead>{t('moonScan.region')}</TableHead>
+								<TableHead className="text-right">{t('moonScan.systems2')}</TableHead>
+								<TableHead className="text-right">{t('moonScan.moons2')}</TableHead>
+								<TableHead className="text-right">{t('moonScan.verified2')}</TableHead>
 							</TableRow>
 						</TableHeader>
 						<TableBody>
@@ -535,7 +542,7 @@ export default function MoonScanIndex() {
 							{!isLoading && filteredRegions.length === 0 && (
 								<TableRow>
 									<TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
-										No regions match the current filter.
+										{t('moonScan.noRegionsMatchTheCurrentFilter')}
 									</TableCell>
 								</TableRow>
 							)}

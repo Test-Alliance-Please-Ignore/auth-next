@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/table'
 import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { useMessage } from '@/hooks/useMessage'
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import {
@@ -113,6 +114,8 @@ const intentBg: Record<ActionIntent, string> = {
 }
 
 function ActionsMenu({ items }: { items: ActionItem[] }) {
+	const { t } = useAppTranslation()
+
 	const [open, setOpen] = useState(false)
 	const visible = items.filter((item) => !item.hidden)
 
@@ -125,7 +128,8 @@ function ActionsMenu({ items }: { items: ActionItem[] }) {
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
 				<Button variant="ghost" size="sm">
-					Actions <ChevronDown className="ml-1 h-3 w-3" />
+					{t('characterpages.actions2')}
+					<ChevronDown className="ml-1 h-3 w-3" />
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent align="end" className="w-48 p-1">
@@ -140,7 +144,7 @@ function ActionsMenu({ items }: { items: ActionItem[] }) {
 							item.onClick?.()
 						}}
 					>
-						{item.loading ? 'Loading…' : item.label}
+						{item.loading ? t('characterpages.loading') : item.label}
 					</button>
 				))}
 			</PopoverContent>
@@ -166,6 +170,8 @@ export default function CorporationMembersTable({
 	pagination,
 	summary,
 }: CorporationMembersTableProps) {
+	const { t } = useAppTranslation()
+
 	const { showSuccess, showError } = useMessage()
 
 	const searchQuery = query.search ?? ''
@@ -231,7 +237,7 @@ export default function CorporationMembersTable({
 			characterId: string
 			status: 'active' | 'emeritus'
 		}) => {
-			if (!corporationId) throw new Error('Corporation ID is required')
+			if (!corporationId) throw new Error(t('characterpages.corporationIdIsRequired'))
 			return myCorporationsApi.updateMemberStatus(corporationId, characterId, status)
 		},
 		onSuccess: () => {
@@ -251,66 +257,71 @@ export default function CorporationMembersTable({
 				sortOrder: prev.sortField === field && prev.sortOrder === 'asc' ? 'desc' : 'asc',
 			}))
 		},
-		[onQueryChange]
+		[onQueryChange, t]
 	)
 
 	const handleGrantHrRole = useCallback(
 		async (request: Parameters<typeof grantMutation.mutateAsync>[0]) => {
 			try {
 				await grantMutation.mutateAsync(request)
-				showSuccess('HR role granted successfully')
+				showSuccess(t('characterpages.hrRoleGrantedSuccessfully'))
 				setGrantDialogMember(null)
 			} catch (error) {
-				showError('Failed to grant HR role')
+				showError(t('characterpages.failedToGrantHrRole'))
 				throw error
 			}
 		},
-		[grantMutation, showSuccess, showError]
+		[grantMutation, showSuccess, showError, t]
 	)
 
 	const handleRevokeHrRole = useCallback(
 		async (request: Parameters<typeof revokeMutation.mutateAsync>[0]) => {
 			try {
 				await revokeMutation.mutateAsync(request)
-				showSuccess('HR role revoked successfully')
+				showSuccess(t('characterpages.hrRoleRevokedSuccessfully'))
 				setRevokeDialogMember(null)
 			} catch (error) {
-				showError('Failed to revoke HR role')
+				showError(t('characterpages.failedToRevokeHrRole'))
 				throw error
 			}
 		},
-		[revokeMutation, showSuccess, showError]
+		[revokeMutation, showSuccess, showError, t]
 	)
 
 	const handleEmeritusStatusUpdate = useCallback(
 		async (characterId: string, status: 'active' | 'emeritus') => {
 			try {
 				await emeritusMutation.mutateAsync({ characterId, status })
-				const action = status === 'emeritus' ? 'marked as emeritus' : 'emeritus status removed'
-				showSuccess(`Member ${action} successfully`)
+				const action =
+					status === 'emeritus'
+						? t('characterpages.markedAsEmeritus')
+						: t('characterpages.emeritusStatusRemoved')
+				showSuccess(t('characterpages.memberValue1Successfully', { value1: action }))
 				setEmeritusDialogMember(null)
 			} catch (error) {
-				showError('Failed to update member status')
+				showError(t('characterpages.failedToUpdateMemberStatus'))
 				throw error
 			}
 		},
-		[emeritusMutation, showSuccess, showError]
+		[emeritusMutation, showSuccess, showError, t]
 	)
 
 	const formatDate = (dateString?: string) => {
-		if (!dateString) return 'Never'
+		if (!dateString) return t('characterpages.never')
 		const date = new Date(dateString)
 		const now = new Date()
 		const diffMs = now.getTime() - date.getTime()
 		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
-		if (diffDays === 0) return 'Today'
-		if (diffDays === 1) return 'Yesterday'
-		if (diffDays < 7) return `${diffDays} days ago`
-		if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`
-		if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`
+		if (diffDays === 0) return t('characterpages.today')
+		if (diffDays === 1) return t('characterpages.yesterday')
+		if (diffDays < 7) return t('characterpages.value1DaysAgo', { value1: diffDays })
+		if (diffDays < 30)
+			return t('characterpages.value1WeeksAgo', { value1: Math.floor(diffDays / 7) })
+		if (diffDays < 365)
+			return t('characterpages.value1MonthsAgo', { value1: Math.floor(diffDays / 30) })
 
-		return date.toLocaleDateString()
+		return date.toLocaleDateString(getActiveLocale())
 	}
 
 	const getSortDirection = (field: SortField) => {
@@ -347,7 +358,7 @@ export default function CorporationMembersTable({
 				onPageChange={(page) => onQueryChange((prev) => ({ ...prev, page }))}
 				onPageSizeChange={(limit) => onQueryChange((prev) => ({ ...prev, page: 1, limit }))}
 				pageSizeOptions={[10, 25, 50, 100]}
-				itemLabel="members"
+				itemLabel={t('characterpages.members2')}
 			/>
 		</div>
 	)
@@ -356,7 +367,9 @@ export default function CorporationMembersTable({
 		return (
 			<Card className="p-6">
 				<div className="flex items-center justify-center">
-					<div className="animate-pulse text-muted-foreground">Loading members...</div>
+					<div className="animate-pulse text-muted-foreground">
+						{t('characterpages.loadingMembers')}
+					</div>
 				</div>
 			</Card>
 		)
@@ -367,26 +380,27 @@ export default function CorporationMembersTable({
 			{/* Statistics Bar */}
 			<div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
 				<Card className="p-3">
-					<div className="text-sm text-muted-foreground">Total Members</div>
+					<div className="text-sm text-muted-foreground">{t('characterpages.totalMembers')}</div>
 					<div className="text-2xl font-bold">{stats.total}</div>
 					<div className="mt-1 text-xs text-muted-foreground">
-						({stats.linkedUsers} linked users)
+						({stats.linkedUsers}
+						{t('characterpages.linkedUsers')}
 					</div>
 				</Card>
 				<Card className="p-3">
-					<div className="text-sm text-muted-foreground">Linked</div>
+					<div className="text-sm text-muted-foreground">{t('characterpages.linked')}</div>
 					<div className="text-2xl font-bold text-success">{stats.linked}</div>
 				</Card>
 				<Card className="p-3">
-					<div className="text-sm text-muted-foreground">Active</div>
+					<div className="text-sm text-muted-foreground">{t('characterpages.active')}</div>
 					<div className="text-2xl font-bold text-primary">{stats.active}</div>
 				</Card>
 				<Card className="p-3">
-					<div className="text-sm text-muted-foreground">Inactive</div>
+					<div className="text-sm text-muted-foreground">{t('characterpages.inactive')}</div>
 					<div className="text-2xl font-bold text-warning">{stats.inactive}</div>
 				</Card>
 				<Card className="p-3">
-					<div className="text-sm text-muted-foreground">Directors</div>
+					<div className="text-sm text-muted-foreground">{t('characterpages.directors2')}</div>
 					<div className="text-2xl font-bold text-purple-500">{stats.directors}</div>
 				</Card>
 			</div>
@@ -395,7 +409,7 @@ export default function CorporationMembersTable({
 			<Card className="p-4">
 				<div className="flex flex-col sm:flex-row gap-4">
 					<Input
-						placeholder="Search members..."
+						placeholder={t('characterpages.searchMembers')}
 						value={searchQuery}
 						onChange={(e) =>
 							onQueryChange((prev) => ({
@@ -417,11 +431,11 @@ export default function CorporationMembersTable({
 							}))
 						}
 						options={[
-							{ value: 'all', label: 'All Auth' },
-							{ value: 'linked_valid', label: 'ESI Valid' },
-							{ value: 'linked_invalid', label: 'ESI Invalid' },
-							{ value: 'linked_unknown', label: 'ESI Unknown' },
-							{ value: 'unlinked', label: 'Unlinked' },
+							{ value: 'all', label: t('characterpages.allAuth') },
+							{ value: 'linked_valid', label: t('characterpages.esiValid') },
+							{ value: 'linked_invalid', label: t('characterpages.esiInvalid') },
+							{ value: 'linked_unknown', label: t('characterpages.esiUnknown') },
+							{ value: 'unlinked', label: t('characterpages.unlinked') },
 						]}
 						className="w-[140px]"
 					/>
@@ -436,10 +450,10 @@ export default function CorporationMembersTable({
 							}))
 						}
 						options={[
-							{ value: 'all', label: 'All Activity' },
-							{ value: 'active', label: 'Active' },
-							{ value: 'inactive', label: 'Inactive' },
-							{ value: 'unknown', label: 'Unknown' },
+							{ value: 'all', label: t('characterpages.allActivity') },
+							{ value: 'active', label: t('characterpages.active') },
+							{ value: 'inactive', label: t('characterpages.inactive') },
+							{ value: 'unknown', label: t('characterpages.unknown') },
 						]}
 						className="w-[140px]"
 					/>
@@ -454,10 +468,10 @@ export default function CorporationMembersTable({
 							}))
 						}
 						options={[
-							{ value: 'all', label: 'All Roles' },
+							{ value: 'all', label: t('characterpages.allRoles') },
 							{ value: 'CEO', label: 'CEOs' },
-							{ value: 'Director', label: 'Directors' },
-							{ value: 'Member', label: 'Members' },
+							{ value: 'Director', label: t('characterpages.directors2') },
+							{ value: 'Member', label: t('characterpages.members') },
 						]}
 						className="w-[140px]"
 					/>
@@ -473,28 +487,33 @@ export default function CorporationMembersTable({
 								}))
 							}
 						/>
-						<span>Show mains only</span>
+						<span>{t('characterpages.showMainsOnly')}</span>
 					</label>
 				</div>
 			</Card>
 
 			{/* Table */}
-			<TableRefreshFrame isRefreshing={isRefreshing} refreshMessage="Loading members...">
+			<TableRefreshFrame
+				isRefreshing={isRefreshing}
+				refreshMessage={t('characterpages.loadingMembers')}
+			>
 				<Card>
 					{renderPaginationControls()}
 					<Table className="whitespace-nowrap">
 						<TableHeader>
 							<TableRow>
-								<SortableHead field="name" label="Member" />
-								<SortableHead field="role" label="Role" />
-								{canManageHrRoles && <SortableHead field="hrRole" label="HR Role" />}
-								<SortableHead field="auth" label="Auth Account" />
-								<SortableHead field="activity" label="Activity" />
-								<SortableHead field="lastLogin" label="Last Login" />
-								<SortableHead field="joinDate" label="Join Date" />
+								<SortableHead field="name" label={t('characterpages.member')} />
+								<SortableHead field="role" label={t('characterpages.role')} />
+								{canManageHrRoles && (
+									<SortableHead field="hrRole" label={t('characterpages.hrRole')} />
+								)}
+								<SortableHead field="auth" label={t('characterpages.authAccount')} />
+								<SortableHead field="activity" label={t('characterpages.activity')} />
+								<SortableHead field="lastLogin" label={t('characterpages.lastLogin2')} />
+								<SortableHead field="joinDate" label={t('characterpages.joinDate')} />
 								{showActions && (
 									<TableHead className={`${stickyTableActionHeaderClassName} text-right`}>
-										Actions
+										{t('characterpages.actions')}
 									</TableHead>
 								)}
 							</TableRow>
@@ -545,27 +564,27 @@ export default function CorporationMembersTable({
 										<div className="flex flex-nowrap gap-2">
 											{member.role === 'CEO' && (
 												<Badge variant="destructive" icon={Star}>
-													CEO
+													{t('characterpages.ceo')}
 												</Badge>
 											)}
 											{member.role === 'Director' && (
 												<Badge variant="warning" icon={Shield}>
-													Director
+													{t('characterpages.director')}
 												</Badge>
 											)}
 											{member.role === 'Member' && (
 												<Badge variant="default" icon={User}>
-													Member
+													{t('characterpages.member')}
 												</Badge>
 											)}
 											{member.status === 'emeritus' && (
 												<Badge variant="special" icon={Heart}>
-													Emeritus
+													{t('characterpages.emeritus')}
 												</Badge>
 											)}
 											{member.isBlacklisted && (
 												<Badge variant="destructive" icon={ShieldBan}>
-													Blocklisted
+													{t('characterpages.blocklisted')}
 												</Badge>
 											)}
 										</div>
@@ -575,7 +594,9 @@ export default function CorporationMembersTable({
 											{member.hrRole ? (
 												<HrRoleBadge role={member.hrRole} />
 											) : (
-												<span className="text-xs text-muted-foreground">None</span>
+												<span className="text-xs text-muted-foreground">
+													{t('characterpages.none')}
+												</span>
 											)}
 										</TableCell>
 									)}
@@ -594,11 +615,15 @@ export default function CorporationMembersTable({
 										</div>
 									</TableCell>
 									<TableCell>
-										{member.activityStatus === 'active' && <Badge variant="success">Active</Badge>}
-										{member.activityStatus === 'inactive' && (
-											<Badge variant="warning">Inactive</Badge>
+										{member.activityStatus === 'active' && (
+											<Badge variant="success">{t('characterpages.active')}</Badge>
 										)}
-										{member.activityStatus === 'unknown' && <Badge variant="ghost">Unknown</Badge>}
+										{member.activityStatus === 'inactive' && (
+											<Badge variant="warning">{t('characterpages.inactive')}</Badge>
+										)}
+										{member.activityStatus === 'unknown' && (
+											<Badge variant="ghost">{t('characterpages.unknown')}</Badge>
+										)}
 									</TableCell>
 									<TableCell>
 										<div className="text-sm">{formatDate(member.lastLogin)}</div>
@@ -614,18 +639,18 @@ export default function CorporationMembersTable({
 											<ActionsMenu
 												items={[
 													{
-														label: 'View Profile',
+														label: t('characterpages.viewProfile'),
 														intent: 'muted',
 														onClick: () => onMemberClick?.(member),
 													},
 													{
-														label: 'Grant HR Role',
+														label: t('characterpages.grantHrRole'),
 														intent: 'confirm',
 														hidden: !canManageHrRoles || !member.hasAuthAccount || !!member.hrRole,
 														onClick: () => setGrantDialogMember(member),
 													},
 													{
-														label: 'Revoke HR Role',
+														label: t('characterpages.revokeHrRole'),
 														intent: 'destructive',
 														hidden:
 															!canManageHrRoles ||
@@ -634,7 +659,7 @@ export default function CorporationMembersTable({
 														onClick: () => setRevokeDialogMember(member),
 													},
 													{
-														label: 'Mark as Emeritus',
+														label: t('characterpages.markAsEmeritus'),
 														intent: 'secondary',
 														hidden:
 															!canManageEmeritus ||
@@ -647,7 +672,7 @@ export default function CorporationMembersTable({
 														},
 													},
 													{
-														label: 'Remove Emeritus',
+														label: t('characterpages.removeEmeritus'),
 														intent: 'secondary',
 														hidden: !canManageEmeritus || member.status !== 'emeritus',
 														onClick: () => {
@@ -667,7 +692,7 @@ export default function CorporationMembersTable({
 										colSpan={showActions ? (canManageHrRoles ? 8 : 7) : canManageHrRoles ? 7 : 6}
 										className="py-8 text-center text-sm text-muted-foreground"
 									>
-										No members found for the current filters.
+										{t('characterpages.noMembersFoundForTheCurrentFilters')}
 									</TableCell>
 								</TableRow>
 							)}

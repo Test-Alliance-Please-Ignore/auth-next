@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 
 import { useAuth } from '@/hooks/useAuth'
+import { useAppTranslation } from '@/i18n'
 
 import { hrApi } from './api'
 
@@ -60,6 +61,8 @@ export function useHrRoles(corporationId: string, options?: { enabled?: boolean 
  * @param request - Permission check request (userId derived from session)
  */
 export function useHrPermissionCheck(request: CheckHrPermissionRequest | null) {
+	const { t } = useAppTranslation()
+
 	const { user } = useAuth()
 	const userId = user?.id ?? null
 
@@ -70,7 +73,7 @@ export function useHrPermissionCheck(request: CheckHrPermissionRequest | null) {
 			? [...hrKeys.permission(request.corporationId), userId, request.requiredRole ?? null]
 			: ['hr', 'permission', 'null'],
 		queryFn: () => {
-			if (!request) throw new Error('No request provided')
+			if (!request) throw new Error(t('hrpages.noRequestProvided'))
 			return hrApi.checkHrPermission(request)
 		},
 		enabled: !!request && userId !== null,

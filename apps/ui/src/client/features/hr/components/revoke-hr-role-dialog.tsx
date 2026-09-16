@@ -1,5 +1,6 @@
 import { ShieldOff } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import {
 	Dialog,
 	DialogContent,
@@ -7,12 +8,12 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from '@/components/ui/dialog'
+import { useAppTranslation } from '@/i18n'
 
 import { HrRoleBadge } from './hr-role-badge'
 
 import type { CorporationMember } from '../../corporations/api'
 import type { HrRoleGrant, RevokeHrRoleRequest } from '../api'
-import { Button } from '@/components/ui/button'
 
 interface RevokeHrRoleDialogProps {
 	member: CorporationMember | null
@@ -31,6 +32,8 @@ export function RevokeHrRoleDialog({
 	onSubmit,
 	isSubmitting,
 }: RevokeHrRoleDialogProps) {
+	const { t } = useAppTranslation()
+
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault()
 
@@ -57,10 +60,11 @@ export function RevokeHrRoleDialog({
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-lg">
 				<DialogHeader>
-					<DialogTitle>Revoke HR Role</DialogTitle>
+					<DialogTitle>{t('hrpages.revokeHrRole')}</DialogTitle>
 					<DialogDescription>
-						This will remove HR access for {member.characterName}. They will no longer be able to
-						access the HR management system.
+						{t('hrpages.thisWillRemoveHrAccessFor')}
+						{member.characterName}
+						{t('hrpages.theyWillNoLongerBeAbleToAccessTheHr')}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -73,12 +77,13 @@ export function RevokeHrRoleDialog({
 						</div>
 						<div className="space-y-2">
 							<div className="flex items-center gap-2 text-sm">
-								<span className="text-muted-foreground">Current HR Role:</span>
+								<span className="text-muted-foreground">{t('hrpages.currentHrRole')}</span>
 								<HrRoleBadge role={hrRole} />
 							</div>
 							{member.mainCharacterName && (
 								<p className="text-sm text-muted-foreground">
-									Main Character: {member.mainCharacterName}
+									{t('hrpages.mainCharacter2')}
+									{member.mainCharacterName}
 								</p>
 							)}
 						</div>
@@ -87,24 +92,30 @@ export function RevokeHrRoleDialog({
 					{/* Warning */}
 					<div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
 						<p className="text-sm text-destructive">
-							<strong>Warning:</strong> This action will immediately revoke all HR system access for
-							this user. Any in-progress work may be lost.
+							<strong>{t('hrpages.warning2')}</strong>
+							{t('hrpages.thisActionWillImmediatelyRevokeAllHrSystemAccessFor')}
 						</p>
 					</div>
 
 					{/* Action Buttons */}
 					<div className="flex justify-end gap-2 pt-4">
-						<Button variant="cancel" type="button" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
-							Cancel
+						<Button
+							variant="cancel"
+							type="button"
+							onClick={() => onOpenChange(false)}
+							disabled={isSubmitting}
+						>
+							{t('hrpages.cancel')}
 						</Button>
-						<Button variant="destructive"
+						<Button
+							variant="destructive"
 							type="submit"
 							loading={isSubmitting}
-							loadingText="Revoking Role..."
+							loadingText={t('hrpages.revokingRole')}
 							showIcon={false}
 						>
 							<ShieldOff className="h-4 w-4" />
-							Revoke Role
+							{t('hrpages.revokeRole')}
 						</Button>
 					</div>
 				</form>

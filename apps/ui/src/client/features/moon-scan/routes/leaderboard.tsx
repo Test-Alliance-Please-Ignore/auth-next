@@ -13,6 +13,7 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { i18n, useAppTranslation } from '@/i18n'
 
 import { useLeaderboard } from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
@@ -20,13 +21,30 @@ import { useMoonScanPermissions } from '../permissions'
 import type { LeaderboardWindow } from '../types'
 
 const WINDOWS: Array<{ value: LeaderboardWindow; label: string }> = [
-	{ value: 'all', label: 'All time' },
-	{ value: '30d', label: 'Last 30 days' },
-	{ value: '7d', label: 'Last 7 days' },
+	{
+		value: 'all',
+		get label() {
+			return i18n.t('moonScan.allTime')
+		},
+	},
+	{
+		value: '30d',
+		get label() {
+			return i18n.t('moonScan.last30Days')
+		},
+	},
+	{
+		value: '7d',
+		get label() {
+			return i18n.t('moonScan.last7Days')
+		},
+	},
 ]
 
 export default function LeaderboardPage() {
-	usePageTitle('Moon Scan Leaderboard')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('moonScan.moonScanLeaderboard'))
 
 	const { canLeaderboard } = useMoonScanPermissions()
 
@@ -36,7 +54,10 @@ export default function LeaderboardPage() {
 	if (!canLeaderboard) {
 		return (
 			<Container>
-				<PageHeader title="Scan Leaderboard" description="You do not have permission to view this page." />
+				<PageHeader
+					title={t('moonScan.scanLeaderboard')}
+					description={t('moonScan.youDoNotHavePermissionToViewThisPage')}
+				/>
 			</Container>
 		)
 	}
@@ -44,8 +65,8 @@ export default function LeaderboardPage() {
 	return (
 		<Container>
 			<PageHeader
-				title="Scan Leaderboard"
-				description="Top contributors ranked by verified moon scans"
+				title={t('moonScan.scanLeaderboard')}
+				description={t('moonScan.topContributorsRankedByVerifiedMoonScans')}
 			/>
 
 			<div className="mt-section">
@@ -60,7 +81,7 @@ export default function LeaderboardPage() {
 
 			{error && (
 				<div className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-500">
-					Failed to load leaderboard
+					{t('moonScan.failedToLoadLeaderboard')}
 				</div>
 			)}
 
@@ -69,8 +90,8 @@ export default function LeaderboardPage() {
 					<TableHeader>
 						<TableRow>
 							<TableHead className="w-12">#</TableHead>
-							<TableHead>Character</TableHead>
-							<TableHead className="text-right">Verified Scans</TableHead>
+							<TableHead>{t('moonScan.character')}</TableHead>
+							<TableHead className="text-right">{t('moonScan.verifiedScans')}</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -78,7 +99,9 @@ export default function LeaderboardPage() {
 							? Array.from({ length: 10 }).map((_, i) => (
 									<TableRow key={i}>
 										{Array.from({ length: 3 }).map((__, j) => (
-											<TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
+											<TableCell key={j}>
+												<Skeleton className="h-4 w-20" />
+											</TableCell>
 										))}
 									</TableRow>
 								))
@@ -96,7 +119,7 @@ export default function LeaderboardPage() {
 						{!isLoading && entries?.length === 0 && (
 							<TableRow>
 								<TableCell colSpan={3} className="py-8 text-center text-sm text-muted-foreground">
-									No verified scans for this period.
+									{t('moonScan.noVerifiedScansForThisPeriod')}
 								</TableCell>
 							</TableRow>
 						)}

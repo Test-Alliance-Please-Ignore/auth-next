@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n'
 /**
  * Industry Feature Types
  *
@@ -26,39 +27,81 @@ export type {
  * Service type display names for UI
  */
 export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
-	general_manufacturing: 'General Manufacturing',
-	capital_ship_manufacturing: 'Capital Ship Manufacturing',
-	supercapital_ship_manufacturing: 'Supercapital Manufacturing',
-	research: 'Research',
-	blueprint_copying: 'Blueprint Copying',
-	invention: 'Invention',
-	reaction: 'Reaction',
-	hauling: 'Hauling',
-	custom_hauling: 'Custom Hauling',
-	buyback: 'Buyback',
-	acquisition: 'Acquisition',
-	bookmarks: 'Bookmarks',
-	other_service: 'Other Service',
+	get general_manufacturing() {
+		return i18n.t('industry.generalManufacturing')
+	},
+	get capital_ship_manufacturing() {
+		return i18n.t('industry.capitalShipManufacturing')
+	},
+	get supercapital_ship_manufacturing() {
+		return i18n.t('industry.supercapitalManufacturing')
+	},
+	get research() {
+		return i18n.t('industry.research')
+	},
+	get blueprint_copying() {
+		return i18n.t('industry.blueprintCopying')
+	},
+	get invention() {
+		return i18n.t('industry.invention')
+	},
+	get reaction() {
+		return i18n.t('industry.reaction')
+	},
+	get hauling() {
+		return i18n.t('industry.hauling')
+	},
+	get custom_hauling() {
+		return i18n.t('industry.customHauling')
+	},
+	get buyback() {
+		return i18n.t('industry.buyback')
+	},
+	get acquisition() {
+		return i18n.t('industry.acquisition')
+	},
+	get bookmarks() {
+		return i18n.t('industry.bookmarks')
+	},
+	get other_service() {
+		return i18n.t('industry.otherService')
+	},
 }
 
 /**
  * Entity type display names for UI
  */
 export const ENTITY_TYPE_LABELS: Record<IndustryEntityType, string> = {
-	user: 'User',
-	character: 'Character',
-	corporation: 'Corporation',
-	alliance: 'Alliance',
-	service_provider: 'Service Provider',
+	get user() {
+		return i18n.t('industry.user')
+	},
+	get character() {
+		return i18n.t('industry.character')
+	},
+	get corporation() {
+		return i18n.t('industry.corporation')
+	},
+	get alliance() {
+		return i18n.t('industry.alliance')
+	},
+	get service_provider() {
+		return i18n.t('industry.serviceProvider')
+	},
 }
 
 /**
  * Service status display names for UI
  */
 export const SERVICE_STATUS_LABELS: Record<ServiceStatus, string> = {
-	active: 'Active',
-	inactive: 'Inactive',
-	closed: 'Closed',
+	get active() {
+		return i18n.t('industry.active')
+	},
+	get inactive() {
+		return i18n.t('industry.inactive')
+	},
+	get closed() {
+		return i18n.t('industry.closed')
+	},
 }
 
 /**

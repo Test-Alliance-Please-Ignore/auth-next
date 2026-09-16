@@ -7,6 +7,7 @@ import { useMemo } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { EveTimeDisplay } from '@/components/ui/eve-time-display'
+import { getActiveLocale, i18n, useAppTranslation } from '@/i18n'
 
 import { EntityNameLink } from './entity-name-link'
 import { FulcrumDataTable } from './fulcrum-data-table'
@@ -56,32 +57,32 @@ function buildWalletTransactionColumns(): Array<
 		},
 		{
 			id: 'is_buy',
-			header: 'Type',
+			header: i18n.t('hrpages.type'),
 			getValue: (row) => String(row.is_buy),
 			globalFilter: false,
 			filter: {
 				kind: 'select',
 				options: [
-					{ value: 'true', label: 'Buy' },
-					{ value: 'false', label: 'Sell' },
+					{ value: 'true', label: i18n.t('hrpages.buy') },
+					{ value: 'false', label: i18n.t('hrpages.sell') },
 				],
 			},
 			cell: (row) => (
 				<Badge variant={row.is_buy ? 'destructive' : 'success'}>
-					{row.is_buy ? 'Buy' : 'Sell'}
+					{row.is_buy ? i18n.t('hrpages.buy') : i18n.t('hrpages.sell')}
 				</Badge>
 			),
 		},
 		{
 			id: 'typeName',
-			header: 'Item',
+			header: i18n.t('hrpages.item'),
 			getValue: (row) => row.typeName,
 			filter: { kind: 'autocomplete' },
 			cell: (row) => <span className="font-medium">{row.typeName || '-'}</span>,
 		},
 		{
 			id: 'clientDisplayName',
-			header: 'With',
+			header: i18n.t('hrpages.with'),
 			getValue: (row) => row.clientDisplayName ?? row.clientName,
 			filter: { kind: 'autocomplete' },
 			cell: (row) => (
@@ -92,7 +93,7 @@ function buildWalletTransactionColumns(): Array<
 		},
 		{
 			id: 'locationName',
-			header: 'Location',
+			header: i18n.t('hrpages.location'),
 			getValue: (row) => row.locationName,
 			filter: { kind: 'autocomplete' },
 			cell: (row) => (
@@ -103,17 +104,19 @@ function buildWalletTransactionColumns(): Array<
 		},
 		{
 			id: 'quantity',
-			header: 'Qty',
+			header: i18n.t('hrpages.qty'),
 			getValue: (row) => row.quantity,
 			globalFilter: false,
 			filter: { kind: 'range' },
 			headerClassName: 'text-right',
 			className: 'text-right',
-			cell: (row) => <div className="font-mono">{row.quantity.toLocaleString()}</div>,
+			cell: (row) => (
+				<div className="font-mono">{row.quantity.toLocaleString(getActiveLocale())}</div>
+			),
 		},
 		{
 			id: 'unit_price',
-			header: 'Unit Price',
+			header: i18n.t('hrpages.unitPrice'),
 			getValue: (row) => {
 				const v = row.unit_price
 				return typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''))
@@ -126,7 +129,7 @@ function buildWalletTransactionColumns(): Array<
 		},
 		{
 			id: 'totalValue',
-			header: 'Total',
+			header: i18n.t('hrpages.total'),
 			getValue: (row) => {
 				const v = row.totalValue
 				return typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''))
@@ -147,19 +150,23 @@ export function WalletTransactionsSection({
 	data: ProcessedWalletTransaction[] | WalletTransactionsData | undefined
 	loadingProgress?: ReportChunkProgress
 }) {
+	const { t } = useAppTranslation()
+
 	const data = !rawData ? [] : Array.isArray(rawData) ? rawData : rawData.transactions
 	const truncated = !rawData || Array.isArray(rawData) ? false : (rawData.truncated ?? false)
 	const isLoadingChunks = Boolean(
 		!rawData && loadingProgress && loadingProgress.loadedChunks < loadingProgress.totalChunks
 	)
-	const columns = useMemo(() => buildWalletTransactionColumns(), [])
+	const columns = useMemo(() => buildWalletTransactionColumns(), [t])
 
 	const table = (
 		<FulcrumDataTable
 			columns={columns}
 			rows={data}
-			emptyMessage={isLoadingChunks ? 'Loading transactions...' : 'No transactions found.'}
-			searchPlaceholder="Search transactions..."
+			emptyMessage={
+				isLoadingChunks ? t('hrpages.loadingTransactions') : t('hrpages.noTransactionsFound')
+			}
+			searchPlaceholder={t('hrpages.searchTransactions')}
 			pageSize={100}
 			pageSizeOptions={[50, 100, 200, 500]}
 			compactRows
@@ -168,7 +175,8 @@ export function WalletTransactionsSection({
 				isLoadingChunks ? (
 					<span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
 						<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-						Loading chunks {loadingProgress?.loadedChunks ?? 0}/{loadingProgress?.totalChunks ?? 0}
+						{t('hrpages.loadingChunks')}
+						{loadingProgress?.loadedChunks ?? 0}/{loadingProgress?.totalChunks ?? 0}
 					</span>
 				) : undefined
 			}
@@ -176,7 +184,7 @@ export function WalletTransactionsSection({
 	)
 
 	if (data.length === 0 && !isLoadingChunks) {
-		return <p className="text-sm text-muted-foreground">No wallet transactions found.</p>
+		return <p className="text-sm text-muted-foreground">{t('hrpages.noWalletTransactionsFound')}</p>
 	}
 
 	// Compute totals across the complete client-side dataset.
@@ -199,15 +207,15 @@ export function WalletTransactionsSection({
 		<div className="space-y-3">
 			<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
 				<div>
-					<span className="text-muted-foreground">Total Bought: </span>
+					<span className="text-muted-foreground">{t('hrpages.totalBought')}</span>
 					<span className="font-mono font-semibold text-red-400">{formatIsk(totalBuy)} ISK</span>
 				</div>
 				<div>
-					<span className="text-muted-foreground">Total Sold: </span>
+					<span className="text-muted-foreground">{t('hrpages.totalSold')}</span>
 					<span className="font-mono font-semibold text-green-400">{formatIsk(totalSell)} ISK</span>
 				</div>
 				<div>
-					<span className="text-muted-foreground">Net: </span>
+					<span className="text-muted-foreground">{t('hrpages.net')}</span>
 					<span
 						className={`font-mono font-semibold ${totalSell - totalBuy >= 0 ? 'text-green-400' : 'text-red-400'}`}
 					>
@@ -217,7 +225,7 @@ export function WalletTransactionsSection({
 			</div>
 			{truncated && (
 				<p className="text-xs text-muted-foreground italic">
-					Note: Not all transaction history could be retrieved due to ESI rate limits.
+					{t('hrpages.noteNotAllTransactionHistoryCouldBeRetrievedDueTo')}
 				</p>
 			)}
 			{table}

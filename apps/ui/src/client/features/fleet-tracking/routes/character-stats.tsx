@@ -20,6 +20,7 @@ import { UserSearchPaginationControls } from '@/components/user-search-paginatio
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
 import { useUserPermissions } from '@/hooks/useUserPermissions'
+import { useAppTranslation } from '@/i18n'
 import { corporationLogoUrl } from '@/lib/eve-images'
 
 import { SessionStatsGrid } from '../components/session-stats-grid'
@@ -29,8 +30,10 @@ import { useCharacterStats } from '../hooks'
 import { formatDuration } from '../utils/format'
 
 export default function CharacterStats() {
+	const { t } = useAppTranslation()
+
 	const { characterId } = useParams<{ characterId: string }>()
-	usePageTitle('Character Stats')
+	usePageTitle(t('fleetTracking.characterStats'))
 	const { range } = useRangeFromSearchParams()
 	const { user } = useAuth()
 	const { isAdmin, hasPermission } = useUserPermissions()
@@ -55,18 +58,18 @@ export default function CharacterStats() {
 		return (
 			<Container>
 				<PageHeader
-					title="Character Stats"
+					title={t('fleetTracking.characterStats')}
 					action={
 						<Button asChild variant="ghost" size="sm">
 							<Link to="/fleet-tracking">
 								<ArrowLeft className="h-4 w-4" />
-								Fleet Tracking
+								{t('fleetTracking.fleetTracking')}
 							</Link>
 						</Button>
 					}
 				/>
 				<div className="py-12 text-center text-muted-foreground">
-					You do not have permission to view this character's fleet tracking stats.
+					{t('fleetTracking.youDoNotHavePermissionToViewThisCharacterS')}
 				</div>
 			</Container>
 		)
@@ -75,12 +78,12 @@ export default function CharacterStats() {
 	return (
 		<Container>
 			<PageHeader
-				title={data?.characterName ?? 'Character Stats'}
+				title={data?.characterName ?? t('fleetTracking.characterStats')}
 				action={
 					<Button asChild variant="ghost" size="sm">
 						<Link to="/fleet-tracking/stats">
 							<ArrowLeft className="h-4 w-4" />
-							Stats
+							{t('fleetTracking.stats')}
 						</Link>
 					</Button>
 				}
@@ -90,7 +93,7 @@ export default function CharacterStats() {
 					<p className="text-sm text-muted-foreground mt-1">
 						{data?.corporationName ? (
 							<>
-								<span>Corp:</span>{' '}
+								<span>{t('fleetTracking.corp')}</span>{' '}
 								{data.corporationId ? (
 									<img
 										src={corporationLogoUrl(data.corporationId, 32)}
@@ -107,7 +110,7 @@ export default function CharacterStats() {
 								</Link>
 							</>
 						) : (
-							<>Corp: —</>
+							<>{t('fleetTracking.corp2')}</>
 						)}
 					</p>
 				</div>
@@ -117,23 +120,25 @@ export default function CharacterStats() {
 			{isLoading ? (
 				<LoadingPage />
 			) : !data ? (
-				<div className="py-12 text-center text-sm text-muted-foreground">No data.</div>
+				<div className="py-12 text-center text-sm text-muted-foreground">
+					{t('fleetTracking.noData2')}
+				</div>
 			) : (
 				<div className="space-y-6">
 					<SessionStatsGrid
 						stats={[
-							{ label: 'Fleets joined', value: data.totals.fleetsJoined },
+							{ label: t('fleetTracking.fleetsJoined'), value: data.totals.fleetsJoined },
 							{
-								label: 'Time in fleet',
+								label: t('fleetTracking.timeInFleet'),
 								value: formatDuration(data.totals.minutesInFleet * 60_000),
 							},
 							{
-								label: 'FC time',
+								label: t('fleetTracking.fcTime'),
 								value: formatDuration(data.totals.minutesAsFC * 60_000),
 								sublabel: `${data.totals.timesFC} periods`,
 							},
 							{
-								label: 'Avg fleet duration',
+								label: t('fleetTracking.avgFleetDuration'),
 								value:
 									data.totals.avgFleetDurationMinutes != null
 										? `${data.totals.avgFleetDurationMinutes}m`
@@ -143,7 +148,7 @@ export default function CharacterStats() {
 					/>
 
 					<ShipDistributionChart
-						title="Most-flown ships"
+						title={t('fleetTracking.mostFlownShips')}
 						items={data.shipsFlown.map((s) => ({
 							shipTypeId: s.shipTypeId,
 							shipTypeName: s.shipTypeName,
@@ -165,24 +170,24 @@ export default function CharacterStats() {
 											setPage(1)
 										}}
 										pageSizeOptions={[10, 25, 50, 100]}
-										itemLabel="fleet sessions"
+										itemLabel={t('fleetTracking.fleetSessions')}
 										nextButtonLoading={isFetching}
 									/>
 								</div>
 							)}
 							{data.recentSessions.length === 0 ? (
 								<div className="py-8 text-center text-sm text-muted-foreground">
-									No recent fleets for this character in range.
+									{t('fleetTracking.noRecentFleetsForThisCharacterInRange')}
 								</div>
 							) : (
 								<Table>
 									<TableHeader>
 										<TableRow>
-											<TableHead>Date</TableHead>
-											<TableHead>Fleet name</TableHead>
-											<TableHead>Role</TableHead>
-											<TableHead>Ships flown</TableHead>
-											<TableHead>Duration</TableHead>
+											<TableHead>{t('fleetTracking.date')}</TableHead>
+											<TableHead>{t('fleetTracking.fleetName')}</TableHead>
+											<TableHead>{t('fleetTracking.role')}</TableHead>
+											<TableHead>{t('fleetTracking.shipsFlown')}</TableHead>
+											<TableHead>{t('fleetTracking.duration')}</TableHead>
 										</TableRow>
 									</TableHeader>
 									<TableBody>
@@ -196,7 +201,7 @@ export default function CharacterStats() {
 														{s.sessionName}
 													</Link>
 												</TableCell>
-												<TableCell>{s.wasFC ? 'FC' : 'Member'}</TableCell>
+												<TableCell>{s.wasFC ? 'FC' : t('fleetTracking.member')}</TableCell>
 												<TableCell>{s.shipsFlown}</TableCell>
 												<TableCell>{formatDuration(s.totalMinutes * 60_000)}</TableCell>
 											</TableRow>

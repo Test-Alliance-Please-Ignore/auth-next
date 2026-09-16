@@ -8,6 +8,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useAppTranslation } from '@/i18n'
 import { TaxCorporationDisplay, TaxEntityDisplay } from '@/lib/tax-display'
 
 import type { TaxCorporationBillingConfig } from '@repo/corporation-tax'
@@ -35,13 +36,15 @@ export function BillingConfigurationTable({
 	onSetDefault,
 	onDelete,
 }: BillingConfigurationTableProps) {
+	const { t } = useAppTranslation()
+
 	if (loading) {
-		return <div className="text-sm text-muted-foreground">Loading billing configs...</div>
+		return <div className="text-sm text-muted-foreground">{t('tax.loadingBillingConfigs')}</div>
 	}
 	if (error) {
 		return (
 			<div className="text-sm text-destructive">
-				{error instanceof Error ? error.message : 'Failed to load billing configurations'}
+				{error instanceof Error ? error.message : t('tax.failedToLoadBillingConfigurations')}
 			</div>
 		)
 	}
@@ -50,26 +53,26 @@ export function BillingConfigurationTable({
 		<Table>
 			<TableHeader>
 				<TableRow>
-					<TableHead>Default</TableHead>
-					<TableHead>Enabled</TableHead>
-					<TableHead>Payee</TableHead>
-					<TableHead>Issuer</TableHead>
-					<TableHead>Due Days</TableHead>
-					{canIssue ? <TableHead className="text-center">Actions</TableHead> : null}
+					<TableHead>{t('tax.default')}</TableHead>
+					<TableHead>{t('tax.enabled')}</TableHead>
+					<TableHead>{t('tax.payee')}</TableHead>
+					<TableHead>{t('tax.issuer')}</TableHead>
+					<TableHead>{t('tax.dueDays2')}</TableHead>
+					{canIssue ? <TableHead className="text-center">{t('tax.actions')}</TableHead> : null}
 				</TableRow>
 			</TableHeader>
 			<TableBody>
 				{billingConfigs.length === 0 ? (
 					<TableRow>
 						<TableCell colSpan={canIssue ? 6 : 5} className="text-sm text-muted-foreground">
-							No billing configs yet. Create one below.
+							{t('tax.noBillingConfigsYetCreateOneBelow')}
 						</TableCell>
 					</TableRow>
 				) : (
 					billingConfigs.map((config) => (
 						<TableRow key={config.id}>
 							<TableCell>
-								{config.isDefault ? <Badge variant="default">default</Badge> : '-'}
+								{config.isDefault ? <Badge variant="default">{t('tax.default2')}</Badge> : '-'}
 							</TableCell>
 							<TableCell>{config.billingEnabled ? 'yes' : 'no'}</TableCell>
 							<TableCell>
@@ -105,7 +108,7 @@ export function BillingConfigurationTable({
 											disabled={actionsDisabled}
 											onClick={() => onEdit(config)}
 										>
-											Edit
+											{t('tax.edit')}
 										</Button>
 										<Button
 											variant="primary"
@@ -113,7 +116,7 @@ export function BillingConfigurationTable({
 											disabled={actionsDisabled || config.isDefault}
 											onClick={() => onSetDefault(config.id)}
 										>
-											Set Default
+											{t('tax.setDefault')}
 										</Button>
 										<Button
 											variant="destructive"
@@ -122,7 +125,7 @@ export function BillingConfigurationTable({
 											disabled={actionsDisabled || config.isDefault}
 											onClick={() => onDelete(config.id)}
 										>
-											Delete
+											{t('tax.delete')}
 										</Button>
 									</div>
 								</TableCell>

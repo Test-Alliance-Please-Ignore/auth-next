@@ -26,6 +26,7 @@ import { Separator } from '@/components/ui/separator'
 import { SubmitApplicationDialog } from '@/features/applications'
 import { useAuth } from '@/hooks/useAuth'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
 import { api } from '@/lib/api'
 import { corporationLogoUrl } from '@/lib/eve-images'
 
@@ -34,6 +35,8 @@ import { corporationLogoUrl } from '@/lib/eve-images'
 // ============================================================================
 
 export default function CorporationDetail() {
+	const { t } = useAppTranslation()
+
 	const { corporationId } = useParams<{ corporationId: string }>()
 	const navigate = useNavigate()
 	const { isAuthenticated, isLoading: authLoading } = useAuth()
@@ -51,7 +54,7 @@ export default function CorporationDetail() {
 	})
 
 	// Set page title
-	usePageTitle(corporation ? corporation.name : 'Corporation Details')
+	usePageTitle(corporation ? corporation.name : t('characterpages.corporationDetails'))
 
 	// Check authentication
 	if (!authLoading && !isAuthenticated) {
@@ -82,15 +85,15 @@ export default function CorporationDetail() {
 					<CardHeader className="text-center">
 						<AlertCircle className="h-16 w-16 mx-auto text-red-500 mb-4" />
 						<CardTitle className="text-2xl text-red-900 dark:text-red-100">
-							Corporation Not Found
+							{t('characterpages.corporationNotFound')}
 						</CardTitle>
 						<CardDescription className="mt-2 text-red-700 dark:text-red-300">
-							The requested corporation could not be found or is not currently recruiting.
+							{t('characterpages.theRequestedCorporationCouldNotBeFoundOrIsNot')}
 						</CardDescription>
 					</CardHeader>
 					<CardContent className="text-center">
 						<Button variant="ghost" onClick={() => navigate('/join')}>
-							Back to Browse Corporations
+							{t('characterpages.backToBrowseCorporations')}
 						</Button>
 					</CardContent>
 				</Card>
@@ -104,7 +107,7 @@ export default function CorporationDetail() {
 			<Breadcrumb className="mb-6">
 				<BreadcrumbList>
 					<BreadcrumbItem>
-						<BreadcrumbLink to="/join">Join Corporations</BreadcrumbLink>
+						<BreadcrumbLink to="/join">{t('characterpages.joinCorporations')}</BreadcrumbLink>
 					</BreadcrumbItem>
 					<BreadcrumbSeparator />
 					<BreadcrumbItem>
@@ -116,7 +119,7 @@ export default function CorporationDetail() {
 			{/* Back Button */}
 			<Button variant="ghost" size="sm" onClick={() => navigate('/join')} className="mb-4">
 				<ArrowLeft className="h-4 w-4" />
-				Back to Browse
+				{t('characterpages.backToBrowse')}
 			</Button>
 
 			{/* Corporation Header */}
@@ -126,7 +129,7 @@ export default function CorporationDetail() {
 						<div className="flex h-28 w-28 items-center justify-center rounded-lg bg-muted/30 p-4">
 							<img
 								src={corporationLogoUrl(corporation.corporationId, 256)}
-								alt={`${corporation.name} logo`}
+								alt={t('characterpages.value1Logo', { value1: corporation.name })}
 								className="h-full w-full rounded-md object-contain"
 							/>
 						</div>
@@ -147,7 +150,7 @@ export default function CorporationDetail() {
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
 							<FileText className="h-5 w-5" />
-							About & Application Instructions
+							{t('characterpages.aboutApplicationInstructions')}
 						</CardTitle>
 					</CardHeader>
 					<CardContent>
@@ -163,7 +166,7 @@ export default function CorporationDetail() {
 					<CardContent className="py-12 text-center">
 						<FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
 						<p className="text-muted-foreground">
-							This corporation hasn't provided detailed information yet.
+							{t('characterpages.thisCorporationHasnTProvidedDetailedInformationYet')}
 						</p>
 					</CardContent>
 				</Card>
@@ -174,16 +177,21 @@ export default function CorporationDetail() {
 			{/* Application Section */}
 			<Card className="bg-primary/5 border-primary/20">
 				<CardHeader>
-					<CardTitle>Ready to Apply?</CardTitle>
-					<CardDescription>Submit your application to join {corporation.name}</CardDescription>
+					<CardTitle>{t('characterpages.readyToApply')}</CardTitle>
+					<CardDescription>
+						{t('characterpages.submitYourApplicationToJoin')}
+						{corporation.name}
+					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<Button variant="confirm"
+					<Button
+						variant="confirm"
 						size="lg"
 						onClick={() => setShowApplicationDialog(true)}
 						className="w-full sm:w-auto"
 					>
-						Apply to Join {corporation.name}
+						{t('characterpages.applyToJoin')}
+						{corporation.name}
 					</Button>
 				</CardContent>
 			</Card>

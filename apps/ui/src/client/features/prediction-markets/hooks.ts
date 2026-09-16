@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useApiMutation } from '@/hooks/useApiMutation'
+import { useAppTranslation } from '@/i18n'
 
 import {
 	createDeposit,
@@ -94,6 +95,8 @@ export function useMarkets(filters?: MarketsFilters) {
  * a `postError` if the post failed), invalidates the markets list.
  */
 export function useCreateMarket(scope: 'admin' | 'member' = 'admin') {
+	const { t } = useAppTranslation()
+
 	const queryClient = useQueryClient()
 	const submit = scope === 'member' ? createMarketAsMember : createMarket
 
@@ -101,8 +104,8 @@ export function useCreateMarket(scope: 'admin' | 'member' = 'admin') {
 		mutationFn: (body: CreateMarketRequest) => submit(body),
 		successMessage: (res) =>
 			res.postError
-				? `Market created, but the forum post failed: ${res.postError}`
-				: 'Market created and posted to the forum.',
+				? t('predictionMarkets.marketCreatedButTheForumPostFailedValue1', { value1: res.postError })
+				: t('predictionMarkets.marketCreatedAndPostedToTheForum'),
 		onSuccess: () => {
 			// Broad key so every markets-list variant (any filter) refetches.
 			void queryClient.invalidateQueries({ queryKey: [...pmKeys.all, 'markets'] })

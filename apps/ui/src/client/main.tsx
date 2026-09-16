@@ -13,6 +13,7 @@ import type { ReactNode } from 'react'
 import '@mantine/core/styles.css'
 import '@mantine/dates/styles.css'
 import 'dayjs/locale/de'
+import 'dayjs/locale/es-mx'
 import 'dayjs/locale/ko'
 import './styles/globals.css'
 
@@ -88,7 +89,7 @@ const mantineTheme = createTheme({
 function LocaleAwareDatesProvider({ children }: { children: ReactNode }) {
 	const { locale } = useAppTranslation()
 
-	return <DatesProvider settings={{ locale }}>{children}</DatesProvider>
+	return <DatesProvider settings={{ locale: locale.toLowerCase() }}>{children}</DatesProvider>
 }
 
 createRoot(rootElement).render(

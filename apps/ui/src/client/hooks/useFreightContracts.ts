@@ -1,12 +1,14 @@
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
+import { createElement } from 'react'
 
+import { FreightFeedback } from '@/features/freight/feedback'
 import { freightApi } from '@/lib/freight-api'
 import toast from '@/lib/toast'
 
 import type {
-	FreightLeaderboardPeriod,
 	FreightContractSortDirection,
 	FreightContractSortKey,
+	FreightLeaderboardPeriod,
 } from '@/lib/freight-api'
 
 export const freightContractKeys = {
@@ -48,11 +50,19 @@ export function useOpenContractInGame() {
 	return useMutation({
 		mutationFn: (contractId: string) => freightApi.openContractInGame(contractId),
 		onSuccess: (result) => {
-			toast.success(`Opening contract in ${result.characterName}'s client`)
+			toast.success(
+				createElement(FreightFeedback, {
+					messageKey: 'freight.contracts.opened',
+					values: { character: result.characterName },
+				})
+			)
 		},
 		onError: (err) => {
 			toast.error(
-				err instanceof Error ? err.message : 'Could not open the contract in-game'
+				createElement(FreightFeedback, {
+					messageKey: 'freight.contracts.openFailed',
+					error: err,
+				})
 			)
 		},
 	})

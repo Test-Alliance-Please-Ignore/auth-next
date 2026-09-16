@@ -1,15 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 
-import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Container } from '@/components/ui/container'
 import { PageHeader } from '@/components/ui/page-header'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
-import toast from '@/lib/toast'
 import {
 	Table,
 	TableBody,
@@ -19,15 +16,27 @@ import {
 	TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { UserSearchPaginationControls } from '@/components/user-search-pagination-controls'
+import { useConfirmationDialog } from '@/hooks/useConfirmationDialog'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { useAppTranslation } from '@/i18n'
+import toast from '@/lib/toast'
 
 import { formatMoonScanDate } from '../date'
-import { useRejectScan, useRejectScans, useScanQueue, useVerifyScan, useVerifyScans } from '../hooks'
+import {
+	useRejectScan,
+	useRejectScans,
+	useScanQueue,
+	useVerifyScan,
+	useVerifyScans,
+} from '../hooks'
 import { useMoonScanPermissions } from '../permissions'
 
 import type { ScanQueueEntry } from '../types'
 
 function ValidationActions({ scan }: { scan: ScanQueueEntry }) {
+	const { t } = useAppTranslation()
+
 	const [notes, setNotes] = useState('')
 	const [expanded, setExpanded] = useState(false)
 
@@ -52,7 +61,7 @@ function ValidationActions({ scan }: { scan: ScanQueueEntry }) {
 		<div className="space-y-2">
 			{expanded && (
 				<Textarea
-					placeholder="Optional notes..."
+					placeholder={t('moonScan.optionalNotes')}
 					className="h-16 text-xs"
 					value={notes}
 					onChange={(e) => setNotes(e.target.value)}
@@ -65,22 +74,13 @@ function ValidationActions({ scan }: { scan: ScanQueueEntry }) {
 					disabled={isPending}
 					onClick={handleVerify}
 				>
-					{verifyMutation.isPending ? 'Verifying…' : 'Verify'}
+					{verifyMutation.isPending ? t('moonScan.verifying') : t('moonScan.verify')}
 				</Button>
-				<Button
-					size="sm"
-					variant="destructive"
-					disabled={isPending}
-					onClick={handleReject}
-				>
-					{rejectMutation.isPending ? 'Rejecting…' : 'Reject'}
+				<Button size="sm" variant="destructive" disabled={isPending} onClick={handleReject}>
+					{rejectMutation.isPending ? t('moonScan.rejecting') : t('moonScan.reject')}
 				</Button>
-				<Button
-					size="sm"
-					variant="ghost"
-					onClick={() => setExpanded((v) => !v)}
-				>
-					{expanded ? 'Hide notes' : 'Add note'}
+				<Button size="sm" variant="ghost" onClick={() => setExpanded((v) => !v)}>
+					{expanded ? t('moonScan.hideNotes') : t('moonScan.addNote')}
 				</Button>
 			</div>
 		</div>
@@ -100,9 +100,7 @@ function QueueRow({ scan, canViewMoon }: { scan: ScanQueueEntry; canViewMoon: bo
 					<span>{scan.moonName}</span>
 				)}
 			</TableCell>
-			<TableCell className="text-muted-foreground text-xs">
-				{scan.submittedByName ?? '—'}
-			</TableCell>
+			<TableCell className="text-muted-foreground text-xs">{scan.submittedByName ?? '—'}</TableCell>
 			<TableCell className="text-xs">{submittedAt}</TableCell>
 			<TableCell>
 				<div className="flex flex-wrap gap-1">
@@ -121,7 +119,9 @@ function QueueRow({ scan, canViewMoon }: { scan: ScanQueueEntry; canViewMoon: bo
 }
 
 export default function QueuePage() {
-	usePageTitle('Moon Scan Review Queue')
+	const { t } = useAppTranslation()
+
+	usePageTitle(t('moonScan.moonScanReviewQueue'))
 
 	const { canValidate, canView } = useMoonScanPermissions()
 	const { requestConfirmation, confirmationDialog } = useConfirmationDialog()
@@ -136,7 +136,10 @@ export default function QueuePage() {
 	if (!canValidate) {
 		return (
 			<Container>
-				<PageHeader title="Validation Queue" description="You do not have permission to validate scans." />
+				<PageHeader
+					title={t('moonScan.validationQueue')}
+					description={t('moonScan.youDoNotHavePermissionToValidateScans')}
+				/>
 			</Container>
 		)
 	}
@@ -149,18 +152,16 @@ export default function QueuePage() {
 	function handleApproveAll() {
 		if (pendingScanIds.length === 0 || verifyAllMutation.isPending) return
 		requestConfirmation({
-			title: 'Approve all scans on this page?',
-			description: `This will verify ${pendingScanIds.length} pending scan${pendingScanIds.length === 1 ? '' : 's'} currently shown in the queue.`,
-			confirmLabel: 'Approve All',
+			title: t('moonScan.approveAllScansOnThisPage'),
+			description: t('moonScan.verifyPendingScans', { count: pendingScanIds.length }),
+			confirmLabel: t('moonScan.approveAll'),
 			confirmButtonVariant: 'success',
 			onConfirm: async () => {
 				try {
 					const verified = await verifyAllMutation.mutateAsync(pendingScanIds)
-					toast.success(
-						`Approved ${verified.length} pending scan${verified.length === 1 ? '' : 's'}.`
-					)
+					toast.success(t('moonScan.approvedPendingScans', { count: verified.length }))
 				} catch (error) {
-					toast.error(error instanceof Error ? error.message : 'Failed to approve scans.')
+					toast.error(error instanceof Error ? error.message : t('moonScan.failedToApproveScans'))
 				}
 			},
 		})
@@ -169,18 +170,16 @@ export default function QueuePage() {
 	function handleRejectAll() {
 		if (pendingScanIds.length === 0 || rejectAllMutation.isPending) return
 		requestConfirmation({
-			title: 'Reject all scans on this page?',
-			description: `This will reject ${pendingScanIds.length} pending scan${pendingScanIds.length === 1 ? '' : 's'} currently shown in the queue.`,
-			confirmLabel: 'Reject All',
+			title: t('moonScan.rejectAllScansOnThisPage'),
+			description: t('moonScan.rejectPendingScans', { count: pendingScanIds.length }),
+			confirmLabel: t('moonScan.rejectAll'),
 			intent: 'destructive',
 			onConfirm: async () => {
 				try {
 					const rejected = await rejectAllMutation.mutateAsync(pendingScanIds)
-					toast.success(
-						`Rejected ${rejected.length} pending scan${rejected.length === 1 ? '' : 's'}.`
-					)
+					toast.success(t('moonScan.rejectedPendingScans', { count: rejected.length }))
 				} catch (error) {
-					toast.error(error instanceof Error ? error.message : 'Failed to reject scans.')
+					toast.error(error instanceof Error ? error.message : t('moonScan.failedToRejectScans'))
 				}
 			},
 		})
@@ -197,15 +196,15 @@ export default function QueuePage() {
 				setPage(1)
 			}}
 			pageSizeOptions={[20, 50, 100]}
-			itemLabel="pending scans"
+			itemLabel={t('moonScan.pendingScans')}
 		/>
 	)
 
 	return (
 		<Container>
 			<PageHeader
-				title="Validation Queue"
-				description="Review and approve pending moon scan submissions"
+				title={t('moonScan.validationQueue')}
+				description={t('moonScan.reviewAndApprovePendingMoonScanSubmissions')}
 				action={
 					<div className="flex flex-wrap gap-2">
 						<Button
@@ -214,10 +213,10 @@ export default function QueuePage() {
 							onClick={handleApproveAll}
 						>
 							{verifyAllMutation.isPending
-								? 'Approving…'
+								? t('moonScan.approving')
 								: pendingScanCount > 0
-									? `Approve all (${pendingScanCount})`
-									: 'Approve all'}
+									? t('moonScan.approveAll1', { value1: pendingScanCount })
+									: t('moonScan.approveAll2')}
 						</Button>
 						<Button
 							variant="destructive"
@@ -225,10 +224,10 @@ export default function QueuePage() {
 							onClick={handleRejectAll}
 						>
 							{rejectAllMutation.isPending
-								? 'Rejecting…'
+								? t('moonScan.rejecting')
 								: pendingScanCount > 0
-									? `Reject all (${pendingScanCount})`
-									: 'Reject all'}
+									? t('moonScan.rejectAll3', { value1: pendingScanCount })
+									: t('moonScan.rejectAll4')}
 						</Button>
 					</div>
 				}
@@ -236,7 +235,7 @@ export default function QueuePage() {
 
 			{error && (
 				<div className="mt-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-red-500">
-					Failed to load queue
+					{t('moonScan.failedToLoadQueue')}
 				</div>
 			)}
 
@@ -245,11 +244,11 @@ export default function QueuePage() {
 				<Table>
 					<TableHeader>
 						<TableRow>
-							<TableHead>Moon</TableHead>
-							<TableHead>Submitted by</TableHead>
-							<TableHead>Date</TableHead>
-							<TableHead>Composition</TableHead>
-							<TableHead>Actions</TableHead>
+							<TableHead>{t('moonScan.moon')}</TableHead>
+							<TableHead>{t('moonScan.submittedBy2')}</TableHead>
+							<TableHead>{t('moonScan.date')}</TableHead>
+							<TableHead>{t('moonScan.composition')}</TableHead>
+							<TableHead>{t('moonScan.actions')}</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -263,11 +262,13 @@ export default function QueuePage() {
 										))}
 									</TableRow>
 								))
-							: (data?.items ?? []).map((scan) => <QueueRow key={scan.id} scan={scan} canViewMoon={canView} />)}
+							: (data?.items ?? []).map((scan) => (
+									<QueueRow key={scan.id} scan={scan} canViewMoon={canView} />
+								))}
 						{!isLoading && data?.items.length === 0 && (
 							<TableRow>
 								<TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
-									No pending scans to review.
+									{t('moonScan.noPendingScansToReview')}
 								</TableCell>
 							</TableRow>
 						)}

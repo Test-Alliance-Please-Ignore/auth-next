@@ -4,6 +4,7 @@ import { DataTable } from '@/components/data-table'
 import { FilterField } from '@/components/ui/filter-field'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { useAppTranslation } from '@/i18n'
 
 import type { ReactNode } from 'react'
 import type {
@@ -153,6 +154,8 @@ export function FulcrumDataTable<Row>({
 	renderExpandedRow,
 	compactRows = false,
 }: FulcrumDataTableProps<Row>) {
+	const { t } = useAppTranslation()
+
 	const [globalFilter, setGlobalFilter] = useState('')
 	const [filterState, setFilterState] = useState<FilterState>(() =>
 		Object.fromEntries(
@@ -191,7 +194,7 @@ export function FulcrumDataTable<Row>({
 				return matchesFilter(row, column, filterState[column.id] ?? getInitialFilterValue(filter))
 			})
 		})
-	}, [columns, filterState, globalFilter, rows])
+	}, [columns, filterState, globalFilter, rows, t])
 
 	const sortedRows = useMemo(() => {
 		const activeSort = sorting[0]
@@ -203,7 +206,7 @@ export function FulcrumDataTable<Row>({
 			const result = compareValues(column.getValue(left), column.getValue(right))
 			return activeSort.desc ? -result : result
 		})
-	}, [columns, filteredRows, sorting])
+	}, [columns, filteredRows, sorting, t])
 
 	useEffect(() => {
 		const maxPage = Math.max(0, Math.ceil(sortedRows.length / pagination.pageSize) - 1)
@@ -225,7 +228,7 @@ export function FulcrumDataTable<Row>({
 					sortable: column.sortable ?? true,
 				})
 			),
-		[columns]
+		[columns, t]
 	)
 
 	const activeFilterCount = Object.values(filterState).filter(filterHasValue).length
@@ -247,7 +250,7 @@ export function FulcrumDataTable<Row>({
 	const toolbar = (
 		<div className="space-y-3">
 			<div className="flex flex-wrap items-end gap-3">
-				<FilterField label="Search" className="min-w-[min(100%,18rem)] flex-1">
+				<FilterField label={t('hrpages.search')} className="min-w-[min(100%,18rem)] flex-1">
 					<Input
 						value={globalFilter}
 						onChange={(event) => setGlobalFilter(event.target.value)}
@@ -260,7 +263,8 @@ export function FulcrumDataTable<Row>({
 			{filterControls.length > 0 ? (
 				<details className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
 					<summary className="cursor-pointer text-sm font-medium text-muted-foreground">
-						Column filters{activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ''}
+						{t('hrpages.columnFilters')}
+						{activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ''}
 					</summary>
 					<div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 						{filterControls.map((column) => {
@@ -277,7 +281,7 @@ export function FulcrumDataTable<Row>({
 											<Input
 												type="number"
 												value={range.min}
-												placeholder="Min"
+												placeholder={t('hrpages.min')}
 												className="h-9"
 												onChange={(event) =>
 													setFilter(column.id, { ...range, min: event.target.value })
@@ -286,7 +290,7 @@ export function FulcrumDataTable<Row>({
 											<Input
 												type="number"
 												value={range.max}
-												placeholder="Max"
+												placeholder={t('hrpages.max')}
 												className="h-9"
 												onChange={(event) =>
 													setFilter(column.id, { ...range, max: event.target.value })
@@ -305,7 +309,7 @@ export function FulcrumDataTable<Row>({
 											<Input
 												type="date"
 												value={range.from}
-												aria-label={`${label} from`}
+												aria-label={t('hrpages.value1From', { value1: label })}
 												className="h-9"
 												onChange={(event) =>
 													setFilter(column.id, { ...range, from: event.target.value })
@@ -314,7 +318,7 @@ export function FulcrumDataTable<Row>({
 											<Input
 												type="date"
 												value={range.to}
-												aria-label={`${label} to`}
+												aria-label={t('hrpages.value1To', { value1: label })}
 												className="h-9"
 												onChange={(event) =>
 													setFilter(column.id, { ...range, to: event.target.value })
@@ -332,7 +336,7 @@ export function FulcrumDataTable<Row>({
 											multiple
 											values={Array.isArray(value) ? value : []}
 											options={getFilterOptions(column, rows)}
-											placeholder={`All ${label.toLowerCase()}`}
+											placeholder={t('hrpages.allValue1', { value1: label.toLowerCase() })}
 											onValuesChange={(next) => setFilter(column.id, next)}
 											className="w-full"
 										/>
@@ -345,7 +349,7 @@ export function FulcrumDataTable<Row>({
 									<Select
 										value={typeof value === 'string' ? value : ''}
 										options={getFilterOptions(column, rows)}
-										placeholder={`All ${label.toLowerCase()}`}
+										placeholder={t('hrpages.allValue1', { value1: label.toLowerCase() })}
 										searchable={filter.kind === 'autocomplete'}
 										onValueChange={(next) => setFilter(column.id, next)}
 										className="w-full"
@@ -360,7 +364,7 @@ export function FulcrumDataTable<Row>({
 							className="mt-3 text-xs text-primary hover:underline"
 							onClick={clearFilters}
 						>
-							Clear filters
+							{t('hrpages.clearFilters')}
 						</button>
 					) : null}
 				</details>
@@ -381,7 +385,7 @@ export function FulcrumDataTable<Row>({
 				pagination={pagination}
 				onPaginationChange={setPagination}
 				rowCount={sortedRows.length}
-				itemLabel="entries"
+				itemLabel={t('hrpages.entries')}
 				pageSizeOptions={pageSizeOptions}
 				getRowKey={getRowKey}
 				getRowClassName={getRowClassName}

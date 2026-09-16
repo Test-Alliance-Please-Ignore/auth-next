@@ -1,5 +1,7 @@
+import { formatDateTime } from '@/i18n'
 import { formatISK as formatISKBase, formatISKShort } from '@/lib/format-utils'
 
+import type { AppTranslator } from '@/i18n'
 import type { RequestStatus, SRPRequestResponse } from './types'
 
 export { formatISKShort }
@@ -8,62 +10,38 @@ export function formatISK(value: string | number): string {
 	return formatISKBase(value, { showDecimals: false })
 }
 
-/**
- * Format date as relative time (2h ago, 3 days ago)
- */
-export function formatRelativeTime(dateStr: string): string {
-	const date = new Date(dateStr)
-	const now = new Date()
-	const diffMs = now.getTime() - date.getTime()
-	const diffMins = Math.floor(diffMs / 60000)
-	const diffHours = Math.floor(diffMs / 3600000)
-	const diffDays = Math.floor(diffMs / 86400000)
+export { formatRelativeTime } from '@/lib/date-utils'
 
-	if (diffMins < 1) return 'just now'
-	if (diffMins < 60) return `${diffMins}m ago`
-	if (diffHours < 24) return `${diffHours}h ago`
-	if (diffDays < 7) return `${diffDays}d ago`
-
-	return new Intl.DateTimeFormat('en-US', {
-		month: 'short',
-		day: 'numeric',
-		year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
-	}).format(date)
-}
-
-/**
- * Format date as full date with time
- */
 export function formatFullDate(dateStr: string): string {
-	return new Intl.DateTimeFormat('en-US', {
+	return formatDateTime(dateStr, {
 		year: 'numeric',
 		month: 'long',
 		day: 'numeric',
 		hour: 'numeric',
 		minute: '2-digit',
 		timeZoneName: 'short',
-	}).format(new Date(dateStr))
+	})
 }
 
 /**
  * Get display text for request status
  */
-export function getRequestStatusText(status: RequestStatus): string {
+export function getRequestStatusText(status: RequestStatus, t: AppTranslator): string {
 	switch (status) {
 		case 'pending':
-			return 'Pending'
+			return t('srp.status.pending')
 		case 'needs_context':
-			return 'Needs Context'
+			return t('srp.status.needs_context')
 		case 'approved':
-			return 'Approved'
+			return t('srp.status.approved')
 		case 'payment_pending':
-			return 'Payment Sent'
+			return t('srp.status.payment_pending')
 		case 'rejected':
-			return 'Rejected'
+			return t('srp.status.rejected')
 		case 'paid':
-			return 'Paid'
+			return t('srp.status.paid')
 		case 'withdrawn':
-			return 'Withdrawn'
+			return t('srp.status.withdrawn')
 		default:
 			return status
 	}
@@ -145,9 +123,7 @@ export function getPaginationRange(
 	return rangeWithDots
 }
 
-export function getRequestCharacterRole(
-	request: SRPRequestResponse
-): 'main' | 'alt' | undefined {
+export function getRequestCharacterRole(request: SRPRequestResponse): 'main' | 'alt' | undefined {
 	const role = (request as SRPRequestResponse & { characterRole?: unknown }).characterRole
 	if (role === 'main' || role === 'alt') {
 		return role

@@ -24,7 +24,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useMessage } from '@/hooks/useMessage'
-import { useAppTranslation } from '@/i18n'
+import { i18n, useAppTranslation } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { useAddHRNote, useUpdateHRNote } from '../hooks'
@@ -66,36 +66,52 @@ const NOTE_TYPE_OPTIONS: Array<{
 }> = [
 	{
 		value: 'general',
-		label: 'General',
+		get label() {
+			return i18n.t('hrpages.general')
+		},
 		icon: Info,
-		description: 'General information',
+		get description() {
+			return i18n.t('hrpages.generalInformation')
+		},
 		baseClass: 'border-muted/50 bg-muted/10 hover:bg-muted/20',
 		selectedClass: 'border-muted ring-2 ring-muted/30',
 		iconClass: 'text-muted-foreground',
 	},
 	{
 		value: 'warning',
-		label: 'Warning',
+		get label() {
+			return i18n.t('hrpages.warning')
+		},
 		icon: AlertTriangle,
-		description: 'Caution advised',
+		get description() {
+			return i18n.t('hrpages.cautionAdvised')
+		},
 		baseClass: 'border-warning/30 bg-warning/10 hover:bg-warning/20',
 		selectedClass: 'border-warning ring-2 ring-warning/30',
 		iconClass: 'text-warning',
 	},
 	{
 		value: 'positive',
-		label: 'Positive',
+		get label() {
+			return i18n.t('hrpages.positive')
+		},
 		icon: CheckCircle,
-		description: 'Positive note',
+		get description() {
+			return i18n.t('hrpages.positiveNote')
+		},
 		baseClass: 'border-success/30 bg-success/10 hover:bg-success/20',
 		selectedClass: 'border-success ring-2 ring-success/30',
 		iconClass: 'text-success',
 	},
 	{
 		value: 'incident',
-		label: 'Incident',
+		get label() {
+			return i18n.t('hrpages.incident')
+		},
 		icon: AlertOctagon,
-		description: 'Security incident',
+		get description() {
+			return i18n.t('hrpages.securityIncident')
+		},
 		baseClass: 'border-destructive/30 bg-destructive/10 hover:bg-destructive/20',
 		selectedClass: 'border-destructive ring-2 ring-destructive/30',
 		iconClass: 'text-destructive',
@@ -103,10 +119,30 @@ const NOTE_TYPE_OPTIONS: Array<{
 ]
 
 const PRIORITY_OPTIONS: Array<{ value: HRNotePriority; label: string }> = [
-	{ value: 'low', label: 'Low' },
-	{ value: 'normal', label: 'Normal' },
-	{ value: 'high', label: 'High' },
-	{ value: 'critical', label: 'Critical' },
+	{
+		value: 'low',
+		get label() {
+			return i18n.t('hrpages.low')
+		},
+	},
+	{
+		value: 'normal',
+		get label() {
+			return i18n.t('hrpages.normal')
+		},
+	},
+	{
+		value: 'high',
+		get label() {
+			return i18n.t('hrpages.high')
+		},
+	},
+	{
+		value: 'critical',
+		get label() {
+			return i18n.t('hrpages.critical')
+		},
+	},
 ]
 
 // ============================================================================
@@ -271,7 +307,7 @@ export function AddHRNoteDialog({
 						metadata,
 					},
 				})
-				showSuccess('HR note updated successfully')
+				showSuccess(t('hrpages.hrNoteUpdatedSuccessfully'))
 			} else {
 				// Add new note
 				await addMutation.mutateAsync({
@@ -282,7 +318,7 @@ export function AddHRNoteDialog({
 					noteText: noteText.trim(),
 					metadata,
 				})
-				showSuccess('HR note added successfully')
+				showSuccess(t('hrpages.hrNoteAddedSuccessfully'))
 			}
 
 			onOpenChange(false)
@@ -291,7 +327,7 @@ export function AddHRNoteDialog({
 			const message =
 				error instanceof Error
 					? error.message
-					: `Failed to ${isEditMode ? 'update' : 'add'} HR note`
+					: t('hrpages.failedToValue1HrNote', { value1: isEditMode ? 'update' : 'add' })
 			showError(message)
 		}
 	}
@@ -320,7 +356,7 @@ export function AddHRNoteDialog({
 					{/* Subject Display */}
 					{subjectCharacterName && (
 						<div className="space-y-2">
-							<Label>Subject</Label>
+							<Label>{t('hrpages.subject')}</Label>
 							<div className="p-3 rounded-lg bg-muted text-sm font-medium">
 								{subjectCharacterName}
 							</div>
@@ -330,7 +366,8 @@ export function AddHRNoteDialog({
 					{/* Note Type Selector */}
 					<div className="space-y-3">
 						<Label>
-							Note Type <span className="text-destructive">*</span>
+							{t('hrpages.noteType')}
+							<span className="text-destructive">*</span>
 						</Label>
 						<div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
 							{NOTE_TYPE_OPTIONS.map((option) => (
@@ -353,7 +390,8 @@ export function AddHRNoteDialog({
 					{/* Priority Selector */}
 					<div className="space-y-2">
 						<Label htmlFor="priority">
-							Priority <span className="text-destructive">*</span>
+							{t('hrpages.priority')}
+							<span className="text-destructive">*</span>
 						</Label>
 						<Select
 							inputId="priority"
@@ -363,7 +401,7 @@ export function AddHRNoteDialog({
 								value: option.value,
 								label: option.label,
 							}))}
-							placeholder="Select priority"
+							placeholder={t('hrpages.selectPriority')}
 						/>
 					</div>
 
@@ -381,7 +419,7 @@ export function AddHRNoteDialog({
 									{ value: 'auditor', label: t('hr.notes.auditorsAndAdmins') },
 									{ value: 'hr', label: t('hr.notes.allAuthorizedHr') },
 								]}
-								placeholder="Select visibility"
+								placeholder={t('hrpages.selectVisibility')}
 							/>
 						</div>
 					)}
@@ -389,11 +427,12 @@ export function AddHRNoteDialog({
 					{/* Note Text */}
 					<div className="space-y-2">
 						<Label htmlFor="note-text">
-							Note Text <span className="text-destructive">*</span>
+							{t('hrpages.noteText')}
+							<span className="text-destructive">*</span>
 						</Label>
 						<Textarea
 							id="note-text"
-							placeholder="Private internal notes about this user..."
+							placeholder={t('hrpages.privateInternalNotesAboutThisUser')}
 							value={noteText}
 							onChange={(e) => setNoteText(e.target.value)}
 							disabled={isPending}
@@ -403,10 +442,10 @@ export function AddHRNoteDialog({
 						<div className="flex items-center justify-between text-xs">
 							<span className="text-muted-foreground">
 								{textLength < MIN_LENGTH
-									? `Minimum ${MIN_LENGTH} characters`
+									? t('hrpages.minimumValue1Characters', { value1: MIN_LENGTH })
 									: textLength > MAX_LENGTH
-										? 'Maximum length exceeded'
-										: 'Character count:'}
+										? t('hrpages.maximumLengthExceeded')
+										: t('hrpages.characterCount')}
 							</span>
 							<span className={cn('font-mono', getCounterColor())}>
 								{textLength} / {MAX_LENGTH}
@@ -416,11 +455,11 @@ export function AddHRNoteDialog({
 
 					{/* Tags */}
 					<div className="space-y-2">
-						<Label htmlFor="tag-input">Tags (optional)</Label>
+						<Label htmlFor="tag-input">{t('hrpages.tagsOptional')}</Label>
 						<div className="flex gap-2">
 							<Input
 								id="tag-input"
-								placeholder="Add a tag..."
+								placeholder={t('hrpages.addATag')}
 								value={tagInput}
 								onChange={(e) => setTagInput(e.target.value)}
 								onKeyDown={(e) => {
@@ -438,7 +477,7 @@ export function AddHRNoteDialog({
 								onClick={handleAddTag}
 								disabled={!tagInput.trim() || isPending}
 							>
-								Add
+								{t('hrpages.add')}
 							</Button>
 						</div>
 						{tags.length > 0 && (
@@ -466,16 +505,16 @@ export function AddHRNoteDialog({
 
 				<DialogFooter>
 					<Button variant="cancel" onClick={handleCancel} disabled={isPending}>
-						Cancel
+						{t('hrpages.cancel')}
 					</Button>
 					<Button
 						variant="confirm"
 						onClick={handleSubmit}
 						disabled={!isFormValid}
 						loading={isPending}
-						loadingText={isEditMode ? 'Updating...' : 'Saving...'}
+						loadingText={isEditMode ? t('hrpages.updating') : t('hrpages.saving')}
 					>
-						{isEditMode ? 'Update Note' : 'Save Note'}
+						{isEditMode ? t('hrpages.updateNote') : t('hrpages.saveNote')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

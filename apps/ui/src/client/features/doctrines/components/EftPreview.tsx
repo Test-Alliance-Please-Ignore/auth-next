@@ -9,6 +9,7 @@ import { Package, Ship } from 'lucide-react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 
 import { parseEFTPreview } from '../utils'
 
@@ -17,15 +18,17 @@ interface EftPreviewProps {
 }
 
 export function EftPreview({ eftString }: EftPreviewProps) {
+	const { t } = useAppTranslation()
+
 	const parsed = parseEFTPreview(eftString)
 
 	if (!parsed) {
 		return (
 			<Card className="border-destructive">
 				<CardHeader>
-					<CardTitle className="text-destructive">Invalid EFT Format</CardTitle>
+					<CardTitle className="text-destructive">{t('doctrines.invalidEftFormat')}</CardTitle>
 					<CardDescription>
-						Unable to parse the provided EFT string. Please check the format.
+						{t('doctrines.unableToParseTheProvidedEftStringPleaseCheckThe')}
 					</CardDescription>
 				</CardHeader>
 			</Card>
@@ -47,7 +50,10 @@ export function EftPreview({ eftString }: EftPreviewProps) {
 				{/* Fitted Modules */}
 				{parsed.modules.length > 0 && (
 					<div>
-						<h4 className="text-sm font-semibold mb-2">Fitted Modules ({parsed.modules.length})</h4>
+						<h4 className="text-sm font-semibold mb-2">
+							{t('doctrines.fittedModules')}
+							{parsed.modules.length})
+						</h4>
 						<div className="space-y-1">
 							{parsed.modules.map((module, index) => (
 								<div key={index} className="text-sm text-muted-foreground pl-4">
@@ -66,12 +72,16 @@ export function EftPreview({ eftString }: EftPreviewProps) {
 					<div>
 						<div className="flex items-center gap-2 mb-2">
 							<Package className="h-4 w-4" />
-							<h4 className="text-sm font-semibold">Cargo ({parsed.cargo.length} types)</h4>
+							<h4 className="text-sm font-semibold">
+								{t('doctrines.cargo2')}
+								{parsed.cargo.length}
+								{t('doctrines.types')}
+							</h4>
 						</div>
 						<div className="space-y-1">
 							{parsed.cargo.map((item, index) => (
 								<div key={index} className="text-sm text-muted-foreground pl-4">
-									• {item.name} x{item.quantity.toLocaleString()}
+									• {item.name} x{item.quantity.toLocaleString(getActiveLocale())}
 								</div>
 							))}
 						</div>

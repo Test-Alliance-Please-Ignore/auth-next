@@ -8,6 +8,7 @@ import { formatSkillPoints } from '@repo/eve-types'
 
 import { MemberAvatar } from '@/components/member-avatar'
 import { Card, CardContent } from '@/components/ui/card'
+import { getActiveLocale, useAppTranslation } from '@/i18n'
 import { allianceLogoUrl, corporationLogoUrl } from '@/lib/eve-images'
 import { formatISKShort } from '@/lib/format-utils'
 
@@ -87,6 +88,8 @@ export function PublicInfoHeader({ data }: { data: ProcessedPublicInfo }) {
 }
 
 export function PublicInfoCard({ data }: { data: ProcessedPublicInfo }) {
+	const { t } = useAppTranslation()
+
 	const secStatus = data.securityStatus ? parseFloat(data.securityStatus).toFixed(2) : null
 
 	return (
@@ -94,21 +97,24 @@ export function PublicInfoCard({ data }: { data: ProcessedPublicInfo }) {
 			<CardContent className="pt-4">
 				<div className="divide-y divide-border">
 					<NumericInfoRow
-						label="Skill Points"
+						label={t('hrpages.skillPoints')}
 						value={data.totalSp}
 						format={(value) => formatSkillPoints(value)}
 					/>
 					<NumericInfoRow
-						label="Wallet Balance"
+						label={t('hrpages.walletBalance')}
 						value={data.walletBalance}
 						format={(value) => formatISKShort(value)}
 					/>
-					<SimpleInfoRow label="Birthday" value={new Date(data.birthday).toLocaleDateString()} />
-					<SimpleInfoRow label="Race" value={data.raceName} />
-					<SimpleInfoRow label="Bloodline" value={data.bloodlineName} />
-					<SimpleInfoRow label="Security Status" value={secStatus} />
+					<SimpleInfoRow
+						label={t('hrpages.birthday')}
+						value={new Date(data.birthday).toLocaleDateString(getActiveLocale())}
+					/>
+					<SimpleInfoRow label={t('hrpages.race')} value={data.raceName} />
+					<SimpleInfoRow label={t('hrpages.bloodline')} value={data.bloodlineName} />
+					<SimpleInfoRow label={t('hrpages.securityStatus')} value={secStatus} />
 					{data.corporationId && (
-						<InfoRow label="Corporation">
+						<InfoRow label={t('hrpages.corporation')}>
 							<img
 								src={corporationLogoUrl(data.corporationId, 32)}
 								alt=""
@@ -122,14 +128,14 @@ export function PublicInfoCard({ data }: { data: ProcessedPublicInfo }) {
 						</InfoRow>
 					)}
 					{data.allianceId && (
-						<InfoRow label="Alliance">
+						<InfoRow label={t('hrpages.alliance')}>
 							<img src={allianceLogoUrl(data.allianceId, 32)} alt="" className="h-5 w-5 rounded" />
 							<EntityNameLink entityId={data.allianceId} href={data.allianceDisplayHref}>
 								<span className="text-sm font-medium text-foreground">{data.allianceName}</span>
 							</EntityNameLink>
 						</InfoRow>
 					)}
-					<SimpleInfoRow label="Faction" value={data.factionName} />
+					<SimpleInfoRow label={t('hrpages.faction')} value={data.factionName} />
 				</div>
 			</CardContent>
 		</Card>
@@ -153,6 +159,8 @@ function ExternalLinkRow({ href, label }: { href: string; label: string }) {
 }
 
 export function ExternalLinksCard({ data }: { data: ProcessedPublicInfo }) {
+	const { t } = useAppTranslation()
+
 	const encodedName = encodeURIComponent(data.characterName)
 
 	return (
@@ -161,19 +169,19 @@ export function ExternalLinksCard({ data }: { data: ProcessedPublicInfo }) {
 				<div className="divide-y divide-border">
 					<ExternalLinkRow
 						href={`https://evewho.com/character/${data.characterId}`}
-						label="EVE Who"
+						label={t('hrpages.eveWho')}
 					/>
 					<ExternalLinkRow
 						href={`https://zkillboard.com/character/${data.characterId}/`}
-						label="zKillboard"
+						label={t('hrpages.zkillboard')}
 					/>
 					<ExternalLinkRow
 						href={`https://forums.eveonline.com/search?q=%23marketplace%3Acharacter-bazaar%20%40${encodedName}`}
-						label="Search New Character Bazaar"
+						label={t('hrpages.searchNewCharacterBazaar')}
 					/>
 					<ExternalLinkRow
 						href={`https://eve-search.com/search/author/${encodedName}/forum/734105`}
-						label="Search Old Character Bazaar"
+						label={t('hrpages.searchOldCharacterBazaar')}
 					/>
 				</div>
 			</CardContent>
