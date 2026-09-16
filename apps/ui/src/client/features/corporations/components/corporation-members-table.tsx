@@ -292,11 +292,13 @@ export default function CorporationMembersTable({
 		async (characterId: string, status: 'active' | 'emeritus') => {
 			try {
 				await emeritusMutation.mutateAsync({ characterId, status })
-				const action =
-					status === 'emeritus'
-						? t('characterpages.markedAsEmeritus')
-						: t('characterpages.emeritusStatusRemoved')
-				showSuccess(t('characterpages.memberValue1Successfully', { value1: action }))
+				showSuccess(
+					t(
+						status === 'emeritus'
+							? 'characterpages.memberMarkedAsEmeritus'
+							: 'characterpages.memberEmeritusStatusRemoved'
+					)
+				)
 				setEmeritusDialogMember(null)
 			} catch (error) {
 				showError(t('characterpages.failedToUpdateMemberStatus'))

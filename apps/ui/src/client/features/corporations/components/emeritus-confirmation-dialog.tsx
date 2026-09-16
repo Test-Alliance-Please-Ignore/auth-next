@@ -10,6 +10,8 @@ import {
 } from '@/components/ui/dialog'
 import { useAppTranslation } from '@/i18n'
 
+import { formatCorporationRoleLabel } from '../hooks'
+
 import type { CorporationMember } from '../api'
 
 interface EmeritusConfirmationDialogProps {
@@ -79,7 +81,7 @@ export function EmeritusConfirmationDialog({
 						<div className="space-y-2">
 							<div className="flex items-center gap-2 text-sm">
 								<span className="text-muted-foreground">{t('characterpages.role2')}</span>
-								<span className="font-medium">{member.role}</span>
+								<span className="font-medium">{formatCorporationRoleLabel(member.role)}</span>
 							</div>
 							{member.mainCharacterName && (
 								<p className="text-sm text-muted-foreground">

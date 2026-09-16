@@ -409,7 +409,11 @@ export default function SystemPage() {
 						<p className="text-muted-foreground text-lg">
 							{isLoading
 								? t('moonScan.loading')
-								: `${detail?.moons.length ?? 0} moons · ${scannedMoons} scanned · ${verifiedMoons} verified`}
+								: t('moonScan.systemSummary', {
+										count: detail?.moons.length ?? 0,
+										scanned: scannedMoons,
+										verified: verifiedMoons,
+									})}
 						</p>
 					</div>
 					<div className="flex flex-col items-end gap-2">

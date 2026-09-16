@@ -377,13 +377,17 @@ function SkyhookFullnessBar({
 	capacityM3: number
 	fillPercent: number
 }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<div className="space-y-1.5">
 			<div className="font-medium tabular-nums">
 				{formatVolumeM3(volumeM3)} / {formatVolumeM3(capacityM3)}
 			</div>
 			<Progress value={Math.min(100, Math.max(0, fillPercent))} className="h-2 bg-muted/30" />
-			<div className="text-xs text-muted-foreground">{formatPercent(fillPercent)} full</div>
+			<div className="text-xs text-muted-foreground">
+				{t('structures.fullnessPercent', { percent: formatPercent(fillPercent) })}
+			</div>
 		</div>
 	)
 }
@@ -399,6 +403,8 @@ function SkyhookBayFillCell({
 	capacityM3: number
 	fillPercent: number
 }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<div className="space-y-1.5">
 			<div className="font-medium tabular-nums">{stock.toLocaleString(getActiveLocale())}</div>
@@ -406,7 +412,9 @@ function SkyhookBayFillCell({
 				{formatVolumeM3(volumeM3)} / {formatVolumeM3(capacityM3)}
 			</div>
 			<Progress value={Math.min(100, Math.max(0, fillPercent))} className="h-2 bg-muted/30" />
-			<div className="text-xs text-muted-foreground">{formatPercent(fillPercent)} full</div>
+			<div className="text-xs text-muted-foreground">
+				{t('structures.fullnessPercent', { percent: formatPercent(fillPercent) })}
+			</div>
 		</div>
 	)
 }

@@ -19,7 +19,7 @@ import { usePageTitle } from '@/hooks/usePageTitle'
 import { useAppTranslation } from '@/i18n'
 
 import { useMemberShipHistory, useTrackingSession } from '../hooks'
-import { formatDurationBetween } from '../utils/format'
+import { formatDuration, formatDurationBetween } from '../utils/format'
 
 export default function MemberShipHistory() {
 	const { t } = useAppTranslation()
@@ -91,16 +91,24 @@ export default function MemberShipHistory() {
 							<TableBody>
 								{rows.map((r, idx) => (
 									<TableRow key={`${r.shipTypeId}-${r.startedAt}-${idx}`}>
-										<TableCell>{r.shipTypeName ?? `type #${r.shipTypeId}`}</TableCell>
 										<TableCell>
-											{r.systemName ?? `system #${r.solarSystemId}`}
-											{r.stationId ? ` / ${r.stationName ?? `station #${r.stationId}`}` : ''}
+											{r.shipTypeName ?? t('fleetTracking.typeFallback', { id: r.shipTypeId })}
+										</TableCell>
+										<TableCell>
+											{r.systemName ?? t('fleetTracking.systemFallback', { id: r.solarSystemId })}
+											{r.stationId
+												? ` / ${r.stationName ?? t('fleetTracking.stationFallback', { id: r.stationId })}`
+												: ''}
 										</TableCell>
 										<TableCell>
 											<EveTimeDisplay dateStr={r.startedAt} />
 										</TableCell>
 										<TableCell>
-											{r.endedAt ? <EveTimeDisplay dateStr={r.endedAt} /> : 'current'}
+											{r.endedAt ? (
+												<EveTimeDisplay dateStr={r.endedAt} />
+											) : (
+												t('fleetTracking.current')
+											)}
 										</TableCell>
 										<TableCell>{formatDurationBetween(r.startedAt, r.endedAt)}</TableCell>
 									</TableRow>
@@ -116,17 +124,4 @@ export default function MemberShipHistory() {
 			</p>
 		</Container>
 	)
-}
-
-function formatDuration(ms: number): string {
-	if (ms < 0) ms = 0
-	const totalSeconds = Math.floor(ms / 1000)
-	const days = Math.floor(totalSeconds / 86_400)
-	const hours = Math.floor((totalSeconds % 86_400) / 3600)
-	const minutes = Math.floor((totalSeconds % 3600) / 60)
-	const seconds = totalSeconds % 60
-	if (days > 0) return `${days}d ${hours}h`
-	if (hours > 0) return `${hours}h ${minutes}m`
-	if (minutes > 0) return `${minutes}m ${seconds}s`
-	return `${seconds}s`
 }

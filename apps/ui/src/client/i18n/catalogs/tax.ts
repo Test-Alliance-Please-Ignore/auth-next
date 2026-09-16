@@ -578,6 +578,8 @@ export const taxCatalog = defineCatalog(
 			},
 			entryCount: '{{count, number}} entries',
 			smallSources: 'Small sources ({{value1}})',
+
+			discordDestinationSummary: '{{name}} • Guild {{guildId}} • Channel {{channelId}}',
 		},
 	},
 	{
@@ -1174,7 +1176,9 @@ export const taxCatalog = defineCatalog(
 				character: 'Charakter',
 			},
 			entryCount: '{{count, number}} Einträge',
-			smallSources: 'Small sources ({{value1}})',
+			smallSources: 'Kleine Quellen ({{value1}})',
+
+			discordDestinationSummary: '{{name}} • Server {{guildId}} • Kanal {{channelId}}',
 		},
 	},
 	{
@@ -1737,7 +1741,9 @@ export const taxCatalog = defineCatalog(
 				character: '캐릭터',
 			},
 			entryCount: '{{count, number}}개 항목',
-			smallSources: 'Small sources ({{value1}})',
+			smallSources: '소액 출처 ({{value1}})',
+
+			discordDestinationSummary: '{{name}} • 서버 {{guildId}} • 채널 {{channelId}}',
 		},
 	},
 	{
@@ -2332,6 +2338,8 @@ export const taxCatalog = defineCatalog(
 			},
 			entryCount: '{{count, number}} registros',
 			smallSources: 'Fuentes menores ({{value1}})',
+
+			discordDestinationSummary: '{{name}} • Servidor {{guildId}} • Canal {{channelId}}',
 		},
 	}
 )

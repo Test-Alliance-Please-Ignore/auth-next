@@ -77,13 +77,24 @@ export function useHasCorporationAccess() {
  * Format a corporation role for user-facing display.
  */
 export function formatCorporationRoleLabel(
-	role: 'CEO' | 'Director' | 'admin' | 'hr_admin' | 'hr_reviewer' | 'hr_viewer' | null | undefined
+	role:
+		| 'CEO'
+		| 'Director'
+		| 'Member'
+		| 'admin'
+		| 'hr_admin'
+		| 'hr_reviewer'
+		| 'hr_viewer'
+		| null
+		| undefined
 ): string {
 	switch (role) {
 		case 'CEO':
 			return 'CEO'
-		case i18n.t('characterpages.director'):
+		case 'Director':
 			return i18n.t('characterpages.director')
+		case 'Member':
+			return i18n.t('characterpages.member')
 		case 'admin':
 			return i18n.t('characterpages.siteAdmin')
 		case 'hr_admin':

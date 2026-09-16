@@ -19,6 +19,7 @@ import { useAppTranslation } from '@/i18n'
 import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
+import { formatCorporationRoleLabel } from '../../corporations/hooks'
 import { ApplicationStatusBadge } from './application-status-badge'
 import { CharacterIdentitySummary } from './character-identity-summary'
 import { HRNoteCard } from './hr-note-card'
@@ -205,7 +206,7 @@ export function ProfileCharactersSection({
 															character.role === 'Director' && 'font-semibold text-blue-400'
 														)}
 													>
-														{character.role}
+														{formatCorporationRoleLabel(character.role)}
 													</span>
 												)}
 												{character.activityStatus && character.activityStatus !== 'unknown' && (
@@ -219,7 +220,11 @@ export function ProfileCharactersSection({
 														}
 														className="px-1.5 py-0 text-[10px]"
 													>
-														{character.activityStatus}
+														{t(
+															character.activityStatus === 'active'
+																? 'characterpages.active'
+																: 'characterpages.inactive'
+														)}
 													</Badge>
 												)}
 												{character.isBlacklisted && (

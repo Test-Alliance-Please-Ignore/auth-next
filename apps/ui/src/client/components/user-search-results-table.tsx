@@ -12,6 +12,7 @@ import {
 	TableHeader,
 	TableRow,
 } from '@/components/ui/table'
+import { useAppTranslation } from '@/i18n'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
@@ -44,17 +45,19 @@ export function UserSearchResultsTable({
 	onRefreshDiscordAccess,
 	refreshingDiscordUserId,
 }: UserSearchResultsTableProps) {
+	const { t } = useAppTranslation()
+
 	return (
 		<Table>
 			<TableHeader>
 				<TableRow>
-					<TableHead>User</TableHead>
-					<TableHead>Characters</TableHead>
+					<TableHead>{t('hrpages.user')}</TableHead>
+					<TableHead>{t('hrpages.characters')}</TableHead>
 					<TableHead>Discord</TableHead>
-					<TableHead>Status</TableHead>
-					<TableHead>Last Updated</TableHead>
-					<TableHead>Created</TableHead>
-					<TableHead className="text-right">Actions</TableHead>
+					<TableHead>{t('hrpages.status')}</TableHead>
+					<TableHead>{t('hr.searchLastUpdated')}</TableHead>
+					<TableHead>{t('hrpages.created')}</TableHead>
+					<TableHead className="text-right">{t('hrpages.actions')}</TableHead>
 				</TableRow>
 			</TableHeader>
 			<TableBody>
@@ -66,7 +69,7 @@ export function UserSearchResultsTable({
 						!!user.matchedCharacterName
 					const displayName = isAltMatch
 						? `${user.matchedCharacterName}${user.mainCharacterName ? ` (${user.mainCharacterName})` : ''}`
-						: user.mainCharacterName || user.matchedCharacterName || 'Unknown Character'
+						: user.mainCharacterName || user.matchedCharacterName || t('hr.search.unknownCharacter')
 					const isDisplayedCharacterBlacklisted = isAltMatch
 						? user.matchedCharacterIsBlacklisted
 						: user.mainCharacterIsBlacklisted
@@ -91,20 +94,20 @@ export function UserSearchResultsTable({
 											)}
 										>
 											{displayName}
-											{isAltMatch && <Badge variant="default">Alt</Badge>}
+											{isAltMatch && <Badge variant="default">{t('hr.search.alt')}</Badge>}
 											{isDisplayedCharacterBlacklisted && (
-												<Badge variant="destructive">Blocklisted</Badge>
+												<Badge variant="destructive">{t('hr.search.blocklisted')}</Badge>
 											)}
 										</Link>
 										<div className="text-xs text-muted-foreground">
-											ID: {user.id.slice(0, 8)}...
+											{t('hrpages.idValue1', { value1: `${user.id.slice(0, 8)}...` })}
 										</div>
 									</div>
 								</div>
 							</TableCell>
 							<TableCell>
 								<div className="text-sm">
-									{user.characterCount} character{user.characterCount !== 1 ? 's' : ''}
+									{t('hr.search.character', { count: user.characterCount })}
 								</div>
 							</TableCell>
 							<TableCell>
@@ -112,7 +115,7 @@ export function UserSearchResultsTable({
 									<div className="flex items-center justify-between gap-2">
 										<div className="min-w-0">
 											<div className="text-sm font-medium truncate">
-												{user.discordUsername || 'Discord Linked'}
+												{user.discordUsername || t('hr.search.discordLinked')}
 											</div>
 											<div className="font-mono text-xs text-muted-foreground truncate">
 												{user.discordUserId}
@@ -124,17 +127,20 @@ export function UserSearchResultsTable({
 												size="sm"
 												onClick={() => onRefreshDiscordAccess(user.id)}
 												disabled={refreshingDiscordUserId === user.id}
-												title="Refresh Discord roles"
+												title={t('hr.refreshDiscordRoles')}
+												aria-label={t('hr.refreshDiscordRoles')}
 											>
 												<Users className="h-4 w-4" />
 											</Button>
 										)}
 									</div>
 								) : (
-									<span className="text-sm text-muted-foreground">Not linked</span>
+									<span className="text-sm text-muted-foreground">{t('hrpages.notLinked')}</span>
 								)}
 							</TableCell>
-							<TableCell>{user.is_admin && <Badge variant="default">Admin</Badge>}</TableCell>
+							<TableCell>
+								{user.is_admin && <Badge variant="default">{t('hr.search.admin')}</Badge>}
+							</TableCell>
 							<TableCell>
 								<div className="text-sm" title={formatDateTime(user.updatedAt)}>
 									{formatRelativeTime(user.updatedAt)}
@@ -147,7 +153,7 @@ export function UserSearchResultsTable({
 							</TableCell>
 							<TableCell className="text-right">
 								<Link to={userDetailsPath(user.id)}>
-									<Button variant="ghost" size="sm">
+									<Button variant="ghost" size="sm" aria-label={t('hr.viewUser')}>
 										<ExternalLink className="h-4 w-4" />
 									</Button>
 								</Link>

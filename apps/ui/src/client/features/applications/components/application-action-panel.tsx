@@ -7,6 +7,7 @@
 
 import { AlertCircle, CheckCircle2, Search } from 'lucide-react'
 import { useState } from 'react'
+import { Trans } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -410,9 +411,11 @@ export function ApplicationActionPanel({
 					<DialogHeader>
 						<DialogTitle>{t('hrpages.acceptApplication2')}</DialogTitle>
 						<DialogDescription>
-							{t('hrpages.areYouSureYouWantToAcceptTheApplicationFrom')}{' '}
-							<strong>{application.characterName}</strong>
-							{t('hrpages.thisWillNotifyTheApplicantAndTheyCanProceedWith')}
+							<Trans
+								i18nKey="hrpages.confirmAcceptApplication"
+								values={{ character: application.characterName }}
+								components={{ strong: <strong /> }}
+							/>
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -441,9 +444,11 @@ export function ApplicationActionPanel({
 					<DialogHeader>
 						<DialogTitle>{t('hrpages.rejectApplication2')}</DialogTitle>
 						<DialogDescription>
-							{t('hrpages.areYouSureYouWantToRejectTheApplicationFrom')}{' '}
-							<strong>{application.characterName}</strong>
-							{t('hrpages.theApplicantWillBeNotifiedWithYourReviewNotes')}
+							<Trans
+								i18nKey="hrpages.confirmRejectApplication"
+								values={{ character: application.characterName }}
+								components={{ strong: <strong /> }}
+							/>
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>
@@ -476,9 +481,11 @@ export function ApplicationActionPanel({
 					<DialogHeader>
 						<DialogTitle>{t('hrpages.markApplicationCompleted')}</DialogTitle>
 						<DialogDescription>
-							{t('hrpages.areYouSureYouWantToMarkTheAcceptedApplication')}{' '}
-							<strong>{application.characterName}</strong>
-							{t('hrpages.asCompleted')}
+							<Trans
+								i18nKey="hrpages.confirmCompleteApplication"
+								values={{ character: application.characterName }}
+								components={{ strong: <strong /> }}
+							/>
 						</DialogDescription>
 					</DialogHeader>
 					<DialogFooter>

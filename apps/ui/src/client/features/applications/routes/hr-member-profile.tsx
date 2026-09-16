@@ -35,7 +35,11 @@ import { useAppTranslation } from '@/i18n'
 import { formatRelativeTime as formatDistanceToNow } from '@/lib/date-utils'
 import { cn } from '@/lib/utils'
 
-import { useCanAccessCorporation, useCorporationMemberAccount } from '../../corporations/hooks'
+import {
+	formatCorporationRoleLabel,
+	useCanAccessCorporation,
+	useCorporationMemberAccount,
+} from '../../corporations/hooks'
 import { useHrPermissionCheck } from '../../hr/hooks'
 import { AddHRNoteDialog } from '../components/add-hr-note-dialog'
 import {
@@ -517,7 +521,7 @@ export default function HrMemberProfile() {
 									}
 									className="text-[10px]"
 								>
-									{account.highestRole}
+									{formatCorporationRoleLabel(account.highestRole)}
 								</Badge>
 							</div>
 							<Separator />

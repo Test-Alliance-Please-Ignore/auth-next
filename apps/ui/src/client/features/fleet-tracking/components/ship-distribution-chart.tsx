@@ -36,7 +36,9 @@ export function ShipDistributionChart({ title, items, emptyText }: ShipDistribut
 							return (
 								<li key={row.shipTypeId} className="text-sm">
 									<div className="flex items-baseline justify-between gap-2">
-										<span>{row.shipTypeName ?? `type #${row.shipTypeId}`}</span>
+										<span>
+											{row.shipTypeName ?? t('fleetTracking.typeFallback', { id: row.shipTypeId })}
+										</span>
 										<span className="text-muted-foreground text-xs">
 											{formatDuration(row.totalMinutes * 60_000)}
 										</span>

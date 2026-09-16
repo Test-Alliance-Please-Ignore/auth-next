@@ -327,7 +327,7 @@ export function AddHRNoteDialog({
 			const message =
 				error instanceof Error
 					? error.message
-					: t('hrpages.failedToValue1HrNote', { value1: isEditMode ? 'update' : 'add' })
+					: t(isEditMode ? 'hrpages.failedToUpdateHrNote' : 'hrpages.failedToAddHrNote')
 			showError(message)
 		}
 	}

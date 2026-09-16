@@ -124,7 +124,7 @@ export default function UserStats() {
 								label: t('fleetTracking.avgFleetDuration'),
 								value:
 									data.totals.avgFleetDurationMinutes != null
-										? `${data.totals.avgFleetDurationMinutes}m`
+										? t('duration.compact.minute', { count: data.totals.avgFleetDurationMinutes })
 										: '—',
 							},
 						]}

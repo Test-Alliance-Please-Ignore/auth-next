@@ -233,12 +233,9 @@ function LegacyAssociationDetails({
 							) : null}
 						</div>
 						<div className="mt-1 text-xs text-muted-foreground">
-							{characterCount}
-							{t('hrpages.characterS')}
-							{noteCount}
-							{t('hrpages.noteS')}
-							{ipAddressCount}
-							{t('hrpages.ipAddressEs')}
+							{t('hr.search.character', { count: characterCount })},{' '}
+							{t('hrpages.noteCount', { count: noteCount })},{' '}
+							{t('hrpages.ipAddressCount', { count: ipAddressCount })}
 						</div>
 						{alertType === 'legacy-additional-associations' && characters.length > 0 ? (
 							<div className="mt-2 space-y-1.5">

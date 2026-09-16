@@ -80,6 +80,22 @@ export const commonCatalog = defineCatalog(
 				pageScrollHint: 'Use page scrolling for the table',
 				clampGridHint: 'Clamp the table to the page',
 			},
+
+			jsonViewer: {
+				noData: 'No data',
+				copy: 'Copy',
+				copied: 'Copied!',
+				properties_one: '{{count}} property',
+				properties_other: '{{count}} properties',
+			},
+
+			metaCopy: {
+				copy: 'Copy {{label}}',
+				copyToClipboard: 'Copy {{label}} to clipboard',
+				copied: '{{label}} copied',
+				failed: 'Failed to copy {{label}}',
+			},
+			corporationLogo: 'Corporation logo',
 		},
 		currency: {
 			points_one: '{{value}} point',
@@ -212,6 +228,22 @@ export const commonCatalog = defineCatalog(
 				pageScrollHint: 'Die gesamte Seite mit der Tabelle scrollen',
 				clampGridHint: 'Die Tabellenhöhe auf den sichtbaren Bereich begrenzen',
 			},
+
+			jsonViewer: {
+				noData: 'Keine Daten',
+				copy: 'Kopieren',
+				copied: 'Kopiert!',
+				properties_one: '{{count}} Eigenschaft',
+				properties_other: '{{count}} Eigenschaften',
+			},
+
+			metaCopy: {
+				copy: '{{label}} kopieren',
+				copyToClipboard: '{{label}} in die Zwischenablage kopieren',
+				copied: '{{label}} kopiert',
+				failed: '{{label}} konnte nicht kopiert werden',
+			},
+			corporationLogo: 'Corporation-Logo',
 		},
 		currency: {
 			points_one: '{{value}} Punkt',
@@ -344,6 +376,22 @@ export const commonCatalog = defineCatalog(
 				pageScrollHint: '표와 함께 전체 페이지 스크롤',
 				clampGridHint: '표 높이를 화면에 맞추기',
 			},
+
+			jsonViewer: {
+				noData: '데이터 없음',
+				copy: '복사',
+				copied: '복사됨!',
+				properties_one: '속성 {{count}}개',
+				properties_other: '속성 {{count}}개',
+			},
+
+			metaCopy: {
+				copy: '{{label}} 복사',
+				copyToClipboard: '{{label}} 클립보드에 복사',
+				copied: '{{label}} 복사 완료',
+				failed: '{{label}} 복사 실패',
+			},
+			corporationLogo: '코퍼레이션 로고',
 		},
 		currency: {
 			points_one: '{{value}}포인트',
@@ -478,6 +526,23 @@ export const commonCatalog = defineCatalog(
 				pageScrollHint: 'Usar el desplazamiento de la página para la tabla',
 				clampGridHint: 'Ajustar la tabla a la página',
 			},
+
+			jsonViewer: {
+				noData: 'Sin datos',
+				copy: 'Copiar',
+				copied: '¡Copiado!',
+				properties_one: '{{count}} propiedad',
+				properties_other: '{{count}} propiedades',
+				properties_many: '{{count}} propiedades',
+			},
+
+			metaCopy: {
+				copy: 'Copiar {{label}}',
+				copyToClipboard: 'Copiar {{label}} al portapapeles',
+				copied: 'Se copió {{label}}',
+				failed: 'No se pudo copiar {{label}}',
+			},
+			corporationLogo: 'Logotipo de la corporación',
 		},
 		currency: {
 			points_one: '{{value}} punto',

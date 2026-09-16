@@ -372,6 +372,8 @@ function StatCard({
 }
 
 function SkyhookFillBar({ value }: { value: number }) {
+	const { t } = useAppTranslation()
+
 	return (
 		<div className="space-y-1.5">
 			<div className="h-2 w-full overflow-hidden rounded-full bg-muted/30">
@@ -380,14 +382,18 @@ function SkyhookFillBar({ value }: { value: number }) {
 					style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
 				/>
 			</div>
-			<div className="text-xs text-muted-foreground">{formatPercent(value)} full</div>
+			<div className="text-xs text-muted-foreground">
+				{t('structures.fullnessPercent', { percent: formatPercent(value) })}
+			</div>
 		</div>
 	)
 }
 
 function formatReagentBurnRate(value: number | null | undefined): string {
 	if (value === null || value === undefined || !Number.isFinite(value) || value < 0) return '-'
-	return `${value.toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 })}/hr`
+	return i18n.t('structures.perHour', {
+		value1: value.toLocaleString(getActiveLocale(), { maximumFractionDigits: 2 }),
+	})
 }
 
 function SovereigntyReagentAmount({ typeId, value }: { typeId: string; value: number }) {
@@ -1977,12 +1983,7 @@ export default function StructuresPage() {
 					>
 						<div className="text-3xl font-semibold">
 							{summary?.estimatedFuelBurnRatePerHour
-								? `${Number(summary.estimatedFuelBurnRatePerHour).toLocaleString(
-										getActiveLocale(),
-										{
-											maximumFractionDigits: 2,
-										}
-									)}/hr`
+								? formatReagentBurnRate(Number(summary.estimatedFuelBurnRatePerHour))
 								: '-'}
 						</div>
 					</StatCard>

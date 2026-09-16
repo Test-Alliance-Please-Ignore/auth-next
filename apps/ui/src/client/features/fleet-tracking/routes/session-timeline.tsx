@@ -121,18 +121,20 @@ function renderTimelineEventDetails(ev: SessionTimelineRow) {
 	if (ev.eventType === 'ship_change') {
 		return (
 			<>
-				{ev.previousShipTypeName || `type #${ev.previousShipTypeId ?? '?'}`} →{' '}
-				{ev.shipTypeName || `type #${ev.shipTypeId}`}
-				{i18n.t('fleetTracking.in')} {ev.systemName || `system #${ev.solarSystemId}`}
+				{ev.previousShipTypeName ||
+					i18n.t('fleetTracking.typeFallback', { id: ev.previousShipTypeId ?? '?' })}{' '}
+				→ {ev.shipTypeName || i18n.t('fleetTracking.typeFallback', { id: ev.shipTypeId })}
+				{i18n.t('fleetTracking.in')}{' '}
+				{ev.systemName || i18n.t('fleetTracking.systemFallback', { id: ev.solarSystemId })}
 			</>
 		)
 	}
 
 	return (
 		<>
-			{ev.shipTypeName || `type #${ev.shipTypeId}`}
+			{ev.shipTypeName || i18n.t('fleetTracking.typeFallback', { id: ev.shipTypeId })}
 			{i18n.t('fleetTracking.at')}
-			{ev.systemName || `system #${ev.solarSystemId}`}
+			{ev.systemName || i18n.t('fleetTracking.systemFallback', { id: ev.solarSystemId })}
 		</>
 	)
 }

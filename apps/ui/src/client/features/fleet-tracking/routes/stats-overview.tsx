@@ -136,7 +136,9 @@ export default function StatsOverview() {
 											label: t('fleetTracking.avgFleetDuration'),
 											value:
 												data.totals.avgDurationMinutes != null
-													? `${Math.round(data.totals.avgDurationMinutes)}m`
+													? t('duration.compact.minute', {
+															count: Math.round(data.totals.avgDurationMinutes),
+														})
 													: '—',
 										},
 										{
