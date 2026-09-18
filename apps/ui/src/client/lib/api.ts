@@ -10,6 +10,7 @@ import type {
 	SidebarExternalLinkSummary,
 	SidebarExternalLinkUpdateInput,
 } from '@repo/admin'
+import type { PersonalBroadcastTemplate, PersonalBroadcastTemplateInput } from '@repo/broadcasts'
 import type { FreightRoute } from '@repo/freight'
 import type { InventoryDisplayBay as SharedInventoryDisplayBay } from '@repo/inventory-display'
 import type { UpdateSRPConfig } from '@repo/srp'
@@ -4590,6 +4591,27 @@ export class ApiClient {
 	}
 
 	// Broadcasts
+	async getPersonalBroadcastTemplates(): Promise<PersonalBroadcastTemplate[]> {
+		return this.get('/broadcasts/personal-templates')
+	}
+
+	async createPersonalBroadcastTemplate(
+		data: PersonalBroadcastTemplateInput
+	): Promise<PersonalBroadcastTemplate> {
+		return this.post('/broadcasts/personal-templates', data)
+	}
+
+	async updatePersonalBroadcastTemplate(
+		id: string,
+		data: PersonalBroadcastTemplateInput
+	): Promise<PersonalBroadcastTemplate> {
+		return this.put(`/broadcasts/personal-templates/${encodeURIComponent(id)}`, data)
+	}
+
+	async deletePersonalBroadcastTemplate(id: string): Promise<{ success: boolean }> {
+		return this.delete(`/broadcasts/personal-templates/${encodeURIComponent(id)}`)
+	}
+
 	async getBroadcasts(
 		permissionId?: string,
 		status?: BroadcastStatus,
