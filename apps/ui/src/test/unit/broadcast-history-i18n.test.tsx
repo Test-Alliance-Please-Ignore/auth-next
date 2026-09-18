@@ -26,6 +26,7 @@ import {
 	broadcastTarget,
 	broadcastTemplate,
 } from '../fixtures/broadcasts'
+import { personalBroadcastTemplate } from '../fixtures/personal-broadcast-templates'
 
 import type { ReactNode } from 'react'
 
@@ -62,6 +63,9 @@ beforeEach(() => {
 	})
 	client.setQueryData(broadcastKeys.targets(), [broadcastTarget])
 	client.setQueryData(broadcastKeys.templatesFiltered(), [broadcastTemplate])
+	client.setQueryData(broadcastKeys.personalTemplatesForUser(applicant.id), [
+		personalBroadcastTemplate,
+	])
 	client.setQueryData(broadcastKeys.broadcast(broadcast.id), broadcast)
 	client.setQueryData(broadcastKeys.deliveries(broadcast.id), broadcastDeliveries)
 })
@@ -73,6 +77,70 @@ afterEach(async () => {
 })
 
 describe('member broadcast history and detail localization', () => {
+	it.each([
+		[
+			'en',
+			'My Templates',
+			'Use template',
+			'Loading templates…',
+			'No personal templates yet.',
+			'Unable to load available templates and targets.',
+			'Try again',
+		],
+		[
+			'de',
+			'Meine Vorlagen',
+			'Vorlage verwenden',
+			'Vorlagen werden geladen…',
+			'Noch keine persönlichen Vorlagen.',
+			'Verfügbare Vorlagen und Ziele konnten nicht geladen werden.',
+			'Erneut versuchen',
+		],
+		[
+			'ko',
+			'내 템플릿',
+			'템플릿 사용',
+			'템플릿 불러오는 중…',
+			'아직 개인 템플릿이 없습니다.',
+			'사용 가능한 템플릿과 대상을 불러오지 못했습니다.',
+			'다시 시도',
+		],
+		[
+			'es-MX',
+			'Mis plantillas',
+			'Usar plantilla',
+			'Cargando plantillas…',
+			'Aún no tienes plantillas personales.',
+			'No se pudieron cargar las plantillas y los destinos disponibles.',
+			'Reintentar',
+		],
+	] as const)(
+		'localizes the independent templates panel and its states in %s',
+		async (locale, title, use, loading, empty, failed, retry) => {
+			await setAppLocale(locale, { persistLocal: false })
+			let html = renderUI(<BroadcastsPage />)
+			expect(html).toContain(title)
+			expect(html).toContain(use)
+			expect(html).toContain('href="/broadcasts/new?personalTemplateId=personal-original"')
+			expect(html.indexOf(title)).toBeLessThan(html.indexOf('<table'))
+			client.removeQueries({ queryKey: broadcastKeys.templates() })
+			html = renderUI(<BroadcastsPage />)
+			expect(html).toContain(loading)
+			expect(html).toContain('href="/broadcasts/broadcast-original"')
+			expect(html).not.toContain(empty)
+			await client.prefetchQuery({
+				queryKey: broadcastKeys.templatesFiltered(),
+				queryFn: () => Promise.reject('offline'),
+			})
+			html = renderUI(<BroadcastsPage />)
+			expect(html).toContain(failed)
+			expect(html).toContain(retry)
+			expect(html).toContain('href="/broadcasts/broadcast-original"')
+			client.setQueryData(broadcastKeys.templatesFiltered(), [])
+			client.setQueryData(broadcastKeys.personalTemplatesForUser(applicant.id), [])
+			expect(renderUI(<BroadcastsPage />)).toContain(empty)
+		}
+	)
 	it.each([
 		['en', 'My Broadcasts', 'Draft', 'Sent', '1–25 of 1,234 broadcasts', 'Add addendum'],
 		[
@@ -102,7 +170,7 @@ describe('member broadcast history and detail localization', () => {
 			expect(page.title).toBe(title)
 			expect(html).toContain('href="/broadcasts/broadcast-original"')
 			expect(html).not.toContain('broadcasts.status.')
-			expect(html.match(/<table/g)).toHaveLength(1)
+			expect(html.match(/<table/g)).toHaveLength(2)
 		}
 	)
 	it.each([

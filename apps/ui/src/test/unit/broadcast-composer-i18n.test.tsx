@@ -61,6 +61,7 @@ beforeEach(() => {
 	client.setQueryData(['auth', 'session'], { authenticated: true, user: applicant })
 	client.setQueryData(broadcastKeys.targets(), [broadcastTarget])
 	client.setQueryData(broadcastKeys.templatesFiltered(), [composerTemplate])
+	client.setQueryData(broadcastKeys.personalTemplatesForUser(applicant.id), [])
 	client.setQueryData(doctrineKeys.list(), [])
 	client.setQueryData(stagingSystemKeys.all, [])
 })
@@ -70,6 +71,51 @@ afterEach(async () => {
 })
 
 describe('member broadcast composer localization', () => {
+	it.each([
+		[
+			'en',
+			'Loading the selected template and target…',
+			'This template link is incomplete',
+			'Choose template and target',
+		],
+		[
+			'de',
+			'Ausgewählte Vorlage und Ziel werden geladen…',
+			'Dieser Vorlagenlink ist unvollständig',
+			'Vorlage und Ziel auswählen',
+		],
+		[
+			'ko',
+			'선택한 템플릿과 대상을 불러오는 중…',
+			'템플릿 링크가 불완전하거나',
+			'템플릿 및 대상 선택',
+		],
+		[
+			'es-MX',
+			'Cargando la plantilla y el destino seleccionados…',
+			'Este enlace está incompleto',
+			'Elegir plantilla y destino',
+		],
+	] as const)(
+		'localizes shortcut loading, validation and recovery in %s',
+		async (locale, loading, invalid, choose) => {
+			await setAppLocale(locale, { persistLocal: false })
+			const pending = renderUI(
+				<NewBroadcastPage />,
+				'/broadcasts/new?templateId=template-original&targetId=target-original'
+			)
+			expect(pending).toContain(loading)
+			expect(pending).not.toContain(invalid)
+			const rejected = renderUI(
+				<NewBroadcastPage />,
+				'/broadcasts/new?templateId=template-original'
+			)
+			expect(rejected).toContain(invalid)
+			expect(rejected).toContain(choose)
+			expect(rejected).toContain('href="/broadcasts/new"')
+			expect(rejected).not.toContain('broadcasts.composer.shortcut')
+		}
+	)
 	it.each([
 		[
 			'en',

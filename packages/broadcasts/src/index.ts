@@ -13,6 +13,14 @@ export type TargetType = 'discord_channel'
 export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'rescinded'
 export type DeliveryStatus = 'pending' | 'sent' | 'failed'
 
+export {
+	MAX_PERSONAL_BROADCAST_TEMPLATES,
+	getPersonalBroadcastTemplateContent,
+	isPersonalBroadcastTemplateInput,
+	type PersonalBroadcastTemplate,
+	type PersonalBroadcastTemplateInput,
+} from './personal-templates'
+
 // =============================================================================
 // ENTITY TYPES
 // =============================================================================

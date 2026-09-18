@@ -18,6 +18,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Section } from '@/components/ui/section'
 import { BroadcastFeedback } from '@/features/broadcasts/components/broadcast-feedback'
 import { BroadcastStatusBadge } from '@/features/broadcasts/components/broadcast-status-badge'
+import { BroadcastTemplateShortcuts } from '@/features/broadcasts/components/broadcast-template-shortcuts'
 import { useAuth } from '@/hooks/useAuth'
 import {
 	useBroadcasts,
@@ -275,6 +276,7 @@ export default function BroadcastsPage() {
 						</Card>
 					))}
 				</div>
+				<BroadcastTemplateShortcuts />
 				{!isLoading && !error && rowCount === 0 ? (
 					<Card variant="elevated">
 						<CardContent className="py-16 text-center">
